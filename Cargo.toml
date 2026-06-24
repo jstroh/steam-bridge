@@ -1,0 +1,11 @@
+[workspace]
+members = ["crates/native"]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+license = "MIT"
+version = "0.1.0"
+
+[profile.release]
+lto = true

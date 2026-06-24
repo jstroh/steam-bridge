@@ -1,0 +1,12 @@
+node_modules/
+dist/
+target/
+*.node
+libsteam_api.*
+steam_api64.dll
+steam_api64.lib
+*.log
+.DS_Store
+steam_appid.txt
+sdk/
+packages/steam-bridge/index.d.ts

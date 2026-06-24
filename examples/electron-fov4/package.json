@@ -1,0 +1,13 @@
+{
+  "name": "steam-bridge-electron-fov4-example",
+  "private": true,
+  "version": "0.1.0",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "dependencies": {
+    "electron": "42.5.0",
+    "steam-bridge": "file:../../packages/steam-bridge"
+  }
+}

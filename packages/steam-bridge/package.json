@@ -1,0 +1,62 @@
+{
+  "name": "steam-bridge",
+  "version": "0.1.0",
+  "description": "Native-backed Steamworks bridge for Electron and Node.",
+  "license": "MIT",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./electron": {
+      "types": "./dist/electron.d.ts",
+      "default": "./dist/electron.js"
+    }
+  },
+  "files": [
+    "dist",
+    "*.node",
+    "libsteam_api.*",
+    "steam_api64.dll",
+    "steam_api64.lib",
+    "README.md",
+    "LICENSE"
+  ],
+  "napi": {
+    "name": "steam_bridge_native",
+    "triples": {
+      "additional": [
+        "x86_64-pc-windows-msvc",
+        "x86_64-unknown-linux-gnu",
+        "x86_64-apple-darwin",
+        "aarch64-apple-darwin"
+      ]
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "native:link": "node scripts/link-native.cjs"
+  },
+  "devDependencies": {
+    "@types/node": "*",
+    "typescript": "5.5.3"
+  },
+  "peerDependencies": {
+    "electron": ">=24"
+  },
+  "peerDependenciesMeta": {
+    "electron": {
+      "optional": true
+    }
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/fov4/steam-bridge"
+  }
+}
