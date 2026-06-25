@@ -309,6 +309,130 @@ test("overlay helpers map constants and forward modal/store options", (t) => {
   );
 });
 
+test("apps facade covers DLC, launch, depot, trial, and beta helpers", (t) => {
+  const fake = createFakeNative({
+    appsEarliestPurchaseUnixTime(appId) {
+      this.calls.push({ method: "appsEarliestPurchaseUnixTime", args: [appId] });
+      return 1700000000;
+    },
+    appsDlcCount() {
+      this.calls.push({ method: "appsDlcCount", args: [] });
+      return 1;
+    },
+    appsDlcDataByIndex(index) {
+      this.calls.push({ method: "appsDlcDataByIndex", args: [index] });
+      return index === 0 ? { app_id: 481, available: true, name: "Soundtrack" } : null;
+    },
+    appsInstallDlc(appId) {
+      this.calls.push({ method: "appsInstallDlc", args: [appId] });
+    },
+    appsUninstallDlc(appId) {
+      this.calls.push({ method: "appsUninstallDlc", args: [appId] });
+    },
+    appsRequestAppProofOfPurchaseKey(appId) {
+      this.calls.push({ method: "appsRequestAppProofOfPurchaseKey", args: [appId] });
+    },
+    appsRequestAllProofOfPurchaseKeys() {
+      this.calls.push({ method: "appsRequestAllProofOfPurchaseKeys", args: [] });
+    },
+    appsMarkContentCorrupt(missingFilesOnly) {
+      this.calls.push({ method: "appsMarkContentCorrupt", args: [missingFilesOnly] });
+      return true;
+    },
+    appsInstalledDepots(appId, maxDepots) {
+      this.calls.push({ method: "appsInstalledDepots", args: [appId, maxDepots] });
+      return [100, 101];
+    },
+    appsLaunchQueryParam(key) {
+      this.calls.push({ method: "appsLaunchQueryParam", args: [key] });
+      return "127.0.0.1";
+    },
+    appsDlcDownloadProgress(appId) {
+      this.calls.push({ method: "appsDlcDownloadProgress", args: [appId] });
+      return appId === 481 ? { bytes_downloaded: "10", bytes_total: 20n } : null;
+    },
+    appsLaunchCommandLine(maxBytes) {
+      this.calls.push({ method: "appsLaunchCommandLine", args: [maxBytes] });
+      return "+connect 127.0.0.1";
+    },
+    appsIsSubscribedFromFamilySharing() {
+      this.calls.push({ method: "appsIsSubscribedFromFamilySharing", args: [] });
+      return true;
+    },
+    appsTimedTrial() {
+      this.calls.push({ method: "appsTimedTrial", args: [] });
+      return { seconds_allowed: 3600, seconds_played: 120 };
+    },
+    appsSetDlcContext(appId) {
+      this.calls.push({ method: "appsSetDlcContext", args: [appId] });
+      return true;
+    },
+    appsBetaCounts() {
+      this.calls.push({ method: "appsBetaCounts", args: [] });
+      return { total: 2, available: 1, private: 1 };
+    },
+    appsBetaInfo(index) {
+      this.calls.push({ method: "appsBetaInfo", args: [index] });
+      return index === 0
+        ? { flags: 1, build_id: 123, name: "public", description: "Public beta", last_updated: 1700000000 }
+        : null;
+    },
+    appsSetActiveBeta(betaName) {
+      this.calls.push({ method: "appsSetActiveBeta", args: [betaName] });
+      return true;
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  assert.equal(steam.apps.earliestPurchaseUnixTime(480), 1700000000);
+  assert.equal(steam.apps.dlcCount(), 1);
+  assert.deepEqual(steam.apps.dlcDataByIndex(0), { appId: 481, available: true, name: "Soundtrack" });
+  assert.equal(steam.apps.dlcDataByIndex(9), null);
+
+  steam.apps.installDlc(481);
+  steam.apps.uninstallDlc(481);
+  steam.apps.requestAppProofOfPurchaseKey(481);
+  steam.apps.requestAllProofOfPurchaseKeys();
+
+  assert.equal(steam.apps.markContentCorrupt(true), true);
+  assert.deepEqual(steam.apps.installedDepots(480, 4), [100, 101]);
+  assert.equal(steam.apps.launchQueryParam("server"), "127.0.0.1");
+  assert.deepEqual(steam.apps.dlcDownloadProgress(481), { bytesDownloaded: 10n, bytesTotal: 20n });
+  assert.equal(steam.apps.dlcDownloadProgress(999), null);
+  assert.equal(steam.apps.launchCommandLine(512), "+connect 127.0.0.1");
+  assert.equal(steam.apps.isSubscribedFromFamilySharing(), true);
+  assert.deepEqual(steam.apps.timedTrial(), { secondsAllowed: 3600, secondsPlayed: 120 });
+  assert.equal(steam.apps.setDlcContext(481), true);
+  assert.deepEqual(steam.apps.betaCounts(), { total: 2, available: 1, private: 1 });
+  assert.deepEqual(steam.apps.betaInfo(0), {
+    flags: 1,
+    buildId: 123,
+    name: "public",
+    description: "Public beta",
+    lastUpdated: 1700000000
+  });
+  assert.equal(steam.apps.betaInfo(9), null);
+  assert.equal(steam.apps.setActiveBeta("public"), true);
+  assert.deepEqual(
+    fake.calls.filter((call) =>
+      [
+        "appsInstalledDepots",
+        "appsMarkContentCorrupt",
+        "appsLaunchCommandLine",
+        "appsSetActiveBeta"
+      ].includes(call.method)
+    ),
+    [
+      { method: "appsMarkContentCorrupt", args: [true] },
+      { method: "appsInstalledDepots", args: [480, 4] },
+      { method: "appsLaunchCommandLine", args: [512] },
+      { method: "appsSetActiveBeta", args: ["public"] }
+    ]
+  );
+});
+
 test("cloud, input, and networking facades coerce native values", (t) => {
   const fake = createFakeNative();
   const steam = loadSteamWithFakeNative(fake);

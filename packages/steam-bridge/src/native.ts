@@ -80,6 +80,43 @@ export interface NativeChangeNumOpenSlotsResult {
   result: number;
 }
 
+export interface NativeAppDlcData {
+  appId?: number;
+  app_id?: number;
+  available: boolean;
+  name: string;
+}
+
+export interface NativeAppDlcDownloadProgress {
+  bytesDownloaded?: bigint | string | number;
+  bytes_downloaded?: bigint | string | number;
+  bytesTotal?: bigint | string | number;
+  bytes_total?: bigint | string | number;
+}
+
+export interface NativeAppTimedTrialInfo {
+  secondsAllowed?: number;
+  seconds_allowed?: number;
+  secondsPlayed?: number;
+  seconds_played?: number;
+}
+
+export interface NativeAppBetaCounts {
+  total: number;
+  available: number;
+  private: number;
+}
+
+export interface NativeAppBetaInfo {
+  flags: number;
+  buildId?: number;
+  build_id?: number;
+  name: string;
+  description: string;
+  lastUpdated?: number;
+  last_updated?: number;
+}
+
 export interface NativeInventoryItemDetail {
   itemId?: bigint | string | number;
   item_id?: bigint | string | number;
@@ -662,6 +699,24 @@ export interface NativeBinding {
   appsAvailableGameLanguages(): string[];
   appsCurrentGameLanguage(): string;
   appsCurrentBetaName(): string | null | undefined;
+  appsEarliestPurchaseUnixTime(appId: number): number;
+  appsDlcCount(): number;
+  appsDlcDataByIndex(index: number): NativeAppDlcData | null | undefined;
+  appsInstallDlc(appId: number): void;
+  appsUninstallDlc(appId: number): void;
+  appsRequestAppProofOfPurchaseKey(appId: number): void;
+  appsRequestAllProofOfPurchaseKeys(): void;
+  appsMarkContentCorrupt(missingFilesOnly: boolean): boolean;
+  appsInstalledDepots(appId: number, maxDepots?: number): number[];
+  appsLaunchQueryParam(key: string): string;
+  appsDlcDownloadProgress(appId: number): NativeAppDlcDownloadProgress | null | undefined;
+  appsLaunchCommandLine(maxBytes?: number): string;
+  appsIsSubscribedFromFamilySharing(): boolean;
+  appsTimedTrial(): NativeAppTimedTrialInfo | null | undefined;
+  appsSetDlcContext(appId: number): boolean;
+  appsBetaCounts(): NativeAppBetaCounts;
+  appsBetaInfo(index: number): NativeAppBetaInfo | null | undefined;
+  appsSetActiveBeta(betaName: string): boolean;
 
   localplayerGetName(): string;
   localplayerGetLevel(): number;

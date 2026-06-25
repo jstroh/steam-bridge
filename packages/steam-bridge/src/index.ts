@@ -4,6 +4,11 @@ import {
 } from "./electron";
 import {
   loadNativeBinding,
+  NativeAppBetaCounts,
+  NativeAppBetaInfo,
+  NativeAppDlcData,
+  NativeAppDlcDownloadProgress,
+  NativeAppTimedTrialInfo,
   NativeAuthTicket,
   NativeBinding,
   NativeCallbackHandle,
@@ -200,6 +205,36 @@ export interface CreateBeaconResult {
 
 export interface ChangeNumOpenSlotsResult {
   result: number;
+}
+
+export interface AppDlcData {
+  appId: number;
+  available: boolean;
+  name: string;
+}
+
+export interface AppDlcDownloadProgress {
+  bytesDownloaded: bigint;
+  bytesTotal: bigint;
+}
+
+export interface AppTimedTrialInfo {
+  secondsAllowed: number;
+  secondsPlayed: number;
+}
+
+export interface AppBetaCounts {
+  total: number;
+  available: number;
+  private: number;
+}
+
+export interface AppBetaInfo {
+  flags: number;
+  buildId: number;
+  name: string;
+  description: string;
+  lastUpdated: number;
 }
 
 export interface InventoryItemDetail {
@@ -1420,6 +1455,60 @@ export const apps = {
   },
   currentBetaName(): string | null {
     return native().appsCurrentBetaName() ?? null;
+  },
+  earliestPurchaseUnixTime(appId: number): number {
+    return native().appsEarliestPurchaseUnixTime(appId);
+  },
+  dlcCount(): number {
+    return native().appsDlcCount();
+  },
+  dlcDataByIndex(index: number): AppDlcData | null {
+    return normalizeAppDlcData(native().appsDlcDataByIndex(index));
+  },
+  installDlc(appId: number): void {
+    native().appsInstallDlc(appId);
+  },
+  uninstallDlc(appId: number): void {
+    native().appsUninstallDlc(appId);
+  },
+  requestAppProofOfPurchaseKey(appId: number): void {
+    native().appsRequestAppProofOfPurchaseKey(appId);
+  },
+  requestAllProofOfPurchaseKeys(): void {
+    native().appsRequestAllProofOfPurchaseKeys();
+  },
+  markContentCorrupt(missingFilesOnly = false): boolean {
+    return native().appsMarkContentCorrupt(missingFilesOnly);
+  },
+  installedDepots(appId: number, maxDepots?: number): number[] {
+    return native().appsInstalledDepots(appId, maxDepots);
+  },
+  launchQueryParam(key: string): string {
+    return native().appsLaunchQueryParam(key);
+  },
+  dlcDownloadProgress(appId: number): AppDlcDownloadProgress | null {
+    return normalizeAppDlcDownloadProgress(native().appsDlcDownloadProgress(appId));
+  },
+  launchCommandLine(maxBytes?: number): string {
+    return native().appsLaunchCommandLine(maxBytes);
+  },
+  isSubscribedFromFamilySharing(): boolean {
+    return native().appsIsSubscribedFromFamilySharing();
+  },
+  timedTrial(): AppTimedTrialInfo | null {
+    return normalizeAppTimedTrialInfo(native().appsTimedTrial());
+  },
+  setDlcContext(appId: number): boolean {
+    return native().appsSetDlcContext(appId);
+  },
+  betaCounts(): AppBetaCounts {
+    return normalizeAppBetaCounts(native().appsBetaCounts());
+  },
+  betaInfo(index: number): AppBetaInfo | null {
+    return normalizeAppBetaInfo(native().appsBetaInfo(index));
+  },
+  setActiveBeta(betaName: string): boolean {
+    return native().appsSetActiveBeta(betaName);
   }
 };
 
@@ -2978,6 +3067,60 @@ function normalizeCreateBeaconResult(result: NativeCreateBeaconResult): CreateBe
 function normalizeChangeNumOpenSlotsResult(result: NativeChangeNumOpenSlotsResult): ChangeNumOpenSlotsResult {
   return {
     result: result.result
+  };
+}
+
+function normalizeAppDlcData(data: NativeAppDlcData | null | undefined): AppDlcData | null {
+  if (!data) {
+    return null;
+  }
+  return {
+    appId: Number(data.appId ?? data.app_id ?? 0),
+    available: Boolean(data.available),
+    name: data.name
+  };
+}
+
+function normalizeAppDlcDownloadProgress(
+  progress: NativeAppDlcDownloadProgress | null | undefined
+): AppDlcDownloadProgress | null {
+  if (!progress) {
+    return null;
+  }
+  return {
+    bytesDownloaded: BigInt(progress.bytesDownloaded ?? progress.bytes_downloaded ?? 0),
+    bytesTotal: BigInt(progress.bytesTotal ?? progress.bytes_total ?? 0)
+  };
+}
+
+function normalizeAppTimedTrialInfo(info: NativeAppTimedTrialInfo | null | undefined): AppTimedTrialInfo | null {
+  if (!info) {
+    return null;
+  }
+  return {
+    secondsAllowed: Number(info.secondsAllowed ?? info.seconds_allowed ?? 0),
+    secondsPlayed: Number(info.secondsPlayed ?? info.seconds_played ?? 0)
+  };
+}
+
+function normalizeAppBetaCounts(counts: NativeAppBetaCounts): AppBetaCounts {
+  return {
+    total: counts.total,
+    available: counts.available,
+    private: counts.private
+  };
+}
+
+function normalizeAppBetaInfo(info: NativeAppBetaInfo | null | undefined): AppBetaInfo | null {
+  if (!info) {
+    return null;
+  }
+  return {
+    flags: info.flags,
+    buildId: Number(info.buildId ?? info.build_id ?? 0),
+    name: info.name,
+    description: info.description,
+    lastUpdated: Number(info.lastUpdated ?? info.last_updated ?? 0)
   };
 }
 

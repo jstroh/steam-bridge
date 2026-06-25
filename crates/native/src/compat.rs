@@ -134,6 +134,46 @@ pub struct ChangeNumOpenSlotsResult {
 
 #[derive(Debug)]
 #[napi(object)]
+pub struct AppDlcData {
+    pub app_id: u32,
+    pub available: bool,
+    pub name: String,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct AppDlcDownloadProgress {
+    pub bytes_downloaded: BigInt,
+    pub bytes_total: BigInt,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct AppTimedTrialInfo {
+    pub seconds_allowed: u32,
+    pub seconds_played: u32,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct AppBetaCounts {
+    pub total: i32,
+    pub available: i32,
+    pub private: i32,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct AppBetaInfo {
+    pub flags: u32,
+    pub build_id: u32,
+    pub name: String,
+    pub description: String,
+    pub last_updated: u32,
+}
+
+#[derive(Debug)]
+#[napi(object)]
 pub struct InventoryItemDetail {
     pub item_id: BigInt,
     pub definition: i32,
@@ -1567,6 +1607,201 @@ pub fn apps_current_beta_name() -> Result<Option<String>, Error> {
     } else {
         Ok(None)
     }
+}
+
+#[napi(js_name = "appsEarliestPurchaseUnixTime")]
+pub fn apps_earliest_purchase_unix_time(app_id: u32) -> Result<u32, Error> {
+    Ok(unsafe { sys::SteamAPI_ISteamApps_GetEarliestPurchaseUnixTime(steam_apps()?, app_id) })
+}
+
+#[napi(js_name = "appsDlcCount")]
+pub fn apps_dlc_count() -> Result<i32, Error> {
+    Ok(unsafe { sys::SteamAPI_ISteamApps_GetDLCCount(steam_apps()?) })
+}
+
+#[napi(js_name = "appsDlcDataByIndex")]
+pub fn apps_dlc_data_by_index(index: i32) -> Result<Option<AppDlcData>, Error> {
+    let apps = steam_apps()?;
+    let mut app_id = 0u32;
+    let mut available = false;
+    let mut name = vec![0i8; 256];
+    let ok = unsafe {
+        sys::SteamAPI_ISteamApps_BGetDLCDataByIndex(
+            apps,
+            index,
+            &mut app_id,
+            &mut available,
+            name.as_mut_ptr(),
+            name.len() as i32,
+        )
+    };
+    Ok(ok.then(|| AppDlcData {
+        app_id,
+        available,
+        name: c_buf_to_string(&name),
+    }))
+}
+
+#[napi(js_name = "appsInstallDlc")]
+pub fn apps_install_dlc(app_id: u32) -> Result<(), Error> {
+    unsafe { sys::SteamAPI_ISteamApps_InstallDLC(steam_apps()?, app_id) };
+    Ok(())
+}
+
+#[napi(js_name = "appsUninstallDlc")]
+pub fn apps_uninstall_dlc(app_id: u32) -> Result<(), Error> {
+    unsafe { sys::SteamAPI_ISteamApps_UninstallDLC(steam_apps()?, app_id) };
+    Ok(())
+}
+
+#[napi(js_name = "appsRequestAppProofOfPurchaseKey")]
+pub fn apps_request_app_proof_of_purchase_key(app_id: u32) -> Result<(), Error> {
+    unsafe { sys::SteamAPI_ISteamApps_RequestAppProofOfPurchaseKey(steam_apps()?, app_id) };
+    Ok(())
+}
+
+#[napi(js_name = "appsRequestAllProofOfPurchaseKeys")]
+pub fn apps_request_all_proof_of_purchase_keys() -> Result<(), Error> {
+    unsafe { sys::SteamAPI_ISteamApps_RequestAllProofOfPurchaseKeys(steam_apps()?) };
+    Ok(())
+}
+
+#[napi(js_name = "appsMarkContentCorrupt")]
+pub fn apps_mark_content_corrupt(missing_files_only: bool) -> Result<bool, Error> {
+    Ok(unsafe { sys::SteamAPI_ISteamApps_MarkContentCorrupt(steam_apps()?, missing_files_only) })
+}
+
+#[napi(js_name = "appsInstalledDepots")]
+pub fn apps_installed_depots(app_id: u32, max_depots: Option<u32>) -> Result<Vec<u32>, Error> {
+    let apps = steam_apps()?;
+    let capacity = max_depots.unwrap_or(256).clamp(1, 4096);
+    let mut depots = vec![0u32; capacity as usize];
+    let returned = unsafe {
+        sys::SteamAPI_ISteamApps_GetInstalledDepots(
+            apps,
+            app_id,
+            depots.as_mut_ptr(),
+            depots.len() as u32,
+        )
+    };
+    let returned_len = returned.min(depots.len() as u32) as usize;
+    depots.truncate(returned_len);
+    Ok(depots)
+}
+
+#[napi(js_name = "appsLaunchQueryParam")]
+pub fn apps_launch_query_param(key: String) -> Result<String, Error> {
+    let key = cstring(key, "launch query param key")?;
+    Ok(string_from_ptr(unsafe {
+        sys::SteamAPI_ISteamApps_GetLaunchQueryParam(steam_apps()?, key.as_ptr())
+    }))
+}
+
+#[napi(js_name = "appsDlcDownloadProgress")]
+pub fn apps_dlc_download_progress(app_id: u32) -> Result<Option<AppDlcDownloadProgress>, Error> {
+    let apps = steam_apps()?;
+    let mut bytes_downloaded = 0u64;
+    let mut bytes_total = 0u64;
+    let ok = unsafe {
+        sys::SteamAPI_ISteamApps_GetDlcDownloadProgress(
+            apps,
+            app_id,
+            &mut bytes_downloaded,
+            &mut bytes_total,
+        )
+    };
+    Ok(ok.then(|| AppDlcDownloadProgress {
+        bytes_downloaded: bytes_downloaded.into(),
+        bytes_total: bytes_total.into(),
+    }))
+}
+
+#[napi(js_name = "appsLaunchCommandLine")]
+pub fn apps_launch_command_line(max_bytes: Option<u32>) -> Result<String, Error> {
+    let apps = steam_apps()?;
+    let capacity = max_bytes.unwrap_or(4096).clamp(1, 65_536);
+    let mut buf = vec![0i8; capacity as usize];
+    let len = unsafe {
+        sys::SteamAPI_ISteamApps_GetLaunchCommandLine(apps, buf.as_mut_ptr(), buf.len() as i32)
+    };
+    if len <= 0 {
+        Ok(String::new())
+    } else {
+        Ok(c_buf_to_string(&buf))
+    }
+}
+
+#[napi(js_name = "appsIsSubscribedFromFamilySharing")]
+pub fn apps_is_subscribed_from_family_sharing() -> Result<bool, Error> {
+    Ok(unsafe { sys::SteamAPI_ISteamApps_BIsSubscribedFromFamilySharing(steam_apps()?) })
+}
+
+#[napi(js_name = "appsTimedTrial")]
+pub fn apps_timed_trial() -> Result<Option<AppTimedTrialInfo>, Error> {
+    let apps = steam_apps()?;
+    let mut seconds_allowed = 0u32;
+    let mut seconds_played = 0u32;
+    let ok = unsafe {
+        sys::SteamAPI_ISteamApps_BIsTimedTrial(apps, &mut seconds_allowed, &mut seconds_played)
+    };
+    Ok(ok.then_some(AppTimedTrialInfo {
+        seconds_allowed,
+        seconds_played,
+    }))
+}
+
+#[napi(js_name = "appsSetDlcContext")]
+pub fn apps_set_dlc_context(app_id: u32) -> Result<bool, Error> {
+    Ok(unsafe { sys::SteamAPI_ISteamApps_SetDlcContext(steam_apps()?, app_id) })
+}
+
+#[napi(js_name = "appsBetaCounts")]
+pub fn apps_beta_counts() -> Result<AppBetaCounts, Error> {
+    let apps = steam_apps()?;
+    let mut available = 0i32;
+    let mut private = 0i32;
+    let total = unsafe { sys::SteamAPI_ISteamApps_GetNumBetas(apps, &mut available, &mut private) };
+    Ok(AppBetaCounts {
+        total,
+        available,
+        private,
+    })
+}
+
+#[napi(js_name = "appsBetaInfo")]
+pub fn apps_beta_info(index: i32) -> Result<Option<AppBetaInfo>, Error> {
+    let apps = steam_apps()?;
+    let mut flags = 0u32;
+    let mut build_id = 0u32;
+    let mut beta_name = vec![0i8; 256];
+    let mut description = vec![0i8; 1024];
+    let mut last_updated = 0u32;
+    let ok = unsafe {
+        sys::SteamAPI_ISteamApps_GetBetaInfo(
+            apps,
+            index,
+            &mut flags,
+            &mut build_id,
+            beta_name.as_mut_ptr(),
+            beta_name.len() as i32,
+            description.as_mut_ptr(),
+            description.len() as i32,
+            &mut last_updated,
+        )
+    };
+    Ok(ok.then(|| AppBetaInfo {
+        flags,
+        build_id,
+        name: c_buf_to_string(&beta_name),
+        description: c_buf_to_string(&description),
+        last_updated,
+    }))
+}
+
+#[napi(js_name = "appsSetActiveBeta")]
+pub fn apps_set_active_beta(beta_name: String) -> Result<bool, Error> {
+    let beta_name = cstring(beta_name, "beta name")?;
+    Ok(unsafe { sys::SteamAPI_ISteamApps_SetActiveBeta(steam_apps()?, beta_name.as_ptr()) })
 }
 
 #[napi(js_name = "localplayerGetName")]
