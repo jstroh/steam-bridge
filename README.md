@@ -9,17 +9,17 @@ This project is 100% created and maintained by Codex.
 
 The native crate calls the Steamworks flat C API through `steamworks-sys` and
 owns Steam API initialization, manual callback dispatch, auth tickets, overlay
-helpers, Steam Deck and Steam utility checks, Steam ID helpers, achievements,
-networking, matchmaking, app metadata and DLC helpers, cloud, input, stats,
-inventory, and workshop helpers.
+helpers, Steam utility checks, Steam ID helpers, achievements, networking,
+matchmaking, app metadata and DLC helpers, cloud, input, stats, inventory, and
+workshop helpers.
 
 Steam SDK redistributables are not committed. For local/native builds, provide
 the Steamworks SDK in the normal location expected by `steamworks-sys`, or set
 `STEAMWORKS_SDK_PATH` according to your SDK setup.
 
-Prebuild scaffolding currently targets Windows x64, Linux x64, and Apple
-Silicon macOS (`aarch64-apple-darwin`). Intel macOS is intentionally
-unsupported, and native macOS builds are limited to Apple Silicon.
+Prebuild scaffolding targets Apple Silicon macOS only
+(`aarch64-apple-darwin`). Intel macOS, Windows, and Linux targets are
+intentionally unsupported.
 
 ## Quick Start
 
@@ -32,7 +32,6 @@ import {
   init,
   getSteamId,
   getAuthTicketForWebApi,
-  isSteamDeck,
   onMicroTxnAuthorizationResponse,
   getOverlayDiagnostics,
   activateOverlayToWebPage,
@@ -48,7 +47,6 @@ const bytes = ticket.getBytes();
 console.log({
   steamId,
   ticketBytes: bytes.length,
-  steamDeck: isSteamDeck(),
   overlay: getOverlayDiagnostics()
 });
 

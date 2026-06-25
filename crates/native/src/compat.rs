@@ -7946,17 +7946,7 @@ fn parental_feature_from_u32(value: u32) -> Result<sys::EParentalFeature, Error>
 }
 
 fn overlay_to_store_flag_from_u32(value: u32) -> Result<sys::EOverlayToStoreFlag, Error> {
-    #[cfg(windows)]
-    {
-        let value = i32::try_from(value)
-            .map_err(|_| Error::from_reason(format!("invalid overlay store flag {value}")))?;
-        Ok(sys::EOverlayToStoreFlag(value))
-    }
-
-    #[cfg(not(windows))]
-    {
-        Ok(sys::EOverlayToStoreFlag(value))
-    }
+    Ok(sys::EOverlayToStoreFlag(value))
 }
 
 fn community_profile_item_type_from_u32(

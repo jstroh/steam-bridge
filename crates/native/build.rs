@@ -6,10 +6,10 @@ fn main() {
     let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
     let target_arch = std::env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default();
 
-    if target_os == "macos" && target_arch != "aarch64" {
+    if target_os != "macos" || target_arch != "aarch64" {
         panic!(
-            "Steam Bridge supports macOS only on Apple Silicon (aarch64-apple-darwin); \
-             target architecture was {target_arch}."
+            "Steam Bridge supports Apple Silicon macOS only (aarch64-apple-darwin); \
+             target was {target_arch}-{target_os}."
         );
     }
 

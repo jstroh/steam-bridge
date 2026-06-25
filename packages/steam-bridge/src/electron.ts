@@ -1,7 +1,6 @@
 export type ElectronSteamOverlayProfile = "off" | "diagnostic" | "compatibility";
 
 export interface ElectronOverlayOptions {
-  disableDirectComposition?: boolean;
   enableInProcessGpu?: boolean;
   repaintIntervalMs?: number;
 }
@@ -64,7 +63,6 @@ export function electronConfigureSteamOverlay(
 
   const compatibilityMode = profile === "compatibility";
   const {
-    disableDirectComposition = compatibilityMode && process.platform === "win32",
     enableInProcessGpu = compatibilityMode,
     forceHighPerformanceGpu = true,
     disableBackgroundThrottling = true,
@@ -77,10 +75,6 @@ export function electronConfigureSteamOverlay(
 
   if (enableInProcessGpu) {
     appendSwitchOnce(electron.app, switches, "in-process-gpu");
-  }
-
-  if (disableDirectComposition) {
-    appendSwitchOnce(electron.app, switches, "disable-direct-composition");
   }
 
   if (forceHighPerformanceGpu) {

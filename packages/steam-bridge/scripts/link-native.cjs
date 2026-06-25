@@ -6,22 +6,19 @@ const packageRoot = path.resolve(__dirname, "..");
 const repoRoot = path.resolve(packageRoot, "..", "..");
 const runtimeOnly = process.argv.includes("--runtime-only");
 const targetArg = readArg("--target");
+const supportedTarget = "aarch64-apple-darwin";
 
-const sourceName = process.platform === "win32"
-  ? "steam_bridge_native.dll"
-  : process.platform === "darwin"
-    ? "libsteam_bridge_native.dylib"
-    : "libsteam_bridge_native.so";
-const redistName = process.platform === "win32"
-  ? "steam_api64.dll"
-  : process.platform === "darwin"
-    ? "libsteam_api.dylib"
-    : "libsteam_api.so";
-const redistFolder = process.platform === "win32"
-  ? "win64"
-  : process.platform === "darwin"
-    ? "osx"
-    : "linux64";
+if (targetArg && targetArg !== supportedTarget) {
+  throw new Error(`Steam Bridge only supports ${supportedTarget}; received ${targetArg}.`);
+}
+
+if (process.platform !== "darwin" || process.arch !== "arm64") {
+  throw new Error("Steam Bridge native linking is supported only on Apple Silicon macOS.");
+}
+
+const sourceName = "libsteam_bridge_native.dylib";
+const redistName = "libsteam_api.dylib";
+const redistFolder = "osx";
 
 if (!runtimeOnly) {
   const source = findNativeLibrary();

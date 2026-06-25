@@ -10,7 +10,8 @@
     "node",
     "native-addon",
     "napi-rs",
-    "steam-deck"
+    "macos",
+    "apple-silicon"
   ],
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -29,16 +30,12 @@
     "*.node",
     "!steam_bridge_native.local.node",
     "libsteam_api.*",
-    "steam_api64.dll",
-    "steam_api64.lib",
     "README.md",
     "LICENSE"
   ],
   "napi": {
     "binaryName": "steam_bridge_native",
     "targets": [
-      "x86_64-pc-windows-msvc",
-      "x86_64-unknown-linux-gnu",
       "aarch64-apple-darwin"
     ]
   },
