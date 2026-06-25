@@ -27,6 +27,9 @@ The native layer currently targets the Steamworks flat C API through
   attachment.
 - Remote storage: cloud enablement, file reads/writes/deletes, existence checks,
   and file listing.
+- HTTP: request creation, configuration, send/stream send initiation, response
+  header/body reads, progress/timeout checks, raw POST bodies, cookie
+  containers, request priority/defer, and HTTP request callbacks.
 - Steam Input: init/shutdown, connected controllers, action sets, digital
   actions, analog vectors, controller type, and text input helpers.
 - Matchmaking/lobbies: create, join, list, leave, member/owner helpers, lobby
@@ -52,14 +55,15 @@ The native layer currently targets the Steamworks flat C API through
 
 - Full `ISteamFriends` coverage for buffer-heavy chat reads, profile item APIs,
   and every overlay/social helper.
-- `ISteamHTTP`, `ISteamInventory`, and `ISteamParties`.
+- `ISteamInventory` and `ISteamParties`.
 - `ISteamMusicRemote` is not exposed by the current `steamworks-sys 0.13` macOS
   bindings used by this crate.
 - Modern networking interfaces: `ISteamNetworkingSockets`,
   `ISteamNetworkingMessages`, and `ISteamNetworkingUtils`.
 - Matchmaking server browser and game server APIs.
 - Game server, game server stats, and server-only workflows.
-- Complete callback/event coverage for every implemented interface.
+- Complete callback/event coverage for every implemented interface, including
+  richer streaming HTTP response ergonomics.
 - Steam Web API and economy flows beyond client auth ticket helpers.
 
 Use Valve's SpaceWar App ID `480` for generic local smoke tests. Use your own

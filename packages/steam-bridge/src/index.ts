@@ -23,6 +23,8 @@ import {
   NativeGlobalAchievementInfo,
   NativeGlobalAchievementPercentagesReady,
   NativeGlobalStatsReceivedResult,
+  NativeHttpRequestCompleted,
+  NativeHttpRequestHeadersReceived,
   NativeLeaderboardEntry,
   NativeLeaderboardFindResult,
   NativeLeaderboardScoresDownloaded,
@@ -113,6 +115,19 @@ export interface ClanOfficerListResult {
 export interface ClanChatJoinResult {
   clanChat: SteamId;
   response: number;
+}
+
+export interface HttpRequestCompleted {
+  request: number;
+  contextValue: bigint;
+  requestSuccessful: boolean;
+  statusCode: number;
+  bodySize: number;
+}
+
+export interface HttpRequestHeadersReceived {
+  request: number;
+  contextValue: bigint;
 }
 
 export interface FollowerCountResult {
@@ -405,8 +420,24 @@ export const SteamCallback = {
   P2PSessionConnectFail: 7,
   GameLobbyJoinRequested: 8,
   MicroTxnAuthorizationResponse: 9,
-  GameOverlayActivated: 331
+  GameOverlayActivated: 331,
+  HTTPRequestCompleted: 2101,
+  HTTPRequestHeadersReceived: 2102,
+  HTTPRequestDataReceived: 2103
 } as const;
+
+export const HttpMethod = {
+  Invalid: 0,
+  Get: 1,
+  Head: 2,
+  Post: 3,
+  Put: 4,
+  Delete: 5,
+  Options: 6,
+  Patch: 7
+} as const;
+
+export type HttpMethodValue = typeof HttpMethod[keyof typeof HttpMethod];
 
 export const FriendFlags = {
   None: 0,
@@ -1103,6 +1134,90 @@ export const cloud = {
   },
   listFiles(): FileInfo[] {
     return native().cloudListFiles().map((file: NativeCloudFileInfo) => new FileInfo(file.name, BigInt(file.size)));
+  }
+};
+
+export const http = {
+  HttpMethod,
+  createRequest(method: HttpMethodValue | number, url: string): number {
+    return native().httpCreateRequest(Number(method), url);
+  },
+  setContextValue(request: number, contextValue: bigint): boolean {
+    return native().httpSetContextValue(request, contextValue);
+  },
+  setNetworkActivityTimeout(request: number, timeoutSeconds: number): boolean {
+    return native().httpSetNetworkActivityTimeout(request, timeoutSeconds);
+  },
+  setHeaderValue(request: number, name: string, value: string): boolean {
+    return native().httpSetHeaderValue(request, name, value);
+  },
+  setGetOrPostParameter(request: number, name: string, value: string): boolean {
+    return native().httpSetGetOrPostParameter(request, name, value);
+  },
+  async sendRequest(request: number, timeoutSeconds?: number | null): Promise<HttpRequestCompleted> {
+    return normalizeHttpRequestCompleted(await native().httpSendRequest(request, timeoutSeconds ?? undefined));
+  },
+  async sendRequestAndStreamResponse(
+    request: number,
+    timeoutSeconds?: number | null
+  ): Promise<HttpRequestHeadersReceived> {
+    return normalizeHttpRequestHeadersReceived(
+      await native().httpSendRequestAndStreamResponse(request, timeoutSeconds ?? undefined)
+    );
+  },
+  deferRequest(request: number): boolean {
+    return native().httpDeferRequest(request);
+  },
+  prioritizeRequest(request: number): boolean {
+    return native().httpPrioritizeRequest(request);
+  },
+  getResponseHeaderSize(request: number, name: string): number | null {
+    return native().httpGetResponseHeaderSize(request, name) ?? null;
+  },
+  getResponseHeaderValue(request: number, name: string): string | null {
+    return native().httpGetResponseHeaderValue(request, name) ?? null;
+  },
+  getResponseBodySize(request: number): number | null {
+    return native().httpGetResponseBodySize(request) ?? null;
+  },
+  getResponseBodyData(request: number): Buffer | null {
+    return native().httpGetResponseBodyData(request) ?? null;
+  },
+  getStreamingResponseBodyData(request: number, offset: number, size: number): Buffer | null {
+    return native().httpGetStreamingResponseBodyData(request, offset, size) ?? null;
+  },
+  releaseRequest(request: number): boolean {
+    return native().httpReleaseRequest(request);
+  },
+  getDownloadProgressPercent(request: number): number | null {
+    return native().httpGetDownloadProgressPercent(request) ?? null;
+  },
+  setRawPostBody(request: number, contentType: string, body: Buffer | Uint8Array): boolean {
+    return native().httpSetRawPostBody(request, contentType, Buffer.from(body));
+  },
+  createCookieContainer(allowResponsesToModify = false): number {
+    return native().httpCreateCookieContainer(allowResponsesToModify);
+  },
+  releaseCookieContainer(container: number): boolean {
+    return native().httpReleaseCookieContainer(container);
+  },
+  setCookie(container: number, host: string, url: string, cookie: string): boolean {
+    return native().httpSetCookie(container, host, url, cookie);
+  },
+  setRequestCookieContainer(request: number, container: number): boolean {
+    return native().httpSetRequestCookieContainer(request, container);
+  },
+  setUserAgentInfo(request: number, userAgent: string): boolean {
+    return native().httpSetUserAgentInfo(request, userAgent);
+  },
+  setRequiresVerifiedCertificate(request: number, requireVerifiedCertificate: boolean): boolean {
+    return native().httpSetRequiresVerifiedCertificate(request, requireVerifiedCertificate);
+  },
+  setAbsoluteTimeoutMs(request: number, timeoutMs: number): boolean {
+    return native().httpSetAbsoluteTimeoutMs(request, timeoutMs);
+  },
+  getRequestWasTimedOut(request: number): boolean | null {
+    return native().httpGetRequestWasTimedOut(request) ?? null;
   }
 };
 
@@ -1951,6 +2066,7 @@ export interface SteamBridgeClient {
   callback: typeof callback;
   cloud: typeof cloud;
   friends: typeof friends;
+  http: typeof http;
   input: typeof input;
   localplayer: typeof localplayer;
   matchmaking: typeof matchmaking;
@@ -1975,6 +2091,7 @@ export function createCompatibilityClient(): SteamBridgeClient {
     callback,
     cloud,
     friends,
+    http,
     input,
     localplayer,
     matchmaking,
@@ -2078,6 +2195,25 @@ function normalizeFriendsGroupInfo(group: NativeFriendsGroupInfo): FriendsGroupI
     id: group.id,
     name: group.name,
     members: (group.members ?? []).map(normalizeSteamId)
+  };
+}
+
+function normalizeHttpRequestCompleted(result: NativeHttpRequestCompleted): HttpRequestCompleted {
+  const source = result as unknown as Record<string, unknown>;
+  return {
+    request: Number(source.request ?? 0),
+    contextValue: BigInt((source.contextValue ?? source.context_value ?? 0) as bigint | number | string),
+    requestSuccessful: Boolean(source.requestSuccessful ?? source.request_successful),
+    statusCode: Number(source.statusCode ?? source.status_code ?? 0),
+    bodySize: Number(source.bodySize ?? source.body_size ?? 0)
+  };
+}
+
+function normalizeHttpRequestHeadersReceived(result: NativeHttpRequestHeadersReceived): HttpRequestHeadersReceived {
+  const source = result as unknown as Record<string, unknown>;
+  return {
+    request: Number(source.request ?? 0),
+    contextValue: BigInt((source.contextValue ?? source.context_value ?? 0) as bigint | number | string)
   };
 }
 
@@ -2598,6 +2734,7 @@ const defaultExport = {
   callback,
   cloud,
   friends,
+  http,
   input,
   localplayer,
   matchmaking,

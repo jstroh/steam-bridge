@@ -199,6 +199,7 @@ test("init reads the Steam app ID from the environment and returns the grouped c
   assert.equal(client.overlay, steam.overlay);
   assert.equal(client.workshop, steam.workshop);
   assert.equal(client.friends, steam.friends);
+  assert.equal(client.http, steam.http);
   assert.equal(client.timeline, steam.timeline);
   assert.equal(client.remotePlay, steam.remotePlay);
   assert.equal(client.localplayer.getSteamId().steamId64, 76561198000000000n);
@@ -325,6 +326,167 @@ test("cloud, input, and networking facades coerce native values", (t) => {
   const packet = steam.networking.readP2PPacket(64);
   assert.deepEqual(packet.data, Buffer.from("hello"));
   assert.equal(packet.steamId.steamId64, 76561198000000001n);
+});
+
+test("http facade covers request lifecycle, response reads, and callbacks", async (t) => {
+  const fake = createFakeNative({
+    httpCreateRequest(method, url) {
+      this.calls.push({ method: "httpCreateRequest", args: [method, url] });
+      return 100;
+    },
+    httpSetContextValue(request, contextValue) {
+      this.calls.push({ method: "httpSetContextValue", args: [request, contextValue] });
+      return true;
+    },
+    httpSetNetworkActivityTimeout(request, timeoutSeconds) {
+      this.calls.push({ method: "httpSetNetworkActivityTimeout", args: [request, timeoutSeconds] });
+      return true;
+    },
+    httpSetHeaderValue(request, name, value) {
+      this.calls.push({ method: "httpSetHeaderValue", args: [request, name, value] });
+      return true;
+    },
+    httpSetGetOrPostParameter(request, name, value) {
+      this.calls.push({ method: "httpSetGetOrPostParameter", args: [request, name, value] });
+      return true;
+    },
+    httpSendRequest(request, timeoutSeconds) {
+      this.calls.push({ method: "httpSendRequest", args: [request, timeoutSeconds] });
+      return Promise.resolve({
+        request,
+        context_value: "99",
+        request_successful: true,
+        status_code: 200,
+        body_size: 2
+      });
+    },
+    httpSendRequestAndStreamResponse(request, timeoutSeconds) {
+      this.calls.push({ method: "httpSendRequestAndStreamResponse", args: [request, timeoutSeconds] });
+      return Promise.resolve({ request, contextValue: 99n });
+    },
+    httpDeferRequest(request) {
+      this.calls.push({ method: "httpDeferRequest", args: [request] });
+      return true;
+    },
+    httpPrioritizeRequest(request) {
+      this.calls.push({ method: "httpPrioritizeRequest", args: [request] });
+      return true;
+    },
+    httpGetResponseHeaderSize(request, name) {
+      this.calls.push({ method: "httpGetResponseHeaderSize", args: [request, name] });
+      return name === "missing" ? null : 16;
+    },
+    httpGetResponseHeaderValue(request, name) {
+      this.calls.push({ method: "httpGetResponseHeaderValue", args: [request, name] });
+      return name === "missing" ? undefined : "application/json";
+    },
+    httpGetResponseBodySize(request) {
+      this.calls.push({ method: "httpGetResponseBodySize", args: [request] });
+      return 2;
+    },
+    httpGetResponseBodyData(request) {
+      this.calls.push({ method: "httpGetResponseBodyData", args: [request] });
+      return Buffer.from("ok");
+    },
+    httpGetStreamingResponseBodyData(request, offset, size) {
+      this.calls.push({ method: "httpGetStreamingResponseBodyData", args: [request, offset, size] });
+      return Buffer.from("chunk");
+    },
+    httpReleaseRequest(request) {
+      this.calls.push({ method: "httpReleaseRequest", args: [request] });
+      return true;
+    },
+    httpGetDownloadProgressPercent(request) {
+      this.calls.push({ method: "httpGetDownloadProgressPercent", args: [request] });
+      return 0.5;
+    },
+    httpSetRawPostBody(request, contentType, body) {
+      this.calls.push({ method: "httpSetRawPostBody", args: [request, contentType, body] });
+      return Buffer.isBuffer(body);
+    },
+    httpCreateCookieContainer(allowResponsesToModify) {
+      this.calls.push({ method: "httpCreateCookieContainer", args: [allowResponsesToModify] });
+      return 77;
+    },
+    httpReleaseCookieContainer(container) {
+      this.calls.push({ method: "httpReleaseCookieContainer", args: [container] });
+      return true;
+    },
+    httpSetCookie(container, host, url, cookie) {
+      this.calls.push({ method: "httpSetCookie", args: [container, host, url, cookie] });
+      return true;
+    },
+    httpSetRequestCookieContainer(request, container) {
+      this.calls.push({ method: "httpSetRequestCookieContainer", args: [request, container] });
+      return true;
+    },
+    httpSetUserAgentInfo(request, userAgent) {
+      this.calls.push({ method: "httpSetUserAgentInfo", args: [request, userAgent] });
+      return true;
+    },
+    httpSetRequiresVerifiedCertificate(request, requireVerifiedCertificate) {
+      this.calls.push({ method: "httpSetRequiresVerifiedCertificate", args: [request, requireVerifiedCertificate] });
+      return true;
+    },
+    httpSetAbsoluteTimeoutMs(request, timeoutMs) {
+      this.calls.push({ method: "httpSetAbsoluteTimeoutMs", args: [request, timeoutMs] });
+      return true;
+    },
+    httpGetRequestWasTimedOut(request) {
+      this.calls.push({ method: "httpGetRequestWasTimedOut", args: [request] });
+      return false;
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  const request = steam.http.createRequest(steam.http.HttpMethod.Post, "https://example.invalid/api");
+  assert.equal(request, 100);
+  assert.equal(steam.http.setContextValue(request, 99n), true);
+  assert.equal(steam.http.setNetworkActivityTimeout(request, 15), true);
+  assert.equal(steam.http.setHeaderValue(request, "Accept", "application/json"), true);
+  assert.equal(steam.http.setGetOrPostParameter(request, "query", "value"), true);
+  assert.deepEqual(await steam.http.sendRequest(request, 3), {
+    request: 100,
+    contextValue: 99n,
+    requestSuccessful: true,
+    statusCode: 200,
+    bodySize: 2
+  });
+  assert.deepEqual(await steam.http.sendRequestAndStreamResponse(request), {
+    request: 100,
+    contextValue: 99n
+  });
+  assert.equal(steam.http.deferRequest(request), true);
+  assert.equal(steam.http.prioritizeRequest(request), true);
+  assert.equal(steam.http.getResponseHeaderSize(request, "Content-Type"), 16);
+  assert.equal(steam.http.getResponseHeaderSize(request, "missing"), null);
+  assert.equal(steam.http.getResponseHeaderValue(request, "Content-Type"), "application/json");
+  assert.equal(steam.http.getResponseHeaderValue(request, "missing"), null);
+  assert.equal(steam.http.getResponseBodySize(request), 2);
+  assert.equal(steam.http.getResponseBodyData(request).toString(), "ok");
+  assert.equal(steam.http.getStreamingResponseBodyData(request, 0, 5).toString(), "chunk");
+  assert.equal(steam.http.getDownloadProgressPercent(request), 0.5);
+  assert.equal(steam.http.setRawPostBody(request, "application/json", new Uint8Array([123, 125])), true);
+  assert.equal(steam.http.releaseRequest(request), true);
+
+  const container = steam.http.createCookieContainer(true);
+  assert.equal(container, 77);
+  assert.equal(steam.http.setCookie(container, "example.invalid", "/", "session=test"), true);
+  assert.equal(steam.http.setRequestCookieContainer(request, container), true);
+  assert.equal(steam.http.setUserAgentInfo(request, "steam-bridge-test"), true);
+  assert.equal(steam.http.setRequiresVerifiedCertificate(request, true), true);
+  assert.equal(steam.http.setAbsoluteTimeoutMs(request, 2000), true);
+  assert.equal(steam.http.getRequestWasTimedOut(request), false);
+  assert.equal(steam.http.releaseCookieContainer(container), true);
+
+  steam.callback.register(steam.SteamCallback.HTTPRequestDataReceived, () => {});
+  assert.equal(fake.callbacks.has(steam.SteamCallback.HTTPRequestDataReceived), true);
+  assert.deepEqual(fake.calls.find((call) => call.method === "httpCreateRequest"), {
+    method: "httpCreateRequest",
+    args: [steam.http.HttpMethod.Post, "https://example.invalid/api"]
+  });
 });
 
 test("stats leaderboard facade normalizes handles, entries, and async results", async (t) => {

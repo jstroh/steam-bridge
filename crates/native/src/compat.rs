@@ -30,6 +30,9 @@ const CALLBACK_LOBBY_CHAT_UPDATE: i32 = 506;
 const CALLBACK_GAME_LOBBY_JOIN_REQUESTED: i32 = 333;
 const CALLBACK_P2P_SESSION_REQUEST: i32 = 1202;
 const CALLBACK_P2P_SESSION_CONNECT_FAIL: i32 = 1203;
+const CALLBACK_HTTP_REQUEST_COMPLETED: i32 = 2101;
+const CALLBACK_HTTP_REQUEST_HEADERS_RECEIVED: i32 = 2102;
+const CALLBACK_HTTP_REQUEST_DATA_RECEIVED: i32 = 2103;
 const H_AUTH_TICKET_INVALID: sys::HAuthTicket = 0;
 const DEFAULT_ASYNC_TIMEOUT_SECONDS: u64 = 30;
 const LEADERBOARD_DETAILS_MAX: u32 = 64;
@@ -56,6 +59,23 @@ fn csteam_id_to_player(steam_id: sys::CSteamID) -> PlayerSteamId {
 pub struct CloudFileInfo {
     pub name: String,
     pub size: BigInt,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct HttpRequestCompleted {
+    pub request: u32,
+    pub context_value: BigInt,
+    pub request_successful: bool,
+    pub status_code: u32,
+    pub body_size: u32,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct HttpRequestHeadersReceived {
+    pub request: u32,
+    pub context_value: BigInt,
 }
 
 #[derive(Debug)]
@@ -1281,6 +1301,343 @@ pub fn cloud_list_files() -> Result<Vec<CloudFileInfo>, Error> {
         }
     }
     Ok(files)
+}
+
+#[napi(js_name = "httpCreateRequest")]
+pub fn http_create_request(method: u32, url: String) -> Result<u32, Error> {
+    let url = cstring(url, "HTTP URL")?;
+    let request = unsafe {
+        sys::SteamAPI_ISteamHTTP_CreateHTTPRequest(
+            steam_http()?,
+            http_method_from_u32(method)?,
+            url.as_ptr(),
+        )
+    };
+    if request == sys::INVALID_HTTPREQUEST_HANDLE {
+        Err(Error::from_reason(
+            "Steam returned an invalid HTTP request handle",
+        ))
+    } else {
+        Ok(request)
+    }
+}
+
+#[napi(js_name = "httpSetContextValue")]
+pub fn http_set_context_value(request: u32, context_value: BigInt) -> Result<bool, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamHTTP_SetHTTPRequestContextValue(
+            steam_http()?,
+            request,
+            bigint_to_u64(context_value, "HTTP context value")?,
+        )
+    })
+}
+
+#[napi(js_name = "httpSetNetworkActivityTimeout")]
+pub fn http_set_network_activity_timeout(
+    request: u32,
+    timeout_seconds: u32,
+) -> Result<bool, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamHTTP_SetHTTPRequestNetworkActivityTimeout(
+            steam_http()?,
+            request,
+            timeout_seconds,
+        )
+    })
+}
+
+#[napi(js_name = "httpSetHeaderValue")]
+pub fn http_set_header_value(request: u32, name: String, value: String) -> Result<bool, Error> {
+    let name = cstring(name, "HTTP header name")?;
+    let value = cstring(value, "HTTP header value")?;
+    Ok(unsafe {
+        sys::SteamAPI_ISteamHTTP_SetHTTPRequestHeaderValue(
+            steam_http()?,
+            request,
+            name.as_ptr(),
+            value.as_ptr(),
+        )
+    })
+}
+
+#[napi(js_name = "httpSetGetOrPostParameter")]
+pub fn http_set_get_or_post_parameter(
+    request: u32,
+    name: String,
+    value: String,
+) -> Result<bool, Error> {
+    let name = cstring(name, "HTTP parameter name")?;
+    let value = cstring(value, "HTTP parameter value")?;
+    Ok(unsafe {
+        sys::SteamAPI_ISteamHTTP_SetHTTPRequestGetOrPostParameter(
+            steam_http()?,
+            request,
+            name.as_ptr(),
+            value.as_ptr(),
+        )
+    })
+}
+
+#[napi(js_name = "httpSendRequest")]
+pub async fn http_send_request(
+    request: u32,
+    timeout_seconds: Option<u32>,
+) -> Result<HttpRequestCompleted, Error> {
+    let mut call = 0u64;
+    let ok = unsafe { sys::SteamAPI_ISteamHTTP_SendHTTPRequest(steam_http()?, request, &mut call) };
+    if !ok {
+        return Err(Error::from_reason("Steam rejected the HTTP request send"));
+    }
+    let result: sys::HTTPRequestCompleted_t = wait_for_api_call(
+        call,
+        sys::HTTPRequestCompleted_t_k_iCallback as i32,
+        timeout_seconds
+            .map(u64::from)
+            .unwrap_or(DEFAULT_ASYNC_TIMEOUT_SECONDS)
+            .max(1),
+    )
+    .await?;
+    Ok(http_request_completed_result(&result))
+}
+
+#[napi(js_name = "httpSendRequestAndStreamResponse")]
+pub async fn http_send_request_and_stream_response(
+    request: u32,
+    timeout_seconds: Option<u32>,
+) -> Result<HttpRequestHeadersReceived, Error> {
+    let mut call = 0u64;
+    let ok = unsafe {
+        sys::SteamAPI_ISteamHTTP_SendHTTPRequestAndStreamResponse(steam_http()?, request, &mut call)
+    };
+    if !ok {
+        return Err(Error::from_reason(
+            "Steam rejected the streaming HTTP request send",
+        ));
+    }
+    let result: sys::HTTPRequestHeadersReceived_t = wait_for_api_call(
+        call,
+        sys::HTTPRequestHeadersReceived_t_k_iCallback as i32,
+        timeout_seconds
+            .map(u64::from)
+            .unwrap_or(DEFAULT_ASYNC_TIMEOUT_SECONDS)
+            .max(1),
+    )
+    .await?;
+    Ok(http_request_headers_received_result(&result))
+}
+
+#[napi(js_name = "httpDeferRequest")]
+pub fn http_defer_request(request: u32) -> Result<bool, Error> {
+    Ok(unsafe { sys::SteamAPI_ISteamHTTP_DeferHTTPRequest(steam_http()?, request) })
+}
+
+#[napi(js_name = "httpPrioritizeRequest")]
+pub fn http_prioritize_request(request: u32) -> Result<bool, Error> {
+    Ok(unsafe { sys::SteamAPI_ISteamHTTP_PrioritizeHTTPRequest(steam_http()?, request) })
+}
+
+#[napi(js_name = "httpGetResponseHeaderSize")]
+pub fn http_get_response_header_size(request: u32, name: String) -> Result<Option<u32>, Error> {
+    let name = cstring(name, "HTTP header name")?;
+    let mut size = 0u32;
+    let ok = unsafe {
+        sys::SteamAPI_ISteamHTTP_GetHTTPResponseHeaderSize(
+            steam_http()?,
+            request,
+            name.as_ptr(),
+            &mut size,
+        )
+    };
+    Ok(ok.then_some(size))
+}
+
+#[napi(js_name = "httpGetResponseHeaderValue")]
+pub fn http_get_response_header_value(request: u32, name: String) -> Result<Option<String>, Error> {
+    let Some(size) = http_get_response_header_size(request, name.clone())? else {
+        return Ok(None);
+    };
+    let name = cstring(name, "HTTP header name")?;
+    let mut bytes = vec![0u8; size as usize];
+    let ok = unsafe {
+        sys::SteamAPI_ISteamHTTP_GetHTTPResponseHeaderValue(
+            steam_http()?,
+            request,
+            name.as_ptr(),
+            bytes.as_mut_ptr(),
+            size,
+        )
+    };
+    Ok(ok.then(|| u8_buf_to_string(&bytes)))
+}
+
+#[napi(js_name = "httpGetResponseBodySize")]
+pub fn http_get_response_body_size(request: u32) -> Result<Option<u32>, Error> {
+    let mut size = 0u32;
+    let ok = unsafe {
+        sys::SteamAPI_ISteamHTTP_GetHTTPResponseBodySize(steam_http()?, request, &mut size)
+    };
+    Ok(ok.then_some(size))
+}
+
+#[napi(js_name = "httpGetResponseBodyData")]
+pub fn http_get_response_body_data(request: u32) -> Result<Option<Buffer>, Error> {
+    let Some(size) = http_get_response_body_size(request)? else {
+        return Ok(None);
+    };
+    let mut bytes = vec![0u8; size as usize];
+    let ok = unsafe {
+        sys::SteamAPI_ISteamHTTP_GetHTTPResponseBodyData(
+            steam_http()?,
+            request,
+            bytes.as_mut_ptr(),
+            size,
+        )
+    };
+    Ok(ok.then(|| bytes.into()))
+}
+
+#[napi(js_name = "httpGetStreamingResponseBodyData")]
+pub fn http_get_streaming_response_body_data(
+    request: u32,
+    offset: u32,
+    size: u32,
+) -> Result<Option<Buffer>, Error> {
+    let mut bytes = vec![0u8; size as usize];
+    let ok = unsafe {
+        sys::SteamAPI_ISteamHTTP_GetHTTPStreamingResponseBodyData(
+            steam_http()?,
+            request,
+            offset,
+            bytes.as_mut_ptr(),
+            size,
+        )
+    };
+    Ok(ok.then(|| bytes.into()))
+}
+
+#[napi(js_name = "httpReleaseRequest")]
+pub fn http_release_request(request: u32) -> Result<bool, Error> {
+    Ok(unsafe { sys::SteamAPI_ISteamHTTP_ReleaseHTTPRequest(steam_http()?, request) })
+}
+
+#[napi(js_name = "httpGetDownloadProgressPercent")]
+pub fn http_get_download_progress_percent(request: u32) -> Result<Option<f64>, Error> {
+    let mut percent = 0.0f32;
+    let ok = unsafe {
+        sys::SteamAPI_ISteamHTTP_GetHTTPDownloadProgressPct(steam_http()?, request, &mut percent)
+    };
+    Ok(ok.then_some(f64::from(percent)))
+}
+
+#[napi(js_name = "httpSetRawPostBody")]
+pub fn http_set_raw_post_body(
+    request: u32,
+    content_type: String,
+    body: Buffer,
+) -> Result<bool, Error> {
+    if body.len() > u32::MAX as usize {
+        return Err(Error::from_reason("HTTP body is larger than Steam accepts"));
+    }
+    let content_type = cstring(content_type, "HTTP content type")?;
+    Ok(unsafe {
+        sys::SteamAPI_ISteamHTTP_SetHTTPRequestRawPostBody(
+            steam_http()?,
+            request,
+            content_type.as_ptr(),
+            body.as_ptr() as *mut u8,
+            body.len() as u32,
+        )
+    })
+}
+
+#[napi(js_name = "httpCreateCookieContainer")]
+pub fn http_create_cookie_container(allow_responses_to_modify: bool) -> Result<u32, Error> {
+    let container = unsafe {
+        sys::SteamAPI_ISteamHTTP_CreateCookieContainer(steam_http()?, allow_responses_to_modify)
+    };
+    if container == sys::INVALID_HTTPCOOKIE_HANDLE {
+        Err(Error::from_reason(
+            "Steam returned an invalid HTTP cookie container handle",
+        ))
+    } else {
+        Ok(container)
+    }
+}
+
+#[napi(js_name = "httpReleaseCookieContainer")]
+pub fn http_release_cookie_container(container: u32) -> Result<bool, Error> {
+    Ok(unsafe { sys::SteamAPI_ISteamHTTP_ReleaseCookieContainer(steam_http()?, container) })
+}
+
+#[napi(js_name = "httpSetCookie")]
+pub fn http_set_cookie(
+    container: u32,
+    host: String,
+    url: String,
+    cookie: String,
+) -> Result<bool, Error> {
+    let host = cstring(host, "HTTP cookie host")?;
+    let url = cstring(url, "HTTP cookie URL")?;
+    let cookie = cstring(cookie, "HTTP cookie")?;
+    Ok(unsafe {
+        sys::SteamAPI_ISteamHTTP_SetCookie(
+            steam_http()?,
+            container,
+            host.as_ptr(),
+            url.as_ptr(),
+            cookie.as_ptr(),
+        )
+    })
+}
+
+#[napi(js_name = "httpSetRequestCookieContainer")]
+pub fn http_set_request_cookie_container(request: u32, container: u32) -> Result<bool, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamHTTP_SetHTTPRequestCookieContainer(steam_http()?, request, container)
+    })
+}
+
+#[napi(js_name = "httpSetUserAgentInfo")]
+pub fn http_set_user_agent_info(request: u32, user_agent: String) -> Result<bool, Error> {
+    let user_agent = cstring(user_agent, "HTTP user agent")?;
+    Ok(unsafe {
+        sys::SteamAPI_ISteamHTTP_SetHTTPRequestUserAgentInfo(
+            steam_http()?,
+            request,
+            user_agent.as_ptr(),
+        )
+    })
+}
+
+#[napi(js_name = "httpSetRequiresVerifiedCertificate")]
+pub fn http_set_requires_verified_certificate(
+    request: u32,
+    require_verified_certificate: bool,
+) -> Result<bool, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamHTTP_SetHTTPRequestRequiresVerifiedCertificate(
+            steam_http()?,
+            request,
+            require_verified_certificate,
+        )
+    })
+}
+
+#[napi(js_name = "httpSetAbsoluteTimeoutMs")]
+pub fn http_set_absolute_timeout_ms(request: u32, timeout_ms: u32) -> Result<bool, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamHTTP_SetHTTPRequestAbsoluteTimeoutMS(steam_http()?, request, timeout_ms)
+    })
+}
+
+#[napi(js_name = "httpGetRequestWasTimedOut")]
+pub fn http_get_request_was_timed_out(request: u32) -> Result<Option<bool>, Error> {
+    let mut timed_out = false;
+    let ok = unsafe {
+        sys::SteamAPI_ISteamHTTP_GetHTTPRequestWasTimedOut(steam_http()?, request, &mut timed_out)
+    };
+    Ok(ok.then_some(timed_out))
 }
 
 #[napi(js_name = "inputInit")]
@@ -3794,6 +4151,11 @@ fn steam_remote_storage() -> Result<*mut sys::ISteamRemoteStorage, Error> {
     )
 }
 
+fn steam_http() -> Result<*mut sys::ISteamHTTP, Error> {
+    crate::state::ensure_initialized()?;
+    non_null(unsafe { sys::SteamAPI_SteamHTTP_v003() }, "ISteamHTTP")
+}
+
 fn steam_input() -> Result<*mut sys::ISteamInput, Error> {
     crate::state::ensure_initialized()?;
     non_null(unsafe { sys::SteamAPI_SteamInput_v006() }, "ISteamInput")
@@ -4202,6 +4564,39 @@ fn bigint_to_u64(value: BigInt, label: &str) -> Result<u64, Error> {
     }
 }
 
+fn http_method_from_u32(value: u32) -> Result<sys::EHTTPMethod, Error> {
+    match value {
+        0 => Ok(sys::EHTTPMethod::k_EHTTPMethodInvalid),
+        1 => Ok(sys::EHTTPMethod::k_EHTTPMethodGET),
+        2 => Ok(sys::EHTTPMethod::k_EHTTPMethodHEAD),
+        3 => Ok(sys::EHTTPMethod::k_EHTTPMethodPOST),
+        4 => Ok(sys::EHTTPMethod::k_EHTTPMethodPUT),
+        5 => Ok(sys::EHTTPMethod::k_EHTTPMethodDELETE),
+        6 => Ok(sys::EHTTPMethod::k_EHTTPMethodOPTIONS),
+        7 => Ok(sys::EHTTPMethod::k_EHTTPMethodPATCH),
+        _ => Err(Error::from_reason(format!("invalid HTTP method {value}"))),
+    }
+}
+
+fn http_request_completed_result(result: &sys::HTTPRequestCompleted_t) -> HttpRequestCompleted {
+    HttpRequestCompleted {
+        request: unsafe { ptr::addr_of!(result.m_hRequest).read_unaligned() },
+        context_value: unsafe { ptr::addr_of!(result.m_ulContextValue).read_unaligned() }.into(),
+        request_successful: unsafe { ptr::addr_of!(result.m_bRequestSuccessful).read_unaligned() },
+        status_code: unsafe { ptr::addr_of!(result.m_eStatusCode).read_unaligned() } as u32,
+        body_size: unsafe { ptr::addr_of!(result.m_unBodySize).read_unaligned() },
+    }
+}
+
+fn http_request_headers_received_result(
+    result: &sys::HTTPRequestHeadersReceived_t,
+) -> HttpRequestHeadersReceived {
+    HttpRequestHeadersReceived {
+        request: unsafe { ptr::addr_of!(result.m_hRequest).read_unaligned() },
+        context_value: unsafe { ptr::addr_of!(result.m_ulContextValue).read_unaligned() }.into(),
+    }
+}
+
 fn c_buf_to_string(buf: &[i8]) -> String {
     let nul = buf
         .iter()
@@ -4209,6 +4604,14 @@ fn c_buf_to_string(buf: &[i8]) -> String {
         .unwrap_or(buf.len());
     let bytes: Vec<u8> = buf[..nul].iter().map(|value| *value as u8).collect();
     String::from_utf8_lossy(&bytes).into_owned()
+}
+
+fn u8_buf_to_string(buf: &[u8]) -> String {
+    let nul = buf
+        .iter()
+        .position(|value| *value == 0)
+        .unwrap_or(buf.len());
+    String::from_utf8_lossy(&buf[..nul]).into_owned()
 }
 
 async fn get_session_ticket(
@@ -4373,6 +4776,13 @@ fn callback_id_from_compat(callback: i32) -> Result<i32, Error> {
         8 => Ok(CALLBACK_GAME_LOBBY_JOIN_REQUESTED),
         9 => Ok(sys::MicroTxnAuthorizationResponse_t_k_iCallback as i32),
         331 => Ok(sys::GameOverlayActivated_t_k_iCallback as i32),
+        CALLBACK_HTTP_REQUEST_COMPLETED => Ok(sys::HTTPRequestCompleted_t_k_iCallback as i32),
+        CALLBACK_HTTP_REQUEST_HEADERS_RECEIVED => {
+            Ok(sys::HTTPRequestHeadersReceived_t_k_iCallback as i32)
+        }
+        CALLBACK_HTTP_REQUEST_DATA_RECEIVED => {
+            Ok(sys::HTTPRequestDataReceived_t_k_iCallback as i32)
+        }
         _ => Err(Error::from_reason(format!(
             "unsupported Steam callback {callback}"
         ))),
@@ -4459,6 +4869,32 @@ unsafe fn callback_to_json(callback: i32, param: *mut c_void) -> Value {
                 "user_initiated": ptr::addr_of!((*event).m_bUserInitiated).read_unaligned(),
                 "app_id": ptr::addr_of!((*event).m_nAppID).read_unaligned(),
                 "overlay_pid": ptr::addr_of!((*event).m_dwOverlayPID).read_unaligned()
+            })
+        }
+        CALLBACK_HTTP_REQUEST_COMPLETED => {
+            let event = param as *const sys::HTTPRequestCompleted_t;
+            serde_json::json!({
+                "request": ptr::addr_of!((*event).m_hRequest).read_unaligned(),
+                "context_value": ptr::addr_of!((*event).m_ulContextValue).read_unaligned().to_string(),
+                "request_successful": ptr::addr_of!((*event).m_bRequestSuccessful).read_unaligned(),
+                "status_code": ptr::addr_of!((*event).m_eStatusCode).read_unaligned() as u32,
+                "body_size": ptr::addr_of!((*event).m_unBodySize).read_unaligned()
+            })
+        }
+        CALLBACK_HTTP_REQUEST_HEADERS_RECEIVED => {
+            let event = param as *const sys::HTTPRequestHeadersReceived_t;
+            serde_json::json!({
+                "request": ptr::addr_of!((*event).m_hRequest).read_unaligned(),
+                "context_value": ptr::addr_of!((*event).m_ulContextValue).read_unaligned().to_string()
+            })
+        }
+        CALLBACK_HTTP_REQUEST_DATA_RECEIVED => {
+            let event = param as *const sys::HTTPRequestDataReceived_t;
+            serde_json::json!({
+                "request": ptr::addr_of!((*event).m_hRequest).read_unaligned(),
+                "context_value": ptr::addr_of!((*event).m_ulContextValue).read_unaligned().to_string(),
+                "offset": ptr::addr_of!((*event).m_cOffset).read_unaligned(),
+                "bytes_received": ptr::addr_of!((*event).m_cBytesReceived).read_unaligned()
             })
         }
         _ => Value::Null,

@@ -31,6 +31,24 @@ export interface NativeCloudFileInfo {
   size: bigint;
 }
 
+export interface NativeHttpRequestCompleted {
+  request: number;
+  contextValue?: bigint | string | number;
+  context_value?: bigint | string | number;
+  requestSuccessful?: boolean;
+  request_successful?: boolean;
+  statusCode?: number;
+  status_code?: number;
+  bodySize?: number;
+  body_size?: number;
+}
+
+export interface NativeHttpRequestHeadersReceived {
+  request: number;
+  contextValue?: bigint | string | number;
+  context_value?: bigint | string | number;
+}
+
 export interface NativeInputControllerInfo {
   handle: bigint;
   inputType: string;
@@ -453,6 +471,32 @@ export interface NativeBinding {
   cloudDeleteFile(name: string): boolean;
   cloudFileExists(name: string): boolean;
   cloudListFiles(): NativeCloudFileInfo[];
+
+  httpCreateRequest(method: number, url: string): number;
+  httpSetContextValue(request: number, contextValue: bigint): boolean;
+  httpSetNetworkActivityTimeout(request: number, timeoutSeconds: number): boolean;
+  httpSetHeaderValue(request: number, name: string, value: string): boolean;
+  httpSetGetOrPostParameter(request: number, name: string, value: string): boolean;
+  httpSendRequest(request: number, timeoutSeconds?: number): Promise<NativeHttpRequestCompleted>;
+  httpSendRequestAndStreamResponse(request: number, timeoutSeconds?: number): Promise<NativeHttpRequestHeadersReceived>;
+  httpDeferRequest(request: number): boolean;
+  httpPrioritizeRequest(request: number): boolean;
+  httpGetResponseHeaderSize(request: number, name: string): number | null | undefined;
+  httpGetResponseHeaderValue(request: number, name: string): string | null | undefined;
+  httpGetResponseBodySize(request: number): number | null | undefined;
+  httpGetResponseBodyData(request: number): Buffer | null | undefined;
+  httpGetStreamingResponseBodyData(request: number, offset: number, size: number): Buffer | null | undefined;
+  httpReleaseRequest(request: number): boolean;
+  httpGetDownloadProgressPercent(request: number): number | null | undefined;
+  httpSetRawPostBody(request: number, contentType: string, body: Buffer): boolean;
+  httpCreateCookieContainer(allowResponsesToModify: boolean): number;
+  httpReleaseCookieContainer(container: number): boolean;
+  httpSetCookie(container: number, host: string, url: string, cookie: string): boolean;
+  httpSetRequestCookieContainer(request: number, container: number): boolean;
+  httpSetUserAgentInfo(request: number, userAgent: string): boolean;
+  httpSetRequiresVerifiedCertificate(request: number, requireVerifiedCertificate: boolean): boolean;
+  httpSetAbsoluteTimeoutMs(request: number, timeoutMs: number): boolean;
+  httpGetRequestWasTimedOut(request: number): boolean | null | undefined;
 
   inputInit(): void;
   inputShutdown(): void;
