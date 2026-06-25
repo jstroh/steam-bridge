@@ -14,8 +14,10 @@ import {
   NativeBinding,
   NativeCallbackHandle,
   NativeClanActivityCounts,
+  NativeClanChatMessage,
   NativeClanChatJoinResult,
   NativeClanOfficerListResult,
+  NativeDownloadClanActivityCountsResult,
   NativeCloudFileInfo,
   NativeCloudFileShareResult,
   NativeCloudLocalFileChange,
@@ -255,6 +257,10 @@ export interface FriendMessage {
   entryType: number;
 }
 
+export interface ClanChatMessage extends FriendMessage {
+  chatter: SteamId;
+}
+
 export interface FriendsGroupInfo {
   id: number;
   name: string;
@@ -417,6 +423,10 @@ export interface ClanActivityCounts {
   online: number;
   inGame: number;
   chatting: number;
+}
+
+export interface DownloadClanActivityCountsResult {
+  success: boolean;
 }
 
 export interface ClanOfficerListResult {
@@ -3720,6 +3730,26 @@ export const friends = {
   getClanActivityCounts(clanId64: bigint): ClanActivityCounts | null {
     return normalizeClanActivityCounts(native().friendsGetClanActivityCounts(clanId64));
   },
+  async downloadClanActivityCounts(
+    clanIds64: bigint[],
+    timeoutSeconds?: number | null
+  ): Promise<DownloadClanActivityCountsResult> {
+    return normalizeDownloadClanActivityCountsResult(
+      await native().friendsDownloadClanActivityCounts(clanIds64, timeoutSeconds ?? undefined)
+    );
+  },
+  getFriendCountFromSource(sourceId64: bigint): number {
+    return native().friendsGetFriendCountFromSource(sourceId64);
+  },
+  getFriendFromSourceByIndex(sourceId64: bigint, index: number): SteamId {
+    return normalizeSteamId(native().friendsGetFriendFromSourceByIndex(sourceId64, index));
+  },
+  getFriendsFromSource(sourceId64: bigint): SteamId[] {
+    return native().friendsGetFriendsFromSource(sourceId64).map(normalizeSteamId);
+  },
+  isUserInSource(steamId64: bigint, sourceId64: bigint): boolean {
+    return native().friendsIsUserInSource(steamId64, sourceId64);
+  },
   async requestClanOfficerList(clanId64: bigint): Promise<ClanOfficerListResult> {
     return normalizeClanOfficerListResult(await native().friendsRequestClanOfficerList(clanId64));
   },
@@ -3782,6 +3812,9 @@ export const friends = {
   },
   sendClanChatMessage(clanChatId64: bigint, text: string): boolean {
     return native().friendsSendClanChatMessage(clanChatId64, text);
+  },
+  getClanChatMessage(clanChatId64: bigint, messageId: number, maxBytes?: number | null): ClanChatMessage | null {
+    return normalizeClanChatMessage(native().friendsGetClanChatMessage(clanChatId64, messageId, maxBytes ?? undefined));
   },
   isClanChatAdmin(clanChatId64: bigint, steamId64: bigint): boolean {
     return native().friendsIsClanChatAdmin(clanChatId64, steamId64);
@@ -5406,6 +5439,20 @@ function normalizeFriendMessage(message: NativeFriendMessage | null | undefined)
   };
 }
 
+function normalizeClanChatMessage(message: NativeClanChatMessage | null | undefined): ClanChatMessage | null {
+  if (!message) {
+    return null;
+  }
+  const normalized = normalizeFriendMessage(message);
+  if (!normalized) {
+    return null;
+  }
+  return {
+    ...normalized,
+    chatter: normalizeSteamId(message.chatter)
+  };
+}
+
 function normalizeFriendsGroupInfo(group: NativeFriendsGroupInfo): FriendsGroupInfo {
   return {
     id: group.id,
@@ -6022,6 +6069,14 @@ function normalizeClanActivityCounts(counts: NativeClanActivityCounts | null | u
     online: Number(source.online ?? 0),
     inGame: Number(source.inGame ?? source.in_game ?? 0),
     chatting: Number(source.chatting ?? 0)
+  };
+}
+
+function normalizeDownloadClanActivityCountsResult(
+  result: NativeDownloadClanActivityCountsResult
+): DownloadClanActivityCountsResult {
+  return {
+    success: Boolean(result.success)
   };
 }
 

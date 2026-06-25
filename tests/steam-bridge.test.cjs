@@ -4441,6 +4441,26 @@ test("friends facade normalizes IDs, groups, rich presence, and async results", 
     friendsGetClanActivityCounts() {
       return { online: 5, in_game: 2, chatting: 1 };
     },
+    friendsDownloadClanActivityCounts(clanIds64, timeoutSeconds) {
+      this.calls.push({ method: "friendsDownloadClanActivityCounts", args: [clanIds64, timeoutSeconds] });
+      return Promise.resolve({ success: true });
+    },
+    friendsGetFriendCountFromSource(sourceId64) {
+      this.calls.push({ method: "friendsGetFriendCountFromSource", args: [sourceId64] });
+      return 1;
+    },
+    friendsGetFriendFromSourceByIndex(sourceId64, index) {
+      this.calls.push({ method: "friendsGetFriendFromSourceByIndex", args: [sourceId64, index] });
+      return friend;
+    },
+    friendsGetFriendsFromSource(sourceId64) {
+      this.calls.push({ method: "friendsGetFriendsFromSource", args: [sourceId64] });
+      return [friend];
+    },
+    friendsIsUserInSource(steamId64, sourceId64) {
+      this.calls.push({ method: "friendsIsUserInSource", args: [steamId64, sourceId64] });
+      return true;
+    },
     friendsRequestClanOfficerList() {
       return Promise.resolve({ clan, officers: 4, success: true });
     },
@@ -4455,6 +4475,10 @@ test("friends facade normalizes IDs, groups, rich presence, and async results", 
     },
     friendsInviteUserToGame() {
       return true;
+    },
+    friendsGetClanChatMessage(clanChatId64, messageId, maxBytes) {
+      this.calls.push({ method: "friendsGetClanChatMessage", args: [clanChatId64, messageId, maxBytes] });
+      return { chatter: friend, data: Buffer.from("clan"), size: 4, text: "clan", entry_type: 1 };
     },
     friendsGetFriendMessage(steamId64, messageId, maxBytes) {
       this.calls.push({ method: "friendsGetFriendMessage", args: [steamId64, messageId, maxBytes] });
@@ -4529,6 +4553,21 @@ test("friends facade normalizes IDs, groups, rich presence, and async results", 
     inGame: 2,
     chatting: 1
   });
+  assert.deepEqual(await steam.friends.downloadClanActivityCounts([103582791429521412n], 7), { success: true });
+  assert.equal(steam.friends.getFriendCountFromSource(103582791429521412n), 1);
+  assert.equal(steam.friends.getFriendFromSourceByIndex(103582791429521412n, 0).steamId64, 76561198000000003n);
+  assert.deepEqual(steam.friends.getFriendsFromSource(103582791429521412n), [
+    { steamId64: 76561198000000003n, steamId32: "STEAM_0:1:19867137", accountId: 39734275 }
+  ]);
+  assert.equal(steam.friends.isUserInSource(76561198000000003n, 103582791429521412n), true);
+  assert.deepEqual(fake.calls.find((call) => call.method === "friendsDownloadClanActivityCounts"), {
+    method: "friendsDownloadClanActivityCounts",
+    args: [[103582791429521412n], 7]
+  });
+  assert.deepEqual(fake.calls.find((call) => call.method === "friendsIsUserInSource"), {
+    method: "friendsIsUserInSource",
+    args: [76561198000000003n, 103582791429521412n]
+  });
   assert.deepEqual(await steam.friends.requestClanOfficerList(103582791429521412n), {
     clan: { steamId64: 103582791429521412n, steamId32: "STEAM_0:0:0", accountId: 0 },
     officers: 4,
@@ -4537,6 +4576,17 @@ test("friends facade normalizes IDs, groups, rich presence, and async results", 
   assert.deepEqual(await steam.friends.joinClanChatRoom(103582791429521412n), {
     clanChat: { steamId64: 103582791429521412n, steamId32: "STEAM_0:0:0", accountId: 0 },
     response: steam.ChatRoomEnterResponse.Success
+  });
+  assert.deepEqual(steam.friends.getClanChatMessage(103582791429521412n, 88, 128), {
+    chatter: { steamId64: 76561198000000003n, steamId32: "STEAM_0:1:19867137", accountId: 39734275 },
+    data: Buffer.from("clan"),
+    size: 4,
+    text: "clan",
+    entryType: steam.friends.ChatEntryType.ChatMsg
+  });
+  assert.deepEqual(fake.calls.find((call) => call.method === "friendsGetClanChatMessage"), {
+    method: "friendsGetClanChatMessage",
+    args: [103582791429521412n, 88, 128]
   });
   assert.deepEqual(steam.friends.getFriendRichPresenceKeys(76561198000000003n), ["status"]);
   assert.equal(steam.friends.getFriendRichPresence(76561198000000003n, "status"), "ready");

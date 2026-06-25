@@ -890,6 +890,10 @@ export interface NativeFriendMessage {
   entry_type?: number;
 }
 
+export interface NativeClanChatMessage extends NativeFriendMessage {
+  chatter: NativeSteamId;
+}
+
 export interface NativeFriendsGroupInfo {
   id: number;
   name: string;
@@ -919,6 +923,10 @@ export interface NativeClanActivityCounts {
   inGame?: number;
   in_game?: number;
   chatting: number;
+}
+
+export interface NativeDownloadClanActivityCountsResult {
+  success: boolean;
 }
 
 export interface NativeClanOfficerListResult {
@@ -1422,6 +1430,11 @@ export interface NativeBinding {
   friendsGetClanName(clanId64: bigint): string;
   friendsGetClanTag(clanId64: bigint): string;
   friendsGetClanActivityCounts(clanId64: bigint): NativeClanActivityCounts | null | undefined;
+  friendsDownloadClanActivityCounts(clanIds64: bigint[], timeoutSeconds?: number): Promise<NativeDownloadClanActivityCountsResult>;
+  friendsGetFriendCountFromSource(sourceId64: bigint): number;
+  friendsGetFriendFromSourceByIndex(sourceId64: bigint, index: number): NativeSteamId;
+  friendsGetFriendsFromSource(sourceId64: bigint): NativeSteamId[];
+  friendsIsUserInSource(steamId64: bigint, sourceId64: bigint): boolean;
   friendsRequestClanOfficerList(clanId64: bigint): Promise<NativeClanOfficerListResult>;
   friendsGetClanOwner(clanId64: bigint): NativeSteamId;
   friendsGetClanOfficerCount(clanId64: bigint): number;
@@ -1443,6 +1456,7 @@ export interface NativeBinding {
   friendsGetClanChatMemberCount(clanChatId64: bigint): number;
   friendsGetChatMemberByIndex(clanChatId64: bigint, index: number): NativeSteamId;
   friendsSendClanChatMessage(clanChatId64: bigint, text: string): boolean;
+  friendsGetClanChatMessage(clanChatId64: bigint, messageId: number, maxBytes?: number): NativeClanChatMessage | null | undefined;
   friendsIsClanChatAdmin(clanChatId64: bigint, steamId64: bigint): boolean;
   friendsIsClanChatWindowOpenInSteam(clanChatId64: bigint): boolean;
   friendsOpenClanChatWindowInSteam(clanChatId64: bigint): boolean;

@@ -1248,6 +1248,15 @@ pub struct FriendMessage {
     pub entry_type: u32,
 }
 
+#[napi(object)]
+pub struct ClanChatMessage {
+    pub chatter: PlayerSteamId,
+    pub data: Buffer,
+    pub size: u32,
+    pub text: String,
+    pub entry_type: u32,
+}
+
 #[derive(Debug)]
 #[napi(object)]
 pub struct EquippedProfileItemsResult {
@@ -1267,6 +1276,12 @@ pub struct ClanActivityCounts {
     pub online: i32,
     pub in_game: i32,
     pub chatting: i32,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct DownloadClanActivityCountsResult {
+    pub success: bool,
 }
 
 #[derive(Debug)]
@@ -1856,6 +1871,79 @@ pub fn friends_get_clan_activity_counts(
     }))
 }
 
+#[napi(js_name = "friendsDownloadClanActivityCounts")]
+pub async fn friends_download_clan_activity_counts(
+    clan_ids64: Vec<BigInt>,
+    timeout_seconds: Option<u32>,
+) -> Result<DownloadClanActivityCountsResult, Error> {
+    let friends = steam_friends()?;
+    let mut clan_ids = clan_ids64
+        .into_iter()
+        .map(|id| bigint_to_u64(id, "clanId64").map(u64_to_csteam_id))
+        .collect::<Result<Vec<_>, _>>()?;
+    let call = unsafe {
+        sys::SteamAPI_ISteamFriends_DownloadClanActivityCounts(
+            friends,
+            clan_ids.as_mut_ptr(),
+            clan_ids.len() as i32,
+        )
+    };
+    drop(clan_ids);
+    let result: sys::DownloadClanActivityCountsResult_t = wait_for_api_call(
+        call,
+        sys::DownloadClanActivityCountsResult_t_k_iCallback as i32,
+        timeout_seconds
+            .map(u64::from)
+            .unwrap_or(DEFAULT_ASYNC_TIMEOUT_SECONDS)
+            .max(1),
+    )
+    .await?;
+    Ok(DownloadClanActivityCountsResult {
+        success: unsafe { ptr::addr_of!(result.m_bSuccess).read_unaligned() },
+    })
+}
+
+#[napi(js_name = "friendsGetFriendCountFromSource")]
+pub fn friends_get_friend_count_from_source(source_id64: BigInt) -> Result<i32, Error> {
+    let friends = steam_friends()?;
+    let source_id = bigint_to_u64(source_id64, "sourceId64")?;
+    Ok(unsafe { sys::SteamAPI_ISteamFriends_GetFriendCountFromSource(friends, source_id) })
+}
+
+#[napi(js_name = "friendsGetFriendFromSourceByIndex")]
+pub fn friends_get_friend_from_source_by_index(
+    source_id64: BigInt,
+    index: i32,
+) -> Result<PlayerSteamId, Error> {
+    let friends = steam_friends()?;
+    let source_id = bigint_to_u64(source_id64, "sourceId64")?;
+    Ok(steam_id_to_player(unsafe {
+        sys::SteamAPI_ISteamFriends_GetFriendFromSourceByIndex(friends, source_id, index)
+    }))
+}
+
+#[napi(js_name = "friendsGetFriendsFromSource")]
+pub fn friends_get_friends_from_source(source_id64: BigInt) -> Result<Vec<PlayerSteamId>, Error> {
+    let friends = steam_friends()?;
+    let source_id = bigint_to_u64(source_id64, "sourceId64")?;
+    let count = unsafe { sys::SteamAPI_ISteamFriends_GetFriendCountFromSource(friends, source_id) };
+    let mut friends_list = Vec::with_capacity(count.max(0) as usize);
+    for index in 0..count {
+        friends_list.push(steam_id_to_player(unsafe {
+            sys::SteamAPI_ISteamFriends_GetFriendFromSourceByIndex(friends, source_id, index)
+        }));
+    }
+    Ok(friends_list)
+}
+
+#[napi(js_name = "friendsIsUserInSource")]
+pub fn friends_is_user_in_source(steam_id64: BigInt, source_id64: BigInt) -> Result<bool, Error> {
+    let friends = steam_friends()?;
+    let steam_id = bigint_to_u64(steam_id64, "steamId64")?;
+    let source_id = bigint_to_u64(source_id64, "sourceId64")?;
+    Ok(unsafe { sys::SteamAPI_ISteamFriends_IsUserInSource(friends, steam_id, source_id) })
+}
+
 #[napi(js_name = "friendsRequestClanOfficerList")]
 pub async fn friends_request_clan_officer_list(
     clan_id64: BigInt,
@@ -2067,6 +2155,43 @@ pub fn friends_send_clan_chat_message(clan_chat_id64: BigInt, text: String) -> R
     Ok(unsafe {
         sys::SteamAPI_ISteamFriends_SendClanChatMessage(friends, clan_chat_id, text.as_ptr())
     })
+}
+
+#[napi(js_name = "friendsGetClanChatMessage")]
+pub fn friends_get_clan_chat_message(
+    clan_chat_id64: BigInt,
+    message_id: i32,
+    max_bytes: Option<u32>,
+) -> Result<Option<ClanChatMessage>, Error> {
+    let friends = steam_friends()?;
+    let clan_chat_id = bigint_to_u64(clan_chat_id64, "clanChatId64")?;
+    let capacity = max_bytes.unwrap_or(4096).clamp(1, 65_536);
+    let mut data = vec![0u8; capacity as usize];
+    let mut entry_type = sys::EChatEntryType::k_EChatEntryTypeInvalid;
+    let mut chatter = u64_to_csteam_id(0);
+    let size = unsafe {
+        sys::SteamAPI_ISteamFriends_GetClanChatMessage(
+            friends,
+            clan_chat_id,
+            message_id,
+            data.as_mut_ptr().cast::<c_void>(),
+            capacity as i32,
+            &mut entry_type,
+            &mut chatter,
+        )
+    };
+    if size <= 0 {
+        return Ok(None);
+    }
+    let size = size as usize;
+    data.truncate(size.min(data.len()));
+    Ok(Some(ClanChatMessage {
+        chatter: csteam_id_to_player(chatter),
+        text: u8_buf_to_string(&data),
+        size: size as u32,
+        data: data.into(),
+        entry_type: entry_type as u32,
+    }))
 }
 
 #[napi(js_name = "friendsIsClanChatAdmin")]
