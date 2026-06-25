@@ -17,11 +17,18 @@ import {
   NativeFriendsGroupInfo,
   NativeInputControllerInfo,
   NativeIsFollowingResult,
+  NativeAchievementProgressLimitsFloat,
+  NativeAchievementProgressLimitsInt,
+  NativeAchievementUnlockTime,
+  NativeGlobalAchievementInfo,
+  NativeGlobalAchievementPercentagesReady,
+  NativeGlobalStatsReceivedResult,
   NativeLeaderboardEntry,
   NativeLeaderboardFindResult,
   NativeLeaderboardScoresDownloaded,
   NativeLeaderboardScoreUploaded,
   NativeLeaderboardUgcSetResult,
+  NativeNumberOfCurrentPlayersResult,
   NativeOverlayDiagnostics,
   NativeP2PPacket,
   NativeRemotePlayInputEvent,
@@ -31,6 +38,7 @@ import {
   NativeTimelineEventRecordingExists,
   NativeTimelineGamePhaseRecordingExists,
   NativeUgcResult,
+  NativeUserStatsReceivedResult,
   NativeVideoBroadcastStatus,
   NativeWorkshopItem,
   NativeWorkshopItemsResult
@@ -186,6 +194,49 @@ export interface LeaderboardScoreUploaded {
 export interface LeaderboardUgcSetResult {
   result: number;
   leaderboard: bigint;
+}
+
+export interface AchievementUnlockTime {
+  achieved: boolean;
+  unlockTime: number;
+}
+
+export interface UserStatsReceivedResult {
+  gameId: bigint;
+  result: number;
+  steamId: SteamId;
+}
+
+export interface NumberOfCurrentPlayersResult {
+  success: boolean;
+  players: number;
+}
+
+export interface GlobalAchievementPercentagesReady {
+  gameId: bigint;
+  result: number;
+}
+
+export interface GlobalStatsReceivedResult {
+  gameId: bigint;
+  result: number;
+}
+
+export interface GlobalAchievementInfo {
+  iterator: number;
+  name: string;
+  percent: number;
+  achieved: boolean;
+}
+
+export interface AchievementProgressLimitsInt {
+  min: number;
+  max: number;
+}
+
+export interface AchievementProgressLimitsFloat {
+  min: number;
+  max: number;
 }
 
 export interface TimelineEventRecordingExists {
@@ -937,6 +988,24 @@ export const achievement = {
   },
   names(): string[] {
     return native().achievementNames();
+  },
+  getAndUnlockTime(name: string): AchievementUnlockTime | null {
+    return normalizeAchievementUnlockTime(native().achievementGetAndUnlockTime(name));
+  },
+  getIcon(name: string): number {
+    return native().achievementGetIcon(name);
+  },
+  getDisplayAttribute(name: string, key: string): string {
+    return native().achievementGetDisplayAttribute(name, key);
+  },
+  indicateProgress(name: string, current: number, max: number): boolean {
+    return native().achievementIndicateProgress(name, current, max);
+  },
+  getProgressLimitsInt(name: string): AchievementProgressLimitsInt | null {
+    return normalizeAchievementProgressLimitsInt(native().achievementGetProgressLimitsInt(name));
+  },
+  getProgressLimitsFloat(name: string): AchievementProgressLimitsFloat | null {
+    return normalizeAchievementProgressLimitsFloat(native().achievementGetProgressLimitsFloat(name));
   }
 };
 
@@ -1336,14 +1405,69 @@ export const stats = {
   getInt(name: string): number | null {
     return native().statsGetInt(name) ?? null;
   },
+  getFloat(name: string): number | null {
+    return native().statsGetFloat(name) ?? null;
+  },
   setInt(name: string, value: number): boolean {
     return native().statsSetInt(name, value);
+  },
+  setFloat(name: string, value: number): boolean {
+    return native().statsSetFloat(name, value);
+  },
+  updateAvgRate(name: string, countThisSession: number, sessionLength: number): boolean {
+    return native().statsUpdateAvgRate(name, countThisSession, sessionLength);
   },
   store(): boolean {
     return native().statsStore();
   },
   resetAll(achievementsToo: boolean): boolean {
     return native().statsResetAll(achievementsToo);
+  },
+  async requestUserStats(steamId64: bigint): Promise<UserStatsReceivedResult> {
+    return normalizeUserStatsReceivedResult(await native().statsRequestUserStats(steamId64));
+  },
+  getUserInt(steamId64: bigint, name: string): number | null {
+    return native().statsGetUserInt(steamId64, name) ?? null;
+  },
+  getUserFloat(steamId64: bigint, name: string): number | null {
+    return native().statsGetUserFloat(steamId64, name) ?? null;
+  },
+  getUserAchievement(steamId64: bigint, name: string): boolean | null {
+    return native().statsGetUserAchievement(steamId64, name) ?? null;
+  },
+  getUserAchievementAndUnlockTime(steamId64: bigint, name: string): AchievementUnlockTime | null {
+    return normalizeAchievementUnlockTime(native().statsGetUserAchievementAndUnlockTime(steamId64, name));
+  },
+  async getNumberOfCurrentPlayers(): Promise<NumberOfCurrentPlayersResult> {
+    return normalizeNumberOfCurrentPlayersResult(await native().statsGetNumberOfCurrentPlayers());
+  },
+  async requestGlobalAchievementPercentages(): Promise<GlobalAchievementPercentagesReady> {
+    return normalizeGlobalAchievementPercentagesReady(await native().statsRequestGlobalAchievementPercentages());
+  },
+  getMostAchievedAchievementInfo(): GlobalAchievementInfo | null {
+    return normalizeGlobalAchievementInfo(native().statsGetMostAchievedAchievementInfo());
+  },
+  getNextMostAchievedAchievementInfo(previousIterator: number): GlobalAchievementInfo | null {
+    return normalizeGlobalAchievementInfo(native().statsGetNextMostAchievedAchievementInfo(previousIterator));
+  },
+  getAchievementAchievedPercent(name: string): number | null {
+    return native().statsGetAchievementAchievedPercent(name) ?? null;
+  },
+  async requestGlobalStats(historyDays: number): Promise<GlobalStatsReceivedResult> {
+    return normalizeGlobalStatsReceivedResult(await native().statsRequestGlobalStats(historyDays));
+  },
+  getGlobalStatInt(name: string): bigint | null {
+    const value = native().statsGetGlobalStatInt(name);
+    return value == null ? null : BigInt(value);
+  },
+  getGlobalStatDouble(name: string): number | null {
+    return native().statsGetGlobalStatDouble(name) ?? null;
+  },
+  getGlobalStatHistoryInt(name: string, maxEntries = 60): bigint[] {
+    return native().statsGetGlobalStatHistoryInt(name, maxEntries).map(BigInt);
+  },
+  getGlobalStatHistoryDouble(name: string, maxEntries = 60): number[] {
+    return native().statsGetGlobalStatHistoryDouble(name, maxEntries).map(Number);
   },
   async findOrCreateLeaderboard(
     name: string,
@@ -2152,6 +2276,81 @@ function normalizeVideoBroadcastStatus(status: NativeVideoBroadcastStatus): Vide
     broadcasting: Boolean(status.broadcasting),
     viewers: Number(status.viewers)
   };
+}
+
+function normalizeAchievementUnlockTime(
+  result: NativeAchievementUnlockTime | null | undefined
+): AchievementUnlockTime | null {
+  if (!result) {
+    return null;
+  }
+  const source = result as unknown as Record<string, unknown>;
+  return {
+    achieved: Boolean(source.achieved),
+    unlockTime: Number(source.unlockTime ?? source.unlock_time ?? 0)
+  };
+}
+
+function normalizeUserStatsReceivedResult(result: NativeUserStatsReceivedResult): UserStatsReceivedResult {
+  const source = result as unknown as Record<string, unknown>;
+  return {
+    gameId: BigInt((source.gameId ?? source.game_id ?? 0) as bigint | number | string),
+    result: Number(source.result ?? 0),
+    steamId: normalizeSteamId((source.steamId ?? source.steam_id ?? EMPTY_NATIVE_STEAM_ID) as NativeSteamId)
+  };
+}
+
+function normalizeNumberOfCurrentPlayersResult(
+  result: NativeNumberOfCurrentPlayersResult
+): NumberOfCurrentPlayersResult {
+  return {
+    success: Boolean(result.success),
+    players: Number(result.players)
+  };
+}
+
+function normalizeGlobalAchievementPercentagesReady(
+  result: NativeGlobalAchievementPercentagesReady
+): GlobalAchievementPercentagesReady {
+  const source = result as unknown as Record<string, unknown>;
+  return {
+    gameId: BigInt((source.gameId ?? source.game_id ?? 0) as bigint | number | string),
+    result: Number(source.result ?? 0)
+  };
+}
+
+function normalizeGlobalStatsReceivedResult(result: NativeGlobalStatsReceivedResult): GlobalStatsReceivedResult {
+  const source = result as unknown as Record<string, unknown>;
+  return {
+    gameId: BigInt((source.gameId ?? source.game_id ?? 0) as bigint | number | string),
+    result: Number(source.result ?? 0)
+  };
+}
+
+function normalizeGlobalAchievementInfo(
+  result: NativeGlobalAchievementInfo | null | undefined
+): GlobalAchievementInfo | null {
+  if (!result) {
+    return null;
+  }
+  return {
+    iterator: Number(result.iterator),
+    name: String(result.name),
+    percent: Number(result.percent),
+    achieved: Boolean(result.achieved)
+  };
+}
+
+function normalizeAchievementProgressLimitsInt(
+  result: NativeAchievementProgressLimitsInt | null | undefined
+): AchievementProgressLimitsInt | null {
+  return result ? { min: Number(result.min), max: Number(result.max) } : null;
+}
+
+function normalizeAchievementProgressLimitsFloat(
+  result: NativeAchievementProgressLimitsFloat | null | undefined
+): AchievementProgressLimitsFloat | null {
+  return result ? { min: Number(result.min), max: Number(result.max) } : null;
 }
 
 function normalizeLeaderboardFindResult(result: NativeLeaderboardFindResult): LeaderboardFindResult {

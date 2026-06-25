@@ -197,6 +197,54 @@ export interface NativeLeaderboardUgcSetResult {
   leaderboard?: bigint | string | number;
 }
 
+export interface NativeAchievementUnlockTime {
+  achieved: boolean;
+  unlockTime?: number;
+  unlock_time?: number;
+}
+
+export interface NativeUserStatsReceivedResult {
+  gameId?: bigint | string | number;
+  game_id?: bigint | string | number;
+  result: number;
+  steamId?: NativeSteamId;
+  steam_id?: NativeSteamId;
+}
+
+export interface NativeNumberOfCurrentPlayersResult {
+  success: boolean;
+  players: number;
+}
+
+export interface NativeGlobalAchievementPercentagesReady {
+  gameId?: bigint | string | number;
+  game_id?: bigint | string | number;
+  result: number;
+}
+
+export interface NativeGlobalStatsReceivedResult {
+  gameId?: bigint | string | number;
+  game_id?: bigint | string | number;
+  result: number;
+}
+
+export interface NativeGlobalAchievementInfo {
+  iterator: number;
+  name: string;
+  percent: number;
+  achieved: boolean;
+}
+
+export interface NativeAchievementProgressLimitsInt {
+  min: number;
+  max: number;
+}
+
+export interface NativeAchievementProgressLimitsFloat {
+  min: number;
+  max: number;
+}
+
 export interface NativeTimelineEventRecordingExists {
   event?: bigint | string | number;
   recordingExists?: boolean;
@@ -418,9 +466,33 @@ export interface NativeBinding {
   inputGetControllerType(controller: bigint): string;
 
   statsGetInt(name: string): number | null | undefined;
+  statsGetFloat(name: string): number | null | undefined;
   statsSetInt(name: string, value: number): boolean;
+  statsSetFloat(name: string, value: number): boolean;
+  statsUpdateAvgRate(name: string, countThisSession: number, sessionLength: number): boolean;
   statsStore(): boolean;
   statsResetAll(achievementsToo: boolean): boolean;
+  achievementGetAndUnlockTime(name: string): NativeAchievementUnlockTime | null | undefined;
+  achievementGetIcon(name: string): number;
+  achievementGetDisplayAttribute(name: string, key: string): string;
+  achievementIndicateProgress(name: string, current: number, max: number): boolean;
+  statsRequestUserStats(steamId64: bigint): Promise<NativeUserStatsReceivedResult>;
+  statsGetUserInt(steamId64: bigint, name: string): number | null | undefined;
+  statsGetUserFloat(steamId64: bigint, name: string): number | null | undefined;
+  statsGetUserAchievement(steamId64: bigint, name: string): boolean | null | undefined;
+  statsGetUserAchievementAndUnlockTime(steamId64: bigint, name: string): NativeAchievementUnlockTime | null | undefined;
+  statsGetNumberOfCurrentPlayers(): Promise<NativeNumberOfCurrentPlayersResult>;
+  statsRequestGlobalAchievementPercentages(): Promise<NativeGlobalAchievementPercentagesReady>;
+  statsGetMostAchievedAchievementInfo(): NativeGlobalAchievementInfo | null | undefined;
+  statsGetNextMostAchievedAchievementInfo(previousIterator: number): NativeGlobalAchievementInfo | null | undefined;
+  statsGetAchievementAchievedPercent(name: string): number | null | undefined;
+  statsRequestGlobalStats(historyDays: number): Promise<NativeGlobalStatsReceivedResult>;
+  statsGetGlobalStatInt(name: string): bigint | string | number | null | undefined;
+  statsGetGlobalStatDouble(name: string): number | null | undefined;
+  statsGetGlobalStatHistoryInt(name: string, maxEntries: number): Array<bigint | string | number>;
+  statsGetGlobalStatHistoryDouble(name: string, maxEntries: number): number[];
+  achievementGetProgressLimitsInt(name: string): NativeAchievementProgressLimitsInt | null | undefined;
+  achievementGetProgressLimitsFloat(name: string): NativeAchievementProgressLimitsFloat | null | undefined;
   statsFindOrCreateLeaderboard(name: string, sortMethod: number, displayType: number): Promise<NativeLeaderboardFindResult>;
   statsFindLeaderboard(name: string): Promise<NativeLeaderboardFindResult>;
   statsGetLeaderboardName(leaderboard: bigint): string;

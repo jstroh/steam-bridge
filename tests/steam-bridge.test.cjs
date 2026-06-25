@@ -468,6 +468,147 @@ test("stats leaderboard facade normalizes handles, entries, and async results", 
   assert.deepEqual(await steam.stats.attachLeaderboardUgc(44n, 777n), { result: 1, leaderboard: 44n });
 });
 
+test("stats and achievement facades cover user and global Steam stats", async (t) => {
+  const player = { steamId64: "76561198000000006", steamId32: "STEAM_0:0:19867139", accountId: 39734278 };
+  const fake = createFakeNative({
+    achievementGetAndUnlockTime(name) {
+      this.calls.push({ method: "achievementGetAndUnlockTime", args: [name] });
+      return { achieved: true, unlock_time: 1700000000 };
+    },
+    achievementGetIcon(name) {
+      this.calls.push({ method: "achievementGetIcon", args: [name] });
+      return 321;
+    },
+    achievementGetDisplayAttribute(name, key) {
+      this.calls.push({ method: "achievementGetDisplayAttribute", args: [name, key] });
+      return `${name}:${key}`;
+    },
+    achievementIndicateProgress(name, current, max) {
+      this.calls.push({ method: "achievementIndicateProgress", args: [name, current, max] });
+      return true;
+    },
+    achievementGetProgressLimitsInt(name) {
+      this.calls.push({ method: "achievementGetProgressLimitsInt", args: [name] });
+      return { min: 0, max: 100 };
+    },
+    achievementGetProgressLimitsFloat(name) {
+      this.calls.push({ method: "achievementGetProgressLimitsFloat", args: [name] });
+      return { min: 0.5, max: 9.5 };
+    },
+    statsGetFloat(name) {
+      this.calls.push({ method: "statsGetFloat", args: [name] });
+      return name === "ratio" ? 1.5 : undefined;
+    },
+    statsSetFloat(name, value) {
+      this.calls.push({ method: "statsSetFloat", args: [name, value] });
+      return true;
+    },
+    statsUpdateAvgRate(name, countThisSession, sessionLength) {
+      this.calls.push({ method: "statsUpdateAvgRate", args: [name, countThisSession, sessionLength] });
+      return true;
+    },
+    statsRequestUserStats(steamId64) {
+      this.calls.push({ method: "statsRequestUserStats", args: [steamId64] });
+      return Promise.resolve({ game_id: "480", result: 1, steam_id: player });
+    },
+    statsGetUserInt(steamId64, name) {
+      this.calls.push({ method: "statsGetUserInt", args: [steamId64, name] });
+      return 42;
+    },
+    statsGetUserFloat(steamId64, name) {
+      this.calls.push({ method: "statsGetUserFloat", args: [steamId64, name] });
+      return 2.5;
+    },
+    statsGetUserAchievement(steamId64, name) {
+      this.calls.push({ method: "statsGetUserAchievement", args: [steamId64, name] });
+      return name === "ACH_WIN";
+    },
+    statsGetUserAchievementAndUnlockTime(steamId64, name) {
+      this.calls.push({ method: "statsGetUserAchievementAndUnlockTime", args: [steamId64, name] });
+      return { achieved: false, unlockTime: 0 };
+    },
+    statsGetNumberOfCurrentPlayers() {
+      return Promise.resolve({ success: true, players: 123 });
+    },
+    statsRequestGlobalAchievementPercentages() {
+      return Promise.resolve({ game_id: "480", result: 1 });
+    },
+    statsGetMostAchievedAchievementInfo() {
+      return { iterator: 7, name: "ACH_START", percent: 99.5, achieved: true };
+    },
+    statsGetNextMostAchievedAchievementInfo(previousIterator) {
+      this.calls.push({ method: "statsGetNextMostAchievedAchievementInfo", args: [previousIterator] });
+      return null;
+    },
+    statsGetAchievementAchievedPercent(name) {
+      this.calls.push({ method: "statsGetAchievementAchievedPercent", args: [name] });
+      return 12.5;
+    },
+    statsRequestGlobalStats(historyDays) {
+      this.calls.push({ method: "statsRequestGlobalStats", args: [historyDays] });
+      return Promise.resolve({ gameId: 480n, result: 1 });
+    },
+    statsGetGlobalStatInt(name) {
+      this.calls.push({ method: "statsGetGlobalStatInt", args: [name] });
+      return "1234567890123";
+    },
+    statsGetGlobalStatDouble(name) {
+      this.calls.push({ method: "statsGetGlobalStatDouble", args: [name] });
+      return 123.75;
+    },
+    statsGetGlobalStatHistoryInt(name, maxEntries) {
+      this.calls.push({ method: "statsGetGlobalStatHistoryInt", args: [name, maxEntries] });
+      return ["10", 20n, 30];
+    },
+    statsGetGlobalStatHistoryDouble(name, maxEntries) {
+      this.calls.push({ method: "statsGetGlobalStatHistoryDouble", args: [name, maxEntries] });
+      return [1.25, 2.5];
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  assert.deepEqual(steam.achievement.getAndUnlockTime("ACH_WIN"), { achieved: true, unlockTime: 1700000000 });
+  assert.equal(steam.achievement.getIcon("ACH_WIN"), 321);
+  assert.equal(steam.achievement.getDisplayAttribute("ACH_WIN", "name"), "ACH_WIN:name");
+  assert.equal(steam.achievement.indicateProgress("ACH_WIN", 5, 10), true);
+  assert.deepEqual(steam.achievement.getProgressLimitsInt("ACH_WIN"), { min: 0, max: 100 });
+  assert.deepEqual(steam.achievement.getProgressLimitsFloat("ACH_WIN"), { min: 0.5, max: 9.5 });
+
+  assert.equal(steam.stats.getFloat("ratio"), 1.5);
+  assert.equal(steam.stats.getFloat("missing"), null);
+  assert.equal(steam.stats.setFloat("ratio", 2.5), true);
+  assert.equal(steam.stats.updateAvgRate("distance", 50, 10), true);
+  assert.deepEqual(await steam.stats.requestUserStats(76561198000000006n), {
+    gameId: 480n,
+    result: 1,
+    steamId: { steamId64: 76561198000000006n, steamId32: "STEAM_0:0:19867139", accountId: 39734278 }
+  });
+  assert.equal(steam.stats.getUserInt(76561198000000006n, "score"), 42);
+  assert.equal(steam.stats.getUserFloat(76561198000000006n, "ratio"), 2.5);
+  assert.equal(steam.stats.getUserAchievement(76561198000000006n, "ACH_WIN"), true);
+  assert.deepEqual(steam.stats.getUserAchievementAndUnlockTime(76561198000000006n, "ACH_WIN"), {
+    achieved: false,
+    unlockTime: 0
+  });
+  assert.deepEqual(await steam.stats.getNumberOfCurrentPlayers(), { success: true, players: 123 });
+  assert.deepEqual(await steam.stats.requestGlobalAchievementPercentages(), { gameId: 480n, result: 1 });
+  assert.deepEqual(steam.stats.getMostAchievedAchievementInfo(), {
+    iterator: 7,
+    name: "ACH_START",
+    percent: 99.5,
+    achieved: true
+  });
+  assert.equal(steam.stats.getNextMostAchievedAchievementInfo(7), null);
+  assert.equal(steam.stats.getAchievementAchievedPercent("ACH_WIN"), 12.5);
+  assert.deepEqual(await steam.stats.requestGlobalStats(60), { gameId: 480n, result: 1 });
+  assert.equal(steam.stats.getGlobalStatInt("total_score"), 1234567890123n);
+  assert.equal(steam.stats.getGlobalStatDouble("total_ratio"), 123.75);
+  assert.deepEqual(steam.stats.getGlobalStatHistoryInt("daily_score", 3), [10n, 20n, 30n]);
+  assert.deepEqual(steam.stats.getGlobalStatHistoryDouble("daily_ratio", 2), [1.25, 2.5]);
+});
+
 test("friends facade normalizes IDs, groups, rich presence, and async results", async (t) => {
   const friend = { steamId64: "76561198000000003", steamId32: "STEAM_0:1:19867137", accountId: 39734275 };
   const clan = { steamId64: "103582791429521412", steamId32: "STEAM_0:0:0", accountId: 0 };

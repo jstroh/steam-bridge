@@ -33,6 +33,8 @@ const CALLBACK_P2P_SESSION_CONNECT_FAIL: i32 = 1203;
 const H_AUTH_TICKET_INVALID: sys::HAuthTicket = 0;
 const DEFAULT_ASYNC_TIMEOUT_SECONDS: u64 = 30;
 const LEADERBOARD_DETAILS_MAX: u32 = 64;
+const GLOBAL_STAT_HISTORY_MAX: u32 = 10_000;
+const FRIEND_FLAG_IMMEDIATE: u32 = 4;
 
 type FatalThreadsafeFunction<T> = ThreadsafeFunction<T, (), Vec<T>, Status, false>;
 type JsCallback<'scope, T> = Function<'scope, T, ()>;
@@ -278,6 +280,65 @@ pub struct LeaderboardUgcSetResult {
 
 #[derive(Debug)]
 #[napi(object)]
+pub struct AchievementUnlockTime {
+    pub achieved: bool,
+    pub unlock_time: u32,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct UserStatsReceivedResult {
+    pub game_id: BigInt,
+    pub result: u32,
+    pub steam_id: PlayerSteamId,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct NumberOfCurrentPlayersResult {
+    pub success: bool,
+    pub players: i32,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct GlobalAchievementPercentagesReady {
+    pub game_id: BigInt,
+    pub result: u32,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct GlobalStatsReceivedResult {
+    pub game_id: BigInt,
+    pub result: u32,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct GlobalAchievementInfo {
+    pub iterator: i32,
+    pub name: String,
+    pub percent: f64,
+    pub achieved: bool,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct AchievementProgressLimitsInt {
+    pub min: i32,
+    pub max: i32,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct AchievementProgressLimitsFloat {
+    pub min: f64,
+    pub max: f64,
+}
+
+#[derive(Debug)]
+#[napi(object)]
 pub struct TimelineEventRecordingExists {
     pub event: BigInt,
     pub recording_exists: bool,
@@ -379,7 +440,7 @@ pub fn friends_get_friend_count(friend_flags: Option<u32>) -> Result<i32, Error>
     Ok(unsafe {
         sys::SteamAPI_ISteamFriends_GetFriendCount(
             friends,
-            friend_flags.unwrap_or(sys::EFriendFlags::k_EFriendFlagImmediate.0) as i32,
+            friend_flags.unwrap_or(FRIEND_FLAG_IMMEDIATE) as i32,
         )
     })
 }
@@ -394,7 +455,7 @@ pub fn friends_get_friend_by_index(
         sys::SteamAPI_ISteamFriends_GetFriendByIndex(
             friends,
             index,
-            friend_flags.unwrap_or(sys::EFriendFlags::k_EFriendFlagImmediate.0) as i32,
+            friend_flags.unwrap_or(FRIEND_FLAG_IMMEDIATE) as i32,
         )
     };
     Ok(steam_id_to_player(steam_id))
@@ -402,7 +463,7 @@ pub fn friends_get_friend_by_index(
 
 #[napi(js_name = "friendsGetFriends")]
 pub fn friends_get_friends(friend_flags: Option<u32>) -> Result<Vec<PlayerSteamId>, Error> {
-    let flags = friend_flags.unwrap_or(sys::EFriendFlags::k_EFriendFlagImmediate.0);
+    let flags = friend_flags.unwrap_or(FRIEND_FLAG_IMMEDIATE);
     let count = friends_get_friend_count(Some(flags))?;
     let mut result = Vec::with_capacity(count.max(0) as usize);
     for index in 0..count {
@@ -419,7 +480,7 @@ pub fn friends_has_friend(steam_id64: BigInt, friend_flags: Option<u32>) -> Resu
         sys::SteamAPI_ISteamFriends_HasFriend(
             friends,
             steam_id,
-            friend_flags.unwrap_or(sys::EFriendFlags::k_EFriendFlagImmediate.0) as i32,
+            friend_flags.unwrap_or(FRIEND_FLAG_IMMEDIATE) as i32,
         )
     })
 }
@@ -1347,11 +1408,54 @@ pub fn stats_get_int(name: String) -> Result<Option<i32>, Error> {
     Ok(if ok { Some(value) } else { None })
 }
 
+#[napi(js_name = "statsGetFloat")]
+pub fn stats_get_float(name: String) -> Result<Option<f64>, Error> {
+    let stats = steam_user_stats()?;
+    let name = cstring(name, "stat name")?;
+    let mut value = 0f32;
+    let ok =
+        unsafe { sys::SteamAPI_ISteamUserStats_GetStatFloat(stats, name.as_ptr(), &mut value) };
+    Ok(if ok { Some(f64::from(value)) } else { None })
+}
+
 #[napi(js_name = "statsSetInt")]
 pub fn stats_set_int(name: String, value: i32) -> Result<bool, Error> {
     let name = cstring(name, "stat name")?;
     Ok(unsafe {
         sys::SteamAPI_ISteamUserStats_SetStatInt32(steam_user_stats()?, name.as_ptr(), value)
+    })
+}
+
+#[napi(js_name = "statsSetFloat")]
+pub fn stats_set_float(name: String, value: f64) -> Result<bool, Error> {
+    if !value.is_finite() {
+        return Err(Error::from_reason("stat float value must be finite"));
+    }
+    let name = cstring(name, "stat name")?;
+    Ok(unsafe {
+        sys::SteamAPI_ISteamUserStats_SetStatFloat(steam_user_stats()?, name.as_ptr(), value as f32)
+    })
+}
+
+#[napi(js_name = "statsUpdateAvgRate")]
+pub fn stats_update_avg_rate(
+    name: String,
+    count_this_session: f64,
+    session_length: f64,
+) -> Result<bool, Error> {
+    if !count_this_session.is_finite() || !session_length.is_finite() {
+        return Err(Error::from_reason(
+            "average-rate stat count and session length must be finite",
+        ));
+    }
+    let name = cstring(name, "stat name")?;
+    Ok(unsafe {
+        sys::SteamAPI_ISteamUserStats_UpdateAvgRateStat(
+            steam_user_stats()?,
+            name.as_ptr(),
+            count_this_session as f32,
+            session_length,
+        )
     })
 }
 
@@ -1365,6 +1469,373 @@ pub fn stats_reset_all(achievements_too: bool) -> Result<bool, Error> {
     Ok(unsafe {
         sys::SteamAPI_ISteamUserStats_ResetAllStats(steam_user_stats()?, achievements_too)
     })
+}
+
+#[napi(js_name = "achievementGetAndUnlockTime")]
+pub fn achievement_get_and_unlock_time(
+    name: String,
+) -> Result<Option<AchievementUnlockTime>, Error> {
+    let name = cstring(name, "achievement name")?;
+    let mut achieved = false;
+    let mut unlock_time = 0u32;
+    let ok = unsafe {
+        sys::SteamAPI_ISteamUserStats_GetAchievementAndUnlockTime(
+            steam_user_stats()?,
+            name.as_ptr(),
+            &mut achieved,
+            &mut unlock_time,
+        )
+    };
+    Ok(ok.then_some(AchievementUnlockTime {
+        achieved,
+        unlock_time,
+    }))
+}
+
+#[napi(js_name = "achievementGetIcon")]
+pub fn achievement_get_icon(name: String) -> Result<i32, Error> {
+    let name = cstring(name, "achievement name")?;
+    Ok(unsafe {
+        sys::SteamAPI_ISteamUserStats_GetAchievementIcon(steam_user_stats()?, name.as_ptr())
+    })
+}
+
+#[napi(js_name = "achievementGetDisplayAttribute")]
+pub fn achievement_get_display_attribute(name: String, key: String) -> Result<String, Error> {
+    let name = cstring(name, "achievement name")?;
+    let key = cstring(key, "achievement display attribute key")?;
+    Ok(string_from_ptr(unsafe {
+        sys::SteamAPI_ISteamUserStats_GetAchievementDisplayAttribute(
+            steam_user_stats()?,
+            name.as_ptr(),
+            key.as_ptr(),
+        )
+    }))
+}
+
+#[napi(js_name = "achievementIndicateProgress")]
+pub fn achievement_indicate_progress(name: String, current: u32, max: u32) -> Result<bool, Error> {
+    let name = cstring(name, "achievement name")?;
+    Ok(unsafe {
+        sys::SteamAPI_ISteamUserStats_IndicateAchievementProgress(
+            steam_user_stats()?,
+            name.as_ptr(),
+            current,
+            max,
+        )
+    })
+}
+
+#[napi(js_name = "statsRequestUserStats")]
+pub async fn stats_request_user_stats(
+    steam_id64: BigInt,
+) -> Result<UserStatsReceivedResult, Error> {
+    let call = unsafe {
+        sys::SteamAPI_ISteamUserStats_RequestUserStats(
+            steam_user_stats()?,
+            bigint_to_u64(steam_id64, "steamId64")?,
+        )
+    };
+    let result: sys::UserStatsReceived_t = wait_for_api_call(
+        call,
+        sys::UserStatsReceived_t_k_iCallback as i32,
+        DEFAULT_ASYNC_TIMEOUT_SECONDS,
+    )
+    .await?;
+    Ok(user_stats_received_result(result))
+}
+
+#[napi(js_name = "statsGetUserInt")]
+pub fn stats_get_user_int(steam_id64: BigInt, name: String) -> Result<Option<i32>, Error> {
+    let name = cstring(name, "stat name")?;
+    let mut value = 0i32;
+    let ok = unsafe {
+        sys::SteamAPI_ISteamUserStats_GetUserStatInt32(
+            steam_user_stats()?,
+            bigint_to_u64(steam_id64, "steamId64")?,
+            name.as_ptr(),
+            &mut value,
+        )
+    };
+    Ok(if ok { Some(value) } else { None })
+}
+
+#[napi(js_name = "statsGetUserFloat")]
+pub fn stats_get_user_float(steam_id64: BigInt, name: String) -> Result<Option<f64>, Error> {
+    let name = cstring(name, "stat name")?;
+    let mut value = 0f32;
+    let ok = unsafe {
+        sys::SteamAPI_ISteamUserStats_GetUserStatFloat(
+            steam_user_stats()?,
+            bigint_to_u64(steam_id64, "steamId64")?,
+            name.as_ptr(),
+            &mut value,
+        )
+    };
+    Ok(if ok { Some(f64::from(value)) } else { None })
+}
+
+#[napi(js_name = "statsGetUserAchievement")]
+pub fn stats_get_user_achievement(steam_id64: BigInt, name: String) -> Result<Option<bool>, Error> {
+    let name = cstring(name, "achievement name")?;
+    let mut achieved = false;
+    let ok = unsafe {
+        sys::SteamAPI_ISteamUserStats_GetUserAchievement(
+            steam_user_stats()?,
+            bigint_to_u64(steam_id64, "steamId64")?,
+            name.as_ptr(),
+            &mut achieved,
+        )
+    };
+    Ok(if ok { Some(achieved) } else { None })
+}
+
+#[napi(js_name = "statsGetUserAchievementAndUnlockTime")]
+pub fn stats_get_user_achievement_and_unlock_time(
+    steam_id64: BigInt,
+    name: String,
+) -> Result<Option<AchievementUnlockTime>, Error> {
+    let name = cstring(name, "achievement name")?;
+    let mut achieved = false;
+    let mut unlock_time = 0u32;
+    let ok = unsafe {
+        sys::SteamAPI_ISteamUserStats_GetUserAchievementAndUnlockTime(
+            steam_user_stats()?,
+            bigint_to_u64(steam_id64, "steamId64")?,
+            name.as_ptr(),
+            &mut achieved,
+            &mut unlock_time,
+        )
+    };
+    Ok(ok.then_some(AchievementUnlockTime {
+        achieved,
+        unlock_time,
+    }))
+}
+
+#[napi(js_name = "statsGetNumberOfCurrentPlayers")]
+pub async fn stats_get_number_of_current_players() -> Result<NumberOfCurrentPlayersResult, Error> {
+    let call =
+        unsafe { sys::SteamAPI_ISteamUserStats_GetNumberOfCurrentPlayers(steam_user_stats()?) };
+    let result: sys::NumberOfCurrentPlayers_t = wait_for_api_call(
+        call,
+        sys::NumberOfCurrentPlayers_t_k_iCallback as i32,
+        DEFAULT_ASYNC_TIMEOUT_SECONDS,
+    )
+    .await?;
+    Ok(NumberOfCurrentPlayersResult {
+        success: result.m_bSuccess != 0,
+        players: result.m_cPlayers,
+    })
+}
+
+#[napi(js_name = "statsRequestGlobalAchievementPercentages")]
+pub async fn stats_request_global_achievement_percentages(
+) -> Result<GlobalAchievementPercentagesReady, Error> {
+    let call = unsafe {
+        sys::SteamAPI_ISteamUserStats_RequestGlobalAchievementPercentages(steam_user_stats()?)
+    };
+    let result: sys::GlobalAchievementPercentagesReady_t = wait_for_api_call(
+        call,
+        sys::GlobalAchievementPercentagesReady_t_k_iCallback as i32,
+        DEFAULT_ASYNC_TIMEOUT_SECONDS,
+    )
+    .await?;
+    Ok(GlobalAchievementPercentagesReady {
+        game_id: unsafe { ptr::addr_of!(result.m_nGameID).read_unaligned() }.into(),
+        result: unsafe { ptr::addr_of!(result.m_eResult).read_unaligned() } as u32,
+    })
+}
+
+#[napi(js_name = "statsGetMostAchievedAchievementInfo")]
+pub fn stats_get_most_achieved_achievement_info() -> Result<Option<GlobalAchievementInfo>, Error> {
+    let mut name = [0 as c_char; 128];
+    let mut percent = 0f32;
+    let mut achieved = false;
+    let iterator = unsafe {
+        sys::SteamAPI_ISteamUserStats_GetMostAchievedAchievementInfo(
+            steam_user_stats()?,
+            name.as_mut_ptr(),
+            name.len() as u32,
+            &mut percent,
+            &mut achieved,
+        )
+    };
+    global_achievement_info(iterator, &name, percent, achieved)
+}
+
+#[napi(js_name = "statsGetNextMostAchievedAchievementInfo")]
+pub fn stats_get_next_most_achieved_achievement_info(
+    previous_iterator: i32,
+) -> Result<Option<GlobalAchievementInfo>, Error> {
+    let mut name = [0 as c_char; 128];
+    let mut percent = 0f32;
+    let mut achieved = false;
+    let iterator = unsafe {
+        sys::SteamAPI_ISteamUserStats_GetNextMostAchievedAchievementInfo(
+            steam_user_stats()?,
+            previous_iterator,
+            name.as_mut_ptr(),
+            name.len() as u32,
+            &mut percent,
+            &mut achieved,
+        )
+    };
+    global_achievement_info(iterator, &name, percent, achieved)
+}
+
+#[napi(js_name = "statsGetAchievementAchievedPercent")]
+pub fn stats_get_achievement_achieved_percent(name: String) -> Result<Option<f64>, Error> {
+    let name = cstring(name, "achievement name")?;
+    let mut percent = 0f32;
+    let ok = unsafe {
+        sys::SteamAPI_ISteamUserStats_GetAchievementAchievedPercent(
+            steam_user_stats()?,
+            name.as_ptr(),
+            &mut percent,
+        )
+    };
+    Ok(if ok { Some(f64::from(percent)) } else { None })
+}
+
+#[napi(js_name = "statsRequestGlobalStats")]
+pub async fn stats_request_global_stats(
+    history_days: i32,
+) -> Result<GlobalStatsReceivedResult, Error> {
+    let call = unsafe {
+        sys::SteamAPI_ISteamUserStats_RequestGlobalStats(steam_user_stats()?, history_days)
+    };
+    let result: sys::GlobalStatsReceived_t = wait_for_api_call(
+        call,
+        sys::GlobalStatsReceived_t_k_iCallback as i32,
+        DEFAULT_ASYNC_TIMEOUT_SECONDS,
+    )
+    .await?;
+    Ok(GlobalStatsReceivedResult {
+        game_id: unsafe { ptr::addr_of!(result.m_nGameID).read_unaligned() }.into(),
+        result: unsafe { ptr::addr_of!(result.m_eResult).read_unaligned() } as u32,
+    })
+}
+
+#[napi(js_name = "statsGetGlobalStatInt")]
+pub fn stats_get_global_stat_int(name: String) -> Result<Option<BigInt>, Error> {
+    let name = cstring(name, "global stat name")?;
+    let mut value = 0i64;
+    let ok = unsafe {
+        sys::SteamAPI_ISteamUserStats_GetGlobalStatInt64(
+            steam_user_stats()?,
+            name.as_ptr(),
+            &mut value,
+        )
+    };
+    Ok(if ok { Some(value.into()) } else { None })
+}
+
+#[napi(js_name = "statsGetGlobalStatDouble")]
+pub fn stats_get_global_stat_double(name: String) -> Result<Option<f64>, Error> {
+    let name = cstring(name, "global stat name")?;
+    let mut value = 0f64;
+    let ok = unsafe {
+        sys::SteamAPI_ISteamUserStats_GetGlobalStatDouble(
+            steam_user_stats()?,
+            name.as_ptr(),
+            &mut value,
+        )
+    };
+    Ok(if ok { Some(value) } else { None })
+}
+
+#[napi(js_name = "statsGetGlobalStatHistoryInt")]
+pub fn stats_get_global_stat_history_int(
+    name: String,
+    max_entries: u32,
+) -> Result<Vec<BigInt>, Error> {
+    let name = cstring(name, "global stat name")?;
+    let max_entries = max_entries.min(GLOBAL_STAT_HISTORY_MAX) as usize;
+    if max_entries == 0 {
+        return Ok(Vec::new());
+    }
+    let mut values = vec![0i64; max_entries];
+    let bytes = values
+        .len()
+        .checked_mul(std::mem::size_of::<i64>())
+        .ok_or_else(|| Error::from_reason("global stat history buffer size overflows usize"))?;
+    let count = unsafe {
+        sys::SteamAPI_ISteamUserStats_GetGlobalStatHistoryInt64(
+            steam_user_stats()?,
+            name.as_ptr(),
+            values.as_mut_ptr(),
+            bytes as u32,
+        )
+    };
+    values.truncate(count.max(0).min(max_entries as i32) as usize);
+    Ok(values.into_iter().map(Into::into).collect())
+}
+
+#[napi(js_name = "statsGetGlobalStatHistoryDouble")]
+pub fn stats_get_global_stat_history_double(
+    name: String,
+    max_entries: u32,
+) -> Result<Vec<f64>, Error> {
+    let name = cstring(name, "global stat name")?;
+    let max_entries = max_entries.min(GLOBAL_STAT_HISTORY_MAX) as usize;
+    if max_entries == 0 {
+        return Ok(Vec::new());
+    }
+    let mut values = vec![0f64; max_entries];
+    let bytes = values
+        .len()
+        .checked_mul(std::mem::size_of::<f64>())
+        .ok_or_else(|| Error::from_reason("global stat history buffer size overflows usize"))?;
+    let count = unsafe {
+        sys::SteamAPI_ISteamUserStats_GetGlobalStatHistoryDouble(
+            steam_user_stats()?,
+            name.as_ptr(),
+            values.as_mut_ptr(),
+            bytes as u32,
+        )
+    };
+    values.truncate(count.max(0).min(max_entries as i32) as usize);
+    Ok(values)
+}
+
+#[napi(js_name = "achievementGetProgressLimitsInt")]
+pub fn achievement_get_progress_limits_int(
+    name: String,
+) -> Result<Option<AchievementProgressLimitsInt>, Error> {
+    let name = cstring(name, "achievement name")?;
+    let mut min = 0i32;
+    let mut max = 0i32;
+    let ok = unsafe {
+        sys::SteamAPI_ISteamUserStats_GetAchievementProgressLimitsInt32(
+            steam_user_stats()?,
+            name.as_ptr(),
+            &mut min,
+            &mut max,
+        )
+    };
+    Ok(ok.then_some(AchievementProgressLimitsInt { min, max }))
+}
+
+#[napi(js_name = "achievementGetProgressLimitsFloat")]
+pub fn achievement_get_progress_limits_float(
+    name: String,
+) -> Result<Option<AchievementProgressLimitsFloat>, Error> {
+    let name = cstring(name, "achievement name")?;
+    let mut min = 0f32;
+    let mut max = 0f32;
+    let ok = unsafe {
+        sys::SteamAPI_ISteamUserStats_GetAchievementProgressLimitsFloat(
+            steam_user_stats()?,
+            name.as_ptr(),
+            &mut min,
+            &mut max,
+        )
+    };
+    Ok(ok.then_some(AchievementProgressLimitsFloat {
+        min: f64::from(min),
+        max: f64::from(max),
+    }))
 }
 
 #[napi(js_name = "statsFindOrCreateLeaderboard")]
@@ -2397,7 +2868,7 @@ pub fn overlay_activate_to_store(app_id: u32, flag: u32) -> Result<(), Error> {
         sys::SteamAPI_ISteamFriends_ActivateGameOverlayToStore(
             steam_friends()?,
             app_id,
-            sys::EOverlayToStoreFlag(flag),
+            overlay_to_store_flag_from_u32(flag)?,
         );
     }
     Ok(())
@@ -3428,6 +3899,20 @@ fn parental_feature_from_u32(value: u32) -> Result<sys::EParentalFeature, Error>
     }
 }
 
+fn overlay_to_store_flag_from_u32(value: u32) -> Result<sys::EOverlayToStoreFlag, Error> {
+    #[cfg(windows)]
+    {
+        let value = i32::try_from(value)
+            .map_err(|_| Error::from_reason(format!("invalid overlay store flag {value}")))?;
+        Ok(sys::EOverlayToStoreFlag(value))
+    }
+
+    #[cfg(not(windows))]
+    {
+        Ok(sys::EOverlayToStoreFlag(value))
+    }
+}
+
 fn leaderboard_sort_method_from_u32(value: u32) -> Result<sys::ELeaderboardSortMethod, Error> {
     match value {
         0 => Ok(sys::ELeaderboardSortMethod::k_ELeaderboardSortMethodNone),
@@ -3474,6 +3959,33 @@ fn leaderboard_upload_score_method_from_u32(
             "invalid leaderboard upload score method {value}"
         ))),
     }
+}
+
+fn user_stats_received_result(result: sys::UserStatsReceived_t) -> UserStatsReceivedResult {
+    UserStatsReceivedResult {
+        game_id: unsafe { ptr::addr_of!(result.m_nGameID).read_unaligned() }.into(),
+        result: unsafe { ptr::addr_of!(result.m_eResult).read_unaligned() } as u32,
+        steam_id: csteam_id_to_player(unsafe {
+            ptr::addr_of!(result.m_steamIDUser).read_unaligned()
+        }),
+    }
+}
+
+fn global_achievement_info(
+    iterator: i32,
+    name: &[c_char; 128],
+    percent: f32,
+    achieved: bool,
+) -> Result<Option<GlobalAchievementInfo>, Error> {
+    if iterator == -1 {
+        return Ok(None);
+    }
+    Ok(Some(GlobalAchievementInfo {
+        iterator,
+        name: unsafe { fixed_char_array_to_string(name.as_ptr(), name.len()) },
+        percent: f64::from(percent),
+        achieved,
+    }))
 }
 
 fn leaderboard_details_max(details_max: Option<u32>) -> i32 {
