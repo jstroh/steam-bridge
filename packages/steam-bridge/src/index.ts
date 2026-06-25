@@ -71,6 +71,8 @@ import {
   NativeTimelineEventRecordingExists,
   NativeTimelineGamePhaseRecordingExists,
   NativeUgcResult,
+  NativeUtilsFilteredText,
+  NativeUtilsImageSize,
   NativeUserStatsReceivedResult,
   NativeVideoBroadcastStatus,
   NativeWorkshopItem,
@@ -312,6 +314,16 @@ export interface OverlayDiagnostics {
 
 export interface OverlayWebPageOptions {
   modal?: boolean;
+}
+
+export interface UtilsImageSize {
+  width: number;
+  height: number;
+}
+
+export interface UtilsFilteredText {
+  filtered: string;
+  charactersFiltered: number;
 }
 
 export interface P2PPacket {
@@ -1044,6 +1056,23 @@ export const StoreFlag = {
   AddToCartAndShow: 2
 } as const;
 
+export const SteamUniverse = {
+  Invalid: 0,
+  Public: 1,
+  Beta: 2,
+  Internal: 3,
+  Dev: 4,
+  Max: 5
+} as const;
+
+export const OverlayNotificationPosition = {
+  Invalid: -1,
+  TopLeft: 0,
+  TopRight: 1,
+  BottomLeft: 2,
+  BottomRight: 3
+} as const;
+
 export const GamepadTextInputMode = {
   Normal: 0,
   Password: 1
@@ -1059,6 +1088,25 @@ export const FloatingGamepadTextInputMode = {
   MultipleLines: 1,
   Email: 2,
   Numeric: 3
+} as const;
+
+export const TextFilteringContext = {
+  Unknown: 0,
+  GameContent: 1,
+  Chat: 2,
+  Name: 3
+} as const;
+
+export const IPv6ConnectivityProtocol = {
+  Invalid: 0,
+  HTTP: 1,
+  UDP: 2
+} as const;
+
+export const IPv6ConnectivityState = {
+  Unknown: 0,
+  Good: 1,
+  Bad: 2
 } as const;
 
 export const UgcItemVisibility = {
@@ -2683,12 +2731,47 @@ export const remotePlay = {
 };
 
 export const utils = {
+  SteamUniverse,
+  OverlayNotificationPosition,
   GamepadTextInputMode,
   GamepadTextInputLineMode,
   FloatingGamepadTextInputMode,
+  TextFilteringContext,
+  IPv6ConnectivityProtocol,
+  IPv6ConnectivityState,
   getAppId,
   getServerRealTime(): number {
     return native().utilsGetServerRealTime();
+  },
+  getSecondsSinceAppActive(): number {
+    return native().utilsGetSecondsSinceAppActive();
+  },
+  getSecondsSinceComputerActive(): number {
+    return native().utilsGetSecondsSinceComputerActive();
+  },
+  getConnectedUniverse(): number {
+    return native().utilsGetConnectedUniverse();
+  },
+  getSteamUILanguage(): string {
+    return native().utilsGetSteamUiLanguage();
+  },
+  getImageSize(image: number): UtilsImageSize | null {
+    return normalizeUtilsImageSize(native().utilsGetImageSize(image));
+  },
+  getImageRGBA(image: number): Buffer | null {
+    return native().utilsGetImageRgba(image) ?? null;
+  },
+  getCurrentBatteryPower(): number {
+    return native().utilsGetCurrentBatteryPower();
+  },
+  getIPCCallCount(): number {
+    return native().utilsGetIpcCallCount();
+  },
+  setOverlayNotificationPosition(position: number): void {
+    native().utilsSetOverlayNotificationPosition(position);
+  },
+  setOverlayNotificationInset(horizontal: number, vertical: number): void {
+    native().utilsSetOverlayNotificationInset(horizontal, vertical);
   },
   isSteamRunningOnSteamDeck: isSteamDeck,
   isSteamRunning,
@@ -2697,6 +2780,46 @@ export const utils = {
   isOverlayEnabled,
   overlayNeedsPresent,
   getOverlayDiagnostics,
+  isSteamRunningInVR(): boolean {
+    return native().utilsIsSteamRunningInVr();
+  },
+  startVRDashboard(): void {
+    native().utilsStartVrDashboard();
+  },
+  isVRHeadsetStreamingEnabled(): boolean {
+    return native().utilsIsVrHeadsetStreamingEnabled();
+  },
+  setVRHeadsetStreamingEnabled(enabled: boolean): void {
+    native().utilsSetVrHeadsetStreamingEnabled(enabled);
+  },
+  isSteamChinaLauncher(): boolean {
+    return native().utilsIsSteamChinaLauncher();
+  },
+  initFilterText(options = 0): boolean {
+    return native().utilsInitFilterText(options);
+  },
+  filterText(
+    context: number,
+    sourceSteamId64: bigint | number | string | null | undefined,
+    input: string,
+    maxBytes?: number
+  ): UtilsFilteredText {
+    return normalizeUtilsFilteredText(
+      native().utilsFilterText(context, BigInt(sourceSteamId64 ?? 0), input, maxBytes)
+    );
+  },
+  getIPv6ConnectivityState(protocol: number): number {
+    return native().utilsGetIpv6ConnectivityState(protocol);
+  },
+  setGameLauncherMode(enabled: boolean): void {
+    native().utilsSetGameLauncherMode(enabled);
+  },
+  dismissFloatingGamepadTextInput(): boolean {
+    return native().utilsDismissFloatingGamepadTextInput();
+  },
+  dismissGamepadTextInput(): boolean {
+    return native().utilsDismissGamepadTextInput();
+  },
   async showGamepadTextInput(
     inputMode: number,
     inputLineMode: number,
@@ -3439,6 +3562,23 @@ function normalizeOverlayDiagnostics(diagnostics: NativeOverlayDiagnostics): Ove
     platform: process.platform,
     arch: process.arch,
     pid: process.pid
+  };
+}
+
+function normalizeUtilsImageSize(size: NativeUtilsImageSize | null | undefined): UtilsImageSize | null {
+  if (!size) {
+    return null;
+  }
+  return {
+    width: size.width,
+    height: size.height
+  };
+}
+
+function normalizeUtilsFilteredText(result: NativeUtilsFilteredText): UtilsFilteredText {
+  return {
+    filtered: result.filtered,
+    charactersFiltered: Number(result.charactersFiltered ?? result.characters_filtered ?? 0)
   };
 }
 

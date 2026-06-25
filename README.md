@@ -9,9 +9,9 @@ This project is 100% created and maintained by Codex.
 
 The native crate calls the Steamworks flat C API through `steamworks-sys` and
 owns Steam API initialization, manual callback dispatch, auth tickets, overlay
-helpers, Steam Deck checks, Steam ID helpers, achievements, networking,
-matchmaking, app metadata and DLC helpers, cloud, input, stats, inventory, and
-workshop helpers.
+helpers, Steam Deck and Steam utility checks, Steam ID helpers, achievements,
+networking, matchmaking, app metadata and DLC helpers, cloud, input, stats,
+inventory, and workshop helpers.
 
 Steam SDK redistributables are not committed. For local/native builds, provide
 the Steamworks SDK in the normal location expected by `steamworks-sys`, or set

@@ -716,6 +716,20 @@ pub struct RemotePlayInputEvent {
     pub keycode: Option<u32>,
 }
 
+#[derive(Debug)]
+#[napi(object)]
+pub struct UtilsImageSize {
+    pub width: u32,
+    pub height: u32,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct UtilsFilteredText {
+    pub filtered: String,
+    pub characters_filtered: i32,
+}
+
 #[napi(js_name = "achievementActivate")]
 pub fn achievement_activate(name: String) -> Result<bool, Error> {
     let stats = steam_user_stats()?;
@@ -5171,6 +5185,184 @@ pub fn utils_get_server_real_time() -> Result<u32, Error> {
     Ok(unsafe { sys::SteamAPI_ISteamUtils_GetServerRealTime(steam_utils()?) })
 }
 
+#[napi(js_name = "utilsGetSecondsSinceAppActive")]
+pub fn utils_get_seconds_since_app_active() -> Result<u32, Error> {
+    Ok(unsafe { sys::SteamAPI_ISteamUtils_GetSecondsSinceAppActive(steam_utils()?) })
+}
+
+#[napi(js_name = "utilsGetSecondsSinceComputerActive")]
+pub fn utils_get_seconds_since_computer_active() -> Result<u32, Error> {
+    Ok(unsafe { sys::SteamAPI_ISteamUtils_GetSecondsSinceComputerActive(steam_utils()?) })
+}
+
+#[napi(js_name = "utilsGetConnectedUniverse")]
+pub fn utils_get_connected_universe() -> Result<u32, Error> {
+    Ok(unsafe { sys::SteamAPI_ISteamUtils_GetConnectedUniverse(steam_utils()?) as u32 })
+}
+
+#[napi(js_name = "utilsGetSteamUiLanguage")]
+pub fn utils_get_steam_ui_language() -> Result<String, Error> {
+    Ok(string_from_ptr(unsafe {
+        sys::SteamAPI_ISteamUtils_GetSteamUILanguage(steam_utils()?)
+    }))
+}
+
+#[napi(js_name = "utilsGetImageSize")]
+pub fn utils_get_image_size(image: i32) -> Result<Option<UtilsImageSize>, Error> {
+    let utils = steam_utils()?;
+    let mut width = 0u32;
+    let mut height = 0u32;
+    let ok =
+        unsafe { sys::SteamAPI_ISteamUtils_GetImageSize(utils, image, &mut width, &mut height) };
+    Ok(ok.then_some(UtilsImageSize { width, height }))
+}
+
+#[napi(js_name = "utilsGetImageRgba")]
+pub fn utils_get_image_rgba(image: i32) -> Result<Option<Buffer>, Error> {
+    let utils = steam_utils()?;
+    let mut width = 0u32;
+    let mut height = 0u32;
+    let has_size =
+        unsafe { sys::SteamAPI_ISteamUtils_GetImageSize(utils, image, &mut width, &mut height) };
+    if !has_size {
+        return Ok(None);
+    }
+
+    let size = u64::from(width)
+        .checked_mul(u64::from(height))
+        .and_then(|pixels| pixels.checked_mul(4))
+        .ok_or_else(|| Error::from_reason("Steam image dimensions overflowed"))?;
+    if size > 256 * 1024 * 1024 {
+        return Err(Error::from_reason("Steam image is too large to copy"));
+    }
+
+    let mut data = vec![0u8; size as usize];
+    let ok = unsafe {
+        sys::SteamAPI_ISteamUtils_GetImageRGBA(utils, image, data.as_mut_ptr(), data.len() as i32)
+    };
+    Ok(ok.then(|| data.into()))
+}
+
+#[napi(js_name = "utilsGetCurrentBatteryPower")]
+pub fn utils_get_current_battery_power() -> Result<u32, Error> {
+    Ok(u32::from(unsafe {
+        sys::SteamAPI_ISteamUtils_GetCurrentBatteryPower(steam_utils()?)
+    }))
+}
+
+#[napi(js_name = "utilsGetIpcCallCount")]
+pub fn utils_get_ipc_call_count() -> Result<u32, Error> {
+    Ok(unsafe { sys::SteamAPI_ISteamUtils_GetIPCCallCount(steam_utils()?) })
+}
+
+#[napi(js_name = "utilsSetOverlayNotificationPosition")]
+pub fn utils_set_overlay_notification_position(position: i32) -> Result<(), Error> {
+    unsafe {
+        sys::SteamAPI_ISteamUtils_SetOverlayNotificationPosition(
+            steam_utils()?,
+            notification_position_from_i32(position)?,
+        )
+    };
+    Ok(())
+}
+
+#[napi(js_name = "utilsSetOverlayNotificationInset")]
+pub fn utils_set_overlay_notification_inset(horizontal: i32, vertical: i32) -> Result<(), Error> {
+    unsafe {
+        sys::SteamAPI_ISteamUtils_SetOverlayNotificationInset(steam_utils()?, horizontal, vertical)
+    };
+    Ok(())
+}
+
+#[napi(js_name = "utilsIsSteamRunningInVr")]
+pub fn utils_is_steam_running_in_vr() -> Result<bool, Error> {
+    Ok(unsafe { sys::SteamAPI_ISteamUtils_IsSteamRunningInVR(steam_utils()?) })
+}
+
+#[napi(js_name = "utilsStartVrDashboard")]
+pub fn utils_start_vr_dashboard() -> Result<(), Error> {
+    unsafe { sys::SteamAPI_ISteamUtils_StartVRDashboard(steam_utils()?) };
+    Ok(())
+}
+
+#[napi(js_name = "utilsIsVrHeadsetStreamingEnabled")]
+pub fn utils_is_vr_headset_streaming_enabled() -> Result<bool, Error> {
+    Ok(unsafe { sys::SteamAPI_ISteamUtils_IsVRHeadsetStreamingEnabled(steam_utils()?) })
+}
+
+#[napi(js_name = "utilsSetVrHeadsetStreamingEnabled")]
+pub fn utils_set_vr_headset_streaming_enabled(enabled: bool) -> Result<(), Error> {
+    unsafe { sys::SteamAPI_ISteamUtils_SetVRHeadsetStreamingEnabled(steam_utils()?, enabled) };
+    Ok(())
+}
+
+#[napi(js_name = "utilsIsSteamChinaLauncher")]
+pub fn utils_is_steam_china_launcher() -> Result<bool, Error> {
+    Ok(unsafe { sys::SteamAPI_ISteamUtils_IsSteamChinaLauncher(steam_utils()?) })
+}
+
+#[napi(js_name = "utilsInitFilterText")]
+pub fn utils_init_filter_text(options: Option<u32>) -> Result<bool, Error> {
+    Ok(unsafe { sys::SteamAPI_ISteamUtils_InitFilterText(steam_utils()?, options.unwrap_or(0)) })
+}
+
+#[napi(js_name = "utilsFilterText")]
+pub fn utils_filter_text(
+    context: u32,
+    source_steam_id64: BigInt,
+    input: String,
+    max_bytes: Option<u32>,
+) -> Result<UtilsFilteredText, Error> {
+    let utils = steam_utils()?;
+    let source_steam_id = bigint_to_u64(source_steam_id64, "source steamId64")?;
+    let default_capacity = (input.len() + 1).max(4096);
+    let capacity = max_bytes
+        .unwrap_or(default_capacity.min(u32::MAX as usize) as u32)
+        .clamp(1, 65_536);
+    let input = cstring(input, "text filter input")?;
+    let mut output = vec![0i8; capacity as usize];
+    let characters_filtered = unsafe {
+        sys::SteamAPI_ISteamUtils_FilterText(
+            utils,
+            text_filtering_context_from_u32(context)?,
+            source_steam_id,
+            input.as_ptr(),
+            output.as_mut_ptr(),
+            output.len() as u32,
+        )
+    };
+    Ok(UtilsFilteredText {
+        filtered: c_buf_to_string(&output),
+        characters_filtered,
+    })
+}
+
+#[napi(js_name = "utilsGetIpv6ConnectivityState")]
+pub fn utils_get_ipv6_connectivity_state(protocol: u32) -> Result<u32, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamUtils_GetIPv6ConnectivityState(
+            steam_utils()?,
+            ipv6_connectivity_protocol_from_u32(protocol)?,
+        ) as u32
+    })
+}
+
+#[napi(js_name = "utilsSetGameLauncherMode")]
+pub fn utils_set_game_launcher_mode(enabled: bool) -> Result<(), Error> {
+    unsafe { sys::SteamAPI_ISteamUtils_SetGameLauncherMode(steam_utils()?, enabled) };
+    Ok(())
+}
+
+#[napi(js_name = "utilsDismissFloatingGamepadTextInput")]
+pub fn utils_dismiss_floating_gamepad_text_input() -> Result<bool, Error> {
+    Ok(unsafe { sys::SteamAPI_ISteamUtils_DismissFloatingGamepadTextInput(steam_utils()?) })
+}
+
+#[napi(js_name = "utilsDismissGamepadTextInput")]
+pub fn utils_dismiss_gamepad_text_input() -> Result<bool, Error> {
+    Ok(unsafe { sys::SteamAPI_ISteamUtils_DismissGamepadTextInput(steam_utils()?) })
+}
+
 #[napi(js_name = "utilsShowGamepadTextInput")]
 pub async fn utils_show_gamepad_text_input(
     input_mode: u32,
@@ -7673,6 +7865,44 @@ fn input_type_name(input_type: sys::ESteamInputType) -> &'static str {
         sys::ESteamInputType::k_ESteamInputType_PS5Controller => "PS5Controller",
         sys::ESteamInputType::k_ESteamInputType_SteamDeckController => "SteamDeckController",
         _ => "Unknown",
+    }
+}
+
+fn notification_position_from_i32(value: i32) -> Result<sys::ENotificationPosition, Error> {
+    match value {
+        -1 => Ok(sys::ENotificationPosition::k_EPositionInvalid),
+        0 => Ok(sys::ENotificationPosition::k_EPositionTopLeft),
+        1 => Ok(sys::ENotificationPosition::k_EPositionTopRight),
+        2 => Ok(sys::ENotificationPosition::k_EPositionBottomLeft),
+        3 => Ok(sys::ENotificationPosition::k_EPositionBottomRight),
+        _ => Err(Error::from_reason(format!(
+            "invalid overlay notification position {value}"
+        ))),
+    }
+}
+
+fn text_filtering_context_from_u32(value: u32) -> Result<sys::ETextFilteringContext, Error> {
+    match value {
+        0 => Ok(sys::ETextFilteringContext::k_ETextFilteringContextUnknown),
+        1 => Ok(sys::ETextFilteringContext::k_ETextFilteringContextGameContent),
+        2 => Ok(sys::ETextFilteringContext::k_ETextFilteringContextChat),
+        3 => Ok(sys::ETextFilteringContext::k_ETextFilteringContextName),
+        _ => Err(Error::from_reason(format!(
+            "invalid text filtering context {value}"
+        ))),
+    }
+}
+
+fn ipv6_connectivity_protocol_from_u32(
+    value: u32,
+) -> Result<sys::ESteamIPv6ConnectivityProtocol, Error> {
+    match value {
+        0 => Ok(sys::ESteamIPv6ConnectivityProtocol::k_ESteamIPv6ConnectivityProtocol_Invalid),
+        1 => Ok(sys::ESteamIPv6ConnectivityProtocol::k_ESteamIPv6ConnectivityProtocol_HTTP),
+        2 => Ok(sys::ESteamIPv6ConnectivityProtocol::k_ESteamIPv6ConnectivityProtocol_UDP),
+        _ => Err(Error::from_reason(format!(
+            "invalid IPv6 connectivity protocol {value}"
+        ))),
     }
 }
 

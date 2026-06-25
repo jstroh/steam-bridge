@@ -634,6 +634,17 @@ export interface NativeRemotePlayInputEvent {
   keycode?: number | null;
 }
 
+export interface NativeUtilsImageSize {
+  width: number;
+  height: number;
+}
+
+export interface NativeUtilsFilteredText {
+  filtered: string;
+  charactersFiltered?: number;
+  characters_filtered?: number;
+}
+
 export interface NativeBinding {
   init(appId: number): void;
   shutdown(): void;
@@ -654,6 +665,27 @@ export interface NativeBinding {
   overlayNeedsPresent(): boolean;
   getOverlayDiagnostics(): NativeOverlayDiagnostics;
   utilsGetServerRealTime(): number;
+  utilsGetSecondsSinceAppActive(): number;
+  utilsGetSecondsSinceComputerActive(): number;
+  utilsGetConnectedUniverse(): number;
+  utilsGetSteamUiLanguage(): string;
+  utilsGetImageSize(image: number): NativeUtilsImageSize | null | undefined;
+  utilsGetImageRgba(image: number): Buffer | null | undefined;
+  utilsGetCurrentBatteryPower(): number;
+  utilsGetIpcCallCount(): number;
+  utilsSetOverlayNotificationPosition(position: number): void;
+  utilsSetOverlayNotificationInset(horizontal: number, vertical: number): void;
+  utilsIsSteamRunningInVr(): boolean;
+  utilsStartVrDashboard(): void;
+  utilsIsVrHeadsetStreamingEnabled(): boolean;
+  utilsSetVrHeadsetStreamingEnabled(enabled: boolean): void;
+  utilsIsSteamChinaLauncher(): boolean;
+  utilsInitFilterText(options?: number): boolean;
+  utilsFilterText(context: number, sourceSteamId64: bigint, input: string, maxBytes?: number): NativeUtilsFilteredText;
+  utilsGetIpv6ConnectivityState(protocol: number): number;
+  utilsSetGameLauncherMode(enabled: boolean): void;
+  utilsDismissFloatingGamepadTextInput(): boolean;
+  utilsDismissGamepadTextInput(): boolean;
   utilsShowGamepadTextInput(inputMode: number, inputLineMode: number, description: string, maxCharacters: number, existingText?: string | null, timeoutSeconds?: number): Promise<string | null | undefined>;
   utilsShowFloatingGamepadTextInput(mode: number, x: number, y: number, width: number, height: number): boolean;
 

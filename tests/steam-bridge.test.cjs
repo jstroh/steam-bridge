@@ -246,6 +246,147 @@ test("Steam IDs and diagnostics are normalized for JavaScript callers", (t) => {
   });
 });
 
+test("utils facade covers activity, images, VR, filtering, and text input helpers", (t) => {
+  const imageData = Buffer.from([255, 0, 0, 255, 0, 255, 0, 255]);
+  const fake = createFakeNative({
+    utilsGetSecondsSinceAppActive() {
+      this.calls.push({ method: "utilsGetSecondsSinceAppActive", args: [] });
+      return 12;
+    },
+    utilsGetSecondsSinceComputerActive() {
+      this.calls.push({ method: "utilsGetSecondsSinceComputerActive", args: [] });
+      return 34;
+    },
+    utilsGetConnectedUniverse() {
+      this.calls.push({ method: "utilsGetConnectedUniverse", args: [] });
+      return 1;
+    },
+    utilsGetSteamUiLanguage() {
+      this.calls.push({ method: "utilsGetSteamUiLanguage", args: [] });
+      return "english";
+    },
+    utilsGetImageSize(image) {
+      this.calls.push({ method: "utilsGetImageSize", args: [image] });
+      return image === 7 ? { width: 2, height: 1 } : null;
+    },
+    utilsGetImageRgba(image) {
+      this.calls.push({ method: "utilsGetImageRgba", args: [image] });
+      return image === 7 ? imageData : null;
+    },
+    utilsGetCurrentBatteryPower() {
+      this.calls.push({ method: "utilsGetCurrentBatteryPower", args: [] });
+      return 95;
+    },
+    utilsGetIpcCallCount() {
+      this.calls.push({ method: "utilsGetIpcCallCount", args: [] });
+      return 3;
+    },
+    utilsSetOverlayNotificationPosition(position) {
+      this.calls.push({ method: "utilsSetOverlayNotificationPosition", args: [position] });
+    },
+    utilsSetOverlayNotificationInset(horizontal, vertical) {
+      this.calls.push({ method: "utilsSetOverlayNotificationInset", args: [horizontal, vertical] });
+    },
+    utilsIsSteamRunningInVr() {
+      this.calls.push({ method: "utilsIsSteamRunningInVr", args: [] });
+      return true;
+    },
+    utilsStartVrDashboard() {
+      this.calls.push({ method: "utilsStartVrDashboard", args: [] });
+    },
+    utilsIsVrHeadsetStreamingEnabled() {
+      this.calls.push({ method: "utilsIsVrHeadsetStreamingEnabled", args: [] });
+      return false;
+    },
+    utilsSetVrHeadsetStreamingEnabled(enabled) {
+      this.calls.push({ method: "utilsSetVrHeadsetStreamingEnabled", args: [enabled] });
+    },
+    utilsIsSteamChinaLauncher() {
+      this.calls.push({ method: "utilsIsSteamChinaLauncher", args: [] });
+      return false;
+    },
+    utilsInitFilterText(options) {
+      this.calls.push({ method: "utilsInitFilterText", args: [options] });
+      return true;
+    },
+    utilsFilterText(context, sourceSteamId64, input, maxBytes) {
+      this.calls.push({ method: "utilsFilterText", args: [context, sourceSteamId64, input, maxBytes] });
+      return { filtered: "hello", characters_filtered: 1 };
+    },
+    utilsGetIpv6ConnectivityState(protocol) {
+      this.calls.push({ method: "utilsGetIpv6ConnectivityState", args: [protocol] });
+      return protocol === 1 ? 1 : 2;
+    },
+    utilsSetGameLauncherMode(enabled) {
+      this.calls.push({ method: "utilsSetGameLauncherMode", args: [enabled] });
+    },
+    utilsDismissFloatingGamepadTextInput() {
+      this.calls.push({ method: "utilsDismissFloatingGamepadTextInput", args: [] });
+      return true;
+    },
+    utilsDismissGamepadTextInput() {
+      this.calls.push({ method: "utilsDismissGamepadTextInput", args: [] });
+      return true;
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  assert.equal(steam.utils.SteamUniverse.Public, 1);
+  assert.equal(steam.utils.OverlayNotificationPosition.BottomRight, 3);
+  assert.equal(steam.utils.TextFilteringContext.Chat, 2);
+  assert.equal(steam.utils.IPv6ConnectivityProtocol.HTTP, 1);
+  assert.equal(steam.utils.IPv6ConnectivityState.Good, 1);
+  assert.equal(steam.utils.getSecondsSinceAppActive(), 12);
+  assert.equal(steam.utils.getSecondsSinceComputerActive(), 34);
+  assert.equal(steam.utils.getConnectedUniverse(), steam.utils.SteamUniverse.Public);
+  assert.equal(steam.utils.getSteamUILanguage(), "english");
+  assert.deepEqual(steam.utils.getImageSize(7), { width: 2, height: 1 });
+  assert.equal(steam.utils.getImageSize(99), null);
+  assert.deepEqual(steam.utils.getImageRGBA(7), imageData);
+  assert.equal(steam.utils.getImageRGBA(99), null);
+  assert.equal(steam.utils.getCurrentBatteryPower(), 95);
+  assert.equal(steam.utils.getIPCCallCount(), 3);
+
+  steam.utils.setOverlayNotificationPosition(steam.utils.OverlayNotificationPosition.BottomRight);
+  steam.utils.setOverlayNotificationInset(16, 24);
+
+  assert.equal(steam.utils.isSteamRunningInVR(), true);
+  steam.utils.startVRDashboard();
+  assert.equal(steam.utils.isVRHeadsetStreamingEnabled(), false);
+  steam.utils.setVRHeadsetStreamingEnabled(true);
+  assert.equal(steam.utils.isSteamChinaLauncher(), false);
+  assert.equal(steam.utils.initFilterText(), true);
+  assert.deepEqual(
+    steam.utils.filterText(steam.utils.TextFilteringContext.Chat, 76561198000000000n, "hello", 256),
+    { filtered: "hello", charactersFiltered: 1 }
+  );
+  assert.equal(
+    steam.utils.getIPv6ConnectivityState(steam.utils.IPv6ConnectivityProtocol.HTTP),
+    steam.utils.IPv6ConnectivityState.Good
+  );
+  steam.utils.setGameLauncherMode(true);
+  assert.equal(steam.utils.dismissFloatingGamepadTextInput(), true);
+  assert.equal(steam.utils.dismissGamepadTextInput(), true);
+  assert.deepEqual(
+    fake.calls.filter((call) =>
+      [
+        "utilsSetOverlayNotificationPosition",
+        "utilsSetOverlayNotificationInset",
+        "utilsFilterText",
+        "utilsSetGameLauncherMode"
+      ].includes(call.method)
+    ),
+    [
+      { method: "utilsSetOverlayNotificationPosition", args: [3] },
+      { method: "utilsSetOverlayNotificationInset", args: [16, 24] },
+      { method: "utilsFilterText", args: [2, 76561198000000000n, "hello", 256] },
+      { method: "utilsSetGameLauncherMode", args: [true] }
+    ]
+  );
+});
+
 test("specific and generic callbacks normalize Steamworks payloads", (t) => {
   const fake = createFakeNative();
   const steam = loadSteamWithFakeNative(fake);
