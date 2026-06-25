@@ -83,6 +83,7 @@ import {
   NativeLobbyChatEntry,
   NativeLobbyGameServer,
   NativeMatchmakingFavoriteGame,
+  NativeMatchmakingServerAddress,
   NativeMatchmakingServerItem,
   NativeMatchmakingServerListResult,
   NativeMatchmakingServerListRequest,
@@ -561,6 +562,8 @@ export interface MatchmakingServerAddress {
   ipAddress: string;
   connectionPort: number;
   queryPort: number;
+  connectionAddress: string;
+  queryAddress: string;
 }
 
 export interface MatchmakingServerItem {
@@ -5339,6 +5342,41 @@ export const matchmakingServers = {
     return normalizeMatchmakingServerRulesResult(
       await native().matchmakingServersServerRules(ip, queryPort, timeoutSeconds ?? undefined)
     );
+  },
+  createServerAddress(ip: number, queryPort: number, connectionPort: number): MatchmakingServerAddress {
+    return normalizeMatchmakingServerAddress(
+      native().matchmakingServersCreateServerAddress(ip, queryPort, connectionPort)
+    );
+  },
+  copyServerAddress(ip: number, queryPort: number, connectionPort: number): MatchmakingServerAddress {
+    return normalizeMatchmakingServerAddress(
+      native().matchmakingServersCopyServerAddress(ip, queryPort, connectionPort)
+    );
+  },
+  isServerAddressLessThan(
+    ip: number,
+    queryPort: number,
+    connectionPort: number,
+    otherIp: number,
+    otherQueryPort: number,
+    otherConnectionPort: number
+  ): boolean {
+    return native().matchmakingServersIsServerAddressLessThan(
+      ip,
+      queryPort,
+      connectionPort,
+      otherIp,
+      otherQueryPort,
+      otherConnectionPort
+    );
+  },
+  createServerFilter(key: string, value: string): MatchmakingServerBrowserFilter {
+    return native().matchmakingServersCreateServerFilter(key, value);
+  },
+  createServerItem(name: string, ip: number, queryPort: number, connectionPort: number): MatchmakingServerItem {
+    return normalizeMatchmakingServerItem(
+      native().matchmakingServersCreateServerItem(name, ip, queryPort, connectionPort)
+    );
   }
 };
 
@@ -7887,14 +7925,8 @@ function normalizeMatchmakingFavoriteGame(
 
 function normalizeMatchmakingServerItem(server: NativeMatchmakingServerItem): MatchmakingServerItem {
   const source = server as unknown as Record<string, unknown>;
-  const address = server.address as unknown as Record<string, unknown>;
   return {
-    address: {
-      ip: Number(address.ip ?? 0),
-      ipAddress: String(address.ipAddress ?? address.ip_address ?? ""),
-      connectionPort: Number(address.connectionPort ?? address.connection_port ?? 0),
-      queryPort: Number(address.queryPort ?? address.query_port ?? 0)
-    },
+    address: normalizeMatchmakingServerAddress(server.address),
     ping: Number(server.ping ?? 0),
     hadSuccessfulResponse: Boolean(source.hadSuccessfulResponse ?? source.had_successful_response),
     doNotRefresh: Boolean(source.doNotRefresh ?? source.do_not_refresh),
@@ -7912,6 +7944,18 @@ function normalizeMatchmakingServerItem(server: NativeMatchmakingServerItem): Ma
     name: String(server.name ?? ""),
     gameTags: String(source.gameTags ?? source.game_tags ?? ""),
     steamId: normalizeSteamId((source.steamId ?? source.steam_id ?? EMPTY_NATIVE_STEAM_ID) as NativeSteamId)
+  };
+}
+
+function normalizeMatchmakingServerAddress(address: NativeMatchmakingServerAddress): MatchmakingServerAddress {
+  const source = address as unknown as Record<string, unknown>;
+  return {
+    ip: Number(source.ip ?? 0),
+    ipAddress: String(source.ipAddress ?? source.ip_address ?? ""),
+    connectionPort: Number(source.connectionPort ?? source.connection_port ?? 0),
+    queryPort: Number(source.queryPort ?? source.query_port ?? 0),
+    connectionAddress: String(source.connectionAddress ?? source.connection_address ?? ""),
+    queryAddress: String(source.queryAddress ?? source.query_address ?? "")
   };
 }
 

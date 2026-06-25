@@ -867,6 +867,15 @@ export interface NativeMatchmakingServerAddress {
   connection_port?: number;
   queryPort?: number;
   query_port?: number;
+  connectionAddress?: string;
+  connection_address?: string;
+  queryAddress?: string;
+  query_address?: string;
+}
+
+export interface NativeMatchmakingServerBrowserFilter {
+  key: string;
+  value: string;
 }
 
 export interface NativeMatchmakingServerItem {
@@ -2427,6 +2436,11 @@ export interface NativeBinding {
   matchmakingServersPingServer(ip: number, queryPort: number, timeoutSeconds?: number): Promise<NativeMatchmakingServerPingResult>;
   matchmakingServersPlayerDetails(ip: number, queryPort: number, timeoutSeconds?: number): Promise<NativeMatchmakingServerPlayersResult>;
   matchmakingServersServerRules(ip: number, queryPort: number, timeoutSeconds?: number): Promise<NativeMatchmakingServerRulesResult>;
+  matchmakingServersCreateServerAddress(ip: number, queryPort: number, connectionPort: number): NativeMatchmakingServerAddress;
+  matchmakingServersCopyServerAddress(ip: number, queryPort: number, connectionPort: number): NativeMatchmakingServerAddress;
+  matchmakingServersIsServerAddressLessThan(ip: number, queryPort: number, connectionPort: number, otherIp: number, otherQueryPort: number, otherConnectionPort: number): boolean;
+  matchmakingServersCreateServerFilter(key: string, value: string): NativeMatchmakingServerBrowserFilter;
+  matchmakingServersCreateServerItem(name: string, ip: number, queryPort: number, connectionPort: number): NativeMatchmakingServerItem;
   matchmakingCreateLobby(lobbyType: number, maxMembers: number): Promise<NativeLobbyResult>;
   matchmakingJoinLobby(lobbyId: bigint): Promise<NativeLobbyResult>;
   matchmakingGetLobbies(): Promise<NativeLobbyResult[]>;

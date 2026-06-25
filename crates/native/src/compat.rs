@@ -1253,6 +1253,15 @@ pub struct MatchmakingServerAddress {
     pub ip_address: String,
     pub connection_port: u32,
     pub query_port: u32,
+    pub connection_address: String,
+    pub query_address: String,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct MatchmakingServerBrowserFilter {
+    pub key: String,
+    pub value: String,
 }
 
 #[derive(Debug)]
@@ -14567,6 +14576,71 @@ pub async fn matchmaking_servers_server_rules(
     get_matchmaking_server_rules(ip, query_port, timeout_seconds).await
 }
 
+#[napi(js_name = "matchmakingServersCreateServerAddress")]
+pub fn matchmaking_servers_create_server_address(
+    ip: u32,
+    query_port: u32,
+    connection_port: u32,
+) -> Result<MatchmakingServerAddress, Error> {
+    let mut address = matchmaking_server_address_raw(ip, query_port, connection_port)?;
+    Ok(matchmaking_server_address(&mut address))
+}
+
+#[napi(js_name = "matchmakingServersCopyServerAddress")]
+pub fn matchmaking_servers_copy_server_address(
+    ip: u32,
+    query_port: u32,
+    connection_port: u32,
+) -> Result<MatchmakingServerAddress, Error> {
+    let address = matchmaking_server_address_raw(ip, query_port, connection_port)?;
+    let mut output = empty_matchmaking_server_address_raw();
+    unsafe { sys::SteamAPI_servernetadr_t_Assign(&mut output, &address) };
+    Ok(matchmaking_server_address(&mut output))
+}
+
+#[napi(js_name = "matchmakingServersIsServerAddressLessThan")]
+pub fn matchmaking_servers_is_server_address_less_than(
+    ip: u32,
+    query_port: u32,
+    connection_port: u32,
+    other_ip: u32,
+    other_query_port: u32,
+    other_connection_port: u32,
+) -> Result<bool, Error> {
+    let mut address = matchmaking_server_address_raw(ip, query_port, connection_port)?;
+    let other = matchmaking_server_address_raw(other_ip, other_query_port, other_connection_port)?;
+    Ok(unsafe { sys::SteamAPI_servernetadr_t_IsLessThan(&mut address, &other) })
+}
+
+#[napi(js_name = "matchmakingServersCreateServerFilter")]
+pub fn matchmaking_servers_create_server_filter(
+    key: String,
+    value: String,
+) -> Result<MatchmakingServerBrowserFilter, Error> {
+    let filter = matchmaking_server_filter_pair(key, value)?;
+    Ok(MatchmakingServerBrowserFilter {
+        key: c_buf_to_string(&filter.m_szKey),
+        value: c_buf_to_string(&filter.m_szValue),
+    })
+}
+
+#[napi(js_name = "matchmakingServersCreateServerItem")]
+pub fn matchmaking_servers_create_server_item(
+    name: String,
+    ip: u32,
+    query_port: u32,
+    connection_port: u32,
+) -> Result<MatchmakingServerItem, Error> {
+    let mut item = unsafe { MaybeUninit::<sys::gameserveritem_t>::zeroed().assume_init() };
+    unsafe { sys::SteamAPI_gameserveritem_t_Construct(&mut item) };
+    let address = matchmaking_server_address_raw(ip, query_port, connection_port)?;
+    item.m_NetAdr = address;
+    let name = cstring(name, "game server item name")?;
+    unsafe { sys::SteamAPI_gameserveritem_t_SetName(&mut item, name.as_ptr()) };
+    matchmaking_server_item(&mut item)
+        .ok_or_else(|| Error::from_reason("failed to construct matchmaking server item"))
+}
+
 #[napi(js_name = "matchmakingCreateLobby")]
 pub async fn matchmaking_create_lobby(
     lobby_type: u32,
@@ -22221,15 +22295,10 @@ fn matchmaking_server_filters(
             .get("value")
             .and_then(Value::as_str)
             .unwrap_or_default();
-        let mut native =
-            unsafe { MaybeUninit::<sys::MatchMakingKeyValuePair_t>::zeroed().assume_init() };
-        write_c_char_buffer(&mut native.m_szKey, key, "matchmaking server filter key")?;
-        write_c_char_buffer(
-            &mut native.m_szValue,
-            value,
-            "matchmaking server filter value",
-        )?;
-        values.push(native);
+        values.push(matchmaking_server_filter_pair(
+            key.to_string(),
+            value.to_string(),
+        )?);
     }
     Ok(values)
 }
@@ -22401,16 +22470,9 @@ fn matchmaking_server_item(item: *mut sys::gameserveritem_t) -> Option<Matchmaki
     if item.is_null() {
         return None;
     }
-    let net_addr = unsafe { ptr::addr_of!((*item).m_NetAdr).read_unaligned() };
-    let ip = unsafe { ptr::addr_of!(net_addr.m_unIP).read_unaligned() };
+    let mut net_addr = unsafe { ptr::addr_of!((*item).m_NetAdr).read_unaligned() };
     Some(MatchmakingServerItem {
-        address: MatchmakingServerAddress {
-            ip,
-            ip_address: ipv4_to_string(ip),
-            connection_port: unsafe { ptr::addr_of!(net_addr.m_usConnectionPort).read_unaligned() }
-                .into(),
-            query_port: unsafe { ptr::addr_of!(net_addr.m_usQueryPort).read_unaligned() }.into(),
-        },
+        address: matchmaking_server_address(&mut net_addr),
         ping: unsafe { ptr::addr_of!((*item).m_nPing).read_unaligned() },
         had_successful_response: unsafe {
             ptr::addr_of!((*item).m_bHadSuccessfulResponse).read_unaligned()
@@ -22431,6 +22493,69 @@ fn matchmaking_server_item(item: *mut sys::gameserveritem_t) -> Option<Matchmaki
         game_tags: unsafe { c_buf_to_string(&*ptr::addr_of!((*item).m_szGameTags)) },
         steam_id: csteam_id_to_player(unsafe { ptr::addr_of!((*item).m_steamID).read_unaligned() }),
     })
+}
+
+fn empty_matchmaking_server_address_raw() -> sys::servernetadr_t {
+    let mut address = unsafe { MaybeUninit::<sys::servernetadr_t>::zeroed().assume_init() };
+    unsafe { sys::SteamAPI_servernetadr_t_Construct(&mut address) };
+    address
+}
+
+fn matchmaking_server_address_raw(
+    ip: u32,
+    query_port: u32,
+    connection_port: u32,
+) -> Result<sys::servernetadr_t, Error> {
+    let mut address = empty_matchmaking_server_address_raw();
+    let query_port = port_to_u16(query_port, "query port")?;
+    let connection_port = port_to_u16(connection_port, "connection port")?;
+    unsafe {
+        sys::SteamAPI_servernetadr_t_Init(&mut address, ip, query_port, connection_port);
+        sys::SteamAPI_servernetadr_t_SetIP(&mut address, ip);
+        sys::SteamAPI_servernetadr_t_SetQueryPort(&mut address, query_port);
+        sys::SteamAPI_servernetadr_t_SetConnectionPort(&mut address, connection_port);
+    }
+    Ok(address)
+}
+
+fn matchmaking_server_address(address: &mut sys::servernetadr_t) -> MatchmakingServerAddress {
+    let ip = unsafe { sys::SteamAPI_servernetadr_t_GetIP(address) };
+    MatchmakingServerAddress {
+        ip,
+        ip_address: ipv4_to_string(ip),
+        connection_port: u32::from(unsafe {
+            sys::SteamAPI_servernetadr_t_GetConnectionPort(address)
+        }),
+        query_port: u32::from(unsafe { sys::SteamAPI_servernetadr_t_GetQueryPort(address) }),
+        connection_address: string_from_ptr(unsafe {
+            sys::SteamAPI_servernetadr_t_GetConnectionAddressString(address)
+        }),
+        query_address: string_from_ptr(unsafe {
+            sys::SteamAPI_servernetadr_t_GetQueryAddressString(address)
+        }),
+    }
+}
+
+fn matchmaking_server_filter_pair(
+    key: String,
+    value: String,
+) -> Result<sys::MatchMakingKeyValuePair_t, Error> {
+    let mut filter =
+        unsafe { MaybeUninit::<sys::MatchMakingKeyValuePair_t>::zeroed().assume_init() };
+    unsafe { sys::SteamAPI_MatchMakingKeyValuePair_t_Construct(&mut filter) };
+    unsafe {
+        write_c_char_buffer(
+            &mut *ptr::addr_of_mut!(filter.m_szKey),
+            &key,
+            "matchmaking server filter key",
+        )?;
+        write_c_char_buffer(
+            &mut *ptr::addr_of_mut!(filter.m_szValue),
+            &value,
+            "matchmaking server filter value",
+        )?;
+    }
+    Ok(filter)
 }
 
 fn write_c_char_buffer(buf: &mut [c_char], value: &str, label: &str) -> Result<(), Error> {

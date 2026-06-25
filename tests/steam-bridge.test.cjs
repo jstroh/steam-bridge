@@ -2534,7 +2534,9 @@ test("matchmaking facade covers favorites, lobby filters, metadata, chat, and ca
       ip: 2130706433,
       ip_address: "127.0.0.1",
       connection_port: 27015,
-      query_port: 27016
+      query_port: 27016,
+      connection_address: "127.0.0.1:27015",
+      query_address: "127.0.0.1:27016"
     },
     ping: 42,
     had_successful_response: true,
@@ -2698,6 +2700,43 @@ test("matchmaking facade covers favorites, lobby filters, metadata, chat, and ca
     matchmakingServersServerRules(ip, queryPort, timeoutSeconds) {
       this.calls.push({ method: "matchmakingServersServerRules", args: [ip, queryPort, timeoutSeconds] });
       return Promise.resolve({ responded: true, rules: [{ name: "sv_cheats", value: "0" }] });
+    },
+    matchmakingServersCreateServerAddress(ip, queryPort, connectionPort) {
+      this.calls.push({ method: "matchmakingServersCreateServerAddress", args: [ip, queryPort, connectionPort] });
+      return {
+        ip,
+        ip_address: "127.0.0.1",
+        connection_port: connectionPort,
+        query_port: queryPort,
+        connection_address: "127.0.0.1:27015",
+        query_address: "127.0.0.1:27016"
+      };
+    },
+    matchmakingServersCopyServerAddress(ip, queryPort, connectionPort) {
+      this.calls.push({ method: "matchmakingServersCopyServerAddress", args: [ip, queryPort, connectionPort] });
+      return {
+        ip,
+        ip_address: "127.0.0.1",
+        connection_port: connectionPort,
+        query_port: queryPort,
+        connection_address: "127.0.0.1:27015",
+        query_address: "127.0.0.1:27016"
+      };
+    },
+    matchmakingServersIsServerAddressLessThan(ip, queryPort, connectionPort, otherIp, otherQueryPort, otherConnectionPort) {
+      this.calls.push({
+        method: "matchmakingServersIsServerAddressLessThan",
+        args: [ip, queryPort, connectionPort, otherIp, otherQueryPort, otherConnectionPort]
+      });
+      return true;
+    },
+    matchmakingServersCreateServerFilter(key, value) {
+      this.calls.push({ method: "matchmakingServersCreateServerFilter", args: [key, value] });
+      return { key, value };
+    },
+    matchmakingServersCreateServerItem(name, ip, queryPort, connectionPort) {
+      this.calls.push({ method: "matchmakingServersCreateServerItem", args: [name, ip, queryPort, connectionPort] });
+      return { ...nativeServer, name };
     },
     matchmakingCreateLobby(lobbyType, maxMembers) {
       this.calls.push({ method: "matchmakingCreateLobby", args: [lobbyType, maxMembers] });
@@ -2868,6 +2907,7 @@ test("matchmaking facade covers favorites, lobby filters, metadata, chat, and ca
   assert.deepEqual(internetServers.failed, [1]);
   assert.equal(internetServers.servers[0].address.ipAddress, "127.0.0.1");
   assert.equal(internetServers.servers[0].address.connectionPort, 27015);
+  assert.equal(internetServers.servers[0].address.queryAddress, "127.0.0.1:27016");
   assert.equal(internetServers.servers[0].gameDir, "spacewar");
   assert.equal(internetServers.servers[0].gameDescription, "Spacewar");
   assert.equal(internetServers.servers[0].maxPlayers, 8);
@@ -2909,6 +2949,21 @@ test("matchmaking facade covers favorites, lobby filters, metadata, chat, and ca
   const rules = await steam.matchmaking.servers.serverRules(2130706433, 27016, 5);
   assert.equal(rules.responded, true);
   assert.equal(rules.rules[0].name, "sv_cheats");
+  assert.deepEqual(steam.matchmaking.servers.createServerAddress(2130706433, 27016, 27015), {
+    ip: 2130706433,
+    ipAddress: "127.0.0.1",
+    connectionPort: 27015,
+    queryPort: 27016,
+    connectionAddress: "127.0.0.1:27015",
+    queryAddress: "127.0.0.1:27016"
+  });
+  assert.equal(steam.matchmaking.servers.copyServerAddress(2130706433, 27016, 27015).connectionAddress, "127.0.0.1:27015");
+  assert.equal(
+    steam.matchmaking.servers.isServerAddressLessThan(2130706433, 27016, 27015, 2130706434, 27016, 27015),
+    true
+  );
+  assert.deepEqual(steam.matchmaking.servers.createServerFilter("map", "arena"), { key: "map", value: "arena" });
+  assert.equal(steam.matchmaking.servers.createServerItem("Constructed Server", 2130706433, 27016, 27015).name, "Constructed Server");
 
   const lobby = await steam.matchmaking.createLobby(steam.matchmaking.LobbyType.Public, 4);
   assert.equal((await steam.matchmaking.joinLobby(lobbyId)).id, lobbyId);
@@ -2984,6 +3039,18 @@ test("matchmaking facade covers favorites, lobby filters, metadata, chat, and ca
   assert.deepEqual(fake.calls.find((call) => call.method === "matchmakingServersReleaseServerListRequest"), {
     method: "matchmakingServersReleaseServerListRequest",
     args: [55n]
+  });
+  assert.deepEqual(fake.calls.find((call) => call.method === "matchmakingServersCreateServerAddress"), {
+    method: "matchmakingServersCreateServerAddress",
+    args: [2130706433, 27016, 27015]
+  });
+  assert.deepEqual(fake.calls.find((call) => call.method === "matchmakingServersCreateServerFilter"), {
+    method: "matchmakingServersCreateServerFilter",
+    args: ["map", "arena"]
+  });
+  assert.deepEqual(fake.calls.find((call) => call.method === "matchmakingServersCreateServerItem"), {
+    method: "matchmakingServersCreateServerItem",
+    args: ["Constructed Server", 2130706433, 27016, 27015]
   });
 });
 
