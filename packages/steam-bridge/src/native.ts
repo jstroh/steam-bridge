@@ -626,6 +626,27 @@ export interface NativeMatchmakingServerListResult {
   servers: NativeMatchmakingServerItem[];
 }
 
+export interface NativeMatchmakingServerListRequest {
+  handle: bigint | string | number;
+  steamRequest?: bigint | string | number;
+  steam_request?: bigint | string | number;
+  appId?: number;
+  app_id?: number;
+  kind: string;
+}
+
+export interface NativeMatchmakingServerListRequestState extends NativeMatchmakingServerListRequest {
+  completed: boolean;
+  cancelled?: boolean;
+  canceled?: boolean;
+  response: number;
+  responded: number[];
+  failed: number[];
+  refreshing: boolean;
+  serverCount?: number;
+  server_count?: number;
+}
+
 export interface NativeMatchmakingServerPingResult {
   responded: boolean;
   server?: NativeMatchmakingServerItem | null;
@@ -1631,6 +1652,18 @@ export interface NativeBinding {
   matchmakingServersRequestFavoritesServerList(appId: number, filters?: unknown, timeoutSeconds?: number): Promise<NativeMatchmakingServerListResult>;
   matchmakingServersRequestHistoryServerList(appId: number, filters?: unknown, timeoutSeconds?: number): Promise<NativeMatchmakingServerListResult>;
   matchmakingServersRequestSpectatorServerList(appId: number, filters?: unknown, timeoutSeconds?: number): Promise<NativeMatchmakingServerListResult>;
+  matchmakingServersOpenInternetServerList(appId: number, filters?: unknown): NativeMatchmakingServerListRequest;
+  matchmakingServersOpenLanServerList(appId: number): NativeMatchmakingServerListRequest;
+  matchmakingServersOpenFriendsServerList(appId: number, filters?: unknown): NativeMatchmakingServerListRequest;
+  matchmakingServersOpenFavoritesServerList(appId: number, filters?: unknown): NativeMatchmakingServerListRequest;
+  matchmakingServersOpenHistoryServerList(appId: number, filters?: unknown): NativeMatchmakingServerListRequest;
+  matchmakingServersOpenSpectatorServerList(appId: number, filters?: unknown): NativeMatchmakingServerListRequest;
+  matchmakingServersGetServerListRequestState(handle: bigint): NativeMatchmakingServerListRequestState;
+  matchmakingServersGetServerListRequestServerDetails(handle: bigint, server: number): NativeMatchmakingServerItem | null | undefined;
+  matchmakingServersRefreshServerListQuery(handle: bigint): void;
+  matchmakingServersRefreshServerListServer(handle: bigint, server: number): void;
+  matchmakingServersCancelServerListQuery(handle: bigint): void;
+  matchmakingServersReleaseServerListRequest(handle: bigint): boolean;
   matchmakingServersPingServer(ip: number, queryPort: number, timeoutSeconds?: number): Promise<NativeMatchmakingServerPingResult>;
   matchmakingServersPlayerDetails(ip: number, queryPort: number, timeoutSeconds?: number): Promise<NativeMatchmakingServerPlayersResult>;
   matchmakingServersServerRules(ip: number, queryPort: number, timeoutSeconds?: number): Promise<NativeMatchmakingServerRulesResult>;

@@ -49,8 +49,10 @@ The native layer currently targets the Steamworks flat C API through
 - Matchmaking/lobbies: favorite/history server storage, lobby list filters,
   create, join, list, leave, member/owner helpers, lobby and member data,
   joinability, lobby type/owner/limit/link controls, lobby chat, lobby
-  game-server metadata, invites, invite dialogs, lobby callbacks, and one-shot
-  matchmaking server browser list, ping, player-detail, and rule queries.
+  game-server metadata, invites, invite dialogs, lobby callbacks, one-shot
+  matchmaking server browser list, ping, player-detail, and rule queries, plus
+  long-lived server-list request handles with details, refresh, cancel, state,
+  and release controls.
 - Parties: party beacon enumeration/details, location discovery and metadata,
   join/create/change async calls, reservation completion/cancel, destroy, and
   reservation callbacks.
@@ -101,8 +103,6 @@ The native layer currently targets the Steamworks flat C API through
 - Remaining modern networking socket and lower-level networking config/debug
   surfaces: parsed relay-auth-ticket payloads, raw pointer-valued networking
   config callbacks, and custom signaling.
-- Raw long-lived matchmaking server browser request handle controls beyond the
-  one-shot list/query wrappers.
 - Complete callback/event coverage for every implemented interface, including
   richer streaming HTTP response ergonomics.
 - Steam Web API and economy flows beyond client auth ticket helpers.

@@ -62,6 +62,8 @@ import {
   NativeMatchmakingFavoriteGame,
   NativeMatchmakingServerItem,
   NativeMatchmakingServerListResult,
+  NativeMatchmakingServerListRequest,
+  NativeMatchmakingServerListRequestState,
   NativeMatchmakingServerPingResult,
   NativeMatchmakingServerPlayer,
   NativeMatchmakingServerPlayersResult,
@@ -365,6 +367,20 @@ export interface MatchmakingServerListResult {
   responded: number[];
   failed: number[];
   servers: MatchmakingServerItem[];
+}
+
+export interface MatchmakingServerListRequestState {
+  handle: bigint;
+  steamRequest: bigint;
+  appId: number;
+  kind: string;
+  completed: boolean;
+  cancelled: boolean;
+  response: number;
+  responded: number[];
+  failed: number[];
+  refreshing: boolean;
+  serverCount: number;
 }
 
 export interface MatchmakingServerPingResult {
@@ -1931,6 +1947,46 @@ export class Controller {
   }
 }
 
+export class MatchmakingServerListRequest {
+  constructor(
+    public readonly handle: bigint,
+    public readonly steamRequest: bigint,
+    public readonly appId: number,
+    public readonly kind: string
+  ) {}
+
+  getState(): MatchmakingServerListRequestState {
+    return normalizeMatchmakingServerListRequestState(
+      native().matchmakingServersGetServerListRequestState(this.handle)
+    );
+  }
+
+  getServerCount(): number {
+    return this.getState().serverCount;
+  }
+
+  getServerDetails(server: number): MatchmakingServerItem | null {
+    const details = native().matchmakingServersGetServerListRequestServerDetails(this.handle, server);
+    return details ? normalizeMatchmakingServerItem(details) : null;
+  }
+
+  refreshQuery(): void {
+    native().matchmakingServersRefreshServerListQuery(this.handle);
+  }
+
+  refreshServer(server: number): void {
+    native().matchmakingServersRefreshServerListServer(this.handle, server);
+  }
+
+  cancelQuery(): void {
+    native().matchmakingServersCancelServerListQuery(this.handle);
+  }
+
+  release(): boolean {
+    return native().matchmakingServersReleaseServerListRequest(this.handle);
+  }
+}
+
 export class Lobby {
   constructor(public id: bigint) {}
 
@@ -3269,6 +3325,49 @@ export const matchmakingServers = {
         nativeMatchmakingServerFilters(options.filters),
         options.timeoutSeconds ?? undefined
       )
+    );
+  },
+  openInternetServerList(
+    appId: number,
+    options: Pick<MatchmakingServerListOptions, "filters"> = {}
+  ): MatchmakingServerListRequest {
+    return normalizeMatchmakingServerListRequest(
+      native().matchmakingServersOpenInternetServerList(appId, nativeMatchmakingServerFilters(options.filters))
+    );
+  },
+  openLANServerList(appId: number): MatchmakingServerListRequest {
+    return normalizeMatchmakingServerListRequest(native().matchmakingServersOpenLanServerList(appId));
+  },
+  openFriendsServerList(
+    appId: number,
+    options: Pick<MatchmakingServerListOptions, "filters"> = {}
+  ): MatchmakingServerListRequest {
+    return normalizeMatchmakingServerListRequest(
+      native().matchmakingServersOpenFriendsServerList(appId, nativeMatchmakingServerFilters(options.filters))
+    );
+  },
+  openFavoritesServerList(
+    appId: number,
+    options: Pick<MatchmakingServerListOptions, "filters"> = {}
+  ): MatchmakingServerListRequest {
+    return normalizeMatchmakingServerListRequest(
+      native().matchmakingServersOpenFavoritesServerList(appId, nativeMatchmakingServerFilters(options.filters))
+    );
+  },
+  openHistoryServerList(
+    appId: number,
+    options: Pick<MatchmakingServerListOptions, "filters"> = {}
+  ): MatchmakingServerListRequest {
+    return normalizeMatchmakingServerListRequest(
+      native().matchmakingServersOpenHistoryServerList(appId, nativeMatchmakingServerFilters(options.filters))
+    );
+  },
+  openSpectatorServerList(
+    appId: number,
+    options: Pick<MatchmakingServerListOptions, "filters"> = {}
+  ): MatchmakingServerListRequest {
+    return normalizeMatchmakingServerListRequest(
+      native().matchmakingServersOpenSpectatorServerList(appId, nativeMatchmakingServerFilters(options.filters))
     );
   },
   async pingServer(ip: number, queryPort: number, timeoutSeconds?: number | null): Promise<MatchmakingServerPingResult> {
@@ -4874,6 +4973,37 @@ function normalizeMatchmakingServerListResult(
     responded: (result.responded ?? []).map(Number),
     failed: (result.failed ?? []).map(Number),
     servers: (result.servers ?? []).map(normalizeMatchmakingServerItem)
+  };
+}
+
+function normalizeMatchmakingServerListRequest(
+  request: NativeMatchmakingServerListRequest
+): MatchmakingServerListRequest {
+  const source = request as unknown as Record<string, unknown>;
+  return new MatchmakingServerListRequest(
+    BigInt(source.handle as bigint | number | string),
+    BigInt((source.steamRequest ?? source.steam_request ?? 0) as bigint | number | string),
+    Number(source.appId ?? source.app_id ?? 0),
+    String(source.kind ?? "")
+  );
+}
+
+function normalizeMatchmakingServerListRequestState(
+  state: NativeMatchmakingServerListRequestState
+): MatchmakingServerListRequestState {
+  const source = state as unknown as Record<string, unknown>;
+  return {
+    handle: BigInt(source.handle as bigint | number | string),
+    steamRequest: BigInt((source.steamRequest ?? source.steam_request ?? 0) as bigint | number | string),
+    appId: Number(source.appId ?? source.app_id ?? 0),
+    kind: String(source.kind ?? ""),
+    completed: Boolean(state.completed),
+    cancelled: Boolean(source.cancelled ?? source.canceled),
+    response: Number(state.response ?? 0),
+    responded: (state.responded ?? []).map(Number),
+    failed: (state.failed ?? []).map(Number),
+    refreshing: Boolean(state.refreshing),
+    serverCount: Number(source.serverCount ?? source.server_count ?? 0)
   };
 }
 

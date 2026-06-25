@@ -15,7 +15,7 @@ use std::ffi::{c_char, c_void, CStr, CString};
 use std::mem::MaybeUninit;
 use std::net::IpAddr;
 use std::ptr;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use steamworks_sys as sys;
@@ -98,6 +98,10 @@ const CALLBACK_GAME_SERVER_STATS_STORED: i32 = 1801;
 static NEXT_NETWORKING_FAKE_UDP_PORT_HANDLE: AtomicU32 = AtomicU32::new(1);
 static NETWORKING_FAKE_UDP_PORTS: Lazy<Mutex<HashMap<u32, usize>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
+static NEXT_MATCHMAKING_SERVER_LIST_HANDLE: AtomicU64 = AtomicU64::new(1);
+static MATCHMAKING_SERVER_LIST_REQUESTS: Lazy<
+    Mutex<HashMap<u64, MatchmakingServerListRequestEntry>>,
+> = Lazy::new(|| Mutex::new(HashMap::new()));
 const CALLBACK_HTTP_REQUEST_COMPLETED: i32 = 2101;
 const CALLBACK_HTTP_REQUEST_HEADERS_RECEIVED: i32 = 2102;
 const CALLBACK_HTTP_REQUEST_DATA_RECEIVED: i32 = 2103;
@@ -161,9 +165,17 @@ struct MatchmakingServerListState {
 struct MatchmakingServerListStateInner {
     request: usize,
     completed: bool,
+    cancelled: bool,
     response: u32,
     responded: Vec<i32>,
     failed: Vec<i32>,
+}
+
+struct MatchmakingServerListRequestEntry {
+    request: usize,
+    app_id: u32,
+    kind: MatchmakingServerListKind,
+    response: Box<MatchmakingServerListResponseRaw>,
 }
 
 #[repr(C)]
@@ -867,6 +879,31 @@ pub struct MatchmakingServerListResult {
     pub responded: Vec<i32>,
     pub failed: Vec<i32>,
     pub servers: Vec<MatchmakingServerItem>,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct MatchmakingServerListRequest {
+    pub handle: BigInt,
+    pub steam_request: BigInt,
+    pub app_id: u32,
+    pub kind: String,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct MatchmakingServerListRequestState {
+    pub handle: BigInt,
+    pub steam_request: BigInt,
+    pub app_id: u32,
+    pub kind: String,
+    pub completed: bool,
+    pub cancelled: bool,
+    pub response: u32,
+    pub responded: Vec<i32>,
+    pub failed: Vec<i32>,
+    pub refreshing: bool,
+    pub server_count: i32,
 }
 
 #[derive(Debug)]
@@ -8677,6 +8714,91 @@ pub async fn matchmaking_servers_request_spectator_server_list(
     .await
 }
 
+#[napi(js_name = "matchmakingServersOpenInternetServerList")]
+pub fn matchmaking_servers_open_internet_server_list(
+    app_id: u32,
+    filters: Option<Value>,
+) -> Result<MatchmakingServerListRequest, Error> {
+    open_matchmaking_server_list_request(MatchmakingServerListKind::Internet, app_id, filters)
+}
+
+#[napi(js_name = "matchmakingServersOpenLanServerList")]
+pub fn matchmaking_servers_open_lan_server_list(
+    app_id: u32,
+) -> Result<MatchmakingServerListRequest, Error> {
+    open_matchmaking_server_list_request(MatchmakingServerListKind::Lan, app_id, None)
+}
+
+#[napi(js_name = "matchmakingServersOpenFriendsServerList")]
+pub fn matchmaking_servers_open_friends_server_list(
+    app_id: u32,
+    filters: Option<Value>,
+) -> Result<MatchmakingServerListRequest, Error> {
+    open_matchmaking_server_list_request(MatchmakingServerListKind::Friends, app_id, filters)
+}
+
+#[napi(js_name = "matchmakingServersOpenFavoritesServerList")]
+pub fn matchmaking_servers_open_favorites_server_list(
+    app_id: u32,
+    filters: Option<Value>,
+) -> Result<MatchmakingServerListRequest, Error> {
+    open_matchmaking_server_list_request(MatchmakingServerListKind::Favorites, app_id, filters)
+}
+
+#[napi(js_name = "matchmakingServersOpenHistoryServerList")]
+pub fn matchmaking_servers_open_history_server_list(
+    app_id: u32,
+    filters: Option<Value>,
+) -> Result<MatchmakingServerListRequest, Error> {
+    open_matchmaking_server_list_request(MatchmakingServerListKind::History, app_id, filters)
+}
+
+#[napi(js_name = "matchmakingServersOpenSpectatorServerList")]
+pub fn matchmaking_servers_open_spectator_server_list(
+    app_id: u32,
+    filters: Option<Value>,
+) -> Result<MatchmakingServerListRequest, Error> {
+    open_matchmaking_server_list_request(MatchmakingServerListKind::Spectator, app_id, filters)
+}
+
+#[napi(js_name = "matchmakingServersGetServerListRequestState")]
+pub fn matchmaking_servers_get_server_list_request_state(
+    handle: BigInt,
+) -> Result<MatchmakingServerListRequestState, Error> {
+    get_matchmaking_server_list_request_state(handle)
+}
+
+#[napi(js_name = "matchmakingServersGetServerListRequestServerDetails")]
+pub fn matchmaking_servers_get_server_list_request_server_details(
+    handle: BigInt,
+    server: i32,
+) -> Result<Option<MatchmakingServerItem>, Error> {
+    get_matchmaking_server_list_request_server_details(handle, server)
+}
+
+#[napi(js_name = "matchmakingServersRefreshServerListQuery")]
+pub fn matchmaking_servers_refresh_server_list_query(handle: BigInt) -> Result<(), Error> {
+    refresh_matchmaking_server_list_query(handle)
+}
+
+#[napi(js_name = "matchmakingServersRefreshServerListServer")]
+pub fn matchmaking_servers_refresh_server_list_server(
+    handle: BigInt,
+    server: i32,
+) -> Result<(), Error> {
+    refresh_matchmaking_server_list_server(handle, server)
+}
+
+#[napi(js_name = "matchmakingServersCancelServerListQuery")]
+pub fn matchmaking_servers_cancel_server_list_query(handle: BigInt) -> Result<(), Error> {
+    cancel_matchmaking_server_list_query(handle)
+}
+
+#[napi(js_name = "matchmakingServersReleaseServerListRequest")]
+pub fn matchmaking_servers_release_server_list_request(handle: BigInt) -> Result<bool, Error> {
+    release_matchmaking_server_list_request(handle)
+}
+
 #[napi(js_name = "matchmakingServersPingServer")]
 pub async fn matchmaking_servers_ping_server(
     ip: u32,
@@ -12694,6 +12816,7 @@ fn ipv6_connectivity_protocol_from_u32(
     }
 }
 
+#[derive(Clone, Copy)]
 enum MatchmakingServerListKind {
     Internet,
     Lan,
@@ -12701,6 +12824,17 @@ enum MatchmakingServerListKind {
     Favorites,
     History,
     Spectator,
+}
+
+fn matchmaking_server_list_kind_name(kind: MatchmakingServerListKind) -> &'static str {
+    match kind {
+        MatchmakingServerListKind::Internet => "internet",
+        MatchmakingServerListKind::Lan => "lan",
+        MatchmakingServerListKind::Friends => "friends",
+        MatchmakingServerListKind::Favorites => "favorites",
+        MatchmakingServerListKind::History => "history",
+        MatchmakingServerListKind::Spectator => "spectator",
+    }
 }
 
 async fn request_matchmaking_server_list(
@@ -12713,79 +12847,18 @@ async fn request_matchmaking_server_list(
     let filter_count = len_to_u32(filter_values.len(), "matchmaking server filters")?;
 
     let mut response = matchmaking_server_list_response();
-    let request_handle = {
-        let response_ptr = response.as_mut() as *mut MatchmakingServerListResponseRaw
-            as *mut sys::ISteamMatchmakingServerListResponse;
-        let mut filter_value_ptr = filter_values.as_mut_ptr();
-        let filter_ptr = if filter_values.is_empty() {
-            ptr::null_mut()
-        } else {
-            &mut filter_value_ptr as *mut *mut sys::MatchMakingKeyValuePair_t
-        };
-        let servers = steam_matchmaking_servers()?;
-        let request = unsafe {
-            match kind {
-                MatchmakingServerListKind::Internet => {
-                    sys::SteamAPI_ISteamMatchmakingServers_RequestInternetServerList(
-                        servers,
-                        app_id,
-                        filter_ptr,
-                        filter_count,
-                        response_ptr,
-                    )
-                }
-                MatchmakingServerListKind::Lan => {
-                    sys::SteamAPI_ISteamMatchmakingServers_RequestLANServerList(
-                        servers,
-                        app_id,
-                        response_ptr,
-                    )
-                }
-                MatchmakingServerListKind::Friends => {
-                    sys::SteamAPI_ISteamMatchmakingServers_RequestFriendsServerList(
-                        servers,
-                        app_id,
-                        filter_ptr,
-                        filter_count,
-                        response_ptr,
-                    )
-                }
-                MatchmakingServerListKind::Favorites => {
-                    sys::SteamAPI_ISteamMatchmakingServers_RequestFavoritesServerList(
-                        servers,
-                        app_id,
-                        filter_ptr,
-                        filter_count,
-                        response_ptr,
-                    )
-                }
-                MatchmakingServerListKind::History => {
-                    sys::SteamAPI_ISteamMatchmakingServers_RequestHistoryServerList(
-                        servers,
-                        app_id,
-                        filter_ptr,
-                        filter_count,
-                        response_ptr,
-                    )
-                }
-                MatchmakingServerListKind::Spectator => {
-                    sys::SteamAPI_ISteamMatchmakingServers_RequestSpectatorServerList(
-                        servers,
-                        app_id,
-                        filter_ptr,
-                        filter_count,
-                        response_ptr,
-                    )
-                }
-            }
-        };
-        if request.is_null() {
+    let request_handle = match start_matchmaking_server_list_request(
+        kind,
+        app_id,
+        filter_count,
+        &mut filter_values,
+        &mut response,
+    ) {
+        Ok(request) => request,
+        Err(err) => {
             drop_matchmaking_server_list_response(response);
-            return Err(Error::from_reason(
-                "Steam returned an invalid matchmaking server list request",
-            ));
+            return Err(err);
         }
-        request as usize
     };
     matchmaking_server_list_set_request(&response, request_handle);
 
@@ -12826,6 +12899,260 @@ async fn request_matchmaking_server_list(
     unsafe { sys::SteamAPI_ISteamMatchmakingServers_ReleaseRequest(servers, request) };
     drop_matchmaking_server_list_response(response);
     result
+}
+
+fn open_matchmaking_server_list_request(
+    kind: MatchmakingServerListKind,
+    app_id: u32,
+    filters: Option<Value>,
+) -> Result<MatchmakingServerListRequest, Error> {
+    let mut filter_values = matchmaking_server_filters(filters)?;
+    let filter_count = len_to_u32(filter_values.len(), "matchmaking server filters")?;
+    let mut response = matchmaking_server_list_response();
+    let request = match start_matchmaking_server_list_request(
+        kind,
+        app_id,
+        filter_count,
+        &mut filter_values,
+        &mut response,
+    ) {
+        Ok(request) => request,
+        Err(err) => {
+            drop_matchmaking_server_list_response(response);
+            return Err(err);
+        }
+    };
+    matchmaking_server_list_set_request(&response, request);
+    let handle = NEXT_MATCHMAKING_SERVER_LIST_HANDLE.fetch_add(1, Ordering::Relaxed);
+    let entry = MatchmakingServerListRequestEntry {
+        request,
+        app_id,
+        kind,
+        response,
+    };
+    MATCHMAKING_SERVER_LIST_REQUESTS
+        .lock()
+        .unwrap()
+        .insert(handle, entry);
+    Ok(MatchmakingServerListRequest {
+        handle: handle.into(),
+        steam_request: (request as u64).into(),
+        app_id,
+        kind: matchmaking_server_list_kind_name(kind).to_owned(),
+    })
+}
+
+fn start_matchmaking_server_list_request(
+    kind: MatchmakingServerListKind,
+    app_id: u32,
+    filter_count: u32,
+    filter_values: &mut [sys::MatchMakingKeyValuePair_t],
+    response: &mut Box<MatchmakingServerListResponseRaw>,
+) -> Result<usize, Error> {
+    let response_ptr = response.as_mut() as *mut MatchmakingServerListResponseRaw
+        as *mut sys::ISteamMatchmakingServerListResponse;
+    let mut filter_value_ptr = filter_values.as_mut_ptr();
+    let filter_ptr = if filter_values.is_empty() {
+        ptr::null_mut()
+    } else {
+        &mut filter_value_ptr as *mut *mut sys::MatchMakingKeyValuePair_t
+    };
+    let servers = steam_matchmaking_servers()?;
+    let request = unsafe {
+        match kind {
+            MatchmakingServerListKind::Internet => {
+                sys::SteamAPI_ISteamMatchmakingServers_RequestInternetServerList(
+                    servers,
+                    app_id,
+                    filter_ptr,
+                    filter_count,
+                    response_ptr,
+                )
+            }
+            MatchmakingServerListKind::Lan => {
+                sys::SteamAPI_ISteamMatchmakingServers_RequestLANServerList(
+                    servers,
+                    app_id,
+                    response_ptr,
+                )
+            }
+            MatchmakingServerListKind::Friends => {
+                sys::SteamAPI_ISteamMatchmakingServers_RequestFriendsServerList(
+                    servers,
+                    app_id,
+                    filter_ptr,
+                    filter_count,
+                    response_ptr,
+                )
+            }
+            MatchmakingServerListKind::Favorites => {
+                sys::SteamAPI_ISteamMatchmakingServers_RequestFavoritesServerList(
+                    servers,
+                    app_id,
+                    filter_ptr,
+                    filter_count,
+                    response_ptr,
+                )
+            }
+            MatchmakingServerListKind::History => {
+                sys::SteamAPI_ISteamMatchmakingServers_RequestHistoryServerList(
+                    servers,
+                    app_id,
+                    filter_ptr,
+                    filter_count,
+                    response_ptr,
+                )
+            }
+            MatchmakingServerListKind::Spectator => {
+                sys::SteamAPI_ISteamMatchmakingServers_RequestSpectatorServerList(
+                    servers,
+                    app_id,
+                    filter_ptr,
+                    filter_count,
+                    response_ptr,
+                )
+            }
+        }
+    };
+    if request.is_null() {
+        Err(Error::from_reason(
+            "Steam returned an invalid matchmaking server list request",
+        ))
+    } else {
+        Ok(request as usize)
+    }
+}
+
+fn get_matchmaking_server_list_request_state(
+    handle: BigInt,
+) -> Result<MatchmakingServerListRequestState, Error> {
+    let handle = bigint_to_u64(handle, "matchmaking server list request handle")?;
+    run_callbacks();
+    let servers = steam_matchmaking_servers()?;
+    let requests = MATCHMAKING_SERVER_LIST_REQUESTS.lock().unwrap();
+    let entry = requests
+        .get(&handle)
+        .ok_or_else(|| matchmaking_server_list_request_error(handle))?;
+    let request = entry.request as sys::HServerListRequest;
+    let refreshing =
+        unsafe { sys::SteamAPI_ISteamMatchmakingServers_IsRefreshing(servers, request) };
+    let server_count =
+        unsafe { sys::SteamAPI_ISteamMatchmakingServers_GetServerCount(servers, request) };
+    let inner = unsafe { &*entry.response.state }.inner.lock().unwrap();
+    Ok(MatchmakingServerListRequestState {
+        handle: handle.into(),
+        steam_request: (entry.request as u64).into(),
+        app_id: entry.app_id,
+        kind: matchmaking_server_list_kind_name(entry.kind).to_owned(),
+        completed: inner.completed,
+        cancelled: inner.cancelled,
+        response: inner.response,
+        responded: inner.responded.clone(),
+        failed: inner.failed.clone(),
+        refreshing,
+        server_count,
+    })
+}
+
+fn get_matchmaking_server_list_request_server_details(
+    handle: BigInt,
+    server: i32,
+) -> Result<Option<MatchmakingServerItem>, Error> {
+    let handle = bigint_to_u64(handle, "matchmaking server list request handle")?;
+    run_callbacks();
+    let servers = steam_matchmaking_servers()?;
+    let requests = MATCHMAKING_SERVER_LIST_REQUESTS.lock().unwrap();
+    let entry = requests
+        .get(&handle)
+        .ok_or_else(|| matchmaking_server_list_request_error(handle))?;
+    let item = unsafe {
+        sys::SteamAPI_ISteamMatchmakingServers_GetServerDetails(
+            servers,
+            entry.request as sys::HServerListRequest,
+            server,
+        )
+    };
+    Ok(matchmaking_server_item(item))
+}
+
+fn refresh_matchmaking_server_list_query(handle: BigInt) -> Result<(), Error> {
+    let handle = bigint_to_u64(handle, "matchmaking server list request handle")?;
+    run_callbacks();
+    let servers = steam_matchmaking_servers()?;
+    let requests = MATCHMAKING_SERVER_LIST_REQUESTS.lock().unwrap();
+    let entry = requests
+        .get(&handle)
+        .ok_or_else(|| matchmaking_server_list_request_error(handle))?;
+    matchmaking_server_list_reset(&entry.response, entry.request);
+    unsafe {
+        sys::SteamAPI_ISteamMatchmakingServers_RefreshQuery(
+            servers,
+            entry.request as sys::HServerListRequest,
+        )
+    };
+    Ok(())
+}
+
+fn refresh_matchmaking_server_list_server(handle: BigInt, server: i32) -> Result<(), Error> {
+    let handle = bigint_to_u64(handle, "matchmaking server list request handle")?;
+    run_callbacks();
+    let servers = steam_matchmaking_servers()?;
+    let requests = MATCHMAKING_SERVER_LIST_REQUESTS.lock().unwrap();
+    let entry = requests
+        .get(&handle)
+        .ok_or_else(|| matchmaking_server_list_request_error(handle))?;
+    unsafe {
+        sys::SteamAPI_ISteamMatchmakingServers_RefreshServer(
+            servers,
+            entry.request as sys::HServerListRequest,
+            server,
+        )
+    };
+    Ok(())
+}
+
+fn cancel_matchmaking_server_list_query(handle: BigInt) -> Result<(), Error> {
+    let handle = bigint_to_u64(handle, "matchmaking server list request handle")?;
+    run_callbacks();
+    let servers = steam_matchmaking_servers()?;
+    let requests = MATCHMAKING_SERVER_LIST_REQUESTS.lock().unwrap();
+    let entry = requests
+        .get(&handle)
+        .ok_or_else(|| matchmaking_server_list_request_error(handle))?;
+    unsafe {
+        sys::SteamAPI_ISteamMatchmakingServers_CancelQuery(
+            servers,
+            entry.request as sys::HServerListRequest,
+        )
+    };
+    matchmaking_server_list_cancel(&entry.response);
+    Ok(())
+}
+
+fn release_matchmaking_server_list_request(handle: BigInt) -> Result<bool, Error> {
+    let handle = bigint_to_u64(handle, "matchmaking server list request handle")?;
+    run_callbacks();
+    let servers = steam_matchmaking_servers()?;
+    let entry = MATCHMAKING_SERVER_LIST_REQUESTS
+        .lock()
+        .unwrap()
+        .remove(&handle);
+    let Some(entry) = entry else {
+        return Ok(false);
+    };
+    let request = entry.request as sys::HServerListRequest;
+    if unsafe { sys::SteamAPI_ISteamMatchmakingServers_IsRefreshing(servers, request) } {
+        unsafe { sys::SteamAPI_ISteamMatchmakingServers_CancelQuery(servers, request) };
+    }
+    unsafe { sys::SteamAPI_ISteamMatchmakingServers_ReleaseRequest(servers, request) };
+    drop_matchmaking_server_list_response(entry.response);
+    Ok(true)
+}
+
+fn matchmaking_server_list_request_error(handle: u64) -> Error {
+    Error::from_reason(format!(
+        "unknown matchmaking server list request handle {handle}"
+    ))
 }
 
 async fn ping_matchmaking_server(
@@ -13072,6 +13399,22 @@ fn matchmaking_server_list_set_request(
     inner.request = request;
 }
 
+fn matchmaking_server_list_reset(response: &MatchmakingServerListResponseRaw, request: usize) {
+    let mut inner = unsafe { &*response.state }.inner.lock().unwrap();
+    inner.request = request;
+    inner.completed = false;
+    inner.cancelled = false;
+    inner.response = 0;
+    inner.responded.clear();
+    inner.failed.clear();
+}
+
+fn matchmaking_server_list_cancel(response: &MatchmakingServerListResponseRaw) {
+    let mut inner = unsafe { &*response.state }.inner.lock().unwrap();
+    inner.completed = true;
+    inner.cancelled = true;
+}
+
 fn matchmaking_server_list_events(
     response: &MatchmakingServerListResponseRaw,
 ) -> (Vec<i32>, Vec<i32>) {
@@ -13254,6 +13597,7 @@ unsafe extern "C" fn matchmaking_server_list_refresh_complete(
         inner.request = request;
         inner.response = server_response as u32;
         inner.completed = true;
+        inner.cancelled = false;
     }
 }
 

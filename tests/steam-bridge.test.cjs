@@ -1504,6 +1504,63 @@ test("matchmaking facade covers favorites, lobby filters, metadata, chat, and ca
       this.calls.push({ method: "matchmakingServersRequestSpectatorServerList", args: [appId, filters, timeoutSeconds] });
       return Promise.resolve(nativeServerList);
     },
+    matchmakingServersOpenInternetServerList(appId, filters) {
+      this.calls.push({ method: "matchmakingServersOpenInternetServerList", args: [appId, filters] });
+      return { handle: 55n, steam_request: 66n, app_id: appId, kind: "internet" };
+    },
+    matchmakingServersOpenLanServerList(appId) {
+      this.calls.push({ method: "matchmakingServersOpenLanServerList", args: [appId] });
+      return { handle: 56n, steam_request: 67n, app_id: appId, kind: "lan" };
+    },
+    matchmakingServersOpenFriendsServerList(appId, filters) {
+      this.calls.push({ method: "matchmakingServersOpenFriendsServerList", args: [appId, filters] });
+      return { handle: 57n, steam_request: 68n, app_id: appId, kind: "friends" };
+    },
+    matchmakingServersOpenFavoritesServerList(appId, filters) {
+      this.calls.push({ method: "matchmakingServersOpenFavoritesServerList", args: [appId, filters] });
+      return { handle: 58n, steam_request: 69n, app_id: appId, kind: "favorites" };
+    },
+    matchmakingServersOpenHistoryServerList(appId, filters) {
+      this.calls.push({ method: "matchmakingServersOpenHistoryServerList", args: [appId, filters] });
+      return { handle: 59n, steam_request: 70n, app_id: appId, kind: "history" };
+    },
+    matchmakingServersOpenSpectatorServerList(appId, filters) {
+      this.calls.push({ method: "matchmakingServersOpenSpectatorServerList", args: [appId, filters] });
+      return { handle: 60n, steam_request: 71n, app_id: appId, kind: "spectator" };
+    },
+    matchmakingServersGetServerListRequestState(handle) {
+      this.calls.push({ method: "matchmakingServersGetServerListRequestState", args: [handle] });
+      return {
+        handle,
+        steam_request: 66n,
+        app_id: 480,
+        kind: "internet",
+        completed: true,
+        cancelled: false,
+        response: 0,
+        responded: [0],
+        failed: [1],
+        refreshing: false,
+        server_count: 1
+      };
+    },
+    matchmakingServersGetServerListRequestServerDetails(handle, server) {
+      this.calls.push({ method: "matchmakingServersGetServerListRequestServerDetails", args: [handle, server] });
+      return nativeServer;
+    },
+    matchmakingServersRefreshServerListQuery(handle) {
+      this.calls.push({ method: "matchmakingServersRefreshServerListQuery", args: [handle] });
+    },
+    matchmakingServersRefreshServerListServer(handle, server) {
+      this.calls.push({ method: "matchmakingServersRefreshServerListServer", args: [handle, server] });
+    },
+    matchmakingServersCancelServerListQuery(handle) {
+      this.calls.push({ method: "matchmakingServersCancelServerListQuery", args: [handle] });
+    },
+    matchmakingServersReleaseServerListRequest(handle) {
+      this.calls.push({ method: "matchmakingServersReleaseServerListRequest", args: [handle] });
+      return true;
+    },
     matchmakingServersPingServer(ip, queryPort, timeoutSeconds) {
       this.calls.push({ method: "matchmakingServersPingServer", args: [ip, queryPort, timeoutSeconds] });
       return Promise.resolve({ responded: true, server: nativeServer });
@@ -1694,6 +1751,29 @@ test("matchmaking facade covers favorites, lobby filters, metadata, chat, and ca
   await steam.matchmaking.servers.requestFavoritesServerList(480);
   await steam.matchmaking.servers.requestHistoryServerList(480);
   await steam.matchmaking.servers.requestSpectatorServerList(480);
+  const serverListRequest = steam.matchmaking.servers.openInternetServerList(480, {
+    filters: [{ key: "map", value: "arena" }]
+  });
+  assert.equal(serverListRequest.handle, 55n);
+  assert.equal(serverListRequest.steamRequest, 66n);
+  assert.equal(serverListRequest.appId, 480);
+  assert.equal(serverListRequest.kind, "internet");
+  const requestState = serverListRequest.getState();
+  assert.equal(requestState.completed, true);
+  assert.equal(requestState.cancelled, false);
+  assert.equal(requestState.serverCount, 1);
+  assert.deepEqual(requestState.responded, [0]);
+  assert.equal(serverListRequest.getServerCount(), 1);
+  assert.equal(serverListRequest.getServerDetails(0).steamId.steamId64, serverId);
+  serverListRequest.refreshQuery();
+  serverListRequest.refreshServer(0);
+  serverListRequest.cancelQuery();
+  assert.equal(serverListRequest.release(), true);
+  assert.equal(steam.matchmaking.servers.openLANServerList(480).kind, "lan");
+  assert.equal(steam.matchmaking.servers.openFriendsServerList(480, { filters: [{ key: "secure" }] }).kind, "friends");
+  assert.equal(steam.matchmaking.servers.openFavoritesServerList(480).kind, "favorites");
+  assert.equal(steam.matchmaking.servers.openHistoryServerList(480).kind, "history");
+  assert.equal(steam.matchmaking.servers.openSpectatorServerList(480).kind, "spectator");
   const ping = await steam.matchmaking.servers.pingServer(2130706433, 27016, 5);
   assert.equal(ping.responded, true);
   assert.equal(ping.server.name, "Test Server");
@@ -1766,6 +1846,18 @@ test("matchmaking facade covers favorites, lobby filters, metadata, chat, and ca
   assert.deepEqual(fake.calls.find((call) => call.method === "matchmakingServersRequestFriendsServerList"), {
     method: "matchmakingServersRequestFriendsServerList",
     args: [480, [{ key: "secure", value: "" }], undefined]
+  });
+  assert.deepEqual(fake.calls.find((call) => call.method === "matchmakingServersOpenInternetServerList"), {
+    method: "matchmakingServersOpenInternetServerList",
+    args: [480, [{ key: "map", value: "arena" }]]
+  });
+  assert.deepEqual(fake.calls.find((call) => call.method === "matchmakingServersRefreshServerListQuery"), {
+    method: "matchmakingServersRefreshServerListQuery",
+    args: [55n]
+  });
+  assert.deepEqual(fake.calls.find((call) => call.method === "matchmakingServersReleaseServerListRequest"), {
+    method: "matchmakingServersReleaseServerListRequest",
+    args: [55n]
   });
 });
 
