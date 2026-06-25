@@ -3278,6 +3278,166 @@ test("cloud legacy facade covers published file workflows", async (t) => {
   });
 });
 
+test("legacy networking facade covers P2P sessions and socket helpers", (t) => {
+  const peer = 76561198000000010n;
+  const fake = createFakeNative({
+    networkingSendP2PPacket(steamId64, sendType, data) {
+      this.calls.push({ method: "networkingSendP2PPacket", args: [steamId64, sendType, data] });
+      return true;
+    },
+    networkingIsP2PPacketAvailable() {
+      this.calls.push({ method: "networkingIsP2PPacketAvailable", args: [] });
+      return 5;
+    },
+    networkingCloseP2PSession(steamId64) {
+      this.calls.push({ method: "networkingCloseP2PSession", args: [steamId64] });
+      return true;
+    },
+    networkingCloseP2PChannel(steamId64, channel) {
+      this.calls.push({ method: "networkingCloseP2PChannel", args: [steamId64, channel] });
+      return true;
+    },
+    networkingGetP2PSessionState(steamId64) {
+      this.calls.push({ method: "networkingGetP2PSessionState", args: [steamId64] });
+      return {
+        connection_active: true,
+        connecting: false,
+        session_error: 0,
+        using_relay: true,
+        bytes_queued_for_send: 128,
+        packets_queued_for_send: 3,
+        remote_ip: 2130706433,
+        remote_ip_address: "127.0.0.1",
+        remote_port: 27015
+      };
+    },
+    networkingAllowP2PPacketRelay(allow) {
+      this.calls.push({ method: "networkingAllowP2PPacketRelay", args: [allow] });
+      return true;
+    },
+    networkingCreateListenSocket(virtualP2PPort, ip, port, allowPacketRelay) {
+      this.calls.push({ method: "networkingCreateListenSocket", args: [virtualP2PPort, ip, port, allowPacketRelay] });
+      return 101;
+    },
+    networkingCreateP2PConnectionSocket(steamId64, virtualPort, timeoutSeconds, allowPacketRelay) {
+      this.calls.push({
+        method: "networkingCreateP2PConnectionSocket",
+        args: [steamId64, virtualPort, timeoutSeconds, allowPacketRelay]
+      });
+      return 102;
+    },
+    networkingCreateConnectionSocket(ip, port, timeoutSeconds) {
+      this.calls.push({ method: "networkingCreateConnectionSocket", args: [ip, port, timeoutSeconds] });
+      return 103;
+    },
+    networkingDestroySocket(socket, notifyRemoteEnd) {
+      this.calls.push({ method: "networkingDestroySocket", args: [socket, notifyRemoteEnd] });
+      return true;
+    },
+    networkingDestroyListenSocket(socket, notifyRemoteEnd) {
+      this.calls.push({ method: "networkingDestroyListenSocket", args: [socket, notifyRemoteEnd] });
+      return true;
+    },
+    networkingSendDataOnSocket(socket, data, reliable) {
+      this.calls.push({ method: "networkingSendDataOnSocket", args: [socket, data, reliable] });
+      return true;
+    },
+    networkingIsDataAvailableOnSocket(socket) {
+      this.calls.push({ method: "networkingIsDataAvailableOnSocket", args: [socket] });
+      return 7;
+    },
+    networkingRetrieveDataFromSocket(socket, size) {
+      this.calls.push({ method: "networkingRetrieveDataFromSocket", args: [socket, size] });
+      return { data: Buffer.from("socket"), size: 6 };
+    },
+    networkingIsDataAvailable(listenSocket) {
+      this.calls.push({ method: "networkingIsDataAvailable", args: [listenSocket] });
+      return { socket: 103, size: 4 };
+    },
+    networkingRetrieveData(listenSocket, size) {
+      this.calls.push({ method: "networkingRetrieveData", args: [listenSocket, size] });
+      return { socket: 103, data: Buffer.from("list"), size: 4 };
+    },
+    networkingGetSocketInfo(socket) {
+      this.calls.push({ method: "networkingGetSocketInfo", args: [socket] });
+      return {
+        remote_steam_id: { steamId64: "76561198000000010", steamId32: "STEAM_0:0:19867141", accountId: 39734282 },
+        socket_status: 1,
+        remote_ip: 2130706433,
+        remote_ip_address: "127.0.0.1",
+        remote_port: 27015
+      };
+    },
+    networkingGetListenSocketInfo(listenSocket) {
+      this.calls.push({ method: "networkingGetListenSocketInfo", args: [listenSocket] });
+      return { ip: 2130706433, ip_address: "127.0.0.1", port: 27016 };
+    },
+    networkingGetSocketConnectionType(socket) {
+      this.calls.push({ method: "networkingGetSocketConnectionType", args: [socket] });
+      return 2;
+    },
+    networkingGetMaxPacketSize(socket) {
+      this.calls.push({ method: "networkingGetMaxPacketSize", args: [socket] });
+      return 1200;
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  assert.equal(steam.networking.P2PSessionError.Timeout, 4);
+  assert.equal(steam.networking.LegacySocketState.Connected, 1);
+  assert.equal(steam.networking.LegacySocketConnectionType.UDPRelay, 2);
+  assert.equal(steam.networking.sendP2PPacket(peer, steam.networking.SendType.Reliable, new Uint8Array([1, 2])), true);
+  assert.equal(steam.networking.isP2PPacketAvailable(), 5);
+  assert.equal(steam.networking.closeP2PSession(peer), true);
+  assert.equal(steam.networking.closeP2PChannel(peer, 2), true);
+  assert.deepEqual(steam.networking.getP2PSessionState(peer), {
+    connectionActive: true,
+    connecting: false,
+    sessionError: 0,
+    usingRelay: true,
+    bytesQueuedForSend: 128,
+    packetsQueuedForSend: 3,
+    remoteIp: 2130706433,
+    remoteIpAddress: "127.0.0.1",
+    remotePort: 27015
+  });
+  assert.equal(steam.networking.allowP2PPacketRelay(true), true);
+  assert.equal(steam.networking.createListenSocket(1, { ip: 2130706433, port: 27016, allowPacketRelay: false }), 101);
+  assert.equal(steam.networking.createP2PConnectionSocket(peer, 2, 30, false), 102);
+  assert.equal(steam.networking.createConnectionSocket(2130706433, 27015, 10), 103);
+  assert.equal(steam.networking.destroySocket(103, true), true);
+  assert.equal(steam.networking.destroyListenSocket(101, true), true);
+  assert.equal(steam.networking.sendDataOnSocket(103, new Uint8Array([3, 4]), false), true);
+  assert.equal(steam.networking.isDataAvailableOnSocket(103), 7);
+  assert.deepEqual(steam.networking.retrieveDataFromSocket(103, 7), { data: Buffer.from("socket"), size: 6 });
+  assert.deepEqual(steam.networking.isDataAvailable(101), { socket: 103, size: 4 });
+  assert.deepEqual(steam.networking.retrieveData(101, 4), { socket: 103, data: Buffer.from("list"), size: 4 });
+  assert.deepEqual(steam.networking.getSocketInfo(103), {
+    remoteSteamId: { steamId64: 76561198000000010n, steamId32: "STEAM_0:0:19867141", accountId: 39734282 },
+    socketStatus: 1,
+    remoteIp: 2130706433,
+    remoteIpAddress: "127.0.0.1",
+    remotePort: 27015
+  });
+  assert.deepEqual(steam.networking.getListenSocketInfo(101), {
+    ip: 2130706433,
+    ipAddress: "127.0.0.1",
+    port: 27016
+  });
+  assert.equal(steam.networking.getSocketConnectionType(103), 2);
+  assert.equal(steam.networking.getMaxPacketSize(103), 1200);
+  assert.deepEqual(fake.calls.find((call) => call.method === "networkingCreateListenSocket"), {
+    method: "networkingCreateListenSocket",
+    args: [1, 2130706433, 27016, false]
+  });
+  assert.deepEqual(fake.calls.find((call) => call.method === "networkingSendDataOnSocket"), {
+    method: "networkingSendDataOnSocket",
+    args: [103, Buffer.from([3, 4]), false]
+  });
+});
+
 test("networking messages facade covers identity, message, session, and callback flows", (t) => {
   const peer = { identity_type: 16, text: "steamid:76561198000000010", steam_id64: "76561198000000010" };
   const quickStatus = {
@@ -3495,6 +3655,100 @@ test("game server legacy networking facade dispatches through game server native
     },
     gameServerNetworkingAcceptP2PSession(steamId64) {
       this.calls.push({ method: "gameServerNetworkingAcceptP2PSession", args: [steamId64] });
+    },
+    gameServerNetworkingCloseP2PSession(steamId64) {
+      this.calls.push({ method: "gameServerNetworkingCloseP2PSession", args: [steamId64] });
+      return true;
+    },
+    gameServerNetworkingCloseP2PChannel(steamId64, channel) {
+      this.calls.push({ method: "gameServerNetworkingCloseP2PChannel", args: [steamId64, channel] });
+      return true;
+    },
+    gameServerNetworkingGetP2PSessionState(steamId64) {
+      this.calls.push({ method: "gameServerNetworkingGetP2PSessionState", args: [steamId64] });
+      return {
+        connectionActive: true,
+        connecting: false,
+        sessionError: 0,
+        usingRelay: false,
+        bytesQueuedForSend: 64,
+        packetsQueuedForSend: 1,
+        remoteIp: 2130706433,
+        remoteIpAddress: "127.0.0.1",
+        remotePort: 27015
+      };
+    },
+    gameServerNetworkingAllowP2PPacketRelay(allow) {
+      this.calls.push({ method: "gameServerNetworkingAllowP2PPacketRelay", args: [allow] });
+      return true;
+    },
+    gameServerNetworkingCreateListenSocket(virtualP2PPort, ip, port, allowPacketRelay) {
+      this.calls.push({
+        method: "gameServerNetworkingCreateListenSocket",
+        args: [virtualP2PPort, ip, port, allowPacketRelay]
+      });
+      return 201;
+    },
+    gameServerNetworkingCreateP2PConnectionSocket(steamId64, virtualPort, timeoutSeconds, allowPacketRelay) {
+      this.calls.push({
+        method: "gameServerNetworkingCreateP2PConnectionSocket",
+        args: [steamId64, virtualPort, timeoutSeconds, allowPacketRelay]
+      });
+      return 202;
+    },
+    gameServerNetworkingCreateConnectionSocket(ip, port, timeoutSeconds) {
+      this.calls.push({ method: "gameServerNetworkingCreateConnectionSocket", args: [ip, port, timeoutSeconds] });
+      return 203;
+    },
+    gameServerNetworkingDestroySocket(socket, notifyRemoteEnd) {
+      this.calls.push({ method: "gameServerNetworkingDestroySocket", args: [socket, notifyRemoteEnd] });
+      return true;
+    },
+    gameServerNetworkingDestroyListenSocket(socket, notifyRemoteEnd) {
+      this.calls.push({ method: "gameServerNetworkingDestroyListenSocket", args: [socket, notifyRemoteEnd] });
+      return true;
+    },
+    gameServerNetworkingSendDataOnSocket(socket, data, reliable) {
+      this.calls.push({ method: "gameServerNetworkingSendDataOnSocket", args: [socket, data, reliable] });
+      return true;
+    },
+    gameServerNetworkingIsDataAvailableOnSocket(socket) {
+      this.calls.push({ method: "gameServerNetworkingIsDataAvailableOnSocket", args: [socket] });
+      return 5;
+    },
+    gameServerNetworkingRetrieveDataFromSocket(socket, size) {
+      this.calls.push({ method: "gameServerNetworkingRetrieveDataFromSocket", args: [socket, size] });
+      return { data: Buffer.from("server-socket"), size: 13 };
+    },
+    gameServerNetworkingIsDataAvailable(listenSocket) {
+      this.calls.push({ method: "gameServerNetworkingIsDataAvailable", args: [listenSocket] });
+      return { socket: 203, size: 6 };
+    },
+    gameServerNetworkingRetrieveData(listenSocket, size) {
+      this.calls.push({ method: "gameServerNetworkingRetrieveData", args: [listenSocket, size] });
+      return { socket: 203, data: Buffer.from("server"), size: 6 };
+    },
+    gameServerNetworkingGetSocketInfo(socket) {
+      this.calls.push({ method: "gameServerNetworkingGetSocketInfo", args: [socket] });
+      return {
+        remoteSteamId: { steamId64: "76561198000000011", steamId32: "STEAM_0:1:19867141", accountId: 39734283 },
+        socketStatus: 1,
+        remoteIp: 2130706433,
+        remoteIpAddress: "127.0.0.1",
+        remotePort: 27015
+      };
+    },
+    gameServerNetworkingGetListenSocketInfo(listenSocket) {
+      this.calls.push({ method: "gameServerNetworkingGetListenSocketInfo", args: [listenSocket] });
+      return { ip: 2130706433, ipAddress: "127.0.0.1", port: 27016 };
+    },
+    gameServerNetworkingGetSocketConnectionType(socket) {
+      this.calls.push({ method: "gameServerNetworkingGetSocketConnectionType", args: [socket] });
+      return 1;
+    },
+    gameServerNetworkingGetMaxPacketSize(socket) {
+      this.calls.push({ method: "gameServerNetworkingGetMaxPacketSize", args: [socket] });
+      return 1200;
     }
   });
   const steam = loadSteamWithFakeNative(fake);
@@ -3518,6 +3772,36 @@ test("game server legacy networking facade dispatches through game server native
     steamId: { steamId64: 76561198000000011n, steamId32: "STEAM_0:1:19867141", accountId: 39734283 }
   });
   steam.gameServerNetworking.acceptP2PSession(peer);
+  assert.equal(steam.gameServerNetworking.P2PSessionError.NoRightsToApp, 2);
+  assert.equal(steam.gameServerNetworking.LegacySocketState.Connected, 1);
+  assert.equal(steam.gameServerNetworking.closeP2PSession(peer), true);
+  assert.equal(steam.gameServerNetworking.closeP2PChannel(peer, 4), true);
+  assert.equal(steam.gameServerNetworking.getP2PSessionState(peer).bytesQueuedForSend, 64);
+  assert.equal(steam.gameServerNetworking.allowP2PPacketRelay(true), true);
+  assert.equal(
+    steam.gameServerNetworking.createListenSocket(2, { ip: 2130706433, port: 27016, allowPacketRelay: false }),
+    201
+  );
+  assert.equal(steam.gameServerNetworking.createP2PConnectionSocket(peer, 2, 30, false), 202);
+  assert.equal(steam.gameServerNetworking.createConnectionSocket(2130706433, 27015, 10), 203);
+  assert.equal(steam.gameServerNetworking.destroySocket(203, true), true);
+  assert.equal(steam.gameServerNetworking.destroyListenSocket(201, true), true);
+  assert.equal(steam.gameServerNetworking.sendDataOnSocket(203, new Uint8Array([4, 5]), false), true);
+  assert.equal(steam.gameServerNetworking.isDataAvailableOnSocket(203), 5);
+  assert.deepEqual(steam.gameServerNetworking.retrieveDataFromSocket(203, 13), {
+    data: Buffer.from("server-socket"),
+    size: 13
+  });
+  assert.deepEqual(steam.gameServerNetworking.isDataAvailable(201), { socket: 203, size: 6 });
+  assert.deepEqual(steam.gameServerNetworking.retrieveData(201, 6), {
+    socket: 203,
+    data: Buffer.from("server"),
+    size: 6
+  });
+  assert.equal(steam.gameServerNetworking.getSocketInfo(203).remoteSteamId.steamId64, peer);
+  assert.equal(steam.gameServerNetworking.getListenSocketInfo(201).port, 27016);
+  assert.equal(steam.gameServerNetworking.getSocketConnectionType(203), 1);
+  assert.equal(steam.gameServerNetworking.getMaxPacketSize(203), 1200);
 
   nextPacket = null;
   assert.throws(() => steam.gameServerNetworking.readP2PPacket(6), /No Steam game-server P2P packet is available/);
@@ -3528,6 +3812,10 @@ test("game server legacy networking facade dispatches through game server native
   assert.deepEqual(fake.calls.find((call) => call.method === "gameServerNetworkingAcceptP2PSession"), {
     method: "gameServerNetworkingAcceptP2PSession",
     args: [peer]
+  });
+  assert.deepEqual(fake.calls.find((call) => call.method === "gameServerNetworkingSendDataOnSocket"), {
+    method: "gameServerNetworkingSendDataOnSocket",
+    args: [203, Buffer.from([4, 5]), false]
   });
 });
 

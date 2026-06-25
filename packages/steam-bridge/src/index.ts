@@ -91,6 +91,12 @@ import {
   NativeMatchmakingServerPlayersResult,
   NativeMatchmakingServerRule,
   NativeMatchmakingServerRulesResult,
+  NativeLegacyNetworkingListenSocketAvailable,
+  NativeLegacyNetworkingListenSocketData,
+  NativeLegacyNetworkingListenSocketInfo,
+  NativeLegacyNetworkingP2PSessionState,
+  NativeLegacyNetworkingSocketData,
+  NativeLegacyNetworkingSocketInfo,
   NativeNumberOfCurrentPlayersResult,
   NativeNetworkingAuthenticationStatus,
   NativeNetworkingCertificateResult,
@@ -835,6 +841,54 @@ export interface P2PPacket {
   data: Buffer;
   size: number;
   steamId: SteamId;
+}
+
+export interface LegacyNetworkingP2PSessionState {
+  connectionActive: boolean;
+  connecting: boolean;
+  sessionError: number;
+  usingRelay: boolean;
+  bytesQueuedForSend: number;
+  packetsQueuedForSend: number;
+  remoteIp: number;
+  remoteIpAddress: string;
+  remotePort: number;
+}
+
+export interface LegacyNetworkingListenSocketOptions {
+  ip?: number;
+  port?: number;
+  allowPacketRelay?: boolean;
+}
+
+export interface LegacyNetworkingSocketData {
+  data: Buffer;
+  size: number;
+}
+
+export interface LegacyNetworkingListenSocketAvailable {
+  socket: number;
+  size: number;
+}
+
+export interface LegacyNetworkingListenSocketData {
+  socket: number;
+  data: Buffer;
+  size: number;
+}
+
+export interface LegacyNetworkingSocketInfo {
+  remoteSteamId: SteamId;
+  socketStatus: number;
+  remoteIp: number | null;
+  remoteIpAddress: string | null;
+  remotePort: number;
+}
+
+export interface LegacyNetworkingListenSocketInfo {
+  ip: number | null;
+  ipAddress: string | null;
+  port: number;
 }
 
 export interface NetworkingIdentity {
@@ -2099,6 +2153,35 @@ export const SendType = {
   UnreliableNoDelay: 1,
   Reliable: 2,
   ReliableWithBuffering: 3
+} as const;
+
+export const P2PSessionError = {
+  None: 0,
+  NotRunningAppDeleted: 1,
+  NoRightsToApp: 2,
+  DestinationNotLoggedInDeleted: 3,
+  Timeout: 4,
+  Max: 5
+} as const;
+
+export const LegacyNetworkingSocketState = {
+  Invalid: 0,
+  Connected: 1,
+  Initiated: 10,
+  LocalCandidatesFound: 11,
+  ReceivedRemoteCandidates: 12,
+  ChallengeHandshake: 15,
+  Disconnecting: 21,
+  LocalDisconnect: 22,
+  TimeoutDuringConnect: 23,
+  RemoteEndDisconnected: 24,
+  ConnectionBroken: 25
+} as const;
+
+export const LegacyNetworkingSocketConnectionType = {
+  NotConnected: 0,
+  UDP: 1,
+  UDPRelay: 2
 } as const;
 
 export const NetworkingSendFlags = {
@@ -5112,6 +5195,9 @@ export const matchmaking = {
 
 export const networking = {
   SendType,
+  P2PSessionError,
+  LegacySocketState: LegacyNetworkingSocketState,
+  LegacySocketConnectionType: LegacyNetworkingSocketConnectionType,
   NetworkingSendFlags,
   NetworkingConnectionState,
   NetworkingAvailability,
@@ -5122,8 +5208,8 @@ export const networking = {
   NetworkingDebugOutputType,
   NetworkingConfigValue,
   NetworkingIceEnable,
-  sendP2PPacket(steamId64: bigint, sendType: number, data: Buffer): boolean {
-    return native().networkingSendP2PPacket(steamId64, sendType, data);
+  sendP2PPacket(steamId64: bigint, sendType: number, data: Buffer | Uint8Array): boolean {
+    return native().networkingSendP2PPacket(steamId64, sendType, Buffer.from(data));
   },
   isP2PPacketAvailable(): number {
     return native().networkingIsP2PPacketAvailable();
@@ -5137,6 +5223,70 @@ export const networking = {
   },
   acceptP2PSession(steamId64: bigint): void {
     native().networkingAcceptP2PSession(steamId64);
+  },
+  closeP2PSession(steamId64: bigint): boolean {
+    return native().networkingCloseP2PSession(steamId64);
+  },
+  closeP2PChannel(steamId64: bigint, channel: number): boolean {
+    return native().networkingCloseP2PChannel(steamId64, channel);
+  },
+  getP2PSessionState(steamId64: bigint): LegacyNetworkingP2PSessionState | null {
+    return normalizeLegacyNetworkingP2PSessionState(native().networkingGetP2PSessionState(steamId64));
+  },
+  allowP2PPacketRelay(allow: boolean): boolean {
+    return native().networkingAllowP2PPacketRelay(allow);
+  },
+  createListenSocket(virtualP2PPort = 0, options: LegacyNetworkingListenSocketOptions = {}): number {
+    return native().networkingCreateListenSocket(
+      virtualP2PPort,
+      options.ip,
+      options.port,
+      options.allowPacketRelay
+    );
+  },
+  createP2PConnectionSocket(
+    steamId64: bigint,
+    virtualPort = 0,
+    timeoutSeconds = 0,
+    allowPacketRelay = true
+  ): number {
+    return native().networkingCreateP2PConnectionSocket(steamId64, virtualPort, timeoutSeconds, allowPacketRelay);
+  },
+  createConnectionSocket(ip: number, port: number, timeoutSeconds = 0): number {
+    return native().networkingCreateConnectionSocket(ip, port, timeoutSeconds);
+  },
+  destroySocket(socket: number, notifyRemoteEnd = false): boolean {
+    return native().networkingDestroySocket(socket, notifyRemoteEnd);
+  },
+  destroyListenSocket(socket: number, notifyRemoteEnd = false): boolean {
+    return native().networkingDestroyListenSocket(socket, notifyRemoteEnd);
+  },
+  sendDataOnSocket(socket: number, data: Buffer | Uint8Array, reliable = true): boolean {
+    return native().networkingSendDataOnSocket(socket, Buffer.from(data), reliable);
+  },
+  isDataAvailableOnSocket(socket: number): number {
+    return native().networkingIsDataAvailableOnSocket(socket);
+  },
+  retrieveDataFromSocket(socket: number, size: number): LegacyNetworkingSocketData | null {
+    return normalizeLegacyNetworkingSocketData(native().networkingRetrieveDataFromSocket(socket, size));
+  },
+  isDataAvailable(listenSocket: number): LegacyNetworkingListenSocketAvailable | null {
+    return normalizeLegacyNetworkingListenSocketAvailable(native().networkingIsDataAvailable(listenSocket));
+  },
+  retrieveData(listenSocket: number, size: number): LegacyNetworkingListenSocketData | null {
+    return normalizeLegacyNetworkingListenSocketData(native().networkingRetrieveData(listenSocket, size));
+  },
+  getSocketInfo(socket: number): LegacyNetworkingSocketInfo | null {
+    return normalizeLegacyNetworkingSocketInfo(native().networkingGetSocketInfo(socket));
+  },
+  getListenSocketInfo(listenSocket: number): LegacyNetworkingListenSocketInfo | null {
+    return normalizeLegacyNetworkingListenSocketInfo(native().networkingGetListenSocketInfo(listenSocket));
+  },
+  getSocketConnectionType(socket: number): number {
+    return native().networkingGetSocketConnectionType(socket);
+  },
+  getMaxPacketSize(socket: number): number {
+    return native().networkingGetMaxPacketSize(socket);
   },
   messages: {
     SendFlags: NetworkingSendFlags,
@@ -5565,6 +5715,9 @@ export const networking = {
 
 export const gameServerNetworking = {
   SendType,
+  P2PSessionError,
+  LegacySocketState: LegacyNetworkingSocketState,
+  LegacySocketConnectionType: LegacyNetworkingSocketConnectionType,
   sendP2PPacket(steamId64: bigint, sendType: number, data: Buffer | Uint8Array): boolean {
     return native().gameServerNetworkingSendP2PPacket(steamId64, sendType, Buffer.from(data));
   },
@@ -5580,6 +5733,75 @@ export const gameServerNetworking = {
   },
   acceptP2PSession(steamId64: bigint): void {
     native().gameServerNetworkingAcceptP2PSession(steamId64);
+  },
+  closeP2PSession(steamId64: bigint): boolean {
+    return native().gameServerNetworkingCloseP2PSession(steamId64);
+  },
+  closeP2PChannel(steamId64: bigint, channel: number): boolean {
+    return native().gameServerNetworkingCloseP2PChannel(steamId64, channel);
+  },
+  getP2PSessionState(steamId64: bigint): LegacyNetworkingP2PSessionState | null {
+    return normalizeLegacyNetworkingP2PSessionState(native().gameServerNetworkingGetP2PSessionState(steamId64));
+  },
+  allowP2PPacketRelay(allow: boolean): boolean {
+    return native().gameServerNetworkingAllowP2PPacketRelay(allow);
+  },
+  createListenSocket(virtualP2PPort = 0, options: LegacyNetworkingListenSocketOptions = {}): number {
+    return native().gameServerNetworkingCreateListenSocket(
+      virtualP2PPort,
+      options.ip,
+      options.port,
+      options.allowPacketRelay
+    );
+  },
+  createP2PConnectionSocket(
+    steamId64: bigint,
+    virtualPort = 0,
+    timeoutSeconds = 0,
+    allowPacketRelay = true
+  ): number {
+    return native().gameServerNetworkingCreateP2PConnectionSocket(
+      steamId64,
+      virtualPort,
+      timeoutSeconds,
+      allowPacketRelay
+    );
+  },
+  createConnectionSocket(ip: number, port: number, timeoutSeconds = 0): number {
+    return native().gameServerNetworkingCreateConnectionSocket(ip, port, timeoutSeconds);
+  },
+  destroySocket(socket: number, notifyRemoteEnd = false): boolean {
+    return native().gameServerNetworkingDestroySocket(socket, notifyRemoteEnd);
+  },
+  destroyListenSocket(socket: number, notifyRemoteEnd = false): boolean {
+    return native().gameServerNetworkingDestroyListenSocket(socket, notifyRemoteEnd);
+  },
+  sendDataOnSocket(socket: number, data: Buffer | Uint8Array, reliable = true): boolean {
+    return native().gameServerNetworkingSendDataOnSocket(socket, Buffer.from(data), reliable);
+  },
+  isDataAvailableOnSocket(socket: number): number {
+    return native().gameServerNetworkingIsDataAvailableOnSocket(socket);
+  },
+  retrieveDataFromSocket(socket: number, size: number): LegacyNetworkingSocketData | null {
+    return normalizeLegacyNetworkingSocketData(native().gameServerNetworkingRetrieveDataFromSocket(socket, size));
+  },
+  isDataAvailable(listenSocket: number): LegacyNetworkingListenSocketAvailable | null {
+    return normalizeLegacyNetworkingListenSocketAvailable(native().gameServerNetworkingIsDataAvailable(listenSocket));
+  },
+  retrieveData(listenSocket: number, size: number): LegacyNetworkingListenSocketData | null {
+    return normalizeLegacyNetworkingListenSocketData(native().gameServerNetworkingRetrieveData(listenSocket, size));
+  },
+  getSocketInfo(socket: number): LegacyNetworkingSocketInfo | null {
+    return normalizeLegacyNetworkingSocketInfo(native().gameServerNetworkingGetSocketInfo(socket));
+  },
+  getListenSocketInfo(listenSocket: number): LegacyNetworkingListenSocketInfo | null {
+    return normalizeLegacyNetworkingListenSocketInfo(native().gameServerNetworkingGetListenSocketInfo(listenSocket));
+  },
+  getSocketConnectionType(socket: number): number {
+    return native().gameServerNetworkingGetSocketConnectionType(socket);
+  },
+  getMaxPacketSize(socket: number): number {
+    return native().gameServerNetworkingGetMaxPacketSize(socket);
   }
 };
 
@@ -8310,6 +8532,78 @@ function normalizeP2PPacket(packet: NativeP2PPacket): P2PPacket {
     data: packet.data,
     size: packet.size,
     steamId: normalizeSteamId(packet.steamId)
+  };
+}
+
+function normalizeLegacyNetworkingP2PSessionState(
+  state: NativeLegacyNetworkingP2PSessionState | null | undefined
+): LegacyNetworkingP2PSessionState | null {
+  if (!state) {
+    return null;
+  }
+  const source = state as unknown as Record<string, unknown>;
+  return {
+    connectionActive: Boolean(source.connectionActive ?? source.connection_active),
+    connecting: Boolean(source.connecting),
+    sessionError: Number(source.sessionError ?? source.session_error ?? 0),
+    usingRelay: Boolean(source.usingRelay ?? source.using_relay),
+    bytesQueuedForSend: Number(source.bytesQueuedForSend ?? source.bytes_queued_for_send ?? 0),
+    packetsQueuedForSend: Number(source.packetsQueuedForSend ?? source.packets_queued_for_send ?? 0),
+    remoteIp: Number(source.remoteIp ?? source.remote_ip ?? 0),
+    remoteIpAddress: String(source.remoteIpAddress ?? source.remote_ip_address ?? ""),
+    remotePort: Number(source.remotePort ?? source.remote_port ?? 0)
+  };
+}
+
+function normalizeLegacyNetworkingSocketData(
+  data: NativeLegacyNetworkingSocketData | null | undefined
+): LegacyNetworkingSocketData | null {
+  return data ? { data: data.data, size: Number(data.size) } : null;
+}
+
+function normalizeLegacyNetworkingListenSocketAvailable(
+  available: NativeLegacyNetworkingListenSocketAvailable | null | undefined
+): LegacyNetworkingListenSocketAvailable | null {
+  return available ? { socket: Number(available.socket), size: Number(available.size) } : null;
+}
+
+function normalizeLegacyNetworkingListenSocketData(
+  data: NativeLegacyNetworkingListenSocketData | null | undefined
+): LegacyNetworkingListenSocketData | null {
+  return data ? { socket: Number(data.socket), data: data.data, size: Number(data.size) } : null;
+}
+
+function normalizeLegacyNetworkingSocketInfo(
+  info: NativeLegacyNetworkingSocketInfo | null | undefined
+): LegacyNetworkingSocketInfo | null {
+  if (!info) {
+    return null;
+  }
+  const source = info as unknown as Record<string, unknown>;
+  const remoteIp = source.remoteIp ?? source.remote_ip;
+  const remoteIpAddress = source.remoteIpAddress ?? source.remote_ip_address;
+  return {
+    remoteSteamId: normalizeSteamId((source.remoteSteamId ?? source.remote_steam_id) as NativeSteamId),
+    socketStatus: Number(source.socketStatus ?? source.socket_status ?? 0),
+    remoteIp: remoteIp == null ? null : Number(remoteIp),
+    remoteIpAddress: remoteIpAddress == null ? null : String(remoteIpAddress),
+    remotePort: Number(source.remotePort ?? source.remote_port ?? 0)
+  };
+}
+
+function normalizeLegacyNetworkingListenSocketInfo(
+  info: NativeLegacyNetworkingListenSocketInfo | null | undefined
+): LegacyNetworkingListenSocketInfo | null {
+  if (!info) {
+    return null;
+  }
+  const source = info as unknown as Record<string, unknown>;
+  const ip = source.ip;
+  const ipAddress = source.ipAddress ?? source.ip_address;
+  return {
+    ip: ip == null ? null : Number(ip),
+    ipAddress: ipAddress == null ? null : String(ipAddress),
+    port: Number(source.port ?? 0)
   };
 }
 

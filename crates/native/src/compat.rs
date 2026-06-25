@@ -913,6 +913,57 @@ pub struct P2PPacket {
 
 #[derive(Debug)]
 #[napi(object)]
+pub struct LegacyNetworkingP2PSessionState {
+    pub connection_active: bool,
+    pub connecting: bool,
+    pub session_error: u32,
+    pub using_relay: bool,
+    pub bytes_queued_for_send: i32,
+    pub packets_queued_for_send: i32,
+    pub remote_ip: u32,
+    pub remote_ip_address: String,
+    pub remote_port: u32,
+}
+
+#[napi(object)]
+pub struct LegacyNetworkingSocketData {
+    pub data: Buffer,
+    pub size: u32,
+}
+
+#[napi(object)]
+pub struct LegacyNetworkingListenSocketAvailable {
+    pub socket: u32,
+    pub size: u32,
+}
+
+#[napi(object)]
+pub struct LegacyNetworkingListenSocketData {
+    pub socket: u32,
+    pub data: Buffer,
+    pub size: u32,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct LegacyNetworkingSocketInfo {
+    pub remote_steam_id: PlayerSteamId,
+    pub socket_status: i32,
+    pub remote_ip: Option<u32>,
+    pub remote_ip_address: Option<String>,
+    pub remote_port: u32,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct LegacyNetworkingListenSocketInfo {
+    pub ip: Option<u32>,
+    pub ip_address: Option<String>,
+    pub port: u32,
+}
+
+#[derive(Debug)]
+#[napi(object)]
 pub struct GameServerInitOptions {
     pub ip: Option<u32>,
     pub game_port: u32,
@@ -9875,7 +9926,7 @@ fn networking_send_p2p_packet_with(
             accessor()?,
             bigint_to_u64(steam_id64, "steam id")?,
             data.as_ptr().cast::<c_void>(),
-            data.len() as u32,
+            len_to_u32(data.len(), "P2P packet data")?,
             send_type,
             0,
         )
@@ -9937,6 +9988,310 @@ fn networking_accept_p2p_session_with(
     }
 }
 
+fn networking_close_p2p_session_with(
+    accessor: SteamNetworkingAccessor,
+    steam_id64: BigInt,
+) -> Result<bool, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamNetworking_CloseP2PSessionWithUser(
+            accessor()?,
+            bigint_to_u64(steam_id64, "steam id")?,
+        )
+    })
+}
+
+fn networking_close_p2p_channel_with(
+    accessor: SteamNetworkingAccessor,
+    steam_id64: BigInt,
+    channel: i32,
+) -> Result<bool, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamNetworking_CloseP2PChannelWithUser(
+            accessor()?,
+            bigint_to_u64(steam_id64, "steam id")?,
+            channel,
+        )
+    })
+}
+
+fn networking_get_p2p_session_state_with(
+    accessor: SteamNetworkingAccessor,
+    steam_id64: BigInt,
+) -> Result<Option<LegacyNetworkingP2PSessionState>, Error> {
+    let mut state = unsafe { MaybeUninit::<sys::P2PSessionState_t>::zeroed().assume_init() };
+    let ok = unsafe {
+        sys::SteamAPI_ISteamNetworking_GetP2PSessionState(
+            accessor()?,
+            bigint_to_u64(steam_id64, "steam id")?,
+            &mut state,
+        )
+    };
+    Ok(ok.then(|| LegacyNetworkingP2PSessionState {
+        connection_active: state.m_bConnectionActive != 0,
+        connecting: state.m_bConnecting != 0,
+        session_error: u32::from(state.m_eP2PSessionError),
+        using_relay: state.m_bUsingRelay != 0,
+        bytes_queued_for_send: state.m_nBytesQueuedForSend,
+        packets_queued_for_send: state.m_nPacketsQueuedForSend,
+        remote_ip: state.m_nRemoteIP,
+        remote_ip_address: ipv4_to_string(state.m_nRemoteIP),
+        remote_port: u32::from(state.m_nRemotePort),
+    }))
+}
+
+fn networking_allow_p2p_packet_relay_with(
+    accessor: SteamNetworkingAccessor,
+    allow: bool,
+) -> Result<bool, Error> {
+    Ok(unsafe { sys::SteamAPI_ISteamNetworking_AllowP2PPacketRelay(accessor()?, allow) })
+}
+
+fn networking_create_listen_socket_with(
+    accessor: SteamNetworkingAccessor,
+    virtual_p2p_port: Option<i32>,
+    ip: Option<u32>,
+    port: Option<u32>,
+    allow_packet_relay: Option<bool>,
+) -> Result<u32, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamNetworking_CreateListenSocket(
+            accessor()?,
+            virtual_p2p_port.unwrap_or(0),
+            legacy_networking_steam_ip(ip.unwrap_or(0)),
+            port_to_u16(port.unwrap_or(0), "legacy networking listen port")?,
+            allow_packet_relay.unwrap_or(true),
+        )
+    })
+}
+
+fn networking_create_p2p_connection_socket_with(
+    accessor: SteamNetworkingAccessor,
+    steam_id64: BigInt,
+    virtual_port: Option<i32>,
+    timeout_seconds: Option<i32>,
+    allow_packet_relay: Option<bool>,
+) -> Result<u32, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamNetworking_CreateP2PConnectionSocket(
+            accessor()?,
+            bigint_to_u64(steam_id64, "steam id")?,
+            virtual_port.unwrap_or(0),
+            timeout_seconds.unwrap_or(0),
+            allow_packet_relay.unwrap_or(true),
+        )
+    })
+}
+
+fn networking_create_connection_socket_with(
+    accessor: SteamNetworkingAccessor,
+    ip: u32,
+    port: u32,
+    timeout_seconds: Option<i32>,
+) -> Result<u32, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamNetworking_CreateConnectionSocket(
+            accessor()?,
+            legacy_networking_steam_ip(ip),
+            port_to_u16(port, "legacy networking connection port")?,
+            timeout_seconds.unwrap_or(0),
+        )
+    })
+}
+
+fn networking_destroy_socket_with(
+    accessor: SteamNetworkingAccessor,
+    socket: u32,
+    notify_remote_end: Option<bool>,
+) -> Result<bool, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamNetworking_DestroySocket(
+            accessor()?,
+            socket,
+            notify_remote_end.unwrap_or(false),
+        )
+    })
+}
+
+fn networking_destroy_listen_socket_with(
+    accessor: SteamNetworkingAccessor,
+    socket: u32,
+    notify_remote_end: Option<bool>,
+) -> Result<bool, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamNetworking_DestroyListenSocket(
+            accessor()?,
+            socket,
+            notify_remote_end.unwrap_or(false),
+        )
+    })
+}
+
+fn networking_send_data_on_socket_with(
+    accessor: SteamNetworkingAccessor,
+    socket: u32,
+    data: Buffer,
+    reliable: Option<bool>,
+) -> Result<bool, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamNetworking_SendDataOnSocket(
+            accessor()?,
+            socket,
+            data.as_ptr() as *mut c_void,
+            len_to_u32(data.len(), "legacy networking socket data")?,
+            reliable.unwrap_or(true),
+        )
+    })
+}
+
+fn networking_is_data_available_on_socket_with(
+    accessor: SteamNetworkingAccessor,
+    socket: u32,
+) -> Result<u32, Error> {
+    let mut size = 0u32;
+    let ok = unsafe {
+        sys::SteamAPI_ISteamNetworking_IsDataAvailableOnSocket(accessor()?, socket, &mut size)
+    };
+    Ok(if ok { size } else { 0 })
+}
+
+fn networking_retrieve_data_from_socket_with(
+    accessor: SteamNetworkingAccessor,
+    socket: u32,
+    size: u32,
+) -> Result<Option<LegacyNetworkingSocketData>, Error> {
+    let mut data = vec![0u8; size as usize];
+    let mut actual_size = 0u32;
+    let ok = unsafe {
+        sys::SteamAPI_ISteamNetworking_RetrieveDataFromSocket(
+            accessor()?,
+            socket,
+            data.as_mut_ptr().cast::<c_void>(),
+            size,
+            &mut actual_size,
+        )
+    };
+    if !ok {
+        return Ok(None);
+    }
+    data.truncate((actual_size as usize).min(data.len()));
+    Ok(Some(LegacyNetworkingSocketData {
+        data: data.into(),
+        size: actual_size,
+    }))
+}
+
+fn networking_is_data_available_with(
+    accessor: SteamNetworkingAccessor,
+    listen_socket: u32,
+) -> Result<Option<LegacyNetworkingListenSocketAvailable>, Error> {
+    let mut size = 0u32;
+    let mut socket = 0u32;
+    let ok = unsafe {
+        sys::SteamAPI_ISteamNetworking_IsDataAvailable(
+            accessor()?,
+            listen_socket,
+            &mut size,
+            &mut socket,
+        )
+    };
+    Ok(ok.then_some(LegacyNetworkingListenSocketAvailable { socket, size }))
+}
+
+fn networking_retrieve_data_with(
+    accessor: SteamNetworkingAccessor,
+    listen_socket: u32,
+    size: u32,
+) -> Result<Option<LegacyNetworkingListenSocketData>, Error> {
+    let mut data = vec![0u8; size as usize];
+    let mut actual_size = 0u32;
+    let mut socket = 0u32;
+    let ok = unsafe {
+        sys::SteamAPI_ISteamNetworking_RetrieveData(
+            accessor()?,
+            listen_socket,
+            data.as_mut_ptr().cast::<c_void>(),
+            size,
+            &mut actual_size,
+            &mut socket,
+        )
+    };
+    if !ok {
+        return Ok(None);
+    }
+    data.truncate((actual_size as usize).min(data.len()));
+    Ok(Some(LegacyNetworkingListenSocketData {
+        socket,
+        data: data.into(),
+        size: actual_size,
+    }))
+}
+
+fn networking_get_socket_info_with(
+    accessor: SteamNetworkingAccessor,
+    socket: u32,
+) -> Result<Option<LegacyNetworkingSocketInfo>, Error> {
+    let mut remote = unsafe { MaybeUninit::<sys::CSteamID>::zeroed().assume_init() };
+    let mut socket_status = 0i32;
+    let mut remote_ip = unsafe { MaybeUninit::<sys::SteamIPAddress_t>::zeroed().assume_init() };
+    let mut remote_port = 0u16;
+    let ok = unsafe {
+        sys::SteamAPI_ISteamNetworking_GetSocketInfo(
+            accessor()?,
+            socket,
+            &mut remote,
+            &mut socket_status,
+            &mut remote_ip,
+            &mut remote_port,
+        )
+    };
+    let (remote_ip, remote_ip_address) = legacy_networking_ip_parts(remote_ip);
+    Ok(ok.then(|| LegacyNetworkingSocketInfo {
+        remote_steam_id: csteam_id_to_player(remote),
+        socket_status,
+        remote_ip,
+        remote_ip_address,
+        remote_port: u32::from(remote_port),
+    }))
+}
+
+fn networking_get_listen_socket_info_with(
+    accessor: SteamNetworkingAccessor,
+    listen_socket: u32,
+) -> Result<Option<LegacyNetworkingListenSocketInfo>, Error> {
+    let mut ip = unsafe { MaybeUninit::<sys::SteamIPAddress_t>::zeroed().assume_init() };
+    let mut port = 0u16;
+    let ok = unsafe {
+        sys::SteamAPI_ISteamNetworking_GetListenSocketInfo(
+            accessor()?,
+            listen_socket,
+            &mut ip,
+            &mut port,
+        )
+    };
+    let (ip, ip_address) = legacy_networking_ip_parts(ip);
+    Ok(ok.then(|| LegacyNetworkingListenSocketInfo {
+        ip,
+        ip_address,
+        port: u32::from(port),
+    }))
+}
+
+fn networking_get_socket_connection_type_with(
+    accessor: SteamNetworkingAccessor,
+    socket: u32,
+) -> Result<u32, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamNetworking_GetSocketConnectionType(accessor()?, socket) as u32
+    })
+}
+
+fn networking_get_max_packet_size_with(
+    accessor: SteamNetworkingAccessor,
+    socket: u32,
+) -> Result<i32, Error> {
+    Ok(unsafe { sys::SteamAPI_ISteamNetworking_GetMaxPacketSize(accessor()?, socket) })
+}
+
 #[napi(js_name = "networkingSendP2PPacket")]
 pub fn networking_send_p2p_packet(
     steam_id64: BigInt,
@@ -9961,6 +10316,146 @@ pub fn networking_accept_p2p_session(steam_id64: BigInt) -> Result<(), Error> {
     networking_accept_p2p_session_with(steam_networking, steam_id64)
 }
 
+#[napi(js_name = "networkingCloseP2PSession")]
+pub fn networking_close_p2p_session(steam_id64: BigInt) -> Result<bool, Error> {
+    networking_close_p2p_session_with(steam_networking, steam_id64)
+}
+
+#[napi(js_name = "networkingCloseP2PChannel")]
+pub fn networking_close_p2p_channel(steam_id64: BigInt, channel: i32) -> Result<bool, Error> {
+    networking_close_p2p_channel_with(steam_networking, steam_id64, channel)
+}
+
+#[napi(js_name = "networkingGetP2PSessionState")]
+pub fn networking_get_p2p_session_state(
+    steam_id64: BigInt,
+) -> Result<Option<LegacyNetworkingP2PSessionState>, Error> {
+    networking_get_p2p_session_state_with(steam_networking, steam_id64)
+}
+
+#[napi(js_name = "networkingAllowP2PPacketRelay")]
+pub fn networking_allow_p2p_packet_relay(allow: bool) -> Result<bool, Error> {
+    networking_allow_p2p_packet_relay_with(steam_networking, allow)
+}
+
+#[napi(js_name = "networkingCreateListenSocket")]
+pub fn networking_create_listen_socket(
+    virtual_p2p_port: Option<i32>,
+    ip: Option<u32>,
+    port: Option<u32>,
+    allow_packet_relay: Option<bool>,
+) -> Result<u32, Error> {
+    networking_create_listen_socket_with(
+        steam_networking,
+        virtual_p2p_port,
+        ip,
+        port,
+        allow_packet_relay,
+    )
+}
+
+#[napi(js_name = "networkingCreateP2PConnectionSocket")]
+pub fn networking_create_p2p_connection_socket(
+    steam_id64: BigInt,
+    virtual_port: Option<i32>,
+    timeout_seconds: Option<i32>,
+    allow_packet_relay: Option<bool>,
+) -> Result<u32, Error> {
+    networking_create_p2p_connection_socket_with(
+        steam_networking,
+        steam_id64,
+        virtual_port,
+        timeout_seconds,
+        allow_packet_relay,
+    )
+}
+
+#[napi(js_name = "networkingCreateConnectionSocket")]
+pub fn networking_create_connection_socket(
+    ip: u32,
+    port: u32,
+    timeout_seconds: Option<i32>,
+) -> Result<u32, Error> {
+    networking_create_connection_socket_with(steam_networking, ip, port, timeout_seconds)
+}
+
+#[napi(js_name = "networkingDestroySocket")]
+pub fn networking_destroy_socket(
+    socket: u32,
+    notify_remote_end: Option<bool>,
+) -> Result<bool, Error> {
+    networking_destroy_socket_with(steam_networking, socket, notify_remote_end)
+}
+
+#[napi(js_name = "networkingDestroyListenSocket")]
+pub fn networking_destroy_listen_socket(
+    socket: u32,
+    notify_remote_end: Option<bool>,
+) -> Result<bool, Error> {
+    networking_destroy_listen_socket_with(steam_networking, socket, notify_remote_end)
+}
+
+#[napi(js_name = "networkingSendDataOnSocket")]
+pub fn networking_send_data_on_socket(
+    socket: u32,
+    data: Buffer,
+    reliable: Option<bool>,
+) -> Result<bool, Error> {
+    networking_send_data_on_socket_with(steam_networking, socket, data, reliable)
+}
+
+#[napi(js_name = "networkingIsDataAvailableOnSocket")]
+pub fn networking_is_data_available_on_socket(socket: u32) -> Result<u32, Error> {
+    networking_is_data_available_on_socket_with(steam_networking, socket)
+}
+
+#[napi(js_name = "networkingRetrieveDataFromSocket")]
+pub fn networking_retrieve_data_from_socket(
+    socket: u32,
+    size: u32,
+) -> Result<Option<LegacyNetworkingSocketData>, Error> {
+    networking_retrieve_data_from_socket_with(steam_networking, socket, size)
+}
+
+#[napi(js_name = "networkingIsDataAvailable")]
+pub fn networking_is_data_available(
+    listen_socket: u32,
+) -> Result<Option<LegacyNetworkingListenSocketAvailable>, Error> {
+    networking_is_data_available_with(steam_networking, listen_socket)
+}
+
+#[napi(js_name = "networkingRetrieveData")]
+pub fn networking_retrieve_data(
+    listen_socket: u32,
+    size: u32,
+) -> Result<Option<LegacyNetworkingListenSocketData>, Error> {
+    networking_retrieve_data_with(steam_networking, listen_socket, size)
+}
+
+#[napi(js_name = "networkingGetSocketInfo")]
+pub fn networking_get_socket_info(
+    socket: u32,
+) -> Result<Option<LegacyNetworkingSocketInfo>, Error> {
+    networking_get_socket_info_with(steam_networking, socket)
+}
+
+#[napi(js_name = "networkingGetListenSocketInfo")]
+pub fn networking_get_listen_socket_info(
+    listen_socket: u32,
+) -> Result<Option<LegacyNetworkingListenSocketInfo>, Error> {
+    networking_get_listen_socket_info_with(steam_networking, listen_socket)
+}
+
+#[napi(js_name = "networkingGetSocketConnectionType")]
+pub fn networking_get_socket_connection_type(socket: u32) -> Result<u32, Error> {
+    networking_get_socket_connection_type_with(steam_networking, socket)
+}
+
+#[napi(js_name = "networkingGetMaxPacketSize")]
+pub fn networking_get_max_packet_size(socket: u32) -> Result<i32, Error> {
+    networking_get_max_packet_size_with(steam_networking, socket)
+}
+
 #[napi(js_name = "gameServerNetworkingSendP2PPacket")]
 pub fn game_server_networking_send_p2p_packet(
     steam_id64: BigInt,
@@ -9983,6 +10478,154 @@ pub fn game_server_networking_read_p2p_packet(size: u32) -> Result<Option<P2PPac
 #[napi(js_name = "gameServerNetworkingAcceptP2PSession")]
 pub fn game_server_networking_accept_p2p_session(steam_id64: BigInt) -> Result<(), Error> {
     networking_accept_p2p_session_with(steam_game_server_networking, steam_id64)
+}
+
+#[napi(js_name = "gameServerNetworkingCloseP2PSession")]
+pub fn game_server_networking_close_p2p_session(steam_id64: BigInt) -> Result<bool, Error> {
+    networking_close_p2p_session_with(steam_game_server_networking, steam_id64)
+}
+
+#[napi(js_name = "gameServerNetworkingCloseP2PChannel")]
+pub fn game_server_networking_close_p2p_channel(
+    steam_id64: BigInt,
+    channel: i32,
+) -> Result<bool, Error> {
+    networking_close_p2p_channel_with(steam_game_server_networking, steam_id64, channel)
+}
+
+#[napi(js_name = "gameServerNetworkingGetP2PSessionState")]
+pub fn game_server_networking_get_p2p_session_state(
+    steam_id64: BigInt,
+) -> Result<Option<LegacyNetworkingP2PSessionState>, Error> {
+    networking_get_p2p_session_state_with(steam_game_server_networking, steam_id64)
+}
+
+#[napi(js_name = "gameServerNetworkingAllowP2PPacketRelay")]
+pub fn game_server_networking_allow_p2p_packet_relay(allow: bool) -> Result<bool, Error> {
+    networking_allow_p2p_packet_relay_with(steam_game_server_networking, allow)
+}
+
+#[napi(js_name = "gameServerNetworkingCreateListenSocket")]
+pub fn game_server_networking_create_listen_socket(
+    virtual_p2p_port: Option<i32>,
+    ip: Option<u32>,
+    port: Option<u32>,
+    allow_packet_relay: Option<bool>,
+) -> Result<u32, Error> {
+    networking_create_listen_socket_with(
+        steam_game_server_networking,
+        virtual_p2p_port,
+        ip,
+        port,
+        allow_packet_relay,
+    )
+}
+
+#[napi(js_name = "gameServerNetworkingCreateP2PConnectionSocket")]
+pub fn game_server_networking_create_p2p_connection_socket(
+    steam_id64: BigInt,
+    virtual_port: Option<i32>,
+    timeout_seconds: Option<i32>,
+    allow_packet_relay: Option<bool>,
+) -> Result<u32, Error> {
+    networking_create_p2p_connection_socket_with(
+        steam_game_server_networking,
+        steam_id64,
+        virtual_port,
+        timeout_seconds,
+        allow_packet_relay,
+    )
+}
+
+#[napi(js_name = "gameServerNetworkingCreateConnectionSocket")]
+pub fn game_server_networking_create_connection_socket(
+    ip: u32,
+    port: u32,
+    timeout_seconds: Option<i32>,
+) -> Result<u32, Error> {
+    networking_create_connection_socket_with(
+        steam_game_server_networking,
+        ip,
+        port,
+        timeout_seconds,
+    )
+}
+
+#[napi(js_name = "gameServerNetworkingDestroySocket")]
+pub fn game_server_networking_destroy_socket(
+    socket: u32,
+    notify_remote_end: Option<bool>,
+) -> Result<bool, Error> {
+    networking_destroy_socket_with(steam_game_server_networking, socket, notify_remote_end)
+}
+
+#[napi(js_name = "gameServerNetworkingDestroyListenSocket")]
+pub fn game_server_networking_destroy_listen_socket(
+    socket: u32,
+    notify_remote_end: Option<bool>,
+) -> Result<bool, Error> {
+    networking_destroy_listen_socket_with(steam_game_server_networking, socket, notify_remote_end)
+}
+
+#[napi(js_name = "gameServerNetworkingSendDataOnSocket")]
+pub fn game_server_networking_send_data_on_socket(
+    socket: u32,
+    data: Buffer,
+    reliable: Option<bool>,
+) -> Result<bool, Error> {
+    networking_send_data_on_socket_with(steam_game_server_networking, socket, data, reliable)
+}
+
+#[napi(js_name = "gameServerNetworkingIsDataAvailableOnSocket")]
+pub fn game_server_networking_is_data_available_on_socket(socket: u32) -> Result<u32, Error> {
+    networking_is_data_available_on_socket_with(steam_game_server_networking, socket)
+}
+
+#[napi(js_name = "gameServerNetworkingRetrieveDataFromSocket")]
+pub fn game_server_networking_retrieve_data_from_socket(
+    socket: u32,
+    size: u32,
+) -> Result<Option<LegacyNetworkingSocketData>, Error> {
+    networking_retrieve_data_from_socket_with(steam_game_server_networking, socket, size)
+}
+
+#[napi(js_name = "gameServerNetworkingIsDataAvailable")]
+pub fn game_server_networking_is_data_available(
+    listen_socket: u32,
+) -> Result<Option<LegacyNetworkingListenSocketAvailable>, Error> {
+    networking_is_data_available_with(steam_game_server_networking, listen_socket)
+}
+
+#[napi(js_name = "gameServerNetworkingRetrieveData")]
+pub fn game_server_networking_retrieve_data(
+    listen_socket: u32,
+    size: u32,
+) -> Result<Option<LegacyNetworkingListenSocketData>, Error> {
+    networking_retrieve_data_with(steam_game_server_networking, listen_socket, size)
+}
+
+#[napi(js_name = "gameServerNetworkingGetSocketInfo")]
+pub fn game_server_networking_get_socket_info(
+    socket: u32,
+) -> Result<Option<LegacyNetworkingSocketInfo>, Error> {
+    networking_get_socket_info_with(steam_game_server_networking, socket)
+}
+
+#[napi(js_name = "gameServerNetworkingGetListenSocketInfo")]
+pub fn game_server_networking_get_listen_socket_info(
+    listen_socket: u32,
+) -> Result<Option<LegacyNetworkingListenSocketInfo>, Error> {
+    networking_get_listen_socket_info_with(steam_game_server_networking, listen_socket)
+}
+
+#[napi(js_name = "gameServerNetworkingGetSocketConnectionType")]
+pub fn game_server_networking_get_socket_connection_type(socket: u32) -> Result<u32, Error> {
+    networking_get_socket_connection_type_with(steam_game_server_networking, socket)
+}
+
+#[napi(js_name = "gameServerNetworkingGetMaxPacketSize")]
+pub fn game_server_networking_get_max_packet_size(socket: u32) -> Result<i32, Error> {
+    networking_get_max_packet_size_with(steam_game_server_networking, socket)
 }
 
 #[napi(js_name = "networkingIdentityToString")]
@@ -17412,6 +18055,20 @@ fn networking_port(port: Option<u32>) -> Result<u16, Error> {
     port.unwrap_or(0)
         .try_into()
         .map_err(|_| Error::from_reason("networking port must be between 0 and 65535"))
+}
+
+fn legacy_networking_steam_ip(ip: u32) -> sys::SteamIPAddress_t {
+    sys::SteamIPAddress_t {
+        __bindgen_anon_1: sys::SteamIPAddress_t__bindgen_ty_1 { m_unIPv4: ip },
+        m_eType: sys::ESteamIPType::k_ESteamIPTypeIPv4,
+    }
+}
+
+fn legacy_networking_ip_parts(ip: sys::SteamIPAddress_t) -> (Option<u32>, Option<String>) {
+    let ip_type = unsafe { ptr::addr_of!(ip.m_eType).read_unaligned() };
+    let ipv4 = matches!(ip_type, sys::ESteamIPType::k_ESteamIPTypeIPv4)
+        .then(|| unsafe { ptr::addr_of!(ip.__bindgen_anon_1.m_unIPv4).read_unaligned() });
+    (ipv4, ipv4.map(ipv4_to_string))
 }
 
 fn port_to_u16(port: u32, label: &str) -> Result<u16, Error> {

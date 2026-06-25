@@ -451,6 +451,62 @@ export interface NativeP2PPacket {
   steamId: NativeSteamId;
 }
 
+export interface NativeLegacyNetworkingP2PSessionState {
+  connectionActive?: boolean;
+  connection_active?: boolean;
+  connecting: boolean;
+  sessionError?: number;
+  session_error?: number;
+  usingRelay?: boolean;
+  using_relay?: boolean;
+  bytesQueuedForSend?: number;
+  bytes_queued_for_send?: number;
+  packetsQueuedForSend?: number;
+  packets_queued_for_send?: number;
+  remoteIp?: number;
+  remote_ip?: number;
+  remoteIpAddress?: string;
+  remote_ip_address?: string;
+  remotePort?: number;
+  remote_port?: number;
+}
+
+export interface NativeLegacyNetworkingSocketData {
+  data: Buffer;
+  size: number;
+}
+
+export interface NativeLegacyNetworkingListenSocketAvailable {
+  socket: number;
+  size: number;
+}
+
+export interface NativeLegacyNetworkingListenSocketData {
+  socket: number;
+  data: Buffer;
+  size: number;
+}
+
+export interface NativeLegacyNetworkingSocketInfo {
+  remoteSteamId?: NativeSteamId;
+  remote_steam_id?: NativeSteamId;
+  socketStatus?: number;
+  socket_status?: number;
+  remoteIp?: number | null;
+  remote_ip?: number | null;
+  remoteIpAddress?: string | null;
+  remote_ip_address?: string | null;
+  remotePort?: number;
+  remote_port?: number;
+}
+
+export interface NativeLegacyNetworkingListenSocketInfo {
+  ip?: number | null;
+  ipAddress?: string | null;
+  ip_address?: string | null;
+  port: number;
+}
+
 export interface NativeNetworkingIdentity {
   steamId64?: bigint | string | number;
   steam_id64?: bigint | string | number;
@@ -2101,10 +2157,46 @@ export interface NativeBinding {
   networkingIsP2PPacketAvailable(): number;
   networkingReadP2PPacket(size: number): NativeP2PPacket | null | undefined;
   networkingAcceptP2PSession(steamId64: bigint): void;
+  networkingCloseP2PSession(steamId64: bigint): boolean;
+  networkingCloseP2PChannel(steamId64: bigint, channel: number): boolean;
+  networkingGetP2PSessionState(steamId64: bigint): NativeLegacyNetworkingP2PSessionState | null | undefined;
+  networkingAllowP2PPacketRelay(allow: boolean): boolean;
+  networkingCreateListenSocket(virtualP2PPort?: number, ip?: number, port?: number, allowPacketRelay?: boolean): number;
+  networkingCreateP2PConnectionSocket(steamId64: bigint, virtualPort?: number, timeoutSeconds?: number, allowPacketRelay?: boolean): number;
+  networkingCreateConnectionSocket(ip: number, port: number, timeoutSeconds?: number): number;
+  networkingDestroySocket(socket: number, notifyRemoteEnd?: boolean): boolean;
+  networkingDestroyListenSocket(socket: number, notifyRemoteEnd?: boolean): boolean;
+  networkingSendDataOnSocket(socket: number, data: Buffer, reliable?: boolean): boolean;
+  networkingIsDataAvailableOnSocket(socket: number): number;
+  networkingRetrieveDataFromSocket(socket: number, size: number): NativeLegacyNetworkingSocketData | null | undefined;
+  networkingIsDataAvailable(listenSocket: number): NativeLegacyNetworkingListenSocketAvailable | null | undefined;
+  networkingRetrieveData(listenSocket: number, size: number): NativeLegacyNetworkingListenSocketData | null | undefined;
+  networkingGetSocketInfo(socket: number): NativeLegacyNetworkingSocketInfo | null | undefined;
+  networkingGetListenSocketInfo(listenSocket: number): NativeLegacyNetworkingListenSocketInfo | null | undefined;
+  networkingGetSocketConnectionType(socket: number): number;
+  networkingGetMaxPacketSize(socket: number): number;
   gameServerNetworkingSendP2PPacket(steamId64: bigint, sendType: number, data: Buffer): boolean;
   gameServerNetworkingIsP2PPacketAvailable(): number;
   gameServerNetworkingReadP2PPacket(size: number): NativeP2PPacket | null | undefined;
   gameServerNetworkingAcceptP2PSession(steamId64: bigint): void;
+  gameServerNetworkingCloseP2PSession(steamId64: bigint): boolean;
+  gameServerNetworkingCloseP2PChannel(steamId64: bigint, channel: number): boolean;
+  gameServerNetworkingGetP2PSessionState(steamId64: bigint): NativeLegacyNetworkingP2PSessionState | null | undefined;
+  gameServerNetworkingAllowP2PPacketRelay(allow: boolean): boolean;
+  gameServerNetworkingCreateListenSocket(virtualP2PPort?: number, ip?: number, port?: number, allowPacketRelay?: boolean): number;
+  gameServerNetworkingCreateP2PConnectionSocket(steamId64: bigint, virtualPort?: number, timeoutSeconds?: number, allowPacketRelay?: boolean): number;
+  gameServerNetworkingCreateConnectionSocket(ip: number, port: number, timeoutSeconds?: number): number;
+  gameServerNetworkingDestroySocket(socket: number, notifyRemoteEnd?: boolean): boolean;
+  gameServerNetworkingDestroyListenSocket(socket: number, notifyRemoteEnd?: boolean): boolean;
+  gameServerNetworkingSendDataOnSocket(socket: number, data: Buffer, reliable?: boolean): boolean;
+  gameServerNetworkingIsDataAvailableOnSocket(socket: number): number;
+  gameServerNetworkingRetrieveDataFromSocket(socket: number, size: number): NativeLegacyNetworkingSocketData | null | undefined;
+  gameServerNetworkingIsDataAvailable(listenSocket: number): NativeLegacyNetworkingListenSocketAvailable | null | undefined;
+  gameServerNetworkingRetrieveData(listenSocket: number, size: number): NativeLegacyNetworkingListenSocketData | null | undefined;
+  gameServerNetworkingGetSocketInfo(socket: number): NativeLegacyNetworkingSocketInfo | null | undefined;
+  gameServerNetworkingGetListenSocketInfo(listenSocket: number): NativeLegacyNetworkingListenSocketInfo | null | undefined;
+  gameServerNetworkingGetSocketConnectionType(socket: number): number;
+  gameServerNetworkingGetMaxPacketSize(socket: number): number;
   networkingIdentityToString(identity: NativeNetworkingIdentity): string;
   networkingIdentityParse(text: string): NativeNetworkingIdentityInfo | null | undefined;
   networkingMessagesSendMessageToUser(identity: NativeNetworkingIdentity, data: Buffer, sendFlags?: number, channel?: number): number;

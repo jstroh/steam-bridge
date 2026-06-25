@@ -78,9 +78,10 @@ The native layer currently targets the Steamworks flat C API through
   property updates, inspect tokens, client and game-server shared interfaces,
   and inventory callbacks.
 - Networking: legacy client and game-server `ISteamNetworking` P2P send,
-  receive, availability, and session accept helpers, modern client and
-  game-server `ISteamNetworkingMessages` identity/session/message send and
-  receive flows, session/channel close helpers,
+  receive, availability, session accept/close/state, relay controls, and
+  legacy socket/listen-socket helpers, modern client and game-server
+  `ISteamNetworkingMessages` identity/session/message send and receive flows,
+  session/channel close helpers,
   core client and game-server `ISteamNetworkingSockets`
   connection/listen-socket/single and batch
   message/poll-group helpers, relay-auth-ticket cache helpers, hosted
