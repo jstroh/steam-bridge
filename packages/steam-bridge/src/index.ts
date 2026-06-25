@@ -24,6 +24,7 @@ import {
   NativeGameServerInitOptions,
   NativeGameServerOutgoingPacket,
   NativeGameServerPublicIp,
+  NativeGameServerStatsResult,
   NativeGameServerUserConnectResult,
   NativeFriendGameInfo,
   NativeFriendMessage,
@@ -157,6 +158,11 @@ export interface GameServerOutgoingPacket {
 export interface GameServerUserConnectResult {
   success: boolean;
   steamId: SteamId | null;
+}
+
+export interface GameServerStatsResult {
+  result: number;
+  steamId: SteamId;
 }
 
 export interface CallbackHandle {
@@ -1031,6 +1037,9 @@ export const SteamCallback = {
   SteamNetworkingMessagesSessionRequest: 1251,
   SteamNetworkingMessagesSessionFailed: 1252,
   SteamRelayNetworkStatus: 1281,
+  GameServerStatsUnloaded: 1108,
+  GameServerStatsReceived: 1800,
+  GameServerStatsStored: 1801,
   HTTPRequestCompleted: 2101,
   HTTPRequestHeadersReceived: 2102,
   HTTPRequestDataReceived: 2103,
@@ -2311,10 +2320,44 @@ export const user = {
   }
 };
 
+export const gameServerStats = {
+  async requestUserStats(steamId64: bigint): Promise<GameServerStatsResult> {
+    return normalizeGameServerStatsResult(await native().gameServerStatsRequestUserStats(steamId64));
+  },
+  getUserInt(steamId64: bigint, name: string): number | null {
+    return native().gameServerStatsGetUserInt(steamId64, name) ?? null;
+  },
+  getUserFloat(steamId64: bigint, name: string): number | null {
+    return native().gameServerStatsGetUserFloat(steamId64, name) ?? null;
+  },
+  getUserAchievement(steamId64: bigint, name: string): boolean | null {
+    return native().gameServerStatsGetUserAchievement(steamId64, name) ?? null;
+  },
+  setUserInt(steamId64: bigint, name: string, value: number): boolean {
+    return native().gameServerStatsSetUserInt(steamId64, name, value);
+  },
+  setUserFloat(steamId64: bigint, name: string, value: number): boolean {
+    return native().gameServerStatsSetUserFloat(steamId64, name, value);
+  },
+  updateUserAvgRate(steamId64: bigint, name: string, countThisSession: number, sessionLength: number): boolean {
+    return native().gameServerStatsUpdateUserAvgRate(steamId64, name, countThisSession, sessionLength);
+  },
+  setUserAchievement(steamId64: bigint, name: string): boolean {
+    return native().gameServerStatsSetUserAchievement(steamId64, name);
+  },
+  clearUserAchievement(steamId64: bigint, name: string): boolean {
+    return native().gameServerStatsClearUserAchievement(steamId64, name);
+  },
+  async storeUserStats(steamId64: bigint): Promise<GameServerStatsResult> {
+    return normalizeGameServerStatsResult(await native().gameServerStatsStoreUserStats(steamId64));
+  }
+};
+
 export const gameServer = {
   ServerMode,
   BeginAuthSessionResult,
   UserHasLicenseForAppResult,
+  stats: gameServerStats,
   init(options: GameServerInitOptions): void {
     const nativeOptions: NativeGameServerInitOptions = {
       ip: options.ip,
@@ -4217,6 +4260,7 @@ export interface SteamBridgeClient {
   cloud: typeof cloud;
   friends: typeof friends;
   gameServer: typeof gameServer;
+  gameServerStats: typeof gameServerStats;
   http: typeof http;
   inventory: typeof inventory;
   input: typeof input;
@@ -4246,6 +4290,7 @@ export function createCompatibilityClient(): SteamBridgeClient {
     cloud,
     friends,
     gameServer,
+    gameServerStats,
     http,
     inventory,
     input,
@@ -4369,6 +4414,14 @@ function normalizeGameServerUserConnectResult(
   return {
     success: Boolean(result.success),
     steamId: normalizeOptionalSteamId((source.steamId ?? source.steam_id) as NativeSteamId | null | undefined)
+  };
+}
+
+function normalizeGameServerStatsResult(result: NativeGameServerStatsResult): GameServerStatsResult {
+  const source = result as unknown as Record<string, unknown>;
+  return {
+    result: Number(result.result),
+    steamId: normalizeSteamId((source.steamId ?? source.steam_id) as NativeSteamId)
   };
 }
 
@@ -5923,6 +5976,7 @@ const defaultExport = {
   cloud,
   friends,
   gameServer,
+  gameServerStats,
   http,
   inventory,
   input,

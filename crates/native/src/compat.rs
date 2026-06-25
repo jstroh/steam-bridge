@@ -81,6 +81,9 @@ const CALLBACK_STEAM_NETWORKING_MESSAGES_SESSION_REQUEST: i32 = 1251;
 const CALLBACK_STEAM_NETWORKING_MESSAGES_SESSION_FAILED: i32 = 1252;
 const CALLBACK_STEAM_RELAY_NETWORK_STATUS: i32 = 1281;
 const STEAM_GAME_SERVER_INTERFACE_VERSIONS: &[u8] = b"SteamUtils010\0SteamNetworkingUtils004\0SteamGameServer015\0SteamGameServerStats001\0STEAMHTTP_INTERFACE_VERSION003\0STEAMINVENTORY_INTERFACE_V003\0SteamNetworking006\0SteamNetworkingMessages002\0SteamNetworkingSockets012\0STEAMUGC_INTERFACE_VERSION021\0\0";
+const CALLBACK_GAME_SERVER_STATS_UNLOADED: i32 = 1108;
+const CALLBACK_GAME_SERVER_STATS_RECEIVED: i32 = 1800;
+const CALLBACK_GAME_SERVER_STATS_STORED: i32 = 1801;
 
 static NEXT_NETWORKING_FAKE_UDP_PORT_HANDLE: AtomicU32 = AtomicU32::new(1);
 static NETWORKING_FAKE_UDP_PORTS: Lazy<Mutex<HashMap<u32, usize>>> =
@@ -352,6 +355,13 @@ pub struct GameServerOutgoingPacket {
 pub struct GameServerUserConnectResult {
     pub success: bool,
     pub steam_id: Option<PlayerSteamId>,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct GameServerStatsResult {
+    pub result: u32,
+    pub steam_id: PlayerSteamId,
 }
 
 #[derive(Debug)]
@@ -5119,6 +5129,9 @@ pub fn game_server_init(options: GameServerInitOptions) -> Result<(), Error> {
         )
     };
     if result == sys::ESteamAPIInitResult::k_ESteamAPIInitResult_OK {
+        unsafe {
+            sys::SteamAPI_ManualDispatch_Init();
+        }
         crate::state::mark_game_server_initialized(true);
         Ok(())
     } else {
@@ -5134,14 +5147,15 @@ pub fn game_server_shutdown() {
     if crate::state::is_game_server_initialized() {
         unsafe { sys::SteamGameServer_Shutdown() };
         crate::state::mark_game_server_initialized(false);
+        if !crate::state::is_initialized() {
+            crate::state::clear_callbacks();
+        }
     }
 }
 
 #[napi(js_name = "gameServerRunCallbacks")]
 pub fn game_server_run_callbacks() {
-    if crate::state::is_game_server_initialized() {
-        unsafe { sys::SteamGameServer_RunCallbacks() };
-    }
+    run_game_server_callbacks();
 }
 
 #[napi(js_name = "gameServerIsSecure")]
@@ -5536,6 +5550,191 @@ pub fn game_server_update_user_data(
             score,
         )
     })
+}
+
+#[napi(js_name = "gameServerStatsRequestUserStats")]
+pub async fn game_server_stats_request_user_stats(
+    steam_id64: BigInt,
+) -> Result<GameServerStatsResult, Error> {
+    let call = unsafe {
+        sys::SteamAPI_ISteamGameServerStats_RequestUserStats(
+            steam_game_server_stats()?,
+            bigint_to_u64(steam_id64, "steam id")?,
+        )
+    };
+    let result: sys::GSStatsReceived_t = wait_for_game_server_api_call(
+        call,
+        sys::GSStatsReceived_t_k_iCallback as i32,
+        DEFAULT_ASYNC_TIMEOUT_SECONDS,
+    )
+    .await?;
+    Ok(game_server_stats_received_result(result))
+}
+
+#[napi(js_name = "gameServerStatsGetUserInt")]
+pub fn game_server_stats_get_user_int(
+    steam_id64: BigInt,
+    name: String,
+) -> Result<Option<i32>, Error> {
+    let name = cstring(name, "game server stat name")?;
+    let mut value = 0i32;
+    let ok = unsafe {
+        sys::SteamAPI_ISteamGameServerStats_GetUserStatInt32(
+            steam_game_server_stats()?,
+            bigint_to_u64(steam_id64, "steam id")?,
+            name.as_ptr(),
+            &mut value,
+        )
+    };
+    Ok(if ok { Some(value) } else { None })
+}
+
+#[napi(js_name = "gameServerStatsGetUserFloat")]
+pub fn game_server_stats_get_user_float(
+    steam_id64: BigInt,
+    name: String,
+) -> Result<Option<f64>, Error> {
+    let name = cstring(name, "game server stat name")?;
+    let mut value = 0f32;
+    let ok = unsafe {
+        sys::SteamAPI_ISteamGameServerStats_GetUserStatFloat(
+            steam_game_server_stats()?,
+            bigint_to_u64(steam_id64, "steam id")?,
+            name.as_ptr(),
+            &mut value,
+        )
+    };
+    Ok(if ok { Some(f64::from(value)) } else { None })
+}
+
+#[napi(js_name = "gameServerStatsGetUserAchievement")]
+pub fn game_server_stats_get_user_achievement(
+    steam_id64: BigInt,
+    name: String,
+) -> Result<Option<bool>, Error> {
+    let name = cstring(name, "game server achievement name")?;
+    let mut achieved = false;
+    let ok = unsafe {
+        sys::SteamAPI_ISteamGameServerStats_GetUserAchievement(
+            steam_game_server_stats()?,
+            bigint_to_u64(steam_id64, "steam id")?,
+            name.as_ptr(),
+            &mut achieved,
+        )
+    };
+    Ok(if ok { Some(achieved) } else { None })
+}
+
+#[napi(js_name = "gameServerStatsSetUserInt")]
+pub fn game_server_stats_set_user_int(
+    steam_id64: BigInt,
+    name: String,
+    value: i32,
+) -> Result<bool, Error> {
+    let name = cstring(name, "game server stat name")?;
+    Ok(unsafe {
+        sys::SteamAPI_ISteamGameServerStats_SetUserStatInt32(
+            steam_game_server_stats()?,
+            bigint_to_u64(steam_id64, "steam id")?,
+            name.as_ptr(),
+            value,
+        )
+    })
+}
+
+#[napi(js_name = "gameServerStatsSetUserFloat")]
+pub fn game_server_stats_set_user_float(
+    steam_id64: BigInt,
+    name: String,
+    value: f64,
+) -> Result<bool, Error> {
+    if !value.is_finite() {
+        return Err(Error::from_reason(
+            "game server stat float value must be finite",
+        ));
+    }
+    let name = cstring(name, "game server stat name")?;
+    Ok(unsafe {
+        sys::SteamAPI_ISteamGameServerStats_SetUserStatFloat(
+            steam_game_server_stats()?,
+            bigint_to_u64(steam_id64, "steam id")?,
+            name.as_ptr(),
+            value as f32,
+        )
+    })
+}
+
+#[napi(js_name = "gameServerStatsUpdateUserAvgRate")]
+pub fn game_server_stats_update_user_avg_rate(
+    steam_id64: BigInt,
+    name: String,
+    count_this_session: f64,
+    session_length: f64,
+) -> Result<bool, Error> {
+    if !count_this_session.is_finite() || !session_length.is_finite() {
+        return Err(Error::from_reason(
+            "game server average-rate stat count and session length must be finite",
+        ));
+    }
+    let name = cstring(name, "game server stat name")?;
+    Ok(unsafe {
+        sys::SteamAPI_ISteamGameServerStats_UpdateUserAvgRateStat(
+            steam_game_server_stats()?,
+            bigint_to_u64(steam_id64, "steam id")?,
+            name.as_ptr(),
+            count_this_session as f32,
+            session_length,
+        )
+    })
+}
+
+#[napi(js_name = "gameServerStatsSetUserAchievement")]
+pub fn game_server_stats_set_user_achievement(
+    steam_id64: BigInt,
+    name: String,
+) -> Result<bool, Error> {
+    let name = cstring(name, "game server achievement name")?;
+    Ok(unsafe {
+        sys::SteamAPI_ISteamGameServerStats_SetUserAchievement(
+            steam_game_server_stats()?,
+            bigint_to_u64(steam_id64, "steam id")?,
+            name.as_ptr(),
+        )
+    })
+}
+
+#[napi(js_name = "gameServerStatsClearUserAchievement")]
+pub fn game_server_stats_clear_user_achievement(
+    steam_id64: BigInt,
+    name: String,
+) -> Result<bool, Error> {
+    let name = cstring(name, "game server achievement name")?;
+    Ok(unsafe {
+        sys::SteamAPI_ISteamGameServerStats_ClearUserAchievement(
+            steam_game_server_stats()?,
+            bigint_to_u64(steam_id64, "steam id")?,
+            name.as_ptr(),
+        )
+    })
+}
+
+#[napi(js_name = "gameServerStatsStoreUserStats")]
+pub async fn game_server_stats_store_user_stats(
+    steam_id64: BigInt,
+) -> Result<GameServerStatsResult, Error> {
+    let call = unsafe {
+        sys::SteamAPI_ISteamGameServerStats_StoreUserStats(
+            steam_game_server_stats()?,
+            bigint_to_u64(steam_id64, "steam id")?,
+        )
+    };
+    let result: sys::GSStatsStored_t = wait_for_game_server_api_call(
+        call,
+        sys::GSStatsStored_t_k_iCallback as i32,
+        DEFAULT_ASYNC_TIMEOUT_SECONDS,
+    )
+    .await?;
+    Ok(game_server_stats_stored_result(result))
 }
 
 #[napi(js_name = "networkingSendP2PPacket")]
@@ -9041,6 +9240,22 @@ fn steam_game_server() -> Result<*mut sys::ISteamGameServer, Error> {
     )
 }
 
+fn steam_game_server_stats() -> Result<*mut sys::ISteamGameServerStats, Error> {
+    crate::state::ensure_game_server_initialized()?;
+    non_null(
+        unsafe { sys::SteamAPI_SteamGameServerStats_v001() },
+        "ISteamGameServerStats",
+    )
+}
+
+fn steam_game_server_utils() -> Result<*mut sys::ISteamUtils, Error> {
+    crate::state::ensure_game_server_initialized()?;
+    non_null(
+        unsafe { sys::SteamAPI_SteamGameServerUtils_v010() },
+        "ISteamUtils",
+    )
+}
+
 fn steam_matchmaking() -> Result<*mut sys::ISteamMatchmaking, Error> {
     crate::state::ensure_initialized()?;
     non_null(
@@ -9227,6 +9442,24 @@ fn leaderboard_upload_score_method_from_u32(
 fn user_stats_received_result(result: sys::UserStatsReceived_t) -> UserStatsReceivedResult {
     UserStatsReceivedResult {
         game_id: unsafe { ptr::addr_of!(result.m_nGameID).read_unaligned() }.into(),
+        result: unsafe { ptr::addr_of!(result.m_eResult).read_unaligned() } as u32,
+        steam_id: csteam_id_to_player(unsafe {
+            ptr::addr_of!(result.m_steamIDUser).read_unaligned()
+        }),
+    }
+}
+
+fn game_server_stats_received_result(result: sys::GSStatsReceived_t) -> GameServerStatsResult {
+    GameServerStatsResult {
+        result: unsafe { ptr::addr_of!(result.m_eResult).read_unaligned() } as u32,
+        steam_id: csteam_id_to_player(unsafe {
+            ptr::addr_of!(result.m_steamIDUser).read_unaligned()
+        }),
+    }
+}
+
+fn game_server_stats_stored_result(result: sys::GSStatsStored_t) -> GameServerStatsResult {
+    GameServerStatsResult {
         result: unsafe { ptr::addr_of!(result.m_eResult).read_unaligned() } as u32,
         steam_id: csteam_id_to_player(unsafe {
             ptr::addr_of!(result.m_steamIDUser).read_unaligned()
@@ -10866,12 +11099,100 @@ async fn get_session_ticket(
     }
 }
 
+fn run_game_server_callbacks() {
+    if !crate::state::is_game_server_initialized() {
+        return;
+    }
+
+    unsafe {
+        let pipe = sys::SteamGameServer_GetHSteamPipe();
+        if pipe == 0 {
+            sys::SteamGameServer_RunCallbacks();
+            return;
+        }
+
+        sys::SteamAPI_ManualDispatch_RunFrame(pipe);
+        let mut callback = std::mem::zeroed::<sys::CallbackMsg_t>();
+
+        while sys::SteamAPI_ManualDispatch_GetNextCallback(pipe, &mut callback) {
+            let callback_id = ptr::addr_of!(callback.m_iCallback).read_unaligned();
+            let param = ptr::addr_of!(callback.m_pubParam).read_unaligned();
+
+            crate::state::dispatch_callback(callback_id, param.cast::<c_void>());
+            sys::SteamAPI_ManualDispatch_FreeLastCallback(pipe);
+        }
+    }
+}
+
 async fn wait_for_api_call<T>(
     call: sys::SteamAPICall_t,
     expected_callback: i32,
     timeout_seconds: u64,
 ) -> Result<T, Error> {
     wait_for_api_call_with_progress(call, expected_callback, timeout_seconds, || {}).await
+}
+
+async fn wait_for_game_server_api_call<T>(
+    call: sys::SteamAPICall_t,
+    expected_callback: i32,
+    timeout_seconds: u64,
+) -> Result<T, Error> {
+    if call == 0 {
+        return Err(Error::from_reason(
+            "Steam returned an invalid game server API call handle",
+        ));
+    }
+    let started = Instant::now();
+    loop {
+        run_game_server_callbacks();
+        let utils = steam_game_server_utils()?;
+        let mut failed = false;
+        let completed =
+            unsafe { sys::SteamAPI_ISteamUtils_IsAPICallCompleted(utils, call, &mut failed) };
+        if completed {
+            if failed {
+                let reason =
+                    unsafe { sys::SteamAPI_ISteamUtils_GetAPICallFailureReason(utils, call) };
+                return Err(Error::from_reason(format!(
+                    "Steam game server API call failed: {reason:?}"
+                )));
+            }
+            let mut result = MaybeUninit::<T>::zeroed();
+            let mut result_failed = false;
+            let pipe = unsafe { sys::SteamGameServer_GetHSteamPipe() };
+            let ok = (pipe != 0
+                && unsafe {
+                    sys::SteamAPI_ManualDispatch_GetAPICallResult(
+                        pipe,
+                        call,
+                        result.as_mut_ptr().cast::<c_void>(),
+                        std::mem::size_of::<T>() as i32,
+                        expected_callback,
+                        &mut result_failed,
+                    )
+                })
+                || unsafe {
+                    sys::SteamAPI_ISteamUtils_GetAPICallResult(
+                        utils,
+                        call,
+                        result.as_mut_ptr().cast::<c_void>(),
+                        std::mem::size_of::<T>() as i32,
+                        expected_callback,
+                        &mut result_failed,
+                    )
+                };
+            if !ok || result_failed {
+                return Err(Error::from_reason(
+                    "Steam game server API call completed but result retrieval failed",
+                ));
+            }
+            return Ok(unsafe { result.assume_init() });
+        }
+        if started.elapsed() > Duration::from_secs(timeout_seconds) {
+            return Err(Error::from_reason("Steam game server API call timed out"));
+        }
+        tokio::time::sleep(Duration::from_millis(16)).await;
+    }
 }
 
 async fn wait_for_api_call_with_progress<T, F>(
@@ -11056,6 +11377,9 @@ fn callback_id_from_compat(callback: i32) -> Result<i32, Error> {
         CALLBACK_STEAM_RELAY_NETWORK_STATUS => {
             Ok(sys::SteamRelayNetworkStatus_t_k_iCallback as i32)
         }
+        CALLBACK_GAME_SERVER_STATS_RECEIVED => Ok(sys::GSStatsReceived_t_k_iCallback as i32),
+        CALLBACK_GAME_SERVER_STATS_STORED => Ok(sys::GSStatsStored_t_k_iCallback as i32),
+        CALLBACK_GAME_SERVER_STATS_UNLOADED => Ok(sys::GSStatsUnloaded_t_k_iCallback as i32),
         CALLBACK_HTTP_REQUEST_COMPLETED => Ok(sys::HTTPRequestCompleted_t_k_iCallback as i32),
         CALLBACK_HTTP_REQUEST_HEADERS_RECEIVED => {
             Ok(sys::HTTPRequestHeadersReceived_t_k_iCallback as i32)
@@ -11506,6 +11830,26 @@ unsafe fn callback_to_json(callback: i32, param: *mut c_void) -> Value {
                 "network_config_availability": status.network_config_availability,
                 "any_relay_availability": status.any_relay_availability,
                 "debug_message": status.debug_message
+            })
+        }
+        CALLBACK_GAME_SERVER_STATS_RECEIVED => {
+            let event = param as *const sys::GSStatsReceived_t;
+            serde_json::json!({
+                "result": ptr::addr_of!((*event).m_eResult).read_unaligned() as u32,
+                "steam_id": csteam_id_to_u64(ptr::addr_of!((*event).m_steamIDUser).read_unaligned()).to_string()
+            })
+        }
+        CALLBACK_GAME_SERVER_STATS_STORED => {
+            let event = param as *const sys::GSStatsStored_t;
+            serde_json::json!({
+                "result": ptr::addr_of!((*event).m_eResult).read_unaligned() as u32,
+                "steam_id": csteam_id_to_u64(ptr::addr_of!((*event).m_steamIDUser).read_unaligned()).to_string()
+            })
+        }
+        CALLBACK_GAME_SERVER_STATS_UNLOADED => {
+            let event = param as *const sys::GSStatsUnloaded_t;
+            serde_json::json!({
+                "steam_id": csteam_id_to_u64(ptr::addr_of!((*event).m_steamIDUser).read_unaligned()).to_string()
             })
         }
         9 => {

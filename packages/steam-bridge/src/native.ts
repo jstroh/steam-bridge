@@ -57,6 +57,12 @@ export interface NativeGameServerUserConnectResult {
   steam_id?: NativeSteamId | null;
 }
 
+export interface NativeGameServerStatsResult {
+  result: number;
+  steamId?: NativeSteamId;
+  steam_id?: NativeSteamId;
+}
+
 export interface NativeOverlayDiagnostics {
   steamRunning: boolean;
   steamInstallPath?: string;
@@ -976,6 +982,16 @@ export interface NativeBinding {
   gameServerCreateUnauthenticatedUserConnection(): NativeSteamId;
   gameServerSendUserDisconnectDeprecated(steamId64: bigint): void;
   gameServerUpdateUserData(steamId64: bigint, playerName: string, score: number): boolean;
+  gameServerStatsRequestUserStats(steamId64: bigint): Promise<NativeGameServerStatsResult>;
+  gameServerStatsGetUserInt(steamId64: bigint, name: string): number | null | undefined;
+  gameServerStatsGetUserFloat(steamId64: bigint, name: string): number | null | undefined;
+  gameServerStatsGetUserAchievement(steamId64: bigint, name: string): boolean | null | undefined;
+  gameServerStatsSetUserInt(steamId64: bigint, name: string, value: number): boolean;
+  gameServerStatsSetUserFloat(steamId64: bigint, name: string, value: number): boolean;
+  gameServerStatsUpdateUserAvgRate(steamId64: bigint, name: string, countThisSession: number, sessionLength: number): boolean;
+  gameServerStatsSetUserAchievement(steamId64: bigint, name: string): boolean;
+  gameServerStatsClearUserAchievement(steamId64: bigint, name: string): boolean;
+  gameServerStatsStoreUserStats(steamId64: bigint): Promise<NativeGameServerStatsResult>;
 
   getSteamId(): NativeSteamId;
   getAuthTicketForWebApi(identity: string, timeoutSeconds?: number): Promise<NativeAuthTicket>;

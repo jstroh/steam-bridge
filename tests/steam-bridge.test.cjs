@@ -200,6 +200,7 @@ test("init reads the Steam app ID from the environment and returns the grouped c
   assert.equal(client.workshop, steam.workshop);
   assert.equal(client.friends, steam.friends);
   assert.equal(client.gameServer, steam.gameServer);
+  assert.equal(client.gameServerStats, steam.gameServerStats);
   assert.equal(client.http, steam.http);
   assert.equal(client.inventory, steam.inventory);
   assert.equal(client.parties, steam.parties);
@@ -711,6 +712,91 @@ test("game server facade covers lifecycle, metadata, auth, and packet helpers", 
   });
 });
 
+test("game server stats facade covers user stat and achievement helpers", async (t) => {
+  const playerId = { steamId64: "76561198000000020", steamId32: "STEAM_0:0:19867146", accountId: 39734292 };
+  const playerSteamId = 76561198000000020n;
+  const fake = createFakeNative({
+    gameServerStatsRequestUserStats(steamId64) {
+      this.calls.push({ method: "gameServerStatsRequestUserStats", args: [steamId64] });
+      return Promise.resolve({ result: 1, steam_id: playerId });
+    },
+    gameServerStatsGetUserInt(steamId64, name) {
+      this.calls.push({ method: "gameServerStatsGetUserInt", args: [steamId64, name] });
+      return 42;
+    },
+    gameServerStatsGetUserFloat(steamId64, name) {
+      this.calls.push({ method: "gameServerStatsGetUserFloat", args: [steamId64, name] });
+      return 3.5;
+    },
+    gameServerStatsGetUserAchievement(steamId64, name) {
+      this.calls.push({ method: "gameServerStatsGetUserAchievement", args: [steamId64, name] });
+      return true;
+    },
+    gameServerStatsSetUserInt(steamId64, name, value) {
+      this.calls.push({ method: "gameServerStatsSetUserInt", args: [steamId64, name, value] });
+      return true;
+    },
+    gameServerStatsSetUserFloat(steamId64, name, value) {
+      this.calls.push({ method: "gameServerStatsSetUserFloat", args: [steamId64, name, value] });
+      return true;
+    },
+    gameServerStatsUpdateUserAvgRate(steamId64, name, countThisSession, sessionLength) {
+      this.calls.push({
+        method: "gameServerStatsUpdateUserAvgRate",
+        args: [steamId64, name, countThisSession, sessionLength]
+      });
+      return true;
+    },
+    gameServerStatsSetUserAchievement(steamId64, name) {
+      this.calls.push({ method: "gameServerStatsSetUserAchievement", args: [steamId64, name] });
+      return true;
+    },
+    gameServerStatsClearUserAchievement(steamId64, name) {
+      this.calls.push({ method: "gameServerStatsClearUserAchievement", args: [steamId64, name] });
+      return true;
+    },
+    gameServerStatsStoreUserStats(steamId64) {
+      this.calls.push({ method: "gameServerStatsStoreUserStats", args: [steamId64] });
+      return Promise.resolve({ result: 1, steamId: playerId });
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  assert.equal(steam.gameServer.stats, steam.gameServerStats);
+  const requested = await steam.gameServer.stats.requestUserStats(playerSteamId);
+  assert.equal(requested.result, 1);
+  assert.equal(requested.steamId.steamId64, playerSteamId);
+  assert.equal(steam.gameServer.stats.getUserInt(playerSteamId, "kills"), 42);
+  assert.equal(steam.gameServer.stats.getUserFloat(playerSteamId, "accuracy"), 3.5);
+  assert.equal(steam.gameServer.stats.getUserAchievement(playerSteamId, "WIN_ONE"), true);
+  assert.equal(steam.gameServer.stats.setUserInt(playerSteamId, "kills", 43), true);
+  assert.equal(steam.gameServer.stats.setUserFloat(playerSteamId, "accuracy", 4.25), true);
+  assert.equal(steam.gameServer.stats.updateUserAvgRate(playerSteamId, "score_rate", 10, 60), true);
+  assert.equal(steam.gameServer.stats.setUserAchievement(playerSteamId, "WIN_ONE"), true);
+  assert.equal(steam.gameServer.stats.clearUserAchievement(playerSteamId, "WIN_ONE"), true);
+  const stored = await steam.gameServer.stats.storeUserStats(playerSteamId);
+  assert.equal(stored.result, 1);
+  assert.equal(stored.steamId.steamId64, playerSteamId);
+
+  assert.deepEqual(
+    fake.calls.map((call) => call.method),
+    [
+      "gameServerStatsRequestUserStats",
+      "gameServerStatsGetUserInt",
+      "gameServerStatsGetUserFloat",
+      "gameServerStatsGetUserAchievement",
+      "gameServerStatsSetUserInt",
+      "gameServerStatsSetUserFloat",
+      "gameServerStatsUpdateUserAvgRate",
+      "gameServerStatsSetUserAchievement",
+      "gameServerStatsClearUserAchievement",
+      "gameServerStatsStoreUserStats"
+    ]
+  );
+});
+
 test("utils facade covers activity, images, VR, filtering, and text input helpers", async (t) => {
   const imageData = Buffer.from([255, 0, 0, 255, 0, 255, 0, 255]);
   const fake = createFakeNative({
@@ -935,6 +1021,9 @@ test("specific and generic callbacks normalize Steamworks payloads", (t) => {
   assert.equal(steam.SteamCallback.AppProofOfPurchaseKeyResponse, 1021);
   assert.equal(steam.SteamCallback.FileDetailsResult, 1023);
   assert.equal(steam.SteamCallback.TimedTrialStatus, 1030);
+  assert.equal(steam.SteamCallback.GameServerStatsUnloaded, 1108);
+  assert.equal(steam.SteamCallback.GameServerStatsReceived, 1800);
+  assert.equal(steam.SteamCallback.GameServerStatsStored, 1801);
 
   let txnEvent;
   const txnHandle = steam.onMicroTxnAuthorizationResponse((event) => {
@@ -1172,6 +1261,17 @@ test("specific and generic callbacks normalize Steamworks payloads", (t) => {
   assert.equal(equippedItemsEvent.hasProfileModifier, true);
   assert.equal(equippedItemsEvent.hasMiniProfileBackground, true);
   assert.equal(equippedItemsEvent.fromCache, true);
+
+  let gameServerStatsUnloadedEvent;
+  steam.callback.register(steam.SteamCallback.GameServerStatsUnloaded, (event) => {
+    gameServerStatsUnloadedEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.GameServerStatsUnloaded)({
+    steam_id: "76561198000000020"
+  });
+
+  assert.equal(gameServerStatsUnloadedEvent.steam_id, 76561198000000020n);
+  assert.equal(gameServerStatsUnloadedEvent.steamId, 76561198000000020n);
 
   let navigationEvent;
   steam.callback.register(steam.SteamCallback.OverlayBrowserProtocolNavigation, (event) => {
