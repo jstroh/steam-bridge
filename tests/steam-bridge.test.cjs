@@ -910,6 +910,8 @@ test("init reads the Steam app ID from the environment and returns the grouped c
   assert.equal(client.workshop, steam.workshop);
   assert.equal(client.friends, steam.friends);
   assert.equal(client.gameServer, steam.gameServer);
+  assert.equal(client.gameServerHttp, steam.gameServerHttp);
+  assert.equal(steam.default.gameServerHttp, steam.gameServerHttp);
   assert.equal(client.gameServerStats, steam.gameServerStats);
   assert.equal(client.http, steam.http);
   assert.equal(client.inventory, steam.inventory);
@@ -4580,6 +4582,172 @@ test("http facade covers request lifecycle, response reads, and callbacks", asyn
   assert.deepEqual(fake.calls.find((call) => call.method === "httpCreateRequest"), {
     method: "httpCreateRequest",
     args: [steam.http.HttpMethod.Post, "https://example.invalid/api"]
+  });
+});
+
+test("game server HTTP facade covers request lifecycle and response reads", async (t) => {
+  const fake = createFakeNative({
+    gameServerHttpCreateRequest(method, url) {
+      this.calls.push({ method: "gameServerHttpCreateRequest", args: [method, url] });
+      return 200;
+    },
+    gameServerHttpSetContextValue(request, contextValue) {
+      this.calls.push({ method: "gameServerHttpSetContextValue", args: [request, contextValue] });
+      return true;
+    },
+    gameServerHttpSetNetworkActivityTimeout(request, timeoutSeconds) {
+      this.calls.push({ method: "gameServerHttpSetNetworkActivityTimeout", args: [request, timeoutSeconds] });
+      return true;
+    },
+    gameServerHttpSetHeaderValue(request, name, value) {
+      this.calls.push({ method: "gameServerHttpSetHeaderValue", args: [request, name, value] });
+      return true;
+    },
+    gameServerHttpSetGetOrPostParameter(request, name, value) {
+      this.calls.push({ method: "gameServerHttpSetGetOrPostParameter", args: [request, name, value] });
+      return true;
+    },
+    gameServerHttpSendRequest(request, timeoutSeconds) {
+      this.calls.push({ method: "gameServerHttpSendRequest", args: [request, timeoutSeconds] });
+      return Promise.resolve({
+        request,
+        context_value: "123",
+        request_successful: true,
+        status_code: 204,
+        body_size: 0
+      });
+    },
+    gameServerHttpSendRequestAndStreamResponse(request, timeoutSeconds) {
+      this.calls.push({ method: "gameServerHttpSendRequestAndStreamResponse", args: [request, timeoutSeconds] });
+      return Promise.resolve({ request, contextValue: 123n });
+    },
+    gameServerHttpDeferRequest(request) {
+      this.calls.push({ method: "gameServerHttpDeferRequest", args: [request] });
+      return true;
+    },
+    gameServerHttpPrioritizeRequest(request) {
+      this.calls.push({ method: "gameServerHttpPrioritizeRequest", args: [request] });
+      return true;
+    },
+    gameServerHttpGetResponseHeaderSize(request, name) {
+      this.calls.push({ method: "gameServerHttpGetResponseHeaderSize", args: [request, name] });
+      return name === "missing" ? null : 12;
+    },
+    gameServerHttpGetResponseHeaderValue(request, name) {
+      this.calls.push({ method: "gameServerHttpGetResponseHeaderValue", args: [request, name] });
+      return name === "missing" ? undefined : "text/plain";
+    },
+    gameServerHttpGetResponseBodySize(request) {
+      this.calls.push({ method: "gameServerHttpGetResponseBodySize", args: [request] });
+      return 4;
+    },
+    gameServerHttpGetResponseBodyData(request) {
+      this.calls.push({ method: "gameServerHttpGetResponseBodyData", args: [request] });
+      return Buffer.from("pong");
+    },
+    gameServerHttpGetStreamingResponseBodyData(request, offset, size) {
+      this.calls.push({ method: "gameServerHttpGetStreamingResponseBodyData", args: [request, offset, size] });
+      return Buffer.from("part");
+    },
+    gameServerHttpReleaseRequest(request) {
+      this.calls.push({ method: "gameServerHttpReleaseRequest", args: [request] });
+      return true;
+    },
+    gameServerHttpGetDownloadProgressPercent(request) {
+      this.calls.push({ method: "gameServerHttpGetDownloadProgressPercent", args: [request] });
+      return 1;
+    },
+    gameServerHttpSetRawPostBody(request, contentType, body) {
+      this.calls.push({ method: "gameServerHttpSetRawPostBody", args: [request, contentType, body] });
+      return Buffer.isBuffer(body);
+    },
+    gameServerHttpCreateCookieContainer(allowResponsesToModify) {
+      this.calls.push({ method: "gameServerHttpCreateCookieContainer", args: [allowResponsesToModify] });
+      return 88;
+    },
+    gameServerHttpReleaseCookieContainer(container) {
+      this.calls.push({ method: "gameServerHttpReleaseCookieContainer", args: [container] });
+      return true;
+    },
+    gameServerHttpSetCookie(container, host, url, cookie) {
+      this.calls.push({ method: "gameServerHttpSetCookie", args: [container, host, url, cookie] });
+      return true;
+    },
+    gameServerHttpSetRequestCookieContainer(request, container) {
+      this.calls.push({ method: "gameServerHttpSetRequestCookieContainer", args: [request, container] });
+      return true;
+    },
+    gameServerHttpSetUserAgentInfo(request, userAgent) {
+      this.calls.push({ method: "gameServerHttpSetUserAgentInfo", args: [request, userAgent] });
+      return true;
+    },
+    gameServerHttpSetRequiresVerifiedCertificate(request, requireVerifiedCertificate) {
+      this.calls.push({
+        method: "gameServerHttpSetRequiresVerifiedCertificate",
+        args: [request, requireVerifiedCertificate]
+      });
+      return true;
+    },
+    gameServerHttpSetAbsoluteTimeoutMs(request, timeoutMs) {
+      this.calls.push({ method: "gameServerHttpSetAbsoluteTimeoutMs", args: [request, timeoutMs] });
+      return true;
+    },
+    gameServerHttpGetRequestWasTimedOut(request) {
+      this.calls.push({ method: "gameServerHttpGetRequestWasTimedOut", args: [request] });
+      return false;
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  const request = steam.gameServerHttp.createRequest(steam.gameServerHttp.HttpMethod.Head, "https://example.invalid/ping");
+  assert.equal(request, 200);
+  assert.equal(steam.gameServerHttp.setContextValue(request, 123n), true);
+  assert.equal(steam.gameServerHttp.setNetworkActivityTimeout(request, 5), true);
+  assert.equal(steam.gameServerHttp.setHeaderValue(request, "Accept", "text/plain"), true);
+  assert.equal(steam.gameServerHttp.setGetOrPostParameter(request, "server", "spacewar"), true);
+  assert.deepEqual(await steam.gameServerHttp.sendRequest(request, 2), {
+    request: 200,
+    contextValue: 123n,
+    requestSuccessful: true,
+    statusCode: 204,
+    bodySize: 0
+  });
+  assert.deepEqual(await steam.gameServerHttp.sendRequestAndStreamResponse(request), {
+    request: 200,
+    contextValue: 123n
+  });
+  assert.equal(steam.gameServerHttp.deferRequest(request), true);
+  assert.equal(steam.gameServerHttp.prioritizeRequest(request), true);
+  assert.equal(steam.gameServerHttp.getResponseHeaderSize(request, "Content-Type"), 12);
+  assert.equal(steam.gameServerHttp.getResponseHeaderSize(request, "missing"), null);
+  assert.equal(steam.gameServerHttp.getResponseHeaderValue(request, "Content-Type"), "text/plain");
+  assert.equal(steam.gameServerHttp.getResponseHeaderValue(request, "missing"), null);
+  assert.equal(steam.gameServerHttp.getResponseBodySize(request), 4);
+  assert.equal(steam.gameServerHttp.getResponseBodyData(request).toString(), "pong");
+  assert.equal(steam.gameServerHttp.getStreamingResponseBodyData(request, 0, 4).toString(), "part");
+  assert.equal(steam.gameServerHttp.getDownloadProgressPercent(request), 1);
+  assert.equal(steam.gameServerHttp.setRawPostBody(request, "text/plain", new Uint8Array([112, 105, 110, 103])), true);
+  assert.equal(steam.gameServerHttp.releaseRequest(request), true);
+
+  const container = steam.gameServerHttp.createCookieContainer(true);
+  assert.equal(container, 88);
+  assert.equal(steam.gameServerHttp.setCookie(container, "example.invalid", "/", "server=test"), true);
+  assert.equal(steam.gameServerHttp.setRequestCookieContainer(request, container), true);
+  assert.equal(steam.gameServerHttp.setUserAgentInfo(request, "steam-bridge-server-test"), true);
+  assert.equal(steam.gameServerHttp.setRequiresVerifiedCertificate(request, true), true);
+  assert.equal(steam.gameServerHttp.setAbsoluteTimeoutMs(request, 1000), true);
+  assert.equal(steam.gameServerHttp.getRequestWasTimedOut(request), false);
+  assert.equal(steam.gameServerHttp.releaseCookieContainer(container), true);
+
+  assert.deepEqual(fake.calls.find((call) => call.method === "gameServerHttpCreateRequest"), {
+    method: "gameServerHttpCreateRequest",
+    args: [steam.gameServerHttp.HttpMethod.Head, "https://example.invalid/ping"]
+  });
+  assert.deepEqual(fake.calls.find((call) => call.method === "gameServerHttpSendRequest"), {
+    method: "gameServerHttpSendRequest",
+    args: [request, 2]
   });
 });
 

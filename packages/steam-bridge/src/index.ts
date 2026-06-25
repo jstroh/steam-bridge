@@ -3959,6 +3959,90 @@ export const http = {
   }
 };
 
+export const gameServerHttp = {
+  HttpMethod,
+  createRequest(method: HttpMethodValue | number, url: string): number {
+    return native().gameServerHttpCreateRequest(Number(method), url);
+  },
+  setContextValue(request: number, contextValue: bigint): boolean {
+    return native().gameServerHttpSetContextValue(request, contextValue);
+  },
+  setNetworkActivityTimeout(request: number, timeoutSeconds: number): boolean {
+    return native().gameServerHttpSetNetworkActivityTimeout(request, timeoutSeconds);
+  },
+  setHeaderValue(request: number, name: string, value: string): boolean {
+    return native().gameServerHttpSetHeaderValue(request, name, value);
+  },
+  setGetOrPostParameter(request: number, name: string, value: string): boolean {
+    return native().gameServerHttpSetGetOrPostParameter(request, name, value);
+  },
+  async sendRequest(request: number, timeoutSeconds?: number | null): Promise<HttpRequestCompleted> {
+    return normalizeHttpRequestCompleted(await native().gameServerHttpSendRequest(request, timeoutSeconds ?? undefined));
+  },
+  async sendRequestAndStreamResponse(
+    request: number,
+    timeoutSeconds?: number | null
+  ): Promise<HttpRequestHeadersReceived> {
+    return normalizeHttpRequestHeadersReceived(
+      await native().gameServerHttpSendRequestAndStreamResponse(request, timeoutSeconds ?? undefined)
+    );
+  },
+  deferRequest(request: number): boolean {
+    return native().gameServerHttpDeferRequest(request);
+  },
+  prioritizeRequest(request: number): boolean {
+    return native().gameServerHttpPrioritizeRequest(request);
+  },
+  getResponseHeaderSize(request: number, name: string): number | null {
+    return native().gameServerHttpGetResponseHeaderSize(request, name) ?? null;
+  },
+  getResponseHeaderValue(request: number, name: string): string | null {
+    return native().gameServerHttpGetResponseHeaderValue(request, name) ?? null;
+  },
+  getResponseBodySize(request: number): number | null {
+    return native().gameServerHttpGetResponseBodySize(request) ?? null;
+  },
+  getResponseBodyData(request: number): Buffer | null {
+    return native().gameServerHttpGetResponseBodyData(request) ?? null;
+  },
+  getStreamingResponseBodyData(request: number, offset: number, size: number): Buffer | null {
+    return native().gameServerHttpGetStreamingResponseBodyData(request, offset, size) ?? null;
+  },
+  releaseRequest(request: number): boolean {
+    return native().gameServerHttpReleaseRequest(request);
+  },
+  getDownloadProgressPercent(request: number): number | null {
+    return native().gameServerHttpGetDownloadProgressPercent(request) ?? null;
+  },
+  setRawPostBody(request: number, contentType: string, body: Buffer | Uint8Array): boolean {
+    return native().gameServerHttpSetRawPostBody(request, contentType, Buffer.from(body));
+  },
+  createCookieContainer(allowResponsesToModify = false): number {
+    return native().gameServerHttpCreateCookieContainer(allowResponsesToModify);
+  },
+  releaseCookieContainer(container: number): boolean {
+    return native().gameServerHttpReleaseCookieContainer(container);
+  },
+  setCookie(container: number, host: string, url: string, cookie: string): boolean {
+    return native().gameServerHttpSetCookie(container, host, url, cookie);
+  },
+  setRequestCookieContainer(request: number, container: number): boolean {
+    return native().gameServerHttpSetRequestCookieContainer(request, container);
+  },
+  setUserAgentInfo(request: number, userAgent: string): boolean {
+    return native().gameServerHttpSetUserAgentInfo(request, userAgent);
+  },
+  setRequiresVerifiedCertificate(request: number, requireVerifiedCertificate: boolean): boolean {
+    return native().gameServerHttpSetRequiresVerifiedCertificate(request, requireVerifiedCertificate);
+  },
+  setAbsoluteTimeoutMs(request: number, timeoutMs: number): boolean {
+    return native().gameServerHttpSetAbsoluteTimeoutMs(request, timeoutMs);
+  },
+  getRequestWasTimedOut(request: number): boolean | null {
+    return native().gameServerHttpGetRequestWasTimedOut(request) ?? null;
+  }
+};
+
 export const html = {
   MouseButton: HtmlMouseButton,
   MouseCursor: HtmlMouseCursor,
@@ -6070,6 +6154,7 @@ export interface SteamBridgeClient {
   controller: typeof controller;
   friends: typeof friends;
   gameServer: typeof gameServer;
+  gameServerHttp: typeof gameServerHttp;
   gameServerStats: typeof gameServerStats;
   http: typeof http;
   inventory: typeof inventory;
@@ -6102,6 +6187,7 @@ export function createCompatibilityClient(): SteamBridgeClient {
     controller,
     friends,
     gameServer,
+    gameServerHttp,
     gameServerStats,
     http,
     inventory,
@@ -8488,6 +8574,7 @@ const defaultExport = {
   cloud,
   friends,
   gameServer,
+  gameServerHttp,
   gameServerStats,
   html,
   http,

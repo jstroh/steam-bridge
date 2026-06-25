@@ -47,9 +47,10 @@ The native layer currently targets the Steamworks flat C API through
   UGC download/progress/details/reads, legacy published-file publish/update,
   detail, enumeration, subscription, vote, action, and video flows,
   local-change enumeration, and file write batch controls.
-- HTTP: request creation, configuration, send/stream send initiation, response
-  header/body reads, progress/timeout checks, raw POST bodies, cookie
-  containers, request priority/defer, and HTTP request callbacks.
+- HTTP: client and game-server request creation, configuration,
+  send/stream-send initiation, response header/body reads, progress/timeout
+  checks, raw POST bodies, cookie containers, request priority/defer, and HTTP
+  request callbacks.
 - HTML surface: initialization/shutdown, browser creation/removal, navigation,
   sizing, headers, JavaScript execution, mouse/key input, scroll/focus,
   clipboard/source/find/link helpers, cookies, scale/background/DPI controls,
@@ -112,8 +113,8 @@ The native layer currently targets the Steamworks flat C API through
   ticket helpers, license and group status checks, public IP reads,
   game-socket-share packet helpers, unauthenticated/deprecated user connection
   helpers, user data updates, server reputation, clan association and new-player
-  compatibility call results, core game-server callbacks, and game-server stats
-  request/read/write/store helpers.
+  compatibility call results, core game-server callbacks, game-server stats
+  request/read/write/store helpers, and the game-server HTTP shared interface.
 
 ## Not Yet Complete
 

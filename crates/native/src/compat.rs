@@ -4308,12 +4308,17 @@ pub async fn cloud_legacy_enumerate_published_workshop_files(
     Ok(remote_storage_enumerate_workshop_files_result(&result))
 }
 
-#[napi(js_name = "httpCreateRequest")]
-pub fn http_create_request(method: u32, url: String) -> Result<u32, Error> {
+type SteamHttpAccessor = fn() -> Result<*mut sys::ISteamHTTP, Error>;
+
+fn http_create_request_with(
+    accessor: SteamHttpAccessor,
+    method: u32,
+    url: String,
+) -> Result<u32, Error> {
     let url = cstring(url, "HTTP URL")?;
     let request = unsafe {
         sys::SteamAPI_ISteamHTTP_CreateHTTPRequest(
-            steam_http()?,
+            accessor()?,
             http_method_from_u32(method)?,
             url.as_ptr(),
         )
@@ -4327,38 +4332,45 @@ pub fn http_create_request(method: u32, url: String) -> Result<u32, Error> {
     }
 }
 
-#[napi(js_name = "httpSetContextValue")]
-pub fn http_set_context_value(request: u32, context_value: BigInt) -> Result<bool, Error> {
+fn http_set_context_value_with(
+    accessor: SteamHttpAccessor,
+    request: u32,
+    context_value: BigInt,
+) -> Result<bool, Error> {
     Ok(unsafe {
         sys::SteamAPI_ISteamHTTP_SetHTTPRequestContextValue(
-            steam_http()?,
+            accessor()?,
             request,
             bigint_to_u64(context_value, "HTTP context value")?,
         )
     })
 }
 
-#[napi(js_name = "httpSetNetworkActivityTimeout")]
-pub fn http_set_network_activity_timeout(
+fn http_set_network_activity_timeout_with(
+    accessor: SteamHttpAccessor,
     request: u32,
     timeout_seconds: u32,
 ) -> Result<bool, Error> {
     Ok(unsafe {
         sys::SteamAPI_ISteamHTTP_SetHTTPRequestNetworkActivityTimeout(
-            steam_http()?,
+            accessor()?,
             request,
             timeout_seconds,
         )
     })
 }
 
-#[napi(js_name = "httpSetHeaderValue")]
-pub fn http_set_header_value(request: u32, name: String, value: String) -> Result<bool, Error> {
+fn http_set_header_value_with(
+    accessor: SteamHttpAccessor,
+    request: u32,
+    name: String,
+    value: String,
+) -> Result<bool, Error> {
     let name = cstring(name, "HTTP header name")?;
     let value = cstring(value, "HTTP header value")?;
     Ok(unsafe {
         sys::SteamAPI_ISteamHTTP_SetHTTPRequestHeaderValue(
-            steam_http()?,
+            accessor()?,
             request,
             name.as_ptr(),
             value.as_ptr(),
@@ -4366,8 +4378,8 @@ pub fn http_set_header_value(request: u32, name: String, value: String) -> Resul
     })
 }
 
-#[napi(js_name = "httpSetGetOrPostParameter")]
-pub fn http_set_get_or_post_parameter(
+fn http_set_get_or_post_parameter_with(
+    accessor: SteamHttpAccessor,
     request: u32,
     name: String,
     value: String,
@@ -4376,7 +4388,7 @@ pub fn http_set_get_or_post_parameter(
     let value = cstring(value, "HTTP parameter value")?;
     Ok(unsafe {
         sys::SteamAPI_ISteamHTTP_SetHTTPRequestGetOrPostParameter(
-            steam_http()?,
+            accessor()?,
             request,
             name.as_ptr(),
             value.as_ptr(),
@@ -4384,71 +4396,98 @@ pub fn http_set_get_or_post_parameter(
     })
 }
 
-#[napi(js_name = "httpSendRequest")]
-pub async fn http_send_request(
+async fn wait_for_http_api_call<T>(
+    call: sys::SteamAPICall_t,
+    expected_callback: i32,
+    timeout_seconds: Option<u32>,
+    use_game_server_callbacks: bool,
+) -> Result<T, Error> {
+    let timeout_seconds = timeout_seconds
+        .map(u64::from)
+        .unwrap_or(DEFAULT_ASYNC_TIMEOUT_SECONDS)
+        .max(1);
+    if use_game_server_callbacks {
+        wait_for_game_server_api_call(call, expected_callback, timeout_seconds).await
+    } else {
+        wait_for_api_call(call, expected_callback, timeout_seconds).await
+    }
+}
+
+async fn http_send_request_with(
+    accessor: SteamHttpAccessor,
     request: u32,
     timeout_seconds: Option<u32>,
+    use_game_server_callbacks: bool,
 ) -> Result<HttpRequestCompleted, Error> {
-    let mut call = 0u64;
-    let ok = unsafe { sys::SteamAPI_ISteamHTTP_SendHTTPRequest(steam_http()?, request, &mut call) };
-    if !ok {
-        return Err(Error::from_reason("Steam rejected the HTTP request send"));
-    }
-    let result: sys::HTTPRequestCompleted_t = wait_for_api_call(
+    let call = {
+        let mut call = 0u64;
+        let ok =
+            unsafe { sys::SteamAPI_ISteamHTTP_SendHTTPRequest(accessor()?, request, &mut call) };
+        if !ok {
+            return Err(Error::from_reason("Steam rejected the HTTP request send"));
+        }
+        call
+    };
+    let result: sys::HTTPRequestCompleted_t = wait_for_http_api_call(
         call,
         sys::HTTPRequestCompleted_t_k_iCallback as i32,
-        timeout_seconds
-            .map(u64::from)
-            .unwrap_or(DEFAULT_ASYNC_TIMEOUT_SECONDS)
-            .max(1),
+        timeout_seconds,
+        use_game_server_callbacks,
     )
     .await?;
     Ok(http_request_completed_result(&result))
 }
 
-#[napi(js_name = "httpSendRequestAndStreamResponse")]
-pub async fn http_send_request_and_stream_response(
+async fn http_send_request_and_stream_response_with(
+    accessor: SteamHttpAccessor,
     request: u32,
     timeout_seconds: Option<u32>,
+    use_game_server_callbacks: bool,
 ) -> Result<HttpRequestHeadersReceived, Error> {
-    let mut call = 0u64;
-    let ok = unsafe {
-        sys::SteamAPI_ISteamHTTP_SendHTTPRequestAndStreamResponse(steam_http()?, request, &mut call)
+    let call = {
+        let mut call = 0u64;
+        let ok = unsafe {
+            sys::SteamAPI_ISteamHTTP_SendHTTPRequestAndStreamResponse(
+                accessor()?,
+                request,
+                &mut call,
+            )
+        };
+        if !ok {
+            return Err(Error::from_reason(
+                "Steam rejected the streaming HTTP request send",
+            ));
+        }
+        call
     };
-    if !ok {
-        return Err(Error::from_reason(
-            "Steam rejected the streaming HTTP request send",
-        ));
-    }
-    let result: sys::HTTPRequestHeadersReceived_t = wait_for_api_call(
+    let result: sys::HTTPRequestHeadersReceived_t = wait_for_http_api_call(
         call,
         sys::HTTPRequestHeadersReceived_t_k_iCallback as i32,
-        timeout_seconds
-            .map(u64::from)
-            .unwrap_or(DEFAULT_ASYNC_TIMEOUT_SECONDS)
-            .max(1),
+        timeout_seconds,
+        use_game_server_callbacks,
     )
     .await?;
     Ok(http_request_headers_received_result(&result))
 }
 
-#[napi(js_name = "httpDeferRequest")]
-pub fn http_defer_request(request: u32) -> Result<bool, Error> {
-    Ok(unsafe { sys::SteamAPI_ISteamHTTP_DeferHTTPRequest(steam_http()?, request) })
+fn http_defer_request_with(accessor: SteamHttpAccessor, request: u32) -> Result<bool, Error> {
+    Ok(unsafe { sys::SteamAPI_ISteamHTTP_DeferHTTPRequest(accessor()?, request) })
 }
 
-#[napi(js_name = "httpPrioritizeRequest")]
-pub fn http_prioritize_request(request: u32) -> Result<bool, Error> {
-    Ok(unsafe { sys::SteamAPI_ISteamHTTP_PrioritizeHTTPRequest(steam_http()?, request) })
+fn http_prioritize_request_with(accessor: SteamHttpAccessor, request: u32) -> Result<bool, Error> {
+    Ok(unsafe { sys::SteamAPI_ISteamHTTP_PrioritizeHTTPRequest(accessor()?, request) })
 }
 
-#[napi(js_name = "httpGetResponseHeaderSize")]
-pub fn http_get_response_header_size(request: u32, name: String) -> Result<Option<u32>, Error> {
+fn http_get_response_header_size_with(
+    accessor: SteamHttpAccessor,
+    request: u32,
+    name: String,
+) -> Result<Option<u32>, Error> {
     let name = cstring(name, "HTTP header name")?;
     let mut size = 0u32;
     let ok = unsafe {
         sys::SteamAPI_ISteamHTTP_GetHTTPResponseHeaderSize(
-            steam_http()?,
+            accessor()?,
             request,
             name.as_ptr(),
             &mut size,
@@ -4457,16 +4496,19 @@ pub fn http_get_response_header_size(request: u32, name: String) -> Result<Optio
     Ok(ok.then_some(size))
 }
 
-#[napi(js_name = "httpGetResponseHeaderValue")]
-pub fn http_get_response_header_value(request: u32, name: String) -> Result<Option<String>, Error> {
-    let Some(size) = http_get_response_header_size(request, name.clone())? else {
+fn http_get_response_header_value_with(
+    accessor: SteamHttpAccessor,
+    request: u32,
+    name: String,
+) -> Result<Option<String>, Error> {
+    let Some(size) = http_get_response_header_size_with(accessor, request, name.clone())? else {
         return Ok(None);
     };
     let name = cstring(name, "HTTP header name")?;
     let mut bytes = vec![0u8; size as usize];
     let ok = unsafe {
         sys::SteamAPI_ISteamHTTP_GetHTTPResponseHeaderValue(
-            steam_http()?,
+            accessor()?,
             request,
             name.as_ptr(),
             bytes.as_mut_ptr(),
@@ -4476,24 +4518,28 @@ pub fn http_get_response_header_value(request: u32, name: String) -> Result<Opti
     Ok(ok.then(|| u8_buf_to_string(&bytes)))
 }
 
-#[napi(js_name = "httpGetResponseBodySize")]
-pub fn http_get_response_body_size(request: u32) -> Result<Option<u32>, Error> {
+fn http_get_response_body_size_with(
+    accessor: SteamHttpAccessor,
+    request: u32,
+) -> Result<Option<u32>, Error> {
     let mut size = 0u32;
     let ok = unsafe {
-        sys::SteamAPI_ISteamHTTP_GetHTTPResponseBodySize(steam_http()?, request, &mut size)
+        sys::SteamAPI_ISteamHTTP_GetHTTPResponseBodySize(accessor()?, request, &mut size)
     };
     Ok(ok.then_some(size))
 }
 
-#[napi(js_name = "httpGetResponseBodyData")]
-pub fn http_get_response_body_data(request: u32) -> Result<Option<Buffer>, Error> {
-    let Some(size) = http_get_response_body_size(request)? else {
+fn http_get_response_body_data_with(
+    accessor: SteamHttpAccessor,
+    request: u32,
+) -> Result<Option<Buffer>, Error> {
+    let Some(size) = http_get_response_body_size_with(accessor, request)? else {
         return Ok(None);
     };
     let mut bytes = vec![0u8; size as usize];
     let ok = unsafe {
         sys::SteamAPI_ISteamHTTP_GetHTTPResponseBodyData(
-            steam_http()?,
+            accessor()?,
             request,
             bytes.as_mut_ptr(),
             size,
@@ -4502,8 +4548,8 @@ pub fn http_get_response_body_data(request: u32) -> Result<Option<Buffer>, Error
     Ok(ok.then(|| bytes.into()))
 }
 
-#[napi(js_name = "httpGetStreamingResponseBodyData")]
-pub fn http_get_streaming_response_body_data(
+fn http_get_streaming_response_body_data_with(
+    accessor: SteamHttpAccessor,
     request: u32,
     offset: u32,
     size: u32,
@@ -4511,7 +4557,7 @@ pub fn http_get_streaming_response_body_data(
     let mut bytes = vec![0u8; size as usize];
     let ok = unsafe {
         sys::SteamAPI_ISteamHTTP_GetHTTPStreamingResponseBodyData(
-            steam_http()?,
+            accessor()?,
             request,
             offset,
             bytes.as_mut_ptr(),
@@ -4521,22 +4567,23 @@ pub fn http_get_streaming_response_body_data(
     Ok(ok.then(|| bytes.into()))
 }
 
-#[napi(js_name = "httpReleaseRequest")]
-pub fn http_release_request(request: u32) -> Result<bool, Error> {
-    Ok(unsafe { sys::SteamAPI_ISteamHTTP_ReleaseHTTPRequest(steam_http()?, request) })
+fn http_release_request_with(accessor: SteamHttpAccessor, request: u32) -> Result<bool, Error> {
+    Ok(unsafe { sys::SteamAPI_ISteamHTTP_ReleaseHTTPRequest(accessor()?, request) })
 }
 
-#[napi(js_name = "httpGetDownloadProgressPercent")]
-pub fn http_get_download_progress_percent(request: u32) -> Result<Option<f64>, Error> {
+fn http_get_download_progress_percent_with(
+    accessor: SteamHttpAccessor,
+    request: u32,
+) -> Result<Option<f64>, Error> {
     let mut percent = 0.0f32;
     let ok = unsafe {
-        sys::SteamAPI_ISteamHTTP_GetHTTPDownloadProgressPct(steam_http()?, request, &mut percent)
+        sys::SteamAPI_ISteamHTTP_GetHTTPDownloadProgressPct(accessor()?, request, &mut percent)
     };
     Ok(ok.then_some(f64::from(percent)))
 }
 
-#[napi(js_name = "httpSetRawPostBody")]
-pub fn http_set_raw_post_body(
+fn http_set_raw_post_body_with(
+    accessor: SteamHttpAccessor,
     request: u32,
     content_type: String,
     body: Buffer,
@@ -4547,7 +4594,7 @@ pub fn http_set_raw_post_body(
     let content_type = cstring(content_type, "HTTP content type")?;
     Ok(unsafe {
         sys::SteamAPI_ISteamHTTP_SetHTTPRequestRawPostBody(
-            steam_http()?,
+            accessor()?,
             request,
             content_type.as_ptr(),
             body.as_ptr() as *mut u8,
@@ -4556,10 +4603,12 @@ pub fn http_set_raw_post_body(
     })
 }
 
-#[napi(js_name = "httpCreateCookieContainer")]
-pub fn http_create_cookie_container(allow_responses_to_modify: bool) -> Result<u32, Error> {
+fn http_create_cookie_container_with(
+    accessor: SteamHttpAccessor,
+    allow_responses_to_modify: bool,
+) -> Result<u32, Error> {
     let container = unsafe {
-        sys::SteamAPI_ISteamHTTP_CreateCookieContainer(steam_http()?, allow_responses_to_modify)
+        sys::SteamAPI_ISteamHTTP_CreateCookieContainer(accessor()?, allow_responses_to_modify)
     };
     if container == sys::INVALID_HTTPCOOKIE_HANDLE {
         Err(Error::from_reason(
@@ -4570,13 +4619,15 @@ pub fn http_create_cookie_container(allow_responses_to_modify: bool) -> Result<u
     }
 }
 
-#[napi(js_name = "httpReleaseCookieContainer")]
-pub fn http_release_cookie_container(container: u32) -> Result<bool, Error> {
-    Ok(unsafe { sys::SteamAPI_ISteamHTTP_ReleaseCookieContainer(steam_http()?, container) })
+fn http_release_cookie_container_with(
+    accessor: SteamHttpAccessor,
+    container: u32,
+) -> Result<bool, Error> {
+    Ok(unsafe { sys::SteamAPI_ISteamHTTP_ReleaseCookieContainer(accessor()?, container) })
 }
 
-#[napi(js_name = "httpSetCookie")]
-pub fn http_set_cookie(
+fn http_set_cookie_with(
+    accessor: SteamHttpAccessor,
     container: u32,
     host: String,
     url: String,
@@ -4587,7 +4638,7 @@ pub fn http_set_cookie(
     let cookie = cstring(cookie, "HTTP cookie")?;
     Ok(unsafe {
         sys::SteamAPI_ISteamHTTP_SetCookie(
-            steam_http()?,
+            accessor()?,
             container,
             host.as_ptr(),
             url.as_ptr(),
@@ -4596,23 +4647,200 @@ pub fn http_set_cookie(
     })
 }
 
-#[napi(js_name = "httpSetRequestCookieContainer")]
-pub fn http_set_request_cookie_container(request: u32, container: u32) -> Result<bool, Error> {
+fn http_set_request_cookie_container_with(
+    accessor: SteamHttpAccessor,
+    request: u32,
+    container: u32,
+) -> Result<bool, Error> {
     Ok(unsafe {
-        sys::SteamAPI_ISteamHTTP_SetHTTPRequestCookieContainer(steam_http()?, request, container)
+        sys::SteamAPI_ISteamHTTP_SetHTTPRequestCookieContainer(accessor()?, request, container)
     })
 }
 
-#[napi(js_name = "httpSetUserAgentInfo")]
-pub fn http_set_user_agent_info(request: u32, user_agent: String) -> Result<bool, Error> {
+fn http_set_user_agent_info_with(
+    accessor: SteamHttpAccessor,
+    request: u32,
+    user_agent: String,
+) -> Result<bool, Error> {
     let user_agent = cstring(user_agent, "HTTP user agent")?;
     Ok(unsafe {
         sys::SteamAPI_ISteamHTTP_SetHTTPRequestUserAgentInfo(
-            steam_http()?,
+            accessor()?,
             request,
             user_agent.as_ptr(),
         )
     })
+}
+
+fn http_set_requires_verified_certificate_with(
+    accessor: SteamHttpAccessor,
+    request: u32,
+    require_verified_certificate: bool,
+) -> Result<bool, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamHTTP_SetHTTPRequestRequiresVerifiedCertificate(
+            accessor()?,
+            request,
+            require_verified_certificate,
+        )
+    })
+}
+
+fn http_set_absolute_timeout_ms_with(
+    accessor: SteamHttpAccessor,
+    request: u32,
+    timeout_ms: u32,
+) -> Result<bool, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamHTTP_SetHTTPRequestAbsoluteTimeoutMS(accessor()?, request, timeout_ms)
+    })
+}
+
+fn http_get_request_was_timed_out_with(
+    accessor: SteamHttpAccessor,
+    request: u32,
+) -> Result<Option<bool>, Error> {
+    let mut timed_out = false;
+    let ok = unsafe {
+        sys::SteamAPI_ISteamHTTP_GetHTTPRequestWasTimedOut(accessor()?, request, &mut timed_out)
+    };
+    Ok(ok.then_some(timed_out))
+}
+
+#[napi(js_name = "httpCreateRequest")]
+pub fn http_create_request(method: u32, url: String) -> Result<u32, Error> {
+    http_create_request_with(steam_http, method, url)
+}
+
+#[napi(js_name = "httpSetContextValue")]
+pub fn http_set_context_value(request: u32, context_value: BigInt) -> Result<bool, Error> {
+    http_set_context_value_with(steam_http, request, context_value)
+}
+
+#[napi(js_name = "httpSetNetworkActivityTimeout")]
+pub fn http_set_network_activity_timeout(
+    request: u32,
+    timeout_seconds: u32,
+) -> Result<bool, Error> {
+    http_set_network_activity_timeout_with(steam_http, request, timeout_seconds)
+}
+
+#[napi(js_name = "httpSetHeaderValue")]
+pub fn http_set_header_value(request: u32, name: String, value: String) -> Result<bool, Error> {
+    http_set_header_value_with(steam_http, request, name, value)
+}
+
+#[napi(js_name = "httpSetGetOrPostParameter")]
+pub fn http_set_get_or_post_parameter(
+    request: u32,
+    name: String,
+    value: String,
+) -> Result<bool, Error> {
+    http_set_get_or_post_parameter_with(steam_http, request, name, value)
+}
+
+#[napi(js_name = "httpSendRequest")]
+pub async fn http_send_request(
+    request: u32,
+    timeout_seconds: Option<u32>,
+) -> Result<HttpRequestCompleted, Error> {
+    http_send_request_with(steam_http, request, timeout_seconds, false).await
+}
+
+#[napi(js_name = "httpSendRequestAndStreamResponse")]
+pub async fn http_send_request_and_stream_response(
+    request: u32,
+    timeout_seconds: Option<u32>,
+) -> Result<HttpRequestHeadersReceived, Error> {
+    http_send_request_and_stream_response_with(steam_http, request, timeout_seconds, false).await
+}
+
+#[napi(js_name = "httpDeferRequest")]
+pub fn http_defer_request(request: u32) -> Result<bool, Error> {
+    http_defer_request_with(steam_http, request)
+}
+
+#[napi(js_name = "httpPrioritizeRequest")]
+pub fn http_prioritize_request(request: u32) -> Result<bool, Error> {
+    http_prioritize_request_with(steam_http, request)
+}
+
+#[napi(js_name = "httpGetResponseHeaderSize")]
+pub fn http_get_response_header_size(request: u32, name: String) -> Result<Option<u32>, Error> {
+    http_get_response_header_size_with(steam_http, request, name)
+}
+
+#[napi(js_name = "httpGetResponseHeaderValue")]
+pub fn http_get_response_header_value(request: u32, name: String) -> Result<Option<String>, Error> {
+    http_get_response_header_value_with(steam_http, request, name)
+}
+
+#[napi(js_name = "httpGetResponseBodySize")]
+pub fn http_get_response_body_size(request: u32) -> Result<Option<u32>, Error> {
+    http_get_response_body_size_with(steam_http, request)
+}
+
+#[napi(js_name = "httpGetResponseBodyData")]
+pub fn http_get_response_body_data(request: u32) -> Result<Option<Buffer>, Error> {
+    http_get_response_body_data_with(steam_http, request)
+}
+
+#[napi(js_name = "httpGetStreamingResponseBodyData")]
+pub fn http_get_streaming_response_body_data(
+    request: u32,
+    offset: u32,
+    size: u32,
+) -> Result<Option<Buffer>, Error> {
+    http_get_streaming_response_body_data_with(steam_http, request, offset, size)
+}
+
+#[napi(js_name = "httpReleaseRequest")]
+pub fn http_release_request(request: u32) -> Result<bool, Error> {
+    http_release_request_with(steam_http, request)
+}
+
+#[napi(js_name = "httpGetDownloadProgressPercent")]
+pub fn http_get_download_progress_percent(request: u32) -> Result<Option<f64>, Error> {
+    http_get_download_progress_percent_with(steam_http, request)
+}
+
+#[napi(js_name = "httpSetRawPostBody")]
+pub fn http_set_raw_post_body(
+    request: u32,
+    content_type: String,
+    body: Buffer,
+) -> Result<bool, Error> {
+    http_set_raw_post_body_with(steam_http, request, content_type, body)
+}
+
+#[napi(js_name = "httpCreateCookieContainer")]
+pub fn http_create_cookie_container(allow_responses_to_modify: bool) -> Result<u32, Error> {
+    http_create_cookie_container_with(steam_http, allow_responses_to_modify)
+}
+
+#[napi(js_name = "httpReleaseCookieContainer")]
+pub fn http_release_cookie_container(container: u32) -> Result<bool, Error> {
+    http_release_cookie_container_with(steam_http, container)
+}
+
+#[napi(js_name = "httpSetCookie")]
+pub fn http_set_cookie(
+    container: u32,
+    host: String,
+    url: String,
+    cookie: String,
+) -> Result<bool, Error> {
+    http_set_cookie_with(steam_http, container, host, url, cookie)
+}
+
+#[napi(js_name = "httpSetRequestCookieContainer")]
+pub fn http_set_request_cookie_container(request: u32, container: u32) -> Result<bool, Error> {
+    http_set_request_cookie_container_with(steam_http, request, container)
+}
+
+#[napi(js_name = "httpSetUserAgentInfo")]
+pub fn http_set_user_agent_info(request: u32, user_agent: String) -> Result<bool, Error> {
+    http_set_user_agent_info_with(steam_http, request, user_agent)
 }
 
 #[napi(js_name = "httpSetRequiresVerifiedCertificate")]
@@ -4620,29 +4848,205 @@ pub fn http_set_requires_verified_certificate(
     request: u32,
     require_verified_certificate: bool,
 ) -> Result<bool, Error> {
-    Ok(unsafe {
-        sys::SteamAPI_ISteamHTTP_SetHTTPRequestRequiresVerifiedCertificate(
-            steam_http()?,
-            request,
-            require_verified_certificate,
-        )
-    })
+    http_set_requires_verified_certificate_with(steam_http, request, require_verified_certificate)
 }
 
 #[napi(js_name = "httpSetAbsoluteTimeoutMs")]
 pub fn http_set_absolute_timeout_ms(request: u32, timeout_ms: u32) -> Result<bool, Error> {
-    Ok(unsafe {
-        sys::SteamAPI_ISteamHTTP_SetHTTPRequestAbsoluteTimeoutMS(steam_http()?, request, timeout_ms)
-    })
+    http_set_absolute_timeout_ms_with(steam_http, request, timeout_ms)
 }
 
 #[napi(js_name = "httpGetRequestWasTimedOut")]
 pub fn http_get_request_was_timed_out(request: u32) -> Result<Option<bool>, Error> {
-    let mut timed_out = false;
-    let ok = unsafe {
-        sys::SteamAPI_ISteamHTTP_GetHTTPRequestWasTimedOut(steam_http()?, request, &mut timed_out)
-    };
-    Ok(ok.then_some(timed_out))
+    http_get_request_was_timed_out_with(steam_http, request)
+}
+
+#[napi(js_name = "gameServerHttpCreateRequest")]
+pub fn game_server_http_create_request(method: u32, url: String) -> Result<u32, Error> {
+    http_create_request_with(steam_game_server_http, method, url)
+}
+
+#[napi(js_name = "gameServerHttpSetContextValue")]
+pub fn game_server_http_set_context_value(
+    request: u32,
+    context_value: BigInt,
+) -> Result<bool, Error> {
+    http_set_context_value_with(steam_game_server_http, request, context_value)
+}
+
+#[napi(js_name = "gameServerHttpSetNetworkActivityTimeout")]
+pub fn game_server_http_set_network_activity_timeout(
+    request: u32,
+    timeout_seconds: u32,
+) -> Result<bool, Error> {
+    http_set_network_activity_timeout_with(steam_game_server_http, request, timeout_seconds)
+}
+
+#[napi(js_name = "gameServerHttpSetHeaderValue")]
+pub fn game_server_http_set_header_value(
+    request: u32,
+    name: String,
+    value: String,
+) -> Result<bool, Error> {
+    http_set_header_value_with(steam_game_server_http, request, name, value)
+}
+
+#[napi(js_name = "gameServerHttpSetGetOrPostParameter")]
+pub fn game_server_http_set_get_or_post_parameter(
+    request: u32,
+    name: String,
+    value: String,
+) -> Result<bool, Error> {
+    http_set_get_or_post_parameter_with(steam_game_server_http, request, name, value)
+}
+
+#[napi(js_name = "gameServerHttpSendRequest")]
+pub async fn game_server_http_send_request(
+    request: u32,
+    timeout_seconds: Option<u32>,
+) -> Result<HttpRequestCompleted, Error> {
+    http_send_request_with(steam_game_server_http, request, timeout_seconds, true).await
+}
+
+#[napi(js_name = "gameServerHttpSendRequestAndStreamResponse")]
+pub async fn game_server_http_send_request_and_stream_response(
+    request: u32,
+    timeout_seconds: Option<u32>,
+) -> Result<HttpRequestHeadersReceived, Error> {
+    http_send_request_and_stream_response_with(
+        steam_game_server_http,
+        request,
+        timeout_seconds,
+        true,
+    )
+    .await
+}
+
+#[napi(js_name = "gameServerHttpDeferRequest")]
+pub fn game_server_http_defer_request(request: u32) -> Result<bool, Error> {
+    http_defer_request_with(steam_game_server_http, request)
+}
+
+#[napi(js_name = "gameServerHttpPrioritizeRequest")]
+pub fn game_server_http_prioritize_request(request: u32) -> Result<bool, Error> {
+    http_prioritize_request_with(steam_game_server_http, request)
+}
+
+#[napi(js_name = "gameServerHttpGetResponseHeaderSize")]
+pub fn game_server_http_get_response_header_size(
+    request: u32,
+    name: String,
+) -> Result<Option<u32>, Error> {
+    http_get_response_header_size_with(steam_game_server_http, request, name)
+}
+
+#[napi(js_name = "gameServerHttpGetResponseHeaderValue")]
+pub fn game_server_http_get_response_header_value(
+    request: u32,
+    name: String,
+) -> Result<Option<String>, Error> {
+    http_get_response_header_value_with(steam_game_server_http, request, name)
+}
+
+#[napi(js_name = "gameServerHttpGetResponseBodySize")]
+pub fn game_server_http_get_response_body_size(request: u32) -> Result<Option<u32>, Error> {
+    http_get_response_body_size_with(steam_game_server_http, request)
+}
+
+#[napi(js_name = "gameServerHttpGetResponseBodyData")]
+pub fn game_server_http_get_response_body_data(request: u32) -> Result<Option<Buffer>, Error> {
+    http_get_response_body_data_with(steam_game_server_http, request)
+}
+
+#[napi(js_name = "gameServerHttpGetStreamingResponseBodyData")]
+pub fn game_server_http_get_streaming_response_body_data(
+    request: u32,
+    offset: u32,
+    size: u32,
+) -> Result<Option<Buffer>, Error> {
+    http_get_streaming_response_body_data_with(steam_game_server_http, request, offset, size)
+}
+
+#[napi(js_name = "gameServerHttpReleaseRequest")]
+pub fn game_server_http_release_request(request: u32) -> Result<bool, Error> {
+    http_release_request_with(steam_game_server_http, request)
+}
+
+#[napi(js_name = "gameServerHttpGetDownloadProgressPercent")]
+pub fn game_server_http_get_download_progress_percent(request: u32) -> Result<Option<f64>, Error> {
+    http_get_download_progress_percent_with(steam_game_server_http, request)
+}
+
+#[napi(js_name = "gameServerHttpSetRawPostBody")]
+pub fn game_server_http_set_raw_post_body(
+    request: u32,
+    content_type: String,
+    body: Buffer,
+) -> Result<bool, Error> {
+    http_set_raw_post_body_with(steam_game_server_http, request, content_type, body)
+}
+
+#[napi(js_name = "gameServerHttpCreateCookieContainer")]
+pub fn game_server_http_create_cookie_container(
+    allow_responses_to_modify: bool,
+) -> Result<u32, Error> {
+    http_create_cookie_container_with(steam_game_server_http, allow_responses_to_modify)
+}
+
+#[napi(js_name = "gameServerHttpReleaseCookieContainer")]
+pub fn game_server_http_release_cookie_container(container: u32) -> Result<bool, Error> {
+    http_release_cookie_container_with(steam_game_server_http, container)
+}
+
+#[napi(js_name = "gameServerHttpSetCookie")]
+pub fn game_server_http_set_cookie(
+    container: u32,
+    host: String,
+    url: String,
+    cookie: String,
+) -> Result<bool, Error> {
+    http_set_cookie_with(steam_game_server_http, container, host, url, cookie)
+}
+
+#[napi(js_name = "gameServerHttpSetRequestCookieContainer")]
+pub fn game_server_http_set_request_cookie_container(
+    request: u32,
+    container: u32,
+) -> Result<bool, Error> {
+    http_set_request_cookie_container_with(steam_game_server_http, request, container)
+}
+
+#[napi(js_name = "gameServerHttpSetUserAgentInfo")]
+pub fn game_server_http_set_user_agent_info(
+    request: u32,
+    user_agent: String,
+) -> Result<bool, Error> {
+    http_set_user_agent_info_with(steam_game_server_http, request, user_agent)
+}
+
+#[napi(js_name = "gameServerHttpSetRequiresVerifiedCertificate")]
+pub fn game_server_http_set_requires_verified_certificate(
+    request: u32,
+    require_verified_certificate: bool,
+) -> Result<bool, Error> {
+    http_set_requires_verified_certificate_with(
+        steam_game_server_http,
+        request,
+        require_verified_certificate,
+    )
+}
+
+#[napi(js_name = "gameServerHttpSetAbsoluteTimeoutMs")]
+pub fn game_server_http_set_absolute_timeout_ms(
+    request: u32,
+    timeout_ms: u32,
+) -> Result<bool, Error> {
+    http_set_absolute_timeout_ms_with(steam_game_server_http, request, timeout_ms)
+}
+
+#[napi(js_name = "gameServerHttpGetRequestWasTimedOut")]
+pub fn game_server_http_get_request_was_timed_out(request: u32) -> Result<Option<bool>, Error> {
+    http_get_request_was_timed_out_with(steam_game_server_http, request)
 }
 
 #[napi(js_name = "htmlInit")]
@@ -13396,6 +13800,14 @@ fn steam_remote_storage() -> Result<*mut sys::ISteamRemoteStorage, Error> {
 fn steam_http() -> Result<*mut sys::ISteamHTTP, Error> {
     crate::state::ensure_initialized()?;
     non_null(unsafe { sys::SteamAPI_SteamHTTP_v003() }, "ISteamHTTP")
+}
+
+fn steam_game_server_http() -> Result<*mut sys::ISteamHTTP, Error> {
+    crate::state::ensure_game_server_initialized()?;
+    non_null(
+        unsafe { sys::SteamAPI_SteamGameServerHTTP_v003() },
+        "ISteamHTTP",
+    )
 }
 
 fn steam_html_surface() -> Result<*mut sys::ISteamHTMLSurface, Error> {

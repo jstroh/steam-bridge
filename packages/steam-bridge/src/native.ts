@@ -1703,6 +1703,32 @@ export interface NativeBinding {
   httpSetAbsoluteTimeoutMs(request: number, timeoutMs: number): boolean;
   httpGetRequestWasTimedOut(request: number): boolean | null | undefined;
 
+  gameServerHttpCreateRequest(method: number, url: string): number;
+  gameServerHttpSetContextValue(request: number, contextValue: bigint): boolean;
+  gameServerHttpSetNetworkActivityTimeout(request: number, timeoutSeconds: number): boolean;
+  gameServerHttpSetHeaderValue(request: number, name: string, value: string): boolean;
+  gameServerHttpSetGetOrPostParameter(request: number, name: string, value: string): boolean;
+  gameServerHttpSendRequest(request: number, timeoutSeconds?: number): Promise<NativeHttpRequestCompleted>;
+  gameServerHttpSendRequestAndStreamResponse(request: number, timeoutSeconds?: number): Promise<NativeHttpRequestHeadersReceived>;
+  gameServerHttpDeferRequest(request: number): boolean;
+  gameServerHttpPrioritizeRequest(request: number): boolean;
+  gameServerHttpGetResponseHeaderSize(request: number, name: string): number | null | undefined;
+  gameServerHttpGetResponseHeaderValue(request: number, name: string): string | null | undefined;
+  gameServerHttpGetResponseBodySize(request: number): number | null | undefined;
+  gameServerHttpGetResponseBodyData(request: number): Buffer | null | undefined;
+  gameServerHttpGetStreamingResponseBodyData(request: number, offset: number, size: number): Buffer | null | undefined;
+  gameServerHttpReleaseRequest(request: number): boolean;
+  gameServerHttpGetDownloadProgressPercent(request: number): number | null | undefined;
+  gameServerHttpSetRawPostBody(request: number, contentType: string, body: Buffer): boolean;
+  gameServerHttpCreateCookieContainer(allowResponsesToModify: boolean): number;
+  gameServerHttpReleaseCookieContainer(container: number): boolean;
+  gameServerHttpSetCookie(container: number, host: string, url: string, cookie: string): boolean;
+  gameServerHttpSetRequestCookieContainer(request: number, container: number): boolean;
+  gameServerHttpSetUserAgentInfo(request: number, userAgent: string): boolean;
+  gameServerHttpSetRequiresVerifiedCertificate(request: number, requireVerifiedCertificate: boolean): boolean;
+  gameServerHttpSetAbsoluteTimeoutMs(request: number, timeoutMs: number): boolean;
+  gameServerHttpGetRequestWasTimedOut(request: number): boolean | null | undefined;
+
   htmlInit(): boolean;
   htmlShutdown(): boolean;
   htmlCreateBrowser(userAgent?: string, userCss?: string, timeoutSeconds?: number): Promise<number>;
