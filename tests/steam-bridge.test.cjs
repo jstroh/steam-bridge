@@ -200,6 +200,7 @@ test("init reads the Steam app ID from the environment and returns the grouped c
   assert.equal(client.workshop, steam.workshop);
   assert.equal(client.friends, steam.friends);
   assert.equal(client.http, steam.http);
+  assert.equal(client.inventory, steam.inventory);
   assert.equal(client.parties, steam.parties);
   assert.equal(client.timeline, steam.timeline);
   assert.equal(client.remotePlay, steam.remotePlay);
@@ -627,6 +628,273 @@ test("parties facade covers party beacon lifecycle and callbacks", async (t) => 
       "mode=coop",
       5
     ]
+  });
+});
+
+test("inventory facade covers result, item, definition, price, and update flows", async (t) => {
+  const player = { steamId64: "76561198000000008", steamId32: "STEAM_0:0:19867140", accountId: 39734280 };
+  const fake = createFakeNative({
+    inventoryGetResultStatus(resultHandle) {
+      this.calls.push({ method: "inventoryGetResultStatus", args: [resultHandle] });
+      return 1;
+    },
+    inventoryGetResultItems(resultHandle) {
+      this.calls.push({ method: "inventoryGetResultItems", args: [resultHandle] });
+      return [{ item_id: "1001", definition: 7, quantity: 2, flags: 1 }];
+    },
+    inventoryGetResultItemProperty(resultHandle, itemIndex, propertyName) {
+      this.calls.push({ method: "inventoryGetResultItemProperty", args: [resultHandle, itemIndex, propertyName] });
+      return propertyName === "name" ? "Tool" : null;
+    },
+    inventoryGetResultTimestamp(resultHandle) {
+      this.calls.push({ method: "inventoryGetResultTimestamp", args: [resultHandle] });
+      return 1700000000;
+    },
+    inventoryCheckResultSteamId(resultHandle, steamId64) {
+      this.calls.push({ method: "inventoryCheckResultSteamId", args: [resultHandle, steamId64] });
+      return true;
+    },
+    inventoryDestroyResult(resultHandle) {
+      this.calls.push({ method: "inventoryDestroyResult", args: [resultHandle] });
+    },
+    inventoryGetAllItems() {
+      this.calls.push({ method: "inventoryGetAllItems", args: [] });
+      return 10;
+    },
+    inventoryGetItemsById(instanceIds) {
+      this.calls.push({ method: "inventoryGetItemsById", args: [instanceIds] });
+      return 11;
+    },
+    inventorySerializeResult(resultHandle) {
+      this.calls.push({ method: "inventorySerializeResult", args: [resultHandle] });
+      return Buffer.from("serialized");
+    },
+    inventoryDeserializeResult(data) {
+      this.calls.push({ method: "inventoryDeserializeResult", args: [data] });
+      return 12;
+    },
+    inventoryGenerateItems(items) {
+      this.calls.push({ method: "inventoryGenerateItems", args: [items] });
+      return 13;
+    },
+    inventoryGrantPromoItems() {
+      this.calls.push({ method: "inventoryGrantPromoItems", args: [] });
+      return 14;
+    },
+    inventoryAddPromoItem(definition) {
+      this.calls.push({ method: "inventoryAddPromoItem", args: [definition] });
+      return 15;
+    },
+    inventoryAddPromoItems(definitions) {
+      this.calls.push({ method: "inventoryAddPromoItems", args: [definitions] });
+      return 16;
+    },
+    inventoryConsumeItem(itemId, quantity) {
+      this.calls.push({ method: "inventoryConsumeItem", args: [itemId, quantity] });
+      return 17;
+    },
+    inventoryExchangeItems(generate, destroy) {
+      this.calls.push({ method: "inventoryExchangeItems", args: [generate, destroy] });
+      return 18;
+    },
+    inventoryTransferItemQuantity(sourceItemId, quantity, destinationItemId) {
+      this.calls.push({ method: "inventoryTransferItemQuantity", args: [sourceItemId, quantity, destinationItemId] });
+      return 19;
+    },
+    inventorySendItemDropHeartbeat() {
+      this.calls.push({ method: "inventorySendItemDropHeartbeat", args: [] });
+    },
+    inventoryTriggerItemDrop(dropListDefinition) {
+      this.calls.push({ method: "inventoryTriggerItemDrop", args: [dropListDefinition] });
+      return 20;
+    },
+    inventoryTradeItems(tradePartnerSteamId64, give, get) {
+      this.calls.push({ method: "inventoryTradeItems", args: [tradePartnerSteamId64, give, get] });
+      return 21;
+    },
+    inventoryLoadItemDefinitions() {
+      this.calls.push({ method: "inventoryLoadItemDefinitions", args: [] });
+      return true;
+    },
+    inventoryGetItemDefinitionIds() {
+      this.calls.push({ method: "inventoryGetItemDefinitionIds", args: [] });
+      return [7, 8];
+    },
+    inventoryGetItemDefinitionProperty(definition, propertyName) {
+      this.calls.push({ method: "inventoryGetItemDefinitionProperty", args: [definition, propertyName] });
+      return propertyName === "name" ? "Tool" : "";
+    },
+    inventoryRequestEligiblePromoItemDefinitionIds(steamId64, timeoutSeconds) {
+      this.calls.push({ method: "inventoryRequestEligiblePromoItemDefinitionIds", args: [steamId64, timeoutSeconds] });
+      return Promise.resolve({
+        result: 1,
+        steam_id: player,
+        num_eligible_promo_item_defs: 2,
+        cached_data: true
+      });
+    },
+    inventoryGetEligiblePromoItemDefinitionIds(steamId64) {
+      this.calls.push({ method: "inventoryGetEligiblePromoItemDefinitionIds", args: [steamId64] });
+      return [7, 8];
+    },
+    inventoryStartPurchase(items, timeoutSeconds) {
+      this.calls.push({ method: "inventoryStartPurchase", args: [items, timeoutSeconds] });
+      return Promise.resolve({ result: 1, order_id: "555", transaction_id: 666n });
+    },
+    inventoryRequestPrices(timeoutSeconds) {
+      this.calls.push({ method: "inventoryRequestPrices", args: [timeoutSeconds] });
+      return Promise.resolve({ result: 1, currency: "USD" });
+    },
+    inventoryGetNumItemsWithPrices() {
+      this.calls.push({ method: "inventoryGetNumItemsWithPrices", args: [] });
+      return 2;
+    },
+    inventoryGetItemsWithPrices(maxItems) {
+      this.calls.push({ method: "inventoryGetItemsWithPrices", args: [maxItems] });
+      return [{ definition: 7, current_price: "199", base_price: 299n }];
+    },
+    inventoryGetItemPrice(definition) {
+      this.calls.push({ method: "inventoryGetItemPrice", args: [definition] });
+      return definition === 7 ? { definition: 7, current_price: "199", base_price: 299n } : null;
+    },
+    inventoryStartUpdateProperties() {
+      this.calls.push({ method: "inventoryStartUpdateProperties", args: [] });
+      return "77";
+    },
+    inventoryRemoveProperty(updateHandle, itemId, propertyName) {
+      this.calls.push({ method: "inventoryRemoveProperty", args: [updateHandle, itemId, propertyName] });
+      return true;
+    },
+    inventorySetPropertyString(updateHandle, itemId, propertyName, value) {
+      this.calls.push({ method: "inventorySetPropertyString", args: [updateHandle, itemId, propertyName, value] });
+      return true;
+    },
+    inventorySetPropertyBool(updateHandle, itemId, propertyName, value) {
+      this.calls.push({ method: "inventorySetPropertyBool", args: [updateHandle, itemId, propertyName, value] });
+      return true;
+    },
+    inventorySetPropertyInt64(updateHandle, itemId, propertyName, value) {
+      this.calls.push({ method: "inventorySetPropertyInt64", args: [updateHandle, itemId, propertyName, value] });
+      return true;
+    },
+    inventorySetPropertyFloat(updateHandle, itemId, propertyName, value) {
+      this.calls.push({ method: "inventorySetPropertyFloat", args: [updateHandle, itemId, propertyName, value] });
+      return true;
+    },
+    inventorySubmitUpdateProperties(updateHandle) {
+      this.calls.push({ method: "inventorySubmitUpdateProperties", args: [updateHandle] });
+      return 22;
+    },
+    inventoryInspectItem(itemToken) {
+      this.calls.push({ method: "inventoryInspectItem", args: [itemToken] });
+      return 23;
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  assert.equal(steam.inventory.InventoryItemFlags.NoTrade, 1);
+  assert.equal(steam.inventory.getResultStatus(10), 1);
+  assert.deepEqual(steam.inventory.getResultItems(10), [{ itemId: 1001n, definition: 7, quantity: 2, flags: 1 }]);
+  assert.equal(steam.inventory.getResultItemProperty(10, 0, "name"), "Tool");
+  assert.equal(steam.inventory.getResultItemProperty(10, 0), null);
+  assert.equal(steam.inventory.getResultTimestamp(10), 1700000000);
+  assert.equal(steam.inventory.checkResultSteamId(10, 76561198000000008n), true);
+  steam.inventory.destroyResult(10);
+  assert.equal(steam.inventory.getAllItems(), 10);
+  assert.equal(steam.inventory.getItemsById([1001n]), 11);
+  assert.equal(steam.inventory.serializeResult(10).toString(), "serialized");
+  assert.equal(steam.inventory.deserializeResult(new Uint8Array([1, 2, 3])), 12);
+  assert.equal(steam.inventory.generateItems([{ definition: 7, quantity: 2 }]), 13);
+  assert.equal(steam.inventory.grantPromoItems(), 14);
+  assert.equal(steam.inventory.addPromoItem(7), 15);
+  assert.equal(steam.inventory.addPromoItems([7, 8]), 16);
+  assert.equal(steam.inventory.consumeItem(1001n, 1), 17);
+  assert.equal(
+    steam.inventory.exchangeItems([{ definition: 7, quantity: 1 }], [{ itemId: 1001n, quantity: 1 }]),
+    18
+  );
+  assert.equal(steam.inventory.transferItemQuantity(1001n, 1, 1002n), 19);
+  steam.inventory.sendItemDropHeartbeat();
+  assert.equal(steam.inventory.triggerItemDrop(9), 20);
+  assert.equal(steam.inventory.tradeItems(76561198000000008n, [{ itemId: 1001n, quantity: 1 }], [{ itemId: 1002n, quantity: 1 }]), 21);
+  assert.equal(steam.inventory.loadItemDefinitions(), true);
+  assert.deepEqual(steam.inventory.getItemDefinitionIds(), [7, 8]);
+  assert.equal(steam.inventory.getItemDefinitionProperty(7, "name"), "Tool");
+  assert.equal(steam.inventory.getItemDefinitionProperty(7), "");
+  assert.deepEqual(await steam.inventory.requestEligiblePromoItemDefinitionIds(76561198000000008n, 4), {
+    result: 1,
+    steamId: { steamId64: 76561198000000008n, steamId32: "STEAM_0:0:19867140", accountId: 39734280 },
+    numEligiblePromoItemDefs: 2,
+    cachedData: true
+  });
+  assert.deepEqual(steam.inventory.getEligiblePromoItemDefinitionIds(76561198000000008n), [7, 8]);
+  assert.deepEqual(await steam.inventory.startPurchase([{ definition: 7, quantity: 1 }], 5), {
+    result: 1,
+    orderId: 555n,
+    transactionId: 666n
+  });
+  assert.deepEqual(await steam.inventory.requestPrices(6), { result: 1, currency: "USD" });
+  assert.equal(steam.inventory.getNumItemsWithPrices(), 2);
+  assert.deepEqual(steam.inventory.getItemsWithPrices(10), [{ definition: 7, currentPrice: 199n, basePrice: 299n }]);
+  assert.deepEqual(steam.inventory.getItemPrice(7), { definition: 7, currentPrice: 199n, basePrice: 299n });
+  assert.equal(steam.inventory.getItemPrice(999), null);
+
+  const updateHandle = steam.inventory.startUpdateProperties();
+  assert.equal(updateHandle, 77n);
+  assert.equal(steam.inventory.removeProperty(updateHandle, 1001n, "rarity"), true);
+  assert.equal(steam.inventory.setPropertyString(updateHandle, 1001n, "name", "Tool"), true);
+  assert.equal(steam.inventory.setPropertyBool(updateHandle, 1001n, "equipped", true), true);
+  assert.equal(steam.inventory.setPropertyInt64(updateHandle, 1001n, "serial", 123n), true);
+  assert.equal(steam.inventory.setPropertyFloat(updateHandle, 1001n, "wear", 0.5), true);
+  assert.equal(steam.inventory.submitUpdateProperties(updateHandle), 22);
+  assert.equal(steam.inventory.inspectItem("inspect-token"), 23);
+
+  let purchaseEvent;
+  steam.callback.register(steam.SteamCallback.SteamInventoryStartPurchaseResult, (event) => {
+    purchaseEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.SteamInventoryStartPurchaseResult)({
+    result: 1,
+    order_id: "555",
+    transaction_id: "666"
+  });
+  assert.equal(purchaseEvent.orderId, 555n);
+  assert.equal(purchaseEvent.transactionId, 666n);
+
+  let promoEvent;
+  steam.callback.register(steam.SteamCallback.SteamInventoryEligiblePromoItemDefIds, (event) => {
+    promoEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.SteamInventoryEligiblePromoItemDefIds)({
+    result: 1,
+    steam_id: "76561198000000008",
+    num_eligible_promo_item_defs: 2,
+    cached_data: true
+  });
+  assert.equal(promoEvent.steam_id, 76561198000000008n);
+  assert.equal(promoEvent.steamId, 76561198000000008n);
+  assert.equal(promoEvent.numEligiblePromoItemDefs, 2);
+  assert.equal(promoEvent.cachedData, true);
+
+  steam.callback.register(steam.SteamCallback.SteamInventoryResultReady, () => {});
+  assert.equal(fake.callbacks.has(steam.SteamCallback.SteamInventoryResultReady), true);
+  assert.deepEqual(fake.calls.find((call) => call.method === "inventoryStartPurchase"), {
+    method: "inventoryStartPurchase",
+    args: [[{ definition: 7, quantity: 1 }], 5]
+  });
+  assert.deepEqual(fake.calls.find((call) => call.method === "inventoryExchangeItems"), {
+    method: "inventoryExchangeItems",
+    args: [[{ definition: 7, quantity: 1 }], [{ itemId: 1001n, quantity: 1 }]]
+  });
+  assert.deepEqual(fake.calls.find((call) => call.method === "inventoryTradeItems"), {
+    method: "inventoryTradeItems",
+    args: [76561198000000008n, [{ itemId: 1001n, quantity: 1 }], [{ itemId: 1002n, quantity: 1 }]]
+  });
+  assert.deepEqual(fake.calls.find((call) => call.method === "inventorySubmitUpdateProperties"), {
+    method: "inventorySubmitUpdateProperties",
+    args: [77n]
   });
 });
 

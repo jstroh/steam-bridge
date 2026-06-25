@@ -80,6 +80,56 @@ export interface NativeChangeNumOpenSlotsResult {
   result: number;
 }
 
+export interface NativeInventoryItemDetail {
+  itemId?: bigint | string | number;
+  item_id?: bigint | string | number;
+  definition: number;
+  quantity: number;
+  flags: number;
+}
+
+export interface NativeInventoryItemQuantity {
+  definition: number;
+  quantity: number;
+}
+
+export interface NativeInventoryInstanceQuantity {
+  itemId?: bigint | string | number;
+  item_id?: bigint | string | number;
+  quantity: number;
+}
+
+export interface NativeInventoryEligiblePromoItemDefIds {
+  result: number;
+  steamId?: NativeSteamId;
+  steam_id?: NativeSteamId;
+  numEligiblePromoItemDefs?: number;
+  num_eligible_promo_item_defs?: number;
+  cachedData?: boolean;
+  cached_data?: boolean;
+}
+
+export interface NativeInventoryStartPurchaseResult {
+  result: number;
+  orderId?: bigint | string | number;
+  order_id?: bigint | string | number;
+  transactionId?: bigint | string | number;
+  transaction_id?: bigint | string | number;
+}
+
+export interface NativeInventoryRequestPricesResult {
+  result: number;
+  currency: string;
+}
+
+export interface NativeInventoryPrice {
+  definition: number;
+  currentPrice?: bigint | string | number;
+  current_price?: bigint | string | number;
+  basePrice?: bigint | string | number;
+  base_price?: bigint | string | number;
+}
+
 export interface NativeInputControllerInfo {
   handle: bigint;
   inputType: string;
@@ -548,6 +598,49 @@ export interface NativeBinding {
   partiesChangeNumOpenSlots(beacon: bigint, openSlots: number, timeoutSeconds?: number): Promise<NativeChangeNumOpenSlotsResult>;
   partiesDestroyBeacon(beacon: bigint): boolean;
   partiesGetBeaconLocationData(location: NativePartyBeaconLocation, data: number): string | null | undefined;
+
+  inventoryGetResultStatus(resultHandle: number): number;
+  inventoryGetResultItems(resultHandle: number): NativeInventoryItemDetail[] | null | undefined;
+  inventoryGetResultItemProperty(resultHandle: number, itemIndex: number, propertyName?: string): string | null | undefined;
+  inventoryGetResultTimestamp(resultHandle: number): number;
+  inventoryCheckResultSteamId(resultHandle: number, steamId64: bigint): boolean;
+  inventoryDestroyResult(resultHandle: number): void;
+  inventoryGetAllItems(): number | null | undefined;
+  inventoryGetItemsById(instanceIds: bigint[]): number | null | undefined;
+  inventorySerializeResult(resultHandle: number): Buffer | null | undefined;
+  inventoryDeserializeResult(data: Buffer): number | null | undefined;
+  inventoryGenerateItems(items: NativeInventoryItemQuantity[]): number | null | undefined;
+  inventoryGrantPromoItems(): number | null | undefined;
+  inventoryAddPromoItem(definition: number): number | null | undefined;
+  inventoryAddPromoItems(definitions: number[]): number | null | undefined;
+  inventoryConsumeItem(itemId: bigint, quantity: number): number | null | undefined;
+  inventoryExchangeItems(generate: NativeInventoryItemQuantity[], destroy: NativeInventoryInstanceQuantity[]): number | null | undefined;
+  inventoryTransferItemQuantity(sourceItemId: bigint, quantity: number, destinationItemId?: bigint): number | null | undefined;
+  inventorySendItemDropHeartbeat(): void;
+  inventoryTriggerItemDrop(dropListDefinition: number): number | null | undefined;
+  inventoryTradeItems(
+    tradePartnerSteamId64: bigint,
+    give: NativeInventoryInstanceQuantity[],
+    get: NativeInventoryInstanceQuantity[]
+  ): number | null | undefined;
+  inventoryLoadItemDefinitions(): boolean;
+  inventoryGetItemDefinitionIds(): number[];
+  inventoryGetItemDefinitionProperty(definition: number, propertyName?: string): string | null | undefined;
+  inventoryRequestEligiblePromoItemDefinitionIds(steamId64: bigint, timeoutSeconds?: number): Promise<NativeInventoryEligiblePromoItemDefIds>;
+  inventoryGetEligiblePromoItemDefinitionIds(steamId64: bigint): number[];
+  inventoryStartPurchase(items: NativeInventoryItemQuantity[], timeoutSeconds?: number): Promise<NativeInventoryStartPurchaseResult>;
+  inventoryRequestPrices(timeoutSeconds?: number): Promise<NativeInventoryRequestPricesResult>;
+  inventoryGetNumItemsWithPrices(): number;
+  inventoryGetItemsWithPrices(maxItems?: number): NativeInventoryPrice[];
+  inventoryGetItemPrice(definition: number): NativeInventoryPrice | null | undefined;
+  inventoryStartUpdateProperties(): bigint | string | number | null | undefined;
+  inventoryRemoveProperty(updateHandle: bigint, itemId: bigint, propertyName: string): boolean;
+  inventorySetPropertyString(updateHandle: bigint, itemId: bigint, propertyName: string, value: string): boolean;
+  inventorySetPropertyBool(updateHandle: bigint, itemId: bigint, propertyName: string, value: boolean): boolean;
+  inventorySetPropertyInt64(updateHandle: bigint, itemId: bigint, propertyName: string, value: bigint): boolean;
+  inventorySetPropertyFloat(updateHandle: bigint, itemId: bigint, propertyName: string, value: number): boolean;
+  inventorySubmitUpdateProperties(updateHandle: bigint): number | null | undefined;
+  inventoryInspectItem(itemToken: string): number | null | undefined;
 
   inputInit(): void;
   inputShutdown(): void;

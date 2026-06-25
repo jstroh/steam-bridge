@@ -28,6 +28,13 @@ import {
   NativeChangeNumOpenSlotsResult,
   NativeCreateBeaconResult,
   NativeJoinPartyResult,
+  NativeInventoryEligiblePromoItemDefIds,
+  NativeInventoryInstanceQuantity,
+  NativeInventoryItemDetail,
+  NativeInventoryItemQuantity,
+  NativeInventoryPrice,
+  NativeInventoryRequestPricesResult,
+  NativeInventoryStartPurchaseResult,
   NativeLeaderboardEntry,
   NativeLeaderboardFindResult,
   NativeLeaderboardScoresDownloaded,
@@ -161,6 +168,47 @@ export interface CreateBeaconResult {
 
 export interface ChangeNumOpenSlotsResult {
   result: number;
+}
+
+export interface InventoryItemDetail {
+  itemId: bigint;
+  definition: number;
+  quantity: number;
+  flags: number;
+}
+
+export interface InventoryItemQuantity {
+  definition: number;
+  quantity: number;
+}
+
+export interface InventoryInstanceQuantity {
+  itemId: bigint;
+  quantity: number;
+}
+
+export interface InventoryEligiblePromoItemDefIds {
+  result: number;
+  steamId: SteamId;
+  numEligiblePromoItemDefs: number;
+  cachedData: boolean;
+}
+
+export interface InventoryStartPurchaseResult {
+  result: number;
+  orderId: bigint;
+  transactionId: bigint;
+}
+
+export interface InventoryRequestPricesResult {
+  result: number;
+  currency: string;
+}
+
+export interface InventoryPrice {
+  definition: number;
+  currentPrice: bigint;
+  basePrice: bigint;
 }
 
 export interface FollowerCountResult {
@@ -460,7 +508,13 @@ export const SteamCallback = {
   JoinParty: 5301,
   CreateBeacon: 5302,
   ReservationNotification: 5303,
-  ChangeNumOpenSlots: 5304
+  ChangeNumOpenSlots: 5304,
+  SteamInventoryResultReady: 4700,
+  SteamInventoryFullUpdate: 4701,
+  SteamInventoryDefinitionUpdate: 4702,
+  SteamInventoryEligiblePromoItemDefIds: 4703,
+  SteamInventoryStartPurchaseResult: 4704,
+  SteamInventoryRequestPricesResult: 4705
 } as const;
 
 export const HttpMethod = {
@@ -488,6 +542,12 @@ export const PartyBeaconLocationData = {
   IconURLSmall: 2,
   IconURLMedium: 3,
   IconURLLarge: 4
+} as const;
+
+export const InventoryItemFlags = {
+  NoTrade: 1,
+  Removed: 256,
+  Consumed: 512
 } as const;
 
 export const FriendFlags = {
@@ -1339,6 +1399,150 @@ export const parties = {
   }
 };
 
+export const inventory = {
+  InventoryItemFlags,
+  getResultStatus(resultHandle: number): number {
+    return native().inventoryGetResultStatus(resultHandle);
+  },
+  getResultItems(resultHandle: number): InventoryItemDetail[] | null {
+    return native().inventoryGetResultItems(resultHandle)?.map(normalizeInventoryItemDetail) ?? null;
+  },
+  getResultItemProperty(resultHandle: number, itemIndex: number, propertyName?: string | null): string | null {
+    return native().inventoryGetResultItemProperty(resultHandle, itemIndex, propertyName ?? undefined) ?? null;
+  },
+  getResultTimestamp(resultHandle: number): number {
+    return native().inventoryGetResultTimestamp(resultHandle);
+  },
+  checkResultSteamId(resultHandle: number, steamId64: bigint): boolean {
+    return native().inventoryCheckResultSteamId(resultHandle, steamId64);
+  },
+  destroyResult(resultHandle: number): void {
+    native().inventoryDestroyResult(resultHandle);
+  },
+  getAllItems(): number | null {
+    return native().inventoryGetAllItems() ?? null;
+  },
+  getItemsById(instanceIds: bigint[]): number | null {
+    return native().inventoryGetItemsById(instanceIds) ?? null;
+  },
+  serializeResult(resultHandle: number): Buffer | null {
+    return native().inventorySerializeResult(resultHandle) ?? null;
+  },
+  deserializeResult(data: Buffer | Uint8Array): number | null {
+    return native().inventoryDeserializeResult(Buffer.from(data)) ?? null;
+  },
+  generateItems(items: InventoryItemQuantity[]): number | null {
+    return native().inventoryGenerateItems(items.map(nativeInventoryItemQuantity)) ?? null;
+  },
+  grantPromoItems(): number | null {
+    return native().inventoryGrantPromoItems() ?? null;
+  },
+  addPromoItem(definition: number): number | null {
+    return native().inventoryAddPromoItem(definition) ?? null;
+  },
+  addPromoItems(definitions: number[]): number | null {
+    return native().inventoryAddPromoItems(definitions) ?? null;
+  },
+  consumeItem(itemId: bigint, quantity: number): number | null {
+    return native().inventoryConsumeItem(itemId, quantity) ?? null;
+  },
+  exchangeItems(generate: InventoryItemQuantity[], destroy: InventoryInstanceQuantity[]): number | null {
+    return (
+      native().inventoryExchangeItems(generate.map(nativeInventoryItemQuantity), destroy.map(nativeInventoryInstanceQuantity)) ?? null
+    );
+  },
+  transferItemQuantity(sourceItemId: bigint, quantity: number, destinationItemId?: bigint | null): number | null {
+    return native().inventoryTransferItemQuantity(sourceItemId, quantity, destinationItemId ?? undefined) ?? null;
+  },
+  sendItemDropHeartbeat(): void {
+    native().inventorySendItemDropHeartbeat();
+  },
+  triggerItemDrop(dropListDefinition: number): number | null {
+    return native().inventoryTriggerItemDrop(dropListDefinition) ?? null;
+  },
+  tradeItems(
+    tradePartnerSteamId64: bigint,
+    give: InventoryInstanceQuantity[],
+    get: InventoryInstanceQuantity[]
+  ): number | null {
+    return (
+      native().inventoryTradeItems(
+        tradePartnerSteamId64,
+        give.map(nativeInventoryInstanceQuantity),
+        get.map(nativeInventoryInstanceQuantity)
+      ) ?? null
+    );
+  },
+  loadItemDefinitions(): boolean {
+    return native().inventoryLoadItemDefinitions();
+  },
+  getItemDefinitionIds(): number[] {
+    return native().inventoryGetItemDefinitionIds();
+  },
+  getItemDefinitionProperty(definition: number, propertyName?: string | null): string | null {
+    return native().inventoryGetItemDefinitionProperty(definition, propertyName ?? undefined) ?? null;
+  },
+  async requestEligiblePromoItemDefinitionIds(
+    steamId64: bigint,
+    timeoutSeconds?: number | null
+  ): Promise<InventoryEligiblePromoItemDefIds> {
+    return normalizeInventoryEligiblePromoItemDefIds(
+      await native().inventoryRequestEligiblePromoItemDefinitionIds(steamId64, timeoutSeconds ?? undefined)
+    );
+  },
+  getEligiblePromoItemDefinitionIds(steamId64: bigint): number[] {
+    return native().inventoryGetEligiblePromoItemDefinitionIds(steamId64);
+  },
+  async startPurchase(
+    items: InventoryItemQuantity[],
+    timeoutSeconds?: number | null
+  ): Promise<InventoryStartPurchaseResult> {
+    return normalizeInventoryStartPurchaseResult(
+      await native().inventoryStartPurchase(items.map(nativeInventoryItemQuantity), timeoutSeconds ?? undefined)
+    );
+  },
+  async requestPrices(timeoutSeconds?: number | null): Promise<InventoryRequestPricesResult> {
+    return normalizeInventoryRequestPricesResult(await native().inventoryRequestPrices(timeoutSeconds ?? undefined));
+  },
+  getNumItemsWithPrices(): number {
+    return native().inventoryGetNumItemsWithPrices();
+  },
+  getItemsWithPrices(maxItems?: number | null): InventoryPrice[] {
+    return native()
+      .inventoryGetItemsWithPrices(maxItems ?? undefined)
+      .map(normalizeInventoryPrice);
+  },
+  getItemPrice(definition: number): InventoryPrice | null {
+    const price = native().inventoryGetItemPrice(definition);
+    return price ? normalizeInventoryPrice(price) : null;
+  },
+  startUpdateProperties(): bigint | null {
+    const handle = native().inventoryStartUpdateProperties();
+    return handle == null ? null : BigInt(handle);
+  },
+  removeProperty(updateHandle: bigint, itemId: bigint, propertyName: string): boolean {
+    return native().inventoryRemoveProperty(updateHandle, itemId, propertyName);
+  },
+  setPropertyString(updateHandle: bigint, itemId: bigint, propertyName: string, value: string): boolean {
+    return native().inventorySetPropertyString(updateHandle, itemId, propertyName, value);
+  },
+  setPropertyBool(updateHandle: bigint, itemId: bigint, propertyName: string, value: boolean): boolean {
+    return native().inventorySetPropertyBool(updateHandle, itemId, propertyName, value);
+  },
+  setPropertyInt64(updateHandle: bigint, itemId: bigint, propertyName: string, value: bigint): boolean {
+    return native().inventorySetPropertyInt64(updateHandle, itemId, propertyName, value);
+  },
+  setPropertyFloat(updateHandle: bigint, itemId: bigint, propertyName: string, value: number): boolean {
+    return native().inventorySetPropertyFloat(updateHandle, itemId, propertyName, value);
+  },
+  submitUpdateProperties(updateHandle: bigint): number | null {
+    return native().inventorySubmitUpdateProperties(updateHandle) ?? null;
+  },
+  inspectItem(itemToken: string): number | null {
+    return native().inventoryInspectItem(itemToken) ?? null;
+  }
+};
+
 export const input = {
   InputType,
   Controller,
@@ -2185,6 +2389,7 @@ export interface SteamBridgeClient {
   cloud: typeof cloud;
   friends: typeof friends;
   http: typeof http;
+  inventory: typeof inventory;
   input: typeof input;
   localplayer: typeof localplayer;
   matchmaking: typeof matchmaking;
@@ -2211,6 +2416,7 @@ export function createCompatibilityClient(): SteamBridgeClient {
     cloud,
     friends,
     http,
+    inventory,
     input,
     localplayer,
     matchmaking,
@@ -2389,6 +2595,70 @@ function normalizeChangeNumOpenSlotsResult(result: NativeChangeNumOpenSlotsResul
   };
 }
 
+function normalizeInventoryItemDetail(item: NativeInventoryItemDetail): InventoryItemDetail {
+  const source = item as unknown as Record<string, unknown>;
+  return {
+    itemId: BigInt((source.itemId ?? source.item_id ?? 0) as bigint | number | string),
+    definition: item.definition,
+    quantity: item.quantity,
+    flags: item.flags
+  };
+}
+
+function nativeInventoryItemQuantity(item: InventoryItemQuantity): NativeInventoryItemQuantity {
+  return {
+    definition: item.definition,
+    quantity: item.quantity
+  };
+}
+
+function nativeInventoryInstanceQuantity(item: InventoryInstanceQuantity): NativeInventoryInstanceQuantity {
+  return {
+    itemId: item.itemId,
+    quantity: item.quantity
+  };
+}
+
+function normalizeInventoryEligiblePromoItemDefIds(
+  result: NativeInventoryEligiblePromoItemDefIds
+): InventoryEligiblePromoItemDefIds {
+  return {
+    result: result.result,
+    steamId: normalizeSteamId((result.steamId ?? result.steam_id ?? EMPTY_NATIVE_STEAM_ID) as NativeSteamId),
+    numEligiblePromoItemDefs: Number(result.numEligiblePromoItemDefs ?? result.num_eligible_promo_item_defs ?? 0),
+    cachedData: Boolean(result.cachedData ?? result.cached_data)
+  };
+}
+
+function normalizeInventoryStartPurchaseResult(
+  result: NativeInventoryStartPurchaseResult
+): InventoryStartPurchaseResult {
+  const source = result as unknown as Record<string, unknown>;
+  return {
+    result: result.result,
+    orderId: BigInt((source.orderId ?? source.order_id ?? 0) as bigint | number | string),
+    transactionId: BigInt((source.transactionId ?? source.transaction_id ?? 0) as bigint | number | string)
+  };
+}
+
+function normalizeInventoryRequestPricesResult(
+  result: NativeInventoryRequestPricesResult
+): InventoryRequestPricesResult {
+  return {
+    result: result.result,
+    currency: result.currency
+  };
+}
+
+function normalizeInventoryPrice(price: NativeInventoryPrice): InventoryPrice {
+  const source = price as unknown as Record<string, unknown>;
+  return {
+    definition: price.definition,
+    currentPrice: BigInt((source.currentPrice ?? source.current_price ?? 0) as bigint | number | string),
+    basePrice: BigInt((source.basePrice ?? source.base_price ?? 0) as bigint | number | string)
+  };
+}
+
 function normalizeClanActivityCounts(counts: NativeClanActivityCounts | null | undefined): ClanActivityCounts | null {
   if (!counts) {
     return null;
@@ -2461,6 +2731,15 @@ function normalizeCallbackEvent(callbackId: number, event: unknown): unknown {
   if (callbackId === SteamCallback.GameOverlayActivated) {
     return normalizeGameOverlayEvent(event);
   }
+  if (
+    callbackId === SteamCallback.SteamInventoryResultReady ||
+    callbackId === SteamCallback.SteamInventoryFullUpdate ||
+    callbackId === SteamCallback.SteamInventoryEligiblePromoItemDefIds ||
+    callbackId === SteamCallback.SteamInventoryStartPurchaseResult ||
+    callbackId === SteamCallback.SteamInventoryRequestPricesResult
+  ) {
+    return normalizeInventoryCallbackEvent(event);
+  }
   if (!event || typeof event !== "object") {
     return event;
   }
@@ -2472,6 +2751,38 @@ function normalizeCallbackEvent(callbackId: number, event: unknown): unknown {
     }
   }
   return result;
+}
+
+function normalizeInventoryCallbackEvent(event: unknown): unknown {
+  if (!event || typeof event !== "object") {
+    return event;
+  }
+
+  const source = event as Record<string, unknown>;
+  const normalized: Record<string, unknown> = { ...source };
+
+  if (source.steam_id !== undefined) {
+    normalized.steam_id = normalizeBigIntLike(source.steam_id);
+    normalized.steamId ??= normalized.steam_id;
+  }
+
+  if (source.num_eligible_promo_item_defs !== undefined) {
+    normalized.numEligiblePromoItemDefs ??= Number(source.num_eligible_promo_item_defs);
+  }
+
+  if (source.cached_data !== undefined) {
+    normalized.cachedData ??= Boolean(source.cached_data);
+  }
+
+  if (source.order_id !== undefined) {
+    normalized.orderId ??= normalizeOrderId(source.order_id);
+  }
+
+  if (source.transaction_id !== undefined) {
+    normalized.transactionId ??= normalizeOrderId(source.transaction_id);
+  }
+
+  return normalized;
 }
 
 function normalizeMicroTxnEvent(event: unknown): MicroTxnAuthorizationResponse {
@@ -2907,6 +3218,7 @@ const defaultExport = {
   cloud,
   friends,
   http,
+  inventory,
   input,
   localplayer,
   matchmaking,

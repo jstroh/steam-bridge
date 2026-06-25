@@ -37,6 +37,12 @@ const CALLBACK_JOIN_PARTY: i32 = 5301;
 const CALLBACK_CREATE_BEACON: i32 = 5302;
 const CALLBACK_RESERVATION_NOTIFICATION: i32 = 5303;
 const CALLBACK_CHANGE_NUM_OPEN_SLOTS: i32 = 5304;
+const CALLBACK_STEAM_INVENTORY_RESULT_READY: i32 = 4700;
+const CALLBACK_STEAM_INVENTORY_FULL_UPDATE: i32 = 4701;
+const CALLBACK_STEAM_INVENTORY_DEFINITION_UPDATE: i32 = 4702;
+const CALLBACK_STEAM_INVENTORY_ELIGIBLE_PROMO_ITEM_DEF_IDS: i32 = 4703;
+const CALLBACK_STEAM_INVENTORY_START_PURCHASE_RESULT: i32 = 4704;
+const CALLBACK_STEAM_INVENTORY_REQUEST_PRICES_RESULT: i32 = 4705;
 const H_AUTH_TICKET_INVALID: sys::HAuthTicket = 0;
 const DEFAULT_ASYNC_TIMEOUT_SECONDS: u64 = 30;
 const LEADERBOARD_DETAILS_MAX: u32 = 64;
@@ -119,6 +125,61 @@ pub struct CreateBeaconResult {
 #[napi(object)]
 pub struct ChangeNumOpenSlotsResult {
     pub result: u32,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct InventoryItemDetail {
+    pub item_id: BigInt,
+    pub definition: i32,
+    pub quantity: u32,
+    pub flags: u32,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct InventoryItemQuantity {
+    pub definition: i32,
+    pub quantity: u32,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct InventoryInstanceQuantity {
+    pub item_id: BigInt,
+    pub quantity: u32,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct InventoryEligiblePromoItemDefIds {
+    pub result: u32,
+    pub steam_id: PlayerSteamId,
+    pub num_eligible_promo_item_defs: i32,
+    pub cached_data: bool,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct InventoryStartPurchaseResult {
+    pub result: u32,
+    pub order_id: BigInt,
+    pub transaction_id: BigInt,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct InventoryRequestPricesResult {
+    pub result: u32,
+    pub currency: String,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct InventoryPrice {
+    pub definition: i32,
+    pub current_price: BigInt,
+    pub base_price: BigInt,
 }
 
 #[derive(Debug)]
@@ -1913,6 +1974,648 @@ pub fn parties_get_beacon_location_data(
         )
     };
     Ok(ok.then(|| c_buf_to_string(&output)))
+}
+
+#[napi(js_name = "inventoryGetResultStatus")]
+pub fn inventory_get_result_status(result_handle: i32) -> Result<u32, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamInventory_GetResultStatus(steam_inventory()?, result_handle) as u32
+    })
+}
+
+#[napi(js_name = "inventoryGetResultItems")]
+pub fn inventory_get_result_items(
+    result_handle: i32,
+) -> Result<Option<Vec<InventoryItemDetail>>, Error> {
+    let inventory = steam_inventory()?;
+    let mut count = 0u32;
+    let ok = unsafe {
+        sys::SteamAPI_ISteamInventory_GetResultItems(
+            inventory,
+            result_handle,
+            ptr::null_mut(),
+            &mut count,
+        )
+    };
+    if !ok {
+        return Ok(None);
+    }
+    if count == 0 {
+        return Ok(Some(Vec::new()));
+    }
+    let mut items = vec![
+        unsafe { MaybeUninit::<sys::SteamItemDetails_t>::zeroed().assume_init() };
+        count as usize
+    ];
+    let ok = unsafe {
+        sys::SteamAPI_ISteamInventory_GetResultItems(
+            inventory,
+            result_handle,
+            items.as_mut_ptr(),
+            &mut count,
+        )
+    };
+    if !ok {
+        return Ok(None);
+    }
+    items.truncate(count as usize);
+    Ok(Some(items.into_iter().map(inventory_item_detail).collect()))
+}
+
+#[napi(js_name = "inventoryGetResultItemProperty")]
+pub fn inventory_get_result_item_property(
+    result_handle: i32,
+    item_index: u32,
+    property_name: Option<String>,
+) -> Result<Option<String>, Error> {
+    inventory_get_item_property_string(
+        result_handle,
+        item_index,
+        property_name,
+        "inventory result item property",
+    )
+}
+
+#[napi(js_name = "inventoryGetResultTimestamp")]
+pub fn inventory_get_result_timestamp(result_handle: i32) -> Result<u32, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamInventory_GetResultTimestamp(steam_inventory()?, result_handle)
+    })
+}
+
+#[napi(js_name = "inventoryCheckResultSteamId")]
+pub fn inventory_check_result_steam_id(
+    result_handle: i32,
+    steam_id64: BigInt,
+) -> Result<bool, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamInventory_CheckResultSteamID(
+            steam_inventory()?,
+            result_handle,
+            bigint_to_u64(steam_id64, "steamId64")?,
+        )
+    })
+}
+
+#[napi(js_name = "inventoryDestroyResult")]
+pub fn inventory_destroy_result(result_handle: i32) -> Result<(), Error> {
+    unsafe { sys::SteamAPI_ISteamInventory_DestroyResult(steam_inventory()?, result_handle) };
+    Ok(())
+}
+
+#[napi(js_name = "inventoryGetAllItems")]
+pub fn inventory_get_all_items() -> Result<Option<i32>, Error> {
+    let mut result_handle = sys::k_SteamInventoryResultInvalid;
+    let ok = unsafe {
+        sys::SteamAPI_ISteamInventory_GetAllItems(steam_inventory()?, &mut result_handle)
+    };
+    Ok(inventory_result_handle(ok, result_handle))
+}
+
+#[napi(js_name = "inventoryGetItemsById")]
+pub fn inventory_get_items_by_id(instance_ids: Vec<BigInt>) -> Result<Option<i32>, Error> {
+    let ids = bigints_to_u64s(instance_ids, "inventory item id")?;
+    let mut result_handle = sys::k_SteamInventoryResultInvalid;
+    let ok = unsafe {
+        sys::SteamAPI_ISteamInventory_GetItemsByID(
+            steam_inventory()?,
+            &mut result_handle,
+            ids.as_ptr(),
+            len_to_u32(ids.len(), "inventory item ids")?,
+        )
+    };
+    Ok(inventory_result_handle(ok, result_handle))
+}
+
+#[napi(js_name = "inventorySerializeResult")]
+pub fn inventory_serialize_result(result_handle: i32) -> Result<Option<Buffer>, Error> {
+    let inventory = steam_inventory()?;
+    let mut size = 0u32;
+    let ok = unsafe {
+        sys::SteamAPI_ISteamInventory_SerializeResult(
+            inventory,
+            result_handle,
+            ptr::null_mut(),
+            &mut size,
+        )
+    };
+    if !ok {
+        return Ok(None);
+    }
+    let mut bytes = vec![0u8; size as usize];
+    let ok = unsafe {
+        sys::SteamAPI_ISteamInventory_SerializeResult(
+            inventory,
+            result_handle,
+            bytes.as_mut_ptr().cast::<c_void>(),
+            &mut size,
+        )
+    };
+    if !ok {
+        return Ok(None);
+    }
+    bytes.truncate(size as usize);
+    Ok(Some(bytes.into()))
+}
+
+#[napi(js_name = "inventoryDeserializeResult")]
+pub fn inventory_deserialize_result(data: Buffer) -> Result<Option<i32>, Error> {
+    let mut result_handle = sys::k_SteamInventoryResultInvalid;
+    let ok = unsafe {
+        sys::SteamAPI_ISteamInventory_DeserializeResult(
+            steam_inventory()?,
+            &mut result_handle,
+            data.as_ptr().cast::<c_void>(),
+            len_to_u32(data.len(), "serialized inventory result")?,
+            false,
+        )
+    };
+    Ok(inventory_result_handle(ok, result_handle))
+}
+
+#[napi(js_name = "inventoryGenerateItems")]
+pub fn inventory_generate_items(items: Vec<InventoryItemQuantity>) -> Result<Option<i32>, Error> {
+    let (defs, quantities) = inventory_definition_quantities(items);
+    let mut result_handle = sys::k_SteamInventoryResultInvalid;
+    let ok = unsafe {
+        sys::SteamAPI_ISteamInventory_GenerateItems(
+            steam_inventory()?,
+            &mut result_handle,
+            defs.as_ptr(),
+            quantities.as_ptr(),
+            len_to_u32(defs.len(), "inventory item definitions")?,
+        )
+    };
+    Ok(inventory_result_handle(ok, result_handle))
+}
+
+#[napi(js_name = "inventoryGrantPromoItems")]
+pub fn inventory_grant_promo_items() -> Result<Option<i32>, Error> {
+    let mut result_handle = sys::k_SteamInventoryResultInvalid;
+    let ok = unsafe {
+        sys::SteamAPI_ISteamInventory_GrantPromoItems(steam_inventory()?, &mut result_handle)
+    };
+    Ok(inventory_result_handle(ok, result_handle))
+}
+
+#[napi(js_name = "inventoryAddPromoItem")]
+pub fn inventory_add_promo_item(definition: i32) -> Result<Option<i32>, Error> {
+    let mut result_handle = sys::k_SteamInventoryResultInvalid;
+    let ok = unsafe {
+        sys::SteamAPI_ISteamInventory_AddPromoItem(
+            steam_inventory()?,
+            &mut result_handle,
+            definition,
+        )
+    };
+    Ok(inventory_result_handle(ok, result_handle))
+}
+
+#[napi(js_name = "inventoryAddPromoItems")]
+pub fn inventory_add_promo_items(definitions: Vec<i32>) -> Result<Option<i32>, Error> {
+    let mut result_handle = sys::k_SteamInventoryResultInvalid;
+    let ok = unsafe {
+        sys::SteamAPI_ISteamInventory_AddPromoItems(
+            steam_inventory()?,
+            &mut result_handle,
+            definitions.as_ptr(),
+            len_to_u32(definitions.len(), "inventory item definitions")?,
+        )
+    };
+    Ok(inventory_result_handle(ok, result_handle))
+}
+
+#[napi(js_name = "inventoryConsumeItem")]
+pub fn inventory_consume_item(item_id: BigInt, quantity: u32) -> Result<Option<i32>, Error> {
+    let mut result_handle = sys::k_SteamInventoryResultInvalid;
+    let ok = unsafe {
+        sys::SteamAPI_ISteamInventory_ConsumeItem(
+            steam_inventory()?,
+            &mut result_handle,
+            bigint_to_u64(item_id, "inventory item id")?,
+            quantity,
+        )
+    };
+    Ok(inventory_result_handle(ok, result_handle))
+}
+
+#[napi(js_name = "inventoryExchangeItems")]
+pub fn inventory_exchange_items(
+    generate: Vec<InventoryItemQuantity>,
+    destroy: Vec<InventoryInstanceQuantity>,
+) -> Result<Option<i32>, Error> {
+    let (generate_defs, generate_quantities) = inventory_definition_quantities(generate);
+    let (destroy_ids, destroy_quantities) = inventory_instance_quantities(destroy)?;
+    let mut result_handle = sys::k_SteamInventoryResultInvalid;
+    let ok = unsafe {
+        sys::SteamAPI_ISteamInventory_ExchangeItems(
+            steam_inventory()?,
+            &mut result_handle,
+            generate_defs.as_ptr(),
+            generate_quantities.as_ptr(),
+            len_to_u32(generate_defs.len(), "generated inventory item definitions")?,
+            destroy_ids.as_ptr(),
+            destroy_quantities.as_ptr(),
+            len_to_u32(destroy_ids.len(), "destroyed inventory item ids")?,
+        )
+    };
+    Ok(inventory_result_handle(ok, result_handle))
+}
+
+#[napi(js_name = "inventoryTransferItemQuantity")]
+pub fn inventory_transfer_item_quantity(
+    source_item_id: BigInt,
+    quantity: u32,
+    destination_item_id: Option<BigInt>,
+) -> Result<Option<i32>, Error> {
+    let mut result_handle = sys::k_SteamInventoryResultInvalid;
+    let destination = match destination_item_id {
+        Some(destination) => bigint_to_u64(destination, "destination inventory item id")?,
+        None => unsafe { sys::k_SteamItemInstanceIDInvalid },
+    };
+    let ok = unsafe {
+        sys::SteamAPI_ISteamInventory_TransferItemQuantity(
+            steam_inventory()?,
+            &mut result_handle,
+            bigint_to_u64(source_item_id, "source inventory item id")?,
+            quantity,
+            destination,
+        )
+    };
+    Ok(inventory_result_handle(ok, result_handle))
+}
+
+#[napi(js_name = "inventorySendItemDropHeartbeat")]
+pub fn inventory_send_item_drop_heartbeat() -> Result<(), Error> {
+    unsafe { sys::SteamAPI_ISteamInventory_SendItemDropHeartbeat(steam_inventory()?) };
+    Ok(())
+}
+
+#[napi(js_name = "inventoryTriggerItemDrop")]
+pub fn inventory_trigger_item_drop(drop_list_definition: i32) -> Result<Option<i32>, Error> {
+    let mut result_handle = sys::k_SteamInventoryResultInvalid;
+    let ok = unsafe {
+        sys::SteamAPI_ISteamInventory_TriggerItemDrop(
+            steam_inventory()?,
+            &mut result_handle,
+            drop_list_definition,
+        )
+    };
+    Ok(inventory_result_handle(ok, result_handle))
+}
+
+#[napi(js_name = "inventoryTradeItems")]
+pub fn inventory_trade_items(
+    trade_partner_steam_id64: BigInt,
+    give: Vec<InventoryInstanceQuantity>,
+    get: Vec<InventoryInstanceQuantity>,
+) -> Result<Option<i32>, Error> {
+    let (give_ids, give_quantities) = inventory_instance_quantities(give)?;
+    let (get_ids, get_quantities) = inventory_instance_quantities(get)?;
+    let mut result_handle = sys::k_SteamInventoryResultInvalid;
+    let ok = unsafe {
+        sys::SteamAPI_ISteamInventory_TradeItems(
+            steam_inventory()?,
+            &mut result_handle,
+            bigint_to_u64(trade_partner_steam_id64, "trade partner steamId64")?,
+            give_ids.as_ptr(),
+            give_quantities.as_ptr(),
+            len_to_u32(give_ids.len(), "inventory items to give")?,
+            get_ids.as_ptr(),
+            get_quantities.as_ptr(),
+            len_to_u32(get_ids.len(), "inventory items to receive")?,
+        )
+    };
+    Ok(inventory_result_handle(ok, result_handle))
+}
+
+#[napi(js_name = "inventoryLoadItemDefinitions")]
+pub fn inventory_load_item_definitions() -> Result<bool, Error> {
+    Ok(unsafe { sys::SteamAPI_ISteamInventory_LoadItemDefinitions(steam_inventory()?) })
+}
+
+#[napi(js_name = "inventoryGetItemDefinitionIds")]
+pub fn inventory_get_item_definition_ids() -> Result<Vec<i32>, Error> {
+    let inventory = steam_inventory()?;
+    let mut count = 0u32;
+    let ok = unsafe {
+        sys::SteamAPI_ISteamInventory_GetItemDefinitionIDs(inventory, ptr::null_mut(), &mut count)
+    };
+    if !ok || count == 0 {
+        return Ok(Vec::new());
+    }
+    let mut definitions = vec![0i32; count as usize];
+    let ok = unsafe {
+        sys::SteamAPI_ISteamInventory_GetItemDefinitionIDs(
+            inventory,
+            definitions.as_mut_ptr(),
+            &mut count,
+        )
+    };
+    if !ok {
+        return Ok(Vec::new());
+    }
+    definitions.truncate(count as usize);
+    Ok(definitions)
+}
+
+#[napi(js_name = "inventoryGetItemDefinitionProperty")]
+pub fn inventory_get_item_definition_property(
+    definition: i32,
+    property_name: Option<String>,
+) -> Result<Option<String>, Error> {
+    inventory_get_definition_property_string(definition, property_name)
+}
+
+#[napi(js_name = "inventoryRequestEligiblePromoItemDefinitionIds")]
+pub async fn inventory_request_eligible_promo_item_definition_ids(
+    steam_id64: BigInt,
+    timeout_seconds: Option<u32>,
+) -> Result<InventoryEligiblePromoItemDefIds, Error> {
+    let call = unsafe {
+        sys::SteamAPI_ISteamInventory_RequestEligiblePromoItemDefinitionsIDs(
+            steam_inventory()?,
+            bigint_to_u64(steam_id64, "steamId64")?,
+        )
+    };
+    let result: sys::SteamInventoryEligiblePromoItemDefIDs_t = wait_for_api_call(
+        call,
+        sys::SteamInventoryEligiblePromoItemDefIDs_t_k_iCallback as i32,
+        timeout_seconds
+            .map(u64::from)
+            .unwrap_or(DEFAULT_ASYNC_TIMEOUT_SECONDS)
+            .max(1),
+    )
+    .await?;
+    Ok(inventory_eligible_promo_result(&result))
+}
+
+#[napi(js_name = "inventoryGetEligiblePromoItemDefinitionIds")]
+pub fn inventory_get_eligible_promo_item_definition_ids(
+    steam_id64: BigInt,
+) -> Result<Vec<i32>, Error> {
+    let inventory = steam_inventory()?;
+    let steam_id = bigint_to_u64(steam_id64, "steamId64")?;
+    let mut count = 0u32;
+    let ok = unsafe {
+        sys::SteamAPI_ISteamInventory_GetEligiblePromoItemDefinitionIDs(
+            inventory,
+            steam_id,
+            ptr::null_mut(),
+            &mut count,
+        )
+    };
+    if !ok || count == 0 {
+        return Ok(Vec::new());
+    }
+    let mut definitions = vec![0i32; count as usize];
+    let ok = unsafe {
+        sys::SteamAPI_ISteamInventory_GetEligiblePromoItemDefinitionIDs(
+            inventory,
+            steam_id,
+            definitions.as_mut_ptr(),
+            &mut count,
+        )
+    };
+    if !ok {
+        return Ok(Vec::new());
+    }
+    definitions.truncate(count as usize);
+    Ok(definitions)
+}
+
+#[napi(js_name = "inventoryStartPurchase")]
+pub async fn inventory_start_purchase(
+    items: Vec<InventoryItemQuantity>,
+    timeout_seconds: Option<u32>,
+) -> Result<InventoryStartPurchaseResult, Error> {
+    let (defs, quantities) = inventory_definition_quantities(items);
+    let call = unsafe {
+        sys::SteamAPI_ISteamInventory_StartPurchase(
+            steam_inventory()?,
+            defs.as_ptr(),
+            quantities.as_ptr(),
+            len_to_u32(defs.len(), "inventory purchase items")?,
+        )
+    };
+    let result: sys::SteamInventoryStartPurchaseResult_t = wait_for_api_call(
+        call,
+        sys::SteamInventoryStartPurchaseResult_t_k_iCallback as i32,
+        timeout_seconds
+            .map(u64::from)
+            .unwrap_or(DEFAULT_ASYNC_TIMEOUT_SECONDS)
+            .max(1),
+    )
+    .await?;
+    Ok(inventory_start_purchase_result(&result))
+}
+
+#[napi(js_name = "inventoryRequestPrices")]
+pub async fn inventory_request_prices(
+    timeout_seconds: Option<u32>,
+) -> Result<InventoryRequestPricesResult, Error> {
+    let call = unsafe { sys::SteamAPI_ISteamInventory_RequestPrices(steam_inventory()?) };
+    let result: sys::SteamInventoryRequestPricesResult_t = wait_for_api_call(
+        call,
+        sys::SteamInventoryRequestPricesResult_t_k_iCallback as i32,
+        timeout_seconds
+            .map(u64::from)
+            .unwrap_or(DEFAULT_ASYNC_TIMEOUT_SECONDS)
+            .max(1),
+    )
+    .await?;
+    Ok(inventory_request_prices_result(&result))
+}
+
+#[napi(js_name = "inventoryGetNumItemsWithPrices")]
+pub fn inventory_get_num_items_with_prices() -> Result<u32, Error> {
+    Ok(unsafe { sys::SteamAPI_ISteamInventory_GetNumItemsWithPrices(steam_inventory()?) })
+}
+
+#[napi(js_name = "inventoryGetItemsWithPrices")]
+pub fn inventory_get_items_with_prices(
+    max_items: Option<u32>,
+) -> Result<Vec<InventoryPrice>, Error> {
+    let inventory = steam_inventory()?;
+    let available = unsafe { sys::SteamAPI_ISteamInventory_GetNumItemsWithPrices(inventory) };
+    let count = max_items
+        .filter(|max_items| *max_items > 0)
+        .map(|max_items| max_items.min(available))
+        .unwrap_or(available);
+    if count == 0 {
+        return Ok(Vec::new());
+    }
+    let mut definitions = vec![0i32; count as usize];
+    let mut current_prices = vec![0u64; count as usize];
+    let mut base_prices = vec![0u64; count as usize];
+    let ok = unsafe {
+        sys::SteamAPI_ISteamInventory_GetItemsWithPrices(
+            inventory,
+            definitions.as_mut_ptr(),
+            current_prices.as_mut_ptr(),
+            base_prices.as_mut_ptr(),
+            count,
+        )
+    };
+    if !ok {
+        return Ok(Vec::new());
+    }
+    Ok(definitions
+        .into_iter()
+        .zip(current_prices)
+        .zip(base_prices)
+        .map(|((definition, current_price), base_price)| InventoryPrice {
+            definition,
+            current_price: current_price.into(),
+            base_price: base_price.into(),
+        })
+        .collect())
+}
+
+#[napi(js_name = "inventoryGetItemPrice")]
+pub fn inventory_get_item_price(definition: i32) -> Result<Option<InventoryPrice>, Error> {
+    let mut current_price = 0u64;
+    let mut base_price = 0u64;
+    let ok = unsafe {
+        sys::SteamAPI_ISteamInventory_GetItemPrice(
+            steam_inventory()?,
+            definition,
+            &mut current_price,
+            &mut base_price,
+        )
+    };
+    Ok(ok.then_some(InventoryPrice {
+        definition,
+        current_price: current_price.into(),
+        base_price: base_price.into(),
+    }))
+}
+
+#[napi(js_name = "inventoryStartUpdateProperties")]
+pub fn inventory_start_update_properties() -> Result<Option<BigInt>, Error> {
+    let handle = unsafe { sys::SteamAPI_ISteamInventory_StartUpdateProperties(steam_inventory()?) };
+    Ok((handle != sys::k_SteamInventoryUpdateHandleInvalid).then_some(handle.into()))
+}
+
+#[napi(js_name = "inventoryRemoveProperty")]
+pub fn inventory_remove_property(
+    update_handle: BigInt,
+    item_id: BigInt,
+    property_name: String,
+) -> Result<bool, Error> {
+    let property_name = cstring(property_name, "inventory property name")?;
+    Ok(unsafe {
+        sys::SteamAPI_ISteamInventory_RemoveProperty(
+            steam_inventory()?,
+            bigint_to_u64(update_handle, "inventory update handle")?,
+            bigint_to_u64(item_id, "inventory item id")?,
+            property_name.as_ptr(),
+        )
+    })
+}
+
+#[napi(js_name = "inventorySetPropertyString")]
+pub fn inventory_set_property_string(
+    update_handle: BigInt,
+    item_id: BigInt,
+    property_name: String,
+    value: String,
+) -> Result<bool, Error> {
+    let property_name = cstring(property_name, "inventory property name")?;
+    let value = cstring(value, "inventory property value")?;
+    Ok(unsafe {
+        sys::SteamAPI_ISteamInventory_SetPropertyString(
+            steam_inventory()?,
+            bigint_to_u64(update_handle, "inventory update handle")?,
+            bigint_to_u64(item_id, "inventory item id")?,
+            property_name.as_ptr(),
+            value.as_ptr(),
+        )
+    })
+}
+
+#[napi(js_name = "inventorySetPropertyBool")]
+pub fn inventory_set_property_bool(
+    update_handle: BigInt,
+    item_id: BigInt,
+    property_name: String,
+    value: bool,
+) -> Result<bool, Error> {
+    let property_name = cstring(property_name, "inventory property name")?;
+    Ok(unsafe {
+        sys::SteamAPI_ISteamInventory_SetPropertyBool(
+            steam_inventory()?,
+            bigint_to_u64(update_handle, "inventory update handle")?,
+            bigint_to_u64(item_id, "inventory item id")?,
+            property_name.as_ptr(),
+            value,
+        )
+    })
+}
+
+#[napi(js_name = "inventorySetPropertyInt64")]
+pub fn inventory_set_property_int64(
+    update_handle: BigInt,
+    item_id: BigInt,
+    property_name: String,
+    value: BigInt,
+) -> Result<bool, Error> {
+    let property_name = cstring(property_name, "inventory property name")?;
+    Ok(unsafe {
+        sys::SteamAPI_ISteamInventory_SetPropertyInt64(
+            steam_inventory()?,
+            bigint_to_u64(update_handle, "inventory update handle")?,
+            bigint_to_u64(item_id, "inventory item id")?,
+            property_name.as_ptr(),
+            bigint_to_i64(value, "inventory property value")?,
+        )
+    })
+}
+
+#[napi(js_name = "inventorySetPropertyFloat")]
+pub fn inventory_set_property_float(
+    update_handle: BigInt,
+    item_id: BigInt,
+    property_name: String,
+    value: f64,
+) -> Result<bool, Error> {
+    let property_name = cstring(property_name, "inventory property name")?;
+    Ok(unsafe {
+        sys::SteamAPI_ISteamInventory_SetPropertyFloat(
+            steam_inventory()?,
+            bigint_to_u64(update_handle, "inventory update handle")?,
+            bigint_to_u64(item_id, "inventory item id")?,
+            property_name.as_ptr(),
+            value as f32,
+        )
+    })
+}
+
+#[napi(js_name = "inventorySubmitUpdateProperties")]
+pub fn inventory_submit_update_properties(update_handle: BigInt) -> Result<Option<i32>, Error> {
+    let mut result_handle = sys::k_SteamInventoryResultInvalid;
+    let ok = unsafe {
+        sys::SteamAPI_ISteamInventory_SubmitUpdateProperties(
+            steam_inventory()?,
+            bigint_to_u64(update_handle, "inventory update handle")?,
+            &mut result_handle,
+        )
+    };
+    Ok(inventory_result_handle(ok, result_handle))
+}
+
+#[napi(js_name = "inventoryInspectItem")]
+pub fn inventory_inspect_item(item_token: String) -> Result<Option<i32>, Error> {
+    let item_token = cstring(item_token, "inventory item token")?;
+    let mut result_handle = sys::k_SteamInventoryResultInvalid;
+    let ok = unsafe {
+        sys::SteamAPI_ISteamInventory_InspectItem(
+            steam_inventory()?,
+            &mut result_handle,
+            item_token.as_ptr(),
+        )
+    };
+    Ok(inventory_result_handle(ok, result_handle))
 }
 
 #[napi(js_name = "inputInit")]
@@ -4439,6 +5142,14 @@ fn steam_parties() -> Result<*mut sys::ISteamParties, Error> {
     )
 }
 
+fn steam_inventory() -> Result<*mut sys::ISteamInventory, Error> {
+    crate::state::ensure_initialized()?;
+    non_null(
+        unsafe { sys::SteamAPI_SteamInventory_v003() },
+        "ISteamInventory",
+    )
+}
+
 fn steam_input() -> Result<*mut sys::ISteamInput, Error> {
     crate::state::ensure_initialized()?;
     non_null(unsafe { sys::SteamAPI_SteamInput_v006() }, "ISteamInput")
@@ -4847,6 +5558,17 @@ fn bigint_to_u64(value: BigInt, label: &str) -> Result<u64, Error> {
     }
 }
 
+fn bigint_to_i64(value: BigInt, label: &str) -> Result<i64, Error> {
+    let (value, lossless) = value.get_i64();
+    if !lossless {
+        Err(Error::from_reason(format!(
+            "{label} must be a 64-bit bigint"
+        )))
+    } else {
+        Ok(value)
+    }
+}
+
 fn http_method_from_u32(value: u32) -> Result<sys::EHTTPMethod, Error> {
     match value {
         0 => Ok(sys::EHTTPMethod::k_EHTTPMethodInvalid),
@@ -4940,6 +5662,159 @@ fn create_beacon_result(result: &sys::CreateBeaconCallback_t) -> CreateBeaconRes
         result: unsafe { ptr::addr_of!(result.m_eResult).read_unaligned() } as u32,
         beacon: unsafe { ptr::addr_of!(result.m_ulBeaconID).read_unaligned() }.into(),
     }
+}
+
+fn inventory_result_handle(ok: bool, result_handle: i32) -> Option<i32> {
+    (ok && result_handle != sys::k_SteamInventoryResultInvalid).then_some(result_handle)
+}
+
+fn inventory_item_detail(item: sys::SteamItemDetails_t) -> InventoryItemDetail {
+    InventoryItemDetail {
+        item_id: unsafe { ptr::addr_of!(item.m_itemId).read_unaligned() }.into(),
+        definition: unsafe { ptr::addr_of!(item.m_iDefinition).read_unaligned() },
+        quantity: u32::from(unsafe { ptr::addr_of!(item.m_unQuantity).read_unaligned() }),
+        flags: u32::from(unsafe { ptr::addr_of!(item.m_unFlags).read_unaligned() }),
+    }
+}
+
+fn inventory_definition_quantities(items: Vec<InventoryItemQuantity>) -> (Vec<i32>, Vec<u32>) {
+    items
+        .into_iter()
+        .map(|item| (item.definition, item.quantity))
+        .unzip()
+}
+
+fn inventory_instance_quantities(
+    items: Vec<InventoryInstanceQuantity>,
+) -> Result<(Vec<u64>, Vec<u32>), Error> {
+    let mut ids = Vec::with_capacity(items.len());
+    let mut quantities = Vec::with_capacity(items.len());
+    for item in items {
+        ids.push(bigint_to_u64(item.item_id, "inventory item id")?);
+        quantities.push(item.quantity);
+    }
+    Ok((ids, quantities))
+}
+
+fn inventory_get_item_property_string(
+    result_handle: i32,
+    item_index: u32,
+    property_name: Option<String>,
+    label: &str,
+) -> Result<Option<String>, Error> {
+    let inventory = steam_inventory()?;
+    let property_name = property_name
+        .map(|property_name| cstring(property_name, label))
+        .transpose()?;
+    let property_name = property_name
+        .as_ref()
+        .map_or(ptr::null(), |property_name| property_name.as_ptr());
+    let mut size = 0u32;
+    let ok = unsafe {
+        sys::SteamAPI_ISteamInventory_GetResultItemProperty(
+            inventory,
+            result_handle,
+            item_index,
+            property_name,
+            ptr::null_mut(),
+            &mut size,
+        )
+    };
+    if !ok {
+        return Ok(None);
+    }
+    let mut output = vec![0i8; size.max(1) as usize];
+    let ok = unsafe {
+        sys::SteamAPI_ISteamInventory_GetResultItemProperty(
+            inventory,
+            result_handle,
+            item_index,
+            property_name,
+            output.as_mut_ptr(),
+            &mut size,
+        )
+    };
+    Ok(ok.then(|| c_buf_to_string(&output)))
+}
+
+fn inventory_get_definition_property_string(
+    definition: i32,
+    property_name: Option<String>,
+) -> Result<Option<String>, Error> {
+    let inventory = steam_inventory()?;
+    let property_name = property_name
+        .map(|property_name| cstring(property_name, "inventory definition property"))
+        .transpose()?;
+    let property_name = property_name
+        .as_ref()
+        .map_or(ptr::null(), |property_name| property_name.as_ptr());
+    let mut size = 0u32;
+    let ok = unsafe {
+        sys::SteamAPI_ISteamInventory_GetItemDefinitionProperty(
+            inventory,
+            definition,
+            property_name,
+            ptr::null_mut(),
+            &mut size,
+        )
+    };
+    if !ok {
+        return Ok(None);
+    }
+    let mut output = vec![0i8; size.max(1) as usize];
+    let ok = unsafe {
+        sys::SteamAPI_ISteamInventory_GetItemDefinitionProperty(
+            inventory,
+            definition,
+            property_name,
+            output.as_mut_ptr(),
+            &mut size,
+        )
+    };
+    Ok(ok.then(|| c_buf_to_string(&output)))
+}
+
+fn inventory_eligible_promo_result(
+    result: &sys::SteamInventoryEligiblePromoItemDefIDs_t,
+) -> InventoryEligiblePromoItemDefIds {
+    InventoryEligiblePromoItemDefIds {
+        result: unsafe { ptr::addr_of!(result.m_result).read_unaligned() } as u32,
+        steam_id: csteam_id_to_player(unsafe { ptr::addr_of!(result.m_steamID).read_unaligned() }),
+        num_eligible_promo_item_defs: unsafe {
+            ptr::addr_of!(result.m_numEligiblePromoItemDefs).read_unaligned()
+        },
+        cached_data: unsafe { ptr::addr_of!(result.m_bCachedData).read_unaligned() },
+    }
+}
+
+fn inventory_start_purchase_result(
+    result: &sys::SteamInventoryStartPurchaseResult_t,
+) -> InventoryStartPurchaseResult {
+    InventoryStartPurchaseResult {
+        result: unsafe { ptr::addr_of!(result.m_result).read_unaligned() } as u32,
+        order_id: unsafe { ptr::addr_of!(result.m_ulOrderID).read_unaligned() }.into(),
+        transaction_id: unsafe { ptr::addr_of!(result.m_ulTransID).read_unaligned() }.into(),
+    }
+}
+
+fn inventory_request_prices_result(
+    result: &sys::SteamInventoryRequestPricesResult_t,
+) -> InventoryRequestPricesResult {
+    InventoryRequestPricesResult {
+        result: unsafe { ptr::addr_of!(result.m_result).read_unaligned() } as u32,
+        currency: c_buf_to_string(unsafe { &*ptr::addr_of!(result.m_rgchCurrency) }),
+    }
+}
+
+fn len_to_u32(len: usize, label: &str) -> Result<u32, Error> {
+    u32::try_from(len).map_err(|_| Error::from_reason(format!("{label} length exceeds u32")))
+}
+
+fn bigints_to_u64s(values: Vec<BigInt>, label: &str) -> Result<Vec<u64>, Error> {
+    values
+        .into_iter()
+        .map(|value| bigint_to_u64(value, label))
+        .collect()
 }
 
 fn c_buf_to_string(buf: &[i8]) -> String {
@@ -5134,6 +6009,24 @@ fn callback_id_from_compat(callback: i32) -> Result<i32, Error> {
             Ok(sys::ReservationNotificationCallback_t_k_iCallback as i32)
         }
         CALLBACK_CHANGE_NUM_OPEN_SLOTS => Ok(sys::ChangeNumOpenSlotsCallback_t_k_iCallback as i32),
+        CALLBACK_STEAM_INVENTORY_RESULT_READY => {
+            Ok(sys::SteamInventoryResultReady_t_k_iCallback as i32)
+        }
+        CALLBACK_STEAM_INVENTORY_FULL_UPDATE => {
+            Ok(sys::SteamInventoryFullUpdate_t_k_iCallback as i32)
+        }
+        CALLBACK_STEAM_INVENTORY_DEFINITION_UPDATE => {
+            Ok(sys::SteamInventoryDefinitionUpdate_t_k_iCallback as i32)
+        }
+        CALLBACK_STEAM_INVENTORY_ELIGIBLE_PROMO_ITEM_DEF_IDS => {
+            Ok(sys::SteamInventoryEligiblePromoItemDefIDs_t_k_iCallback as i32)
+        }
+        CALLBACK_STEAM_INVENTORY_START_PURCHASE_RESULT => {
+            Ok(sys::SteamInventoryStartPurchaseResult_t_k_iCallback as i32)
+        }
+        CALLBACK_STEAM_INVENTORY_REQUEST_PRICES_RESULT => {
+            Ok(sys::SteamInventoryRequestPricesResult_t_k_iCallback as i32)
+        }
         _ => Err(Error::from_reason(format!(
             "unsupported Steam callback {callback}"
         ))),
@@ -5275,6 +6168,44 @@ unsafe fn callback_to_json(callback: i32, param: *mut c_void) -> Value {
             let event = param as *const sys::ChangeNumOpenSlotsCallback_t;
             serde_json::json!({
                 "result": ptr::addr_of!((*event).m_eResult).read_unaligned() as u32
+            })
+        }
+        CALLBACK_STEAM_INVENTORY_RESULT_READY => {
+            let event = param as *const sys::SteamInventoryResultReady_t;
+            serde_json::json!({
+                "handle": ptr::addr_of!((*event).m_handle).read_unaligned(),
+                "result": ptr::addr_of!((*event).m_result).read_unaligned() as u32
+            })
+        }
+        CALLBACK_STEAM_INVENTORY_FULL_UPDATE => {
+            let event = param as *const sys::SteamInventoryFullUpdate_t;
+            serde_json::json!({
+                "handle": ptr::addr_of!((*event).m_handle).read_unaligned()
+            })
+        }
+        CALLBACK_STEAM_INVENTORY_DEFINITION_UPDATE => serde_json::json!({}),
+        CALLBACK_STEAM_INVENTORY_ELIGIBLE_PROMO_ITEM_DEF_IDS => {
+            let event = param as *const sys::SteamInventoryEligiblePromoItemDefIDs_t;
+            serde_json::json!({
+                "result": ptr::addr_of!((*event).m_result).read_unaligned() as u32,
+                "steam_id": csteam_id_to_u64(ptr::addr_of!((*event).m_steamID).read_unaligned()).to_string(),
+                "num_eligible_promo_item_defs": ptr::addr_of!((*event).m_numEligiblePromoItemDefs).read_unaligned(),
+                "cached_data": ptr::addr_of!((*event).m_bCachedData).read_unaligned()
+            })
+        }
+        CALLBACK_STEAM_INVENTORY_START_PURCHASE_RESULT => {
+            let event = param as *const sys::SteamInventoryStartPurchaseResult_t;
+            serde_json::json!({
+                "result": ptr::addr_of!((*event).m_result).read_unaligned() as u32,
+                "order_id": ptr::addr_of!((*event).m_ulOrderID).read_unaligned().to_string(),
+                "transaction_id": ptr::addr_of!((*event).m_ulTransID).read_unaligned().to_string()
+            })
+        }
+        CALLBACK_STEAM_INVENTORY_REQUEST_PRICES_RESULT => {
+            let event = param as *const sys::SteamInventoryRequestPricesResult_t;
+            serde_json::json!({
+                "result": ptr::addr_of!((*event).m_result).read_unaligned() as u32,
+                "currency": c_buf_to_string(&*ptr::addr_of!((*event).m_rgchCurrency))
             })
         }
         _ => Value::Null,

@@ -37,6 +37,10 @@ The native layer currently targets the Steamworks flat C API through
 - Parties: party beacon enumeration/details, location discovery and metadata,
   join/create/change async calls, reservation completion/cancel, destroy, and
   reservation callbacks.
+- Inventory: result status/items/properties, serialization/deserialization,
+  item generation/promo/consume/exchange/transfer/trade flows, item definition
+  reads, eligible promo definition queries, purchase and price requests, dynamic
+  property updates, inspect tokens, and inventory callbacks.
 - Networking: legacy P2P send, receive, availability, session accept/close, and
   send-channel close helpers.
 - UGC/Workshop: item create/update/query flows, install/download information,
@@ -58,7 +62,6 @@ The native layer currently targets the Steamworks flat C API through
 
 - Full `ISteamFriends` coverage for buffer-heavy chat reads, profile item APIs,
   and every overlay/social helper.
-- `ISteamInventory`.
 - `ISteamMusicRemote` is not exposed by the current `steamworks-sys 0.13` macOS
   bindings used by this crate.
 - Modern networking interfaces: `ISteamNetworkingSockets`,
