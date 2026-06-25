@@ -1480,6 +1480,7 @@ export interface NativeBinding {
   isSteamRunning(): boolean;
   getSteamInstallPath(): string | undefined;
   runCallbacks(): void;
+  initAnonymousUser(): boolean;
   initSafe(): boolean;
   runLegacyCallbacks(): void;
   releaseCurrentThreadMemory(): void;

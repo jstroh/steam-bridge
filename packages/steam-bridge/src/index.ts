@@ -3230,6 +3230,10 @@ export function runCallbacks(): void {
   native().runCallbacks();
 }
 
+export function initAnonymousUser(): boolean {
+  return native().initAnonymousUser();
+}
+
 export function initSafe(): boolean {
   return native().initSafe();
 }
@@ -10074,6 +10078,7 @@ const defaultExport = {
   isSteamRunning,
   getSteamInstallPath,
   runCallbacks,
+  initAnonymousUser,
   initSafe,
   runLegacyCallbacks,
   releaseCurrentThreadMemory,

@@ -16,6 +16,7 @@ mod native_surface;
 mod state;
 
 extern "C" {
+    fn SteamAPI_InitAnonymousUser() -> bool;
     fn SteamAPI_InitSafe() -> bool;
     fn SteamAPI_UseBreakpadCrashHandler(
         pchVersion: *const c_char,
@@ -183,6 +184,22 @@ pub fn run_callbacks() {
             sys::SteamAPI_ManualDispatch_FreeLastCallback(pipe);
         }
     }
+}
+
+#[napi(js_name = "initAnonymousUser")]
+pub fn init_anonymous_user() -> bool {
+    if state::is_initialized() {
+        shutdown();
+    }
+
+    let initialized = unsafe { SteamAPI_InitAnonymousUser() };
+    if initialized {
+        unsafe {
+            sys::SteamAPI_ManualDispatch_Init();
+        }
+        state::mark_initialized(true);
+    }
+    initialized
 }
 
 #[napi(js_name = "initSafe")]

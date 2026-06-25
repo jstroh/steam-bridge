@@ -73,6 +73,10 @@ function createFakeNative(overrides = {}) {
     runCallbacks() {
       calls.push({ method: "runCallbacks", args: [] });
     },
+    initAnonymousUser() {
+      calls.push({ method: "initAnonymousUser", args: [] });
+      return true;
+    },
     initSafe() {
       calls.push({ method: "initSafe", args: [] });
       return true;
@@ -1074,6 +1078,7 @@ test("init reads the Steam app ID from the environment and returns the grouped c
   assert.equal(client.timeline, steam.timeline);
   assert.equal(client.remotePlay, steam.remotePlay);
   assert.equal(client.localplayer.getSteamId().steamId64, 76561198000000000n);
+  assert.equal(steam.initAnonymousUser(), true);
   assert.equal(steam.initSafe(), true);
   steam.runLegacyCallbacks();
   steam.releaseCurrentThreadMemory();
@@ -1088,6 +1093,7 @@ test("init reads the Steam app ID from the environment and returns the grouped c
   });
   steam.setBreakpadAppId(480);
   assert.deepEqual(fake.calls.filter((call) => [
+    "initAnonymousUser",
     "initSafe",
     "runLegacyCallbacks",
     "releaseCurrentThreadMemory",
@@ -1097,6 +1103,7 @@ test("init reads the Steam app ID from the environment and returns the grouped c
     "useBreakpadCrashHandler",
     "setBreakpadAppId"
   ].includes(call.method)), [
+    { method: "initAnonymousUser", args: [] },
     { method: "initSafe", args: [] },
     { method: "runLegacyCallbacks", args: [] },
     { method: "releaseCurrentThreadMemory", args: [] },
