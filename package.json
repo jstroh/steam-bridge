@@ -8,6 +8,7 @@
   ],
   "scripts": {
     "build": "npm run build -w steam-bridge",
+    "check:platform": "node scripts/assert-apple-silicon-target.cjs",
     "typecheck": "npm run typecheck -w steam-bridge",
     "native:build": "cargo build -p steam-bridge-native --release --target aarch64-apple-darwin && npm run native:link -w steam-bridge -- --target aarch64-apple-darwin",
     "native:check": "cargo check -p steam-bridge-native --target aarch64-apple-darwin",

@@ -1,4 +1,5 @@
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
 
@@ -458,6 +459,26 @@ function createFakeNative(overrides = {}) {
 
   return fake;
 }
+
+test("project support policy is Apple Silicon macOS only", () => {
+  const packageJson = require(path.join(repoRoot, "packages", "steam-bridge", "package.json"));
+  const rootPackageJson = require(path.join(repoRoot, "package.json"));
+  const ciWorkflow = fs.readFileSync(path.join(repoRoot, ".github", "workflows", "ci.yml"), "utf8");
+  const releaseWorkflow = fs.readFileSync(path.join(repoRoot, ".github", "workflows", "release.yml"), "utf8");
+
+  assert.deepEqual(packageJson.os, ["darwin"]);
+  assert.deepEqual(packageJson.cpu, ["arm64"]);
+  assert.deepEqual(packageJson.napi.targets, ["aarch64-apple-darwin"]);
+  assert.match(rootPackageJson.scripts["native:build"], /--target aarch64-apple-darwin/);
+  assert.match(rootPackageJson.scripts["native:check"], /--target aarch64-apple-darwin/);
+  assert.match(rootPackageJson.scripts["check:platform"], /assert-apple-silicon-target\.cjs/);
+
+  for (const workflow of [ciWorkflow, releaseWorkflow]) {
+    assert.match(workflow, /STEAM_BRIDGE_TARGET: aarch64-apple-darwin/);
+    assert.match(workflow, /node scripts\/assert-apple-silicon-target\.cjs/);
+    assert.doesNotMatch(workflow, /x86_64-apple-darwin|darwin-x64|macos-13/);
+  }
+});
 
 test("init reads the Steam app ID from the environment and returns the grouped client", (t) => {
   const restoreEnv = setSteamEnv({ STEAM_APP_ID: "480" });

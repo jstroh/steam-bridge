@@ -22,7 +22,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ env.STEAM_BRIDGE_TARGET }}
-      - run: test "$(uname -m)" = "arm64"
+      - run: node scripts/assert-apple-silicon-target.cjs
       - run: npm ci
       - run: npm run build
       - run: npx napi build --release --target ${{ env.STEAM_BRIDGE_TARGET }} --platform --no-js --manifest-path crates/native/Cargo.toml --package-json-path packages/steam-bridge/package.json --output-dir packages/steam-bridge

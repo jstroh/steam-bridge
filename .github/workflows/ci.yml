@@ -20,7 +20,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ env.STEAM_BRIDGE_TARGET }}
-      - run: test "$(uname -m)" = "arm64"
+      - run: node scripts/assert-apple-silicon-target.cjs
       - run: npm ci
       - run: npm test
       - run: cargo fmt --all --check

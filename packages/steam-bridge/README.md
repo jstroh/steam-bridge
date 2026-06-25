@@ -18,7 +18,7 @@ Steam Bridge expects Steamworks SDK redistributables to be present at build or
 package time. It does not vendor Valve SDK files.
 
 Steam Bridge supports Apple Silicon macOS only (`aarch64-apple-darwin`).
-Other platforms are outside the support scope for this package.
+Intel macOS and other platforms are outside the support scope for this package.
 
 ## Quick Start
 

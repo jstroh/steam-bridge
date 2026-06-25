@@ -18,7 +18,9 @@ the Steamworks SDK in the normal location expected by `steamworks-sys`, or set
 `STEAMWORKS_SDK_PATH` according to your SDK setup.
 
 Steam Bridge supports Apple Silicon macOS only (`aarch64-apple-darwin`).
-Other platforms are outside the support scope for this project.
+Intel macOS and other platforms are outside the support scope for this project;
+CI, release prebuilds, package metadata, runtime loading, and native linking all
+enforce the Apple Silicon target.
 
 ## Quick Start
 
@@ -121,6 +123,7 @@ next to the executable or in the working directory used by your app.
 Before opening a pull request, run the checks that CI runs:
 
 ```sh
+npm run check:platform
 npm test
 npm run native:fmt
 npm run native:check

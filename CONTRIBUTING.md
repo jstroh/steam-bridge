@@ -20,15 +20,16 @@ Steamworks SDK files and redistributables are not committed to this repository.
 Use the standard `steamworks-sys` SDK setup or set `STEAMWORKS_SDK_PATH` for
 your local SDK location.
 
-The project supports Apple Silicon macOS only (`aarch64-apple-darwin`). Keep
-builds, prebuilds, docs, and examples aligned with that target unless the
-support policy changes.
+The project supports Apple Silicon macOS only (`aarch64-apple-darwin`). Intel
+macOS is intentionally unsupported. Keep builds, prebuilds, docs, and examples
+aligned with that target unless the support policy changes.
 
 ## Checks
 
 Run these before opening a pull request:
 
 ```sh
+npm run check:platform
 npm test
 npm run native:fmt
 npm run native:check
