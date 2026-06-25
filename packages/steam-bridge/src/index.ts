@@ -6419,6 +6419,9 @@ export const workshop = {
 
     promise.then(successCallback, errorCallback);
   },
+  getItemUpdateProgress(handle: bigint): UpdateProgress {
+    return normalizeUpdateProgress(native().workshopGetItemUpdateProgress(handle));
+  },
   async subscribe(itemId: bigint): Promise<void> {
     await native().workshopSubscribe(itemId);
   },
@@ -6535,6 +6538,169 @@ export const workshop = {
   }
 };
 
+export const gameServerWorkshop = {
+  UgcItemVisibility,
+  UpdateStatus,
+  UGCQueryType,
+  UGCType,
+  UGCContentDescriptor,
+  UserListType,
+  UserListOrder,
+  async createItem(appId?: number | null): Promise<UgcResult> {
+    return normalizeUgcResult(await native().gameServerWorkshopCreateItem(appId ?? undefined));
+  },
+  async updateItem(itemId: bigint, updateDetails: UgcUpdate, appId?: number | null): Promise<UgcResult> {
+    return normalizeUgcResult(await native().gameServerWorkshopUpdateItem(itemId, updateDetails, appId ?? undefined));
+  },
+  updateItemWithCallback(
+    itemId: bigint,
+    updateDetails: UgcUpdate,
+    appId: number | undefined | null,
+    successCallback: (data: UgcResult) => void,
+    errorCallback: (err: unknown) => void,
+    progressCallback?: (data: UpdateProgress) => void,
+    progressCallbackIntervalMs?: number | null
+  ): void {
+    const promise = progressCallback
+      ? native()
+          .gameServerWorkshopUpdateItemWithProgress(
+            itemId,
+            updateDetails,
+            appId,
+            (data) => progressCallback(normalizeUpdateProgress(data)),
+            progressCallbackIntervalMs ?? undefined
+          )
+          .then(normalizeUgcResult)
+      : native().gameServerWorkshopUpdateItem(itemId, updateDetails, appId ?? undefined).then(normalizeUgcResult);
+
+    promise.then(successCallback, errorCallback);
+  },
+  getItemUpdateProgress(handle: bigint): UpdateProgress {
+    return normalizeUpdateProgress(native().gameServerWorkshopGetItemUpdateProgress(handle));
+  },
+  async subscribe(itemId: bigint): Promise<void> {
+    await native().gameServerWorkshopSubscribe(itemId);
+  },
+  async unsubscribe(itemId: bigint): Promise<void> {
+    await native().gameServerWorkshopUnsubscribe(itemId);
+  },
+  async addFavorite(itemId: bigint, appId?: number | null): Promise<WorkshopFavoriteResult> {
+    return normalizeWorkshopFavoriteResult(await native().gameServerWorkshopAddFavorite(itemId, appId ?? undefined));
+  },
+  async removeFavorite(itemId: bigint, appId?: number | null): Promise<WorkshopFavoriteResult> {
+    return normalizeWorkshopFavoriteResult(await native().gameServerWorkshopRemoveFavorite(itemId, appId ?? undefined));
+  },
+  async setUserItemVote(itemId: bigint, voteUp: boolean): Promise<WorkshopSetUserItemVoteResult> {
+    return normalizeWorkshopSetUserItemVoteResult(await native().gameServerWorkshopSetUserItemVote(itemId, voteUp));
+  },
+  async getUserItemVote(itemId: bigint): Promise<WorkshopGetUserItemVoteResult> {
+    return normalizeWorkshopGetUserItemVoteResult(await native().gameServerWorkshopGetUserItemVote(itemId));
+  },
+  async startPlaytimeTracking(itemIds: bigint[]): Promise<WorkshopSimpleResult> {
+    return normalizeWorkshopSimpleResult(await native().gameServerWorkshopStartPlaytimeTracking(itemIds));
+  },
+  async stopPlaytimeTracking(itemIds: bigint[]): Promise<WorkshopSimpleResult> {
+    return normalizeWorkshopSimpleResult(await native().gameServerWorkshopStopPlaytimeTracking(itemIds));
+  },
+  async stopPlaytimeTrackingForAllItems(): Promise<WorkshopSimpleResult> {
+    return normalizeWorkshopSimpleResult(await native().gameServerWorkshopStopPlaytimeTrackingForAllItems());
+  },
+  async addDependency(parentItemId: bigint, childItemId: bigint): Promise<WorkshopDependencyResult> {
+    return normalizeWorkshopDependencyResult(await native().gameServerWorkshopAddDependency(parentItemId, childItemId));
+  },
+  async removeDependency(parentItemId: bigint, childItemId: bigint): Promise<WorkshopDependencyResult> {
+    return normalizeWorkshopDependencyResult(await native().gameServerWorkshopRemoveDependency(parentItemId, childItemId));
+  },
+  async addAppDependency(itemId: bigint, appId: number): Promise<WorkshopAppDependencyResult> {
+    return normalizeWorkshopAppDependencyResult(await native().gameServerWorkshopAddAppDependency(itemId, appId));
+  },
+  async removeAppDependency(itemId: bigint, appId: number): Promise<WorkshopAppDependencyResult> {
+    return normalizeWorkshopAppDependencyResult(await native().gameServerWorkshopRemoveAppDependency(itemId, appId));
+  },
+  async getAppDependencies(itemId: bigint): Promise<WorkshopAppDependenciesResult> {
+    return normalizeWorkshopAppDependenciesResult(await native().gameServerWorkshopGetAppDependencies(itemId));
+  },
+  async deleteItem(itemId: bigint): Promise<WorkshopDeleteItemResult> {
+    return normalizeWorkshopDeleteItemResult(await native().gameServerWorkshopDeleteItem(itemId));
+  },
+  showEula(): boolean {
+    return native().gameServerWorkshopShowEula();
+  },
+  async getEulaStatus(): Promise<WorkshopEulaStatus> {
+    return normalizeWorkshopEulaStatus(await native().gameServerWorkshopGetEulaStatus());
+  },
+  getUserContentDescriptorPreferences(maxEntries?: number | null): number[] {
+    return native().gameServerWorkshopGetUserContentDescriptorPreferences(maxEntries ?? undefined).map(Number);
+  },
+  state(itemId: bigint): number {
+    return native().gameServerWorkshopState(itemId);
+  },
+  installInfo(itemId: bigint): InstallInfo | null {
+    return normalizeInstallInfo(native().gameServerWorkshopInstallInfo(itemId));
+  },
+  downloadInfo(itemId: bigint): DownloadInfo | null {
+    return normalizeDownloadInfo(native().gameServerWorkshopDownloadInfo(itemId));
+  },
+  download(itemId: bigint, highPriority: boolean): boolean {
+    return native().gameServerWorkshopDownload(itemId, highPriority);
+  },
+  getSubscribedItems(): bigint[] {
+    return native().gameServerWorkshopGetSubscribedItems().map(BigInt);
+  },
+  async getItem(item: bigint, queryConfig?: WorkshopItemQueryConfig | null): Promise<WorkshopItem | null> {
+    const result = await this.getItems([item], queryConfig ?? undefined);
+    return result.items[0] ?? null;
+  },
+  async getItems(items: bigint[], queryConfig?: WorkshopItemQueryConfig | null): Promise<WorkshopItemsResult> {
+    const result = await native().gameServerWorkshopGetItems(items, queryConfig ?? undefined);
+    return {
+      items: result.items.map(normalizeWorkshopItem),
+      wasCached: Boolean(result.wasCached ?? result.was_cached)
+    };
+  },
+  async getAllItems(
+    page: number,
+    queryType: number,
+    itemType: number,
+    creatorAppId: number,
+    consumerAppId: number,
+    queryConfig?: WorkshopItemQueryConfig | null
+  ): Promise<WorkshopPaginatedResult> {
+    return normalizeWorkshopPaginatedResult(
+      await native().gameServerWorkshopGetAllItems(
+        page,
+        queryType,
+        itemType,
+        creatorAppId,
+        consumerAppId,
+        queryConfig ?? undefined
+      )
+    );
+  },
+  async getUserItems(
+    page: number,
+    accountId: number,
+    listType: number,
+    itemType: number,
+    sortOrder: number,
+    appIds: AppIDs,
+    queryConfig?: WorkshopItemQueryConfig | null
+  ): Promise<WorkshopPaginatedResult> {
+    return normalizeWorkshopPaginatedResult(
+      await native().gameServerWorkshopGetUserItems(
+        page,
+        accountId,
+        listType,
+        itemType,
+        sortOrder,
+        appIds.creator ?? appIds.consumer ?? getAppId(),
+        appIds.consumer ?? appIds.creator ?? getAppId(),
+        queryConfig ?? undefined
+      )
+    );
+  }
+};
+
 export interface SteamBridgeClient {
   achievement: typeof achievement;
   apps: typeof apps;
@@ -6549,6 +6715,7 @@ export interface SteamBridgeClient {
   gameServerNetworkingMessages: typeof gameServerNetworkingMessages;
   gameServerNetworkingSockets: typeof gameServerNetworkingSockets;
   gameServerStats: typeof gameServerStats;
+  gameServerWorkshop: typeof gameServerWorkshop;
   http: typeof http;
   inventory: typeof inventory;
   input: typeof input;
@@ -6585,6 +6752,7 @@ export function createCompatibilityClient(): SteamBridgeClient {
     gameServerNetworkingMessages,
     gameServerNetworkingSockets,
     gameServerStats,
+    gameServerWorkshop,
     http,
     inventory,
     input,
@@ -8975,6 +9143,7 @@ const defaultExport = {
   gameServerNetworkingMessages,
   gameServerNetworkingSockets,
   gameServerStats,
+  gameServerWorkshop,
   html,
   http,
   inventory,

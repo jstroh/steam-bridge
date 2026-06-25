@@ -2357,6 +2357,58 @@ export interface NativeBinding {
     consumerAppId: number,
     queryConfig?: unknown
   ): Promise<NativeWorkshopItemsResult>;
+  gameServerWorkshopCreateItem(appId?: number | null): Promise<NativeUgcResult>;
+  gameServerWorkshopUpdateItem(itemId: bigint, updateDetails: unknown, appId?: number | null): Promise<NativeUgcResult>;
+  gameServerWorkshopUpdateItemWithProgress(
+    itemId: bigint,
+    updateDetails: unknown,
+    appId: number | null | undefined,
+    progressHandler: (data: unknown) => void,
+    progressIntervalMs?: number | null
+  ): Promise<NativeUgcResult>;
+  gameServerWorkshopGetItemUpdateProgress(handle: bigint): NativeUpdateProgress;
+  gameServerWorkshopSubscribe(itemId: bigint): Promise<void>;
+  gameServerWorkshopUnsubscribe(itemId: bigint): Promise<void>;
+  gameServerWorkshopAddFavorite(itemId: bigint, appId?: number | null): Promise<NativeWorkshopFavoriteResult>;
+  gameServerWorkshopRemoveFavorite(itemId: bigint, appId?: number | null): Promise<NativeWorkshopFavoriteResult>;
+  gameServerWorkshopSetUserItemVote(itemId: bigint, voteUp: boolean): Promise<NativeWorkshopSetUserItemVoteResult>;
+  gameServerWorkshopGetUserItemVote(itemId: bigint): Promise<NativeWorkshopGetUserItemVoteResult>;
+  gameServerWorkshopStartPlaytimeTracking(itemIds: bigint[]): Promise<NativeWorkshopSimpleResult>;
+  gameServerWorkshopStopPlaytimeTracking(itemIds: bigint[]): Promise<NativeWorkshopSimpleResult>;
+  gameServerWorkshopStopPlaytimeTrackingForAllItems(): Promise<NativeWorkshopSimpleResult>;
+  gameServerWorkshopAddDependency(parentItemId: bigint, childItemId: bigint): Promise<NativeWorkshopDependencyResult>;
+  gameServerWorkshopRemoveDependency(parentItemId: bigint, childItemId: bigint): Promise<NativeWorkshopDependencyResult>;
+  gameServerWorkshopAddAppDependency(itemId: bigint, appId: number): Promise<NativeWorkshopAppDependencyResult>;
+  gameServerWorkshopRemoveAppDependency(itemId: bigint, appId: number): Promise<NativeWorkshopAppDependencyResult>;
+  gameServerWorkshopGetAppDependencies(itemId: bigint): Promise<NativeWorkshopAppDependenciesResult>;
+  gameServerWorkshopDeleteItem(itemId: bigint): Promise<NativeWorkshopDeleteItemResult>;
+  gameServerWorkshopShowEula(): boolean;
+  gameServerWorkshopGetEulaStatus(): Promise<NativeWorkshopEulaStatus>;
+  gameServerWorkshopGetUserContentDescriptorPreferences(maxEntries?: number | null): number[];
+  gameServerWorkshopState(itemId: bigint): number;
+  gameServerWorkshopInstallInfo(itemId: bigint): NativeWorkshopInstallInfo | null | undefined;
+  gameServerWorkshopDownloadInfo(itemId: bigint): NativeWorkshopDownloadInfo | null | undefined;
+  gameServerWorkshopDownload(itemId: bigint, highPriority: boolean): boolean;
+  gameServerWorkshopGetSubscribedItems(): bigint[];
+  gameServerWorkshopGetItems(items: bigint[], queryConfig?: unknown): Promise<NativeWorkshopItemsResult>;
+  gameServerWorkshopGetAllItems(
+    page: number,
+    queryType: number,
+    itemType: number,
+    creatorAppId: number,
+    consumerAppId: number,
+    queryConfig?: unknown
+  ): Promise<NativeWorkshopItemsResult>;
+  gameServerWorkshopGetUserItems(
+    page: number,
+    accountId: number,
+    listType: number,
+    itemType: number,
+    sortOrder: number,
+    creatorAppId: number,
+    consumerAppId: number,
+    queryConfig?: unknown
+  ): Promise<NativeWorkshopItemsResult>;
 }
 
 let binding: NativeBinding | undefined;

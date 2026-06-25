@@ -94,7 +94,8 @@ The native layer currently targets the Steamworks flat C API through
 - UGC/Workshop: item create/update/query flows, install/download information,
   subscription, favorite, vote, playtime tracking, item/app dependency, delete,
   EULA, content descriptor preference, item state, statistics, query
-  configuration, and UGC callback-event coverage.
+  configuration, client and game-server shared interfaces, and UGC
+  callback-event coverage.
 - Screenshots: screenshot library writes, screenshot triggers/hooks, location
   and user/published-file tagging, VR screenshot library writes, and screenshot
   callback events.
@@ -116,8 +117,8 @@ The native layer currently targets the Steamworks flat C API through
   game-socket-share packet helpers, unauthenticated/deprecated user connection
   helpers, user data updates, server reputation, clan association and new-player
   compatibility call results, core game-server callbacks, game-server stats
-  request/read/write/store helpers, and game-server HTTP, inventory, networking
-  messages, and networking sockets shared interfaces.
+  request/read/write/store helpers, and game-server HTTP, inventory, UGC,
+  networking messages, and networking sockets shared interfaces.
 
 ## Not Yet Complete
 

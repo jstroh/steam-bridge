@@ -919,6 +919,8 @@ test("init reads the Steam app ID from the environment and returns the grouped c
   assert.equal(client.gameServerNetworkingSockets, steam.gameServerNetworkingSockets);
   assert.equal(steam.default.gameServerNetworkingSockets, steam.gameServerNetworkingSockets);
   assert.equal(client.gameServerStats, steam.gameServerStats);
+  assert.equal(client.gameServerWorkshop, steam.gameServerWorkshop);
+  assert.equal(steam.default.gameServerWorkshop, steam.gameServerWorkshop);
   assert.equal(client.http, steam.http);
   assert.equal(client.inventory, steam.inventory);
   assert.equal(client.matchmakingServers, steam.matchmakingServers);
@@ -6890,5 +6892,127 @@ test("workshop updates and queries normalize progress, IDs, and snake_case field
   assert.deepEqual(fake.calls.find((call) => call.method === "workshopGetUserContentDescriptorPreferences"), {
     method: "workshopGetUserContentDescriptorPreferences",
     args: [8]
+  });
+});
+
+test("game server workshop facade uses game-server native bindings", async (t) => {
+  const fake = createFakeNative({
+    gameServerWorkshopUpdateItemWithProgress(itemId, updateDetails, appId, progressHandler, progressIntervalMs) {
+      this.calls.push({
+        method: "gameServerWorkshopUpdateItemWithProgress",
+        args: [itemId, updateDetails, appId, progressIntervalMs]
+      });
+      progressHandler({ status: 3, progress: "64", total: "128" });
+      return Promise.resolve({ item_id: "9876543210987654321", needs_to_accept_agreement: false });
+    },
+    gameServerWorkshopGetItems(items, queryConfig) {
+      this.calls.push({ method: "gameServerWorkshopGetItems", args: [items, queryConfig] });
+      return Promise.resolve({
+        was_cached: true,
+        items: [
+          {
+            published_file_id: "9876543210987654321",
+            creator_app_id: 480,
+            consumer_app_id: 480,
+            title: "Game Server Workshop Item",
+            owner: { steamId64: "76561198000000002", steamId32: "STEAM_0:0:19867137", accountId: 39734274 },
+            tags: ["server", "ugc"],
+            num_subscriptions: "5"
+          }
+        ]
+      });
+    },
+    gameServerWorkshopGetItemUpdateProgress(handle) {
+      this.calls.push({ method: "gameServerWorkshopGetItemUpdateProgress", args: [handle] });
+      return { status: 3, progress: "32", total: "64" };
+    },
+    gameServerWorkshopAddFavorite(itemId, appId) {
+      this.calls.push({ method: "gameServerWorkshopAddFavorite", args: [itemId, appId] });
+      return Promise.resolve({ result: 1, item_id: itemId, was_add_request: true });
+    },
+    gameServerWorkshopGetAppDependencies(itemId) {
+      this.calls.push({ method: "gameServerWorkshopGetAppDependencies", args: [itemId] });
+      return Promise.resolve({
+        result: 1,
+        item_id: itemId,
+        app_ids: [480],
+        num_app_dependencies: 1,
+        total_num_app_dependencies: 1
+      });
+    },
+    gameServerWorkshopShowEula() {
+      this.calls.push({ method: "gameServerWorkshopShowEula", args: [] });
+      return true;
+    },
+    gameServerWorkshopGetUserContentDescriptorPreferences(maxEntries) {
+      this.calls.push({ method: "gameServerWorkshopGetUserContentDescriptorPreferences", args: [maxEntries] });
+      return [5];
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  assert.deepEqual(Object.keys(steam.gameServerWorkshop).sort(), Object.keys(steam.workshop).sort());
+  assert.equal(steam.gameServerWorkshop.UGCContentDescriptor.AnyMatureContent, 5);
+
+  const progressEvents = [];
+  const updateDetails = { title: "Game Server Workshop Item" };
+  const updateResult = await new Promise((resolve, reject) => {
+    steam.gameServerWorkshop.updateItemWithCallback(
+      42n,
+      updateDetails,
+      480,
+      resolve,
+      reject,
+      (progress) => progressEvents.push(progress),
+      100
+    );
+  });
+
+  assert.deepEqual(progressEvents, [{ status: 3, progress: 64n, total: 128n }]);
+  assert.deepEqual(updateResult, {
+    itemId: 9876543210987654321n,
+    needsToAcceptAgreement: false
+  });
+
+  const itemsResult = await steam.gameServerWorkshop.getItems([9876543210987654321n], { includeMetadata: true });
+  assert.equal(itemsResult.wasCached, true);
+  assert.equal(itemsResult.items[0].publishedFileId, 9876543210987654321n);
+  assert.equal(itemsResult.items[0].owner.steamId64, 76561198000000002n);
+  assert.deepEqual(itemsResult.items[0].tags, ["server", "ugc"]);
+  assert.equal(itemsResult.items[0].statistics.numSubscriptions, 5n);
+  assert.deepEqual(steam.gameServerWorkshop.getItemUpdateProgress(99n), {
+    status: 3,
+    progress: 32n,
+    total: 64n
+  });
+
+  assert.deepEqual(await steam.gameServerWorkshop.addFavorite(42n, 480), {
+    result: 1,
+    itemId: 42n,
+    wasAddRequest: true
+  });
+  assert.deepEqual(await steam.gameServerWorkshop.getAppDependencies(42n), {
+    result: 1,
+    itemId: 42n,
+    appIds: [480],
+    numAppDependencies: 1,
+    totalNumAppDependencies: 1
+  });
+  assert.equal(steam.gameServerWorkshop.showEula(), true);
+  assert.deepEqual(steam.gameServerWorkshop.getUserContentDescriptorPreferences(8), [5]);
+
+  assert.deepEqual(fake.calls.find((call) => call.method === "gameServerWorkshopUpdateItemWithProgress"), {
+    method: "gameServerWorkshopUpdateItemWithProgress",
+    args: [42n, updateDetails, 480, 100]
+  });
+  assert.deepEqual(fake.calls.find((call) => call.method === "gameServerWorkshopGetItems"), {
+    method: "gameServerWorkshopGetItems",
+    args: [[9876543210987654321n], { includeMetadata: true }]
+  });
+  assert.deepEqual(fake.calls.find((call) => call.method === "gameServerWorkshopGetAppDependencies"), {
+    method: "gameServerWorkshopGetAppDependencies",
+    args: [42n]
   });
 });

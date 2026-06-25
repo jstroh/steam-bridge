@@ -15,11 +15,14 @@ use serde_json::Value;
 use std::cell::Cell;
 use std::collections::HashMap;
 use std::ffi::{c_char, c_void, CStr, CString};
+use std::future::Future;
 use std::mem::MaybeUninit;
 use std::net::IpAddr;
+use std::pin::Pin;
 use std::ptr;
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
+use std::task::{Context as TaskContext, Poll};
 use std::time::{Duration, Instant};
 use steamworks_sys as sys;
 use tokio::sync::oneshot;
@@ -13578,7 +13581,7 @@ pub fn matchmaking_set_linked_lobby(
 
 #[napi(js_name = "workshopCreateItem")]
 pub async fn workshop_create_item(app_id: Option<u32>) -> Result<UgcResult, Error> {
-    let app_id = app_id.unwrap_or(unsafe { sys::SteamAPI_ISteamUtils_GetAppID(steam_utils()?) });
+    let app_id = app_id.unwrap_or(unsafe { sys::SteamAPI_ISteamUtils_GetAppID(workshop_utils()?) });
     let call = unsafe {
         sys::SteamAPI_ISteamUGC_CreateItem(
             steam_ugc()?,
@@ -13672,7 +13675,7 @@ async fn workshop_update_item_inner(
     mut progress_callback: Option<WorkshopProgressCallback<'_>>,
 ) -> Result<UgcResult, Error> {
     let ugc = steam_ugc()?;
-    let app_id = app_id.unwrap_or(unsafe { sys::SteamAPI_ISteamUtils_GetAppID(steam_utils()?) });
+    let app_id = app_id.unwrap_or(unsafe { sys::SteamAPI_ISteamUtils_GetAppID(workshop_utils()?) });
     let item_id = bigint_to_u64(item_id, "item id")?;
     let handle = unsafe { sys::SteamAPI_ISteamUGC_StartItemUpdate(ugc, app_id, item_id) };
     if handle == sys::k_UGCUpdateHandleInvalid {
@@ -13985,7 +13988,7 @@ pub async fn workshop_add_favorite(
     item_id: BigInt,
     app_id: Option<u32>,
 ) -> Result<WorkshopFavoriteResult, Error> {
-    let app_id = app_id.unwrap_or(unsafe { sys::SteamAPI_ISteamUtils_GetAppID(steam_utils()?) });
+    let app_id = app_id.unwrap_or(unsafe { sys::SteamAPI_ISteamUtils_GetAppID(workshop_utils()?) });
     let item_id = bigint_to_u64(item_id, "item id")?;
     let call = unsafe { sys::SteamAPI_ISteamUGC_AddItemToFavorites(steam_ugc()?, app_id, item_id) };
     let result: sys::UserFavoriteItemsListChanged_t = wait_for_api_call(
@@ -14002,7 +14005,7 @@ pub async fn workshop_remove_favorite(
     item_id: BigInt,
     app_id: Option<u32>,
 ) -> Result<WorkshopFavoriteResult, Error> {
-    let app_id = app_id.unwrap_or(unsafe { sys::SteamAPI_ISteamUtils_GetAppID(steam_utils()?) });
+    let app_id = app_id.unwrap_or(unsafe { sys::SteamAPI_ISteamUtils_GetAppID(workshop_utils()?) });
     let item_id = bigint_to_u64(item_id, "item id")?;
     let call =
         unsafe { sys::SteamAPI_ISteamUGC_RemoveItemFromFavorites(steam_ugc()?, app_id, item_id) };
@@ -14472,6 +14475,281 @@ pub async fn workshop_get_user_items(
     let items = collect_query_items(ugc, handle, &result)?;
     unsafe { sys::SteamAPI_ISteamUGC_ReleaseQueryUGCRequest(ugc, handle) };
     Ok(items)
+}
+
+#[napi(js_name = "gameServerWorkshopCreateItem")]
+pub async fn game_server_workshop_create_item(app_id: Option<u32>) -> Result<UgcResult, Error> {
+    with_game_server_workshop_future(workshop_create_item(app_id)).await
+}
+
+#[napi(js_name = "gameServerWorkshopUpdateItem")]
+pub async fn game_server_workshop_update_item(
+    item_id: BigInt,
+    update_details: Value,
+    app_id: Option<u32>,
+) -> Result<UgcResult, Error> {
+    with_game_server_workshop_future(workshop_update_item(item_id, update_details, app_id)).await
+}
+
+#[napi(js_name = "gameServerWorkshopUpdateItemWithProgress")]
+pub fn game_server_workshop_update_item_with_progress(
+    env: Env,
+    item_id: BigInt,
+    update_details: Value,
+    app_id: Option<u32>,
+    #[napi(ts_arg_type = "(value: any) => void")] progress_handler: JsCallback<'_, Value>,
+    progress_interval_ms: Option<u32>,
+) -> Result<PromiseRaw<'static, UgcResult>, Error> {
+    let threadsafe_handler: FatalThreadsafeFunction<Value> = progress_handler
+        .build_threadsafe_function::<Value>()
+        .build_callback(|ctx| Ok(vec![ctx.value]))?;
+    let progress_interval =
+        Duration::from_millis(u64::from(progress_interval_ms.unwrap_or(250).max(16)));
+    let raw_env = env.raw();
+
+    let promise = napi::bindgen_prelude::execute_tokio_future(
+        raw_env,
+        with_game_server_workshop_future(async move {
+            let mut last_progress_emit = None::<Instant>;
+            let mut emit_progress = move |handle: sys::UGCUpdateHandle_t| {
+                let now = Instant::now();
+                if last_progress_emit
+                    .map(|last| now.duration_since(last) < progress_interval)
+                    .unwrap_or(false)
+                {
+                    return;
+                }
+
+                last_progress_emit = Some(now);
+                let Ok(ugc) = steam_ugc() else {
+                    return;
+                };
+                threadsafe_handler.call(
+                    workshop_update_progress_json(ugc, handle),
+                    ThreadsafeFunctionCallMode::NonBlocking,
+                );
+            };
+
+            workshop_update_item_inner(item_id, update_details, app_id, Some(&mut emit_progress))
+                .await
+        }),
+        |env, result| unsafe { UgcResult::to_napi_value(env, result) },
+    )?;
+
+    Ok(PromiseRaw::new(raw_env, promise))
+}
+
+#[napi(js_name = "gameServerWorkshopGetItemUpdateProgress")]
+pub fn game_server_workshop_get_item_update_progress(
+    handle: BigInt,
+) -> Result<UpdateProgress, Error> {
+    with_game_server_workshop(|| workshop_get_item_update_progress(handle))
+}
+
+#[napi(js_name = "gameServerWorkshopSubscribe")]
+pub async fn game_server_workshop_subscribe(item_id: BigInt) -> Result<(), Error> {
+    with_game_server_workshop_future(workshop_subscribe(item_id)).await
+}
+
+#[napi(js_name = "gameServerWorkshopUnsubscribe")]
+pub async fn game_server_workshop_unsubscribe(item_id: BigInt) -> Result<(), Error> {
+    with_game_server_workshop_future(workshop_unsubscribe(item_id)).await
+}
+
+#[napi(js_name = "gameServerWorkshopAddFavorite")]
+pub async fn game_server_workshop_add_favorite(
+    item_id: BigInt,
+    app_id: Option<u32>,
+) -> Result<WorkshopFavoriteResult, Error> {
+    with_game_server_workshop_future(workshop_add_favorite(item_id, app_id)).await
+}
+
+#[napi(js_name = "gameServerWorkshopRemoveFavorite")]
+pub async fn game_server_workshop_remove_favorite(
+    item_id: BigInt,
+    app_id: Option<u32>,
+) -> Result<WorkshopFavoriteResult, Error> {
+    with_game_server_workshop_future(workshop_remove_favorite(item_id, app_id)).await
+}
+
+#[napi(js_name = "gameServerWorkshopSetUserItemVote")]
+pub async fn game_server_workshop_set_user_item_vote(
+    item_id: BigInt,
+    vote_up: bool,
+) -> Result<WorkshopSetUserItemVoteResult, Error> {
+    with_game_server_workshop_future(workshop_set_user_item_vote(item_id, vote_up)).await
+}
+
+#[napi(js_name = "gameServerWorkshopGetUserItemVote")]
+pub async fn game_server_workshop_get_user_item_vote(
+    item_id: BigInt,
+) -> Result<WorkshopGetUserItemVoteResult, Error> {
+    with_game_server_workshop_future(workshop_get_user_item_vote(item_id)).await
+}
+
+#[napi(js_name = "gameServerWorkshopStartPlaytimeTracking")]
+pub async fn game_server_workshop_start_playtime_tracking(
+    item_ids: Vec<BigInt>,
+) -> Result<WorkshopSimpleResult, Error> {
+    with_game_server_workshop_future(workshop_start_playtime_tracking(item_ids)).await
+}
+
+#[napi(js_name = "gameServerWorkshopStopPlaytimeTracking")]
+pub async fn game_server_workshop_stop_playtime_tracking(
+    item_ids: Vec<BigInt>,
+) -> Result<WorkshopSimpleResult, Error> {
+    with_game_server_workshop_future(workshop_stop_playtime_tracking(item_ids)).await
+}
+
+#[napi(js_name = "gameServerWorkshopStopPlaytimeTrackingForAllItems")]
+pub async fn game_server_workshop_stop_playtime_tracking_for_all_items(
+) -> Result<WorkshopSimpleResult, Error> {
+    with_game_server_workshop_future(workshop_stop_playtime_tracking_for_all_items()).await
+}
+
+#[napi(js_name = "gameServerWorkshopAddDependency")]
+pub async fn game_server_workshop_add_dependency(
+    parent_item_id: BigInt,
+    child_item_id: BigInt,
+) -> Result<WorkshopDependencyResult, Error> {
+    with_game_server_workshop_future(workshop_add_dependency(parent_item_id, child_item_id)).await
+}
+
+#[napi(js_name = "gameServerWorkshopRemoveDependency")]
+pub async fn game_server_workshop_remove_dependency(
+    parent_item_id: BigInt,
+    child_item_id: BigInt,
+) -> Result<WorkshopDependencyResult, Error> {
+    with_game_server_workshop_future(workshop_remove_dependency(parent_item_id, child_item_id))
+        .await
+}
+
+#[napi(js_name = "gameServerWorkshopAddAppDependency")]
+pub async fn game_server_workshop_add_app_dependency(
+    item_id: BigInt,
+    app_id: u32,
+) -> Result<WorkshopAppDependencyResult, Error> {
+    with_game_server_workshop_future(workshop_add_app_dependency(item_id, app_id)).await
+}
+
+#[napi(js_name = "gameServerWorkshopRemoveAppDependency")]
+pub async fn game_server_workshop_remove_app_dependency(
+    item_id: BigInt,
+    app_id: u32,
+) -> Result<WorkshopAppDependencyResult, Error> {
+    with_game_server_workshop_future(workshop_remove_app_dependency(item_id, app_id)).await
+}
+
+#[napi(js_name = "gameServerWorkshopGetAppDependencies")]
+pub async fn game_server_workshop_get_app_dependencies(
+    item_id: BigInt,
+) -> Result<WorkshopAppDependenciesResult, Error> {
+    with_game_server_workshop_future(workshop_get_app_dependencies(item_id)).await
+}
+
+#[napi(js_name = "gameServerWorkshopDeleteItem")]
+pub async fn game_server_workshop_delete_item(
+    item_id: BigInt,
+) -> Result<WorkshopDeleteItemResult, Error> {
+    with_game_server_workshop_future(workshop_delete_item(item_id)).await
+}
+
+#[napi(js_name = "gameServerWorkshopShowEula")]
+pub fn game_server_workshop_show_eula() -> Result<bool, Error> {
+    with_game_server_workshop(workshop_show_eula)
+}
+
+#[napi(js_name = "gameServerWorkshopGetEulaStatus")]
+pub async fn game_server_workshop_get_eula_status() -> Result<WorkshopEulaStatus, Error> {
+    with_game_server_workshop_future(workshop_get_eula_status()).await
+}
+
+#[napi(js_name = "gameServerWorkshopGetUserContentDescriptorPreferences")]
+pub fn game_server_workshop_get_user_content_descriptor_preferences(
+    max_entries: Option<u32>,
+) -> Result<Vec<u32>, Error> {
+    with_game_server_workshop(|| workshop_get_user_content_descriptor_preferences(max_entries))
+}
+
+#[napi(js_name = "gameServerWorkshopState")]
+pub fn game_server_workshop_state(item_id: BigInt) -> Result<u32, Error> {
+    with_game_server_workshop(|| workshop_state(item_id))
+}
+
+#[napi(js_name = "gameServerWorkshopInstallInfo")]
+pub fn game_server_workshop_install_info(
+    item_id: BigInt,
+) -> Result<Option<WorkshopInstallInfo>, Error> {
+    with_game_server_workshop(|| workshop_install_info(item_id))
+}
+
+#[napi(js_name = "gameServerWorkshopDownloadInfo")]
+pub fn game_server_workshop_download_info(
+    item_id: BigInt,
+) -> Result<Option<WorkshopDownloadInfo>, Error> {
+    with_game_server_workshop(|| workshop_download_info(item_id))
+}
+
+#[napi(js_name = "gameServerWorkshopDownload")]
+pub fn game_server_workshop_download(item_id: BigInt, high_priority: bool) -> Result<bool, Error> {
+    with_game_server_workshop(|| workshop_download(item_id, high_priority))
+}
+
+#[napi(js_name = "gameServerWorkshopGetSubscribedItems")]
+pub fn game_server_workshop_get_subscribed_items() -> Result<Vec<BigInt>, Error> {
+    with_game_server_workshop(workshop_get_subscribed_items)
+}
+
+#[napi(js_name = "gameServerWorkshopGetItems")]
+pub async fn game_server_workshop_get_items(
+    item_ids: Vec<BigInt>,
+    query_config: Option<Value>,
+) -> Result<WorkshopItemsResult, Error> {
+    with_game_server_workshop_future(workshop_get_items(item_ids, query_config)).await
+}
+
+#[napi(js_name = "gameServerWorkshopGetAllItems")]
+pub async fn game_server_workshop_get_all_items(
+    page: u32,
+    query_type: u32,
+    item_type: i32,
+    creator_app_id: u32,
+    consumer_app_id: u32,
+    query_config: Option<Value>,
+) -> Result<WorkshopItemsResult, Error> {
+    with_game_server_workshop_future(workshop_get_all_items(
+        page,
+        query_type,
+        item_type,
+        creator_app_id,
+        consumer_app_id,
+        query_config,
+    ))
+    .await
+}
+
+#[napi(js_name = "gameServerWorkshopGetUserItems")]
+pub async fn game_server_workshop_get_user_items(
+    page: u32,
+    account_id: u32,
+    list_type: u32,
+    item_type: i32,
+    sort_order: u32,
+    creator_app_id: u32,
+    consumer_app_id: u32,
+    query_config: Option<Value>,
+) -> Result<WorkshopItemsResult, Error> {
+    with_game_server_workshop_future(workshop_get_user_items(
+        page,
+        account_id,
+        list_type,
+        item_type,
+        sort_order,
+        creator_app_id,
+        consumer_app_id,
+        query_config,
+    ))
+    .await
 }
 
 fn steam_apps() -> Result<*mut sys::ISteamApps, Error> {
@@ -15023,9 +15301,90 @@ fn steam_param_string_array(
     Ok((tag_strings, pointers, tag_array))
 }
 
-fn steam_ugc() -> Result<*mut sys::ISteamUGC, Error> {
+#[derive(Clone, Copy)]
+enum UgcInterfaceContext {
+    Client,
+    GameServer,
+}
+
+thread_local! {
+    static UGC_INTERFACE_CONTEXT: Cell<UgcInterfaceContext> =
+        Cell::new(UgcInterfaceContext::Client);
+}
+
+struct UgcInterfaceContextGuard {
+    previous: UgcInterfaceContext,
+}
+
+impl Drop for UgcInterfaceContextGuard {
+    fn drop(&mut self) {
+        UGC_INTERFACE_CONTEXT.with(|context| context.set(self.previous));
+    }
+}
+
+struct UgcInterfaceContextFuture<F> {
+    context: UgcInterfaceContext,
+    future: F,
+}
+
+impl<F: Future> Future for UgcInterfaceContextFuture<F> {
+    type Output = F::Output;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut TaskContext<'_>) -> Poll<Self::Output> {
+        let context = self.as_ref().get_ref().context;
+        let _guard = set_ugc_interface_context(context);
+        unsafe { self.map_unchecked_mut(|this| &mut this.future) }.poll(cx)
+    }
+}
+
+fn set_ugc_interface_context(context: UgcInterfaceContext) -> UgcInterfaceContextGuard {
+    UGC_INTERFACE_CONTEXT.with(|current| {
+        let previous = current.replace(context);
+        UgcInterfaceContextGuard { previous }
+    })
+}
+
+fn ugc_interface_context() -> UgcInterfaceContext {
+    UGC_INTERFACE_CONTEXT.with(Cell::get)
+}
+
+fn with_game_server_workshop<T>(f: impl FnOnce() -> Result<T, Error>) -> Result<T, Error> {
+    let _guard = set_ugc_interface_context(UgcInterfaceContext::GameServer);
+    f()
+}
+
+fn with_game_server_workshop_future<F: Future>(future: F) -> UgcInterfaceContextFuture<F> {
+    UgcInterfaceContextFuture {
+        context: UgcInterfaceContext::GameServer,
+        future,
+    }
+}
+
+fn steam_client_ugc() -> Result<*mut sys::ISteamUGC, Error> {
     crate::state::ensure_initialized()?;
     non_null(unsafe { sys::SteamAPI_SteamUGC_v021() }, "ISteamUGC")
+}
+
+fn steam_game_server_ugc() -> Result<*mut sys::ISteamUGC, Error> {
+    crate::state::ensure_game_server_initialized()?;
+    non_null(
+        unsafe { sys::SteamAPI_SteamGameServerUGC_v021() },
+        "ISteamUGC",
+    )
+}
+
+fn steam_ugc() -> Result<*mut sys::ISteamUGC, Error> {
+    match ugc_interface_context() {
+        UgcInterfaceContext::Client => steam_client_ugc(),
+        UgcInterfaceContext::GameServer => steam_game_server_ugc(),
+    }
+}
+
+fn workshop_utils() -> Result<*mut sys::ISteamUtils, Error> {
+    match ugc_interface_context() {
+        UgcInterfaceContext::Client => steam_utils(),
+        UgcInterfaceContext::GameServer => steam_game_server_utils(),
+    }
 }
 
 fn steam_screenshots() -> Result<*mut sys::ISteamScreenshots, Error> {
@@ -17181,6 +17540,19 @@ async fn wait_for_game_server_api_call<T>(
     expected_callback: i32,
     timeout_seconds: u64,
 ) -> Result<T, Error> {
+    wait_for_game_server_api_call_with_progress(call, expected_callback, timeout_seconds, || {})
+        .await
+}
+
+async fn wait_for_game_server_api_call_with_progress<T, F>(
+    call: sys::SteamAPICall_t,
+    expected_callback: i32,
+    timeout_seconds: u64,
+    mut tick: F,
+) -> Result<T, Error>
+where
+    F: FnMut(),
+{
     if call == 0 {
         return Err(Error::from_reason(
             "Steam returned an invalid game server API call handle",
@@ -17235,6 +17607,7 @@ async fn wait_for_game_server_api_call<T>(
         if started.elapsed() > Duration::from_secs(timeout_seconds) {
             return Err(Error::from_reason("Steam game server API call timed out"));
         }
+        tick();
         tokio::time::sleep(Duration::from_millis(16)).await;
     }
 }
@@ -17248,6 +17621,16 @@ async fn wait_for_api_call_with_progress<T, F>(
 where
     F: FnMut(),
 {
+    if matches!(ugc_interface_context(), UgcInterfaceContext::GameServer) {
+        return wait_for_game_server_api_call_with_progress(
+            call,
+            expected_callback,
+            timeout_seconds,
+            tick,
+        )
+        .await;
+    }
+
     if call == 0 {
         return Err(Error::from_reason(
             "Steam returned an invalid API call handle",
