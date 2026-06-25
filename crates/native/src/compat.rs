@@ -1465,6 +1465,35 @@ pub struct WorkshopDownloadInfo {
 
 #[derive(Debug)]
 #[napi(object)]
+pub struct WorkshopItemTag {
+    pub name: String,
+    pub display_name: Option<String>,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct WorkshopItemAdditionalPreview {
+    pub url_or_video_id: String,
+    pub original_file_name: String,
+    pub preview_type: u32,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct WorkshopItemKeyValueTag {
+    pub key: String,
+    pub value: String,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct WorkshopItemSupportedGameVersion {
+    pub game_branch_min: String,
+    pub game_branch_max: String,
+}
+
+#[derive(Debug)]
+#[napi(object)]
 pub struct UgcResult {
     pub item_id: BigInt,
     pub needs_to_accept_agreement: bool,
@@ -1570,7 +1599,15 @@ pub struct WorkshopItem {
     pub banned: bool,
     pub accepted_for_use: bool,
     pub tags: Vec<String>,
+    pub tag_details: Vec<WorkshopItemTag>,
     pub tags_truncated: bool,
+    pub metadata: Option<String>,
+    pub children: Vec<BigInt>,
+    pub additional_previews: Vec<WorkshopItemAdditionalPreview>,
+    pub key_value_tags: Vec<WorkshopItemKeyValueTag>,
+    pub first_key_value_tags: Vec<WorkshopItemKeyValueTag>,
+    pub supported_game_versions: Vec<WorkshopItemSupportedGameVersion>,
+    pub content_descriptors: Vec<u32>,
     pub url: String,
     pub num_upvotes: u32,
     pub num_downvotes: u32,
@@ -1598,6 +1635,7 @@ pub struct WorkshopItemsResult {
     pub returned_results: u32,
     pub total_results: u32,
     pub was_cached: bool,
+    pub next_cursor: String,
 }
 
 #[derive(Debug)]
@@ -14404,6 +14442,24 @@ async fn workshop_update_item_inner(
         ugc,
         handle,
         &update_details,
+        "language",
+        &mut keepalive,
+        |ugc, handle, value| unsafe {
+            sys::SteamAPI_ISteamUGC_SetItemUpdateLanguage(ugc, handle, value)
+        },
+    )?;
+    set_optional_item_string(
+        ugc,
+        handle,
+        &update_details,
+        "metadata",
+        &mut keepalive,
+        |ugc, handle, value| unsafe { sys::SteamAPI_ISteamUGC_SetItemMetadata(ugc, handle, value) },
+    )?;
+    set_optional_item_string(
+        ugc,
+        handle,
+        &update_details,
         "contentPath",
         &mut keepalive,
         |ugc, handle, value| unsafe { sys::SteamAPI_ISteamUGC_SetItemContent(ugc, handle, value) },
@@ -14428,6 +14484,13 @@ async fn workshop_update_item_inner(
         unsafe { sys::SteamAPI_ISteamUGC_SetItemVisibility(ugc, handle, visibility) };
     }
 
+    if let Some(allow) = update_details
+        .get("allowLegacyUpload")
+        .and_then(Value::as_bool)
+    {
+        unsafe { sys::SteamAPI_ISteamUGC_SetAllowLegacyUpload(ugc, handle, allow) };
+    }
+
     if let Some(tags) = update_details.get("tags").and_then(Value::as_array) {
         let tag_strings: Vec<CString> = tags
             .iter()
@@ -14443,6 +14506,191 @@ async fn workshop_update_item_inner(
             m_nNumStrings: pointers.len() as i32,
         };
         unsafe { sys::SteamAPI_ISteamUGC_SetItemTags(ugc, handle, &tag_array, false) };
+    }
+
+    if update_details
+        .get("removeAllKeyValueTags")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+    {
+        unsafe { sys::SteamAPI_ISteamUGC_RemoveAllItemKeyValueTags(ugc, handle) };
+    }
+
+    if let Some(keys) = update_details
+        .get("removeKeyValueTags")
+        .and_then(Value::as_array)
+    {
+        for key in keys.iter().filter_map(Value::as_str) {
+            let key = CString::new(key).map_err(|_| {
+                Error::from_reason("workshop key-value tag key contains a NUL byte")
+            })?;
+            unsafe { sys::SteamAPI_ISteamUGC_RemoveItemKeyValueTags(ugc, handle, key.as_ptr()) };
+        }
+    }
+
+    if let Some(tags) = update_details.get("keyValueTags") {
+        for (key, value) in string_pairs_from_value(tags, "workshop key-value tag")? {
+            let key = CString::new(key).map_err(|_| {
+                Error::from_reason("workshop key-value tag key contains a NUL byte")
+            })?;
+            let value = CString::new(value).map_err(|_| {
+                Error::from_reason("workshop key-value tag value contains a NUL byte")
+            })?;
+            unsafe {
+                sys::SteamAPI_ISteamUGC_AddItemKeyValueTag(
+                    ugc,
+                    handle,
+                    key.as_ptr(),
+                    value.as_ptr(),
+                )
+            };
+        }
+    }
+
+    if let Some(previews) = update_details.get("previewFiles").and_then(Value::as_array) {
+        for preview in previews {
+            let Some(path) = preview.get("path").and_then(Value::as_str) else {
+                return Err(Error::from_reason("workshop preview file path is required"));
+            };
+            let preview_type = preview
+                .get("type")
+                .and_then(Value::as_u64)
+                .map(|value| item_preview_type_from_u32(value as u32))
+                .transpose()?
+                .unwrap_or(sys::EItemPreviewType::k_EItemPreviewType_Image);
+            let path = CString::new(path).map_err(|_| {
+                Error::from_reason("workshop preview file path contains a NUL byte")
+            })?;
+            unsafe {
+                sys::SteamAPI_ISteamUGC_AddItemPreviewFile(ugc, handle, path.as_ptr(), preview_type)
+            };
+        }
+    }
+
+    if let Some(videos) = update_details
+        .get("previewVideos")
+        .and_then(Value::as_array)
+    {
+        for video_id in videos.iter().filter_map(Value::as_str) {
+            let video_id = CString::new(video_id)
+                .map_err(|_| Error::from_reason("workshop preview video id contains a NUL byte"))?;
+            unsafe { sys::SteamAPI_ISteamUGC_AddItemPreviewVideo(ugc, handle, video_id.as_ptr()) };
+        }
+    }
+
+    if let Some(previews) = update_details
+        .get("updatePreviewFiles")
+        .and_then(Value::as_array)
+    {
+        for preview in previews {
+            let index = value_u32(preview, "index", "workshop preview file index")?;
+            let Some(path) = preview.get("path").and_then(Value::as_str) else {
+                return Err(Error::from_reason("workshop preview file path is required"));
+            };
+            let path = CString::new(path).map_err(|_| {
+                Error::from_reason("workshop preview file path contains a NUL byte")
+            })?;
+            unsafe {
+                sys::SteamAPI_ISteamUGC_UpdateItemPreviewFile(ugc, handle, index, path.as_ptr())
+            };
+        }
+    }
+
+    if let Some(videos) = update_details
+        .get("updatePreviewVideos")
+        .and_then(Value::as_array)
+    {
+        for video in videos {
+            let index = value_u32(video, "index", "workshop preview video index")?;
+            let Some(video_id) = video
+                .get("videoId")
+                .or_else(|| video.get("video_id"))
+                .and_then(Value::as_str)
+            else {
+                return Err(Error::from_reason("workshop preview video id is required"));
+            };
+            let video_id = CString::new(video_id)
+                .map_err(|_| Error::from_reason("workshop preview video id contains a NUL byte"))?;
+            unsafe {
+                sys::SteamAPI_ISteamUGC_UpdateItemPreviewVideo(
+                    ugc,
+                    handle,
+                    index,
+                    video_id.as_ptr(),
+                )
+            };
+        }
+    }
+
+    if let Some(indexes) = update_details
+        .get("removePreviews")
+        .and_then(Value::as_array)
+    {
+        for index in indexes.iter().filter_map(Value::as_u64) {
+            unsafe { sys::SteamAPI_ISteamUGC_RemoveItemPreview(ugc, handle, index as u32) };
+        }
+    }
+
+    if let Some(descriptors) = update_details
+        .get("contentDescriptors")
+        .and_then(Value::as_array)
+    {
+        for descriptor in descriptors.iter().filter_map(Value::as_u64) {
+            unsafe {
+                sys::SteamAPI_ISteamUGC_AddContentDescriptor(
+                    ugc,
+                    handle,
+                    ugc_content_descriptor_from_u32(descriptor as u32)?,
+                )
+            };
+        }
+    }
+
+    if let Some(descriptors) = update_details
+        .get("removeContentDescriptors")
+        .and_then(Value::as_array)
+    {
+        for descriptor in descriptors.iter().filter_map(Value::as_u64) {
+            unsafe {
+                sys::SteamAPI_ISteamUGC_RemoveContentDescriptor(
+                    ugc,
+                    handle,
+                    ugc_content_descriptor_from_u32(descriptor as u32)?,
+                )
+            };
+        }
+    }
+
+    if let Some(versions) = update_details.get("requiredGameVersions") {
+        let Some(min) = versions
+            .get("min")
+            .or_else(|| versions.get("gameBranchMin"))
+            .or_else(|| versions.get("game_branch_min"))
+            .and_then(Value::as_str)
+        else {
+            return Err(Error::from_reason(
+                "workshop required game version min is required",
+            ));
+        };
+        let Some(max) = versions
+            .get("max")
+            .or_else(|| versions.get("gameBranchMax"))
+            .or_else(|| versions.get("game_branch_max"))
+            .and_then(Value::as_str)
+        else {
+            return Err(Error::from_reason(
+                "workshop required game version max is required",
+            ));
+        };
+        let min = CString::new(min)
+            .map_err(|_| Error::from_reason("workshop game branch min contains a NUL byte"))?;
+        let max = CString::new(max)
+            .map_err(|_| Error::from_reason("workshop game branch max contains a NUL byte"))?;
+        unsafe {
+            sys::SteamAPI_ISteamUGC_SetRequiredGameVersions(ugc, handle, min.as_ptr(), max.as_ptr())
+        };
+        keepalive.push(min);
+        keepalive.push(max);
     }
 
     let change_note = update_details
@@ -15051,6 +15299,76 @@ pub fn workshop_download(item_id: BigInt, high_priority: bool) -> Result<bool, E
     })
 }
 
+#[napi(js_name = "workshopInitWorkshopForGameServer")]
+pub fn workshop_init_workshop_for_game_server(
+    depot_id: u32,
+    folder: String,
+) -> Result<bool, Error> {
+    let folder = cstring(folder, "workshop game server folder")?;
+    Ok(unsafe {
+        sys::SteamAPI_ISteamUGC_BInitWorkshopForGameServer(steam_ugc()?, depot_id, folder.as_ptr())
+    })
+}
+
+#[napi(js_name = "workshopSuspendDownloads")]
+pub fn workshop_suspend_downloads(suspend: bool) -> Result<(), Error> {
+    unsafe { sys::SteamAPI_ISteamUGC_SuspendDownloads(steam_ugc()?, suspend) };
+    Ok(())
+}
+
+#[napi(js_name = "workshopSetItemsDisabledLocally")]
+pub fn workshop_set_items_disabled_locally(
+    item_ids: Vec<BigInt>,
+    disabled: bool,
+) -> Result<bool, Error> {
+    let mut ids = workshop_item_id_vec(item_ids)?;
+    Ok(unsafe {
+        sys::SteamAPI_ISteamUGC_SetItemsDisabledLocally(
+            steam_ugc()?,
+            ids.as_mut_ptr(),
+            ids.len() as u32,
+            disabled,
+        )
+    })
+}
+
+#[napi(js_name = "workshopSetSubscriptionsLoadOrder")]
+pub fn workshop_set_subscriptions_load_order(item_ids: Vec<BigInt>) -> Result<bool, Error> {
+    let mut ids = workshop_item_id_vec(item_ids)?;
+    Ok(unsafe {
+        sys::SteamAPI_ISteamUGC_SetSubscriptionsLoadOrder(
+            steam_ugc()?,
+            ids.as_mut_ptr(),
+            ids.len() as u32,
+        )
+    })
+}
+
+#[napi(js_name = "workshopMarkDownloadedItemAsUnused")]
+pub fn workshop_mark_downloaded_item_as_unused(item_id: BigInt) -> Result<bool, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamUGC_MarkDownloadedItemAsUnused(
+            steam_ugc()?,
+            bigint_to_u64(item_id, "item id")?,
+        )
+    })
+}
+
+#[napi(js_name = "workshopGetDownloadedItems")]
+pub fn workshop_get_downloaded_items(max_entries: Option<u32>) -> Result<Vec<BigInt>, Error> {
+    let ugc = steam_ugc()?;
+    let count = unsafe { sys::SteamAPI_ISteamUGC_GetNumDownloadedItems(ugc) };
+    let max_entries = max_entries.unwrap_or(count).min(count);
+    if max_entries == 0 {
+        return Ok(Vec::new());
+    }
+    let mut ids = vec![0u64; max_entries as usize];
+    let written =
+        unsafe { sys::SteamAPI_ISteamUGC_GetDownloadedItems(ugc, ids.as_mut_ptr(), max_entries) };
+    ids.truncate((written as usize).min(ids.len()));
+    Ok(ids.into_iter().map(Into::into).collect())
+}
+
 #[napi(js_name = "workshopGetSubscribedItems")]
 pub fn workshop_get_subscribed_items() -> Result<Vec<BigInt>, Error> {
     let ugc = steam_ugc()?;
@@ -15091,7 +15409,7 @@ pub async fn workshop_get_items(
     )
     .await?;
     let ugc = steam_ugc()?;
-    let items = collect_query_items(ugc, handle, &result)?;
+    let items = collect_query_items(ugc, handle, &result, query_config.as_ref())?;
     unsafe { sys::SteamAPI_ISteamUGC_ReleaseQueryUGCRequest(ugc, handle) };
     Ok(items)
 }
@@ -15128,7 +15446,45 @@ pub async fn workshop_get_all_items(
     )
     .await?;
     let ugc = steam_ugc()?;
-    let items = collect_query_items(ugc, handle, &result)?;
+    let items = collect_query_items(ugc, handle, &result, query_config.as_ref())?;
+    unsafe { sys::SteamAPI_ISteamUGC_ReleaseQueryUGCRequest(ugc, handle) };
+    Ok(items)
+}
+
+#[napi(js_name = "workshopGetAllItemsByCursor")]
+pub async fn workshop_get_all_items_by_cursor(
+    cursor: String,
+    query_type: u32,
+    item_type: i32,
+    creator_app_id: u32,
+    consumer_app_id: u32,
+    query_config: Option<Value>,
+) -> Result<WorkshopItemsResult, Error> {
+    let cursor = cstring(cursor, "workshop query cursor")?;
+    let handle;
+    let call = {
+        let ugc = steam_ugc()?;
+        handle = unsafe {
+            sys::SteamAPI_ISteamUGC_CreateQueryAllUGCRequestCursor(
+                ugc,
+                ugc_query_from_u32(query_type)?,
+                ugc_matching_type_from_i32(item_type)?,
+                creator_app_id,
+                consumer_app_id,
+                cursor.as_ptr(),
+            )
+        };
+        apply_query_config(ugc, handle, query_config.as_ref())?;
+        unsafe { sys::SteamAPI_ISteamUGC_SendQueryUGCRequest(ugc, handle) }
+    };
+    let result: sys::SteamUGCQueryCompleted_t = wait_for_api_call(
+        call,
+        sys::SteamUGCQueryCompleted_t_k_iCallback as i32,
+        DEFAULT_ASYNC_TIMEOUT_SECONDS,
+    )
+    .await?;
+    let ugc = steam_ugc()?;
+    let items = collect_query_items(ugc, handle, &result, query_config.as_ref())?;
     unsafe { sys::SteamAPI_ISteamUGC_ReleaseQueryUGCRequest(ugc, handle) };
     Ok(items)
 }
@@ -15169,9 +15525,33 @@ pub async fn workshop_get_user_items(
     )
     .await?;
     let ugc = steam_ugc()?;
-    let items = collect_query_items(ugc, handle, &result)?;
+    let items = collect_query_items(ugc, handle, &result, query_config.as_ref())?;
     unsafe { sys::SteamAPI_ISteamUGC_ReleaseQueryUGCRequest(ugc, handle) };
     Ok(items)
+}
+
+#[napi(js_name = "workshopRequestItemDetails")]
+pub async fn workshop_request_item_details(
+    item_id: BigInt,
+    max_age_seconds: Option<u32>,
+) -> Result<Value, Error> {
+    let call = unsafe {
+        sys::SteamAPI_ISteamUGC_RequestUGCDetails(
+            steam_ugc()?,
+            bigint_to_u64(item_id, "item id")?,
+            max_age_seconds.unwrap_or(0),
+        )
+    };
+    let result: sys::SteamUGCRequestUGCDetailsResult_t = wait_for_api_call(
+        call,
+        sys::SteamUGCRequestUGCDetailsResult_t_k_iCallback as i32,
+        DEFAULT_ASYNC_TIMEOUT_SECONDS,
+    )
+    .await?;
+    Ok(serde_json::json!({
+        "details": ugc_details_json(&result.m_details),
+        "was_cached": unsafe { ptr::addr_of!(result.m_bCachedData).read_unaligned() }
+    }))
 }
 
 #[napi(js_name = "gameServerWorkshopCreateItem")]
@@ -15392,6 +15772,46 @@ pub fn game_server_workshop_download(item_id: BigInt, high_priority: bool) -> Re
     with_game_server_workshop(|| workshop_download(item_id, high_priority))
 }
 
+#[napi(js_name = "gameServerWorkshopInitWorkshopForGameServer")]
+pub fn game_server_workshop_init_workshop_for_game_server(
+    depot_id: u32,
+    folder: String,
+) -> Result<bool, Error> {
+    with_game_server_workshop(|| workshop_init_workshop_for_game_server(depot_id, folder))
+}
+
+#[napi(js_name = "gameServerWorkshopSuspendDownloads")]
+pub fn game_server_workshop_suspend_downloads(suspend: bool) -> Result<(), Error> {
+    with_game_server_workshop(|| workshop_suspend_downloads(suspend))
+}
+
+#[napi(js_name = "gameServerWorkshopSetItemsDisabledLocally")]
+pub fn game_server_workshop_set_items_disabled_locally(
+    item_ids: Vec<BigInt>,
+    disabled: bool,
+) -> Result<bool, Error> {
+    with_game_server_workshop(|| workshop_set_items_disabled_locally(item_ids, disabled))
+}
+
+#[napi(js_name = "gameServerWorkshopSetSubscriptionsLoadOrder")]
+pub fn game_server_workshop_set_subscriptions_load_order(
+    item_ids: Vec<BigInt>,
+) -> Result<bool, Error> {
+    with_game_server_workshop(|| workshop_set_subscriptions_load_order(item_ids))
+}
+
+#[napi(js_name = "gameServerWorkshopMarkDownloadedItemAsUnused")]
+pub fn game_server_workshop_mark_downloaded_item_as_unused(item_id: BigInt) -> Result<bool, Error> {
+    with_game_server_workshop(|| workshop_mark_downloaded_item_as_unused(item_id))
+}
+
+#[napi(js_name = "gameServerWorkshopGetDownloadedItems")]
+pub fn game_server_workshop_get_downloaded_items(
+    max_entries: Option<u32>,
+) -> Result<Vec<BigInt>, Error> {
+    with_game_server_workshop(|| workshop_get_downloaded_items(max_entries))
+}
+
 #[napi(js_name = "gameServerWorkshopGetSubscribedItems")]
 pub fn game_server_workshop_get_subscribed_items() -> Result<Vec<BigInt>, Error> {
     with_game_server_workshop(workshop_get_subscribed_items)
@@ -15425,6 +15845,26 @@ pub async fn game_server_workshop_get_all_items(
     .await
 }
 
+#[napi(js_name = "gameServerWorkshopGetAllItemsByCursor")]
+pub async fn game_server_workshop_get_all_items_by_cursor(
+    cursor: String,
+    query_type: u32,
+    item_type: i32,
+    creator_app_id: u32,
+    consumer_app_id: u32,
+    query_config: Option<Value>,
+) -> Result<WorkshopItemsResult, Error> {
+    with_game_server_workshop_future(workshop_get_all_items_by_cursor(
+        cursor,
+        query_type,
+        item_type,
+        creator_app_id,
+        consumer_app_id,
+        query_config,
+    ))
+    .await
+}
+
 #[napi(js_name = "gameServerWorkshopGetUserItems")]
 pub async fn game_server_workshop_get_user_items(
     page: u32,
@@ -15447,6 +15887,14 @@ pub async fn game_server_workshop_get_user_items(
         query_config,
     ))
     .await
+}
+
+#[napi(js_name = "gameServerWorkshopRequestItemDetails")]
+pub async fn game_server_workshop_request_item_details(
+    item_id: BigInt,
+    max_age_seconds: Option<u32>,
+) -> Result<Value, Error> {
+    with_game_server_workshop_future(workshop_request_item_details(item_id, max_age_seconds)).await
 }
 
 fn steam_apps() -> Result<*mut sys::ISteamApps, Error> {
@@ -21470,6 +21918,69 @@ fn user_ugc_sort_order_from_u32(value: u32) -> Result<sys::EUserUGCListSortOrder
     })
 }
 
+fn item_preview_type_from_u32(value: u32) -> Result<sys::EItemPreviewType, Error> {
+    Ok(match value {
+        0 => sys::EItemPreviewType::k_EItemPreviewType_Image,
+        1 => sys::EItemPreviewType::k_EItemPreviewType_YouTubeVideo,
+        2 => sys::EItemPreviewType::k_EItemPreviewType_Sketchfab,
+        3 => sys::EItemPreviewType::k_EItemPreviewType_EnvironmentMap_HorizontalCross,
+        4 => sys::EItemPreviewType::k_EItemPreviewType_EnvironmentMap_LatLong,
+        5 => sys::EItemPreviewType::k_EItemPreviewType_Clip,
+        255 => sys::EItemPreviewType::k_EItemPreviewType_ReservedMax,
+        _ => return Err(Error::from_reason("invalid item preview type")),
+    })
+}
+
+fn ugc_content_descriptor_from_u32(value: u32) -> Result<sys::EUGCContentDescriptorID, Error> {
+    Ok(match value {
+        1 => sys::EUGCContentDescriptorID::k_EUGCContentDescriptor_NudityOrSexualContent,
+        2 => sys::EUGCContentDescriptorID::k_EUGCContentDescriptor_FrequentViolenceOrGore,
+        3 => sys::EUGCContentDescriptorID::k_EUGCContentDescriptor_AdultOnlySexualContent,
+        4 => sys::EUGCContentDescriptorID::k_EUGCContentDescriptor_GratuitousSexualContent,
+        5 => sys::EUGCContentDescriptorID::k_EUGCContentDescriptor_AnyMatureContent,
+        _ => return Err(Error::from_reason("invalid UGC content descriptor")),
+    })
+}
+
+fn value_u32(data: &Value, key: &str, label: &str) -> Result<u32, Error> {
+    let value = data
+        .get(key)
+        .and_then(Value::as_u64)
+        .ok_or_else(|| Error::from_reason(format!("{label} is required")))?;
+    u32::try_from(value).map_err(|_| Error::from_reason(format!("{label} is too large")))
+}
+
+fn string_pairs_from_value(value: &Value, label: &str) -> Result<Vec<(String, String)>, Error> {
+    match value {
+        Value::Object(map) => map
+            .iter()
+            .map(|(key, value)| {
+                let Some(value) = value.as_str() else {
+                    return Err(Error::from_reason(format!(
+                        "{label} value must be a string"
+                    )));
+                };
+                Ok((key.clone(), value.to_owned()))
+            })
+            .collect(),
+        Value::Array(values) => values
+            .iter()
+            .map(|value| {
+                let Some(key) = value.get("key").and_then(Value::as_str) else {
+                    return Err(Error::from_reason(format!("{label} key is required")));
+                };
+                let Some(value) = value.get("value").and_then(Value::as_str) else {
+                    return Err(Error::from_reason(format!("{label} value is required")));
+                };
+                Ok((key.to_owned(), value.to_owned()))
+            })
+            .collect(),
+        _ => Err(Error::from_reason(format!(
+            "{label} must be an object or array"
+        ))),
+    }
+}
+
 fn set_optional_item_string<F>(
     ugc: *mut sys::ISteamUGC,
     handle: sys::UGCUpdateHandle_t,
@@ -21519,11 +22030,23 @@ fn apply_query_config(
     {
         unsafe { sys::SteamAPI_ISteamUGC_SetReturnAdditionalPreviews(ugc, handle, value) };
     }
+    if let Some(value) = config.get("includeKeyValueTags").and_then(Value::as_bool) {
+        unsafe { sys::SteamAPI_ISteamUGC_SetReturnKeyValueTags(ugc, handle, value) };
+    }
+    if let Some(value) = config.get("includeChildren").and_then(Value::as_bool) {
+        unsafe { sys::SteamAPI_ISteamUGC_SetReturnChildren(ugc, handle, value) };
+    }
     if let Some(value) = config.get("onlyIds").and_then(Value::as_bool) {
         unsafe { sys::SteamAPI_ISteamUGC_SetReturnOnlyIDs(ugc, handle, value) };
     }
     if let Some(value) = config.get("onlyTotal").and_then(Value::as_bool) {
         unsafe { sys::SteamAPI_ISteamUGC_SetReturnTotalOnly(ugc, handle, value) };
+    }
+    if let Some(value) = config.get("playtimeStatsDays").and_then(Value::as_u64) {
+        unsafe { sys::SteamAPI_ISteamUGC_SetReturnPlaytimeStats(ugc, handle, value as u32) };
+    }
+    if let Some(value) = config.get("admin").and_then(Value::as_bool) {
+        unsafe { sys::SteamAPI_ISteamUGC_SetAdminQuery(ugc, handle, value) };
     }
     if let Some(value) = config.get("matchAnyTag").and_then(Value::as_bool) {
         unsafe { sys::SteamAPI_ISteamUGC_SetMatchAnyTag(ugc, handle, value) };
@@ -21541,11 +22064,38 @@ fn apply_query_config(
             .map_err(|_| Error::from_reason("query search text contains a NUL byte"))?;
         unsafe { sys::SteamAPI_ISteamUGC_SetSearchText(ugc, handle, search_text.as_ptr()) };
     }
+    if let Some(name) = config.get("cloudFileName").and_then(Value::as_str) {
+        let name = CString::new(name)
+            .map_err(|_| Error::from_reason("query cloud file name contains a NUL byte"))?;
+        unsafe { sys::SteamAPI_ISteamUGC_SetCloudFileNameFilter(ugc, handle, name.as_ptr()) };
+    }
     if let Some(tags) = config.get("requiredTags").and_then(Value::as_array) {
         for tag in tags.iter().filter_map(Value::as_str) {
             let tag = CString::new(tag)
                 .map_err(|_| Error::from_reason("required tag contains a NUL byte"))?;
             unsafe { sys::SteamAPI_ISteamUGC_AddRequiredTag(ugc, handle, tag.as_ptr()) };
+        }
+    }
+    if let Some(groups) = config.get("requiredTagGroups").and_then(Value::as_array) {
+        for group in groups {
+            let Some(tags) = group.as_array() else {
+                return Err(Error::from_reason("required tag group must be an array"));
+            };
+            let tag_strings: Vec<CString> = tags
+                .iter()
+                .filter_map(Value::as_str)
+                .map(|tag| {
+                    CString::new(tag)
+                        .map_err(|_| Error::from_reason("required tag group contains a NUL byte"))
+                })
+                .collect::<Result<_, _>>()?;
+            let mut pointers: Vec<*const c_char> =
+                tag_strings.iter().map(|tag| tag.as_ptr()).collect();
+            let tag_array = sys::SteamParamStringArray_t {
+                m_ppStrings: pointers.as_mut_ptr(),
+                m_nNumStrings: len_to_i32(pointers.len(), "required tag group")?,
+            };
+            unsafe { sys::SteamAPI_ISteamUGC_AddRequiredTagGroup(ugc, handle, &tag_array) };
         }
     }
     if let Some(tags) = config.get("excludedTags").and_then(Value::as_array) {
@@ -21555,6 +22105,60 @@ fn apply_query_config(
             unsafe { sys::SteamAPI_ISteamUGC_AddExcludedTag(ugc, handle, tag.as_ptr()) };
         }
     }
+    if let Some(tags) = config.get("requiredKeyValueTags") {
+        for (key, value) in string_pairs_from_value(tags, "required key-value tag")? {
+            let key = CString::new(key).map_err(|_| {
+                Error::from_reason("required key-value tag key contains a NUL byte")
+            })?;
+            let value = CString::new(value).map_err(|_| {
+                Error::from_reason("required key-value tag value contains a NUL byte")
+            })?;
+            unsafe {
+                sys::SteamAPI_ISteamUGC_AddRequiredKeyValueTag(
+                    ugc,
+                    handle,
+                    key.as_ptr(),
+                    value.as_ptr(),
+                )
+            };
+        }
+    }
+    let created_after = config
+        .get("createdAfter")
+        .or_else(|| config.get("timeCreatedStart"))
+        .and_then(Value::as_u64);
+    let created_before = config
+        .get("createdBefore")
+        .or_else(|| config.get("timeCreatedEnd"))
+        .and_then(Value::as_u64);
+    if created_after.is_some() || created_before.is_some() {
+        unsafe {
+            sys::SteamAPI_ISteamUGC_SetTimeCreatedDateRange(
+                ugc,
+                handle,
+                created_after.unwrap_or(0) as u32,
+                created_before.unwrap_or(u32::MAX as u64) as u32,
+            )
+        };
+    }
+    let updated_after = config
+        .get("updatedAfter")
+        .or_else(|| config.get("timeUpdatedStart"))
+        .and_then(Value::as_u64);
+    let updated_before = config
+        .get("updatedBefore")
+        .or_else(|| config.get("timeUpdatedEnd"))
+        .and_then(Value::as_u64);
+    if updated_after.is_some() || updated_before.is_some() {
+        unsafe {
+            sys::SteamAPI_ISteamUGC_SetTimeUpdatedDateRange(
+                ugc,
+                handle,
+                updated_after.unwrap_or(0) as u32,
+                updated_before.unwrap_or(u32::MAX as u64) as u32,
+            )
+        };
+    }
     Ok(())
 }
 
@@ -21562,6 +22166,7 @@ fn collect_query_items(
     ugc: *mut sys::ISteamUGC,
     handle: sys::UGCQueryHandle_t,
     result: &sys::SteamUGCQueryCompleted_t,
+    query_config: Option<&Value>,
 ) -> Result<WorkshopItemsResult, Error> {
     let eresult = unsafe { ptr::addr_of!(result.m_eResult).read_unaligned() };
     if eresult != sys::EResult::k_EResultOK {
@@ -21572,6 +22177,10 @@ fn collect_query_items(
     let returned = unsafe { ptr::addr_of!(result.m_unNumResultsReturned).read_unaligned() };
     let total = unsafe { ptr::addr_of!(result.m_unTotalMatchingResults).read_unaligned() };
     let cached = unsafe { ptr::addr_of!(result.m_bCachedData).read_unaligned() };
+    let next_cursor = unsafe {
+        let cursor = ptr::addr_of!(result.m_rgchNextCursor).read_unaligned();
+        c_buf_to_string(&cursor)
+    };
     let mut items = Vec::new();
     for index in 0..returned {
         let mut details = unsafe { MaybeUninit::<sys::SteamUGCDetails_t>::zeroed().assume_init() };
@@ -21579,7 +22188,11 @@ fn collect_query_items(
             unsafe { sys::SteamAPI_ISteamUGC_GetQueryUGCResult(ugc, handle, index, &mut details) };
         if ok {
             items.push(Some(workshop_item_from_details(
-                ugc, handle, index, &details,
+                ugc,
+                handle,
+                index,
+                &details,
+                query_config,
             )?));
         } else {
             items.push(None);
@@ -21590,6 +22203,7 @@ fn collect_query_items(
         returned_results: returned,
         total_results: total,
         was_cached: cached,
+        next_cursor,
     })
 }
 
@@ -21598,6 +22212,7 @@ fn workshop_item_from_details(
     handle: sys::UGCQueryHandle_t,
     index: u32,
     details: &sys::SteamUGCDetails_t,
+    query_config: Option<&Value>,
 ) -> Result<WorkshopItem, Error> {
     let title = unsafe {
         fixed_char_array_to_string(ptr::addr_of!(details.m_rgchTitle).cast::<c_char>(), 129)
@@ -21615,6 +22230,16 @@ fn workshop_item_from_details(
         fixed_char_array_to_string(ptr::addr_of!(details.m_rgchURL).cast::<c_char>(), 256)
     };
     let preview_url = query_preview_url(ugc, handle, index);
+    let tag_details = query_tag_details(ugc, handle, index);
+    let metadata = query_metadata(ugc, handle, index);
+    let children = query_children(ugc, handle, index, unsafe {
+        ptr::addr_of!(details.m_unNumChildren).read_unaligned()
+    });
+    let additional_previews = query_additional_previews(ugc, handle, index);
+    let key_value_tags = query_key_value_tags(ugc, handle, index);
+    let first_key_value_tags = query_first_key_value_tags(ugc, handle, index, query_config)?;
+    let supported_game_versions = query_supported_game_versions(ugc, handle, index);
+    let content_descriptors = query_content_descriptors(ugc, handle, index);
     Ok(WorkshopItem {
         published_file_id: unsafe { ptr::addr_of!(details.m_nPublishedFileId).read_unaligned() }
             .into(),
@@ -21638,7 +22263,15 @@ fn workshop_item_from_details(
             .filter(|tag| !tag.is_empty())
             .map(ToOwned::to_owned)
             .collect(),
+        tag_details,
         tags_truncated: unsafe { ptr::addr_of!(details.m_bTagsTruncated).read_unaligned() },
+        metadata,
+        children,
+        additional_previews,
+        key_value_tags,
+        first_key_value_tags,
+        supported_game_versions,
+        content_descriptors,
         url,
         num_upvotes: unsafe { ptr::addr_of!(details.m_unVotesUp).read_unaligned() },
         num_downvotes: unsafe { ptr::addr_of!(details.m_unVotesDown).read_unaligned() },
@@ -21754,6 +22387,255 @@ fn query_preview_url(
     } else {
         None
     }
+}
+
+fn query_tag_details(
+    ugc: *mut sys::ISteamUGC,
+    handle: sys::UGCQueryHandle_t,
+    index: u32,
+) -> Vec<WorkshopItemTag> {
+    let count = unsafe { sys::SteamAPI_ISteamUGC_GetQueryUGCNumTags(ugc, handle, index) };
+    let mut tags = Vec::new();
+    for tag_index in 0..count.min(256) {
+        let mut name = vec![0i8; 256];
+        let ok = unsafe {
+            sys::SteamAPI_ISteamUGC_GetQueryUGCTag(
+                ugc,
+                handle,
+                index,
+                tag_index,
+                name.as_mut_ptr(),
+                name.len() as u32,
+            )
+        };
+        if !ok {
+            continue;
+        }
+        let mut display_name = vec![0i8; 256];
+        let display_ok = unsafe {
+            sys::SteamAPI_ISteamUGC_GetQueryUGCTagDisplayName(
+                ugc,
+                handle,
+                index,
+                tag_index,
+                display_name.as_mut_ptr(),
+                display_name.len() as u32,
+            )
+        };
+        let display_name = display_ok
+            .then(|| c_buf_to_string(&display_name))
+            .filter(|value| !value.is_empty());
+        tags.push(WorkshopItemTag {
+            name: c_buf_to_string(&name),
+            display_name,
+        });
+    }
+    tags
+}
+
+fn query_metadata(
+    ugc: *mut sys::ISteamUGC,
+    handle: sys::UGCQueryHandle_t,
+    index: u32,
+) -> Option<String> {
+    let mut metadata = vec![0i8; 5000];
+    let ok = unsafe {
+        sys::SteamAPI_ISteamUGC_GetQueryUGCMetadata(
+            ugc,
+            handle,
+            index,
+            metadata.as_mut_ptr(),
+            metadata.len() as u32,
+        )
+    };
+    ok.then(|| c_buf_to_string(&metadata))
+        .filter(|value| !value.is_empty())
+}
+
+fn query_children(
+    ugc: *mut sys::ISteamUGC,
+    handle: sys::UGCQueryHandle_t,
+    index: u32,
+    count: u32,
+) -> Vec<BigInt> {
+    if count == 0 {
+        return Vec::new();
+    }
+    let count = count.min(4096);
+    let mut children = vec![0u64; count as usize];
+    let ok = unsafe {
+        sys::SteamAPI_ISteamUGC_GetQueryUGCChildren(
+            ugc,
+            handle,
+            index,
+            children.as_mut_ptr(),
+            count,
+        )
+    };
+    if ok {
+        children.into_iter().map(Into::into).collect()
+    } else {
+        Vec::new()
+    }
+}
+
+fn query_additional_previews(
+    ugc: *mut sys::ISteamUGC,
+    handle: sys::UGCQueryHandle_t,
+    index: u32,
+) -> Vec<WorkshopItemAdditionalPreview> {
+    let count =
+        unsafe { sys::SteamAPI_ISteamUGC_GetQueryUGCNumAdditionalPreviews(ugc, handle, index) };
+    let mut previews = Vec::new();
+    for preview_index in 0..count.min(64) {
+        let mut url_or_video_id = vec![0i8; 1024];
+        let mut original_file_name = vec![0i8; 260];
+        let mut preview_type = sys::EItemPreviewType::k_EItemPreviewType_Image;
+        let ok = unsafe {
+            sys::SteamAPI_ISteamUGC_GetQueryUGCAdditionalPreview(
+                ugc,
+                handle,
+                index,
+                preview_index,
+                url_or_video_id.as_mut_ptr(),
+                url_or_video_id.len() as u32,
+                original_file_name.as_mut_ptr(),
+                original_file_name.len() as u32,
+                &mut preview_type,
+            )
+        };
+        if ok {
+            previews.push(WorkshopItemAdditionalPreview {
+                url_or_video_id: c_buf_to_string(&url_or_video_id),
+                original_file_name: c_buf_to_string(&original_file_name),
+                preview_type: preview_type as u32,
+            });
+        }
+    }
+    previews
+}
+
+fn query_key_value_tags(
+    ugc: *mut sys::ISteamUGC,
+    handle: sys::UGCQueryHandle_t,
+    index: u32,
+) -> Vec<WorkshopItemKeyValueTag> {
+    let count = unsafe { sys::SteamAPI_ISteamUGC_GetQueryUGCNumKeyValueTags(ugc, handle, index) };
+    let mut tags = Vec::new();
+    for tag_index in 0..count.min(256) {
+        let mut key = vec![0i8; 256];
+        let mut value = vec![0i8; 1024];
+        let ok = unsafe {
+            sys::SteamAPI_ISteamUGC_GetQueryUGCKeyValueTag(
+                ugc,
+                handle,
+                index,
+                tag_index,
+                key.as_mut_ptr(),
+                key.len() as u32,
+                value.as_mut_ptr(),
+                value.len() as u32,
+            )
+        };
+        if ok {
+            tags.push(WorkshopItemKeyValueTag {
+                key: c_buf_to_string(&key),
+                value: c_buf_to_string(&value),
+            });
+        }
+    }
+    tags
+}
+
+fn query_first_key_value_tags(
+    ugc: *mut sys::ISteamUGC,
+    handle: sys::UGCQueryHandle_t,
+    index: u32,
+    query_config: Option<&Value>,
+) -> Result<Vec<WorkshopItemKeyValueTag>, Error> {
+    let Some(keys) = query_config
+        .and_then(|config| config.get("firstKeyValueTagKeys"))
+        .and_then(Value::as_array)
+    else {
+        return Ok(Vec::new());
+    };
+    let mut tags = Vec::new();
+    for key in keys.iter().filter_map(Value::as_str) {
+        let key_c = CString::new(key)
+            .map_err(|_| Error::from_reason("first key-value tag key contains a NUL byte"))?;
+        let mut value = vec![0i8; 1024];
+        let ok = unsafe {
+            sys::SteamAPI_ISteamUGC_GetQueryFirstUGCKeyValueTag(
+                ugc,
+                handle,
+                index,
+                key_c.as_ptr(),
+                value.as_mut_ptr(),
+                value.len() as u32,
+            )
+        };
+        if ok {
+            tags.push(WorkshopItemKeyValueTag {
+                key: key.to_owned(),
+                value: c_buf_to_string(&value),
+            });
+        }
+    }
+    Ok(tags)
+}
+
+fn query_supported_game_versions(
+    ugc: *mut sys::ISteamUGC,
+    handle: sys::UGCQueryHandle_t,
+    index: u32,
+) -> Vec<WorkshopItemSupportedGameVersion> {
+    let count = unsafe { sys::SteamAPI_ISteamUGC_GetNumSupportedGameVersions(ugc, handle, index) };
+    let mut versions = Vec::new();
+    for version_index in 0..count.min(64) {
+        let mut game_branch_min = vec![0i8; 256];
+        let mut game_branch_max = vec![0i8; 256];
+        let ok = unsafe {
+            sys::SteamAPI_ISteamUGC_GetSupportedGameVersionData(
+                ugc,
+                handle,
+                index,
+                version_index,
+                game_branch_min.as_mut_ptr(),
+                game_branch_max.as_mut_ptr(),
+                game_branch_min.len() as u32,
+            )
+        };
+        if ok {
+            versions.push(WorkshopItemSupportedGameVersion {
+                game_branch_min: c_buf_to_string(&game_branch_min),
+                game_branch_max: c_buf_to_string(&game_branch_max),
+            });
+        }
+    }
+    versions
+}
+
+fn query_content_descriptors(
+    ugc: *mut sys::ISteamUGC,
+    handle: sys::UGCQueryHandle_t,
+    index: u32,
+) -> Vec<u32> {
+    let mut descriptors =
+        vec![sys::EUGCContentDescriptorID::k_EUGCContentDescriptor_AnyMatureContent; 64];
+    let count = unsafe {
+        sys::SteamAPI_ISteamUGC_GetQueryUGCContentDescriptors(
+            ugc,
+            handle,
+            index,
+            descriptors.as_mut_ptr(),
+            descriptors.len() as u32,
+        )
+    };
+    descriptors.truncate((count as usize).min(descriptors.len()));
+    descriptors
+        .into_iter()
+        .map(|descriptor| descriptor as u32)
+        .collect()
 }
 
 fn query_stat(

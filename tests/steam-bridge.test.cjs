@@ -767,6 +767,29 @@ function createFakeNative(overrides = {}) {
       progressHandler({ status: 3, progress: "128", total: "256" });
       return Promise.resolve({ item_id: "12345678901234567890", needs_to_accept_agreement: true });
     },
+    workshopInitWorkshopForGameServer(depotId, folder) {
+      calls.push({ method: "workshopInitWorkshopForGameServer", args: [depotId, folder] });
+      return true;
+    },
+    workshopSuspendDownloads(suspend) {
+      calls.push({ method: "workshopSuspendDownloads", args: [suspend] });
+    },
+    workshopSetItemsDisabledLocally(itemIds, disabled) {
+      calls.push({ method: "workshopSetItemsDisabledLocally", args: [itemIds, disabled] });
+      return true;
+    },
+    workshopSetSubscriptionsLoadOrder(itemIds) {
+      calls.push({ method: "workshopSetSubscriptionsLoadOrder", args: [itemIds] });
+      return true;
+    },
+    workshopMarkDownloadedItemAsUnused(itemId) {
+      calls.push({ method: "workshopMarkDownloadedItemAsUnused", args: [itemId] });
+      return true;
+    },
+    workshopGetDownloadedItems(maxEntries) {
+      calls.push({ method: "workshopGetDownloadedItems", args: [maxEntries] });
+      return [42n, "43"];
+    },
     workshopGetItems(items, queryConfig) {
       calls.push({ method: "workshopGetItems", args: [items, queryConfig] });
       return Promise.resolve({
@@ -780,9 +803,40 @@ function createFakeNative(overrides = {}) {
             owner: { steamId64: "76561198000000002", steamId32: "STEAM_0:0:19867137", accountId: 39734274 },
             visibility: 0,
             tags: ["example"],
+            tag_details: [{ name: "example", display_name: "Example" }],
+            metadata: "{\"kind\":\"test\"}",
+            children: ["43"],
+            additional_previews: [{ url_or_video_id: "preview.png", original_file_name: "preview.png", preview_type: 0 }],
+            key_value_tags: [{ key: "mode", value: "coop" }],
+            first_key_value_tags: [{ key: "mode", value: "coop" }],
+            supported_game_versions: [{ game_branch_min: "1.0", game_branch_max: "2.0" }],
+            content_descriptors: [5],
             num_subscriptions: "12"
           }
         ],
+        next_cursor: "cursor-2",
+        was_cached: true
+      });
+    },
+    workshopGetAllItemsByCursor(cursor, queryType, itemType, creatorAppId, consumerAppId, queryConfig) {
+      calls.push({
+        method: "workshopGetAllItemsByCursor",
+        args: [cursor, queryType, itemType, creatorAppId, consumerAppId, queryConfig]
+      });
+      return this.workshopGetItems([], queryConfig);
+    },
+    workshopRequestItemDetails(itemId, maxAgeSeconds) {
+      calls.push({ method: "workshopRequestItemDetails", args: [itemId, maxAgeSeconds] });
+      return Promise.resolve({
+        details: {
+          published_file_id: itemId.toString(),
+          creator_app_id: 480,
+          title: "Workshop Item",
+          tags: "space,war",
+          file_size: "12",
+          preview_file: "99",
+          accepted_for_use: true
+        },
         was_cached: true
       });
     },
@@ -7126,10 +7180,22 @@ test("workshop updates and queries normalize progress, IDs, and snake_case field
   assert.equal(itemsResult.items[0].creatorAppId, 480);
   assert.equal(itemsResult.items[0].owner.steamId64, 76561198000000002n);
   assert.equal(itemsResult.items[0].statistics.numSubscriptions, 12n);
+  assert.equal(itemsResult.nextCursor, "cursor-2");
+  assert.deepEqual(itemsResult.items[0].tagDetails, [{ name: "example", displayName: "Example" }]);
+  assert.equal(itemsResult.items[0].metadata, "{\"kind\":\"test\"}");
+  assert.deepEqual(itemsResult.items[0].children, [43n]);
+  assert.deepEqual(itemsResult.items[0].additionalPreviews, [
+    { urlOrVideoId: "preview.png", originalFileName: "preview.png", previewType: 0 }
+  ]);
+  assert.deepEqual(itemsResult.items[0].keyValueTags, [{ key: "mode", value: "coop" }]);
+  assert.deepEqual(itemsResult.items[0].firstKeyValueTags, [{ key: "mode", value: "coop" }]);
+  assert.deepEqual(itemsResult.items[0].supportedGameVersions, [{ gameBranchMin: "1.0", gameBranchMax: "2.0" }]);
+  assert.deepEqual(itemsResult.items[0].contentDescriptors, [5]);
 
   assert.equal(steam.SteamCallback.SteamUGCQueryCompleted, 3401);
   assert.equal(steam.SteamCallback.SteamUGCWorkshopEULAStatus, 3420);
   assert.equal(steam.workshop.UGCContentDescriptor.AnyMatureContent, 5);
+  assert.equal(steam.workshop.ItemPreviewType.YouTubeVideo, 1);
 
   assert.deepEqual(await steam.workshop.addFavorite(42n, 480), {
     result: 1,
@@ -7194,6 +7260,33 @@ test("workshop updates and queries normalize progress, IDs, and snake_case field
     needsAction: false
   });
   assert.deepEqual(steam.workshop.getUserContentDescriptorPreferences(8), [1, 5]);
+  assert.equal(steam.workshop.initWorkshopForGameServer(480, "/tmp/workshop"), true);
+  steam.workshop.suspendDownloads(true);
+  assert.equal(steam.workshop.setItemsDisabledLocally([42n, 43n], true), true);
+  assert.equal(steam.workshop.setSubscriptionsLoadOrder([43n, 42n]), true);
+  assert.equal(steam.workshop.markDownloadedItemAsUnused(42n), true);
+  assert.deepEqual(steam.workshop.getDownloadedItems(2), [42n, 43n]);
+
+  const cursorResult = await steam.workshop.getAllItemsByCursor(
+    "cursor-1",
+    steam.workshop.UGCQueryType.RankedByVote,
+    steam.workshop.UGCType.Items,
+    480,
+    480,
+    {
+      includeChildren: true,
+      includeKeyValueTags: true,
+      firstKeyValueTagKeys: ["mode"],
+      requiredKeyValueTags: { mode: "coop" },
+      requiredTagGroups: [["example", "test"]]
+    }
+  );
+  assert.equal(cursorResult.nextCursor, "cursor-2");
+
+  const requestedDetails = await steam.workshop.requestItemDetails(42n, 60);
+  assert.equal(requestedDetails.wasCached, true);
+  assert.equal(requestedDetails.details.publishedFileId, 42n);
+  assert.deepEqual(requestedDetails.details.tags, ["space", "war"]);
 
   const voteEvents = [];
   const voteHandle = steam.callback.register(steam.SteamCallback.SteamUGCSetUserItemVoteResult, (event) => {
@@ -7239,6 +7332,27 @@ test("workshop updates and queries normalize progress, IDs, and snake_case field
   assert.deepEqual(fake.calls.find((call) => call.method === "workshopGetUserContentDescriptorPreferences"), {
     method: "workshopGetUserContentDescriptorPreferences",
     args: [8]
+  });
+  assert.deepEqual(fake.calls.find((call) => call.method === "workshopGetAllItemsByCursor"), {
+    method: "workshopGetAllItemsByCursor",
+    args: [
+      "cursor-1",
+      steam.workshop.UGCQueryType.RankedByVote,
+      steam.workshop.UGCType.Items,
+      480,
+      480,
+      {
+        includeChildren: true,
+        includeKeyValueTags: true,
+        firstKeyValueTagKeys: ["mode"],
+        requiredKeyValueTags: { mode: "coop" },
+        requiredTagGroups: [["example", "test"]]
+      }
+    ]
+  });
+  assert.deepEqual(fake.calls.find((call) => call.method === "workshopRequestItemDetails"), {
+    method: "workshopRequestItemDetails",
+    args: [42n, 60]
   });
 });
 

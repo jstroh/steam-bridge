@@ -93,11 +93,13 @@ The native layer currently targets the Steamworks flat C API through
   fake-IP, IP address, identity conversion, config value, editable config
   iteration, direct global/connection config setters, structured config
   setters, and debug-output helpers.
-- UGC/Workshop: item create/update/query flows, install/download information,
-  subscription, favorite, vote, playtime tracking, item/app dependency, delete,
-  EULA, content descriptor preference, item state, statistics, query
-  configuration, client and game-server shared interfaces, and UGC
-  callback-event coverage.
+- UGC/Workshop: item create/update/query flows, cursor queries, request-details
+  calls, query metadata/tags/children/previews/key-value tags/content
+  descriptors/game-version data, install/download information, downloaded item
+  enumeration, local disable/load-order controls, subscription, favorite, vote,
+  playtime tracking, item/app dependency, delete, EULA, content descriptor
+  preference, item state, statistics, rich query configuration, client and
+  game-server shared interfaces, and UGC callback-event coverage.
 - Screenshots: screenshot library writes, screenshot triggers/hooks, location
   and user/published-file tagging, VR screenshot library writes, and screenshot
   callback events.

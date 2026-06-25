@@ -1356,6 +1356,20 @@ export interface UgcUpdate {
   contentPath?: string;
   tags?: string[];
   visibility?: number;
+  language?: string;
+  metadata?: string;
+  allowLegacyUpload?: boolean;
+  removeAllKeyValueTags?: boolean;
+  removeKeyValueTags?: string[];
+  keyValueTags?: Record<string, string> | Array<{ key: string; value: string }>;
+  previewFiles?: Array<{ path: string; type?: number }>;
+  previewVideos?: string[];
+  updatePreviewFiles?: Array<{ index: number; path: string }>;
+  updatePreviewVideos?: Array<{ index: number; videoId: string }>;
+  removePreviews?: number[];
+  contentDescriptors?: number[];
+  removeContentDescriptors?: number[];
+  requiredGameVersions?: { min?: string; max?: string; gameBranchMin?: string; gameBranchMax?: string };
 }
 
 export interface InstallInfo {
@@ -1391,6 +1405,27 @@ export interface WorkshopItemStatistic {
   numPlaytimeSessionsDuringTimePeriod?: bigint;
 }
 
+export interface WorkshopItemTag {
+  name: string;
+  displayName?: string;
+}
+
+export interface WorkshopItemAdditionalPreview {
+  urlOrVideoId: string;
+  originalFileName: string;
+  previewType: number;
+}
+
+export interface WorkshopItemKeyValueTag {
+  key: string;
+  value: string;
+}
+
+export interface WorkshopItemSupportedGameVersion {
+  gameBranchMin: string;
+  gameBranchMax: string;
+}
+
 export interface WorkshopItem {
   publishedFileId: bigint;
   creatorAppId?: number;
@@ -1405,7 +1440,15 @@ export interface WorkshopItem {
   banned: boolean;
   acceptedForUse: boolean;
   tags: string[];
+  tagDetails: WorkshopItemTag[];
   tagsTruncated: boolean;
+  metadata?: string;
+  children: bigint[];
+  additionalPreviews: WorkshopItemAdditionalPreview[];
+  keyValueTags: WorkshopItemKeyValueTag[];
+  firstKeyValueTags: WorkshopItemKeyValueTag[];
+  supportedGameVersions: WorkshopItemSupportedGameVersion[];
+  contentDescriptors: number[];
   url: string;
   numUpvotes: number;
   numDownvotes: number;
@@ -1414,16 +1457,23 @@ export interface WorkshopItem {
   statistics: WorkshopItemStatistic;
 }
 
+export interface WorkshopItemDetailsResult {
+  details: Record<string, unknown>;
+  wasCached: boolean;
+}
+
 export interface WorkshopPaginatedResult {
   items: Array<WorkshopItem | null | undefined>;
   returnedResults: number;
   totalResults: number;
   wasCached: boolean;
+  nextCursor: string;
 }
 
 export interface WorkshopItemsResult {
   items: Array<WorkshopItem | null | undefined>;
   wasCached: boolean;
+  nextCursor: string;
 }
 
 export interface WorkshopItemQueryConfig {
@@ -1431,14 +1481,26 @@ export interface WorkshopItemQueryConfig {
   includeMetadata?: boolean;
   includeLongDescription?: boolean;
   includeAdditionalPreviews?: boolean;
+  includeKeyValueTags?: boolean;
+  includeChildren?: boolean;
   onlyIds?: boolean;
   onlyTotal?: boolean;
+  playtimeStatsDays?: number;
+  admin?: boolean;
   language?: string;
   matchAnyTag?: boolean;
   requiredTags?: string[];
+  requiredTagGroups?: string[][];
   excludedTags?: string[];
+  requiredKeyValueTags?: Record<string, string> | Array<{ key: string; value: string }>;
   searchText?: string;
+  cloudFileName?: string;
   rankedByTrendDays?: number;
+  createdAfter?: number;
+  createdBefore?: number;
+  updatedAfter?: number;
+  updatedBefore?: number;
+  firstKeyValueTagKeys?: string[];
 }
 
 export interface AppIDs {
@@ -2567,6 +2629,16 @@ export const UGCContentDescriptor = {
   AdultOnlySexualContent: 3,
   GratuitousSexualContent: 4,
   AnyMatureContent: 5
+} as const;
+
+export const ItemPreviewType = {
+  Image: 0,
+  YouTubeVideo: 1,
+  Sketchfab: 2,
+  EnvironmentMapHorizontalCross: 3,
+  EnvironmentMapLatLong: 4,
+  Clip: 5,
+  ReservedMax: 255
 } as const;
 
 export const UserListType = {
@@ -6630,6 +6702,7 @@ export const workshop = {
   UGCQueryType,
   UGCType,
   UGCContentDescriptor,
+  ItemPreviewType,
   UserListType,
   UserListOrder,
   async createItem(appId?: number | null): Promise<UgcResult> {
@@ -6730,6 +6803,24 @@ export const workshop = {
   download(itemId: bigint, highPriority: boolean): boolean {
     return native().workshopDownload(itemId, highPriority);
   },
+  initWorkshopForGameServer(depotId: number, folder: string): boolean {
+    return native().workshopInitWorkshopForGameServer(depotId, folder);
+  },
+  suspendDownloads(suspend: boolean): void {
+    native().workshopSuspendDownloads(suspend);
+  },
+  setItemsDisabledLocally(itemIds: bigint[], disabled: boolean): boolean {
+    return native().workshopSetItemsDisabledLocally(itemIds, disabled);
+  },
+  setSubscriptionsLoadOrder(itemIds: bigint[]): boolean {
+    return native().workshopSetSubscriptionsLoadOrder(itemIds);
+  },
+  markDownloadedItemAsUnused(itemId: bigint): boolean {
+    return native().workshopMarkDownloadedItemAsUnused(itemId);
+  },
+  getDownloadedItems(maxEntries?: number | null): bigint[] {
+    return native().workshopGetDownloadedItems(maxEntries ?? undefined).map(BigInt);
+  },
   getSubscribedItems(): bigint[] {
     return native().workshopGetSubscribedItems().map(BigInt);
   },
@@ -6741,7 +6832,8 @@ export const workshop = {
     const result = await native().workshopGetItems(items, queryConfig ?? undefined);
     return {
       items: result.items.map(normalizeWorkshopItem),
-      wasCached: Boolean(result.wasCached ?? result.was_cached)
+      wasCached: Boolean(result.wasCached ?? result.was_cached),
+      nextCursor: String(result.nextCursor ?? result.next_cursor ?? "")
     };
   },
   async getAllItems(
@@ -6754,6 +6846,25 @@ export const workshop = {
   ): Promise<WorkshopPaginatedResult> {
     return normalizeWorkshopPaginatedResult(
       await native().workshopGetAllItems(page, queryType, itemType, creatorAppId, consumerAppId, queryConfig ?? undefined)
+    );
+  },
+  async getAllItemsByCursor(
+    cursor: string,
+    queryType: number,
+    itemType: number,
+    creatorAppId: number,
+    consumerAppId: number,
+    queryConfig?: WorkshopItemQueryConfig | null
+  ): Promise<WorkshopPaginatedResult> {
+    return normalizeWorkshopPaginatedResult(
+      await native().workshopGetAllItemsByCursor(
+        cursor,
+        queryType,
+        itemType,
+        creatorAppId,
+        consumerAppId,
+        queryConfig ?? undefined
+      )
     );
   },
   async getUserItems(
@@ -6777,6 +6888,11 @@ export const workshop = {
         queryConfig ?? undefined
       )
     );
+  },
+  async requestItemDetails(itemId: bigint, maxAgeSeconds?: number | null): Promise<WorkshopItemDetailsResult> {
+    return normalizeWorkshopItemDetailsResult(
+      await native().workshopRequestItemDetails(itemId, maxAgeSeconds ?? undefined)
+    );
   }
 };
 
@@ -6786,6 +6902,7 @@ export const gameServerWorkshop = {
   UGCQueryType,
   UGCType,
   UGCContentDescriptor,
+  ItemPreviewType,
   UserListType,
   UserListOrder,
   async createItem(appId?: number | null): Promise<UgcResult> {
@@ -6886,6 +7003,24 @@ export const gameServerWorkshop = {
   download(itemId: bigint, highPriority: boolean): boolean {
     return native().gameServerWorkshopDownload(itemId, highPriority);
   },
+  initWorkshopForGameServer(depotId: number, folder: string): boolean {
+    return native().gameServerWorkshopInitWorkshopForGameServer(depotId, folder);
+  },
+  suspendDownloads(suspend: boolean): void {
+    native().gameServerWorkshopSuspendDownloads(suspend);
+  },
+  setItemsDisabledLocally(itemIds: bigint[], disabled: boolean): boolean {
+    return native().gameServerWorkshopSetItemsDisabledLocally(itemIds, disabled);
+  },
+  setSubscriptionsLoadOrder(itemIds: bigint[]): boolean {
+    return native().gameServerWorkshopSetSubscriptionsLoadOrder(itemIds);
+  },
+  markDownloadedItemAsUnused(itemId: bigint): boolean {
+    return native().gameServerWorkshopMarkDownloadedItemAsUnused(itemId);
+  },
+  getDownloadedItems(maxEntries?: number | null): bigint[] {
+    return native().gameServerWorkshopGetDownloadedItems(maxEntries ?? undefined).map(BigInt);
+  },
   getSubscribedItems(): bigint[] {
     return native().gameServerWorkshopGetSubscribedItems().map(BigInt);
   },
@@ -6897,7 +7032,8 @@ export const gameServerWorkshop = {
     const result = await native().gameServerWorkshopGetItems(items, queryConfig ?? undefined);
     return {
       items: result.items.map(normalizeWorkshopItem),
-      wasCached: Boolean(result.wasCached ?? result.was_cached)
+      wasCached: Boolean(result.wasCached ?? result.was_cached),
+      nextCursor: String(result.nextCursor ?? result.next_cursor ?? "")
     };
   },
   async getAllItems(
@@ -6911,6 +7047,25 @@ export const gameServerWorkshop = {
     return normalizeWorkshopPaginatedResult(
       await native().gameServerWorkshopGetAllItems(
         page,
+        queryType,
+        itemType,
+        creatorAppId,
+        consumerAppId,
+        queryConfig ?? undefined
+      )
+    );
+  },
+  async getAllItemsByCursor(
+    cursor: string,
+    queryType: number,
+    itemType: number,
+    creatorAppId: number,
+    consumerAppId: number,
+    queryConfig?: WorkshopItemQueryConfig | null
+  ): Promise<WorkshopPaginatedResult> {
+    return normalizeWorkshopPaginatedResult(
+      await native().gameServerWorkshopGetAllItemsByCursor(
+        cursor,
         queryType,
         itemType,
         creatorAppId,
@@ -6939,6 +7094,11 @@ export const gameServerWorkshop = {
         appIds.consumer ?? appIds.creator ?? getAppId(),
         queryConfig ?? undefined
       )
+    );
+  },
+  async requestItemDetails(itemId: bigint, maxAgeSeconds?: number | null): Promise<WorkshopItemDetailsResult> {
+    return normalizeWorkshopItemDetailsResult(
+      await native().gameServerWorkshopRequestItemDetails(itemId, maxAgeSeconds ?? undefined)
     );
   }
 };
@@ -9363,7 +9523,19 @@ function normalizeWorkshopPaginatedResult(result: NativeWorkshopItemsResult): Wo
     items: result.items.map(normalizeWorkshopItem),
     returnedResults: result.returnedResults ?? result.returned_results ?? result.items.length,
     totalResults: result.totalResults ?? result.total_results ?? result.items.length,
-    wasCached: Boolean(result.wasCached ?? result.was_cached)
+    wasCached: Boolean(result.wasCached ?? result.was_cached),
+    nextCursor: String(result.nextCursor ?? result.next_cursor ?? "")
+  };
+}
+
+function normalizeWorkshopItemDetailsResult(result: unknown): WorkshopItemDetailsResult {
+  const source = (result && typeof result === "object" ? result : {}) as Record<string, unknown>;
+  const details = source.details && typeof source.details === "object"
+    ? normalizeUgcDetailsPayload(source.details as Record<string, unknown>)
+    : {};
+  return {
+    details,
+    wasCached: Boolean(source.wasCached ?? source.was_cached)
   };
 }
 
@@ -9377,6 +9549,11 @@ function normalizeWorkshopItem(item: NativeWorkshopItem | null | undefined): Wor
     return value == null ? undefined : BigInt(value as bigint | number | string);
   };
   const value = <T>(camel: string, snake: string, fallback: T): T => (source[camel] ?? source[snake] ?? fallback) as T;
+  const stringPairs = (camel: string, snake: string): WorkshopItemKeyValueTag[] =>
+    ((source[camel] ?? source[snake] ?? []) as Array<Record<string, unknown>>).map((tag) => ({
+      key: String(tag.key ?? ""),
+      value: String(tag.value ?? "")
+    }));
   return {
     publishedFileId: BigInt(value("publishedFileId", "published_file_id", 0n)),
     creatorAppId: value("creatorAppId", "creator_app_id", undefined as number | undefined),
@@ -9391,7 +9568,29 @@ function normalizeWorkshopItem(item: NativeWorkshopItem | null | undefined): Wor
     banned: value("banned", "banned", false),
     acceptedForUse: value("acceptedForUse", "accepted_for_use", false),
     tags: value("tags", "tags", [] as string[]),
+    tagDetails: ((source.tagDetails ?? source.tag_details ?? []) as Array<Record<string, unknown>>).map((tag) => ({
+      name: String(tag.name ?? ""),
+      displayName: (tag.displayName ?? tag.display_name) == null ? undefined : String(tag.displayName ?? tag.display_name)
+    })),
     tagsTruncated: value("tagsTruncated", "tags_truncated", false),
+    metadata: value("metadata", "metadata", undefined as string | undefined),
+    children: ((source.children ?? []) as Array<bigint | number | string>).map(BigInt),
+    additionalPreviews: ((source.additionalPreviews ?? source.additional_previews ?? []) as Array<Record<string, unknown>>).map(
+      (preview) => ({
+        urlOrVideoId: String(preview.urlOrVideoId ?? preview.url_or_video_id ?? ""),
+        originalFileName: String(preview.originalFileName ?? preview.original_file_name ?? ""),
+        previewType: Number(preview.previewType ?? preview.preview_type ?? 0)
+      })
+    ),
+    keyValueTags: stringPairs("keyValueTags", "key_value_tags"),
+    firstKeyValueTags: stringPairs("firstKeyValueTags", "first_key_value_tags"),
+    supportedGameVersions: ((source.supportedGameVersions ?? source.supported_game_versions ?? []) as Array<
+      Record<string, unknown>
+    >).map((version) => ({
+      gameBranchMin: String(version.gameBranchMin ?? version.game_branch_min ?? ""),
+      gameBranchMax: String(version.gameBranchMax ?? version.game_branch_max ?? "")
+    })),
+    contentDescriptors: ((source.contentDescriptors ?? source.content_descriptors ?? []) as number[]).map(Number),
     url: value("url", "url", ""),
     numUpvotes: value("numUpvotes", "num_upvotes", 0),
     numDownvotes: value("numDownvotes", "num_downvotes", 0),

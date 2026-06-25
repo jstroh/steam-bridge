@@ -1063,6 +1063,8 @@ export interface NativeWorkshopItemsResult {
   total_results?: number;
   wasCached?: boolean;
   was_cached?: boolean;
+  nextCursor?: string;
+  next_cursor?: string;
 }
 
 export interface NativeFriendGameInfo {
@@ -2433,10 +2435,24 @@ export interface NativeBinding {
   workshopInstallInfo(itemId: bigint): NativeWorkshopInstallInfo | null | undefined;
   workshopDownloadInfo(itemId: bigint): NativeWorkshopDownloadInfo | null | undefined;
   workshopDownload(itemId: bigint, highPriority: boolean): boolean;
+  workshopInitWorkshopForGameServer(depotId: number, folder: string): boolean;
+  workshopSuspendDownloads(suspend: boolean): void;
+  workshopSetItemsDisabledLocally(itemIds: bigint[], disabled: boolean): boolean;
+  workshopSetSubscriptionsLoadOrder(itemIds: bigint[]): boolean;
+  workshopMarkDownloadedItemAsUnused(itemId: bigint): boolean;
+  workshopGetDownloadedItems(maxEntries?: number | null): bigint[];
   workshopGetSubscribedItems(): bigint[];
   workshopGetItems(items: bigint[], queryConfig?: unknown): Promise<NativeWorkshopItemsResult>;
   workshopGetAllItems(
     page: number,
+    queryType: number,
+    itemType: number,
+    creatorAppId: number,
+    consumerAppId: number,
+    queryConfig?: unknown
+  ): Promise<NativeWorkshopItemsResult>;
+  workshopGetAllItemsByCursor(
+    cursor: string,
     queryType: number,
     itemType: number,
     creatorAppId: number,
@@ -2453,6 +2469,7 @@ export interface NativeBinding {
     consumerAppId: number,
     queryConfig?: unknown
   ): Promise<NativeWorkshopItemsResult>;
+  workshopRequestItemDetails(itemId: bigint, maxAgeSeconds?: number | null): Promise<unknown>;
   gameServerWorkshopCreateItem(appId?: number | null): Promise<NativeUgcResult>;
   gameServerWorkshopUpdateItem(itemId: bigint, updateDetails: unknown, appId?: number | null): Promise<NativeUgcResult>;
   gameServerWorkshopUpdateItemWithProgress(
@@ -2485,10 +2502,24 @@ export interface NativeBinding {
   gameServerWorkshopInstallInfo(itemId: bigint): NativeWorkshopInstallInfo | null | undefined;
   gameServerWorkshopDownloadInfo(itemId: bigint): NativeWorkshopDownloadInfo | null | undefined;
   gameServerWorkshopDownload(itemId: bigint, highPriority: boolean): boolean;
+  gameServerWorkshopInitWorkshopForGameServer(depotId: number, folder: string): boolean;
+  gameServerWorkshopSuspendDownloads(suspend: boolean): void;
+  gameServerWorkshopSetItemsDisabledLocally(itemIds: bigint[], disabled: boolean): boolean;
+  gameServerWorkshopSetSubscriptionsLoadOrder(itemIds: bigint[]): boolean;
+  gameServerWorkshopMarkDownloadedItemAsUnused(itemId: bigint): boolean;
+  gameServerWorkshopGetDownloadedItems(maxEntries?: number | null): bigint[];
   gameServerWorkshopGetSubscribedItems(): bigint[];
   gameServerWorkshopGetItems(items: bigint[], queryConfig?: unknown): Promise<NativeWorkshopItemsResult>;
   gameServerWorkshopGetAllItems(
     page: number,
+    queryType: number,
+    itemType: number,
+    creatorAppId: number,
+    consumerAppId: number,
+    queryConfig?: unknown
+  ): Promise<NativeWorkshopItemsResult>;
+  gameServerWorkshopGetAllItemsByCursor(
+    cursor: string,
     queryType: number,
     itemType: number,
     creatorAppId: number,
@@ -2505,6 +2536,7 @@ export interface NativeBinding {
     consumerAppId: number,
     queryConfig?: unknown
   ): Promise<NativeWorkshopItemsResult>;
+  gameServerWorkshopRequestItemDetails(itemId: bigint, maxAgeSeconds?: number | null): Promise<unknown>;
 }
 
 let binding: NativeBinding | undefined;
