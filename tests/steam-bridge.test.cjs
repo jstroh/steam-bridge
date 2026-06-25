@@ -203,6 +203,7 @@ test("init reads the Steam app ID from the environment and returns the grouped c
   assert.equal(client.gameServerStats, steam.gameServerStats);
   assert.equal(client.http, steam.http);
   assert.equal(client.inventory, steam.inventory);
+  assert.equal(client.matchmakingServers, steam.matchmakingServers);
   assert.equal(client.parties, steam.parties);
   assert.equal(client.user, steam.user);
   assert.equal(client.timeline, steam.timeline);
@@ -1402,6 +1403,37 @@ test("matchmaking facade covers favorites, lobby filters, metadata, chat, and ca
   const dependentLobbyId = 109775242022617908n;
   const memberId = 76561198000000010n;
   const serverId = 90123456789012345n;
+  const nativeServer = {
+    address: {
+      ip: 2130706433,
+      ip_address: "127.0.0.1",
+      connection_port: 27015,
+      query_port: 27016
+    },
+    ping: 42,
+    had_successful_response: true,
+    do_not_refresh: false,
+    game_dir: "spacewar",
+    map: "arena",
+    game_description: "Spacewar",
+    app_id: 480,
+    players: 3,
+    max_players: 8,
+    bot_players: 1,
+    password: false,
+    secure: true,
+    time_last_played: 123456,
+    server_version: 7,
+    name: "Test Server",
+    game_tags: "dm,pvp",
+    steam_id: { steamId64: String(serverId), steamId32: "STEAM_0:0:2", accountId: 2 }
+  };
+  const nativeServerList = {
+    response: 0,
+    responded: [0],
+    failed: [1],
+    servers: [nativeServer]
+  };
   const fake = createFakeNative({
     matchmakingGetFavoriteGameCount() {
       this.calls.push({ method: "matchmakingGetFavoriteGameCount", args: [] });
@@ -1447,6 +1479,42 @@ test("matchmaking facade covers favorites, lobby filters, metadata, chat, and ca
     },
     matchmakingAddRequestLobbyListCompatibleMembersFilter(lobby) {
       this.calls.push({ method: "matchmakingAddRequestLobbyListCompatibleMembersFilter", args: [lobby] });
+    },
+    matchmakingServersRequestInternetServerList(appId, filters, timeoutSeconds) {
+      this.calls.push({ method: "matchmakingServersRequestInternetServerList", args: [appId, filters, timeoutSeconds] });
+      return Promise.resolve(nativeServerList);
+    },
+    matchmakingServersRequestLanServerList(appId, timeoutSeconds) {
+      this.calls.push({ method: "matchmakingServersRequestLanServerList", args: [appId, timeoutSeconds] });
+      return Promise.resolve(nativeServerList);
+    },
+    matchmakingServersRequestFriendsServerList(appId, filters, timeoutSeconds) {
+      this.calls.push({ method: "matchmakingServersRequestFriendsServerList", args: [appId, filters, timeoutSeconds] });
+      return Promise.resolve(nativeServerList);
+    },
+    matchmakingServersRequestFavoritesServerList(appId, filters, timeoutSeconds) {
+      this.calls.push({ method: "matchmakingServersRequestFavoritesServerList", args: [appId, filters, timeoutSeconds] });
+      return Promise.resolve(nativeServerList);
+    },
+    matchmakingServersRequestHistoryServerList(appId, filters, timeoutSeconds) {
+      this.calls.push({ method: "matchmakingServersRequestHistoryServerList", args: [appId, filters, timeoutSeconds] });
+      return Promise.resolve(nativeServerList);
+    },
+    matchmakingServersRequestSpectatorServerList(appId, filters, timeoutSeconds) {
+      this.calls.push({ method: "matchmakingServersRequestSpectatorServerList", args: [appId, filters, timeoutSeconds] });
+      return Promise.resolve(nativeServerList);
+    },
+    matchmakingServersPingServer(ip, queryPort, timeoutSeconds) {
+      this.calls.push({ method: "matchmakingServersPingServer", args: [ip, queryPort, timeoutSeconds] });
+      return Promise.resolve({ responded: true, server: nativeServer });
+    },
+    matchmakingServersPlayerDetails(ip, queryPort, timeoutSeconds) {
+      this.calls.push({ method: "matchmakingServersPlayerDetails", args: [ip, queryPort, timeoutSeconds] });
+      return Promise.resolve({ responded: true, players: [{ name: "player", score: 10, time_played: 12.5 }] });
+    },
+    matchmakingServersServerRules(ip, queryPort, timeoutSeconds) {
+      this.calls.push({ method: "matchmakingServersServerRules", args: [ip, queryPort, timeoutSeconds] });
+      return Promise.resolve({ responded: true, rules: [{ name: "sv_cheats", value: "0" }] });
     },
     matchmakingCreateLobby(lobbyType, maxMembers) {
       this.calls.push({ method: "matchmakingCreateLobby", args: [lobbyType, maxMembers] });
@@ -1563,6 +1631,7 @@ test("matchmaking facade covers favorites, lobby filters, metadata, chat, and ca
 
   assert.equal(steam.matchmaking.FavoriteFlags.Favorite, 1);
   assert.equal(steam.matchmaking.LobbyType.PrivateUnique, 4);
+  assert.equal(steam.matchmaking.servers, steam.matchmakingServers);
   assert.equal(steam.matchmaking.favoriteGameCount(), 1);
   assert.deepEqual(steam.matchmaking.favoriteGame(0), {
     appId: 480,
@@ -1606,6 +1675,34 @@ test("matchmaking facade covers favorites, lobby filters, metadata, chat, and ca
     compatibleLobby: lobbyId
   });
   assert.equal(lobbies[0].id, lobbyId);
+
+  const internetServers = await steam.matchmaking.servers.requestInternetServerList(480, {
+    filters: [{ key: "map", value: "arena" }],
+    timeoutSeconds: 5
+  });
+  assert.equal(internetServers.response, 0);
+  assert.deepEqual(internetServers.responded, [0]);
+  assert.deepEqual(internetServers.failed, [1]);
+  assert.equal(internetServers.servers[0].address.ipAddress, "127.0.0.1");
+  assert.equal(internetServers.servers[0].address.connectionPort, 27015);
+  assert.equal(internetServers.servers[0].gameDir, "spacewar");
+  assert.equal(internetServers.servers[0].gameDescription, "Spacewar");
+  assert.equal(internetServers.servers[0].maxPlayers, 8);
+  assert.equal(internetServers.servers[0].steamId.steamId64, serverId);
+  assert.equal((await steam.matchmaking.servers.requestLANServerList(480, 5)).servers[0].name, "Test Server");
+  await steam.matchmaking.servers.requestFriendsServerList(480, { filters: [{ key: "secure" }] });
+  await steam.matchmaking.servers.requestFavoritesServerList(480);
+  await steam.matchmaking.servers.requestHistoryServerList(480);
+  await steam.matchmaking.servers.requestSpectatorServerList(480);
+  const ping = await steam.matchmaking.servers.pingServer(2130706433, 27016, 5);
+  assert.equal(ping.responded, true);
+  assert.equal(ping.server.name, "Test Server");
+  const players = await steam.matchmaking.servers.playerDetails(2130706433, 27016, 5);
+  assert.equal(players.responded, true);
+  assert.equal(players.players[0].timePlayed, 12.5);
+  const rules = await steam.matchmaking.servers.serverRules(2130706433, 27016, 5);
+  assert.equal(rules.responded, true);
+  assert.equal(rules.rules[0].name, "sv_cheats");
 
   const lobby = await steam.matchmaking.createLobby(steam.matchmaking.LobbyType.Public, 4);
   assert.equal((await steam.matchmaking.joinLobby(lobbyId)).id, lobbyId);
@@ -1661,6 +1758,14 @@ test("matchmaking facade covers favorites, lobby filters, metadata, chat, and ca
   assert.deepEqual(fake.calls.find((call) => call.method === "matchmakingAddRequestLobbyListStringFilter"), {
     method: "matchmakingAddRequestLobbyListStringFilter",
     args: ["mode", "coop", steam.matchmaking.LobbyComparison.Equal]
+  });
+  assert.deepEqual(fake.calls.find((call) => call.method === "matchmakingServersRequestInternetServerList"), {
+    method: "matchmakingServersRequestInternetServerList",
+    args: [480, [{ key: "map", value: "arena" }], 5]
+  });
+  assert.deepEqual(fake.calls.find((call) => call.method === "matchmakingServersRequestFriendsServerList"), {
+    method: "matchmakingServersRequestFriendsServerList",
+    args: [480, [{ key: "secure", value: "" }], undefined]
   });
 });
 

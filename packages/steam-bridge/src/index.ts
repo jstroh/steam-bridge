@@ -60,6 +60,13 @@ import {
   NativeLobbyChatEntry,
   NativeLobbyGameServer,
   NativeMatchmakingFavoriteGame,
+  NativeMatchmakingServerItem,
+  NativeMatchmakingServerListResult,
+  NativeMatchmakingServerPingResult,
+  NativeMatchmakingServerPlayer,
+  NativeMatchmakingServerPlayersResult,
+  NativeMatchmakingServerRule,
+  NativeMatchmakingServerRulesResult,
   NativeNumberOfCurrentPlayersResult,
   NativeNetworkingAuthenticationStatus,
   NativeNetworkingCertificateResult,
@@ -313,6 +320,77 @@ export interface MatchmakingFavoriteGame {
   queryPort: number;
   flags: number;
   lastPlayedOnServer: number;
+}
+
+export interface MatchmakingServerBrowserFilter {
+  key: string;
+  value?: string;
+}
+
+export interface MatchmakingServerAddress {
+  ip: number;
+  ipAddress: string;
+  connectionPort: number;
+  queryPort: number;
+}
+
+export interface MatchmakingServerItem {
+  address: MatchmakingServerAddress;
+  ping: number;
+  hadSuccessfulResponse: boolean;
+  doNotRefresh: boolean;
+  gameDir: string;
+  map: string;
+  gameDescription: string;
+  appId: number;
+  players: number;
+  maxPlayers: number;
+  botPlayers: number;
+  password: boolean;
+  secure: boolean;
+  timeLastPlayed: number;
+  serverVersion: number;
+  name: string;
+  gameTags: string;
+  steamId: SteamId;
+}
+
+export interface MatchmakingServerListOptions {
+  filters?: MatchmakingServerBrowserFilter[];
+  timeoutSeconds?: number | null;
+}
+
+export interface MatchmakingServerListResult {
+  response: number;
+  responded: number[];
+  failed: number[];
+  servers: MatchmakingServerItem[];
+}
+
+export interface MatchmakingServerPingResult {
+  responded: boolean;
+  server: MatchmakingServerItem | null;
+}
+
+export interface MatchmakingServerPlayer {
+  name: string;
+  score: number;
+  timePlayed: number;
+}
+
+export interface MatchmakingServerPlayersResult {
+  responded: boolean;
+  players: MatchmakingServerPlayer[];
+}
+
+export interface MatchmakingServerRule {
+  name: string;
+  value: string;
+}
+
+export interface MatchmakingServerRulesResult {
+  responded: boolean;
+  rules: MatchmakingServerRule[];
 }
 
 export interface LobbyChatEntry {
@@ -3127,12 +3205,104 @@ export const friends = {
   }
 };
 
+export const matchmakingServers = {
+  async requestInternetServerList(
+    appId: number,
+    options: MatchmakingServerListOptions = {}
+  ): Promise<MatchmakingServerListResult> {
+    return normalizeMatchmakingServerListResult(
+      await native().matchmakingServersRequestInternetServerList(
+        appId,
+        nativeMatchmakingServerFilters(options.filters),
+        options.timeoutSeconds ?? undefined
+      )
+    );
+  },
+  async requestLANServerList(appId: number, timeoutSeconds?: number | null): Promise<MatchmakingServerListResult> {
+    return normalizeMatchmakingServerListResult(
+      await native().matchmakingServersRequestLanServerList(appId, timeoutSeconds ?? undefined)
+    );
+  },
+  async requestFriendsServerList(
+    appId: number,
+    options: MatchmakingServerListOptions = {}
+  ): Promise<MatchmakingServerListResult> {
+    return normalizeMatchmakingServerListResult(
+      await native().matchmakingServersRequestFriendsServerList(
+        appId,
+        nativeMatchmakingServerFilters(options.filters),
+        options.timeoutSeconds ?? undefined
+      )
+    );
+  },
+  async requestFavoritesServerList(
+    appId: number,
+    options: MatchmakingServerListOptions = {}
+  ): Promise<MatchmakingServerListResult> {
+    return normalizeMatchmakingServerListResult(
+      await native().matchmakingServersRequestFavoritesServerList(
+        appId,
+        nativeMatchmakingServerFilters(options.filters),
+        options.timeoutSeconds ?? undefined
+      )
+    );
+  },
+  async requestHistoryServerList(
+    appId: number,
+    options: MatchmakingServerListOptions = {}
+  ): Promise<MatchmakingServerListResult> {
+    return normalizeMatchmakingServerListResult(
+      await native().matchmakingServersRequestHistoryServerList(
+        appId,
+        nativeMatchmakingServerFilters(options.filters),
+        options.timeoutSeconds ?? undefined
+      )
+    );
+  },
+  async requestSpectatorServerList(
+    appId: number,
+    options: MatchmakingServerListOptions = {}
+  ): Promise<MatchmakingServerListResult> {
+    return normalizeMatchmakingServerListResult(
+      await native().matchmakingServersRequestSpectatorServerList(
+        appId,
+        nativeMatchmakingServerFilters(options.filters),
+        options.timeoutSeconds ?? undefined
+      )
+    );
+  },
+  async pingServer(ip: number, queryPort: number, timeoutSeconds?: number | null): Promise<MatchmakingServerPingResult> {
+    return normalizeMatchmakingServerPingResult(
+      await native().matchmakingServersPingServer(ip, queryPort, timeoutSeconds ?? undefined)
+    );
+  },
+  async playerDetails(
+    ip: number,
+    queryPort: number,
+    timeoutSeconds?: number | null
+  ): Promise<MatchmakingServerPlayersResult> {
+    return normalizeMatchmakingServerPlayersResult(
+      await native().matchmakingServersPlayerDetails(ip, queryPort, timeoutSeconds ?? undefined)
+    );
+  },
+  async serverRules(
+    ip: number,
+    queryPort: number,
+    timeoutSeconds?: number | null
+  ): Promise<MatchmakingServerRulesResult> {
+    return normalizeMatchmakingServerRulesResult(
+      await native().matchmakingServersServerRules(ip, queryPort, timeoutSeconds ?? undefined)
+    );
+  }
+};
+
 export const matchmaking = {
   LobbyType,
   LobbyComparison,
   LobbyDistanceFilter,
   FavoriteFlags,
   Lobby,
+  servers: matchmakingServers,
   favoriteGameCount(): number {
     return native().matchmakingGetFavoriteGameCount();
   },
@@ -4313,6 +4483,7 @@ export interface SteamBridgeClient {
   input: typeof input;
   localplayer: typeof localplayer;
   matchmaking: typeof matchmaking;
+  matchmakingServers: typeof matchmakingServers;
   networking: typeof networking;
   overlay: typeof overlay;
   music: typeof music;
@@ -4343,6 +4514,7 @@ export function createCompatibilityClient(): SteamBridgeClient {
     input,
     localplayer,
     matchmaking,
+    matchmakingServers,
     networking,
     overlay,
     music,
@@ -4664,6 +4836,84 @@ function normalizeMatchmakingFavoriteGame(
   };
 }
 
+function normalizeMatchmakingServerItem(server: NativeMatchmakingServerItem): MatchmakingServerItem {
+  const source = server as unknown as Record<string, unknown>;
+  const address = server.address as unknown as Record<string, unknown>;
+  return {
+    address: {
+      ip: Number(address.ip ?? 0),
+      ipAddress: String(address.ipAddress ?? address.ip_address ?? ""),
+      connectionPort: Number(address.connectionPort ?? address.connection_port ?? 0),
+      queryPort: Number(address.queryPort ?? address.query_port ?? 0)
+    },
+    ping: Number(server.ping ?? 0),
+    hadSuccessfulResponse: Boolean(source.hadSuccessfulResponse ?? source.had_successful_response),
+    doNotRefresh: Boolean(source.doNotRefresh ?? source.do_not_refresh),
+    gameDir: String(source.gameDir ?? source.game_dir ?? ""),
+    map: String(server.map ?? ""),
+    gameDescription: String(source.gameDescription ?? source.game_description ?? ""),
+    appId: Number(source.appId ?? source.app_id ?? 0),
+    players: Number(server.players ?? 0),
+    maxPlayers: Number(source.maxPlayers ?? source.max_players ?? 0),
+    botPlayers: Number(source.botPlayers ?? source.bot_players ?? 0),
+    password: Boolean(server.password),
+    secure: Boolean(server.secure),
+    timeLastPlayed: Number(source.timeLastPlayed ?? source.time_last_played ?? 0),
+    serverVersion: Number(source.serverVersion ?? source.server_version ?? 0),
+    name: String(server.name ?? ""),
+    gameTags: String(source.gameTags ?? source.game_tags ?? ""),
+    steamId: normalizeSteamId((source.steamId ?? source.steam_id ?? EMPTY_NATIVE_STEAM_ID) as NativeSteamId)
+  };
+}
+
+function normalizeMatchmakingServerListResult(
+  result: NativeMatchmakingServerListResult
+): MatchmakingServerListResult {
+  return {
+    response: Number(result.response ?? 0),
+    responded: (result.responded ?? []).map(Number),
+    failed: (result.failed ?? []).map(Number),
+    servers: (result.servers ?? []).map(normalizeMatchmakingServerItem)
+  };
+}
+
+function normalizeMatchmakingServerPingResult(
+  result: NativeMatchmakingServerPingResult
+): MatchmakingServerPingResult {
+  return {
+    responded: Boolean(result.responded),
+    server: result.server ? normalizeMatchmakingServerItem(result.server) : null
+  };
+}
+
+function normalizeMatchmakingServerPlayersResult(
+  result: NativeMatchmakingServerPlayersResult
+): MatchmakingServerPlayersResult {
+  return {
+    responded: Boolean(result.responded),
+    players: (result.players ?? []).map((player: NativeMatchmakingServerPlayer) => {
+      const source = player as unknown as Record<string, unknown>;
+      return {
+        name: player.name,
+        score: Number(player.score ?? 0),
+        timePlayed: Number(source.timePlayed ?? source.time_played ?? 0)
+      };
+    })
+  };
+}
+
+function normalizeMatchmakingServerRulesResult(
+  result: NativeMatchmakingServerRulesResult
+): MatchmakingServerRulesResult {
+  return {
+    responded: Boolean(result.responded),
+    rules: (result.rules ?? []).map((rule: NativeMatchmakingServerRule) => ({
+      name: rule.name,
+      value: rule.value
+    }))
+  };
+}
+
 function normalizeLobbyChatEntry(entry: NativeLobbyChatEntry | null | undefined): LobbyChatEntry | null {
   if (!entry) {
     return null;
@@ -4689,6 +4939,13 @@ function normalizeLobbyGameServer(server: NativeLobbyGameServer | null | undefin
     port: Number(source.port ?? 0),
     steamId: normalizeSteamId((source.steamId ?? source.steam_id ?? EMPTY_NATIVE_STEAM_ID) as NativeSteamId)
   };
+}
+
+function nativeMatchmakingServerFilters(filters: MatchmakingServerBrowserFilter[] | undefined): unknown[] | undefined {
+  return filters?.map((filter) => ({
+    key: filter.key,
+    value: filter.value ?? ""
+  }));
 }
 
 function applyLobbyListOptions(options: LobbyListOptions): void {
@@ -6090,6 +6347,7 @@ const defaultExport = {
   input,
   localplayer,
   matchmaking,
+  matchmakingServers,
   networking,
   overlay,
   music,

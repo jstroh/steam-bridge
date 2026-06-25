@@ -577,6 +577,82 @@ export interface NativeMatchmakingFavoriteGame {
   last_played_on_server?: number;
 }
 
+export interface NativeMatchmakingServerAddress {
+  ip: number;
+  ipAddress?: string;
+  ip_address?: string;
+  connectionPort?: number;
+  connection_port?: number;
+  queryPort?: number;
+  query_port?: number;
+}
+
+export interface NativeMatchmakingServerItem {
+  address: NativeMatchmakingServerAddress;
+  ping: number;
+  hadSuccessfulResponse?: boolean;
+  had_successful_response?: boolean;
+  doNotRefresh?: boolean;
+  do_not_refresh?: boolean;
+  gameDir?: string;
+  game_dir?: string;
+  map: string;
+  gameDescription?: string;
+  game_description?: string;
+  appId?: number;
+  app_id?: number;
+  players: number;
+  maxPlayers?: number;
+  max_players?: number;
+  botPlayers?: number;
+  bot_players?: number;
+  password: boolean;
+  secure: boolean;
+  timeLastPlayed?: number;
+  time_last_played?: number;
+  serverVersion?: number;
+  server_version?: number;
+  name: string;
+  gameTags?: string;
+  game_tags?: string;
+  steamId?: NativeSteamId;
+  steam_id?: NativeSteamId;
+}
+
+export interface NativeMatchmakingServerListResult {
+  response: number;
+  responded: number[];
+  failed: number[];
+  servers: NativeMatchmakingServerItem[];
+}
+
+export interface NativeMatchmakingServerPingResult {
+  responded: boolean;
+  server?: NativeMatchmakingServerItem | null;
+}
+
+export interface NativeMatchmakingServerPlayer {
+  name: string;
+  score: number;
+  timePlayed?: number;
+  time_played?: number;
+}
+
+export interface NativeMatchmakingServerPlayersResult {
+  responded: boolean;
+  players: NativeMatchmakingServerPlayer[];
+}
+
+export interface NativeMatchmakingServerRule {
+  name: string;
+  value: string;
+}
+
+export interface NativeMatchmakingServerRulesResult {
+  responded: boolean;
+  rules: NativeMatchmakingServerRule[];
+}
+
 export interface NativeLobbyChatEntry {
   steamId?: NativeSteamId;
   steam_id?: NativeSteamId;
@@ -1549,6 +1625,15 @@ export interface NativeBinding {
   matchmakingAddRequestLobbyListDistanceFilter(distanceFilter: number): void;
   matchmakingAddRequestLobbyListResultCountFilter(maxResults: number): void;
   matchmakingAddRequestLobbyListCompatibleMembersFilter(lobbyId: bigint): void;
+  matchmakingServersRequestInternetServerList(appId: number, filters?: unknown, timeoutSeconds?: number): Promise<NativeMatchmakingServerListResult>;
+  matchmakingServersRequestLanServerList(appId: number, timeoutSeconds?: number): Promise<NativeMatchmakingServerListResult>;
+  matchmakingServersRequestFriendsServerList(appId: number, filters?: unknown, timeoutSeconds?: number): Promise<NativeMatchmakingServerListResult>;
+  matchmakingServersRequestFavoritesServerList(appId: number, filters?: unknown, timeoutSeconds?: number): Promise<NativeMatchmakingServerListResult>;
+  matchmakingServersRequestHistoryServerList(appId: number, filters?: unknown, timeoutSeconds?: number): Promise<NativeMatchmakingServerListResult>;
+  matchmakingServersRequestSpectatorServerList(appId: number, filters?: unknown, timeoutSeconds?: number): Promise<NativeMatchmakingServerListResult>;
+  matchmakingServersPingServer(ip: number, queryPort: number, timeoutSeconds?: number): Promise<NativeMatchmakingServerPingResult>;
+  matchmakingServersPlayerDetails(ip: number, queryPort: number, timeoutSeconds?: number): Promise<NativeMatchmakingServerPlayersResult>;
+  matchmakingServersServerRules(ip: number, queryPort: number, timeoutSeconds?: number): Promise<NativeMatchmakingServerRulesResult>;
   matchmakingCreateLobby(lobbyType: number, maxMembers: number): Promise<NativeLobbyResult>;
   matchmakingJoinLobby(lobbyId: bigint): Promise<NativeLobbyResult>;
   matchmakingGetLobbies(): Promise<NativeLobbyResult[]>;
