@@ -327,6 +327,147 @@ test("cloud, input, and networking facades coerce native values", (t) => {
   assert.equal(packet.steamId.steamId64, 76561198000000001n);
 });
 
+test("stats leaderboard facade normalizes handles, entries, and async results", async (t) => {
+  const player = { steamId64: "76561198000000005", steamId32: "STEAM_0:1:19867138", accountId: 39734277 };
+  const fake = createFakeNative({
+    statsGetInt(name) {
+      this.calls.push({ method: "statsGetInt", args: [name] });
+      return name === "score" ? 7 : undefined;
+    },
+    statsSetInt(name, value) {
+      this.calls.push({ method: "statsSetInt", args: [name, value] });
+      return true;
+    },
+    statsStore() {
+      this.calls.push({ method: "statsStore", args: [] });
+      return true;
+    },
+    statsResetAll(achievementsToo) {
+      this.calls.push({ method: "statsResetAll", args: [achievementsToo] });
+      return false;
+    },
+    statsFindOrCreateLeaderboard(name, sortMethod, displayType) {
+      this.calls.push({ method: "statsFindOrCreateLeaderboard", args: [name, sortMethod, displayType] });
+      return Promise.resolve({ leaderboard: "44", found: true });
+    },
+    statsFindLeaderboard(name) {
+      this.calls.push({ method: "statsFindLeaderboard", args: [name] });
+      return Promise.resolve({ leaderboard: 45n, found: false });
+    },
+    statsGetLeaderboardName(leaderboard) {
+      this.calls.push({ method: "statsGetLeaderboardName", args: [leaderboard] });
+      return "Daily Score";
+    },
+    statsGetLeaderboardEntryCount(leaderboard) {
+      this.calls.push({ method: "statsGetLeaderboardEntryCount", args: [leaderboard] });
+      return 12;
+    },
+    statsGetLeaderboardSortMethod() {
+      return 2;
+    },
+    statsGetLeaderboardDisplayType() {
+      return 1;
+    },
+    statsDownloadLeaderboardEntries(leaderboard, request, rangeStart, rangeEnd, detailsMax) {
+      this.calls.push({ method: "statsDownloadLeaderboardEntries", args: [leaderboard, request, rangeStart, rangeEnd, detailsMax] });
+      return Promise.resolve({
+        leaderboard,
+        entries_handle: "9000",
+        entry_count: 1,
+        entries: [{ steam_id: player, global_rank: 2, score: 1234, details: [10, 20], ugc: "777" }]
+      });
+    },
+    statsDownloadLeaderboardEntriesForUsers(leaderboard, steamIds64, detailsMax) {
+      this.calls.push({ method: "statsDownloadLeaderboardEntriesForUsers", args: [leaderboard, steamIds64, detailsMax] });
+      return Promise.resolve({
+        leaderboard,
+        entriesHandle: 9001n,
+        entryCount: 1,
+        entries: [{ steamId: player, globalRank: 3, score: 1200, details: [30], ugc: 778n }]
+      });
+    },
+    statsGetDownloadedLeaderboardEntry(entriesHandle, index, detailsMax) {
+      this.calls.push({ method: "statsGetDownloadedLeaderboardEntry", args: [entriesHandle, index, detailsMax] });
+      return { steam_id: player, global_rank: 4, score: 1100, details: [40, 50], ugc: "779" };
+    },
+    statsUploadLeaderboardScore(leaderboard, method, score, scoreDetails) {
+      this.calls.push({ method: "statsUploadLeaderboardScore", args: [leaderboard, method, score, scoreDetails] });
+      return Promise.resolve({
+        success: true,
+        leaderboard,
+        score,
+        score_changed: true,
+        global_rank_new: 5,
+        global_rank_previous: 9
+      });
+    },
+    statsAttachLeaderboardUgc(leaderboard, ugcHandle) {
+      this.calls.push({ method: "statsAttachLeaderboardUgc", args: [leaderboard, ugcHandle] });
+      return Promise.resolve({ result: 1, leaderboard });
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  assert.equal(steam.stats.getInt("score"), 7);
+  assert.equal(steam.stats.getInt("missing"), null);
+  assert.equal(steam.stats.setInt("score", 8), true);
+  assert.equal(steam.stats.store(), true);
+  assert.equal(steam.stats.resetAll(true), false);
+
+  assert.deepEqual(
+    await steam.stats.findOrCreateLeaderboard(
+      "Daily Score",
+      steam.stats.LeaderboardSortMethod.Descending,
+      steam.stats.LeaderboardDisplayType.Numeric
+    ),
+    { leaderboard: 44n, found: true }
+  );
+  assert.deepEqual(await steam.stats.findLeaderboard("Weekly Score"), { leaderboard: 45n, found: false });
+  assert.equal(steam.stats.getLeaderboardName(44n), "Daily Score");
+  assert.equal(steam.stats.getLeaderboardEntryCount(44n), 12);
+  assert.equal(steam.stats.getLeaderboardSortMethod(44n), steam.LeaderboardSortMethod.Descending);
+  assert.equal(steam.stats.getLeaderboardDisplayType(44n), steam.LeaderboardDisplayType.Numeric);
+
+  const globalEntries = await steam.stats.downloadLeaderboardEntries(
+    44n,
+    steam.stats.LeaderboardDataRequest.Global,
+    1,
+    10,
+    2
+  );
+  assert.equal(globalEntries.entriesHandle, 9000n);
+  assert.equal(globalEntries.entryCount, 1);
+  assert.deepEqual(globalEntries.entries[0], {
+    steamId: { steamId64: 76561198000000005n, steamId32: "STEAM_0:1:19867138", accountId: 39734277 },
+    globalRank: 2,
+    score: 1234,
+    details: [10, 20],
+    ugc: 777n
+  });
+
+  const userEntries = await steam.stats.downloadLeaderboardEntriesForUsers(44n, [76561198000000005n], 1);
+  assert.equal(userEntries.entriesHandle, 9001n);
+  assert.equal(userEntries.entries[0].globalRank, 3);
+  assert.deepEqual(steam.stats.getDownloadedLeaderboardEntry(9000n, 0, 2), {
+    steamId: { steamId64: 76561198000000005n, steamId32: "STEAM_0:1:19867138", accountId: 39734277 },
+    globalRank: 4,
+    score: 1100,
+    details: [40, 50],
+    ugc: 779n
+  });
+  assert.deepEqual(await steam.stats.uploadLeaderboardScore(44n, steam.stats.LeaderboardUploadScoreMethod.KeepBest, 1234, [1, 2]), {
+    success: true,
+    leaderboard: 44n,
+    score: 1234,
+    scoreChanged: true,
+    globalRankNew: 5,
+    globalRankPrevious: 9
+  });
+  assert.deepEqual(await steam.stats.attachLeaderboardUgc(44n, 777n), { result: 1, leaderboard: 44n });
+});
+
 test("friends facade normalizes IDs, groups, rich presence, and async results", async (t) => {
   const friend = { steamId64: "76561198000000003", steamId32: "STEAM_0:1:19867137", accountId: 39734275 };
   const clan = { steamId64: "103582791429521412", steamId32: "STEAM_0:0:0", accountId: 0 };

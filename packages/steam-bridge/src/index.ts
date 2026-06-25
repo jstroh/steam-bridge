@@ -17,6 +17,11 @@ import {
   NativeFriendsGroupInfo,
   NativeInputControllerInfo,
   NativeIsFollowingResult,
+  NativeLeaderboardEntry,
+  NativeLeaderboardFindResult,
+  NativeLeaderboardScoresDownloaded,
+  NativeLeaderboardScoreUploaded,
+  NativeLeaderboardUgcSetResult,
   NativeOverlayDiagnostics,
   NativeP2PPacket,
   NativeRemotePlayInputEvent,
@@ -147,6 +152,40 @@ export interface P2PPacket {
 export interface VideoBroadcastStatus {
   broadcasting: boolean;
   viewers: number;
+}
+
+export interface LeaderboardFindResult {
+  leaderboard: bigint;
+  found: boolean;
+}
+
+export interface LeaderboardEntry {
+  steamId: SteamId;
+  globalRank: number;
+  score: number;
+  details: number[];
+  ugc: bigint;
+}
+
+export interface LeaderboardScoresDownloaded {
+  leaderboard: bigint;
+  entriesHandle: bigint;
+  entryCount: number;
+  entries: LeaderboardEntry[];
+}
+
+export interface LeaderboardScoreUploaded {
+  success: boolean;
+  leaderboard: bigint;
+  score: number;
+  scoreChanged: boolean;
+  globalRankNew: number;
+  globalRankPrevious: number;
+}
+
+export interface LeaderboardUgcSetResult {
+  result: number;
+  leaderboard: bigint;
 }
 
 export interface TimelineEventRecordingExists {
@@ -386,6 +425,32 @@ export const AudioPlaybackStatus = {
   Playing: 1,
   Paused: 2,
   Idle: 3
+} as const;
+
+export const LeaderboardDataRequest = {
+  Global: 0,
+  GlobalAroundUser: 1,
+  Friends: 2,
+  Users: 3
+} as const;
+
+export const LeaderboardSortMethod = {
+  None: 0,
+  Ascending: 1,
+  Descending: 2
+} as const;
+
+export const LeaderboardDisplayType = {
+  None: 0,
+  Numeric: 1,
+  TimeSeconds: 2,
+  TimeMilliseconds: 3
+} as const;
+
+export const LeaderboardUploadScoreMethod = {
+  None: 0,
+  KeepBest: 1,
+  ForceUpdate: 2
 } as const;
 
 export const ParentalFeature = {
@@ -1264,6 +1329,10 @@ export const overlay = {
 };
 
 export const stats = {
+  LeaderboardDataRequest,
+  LeaderboardSortMethod,
+  LeaderboardDisplayType,
+  LeaderboardUploadScoreMethod,
   getInt(name: string): number | null {
     return native().statsGetInt(name) ?? null;
   },
@@ -1275,6 +1344,64 @@ export const stats = {
   },
   resetAll(achievementsToo: boolean): boolean {
     return native().statsResetAll(achievementsToo);
+  },
+  async findOrCreateLeaderboard(
+    name: string,
+    sortMethod: number,
+    displayType: number
+  ): Promise<LeaderboardFindResult> {
+    return normalizeLeaderboardFindResult(await native().statsFindOrCreateLeaderboard(name, sortMethod, displayType));
+  },
+  async findLeaderboard(name: string): Promise<LeaderboardFindResult> {
+    return normalizeLeaderboardFindResult(await native().statsFindLeaderboard(name));
+  },
+  getLeaderboardName(leaderboard: bigint): string {
+    return native().statsGetLeaderboardName(leaderboard);
+  },
+  getLeaderboardEntryCount(leaderboard: bigint): number {
+    return native().statsGetLeaderboardEntryCount(leaderboard);
+  },
+  getLeaderboardSortMethod(leaderboard: bigint): number {
+    return native().statsGetLeaderboardSortMethod(leaderboard);
+  },
+  getLeaderboardDisplayType(leaderboard: bigint): number {
+    return native().statsGetLeaderboardDisplayType(leaderboard);
+  },
+  async downloadLeaderboardEntries(
+    leaderboard: bigint,
+    request: number,
+    rangeStart: number,
+    rangeEnd: number,
+    detailsMax?: number
+  ): Promise<LeaderboardScoresDownloaded> {
+    return normalizeLeaderboardScoresDownloaded(
+      await native().statsDownloadLeaderboardEntries(leaderboard, request, rangeStart, rangeEnd, detailsMax)
+    );
+  },
+  async downloadLeaderboardEntriesForUsers(
+    leaderboard: bigint,
+    steamIds64: bigint[],
+    detailsMax?: number
+  ): Promise<LeaderboardScoresDownloaded> {
+    return normalizeLeaderboardScoresDownloaded(
+      await native().statsDownloadLeaderboardEntriesForUsers(leaderboard, steamIds64, detailsMax)
+    );
+  },
+  getDownloadedLeaderboardEntry(entriesHandle: bigint, index: number, detailsMax?: number): LeaderboardEntry | null {
+    return normalizeLeaderboardEntry(native().statsGetDownloadedLeaderboardEntry(entriesHandle, index, detailsMax));
+  },
+  async uploadLeaderboardScore(
+    leaderboard: bigint,
+    method: number,
+    score: number,
+    scoreDetails: number[] = []
+  ): Promise<LeaderboardScoreUploaded> {
+    return normalizeLeaderboardScoreUploaded(
+      await native().statsUploadLeaderboardScore(leaderboard, method, score, scoreDetails)
+    );
+  },
+  async attachLeaderboardUgc(leaderboard: bigint, ugcHandle: bigint): Promise<LeaderboardUgcSetResult> {
+    return normalizeLeaderboardUgcSetResult(await native().statsAttachLeaderboardUgc(leaderboard, ugcHandle));
   }
 };
 
@@ -2024,6 +2151,64 @@ function normalizeVideoBroadcastStatus(status: NativeVideoBroadcastStatus): Vide
   return {
     broadcasting: Boolean(status.broadcasting),
     viewers: Number(status.viewers)
+  };
+}
+
+function normalizeLeaderboardFindResult(result: NativeLeaderboardFindResult): LeaderboardFindResult {
+  const source = result as unknown as Record<string, unknown>;
+  return {
+    leaderboard: BigInt((source.leaderboard ?? 0) as bigint | number | string),
+    found: Boolean(source.found)
+  };
+}
+
+function normalizeLeaderboardEntry(entry: NativeLeaderboardEntry | null | undefined): LeaderboardEntry | null {
+  if (!entry) {
+    return null;
+  }
+  const source = entry as unknown as Record<string, unknown>;
+  return {
+    steamId: normalizeSteamId((source.steamId ?? source.steam_id ?? EMPTY_NATIVE_STEAM_ID) as NativeSteamId),
+    globalRank: Number(source.globalRank ?? source.global_rank ?? 0),
+    score: Number(source.score ?? 0),
+    details: Array.isArray(source.details) ? source.details.map(Number) : [],
+    ugc: BigInt((source.ugc ?? 0) as bigint | number | string)
+  };
+}
+
+function normalizeLeaderboardScoresDownloaded(
+  result: NativeLeaderboardScoresDownloaded
+): LeaderboardScoresDownloaded {
+  const source = result as unknown as Record<string, unknown>;
+  const entries = Array.isArray(source.entries) ? source.entries : [];
+  const normalizedEntries = entries
+    .map((entry) => normalizeLeaderboardEntry(entry as NativeLeaderboardEntry))
+    .filter((entry): entry is LeaderboardEntry => entry !== null);
+  return {
+    leaderboard: BigInt((source.leaderboard ?? 0) as bigint | number | string),
+    entriesHandle: BigInt((source.entriesHandle ?? source.entries_handle ?? 0) as bigint | number | string),
+    entryCount: Number(source.entryCount ?? source.entry_count ?? 0),
+    entries: normalizedEntries
+  };
+}
+
+function normalizeLeaderboardScoreUploaded(result: NativeLeaderboardScoreUploaded): LeaderboardScoreUploaded {
+  const source = result as unknown as Record<string, unknown>;
+  return {
+    success: Boolean(source.success),
+    leaderboard: BigInt((source.leaderboard ?? 0) as bigint | number | string),
+    score: Number(source.score ?? 0),
+    scoreChanged: Boolean(source.scoreChanged ?? source.score_changed),
+    globalRankNew: Number(source.globalRankNew ?? source.global_rank_new ?? 0),
+    globalRankPrevious: Number(source.globalRankPrevious ?? source.global_rank_previous ?? 0)
+  };
+}
+
+function normalizeLeaderboardUgcSetResult(result: NativeLeaderboardUgcSetResult): LeaderboardUgcSetResult {
+  const source = result as unknown as Record<string, unknown>;
+  return {
+    result: Number(source.result ?? 0),
+    leaderboard: BigInt((source.leaderboard ?? 0) as bigint | number | string)
   };
 }
 

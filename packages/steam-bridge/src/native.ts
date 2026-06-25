@@ -156,6 +156,47 @@ export interface NativeVideoBroadcastStatus {
   viewers: number;
 }
 
+export interface NativeLeaderboardFindResult {
+  leaderboard?: bigint | string | number;
+  found?: boolean;
+}
+
+export interface NativeLeaderboardEntry {
+  steamId?: NativeSteamId;
+  steam_id?: NativeSteamId;
+  globalRank?: number;
+  global_rank?: number;
+  score: number;
+  details: number[];
+  ugc?: bigint | string | number;
+}
+
+export interface NativeLeaderboardScoresDownloaded {
+  leaderboard?: bigint | string | number;
+  entriesHandle?: bigint | string | number;
+  entries_handle?: bigint | string | number;
+  entryCount?: number;
+  entry_count?: number;
+  entries: NativeLeaderboardEntry[];
+}
+
+export interface NativeLeaderboardScoreUploaded {
+  success: boolean;
+  leaderboard?: bigint | string | number;
+  score: number;
+  scoreChanged?: boolean;
+  score_changed?: boolean;
+  globalRankNew?: number;
+  global_rank_new?: number;
+  globalRankPrevious?: number;
+  global_rank_previous?: number;
+}
+
+export interface NativeLeaderboardUgcSetResult {
+  result: number;
+  leaderboard?: bigint | string | number;
+}
+
 export interface NativeTimelineEventRecordingExists {
   event?: bigint | string | number;
   recordingExists?: boolean;
@@ -380,6 +421,17 @@ export interface NativeBinding {
   statsSetInt(name: string, value: number): boolean;
   statsStore(): boolean;
   statsResetAll(achievementsToo: boolean): boolean;
+  statsFindOrCreateLeaderboard(name: string, sortMethod: number, displayType: number): Promise<NativeLeaderboardFindResult>;
+  statsFindLeaderboard(name: string): Promise<NativeLeaderboardFindResult>;
+  statsGetLeaderboardName(leaderboard: bigint): string;
+  statsGetLeaderboardEntryCount(leaderboard: bigint): number;
+  statsGetLeaderboardSortMethod(leaderboard: bigint): number;
+  statsGetLeaderboardDisplayType(leaderboard: bigint): number;
+  statsDownloadLeaderboardEntries(leaderboard: bigint, request: number, rangeStart: number, rangeEnd: number, detailsMax?: number): Promise<NativeLeaderboardScoresDownloaded>;
+  statsDownloadLeaderboardEntriesForUsers(leaderboard: bigint, steamIds64: bigint[], detailsMax?: number): Promise<NativeLeaderboardScoresDownloaded>;
+  statsGetDownloadedLeaderboardEntry(entriesHandle: bigint, index: number, detailsMax?: number): NativeLeaderboardEntry | null | undefined;
+  statsUploadLeaderboardScore(leaderboard: bigint, method: number, score: number, scoreDetails: number[]): Promise<NativeLeaderboardScoreUploaded>;
+  statsAttachLeaderboardUgc(leaderboard: bigint, ugcHandle: bigint): Promise<NativeLeaderboardUgcSetResult>;
 
   screenshotsWriteScreenshot(rgb: Buffer, width: number, height: number): number;
   screenshotsAddScreenshotToLibrary(filename: string, thumbnailFilename: string | null | undefined, width: number, height: number): number;

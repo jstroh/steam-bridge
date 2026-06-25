@@ -32,6 +32,7 @@ const CALLBACK_P2P_SESSION_REQUEST: i32 = 1202;
 const CALLBACK_P2P_SESSION_CONNECT_FAIL: i32 = 1203;
 const H_AUTH_TICKET_INVALID: sys::HAuthTicket = 0;
 const DEFAULT_ASYNC_TIMEOUT_SECONDS: u64 = 30;
+const LEADERBOARD_DETAILS_MAX: u32 = 64;
 
 type FatalThreadsafeFunction<T> = ThreadsafeFunction<T, (), Vec<T>, Status, false>;
 type JsCallback<'scope, T> = Function<'scope, T, ()>;
@@ -229,6 +230,50 @@ pub struct FollowingListResult {
 pub struct VideoBroadcastStatus {
     pub broadcasting: bool,
     pub viewers: i32,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct LeaderboardFindResult {
+    pub leaderboard: BigInt,
+    pub found: bool,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct LeaderboardEntry {
+    pub steam_id: PlayerSteamId,
+    pub global_rank: i32,
+    pub score: i32,
+    pub details: Vec<i32>,
+    pub ugc: BigInt,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct LeaderboardScoresDownloaded {
+    pub leaderboard: BigInt,
+    pub entries_handle: BigInt,
+    pub entry_count: i32,
+    pub entries: Vec<LeaderboardEntry>,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct LeaderboardScoreUploaded {
+    pub success: bool,
+    pub leaderboard: BigInt,
+    pub score: i32,
+    pub score_changed: bool,
+    pub global_rank_new: i32,
+    pub global_rank_previous: i32,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct LeaderboardUgcSetResult {
+    pub result: u32,
+    pub leaderboard: BigInt,
 }
 
 #[derive(Debug)]
@@ -1319,6 +1364,230 @@ pub fn stats_store() -> Result<bool, Error> {
 pub fn stats_reset_all(achievements_too: bool) -> Result<bool, Error> {
     Ok(unsafe {
         sys::SteamAPI_ISteamUserStats_ResetAllStats(steam_user_stats()?, achievements_too)
+    })
+}
+
+#[napi(js_name = "statsFindOrCreateLeaderboard")]
+pub async fn stats_find_or_create_leaderboard(
+    name: String,
+    sort_method: u32,
+    display_type: u32,
+) -> Result<LeaderboardFindResult, Error> {
+    let name = cstring(name, "leaderboard name")?;
+    let call = unsafe {
+        sys::SteamAPI_ISteamUserStats_FindOrCreateLeaderboard(
+            steam_user_stats()?,
+            name.as_ptr(),
+            leaderboard_sort_method_from_u32(sort_method)?,
+            leaderboard_display_type_from_u32(display_type)?,
+        )
+    };
+    let result: sys::LeaderboardFindResult_t = wait_for_api_call(
+        call,
+        sys::LeaderboardFindResult_t_k_iCallback as i32,
+        DEFAULT_ASYNC_TIMEOUT_SECONDS,
+    )
+    .await?;
+    Ok(leaderboard_find_result(result))
+}
+
+#[napi(js_name = "statsFindLeaderboard")]
+pub async fn stats_find_leaderboard(name: String) -> Result<LeaderboardFindResult, Error> {
+    let name = cstring(name, "leaderboard name")?;
+    let call = unsafe {
+        sys::SteamAPI_ISteamUserStats_FindLeaderboard(steam_user_stats()?, name.as_ptr())
+    };
+    let result: sys::LeaderboardFindResult_t = wait_for_api_call(
+        call,
+        sys::LeaderboardFindResult_t_k_iCallback as i32,
+        DEFAULT_ASYNC_TIMEOUT_SECONDS,
+    )
+    .await?;
+    Ok(leaderboard_find_result(result))
+}
+
+#[napi(js_name = "statsGetLeaderboardName")]
+pub fn stats_get_leaderboard_name(leaderboard: BigInt) -> Result<String, Error> {
+    Ok(string_from_ptr(unsafe {
+        sys::SteamAPI_ISteamUserStats_GetLeaderboardName(
+            steam_user_stats()?,
+            bigint_to_u64(leaderboard, "leaderboard")?,
+        )
+    }))
+}
+
+#[napi(js_name = "statsGetLeaderboardEntryCount")]
+pub fn stats_get_leaderboard_entry_count(leaderboard: BigInt) -> Result<i32, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamUserStats_GetLeaderboardEntryCount(
+            steam_user_stats()?,
+            bigint_to_u64(leaderboard, "leaderboard")?,
+        )
+    })
+}
+
+#[napi(js_name = "statsGetLeaderboardSortMethod")]
+pub fn stats_get_leaderboard_sort_method(leaderboard: BigInt) -> Result<u32, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamUserStats_GetLeaderboardSortMethod(
+            steam_user_stats()?,
+            bigint_to_u64(leaderboard, "leaderboard")?,
+        ) as u32
+    })
+}
+
+#[napi(js_name = "statsGetLeaderboardDisplayType")]
+pub fn stats_get_leaderboard_display_type(leaderboard: BigInt) -> Result<u32, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamUserStats_GetLeaderboardDisplayType(
+            steam_user_stats()?,
+            bigint_to_u64(leaderboard, "leaderboard")?,
+        ) as u32
+    })
+}
+
+#[napi(js_name = "statsDownloadLeaderboardEntries")]
+pub async fn stats_download_leaderboard_entries(
+    leaderboard: BigInt,
+    request: u32,
+    range_start: i32,
+    range_end: i32,
+    details_max: Option<u32>,
+) -> Result<LeaderboardScoresDownloaded, Error> {
+    let details_max = leaderboard_details_max(details_max);
+    let call = unsafe {
+        sys::SteamAPI_ISteamUserStats_DownloadLeaderboardEntries(
+            steam_user_stats()?,
+            bigint_to_u64(leaderboard, "leaderboard")?,
+            leaderboard_data_request_from_u32(request)?,
+            range_start,
+            range_end,
+        )
+    };
+    let result: sys::LeaderboardScoresDownloaded_t = wait_for_api_call(
+        call,
+        sys::LeaderboardScoresDownloaded_t_k_iCallback as i32,
+        DEFAULT_ASYNC_TIMEOUT_SECONDS,
+    )
+    .await?;
+    let stats = steam_user_stats()?;
+    leaderboard_scores_downloaded(stats, result, details_max)
+}
+
+#[napi(js_name = "statsDownloadLeaderboardEntriesForUsers")]
+pub async fn stats_download_leaderboard_entries_for_users(
+    leaderboard: BigInt,
+    steam_ids64: Vec<BigInt>,
+    details_max: Option<u32>,
+) -> Result<LeaderboardScoresDownloaded, Error> {
+    if steam_ids64.is_empty() {
+        return Err(Error::from_reason(
+            "at least one Steam ID is required to download leaderboard entries for users",
+        ));
+    }
+    let leaderboard = bigint_to_u64(leaderboard, "leaderboard")?;
+    let mut users = steam_ids64
+        .into_iter()
+        .map(|steam_id| bigint_to_u64(steam_id, "steamId64").map(u64_to_csteam_id))
+        .collect::<Result<Vec<_>, _>>()?;
+    let details_max = leaderboard_details_max(details_max);
+    let call = unsafe {
+        sys::SteamAPI_ISteamUserStats_DownloadLeaderboardEntriesForUsers(
+            steam_user_stats()?,
+            leaderboard,
+            users.as_mut_ptr(),
+            users.len() as i32,
+        )
+    };
+    let result: sys::LeaderboardScoresDownloaded_t = wait_for_api_call(
+        call,
+        sys::LeaderboardScoresDownloaded_t_k_iCallback as i32,
+        DEFAULT_ASYNC_TIMEOUT_SECONDS,
+    )
+    .await?;
+    let stats = steam_user_stats()?;
+    leaderboard_scores_downloaded(stats, result, details_max)
+}
+
+#[napi(js_name = "statsGetDownloadedLeaderboardEntry")]
+pub fn stats_get_downloaded_leaderboard_entry(
+    entries_handle: BigInt,
+    index: i32,
+    details_max: Option<u32>,
+) -> Result<Option<LeaderboardEntry>, Error> {
+    let stats = steam_user_stats()?;
+    let entries_handle = bigint_to_u64(entries_handle, "leaderboard entries")?;
+    let details_max = leaderboard_details_max(details_max);
+    downloaded_leaderboard_entry(stats, entries_handle, index, details_max)
+}
+
+#[napi(js_name = "statsUploadLeaderboardScore")]
+pub async fn stats_upload_leaderboard_score(
+    leaderboard: BigInt,
+    method: u32,
+    score: i32,
+    score_details: Vec<i32>,
+) -> Result<LeaderboardScoreUploaded, Error> {
+    if score_details.len() > LEADERBOARD_DETAILS_MAX as usize {
+        return Err(Error::from_reason(format!(
+            "leaderboard score details cannot exceed {} integers",
+            LEADERBOARD_DETAILS_MAX
+        )));
+    }
+    let details_ptr = if score_details.is_empty() {
+        ptr::null()
+    } else {
+        score_details.as_ptr()
+    };
+    let call = unsafe {
+        sys::SteamAPI_ISteamUserStats_UploadLeaderboardScore(
+            steam_user_stats()?,
+            bigint_to_u64(leaderboard, "leaderboard")?,
+            leaderboard_upload_score_method_from_u32(method)?,
+            score,
+            details_ptr,
+            score_details.len() as i32,
+        )
+    };
+    let result: sys::LeaderboardScoreUploaded_t = wait_for_api_call(
+        call,
+        sys::LeaderboardScoreUploaded_t_k_iCallback as i32,
+        DEFAULT_ASYNC_TIMEOUT_SECONDS,
+    )
+    .await?;
+    Ok(LeaderboardScoreUploaded {
+        success: unsafe { ptr::addr_of!(result.m_bSuccess).read_unaligned() } != 0,
+        leaderboard: unsafe { ptr::addr_of!(result.m_hSteamLeaderboard).read_unaligned() }.into(),
+        score: unsafe { ptr::addr_of!(result.m_nScore).read_unaligned() },
+        score_changed: unsafe { ptr::addr_of!(result.m_bScoreChanged).read_unaligned() } != 0,
+        global_rank_new: unsafe { ptr::addr_of!(result.m_nGlobalRankNew).read_unaligned() },
+        global_rank_previous: unsafe {
+            ptr::addr_of!(result.m_nGlobalRankPrevious).read_unaligned()
+        },
+    })
+}
+
+#[napi(js_name = "statsAttachLeaderboardUgc")]
+pub async fn stats_attach_leaderboard_ugc(
+    leaderboard: BigInt,
+    ugc_handle: BigInt,
+) -> Result<LeaderboardUgcSetResult, Error> {
+    let call = unsafe {
+        sys::SteamAPI_ISteamUserStats_AttachLeaderboardUGC(
+            steam_user_stats()?,
+            bigint_to_u64(leaderboard, "leaderboard")?,
+            bigint_to_u64(ugc_handle, "ugcHandle")?,
+        )
+    };
+    let result: sys::LeaderboardUGCSet_t = wait_for_api_call(
+        call,
+        sys::LeaderboardUGCSet_t_k_iCallback as i32,
+        DEFAULT_ASYNC_TIMEOUT_SECONDS,
+    )
+    .await?;
+    Ok(LeaderboardUgcSetResult {
+        result: unsafe { ptr::addr_of!(result.m_eResult).read_unaligned() } as u32,
+        leaderboard: unsafe { ptr::addr_of!(result.m_hSteamLeaderboard).read_unaligned() }.into(),
     })
 }
 
@@ -3157,6 +3426,137 @@ fn parental_feature_from_u32(value: u32) -> Result<sys::EParentalFeature, Error>
             "invalid parental feature {value}"
         ))),
     }
+}
+
+fn leaderboard_sort_method_from_u32(value: u32) -> Result<sys::ELeaderboardSortMethod, Error> {
+    match value {
+        0 => Ok(sys::ELeaderboardSortMethod::k_ELeaderboardSortMethodNone),
+        1 => Ok(sys::ELeaderboardSortMethod::k_ELeaderboardSortMethodAscending),
+        2 => Ok(sys::ELeaderboardSortMethod::k_ELeaderboardSortMethodDescending),
+        _ => Err(Error::from_reason(format!(
+            "invalid leaderboard sort method {value}"
+        ))),
+    }
+}
+
+fn leaderboard_display_type_from_u32(value: u32) -> Result<sys::ELeaderboardDisplayType, Error> {
+    match value {
+        0 => Ok(sys::ELeaderboardDisplayType::k_ELeaderboardDisplayTypeNone),
+        1 => Ok(sys::ELeaderboardDisplayType::k_ELeaderboardDisplayTypeNumeric),
+        2 => Ok(sys::ELeaderboardDisplayType::k_ELeaderboardDisplayTypeTimeSeconds),
+        3 => Ok(sys::ELeaderboardDisplayType::k_ELeaderboardDisplayTypeTimeMilliSeconds),
+        _ => Err(Error::from_reason(format!(
+            "invalid leaderboard display type {value}"
+        ))),
+    }
+}
+
+fn leaderboard_data_request_from_u32(value: u32) -> Result<sys::ELeaderboardDataRequest, Error> {
+    match value {
+        0 => Ok(sys::ELeaderboardDataRequest::k_ELeaderboardDataRequestGlobal),
+        1 => Ok(sys::ELeaderboardDataRequest::k_ELeaderboardDataRequestGlobalAroundUser),
+        2 => Ok(sys::ELeaderboardDataRequest::k_ELeaderboardDataRequestFriends),
+        3 => Ok(sys::ELeaderboardDataRequest::k_ELeaderboardDataRequestUsers),
+        _ => Err(Error::from_reason(format!(
+            "invalid leaderboard data request {value}"
+        ))),
+    }
+}
+
+fn leaderboard_upload_score_method_from_u32(
+    value: u32,
+) -> Result<sys::ELeaderboardUploadScoreMethod, Error> {
+    match value {
+        0 => Ok(sys::ELeaderboardUploadScoreMethod::k_ELeaderboardUploadScoreMethodNone),
+        1 => Ok(sys::ELeaderboardUploadScoreMethod::k_ELeaderboardUploadScoreMethodKeepBest),
+        2 => Ok(sys::ELeaderboardUploadScoreMethod::k_ELeaderboardUploadScoreMethodForceUpdate),
+        _ => Err(Error::from_reason(format!(
+            "invalid leaderboard upload score method {value}"
+        ))),
+    }
+}
+
+fn leaderboard_details_max(details_max: Option<u32>) -> i32 {
+    details_max
+        .unwrap_or(LEADERBOARD_DETAILS_MAX)
+        .min(LEADERBOARD_DETAILS_MAX) as i32
+}
+
+fn leaderboard_find_result(result: sys::LeaderboardFindResult_t) -> LeaderboardFindResult {
+    LeaderboardFindResult {
+        leaderboard: unsafe { ptr::addr_of!(result.m_hSteamLeaderboard).read_unaligned() }.into(),
+        found: unsafe { ptr::addr_of!(result.m_bLeaderboardFound).read_unaligned() } != 0,
+    }
+}
+
+fn leaderboard_scores_downloaded(
+    stats: *mut sys::ISteamUserStats,
+    result: sys::LeaderboardScoresDownloaded_t,
+    details_max: i32,
+) -> Result<LeaderboardScoresDownloaded, Error> {
+    let leaderboard = unsafe { ptr::addr_of!(result.m_hSteamLeaderboard).read_unaligned() };
+    let entries_handle =
+        unsafe { ptr::addr_of!(result.m_hSteamLeaderboardEntries).read_unaligned() };
+    let entry_count = unsafe { ptr::addr_of!(result.m_cEntryCount).read_unaligned() };
+    let mut entries = Vec::with_capacity(entry_count.max(0) as usize);
+    for index in 0..entry_count {
+        if let Some(entry) =
+            downloaded_leaderboard_entry(stats, entries_handle, index, details_max)?
+        {
+            entries.push(entry);
+        }
+    }
+    Ok(LeaderboardScoresDownloaded {
+        leaderboard: leaderboard.into(),
+        entries_handle: entries_handle.into(),
+        entry_count,
+        entries,
+    })
+}
+
+fn downloaded_leaderboard_entry(
+    stats: *mut sys::ISteamUserStats,
+    entries_handle: u64,
+    index: i32,
+    details_max: i32,
+) -> Result<Option<LeaderboardEntry>, Error> {
+    if index < 0 {
+        return Ok(None);
+    }
+    let mut raw_entry = MaybeUninit::<sys::LeaderboardEntry_t>::zeroed();
+    let mut details = vec![0i32; details_max.max(0) as usize];
+    let details_ptr = if details.is_empty() {
+        ptr::null_mut()
+    } else {
+        details.as_mut_ptr()
+    };
+    let ok = unsafe {
+        sys::SteamAPI_ISteamUserStats_GetDownloadedLeaderboardEntry(
+            stats,
+            entries_handle,
+            index,
+            raw_entry.as_mut_ptr(),
+            details_ptr,
+            details_max,
+        )
+    };
+    if !ok {
+        return Ok(None);
+    }
+    let raw_entry = unsafe { raw_entry.assume_init() };
+    let details_count = unsafe { ptr::addr_of!(raw_entry.m_cDetails).read_unaligned() }
+        .max(0)
+        .min(details_max) as usize;
+    details.truncate(details_count);
+    Ok(Some(LeaderboardEntry {
+        steam_id: csteam_id_to_player(unsafe {
+            ptr::addr_of!(raw_entry.m_steamIDUser).read_unaligned()
+        }),
+        global_rank: unsafe { ptr::addr_of!(raw_entry.m_nGlobalRank).read_unaligned() },
+        score: unsafe { ptr::addr_of!(raw_entry.m_nScore).read_unaligned() },
+        details,
+        ugc: unsafe { ptr::addr_of!(raw_entry.m_hUGC).read_unaligned() }.into(),
+    }))
 }
 
 fn timeline_game_mode_from_u32(value: u32) -> Result<sys::ETimelineGameMode, Error> {

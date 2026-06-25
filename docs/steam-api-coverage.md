@@ -20,8 +20,9 @@ The native layer currently targets the Steamworks flat C API through
   helpers.
 - Apps: subscription/install flags, DLC checks, build ID, install directory,
   owner, language, and beta name helpers.
-- User stats and achievements: achievement activate/clear/check/list plus basic
-  stat reads and writes.
+- User stats, achievements, and leaderboards: achievement activate/clear/check/list,
+  basic stat reads/writes, leaderboard find/create, metadata, score downloads,
+  entry reads, score uploads, and UGC attachment.
 - Remote storage: cloud enablement, file reads/writes/deletes, existence checks,
   and file listing.
 - Steam Input: init/shutdown, connected controllers, action sets, digital
@@ -49,7 +50,9 @@ The native layer currently targets the Steamworks flat C API through
 
 - Full `ISteamFriends` coverage for buffer-heavy chat reads, profile item APIs,
   and every overlay/social helper.
-- Full stats and leaderboard coverage.
+- Full stats coverage beyond the implemented stat and leaderboard helpers,
+  including user/global stats, achievement percentages, and current-player
+  queries.
 - `ISteamHTTP`, `ISteamInventory`, and `ISteamParties`.
 - `ISteamMusicRemote` is not exposed by the current `steamworks-sys 0.13` macOS
   bindings used by this crate.
