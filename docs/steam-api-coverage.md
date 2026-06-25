@@ -17,7 +17,11 @@ The native layer currently targets the Steamworks flat C API through
   connectivity checks, file signature checks, raw APICall inspection, gamepad
   text input helpers, warning hooks, and utility callback events.
 - User/auth: local Steam ID helpers, Web API auth tickets, session tickets by
-  Steam ID or IP, and ticket cancellation.
+  Steam ID or IP, auth session validation helpers, voice recording/capture and
+  decompression, encrypted app tickets, store auth URLs, badge/level/account
+  state helpers, market eligibility, duration control, user-data folder reads,
+  app usage events, NAT checks, game advertisement, license checks, and ticket
+  cancellation.
 - Friends: persona name/state, friend enumeration, friend profiles, groups,
   clans, rich presence, coplay, clan chat controls, friend message replies, and
   reads, follower async calls, profile item queries, remaining invite overlay

@@ -789,6 +789,56 @@ export interface NativeUtilsFilteredText {
   characters_filtered?: number;
 }
 
+export interface NativeUserVoiceAvailable {
+  result: number;
+  compressedBytes?: number;
+  compressed_bytes?: number;
+  uncompressedBytes?: number;
+  uncompressed_bytes?: number;
+}
+
+export interface NativeUserVoiceData {
+  result: number;
+  compressed?: Buffer | null;
+  uncompressed?: Buffer | null;
+  compressedBytes?: number;
+  compressed_bytes?: number;
+  uncompressedBytes?: number;
+  uncompressed_bytes?: number;
+}
+
+export interface NativeUserEncryptedAppTicket {
+  result: number;
+  ticket?: Buffer | null;
+}
+
+export interface NativeUserMarketEligibility {
+  allowed: boolean;
+  notAllowedReason?: number;
+  not_allowed_reason?: number;
+  allowedAtTime?: number;
+  allowed_at_time?: number;
+  steamGuardRequiredDays?: number;
+  steam_guard_required_days?: number;
+  newDeviceCooldownDays?: number;
+  new_device_cooldown_days?: number;
+}
+
+export interface NativeUserDurationControl {
+  result: number;
+  appId?: number;
+  app_id?: number;
+  applicable: boolean;
+  secondsLast5h?: number;
+  seconds_last_5h?: number;
+  progress: number;
+  notification: number;
+  secondsToday?: number;
+  seconds_today?: number;
+  secondsRemaining?: number;
+  seconds_remaining?: number;
+}
+
 export interface NativeBinding {
   init(appId: number): void;
   shutdown(): void;
@@ -801,6 +851,32 @@ export interface NativeBinding {
   getAuthTicketForWebApi(identity: string, timeoutSeconds?: number): Promise<NativeAuthTicket>;
   authGetSessionTicketWithSteamId(steamId64: bigint, timeoutSeconds?: number): Promise<NativeAuthTicket>;
   authGetSessionTicketWithIp(ip: string, timeoutSeconds?: number): Promise<NativeAuthTicket>;
+  userStartVoiceRecording(): void;
+  userStopVoiceRecording(): void;
+  userGetAvailableVoice(sampleRate?: number): NativeUserVoiceAvailable;
+  userGetVoice(wantCompressed?: boolean, compressedBufferBytes?: number, wantUncompressed?: boolean, uncompressedBufferBytes?: number, sampleRate?: number): NativeUserVoiceData;
+  userDecompressVoice(compressed: Buffer, maxBytes?: number, desiredSampleRate?: number): NativeUserVoiceData;
+  userGetVoiceOptimalSampleRate(): number;
+  userGetUserDataFolder(): string | null | undefined;
+  userTrackAppUsageEvent(gameId: bigint, event: number, extraInfo?: string | null): void;
+  userBeginAuthSession(ticket: Buffer, steamId64: bigint): number;
+  userEndAuthSession(steamId64: bigint): void;
+  userCancelAuthTicket(authTicket: number): void;
+  userHasLicenseForApp(steamId64: bigint, appId: number): number;
+  userIsBehindNat(): boolean;
+  userAdvertiseGame(steamId64: bigint, ip: number, port: number): void;
+  userRequestEncryptedAppTicket(dataToInclude?: Buffer | null, timeoutSeconds?: number): Promise<NativeUserEncryptedAppTicket>;
+  userGetEncryptedAppTicket(maxBytes?: number): Buffer | null | undefined;
+  userGetGameBadgeLevel(series: number, foil: boolean): number;
+  userGetPlayerSteamLevel(): number;
+  userRequestStoreAuthUrl(redirectUrl: string, timeoutSeconds?: number): Promise<string>;
+  userIsPhoneVerified(): boolean;
+  userIsTwoFactorEnabled(): boolean;
+  userIsPhoneIdentifying(): boolean;
+  userIsPhoneRequiringVerification(): boolean;
+  userGetMarketEligibility(timeoutSeconds?: number): Promise<NativeUserMarketEligibility>;
+  userGetDurationControl(timeoutSeconds?: number): Promise<NativeUserDurationControl>;
+  userSetDurationControlOnlineState(onlineState: number): boolean;
 
   isSteamDeck(): boolean;
   getAppId(): number;

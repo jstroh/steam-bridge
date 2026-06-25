@@ -84,6 +84,11 @@ import {
   NativeTimelineEventRecordingExists,
   NativeTimelineGamePhaseRecordingExists,
   NativeUgcResult,
+  NativeUserDurationControl,
+  NativeUserEncryptedAppTicket,
+  NativeUserMarketEligibility,
+  NativeUserVoiceAvailable,
+  NativeUserVoiceData,
   NativeUtilsApiCallCompletion,
   NativeUtilsApiCallResult,
   NativeUtilsFilteredText,
@@ -422,6 +427,44 @@ export interface UtilsWarningMessage {
 export interface UtilsFilteredText {
   filtered: string;
   charactersFiltered: number;
+}
+
+export interface UserVoiceAvailable {
+  result: number;
+  compressedBytes: number;
+  uncompressedBytes: number;
+}
+
+export interface UserVoiceData {
+  result: number;
+  compressed: Buffer | null;
+  uncompressed: Buffer | null;
+  compressedBytes: number;
+  uncompressedBytes: number;
+}
+
+export interface UserEncryptedAppTicket {
+  result: number;
+  ticket: Buffer | null;
+}
+
+export interface UserMarketEligibility {
+  allowed: boolean;
+  notAllowedReason: number;
+  allowedAtTime: number;
+  steamGuardRequiredDays: number;
+  newDeviceCooldownDays: number;
+}
+
+export interface UserDurationControl {
+  result: number;
+  appId: number;
+  applicable: boolean;
+  secondsLast5h: number;
+  progress: number;
+  notification: number;
+  secondsToday: number;
+  secondsRemaining: number;
 }
 
 export interface P2PPacket {
@@ -858,6 +901,11 @@ export const SteamCallback = {
   P2PSessionConnectFail: 7,
   GameLobbyJoinRequested: 8,
   MicroTxnAuthorizationResponse: 9,
+  EncryptedAppTicketResponse: 154,
+  GetAuthSessionTicketResponse: 163,
+  StoreAuthURLResponse: 165,
+  MarketEligibilityResponse: 166,
+  DurationControl: 167,
   GameOverlayActivated: 331,
   GameServerChangeRequested: 332,
   GameLobbyJoinRequestedSteamworks: 333,
@@ -918,6 +966,82 @@ export const SteamCallback = {
   SteamInventoryEligiblePromoItemDefIds: 4703,
   SteamInventoryStartPurchaseResult: 4704,
   SteamInventoryRequestPricesResult: 4705
+} as const;
+
+export const VoiceResult = {
+  OK: 0,
+  NotInitialized: 1,
+  NotRecording: 2,
+  NoData: 3,
+  BufferTooSmall: 4,
+  DataCorrupted: 5,
+  Restricted: 6,
+  UnsupportedCodec: 7,
+  ReceiverOutOfDate: 8,
+  ReceiverDidNotAnswer: 9
+} as const;
+
+export const BeginAuthSessionResult = {
+  OK: 0,
+  InvalidTicket: 1,
+  DuplicateRequest: 2,
+  InvalidVersion: 3,
+  GameMismatch: 4,
+  ExpiredTicket: 5
+} as const;
+
+export const UserHasLicenseForAppResult = {
+  HasLicense: 0,
+  DoesNotHaveLicense: 1,
+  NoAuth: 2
+} as const;
+
+export const MarketNotAllowedReasonFlags = {
+  None: 0,
+  TemporaryFailure: 1,
+  AccountDisabled: 2,
+  AccountLockedDown: 4,
+  AccountLimited: 8,
+  TradeBanned: 16,
+  AccountNotTrusted: 32,
+  SteamGuardNotEnabled: 64,
+  SteamGuardOnlyRecentlyEnabled: 128,
+  RecentPasswordReset: 256,
+  NewPaymentMethod: 512,
+  InvalidCookie: 1024,
+  UsingNewDevice: 2048,
+  RecentSelfRefund: 4096,
+  NewPaymentMethodCannotBeVerified: 8192,
+  NoRecentPurchases: 16384,
+  AcceptedWalletGift: 32768,
+  TradeCooldown: 65536
+} as const;
+
+export const DurationControlProgress = {
+  Full: 0,
+  Half: 1,
+  None: 2,
+  ExitSoon3h: 3,
+  ExitSoon5h: 4,
+  ExitSoonNight: 5
+} as const;
+
+export const DurationControlNotification = {
+  None: 0,
+  OneHour: 1,
+  ThreeHours: 2,
+  HalfProgress: 3,
+  NoProgress: 4,
+  ExitSoon3h: 5,
+  ExitSoon5h: 6,
+  ExitSoonNight: 7
+} as const;
+
+export const DurationControlOnlineState = {
+  Invalid: 0,
+  Offline: 1,
+  Online: 2,
+  OnlineHighPri: 3
 } as const;
 
 export const HttpMethod = {
@@ -1986,6 +2110,120 @@ export const auth = {
   },
   async getAuthTicketForWebApi(identity: string, timeoutSeconds?: number | null): Promise<Ticket> {
     return new Ticket(await native().getAuthTicketForWebApi(identity, timeoutSeconds ?? undefined));
+  }
+};
+
+export const user = {
+  VoiceResult,
+  BeginAuthSessionResult,
+  UserHasLicenseForAppResult,
+  MarketNotAllowedReasonFlags,
+  DurationControlProgress,
+  DurationControlNotification,
+  DurationControlOnlineState,
+  startVoiceRecording(): void {
+    native().userStartVoiceRecording();
+  },
+  stopVoiceRecording(): void {
+    native().userStopVoiceRecording();
+  },
+  getAvailableVoice(sampleRate?: number | null): UserVoiceAvailable {
+    return normalizeUserVoiceAvailable(native().userGetAvailableVoice(sampleRate ?? undefined));
+  },
+  getVoice(
+    wantCompressed = true,
+    compressedBufferBytes?: number | null,
+    wantUncompressed = false,
+    uncompressedBufferBytes?: number | null,
+    sampleRate?: number | null
+  ): UserVoiceData {
+    return normalizeUserVoiceData(
+      native().userGetVoice(
+        wantCompressed,
+        compressedBufferBytes ?? undefined,
+        wantUncompressed,
+        uncompressedBufferBytes ?? undefined,
+        sampleRate ?? undefined
+      )
+    );
+  },
+  decompressVoice(
+    compressed: Buffer | Uint8Array,
+    maxBytes?: number | null,
+    desiredSampleRate?: number | null
+  ): UserVoiceData {
+    return normalizeUserVoiceData(
+      native().userDecompressVoice(Buffer.from(compressed), maxBytes ?? undefined, desiredSampleRate ?? undefined)
+    );
+  },
+  getVoiceOptimalSampleRate(): number {
+    return native().userGetVoiceOptimalSampleRate();
+  },
+  getUserDataFolder(): string | null {
+    return native().userGetUserDataFolder() ?? null;
+  },
+  trackAppUsageEvent(gameId: bigint, event: number, extraInfo?: string | null): void {
+    native().userTrackAppUsageEvent(gameId, event, extraInfo ?? undefined);
+  },
+  beginAuthSession(ticket: Buffer | Uint8Array, steamId64: bigint): number {
+    return native().userBeginAuthSession(Buffer.from(ticket), steamId64);
+  },
+  endAuthSession(steamId64: bigint): void {
+    native().userEndAuthSession(steamId64);
+  },
+  cancelAuthTicket(authTicket: number): void {
+    native().userCancelAuthTicket(authTicket);
+  },
+  hasLicenseForApp(steamId64: bigint, appId: number): number {
+    return native().userHasLicenseForApp(steamId64, appId);
+  },
+  isBehindNAT(): boolean {
+    return native().userIsBehindNat();
+  },
+  advertiseGame(steamId64: bigint, ip: number, port: number): void {
+    native().userAdvertiseGame(steamId64, ip, port);
+  },
+  async requestEncryptedAppTicket(
+    dataToInclude?: Buffer | Uint8Array | string | null,
+    timeoutSeconds?: number | null
+  ): Promise<UserEncryptedAppTicket> {
+    const data = dataToInclude == null ? undefined : Buffer.from(dataToInclude);
+    return normalizeUserEncryptedAppTicket(
+      await native().userRequestEncryptedAppTicket(data, timeoutSeconds ?? undefined)
+    );
+  },
+  getEncryptedAppTicket(maxBytes?: number | null): Buffer | null {
+    return native().userGetEncryptedAppTicket(maxBytes ?? undefined) ?? null;
+  },
+  getGameBadgeLevel(series: number, foil = false): number {
+    return native().userGetGameBadgeLevel(series, foil);
+  },
+  getPlayerSteamLevel(): number {
+    return native().userGetPlayerSteamLevel();
+  },
+  async requestStoreAuthURL(redirectURL: string, timeoutSeconds?: number | null): Promise<string> {
+    return native().userRequestStoreAuthUrl(redirectURL, timeoutSeconds ?? undefined);
+  },
+  isPhoneVerified(): boolean {
+    return native().userIsPhoneVerified();
+  },
+  isTwoFactorEnabled(): boolean {
+    return native().userIsTwoFactorEnabled();
+  },
+  isPhoneIdentifying(): boolean {
+    return native().userIsPhoneIdentifying();
+  },
+  isPhoneRequiringVerification(): boolean {
+    return native().userIsPhoneRequiringVerification();
+  },
+  async getMarketEligibility(timeoutSeconds?: number | null): Promise<UserMarketEligibility> {
+    return normalizeUserMarketEligibility(await native().userGetMarketEligibility(timeoutSeconds ?? undefined));
+  },
+  async getDurationControl(timeoutSeconds?: number | null): Promise<UserDurationControl> {
+    return normalizeUserDurationControl(await native().userGetDurationControl(timeoutSeconds ?? undefined));
+  },
+  setDurationControlOnlineState(onlineState: number): boolean {
+    return native().userSetDurationControlOnlineState(onlineState);
   }
 };
 
@@ -3708,6 +3946,7 @@ export interface SteamBridgeClient {
   screenshots: typeof screenshots;
   stats: typeof stats;
   timeline: typeof timeline;
+  user: typeof user;
   utils: typeof utils;
   video: typeof video;
   workshop: typeof workshop;
@@ -3735,6 +3974,7 @@ export function createCompatibilityClient(): SteamBridgeClient {
     screenshots,
     stats,
     timeline,
+    user,
     utils,
     video,
     workshop
@@ -4263,6 +4503,8 @@ function normalizeCallbackEvent(callbackId: number, event: unknown): unknown {
     account_id: "accountId",
     app_id: "appId",
     async_call: "asyncCall",
+    allowed_at_time: "allowedAtTime",
+    auth_ticket: "authTicket",
     chat_id: "chatId",
     chat_permissions: "chatPermissions",
     chat_room_enter_response: "chatRoomEnterResponse",
@@ -4290,13 +4532,19 @@ function normalizeCallbackEvent(callbackId: number, event: unknown): unknown {
     member_state_change: "memberStateChange",
     message_id: "messageId",
     minutes_battery_left: "minutesBatteryLeft",
+    new_device_cooldown_days: "newDeviceCooldownDays",
+    not_allowed_reason: "notAllowedReason",
     officer_count: "officerCount",
     parameter_size: "parameterSize",
     query_port: "queryPort",
     results_returned: "resultsReturned",
     seconds_allowed: "secondsAllowed",
+    seconds_last_5h: "secondsLast5h",
+    seconds_remaining: "secondsRemaining",
     seconds_played: "secondsPlayed",
+    seconds_today: "secondsToday",
     sha_hex: "shaHex",
+    steam_guard_required_days: "steamGuardRequiredDays",
     steam_ids: "steamIds",
     submitted_text: "submittedText",
     total_result_count: "totalResultCount",
@@ -4521,6 +4769,54 @@ function normalizeUtilsFilteredText(result: NativeUtilsFilteredText): UtilsFilte
   return {
     filtered: result.filtered,
     charactersFiltered: Number(result.charactersFiltered ?? result.characters_filtered ?? 0)
+  };
+}
+
+function normalizeUserVoiceAvailable(result: NativeUserVoiceAvailable): UserVoiceAvailable {
+  return {
+    result: Number(result.result),
+    compressedBytes: Number(result.compressedBytes ?? result.compressed_bytes ?? 0),
+    uncompressedBytes: Number(result.uncompressedBytes ?? result.uncompressed_bytes ?? 0)
+  };
+}
+
+function normalizeUserVoiceData(result: NativeUserVoiceData): UserVoiceData {
+  return {
+    result: Number(result.result),
+    compressed: result.compressed ?? null,
+    uncompressed: result.uncompressed ?? null,
+    compressedBytes: Number(result.compressedBytes ?? result.compressed_bytes ?? 0),
+    uncompressedBytes: Number(result.uncompressedBytes ?? result.uncompressed_bytes ?? 0)
+  };
+}
+
+function normalizeUserEncryptedAppTicket(result: NativeUserEncryptedAppTicket): UserEncryptedAppTicket {
+  return {
+    result: Number(result.result),
+    ticket: result.ticket ?? null
+  };
+}
+
+function normalizeUserMarketEligibility(result: NativeUserMarketEligibility): UserMarketEligibility {
+  return {
+    allowed: Boolean(result.allowed),
+    notAllowedReason: Number(result.notAllowedReason ?? result.not_allowed_reason ?? 0),
+    allowedAtTime: Number(result.allowedAtTime ?? result.allowed_at_time ?? 0),
+    steamGuardRequiredDays: Number(result.steamGuardRequiredDays ?? result.steam_guard_required_days ?? 0),
+    newDeviceCooldownDays: Number(result.newDeviceCooldownDays ?? result.new_device_cooldown_days ?? 0)
+  };
+}
+
+function normalizeUserDurationControl(result: NativeUserDurationControl): UserDurationControl {
+  return {
+    result: Number(result.result),
+    appId: Number(result.appId ?? result.app_id ?? 0),
+    applicable: Boolean(result.applicable),
+    secondsLast5h: Number(result.secondsLast5h ?? result.seconds_last_5h ?? 0),
+    progress: Number(result.progress),
+    notification: Number(result.notification),
+    secondsToday: Number(result.secondsToday ?? result.seconds_today ?? 0),
+    secondsRemaining: Number(result.secondsRemaining ?? result.seconds_remaining ?? 0)
   };
 }
 
@@ -5236,6 +5532,7 @@ const defaultExport = {
   screenshots,
   stats,
   timeline,
+  user,
   utils,
   video,
   workshop,

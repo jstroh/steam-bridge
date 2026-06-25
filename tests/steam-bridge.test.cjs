@@ -202,6 +202,7 @@ test("init reads the Steam app ID from the environment and returns the grouped c
   assert.equal(client.http, steam.http);
   assert.equal(client.inventory, steam.inventory);
   assert.equal(client.parties, steam.parties);
+  assert.equal(client.user, steam.user);
   assert.equal(client.timeline, steam.timeline);
   assert.equal(client.remotePlay, steam.remotePlay);
   assert.equal(client.localplayer.getSteamId().steamId64, 76561198000000000n);
@@ -244,6 +245,242 @@ test("Steam IDs and diagnostics are normalized for JavaScript callers", (t) => {
     arch: process.arch,
     pid: process.pid
   });
+});
+
+test("user facade covers voice, auth session, account, and duration helpers", async (t) => {
+  const ticketBytes = Buffer.from([9, 8, 7]);
+  const fake = createFakeNative({
+    userStartVoiceRecording() {
+      this.calls.push({ method: "userStartVoiceRecording", args: [] });
+    },
+    userStopVoiceRecording() {
+      this.calls.push({ method: "userStopVoiceRecording", args: [] });
+    },
+    userGetAvailableVoice(sampleRate) {
+      this.calls.push({ method: "userGetAvailableVoice", args: [sampleRate] });
+      return { result: 0, compressed_bytes: 4, uncompressedBytes: 8 };
+    },
+    userGetVoice(wantCompressed, compressedBufferBytes, wantUncompressed, uncompressedBufferBytes, sampleRate) {
+      this.calls.push({
+        method: "userGetVoice",
+        args: [wantCompressed, compressedBufferBytes, wantUncompressed, uncompressedBufferBytes, sampleRate]
+      });
+      return {
+        result: 0,
+        compressed: Buffer.from([1, 2]),
+        uncompressed: Buffer.from([3, 4]),
+        compressed_bytes: 2,
+        uncompressedBytes: 2
+      };
+    },
+    userDecompressVoice(compressed, maxBytes, desiredSampleRate) {
+      this.calls.push({ method: "userDecompressVoice", args: [compressed, maxBytes, desiredSampleRate] });
+      return {
+        result: 0,
+        uncompressed: Buffer.from([5, 6, 7]),
+        compressedBytes: compressed.length,
+        uncompressed_bytes: 3
+      };
+    },
+    userGetVoiceOptimalSampleRate() {
+      this.calls.push({ method: "userGetVoiceOptimalSampleRate", args: [] });
+      return 48000;
+    },
+    userGetUserDataFolder() {
+      this.calls.push({ method: "userGetUserDataFolder", args: [] });
+      return "/tmp/steam-user";
+    },
+    userTrackAppUsageEvent(gameId, event, extraInfo) {
+      this.calls.push({ method: "userTrackAppUsageEvent", args: [gameId, event, extraInfo] });
+    },
+    userBeginAuthSession(ticket, steamId64) {
+      this.calls.push({ method: "userBeginAuthSession", args: [ticket, steamId64] });
+      return 0;
+    },
+    userEndAuthSession(steamId64) {
+      this.calls.push({ method: "userEndAuthSession", args: [steamId64] });
+    },
+    userCancelAuthTicket(authTicket) {
+      this.calls.push({ method: "userCancelAuthTicket", args: [authTicket] });
+    },
+    userHasLicenseForApp(steamId64, appId) {
+      this.calls.push({ method: "userHasLicenseForApp", args: [steamId64, appId] });
+      return 0;
+    },
+    userIsBehindNat() {
+      this.calls.push({ method: "userIsBehindNat", args: [] });
+      return true;
+    },
+    userAdvertiseGame(steamId64, ip, port) {
+      this.calls.push({ method: "userAdvertiseGame", args: [steamId64, ip, port] });
+    },
+    userRequestEncryptedAppTicket(dataToInclude, timeoutSeconds) {
+      this.calls.push({ method: "userRequestEncryptedAppTicket", args: [dataToInclude, timeoutSeconds] });
+      return Promise.resolve({ result: 0, ticket: ticketBytes });
+    },
+    userGetEncryptedAppTicket(maxBytes) {
+      this.calls.push({ method: "userGetEncryptedAppTicket", args: [maxBytes] });
+      return ticketBytes;
+    },
+    userGetGameBadgeLevel(series, foil) {
+      this.calls.push({ method: "userGetGameBadgeLevel", args: [series, foil] });
+      return foil ? 2 : 1;
+    },
+    userGetPlayerSteamLevel() {
+      this.calls.push({ method: "userGetPlayerSteamLevel", args: [] });
+      return 42;
+    },
+    userRequestStoreAuthUrl(redirectUrl, timeoutSeconds) {
+      this.calls.push({ method: "userRequestStoreAuthUrl", args: [redirectUrl, timeoutSeconds] });
+      return Promise.resolve("https://store.steampowered.com/login/");
+    },
+    userIsPhoneVerified() {
+      this.calls.push({ method: "userIsPhoneVerified", args: [] });
+      return true;
+    },
+    userIsTwoFactorEnabled() {
+      this.calls.push({ method: "userIsTwoFactorEnabled", args: [] });
+      return true;
+    },
+    userIsPhoneIdentifying() {
+      this.calls.push({ method: "userIsPhoneIdentifying", args: [] });
+      return false;
+    },
+    userIsPhoneRequiringVerification() {
+      this.calls.push({ method: "userIsPhoneRequiringVerification", args: [] });
+      return false;
+    },
+    userGetMarketEligibility(timeoutSeconds) {
+      this.calls.push({ method: "userGetMarketEligibility", args: [timeoutSeconds] });
+      return Promise.resolve({
+        allowed: false,
+        not_allowed_reason: 64,
+        allowedAtTime: 1234,
+        steam_guard_required_days: 15,
+        newDeviceCooldownDays: 7
+      });
+    },
+    userGetDurationControl(timeoutSeconds) {
+      this.calls.push({ method: "userGetDurationControl", args: [timeoutSeconds] });
+      return Promise.resolve({
+        result: 1,
+        app_id: 480,
+        applicable: true,
+        seconds_last_5h: 3600,
+        progress: 1,
+        notification: 2,
+        seconds_today: 7200,
+        secondsRemaining: 1800
+      });
+    },
+    userSetDurationControlOnlineState(onlineState) {
+      this.calls.push({ method: "userSetDurationControlOnlineState", args: [onlineState] });
+      return true;
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  assert.equal(steam.user.VoiceResult.OK, 0);
+  assert.equal(steam.user.BeginAuthSessionResult.DuplicateRequest, 2);
+  assert.equal(steam.user.UserHasLicenseForAppResult.HasLicense, 0);
+  assert.equal(steam.user.MarketNotAllowedReasonFlags.SteamGuardNotEnabled, 64);
+  assert.equal(steam.user.DurationControlOnlineState.OnlineHighPri, 3);
+  assert.equal(steam.user.DurationControlProgress.Half, 1);
+
+  steam.user.startVoiceRecording();
+  steam.user.stopVoiceRecording();
+  assert.deepEqual(steam.user.getAvailableVoice(48000), {
+    result: 0,
+    compressedBytes: 4,
+    uncompressedBytes: 8
+  });
+  assert.deepEqual(steam.user.getVoice(true, 256, true, 512, 48000), {
+    result: 0,
+    compressed: Buffer.from([1, 2]),
+    uncompressed: Buffer.from([3, 4]),
+    compressedBytes: 2,
+    uncompressedBytes: 2
+  });
+  assert.deepEqual(steam.user.decompressVoice(Buffer.from([1, 2, 3]), 1024, 48000), {
+    result: 0,
+    compressed: null,
+    uncompressed: Buffer.from([5, 6, 7]),
+    compressedBytes: 3,
+    uncompressedBytes: 3
+  });
+  assert.equal(steam.user.getVoiceOptimalSampleRate(), 48000);
+  assert.equal(steam.user.getUserDataFolder(), "/tmp/steam-user");
+  steam.user.trackAppUsageEvent(480n, 1, "menu");
+  assert.equal(steam.user.beginAuthSession(Buffer.from([1, 2]), 76561198000000000n), 0);
+  steam.user.endAuthSession(76561198000000000n);
+  steam.user.cancelAuthTicket(123);
+  assert.equal(steam.user.hasLicenseForApp(76561198000000000n, 480), 0);
+  assert.equal(steam.user.isBehindNAT(), true);
+  steam.user.advertiseGame(76561198000000000n, 2130706433, 27015);
+  assert.deepEqual(await steam.user.requestEncryptedAppTicket("abc", 7), {
+    result: 0,
+    ticket: ticketBytes
+  });
+  assert.deepEqual(steam.user.getEncryptedAppTicket(4096), ticketBytes);
+  assert.equal(steam.user.getGameBadgeLevel(1, true), 2);
+  assert.equal(steam.user.getPlayerSteamLevel(), 42);
+  assert.equal(await steam.user.requestStoreAuthURL("https://example.test/return", 5), "https://store.steampowered.com/login/");
+  assert.equal(steam.user.isPhoneVerified(), true);
+  assert.equal(steam.user.isTwoFactorEnabled(), true);
+  assert.equal(steam.user.isPhoneIdentifying(), false);
+  assert.equal(steam.user.isPhoneRequiringVerification(), false);
+  assert.deepEqual(await steam.user.getMarketEligibility(6), {
+    allowed: false,
+    notAllowedReason: 64,
+    allowedAtTime: 1234,
+    steamGuardRequiredDays: 15,
+    newDeviceCooldownDays: 7
+  });
+  assert.deepEqual(await steam.user.getDurationControl(8), {
+    result: 1,
+    appId: 480,
+    applicable: true,
+    secondsLast5h: 3600,
+    progress: 1,
+    notification: 2,
+    secondsToday: 7200,
+    secondsRemaining: 1800
+  });
+  assert.equal(steam.user.setDurationControlOnlineState(steam.user.DurationControlOnlineState.Online), true);
+
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method.startsWith("user")),
+    [
+      { method: "userStartVoiceRecording", args: [] },
+      { method: "userStopVoiceRecording", args: [] },
+      { method: "userGetAvailableVoice", args: [48000] },
+      { method: "userGetVoice", args: [true, 256, true, 512, 48000] },
+      { method: "userDecompressVoice", args: [Buffer.from([1, 2, 3]), 1024, 48000] },
+      { method: "userGetVoiceOptimalSampleRate", args: [] },
+      { method: "userGetUserDataFolder", args: [] },
+      { method: "userTrackAppUsageEvent", args: [480n, 1, "menu"] },
+      { method: "userBeginAuthSession", args: [Buffer.from([1, 2]), 76561198000000000n] },
+      { method: "userEndAuthSession", args: [76561198000000000n] },
+      { method: "userCancelAuthTicket", args: [123] },
+      { method: "userHasLicenseForApp", args: [76561198000000000n, 480] },
+      { method: "userIsBehindNat", args: [] },
+      { method: "userAdvertiseGame", args: [76561198000000000n, 2130706433, 27015] },
+      { method: "userRequestEncryptedAppTicket", args: [Buffer.from("abc"), 7] },
+      { method: "userGetEncryptedAppTicket", args: [4096] },
+      { method: "userGetGameBadgeLevel", args: [1, true] },
+      { method: "userGetPlayerSteamLevel", args: [] },
+      { method: "userRequestStoreAuthUrl", args: ["https://example.test/return", 5] },
+      { method: "userIsPhoneVerified", args: [] },
+      { method: "userIsTwoFactorEnabled", args: [] },
+      { method: "userIsPhoneIdentifying", args: [] },
+      { method: "userIsPhoneRequiringVerification", args: [] },
+      { method: "userGetMarketEligibility", args: [6] },
+      { method: "userGetDurationControl", args: [8] },
+      { method: "userSetDurationControlOnlineState", args: [2] }
+    ]
+  );
 });
 
 test("utils facade covers activity, images, VR, filtering, and text input helpers", async (t) => {
@@ -453,6 +690,11 @@ test("specific and generic callbacks normalize Steamworks payloads", (t) => {
   t.after(clearSteamBridgeCache);
 
   assert.equal(steam.SteamCallback.SteamAPICallCompleted, 703);
+  assert.equal(steam.SteamCallback.EncryptedAppTicketResponse, 154);
+  assert.equal(steam.SteamCallback.GetAuthSessionTicketResponse, 163);
+  assert.equal(steam.SteamCallback.StoreAuthURLResponse, 165);
+  assert.equal(steam.SteamCallback.MarketEligibilityResponse, 166);
+  assert.equal(steam.SteamCallback.DurationControl, 167);
   assert.equal(steam.SteamCallback.GameServerChangeRequested, 332);
   assert.equal(steam.SteamCallback.GameLobbyJoinRequestedSteamworks, 333);
   assert.equal(steam.SteamCallback.AvatarImageLoaded, 334);
@@ -557,6 +799,43 @@ test("specific and generic callbacks normalize Steamworks payloads", (t) => {
   assert.equal(timedTrialEvent.isOffline, false);
   assert.equal(timedTrialEvent.secondsAllowed, 3600);
   assert.equal(timedTrialEvent.secondsPlayed, 120);
+
+  let marketEvent;
+  steam.callback.register(steam.SteamCallback.MarketEligibilityResponse, (event) => {
+    marketEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.MarketEligibilityResponse)({
+    allowed: false,
+    not_allowed_reason: 64,
+    allowed_at_time: 1234,
+    steam_guard_required_days: 15,
+    new_device_cooldown_days: 7
+  });
+
+  assert.equal(marketEvent.notAllowedReason, 64);
+  assert.equal(marketEvent.allowedAtTime, 1234);
+  assert.equal(marketEvent.steamGuardRequiredDays, 15);
+  assert.equal(marketEvent.newDeviceCooldownDays, 7);
+
+  let durationEvent;
+  steam.callback.register(steam.SteamCallback.DurationControl, (event) => {
+    durationEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.DurationControl)({
+    result: 1,
+    app_id: 480,
+    applicable: true,
+    seconds_last_5h: 3600,
+    progress: 1,
+    notification: 2,
+    seconds_today: 7200,
+    seconds_remaining: 1800
+  });
+
+  assert.equal(durationEvent.appId, 480);
+  assert.equal(durationEvent.secondsLast5h, 3600);
+  assert.equal(durationEvent.secondsToday, 7200);
+  assert.equal(durationEvent.secondsRemaining, 1800);
 
   let gamepadEvent;
   steam.callback.register(steam.SteamCallback.GamepadTextInputDismissed, (event) => {

@@ -23,7 +23,11 @@ const CALLBACK_PERSONA_STATE_CHANGE: i32 = 304;
 const CALLBACK_STEAM_SERVERS_CONNECTED: i32 = 101;
 const CALLBACK_STEAM_SERVER_CONNECT_FAILURE: i32 = 102;
 const CALLBACK_STEAM_SERVERS_DISCONNECTED: i32 = 103;
+const CALLBACK_ENCRYPTED_APP_TICKET_RESPONSE: i32 = 154;
 const CALLBACK_GET_AUTH_SESSION_TICKET_RESPONSE: i32 = 163;
+const CALLBACK_STORE_AUTH_URL_RESPONSE: i32 = 165;
+const CALLBACK_MARKET_ELIGIBILITY_RESPONSE: i32 = 166;
+const CALLBACK_DURATION_CONTROL: i32 = 167;
 const CALLBACK_IP_COUNTRY: i32 = 701;
 const CALLBACK_LOW_BATTERY_POWER: i32 = 702;
 const CALLBACK_STEAM_API_CALL_COMPLETED: i32 = 703;
@@ -95,6 +99,11 @@ const PARTY_METADATA_BUFFER_SIZE: usize = 4096;
 const FRIEND_FLAG_IMMEDIATE: u32 = 4;
 const MAX_API_CALL_RESULT_BYTES: u32 = 1024 * 1024;
 const MAX_NETWORKING_CONFIG_VALUE_BYTES: u32 = 1024 * 1024;
+const MAX_USER_VOICE_BYTES: u32 = 1024 * 1024;
+const DEFAULT_USER_VOICE_BYTES: u32 = 64 * 1024;
+const MAX_ENCRYPTED_APP_TICKET_DATA_BYTES: usize = 1024;
+const MAX_ENCRYPTED_APP_TICKET_BYTES: u32 = 4096;
+const USER_DATA_FOLDER_BUFFER_SIZE: usize = 4096;
 
 type FatalThreadsafeFunction<T> = ThreadsafeFunction<T, (), Vec<T>, Status, false>;
 type JsCallback<'scope, T> = Function<'scope, T, ()>;
@@ -910,6 +919,52 @@ pub struct UtilsWarningMessage {
 pub struct UtilsFilteredText {
     pub filtered: String,
     pub characters_filtered: i32,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct UserVoiceAvailable {
+    pub result: u32,
+    pub compressed_bytes: u32,
+    pub uncompressed_bytes: u32,
+}
+
+#[napi(object)]
+pub struct UserVoiceData {
+    pub result: u32,
+    pub compressed: Option<Buffer>,
+    pub uncompressed: Option<Buffer>,
+    pub compressed_bytes: u32,
+    pub uncompressed_bytes: u32,
+}
+
+#[napi(object)]
+pub struct UserEncryptedAppTicket {
+    pub result: u32,
+    pub ticket: Option<Buffer>,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct UserMarketEligibility {
+    pub allowed: bool,
+    pub not_allowed_reason: u32,
+    pub allowed_at_time: u32,
+    pub steam_guard_required_days: i32,
+    pub new_device_cooldown_days: i32,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct UserDurationControl {
+    pub result: u32,
+    pub app_id: u32,
+    pub applicable: bool,
+    pub seconds_last_5h: i32,
+    pub progress: u32,
+    pub notification: u32,
+    pub seconds_today: i32,
+    pub seconds_remaining: i32,
 }
 
 #[napi(js_name = "achievementActivate")]
@@ -6687,6 +6742,411 @@ pub async fn auth_get_session_ticket_with_ip(
     get_session_ticket(Some(identity), timeout_seconds).await
 }
 
+#[napi(js_name = "userStartVoiceRecording")]
+pub fn user_start_voice_recording() -> Result<(), Error> {
+    unsafe { sys::SteamAPI_ISteamUser_StartVoiceRecording(steam_user()?) };
+    Ok(())
+}
+
+#[napi(js_name = "userStopVoiceRecording")]
+pub fn user_stop_voice_recording() -> Result<(), Error> {
+    unsafe { sys::SteamAPI_ISteamUser_StopVoiceRecording(steam_user()?) };
+    Ok(())
+}
+
+#[napi(js_name = "userGetAvailableVoice")]
+pub fn user_get_available_voice(sample_rate: Option<u32>) -> Result<UserVoiceAvailable, Error> {
+    let mut compressed_bytes = 0;
+    let mut uncompressed_bytes = 0;
+    let result = unsafe {
+        sys::SteamAPI_ISteamUser_GetAvailableVoice(
+            steam_user()?,
+            &mut compressed_bytes,
+            &mut uncompressed_bytes,
+            sample_rate.unwrap_or(0),
+        )
+    };
+    Ok(UserVoiceAvailable {
+        result: result as u32,
+        compressed_bytes,
+        uncompressed_bytes,
+    })
+}
+
+#[napi(js_name = "userGetVoice")]
+pub fn user_get_voice(
+    want_compressed: Option<bool>,
+    compressed_buffer_bytes: Option<u32>,
+    want_uncompressed: Option<bool>,
+    uncompressed_buffer_bytes: Option<u32>,
+    sample_rate: Option<u32>,
+) -> Result<UserVoiceData, Error> {
+    let want_compressed = want_compressed.unwrap_or(true);
+    let want_uncompressed = want_uncompressed.unwrap_or(false);
+    let mut compressed_capacity = requested_user_voice_bytes(
+        compressed_buffer_bytes,
+        DEFAULT_USER_VOICE_BYTES,
+        "compressed voice",
+    )?;
+    let mut uncompressed_capacity = requested_user_voice_bytes(
+        uncompressed_buffer_bytes,
+        DEFAULT_USER_VOICE_BYTES,
+        "uncompressed voice",
+    )?;
+
+    if !want_compressed {
+        compressed_capacity = 0;
+    }
+    if !want_uncompressed {
+        uncompressed_capacity = 0;
+    }
+
+    let mut compressed = vec![0u8; compressed_capacity as usize];
+    let mut uncompressed = vec![0u8; uncompressed_capacity as usize];
+    let mut compressed_bytes = 0;
+    let mut uncompressed_bytes = 0;
+    let result = unsafe {
+        sys::SteamAPI_ISteamUser_GetVoice(
+            steam_user()?,
+            want_compressed,
+            compressed.as_mut_ptr().cast::<c_void>(),
+            compressed_capacity,
+            &mut compressed_bytes,
+            want_uncompressed,
+            uncompressed.as_mut_ptr().cast::<c_void>(),
+            uncompressed_capacity,
+            &mut uncompressed_bytes,
+            sample_rate.unwrap_or(0),
+        )
+    };
+
+    compressed.truncate(compressed_bytes.min(compressed_capacity) as usize);
+    uncompressed.truncate(uncompressed_bytes.min(uncompressed_capacity) as usize);
+    Ok(UserVoiceData {
+        result: result as u32,
+        compressed: want_compressed.then(|| compressed.into()),
+        uncompressed: want_uncompressed.then(|| uncompressed.into()),
+        compressed_bytes,
+        uncompressed_bytes,
+    })
+}
+
+#[napi(js_name = "userDecompressVoice")]
+pub fn user_decompress_voice(
+    compressed: Buffer,
+    max_bytes: Option<u32>,
+    desired_sample_rate: Option<u32>,
+) -> Result<UserVoiceData, Error> {
+    let user = steam_user()?;
+    let max_bytes =
+        requested_user_voice_bytes(max_bytes, MAX_USER_VOICE_BYTES, "decompressed voice")?;
+    let sample_rate = desired_sample_rate
+        .unwrap_or_else(|| unsafe { sys::SteamAPI_ISteamUser_GetVoiceOptimalSampleRate(user) });
+    let mut decompressed = vec![0u8; max_bytes as usize];
+    let mut bytes_written = 0;
+    let compressed_len = len_to_u32(compressed.len(), "compressed voice")?;
+    let result = unsafe {
+        sys::SteamAPI_ISteamUser_DecompressVoice(
+            user,
+            compressed.as_ptr().cast::<c_void>(),
+            compressed_len,
+            decompressed.as_mut_ptr().cast::<c_void>(),
+            max_bytes,
+            &mut bytes_written,
+            sample_rate,
+        )
+    };
+    decompressed.truncate(bytes_written.min(max_bytes) as usize);
+    Ok(UserVoiceData {
+        result: result as u32,
+        compressed: None,
+        uncompressed: Some(decompressed.into()),
+        compressed_bytes: compressed_len,
+        uncompressed_bytes: bytes_written,
+    })
+}
+
+#[napi(js_name = "userGetVoiceOptimalSampleRate")]
+pub fn user_get_voice_optimal_sample_rate() -> Result<u32, Error> {
+    Ok(unsafe { sys::SteamAPI_ISteamUser_GetVoiceOptimalSampleRate(steam_user()?) })
+}
+
+#[napi(js_name = "userGetUserDataFolder")]
+pub fn user_get_user_data_folder() -> Result<Option<String>, Error> {
+    let mut buffer = vec![0i8; USER_DATA_FOLDER_BUFFER_SIZE];
+    let ok = unsafe {
+        sys::SteamAPI_ISteamUser_GetUserDataFolder(
+            steam_user()?,
+            buffer.as_mut_ptr(),
+            buffer.len() as i32,
+        )
+    };
+    Ok(ok.then(|| c_buf_to_string(&buffer)))
+}
+
+#[napi(js_name = "userTrackAppUsageEvent")]
+pub fn user_track_app_usage_event(
+    game_id: BigInt,
+    event: i32,
+    extra_info: Option<String>,
+) -> Result<(), Error> {
+    let extra_info = cstring(extra_info.unwrap_or_default(), "extra app usage info")?;
+    unsafe {
+        sys::SteamAPI_ISteamUser_TrackAppUsageEvent(
+            steam_user()?,
+            bigint_to_u64(game_id, "game id")?,
+            event,
+            extra_info.as_ptr(),
+        )
+    };
+    Ok(())
+}
+
+#[napi(js_name = "userBeginAuthSession")]
+pub fn user_begin_auth_session(ticket: Buffer, steam_id64: BigInt) -> Result<u32, Error> {
+    let ticket_len = len_to_i32(ticket.len(), "auth session ticket")?;
+    let result = unsafe {
+        sys::SteamAPI_ISteamUser_BeginAuthSession(
+            steam_user()?,
+            ticket.as_ptr().cast::<c_void>(),
+            ticket_len,
+            bigint_to_u64(steam_id64, "steam id")?,
+        )
+    };
+    Ok(result as u32)
+}
+
+#[napi(js_name = "userEndAuthSession")]
+pub fn user_end_auth_session(steam_id64: BigInt) -> Result<(), Error> {
+    unsafe {
+        sys::SteamAPI_ISteamUser_EndAuthSession(
+            steam_user()?,
+            bigint_to_u64(steam_id64, "steam id")?,
+        )
+    };
+    Ok(())
+}
+
+#[napi(js_name = "userCancelAuthTicket")]
+pub fn user_cancel_auth_ticket(auth_ticket: u32) -> Result<(), Error> {
+    unsafe { sys::SteamAPI_ISteamUser_CancelAuthTicket(steam_user()?, auth_ticket) };
+    Ok(())
+}
+
+#[napi(js_name = "userHasLicenseForApp")]
+pub fn user_has_license_for_app(steam_id64: BigInt, app_id: u32) -> Result<u32, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamUser_UserHasLicenseForApp(
+            steam_user()?,
+            bigint_to_u64(steam_id64, "steam id")?,
+            app_id,
+        ) as u32
+    })
+}
+
+#[napi(js_name = "userIsBehindNat")]
+pub fn user_is_behind_nat() -> Result<bool, Error> {
+    Ok(unsafe { sys::SteamAPI_ISteamUser_BIsBehindNAT(steam_user()?) })
+}
+
+#[napi(js_name = "userAdvertiseGame")]
+pub fn user_advertise_game(steam_id64: BigInt, ip: u32, port: u32) -> Result<(), Error> {
+    unsafe {
+        sys::SteamAPI_ISteamUser_AdvertiseGame(
+            steam_user()?,
+            bigint_to_u64(steam_id64, "steam id")?,
+            ip,
+            u16_from_u32(port, "server port")?,
+        )
+    };
+    Ok(())
+}
+
+#[napi(js_name = "userRequestEncryptedAppTicket")]
+pub async fn user_request_encrypted_app_ticket(
+    data_to_include: Option<Buffer>,
+    timeout_seconds: Option<u32>,
+) -> Result<UserEncryptedAppTicket, Error> {
+    let mut data = data_to_include
+        .map(|buffer| buffer.to_vec())
+        .unwrap_or_default();
+    if data.len() > MAX_ENCRYPTED_APP_TICKET_DATA_BYTES {
+        return Err(Error::from_reason(format!(
+            "encrypted app ticket data cannot exceed {MAX_ENCRYPTED_APP_TICKET_DATA_BYTES} bytes"
+        )));
+    }
+    let data_len = len_to_i32(data.len(), "encrypted app ticket data")?;
+    let data_ptr = if data.is_empty() {
+        ptr::null_mut()
+    } else {
+        data.as_mut_ptr().cast::<c_void>()
+    };
+    let call = unsafe {
+        sys::SteamAPI_ISteamUser_RequestEncryptedAppTicket(steam_user()?, data_ptr, data_len)
+    };
+    let result: sys::EncryptedAppTicketResponse_t = wait_for_api_call(
+        call,
+        sys::EncryptedAppTicketResponse_t_k_iCallback as i32,
+        u64::from(timeout_seconds.unwrap_or(DEFAULT_ASYNC_TIMEOUT_SECONDS as u32)),
+    )
+    .await?;
+    let result_code = unsafe { ptr::addr_of!(result.m_eResult).read_unaligned() } as u32;
+    if result_code != sys::EResult::k_EResultOK as u32 {
+        return Ok(UserEncryptedAppTicket {
+            result: result_code,
+            ticket: None,
+        });
+    }
+
+    let mut ticket = vec![0u8; MAX_ENCRYPTED_APP_TICKET_BYTES as usize];
+    let mut ticket_len = 0;
+    let ok = unsafe {
+        sys::SteamAPI_ISteamUser_GetEncryptedAppTicket(
+            steam_user()?,
+            ticket.as_mut_ptr().cast::<c_void>(),
+            MAX_ENCRYPTED_APP_TICKET_BYTES as i32,
+            &mut ticket_len,
+        )
+    };
+    if !ok {
+        return Err(Error::from_reason(
+            "Steam encrypted app ticket retrieval failed",
+        ));
+    }
+    ticket.truncate(ticket_len.min(MAX_ENCRYPTED_APP_TICKET_BYTES) as usize);
+    Ok(UserEncryptedAppTicket {
+        result: result_code,
+        ticket: Some(ticket.into()),
+    })
+}
+
+#[napi(js_name = "userGetEncryptedAppTicket")]
+pub fn user_get_encrypted_app_ticket(max_bytes: Option<u32>) -> Result<Option<Buffer>, Error> {
+    let max_bytes = max_bytes
+        .unwrap_or(MAX_ENCRYPTED_APP_TICKET_BYTES)
+        .clamp(1, MAX_ENCRYPTED_APP_TICKET_BYTES);
+    let mut ticket = vec![0u8; max_bytes as usize];
+    let mut ticket_len = 0;
+    let ok = unsafe {
+        sys::SteamAPI_ISteamUser_GetEncryptedAppTicket(
+            steam_user()?,
+            ticket.as_mut_ptr().cast::<c_void>(),
+            max_bytes as i32,
+            &mut ticket_len,
+        )
+    };
+    if !ok {
+        return Ok(None);
+    }
+    ticket.truncate(ticket_len.min(max_bytes) as usize);
+    Ok(Some(ticket.into()))
+}
+
+#[napi(js_name = "userGetGameBadgeLevel")]
+pub fn user_get_game_badge_level(series: i32, foil: bool) -> Result<i32, Error> {
+    Ok(unsafe { sys::SteamAPI_ISteamUser_GetGameBadgeLevel(steam_user()?, series, foil) })
+}
+
+#[napi(js_name = "userGetPlayerSteamLevel")]
+pub fn user_get_player_steam_level() -> Result<i32, Error> {
+    Ok(unsafe { sys::SteamAPI_ISteamUser_GetPlayerSteamLevel(steam_user()?) })
+}
+
+#[napi(js_name = "userRequestStoreAuthUrl")]
+pub async fn user_request_store_auth_url(
+    redirect_url: String,
+    timeout_seconds: Option<u32>,
+) -> Result<String, Error> {
+    let redirect_url = cstring(redirect_url, "store auth redirect URL")?;
+    let call = unsafe {
+        sys::SteamAPI_ISteamUser_RequestStoreAuthURL(steam_user()?, redirect_url.as_ptr())
+    };
+    let result: sys::StoreAuthURLResponse_t = wait_for_api_call(
+        call,
+        sys::StoreAuthURLResponse_t_k_iCallback as i32,
+        u64::from(timeout_seconds.unwrap_or(DEFAULT_ASYNC_TIMEOUT_SECONDS as u32)),
+    )
+    .await?;
+    Ok(c_buf_to_string(&result.m_szURL))
+}
+
+#[napi(js_name = "userIsPhoneVerified")]
+pub fn user_is_phone_verified() -> Result<bool, Error> {
+    Ok(unsafe { sys::SteamAPI_ISteamUser_BIsPhoneVerified(steam_user()?) })
+}
+
+#[napi(js_name = "userIsTwoFactorEnabled")]
+pub fn user_is_two_factor_enabled() -> Result<bool, Error> {
+    Ok(unsafe { sys::SteamAPI_ISteamUser_BIsTwoFactorEnabled(steam_user()?) })
+}
+
+#[napi(js_name = "userIsPhoneIdentifying")]
+pub fn user_is_phone_identifying() -> Result<bool, Error> {
+    Ok(unsafe { sys::SteamAPI_ISteamUser_BIsPhoneIdentifying(steam_user()?) })
+}
+
+#[napi(js_name = "userIsPhoneRequiringVerification")]
+pub fn user_is_phone_requiring_verification() -> Result<bool, Error> {
+    Ok(unsafe { sys::SteamAPI_ISteamUser_BIsPhoneRequiringVerification(steam_user()?) })
+}
+
+#[napi(js_name = "userGetMarketEligibility")]
+pub async fn user_get_market_eligibility(
+    timeout_seconds: Option<u32>,
+) -> Result<UserMarketEligibility, Error> {
+    let call = unsafe { sys::SteamAPI_ISteamUser_GetMarketEligibility(steam_user()?) };
+    let result: sys::MarketEligibilityResponse_t = wait_for_api_call(
+        call,
+        sys::MarketEligibilityResponse_t_k_iCallback as i32,
+        u64::from(timeout_seconds.unwrap_or(DEFAULT_ASYNC_TIMEOUT_SECONDS as u32)),
+    )
+    .await?;
+    Ok(UserMarketEligibility {
+        allowed: unsafe { ptr::addr_of!(result.m_bAllowed).read_unaligned() },
+        not_allowed_reason: unsafe { ptr::addr_of!(result.m_eNotAllowedReason).read_unaligned() }.0,
+        allowed_at_time: unsafe { ptr::addr_of!(result.m_rtAllowedAtTime).read_unaligned() },
+        steam_guard_required_days: unsafe {
+            ptr::addr_of!(result.m_cdaySteamGuardRequiredDays).read_unaligned()
+        },
+        new_device_cooldown_days: unsafe {
+            ptr::addr_of!(result.m_cdayNewDeviceCooldown).read_unaligned()
+        },
+    })
+}
+
+#[napi(js_name = "userGetDurationControl")]
+pub async fn user_get_duration_control(
+    timeout_seconds: Option<u32>,
+) -> Result<UserDurationControl, Error> {
+    let call = unsafe { sys::SteamAPI_ISteamUser_GetDurationControl(steam_user()?) };
+    let result: sys::DurationControl_t = wait_for_api_call(
+        call,
+        sys::DurationControl_t_k_iCallback as i32,
+        u64::from(timeout_seconds.unwrap_or(DEFAULT_ASYNC_TIMEOUT_SECONDS as u32)),
+    )
+    .await?;
+    Ok(UserDurationControl {
+        result: unsafe { ptr::addr_of!(result.m_eResult).read_unaligned() } as u32,
+        app_id: unsafe { ptr::addr_of!(result.m_appid).read_unaligned() },
+        applicable: unsafe { ptr::addr_of!(result.m_bApplicable).read_unaligned() },
+        seconds_last_5h: unsafe { ptr::addr_of!(result.m_csecsLast5h).read_unaligned() },
+        progress: unsafe { ptr::addr_of!(result.m_progress).read_unaligned() } as u32,
+        notification: unsafe { ptr::addr_of!(result.m_notification).read_unaligned() } as u32,
+        seconds_today: unsafe { ptr::addr_of!(result.m_csecsToday).read_unaligned() },
+        seconds_remaining: unsafe { ptr::addr_of!(result.m_csecsRemaining).read_unaligned() },
+    })
+}
+
+#[napi(js_name = "userSetDurationControlOnlineState")]
+pub fn user_set_duration_control_online_state(online_state: u32) -> Result<bool, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamUser_BSetDurationControlOnlineState(
+            steam_user()?,
+            duration_control_online_state_from_u32(online_state)?,
+        )
+    })
+}
+
 #[napi(js_name = "registerSteamCallback")]
 pub fn register_steam_callback(
     callback: i32,
@@ -8288,6 +8748,25 @@ fn bigint_to_i64(value: BigInt, label: &str) -> Result<i64, Error> {
     }
 }
 
+fn u16_from_u32(value: u32, label: &str) -> Result<u16, Error> {
+    u16::try_from(value).map_err(|_| Error::from_reason(format!("{label} exceeds u16")))
+}
+
+fn requested_user_voice_bytes(
+    requested: Option<u32>,
+    default: u32,
+    label: &str,
+) -> Result<u32, Error> {
+    let value = requested.unwrap_or(default);
+    if value > MAX_USER_VOICE_BYTES {
+        Err(Error::from_reason(format!(
+            "{label} buffer cannot exceed {MAX_USER_VOICE_BYTES} bytes"
+        )))
+    } else {
+        Ok(value)
+    }
+}
+
 fn http_method_from_u32(value: u32) -> Result<sys::EHTTPMethod, Error> {
     match value {
         0 => Ok(sys::EHTTPMethod::k_EHTTPMethodInvalid),
@@ -9533,6 +10012,17 @@ fn callback_id_from_compat(callback: i32) -> Result<i32, Error> {
         7 => Ok(CALLBACK_P2P_SESSION_CONNECT_FAIL),
         8 => Ok(CALLBACK_GAME_LOBBY_JOIN_REQUESTED),
         9 => Ok(sys::MicroTxnAuthorizationResponse_t_k_iCallback as i32),
+        CALLBACK_ENCRYPTED_APP_TICKET_RESPONSE => {
+            Ok(sys::EncryptedAppTicketResponse_t_k_iCallback as i32)
+        }
+        CALLBACK_GET_AUTH_SESSION_TICKET_RESPONSE => {
+            Ok(sys::GetAuthSessionTicketResponse_t_k_iCallback as i32)
+        }
+        CALLBACK_STORE_AUTH_URL_RESPONSE => Ok(sys::StoreAuthURLResponse_t_k_iCallback as i32),
+        CALLBACK_MARKET_ELIGIBILITY_RESPONSE => {
+            Ok(sys::MarketEligibilityResponse_t_k_iCallback as i32)
+        }
+        CALLBACK_DURATION_CONTROL => Ok(sys::DurationControl_t_k_iCallback as i32),
         331 => Ok(sys::GameOverlayActivated_t_k_iCallback as i32),
         CALLBACK_IP_COUNTRY => Ok(sys::IPCountry_t_k_iCallback as i32),
         CALLBACK_LOW_BATTERY_POWER => Ok(sys::LowBatteryPower_t_k_iCallback as i32),
@@ -9682,6 +10172,48 @@ unsafe fn callback_to_json(callback: i32, param: *mut c_void) -> Value {
             serde_json::json!({
                 "reason": ptr::addr_of!((*event).m_eResult).read_unaligned() as u32,
                 "still_retrying": ptr::addr_of!((*event).m_bStillRetrying).read_unaligned()
+            })
+        }
+        CALLBACK_ENCRYPTED_APP_TICKET_RESPONSE => {
+            let event = param as *const sys::EncryptedAppTicketResponse_t;
+            serde_json::json!({
+                "result": ptr::addr_of!((*event).m_eResult).read_unaligned() as u32
+            })
+        }
+        CALLBACK_GET_AUTH_SESSION_TICKET_RESPONSE => {
+            let event = param as *const sys::GetAuthSessionTicketResponse_t;
+            serde_json::json!({
+                "auth_ticket": ptr::addr_of!((*event).m_hAuthTicket).read_unaligned(),
+                "result": ptr::addr_of!((*event).m_eResult).read_unaligned() as u32
+            })
+        }
+        CALLBACK_STORE_AUTH_URL_RESPONSE => {
+            let event = param as *const sys::StoreAuthURLResponse_t;
+            serde_json::json!({
+                "url": c_buf_to_string(&*ptr::addr_of!((*event).m_szURL))
+            })
+        }
+        CALLBACK_MARKET_ELIGIBILITY_RESPONSE => {
+            let event = param as *const sys::MarketEligibilityResponse_t;
+            serde_json::json!({
+                "allowed": ptr::addr_of!((*event).m_bAllowed).read_unaligned(),
+                "not_allowed_reason": ptr::addr_of!((*event).m_eNotAllowedReason).read_unaligned().0,
+                "allowed_at_time": ptr::addr_of!((*event).m_rtAllowedAtTime).read_unaligned(),
+                "steam_guard_required_days": ptr::addr_of!((*event).m_cdaySteamGuardRequiredDays).read_unaligned(),
+                "new_device_cooldown_days": ptr::addr_of!((*event).m_cdayNewDeviceCooldown).read_unaligned()
+            })
+        }
+        CALLBACK_DURATION_CONTROL => {
+            let event = param as *const sys::DurationControl_t;
+            serde_json::json!({
+                "result": ptr::addr_of!((*event).m_eResult).read_unaligned() as u32,
+                "app_id": ptr::addr_of!((*event).m_appid).read_unaligned(),
+                "applicable": ptr::addr_of!((*event).m_bApplicable).read_unaligned(),
+                "seconds_last_5h": ptr::addr_of!((*event).m_csecsLast5h).read_unaligned(),
+                "progress": ptr::addr_of!((*event).m_progress).read_unaligned() as u32,
+                "notification": ptr::addr_of!((*event).m_notification).read_unaligned() as u32,
+                "seconds_today": ptr::addr_of!((*event).m_csecsToday).read_unaligned(),
+                "seconds_remaining": ptr::addr_of!((*event).m_csecsRemaining).read_unaligned()
             })
         }
         CALLBACK_IP_COUNTRY
@@ -10200,6 +10732,20 @@ fn floating_gamepad_text_input_mode_from_u32(
         _ => Err(Error::from_reason(
             "invalid floating gamepad text input mode",
         )),
+    }
+}
+
+fn duration_control_online_state_from_u32(
+    value: u32,
+) -> Result<sys::EDurationControlOnlineState, Error> {
+    match value {
+        0 => Ok(sys::EDurationControlOnlineState::k_EDurationControlOnlineState_Invalid),
+        1 => Ok(sys::EDurationControlOnlineState::k_EDurationControlOnlineState_Offline),
+        2 => Ok(sys::EDurationControlOnlineState::k_EDurationControlOnlineState_Online),
+        3 => Ok(sys::EDurationControlOnlineState::k_EDurationControlOnlineState_OnlineHighPri),
+        _ => Err(Error::from_reason(format!(
+            "invalid duration control online state {value}"
+        ))),
     }
 }
 
