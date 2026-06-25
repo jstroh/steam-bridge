@@ -8,7 +8,9 @@ use napi::bindgen_prelude::{
 };
 use napi::threadsafe_function::{ThreadsafeFunction, ThreadsafeFunctionCallMode};
 use napi_derive::napi;
+use once_cell::sync::Lazy;
 use serde_json::Value;
+use std::collections::HashMap;
 use std::ffi::{c_char, c_void, CStr, CString};
 use std::mem::MaybeUninit;
 use std::net::IpAddr;
@@ -78,6 +80,10 @@ const CALLBACK_STEAM_NETWORKING_FAKE_IP_RESULT: i32 = 1223;
 const CALLBACK_STEAM_NETWORKING_MESSAGES_SESSION_REQUEST: i32 = 1251;
 const CALLBACK_STEAM_NETWORKING_MESSAGES_SESSION_FAILED: i32 = 1252;
 const CALLBACK_STEAM_RELAY_NETWORK_STATUS: i32 = 1281;
+
+static NEXT_NETWORKING_FAKE_UDP_PORT_HANDLE: AtomicU32 = AtomicU32::new(1);
+static NETWORKING_FAKE_UDP_PORTS: Lazy<Mutex<HashMap<u32, usize>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
 const CALLBACK_HTTP_REQUEST_COMPLETED: i32 = 2101;
 const CALLBACK_HTTP_REQUEST_HEADERS_RECEIVED: i32 = 2102;
 const CALLBACK_HTTP_REQUEST_DATA_RECEIVED: i32 = 2103;
@@ -360,6 +366,22 @@ pub struct NetworkingConnectionRealTimeStatus {
     pub sent_unacked_reliable: i32,
     pub queue_time: BigInt,
     pub max_jitter: i32,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct NetworkingConnectionRealTimeLaneStatus {
+    pub pending_unreliable: i32,
+    pub pending_reliable: i32,
+    pub sent_unacked_reliable: i32,
+    pub queue_time: BigInt,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct NetworkingConnectionRealTimeStatusWithLanes {
+    pub status: NetworkingConnectionRealTimeStatus,
+    pub lanes: Vec<NetworkingConnectionRealTimeLaneStatus>,
 }
 
 #[derive(Debug)]
@@ -5453,6 +5475,44 @@ pub fn networking_sockets_get_connection_real_time_status(
     Ok((result == sys::EResult::k_EResultOK).then(|| networking_real_time_status(&status)))
 }
 
+#[napi(js_name = "networkingSocketsGetConnectionRealTimeStatusWithLanes")]
+pub fn networking_sockets_get_connection_real_time_status_with_lanes(
+    connection: u32,
+    max_lanes: Option<u32>,
+) -> Result<Option<NetworkingConnectionRealTimeStatusWithLanes>, Error> {
+    let lane_count = max_lanes.unwrap_or(16).min(256);
+    let mut status =
+        unsafe { MaybeUninit::<sys::SteamNetConnectionRealTimeStatus_t>::zeroed().assume_init() };
+    let mut lanes = vec![
+        unsafe {
+            MaybeUninit::<sys::SteamNetConnectionRealTimeLaneStatus_t>::zeroed().assume_init()
+        };
+        lane_count as usize
+    ];
+    let lane_ptr = if lanes.is_empty() {
+        ptr::null_mut()
+    } else {
+        lanes.as_mut_ptr()
+    };
+    let result = unsafe {
+        sys::SteamAPI_ISteamNetworkingSockets_GetConnectionRealTimeStatus(
+            steam_networking_sockets()?,
+            connection,
+            &mut status,
+            lane_count as i32,
+            lane_ptr,
+        )
+    };
+    Ok(
+        (result == sys::EResult::k_EResultOK).then(|| {
+            NetworkingConnectionRealTimeStatusWithLanes {
+                status: networking_real_time_status(&status),
+                lanes: lanes.iter().map(networking_real_time_lane_status).collect(),
+            }
+        }),
+    )
+}
+
 #[napi(js_name = "networkingSocketsGetDetailedConnectionStatus")]
 pub fn networking_sockets_get_detailed_connection_status(
     connection: u32,
@@ -5871,6 +5931,95 @@ pub fn networking_sockets_get_remote_fake_ip_for_connection(
     Ok(NetworkingRemoteFakeIpResult {
         result: result as u32,
         address,
+    })
+}
+
+#[napi(js_name = "networkingSocketsCreateFakeUdpPort")]
+pub fn networking_sockets_create_fake_udp_port(
+    fake_server_port: i32,
+) -> Result<Option<u32>, Error> {
+    if fake_server_port < 0 {
+        return Err(Error::from_reason(
+            "fake UDP server port index must be non-negative",
+        ));
+    }
+    let port = unsafe {
+        sys::SteamAPI_ISteamNetworkingSockets_CreateFakeUDPPort(
+            steam_networking_sockets()?,
+            fake_server_port,
+        )
+    };
+    if port.is_null() {
+        Ok(None)
+    } else {
+        Ok(Some(register_networking_fake_udp_port(port)?))
+    }
+}
+
+#[napi(js_name = "networkingFakeUdpPortDestroy")]
+pub fn networking_fake_udp_port_destroy(handle: u32) -> Result<bool, Error> {
+    crate::state::ensure_initialized()?;
+    let port = NETWORKING_FAKE_UDP_PORTS
+        .lock()
+        .expect("Steam fake UDP port registry poisoned")
+        .remove(&handle);
+    if let Some(port) = port {
+        unsafe {
+            sys::SteamAPI_ISteamNetworkingFakeUDPPort_DestroyFakeUDPPort(
+                port as *mut sys::ISteamNetworkingFakeUDPPort,
+            );
+        }
+        Ok(true)
+    } else {
+        Ok(false)
+    }
+}
+
+#[napi(js_name = "networkingFakeUdpPortSendMessageToFakeIp")]
+pub fn networking_fake_udp_port_send_message_to_fake_ip(
+    handle: u32,
+    remote_address: NetworkingIpAddress,
+    data: Buffer,
+    send_flags: Option<i32>,
+) -> Result<u32, Error> {
+    let remote_address = networking_ip_address_from_input(remote_address)?;
+    let data_len = len_to_u32(data.len(), "fake UDP message")?;
+    with_networking_fake_udp_port(handle, |port| {
+        Ok(unsafe {
+            sys::SteamAPI_ISteamNetworkingFakeUDPPort_SendMessageToFakeIP(
+                port,
+                &remote_address,
+                data.as_ptr().cast::<c_void>(),
+                data_len,
+                send_flags.unwrap_or(sys::k_nSteamNetworkingSend_Unreliable),
+            )
+        } as u32)
+    })
+}
+
+#[napi(js_name = "networkingFakeUdpPortReceiveMessages")]
+pub fn networking_fake_udp_port_receive_messages(
+    handle: u32,
+    max_messages: Option<u32>,
+) -> Result<Vec<NetworkingMessage>, Error> {
+    with_networking_fake_udp_port(handle, |port| {
+        receive_networking_messages(max_messages, |messages, max_messages| unsafe {
+            sys::SteamAPI_ISteamNetworkingFakeUDPPort_ReceiveMessages(port, messages, max_messages)
+        })
+    })
+}
+
+#[napi(js_name = "networkingFakeUdpPortScheduleCleanup")]
+pub fn networking_fake_udp_port_schedule_cleanup(
+    handle: u32,
+    remote_address: NetworkingIpAddress,
+) -> Result<(), Error> {
+    let remote_address = networking_ip_address_from_input(remote_address)?;
+    with_networking_fake_udp_port(handle, |port| {
+        unsafe {
+            sys::SteamAPI_ISteamNetworkingFakeUDPPort_ScheduleCleanup(port, &remote_address);
+        }
+        Ok(())
     })
 }
 
@@ -9482,6 +9631,56 @@ fn networking_virtual_port(port: Option<i32>) -> Result<i32, Error> {
     }
 }
 
+pub(crate) fn clear_networking_fake_udp_ports() {
+    let ports = NETWORKING_FAKE_UDP_PORTS
+        .lock()
+        .expect("Steam fake UDP port registry poisoned")
+        .drain()
+        .map(|(_, port)| port)
+        .collect::<Vec<_>>();
+    for port in ports {
+        if port != 0 {
+            unsafe {
+                sys::SteamAPI_ISteamNetworkingFakeUDPPort_DestroyFakeUDPPort(
+                    port as *mut sys::ISteamNetworkingFakeUDPPort,
+                );
+            }
+        }
+    }
+}
+
+fn register_networking_fake_udp_port(
+    port: *mut sys::ISteamNetworkingFakeUDPPort,
+) -> Result<u32, Error> {
+    let mut registry = NETWORKING_FAKE_UDP_PORTS
+        .lock()
+        .expect("Steam fake UDP port registry poisoned");
+    for _ in 0..u32::MAX {
+        let handle = NEXT_NETWORKING_FAKE_UDP_PORT_HANDLE.fetch_add(1, Ordering::Relaxed);
+        if handle == 0 || registry.contains_key(&handle) {
+            continue;
+        }
+        registry.insert(handle, port as usize);
+        return Ok(handle);
+    }
+    Err(Error::from_reason("exhausted Steam fake UDP port handles"))
+}
+
+fn with_networking_fake_udp_port<T>(
+    handle: u32,
+    action: impl FnOnce(*mut sys::ISteamNetworkingFakeUDPPort) -> Result<T, Error>,
+) -> Result<T, Error> {
+    crate::state::ensure_initialized()?;
+    let registry = NETWORKING_FAKE_UDP_PORTS
+        .lock()
+        .expect("Steam fake UDP port registry poisoned");
+    let port = registry
+        .get(&handle)
+        .copied()
+        .ok_or_else(|| Error::from_reason("invalid Steam fake UDP port handle"))?;
+    action(port as *mut sys::ISteamNetworkingFakeUDPPort)
+}
+
 fn receive_networking_messages<F>(
     max_messages: Option<u32>,
     receive: F,
@@ -9575,6 +9774,19 @@ fn networking_real_time_status(
         },
         queue_time: unsafe { ptr::addr_of!(status.m_usecQueueTime).read_unaligned() }.into(),
         max_jitter: unsafe { ptr::addr_of!(status.m_usecMaxJitter).read_unaligned() },
+    }
+}
+
+fn networking_real_time_lane_status(
+    status: &sys::SteamNetConnectionRealTimeLaneStatus_t,
+) -> NetworkingConnectionRealTimeLaneStatus {
+    NetworkingConnectionRealTimeLaneStatus {
+        pending_unreliable: unsafe { ptr::addr_of!(status.m_cbPendingUnreliable).read_unaligned() },
+        pending_reliable: unsafe { ptr::addr_of!(status.m_cbPendingReliable).read_unaligned() },
+        sent_unacked_reliable: unsafe {
+            ptr::addr_of!(status.m_cbSentUnackedReliable).read_unaligned()
+        },
+        queue_time: unsafe { ptr::addr_of!(status.m_usecQueueTime).read_unaligned() }.into(),
     }
 }
 

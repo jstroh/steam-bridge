@@ -54,7 +54,9 @@ import {
   NativeNumberOfCurrentPlayersResult,
   NativeNetworkingAuthenticationStatus,
   NativeNetworkingCertificateResult,
+  NativeNetworkingConnectionRealTimeLaneStatus,
   NativeNetworkingConnectionRealTimeStatus,
+  NativeNetworkingConnectionRealTimeStatusWithLanes,
   NativeNetworkingConnectionInfo,
   NativeNetworkingConfigValueInfo,
   NativeNetworkingConfigValueResult,
@@ -519,6 +521,18 @@ export interface NetworkingConnectionRealTimeStatus {
   sentUnackedReliable: number;
   queueTime: bigint;
   maxJitter: number;
+}
+
+export interface NetworkingConnectionRealTimeLaneStatus {
+  pendingUnreliable: number;
+  pendingReliable: number;
+  sentUnackedReliable: number;
+  queueTime: bigint;
+}
+
+export interface NetworkingConnectionRealTimeStatusWithLanes {
+  status: NetworkingConnectionRealTimeStatus;
+  lanes: NetworkingConnectionRealTimeLaneStatus[];
 }
 
 export interface NetworkingMessagesSessionConnectionInfo {
@@ -3009,6 +3023,14 @@ export const networking = {
     getConnectionRealTimeStatus(connection: number): NetworkingConnectionRealTimeStatus | null {
       return normalizeNetworkingRealTimeStatus(native().networkingSocketsGetConnectionRealTimeStatus(connection));
     },
+    getConnectionRealTimeStatusWithLanes(
+      connection: number,
+      maxLanes?: number | null
+    ): NetworkingConnectionRealTimeStatusWithLanes | null {
+      return normalizeNetworkingRealTimeStatusWithLanes(
+        native().networkingSocketsGetConnectionRealTimeStatusWithLanes(connection, maxLanes ?? undefined)
+      );
+    },
     getDetailedConnectionStatus(connection: number, maxBytes?: number | null): string | null {
       return native().networkingSocketsGetDetailedConnectionStatus(connection, maxBytes ?? undefined) ?? null;
     },
@@ -3101,6 +3123,36 @@ export const networking = {
     },
     getRemoteFakeIPForConnection(connection: number): NetworkingRemoteFakeIpResult {
       return normalizeNetworkingRemoteFakeIpResult(native().networkingSocketsGetRemoteFakeIpForConnection(connection));
+    },
+    createFakeUDPPort(fakeServerPort = 0): number | null {
+      return native().networkingSocketsCreateFakeUdpPort(fakeServerPort) ?? null;
+    }
+  },
+  fakeUDP: {
+    SendFlags: NetworkingSendFlags,
+    destroy(handle: number): boolean {
+      return native().networkingFakeUdpPortDestroy(handle);
+    },
+    sendMessageToFakeIP(
+      handle: number,
+      remoteAddress: NetworkingIpAddress,
+      data: Buffer | Uint8Array,
+      sendFlags = NetworkingSendFlags.Unreliable
+    ): number {
+      return native().networkingFakeUdpPortSendMessageToFakeIp(
+        handle,
+        nativeNetworkingIpAddress(remoteAddress),
+        Buffer.from(data),
+        sendFlags
+      );
+    },
+    receiveMessages(handle: number, maxMessages?: number | null): NetworkingMessage[] {
+      return native()
+        .networkingFakeUdpPortReceiveMessages(handle, maxMessages ?? undefined)
+        .map(normalizeNetworkingMessage);
+    },
+    scheduleCleanup(handle: number, remoteAddress: NetworkingIpAddress): void {
+      native().networkingFakeUdpPortScheduleCleanup(handle, nativeNetworkingIpAddress(remoteAddress));
     }
   },
   utils: {
@@ -5165,6 +5217,34 @@ function normalizeNetworkingRealTimeStatus(
     sentUnackedReliable: Number(source.sentUnackedReliable ?? source.sent_unacked_reliable ?? 0),
     queueTime: BigInt((source.queueTime ?? source.queue_time ?? 0) as bigint | number | string),
     maxJitter: Number(source.maxJitter ?? source.max_jitter ?? 0)
+  };
+}
+
+function normalizeNetworkingRealTimeLaneStatus(
+  status: NativeNetworkingConnectionRealTimeLaneStatus
+): NetworkingConnectionRealTimeLaneStatus {
+  const source = status as unknown as Record<string, unknown>;
+  return {
+    pendingUnreliable: Number(source.pendingUnreliable ?? source.pending_unreliable ?? 0),
+    pendingReliable: Number(source.pendingReliable ?? source.pending_reliable ?? 0),
+    sentUnackedReliable: Number(source.sentUnackedReliable ?? source.sent_unacked_reliable ?? 0),
+    queueTime: BigInt((source.queueTime ?? source.queue_time ?? 0) as bigint | number | string)
+  };
+}
+
+function normalizeNetworkingRealTimeStatusWithLanes(
+  result: NativeNetworkingConnectionRealTimeStatusWithLanes | null | undefined
+): NetworkingConnectionRealTimeStatusWithLanes | null {
+  if (!result) {
+    return null;
+  }
+  const status = normalizeNetworkingRealTimeStatus(result.status);
+  if (!status) {
+    throw new Error("Steam networking real-time status is missing");
+  }
+  return {
+    status,
+    lanes: result.lanes.map(normalizeNetworkingRealTimeLaneStatus)
   };
 }
 

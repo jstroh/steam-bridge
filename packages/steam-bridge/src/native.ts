@@ -265,6 +265,22 @@ export interface NativeNetworkingConnectionRealTimeStatus {
   max_jitter?: number;
 }
 
+export interface NativeNetworkingConnectionRealTimeLaneStatus {
+  pendingUnreliable?: number;
+  pending_unreliable?: number;
+  pendingReliable?: number;
+  pending_reliable?: number;
+  sentUnackedReliable?: number;
+  sent_unacked_reliable?: number;
+  queueTime?: bigint | string | number;
+  queue_time?: bigint | string | number;
+}
+
+export interface NativeNetworkingConnectionRealTimeStatusWithLanes {
+  status?: NativeNetworkingConnectionRealTimeStatus;
+  lanes: NativeNetworkingConnectionRealTimeLaneStatus[];
+}
+
 export interface NativeNetworkingMessagesSessionConnectionInfo {
   state: number;
   remoteIdentity?: NativeNetworkingIdentityInfo;
@@ -1297,6 +1313,7 @@ export interface NativeBinding {
   networkingSocketsReceiveMessagesOnConnection(connection: number, maxMessages?: number): NativeNetworkingMessage[];
   networkingSocketsGetConnectionInfo(connection: number): NativeNetworkingConnectionInfo | null | undefined;
   networkingSocketsGetConnectionRealTimeStatus(connection: number): NativeNetworkingConnectionRealTimeStatus | null | undefined;
+  networkingSocketsGetConnectionRealTimeStatusWithLanes(connection: number, maxLanes?: number): NativeNetworkingConnectionRealTimeStatusWithLanes | null | undefined;
   networkingSocketsGetDetailedConnectionStatus(connection: number, maxBytes?: number): string | null | undefined;
   networkingSocketsGetListenSocketAddress(socket: number): NativeNetworkingIpAddressInfo | null | undefined;
   networkingSocketsCreateSocketPair(useNetworkLoopback: boolean, identity1?: NativeNetworkingIdentity | null, identity2?: NativeNetworkingIdentity | null): NativeNetworkingSocketPair | null | undefined;
@@ -1322,6 +1339,11 @@ export interface NativeBinding {
   networkingSocketsGetFakeIp(idxFirstPort?: number): NativeNetworkingFakeIpResult;
   networkingSocketsCreateListenSocketP2pFakeIp(idxFakePort?: number): number;
   networkingSocketsGetRemoteFakeIpForConnection(connection: number): NativeNetworkingRemoteFakeIpResult;
+  networkingSocketsCreateFakeUdpPort(fakeServerPort: number): number | null | undefined;
+  networkingFakeUdpPortDestroy(handle: number): boolean;
+  networkingFakeUdpPortSendMessageToFakeIp(handle: number, remoteAddress: NativeNetworkingIpAddress, data: Buffer, sendFlags?: number): number;
+  networkingFakeUdpPortReceiveMessages(handle: number, maxMessages?: number): NativeNetworkingMessage[];
+  networkingFakeUdpPortScheduleCleanup(handle: number, remoteAddress: NativeNetworkingIpAddress): void;
   networkingUtilsInitRelayNetworkAccess(): void;
   networkingUtilsGetRelayNetworkStatus(): NativeNetworkingRelayNetworkStatus;
   networkingUtilsGetLocalPingLocation(): NativeNetworkingPingLocation;

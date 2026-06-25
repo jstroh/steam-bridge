@@ -1723,6 +1723,20 @@ test("networking sockets facade covers connection handles, status, poll groups, 
       this.calls.push({ method: "networkingSocketsGetConnectionRealTimeStatus", args: [connection] });
       return quickStatus;
     },
+    networkingSocketsGetConnectionRealTimeStatusWithLanes(connection, maxLanes) {
+      this.calls.push({ method: "networkingSocketsGetConnectionRealTimeStatusWithLanes", args: [connection, maxLanes] });
+      return {
+        status: quickStatus,
+        lanes: [
+          {
+            pending_unreliable: 4,
+            pending_reliable: 5,
+            sent_unacked_reliable: 6,
+            queue_time: "7000"
+          }
+        ]
+      };
+    },
     networkingSocketsGetDetailedConnectionStatus(connection, maxBytes) {
       this.calls.push({ method: "networkingSocketsGetDetailedConnectionStatus", args: [connection, maxBytes] });
       return "detailed status";
@@ -1826,6 +1840,39 @@ test("networking sockets facade covers connection handles, status, poll groups, 
     networkingSocketsGetRemoteFakeIpForConnection(connection) {
       this.calls.push({ method: "networkingSocketsGetRemoteFakeIpForConnection", args: [connection] });
       return { result: 1, address };
+    },
+    networkingSocketsCreateFakeUdpPort(fakeServerPort) {
+      this.calls.push({ method: "networkingSocketsCreateFakeUdpPort", args: [fakeServerPort] });
+      return 601;
+    },
+    networkingFakeUdpPortDestroy(handle) {
+      this.calls.push({ method: "networkingFakeUdpPortDestroy", args: [handle] });
+      return true;
+    },
+    networkingFakeUdpPortSendMessageToFakeIp(handle, remoteAddress, data, sendFlags) {
+      this.calls.push({ method: "networkingFakeUdpPortSendMessageToFakeIp", args: [handle, remoteAddress, data, sendFlags] });
+      return 1;
+    },
+    networkingFakeUdpPortReceiveMessages(handle, maxMessages) {
+      this.calls.push({ method: "networkingFakeUdpPortReceiveMessages", args: [handle, maxMessages] });
+      return [
+        {
+          data: Buffer.from("udp"),
+          size: 3,
+          peer,
+          connection: 0,
+          connection_user_data: "0",
+          time_received: "789",
+          message_number: "10",
+          channel: 0,
+          flags: 0,
+          user_data: "0",
+          lane: 0
+        }
+      ];
+    },
+    networkingFakeUdpPortScheduleCleanup(handle, remoteAddress) {
+      this.calls.push({ method: "networkingFakeUdpPortScheduleCleanup", args: [handle, remoteAddress] });
     }
   });
   const steam = loadSteamWithFakeNative(fake);
@@ -1886,6 +1933,32 @@ test("networking sockets facade covers connection handles, status, poll groups, 
     flags: 16
   });
   assert.equal(steam.networking.sockets.getConnectionRealTimeStatus(102).queueTime, 5000n);
+  assert.deepEqual(steam.networking.sockets.getConnectionRealTimeStatusWithLanes(102, 2), {
+    status: {
+      state: 3,
+      ping: 42,
+      connectionQualityLocal: 0.95,
+      connectionQualityRemote: 0.9,
+      outPacketsPerSecond: 10.5,
+      outBytesPerSecond: 2048.5,
+      inPacketsPerSecond: 9.5,
+      inBytesPerSecond: 1024.25,
+      sendRateBytesPerSecond: 4096,
+      pendingUnreliable: 1,
+      pendingReliable: 2,
+      sentUnackedReliable: 3,
+      queueTime: 5000n,
+      maxJitter: 50
+    },
+    lanes: [
+      {
+        pendingUnreliable: 4,
+        pendingReliable: 5,
+        sentUnackedReliable: 6,
+        queueTime: 7000n
+      }
+    ]
+  });
   assert.equal(steam.networking.sockets.getDetailedConnectionStatus(102, 512), "detailed status");
   assert.equal(steam.networking.sockets.getListenSocketAddress(44).port, 27015);
   assert.deepEqual(steam.networking.sockets.createSocketPair(true, { localHost: true }, { genericString: "peer" }), {
@@ -1931,6 +2004,15 @@ test("networking sockets facade covers connection handles, status, poll groups, 
   });
   assert.equal(steam.networking.sockets.createListenSocketP2PFakeIP(1), 47);
   assert.equal(steam.networking.sockets.getRemoteFakeIPForConnection(102).address.port, 27015);
+  const fakeUdpPort = steam.networking.sockets.createFakeUDPPort(1);
+  assert.equal(fakeUdpPort, 601);
+  assert.equal(
+    steam.networking.fakeUDP.sendMessageToFakeIP(fakeUdpPort, { text: "10.0.0.1:27015" }, Buffer.from("udp")),
+    1
+  );
+  assert.equal(steam.networking.fakeUDP.receiveMessages(fakeUdpPort, 3)[0].data.toString(), "udp");
+  steam.networking.fakeUDP.scheduleCleanup(fakeUdpPort, { ipv4: 167772161, port: 27015 });
+  assert.equal(steam.networking.fakeUDP.destroy(fakeUdpPort), true);
 
   let statusEvent;
   steam.callback.register(steam.SteamCallback.SteamNetConnectionStatusChanged, (event) => {
@@ -1963,6 +2045,10 @@ test("networking sockets facade covers connection handles, status, poll groups, 
   assert.deepEqual(fake.calls.find((call) => call.method === "networkingSocketsConnectP2p"), {
     method: "networkingSocketsConnectP2p",
     args: [{ steamId64: 76561198000000010n }, 7]
+  });
+  assert.deepEqual(fake.calls.find((call) => call.method === "networkingFakeUdpPortSendMessageToFakeIp"), {
+    method: "networkingFakeUdpPortSendMessageToFakeIp",
+    args: [601, { text: "10.0.0.1:27015" }, Buffer.from("udp"), steam.NetworkingSendFlags.Unreliable]
   });
 });
 

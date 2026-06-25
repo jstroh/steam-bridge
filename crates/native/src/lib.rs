@@ -108,6 +108,7 @@ pub fn shutdown() {
         native_surface::close();
         compat::clear_warning_message_hook();
         compat::clear_networking_debug_output_hook();
+        compat::clear_networking_fake_udp_ports();
         state::clear_callbacks();
         unsafe {
             sys::SteamAPI_Shutdown();
