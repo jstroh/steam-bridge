@@ -85,7 +85,9 @@ The native layer currently targets the Steamworks flat C API through
   iteration, direct global/connection config setters, structured config
   setters, and debug-output helpers.
 - UGC/Workshop: item create/update/query flows, install/download information,
-  subscription list helpers, item state, statistics, and query configuration.
+  subscription, favorite, vote, playtime tracking, item/app dependency, delete,
+  EULA, content descriptor preference, item state, statistics, query
+  configuration, and UGC callback-event coverage.
 - Screenshots: screenshot library writes, screenshot triggers/hooks, location
   and user/published-file tagging, VR screenshot library writes, and screenshot
   callback events.
@@ -119,8 +121,8 @@ The native layer currently targets the Steamworks flat C API through
 - Remaining modern networking surfaces: parsed relay-auth-ticket payloads, raw
   pointer-valued networking config callbacks, and custom signaling.
 - Remaining callback/event coverage for interfaces that are not yet surfaced by
-  the native bindings or still need richer ergonomics, including streaming HTTP
-  response helpers and direct HTML paint-buffer delivery.
+  the native bindings or still need richer ergonomics, including direct HTML
+  paint-buffer delivery.
 - Steam Web API and economy flows beyond client auth ticket helpers.
 
 Use Valve's SpaceWar App ID `480` for generic local smoke tests. Use your own

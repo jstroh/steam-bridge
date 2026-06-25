@@ -126,7 +126,16 @@ import {
   NativeSteamId,
   NativeTimelineEventRecordingExists,
   NativeTimelineGamePhaseRecordingExists,
+  NativeWorkshopAppDependenciesResult,
+  NativeWorkshopAppDependencyResult,
+  NativeWorkshopDeleteItemResult,
+  NativeWorkshopDependencyResult,
+  NativeWorkshopEulaStatus,
+  NativeWorkshopFavoriteResult,
+  NativeWorkshopGetUserItemVoteResult,
   NativeUgcResult,
+  NativeWorkshopSetUserItemVoteResult,
+  NativeWorkshopSimpleResult,
   NativeUserDurationControl,
   NativeUserEncryptedAppTicket,
   NativeUserMarketEligibility,
@@ -1193,6 +1202,64 @@ export interface UgcResult {
   needsToAcceptAgreement: boolean;
 }
 
+export interface WorkshopFavoriteResult {
+  result: number;
+  itemId: bigint;
+  wasAddRequest: boolean;
+}
+
+export interface WorkshopSetUserItemVoteResult {
+  result: number;
+  itemId: bigint;
+  voteUp: boolean;
+}
+
+export interface WorkshopGetUserItemVoteResult {
+  result: number;
+  itemId: bigint;
+  votedUp: boolean;
+  votedDown: boolean;
+  voteSkipped: boolean;
+}
+
+export interface WorkshopSimpleResult {
+  result: number;
+}
+
+export interface WorkshopDependencyResult {
+  result: number;
+  itemId: bigint;
+  childItemId: bigint;
+}
+
+export interface WorkshopAppDependencyResult {
+  result: number;
+  itemId: bigint;
+  appId: number;
+}
+
+export interface WorkshopAppDependenciesResult {
+  result: number;
+  itemId: bigint;
+  appIds: number[];
+  numAppDependencies: number;
+  totalNumAppDependencies: number;
+}
+
+export interface WorkshopDeleteItemResult {
+  result: number;
+  itemId: bigint;
+}
+
+export interface WorkshopEulaStatus {
+  result: number;
+  appId: number;
+  version: number;
+  actionTime: number;
+  accepted: boolean;
+  needsAction: boolean;
+}
+
 export interface UgcUpdate {
   title?: string;
   description?: string;
@@ -1378,6 +1445,25 @@ export const SteamCallback = {
   RemoteStoragePublishedFileUpdated: 1330,
   RemoteStorageFileWriteAsyncComplete: 1331,
   RemoteStorageFileReadAsyncComplete: 1332,
+  SteamUGCQueryCompleted: 3401,
+  SteamUGCRequestDetailsResult: 3402,
+  SteamUGCCreateItemResult: 3403,
+  SteamUGCSubmitItemUpdateResult: 3404,
+  SteamUGCItemInstalled: 3405,
+  SteamUGCDownloadItemResult: 3406,
+  SteamUGCUserFavoriteItemsListChanged: 3407,
+  SteamUGCSetUserItemVoteResult: 3408,
+  SteamUGCGetUserItemVoteResult: 3409,
+  SteamUGCStartPlaytimeTrackingResult: 3410,
+  SteamUGCStopPlaytimeTrackingResult: 3411,
+  SteamUGCAddDependencyResult: 3412,
+  SteamUGCRemoveDependencyResult: 3413,
+  SteamUGCAddAppDependencyResult: 3414,
+  SteamUGCRemoveAppDependencyResult: 3415,
+  SteamUGCGetAppDependenciesResult: 3416,
+  SteamUGCDeleteItemResult: 3417,
+  SteamUGCUserSubscribedItemsListChanged: 3418,
+  SteamUGCWorkshopEULAStatus: 3420,
   GameServerClientApprove: 201,
   GameServerClientDeny: 202,
   GameServerClientKick: 203,
@@ -2269,6 +2355,14 @@ export const UGCType = {
   ControllerBindings: 11,
   GameManagedItems: 12,
   All: 13
+} as const;
+
+export const UGCContentDescriptor = {
+  NudityOrSexualContent: 1,
+  FrequentViolenceOrGore: 2,
+  AdultOnlySexualContent: 3,
+  GratuitousSexualContent: 4,
+  AnyMatureContent: 5
 } as const;
 
 export const UserListType = {
@@ -5365,6 +5459,7 @@ export const workshop = {
   UpdateStatus,
   UGCQueryType,
   UGCType,
+  UGCContentDescriptor,
   UserListType,
   UserListOrder,
   async createItem(appId?: number | null): Promise<UgcResult> {
@@ -5401,6 +5496,54 @@ export const workshop = {
   },
   async unsubscribe(itemId: bigint): Promise<void> {
     await native().workshopUnsubscribe(itemId);
+  },
+  async addFavorite(itemId: bigint, appId?: number | null): Promise<WorkshopFavoriteResult> {
+    return normalizeWorkshopFavoriteResult(await native().workshopAddFavorite(itemId, appId ?? undefined));
+  },
+  async removeFavorite(itemId: bigint, appId?: number | null): Promise<WorkshopFavoriteResult> {
+    return normalizeWorkshopFavoriteResult(await native().workshopRemoveFavorite(itemId, appId ?? undefined));
+  },
+  async setUserItemVote(itemId: bigint, voteUp: boolean): Promise<WorkshopSetUserItemVoteResult> {
+    return normalizeWorkshopSetUserItemVoteResult(await native().workshopSetUserItemVote(itemId, voteUp));
+  },
+  async getUserItemVote(itemId: bigint): Promise<WorkshopGetUserItemVoteResult> {
+    return normalizeWorkshopGetUserItemVoteResult(await native().workshopGetUserItemVote(itemId));
+  },
+  async startPlaytimeTracking(itemIds: bigint[]): Promise<WorkshopSimpleResult> {
+    return normalizeWorkshopSimpleResult(await native().workshopStartPlaytimeTracking(itemIds));
+  },
+  async stopPlaytimeTracking(itemIds: bigint[]): Promise<WorkshopSimpleResult> {
+    return normalizeWorkshopSimpleResult(await native().workshopStopPlaytimeTracking(itemIds));
+  },
+  async stopPlaytimeTrackingForAllItems(): Promise<WorkshopSimpleResult> {
+    return normalizeWorkshopSimpleResult(await native().workshopStopPlaytimeTrackingForAllItems());
+  },
+  async addDependency(parentItemId: bigint, childItemId: bigint): Promise<WorkshopDependencyResult> {
+    return normalizeWorkshopDependencyResult(await native().workshopAddDependency(parentItemId, childItemId));
+  },
+  async removeDependency(parentItemId: bigint, childItemId: bigint): Promise<WorkshopDependencyResult> {
+    return normalizeWorkshopDependencyResult(await native().workshopRemoveDependency(parentItemId, childItemId));
+  },
+  async addAppDependency(itemId: bigint, appId: number): Promise<WorkshopAppDependencyResult> {
+    return normalizeWorkshopAppDependencyResult(await native().workshopAddAppDependency(itemId, appId));
+  },
+  async removeAppDependency(itemId: bigint, appId: number): Promise<WorkshopAppDependencyResult> {
+    return normalizeWorkshopAppDependencyResult(await native().workshopRemoveAppDependency(itemId, appId));
+  },
+  async getAppDependencies(itemId: bigint): Promise<WorkshopAppDependenciesResult> {
+    return normalizeWorkshopAppDependenciesResult(await native().workshopGetAppDependencies(itemId));
+  },
+  async deleteItem(itemId: bigint): Promise<WorkshopDeleteItemResult> {
+    return normalizeWorkshopDeleteItemResult(await native().workshopDeleteItem(itemId));
+  },
+  showEula(): boolean {
+    return native().workshopShowEula();
+  },
+  async getEulaStatus(): Promise<WorkshopEulaStatus> {
+    return normalizeWorkshopEulaStatus(await native().workshopGetEulaStatus());
+  },
+  getUserContentDescriptorPreferences(maxEntries?: number | null): number[] {
+    return native().workshopGetUserContentDescriptorPreferences(maxEntries ?? undefined).map(Number);
   },
   state(itemId: bigint): number {
     return native().workshopState(itemId);
@@ -6445,6 +6588,9 @@ function normalizeCallbackEvent(callbackId: number, event: unknown): unknown {
   ) {
     return normalizeNetworkingUtilsCallbackEvent(callbackId, event);
   }
+  if (callbackId === SteamCallback.SteamUGCRequestDetailsResult) {
+    return normalizeUgcDetailsCallbackEvent(event);
+  }
   if (!event || typeof event !== "object") {
     return event;
   }
@@ -6461,6 +6607,15 @@ function normalizeCallbackEvent(callbackId: number, event: unknown): unknown {
     "admin",
     "game_id",
     "game_server",
+    "item_id",
+    "child_item_id",
+    "legacy_content",
+    "manifest_id",
+    "file",
+    "preview_file",
+    "published_file_id",
+    "total_files_size",
+    "handle",
     "user_changed",
     "making_change",
     "remote",
@@ -6490,11 +6645,14 @@ function normalizeCallbackEvent(callbackId: number, event: unknown): unknown {
     app_id: "appId",
     async_call: "asyncCall",
     allowed_at_time: "allowedAtTime",
+    action_time: "actionTime",
+    app_ids: "appIds",
     auth_ticket: "authTicket",
     chat_id: "chatId",
     chat_permissions: "chatPermissions",
     chat_room_enter_response: "chatRoomEnterResponse",
     check_file_signature: "checkFileSignature",
+    child_item_id: "childItemId",
     clan_chat: "clanChat",
     clan_players_that_dont_like_candidate: "clanPlayersThatDontLikeCandidate",
     clip_count: "clipCount",
@@ -6513,6 +6671,7 @@ function normalizeCallbackEvent(callbackId: number, event: unknown): unknown {
     deny_reason: "denyReason",
     entry_type: "entryType",
     file_size: "fileSize",
+    file_type: "fileType",
     friend_steam_id: "friendSteamId",
     from_cache: "fromCache",
     game_id: "gameId",
@@ -6525,6 +6684,7 @@ function normalizeCallbackEvent(callbackId: number, event: unknown): unknown {
     has_profile_modifier: "hasProfileModifier",
     has_bgra_data: "hasBgraData",
     initial_file: "initialFile",
+    item_id: "itemId",
     ip_address: "ipAddress",
     is_following: "isFollowing",
     is_offline: "isOffline",
@@ -6535,6 +6695,7 @@ function normalizeCallbackEvent(callbackId: number, event: unknown): unknown {
     lobby_steam_id: "lobbySteamId",
     local_handle: "localHandle",
     longest_clip_ms: "longestClipMs",
+    manifest_id: "manifestId",
     live_link: "liveLink",
     making_change: "makingChange",
     member_state_change: "memberStateChange",
@@ -6545,6 +6706,8 @@ function normalizeCallbackEvent(callbackId: number, event: unknown): unknown {
     minutes_battery_left: "minutesBatteryLeft",
     new_volume: "newVolume",
     new_device_cooldown_days: "newDeviceCooldownDays",
+    next_cursor: "nextCursor",
+    num_app_dependencies: "numAppDependencies",
     not_allowed_reason: "notAllowedReason",
     officer_count: "officerCount",
     optional_text: "optionalText",
@@ -6557,6 +6720,9 @@ function normalizeCallbackEvent(callbackId: number, event: unknown): unknown {
     parameter_size: "parameterSize",
     phase_id: "phaseId",
     post_data: "postData",
+    preview_file: "previewFile",
+    preview_file_size: "previewFileSize",
+    published_file_id: "publishedFileId",
     players_that_candidate_doesnt_like: "playersThatCandidateDoesntLike",
     players_that_dont_like_candidate: "playersThatDontLikeCandidate",
     query_port: "queryPort",
@@ -6564,6 +6730,7 @@ function normalizeCallbackEvent(callbackId: number, event: unknown): unknown {
     recording_ms: "recordingMs",
     reputation_score: "reputationScore",
     results_returned: "resultsReturned",
+    returned_results: "returnedResults",
     seconds_allowed: "secondsAllowed",
     seconds_last_5h: "secondsLast5h",
     seconds_remaining: "secondsRemaining",
@@ -6580,8 +6747,18 @@ function normalizeCallbackEvent(callbackId: number, event: unknown): unknown {
     steam_ids: "steamIds",
     submitted_text: "submittedText",
     total_connects: "totalConnects",
+    total_files_size: "totalFilesSize",
+    total_num_app_dependencies: "totalNumAppDependencies",
+    total_results: "totalResults",
     total_minutes_played: "totalMinutesPlayed",
     total_result_count: "totalResultCount",
+    vote_skipped: "voteSkipped",
+    vote_up: "voteUp",
+    voted_down: "votedDown",
+    voted_up: "votedUp",
+    was_add_request: "wasAddRequest",
+    was_cached: "wasCached",
+    needs_action: "needsAction",
     update_tall: "updateTall",
     update_wide: "updateWide",
     update_x: "updateX",
@@ -6597,6 +6774,70 @@ function normalizeCallbackEvent(callbackId: number, event: unknown): unknown {
   if (Array.isArray(result.steam_ids)) {
     result.steam_ids = result.steam_ids.map((value) => normalizeBigIntLike(value));
     result.steamIds = result.steam_ids;
+  }
+  if (Array.isArray(result.published_file_ids)) {
+    result.published_file_ids = result.published_file_ids.map((value) => normalizeBigIntLike(value));
+    result.publishedFileIds = result.published_file_ids;
+  }
+  return result;
+}
+
+function normalizeUgcDetailsCallbackEvent(event: unknown): unknown {
+  if (!event || typeof event !== "object") {
+    return event;
+  }
+  const source = event as Record<string, unknown>;
+  const result: Record<string, unknown> = { ...source };
+  if (result.details && typeof result.details === "object") {
+    result.details = normalizeUgcDetailsPayload(result.details as Record<string, unknown>);
+  }
+  if (result.was_cached !== undefined) {
+    result.wasCached ??= result.was_cached;
+  }
+  return result;
+}
+
+function normalizeUgcDetailsPayload(details: Record<string, unknown>): Record<string, unknown> {
+  const result: Record<string, unknown> = { ...details };
+  for (const key of [
+    "published_file_id",
+    "owner",
+    "file",
+    "preview_file",
+    "file_size",
+    "preview_file_size",
+    "total_files_size"
+  ]) {
+    if (key in result) {
+      result[key] = normalizeBigIntLike(result[key]);
+    }
+  }
+  const aliases: Record<string, string> = {
+    accepted_for_use: "acceptedForUse",
+    consumer_app_id: "consumerAppId",
+    creator_app_id: "creatorAppId",
+    file_name: "fileName",
+    file_size: "fileSize",
+    file_type: "fileType",
+    num_children: "numChildren",
+    num_downvotes: "numDownvotes",
+    num_upvotes: "numUpvotes",
+    preview_file: "previewFile",
+    preview_file_size: "previewFileSize",
+    published_file_id: "publishedFileId",
+    tags_truncated: "tagsTruncated",
+    time_added_to_user_list: "timeAddedToUserList",
+    time_created: "timeCreated",
+    time_updated: "timeUpdated",
+    total_files_size: "totalFilesSize"
+  };
+  for (const [snake, camel] of Object.entries(aliases)) {
+    if (result[snake] !== undefined) {
+      result[camel] ??= result[snake];
+    }
+  }
+  if (typeof result.tags === "string") {
+    result.tags = result.tags.split(",").filter(Boolean);
   }
   return result;
 }
@@ -7539,6 +7780,101 @@ function normalizeUgcResult(result: NativeUgcResult): UgcResult {
   return {
     itemId: BigInt(result.itemId ?? result.item_id ?? 0n),
     needsToAcceptAgreement: Boolean(result.needsToAcceptAgreement ?? result.needs_to_accept_agreement)
+  };
+}
+
+function itemIdFromSource(source: Record<string, unknown>, camel = "itemId", snake = "item_id"): bigint {
+  return BigInt((source[camel] ?? source[snake] ?? 0) as bigint | number | string);
+}
+
+function normalizeWorkshopFavoriteResult(result: NativeWorkshopFavoriteResult): WorkshopFavoriteResult {
+  const source = result as unknown as Record<string, unknown>;
+  return {
+    result: Number(source.result ?? 0),
+    itemId: itemIdFromSource(source),
+    wasAddRequest: Boolean(source.wasAddRequest ?? source.was_add_request)
+  };
+}
+
+function normalizeWorkshopSetUserItemVoteResult(
+  result: NativeWorkshopSetUserItemVoteResult
+): WorkshopSetUserItemVoteResult {
+  const source = result as unknown as Record<string, unknown>;
+  return {
+    result: Number(source.result ?? 0),
+    itemId: itemIdFromSource(source),
+    voteUp: Boolean(source.voteUp ?? source.vote_up)
+  };
+}
+
+function normalizeWorkshopGetUserItemVoteResult(
+  result: NativeWorkshopGetUserItemVoteResult
+): WorkshopGetUserItemVoteResult {
+  const source = result as unknown as Record<string, unknown>;
+  return {
+    result: Number(source.result ?? 0),
+    itemId: itemIdFromSource(source),
+    votedUp: Boolean(source.votedUp ?? source.voted_up),
+    votedDown: Boolean(source.votedDown ?? source.voted_down),
+    voteSkipped: Boolean(source.voteSkipped ?? source.vote_skipped)
+  };
+}
+
+function normalizeWorkshopSimpleResult(result: NativeWorkshopSimpleResult): WorkshopSimpleResult {
+  return { result: Number(result.result ?? 0) };
+}
+
+function normalizeWorkshopDependencyResult(result: NativeWorkshopDependencyResult): WorkshopDependencyResult {
+  const source = result as unknown as Record<string, unknown>;
+  return {
+    result: Number(source.result ?? 0),
+    itemId: itemIdFromSource(source),
+    childItemId: itemIdFromSource(source, "childItemId", "child_item_id")
+  };
+}
+
+function normalizeWorkshopAppDependencyResult(
+  result: NativeWorkshopAppDependencyResult
+): WorkshopAppDependencyResult {
+  const source = result as unknown as Record<string, unknown>;
+  return {
+    result: Number(source.result ?? 0),
+    itemId: itemIdFromSource(source),
+    appId: Number(source.appId ?? source.app_id ?? 0)
+  };
+}
+
+function normalizeWorkshopAppDependenciesResult(
+  result: NativeWorkshopAppDependenciesResult
+): WorkshopAppDependenciesResult {
+  const source = result as unknown as Record<string, unknown>;
+  const appIds = (source.appIds ?? source.app_ids ?? []) as number[];
+  return {
+    result: Number(source.result ?? 0),
+    itemId: itemIdFromSource(source),
+    appIds: appIds.map(Number),
+    numAppDependencies: Number(source.numAppDependencies ?? source.num_app_dependencies ?? appIds.length),
+    totalNumAppDependencies: Number(source.totalNumAppDependencies ?? source.total_num_app_dependencies ?? appIds.length)
+  };
+}
+
+function normalizeWorkshopDeleteItemResult(result: NativeWorkshopDeleteItemResult): WorkshopDeleteItemResult {
+  const source = result as unknown as Record<string, unknown>;
+  return {
+    result: Number(source.result ?? 0),
+    itemId: itemIdFromSource(source)
+  };
+}
+
+function normalizeWorkshopEulaStatus(result: NativeWorkshopEulaStatus): WorkshopEulaStatus {
+  const source = result as unknown as Record<string, unknown>;
+  return {
+    result: Number(source.result ?? 0),
+    appId: Number(source.appId ?? source.app_id ?? 0),
+    version: Number(source.version ?? 0),
+    actionTime: Number(source.actionTime ?? source.action_time ?? 0),
+    accepted: Boolean(source.accepted),
+    needsAction: Boolean(source.needsAction ?? source.needs_action)
   };
 }
 

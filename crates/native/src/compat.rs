@@ -147,6 +147,25 @@ const CALLBACK_REMOTE_STORAGE_PUBLISH_FILE_PROGRESS: i32 = 1329;
 const CALLBACK_REMOTE_STORAGE_PUBLISHED_FILE_UPDATED: i32 = 1330;
 const CALLBACK_REMOTE_STORAGE_FILE_WRITE_ASYNC_COMPLETE: i32 = 1331;
 const CALLBACK_REMOTE_STORAGE_FILE_READ_ASYNC_COMPLETE: i32 = 1332;
+const CALLBACK_STEAM_UGC_QUERY_COMPLETED: i32 = 3401;
+const CALLBACK_STEAM_UGC_REQUEST_DETAILS_RESULT: i32 = 3402;
+const CALLBACK_STEAM_UGC_CREATE_ITEM_RESULT: i32 = 3403;
+const CALLBACK_STEAM_UGC_SUBMIT_ITEM_UPDATE_RESULT: i32 = 3404;
+const CALLBACK_STEAM_UGC_ITEM_INSTALLED: i32 = 3405;
+const CALLBACK_STEAM_UGC_DOWNLOAD_ITEM_RESULT: i32 = 3406;
+const CALLBACK_STEAM_UGC_USER_FAVORITE_ITEMS_LIST_CHANGED: i32 = 3407;
+const CALLBACK_STEAM_UGC_SET_USER_ITEM_VOTE_RESULT: i32 = 3408;
+const CALLBACK_STEAM_UGC_GET_USER_ITEM_VOTE_RESULT: i32 = 3409;
+const CALLBACK_STEAM_UGC_START_PLAYTIME_TRACKING_RESULT: i32 = 3410;
+const CALLBACK_STEAM_UGC_STOP_PLAYTIME_TRACKING_RESULT: i32 = 3411;
+const CALLBACK_STEAM_UGC_ADD_DEPENDENCY_RESULT: i32 = 3412;
+const CALLBACK_STEAM_UGC_REMOVE_DEPENDENCY_RESULT: i32 = 3413;
+const CALLBACK_STEAM_UGC_ADD_APP_DEPENDENCY_RESULT: i32 = 3414;
+const CALLBACK_STEAM_UGC_REMOVE_APP_DEPENDENCY_RESULT: i32 = 3415;
+const CALLBACK_STEAM_UGC_GET_APP_DEPENDENCIES_RESULT: i32 = 3416;
+const CALLBACK_STEAM_UGC_DELETE_ITEM_RESULT: i32 = 3417;
+const CALLBACK_STEAM_UGC_USER_SUBSCRIBED_ITEMS_LIST_CHANGED: i32 = 3418;
+const CALLBACK_STEAM_UGC_WORKSHOP_EULA_STATUS: i32 = 3420;
 
 static NEXT_NETWORKING_FAKE_UDP_PORT_HANDLE: AtomicU32 = AtomicU32::new(1);
 static NETWORKING_FAKE_UDP_PORTS: Lazy<Mutex<HashMap<u32, usize>>> =
@@ -1250,6 +1269,82 @@ pub struct WorkshopDownloadInfo {
 pub struct UgcResult {
     pub item_id: BigInt,
     pub needs_to_accept_agreement: bool,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct WorkshopFavoriteResult {
+    pub result: u32,
+    pub item_id: BigInt,
+    pub was_add_request: bool,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct WorkshopSetUserItemVoteResult {
+    pub result: u32,
+    pub item_id: BigInt,
+    pub vote_up: bool,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct WorkshopGetUserItemVoteResult {
+    pub result: u32,
+    pub item_id: BigInt,
+    pub voted_up: bool,
+    pub voted_down: bool,
+    pub vote_skipped: bool,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct WorkshopSimpleResult {
+    pub result: u32,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct WorkshopDependencyResult {
+    pub result: u32,
+    pub item_id: BigInt,
+    pub child_item_id: BigInt,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct WorkshopAppDependencyResult {
+    pub result: u32,
+    pub item_id: BigInt,
+    pub app_id: u32,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct WorkshopAppDependenciesResult {
+    pub result: u32,
+    pub item_id: BigInt,
+    pub app_ids: Vec<u32>,
+    pub num_app_dependencies: u32,
+    pub total_num_app_dependencies: u32,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct WorkshopDeleteItemResult {
+    pub result: u32,
+    pub item_id: BigInt,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct WorkshopEulaStatus {
+    pub result: u32,
+    pub app_id: u32,
+    pub version: u32,
+    pub action_time: u32,
+    pub accepted: bool,
+    pub needs_action: bool,
 }
 
 #[derive(Debug)]
@@ -11539,6 +11634,125 @@ fn workshop_update_progress_json(
     })
 }
 
+fn workshop_item_id_vec(item_ids: Vec<BigInt>) -> Result<Vec<u64>, Error> {
+    if item_ids.is_empty() {
+        return Err(Error::from_reason(
+            "at least one workshop item id is required",
+        ));
+    }
+    item_ids
+        .into_iter()
+        .map(|id| bigint_to_u64(id, "item id"))
+        .collect()
+}
+
+fn workshop_favorite_result(
+    result: &sys::UserFavoriteItemsListChanged_t,
+) -> WorkshopFavoriteResult {
+    WorkshopFavoriteResult {
+        result: unsafe { ptr::addr_of!(result.m_eResult).read_unaligned() } as u32,
+        item_id: unsafe { ptr::addr_of!(result.m_nPublishedFileId).read_unaligned() }.into(),
+        was_add_request: unsafe { ptr::addr_of!(result.m_bWasAddRequest).read_unaligned() },
+    }
+}
+
+fn workshop_set_user_item_vote_result(
+    result: &sys::SetUserItemVoteResult_t,
+) -> WorkshopSetUserItemVoteResult {
+    WorkshopSetUserItemVoteResult {
+        result: unsafe { ptr::addr_of!(result.m_eResult).read_unaligned() } as u32,
+        item_id: unsafe { ptr::addr_of!(result.m_nPublishedFileId).read_unaligned() }.into(),
+        vote_up: unsafe { ptr::addr_of!(result.m_bVoteUp).read_unaligned() },
+    }
+}
+
+fn workshop_get_user_item_vote_result(
+    result: &sys::GetUserItemVoteResult_t,
+) -> WorkshopGetUserItemVoteResult {
+    WorkshopGetUserItemVoteResult {
+        result: unsafe { ptr::addr_of!(result.m_eResult).read_unaligned() } as u32,
+        item_id: unsafe { ptr::addr_of!(result.m_nPublishedFileId).read_unaligned() }.into(),
+        voted_up: unsafe { ptr::addr_of!(result.m_bVotedUp).read_unaligned() },
+        voted_down: unsafe { ptr::addr_of!(result.m_bVotedDown).read_unaligned() },
+        vote_skipped: unsafe { ptr::addr_of!(result.m_bVoteSkipped).read_unaligned() },
+    }
+}
+
+fn workshop_dependency_result(
+    result: u32,
+    item_id: u64,
+    child_item_id: u64,
+) -> WorkshopDependencyResult {
+    WorkshopDependencyResult {
+        result,
+        item_id: item_id.into(),
+        child_item_id: child_item_id.into(),
+    }
+}
+
+fn workshop_app_dependency_result(
+    result: u32,
+    item_id: u64,
+    app_id: u32,
+) -> WorkshopAppDependencyResult {
+    WorkshopAppDependencyResult {
+        result,
+        item_id: item_id.into(),
+        app_id,
+    }
+}
+
+fn ugc_details_json(details: &sys::SteamUGCDetails_t) -> Value {
+    let title = unsafe {
+        fixed_char_array_to_string(ptr::addr_of!(details.m_rgchTitle).cast::<c_char>(), 129)
+    };
+    let description = unsafe {
+        fixed_char_array_to_string(
+            ptr::addr_of!(details.m_rgchDescription).cast::<c_char>(),
+            8000,
+        )
+    };
+    let tags = unsafe {
+        fixed_char_array_to_string(ptr::addr_of!(details.m_rgchTags).cast::<c_char>(), 1025)
+    };
+    let file_name = unsafe {
+        fixed_char_array_to_string(ptr::addr_of!(details.m_pchFileName).cast::<c_char>(), 260)
+    };
+    let url = unsafe {
+        fixed_char_array_to_string(ptr::addr_of!(details.m_rgchURL).cast::<c_char>(), 256)
+    };
+
+    serde_json::json!({
+        "published_file_id": unsafe { ptr::addr_of!(details.m_nPublishedFileId).read_unaligned() }.to_string(),
+        "result": unsafe { ptr::addr_of!(details.m_eResult).read_unaligned() } as u32,
+        "file_type": unsafe { ptr::addr_of!(details.m_eFileType).read_unaligned() } as u32,
+        "creator_app_id": unsafe { ptr::addr_of!(details.m_nCreatorAppID).read_unaligned() },
+        "consumer_app_id": unsafe { ptr::addr_of!(details.m_nConsumerAppID).read_unaligned() },
+        "title": title,
+        "description": description,
+        "owner": unsafe { ptr::addr_of!(details.m_ulSteamIDOwner).read_unaligned() }.to_string(),
+        "time_created": unsafe { ptr::addr_of!(details.m_rtimeCreated).read_unaligned() },
+        "time_updated": unsafe { ptr::addr_of!(details.m_rtimeUpdated).read_unaligned() },
+        "time_added_to_user_list": unsafe { ptr::addr_of!(details.m_rtimeAddedToUserList).read_unaligned() },
+        "visibility": unsafe { ptr::addr_of!(details.m_eVisibility).read_unaligned() } as u32,
+        "banned": unsafe { ptr::addr_of!(details.m_bBanned).read_unaligned() },
+        "accepted_for_use": unsafe { ptr::addr_of!(details.m_bAcceptedForUse).read_unaligned() },
+        "tags_truncated": unsafe { ptr::addr_of!(details.m_bTagsTruncated).read_unaligned() },
+        "tags": tags,
+        "file": unsafe { ptr::addr_of!(details.m_hFile).read_unaligned() }.to_string(),
+        "preview_file": unsafe { ptr::addr_of!(details.m_hPreviewFile).read_unaligned() }.to_string(),
+        "file_name": file_name,
+        "file_size": unsafe { ptr::addr_of!(details.m_nFileSize).read_unaligned() }.max(0).to_string(),
+        "preview_file_size": unsafe { ptr::addr_of!(details.m_nPreviewFileSize).read_unaligned() }.max(0).to_string(),
+        "url": url,
+        "num_upvotes": unsafe { ptr::addr_of!(details.m_unVotesUp).read_unaligned() },
+        "num_downvotes": unsafe { ptr::addr_of!(details.m_unVotesDown).read_unaligned() },
+        "score": unsafe { ptr::addr_of!(details.m_flScore).read_unaligned() },
+        "num_children": unsafe { ptr::addr_of!(details.m_unNumChildren).read_unaligned() },
+        "total_files_size": unsafe { ptr::addr_of!(details.m_ulTotalFilesSize).read_unaligned() }.to_string()
+    })
+}
+
 #[napi(js_name = "workshopSubscribe")]
 pub async fn workshop_subscribe(item_id: BigInt) -> Result<(), Error> {
     let item_id = bigint_to_u64(item_id, "item id")?;
@@ -11577,6 +11791,311 @@ pub async fn workshop_unsubscribe(item_id: BigInt) -> Result<(), Error> {
             "Steam UnsubscribeItem failed: {eresult:?}"
         )))
     }
+}
+
+#[napi(js_name = "workshopAddFavorite")]
+pub async fn workshop_add_favorite(
+    item_id: BigInt,
+    app_id: Option<u32>,
+) -> Result<WorkshopFavoriteResult, Error> {
+    let app_id = app_id.unwrap_or(unsafe { sys::SteamAPI_ISteamUtils_GetAppID(steam_utils()?) });
+    let item_id = bigint_to_u64(item_id, "item id")?;
+    let call = unsafe { sys::SteamAPI_ISteamUGC_AddItemToFavorites(steam_ugc()?, app_id, item_id) };
+    let result: sys::UserFavoriteItemsListChanged_t = wait_for_api_call(
+        call,
+        sys::UserFavoriteItemsListChanged_t_k_iCallback as i32,
+        DEFAULT_ASYNC_TIMEOUT_SECONDS,
+    )
+    .await?;
+    Ok(workshop_favorite_result(&result))
+}
+
+#[napi(js_name = "workshopRemoveFavorite")]
+pub async fn workshop_remove_favorite(
+    item_id: BigInt,
+    app_id: Option<u32>,
+) -> Result<WorkshopFavoriteResult, Error> {
+    let app_id = app_id.unwrap_or(unsafe { sys::SteamAPI_ISteamUtils_GetAppID(steam_utils()?) });
+    let item_id = bigint_to_u64(item_id, "item id")?;
+    let call =
+        unsafe { sys::SteamAPI_ISteamUGC_RemoveItemFromFavorites(steam_ugc()?, app_id, item_id) };
+    let result: sys::UserFavoriteItemsListChanged_t = wait_for_api_call(
+        call,
+        sys::UserFavoriteItemsListChanged_t_k_iCallback as i32,
+        DEFAULT_ASYNC_TIMEOUT_SECONDS,
+    )
+    .await?;
+    Ok(workshop_favorite_result(&result))
+}
+
+#[napi(js_name = "workshopSetUserItemVote")]
+pub async fn workshop_set_user_item_vote(
+    item_id: BigInt,
+    vote_up: bool,
+) -> Result<WorkshopSetUserItemVoteResult, Error> {
+    let item_id = bigint_to_u64(item_id, "item id")?;
+    let call = unsafe { sys::SteamAPI_ISteamUGC_SetUserItemVote(steam_ugc()?, item_id, vote_up) };
+    let result: sys::SetUserItemVoteResult_t = wait_for_api_call(
+        call,
+        sys::SetUserItemVoteResult_t_k_iCallback as i32,
+        DEFAULT_ASYNC_TIMEOUT_SECONDS,
+    )
+    .await?;
+    Ok(workshop_set_user_item_vote_result(&result))
+}
+
+#[napi(js_name = "workshopGetUserItemVote")]
+pub async fn workshop_get_user_item_vote(
+    item_id: BigInt,
+) -> Result<WorkshopGetUserItemVoteResult, Error> {
+    let item_id = bigint_to_u64(item_id, "item id")?;
+    let call = unsafe { sys::SteamAPI_ISteamUGC_GetUserItemVote(steam_ugc()?, item_id) };
+    let result: sys::GetUserItemVoteResult_t = wait_for_api_call(
+        call,
+        sys::GetUserItemVoteResult_t_k_iCallback as i32,
+        DEFAULT_ASYNC_TIMEOUT_SECONDS,
+    )
+    .await?;
+    Ok(workshop_get_user_item_vote_result(&result))
+}
+
+#[napi(js_name = "workshopStartPlaytimeTracking")]
+pub async fn workshop_start_playtime_tracking(
+    item_ids: Vec<BigInt>,
+) -> Result<WorkshopSimpleResult, Error> {
+    let mut ids = workshop_item_id_vec(item_ids)?;
+    let call = unsafe {
+        sys::SteamAPI_ISteamUGC_StartPlaytimeTracking(
+            steam_ugc()?,
+            ids.as_mut_ptr(),
+            ids.len() as u32,
+        )
+    };
+    let result: sys::StartPlaytimeTrackingResult_t = wait_for_api_call(
+        call,
+        sys::StartPlaytimeTrackingResult_t_k_iCallback as i32,
+        DEFAULT_ASYNC_TIMEOUT_SECONDS,
+    )
+    .await?;
+    Ok(WorkshopSimpleResult {
+        result: unsafe { ptr::addr_of!(result.m_eResult).read_unaligned() } as u32,
+    })
+}
+
+#[napi(js_name = "workshopStopPlaytimeTracking")]
+pub async fn workshop_stop_playtime_tracking(
+    item_ids: Vec<BigInt>,
+) -> Result<WorkshopSimpleResult, Error> {
+    let mut ids = workshop_item_id_vec(item_ids)?;
+    let call = unsafe {
+        sys::SteamAPI_ISteamUGC_StopPlaytimeTracking(
+            steam_ugc()?,
+            ids.as_mut_ptr(),
+            ids.len() as u32,
+        )
+    };
+    let result: sys::StopPlaytimeTrackingResult_t = wait_for_api_call(
+        call,
+        sys::StopPlaytimeTrackingResult_t_k_iCallback as i32,
+        DEFAULT_ASYNC_TIMEOUT_SECONDS,
+    )
+    .await?;
+    Ok(WorkshopSimpleResult {
+        result: unsafe { ptr::addr_of!(result.m_eResult).read_unaligned() } as u32,
+    })
+}
+
+#[napi(js_name = "workshopStopPlaytimeTrackingForAllItems")]
+pub async fn workshop_stop_playtime_tracking_for_all_items() -> Result<WorkshopSimpleResult, Error>
+{
+    let call = unsafe { sys::SteamAPI_ISteamUGC_StopPlaytimeTrackingForAllItems(steam_ugc()?) };
+    let result: sys::StopPlaytimeTrackingResult_t = wait_for_api_call(
+        call,
+        sys::StopPlaytimeTrackingResult_t_k_iCallback as i32,
+        DEFAULT_ASYNC_TIMEOUT_SECONDS,
+    )
+    .await?;
+    Ok(WorkshopSimpleResult {
+        result: unsafe { ptr::addr_of!(result.m_eResult).read_unaligned() } as u32,
+    })
+}
+
+#[napi(js_name = "workshopAddDependency")]
+pub async fn workshop_add_dependency(
+    parent_item_id: BigInt,
+    child_item_id: BigInt,
+) -> Result<WorkshopDependencyResult, Error> {
+    let parent_item_id = bigint_to_u64(parent_item_id, "parent item id")?;
+    let child_item_id = bigint_to_u64(child_item_id, "child item id")?;
+    let call = unsafe {
+        sys::SteamAPI_ISteamUGC_AddDependency(steam_ugc()?, parent_item_id, child_item_id)
+    };
+    let result: sys::AddUGCDependencyResult_t = wait_for_api_call(
+        call,
+        sys::AddUGCDependencyResult_t_k_iCallback as i32,
+        DEFAULT_ASYNC_TIMEOUT_SECONDS,
+    )
+    .await?;
+    Ok(workshop_dependency_result(
+        unsafe { ptr::addr_of!(result.m_eResult).read_unaligned() } as u32,
+        unsafe { ptr::addr_of!(result.m_nPublishedFileId).read_unaligned() },
+        unsafe { ptr::addr_of!(result.m_nChildPublishedFileId).read_unaligned() },
+    ))
+}
+
+#[napi(js_name = "workshopRemoveDependency")]
+pub async fn workshop_remove_dependency(
+    parent_item_id: BigInt,
+    child_item_id: BigInt,
+) -> Result<WorkshopDependencyResult, Error> {
+    let parent_item_id = bigint_to_u64(parent_item_id, "parent item id")?;
+    let child_item_id = bigint_to_u64(child_item_id, "child item id")?;
+    let call = unsafe {
+        sys::SteamAPI_ISteamUGC_RemoveDependency(steam_ugc()?, parent_item_id, child_item_id)
+    };
+    let result: sys::RemoveUGCDependencyResult_t = wait_for_api_call(
+        call,
+        sys::RemoveUGCDependencyResult_t_k_iCallback as i32,
+        DEFAULT_ASYNC_TIMEOUT_SECONDS,
+    )
+    .await?;
+    Ok(workshop_dependency_result(
+        unsafe { ptr::addr_of!(result.m_eResult).read_unaligned() } as u32,
+        unsafe { ptr::addr_of!(result.m_nPublishedFileId).read_unaligned() },
+        unsafe { ptr::addr_of!(result.m_nChildPublishedFileId).read_unaligned() },
+    ))
+}
+
+#[napi(js_name = "workshopAddAppDependency")]
+pub async fn workshop_add_app_dependency(
+    item_id: BigInt,
+    app_id: u32,
+) -> Result<WorkshopAppDependencyResult, Error> {
+    let item_id = bigint_to_u64(item_id, "item id")?;
+    let call = unsafe { sys::SteamAPI_ISteamUGC_AddAppDependency(steam_ugc()?, item_id, app_id) };
+    let result: sys::AddAppDependencyResult_t = wait_for_api_call(
+        call,
+        sys::AddAppDependencyResult_t_k_iCallback as i32,
+        DEFAULT_ASYNC_TIMEOUT_SECONDS,
+    )
+    .await?;
+    Ok(workshop_app_dependency_result(
+        unsafe { ptr::addr_of!(result.m_eResult).read_unaligned() } as u32,
+        unsafe { ptr::addr_of!(result.m_nPublishedFileId).read_unaligned() },
+        unsafe { ptr::addr_of!(result.m_nAppID).read_unaligned() },
+    ))
+}
+
+#[napi(js_name = "workshopRemoveAppDependency")]
+pub async fn workshop_remove_app_dependency(
+    item_id: BigInt,
+    app_id: u32,
+) -> Result<WorkshopAppDependencyResult, Error> {
+    let item_id = bigint_to_u64(item_id, "item id")?;
+    let call =
+        unsafe { sys::SteamAPI_ISteamUGC_RemoveAppDependency(steam_ugc()?, item_id, app_id) };
+    let result: sys::RemoveAppDependencyResult_t = wait_for_api_call(
+        call,
+        sys::RemoveAppDependencyResult_t_k_iCallback as i32,
+        DEFAULT_ASYNC_TIMEOUT_SECONDS,
+    )
+    .await?;
+    Ok(workshop_app_dependency_result(
+        unsafe { ptr::addr_of!(result.m_eResult).read_unaligned() } as u32,
+        unsafe { ptr::addr_of!(result.m_nPublishedFileId).read_unaligned() },
+        unsafe { ptr::addr_of!(result.m_nAppID).read_unaligned() },
+    ))
+}
+
+#[napi(js_name = "workshopGetAppDependencies")]
+pub async fn workshop_get_app_dependencies(
+    item_id: BigInt,
+) -> Result<WorkshopAppDependenciesResult, Error> {
+    let item_id = bigint_to_u64(item_id, "item id")?;
+    let call = unsafe { sys::SteamAPI_ISteamUGC_GetAppDependencies(steam_ugc()?, item_id) };
+    let result: sys::GetAppDependenciesResult_t = wait_for_api_call(
+        call,
+        sys::GetAppDependenciesResult_t_k_iCallback as i32,
+        DEFAULT_ASYNC_TIMEOUT_SECONDS,
+    )
+    .await?;
+    let count = unsafe { ptr::addr_of!(result.m_nNumAppDependencies).read_unaligned() };
+    let app_ids = unsafe { ptr::addr_of!(result.m_rgAppIDs).read_unaligned() };
+    Ok(WorkshopAppDependenciesResult {
+        result: unsafe { ptr::addr_of!(result.m_eResult).read_unaligned() } as u32,
+        item_id: unsafe { ptr::addr_of!(result.m_nPublishedFileId).read_unaligned() }.into(),
+        app_ids: app_ids
+            .into_iter()
+            .take((count as usize).min(app_ids.len()))
+            .collect(),
+        num_app_dependencies: count,
+        total_num_app_dependencies: unsafe {
+            ptr::addr_of!(result.m_nTotalNumAppDependencies).read_unaligned()
+        },
+    })
+}
+
+#[napi(js_name = "workshopDeleteItem")]
+pub async fn workshop_delete_item(item_id: BigInt) -> Result<WorkshopDeleteItemResult, Error> {
+    let item_id = bigint_to_u64(item_id, "item id")?;
+    let call = unsafe { sys::SteamAPI_ISteamUGC_DeleteItem(steam_ugc()?, item_id) };
+    let result: sys::DeleteItemResult_t = wait_for_api_call(
+        call,
+        sys::DeleteItemResult_t_k_iCallback as i32,
+        DEFAULT_ASYNC_TIMEOUT_SECONDS,
+    )
+    .await?;
+    Ok(WorkshopDeleteItemResult {
+        result: unsafe { ptr::addr_of!(result.m_eResult).read_unaligned() } as u32,
+        item_id: unsafe { ptr::addr_of!(result.m_nPublishedFileId).read_unaligned() }.into(),
+    })
+}
+
+#[napi(js_name = "workshopShowEula")]
+pub fn workshop_show_eula() -> Result<bool, Error> {
+    Ok(unsafe { sys::SteamAPI_ISteamUGC_ShowWorkshopEULA(steam_ugc()?) })
+}
+
+#[napi(js_name = "workshopGetEulaStatus")]
+pub async fn workshop_get_eula_status() -> Result<WorkshopEulaStatus, Error> {
+    let call = unsafe { sys::SteamAPI_ISteamUGC_GetWorkshopEULAStatus(steam_ugc()?) };
+    let result: sys::WorkshopEULAStatus_t = wait_for_api_call(
+        call,
+        sys::WorkshopEULAStatus_t_k_iCallback as i32,
+        DEFAULT_ASYNC_TIMEOUT_SECONDS,
+    )
+    .await?;
+    Ok(WorkshopEulaStatus {
+        result: unsafe { ptr::addr_of!(result.m_eResult).read_unaligned() } as u32,
+        app_id: unsafe { ptr::addr_of!(result.m_nAppID).read_unaligned() },
+        version: unsafe { ptr::addr_of!(result.m_unVersion).read_unaligned() },
+        action_time: unsafe { ptr::addr_of!(result.m_rtAction).read_unaligned() },
+        accepted: unsafe { ptr::addr_of!(result.m_bAccepted).read_unaligned() },
+        needs_action: unsafe { ptr::addr_of!(result.m_bNeedsAction).read_unaligned() },
+    })
+}
+
+#[napi(js_name = "workshopGetUserContentDescriptorPreferences")]
+pub fn workshop_get_user_content_descriptor_preferences(
+    max_entries: Option<u32>,
+) -> Result<Vec<u32>, Error> {
+    let max_entries = max_entries.unwrap_or(16).clamp(1, 64);
+    let mut descriptors = vec![
+            sys::EUGCContentDescriptorID::k_EUGCContentDescriptor_AnyMatureContent;
+            max_entries as usize
+        ];
+    let count = unsafe {
+        sys::SteamAPI_ISteamUGC_GetUserContentDescriptorPreferences(
+            steam_ugc()?,
+            descriptors.as_mut_ptr(),
+            max_entries,
+        )
+    };
+    descriptors.truncate((count as usize).min(descriptors.len()));
+    Ok(descriptors
+        .into_iter()
+        .map(|descriptor| descriptor as u32)
+        .collect())
 }
 
 #[napi(js_name = "workshopState")]
@@ -14661,6 +15180,51 @@ fn callback_id_from_compat(callback: i32) -> Result<i32, Error> {
         CALLBACK_REMOTE_STORAGE_FILE_READ_ASYNC_COMPLETE => {
             Ok(sys::RemoteStorageFileReadAsyncComplete_t_k_iCallback as i32)
         }
+        CALLBACK_STEAM_UGC_QUERY_COMPLETED => Ok(sys::SteamUGCQueryCompleted_t_k_iCallback as i32),
+        CALLBACK_STEAM_UGC_REQUEST_DETAILS_RESULT => {
+            Ok(sys::SteamUGCRequestUGCDetailsResult_t_k_iCallback as i32)
+        }
+        CALLBACK_STEAM_UGC_CREATE_ITEM_RESULT => Ok(sys::CreateItemResult_t_k_iCallback as i32),
+        CALLBACK_STEAM_UGC_SUBMIT_ITEM_UPDATE_RESULT => {
+            Ok(sys::SubmitItemUpdateResult_t_k_iCallback as i32)
+        }
+        CALLBACK_STEAM_UGC_ITEM_INSTALLED => Ok(sys::ItemInstalled_t_k_iCallback as i32),
+        CALLBACK_STEAM_UGC_DOWNLOAD_ITEM_RESULT => Ok(sys::DownloadItemResult_t_k_iCallback as i32),
+        CALLBACK_STEAM_UGC_USER_FAVORITE_ITEMS_LIST_CHANGED => {
+            Ok(sys::UserFavoriteItemsListChanged_t_k_iCallback as i32)
+        }
+        CALLBACK_STEAM_UGC_SET_USER_ITEM_VOTE_RESULT => {
+            Ok(sys::SetUserItemVoteResult_t_k_iCallback as i32)
+        }
+        CALLBACK_STEAM_UGC_GET_USER_ITEM_VOTE_RESULT => {
+            Ok(sys::GetUserItemVoteResult_t_k_iCallback as i32)
+        }
+        CALLBACK_STEAM_UGC_START_PLAYTIME_TRACKING_RESULT => {
+            Ok(sys::StartPlaytimeTrackingResult_t_k_iCallback as i32)
+        }
+        CALLBACK_STEAM_UGC_STOP_PLAYTIME_TRACKING_RESULT => {
+            Ok(sys::StopPlaytimeTrackingResult_t_k_iCallback as i32)
+        }
+        CALLBACK_STEAM_UGC_ADD_DEPENDENCY_RESULT => {
+            Ok(sys::AddUGCDependencyResult_t_k_iCallback as i32)
+        }
+        CALLBACK_STEAM_UGC_REMOVE_DEPENDENCY_RESULT => {
+            Ok(sys::RemoveUGCDependencyResult_t_k_iCallback as i32)
+        }
+        CALLBACK_STEAM_UGC_ADD_APP_DEPENDENCY_RESULT => {
+            Ok(sys::AddAppDependencyResult_t_k_iCallback as i32)
+        }
+        CALLBACK_STEAM_UGC_REMOVE_APP_DEPENDENCY_RESULT => {
+            Ok(sys::RemoveAppDependencyResult_t_k_iCallback as i32)
+        }
+        CALLBACK_STEAM_UGC_GET_APP_DEPENDENCIES_RESULT => {
+            Ok(sys::GetAppDependenciesResult_t_k_iCallback as i32)
+        }
+        CALLBACK_STEAM_UGC_DELETE_ITEM_RESULT => Ok(sys::DeleteItemResult_t_k_iCallback as i32),
+        CALLBACK_STEAM_UGC_USER_SUBSCRIBED_ITEMS_LIST_CHANGED => {
+            Ok(sys::UserSubscribedItemsListChanged_t_k_iCallback as i32)
+        }
+        CALLBACK_STEAM_UGC_WORKSHOP_EULA_STATUS => Ok(sys::WorkshopEULAStatus_t_k_iCallback as i32),
         CALLBACK_HTTP_REQUEST_COMPLETED => Ok(sys::HTTPRequestCompleted_t_k_iCallback as i32),
         CALLBACK_HTTP_REQUEST_HEADERS_RECEIVED => {
             Ok(sys::HTTPRequestHeadersReceived_t_k_iCallback as i32)
@@ -15118,6 +15682,164 @@ unsafe fn callback_to_json(callback: i32, param: *mut c_void) -> Value {
                 "result": ptr::addr_of!((*event).m_eResult).read_unaligned() as u32,
                 "offset": ptr::addr_of!((*event).m_nOffset).read_unaligned(),
                 "bytes_read": ptr::addr_of!((*event).m_cubRead).read_unaligned()
+            })
+        }
+        CALLBACK_STEAM_UGC_QUERY_COMPLETED => {
+            let event = param as *const sys::SteamUGCQueryCompleted_t;
+            let next_cursor = ptr::addr_of!((*event).m_rgchNextCursor).read_unaligned();
+            serde_json::json!({
+                "handle": ptr::addr_of!((*event).m_handle).read_unaligned().to_string(),
+                "result": ptr::addr_of!((*event).m_eResult).read_unaligned() as u32,
+                "returned_results": ptr::addr_of!((*event).m_unNumResultsReturned).read_unaligned(),
+                "total_results": ptr::addr_of!((*event).m_unTotalMatchingResults).read_unaligned(),
+                "was_cached": ptr::addr_of!((*event).m_bCachedData).read_unaligned(),
+                "next_cursor": c_buf_to_string(&next_cursor)
+            })
+        }
+        CALLBACK_STEAM_UGC_REQUEST_DETAILS_RESULT => {
+            let event = param as *const sys::SteamUGCRequestUGCDetailsResult_t;
+            serde_json::json!({
+                "details": ugc_details_json(&(*event).m_details),
+                "was_cached": ptr::addr_of!((*event).m_bCachedData).read_unaligned()
+            })
+        }
+        CALLBACK_STEAM_UGC_CREATE_ITEM_RESULT => {
+            let event = param as *const sys::CreateItemResult_t;
+            serde_json::json!({
+                "result": ptr::addr_of!((*event).m_eResult).read_unaligned() as u32,
+                "item_id": ptr::addr_of!((*event).m_nPublishedFileId).read_unaligned().to_string(),
+                "needs_to_accept_agreement": ptr::addr_of!((*event).m_bUserNeedsToAcceptWorkshopLegalAgreement).read_unaligned()
+            })
+        }
+        CALLBACK_STEAM_UGC_SUBMIT_ITEM_UPDATE_RESULT => {
+            let event = param as *const sys::SubmitItemUpdateResult_t;
+            serde_json::json!({
+                "result": ptr::addr_of!((*event).m_eResult).read_unaligned() as u32,
+                "needs_to_accept_agreement": ptr::addr_of!((*event).m_bUserNeedsToAcceptWorkshopLegalAgreement).read_unaligned(),
+                "item_id": ptr::addr_of!((*event).m_nPublishedFileId).read_unaligned().to_string()
+            })
+        }
+        CALLBACK_STEAM_UGC_ITEM_INSTALLED => {
+            let event = param as *const sys::ItemInstalled_t;
+            serde_json::json!({
+                "app_id": ptr::addr_of!((*event).m_unAppID).read_unaligned(),
+                "item_id": ptr::addr_of!((*event).m_nPublishedFileId).read_unaligned().to_string(),
+                "legacy_content": ptr::addr_of!((*event).m_hLegacyContent).read_unaligned().to_string(),
+                "manifest_id": ptr::addr_of!((*event).m_unManifestID).read_unaligned().to_string()
+            })
+        }
+        CALLBACK_STEAM_UGC_DOWNLOAD_ITEM_RESULT => {
+            let event = param as *const sys::DownloadItemResult_t;
+            serde_json::json!({
+                "app_id": ptr::addr_of!((*event).m_unAppID).read_unaligned(),
+                "item_id": ptr::addr_of!((*event).m_nPublishedFileId).read_unaligned().to_string(),
+                "result": ptr::addr_of!((*event).m_eResult).read_unaligned() as u32
+            })
+        }
+        CALLBACK_STEAM_UGC_USER_FAVORITE_ITEMS_LIST_CHANGED => {
+            let event = param as *const sys::UserFavoriteItemsListChanged_t;
+            serde_json::json!({
+                "item_id": ptr::addr_of!((*event).m_nPublishedFileId).read_unaligned().to_string(),
+                "result": ptr::addr_of!((*event).m_eResult).read_unaligned() as u32,
+                "was_add_request": ptr::addr_of!((*event).m_bWasAddRequest).read_unaligned()
+            })
+        }
+        CALLBACK_STEAM_UGC_SET_USER_ITEM_VOTE_RESULT => {
+            let event = param as *const sys::SetUserItemVoteResult_t;
+            serde_json::json!({
+                "item_id": ptr::addr_of!((*event).m_nPublishedFileId).read_unaligned().to_string(),
+                "result": ptr::addr_of!((*event).m_eResult).read_unaligned() as u32,
+                "vote_up": ptr::addr_of!((*event).m_bVoteUp).read_unaligned()
+            })
+        }
+        CALLBACK_STEAM_UGC_GET_USER_ITEM_VOTE_RESULT => {
+            let event = param as *const sys::GetUserItemVoteResult_t;
+            serde_json::json!({
+                "item_id": ptr::addr_of!((*event).m_nPublishedFileId).read_unaligned().to_string(),
+                "result": ptr::addr_of!((*event).m_eResult).read_unaligned() as u32,
+                "voted_up": ptr::addr_of!((*event).m_bVotedUp).read_unaligned(),
+                "voted_down": ptr::addr_of!((*event).m_bVotedDown).read_unaligned(),
+                "vote_skipped": ptr::addr_of!((*event).m_bVoteSkipped).read_unaligned()
+            })
+        }
+        CALLBACK_STEAM_UGC_START_PLAYTIME_TRACKING_RESULT => {
+            let event = param as *const sys::StartPlaytimeTrackingResult_t;
+            serde_json::json!({
+                "result": ptr::addr_of!((*event).m_eResult).read_unaligned() as u32
+            })
+        }
+        CALLBACK_STEAM_UGC_STOP_PLAYTIME_TRACKING_RESULT => {
+            let event = param as *const sys::StopPlaytimeTrackingResult_t;
+            serde_json::json!({
+                "result": ptr::addr_of!((*event).m_eResult).read_unaligned() as u32
+            })
+        }
+        CALLBACK_STEAM_UGC_ADD_DEPENDENCY_RESULT => {
+            let event = param as *const sys::AddUGCDependencyResult_t;
+            serde_json::json!({
+                "result": ptr::addr_of!((*event).m_eResult).read_unaligned() as u32,
+                "item_id": ptr::addr_of!((*event).m_nPublishedFileId).read_unaligned().to_string(),
+                "child_item_id": ptr::addr_of!((*event).m_nChildPublishedFileId).read_unaligned().to_string()
+            })
+        }
+        CALLBACK_STEAM_UGC_REMOVE_DEPENDENCY_RESULT => {
+            let event = param as *const sys::RemoveUGCDependencyResult_t;
+            serde_json::json!({
+                "result": ptr::addr_of!((*event).m_eResult).read_unaligned() as u32,
+                "item_id": ptr::addr_of!((*event).m_nPublishedFileId).read_unaligned().to_string(),
+                "child_item_id": ptr::addr_of!((*event).m_nChildPublishedFileId).read_unaligned().to_string()
+            })
+        }
+        CALLBACK_STEAM_UGC_ADD_APP_DEPENDENCY_RESULT => {
+            let event = param as *const sys::AddAppDependencyResult_t;
+            serde_json::json!({
+                "result": ptr::addr_of!((*event).m_eResult).read_unaligned() as u32,
+                "item_id": ptr::addr_of!((*event).m_nPublishedFileId).read_unaligned().to_string(),
+                "app_id": ptr::addr_of!((*event).m_nAppID).read_unaligned()
+            })
+        }
+        CALLBACK_STEAM_UGC_REMOVE_APP_DEPENDENCY_RESULT => {
+            let event = param as *const sys::RemoveAppDependencyResult_t;
+            serde_json::json!({
+                "result": ptr::addr_of!((*event).m_eResult).read_unaligned() as u32,
+                "item_id": ptr::addr_of!((*event).m_nPublishedFileId).read_unaligned().to_string(),
+                "app_id": ptr::addr_of!((*event).m_nAppID).read_unaligned()
+            })
+        }
+        CALLBACK_STEAM_UGC_GET_APP_DEPENDENCIES_RESULT => {
+            let event = param as *const sys::GetAppDependenciesResult_t;
+            let count = ptr::addr_of!((*event).m_nNumAppDependencies).read_unaligned();
+            let app_ids = ptr::addr_of!((*event).m_rgAppIDs).read_unaligned();
+            serde_json::json!({
+                "result": ptr::addr_of!((*event).m_eResult).read_unaligned() as u32,
+                "item_id": ptr::addr_of!((*event).m_nPublishedFileId).read_unaligned().to_string(),
+                "app_ids": app_ids.into_iter().take((count as usize).min(app_ids.len())).collect::<Vec<_>>(),
+                "num_app_dependencies": count,
+                "total_num_app_dependencies": ptr::addr_of!((*event).m_nTotalNumAppDependencies).read_unaligned()
+            })
+        }
+        CALLBACK_STEAM_UGC_DELETE_ITEM_RESULT => {
+            let event = param as *const sys::DeleteItemResult_t;
+            serde_json::json!({
+                "result": ptr::addr_of!((*event).m_eResult).read_unaligned() as u32,
+                "item_id": ptr::addr_of!((*event).m_nPublishedFileId).read_unaligned().to_string()
+            })
+        }
+        CALLBACK_STEAM_UGC_USER_SUBSCRIBED_ITEMS_LIST_CHANGED => {
+            let event = param as *const sys::UserSubscribedItemsListChanged_t;
+            serde_json::json!({
+                "app_id": ptr::addr_of!((*event).m_nAppID).read_unaligned()
+            })
+        }
+        CALLBACK_STEAM_UGC_WORKSHOP_EULA_STATUS => {
+            let event = param as *const sys::WorkshopEULAStatus_t;
+            serde_json::json!({
+                "result": ptr::addr_of!((*event).m_eResult).read_unaligned() as u32,
+                "app_id": ptr::addr_of!((*event).m_nAppID).read_unaligned(),
+                "version": ptr::addr_of!((*event).m_unVersion).read_unaligned(),
+                "action_time": ptr::addr_of!((*event).m_rtAction).read_unaligned(),
+                "accepted": ptr::addr_of!((*event).m_bAccepted).read_unaligned(),
+                "needs_action": ptr::addr_of!((*event).m_bNeedsAction).read_unaligned()
             })
         }
         CALLBACK_TIMED_TRIAL_STATUS => {

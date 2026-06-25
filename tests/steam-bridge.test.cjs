@@ -454,6 +454,83 @@ function createFakeNative(overrides = {}) {
         was_cached: true
       });
     },
+    workshopAddFavorite(itemId, appId) {
+      calls.push({ method: "workshopAddFavorite", args: [itemId, appId] });
+      return Promise.resolve({ result: 1, item_id: itemId, was_add_request: true });
+    },
+    workshopRemoveFavorite(itemId, appId) {
+      calls.push({ method: "workshopRemoveFavorite", args: [itemId, appId] });
+      return Promise.resolve({ result: 1, itemId, wasAddRequest: false });
+    },
+    workshopSetUserItemVote(itemId, voteUp) {
+      calls.push({ method: "workshopSetUserItemVote", args: [itemId, voteUp] });
+      return Promise.resolve({ result: 1, item_id: itemId, vote_up: voteUp });
+    },
+    workshopGetUserItemVote(itemId) {
+      calls.push({ method: "workshopGetUserItemVote", args: [itemId] });
+      return Promise.resolve({ result: 1, item_id: itemId, voted_up: true, voted_down: false, vote_skipped: false });
+    },
+    workshopStartPlaytimeTracking(itemIds) {
+      calls.push({ method: "workshopStartPlaytimeTracking", args: [itemIds] });
+      return Promise.resolve({ result: 1 });
+    },
+    workshopStopPlaytimeTracking(itemIds) {
+      calls.push({ method: "workshopStopPlaytimeTracking", args: [itemIds] });
+      return Promise.resolve({ result: 1 });
+    },
+    workshopStopPlaytimeTrackingForAllItems() {
+      calls.push({ method: "workshopStopPlaytimeTrackingForAllItems", args: [] });
+      return Promise.resolve({ result: 1 });
+    },
+    workshopAddDependency(parentItemId, childItemId) {
+      calls.push({ method: "workshopAddDependency", args: [parentItemId, childItemId] });
+      return Promise.resolve({ result: 1, item_id: parentItemId, child_item_id: childItemId });
+    },
+    workshopRemoveDependency(parentItemId, childItemId) {
+      calls.push({ method: "workshopRemoveDependency", args: [parentItemId, childItemId] });
+      return Promise.resolve({ result: 1, itemId: parentItemId, childItemId });
+    },
+    workshopAddAppDependency(itemId, appId) {
+      calls.push({ method: "workshopAddAppDependency", args: [itemId, appId] });
+      return Promise.resolve({ result: 1, item_id: itemId, app_id: appId });
+    },
+    workshopRemoveAppDependency(itemId, appId) {
+      calls.push({ method: "workshopRemoveAppDependency", args: [itemId, appId] });
+      return Promise.resolve({ result: 1, itemId, appId });
+    },
+    workshopGetAppDependencies(itemId) {
+      calls.push({ method: "workshopGetAppDependencies", args: [itemId] });
+      return Promise.resolve({
+        result: 1,
+        item_id: itemId,
+        app_ids: [480, 481],
+        num_app_dependencies: 2,
+        total_num_app_dependencies: 2
+      });
+    },
+    workshopDeleteItem(itemId) {
+      calls.push({ method: "workshopDeleteItem", args: [itemId] });
+      return Promise.resolve({ result: 1, item_id: itemId });
+    },
+    workshopShowEula() {
+      calls.push({ method: "workshopShowEula", args: [] });
+      return true;
+    },
+    workshopGetEulaStatus() {
+      calls.push({ method: "workshopGetEulaStatus", args: [] });
+      return Promise.resolve({
+        result: 1,
+        app_id: 480,
+        version: 2,
+        action_time: 1700000400,
+        accepted: true,
+        needs_action: false
+      });
+    },
+    workshopGetUserContentDescriptorPreferences(maxEntries) {
+      calls.push({ method: "workshopGetUserContentDescriptorPreferences", args: [maxEntries] });
+      return [1, 5];
+    },
     ...overrides
   };
 
@@ -5661,4 +5738,118 @@ test("workshop updates and queries normalize progress, IDs, and snake_case field
   assert.equal(itemsResult.items[0].creatorAppId, 480);
   assert.equal(itemsResult.items[0].owner.steamId64, 76561198000000002n);
   assert.equal(itemsResult.items[0].statistics.numSubscriptions, 12n);
+
+  assert.equal(steam.SteamCallback.SteamUGCQueryCompleted, 3401);
+  assert.equal(steam.SteamCallback.SteamUGCWorkshopEULAStatus, 3420);
+  assert.equal(steam.workshop.UGCContentDescriptor.AnyMatureContent, 5);
+
+  assert.deepEqual(await steam.workshop.addFavorite(42n, 480), {
+    result: 1,
+    itemId: 42n,
+    wasAddRequest: true
+  });
+  assert.deepEqual(await steam.workshop.removeFavorite(42n, 480), {
+    result: 1,
+    itemId: 42n,
+    wasAddRequest: false
+  });
+  assert.deepEqual(await steam.workshop.setUserItemVote(42n, true), {
+    result: 1,
+    itemId: 42n,
+    voteUp: true
+  });
+  assert.deepEqual(await steam.workshop.getUserItemVote(42n), {
+    result: 1,
+    itemId: 42n,
+    votedUp: true,
+    votedDown: false,
+    voteSkipped: false
+  });
+  assert.deepEqual(await steam.workshop.startPlaytimeTracking([42n]), { result: 1 });
+  assert.deepEqual(await steam.workshop.stopPlaytimeTracking([42n]), { result: 1 });
+  assert.deepEqual(await steam.workshop.stopPlaytimeTrackingForAllItems(), { result: 1 });
+  assert.deepEqual(await steam.workshop.addDependency(42n, 43n), {
+    result: 1,
+    itemId: 42n,
+    childItemId: 43n
+  });
+  assert.deepEqual(await steam.workshop.removeDependency(42n, 43n), {
+    result: 1,
+    itemId: 42n,
+    childItemId: 43n
+  });
+  assert.deepEqual(await steam.workshop.addAppDependency(42n, 480), {
+    result: 1,
+    itemId: 42n,
+    appId: 480
+  });
+  assert.deepEqual(await steam.workshop.removeAppDependency(42n, 480), {
+    result: 1,
+    itemId: 42n,
+    appId: 480
+  });
+  assert.deepEqual(await steam.workshop.getAppDependencies(42n), {
+    result: 1,
+    itemId: 42n,
+    appIds: [480, 481],
+    numAppDependencies: 2,
+    totalNumAppDependencies: 2
+  });
+  assert.deepEqual(await steam.workshop.deleteItem(42n), { result: 1, itemId: 42n });
+  assert.equal(steam.workshop.showEula(), true);
+  assert.deepEqual(await steam.workshop.getEulaStatus(), {
+    result: 1,
+    appId: 480,
+    version: 2,
+    actionTime: 1700000400,
+    accepted: true,
+    needsAction: false
+  });
+  assert.deepEqual(steam.workshop.getUserContentDescriptorPreferences(8), [1, 5]);
+
+  const voteEvents = [];
+  const voteHandle = steam.callback.register(steam.SteamCallback.SteamUGCSetUserItemVoteResult, (event) => {
+    voteEvents.push(event);
+  });
+  fake.callbacks.get(steam.SteamCallback.SteamUGCSetUserItemVoteResult)({
+    item_id: "42",
+    vote_up: true,
+    result: 1
+  });
+  voteHandle.disconnect();
+  assert.deepEqual(voteEvents, [{ item_id: 42n, vote_up: true, result: 1, itemId: 42n, voteUp: true }]);
+
+  const detailEvents = [];
+  const detailHandle = steam.callback.register(steam.SteamCallback.SteamUGCRequestDetailsResult, (event) => {
+    detailEvents.push(event);
+  });
+  fake.callbacks.get(steam.SteamCallback.SteamUGCRequestDetailsResult)({
+    details: {
+      published_file_id: "42",
+      creator_app_id: 480,
+      title: "Workshop Item",
+      tags: "space,war",
+      file_size: "12",
+      preview_file: "99",
+      accepted_for_use: true
+    },
+    was_cached: true
+  });
+  detailHandle.disconnect();
+  assert.equal(detailEvents[0].wasCached, true);
+  assert.equal(detailEvents[0].details.publishedFileId, 42n);
+  assert.equal(detailEvents[0].details.creatorAppId, 480);
+  assert.deepEqual(detailEvents[0].details.tags, ["space", "war"]);
+  assert.equal(detailEvents[0].details.fileSize, 12n);
+  assert.equal(detailEvents[0].details.previewFile, 99n);
+  assert.equal(detailEvents[0].details.acceptedForUse, true);
+
+  assert.deepEqual(fake.calls.find((call) => call.method === "workshopGetAppDependencies"), {
+    method: "workshopGetAppDependencies",
+    args: [42n]
+  });
+  assert.deepEqual(fake.calls.find((call) => call.method === "workshopGetUserContentDescriptorPreferences"), {
+    method: "workshopGetUserContentDescriptorPreferences",
+    args: [8]
+  });
 });

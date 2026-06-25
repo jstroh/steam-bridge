@@ -871,6 +871,84 @@ export interface NativeUgcResult {
   needs_to_accept_agreement?: boolean;
 }
 
+export interface NativeWorkshopFavoriteResult {
+  result: number;
+  itemId?: bigint | string | number;
+  item_id?: bigint | string | number;
+  wasAddRequest?: boolean;
+  was_add_request?: boolean;
+}
+
+export interface NativeWorkshopSetUserItemVoteResult {
+  result: number;
+  itemId?: bigint | string | number;
+  item_id?: bigint | string | number;
+  voteUp?: boolean;
+  vote_up?: boolean;
+}
+
+export interface NativeWorkshopGetUserItemVoteResult {
+  result: number;
+  itemId?: bigint | string | number;
+  item_id?: bigint | string | number;
+  votedUp?: boolean;
+  voted_up?: boolean;
+  votedDown?: boolean;
+  voted_down?: boolean;
+  voteSkipped?: boolean;
+  vote_skipped?: boolean;
+}
+
+export interface NativeWorkshopSimpleResult {
+  result: number;
+}
+
+export interface NativeWorkshopDependencyResult {
+  result: number;
+  itemId?: bigint | string | number;
+  item_id?: bigint | string | number;
+  childItemId?: bigint | string | number;
+  child_item_id?: bigint | string | number;
+}
+
+export interface NativeWorkshopAppDependencyResult {
+  result: number;
+  itemId?: bigint | string | number;
+  item_id?: bigint | string | number;
+  appId?: number;
+  app_id?: number;
+}
+
+export interface NativeWorkshopAppDependenciesResult {
+  result: number;
+  itemId?: bigint | string | number;
+  item_id?: bigint | string | number;
+  appIds?: number[];
+  app_ids?: number[];
+  numAppDependencies?: number;
+  num_app_dependencies?: number;
+  totalNumAppDependencies?: number;
+  total_num_app_dependencies?: number;
+}
+
+export interface NativeWorkshopDeleteItemResult {
+  result: number;
+  itemId?: bigint | string | number;
+  item_id?: bigint | string | number;
+}
+
+export interface NativeWorkshopEulaStatus {
+  result: number;
+  appId?: number;
+  app_id?: number;
+  version: number;
+  actionTime?: number;
+  action_time?: number;
+  accepted: boolean;
+  needsAction?: boolean;
+  needs_action?: boolean;
+}
+
 export interface NativeUpdateProgress {
   status: number;
   progress: bigint;
@@ -1978,6 +2056,22 @@ export interface NativeBinding {
   workshopGetItemUpdateProgress(handle: bigint): NativeUpdateProgress;
   workshopSubscribe(itemId: bigint): Promise<void>;
   workshopUnsubscribe(itemId: bigint): Promise<void>;
+  workshopAddFavorite(itemId: bigint, appId?: number | null): Promise<NativeWorkshopFavoriteResult>;
+  workshopRemoveFavorite(itemId: bigint, appId?: number | null): Promise<NativeWorkshopFavoriteResult>;
+  workshopSetUserItemVote(itemId: bigint, voteUp: boolean): Promise<NativeWorkshopSetUserItemVoteResult>;
+  workshopGetUserItemVote(itemId: bigint): Promise<NativeWorkshopGetUserItemVoteResult>;
+  workshopStartPlaytimeTracking(itemIds: bigint[]): Promise<NativeWorkshopSimpleResult>;
+  workshopStopPlaytimeTracking(itemIds: bigint[]): Promise<NativeWorkshopSimpleResult>;
+  workshopStopPlaytimeTrackingForAllItems(): Promise<NativeWorkshopSimpleResult>;
+  workshopAddDependency(parentItemId: bigint, childItemId: bigint): Promise<NativeWorkshopDependencyResult>;
+  workshopRemoveDependency(parentItemId: bigint, childItemId: bigint): Promise<NativeWorkshopDependencyResult>;
+  workshopAddAppDependency(itemId: bigint, appId: number): Promise<NativeWorkshopAppDependencyResult>;
+  workshopRemoveAppDependency(itemId: bigint, appId: number): Promise<NativeWorkshopAppDependencyResult>;
+  workshopGetAppDependencies(itemId: bigint): Promise<NativeWorkshopAppDependenciesResult>;
+  workshopDeleteItem(itemId: bigint): Promise<NativeWorkshopDeleteItemResult>;
+  workshopShowEula(): boolean;
+  workshopGetEulaStatus(): Promise<NativeWorkshopEulaStatus>;
+  workshopGetUserContentDescriptorPreferences(maxEntries?: number | null): number[];
   workshopState(itemId: bigint): number;
   workshopInstallInfo(itemId: bigint): NativeWorkshopInstallInfo | null | undefined;
   workshopDownloadInfo(itemId: bigint): NativeWorkshopDownloadInfo | null | undefined;
