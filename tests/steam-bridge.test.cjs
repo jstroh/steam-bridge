@@ -330,6 +330,202 @@ test("cloud, input, and networking facades coerce native values", (t) => {
   assert.equal(packet.steamId.steamId64, 76561198000000001n);
 });
 
+test("networking messages facade covers identity, message, session, and callback flows", (t) => {
+  const peer = { identity_type: 16, text: "steamid:76561198000000010", steam_id64: "76561198000000010" };
+  const quickStatus = {
+    state: 3,
+    ping: 42,
+    connection_quality_local: 0.95,
+    connection_quality_remote: 0.9,
+    out_packets_per_second: 10.5,
+    out_bytes_per_second: 2048.5,
+    in_packets_per_second: 9.5,
+    in_bytes_per_second: 1024.25,
+    send_rate_bytes_per_second: 4096,
+    pending_unreliable: 1,
+    pending_reliable: 2,
+    sent_unacked_reliable: 3,
+    queue_time: "5000",
+    max_jitter: 50
+  };
+  const fake = createFakeNative({
+    networkingIdentityToString(identity) {
+      this.calls.push({ method: "networkingIdentityToString", args: [identity] });
+      return identity.steamId64 ? `steamid:${identity.steamId64}` : identity.text;
+    },
+    networkingIdentityParse(text) {
+      this.calls.push({ method: "networkingIdentityParse", args: [text] });
+      return text === "bad" ? null : peer;
+    },
+    networkingMessagesSendMessageToUser(identity, data, sendFlags, channel) {
+      this.calls.push({ method: "networkingMessagesSendMessageToUser", args: [identity, data, sendFlags, channel] });
+      return 1;
+    },
+    networkingMessagesReceiveMessagesOnChannel(channel, maxMessages) {
+      this.calls.push({ method: "networkingMessagesReceiveMessagesOnChannel", args: [channel, maxMessages] });
+      return [
+        {
+          data: Buffer.from("payload"),
+          size: 7,
+          peer,
+          connection: 99,
+          connection_user_data: "123",
+          time_received: "456",
+          message_number: "7",
+          channel,
+          flags: 8,
+          user_data: "9",
+          lane: 1
+        }
+      ];
+    },
+    networkingMessagesAcceptSessionWithUser(identity) {
+      this.calls.push({ method: "networkingMessagesAcceptSessionWithUser", args: [identity] });
+      return true;
+    },
+    networkingMessagesCloseSessionWithUser(identity) {
+      this.calls.push({ method: "networkingMessagesCloseSessionWithUser", args: [identity] });
+      return true;
+    },
+    networkingMessagesCloseChannelWithUser(identity, channel) {
+      this.calls.push({ method: "networkingMessagesCloseChannelWithUser", args: [identity, channel] });
+      return true;
+    },
+    networkingMessagesGetSessionConnectionInfo(identity) {
+      this.calls.push({ method: "networkingMessagesGetSessionConnectionInfo", args: [identity] });
+      return {
+        state: 3,
+        remote_identity: peer,
+        user_data: "11",
+        listen_socket: 0,
+        remote_pop: 1234,
+        relay_pop: 5678,
+        end_reason: 0,
+        end_debug: "",
+        connection_description: "session to peer",
+        flags: 4,
+        quick_status: quickStatus
+      };
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  const identity = { steamId64: 76561198000000010n };
+  assert.equal(steam.networking.NetworkingSendFlags.Reliable, 8);
+  assert.equal(steam.networking.messages.ConnectionState.Connected, 3);
+  assert.equal(steam.networking.messages.identityToString(identity), "steamid:76561198000000010");
+  assert.deepEqual(steam.networking.messages.parseIdentity("steamid:76561198000000010"), {
+    identityType: 16,
+    text: "steamid:76561198000000010",
+    steamId64: 76561198000000010n,
+    genericString: null,
+    localHost: false,
+    invalid: false,
+    fakeIpType: 0
+  });
+  assert.equal(steam.networking.messages.parseIdentity("bad"), null);
+  assert.equal(
+    steam.networking.messages.sendMessageToUser(
+      identity,
+      Buffer.from("payload"),
+      steam.networking.messages.SendFlags.Reliable,
+      2
+    ),
+    1
+  );
+  assert.deepEqual(steam.networking.messages.receiveMessagesOnChannel(2, 4), [
+    {
+      data: Buffer.from("payload"),
+      size: 7,
+      peer: {
+        identityType: 16,
+        text: "steamid:76561198000000010",
+        steamId64: 76561198000000010n,
+        genericString: null,
+        localHost: false,
+        invalid: false,
+        fakeIpType: 0
+      },
+      connection: 99,
+      connectionUserData: 123n,
+      timeReceived: 456n,
+      messageNumber: 7n,
+      channel: 2,
+      flags: 8,
+      userData: 9n,
+      lane: 1
+    }
+  ]);
+  assert.equal(steam.networking.messages.acceptSessionWithUser(identity), true);
+  assert.equal(steam.networking.messages.closeSessionWithUser(identity), true);
+  assert.equal(steam.networking.messages.closeChannelWithUser(identity, 2), true);
+  assert.deepEqual(steam.networking.messages.getSessionConnectionInfo(identity), {
+    state: 3,
+    remoteIdentity: {
+      identityType: 16,
+      text: "steamid:76561198000000010",
+      steamId64: 76561198000000010n,
+      genericString: null,
+      localHost: false,
+      invalid: false,
+      fakeIpType: 0
+    },
+    userData: 11n,
+    listenSocket: 0,
+    remotePop: 1234,
+    relayPop: 5678,
+    endReason: 0,
+    endDebug: "",
+    connectionDescription: "session to peer",
+    flags: 4,
+    quickStatus: {
+      state: 3,
+      ping: 42,
+      connectionQualityLocal: 0.95,
+      connectionQualityRemote: 0.9,
+      outPacketsPerSecond: 10.5,
+      outBytesPerSecond: 2048.5,
+      inPacketsPerSecond: 9.5,
+      inBytesPerSecond: 1024.25,
+      sendRateBytesPerSecond: 4096,
+      pendingUnreliable: 1,
+      pendingReliable: 2,
+      sentUnackedReliable: 3,
+      queueTime: 5000n,
+      maxJitter: 50
+    }
+  });
+
+  let requestEvent;
+  steam.callback.register(steam.SteamCallback.SteamNetworkingMessagesSessionRequest, (event) => {
+    requestEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.SteamNetworkingMessagesSessionRequest)({ remote_identity: peer });
+  assert.equal(requestEvent.remoteIdentity.steamId64, 76561198000000010n);
+
+  let failedEvent;
+  steam.callback.register(steam.SteamCallback.SteamNetworkingMessagesSessionFailed, (event) => {
+    failedEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.SteamNetworkingMessagesSessionFailed)({
+    info: {
+      state: 5,
+      remote_identity: peer,
+      user_data: "12",
+      flags: 1
+    }
+  });
+  assert.equal(failedEvent.info.remoteIdentity.steamId64, 76561198000000010n);
+  assert.equal(failedEvent.info.userData, 12n);
+  assert.equal(failedEvent.info.quickStatus, null);
+  assert.deepEqual(fake.calls.find((call) => call.method === "networkingMessagesSendMessageToUser"), {
+    method: "networkingMessagesSendMessageToUser",
+    args: [identity, Buffer.from("payload"), 8, 2]
+  });
+});
+
 test("http facade covers request lifecycle, response reads, and callbacks", async (t) => {
   const fake = createFakeNative({
     httpCreateRequest(method, url) {

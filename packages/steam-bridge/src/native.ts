@@ -146,6 +146,101 @@ export interface NativeP2PPacket {
   steamId: NativeSteamId;
 }
 
+export interface NativeNetworkingIdentity {
+  steamId64?: bigint | string | number;
+  steam_id64?: bigint | string | number;
+  text?: string;
+  genericString?: string;
+  generic_string?: string;
+  localHost?: boolean;
+  local_host?: boolean;
+}
+
+export interface NativeNetworkingIdentityInfo {
+  identityType?: number;
+  identity_type?: number;
+  text: string;
+  steamId64?: bigint | string | number | null;
+  steam_id64?: bigint | string | number | null;
+  genericString?: string | null;
+  generic_string?: string | null;
+  localHost?: boolean;
+  local_host?: boolean;
+  invalid: boolean;
+  fakeIpType?: number;
+  fake_ip_type?: number;
+}
+
+export interface NativeNetworkingMessage {
+  data: Buffer;
+  size: number;
+  peer: NativeNetworkingIdentityInfo;
+  connection: number;
+  connectionUserData?: bigint | string | number;
+  connection_user_data?: bigint | string | number;
+  timeReceived?: bigint | string | number;
+  time_received?: bigint | string | number;
+  messageNumber?: bigint | string | number;
+  message_number?: bigint | string | number;
+  channel: number;
+  flags: number;
+  userData?: bigint | string | number;
+  user_data?: bigint | string | number;
+  lane: number;
+}
+
+export interface NativeNetworkingConnectionRealTimeStatus {
+  state: number;
+  ping: number;
+  connectionQualityLocal?: number;
+  connection_quality_local?: number;
+  connectionQualityRemote?: number;
+  connection_quality_remote?: number;
+  outPacketsPerSecond?: number;
+  out_packets_per_second?: number;
+  outBytesPerSecond?: number;
+  out_bytes_per_second?: number;
+  inPacketsPerSecond?: number;
+  in_packets_per_second?: number;
+  inBytesPerSecond?: number;
+  in_bytes_per_second?: number;
+  sendRateBytesPerSecond?: number;
+  send_rate_bytes_per_second?: number;
+  pendingUnreliable?: number;
+  pending_unreliable?: number;
+  pendingReliable?: number;
+  pending_reliable?: number;
+  sentUnackedReliable?: number;
+  sent_unacked_reliable?: number;
+  queueTime?: bigint | string | number;
+  queue_time?: bigint | string | number;
+  maxJitter?: number;
+  max_jitter?: number;
+}
+
+export interface NativeNetworkingMessagesSessionConnectionInfo {
+  state: number;
+  remoteIdentity?: NativeNetworkingIdentityInfo;
+  remote_identity?: NativeNetworkingIdentityInfo;
+  userData?: bigint | string | number;
+  user_data?: bigint | string | number;
+  listenSocket?: number;
+  listen_socket?: number;
+  remotePop?: number;
+  remote_pop?: number;
+  relayPop?: number;
+  relay_pop?: number;
+  endReason?: number;
+  end_reason?: number;
+  endDebug?: string;
+  end_debug?: string;
+  connectionDescription?: string;
+  connection_description?: string;
+  flags: number;
+  quickStatus?: NativeNetworkingConnectionRealTimeStatus;
+  quick_status?: NativeNetworkingConnectionRealTimeStatus;
+}
+
 export interface NativeLobbyResult {
   id: bigint;
 }
@@ -770,6 +865,14 @@ export interface NativeBinding {
   networkingIsP2PPacketAvailable(): number;
   networkingReadP2PPacket(size: number): NativeP2PPacket | null | undefined;
   networkingAcceptP2PSession(steamId64: bigint): void;
+  networkingIdentityToString(identity: NativeNetworkingIdentity): string;
+  networkingIdentityParse(text: string): NativeNetworkingIdentityInfo | null | undefined;
+  networkingMessagesSendMessageToUser(identity: NativeNetworkingIdentity, data: Buffer, sendFlags?: number, channel?: number): number;
+  networkingMessagesReceiveMessagesOnChannel(channel: number, maxMessages?: number): NativeNetworkingMessage[];
+  networkingMessagesAcceptSessionWithUser(identity: NativeNetworkingIdentity): boolean;
+  networkingMessagesCloseSessionWithUser(identity: NativeNetworkingIdentity): boolean;
+  networkingMessagesCloseChannelWithUser(identity: NativeNetworkingIdentity, channel: number): boolean;
+  networkingMessagesGetSessionConnectionInfo(identity: NativeNetworkingIdentity): NativeNetworkingMessagesSessionConnectionInfo;
 
   matchmakingCreateLobby(lobbyType: number, maxMembers: number): Promise<NativeLobbyResult>;
   matchmakingJoinLobby(lobbyId: bigint): Promise<NativeLobbyResult>;

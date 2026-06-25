@@ -41,6 +41,11 @@ import {
   NativeLeaderboardScoreUploaded,
   NativeLeaderboardUgcSetResult,
   NativeNumberOfCurrentPlayersResult,
+  NativeNetworkingConnectionRealTimeStatus,
+  NativeNetworkingIdentity,
+  NativeNetworkingIdentityInfo,
+  NativeNetworkingMessage,
+  NativeNetworkingMessagesSessionConnectionInfo,
   NativeOverlayDiagnostics,
   NativePartyBeaconDetails,
   NativePartyBeaconLocation,
@@ -251,6 +256,68 @@ export interface P2PPacket {
   data: Buffer;
   size: number;
   steamId: SteamId;
+}
+
+export interface NetworkingIdentity {
+  steamId64?: bigint;
+  text?: string;
+  genericString?: string;
+  localHost?: boolean;
+}
+
+export interface NetworkingIdentityInfo {
+  identityType: number;
+  text: string;
+  steamId64: bigint | null;
+  genericString: string | null;
+  localHost: boolean;
+  invalid: boolean;
+  fakeIpType: number;
+}
+
+export interface NetworkingMessage {
+  data: Buffer;
+  size: number;
+  peer: NetworkingIdentityInfo;
+  connection: number;
+  connectionUserData: bigint;
+  timeReceived: bigint;
+  messageNumber: bigint;
+  channel: number;
+  flags: number;
+  userData: bigint;
+  lane: number;
+}
+
+export interface NetworkingConnectionRealTimeStatus {
+  state: number;
+  ping: number;
+  connectionQualityLocal: number;
+  connectionQualityRemote: number;
+  outPacketsPerSecond: number;
+  outBytesPerSecond: number;
+  inPacketsPerSecond: number;
+  inBytesPerSecond: number;
+  sendRateBytesPerSecond: number;
+  pendingUnreliable: number;
+  pendingReliable: number;
+  sentUnackedReliable: number;
+  queueTime: bigint;
+  maxJitter: number;
+}
+
+export interface NetworkingMessagesSessionConnectionInfo {
+  state: number;
+  remoteIdentity: NetworkingIdentityInfo;
+  userData: bigint;
+  listenSocket: number;
+  remotePop: number;
+  relayPop: number;
+  endReason: number;
+  endDebug: string;
+  connectionDescription: string;
+  flags: number;
+  quickStatus: NetworkingConnectionRealTimeStatus | null;
 }
 
 export interface VideoBroadcastStatus {
@@ -502,6 +569,8 @@ export const SteamCallback = {
   GameLobbyJoinRequested: 8,
   MicroTxnAuthorizationResponse: 9,
   GameOverlayActivated: 331,
+  SteamNetworkingMessagesSessionRequest: 1251,
+  SteamNetworkingMessagesSessionFailed: 1252,
   HTTPRequestCompleted: 2101,
   HTTPRequestHeadersReceived: 2102,
   HTTPRequestDataReceived: 2103,
@@ -764,6 +833,30 @@ export const SendType = {
   UnreliableNoDelay: 1,
   Reliable: 2,
   ReliableWithBuffering: 3
+} as const;
+
+export const NetworkingSendFlags = {
+  Unreliable: 0,
+  NoNagle: 1,
+  UnreliableNoNagle: 1,
+  NoDelay: 4,
+  UnreliableNoDelay: 5,
+  Reliable: 8,
+  ReliableNoNagle: 9,
+  UseCurrentThread: 16,
+  AutoRestartBrokenSession: 32
+} as const;
+
+export const NetworkingConnectionState = {
+  None: 0,
+  Connecting: 1,
+  FindingRoute: 2,
+  Connected: 3,
+  ClosedByPeer: 4,
+  ProblemDetectedLocally: 5,
+  FinWait: -1,
+  Linger: -2,
+  Dead: -3
 } as const;
 
 export const Dialog = {
@@ -1784,6 +1877,8 @@ export const matchmaking = {
 
 export const networking = {
   SendType,
+  NetworkingSendFlags,
+  NetworkingConnectionState,
   sendP2PPacket(steamId64: bigint, sendType: number, data: Buffer): boolean {
     return native().networkingSendP2PPacket(steamId64, sendType, data);
   },
@@ -1799,6 +1894,48 @@ export const networking = {
   },
   acceptP2PSession(steamId64: bigint): void {
     native().networkingAcceptP2PSession(steamId64);
+  },
+  messages: {
+    SendFlags: NetworkingSendFlags,
+    ConnectionState: NetworkingConnectionState,
+    identityToString(identity: NetworkingIdentity): string {
+      return native().networkingIdentityToString(nativeNetworkingIdentity(identity));
+    },
+    parseIdentity(text: string): NetworkingIdentityInfo | null {
+      return normalizeNetworkingIdentityInfo(native().networkingIdentityParse(text));
+    },
+    sendMessageToUser(
+      identity: NetworkingIdentity,
+      data: Buffer | Uint8Array,
+      sendFlags = NetworkingSendFlags.Reliable,
+      channel = 0
+    ): number {
+      return native().networkingMessagesSendMessageToUser(
+        nativeNetworkingIdentity(identity),
+        Buffer.from(data),
+        sendFlags,
+        channel
+      );
+    },
+    receiveMessagesOnChannel(channel = 0, maxMessages?: number | null): NetworkingMessage[] {
+      return native()
+        .networkingMessagesReceiveMessagesOnChannel(channel, maxMessages ?? undefined)
+        .map(normalizeNetworkingMessage);
+    },
+    acceptSessionWithUser(identity: NetworkingIdentity): boolean {
+      return native().networkingMessagesAcceptSessionWithUser(nativeNetworkingIdentity(identity));
+    },
+    closeSessionWithUser(identity: NetworkingIdentity): boolean {
+      return native().networkingMessagesCloseSessionWithUser(nativeNetworkingIdentity(identity));
+    },
+    closeChannelWithUser(identity: NetworkingIdentity, channel: number): boolean {
+      return native().networkingMessagesCloseChannelWithUser(nativeNetworkingIdentity(identity), channel);
+    },
+    getSessionConnectionInfo(identity: NetworkingIdentity): NetworkingMessagesSessionConnectionInfo {
+      return normalizeNetworkingMessagesSessionConnectionInfo(
+        native().networkingMessagesGetSessionConnectionInfo(nativeNetworkingIdentity(identity))
+      );
+    }
   }
 };
 
@@ -2740,6 +2877,12 @@ function normalizeCallbackEvent(callbackId: number, event: unknown): unknown {
   ) {
     return normalizeInventoryCallbackEvent(event);
   }
+  if (
+    callbackId === SteamCallback.SteamNetworkingMessagesSessionRequest ||
+    callbackId === SteamCallback.SteamNetworkingMessagesSessionFailed
+  ) {
+    return normalizeNetworkingMessagesCallbackEvent(event);
+  }
   if (!event || typeof event !== "object") {
     return event;
   }
@@ -2780,6 +2923,29 @@ function normalizeInventoryCallbackEvent(event: unknown): unknown {
 
   if (source.transaction_id !== undefined) {
     normalized.transactionId ??= normalizeOrderId(source.transaction_id);
+  }
+
+  return normalized;
+}
+
+function normalizeNetworkingMessagesCallbackEvent(event: unknown): unknown {
+  if (!event || typeof event !== "object") {
+    return event;
+  }
+
+  const source = event as Record<string, unknown>;
+  const normalized: Record<string, unknown> = { ...source };
+
+  if (source.remote_identity !== undefined) {
+    normalized.remoteIdentity = normalizeNetworkingIdentityInfo(
+      source.remote_identity as NativeNetworkingIdentityInfo
+    );
+  }
+
+  if (source.info !== undefined) {
+    normalized.info = normalizeNetworkingMessagesSessionConnectionInfo(
+      source.info as NativeNetworkingMessagesSessionConnectionInfo
+    );
   }
 
   return normalized;
@@ -2887,6 +3053,123 @@ function normalizeP2PPacket(packet: NativeP2PPacket): P2PPacket {
     data: packet.data,
     size: packet.size,
     steamId: normalizeSteamId(packet.steamId)
+  };
+}
+
+function nativeNetworkingIdentity(identity: NetworkingIdentity): NativeNetworkingIdentity {
+  const output: NativeNetworkingIdentity = {};
+  if (identity.steamId64 !== undefined) {
+    output.steamId64 = identity.steamId64;
+  }
+  if (identity.text !== undefined) {
+    output.text = identity.text;
+  }
+  if (identity.genericString !== undefined) {
+    output.genericString = identity.genericString;
+  }
+  if (identity.localHost !== undefined) {
+    output.localHost = identity.localHost;
+  }
+  return output;
+}
+
+function normalizeNetworkingIdentityInfo(
+  identity: NativeNetworkingIdentityInfo | null | undefined
+): NetworkingIdentityInfo | null {
+  if (!identity) {
+    return null;
+  }
+  const source = identity as unknown as Record<string, unknown>;
+  const steamId64 = source.steamId64 ?? source.steam_id64;
+  return {
+    identityType: Number(source.identityType ?? source.identity_type ?? 0),
+    text: String(source.text ?? ""),
+    steamId64: steamId64 == null ? null : BigInt(steamId64 as bigint | number | string),
+    genericString: ((source.genericString ?? source.generic_string) as string | null | undefined) ?? null,
+    localHost: Boolean(source.localHost ?? source.local_host),
+    invalid: Boolean(source.invalid),
+    fakeIpType: Number(source.fakeIpType ?? source.fake_ip_type ?? 0)
+  };
+}
+
+function normalizeNetworkingIdentityInfoRequired(
+  identity: NativeNetworkingIdentityInfo | null | undefined
+): NetworkingIdentityInfo {
+  return (
+    normalizeNetworkingIdentityInfo(identity) ?? {
+      identityType: 0,
+      text: "",
+      steamId64: null,
+      genericString: null,
+      localHost: false,
+      invalid: true,
+      fakeIpType: 0
+    }
+  );
+}
+
+function normalizeNetworkingMessage(message: NativeNetworkingMessage): NetworkingMessage {
+  const source = message as unknown as Record<string, unknown>;
+  return {
+    data: message.data,
+    size: Number(message.size),
+    peer: normalizeNetworkingIdentityInfoRequired(message.peer),
+    connection: Number(message.connection),
+    connectionUserData: BigInt((source.connectionUserData ?? source.connection_user_data ?? 0) as bigint | number | string),
+    timeReceived: BigInt((source.timeReceived ?? source.time_received ?? 0) as bigint | number | string),
+    messageNumber: BigInt((source.messageNumber ?? source.message_number ?? 0) as bigint | number | string),
+    channel: Number(message.channel),
+    flags: Number(message.flags),
+    userData: BigInt((source.userData ?? source.user_data ?? 0) as bigint | number | string),
+    lane: Number(message.lane)
+  };
+}
+
+function normalizeNetworkingRealTimeStatus(
+  status: NativeNetworkingConnectionRealTimeStatus | null | undefined
+): NetworkingConnectionRealTimeStatus | null {
+  if (!status) {
+    return null;
+  }
+  const source = status as unknown as Record<string, unknown>;
+  return {
+    state: Number(status.state),
+    ping: Number(status.ping),
+    connectionQualityLocal: Number(source.connectionQualityLocal ?? source.connection_quality_local ?? 0),
+    connectionQualityRemote: Number(source.connectionQualityRemote ?? source.connection_quality_remote ?? 0),
+    outPacketsPerSecond: Number(source.outPacketsPerSecond ?? source.out_packets_per_second ?? 0),
+    outBytesPerSecond: Number(source.outBytesPerSecond ?? source.out_bytes_per_second ?? 0),
+    inPacketsPerSecond: Number(source.inPacketsPerSecond ?? source.in_packets_per_second ?? 0),
+    inBytesPerSecond: Number(source.inBytesPerSecond ?? source.in_bytes_per_second ?? 0),
+    sendRateBytesPerSecond: Number(source.sendRateBytesPerSecond ?? source.send_rate_bytes_per_second ?? 0),
+    pendingUnreliable: Number(source.pendingUnreliable ?? source.pending_unreliable ?? 0),
+    pendingReliable: Number(source.pendingReliable ?? source.pending_reliable ?? 0),
+    sentUnackedReliable: Number(source.sentUnackedReliable ?? source.sent_unacked_reliable ?? 0),
+    queueTime: BigInt((source.queueTime ?? source.queue_time ?? 0) as bigint | number | string),
+    maxJitter: Number(source.maxJitter ?? source.max_jitter ?? 0)
+  };
+}
+
+function normalizeNetworkingMessagesSessionConnectionInfo(
+  info: NativeNetworkingMessagesSessionConnectionInfo
+): NetworkingMessagesSessionConnectionInfo {
+  const source = info as unknown as Record<string, unknown>;
+  return {
+    state: Number(info.state),
+    remoteIdentity: normalizeNetworkingIdentityInfoRequired(
+      (source.remoteIdentity ?? source.remote_identity) as NativeNetworkingIdentityInfo | null | undefined
+    ),
+    userData: BigInt((source.userData ?? source.user_data ?? 0) as bigint | number | string),
+    listenSocket: Number(source.listenSocket ?? source.listen_socket ?? 0),
+    remotePop: Number(source.remotePop ?? source.remote_pop ?? 0),
+    relayPop: Number(source.relayPop ?? source.relay_pop ?? 0),
+    endReason: Number(source.endReason ?? source.end_reason ?? 0),
+    endDebug: String(source.endDebug ?? source.end_debug ?? ""),
+    connectionDescription: String(source.connectionDescription ?? source.connection_description ?? ""),
+    flags: Number(info.flags ?? 0),
+    quickStatus: normalizeNetworkingRealTimeStatus(
+      (source.quickStatus ?? source.quick_status) as NativeNetworkingConnectionRealTimeStatus | null | undefined
+    )
   };
 }
 

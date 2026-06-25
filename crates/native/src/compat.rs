@@ -30,6 +30,8 @@ const CALLBACK_LOBBY_CHAT_UPDATE: i32 = 506;
 const CALLBACK_GAME_LOBBY_JOIN_REQUESTED: i32 = 333;
 const CALLBACK_P2P_SESSION_REQUEST: i32 = 1202;
 const CALLBACK_P2P_SESSION_CONNECT_FAIL: i32 = 1203;
+const CALLBACK_STEAM_NETWORKING_MESSAGES_SESSION_REQUEST: i32 = 1251;
+const CALLBACK_STEAM_NETWORKING_MESSAGES_SESSION_FAILED: i32 = 1252;
 const CALLBACK_HTTP_REQUEST_COMPLETED: i32 = 2101;
 const CALLBACK_HTTP_REQUEST_HEADERS_RECEIVED: i32 = 2102;
 const CALLBACK_HTTP_REQUEST_DATA_RECEIVED: i32 = 2103;
@@ -201,6 +203,77 @@ pub struct P2PPacket {
     pub data: Buffer,
     pub size: u32,
     pub steam_id: PlayerSteamId,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct NetworkingIdentity {
+    pub steam_id64: Option<BigInt>,
+    pub text: Option<String>,
+    pub generic_string: Option<String>,
+    pub local_host: Option<bool>,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct NetworkingIdentityInfo {
+    pub identity_type: u32,
+    pub text: String,
+    pub steam_id64: Option<BigInt>,
+    pub generic_string: Option<String>,
+    pub local_host: bool,
+    pub invalid: bool,
+    pub fake_ip_type: u32,
+}
+
+#[napi(object)]
+pub struct NetworkingMessage {
+    pub data: Buffer,
+    pub size: u32,
+    pub peer: NetworkingIdentityInfo,
+    pub connection: u32,
+    pub connection_user_data: BigInt,
+    pub time_received: BigInt,
+    pub message_number: BigInt,
+    pub channel: i32,
+    pub flags: i32,
+    pub user_data: BigInt,
+    pub lane: u32,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct NetworkingConnectionRealTimeStatus {
+    pub state: i32,
+    pub ping: i32,
+    pub connection_quality_local: f64,
+    pub connection_quality_remote: f64,
+    pub out_packets_per_second: f64,
+    pub out_bytes_per_second: f64,
+    pub in_packets_per_second: f64,
+    pub in_bytes_per_second: f64,
+    pub send_rate_bytes_per_second: i32,
+    pub pending_unreliable: i32,
+    pub pending_reliable: i32,
+    pub sent_unacked_reliable: i32,
+    pub queue_time: BigInt,
+    pub max_jitter: i32,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct NetworkingMessagesSessionConnectionInfo {
+    pub state: i32,
+    pub remote_identity: NetworkingIdentityInfo,
+    pub user_data: BigInt,
+    pub listen_socket: u32,
+    pub remote_pop: u32,
+    pub relay_pop: u32,
+    pub end_reason: i32,
+    pub end_debug: String,
+    pub connection_description: String,
+    pub flags: i32,
+    pub quick_status: NetworkingConnectionRealTimeStatus,
 }
 
 #[derive(Debug)]
@@ -4285,6 +4358,139 @@ pub fn networking_accept_p2p_session(steam_id64: BigInt) -> Result<(), Error> {
     }
 }
 
+#[napi(js_name = "networkingIdentityToString")]
+pub fn networking_identity_to_string(identity: NetworkingIdentity) -> Result<String, Error> {
+    let identity = networking_identity_from_input(identity)?;
+    Ok(networking_identity_string(identity))
+}
+
+#[napi(js_name = "networkingIdentityParse")]
+pub fn networking_identity_parse(text: String) -> Result<Option<NetworkingIdentityInfo>, Error> {
+    let mut identity =
+        unsafe { MaybeUninit::<sys::SteamNetworkingIdentity>::zeroed().assume_init() };
+    unsafe { sys::SteamAPI_SteamNetworkingIdentity_Clear(&mut identity) };
+    let text = cstring(text, "networking identity")?;
+    let ok =
+        unsafe { sys::SteamAPI_SteamNetworkingIdentity_ParseString(&mut identity, text.as_ptr()) };
+    Ok(ok.then(|| networking_identity_info(identity)))
+}
+
+#[napi(js_name = "networkingMessagesSendMessageToUser")]
+pub fn networking_messages_send_message_to_user(
+    identity: NetworkingIdentity,
+    data: Buffer,
+    send_flags: Option<i32>,
+    channel: Option<i32>,
+) -> Result<u32, Error> {
+    let identity = networking_identity_from_input(identity)?;
+    let result = unsafe {
+        sys::SteamAPI_ISteamNetworkingMessages_SendMessageToUser(
+            steam_networking_messages()?,
+            &identity,
+            data.as_ptr().cast::<c_void>(),
+            len_to_u32(data.len(), "networking message")?,
+            send_flags.unwrap_or(sys::k_nSteamNetworkingSend_Reliable),
+            channel.unwrap_or(0),
+        )
+    };
+    Ok(result as u32)
+}
+
+#[napi(js_name = "networkingMessagesReceiveMessagesOnChannel")]
+pub fn networking_messages_receive_messages_on_channel(
+    channel: i32,
+    max_messages: Option<u32>,
+) -> Result<Vec<NetworkingMessage>, Error> {
+    let max_messages = max_messages.unwrap_or(32).clamp(1, 1024);
+    let mut messages = vec![ptr::null_mut(); max_messages as usize];
+    let received = unsafe {
+        sys::SteamAPI_ISteamNetworkingMessages_ReceiveMessagesOnChannel(
+            steam_networking_messages()?,
+            channel,
+            messages.as_mut_ptr(),
+            max_messages as i32,
+        )
+    };
+    if received <= 0 {
+        return Ok(Vec::new());
+    }
+
+    let mut output = Vec::with_capacity(received as usize);
+    for message in messages.into_iter().take(received as usize) {
+        if message.is_null() {
+            continue;
+        }
+        let parsed = unsafe { networking_message_from_ptr(message) };
+        unsafe { sys::SteamAPI_SteamNetworkingMessage_t_Release(message) };
+        output.push(parsed);
+    }
+    Ok(output)
+}
+
+#[napi(js_name = "networkingMessagesAcceptSessionWithUser")]
+pub fn networking_messages_accept_session_with_user(
+    identity: NetworkingIdentity,
+) -> Result<bool, Error> {
+    let identity = networking_identity_from_input(identity)?;
+    Ok(unsafe {
+        sys::SteamAPI_ISteamNetworkingMessages_AcceptSessionWithUser(
+            steam_networking_messages()?,
+            &identity,
+        )
+    })
+}
+
+#[napi(js_name = "networkingMessagesCloseSessionWithUser")]
+pub fn networking_messages_close_session_with_user(
+    identity: NetworkingIdentity,
+) -> Result<bool, Error> {
+    let identity = networking_identity_from_input(identity)?;
+    Ok(unsafe {
+        sys::SteamAPI_ISteamNetworkingMessages_CloseSessionWithUser(
+            steam_networking_messages()?,
+            &identity,
+        )
+    })
+}
+
+#[napi(js_name = "networkingMessagesCloseChannelWithUser")]
+pub fn networking_messages_close_channel_with_user(
+    identity: NetworkingIdentity,
+    channel: i32,
+) -> Result<bool, Error> {
+    let identity = networking_identity_from_input(identity)?;
+    Ok(unsafe {
+        sys::SteamAPI_ISteamNetworkingMessages_CloseChannelWithUser(
+            steam_networking_messages()?,
+            &identity,
+            channel,
+        )
+    })
+}
+
+#[napi(js_name = "networkingMessagesGetSessionConnectionInfo")]
+pub fn networking_messages_get_session_connection_info(
+    identity: NetworkingIdentity,
+) -> Result<NetworkingMessagesSessionConnectionInfo, Error> {
+    let identity = networking_identity_from_input(identity)?;
+    let mut info = unsafe { MaybeUninit::<sys::SteamNetConnectionInfo_t>::zeroed().assume_init() };
+    let mut quick_status =
+        unsafe { MaybeUninit::<sys::SteamNetConnectionRealTimeStatus_t>::zeroed().assume_init() };
+    let state = unsafe {
+        sys::SteamAPI_ISteamNetworkingMessages_GetSessionConnectionInfo(
+            steam_networking_messages()?,
+            &identity,
+            &mut info,
+            &mut quick_status,
+        )
+    };
+    Ok(networking_messages_session_connection_info(
+        state as i32,
+        &info,
+        &quick_status,
+    ))
+}
+
 #[napi(js_name = "utilsGetServerRealTime")]
 pub fn utils_get_server_real_time() -> Result<u32, Error> {
     Ok(unsafe { sys::SteamAPI_ISteamUtils_GetServerRealTime(steam_utils()?) })
@@ -5163,6 +5369,14 @@ fn steam_networking() -> Result<*mut sys::ISteamNetworking, Error> {
     )
 }
 
+fn steam_networking_messages() -> Result<*mut sys::ISteamNetworkingMessages, Error> {
+    crate::state::ensure_initialized()?;
+    non_null(
+        unsafe { sys::SteamAPI_SteamNetworkingMessages_SteamAPI_v002() },
+        "ISteamNetworkingMessages",
+    )
+}
+
 fn steam_matchmaking() -> Result<*mut sys::ISteamMatchmaking, Error> {
     crate::state::ensure_initialized()?;
     non_null(
@@ -5817,6 +6031,240 @@ fn bigints_to_u64s(values: Vec<BigInt>, label: &str) -> Result<Vec<u64>, Error> 
         .collect()
 }
 
+fn networking_identity_from_input(
+    identity: NetworkingIdentity,
+) -> Result<sys::SteamNetworkingIdentity, Error> {
+    let NetworkingIdentity {
+        steam_id64,
+        text,
+        generic_string,
+        local_host,
+    } = identity;
+    let mut output = unsafe { MaybeUninit::<sys::SteamNetworkingIdentity>::zeroed().assume_init() };
+    unsafe { sys::SteamAPI_SteamNetworkingIdentity_Clear(&mut output) };
+
+    if let Some(steam_id64) = steam_id64 {
+        unsafe {
+            sys::SteamAPI_SteamNetworkingIdentity_SetSteamID64(
+                &mut output,
+                bigint_to_u64(steam_id64, "networking identity steamId64")?,
+            );
+        }
+        return Ok(output);
+    }
+
+    if let Some(text) = text {
+        let text = cstring(text, "networking identity")?;
+        let ok = unsafe {
+            sys::SteamAPI_SteamNetworkingIdentity_ParseString(&mut output, text.as_ptr())
+        };
+        return ok
+            .then_some(output)
+            .ok_or_else(|| Error::from_reason("invalid networking identity string"));
+    }
+
+    if let Some(generic_string) = generic_string {
+        let generic_string = cstring(generic_string, "generic networking identity")?;
+        let ok = unsafe {
+            sys::SteamAPI_SteamNetworkingIdentity_SetGenericString(
+                &mut output,
+                generic_string.as_ptr(),
+            )
+        };
+        return ok
+            .then_some(output)
+            .ok_or_else(|| Error::from_reason("invalid generic networking identity"));
+    }
+
+    if local_host.unwrap_or(false) {
+        unsafe { sys::SteamAPI_SteamNetworkingIdentity_SetLocalHost(&mut output) };
+        return Ok(output);
+    }
+
+    Err(Error::from_reason(
+        "networking identity requires steamId64, text, genericString, or localHost",
+    ))
+}
+
+fn networking_identity_string(mut identity: sys::SteamNetworkingIdentity) -> String {
+    let mut output = vec![0i8; 129];
+    unsafe {
+        sys::SteamAPI_SteamNetworkingIdentity_ToString(
+            &mut identity,
+            output.as_mut_ptr(),
+            output.len() as u32,
+        );
+    }
+    c_buf_to_string(&output)
+}
+
+fn networking_identity_info(identity: sys::SteamNetworkingIdentity) -> NetworkingIdentityInfo {
+    let identity_type = unsafe { ptr::addr_of!(identity.m_eType).read_unaligned() };
+    let mut identity_for_getters = identity;
+    let steam_id64 = matches!(
+        identity_type,
+        sys::ESteamNetworkingIdentityType::k_ESteamNetworkingIdentityType_SteamID
+    )
+    .then(|| unsafe {
+        sys::SteamAPI_SteamNetworkingIdentity_GetSteamID64(&mut identity_for_getters).into()
+    });
+    let generic_string = matches!(
+        identity_type,
+        sys::ESteamNetworkingIdentityType::k_ESteamNetworkingIdentityType_GenericString
+    )
+    .then(|| unsafe {
+        string_from_ptr(sys::SteamAPI_SteamNetworkingIdentity_GetGenericString(
+            &mut identity_for_getters,
+        ))
+    });
+    NetworkingIdentityInfo {
+        identity_type: identity_type as u32,
+        text: networking_identity_string(identity),
+        steam_id64,
+        generic_string,
+        local_host: unsafe {
+            sys::SteamAPI_SteamNetworkingIdentity_IsLocalHost(&mut identity_for_getters)
+        },
+        invalid: unsafe {
+            sys::SteamAPI_SteamNetworkingIdentity_IsInvalid(&mut identity_for_getters)
+        },
+        fake_ip_type: unsafe {
+            sys::SteamAPI_SteamNetworkingIdentity_GetFakeIPType(&mut identity_for_getters)
+        } as u32,
+    }
+}
+
+fn networking_identity_json(identity: sys::SteamNetworkingIdentity) -> Value {
+    let identity_type = unsafe { ptr::addr_of!(identity.m_eType).read_unaligned() };
+    let mut identity_for_getters = identity;
+    let steam_id64 = matches!(
+        identity_type,
+        sys::ESteamNetworkingIdentityType::k_ESteamNetworkingIdentityType_SteamID
+    )
+    .then(|| unsafe {
+        sys::SteamAPI_SteamNetworkingIdentity_GetSteamID64(&mut identity_for_getters).to_string()
+    });
+    let identity = networking_identity_info(identity);
+    serde_json::json!({
+        "identity_type": identity.identity_type,
+        "text": identity.text,
+        "steam_id64": steam_id64,
+        "generic_string": identity.generic_string,
+        "local_host": identity.local_host,
+        "invalid": identity.invalid,
+        "fake_ip_type": identity.fake_ip_type
+    })
+}
+
+unsafe fn networking_message_from_ptr(
+    message: *mut sys::SteamNetworkingMessage_t,
+) -> NetworkingMessage {
+    let size = ptr::addr_of!((*message).m_cbSize).read_unaligned().max(0) as usize;
+    let data_ptr = ptr::addr_of!((*message).m_pData).read_unaligned();
+    let data = if data_ptr.is_null() || size == 0 {
+        Vec::new()
+    } else {
+        std::slice::from_raw_parts(data_ptr.cast::<u8>(), size).to_vec()
+    };
+    NetworkingMessage {
+        data: data.into(),
+        size: size as u32,
+        peer: networking_identity_info(ptr::addr_of!((*message).m_identityPeer).read_unaligned()),
+        connection: ptr::addr_of!((*message).m_conn).read_unaligned(),
+        connection_user_data: ptr::addr_of!((*message).m_nConnUserData)
+            .read_unaligned()
+            .into(),
+        time_received: ptr::addr_of!((*message).m_usecTimeReceived)
+            .read_unaligned()
+            .into(),
+        message_number: ptr::addr_of!((*message).m_nMessageNumber)
+            .read_unaligned()
+            .into(),
+        channel: ptr::addr_of!((*message).m_nChannel).read_unaligned(),
+        flags: ptr::addr_of!((*message).m_nFlags).read_unaligned(),
+        user_data: ptr::addr_of!((*message).m_nUserData)
+            .read_unaligned()
+            .into(),
+        lane: u32::from(ptr::addr_of!((*message).m_idxLane).read_unaligned()),
+    }
+}
+
+fn networking_real_time_status(
+    status: &sys::SteamNetConnectionRealTimeStatus_t,
+) -> NetworkingConnectionRealTimeStatus {
+    NetworkingConnectionRealTimeStatus {
+        state: unsafe { ptr::addr_of!(status.m_eState).read_unaligned() } as i32,
+        ping: unsafe { ptr::addr_of!(status.m_nPing).read_unaligned() },
+        connection_quality_local: f64::from(unsafe {
+            ptr::addr_of!(status.m_flConnectionQualityLocal).read_unaligned()
+        }),
+        connection_quality_remote: f64::from(unsafe {
+            ptr::addr_of!(status.m_flConnectionQualityRemote).read_unaligned()
+        }),
+        out_packets_per_second: f64::from(unsafe {
+            ptr::addr_of!(status.m_flOutPacketsPerSec).read_unaligned()
+        }),
+        out_bytes_per_second: f64::from(unsafe {
+            ptr::addr_of!(status.m_flOutBytesPerSec).read_unaligned()
+        }),
+        in_packets_per_second: f64::from(unsafe {
+            ptr::addr_of!(status.m_flInPacketsPerSec).read_unaligned()
+        }),
+        in_bytes_per_second: f64::from(unsafe {
+            ptr::addr_of!(status.m_flInBytesPerSec).read_unaligned()
+        }),
+        send_rate_bytes_per_second: unsafe {
+            ptr::addr_of!(status.m_nSendRateBytesPerSecond).read_unaligned()
+        },
+        pending_unreliable: unsafe { ptr::addr_of!(status.m_cbPendingUnreliable).read_unaligned() },
+        pending_reliable: unsafe { ptr::addr_of!(status.m_cbPendingReliable).read_unaligned() },
+        sent_unacked_reliable: unsafe {
+            ptr::addr_of!(status.m_cbSentUnackedReliable).read_unaligned()
+        },
+        queue_time: unsafe { ptr::addr_of!(status.m_usecQueueTime).read_unaligned() }.into(),
+        max_jitter: unsafe { ptr::addr_of!(status.m_usecMaxJitter).read_unaligned() },
+    }
+}
+
+fn networking_messages_session_connection_info(
+    state: i32,
+    info: &sys::SteamNetConnectionInfo_t,
+    quick_status: &sys::SteamNetConnectionRealTimeStatus_t,
+) -> NetworkingMessagesSessionConnectionInfo {
+    NetworkingMessagesSessionConnectionInfo {
+        state,
+        remote_identity: networking_identity_info(unsafe {
+            ptr::addr_of!(info.m_identityRemote).read_unaligned()
+        }),
+        user_data: unsafe { ptr::addr_of!(info.m_nUserData).read_unaligned() }.into(),
+        listen_socket: unsafe { ptr::addr_of!(info.m_hListenSocket).read_unaligned() },
+        remote_pop: unsafe { ptr::addr_of!(info.m_idPOPRemote).read_unaligned() },
+        relay_pop: unsafe { ptr::addr_of!(info.m_idPOPRelay).read_unaligned() },
+        end_reason: unsafe { ptr::addr_of!(info.m_eEndReason).read_unaligned() },
+        end_debug: c_buf_to_string(unsafe { &*ptr::addr_of!(info.m_szEndDebug) }),
+        connection_description: c_buf_to_string(unsafe {
+            &*ptr::addr_of!(info.m_szConnectionDescription)
+        }),
+        flags: unsafe { ptr::addr_of!(info.m_nFlags).read_unaligned() },
+        quick_status: networking_real_time_status(quick_status),
+    }
+}
+
+fn networking_messages_session_info_json(info: &sys::SteamNetConnectionInfo_t) -> Value {
+    serde_json::json!({
+        "remote_identity": networking_identity_json(unsafe { ptr::addr_of!(info.m_identityRemote).read_unaligned() }),
+        "user_data": unsafe { ptr::addr_of!(info.m_nUserData).read_unaligned() }.to_string(),
+        "listen_socket": unsafe { ptr::addr_of!(info.m_hListenSocket).read_unaligned() },
+        "remote_pop": unsafe { ptr::addr_of!(info.m_idPOPRemote).read_unaligned() },
+        "relay_pop": unsafe { ptr::addr_of!(info.m_idPOPRelay).read_unaligned() },
+        "state": unsafe { ptr::addr_of!(info.m_eState).read_unaligned() } as i32,
+        "end_reason": unsafe { ptr::addr_of!(info.m_eEndReason).read_unaligned() },
+        "end_debug": c_buf_to_string(unsafe { &*ptr::addr_of!(info.m_szEndDebug) }),
+        "connection_description": c_buf_to_string(unsafe { &*ptr::addr_of!(info.m_szConnectionDescription) }),
+        "flags": unsafe { ptr::addr_of!(info.m_nFlags).read_unaligned() }
+    })
+}
+
 fn c_buf_to_string(buf: &[i8]) -> String {
     let nul = buf
         .iter()
@@ -5996,6 +6444,12 @@ fn callback_id_from_compat(callback: i32) -> Result<i32, Error> {
         8 => Ok(CALLBACK_GAME_LOBBY_JOIN_REQUESTED),
         9 => Ok(sys::MicroTxnAuthorizationResponse_t_k_iCallback as i32),
         331 => Ok(sys::GameOverlayActivated_t_k_iCallback as i32),
+        CALLBACK_STEAM_NETWORKING_MESSAGES_SESSION_REQUEST => {
+            Ok(sys::SteamNetworkingMessagesSessionRequest_t_k_iCallback as i32)
+        }
+        CALLBACK_STEAM_NETWORKING_MESSAGES_SESSION_FAILED => {
+            Ok(sys::SteamNetworkingMessagesSessionFailed_t_k_iCallback as i32)
+        }
         CALLBACK_HTTP_REQUEST_COMPLETED => Ok(sys::HTTPRequestCompleted_t_k_iCallback as i32),
         CALLBACK_HTTP_REQUEST_HEADERS_RECEIVED => {
             Ok(sys::HTTPRequestHeadersReceived_t_k_iCallback as i32)
@@ -6084,6 +6538,19 @@ unsafe fn callback_to_json(callback: i32, param: *mut c_void) -> Value {
                 ptr::addr_of!((*event).m_steamIDRemote).read_unaligned(),
             );
             serde_json::json!({ "remote": remote.to_string(), "error": ptr::addr_of!((*event).m_eP2PSessionError).read_unaligned() })
+        }
+        CALLBACK_STEAM_NETWORKING_MESSAGES_SESSION_REQUEST => {
+            let event = param as *const sys::SteamNetworkingMessagesSessionRequest_t;
+            serde_json::json!({
+                "remote_identity": networking_identity_json(ptr::addr_of!((*event).m_identityRemote).read_unaligned())
+            })
+        }
+        CALLBACK_STEAM_NETWORKING_MESSAGES_SESSION_FAILED => {
+            let event = param as *const sys::SteamNetworkingMessagesSessionFailed_t;
+            let info = ptr::addr_of!((*event).m_info).read_unaligned();
+            serde_json::json!({
+                "info": networking_messages_session_info_json(&info)
+            })
         }
         8 => {
             let event = param as *const sys::GameLobbyJoinRequested_t;

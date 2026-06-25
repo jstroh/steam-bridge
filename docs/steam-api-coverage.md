@@ -41,8 +41,9 @@ The native layer currently targets the Steamworks flat C API through
   item generation/promo/consume/exchange/transfer/trade flows, item definition
   reads, eligible promo definition queries, purchase and price requests, dynamic
   property updates, inspect tokens, and inventory callbacks.
-- Networking: legacy P2P send, receive, availability, session accept/close, and
-  send-channel close helpers.
+- Networking: legacy P2P send, receive, availability, session accept/close,
+  send-channel close helpers, and modern `ISteamNetworkingMessages`
+  identity/session/message send and receive flows.
 - UGC/Workshop: item create/update/query flows, install/download information,
   subscription list helpers, item state, statistics, and query configuration.
 - Screenshots: screenshot library writes, screenshot triggers/hooks, location
@@ -64,8 +65,8 @@ The native layer currently targets the Steamworks flat C API through
   and every overlay/social helper.
 - `ISteamMusicRemote` is not exposed by the current `steamworks-sys 0.13` macOS
   bindings used by this crate.
-- Modern networking interfaces: `ISteamNetworkingSockets`,
-  `ISteamNetworkingMessages`, and `ISteamNetworkingUtils`.
+- Modern networking interfaces: `ISteamNetworkingSockets` and
+  `ISteamNetworkingUtils`.
 - Matchmaking server browser and game server APIs.
 - Game server, game server stats, and server-only workflows.
 - Complete callback/event coverage for every implemented interface, including
