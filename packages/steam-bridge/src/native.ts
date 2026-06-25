@@ -1480,6 +1480,10 @@ export interface NativeBinding {
   isSteamRunning(): boolean;
   getSteamInstallPath(): string | undefined;
   runCallbacks(): void;
+  initSafe(): boolean;
+  runLegacyCallbacks(): void;
+  releaseCurrentThreadMemory(): void;
+  setTryCatchCallbacks(enabled: boolean): void;
 
   gameServerInit(options: NativeGameServerInitOptions): void;
   gameServerShutdown(): void;

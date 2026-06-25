@@ -73,6 +73,19 @@ function createFakeNative(overrides = {}) {
     runCallbacks() {
       calls.push({ method: "runCallbacks", args: [] });
     },
+    initSafe() {
+      calls.push({ method: "initSafe", args: [] });
+      return true;
+    },
+    runLegacyCallbacks() {
+      calls.push({ method: "runLegacyCallbacks", args: [] });
+    },
+    releaseCurrentThreadMemory() {
+      calls.push({ method: "releaseCurrentThreadMemory", args: [] });
+    },
+    setTryCatchCallbacks(enabled) {
+      calls.push({ method: "setTryCatchCallbacks", args: [enabled] });
+    },
     getSteamId() {
       return { steamId64: "76561198000000000", steamId32: "STEAM_0:0:19867136", accountId: 39734272 };
     },
@@ -1049,6 +1062,21 @@ test("init reads the Steam app ID from the environment and returns the grouped c
   assert.equal(client.timeline, steam.timeline);
   assert.equal(client.remotePlay, steam.remotePlay);
   assert.equal(client.localplayer.getSteamId().steamId64, 76561198000000000n);
+  assert.equal(steam.initSafe(), true);
+  steam.runLegacyCallbacks();
+  steam.releaseCurrentThreadMemory();
+  steam.setTryCatchCallbacks(true);
+  assert.deepEqual(fake.calls.filter((call) => [
+    "initSafe",
+    "runLegacyCallbacks",
+    "releaseCurrentThreadMemory",
+    "setTryCatchCallbacks"
+  ].includes(call.method)), [
+    { method: "initSafe", args: [] },
+    { method: "runLegacyCallbacks", args: [] },
+    { method: "releaseCurrentThreadMemory", args: [] },
+    { method: "setTryCatchCallbacks", args: [true] }
+  ]);
 });
 
 test("init rejects missing app IDs with an actionable error", (t) => {

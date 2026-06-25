@@ -14,6 +14,10 @@ mod compat;
 mod native_surface;
 mod state;
 
+extern "C" {
+    fn SteamAPI_InitSafe() -> bool;
+}
+
 const CALLBACK_GET_TICKET_FOR_WEB_API_RESPONSE: i32 = 168;
 const CALLBACK_MICRO_TXN_AUTHORIZATION_RESPONSE: i32 = 152;
 const CALLBACK_GAME_OVERLAY_ACTIVATED: i32 = 331;
@@ -160,6 +164,26 @@ pub fn run_callbacks() {
             sys::SteamAPI_ManualDispatch_FreeLastCallback(pipe);
         }
     }
+}
+
+#[napi(js_name = "initSafe")]
+pub fn init_safe() -> bool {
+    unsafe { SteamAPI_InitSafe() }
+}
+
+#[napi(js_name = "runLegacyCallbacks")]
+pub fn run_legacy_callbacks() {
+    unsafe { sys::SteamAPI_RunCallbacks() };
+}
+
+#[napi(js_name = "releaseCurrentThreadMemory")]
+pub fn release_current_thread_memory() {
+    unsafe { sys::SteamAPI_ReleaseCurrentThreadMemory() };
+}
+
+#[napi(js_name = "setTryCatchCallbacks")]
+pub fn set_try_catch_callbacks(enabled: bool) {
+    unsafe { sys::SteamAPI_SetTryCatchCallbacks(enabled) };
 }
 
 #[napi(js_name = "getSteamId")]

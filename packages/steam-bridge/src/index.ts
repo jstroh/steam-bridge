@@ -3223,6 +3223,22 @@ export function runCallbacks(): void {
   native().runCallbacks();
 }
 
+export function initSafe(): boolean {
+  return native().initSafe();
+}
+
+export function runLegacyCallbacks(): void {
+  native().runLegacyCallbacks();
+}
+
+export function releaseCurrentThreadMemory(): void {
+  native().releaseCurrentThreadMemory();
+}
+
+export function setTryCatchCallbacks(enabled: boolean): void {
+  native().setTryCatchCallbacks(enabled);
+}
+
 export function getSteamId(): SteamId {
   return normalizeSteamId(native().getSteamId());
 }
@@ -10030,6 +10046,10 @@ const defaultExport = {
   isSteamRunning,
   getSteamInstallPath,
   runCallbacks,
+  initSafe,
+  runLegacyCallbacks,
+  releaseCurrentThreadMemory,
+  setTryCatchCallbacks,
   getSteamId,
   getAuthTicketForWebApi,
   isSteamDeck,
