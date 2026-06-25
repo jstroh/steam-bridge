@@ -281,6 +281,18 @@ test("utils facade covers activity, images, VR, filtering, and text input helper
       this.calls.push({ method: "utilsGetIpcCallCount", args: [] });
       return 3;
     },
+    utilsIsApiCallCompleted(apiCall) {
+      this.calls.push({ method: "utilsIsApiCallCompleted", args: [apiCall] });
+      return { completed: true, failed: false };
+    },
+    utilsGetApiCallFailureReason(apiCall) {
+      this.calls.push({ method: "utilsGetApiCallFailureReason", args: [apiCall] });
+      return -1;
+    },
+    utilsGetApiCallResult(apiCall, expectedCallback, byteLength) {
+      this.calls.push({ method: "utilsGetApiCallResult", args: [apiCall, expectedCallback, byteLength] });
+      return { ok: true, failed: false, data: Buffer.from([1, 2, 3, 4]) };
+    },
     utilsCheckFileSignature(fileName, timeoutSeconds) {
       this.calls.push({ method: "utilsCheckFileSignature", args: [fileName, timeoutSeconds] });
       return Promise.resolve(1);
@@ -352,6 +364,19 @@ test("utils facade covers activity, images, VR, filtering, and text input helper
   assert.equal(steam.utils.getImageRGBA(99), null);
   assert.equal(steam.utils.getCurrentBatteryPower(), 95);
   assert.equal(steam.utils.getIPCCallCount(), 3);
+  assert.deepEqual(steam.utils.isApiCallCompleted("12345678901234567890"), {
+    completed: true,
+    failed: false
+  });
+  assert.equal(steam.utils.getApiCallFailureReason(12345678901234567890n), -1);
+  const apiCallResult = steam.utils.getApiCallResult(
+    12345678901234567890n,
+    steam.SteamCallback.FileDetailsResult,
+    36
+  );
+  assert.equal(apiCallResult.ok, true);
+  assert.equal(apiCallResult.failed, false);
+  assert.deepEqual(apiCallResult.data, Buffer.from([1, 2, 3, 4]));
   assert.equal(
     await steam.utils.checkFileSignature("steam_appid.txt", 5),
     steam.utils.CheckFileSignature.ValidSignature
@@ -382,12 +407,18 @@ test("utils facade covers activity, images, VR, filtering, and text input helper
       [
         "utilsSetOverlayNotificationPosition",
         "utilsSetOverlayNotificationInset",
+        "utilsIsApiCallCompleted",
+        "utilsGetApiCallFailureReason",
+        "utilsGetApiCallResult",
         "utilsCheckFileSignature",
         "utilsFilterText",
         "utilsSetGameLauncherMode"
       ].includes(call.method)
     ),
     [
+      { method: "utilsIsApiCallCompleted", args: [12345678901234567890n] },
+      { method: "utilsGetApiCallFailureReason", args: [12345678901234567890n] },
+      { method: "utilsGetApiCallResult", args: [12345678901234567890n, 1023, 36] },
       { method: "utilsCheckFileSignature", args: ["steam_appid.txt", 5] },
       { method: "utilsSetOverlayNotificationPosition", args: [3] },
       { method: "utilsSetOverlayNotificationInset", args: [16, 24] },

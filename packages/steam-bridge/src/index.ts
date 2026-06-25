@@ -81,6 +81,8 @@ import {
   NativeTimelineEventRecordingExists,
   NativeTimelineGamePhaseRecordingExists,
   NativeUgcResult,
+  NativeUtilsApiCallCompletion,
+  NativeUtilsApiCallResult,
   NativeUtilsFilteredText,
   NativeUtilsImageSize,
   NativeUserStatsReceivedResult,
@@ -395,6 +397,17 @@ export interface OverlayWebPageOptions {
 export interface UtilsImageSize {
   width: number;
   height: number;
+}
+
+export interface UtilsApiCallCompletion {
+  completed: boolean;
+  failed: boolean;
+}
+
+export interface UtilsApiCallResult {
+  ok: boolean;
+  failed: boolean;
+  data: Buffer | null;
 }
 
 export interface UtilsFilteredText {
@@ -3207,6 +3220,21 @@ export const utils = {
   getIPCCallCount(): number {
     return native().utilsGetIpcCallCount();
   },
+  isApiCallCompleted(apiCall: bigint | number | string): UtilsApiCallCompletion {
+    return normalizeUtilsApiCallCompletion(native().utilsIsApiCallCompleted(BigInt(apiCall)));
+  },
+  getApiCallFailureReason(apiCall: bigint | number | string): number {
+    return native().utilsGetApiCallFailureReason(BigInt(apiCall));
+  },
+  getApiCallResult(
+    apiCall: bigint | number | string,
+    expectedCallback: number,
+    byteLength: number
+  ): UtilsApiCallResult {
+    return normalizeUtilsApiCallResult(
+      native().utilsGetApiCallResult(BigInt(apiCall), expectedCallback, byteLength)
+    );
+  },
   async checkFileSignature(fileName: string, timeoutSeconds?: number | null): Promise<number> {
     return native().utilsCheckFileSignature(fileName, timeoutSeconds ?? undefined);
   },
@@ -4178,6 +4206,21 @@ function normalizeUtilsImageSize(size: NativeUtilsImageSize | null | undefined):
   return {
     width: size.width,
     height: size.height
+  };
+}
+
+function normalizeUtilsApiCallCompletion(result: NativeUtilsApiCallCompletion): UtilsApiCallCompletion {
+  return {
+    completed: Boolean(result.completed),
+    failed: Boolean(result.failed)
+  };
+}
+
+function normalizeUtilsApiCallResult(result: NativeUtilsApiCallResult): UtilsApiCallResult {
+  return {
+    ok: Boolean(result.ok),
+    failed: Boolean(result.failed),
+    data: result.data ?? null
   };
 }
 

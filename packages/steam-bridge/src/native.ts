@@ -739,6 +739,17 @@ export interface NativeUtilsImageSize {
   height: number;
 }
 
+export interface NativeUtilsApiCallCompletion {
+  completed: boolean;
+  failed: boolean;
+}
+
+export interface NativeUtilsApiCallResult {
+  ok: boolean;
+  failed: boolean;
+  data?: Buffer | null;
+}
+
 export interface NativeUtilsFilteredText {
   filtered: string;
   charactersFiltered?: number;
@@ -773,6 +784,9 @@ export interface NativeBinding {
   utilsGetImageRgba(image: number): Buffer | null | undefined;
   utilsGetCurrentBatteryPower(): number;
   utilsGetIpcCallCount(): number;
+  utilsIsApiCallCompleted(apiCall: bigint): NativeUtilsApiCallCompletion;
+  utilsGetApiCallFailureReason(apiCall: bigint): number;
+  utilsGetApiCallResult(apiCall: bigint, expectedCallback: number, byteLength: number): NativeUtilsApiCallResult;
   utilsCheckFileSignature(fileName: string, timeoutSeconds?: number): Promise<number>;
   utilsSetOverlayNotificationPosition(position: number): void;
   utilsSetOverlayNotificationInset(horizontal: number, vertical: number): void;

@@ -76,6 +76,7 @@ const LEADERBOARD_DETAILS_MAX: u32 = 64;
 const GLOBAL_STAT_HISTORY_MAX: u32 = 10_000;
 const PARTY_METADATA_BUFFER_SIZE: usize = 4096;
 const FRIEND_FLAG_IMMEDIATE: u32 = 4;
+const MAX_API_CALL_RESULT_BYTES: u32 = 1024 * 1024;
 
 type FatalThreadsafeFunction<T> = ThreadsafeFunction<T, (), Vec<T>, Status, false>;
 type JsCallback<'scope, T> = Function<'scope, T, ()>;
@@ -836,6 +837,20 @@ pub struct RemotePlayInputEvent {
 pub struct UtilsImageSize {
     pub width: u32,
     pub height: u32,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct UtilsApiCallCompletion {
+    pub completed: bool,
+    pub failed: bool,
+}
+
+#[napi(object)]
+pub struct UtilsApiCallResult {
+    pub ok: bool,
+    pub failed: bool,
+    pub data: Option<Buffer>,
 }
 
 #[derive(Debug)]
@@ -6048,6 +6063,62 @@ pub fn utils_get_current_battery_power() -> Result<u32, Error> {
 #[napi(js_name = "utilsGetIpcCallCount")]
 pub fn utils_get_ipc_call_count() -> Result<u32, Error> {
     Ok(unsafe { sys::SteamAPI_ISteamUtils_GetIPCCallCount(steam_utils()?) })
+}
+
+#[napi(js_name = "utilsIsApiCallCompleted")]
+pub fn utils_is_api_call_completed(api_call: BigInt) -> Result<UtilsApiCallCompletion, Error> {
+    let utils = steam_utils()?;
+    let api_call = bigint_to_u64(api_call, "Steam API call handle")?;
+    let mut failed = false;
+    let completed =
+        unsafe { sys::SteamAPI_ISteamUtils_IsAPICallCompleted(utils, api_call, &mut failed) };
+    Ok(UtilsApiCallCompletion { completed, failed })
+}
+
+#[napi(js_name = "utilsGetApiCallFailureReason")]
+pub fn utils_get_api_call_failure_reason(api_call: BigInt) -> Result<i32, Error> {
+    let reason = unsafe {
+        sys::SteamAPI_ISteamUtils_GetAPICallFailureReason(
+            steam_utils()?,
+            bigint_to_u64(api_call, "Steam API call handle")?,
+        )
+    };
+    Ok(reason as i32)
+}
+
+#[napi(js_name = "utilsGetApiCallResult")]
+pub fn utils_get_api_call_result(
+    api_call: BigInt,
+    expected_callback: i32,
+    byte_length: u32,
+) -> Result<UtilsApiCallResult, Error> {
+    if byte_length > MAX_API_CALL_RESULT_BYTES {
+        return Err(Error::from_reason(format!(
+            "API call result buffer cannot exceed {MAX_API_CALL_RESULT_BYTES} bytes"
+        )));
+    }
+
+    let byte_length_i32 = i32::try_from(byte_length)
+        .map_err(|_| Error::from_reason("API call result buffer is too large"))?;
+    let expected_callback = callback_id_from_compat(expected_callback).unwrap_or(expected_callback);
+    let mut data = vec![0u8; byte_length as usize];
+    let mut failed = false;
+    let ok = unsafe {
+        sys::SteamAPI_ISteamUtils_GetAPICallResult(
+            steam_utils()?,
+            bigint_to_u64(api_call, "Steam API call handle")?,
+            data.as_mut_ptr().cast::<c_void>(),
+            byte_length_i32,
+            expected_callback,
+            &mut failed,
+        )
+    };
+
+    Ok(UtilsApiCallResult {
+        ok,
+        failed,
+        data: ok.then(|| data.into()),
+    })
 }
 
 #[napi(js_name = "utilsCheckFileSignature")]
