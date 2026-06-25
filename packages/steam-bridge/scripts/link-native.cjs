@@ -48,24 +48,10 @@ function readArg(name) {
 }
 
 function releaseDirs() {
-  const dirs = [];
-
-  if (targetArg) {
-    dirs.push(path.join(repoRoot, "target", targetArg, "release"));
-  }
-
-  dirs.push(path.join(repoRoot, "target", "release"));
-
-  const targetRoot = path.join(repoRoot, "target");
-  if (fs.existsSync(targetRoot)) {
-    for (const entry of fs.readdirSync(targetRoot, { withFileTypes: true })) {
-      if (entry.isDirectory()) {
-        dirs.push(path.join(targetRoot, entry.name, "release"));
-      }
-    }
-  }
-
-  return [...new Set(dirs)];
+  return [
+    path.join(repoRoot, "target", targetArg || supportedTarget, "release"),
+    path.join(repoRoot, "target", "release")
+  ];
 }
 
 function findNativeLibrary() {
@@ -84,8 +70,7 @@ function findSteamRedistributable() {
   const candidates = [
     sdkPath ? path.join(sdkPath, "redistributable_bin", redistFolder, redistName) : "",
     path.join(repoRoot, "sdk", "redistributable_bin", redistFolder, redistName),
-    ...releaseDirs().map((dir) => path.join(dir, "build")),
-    path.join(repoRoot, "target")
+    ...releaseDirs().map((dir) => path.join(dir, "build"))
   ];
 
   for (const candidate of candidates) {

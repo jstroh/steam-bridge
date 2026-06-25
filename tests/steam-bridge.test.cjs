@@ -485,7 +485,7 @@ test("user facade covers voice, auth session, account, and duration helpers", as
   );
 });
 
-test("game server facade covers lifecycle, metadata, auth, and packet helpers", (t) => {
+test("game server facade covers lifecycle, metadata, auth, async status, and packet helpers", async (t) => {
   const serverId = { steamId64: "901234", steamId32: "STEAM_0:0:450617", accountId: 901234 };
   const playerId = { steamId64: "76561198000000020", steamId32: "STEAM_0:0:19867146", accountId: 39734292 };
   const fake = createFakeNative({
@@ -607,6 +607,33 @@ test("game server facade covers lifecycle, metadata, auth, and packet helpers", 
     gameServerGetGameplayStats() {
       this.calls.push({ method: "gameServerGetGameplayStats", args: [] });
     },
+    gameServerGetServerReputation() {
+      this.calls.push({ method: "gameServerGetServerReputation", args: [] });
+      return Promise.resolve({
+        result: 1,
+        reputation_score: 900,
+        banned: true,
+        banned_ip: 2130706433,
+        banned_ip_address: "127.0.0.1",
+        banned_port: 27015,
+        banned_game_id: "480",
+        ban_expires: 1234567890
+      });
+    },
+    gameServerAssociateWithClan(clanId64) {
+      this.calls.push({ method: "gameServerAssociateWithClan", args: [clanId64] });
+      return Promise.resolve({ result: 1 });
+    },
+    gameServerComputeNewPlayerCompatibility(steamId64) {
+      this.calls.push({ method: "gameServerComputeNewPlayerCompatibility", args: [steamId64] });
+      return Promise.resolve({
+        result: 1,
+        players_that_dont_like_candidate: 2,
+        players_that_candidate_doesnt_like: 3,
+        clan_players_that_dont_like_candidate: 4,
+        candidate: playerId
+      });
+    },
     gameServerGetPublicIp() {
       this.calls.push({ method: "gameServerGetPublicIp", args: [] });
       return { is_set: true, ip_type: 0, ipv4: 2130706433, ipv4_address: "127.0.0.1", ipv6: null };
@@ -682,6 +709,17 @@ test("game server facade covers lifecycle, metadata, auth, and packet helpers", 
   assert.equal(steam.gameServer.userHasLicenseForApp(76561198000000020n, 480), 0);
   assert.equal(steam.gameServer.requestUserGroupStatus(76561198000000020n, 103582791429521412n), true);
   steam.gameServer.getGameplayStats();
+  const reputation = await steam.gameServer.getServerReputation();
+  assert.equal(reputation.reputationScore, 900);
+  assert.equal(reputation.bannedGameId, 480n);
+  assert.equal(reputation.bannedIpAddress, "127.0.0.1");
+  const clanResult = await steam.gameServer.associateWithClan(103582791429521412n);
+  assert.equal(clanResult.result, 1);
+  const compatibility = await steam.gameServer.computeNewPlayerCompatibility(76561198000000020n);
+  assert.equal(compatibility.playersThatDontLikeCandidate, 2);
+  assert.equal(compatibility.playersThatCandidateDoesntLike, 3);
+  assert.equal(compatibility.clanPlayersThatDontLikeCandidate, 4);
+  assert.equal(compatibility.candidate.steamId64, 76561198000000020n);
   assert.equal(steam.gameServer.getPublicIP().ipv4Address, "127.0.0.1");
   assert.equal(steam.gameServer.handleIncomingPacket(Buffer.from("in"), 2130706433, 27015), true);
   assert.equal(steam.gameServer.getNextOutgoingPacket(2048).data.toString(), "out");
@@ -709,6 +747,10 @@ test("game server facade covers lifecycle, metadata, auth, and packet helpers", 
   assert.deepEqual(fake.calls.find((call) => call.method === "gameServerGetAuthSessionTicket"), {
     method: "gameServerGetAuthSessionTicket",
     args: [{ steamId64: 76561198000000020n }, 1024]
+  });
+  assert.deepEqual(fake.calls.find((call) => call.method === "gameServerAssociateWithClan"), {
+    method: "gameServerAssociateWithClan",
+    args: [103582791429521412n]
   });
 });
 
@@ -1021,6 +1063,16 @@ test("specific and generic callbacks normalize Steamworks payloads", (t) => {
   assert.equal(steam.SteamCallback.AppProofOfPurchaseKeyResponse, 1021);
   assert.equal(steam.SteamCallback.FileDetailsResult, 1023);
   assert.equal(steam.SteamCallback.TimedTrialStatus, 1030);
+  assert.equal(steam.SteamCallback.GameServerClientApprove, 201);
+  assert.equal(steam.SteamCallback.GameServerClientDeny, 202);
+  assert.equal(steam.SteamCallback.GameServerClientKick, 203);
+  assert.equal(steam.SteamCallback.GameServerClientAchievementStatus, 206);
+  assert.equal(steam.SteamCallback.GameServerPolicyResponse, 115);
+  assert.equal(steam.SteamCallback.GameServerGameplayStats, 207);
+  assert.equal(steam.SteamCallback.GameServerClientGroupStatus, 208);
+  assert.equal(steam.SteamCallback.GameServerReputation, 209);
+  assert.equal(steam.SteamCallback.GameServerAssociateWithClan, 210);
+  assert.equal(steam.SteamCallback.GameServerPlayerCompatibility, 211);
   assert.equal(steam.SteamCallback.GameServerStatsUnloaded, 1108);
   assert.equal(steam.SteamCallback.GameServerStatsReceived, 1800);
   assert.equal(steam.SteamCallback.GameServerStatsStored, 1801);
@@ -1116,6 +1168,42 @@ test("specific and generic callbacks normalize Steamworks payloads", (t) => {
   assert.equal(timedTrialEvent.isOffline, false);
   assert.equal(timedTrialEvent.secondsAllowed, 3600);
   assert.equal(timedTrialEvent.secondsPlayed, 120);
+
+  let reputationEvent;
+  steam.callback.register(steam.SteamCallback.GameServerReputation, (event) => {
+    reputationEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.GameServerReputation)({
+    result: 1,
+    reputation_score: 900,
+    banned: true,
+    banned_ip: 2130706433,
+    banned_ip_address: "127.0.0.1",
+    banned_port: 27015,
+    banned_game_id: "480",
+    ban_expires: 1234567890
+  });
+
+  assert.equal(reputationEvent.reputationScore, 900);
+  assert.equal(reputationEvent.bannedGameId, 480n);
+  assert.equal(reputationEvent.bannedIpAddress, "127.0.0.1");
+
+  let compatibilityEvent;
+  steam.callback.register(steam.SteamCallback.GameServerPlayerCompatibility, (event) => {
+    compatibilityEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.GameServerPlayerCompatibility)({
+    result: 1,
+    candidate_steam_id: "76561198000000020",
+    players_that_dont_like_candidate: 2,
+    players_that_candidate_doesnt_like: 3,
+    clan_players_that_dont_like_candidate: 4
+  });
+
+  assert.equal(compatibilityEvent.candidateSteamId, 76561198000000020n);
+  assert.equal(compatibilityEvent.playersThatDontLikeCandidate, 2);
+  assert.equal(compatibilityEvent.playersThatCandidateDoesntLike, 3);
+  assert.equal(compatibilityEvent.clanPlayersThatDontLikeCandidate, 4);
 
   let marketEvent;
   steam.callback.register(steam.SteamCallback.MarketEligibilityResponse, (event) => {

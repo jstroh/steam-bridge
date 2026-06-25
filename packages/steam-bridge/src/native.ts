@@ -63,6 +63,38 @@ export interface NativeGameServerStatsResult {
   steam_id?: NativeSteamId;
 }
 
+export interface NativeGameServerReputationResult {
+  result: number;
+  reputationScore?: number;
+  reputation_score?: number;
+  banned: boolean;
+  bannedIp?: number;
+  banned_ip?: number;
+  bannedIpAddress?: string;
+  banned_ip_address?: string;
+  bannedPort?: number;
+  banned_port?: number;
+  bannedGameId?: bigint | string | number;
+  banned_game_id?: bigint | string | number;
+  banExpires?: number;
+  ban_expires?: number;
+}
+
+export interface NativeGameServerAssociateWithClanResult {
+  result: number;
+}
+
+export interface NativeGameServerPlayerCompatibilityResult {
+  result: number;
+  playersThatDontLikeCandidate?: number;
+  players_that_dont_like_candidate?: number;
+  playersThatCandidateDoesntLike?: number;
+  players_that_candidate_doesnt_like?: number;
+  clanPlayersThatDontLikeCandidate?: number;
+  clan_players_that_dont_like_candidate?: number;
+  candidate?: NativeSteamId;
+}
+
 export interface NativeOverlayDiagnostics {
   steamRunning: boolean;
   steamInstallPath?: string;
@@ -975,6 +1007,9 @@ export interface NativeBinding {
   gameServerUserHasLicenseForApp(steamId64: bigint, appId: number): number;
   gameServerRequestUserGroupStatus(steamId64: bigint, groupId64: bigint): boolean;
   gameServerGetGameplayStats(): void;
+  gameServerGetServerReputation(): Promise<NativeGameServerReputationResult>;
+  gameServerAssociateWithClan(clanId64: bigint): Promise<NativeGameServerAssociateWithClanResult>;
+  gameServerComputeNewPlayerCompatibility(steamId64: bigint): Promise<NativeGameServerPlayerCompatibilityResult>;
   gameServerGetPublicIp(): NativeGameServerPublicIp;
   gameServerHandleIncomingPacket(data: Buffer, srcIp: number, srcPort: number): boolean;
   gameServerGetNextOutgoingPacket(maxBytes?: number): NativeGameServerOutgoingPacket | null | undefined;
@@ -1583,6 +1618,10 @@ let binding: NativeBinding | undefined;
 export function loadNativeBinding(): NativeBinding {
   if (binding) {
     return binding;
+  }
+
+  if (process.platform !== "darwin" || process.arch !== "arm64") {
+    throw new Error("Steam Bridge supports Apple Silicon macOS only (aarch64-apple-darwin).");
   }
 
   const errors: string[] = [];

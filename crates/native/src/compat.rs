@@ -81,6 +81,16 @@ const CALLBACK_STEAM_NETWORKING_MESSAGES_SESSION_REQUEST: i32 = 1251;
 const CALLBACK_STEAM_NETWORKING_MESSAGES_SESSION_FAILED: i32 = 1252;
 const CALLBACK_STEAM_RELAY_NETWORK_STATUS: i32 = 1281;
 const STEAM_GAME_SERVER_INTERFACE_VERSIONS: &[u8] = b"SteamUtils010\0SteamNetworkingUtils004\0SteamGameServer015\0SteamGameServerStats001\0STEAMHTTP_INTERFACE_VERSION003\0STEAMINVENTORY_INTERFACE_V003\0SteamNetworking006\0SteamNetworkingMessages002\0SteamNetworkingSockets012\0STEAMUGC_INTERFACE_VERSION021\0\0";
+const CALLBACK_GAME_SERVER_CLIENT_APPROVE: i32 = 201;
+const CALLBACK_GAME_SERVER_CLIENT_DENY: i32 = 202;
+const CALLBACK_GAME_SERVER_CLIENT_KICK: i32 = 203;
+const CALLBACK_GAME_SERVER_CLIENT_ACHIEVEMENT_STATUS: i32 = 206;
+const CALLBACK_GAME_SERVER_POLICY_RESPONSE: i32 = 115;
+const CALLBACK_GAME_SERVER_GAMEPLAY_STATS: i32 = 207;
+const CALLBACK_GAME_SERVER_CLIENT_GROUP_STATUS: i32 = 208;
+const CALLBACK_GAME_SERVER_REPUTATION: i32 = 209;
+const CALLBACK_GAME_SERVER_ASSOCIATE_WITH_CLAN: i32 = 210;
+const CALLBACK_GAME_SERVER_PLAYER_COMPATIBILITY: i32 = 211;
 const CALLBACK_GAME_SERVER_STATS_UNLOADED: i32 = 1108;
 const CALLBACK_GAME_SERVER_STATS_RECEIVED: i32 = 1800;
 const CALLBACK_GAME_SERVER_STATS_STORED: i32 = 1801;
@@ -362,6 +372,35 @@ pub struct GameServerUserConnectResult {
 pub struct GameServerStatsResult {
     pub result: u32,
     pub steam_id: PlayerSteamId,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct GameServerReputationResult {
+    pub result: u32,
+    pub reputation_score: u32,
+    pub banned: bool,
+    pub banned_ip: u32,
+    pub banned_ip_address: String,
+    pub banned_port: u32,
+    pub banned_game_id: BigInt,
+    pub ban_expires: u32,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct GameServerAssociateWithClanResult {
+    pub result: u32,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct GameServerPlayerCompatibilityResult {
+    pub result: u32,
+    pub players_that_dont_like_candidate: i32,
+    pub players_that_candidate_doesnt_like: i32,
+    pub clan_players_that_dont_like_candidate: i32,
+    pub candidate: PlayerSteamId,
 }
 
 #[derive(Debug)]
@@ -5444,6 +5483,56 @@ pub fn game_server_get_gameplay_stats() -> Result<(), Error> {
     Ok(())
 }
 
+#[napi(js_name = "gameServerGetServerReputation")]
+pub async fn game_server_get_server_reputation() -> Result<GameServerReputationResult, Error> {
+    let call = unsafe { sys::SteamAPI_ISteamGameServer_GetServerReputation(steam_game_server()?) };
+    let result: sys::GSReputation_t = wait_for_game_server_api_call(
+        call,
+        sys::GSReputation_t_k_iCallback as i32,
+        DEFAULT_ASYNC_TIMEOUT_SECONDS,
+    )
+    .await?;
+    Ok(game_server_reputation_result(result))
+}
+
+#[napi(js_name = "gameServerAssociateWithClan")]
+pub async fn game_server_associate_with_clan(
+    clan_id64: BigInt,
+) -> Result<GameServerAssociateWithClanResult, Error> {
+    let call = unsafe {
+        sys::SteamAPI_ISteamGameServer_AssociateWithClan(
+            steam_game_server()?,
+            bigint_to_u64(clan_id64, "clan id")?,
+        )
+    };
+    let result: sys::AssociateWithClanResult_t = wait_for_game_server_api_call(
+        call,
+        sys::AssociateWithClanResult_t_k_iCallback as i32,
+        DEFAULT_ASYNC_TIMEOUT_SECONDS,
+    )
+    .await?;
+    Ok(game_server_associate_with_clan_result(result))
+}
+
+#[napi(js_name = "gameServerComputeNewPlayerCompatibility")]
+pub async fn game_server_compute_new_player_compatibility(
+    steam_id64: BigInt,
+) -> Result<GameServerPlayerCompatibilityResult, Error> {
+    let call = unsafe {
+        sys::SteamAPI_ISteamGameServer_ComputeNewPlayerCompatibility(
+            steam_game_server()?,
+            bigint_to_u64(steam_id64, "steam id")?,
+        )
+    };
+    let result: sys::ComputeNewPlayerCompatibilityResult_t = wait_for_game_server_api_call(
+        call,
+        sys::ComputeNewPlayerCompatibilityResult_t_k_iCallback as i32,
+        DEFAULT_ASYNC_TIMEOUT_SECONDS,
+    )
+    .await?;
+    Ok(game_server_player_compatibility_result(result))
+}
+
 #[napi(js_name = "gameServerGetPublicIp")]
 pub fn game_server_get_public_ip() -> Result<GameServerPublicIp, Error> {
     let mut address = unsafe { sys::SteamAPI_ISteamGameServer_GetPublicIP(steam_game_server()?) };
@@ -9467,6 +9556,48 @@ fn game_server_stats_stored_result(result: sys::GSStatsStored_t) -> GameServerSt
     }
 }
 
+fn game_server_reputation_result(result: sys::GSReputation_t) -> GameServerReputationResult {
+    let banned_ip = unsafe { ptr::addr_of!(result.m_unBannedIP).read_unaligned() };
+    GameServerReputationResult {
+        result: unsafe { ptr::addr_of!(result.m_eResult).read_unaligned() } as u32,
+        reputation_score: unsafe { ptr::addr_of!(result.m_unReputationScore).read_unaligned() },
+        banned: unsafe { ptr::addr_of!(result.m_bBanned).read_unaligned() },
+        banned_ip,
+        banned_ip_address: ipv4_to_string(banned_ip),
+        banned_port: unsafe { ptr::addr_of!(result.m_usBannedPort).read_unaligned() }.into(),
+        banned_game_id: unsafe { ptr::addr_of!(result.m_ulBannedGameID).read_unaligned() }.into(),
+        ban_expires: unsafe { ptr::addr_of!(result.m_unBanExpires).read_unaligned() },
+    }
+}
+
+fn game_server_associate_with_clan_result(
+    result: sys::AssociateWithClanResult_t,
+) -> GameServerAssociateWithClanResult {
+    GameServerAssociateWithClanResult {
+        result: unsafe { ptr::addr_of!(result.m_eResult).read_unaligned() } as u32,
+    }
+}
+
+fn game_server_player_compatibility_result(
+    result: sys::ComputeNewPlayerCompatibilityResult_t,
+) -> GameServerPlayerCompatibilityResult {
+    GameServerPlayerCompatibilityResult {
+        result: unsafe { ptr::addr_of!(result.m_eResult).read_unaligned() } as u32,
+        players_that_dont_like_candidate: unsafe {
+            ptr::addr_of!(result.m_cPlayersThatDontLikeCandidate).read_unaligned()
+        },
+        players_that_candidate_doesnt_like: unsafe {
+            ptr::addr_of!(result.m_cPlayersThatCandidateDoesntLike).read_unaligned()
+        },
+        clan_players_that_dont_like_candidate: unsafe {
+            ptr::addr_of!(result.m_cClanPlayersThatDontLikeCandidate).read_unaligned()
+        },
+        candidate: csteam_id_to_player(unsafe {
+            ptr::addr_of!(result.m_SteamIDCandidate).read_unaligned()
+        }),
+    }
+}
+
 fn global_achievement_info(
     iterator: i32,
     name: &[c_char; 128],
@@ -11377,6 +11508,24 @@ fn callback_id_from_compat(callback: i32) -> Result<i32, Error> {
         CALLBACK_STEAM_RELAY_NETWORK_STATUS => {
             Ok(sys::SteamRelayNetworkStatus_t_k_iCallback as i32)
         }
+        CALLBACK_GAME_SERVER_CLIENT_APPROVE => Ok(sys::GSClientApprove_t_k_iCallback as i32),
+        CALLBACK_GAME_SERVER_CLIENT_DENY => Ok(sys::GSClientDeny_t_k_iCallback as i32),
+        CALLBACK_GAME_SERVER_CLIENT_KICK => Ok(sys::GSClientKick_t_k_iCallback as i32),
+        CALLBACK_GAME_SERVER_CLIENT_ACHIEVEMENT_STATUS => {
+            Ok(sys::GSClientAchievementStatus_t_k_iCallback as i32)
+        }
+        CALLBACK_GAME_SERVER_POLICY_RESPONSE => Ok(sys::GSPolicyResponse_t_k_iCallback as i32),
+        CALLBACK_GAME_SERVER_GAMEPLAY_STATS => Ok(sys::GSGameplayStats_t_k_iCallback as i32),
+        CALLBACK_GAME_SERVER_CLIENT_GROUP_STATUS => {
+            Ok(sys::GSClientGroupStatus_t_k_iCallback as i32)
+        }
+        CALLBACK_GAME_SERVER_REPUTATION => Ok(sys::GSReputation_t_k_iCallback as i32),
+        CALLBACK_GAME_SERVER_ASSOCIATE_WITH_CLAN => {
+            Ok(sys::AssociateWithClanResult_t_k_iCallback as i32)
+        }
+        CALLBACK_GAME_SERVER_PLAYER_COMPATIBILITY => {
+            Ok(sys::ComputeNewPlayerCompatibilityResult_t_k_iCallback as i32)
+        }
         CALLBACK_GAME_SERVER_STATS_RECEIVED => Ok(sys::GSStatsReceived_t_k_iCallback as i32),
         CALLBACK_GAME_SERVER_STATS_STORED => Ok(sys::GSStatsStored_t_k_iCallback as i32),
         CALLBACK_GAME_SERVER_STATS_UNLOADED => Ok(sys::GSStatsUnloaded_t_k_iCallback as i32),
@@ -11830,6 +11979,90 @@ unsafe fn callback_to_json(callback: i32, param: *mut c_void) -> Value {
                 "network_config_availability": status.network_config_availability,
                 "any_relay_availability": status.any_relay_availability,
                 "debug_message": status.debug_message
+            })
+        }
+        CALLBACK_GAME_SERVER_CLIENT_APPROVE => {
+            let event = param as *const sys::GSClientApprove_t;
+            serde_json::json!({
+                "steam_id": csteam_id_to_u64(ptr::addr_of!((*event).m_SteamID).read_unaligned()).to_string(),
+                "owner_steam_id": csteam_id_to_u64(ptr::addr_of!((*event).m_OwnerSteamID).read_unaligned()).to_string()
+            })
+        }
+        CALLBACK_GAME_SERVER_CLIENT_DENY => {
+            let event = param as *const sys::GSClientDeny_t;
+            serde_json::json!({
+                "steam_id": csteam_id_to_u64(ptr::addr_of!((*event).m_SteamID).read_unaligned()).to_string(),
+                "deny_reason": ptr::addr_of!((*event).m_eDenyReason).read_unaligned() as u32,
+                "optional_text": c_buf_to_string(&*ptr::addr_of!((*event).m_rgchOptionalText))
+            })
+        }
+        CALLBACK_GAME_SERVER_CLIENT_KICK => {
+            let event = param as *const sys::GSClientKick_t;
+            serde_json::json!({
+                "steam_id": csteam_id_to_u64(ptr::addr_of!((*event).m_SteamID).read_unaligned()).to_string(),
+                "deny_reason": ptr::addr_of!((*event).m_eDenyReason).read_unaligned() as u32
+            })
+        }
+        CALLBACK_GAME_SERVER_CLIENT_ACHIEVEMENT_STATUS => {
+            let event = param as *const sys::GSClientAchievementStatus_t;
+            serde_json::json!({
+                "steam_id": ptr::addr_of!((*event).m_SteamID).read_unaligned().to_string(),
+                "achievement": c_buf_to_string(&*ptr::addr_of!((*event).m_pchAchievement)),
+                "unlocked": ptr::addr_of!((*event).m_bUnlocked).read_unaligned()
+            })
+        }
+        CALLBACK_GAME_SERVER_POLICY_RESPONSE => {
+            let event = param as *const sys::GSPolicyResponse_t;
+            serde_json::json!({
+                "secure": ptr::addr_of!((*event).m_bSecure).read_unaligned() != 0
+            })
+        }
+        CALLBACK_GAME_SERVER_GAMEPLAY_STATS => {
+            let event = param as *const sys::GSGameplayStats_t;
+            serde_json::json!({
+                "result": ptr::addr_of!((*event).m_eResult).read_unaligned() as u32,
+                "rank": ptr::addr_of!((*event).m_nRank).read_unaligned(),
+                "total_connects": ptr::addr_of!((*event).m_unTotalConnects).read_unaligned(),
+                "total_minutes_played": ptr::addr_of!((*event).m_unTotalMinutesPlayed).read_unaligned()
+            })
+        }
+        CALLBACK_GAME_SERVER_CLIENT_GROUP_STATUS => {
+            let event = param as *const sys::GSClientGroupStatus_t;
+            serde_json::json!({
+                "steam_id": csteam_id_to_u64(ptr::addr_of!((*event).m_SteamIDUser).read_unaligned()).to_string(),
+                "group_id": csteam_id_to_u64(ptr::addr_of!((*event).m_SteamIDGroup).read_unaligned()).to_string(),
+                "member": ptr::addr_of!((*event).m_bMember).read_unaligned(),
+                "officer": ptr::addr_of!((*event).m_bOfficer).read_unaligned()
+            })
+        }
+        CALLBACK_GAME_SERVER_REPUTATION => {
+            let event = param as *const sys::GSReputation_t;
+            let banned_ip = ptr::addr_of!((*event).m_unBannedIP).read_unaligned();
+            serde_json::json!({
+                "result": ptr::addr_of!((*event).m_eResult).read_unaligned() as u32,
+                "reputation_score": ptr::addr_of!((*event).m_unReputationScore).read_unaligned(),
+                "banned": ptr::addr_of!((*event).m_bBanned).read_unaligned(),
+                "banned_ip": banned_ip,
+                "banned_ip_address": ipv4_to_string(banned_ip),
+                "banned_port": ptr::addr_of!((*event).m_usBannedPort).read_unaligned(),
+                "banned_game_id": ptr::addr_of!((*event).m_ulBannedGameID).read_unaligned().to_string(),
+                "ban_expires": ptr::addr_of!((*event).m_unBanExpires).read_unaligned()
+            })
+        }
+        CALLBACK_GAME_SERVER_ASSOCIATE_WITH_CLAN => {
+            let event = param as *const sys::AssociateWithClanResult_t;
+            serde_json::json!({
+                "result": ptr::addr_of!((*event).m_eResult).read_unaligned() as u32
+            })
+        }
+        CALLBACK_GAME_SERVER_PLAYER_COMPATIBILITY => {
+            let event = param as *const sys::ComputeNewPlayerCompatibilityResult_t;
+            serde_json::json!({
+                "result": ptr::addr_of!((*event).m_eResult).read_unaligned() as u32,
+                "players_that_dont_like_candidate": ptr::addr_of!((*event).m_cPlayersThatDontLikeCandidate).read_unaligned(),
+                "players_that_candidate_doesnt_like": ptr::addr_of!((*event).m_cPlayersThatCandidateDoesntLike).read_unaligned(),
+                "clan_players_that_dont_like_candidate": ptr::addr_of!((*event).m_cClanPlayersThatDontLikeCandidate).read_unaligned(),
+                "candidate_steam_id": csteam_id_to_u64(ptr::addr_of!((*event).m_SteamIDCandidate).read_unaligned()).to_string()
             })
         }
         CALLBACK_GAME_SERVER_STATS_RECEIVED => {

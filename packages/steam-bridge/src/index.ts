@@ -20,10 +20,13 @@ import {
   NativeFollowerCountResult,
   NativeFollowingListResult,
   NativeEquippedProfileItemsResult,
+  NativeGameServerAssociateWithClanResult,
   NativeGameServerAuthTicket,
   NativeGameServerInitOptions,
   NativeGameServerOutgoingPacket,
+  NativeGameServerPlayerCompatibilityResult,
   NativeGameServerPublicIp,
+  NativeGameServerReputationResult,
   NativeGameServerStatsResult,
   NativeGameServerUserConnectResult,
   NativeFriendGameInfo,
@@ -163,6 +166,29 @@ export interface GameServerUserConnectResult {
 export interface GameServerStatsResult {
   result: number;
   steamId: SteamId;
+}
+
+export interface GameServerReputationResult {
+  result: number;
+  reputationScore: number;
+  banned: boolean;
+  bannedIp: number;
+  bannedIpAddress: string;
+  bannedPort: number;
+  bannedGameId: bigint;
+  banExpires: number;
+}
+
+export interface GameServerAssociateWithClanResult {
+  result: number;
+}
+
+export interface GameServerPlayerCompatibilityResult {
+  result: number;
+  playersThatDontLikeCandidate: number;
+  playersThatCandidateDoesntLike: number;
+  clanPlayersThatDontLikeCandidate: number;
+  candidate: SteamId;
 }
 
 export interface CallbackHandle {
@@ -1037,6 +1063,16 @@ export const SteamCallback = {
   SteamNetworkingMessagesSessionRequest: 1251,
   SteamNetworkingMessagesSessionFailed: 1252,
   SteamRelayNetworkStatus: 1281,
+  GameServerClientApprove: 201,
+  GameServerClientDeny: 202,
+  GameServerClientKick: 203,
+  GameServerClientAchievementStatus: 206,
+  GameServerPolicyResponse: 115,
+  GameServerGameplayStats: 207,
+  GameServerClientGroupStatus: 208,
+  GameServerReputation: 209,
+  GameServerAssociateWithClan: 210,
+  GameServerPlayerCompatibility: 211,
   GameServerStatsUnloaded: 1108,
   GameServerStatsReceived: 1800,
   GameServerStatsStored: 1801,
@@ -2474,6 +2510,17 @@ export const gameServer = {
   },
   getGameplayStats(): void {
     native().gameServerGetGameplayStats();
+  },
+  async getServerReputation(): Promise<GameServerReputationResult> {
+    return normalizeGameServerReputationResult(await native().gameServerGetServerReputation());
+  },
+  async associateWithClan(clanId64: bigint): Promise<GameServerAssociateWithClanResult> {
+    return normalizeGameServerAssociateWithClanResult(await native().gameServerAssociateWithClan(clanId64));
+  },
+  async computeNewPlayerCompatibility(steamId64: bigint): Promise<GameServerPlayerCompatibilityResult> {
+    return normalizeGameServerPlayerCompatibilityResult(
+      await native().gameServerComputeNewPlayerCompatibility(steamId64)
+    );
   },
   getPublicIP(): GameServerPublicIp {
     return normalizeGameServerPublicIp(native().gameServerGetPublicIp());
@@ -4425,6 +4472,47 @@ function normalizeGameServerStatsResult(result: NativeGameServerStatsResult): Ga
   };
 }
 
+function normalizeGameServerReputationResult(result: NativeGameServerReputationResult): GameServerReputationResult {
+  const source = result as unknown as Record<string, unknown>;
+  return {
+    result: Number(result.result),
+    reputationScore: Number(source.reputationScore ?? source.reputation_score ?? 0),
+    banned: Boolean(result.banned),
+    bannedIp: Number(source.bannedIp ?? source.banned_ip ?? 0),
+    bannedIpAddress: String(source.bannedIpAddress ?? source.banned_ip_address ?? ""),
+    bannedPort: Number(source.bannedPort ?? source.banned_port ?? 0),
+    bannedGameId: BigInt((source.bannedGameId ?? source.banned_game_id ?? 0) as bigint | string | number),
+    banExpires: Number(source.banExpires ?? source.ban_expires ?? 0)
+  };
+}
+
+function normalizeGameServerAssociateWithClanResult(
+  result: NativeGameServerAssociateWithClanResult
+): GameServerAssociateWithClanResult {
+  return {
+    result: Number(result.result)
+  };
+}
+
+function normalizeGameServerPlayerCompatibilityResult(
+  result: NativeGameServerPlayerCompatibilityResult
+): GameServerPlayerCompatibilityResult {
+  const source = result as unknown as Record<string, unknown>;
+  return {
+    result: Number(result.result),
+    playersThatDontLikeCandidate: Number(
+      source.playersThatDontLikeCandidate ?? source.players_that_dont_like_candidate ?? 0
+    ),
+    playersThatCandidateDoesntLike: Number(
+      source.playersThatCandidateDoesntLike ?? source.players_that_candidate_doesnt_like ?? 0
+    ),
+    clanPlayersThatDontLikeCandidate: Number(
+      source.clanPlayersThatDontLikeCandidate ?? source.clan_players_that_dont_like_candidate ?? 0
+    ),
+    candidate: normalizeSteamId((source.candidate ?? EMPTY_NATIVE_STEAM_ID) as NativeSteamId)
+  };
+}
+
 function normalizeOptionalSteamId(steamId: NativeSteamId | null | undefined): SteamId | null {
   return steamId ? normalizeSteamId(steamId) : null;
 }
@@ -4878,7 +4966,11 @@ function normalizeCallbackEvent(callbackId: number, event: unknown): unknown {
     "lobby_steam_id",
     "friend_steam_id",
     "async_call",
-    "file_size"
+    "file_size",
+    "owner_steam_id",
+    "group_id",
+    "candidate_steam_id",
+    "banned_game_id"
   ]) {
     if (key in result) {
       result[key] = normalizeBigIntLike(result[key]);
@@ -4898,13 +4990,22 @@ function normalizeCallbackEvent(callbackId: number, event: unknown): unknown {
     chat_room_enter_response: "chatRoomEnterResponse",
     check_file_signature: "checkFileSignature",
     clan_chat: "clanChat",
+    clan_players_that_dont_like_candidate: "clanPlayersThatDontLikeCandidate",
     conn_port: "connPort",
+    candidate_steam_id: "candidateSteamId",
+    ban_expires: "banExpires",
+    banned_game_id: "bannedGameId",
+    banned_ip: "bannedIp",
+    banned_ip_address: "bannedIpAddress",
+    banned_port: "bannedPort",
+    deny_reason: "denyReason",
     entry_type: "entryType",
     file_size: "fileSize",
     friend_steam_id: "friendSteamId",
     from_cache: "fromCache",
     game_id: "gameId",
     game_server: "gameServer",
+    group_id: "groupId",
     has_animated_avatar: "hasAnimatedAvatar",
     has_avatar_frame: "hasAvatarFrame",
     has_mini_profile_background: "hasMiniProfileBackground",
@@ -4923,8 +5024,13 @@ function normalizeCallbackEvent(callbackId: number, event: unknown): unknown {
     new_device_cooldown_days: "newDeviceCooldownDays",
     not_allowed_reason: "notAllowedReason",
     officer_count: "officerCount",
+    optional_text: "optionalText",
+    owner_steam_id: "ownerSteamId",
     parameter_size: "parameterSize",
+    players_that_candidate_doesnt_like: "playersThatCandidateDoesntLike",
+    players_that_dont_like_candidate: "playersThatDontLikeCandidate",
     query_port: "queryPort",
+    reputation_score: "reputationScore",
     results_returned: "resultsReturned",
     seconds_allowed: "secondsAllowed",
     seconds_last_5h: "secondsLast5h",
@@ -4935,6 +5041,8 @@ function normalizeCallbackEvent(callbackId: number, event: unknown): unknown {
     steam_guard_required_days: "steamGuardRequiredDays",
     steam_ids: "steamIds",
     submitted_text: "submittedText",
+    total_connects: "totalConnects",
+    total_minutes_played: "totalMinutesPlayed",
     total_result_count: "totalResultCount",
     user_changed: "userChanged"
   };
