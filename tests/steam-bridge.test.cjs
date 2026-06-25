@@ -184,6 +184,18 @@ function createFakeNative(overrides = {}) {
         }
       };
     },
+    registerRawSteamCallback(callbackBasePointer, callbackId) {
+      calls.push({ method: "registerRawSteamCallback", args: [callbackBasePointer, callbackId] });
+    },
+    unregisterRawSteamCallback(callbackBasePointer) {
+      calls.push({ method: "unregisterRawSteamCallback", args: [callbackBasePointer] });
+    },
+    registerRawSteamCallResult(callbackBasePointer, apiCall) {
+      calls.push({ method: "registerRawSteamCallResult", args: [callbackBasePointer, apiCall] });
+    },
+    unregisterRawSteamCallResult(callbackBasePointer, apiCall) {
+      calls.push({ method: "unregisterRawSteamCallResult", args: [callbackBasePointer, apiCall] });
+    },
     activateOverlay(dialog) {
       calls.push({ method: "activateOverlay", args: [dialog] });
     },
@@ -2147,6 +2159,21 @@ test("specific and generic callbacks normalize Steamworks payloads", (t) => {
   assert.equal(apiCallEvent.asyncCall, 12345678901234567890n);
   assert.equal(apiCallEvent.callback, steam.SteamCallback.AppProofOfPurchaseKeyResponse);
   assert.equal(apiCallEvent.parameterSize, 252);
+  steam.callback.registerRawCallbackBase(0x1234n, steam.SteamCallback.LobbyDataUpdate);
+  steam.callback.registerRawCallResult(0x1234n, 12345678901234567890n);
+  steam.callback.unregisterRawCallResult(0x1234n, 12345678901234567890n);
+  steam.callback.unregisterRawCallbackBase(0x1234n);
+  assert.deepEqual(fake.calls.filter((call) => [
+    "registerRawSteamCallback",
+    "registerRawSteamCallResult",
+    "unregisterRawSteamCallResult",
+    "unregisterRawSteamCallback"
+  ].includes(call.method)), [
+    { method: "registerRawSteamCallback", args: [0x1234n, steam.SteamCallback.LobbyDataUpdate] },
+    { method: "registerRawSteamCallResult", args: [0x1234n, 12345678901234567890n] },
+    { method: "unregisterRawSteamCallResult", args: [0x1234n, 12345678901234567890n] },
+    { method: "unregisterRawSteamCallback", args: [0x1234n] }
+  ]);
 
   let proofKeyEvent;
   steam.callback.register(steam.SteamCallback.AppProofOfPurchaseKeyResponse, (event) => {

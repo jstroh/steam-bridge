@@ -14291,6 +14291,46 @@ pub fn register_steam_callback(
     })
 }
 
+#[napi(js_name = "registerRawSteamCallback")]
+pub fn register_raw_steam_callback(
+    callback_base_pointer: BigInt,
+    callback: i32,
+) -> Result<(), Error> {
+    let callback_base = required_callback_base_pointer(callback_base_pointer)?;
+    let callback_id = callback_id_from_compat(callback)?;
+    unsafe { sys::SteamAPI_RegisterCallback(callback_base, callback_id) };
+    Ok(())
+}
+
+#[napi(js_name = "unregisterRawSteamCallback")]
+pub fn unregister_raw_steam_callback(callback_base_pointer: BigInt) -> Result<(), Error> {
+    let callback_base = required_callback_base_pointer(callback_base_pointer)?;
+    unsafe { sys::SteamAPI_UnregisterCallback(callback_base) };
+    Ok(())
+}
+
+#[napi(js_name = "registerRawSteamCallResult")]
+pub fn register_raw_steam_call_result(
+    callback_base_pointer: BigInt,
+    api_call: BigInt,
+) -> Result<(), Error> {
+    let callback_base = required_callback_base_pointer(callback_base_pointer)?;
+    let api_call = bigint_to_u64(api_call, "Steam API call handle")?;
+    unsafe { sys::SteamAPI_RegisterCallResult(callback_base, api_call) };
+    Ok(())
+}
+
+#[napi(js_name = "unregisterRawSteamCallResult")]
+pub fn unregister_raw_steam_call_result(
+    callback_base_pointer: BigInt,
+    api_call: BigInt,
+) -> Result<(), Error> {
+    let callback_base = required_callback_base_pointer(callback_base_pointer)?;
+    let api_call = bigint_to_u64(api_call, "Steam API call handle")?;
+    unsafe { sys::SteamAPI_UnregisterCallResult(callback_base, api_call) };
+    Ok(())
+}
+
 #[napi(js_name = "matchmakingGetFavoriteGameCount")]
 pub fn matchmaking_get_favorite_game_count() -> Result<u32, Error> {
     let count =
@@ -18000,6 +18040,19 @@ fn bigint_to_u64(value: BigInt, label: &str) -> Result<u64, Error> {
 
 fn pointer_to_bigint<T>(ptr: *mut T) -> Option<BigInt> {
     (!ptr.is_null()).then(|| (ptr as usize as u64).into())
+}
+
+fn required_callback_base_pointer(value: BigInt) -> Result<*mut sys::CCallbackBase, Error> {
+    let pointer = bigint_to_u64(value, "Steam callback base pointer")?;
+    let pointer = usize::try_from(pointer)
+        .map_err(|_| Error::from_reason("Steam callback base pointer exceeds pointer size"))?;
+    if pointer == 0 {
+        Err(Error::from_reason(
+            "Steam callback base pointer cannot be null",
+        ))
+    } else {
+        Ok(pointer as *mut sys::CCallbackBase)
+    }
 }
 
 fn bigint_to_i64(value: BigInt, label: &str) -> Result<i64, Error> {

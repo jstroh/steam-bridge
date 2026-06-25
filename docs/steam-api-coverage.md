@@ -17,8 +17,8 @@ The native layer currently targets the Steamworks flat C API through
   connected universe, Steam UI language, image reads, battery/IPCCall counts,
   overlay notification placement, VR helpers, China launcher checks, text
   filtering, IPv6 connectivity checks, file signature checks, raw APICall
-  inspection, gamepad text input helpers, warning hooks, and utility callback
-  events.
+  inspection, raw `CCallbackBase` registration bridges, gamepad text input
+  helpers, warning hooks, and utility callback events.
 - Steam client: low-level Steam pipe/user creation and release helpers, global
   user connection, local IPv4 binding, typed interface pointer lookup, generic
   interface lookup by version, IPC call counts, warning hooks, and

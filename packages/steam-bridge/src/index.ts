@@ -3893,6 +3893,18 @@ export const callback = {
         handler(normalizeCallbackEvent(Number(steamCallback), event));
       })
     );
+  },
+  registerRawCallbackBase(callbackBasePointer: bigint, steamCallback: SteamCallbackId | number): void {
+    native().registerRawSteamCallback(callbackBasePointer, Number(steamCallback));
+  },
+  unregisterRawCallbackBase(callbackBasePointer: bigint): void {
+    native().unregisterRawSteamCallback(callbackBasePointer);
+  },
+  registerRawCallResult(callbackBasePointer: bigint, apiCall: bigint): void {
+    native().registerRawSteamCallResult(callbackBasePointer, BigInt(apiCall));
+  },
+  unregisterRawCallResult(callbackBasePointer: bigint, apiCall: bigint): void {
+    native().unregisterRawSteamCallResult(callbackBasePointer, BigInt(apiCall));
   }
 };
 
