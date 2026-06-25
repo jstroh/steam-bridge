@@ -815,6 +815,266 @@ test("networking messages facade covers identity, message, session, and callback
   });
 });
 
+test("networking sockets facade covers connection handles, status, poll groups, and callbacks", (t) => {
+  const peer = { identity_type: 16, text: "steamid:76561198000000010", steam_id64: "76561198000000010" };
+  const address = {
+    text: "127.0.0.1:27015",
+    ipv4: 2130706433,
+    port: 27015,
+    ipv4_address: "127.0.0.1",
+    is_ipv4: true,
+    is_local_host: true,
+    is_fake_ip: false,
+    fake_ip_type: 0,
+    ipv6_all_zeros: false
+  };
+  const quickStatus = {
+    state: 3,
+    ping: 42,
+    connection_quality_local: 0.95,
+    connection_quality_remote: 0.9,
+    out_packets_per_second: 10.5,
+    out_bytes_per_second: 2048.5,
+    in_packets_per_second: 9.5,
+    in_bytes_per_second: 1024.25,
+    send_rate_bytes_per_second: 4096,
+    pending_unreliable: 1,
+    pending_reliable: 2,
+    sent_unacked_reliable: 3,
+    queue_time: "5000",
+    max_jitter: 50
+  };
+  const connectionInfo = {
+    state: 3,
+    remote_identity: peer,
+    user_data: "88",
+    listen_socket: 44,
+    remote_address: address,
+    remote_pop: 1234,
+    relay_pop: 5678,
+    end_reason: 0,
+    end_debug: "",
+    connection_description: "socket to peer",
+    flags: 16
+  };
+  const fake = createFakeNative({
+    networkingSocketsCreateListenSocketIp(addr) {
+      this.calls.push({ method: "networkingSocketsCreateListenSocketIp", args: [addr] });
+      return 44;
+    },
+    networkingSocketsConnectByIpAddress(addr) {
+      this.calls.push({ method: "networkingSocketsConnectByIpAddress", args: [addr] });
+      return 101;
+    },
+    networkingSocketsCreateListenSocketP2p(port) {
+      this.calls.push({ method: "networkingSocketsCreateListenSocketP2p", args: [port] });
+      return 45;
+    },
+    networkingSocketsConnectP2p(identity, port) {
+      this.calls.push({ method: "networkingSocketsConnectP2p", args: [identity, port] });
+      return 102;
+    },
+    networkingSocketsAcceptConnection(connection) {
+      this.calls.push({ method: "networkingSocketsAcceptConnection", args: [connection] });
+      return 1;
+    },
+    networkingSocketsCloseConnection(connection, reason, debug, enableLinger) {
+      this.calls.push({ method: "networkingSocketsCloseConnection", args: [connection, reason, debug, enableLinger] });
+      return true;
+    },
+    networkingSocketsCloseListenSocket(socket) {
+      this.calls.push({ method: "networkingSocketsCloseListenSocket", args: [socket] });
+      return true;
+    },
+    networkingSocketsSetConnectionUserData(connection, userData) {
+      this.calls.push({ method: "networkingSocketsSetConnectionUserData", args: [connection, userData] });
+      return true;
+    },
+    networkingSocketsGetConnectionUserData(connection) {
+      this.calls.push({ method: "networkingSocketsGetConnectionUserData", args: [connection] });
+      return "88";
+    },
+    networkingSocketsSetConnectionName(connection, name) {
+      this.calls.push({ method: "networkingSocketsSetConnectionName", args: [connection, name] });
+    },
+    networkingSocketsGetConnectionName(connection) {
+      this.calls.push({ method: "networkingSocketsGetConnectionName", args: [connection] });
+      return "peer";
+    },
+    networkingSocketsSendMessageToConnection(connection, data, sendFlags) {
+      this.calls.push({ method: "networkingSocketsSendMessageToConnection", args: [connection, data, sendFlags] });
+      return { result: 1, message_number: "777" };
+    },
+    networkingSocketsFlushMessagesOnConnection(connection) {
+      this.calls.push({ method: "networkingSocketsFlushMessagesOnConnection", args: [connection] });
+      return 1;
+    },
+    networkingSocketsReceiveMessagesOnConnection(connection, maxMessages) {
+      this.calls.push({ method: "networkingSocketsReceiveMessagesOnConnection", args: [connection, maxMessages] });
+      return [
+        {
+          data: Buffer.from("socket"),
+          size: 6,
+          peer,
+          connection,
+          connection_user_data: "88",
+          time_received: "456",
+          message_number: "7",
+          channel: 0,
+          flags: 8,
+          user_data: "9",
+          lane: 1
+        }
+      ];
+    },
+    networkingSocketsGetConnectionInfo(connection) {
+      this.calls.push({ method: "networkingSocketsGetConnectionInfo", args: [connection] });
+      return connectionInfo;
+    },
+    networkingSocketsGetConnectionRealTimeStatus(connection) {
+      this.calls.push({ method: "networkingSocketsGetConnectionRealTimeStatus", args: [connection] });
+      return quickStatus;
+    },
+    networkingSocketsGetDetailedConnectionStatus(connection, maxBytes) {
+      this.calls.push({ method: "networkingSocketsGetDetailedConnectionStatus", args: [connection, maxBytes] });
+      return "detailed status";
+    },
+    networkingSocketsGetListenSocketAddress(socket) {
+      this.calls.push({ method: "networkingSocketsGetListenSocketAddress", args: [socket] });
+      return address;
+    },
+    networkingSocketsCreateSocketPair(useNetworkLoopback, identity1, identity2) {
+      this.calls.push({ method: "networkingSocketsCreateSocketPair", args: [useNetworkLoopback, identity1, identity2] });
+      return { connection1: 201, connection2: 202 };
+    },
+    networkingSocketsConfigureConnectionLanes(connection, priorities, weights) {
+      this.calls.push({ method: "networkingSocketsConfigureConnectionLanes", args: [connection, priorities, weights] });
+      return 1;
+    },
+    networkingSocketsGetIdentity() {
+      this.calls.push({ method: "networkingSocketsGetIdentity", args: [] });
+      return peer;
+    },
+    networkingSocketsInitAuthentication() {
+      this.calls.push({ method: "networkingSocketsInitAuthentication", args: [] });
+      return 100;
+    },
+    networkingSocketsGetAuthenticationStatus() {
+      this.calls.push({ method: "networkingSocketsGetAuthenticationStatus", args: [] });
+      return { availability: 100, debug_message: "auth ready" };
+    },
+    networkingSocketsCreatePollGroup() {
+      this.calls.push({ method: "networkingSocketsCreatePollGroup", args: [] });
+      return 301;
+    },
+    networkingSocketsRunCallbacks() {
+      this.calls.push({ method: "networkingSocketsRunCallbacks", args: [] });
+    },
+    networkingSocketsDestroyPollGroup(pollGroup) {
+      this.calls.push({ method: "networkingSocketsDestroyPollGroup", args: [pollGroup] });
+      return true;
+    },
+    networkingSocketsSetConnectionPollGroup(connection, pollGroup) {
+      this.calls.push({ method: "networkingSocketsSetConnectionPollGroup", args: [connection, pollGroup] });
+      return true;
+    },
+    networkingSocketsReceiveMessagesOnPollGroup(pollGroup, maxMessages) {
+      this.calls.push({ method: "networkingSocketsReceiveMessagesOnPollGroup", args: [pollGroup, maxMessages] });
+      return [];
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  const identity = { steamId64: 76561198000000010n };
+  assert.equal(steam.SteamCallback.SteamNetConnectionStatusChanged, 1221);
+  assert.equal(steam.networking.sockets.ConnectionState.Connected, 3);
+  assert.equal(steam.networking.sockets.Availability.Current, 100);
+  assert.equal(steam.networking.sockets.createListenSocketIP({ ipv4: 2130706433, port: 27015 }), 44);
+  assert.equal(steam.networking.sockets.connectByIPAddress({ text: "127.0.0.1:27015" }), 101);
+  assert.equal(steam.networking.sockets.createListenSocketP2P(7), 45);
+  assert.equal(steam.networking.sockets.connectP2P(identity, 7), 102);
+  assert.equal(steam.networking.sockets.acceptConnection(102), 1);
+  assert.equal(steam.networking.sockets.closeConnection(102, { reason: 2000, debug: "done", enableLinger: true }), true);
+  assert.equal(steam.networking.sockets.closeListenSocket(44), true);
+  assert.equal(steam.networking.sockets.setConnectionUserData(102, 88n), true);
+  assert.equal(steam.networking.sockets.getConnectionUserData(102), 88n);
+  steam.networking.sockets.setConnectionName(102, "peer");
+  assert.equal(steam.networking.sockets.getConnectionName(102), "peer");
+  assert.deepEqual(steam.networking.sockets.sendMessageToConnection(102, Buffer.from("socket")), {
+    result: 1,
+    messageNumber: 777n
+  });
+  assert.equal(steam.networking.sockets.flushMessagesOnConnection(102), 1);
+  assert.equal(steam.networking.sockets.receiveMessagesOnConnection(102, 2)[0].messageNumber, 7n);
+  assert.deepEqual(steam.networking.sockets.getConnectionInfo(102), {
+    state: 3,
+    remoteIdentity: {
+      identityType: 16,
+      text: "steamid:76561198000000010",
+      steamId64: 76561198000000010n,
+      genericString: null,
+      localHost: false,
+      invalid: false,
+      fakeIpType: 0
+    },
+    userData: 88n,
+    listenSocket: 44,
+    remoteAddress: {
+      text: "127.0.0.1:27015",
+      ipv4: 2130706433,
+      port: 27015,
+      ipv4Address: "127.0.0.1",
+      isIpv4: true,
+      isLocalHost: true,
+      isFakeIp: false,
+      fakeIpType: 0,
+      ipv6AllZeros: false
+    },
+    remotePop: 1234,
+    relayPop: 5678,
+    endReason: 0,
+    endDebug: "",
+    connectionDescription: "socket to peer",
+    flags: 16
+  });
+  assert.equal(steam.networking.sockets.getConnectionRealTimeStatus(102).queueTime, 5000n);
+  assert.equal(steam.networking.sockets.getDetailedConnectionStatus(102, 512), "detailed status");
+  assert.equal(steam.networking.sockets.getListenSocketAddress(44).port, 27015);
+  assert.deepEqual(steam.networking.sockets.createSocketPair(true, { localHost: true }, { genericString: "peer" }), {
+    connection1: 201,
+    connection2: 202
+  });
+  assert.equal(steam.networking.sockets.configureConnectionLanes(102, [10, 5], [100, 50]), 1);
+  assert.equal(steam.networking.sockets.getIdentity().steamId64, 76561198000000010n);
+  assert.equal(steam.networking.sockets.initAuthentication(), 100);
+  assert.equal(steam.networking.sockets.getAuthenticationStatus().debugMessage, "auth ready");
+  const pollGroup = steam.networking.sockets.createPollGroup();
+  steam.networking.sockets.runCallbacks();
+  assert.equal(steam.networking.sockets.setConnectionPollGroup(102, pollGroup), true);
+  assert.deepEqual(steam.networking.sockets.receiveMessagesOnPollGroup(pollGroup, 4), []);
+  assert.equal(steam.networking.sockets.destroyPollGroup(pollGroup), true);
+
+  let statusEvent;
+  steam.callback.register(steam.SteamCallback.SteamNetConnectionStatusChanged, (event) => {
+    statusEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.SteamNetConnectionStatusChanged)({
+    connection: 102,
+    old_state: 2,
+    info: connectionInfo
+  });
+  assert.equal(statusEvent.connection, 102);
+  assert.equal(statusEvent.oldState, 2);
+  assert.equal(statusEvent.info.remoteIdentity.steamId64, 76561198000000010n);
+
+  assert.deepEqual(fake.calls.find((call) => call.method === "networkingSocketsConnectP2p"), {
+    method: "networkingSocketsConnectP2p",
+    args: [{ steamId64: 76561198000000010n }, 7]
+  });
+});
+
 test("networking utils facade covers relay, ping, fake IP, address, and callback flows", (t) => {
   const peer = { identity_type: 16, text: "steamid:76561198000000010", steam_id64: "76561198000000010" };
   const fake = createFakeNative({

@@ -31,6 +31,7 @@ const CALLBACK_GAME_LOBBY_JOIN_REQUESTED: i32 = 333;
 const CALLBACK_EQUIPPED_PROFILE_ITEMS_CHANGED: i32 = 350;
 const CALLBACK_P2P_SESSION_REQUEST: i32 = 1202;
 const CALLBACK_P2P_SESSION_CONNECT_FAIL: i32 = 1203;
+const CALLBACK_STEAM_NET_CONNECTION_STATUS_CHANGED: i32 = 1221;
 const CALLBACK_STEAM_NET_AUTHENTICATION_STATUS: i32 = 1222;
 const CALLBACK_STEAM_NETWORKING_MESSAGES_SESSION_REQUEST: i32 = 1251;
 const CALLBACK_STEAM_NETWORKING_MESSAGES_SESSION_FAILED: i32 = 1252;
@@ -326,6 +327,36 @@ pub struct NetworkingMessagesSessionConnectionInfo {
     pub connection_description: String,
     pub flags: i32,
     pub quick_status: NetworkingConnectionRealTimeStatus,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct NetworkingConnectionInfo {
+    pub state: i32,
+    pub remote_identity: NetworkingIdentityInfo,
+    pub user_data: BigInt,
+    pub listen_socket: u32,
+    pub remote_address: NetworkingIpAddressInfo,
+    pub remote_pop: u32,
+    pub relay_pop: u32,
+    pub end_reason: i32,
+    pub end_debug: String,
+    pub connection_description: String,
+    pub flags: i32,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct NetworkingSocketPair {
+    pub connection1: u32,
+    pub connection2: u32,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct NetworkingSocketSendResult {
+    pub result: u32,
+    pub message_number: BigInt,
 }
 
 #[derive(Debug)]
@@ -4990,6 +5021,443 @@ pub fn networking_messages_get_session_connection_info(
     ))
 }
 
+#[napi(js_name = "networkingSocketsCreateListenSocketIp")]
+pub fn networking_sockets_create_listen_socket_ip(
+    address: NetworkingIpAddress,
+) -> Result<u32, Error> {
+    let address = networking_ip_address_from_input(address)?;
+    Ok(unsafe {
+        sys::SteamAPI_ISteamNetworkingSockets_CreateListenSocketIP(
+            steam_networking_sockets()?,
+            &address,
+            0,
+            ptr::null(),
+        )
+    })
+}
+
+#[napi(js_name = "networkingSocketsConnectByIpAddress")]
+pub fn networking_sockets_connect_by_ip_address(
+    address: NetworkingIpAddress,
+) -> Result<u32, Error> {
+    let address = networking_ip_address_from_input(address)?;
+    Ok(unsafe {
+        sys::SteamAPI_ISteamNetworkingSockets_ConnectByIPAddress(
+            steam_networking_sockets()?,
+            &address,
+            0,
+            ptr::null(),
+        )
+    })
+}
+
+#[napi(js_name = "networkingSocketsCreateListenSocketP2p")]
+pub fn networking_sockets_create_listen_socket_p2p(
+    local_virtual_port: Option<i32>,
+) -> Result<u32, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamNetworkingSockets_CreateListenSocketP2P(
+            steam_networking_sockets()?,
+            networking_virtual_port(local_virtual_port)?,
+            0,
+            ptr::null(),
+        )
+    })
+}
+
+#[napi(js_name = "networkingSocketsConnectP2p")]
+pub fn networking_sockets_connect_p2p(
+    identity: NetworkingIdentity,
+    remote_virtual_port: Option<i32>,
+) -> Result<u32, Error> {
+    let identity = networking_identity_from_input(identity)?;
+    Ok(unsafe {
+        sys::SteamAPI_ISteamNetworkingSockets_ConnectP2P(
+            steam_networking_sockets()?,
+            &identity,
+            networking_virtual_port(remote_virtual_port)?,
+            0,
+            ptr::null(),
+        )
+    })
+}
+
+#[napi(js_name = "networkingSocketsAcceptConnection")]
+pub fn networking_sockets_accept_connection(connection: u32) -> Result<u32, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamNetworkingSockets_AcceptConnection(
+            steam_networking_sockets()?,
+            connection,
+        )
+    } as u32)
+}
+
+#[napi(js_name = "networkingSocketsCloseConnection")]
+pub fn networking_sockets_close_connection(
+    connection: u32,
+    reason: Option<i32>,
+    debug: Option<String>,
+    enable_linger: Option<bool>,
+) -> Result<bool, Error> {
+    let debug = cstring(debug.unwrap_or_default(), "connection debug message")?;
+    Ok(unsafe {
+        sys::SteamAPI_ISteamNetworkingSockets_CloseConnection(
+            steam_networking_sockets()?,
+            connection,
+            reason.unwrap_or(0),
+            debug.as_ptr(),
+            enable_linger.unwrap_or(false),
+        )
+    })
+}
+
+#[napi(js_name = "networkingSocketsCloseListenSocket")]
+pub fn networking_sockets_close_listen_socket(socket: u32) -> Result<bool, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamNetworkingSockets_CloseListenSocket(steam_networking_sockets()?, socket)
+    })
+}
+
+#[napi(js_name = "networkingSocketsSetConnectionUserData")]
+pub fn networking_sockets_set_connection_user_data(
+    connection: u32,
+    user_data: BigInt,
+) -> Result<bool, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamNetworkingSockets_SetConnectionUserData(
+            steam_networking_sockets()?,
+            connection,
+            bigint_to_i64(user_data, "connection user data")?,
+        )
+    })
+}
+
+#[napi(js_name = "networkingSocketsGetConnectionUserData")]
+pub fn networking_sockets_get_connection_user_data(connection: u32) -> Result<BigInt, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamNetworkingSockets_GetConnectionUserData(
+            steam_networking_sockets()?,
+            connection,
+        )
+    }
+    .into())
+}
+
+#[napi(js_name = "networkingSocketsSetConnectionName")]
+pub fn networking_sockets_set_connection_name(connection: u32, name: String) -> Result<(), Error> {
+    let name = cstring(name, "connection name")?;
+    unsafe {
+        sys::SteamAPI_ISteamNetworkingSockets_SetConnectionName(
+            steam_networking_sockets()?,
+            connection,
+            name.as_ptr(),
+        )
+    };
+    Ok(())
+}
+
+#[napi(js_name = "networkingSocketsGetConnectionName")]
+pub fn networking_sockets_get_connection_name(connection: u32) -> Result<Option<String>, Error> {
+    let mut output = vec![0i8; 256];
+    let ok = unsafe {
+        sys::SteamAPI_ISteamNetworkingSockets_GetConnectionName(
+            steam_networking_sockets()?,
+            connection,
+            output.as_mut_ptr(),
+            output.len() as i32,
+        )
+    };
+    Ok(ok.then(|| c_buf_to_string(&output)))
+}
+
+#[napi(js_name = "networkingSocketsSendMessageToConnection")]
+pub fn networking_sockets_send_message_to_connection(
+    connection: u32,
+    data: Buffer,
+    send_flags: Option<i32>,
+) -> Result<NetworkingSocketSendResult, Error> {
+    let mut message_number = 0i64;
+    let result = unsafe {
+        sys::SteamAPI_ISteamNetworkingSockets_SendMessageToConnection(
+            steam_networking_sockets()?,
+            connection,
+            data.as_ptr().cast::<c_void>(),
+            len_to_u32(data.len(), "networking socket message")?,
+            send_flags.unwrap_or(sys::k_nSteamNetworkingSend_Reliable),
+            &mut message_number,
+        )
+    };
+    Ok(NetworkingSocketSendResult {
+        result: result as u32,
+        message_number: message_number.into(),
+    })
+}
+
+#[napi(js_name = "networkingSocketsFlushMessagesOnConnection")]
+pub fn networking_sockets_flush_messages_on_connection(connection: u32) -> Result<u32, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamNetworkingSockets_FlushMessagesOnConnection(
+            steam_networking_sockets()?,
+            connection,
+        )
+    } as u32)
+}
+
+#[napi(js_name = "networkingSocketsReceiveMessagesOnConnection")]
+pub fn networking_sockets_receive_messages_on_connection(
+    connection: u32,
+    max_messages: Option<u32>,
+) -> Result<Vec<NetworkingMessage>, Error> {
+    let sockets = steam_networking_sockets()?;
+    receive_networking_messages(max_messages, |messages, max_messages| unsafe {
+        sys::SteamAPI_ISteamNetworkingSockets_ReceiveMessagesOnConnection(
+            sockets,
+            connection,
+            messages,
+            max_messages,
+        )
+    })
+}
+
+#[napi(js_name = "networkingSocketsGetConnectionInfo")]
+pub fn networking_sockets_get_connection_info(
+    connection: u32,
+) -> Result<Option<NetworkingConnectionInfo>, Error> {
+    let mut info = unsafe { MaybeUninit::<sys::SteamNetConnectionInfo_t>::zeroed().assume_init() };
+    let ok = unsafe {
+        sys::SteamAPI_ISteamNetworkingSockets_GetConnectionInfo(
+            steam_networking_sockets()?,
+            connection,
+            &mut info,
+        )
+    };
+    if ok {
+        Ok(Some(networking_connection_info(&info)?))
+    } else {
+        Ok(None)
+    }
+}
+
+#[napi(js_name = "networkingSocketsGetConnectionRealTimeStatus")]
+pub fn networking_sockets_get_connection_real_time_status(
+    connection: u32,
+) -> Result<Option<NetworkingConnectionRealTimeStatus>, Error> {
+    let mut status =
+        unsafe { MaybeUninit::<sys::SteamNetConnectionRealTimeStatus_t>::zeroed().assume_init() };
+    let result = unsafe {
+        sys::SteamAPI_ISteamNetworkingSockets_GetConnectionRealTimeStatus(
+            steam_networking_sockets()?,
+            connection,
+            &mut status,
+            0,
+            ptr::null_mut(),
+        )
+    };
+    Ok((result == sys::EResult::k_EResultOK).then(|| networking_real_time_status(&status)))
+}
+
+#[napi(js_name = "networkingSocketsGetDetailedConnectionStatus")]
+pub fn networking_sockets_get_detailed_connection_status(
+    connection: u32,
+    max_bytes: Option<u32>,
+) -> Result<Option<String>, Error> {
+    let size = max_bytes.unwrap_or(4096).clamp(1, 65_536) as usize;
+    let mut output = vec![0i8; size];
+    let result = unsafe {
+        sys::SteamAPI_ISteamNetworkingSockets_GetDetailedConnectionStatus(
+            steam_networking_sockets()?,
+            connection,
+            output.as_mut_ptr(),
+            output.len() as i32,
+        )
+    };
+    Ok((result >= 0).then(|| c_buf_to_string(&output)))
+}
+
+#[napi(js_name = "networkingSocketsGetListenSocketAddress")]
+pub fn networking_sockets_get_listen_socket_address(
+    socket: u32,
+) -> Result<Option<NetworkingIpAddressInfo>, Error> {
+    let mut address = unsafe { MaybeUninit::<sys::SteamNetworkingIPAddr>::zeroed().assume_init() };
+    let ok = unsafe {
+        sys::SteamAPI_ISteamNetworkingSockets_GetListenSocketAddress(
+            steam_networking_sockets()?,
+            socket,
+            &mut address,
+        )
+    };
+    if ok {
+        Ok(Some(networking_ip_address_info(
+            steam_networking_utils()?,
+            address,
+            true,
+        )))
+    } else {
+        Ok(None)
+    }
+}
+
+#[napi(js_name = "networkingSocketsCreateSocketPair")]
+pub fn networking_sockets_create_socket_pair(
+    use_network_loopback: bool,
+    identity1: Option<NetworkingIdentity>,
+    identity2: Option<NetworkingIdentity>,
+) -> Result<Option<NetworkingSocketPair>, Error> {
+    let identity1 = identity1.map(networking_identity_from_input).transpose()?;
+    let identity2 = identity2.map(networking_identity_from_input).transpose()?;
+    let identity1_ptr = identity1
+        .as_ref()
+        .map_or(ptr::null(), |identity| identity as *const _);
+    let identity2_ptr = identity2
+        .as_ref()
+        .map_or(ptr::null(), |identity| identity as *const _);
+    let mut connection1 = 0u32;
+    let mut connection2 = 0u32;
+    let ok = unsafe {
+        sys::SteamAPI_ISteamNetworkingSockets_CreateSocketPair(
+            steam_networking_sockets()?,
+            &mut connection1,
+            &mut connection2,
+            use_network_loopback,
+            identity1_ptr,
+            identity2_ptr,
+        )
+    };
+    Ok(ok.then_some(NetworkingSocketPair {
+        connection1,
+        connection2,
+    }))
+}
+
+#[napi(js_name = "networkingSocketsConfigureConnectionLanes")]
+pub fn networking_sockets_configure_connection_lanes(
+    connection: u32,
+    priorities: Vec<i32>,
+    weights: Option<Vec<u32>>,
+) -> Result<u32, Error> {
+    let lane_count = priorities.len();
+    let lane_count_i32 = i32::try_from(lane_count)
+        .map_err(|_| Error::from_reason("connection lane count exceeds i32"))?;
+    let weights = weights
+        .map(|weights| {
+            if weights.len() != lane_count {
+                return Err(Error::from_reason(
+                    "connection lane weights must match priorities length",
+                ));
+            }
+            weights
+                .into_iter()
+                .map(|weight| {
+                    u16::try_from(weight)
+                        .map_err(|_| Error::from_reason("connection lane weight exceeds u16"))
+                })
+                .collect::<Result<Vec<_>, _>>()
+        })
+        .transpose()?;
+    let weight_ptr = weights
+        .as_ref()
+        .map_or(ptr::null(), |weights| weights.as_ptr());
+    Ok(unsafe {
+        sys::SteamAPI_ISteamNetworkingSockets_ConfigureConnectionLanes(
+            steam_networking_sockets()?,
+            connection,
+            lane_count_i32,
+            priorities.as_ptr(),
+            weight_ptr,
+        )
+    } as u32)
+}
+
+#[napi(js_name = "networkingSocketsGetIdentity")]
+pub fn networking_sockets_get_identity() -> Result<Option<NetworkingIdentityInfo>, Error> {
+    let mut identity =
+        unsafe { MaybeUninit::<sys::SteamNetworkingIdentity>::zeroed().assume_init() };
+    unsafe { sys::SteamAPI_SteamNetworkingIdentity_Clear(&mut identity) };
+    let ok = unsafe {
+        sys::SteamAPI_ISteamNetworkingSockets_GetIdentity(
+            steam_networking_sockets()?,
+            &mut identity,
+        )
+    };
+    Ok(ok.then(|| networking_identity_info(identity)))
+}
+
+#[napi(js_name = "networkingSocketsInitAuthentication")]
+pub fn networking_sockets_init_authentication() -> Result<i32, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamNetworkingSockets_InitAuthentication(steam_networking_sockets()?)
+    } as i32)
+}
+
+#[napi(js_name = "networkingSocketsGetAuthenticationStatus")]
+pub fn networking_sockets_get_authentication_status(
+) -> Result<NetworkingAuthenticationStatus, Error> {
+    let mut status =
+        unsafe { MaybeUninit::<sys::SteamNetAuthenticationStatus_t>::zeroed().assume_init() };
+    let availability = unsafe {
+        sys::SteamAPI_ISteamNetworkingSockets_GetAuthenticationStatus(
+            steam_networking_sockets()?,
+            &mut status,
+        )
+    };
+    let mut output = networking_authentication_status(&status);
+    output.availability = availability as i32;
+    Ok(output)
+}
+
+#[napi(js_name = "networkingSocketsCreatePollGroup")]
+pub fn networking_sockets_create_poll_group() -> Result<u32, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamNetworkingSockets_CreatePollGroup(steam_networking_sockets()?)
+    })
+}
+
+#[napi(js_name = "networkingSocketsRunCallbacks")]
+pub fn networking_sockets_run_callbacks() -> Result<(), Error> {
+    unsafe { sys::SteamAPI_ISteamNetworkingSockets_RunCallbacks(steam_networking_sockets()?) };
+    Ok(())
+}
+
+#[napi(js_name = "networkingSocketsDestroyPollGroup")]
+pub fn networking_sockets_destroy_poll_group(poll_group: u32) -> Result<bool, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamNetworkingSockets_DestroyPollGroup(
+            steam_networking_sockets()?,
+            poll_group,
+        )
+    })
+}
+
+#[napi(js_name = "networkingSocketsSetConnectionPollGroup")]
+pub fn networking_sockets_set_connection_poll_group(
+    connection: u32,
+    poll_group: u32,
+) -> Result<bool, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamNetworkingSockets_SetConnectionPollGroup(
+            steam_networking_sockets()?,
+            connection,
+            poll_group,
+        )
+    })
+}
+
+#[napi(js_name = "networkingSocketsReceiveMessagesOnPollGroup")]
+pub fn networking_sockets_receive_messages_on_poll_group(
+    poll_group: u32,
+    max_messages: Option<u32>,
+) -> Result<Vec<NetworkingMessage>, Error> {
+    let sockets = steam_networking_sockets()?;
+    receive_networking_messages(max_messages, |messages, max_messages| unsafe {
+        sys::SteamAPI_ISteamNetworkingSockets_ReceiveMessagesOnPollGroup(
+            sockets,
+            poll_group,
+            messages,
+            max_messages,
+        )
+    })
+}
+
 #[napi(js_name = "networkingUtilsInitRelayNetworkAccess")]
 pub fn networking_utils_init_relay_network_access() -> Result<(), Error> {
     unsafe {
@@ -6294,6 +6762,14 @@ fn steam_networking_messages() -> Result<*mut sys::ISteamNetworkingMessages, Err
     )
 }
 
+fn steam_networking_sockets() -> Result<*mut sys::ISteamNetworkingSockets, Error> {
+    crate::state::ensure_initialized()?;
+    non_null(
+        unsafe { sys::SteamAPI_SteamNetworkingSockets_SteamAPI_v012() },
+        "ISteamNetworkingSockets",
+    )
+}
+
 fn steam_networking_utils() -> Result<*mut sys::ISteamNetworkingUtils, Error> {
     crate::state::ensure_initialized()?;
     non_null(
@@ -7141,6 +7617,43 @@ fn networking_identity_json(identity: sys::SteamNetworkingIdentity) -> Value {
     })
 }
 
+fn networking_virtual_port(port: Option<i32>) -> Result<i32, Error> {
+    let port = port.unwrap_or(0);
+    if port < 0 {
+        Err(Error::from_reason(
+            "networking virtual port must be non-negative",
+        ))
+    } else {
+        Ok(port)
+    }
+}
+
+fn receive_networking_messages<F>(
+    max_messages: Option<u32>,
+    receive: F,
+) -> Result<Vec<NetworkingMessage>, Error>
+where
+    F: FnOnce(*mut *mut sys::SteamNetworkingMessage_t, i32) -> i32,
+{
+    let max_messages = max_messages.unwrap_or(32).clamp(1, 1024);
+    let mut messages = vec![ptr::null_mut(); max_messages as usize];
+    let received = receive(messages.as_mut_ptr(), max_messages as i32);
+    if received <= 0 {
+        return Ok(Vec::new());
+    }
+
+    let mut output = Vec::with_capacity(received as usize);
+    for message in messages.into_iter().take(received as usize) {
+        if message.is_null() {
+            continue;
+        }
+        let parsed = unsafe { networking_message_from_ptr(message) };
+        unsafe { sys::SteamAPI_SteamNetworkingMessage_t_Release(message) };
+        output.push(parsed);
+    }
+    Ok(output)
+}
+
 unsafe fn networking_message_from_ptr(
     message: *mut sys::SteamNetworkingMessage_t,
 ) -> NetworkingMessage {
@@ -7235,6 +7748,29 @@ fn networking_messages_session_connection_info(
     }
 }
 
+fn networking_connection_info(
+    info: &sys::SteamNetConnectionInfo_t,
+) -> Result<NetworkingConnectionInfo, Error> {
+    let remote_address = unsafe { ptr::addr_of!(info.m_addrRemote).read_unaligned() };
+    Ok(NetworkingConnectionInfo {
+        state: unsafe { ptr::addr_of!(info.m_eState).read_unaligned() } as i32,
+        remote_identity: networking_identity_info(unsafe {
+            ptr::addr_of!(info.m_identityRemote).read_unaligned()
+        }),
+        user_data: unsafe { ptr::addr_of!(info.m_nUserData).read_unaligned() }.into(),
+        listen_socket: unsafe { ptr::addr_of!(info.m_hListenSocket).read_unaligned() },
+        remote_address: networking_ip_address_info(steam_networking_utils()?, remote_address, true),
+        remote_pop: unsafe { ptr::addr_of!(info.m_idPOPRemote).read_unaligned() },
+        relay_pop: unsafe { ptr::addr_of!(info.m_idPOPRelay).read_unaligned() },
+        end_reason: unsafe { ptr::addr_of!(info.m_eEndReason).read_unaligned() },
+        end_debug: c_buf_to_string(unsafe { &*ptr::addr_of!(info.m_szEndDebug) }),
+        connection_description: c_buf_to_string(unsafe {
+            &*ptr::addr_of!(info.m_szConnectionDescription)
+        }),
+        flags: unsafe { ptr::addr_of!(info.m_nFlags).read_unaligned() },
+    })
+}
+
 fn networking_messages_session_info_json(info: &sys::SteamNetConnectionInfo_t) -> Value {
     serde_json::json!({
         "remote_identity": networking_identity_json(unsafe { ptr::addr_of!(info.m_identityRemote).read_unaligned() }),
@@ -7247,6 +7783,40 @@ fn networking_messages_session_info_json(info: &sys::SteamNetConnectionInfo_t) -
         "end_debug": c_buf_to_string(unsafe { &*ptr::addr_of!(info.m_szEndDebug) }),
         "connection_description": c_buf_to_string(unsafe { &*ptr::addr_of!(info.m_szConnectionDescription) }),
         "flags": unsafe { ptr::addr_of!(info.m_nFlags).read_unaligned() }
+    })
+}
+
+fn networking_connection_info_json(info: &sys::SteamNetConnectionInfo_t) -> Value {
+    let remote_address = unsafe { ptr::addr_of!(info.m_addrRemote).read_unaligned() };
+    let address = steam_networking_utils().ok().map(|utils| {
+        networking_ip_address_info_json(networking_ip_address_info(utils, remote_address, true))
+    });
+    serde_json::json!({
+        "state": unsafe { ptr::addr_of!(info.m_eState).read_unaligned() } as i32,
+        "remote_identity": networking_identity_json(unsafe { ptr::addr_of!(info.m_identityRemote).read_unaligned() }),
+        "user_data": unsafe { ptr::addr_of!(info.m_nUserData).read_unaligned() }.to_string(),
+        "listen_socket": unsafe { ptr::addr_of!(info.m_hListenSocket).read_unaligned() },
+        "remote_address": address,
+        "remote_pop": unsafe { ptr::addr_of!(info.m_idPOPRemote).read_unaligned() },
+        "relay_pop": unsafe { ptr::addr_of!(info.m_idPOPRelay).read_unaligned() },
+        "end_reason": unsafe { ptr::addr_of!(info.m_eEndReason).read_unaligned() },
+        "end_debug": c_buf_to_string(unsafe { &*ptr::addr_of!(info.m_szEndDebug) }),
+        "connection_description": c_buf_to_string(unsafe { &*ptr::addr_of!(info.m_szConnectionDescription) }),
+        "flags": unsafe { ptr::addr_of!(info.m_nFlags).read_unaligned() }
+    })
+}
+
+fn networking_ip_address_info_json(address: NetworkingIpAddressInfo) -> Value {
+    serde_json::json!({
+        "text": address.text,
+        "ipv4": address.ipv4,
+        "port": address.port,
+        "ipv4_address": address.ipv4_address,
+        "is_ipv4": address.is_ipv4,
+        "is_local_host": address.is_local_host,
+        "is_fake_ip": address.is_fake_ip,
+        "fake_ip_type": address.fake_ip_type,
+        "ipv6_all_zeros": address.ipv6_all_zeros
     })
 }
 
@@ -7584,6 +8154,9 @@ fn callback_id_from_compat(callback: i32) -> Result<i32, Error> {
         8 => Ok(CALLBACK_GAME_LOBBY_JOIN_REQUESTED),
         9 => Ok(sys::MicroTxnAuthorizationResponse_t_k_iCallback as i32),
         331 => Ok(sys::GameOverlayActivated_t_k_iCallback as i32),
+        CALLBACK_STEAM_NET_CONNECTION_STATUS_CHANGED => {
+            Ok(sys::SteamNetConnectionStatusChangedCallback_t_k_iCallback as i32)
+        }
         CALLBACK_EQUIPPED_PROFILE_ITEMS_CHANGED => {
             Ok(sys::EquippedProfileItemsChanged_t_k_iCallback as i32)
         }
@@ -7699,6 +8272,15 @@ unsafe fn callback_to_json(callback: i32, param: *mut c_void) -> Value {
             let info = ptr::addr_of!((*event).m_info).read_unaligned();
             serde_json::json!({
                 "info": networking_messages_session_info_json(&info)
+            })
+        }
+        CALLBACK_STEAM_NET_CONNECTION_STATUS_CHANGED => {
+            let event = param as *const sys::SteamNetConnectionStatusChangedCallback_t;
+            let info = ptr::addr_of!((*event).m_info).read_unaligned();
+            serde_json::json!({
+                "connection": ptr::addr_of!((*event).m_hConn).read_unaligned(),
+                "old_state": ptr::addr_of!((*event).m_eOldState).read_unaligned() as i32,
+                "info": networking_connection_info_json(&info)
             })
         }
         CALLBACK_STEAM_NET_AUTHENTICATION_STATUS => {

@@ -288,6 +288,42 @@ export interface NativeNetworkingMessagesSessionConnectionInfo {
   quick_status?: NativeNetworkingConnectionRealTimeStatus;
 }
 
+export interface NativeNetworkingConnectionInfo {
+  state: number;
+  remoteIdentity?: NativeNetworkingIdentityInfo;
+  remote_identity?: NativeNetworkingIdentityInfo;
+  userData?: bigint | string | number;
+  user_data?: bigint | string | number;
+  listenSocket?: number;
+  listen_socket?: number;
+  remoteAddress?: NativeNetworkingIpAddressInfo;
+  remote_address?: NativeNetworkingIpAddressInfo;
+  remotePop?: number;
+  remote_pop?: number;
+  relayPop?: number;
+  relay_pop?: number;
+  endReason?: number;
+  end_reason?: number;
+  endDebug?: string;
+  end_debug?: string;
+  connectionDescription?: string;
+  connection_description?: string;
+  flags: number;
+}
+
+export interface NativeNetworkingSocketPair {
+  connection1?: number;
+  connection_1?: number;
+  connection2?: number;
+  connection_2?: number;
+}
+
+export interface NativeNetworkingSocketSendResult {
+  result: number;
+  messageNumber?: bigint | string | number;
+  message_number?: bigint | string | number;
+}
+
 export interface NativeNetworkingAuthenticationStatus {
   availability: number;
   debugMessage?: string;
@@ -1067,6 +1103,34 @@ export interface NativeBinding {
   networkingMessagesCloseSessionWithUser(identity: NativeNetworkingIdentity): boolean;
   networkingMessagesCloseChannelWithUser(identity: NativeNetworkingIdentity, channel: number): boolean;
   networkingMessagesGetSessionConnectionInfo(identity: NativeNetworkingIdentity): NativeNetworkingMessagesSessionConnectionInfo;
+  networkingSocketsCreateListenSocketIp(address: NativeNetworkingIpAddress): number;
+  networkingSocketsConnectByIpAddress(address: NativeNetworkingIpAddress): number;
+  networkingSocketsCreateListenSocketP2p(localVirtualPort?: number): number;
+  networkingSocketsConnectP2p(identity: NativeNetworkingIdentity, remoteVirtualPort?: number): number;
+  networkingSocketsAcceptConnection(connection: number): number;
+  networkingSocketsCloseConnection(connection: number, reason?: number, debug?: string, enableLinger?: boolean): boolean;
+  networkingSocketsCloseListenSocket(socket: number): boolean;
+  networkingSocketsSetConnectionUserData(connection: number, userData: bigint): boolean;
+  networkingSocketsGetConnectionUserData(connection: number): bigint | string | number;
+  networkingSocketsSetConnectionName(connection: number, name: string): void;
+  networkingSocketsGetConnectionName(connection: number): string | null | undefined;
+  networkingSocketsSendMessageToConnection(connection: number, data: Buffer, sendFlags?: number): NativeNetworkingSocketSendResult;
+  networkingSocketsFlushMessagesOnConnection(connection: number): number;
+  networkingSocketsReceiveMessagesOnConnection(connection: number, maxMessages?: number): NativeNetworkingMessage[];
+  networkingSocketsGetConnectionInfo(connection: number): NativeNetworkingConnectionInfo | null | undefined;
+  networkingSocketsGetConnectionRealTimeStatus(connection: number): NativeNetworkingConnectionRealTimeStatus | null | undefined;
+  networkingSocketsGetDetailedConnectionStatus(connection: number, maxBytes?: number): string | null | undefined;
+  networkingSocketsGetListenSocketAddress(socket: number): NativeNetworkingIpAddressInfo | null | undefined;
+  networkingSocketsCreateSocketPair(useNetworkLoopback: boolean, identity1?: NativeNetworkingIdentity | null, identity2?: NativeNetworkingIdentity | null): NativeNetworkingSocketPair | null | undefined;
+  networkingSocketsConfigureConnectionLanes(connection: number, priorities: number[], weights?: number[]): number;
+  networkingSocketsGetIdentity(): NativeNetworkingIdentityInfo | null | undefined;
+  networkingSocketsInitAuthentication(): number;
+  networkingSocketsGetAuthenticationStatus(): NativeNetworkingAuthenticationStatus;
+  networkingSocketsCreatePollGroup(): number;
+  networkingSocketsRunCallbacks(): void;
+  networkingSocketsDestroyPollGroup(pollGroup: number): boolean;
+  networkingSocketsSetConnectionPollGroup(connection: number, pollGroup: number): boolean;
+  networkingSocketsReceiveMessagesOnPollGroup(pollGroup: number, maxMessages?: number): NativeNetworkingMessage[];
   networkingUtilsInitRelayNetworkAccess(): void;
   networkingUtilsGetRelayNetworkStatus(): NativeNetworkingRelayNetworkStatus;
   networkingUtilsGetLocalPingLocation(): NativeNetworkingPingLocation;

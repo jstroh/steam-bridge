@@ -51,6 +51,7 @@ import {
   NativeNumberOfCurrentPlayersResult,
   NativeNetworkingAuthenticationStatus,
   NativeNetworkingConnectionRealTimeStatus,
+  NativeNetworkingConnectionInfo,
   NativeNetworkingFakeIpIdentity,
   NativeNetworkingIdentity,
   NativeNetworkingIdentityInfo,
@@ -61,6 +62,8 @@ import {
   NativeNetworkingPingDataCenter,
   NativeNetworkingPingLocation,
   NativeNetworkingRelayNetworkStatus,
+  NativeNetworkingSocketPair,
+  NativeNetworkingSocketSendResult,
   NativeOverlayDiagnostics,
   NativePartyBeaconDetails,
   NativePartyBeaconLocation,
@@ -403,6 +406,36 @@ export interface NetworkingMessagesSessionConnectionInfo {
   quickStatus: NetworkingConnectionRealTimeStatus | null;
 }
 
+export interface NetworkingConnectionInfo {
+  state: number;
+  remoteIdentity: NetworkingIdentityInfo;
+  userData: bigint;
+  listenSocket: number;
+  remoteAddress: NetworkingIpAddressInfo | null;
+  remotePop: number;
+  relayPop: number;
+  endReason: number;
+  endDebug: string;
+  connectionDescription: string;
+  flags: number;
+}
+
+export interface NetworkingSocketPair {
+  connection1: number;
+  connection2: number;
+}
+
+export interface NetworkingSocketSendResult {
+  result: number;
+  messageNumber: bigint;
+}
+
+export interface NetworkingCloseConnectionOptions {
+  reason?: number;
+  debug?: string;
+  enableLinger?: boolean;
+}
+
 export interface NetworkingAuthenticationStatus {
   availability: number;
   debugMessage: string;
@@ -700,6 +733,7 @@ export const SteamCallback = {
   MicroTxnAuthorizationResponse: 9,
   GameOverlayActivated: 331,
   EquippedProfileItemsChanged: 350,
+  SteamNetConnectionStatusChanged: 1221,
   SteamNetAuthenticationStatus: 1222,
   SteamNetworkingMessagesSessionRequest: 1251,
   SteamNetworkingMessagesSessionFailed: 1252,
@@ -2254,6 +2288,120 @@ export const networking = {
       );
     }
   },
+  sockets: {
+    SendFlags: NetworkingSendFlags,
+    ConnectionState: NetworkingConnectionState,
+    Availability: NetworkingAvailability,
+    createListenSocketIP(address: NetworkingIpAddress): number {
+      return native().networkingSocketsCreateListenSocketIp(nativeNetworkingIpAddress(address));
+    },
+    connectByIPAddress(address: NetworkingIpAddress): number {
+      return native().networkingSocketsConnectByIpAddress(nativeNetworkingIpAddress(address));
+    },
+    createListenSocketP2P(localVirtualPort = 0): number {
+      return native().networkingSocketsCreateListenSocketP2p(localVirtualPort);
+    },
+    connectP2P(identity: NetworkingIdentity, remoteVirtualPort = 0): number {
+      return native().networkingSocketsConnectP2p(nativeNetworkingIdentity(identity), remoteVirtualPort);
+    },
+    acceptConnection(connection: number): number {
+      return native().networkingSocketsAcceptConnection(connection);
+    },
+    closeConnection(connection: number, options: NetworkingCloseConnectionOptions = {}): boolean {
+      return native().networkingSocketsCloseConnection(
+        connection,
+        options.reason,
+        options.debug,
+        options.enableLinger
+      );
+    },
+    closeListenSocket(socket: number): boolean {
+      return native().networkingSocketsCloseListenSocket(socket);
+    },
+    setConnectionUserData(connection: number, userData: bigint): boolean {
+      return native().networkingSocketsSetConnectionUserData(connection, userData);
+    },
+    getConnectionUserData(connection: number): bigint {
+      return BigInt(native().networkingSocketsGetConnectionUserData(connection));
+    },
+    setConnectionName(connection: number, name: string): void {
+      native().networkingSocketsSetConnectionName(connection, name);
+    },
+    getConnectionName(connection: number): string | null {
+      return native().networkingSocketsGetConnectionName(connection) ?? null;
+    },
+    sendMessageToConnection(
+      connection: number,
+      data: Buffer | Uint8Array,
+      sendFlags = NetworkingSendFlags.Reliable
+    ): NetworkingSocketSendResult {
+      return normalizeNetworkingSocketSendResult(
+        native().networkingSocketsSendMessageToConnection(connection, Buffer.from(data), sendFlags)
+      );
+    },
+    flushMessagesOnConnection(connection: number): number {
+      return native().networkingSocketsFlushMessagesOnConnection(connection);
+    },
+    receiveMessagesOnConnection(connection: number, maxMessages?: number | null): NetworkingMessage[] {
+      return native()
+        .networkingSocketsReceiveMessagesOnConnection(connection, maxMessages ?? undefined)
+        .map(normalizeNetworkingMessage);
+    },
+    getConnectionInfo(connection: number): NetworkingConnectionInfo | null {
+      return normalizeNetworkingConnectionInfo(native().networkingSocketsGetConnectionInfo(connection));
+    },
+    getConnectionRealTimeStatus(connection: number): NetworkingConnectionRealTimeStatus | null {
+      return normalizeNetworkingRealTimeStatus(native().networkingSocketsGetConnectionRealTimeStatus(connection));
+    },
+    getDetailedConnectionStatus(connection: number, maxBytes?: number | null): string | null {
+      return native().networkingSocketsGetDetailedConnectionStatus(connection, maxBytes ?? undefined) ?? null;
+    },
+    getListenSocketAddress(socket: number): NetworkingIpAddressInfo | null {
+      return normalizeNetworkingIpAddressInfo(native().networkingSocketsGetListenSocketAddress(socket));
+    },
+    createSocketPair(
+      useNetworkLoopback = false,
+      identity1?: NetworkingIdentity | null,
+      identity2?: NetworkingIdentity | null
+    ): NetworkingSocketPair | null {
+      return normalizeNetworkingSocketPair(
+        native().networkingSocketsCreateSocketPair(
+          useNetworkLoopback,
+          identity1 ? nativeNetworkingIdentity(identity1) : undefined,
+          identity2 ? nativeNetworkingIdentity(identity2) : undefined
+        )
+      );
+    },
+    configureConnectionLanes(connection: number, priorities: number[], weights?: number[] | null): number {
+      return native().networkingSocketsConfigureConnectionLanes(connection, priorities, weights ?? undefined);
+    },
+    getIdentity(): NetworkingIdentityInfo | null {
+      return normalizeNetworkingIdentityInfo(native().networkingSocketsGetIdentity());
+    },
+    initAuthentication(): number {
+      return native().networkingSocketsInitAuthentication();
+    },
+    getAuthenticationStatus(): NetworkingAuthenticationStatus {
+      return normalizeNetworkingAuthenticationStatus(native().networkingSocketsGetAuthenticationStatus());
+    },
+    createPollGroup(): number {
+      return native().networkingSocketsCreatePollGroup();
+    },
+    runCallbacks(): void {
+      native().networkingSocketsRunCallbacks();
+    },
+    destroyPollGroup(pollGroup: number): boolean {
+      return native().networkingSocketsDestroyPollGroup(pollGroup);
+    },
+    setConnectionPollGroup(connection: number, pollGroup: number): boolean {
+      return native().networkingSocketsSetConnectionPollGroup(connection, pollGroup);
+    },
+    receiveMessagesOnPollGroup(pollGroup: number, maxMessages?: number | null): NetworkingMessage[] {
+      return native()
+        .networkingSocketsReceiveMessagesOnPollGroup(pollGroup, maxMessages ?? undefined)
+        .map(normalizeNetworkingMessage);
+    }
+  },
   utils: {
     Availability: NetworkingAvailability,
     FakeIpType: NetworkingFakeIpType,
@@ -3434,6 +3582,9 @@ function normalizeCallbackEvent(callbackId: number, event: unknown): unknown {
   ) {
     return normalizeNetworkingMessagesCallbackEvent(event);
   }
+  if (callbackId === SteamCallback.SteamNetConnectionStatusChanged) {
+    return normalizeNetworkingSocketsCallbackEvent(event);
+  }
   if (
     callbackId === SteamCallback.SteamNetAuthenticationStatus ||
     callbackId === SteamCallback.SteamRelayNetworkStatus
@@ -3508,6 +3659,21 @@ function normalizeNetworkingMessagesCallbackEvent(event: unknown): unknown {
     );
   }
 
+  return normalized;
+}
+
+function normalizeNetworkingSocketsCallbackEvent(event: unknown): unknown {
+  if (!event || typeof event !== "object") {
+    return event;
+  }
+  const source = event as Record<string, unknown>;
+  const normalized: Record<string, unknown> = { ...source };
+  normalized.connection = Number(source.connection ?? 0);
+  normalized.oldState = Number(source.oldState ?? source.old_state ?? 0);
+  normalized.old_state ??= normalized.oldState;
+  if (source.info && typeof source.info === "object") {
+    normalized.info = normalizeNetworkingConnectionInfo(source.info as NativeNetworkingConnectionInfo);
+  }
   return normalized;
 }
 
@@ -3803,6 +3969,27 @@ function normalizeNetworkingFakeIpIdentity(identity: NativeNetworkingFakeIpIdent
   };
 }
 
+function normalizeNetworkingSocketPair(
+  pair: NativeNetworkingSocketPair | null | undefined
+): NetworkingSocketPair | null {
+  if (!pair) {
+    return null;
+  }
+  const source = pair as unknown as Record<string, unknown>;
+  return {
+    connection1: Number(source.connection1 ?? source.connection_1 ?? 0),
+    connection2: Number(source.connection2 ?? source.connection_2 ?? 0)
+  };
+}
+
+function normalizeNetworkingSocketSendResult(result: NativeNetworkingSocketSendResult): NetworkingSocketSendResult {
+  const source = result as unknown as Record<string, unknown>;
+  return {
+    result: Number(result.result ?? 0),
+    messageNumber: BigInt((source.messageNumber ?? source.message_number ?? 0) as bigint | number | string)
+  };
+}
+
 function normalizeNetworkingMessage(message: NativeNetworkingMessage): NetworkingMessage {
   const source = message as unknown as Record<string, unknown>;
   return {
@@ -3817,6 +4004,32 @@ function normalizeNetworkingMessage(message: NativeNetworkingMessage): Networkin
     flags: Number(message.flags),
     userData: BigInt((source.userData ?? source.user_data ?? 0) as bigint | number | string),
     lane: Number(message.lane)
+  };
+}
+
+function normalizeNetworkingConnectionInfo(
+  info: NativeNetworkingConnectionInfo | null | undefined
+): NetworkingConnectionInfo | null {
+  if (!info) {
+    return null;
+  }
+  const source = info as unknown as Record<string, unknown>;
+  return {
+    state: Number(info.state),
+    remoteIdentity: normalizeNetworkingIdentityInfoRequired(
+      (source.remoteIdentity ?? source.remote_identity) as NativeNetworkingIdentityInfo | null | undefined
+    ),
+    userData: BigInt((source.userData ?? source.user_data ?? 0) as bigint | number | string),
+    listenSocket: Number(source.listenSocket ?? source.listen_socket ?? 0),
+    remoteAddress: normalizeNetworkingIpAddressInfo(
+      (source.remoteAddress ?? source.remote_address) as NativeNetworkingIpAddressInfo | null | undefined
+    ),
+    remotePop: Number(source.remotePop ?? source.remote_pop ?? 0),
+    relayPop: Number(source.relayPop ?? source.relay_pop ?? 0),
+    endReason: Number(source.endReason ?? source.end_reason ?? 0),
+    endDebug: String(source.endDebug ?? source.end_debug ?? ""),
+    connectionDescription: String(source.connectionDescription ?? source.connection_description ?? ""),
+    flags: Number(info.flags ?? 0)
   };
 }
 
