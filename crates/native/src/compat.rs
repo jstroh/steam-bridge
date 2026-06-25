@@ -250,6 +250,7 @@ const MAX_API_CALL_RESULT_BYTES: u32 = 1024 * 1024;
 const MAX_NETWORKING_CONFIG_VALUE_BYTES: u32 = 1024 * 1024;
 const MAX_USER_VOICE_BYTES: u32 = 1024 * 1024;
 const DEFAULT_USER_VOICE_BYTES: u32 = 64 * 1024;
+const DEFAULT_DEPRECATED_GAME_CONNECTION_AUTH_BLOB_BYTES: u32 = 2048;
 const MAX_ENCRYPTED_APP_TICKET_DATA_BYTES: usize = 1024;
 const MAX_ENCRYPTED_APP_TICKET_BYTES: u32 = 4096;
 const USER_DATA_FOLDER_BUFFER_SIZE: usize = 4096;
@@ -13620,6 +13621,16 @@ pub fn user_stop_voice_recording() -> Result<(), Error> {
     Ok(())
 }
 
+#[napi(js_name = "userGetHSteamUser")]
+pub fn user_get_h_steam_user() -> Result<i32, Error> {
+    Ok(unsafe { sys::SteamAPI_ISteamUser_GetHSteamUser(steam_user()?) })
+}
+
+#[napi(js_name = "userIsLoggedOn")]
+pub fn user_is_logged_on() -> Result<bool, Error> {
+    Ok(unsafe { sys::SteamAPI_ISteamUser_BLoggedOn(steam_user()?) })
+}
+
 #[napi(js_name = "userGetAvailableVoice")]
 pub fn user_get_available_voice(sample_rate: Option<u32>) -> Result<UserVoiceAvailable, Error> {
     let mut compressed_bytes = 0;
@@ -13821,6 +13832,48 @@ pub fn user_advertise_game(steam_id64: BigInt, ip: u32, port: u32) -> Result<(),
         sys::SteamAPI_ISteamUser_AdvertiseGame(
             steam_user()?,
             bigint_to_u64(steam_id64, "steam id")?,
+            ip,
+            u16_from_u32(port, "server port")?,
+        )
+    };
+    Ok(())
+}
+
+#[napi(js_name = "userInitiateGameConnectionDeprecated")]
+pub fn user_initiate_game_connection_deprecated(
+    server_steam_id64: BigInt,
+    ip: u32,
+    port: u32,
+    secure: Option<bool>,
+    max_bytes: Option<u32>,
+) -> Result<Option<Buffer>, Error> {
+    let size = max_bytes
+        .unwrap_or(DEFAULT_DEPRECATED_GAME_CONNECTION_AUTH_BLOB_BYTES)
+        .clamp(1, 65_536);
+    let mut auth_blob = vec![0u8; size as usize];
+    let bytes_written = unsafe {
+        sys::SteamAPI_ISteamUser_InitiateGameConnection_DEPRECATED(
+            steam_user()?,
+            auth_blob.as_mut_ptr().cast::<c_void>(),
+            size as i32,
+            bigint_to_u64(server_steam_id64, "game server steam id")?,
+            ip,
+            u16_from_u32(port, "server port")?,
+            secure.unwrap_or(true),
+        )
+    };
+    if bytes_written <= 0 {
+        return Ok(None);
+    }
+    auth_blob.truncate((bytes_written as u32).min(size) as usize);
+    Ok(Some(auth_blob.into()))
+}
+
+#[napi(js_name = "userTerminateGameConnectionDeprecated")]
+pub fn user_terminate_game_connection_deprecated(ip: u32, port: u32) -> Result<(), Error> {
+    unsafe {
+        sys::SteamAPI_ISteamUser_TerminateGameConnection_DEPRECATED(
+            steam_user()?,
             ip,
             u16_from_u32(port, "server port")?,
         )

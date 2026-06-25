@@ -1141,6 +1141,14 @@ test("user facade covers voice, auth session, account, and duration helpers", as
     userStopVoiceRecording() {
       this.calls.push({ method: "userStopVoiceRecording", args: [] });
     },
+    userGetHSteamUser() {
+      this.calls.push({ method: "userGetHSteamUser", args: [] });
+      return 7;
+    },
+    userIsLoggedOn() {
+      this.calls.push({ method: "userIsLoggedOn", args: [] });
+      return true;
+    },
     userGetAvailableVoice(sampleRate) {
       this.calls.push({ method: "userGetAvailableVoice", args: [sampleRate] });
       return { result: 0, compressed_bytes: 4, uncompressedBytes: 8 };
@@ -1198,6 +1206,16 @@ test("user facade covers voice, auth session, account, and duration helpers", as
     },
     userAdvertiseGame(steamId64, ip, port) {
       this.calls.push({ method: "userAdvertiseGame", args: [steamId64, ip, port] });
+    },
+    userInitiateGameConnectionDeprecated(serverSteamId64, ip, port, secure, maxBytes) {
+      this.calls.push({
+        method: "userInitiateGameConnectionDeprecated",
+        args: [serverSteamId64, ip, port, secure, maxBytes]
+      });
+      return Buffer.from([4, 5, 6]);
+    },
+    userTerminateGameConnectionDeprecated(ip, port) {
+      this.calls.push({ method: "userTerminateGameConnectionDeprecated", args: [ip, port] });
     },
     userRequestEncryptedAppTicket(dataToInclude, timeoutSeconds) {
       this.calls.push({ method: "userRequestEncryptedAppTicket", args: [dataToInclude, timeoutSeconds] });
@@ -1276,6 +1294,8 @@ test("user facade covers voice, auth session, account, and duration helpers", as
 
   steam.user.startVoiceRecording();
   steam.user.stopVoiceRecording();
+  assert.equal(steam.user.getHSteamUser(), 7);
+  assert.equal(steam.user.isLoggedOn(), true);
   assert.deepEqual(steam.user.getAvailableVoice(48000), {
     result: 0,
     compressedBytes: 4,
@@ -1304,6 +1324,11 @@ test("user facade covers voice, auth session, account, and duration helpers", as
   assert.equal(steam.user.hasLicenseForApp(76561198000000000n, 480), 0);
   assert.equal(steam.user.isBehindNAT(), true);
   steam.user.advertiseGame(76561198000000000n, 2130706433, 27015);
+  assert.deepEqual(
+    steam.user.initiateGameConnectionDeprecated(76561198000000001n, 2130706433, 27015, true, 2048),
+    Buffer.from([4, 5, 6])
+  );
+  steam.user.terminateGameConnectionDeprecated(2130706433, 27015);
   assert.deepEqual(await steam.user.requestEncryptedAppTicket("abc", 7), {
     result: 0,
     ticket: ticketBytes
@@ -1340,6 +1365,8 @@ test("user facade covers voice, auth session, account, and duration helpers", as
     [
       { method: "userStartVoiceRecording", args: [] },
       { method: "userStopVoiceRecording", args: [] },
+      { method: "userGetHSteamUser", args: [] },
+      { method: "userIsLoggedOn", args: [] },
       { method: "userGetAvailableVoice", args: [48000] },
       { method: "userGetVoice", args: [true, 256, true, 512, 48000] },
       { method: "userDecompressVoice", args: [Buffer.from([1, 2, 3]), 1024, 48000] },
@@ -1352,6 +1379,11 @@ test("user facade covers voice, auth session, account, and duration helpers", as
       { method: "userHasLicenseForApp", args: [76561198000000000n, 480] },
       { method: "userIsBehindNat", args: [] },
       { method: "userAdvertiseGame", args: [76561198000000000n, 2130706433, 27015] },
+      {
+        method: "userInitiateGameConnectionDeprecated",
+        args: [76561198000000001n, 2130706433, 27015, true, 2048]
+      },
+      { method: "userTerminateGameConnectionDeprecated", args: [2130706433, 27015] },
       { method: "userRequestEncryptedAppTicket", args: [Buffer.from("abc"), 7] },
       { method: "userGetEncryptedAppTicket", args: [4096] },
       { method: "userGetGameBadgeLevel", args: [1, true] },

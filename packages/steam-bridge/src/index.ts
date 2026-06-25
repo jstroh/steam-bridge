@@ -3484,6 +3484,12 @@ export const user = {
   stopVoiceRecording(): void {
     native().userStopVoiceRecording();
   },
+  getHSteamUser(): number {
+    return native().userGetHSteamUser();
+  },
+  isLoggedOn(): boolean {
+    return native().userIsLoggedOn();
+  },
   getAvailableVoice(sampleRate?: number | null): UserVoiceAvailable {
     return normalizeUserVoiceAvailable(native().userGetAvailableVoice(sampleRate ?? undefined));
   },
@@ -3539,6 +3545,18 @@ export const user = {
   },
   advertiseGame(steamId64: bigint, ip: number, port: number): void {
     native().userAdvertiseGame(steamId64, ip, port);
+  },
+  initiateGameConnectionDeprecated(
+    serverSteamId64: bigint,
+    ip: number,
+    port: number,
+    secure = true,
+    maxBytes?: number | null
+  ): Buffer | null {
+    return native().userInitiateGameConnectionDeprecated(serverSteamId64, ip, port, secure, maxBytes ?? undefined) ?? null;
+  },
+  terminateGameConnectionDeprecated(ip: number, port: number): void {
+    native().userTerminateGameConnectionDeprecated(ip, port);
   },
   async requestEncryptedAppTicket(
     dataToInclude?: Buffer | Uint8Array | string | null,

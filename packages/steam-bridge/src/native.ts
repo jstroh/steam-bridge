@@ -1495,6 +1495,8 @@ export interface NativeBinding {
   authGetSessionTicketWithIp(ip: string, timeoutSeconds?: number): Promise<NativeAuthTicket>;
   userStartVoiceRecording(): void;
   userStopVoiceRecording(): void;
+  userGetHSteamUser(): number;
+  userIsLoggedOn(): boolean;
   userGetAvailableVoice(sampleRate?: number): NativeUserVoiceAvailable;
   userGetVoice(wantCompressed?: boolean, compressedBufferBytes?: number, wantUncompressed?: boolean, uncompressedBufferBytes?: number, sampleRate?: number): NativeUserVoiceData;
   userDecompressVoice(compressed: Buffer, maxBytes?: number, desiredSampleRate?: number): NativeUserVoiceData;
@@ -1507,6 +1509,8 @@ export interface NativeBinding {
   userHasLicenseForApp(steamId64: bigint, appId: number): number;
   userIsBehindNat(): boolean;
   userAdvertiseGame(steamId64: bigint, ip: number, port: number): void;
+  userInitiateGameConnectionDeprecated(serverSteamId64: bigint, ip: number, port: number, secure?: boolean, maxBytes?: number): Buffer | null | undefined;
+  userTerminateGameConnectionDeprecated(ip: number, port: number): void;
   userRequestEncryptedAppTicket(dataToInclude?: Buffer | null, timeoutSeconds?: number): Promise<NativeUserEncryptedAppTicket>;
   userGetEncryptedAppTicket(maxBytes?: number): Buffer | null | undefined;
   userGetGameBadgeLevel(series: number, foil: boolean): number;

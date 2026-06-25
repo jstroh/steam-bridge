@@ -24,7 +24,8 @@ The native layer currently targets the Steamworks flat C API through
   Steam ID or IP, auth session validation helpers, voice recording/capture and
   decompression, encrypted app tickets, store auth URLs, badge/level/account
   state helpers, market eligibility, duration control, user-data folder reads,
-  app usage events, NAT checks, game advertisement, license checks, and ticket
+  app usage events, NAT/logged-on checks, Steam user handle reads, game
+  advertisement, legacy game-connection auth blobs, license checks, and ticket
   cancellation.
 - Friends: persona name/state, friend enumeration, friend profiles, groups,
   clans, rich presence, coplay, clan chat controls, friend message replies, and
