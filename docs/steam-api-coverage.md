@@ -70,14 +70,14 @@ The native layer currently targets the Steamworks flat C API through
   send-channel close helpers, and modern `ISteamNetworkingMessages`
   identity/session/message send and receive flows, core
   `ISteamNetworkingSockets` connection/listen-socket/single and batch
-  message/poll-group helpers, relay-auth-ticket cache helpers, hosted dedicated
-  connect/listen
-  helpers, hosted dedicated address and game coordinator login blobs,
+  message/poll-group helpers, relay-auth-ticket cache helpers, hosted
+  dedicated connect/listen helpers, hosted dedicated address and game
+  coordinator login blobs,
   certificate request/install/reset helpers, fake-IP allocation and listen
   helpers, fake UDP port wrappers, connection lane status details, plus
   `ISteamNetworkingUtils` relay/auth status, ping location, POP latency,
-  fake-IP, IP address, config value, editable config iteration, and
-  direct global/connection config setters, and debug-output helpers.
+  fake-IP, IP address, identity conversion, config value, editable config
+  iteration, direct global/connection config setters, and debug-output helpers.
 - UGC/Workshop: item create/update/query flows, install/download information,
   subscription list helpers, item state, statistics, and query configuration.
 - Screenshots: screenshot library writes, screenshot triggers/hooks, location

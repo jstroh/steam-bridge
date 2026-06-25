@@ -4440,6 +4440,12 @@ export const networking = {
         native().networkingUtilsGetRealIdentityForFakeIp(nativeNetworkingIpAddress(address))
       );
     },
+    identityToString(identity: NetworkingIdentity): string {
+      return native().networkingUtilsIdentityToString(nativeNetworkingIdentity(identity));
+    },
+    parseIdentity(text: string): NetworkingIdentityInfo | null {
+      return normalizeNetworkingIdentityInfo(native().networkingUtilsParseIdentity(text));
+    },
     setConfigValueInt32(value: number, scope: number, scopeObj: number, data: number): boolean {
       return native().networkingUtilsSetConfigValueInt32(value, scope, scopeObj, data);
     },

@@ -1838,6 +1838,8 @@ export interface NativeBinding {
   networkingUtilsIpAddressToString(address: NativeNetworkingIpAddress, withPort?: boolean): string;
   networkingUtilsGetIpAddressFakeIpType(address: NativeNetworkingIpAddress): number;
   networkingUtilsGetRealIdentityForFakeIp(address: NativeNetworkingIpAddress): NativeNetworkingFakeIpIdentity;
+  networkingUtilsIdentityToString(identity: NativeNetworkingIdentity): string;
+  networkingUtilsParseIdentity(text: string): NativeNetworkingIdentityInfo | null | undefined;
   networkingUtilsSetConfigValueInt32(value: number, scope: number, scopeObj: number, data: number): boolean;
   networkingUtilsSetConfigValueInt64(value: number, scope: number, scopeObj: number, data: bigint): boolean;
   networkingUtilsSetConfigValueFloat(value: number, scope: number, scopeObj: number, data: number): boolean;

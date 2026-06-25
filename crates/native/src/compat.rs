@@ -8792,6 +8792,33 @@ pub fn networking_utils_get_real_identity_for_fake_ip(
     })
 }
 
+#[napi(js_name = "networkingUtilsIdentityToString")]
+pub fn networking_utils_identity_to_string(identity: NetworkingIdentity) -> Result<String, Error> {
+    let identity = networking_identity_from_input(identity)?;
+    Ok(networking_utils_identity_string(
+        steam_networking_utils()?,
+        identity,
+    ))
+}
+
+#[napi(js_name = "networkingUtilsParseIdentity")]
+pub fn networking_utils_parse_identity(
+    text: String,
+) -> Result<Option<NetworkingIdentityInfo>, Error> {
+    let mut identity =
+        unsafe { MaybeUninit::<sys::SteamNetworkingIdentity>::zeroed().assume_init() };
+    unsafe { sys::SteamAPI_SteamNetworkingIdentity_Clear(&mut identity) };
+    let text = cstring(text, "networking identity")?;
+    let ok = unsafe {
+        sys::SteamAPI_ISteamNetworkingUtils_SteamNetworkingIdentity_ParseString(
+            steam_networking_utils()?,
+            &mut identity,
+            text.as_ptr(),
+        )
+    };
+    Ok(ok.then(|| networking_identity_info(identity)))
+}
+
 #[napi(js_name = "networkingUtilsSetConfigValueInt32")]
 pub fn networking_utils_set_config_value_int32(
     value: u32,
@@ -12512,6 +12539,22 @@ fn networking_identity_string(mut identity: sys::SteamNetworkingIdentity) -> Str
     unsafe {
         sys::SteamAPI_SteamNetworkingIdentity_ToString(
             &mut identity,
+            output.as_mut_ptr(),
+            output.len() as u32,
+        );
+    }
+    c_buf_to_string(&output)
+}
+
+fn networking_utils_identity_string(
+    utils: *mut sys::ISteamNetworkingUtils,
+    identity: sys::SteamNetworkingIdentity,
+) -> String {
+    let mut output = vec![0i8; 129];
+    unsafe {
+        sys::SteamAPI_ISteamNetworkingUtils_SteamNetworkingIdentity_ToString(
+            utils,
+            &identity,
             output.as_mut_ptr(),
             output.len() as u32,
         );

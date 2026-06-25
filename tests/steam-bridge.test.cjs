@@ -3347,6 +3347,14 @@ test("networking utils facade covers relay, ping, fake IP, address, config, debu
       this.calls.push({ method: "networkingUtilsGetRealIdentityForFakeIp", args: [address] });
       return { result: 1, identity: peer };
     },
+    networkingUtilsIdentityToString(identity) {
+      this.calls.push({ method: "networkingUtilsIdentityToString", args: [identity] });
+      return identity.steamId64 ? `steamid:${identity.steamId64}` : identity.text;
+    },
+    networkingUtilsParseIdentity(text) {
+      this.calls.push({ method: "networkingUtilsParseIdentity", args: [text] });
+      return text === "bad" ? null : peer;
+    },
     networkingUtilsSetConfigValueInt32(value, scope, scopeObj, data) {
       this.calls.push({ method: "networkingUtilsSetConfigValueInt32", args: [value, scope, scopeObj, data] });
       return true;
@@ -3485,6 +3493,9 @@ test("networking utils facade covers relay, ping, fake IP, address, config, debu
       fakeIpType: 0
     }
   });
+  assert.equal(steam.networking.utils.identityToString({ steamId64: 76561198000000010n }), "steamid:76561198000000010");
+  assert.equal(steam.networking.utils.parseIdentity("steamid:76561198000000010").steamId64, 76561198000000010n);
+  assert.equal(steam.networking.utils.parseIdentity("bad"), null);
   assert.equal(
     steam.networking.utils.setGlobalConfigValueInt32(steam.networking.utils.ConfigValue.TimeoutInitial, 5000),
     true
