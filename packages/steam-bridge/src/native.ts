@@ -454,6 +454,13 @@ export interface NativeNetworkingMessage {
   lane: number;
 }
 
+export interface NativeNetworkingSocketOutgoingMessage {
+  connection: number;
+  data: Buffer;
+  sendFlags?: number;
+  send_flags?: number;
+}
+
 export interface NativeNetworkingConnectionRealTimeStatus {
   state: number;
   ping: number;
@@ -1775,6 +1782,7 @@ export interface NativeBinding {
   networkingSocketsSetConnectionName(connection: number, name: string): void;
   networkingSocketsGetConnectionName(connection: number): string | null | undefined;
   networkingSocketsSendMessageToConnection(connection: number, data: Buffer, sendFlags?: number): NativeNetworkingSocketSendResult;
+  networkingSocketsSendMessages(messages: NativeNetworkingSocketOutgoingMessage[]): NativeNetworkingSocketSendResult[];
   networkingSocketsFlushMessagesOnConnection(connection: number): number;
   networkingSocketsReceiveMessagesOnConnection(connection: number, maxMessages?: number): NativeNetworkingMessage[];
   networkingSocketsGetConnectionInfo(connection: number): NativeNetworkingConnectionInfo | null | undefined;

@@ -789,6 +789,13 @@ pub struct NetworkingMessage {
     pub lane: u32,
 }
 
+#[napi(object)]
+pub struct NetworkingSocketOutgoingMessage {
+    pub connection: u32,
+    pub data: Buffer,
+    pub send_flags: Option<i32>,
+}
+
 #[derive(Debug)]
 #[napi(object)]
 pub struct NetworkingConnectionRealTimeStatus {
@@ -7847,6 +7854,46 @@ pub fn networking_sockets_send_message_to_connection(
     })
 }
 
+#[napi(js_name = "networkingSocketsSendMessages")]
+pub fn networking_sockets_send_messages(
+    messages: Vec<NetworkingSocketOutgoingMessage>,
+) -> Result<Vec<NetworkingSocketSendResult>, Error> {
+    if messages.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let sockets = steam_networking_sockets()?;
+    let utils = steam_networking_utils()?;
+    let message_count = len_to_i32(messages.len(), "networking socket message batch")?;
+    let mut raw_messages = Vec::with_capacity(messages.len());
+
+    for message in messages {
+        let raw = match allocate_networking_socket_message(utils, message) {
+            Ok(raw) => raw,
+            Err(error) => {
+                release_networking_messages(&raw_messages);
+                return Err(error);
+            }
+        };
+        raw_messages.push(raw);
+    }
+
+    let mut results = vec![0i64; raw_messages.len()];
+    unsafe {
+        sys::SteamAPI_ISteamNetworkingSockets_SendMessages(
+            sockets,
+            message_count,
+            raw_messages.as_ptr(),
+            results.as_mut_ptr(),
+        );
+    }
+
+    Ok(results
+        .into_iter()
+        .map(networking_socket_send_messages_result)
+        .collect())
+}
+
 #[napi(js_name = "networkingSocketsFlushMessagesOnConnection")]
 pub fn networking_sockets_flush_messages_on_connection(connection: u32) -> Result<u32, Error> {
     Ok(unsafe {
@@ -13031,6 +13078,89 @@ where
         output.push(parsed);
     }
     Ok(output)
+}
+
+fn allocate_networking_socket_message(
+    utils: *mut sys::ISteamNetworkingUtils,
+    message: NetworkingSocketOutgoingMessage,
+) -> Result<*mut sys::SteamNetworkingMessage_t, Error> {
+    let data_size = networking_socket_message_data_size(&message.data)?;
+    let raw = unsafe { sys::SteamAPI_ISteamNetworkingUtils_AllocateMessage(utils, data_size) };
+    if raw.is_null() {
+        return Err(Error::from_reason(
+            "Steam failed to allocate networking socket message",
+        ));
+    }
+
+    let result = unsafe {
+        fill_networking_socket_message(raw, message, data_size)?;
+        Ok(raw)
+    };
+    if result.is_err() {
+        unsafe { sys::SteamAPI_SteamNetworkingMessage_t_Release(raw) };
+    }
+    result
+}
+
+unsafe fn fill_networking_socket_message(
+    raw: *mut sys::SteamNetworkingMessage_t,
+    message: NetworkingSocketOutgoingMessage,
+    data_size: i32,
+) -> Result<(), Error> {
+    let data_ptr = ptr::addr_of!((*raw).m_pData).read_unaligned();
+    if data_size > 0 {
+        if data_ptr.is_null() {
+            return Err(Error::from_reason(
+                "Steam allocated networking socket message without payload storage",
+            ));
+        }
+        ptr::copy_nonoverlapping(
+            message.data.as_ptr(),
+            data_ptr.cast::<u8>(),
+            data_size as usize,
+        );
+    }
+
+    ptr::addr_of_mut!((*raw).m_conn).write_unaligned(message.connection);
+    ptr::addr_of_mut!((*raw).m_nFlags).write_unaligned(
+        message
+            .send_flags
+            .unwrap_or(sys::k_nSteamNetworkingSend_Reliable),
+    );
+    Ok(())
+}
+
+fn release_networking_messages(messages: &[*mut sys::SteamNetworkingMessage_t]) {
+    for message in messages {
+        if !message.is_null() {
+            unsafe { sys::SteamAPI_SteamNetworkingMessage_t_Release(*message) };
+        }
+    }
+}
+
+fn networking_socket_message_data_size(data: &Buffer) -> Result<i32, Error> {
+    let size = len_to_i32(data.len(), "networking socket message")?;
+    if size > sys::k_cbMaxSteamNetworkingSocketsMessageSizeSend {
+        return Err(Error::from_reason(format!(
+            "networking socket message cannot exceed {} bytes",
+            sys::k_cbMaxSteamNetworkingSocketsMessageSizeSend
+        )));
+    }
+    Ok(size)
+}
+
+fn networking_socket_send_messages_result(value: i64) -> NetworkingSocketSendResult {
+    if value < 0 {
+        NetworkingSocketSendResult {
+            result: value.saturating_abs() as u32,
+            message_number: 0i64.into(),
+        }
+    } else {
+        NetworkingSocketSendResult {
+            result: sys::EResult::k_EResultOK as u32,
+            message_number: value.into(),
+        }
+    }
 }
 
 unsafe fn networking_message_from_ptr(

@@ -112,6 +112,7 @@ import {
   NativeNetworkingPingLocation,
   NativeNetworkingRemoteFakeIpResult,
   NativeNetworkingRelayNetworkStatus,
+  NativeNetworkingSocketOutgoingMessage,
   NativeNetworkingSocketPair,
   NativeNetworkingSocketSendResult,
   NativeOverlayDiagnostics,
@@ -838,6 +839,12 @@ export interface NetworkingMessage {
   flags: number;
   userData: bigint;
   lane: number;
+}
+
+export interface NetworkingSocketOutgoingMessage {
+  connection: number;
+  data: Buffer | Uint8Array;
+  sendFlags?: number;
 }
 
 export interface NetworkingConnectionRealTimeStatus {
@@ -4201,6 +4208,11 @@ export const networking = {
         native().networkingSocketsSendMessageToConnection(connection, Buffer.from(data), sendFlags)
       );
     },
+    sendMessages(messages: NetworkingSocketOutgoingMessage[]): NetworkingSocketSendResult[] {
+      return native()
+        .networkingSocketsSendMessages(messages.map(nativeNetworkingSocketOutgoingMessage))
+        .map(normalizeNetworkingSocketSendResult);
+    },
     flushMessagesOnConnection(connection: number): number {
       return native().networkingSocketsFlushMessagesOnConnection(connection);
     },
@@ -6856,6 +6868,16 @@ function normalizeNetworkingSocketSendResult(result: NativeNetworkingSocketSendR
   return {
     result: Number(result.result ?? 0),
     messageNumber: BigInt((source.messageNumber ?? source.message_number ?? 0) as bigint | number | string)
+  };
+}
+
+function nativeNetworkingSocketOutgoingMessage(
+  message: NetworkingSocketOutgoingMessage
+): NativeNetworkingSocketOutgoingMessage {
+  return {
+    connection: message.connection,
+    data: Buffer.from(message.data),
+    sendFlags: message.sendFlags
   };
 }
 

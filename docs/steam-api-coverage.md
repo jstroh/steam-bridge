@@ -69,8 +69,9 @@ The native layer currently targets the Steamworks flat C API through
 - Networking: legacy P2P send, receive, availability, session accept/close,
   send-channel close helpers, and modern `ISteamNetworkingMessages`
   identity/session/message send and receive flows, core
-  `ISteamNetworkingSockets` connection/listen-socket/message/poll-group
-  helpers, relay-auth-ticket cache helpers, hosted dedicated connect/listen
+  `ISteamNetworkingSockets` connection/listen-socket/single and batch
+  message/poll-group helpers, relay-auth-ticket cache helpers, hosted dedicated
+  connect/listen
   helpers, hosted dedicated address and game coordinator login blobs,
   certificate request/install/reset helpers, fake-IP allocation and listen
   helpers, fake UDP port wrappers, connection lane status details, plus

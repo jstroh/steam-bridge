@@ -2833,6 +2833,13 @@ test("networking sockets facade covers connection handles, status, poll groups, 
       this.calls.push({ method: "networkingSocketsSendMessageToConnection", args: [connection, data, sendFlags] });
       return { result: 1, message_number: "777" };
     },
+    networkingSocketsSendMessages(messages) {
+      this.calls.push({ method: "networkingSocketsSendMessages", args: [messages] });
+      return [
+        { result: 1, message_number: "778" },
+        { result: 3, messageNumber: 0n }
+      ];
+    },
     networkingSocketsFlushMessagesOnConnection(connection) {
       this.calls.push({ method: "networkingSocketsFlushMessagesOnConnection", args: [connection] });
       return 1;
@@ -3068,6 +3075,20 @@ test("networking sockets facade covers connection handles, status, poll groups, 
     result: 1,
     messageNumber: 777n
   });
+  assert.deepEqual(
+    steam.networking.sockets.sendMessages([
+      { connection: 102, data: Buffer.from("batch-a"), sendFlags: steam.networking.sockets.SendFlags.ReliableNoNagle },
+      { connection: 103, data: Uint8Array.from([1, 2, 3]) }
+    ]),
+    [
+      { result: 1, messageNumber: 778n },
+      { result: 3, messageNumber: 0n }
+    ]
+  );
+  const sendMessagesCall = fake.calls.find((call) => call.method === "networkingSocketsSendMessages");
+  assert.equal(sendMessagesCall.args[0][0].data.toString(), "batch-a");
+  assert.equal(sendMessagesCall.args[0][0].sendFlags, steam.networking.sockets.SendFlags.ReliableNoNagle);
+  assert.deepEqual([...sendMessagesCall.args[0][1].data], [1, 2, 3]);
   assert.equal(steam.networking.sockets.flushMessagesOnConnection(102), 1);
   assert.equal(steam.networking.sockets.receiveMessagesOnConnection(102, 2)[0].messageNumber, 7n);
   assert.deepEqual(steam.networking.sockets.getConnectionInfo(102), {
