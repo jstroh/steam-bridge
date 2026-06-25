@@ -9,8 +9,8 @@
   "scripts": {
     "build": "npm run build -w steam-bridge",
     "typecheck": "npm run typecheck -w steam-bridge",
-    "native:build": "cargo build -p steam-bridge-native --release && npm run native:link -w steam-bridge",
-    "native:check": "cargo check -p steam-bridge-native",
+    "native:build": "cargo build -p steam-bridge-native --release --target aarch64-apple-darwin && npm run native:link -w steam-bridge -- --target aarch64-apple-darwin",
+    "native:check": "cargo check -p steam-bridge-native --target aarch64-apple-darwin",
     "native:fmt": "cargo fmt --all --check",
     "native:link": "npm run native:link -w steam-bridge",
     "test": "npm run typecheck && npm run test:unit",

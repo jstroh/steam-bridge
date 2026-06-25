@@ -17,9 +17,8 @@ Steam SDK redistributables are not committed. For local/native builds, provide
 the Steamworks SDK in the normal location expected by `steamworks-sys`, or set
 `STEAMWORKS_SDK_PATH` according to your SDK setup.
 
-Prebuild scaffolding targets Apple Silicon macOS only
-(`aarch64-apple-darwin`). Intel macOS, Windows, and Linux targets are
-intentionally unsupported.
+Steam Bridge supports Apple Silicon macOS only (`aarch64-apple-darwin`).
+Other platforms are outside the support scope for this project.
 
 ## Quick Start
 

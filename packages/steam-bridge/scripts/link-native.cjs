@@ -36,7 +36,8 @@ if (!runtimeOnly) {
 const redist = findSteamRedistributable();
 if (redist) {
   const redistDestination = path.join(packageRoot, redistName);
-  fs.copyFileSync(redist, redistDestination);
+  copyArm64Binary(redist, redistDestination);
+  signMacosBinary(redistDestination);
   console.log(`Linked ${redistDestination}`);
 } else {
   console.warn(`Steam runtime library ${redistName} was not found. Set STEAMWORKS_SDK_PATH or copy it next to the .node file before runtime smoke tests.`);
@@ -49,8 +50,7 @@ function readArg(name) {
 
 function releaseDirs() {
   return [
-    path.join(repoRoot, "target", targetArg || supportedTarget, "release"),
-    path.join(repoRoot, "target", "release")
+    path.join(repoRoot, "target", targetArg || supportedTarget, "release")
   ];
 }
 
@@ -113,7 +113,56 @@ function findInDirectory(directory, fileName) {
   return undefined;
 }
 
+function copyArm64Binary(source, destination) {
+  const archs = readMachOArchitectures(source);
+
+  if (!archs.includes("arm64")) {
+    throw new Error(`${source} does not contain an arm64 slice.`);
+  }
+
+  if (archs.length === 1) {
+    fs.copyFileSync(source, destination);
+    return;
+  }
+
+  const result = spawnSync("lipo", ["-thin", "arm64", source, "-output", destination], {
+    encoding: "utf8"
+  });
+
+  if (result.status !== 0) {
+    throw new Error(
+      [
+        `Failed to thin ${source} to arm64.`,
+        result.stderr.trim(),
+        result.stdout.trim()
+      ].filter(Boolean).join("\n")
+    );
+  }
+}
+
+function readMachOArchitectures(filePath) {
+  const result = spawnSync("lipo", ["-archs", filePath], {
+    encoding: "utf8"
+  });
+
+  if (result.status !== 0) {
+    throw new Error(
+      [
+        `Failed to inspect architectures for ${filePath}.`,
+        result.stderr.trim(),
+        result.stdout.trim()
+      ].filter(Boolean).join("\n")
+    );
+  }
+
+  return result.stdout.trim().split(/\s+/).filter(Boolean);
+}
+
 function signMacosNodeBinary(filePath) {
+  signMacosBinary(filePath);
+}
+
+function signMacosBinary(filePath) {
   if (process.platform !== "darwin") {
     return;
   }
