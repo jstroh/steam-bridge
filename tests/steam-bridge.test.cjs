@@ -4701,6 +4701,14 @@ test("networking sockets facade covers connection handles, status, poll groups, 
         debug_message: ""
       };
     },
+    networkingSocketsCreateHostedDedicatedServerDevAddress(ip, port, popId) {
+      this.calls.push({ method: "networkingSocketsCreateHostedDedicatedServerDevAddress", args: [ip, port, popId] });
+      return {
+        pop_id: popId,
+        size: 3,
+        data: Buffer.from("dev")
+      };
+    },
     networkingSocketsCreateHostedDedicatedServerListenSocket(localVirtualPort) {
       this.calls.push({ method: "networkingSocketsCreateHostedDedicatedServerListenSocket", args: [localVirtualPort] });
       return 46;
@@ -4911,6 +4919,9 @@ test("networking sockets facade covers connection handles, status, poll groups, 
   assert.equal(hostedAddress.result, 1);
   assert.equal(hostedAddress.routing.popId, 1234);
   assert.equal(hostedAddress.routing.data.toString(), "sdr");
+  const devAddress = steam.networking.sockets.createHostedDedicatedServerDevAddress(2130706433, 27015, 5678);
+  assert.equal(devAddress.popId, 5678);
+  assert.equal(devAddress.data.toString(), "dev");
   assert.equal(steam.networking.sockets.createHostedDedicatedServerListenSocket(7), 46);
   const serverLogin = steam.networking.sockets.getGameCoordinatorServerLogin(Buffer.from("app-data"), 4096);
   assert.equal(serverLogin.result, 1);
@@ -4984,6 +4995,10 @@ test("networking sockets facade covers connection handles, status, poll groups, 
   assert.deepEqual(fake.calls.find((call) => call.method === "networkingSocketsConnectP2p"), {
     method: "networkingSocketsConnectP2p",
     args: [{ steamId64: 76561198000000010n }, 7]
+  });
+  assert.deepEqual(fake.calls.find((call) => call.method === "networkingSocketsCreateHostedDedicatedServerDevAddress"), {
+    method: "networkingSocketsCreateHostedDedicatedServerDevAddress",
+    args: [2130706433, 27015, 5678]
   });
   assert.deepEqual(fake.calls.find((call) => call.method === "networkingFakeUdpPortSendMessageToFakeIp"), {
     method: "networkingFakeUdpPortSendMessageToFakeIp",
@@ -5404,6 +5419,18 @@ test("networking utils facade covers relay, ping, fake IP, address, config, debu
     }),
     true
   );
+  assert.equal(
+    steam.networking.utils.setConfigValueStruct(
+      {
+        value: steam.networking.utils.ConfigValue.CallbackFakeIPResult,
+        dataType: steam.networking.utils.ConfigDataType.Ptr,
+        pointerValue: 0x1234n
+      },
+      steam.networking.utils.ConfigScope.Global,
+      0
+    ),
+    true
+  );
   assert.deepEqual(
     steam.networking.utils.getConfigValue(steam.networking.utils.ConfigValue.TimeoutInitial),
     {
@@ -5557,7 +5584,8 @@ test("networking utils facade covers relay, ping, fake IP, address, config, debu
     [
       [{ value: 2, dataType: 3, floatValue: 3.5 }, 1, 0],
       [{ value: 29, stringValue: "iad" }, 1, 0],
-      [{ value: 40, int64Value: 123n }, 4, 77]
+      [{ value: 40, int64Value: 123n }, 4, 77],
+      [{ value: 207, dataType: 5, pointerValue: 0x1234n }, 1, 0]
     ]
   );
   assert.deepEqual(fake.calls.find((call) => call.method === "networkingUtilsRegisterDebugOutputHook"), {

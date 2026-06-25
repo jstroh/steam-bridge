@@ -1154,6 +1154,7 @@ export interface NetworkingConfigOption {
   int64Value?: bigint | number | string | null;
   floatValue?: number | null;
   stringValue?: string | null;
+  pointerValue?: bigint | number | string | null;
 }
 
 export interface NetworkingConfigValueInfo {
@@ -5788,6 +5789,11 @@ export const networking = {
         native().networkingSocketsGetHostedDedicatedServerAddress()
       );
     },
+    createHostedDedicatedServerDevAddress(ip: number, port: number, popId: number): NetworkingHostedDedicatedServerRouting {
+      return normalizeNetworkingHostedDedicatedServerRouting(
+        native().networkingSocketsCreateHostedDedicatedServerDevAddress(ip, port, popId)
+      )!;
+    },
     createHostedDedicatedServerListenSocket(localVirtualPort = 0): number {
       return native().networkingSocketsCreateHostedDedicatedServerListenSocket(localVirtualPort);
     },
@@ -9219,6 +9225,9 @@ function nativeNetworkingConfigValue(option: NetworkingConfigOption): NativeNetw
   }
   if (option.stringValue !== undefined) {
     output.stringValue = option.stringValue;
+  }
+  if (option.pointerValue !== undefined) {
+    output.pointerValue = option.pointerValue === null ? null : BigInt(option.pointerValue);
   }
   return output;
 }

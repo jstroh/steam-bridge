@@ -1159,6 +1159,7 @@ pub struct NetworkingConfigValue {
     pub int64_value: Option<BigInt>,
     pub float_value: Option<f64>,
     pub string_value: Option<String>,
+    pub pointer_value: Option<BigInt>,
 }
 
 #[derive(Debug)]
@@ -11906,6 +11907,25 @@ pub fn networking_sockets_get_hosted_dedicated_server_address(
     ))
 }
 
+#[napi(js_name = "networkingSocketsCreateHostedDedicatedServerDevAddress")]
+pub fn networking_sockets_create_hosted_dedicated_server_dev_address(
+    ip: u32,
+    port: u32,
+    pop_id: u32,
+) -> Result<NetworkingHostedDedicatedServerRouting, Error> {
+    let mut address = SteamDatagramHostedAddressRaw::default();
+    unsafe {
+        sys::SteamAPI_SteamDatagramHostedAddress_SetDevAddress(
+            (&mut address as *mut SteamDatagramHostedAddressRaw)
+                .cast::<sys::SteamDatagramHostedAddress>(),
+            ip,
+            port_to_u16(port, "hosted dedicated server dev address port")?,
+            pop_id,
+        );
+    }
+    Ok(networking_hosted_dedicated_server_routing(&mut address))
+}
+
 #[napi(js_name = "networkingSocketsCreateHostedDedicatedServerListenSocket")]
 pub fn networking_sockets_create_hosted_dedicated_server_listen_socket(
     local_virtual_port: Option<i32>,
@@ -12954,16 +12974,7 @@ pub fn networking_utils_set_global_config_value_ptr(
     value: u32,
     data: Option<BigInt>,
 ) -> Result<bool, Error> {
-    let data = match data {
-        Some(data) => {
-            let pointer = bigint_to_u64(data, "networking global config pointer")?;
-            let pointer = usize::try_from(pointer).map_err(|_| {
-                Error::from_reason("networking global config pointer exceeds pointer size")
-            })?;
-            pointer as *mut c_void
-        }
-        None => ptr::null_mut(),
-    };
+    let data = networking_pointer_value(data, "networking global config pointer")?;
     Ok(unsafe {
         sys::SteamAPI_ISteamNetworkingUtils_SetGlobalConfigValuePtr(
             steam_networking_utils()?,
@@ -18679,9 +18690,10 @@ fn networking_config_value_struct(
             Ok((output, Some(data)))
         }
         sys::ESteamNetworkingConfigDataType::k_ESteamNetworkingConfig_Ptr => {
-            Err(Error::from_reason(
-                "networking config pointer values are not supported from JavaScript",
-            ))
+            let data =
+                networking_pointer_value(option.pointer_value, "networking config pointer value")?;
+            unsafe { sys::SteamAPI_SteamNetworkingConfigValue_t_SetPtr(&mut output, value, data) };
+            Ok((output, None))
         }
         _ => Err(Error::from_reason(
             "unsupported Steam networking config data type",
@@ -18709,6 +18721,9 @@ fn networking_config_data_type_from_option(
     if option.string_value.is_some() {
         inferred.push(sys::ESteamNetworkingConfigDataType::k_ESteamNetworkingConfig_String);
     }
+    if option.pointer_value.is_some() {
+        inferred.push(sys::ESteamNetworkingConfigDataType::k_ESteamNetworkingConfig_Ptr);
+    }
 
     match inferred.as_slice() {
         [data_type] => Ok(*data_type),
@@ -18719,6 +18734,16 @@ fn networking_config_data_type_from_option(
             "networking config value has multiple value fields; pass dataType to disambiguate",
         )),
     }
+}
+
+fn networking_pointer_value(value: Option<BigInt>, label: &str) -> Result<*mut c_void, Error> {
+    let Some(value) = value else {
+        return Ok(ptr::null_mut());
+    };
+    let pointer = bigint_to_u64(value, label)?;
+    let pointer = usize::try_from(pointer)
+        .map_err(|_| Error::from_reason(format!("{label} exceeds pointer size")))?;
+    Ok(pointer as *mut c_void)
 }
 
 macro_rules! steam_networking_config_value {

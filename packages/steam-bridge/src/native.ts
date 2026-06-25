@@ -779,6 +779,8 @@ export interface NativeNetworkingConfigValue {
   float_value?: number | null;
   stringValue?: string | null;
   string_value?: string | null;
+  pointerValue?: bigint | string | number | null;
+  pointer_value?: bigint | string | number | null;
 }
 
 export interface NativeNetworkingConfigValueInfo {
@@ -2369,6 +2371,7 @@ export interface NativeBinding {
   networkingSocketsGetHostedDedicatedServerPort(): number;
   networkingSocketsGetHostedDedicatedServerPopId(): number;
   networkingSocketsGetHostedDedicatedServerAddress(): NativeNetworkingHostedDedicatedServerAddressResult;
+  networkingSocketsCreateHostedDedicatedServerDevAddress(ip: number, port: number, popId: number): NativeNetworkingHostedDedicatedServerRouting;
   networkingSocketsCreateHostedDedicatedServerListenSocket(localVirtualPort?: number): number;
   networkingSocketsGetGameCoordinatorServerLogin(appData?: Buffer, maxBlobBytes?: number): NativeNetworkingGameCoordinatorServerLoginResult;
   networkingSocketsGetCertificateRequest(maxBytes?: number): NativeNetworkingCertificateResult;
