@@ -855,6 +855,13 @@ pub struct UtilsApiCallResult {
 
 #[derive(Debug)]
 #[napi(object)]
+pub struct UtilsWarningMessage {
+    pub severity: i32,
+    pub message: String,
+}
+
+#[derive(Debug)]
+#[napi(object)]
 pub struct UtilsFilteredText {
     pub filtered: String,
     pub characters_filtered: i32,
@@ -6065,6 +6072,50 @@ pub fn utils_get_ipc_call_count() -> Result<u32, Error> {
     Ok(unsafe { sys::SteamAPI_ISteamUtils_GetIPCCallCount(steam_utils()?) })
 }
 
+unsafe extern "C" fn steam_api_warning_message_hook(severity: i32, debug_text: *const c_char) {
+    let message = if debug_text.is_null() {
+        String::new()
+    } else {
+        CStr::from_ptr(debug_text).to_string_lossy().into_owned()
+    };
+    crate::state::dispatch_warning_message(severity, message);
+}
+
+pub(crate) fn clear_warning_message_hook() {
+    if let Ok(utils) = steam_utils() {
+        unsafe {
+            sys::SteamAPI_ISteamUtils_SetWarningMessageHook(utils, None);
+        }
+    }
+}
+
+#[napi(js_name = "utilsRegisterWarningMessageHook")]
+pub fn utils_register_warning_message_hook(
+    #[napi(ts_arg_type = "(value: any) => void")] handler: JsCallback<'_, UtilsWarningMessage>,
+) -> Result<CallbackHandle, Error> {
+    crate::state::ensure_initialized()?;
+    let utils = steam_utils()?;
+    let threadsafe_handler: FatalThreadsafeFunction<UtilsWarningMessage> = handler
+        .build_threadsafe_function::<UtilsWarningMessage>()
+        .build_callback(|ctx| Ok(vec![ctx.value]))?;
+    unsafe {
+        sys::SteamAPI_ISteamUtils_SetWarningMessageHook(
+            utils,
+            Some(steam_api_warning_message_hook),
+        );
+    }
+    let registration = crate::state::register_warning_message_hook(move |severity, message| {
+        threadsafe_handler.call(
+            UtilsWarningMessage { severity, message },
+            ThreadsafeFunctionCallMode::NonBlocking,
+        );
+    });
+    Ok(CallbackHandle {
+        registration: None,
+        warning_message_registration: Some(registration),
+    })
+}
+
 #[napi(js_name = "utilsIsApiCallCompleted")]
 pub fn utils_is_api_call_completed(api_call: BigInt) -> Result<UtilsApiCallCompletion, Error> {
     let utils = steam_utils()?;
@@ -6381,6 +6432,7 @@ pub fn register_steam_callback(
     });
     Ok(CallbackHandle {
         registration: Some(registration),
+        warning_message_registration: None,
     })
 }
 

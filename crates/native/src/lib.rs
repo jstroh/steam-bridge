@@ -65,6 +65,7 @@ impl AuthTicket {
 #[napi]
 pub struct CallbackHandle {
     registration: Option<state::CallbackRegistration>,
+    warning_message_registration: Option<state::WarningMessageRegistration>,
 }
 
 #[napi]
@@ -72,6 +73,7 @@ impl CallbackHandle {
     #[napi]
     pub fn disconnect(&mut self) {
         self.registration.take();
+        self.warning_message_registration.take();
     }
 }
 
@@ -102,6 +104,7 @@ pub fn init(app_id: u32) -> Result<(), Error> {
 pub fn shutdown() {
     if state::is_initialized() {
         native_surface::close();
+        compat::clear_warning_message_hook();
         state::clear_callbacks();
         unsafe {
             sys::SteamAPI_Shutdown();
@@ -409,6 +412,7 @@ pub fn register_micro_txn_authorization_response(
 
     Ok(CallbackHandle {
         registration: Some(registration),
+        warning_message_registration: None,
     })
 }
 
@@ -429,6 +433,7 @@ pub fn register_game_overlay_activated(
 
     Ok(CallbackHandle {
         registration: Some(registration),
+        warning_message_registration: None,
     })
 }
 

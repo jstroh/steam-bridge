@@ -281,6 +281,13 @@ test("utils facade covers activity, images, VR, filtering, and text input helper
       this.calls.push({ method: "utilsGetIpcCallCount", args: [] });
       return 3;
     },
+    utilsRegisterWarningMessageHook(handler) {
+      this.calls.push({ method: "utilsRegisterWarningMessageHook", args: [] });
+      this.warningMessageHandler = handler;
+      return {
+        disconnect: () => this.calls.push({ method: "disconnectWarningMessageHook", args: [] })
+      };
+    },
     utilsIsApiCallCompleted(apiCall) {
       this.calls.push({ method: "utilsIsApiCallCompleted", args: [apiCall] });
       return { completed: true, failed: false };
@@ -364,6 +371,12 @@ test("utils facade covers activity, images, VR, filtering, and text input helper
   assert.equal(steam.utils.getImageRGBA(99), null);
   assert.equal(steam.utils.getCurrentBatteryPower(), 95);
   assert.equal(steam.utils.getIPCCallCount(), 3);
+  let warningEvent;
+  const warningHandle = steam.utils.registerWarningMessageHook((event) => {
+    warningEvent = event;
+  });
+  fake.warningMessageHandler({ severity: 2, message: "warning text" });
+  assert.deepEqual(warningEvent, { severity: 2, message: "warning text" });
   assert.deepEqual(steam.utils.isApiCallCompleted("12345678901234567890"), {
     completed: true,
     failed: false
@@ -402,9 +415,11 @@ test("utils facade covers activity, images, VR, filtering, and text input helper
   steam.utils.setGameLauncherMode(true);
   assert.equal(steam.utils.dismissFloatingGamepadTextInput(), true);
   assert.equal(steam.utils.dismissGamepadTextInput(), true);
+  warningHandle.disconnect();
   assert.deepEqual(
     fake.calls.filter((call) =>
       [
+        "utilsRegisterWarningMessageHook",
         "utilsSetOverlayNotificationPosition",
         "utilsSetOverlayNotificationInset",
         "utilsIsApiCallCompleted",
@@ -412,10 +427,12 @@ test("utils facade covers activity, images, VR, filtering, and text input helper
         "utilsGetApiCallResult",
         "utilsCheckFileSignature",
         "utilsFilterText",
-        "utilsSetGameLauncherMode"
+        "utilsSetGameLauncherMode",
+        "disconnectWarningMessageHook"
       ].includes(call.method)
     ),
     [
+      { method: "utilsRegisterWarningMessageHook", args: [] },
       { method: "utilsIsApiCallCompleted", args: [12345678901234567890n] },
       { method: "utilsGetApiCallFailureReason", args: [12345678901234567890n] },
       { method: "utilsGetApiCallResult", args: [12345678901234567890n, 1023, 36] },
@@ -423,7 +440,8 @@ test("utils facade covers activity, images, VR, filtering, and text input helper
       { method: "utilsSetOverlayNotificationPosition", args: [3] },
       { method: "utilsSetOverlayNotificationInset", args: [16, 24] },
       { method: "utilsFilterText", args: [2, 76561198000000000n, "hello", 256] },
-      { method: "utilsSetGameLauncherMode", args: [true] }
+      { method: "utilsSetGameLauncherMode", args: [true] },
+      { method: "disconnectWarningMessageHook", args: [] }
     ]
   );
 });

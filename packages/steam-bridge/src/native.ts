@@ -750,6 +750,11 @@ export interface NativeUtilsApiCallResult {
   data?: Buffer | null;
 }
 
+export interface NativeUtilsWarningMessage {
+  severity: number;
+  message: string;
+}
+
 export interface NativeUtilsFilteredText {
   filtered: string;
   charactersFiltered?: number;
@@ -784,6 +789,7 @@ export interface NativeBinding {
   utilsGetImageRgba(image: number): Buffer | null | undefined;
   utilsGetCurrentBatteryPower(): number;
   utilsGetIpcCallCount(): number;
+  utilsRegisterWarningMessageHook(handler: (event: NativeUtilsWarningMessage) => void): NativeCallbackHandle;
   utilsIsApiCallCompleted(apiCall: bigint): NativeUtilsApiCallCompletion;
   utilsGetApiCallFailureReason(apiCall: bigint): number;
   utilsGetApiCallResult(apiCall: bigint, expectedCallback: number, byteLength: number): NativeUtilsApiCallResult;

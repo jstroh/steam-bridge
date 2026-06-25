@@ -6,6 +6,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Mutex;
 
 type CallbackFn = Box<dyn FnMut(*mut c_void) + Send + 'static>;
+type WarningMessageFn = Box<dyn FnMut(i32, String) + Send + 'static>;
 
 static INITIALIZED: AtomicBool = AtomicBool::new(false);
 static NEXT_CALLBACK_ID: AtomicU64 = AtomicU64::new(1);
@@ -15,6 +16,7 @@ static CALLBACKS: Lazy<Mutex<CallbackRegistry>> =
 #[derive(Default)]
 struct CallbackRegistry {
     callbacks: HashMap<i32, HashMap<u64, CallbackFn>>,
+    warning_message_hooks: HashMap<u64, WarningMessageFn>,
 }
 
 pub struct CallbackRegistration {
@@ -22,9 +24,19 @@ pub struct CallbackRegistration {
     registration_id: u64,
 }
 
+pub struct WarningMessageRegistration {
+    registration_id: u64,
+}
+
 impl Drop for CallbackRegistration {
     fn drop(&mut self) {
         unregister_callback(self.callback_id, self.registration_id);
+    }
+}
+
+impl Drop for WarningMessageRegistration {
+    fn drop(&mut self) {
+        unregister_warning_message_hook(self.registration_id);
     }
 }
 
@@ -62,6 +74,19 @@ where
     }
 }
 
+pub fn register_warning_message_hook<F>(callback: F) -> WarningMessageRegistration
+where
+    F: FnMut(i32, String) + Send + 'static,
+{
+    let registration_id = NEXT_CALLBACK_ID.fetch_add(1, Ordering::Relaxed);
+    let mut registry = CALLBACKS.lock().expect("Steam callback registry poisoned");
+    registry
+        .warning_message_hooks
+        .insert(registration_id, Box::new(callback));
+
+    WarningMessageRegistration { registration_id }
+}
+
 pub fn dispatch_callback(callback_id: i32, param: *mut c_void) {
     let mut registry = CALLBACKS.lock().expect("Steam callback registry poisoned");
     if let Some(callbacks) = registry.callbacks.get_mut(&callback_id) {
@@ -71,12 +96,17 @@ pub fn dispatch_callback(callback_id: i32, param: *mut c_void) {
     }
 }
 
+pub fn dispatch_warning_message(severity: i32, message: String) {
+    let mut registry = CALLBACKS.lock().expect("Steam callback registry poisoned");
+    for callback in registry.warning_message_hooks.values_mut() {
+        callback(severity, message.clone());
+    }
+}
+
 pub fn clear_callbacks() {
-    CALLBACKS
-        .lock()
-        .expect("Steam callback registry poisoned")
-        .callbacks
-        .clear();
+    let mut registry = CALLBACKS.lock().expect("Steam callback registry poisoned");
+    registry.callbacks.clear();
+    registry.warning_message_hooks.clear();
 }
 
 fn unregister_callback(callback_id: i32, registration_id: u64) {
@@ -87,4 +117,12 @@ fn unregister_callback(callback_id: i32, registration_id: u64) {
             registry.callbacks.remove(&callback_id);
         }
     }
+}
+
+fn unregister_warning_message_hook(registration_id: u64) {
+    CALLBACKS
+        .lock()
+        .expect("Steam callback registry poisoned")
+        .warning_message_hooks
+        .remove(&registration_id);
 }

@@ -85,6 +85,7 @@ import {
   NativeUtilsApiCallResult,
   NativeUtilsFilteredText,
   NativeUtilsImageSize,
+  NativeUtilsWarningMessage,
   NativeUserStatsReceivedResult,
   NativeVideoBroadcastStatus,
   NativeWorkshopItem,
@@ -408,6 +409,11 @@ export interface UtilsApiCallResult {
   ok: boolean;
   failed: boolean;
   data: Buffer | null;
+}
+
+export interface UtilsWarningMessage {
+  severity: number;
+  message: string;
 }
 
 export interface UtilsFilteredText {
@@ -3220,6 +3226,13 @@ export const utils = {
   getIPCCallCount(): number {
     return native().utilsGetIpcCallCount();
   },
+  registerWarningMessageHook(handler: (event: UtilsWarningMessage) => void): CallbackHandle {
+    return wrapCallbackHandle(
+      native().utilsRegisterWarningMessageHook((event) => {
+        handler(normalizeUtilsWarningMessage(event));
+      })
+    );
+  },
   isApiCallCompleted(apiCall: bigint | number | string): UtilsApiCallCompletion {
     return normalizeUtilsApiCallCompletion(native().utilsIsApiCallCompleted(BigInt(apiCall)));
   },
@@ -4221,6 +4234,13 @@ function normalizeUtilsApiCallResult(result: NativeUtilsApiCallResult): UtilsApi
     ok: Boolean(result.ok),
     failed: Boolean(result.failed),
     data: result.data ?? null
+  };
+}
+
+function normalizeUtilsWarningMessage(event: NativeUtilsWarningMessage): UtilsWarningMessage {
+  return {
+    severity: Number(event.severity),
+    message: String(event.message)
   };
 }
 

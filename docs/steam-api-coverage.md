@@ -15,7 +15,7 @@ The native layer currently targets the Steamworks flat C API through
   language, image reads, battery/IPCCall counts, overlay notification
   placement, VR helpers, China launcher checks, text filtering, IPv6
   connectivity checks, file signature checks, raw APICall inspection, gamepad
-  text input helpers, and utility callback events.
+  text input helpers, warning hooks, and utility callback events.
 - User/auth: local Steam ID helpers, Web API auth tickets, session tickets by
   Steam ID or IP, and ticket cancellation.
 - Friends: persona name/state, friend enumeration, friend profiles, groups,
@@ -89,8 +89,7 @@ The native layer currently targets the Steamworks flat C API through
 - Matchmaking server browser and game server APIs.
 - Game server, game server stats, and server-only workflows.
 - Complete callback/event coverage for every implemented interface, including
-  raw `ISteamUtils` warning-hook helpers and richer streaming HTTP response
-  ergonomics.
+  richer streaming HTTP response ergonomics.
 - Steam Web API and economy flows beyond client auth ticket helpers.
 
 Use Valve's SpaceWar App ID `480` for generic local smoke tests. Use your own
