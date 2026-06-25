@@ -54,6 +54,50 @@ extern "C" {
         unicode_char: u32,
         html_key_modifiers: u32,
     );
+
+    fn steam_bridge_music_remote_register(name: *const c_char) -> bool;
+    fn steam_bridge_music_remote_deregister() -> bool;
+    fn steam_bridge_music_remote_is_current() -> bool;
+    fn steam_bridge_music_remote_activation_success(value: bool) -> bool;
+    fn steam_bridge_music_remote_set_display_name(display_name: *const c_char) -> bool;
+    fn steam_bridge_music_remote_set_png_icon_64x64(data: *const u8, data_length: u32) -> bool;
+    fn steam_bridge_music_remote_enable_play_previous(value: bool) -> bool;
+    fn steam_bridge_music_remote_enable_play_next(value: bool) -> bool;
+    fn steam_bridge_music_remote_enable_shuffled(value: bool) -> bool;
+    fn steam_bridge_music_remote_enable_looped(value: bool) -> bool;
+    fn steam_bridge_music_remote_enable_queue(value: bool) -> bool;
+    fn steam_bridge_music_remote_enable_playlists(value: bool) -> bool;
+    fn steam_bridge_music_remote_update_playback_status(status: i32) -> bool;
+    fn steam_bridge_music_remote_update_shuffled(value: bool) -> bool;
+    fn steam_bridge_music_remote_update_looped(value: bool) -> bool;
+    fn steam_bridge_music_remote_update_volume(value: f32) -> bool;
+    fn steam_bridge_music_remote_current_entry_will_change() -> bool;
+    fn steam_bridge_music_remote_current_entry_is_available(available: bool) -> bool;
+    fn steam_bridge_music_remote_update_current_entry_text(text: *const c_char) -> bool;
+    fn steam_bridge_music_remote_update_current_entry_elapsed_seconds(value: i32) -> bool;
+    fn steam_bridge_music_remote_update_current_entry_cover_art(
+        data: *const u8,
+        data_length: u32,
+    ) -> bool;
+    fn steam_bridge_music_remote_current_entry_did_change() -> bool;
+    fn steam_bridge_music_remote_queue_will_change() -> bool;
+    fn steam_bridge_music_remote_reset_queue_entries() -> bool;
+    fn steam_bridge_music_remote_set_queue_entry(
+        id: i32,
+        position: i32,
+        entry_text: *const c_char,
+    ) -> bool;
+    fn steam_bridge_music_remote_set_current_queue_entry(id: i32) -> bool;
+    fn steam_bridge_music_remote_queue_did_change() -> bool;
+    fn steam_bridge_music_remote_playlist_will_change() -> bool;
+    fn steam_bridge_music_remote_reset_playlist_entries() -> bool;
+    fn steam_bridge_music_remote_set_playlist_entry(
+        id: i32,
+        position: i32,
+        entry_text: *const c_char,
+    ) -> bool;
+    fn steam_bridge_music_remote_set_current_playlist_entry(id: i32) -> bool;
+    fn steam_bridge_music_remote_playlist_did_change() -> bool;
 }
 
 const CALLBACK_PERSONA_STATE_CHANGE: i32 = 304;
@@ -177,6 +221,8 @@ const CALLBACK_STEAM_UGC_DELETE_ITEM_RESULT: i32 = 3417;
 const CALLBACK_STEAM_UGC_USER_SUBSCRIBED_ITEMS_LIST_CHANGED: i32 = 3418;
 const CALLBACK_STEAM_UGC_WORKSHOP_EULA_STATUS: i32 = 3420;
 const MAX_HTML_PAINT_BUFFER_BYTES: u64 = 256 * 1024 * 1024;
+const STEAM_MUSIC_NAME_MAX_LENGTH: usize = 255;
+const STEAM_MUSIC_PNG_MAX_LENGTH: u32 = 65_535;
 const SCE_PAD_TRIGGER_EFFECT_PARAM_BYTES: usize = 120;
 
 static NEXT_NETWORKING_FAKE_UDP_PORT_HANDLE: AtomicU32 = AtomicU32::new(1);
@@ -196,6 +242,20 @@ const CALLBACK_SCREENSHOT_READY: i32 = 2301;
 const CALLBACK_SCREENSHOT_REQUESTED: i32 = 2302;
 const CALLBACK_PLAYBACK_STATUS_HAS_CHANGED: i32 = 4001;
 const CALLBACK_VOLUME_HAS_CHANGED: i32 = 4002;
+const CALLBACK_MUSIC_PLAYER_WANTS_VOLUME: i32 = 4011;
+const CALLBACK_MUSIC_PLAYER_SELECTS_QUEUE_ENTRY: i32 = 4012;
+const CALLBACK_MUSIC_PLAYER_SELECTS_PLAYLIST_ENTRY: i32 = 4013;
+const CALLBACK_MUSIC_PLAYER_REMOTE_WILL_ACTIVATE: i32 = 4101;
+const CALLBACK_MUSIC_PLAYER_REMOTE_WILL_DEACTIVATE: i32 = 4102;
+const CALLBACK_MUSIC_PLAYER_REMOTE_TO_FRONT: i32 = 4103;
+const CALLBACK_MUSIC_PLAYER_WILL_QUIT: i32 = 4104;
+const CALLBACK_MUSIC_PLAYER_WANTS_PLAY: i32 = 4105;
+const CALLBACK_MUSIC_PLAYER_WANTS_PAUSE: i32 = 4106;
+const CALLBACK_MUSIC_PLAYER_WANTS_PLAY_PREVIOUS: i32 = 4107;
+const CALLBACK_MUSIC_PLAYER_WANTS_PLAY_NEXT: i32 = 4108;
+const CALLBACK_MUSIC_PLAYER_WANTS_SHUFFLED: i32 = 4109;
+const CALLBACK_MUSIC_PLAYER_WANTS_LOOPED: i32 = 4110;
+const CALLBACK_MUSIC_PLAYER_WANTS_PLAYING_REPEAT_STATUS: i32 = 4114;
 const CALLBACK_HTML_BROWSER_READY: i32 = 4501;
 const CALLBACK_HTML_NEEDS_PAINT: i32 = 4502;
 const CALLBACK_HTML_START_REQUEST: i32 = 4503;
@@ -9012,6 +9072,217 @@ pub fn music_set_volume(volume: f64) -> Result<(), Error> {
 #[napi(js_name = "musicGetVolume")]
 pub fn music_get_volume() -> Result<f64, Error> {
     Ok(unsafe { sys::SteamAPI_ISteamMusic_GetVolume(steam_music()?) } as f64)
+}
+
+#[napi(js_name = "musicRemoteRegister")]
+pub fn music_remote_register(name: String) -> Result<bool, Error> {
+    let name = music_remote_string(name, "music remote name")?;
+    crate::state::ensure_initialized()?;
+    Ok(unsafe { steam_bridge_music_remote_register(name.as_ptr()) })
+}
+
+#[napi(js_name = "musicRemoteDeregister")]
+pub fn music_remote_deregister() -> Result<bool, Error> {
+    crate::state::ensure_initialized()?;
+    Ok(unsafe { steam_bridge_music_remote_deregister() })
+}
+
+#[napi(js_name = "musicRemoteIsCurrent")]
+pub fn music_remote_is_current() -> Result<bool, Error> {
+    crate::state::ensure_initialized()?;
+    Ok(unsafe { steam_bridge_music_remote_is_current() })
+}
+
+#[napi(js_name = "musicRemoteActivationSuccess")]
+pub fn music_remote_activation_success(value: bool) -> Result<bool, Error> {
+    crate::state::ensure_initialized()?;
+    Ok(unsafe { steam_bridge_music_remote_activation_success(value) })
+}
+
+#[napi(js_name = "musicRemoteSetDisplayName")]
+pub fn music_remote_set_display_name(display_name: String) -> Result<bool, Error> {
+    let display_name = music_remote_string(display_name, "music remote display name")?;
+    crate::state::ensure_initialized()?;
+    Ok(unsafe { steam_bridge_music_remote_set_display_name(display_name.as_ptr()) })
+}
+
+#[napi(js_name = "musicRemoteSetPngIcon64x64")]
+pub fn music_remote_set_png_icon_64x64(data: Buffer) -> Result<bool, Error> {
+    let data_length = music_remote_png_len(&data, "music remote PNG icon")?;
+    crate::state::ensure_initialized()?;
+    Ok(unsafe { steam_bridge_music_remote_set_png_icon_64x64(data.as_ptr(), data_length) })
+}
+
+#[napi(js_name = "musicRemoteEnablePlayPrevious")]
+pub fn music_remote_enable_play_previous(value: bool) -> Result<bool, Error> {
+    crate::state::ensure_initialized()?;
+    Ok(unsafe { steam_bridge_music_remote_enable_play_previous(value) })
+}
+
+#[napi(js_name = "musicRemoteEnablePlayNext")]
+pub fn music_remote_enable_play_next(value: bool) -> Result<bool, Error> {
+    crate::state::ensure_initialized()?;
+    Ok(unsafe { steam_bridge_music_remote_enable_play_next(value) })
+}
+
+#[napi(js_name = "musicRemoteEnableShuffled")]
+pub fn music_remote_enable_shuffled(value: bool) -> Result<bool, Error> {
+    crate::state::ensure_initialized()?;
+    Ok(unsafe { steam_bridge_music_remote_enable_shuffled(value) })
+}
+
+#[napi(js_name = "musicRemoteEnableLooped")]
+pub fn music_remote_enable_looped(value: bool) -> Result<bool, Error> {
+    crate::state::ensure_initialized()?;
+    Ok(unsafe { steam_bridge_music_remote_enable_looped(value) })
+}
+
+#[napi(js_name = "musicRemoteEnableQueue")]
+pub fn music_remote_enable_queue(value: bool) -> Result<bool, Error> {
+    crate::state::ensure_initialized()?;
+    Ok(unsafe { steam_bridge_music_remote_enable_queue(value) })
+}
+
+#[napi(js_name = "musicRemoteEnablePlaylists")]
+pub fn music_remote_enable_playlists(value: bool) -> Result<bool, Error> {
+    crate::state::ensure_initialized()?;
+    Ok(unsafe { steam_bridge_music_remote_enable_playlists(value) })
+}
+
+#[napi(js_name = "musicRemoteUpdatePlaybackStatus")]
+pub fn music_remote_update_playback_status(status: u32) -> Result<bool, Error> {
+    let status = music_remote_playback_status(status)?;
+    crate::state::ensure_initialized()?;
+    Ok(unsafe { steam_bridge_music_remote_update_playback_status(status) })
+}
+
+#[napi(js_name = "musicRemoteUpdateShuffled")]
+pub fn music_remote_update_shuffled(value: bool) -> Result<bool, Error> {
+    crate::state::ensure_initialized()?;
+    Ok(unsafe { steam_bridge_music_remote_update_shuffled(value) })
+}
+
+#[napi(js_name = "musicRemoteUpdateLooped")]
+pub fn music_remote_update_looped(value: bool) -> Result<bool, Error> {
+    crate::state::ensure_initialized()?;
+    Ok(unsafe { steam_bridge_music_remote_update_looped(value) })
+}
+
+#[napi(js_name = "musicRemoteUpdateVolume")]
+pub fn music_remote_update_volume(volume: f64) -> Result<bool, Error> {
+    let volume = music_remote_volume(volume)?;
+    crate::state::ensure_initialized()?;
+    Ok(unsafe { steam_bridge_music_remote_update_volume(volume) })
+}
+
+#[napi(js_name = "musicRemoteCurrentEntryWillChange")]
+pub fn music_remote_current_entry_will_change() -> Result<bool, Error> {
+    crate::state::ensure_initialized()?;
+    Ok(unsafe { steam_bridge_music_remote_current_entry_will_change() })
+}
+
+#[napi(js_name = "musicRemoteCurrentEntryIsAvailable")]
+pub fn music_remote_current_entry_is_available(available: bool) -> Result<bool, Error> {
+    crate::state::ensure_initialized()?;
+    Ok(unsafe { steam_bridge_music_remote_current_entry_is_available(available) })
+}
+
+#[napi(js_name = "musicRemoteUpdateCurrentEntryText")]
+pub fn music_remote_update_current_entry_text(text: String) -> Result<bool, Error> {
+    let text = music_remote_string(text, "music remote current entry text")?;
+    crate::state::ensure_initialized()?;
+    Ok(unsafe { steam_bridge_music_remote_update_current_entry_text(text.as_ptr()) })
+}
+
+#[napi(js_name = "musicRemoteUpdateCurrentEntryElapsedSeconds")]
+pub fn music_remote_update_current_entry_elapsed_seconds(value: i32) -> Result<bool, Error> {
+    crate::state::ensure_initialized()?;
+    Ok(unsafe { steam_bridge_music_remote_update_current_entry_elapsed_seconds(value) })
+}
+
+#[napi(js_name = "musicRemoteUpdateCurrentEntryCoverArt")]
+pub fn music_remote_update_current_entry_cover_art(data: Buffer) -> Result<bool, Error> {
+    let data_length = music_remote_png_len(&data, "music remote current entry cover art")?;
+    crate::state::ensure_initialized()?;
+    Ok(unsafe {
+        steam_bridge_music_remote_update_current_entry_cover_art(data.as_ptr(), data_length)
+    })
+}
+
+#[napi(js_name = "musicRemoteCurrentEntryDidChange")]
+pub fn music_remote_current_entry_did_change() -> Result<bool, Error> {
+    crate::state::ensure_initialized()?;
+    Ok(unsafe { steam_bridge_music_remote_current_entry_did_change() })
+}
+
+#[napi(js_name = "musicRemoteQueueWillChange")]
+pub fn music_remote_queue_will_change() -> Result<bool, Error> {
+    crate::state::ensure_initialized()?;
+    Ok(unsafe { steam_bridge_music_remote_queue_will_change() })
+}
+
+#[napi(js_name = "musicRemoteResetQueueEntries")]
+pub fn music_remote_reset_queue_entries() -> Result<bool, Error> {
+    crate::state::ensure_initialized()?;
+    Ok(unsafe { steam_bridge_music_remote_reset_queue_entries() })
+}
+
+#[napi(js_name = "musicRemoteSetQueueEntry")]
+pub fn music_remote_set_queue_entry(
+    id: i32,
+    position: i32,
+    entry_text: String,
+) -> Result<bool, Error> {
+    let entry_text = music_remote_string(entry_text, "music remote queue entry text")?;
+    crate::state::ensure_initialized()?;
+    Ok(unsafe { steam_bridge_music_remote_set_queue_entry(id, position, entry_text.as_ptr()) })
+}
+
+#[napi(js_name = "musicRemoteSetCurrentQueueEntry")]
+pub fn music_remote_set_current_queue_entry(id: i32) -> Result<bool, Error> {
+    crate::state::ensure_initialized()?;
+    Ok(unsafe { steam_bridge_music_remote_set_current_queue_entry(id) })
+}
+
+#[napi(js_name = "musicRemoteQueueDidChange")]
+pub fn music_remote_queue_did_change() -> Result<bool, Error> {
+    crate::state::ensure_initialized()?;
+    Ok(unsafe { steam_bridge_music_remote_queue_did_change() })
+}
+
+#[napi(js_name = "musicRemotePlaylistWillChange")]
+pub fn music_remote_playlist_will_change() -> Result<bool, Error> {
+    crate::state::ensure_initialized()?;
+    Ok(unsafe { steam_bridge_music_remote_playlist_will_change() })
+}
+
+#[napi(js_name = "musicRemoteResetPlaylistEntries")]
+pub fn music_remote_reset_playlist_entries() -> Result<bool, Error> {
+    crate::state::ensure_initialized()?;
+    Ok(unsafe { steam_bridge_music_remote_reset_playlist_entries() })
+}
+
+#[napi(js_name = "musicRemoteSetPlaylistEntry")]
+pub fn music_remote_set_playlist_entry(
+    id: i32,
+    position: i32,
+    entry_text: String,
+) -> Result<bool, Error> {
+    let entry_text = music_remote_string(entry_text, "music remote playlist entry text")?;
+    crate::state::ensure_initialized()?;
+    Ok(unsafe { steam_bridge_music_remote_set_playlist_entry(id, position, entry_text.as_ptr()) })
+}
+
+#[napi(js_name = "musicRemoteSetCurrentPlaylistEntry")]
+pub fn music_remote_set_current_playlist_entry(id: i32) -> Result<bool, Error> {
+    crate::state::ensure_initialized()?;
+    Ok(unsafe { steam_bridge_music_remote_set_current_playlist_entry(id) })
+}
+
+#[napi(js_name = "musicRemotePlaylistDidChange")]
+pub fn music_remote_playlist_did_change() -> Result<bool, Error> {
+    crate::state::ensure_initialized()?;
+    Ok(unsafe { steam_bridge_music_remote_playlist_did_change() })
 }
 
 #[napi(js_name = "videoRequestVideoUrl")]
@@ -18351,6 +18622,44 @@ fn len_to_i32(len: usize, label: &str) -> Result<i32, Error> {
     i32::try_from(len).map_err(|_| Error::from_reason(format!("{label} length exceeds i32")))
 }
 
+fn music_remote_string(value: String, label: &str) -> Result<CString, Error> {
+    if value.len() > STEAM_MUSIC_NAME_MAX_LENGTH {
+        return Err(Error::from_reason(format!(
+            "{label} exceeds {STEAM_MUSIC_NAME_MAX_LENGTH} bytes"
+        )));
+    }
+    cstring(value, label)
+}
+
+fn music_remote_png_len(data: &Buffer, label: &str) -> Result<u32, Error> {
+    let len = len_to_u32(data.len(), label)?;
+    if len > STEAM_MUSIC_PNG_MAX_LENGTH {
+        return Err(Error::from_reason(format!(
+            "{label} exceeds {STEAM_MUSIC_PNG_MAX_LENGTH} bytes"
+        )));
+    }
+    Ok(len)
+}
+
+fn music_remote_playback_status(status: u32) -> Result<i32, Error> {
+    if status <= 3 {
+        Ok(status as i32)
+    } else {
+        Err(Error::from_reason(
+            "Steam Music playback status must be between 0 and 3",
+        ))
+    }
+}
+
+fn music_remote_volume(volume: f64) -> Result<f32, Error> {
+    if !volume.is_finite() || !(0.0..=1.0).contains(&volume) {
+        return Err(Error::from_reason(
+            "Steam Music remote volume must be between 0 and 1",
+        ));
+    }
+    Ok(volume as f32)
+}
+
 fn bigints_to_u64s(values: Vec<BigInt>, label: &str) -> Result<Vec<u64>, Error> {
     values
         .into_iter()
@@ -20286,6 +20595,28 @@ fn callback_id_from_compat(callback: i32) -> Result<i32, Error> {
             Ok(sys::PlaybackStatusHasChanged_t_k_iCallback as i32)
         }
         CALLBACK_VOLUME_HAS_CHANGED => Ok(sys::VolumeHasChanged_t_k_iCallback as i32),
+        CALLBACK_MUSIC_PLAYER_WANTS_VOLUME => Ok(CALLBACK_MUSIC_PLAYER_WANTS_VOLUME),
+        CALLBACK_MUSIC_PLAYER_SELECTS_QUEUE_ENTRY => Ok(CALLBACK_MUSIC_PLAYER_SELECTS_QUEUE_ENTRY),
+        CALLBACK_MUSIC_PLAYER_SELECTS_PLAYLIST_ENTRY => {
+            Ok(CALLBACK_MUSIC_PLAYER_SELECTS_PLAYLIST_ENTRY)
+        }
+        CALLBACK_MUSIC_PLAYER_REMOTE_WILL_ACTIVATE => {
+            Ok(CALLBACK_MUSIC_PLAYER_REMOTE_WILL_ACTIVATE)
+        }
+        CALLBACK_MUSIC_PLAYER_REMOTE_WILL_DEACTIVATE => {
+            Ok(CALLBACK_MUSIC_PLAYER_REMOTE_WILL_DEACTIVATE)
+        }
+        CALLBACK_MUSIC_PLAYER_REMOTE_TO_FRONT => Ok(CALLBACK_MUSIC_PLAYER_REMOTE_TO_FRONT),
+        CALLBACK_MUSIC_PLAYER_WILL_QUIT => Ok(CALLBACK_MUSIC_PLAYER_WILL_QUIT),
+        CALLBACK_MUSIC_PLAYER_WANTS_PLAY => Ok(CALLBACK_MUSIC_PLAYER_WANTS_PLAY),
+        CALLBACK_MUSIC_PLAYER_WANTS_PAUSE => Ok(CALLBACK_MUSIC_PLAYER_WANTS_PAUSE),
+        CALLBACK_MUSIC_PLAYER_WANTS_PLAY_PREVIOUS => Ok(CALLBACK_MUSIC_PLAYER_WANTS_PLAY_PREVIOUS),
+        CALLBACK_MUSIC_PLAYER_WANTS_PLAY_NEXT => Ok(CALLBACK_MUSIC_PLAYER_WANTS_PLAY_NEXT),
+        CALLBACK_MUSIC_PLAYER_WANTS_SHUFFLED => Ok(CALLBACK_MUSIC_PLAYER_WANTS_SHUFFLED),
+        CALLBACK_MUSIC_PLAYER_WANTS_LOOPED => Ok(CALLBACK_MUSIC_PLAYER_WANTS_LOOPED),
+        CALLBACK_MUSIC_PLAYER_WANTS_PLAYING_REPEAT_STATUS => {
+            Ok(CALLBACK_MUSIC_PLAYER_WANTS_PLAYING_REPEAT_STATUS)
+        }
         CALLBACK_HTML_BROWSER_READY => Ok(sys::HTML_BrowserReady_t_k_iCallback as i32),
         CALLBACK_HTML_NEEDS_PAINT => Ok(sys::HTML_NeedsPaint_t_k_iCallback as i32),
         CALLBACK_HTML_START_REQUEST => Ok(sys::HTML_StartRequest_t_k_iCallback as i32),
@@ -21393,6 +21724,38 @@ unsafe fn callback_to_json(callback: i32, param: *mut c_void) -> Value {
             serde_json::json!({
                 "new_volume": ptr::addr_of!((*event).m_flNewVolume).read_unaligned()
             })
+        }
+        CALLBACK_MUSIC_PLAYER_REMOTE_WILL_ACTIVATE
+        | CALLBACK_MUSIC_PLAYER_REMOTE_WILL_DEACTIVATE
+        | CALLBACK_MUSIC_PLAYER_REMOTE_TO_FRONT
+        | CALLBACK_MUSIC_PLAYER_WILL_QUIT
+        | CALLBACK_MUSIC_PLAYER_WANTS_PLAY
+        | CALLBACK_MUSIC_PLAYER_WANTS_PAUSE
+        | CALLBACK_MUSIC_PLAYER_WANTS_PLAY_PREVIOUS
+        | CALLBACK_MUSIC_PLAYER_WANTS_PLAY_NEXT => serde_json::json!({}),
+        CALLBACK_MUSIC_PLAYER_WANTS_SHUFFLED => {
+            let shuffled = ptr::read_unaligned(param.cast::<bool>());
+            serde_json::json!({ "shuffled": shuffled })
+        }
+        CALLBACK_MUSIC_PLAYER_WANTS_LOOPED => {
+            let looped = ptr::read_unaligned(param.cast::<bool>());
+            serde_json::json!({ "looped": looped })
+        }
+        CALLBACK_MUSIC_PLAYER_WANTS_VOLUME => {
+            let new_volume = ptr::read_unaligned(param.cast::<f32>());
+            serde_json::json!({ "new_volume": new_volume })
+        }
+        CALLBACK_MUSIC_PLAYER_SELECTS_QUEUE_ENTRY => {
+            let entry_id = ptr::read_unaligned(param.cast::<i32>());
+            serde_json::json!({ "entry_id": entry_id })
+        }
+        CALLBACK_MUSIC_PLAYER_SELECTS_PLAYLIST_ENTRY => {
+            let entry_id = ptr::read_unaligned(param.cast::<i32>());
+            serde_json::json!({ "entry_id": entry_id })
+        }
+        CALLBACK_MUSIC_PLAYER_WANTS_PLAYING_REPEAT_STATUS => {
+            let repeat_status = ptr::read_unaligned(param.cast::<i32>());
+            serde_json::json!({ "repeat_status": repeat_status })
         }
         CALLBACK_HTML_BROWSER_READY => {
             let event = param as *const sys::HTML_BrowserReady_t;

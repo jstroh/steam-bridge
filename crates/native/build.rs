@@ -15,6 +15,7 @@ fn main() {
 
     if target_os == "macos" {
         println!("cargo:rerun-if-changed=src/macos_metal_surface.mm");
+        println!("cargo:rerun-if-changed=src/steam_music_remote_bridge.cpp");
 
         cc::Build::new()
             .cpp(true)
@@ -22,6 +23,12 @@ fn main() {
             .flag("-std=c++17")
             .flag("-fobjc-arc")
             .compile("steam_bridge_metal_surface");
+
+        cc::Build::new()
+            .cpp(true)
+            .file("src/steam_music_remote_bridge.cpp")
+            .flag("-std=c++17")
+            .compile("steam_bridge_music_remote");
 
         println!("cargo:rustc-link-lib=framework=Cocoa");
         println!("cargo:rustc-link-lib=framework=Metal");

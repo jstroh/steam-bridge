@@ -2098,6 +2098,20 @@ test("specific and generic callbacks normalize Steamworks payloads", (t) => {
   assert.equal(steam.SteamCallback.ScreenshotRequested, 2302);
   assert.equal(steam.SteamCallback.PlaybackStatusHasChanged, 4001);
   assert.equal(steam.SteamCallback.VolumeHasChanged, 4002);
+  assert.equal(steam.SteamCallback.MusicPlayerWantsVolume, 4011);
+  assert.equal(steam.SteamCallback.MusicPlayerSelectsQueueEntry, 4012);
+  assert.equal(steam.SteamCallback.MusicPlayerSelectsPlaylistEntry, 4013);
+  assert.equal(steam.SteamCallback.MusicPlayerRemoteWillActivate, 4101);
+  assert.equal(steam.SteamCallback.MusicPlayerRemoteWillDeactivate, 4102);
+  assert.equal(steam.SteamCallback.MusicPlayerRemoteToFront, 4103);
+  assert.equal(steam.SteamCallback.MusicPlayerWillQuit, 4104);
+  assert.equal(steam.SteamCallback.MusicPlayerWantsPlay, 4105);
+  assert.equal(steam.SteamCallback.MusicPlayerWantsPause, 4106);
+  assert.equal(steam.SteamCallback.MusicPlayerWantsPlayPrevious, 4107);
+  assert.equal(steam.SteamCallback.MusicPlayerWantsPlayNext, 4108);
+  assert.equal(steam.SteamCallback.MusicPlayerWantsShuffled, 4109);
+  assert.equal(steam.SteamCallback.MusicPlayerWantsLooped, 4110);
+  assert.equal(steam.SteamCallback.MusicPlayerWantsPlayingRepeatStatus, 4114);
   assert.equal(steam.SteamCallback.BroadcastUploadStart, 4604);
   assert.equal(steam.SteamCallback.BroadcastUploadStop, 4605);
   assert.equal(steam.SteamCallback.GetVideoURLResult, 4611);
@@ -2460,6 +2474,36 @@ test("specific and generic callbacks normalize Steamworks payloads", (t) => {
   });
 
   assert.equal(volumeEvent.newVolume, 0.625);
+
+  let musicRemoteShuffledEvent;
+  steam.callback.register(steam.SteamCallback.MusicPlayerWantsShuffled, (event) => {
+    musicRemoteShuffledEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.MusicPlayerWantsShuffled)({
+    shuffled: true
+  });
+
+  assert.equal(musicRemoteShuffledEvent.shuffled, true);
+
+  let musicRemoteQueueEvent;
+  steam.callback.register(steam.SteamCallback.MusicPlayerSelectsQueueEntry, (event) => {
+    musicRemoteQueueEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.MusicPlayerSelectsQueueEntry)({
+    entry_id: 9
+  });
+
+  assert.equal(musicRemoteQueueEvent.entryId, 9);
+
+  let musicRemoteRepeatEvent;
+  steam.callback.register(steam.SteamCallback.MusicPlayerWantsPlayingRepeatStatus, (event) => {
+    musicRemoteRepeatEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.MusicPlayerWantsPlayingRepeatStatus)({
+    repeat_status: 2
+  });
+
+  assert.equal(musicRemoteRepeatEvent.repeatStatus, 2);
 
   let broadcastStartEvent;
   steam.callback.register(steam.SteamCallback.BroadcastUploadStart, (event) => {
@@ -7457,6 +7501,134 @@ test("screenshots, music, video, and parental facades forward utility interfaces
     musicGetVolume() {
       return 0.5;
     },
+    musicRemoteRegister(name) {
+      this.calls.push({ method: "musicRemoteRegister", args: [name] });
+      return true;
+    },
+    musicRemoteDeregister() {
+      this.calls.push({ method: "musicRemoteDeregister", args: [] });
+      return true;
+    },
+    musicRemoteIsCurrent() {
+      this.calls.push({ method: "musicRemoteIsCurrent", args: [] });
+      return true;
+    },
+    musicRemoteActivationSuccess(value) {
+      this.calls.push({ method: "musicRemoteActivationSuccess", args: [value] });
+      return true;
+    },
+    musicRemoteSetDisplayName(displayName) {
+      this.calls.push({ method: "musicRemoteSetDisplayName", args: [displayName] });
+      return true;
+    },
+    musicRemoteSetPngIcon64x64(data) {
+      this.calls.push({ method: "musicRemoteSetPngIcon64x64", args: [data] });
+      return true;
+    },
+    musicRemoteEnablePlayPrevious(value) {
+      this.calls.push({ method: "musicRemoteEnablePlayPrevious", args: [value] });
+      return true;
+    },
+    musicRemoteEnablePlayNext(value) {
+      this.calls.push({ method: "musicRemoteEnablePlayNext", args: [value] });
+      return true;
+    },
+    musicRemoteEnableShuffled(value) {
+      this.calls.push({ method: "musicRemoteEnableShuffled", args: [value] });
+      return true;
+    },
+    musicRemoteEnableLooped(value) {
+      this.calls.push({ method: "musicRemoteEnableLooped", args: [value] });
+      return true;
+    },
+    musicRemoteEnableQueue(value) {
+      this.calls.push({ method: "musicRemoteEnableQueue", args: [value] });
+      return true;
+    },
+    musicRemoteEnablePlaylists(value) {
+      this.calls.push({ method: "musicRemoteEnablePlaylists", args: [value] });
+      return true;
+    },
+    musicRemoteUpdatePlaybackStatus(status) {
+      this.calls.push({ method: "musicRemoteUpdatePlaybackStatus", args: [status] });
+      return true;
+    },
+    musicRemoteUpdateShuffled(value) {
+      this.calls.push({ method: "musicRemoteUpdateShuffled", args: [value] });
+      return true;
+    },
+    musicRemoteUpdateLooped(value) {
+      this.calls.push({ method: "musicRemoteUpdateLooped", args: [value] });
+      return true;
+    },
+    musicRemoteUpdateVolume(volume) {
+      this.calls.push({ method: "musicRemoteUpdateVolume", args: [volume] });
+      return true;
+    },
+    musicRemoteCurrentEntryWillChange() {
+      this.calls.push({ method: "musicRemoteCurrentEntryWillChange", args: [] });
+      return true;
+    },
+    musicRemoteCurrentEntryIsAvailable(available) {
+      this.calls.push({ method: "musicRemoteCurrentEntryIsAvailable", args: [available] });
+      return true;
+    },
+    musicRemoteUpdateCurrentEntryText(text) {
+      this.calls.push({ method: "musicRemoteUpdateCurrentEntryText", args: [text] });
+      return true;
+    },
+    musicRemoteUpdateCurrentEntryElapsedSeconds(value) {
+      this.calls.push({ method: "musicRemoteUpdateCurrentEntryElapsedSeconds", args: [value] });
+      return true;
+    },
+    musicRemoteUpdateCurrentEntryCoverArt(data) {
+      this.calls.push({ method: "musicRemoteUpdateCurrentEntryCoverArt", args: [data] });
+      return true;
+    },
+    musicRemoteCurrentEntryDidChange() {
+      this.calls.push({ method: "musicRemoteCurrentEntryDidChange", args: [] });
+      return true;
+    },
+    musicRemoteQueueWillChange() {
+      this.calls.push({ method: "musicRemoteQueueWillChange", args: [] });
+      return true;
+    },
+    musicRemoteResetQueueEntries() {
+      this.calls.push({ method: "musicRemoteResetQueueEntries", args: [] });
+      return true;
+    },
+    musicRemoteSetQueueEntry(id, position, entryText) {
+      this.calls.push({ method: "musicRemoteSetQueueEntry", args: [id, position, entryText] });
+      return true;
+    },
+    musicRemoteSetCurrentQueueEntry(id) {
+      this.calls.push({ method: "musicRemoteSetCurrentQueueEntry", args: [id] });
+      return true;
+    },
+    musicRemoteQueueDidChange() {
+      this.calls.push({ method: "musicRemoteQueueDidChange", args: [] });
+      return true;
+    },
+    musicRemotePlaylistWillChange() {
+      this.calls.push({ method: "musicRemotePlaylistWillChange", args: [] });
+      return true;
+    },
+    musicRemoteResetPlaylistEntries() {
+      this.calls.push({ method: "musicRemoteResetPlaylistEntries", args: [] });
+      return true;
+    },
+    musicRemoteSetPlaylistEntry(id, position, entryText) {
+      this.calls.push({ method: "musicRemoteSetPlaylistEntry", args: [id, position, entryText] });
+      return true;
+    },
+    musicRemoteSetCurrentPlaylistEntry(id) {
+      this.calls.push({ method: "musicRemoteSetCurrentPlaylistEntry", args: [id] });
+      return true;
+    },
+    musicRemotePlaylistDidChange() {
+      this.calls.push({ method: "musicRemotePlaylistDidChange", args: [] });
+      return true;
+    },
     videoRequestVideoUrl(appId) {
       this.calls.push({ method: "videoRequestVideoUrl", args: [appId] });
     },
@@ -7516,6 +7688,82 @@ test("screenshots, music, video, and parental facades forward utility interfaces
   steam.music.playNext();
   steam.music.setVolume(0.5);
   assert.equal(steam.music.getVolume(), 0.5);
+  assert.equal(steam.music.remote, steam.musicRemote);
+
+  const remoteIcon = new Uint8Array([137, 80, 78, 71]);
+  const remoteCover = Buffer.from([1, 2, 3, 4]);
+  assert.equal(steam.music.remote.register("Steam Bridge Remote"), true);
+  assert.equal(steam.music.remote.deregister(), true);
+  assert.equal(steam.music.remote.isCurrent(), true);
+  assert.equal(steam.music.remote.activationSuccess(true), true);
+  assert.equal(steam.music.remote.setDisplayName("Steam Bridge"), true);
+  assert.equal(steam.music.remote.setPngIcon64x64(remoteIcon), true);
+  assert.equal(steam.music.remote.enablePlayPrevious(true), true);
+  assert.equal(steam.music.remote.enablePlayNext(true), true);
+  assert.equal(steam.music.remote.enableShuffled(true), true);
+  assert.equal(steam.music.remote.enableLooped(false), true);
+  assert.equal(steam.music.remote.enableQueue(true), true);
+  assert.equal(steam.music.remote.enablePlaylists(true), true);
+  assert.equal(steam.music.remote.updatePlaybackStatus(steam.AudioPlaybackStatus.Playing), true);
+  assert.equal(steam.music.remote.updateShuffled(true), true);
+  assert.equal(steam.music.remote.updateLooped(false), true);
+  assert.equal(steam.music.remote.updateVolume(0.75), true);
+  assert.equal(steam.music.remote.currentEntryWillChange(), true);
+  assert.equal(steam.music.remote.currentEntryIsAvailable(true), true);
+  assert.equal(steam.music.remote.updateCurrentEntryText("Track 1"), true);
+  assert.equal(steam.music.remote.updateCurrentEntryElapsedSeconds(42), true);
+  assert.equal(steam.music.remote.updateCurrentEntryCoverArt(remoteCover), true);
+  assert.equal(steam.music.remote.currentEntryDidChange(), true);
+  assert.equal(steam.music.remote.queueWillChange(), true);
+  assert.equal(steam.music.remote.resetQueueEntries(), true);
+  assert.equal(steam.music.remote.setQueueEntry(7, 1, "Queued Track"), true);
+  assert.equal(steam.music.remote.setCurrentQueueEntry(7), true);
+  assert.equal(steam.music.remote.queueDidChange(), true);
+  assert.equal(steam.music.remote.playlistWillChange(), true);
+  assert.equal(steam.music.remote.resetPlaylistEntries(), true);
+  assert.equal(steam.music.remote.setPlaylistEntry(8, 2, "Playlist Track"), true);
+  assert.equal(steam.music.remote.setCurrentPlaylistEntry(8), true);
+  assert.equal(steam.music.remote.playlistDidChange(), true);
+  const musicRemoteCalls = fake.calls
+    .filter((call) => call.method.startsWith("musicRemote"))
+    .map((call) => ({
+      method: call.method,
+      args: call.args.map((arg) => (Buffer.isBuffer(arg) ? Array.from(arg) : arg))
+    }));
+  assert.deepEqual(musicRemoteCalls, [
+    { method: "musicRemoteRegister", args: ["Steam Bridge Remote"] },
+    { method: "musicRemoteDeregister", args: [] },
+    { method: "musicRemoteIsCurrent", args: [] },
+    { method: "musicRemoteActivationSuccess", args: [true] },
+    { method: "musicRemoteSetDisplayName", args: ["Steam Bridge"] },
+    { method: "musicRemoteSetPngIcon64x64", args: [[137, 80, 78, 71]] },
+    { method: "musicRemoteEnablePlayPrevious", args: [true] },
+    { method: "musicRemoteEnablePlayNext", args: [true] },
+    { method: "musicRemoteEnableShuffled", args: [true] },
+    { method: "musicRemoteEnableLooped", args: [false] },
+    { method: "musicRemoteEnableQueue", args: [true] },
+    { method: "musicRemoteEnablePlaylists", args: [true] },
+    { method: "musicRemoteUpdatePlaybackStatus", args: [steam.AudioPlaybackStatus.Playing] },
+    { method: "musicRemoteUpdateShuffled", args: [true] },
+    { method: "musicRemoteUpdateLooped", args: [false] },
+    { method: "musicRemoteUpdateVolume", args: [0.75] },
+    { method: "musicRemoteCurrentEntryWillChange", args: [] },
+    { method: "musicRemoteCurrentEntryIsAvailable", args: [true] },
+    { method: "musicRemoteUpdateCurrentEntryText", args: ["Track 1"] },
+    { method: "musicRemoteUpdateCurrentEntryElapsedSeconds", args: [42] },
+    { method: "musicRemoteUpdateCurrentEntryCoverArt", args: [[1, 2, 3, 4]] },
+    { method: "musicRemoteCurrentEntryDidChange", args: [] },
+    { method: "musicRemoteQueueWillChange", args: [] },
+    { method: "musicRemoteResetQueueEntries", args: [] },
+    { method: "musicRemoteSetQueueEntry", args: [7, 1, "Queued Track"] },
+    { method: "musicRemoteSetCurrentQueueEntry", args: [7] },
+    { method: "musicRemoteQueueDidChange", args: [] },
+    { method: "musicRemotePlaylistWillChange", args: [] },
+    { method: "musicRemoteResetPlaylistEntries", args: [] },
+    { method: "musicRemoteSetPlaylistEntry", args: [8, 2, "Playlist Track"] },
+    { method: "musicRemoteSetCurrentPlaylistEntry", args: [8] },
+    { method: "musicRemotePlaylistDidChange", args: [] }
+  ]);
 
   steam.video.requestVideoUrl(480);
   assert.deepEqual(steam.video.isBroadcasting(), { broadcasting: true, viewers: 42 });

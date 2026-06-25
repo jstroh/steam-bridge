@@ -1760,6 +1760,20 @@ export const SteamCallback = {
   ScreenshotRequested: 2302,
   PlaybackStatusHasChanged: 4001,
   VolumeHasChanged: 4002,
+  MusicPlayerWantsVolume: 4011,
+  MusicPlayerSelectsQueueEntry: 4012,
+  MusicPlayerSelectsPlaylistEntry: 4013,
+  MusicPlayerRemoteWillActivate: 4101,
+  MusicPlayerRemoteWillDeactivate: 4102,
+  MusicPlayerRemoteToFront: 4103,
+  MusicPlayerWillQuit: 4104,
+  MusicPlayerWantsPlay: 4105,
+  MusicPlayerWantsPause: 4106,
+  MusicPlayerWantsPlayPrevious: 4107,
+  MusicPlayerWantsPlayNext: 4108,
+  MusicPlayerWantsShuffled: 4109,
+  MusicPlayerWantsLooped: 4110,
+  MusicPlayerWantsPlayingRepeatStatus: 4114,
   BroadcastUploadStart: 4604,
   BroadcastUploadStop: 4605,
   GetVideoURLResult: 4611,
@@ -6692,8 +6706,108 @@ export const screenshots = {
   }
 };
 
+export const musicRemote = {
+  register(name: string): boolean {
+    return native().musicRemoteRegister(name);
+  },
+  deregister(): boolean {
+    return native().musicRemoteDeregister();
+  },
+  isCurrent(): boolean {
+    return native().musicRemoteIsCurrent();
+  },
+  activationSuccess(value: boolean): boolean {
+    return native().musicRemoteActivationSuccess(value);
+  },
+  setDisplayName(displayName: string): boolean {
+    return native().musicRemoteSetDisplayName(displayName);
+  },
+  setPngIcon64x64(data: Buffer | Uint8Array): boolean {
+    return native().musicRemoteSetPngIcon64x64(Buffer.from(data));
+  },
+  enablePlayPrevious(value: boolean): boolean {
+    return native().musicRemoteEnablePlayPrevious(value);
+  },
+  enablePlayNext(value: boolean): boolean {
+    return native().musicRemoteEnablePlayNext(value);
+  },
+  enableShuffled(value: boolean): boolean {
+    return native().musicRemoteEnableShuffled(value);
+  },
+  enableLooped(value: boolean): boolean {
+    return native().musicRemoteEnableLooped(value);
+  },
+  enableQueue(value: boolean): boolean {
+    return native().musicRemoteEnableQueue(value);
+  },
+  enablePlaylists(value: boolean): boolean {
+    return native().musicRemoteEnablePlaylists(value);
+  },
+  updatePlaybackStatus(status: number): boolean {
+    return native().musicRemoteUpdatePlaybackStatus(status);
+  },
+  updateShuffled(value: boolean): boolean {
+    return native().musicRemoteUpdateShuffled(value);
+  },
+  updateLooped(value: boolean): boolean {
+    return native().musicRemoteUpdateLooped(value);
+  },
+  updateVolume(volume: number): boolean {
+    return native().musicRemoteUpdateVolume(volume);
+  },
+  currentEntryWillChange(): boolean {
+    return native().musicRemoteCurrentEntryWillChange();
+  },
+  currentEntryIsAvailable(available: boolean): boolean {
+    return native().musicRemoteCurrentEntryIsAvailable(available);
+  },
+  updateCurrentEntryText(text: string): boolean {
+    return native().musicRemoteUpdateCurrentEntryText(text);
+  },
+  updateCurrentEntryElapsedSeconds(value: number): boolean {
+    return native().musicRemoteUpdateCurrentEntryElapsedSeconds(value);
+  },
+  updateCurrentEntryCoverArt(data: Buffer | Uint8Array): boolean {
+    return native().musicRemoteUpdateCurrentEntryCoverArt(Buffer.from(data));
+  },
+  currentEntryDidChange(): boolean {
+    return native().musicRemoteCurrentEntryDidChange();
+  },
+  queueWillChange(): boolean {
+    return native().musicRemoteQueueWillChange();
+  },
+  resetQueueEntries(): boolean {
+    return native().musicRemoteResetQueueEntries();
+  },
+  setQueueEntry(id: number, position: number, entryText: string): boolean {
+    return native().musicRemoteSetQueueEntry(id, position, entryText);
+  },
+  setCurrentQueueEntry(id: number): boolean {
+    return native().musicRemoteSetCurrentQueueEntry(id);
+  },
+  queueDidChange(): boolean {
+    return native().musicRemoteQueueDidChange();
+  },
+  playlistWillChange(): boolean {
+    return native().musicRemotePlaylistWillChange();
+  },
+  resetPlaylistEntries(): boolean {
+    return native().musicRemoteResetPlaylistEntries();
+  },
+  setPlaylistEntry(id: number, position: number, entryText: string): boolean {
+    return native().musicRemoteSetPlaylistEntry(id, position, entryText);
+  },
+  setCurrentPlaylistEntry(id: number): boolean {
+    return native().musicRemoteSetCurrentPlaylistEntry(id);
+  },
+  playlistDidChange(): boolean {
+    return native().musicRemotePlaylistDidChange();
+  }
+};
+
 export const music = {
   AudioPlaybackStatus,
+  remote: musicRemote,
   isEnabled(): boolean {
     return native().musicIsEnabled();
   },
@@ -7501,6 +7615,7 @@ export interface SteamBridgeClient {
   networking: typeof networking;
   overlay: typeof overlay;
   music: typeof music;
+  musicRemote: typeof musicRemote;
   parties: typeof parties;
   parental: typeof parental;
   remotePlay: typeof remotePlay;
@@ -7540,6 +7655,7 @@ export function createCompatibilityClient(): SteamBridgeClient {
     networking,
     overlay,
     music,
+    musicRemote,
     parties,
     parental,
     remotePlay,
@@ -8627,6 +8743,7 @@ function normalizeCallbackEvent(callbackId: number, event: unknown): unknown {
     device_handle: "deviceHandle",
     device_type: "deviceType",
     disconnected_device_handle: "disconnectedDeviceHandle",
+    entry_id: "entryId",
     entry_type: "entryType",
     event_type: "eventType",
     file_size: "fileSize",
@@ -8693,6 +8810,7 @@ function normalizeCallbackEvent(callbackId: number, event: unknown): unknown {
     recording_exists: "recordingExists",
     recording_ms: "recordingMs",
     reputation_score: "reputationScore",
+    repeat_status: "repeatStatus",
     results_returned: "resultsReturned",
     returned_results: "returnedResults",
     seconds_allowed: "secondsAllowed",
@@ -10177,6 +10295,7 @@ const defaultExport = {
   networking,
   overlay,
   music,
+  musicRemote,
   parties,
   parental,
   remotePlay,
