@@ -109,6 +109,50 @@ extern "C" {
         destination_input_type: sys::ESteamInputType,
         source_origin: u32,
     ) -> u32;
+
+    #[link_name = "SteamAPI_ISteamController_GetDigitalActionOrigins"]
+    fn steam_api_isteam_controller_get_digital_action_origins_raw(
+        self_: *mut sys::ISteamController,
+        controller_handle: u64,
+        action_set_handle: u64,
+        digital_action_handle: u64,
+        origins_out: *mut u32,
+    ) -> i32;
+
+    #[link_name = "SteamAPI_ISteamController_GetAnalogActionOrigins"]
+    fn steam_api_isteam_controller_get_analog_action_origins_raw(
+        self_: *mut sys::ISteamController,
+        controller_handle: u64,
+        action_set_handle: u64,
+        analog_action_handle: u64,
+        origins_out: *mut u32,
+    ) -> i32;
+
+    #[link_name = "SteamAPI_ISteamController_GetGlyphForActionOrigin"]
+    fn steam_api_isteam_controller_get_glyph_for_action_origin_raw(
+        self_: *mut sys::ISteamController,
+        origin: u32,
+    ) -> *const c_char;
+
+    #[link_name = "SteamAPI_ISteamController_GetStringForActionOrigin"]
+    fn steam_api_isteam_controller_get_string_for_action_origin_raw(
+        self_: *mut sys::ISteamController,
+        origin: u32,
+    ) -> *const c_char;
+
+    #[link_name = "SteamAPI_ISteamController_GetActionOriginFromXboxOrigin"]
+    fn steam_api_isteam_controller_get_action_origin_from_xbox_origin_raw(
+        self_: *mut sys::ISteamController,
+        controller_handle: u64,
+        origin: u32,
+    ) -> u32;
+
+    #[link_name = "SteamAPI_ISteamController_TranslateActionOrigin"]
+    fn steam_api_isteam_controller_translate_action_origin_raw(
+        self_: *mut sys::ISteamController,
+        destination_input_type: sys::ESteamInputType,
+        source_origin: u32,
+    ) -> u32;
 }
 
 const CALLBACK_PERSONA_STATE_CHANGE: i32 = 304;
@@ -6490,6 +6534,470 @@ pub fn input_get_session_input_configuration_settings() -> Result<u32, Error> {
         unsafe { sys::SteamAPI_ISteamInput_GetSessionInputConfigurationSettings(steam_input()?) }
             as u32,
     )
+}
+
+#[napi(js_name = "controllerInit")]
+pub fn controller_init() -> Result<bool, Error> {
+    Ok(unsafe { sys::SteamAPI_ISteamController_Init(steam_controller()?) })
+}
+
+#[napi(js_name = "controllerShutdown")]
+pub fn controller_shutdown() -> Result<bool, Error> {
+    Ok(unsafe { sys::SteamAPI_ISteamController_Shutdown(steam_controller()?) })
+}
+
+#[napi(js_name = "controllerRunFrame")]
+pub fn controller_run_frame() -> Result<(), Error> {
+    unsafe { sys::SteamAPI_ISteamController_RunFrame(steam_controller()?) };
+    Ok(())
+}
+
+#[napi(js_name = "controllerGetControllers")]
+pub fn controller_get_controllers() -> Result<Vec<InputControllerInfo>, Error> {
+    let controller = steam_controller()?;
+    unsafe { sys::SteamAPI_ISteamController_RunFrame(controller) };
+    let mut handles = vec![0u64; sys::STEAM_CONTROLLER_MAX_COUNT as usize];
+    let count = unsafe {
+        sys::SteamAPI_ISteamController_GetConnectedControllers(controller, handles.as_mut_ptr())
+    };
+    handles.truncate(count.max(0) as usize);
+    Ok(handles
+        .into_iter()
+        .map(|handle| InputControllerInfo {
+            input_type: input_type_name(unsafe {
+                sys::SteamAPI_ISteamController_GetInputTypeForHandle(controller, handle)
+            })
+            .to_owned(),
+            handle: handle.into(),
+        })
+        .collect())
+}
+
+#[napi(js_name = "controllerGetActionSet")]
+pub fn controller_get_action_set(action_set_name: String) -> Result<BigInt, Error> {
+    let name = cstring(action_set_name, "controller action set name")?;
+    Ok(unsafe {
+        sys::SteamAPI_ISteamController_GetActionSetHandle(steam_controller()?, name.as_ptr())
+    }
+    .into())
+}
+
+#[napi(js_name = "controllerGetDigitalAction")]
+pub fn controller_get_digital_action(action_name: String) -> Result<BigInt, Error> {
+    let name = cstring(action_name, "controller digital action name")?;
+    Ok(unsafe {
+        sys::SteamAPI_ISteamController_GetDigitalActionHandle(steam_controller()?, name.as_ptr())
+    }
+    .into())
+}
+
+#[napi(js_name = "controllerGetAnalogAction")]
+pub fn controller_get_analog_action(action_name: String) -> Result<BigInt, Error> {
+    let name = cstring(action_name, "controller analog action name")?;
+    Ok(unsafe {
+        sys::SteamAPI_ISteamController_GetAnalogActionHandle(steam_controller()?, name.as_ptr())
+    }
+    .into())
+}
+
+#[napi(js_name = "controllerActivateActionSet")]
+pub fn controller_activate_action_set(controller: BigInt, action_set: BigInt) -> Result<(), Error> {
+    unsafe {
+        sys::SteamAPI_ISteamController_ActivateActionSet(
+            steam_controller()?,
+            bigint_to_u64(controller, "controller handle")?,
+            bigint_to_u64(action_set, "controller action set handle")?,
+        );
+    }
+    Ok(())
+}
+
+#[napi(js_name = "controllerGetCurrentActionSet")]
+pub fn controller_get_current_action_set(controller: BigInt) -> Result<BigInt, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamController_GetCurrentActionSet(
+            steam_controller()?,
+            bigint_to_u64(controller, "controller handle")?,
+        )
+    }
+    .into())
+}
+
+#[napi(js_name = "controllerActivateActionSetLayer")]
+pub fn controller_activate_action_set_layer(
+    controller: BigInt,
+    action_set_layer: BigInt,
+) -> Result<(), Error> {
+    unsafe {
+        sys::SteamAPI_ISteamController_ActivateActionSetLayer(
+            steam_controller()?,
+            bigint_to_u64(controller, "controller handle")?,
+            bigint_to_u64(action_set_layer, "controller action set layer handle")?,
+        );
+    }
+    Ok(())
+}
+
+#[napi(js_name = "controllerDeactivateActionSetLayer")]
+pub fn controller_deactivate_action_set_layer(
+    controller: BigInt,
+    action_set_layer: BigInt,
+) -> Result<(), Error> {
+    unsafe {
+        sys::SteamAPI_ISteamController_DeactivateActionSetLayer(
+            steam_controller()?,
+            bigint_to_u64(controller, "controller handle")?,
+            bigint_to_u64(action_set_layer, "controller action set layer handle")?,
+        );
+    }
+    Ok(())
+}
+
+#[napi(js_name = "controllerDeactivateAllActionSetLayers")]
+pub fn controller_deactivate_all_action_set_layers(controller: BigInt) -> Result<(), Error> {
+    unsafe {
+        sys::SteamAPI_ISteamController_DeactivateAllActionSetLayers(
+            steam_controller()?,
+            bigint_to_u64(controller, "controller handle")?,
+        );
+    }
+    Ok(())
+}
+
+#[napi(js_name = "controllerGetActiveActionSetLayers")]
+pub fn controller_get_active_action_set_layers(controller: BigInt) -> Result<Vec<BigInt>, Error> {
+    let steam_controller = steam_controller()?;
+    let mut handles = vec![0u64; sys::STEAM_CONTROLLER_MAX_ACTIVE_LAYERS as usize];
+    let count = unsafe {
+        sys::SteamAPI_ISteamController_GetActiveActionSetLayers(
+            steam_controller,
+            bigint_to_u64(controller, "controller handle")?,
+            handles.as_mut_ptr(),
+        )
+    };
+    handles.truncate(count.max(0) as usize);
+    Ok(handles.into_iter().map(BigInt::from).collect())
+}
+
+#[napi(js_name = "controllerGetDigitalActionData")]
+pub fn controller_get_digital_action_data(
+    controller: BigInt,
+    action: BigInt,
+) -> Result<InputDigitalActionData, Error> {
+    let data = unsafe {
+        sys::SteamAPI_ISteamController_GetDigitalActionData(
+            steam_controller()?,
+            bigint_to_u64(controller, "controller handle")?,
+            bigint_to_u64(action, "controller digital action handle")?,
+        )
+    };
+    Ok(input_digital_action_data(data))
+}
+
+#[napi(js_name = "controllerIsDigitalActionPressed")]
+pub fn controller_is_digital_action_pressed(
+    controller: BigInt,
+    action: BigInt,
+) -> Result<bool, Error> {
+    let data = controller_get_digital_action_data(controller, action)?;
+    Ok(data.active && data.state)
+}
+
+#[napi(js_name = "controllerGetDigitalActionOrigins")]
+pub fn controller_get_digital_action_origins(
+    controller: BigInt,
+    action_set: BigInt,
+    action: BigInt,
+) -> Result<Vec<u32>, Error> {
+    let steam_controller = steam_controller()?;
+    let mut origins = vec![0u32; sys::STEAM_CONTROLLER_MAX_ORIGINS as usize];
+    let count = unsafe {
+        steam_api_isteam_controller_get_digital_action_origins_raw(
+            steam_controller,
+            bigint_to_u64(controller, "controller handle")?,
+            bigint_to_u64(action_set, "controller action set handle")?,
+            bigint_to_u64(action, "controller digital action handle")?,
+            origins.as_mut_ptr(),
+        )
+    };
+    origins.truncate(count.max(0) as usize);
+    Ok(origins)
+}
+
+#[napi(js_name = "controllerGetAnalogActionData")]
+pub fn controller_get_analog_action_data(
+    controller: BigInt,
+    action: BigInt,
+) -> Result<InputAnalogActionData, Error> {
+    let data = unsafe {
+        sys::SteamAPI_ISteamController_GetAnalogActionData(
+            steam_controller()?,
+            bigint_to_u64(controller, "controller handle")?,
+            bigint_to_u64(action, "controller analog action handle")?,
+        )
+    };
+    Ok(input_analog_action_data(data))
+}
+
+#[napi(js_name = "controllerGetAnalogActionVector")]
+pub fn controller_get_analog_action_vector(
+    controller: BigInt,
+    action: BigInt,
+) -> Result<AnalogActionVector, Error> {
+    let data = controller_get_analog_action_data(controller, action)?;
+    Ok(AnalogActionVector {
+        x: data.x,
+        y: data.y,
+    })
+}
+
+#[napi(js_name = "controllerGetAnalogActionOrigins")]
+pub fn controller_get_analog_action_origins(
+    controller: BigInt,
+    action_set: BigInt,
+    action: BigInt,
+) -> Result<Vec<u32>, Error> {
+    let steam_controller = steam_controller()?;
+    let mut origins = vec![0u32; sys::STEAM_CONTROLLER_MAX_ORIGINS as usize];
+    let count = unsafe {
+        steam_api_isteam_controller_get_analog_action_origins_raw(
+            steam_controller,
+            bigint_to_u64(controller, "controller handle")?,
+            bigint_to_u64(action_set, "controller action set handle")?,
+            bigint_to_u64(action, "controller analog action handle")?,
+            origins.as_mut_ptr(),
+        )
+    };
+    origins.truncate(count.max(0) as usize);
+    Ok(origins)
+}
+
+#[napi(js_name = "controllerGetGlyphForActionOrigin")]
+pub fn controller_get_glyph_for_action_origin(origin: u32) -> Result<String, Error> {
+    Ok(string_from_ptr(unsafe {
+        steam_api_isteam_controller_get_glyph_for_action_origin_raw(
+            steam_controller()?,
+            controller_action_origin_value(origin)?,
+        )
+    }))
+}
+
+#[napi(js_name = "controllerGetStringForActionOrigin")]
+pub fn controller_get_string_for_action_origin(origin: u32) -> Result<String, Error> {
+    Ok(string_from_ptr(unsafe {
+        steam_api_isteam_controller_get_string_for_action_origin_raw(
+            steam_controller()?,
+            controller_action_origin_value(origin)?,
+        )
+    }))
+}
+
+#[napi(js_name = "controllerStopAnalogActionMomentum")]
+pub fn controller_stop_analog_action_momentum(
+    controller: BigInt,
+    action: BigInt,
+) -> Result<(), Error> {
+    unsafe {
+        sys::SteamAPI_ISteamController_StopAnalogActionMomentum(
+            steam_controller()?,
+            bigint_to_u64(controller, "controller handle")?,
+            bigint_to_u64(action, "controller analog action handle")?,
+        );
+    }
+    Ok(())
+}
+
+#[napi(js_name = "controllerGetMotionData")]
+pub fn controller_get_motion_data(controller: BigInt) -> Result<InputMotionData, Error> {
+    let data = unsafe {
+        sys::SteamAPI_ISteamController_GetMotionData(
+            steam_controller()?,
+            bigint_to_u64(controller, "controller handle")?,
+        )
+    };
+    Ok(input_motion_data(data))
+}
+
+#[napi(js_name = "controllerTriggerHapticPulse")]
+pub fn controller_trigger_haptic_pulse(
+    controller: BigInt,
+    target_pad: u32,
+    duration_microseconds: u32,
+) -> Result<(), Error> {
+    unsafe {
+        sys::SteamAPI_ISteamController_TriggerHapticPulse(
+            steam_controller()?,
+            bigint_to_u64(controller, "controller handle")?,
+            steam_controller_pad_from_u32(target_pad)?,
+            input_u16(duration_microseconds, "duration microseconds")?,
+        );
+    }
+    Ok(())
+}
+
+#[napi(js_name = "controllerTriggerRepeatedHapticPulse")]
+pub fn controller_trigger_repeated_haptic_pulse(
+    controller: BigInt,
+    target_pad: u32,
+    duration_microseconds: u32,
+    off_microseconds: u32,
+    repeat: u32,
+    flags: Option<u32>,
+) -> Result<(), Error> {
+    unsafe {
+        sys::SteamAPI_ISteamController_TriggerRepeatedHapticPulse(
+            steam_controller()?,
+            bigint_to_u64(controller, "controller handle")?,
+            steam_controller_pad_from_u32(target_pad)?,
+            input_u16(duration_microseconds, "duration microseconds")?,
+            input_u16(off_microseconds, "off microseconds")?,
+            input_u16(repeat, "repeat")?,
+            flags.unwrap_or(0),
+        );
+    }
+    Ok(())
+}
+
+#[napi(js_name = "controllerTriggerVibration")]
+pub fn controller_trigger_vibration(
+    controller: BigInt,
+    left_speed: u32,
+    right_speed: u32,
+) -> Result<(), Error> {
+    unsafe {
+        sys::SteamAPI_ISteamController_TriggerVibration(
+            steam_controller()?,
+            bigint_to_u64(controller, "controller handle")?,
+            input_u16(left_speed, "left speed")?,
+            input_u16(right_speed, "right speed")?,
+        );
+    }
+    Ok(())
+}
+
+#[napi(js_name = "controllerSetLedColor")]
+pub fn controller_set_led_color(
+    controller: BigInt,
+    red: u32,
+    green: u32,
+    blue: u32,
+    flags: Option<u32>,
+) -> Result<(), Error> {
+    unsafe {
+        sys::SteamAPI_ISteamController_SetLEDColor(
+            steam_controller()?,
+            bigint_to_u64(controller, "controller handle")?,
+            input_u8(red, "red")?,
+            input_u8(green, "green")?,
+            input_u8(blue, "blue")?,
+            flags.unwrap_or(0),
+        );
+    }
+    Ok(())
+}
+
+#[napi(js_name = "controllerShowBindingPanel")]
+pub fn controller_show_binding_panel(controller: BigInt) -> Result<bool, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamController_ShowBindingPanel(
+            steam_controller()?,
+            bigint_to_u64(controller, "controller handle")?,
+        )
+    })
+}
+
+#[napi(js_name = "controllerGetControllerType")]
+pub fn controller_get_controller_type(controller: BigInt) -> Result<String, Error> {
+    Ok(input_type_name(unsafe {
+        sys::SteamAPI_ISteamController_GetInputTypeForHandle(
+            steam_controller()?,
+            bigint_to_u64(controller, "controller handle")?,
+        )
+    })
+    .to_owned())
+}
+
+#[napi(js_name = "controllerGetControllerForGamepadIndex")]
+pub fn controller_get_controller_for_gamepad_index(index: i32) -> Result<Option<BigInt>, Error> {
+    let handle = unsafe {
+        sys::SteamAPI_ISteamController_GetControllerForGamepadIndex(steam_controller()?, index)
+    };
+    Ok((handle != 0).then(|| handle.into()))
+}
+
+#[napi(js_name = "controllerGetGamepadIndexForController")]
+pub fn controller_get_gamepad_index_for_controller(controller: BigInt) -> Result<i32, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamController_GetGamepadIndexForController(
+            steam_controller()?,
+            bigint_to_u64(controller, "controller handle")?,
+        )
+    })
+}
+
+#[napi(js_name = "controllerGetStringForXboxOrigin")]
+pub fn controller_get_string_for_xbox_origin(origin: u32) -> Result<String, Error> {
+    Ok(string_from_ptr(unsafe {
+        sys::SteamAPI_ISteamController_GetStringForXboxOrigin(
+            steam_controller()?,
+            xbox_origin_from_u32(origin)?,
+        )
+    }))
+}
+
+#[napi(js_name = "controllerGetGlyphForXboxOrigin")]
+pub fn controller_get_glyph_for_xbox_origin(origin: u32) -> Result<String, Error> {
+    Ok(string_from_ptr(unsafe {
+        sys::SteamAPI_ISteamController_GetGlyphForXboxOrigin(
+            steam_controller()?,
+            xbox_origin_from_u32(origin)?,
+        )
+    }))
+}
+
+#[napi(js_name = "controllerGetActionOriginFromXboxOrigin")]
+pub fn controller_get_action_origin_from_xbox_origin(
+    controller: BigInt,
+    origin: u32,
+) -> Result<u32, Error> {
+    Ok(unsafe {
+        steam_api_isteam_controller_get_action_origin_from_xbox_origin_raw(
+            steam_controller()?,
+            bigint_to_u64(controller, "controller handle")?,
+            xbox_origin_value(origin)?,
+        )
+    })
+}
+
+#[napi(js_name = "controllerTranslateActionOrigin")]
+pub fn controller_translate_action_origin(
+    destination_input_type: u32,
+    source_origin: u32,
+) -> Result<u32, Error> {
+    Ok(unsafe {
+        steam_api_isteam_controller_translate_action_origin_raw(
+            steam_controller()?,
+            steam_input_type_from_u32(destination_input_type)?,
+            controller_action_origin_value(source_origin)?,
+        )
+    })
+}
+
+#[napi(js_name = "controllerGetControllerBindingRevision")]
+pub fn controller_get_controller_binding_revision(
+    controller: BigInt,
+) -> Result<Option<InputDeviceBindingRevision>, Error> {
+    let mut major = 0;
+    let mut minor = 0;
+    let ok = unsafe {
+        sys::SteamAPI_ISteamController_GetControllerBindingRevision(
+            steam_controller()?,
+            bigint_to_u64(controller, "controller handle")?,
+            &mut major,
+            &mut minor,
+        )
+    };
+    Ok(ok.then_some(InputDeviceBindingRevision { major, minor }))
 }
 
 #[napi(js_name = "statsGetInt")]
@@ -12919,6 +13427,14 @@ fn steam_input() -> Result<*mut sys::ISteamInput, Error> {
     non_null(unsafe { sys::SteamAPI_SteamInput_v006() }, "ISteamInput")
 }
 
+fn steam_controller() -> Result<*mut sys::ISteamController, Error> {
+    crate::state::ensure_initialized()?;
+    non_null(
+        unsafe { sys::SteamAPI_SteamController_v008() },
+        "ISteamController",
+    )
+}
+
 fn steam_networking() -> Result<*mut sys::ISteamNetworking, Error> {
     crate::state::ensure_initialized()?;
     non_null(
@@ -17395,6 +17911,17 @@ fn input_action_origin_value(value: u32) -> Result<u32, Error> {
     } else {
         Err(Error::from_reason(format!(
             "invalid input action origin {value}"
+        )))
+    }
+}
+
+fn controller_action_origin_value(value: u32) -> Result<u32, Error> {
+    if value <= sys::EControllerActionOrigin::k_EControllerActionOrigin_MaximumPossibleValue as u32
+    {
+        Ok(value)
+    } else {
+        Err(Error::from_reason(format!(
+            "invalid controller action origin {value}"
         )))
     }
 }

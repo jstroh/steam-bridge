@@ -1872,6 +1872,50 @@ export interface NativeBinding {
   inputGetRemotePlaySessionId(controller: bigint): number;
   inputGetSessionInputConfigurationSettings(): number;
 
+  controllerInit(): boolean;
+  controllerShutdown(): boolean;
+  controllerRunFrame(): void;
+  controllerGetControllers(): NativeInputControllerInfo[];
+  controllerGetActionSet(actionSetName: string): bigint;
+  controllerGetDigitalAction(actionName: string): bigint;
+  controllerGetAnalogAction(actionName: string): bigint;
+  controllerActivateActionSet(controller: bigint, actionSet: bigint): void;
+  controllerGetCurrentActionSet(controller: bigint): bigint;
+  controllerActivateActionSetLayer(controller: bigint, actionSetLayer: bigint): void;
+  controllerDeactivateActionSetLayer(controller: bigint, actionSetLayer: bigint): void;
+  controllerDeactivateAllActionSetLayers(controller: bigint): void;
+  controllerGetActiveActionSetLayers(controller: bigint): bigint[];
+  controllerGetDigitalActionData(controller: bigint, action: bigint): NativeInputDigitalActionData;
+  controllerIsDigitalActionPressed(controller: bigint, action: bigint): boolean;
+  controllerGetDigitalActionOrigins(controller: bigint, actionSet: bigint, action: bigint): number[];
+  controllerGetAnalogActionData(controller: bigint, action: bigint): NativeInputAnalogActionData;
+  controllerGetAnalogActionVector(controller: bigint, action: bigint): NativeAnalogActionVector;
+  controllerGetAnalogActionOrigins(controller: bigint, actionSet: bigint, action: bigint): number[];
+  controllerGetGlyphForActionOrigin(origin: number): string;
+  controllerGetStringForActionOrigin(origin: number): string;
+  controllerStopAnalogActionMomentum(controller: bigint, action: bigint): void;
+  controllerGetMotionData(controller: bigint): NativeInputMotionData;
+  controllerTriggerHapticPulse(controller: bigint, targetPad: number, durationMicroseconds: number): void;
+  controllerTriggerRepeatedHapticPulse(
+    controller: bigint,
+    targetPad: number,
+    durationMicroseconds: number,
+    offMicroseconds: number,
+    repeat: number,
+    flags?: number | null
+  ): void;
+  controllerTriggerVibration(controller: bigint, leftSpeed: number, rightSpeed: number): void;
+  controllerSetLedColor(controller: bigint, red: number, green: number, blue: number, flags?: number | null): void;
+  controllerShowBindingPanel(controller: bigint): boolean;
+  controllerGetControllerType(controller: bigint): string;
+  controllerGetControllerForGamepadIndex(index: number): bigint | null | undefined;
+  controllerGetGamepadIndexForController(controller: bigint): number;
+  controllerGetStringForXboxOrigin(origin: number): string;
+  controllerGetGlyphForXboxOrigin(origin: number): string;
+  controllerGetActionOriginFromXboxOrigin(controller: bigint, origin: number): number;
+  controllerTranslateActionOrigin(destinationInputType: number, sourceOrigin: number): number;
+  controllerGetControllerBindingRevision(controller: bigint): NativeInputDeviceBindingRevision | null | undefined;
+
   statsGetInt(name: string): number | null | undefined;
   statsGetFloat(name: string): number | null | undefined;
   statsSetInt(name: string, value: number): boolean;

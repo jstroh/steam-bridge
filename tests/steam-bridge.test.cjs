@@ -603,6 +603,154 @@ function createFakeNative(overrides = {}) {
       calls.push({ method: "inputGetSessionInputConfigurationSettings", args: [] });
       return 3;
     },
+    controllerInit() {
+      calls.push({ method: "controllerInit", args: [] });
+      return true;
+    },
+    controllerShutdown() {
+      calls.push({ method: "controllerShutdown", args: [] });
+      return true;
+    },
+    controllerRunFrame() {
+      calls.push({ method: "controllerRunFrame", args: [] });
+    },
+    controllerGetControllers() {
+      calls.push({ method: "controllerGetControllers", args: [] });
+      return [{ handle: "789", inputType: "SteamController" }];
+    },
+    controllerGetControllerForGamepadIndex(index) {
+      calls.push({ method: "controllerGetControllerForGamepadIndex", args: [index] });
+      return index === 0 ? 789n : null;
+    },
+    controllerGetActionSet(actionSetName) {
+      calls.push({ method: "controllerGetActionSet", args: [actionSetName] });
+      return 110n;
+    },
+    controllerGetDigitalAction(actionName) {
+      calls.push({ method: "controllerGetDigitalAction", args: [actionName] });
+      return 120n;
+    },
+    controllerGetAnalogAction(actionName) {
+      calls.push({ method: "controllerGetAnalogAction", args: [actionName] });
+      return 130n;
+    },
+    controllerActivateActionSet(controller, actionSet) {
+      calls.push({ method: "controllerActivateActionSet", args: [controller, actionSet] });
+    },
+    controllerGetCurrentActionSet(controller) {
+      calls.push({ method: "controllerGetCurrentActionSet", args: [controller] });
+      return 110n;
+    },
+    controllerActivateActionSetLayer(controller, actionSetLayer) {
+      calls.push({ method: "controllerActivateActionSetLayer", args: [controller, actionSetLayer] });
+    },
+    controllerDeactivateActionSetLayer(controller, actionSetLayer) {
+      calls.push({ method: "controllerDeactivateActionSetLayer", args: [controller, actionSetLayer] });
+    },
+    controllerDeactivateAllActionSetLayers(controller) {
+      calls.push({ method: "controllerDeactivateAllActionSetLayers", args: [controller] });
+    },
+    controllerGetActiveActionSetLayers(controller) {
+      calls.push({ method: "controllerGetActiveActionSetLayers", args: [controller] });
+      return ["111", 112n];
+    },
+    controllerGetDigitalActionData(controller, action) {
+      calls.push({ method: "controllerGetDigitalActionData", args: [controller, action] });
+      return { state: true, active: true };
+    },
+    controllerIsDigitalActionPressed(controller, action) {
+      calls.push({ method: "controllerIsDigitalActionPressed", args: [controller, action] });
+      return true;
+    },
+    controllerGetDigitalActionOrigins(controller, actionSet, action) {
+      calls.push({ method: "controllerGetDigitalActionOrigins", args: [controller, actionSet, action] });
+      return [5, 6];
+    },
+    controllerGetAnalogActionData(controller, action) {
+      calls.push({ method: "controllerGetAnalogActionData", args: [controller, action] });
+      return { mode: 2, x: 0.5, y: -0.25, active: true };
+    },
+    controllerGetAnalogActionVector(controller, action) {
+      calls.push({ method: "controllerGetAnalogActionVector", args: [controller, action] });
+      return { x: 0.5, y: -0.25 };
+    },
+    controllerGetAnalogActionOrigins(controller, actionSet, action) {
+      calls.push({ method: "controllerGetAnalogActionOrigins", args: [controller, actionSet, action] });
+      return [7, 8];
+    },
+    controllerGetGlyphForActionOrigin(origin) {
+      calls.push({ method: "controllerGetGlyphForActionOrigin", args: [origin] });
+      return "legacy-glyph";
+    },
+    controllerGetStringForActionOrigin(origin) {
+      calls.push({ method: "controllerGetStringForActionOrigin", args: [origin] });
+      return "Legacy A";
+    },
+    controllerStopAnalogActionMomentum(controller, action) {
+      calls.push({ method: "controllerStopAnalogActionMomentum", args: [controller, action] });
+    },
+    controllerGetMotionData(controller) {
+      calls.push({ method: "controllerGetMotionData", args: [controller] });
+      return {
+        rotationQuaternionX: 0.4,
+        rotationQuaternionY: 0.5,
+        rotationQuaternionZ: 0.6,
+        rotationQuaternionW: 1,
+        positionAccelerationX: 7,
+        positionAccelerationY: 8,
+        positionAccelerationZ: 9,
+        rotationVelocityX: 10,
+        rotationVelocityY: 11,
+        rotationVelocityZ: 12
+      };
+    },
+    controllerTriggerHapticPulse(controller, targetPad, durationMicroseconds) {
+      calls.push({ method: "controllerTriggerHapticPulse", args: [controller, targetPad, durationMicroseconds] });
+    },
+    controllerTriggerRepeatedHapticPulse(controller, targetPad, durationMicroseconds, offMicroseconds, repeat, flags) {
+      calls.push({
+        method: "controllerTriggerRepeatedHapticPulse",
+        args: [controller, targetPad, durationMicroseconds, offMicroseconds, repeat, flags]
+      });
+    },
+    controllerTriggerVibration(controller, leftSpeed, rightSpeed) {
+      calls.push({ method: "controllerTriggerVibration", args: [controller, leftSpeed, rightSpeed] });
+    },
+    controllerSetLedColor(controller, red, green, blue, flags) {
+      calls.push({ method: "controllerSetLedColor", args: [controller, red, green, blue, flags] });
+    },
+    controllerShowBindingPanel(controller) {
+      calls.push({ method: "controllerShowBindingPanel", args: [controller] });
+      return true;
+    },
+    controllerGetControllerType(controller) {
+      calls.push({ method: "controllerGetControllerType", args: [controller] });
+      return "SteamController";
+    },
+    controllerGetGamepadIndexForController(controller) {
+      calls.push({ method: "controllerGetGamepadIndexForController", args: [controller] });
+      return 1;
+    },
+    controllerGetStringForXboxOrigin(origin) {
+      calls.push({ method: "controllerGetStringForXboxOrigin", args: [origin] });
+      return "legacy A";
+    },
+    controllerGetGlyphForXboxOrigin(origin) {
+      calls.push({ method: "controllerGetGlyphForXboxOrigin", args: [origin] });
+      return "legacy-xbox-a";
+    },
+    controllerGetActionOriginFromXboxOrigin(controller, origin) {
+      calls.push({ method: "controllerGetActionOriginFromXboxOrigin", args: [controller, origin] });
+      return 9;
+    },
+    controllerTranslateActionOrigin(destinationInputType, sourceOrigin) {
+      calls.push({ method: "controllerTranslateActionOrigin", args: [destinationInputType, sourceOrigin] });
+      return 51;
+    },
+    controllerGetControllerBindingRevision(controller) {
+      calls.push({ method: "controllerGetControllerBindingRevision", args: [controller] });
+      return { major: 3, minor: 4 };
+    },
     networkingReadP2PPacket(size) {
       calls.push({ method: "networkingReadP2PPacket", args: [size] });
       return {
@@ -2890,6 +3038,57 @@ test("cloud, input, and networking facades coerce native values", async (t) => {
   assert.deepEqual(fake.calls.find((call) => call.method === "inputSetLedColor"), {
     method: "inputSetLedColor",
     args: [123n, 1, 2, 3, steam.input.InputLedFlag.SetColor]
+  });
+
+  assert.equal(steam.controller.init(), true);
+  steam.controller.runFrame();
+  const legacyControllers = steam.controller.getControllers();
+  assert.equal(legacyControllers[0].getHandle(), 789n);
+  assert.equal(legacyControllers[0].getType(), steam.InputType.SteamController);
+  assert.equal(steam.controller.getControllerForGamepadIndex(0)?.getHandle(), 789n);
+  assert.equal(steam.controller.getControllerForGamepadIndex(1), null);
+  const legacyActionSet = steam.controller.getActionSet("legacy-gameplay");
+  const legacyDigitalAction = steam.controller.getDigitalAction("legacy-jump");
+  const legacyAnalogAction = steam.controller.getAnalogAction("legacy-move");
+  assert.equal(legacyActionSet, 110n);
+  assert.equal(legacyDigitalAction, 120n);
+  assert.equal(legacyAnalogAction, 130n);
+  assert.equal(steam.controller.getGlyphForActionOrigin(5), "legacy-glyph");
+  assert.equal(steam.controller.getStringForActionOrigin(5), "Legacy A");
+  assert.equal(steam.controller.getStringForXboxOrigin(steam.controller.XboxOrigin.A), "legacy A");
+  assert.equal(steam.controller.getGlyphForXboxOrigin(steam.controller.XboxOrigin.A), "legacy-xbox-a");
+  assert.equal(steam.controller.getActionOriginFromXboxOrigin(legacyControllers[0], steam.controller.XboxOrigin.A), 9);
+  assert.equal(steam.controller.translateActionOrigin(steam.controller.InputTypeCode.PS4Controller, 5), 51);
+  legacyControllers[0].activateActionSet(legacyActionSet);
+  assert.equal(legacyControllers[0].getCurrentActionSet(), 110n);
+  legacyControllers[0].activateActionSetLayer(111n);
+  legacyControllers[0].deactivateActionSetLayer(111n);
+  legacyControllers[0].deactivateAllActionSetLayers();
+  assert.deepEqual(legacyControllers[0].getActiveActionSetLayers(), [111n, 112n]);
+  assert.deepEqual(legacyControllers[0].getDigitalActionData(legacyDigitalAction), { state: true, active: true });
+  assert.equal(legacyControllers[0].isDigitalActionPressed(legacyDigitalAction), true);
+  assert.deepEqual(legacyControllers[0].getDigitalActionOrigins(legacyActionSet, legacyDigitalAction), [5, 6]);
+  assert.deepEqual(legacyControllers[0].getAnalogActionData(legacyAnalogAction), {
+    mode: 2,
+    x: 0.5,
+    y: -0.25,
+    active: true
+  });
+  assert.deepEqual(legacyControllers[0].getAnalogActionVector(legacyAnalogAction), { x: 0.5, y: -0.25 });
+  assert.deepEqual(legacyControllers[0].getAnalogActionOrigins(legacyActionSet, legacyAnalogAction), [7, 8]);
+  legacyControllers[0].stopAnalogActionMomentum(legacyAnalogAction);
+  assert.equal(legacyControllers[0].getMotionData().rotationVelocityZ, 12);
+  legacyControllers[0].triggerHapticPulse(steam.controller.SteamControllerPad.Left, 1000);
+  legacyControllers[0].triggerRepeatedHapticPulse(steam.controller.SteamControllerPad.Right, 1000, 2000, 3);
+  legacyControllers[0].triggerVibration(100, 200);
+  legacyControllers[0].setLedColor(4, 5, 6);
+  assert.equal(legacyControllers[0].showBindingPanel(), true);
+  assert.equal(legacyControllers[0].getGamepadIndex(), 1);
+  assert.deepEqual(legacyControllers[0].getControllerBindingRevision(), { major: 3, minor: 4 });
+  assert.equal(steam.controller.shutdown(), true);
+  assert.deepEqual(fake.calls.find((call) => call.method === "controllerSetLedColor"), {
+    method: "controllerSetLedColor",
+    args: [789n, 4, 5, 6, steam.controller.InputLedFlag.SetColor]
   });
 
   const packet = steam.networking.readP2PPacket(64);

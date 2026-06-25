@@ -2666,6 +2666,116 @@ export class Controller {
   }
 }
 
+export class LegacyController {
+  constructor(private readonly handle: bigint, private readonly cachedType?: string) {}
+
+  activateActionSet(actionSetHandle: bigint): void {
+    native().controllerActivateActionSet(this.handle, actionSetHandle);
+  }
+
+  getCurrentActionSet(): bigint {
+    return BigInt(native().controllerGetCurrentActionSet(this.handle));
+  }
+
+  activateActionSetLayer(actionSetLayerHandle: bigint): void {
+    native().controllerActivateActionSetLayer(this.handle, actionSetLayerHandle);
+  }
+
+  deactivateActionSetLayer(actionSetLayerHandle: bigint): void {
+    native().controllerDeactivateActionSetLayer(this.handle, actionSetLayerHandle);
+  }
+
+  deactivateAllActionSetLayers(): void {
+    native().controllerDeactivateAllActionSetLayers(this.handle);
+  }
+
+  getActiveActionSetLayers(): bigint[] {
+    return native().controllerGetActiveActionSetLayers(this.handle).map(BigInt);
+  }
+
+  getDigitalActionData(actionHandle: bigint): InputDigitalActionData {
+    return normalizeInputDigitalActionData(native().controllerGetDigitalActionData(this.handle, actionHandle));
+  }
+
+  isDigitalActionPressed(actionHandle: bigint): boolean {
+    return native().controllerIsDigitalActionPressed(this.handle, actionHandle);
+  }
+
+  getDigitalActionOrigins(actionSetHandle: bigint, actionHandle: bigint): number[] {
+    return native().controllerGetDigitalActionOrigins(this.handle, actionSetHandle, actionHandle).map(Number);
+  }
+
+  getAnalogActionData(actionHandle: bigint): InputAnalogActionData {
+    return normalizeInputAnalogActionData(native().controllerGetAnalogActionData(this.handle, actionHandle));
+  }
+
+  getAnalogActionVector(actionHandle: bigint): AnalogActionVector {
+    return native().controllerGetAnalogActionVector(this.handle, actionHandle);
+  }
+
+  getAnalogActionOrigins(actionSetHandle: bigint, actionHandle: bigint): number[] {
+    return native().controllerGetAnalogActionOrigins(this.handle, actionSetHandle, actionHandle).map(Number);
+  }
+
+  stopAnalogActionMomentum(actionHandle: bigint): void {
+    native().controllerStopAnalogActionMomentum(this.handle, actionHandle);
+  }
+
+  getMotionData(): InputMotionData {
+    return normalizeInputMotionData(native().controllerGetMotionData(this.handle));
+  }
+
+  triggerHapticPulse(targetPad: number, durationMicroseconds: number): void {
+    native().controllerTriggerHapticPulse(this.handle, targetPad, durationMicroseconds);
+  }
+
+  triggerRepeatedHapticPulse(
+    targetPad: number,
+    durationMicroseconds: number,
+    offMicroseconds: number,
+    repeat: number,
+    flags = 0
+  ): void {
+    native().controllerTriggerRepeatedHapticPulse(
+      this.handle,
+      targetPad,
+      durationMicroseconds,
+      offMicroseconds,
+      repeat,
+      flags
+    );
+  }
+
+  triggerVibration(leftSpeed: number, rightSpeed: number): void {
+    native().controllerTriggerVibration(this.handle, leftSpeed, rightSpeed);
+  }
+
+  setLedColor(red: number, green: number, blue: number, flags = InputLedFlag.SetColor): void {
+    native().controllerSetLedColor(this.handle, red, green, blue, flags);
+  }
+
+  showBindingPanel(): boolean {
+    return native().controllerShowBindingPanel(this.handle);
+  }
+
+  getType(): InputTypeValue {
+    return normalizeInputType(this.cachedType ?? native().controllerGetControllerType(this.handle));
+  }
+
+  getGamepadIndex(): number {
+    return native().controllerGetGamepadIndexForController(this.handle);
+  }
+
+  getControllerBindingRevision(): InputDeviceBindingRevision | null {
+    const revision = native().controllerGetControllerBindingRevision(this.handle);
+    return revision ? { major: Number(revision.major), minor: Number(revision.minor) } : null;
+  }
+
+  getHandle(): bigint {
+    return this.handle;
+  }
+}
+
 export class MatchmakingServerListRequest {
   constructor(
     public readonly handle: bigint,
@@ -4265,6 +4375,61 @@ export const input = {
   },
   shutdown(): void {
     native().inputShutdown();
+  }
+};
+
+export const controller = {
+  InputType,
+  InputTypeCode,
+  SteamControllerPad,
+  InputLedFlag,
+  XboxOrigin,
+  Controller: LegacyController,
+  init(): boolean {
+    return native().controllerInit();
+  },
+  runFrame(): void {
+    native().controllerRunFrame();
+  },
+  getControllers(): LegacyController[] {
+    return native().controllerGetControllers().map((controller: NativeInputControllerInfo) => {
+      return new LegacyController(BigInt(controller.handle), controller.inputType);
+    });
+  },
+  getControllerForGamepadIndex(index: number): LegacyController | null {
+    const handle = native().controllerGetControllerForGamepadIndex(index);
+    return handle == null ? null : new LegacyController(BigInt(handle));
+  },
+  getActionSet(actionSetName: string): bigint {
+    return BigInt(native().controllerGetActionSet(actionSetName));
+  },
+  getDigitalAction(actionName: string): bigint {
+    return BigInt(native().controllerGetDigitalAction(actionName));
+  },
+  getAnalogAction(actionName: string): bigint {
+    return BigInt(native().controllerGetAnalogAction(actionName));
+  },
+  getGlyphForActionOrigin(origin: number): string {
+    return native().controllerGetGlyphForActionOrigin(origin);
+  },
+  getStringForActionOrigin(origin: number): string {
+    return native().controllerGetStringForActionOrigin(origin);
+  },
+  getStringForXboxOrigin(origin: number): string {
+    return native().controllerGetStringForXboxOrigin(origin);
+  },
+  getGlyphForXboxOrigin(origin: number): string {
+    return native().controllerGetGlyphForXboxOrigin(origin);
+  },
+  getActionOriginFromXboxOrigin(controller: LegacyController | bigint, origin: number): number {
+    const handle = typeof controller === "bigint" ? controller : controller.getHandle();
+    return native().controllerGetActionOriginFromXboxOrigin(handle, origin);
+  },
+  translateActionOrigin(destinationInputType: number, sourceOrigin: number): number {
+    return native().controllerTranslateActionOrigin(destinationInputType, sourceOrigin);
+  },
+  shutdown(): boolean {
+    return native().controllerShutdown();
   }
 };
 
@@ -5902,6 +6067,7 @@ export interface SteamBridgeClient {
   auth: typeof auth;
   callback: typeof callback;
   cloud: typeof cloud;
+  controller: typeof controller;
   friends: typeof friends;
   gameServer: typeof gameServer;
   gameServerStats: typeof gameServerStats;
@@ -5933,6 +6099,7 @@ export function createCompatibilityClient(): SteamBridgeClient {
     auth,
     callback,
     cloud,
+    controller,
     friends,
     gameServer,
     gameServerStats,
