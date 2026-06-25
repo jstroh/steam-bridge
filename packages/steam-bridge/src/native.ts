@@ -241,6 +241,68 @@ export interface NativeNetworkingMessagesSessionConnectionInfo {
   quick_status?: NativeNetworkingConnectionRealTimeStatus;
 }
 
+export interface NativeNetworkingAuthenticationStatus {
+  availability: number;
+  debugMessage?: string;
+  debug_message?: string;
+}
+
+export interface NativeNetworkingRelayNetworkStatus {
+  availability: number;
+  pingMeasurementInProgress?: boolean;
+  ping_measurement_in_progress?: boolean;
+  networkConfigAvailability?: number;
+  network_config_availability?: number;
+  anyRelayAvailability?: number;
+  any_relay_availability?: number;
+  debugMessage?: string;
+  debug_message?: string;
+}
+
+export interface NativeNetworkingPingLocation {
+  location: string;
+  ageSeconds?: number;
+  age_seconds?: number;
+}
+
+export interface NativeNetworkingPingDataCenter {
+  pingMs?: number;
+  ping_ms?: number;
+  viaRelayPop?: number;
+  via_relay_pop?: number;
+}
+
+export interface NativeNetworkingIpAddress {
+  text?: string;
+  ipv4?: number;
+  port?: number;
+  localHost?: boolean;
+  local_host?: boolean;
+}
+
+export interface NativeNetworkingIpAddressInfo {
+  text: string;
+  ipv4?: number | null;
+  port?: number;
+  ipv4Address?: string | null;
+  ipv4_address?: string | null;
+  isIpv4?: boolean;
+  is_ipv4?: boolean;
+  isLocalHost?: boolean;
+  is_local_host?: boolean;
+  isFakeIp?: boolean;
+  is_fake_ip?: boolean;
+  fakeIpType?: number;
+  fake_ip_type?: number;
+  ipv6AllZeros?: boolean;
+  ipv6_all_zeros?: boolean;
+}
+
+export interface NativeNetworkingFakeIpIdentity {
+  result: number;
+  identity?: NativeNetworkingIdentityInfo | null;
+}
+
 export interface NativeLobbyResult {
   id: bigint;
 }
@@ -873,6 +935,24 @@ export interface NativeBinding {
   networkingMessagesCloseSessionWithUser(identity: NativeNetworkingIdentity): boolean;
   networkingMessagesCloseChannelWithUser(identity: NativeNetworkingIdentity, channel: number): boolean;
   networkingMessagesGetSessionConnectionInfo(identity: NativeNetworkingIdentity): NativeNetworkingMessagesSessionConnectionInfo;
+  networkingUtilsInitRelayNetworkAccess(): void;
+  networkingUtilsGetRelayNetworkStatus(): NativeNetworkingRelayNetworkStatus;
+  networkingUtilsGetLocalPingLocation(): NativeNetworkingPingLocation;
+  networkingUtilsParsePingLocation(location: string): string | null | undefined;
+  networkingUtilsEstimatePingTimeBetweenTwoLocations(location1: string, location2: string): number;
+  networkingUtilsEstimatePingTimeFromLocalHost(location: string): number;
+  networkingUtilsCheckPingDataUpToDate(maxAgeSeconds?: number): boolean;
+  networkingUtilsGetPingToDataCenter(popId: number): NativeNetworkingPingDataCenter;
+  networkingUtilsGetDirectPingToPop(popId: number): number;
+  networkingUtilsGetPopCount(): number;
+  networkingUtilsGetPopList(maxPops?: number): number[];
+  networkingUtilsGetLocalTimestamp(): bigint;
+  networkingUtilsIsFakeIpv4(ipv4: number): boolean;
+  networkingUtilsGetIpv4FakeIpType(ipv4: number): number;
+  networkingUtilsParseIpAddress(text: string): NativeNetworkingIpAddressInfo | null | undefined;
+  networkingUtilsIpAddressToString(address: NativeNetworkingIpAddress, withPort?: boolean): string;
+  networkingUtilsGetIpAddressFakeIpType(address: NativeNetworkingIpAddress): number;
+  networkingUtilsGetRealIdentityForFakeIp(address: NativeNetworkingIpAddress): NativeNetworkingFakeIpIdentity;
 
   matchmakingCreateLobby(lobbyType: number, maxMembers: number): Promise<NativeLobbyResult>;
   matchmakingJoinLobby(lobbyId: bigint): Promise<NativeLobbyResult>;

@@ -41,11 +41,18 @@ import {
   NativeLeaderboardScoreUploaded,
   NativeLeaderboardUgcSetResult,
   NativeNumberOfCurrentPlayersResult,
+  NativeNetworkingAuthenticationStatus,
   NativeNetworkingConnectionRealTimeStatus,
+  NativeNetworkingFakeIpIdentity,
   NativeNetworkingIdentity,
   NativeNetworkingIdentityInfo,
+  NativeNetworkingIpAddress,
+  NativeNetworkingIpAddressInfo,
   NativeNetworkingMessage,
   NativeNetworkingMessagesSessionConnectionInfo,
+  NativeNetworkingPingDataCenter,
+  NativeNetworkingPingLocation,
+  NativeNetworkingRelayNetworkStatus,
   NativeOverlayDiagnostics,
   NativePartyBeaconDetails,
   NativePartyBeaconLocation,
@@ -320,6 +327,53 @@ export interface NetworkingMessagesSessionConnectionInfo {
   quickStatus: NetworkingConnectionRealTimeStatus | null;
 }
 
+export interface NetworkingAuthenticationStatus {
+  availability: number;
+  debugMessage: string;
+}
+
+export interface NetworkingRelayNetworkStatus {
+  availability: number;
+  pingMeasurementInProgress: boolean;
+  networkConfigAvailability: number;
+  anyRelayAvailability: number;
+  debugMessage: string;
+}
+
+export interface NetworkingPingLocation {
+  location: string;
+  ageSeconds: number;
+}
+
+export interface NetworkingPingDataCenter {
+  pingMs: number;
+  viaRelayPop: number;
+}
+
+export interface NetworkingIpAddress {
+  text?: string;
+  ipv4?: number;
+  port?: number;
+  localHost?: boolean;
+}
+
+export interface NetworkingIpAddressInfo {
+  text: string;
+  ipv4: number | null;
+  port: number;
+  ipv4Address: string | null;
+  isIpv4: boolean;
+  isLocalHost: boolean;
+  isFakeIp: boolean;
+  fakeIpType: number;
+  ipv6AllZeros: boolean;
+}
+
+export interface NetworkingFakeIpIdentity {
+  result: number;
+  identity: NetworkingIdentityInfo | null;
+}
+
 export interface VideoBroadcastStatus {
   broadcasting: boolean;
   viewers: number;
@@ -569,8 +623,10 @@ export const SteamCallback = {
   GameLobbyJoinRequested: 8,
   MicroTxnAuthorizationResponse: 9,
   GameOverlayActivated: 331,
+  SteamNetAuthenticationStatus: 1222,
   SteamNetworkingMessagesSessionRequest: 1251,
   SteamNetworkingMessagesSessionFailed: 1252,
+  SteamRelayNetworkStatus: 1281,
   HTTPRequestCompleted: 2101,
   HTTPRequestHeadersReceived: 2102,
   HTTPRequestDataReceived: 2103,
@@ -857,6 +913,25 @@ export const NetworkingConnectionState = {
   FinWait: -1,
   Linger: -2,
   Dead: -3
+} as const;
+
+export const NetworkingAvailability = {
+  CannotTry: -102,
+  Failed: -101,
+  Previously: -100,
+  Retrying: -10,
+  Unknown: 0,
+  NeverTried: 1,
+  Waiting: 2,
+  Attempting: 3,
+  Current: 100
+} as const;
+
+export const NetworkingFakeIpType = {
+  Invalid: 0,
+  NotFake: 1,
+  GlobalIPv4: 2,
+  LocalIPv4: 3
 } as const;
 
 export const Dialog = {
@@ -1879,6 +1954,8 @@ export const networking = {
   SendType,
   NetworkingSendFlags,
   NetworkingConnectionState,
+  NetworkingAvailability,
+  NetworkingFakeIpType,
   sendP2PPacket(steamId64: bigint, sendType: number, data: Buffer): boolean {
     return native().networkingSendP2PPacket(steamId64, sendType, data);
   },
@@ -1934,6 +2011,66 @@ export const networking = {
     getSessionConnectionInfo(identity: NetworkingIdentity): NetworkingMessagesSessionConnectionInfo {
       return normalizeNetworkingMessagesSessionConnectionInfo(
         native().networkingMessagesGetSessionConnectionInfo(nativeNetworkingIdentity(identity))
+      );
+    }
+  },
+  utils: {
+    Availability: NetworkingAvailability,
+    FakeIpType: NetworkingFakeIpType,
+    initRelayNetworkAccess(): void {
+      native().networkingUtilsInitRelayNetworkAccess();
+    },
+    getRelayNetworkStatus(): NetworkingRelayNetworkStatus {
+      return normalizeNetworkingRelayNetworkStatus(native().networkingUtilsGetRelayNetworkStatus());
+    },
+    getLocalPingLocation(): NetworkingPingLocation {
+      return normalizeNetworkingPingLocation(native().networkingUtilsGetLocalPingLocation());
+    },
+    parsePingLocation(location: string): string | null {
+      return native().networkingUtilsParsePingLocation(location) ?? null;
+    },
+    estimatePingTimeBetweenTwoLocations(location1: string, location2: string): number {
+      return native().networkingUtilsEstimatePingTimeBetweenTwoLocations(location1, location2);
+    },
+    estimatePingTimeFromLocalHost(location: string): number {
+      return native().networkingUtilsEstimatePingTimeFromLocalHost(location);
+    },
+    checkPingDataUpToDate(maxAgeSeconds?: number | null): boolean {
+      return native().networkingUtilsCheckPingDataUpToDate(maxAgeSeconds ?? undefined);
+    },
+    getPingToDataCenter(popId: number): NetworkingPingDataCenter {
+      return normalizeNetworkingPingDataCenter(native().networkingUtilsGetPingToDataCenter(popId));
+    },
+    getDirectPingToPop(popId: number): number {
+      return native().networkingUtilsGetDirectPingToPop(popId);
+    },
+    getPopCount(): number {
+      return native().networkingUtilsGetPopCount();
+    },
+    getPopList(maxPops?: number | null): number[] {
+      return native().networkingUtilsGetPopList(maxPops ?? undefined);
+    },
+    getLocalTimestamp(): bigint {
+      return native().networkingUtilsGetLocalTimestamp();
+    },
+    isFakeIpv4(ipv4: number): boolean {
+      return native().networkingUtilsIsFakeIpv4(ipv4);
+    },
+    getIpv4FakeIpType(ipv4: number): number {
+      return native().networkingUtilsGetIpv4FakeIpType(ipv4);
+    },
+    parseIpAddress(text: string): NetworkingIpAddressInfo | null {
+      return normalizeNetworkingIpAddressInfo(native().networkingUtilsParseIpAddress(text));
+    },
+    ipAddressToString(address: NetworkingIpAddress, withPort = true): string {
+      return native().networkingUtilsIpAddressToString(nativeNetworkingIpAddress(address), withPort);
+    },
+    getIpAddressFakeIpType(address: NetworkingIpAddress): number {
+      return native().networkingUtilsGetIpAddressFakeIpType(nativeNetworkingIpAddress(address));
+    },
+    getRealIdentityForFakeIp(address: NetworkingIpAddress): NetworkingFakeIpIdentity {
+      return normalizeNetworkingFakeIpIdentity(
+        native().networkingUtilsGetRealIdentityForFakeIp(nativeNetworkingIpAddress(address))
       );
     }
   }
@@ -2883,6 +3020,12 @@ function normalizeCallbackEvent(callbackId: number, event: unknown): unknown {
   ) {
     return normalizeNetworkingMessagesCallbackEvent(event);
   }
+  if (
+    callbackId === SteamCallback.SteamNetAuthenticationStatus ||
+    callbackId === SteamCallback.SteamRelayNetworkStatus
+  ) {
+    return normalizeNetworkingUtilsCallbackEvent(callbackId, event);
+  }
   if (!event || typeof event !== "object") {
     return event;
   }
@@ -2946,6 +3089,39 @@ function normalizeNetworkingMessagesCallbackEvent(event: unknown): unknown {
     normalized.info = normalizeNetworkingMessagesSessionConnectionInfo(
       source.info as NativeNetworkingMessagesSessionConnectionInfo
     );
+  }
+
+  return normalized;
+}
+
+function normalizeNetworkingUtilsCallbackEvent(callbackId: number, event: unknown): unknown {
+  if (!event || typeof event !== "object") {
+    return event;
+  }
+
+  const source = event as Record<string, unknown>;
+  const normalized: Record<string, unknown> = { ...source };
+
+  if (callbackId === SteamCallback.SteamNetAuthenticationStatus) {
+    const status = normalizeNetworkingAuthenticationStatus(source as unknown as NativeNetworkingAuthenticationStatus);
+    normalized.availability = status.availability;
+    normalized.debugMessage ??= status.debugMessage;
+  }
+
+  if (source.debug_message !== undefined) {
+    normalized.debugMessage ??= String(source.debug_message);
+  }
+
+  if (source.ping_measurement_in_progress !== undefined) {
+    normalized.pingMeasurementInProgress ??= Boolean(source.ping_measurement_in_progress);
+  }
+
+  if (source.network_config_availability !== undefined) {
+    normalized.networkConfigAvailability ??= Number(source.network_config_availability);
+  }
+
+  if (source.any_relay_availability !== undefined) {
+    normalized.anyRelayAvailability ??= Number(source.any_relay_availability);
   }
 
   return normalized;
@@ -3073,6 +3249,23 @@ function nativeNetworkingIdentity(identity: NetworkingIdentity): NativeNetworkin
   return output;
 }
 
+function nativeNetworkingIpAddress(address: NetworkingIpAddress): NativeNetworkingIpAddress {
+  const output: NativeNetworkingIpAddress = {};
+  if (address.text !== undefined) {
+    output.text = address.text;
+  }
+  if (address.ipv4 !== undefined) {
+    output.ipv4 = address.ipv4;
+  }
+  if (address.port !== undefined) {
+    output.port = address.port;
+  }
+  if (address.localHost !== undefined) {
+    output.localHost = address.localHost;
+  }
+  return output;
+}
+
 function normalizeNetworkingIdentityInfo(
   identity: NativeNetworkingIdentityInfo | null | undefined
 ): NetworkingIdentityInfo | null {
@@ -3106,6 +3299,74 @@ function normalizeNetworkingIdentityInfoRequired(
       fakeIpType: 0
     }
   );
+}
+
+function normalizeNetworkingRelayNetworkStatus(
+  status: NativeNetworkingRelayNetworkStatus
+): NetworkingRelayNetworkStatus {
+  const source = status as unknown as Record<string, unknown>;
+  return {
+    availability: Number(status.availability),
+    pingMeasurementInProgress: Boolean(source.pingMeasurementInProgress ?? source.ping_measurement_in_progress),
+    networkConfigAvailability: Number(source.networkConfigAvailability ?? source.network_config_availability ?? 0),
+    anyRelayAvailability: Number(source.anyRelayAvailability ?? source.any_relay_availability ?? 0),
+    debugMessage: String(source.debugMessage ?? source.debug_message ?? "")
+  };
+}
+
+function normalizeNetworkingAuthenticationStatus(
+  status: NativeNetworkingAuthenticationStatus
+): NetworkingAuthenticationStatus {
+  const source = status as unknown as Record<string, unknown>;
+  return {
+    availability: Number(status.availability),
+    debugMessage: String(source.debugMessage ?? source.debug_message ?? "")
+  };
+}
+
+function normalizeNetworkingPingLocation(location: NativeNetworkingPingLocation): NetworkingPingLocation {
+  const source = location as unknown as Record<string, unknown>;
+  return {
+    location: String(location.location ?? ""),
+    ageSeconds: Number(source.ageSeconds ?? source.age_seconds ?? 0)
+  };
+}
+
+function normalizeNetworkingPingDataCenter(dataCenter: NativeNetworkingPingDataCenter): NetworkingPingDataCenter {
+  const source = dataCenter as unknown as Record<string, unknown>;
+  return {
+    pingMs: Number(source.pingMs ?? source.ping_ms ?? 0),
+    viaRelayPop: Number(source.viaRelayPop ?? source.via_relay_pop ?? 0)
+  };
+}
+
+function normalizeNetworkingIpAddressInfo(
+  address: NativeNetworkingIpAddressInfo | null | undefined
+): NetworkingIpAddressInfo | null {
+  if (!address) {
+    return null;
+  }
+  const source = address as unknown as Record<string, unknown>;
+  const ipv4 = source.ipv4;
+  const ipv4Address = source.ipv4Address ?? source.ipv4_address;
+  return {
+    text: String(address.text ?? ""),
+    ipv4: ipv4 == null ? null : Number(ipv4),
+    port: Number(source.port ?? 0),
+    ipv4Address: ipv4Address == null ? null : String(ipv4Address),
+    isIpv4: Boolean(source.isIpv4 ?? source.is_ipv4),
+    isLocalHost: Boolean(source.isLocalHost ?? source.is_local_host),
+    isFakeIp: Boolean(source.isFakeIp ?? source.is_fake_ip),
+    fakeIpType: Number(source.fakeIpType ?? source.fake_ip_type ?? 0),
+    ipv6AllZeros: Boolean(source.ipv6AllZeros ?? source.ipv6_all_zeros)
+  };
+}
+
+function normalizeNetworkingFakeIpIdentity(identity: NativeNetworkingFakeIpIdentity): NetworkingFakeIpIdentity {
+  return {
+    result: Number(identity.result ?? 0),
+    identity: normalizeNetworkingIdentityInfo(identity.identity)
+  };
 }
 
 function normalizeNetworkingMessage(message: NativeNetworkingMessage): NetworkingMessage {

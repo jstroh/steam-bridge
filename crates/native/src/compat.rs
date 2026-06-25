@@ -30,8 +30,10 @@ const CALLBACK_LOBBY_CHAT_UPDATE: i32 = 506;
 const CALLBACK_GAME_LOBBY_JOIN_REQUESTED: i32 = 333;
 const CALLBACK_P2P_SESSION_REQUEST: i32 = 1202;
 const CALLBACK_P2P_SESSION_CONNECT_FAIL: i32 = 1203;
+const CALLBACK_STEAM_NET_AUTHENTICATION_STATUS: i32 = 1222;
 const CALLBACK_STEAM_NETWORKING_MESSAGES_SESSION_REQUEST: i32 = 1251;
 const CALLBACK_STEAM_NETWORKING_MESSAGES_SESSION_FAILED: i32 = 1252;
+const CALLBACK_STEAM_RELAY_NETWORK_STATUS: i32 = 1281;
 const CALLBACK_HTTP_REQUEST_COMPLETED: i32 = 2101;
 const CALLBACK_HTTP_REQUEST_HEADERS_RECEIVED: i32 = 2102;
 const CALLBACK_HTTP_REQUEST_DATA_RECEIVED: i32 = 2103;
@@ -274,6 +276,67 @@ pub struct NetworkingMessagesSessionConnectionInfo {
     pub connection_description: String,
     pub flags: i32,
     pub quick_status: NetworkingConnectionRealTimeStatus,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct NetworkingAuthenticationStatus {
+    pub availability: i32,
+    pub debug_message: String,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct NetworkingRelayNetworkStatus {
+    pub availability: i32,
+    pub ping_measurement_in_progress: bool,
+    pub network_config_availability: i32,
+    pub any_relay_availability: i32,
+    pub debug_message: String,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct NetworkingPingLocation {
+    pub location: String,
+    pub age_seconds: f64,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct NetworkingPingDataCenter {
+    pub ping_ms: i32,
+    pub via_relay_pop: u32,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct NetworkingIpAddress {
+    pub text: Option<String>,
+    pub ipv4: Option<u32>,
+    pub port: Option<u32>,
+    pub local_host: Option<bool>,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct NetworkingIpAddressInfo {
+    pub text: String,
+    pub ipv4: Option<u32>,
+    pub port: u32,
+    pub ipv4_address: Option<String>,
+    pub is_ipv4: bool,
+    pub is_local_host: bool,
+    pub is_fake_ip: bool,
+    pub fake_ip_type: u32,
+    pub ipv6_all_zeros: bool,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct NetworkingFakeIpIdentity {
+    pub result: u32,
+    pub identity: Option<NetworkingIdentityInfo>,
 }
 
 #[derive(Debug)]
@@ -4491,6 +4554,229 @@ pub fn networking_messages_get_session_connection_info(
     ))
 }
 
+#[napi(js_name = "networkingUtilsInitRelayNetworkAccess")]
+pub fn networking_utils_init_relay_network_access() -> Result<(), Error> {
+    unsafe {
+        sys::SteamAPI_ISteamNetworkingUtils_InitRelayNetworkAccess(steam_networking_utils()?)
+    };
+    Ok(())
+}
+
+#[napi(js_name = "networkingUtilsGetRelayNetworkStatus")]
+pub fn networking_utils_get_relay_network_status() -> Result<NetworkingRelayNetworkStatus, Error> {
+    let mut status =
+        unsafe { MaybeUninit::<sys::SteamRelayNetworkStatus_t>::zeroed().assume_init() };
+    let availability = unsafe {
+        sys::SteamAPI_ISteamNetworkingUtils_GetRelayNetworkStatus(
+            steam_networking_utils()?,
+            &mut status,
+        )
+    };
+    Ok(networking_relay_network_status(&status, availability))
+}
+
+#[napi(js_name = "networkingUtilsGetLocalPingLocation")]
+pub fn networking_utils_get_local_ping_location() -> Result<NetworkingPingLocation, Error> {
+    let utils = steam_networking_utils()?;
+    let mut location =
+        unsafe { MaybeUninit::<sys::SteamNetworkPingLocation_t>::zeroed().assume_init() };
+    let age_seconds =
+        unsafe { sys::SteamAPI_ISteamNetworkingUtils_GetLocalPingLocation(utils, &mut location) };
+    Ok(NetworkingPingLocation {
+        location: networking_ping_location_string(utils, &location),
+        age_seconds: f64::from(age_seconds),
+    })
+}
+
+#[napi(js_name = "networkingUtilsParsePingLocation")]
+pub fn networking_utils_parse_ping_location(location: String) -> Result<Option<String>, Error> {
+    let utils = steam_networking_utils()?;
+    let location_string = cstring(location, "networking ping location")?;
+    let mut output =
+        unsafe { MaybeUninit::<sys::SteamNetworkPingLocation_t>::zeroed().assume_init() };
+    let ok = unsafe {
+        sys::SteamAPI_ISteamNetworkingUtils_ParsePingLocationString(
+            utils,
+            location_string.as_ptr(),
+            &mut output,
+        )
+    };
+    Ok(ok.then(|| networking_ping_location_string(utils, &output)))
+}
+
+#[napi(js_name = "networkingUtilsEstimatePingTimeBetweenTwoLocations")]
+pub fn networking_utils_estimate_ping_time_between_two_locations(
+    location1: String,
+    location2: String,
+) -> Result<i32, Error> {
+    let utils = steam_networking_utils()?;
+    let location1 = networking_ping_location_from_string(utils, location1)?;
+    let location2 = networking_ping_location_from_string(utils, location2)?;
+    Ok(unsafe {
+        sys::SteamAPI_ISteamNetworkingUtils_EstimatePingTimeBetweenTwoLocations(
+            utils, &location1, &location2,
+        )
+    })
+}
+
+#[napi(js_name = "networkingUtilsEstimatePingTimeFromLocalHost")]
+pub fn networking_utils_estimate_ping_time_from_local_host(location: String) -> Result<i32, Error> {
+    let utils = steam_networking_utils()?;
+    let location = networking_ping_location_from_string(utils, location)?;
+    Ok(unsafe {
+        sys::SteamAPI_ISteamNetworkingUtils_EstimatePingTimeFromLocalHost(utils, &location)
+    })
+}
+
+#[napi(js_name = "networkingUtilsCheckPingDataUpToDate")]
+pub fn networking_utils_check_ping_data_up_to_date(
+    max_age_seconds: Option<f64>,
+) -> Result<bool, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamNetworkingUtils_CheckPingDataUpToDate(
+            steam_networking_utils()?,
+            max_age_seconds.unwrap_or(60.0) as f32,
+        )
+    })
+}
+
+#[napi(js_name = "networkingUtilsGetPingToDataCenter")]
+pub fn networking_utils_get_ping_to_data_center(
+    pop_id: u32,
+) -> Result<NetworkingPingDataCenter, Error> {
+    let mut via_relay_pop = 0u32;
+    let ping_ms = unsafe {
+        sys::SteamAPI_ISteamNetworkingUtils_GetPingToDataCenter(
+            steam_networking_utils()?,
+            pop_id,
+            &mut via_relay_pop,
+        )
+    };
+    Ok(NetworkingPingDataCenter {
+        ping_ms,
+        via_relay_pop,
+    })
+}
+
+#[napi(js_name = "networkingUtilsGetDirectPingToPop")]
+pub fn networking_utils_get_direct_ping_to_pop(pop_id: u32) -> Result<i32, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamNetworkingUtils_GetDirectPingToPOP(steam_networking_utils()?, pop_id)
+    })
+}
+
+#[napi(js_name = "networkingUtilsGetPopCount")]
+pub fn networking_utils_get_pop_count() -> Result<i32, Error> {
+    Ok(unsafe { sys::SteamAPI_ISteamNetworkingUtils_GetPOPCount(steam_networking_utils()?) })
+}
+
+#[napi(js_name = "networkingUtilsGetPopList")]
+pub fn networking_utils_get_pop_list(max_pops: Option<u32>) -> Result<Vec<u32>, Error> {
+    let utils = steam_networking_utils()?;
+    let capacity = max_pops
+        .map(|value| {
+            i32::try_from(value).map_err(|_| Error::from_reason("max POP count exceeds i32"))
+        })
+        .transpose()?
+        .unwrap_or_else(|| unsafe { sys::SteamAPI_ISteamNetworkingUtils_GetPOPCount(utils) })
+        .max(0);
+    if capacity == 0 {
+        return Ok(Vec::new());
+    }
+    let mut pops = vec![0u32; capacity as usize];
+    let count = unsafe {
+        sys::SteamAPI_ISteamNetworkingUtils_GetPOPList(utils, pops.as_mut_ptr(), capacity)
+    };
+    pops.truncate(count.max(0).min(capacity) as usize);
+    Ok(pops)
+}
+
+#[napi(js_name = "networkingUtilsGetLocalTimestamp")]
+pub fn networking_utils_get_local_timestamp() -> Result<BigInt, Error> {
+    Ok(
+        unsafe { sys::SteamAPI_ISteamNetworkingUtils_GetLocalTimestamp(steam_networking_utils()?) }
+            .into(),
+    )
+}
+
+#[napi(js_name = "networkingUtilsIsFakeIpv4")]
+pub fn networking_utils_is_fake_ipv4(ipv4: u32) -> Result<bool, Error> {
+    Ok(unsafe { sys::SteamAPI_ISteamNetworkingUtils_IsFakeIPv4(steam_networking_utils()?, ipv4) })
+}
+
+#[napi(js_name = "networkingUtilsGetIpv4FakeIpType")]
+pub fn networking_utils_get_ipv4_fake_ip_type(ipv4: u32) -> Result<u32, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamNetworkingUtils_GetIPv4FakeIPType(steam_networking_utils()?, ipv4)
+            as u32
+    })
+}
+
+#[napi(js_name = "networkingUtilsParseIpAddress")]
+pub fn networking_utils_parse_ip_address(
+    text: String,
+) -> Result<Option<NetworkingIpAddressInfo>, Error> {
+    let utils = steam_networking_utils()?;
+    let mut address = unsafe { MaybeUninit::<sys::SteamNetworkingIPAddr>::zeroed().assume_init() };
+    unsafe { sys::SteamAPI_SteamNetworkingIPAddr_Clear(&mut address) };
+    let text = cstring(text, "networking IP address")?;
+    let ok = unsafe {
+        sys::SteamAPI_ISteamNetworkingUtils_SteamNetworkingIPAddr_ParseString(
+            utils,
+            &mut address,
+            text.as_ptr(),
+        )
+    };
+    Ok(ok.then(|| networking_ip_address_info(utils, address, true)))
+}
+
+#[napi(js_name = "networkingUtilsIpAddressToString")]
+pub fn networking_utils_ip_address_to_string(
+    address: NetworkingIpAddress,
+    with_port: Option<bool>,
+) -> Result<String, Error> {
+    let utils = steam_networking_utils()?;
+    let address = networking_ip_address_from_input(address)?;
+    Ok(networking_ip_address_string(
+        utils,
+        &address,
+        with_port.unwrap_or(true),
+    ))
+}
+
+#[napi(js_name = "networkingUtilsGetIpAddressFakeIpType")]
+pub fn networking_utils_get_ip_address_fake_ip_type(
+    address: NetworkingIpAddress,
+) -> Result<u32, Error> {
+    let utils = steam_networking_utils()?;
+    let address = networking_ip_address_from_input(address)?;
+    Ok(unsafe {
+        sys::SteamAPI_ISteamNetworkingUtils_SteamNetworkingIPAddr_GetFakeIPType(utils, &address)
+            as u32
+    })
+}
+
+#[napi(js_name = "networkingUtilsGetRealIdentityForFakeIp")]
+pub fn networking_utils_get_real_identity_for_fake_ip(
+    address: NetworkingIpAddress,
+) -> Result<NetworkingFakeIpIdentity, Error> {
+    let address = networking_ip_address_from_input(address)?;
+    let mut identity =
+        unsafe { MaybeUninit::<sys::SteamNetworkingIdentity>::zeroed().assume_init() };
+    unsafe { sys::SteamAPI_SteamNetworkingIdentity_Clear(&mut identity) };
+    let result = unsafe {
+        sys::SteamAPI_ISteamNetworkingUtils_GetRealIdentityForFakeIP(
+            steam_networking_utils()?,
+            &address,
+            &mut identity,
+        )
+    };
+    Ok(NetworkingFakeIpIdentity {
+        result: result as u32,
+        identity: (result == sys::EResult::k_EResultOK).then(|| networking_identity_info(identity)),
+    })
+}
+
 #[napi(js_name = "utilsGetServerRealTime")]
 pub fn utils_get_server_real_time() -> Result<u32, Error> {
     Ok(unsafe { sys::SteamAPI_ISteamUtils_GetServerRealTime(steam_utils()?) })
@@ -5374,6 +5660,14 @@ fn steam_networking_messages() -> Result<*mut sys::ISteamNetworkingMessages, Err
     non_null(
         unsafe { sys::SteamAPI_SteamNetworkingMessages_SteamAPI_v002() },
         "ISteamNetworkingMessages",
+    )
+}
+
+fn steam_networking_utils() -> Result<*mut sys::ISteamNetworkingUtils, Error> {
+    crate::state::ensure_initialized()?;
+    non_null(
+        unsafe { sys::SteamAPI_SteamNetworkingUtils_SteamAPI_v004() },
+        "ISteamNetworkingUtils",
     )
 }
 
@@ -6265,6 +6559,152 @@ fn networking_messages_session_info_json(info: &sys::SteamNetConnectionInfo_t) -
     })
 }
 
+fn networking_authentication_status(
+    status: &sys::SteamNetAuthenticationStatus_t,
+) -> NetworkingAuthenticationStatus {
+    NetworkingAuthenticationStatus {
+        availability: unsafe { ptr::addr_of!(status.m_eAvail).read_unaligned() } as i32,
+        debug_message: c_buf_to_string(unsafe { &*ptr::addr_of!(status.m_debugMsg) }),
+    }
+}
+
+fn networking_relay_network_status(
+    status: &sys::SteamRelayNetworkStatus_t,
+    availability: sys::ESteamNetworkingAvailability,
+) -> NetworkingRelayNetworkStatus {
+    NetworkingRelayNetworkStatus {
+        availability: availability as i32,
+        ping_measurement_in_progress: unsafe {
+            ptr::addr_of!(status.m_bPingMeasurementInProgress).read_unaligned()
+        } != 0,
+        network_config_availability: unsafe {
+            ptr::addr_of!(status.m_eAvailNetworkConfig).read_unaligned()
+        } as i32,
+        any_relay_availability: unsafe { ptr::addr_of!(status.m_eAvailAnyRelay).read_unaligned() }
+            as i32,
+        debug_message: c_buf_to_string(unsafe { &*ptr::addr_of!(status.m_debugMsg) }),
+    }
+}
+
+fn networking_ping_location_from_string(
+    utils: *mut sys::ISteamNetworkingUtils,
+    location: String,
+) -> Result<sys::SteamNetworkPingLocation_t, Error> {
+    let location_string = cstring(location, "networking ping location")?;
+    let mut output =
+        unsafe { MaybeUninit::<sys::SteamNetworkPingLocation_t>::zeroed().assume_init() };
+    let ok = unsafe {
+        sys::SteamAPI_ISteamNetworkingUtils_ParsePingLocationString(
+            utils,
+            location_string.as_ptr(),
+            &mut output,
+        )
+    };
+    ok.then_some(output)
+        .ok_or_else(|| Error::from_reason("invalid networking ping location string"))
+}
+
+fn networking_ping_location_string(
+    utils: *mut sys::ISteamNetworkingUtils,
+    location: &sys::SteamNetworkPingLocation_t,
+) -> String {
+    let mut output = vec![0i8; 1024];
+    unsafe {
+        sys::SteamAPI_ISteamNetworkingUtils_ConvertPingLocationToString(
+            utils,
+            location,
+            output.as_mut_ptr(),
+            output.len() as i32,
+        );
+    }
+    c_buf_to_string(&output)
+}
+
+fn networking_ip_address_from_input(
+    address: NetworkingIpAddress,
+) -> Result<sys::SteamNetworkingIPAddr, Error> {
+    let NetworkingIpAddress {
+        text,
+        ipv4,
+        port,
+        local_host,
+    } = address;
+    let mut output = unsafe { MaybeUninit::<sys::SteamNetworkingIPAddr>::zeroed().assume_init() };
+    unsafe { sys::SteamAPI_SteamNetworkingIPAddr_Clear(&mut output) };
+    let port = networking_port(port)?;
+
+    if let Some(text) = text {
+        let text = cstring(text, "networking IP address")?;
+        let ok =
+            unsafe { sys::SteamAPI_SteamNetworkingIPAddr_ParseString(&mut output, text.as_ptr()) };
+        return ok
+            .then_some(output)
+            .ok_or_else(|| Error::from_reason("invalid networking IP address string"));
+    }
+
+    if let Some(ipv4) = ipv4 {
+        unsafe { sys::SteamAPI_SteamNetworkingIPAddr_SetIPv4(&mut output, ipv4, port) };
+        return Ok(output);
+    }
+
+    if local_host.unwrap_or(false) {
+        unsafe { sys::SteamAPI_SteamNetworkingIPAddr_SetIPv6LocalHost(&mut output, port) };
+        return Ok(output);
+    }
+
+    Ok(output)
+}
+
+fn networking_port(port: Option<u32>) -> Result<u16, Error> {
+    port.unwrap_or(0)
+        .try_into()
+        .map_err(|_| Error::from_reason("networking port must be between 0 and 65535"))
+}
+
+fn networking_ip_address_string(
+    utils: *mut sys::ISteamNetworkingUtils,
+    address: &sys::SteamNetworkingIPAddr,
+    with_port: bool,
+) -> String {
+    let mut output = vec![0i8; sys::SteamNetworkingIPAddr_k_cchMaxString as usize];
+    unsafe {
+        sys::SteamAPI_ISteamNetworkingUtils_SteamNetworkingIPAddr_ToString(
+            utils,
+            address,
+            output.as_mut_ptr(),
+            output.len() as u32,
+            with_port,
+        );
+    }
+    c_buf_to_string(&output)
+}
+
+fn networking_ip_address_info(
+    utils: *mut sys::ISteamNetworkingUtils,
+    mut address: sys::SteamNetworkingIPAddr,
+    with_port: bool,
+) -> NetworkingIpAddressInfo {
+    let is_ipv4 = unsafe { sys::SteamAPI_SteamNetworkingIPAddr_IsIPv4(&mut address) };
+    let ipv4 =
+        is_ipv4.then(|| unsafe { sys::SteamAPI_SteamNetworkingIPAddr_GetIPv4(&mut address) });
+    NetworkingIpAddressInfo {
+        text: networking_ip_address_string(utils, &address, with_port),
+        ipv4,
+        port: u32::from(unsafe { ptr::addr_of!(address.m_port).read_unaligned() }),
+        ipv4_address: ipv4.map(ipv4_to_string),
+        is_ipv4,
+        is_local_host: unsafe { sys::SteamAPI_SteamNetworkingIPAddr_IsLocalHost(&mut address) },
+        is_fake_ip: unsafe { sys::SteamAPI_SteamNetworkingIPAddr_IsFakeIP(&mut address) },
+        fake_ip_type: unsafe { sys::SteamAPI_SteamNetworkingIPAddr_GetFakeIPType(&mut address) }
+            as u32,
+        ipv6_all_zeros: unsafe { sys::SteamAPI_SteamNetworkingIPAddr_IsIPv6AllZeros(&mut address) },
+    }
+}
+
+fn ipv4_to_string(value: u32) -> String {
+    std::net::Ipv4Addr::from(value).to_string()
+}
+
 fn c_buf_to_string(buf: &[i8]) -> String {
     let nul = buf
         .iter()
@@ -6444,11 +6884,17 @@ fn callback_id_from_compat(callback: i32) -> Result<i32, Error> {
         8 => Ok(CALLBACK_GAME_LOBBY_JOIN_REQUESTED),
         9 => Ok(sys::MicroTxnAuthorizationResponse_t_k_iCallback as i32),
         331 => Ok(sys::GameOverlayActivated_t_k_iCallback as i32),
+        CALLBACK_STEAM_NET_AUTHENTICATION_STATUS => {
+            Ok(sys::SteamNetAuthenticationStatus_t_k_iCallback as i32)
+        }
         CALLBACK_STEAM_NETWORKING_MESSAGES_SESSION_REQUEST => {
             Ok(sys::SteamNetworkingMessagesSessionRequest_t_k_iCallback as i32)
         }
         CALLBACK_STEAM_NETWORKING_MESSAGES_SESSION_FAILED => {
             Ok(sys::SteamNetworkingMessagesSessionFailed_t_k_iCallback as i32)
+        }
+        CALLBACK_STEAM_RELAY_NETWORK_STATUS => {
+            Ok(sys::SteamRelayNetworkStatus_t_k_iCallback as i32)
         }
         CALLBACK_HTTP_REQUEST_COMPLETED => Ok(sys::HTTPRequestCompleted_t_k_iCallback as i32),
         CALLBACK_HTTP_REQUEST_HEADERS_RECEIVED => {
@@ -6550,6 +6996,28 @@ unsafe fn callback_to_json(callback: i32, param: *mut c_void) -> Value {
             let info = ptr::addr_of!((*event).m_info).read_unaligned();
             serde_json::json!({
                 "info": networking_messages_session_info_json(&info)
+            })
+        }
+        CALLBACK_STEAM_NET_AUTHENTICATION_STATUS => {
+            let event = param as *const sys::SteamNetAuthenticationStatus_t;
+            let status = networking_authentication_status(&*event);
+            serde_json::json!({
+                "availability": status.availability,
+                "debug_message": status.debug_message
+            })
+        }
+        CALLBACK_STEAM_RELAY_NETWORK_STATUS => {
+            let event = param as *const sys::SteamRelayNetworkStatus_t;
+            let status = networking_relay_network_status(
+                &*event,
+                ptr::addr_of!((*event).m_eAvail).read_unaligned(),
+            );
+            serde_json::json!({
+                "availability": status.availability,
+                "ping_measurement_in_progress": status.ping_measurement_in_progress,
+                "network_config_availability": status.network_config_availability,
+                "any_relay_availability": status.any_relay_availability,
+                "debug_message": status.debug_message
             })
         }
         8 => {

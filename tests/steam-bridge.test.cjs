@@ -526,6 +526,190 @@ test("networking messages facade covers identity, message, session, and callback
   });
 });
 
+test("networking utils facade covers relay, ping, fake IP, address, and callback flows", (t) => {
+  const peer = { identity_type: 16, text: "steamid:76561198000000010", steam_id64: "76561198000000010" };
+  const fake = createFakeNative({
+    networkingUtilsInitRelayNetworkAccess() {
+      this.calls.push({ method: "networkingUtilsInitRelayNetworkAccess", args: [] });
+    },
+    networkingUtilsGetRelayNetworkStatus() {
+      this.calls.push({ method: "networkingUtilsGetRelayNetworkStatus", args: [] });
+      return {
+        availability: 100,
+        ping_measurement_in_progress: false,
+        network_config_availability: 100,
+        any_relay_availability: 100,
+        debug_message: "relay ready"
+      };
+    },
+    networkingUtilsGetLocalPingLocation() {
+      this.calls.push({ method: "networkingUtilsGetLocalPingLocation", args: [] });
+      return { location: "local-ping-location", age_seconds: 0.5 };
+    },
+    networkingUtilsParsePingLocation(location) {
+      this.calls.push({ method: "networkingUtilsParsePingLocation", args: [location] });
+      return location === "bad" ? null : "canonical-ping-location";
+    },
+    networkingUtilsEstimatePingTimeBetweenTwoLocations(location1, location2) {
+      this.calls.push({ method: "networkingUtilsEstimatePingTimeBetweenTwoLocations", args: [location1, location2] });
+      return 44;
+    },
+    networkingUtilsEstimatePingTimeFromLocalHost(location) {
+      this.calls.push({ method: "networkingUtilsEstimatePingTimeFromLocalHost", args: [location] });
+      return 22;
+    },
+    networkingUtilsCheckPingDataUpToDate(maxAgeSeconds) {
+      this.calls.push({ method: "networkingUtilsCheckPingDataUpToDate", args: [maxAgeSeconds] });
+      return true;
+    },
+    networkingUtilsGetPingToDataCenter(popId) {
+      this.calls.push({ method: "networkingUtilsGetPingToDataCenter", args: [popId] });
+      return { ping_ms: 33, via_relay_pop: 5678 };
+    },
+    networkingUtilsGetDirectPingToPop(popId) {
+      this.calls.push({ method: "networkingUtilsGetDirectPingToPop", args: [popId] });
+      return 30;
+    },
+    networkingUtilsGetPopCount() {
+      this.calls.push({ method: "networkingUtilsGetPopCount", args: [] });
+      return 2;
+    },
+    networkingUtilsGetPopList(maxPops) {
+      this.calls.push({ method: "networkingUtilsGetPopList", args: [maxPops] });
+      return [111, 222];
+    },
+    networkingUtilsGetLocalTimestamp() {
+      this.calls.push({ method: "networkingUtilsGetLocalTimestamp", args: [] });
+      return 123456789n;
+    },
+    networkingUtilsIsFakeIpv4(ipv4) {
+      this.calls.push({ method: "networkingUtilsIsFakeIpv4", args: [ipv4] });
+      return true;
+    },
+    networkingUtilsGetIpv4FakeIpType(ipv4) {
+      this.calls.push({ method: "networkingUtilsGetIpv4FakeIpType", args: [ipv4] });
+      return 2;
+    },
+    networkingUtilsParseIpAddress(text) {
+      this.calls.push({ method: "networkingUtilsParseIpAddress", args: [text] });
+      return text === "bad" ? null : {
+        text: "127.0.0.1:27015",
+        ipv4: 2130706433,
+        port: 27015,
+        ipv4_address: "127.0.0.1",
+        is_ipv4: true,
+        is_local_host: true,
+        is_fake_ip: false,
+        fake_ip_type: 1,
+        ipv6_all_zeros: false
+      };
+    },
+    networkingUtilsIpAddressToString(address, withPort) {
+      this.calls.push({ method: "networkingUtilsIpAddressToString", args: [address, withPort] });
+      return withPort ? "127.0.0.1:27015" : "127.0.0.1";
+    },
+    networkingUtilsGetIpAddressFakeIpType(address) {
+      this.calls.push({ method: "networkingUtilsGetIpAddressFakeIpType", args: [address] });
+      return 1;
+    },
+    networkingUtilsGetRealIdentityForFakeIp(address) {
+      this.calls.push({ method: "networkingUtilsGetRealIdentityForFakeIp", args: [address] });
+      return { result: 1, identity: peer };
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  assert.equal(steam.SteamCallback.SteamNetAuthenticationStatus, 1222);
+  assert.equal(steam.SteamCallback.SteamRelayNetworkStatus, 1281);
+  assert.equal(steam.networking.NetworkingAvailability.Current, 100);
+  assert.equal(steam.networking.utils.Availability.Failed, -101);
+  assert.equal(steam.networking.utils.FakeIpType.GlobalIPv4, 2);
+
+  steam.networking.utils.initRelayNetworkAccess();
+  assert.deepEqual(steam.networking.utils.getRelayNetworkStatus(), {
+    availability: 100,
+    pingMeasurementInProgress: false,
+    networkConfigAvailability: 100,
+    anyRelayAvailability: 100,
+    debugMessage: "relay ready"
+  });
+  assert.deepEqual(steam.networking.utils.getLocalPingLocation(), {
+    location: "local-ping-location",
+    ageSeconds: 0.5
+  });
+  assert.equal(steam.networking.utils.parsePingLocation("local-ping-location"), "canonical-ping-location");
+  assert.equal(steam.networking.utils.parsePingLocation("bad"), null);
+  assert.equal(steam.networking.utils.estimatePingTimeBetweenTwoLocations("a", "b"), 44);
+  assert.equal(steam.networking.utils.estimatePingTimeFromLocalHost("b"), 22);
+  assert.equal(steam.networking.utils.checkPingDataUpToDate(60), true);
+  assert.deepEqual(steam.networking.utils.getPingToDataCenter(1234), { pingMs: 33, viaRelayPop: 5678 });
+  assert.equal(steam.networking.utils.getDirectPingToPop(1234), 30);
+  assert.equal(steam.networking.utils.getPopCount(), 2);
+  assert.deepEqual(steam.networking.utils.getPopList(3), [111, 222]);
+  assert.equal(steam.networking.utils.getLocalTimestamp(), 123456789n);
+  assert.equal(steam.networking.utils.isFakeIpv4(0x0a000001), true);
+  assert.equal(steam.networking.utils.getIpv4FakeIpType(0x0a000001), 2);
+  assert.deepEqual(steam.networking.utils.parseIpAddress("127.0.0.1:27015"), {
+    text: "127.0.0.1:27015",
+    ipv4: 2130706433,
+    port: 27015,
+    ipv4Address: "127.0.0.1",
+    isIpv4: true,
+    isLocalHost: true,
+    isFakeIp: false,
+    fakeIpType: 1,
+    ipv6AllZeros: false
+  });
+  assert.equal(steam.networking.utils.parseIpAddress("bad"), null);
+  assert.equal(steam.networking.utils.ipAddressToString({ ipv4: 2130706433, port: 27015 }, true), "127.0.0.1:27015");
+  assert.equal(steam.networking.utils.getIpAddressFakeIpType({ text: "127.0.0.1:27015" }), 1);
+  assert.deepEqual(steam.networking.utils.getRealIdentityForFakeIp({ text: "10.0.0.1:27015" }), {
+    result: 1,
+    identity: {
+      identityType: 16,
+      text: "steamid:76561198000000010",
+      steamId64: 76561198000000010n,
+      genericString: null,
+      localHost: false,
+      invalid: false,
+      fakeIpType: 0
+    }
+  });
+
+  let authEvent;
+  steam.callback.register(steam.SteamCallback.SteamNetAuthenticationStatus, (event) => {
+    authEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.SteamNetAuthenticationStatus)({
+    availability: 100,
+    debug_message: "auth ready"
+  });
+  assert.equal(authEvent.debugMessage, "auth ready");
+
+  let relayEvent;
+  steam.callback.register(steam.SteamCallback.SteamRelayNetworkStatus, (event) => {
+    relayEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.SteamRelayNetworkStatus)({
+    availability: 100,
+    ping_measurement_in_progress: true,
+    network_config_availability: 100,
+    any_relay_availability: 100,
+    debug_message: "measurement pending"
+  });
+  assert.equal(relayEvent.pingMeasurementInProgress, true);
+  assert.equal(relayEvent.networkConfigAvailability, 100);
+  assert.equal(relayEvent.anyRelayAvailability, 100);
+  assert.equal(relayEvent.debugMessage, "measurement pending");
+
+  assert.deepEqual(fake.calls.find((call) => call.method === "networkingUtilsIpAddressToString"), {
+    method: "networkingUtilsIpAddressToString",
+    args: [{ ipv4: 2130706433, port: 27015 }, true]
+  });
+});
+
 test("http facade covers request lifecycle, response reads, and callbacks", async (t) => {
   const fake = createFakeNative({
     httpCreateRequest(method, url) {
