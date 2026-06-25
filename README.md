@@ -1,24 +1,26 @@
 # Steam Bridge
 
-Steam Bridge is a native-backed TypeScript package for Electron and Node. It is
-designed as a small replacement path for the FOV4-used parts of `steamworks.js`,
-with a stable TypeScript API and a compatibility adapter for the current call
-shape.
+Steam Bridge is a native-backed TypeScript package for Electron and Node. It
+provides a focused Steamworks API surface through a Rust `napi-rs` addon, plus a
+compatibility-shaped default export for projects migrating from Steamworks
+wrappers with similar call patterns.
 
-## Status
+This project is 100% created and maintained by Codex.
 
-This repository is the first implementation pass. The public package boundary is
-ours, and the native module is Rust plus `napi-rs`. The native crate does not
-depend on the high-level `steamworks-rs` wrapper. It calls the Steamworks flat C
-API through `steamworks-sys` and owns its lifecycle, manual callback dispatch,
-Web API ticket, overlay, Steam Deck, Steam ID, achievement, and microtransaction
-callback code.
+The native crate calls the Steamworks flat C API through `steamworks-sys` and
+owns Steam API initialization, manual callback dispatch, auth tickets, overlay
+helpers, Steam Deck checks, Steam ID helpers, achievements, networking,
+matchmaking, cloud, input, stats, and workshop helpers.
 
 Steam SDK redistributables are not committed. For local/native builds, provide
-the Steamworks SDK in the normal location expected by `steamworks-sys`, or wire
-`STEAMWORKS_SDK_PATH`/your build environment according to your SDK setup.
+the Steamworks SDK in the normal location expected by `steamworks-sys`, or set
+`STEAMWORKS_SDK_PATH` according to your SDK setup.
 
-## API
+## Quick Start
+
+Valve's public Steamworks example app is SpaceWar, App ID `480`. It is useful for
+local smoke testing, but it is not a substitute for your own Steam app ID in
+production.
 
 ```ts
 import {
@@ -27,41 +29,66 @@ import {
   getAuthTicketForWebApi,
   isSteamDeck,
   onMicroTxnAuthorizationResponse,
+  getOverlayDiagnostics,
   activateOverlayToWebPage,
   isAchievementActivated
 } from "steam-bridge";
 
-init({ appId: 2957110 });
+init({ appId: 480 });
 
 const steamId = getSteamId().steamId64;
-const ticket = await getAuthTicketForWebApi("fov4");
+const ticket = await getAuthTicketForWebApi("steam-bridge-example");
 const bytes = ticket.getBytes();
+
+console.log({
+  steamId,
+  ticketBytes: bytes.length,
+  steamDeck: isSteamDeck(),
+  overlay: getOverlayDiagnostics()
+});
+
+onMicroTxnAuthorizationResponse((event) => console.log(event));
+activateOverlayToWebPage("https://store.steampowered.com/app/480/");
+isAchievementActivated("ACH_WIN_ONE_GAME");
 ```
 
-The compatibility adapter keeps the FOV4-used shape:
+The compatibility-style default export exposes grouped APIs:
 
 ```ts
 import steamworks from "steam-bridge";
 
-const client = steamworks.init(2957110);
+const client = steamworks.init(480);
+
 client.localplayer.getSteamId().steamId64;
-client.auth.getAuthTicketForWebApi("fov4").then((ticket) => ticket.getBytes());
+client.auth
+  .getAuthTicketForWebApi("steam-bridge-example")
+  .then((ticket) => ticket.getBytes());
 client.callback.register(
   client.callback.SteamCallback.MicroTxnAuthorizationResponse,
   (event) => console.log(event)
 );
-client.overlay.activateToWebPage("https://store.steampowered.com/");
-client.achievement.isActivated("ACHIEVEMENT_NAME");
+client.utils.getOverlayDiagnostics();
+client.overlay.activateToWebPage("https://store.steampowered.com/app/480/");
+client.achievement.isActivated("ACH_WIN_ONE_GAME");
 ```
 
 ## Layout
 
 - `crates/native`: Rust N-API module.
 - `packages/steam-bridge`: TypeScript public package and compatibility adapter.
-- `examples/electron-fov4`: minimal Electron smoke app.
+- `examples/electron-basic`: minimal Electron smoke app using App ID `480`.
+- `docs/steam-api-coverage.md`: current Steamworks coverage and known gaps.
+- `docs/research`: implementation notes and platform research.
 - `.github/workflows`: CI and release/prebuild scaffolding.
 
 ## Local Development
+
+Prerequisites:
+
+- Node.js 22.13 or newer for the repository toolchain.
+- Rust stable.
+- Steamworks SDK files available through the standard `steamworks-sys` setup or
+  `STEAMWORKS_SDK_PATH`.
 
 ```sh
 npm install
@@ -72,31 +99,63 @@ npm run build
 If you build the native module by another path, set `STEAM_BRIDGE_NATIVE_PATH`
 to the `.node` file before requiring the package.
 
-## FOV4 Swap Target
-
-The intended first swap is replacing `steamworks.js` with `steam-bridge` without
-changing the existing main/preload/renderer Steam calls that FOV4 currently
-uses. Workshop screenshot upload is intentionally excluded from V1 because FOV4
-does not use it.
-
-For local FOV4 testing from sibling folders:
+To run the Electron smoke app:
 
 ```sh
-cd ~/steam-bridge
 npm install
-npm run build
 npm run native:build
-
-cd ~/fov4-steam
-printf "2957110" > steam_appid.txt
-npm install steamworks.js@file:../steam-bridge/packages/steam-bridge
-npm run dev
+npm start -w steam-bridge-electron-example
 ```
 
-The important smoke path is:
+You can override the smoke app ID if you have your own Steam app:
 
-- Steam initializes under app id `2957110`.
-- `client.localplayer.getSteamId().steamId64` returns the logged-in Steam ID.
-- `client.auth.getAuthTicketForWebApi("fov4").getBytes()` returns ticket bytes.
-- FOV4 loads characters through `fov4-steam-api`.
-- The renderer can enter the game.
+```sh
+STEAM_BRIDGE_APP_ID=480 npm start -w steam-bridge-electron-example
+```
+
+When launching outside Steam, put a `steam_appid.txt` file containing the app ID
+next to the executable or in the working directory used by your app.
+
+Before opening a pull request, run the checks that CI runs:
+
+```sh
+npm test
+npm run native:fmt
+npm run native:check
+```
+
+## macOS Overlay Diagnostics
+
+On macOS, Steam API initialization and the in-game overlay are separate
+successes. `steam_appid.txt` can be enough for Steam ID, auth tickets, and
+callbacks while the overlay still never hooks an Electron `BrowserWindow`.
+
+Steam Bridge exposes `client.utils.getOverlayDiagnostics()` so the host app can
+log what Steam sees:
+
+- `steamRunning`
+- `appId`
+- `overlayEnabled`
+- `overlayNeedsPresent`
+- `steamDeck`
+- `bigPicture`
+- `steamInstallPath`
+
+Steam Bridge also includes a macOS native overlay probe surface:
+
+```ts
+client.overlay.openNativeOverlayProbeWindow("Steam Overlay Probe");
+client.overlay.pumpNativeOverlayProbeWindow();
+client.overlay.closeNativeOverlayProbeWindow();
+```
+
+Set `STEAM_BRIDGE_ELECTRON_OVERLAY_PROFILE=compatibility` to opt into the older
+Electron overlay workaround profile. That profile enables `in-process-gpu`, so
+keep it diagnostic-only unless it proves useful on your target machine.
+
+## Notes
+
+- Use App ID `480` only for local Steamworks smoke tests.
+- Use your own App ID before shipping, publishing builds, or testing
+  app-specific achievements, stats, inventory, UGC, or economy flows.
+- Steam Bridge does not vendor the Steamworks SDK or Valve redistributables.

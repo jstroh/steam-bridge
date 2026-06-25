@@ -16,17 +16,351 @@ export interface NativeSteamId {
   accountId: number;
 }
 
+export interface NativeOverlayDiagnostics {
+  steamRunning: boolean;
+  steamInstallPath?: string;
+  appId: number;
+  overlayEnabled: boolean;
+  overlayNeedsPresent: boolean;
+  steamDeck: boolean;
+  bigPicture: boolean;
+}
+
+export interface NativeCloudFileInfo {
+  name: string;
+  size: bigint;
+}
+
+export interface NativeInputControllerInfo {
+  handle: bigint;
+  inputType: string;
+}
+
+export interface NativeAnalogActionVector {
+  x: number;
+  y: number;
+}
+
+export interface NativeP2PPacket {
+  data: Buffer;
+  size: number;
+  steamId: NativeSteamId;
+}
+
+export interface NativeLobbyResult {
+  id: bigint;
+}
+
+export interface NativeWorkshopInstallInfo {
+  folder: string;
+  sizeOnDisk: bigint;
+  timestamp: number;
+}
+
+export interface NativeWorkshopDownloadInfo {
+  current: bigint;
+  total: bigint;
+}
+
+export interface NativeUgcResult {
+  itemId?: bigint;
+  item_id?: bigint;
+  needsToAcceptAgreement?: boolean;
+  needs_to_accept_agreement?: boolean;
+}
+
+export interface NativeUpdateProgress {
+  status: number;
+  progress: bigint;
+  total: bigint;
+}
+
+export interface NativeWorkshopItem {
+  [key: string]: unknown;
+}
+
+export interface NativeWorkshopItemsResult {
+  items: Array<NativeWorkshopItem | null | undefined>;
+  returnedResults?: number;
+  returned_results?: number;
+  totalResults?: number;
+  total_results?: number;
+  wasCached?: boolean;
+  was_cached?: boolean;
+}
+
+export interface NativeFriendGameInfo {
+  gameId?: bigint | string | number;
+  game_id?: bigint | string | number;
+  gameIp?: number;
+  game_ip?: number;
+  gamePort?: number;
+  game_port?: number;
+  queryPort?: number;
+  query_port?: number;
+  lobby?: bigint | string | number;
+}
+
+export interface NativeFriendsGroupInfo {
+  id: number;
+  name: string;
+  members: NativeSteamId[];
+}
+
+export interface NativeClanActivityCounts {
+  online: number;
+  inGame?: number;
+  in_game?: number;
+  chatting: number;
+}
+
+export interface NativeClanOfficerListResult {
+  clan: NativeSteamId;
+  officers: number;
+  success: boolean;
+}
+
+export interface NativeClanChatJoinResult {
+  clanChat?: NativeSteamId;
+  clan_chat?: NativeSteamId;
+  response: number;
+}
+
+export interface NativeFollowerCountResult {
+  steamId?: NativeSteamId;
+  steam_id?: NativeSteamId;
+  result: number;
+  count: number;
+}
+
+export interface NativeIsFollowingResult {
+  steamId?: NativeSteamId;
+  steam_id?: NativeSteamId;
+  result: number;
+  isFollowing?: boolean;
+  is_following?: boolean;
+}
+
+export interface NativeFollowingListResult {
+  result: number;
+  steamIds?: NativeSteamId[];
+  steam_ids?: NativeSteamId[];
+  returnedResults?: number;
+  returned_results?: number;
+  totalResults?: number;
+  total_results?: number;
+}
+
 export interface NativeBinding {
   init(appId: number): void;
   shutdown(): void;
   restartAppIfNecessary(appId: number): boolean;
+  isSteamRunning(): boolean;
+  getSteamInstallPath(): string | undefined;
   runCallbacks(): void;
+
   getSteamId(): NativeSteamId;
   getAuthTicketForWebApi(identity: string, timeoutSeconds?: number): Promise<NativeAuthTicket>;
+  authGetSessionTicketWithSteamId(steamId64: bigint, timeoutSeconds?: number): Promise<NativeAuthTicket>;
+  authGetSessionTicketWithIp(ip: string, timeoutSeconds?: number): Promise<NativeAuthTicket>;
+
   isSteamDeck(): boolean;
+  getAppId(): number;
+  isSteamInBigPictureMode(): boolean;
+  isOverlayEnabled(): boolean;
+  overlayNeedsPresent(): boolean;
+  getOverlayDiagnostics(): NativeOverlayDiagnostics;
+  utilsGetServerRealTime(): number;
+  utilsShowGamepadTextInput(inputMode: number, inputLineMode: number, description: string, maxCharacters: number, existingText?: string | null, timeoutSeconds?: number): Promise<string | null | undefined>;
+  utilsShowFloatingGamepadTextInput(mode: number, x: number, y: number, width: number, height: number): boolean;
+
+  registerSteamCallback(callback: number, handler: (event: unknown) => void): NativeCallbackHandle;
   registerMicroTxnAuthorizationResponse(handler: (event: unknown) => void): NativeCallbackHandle;
-  activateOverlayToWebPage(url: string): void;
+  registerGameOverlayActivated(handler: (event: unknown) => void): NativeCallbackHandle;
+
+  activateOverlay(dialog?: string): void;
+  activateOverlayToWebPage(url: string, modal?: boolean): void;
+  overlayActivateDialogToUser(dialog: string, steamId64: bigint): void;
+  overlayActivateInviteDialog(lobbyId: bigint): void;
+  overlayActivateToStore(appId: number, flag: number): void;
+
+  openNativeOverlayProbeWindow(title?: string): void;
+  attachNativeOverlayHostView(nativeWindowHandle: Buffer): void;
+  pumpNativeOverlayProbeWindow(): void;
+  pumpNativeOverlayHostView(): void;
+  showNativeOverlayHostView(): void;
+  hideNativeOverlayHostView(): void;
+  updateNativeOverlayHostFrame(frame: Buffer, width: number, height: number): void;
+  closeNativeOverlayProbeWindow(): void;
+  detachNativeOverlayHostView(): void;
+  isNativeOverlayProbeWindowOpen(): boolean;
+  isNativeOverlayHostViewOpen(): boolean;
+  getMacWindowSnapshot(appId?: number): string | undefined;
+
   isAchievementActivated(name: string): boolean;
+  achievementActivate(name: string): boolean;
+  achievementClear(name: string): boolean;
+  achievementNames(): string[];
+
+  appsIsSubscribedApp(appId: number): boolean;
+  appsIsAppInstalled(appId: number): boolean;
+  appsIsDlcInstalled(appId: number): boolean;
+  appsIsSubscribedFromFreeWeekend(): boolean;
+  appsIsVacBanned(): boolean;
+  appsIsCybercafe(): boolean;
+  appsIsLowViolence(): boolean;
+  appsIsSubscribed(): boolean;
+  appsAppBuildId(): number;
+  appsAppInstallDir(appId: number): string;
+  appsAppOwner(): NativeSteamId;
+  appsAvailableGameLanguages(): string[];
+  appsCurrentGameLanguage(): string;
+  appsCurrentBetaName(): string | null | undefined;
+
+  localplayerGetName(): string;
+  localplayerGetLevel(): number;
+  localplayerGetIpCountry(): string;
+  localplayerSetRichPresence(key: string, value?: string | null): void;
+
+  friendsGetPersonaName(): string;
+  friendsGetPersonaState(): number;
+  friendsGetFriendCount(friendFlags?: number | null): number;
+  friendsGetFriendByIndex(index: number, friendFlags?: number | null): NativeSteamId;
+  friendsGetFriends(friendFlags?: number | null): NativeSteamId[];
+  friendsHasFriend(steamId64: bigint, friendFlags?: number | null): boolean;
+  friendsGetFriendRelationship(steamId64: bigint): number;
+  friendsGetFriendPersonaState(steamId64: bigint): number;
+  friendsGetFriendPersonaName(steamId64: bigint): string;
+  friendsGetFriendPersonaNameHistory(steamId64: bigint, index: number): string;
+  friendsGetFriendSteamLevel(steamId64: bigint): number;
+  friendsGetPlayerNickname(steamId64: bigint): string;
+  friendsGetFriendGamePlayed(steamId64: bigint): NativeFriendGameInfo | null | undefined;
+  friendsGetSmallFriendAvatar(steamId64: bigint): number;
+  friendsGetMediumFriendAvatar(steamId64: bigint): number;
+  friendsGetLargeFriendAvatar(steamId64: bigint): number;
+  friendsRequestUserInformation(steamId64: bigint, nameOnly: boolean): boolean;
+  friendsGetFriendsGroups(): NativeFriendsGroupInfo[];
+  friendsGetClanCount(): number;
+  friendsGetClanByIndex(index: number): NativeSteamId;
+  friendsGetClans(): NativeSteamId[];
+  friendsGetClanName(clanId64: bigint): string;
+  friendsGetClanTag(clanId64: bigint): string;
+  friendsGetClanActivityCounts(clanId64: bigint): NativeClanActivityCounts | null | undefined;
+  friendsRequestClanOfficerList(clanId64: bigint): Promise<NativeClanOfficerListResult>;
+  friendsGetClanOwner(clanId64: bigint): NativeSteamId;
+  friendsGetClanOfficerCount(clanId64: bigint): number;
+  friendsGetClanOfficerByIndex(clanId64: bigint, index: number): NativeSteamId;
+  friendsSetPlayedWith(steamId64: bigint): void;
+  friendsSetInGameVoiceSpeaking(steamId64: bigint, speaking: boolean): void;
+  friendsClearRichPresence(): void;
+  friendsGetFriendRichPresence(steamId64: bigint, key: string): string;
+  friendsGetFriendRichPresenceKeys(steamId64: bigint): string[];
+  friendsRequestFriendRichPresence(steamId64: bigint): void;
+  friendsInviteUserToGame(steamId64: bigint, connectString: string): boolean;
+  friendsGetCoplayFriendCount(): number;
+  friendsGetCoplayFriend(index: number): NativeSteamId;
+  friendsGetCoplayFriends(): NativeSteamId[];
+  friendsGetFriendCoplayTime(steamId64: bigint): number;
+  friendsGetFriendCoplayGame(steamId64: bigint): number;
+  friendsJoinClanChatRoom(clanId64: bigint): Promise<NativeClanChatJoinResult>;
+  friendsLeaveClanChatRoom(clanId64: bigint): boolean;
+  friendsGetClanChatMemberCount(clanChatId64: bigint): number;
+  friendsGetChatMemberByIndex(clanChatId64: bigint, index: number): NativeSteamId;
+  friendsSendClanChatMessage(clanChatId64: bigint, text: string): boolean;
+  friendsIsClanChatAdmin(clanChatId64: bigint, steamId64: bigint): boolean;
+  friendsIsClanChatWindowOpenInSteam(clanChatId64: bigint): boolean;
+  friendsOpenClanChatWindowInSteam(clanChatId64: bigint): boolean;
+  friendsCloseClanChatWindowInSteam(clanChatId64: bigint): boolean;
+  friendsSetListenForFriendsMessages(enabled: boolean): boolean;
+  friendsReplyToFriendMessage(steamId64: bigint, message: string): boolean;
+  friendsGetFollowerCount(steamId64: bigint): Promise<NativeFollowerCountResult>;
+  friendsIsFollowing(steamId64: bigint): Promise<NativeIsFollowingResult>;
+  friendsEnumerateFollowingList(startIndex: number): Promise<NativeFollowingListResult>;
+  friendsIsClanPublic(clanId64: bigint): boolean;
+  friendsIsClanOfficialGameGroup(clanId64: bigint): boolean;
+  friendsGetNumChatsWithUnreadPriorityMessages(): number;
+  friendsRegisterProtocolInOverlayBrowser(protocol: string): boolean;
+
+  cloudIsEnabledForAccount(): boolean;
+  cloudIsEnabledForApp(): boolean;
+  cloudSetEnabledForApp(enabled: boolean): void;
+  cloudReadFile(name: string): string;
+  cloudWriteFile(name: string, content: string): boolean;
+  cloudDeleteFile(name: string): boolean;
+  cloudFileExists(name: string): boolean;
+  cloudListFiles(): NativeCloudFileInfo[];
+
+  inputInit(): void;
+  inputShutdown(): void;
+  inputGetControllers(): NativeInputControllerInfo[];
+  inputGetActionSet(actionSetName: string): bigint;
+  inputGetDigitalAction(actionName: string): bigint;
+  inputGetAnalogAction(actionName: string): bigint;
+  inputActivateActionSet(controller: bigint, actionSet: bigint): void;
+  inputIsDigitalActionPressed(controller: bigint, action: bigint): boolean;
+  inputGetAnalogActionVector(controller: bigint, action: bigint): NativeAnalogActionVector;
+  inputGetControllerType(controller: bigint): string;
+
+  statsGetInt(name: string): number | null | undefined;
+  statsSetInt(name: string, value: number): boolean;
+  statsStore(): boolean;
+  statsResetAll(achievementsToo: boolean): boolean;
+
+  networkingSendP2PPacket(steamId64: bigint, sendType: number, data: Buffer): boolean;
+  networkingIsP2PPacketAvailable(): number;
+  networkingReadP2PPacket(size: number): NativeP2PPacket | null | undefined;
+  networkingAcceptP2PSession(steamId64: bigint): void;
+
+  matchmakingCreateLobby(lobbyType: number, maxMembers: number): Promise<NativeLobbyResult>;
+  matchmakingJoinLobby(lobbyId: bigint): Promise<NativeLobbyResult>;
+  matchmakingGetLobbies(): Promise<NativeLobbyResult[]>;
+  matchmakingLeaveLobby(lobbyId: bigint): void;
+  matchmakingGetLobbyMemberCount(lobbyId: bigint): number;
+  matchmakingGetLobbyMemberLimit(lobbyId: bigint): number | null | undefined;
+  matchmakingGetLobbyMembers(lobbyId: bigint): NativeSteamId[];
+  matchmakingGetLobbyOwner(lobbyId: bigint): NativeSteamId;
+  matchmakingSetLobbyJoinable(lobbyId: bigint, joinable: boolean): boolean;
+  matchmakingGetLobbyData(lobbyId: bigint, key: string): string | null | undefined;
+  matchmakingSetLobbyData(lobbyId: bigint, key: string, value: string): boolean;
+  matchmakingDeleteLobbyData(lobbyId: bigint, key: string): boolean;
+  matchmakingGetLobbyFullData(lobbyId: bigint): Record<string, string>;
+
+  workshopCreateItem(appId?: number | null): Promise<NativeUgcResult>;
+  workshopUpdateItem(itemId: bigint, updateDetails: unknown, appId?: number | null): Promise<NativeUgcResult>;
+  workshopUpdateItemWithProgress(
+    itemId: bigint,
+    updateDetails: unknown,
+    appId: number | null | undefined,
+    progressHandler: (data: unknown) => void,
+    progressIntervalMs?: number | null
+  ): Promise<NativeUgcResult>;
+  workshopGetItemUpdateProgress(handle: bigint): NativeUpdateProgress;
+  workshopSubscribe(itemId: bigint): Promise<void>;
+  workshopUnsubscribe(itemId: bigint): Promise<void>;
+  workshopState(itemId: bigint): number;
+  workshopInstallInfo(itemId: bigint): NativeWorkshopInstallInfo | null | undefined;
+  workshopDownloadInfo(itemId: bigint): NativeWorkshopDownloadInfo | null | undefined;
+  workshopDownload(itemId: bigint, highPriority: boolean): boolean;
+  workshopGetSubscribedItems(): bigint[];
+  workshopGetItems(items: bigint[], queryConfig?: unknown): Promise<NativeWorkshopItemsResult>;
+  workshopGetAllItems(
+    page: number,
+    queryType: number,
+    itemType: number,
+    creatorAppId: number,
+    consumerAppId: number,
+    queryConfig?: unknown
+  ): Promise<NativeWorkshopItemsResult>;
+  workshopGetUserItems(
+    page: number,
+    accountId: number,
+    listType: number,
+    itemType: number,
+    sortOrder: number,
+    creatorAppId: number,
+    consumerAppId: number,
+    queryConfig?: unknown
+  ): Promise<NativeWorkshopItemsResult>;
 }
 
 let binding: NativeBinding | undefined;
@@ -73,4 +407,3 @@ function nativeCandidates(): string[] {
     path.join(repoRoot, "target", "release", "steam_bridge_native.node")
   ];
 }
-

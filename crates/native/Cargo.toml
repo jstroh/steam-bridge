@@ -9,13 +9,18 @@ publish = false
 crate-type = ["cdylib"]
 
 [dependencies]
-napi = { version = "2.16.8", features = ["tokio_rt", "napi6", "serde-json"] }
-napi-derive = "2.16.9"
+napi = { version = "3.9.4", features = ["tokio_rt", "napi6", "serde-json"] }
+napi-derive = "3.5.7"
 once_cell = "1.19"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 steamworks-sys = "0.13.0"
 tokio = { version = "1", features = ["sync", "time"] }
 
+[target.'cfg(target_os = "macos")'.dependencies]
+cocoa = "0.26"
+objc = "0.2"
+
 [build-dependencies]
+cc = "1.0"
 napi-build = "2"

@@ -26,6 +26,7 @@
   </head>
   <body>
     <h1>Steam Bridge Electron Smoke</h1>
+    <p>Uses Valve's SpaceWar sample App ID 480 by default.</p>
     <button id="id">Steam ID</button>
     <button id="deck">Steam Deck</button>
     <button id="ticket">Web API Ticket</button>
@@ -40,9 +41,8 @@
       document.getElementById("id").onclick = async () => write(await window.steam.getSteamId());
       document.getElementById("deck").onclick = async () => write({ isSteamDeck: await window.steam.isSteamDeck() });
       document.getElementById("ticket").onclick = async () => write({ bytes: (await window.steam.getAuthTicketForWebApi()).length });
-      document.getElementById("overlay").onclick = async () => window.steam.activateToWebPage("https://store.steampowered.com/");
+      document.getElementById("overlay").onclick = async () => window.steam.activateToWebPage("https://store.steampowered.com/app/480/");
       window.steam.onMicroTxnAuthorizationResponse((event) => write(event));
     </script>
   </body>
 </html>
-

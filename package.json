@@ -13,14 +13,15 @@
     "native:check": "cargo check -p steam-bridge-native",
     "native:fmt": "cargo fmt --all --check",
     "native:link": "npm run native:link -w steam-bridge",
-    "test": "npm run typecheck && npm run native:check"
+    "test": "npm run typecheck && npm run test:unit",
+    "test:unit": "npm run build && node --test tests/steam-bridge.test.cjs"
   },
   "devDependencies": {
-    "@napi-rs/cli": "2.18.4",
-    "typescript": "5.5.3"
+    "@emnapi/runtime": "1.11.1",
+    "@napi-rs/cli": "3.7.2",
+    "typescript": "6.0.3"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=22.13"
   }
 }
-

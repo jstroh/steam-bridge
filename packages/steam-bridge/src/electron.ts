@@ -1,7 +1,22 @@
+export type ElectronSteamOverlayProfile = "off" | "diagnostic" | "compatibility";
+
 export interface ElectronOverlayOptions {
   disableDirectComposition?: boolean;
   enableInProcessGpu?: boolean;
   repaintIntervalMs?: number;
+}
+
+export interface ElectronSteamOverlayProfileOptions extends ElectronOverlayOptions {
+  profile?: ElectronSteamOverlayProfile;
+  forceHighPerformanceGpu?: boolean;
+  disableBackgroundThrottling?: boolean;
+  ignoreGpuBlocklist?: boolean;
+}
+
+export interface ElectronSteamOverlayConfigResult {
+  profile: ElectronSteamOverlayProfile;
+  switches: string[];
+  repaintIntervalMs: number;
 }
 
 interface ElectronApp {
@@ -28,29 +43,67 @@ interface ElectronApi {
 }
 
 let repaintTimer: NodeJS.Timeout | undefined;
+let browserWindowCreatedListenerInstalled = false;
+const appendedSwitches = new Set<string>();
 
 export function electronEnableSteamOverlay(options: ElectronOverlayOptions = {}): void {
+  electronConfigureSteamOverlay({
+    profile: "compatibility",
+    ...options
+  });
+}
+
+export function electronConfigureSteamOverlay(
+  options: ElectronSteamOverlayProfileOptions = {}
+): ElectronSteamOverlayConfigResult {
+  const profile = options.profile ?? "diagnostic";
+  if (profile === "off") {
+    electronDisableSteamOverlayRepaintLoop();
+    return { profile, switches: [], repaintIntervalMs: 0 };
+  }
+
+  const compatibilityMode = profile === "compatibility";
   const {
-    disableDirectComposition = process.platform === "win32",
-    enableInProcessGpu = true,
-    repaintIntervalMs = 1000
+    disableDirectComposition = compatibilityMode && process.platform === "win32",
+    enableInProcessGpu = compatibilityMode,
+    forceHighPerformanceGpu = true,
+    disableBackgroundThrottling = true,
+    ignoreGpuBlocklist = true,
+    repaintIntervalMs = compatibilityMode ? 1000 : 0
   } = options;
 
   const electron = require("electron") as ElectronApi;
+  const switches: string[] = [];
 
   if (enableInProcessGpu) {
-    electron.app.commandLine.appendSwitch("in-process-gpu");
+    appendSwitchOnce(electron.app, switches, "in-process-gpu");
   }
 
   if (disableDirectComposition) {
-    electron.app.commandLine.appendSwitch("disable-direct-composition");
+    appendSwitchOnce(electron.app, switches, "disable-direct-composition");
   }
 
-  electron.app.on("browser-window-created", (_event, window) => {
-    window.webContents.once("did-finish-load", () => {
-      window.webContents.invalidate();
+  if (forceHighPerformanceGpu) {
+    appendSwitchOnce(electron.app, switches, "force_high_performance_gpu");
+  }
+
+  if (ignoreGpuBlocklist) {
+    appendSwitchOnce(electron.app, switches, "ignore-gpu-blocklist");
+  }
+
+  if (disableBackgroundThrottling) {
+    appendSwitchOnce(electron.app, switches, "disable-renderer-backgrounding");
+    appendSwitchOnce(electron.app, switches, "disable-background-timer-throttling");
+  }
+
+  if (!browserWindowCreatedListenerInstalled) {
+    electron.app.on("browser-window-created", (_event, window) => {
+      window.webContents.once("did-finish-load", () => {
+        window.webContents.invalidate();
+      });
     });
-  });
+    browserWindowCreatedListenerInstalled = true;
+  }
 
   if (!repaintTimer && repaintIntervalMs > 0) {
     repaintTimer = setInterval(() => {
@@ -63,6 +116,8 @@ export function electronEnableSteamOverlay(options: ElectronOverlayOptions = {})
 
     repaintTimer.unref?.();
   }
+
+  return { profile, switches, repaintIntervalMs };
 }
 
 export function electronDisableSteamOverlayRepaintLoop(): void {
@@ -70,4 +125,20 @@ export function electronDisableSteamOverlayRepaintLoop(): void {
     clearInterval(repaintTimer);
     repaintTimer = undefined;
   }
+}
+
+function appendSwitchOnce(
+  app: ElectronApp,
+  switches: string[],
+  name: string,
+  value?: string
+): void {
+  const key = value === undefined ? name : `${name}=${value}`;
+  if (appendedSwitches.has(key)) {
+    return;
+  }
+
+  app.commandLine.appendSwitch(name, value);
+  appendedSwitches.add(key);
+  switches.push(key);
 }

@@ -27,14 +27,14 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
       - run: npm ci
       - run: npm run build
-      - run: npx napi build packages/steam-bridge --release --target ${{ matrix.target }} --platform --js false --cargo-cwd crates/native --config packages/steam-bridge/package.json
+      - run: npx napi build --release --target ${{ matrix.target }} --platform --no-js --manifest-path crates/native/Cargo.toml --package-json-path packages/steam-bridge/package.json --output-dir packages/steam-bridge
       - run: node packages/steam-bridge/scripts/link-native.cjs --runtime-only --target ${{ matrix.target }}
       - uses: actions/upload-artifact@v4
         with:

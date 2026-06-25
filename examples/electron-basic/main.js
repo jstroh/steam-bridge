@@ -2,7 +2,8 @@ const path = require("node:path");
 const { app, BrowserWindow, ipcMain } = require("electron");
 const steamworks = require("steam-bridge");
 
-const APP_ID = Number(process.env.STEAM_BRIDGE_APP_ID || "2957110");
+const APP_ID = Number(process.env.STEAM_BRIDGE_APP_ID || "480");
+const AUTH_IDENTITY = process.env.STEAM_BRIDGE_AUTH_IDENTITY || "steam-bridge-example";
 
 steamworks.electronEnableSteamOverlay();
 
@@ -36,7 +37,7 @@ app.whenReady().then(() => {
 ipcMain.handle("steam:getSteamId", () => client.localplayer.getSteamId().steamId64.toString());
 ipcMain.handle("steam:isSteamDeck", () => client.utils.isSteamRunningOnSteamDeck());
 ipcMain.handle("steam:getTicket", async () => {
-  const ticket = await client.auth.getAuthTicketForWebApi("fov4");
+  const ticket = await client.auth.getAuthTicketForWebApi(AUTH_IDENTITY);
   return Array.from(ticket.getBytes());
 });
 ipcMain.handle("steam:achievement", (_event, name) => client.achievement.isActivated(name));
@@ -46,4 +47,3 @@ app.on("window-all-closed", () => {
   steamworks.shutdown();
   app.quit();
 });
-

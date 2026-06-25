@@ -1,19 +1,26 @@
-use napi::bindgen_prelude::{BigInt, Buffer, Error};
-use napi::threadsafe_function::{ErrorStrategy, ThreadsafeFunction, ThreadsafeFunctionCallMode};
-use napi::JsFunction;
+#![allow(unexpected_cfgs)]
+
+use napi::bindgen_prelude::{BigInt, Buffer, Error, Function, Status};
+use napi::threadsafe_function::{ThreadsafeFunction, ThreadsafeFunctionCallMode};
 use napi_derive::napi;
-use std::ffi::{c_void, CStr, CString};
+use std::ffi::{c_char, c_void, CStr, CString};
 use std::ptr;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use steamworks_sys as sys;
 use tokio::sync::oneshot;
 
+mod compat;
+mod native_surface;
 mod state;
 
 const CALLBACK_GET_TICKET_FOR_WEB_API_RESPONSE: i32 = 168;
 const CALLBACK_MICRO_TXN_AUTHORIZATION_RESPONSE: i32 = 152;
+const CALLBACK_GAME_OVERLAY_ACTIVATED: i32 = 331;
 const H_AUTH_TICKET_INVALID: sys::HAuthTicket = 0;
+
+type FatalThreadsafeFunction<T> = ThreadsafeFunction<T, (), Vec<T>, Status, false>;
+type JsCallback<'scope, T> = Function<'scope, T, ()>;
 
 #[derive(Debug)]
 #[napi(object)]
@@ -23,10 +30,22 @@ pub struct PlayerSteamId {
     pub account_id: u32,
 }
 
+#[derive(Debug)]
+#[napi(object)]
+pub struct OverlayDiagnostics {
+    pub steam_running: bool,
+    pub steam_install_path: Option<String>,
+    pub app_id: u32,
+    pub overlay_enabled: bool,
+    pub overlay_needs_present: bool,
+    pub steam_deck: bool,
+    pub big_picture: bool,
+}
+
 #[napi]
 pub struct AuthTicket {
-    data: Vec<u8>,
-    handle: sys::HAuthTicket,
+    pub(crate) data: Vec<u8>,
+    pub(crate) handle: sys::HAuthTicket,
 }
 
 #[napi]
@@ -82,6 +101,7 @@ pub fn init(app_id: u32) -> Result<(), Error> {
 #[napi(js_name = "shutdown")]
 pub fn shutdown() {
     if state::is_initialized() {
+        native_surface::close();
         state::clear_callbacks();
         unsafe {
             sys::SteamAPI_Shutdown();
@@ -93,6 +113,16 @@ pub fn shutdown() {
 #[napi(js_name = "restartAppIfNecessary")]
 pub fn restart_app_if_necessary(app_id: u32) -> bool {
     unsafe { sys::SteamAPI_RestartAppIfNecessary(app_id) }
+}
+
+#[napi(js_name = "isSteamRunning")]
+pub fn is_steam_running() -> bool {
+    unsafe { sys::SteamAPI_IsSteamRunning() }
+}
+
+#[napi(js_name = "getSteamInstallPath")]
+pub fn get_steam_install_path() -> Option<String> {
+    steam_install_path()
 }
 
 #[napi(js_name = "runCallbacks")]
@@ -127,14 +157,7 @@ pub fn run_callbacks() {
 pub fn get_steam_id() -> Result<PlayerSteamId, Error> {
     let user = steam_user()?;
     let steam_id = unsafe { sys::SteamAPI_ISteamUser_GetSteamID(user) };
-    let account_id = (steam_id & 0xffff_ffff) as u32;
-    let last_bit = account_id & 1;
-
-    Ok(PlayerSteamId {
-        steam_id64: steam_id.into(),
-        steam_id32: format!("STEAM_0:{}:{}", last_bit, account_id >> 1),
-        account_id,
-    })
+    Ok(steam_id_to_player(steam_id))
 }
 
 #[napi(js_name = "isSteamDeck")]
@@ -143,20 +166,141 @@ pub fn is_steam_deck() -> Result<bool, Error> {
     Ok(unsafe { sys::SteamAPI_ISteamUtils_IsSteamRunningOnSteamDeck(utils) })
 }
 
-#[napi(js_name = "activateOverlayToWebPage")]
-pub fn activate_overlay_to_web_page(url: String) -> Result<(), Error> {
+#[napi(js_name = "getAppId")]
+pub fn get_app_id() -> Result<u32, Error> {
+    let utils = steam_utils()?;
+    Ok(unsafe { sys::SteamAPI_ISteamUtils_GetAppID(utils) })
+}
+
+#[napi(js_name = "isSteamInBigPictureMode")]
+pub fn is_steam_in_big_picture_mode() -> Result<bool, Error> {
+    let utils = steam_utils()?;
+    Ok(unsafe { sys::SteamAPI_ISteamUtils_IsSteamInBigPictureMode(utils) })
+}
+
+#[napi(js_name = "isOverlayEnabled")]
+pub fn is_overlay_enabled() -> Result<bool, Error> {
+    let utils = steam_utils()?;
+    Ok(unsafe { sys::SteamAPI_ISteamUtils_IsOverlayEnabled(utils) })
+}
+
+#[napi(js_name = "overlayNeedsPresent")]
+pub fn overlay_needs_present() -> Result<bool, Error> {
+    let utils = steam_utils()?;
+    Ok(unsafe { sys::SteamAPI_ISteamUtils_BOverlayNeedsPresent(utils) })
+}
+
+#[napi(js_name = "getOverlayDiagnostics")]
+pub fn get_overlay_diagnostics() -> Result<OverlayDiagnostics, Error> {
+    let utils = steam_utils()?;
+
+    Ok(OverlayDiagnostics {
+        steam_running: unsafe { sys::SteamAPI_IsSteamRunning() },
+        steam_install_path: steam_install_path(),
+        app_id: unsafe { sys::SteamAPI_ISteamUtils_GetAppID(utils) },
+        overlay_enabled: unsafe { sys::SteamAPI_ISteamUtils_IsOverlayEnabled(utils) },
+        overlay_needs_present: unsafe { sys::SteamAPI_ISteamUtils_BOverlayNeedsPresent(utils) },
+        steam_deck: unsafe { sys::SteamAPI_ISteamUtils_IsSteamRunningOnSteamDeck(utils) },
+        big_picture: unsafe { sys::SteamAPI_ISteamUtils_IsSteamInBigPictureMode(utils) },
+    })
+}
+
+#[napi(js_name = "activateOverlay")]
+pub fn activate_overlay(dialog: Option<String>) -> Result<(), Error> {
     let friends = steam_friends()?;
-    let url = cstring(url, "url")?;
+    let dialog = cstring(
+        dialog.unwrap_or_else(|| "Friends".to_owned()),
+        "overlay dialog",
+    )?;
 
     unsafe {
-        sys::SteamAPI_ISteamFriends_ActivateGameOverlayToWebPage(
-            friends,
-            url.as_ptr(),
-            sys::EActivateGameOverlayToWebPageMode::k_EActivateGameOverlayToWebPageMode_Default,
-        );
+        sys::SteamAPI_ISteamFriends_ActivateGameOverlay(friends, dialog.as_ptr());
     }
 
     Ok(())
+}
+
+#[napi(js_name = "activateOverlayToWebPage")]
+pub fn activate_overlay_to_web_page(url: String, modal: Option<bool>) -> Result<(), Error> {
+    let friends = steam_friends()?;
+    let url = cstring(url, "url")?;
+    let mode = if modal.unwrap_or(false) {
+        sys::EActivateGameOverlayToWebPageMode::k_EActivateGameOverlayToWebPageMode_Modal
+    } else {
+        sys::EActivateGameOverlayToWebPageMode::k_EActivateGameOverlayToWebPageMode_Default
+    };
+
+    unsafe {
+        sys::SteamAPI_ISteamFriends_ActivateGameOverlayToWebPage(friends, url.as_ptr(), mode);
+    }
+
+    Ok(())
+}
+
+#[napi(js_name = "openNativeOverlayProbeWindow")]
+pub fn open_native_overlay_probe_window(title: Option<String>) -> Result<(), Error> {
+    state::ensure_initialized()?;
+    native_surface::open(title)
+}
+
+#[napi(js_name = "attachNativeOverlayHostView")]
+pub fn attach_native_overlay_host_view(native_window_handle: Buffer) -> Result<(), Error> {
+    state::ensure_initialized()?;
+    native_surface::attach_to_parent(native_handle_from_buffer(&native_window_handle)?)
+}
+
+#[napi(js_name = "pumpNativeOverlayProbeWindow")]
+pub fn pump_native_overlay_probe_window() -> Result<(), Error> {
+    native_surface::pump()
+}
+
+#[napi(js_name = "pumpNativeOverlayHostView")]
+pub fn pump_native_overlay_host_view() -> Result<(), Error> {
+    native_surface::pump()
+}
+
+#[napi(js_name = "showNativeOverlayHostView")]
+pub fn show_native_overlay_host_view() -> Result<(), Error> {
+    native_surface::show()
+}
+
+#[napi(js_name = "hideNativeOverlayHostView")]
+pub fn hide_native_overlay_host_view() -> Result<(), Error> {
+    native_surface::hide()
+}
+
+#[napi(js_name = "updateNativeOverlayHostFrame")]
+pub fn update_native_overlay_host_frame(
+    frame: Buffer,
+    width: u32,
+    height: u32,
+) -> Result<(), Error> {
+    native_surface::update_frame(frame, width, height)
+}
+
+#[napi(js_name = "closeNativeOverlayProbeWindow")]
+pub fn close_native_overlay_probe_window() {
+    native_surface::close_probe();
+}
+
+#[napi(js_name = "detachNativeOverlayHostView")]
+pub fn detach_native_overlay_host_view() {
+    native_surface::detach_host();
+}
+
+#[napi(js_name = "isNativeOverlayProbeWindowOpen")]
+pub fn is_native_overlay_probe_window_open() -> bool {
+    native_surface::is_probe_open()
+}
+
+#[napi(js_name = "isNativeOverlayHostViewOpen")]
+pub fn is_native_overlay_host_view_open() -> bool {
+    native_surface::is_embedded()
+}
+
+#[napi(js_name = "getMacWindowSnapshot")]
+pub fn get_mac_window_snapshot(app_id: Option<u32>) -> Option<String> {
+    native_surface::mac_window_snapshot_json(app_id.unwrap_or(0))
 }
 
 #[napi(js_name = "isAchievementActivated")]
@@ -252,12 +396,13 @@ pub async fn get_auth_ticket_for_web_api(
 
 #[napi(js_name = "registerMicroTxnAuthorizationResponse")]
 pub fn register_micro_txn_authorization_response(
-    #[napi(ts_arg_type = "(value: any) => void")] handler: JsFunction,
+    #[napi(ts_arg_type = "(value: any) => void")] handler: JsCallback<'_, serde_json::Value>,
 ) -> Result<CallbackHandle, Error> {
     state::ensure_initialized()?;
 
-    let threadsafe_handler: ThreadsafeFunction<serde_json::Value, ErrorStrategy::Fatal> =
-        handler.create_threadsafe_function(0, |ctx| Ok(vec![ctx.value]))?;
+    let threadsafe_handler: FatalThreadsafeFunction<serde_json::Value> = handler
+        .build_threadsafe_function::<serde_json::Value>()
+        .build_callback(|ctx| Ok(vec![ctx.value]))?;
 
     let registration =
         state::register_callback(CALLBACK_MICRO_TXN_AUTHORIZATION_RESPONSE, move |param| {
@@ -270,31 +415,51 @@ pub fn register_micro_txn_authorization_response(
     })
 }
 
-fn steam_user() -> Result<*mut sys::ISteamUser, Error> {
+#[napi(js_name = "registerGameOverlayActivated")]
+pub fn register_game_overlay_activated(
+    #[napi(ts_arg_type = "(value: any) => void")] handler: JsCallback<'_, serde_json::Value>,
+) -> Result<CallbackHandle, Error> {
+    state::ensure_initialized()?;
+
+    let threadsafe_handler: FatalThreadsafeFunction<serde_json::Value> = handler
+        .build_threadsafe_function::<serde_json::Value>()
+        .build_callback(|ctx| Ok(vec![ctx.value]))?;
+
+    let registration = state::register_callback(CALLBACK_GAME_OVERLAY_ACTIVATED, move |param| {
+        let value = unsafe { game_overlay_activated_to_json(param) };
+        threadsafe_handler.call(value, ThreadsafeFunctionCallMode::NonBlocking);
+    });
+
+    Ok(CallbackHandle {
+        registration: Some(registration),
+    })
+}
+
+pub(crate) fn steam_user() -> Result<*mut sys::ISteamUser, Error> {
     state::ensure_initialized()?;
     let user = unsafe { sys::SteamAPI_SteamUser_v023() };
     non_null(user, "ISteamUser")
 }
 
-fn steam_friends() -> Result<*mut sys::ISteamFriends, Error> {
+pub(crate) fn steam_friends() -> Result<*mut sys::ISteamFriends, Error> {
     state::ensure_initialized()?;
     let friends = unsafe { sys::SteamAPI_SteamFriends_v018() };
     non_null(friends, "ISteamFriends")
 }
 
-fn steam_utils() -> Result<*mut sys::ISteamUtils, Error> {
+pub(crate) fn steam_utils() -> Result<*mut sys::ISteamUtils, Error> {
     state::ensure_initialized()?;
     let utils = unsafe { sys::SteamAPI_SteamUtils_v010() };
     non_null(utils, "ISteamUtils")
 }
 
-fn steam_user_stats() -> Result<*mut sys::ISteamUserStats, Error> {
+pub(crate) fn steam_user_stats() -> Result<*mut sys::ISteamUserStats, Error> {
     state::ensure_initialized()?;
     let stats = unsafe { sys::SteamAPI_SteamUserStats_v013() };
     non_null(stats, "ISteamUserStats")
 }
 
-fn non_null<T>(ptr: *mut T, interface_name: &str) -> Result<*mut T, Error> {
+pub(crate) fn non_null<T>(ptr: *mut T, interface_name: &str) -> Result<*mut T, Error> {
     if ptr.is_null() {
         Err(Error::from_reason(format!(
             "Steam interface {interface_name} is unavailable"
@@ -304,7 +469,7 @@ fn non_null<T>(ptr: *mut T, interface_name: &str) -> Result<*mut T, Error> {
     }
 }
 
-fn cancel_auth_ticket(ticket_handle: sys::HAuthTicket) {
+pub(crate) fn cancel_auth_ticket(ticket_handle: sys::HAuthTicket) {
     if ticket_handle == H_AUTH_TICKET_INVALID || !state::is_initialized() {
         return;
     }
@@ -316,8 +481,70 @@ fn cancel_auth_ticket(ticket_handle: sys::HAuthTicket) {
     }
 }
 
-fn cstring(value: String, label: &str) -> Result<CString, Error> {
+pub(crate) fn cstring(value: String, label: &str) -> Result<CString, Error> {
     CString::new(value).map_err(|_| Error::from_reason(format!("{label} contains a NUL byte")))
+}
+
+pub(crate) fn make_auth_ticket(data: Vec<u8>, handle: sys::HAuthTicket) -> AuthTicket {
+    AuthTicket { data, handle }
+}
+
+pub(crate) fn steam_id_to_player(steam_id: u64) -> PlayerSteamId {
+    let account_id = (steam_id & 0xffff_ffff) as u32;
+    let last_bit = account_id & 1;
+
+    PlayerSteamId {
+        steam_id64: steam_id.into(),
+        steam_id32: format!("STEAM_0:{}:{}", last_bit, account_id >> 1),
+        account_id,
+    }
+}
+
+pub(crate) fn string_from_ptr(ptr: *const c_char) -> String {
+    if ptr.is_null() {
+        String::new()
+    } else {
+        unsafe { CStr::from_ptr(ptr) }
+            .to_string_lossy()
+            .into_owned()
+    }
+}
+
+fn native_handle_from_buffer(handle: &Buffer) -> Result<usize, Error> {
+    let bytes: &[u8] = handle.as_ref();
+    let handle_size = std::mem::size_of::<usize>();
+    if bytes.len() < handle_size {
+        return Err(Error::from_reason(format!(
+            "Electron native window handle buffer is too small: expected at least {handle_size} bytes, got {}",
+            bytes.len()
+        )));
+    }
+
+    let mut raw = 0usize;
+    for (index, byte) in bytes.iter().take(handle_size).enumerate() {
+        raw |= (*byte as usize) << (index * 8);
+    }
+
+    if raw == 0 {
+        return Err(Error::from_reason(
+            "Electron native window handle buffer contained a null pointer",
+        ));
+    }
+
+    Ok(raw)
+}
+
+fn steam_install_path() -> Option<String> {
+    let path = unsafe { sys::SteamAPI_GetSteamInstallPath() };
+    if path.is_null() {
+        None
+    } else {
+        Some(
+            unsafe { CStr::from_ptr(path) }
+                .to_string_lossy()
+                .into_owned(),
+        )
+    }
 }
 
 fn init_error_message(result: sys::ESteamAPIInitResult, err_msg: &sys::SteamErrMsg) -> String {
@@ -341,7 +568,22 @@ unsafe fn micro_txn_to_json(param: *mut c_void) -> serde_json::Value {
 
     serde_json::json!({
         "app_id": app_id,
-        "order_id": order_id,
+        "order_id": order_id.to_string(),
         "authorized": authorized
+    })
+}
+
+unsafe fn game_overlay_activated_to_json(param: *mut c_void) -> serde_json::Value {
+    let event = param as *const sys::GameOverlayActivated_t;
+    let active = ptr::addr_of!((*event).m_bActive).read_unaligned() != 0;
+    let user_initiated = ptr::addr_of!((*event).m_bUserInitiated).read_unaligned();
+    let app_id = ptr::addr_of!((*event).m_nAppID).read_unaligned();
+    let overlay_pid = ptr::addr_of!((*event).m_dwOverlayPID).read_unaligned();
+
+    serde_json::json!({
+        "active": active,
+        "user_initiated": user_initiated,
+        "app_id": app_id,
+        "overlay_pid": overlay_pid
     })
 }
