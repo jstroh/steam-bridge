@@ -50,6 +50,65 @@ extern "C" {
         unicode_char: u32,
         html_key_modifiers: u32,
     );
+
+    #[link_name = "SteamAPI_ISteamInput_GetDigitalActionOrigins"]
+    fn steam_api_isteam_input_get_digital_action_origins_raw(
+        self_: *mut sys::ISteamInput,
+        input_handle: u64,
+        action_set_handle: u64,
+        digital_action_handle: u64,
+        origins_out: *mut u32,
+    ) -> i32;
+
+    #[link_name = "SteamAPI_ISteamInput_GetAnalogActionOrigins"]
+    fn steam_api_isteam_input_get_analog_action_origins_raw(
+        self_: *mut sys::ISteamInput,
+        input_handle: u64,
+        action_set_handle: u64,
+        analog_action_handle: u64,
+        origins_out: *mut u32,
+    ) -> i32;
+
+    #[link_name = "SteamAPI_ISteamInput_GetGlyphPNGForActionOrigin"]
+    fn steam_api_isteam_input_get_glyph_png_for_action_origin_raw(
+        self_: *mut sys::ISteamInput,
+        origin: u32,
+        size: sys::ESteamInputGlyphSize,
+        flags: u32,
+    ) -> *const c_char;
+
+    #[link_name = "SteamAPI_ISteamInput_GetGlyphSVGForActionOrigin"]
+    fn steam_api_isteam_input_get_glyph_svg_for_action_origin_raw(
+        self_: *mut sys::ISteamInput,
+        origin: u32,
+        flags: u32,
+    ) -> *const c_char;
+
+    #[link_name = "SteamAPI_ISteamInput_GetGlyphForActionOrigin_Legacy"]
+    fn steam_api_isteam_input_get_legacy_glyph_for_action_origin_raw(
+        self_: *mut sys::ISteamInput,
+        origin: u32,
+    ) -> *const c_char;
+
+    #[link_name = "SteamAPI_ISteamInput_GetStringForActionOrigin"]
+    fn steam_api_isteam_input_get_string_for_action_origin_raw(
+        self_: *mut sys::ISteamInput,
+        origin: u32,
+    ) -> *const c_char;
+
+    #[link_name = "SteamAPI_ISteamInput_GetActionOriginFromXboxOrigin"]
+    fn steam_api_isteam_input_get_action_origin_from_xbox_origin_raw(
+        self_: *mut sys::ISteamInput,
+        input_handle: u64,
+        origin: u32,
+    ) -> u32;
+
+    #[link_name = "SteamAPI_ISteamInput_TranslateActionOrigin"]
+    fn steam_api_isteam_input_translate_action_origin_raw(
+        self_: *mut sys::ISteamInput,
+        destination_input_type: sys::ESteamInputType,
+        source_origin: u32,
+    ) -> u32;
 }
 
 const CALLBACK_PERSONA_STATE_CHANGE: i32 = 304;
@@ -750,6 +809,44 @@ pub struct InventoryPrice {
 pub struct AnalogActionVector {
     pub x: f64,
     pub y: f64,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct InputDigitalActionData {
+    pub state: bool,
+    pub active: bool,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct InputAnalogActionData {
+    pub mode: u32,
+    pub x: f64,
+    pub y: f64,
+    pub active: bool,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct InputMotionData {
+    pub rotation_quaternion_x: f64,
+    pub rotation_quaternion_y: f64,
+    pub rotation_quaternion_z: f64,
+    pub rotation_quaternion_w: f64,
+    pub position_acceleration_x: f64,
+    pub position_acceleration_y: f64,
+    pub position_acceleration_z: f64,
+    pub rotation_velocity_x: f64,
+    pub rotation_velocity_y: f64,
+    pub rotation_velocity_z: f64,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct InputDeviceBindingRevision {
+    pub major: i32,
+    pub minor: i32,
 }
 
 #[derive(Debug)]
@@ -5811,11 +5908,44 @@ pub fn input_shutdown() -> Result<(), Error> {
     Ok(())
 }
 
+#[napi(js_name = "inputRunFrame")]
+pub fn input_run_frame(reserved: Option<bool>) -> Result<(), Error> {
+    unsafe { sys::SteamAPI_ISteamInput_RunFrame(steam_input()?, reserved.unwrap_or(false)) };
+    Ok(())
+}
+
+#[napi(js_name = "inputWaitForData")]
+pub fn input_wait_for_data(
+    wait_forever: Option<bool>,
+    timeout_ms: Option<u32>,
+) -> Result<bool, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamInput_BWaitForData(
+            steam_input()?,
+            wait_forever.unwrap_or(false),
+            timeout_ms.unwrap_or(0),
+        )
+    })
+}
+
+#[napi(js_name = "inputNewDataAvailable")]
+pub fn input_new_data_available() -> Result<bool, Error> {
+    Ok(unsafe { sys::SteamAPI_ISteamInput_BNewDataAvailable(steam_input()?) })
+}
+
+#[napi(js_name = "inputSetActionManifestFilePath")]
+pub fn input_set_action_manifest_file_path(path: String) -> Result<bool, Error> {
+    let path = cstring(path, "input action manifest path")?;
+    Ok(unsafe {
+        sys::SteamAPI_ISteamInput_SetInputActionManifestFilePath(steam_input()?, path.as_ptr())
+    })
+}
+
 #[napi(js_name = "inputGetControllers")]
 pub fn input_get_controllers() -> Result<Vec<InputControllerInfo>, Error> {
     let input = steam_input()?;
     unsafe { sys::SteamAPI_ISteamInput_RunFrame(input, false) };
-    let mut handles = vec![0u64; 16];
+    let mut handles = vec![0u64; sys::STEAM_INPUT_MAX_COUNT as usize];
     let count =
         unsafe { sys::SteamAPI_ISteamInput_GetConnectedControllers(input, handles.as_mut_ptr()) };
     handles.truncate(count.max(0) as usize);
@@ -5870,8 +6000,78 @@ pub fn input_activate_action_set(controller: BigInt, action_set: BigInt) -> Resu
     Ok(())
 }
 
-#[napi(js_name = "inputIsDigitalActionPressed")]
-pub fn input_is_digital_action_pressed(controller: BigInt, action: BigInt) -> Result<bool, Error> {
+#[napi(js_name = "inputGetCurrentActionSet")]
+pub fn input_get_current_action_set(controller: BigInt) -> Result<BigInt, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamInput_GetCurrentActionSet(
+            steam_input()?,
+            bigint_to_u64(controller, "controller handle")?,
+        )
+    }
+    .into())
+}
+
+#[napi(js_name = "inputActivateActionSetLayer")]
+pub fn input_activate_action_set_layer(
+    controller: BigInt,
+    action_set_layer: BigInt,
+) -> Result<(), Error> {
+    unsafe {
+        sys::SteamAPI_ISteamInput_ActivateActionSetLayer(
+            steam_input()?,
+            bigint_to_u64(controller, "controller handle")?,
+            bigint_to_u64(action_set_layer, "action set layer handle")?,
+        );
+    }
+    Ok(())
+}
+
+#[napi(js_name = "inputDeactivateActionSetLayer")]
+pub fn input_deactivate_action_set_layer(
+    controller: BigInt,
+    action_set_layer: BigInt,
+) -> Result<(), Error> {
+    unsafe {
+        sys::SteamAPI_ISteamInput_DeactivateActionSetLayer(
+            steam_input()?,
+            bigint_to_u64(controller, "controller handle")?,
+            bigint_to_u64(action_set_layer, "action set layer handle")?,
+        );
+    }
+    Ok(())
+}
+
+#[napi(js_name = "inputDeactivateAllActionSetLayers")]
+pub fn input_deactivate_all_action_set_layers(controller: BigInt) -> Result<(), Error> {
+    unsafe {
+        sys::SteamAPI_ISteamInput_DeactivateAllActionSetLayers(
+            steam_input()?,
+            bigint_to_u64(controller, "controller handle")?,
+        );
+    }
+    Ok(())
+}
+
+#[napi(js_name = "inputGetActiveActionSetLayers")]
+pub fn input_get_active_action_set_layers(controller: BigInt) -> Result<Vec<BigInt>, Error> {
+    let input = steam_input()?;
+    let mut handles = vec![0u64; sys::STEAM_INPUT_MAX_ACTIVE_LAYERS as usize];
+    let count = unsafe {
+        sys::SteamAPI_ISteamInput_GetActiveActionSetLayers(
+            input,
+            bigint_to_u64(controller, "controller handle")?,
+            handles.as_mut_ptr(),
+        )
+    };
+    handles.truncate(count.max(0) as usize);
+    Ok(handles.into_iter().map(BigInt::from).collect())
+}
+
+#[napi(js_name = "inputGetDigitalActionData")]
+pub fn input_get_digital_action_data(
+    controller: BigInt,
+    action: BigInt,
+) -> Result<InputDigitalActionData, Error> {
     let data = unsafe {
         sys::SteamAPI_ISteamInput_GetDigitalActionData(
             steam_input()?,
@@ -5879,14 +6079,51 @@ pub fn input_is_digital_action_pressed(controller: BigInt, action: BigInt) -> Re
             bigint_to_u64(action, "digital action handle")?,
         )
     };
-    Ok(data.bActive && data.bState)
+    Ok(input_digital_action_data(data))
 }
 
-#[napi(js_name = "inputGetAnalogActionVector")]
-pub fn input_get_analog_action_vector(
+#[napi(js_name = "inputIsDigitalActionPressed")]
+pub fn input_is_digital_action_pressed(controller: BigInt, action: BigInt) -> Result<bool, Error> {
+    let data = input_get_digital_action_data(controller, action)?;
+    Ok(data.active && data.state)
+}
+
+#[napi(js_name = "inputGetDigitalActionOrigins")]
+pub fn input_get_digital_action_origins(
+    controller: BigInt,
+    action_set: BigInt,
+    action: BigInt,
+) -> Result<Vec<u32>, Error> {
+    let input = steam_input()?;
+    let mut origins = vec![0u32; sys::STEAM_INPUT_MAX_ORIGINS as usize];
+    let count = unsafe {
+        steam_api_isteam_input_get_digital_action_origins_raw(
+            input,
+            bigint_to_u64(controller, "controller handle")?,
+            bigint_to_u64(action_set, "action set handle")?,
+            bigint_to_u64(action, "digital action handle")?,
+            origins.as_mut_ptr(),
+        )
+    };
+    origins.truncate(count.max(0) as usize);
+    Ok(origins)
+}
+
+#[napi(js_name = "inputGetStringForDigitalActionName")]
+pub fn input_get_string_for_digital_action_name(action: BigInt) -> Result<String, Error> {
+    Ok(string_from_ptr(unsafe {
+        sys::SteamAPI_ISteamInput_GetStringForDigitalActionName(
+            steam_input()?,
+            bigint_to_u64(action, "digital action handle")?,
+        )
+    }))
+}
+
+#[napi(js_name = "inputGetAnalogActionData")]
+pub fn input_get_analog_action_data(
     controller: BigInt,
     action: BigInt,
-) -> Result<AnalogActionVector, Error> {
+) -> Result<InputAnalogActionData, Error> {
     let data = unsafe {
         sys::SteamAPI_ISteamInput_GetAnalogActionData(
             steam_input()?,
@@ -5894,9 +6131,254 @@ pub fn input_get_analog_action_vector(
             bigint_to_u64(action, "analog action handle")?,
         )
     };
-    let x = unsafe { ptr::addr_of!(data.x).read_unaligned() } as f64;
-    let y = unsafe { ptr::addr_of!(data.y).read_unaligned() } as f64;
+    Ok(input_analog_action_data(data))
+}
+
+#[napi(js_name = "inputGetAnalogActionVector")]
+pub fn input_get_analog_action_vector(
+    controller: BigInt,
+    action: BigInt,
+) -> Result<AnalogActionVector, Error> {
+    let data = input_get_analog_action_data(controller, action)?;
+    let x = data.x;
+    let y = data.y;
     Ok(AnalogActionVector { x, y })
+}
+
+#[napi(js_name = "inputGetAnalogActionOrigins")]
+pub fn input_get_analog_action_origins(
+    controller: BigInt,
+    action_set: BigInt,
+    action: BigInt,
+) -> Result<Vec<u32>, Error> {
+    let input = steam_input()?;
+    let mut origins = vec![0u32; sys::STEAM_INPUT_MAX_ORIGINS as usize];
+    let count = unsafe {
+        steam_api_isteam_input_get_analog_action_origins_raw(
+            input,
+            bigint_to_u64(controller, "controller handle")?,
+            bigint_to_u64(action_set, "action set handle")?,
+            bigint_to_u64(action, "analog action handle")?,
+            origins.as_mut_ptr(),
+        )
+    };
+    origins.truncate(count.max(0) as usize);
+    Ok(origins)
+}
+
+#[napi(js_name = "inputGetStringForAnalogActionName")]
+pub fn input_get_string_for_analog_action_name(action: BigInt) -> Result<String, Error> {
+    Ok(string_from_ptr(unsafe {
+        sys::SteamAPI_ISteamInput_GetStringForAnalogActionName(
+            steam_input()?,
+            bigint_to_u64(action, "analog action handle")?,
+        )
+    }))
+}
+
+#[napi(js_name = "inputGetGlyphPngForActionOrigin")]
+pub fn input_get_glyph_png_for_action_origin(
+    origin: u32,
+    size: Option<u32>,
+    flags: Option<u32>,
+) -> Result<String, Error> {
+    Ok(string_from_ptr(unsafe {
+        steam_api_isteam_input_get_glyph_png_for_action_origin_raw(
+            steam_input()?,
+            input_action_origin_value(origin)?,
+            input_glyph_size_from_u32(size.unwrap_or(1))?,
+            flags.unwrap_or(0),
+        )
+    }))
+}
+
+#[napi(js_name = "inputGetGlyphSvgForActionOrigin")]
+pub fn input_get_glyph_svg_for_action_origin(
+    origin: u32,
+    flags: Option<u32>,
+) -> Result<String, Error> {
+    Ok(string_from_ptr(unsafe {
+        steam_api_isteam_input_get_glyph_svg_for_action_origin_raw(
+            steam_input()?,
+            input_action_origin_value(origin)?,
+            flags.unwrap_or(0),
+        )
+    }))
+}
+
+#[napi(js_name = "inputGetLegacyGlyphForActionOrigin")]
+pub fn input_get_legacy_glyph_for_action_origin(origin: u32) -> Result<String, Error> {
+    Ok(string_from_ptr(unsafe {
+        steam_api_isteam_input_get_legacy_glyph_for_action_origin_raw(
+            steam_input()?,
+            input_action_origin_value(origin)?,
+        )
+    }))
+}
+
+#[napi(js_name = "inputGetStringForActionOrigin")]
+pub fn input_get_string_for_action_origin(origin: u32) -> Result<String, Error> {
+    Ok(string_from_ptr(unsafe {
+        steam_api_isteam_input_get_string_for_action_origin_raw(
+            steam_input()?,
+            input_action_origin_value(origin)?,
+        )
+    }))
+}
+
+#[napi(js_name = "inputStopAnalogActionMomentum")]
+pub fn input_stop_analog_action_momentum(controller: BigInt, action: BigInt) -> Result<(), Error> {
+    unsafe {
+        sys::SteamAPI_ISteamInput_StopAnalogActionMomentum(
+            steam_input()?,
+            bigint_to_u64(controller, "controller handle")?,
+            bigint_to_u64(action, "analog action handle")?,
+        );
+    }
+    Ok(())
+}
+
+#[napi(js_name = "inputGetMotionData")]
+pub fn input_get_motion_data(controller: BigInt) -> Result<InputMotionData, Error> {
+    let data = unsafe {
+        sys::SteamAPI_ISteamInput_GetMotionData(
+            steam_input()?,
+            bigint_to_u64(controller, "controller handle")?,
+        )
+    };
+    Ok(input_motion_data(data))
+}
+
+#[napi(js_name = "inputTriggerVibration")]
+pub fn input_trigger_vibration(
+    controller: BigInt,
+    left_speed: u32,
+    right_speed: u32,
+) -> Result<(), Error> {
+    unsafe {
+        sys::SteamAPI_ISteamInput_TriggerVibration(
+            steam_input()?,
+            bigint_to_u64(controller, "controller handle")?,
+            input_u16(left_speed, "left speed")?,
+            input_u16(right_speed, "right speed")?,
+        );
+    }
+    Ok(())
+}
+
+#[napi(js_name = "inputTriggerVibrationExtended")]
+pub fn input_trigger_vibration_extended(
+    controller: BigInt,
+    left_speed: u32,
+    right_speed: u32,
+    left_trigger_speed: u32,
+    right_trigger_speed: u32,
+) -> Result<(), Error> {
+    unsafe {
+        sys::SteamAPI_ISteamInput_TriggerVibrationExtended(
+            steam_input()?,
+            bigint_to_u64(controller, "controller handle")?,
+            input_u16(left_speed, "left speed")?,
+            input_u16(right_speed, "right speed")?,
+            input_u16(left_trigger_speed, "left trigger speed")?,
+            input_u16(right_trigger_speed, "right trigger speed")?,
+        );
+    }
+    Ok(())
+}
+
+#[napi(js_name = "inputTriggerSimpleHapticEvent")]
+pub fn input_trigger_simple_haptic_event(
+    controller: BigInt,
+    location: u32,
+    intensity: u32,
+    gain_db: i32,
+    other_intensity: u32,
+    other_gain_db: i32,
+) -> Result<(), Error> {
+    unsafe {
+        sys::SteamAPI_ISteamInput_TriggerSimpleHapticEvent(
+            steam_input()?,
+            bigint_to_u64(controller, "controller handle")?,
+            controller_haptic_location_from_u32(location)?,
+            input_u8(intensity, "intensity")?,
+            input_i8(gain_db, "gain dB")?,
+            input_u8(other_intensity, "other intensity")?,
+            input_i8(other_gain_db, "other gain dB")?,
+        );
+    }
+    Ok(())
+}
+
+#[napi(js_name = "inputSetLedColor")]
+pub fn input_set_led_color(
+    controller: BigInt,
+    red: u32,
+    green: u32,
+    blue: u32,
+    flags: Option<u32>,
+) -> Result<(), Error> {
+    unsafe {
+        sys::SteamAPI_ISteamInput_SetLEDColor(
+            steam_input()?,
+            bigint_to_u64(controller, "controller handle")?,
+            input_u8(red, "red")?,
+            input_u8(green, "green")?,
+            input_u8(blue, "blue")?,
+            flags.unwrap_or(0),
+        );
+    }
+    Ok(())
+}
+
+#[napi(js_name = "inputLegacyTriggerHapticPulse")]
+pub fn input_legacy_trigger_haptic_pulse(
+    controller: BigInt,
+    target_pad: u32,
+    duration_microseconds: u32,
+) -> Result<(), Error> {
+    unsafe {
+        sys::SteamAPI_ISteamInput_Legacy_TriggerHapticPulse(
+            steam_input()?,
+            bigint_to_u64(controller, "controller handle")?,
+            steam_controller_pad_from_u32(target_pad)?,
+            input_u16(duration_microseconds, "duration microseconds")?,
+        );
+    }
+    Ok(())
+}
+
+#[napi(js_name = "inputLegacyTriggerRepeatedHapticPulse")]
+pub fn input_legacy_trigger_repeated_haptic_pulse(
+    controller: BigInt,
+    target_pad: u32,
+    duration_microseconds: u32,
+    off_microseconds: u32,
+    repeat: u32,
+    flags: Option<u32>,
+) -> Result<(), Error> {
+    unsafe {
+        sys::SteamAPI_ISteamInput_Legacy_TriggerRepeatedHapticPulse(
+            steam_input()?,
+            bigint_to_u64(controller, "controller handle")?,
+            steam_controller_pad_from_u32(target_pad)?,
+            input_u16(duration_microseconds, "duration microseconds")?,
+            input_u16(off_microseconds, "off microseconds")?,
+            input_u16(repeat, "repeat")?,
+            flags.unwrap_or(0),
+        );
+    }
+    Ok(())
+}
+
+#[napi(js_name = "inputShowBindingPanel")]
+pub fn input_show_binding_panel(controller: BigInt) -> Result<bool, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamInput_ShowBindingPanel(
+            steam_input()?,
+            bigint_to_u64(controller, "controller handle")?,
+        )
+    })
 }
 
 #[napi(js_name = "inputGetControllerType")]
@@ -5908,6 +6390,106 @@ pub fn input_get_controller_type(controller: BigInt) -> Result<String, Error> {
         )
     })
     .to_owned())
+}
+
+#[napi(js_name = "inputGetControllerForGamepadIndex")]
+pub fn input_get_controller_for_gamepad_index(index: i32) -> Result<Option<BigInt>, Error> {
+    let handle =
+        unsafe { sys::SteamAPI_ISteamInput_GetControllerForGamepadIndex(steam_input()?, index) };
+    Ok((handle != 0).then(|| handle.into()))
+}
+
+#[napi(js_name = "inputGetGamepadIndexForController")]
+pub fn input_get_gamepad_index_for_controller(controller: BigInt) -> Result<i32, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamInput_GetGamepadIndexForController(
+            steam_input()?,
+            bigint_to_u64(controller, "controller handle")?,
+        )
+    })
+}
+
+#[napi(js_name = "inputGetStringForXboxOrigin")]
+pub fn input_get_string_for_xbox_origin(origin: u32) -> Result<String, Error> {
+    Ok(string_from_ptr(unsafe {
+        sys::SteamAPI_ISteamInput_GetStringForXboxOrigin(
+            steam_input()?,
+            xbox_origin_from_u32(origin)?,
+        )
+    }))
+}
+
+#[napi(js_name = "inputGetGlyphForXboxOrigin")]
+pub fn input_get_glyph_for_xbox_origin(origin: u32) -> Result<String, Error> {
+    Ok(string_from_ptr(unsafe {
+        sys::SteamAPI_ISteamInput_GetGlyphForXboxOrigin(
+            steam_input()?,
+            xbox_origin_from_u32(origin)?,
+        )
+    }))
+}
+
+#[napi(js_name = "inputGetActionOriginFromXboxOrigin")]
+pub fn input_get_action_origin_from_xbox_origin(
+    controller: BigInt,
+    origin: u32,
+) -> Result<u32, Error> {
+    Ok(unsafe {
+        steam_api_isteam_input_get_action_origin_from_xbox_origin_raw(
+            steam_input()?,
+            bigint_to_u64(controller, "controller handle")?,
+            xbox_origin_value(origin)?,
+        )
+    })
+}
+
+#[napi(js_name = "inputTranslateActionOrigin")]
+pub fn input_translate_action_origin(
+    destination_input_type: u32,
+    source_origin: u32,
+) -> Result<u32, Error> {
+    Ok(unsafe {
+        steam_api_isteam_input_translate_action_origin_raw(
+            steam_input()?,
+            steam_input_type_from_u32(destination_input_type)?,
+            input_action_origin_value(source_origin)?,
+        )
+    })
+}
+
+#[napi(js_name = "inputGetDeviceBindingRevision")]
+pub fn input_get_device_binding_revision(
+    controller: BigInt,
+) -> Result<Option<InputDeviceBindingRevision>, Error> {
+    let mut major = 0;
+    let mut minor = 0;
+    let ok = unsafe {
+        sys::SteamAPI_ISteamInput_GetDeviceBindingRevision(
+            steam_input()?,
+            bigint_to_u64(controller, "controller handle")?,
+            &mut major,
+            &mut minor,
+        )
+    };
+    Ok(ok.then_some(InputDeviceBindingRevision { major, minor }))
+}
+
+#[napi(js_name = "inputGetRemotePlaySessionId")]
+pub fn input_get_remote_play_session_id(controller: BigInt) -> Result<u32, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamInput_GetRemotePlaySessionID(
+            steam_input()?,
+            bigint_to_u64(controller, "controller handle")?,
+        )
+    })
+}
+
+#[napi(js_name = "inputGetSessionInputConfigurationSettings")]
+pub fn input_get_session_input_configuration_settings() -> Result<u32, Error> {
+    Ok(
+        unsafe { sys::SteamAPI_ISteamInput_GetSessionInputConfigurationSettings(steam_input()?) }
+            as u32,
+    )
 }
 
 #[napi(js_name = "statsGetInt")]
@@ -16774,6 +17356,154 @@ fn input_type_name(input_type: sys::ESteamInputType) -> &'static str {
         sys::ESteamInputType::k_ESteamInputType_SteamDeckController => "SteamDeckController",
         _ => "Unknown",
     }
+}
+
+fn input_digital_action_data(data: sys::InputDigitalActionData_t) -> InputDigitalActionData {
+    InputDigitalActionData {
+        state: data.bState,
+        active: data.bActive,
+    }
+}
+
+fn input_analog_action_data(data: sys::InputAnalogActionData_t) -> InputAnalogActionData {
+    InputAnalogActionData {
+        mode: unsafe { ptr::addr_of!(data.eMode).read_unaligned() } as u32,
+        x: unsafe { ptr::addr_of!(data.x).read_unaligned() } as f64,
+        y: unsafe { ptr::addr_of!(data.y).read_unaligned() } as f64,
+        active: unsafe { ptr::addr_of!(data.bActive).read_unaligned() },
+    }
+}
+
+fn input_motion_data(data: sys::InputMotionData_t) -> InputMotionData {
+    InputMotionData {
+        rotation_quaternion_x: unsafe { ptr::addr_of!(data.rotQuatX).read_unaligned() } as f64,
+        rotation_quaternion_y: unsafe { ptr::addr_of!(data.rotQuatY).read_unaligned() } as f64,
+        rotation_quaternion_z: unsafe { ptr::addr_of!(data.rotQuatZ).read_unaligned() } as f64,
+        rotation_quaternion_w: unsafe { ptr::addr_of!(data.rotQuatW).read_unaligned() } as f64,
+        position_acceleration_x: unsafe { ptr::addr_of!(data.posAccelX).read_unaligned() } as f64,
+        position_acceleration_y: unsafe { ptr::addr_of!(data.posAccelY).read_unaligned() } as f64,
+        position_acceleration_z: unsafe { ptr::addr_of!(data.posAccelZ).read_unaligned() } as f64,
+        rotation_velocity_x: unsafe { ptr::addr_of!(data.rotVelX).read_unaligned() } as f64,
+        rotation_velocity_y: unsafe { ptr::addr_of!(data.rotVelY).read_unaligned() } as f64,
+        rotation_velocity_z: unsafe { ptr::addr_of!(data.rotVelZ).read_unaligned() } as f64,
+    }
+}
+
+fn input_action_origin_value(value: u32) -> Result<u32, Error> {
+    if value <= sys::EInputActionOrigin::k_EInputActionOrigin_MaximumPossibleValue as u32 {
+        Ok(value)
+    } else {
+        Err(Error::from_reason(format!(
+            "invalid input action origin {value}"
+        )))
+    }
+}
+
+fn input_glyph_size_from_u32(value: u32) -> Result<sys::ESteamInputGlyphSize, Error> {
+    match value {
+        0 => Ok(sys::ESteamInputGlyphSize::k_ESteamInputGlyphSize_Small),
+        1 => Ok(sys::ESteamInputGlyphSize::k_ESteamInputGlyphSize_Medium),
+        2 => Ok(sys::ESteamInputGlyphSize::k_ESteamInputGlyphSize_Large),
+        _ => Err(Error::from_reason(format!(
+            "invalid input glyph size {value}"
+        ))),
+    }
+}
+
+fn steam_input_type_from_u32(value: u32) -> Result<sys::ESteamInputType, Error> {
+    match value {
+        0 => Ok(sys::ESteamInputType::k_ESteamInputType_Unknown),
+        1 => Ok(sys::ESteamInputType::k_ESteamInputType_SteamController),
+        2 => Ok(sys::ESteamInputType::k_ESteamInputType_XBox360Controller),
+        3 => Ok(sys::ESteamInputType::k_ESteamInputType_XBoxOneController),
+        4 => Ok(sys::ESteamInputType::k_ESteamInputType_GenericGamepad),
+        5 => Ok(sys::ESteamInputType::k_ESteamInputType_PS4Controller),
+        6 => Ok(sys::ESteamInputType::k_ESteamInputType_AppleMFiController),
+        7 => Ok(sys::ESteamInputType::k_ESteamInputType_AndroidController),
+        8 => Ok(sys::ESteamInputType::k_ESteamInputType_SwitchJoyConPair),
+        9 => Ok(sys::ESteamInputType::k_ESteamInputType_SwitchJoyConSingle),
+        10 => Ok(sys::ESteamInputType::k_ESteamInputType_SwitchProController),
+        11 => Ok(sys::ESteamInputType::k_ESteamInputType_MobileTouch),
+        12 => Ok(sys::ESteamInputType::k_ESteamInputType_PS3Controller),
+        13 => Ok(sys::ESteamInputType::k_ESteamInputType_PS5Controller),
+        14 => Ok(sys::ESteamInputType::k_ESteamInputType_SteamDeckController),
+        _ => Err(Error::from_reason(format!("invalid input type {value}"))),
+    }
+}
+
+fn xbox_origin_from_u32(value: u32) -> Result<sys::EXboxOrigin, Error> {
+    match value {
+        0 => Ok(sys::EXboxOrigin::k_EXboxOrigin_A),
+        1 => Ok(sys::EXboxOrigin::k_EXboxOrigin_B),
+        2 => Ok(sys::EXboxOrigin::k_EXboxOrigin_X),
+        3 => Ok(sys::EXboxOrigin::k_EXboxOrigin_Y),
+        4 => Ok(sys::EXboxOrigin::k_EXboxOrigin_LeftBumper),
+        5 => Ok(sys::EXboxOrigin::k_EXboxOrigin_RightBumper),
+        6 => Ok(sys::EXboxOrigin::k_EXboxOrigin_Menu),
+        7 => Ok(sys::EXboxOrigin::k_EXboxOrigin_View),
+        8 => Ok(sys::EXboxOrigin::k_EXboxOrigin_LeftTrigger_Pull),
+        9 => Ok(sys::EXboxOrigin::k_EXboxOrigin_LeftTrigger_Click),
+        10 => Ok(sys::EXboxOrigin::k_EXboxOrigin_RightTrigger_Pull),
+        11 => Ok(sys::EXboxOrigin::k_EXboxOrigin_RightTrigger_Click),
+        12 => Ok(sys::EXboxOrigin::k_EXboxOrigin_LeftStick_Move),
+        13 => Ok(sys::EXboxOrigin::k_EXboxOrigin_LeftStick_Click),
+        14 => Ok(sys::EXboxOrigin::k_EXboxOrigin_LeftStick_DPadNorth),
+        15 => Ok(sys::EXboxOrigin::k_EXboxOrigin_LeftStick_DPadSouth),
+        16 => Ok(sys::EXboxOrigin::k_EXboxOrigin_LeftStick_DPadWest),
+        17 => Ok(sys::EXboxOrigin::k_EXboxOrigin_LeftStick_DPadEast),
+        18 => Ok(sys::EXboxOrigin::k_EXboxOrigin_RightStick_Move),
+        19 => Ok(sys::EXboxOrigin::k_EXboxOrigin_RightStick_Click),
+        20 => Ok(sys::EXboxOrigin::k_EXboxOrigin_RightStick_DPadNorth),
+        21 => Ok(sys::EXboxOrigin::k_EXboxOrigin_RightStick_DPadSouth),
+        22 => Ok(sys::EXboxOrigin::k_EXboxOrigin_RightStick_DPadWest),
+        23 => Ok(sys::EXboxOrigin::k_EXboxOrigin_RightStick_DPadEast),
+        24 => Ok(sys::EXboxOrigin::k_EXboxOrigin_DPad_North),
+        25 => Ok(sys::EXboxOrigin::k_EXboxOrigin_DPad_South),
+        26 => Ok(sys::EXboxOrigin::k_EXboxOrigin_DPad_West),
+        27 => Ok(sys::EXboxOrigin::k_EXboxOrigin_DPad_East),
+        _ => Err(Error::from_reason(format!("invalid Xbox origin {value}"))),
+    }
+}
+
+fn xbox_origin_value(value: u32) -> Result<u32, Error> {
+    xbox_origin_from_u32(value).map(|origin| origin as u32)
+}
+
+fn controller_haptic_location_from_u32(
+    value: u32,
+) -> Result<sys::EControllerHapticLocation, Error> {
+    match value {
+        1 => Ok(sys::EControllerHapticLocation::k_EControllerHapticLocation_Left),
+        2 => Ok(sys::EControllerHapticLocation::k_EControllerHapticLocation_Right),
+        3 => Ok(sys::EControllerHapticLocation::k_EControllerHapticLocation_Both),
+        _ => Err(Error::from_reason(format!(
+            "invalid haptic location {value}"
+        ))),
+    }
+}
+
+fn steam_controller_pad_from_u32(value: u32) -> Result<sys::ESteamControllerPad, Error> {
+    match value {
+        0 => Ok(sys::ESteamControllerPad::k_ESteamControllerPad_Left),
+        1 => Ok(sys::ESteamControllerPad::k_ESteamControllerPad_Right),
+        _ => Err(Error::from_reason(format!(
+            "invalid Steam Controller pad {value}"
+        ))),
+    }
+}
+
+fn input_u8(value: u32, name: &str) -> Result<u8, Error> {
+    u8::try_from(value).map_err(|_| Error::from_reason(format!("{name} must be between 0 and 255")))
+}
+
+fn input_i8(value: i32, name: &str) -> Result<i8, Error> {
+    i8::try_from(value)
+        .map_err(|_| Error::from_reason(format!("{name} must be between -128 and 127")))
+}
+
+fn input_u16(value: u32, name: &str) -> Result<u16, Error> {
+    u16::try_from(value)
+        .map_err(|_| Error::from_reason(format!("{name} must be between 0 and 65535")))
 }
 
 fn notification_position_from_i32(value: i32) -> Result<sys::ENotificationPosition, Error> {

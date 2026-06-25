@@ -405,6 +405,46 @@ export interface NativeAnalogActionVector {
   y: number;
 }
 
+export interface NativeInputDigitalActionData {
+  state: boolean;
+  active: boolean;
+}
+
+export interface NativeInputAnalogActionData {
+  mode: number;
+  x: number;
+  y: number;
+  active: boolean;
+}
+
+export interface NativeInputMotionData {
+  rotationQuaternionX?: number;
+  rotation_quaternion_x?: number;
+  rotationQuaternionY?: number;
+  rotation_quaternion_y?: number;
+  rotationQuaternionZ?: number;
+  rotation_quaternion_z?: number;
+  rotationQuaternionW?: number;
+  rotation_quaternion_w?: number;
+  positionAccelerationX?: number;
+  position_acceleration_x?: number;
+  positionAccelerationY?: number;
+  position_acceleration_y?: number;
+  positionAccelerationZ?: number;
+  position_acceleration_z?: number;
+  rotationVelocityX?: number;
+  rotation_velocity_x?: number;
+  rotationVelocityY?: number;
+  rotation_velocity_y?: number;
+  rotationVelocityZ?: number;
+  rotation_velocity_z?: number;
+}
+
+export interface NativeInputDeviceBindingRevision {
+  major: number;
+  minor: number;
+}
+
 export interface NativeP2PPacket {
   data: Buffer;
   size: number;
@@ -1766,14 +1806,71 @@ export interface NativeBinding {
 
   inputInit(): void;
   inputShutdown(): void;
+  inputRunFrame(reserved?: boolean | null): void;
+  inputWaitForData(waitForever?: boolean | null, timeoutMs?: number | null): boolean;
+  inputNewDataAvailable(): boolean;
+  inputSetActionManifestFilePath(path: string): boolean;
   inputGetControllers(): NativeInputControllerInfo[];
   inputGetActionSet(actionSetName: string): bigint;
   inputGetDigitalAction(actionName: string): bigint;
   inputGetAnalogAction(actionName: string): bigint;
   inputActivateActionSet(controller: bigint, actionSet: bigint): void;
+  inputGetCurrentActionSet(controller: bigint): bigint;
+  inputActivateActionSetLayer(controller: bigint, actionSetLayer: bigint): void;
+  inputDeactivateActionSetLayer(controller: bigint, actionSetLayer: bigint): void;
+  inputDeactivateAllActionSetLayers(controller: bigint): void;
+  inputGetActiveActionSetLayers(controller: bigint): bigint[];
+  inputGetDigitalActionData(controller: bigint, action: bigint): NativeInputDigitalActionData;
   inputIsDigitalActionPressed(controller: bigint, action: bigint): boolean;
+  inputGetDigitalActionOrigins(controller: bigint, actionSet: bigint, action: bigint): number[];
+  inputGetStringForDigitalActionName(action: bigint): string;
+  inputGetAnalogActionData(controller: bigint, action: bigint): NativeInputAnalogActionData;
   inputGetAnalogActionVector(controller: bigint, action: bigint): NativeAnalogActionVector;
+  inputGetAnalogActionOrigins(controller: bigint, actionSet: bigint, action: bigint): number[];
+  inputGetStringForAnalogActionName(action: bigint): string;
+  inputGetGlyphPngForActionOrigin(origin: number, size?: number | null, flags?: number | null): string;
+  inputGetGlyphSvgForActionOrigin(origin: number, flags?: number | null): string;
+  inputGetLegacyGlyphForActionOrigin(origin: number): string;
+  inputGetStringForActionOrigin(origin: number): string;
+  inputStopAnalogActionMomentum(controller: bigint, action: bigint): void;
+  inputGetMotionData(controller: bigint): NativeInputMotionData;
+  inputTriggerVibration(controller: bigint, leftSpeed: number, rightSpeed: number): void;
+  inputTriggerVibrationExtended(
+    controller: bigint,
+    leftSpeed: number,
+    rightSpeed: number,
+    leftTriggerSpeed: number,
+    rightTriggerSpeed: number
+  ): void;
+  inputTriggerSimpleHapticEvent(
+    controller: bigint,
+    location: number,
+    intensity: number,
+    gainDb: number,
+    otherIntensity: number,
+    otherGainDb: number
+  ): void;
+  inputSetLedColor(controller: bigint, red: number, green: number, blue: number, flags?: number | null): void;
+  inputLegacyTriggerHapticPulse(controller: bigint, targetPad: number, durationMicroseconds: number): void;
+  inputLegacyTriggerRepeatedHapticPulse(
+    controller: bigint,
+    targetPad: number,
+    durationMicroseconds: number,
+    offMicroseconds: number,
+    repeat: number,
+    flags?: number | null
+  ): void;
+  inputShowBindingPanel(controller: bigint): boolean;
   inputGetControllerType(controller: bigint): string;
+  inputGetControllerForGamepadIndex(index: number): bigint | null | undefined;
+  inputGetGamepadIndexForController(controller: bigint): number;
+  inputGetStringForXboxOrigin(origin: number): string;
+  inputGetGlyphForXboxOrigin(origin: number): string;
+  inputGetActionOriginFromXboxOrigin(controller: bigint, origin: number): number;
+  inputTranslateActionOrigin(destinationInputType: number, sourceOrigin: number): number;
+  inputGetDeviceBindingRevision(controller: bigint): NativeInputDeviceBindingRevision | null | undefined;
+  inputGetRemotePlaySessionId(controller: bigint): number;
+  inputGetSessionInputConfigurationSettings(): number;
 
   statsGetInt(name: string): number | null | undefined;
   statsGetFloat(name: string): number | null | undefined;

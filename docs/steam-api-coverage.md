@@ -55,8 +55,11 @@ The native layer currently targets the Steamworks flat C API through
   clipboard/source/find/link helpers, cookies, scale/background/DPI controls,
   developer tools, request/dialog responses, file dialog responses, and HTML
   callback events with structured metadata and paint-buffer delivery.
-- Steam Input: init/shutdown, connected controllers, action sets, digital
-  actions, analog vectors, controller type, and text input helpers.
+- Steam Input: init/shutdown, action manifest selection, frame/data polling,
+  connected controllers, gamepad index mapping, action sets/layers, digital and
+  analog action data/origins/names, glyph/string lookups, motion data, haptics,
+  LED controls, binding panels, remote-play session IDs, session configuration,
+  controller type, and text input helpers.
 - Matchmaking/lobbies: favorite/history server storage, lobby list filters,
   create, join, list, leave, member/owner helpers, lobby and member data,
   joinability, lobby type/owner/limit/link controls, lobby chat, lobby

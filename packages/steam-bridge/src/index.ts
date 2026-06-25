@@ -50,7 +50,11 @@ import {
   NativeFriendGameInfo,
   NativeFriendMessage,
   NativeFriendsGroupInfo,
+  NativeInputAnalogActionData,
   NativeInputControllerInfo,
+  NativeInputDeviceBindingRevision,
+  NativeInputDigitalActionData,
+  NativeInputMotionData,
   NativeIsFollowingResult,
   NativeAchievementProgressLimitsFloat,
   NativeAchievementProgressLimitsInt,
@@ -1197,6 +1201,36 @@ export interface AnalogActionVector {
   y: number;
 }
 
+export interface InputDigitalActionData {
+  state: boolean;
+  active: boolean;
+}
+
+export interface InputAnalogActionData {
+  mode: number;
+  x: number;
+  y: number;
+  active: boolean;
+}
+
+export interface InputMotionData {
+  rotationQuaternionX: number;
+  rotationQuaternionY: number;
+  rotationQuaternionZ: number;
+  rotationQuaternionW: number;
+  positionAccelerationX: number;
+  positionAccelerationY: number;
+  positionAccelerationZ: number;
+  rotationVelocityX: number;
+  rotationVelocityY: number;
+  rotationVelocityZ: number;
+}
+
+export interface InputDeviceBindingRevision {
+  major: number;
+  minor: number;
+}
+
 export interface UgcResult {
   itemId: bigint;
   needsToAcceptAgreement: boolean;
@@ -1943,6 +1977,93 @@ export const InputType = {
   SteamDeckController: "SteamDeckController"
 } as const;
 
+export const InputTypeCode = {
+  Unknown: 0,
+  SteamController: 1,
+  XBox360Controller: 2,
+  XBoxOneController: 3,
+  GenericGamepad: 4,
+  PS4Controller: 5,
+  AppleMFiController: 6,
+  AndroidController: 7,
+  SwitchJoyConPair: 8,
+  SwitchJoyConSingle: 9,
+  SwitchProController: 10,
+  MobileTouch: 11,
+  PS3Controller: 12,
+  PS5Controller: 13,
+  SteamDeckController: 14
+} as const;
+
+export const InputGlyphSize = {
+  Small: 0,
+  Medium: 1,
+  Large: 2
+} as const;
+
+export const InputGlyphStyle = {
+  Knockout: 0,
+  Light: 1,
+  Dark: 2,
+  NeutralColorABXY: 16,
+  SolidABXY: 32
+} as const;
+
+export const InputHapticLocation = {
+  Left: 1,
+  Right: 2,
+  Both: 3
+} as const;
+
+export const SteamControllerPad = {
+  Left: 0,
+  Right: 1
+} as const;
+
+export const InputLedFlag = {
+  SetColor: 0,
+  RestoreUserDefault: 1
+} as const;
+
+export const XboxOrigin = {
+  A: 0,
+  B: 1,
+  X: 2,
+  Y: 3,
+  LeftBumper: 4,
+  RightBumper: 5,
+  Menu: 6,
+  View: 7,
+  LeftTriggerPull: 8,
+  LeftTriggerClick: 9,
+  RightTriggerPull: 10,
+  RightTriggerClick: 11,
+  LeftStickMove: 12,
+  LeftStickClick: 13,
+  LeftStickDPadNorth: 14,
+  LeftStickDPadSouth: 15,
+  LeftStickDPadWest: 16,
+  LeftStickDPadEast: 17,
+  RightStickMove: 18,
+  RightStickClick: 19,
+  RightStickDPadNorth: 20,
+  RightStickDPadSouth: 21,
+  RightStickDPadWest: 22,
+  RightStickDPadEast: 23,
+  DPadNorth: 24,
+  DPadSouth: 25,
+  DPadWest: 26,
+  DPadEast: 27
+} as const;
+
+export const SessionInputConfigurationSetting = {
+  None: 0,
+  Playstation: 1,
+  Xbox: 2,
+  Generic: 4,
+  Switch: 8
+} as const;
+
 export const LobbyType = {
   Private: 0,
   FriendsOnly: 1,
@@ -2391,6 +2512,7 @@ export let electronEnableSteamOverlay = electronEnableSteamOverlayImpl;
 
 export type SteamCallbackId = typeof SteamCallback[keyof typeof SteamCallback];
 export type InputTypeValue = typeof InputType[keyof typeof InputType];
+export type InputTypeCodeValue = typeof InputTypeCode[keyof typeof InputTypeCode];
 
 let callbackTimer: NodeJS.Timeout | undefined;
 let activeCallbackIntervalMs = 33;
@@ -2418,16 +2540,125 @@ export class Controller {
     native().inputActivateActionSet(this.handle, actionSetHandle);
   }
 
+  getCurrentActionSet(): bigint {
+    return BigInt(native().inputGetCurrentActionSet(this.handle));
+  }
+
+  activateActionSetLayer(actionSetLayerHandle: bigint): void {
+    native().inputActivateActionSetLayer(this.handle, actionSetLayerHandle);
+  }
+
+  deactivateActionSetLayer(actionSetLayerHandle: bigint): void {
+    native().inputDeactivateActionSetLayer(this.handle, actionSetLayerHandle);
+  }
+
+  deactivateAllActionSetLayers(): void {
+    native().inputDeactivateAllActionSetLayers(this.handle);
+  }
+
+  getActiveActionSetLayers(): bigint[] {
+    return native().inputGetActiveActionSetLayers(this.handle).map(BigInt);
+  }
+
+  getDigitalActionData(actionHandle: bigint): InputDigitalActionData {
+    return normalizeInputDigitalActionData(native().inputGetDigitalActionData(this.handle, actionHandle));
+  }
+
   isDigitalActionPressed(actionHandle: bigint): boolean {
     return native().inputIsDigitalActionPressed(this.handle, actionHandle);
+  }
+
+  getDigitalActionOrigins(actionSetHandle: bigint, actionHandle: bigint): number[] {
+    return native().inputGetDigitalActionOrigins(this.handle, actionSetHandle, actionHandle).map(Number);
+  }
+
+  getAnalogActionData(actionHandle: bigint): InputAnalogActionData {
+    return normalizeInputAnalogActionData(native().inputGetAnalogActionData(this.handle, actionHandle));
   }
 
   getAnalogActionVector(actionHandle: bigint): AnalogActionVector {
     return native().inputGetAnalogActionVector(this.handle, actionHandle);
   }
 
+  getAnalogActionOrigins(actionSetHandle: bigint, actionHandle: bigint): number[] {
+    return native().inputGetAnalogActionOrigins(this.handle, actionSetHandle, actionHandle).map(Number);
+  }
+
+  stopAnalogActionMomentum(actionHandle: bigint): void {
+    native().inputStopAnalogActionMomentum(this.handle, actionHandle);
+  }
+
+  getMotionData(): InputMotionData {
+    return normalizeInputMotionData(native().inputGetMotionData(this.handle));
+  }
+
+  triggerVibration(leftSpeed: number, rightSpeed: number): void {
+    native().inputTriggerVibration(this.handle, leftSpeed, rightSpeed);
+  }
+
+  triggerVibrationExtended(
+    leftSpeed: number,
+    rightSpeed: number,
+    leftTriggerSpeed: number,
+    rightTriggerSpeed: number
+  ): void {
+    native().inputTriggerVibrationExtended(this.handle, leftSpeed, rightSpeed, leftTriggerSpeed, rightTriggerSpeed);
+  }
+
+  triggerSimpleHapticEvent(
+    location: number,
+    intensity: number,
+    gainDb: number,
+    otherIntensity: number,
+    otherGainDb: number
+  ): void {
+    native().inputTriggerSimpleHapticEvent(this.handle, location, intensity, gainDb, otherIntensity, otherGainDb);
+  }
+
+  setLedColor(red: number, green: number, blue: number, flags = InputLedFlag.SetColor): void {
+    native().inputSetLedColor(this.handle, red, green, blue, flags);
+  }
+
+  legacyTriggerHapticPulse(targetPad: number, durationMicroseconds: number): void {
+    native().inputLegacyTriggerHapticPulse(this.handle, targetPad, durationMicroseconds);
+  }
+
+  legacyTriggerRepeatedHapticPulse(
+    targetPad: number,
+    durationMicroseconds: number,
+    offMicroseconds: number,
+    repeat: number,
+    flags = 0
+  ): void {
+    native().inputLegacyTriggerRepeatedHapticPulse(
+      this.handle,
+      targetPad,
+      durationMicroseconds,
+      offMicroseconds,
+      repeat,
+      flags
+    );
+  }
+
+  showBindingPanel(): boolean {
+    return native().inputShowBindingPanel(this.handle);
+  }
+
   getType(): InputTypeValue {
     return normalizeInputType(this.cachedType ?? native().inputGetControllerType(this.handle));
+  }
+
+  getGamepadIndex(): number {
+    return native().inputGetGamepadIndexForController(this.handle);
+  }
+
+  getDeviceBindingRevision(): InputDeviceBindingRevision | null {
+    const revision = native().inputGetDeviceBindingRevision(this.handle);
+    return revision ? { major: Number(revision.major), minor: Number(revision.minor) } : null;
+  }
+
+  getRemotePlaySessionId(): number {
+    return native().inputGetRemotePlaySessionId(this.handle);
   }
 
   getHandle(): bigint {
@@ -3956,14 +4187,38 @@ export const inventory = {
 
 export const input = {
   InputType,
+  InputTypeCode,
+  InputGlyphSize,
+  InputGlyphStyle,
+  InputHapticLocation,
+  SteamControllerPad,
+  InputLedFlag,
+  XboxOrigin,
+  SessionInputConfigurationSetting,
   Controller,
   init(): void {
     native().inputInit();
+  },
+  runFrame(reserved = false): void {
+    native().inputRunFrame(reserved);
+  },
+  waitForData(waitForever = false, timeoutMs = 0): boolean {
+    return native().inputWaitForData(waitForever, timeoutMs);
+  },
+  newDataAvailable(): boolean {
+    return native().inputNewDataAvailable();
+  },
+  setActionManifestFilePath(path: string): boolean {
+    return native().inputSetActionManifestFilePath(path);
   },
   getControllers(): Controller[] {
     return native().inputGetControllers().map((controller: NativeInputControllerInfo) => {
       return new Controller(BigInt(controller.handle), controller.inputType);
     });
+  },
+  getControllerForGamepadIndex(index: number): Controller | null {
+    const handle = native().inputGetControllerForGamepadIndex(index);
+    return handle == null ? null : new Controller(BigInt(handle));
   },
   getActionSet(actionSetName: string): bigint {
     return BigInt(native().inputGetActionSet(actionSetName));
@@ -3971,8 +4226,42 @@ export const input = {
   getDigitalAction(actionName: string): bigint {
     return BigInt(native().inputGetDigitalAction(actionName));
   },
+  getStringForDigitalActionName(actionHandle: bigint): string {
+    return native().inputGetStringForDigitalActionName(actionHandle);
+  },
   getAnalogAction(actionName: string): bigint {
     return BigInt(native().inputGetAnalogAction(actionName));
+  },
+  getStringForAnalogActionName(actionHandle: bigint): string {
+    return native().inputGetStringForAnalogActionName(actionHandle);
+  },
+  getGlyphPngForActionOrigin(origin: number, size = InputGlyphSize.Medium, flags = InputGlyphStyle.Knockout): string {
+    return native().inputGetGlyphPngForActionOrigin(origin, size, flags);
+  },
+  getGlyphSvgForActionOrigin(origin: number, flags = InputGlyphStyle.Knockout): string {
+    return native().inputGetGlyphSvgForActionOrigin(origin, flags);
+  },
+  getLegacyGlyphForActionOrigin(origin: number): string {
+    return native().inputGetLegacyGlyphForActionOrigin(origin);
+  },
+  getStringForActionOrigin(origin: number): string {
+    return native().inputGetStringForActionOrigin(origin);
+  },
+  getStringForXboxOrigin(origin: number): string {
+    return native().inputGetStringForXboxOrigin(origin);
+  },
+  getGlyphForXboxOrigin(origin: number): string {
+    return native().inputGetGlyphForXboxOrigin(origin);
+  },
+  getActionOriginFromXboxOrigin(controller: Controller | bigint, origin: number): number {
+    const handle = typeof controller === "bigint" ? controller : controller.getHandle();
+    return native().inputGetActionOriginFromXboxOrigin(handle, origin);
+  },
+  translateActionOrigin(destinationInputType: number, sourceOrigin: number): number {
+    return native().inputTranslateActionOrigin(destinationInputType, sourceOrigin);
+  },
+  getSessionInputConfigurationSettings(): number {
+    return native().inputGetSessionInputConfigurationSettings();
   },
   shutdown(): void {
     native().inputShutdown();
@@ -7136,6 +7425,38 @@ function normalizeBigIntLike(value: unknown): bigint | unknown {
 
 function normalizeInputType(value: string): InputTypeValue {
   return Object.values(InputType).includes(value as InputTypeValue) ? (value as InputTypeValue) : InputType.Unknown;
+}
+
+function normalizeInputDigitalActionData(data: NativeInputDigitalActionData): InputDigitalActionData {
+  return {
+    state: Boolean(data.state),
+    active: Boolean(data.active)
+  };
+}
+
+function normalizeInputAnalogActionData(data: NativeInputAnalogActionData): InputAnalogActionData {
+  return {
+    mode: Number(data.mode),
+    x: Number(data.x),
+    y: Number(data.y),
+    active: Boolean(data.active)
+  };
+}
+
+function normalizeInputMotionData(data: NativeInputMotionData): InputMotionData {
+  const source = data as Record<string, unknown>;
+  return {
+    rotationQuaternionX: Number(source.rotationQuaternionX ?? source.rotation_quaternion_x ?? 0),
+    rotationQuaternionY: Number(source.rotationQuaternionY ?? source.rotation_quaternion_y ?? 0),
+    rotationQuaternionZ: Number(source.rotationQuaternionZ ?? source.rotation_quaternion_z ?? 0),
+    rotationQuaternionW: Number(source.rotationQuaternionW ?? source.rotation_quaternion_w ?? 0),
+    positionAccelerationX: Number(source.positionAccelerationX ?? source.position_acceleration_x ?? 0),
+    positionAccelerationY: Number(source.positionAccelerationY ?? source.position_acceleration_y ?? 0),
+    positionAccelerationZ: Number(source.positionAccelerationZ ?? source.position_acceleration_z ?? 0),
+    rotationVelocityX: Number(source.rotationVelocityX ?? source.rotation_velocity_x ?? 0),
+    rotationVelocityY: Number(source.rotationVelocityY ?? source.rotation_velocity_y ?? 0),
+    rotationVelocityZ: Number(source.rotationVelocityZ ?? source.rotation_velocity_z ?? 0)
+  };
 }
 
 function dialogName(dialog: number | string): string {

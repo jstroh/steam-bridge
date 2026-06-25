@@ -419,6 +419,190 @@ function createFakeNative(overrides = {}) {
         { handle: 456n, inputType: "FlightStick" }
       ];
     },
+    inputRunFrame(reserved) {
+      calls.push({ method: "inputRunFrame", args: [reserved] });
+    },
+    inputWaitForData(waitForever, timeoutMs) {
+      calls.push({ method: "inputWaitForData", args: [waitForever, timeoutMs] });
+      return true;
+    },
+    inputNewDataAvailable() {
+      calls.push({ method: "inputNewDataAvailable", args: [] });
+      return true;
+    },
+    inputSetActionManifestFilePath(path) {
+      calls.push({ method: "inputSetActionManifestFilePath", args: [path] });
+      return true;
+    },
+    inputGetControllerForGamepadIndex(index) {
+      calls.push({ method: "inputGetControllerForGamepadIndex", args: [index] });
+      return index === 0 ? 123n : null;
+    },
+    inputGetActionSet(actionSetName) {
+      calls.push({ method: "inputGetActionSet", args: [actionSetName] });
+      return 10n;
+    },
+    inputGetDigitalAction(actionName) {
+      calls.push({ method: "inputGetDigitalAction", args: [actionName] });
+      return 20n;
+    },
+    inputGetAnalogAction(actionName) {
+      calls.push({ method: "inputGetAnalogAction", args: [actionName] });
+      return 30n;
+    },
+    inputActivateActionSet(controller, actionSet) {
+      calls.push({ method: "inputActivateActionSet", args: [controller, actionSet] });
+    },
+    inputGetCurrentActionSet(controller) {
+      calls.push({ method: "inputGetCurrentActionSet", args: [controller] });
+      return 10n;
+    },
+    inputActivateActionSetLayer(controller, actionSetLayer) {
+      calls.push({ method: "inputActivateActionSetLayer", args: [controller, actionSetLayer] });
+    },
+    inputDeactivateActionSetLayer(controller, actionSetLayer) {
+      calls.push({ method: "inputDeactivateActionSetLayer", args: [controller, actionSetLayer] });
+    },
+    inputDeactivateAllActionSetLayers(controller) {
+      calls.push({ method: "inputDeactivateAllActionSetLayers", args: [controller] });
+    },
+    inputGetActiveActionSetLayers(controller) {
+      calls.push({ method: "inputGetActiveActionSetLayers", args: [controller] });
+      return [11n, "12"];
+    },
+    inputGetDigitalActionData(controller, action) {
+      calls.push({ method: "inputGetDigitalActionData", args: [controller, action] });
+      return { state: true, active: true };
+    },
+    inputIsDigitalActionPressed(controller, action) {
+      calls.push({ method: "inputIsDigitalActionPressed", args: [controller, action] });
+      return true;
+    },
+    inputGetDigitalActionOrigins(controller, actionSet, action) {
+      calls.push({ method: "inputGetDigitalActionOrigins", args: [controller, actionSet, action] });
+      return [1, 2];
+    },
+    inputGetStringForDigitalActionName(action) {
+      calls.push({ method: "inputGetStringForDigitalActionName", args: [action] });
+      return "jump";
+    },
+    inputGetAnalogActionData(controller, action) {
+      calls.push({ method: "inputGetAnalogActionData", args: [controller, action] });
+      return { mode: 1, x: 0.25, y: -0.5, active: true };
+    },
+    inputGetAnalogActionVector(controller, action) {
+      calls.push({ method: "inputGetAnalogActionVector", args: [controller, action] });
+      return { x: 0.25, y: -0.5 };
+    },
+    inputGetAnalogActionOrigins(controller, actionSet, action) {
+      calls.push({ method: "inputGetAnalogActionOrigins", args: [controller, actionSet, action] });
+      return [3, 4];
+    },
+    inputGetStringForAnalogActionName(action) {
+      calls.push({ method: "inputGetStringForAnalogActionName", args: [action] });
+      return "move";
+    },
+    inputGetGlyphPngForActionOrigin(origin, size, flags) {
+      calls.push({ method: "inputGetGlyphPngForActionOrigin", args: [origin, size, flags] });
+      return "/glyph.png";
+    },
+    inputGetGlyphSvgForActionOrigin(origin, flags) {
+      calls.push({ method: "inputGetGlyphSvgForActionOrigin", args: [origin, flags] });
+      return "/glyph.svg";
+    },
+    inputGetLegacyGlyphForActionOrigin(origin) {
+      calls.push({ method: "inputGetLegacyGlyphForActionOrigin", args: [origin] });
+      return "legacy";
+    },
+    inputGetStringForActionOrigin(origin) {
+      calls.push({ method: "inputGetStringForActionOrigin", args: [origin] });
+      return "A";
+    },
+    inputStopAnalogActionMomentum(controller, action) {
+      calls.push({ method: "inputStopAnalogActionMomentum", args: [controller, action] });
+    },
+    inputGetMotionData(controller) {
+      calls.push({ method: "inputGetMotionData", args: [controller] });
+      return {
+        rotation_quaternion_x: 0.1,
+        rotation_quaternion_y: 0.2,
+        rotation_quaternion_z: 0.3,
+        rotation_quaternion_w: 1,
+        position_acceleration_x: 1,
+        position_acceleration_y: 2,
+        position_acceleration_z: 3,
+        rotation_velocity_x: 4,
+        rotation_velocity_y: 5,
+        rotation_velocity_z: 6
+      };
+    },
+    inputTriggerVibration(controller, leftSpeed, rightSpeed) {
+      calls.push({ method: "inputTriggerVibration", args: [controller, leftSpeed, rightSpeed] });
+    },
+    inputTriggerVibrationExtended(controller, leftSpeed, rightSpeed, leftTriggerSpeed, rightTriggerSpeed) {
+      calls.push({
+        method: "inputTriggerVibrationExtended",
+        args: [controller, leftSpeed, rightSpeed, leftTriggerSpeed, rightTriggerSpeed]
+      });
+    },
+    inputTriggerSimpleHapticEvent(controller, location, intensity, gainDb, otherIntensity, otherGainDb) {
+      calls.push({
+        method: "inputTriggerSimpleHapticEvent",
+        args: [controller, location, intensity, gainDb, otherIntensity, otherGainDb]
+      });
+    },
+    inputSetLedColor(controller, red, green, blue, flags) {
+      calls.push({ method: "inputSetLedColor", args: [controller, red, green, blue, flags] });
+    },
+    inputLegacyTriggerHapticPulse(controller, targetPad, durationMicroseconds) {
+      calls.push({ method: "inputLegacyTriggerHapticPulse", args: [controller, targetPad, durationMicroseconds] });
+    },
+    inputLegacyTriggerRepeatedHapticPulse(controller, targetPad, durationMicroseconds, offMicroseconds, repeat, flags) {
+      calls.push({
+        method: "inputLegacyTriggerRepeatedHapticPulse",
+        args: [controller, targetPad, durationMicroseconds, offMicroseconds, repeat, flags]
+      });
+    },
+    inputShowBindingPanel(controller) {
+      calls.push({ method: "inputShowBindingPanel", args: [controller] });
+      return true;
+    },
+    inputGetControllerType(controller) {
+      calls.push({ method: "inputGetControllerType", args: [controller] });
+      return "PS5Controller";
+    },
+    inputGetGamepadIndexForController(controller) {
+      calls.push({ method: "inputGetGamepadIndexForController", args: [controller] });
+      return 0;
+    },
+    inputGetStringForXboxOrigin(origin) {
+      calls.push({ method: "inputGetStringForXboxOrigin", args: [origin] });
+      return "A";
+    },
+    inputGetGlyphForXboxOrigin(origin) {
+      calls.push({ method: "inputGetGlyphForXboxOrigin", args: [origin] });
+      return "xbox-a";
+    },
+    inputGetActionOriginFromXboxOrigin(controller, origin) {
+      calls.push({ method: "inputGetActionOriginFromXboxOrigin", args: [controller, origin] });
+      return 1;
+    },
+    inputTranslateActionOrigin(destinationInputType, sourceOrigin) {
+      calls.push({ method: "inputTranslateActionOrigin", args: [destinationInputType, sourceOrigin] });
+      return 50;
+    },
+    inputGetDeviceBindingRevision(controller) {
+      calls.push({ method: "inputGetDeviceBindingRevision", args: [controller] });
+      return { major: 1, minor: 2 };
+    },
+    inputGetRemotePlaySessionId(controller) {
+      calls.push({ method: "inputGetRemotePlaySessionId", args: [controller] });
+      return 42;
+    },
+    inputGetSessionInputConfigurationSettings() {
+      calls.push({ method: "inputGetSessionInputConfigurationSettings", args: [] });
+      return 3;
+    },
     networkingReadP2PPacket(size) {
       calls.push({ method: "networkingReadP2PPacket", args: [size] });
       return {
@@ -2653,6 +2837,60 @@ test("cloud, input, and networking facades coerce native values", async (t) => {
   assert.equal(controllers[0].getHandle(), 123n);
   assert.equal(controllers[0].getType(), steam.InputType.PS5Controller);
   assert.equal(controllers[1].getType(), steam.InputType.Unknown);
+  assert.equal(steam.input.InputGlyphSize.Medium, 1);
+  assert.equal(steam.input.InputHapticLocation.Both, 3);
+  assert.equal(steam.input.XboxOrigin.A, 0);
+  steam.input.runFrame(true);
+  assert.equal(steam.input.waitForData(false, 16), true);
+  assert.equal(steam.input.newDataAvailable(), true);
+  assert.equal(steam.input.setActionManifestFilePath("/tmp/actions.json"), true);
+  assert.equal(steam.input.getControllerForGamepadIndex(0)?.getHandle(), 123n);
+  assert.equal(steam.input.getControllerForGamepadIndex(1), null);
+  const actionSet = steam.input.getActionSet("gameplay");
+  const digitalAction = steam.input.getDigitalAction("jump");
+  const analogAction = steam.input.getAnalogAction("move");
+  assert.equal(actionSet, 10n);
+  assert.equal(digitalAction, 20n);
+  assert.equal(analogAction, 30n);
+  assert.equal(steam.input.getStringForDigitalActionName(digitalAction), "jump");
+  assert.equal(steam.input.getStringForAnalogActionName(analogAction), "move");
+  assert.equal(steam.input.getGlyphPngForActionOrigin(1), "/glyph.png");
+  assert.equal(steam.input.getGlyphSvgForActionOrigin(1, steam.input.InputGlyphStyle.Light), "/glyph.svg");
+  assert.equal(steam.input.getLegacyGlyphForActionOrigin(1), "legacy");
+  assert.equal(steam.input.getStringForActionOrigin(1), "A");
+  assert.equal(steam.input.getStringForXboxOrigin(steam.input.XboxOrigin.A), "A");
+  assert.equal(steam.input.getGlyphForXboxOrigin(steam.input.XboxOrigin.A), "xbox-a");
+  assert.equal(steam.input.getActionOriginFromXboxOrigin(controllers[0], steam.input.XboxOrigin.A), 1);
+  assert.equal(steam.input.translateActionOrigin(steam.input.InputTypeCode.PS4Controller, 1), 50);
+  assert.equal(steam.input.getSessionInputConfigurationSettings(), 3);
+  controllers[0].activateActionSet(actionSet);
+  assert.equal(controllers[0].getCurrentActionSet(), 10n);
+  controllers[0].activateActionSetLayer(11n);
+  controllers[0].deactivateActionSetLayer(11n);
+  controllers[0].deactivateAllActionSetLayers();
+  assert.deepEqual(controllers[0].getActiveActionSetLayers(), [11n, 12n]);
+  assert.deepEqual(controllers[0].getDigitalActionData(digitalAction), { state: true, active: true });
+  assert.equal(controllers[0].isDigitalActionPressed(digitalAction), true);
+  assert.deepEqual(controllers[0].getDigitalActionOrigins(actionSet, digitalAction), [1, 2]);
+  assert.deepEqual(controllers[0].getAnalogActionData(analogAction), { mode: 1, x: 0.25, y: -0.5, active: true });
+  assert.deepEqual(controllers[0].getAnalogActionVector(analogAction), { x: 0.25, y: -0.5 });
+  assert.deepEqual(controllers[0].getAnalogActionOrigins(actionSet, analogAction), [3, 4]);
+  controllers[0].stopAnalogActionMomentum(analogAction);
+  assert.equal(controllers[0].getMotionData().rotationVelocityZ, 6);
+  controllers[0].triggerVibration(100, 200);
+  controllers[0].triggerVibrationExtended(100, 200, 300, 400);
+  controllers[0].triggerSimpleHapticEvent(steam.input.InputHapticLocation.Both, 10, -2, 5, -1);
+  controllers[0].setLedColor(1, 2, 3);
+  controllers[0].legacyTriggerHapticPulse(steam.input.SteamControllerPad.Left, 1000);
+  controllers[0].legacyTriggerRepeatedHapticPulse(steam.input.SteamControllerPad.Right, 1000, 2000, 3);
+  assert.equal(controllers[0].showBindingPanel(), true);
+  assert.equal(controllers[0].getGamepadIndex(), 0);
+  assert.deepEqual(controllers[0].getDeviceBindingRevision(), { major: 1, minor: 2 });
+  assert.equal(controllers[0].getRemotePlaySessionId(), 42);
+  assert.deepEqual(fake.calls.find((call) => call.method === "inputSetLedColor"), {
+    method: "inputSetLedColor",
+    args: [123n, 1, 2, 3, steam.input.InputLedFlag.SetColor]
+  });
 
   const packet = steam.networking.readP2PPacket(64);
   assert.deepEqual(packet.data, Buffer.from("hello"));
