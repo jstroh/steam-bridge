@@ -912,6 +912,8 @@ test("init reads the Steam app ID from the environment and returns the grouped c
   assert.equal(client.gameServer, steam.gameServer);
   assert.equal(client.gameServerHttp, steam.gameServerHttp);
   assert.equal(steam.default.gameServerHttp, steam.gameServerHttp);
+  assert.equal(client.gameServerInventory, steam.gameServerInventory);
+  assert.equal(steam.default.gameServerInventory, steam.gameServerInventory);
   assert.equal(client.gameServerNetworkingMessages, steam.gameServerNetworkingMessages);
   assert.equal(steam.default.gameServerNetworkingMessages, steam.gameServerNetworkingMessages);
   assert.equal(client.gameServerNetworkingSockets, steam.gameServerNetworkingSockets);
@@ -5763,6 +5765,112 @@ test("inventory facade covers result, item, definition, price, and update flows"
   assert.deepEqual(fake.calls.find((call) => call.method === "inventorySubmitUpdateProperties"), {
     method: "inventorySubmitUpdateProperties",
     args: [77n]
+  });
+});
+
+test("game server inventory facade uses game-server native bindings", async (t) => {
+  const player = { steamId64: "76561198000000009", steamId32: "STEAM_0:1:19867140", accountId: 39734281 };
+  const fake = createFakeNative({
+    gameServerInventoryGetResultStatus(resultHandle) {
+      this.calls.push({ method: "gameServerInventoryGetResultStatus", args: [resultHandle] });
+      return 1;
+    },
+    gameServerInventoryGetResultItems(resultHandle) {
+      this.calls.push({ method: "gameServerInventoryGetResultItems", args: [resultHandle] });
+      return [{ item_id: "2001", definition: 17, quantity: 3, flags: 1 }];
+    },
+    gameServerInventoryGenerateItems(items) {
+      this.calls.push({ method: "gameServerInventoryGenerateItems", args: [items] });
+      return 31;
+    },
+    gameServerInventoryExchangeItems(generate, destroy) {
+      this.calls.push({ method: "gameServerInventoryExchangeItems", args: [generate, destroy] });
+      return 32;
+    },
+    gameServerInventoryRequestEligiblePromoItemDefinitionIds(steamId64, timeoutSeconds) {
+      this.calls.push({ method: "gameServerInventoryRequestEligiblePromoItemDefinitionIds", args: [steamId64, timeoutSeconds] });
+      return Promise.resolve({
+        result: 1,
+        steam_id: player,
+        num_eligible_promo_item_defs: 1,
+        cached_data: true
+      });
+    },
+    gameServerInventoryStartPurchase(items, timeoutSeconds) {
+      this.calls.push({ method: "gameServerInventoryStartPurchase", args: [items, timeoutSeconds] });
+      return Promise.resolve({ result: 1, order_id: "777", transaction_id: 888n });
+    },
+    gameServerInventoryRequestPrices(timeoutSeconds) {
+      this.calls.push({ method: "gameServerInventoryRequestPrices", args: [timeoutSeconds] });
+      return Promise.resolve({ result: 1, currency: "USD" });
+    },
+    gameServerInventoryGetItemsWithPrices(maxItems) {
+      this.calls.push({ method: "gameServerInventoryGetItemsWithPrices", args: [maxItems] });
+      return [{ definition: 17, current_price: "499", base_price: 599n }];
+    },
+    gameServerInventoryStartUpdateProperties() {
+      this.calls.push({ method: "gameServerInventoryStartUpdateProperties", args: [] });
+      return "91";
+    },
+    gameServerInventorySetPropertyString(updateHandle, itemId, propertyName, value) {
+      this.calls.push({ method: "gameServerInventorySetPropertyString", args: [updateHandle, itemId, propertyName, value] });
+      return true;
+    },
+    gameServerInventorySubmitUpdateProperties(updateHandle) {
+      this.calls.push({ method: "gameServerInventorySubmitUpdateProperties", args: [updateHandle] });
+      return 33;
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  assert.deepEqual(Object.keys(steam.gameServerInventory).sort(), Object.keys(steam.inventory).sort());
+  assert.equal(steam.gameServerInventory.InventoryItemFlags.NoTrade, 1);
+  assert.equal(steam.gameServerInventory.getResultStatus(30), 1);
+  assert.deepEqual(steam.gameServerInventory.getResultItems(30), [
+    { itemId: 2001n, definition: 17, quantity: 3, flags: 1 }
+  ]);
+  assert.equal(steam.gameServerInventory.generateItems([{ definition: 17, quantity: 3 }]), 31);
+  assert.equal(
+    steam.gameServerInventory.exchangeItems([{ definition: 17, quantity: 1 }], [{ itemId: 2001n, quantity: 1 }]),
+    32
+  );
+  assert.deepEqual(await steam.gameServerInventory.requestEligiblePromoItemDefinitionIds(76561198000000009n, 4), {
+    result: 1,
+    steamId: { steamId64: 76561198000000009n, steamId32: "STEAM_0:1:19867140", accountId: 39734281 },
+    numEligiblePromoItemDefs: 1,
+    cachedData: true
+  });
+  assert.deepEqual(await steam.gameServerInventory.startPurchase([{ definition: 17, quantity: 1 }], 5), {
+    result: 1,
+    orderId: 777n,
+    transactionId: 888n
+  });
+  assert.deepEqual(await steam.gameServerInventory.requestPrices(6), { result: 1, currency: "USD" });
+  assert.deepEqual(steam.gameServerInventory.getItemsWithPrices(2), [
+    { definition: 17, currentPrice: 499n, basePrice: 599n }
+  ]);
+  const updateHandle = steam.gameServerInventory.startUpdateProperties();
+  assert.equal(updateHandle, 91n);
+  assert.equal(steam.gameServerInventory.setPropertyString(updateHandle, 2001n, "name", "Server Tool"), true);
+  assert.equal(steam.gameServerInventory.submitUpdateProperties(updateHandle), 33);
+
+  assert.deepEqual(fake.calls.find((call) => call.method === "gameServerInventoryGenerateItems"), {
+    method: "gameServerInventoryGenerateItems",
+    args: [[{ definition: 17, quantity: 3 }]]
+  });
+  assert.deepEqual(fake.calls.find((call) => call.method === "gameServerInventoryExchangeItems"), {
+    method: "gameServerInventoryExchangeItems",
+    args: [[{ definition: 17, quantity: 1 }], [{ itemId: 2001n, quantity: 1 }]]
+  });
+  assert.deepEqual(fake.calls.find((call) => call.method === "gameServerInventoryStartPurchase"), {
+    method: "gameServerInventoryStartPurchase",
+    args: [[{ definition: 17, quantity: 1 }], 5]
+  });
+  assert.deepEqual(fake.calls.find((call) => call.method === "gameServerInventorySubmitUpdateProperties"), {
+    method: "gameServerInventorySubmitUpdateProperties",
+    args: [91n]
   });
 });
 

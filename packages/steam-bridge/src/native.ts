@@ -1829,6 +1829,48 @@ export interface NativeBinding {
   inventorySetPropertyFloat(updateHandle: bigint, itemId: bigint, propertyName: string, value: number): boolean;
   inventorySubmitUpdateProperties(updateHandle: bigint): number | null | undefined;
   inventoryInspectItem(itemToken: string): number | null | undefined;
+  gameServerInventoryGetResultStatus(resultHandle: number): number;
+  gameServerInventoryGetResultItems(resultHandle: number): NativeInventoryItemDetail[] | null | undefined;
+  gameServerInventoryGetResultItemProperty(resultHandle: number, itemIndex: number, propertyName?: string): string | null | undefined;
+  gameServerInventoryGetResultTimestamp(resultHandle: number): number;
+  gameServerInventoryCheckResultSteamId(resultHandle: number, steamId64: bigint): boolean;
+  gameServerInventoryDestroyResult(resultHandle: number): void;
+  gameServerInventoryGetAllItems(): number | null | undefined;
+  gameServerInventoryGetItemsById(instanceIds: bigint[]): number | null | undefined;
+  gameServerInventorySerializeResult(resultHandle: number): Buffer | null | undefined;
+  gameServerInventoryDeserializeResult(data: Buffer): number | null | undefined;
+  gameServerInventoryGenerateItems(items: NativeInventoryItemQuantity[]): number | null | undefined;
+  gameServerInventoryGrantPromoItems(): number | null | undefined;
+  gameServerInventoryAddPromoItem(definition: number): number | null | undefined;
+  gameServerInventoryAddPromoItems(definitions: number[]): number | null | undefined;
+  gameServerInventoryConsumeItem(itemId: bigint, quantity: number): number | null | undefined;
+  gameServerInventoryExchangeItems(generate: NativeInventoryItemQuantity[], destroy: NativeInventoryInstanceQuantity[]): number | null | undefined;
+  gameServerInventoryTransferItemQuantity(sourceItemId: bigint, quantity: number, destinationItemId?: bigint): number | null | undefined;
+  gameServerInventorySendItemDropHeartbeat(): void;
+  gameServerInventoryTriggerItemDrop(dropListDefinition: number): number | null | undefined;
+  gameServerInventoryTradeItems(
+    tradePartnerSteamId64: bigint,
+    give: NativeInventoryInstanceQuantity[],
+    get: NativeInventoryInstanceQuantity[]
+  ): number | null | undefined;
+  gameServerInventoryLoadItemDefinitions(): boolean;
+  gameServerInventoryGetItemDefinitionIds(): number[];
+  gameServerInventoryGetItemDefinitionProperty(definition: number, propertyName?: string): string | null | undefined;
+  gameServerInventoryRequestEligiblePromoItemDefinitionIds(steamId64: bigint, timeoutSeconds?: number): Promise<NativeInventoryEligiblePromoItemDefIds>;
+  gameServerInventoryGetEligiblePromoItemDefinitionIds(steamId64: bigint): number[];
+  gameServerInventoryStartPurchase(items: NativeInventoryItemQuantity[], timeoutSeconds?: number): Promise<NativeInventoryStartPurchaseResult>;
+  gameServerInventoryRequestPrices(timeoutSeconds?: number): Promise<NativeInventoryRequestPricesResult>;
+  gameServerInventoryGetNumItemsWithPrices(): number;
+  gameServerInventoryGetItemsWithPrices(maxItems?: number): NativeInventoryPrice[];
+  gameServerInventoryGetItemPrice(definition: number): NativeInventoryPrice | null | undefined;
+  gameServerInventoryStartUpdateProperties(): bigint | string | number | null | undefined;
+  gameServerInventoryRemoveProperty(updateHandle: bigint, itemId: bigint, propertyName: string): boolean;
+  gameServerInventorySetPropertyString(updateHandle: bigint, itemId: bigint, propertyName: string, value: string): boolean;
+  gameServerInventorySetPropertyBool(updateHandle: bigint, itemId: bigint, propertyName: string, value: boolean): boolean;
+  gameServerInventorySetPropertyInt64(updateHandle: bigint, itemId: bigint, propertyName: string, value: bigint): boolean;
+  gameServerInventorySetPropertyFloat(updateHandle: bigint, itemId: bigint, propertyName: string, value: number): boolean;
+  gameServerInventorySubmitUpdateProperties(updateHandle: bigint): number | null | undefined;
+  gameServerInventoryInspectItem(itemToken: string): number | null | undefined;
 
   inputInit(): void;
   inputShutdown(): void;

@@ -4379,6 +4379,153 @@ export const inventory = {
   }
 };
 
+export const gameServerInventory = {
+  InventoryItemFlags,
+  getResultStatus(resultHandle: number): number {
+    return native().gameServerInventoryGetResultStatus(resultHandle);
+  },
+  getResultItems(resultHandle: number): InventoryItemDetail[] | null {
+    return native().gameServerInventoryGetResultItems(resultHandle)?.map(normalizeInventoryItemDetail) ?? null;
+  },
+  getResultItemProperty(resultHandle: number, itemIndex: number, propertyName?: string | null): string | null {
+    return native().gameServerInventoryGetResultItemProperty(resultHandle, itemIndex, propertyName ?? undefined) ?? null;
+  },
+  getResultTimestamp(resultHandle: number): number {
+    return native().gameServerInventoryGetResultTimestamp(resultHandle);
+  },
+  checkResultSteamId(resultHandle: number, steamId64: bigint): boolean {
+    return native().gameServerInventoryCheckResultSteamId(resultHandle, steamId64);
+  },
+  destroyResult(resultHandle: number): void {
+    native().gameServerInventoryDestroyResult(resultHandle);
+  },
+  getAllItems(): number | null {
+    return native().gameServerInventoryGetAllItems() ?? null;
+  },
+  getItemsById(instanceIds: bigint[]): number | null {
+    return native().gameServerInventoryGetItemsById(instanceIds) ?? null;
+  },
+  serializeResult(resultHandle: number): Buffer | null {
+    return native().gameServerInventorySerializeResult(resultHandle) ?? null;
+  },
+  deserializeResult(data: Buffer | Uint8Array): number | null {
+    return native().gameServerInventoryDeserializeResult(Buffer.from(data)) ?? null;
+  },
+  generateItems(items: InventoryItemQuantity[]): number | null {
+    return native().gameServerInventoryGenerateItems(items.map(nativeInventoryItemQuantity)) ?? null;
+  },
+  grantPromoItems(): number | null {
+    return native().gameServerInventoryGrantPromoItems() ?? null;
+  },
+  addPromoItem(definition: number): number | null {
+    return native().gameServerInventoryAddPromoItem(definition) ?? null;
+  },
+  addPromoItems(definitions: number[]): number | null {
+    return native().gameServerInventoryAddPromoItems(definitions) ?? null;
+  },
+  consumeItem(itemId: bigint, quantity: number): number | null {
+    return native().gameServerInventoryConsumeItem(itemId, quantity) ?? null;
+  },
+  exchangeItems(generate: InventoryItemQuantity[], destroy: InventoryInstanceQuantity[]): number | null {
+    return (
+      native().gameServerInventoryExchangeItems(
+        generate.map(nativeInventoryItemQuantity),
+        destroy.map(nativeInventoryInstanceQuantity)
+      ) ?? null
+    );
+  },
+  transferItemQuantity(sourceItemId: bigint, quantity: number, destinationItemId?: bigint | null): number | null {
+    return native().gameServerInventoryTransferItemQuantity(sourceItemId, quantity, destinationItemId ?? undefined) ?? null;
+  },
+  sendItemDropHeartbeat(): void {
+    native().gameServerInventorySendItemDropHeartbeat();
+  },
+  triggerItemDrop(dropListDefinition: number): number | null {
+    return native().gameServerInventoryTriggerItemDrop(dropListDefinition) ?? null;
+  },
+  tradeItems(
+    tradePartnerSteamId64: bigint,
+    give: InventoryInstanceQuantity[],
+    get: InventoryInstanceQuantity[]
+  ): number | null {
+    return (
+      native().gameServerInventoryTradeItems(
+        tradePartnerSteamId64,
+        give.map(nativeInventoryInstanceQuantity),
+        get.map(nativeInventoryInstanceQuantity)
+      ) ?? null
+    );
+  },
+  loadItemDefinitions(): boolean {
+    return native().gameServerInventoryLoadItemDefinitions();
+  },
+  getItemDefinitionIds(): number[] {
+    return native().gameServerInventoryGetItemDefinitionIds();
+  },
+  getItemDefinitionProperty(definition: number, propertyName?: string | null): string | null {
+    return native().gameServerInventoryGetItemDefinitionProperty(definition, propertyName ?? undefined) ?? null;
+  },
+  async requestEligiblePromoItemDefinitionIds(
+    steamId64: bigint,
+    timeoutSeconds?: number | null
+  ): Promise<InventoryEligiblePromoItemDefIds> {
+    return normalizeInventoryEligiblePromoItemDefIds(
+      await native().gameServerInventoryRequestEligiblePromoItemDefinitionIds(steamId64, timeoutSeconds ?? undefined)
+    );
+  },
+  getEligiblePromoItemDefinitionIds(steamId64: bigint): number[] {
+    return native().gameServerInventoryGetEligiblePromoItemDefinitionIds(steamId64);
+  },
+  async startPurchase(
+    items: InventoryItemQuantity[],
+    timeoutSeconds?: number | null
+  ): Promise<InventoryStartPurchaseResult> {
+    return normalizeInventoryStartPurchaseResult(
+      await native().gameServerInventoryStartPurchase(items.map(nativeInventoryItemQuantity), timeoutSeconds ?? undefined)
+    );
+  },
+  async requestPrices(timeoutSeconds?: number | null): Promise<InventoryRequestPricesResult> {
+    return normalizeInventoryRequestPricesResult(await native().gameServerInventoryRequestPrices(timeoutSeconds ?? undefined));
+  },
+  getNumItemsWithPrices(): number {
+    return native().gameServerInventoryGetNumItemsWithPrices();
+  },
+  getItemsWithPrices(maxItems?: number | null): InventoryPrice[] {
+    return native()
+      .gameServerInventoryGetItemsWithPrices(maxItems ?? undefined)
+      .map(normalizeInventoryPrice);
+  },
+  getItemPrice(definition: number): InventoryPrice | null {
+    const price = native().gameServerInventoryGetItemPrice(definition);
+    return price ? normalizeInventoryPrice(price) : null;
+  },
+  startUpdateProperties(): bigint | null {
+    const handle = native().gameServerInventoryStartUpdateProperties();
+    return handle == null ? null : BigInt(handle);
+  },
+  removeProperty(updateHandle: bigint, itemId: bigint, propertyName: string): boolean {
+    return native().gameServerInventoryRemoveProperty(updateHandle, itemId, propertyName);
+  },
+  setPropertyString(updateHandle: bigint, itemId: bigint, propertyName: string, value: string): boolean {
+    return native().gameServerInventorySetPropertyString(updateHandle, itemId, propertyName, value);
+  },
+  setPropertyBool(updateHandle: bigint, itemId: bigint, propertyName: string, value: boolean): boolean {
+    return native().gameServerInventorySetPropertyBool(updateHandle, itemId, propertyName, value);
+  },
+  setPropertyInt64(updateHandle: bigint, itemId: bigint, propertyName: string, value: bigint): boolean {
+    return native().gameServerInventorySetPropertyInt64(updateHandle, itemId, propertyName, value);
+  },
+  setPropertyFloat(updateHandle: bigint, itemId: bigint, propertyName: string, value: number): boolean {
+    return native().gameServerInventorySetPropertyFloat(updateHandle, itemId, propertyName, value);
+  },
+  submitUpdateProperties(updateHandle: bigint): number | null {
+    return native().gameServerInventorySubmitUpdateProperties(updateHandle) ?? null;
+  },
+  inspectItem(itemToken: string): number | null {
+    return native().gameServerInventoryInspectItem(itemToken) ?? null;
+  }
+};
+
 export const input = {
   InputType,
   InputTypeCode,
@@ -6398,6 +6545,7 @@ export interface SteamBridgeClient {
   friends: typeof friends;
   gameServer: typeof gameServer;
   gameServerHttp: typeof gameServerHttp;
+  gameServerInventory: typeof gameServerInventory;
   gameServerNetworkingMessages: typeof gameServerNetworkingMessages;
   gameServerNetworkingSockets: typeof gameServerNetworkingSockets;
   gameServerStats: typeof gameServerStats;
@@ -6433,6 +6581,7 @@ export function createCompatibilityClient(): SteamBridgeClient {
     friends,
     gameServer,
     gameServerHttp,
+    gameServerInventory,
     gameServerNetworkingMessages,
     gameServerNetworkingSockets,
     gameServerStats,
@@ -8822,6 +8971,7 @@ const defaultExport = {
   friends,
   gameServer,
   gameServerHttp,
+  gameServerInventory,
   gameServerNetworkingMessages,
   gameServerNetworkingSockets,
   gameServerStats,

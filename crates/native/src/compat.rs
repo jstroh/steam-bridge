@@ -6061,7 +6061,7 @@ pub async fn inventory_request_eligible_promo_item_definition_ids(
             bigint_to_u64(steam_id64, "steamId64")?,
         )
     };
-    let result: sys::SteamInventoryEligiblePromoItemDefIDs_t = wait_for_api_call(
+    let result: sys::SteamInventoryEligiblePromoItemDefIDs_t = wait_for_game_server_api_call(
         call,
         sys::SteamInventoryEligiblePromoItemDefIDs_t_k_iCallback as i32,
         timeout_seconds
@@ -6121,7 +6121,7 @@ pub async fn inventory_start_purchase(
             len_to_u32(defs.len(), "inventory purchase items")?,
         )
     };
-    let result: sys::SteamInventoryStartPurchaseResult_t = wait_for_api_call(
+    let result: sys::SteamInventoryStartPurchaseResult_t = wait_for_game_server_api_call(
         call,
         sys::SteamInventoryStartPurchaseResult_t_k_iCallback as i32,
         timeout_seconds
@@ -6138,7 +6138,7 @@ pub async fn inventory_request_prices(
     timeout_seconds: Option<u32>,
 ) -> Result<InventoryRequestPricesResult, Error> {
     let call = unsafe { sys::SteamAPI_ISteamInventory_RequestPrices(steam_inventory()?) };
-    let result: sys::SteamInventoryRequestPricesResult_t = wait_for_api_call(
+    let result: sys::SteamInventoryRequestPricesResult_t = wait_for_game_server_api_call(
         call,
         sys::SteamInventoryRequestPricesResult_t_k_iCallback as i32,
         timeout_seconds
@@ -6340,6 +6340,298 @@ pub fn inventory_inspect_item(item_token: String) -> Result<Option<i32>, Error> 
     };
     Ok(inventory_result_handle(ok, result_handle))
 }
+
+macro_rules! game_server_inventory_wrapper {
+    ($js_name:literal, $fn_name:ident, $client_fn:ident($($arg:ident: $arg_ty:ty),*) -> $return_ty:ty) => {
+        #[napi(js_name = $js_name)]
+        pub fn $fn_name($($arg: $arg_ty),*) -> Result<$return_ty, Error> {
+            with_game_server_inventory(|| $client_fn($($arg),*))
+        }
+    };
+}
+
+game_server_inventory_wrapper!(
+    "gameServerInventoryGetResultStatus",
+    game_server_inventory_get_result_status,
+    inventory_get_result_status(result_handle: i32) -> u32
+);
+game_server_inventory_wrapper!(
+    "gameServerInventoryGetResultItems",
+    game_server_inventory_get_result_items,
+    inventory_get_result_items(result_handle: i32) -> Option<Vec<InventoryItemDetail>>
+);
+game_server_inventory_wrapper!(
+    "gameServerInventoryGetResultItemProperty",
+    game_server_inventory_get_result_item_property,
+    inventory_get_result_item_property(
+        result_handle: i32,
+        item_index: u32,
+        property_name: Option<String>
+    ) -> Option<String>
+);
+game_server_inventory_wrapper!(
+    "gameServerInventoryGetResultTimestamp",
+    game_server_inventory_get_result_timestamp,
+    inventory_get_result_timestamp(result_handle: i32) -> u32
+);
+game_server_inventory_wrapper!(
+    "gameServerInventoryCheckResultSteamId",
+    game_server_inventory_check_result_steam_id,
+    inventory_check_result_steam_id(result_handle: i32, steam_id64: BigInt) -> bool
+);
+game_server_inventory_wrapper!(
+    "gameServerInventoryDestroyResult",
+    game_server_inventory_destroy_result,
+    inventory_destroy_result(result_handle: i32) -> ()
+);
+game_server_inventory_wrapper!(
+    "gameServerInventoryGetAllItems",
+    game_server_inventory_get_all_items,
+    inventory_get_all_items() -> Option<i32>
+);
+game_server_inventory_wrapper!(
+    "gameServerInventoryGetItemsById",
+    game_server_inventory_get_items_by_id,
+    inventory_get_items_by_id(instance_ids: Vec<BigInt>) -> Option<i32>
+);
+game_server_inventory_wrapper!(
+    "gameServerInventorySerializeResult",
+    game_server_inventory_serialize_result,
+    inventory_serialize_result(result_handle: i32) -> Option<Buffer>
+);
+game_server_inventory_wrapper!(
+    "gameServerInventoryDeserializeResult",
+    game_server_inventory_deserialize_result,
+    inventory_deserialize_result(data: Buffer) -> Option<i32>
+);
+game_server_inventory_wrapper!(
+    "gameServerInventoryGenerateItems",
+    game_server_inventory_generate_items,
+    inventory_generate_items(items: Vec<InventoryItemQuantity>) -> Option<i32>
+);
+game_server_inventory_wrapper!(
+    "gameServerInventoryGrantPromoItems",
+    game_server_inventory_grant_promo_items,
+    inventory_grant_promo_items() -> Option<i32>
+);
+game_server_inventory_wrapper!(
+    "gameServerInventoryAddPromoItem",
+    game_server_inventory_add_promo_item,
+    inventory_add_promo_item(definition: i32) -> Option<i32>
+);
+game_server_inventory_wrapper!(
+    "gameServerInventoryAddPromoItems",
+    game_server_inventory_add_promo_items,
+    inventory_add_promo_items(definitions: Vec<i32>) -> Option<i32>
+);
+game_server_inventory_wrapper!(
+    "gameServerInventoryConsumeItem",
+    game_server_inventory_consume_item,
+    inventory_consume_item(item_id: BigInt, quantity: u32) -> Option<i32>
+);
+game_server_inventory_wrapper!(
+    "gameServerInventoryExchangeItems",
+    game_server_inventory_exchange_items,
+    inventory_exchange_items(
+        generate: Vec<InventoryItemQuantity>,
+        destroy: Vec<InventoryInstanceQuantity>
+    ) -> Option<i32>
+);
+game_server_inventory_wrapper!(
+    "gameServerInventoryTransferItemQuantity",
+    game_server_inventory_transfer_item_quantity,
+    inventory_transfer_item_quantity(
+        source_item_id: BigInt,
+        quantity: u32,
+        destination_item_id: Option<BigInt>
+    ) -> Option<i32>
+);
+game_server_inventory_wrapper!(
+    "gameServerInventorySendItemDropHeartbeat",
+    game_server_inventory_send_item_drop_heartbeat,
+    inventory_send_item_drop_heartbeat() -> ()
+);
+game_server_inventory_wrapper!(
+    "gameServerInventoryTriggerItemDrop",
+    game_server_inventory_trigger_item_drop,
+    inventory_trigger_item_drop(drop_list_definition: i32) -> Option<i32>
+);
+game_server_inventory_wrapper!(
+    "gameServerInventoryTradeItems",
+    game_server_inventory_trade_items,
+    inventory_trade_items(
+        trade_partner_steam_id64: BigInt,
+        give: Vec<InventoryInstanceQuantity>,
+        get: Vec<InventoryInstanceQuantity>
+    ) -> Option<i32>
+);
+game_server_inventory_wrapper!(
+    "gameServerInventoryLoadItemDefinitions",
+    game_server_inventory_load_item_definitions,
+    inventory_load_item_definitions() -> bool
+);
+game_server_inventory_wrapper!(
+    "gameServerInventoryGetItemDefinitionIds",
+    game_server_inventory_get_item_definition_ids,
+    inventory_get_item_definition_ids() -> Vec<i32>
+);
+game_server_inventory_wrapper!(
+    "gameServerInventoryGetItemDefinitionProperty",
+    game_server_inventory_get_item_definition_property,
+    inventory_get_item_definition_property(
+        definition: i32,
+        property_name: Option<String>
+    ) -> Option<String>
+);
+
+#[napi(js_name = "gameServerInventoryRequestEligiblePromoItemDefinitionIds")]
+pub async fn game_server_inventory_request_eligible_promo_item_definition_ids(
+    steam_id64: BigInt,
+    timeout_seconds: Option<u32>,
+) -> Result<InventoryEligiblePromoItemDefIds, Error> {
+    let call = unsafe {
+        sys::SteamAPI_ISteamInventory_RequestEligiblePromoItemDefinitionsIDs(
+            steam_game_server_inventory()?,
+            bigint_to_u64(steam_id64, "steamId64")?,
+        )
+    };
+    let result: sys::SteamInventoryEligiblePromoItemDefIDs_t = wait_for_api_call(
+        call,
+        sys::SteamInventoryEligiblePromoItemDefIDs_t_k_iCallback as i32,
+        timeout_seconds
+            .map(u64::from)
+            .unwrap_or(DEFAULT_ASYNC_TIMEOUT_SECONDS)
+            .max(1),
+    )
+    .await?;
+    Ok(inventory_eligible_promo_result(&result))
+}
+
+game_server_inventory_wrapper!(
+    "gameServerInventoryGetEligiblePromoItemDefinitionIds",
+    game_server_inventory_get_eligible_promo_item_definition_ids,
+    inventory_get_eligible_promo_item_definition_ids(steam_id64: BigInt) -> Vec<i32>
+);
+
+#[napi(js_name = "gameServerInventoryStartPurchase")]
+pub async fn game_server_inventory_start_purchase(
+    items: Vec<InventoryItemQuantity>,
+    timeout_seconds: Option<u32>,
+) -> Result<InventoryStartPurchaseResult, Error> {
+    let (defs, quantities) = inventory_definition_quantities(items);
+    let call = unsafe {
+        sys::SteamAPI_ISteamInventory_StartPurchase(
+            steam_game_server_inventory()?,
+            defs.as_ptr(),
+            quantities.as_ptr(),
+            len_to_u32(defs.len(), "inventory purchase items")?,
+        )
+    };
+    let result: sys::SteamInventoryStartPurchaseResult_t = wait_for_api_call(
+        call,
+        sys::SteamInventoryStartPurchaseResult_t_k_iCallback as i32,
+        timeout_seconds
+            .map(u64::from)
+            .unwrap_or(DEFAULT_ASYNC_TIMEOUT_SECONDS)
+            .max(1),
+    )
+    .await?;
+    Ok(inventory_start_purchase_result(&result))
+}
+
+#[napi(js_name = "gameServerInventoryRequestPrices")]
+pub async fn game_server_inventory_request_prices(
+    timeout_seconds: Option<u32>,
+) -> Result<InventoryRequestPricesResult, Error> {
+    let call =
+        unsafe { sys::SteamAPI_ISteamInventory_RequestPrices(steam_game_server_inventory()?) };
+    let result: sys::SteamInventoryRequestPricesResult_t = wait_for_api_call(
+        call,
+        sys::SteamInventoryRequestPricesResult_t_k_iCallback as i32,
+        timeout_seconds
+            .map(u64::from)
+            .unwrap_or(DEFAULT_ASYNC_TIMEOUT_SECONDS)
+            .max(1),
+    )
+    .await?;
+    Ok(inventory_request_prices_result(&result))
+}
+
+game_server_inventory_wrapper!(
+    "gameServerInventoryGetNumItemsWithPrices",
+    game_server_inventory_get_num_items_with_prices,
+    inventory_get_num_items_with_prices() -> u32
+);
+game_server_inventory_wrapper!(
+    "gameServerInventoryGetItemsWithPrices",
+    game_server_inventory_get_items_with_prices,
+    inventory_get_items_with_prices(max_items: Option<u32>) -> Vec<InventoryPrice>
+);
+game_server_inventory_wrapper!(
+    "gameServerInventoryGetItemPrice",
+    game_server_inventory_get_item_price,
+    inventory_get_item_price(definition: i32) -> Option<InventoryPrice>
+);
+game_server_inventory_wrapper!(
+    "gameServerInventoryStartUpdateProperties",
+    game_server_inventory_start_update_properties,
+    inventory_start_update_properties() -> Option<BigInt>
+);
+game_server_inventory_wrapper!(
+    "gameServerInventoryRemoveProperty",
+    game_server_inventory_remove_property,
+    inventory_remove_property(update_handle: BigInt, item_id: BigInt, property_name: String) -> bool
+);
+game_server_inventory_wrapper!(
+    "gameServerInventorySetPropertyString",
+    game_server_inventory_set_property_string,
+    inventory_set_property_string(
+        update_handle: BigInt,
+        item_id: BigInt,
+        property_name: String,
+        value: String
+    ) -> bool
+);
+game_server_inventory_wrapper!(
+    "gameServerInventorySetPropertyBool",
+    game_server_inventory_set_property_bool,
+    inventory_set_property_bool(
+        update_handle: BigInt,
+        item_id: BigInt,
+        property_name: String,
+        value: bool
+    ) -> bool
+);
+game_server_inventory_wrapper!(
+    "gameServerInventorySetPropertyInt64",
+    game_server_inventory_set_property_int64,
+    inventory_set_property_int64(
+        update_handle: BigInt,
+        item_id: BigInt,
+        property_name: String,
+        value: BigInt
+    ) -> bool
+);
+game_server_inventory_wrapper!(
+    "gameServerInventorySetPropertyFloat",
+    game_server_inventory_set_property_float,
+    inventory_set_property_float(
+        update_handle: BigInt,
+        item_id: BigInt,
+        property_name: String,
+        value: f64
+    ) -> bool
+);
+game_server_inventory_wrapper!(
+    "gameServerInventorySubmitUpdateProperties",
+    game_server_inventory_submit_update_properties,
+    inventory_submit_update_properties(update_handle: BigInt) -> Option<i32>
+);
+game_server_inventory_wrapper!(
+    "gameServerInventoryInspectItem",
+    game_server_inventory_inspect_item,
+    inventory_inspect_item(item_token: String) -> Option<i32>
+);
 
 #[napi(js_name = "inputInit")]
 pub fn input_init() -> Result<(), Error> {
@@ -14224,12 +14516,60 @@ fn steam_parties() -> Result<*mut sys::ISteamParties, Error> {
     )
 }
 
-fn steam_inventory() -> Result<*mut sys::ISteamInventory, Error> {
+#[derive(Clone, Copy)]
+enum InventoryInterfaceContext {
+    Client,
+    GameServer,
+}
+
+thread_local! {
+    static INVENTORY_INTERFACE_CONTEXT: Cell<InventoryInterfaceContext> =
+        Cell::new(InventoryInterfaceContext::Client);
+}
+
+struct InventoryInterfaceContextGuard {
+    previous: InventoryInterfaceContext,
+}
+
+impl Drop for InventoryInterfaceContextGuard {
+    fn drop(&mut self) {
+        INVENTORY_INTERFACE_CONTEXT.with(|context| context.set(self.previous));
+    }
+}
+
+fn with_game_server_inventory<T>(f: impl FnOnce() -> Result<T, Error>) -> Result<T, Error> {
+    let _guard = INVENTORY_INTERFACE_CONTEXT.with(|context| {
+        let previous = context.replace(InventoryInterfaceContext::GameServer);
+        InventoryInterfaceContextGuard { previous }
+    });
+    f()
+}
+
+fn inventory_interface_context() -> InventoryInterfaceContext {
+    INVENTORY_INTERFACE_CONTEXT.with(Cell::get)
+}
+
+fn steam_client_inventory() -> Result<*mut sys::ISteamInventory, Error> {
     crate::state::ensure_initialized()?;
     non_null(
         unsafe { sys::SteamAPI_SteamInventory_v003() },
         "ISteamInventory",
     )
+}
+
+fn steam_game_server_inventory() -> Result<*mut sys::ISteamInventory, Error> {
+    crate::state::ensure_game_server_initialized()?;
+    non_null(
+        unsafe { sys::SteamAPI_SteamGameServerInventory_v003() },
+        "ISteamInventory",
+    )
+}
+
+fn steam_inventory() -> Result<*mut sys::ISteamInventory, Error> {
+    match inventory_interface_context() {
+        InventoryInterfaceContext::Client => steam_client_inventory(),
+        InventoryInterfaceContext::GameServer => steam_game_server_inventory(),
+    }
 }
 
 fn steam_input() -> Result<*mut sys::ISteamInput, Error> {
