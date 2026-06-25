@@ -1381,10 +1381,25 @@ export const SteamCallback = {
   HTTPRequestCompleted: 2101,
   HTTPRequestHeadersReceived: 2102,
   HTTPRequestDataReceived: 2103,
+  ScreenshotReady: 2301,
+  ScreenshotRequested: 2302,
+  PlaybackStatusHasChanged: 4001,
+  VolumeHasChanged: 4002,
+  BroadcastUploadStart: 4604,
+  BroadcastUploadStop: 4605,
+  GetVideoURLResult: 4611,
+  GetOPFSettingsResult: 4624,
+  SteamParentalSettingsChanged: 5001,
   JoinParty: 5301,
   CreateBeacon: 5302,
   ReservationNotification: 5303,
   ChangeNumOpenSlots: 5304,
+  SteamRemotePlaySessionConnected: 5701,
+  SteamRemotePlaySessionDisconnected: 5702,
+  SteamRemotePlayTogetherGuestInvite: 5703,
+  SteamRemotePlaySessionAvatarLoaded: 5704,
+  SteamTimelineGamePhaseRecordingExists: 6001,
+  SteamTimelineEventRecordingExists: 6002,
   SteamInventoryResultReady: 4700,
   SteamInventoryFullUpdate: 4701,
   SteamInventoryDefinitionUpdate: 4702,
@@ -6237,11 +6252,16 @@ function normalizeCallbackEvent(callbackId: number, event: unknown): unknown {
     "owner_steam_id",
     "group_id",
     "candidate_steam_id",
-    "banned_game_id"
+    "banned_game_id",
+    "recording_ms",
+    "longest_clip_ms"
   ]) {
     if (key in result) {
       result[key] = normalizeBigIntLike(result[key]);
     }
+  }
+  if (callbackId === SteamCallback.SteamTimelineEventRecordingExists && "event" in result) {
+    result.event = normalizeBigIntLike(result.event);
   }
   if (result.steam_id !== undefined) {
     result.steamId ??= result.steam_id;
@@ -6258,7 +6278,9 @@ function normalizeCallbackEvent(callbackId: number, event: unknown): unknown {
     check_file_signature: "checkFileSignature",
     clan_chat: "clanChat",
     clan_players_that_dont_like_candidate: "clanPlayersThatDontLikeCandidate",
+    clip_count: "clipCount",
     conn_port: "connPort",
+    connect_url: "connectUrl",
     candidate_steam_id: "candidateSteamId",
     ban_expires: "banExpires",
     banned_game_id: "bannedGameId",
@@ -6281,22 +6303,29 @@ function normalizeCallbackEvent(callbackId: number, event: unknown): unknown {
     ip_address: "ipAddress",
     is_following: "isFollowing",
     is_offline: "isOffline",
+    is_rtmp: "isRtmp",
     key_length: "keyLength",
     kicked_due_to_disconnect: "kickedDueToDisconnect",
     lobby_steam_id: "lobbySteamId",
+    local_handle: "localHandle",
+    longest_clip_ms: "longestClipMs",
     making_change: "makingChange",
     member_state_change: "memberStateChange",
     message_id: "messageId",
     minutes_battery_left: "minutesBatteryLeft",
+    new_volume: "newVolume",
     new_device_cooldown_days: "newDeviceCooldownDays",
     not_allowed_reason: "notAllowedReason",
     officer_count: "officerCount",
     optional_text: "optionalText",
     owner_steam_id: "ownerSteamId",
     parameter_size: "parameterSize",
+    phase_id: "phaseId",
     players_that_candidate_doesnt_like: "playersThatCandidateDoesntLike",
     players_that_dont_like_candidate: "playersThatDontLikeCandidate",
     query_port: "queryPort",
+    recording_exists: "recordingExists",
+    recording_ms: "recordingMs",
     reputation_score: "reputationScore",
     results_returned: "resultsReturned",
     seconds_allowed: "secondsAllowed",
@@ -6304,14 +6333,17 @@ function normalizeCallbackEvent(callbackId: number, event: unknown): unknown {
     seconds_remaining: "secondsRemaining",
     seconds_played: "secondsPlayed",
     seconds_today: "secondsToday",
+    session_id: "sessionId",
     sha_hex: "shaHex",
+    screenshot_count: "screenshotCount",
     steam_guard_required_days: "steamGuardRequiredDays",
     steam_ids: "steamIds",
     submitted_text: "submittedText",
     total_connects: "totalConnects",
     total_minutes_played: "totalMinutesPlayed",
     total_result_count: "totalResultCount",
-    user_changed: "userChanged"
+    user_changed: "userChanged",
+    video_app_id: "videoAppId"
   };
   for (const [snake, camel] of Object.entries(aliases)) {
     if (result[snake] !== undefined) {

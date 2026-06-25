@@ -129,10 +129,25 @@ static MATCHMAKING_SERVER_LIST_REQUESTS: Lazy<
 const CALLBACK_HTTP_REQUEST_COMPLETED: i32 = 2101;
 const CALLBACK_HTTP_REQUEST_HEADERS_RECEIVED: i32 = 2102;
 const CALLBACK_HTTP_REQUEST_DATA_RECEIVED: i32 = 2103;
+const CALLBACK_SCREENSHOT_READY: i32 = 2301;
+const CALLBACK_SCREENSHOT_REQUESTED: i32 = 2302;
+const CALLBACK_PLAYBACK_STATUS_HAS_CHANGED: i32 = 4001;
+const CALLBACK_VOLUME_HAS_CHANGED: i32 = 4002;
+const CALLBACK_BROADCAST_UPLOAD_START: i32 = 4604;
+const CALLBACK_BROADCAST_UPLOAD_STOP: i32 = 4605;
+const CALLBACK_GET_VIDEO_URL_RESULT: i32 = 4611;
+const CALLBACK_GET_OPF_SETTINGS_RESULT: i32 = 4624;
+const CALLBACK_STEAM_PARENTAL_SETTINGS_CHANGED: i32 = 5001;
 const CALLBACK_JOIN_PARTY: i32 = 5301;
 const CALLBACK_CREATE_BEACON: i32 = 5302;
 const CALLBACK_RESERVATION_NOTIFICATION: i32 = 5303;
 const CALLBACK_CHANGE_NUM_OPEN_SLOTS: i32 = 5304;
+const CALLBACK_STEAM_REMOTE_PLAY_SESSION_CONNECTED: i32 = 5701;
+const CALLBACK_STEAM_REMOTE_PLAY_SESSION_DISCONNECTED: i32 = 5702;
+const CALLBACK_STEAM_REMOTE_PLAY_TOGETHER_GUEST_INVITE: i32 = 5703;
+const CALLBACK_STEAM_REMOTE_PLAY_SESSION_AVATAR_LOADED: i32 = 5704;
+const CALLBACK_STEAM_TIMELINE_GAME_PHASE_RECORDING_EXISTS: i32 = 6001;
+const CALLBACK_STEAM_TIMELINE_EVENT_RECORDING_EXISTS: i32 = 6002;
 const CALLBACK_STEAM_INVENTORY_RESULT_READY: i32 = 4700;
 const CALLBACK_STEAM_INVENTORY_FULL_UPDATE: i32 = 4701;
 const CALLBACK_STEAM_INVENTORY_DEFINITION_UPDATE: i32 = 4702;
@@ -14176,12 +14191,43 @@ fn callback_id_from_compat(callback: i32) -> Result<i32, Error> {
         CALLBACK_HTTP_REQUEST_DATA_RECEIVED => {
             Ok(sys::HTTPRequestDataReceived_t_k_iCallback as i32)
         }
+        CALLBACK_SCREENSHOT_READY => Ok(sys::ScreenshotReady_t_k_iCallback as i32),
+        CALLBACK_SCREENSHOT_REQUESTED => Ok(sys::ScreenshotRequested_t_k_iCallback as i32),
+        CALLBACK_PLAYBACK_STATUS_HAS_CHANGED => {
+            Ok(sys::PlaybackStatusHasChanged_t_k_iCallback as i32)
+        }
+        CALLBACK_VOLUME_HAS_CHANGED => Ok(sys::VolumeHasChanged_t_k_iCallback as i32),
+        CALLBACK_BROADCAST_UPLOAD_START => Ok(sys::BroadcastUploadStart_t_k_iCallback as i32),
+        CALLBACK_BROADCAST_UPLOAD_STOP => Ok(sys::BroadcastUploadStop_t_k_iCallback as i32),
+        CALLBACK_GET_VIDEO_URL_RESULT => Ok(sys::GetVideoURLResult_t_k_iCallback as i32),
+        CALLBACK_GET_OPF_SETTINGS_RESULT => Ok(sys::GetOPFSettingsResult_t_k_iCallback as i32),
+        CALLBACK_STEAM_PARENTAL_SETTINGS_CHANGED => {
+            Ok(sys::SteamParentalSettingsChanged_t_k_iCallback as i32)
+        }
         CALLBACK_JOIN_PARTY => Ok(sys::JoinPartyCallback_t_k_iCallback as i32),
         CALLBACK_CREATE_BEACON => Ok(sys::CreateBeaconCallback_t_k_iCallback as i32),
         CALLBACK_RESERVATION_NOTIFICATION => {
             Ok(sys::ReservationNotificationCallback_t_k_iCallback as i32)
         }
         CALLBACK_CHANGE_NUM_OPEN_SLOTS => Ok(sys::ChangeNumOpenSlotsCallback_t_k_iCallback as i32),
+        CALLBACK_STEAM_REMOTE_PLAY_SESSION_CONNECTED => {
+            Ok(sys::SteamRemotePlaySessionConnected_t_k_iCallback as i32)
+        }
+        CALLBACK_STEAM_REMOTE_PLAY_SESSION_DISCONNECTED => {
+            Ok(sys::SteamRemotePlaySessionDisconnected_t_k_iCallback as i32)
+        }
+        CALLBACK_STEAM_REMOTE_PLAY_TOGETHER_GUEST_INVITE => {
+            Ok(sys::SteamRemotePlayTogetherGuestInvite_t_k_iCallback as i32)
+        }
+        CALLBACK_STEAM_REMOTE_PLAY_SESSION_AVATAR_LOADED => {
+            Ok(sys::SteamRemotePlaySessionAvatarLoaded_t_k_iCallback as i32)
+        }
+        CALLBACK_STEAM_TIMELINE_GAME_PHASE_RECORDING_EXISTS => {
+            Ok(sys::SteamTimelineGamePhaseRecordingExists_t_k_iCallback as i32)
+        }
+        CALLBACK_STEAM_TIMELINE_EVENT_RECORDING_EXISTS => {
+            Ok(sys::SteamTimelineEventRecordingExists_t_k_iCallback as i32)
+        }
         CALLBACK_STEAM_INVENTORY_RESULT_READY => {
             Ok(sys::SteamInventoryResultReady_t_k_iCallback as i32)
         }
@@ -15026,6 +15072,50 @@ unsafe fn callback_to_json(callback: i32, param: *mut c_void) -> Value {
                 "bytes_received": ptr::addr_of!((*event).m_cBytesReceived).read_unaligned()
             })
         }
+        CALLBACK_SCREENSHOT_READY => {
+            let event = param as *const sys::ScreenshotReady_t;
+            serde_json::json!({
+                "local_handle": ptr::addr_of!((*event).m_hLocal).read_unaligned(),
+                "result": ptr::addr_of!((*event).m_eResult).read_unaligned() as u32
+            })
+        }
+        CALLBACK_SCREENSHOT_REQUESTED | CALLBACK_PLAYBACK_STATUS_HAS_CHANGED => {
+            serde_json::json!({})
+        }
+        CALLBACK_VOLUME_HAS_CHANGED => {
+            let event = param as *const sys::VolumeHasChanged_t;
+            serde_json::json!({
+                "new_volume": ptr::addr_of!((*event).m_flNewVolume).read_unaligned()
+            })
+        }
+        CALLBACK_BROADCAST_UPLOAD_START => {
+            let event = param as *const sys::BroadcastUploadStart_t;
+            serde_json::json!({
+                "is_rtmp": ptr::addr_of!((*event).m_bIsRTMP).read_unaligned()
+            })
+        }
+        CALLBACK_BROADCAST_UPLOAD_STOP => {
+            let event = param as *const sys::BroadcastUploadStop_t;
+            serde_json::json!({
+                "result": ptr::addr_of!((*event).m_eResult).read_unaligned() as u32
+            })
+        }
+        CALLBACK_GET_VIDEO_URL_RESULT => {
+            let event = param as *const sys::GetVideoURLResult_t;
+            serde_json::json!({
+                "result": ptr::addr_of!((*event).m_eResult).read_unaligned() as u32,
+                "video_app_id": ptr::addr_of!((*event).m_unVideoAppID).read_unaligned(),
+                "url": c_buf_to_string(&*ptr::addr_of!((*event).m_rgchURL))
+            })
+        }
+        CALLBACK_GET_OPF_SETTINGS_RESULT => {
+            let event = param as *const sys::GetOPFSettingsResult_t;
+            serde_json::json!({
+                "result": ptr::addr_of!((*event).m_eResult).read_unaligned() as u32,
+                "video_app_id": ptr::addr_of!((*event).m_unVideoAppID).read_unaligned()
+            })
+        }
+        CALLBACK_STEAM_PARENTAL_SETTINGS_CHANGED => serde_json::json!({}),
         CALLBACK_JOIN_PARTY => {
             let event = param as *const sys::JoinPartyCallback_t;
             serde_json::json!({
@@ -15053,6 +15143,50 @@ unsafe fn callback_to_json(callback: i32, param: *mut c_void) -> Value {
             let event = param as *const sys::ChangeNumOpenSlotsCallback_t;
             serde_json::json!({
                 "result": ptr::addr_of!((*event).m_eResult).read_unaligned() as u32
+            })
+        }
+        CALLBACK_STEAM_REMOTE_PLAY_SESSION_CONNECTED => {
+            let event = param as *const sys::SteamRemotePlaySessionConnected_t;
+            serde_json::json!({
+                "session_id": ptr::addr_of!((*event).m_unSessionID).read_unaligned()
+            })
+        }
+        CALLBACK_STEAM_REMOTE_PLAY_SESSION_DISCONNECTED => {
+            let event = param as *const sys::SteamRemotePlaySessionDisconnected_t;
+            serde_json::json!({
+                "session_id": ptr::addr_of!((*event).m_unSessionID).read_unaligned()
+            })
+        }
+        CALLBACK_STEAM_REMOTE_PLAY_TOGETHER_GUEST_INVITE => {
+            let event = param as *const sys::SteamRemotePlayTogetherGuestInvite_t;
+            serde_json::json!({
+                "connect_url": c_buf_to_string(&*ptr::addr_of!((*event).m_szConnectURL))
+            })
+        }
+        CALLBACK_STEAM_REMOTE_PLAY_SESSION_AVATAR_LOADED => {
+            let event = param as *const sys::SteamRemotePlaySessionAvatarLoaded_t;
+            serde_json::json!({
+                "session_id": ptr::addr_of!((*event).m_unSessionID).read_unaligned(),
+                "image": ptr::addr_of!((*event).m_iImage).read_unaligned(),
+                "wide": ptr::addr_of!((*event).m_iWide).read_unaligned(),
+                "tall": ptr::addr_of!((*event).m_iTall).read_unaligned()
+            })
+        }
+        CALLBACK_STEAM_TIMELINE_GAME_PHASE_RECORDING_EXISTS => {
+            let event = param as *const sys::SteamTimelineGamePhaseRecordingExists_t;
+            serde_json::json!({
+                "phase_id": c_buf_to_string(&*ptr::addr_of!((*event).m_rgchPhaseID)),
+                "recording_ms": ptr::addr_of!((*event).m_ulRecordingMS).read_unaligned().to_string(),
+                "longest_clip_ms": ptr::addr_of!((*event).m_ulLongestClipMS).read_unaligned().to_string(),
+                "clip_count": ptr::addr_of!((*event).m_unClipCount).read_unaligned(),
+                "screenshot_count": ptr::addr_of!((*event).m_unScreenshotCount).read_unaligned()
+            })
+        }
+        CALLBACK_STEAM_TIMELINE_EVENT_RECORDING_EXISTS => {
+            let event = param as *const sys::SteamTimelineEventRecordingExists_t;
+            serde_json::json!({
+                "event": ptr::addr_of!((*event).m_ulEventID).read_unaligned().to_string(),
+                "recording_exists": ptr::addr_of!((*event).m_bRecordingExists).read_unaligned()
             })
         }
         CALLBACK_STEAM_INVENTORY_RESULT_READY => {

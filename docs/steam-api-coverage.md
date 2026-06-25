@@ -82,17 +82,20 @@ The native layer currently targets the Steamworks flat C API through
 - UGC/Workshop: item create/update/query flows, install/download information,
   subscription list helpers, item state, statistics, and query configuration.
 - Screenshots: screenshot library writes, screenshot triggers/hooks, location
-  and user/published-file tagging, and VR screenshot library writes.
-- Music: playback state, play/pause/previous/next controls, and volume helpers.
-- Video: video URL/OPF request triggers, OPF string fetches, and broadcast
-  status/viewer counts.
+  and user/published-file tagging, VR screenshot library writes, and screenshot
+  callback events.
+- Music: playback state, play/pause/previous/next controls, volume helpers, and
+  playback/volume callback events.
+- Video: video URL/OPF request triggers, OPF string fetches, broadcast
+  status/viewer counts, and video/broadcast callback events.
 - Parental settings: parental lock state, app block checks, and feature block
-  checks.
+  checks, plus parental-settings change callback events.
 - Timeline: timeline tooltips, game modes, events, game phases, recording
-  existence checks, phase tags/attributes, and overlay navigation.
+  existence checks, phase tags/attributes, overlay navigation, and
+  recording-existence callback events.
 - Remote Play: session enumeration/details, Remote Play Together UI/invites,
-  direct input toggles, input polling, mouse visibility/position, and custom
-  cursor helpers.
+  direct input toggles, input polling, mouse visibility/position, custom cursor
+  helpers, and session/invite/avatar callback events.
 - Game server: Steam game-server lifecycle, callback pumping, secure/Steam ID
   status, server metadata publication, login/logoff helpers, auth-session
   ticket helpers, license and group status checks, public IP reads,
@@ -110,8 +113,9 @@ The native layer currently targets the Steamworks flat C API through
   bindings used by this crate.
 - Remaining modern networking surfaces: parsed relay-auth-ticket payloads, raw
   pointer-valued networking config callbacks, and custom signaling.
-- Complete callback/event coverage for every implemented interface, including
-  richer streaming HTTP response ergonomics.
+- Remaining callback/event coverage for interfaces that are not yet surfaced by
+  the native bindings or still need richer ergonomics, including streaming HTTP
+  response helpers.
 - Steam Web API and economy flows beyond client auth ticket helpers.
 
 Use Valve's SpaceWar App ID `480` for generic local smoke tests. Use your own

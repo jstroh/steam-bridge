@@ -1402,6 +1402,24 @@ test("specific and generic callbacks normalize Steamworks payloads", (t) => {
   assert.equal(steam.SteamCallback.GameServerStatsUnloaded, 1108);
   assert.equal(steam.SteamCallback.GameServerStatsReceived, 1800);
   assert.equal(steam.SteamCallback.GameServerStatsStored, 1801);
+  assert.equal(steam.SteamCallback.HTTPRequestCompleted, 2101);
+  assert.equal(steam.SteamCallback.HTTPRequestHeadersReceived, 2102);
+  assert.equal(steam.SteamCallback.HTTPRequestDataReceived, 2103);
+  assert.equal(steam.SteamCallback.ScreenshotReady, 2301);
+  assert.equal(steam.SteamCallback.ScreenshotRequested, 2302);
+  assert.equal(steam.SteamCallback.PlaybackStatusHasChanged, 4001);
+  assert.equal(steam.SteamCallback.VolumeHasChanged, 4002);
+  assert.equal(steam.SteamCallback.BroadcastUploadStart, 4604);
+  assert.equal(steam.SteamCallback.BroadcastUploadStop, 4605);
+  assert.equal(steam.SteamCallback.GetVideoURLResult, 4611);
+  assert.equal(steam.SteamCallback.GetOPFSettingsResult, 4624);
+  assert.equal(steam.SteamCallback.SteamParentalSettingsChanged, 5001);
+  assert.equal(steam.SteamCallback.SteamRemotePlaySessionConnected, 5701);
+  assert.equal(steam.SteamCallback.SteamRemotePlaySessionDisconnected, 5702);
+  assert.equal(steam.SteamCallback.SteamRemotePlayTogetherGuestInvite, 5703);
+  assert.equal(steam.SteamCallback.SteamRemotePlaySessionAvatarLoaded, 5704);
+  assert.equal(steam.SteamCallback.SteamTimelineGamePhaseRecordingExists, 6001);
+  assert.equal(steam.SteamCallback.SteamTimelineEventRecordingExists, 6002);
 
   let txnEvent;
   const txnHandle = steam.onMicroTxnAuthorizationResponse((event) => {
@@ -1696,6 +1714,172 @@ test("specific and generic callbacks normalize Steamworks payloads", (t) => {
   });
 
   assert.equal(navigationEvent.uri, "steam://openurl/https://store.steampowered.com/app/480/");
+
+  let screenshotReadyEvent;
+  steam.callback.register(steam.SteamCallback.ScreenshotReady, (event) => {
+    screenshotReadyEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.ScreenshotReady)({
+    local_handle: 77,
+    result: 1
+  });
+
+  assert.equal(screenshotReadyEvent.localHandle, 77);
+  assert.equal(screenshotReadyEvent.result, 1);
+
+  let screenshotRequestedEvent;
+  steam.callback.register(steam.SteamCallback.ScreenshotRequested, (event) => {
+    screenshotRequestedEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.ScreenshotRequested)({});
+
+  assert.deepEqual(screenshotRequestedEvent, {});
+
+  let playbackEvent;
+  steam.callback.register(steam.SteamCallback.PlaybackStatusHasChanged, (event) => {
+    playbackEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.PlaybackStatusHasChanged)({});
+
+  assert.deepEqual(playbackEvent, {});
+
+  let volumeEvent;
+  steam.callback.register(steam.SteamCallback.VolumeHasChanged, (event) => {
+    volumeEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.VolumeHasChanged)({
+    new_volume: 0.625
+  });
+
+  assert.equal(volumeEvent.newVolume, 0.625);
+
+  let broadcastStartEvent;
+  steam.callback.register(steam.SteamCallback.BroadcastUploadStart, (event) => {
+    broadcastStartEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.BroadcastUploadStart)({
+    is_rtmp: true
+  });
+
+  assert.equal(broadcastStartEvent.isRtmp, true);
+
+  let broadcastStopEvent;
+  steam.callback.register(steam.SteamCallback.BroadcastUploadStop, (event) => {
+    broadcastStopEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.BroadcastUploadStop)({
+    result: 1
+  });
+
+  assert.equal(broadcastStopEvent.result, 1);
+
+  let videoUrlEvent;
+  steam.callback.register(steam.SteamCallback.GetVideoURLResult, (event) => {
+    videoUrlEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.GetVideoURLResult)({
+    result: 1,
+    video_app_id: 480,
+    url: "https://example.invalid/spacewar.webm"
+  });
+
+  assert.equal(videoUrlEvent.videoAppId, 480);
+  assert.equal(videoUrlEvent.url, "https://example.invalid/spacewar.webm");
+
+  let opfSettingsEvent;
+  steam.callback.register(steam.SteamCallback.GetOPFSettingsResult, (event) => {
+    opfSettingsEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.GetOPFSettingsResult)({
+    result: 1,
+    video_app_id: 480
+  });
+
+  assert.equal(opfSettingsEvent.videoAppId, 480);
+
+  let parentalEvent;
+  steam.callback.register(steam.SteamCallback.SteamParentalSettingsChanged, (event) => {
+    parentalEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.SteamParentalSettingsChanged)({});
+
+  assert.deepEqual(parentalEvent, {});
+
+  let remotePlayConnectedEvent;
+  steam.callback.register(steam.SteamCallback.SteamRemotePlaySessionConnected, (event) => {
+    remotePlayConnectedEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.SteamRemotePlaySessionConnected)({
+    session_id: 42
+  });
+
+  assert.equal(remotePlayConnectedEvent.sessionId, 42);
+
+  let remotePlayDisconnectedEvent;
+  steam.callback.register(steam.SteamCallback.SteamRemotePlaySessionDisconnected, (event) => {
+    remotePlayDisconnectedEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.SteamRemotePlaySessionDisconnected)({
+    session_id: 42
+  });
+
+  assert.equal(remotePlayDisconnectedEvent.sessionId, 42);
+
+  let remotePlayInviteEvent;
+  steam.callback.register(steam.SteamCallback.SteamRemotePlayTogetherGuestInvite, (event) => {
+    remotePlayInviteEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.SteamRemotePlayTogetherGuestInvite)({
+    connect_url: "steam://join/480/test"
+  });
+
+  assert.equal(remotePlayInviteEvent.connectUrl, "steam://join/480/test");
+
+  let remotePlayAvatarEvent;
+  steam.callback.register(steam.SteamCallback.SteamRemotePlaySessionAvatarLoaded, (event) => {
+    remotePlayAvatarEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.SteamRemotePlaySessionAvatarLoaded)({
+    session_id: 42,
+    image: 17,
+    wide: 64,
+    tall: 64
+  });
+
+  assert.equal(remotePlayAvatarEvent.sessionId, 42);
+  assert.equal(remotePlayAvatarEvent.image, 17);
+  assert.equal(remotePlayAvatarEvent.wide, 64);
+  assert.equal(remotePlayAvatarEvent.tall, 64);
+
+  let timelinePhaseEvent;
+  steam.callback.register(steam.SteamCallback.SteamTimelineGamePhaseRecordingExists, (event) => {
+    timelinePhaseEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.SteamTimelineGamePhaseRecordingExists)({
+    phase_id: "round-1",
+    recording_ms: "1500",
+    longest_clip_ms: "750",
+    clip_count: 2,
+    screenshot_count: 3
+  });
+
+  assert.equal(timelinePhaseEvent.phaseId, "round-1");
+  assert.equal(timelinePhaseEvent.recordingMs, 1500n);
+  assert.equal(timelinePhaseEvent.longestClipMs, 750n);
+  assert.equal(timelinePhaseEvent.clipCount, 2);
+  assert.equal(timelinePhaseEvent.screenshotCount, 3);
+
+  let timelineEvent;
+  steam.callback.register(steam.SteamCallback.SteamTimelineEventRecordingExists, (event) => {
+    timelineEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.SteamTimelineEventRecordingExists)({
+    event: "9001",
+    recording_exists: true
+  });
+
+  assert.equal(timelineEvent.event, 9001n);
+  assert.equal(timelineEvent.recordingExists, true);
 
   txnHandle.disconnect();
   assert.equal(fake.callbacks.has(steam.SteamCallback.MicroTxnAuthorizationResponse), false);
