@@ -357,10 +357,36 @@ export interface NativeFriendGameInfo {
   lobby?: bigint | string | number;
 }
 
+export interface NativeFriendMessage {
+  data: Buffer;
+  size: number;
+  text: string;
+  entryType?: number;
+  entry_type?: number;
+}
+
 export interface NativeFriendsGroupInfo {
   id: number;
   name: string;
   members: NativeSteamId[];
+}
+
+export interface NativeEquippedProfileItemsResult {
+  result: number;
+  steamId?: NativeSteamId;
+  steam_id?: NativeSteamId;
+  hasAnimatedAvatar?: boolean;
+  has_animated_avatar?: boolean;
+  hasAvatarFrame?: boolean;
+  has_avatar_frame?: boolean;
+  hasProfileModifier?: boolean;
+  has_profile_modifier?: boolean;
+  hasProfileBackground?: boolean;
+  has_profile_background?: boolean;
+  hasMiniProfileBackground?: boolean;
+  has_mini_profile_background?: boolean;
+  fromCache?: boolean;
+  from_cache?: boolean;
 }
 
 export interface NativeClanActivityCounts {
@@ -693,6 +719,7 @@ export interface NativeBinding {
   friendsCloseClanChatWindowInSteam(clanChatId64: bigint): boolean;
   friendsSetListenForFriendsMessages(enabled: boolean): boolean;
   friendsReplyToFriendMessage(steamId64: bigint, message: string): boolean;
+  friendsGetFriendMessage(steamId64: bigint, messageId: number, maxBytes?: number): NativeFriendMessage | null | undefined;
   friendsGetFollowerCount(steamId64: bigint): Promise<NativeFollowerCountResult>;
   friendsIsFollowing(steamId64: bigint): Promise<NativeIsFollowingResult>;
   friendsEnumerateFollowingList(startIndex: number): Promise<NativeFollowingListResult>;
@@ -700,6 +727,12 @@ export interface NativeBinding {
   friendsIsClanOfficialGameGroup(clanId64: bigint): boolean;
   friendsGetNumChatsWithUnreadPriorityMessages(): number;
   friendsRegisterProtocolInOverlayBrowser(protocol: string): boolean;
+  friendsActivateGameOverlayRemotePlayTogetherInviteDialog(lobbyId64: bigint): void;
+  friendsActivateGameOverlayInviteDialogConnectString(connectString: string): void;
+  friendsRequestEquippedProfileItems(steamId64: bigint): Promise<NativeEquippedProfileItemsResult>;
+  friendsHasEquippedProfileItem(steamId64: bigint, itemType: number): boolean;
+  friendsGetProfileItemPropertyString(steamId64: bigint, itemType: number, property: number): string;
+  friendsGetProfileItemPropertyUint(steamId64: bigint, itemType: number, property: number): number;
 
   cloudIsEnabledForAccount(): boolean;
   cloudIsEnabledForApp(): boolean;

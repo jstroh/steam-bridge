@@ -28,6 +28,7 @@ const CALLBACK_GAMEPAD_TEXT_INPUT_DISMISSED: i32 = 714;
 const CALLBACK_LOBBY_DATA_UPDATE: i32 = 505;
 const CALLBACK_LOBBY_CHAT_UPDATE: i32 = 506;
 const CALLBACK_GAME_LOBBY_JOIN_REQUESTED: i32 = 333;
+const CALLBACK_EQUIPPED_PROFILE_ITEMS_CHANGED: i32 = 350;
 const CALLBACK_P2P_SESSION_REQUEST: i32 = 1202;
 const CALLBACK_P2P_SESSION_CONNECT_FAIL: i32 = 1203;
 const CALLBACK_STEAM_NET_AUTHENTICATION_STATUS: i32 = 1222;
@@ -437,6 +438,27 @@ pub struct FriendsGroupInfo {
     pub id: i32,
     pub name: String,
     pub members: Vec<PlayerSteamId>,
+}
+
+#[napi(object)]
+pub struct FriendMessage {
+    pub data: Buffer,
+    pub size: u32,
+    pub text: String,
+    pub entry_type: u32,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct EquippedProfileItemsResult {
+    pub result: u32,
+    pub steam_id: PlayerSteamId,
+    pub has_animated_avatar: bool,
+    pub has_avatar_frame: bool,
+    pub has_profile_modifier: bool,
+    pub has_profile_background: bool,
+    pub has_mini_profile_background: bool,
+    pub from_cache: bool,
 }
 
 #[derive(Debug)]
@@ -1214,6 +1236,40 @@ pub fn friends_reply_to_friend_message(steam_id64: BigInt, message: String) -> R
     })
 }
 
+#[napi(js_name = "friendsGetFriendMessage")]
+pub fn friends_get_friend_message(
+    steam_id64: BigInt,
+    message_id: i32,
+    max_bytes: Option<u32>,
+) -> Result<Option<FriendMessage>, Error> {
+    let friends = steam_friends()?;
+    let steam_id = bigint_to_u64(steam_id64, "steamId64")?;
+    let capacity = max_bytes.unwrap_or(4096).clamp(1, 65_536);
+    let mut data = vec![0u8; capacity as usize];
+    let mut entry_type = sys::EChatEntryType::k_EChatEntryTypeInvalid;
+    let size = unsafe {
+        sys::SteamAPI_ISteamFriends_GetFriendMessage(
+            friends,
+            steam_id,
+            message_id,
+            data.as_mut_ptr().cast::<c_void>(),
+            capacity as i32,
+            &mut entry_type,
+        )
+    };
+    if size <= 0 {
+        return Ok(None);
+    }
+    let size = size as usize;
+    data.truncate(size.min(data.len()));
+    Ok(Some(FriendMessage {
+        text: u8_buf_to_string(&data),
+        size: size as u32,
+        data: data.into(),
+        entry_type: entry_type as u32,
+    }))
+}
+
 #[napi(js_name = "friendsGetFollowerCount")]
 pub async fn friends_get_follower_count(steam_id64: BigInt) -> Result<FollowerCountResult, Error> {
     let friends = steam_friends()?;
@@ -1310,6 +1366,104 @@ pub fn friends_register_protocol_in_overlay_browser(protocol: String) -> Result<
     let protocol = cstring(protocol, "overlay browser protocol")?;
     Ok(unsafe {
         sys::SteamAPI_ISteamFriends_RegisterProtocolInOverlayBrowser(friends, protocol.as_ptr())
+    })
+}
+
+#[napi(js_name = "friendsActivateGameOverlayRemotePlayTogetherInviteDialog")]
+pub fn friends_activate_game_overlay_remote_play_together_invite_dialog(
+    lobby_id64: BigInt,
+) -> Result<(), Error> {
+    let friends = steam_friends()?;
+    let lobby_id = bigint_to_u64(lobby_id64, "lobbyId64")?;
+    unsafe {
+        sys::SteamAPI_ISteamFriends_ActivateGameOverlayRemotePlayTogetherInviteDialog(
+            friends, lobby_id,
+        )
+    };
+    Ok(())
+}
+
+#[napi(js_name = "friendsActivateGameOverlayInviteDialogConnectString")]
+pub fn friends_activate_game_overlay_invite_dialog_connect_string(
+    connect_string: String,
+) -> Result<(), Error> {
+    let friends = steam_friends()?;
+    let connect_string = cstring(connect_string, "connect string")?;
+    unsafe {
+        sys::SteamAPI_ISteamFriends_ActivateGameOverlayInviteDialogConnectString(
+            friends,
+            connect_string.as_ptr(),
+        )
+    };
+    Ok(())
+}
+
+#[napi(js_name = "friendsRequestEquippedProfileItems")]
+pub async fn friends_request_equipped_profile_items(
+    steam_id64: BigInt,
+) -> Result<EquippedProfileItemsResult, Error> {
+    let friends = steam_friends()?;
+    let steam_id = bigint_to_u64(steam_id64, "steamId64")?;
+    let call =
+        unsafe { sys::SteamAPI_ISteamFriends_RequestEquippedProfileItems(friends, steam_id) };
+    let result: sys::EquippedProfileItems_t = wait_for_api_call(
+        call,
+        sys::EquippedProfileItems_t_k_iCallback as i32,
+        DEFAULT_ASYNC_TIMEOUT_SECONDS,
+    )
+    .await?;
+    Ok(equipped_profile_items_result(&result))
+}
+
+#[napi(js_name = "friendsHasEquippedProfileItem")]
+pub fn friends_has_equipped_profile_item(
+    steam_id64: BigInt,
+    item_type: u32,
+) -> Result<bool, Error> {
+    let friends = steam_friends()?;
+    let steam_id = bigint_to_u64(steam_id64, "steamId64")?;
+    Ok(unsafe {
+        sys::SteamAPI_ISteamFriends_BHasEquippedProfileItem(
+            friends,
+            steam_id,
+            community_profile_item_type_from_u32(item_type)?,
+        )
+    })
+}
+
+#[napi(js_name = "friendsGetProfileItemPropertyString")]
+pub fn friends_get_profile_item_property_string(
+    steam_id64: BigInt,
+    item_type: u32,
+    property: u32,
+) -> Result<String, Error> {
+    let friends = steam_friends()?;
+    let steam_id = bigint_to_u64(steam_id64, "steamId64")?;
+    Ok(string_from_ptr(unsafe {
+        sys::SteamAPI_ISteamFriends_GetProfileItemPropertyString(
+            friends,
+            steam_id,
+            community_profile_item_type_from_u32(item_type)?,
+            community_profile_item_property_from_u32(property)?,
+        )
+    }))
+}
+
+#[napi(js_name = "friendsGetProfileItemPropertyUint")]
+pub fn friends_get_profile_item_property_uint(
+    steam_id64: BigInt,
+    item_type: u32,
+    property: u32,
+) -> Result<u32, Error> {
+    let friends = steam_friends()?;
+    let steam_id = bigint_to_u64(steam_id64, "steamId64")?;
+    Ok(unsafe {
+        sys::SteamAPI_ISteamFriends_GetProfileItemPropertyUint(
+            friends,
+            steam_id,
+            community_profile_item_type_from_u32(item_type)?,
+            community_profile_item_property_from_u32(property)?,
+        )
     })
 }
 
@@ -5777,6 +5931,45 @@ fn overlay_to_store_flag_from_u32(value: u32) -> Result<sys::EOverlayToStoreFlag
     }
 }
 
+fn community_profile_item_type_from_u32(
+    value: u32,
+) -> Result<sys::ECommunityProfileItemType, Error> {
+    match value {
+        0 => Ok(sys::ECommunityProfileItemType::k_ECommunityProfileItemType_AnimatedAvatar),
+        1 => Ok(sys::ECommunityProfileItemType::k_ECommunityProfileItemType_AvatarFrame),
+        2 => Ok(sys::ECommunityProfileItemType::k_ECommunityProfileItemType_ProfileModifier),
+        3 => Ok(sys::ECommunityProfileItemType::k_ECommunityProfileItemType_ProfileBackground),
+        4 => Ok(sys::ECommunityProfileItemType::k_ECommunityProfileItemType_MiniProfileBackground),
+        _ => Err(Error::from_reason(format!(
+            "invalid community profile item type {value}"
+        ))),
+    }
+}
+
+fn community_profile_item_property_from_u32(
+    value: u32,
+) -> Result<sys::ECommunityProfileItemProperty, Error> {
+    match value {
+        0 => Ok(sys::ECommunityProfileItemProperty::k_ECommunityProfileItemProperty_ImageSmall),
+        1 => Ok(sys::ECommunityProfileItemProperty::k_ECommunityProfileItemProperty_ImageLarge),
+        2 => Ok(sys::ECommunityProfileItemProperty::k_ECommunityProfileItemProperty_InternalName),
+        3 => Ok(sys::ECommunityProfileItemProperty::k_ECommunityProfileItemProperty_Title),
+        4 => Ok(sys::ECommunityProfileItemProperty::k_ECommunityProfileItemProperty_Description),
+        5 => Ok(sys::ECommunityProfileItemProperty::k_ECommunityProfileItemProperty_AppID),
+        6 => Ok(sys::ECommunityProfileItemProperty::k_ECommunityProfileItemProperty_TypeID),
+        7 => Ok(sys::ECommunityProfileItemProperty::k_ECommunityProfileItemProperty_Class),
+        8 => Ok(sys::ECommunityProfileItemProperty::k_ECommunityProfileItemProperty_MovieWebM),
+        9 => Ok(sys::ECommunityProfileItemProperty::k_ECommunityProfileItemProperty_MovieMP4),
+        10 => {
+            Ok(sys::ECommunityProfileItemProperty::k_ECommunityProfileItemProperty_MovieWebMSmall)
+        }
+        11 => Ok(sys::ECommunityProfileItemProperty::k_ECommunityProfileItemProperty_MovieMP4Small),
+        _ => Err(Error::from_reason(format!(
+            "invalid community profile item property {value}"
+        ))),
+    }
+}
+
 fn leaderboard_sort_method_from_u32(value: u32) -> Result<sys::ELeaderboardSortMethod, Error> {
     match value {
         0 => Ok(sys::ELeaderboardSortMethod::k_ELeaderboardSortMethodNone),
@@ -6311,6 +6504,27 @@ fn inventory_request_prices_result(
     InventoryRequestPricesResult {
         result: unsafe { ptr::addr_of!(result.m_result).read_unaligned() } as u32,
         currency: c_buf_to_string(unsafe { &*ptr::addr_of!(result.m_rgchCurrency) }),
+    }
+}
+
+fn equipped_profile_items_result(
+    result: &sys::EquippedProfileItems_t,
+) -> EquippedProfileItemsResult {
+    EquippedProfileItemsResult {
+        result: unsafe { ptr::addr_of!(result.m_eResult).read_unaligned() } as u32,
+        steam_id: csteam_id_to_player(unsafe { ptr::addr_of!(result.m_steamID).read_unaligned() }),
+        has_animated_avatar: unsafe { ptr::addr_of!(result.m_bHasAnimatedAvatar).read_unaligned() },
+        has_avatar_frame: unsafe { ptr::addr_of!(result.m_bHasAvatarFrame).read_unaligned() },
+        has_profile_modifier: unsafe {
+            ptr::addr_of!(result.m_bHasProfileModifier).read_unaligned()
+        },
+        has_profile_background: unsafe {
+            ptr::addr_of!(result.m_bHasProfileBackground).read_unaligned()
+        },
+        has_mini_profile_background: unsafe {
+            ptr::addr_of!(result.m_bHasMiniProfileBackground).read_unaligned()
+        },
+        from_cache: unsafe { ptr::addr_of!(result.m_bFromCache).read_unaligned() },
     }
 }
 
@@ -6884,6 +7098,9 @@ fn callback_id_from_compat(callback: i32) -> Result<i32, Error> {
         8 => Ok(CALLBACK_GAME_LOBBY_JOIN_REQUESTED),
         9 => Ok(sys::MicroTxnAuthorizationResponse_t_k_iCallback as i32),
         331 => Ok(sys::GameOverlayActivated_t_k_iCallback as i32),
+        CALLBACK_EQUIPPED_PROFILE_ITEMS_CHANGED => {
+            Ok(sys::EquippedProfileItemsChanged_t_k_iCallback as i32)
+        }
         CALLBACK_STEAM_NET_AUTHENTICATION_STATUS => {
             Ok(sys::SteamNetAuthenticationStatus_t_k_iCallback as i32)
         }
@@ -7048,6 +7265,12 @@ unsafe fn callback_to_json(callback: i32, param: *mut c_void) -> Value {
                 "user_initiated": ptr::addr_of!((*event).m_bUserInitiated).read_unaligned(),
                 "app_id": ptr::addr_of!((*event).m_nAppID).read_unaligned(),
                 "overlay_pid": ptr::addr_of!((*event).m_dwOverlayPID).read_unaligned()
+            })
+        }
+        CALLBACK_EQUIPPED_PROFILE_ITEMS_CHANGED => {
+            let event = param as *const sys::EquippedProfileItemsChanged_t;
+            serde_json::json!({
+                "steam_id": csteam_id_to_u64(ptr::addr_of!((*event).m_steamID).read_unaligned()).to_string()
             })
         }
         CALLBACK_HTTP_REQUEST_COMPLETED => {

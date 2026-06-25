@@ -1611,6 +1611,10 @@ test("friends facade normalizes IDs, groups, rich presence, and async results", 
     friendsInviteUserToGame() {
       return true;
     },
+    friendsGetFriendMessage(steamId64, messageId, maxBytes) {
+      this.calls.push({ method: "friendsGetFriendMessage", args: [steamId64, messageId, maxBytes] });
+      return { data: Buffer.from("hello"), size: 5, text: "hello", entry_type: 1 };
+    },
     friendsGetFollowerCount() {
       return Promise.resolve({ steam_id: friend, result: 1, count: 12 });
     },
@@ -1619,6 +1623,36 @@ test("friends facade normalizes IDs, groups, rich presence, and async results", 
     },
     friendsEnumerateFollowingList() {
       return Promise.resolve({ result: 1, steam_ids: [friend], returned_results: 1, total_results: 2 });
+    },
+    friendsActivateGameOverlayRemotePlayTogetherInviteDialog(lobbyId64) {
+      this.calls.push({ method: "friendsActivateGameOverlayRemotePlayTogetherInviteDialog", args: [lobbyId64] });
+    },
+    friendsActivateGameOverlayInviteDialogConnectString(connectString) {
+      this.calls.push({ method: "friendsActivateGameOverlayInviteDialogConnectString", args: [connectString] });
+    },
+    friendsRequestEquippedProfileItems() {
+      return Promise.resolve({
+        result: 1,
+        steam_id: friend,
+        has_animated_avatar: true,
+        has_avatar_frame: true,
+        has_profile_modifier: false,
+        has_profile_background: true,
+        has_mini_profile_background: false,
+        from_cache: true
+      });
+    },
+    friendsHasEquippedProfileItem(steamId64, itemType) {
+      this.calls.push({ method: "friendsHasEquippedProfileItem", args: [steamId64, itemType] });
+      return true;
+    },
+    friendsGetProfileItemPropertyString(steamId64, itemType, property) {
+      this.calls.push({ method: "friendsGetProfileItemPropertyString", args: [steamId64, itemType, property] });
+      return "profile-item-title";
+    },
+    friendsGetProfileItemPropertyUint(steamId64, itemType, property) {
+      this.calls.push({ method: "friendsGetProfileItemPropertyUint", args: [steamId64, itemType, property] });
+      return property === 5 ? 480 : 42;
     }
   });
   const steam = loadSteamWithFakeNative(fake);
@@ -1662,6 +1696,13 @@ test("friends facade normalizes IDs, groups, rich presence, and async results", 
   assert.deepEqual(steam.friends.getFriendRichPresenceKeys(76561198000000003n), ["status"]);
   assert.equal(steam.friends.getFriendRichPresence(76561198000000003n, "status"), "ready");
   assert.equal(steam.friends.inviteUserToGame(76561198000000003n, "+connect_lobby 109775242022617907"), true);
+  assert.equal(steam.friends.ChatEntryType.ChatMsg, 1);
+  assert.deepEqual(steam.friends.getFriendMessage(76561198000000003n, 77, 256), {
+    data: Buffer.from("hello"),
+    size: 5,
+    text: "hello",
+    entryType: steam.friends.ChatEntryType.ChatMsg
+  });
   assert.equal((await steam.friends.getFollowerCount(76561198000000003n)).count, 12);
   assert.equal((await steam.friends.isFollowing(76561198000000003n)).isFollowing, true);
   assert.deepEqual(await steam.friends.enumerateFollowingList(), {
@@ -1670,6 +1711,48 @@ test("friends facade normalizes IDs, groups, rich presence, and async results", 
     returnedResults: 1,
     totalResults: 2
   });
+  steam.friends.activateGameOverlayRemotePlayTogetherInviteDialog(109775242022617907n);
+  steam.friends.activateGameOverlayInviteDialogConnectString("+connect_lobby 109775242022617907");
+  assert.deepEqual(await steam.friends.requestEquippedProfileItems(76561198000000003n), {
+    result: 1,
+    steamId: { steamId64: 76561198000000003n, steamId32: "STEAM_0:1:19867137", accountId: 39734275 },
+    hasAnimatedAvatar: true,
+    hasAvatarFrame: true,
+    hasProfileModifier: false,
+    hasProfileBackground: true,
+    hasMiniProfileBackground: false,
+    fromCache: true
+  });
+  assert.equal(
+    steam.friends.hasEquippedProfileItem(
+      76561198000000003n,
+      steam.friends.CommunityProfileItemType.AvatarFrame
+    ),
+    true
+  );
+  assert.equal(
+    steam.friends.getProfileItemPropertyString(
+      76561198000000003n,
+      steam.friends.CommunityProfileItemType.AvatarFrame,
+      steam.friends.CommunityProfileItemProperty.Title
+    ),
+    "profile-item-title"
+  );
+  assert.equal(
+    steam.friends.getProfileItemPropertyUint(
+      76561198000000003n,
+      steam.friends.CommunityProfileItemType.AvatarFrame,
+      steam.friends.CommunityProfileItemProperty.AppId
+    ),
+    480
+  );
+
+  let equippedChangedEvent;
+  steam.callback.register(steam.SteamCallback.EquippedProfileItemsChanged, (event) => {
+    equippedChangedEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.EquippedProfileItemsChanged)({ steam_id: "76561198000000003" });
+  assert.equal(equippedChangedEvent.steamId, 76561198000000003n);
 });
 
 test("screenshots, music, video, and parental facades forward utility interfaces", (t) => {

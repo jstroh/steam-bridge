@@ -13,7 +13,9 @@ import {
   NativeCloudFileInfo,
   NativeFollowerCountResult,
   NativeFollowingListResult,
+  NativeEquippedProfileItemsResult,
   NativeFriendGameInfo,
+  NativeFriendMessage,
   NativeFriendsGroupInfo,
   NativeInputControllerInfo,
   NativeIsFollowingResult,
@@ -118,10 +120,28 @@ export interface FriendGameInfo {
   lobby: bigint;
 }
 
+export interface FriendMessage {
+  data: Buffer;
+  size: number;
+  text: string;
+  entryType: number;
+}
+
 export interface FriendsGroupInfo {
   id: number;
   name: string;
   members: SteamId[];
+}
+
+export interface EquippedProfileItemsResult {
+  result: number;
+  steamId: SteamId;
+  hasAnimatedAvatar: boolean;
+  hasAvatarFrame: boolean;
+  hasProfileModifier: boolean;
+  hasProfileBackground: boolean;
+  hasMiniProfileBackground: boolean;
+  fromCache: boolean;
 }
 
 export interface ClanActivityCounts {
@@ -623,6 +643,7 @@ export const SteamCallback = {
   GameLobbyJoinRequested: 8,
   MicroTxnAuthorizationResponse: 9,
   GameOverlayActivated: 331,
+  EquippedProfileItemsChanged: 350,
   SteamNetAuthenticationStatus: 1222,
   SteamNetworkingMessagesSessionRequest: 1251,
   SteamNetworkingMessagesSessionFailed: 1252,
@@ -727,6 +748,44 @@ export const ChatRoomEnterResponse = {
   MemberBlockedYou: 10,
   YouBlockedMember: 11,
   RatelimitExceeded: 15
+} as const;
+
+export const ChatEntryType = {
+  Invalid: 0,
+  ChatMsg: 1,
+  Typing: 2,
+  InviteGame: 3,
+  Emote: 4,
+  LeftConversation: 6,
+  Entered: 7,
+  WasKicked: 8,
+  WasBanned: 9,
+  Disconnected: 10,
+  HistoricalChat: 11,
+  LinkBlocked: 14
+} as const;
+
+export const CommunityProfileItemType = {
+  AnimatedAvatar: 0,
+  AvatarFrame: 1,
+  ProfileModifier: 2,
+  ProfileBackground: 3,
+  MiniProfileBackground: 4
+} as const;
+
+export const CommunityProfileItemProperty = {
+  ImageSmall: 0,
+  ImageLarge: 1,
+  InternalName: 2,
+  Title: 3,
+  Description: 4,
+  AppId: 5,
+  TypeId: 6,
+  Class: 7,
+  MovieWebM: 8,
+  MovieMP4: 9,
+  MovieWebMSmall: 10,
+  MovieMP4Small: 11
 } as const;
 
 export const VRScreenshotType = {
@@ -1757,6 +1816,9 @@ export const friends = {
   FriendRelationship,
   PersonaState,
   ChatRoomEnterResponse,
+  ChatEntryType,
+  CommunityProfileItemType,
+  CommunityProfileItemProperty,
   getPersonaName(): string {
     return native().friendsGetPersonaName();
   },
@@ -1910,6 +1972,9 @@ export const friends = {
   replyToFriendMessage(steamId64: bigint, message: string): boolean {
     return native().friendsReplyToFriendMessage(steamId64, message);
   },
+  getFriendMessage(steamId64: bigint, messageId: number, maxBytes?: number | null): FriendMessage | null {
+    return normalizeFriendMessage(native().friendsGetFriendMessage(steamId64, messageId, maxBytes ?? undefined));
+  },
   async getFollowerCount(steamId64: bigint): Promise<FollowerCountResult> {
     return normalizeFollowerCountResult(await native().friendsGetFollowerCount(steamId64));
   },
@@ -1930,6 +1995,24 @@ export const friends = {
   },
   registerProtocolInOverlayBrowser(protocol: string): boolean {
     return native().friendsRegisterProtocolInOverlayBrowser(protocol);
+  },
+  activateGameOverlayRemotePlayTogetherInviteDialog(lobbyId64: bigint): void {
+    native().friendsActivateGameOverlayRemotePlayTogetherInviteDialog(lobbyId64);
+  },
+  activateGameOverlayInviteDialogConnectString(connectString: string): void {
+    native().friendsActivateGameOverlayInviteDialogConnectString(connectString);
+  },
+  async requestEquippedProfileItems(steamId64: bigint): Promise<EquippedProfileItemsResult> {
+    return normalizeEquippedProfileItemsResult(await native().friendsRequestEquippedProfileItems(steamId64));
+  },
+  hasEquippedProfileItem(steamId64: bigint, itemType: number): boolean {
+    return native().friendsHasEquippedProfileItem(steamId64, itemType);
+  },
+  getProfileItemPropertyString(steamId64: bigint, itemType: number, property: number): string {
+    return native().friendsGetProfileItemPropertyString(steamId64, itemType, property);
+  },
+  getProfileItemPropertyUint(steamId64: bigint, itemType: number, property: number): number {
+    return native().friendsGetProfileItemPropertyUint(steamId64, itemType, property);
   }
 };
 
@@ -2790,11 +2873,40 @@ function normalizeFriendGameInfo(info: NativeFriendGameInfo | null | undefined):
   };
 }
 
+function normalizeFriendMessage(message: NativeFriendMessage | null | undefined): FriendMessage | null {
+  if (!message) {
+    return null;
+  }
+  const source = message as unknown as Record<string, unknown>;
+  return {
+    data: message.data,
+    size: Number(source.size ?? message.data.length),
+    text: String(source.text ?? ""),
+    entryType: Number(source.entryType ?? source.entry_type ?? 0)
+  };
+}
+
 function normalizeFriendsGroupInfo(group: NativeFriendsGroupInfo): FriendsGroupInfo {
   return {
     id: group.id,
     name: group.name,
     members: (group.members ?? []).map(normalizeSteamId)
+  };
+}
+
+function normalizeEquippedProfileItemsResult(
+  result: NativeEquippedProfileItemsResult
+): EquippedProfileItemsResult {
+  const source = result as unknown as Record<string, unknown>;
+  return {
+    result: Number(source.result ?? 0),
+    steamId: normalizeSteamId((source.steamId ?? source.steam_id ?? EMPTY_NATIVE_STEAM_ID) as NativeSteamId),
+    hasAnimatedAvatar: Boolean(source.hasAnimatedAvatar ?? source.has_animated_avatar),
+    hasAvatarFrame: Boolean(source.hasAvatarFrame ?? source.has_avatar_frame),
+    hasProfileModifier: Boolean(source.hasProfileModifier ?? source.has_profile_modifier),
+    hasProfileBackground: Boolean(source.hasProfileBackground ?? source.has_profile_background),
+    hasMiniProfileBackground: Boolean(source.hasMiniProfileBackground ?? source.has_mini_profile_background),
+    fromCache: Boolean(source.fromCache ?? source.from_cache)
   };
 }
 
@@ -3035,6 +3147,9 @@ function normalizeCallbackEvent(callbackId: number, event: unknown): unknown {
     if (key in result) {
       result[key] = normalizeBigIntLike(result[key]);
     }
+  }
+  if (result.steam_id !== undefined) {
+    result.steamId ??= result.steam_id;
   }
   return result;
 }

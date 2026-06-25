@@ -15,7 +15,8 @@ The native layer currently targets the Steamworks flat C API through
   Steam ID or IP, and ticket cancellation.
 - Friends: persona name/state, friend enumeration, friend profiles, groups,
   clans, rich presence, coplay, clan chat controls, friend message replies, and
-  follower async calls.
+  reads, follower async calls, profile item queries, and remaining invite
+  overlay helpers.
 - Overlay: dialog, user, invite, store, web page, and macOS diagnostic probe
   helpers.
 - Apps: subscription/install flags, DLC checks, build ID, install directory,
@@ -63,8 +64,8 @@ The native layer currently targets the Steamworks flat C API through
 
 ## Not Yet Complete
 
-- Full `ISteamFriends` coverage for buffer-heavy chat reads, profile item APIs,
-  and every overlay/social helper.
+- Full `ISteamFriends` coverage for any remaining low-use social helpers and
+  richer callback coverage.
 - `ISteamMusicRemote` is not exposed by the current `steamworks-sys 0.13` macOS
   bindings used by this crate.
 - Modern networking sockets and lower-level networking config/debug surfaces:
