@@ -1687,7 +1687,7 @@ test("networking sockets facade covers connection handles, status, poll groups, 
   });
 });
 
-test("networking utils facade covers relay, ping, fake IP, address, and callback flows", (t) => {
+test("networking utils facade covers relay, ping, fake IP, address, config, debug, and callback flows", (t) => {
   const peer = { identity_type: 16, text: "steamid:76561198000000010", steam_id64: "76561198000000010" };
   const fake = createFakeNative({
     networkingUtilsInitRelayNetworkAccess() {
@@ -1776,6 +1776,53 @@ test("networking utils facade covers relay, ping, fake IP, address, and callback
     networkingUtilsGetRealIdentityForFakeIp(address) {
       this.calls.push({ method: "networkingUtilsGetRealIdentityForFakeIp", args: [address] });
       return { result: 1, identity: peer };
+    },
+    networkingUtilsSetConfigValueInt32(value, scope, scopeObj, data) {
+      this.calls.push({ method: "networkingUtilsSetConfigValueInt32", args: [value, scope, scopeObj, data] });
+      return true;
+    },
+    networkingUtilsSetConfigValueInt64(value, scope, scopeObj, data) {
+      this.calls.push({ method: "networkingUtilsSetConfigValueInt64", args: [value, scope, scopeObj, data] });
+      return true;
+    },
+    networkingUtilsSetConfigValueFloat(value, scope, scopeObj, data) {
+      this.calls.push({ method: "networkingUtilsSetConfigValueFloat", args: [value, scope, scopeObj, data] });
+      return true;
+    },
+    networkingUtilsSetConfigValueString(value, scope, scopeObj, data) {
+      this.calls.push({ method: "networkingUtilsSetConfigValueString", args: [value, scope, scopeObj, data] });
+      return true;
+    },
+    networkingUtilsGetConfigValue(value, scope, scopeObj, maxBytes) {
+      this.calls.push({ method: "networkingUtilsGetConfigValue", args: [value, scope, scopeObj, maxBytes] });
+      if (value === 40) {
+        return { result: 2, data_type: 2, int64_value: "9223372036854775807" };
+      }
+      if (value === 29) {
+        return { result: 1, data_type: 4, string_value: "iad" };
+      }
+      return { result: 1, data_type: 1, int32_value: 5000 };
+    },
+    networkingUtilsGetConfigValueInfo(value) {
+      this.calls.push({ method: "networkingUtilsGetConfigValueInfo", args: [value] });
+      return { value, name: "TimeoutInitial", data_type: 1, scope: 4 };
+    },
+    networkingUtilsIterateGenericEditableConfigValues(current, enumerateDevVars) {
+      this.calls.push({ method: "networkingUtilsIterateGenericEditableConfigValues", args: [current, enumerateDevVars] });
+      if (current === 0) {
+        return 24;
+      }
+      if (current === 24) {
+        return 29;
+      }
+      return 0;
+    },
+    networkingUtilsRegisterDebugOutputHook(detailLevel, handler) {
+      this.calls.push({ method: "networkingUtilsRegisterDebugOutputHook", args: [detailLevel] });
+      this.networkingDebugOutputHandler = handler;
+      return {
+        disconnect: () => this.calls.push({ method: "disconnectNetworkingDebugOutputHook", args: [] })
+      };
     }
   });
   const steam = loadSteamWithFakeNative(fake);
@@ -1787,6 +1834,12 @@ test("networking utils facade covers relay, ping, fake IP, address, and callback
   assert.equal(steam.networking.NetworkingAvailability.Current, 100);
   assert.equal(steam.networking.utils.Availability.Failed, -101);
   assert.equal(steam.networking.utils.FakeIpType.GlobalIPv4, 2);
+  assert.equal(steam.networking.utils.ConfigScope.Connection, 4);
+  assert.equal(steam.networking.utils.ConfigDataType.Int64, 2);
+  assert.equal(steam.networking.utils.ConfigValue.TimeoutInitial, 24);
+  assert.equal(steam.networking.utils.ConfigValue.ConnectionUserData, 40);
+  assert.equal(steam.networking.utils.DebugOutputType.Warning, 4);
+  assert.equal(steam.networking.utils.IceEnable.All, 2147483647);
 
   steam.networking.utils.initRelayNetworkAccess();
   assert.deepEqual(steam.networking.utils.getRelayNetworkStatus(), {
@@ -1838,6 +1891,79 @@ test("networking utils facade covers relay, ping, fake IP, address, and callback
       fakeIpType: 0
     }
   });
+  assert.equal(
+    steam.networking.utils.setGlobalConfigValueInt32(steam.networking.utils.ConfigValue.TimeoutInitial, 5000),
+    true
+  );
+  assert.equal(
+    steam.networking.utils.setConnectionConfigValueInt64(
+      77,
+      steam.networking.utils.ConfigValue.ConnectionUserData,
+      9223372036854775807n
+    ),
+    true
+  );
+  assert.equal(
+    steam.networking.utils.setConfigValueFloat(
+      steam.networking.utils.ConfigValue.FakePacketLossSend,
+      steam.networking.utils.ConfigScope.Global,
+      0,
+      12.5
+    ),
+    true
+  );
+  assert.equal(
+    steam.networking.utils.setConfigValueString(
+      steam.networking.utils.ConfigValue.SDRClientForceRelayCluster,
+      steam.networking.utils.ConfigScope.Global,
+      0,
+      "iad"
+    ),
+    true
+  );
+  assert.deepEqual(
+    steam.networking.utils.getConfigValue(steam.networking.utils.ConfigValue.TimeoutInitial),
+    {
+      result: 1,
+      dataType: 1,
+      value: 5000,
+      int32Value: 5000,
+      int64Value: null,
+      floatValue: null,
+      stringValue: null
+    }
+  );
+  assert.equal(
+    steam.networking.utils.getConfigValue(
+      steam.networking.utils.ConfigValue.ConnectionUserData,
+      steam.networking.utils.ConfigScope.Connection,
+      77
+    ).value,
+    9223372036854775807n
+  );
+  assert.equal(
+    steam.networking.utils.getConfigValue(steam.networking.utils.ConfigValue.SDRClientForceRelayCluster).value,
+    "iad"
+  );
+  assert.deepEqual(steam.networking.utils.getConfigValueInfo(steam.networking.utils.ConfigValue.TimeoutInitial), {
+    value: 24,
+    name: "TimeoutInitial",
+    dataType: 1,
+    scope: 4
+  });
+  assert.equal(steam.networking.utils.iterateGenericEditableConfigValues(), 24);
+  assert.deepEqual(steam.networking.utils.listGenericEditableConfigValues(), [24, 29]);
+
+  let debugEvent;
+  const debugHandle = steam.networking.utils.registerDebugOutputHook(
+    steam.networking.utils.DebugOutputType.Warning,
+    (event) => {
+      debugEvent = event;
+    }
+  );
+  fake.networkingDebugOutputHandler({ detail_level: 4, message: "network warning" });
+  assert.deepEqual(debugEvent, { detailLevel: 4, message: "network warning" });
+  debugHandle.disconnect();
 
   let authEvent;
   steam.callback.register(steam.SteamCallback.SteamNetAuthenticationStatus, (event) => {
@@ -1869,6 +1995,15 @@ test("networking utils facade covers relay, ping, fake IP, address, and callback
     method: "networkingUtilsIpAddressToString",
     args: [{ ipv4: 2130706433, port: 27015 }, true]
   });
+  assert.deepEqual(fake.calls.find((call) => call.method === "networkingUtilsSetConfigValueInt64"), {
+    method: "networkingUtilsSetConfigValueInt64",
+    args: [40, 4, 77, 9223372036854775807n]
+  });
+  assert.deepEqual(fake.calls.find((call) => call.method === "networkingUtilsRegisterDebugOutputHook"), {
+    method: "networkingUtilsRegisterDebugOutputHook",
+    args: [4]
+  });
+  assert.equal(fake.calls.some((call) => call.method === "disconnectNetworkingDebugOutputHook"), true);
 });
 
 test("http facade covers request lifecycle, response reads, and callbacks", async (t) => {

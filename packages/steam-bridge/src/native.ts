@@ -362,6 +362,34 @@ export interface NativeNetworkingRelayNetworkStatus {
   debug_message?: string;
 }
 
+export interface NativeNetworkingConfigValueResult {
+  result: number;
+  dataType?: number;
+  data_type?: number;
+  int32Value?: number;
+  int32_value?: number;
+  int64Value?: bigint | string | number;
+  int64_value?: bigint | string | number;
+  floatValue?: number;
+  float_value?: number;
+  stringValue?: string;
+  string_value?: string;
+}
+
+export interface NativeNetworkingConfigValueInfo {
+  value: number;
+  name?: string | null;
+  dataType?: number;
+  data_type?: number;
+  scope: number;
+}
+
+export interface NativeNetworkingDebugOutput {
+  detailLevel?: number;
+  detail_level?: number;
+  message: string;
+}
+
 export interface NativeNetworkingPingLocation {
   location: string;
   ageSeconds?: number;
@@ -1236,6 +1264,14 @@ export interface NativeBinding {
   networkingUtilsIpAddressToString(address: NativeNetworkingIpAddress, withPort?: boolean): string;
   networkingUtilsGetIpAddressFakeIpType(address: NativeNetworkingIpAddress): number;
   networkingUtilsGetRealIdentityForFakeIp(address: NativeNetworkingIpAddress): NativeNetworkingFakeIpIdentity;
+  networkingUtilsSetConfigValueInt32(value: number, scope: number, scopeObj: number, data: number): boolean;
+  networkingUtilsSetConfigValueInt64(value: number, scope: number, scopeObj: number, data: bigint): boolean;
+  networkingUtilsSetConfigValueFloat(value: number, scope: number, scopeObj: number, data: number): boolean;
+  networkingUtilsSetConfigValueString(value: number, scope: number, scopeObj: number, data: string): boolean;
+  networkingUtilsGetConfigValue(value: number, scope: number, scopeObj: number, maxBytes?: number): NativeNetworkingConfigValueResult;
+  networkingUtilsGetConfigValueInfo(value: number): NativeNetworkingConfigValueInfo;
+  networkingUtilsIterateGenericEditableConfigValues(current: number, enumerateDevVars?: boolean): number;
+  networkingUtilsRegisterDebugOutputHook(detailLevel: number, handler: (event: NativeNetworkingDebugOutput) => void): NativeCallbackHandle;
 
   matchmakingGetFavoriteGameCount(): number;
   matchmakingGetFavoriteGame(index: number): NativeMatchmakingFavoriteGame | null | undefined;

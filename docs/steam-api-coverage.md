@@ -60,7 +60,8 @@ The native layer currently targets the Steamworks flat C API through
   helpers, relay-auth-ticket cache helpers, hosted dedicated connect/listen
   helpers, certificate request/install/reset helpers, fake-IP allocation and
   listen helpers, plus `ISteamNetworkingUtils` relay/auth status, ping location,
-  POP latency, fake-IP, and IP address helpers.
+  POP latency, fake-IP, IP address, config value, editable config iteration,
+  and debug-output helpers.
 - UGC/Workshop: item create/update/query flows, install/download information,
   subscription list helpers, item state, statistics, and query configuration.
 - Screenshots: screenshot library writes, screenshot triggers/hooks, location
@@ -85,8 +86,8 @@ The native layer currently targets the Steamworks flat C API through
   bindings used by this crate.
 - Remaining modern networking socket and lower-level networking config/debug
   surfaces: opaque hosted dedicated server address/login blobs, parsed
-  relay-auth-ticket payloads, fake UDP port wrappers, lane detail, custom
-  signaling, and `ISteamNetworkingUtils` config/debug callback helpers.
+  relay-auth-ticket payloads, fake UDP port wrappers, lane detail, raw
+  pointer-valued networking config callbacks, and custom signaling.
 - Matchmaking server browser and game server APIs.
 - Game server, game server stats, and server-only workflows.
 - Complete callback/event coverage for every implemented interface, including

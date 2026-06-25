@@ -94,6 +94,7 @@ const GLOBAL_STAT_HISTORY_MAX: u32 = 10_000;
 const PARTY_METADATA_BUFFER_SIZE: usize = 4096;
 const FRIEND_FLAG_IMMEDIATE: u32 = 4;
 const MAX_API_CALL_RESULT_BYTES: u32 = 1024 * 1024;
+const MAX_NETWORKING_CONFIG_VALUE_BYTES: u32 = 1024 * 1024;
 
 type FatalThreadsafeFunction<T> = ThreadsafeFunction<T, (), Vec<T>, Status, false>;
 type JsCallback<'scope, T> = Function<'scope, T, ()>;
@@ -437,6 +438,33 @@ pub struct NetworkingRelayNetworkStatus {
     pub network_config_availability: i32,
     pub any_relay_availability: i32,
     pub debug_message: String,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct NetworkingConfigValueResult {
+    pub result: i32,
+    pub data_type: u32,
+    pub int32_value: Option<i32>,
+    pub int64_value: Option<BigInt>,
+    pub float_value: Option<f64>,
+    pub string_value: Option<String>,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct NetworkingConfigValueInfo {
+    pub value: u32,
+    pub name: Option<String>,
+    pub data_type: u32,
+    pub scope: u32,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct NetworkingDebugOutput {
+    pub detail_level: i32,
+    pub message: String,
 }
 
 #[derive(Debug)]
@@ -6014,6 +6042,231 @@ pub fn networking_utils_get_real_identity_for_fake_ip(
     })
 }
 
+#[napi(js_name = "networkingUtilsSetConfigValueInt32")]
+pub fn networking_utils_set_config_value_int32(
+    value: u32,
+    scope: u32,
+    scope_obj: i64,
+    data: i32,
+) -> Result<bool, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamNetworkingUtils_SetConfigValue(
+            steam_networking_utils()?,
+            networking_config_value(value)?,
+            networking_config_scope(scope)?,
+            networking_config_scope_obj(scope_obj)?,
+            sys::ESteamNetworkingConfigDataType::k_ESteamNetworkingConfig_Int32,
+            ptr::addr_of!(data).cast::<c_void>(),
+        )
+    })
+}
+
+#[napi(js_name = "networkingUtilsSetConfigValueInt64")]
+pub fn networking_utils_set_config_value_int64(
+    value: u32,
+    scope: u32,
+    scope_obj: i64,
+    data: BigInt,
+) -> Result<bool, Error> {
+    let data = bigint_to_i64(data, "networking config int64 value")?;
+    Ok(unsafe {
+        sys::SteamAPI_ISteamNetworkingUtils_SetConfigValue(
+            steam_networking_utils()?,
+            networking_config_value(value)?,
+            networking_config_scope(scope)?,
+            networking_config_scope_obj(scope_obj)?,
+            sys::ESteamNetworkingConfigDataType::k_ESteamNetworkingConfig_Int64,
+            ptr::addr_of!(data).cast::<c_void>(),
+        )
+    })
+}
+
+#[napi(js_name = "networkingUtilsSetConfigValueFloat")]
+pub fn networking_utils_set_config_value_float(
+    value: u32,
+    scope: u32,
+    scope_obj: i64,
+    data: f64,
+) -> Result<bool, Error> {
+    let data = data as f32;
+    Ok(unsafe {
+        sys::SteamAPI_ISteamNetworkingUtils_SetConfigValue(
+            steam_networking_utils()?,
+            networking_config_value(value)?,
+            networking_config_scope(scope)?,
+            networking_config_scope_obj(scope_obj)?,
+            sys::ESteamNetworkingConfigDataType::k_ESteamNetworkingConfig_Float,
+            ptr::addr_of!(data).cast::<c_void>(),
+        )
+    })
+}
+
+#[napi(js_name = "networkingUtilsSetConfigValueString")]
+pub fn networking_utils_set_config_value_string(
+    value: u32,
+    scope: u32,
+    scope_obj: i64,
+    data: String,
+) -> Result<bool, Error> {
+    let data = cstring(data, "networking config string value")?;
+    Ok(unsafe {
+        sys::SteamAPI_ISteamNetworkingUtils_SetConfigValue(
+            steam_networking_utils()?,
+            networking_config_value(value)?,
+            networking_config_scope(scope)?,
+            networking_config_scope_obj(scope_obj)?,
+            sys::ESteamNetworkingConfigDataType::k_ESteamNetworkingConfig_String,
+            data.as_ptr().cast::<c_void>(),
+        )
+    })
+}
+
+#[napi(js_name = "networkingUtilsGetConfigValue")]
+pub fn networking_utils_get_config_value(
+    value: u32,
+    scope: u32,
+    scope_obj: i64,
+    max_bytes: Option<u32>,
+) -> Result<NetworkingConfigValueResult, Error> {
+    let value = networking_config_value(value)?;
+    let scope = networking_config_scope(scope)?;
+    let scope_obj = networking_config_scope_obj(scope_obj)?;
+    let capacity = max_bytes
+        .unwrap_or(4096)
+        .clamp(8, MAX_NETWORKING_CONFIG_VALUE_BYTES);
+    let mut buffer = vec![0u8; capacity as usize];
+    let mut data_type = sys::ESteamNetworkingConfigDataType::k_ESteamNetworkingConfig_Int32;
+    let mut byte_count = buffer.len();
+    let mut result = unsafe {
+        sys::SteamAPI_ISteamNetworkingUtils_GetConfigValue(
+            steam_networking_utils()?,
+            value,
+            scope,
+            scope_obj,
+            &mut data_type,
+            buffer.as_mut_ptr().cast::<c_void>(),
+            &mut byte_count,
+        )
+    };
+
+    if result == sys::ESteamNetworkingGetConfigValueResult::k_ESteamNetworkingGetConfigValue_BufferTooSmall
+        && max_bytes.is_none()
+        && byte_count <= MAX_NETWORKING_CONFIG_VALUE_BYTES as usize
+    {
+        buffer.resize(byte_count.max(8), 0);
+        result = unsafe {
+            sys::SteamAPI_ISteamNetworkingUtils_GetConfigValue(
+                steam_networking_utils()?,
+                value,
+                scope,
+                scope_obj,
+                &mut data_type,
+                buffer.as_mut_ptr().cast::<c_void>(),
+                &mut byte_count,
+            )
+        };
+    }
+
+    Ok(networking_config_value_result(
+        result, data_type, &buffer, byte_count,
+    ))
+}
+
+#[napi(js_name = "networkingUtilsGetConfigValueInfo")]
+pub fn networking_utils_get_config_value_info(
+    value: u32,
+) -> Result<NetworkingConfigValueInfo, Error> {
+    let value_enum = networking_config_value(value)?;
+    let mut data_type = sys::ESteamNetworkingConfigDataType::k_ESteamNetworkingConfig_Int32;
+    let mut scope = sys::ESteamNetworkingConfigScope::k_ESteamNetworkingConfig_Global;
+    let name = unsafe {
+        sys::SteamAPI_ISteamNetworkingUtils_GetConfigValueInfo(
+            steam_networking_utils()?,
+            value_enum,
+            &mut data_type,
+            &mut scope,
+        )
+    };
+    Ok(NetworkingConfigValueInfo {
+        value,
+        name: (!name.is_null()).then(|| string_from_ptr(name)),
+        data_type: data_type as u32,
+        scope: scope as u32,
+    })
+}
+
+#[napi(js_name = "networkingUtilsIterateGenericEditableConfigValues")]
+pub fn networking_utils_iterate_generic_editable_config_values(
+    current: u32,
+    enumerate_dev_vars: Option<bool>,
+) -> Result<u32, Error> {
+    let next = unsafe {
+        sys::SteamAPI_ISteamNetworkingUtils_IterateGenericEditableConfigValues(
+            steam_networking_utils()?,
+            networking_config_value(current)?,
+            enumerate_dev_vars.unwrap_or(false),
+        )
+    };
+    Ok(next as u32)
+}
+
+unsafe extern "C" fn steam_networking_debug_output_hook(
+    detail_level: sys::ESteamNetworkingSocketsDebugOutputType,
+    debug_text: *const c_char,
+) {
+    crate::state::dispatch_networking_debug_output(
+        detail_level as i32,
+        string_from_ptr(debug_text),
+    );
+}
+
+pub(crate) fn clear_networking_debug_output_hook() {
+    if let Ok(utils) = steam_networking_utils() {
+        unsafe {
+            sys::SteamAPI_ISteamNetworkingUtils_SetDebugOutputFunction(
+                utils,
+                sys::ESteamNetworkingSocketsDebugOutputType::k_ESteamNetworkingSocketsDebugOutputType_None,
+                None,
+            );
+        }
+    }
+}
+
+#[napi(js_name = "networkingUtilsRegisterDebugOutputHook")]
+pub fn networking_utils_register_debug_output_hook(
+    detail_level: u32,
+    #[napi(ts_arg_type = "(value: any) => void")] handler: JsCallback<'_, NetworkingDebugOutput>,
+) -> Result<CallbackHandle, Error> {
+    crate::state::ensure_initialized()?;
+    let utils = steam_networking_utils()?;
+    let detail_level = networking_debug_output_type(detail_level)?;
+    let threadsafe_handler: FatalThreadsafeFunction<NetworkingDebugOutput> = handler
+        .build_threadsafe_function::<NetworkingDebugOutput>()
+        .build_callback(|ctx| Ok(vec![ctx.value]))?;
+    unsafe {
+        sys::SteamAPI_ISteamNetworkingUtils_SetDebugOutputFunction(
+            utils,
+            detail_level,
+            Some(steam_networking_debug_output_hook),
+        );
+    }
+    let registration =
+        crate::state::register_networking_debug_output_hook(move |detail_level, message| {
+            threadsafe_handler.call(
+                NetworkingDebugOutput {
+                    detail_level,
+                    message,
+                },
+                ThreadsafeFunctionCallMode::NonBlocking,
+            );
+        });
+    Ok(CallbackHandle {
+        registration: None,
+        warning_message_registration: None,
+        networking_debug_output_registration: Some(registration),
+    })
+}
+
 #[napi(js_name = "utilsGetServerRealTime")]
 pub fn utils_get_server_real_time() -> Result<u32, Error> {
     Ok(unsafe { sys::SteamAPI_ISteamUtils_GetServerRealTime(steam_utils()?) })
@@ -6130,6 +6383,7 @@ pub fn utils_register_warning_message_hook(
     Ok(CallbackHandle {
         registration: None,
         warning_message_registration: Some(registration),
+        networking_debug_output_registration: None,
     })
 }
 
@@ -6450,6 +6704,7 @@ pub fn register_steam_callback(
     Ok(CallbackHandle {
         registration: Some(registration),
         warning_message_registration: None,
+        networking_debug_output_registration: None,
     })
 }
 
@@ -8481,6 +8736,270 @@ fn fake_ip_ports(result: &SteamNetworkingFakeIpResultRaw) -> Vec<u32> {
         .filter(|port| *port != 0)
         .map(u32::from)
         .collect()
+}
+
+fn networking_config_value_result(
+    result: sys::ESteamNetworkingGetConfigValueResult,
+    data_type: sys::ESteamNetworkingConfigDataType,
+    buffer: &[u8],
+    byte_count: usize,
+) -> NetworkingConfigValueResult {
+    let ok = matches!(
+        result,
+        sys::ESteamNetworkingGetConfigValueResult::k_ESteamNetworkingGetConfigValue_OK
+            | sys::ESteamNetworkingGetConfigValueResult::k_ESteamNetworkingGetConfigValue_OKInherited
+    );
+    let mut output = NetworkingConfigValueResult {
+        result: result as i32,
+        data_type: data_type as u32,
+        int32_value: None,
+        int64_value: None,
+        float_value: None,
+        string_value: None,
+    };
+    if !ok {
+        return output;
+    }
+
+    match data_type {
+        sys::ESteamNetworkingConfigDataType::k_ESteamNetworkingConfig_Int32
+            if buffer.len() >= std::mem::size_of::<i32>() =>
+        {
+            output.int32_value =
+                Some(unsafe { ptr::read_unaligned(buffer.as_ptr().cast::<i32>()) });
+        }
+        sys::ESteamNetworkingConfigDataType::k_ESteamNetworkingConfig_Int64
+            if buffer.len() >= std::mem::size_of::<i64>() =>
+        {
+            output.int64_value =
+                Some(unsafe { ptr::read_unaligned(buffer.as_ptr().cast::<i64>()) }.into());
+        }
+        sys::ESteamNetworkingConfigDataType::k_ESteamNetworkingConfig_Float
+            if buffer.len() >= std::mem::size_of::<f32>() =>
+        {
+            output.float_value = Some(f64::from(unsafe {
+                ptr::read_unaligned(buffer.as_ptr().cast::<f32>())
+            }));
+        }
+        sys::ESteamNetworkingConfigDataType::k_ESteamNetworkingConfig_String => {
+            let len = byte_count.min(buffer.len());
+            output.string_value = Some(u8_buf_to_string(&buffer[..len]));
+        }
+        _ => {}
+    }
+
+    output
+}
+
+macro_rules! steam_networking_config_value {
+    ($value:expr, $($variant:ident),+ $(,)?) => {
+        match $value {
+            $(
+                value if value == sys::ESteamNetworkingConfigValue::$variant as u32 => {
+                    Ok(sys::ESteamNetworkingConfigValue::$variant)
+                },
+            )+
+            _ => Err(Error::from_reason(format!(
+                "unsupported Steam networking config value {value}",
+                value = $value
+            ))),
+        }
+    };
+}
+
+fn networking_config_value(value: u32) -> Result<sys::ESteamNetworkingConfigValue, Error> {
+    steam_networking_config_value!(
+        value,
+        k_ESteamNetworkingConfig_Invalid,
+        k_ESteamNetworkingConfig_TimeoutInitial,
+        k_ESteamNetworkingConfig_TimeoutConnected,
+        k_ESteamNetworkingConfig_SendBufferSize,
+        k_ESteamNetworkingConfig_RecvBufferSize,
+        k_ESteamNetworkingConfig_RecvBufferMessages,
+        k_ESteamNetworkingConfig_RecvMaxMessageSize,
+        k_ESteamNetworkingConfig_RecvMaxSegmentsPerPacket,
+        k_ESteamNetworkingConfig_ConnectionUserData,
+        k_ESteamNetworkingConfig_SendRateMin,
+        k_ESteamNetworkingConfig_SendRateMax,
+        k_ESteamNetworkingConfig_NagleTime,
+        k_ESteamNetworkingConfig_IP_AllowWithoutAuth,
+        k_ESteamNetworkingConfig_IPLocalHost_AllowWithoutAuth,
+        k_ESteamNetworkingConfig_MTU_PacketSize,
+        k_ESteamNetworkingConfig_MTU_DataSize,
+        k_ESteamNetworkingConfig_Unencrypted,
+        k_ESteamNetworkingConfig_SymmetricConnect,
+        k_ESteamNetworkingConfig_LocalVirtualPort,
+        k_ESteamNetworkingConfig_DualWifi_Enable,
+        k_ESteamNetworkingConfig_EnableDiagnosticsUI,
+        k_ESteamNetworkingConfig_SendTimeSincePreviousPacket,
+        k_ESteamNetworkingConfig_FakePacketLoss_Send,
+        k_ESteamNetworkingConfig_FakePacketLoss_Recv,
+        k_ESteamNetworkingConfig_FakePacketLag_Send,
+        k_ESteamNetworkingConfig_FakePacketLag_Recv,
+        k_ESteamNetworkingConfig_FakePacketJitter_Send_Avg,
+        k_ESteamNetworkingConfig_FakePacketJitter_Send_Max,
+        k_ESteamNetworkingConfig_FakePacketJitter_Send_Pct,
+        k_ESteamNetworkingConfig_FakePacketJitter_Recv_Avg,
+        k_ESteamNetworkingConfig_FakePacketJitter_Recv_Max,
+        k_ESteamNetworkingConfig_FakePacketJitter_Recv_Pct,
+        k_ESteamNetworkingConfig_FakePacketReorder_Send,
+        k_ESteamNetworkingConfig_FakePacketReorder_Recv,
+        k_ESteamNetworkingConfig_FakePacketReorder_Time,
+        k_ESteamNetworkingConfig_FakePacketDup_Send,
+        k_ESteamNetworkingConfig_FakePacketDup_Recv,
+        k_ESteamNetworkingConfig_FakePacketDup_TimeMax,
+        k_ESteamNetworkingConfig_PacketTraceMaxBytes,
+        k_ESteamNetworkingConfig_FakeRateLimit_Send_Rate,
+        k_ESteamNetworkingConfig_FakeRateLimit_Send_Burst,
+        k_ESteamNetworkingConfig_FakeRateLimit_Recv_Rate,
+        k_ESteamNetworkingConfig_FakeRateLimit_Recv_Burst,
+        k_ESteamNetworkingConfig_OutOfOrderCorrectionWindowMicroseconds,
+        k_ESteamNetworkingConfig_Callback_ConnectionStatusChanged,
+        k_ESteamNetworkingConfig_Callback_AuthStatusChanged,
+        k_ESteamNetworkingConfig_Callback_RelayNetworkStatusChanged,
+        k_ESteamNetworkingConfig_Callback_MessagesSessionRequest,
+        k_ESteamNetworkingConfig_Callback_MessagesSessionFailed,
+        k_ESteamNetworkingConfig_Callback_CreateConnectionSignaling,
+        k_ESteamNetworkingConfig_Callback_FakeIPResult,
+        k_ESteamNetworkingConfig_P2P_STUN_ServerList,
+        k_ESteamNetworkingConfig_P2P_Transport_ICE_Enable,
+        k_ESteamNetworkingConfig_P2P_Transport_ICE_Penalty,
+        k_ESteamNetworkingConfig_P2P_Transport_SDR_Penalty,
+        k_ESteamNetworkingConfig_P2P_TURN_ServerList,
+        k_ESteamNetworkingConfig_P2P_TURN_UserList,
+        k_ESteamNetworkingConfig_P2P_TURN_PassList,
+        k_ESteamNetworkingConfig_P2P_Transport_ICE_Implementation,
+        k_ESteamNetworkingConfig_SDRClient_ConsecutitivePingTimeoutsFailInitial,
+        k_ESteamNetworkingConfig_SDRClient_ConsecutitivePingTimeoutsFail,
+        k_ESteamNetworkingConfig_SDRClient_MinPingsBeforePingAccurate,
+        k_ESteamNetworkingConfig_SDRClient_SingleSocket,
+        k_ESteamNetworkingConfig_SDRClient_ForceRelayCluster,
+        k_ESteamNetworkingConfig_SDRClient_DevTicket,
+        k_ESteamNetworkingConfig_SDRClient_ForceProxyAddr,
+        k_ESteamNetworkingConfig_SDRClient_FakeClusterPing,
+        k_ESteamNetworkingConfig_SDRClient_LimitPingProbesToNearestN,
+        k_ESteamNetworkingConfig_LogLevel_AckRTT,
+        k_ESteamNetworkingConfig_LogLevel_PacketDecode,
+        k_ESteamNetworkingConfig_LogLevel_Message,
+        k_ESteamNetworkingConfig_LogLevel_PacketGaps,
+        k_ESteamNetworkingConfig_LogLevel_P2PRendezvous,
+        k_ESteamNetworkingConfig_LogLevel_SDRRelayPings,
+        k_ESteamNetworkingConfig_ECN,
+        k_ESteamNetworkingConfig_SDRClient_EnableTOSProbes,
+        k_ESteamNetworkingConfig_DELETED_EnumerateDevVars,
+    )
+}
+
+fn networking_config_scope(value: u32) -> Result<sys::ESteamNetworkingConfigScope, Error> {
+    match value {
+        value
+            if value
+                == sys::ESteamNetworkingConfigScope::k_ESteamNetworkingConfig_Global as u32 =>
+        {
+            Ok(sys::ESteamNetworkingConfigScope::k_ESteamNetworkingConfig_Global)
+        }
+        value
+            if value
+                == sys::ESteamNetworkingConfigScope::k_ESteamNetworkingConfig_SocketsInterface
+                    as u32 =>
+        {
+            Ok(sys::ESteamNetworkingConfigScope::k_ESteamNetworkingConfig_SocketsInterface)
+        }
+        value
+            if value
+                == sys::ESteamNetworkingConfigScope::k_ESteamNetworkingConfig_ListenSocket
+                    as u32 =>
+        {
+            Ok(sys::ESteamNetworkingConfigScope::k_ESteamNetworkingConfig_ListenSocket)
+        }
+        value
+            if value
+                == sys::ESteamNetworkingConfigScope::k_ESteamNetworkingConfig_Connection as u32 =>
+        {
+            Ok(sys::ESteamNetworkingConfigScope::k_ESteamNetworkingConfig_Connection)
+        }
+        _ => Err(Error::from_reason(format!(
+            "unsupported Steam networking config scope {value}"
+        ))),
+    }
+}
+
+fn networking_config_scope_obj(value: i64) -> Result<isize, Error> {
+    isize::try_from(value)
+        .map_err(|_| Error::from_reason("networking config scope object is too large"))
+}
+
+fn networking_debug_output_type(
+    value: u32,
+) -> Result<sys::ESteamNetworkingSocketsDebugOutputType, Error> {
+    match value {
+        value
+            if value
+                == sys::ESteamNetworkingSocketsDebugOutputType::k_ESteamNetworkingSocketsDebugOutputType_None
+                    as u32 =>
+        {
+            Ok(sys::ESteamNetworkingSocketsDebugOutputType::k_ESteamNetworkingSocketsDebugOutputType_None)
+        }
+        value
+            if value
+                == sys::ESteamNetworkingSocketsDebugOutputType::k_ESteamNetworkingSocketsDebugOutputType_Bug
+                    as u32 =>
+        {
+            Ok(sys::ESteamNetworkingSocketsDebugOutputType::k_ESteamNetworkingSocketsDebugOutputType_Bug)
+        }
+        value
+            if value
+                == sys::ESteamNetworkingSocketsDebugOutputType::k_ESteamNetworkingSocketsDebugOutputType_Error
+                    as u32 =>
+        {
+            Ok(sys::ESteamNetworkingSocketsDebugOutputType::k_ESteamNetworkingSocketsDebugOutputType_Error)
+        }
+        value
+            if value
+                == sys::ESteamNetworkingSocketsDebugOutputType::k_ESteamNetworkingSocketsDebugOutputType_Important
+                    as u32 =>
+        {
+            Ok(sys::ESteamNetworkingSocketsDebugOutputType::k_ESteamNetworkingSocketsDebugOutputType_Important)
+        }
+        value
+            if value
+                == sys::ESteamNetworkingSocketsDebugOutputType::k_ESteamNetworkingSocketsDebugOutputType_Warning
+                    as u32 =>
+        {
+            Ok(sys::ESteamNetworkingSocketsDebugOutputType::k_ESteamNetworkingSocketsDebugOutputType_Warning)
+        }
+        value
+            if value
+                == sys::ESteamNetworkingSocketsDebugOutputType::k_ESteamNetworkingSocketsDebugOutputType_Msg
+                    as u32 =>
+        {
+            Ok(sys::ESteamNetworkingSocketsDebugOutputType::k_ESteamNetworkingSocketsDebugOutputType_Msg)
+        }
+        value
+            if value
+                == sys::ESteamNetworkingSocketsDebugOutputType::k_ESteamNetworkingSocketsDebugOutputType_Verbose
+                    as u32 =>
+        {
+            Ok(sys::ESteamNetworkingSocketsDebugOutputType::k_ESteamNetworkingSocketsDebugOutputType_Verbose)
+        }
+        value
+            if value
+                == sys::ESteamNetworkingSocketsDebugOutputType::k_ESteamNetworkingSocketsDebugOutputType_Debug
+                    as u32 =>
+        {
+            Ok(sys::ESteamNetworkingSocketsDebugOutputType::k_ESteamNetworkingSocketsDebugOutputType_Debug)
+        }
+        value
+            if value
+                == sys::ESteamNetworkingSocketsDebugOutputType::k_ESteamNetworkingSocketsDebugOutputType_Everything
+                    as u32 =>
+        {
+            Ok(sys::ESteamNetworkingSocketsDebugOutputType::k_ESteamNetworkingSocketsDebugOutputType_Everything)
+        }
+        _ => Err(Error::from_reason(format!(
+            "unsupported Steam networking debug output type {value}"
+        ))),
+    }
 }
 
 fn networking_virtual_port(port: Option<i32>) -> Result<i32, Error> {

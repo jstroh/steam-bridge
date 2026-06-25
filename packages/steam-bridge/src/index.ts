@@ -56,6 +56,9 @@ import {
   NativeNetworkingCertificateResult,
   NativeNetworkingConnectionRealTimeStatus,
   NativeNetworkingConnectionInfo,
+  NativeNetworkingConfigValueInfo,
+  NativeNetworkingConfigValueResult,
+  NativeNetworkingDebugOutput,
   NativeNetworkingFakeIpResult,
   NativeNetworkingFakeIpIdentity,
   NativeNetworkingIdentity,
@@ -549,6 +552,28 @@ export interface NetworkingRelayNetworkStatus {
   networkConfigAvailability: number;
   anyRelayAvailability: number;
   debugMessage: string;
+}
+
+export interface NetworkingConfigValueResult {
+  result: number;
+  dataType: number;
+  value: number | bigint | string | null;
+  int32Value: number | null;
+  int64Value: bigint | null;
+  floatValue: number | null;
+  stringValue: string | null;
+}
+
+export interface NetworkingConfigValueInfo {
+  value: number;
+  name: string | null;
+  dataType: number;
+  scope: number;
+}
+
+export interface NetworkingDebugOutput {
+  detailLevel: number;
+  message: string;
 }
 
 export interface NetworkingPingLocation {
@@ -1246,6 +1271,130 @@ export const NetworkingFakeIpType = {
   NotFake: 1,
   GlobalIPv4: 2,
   LocalIPv4: 3
+} as const;
+
+export const NetworkingConfigScope = {
+  Global: 1,
+  SocketsInterface: 2,
+  ListenSocket: 3,
+  Connection: 4
+} as const;
+
+export const NetworkingConfigDataType = {
+  Int32: 1,
+  Int64: 2,
+  Float: 3,
+  String: 4,
+  Ptr: 5
+} as const;
+
+export const NetworkingGetConfigValueResult = {
+  BadValue: -1,
+  BadScopeObj: -2,
+  BufferTooSmall: -3,
+  OK: 1,
+  OKInherited: 2
+} as const;
+
+export const NetworkingDebugOutputType = {
+  None: 0,
+  Bug: 1,
+  Error: 2,
+  Important: 3,
+  Warning: 4,
+  Msg: 5,
+  Verbose: 6,
+  Debug: 7,
+  Everything: 8
+} as const;
+
+export const NetworkingConfigValue = {
+  Invalid: 0,
+  FakePacketLossSend: 2,
+  FakePacketLossRecv: 3,
+  FakePacketLagSend: 4,
+  FakePacketLagRecv: 5,
+  FakePacketReorderSend: 6,
+  FakePacketReorderRecv: 7,
+  FakePacketReorderTime: 8,
+  SendBufferSize: 9,
+  SendRateMin: 10,
+  SendRateMax: 11,
+  NagleTime: 12,
+  LogLevelAckRTT: 13,
+  LogLevelPacketDecode: 14,
+  LogLevelMessage: 15,
+  LogLevelPacketGaps: 16,
+  LogLevelP2PRendezvous: 17,
+  LogLevelSDRRelayPings: 18,
+  SDRClientConsecutitivePingTimeoutsFailInitial: 19,
+  SDRClientConsecutitivePingTimeoutsFail: 20,
+  SDRClientMinPingsBeforePingAccurate: 21,
+  SDRClientSingleSocket: 22,
+  IPAllowWithoutAuth: 23,
+  TimeoutInitial: 24,
+  TimeoutConnected: 25,
+  FakePacketDupSend: 26,
+  FakePacketDupRecv: 27,
+  FakePacketDupTimeMax: 28,
+  SDRClientForceRelayCluster: 29,
+  SDRClientDevTicket: 30,
+  SDRClientForceProxyAddr: 31,
+  MTUPacketSize: 32,
+  MTUDataSize: 33,
+  Unencrypted: 34,
+  DeletedEnumerateDevVars: 35,
+  SDRClientFakeClusterPing: 36,
+  SymmetricConnect: 37,
+  LocalVirtualPort: 38,
+  DualWifiEnable: 39,
+  ConnectionUserData: 40,
+  PacketTraceMaxBytes: 41,
+  FakeRateLimitSendRate: 42,
+  FakeRateLimitSendBurst: 43,
+  FakeRateLimitRecvRate: 44,
+  FakeRateLimitRecvBurst: 45,
+  EnableDiagnosticsUI: 46,
+  RecvBufferSize: 47,
+  RecvBufferMessages: 48,
+  RecvMaxMessageSize: 49,
+  RecvMaxSegmentsPerPacket: 50,
+  OutOfOrderCorrectionWindowMicroseconds: 51,
+  IPLocalHostAllowWithoutAuth: 52,
+  FakePacketJitterSendAvg: 53,
+  FakePacketJitterSendMax: 54,
+  FakePacketJitterSendPct: 55,
+  FakePacketJitterRecvAvg: 56,
+  FakePacketJitterRecvMax: 57,
+  FakePacketJitterRecvPct: 58,
+  SendTimeSincePreviousPacket: 59,
+  SDRClientLimitPingProbesToNearestN: 60,
+  P2PSTUNServerList: 103,
+  P2PTransportICEEnable: 104,
+  P2PTransportICEPenalty: 105,
+  P2PTransportSDRPenalty: 106,
+  P2PTURNServerList: 107,
+  P2PTURNUserList: 108,
+  P2PTURNPassList: 109,
+  P2PTransportICEImplementation: 110,
+  CallbackConnectionStatusChanged: 201,
+  CallbackAuthStatusChanged: 202,
+  CallbackRelayNetworkStatusChanged: 203,
+  CallbackMessagesSessionRequest: 204,
+  CallbackMessagesSessionFailed: 205,
+  CallbackCreateConnectionSignaling: 206,
+  CallbackFakeIPResult: 207,
+  SDRClientEnableTOSProbes: 998,
+  ECN: 999
+} as const;
+
+export const NetworkingIceEnable = {
+  Default: -1,
+  Disable: 0,
+  Relay: 1,
+  Private: 2,
+  Public: 4,
+  All: 2147483647
 } as const;
 
 export const Dialog = {
@@ -2493,6 +2642,12 @@ export const networking = {
   NetworkingConnectionState,
   NetworkingAvailability,
   NetworkingFakeIpType,
+  NetworkingConfigScope,
+  NetworkingConfigDataType,
+  NetworkingGetConfigValueResult,
+  NetworkingDebugOutputType,
+  NetworkingConfigValue,
+  NetworkingIceEnable,
   sendP2PPacket(steamId64: bigint, sendType: number, data: Buffer): boolean {
     return native().networkingSendP2PPacket(steamId64, sendType, data);
   },
@@ -2713,6 +2868,12 @@ export const networking = {
   utils: {
     Availability: NetworkingAvailability,
     FakeIpType: NetworkingFakeIpType,
+    ConfigScope: NetworkingConfigScope,
+    ConfigDataType: NetworkingConfigDataType,
+    ConfigValueResult: NetworkingGetConfigValueResult,
+    DebugOutputType: NetworkingDebugOutputType,
+    ConfigValue: NetworkingConfigValue,
+    IceEnable: NetworkingIceEnable,
     initRelayNetworkAccess(): void {
       native().networkingUtilsInitRelayNetworkAccess();
     },
@@ -2767,6 +2928,80 @@ export const networking = {
     getRealIdentityForFakeIp(address: NetworkingIpAddress): NetworkingFakeIpIdentity {
       return normalizeNetworkingFakeIpIdentity(
         native().networkingUtilsGetRealIdentityForFakeIp(nativeNetworkingIpAddress(address))
+      );
+    },
+    setConfigValueInt32(value: number, scope: number, scopeObj: number, data: number): boolean {
+      return native().networkingUtilsSetConfigValueInt32(value, scope, scopeObj, data);
+    },
+    setConfigValueInt64(value: number, scope: number, scopeObj: number, data: bigint | number | string): boolean {
+      return native().networkingUtilsSetConfigValueInt64(value, scope, scopeObj, BigInt(data));
+    },
+    setConfigValueFloat(value: number, scope: number, scopeObj: number, data: number): boolean {
+      return native().networkingUtilsSetConfigValueFloat(value, scope, scopeObj, data);
+    },
+    setConfigValueString(value: number, scope: number, scopeObj: number, data: string): boolean {
+      return native().networkingUtilsSetConfigValueString(value, scope, scopeObj, data);
+    },
+    setGlobalConfigValueInt32(value: number, data: number): boolean {
+      return native().networkingUtilsSetConfigValueInt32(value, NetworkingConfigScope.Global, 0, data);
+    },
+    setGlobalConfigValueInt64(value: number, data: bigint | number | string): boolean {
+      return native().networkingUtilsSetConfigValueInt64(value, NetworkingConfigScope.Global, 0, BigInt(data));
+    },
+    setGlobalConfigValueFloat(value: number, data: number): boolean {
+      return native().networkingUtilsSetConfigValueFloat(value, NetworkingConfigScope.Global, 0, data);
+    },
+    setGlobalConfigValueString(value: number, data: string): boolean {
+      return native().networkingUtilsSetConfigValueString(value, NetworkingConfigScope.Global, 0, data);
+    },
+    setConnectionConfigValueInt32(connection: number, value: number, data: number): boolean {
+      return native().networkingUtilsSetConfigValueInt32(value, NetworkingConfigScope.Connection, connection, data);
+    },
+    setConnectionConfigValueInt64(connection: number, value: number, data: bigint | number | string): boolean {
+      return native().networkingUtilsSetConfigValueInt64(value, NetworkingConfigScope.Connection, connection, BigInt(data));
+    },
+    setConnectionConfigValueFloat(connection: number, value: number, data: number): boolean {
+      return native().networkingUtilsSetConfigValueFloat(value, NetworkingConfigScope.Connection, connection, data);
+    },
+    setConnectionConfigValueString(connection: number, value: number, data: string): boolean {
+      return native().networkingUtilsSetConfigValueString(value, NetworkingConfigScope.Connection, connection, data);
+    },
+    getConfigValue(
+      value: number,
+      scope = NetworkingConfigScope.Global,
+      scopeObj = 0,
+      maxBytes?: number | null
+    ): NetworkingConfigValueResult {
+      return normalizeNetworkingConfigValueResult(
+        native().networkingUtilsGetConfigValue(value, scope, scopeObj, maxBytes ?? undefined)
+      );
+    },
+    getConfigValueInfo(value: number): NetworkingConfigValueInfo {
+      return normalizeNetworkingConfigValueInfo(native().networkingUtilsGetConfigValueInfo(value));
+    },
+    iterateGenericEditableConfigValues(current = NetworkingConfigValue.Invalid, enumerateDevVars = false): number {
+      return native().networkingUtilsIterateGenericEditableConfigValues(current, enumerateDevVars);
+    },
+    listGenericEditableConfigValues(enumerateDevVars = false): number[] {
+      const values: number[] = [];
+      let current: number = NetworkingConfigValue.Invalid;
+      for (let guard = 0; guard < 1024; guard += 1) {
+        current = native().networkingUtilsIterateGenericEditableConfigValues(current, enumerateDevVars);
+        if (current === NetworkingConfigValue.Invalid) {
+          return values;
+        }
+        values.push(current);
+      }
+      throw new Error("Steam networking config iteration did not terminate");
+    },
+    registerDebugOutputHook(
+      detailLevel: number,
+      handler: (event: NetworkingDebugOutput) => void
+    ): CallbackHandle {
+      return wrapCallbackHandle(
+        native().networkingUtilsRegisterDebugOutputHook(detailLevel, (event) => {
+          handler(normalizeNetworkingDebugOutput(event));
+        })
       );
     }
   }
@@ -4416,6 +4651,54 @@ function normalizeNetworkingRelayNetworkStatus(
     networkConfigAvailability: Number(source.networkConfigAvailability ?? source.network_config_availability ?? 0),
     anyRelayAvailability: Number(source.anyRelayAvailability ?? source.any_relay_availability ?? 0),
     debugMessage: String(source.debugMessage ?? source.debug_message ?? "")
+  };
+}
+
+function normalizeNetworkingConfigValueResult(
+  result: NativeNetworkingConfigValueResult
+): NetworkingConfigValueResult {
+  const source = result as unknown as Record<string, unknown>;
+  const int32Value = source.int32Value ?? source.int32_value;
+  const int64Value = source.int64Value ?? source.int64_value;
+  const floatValue = source.floatValue ?? source.float_value;
+  const stringValue = source.stringValue ?? source.string_value;
+  const dataType = Number(source.dataType ?? source.data_type ?? 0);
+  let value: number | bigint | string | null = null;
+  if (int32Value !== undefined && int32Value !== null) {
+    value = Number(int32Value);
+  } else if (int64Value !== undefined && int64Value !== null) {
+    value = normalizeBigIntLike(int64Value) as bigint;
+  } else if (floatValue !== undefined && floatValue !== null) {
+    value = Number(floatValue);
+  } else if (stringValue !== undefined && stringValue !== null) {
+    value = String(stringValue);
+  }
+  return {
+    result: Number(result.result),
+    dataType,
+    value,
+    int32Value: int32Value === undefined || int32Value === null ? null : Number(int32Value),
+    int64Value: int64Value === undefined || int64Value === null ? null : (normalizeBigIntLike(int64Value) as bigint),
+    floatValue: floatValue === undefined || floatValue === null ? null : Number(floatValue),
+    stringValue: stringValue === undefined || stringValue === null ? null : String(stringValue)
+  };
+}
+
+function normalizeNetworkingConfigValueInfo(info: NativeNetworkingConfigValueInfo): NetworkingConfigValueInfo {
+  const source = info as unknown as Record<string, unknown>;
+  return {
+    value: Number(info.value),
+    name: info.name ?? null,
+    dataType: Number(source.dataType ?? source.data_type ?? 0),
+    scope: Number(info.scope)
+  };
+}
+
+function normalizeNetworkingDebugOutput(event: NativeNetworkingDebugOutput): NetworkingDebugOutput {
+  const source = event as unknown as Record<string, unknown>;
+  return {
+    detailLevel: Number(source.detailLevel ?? source.detail_level ?? 0),
+    message: String(event.message)
   };
 }
 
