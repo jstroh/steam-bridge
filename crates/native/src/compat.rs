@@ -955,6 +955,16 @@ pub struct NetworkingConfigValueResult {
     pub string_value: Option<String>,
 }
 
+#[napi(object)]
+pub struct NetworkingConfigValue {
+    pub value: u32,
+    pub data_type: Option<u32>,
+    pub int32_value: Option<i32>,
+    pub int64_value: Option<BigInt>,
+    pub float_value: Option<f64>,
+    pub string_value: Option<String>,
+}
+
 #[derive(Debug)]
 #[napi(object)]
 pub struct NetworkingConfigValueInfo {
@@ -8898,6 +8908,23 @@ pub fn networking_utils_set_config_value_string(
     })
 }
 
+#[napi(js_name = "networkingUtilsSetConfigValueStruct")]
+pub fn networking_utils_set_config_value_struct(
+    option: NetworkingConfigValue,
+    scope: u32,
+    scope_obj: i64,
+) -> Result<bool, Error> {
+    let (mut option, _string_storage) = networking_config_value_struct(option)?;
+    Ok(unsafe {
+        sys::SteamAPI_ISteamNetworkingUtils_SetConfigValueStruct(
+            steam_networking_utils()?,
+            &mut option,
+            networking_config_scope(scope)?,
+            networking_config_scope_obj(scope_obj)?,
+        )
+    })
+}
+
 #[napi(js_name = "networkingUtilsSetGlobalConfigValueInt32")]
 pub fn networking_utils_set_global_config_value_int32(
     value: u32,
@@ -12778,6 +12805,102 @@ fn networking_config_value_result(
     output
 }
 
+fn networking_config_value_struct(
+    option: NetworkingConfigValue,
+) -> Result<(sys::SteamNetworkingConfigValue_t, Option<CString>), Error> {
+    let value = networking_config_value(option.value)?;
+    let data_type = networking_config_data_type_from_option(&option)?;
+    let mut output =
+        unsafe { MaybeUninit::<sys::SteamNetworkingConfigValue_t>::zeroed().assume_init() };
+
+    match data_type {
+        sys::ESteamNetworkingConfigDataType::k_ESteamNetworkingConfig_Int32 => {
+            let data = option.int32_value.ok_or_else(|| {
+                Error::from_reason("networking config int32 value requires int32Value")
+            })?;
+            unsafe {
+                sys::SteamAPI_SteamNetworkingConfigValue_t_SetInt32(&mut output, value, data)
+            };
+            Ok((output, None))
+        }
+        sys::ESteamNetworkingConfigDataType::k_ESteamNetworkingConfig_Int64 => {
+            let data = option
+                .int64_value
+                .ok_or_else(|| {
+                    Error::from_reason("networking config int64 value requires int64Value")
+                })
+                .and_then(|value| bigint_to_i64(value, "networking config int64 value"))?;
+            unsafe {
+                sys::SteamAPI_SteamNetworkingConfigValue_t_SetInt64(&mut output, value, data)
+            };
+            Ok((output, None))
+        }
+        sys::ESteamNetworkingConfigDataType::k_ESteamNetworkingConfig_Float => {
+            let data = option.float_value.ok_or_else(|| {
+                Error::from_reason("networking config float value requires floatValue")
+            })? as f32;
+            unsafe {
+                sys::SteamAPI_SteamNetworkingConfigValue_t_SetFloat(&mut output, value, data)
+            };
+            Ok((output, None))
+        }
+        sys::ESteamNetworkingConfigDataType::k_ESteamNetworkingConfig_String => {
+            let data = option.string_value.ok_or_else(|| {
+                Error::from_reason("networking config string value requires stringValue")
+            })?;
+            let data = cstring(data, "networking config string value")?;
+            unsafe {
+                sys::SteamAPI_SteamNetworkingConfigValue_t_SetString(
+                    &mut output,
+                    value,
+                    data.as_ptr(),
+                )
+            };
+            Ok((output, Some(data)))
+        }
+        sys::ESteamNetworkingConfigDataType::k_ESteamNetworkingConfig_Ptr => {
+            Err(Error::from_reason(
+                "networking config pointer values are not supported from JavaScript",
+            ))
+        }
+        _ => Err(Error::from_reason(
+            "unsupported Steam networking config data type",
+        )),
+    }
+}
+
+fn networking_config_data_type_from_option(
+    option: &NetworkingConfigValue,
+) -> Result<sys::ESteamNetworkingConfigDataType, Error> {
+    if let Some(data_type) = option.data_type {
+        return networking_config_data_type(data_type);
+    }
+
+    let mut inferred = Vec::new();
+    if option.int32_value.is_some() {
+        inferred.push(sys::ESteamNetworkingConfigDataType::k_ESteamNetworkingConfig_Int32);
+    }
+    if option.int64_value.is_some() {
+        inferred.push(sys::ESteamNetworkingConfigDataType::k_ESteamNetworkingConfig_Int64);
+    }
+    if option.float_value.is_some() {
+        inferred.push(sys::ESteamNetworkingConfigDataType::k_ESteamNetworkingConfig_Float);
+    }
+    if option.string_value.is_some() {
+        inferred.push(sys::ESteamNetworkingConfigDataType::k_ESteamNetworkingConfig_String);
+    }
+
+    match inferred.as_slice() {
+        [data_type] => Ok(*data_type),
+        [] => Err(Error::from_reason(
+            "networking config value requires dataType or one concrete value field",
+        )),
+        _ => Err(Error::from_reason(
+            "networking config value has multiple value fields; pass dataType to disambiguate",
+        )),
+    }
+}
+
 macro_rules! steam_networking_config_value {
     ($value:expr, $($variant:ident),+ $(,)?) => {
         match $value {
@@ -12914,6 +13037,44 @@ fn networking_config_scope(value: u32) -> Result<sys::ESteamNetworkingConfigScop
 fn networking_config_scope_obj(value: i64) -> Result<isize, Error> {
     isize::try_from(value)
         .map_err(|_| Error::from_reason("networking config scope object is too large"))
+}
+
+fn networking_config_data_type(value: u32) -> Result<sys::ESteamNetworkingConfigDataType, Error> {
+    match value {
+        value
+            if value
+                == sys::ESteamNetworkingConfigDataType::k_ESteamNetworkingConfig_Int32 as u32 =>
+        {
+            Ok(sys::ESteamNetworkingConfigDataType::k_ESteamNetworkingConfig_Int32)
+        }
+        value
+            if value
+                == sys::ESteamNetworkingConfigDataType::k_ESteamNetworkingConfig_Int64 as u32 =>
+        {
+            Ok(sys::ESteamNetworkingConfigDataType::k_ESteamNetworkingConfig_Int64)
+        }
+        value
+            if value
+                == sys::ESteamNetworkingConfigDataType::k_ESteamNetworkingConfig_Float as u32 =>
+        {
+            Ok(sys::ESteamNetworkingConfigDataType::k_ESteamNetworkingConfig_Float)
+        }
+        value
+            if value
+                == sys::ESteamNetworkingConfigDataType::k_ESteamNetworkingConfig_String as u32 =>
+        {
+            Ok(sys::ESteamNetworkingConfigDataType::k_ESteamNetworkingConfig_String)
+        }
+        value
+            if value
+                == sys::ESteamNetworkingConfigDataType::k_ESteamNetworkingConfig_Ptr as u32 =>
+        {
+            Ok(sys::ESteamNetworkingConfigDataType::k_ESteamNetworkingConfig_Ptr)
+        }
+        _ => Err(Error::from_reason(format!(
+            "unsupported Steam networking config data type {value}"
+        ))),
+    }
 }
 
 fn networking_debug_output_type(

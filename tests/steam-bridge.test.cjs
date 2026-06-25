@@ -3371,6 +3371,10 @@ test("networking utils facade covers relay, ping, fake IP, address, config, debu
       this.calls.push({ method: "networkingUtilsSetConfigValueString", args: [value, scope, scopeObj, data] });
       return true;
     },
+    networkingUtilsSetConfigValueStruct(option, scope, scopeObj) {
+      this.calls.push({ method: "networkingUtilsSetConfigValueStruct", args: [option, scope, scopeObj] });
+      return true;
+    },
     networkingUtilsSetGlobalConfigValueInt32(value, data) {
       this.calls.push({ method: "networkingUtilsSetGlobalConfigValueInt32", args: [value, data] });
       return true;
@@ -3554,6 +3558,32 @@ test("networking utils facade covers relay, ping, fake IP, address, config, debu
     ),
     true
   );
+  assert.equal(
+    steam.networking.utils.setConfigValueStruct(
+      {
+        value: steam.networking.utils.ConfigValue.FakePacketLossSend,
+        dataType: steam.networking.utils.ConfigDataType.Float,
+        floatValue: 3.5
+      },
+      steam.networking.utils.ConfigScope.Global,
+      0
+    ),
+    true
+  );
+  assert.equal(
+    steam.networking.utils.setGlobalConfigValueStruct({
+      value: steam.networking.utils.ConfigValue.SDRClientForceRelayCluster,
+      stringValue: "iad"
+    }),
+    true
+  );
+  assert.equal(
+    steam.networking.utils.setConnectionConfigValueStruct(77, {
+      value: steam.networking.utils.ConfigValue.ConnectionUserData,
+      int64Value: "123"
+    }),
+    true
+  );
   assert.deepEqual(
     steam.networking.utils.getConfigValue(steam.networking.utils.ConfigValue.TimeoutInitial),
     {
@@ -3656,6 +3686,16 @@ test("networking utils facade covers relay, ping, fake IP, address, config, debu
     method: "networkingUtilsSetConnectionConfigValueString",
     args: [77, 29, "ord"]
   });
+  assert.deepEqual(
+    fake.calls
+      .filter((call) => call.method === "networkingUtilsSetConfigValueStruct")
+      .map((call) => call.args),
+    [
+      [{ value: 2, dataType: 3, floatValue: 3.5 }, 1, 0],
+      [{ value: 29, stringValue: "iad" }, 1, 0],
+      [{ value: 40, int64Value: 123n }, 4, 77]
+    ]
+  );
   assert.deepEqual(fake.calls.find((call) => call.method === "networkingUtilsRegisterDebugOutputHook"), {
     method: "networkingUtilsRegisterDebugOutputHook",
     args: [4]

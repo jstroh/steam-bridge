@@ -94,6 +94,7 @@ import {
   NativeNetworkingConnectionRealTimeStatus,
   NativeNetworkingConnectionRealTimeStatusWithLanes,
   NativeNetworkingConnectionInfo,
+  NativeNetworkingConfigValue,
   NativeNetworkingConfigValueInfo,
   NativeNetworkingConfigValueResult,
   NativeNetworkingDebugOutput,
@@ -983,6 +984,15 @@ export interface NetworkingConfigValueResult {
   int64Value: bigint | null;
   floatValue: number | null;
   stringValue: string | null;
+}
+
+export interface NetworkingConfigOption {
+  value: number;
+  dataType?: number;
+  int32Value?: number | null;
+  int64Value?: bigint | number | string | null;
+  floatValue?: number | null;
+  stringValue?: string | null;
 }
 
 export interface NetworkingConfigValueInfo {
@@ -4458,6 +4468,9 @@ export const networking = {
     setConfigValueString(value: number, scope: number, scopeObj: number, data: string): boolean {
       return native().networkingUtilsSetConfigValueString(value, scope, scopeObj, data);
     },
+    setConfigValueStruct(option: NetworkingConfigOption, scope = NetworkingConfigScope.Global, scopeObj = 0): boolean {
+      return native().networkingUtilsSetConfigValueStruct(nativeNetworkingConfigValue(option), scope, scopeObj);
+    },
     setGlobalConfigValueInt32(value: number, data: number): boolean {
       return native().networkingUtilsSetGlobalConfigValueInt32(value, data);
     },
@@ -4470,6 +4483,13 @@ export const networking = {
     setGlobalConfigValueString(value: number, data: string): boolean {
       return native().networkingUtilsSetGlobalConfigValueString(value, data);
     },
+    setGlobalConfigValueStruct(option: NetworkingConfigOption): boolean {
+      return native().networkingUtilsSetConfigValueStruct(
+        nativeNetworkingConfigValue(option),
+        NetworkingConfigScope.Global,
+        0
+      );
+    },
     setConnectionConfigValueInt32(connection: number, value: number, data: number): boolean {
       return native().networkingUtilsSetConnectionConfigValueInt32(connection, value, data);
     },
@@ -4481,6 +4501,13 @@ export const networking = {
     },
     setConnectionConfigValueString(connection: number, value: number, data: string): boolean {
       return native().networkingUtilsSetConnectionConfigValueString(connection, value, data);
+    },
+    setConnectionConfigValueStruct(connection: number, option: NetworkingConfigOption): boolean {
+      return native().networkingUtilsSetConfigValueStruct(
+        nativeNetworkingConfigValue(option),
+        NetworkingConfigScope.Connection,
+        connection
+      );
     },
     getConfigValue(
       value: number,
@@ -6634,6 +6661,28 @@ function nativeNetworkingIpAddress(address: NetworkingIpAddress): NativeNetworki
   }
   if (address.localHost !== undefined) {
     output.localHost = address.localHost;
+  }
+  return output;
+}
+
+function nativeNetworkingConfigValue(option: NetworkingConfigOption): NativeNetworkingConfigValue {
+  const output: NativeNetworkingConfigValue = {
+    value: option.value
+  };
+  if (option.dataType !== undefined) {
+    output.dataType = option.dataType;
+  }
+  if (option.int32Value !== undefined) {
+    output.int32Value = option.int32Value;
+  }
+  if (option.int64Value !== undefined) {
+    output.int64Value = option.int64Value === null ? null : BigInt(option.int64Value);
+  }
+  if (option.floatValue !== undefined) {
+    output.floatValue = option.floatValue;
+  }
+  if (option.stringValue !== undefined) {
+    output.stringValue = option.stringValue;
   }
   return output;
 }

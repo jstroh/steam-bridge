@@ -646,6 +646,20 @@ export interface NativeNetworkingConfigValueResult {
   string_value?: string;
 }
 
+export interface NativeNetworkingConfigValue {
+  value: number;
+  dataType?: number;
+  data_type?: number;
+  int32Value?: number | null;
+  int32_value?: number | null;
+  int64Value?: bigint | string | number | null;
+  int64_value?: bigint | string | number | null;
+  floatValue?: number | null;
+  float_value?: number | null;
+  stringValue?: string | null;
+  string_value?: string | null;
+}
+
 export interface NativeNetworkingConfigValueInfo {
   value: number;
   name?: string | null;
@@ -1844,6 +1858,7 @@ export interface NativeBinding {
   networkingUtilsSetConfigValueInt64(value: number, scope: number, scopeObj: number, data: bigint): boolean;
   networkingUtilsSetConfigValueFloat(value: number, scope: number, scopeObj: number, data: number): boolean;
   networkingUtilsSetConfigValueString(value: number, scope: number, scopeObj: number, data: string): boolean;
+  networkingUtilsSetConfigValueStruct(option: NativeNetworkingConfigValue, scope: number, scopeObj: number): boolean;
   networkingUtilsSetGlobalConfigValueInt32(value: number, data: number): boolean;
   networkingUtilsSetGlobalConfigValueFloat(value: number, data: number): boolean;
   networkingUtilsSetGlobalConfigValueString(value: number, data: string): boolean;
