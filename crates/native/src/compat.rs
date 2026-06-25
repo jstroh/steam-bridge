@@ -1282,6 +1282,13 @@ pub struct NetworkingPingDataCenter {
 
 #[derive(Debug)]
 #[napi(object)]
+pub struct SteamClientLocalUser {
+    pub user: i32,
+    pub pipe: i32,
+}
+
+#[derive(Debug)]
+#[napi(object)]
 pub struct NetworkingIpAddress {
     pub text: Option<String>,
     pub ipv4: Option<u32>,
@@ -1986,6 +1993,328 @@ pub struct UserDurationControl {
     pub notification: u32,
     pub seconds_today: i32,
     pub seconds_remaining: i32,
+}
+
+#[napi(js_name = "clientCreateSteamPipe")]
+pub fn client_create_steam_pipe() -> Result<i32, Error> {
+    Ok(unsafe { sys::SteamAPI_ISteamClient_CreateSteamPipe(steam_client()?) })
+}
+
+#[napi(js_name = "clientReleaseSteamPipe")]
+pub fn client_release_steam_pipe(pipe: i32) -> Result<bool, Error> {
+    Ok(unsafe { sys::SteamAPI_ISteamClient_BReleaseSteamPipe(steam_client()?, pipe) })
+}
+
+#[napi(js_name = "clientConnectToGlobalUser")]
+pub fn client_connect_to_global_user(pipe: i32) -> Result<i32, Error> {
+    Ok(unsafe { sys::SteamAPI_ISteamClient_ConnectToGlobalUser(steam_client()?, pipe) })
+}
+
+#[napi(js_name = "clientCreateLocalUser")]
+pub fn client_create_local_user(account_type: u32) -> Result<SteamClientLocalUser, Error> {
+    let mut pipe = 0;
+    let user = unsafe {
+        sys::SteamAPI_ISteamClient_CreateLocalUser(
+            steam_client()?,
+            &mut pipe,
+            account_type_from_u32(account_type)?,
+        )
+    };
+    Ok(SteamClientLocalUser { user, pipe })
+}
+
+#[napi(js_name = "clientReleaseUser")]
+pub fn client_release_user(pipe: i32, user: i32) -> Result<(), Error> {
+    unsafe { sys::SteamAPI_ISteamClient_ReleaseUser(steam_client()?, pipe, user) };
+    Ok(())
+}
+
+#[napi(js_name = "clientSetLocalIpBinding")]
+pub fn client_set_local_ip_binding(ipv4: u32, port: u32) -> Result<(), Error> {
+    let ip = legacy_networking_steam_ip(ipv4);
+    unsafe {
+        sys::SteamAPI_ISteamClient_SetLocalIPBinding(
+            steam_client()?,
+            &ip,
+            port_to_u16(port, "client local IP binding port")?,
+        )
+    };
+    Ok(())
+}
+
+#[napi(js_name = "clientGetInterface")]
+pub fn client_get_interface(
+    interface_name: String,
+    user: Option<i32>,
+    pipe: Option<i32>,
+    version: Option<String>,
+) -> Result<Option<BigInt>, Error> {
+    let user = user.unwrap_or(unsafe { sys::SteamAPI_GetHSteamUser() });
+    let pipe = pipe.unwrap_or(unsafe { sys::SteamAPI_GetHSteamPipe() });
+    let client = steam_client()?;
+    let ptr = match interface_name.as_str() {
+        "user" => unsafe {
+            sys::SteamAPI_ISteamClient_GetISteamUser(
+                client,
+                user,
+                pipe,
+                sys::STEAMUSER_INTERFACE_VERSION.as_ptr().cast(),
+            )
+            .cast::<c_void>()
+        },
+        "gameServer" => unsafe {
+            sys::SteamAPI_ISteamClient_GetISteamGameServer(
+                client,
+                user,
+                pipe,
+                sys::STEAMGAMESERVER_INTERFACE_VERSION.as_ptr().cast(),
+            )
+            .cast::<c_void>()
+        },
+        "friends" => unsafe {
+            sys::SteamAPI_ISteamClient_GetISteamFriends(
+                client,
+                user,
+                pipe,
+                sys::STEAMFRIENDS_INTERFACE_VERSION.as_ptr().cast(),
+            )
+            .cast::<c_void>()
+        },
+        "utils" => unsafe {
+            sys::SteamAPI_ISteamClient_GetISteamUtils(
+                client,
+                pipe,
+                sys::STEAMUTILS_INTERFACE_VERSION.as_ptr().cast(),
+            )
+            .cast::<c_void>()
+        },
+        "matchmaking" => unsafe {
+            sys::SteamAPI_ISteamClient_GetISteamMatchmaking(
+                client,
+                user,
+                pipe,
+                sys::STEAMMATCHMAKING_INTERFACE_VERSION.as_ptr().cast(),
+            )
+            .cast::<c_void>()
+        },
+        "matchmakingServers" => unsafe {
+            sys::SteamAPI_ISteamClient_GetISteamMatchmakingServers(
+                client,
+                user,
+                pipe,
+                sys::STEAMMATCHMAKINGSERVERS_INTERFACE_VERSION
+                    .as_ptr()
+                    .cast(),
+            )
+            .cast::<c_void>()
+        },
+        "generic" => {
+            let version = version.ok_or_else(|| {
+                Error::from_reason("generic Steam client interface version is required")
+            })?;
+            let version = cstring(version, "generic Steam client interface version")?;
+            unsafe {
+                sys::SteamAPI_ISteamClient_GetISteamGenericInterface(
+                    client,
+                    user,
+                    pipe,
+                    version.as_ptr(),
+                )
+            }
+        }
+        "userStats" => unsafe {
+            sys::SteamAPI_ISteamClient_GetISteamUserStats(
+                client,
+                user,
+                pipe,
+                sys::STEAMUSERSTATS_INTERFACE_VERSION.as_ptr().cast(),
+            )
+            .cast::<c_void>()
+        },
+        "gameServerStats" => unsafe {
+            sys::SteamAPI_ISteamClient_GetISteamGameServerStats(
+                client,
+                user,
+                pipe,
+                sys::STEAMGAMESERVERSTATS_INTERFACE_VERSION.as_ptr().cast(),
+            )
+            .cast::<c_void>()
+        },
+        "apps" => unsafe {
+            sys::SteamAPI_ISteamClient_GetISteamApps(
+                client,
+                user,
+                pipe,
+                sys::STEAMAPPS_INTERFACE_VERSION.as_ptr().cast(),
+            )
+            .cast::<c_void>()
+        },
+        "networking" => unsafe {
+            sys::SteamAPI_ISteamClient_GetISteamNetworking(
+                client,
+                user,
+                pipe,
+                sys::STEAMNETWORKING_INTERFACE_VERSION.as_ptr().cast(),
+            )
+            .cast::<c_void>()
+        },
+        "remoteStorage" => unsafe {
+            sys::SteamAPI_ISteamClient_GetISteamRemoteStorage(
+                client,
+                user,
+                pipe,
+                sys::STEAMREMOTESTORAGE_INTERFACE_VERSION.as_ptr().cast(),
+            )
+            .cast::<c_void>()
+        },
+        "screenshots" => unsafe {
+            sys::SteamAPI_ISteamClient_GetISteamScreenshots(
+                client,
+                user,
+                pipe,
+                sys::STEAMSCREENSHOTS_INTERFACE_VERSION.as_ptr().cast(),
+            )
+            .cast::<c_void>()
+        },
+        "http" => unsafe {
+            sys::SteamAPI_ISteamClient_GetISteamHTTP(
+                client,
+                user,
+                pipe,
+                sys::STEAMHTTP_INTERFACE_VERSION.as_ptr().cast(),
+            )
+            .cast::<c_void>()
+        },
+        "controller" => unsafe {
+            sys::SteamAPI_ISteamClient_GetISteamController(
+                client,
+                user,
+                pipe,
+                sys::STEAMCONTROLLER_INTERFACE_VERSION.as_ptr().cast(),
+            )
+            .cast::<c_void>()
+        },
+        "ugc" => unsafe {
+            sys::SteamAPI_ISteamClient_GetISteamUGC(
+                client,
+                user,
+                pipe,
+                sys::STEAMUGC_INTERFACE_VERSION.as_ptr().cast(),
+            )
+            .cast::<c_void>()
+        },
+        "music" => unsafe {
+            sys::SteamAPI_ISteamClient_GetISteamMusic(
+                client,
+                user,
+                pipe,
+                sys::STEAMMUSIC_INTERFACE_VERSION.as_ptr().cast(),
+            )
+            .cast::<c_void>()
+        },
+        "htmlSurface" => unsafe {
+            sys::SteamAPI_ISteamClient_GetISteamHTMLSurface(
+                client,
+                user,
+                pipe,
+                sys::STEAMHTMLSURFACE_INTERFACE_VERSION.as_ptr().cast(),
+            )
+            .cast::<c_void>()
+        },
+        "inventory" => unsafe {
+            sys::SteamAPI_ISteamClient_GetISteamInventory(
+                client,
+                user,
+                pipe,
+                sys::STEAMINVENTORY_INTERFACE_VERSION.as_ptr().cast(),
+            )
+            .cast::<c_void>()
+        },
+        "video" => unsafe {
+            sys::SteamAPI_ISteamClient_GetISteamVideo(
+                client,
+                user,
+                pipe,
+                sys::STEAMVIDEO_INTERFACE_VERSION.as_ptr().cast(),
+            )
+            .cast::<c_void>()
+        },
+        "parentalSettings" => unsafe {
+            sys::SteamAPI_ISteamClient_GetISteamParentalSettings(
+                client,
+                user,
+                pipe,
+                sys::STEAMPARENTALSETTINGS_INTERFACE_VERSION.as_ptr().cast(),
+            )
+            .cast::<c_void>()
+        },
+        "input" => unsafe {
+            sys::SteamAPI_ISteamClient_GetISteamInput(
+                client,
+                user,
+                pipe,
+                sys::STEAMINPUT_INTERFACE_VERSION.as_ptr().cast(),
+            )
+            .cast::<c_void>()
+        },
+        "parties" => unsafe {
+            sys::SteamAPI_ISteamClient_GetISteamParties(
+                client,
+                user,
+                pipe,
+                sys::STEAMPARTIES_INTERFACE_VERSION.as_ptr().cast(),
+            )
+            .cast::<c_void>()
+        },
+        "remotePlay" => unsafe {
+            sys::SteamAPI_ISteamClient_GetISteamRemotePlay(
+                client,
+                user,
+                pipe,
+                sys::STEAMREMOTEPLAY_INTERFACE_VERSION.as_ptr().cast(),
+            )
+            .cast::<c_void>()
+        },
+        _ => return Err(Error::from_reason("unknown Steam client interface")),
+    };
+    Ok(pointer_to_bigint(ptr))
+}
+
+#[napi(js_name = "clientGetIpcCallCount")]
+pub fn client_get_ipc_call_count() -> Result<u32, Error> {
+    Ok(unsafe { sys::SteamAPI_ISteamClient_GetIPCCallCount(steam_client()?) })
+}
+
+#[napi(js_name = "clientRegisterWarningMessageHook")]
+pub fn client_register_warning_message_hook(
+    #[napi(ts_arg_type = "(value: any) => void")] handler: JsCallback<'_, UtilsWarningMessage>,
+) -> Result<CallbackHandle, Error> {
+    crate::state::ensure_initialized()?;
+    let threadsafe_handler: FatalThreadsafeFunction<UtilsWarningMessage> = handler
+        .build_threadsafe_function::<UtilsWarningMessage>()
+        .build_callback(|ctx| Ok(vec![ctx.value]))?;
+    unsafe {
+        sys::SteamAPI_ISteamClient_SetWarningMessageHook(
+            steam_client()?,
+            Some(steam_api_warning_message_hook),
+        );
+    }
+    let registration = crate::state::register_warning_message_hook(move |severity, message| {
+        threadsafe_handler.call(
+            UtilsWarningMessage { severity, message },
+            ThreadsafeFunctionCallMode::NonBlocking,
+        );
+    });
+    Ok(CallbackHandle {
+        registration: None,
+        warning_message_registration: Some(registration),
+        networking_debug_output_registration: None,
+    })
+}
+
+#[napi(js_name = "clientShutdownIfAllPipesClosed")]
+pub fn client_shutdown_if_all_pipes_closed() -> Result<bool, Error> {
+    Ok(unsafe { sys::SteamAPI_ISteamClient_BShutdownIfAllPipesClosed(steam_client()?) })
 }
 
 #[napi(js_name = "achievementActivate")]
@@ -12757,6 +13086,11 @@ pub(crate) fn clear_warning_message_hook() {
             sys::SteamAPI_ISteamUtils_SetWarningMessageHook(utils, None);
         }
     }
+    if let Ok(client) = steam_client() {
+        unsafe {
+            sys::SteamAPI_ISteamClient_SetWarningMessageHook(client, None);
+        }
+    }
 }
 
 #[napi(js_name = "utilsRegisterWarningMessageHook")]
@@ -15902,6 +16236,17 @@ fn steam_apps() -> Result<*mut sys::ISteamApps, Error> {
     non_null(unsafe { sys::SteamAPI_SteamApps_v009() }, "ISteamApps")
 }
 
+fn steam_client() -> Result<*mut sys::ISteamClient, Error> {
+    crate::state::ensure_initialized()?;
+    non_null(
+        unsafe {
+            sys::SteamInternal_CreateInterface(sys::STEAMCLIENT_INTERFACE_VERSION.as_ptr().cast())
+        }
+        .cast::<sys::ISteamClient>(),
+        "ISteamClient",
+    )
+}
+
 fn steam_remote_storage() -> Result<*mut sys::ISteamRemoteStorage, Error> {
     crate::state::ensure_initialized()?;
     non_null(
@@ -17009,6 +17354,10 @@ fn bigint_to_u64(value: BigInt, label: &str) -> Result<u64, Error> {
     } else {
         Ok(value)
     }
+}
+
+fn pointer_to_bigint<T>(ptr: *mut T) -> Option<BigInt> {
+    (!ptr.is_null()).then(|| (ptr as usize as u64).into())
 }
 
 fn bigint_to_i64(value: BigInt, label: &str) -> Result<i64, Error> {
@@ -21836,6 +22185,24 @@ fn remote_storage_visibility_from_u32(
         2 => sys::ERemoteStoragePublishedFileVisibility::k_ERemoteStoragePublishedFileVisibilityPrivate,
         3 => sys::ERemoteStoragePublishedFileVisibility::k_ERemoteStoragePublishedFileVisibilityUnlisted,
         _ => return Err(Error::from_reason("invalid published file visibility")),
+    })
+}
+
+fn account_type_from_u32(value: u32) -> Result<sys::EAccountType, Error> {
+    Ok(match value {
+        0 => sys::EAccountType::k_EAccountTypeInvalid,
+        1 => sys::EAccountType::k_EAccountTypeIndividual,
+        2 => sys::EAccountType::k_EAccountTypeMultiseat,
+        3 => sys::EAccountType::k_EAccountTypeGameServer,
+        4 => sys::EAccountType::k_EAccountTypeAnonGameServer,
+        5 => sys::EAccountType::k_EAccountTypePending,
+        6 => sys::EAccountType::k_EAccountTypeContentServer,
+        7 => sys::EAccountType::k_EAccountTypeClan,
+        8 => sys::EAccountType::k_EAccountTypeChat,
+        9 => sys::EAccountType::k_EAccountTypeConsoleUser,
+        10 => sys::EAccountType::k_EAccountTypeAnonUser,
+        11 => sys::EAccountType::k_EAccountTypeMax,
+        _ => return Err(Error::from_reason("invalid Steam account type")),
     })
 }
 

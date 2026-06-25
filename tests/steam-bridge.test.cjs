@@ -102,6 +102,49 @@ function createFakeNative(overrides = {}) {
         bigPicture: false
       };
     },
+    clientCreateSteamPipe() {
+      calls.push({ method: "clientCreateSteamPipe", args: [] });
+      return 7;
+    },
+    clientReleaseSteamPipe(pipe) {
+      calls.push({ method: "clientReleaseSteamPipe", args: [pipe] });
+      return true;
+    },
+    clientConnectToGlobalUser(pipe) {
+      calls.push({ method: "clientConnectToGlobalUser", args: [pipe] });
+      return 11;
+    },
+    clientCreateLocalUser(accountType) {
+      calls.push({ method: "clientCreateLocalUser", args: [accountType] });
+      return { user: 12, pipe: 8 };
+    },
+    clientReleaseUser(pipe, user) {
+      calls.push({ method: "clientReleaseUser", args: [pipe, user] });
+    },
+    clientSetLocalIpBinding(ipv4, port) {
+      calls.push({ method: "clientSetLocalIpBinding", args: [ipv4, port] });
+    },
+    clientGetInterface(interfaceName, user, pipe, version) {
+      calls.push({ method: "clientGetInterface", args: [interfaceName, user, pipe, version] });
+      return interfaceName === "missing" ? null : 4096n;
+    },
+    clientGetIpcCallCount() {
+      calls.push({ method: "clientGetIpcCallCount", args: [] });
+      return 13;
+    },
+    clientRegisterWarningMessageHook(handler) {
+      calls.push({ method: "clientRegisterWarningMessageHook", args: [] });
+      handler({ severity: 1, message: "client warning" });
+      return {
+        disconnect() {
+          calls.push({ method: "disconnectClientWarningMessageHook", args: [] });
+        }
+      };
+    },
+    clientShutdownIfAllPipesClosed() {
+      calls.push({ method: "clientShutdownIfAllPipesClosed", args: [] });
+      return false;
+    },
     registerSteamCallback(callbackId, handler) {
       calls.push({ method: "registerSteamCallback", args: [callbackId] });
       callbacks.set(callbackId, handler);
@@ -961,6 +1004,7 @@ test("init reads the Steam app ID from the environment and returns the grouped c
 
   assert.deepEqual(fake.calls[0], { method: "init", args: [480] });
   assert.equal(client.overlay, steam.overlay);
+  assert.equal(client.client, steam.client);
   assert.equal(client.workshop, steam.workshop);
   assert.equal(client.friends, steam.friends);
   assert.equal(client.gameServer, steam.gameServer);
@@ -999,6 +1043,48 @@ test("init rejects missing app IDs with an actionable error", (t) => {
 
   assert.throws(() => steam.init(), /requires an appId or STEAM_APP_ID/);
   assert.equal(fake.calls.some((call) => call.method === "init"), false);
+});
+
+test("client facade covers low-level Steam client helpers", (t) => {
+  const fake = createFakeNative();
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  assert.equal(steam.client.SteamAccountType.Individual, 1);
+  assert.equal(steam.client.createSteamPipe(), 7);
+  assert.equal(steam.client.connectToGlobalUser(7), 11);
+  assert.deepEqual(steam.client.createLocalUser(steam.client.SteamAccountType.AnonUser), { user: 12, pipe: 8 });
+  steam.client.releaseUser(8, 12);
+  assert.equal(steam.client.releaseSteamPipe(7), true);
+  steam.client.setLocalIpBinding(0x7f000001, 27015);
+  assert.equal(steam.client.getInterface("user", { user: 11, pipe: 7 }), 4096n);
+  assert.equal(steam.client.getInterface("generic", { user: 11, pipe: 7, version: "SteamTest001" }), 4096n);
+  assert.equal(steam.client.getIPCCallCount(), 13);
+  assert.equal(steam.client.shutdownIfAllPipesClosed(), false);
+
+  const warnings = [];
+  const hook = steam.client.registerWarningMessageHook((event) => warnings.push(event));
+  hook.disconnect();
+  assert.deepEqual(warnings, [{ severity: 1, message: "client warning" }]);
+
+  assert.deepEqual(fake.calls.filter((call) => call.method.startsWith("client")), [
+    { method: "clientCreateSteamPipe", args: [] },
+    { method: "clientConnectToGlobalUser", args: [7] },
+    { method: "clientCreateLocalUser", args: [steam.client.SteamAccountType.AnonUser] },
+    { method: "clientReleaseUser", args: [8, 12] },
+    { method: "clientReleaseSteamPipe", args: [7] },
+    { method: "clientSetLocalIpBinding", args: [0x7f000001, 27015] },
+    { method: "clientGetInterface", args: ["user", 11, 7, undefined] },
+    { method: "clientGetInterface", args: ["generic", 11, 7, "SteamTest001"] },
+    { method: "clientGetIpcCallCount", args: [] },
+    { method: "clientShutdownIfAllPipesClosed", args: [] },
+    { method: "clientRegisterWarningMessageHook", args: [] }
+  ]);
+  assert.deepEqual(fake.calls.find((call) => call.method === "disconnectClientWarningMessageHook"), {
+    method: "disconnectClientWarningMessageHook",
+    args: []
+  });
 });
 
 test("Steam IDs and diagnostics are normalized for JavaScript callers", (t) => {

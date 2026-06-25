@@ -133,6 +133,7 @@ import {
   NativeRemotePlayInputEvent,
   NativeRemotePlayResolution,
   NativeRemotePlaySessionInfo,
+  NativeSteamClientLocalUser,
   NativeSteamId,
   NativeTimelineEventRecordingExists,
   NativeTimelineGamePhaseRecordingExists,
@@ -241,6 +242,43 @@ export interface GameServerPlayerCompatibilityResult {
 
 export interface CallbackHandle {
   disconnect(): void;
+}
+
+export interface SteamClientLocalUser {
+  user: number;
+  pipe: number;
+}
+
+export type SteamClientInterfaceName =
+  | "user"
+  | "gameServer"
+  | "friends"
+  | "utils"
+  | "matchmaking"
+  | "matchmakingServers"
+  | "generic"
+  | "userStats"
+  | "gameServerStats"
+  | "apps"
+  | "networking"
+  | "remoteStorage"
+  | "screenshots"
+  | "http"
+  | "controller"
+  | "ugc"
+  | "music"
+  | "htmlSurface"
+  | "inventory"
+  | "video"
+  | "parentalSettings"
+  | "input"
+  | "parties"
+  | "remotePlay";
+
+export interface SteamClientInterfaceOptions {
+  user?: number | null;
+  pipe?: number | null;
+  version?: string | null;
 }
 
 export interface MicroTxnAuthorizationResponse {
@@ -2289,6 +2327,21 @@ export const NetworkingFakeIpType = {
   LocalIPv4: 3
 } as const;
 
+export const SteamAccountType = {
+  Invalid: 0,
+  Individual: 1,
+  Multiseat: 2,
+  GameServer: 3,
+  AnonGameServer: 4,
+  Pending: 5,
+  ContentServer: 6,
+  Clan: 7,
+  Chat: 8,
+  ConsoleUser: 9,
+  AnonUser: 10,
+  Max: 11
+} as const;
+
 export const NetworkingConfigScope = {
   Global: 1,
   SocketsInterface: 2,
@@ -3213,6 +3266,45 @@ export function getMacWindowSnapshot(appId?: number): string | undefined {
 export function isAchievementActivated(name: string): boolean {
   return native().isAchievementActivated(name);
 }
+
+export const client = {
+  SteamAccountType,
+  createSteamPipe(): number {
+    return native().clientCreateSteamPipe();
+  },
+  releaseSteamPipe(pipe: number): boolean {
+    return native().clientReleaseSteamPipe(pipe);
+  },
+  connectToGlobalUser(pipe: number): number {
+    return native().clientConnectToGlobalUser(pipe);
+  },
+  createLocalUser(accountType = SteamAccountType.Individual): SteamClientLocalUser {
+    return normalizeSteamClientLocalUser(native().clientCreateLocalUser(accountType));
+  },
+  releaseUser(pipe: number, user: number): void {
+    native().clientReleaseUser(pipe, user);
+  },
+  setLocalIpBinding(ipv4: number, port = 0): void {
+    native().clientSetLocalIpBinding(ipv4, port);
+  },
+  getInterface(name: SteamClientInterfaceName, options: SteamClientInterfaceOptions = {}): bigint | null {
+    const pointer = native().clientGetInterface(name, options.user ?? undefined, options.pipe ?? undefined, options.version ?? undefined);
+    return pointer == null ? null : BigInt(pointer);
+  },
+  getIPCCallCount(): number {
+    return native().clientGetIpcCallCount();
+  },
+  registerWarningMessageHook(handler: (event: UtilsWarningMessage) => void): CallbackHandle {
+    return wrapCallbackHandle(
+      native().clientRegisterWarningMessageHook((event) => {
+        handler(normalizeUtilsWarningMessage(event));
+      })
+    );
+  },
+  shutdownIfAllPipesClosed(): boolean {
+    return native().clientShutdownIfAllPipesClosed();
+  }
+};
 
 export const achievement = {
   activate(name: string): boolean {
@@ -7108,6 +7200,7 @@ export interface SteamBridgeClient {
   apps: typeof apps;
   auth: typeof auth;
   callback: typeof callback;
+  client: typeof client;
   cloud: typeof cloud;
   controller: typeof controller;
   friends: typeof friends;
@@ -7146,6 +7239,7 @@ export function createCompatibilityClient(): SteamBridgeClient {
     apps,
     auth,
     callback,
+    client,
     cloud,
     controller,
     friends,
@@ -8055,6 +8149,13 @@ function normalizeFollowingListResult(result: NativeFollowingListResult): Follow
     steamIds: steamIds.map(normalizeSteamId),
     returnedResults: Number(source.returnedResults ?? source.returned_results ?? steamIds.length),
     totalResults: Number(source.totalResults ?? source.total_results ?? steamIds.length)
+  };
+}
+
+function normalizeSteamClientLocalUser(result: NativeSteamClientLocalUser): SteamClientLocalUser {
+  return {
+    user: Number(result.user ?? 0),
+    pipe: Number(result.pipe ?? 0)
   };
 }
 
@@ -9650,6 +9751,7 @@ const defaultExport = {
   apps,
   auth,
   callback,
+  client,
   cloud,
   friends,
   gameServer,

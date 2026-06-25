@@ -16,6 +16,10 @@ The native layer currently targets the Steamworks flat C API through
   placement, VR helpers, China launcher checks, text filtering, IPv6
   connectivity checks, file signature checks, raw APICall inspection, gamepad
   text input helpers, warning hooks, and utility callback events.
+- Steam client: low-level Steam pipe/user creation and release helpers, global
+  user connection, local IPv4 binding, typed interface pointer lookup, generic
+  interface lookup by version, IPC call counts, warning hooks, and
+  shutdown-if-all-pipes-closed checks.
 - User/auth: local Steam ID helpers, Web API auth tickets, session tickets by
   Steam ID or IP, auth session validation helpers, voice recording/capture and
   decompression, encrypted app tickets, store auth URLs, badge/level/account

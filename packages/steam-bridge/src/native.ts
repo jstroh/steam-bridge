@@ -1067,6 +1067,11 @@ export interface NativeWorkshopItemsResult {
   next_cursor?: string;
 }
 
+export interface NativeSteamClientLocalUser {
+  user: number;
+  pipe: number;
+}
+
 export interface NativeFriendGameInfo {
   gameId?: bigint | string | number;
   game_id?: bigint | string | number;
@@ -2402,6 +2407,17 @@ export interface NativeBinding {
   matchmakingSetLobbyType(lobbyId: bigint, lobbyType: number): boolean;
   matchmakingSetLobbyOwner(lobbyId: bigint, steamId64: bigint): boolean;
   matchmakingSetLinkedLobby(lobbyId: bigint, dependentLobbyId: bigint): boolean;
+
+  clientCreateSteamPipe(): number;
+  clientReleaseSteamPipe(pipe: number): boolean;
+  clientConnectToGlobalUser(pipe: number): number;
+  clientCreateLocalUser(accountType: number): NativeSteamClientLocalUser;
+  clientReleaseUser(pipe: number, user: number): void;
+  clientSetLocalIpBinding(ipv4: number, port: number): void;
+  clientGetInterface(interfaceName: string, user?: number | null, pipe?: number | null, version?: string | null): bigint | null | undefined;
+  clientGetIpcCallCount(): number;
+  clientRegisterWarningMessageHook(handler: (event: NativeUtilsWarningMessage) => void): NativeCallbackHandle;
+  clientShutdownIfAllPipesClosed(): boolean;
 
   workshopCreateItem(appId?: number | null): Promise<NativeUgcResult>;
   workshopUpdateItem(itemId: bigint, updateDetails: unknown, appId?: number | null): Promise<NativeUgcResult>;
