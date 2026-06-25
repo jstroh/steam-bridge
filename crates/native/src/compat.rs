@@ -172,6 +172,15 @@ pub struct AppBetaInfo {
     pub last_updated: u32,
 }
 
+#[napi(object)]
+pub struct AppFileDetails {
+    pub result: u32,
+    pub file_size: BigInt,
+    pub sha: Buffer,
+    pub sha_hex: String,
+    pub flags: u32,
+}
+
 #[derive(Debug)]
 #[napi(object)]
 pub struct InventoryItemDetail {
@@ -1816,6 +1825,30 @@ pub fn apps_beta_info(index: i32) -> Result<Option<AppBetaInfo>, Error> {
 pub fn apps_set_active_beta(beta_name: String) -> Result<bool, Error> {
     let beta_name = cstring(beta_name, "beta name")?;
     Ok(unsafe { sys::SteamAPI_ISteamApps_SetActiveBeta(steam_apps()?, beta_name.as_ptr()) })
+}
+
+#[napi(js_name = "appsGetFileDetails")]
+pub async fn apps_get_file_details(
+    file_name: String,
+    timeout_seconds: Option<u32>,
+) -> Result<AppFileDetails, Error> {
+    let apps = steam_apps()?;
+    let file_name = cstring(file_name, "file name")?;
+    let call = unsafe { sys::SteamAPI_ISteamApps_GetFileDetails(apps, file_name.as_ptr()) };
+    let result: sys::FileDetailsResult_t = wait_for_api_call(
+        call,
+        sys::FileDetailsResult_t_k_iCallback as i32,
+        u64::from(timeout_seconds.unwrap_or(DEFAULT_ASYNC_TIMEOUT_SECONDS as u32)),
+    )
+    .await?;
+    let sha = unsafe { ptr::addr_of!(result.m_FileSHA).read_unaligned() };
+    Ok(AppFileDetails {
+        result: unsafe { ptr::addr_of!(result.m_eResult).read_unaligned() } as u32,
+        file_size: unsafe { ptr::addr_of!(result.m_ulFileSize).read_unaligned() }.into(),
+        sha: sha.to_vec().into(),
+        sha_hex: bytes_to_hex(&sha),
+        flags: unsafe { ptr::addr_of!(result.m_unFlags).read_unaligned() },
+    })
 }
 
 #[napi(js_name = "localplayerGetName")]
@@ -5255,6 +5288,23 @@ pub fn utils_get_ipc_call_count() -> Result<u32, Error> {
     Ok(unsafe { sys::SteamAPI_ISteamUtils_GetIPCCallCount(steam_utils()?) })
 }
 
+#[napi(js_name = "utilsCheckFileSignature")]
+pub async fn utils_check_file_signature(
+    file_name: String,
+    timeout_seconds: Option<u32>,
+) -> Result<u32, Error> {
+    let utils = steam_utils()?;
+    let file_name = cstring(file_name, "file name")?;
+    let call = unsafe { sys::SteamAPI_ISteamUtils_CheckFileSignature(utils, file_name.as_ptr()) };
+    let result: sys::CheckFileSignature_t = wait_for_api_call(
+        call,
+        sys::CheckFileSignature_t_k_iCallback as i32,
+        u64::from(timeout_seconds.unwrap_or(DEFAULT_ASYNC_TIMEOUT_SECONDS as u32)),
+    )
+    .await?;
+    Ok(result.m_eCheckFileSignature as u32)
+}
+
 #[napi(js_name = "utilsSetOverlayNotificationPosition")]
 pub fn utils_set_overlay_notification_position(position: i32) -> Result<(), Error> {
     unsafe {
@@ -7361,6 +7411,15 @@ fn u8_buf_to_string(buf: &[u8]) -> String {
         .position(|value| *value == 0)
         .unwrap_or(buf.len());
     String::from_utf8_lossy(&buf[..nul]).into_owned()
+}
+
+fn bytes_to_hex(bytes: &[u8]) -> String {
+    let mut output = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        use std::fmt::Write as _;
+        let _ = write!(&mut output, "{byte:02x}");
+    }
+    output
 }
 
 async fn get_session_ticket(

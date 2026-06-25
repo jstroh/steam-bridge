@@ -117,6 +117,16 @@ export interface NativeAppBetaInfo {
   last_updated?: number;
 }
 
+export interface NativeAppFileDetails {
+  result: number;
+  fileSize?: bigint | string | number;
+  file_size?: bigint | string | number;
+  sha: Buffer;
+  shaHex?: string;
+  sha_hex?: string;
+  flags: number;
+}
+
 export interface NativeInventoryItemDetail {
   itemId?: bigint | string | number;
   item_id?: bigint | string | number;
@@ -673,6 +683,7 @@ export interface NativeBinding {
   utilsGetImageRgba(image: number): Buffer | null | undefined;
   utilsGetCurrentBatteryPower(): number;
   utilsGetIpcCallCount(): number;
+  utilsCheckFileSignature(fileName: string, timeoutSeconds?: number): Promise<number>;
   utilsSetOverlayNotificationPosition(position: number): void;
   utilsSetOverlayNotificationInset(horizontal: number, vertical: number): void;
   utilsIsSteamRunningInVr(): boolean;
@@ -749,6 +760,7 @@ export interface NativeBinding {
   appsBetaCounts(): NativeAppBetaCounts;
   appsBetaInfo(index: number): NativeAppBetaInfo | null | undefined;
   appsSetActiveBeta(betaName: string): boolean;
+  appsGetFileDetails(fileName: string, timeoutSeconds?: number): Promise<NativeAppFileDetails>;
 
   localplayerGetName(): string;
   localplayerGetLevel(): number;

@@ -246,7 +246,7 @@ test("Steam IDs and diagnostics are normalized for JavaScript callers", (t) => {
   });
 });
 
-test("utils facade covers activity, images, VR, filtering, and text input helpers", (t) => {
+test("utils facade covers activity, images, VR, filtering, and text input helpers", async (t) => {
   const imageData = Buffer.from([255, 0, 0, 255, 0, 255, 0, 255]);
   const fake = createFakeNative({
     utilsGetSecondsSinceAppActive() {
@@ -280,6 +280,10 @@ test("utils facade covers activity, images, VR, filtering, and text input helper
     utilsGetIpcCallCount() {
       this.calls.push({ method: "utilsGetIpcCallCount", args: [] });
       return 3;
+    },
+    utilsCheckFileSignature(fileName, timeoutSeconds) {
+      this.calls.push({ method: "utilsCheckFileSignature", args: [fileName, timeoutSeconds] });
+      return Promise.resolve(1);
     },
     utilsSetOverlayNotificationPosition(position) {
       this.calls.push({ method: "utilsSetOverlayNotificationPosition", args: [position] });
@@ -348,6 +352,10 @@ test("utils facade covers activity, images, VR, filtering, and text input helper
   assert.equal(steam.utils.getImageRGBA(99), null);
   assert.equal(steam.utils.getCurrentBatteryPower(), 95);
   assert.equal(steam.utils.getIPCCallCount(), 3);
+  assert.equal(
+    await steam.utils.checkFileSignature("steam_appid.txt", 5),
+    steam.utils.CheckFileSignature.ValidSignature
+  );
 
   steam.utils.setOverlayNotificationPosition(steam.utils.OverlayNotificationPosition.BottomRight);
   steam.utils.setOverlayNotificationInset(16, 24);
@@ -374,11 +382,13 @@ test("utils facade covers activity, images, VR, filtering, and text input helper
       [
         "utilsSetOverlayNotificationPosition",
         "utilsSetOverlayNotificationInset",
+        "utilsCheckFileSignature",
         "utilsFilterText",
         "utilsSetGameLauncherMode"
       ].includes(call.method)
     ),
     [
+      { method: "utilsCheckFileSignature", args: ["steam_appid.txt", 5] },
       { method: "utilsSetOverlayNotificationPosition", args: [3] },
       { method: "utilsSetOverlayNotificationInset", args: [16, 24] },
       { method: "utilsFilterText", args: [2, 76561198000000000n, "hello", 256] },
@@ -450,7 +460,8 @@ test("overlay helpers map constants and forward modal/store options", (t) => {
   );
 });
 
-test("apps facade covers DLC, launch, depot, trial, and beta helpers", (t) => {
+test("apps facade covers DLC, launch, depot, trial, beta, and file-detail helpers", async (t) => {
+  const sha = Buffer.from("00112233445566778899aabbccddeeff00112233", "hex");
   const fake = createFakeNative({
     appsEarliestPurchaseUnixTime(appId) {
       this.calls.push({ method: "appsEarliestPurchaseUnixTime", args: [appId] });
@@ -521,6 +532,10 @@ test("apps facade covers DLC, launch, depot, trial, and beta helpers", (t) => {
     appsSetActiveBeta(betaName) {
       this.calls.push({ method: "appsSetActiveBeta", args: [betaName] });
       return true;
+    },
+    appsGetFileDetails(fileName, timeoutSeconds) {
+      this.calls.push({ method: "appsGetFileDetails", args: [fileName, timeoutSeconds] });
+      return Promise.resolve({ result: 1, file_size: "12345", sha, sha_hex: sha.toString("hex"), flags: 2 });
     }
   });
   const steam = loadSteamWithFakeNative(fake);
@@ -556,20 +571,29 @@ test("apps facade covers DLC, launch, depot, trial, and beta helpers", (t) => {
   });
   assert.equal(steam.apps.betaInfo(9), null);
   assert.equal(steam.apps.setActiveBeta("public"), true);
+  assert.deepEqual(await steam.apps.getFileDetails("steam_appid.txt", 5), {
+    result: 1,
+    fileSize: 12345n,
+    sha,
+    shaHex: sha.toString("hex"),
+    flags: 2
+  });
   assert.deepEqual(
     fake.calls.filter((call) =>
       [
         "appsInstalledDepots",
         "appsMarkContentCorrupt",
         "appsLaunchCommandLine",
-        "appsSetActiveBeta"
+        "appsSetActiveBeta",
+        "appsGetFileDetails"
       ].includes(call.method)
     ),
     [
       { method: "appsMarkContentCorrupt", args: [true] },
       { method: "appsInstalledDepots", args: [480, 4] },
       { method: "appsLaunchCommandLine", args: [512] },
-      { method: "appsSetActiveBeta", args: ["public"] }
+      { method: "appsSetActiveBeta", args: ["public"] },
+      { method: "appsGetFileDetails", args: ["steam_appid.txt", 5] }
     ]
   );
 });

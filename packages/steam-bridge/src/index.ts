@@ -8,6 +8,7 @@ import {
   NativeAppBetaInfo,
   NativeAppDlcData,
   NativeAppDlcDownloadProgress,
+  NativeAppFileDetails,
   NativeAppTimedTrialInfo,
   NativeAuthTicket,
   NativeBinding,
@@ -237,6 +238,14 @@ export interface AppBetaInfo {
   name: string;
   description: string;
   lastUpdated: number;
+}
+
+export interface AppFileDetails {
+  result: number;
+  fileSize: bigint;
+  sha: Buffer;
+  shaHex: string;
+  flags: number;
 }
 
 export interface InventoryItemDetail {
@@ -1109,6 +1118,14 @@ export const IPv6ConnectivityState = {
   Bad: 2
 } as const;
 
+export const CheckFileSignature = {
+  InvalidSignature: 0,
+  ValidSignature: 1,
+  FileNotFound: 2,
+  NoSignaturesFoundForThisApp: 3,
+  NoSignaturesFoundForThisFile: 4
+} as const;
+
 export const UgcItemVisibility = {
   Public: 0,
   FriendsOnly: 1,
@@ -1557,6 +1574,9 @@ export const apps = {
   },
   setActiveBeta(betaName: string): boolean {
     return native().appsSetActiveBeta(betaName);
+  },
+  async getFileDetails(fileName: string, timeoutSeconds?: number | null): Promise<AppFileDetails> {
+    return normalizeAppFileDetails(await native().appsGetFileDetails(fileName, timeoutSeconds ?? undefined));
   }
 };
 
@@ -2739,6 +2759,7 @@ export const utils = {
   TextFilteringContext,
   IPv6ConnectivityProtocol,
   IPv6ConnectivityState,
+  CheckFileSignature,
   getAppId,
   getServerRealTime(): number {
     return native().utilsGetServerRealTime();
@@ -2766,6 +2787,9 @@ export const utils = {
   },
   getIPCCallCount(): number {
     return native().utilsGetIpcCallCount();
+  },
+  async checkFileSignature(fileName: string, timeoutSeconds?: number | null): Promise<number> {
+    return native().utilsCheckFileSignature(fileName, timeoutSeconds ?? undefined);
   },
   setOverlayNotificationPosition(position: number): void {
     native().utilsSetOverlayNotificationPosition(position);
@@ -3244,6 +3268,18 @@ function normalizeAppBetaInfo(info: NativeAppBetaInfo | null | undefined): AppBe
     name: info.name,
     description: info.description,
     lastUpdated: Number(info.lastUpdated ?? info.last_updated ?? 0)
+  };
+}
+
+function normalizeAppFileDetails(details: NativeAppFileDetails): AppFileDetails {
+  const source = details as unknown as Record<string, unknown>;
+  const sha = Buffer.from(details.sha);
+  return {
+    result: details.result,
+    fileSize: BigInt((source.fileSize ?? source.file_size ?? 0) as bigint | number | string),
+    sha,
+    shaHex: String(source.shaHex ?? source.sha_hex ?? sha.toString("hex")),
+    flags: details.flags
   };
 }
 
