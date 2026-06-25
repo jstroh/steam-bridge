@@ -914,6 +914,8 @@ test("init reads the Steam app ID from the environment and returns the grouped c
   assert.equal(steam.default.gameServerHttp, steam.gameServerHttp);
   assert.equal(client.gameServerNetworkingMessages, steam.gameServerNetworkingMessages);
   assert.equal(steam.default.gameServerNetworkingMessages, steam.gameServerNetworkingMessages);
+  assert.equal(client.gameServerNetworkingSockets, steam.gameServerNetworkingSockets);
+  assert.equal(steam.default.gameServerNetworkingSockets, steam.gameServerNetworkingSockets);
   assert.equal(client.gameServerStats, steam.gameServerStats);
   assert.equal(client.http, steam.http);
   assert.equal(client.inventory, steam.inventory);
@@ -3640,6 +3642,147 @@ test("game server networking messages facade dispatches through game server nati
   assert.deepEqual(fake.calls.find((call) => call.method === "gameServerNetworkingMessagesSendMessageToUser"), {
     method: "gameServerNetworkingMessagesSendMessageToUser",
     args: [identity, Buffer.from("server-payload"), 8, 3]
+  });
+});
+
+test("game server networking sockets facade uses game-server native bindings", (t) => {
+  const peer = { identity_type: 16, text: "steamid:76561198000000012", steam_id64: "76561198000000012" };
+  const address = {
+    text: "127.0.0.1:27015",
+    ipv4: 2130706433,
+    port: 27015,
+    ipv4_address: "127.0.0.1",
+    is_ipv4: true,
+    is_local_host: true,
+    is_fake_ip: false,
+    fake_ip_type: 0,
+    ipv6_all_zeros: false
+  };
+  const quickStatus = {
+    state: 3,
+    ping: 21,
+    connection_quality_local: 0.99,
+    connection_quality_remote: 0.98,
+    out_packets_per_second: 8,
+    out_bytes_per_second: 2048,
+    in_packets_per_second: 7,
+    in_bytes_per_second: 1024,
+    send_rate_bytes_per_second: 4096,
+    pending_unreliable: 1,
+    pending_reliable: 2,
+    sent_unacked_reliable: 3,
+    queue_time: "3000",
+    max_jitter: 40
+  };
+  const fake = createFakeNative({
+    gameServerNetworkingSocketsCreateListenSocketIp(addr) {
+      this.calls.push({ method: "gameServerNetworkingSocketsCreateListenSocketIp", args: [addr] });
+      return 144;
+    },
+    gameServerNetworkingSocketsConnectP2p(identity, port) {
+      this.calls.push({ method: "gameServerNetworkingSocketsConnectP2p", args: [identity, port] });
+      return 202;
+    },
+    gameServerNetworkingSocketsSendMessages(messages) {
+      this.calls.push({ method: "gameServerNetworkingSocketsSendMessages", args: [messages] });
+      return [{ result: 1, message_number: "901" }];
+    },
+    gameServerNetworkingSocketsReceiveMessagesOnConnection(connection, maxMessages) {
+      this.calls.push({ method: "gameServerNetworkingSocketsReceiveMessagesOnConnection", args: [connection, maxMessages] });
+      return [
+        {
+          data: Buffer.from("server-socket"),
+          size: 13,
+          peer,
+          connection,
+          connection_user_data: "99",
+          time_received: "987",
+          message_number: "123",
+          channel: 2,
+          flags: 8,
+          user_data: "77",
+          lane: 4
+        }
+      ];
+    },
+    gameServerNetworkingSocketsGetConnectionInfo(connection) {
+      this.calls.push({ method: "gameServerNetworkingSocketsGetConnectionInfo", args: [connection] });
+      return {
+        state: 3,
+        remote_identity: peer,
+        user_data: "99",
+        listen_socket: 144,
+        remote_address: address,
+        remote_pop: 1234,
+        relay_pop: 5678,
+        end_reason: 0,
+        end_debug: "",
+        connection_description: "game server socket to peer",
+        flags: 16
+      };
+    },
+    gameServerNetworkingSocketsGetConnectionRealTimeStatusWithLanes(connection, maxLanes) {
+      this.calls.push({
+        method: "gameServerNetworkingSocketsGetConnectionRealTimeStatusWithLanes",
+        args: [connection, maxLanes]
+      });
+      return {
+        status: quickStatus,
+        lanes: [{ pending_unreliable: 4, pending_reliable: 5, sent_unacked_reliable: 6, queue_time: "7000" }]
+      };
+    },
+    gameServerNetworkingSocketsGetAuthenticationStatus() {
+      this.calls.push({ method: "gameServerNetworkingSocketsGetAuthenticationStatus", args: [] });
+      return { availability: 100, debug_message: "server auth ready" };
+    },
+    gameServerNetworkingSocketsGetHostedDedicatedServerAddress() {
+      this.calls.push({ method: "gameServerNetworkingSocketsGetHostedDedicatedServerAddress", args: [] });
+      return {
+        result: 1,
+        routing: { pop_id: 4321, size: 3, data: Buffer.from("sdr") },
+        debug_message: ""
+      };
+    },
+    gameServerNetworkingSocketsCreateFakeUdpPort(fakeServerPort) {
+      this.calls.push({ method: "gameServerNetworkingSocketsCreateFakeUdpPort", args: [fakeServerPort] });
+      return 701;
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  const identity = { steamId64: 76561198000000012n };
+  assert.equal(steam.gameServerNetworkingSockets.ConnectionState.Connected, 3);
+  assert.equal(steam.gameServerNetworkingSockets.Availability.Current, 100);
+  assert.equal(steam.gameServerNetworkingSockets.createListenSocketIP({ ipv4: 2130706433, port: 27015 }), 144);
+  assert.equal(steam.gameServerNetworkingSockets.connectP2P(identity, 7), 202);
+  assert.deepEqual(
+    steam.gameServerNetworkingSockets.sendMessages([
+      {
+        connection: 202,
+        data: Buffer.from("server-batch"),
+        sendFlags: steam.gameServerNetworkingSockets.SendFlags.ReliableNoNagle
+      }
+    ]),
+    [{ result: 1, messageNumber: 901n }]
+  );
+  assert.equal(steam.gameServerNetworkingSockets.receiveMessagesOnConnection(202, 2)[0].messageNumber, 123n);
+  assert.equal(steam.gameServerNetworkingSockets.getConnectionInfo(202).remoteIdentity.steamId64, 76561198000000012n);
+  assert.equal(
+    steam.gameServerNetworkingSockets.getConnectionRealTimeStatusWithLanes(202, 1).lanes[0].queueTime,
+    7000n
+  );
+  assert.equal(steam.gameServerNetworkingSockets.getAuthenticationStatus().debugMessage, "server auth ready");
+  assert.equal(steam.gameServerNetworkingSockets.getHostedDedicatedServerAddress().routing.popId, 4321);
+  assert.equal(steam.gameServerNetworkingSockets.createFakeUDPPort(1), 701);
+
+  const sendMessagesCall = fake.calls.find((call) => call.method === "gameServerNetworkingSocketsSendMessages");
+  assert.equal(sendMessagesCall.args[0][0].data.toString(), "server-batch");
+  assert.equal(sendMessagesCall.args[0][0].sendFlags, steam.gameServerNetworkingSockets.SendFlags.ReliableNoNagle);
+  assert.deepEqual(fake.calls.find((call) => call.method === "gameServerNetworkingSocketsConnectP2p"), {
+    method: "gameServerNetworkingSocketsConnectP2p",
+    args: [{ steamId64: 76561198000000012n }, 7]
   });
 });
 

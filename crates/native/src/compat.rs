@@ -12,6 +12,7 @@ use napi::threadsafe_function::{ThreadsafeFunction, ThreadsafeFunctionCallMode};
 use napi_derive::napi;
 use once_cell::sync::Lazy;
 use serde_json::Value;
+use std::cell::Cell;
 use std::collections::HashMap;
 use std::ffi::{c_char, c_void, CStr, CString};
 use std::mem::MaybeUninit;
@@ -10707,9 +10708,287 @@ pub fn networking_sockets_create_fake_udp_port(
     }
 }
 
+macro_rules! game_server_networking_sockets_wrapper {
+    ($js_name:literal, $fn_name:ident, $client_fn:ident($($arg:ident: $arg_ty:ty),*) -> $return_ty:ty) => {
+        #[napi(js_name = $js_name)]
+        pub fn $fn_name($($arg: $arg_ty),*) -> Result<$return_ty, Error> {
+            with_game_server_networking_sockets(|| $client_fn($($arg),*))
+        }
+    };
+}
+
+game_server_networking_sockets_wrapper!(
+    "gameServerNetworkingSocketsCreateListenSocketIp",
+    game_server_networking_sockets_create_listen_socket_ip,
+    networking_sockets_create_listen_socket_ip(address: NetworkingIpAddress) -> u32
+);
+game_server_networking_sockets_wrapper!(
+    "gameServerNetworkingSocketsConnectByIpAddress",
+    game_server_networking_sockets_connect_by_ip_address,
+    networking_sockets_connect_by_ip_address(address: NetworkingIpAddress) -> u32
+);
+game_server_networking_sockets_wrapper!(
+    "gameServerNetworkingSocketsCreateListenSocketP2p",
+    game_server_networking_sockets_create_listen_socket_p2p,
+    networking_sockets_create_listen_socket_p2p(local_virtual_port: Option<i32>) -> u32
+);
+game_server_networking_sockets_wrapper!(
+    "gameServerNetworkingSocketsConnectP2p",
+    game_server_networking_sockets_connect_p2p,
+    networking_sockets_connect_p2p(identity: NetworkingIdentity, remote_virtual_port: Option<i32>) -> u32
+);
+game_server_networking_sockets_wrapper!(
+    "gameServerNetworkingSocketsAcceptConnection",
+    game_server_networking_sockets_accept_connection,
+    networking_sockets_accept_connection(connection: u32) -> u32
+);
+game_server_networking_sockets_wrapper!(
+    "gameServerNetworkingSocketsCloseConnection",
+    game_server_networking_sockets_close_connection,
+    networking_sockets_close_connection(
+        connection: u32,
+        reason: Option<i32>,
+        debug: Option<String>,
+        enable_linger: Option<bool>
+    ) -> bool
+);
+game_server_networking_sockets_wrapper!(
+    "gameServerNetworkingSocketsCloseListenSocket",
+    game_server_networking_sockets_close_listen_socket,
+    networking_sockets_close_listen_socket(socket: u32) -> bool
+);
+game_server_networking_sockets_wrapper!(
+    "gameServerNetworkingSocketsSetConnectionUserData",
+    game_server_networking_sockets_set_connection_user_data,
+    networking_sockets_set_connection_user_data(connection: u32, user_data: BigInt) -> bool
+);
+game_server_networking_sockets_wrapper!(
+    "gameServerNetworkingSocketsGetConnectionUserData",
+    game_server_networking_sockets_get_connection_user_data,
+    networking_sockets_get_connection_user_data(connection: u32) -> BigInt
+);
+game_server_networking_sockets_wrapper!(
+    "gameServerNetworkingSocketsSetConnectionName",
+    game_server_networking_sockets_set_connection_name,
+    networking_sockets_set_connection_name(connection: u32, name: String) -> ()
+);
+game_server_networking_sockets_wrapper!(
+    "gameServerNetworkingSocketsGetConnectionName",
+    game_server_networking_sockets_get_connection_name,
+    networking_sockets_get_connection_name(connection: u32) -> Option<String>
+);
+game_server_networking_sockets_wrapper!(
+    "gameServerNetworkingSocketsSendMessageToConnection",
+    game_server_networking_sockets_send_message_to_connection,
+    networking_sockets_send_message_to_connection(
+        connection: u32,
+        data: Buffer,
+        send_flags: Option<i32>
+    ) -> NetworkingSocketSendResult
+);
+game_server_networking_sockets_wrapper!(
+    "gameServerNetworkingSocketsSendMessages",
+    game_server_networking_sockets_send_messages,
+    networking_sockets_send_messages(messages: Vec<NetworkingSocketOutgoingMessage>) -> Vec<NetworkingSocketSendResult>
+);
+game_server_networking_sockets_wrapper!(
+    "gameServerNetworkingSocketsFlushMessagesOnConnection",
+    game_server_networking_sockets_flush_messages_on_connection,
+    networking_sockets_flush_messages_on_connection(connection: u32) -> u32
+);
+game_server_networking_sockets_wrapper!(
+    "gameServerNetworkingSocketsReceiveMessagesOnConnection",
+    game_server_networking_sockets_receive_messages_on_connection,
+    networking_sockets_receive_messages_on_connection(
+        connection: u32,
+        max_messages: Option<u32>
+    ) -> Vec<NetworkingMessage>
+);
+game_server_networking_sockets_wrapper!(
+    "gameServerNetworkingSocketsGetConnectionInfo",
+    game_server_networking_sockets_get_connection_info,
+    networking_sockets_get_connection_info(connection: u32) -> Option<NetworkingConnectionInfo>
+);
+game_server_networking_sockets_wrapper!(
+    "gameServerNetworkingSocketsGetConnectionRealTimeStatus",
+    game_server_networking_sockets_get_connection_real_time_status,
+    networking_sockets_get_connection_real_time_status(connection: u32) -> Option<NetworkingConnectionRealTimeStatus>
+);
+game_server_networking_sockets_wrapper!(
+    "gameServerNetworkingSocketsGetConnectionRealTimeStatusWithLanes",
+    game_server_networking_sockets_get_connection_real_time_status_with_lanes,
+    networking_sockets_get_connection_real_time_status_with_lanes(
+        connection: u32,
+        max_lanes: Option<u32>
+    ) -> Option<NetworkingConnectionRealTimeStatusWithLanes>
+);
+game_server_networking_sockets_wrapper!(
+    "gameServerNetworkingSocketsGetDetailedConnectionStatus",
+    game_server_networking_sockets_get_detailed_connection_status,
+    networking_sockets_get_detailed_connection_status(
+        connection: u32,
+        max_bytes: Option<u32>
+    ) -> Option<String>
+);
+game_server_networking_sockets_wrapper!(
+    "gameServerNetworkingSocketsGetListenSocketAddress",
+    game_server_networking_sockets_get_listen_socket_address,
+    networking_sockets_get_listen_socket_address(socket: u32) -> Option<NetworkingIpAddressInfo>
+);
+game_server_networking_sockets_wrapper!(
+    "gameServerNetworkingSocketsCreateSocketPair",
+    game_server_networking_sockets_create_socket_pair,
+    networking_sockets_create_socket_pair(
+        use_network_loopback: bool,
+        identity1: Option<NetworkingIdentity>,
+        identity2: Option<NetworkingIdentity>
+    ) -> Option<NetworkingSocketPair>
+);
+game_server_networking_sockets_wrapper!(
+    "gameServerNetworkingSocketsConfigureConnectionLanes",
+    game_server_networking_sockets_configure_connection_lanes,
+    networking_sockets_configure_connection_lanes(
+        connection: u32,
+        priorities: Vec<i32>,
+        weights: Option<Vec<u32>>
+    ) -> u32
+);
+game_server_networking_sockets_wrapper!(
+    "gameServerNetworkingSocketsGetIdentity",
+    game_server_networking_sockets_get_identity,
+    networking_sockets_get_identity() -> Option<NetworkingIdentityInfo>
+);
+game_server_networking_sockets_wrapper!(
+    "gameServerNetworkingSocketsInitAuthentication",
+    game_server_networking_sockets_init_authentication,
+    networking_sockets_init_authentication() -> i32
+);
+game_server_networking_sockets_wrapper!(
+    "gameServerNetworkingSocketsGetAuthenticationStatus",
+    game_server_networking_sockets_get_authentication_status,
+    networking_sockets_get_authentication_status() -> NetworkingAuthenticationStatus
+);
+game_server_networking_sockets_wrapper!(
+    "gameServerNetworkingSocketsCreatePollGroup",
+    game_server_networking_sockets_create_poll_group,
+    networking_sockets_create_poll_group() -> u32
+);
+game_server_networking_sockets_wrapper!(
+    "gameServerNetworkingSocketsRunCallbacks",
+    game_server_networking_sockets_run_callbacks,
+    networking_sockets_run_callbacks() -> ()
+);
+game_server_networking_sockets_wrapper!(
+    "gameServerNetworkingSocketsDestroyPollGroup",
+    game_server_networking_sockets_destroy_poll_group,
+    networking_sockets_destroy_poll_group(poll_group: u32) -> bool
+);
+game_server_networking_sockets_wrapper!(
+    "gameServerNetworkingSocketsSetConnectionPollGroup",
+    game_server_networking_sockets_set_connection_poll_group,
+    networking_sockets_set_connection_poll_group(connection: u32, poll_group: u32) -> bool
+);
+game_server_networking_sockets_wrapper!(
+    "gameServerNetworkingSocketsReceiveMessagesOnPollGroup",
+    game_server_networking_sockets_receive_messages_on_poll_group,
+    networking_sockets_receive_messages_on_poll_group(
+        poll_group: u32,
+        max_messages: Option<u32>
+    ) -> Vec<NetworkingMessage>
+);
+game_server_networking_sockets_wrapper!(
+    "gameServerNetworkingSocketsReceivedRelayAuthTicket",
+    game_server_networking_sockets_received_relay_auth_ticket,
+    networking_sockets_received_relay_auth_ticket(ticket: Buffer) -> bool
+);
+game_server_networking_sockets_wrapper!(
+    "gameServerNetworkingSocketsFindRelayAuthTicketForServer",
+    game_server_networking_sockets_find_relay_auth_ticket_for_server,
+    networking_sockets_find_relay_auth_ticket_for_server(
+        identity: NetworkingIdentity,
+        remote_virtual_port: Option<i32>
+    ) -> i32
+);
+game_server_networking_sockets_wrapper!(
+    "gameServerNetworkingSocketsConnectToHostedDedicatedServer",
+    game_server_networking_sockets_connect_to_hosted_dedicated_server,
+    networking_sockets_connect_to_hosted_dedicated_server(
+        identity: NetworkingIdentity,
+        remote_virtual_port: Option<i32>
+    ) -> u32
+);
+game_server_networking_sockets_wrapper!(
+    "gameServerNetworkingSocketsGetHostedDedicatedServerPort",
+    game_server_networking_sockets_get_hosted_dedicated_server_port,
+    networking_sockets_get_hosted_dedicated_server_port() -> u32
+);
+game_server_networking_sockets_wrapper!(
+    "gameServerNetworkingSocketsGetHostedDedicatedServerPopId",
+    game_server_networking_sockets_get_hosted_dedicated_server_pop_id,
+    networking_sockets_get_hosted_dedicated_server_pop_id() -> u32
+);
+game_server_networking_sockets_wrapper!(
+    "gameServerNetworkingSocketsGetHostedDedicatedServerAddress",
+    game_server_networking_sockets_get_hosted_dedicated_server_address,
+    networking_sockets_get_hosted_dedicated_server_address() -> NetworkingHostedDedicatedServerAddressResult
+);
+game_server_networking_sockets_wrapper!(
+    "gameServerNetworkingSocketsCreateHostedDedicatedServerListenSocket",
+    game_server_networking_sockets_create_hosted_dedicated_server_listen_socket,
+    networking_sockets_create_hosted_dedicated_server_listen_socket(local_virtual_port: Option<i32>) -> u32
+);
+game_server_networking_sockets_wrapper!(
+    "gameServerNetworkingSocketsGetGameCoordinatorServerLogin",
+    game_server_networking_sockets_get_game_coordinator_server_login,
+    networking_sockets_get_game_coordinator_server_login(
+        app_data: Option<Buffer>,
+        max_blob_bytes: Option<u32>
+    ) -> NetworkingGameCoordinatorServerLoginResult
+);
+game_server_networking_sockets_wrapper!(
+    "gameServerNetworkingSocketsGetCertificateRequest",
+    game_server_networking_sockets_get_certificate_request,
+    networking_sockets_get_certificate_request(max_bytes: Option<u32>) -> NetworkingCertificateResult
+);
+game_server_networking_sockets_wrapper!(
+    "gameServerNetworkingSocketsSetCertificate",
+    game_server_networking_sockets_set_certificate,
+    networking_sockets_set_certificate(certificate: Buffer) -> NetworkingCertificateResult
+);
+game_server_networking_sockets_wrapper!(
+    "gameServerNetworkingSocketsResetIdentity",
+    game_server_networking_sockets_reset_identity,
+    networking_sockets_reset_identity(identity: Option<NetworkingIdentity>) -> ()
+);
+game_server_networking_sockets_wrapper!(
+    "gameServerNetworkingSocketsBeginAsyncRequestFakeIp",
+    game_server_networking_sockets_begin_async_request_fake_ip,
+    networking_sockets_begin_async_request_fake_ip(num_ports: i32) -> bool
+);
+game_server_networking_sockets_wrapper!(
+    "gameServerNetworkingSocketsGetFakeIp",
+    game_server_networking_sockets_get_fake_ip,
+    networking_sockets_get_fake_ip(idx_first_port: Option<i32>) -> NetworkingFakeIpResult
+);
+game_server_networking_sockets_wrapper!(
+    "gameServerNetworkingSocketsCreateListenSocketP2pFakeIp",
+    game_server_networking_sockets_create_listen_socket_p2p_fake_ip,
+    networking_sockets_create_listen_socket_p2p_fake_ip(idx_fake_port: Option<i32>) -> u32
+);
+game_server_networking_sockets_wrapper!(
+    "gameServerNetworkingSocketsGetRemoteFakeIpForConnection",
+    game_server_networking_sockets_get_remote_fake_ip_for_connection,
+    networking_sockets_get_remote_fake_ip_for_connection(connection: u32) -> NetworkingRemoteFakeIpResult
+);
+game_server_networking_sockets_wrapper!(
+    "gameServerNetworkingSocketsCreateFakeUdpPort",
+    game_server_networking_sockets_create_fake_udp_port,
+    networking_sockets_create_fake_udp_port(fake_server_port: i32) -> Option<u32>
+);
+
 #[napi(js_name = "networkingFakeUdpPortDestroy")]
 pub fn networking_fake_udp_port_destroy(handle: u32) -> Result<bool, Error> {
-    crate::state::ensure_initialized()?;
+    ensure_networking_or_game_server_initialized()?;
     let port = NETWORKING_FAKE_UDP_PORTS
         .lock()
         .expect("Steam fake UDP port registry poisoned")
@@ -13990,7 +14269,42 @@ fn steam_game_server_networking_messages() -> Result<*mut sys::ISteamNetworkingM
     )
 }
 
-fn steam_networking_sockets() -> Result<*mut sys::ISteamNetworkingSockets, Error> {
+#[derive(Clone, Copy)]
+enum NetworkingInterfaceContext {
+    Client,
+    GameServer,
+}
+
+thread_local! {
+    static NETWORKING_INTERFACE_CONTEXT: Cell<NetworkingInterfaceContext> =
+        Cell::new(NetworkingInterfaceContext::Client);
+}
+
+struct NetworkingInterfaceContextGuard {
+    previous: NetworkingInterfaceContext,
+}
+
+impl Drop for NetworkingInterfaceContextGuard {
+    fn drop(&mut self) {
+        NETWORKING_INTERFACE_CONTEXT.with(|context| context.set(self.previous));
+    }
+}
+
+fn with_game_server_networking_sockets<T>(
+    f: impl FnOnce() -> Result<T, Error>,
+) -> Result<T, Error> {
+    let _guard = NETWORKING_INTERFACE_CONTEXT.with(|context| {
+        let previous = context.replace(NetworkingInterfaceContext::GameServer);
+        NetworkingInterfaceContextGuard { previous }
+    });
+    f()
+}
+
+fn networking_interface_context() -> NetworkingInterfaceContext {
+    NETWORKING_INTERFACE_CONTEXT.with(Cell::get)
+}
+
+fn steam_client_networking_sockets() -> Result<*mut sys::ISteamNetworkingSockets, Error> {
     crate::state::ensure_initialized()?;
     non_null(
         unsafe { sys::SteamAPI_SteamNetworkingSockets_SteamAPI_v012() },
@@ -13998,12 +14312,42 @@ fn steam_networking_sockets() -> Result<*mut sys::ISteamNetworkingSockets, Error
     )
 }
 
-fn steam_networking_utils() -> Result<*mut sys::ISteamNetworkingUtils, Error> {
+fn steam_game_server_networking_sockets() -> Result<*mut sys::ISteamNetworkingSockets, Error> {
+    crate::state::ensure_game_server_initialized()?;
+    non_null(
+        unsafe { sys::SteamAPI_SteamGameServerNetworkingSockets_SteamAPI_v012() },
+        "ISteamNetworkingSockets",
+    )
+}
+
+fn steam_networking_sockets() -> Result<*mut sys::ISteamNetworkingSockets, Error> {
+    match networking_interface_context() {
+        NetworkingInterfaceContext::Client => steam_client_networking_sockets(),
+        NetworkingInterfaceContext::GameServer => steam_game_server_networking_sockets(),
+    }
+}
+
+fn steam_client_networking_utils() -> Result<*mut sys::ISteamNetworkingUtils, Error> {
     crate::state::ensure_initialized()?;
     non_null(
         unsafe { sys::SteamAPI_SteamNetworkingUtils_SteamAPI_v004() },
         "ISteamNetworkingUtils",
     )
+}
+
+fn steam_game_server_networking_utils() -> Result<*mut sys::ISteamNetworkingUtils, Error> {
+    crate::state::ensure_game_server_initialized()?;
+    non_null(
+        unsafe { sys::SteamAPI_SteamNetworkingUtils_SteamAPI_v004() },
+        "ISteamNetworkingUtils",
+    )
+}
+
+fn steam_networking_utils() -> Result<*mut sys::ISteamNetworkingUtils, Error> {
+    match networking_interface_context() {
+        NetworkingInterfaceContext::Client => steam_client_networking_utils(),
+        NetworkingInterfaceContext::GameServer => steam_game_server_networking_utils(),
+    }
 }
 
 fn steam_game_server() -> Result<*mut sys::ISteamGameServer, Error> {
@@ -15898,7 +16242,7 @@ fn with_networking_fake_udp_port<T>(
     handle: u32,
     action: impl FnOnce(*mut sys::ISteamNetworkingFakeUDPPort) -> Result<T, Error>,
 ) -> Result<T, Error> {
-    crate::state::ensure_initialized()?;
+    ensure_networking_or_game_server_initialized()?;
     let registry = NETWORKING_FAKE_UDP_PORTS
         .lock()
         .expect("Steam fake UDP port registry poisoned");
@@ -15907,6 +16251,16 @@ fn with_networking_fake_udp_port<T>(
         .copied()
         .ok_or_else(|| Error::from_reason("invalid Steam fake UDP port handle"))?;
     action(port as *mut sys::ISteamNetworkingFakeUDPPort)
+}
+
+fn ensure_networking_or_game_server_initialized() -> Result<(), Error> {
+    if crate::state::is_initialized() || crate::state::is_game_server_initialized() {
+        Ok(())
+    } else {
+        Err(Error::from_reason(
+            "Steam Bridge or Steam Game Server has not been initialized",
+        ))
+    }
 }
 
 fn receive_networking_messages<F>(

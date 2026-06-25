@@ -5459,6 +5459,206 @@ export const gameServerNetworkingMessages = {
   }
 };
 
+export const gameServerNetworkingSockets = {
+  SendFlags: NetworkingSendFlags,
+  ConnectionState: NetworkingConnectionState,
+  Availability: NetworkingAvailability,
+  createListenSocketIP(address: NetworkingIpAddress): number {
+    return native().gameServerNetworkingSocketsCreateListenSocketIp(nativeNetworkingIpAddress(address));
+  },
+  connectByIPAddress(address: NetworkingIpAddress): number {
+    return native().gameServerNetworkingSocketsConnectByIpAddress(nativeNetworkingIpAddress(address));
+  },
+  createListenSocketP2P(localVirtualPort = 0): number {
+    return native().gameServerNetworkingSocketsCreateListenSocketP2p(localVirtualPort);
+  },
+  connectP2P(identity: NetworkingIdentity, remoteVirtualPort = 0): number {
+    return native().gameServerNetworkingSocketsConnectP2p(nativeNetworkingIdentity(identity), remoteVirtualPort);
+  },
+  acceptConnection(connection: number): number {
+    return native().gameServerNetworkingSocketsAcceptConnection(connection);
+  },
+  closeConnection(connection: number, options: NetworkingCloseConnectionOptions = {}): boolean {
+    return native().gameServerNetworkingSocketsCloseConnection(
+      connection,
+      options.reason,
+      options.debug,
+      options.enableLinger
+    );
+  },
+  closeListenSocket(socket: number): boolean {
+    return native().gameServerNetworkingSocketsCloseListenSocket(socket);
+  },
+  setConnectionUserData(connection: number, userData: bigint): boolean {
+    return native().gameServerNetworkingSocketsSetConnectionUserData(connection, userData);
+  },
+  getConnectionUserData(connection: number): bigint {
+    return BigInt(native().gameServerNetworkingSocketsGetConnectionUserData(connection));
+  },
+  setConnectionName(connection: number, name: string): void {
+    native().gameServerNetworkingSocketsSetConnectionName(connection, name);
+  },
+  getConnectionName(connection: number): string | null {
+    return native().gameServerNetworkingSocketsGetConnectionName(connection) ?? null;
+  },
+  sendMessageToConnection(
+    connection: number,
+    data: Buffer | Uint8Array,
+    sendFlags = NetworkingSendFlags.Reliable
+  ): NetworkingSocketSendResult {
+    return normalizeNetworkingSocketSendResult(
+      native().gameServerNetworkingSocketsSendMessageToConnection(connection, Buffer.from(data), sendFlags)
+    );
+  },
+  sendMessages(messages: NetworkingSocketOutgoingMessage[]): NetworkingSocketSendResult[] {
+    return native()
+      .gameServerNetworkingSocketsSendMessages(messages.map(nativeNetworkingSocketOutgoingMessage))
+      .map(normalizeNetworkingSocketSendResult);
+  },
+  flushMessagesOnConnection(connection: number): number {
+    return native().gameServerNetworkingSocketsFlushMessagesOnConnection(connection);
+  },
+  receiveMessagesOnConnection(connection: number, maxMessages?: number | null): NetworkingMessage[] {
+    return native()
+      .gameServerNetworkingSocketsReceiveMessagesOnConnection(connection, maxMessages ?? undefined)
+      .map(normalizeNetworkingMessage);
+  },
+  getConnectionInfo(connection: number): NetworkingConnectionInfo | null {
+    return normalizeNetworkingConnectionInfo(native().gameServerNetworkingSocketsGetConnectionInfo(connection));
+  },
+  getConnectionRealTimeStatus(connection: number): NetworkingConnectionRealTimeStatus | null {
+    return normalizeNetworkingRealTimeStatus(
+      native().gameServerNetworkingSocketsGetConnectionRealTimeStatus(connection)
+    );
+  },
+  getConnectionRealTimeStatusWithLanes(
+    connection: number,
+    maxLanes?: number | null
+  ): NetworkingConnectionRealTimeStatusWithLanes | null {
+    return normalizeNetworkingRealTimeStatusWithLanes(
+      native().gameServerNetworkingSocketsGetConnectionRealTimeStatusWithLanes(connection, maxLanes ?? undefined)
+    );
+  },
+  getDetailedConnectionStatus(connection: number, maxBytes?: number | null): string | null {
+    return native().gameServerNetworkingSocketsGetDetailedConnectionStatus(connection, maxBytes ?? undefined) ?? null;
+  },
+  getListenSocketAddress(socket: number): NetworkingIpAddressInfo | null {
+    return normalizeNetworkingIpAddressInfo(native().gameServerNetworkingSocketsGetListenSocketAddress(socket));
+  },
+  createSocketPair(
+    useNetworkLoopback = false,
+    identity1?: NetworkingIdentity | null,
+    identity2?: NetworkingIdentity | null
+  ): NetworkingSocketPair | null {
+    return normalizeNetworkingSocketPair(
+      native().gameServerNetworkingSocketsCreateSocketPair(
+        useNetworkLoopback,
+        identity1 ? nativeNetworkingIdentity(identity1) : undefined,
+        identity2 ? nativeNetworkingIdentity(identity2) : undefined
+      )
+    );
+  },
+  configureConnectionLanes(connection: number, priorities: number[], weights?: number[] | null): number {
+    return native().gameServerNetworkingSocketsConfigureConnectionLanes(connection, priorities, weights ?? undefined);
+  },
+  getIdentity(): NetworkingIdentityInfo | null {
+    return normalizeNetworkingIdentityInfo(native().gameServerNetworkingSocketsGetIdentity());
+  },
+  initAuthentication(): number {
+    return native().gameServerNetworkingSocketsInitAuthentication();
+  },
+  getAuthenticationStatus(): NetworkingAuthenticationStatus {
+    return normalizeNetworkingAuthenticationStatus(native().gameServerNetworkingSocketsGetAuthenticationStatus());
+  },
+  createPollGroup(): number {
+    return native().gameServerNetworkingSocketsCreatePollGroup();
+  },
+  runCallbacks(): void {
+    native().gameServerNetworkingSocketsRunCallbacks();
+  },
+  destroyPollGroup(pollGroup: number): boolean {
+    return native().gameServerNetworkingSocketsDestroyPollGroup(pollGroup);
+  },
+  setConnectionPollGroup(connection: number, pollGroup: number): boolean {
+    return native().gameServerNetworkingSocketsSetConnectionPollGroup(connection, pollGroup);
+  },
+  receiveMessagesOnPollGroup(pollGroup: number, maxMessages?: number | null): NetworkingMessage[] {
+    return native()
+      .gameServerNetworkingSocketsReceiveMessagesOnPollGroup(pollGroup, maxMessages ?? undefined)
+      .map(normalizeNetworkingMessage);
+  },
+  receivedRelayAuthTicket(ticket: Buffer | Uint8Array): boolean {
+    return native().gameServerNetworkingSocketsReceivedRelayAuthTicket(Buffer.from(ticket));
+  },
+  findRelayAuthTicketForServer(identity: NetworkingIdentity, remoteVirtualPort = 0): number {
+    return native().gameServerNetworkingSocketsFindRelayAuthTicketForServer(
+      nativeNetworkingIdentity(identity),
+      remoteVirtualPort
+    );
+  },
+  connectToHostedDedicatedServer(identity: NetworkingIdentity, remoteVirtualPort = 0): number {
+    return native().gameServerNetworkingSocketsConnectToHostedDedicatedServer(
+      nativeNetworkingIdentity(identity),
+      remoteVirtualPort
+    );
+  },
+  getHostedDedicatedServerPort(): number {
+    return native().gameServerNetworkingSocketsGetHostedDedicatedServerPort();
+  },
+  getHostedDedicatedServerPopId(): number {
+    return native().gameServerNetworkingSocketsGetHostedDedicatedServerPopId();
+  },
+  getHostedDedicatedServerAddress(): NetworkingHostedDedicatedServerAddressResult {
+    return normalizeNetworkingHostedDedicatedServerAddressResult(
+      native().gameServerNetworkingSocketsGetHostedDedicatedServerAddress()
+    );
+  },
+  createHostedDedicatedServerListenSocket(localVirtualPort = 0): number {
+    return native().gameServerNetworkingSocketsCreateHostedDedicatedServerListenSocket(localVirtualPort);
+  },
+  getGameCoordinatorServerLogin(
+    appData?: Buffer | Uint8Array | null,
+    maxBlobBytes?: number | null
+  ): NetworkingGameCoordinatorServerLoginResult {
+    return normalizeNetworkingGameCoordinatorServerLoginResult(
+      native().gameServerNetworkingSocketsGetGameCoordinatorServerLogin(
+        appData ? Buffer.from(appData) : undefined,
+        maxBlobBytes ?? undefined
+      )
+    );
+  },
+  getCertificateRequest(maxBytes?: number | null): NetworkingCertificateResult {
+    return normalizeNetworkingCertificateResult(
+      native().gameServerNetworkingSocketsGetCertificateRequest(maxBytes ?? undefined)
+    );
+  },
+  setCertificate(certificate: Buffer | Uint8Array): NetworkingCertificateResult {
+    return normalizeNetworkingCertificateResult(
+      native().gameServerNetworkingSocketsSetCertificate(Buffer.from(certificate))
+    );
+  },
+  resetIdentity(identity?: NetworkingIdentity | null): void {
+    native().gameServerNetworkingSocketsResetIdentity(identity ? nativeNetworkingIdentity(identity) : undefined);
+  },
+  beginAsyncRequestFakeIP(numPorts: number): boolean {
+    return native().gameServerNetworkingSocketsBeginAsyncRequestFakeIp(numPorts);
+  },
+  getFakeIP(idxFirstPort = 0): NetworkingFakeIpResult {
+    return normalizeNetworkingFakeIpResult(native().gameServerNetworkingSocketsGetFakeIp(idxFirstPort));
+  },
+  createListenSocketP2PFakeIP(idxFakePort = 0): number {
+    return native().gameServerNetworkingSocketsCreateListenSocketP2pFakeIp(idxFakePort);
+  },
+  getRemoteFakeIPForConnection(connection: number): NetworkingRemoteFakeIpResult {
+    return normalizeNetworkingRemoteFakeIpResult(
+      native().gameServerNetworkingSocketsGetRemoteFakeIpForConnection(connection)
+    );
+  },
+  createFakeUDPPort(fakeServerPort = 0): number | null {
+    return native().gameServerNetworkingSocketsCreateFakeUdpPort(fakeServerPort) ?? null;
+  }
+};
+
 export const overlay = {
   Dialog,
   StoreFlag,
@@ -6199,6 +6399,7 @@ export interface SteamBridgeClient {
   gameServer: typeof gameServer;
   gameServerHttp: typeof gameServerHttp;
   gameServerNetworkingMessages: typeof gameServerNetworkingMessages;
+  gameServerNetworkingSockets: typeof gameServerNetworkingSockets;
   gameServerStats: typeof gameServerStats;
   http: typeof http;
   inventory: typeof inventory;
@@ -6233,6 +6434,7 @@ export function createCompatibilityClient(): SteamBridgeClient {
     gameServer,
     gameServerHttp,
     gameServerNetworkingMessages,
+    gameServerNetworkingSockets,
     gameServerStats,
     http,
     inventory,
@@ -8621,6 +8823,7 @@ const defaultExport = {
   gameServer,
   gameServerHttp,
   gameServerNetworkingMessages,
+  gameServerNetworkingSockets,
   gameServerStats,
   html,
   http,
