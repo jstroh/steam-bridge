@@ -104,6 +104,7 @@ pub fn init(app_id: u32) -> Result<(), Error> {
 
 #[napi(js_name = "shutdown")]
 pub fn shutdown() {
+    compat::game_server_shutdown();
     if state::is_initialized() {
         native_surface::close();
         compat::clear_warning_message_hook();

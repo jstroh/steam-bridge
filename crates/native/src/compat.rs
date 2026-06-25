@@ -80,6 +80,7 @@ const CALLBACK_STEAM_NETWORKING_FAKE_IP_RESULT: i32 = 1223;
 const CALLBACK_STEAM_NETWORKING_MESSAGES_SESSION_REQUEST: i32 = 1251;
 const CALLBACK_STEAM_NETWORKING_MESSAGES_SESSION_FAILED: i32 = 1252;
 const CALLBACK_STEAM_RELAY_NETWORK_STATUS: i32 = 1281;
+const STEAM_GAME_SERVER_INTERFACE_VERSIONS: &[u8] = b"SteamUtils010\0SteamNetworkingUtils004\0SteamGameServer015\0SteamGameServerStats001\0STEAMHTTP_INTERFACE_VERSION003\0STEAMINVENTORY_INTERFACE_V003\0SteamNetworking006\0SteamNetworkingMessages002\0SteamNetworkingSockets012\0STEAMUGC_INTERFACE_VERSION021\0\0";
 
 static NEXT_NETWORKING_FAKE_UDP_PORT_HANDLE: AtomicU32 = AtomicU32::new(1);
 static NETWORKING_FAKE_UDP_PORTS: Lazy<Mutex<HashMap<u32, usize>>> =
@@ -311,6 +312,46 @@ pub struct P2PPacket {
     pub data: Buffer,
     pub size: u32,
     pub steam_id: PlayerSteamId,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct GameServerInitOptions {
+    pub ip: Option<u32>,
+    pub game_port: u32,
+    pub query_port: u32,
+    pub server_mode: u32,
+    pub version: String,
+}
+
+#[napi(object)]
+pub struct GameServerAuthTicket {
+    pub data: Buffer,
+    pub handle: u32,
+}
+
+#[napi(object)]
+pub struct GameServerPublicIp {
+    pub is_set: bool,
+    pub ip_type: u32,
+    pub ipv4: Option<u32>,
+    pub ipv4_address: Option<String>,
+    pub ipv6: Option<Buffer>,
+}
+
+#[napi(object)]
+pub struct GameServerOutgoingPacket {
+    pub data: Buffer,
+    pub ip: u32,
+    pub ip_address: String,
+    pub port: u32,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct GameServerUserConnectResult {
+    pub success: bool,
+    pub steam_id: Option<PlayerSteamId>,
 }
 
 #[derive(Debug)]
@@ -5057,6 +5098,446 @@ pub fn overlay_activate_to_store(app_id: u32, flag: u32) -> Result<(), Error> {
     Ok(())
 }
 
+#[napi(js_name = "gameServerInit")]
+pub fn game_server_init(options: GameServerInitOptions) -> Result<(), Error> {
+    if crate::state::is_game_server_initialized() {
+        game_server_shutdown();
+    }
+    let version = cstring(options.version, "game server version")?;
+    let mut err_msg: sys::SteamErrMsg = [0; 1024];
+    let result = unsafe {
+        sys::SteamInternal_GameServer_Init_V2(
+            options.ip.unwrap_or(0),
+            port_to_u16(options.game_port, "game server game port")?,
+            port_to_u16(options.query_port, "game server query port")?,
+            game_server_mode(options.server_mode)?,
+            version.as_ptr(),
+            STEAM_GAME_SERVER_INTERFACE_VERSIONS
+                .as_ptr()
+                .cast::<c_char>(),
+            &mut err_msg,
+        )
+    };
+    if result == sys::ESteamAPIInitResult::k_ESteamAPIInitResult_OK {
+        crate::state::mark_game_server_initialized(true);
+        Ok(())
+    } else {
+        crate::state::mark_game_server_initialized(false);
+        Err(Error::from_reason(game_server_init_error_message(
+            result, &err_msg,
+        )))
+    }
+}
+
+#[napi(js_name = "gameServerShutdown")]
+pub fn game_server_shutdown() {
+    if crate::state::is_game_server_initialized() {
+        unsafe { sys::SteamGameServer_Shutdown() };
+        crate::state::mark_game_server_initialized(false);
+    }
+}
+
+#[napi(js_name = "gameServerRunCallbacks")]
+pub fn game_server_run_callbacks() {
+    if crate::state::is_game_server_initialized() {
+        unsafe { sys::SteamGameServer_RunCallbacks() };
+    }
+}
+
+#[napi(js_name = "gameServerIsSecure")]
+pub fn game_server_is_secure() -> Result<bool, Error> {
+    crate::state::ensure_game_server_initialized()?;
+    Ok(unsafe { sys::SteamGameServer_BSecure() })
+}
+
+#[napi(js_name = "gameServerGetSteamId")]
+pub fn game_server_get_steam_id() -> Result<PlayerSteamId, Error> {
+    crate::state::ensure_game_server_initialized()?;
+    Ok(steam_id_to_player(unsafe {
+        sys::SteamGameServer_GetSteamID()
+    }))
+}
+
+#[napi(js_name = "gameServerSetProduct")]
+pub fn game_server_set_product(product: String) -> Result<(), Error> {
+    let product = cstring(product, "game server product")?;
+    unsafe { sys::SteamAPI_ISteamGameServer_SetProduct(steam_game_server()?, product.as_ptr()) };
+    Ok(())
+}
+
+#[napi(js_name = "gameServerSetGameDescription")]
+pub fn game_server_set_game_description(description: String) -> Result<(), Error> {
+    let description = cstring(description, "game server description")?;
+    unsafe {
+        sys::SteamAPI_ISteamGameServer_SetGameDescription(
+            steam_game_server()?,
+            description.as_ptr(),
+        )
+    };
+    Ok(())
+}
+
+#[napi(js_name = "gameServerSetModDir")]
+pub fn game_server_set_mod_dir(mod_dir: String) -> Result<(), Error> {
+    let mod_dir = cstring(mod_dir, "game server mod dir")?;
+    unsafe { sys::SteamAPI_ISteamGameServer_SetModDir(steam_game_server()?, mod_dir.as_ptr()) };
+    Ok(())
+}
+
+#[napi(js_name = "gameServerSetDedicatedServer")]
+pub fn game_server_set_dedicated_server(dedicated: bool) -> Result<(), Error> {
+    unsafe { sys::SteamAPI_ISteamGameServer_SetDedicatedServer(steam_game_server()?, dedicated) };
+    Ok(())
+}
+
+#[napi(js_name = "gameServerLogOn")]
+pub fn game_server_log_on(token: String) -> Result<(), Error> {
+    let token = cstring(token, "game server login token")?;
+    unsafe { sys::SteamAPI_ISteamGameServer_LogOn(steam_game_server()?, token.as_ptr()) };
+    Ok(())
+}
+
+#[napi(js_name = "gameServerLogOnAnonymous")]
+pub fn game_server_log_on_anonymous() -> Result<(), Error> {
+    unsafe { sys::SteamAPI_ISteamGameServer_LogOnAnonymous(steam_game_server()?) };
+    Ok(())
+}
+
+#[napi(js_name = "gameServerLogOff")]
+pub fn game_server_log_off() -> Result<(), Error> {
+    unsafe { sys::SteamAPI_ISteamGameServer_LogOff(steam_game_server()?) };
+    Ok(())
+}
+
+#[napi(js_name = "gameServerIsLoggedOn")]
+pub fn game_server_is_logged_on() -> Result<bool, Error> {
+    Ok(unsafe { sys::SteamAPI_ISteamGameServer_BLoggedOn(steam_game_server()?) })
+}
+
+#[napi(js_name = "gameServerInterfaceIsSecure")]
+pub fn game_server_interface_is_secure() -> Result<bool, Error> {
+    Ok(unsafe { sys::SteamAPI_ISteamGameServer_BSecure(steam_game_server()?) })
+}
+
+#[napi(js_name = "gameServerGetInterfaceSteamId")]
+pub fn game_server_get_interface_steam_id() -> Result<PlayerSteamId, Error> {
+    Ok(steam_id_to_player(unsafe {
+        sys::SteamAPI_ISteamGameServer_GetSteamID(steam_game_server()?)
+    }))
+}
+
+#[napi(js_name = "gameServerWasRestartRequested")]
+pub fn game_server_was_restart_requested() -> Result<bool, Error> {
+    Ok(unsafe { sys::SteamAPI_ISteamGameServer_WasRestartRequested(steam_game_server()?) })
+}
+
+#[napi(js_name = "gameServerSetMaxPlayerCount")]
+pub fn game_server_set_max_player_count(players_max: i32) -> Result<(), Error> {
+    unsafe { sys::SteamAPI_ISteamGameServer_SetMaxPlayerCount(steam_game_server()?, players_max) };
+    Ok(())
+}
+
+#[napi(js_name = "gameServerSetBotPlayerCount")]
+pub fn game_server_set_bot_player_count(bot_players: i32) -> Result<(), Error> {
+    unsafe { sys::SteamAPI_ISteamGameServer_SetBotPlayerCount(steam_game_server()?, bot_players) };
+    Ok(())
+}
+
+#[napi(js_name = "gameServerSetServerName")]
+pub fn game_server_set_server_name(name: String) -> Result<(), Error> {
+    let name = cstring(name, "game server name")?;
+    unsafe { sys::SteamAPI_ISteamGameServer_SetServerName(steam_game_server()?, name.as_ptr()) };
+    Ok(())
+}
+
+#[napi(js_name = "gameServerSetMapName")]
+pub fn game_server_set_map_name(name: String) -> Result<(), Error> {
+    let name = cstring(name, "game server map name")?;
+    unsafe { sys::SteamAPI_ISteamGameServer_SetMapName(steam_game_server()?, name.as_ptr()) };
+    Ok(())
+}
+
+#[napi(js_name = "gameServerSetPasswordProtected")]
+pub fn game_server_set_password_protected(password_protected: bool) -> Result<(), Error> {
+    unsafe {
+        sys::SteamAPI_ISteamGameServer_SetPasswordProtected(
+            steam_game_server()?,
+            password_protected,
+        )
+    };
+    Ok(())
+}
+
+#[napi(js_name = "gameServerSetSpectatorPort")]
+pub fn game_server_set_spectator_port(port: u32) -> Result<(), Error> {
+    unsafe {
+        sys::SteamAPI_ISteamGameServer_SetSpectatorPort(
+            steam_game_server()?,
+            port_to_u16(port, "game server spectator port")?,
+        )
+    };
+    Ok(())
+}
+
+#[napi(js_name = "gameServerSetSpectatorServerName")]
+pub fn game_server_set_spectator_server_name(name: String) -> Result<(), Error> {
+    let name = cstring(name, "game server spectator server name")?;
+    unsafe {
+        sys::SteamAPI_ISteamGameServer_SetSpectatorServerName(steam_game_server()?, name.as_ptr())
+    };
+    Ok(())
+}
+
+#[napi(js_name = "gameServerClearAllKeyValues")]
+pub fn game_server_clear_all_key_values() -> Result<(), Error> {
+    unsafe { sys::SteamAPI_ISteamGameServer_ClearAllKeyValues(steam_game_server()?) };
+    Ok(())
+}
+
+#[napi(js_name = "gameServerSetKeyValue")]
+pub fn game_server_set_key_value(key: String, value: String) -> Result<(), Error> {
+    let key = cstring(key, "game server key")?;
+    let value = cstring(value, "game server value")?;
+    unsafe {
+        sys::SteamAPI_ISteamGameServer_SetKeyValue(
+            steam_game_server()?,
+            key.as_ptr(),
+            value.as_ptr(),
+        )
+    };
+    Ok(())
+}
+
+#[napi(js_name = "gameServerSetGameTags")]
+pub fn game_server_set_game_tags(tags: String) -> Result<(), Error> {
+    let tags = cstring(tags, "game server tags")?;
+    unsafe { sys::SteamAPI_ISteamGameServer_SetGameTags(steam_game_server()?, tags.as_ptr()) };
+    Ok(())
+}
+
+#[napi(js_name = "gameServerSetGameData")]
+pub fn game_server_set_game_data(data: String) -> Result<(), Error> {
+    let data = cstring(data, "game server data")?;
+    unsafe { sys::SteamAPI_ISteamGameServer_SetGameData(steam_game_server()?, data.as_ptr()) };
+    Ok(())
+}
+
+#[napi(js_name = "gameServerSetRegion")]
+pub fn game_server_set_region(region: String) -> Result<(), Error> {
+    let region = cstring(region, "game server region")?;
+    unsafe { sys::SteamAPI_ISteamGameServer_SetRegion(steam_game_server()?, region.as_ptr()) };
+    Ok(())
+}
+
+#[napi(js_name = "gameServerSetAdvertiseServerActive")]
+pub fn game_server_set_advertise_server_active(active: bool) -> Result<(), Error> {
+    unsafe {
+        sys::SteamAPI_ISteamGameServer_SetAdvertiseServerActive(steam_game_server()?, active)
+    };
+    Ok(())
+}
+
+#[napi(js_name = "gameServerGetAuthSessionTicket")]
+pub fn game_server_get_auth_session_ticket(
+    identity: Option<NetworkingIdentity>,
+    max_bytes: Option<u32>,
+) -> Result<GameServerAuthTicket, Error> {
+    let identity = identity.map(networking_identity_from_input).transpose()?;
+    let identity_ptr = identity
+        .as_ref()
+        .map_or(ptr::null(), |identity| identity as *const _);
+    let size = max_bytes.unwrap_or(4096).clamp(1, 65_536);
+    let mut data = vec![0u8; size as usize];
+    let mut data_len = 0u32;
+    let handle = unsafe {
+        sys::SteamAPI_ISteamGameServer_GetAuthSessionTicket(
+            steam_game_server()?,
+            data.as_mut_ptr().cast::<c_void>(),
+            len_to_i32(data.len(), "game server auth ticket")?,
+            &mut data_len,
+            identity_ptr,
+        )
+    };
+    if handle == H_AUTH_TICKET_INVALID {
+        return Err(Error::from_reason(
+            "Steam returned an invalid game server auth ticket handle",
+        ));
+    }
+    data.truncate((data_len as usize).min(data.len()));
+    Ok(GameServerAuthTicket {
+        data: data.into(),
+        handle,
+    })
+}
+
+#[napi(js_name = "gameServerBeginAuthSession")]
+pub fn game_server_begin_auth_session(ticket: Buffer, steam_id64: BigInt) -> Result<u32, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamGameServer_BeginAuthSession(
+            steam_game_server()?,
+            ticket.as_ptr().cast::<c_void>(),
+            len_to_i32(ticket.len(), "game server auth session ticket")?,
+            bigint_to_u64(steam_id64, "steam id")?,
+        )
+    } as u32)
+}
+
+#[napi(js_name = "gameServerEndAuthSession")]
+pub fn game_server_end_auth_session(steam_id64: BigInt) -> Result<(), Error> {
+    unsafe {
+        sys::SteamAPI_ISteamGameServer_EndAuthSession(
+            steam_game_server()?,
+            bigint_to_u64(steam_id64, "steam id")?,
+        )
+    };
+    Ok(())
+}
+
+#[napi(js_name = "gameServerCancelAuthTicket")]
+pub fn game_server_cancel_auth_ticket(auth_ticket: u32) -> Result<(), Error> {
+    unsafe { sys::SteamAPI_ISteamGameServer_CancelAuthTicket(steam_game_server()?, auth_ticket) };
+    Ok(())
+}
+
+#[napi(js_name = "gameServerUserHasLicenseForApp")]
+pub fn game_server_user_has_license_for_app(steam_id64: BigInt, app_id: u32) -> Result<u32, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamGameServer_UserHasLicenseForApp(
+            steam_game_server()?,
+            bigint_to_u64(steam_id64, "steam id")?,
+            app_id,
+        )
+    } as u32)
+}
+
+#[napi(js_name = "gameServerRequestUserGroupStatus")]
+pub fn game_server_request_user_group_status(
+    steam_id64: BigInt,
+    group_id64: BigInt,
+) -> Result<bool, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamGameServer_RequestUserGroupStatus(
+            steam_game_server()?,
+            bigint_to_u64(steam_id64, "steam id")?,
+            bigint_to_u64(group_id64, "group id")?,
+        )
+    })
+}
+
+#[napi(js_name = "gameServerGetGameplayStats")]
+pub fn game_server_get_gameplay_stats() -> Result<(), Error> {
+    unsafe { sys::SteamAPI_ISteamGameServer_GetGameplayStats(steam_game_server()?) };
+    Ok(())
+}
+
+#[napi(js_name = "gameServerGetPublicIp")]
+pub fn game_server_get_public_ip() -> Result<GameServerPublicIp, Error> {
+    let mut address = unsafe { sys::SteamAPI_ISteamGameServer_GetPublicIP(steam_game_server()?) };
+    Ok(game_server_public_ip(&mut address))
+}
+
+#[napi(js_name = "gameServerHandleIncomingPacket")]
+pub fn game_server_handle_incoming_packet(
+    data: Buffer,
+    src_ip: u32,
+    src_port: u32,
+) -> Result<bool, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamGameServer_HandleIncomingPacket(
+            steam_game_server()?,
+            data.as_ptr().cast::<c_void>(),
+            len_to_i32(data.len(), "game server incoming packet")?,
+            src_ip,
+            port_to_u16(src_port, "game server incoming packet source port")?,
+        )
+    })
+}
+
+#[napi(js_name = "gameServerGetNextOutgoingPacket")]
+pub fn game_server_get_next_outgoing_packet(
+    max_bytes: Option<u32>,
+) -> Result<Option<GameServerOutgoingPacket>, Error> {
+    let size = max_bytes.unwrap_or(2048).clamp(1, 65_536);
+    let mut data = vec![0u8; size as usize];
+    let mut ip = 0u32;
+    let mut port = 0u16;
+    let packet_size = unsafe {
+        sys::SteamAPI_ISteamGameServer_GetNextOutgoingPacket(
+            steam_game_server()?,
+            data.as_mut_ptr().cast::<c_void>(),
+            len_to_i32(data.len(), "game server outgoing packet")?,
+            &mut ip,
+            &mut port,
+        )
+    };
+    if packet_size <= 0 {
+        return Ok(None);
+    }
+    data.truncate((packet_size as usize).min(data.len()));
+    Ok(Some(GameServerOutgoingPacket {
+        data: data.into(),
+        ip,
+        ip_address: ipv4_to_string(ip),
+        port: u32::from(port),
+    }))
+}
+
+#[napi(js_name = "gameServerSendUserConnectAndAuthenticateDeprecated")]
+pub fn game_server_send_user_connect_and_authenticate_deprecated(
+    client_ip: u32,
+    auth_blob: Buffer,
+) -> Result<GameServerUserConnectResult, Error> {
+    let mut steam_id = unsafe { MaybeUninit::<sys::CSteamID>::zeroed().assume_init() };
+    let success = unsafe {
+        sys::SteamAPI_ISteamGameServer_SendUserConnectAndAuthenticate_DEPRECATED(
+            steam_game_server()?,
+            client_ip,
+            auth_blob.as_ptr().cast::<c_void>(),
+            len_to_u32(auth_blob.len(), "game server user auth blob")?,
+            &mut steam_id,
+        )
+    };
+    let steam_id = success.then(|| unsafe {
+        steam_id_to_player(ptr::addr_of!(steam_id.m_steamid.m_unAll64Bits).read_unaligned())
+    });
+    Ok(GameServerUserConnectResult { success, steam_id })
+}
+
+#[napi(js_name = "gameServerCreateUnauthenticatedUserConnection")]
+pub fn game_server_create_unauthenticated_user_connection() -> Result<PlayerSteamId, Error> {
+    Ok(steam_id_to_player(unsafe {
+        sys::SteamAPI_ISteamGameServer_CreateUnauthenticatedUserConnection(steam_game_server()?)
+    }))
+}
+
+#[napi(js_name = "gameServerSendUserDisconnectDeprecated")]
+pub fn game_server_send_user_disconnect_deprecated(steam_id64: BigInt) -> Result<(), Error> {
+    unsafe {
+        sys::SteamAPI_ISteamGameServer_SendUserDisconnect_DEPRECATED(
+            steam_game_server()?,
+            bigint_to_u64(steam_id64, "steam id")?,
+        )
+    };
+    Ok(())
+}
+
+#[napi(js_name = "gameServerUpdateUserData")]
+pub fn game_server_update_user_data(
+    steam_id64: BigInt,
+    player_name: String,
+    score: u32,
+) -> Result<bool, Error> {
+    let player_name = cstring(player_name, "game server player name")?;
+    Ok(unsafe {
+        sys::SteamAPI_ISteamGameServer_BUpdateUserData(
+            steam_game_server()?,
+            bigint_to_u64(steam_id64, "steam id")?,
+            player_name.as_ptr(),
+            score,
+        )
+    })
+}
+
 #[napi(js_name = "networkingSendP2PPacket")]
 pub fn networking_send_p2p_packet(
     steam_id64: BigInt,
@@ -8552,6 +9033,14 @@ fn steam_networking_utils() -> Result<*mut sys::ISteamNetworkingUtils, Error> {
     )
 }
 
+fn steam_game_server() -> Result<*mut sys::ISteamGameServer, Error> {
+    crate::state::ensure_game_server_initialized()?;
+    non_null(
+        unsafe { sys::SteamAPI_SteamGameServer_v015() },
+        "ISteamGameServer",
+    )
+}
+
 fn steam_matchmaking() -> Result<*mut sys::ISteamMatchmaking, Error> {
     crate::state::ensure_initialized()?;
     non_null(
@@ -9820,6 +10309,53 @@ fn networking_virtual_port(port: Option<i32>) -> Result<i32, Error> {
         ))
     } else {
         Ok(port)
+    }
+}
+
+fn game_server_mode(value: u32) -> Result<sys::EServerMode, Error> {
+    match value {
+        value if value == sys::EServerMode::eServerModeNoAuthentication as u32 => {
+            Ok(sys::EServerMode::eServerModeNoAuthentication)
+        }
+        value if value == sys::EServerMode::eServerModeAuthentication as u32 => {
+            Ok(sys::EServerMode::eServerModeAuthentication)
+        }
+        value if value == sys::EServerMode::eServerModeAuthenticationAndSecure as u32 => {
+            Ok(sys::EServerMode::eServerModeAuthenticationAndSecure)
+        }
+        _ => Err(Error::from_reason(format!(
+            "unsupported game server mode {value}"
+        ))),
+    }
+}
+
+fn game_server_init_error_message(
+    result: sys::ESteamAPIInitResult,
+    err_msg: &sys::SteamErrMsg,
+) -> String {
+    let message = c_buf_to_string(err_msg);
+    if message.is_empty() {
+        format!("Steam Game Server initialization failed: {result:?}")
+    } else {
+        format!("Steam Game Server initialization failed: {result:?}: {message}")
+    }
+}
+
+fn game_server_public_ip(address: &mut sys::SteamIPAddress_t) -> GameServerPublicIp {
+    let is_set = unsafe { sys::SteamAPI_SteamIPAddress_t_IsSet(address) };
+    let ip_type = unsafe { ptr::addr_of!(address.m_eType).read_unaligned() };
+    let ipv4 = matches!(ip_type, sys::ESteamIPType::k_ESteamIPTypeIPv4)
+        .then(|| unsafe { ptr::addr_of!(address.__bindgen_anon_1.m_unIPv4).read_unaligned() });
+    let ipv6 = matches!(ip_type, sys::ESteamIPType::k_ESteamIPTypeIPv6).then(|| {
+        let bytes = unsafe { ptr::addr_of!(address.__bindgen_anon_1.m_rgubIPv6).read_unaligned() };
+        Vec::from(bytes).into()
+    });
+    GameServerPublicIp {
+        is_set,
+        ip_type: ip_type as u32,
+        ipv4,
+        ipv4_address: ipv4.map(ipv4_to_string),
+        ipv6,
     }
 }
 

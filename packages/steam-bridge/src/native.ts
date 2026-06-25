@@ -16,6 +16,47 @@ export interface NativeSteamId {
   accountId: number;
 }
 
+export interface NativeGameServerInitOptions {
+  ip?: number;
+  gamePort?: number;
+  game_port?: number;
+  queryPort?: number;
+  query_port?: number;
+  serverMode?: number;
+  server_mode?: number;
+  version: string;
+}
+
+export interface NativeGameServerAuthTicket {
+  data: Buffer;
+  handle: number;
+}
+
+export interface NativeGameServerPublicIp {
+  isSet?: boolean;
+  is_set?: boolean;
+  ipType?: number;
+  ip_type?: number;
+  ipv4?: number | null;
+  ipv4Address?: string | null;
+  ipv4_address?: string | null;
+  ipv6?: Buffer | null;
+}
+
+export interface NativeGameServerOutgoingPacket {
+  data: Buffer;
+  ip: number;
+  ipAddress?: string;
+  ip_address?: string;
+  port: number;
+}
+
+export interface NativeGameServerUserConnectResult {
+  success: boolean;
+  steamId?: NativeSteamId | null;
+  steam_id?: NativeSteamId | null;
+}
+
 export interface NativeOverlayDiagnostics {
   steamRunning: boolean;
   steamInstallPath?: string;
@@ -891,6 +932,50 @@ export interface NativeBinding {
   isSteamRunning(): boolean;
   getSteamInstallPath(): string | undefined;
   runCallbacks(): void;
+
+  gameServerInit(options: NativeGameServerInitOptions): void;
+  gameServerShutdown(): void;
+  gameServerRunCallbacks(): void;
+  gameServerIsSecure(): boolean;
+  gameServerGetSteamId(): NativeSteamId;
+  gameServerSetProduct(product: string): void;
+  gameServerSetGameDescription(description: string): void;
+  gameServerSetModDir(modDir: string): void;
+  gameServerSetDedicatedServer(dedicated: boolean): void;
+  gameServerLogOn(token: string): void;
+  gameServerLogOnAnonymous(): void;
+  gameServerLogOff(): void;
+  gameServerIsLoggedOn(): boolean;
+  gameServerInterfaceIsSecure(): boolean;
+  gameServerGetInterfaceSteamId(): NativeSteamId;
+  gameServerWasRestartRequested(): boolean;
+  gameServerSetMaxPlayerCount(playersMax: number): void;
+  gameServerSetBotPlayerCount(botPlayers: number): void;
+  gameServerSetServerName(name: string): void;
+  gameServerSetMapName(name: string): void;
+  gameServerSetPasswordProtected(passwordProtected: boolean): void;
+  gameServerSetSpectatorPort(port: number): void;
+  gameServerSetSpectatorServerName(name: string): void;
+  gameServerClearAllKeyValues(): void;
+  gameServerSetKeyValue(key: string, value: string): void;
+  gameServerSetGameTags(tags: string): void;
+  gameServerSetGameData(data: string): void;
+  gameServerSetRegion(region: string): void;
+  gameServerSetAdvertiseServerActive(active: boolean): void;
+  gameServerGetAuthSessionTicket(identity?: NativeNetworkingIdentity | null, maxBytes?: number): NativeGameServerAuthTicket;
+  gameServerBeginAuthSession(ticket: Buffer, steamId64: bigint): number;
+  gameServerEndAuthSession(steamId64: bigint): void;
+  gameServerCancelAuthTicket(authTicket: number): void;
+  gameServerUserHasLicenseForApp(steamId64: bigint, appId: number): number;
+  gameServerRequestUserGroupStatus(steamId64: bigint, groupId64: bigint): boolean;
+  gameServerGetGameplayStats(): void;
+  gameServerGetPublicIp(): NativeGameServerPublicIp;
+  gameServerHandleIncomingPacket(data: Buffer, srcIp: number, srcPort: number): boolean;
+  gameServerGetNextOutgoingPacket(maxBytes?: number): NativeGameServerOutgoingPacket | null | undefined;
+  gameServerSendUserConnectAndAuthenticateDeprecated(clientIp: number, authBlob: Buffer): NativeGameServerUserConnectResult;
+  gameServerCreateUnauthenticatedUserConnection(): NativeSteamId;
+  gameServerSendUserDisconnectDeprecated(steamId64: bigint): void;
+  gameServerUpdateUserData(steamId64: bigint, playerName: string, score: number): boolean;
 
   getSteamId(): NativeSteamId;
   getAuthTicketForWebApi(identity: string, timeoutSeconds?: number): Promise<NativeAuthTicket>;

@@ -15,6 +15,12 @@
   ],
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "os": [
+    "darwin"
+  ],
+  "cpu": [
+    "arm64"
+  ],
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",

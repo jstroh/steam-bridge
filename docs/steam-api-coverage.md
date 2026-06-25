@@ -82,6 +82,11 @@ The native layer currently targets the Steamworks flat C API through
 - Remote Play: session enumeration/details, Remote Play Together UI/invites,
   direct input toggles, input polling, mouse visibility/position, and custom
   cursor helpers.
+- Game server: Steam game-server lifecycle, callback pumping, secure/Steam ID
+  status, server metadata publication, login/logoff helpers, auth-session
+  ticket helpers, license and group status checks, public IP reads,
+  game-socket-share packet helpers, unauthenticated/deprecated user connection
+  helpers, and user data updates.
 
 ## Not Yet Complete
 
@@ -94,7 +99,8 @@ The native layer currently targets the Steamworks flat C API through
   surfaces: parsed relay-auth-ticket payloads, raw pointer-valued networking
   config callbacks, and custom signaling.
 - Matchmaking server browser and game server APIs.
-- Game server, game server stats, and server-only workflows.
+- Game server stats and remaining async server workflows such as reputation,
+  clan association, and player compatibility call results.
 - Complete callback/event coverage for every implemented interface, including
   richer streaming HTTP response ergonomics.
 - Steam Web API and economy flows beyond client auth ticket helpers.

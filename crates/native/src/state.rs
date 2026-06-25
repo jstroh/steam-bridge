@@ -10,6 +10,7 @@ type WarningMessageFn = Box<dyn FnMut(i32, String) + Send + 'static>;
 type NetworkingDebugOutputFn = Box<dyn FnMut(i32, String) + Send + 'static>;
 
 static INITIALIZED: AtomicBool = AtomicBool::new(false);
+static GAME_SERVER_INITIALIZED: AtomicBool = AtomicBool::new(false);
 static NEXT_CALLBACK_ID: AtomicU64 = AtomicU64::new(1);
 static CALLBACKS: Lazy<Mutex<CallbackRegistry>> =
     Lazy::new(|| Mutex::new(CallbackRegistry::default()));
@@ -65,6 +66,24 @@ pub fn ensure_initialized() -> Result<(), Error> {
         Ok(())
     } else {
         Err(Error::from_reason("Steam Bridge has not been initialized"))
+    }
+}
+
+pub fn mark_game_server_initialized(initialized: bool) {
+    GAME_SERVER_INITIALIZED.store(initialized, Ordering::SeqCst);
+}
+
+pub fn is_game_server_initialized() -> bool {
+    GAME_SERVER_INITIALIZED.load(Ordering::SeqCst)
+}
+
+pub fn ensure_game_server_initialized() -> Result<(), Error> {
+    if is_game_server_initialized() {
+        Ok(())
+    } else {
+        Err(Error::from_reason(
+            "Steam Game Server has not been initialized",
+        ))
     }
 }
 

@@ -199,6 +199,7 @@ test("init reads the Steam app ID from the environment and returns the grouped c
   assert.equal(client.overlay, steam.overlay);
   assert.equal(client.workshop, steam.workshop);
   assert.equal(client.friends, steam.friends);
+  assert.equal(client.gameServer, steam.gameServer);
   assert.equal(client.http, steam.http);
   assert.equal(client.inventory, steam.inventory);
   assert.equal(client.parties, steam.parties);
@@ -481,6 +482,233 @@ test("user facade covers voice, auth session, account, and duration helpers", as
       { method: "userSetDurationControlOnlineState", args: [2] }
     ]
   );
+});
+
+test("game server facade covers lifecycle, metadata, auth, and packet helpers", (t) => {
+  const serverId = { steamId64: "901234", steamId32: "STEAM_0:0:450617", accountId: 901234 };
+  const playerId = { steamId64: "76561198000000020", steamId32: "STEAM_0:0:19867146", accountId: 39734292 };
+  const fake = createFakeNative({
+    gameServerInit(options) {
+      this.calls.push({ method: "gameServerInit", args: [options] });
+    },
+    gameServerShutdown() {
+      this.calls.push({ method: "gameServerShutdown", args: [] });
+    },
+    gameServerRunCallbacks() {
+      this.calls.push({ method: "gameServerRunCallbacks", args: [] });
+    },
+    gameServerIsSecure() {
+      this.calls.push({ method: "gameServerIsSecure", args: [] });
+      return true;
+    },
+    gameServerGetSteamId() {
+      this.calls.push({ method: "gameServerGetSteamId", args: [] });
+      return serverId;
+    },
+    gameServerSetProduct(product) {
+      this.calls.push({ method: "gameServerSetProduct", args: [product] });
+    },
+    gameServerSetGameDescription(description) {
+      this.calls.push({ method: "gameServerSetGameDescription", args: [description] });
+    },
+    gameServerSetModDir(modDir) {
+      this.calls.push({ method: "gameServerSetModDir", args: [modDir] });
+    },
+    gameServerSetDedicatedServer(dedicated) {
+      this.calls.push({ method: "gameServerSetDedicatedServer", args: [dedicated] });
+    },
+    gameServerLogOn(token) {
+      this.calls.push({ method: "gameServerLogOn", args: [token] });
+    },
+    gameServerLogOnAnonymous() {
+      this.calls.push({ method: "gameServerLogOnAnonymous", args: [] });
+    },
+    gameServerLogOff() {
+      this.calls.push({ method: "gameServerLogOff", args: [] });
+    },
+    gameServerIsLoggedOn() {
+      this.calls.push({ method: "gameServerIsLoggedOn", args: [] });
+      return true;
+    },
+    gameServerInterfaceIsSecure() {
+      this.calls.push({ method: "gameServerInterfaceIsSecure", args: [] });
+      return true;
+    },
+    gameServerGetInterfaceSteamId() {
+      this.calls.push({ method: "gameServerGetInterfaceSteamId", args: [] });
+      return serverId;
+    },
+    gameServerWasRestartRequested() {
+      this.calls.push({ method: "gameServerWasRestartRequested", args: [] });
+      return false;
+    },
+    gameServerSetMaxPlayerCount(playersMax) {
+      this.calls.push({ method: "gameServerSetMaxPlayerCount", args: [playersMax] });
+    },
+    gameServerSetBotPlayerCount(botPlayers) {
+      this.calls.push({ method: "gameServerSetBotPlayerCount", args: [botPlayers] });
+    },
+    gameServerSetServerName(name) {
+      this.calls.push({ method: "gameServerSetServerName", args: [name] });
+    },
+    gameServerSetMapName(name) {
+      this.calls.push({ method: "gameServerSetMapName", args: [name] });
+    },
+    gameServerSetPasswordProtected(passwordProtected) {
+      this.calls.push({ method: "gameServerSetPasswordProtected", args: [passwordProtected] });
+    },
+    gameServerSetSpectatorPort(port) {
+      this.calls.push({ method: "gameServerSetSpectatorPort", args: [port] });
+    },
+    gameServerSetSpectatorServerName(name) {
+      this.calls.push({ method: "gameServerSetSpectatorServerName", args: [name] });
+    },
+    gameServerClearAllKeyValues() {
+      this.calls.push({ method: "gameServerClearAllKeyValues", args: [] });
+    },
+    gameServerSetKeyValue(key, value) {
+      this.calls.push({ method: "gameServerSetKeyValue", args: [key, value] });
+    },
+    gameServerSetGameTags(tags) {
+      this.calls.push({ method: "gameServerSetGameTags", args: [tags] });
+    },
+    gameServerSetGameData(data) {
+      this.calls.push({ method: "gameServerSetGameData", args: [data] });
+    },
+    gameServerSetRegion(region) {
+      this.calls.push({ method: "gameServerSetRegion", args: [region] });
+    },
+    gameServerSetAdvertiseServerActive(active) {
+      this.calls.push({ method: "gameServerSetAdvertiseServerActive", args: [active] });
+    },
+    gameServerGetAuthSessionTicket(identity, maxBytes) {
+      this.calls.push({ method: "gameServerGetAuthSessionTicket", args: [identity, maxBytes] });
+      return { data: Buffer.from("ticket"), handle: 77 };
+    },
+    gameServerBeginAuthSession(ticket, steamId64) {
+      this.calls.push({ method: "gameServerBeginAuthSession", args: [ticket, steamId64] });
+      return 0;
+    },
+    gameServerEndAuthSession(steamId64) {
+      this.calls.push({ method: "gameServerEndAuthSession", args: [steamId64] });
+    },
+    gameServerCancelAuthTicket(authTicket) {
+      this.calls.push({ method: "gameServerCancelAuthTicket", args: [authTicket] });
+    },
+    gameServerUserHasLicenseForApp(steamId64, appId) {
+      this.calls.push({ method: "gameServerUserHasLicenseForApp", args: [steamId64, appId] });
+      return 0;
+    },
+    gameServerRequestUserGroupStatus(steamId64, groupId64) {
+      this.calls.push({ method: "gameServerRequestUserGroupStatus", args: [steamId64, groupId64] });
+      return true;
+    },
+    gameServerGetGameplayStats() {
+      this.calls.push({ method: "gameServerGetGameplayStats", args: [] });
+    },
+    gameServerGetPublicIp() {
+      this.calls.push({ method: "gameServerGetPublicIp", args: [] });
+      return { is_set: true, ip_type: 0, ipv4: 2130706433, ipv4_address: "127.0.0.1", ipv6: null };
+    },
+    gameServerHandleIncomingPacket(data, srcIp, srcPort) {
+      this.calls.push({ method: "gameServerHandleIncomingPacket", args: [data, srcIp, srcPort] });
+      return true;
+    },
+    gameServerGetNextOutgoingPacket(maxBytes) {
+      this.calls.push({ method: "gameServerGetNextOutgoingPacket", args: [maxBytes] });
+      return { data: Buffer.from("out"), ip: 2130706433, ip_address: "127.0.0.1", port: 27015 };
+    },
+    gameServerSendUserConnectAndAuthenticateDeprecated(clientIp, authBlob) {
+      this.calls.push({ method: "gameServerSendUserConnectAndAuthenticateDeprecated", args: [clientIp, authBlob] });
+      return { success: true, steam_id: playerId };
+    },
+    gameServerCreateUnauthenticatedUserConnection() {
+      this.calls.push({ method: "gameServerCreateUnauthenticatedUserConnection", args: [] });
+      return playerId;
+    },
+    gameServerSendUserDisconnectDeprecated(steamId64) {
+      this.calls.push({ method: "gameServerSendUserDisconnectDeprecated", args: [steamId64] });
+    },
+    gameServerUpdateUserData(steamId64, playerName, score) {
+      this.calls.push({ method: "gameServerUpdateUserData", args: [steamId64, playerName, score] });
+      return true;
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  steam.gameServer.init({
+    ip: 2130706433,
+    gamePort: 27015,
+    queryPort: 27016,
+    serverMode: steam.ServerMode.AuthenticationAndSecure,
+    version: "1.0.0.0"
+  });
+  steam.gameServer.runCallbacks();
+  assert.equal(steam.gameServer.isSecure(), true);
+  assert.equal(steam.gameServer.getSteamID().steamId64, 901234n);
+  steam.gameServer.setProduct("spacewar");
+  steam.gameServer.setGameDescription("Spacewar");
+  steam.gameServer.setModDir("spacewar");
+  steam.gameServer.setDedicatedServer(true);
+  steam.gameServer.logOn("token");
+  steam.gameServer.logOnAnonymous();
+  steam.gameServer.logOff();
+  assert.equal(steam.gameServer.isLoggedOn(), true);
+  assert.equal(steam.gameServer.interfaceIsSecure(), true);
+  assert.equal(steam.gameServer.getInterfaceSteamID().steamId64, 901234n);
+  assert.equal(steam.gameServer.wasRestartRequested(), false);
+  steam.gameServer.setMaxPlayerCount(16);
+  steam.gameServer.setBotPlayerCount(2);
+  steam.gameServer.setServerName("Server");
+  steam.gameServer.setMapName("arena");
+  steam.gameServer.setPasswordProtected(false);
+  steam.gameServer.setSpectatorPort(27020);
+  steam.gameServer.setSpectatorServerName("Spectator");
+  steam.gameServer.clearAllKeyValues();
+  steam.gameServer.setKeyValue("mode", "dm");
+  steam.gameServer.setGameTags("dm,pvp");
+  steam.gameServer.setGameData("data");
+  steam.gameServer.setRegion("usw");
+  steam.gameServer.setAdvertiseServerActive(true);
+  const ticket = steam.gameServer.getAuthSessionTicket({ steamId64: 76561198000000020n }, 1024);
+  assert.equal(ticket.handle, 77);
+  assert.equal(ticket.data.toString(), "ticket");
+  assert.equal(steam.gameServer.beginAuthSession(Buffer.from("ticket"), 76561198000000020n), 0);
+  steam.gameServer.endAuthSession(76561198000000020n);
+  steam.gameServer.cancelAuthTicket(77);
+  assert.equal(steam.gameServer.userHasLicenseForApp(76561198000000020n, 480), 0);
+  assert.equal(steam.gameServer.requestUserGroupStatus(76561198000000020n, 103582791429521412n), true);
+  steam.gameServer.getGameplayStats();
+  assert.equal(steam.gameServer.getPublicIP().ipv4Address, "127.0.0.1");
+  assert.equal(steam.gameServer.handleIncomingPacket(Buffer.from("in"), 2130706433, 27015), true);
+  assert.equal(steam.gameServer.getNextOutgoingPacket(2048).data.toString(), "out");
+  assert.equal(
+    steam.gameServer.sendUserConnectAndAuthenticateDeprecated(2130706433, Buffer.from("auth")).steamId.steamId64,
+    76561198000000020n
+  );
+  assert.equal(steam.gameServer.createUnauthenticatedUserConnection().steamId64, 76561198000000020n);
+  steam.gameServer.sendUserDisconnectDeprecated(76561198000000020n);
+  assert.equal(steam.gameServer.updateUserData(76561198000000020n, "player", 100), true);
+  steam.gameServer.shutdown();
+
+  assert.deepEqual(fake.calls[0], {
+    method: "gameServerInit",
+    args: [
+      {
+        ip: 2130706433,
+        game_port: 27015,
+        query_port: 27016,
+        server_mode: steam.ServerMode.AuthenticationAndSecure,
+        version: "1.0.0.0"
+      }
+    ]
+  });
+  assert.deepEqual(fake.calls.find((call) => call.method === "gameServerGetAuthSessionTicket"), {
+    method: "gameServerGetAuthSessionTicket",
+    args: [{ steamId64: 76561198000000020n }, 1024]
+  });
 });
 
 test("utils facade covers activity, images, VR, filtering, and text input helpers", async (t) => {

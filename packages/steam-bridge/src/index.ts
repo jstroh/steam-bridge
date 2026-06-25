@@ -20,6 +20,11 @@ import {
   NativeFollowerCountResult,
   NativeFollowingListResult,
   NativeEquippedProfileItemsResult,
+  NativeGameServerAuthTicket,
+  NativeGameServerInitOptions,
+  NativeGameServerOutgoingPacket,
+  NativeGameServerPublicIp,
+  NativeGameServerUserConnectResult,
   NativeFriendGameInfo,
   NativeFriendMessage,
   NativeFriendsGroupInfo,
@@ -119,6 +124,39 @@ export interface SteamId {
 export interface AuthTicket {
   cancel(): void;
   getBytes(): Buffer;
+}
+
+export interface GameServerInitOptions {
+  ip?: number;
+  gamePort: number;
+  queryPort: number;
+  serverMode?: number;
+  version: string;
+}
+
+export interface GameServerAuthTicket {
+  data: Buffer;
+  handle: number;
+}
+
+export interface GameServerPublicIp {
+  isSet: boolean;
+  ipType: number;
+  ipv4: number | null;
+  ipv4Address: string | null;
+  ipv6: Buffer | null;
+}
+
+export interface GameServerOutgoingPacket {
+  data: Buffer;
+  ip: number;
+  ipAddress: string;
+  port: number;
+}
+
+export interface GameServerUserConnectResult {
+  success: boolean;
+  steamId: SteamId | null;
 }
 
 export interface CallbackHandle {
@@ -1034,6 +1072,12 @@ export const UserHasLicenseForAppResult = {
   HasLicense: 0,
   DoesNotHaveLicense: 1,
   NoAuth: 2
+} as const;
+
+export const ServerMode = {
+  NoAuthentication: 1,
+  Authentication: 2,
+  AuthenticationAndSecure: 3
 } as const;
 
 export const MarketNotAllowedReasonFlags = {
@@ -2264,6 +2308,152 @@ export const user = {
   },
   setDurationControlOnlineState(onlineState: number): boolean {
     return native().userSetDurationControlOnlineState(onlineState);
+  }
+};
+
+export const gameServer = {
+  ServerMode,
+  BeginAuthSessionResult,
+  UserHasLicenseForAppResult,
+  init(options: GameServerInitOptions): void {
+    const nativeOptions: NativeGameServerInitOptions = {
+      ip: options.ip,
+      game_port: options.gamePort,
+      query_port: options.queryPort,
+      server_mode: options.serverMode ?? ServerMode.Authentication,
+      version: options.version
+    };
+    native().gameServerInit(nativeOptions);
+  },
+  shutdown(): void {
+    native().gameServerShutdown();
+  },
+  runCallbacks(): void {
+    native().gameServerRunCallbacks();
+  },
+  isSecure(): boolean {
+    return native().gameServerIsSecure();
+  },
+  getSteamID(): SteamId {
+    return normalizeSteamId(native().gameServerGetSteamId());
+  },
+  setProduct(product: string): void {
+    native().gameServerSetProduct(product);
+  },
+  setGameDescription(description: string): void {
+    native().gameServerSetGameDescription(description);
+  },
+  setModDir(modDir: string): void {
+    native().gameServerSetModDir(modDir);
+  },
+  setDedicatedServer(dedicated: boolean): void {
+    native().gameServerSetDedicatedServer(dedicated);
+  },
+  logOn(token: string): void {
+    native().gameServerLogOn(token);
+  },
+  logOnAnonymous(): void {
+    native().gameServerLogOnAnonymous();
+  },
+  logOff(): void {
+    native().gameServerLogOff();
+  },
+  isLoggedOn(): boolean {
+    return native().gameServerIsLoggedOn();
+  },
+  interfaceIsSecure(): boolean {
+    return native().gameServerInterfaceIsSecure();
+  },
+  getInterfaceSteamID(): SteamId {
+    return normalizeSteamId(native().gameServerGetInterfaceSteamId());
+  },
+  wasRestartRequested(): boolean {
+    return native().gameServerWasRestartRequested();
+  },
+  setMaxPlayerCount(playersMax: number): void {
+    native().gameServerSetMaxPlayerCount(playersMax);
+  },
+  setBotPlayerCount(botPlayers: number): void {
+    native().gameServerSetBotPlayerCount(botPlayers);
+  },
+  setServerName(name: string): void {
+    native().gameServerSetServerName(name);
+  },
+  setMapName(name: string): void {
+    native().gameServerSetMapName(name);
+  },
+  setPasswordProtected(passwordProtected: boolean): void {
+    native().gameServerSetPasswordProtected(passwordProtected);
+  },
+  setSpectatorPort(port: number): void {
+    native().gameServerSetSpectatorPort(port);
+  },
+  setSpectatorServerName(name: string): void {
+    native().gameServerSetSpectatorServerName(name);
+  },
+  clearAllKeyValues(): void {
+    native().gameServerClearAllKeyValues();
+  },
+  setKeyValue(key: string, value: string): void {
+    native().gameServerSetKeyValue(key, value);
+  },
+  setGameTags(tags: string): void {
+    native().gameServerSetGameTags(tags);
+  },
+  setGameData(data: string): void {
+    native().gameServerSetGameData(data);
+  },
+  setRegion(region: string): void {
+    native().gameServerSetRegion(region);
+  },
+  setAdvertiseServerActive(active: boolean): void {
+    native().gameServerSetAdvertiseServerActive(active);
+  },
+  getAuthSessionTicket(identity?: NetworkingIdentity | null, maxBytes?: number | null): GameServerAuthTicket {
+    return normalizeGameServerAuthTicket(
+      native().gameServerGetAuthSessionTicket(identity ? nativeNetworkingIdentity(identity) : undefined, maxBytes ?? undefined)
+    );
+  },
+  beginAuthSession(ticket: Buffer | Uint8Array, steamId64: bigint): number {
+    return native().gameServerBeginAuthSession(Buffer.from(ticket), steamId64);
+  },
+  endAuthSession(steamId64: bigint): void {
+    native().gameServerEndAuthSession(steamId64);
+  },
+  cancelAuthTicket(authTicket: number): void {
+    native().gameServerCancelAuthTicket(authTicket);
+  },
+  userHasLicenseForApp(steamId64: bigint, appId: number): number {
+    return native().gameServerUserHasLicenseForApp(steamId64, appId);
+  },
+  requestUserGroupStatus(steamId64: bigint, groupId64: bigint): boolean {
+    return native().gameServerRequestUserGroupStatus(steamId64, groupId64);
+  },
+  getGameplayStats(): void {
+    native().gameServerGetGameplayStats();
+  },
+  getPublicIP(): GameServerPublicIp {
+    return normalizeGameServerPublicIp(native().gameServerGetPublicIp());
+  },
+  handleIncomingPacket(data: Buffer | Uint8Array, srcIP: number, srcPort: number): boolean {
+    return native().gameServerHandleIncomingPacket(Buffer.from(data), srcIP, srcPort);
+  },
+  getNextOutgoingPacket(maxBytes?: number | null): GameServerOutgoingPacket | null {
+    return normalizeGameServerOutgoingPacket(native().gameServerGetNextOutgoingPacket(maxBytes ?? undefined));
+  },
+  sendUserConnectAndAuthenticateDeprecated(clientIP: number, authBlob: Buffer | Uint8Array): GameServerUserConnectResult {
+    return normalizeGameServerUserConnectResult(
+      native().gameServerSendUserConnectAndAuthenticateDeprecated(clientIP, Buffer.from(authBlob))
+    );
+  },
+  createUnauthenticatedUserConnection(): SteamId {
+    return normalizeSteamId(native().gameServerCreateUnauthenticatedUserConnection());
+  },
+  sendUserDisconnectDeprecated(steamId64: bigint): void {
+    native().gameServerSendUserDisconnectDeprecated(steamId64);
+  },
+  updateUserData(steamId64: bigint, playerName: string, score: number): boolean {
+    return native().gameServerUpdateUserData(steamId64, playerName, score);
   }
 };
 
@@ -4026,6 +4216,7 @@ export interface SteamBridgeClient {
   callback: typeof callback;
   cloud: typeof cloud;
   friends: typeof friends;
+  gameServer: typeof gameServer;
   http: typeof http;
   inventory: typeof inventory;
   input: typeof input;
@@ -4054,6 +4245,7 @@ export function createCompatibilityClient(): SteamBridgeClient {
     callback,
     cloud,
     friends,
+    gameServer,
     http,
     inventory,
     input,
@@ -4133,6 +4325,55 @@ function normalizeSteamId(steamId: NativeSteamId): SteamId {
     steamId32: steamId.steamId32,
     accountId: steamId.accountId
   };
+}
+
+function normalizeGameServerAuthTicket(ticket: NativeGameServerAuthTicket): GameServerAuthTicket {
+  return {
+    data: ticket.data,
+    handle: Number(ticket.handle)
+  };
+}
+
+function normalizeGameServerPublicIp(address: NativeGameServerPublicIp): GameServerPublicIp {
+  const source = address as unknown as Record<string, unknown>;
+  const ipv4 = source.ipv4;
+  const ipv4Address = source.ipv4Address ?? source.ipv4_address;
+  return {
+    isSet: Boolean(source.isSet ?? source.is_set),
+    ipType: Number(source.ipType ?? source.ip_type ?? 0),
+    ipv4: ipv4 == null ? null : Number(ipv4),
+    ipv4Address: ipv4Address == null ? null : String(ipv4Address),
+    ipv6: (source.ipv6 as Buffer | null | undefined) ?? null
+  };
+}
+
+function normalizeGameServerOutgoingPacket(
+  packet: NativeGameServerOutgoingPacket | null | undefined
+): GameServerOutgoingPacket | null {
+  if (!packet) {
+    return null;
+  }
+  const source = packet as unknown as Record<string, unknown>;
+  return {
+    data: packet.data,
+    ip: Number(packet.ip),
+    ipAddress: String(source.ipAddress ?? source.ip_address ?? ""),
+    port: Number(packet.port)
+  };
+}
+
+function normalizeGameServerUserConnectResult(
+  result: NativeGameServerUserConnectResult
+): GameServerUserConnectResult {
+  const source = result as unknown as Record<string, unknown>;
+  return {
+    success: Boolean(result.success),
+    steamId: normalizeOptionalSteamId((source.steamId ?? source.steam_id) as NativeSteamId | null | undefined)
+  };
+}
+
+function normalizeOptionalSteamId(steamId: NativeSteamId | null | undefined): SteamId | null {
+  return steamId ? normalizeSteamId(steamId) : null;
 }
 
 const EMPTY_NATIVE_STEAM_ID: NativeSteamId = {
@@ -5681,6 +5922,7 @@ const defaultExport = {
   callback,
   cloud,
   friends,
+  gameServer,
   http,
   inventory,
   input,
