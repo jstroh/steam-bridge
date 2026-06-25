@@ -460,6 +460,273 @@ test("overlay helpers map constants and forward modal/store options", (t) => {
   );
 });
 
+test("matchmaking facade covers favorites, lobby filters, metadata, chat, and callbacks", async (t) => {
+  const lobbyId = 109775242022617907n;
+  const dependentLobbyId = 109775242022617908n;
+  const memberId = 76561198000000010n;
+  const serverId = 90123456789012345n;
+  const fake = createFakeNative({
+    matchmakingGetFavoriteGameCount() {
+      this.calls.push({ method: "matchmakingGetFavoriteGameCount", args: [] });
+      return 1;
+    },
+    matchmakingGetFavoriteGame(index) {
+      this.calls.push({ method: "matchmakingGetFavoriteGame", args: [index] });
+      return {
+        app_id: 480,
+        ip: 2130706433,
+        ip_address: "127.0.0.1",
+        conn_port: 27015,
+        query_port: 27016,
+        flags: 1,
+        last_played_on_server: 123456
+      };
+    },
+    matchmakingAddFavoriteGame(appId, ip, connPort, queryPort, flags, lastPlayedOnServer) {
+      this.calls.push({ method: "matchmakingAddFavoriteGame", args: [appId, ip, connPort, queryPort, flags, lastPlayedOnServer] });
+      return 2;
+    },
+    matchmakingRemoveFavoriteGame(appId, ip, connPort, queryPort, flags) {
+      this.calls.push({ method: "matchmakingRemoveFavoriteGame", args: [appId, ip, connPort, queryPort, flags] });
+      return true;
+    },
+    matchmakingAddRequestLobbyListStringFilter(key, value, comparison) {
+      this.calls.push({ method: "matchmakingAddRequestLobbyListStringFilter", args: [key, value, comparison] });
+    },
+    matchmakingAddRequestLobbyListNumericalFilter(key, value, comparison) {
+      this.calls.push({ method: "matchmakingAddRequestLobbyListNumericalFilter", args: [key, value, comparison] });
+    },
+    matchmakingAddRequestLobbyListNearValueFilter(key, value) {
+      this.calls.push({ method: "matchmakingAddRequestLobbyListNearValueFilter", args: [key, value] });
+    },
+    matchmakingAddRequestLobbyListFilterSlotsAvailable(slots) {
+      this.calls.push({ method: "matchmakingAddRequestLobbyListFilterSlotsAvailable", args: [slots] });
+    },
+    matchmakingAddRequestLobbyListDistanceFilter(distanceFilter) {
+      this.calls.push({ method: "matchmakingAddRequestLobbyListDistanceFilter", args: [distanceFilter] });
+    },
+    matchmakingAddRequestLobbyListResultCountFilter(maxResults) {
+      this.calls.push({ method: "matchmakingAddRequestLobbyListResultCountFilter", args: [maxResults] });
+    },
+    matchmakingAddRequestLobbyListCompatibleMembersFilter(lobby) {
+      this.calls.push({ method: "matchmakingAddRequestLobbyListCompatibleMembersFilter", args: [lobby] });
+    },
+    matchmakingCreateLobby(lobbyType, maxMembers) {
+      this.calls.push({ method: "matchmakingCreateLobby", args: [lobbyType, maxMembers] });
+      return Promise.resolve({ id: lobbyId });
+    },
+    matchmakingJoinLobby(lobby) {
+      this.calls.push({ method: "matchmakingJoinLobby", args: [lobby] });
+      return Promise.resolve({ id: lobby });
+    },
+    matchmakingGetLobbies() {
+      this.calls.push({ method: "matchmakingGetLobbies", args: [] });
+      return Promise.resolve([{ id: lobbyId }]);
+    },
+    matchmakingLeaveLobby(lobby) {
+      this.calls.push({ method: "matchmakingLeaveLobby", args: [lobby] });
+    },
+    matchmakingGetLobbyMemberCount(lobby) {
+      this.calls.push({ method: "matchmakingGetLobbyMemberCount", args: [lobby] });
+      return 2;
+    },
+    matchmakingGetLobbyMemberLimit(lobby) {
+      this.calls.push({ method: "matchmakingGetLobbyMemberLimit", args: [lobby] });
+      return 4;
+    },
+    matchmakingGetLobbyMembers(lobby) {
+      this.calls.push({ method: "matchmakingGetLobbyMembers", args: [lobby] });
+      return [{ steamId64: String(memberId), steamId32: "STEAM_0:0:1", accountId: 1 }];
+    },
+    matchmakingGetLobbyOwner(lobby) {
+      this.calls.push({ method: "matchmakingGetLobbyOwner", args: [lobby] });
+      return { steamId64: String(memberId), steamId32: "STEAM_0:0:1", accountId: 1 };
+    },
+    matchmakingSetLobbyJoinable(lobby, joinable) {
+      this.calls.push({ method: "matchmakingSetLobbyJoinable", args: [lobby, joinable] });
+      return true;
+    },
+    matchmakingGetLobbyData(lobby, key) {
+      this.calls.push({ method: "matchmakingGetLobbyData", args: [lobby, key] });
+      return key === "missing" ? null : "value";
+    },
+    matchmakingSetLobbyData(lobby, key, value) {
+      this.calls.push({ method: "matchmakingSetLobbyData", args: [lobby, key, value] });
+      return true;
+    },
+    matchmakingDeleteLobbyData(lobby, key) {
+      this.calls.push({ method: "matchmakingDeleteLobbyData", args: [lobby, key] });
+      return true;
+    },
+    matchmakingGetLobbyFullData(lobby) {
+      this.calls.push({ method: "matchmakingGetLobbyFullData", args: [lobby] });
+      return { map: "test-map" };
+    },
+    matchmakingInviteUserToLobby(lobby, steamId64) {
+      this.calls.push({ method: "matchmakingInviteUserToLobby", args: [lobby, steamId64] });
+      return true;
+    },
+    matchmakingGetLobbyMemberData(lobby, steamId64, key) {
+      this.calls.push({ method: "matchmakingGetLobbyMemberData", args: [lobby, steamId64, key] });
+      return "ready";
+    },
+    matchmakingSetLobbyMemberData(lobby, key, value) {
+      this.calls.push({ method: "matchmakingSetLobbyMemberData", args: [lobby, key, value] });
+    },
+    matchmakingSendLobbyChatMsg(lobby, data) {
+      this.calls.push({ method: "matchmakingSendLobbyChatMsg", args: [lobby, data] });
+      return true;
+    },
+    matchmakingGetLobbyChatEntry(lobby, chatId, maxBytes) {
+      this.calls.push({ method: "matchmakingGetLobbyChatEntry", args: [lobby, chatId, maxBytes] });
+      return {
+        steam_id: { steamId64: String(memberId), steamId32: "STEAM_0:0:1", accountId: 1 },
+        data: Buffer.from("hello"),
+        size: 5,
+        text: "hello",
+        entry_type: 1
+      };
+    },
+    matchmakingRequestLobbyData(lobby) {
+      this.calls.push({ method: "matchmakingRequestLobbyData", args: [lobby] });
+      return true;
+    },
+    matchmakingSetLobbyGameServer(lobby, ip, port, steamId64) {
+      this.calls.push({ method: "matchmakingSetLobbyGameServer", args: [lobby, ip, port, steamId64] });
+    },
+    matchmakingGetLobbyGameServer(lobby) {
+      this.calls.push({ method: "matchmakingGetLobbyGameServer", args: [lobby] });
+      return {
+        ip: 2130706433,
+        ip_address: "127.0.0.1",
+        port: 27015,
+        steam_id: { steamId64: String(serverId), steamId32: "STEAM_0:0:2", accountId: 2 }
+      };
+    },
+    matchmakingSetLobbyMemberLimit(lobby, maxMembers) {
+      this.calls.push({ method: "matchmakingSetLobbyMemberLimit", args: [lobby, maxMembers] });
+      return true;
+    },
+    matchmakingSetLobbyType(lobby, lobbyType) {
+      this.calls.push({ method: "matchmakingSetLobbyType", args: [lobby, lobbyType] });
+      return true;
+    },
+    matchmakingSetLobbyOwner(lobby, steamId64) {
+      this.calls.push({ method: "matchmakingSetLobbyOwner", args: [lobby, steamId64] });
+      return true;
+    },
+    matchmakingSetLinkedLobby(lobby, dependentLobby) {
+      this.calls.push({ method: "matchmakingSetLinkedLobby", args: [lobby, dependentLobby] });
+      return true;
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  assert.equal(steam.matchmaking.FavoriteFlags.Favorite, 1);
+  assert.equal(steam.matchmaking.LobbyType.PrivateUnique, 4);
+  assert.equal(steam.matchmaking.favoriteGameCount(), 1);
+  assert.deepEqual(steam.matchmaking.favoriteGame(0), {
+    appId: 480,
+    ip: 2130706433,
+    ipAddress: "127.0.0.1",
+    connPort: 27015,
+    queryPort: 27016,
+    flags: 1,
+    lastPlayedOnServer: 123456
+  });
+  assert.equal(
+    steam.matchmaking.addFavoriteGame({
+      appId: 480,
+      ip: 2130706433,
+      ipAddress: "127.0.0.1",
+      connPort: 27015,
+      queryPort: 27016,
+      flags: steam.matchmaking.FavoriteFlags.Favorite,
+      lastPlayedOnServer: 123456
+    }),
+    2
+  );
+  assert.equal(
+    steam.matchmaking.removeFavoriteGame({
+      appId: 480,
+      ip: 2130706433,
+      connPort: 27015,
+      queryPort: 27016,
+      flags: steam.matchmaking.FavoriteFlags.Favorite
+    }),
+    true
+  );
+
+  const lobbies = await steam.matchmaking.getLobbies({
+    stringFilters: [{ key: "mode", value: "coop" }],
+    numericalFilters: [{ key: "skill", value: 3, comparison: steam.matchmaking.LobbyComparison.EqualToOrGreaterThan }],
+    nearValueFilters: [{ key: "ping", value: 50 }],
+    slotsAvailable: 1,
+    distanceFilter: steam.matchmaking.LobbyDistanceFilter.Worldwide,
+    resultCount: 10,
+    compatibleLobby: lobbyId
+  });
+  assert.equal(lobbies[0].id, lobbyId);
+
+  const lobby = await steam.matchmaking.createLobby(steam.matchmaking.LobbyType.Public, 4);
+  assert.equal((await steam.matchmaking.joinLobby(lobbyId)).id, lobbyId);
+  assert.equal(lobby.getMemberCount(), 2n);
+  assert.equal(lobby.getMemberLimit(), 4n);
+  assert.equal(lobby.getMembers()[0].steamId64, memberId);
+  assert.equal(lobby.getOwner().steamId64, memberId);
+  assert.equal(lobby.setJoinable(true), true);
+  assert.equal(lobby.getData("key"), "value");
+  assert.equal(lobby.setData("key", "value"), true);
+  assert.equal(lobby.deleteData("key"), true);
+  assert.deepEqual(lobby.getFullData(), { map: "test-map" });
+  assert.equal(lobby.inviteUser(memberId), true);
+  assert.equal(lobby.getMemberData(memberId, "status"), "ready");
+  lobby.setMemberData("status", "ready");
+  assert.equal(lobby.sendChatMessage("hello"), true);
+  assert.equal(lobby.getChatEntry(7, 128).steamId.steamId64, memberId);
+  assert.equal(lobby.requestData(), true);
+  lobby.setGameServer({ ip: 2130706433, port: 27015, steamId64: serverId });
+  assert.equal(lobby.getGameServer().steamId.steamId64, serverId);
+  assert.equal(lobby.setMemberLimit(8), true);
+  assert.equal(lobby.setType(steam.matchmaking.LobbyType.Invisible), true);
+  assert.equal(lobby.setOwner(memberId), true);
+  assert.equal(lobby.setLinkedLobby(dependentLobbyId), true);
+  lobby.leave();
+
+  let inviteEvent;
+  steam.callback.register(steam.SteamCallback.LobbyInvite, (event) => {
+    inviteEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.LobbyInvite)({
+    user: String(memberId),
+    lobby: String(lobbyId),
+    game_id: "480"
+  });
+  assert.equal(inviteEvent.user, memberId);
+  assert.equal(inviteEvent.lobby, lobbyId);
+  assert.equal(inviteEvent.gameId, 480n);
+
+  let chatEvent;
+  steam.callback.register(steam.SteamCallback.LobbyChatMsg, (event) => {
+    chatEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.LobbyChatMsg)({
+    lobby: String(lobbyId),
+    user: String(memberId),
+    entry_type: 1,
+    chat_id: 7
+  });
+  assert.equal(chatEvent.entryType, 1);
+  assert.equal(chatEvent.chatId, 7);
+
+  assert.deepEqual(fake.calls.find((call) => call.method === "matchmakingAddRequestLobbyListStringFilter"), {
+    method: "matchmakingAddRequestLobbyListStringFilter",
+    args: ["mode", "coop", steam.matchmaking.LobbyComparison.Equal]
+  });
+});
+
 test("apps facade covers DLC, launch, depot, trial, beta, and file-detail helpers", async (t) => {
   const sha = Buffer.from("00112233445566778899aabbccddeeff00112233", "hex");
   const fake = createFakeNative({

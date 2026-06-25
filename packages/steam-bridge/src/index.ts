@@ -48,6 +48,9 @@ import {
   NativeLeaderboardScoresDownloaded,
   NativeLeaderboardScoreUploaded,
   NativeLeaderboardUgcSetResult,
+  NativeLobbyChatEntry,
+  NativeLobbyGameServer,
+  NativeMatchmakingFavoriteGame,
   NativeNumberOfCurrentPlayersResult,
   NativeNetworkingAuthenticationStatus,
   NativeNetworkingCertificateResult,
@@ -214,6 +217,64 @@ export interface CreateBeaconResult {
 
 export interface ChangeNumOpenSlotsResult {
   result: number;
+}
+
+export interface MatchmakingFavoriteGame {
+  appId: number;
+  ip: number;
+  ipAddress: string;
+  connPort: number;
+  queryPort: number;
+  flags: number;
+  lastPlayedOnServer: number;
+}
+
+export interface LobbyChatEntry {
+  steamId: SteamId;
+  data: Buffer;
+  size: number;
+  text: string;
+  entryType: number;
+}
+
+export interface LobbyGameServer {
+  ip: number;
+  ipAddress: string;
+  port: number;
+  steamId: SteamId;
+}
+
+export interface LobbyGameServerOptions {
+  ip?: number;
+  port?: number;
+  steamId64?: bigint;
+}
+
+export interface LobbyListStringFilter {
+  key: string;
+  value: string;
+  comparison?: number;
+}
+
+export interface LobbyListNumericalFilter {
+  key: string;
+  value: number;
+  comparison?: number;
+}
+
+export interface LobbyListNearValueFilter {
+  key: string;
+  value: number;
+}
+
+export interface LobbyListOptions {
+  stringFilters?: LobbyListStringFilter[];
+  numericalFilters?: LobbyListNumericalFilter[];
+  nearValueFilters?: LobbyListNearValueFilter[];
+  slotsAvailable?: number;
+  distanceFilter?: number;
+  resultCount?: number;
+  compatibleLobby?: bigint;
 }
 
 export interface AppDlcData {
@@ -755,6 +816,13 @@ export const SteamCallback = {
   MicroTxnAuthorizationResponse: 9,
   GameOverlayActivated: 331,
   EquippedProfileItemsChanged: 350,
+  FavoritesListChanged: 502,
+  LobbyInvite: 503,
+  LobbyEnter: 504,
+  LobbyChatMsg: 507,
+  LobbyGameCreated: 509,
+  LobbyMatchList: 510,
+  LobbyKicked: 512,
   SteamNetConnectionStatusChanged: 1221,
   SteamNetAuthenticationStatus: 1222,
   SteamNetworkingFakeIPResult: 1223,
@@ -1053,7 +1121,30 @@ export const LobbyType = {
   Private: 0,
   FriendsOnly: 1,
   Public: 2,
-  Invisible: 3
+  Invisible: 3,
+  PrivateUnique: 4
+} as const;
+
+export const LobbyComparison = {
+  EqualToOrLessThan: -2,
+  LessThan: -1,
+  Equal: 0,
+  GreaterThan: 1,
+  EqualToOrGreaterThan: 2,
+  NotEqual: 3
+} as const;
+
+export const LobbyDistanceFilter = {
+  Close: 0,
+  Default: 1,
+  Far: 2,
+  Worldwide: 3
+} as const;
+
+export const FavoriteFlags = {
+  None: 0,
+  Favorite: 1,
+  History: 2
 } as const;
 
 export const SendType = {
@@ -1367,6 +1458,54 @@ export class Lobby {
       ok = this.setData(key, value) && ok;
     }
     return ok;
+  }
+
+  inviteUser(steamId64: bigint): boolean {
+    return native().matchmakingInviteUserToLobby(this.id, steamId64);
+  }
+
+  getMemberData(steamId64: bigint, key: string): string | null {
+    return native().matchmakingGetLobbyMemberData(this.id, steamId64, key) ?? null;
+  }
+
+  setMemberData(key: string, value: string): void {
+    native().matchmakingSetLobbyMemberData(this.id, key, value);
+  }
+
+  sendChatMessage(data: Buffer | Uint8Array | string): boolean {
+    return native().matchmakingSendLobbyChatMsg(this.id, Buffer.from(data));
+  }
+
+  getChatEntry(chatId: number, maxBytes?: number | null): LobbyChatEntry | null {
+    return normalizeLobbyChatEntry(native().matchmakingGetLobbyChatEntry(this.id, chatId, maxBytes ?? undefined));
+  }
+
+  requestData(): boolean {
+    return native().matchmakingRequestLobbyData(this.id);
+  }
+
+  setGameServer(options: LobbyGameServerOptions): void {
+    native().matchmakingSetLobbyGameServer(this.id, options.ip ?? 0, options.port ?? 0, options.steamId64 ?? 0n);
+  }
+
+  getGameServer(): LobbyGameServer | null {
+    return normalizeLobbyGameServer(native().matchmakingGetLobbyGameServer(this.id));
+  }
+
+  setMemberLimit(maxMembers: number): boolean {
+    return native().matchmakingSetLobbyMemberLimit(this.id, maxMembers);
+  }
+
+  setType(lobbyType: number): boolean {
+    return native().matchmakingSetLobbyType(this.id, lobbyType);
+  }
+
+  setOwner(steamId64: bigint): boolean {
+    return native().matchmakingSetLobbyOwner(this.id, steamId64);
+  }
+
+  setLinkedLobby(dependentLobbyId: bigint): boolean {
+    return native().matchmakingSetLinkedLobby(this.id, dependentLobbyId);
   }
 }
 
@@ -2232,7 +2371,56 @@ export const friends = {
 
 export const matchmaking = {
   LobbyType,
+  LobbyComparison,
+  LobbyDistanceFilter,
+  FavoriteFlags,
   Lobby,
+  favoriteGameCount(): number {
+    return native().matchmakingGetFavoriteGameCount();
+  },
+  favoriteGame(index: number): MatchmakingFavoriteGame | null {
+    return normalizeMatchmakingFavoriteGame(native().matchmakingGetFavoriteGame(index));
+  },
+  addFavoriteGame(favorite: MatchmakingFavoriteGame): number {
+    return native().matchmakingAddFavoriteGame(
+      favorite.appId,
+      favorite.ip,
+      favorite.connPort,
+      favorite.queryPort,
+      favorite.flags,
+      favorite.lastPlayedOnServer
+    );
+  },
+  removeFavoriteGame(favorite: Pick<MatchmakingFavoriteGame, "appId" | "ip" | "connPort" | "queryPort" | "flags">): boolean {
+    return native().matchmakingRemoveFavoriteGame(
+      favorite.appId,
+      favorite.ip,
+      favorite.connPort,
+      favorite.queryPort,
+      favorite.flags
+    );
+  },
+  addRequestLobbyListStringFilter(key: string, value: string, comparison: number = LobbyComparison.Equal): void {
+    native().matchmakingAddRequestLobbyListStringFilter(key, value, comparison);
+  },
+  addRequestLobbyListNumericalFilter(key: string, value: number, comparison: number = LobbyComparison.Equal): void {
+    native().matchmakingAddRequestLobbyListNumericalFilter(key, value, comparison);
+  },
+  addRequestLobbyListNearValueFilter(key: string, value: number): void {
+    native().matchmakingAddRequestLobbyListNearValueFilter(key, value);
+  },
+  addRequestLobbyListFilterSlotsAvailable(slots: number): void {
+    native().matchmakingAddRequestLobbyListFilterSlotsAvailable(slots);
+  },
+  addRequestLobbyListDistanceFilter(distanceFilter: number): void {
+    native().matchmakingAddRequestLobbyListDistanceFilter(distanceFilter);
+  },
+  addRequestLobbyListResultCountFilter(maxResults: number): void {
+    native().matchmakingAddRequestLobbyListResultCountFilter(maxResults);
+  },
+  addRequestLobbyListCompatibleMembersFilter(lobbyId: bigint): void {
+    native().matchmakingAddRequestLobbyListCompatibleMembersFilter(lobbyId);
+  },
   async createLobby(lobbyType: number, maxMembers: number): Promise<Lobby> {
     const result = await native().matchmakingCreateLobby(lobbyType, maxMembers);
     return new Lobby(BigInt(result.id));
@@ -2241,7 +2429,8 @@ export const matchmaking = {
     const result = await native().matchmakingJoinLobby(lobbyId);
     return new Lobby(BigInt(result.id));
   },
-  async getLobbies(): Promise<Lobby[]> {
+  async getLobbies(options: LobbyListOptions = {}): Promise<Lobby[]> {
+    applyLobbyListOptions(options);
     const result = await native().matchmakingGetLobbies();
     return result.map((lobby) => new Lobby(BigInt(lobby.id)));
   }
@@ -3433,6 +3622,75 @@ function normalizeChangeNumOpenSlotsResult(result: NativeChangeNumOpenSlotsResul
   };
 }
 
+function normalizeMatchmakingFavoriteGame(
+  game: NativeMatchmakingFavoriteGame | null | undefined
+): MatchmakingFavoriteGame | null {
+  if (!game) {
+    return null;
+  }
+  const source = game as unknown as Record<string, unknown>;
+  return {
+    appId: Number(source.appId ?? source.app_id ?? 0),
+    ip: Number(source.ip ?? 0),
+    ipAddress: String(source.ipAddress ?? source.ip_address ?? ""),
+    connPort: Number(source.connPort ?? source.conn_port ?? 0),
+    queryPort: Number(source.queryPort ?? source.query_port ?? 0),
+    flags: Number(source.flags ?? 0),
+    lastPlayedOnServer: Number(source.lastPlayedOnServer ?? source.last_played_on_server ?? 0)
+  };
+}
+
+function normalizeLobbyChatEntry(entry: NativeLobbyChatEntry | null | undefined): LobbyChatEntry | null {
+  if (!entry) {
+    return null;
+  }
+  const source = entry as unknown as Record<string, unknown>;
+  return {
+    steamId: normalizeSteamId((source.steamId ?? source.steam_id ?? EMPTY_NATIVE_STEAM_ID) as NativeSteamId),
+    data: entry.data,
+    size: Number(entry.size ?? 0),
+    text: String(entry.text ?? ""),
+    entryType: Number(source.entryType ?? source.entry_type ?? 0)
+  };
+}
+
+function normalizeLobbyGameServer(server: NativeLobbyGameServer | null | undefined): LobbyGameServer | null {
+  if (!server) {
+    return null;
+  }
+  const source = server as unknown as Record<string, unknown>;
+  return {
+    ip: Number(source.ip ?? 0),
+    ipAddress: String(source.ipAddress ?? source.ip_address ?? ""),
+    port: Number(source.port ?? 0),
+    steamId: normalizeSteamId((source.steamId ?? source.steam_id ?? EMPTY_NATIVE_STEAM_ID) as NativeSteamId)
+  };
+}
+
+function applyLobbyListOptions(options: LobbyListOptions): void {
+  for (const filter of options.stringFilters ?? []) {
+    matchmaking.addRequestLobbyListStringFilter(filter.key, filter.value, filter.comparison ?? LobbyComparison.Equal);
+  }
+  for (const filter of options.numericalFilters ?? []) {
+    matchmaking.addRequestLobbyListNumericalFilter(filter.key, filter.value, filter.comparison ?? LobbyComparison.Equal);
+  }
+  for (const filter of options.nearValueFilters ?? []) {
+    matchmaking.addRequestLobbyListNearValueFilter(filter.key, filter.value);
+  }
+  if (options.slotsAvailable !== undefined) {
+    matchmaking.addRequestLobbyListFilterSlotsAvailable(options.slotsAvailable);
+  }
+  if (options.distanceFilter !== undefined) {
+    matchmaking.addRequestLobbyListDistanceFilter(options.distanceFilter);
+  }
+  if (options.resultCount !== undefined) {
+    matchmaking.addRequestLobbyListResultCountFilter(options.resultCount);
+  }
+  if (options.compatibleLobby !== undefined) {
+    matchmaking.addRequestLobbyListCompatibleMembersFilter(options.compatibleLobby);
+  }
+}
+
 function normalizeAppDlcData(data: NativeAppDlcData | null | undefined): AppDlcData | null {
   if (!data) {
     return null;
@@ -3667,13 +3925,50 @@ function normalizeCallbackEvent(callbackId: number, event: unknown): unknown {
   }
   const source = event as Record<string, unknown>;
   const result: Record<string, unknown> = { ...source };
-  for (const key of ["steam_id", "lobby", "member", "user_changed", "making_change", "remote", "lobby_steam_id", "friend_steam_id"]) {
+  for (const key of [
+    "steam_id",
+    "lobby",
+    "member",
+    "user",
+    "admin",
+    "game_id",
+    "game_server",
+    "user_changed",
+    "making_change",
+    "remote",
+    "lobby_steam_id",
+    "friend_steam_id"
+  ]) {
     if (key in result) {
       result[key] = normalizeBigIntLike(result[key]);
     }
   }
   if (result.steam_id !== undefined) {
     result.steamId ??= result.steam_id;
+  }
+  const aliases: Record<string, string> = {
+    account_id: "accountId",
+    app_id: "appId",
+    chat_id: "chatId",
+    chat_permissions: "chatPermissions",
+    chat_room_enter_response: "chatRoomEnterResponse",
+    conn_port: "connPort",
+    entry_type: "entryType",
+    friend_steam_id: "friendSteamId",
+    game_id: "gameId",
+    game_server: "gameServer",
+    ip_address: "ipAddress",
+    kicked_due_to_disconnect: "kickedDueToDisconnect",
+    lobby_steam_id: "lobbySteamId",
+    making_change: "makingChange",
+    member_state_change: "memberStateChange",
+    query_port: "queryPort",
+    user_changed: "userChanged"
+  };
+  for (const [snake, camel] of Object.entries(aliases)) {
+    if (result[snake] !== undefined) {
+      result[camel] ??= result[snake];
+    }
   }
   return result;
 }

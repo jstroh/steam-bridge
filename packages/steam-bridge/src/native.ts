@@ -410,6 +410,40 @@ export interface NativeLobbyResult {
   id: bigint;
 }
 
+export interface NativeMatchmakingFavoriteGame {
+  appId?: number;
+  app_id?: number;
+  ip: number;
+  ipAddress?: string;
+  ip_address?: string;
+  connPort?: number;
+  conn_port?: number;
+  queryPort?: number;
+  query_port?: number;
+  flags: number;
+  lastPlayedOnServer?: number;
+  last_played_on_server?: number;
+}
+
+export interface NativeLobbyChatEntry {
+  steamId?: NativeSteamId;
+  steam_id?: NativeSteamId;
+  data: Buffer;
+  size: number;
+  text: string;
+  entryType?: number;
+  entry_type?: number;
+}
+
+export interface NativeLobbyGameServer {
+  ip: number;
+  ipAddress?: string;
+  ip_address?: string;
+  port: number;
+  steamId?: NativeSteamId;
+  steam_id?: NativeSteamId;
+}
+
 export interface NativeWorkshopInstallInfo {
   folder: string;
   sizeOnDisk: bigint;
@@ -1183,6 +1217,17 @@ export interface NativeBinding {
   networkingUtilsGetIpAddressFakeIpType(address: NativeNetworkingIpAddress): number;
   networkingUtilsGetRealIdentityForFakeIp(address: NativeNetworkingIpAddress): NativeNetworkingFakeIpIdentity;
 
+  matchmakingGetFavoriteGameCount(): number;
+  matchmakingGetFavoriteGame(index: number): NativeMatchmakingFavoriteGame | null | undefined;
+  matchmakingAddFavoriteGame(appId: number, ip: number, connPort: number, queryPort: number, flags: number, lastPlayedOnServer: number): number;
+  matchmakingRemoveFavoriteGame(appId: number, ip: number, connPort: number, queryPort: number, flags: number): boolean;
+  matchmakingAddRequestLobbyListStringFilter(key: string, value: string, comparison: number): void;
+  matchmakingAddRequestLobbyListNumericalFilter(key: string, value: number, comparison: number): void;
+  matchmakingAddRequestLobbyListNearValueFilter(key: string, value: number): void;
+  matchmakingAddRequestLobbyListFilterSlotsAvailable(slots: number): void;
+  matchmakingAddRequestLobbyListDistanceFilter(distanceFilter: number): void;
+  matchmakingAddRequestLobbyListResultCountFilter(maxResults: number): void;
+  matchmakingAddRequestLobbyListCompatibleMembersFilter(lobbyId: bigint): void;
   matchmakingCreateLobby(lobbyType: number, maxMembers: number): Promise<NativeLobbyResult>;
   matchmakingJoinLobby(lobbyId: bigint): Promise<NativeLobbyResult>;
   matchmakingGetLobbies(): Promise<NativeLobbyResult[]>;
@@ -1196,6 +1241,18 @@ export interface NativeBinding {
   matchmakingSetLobbyData(lobbyId: bigint, key: string, value: string): boolean;
   matchmakingDeleteLobbyData(lobbyId: bigint, key: string): boolean;
   matchmakingGetLobbyFullData(lobbyId: bigint): Record<string, string>;
+  matchmakingInviteUserToLobby(lobbyId: bigint, steamId64: bigint): boolean;
+  matchmakingGetLobbyMemberData(lobbyId: bigint, steamId64: bigint, key: string): string | null | undefined;
+  matchmakingSetLobbyMemberData(lobbyId: bigint, key: string, value: string): void;
+  matchmakingSendLobbyChatMsg(lobbyId: bigint, data: Buffer): boolean;
+  matchmakingGetLobbyChatEntry(lobbyId: bigint, chatId: number, maxBytes?: number): NativeLobbyChatEntry | null | undefined;
+  matchmakingRequestLobbyData(lobbyId: bigint): boolean;
+  matchmakingSetLobbyGameServer(lobbyId: bigint, ip: number, port: number, steamId64: bigint): void;
+  matchmakingGetLobbyGameServer(lobbyId: bigint): NativeLobbyGameServer | null | undefined;
+  matchmakingSetLobbyMemberLimit(lobbyId: bigint, maxMembers: number): boolean;
+  matchmakingSetLobbyType(lobbyId: bigint, lobbyType: number): boolean;
+  matchmakingSetLobbyOwner(lobbyId: bigint, steamId64: bigint): boolean;
+  matchmakingSetLinkedLobby(lobbyId: bigint, dependentLobbyId: bigint): boolean;
 
   workshopCreateItem(appId?: number | null): Promise<NativeUgcResult>;
   workshopUpdateItem(itemId: bigint, updateDetails: unknown, appId?: number | null): Promise<NativeUgcResult>;

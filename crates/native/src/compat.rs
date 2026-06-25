@@ -25,8 +25,15 @@ const CALLBACK_STEAM_SERVER_CONNECT_FAILURE: i32 = 102;
 const CALLBACK_STEAM_SERVERS_DISCONNECTED: i32 = 103;
 const CALLBACK_GET_AUTH_SESSION_TICKET_RESPONSE: i32 = 163;
 const CALLBACK_GAMEPAD_TEXT_INPUT_DISMISSED: i32 = 714;
+const CALLBACK_FAVORITES_LIST_CHANGED: i32 = 502;
+const CALLBACK_LOBBY_INVITE: i32 = 503;
+const CALLBACK_LOBBY_ENTER: i32 = 504;
 const CALLBACK_LOBBY_DATA_UPDATE: i32 = 505;
 const CALLBACK_LOBBY_CHAT_UPDATE: i32 = 506;
+const CALLBACK_LOBBY_CHAT_MSG: i32 = 507;
+const CALLBACK_LOBBY_GAME_CREATED: i32 = 509;
+const CALLBACK_LOBBY_MATCH_LIST: i32 = 510;
+const CALLBACK_LOBBY_KICKED: i32 = 512;
 const CALLBACK_GAME_LOBBY_JOIN_REQUESTED: i32 = 333;
 const CALLBACK_EQUIPPED_PROFILE_ITEMS_CHANGED: i32 = 350;
 const CALLBACK_P2P_SESSION_REQUEST: i32 = 1202;
@@ -449,6 +456,36 @@ pub struct NetworkingFakeIpIdentity {
 #[napi(object)]
 pub struct LobbyResult {
     pub id: BigInt,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct MatchmakingFavoriteGame {
+    pub app_id: u32,
+    pub ip: u32,
+    pub ip_address: String,
+    pub conn_port: u32,
+    pub query_port: u32,
+    pub flags: u32,
+    pub last_played_on_server: u32,
+}
+
+#[napi(object)]
+pub struct LobbyChatEntry {
+    pub steam_id: PlayerSteamId,
+    pub data: Buffer,
+    pub size: u32,
+    pub text: String,
+    pub entry_type: u32,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct LobbyGameServer {
+    pub ip: u32,
+    pub ip_address: String,
+    pub port: u32,
+    pub steam_id: PlayerSteamId,
 }
 
 #[derive(Debug)]
@@ -6263,6 +6300,189 @@ pub fn register_steam_callback(
     })
 }
 
+#[napi(js_name = "matchmakingGetFavoriteGameCount")]
+pub fn matchmaking_get_favorite_game_count() -> Result<u32, Error> {
+    let count =
+        unsafe { sys::SteamAPI_ISteamMatchmaking_GetFavoriteGameCount(steam_matchmaking()?) };
+    Ok(count.max(0) as u32)
+}
+
+#[napi(js_name = "matchmakingGetFavoriteGame")]
+pub fn matchmaking_get_favorite_game(index: u32) -> Result<Option<MatchmakingFavoriteGame>, Error> {
+    let mut app_id = 0;
+    let mut ip = 0;
+    let mut conn_port = 0;
+    let mut query_port = 0;
+    let mut flags = 0;
+    let mut last_played_on_server = 0;
+    let ok = unsafe {
+        sys::SteamAPI_ISteamMatchmaking_GetFavoriteGame(
+            steam_matchmaking()?,
+            index as i32,
+            &mut app_id,
+            &mut ip,
+            &mut conn_port,
+            &mut query_port,
+            &mut flags,
+            &mut last_played_on_server,
+        )
+    };
+    Ok(ok.then(|| MatchmakingFavoriteGame {
+        app_id,
+        ip,
+        ip_address: ipv4_to_string(ip),
+        conn_port: u32::from(conn_port),
+        query_port: u32::from(query_port),
+        flags,
+        last_played_on_server,
+    }))
+}
+
+#[napi(js_name = "matchmakingAddFavoriteGame")]
+pub fn matchmaking_add_favorite_game(
+    app_id: u32,
+    ip: u32,
+    conn_port: u32,
+    query_port: u32,
+    flags: u32,
+    last_played_on_server: u32,
+) -> Result<i32, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamMatchmaking_AddFavoriteGame(
+            steam_matchmaking()?,
+            app_id,
+            ip,
+            port_to_u16(conn_port, "favorite connection port")?,
+            port_to_u16(query_port, "favorite query port")?,
+            flags,
+            last_played_on_server,
+        )
+    })
+}
+
+#[napi(js_name = "matchmakingRemoveFavoriteGame")]
+pub fn matchmaking_remove_favorite_game(
+    app_id: u32,
+    ip: u32,
+    conn_port: u32,
+    query_port: u32,
+    flags: u32,
+) -> Result<bool, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamMatchmaking_RemoveFavoriteGame(
+            steam_matchmaking()?,
+            app_id,
+            ip,
+            port_to_u16(conn_port, "favorite connection port")?,
+            port_to_u16(query_port, "favorite query port")?,
+            flags,
+        )
+    })
+}
+
+#[napi(js_name = "matchmakingAddRequestLobbyListStringFilter")]
+pub fn matchmaking_add_request_lobby_list_string_filter(
+    key: String,
+    value: String,
+    comparison: i32,
+) -> Result<(), Error> {
+    let key = cstring(key, "lobby list string filter key")?;
+    let value = cstring(value, "lobby list string filter value")?;
+    unsafe {
+        sys::SteamAPI_ISteamMatchmaking_AddRequestLobbyListStringFilter(
+            steam_matchmaking()?,
+            key.as_ptr(),
+            value.as_ptr(),
+            lobby_comparison_from_i32(comparison)?,
+        )
+    };
+    Ok(())
+}
+
+#[napi(js_name = "matchmakingAddRequestLobbyListNumericalFilter")]
+pub fn matchmaking_add_request_lobby_list_numerical_filter(
+    key: String,
+    value: i32,
+    comparison: i32,
+) -> Result<(), Error> {
+    let key = cstring(key, "lobby list numerical filter key")?;
+    unsafe {
+        sys::SteamAPI_ISteamMatchmaking_AddRequestLobbyListNumericalFilter(
+            steam_matchmaking()?,
+            key.as_ptr(),
+            value,
+            lobby_comparison_from_i32(comparison)?,
+        )
+    };
+    Ok(())
+}
+
+#[napi(js_name = "matchmakingAddRequestLobbyListNearValueFilter")]
+pub fn matchmaking_add_request_lobby_list_near_value_filter(
+    key: String,
+    value: i32,
+) -> Result<(), Error> {
+    let key = cstring(key, "lobby list near value filter key")?;
+    unsafe {
+        sys::SteamAPI_ISteamMatchmaking_AddRequestLobbyListNearValueFilter(
+            steam_matchmaking()?,
+            key.as_ptr(),
+            value,
+        )
+    };
+    Ok(())
+}
+
+#[napi(js_name = "matchmakingAddRequestLobbyListFilterSlotsAvailable")]
+pub fn matchmaking_add_request_lobby_list_filter_slots_available(slots: i32) -> Result<(), Error> {
+    unsafe {
+        sys::SteamAPI_ISteamMatchmaking_AddRequestLobbyListFilterSlotsAvailable(
+            steam_matchmaking()?,
+            slots,
+        )
+    };
+    Ok(())
+}
+
+#[napi(js_name = "matchmakingAddRequestLobbyListDistanceFilter")]
+pub fn matchmaking_add_request_lobby_list_distance_filter(
+    distance_filter: u32,
+) -> Result<(), Error> {
+    unsafe {
+        sys::SteamAPI_ISteamMatchmaking_AddRequestLobbyListDistanceFilter(
+            steam_matchmaking()?,
+            lobby_distance_filter_from_u32(distance_filter)?,
+        )
+    };
+    Ok(())
+}
+
+#[napi(js_name = "matchmakingAddRequestLobbyListResultCountFilter")]
+pub fn matchmaking_add_request_lobby_list_result_count_filter(
+    max_results: i32,
+) -> Result<(), Error> {
+    unsafe {
+        sys::SteamAPI_ISteamMatchmaking_AddRequestLobbyListResultCountFilter(
+            steam_matchmaking()?,
+            max_results,
+        )
+    };
+    Ok(())
+}
+
+#[napi(js_name = "matchmakingAddRequestLobbyListCompatibleMembersFilter")]
+pub fn matchmaking_add_request_lobby_list_compatible_members_filter(
+    lobby_id: BigInt,
+) -> Result<(), Error> {
+    unsafe {
+        sys::SteamAPI_ISteamMatchmaking_AddRequestLobbyListCompatibleMembersFilter(
+            steam_matchmaking()?,
+            bigint_to_u64(lobby_id, "lobby id")?,
+        )
+    };
+    Ok(())
+}
+
 #[napi(js_name = "matchmakingCreateLobby")]
 pub async fn matchmaking_create_lobby(
     lobby_type: u32,
@@ -6475,6 +6695,209 @@ pub fn matchmaking_get_lobby_full_data(lobby_id: BigInt) -> Result<Value, Error>
         }
     }
     Ok(Value::Object(map))
+}
+
+#[napi(js_name = "matchmakingInviteUserToLobby")]
+pub fn matchmaking_invite_user_to_lobby(
+    lobby_id: BigInt,
+    steam_id64: BigInt,
+) -> Result<bool, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamMatchmaking_InviteUserToLobby(
+            steam_matchmaking()?,
+            bigint_to_u64(lobby_id, "lobby id")?,
+            bigint_to_u64(steam_id64, "steamId64")?,
+        )
+    })
+}
+
+#[napi(js_name = "matchmakingGetLobbyMemberData")]
+pub fn matchmaking_get_lobby_member_data(
+    lobby_id: BigInt,
+    steam_id64: BigInt,
+    key: String,
+) -> Result<Option<String>, Error> {
+    let key = cstring(key, "lobby member data key")?;
+    let value = unsafe {
+        sys::SteamAPI_ISteamMatchmaking_GetLobbyMemberData(
+            steam_matchmaking()?,
+            bigint_to_u64(lobby_id, "lobby id")?,
+            bigint_to_u64(steam_id64, "steamId64")?,
+            key.as_ptr(),
+        )
+    };
+    let value = string_from_ptr(value);
+    Ok(if value.is_empty() { None } else { Some(value) })
+}
+
+#[napi(js_name = "matchmakingSetLobbyMemberData")]
+pub fn matchmaking_set_lobby_member_data(
+    lobby_id: BigInt,
+    key: String,
+    value: String,
+) -> Result<(), Error> {
+    let key = cstring(key, "lobby member data key")?;
+    let value = cstring(value, "lobby member data value")?;
+    unsafe {
+        sys::SteamAPI_ISteamMatchmaking_SetLobbyMemberData(
+            steam_matchmaking()?,
+            bigint_to_u64(lobby_id, "lobby id")?,
+            key.as_ptr(),
+            value.as_ptr(),
+        )
+    };
+    Ok(())
+}
+
+#[napi(js_name = "matchmakingSendLobbyChatMsg")]
+pub fn matchmaking_send_lobby_chat_msg(lobby_id: BigInt, data: Buffer) -> Result<bool, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamMatchmaking_SendLobbyChatMsg(
+            steam_matchmaking()?,
+            bigint_to_u64(lobby_id, "lobby id")?,
+            data.as_ptr().cast::<c_void>(),
+            len_to_i32(data.len(), "lobby chat message")?,
+        )
+    })
+}
+
+#[napi(js_name = "matchmakingGetLobbyChatEntry")]
+pub fn matchmaking_get_lobby_chat_entry(
+    lobby_id: BigInt,
+    chat_id: i32,
+    max_bytes: Option<u32>,
+) -> Result<Option<LobbyChatEntry>, Error> {
+    let size = max_bytes.unwrap_or(4096).clamp(1, 4096);
+    let mut data = vec![0u8; size as usize];
+    let mut steam_id = u64_to_csteam_id(0);
+    let mut entry_type = sys::EChatEntryType::k_EChatEntryTypeInvalid;
+    let written = unsafe {
+        sys::SteamAPI_ISteamMatchmaking_GetLobbyChatEntry(
+            steam_matchmaking()?,
+            bigint_to_u64(lobby_id, "lobby id")?,
+            chat_id,
+            &mut steam_id,
+            data.as_mut_ptr().cast::<c_void>(),
+            size as i32,
+            &mut entry_type,
+        )
+    };
+    if written <= 0 {
+        return Ok(None);
+    }
+    data.truncate((written as usize).min(data.len()));
+    let text_bytes = data.strip_suffix(&[0]).unwrap_or(&data);
+    let text = String::from_utf8_lossy(text_bytes).to_string();
+    Ok(Some(LobbyChatEntry {
+        steam_id: csteam_id_to_player(steam_id),
+        size: data.len() as u32,
+        text,
+        data: data.into(),
+        entry_type: entry_type as u32,
+    }))
+}
+
+#[napi(js_name = "matchmakingRequestLobbyData")]
+pub fn matchmaking_request_lobby_data(lobby_id: BigInt) -> Result<bool, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamMatchmaking_RequestLobbyData(
+            steam_matchmaking()?,
+            bigint_to_u64(lobby_id, "lobby id")?,
+        )
+    })
+}
+
+#[napi(js_name = "matchmakingSetLobbyGameServer")]
+pub fn matchmaking_set_lobby_game_server(
+    lobby_id: BigInt,
+    ip: u32,
+    port: u32,
+    steam_id64: BigInt,
+) -> Result<(), Error> {
+    unsafe {
+        sys::SteamAPI_ISteamMatchmaking_SetLobbyGameServer(
+            steam_matchmaking()?,
+            bigint_to_u64(lobby_id, "lobby id")?,
+            ip,
+            port_to_u16(port, "lobby game server port")?,
+            bigint_to_u64(steam_id64, "game server steamId64")?,
+        )
+    };
+    Ok(())
+}
+
+#[napi(js_name = "matchmakingGetLobbyGameServer")]
+pub fn matchmaking_get_lobby_game_server(
+    lobby_id: BigInt,
+) -> Result<Option<LobbyGameServer>, Error> {
+    let mut ip = 0;
+    let mut port = 0;
+    let mut steam_id = u64_to_csteam_id(0);
+    let ok = unsafe {
+        sys::SteamAPI_ISteamMatchmaking_GetLobbyGameServer(
+            steam_matchmaking()?,
+            bigint_to_u64(lobby_id, "lobby id")?,
+            &mut ip,
+            &mut port,
+            &mut steam_id,
+        )
+    };
+    Ok(ok.then(|| LobbyGameServer {
+        ip,
+        ip_address: ipv4_to_string(ip),
+        port: u32::from(port),
+        steam_id: csteam_id_to_player(steam_id),
+    }))
+}
+
+#[napi(js_name = "matchmakingSetLobbyMemberLimit")]
+pub fn matchmaking_set_lobby_member_limit(
+    lobby_id: BigInt,
+    max_members: i32,
+) -> Result<bool, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamMatchmaking_SetLobbyMemberLimit(
+            steam_matchmaking()?,
+            bigint_to_u64(lobby_id, "lobby id")?,
+            max_members,
+        )
+    })
+}
+
+#[napi(js_name = "matchmakingSetLobbyType")]
+pub fn matchmaking_set_lobby_type(lobby_id: BigInt, lobby_type: u32) -> Result<bool, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamMatchmaking_SetLobbyType(
+            steam_matchmaking()?,
+            bigint_to_u64(lobby_id, "lobby id")?,
+            lobby_type_from_u32(lobby_type)?,
+        )
+    })
+}
+
+#[napi(js_name = "matchmakingSetLobbyOwner")]
+pub fn matchmaking_set_lobby_owner(lobby_id: BigInt, steam_id64: BigInt) -> Result<bool, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamMatchmaking_SetLobbyOwner(
+            steam_matchmaking()?,
+            bigint_to_u64(lobby_id, "lobby id")?,
+            bigint_to_u64(steam_id64, "steamId64")?,
+        )
+    })
+}
+
+#[napi(js_name = "matchmakingSetLinkedLobby")]
+pub fn matchmaking_set_linked_lobby(
+    lobby_id: BigInt,
+    dependent_lobby_id: BigInt,
+) -> Result<bool, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamMatchmaking_SetLinkedLobby(
+            steam_matchmaking()?,
+            bigint_to_u64(lobby_id, "lobby id")?,
+            bigint_to_u64(dependent_lobby_id, "dependent lobby id")?,
+        )
+    })
 }
 
 #[napi(js_name = "workshopCreateItem")]
@@ -8212,6 +8635,11 @@ fn networking_port(port: Option<u32>) -> Result<u16, Error> {
         .map_err(|_| Error::from_reason("networking port must be between 0 and 65535"))
 }
 
+fn port_to_u16(port: u32, label: &str) -> Result<u16, Error> {
+    port.try_into()
+        .map_err(|_| Error::from_reason(format!("{label} must be between 0 and 65535")))
+}
+
 fn networking_ip_address_string(
     utils: *mut sys::ISteamNetworkingUtils,
     address: &sys::SteamNetworkingIPAddr,
@@ -8444,6 +8872,15 @@ fn callback_id_from_compat(callback: i32) -> Result<i32, Error> {
         8 => Ok(CALLBACK_GAME_LOBBY_JOIN_REQUESTED),
         9 => Ok(sys::MicroTxnAuthorizationResponse_t_k_iCallback as i32),
         331 => Ok(sys::GameOverlayActivated_t_k_iCallback as i32),
+        CALLBACK_FAVORITES_LIST_CHANGED => Ok(sys::FavoritesListChanged_t_k_iCallback as i32),
+        CALLBACK_LOBBY_INVITE => Ok(sys::LobbyInvite_t_k_iCallback as i32),
+        CALLBACK_LOBBY_ENTER => Ok(sys::LobbyEnter_t_k_iCallback as i32),
+        CALLBACK_LOBBY_DATA_UPDATE => Ok(sys::LobbyDataUpdate_t_k_iCallback as i32),
+        CALLBACK_LOBBY_CHAT_UPDATE => Ok(sys::LobbyChatUpdate_t_k_iCallback as i32),
+        CALLBACK_LOBBY_CHAT_MSG => Ok(sys::LobbyChatMsg_t_k_iCallback as i32),
+        CALLBACK_LOBBY_GAME_CREATED => Ok(sys::LobbyGameCreated_t_k_iCallback as i32),
+        CALLBACK_LOBBY_MATCH_LIST => Ok(sys::LobbyMatchList_t_k_iCallback as i32),
+        CALLBACK_LOBBY_KICKED => Ok(sys::LobbyKicked_t_k_iCallback as i32),
         CALLBACK_STEAM_NET_CONNECTION_STATUS_CHANGED => {
             Ok(sys::SteamNetConnectionStatusChangedCallback_t_k_iCallback as i32)
         }
@@ -8521,7 +8958,37 @@ unsafe fn callback_to_json(callback: i32, param: *mut c_void) -> Value {
                 "still_retrying": ptr::addr_of!((*event).m_bStillRetrying).read_unaligned()
             })
         }
-        4 => {
+        CALLBACK_FAVORITES_LIST_CHANGED => {
+            let event = param as *const sys::FavoritesListChanged_t;
+            serde_json::json!({
+                "ip": ptr::addr_of!((*event).m_nIP).read_unaligned(),
+                "ip_address": ipv4_to_string(ptr::addr_of!((*event).m_nIP).read_unaligned()),
+                "query_port": ptr::addr_of!((*event).m_nQueryPort).read_unaligned(),
+                "conn_port": ptr::addr_of!((*event).m_nConnPort).read_unaligned(),
+                "app_id": ptr::addr_of!((*event).m_nAppID).read_unaligned(),
+                "flags": ptr::addr_of!((*event).m_nFlags).read_unaligned(),
+                "add": ptr::addr_of!((*event).m_bAdd).read_unaligned(),
+                "account_id": ptr::addr_of!((*event).m_unAccountId).read_unaligned()
+            })
+        }
+        CALLBACK_LOBBY_INVITE => {
+            let event = param as *const sys::LobbyInvite_t;
+            serde_json::json!({
+                "user": ptr::addr_of!((*event).m_ulSteamIDUser).read_unaligned().to_string(),
+                "lobby": ptr::addr_of!((*event).m_ulSteamIDLobby).read_unaligned().to_string(),
+                "game_id": ptr::addr_of!((*event).m_ulGameID).read_unaligned().to_string()
+            })
+        }
+        CALLBACK_LOBBY_ENTER => {
+            let event = param as *const sys::LobbyEnter_t;
+            serde_json::json!({
+                "lobby": ptr::addr_of!((*event).m_ulSteamIDLobby).read_unaligned().to_string(),
+                "chat_permissions": ptr::addr_of!((*event).m_rgfChatPermissions).read_unaligned(),
+                "locked": ptr::addr_of!((*event).m_bLocked).read_unaligned(),
+                "chat_room_enter_response": ptr::addr_of!((*event).m_EChatRoomEnterResponse).read_unaligned()
+            })
+        }
+        4 | CALLBACK_LOBBY_DATA_UPDATE => {
             let event = param as *const sys::LobbyDataUpdate_t;
             serde_json::json!({
                 "lobby": ptr::addr_of!((*event).m_ulSteamIDLobby).read_unaligned().to_string(),
@@ -8529,13 +8996,47 @@ unsafe fn callback_to_json(callback: i32, param: *mut c_void) -> Value {
                 "success": ptr::addr_of!((*event).m_bSuccess).read_unaligned()
             })
         }
-        5 => {
+        5 | CALLBACK_LOBBY_CHAT_UPDATE => {
             let event = param as *const sys::LobbyChatUpdate_t;
             serde_json::json!({
                 "lobby": ptr::addr_of!((*event).m_ulSteamIDLobby).read_unaligned().to_string(),
                 "user_changed": ptr::addr_of!((*event).m_ulSteamIDUserChanged).read_unaligned().to_string(),
                 "making_change": ptr::addr_of!((*event).m_ulSteamIDMakingChange).read_unaligned().to_string(),
                 "member_state_change": ptr::addr_of!((*event).m_rgfChatMemberStateChange).read_unaligned()
+            })
+        }
+        CALLBACK_LOBBY_CHAT_MSG => {
+            let event = param as *const sys::LobbyChatMsg_t;
+            serde_json::json!({
+                "lobby": ptr::addr_of!((*event).m_ulSteamIDLobby).read_unaligned().to_string(),
+                "user": ptr::addr_of!((*event).m_ulSteamIDUser).read_unaligned().to_string(),
+                "entry_type": ptr::addr_of!((*event).m_eChatEntryType).read_unaligned(),
+                "chat_id": ptr::addr_of!((*event).m_iChatID).read_unaligned()
+            })
+        }
+        CALLBACK_LOBBY_GAME_CREATED => {
+            let event = param as *const sys::LobbyGameCreated_t;
+            let ip = ptr::addr_of!((*event).m_unIP).read_unaligned();
+            serde_json::json!({
+                "lobby": ptr::addr_of!((*event).m_ulSteamIDLobby).read_unaligned().to_string(),
+                "game_server": ptr::addr_of!((*event).m_ulSteamIDGameServer).read_unaligned().to_string(),
+                "ip": ip,
+                "ip_address": ipv4_to_string(ip),
+                "port": ptr::addr_of!((*event).m_usPort).read_unaligned()
+            })
+        }
+        CALLBACK_LOBBY_MATCH_LIST => {
+            let event = param as *const sys::LobbyMatchList_t;
+            serde_json::json!({
+                "lobbies_matching": ptr::addr_of!((*event).m_nLobbiesMatching).read_unaligned()
+            })
+        }
+        CALLBACK_LOBBY_KICKED => {
+            let event = param as *const sys::LobbyKicked_t;
+            serde_json::json!({
+                "lobby": ptr::addr_of!((*event).m_ulSteamIDLobby).read_unaligned().to_string(),
+                "admin": ptr::addr_of!((*event).m_ulSteamIDAdmin).read_unaligned().to_string(),
+                "kicked_due_to_disconnect": ptr::addr_of!((*event).m_bKickedDueToDisconnect).read_unaligned() != 0
             })
         }
         6 => {
@@ -8848,7 +9349,30 @@ fn lobby_type_from_u32(value: u32) -> Result<sys::ELobbyType, Error> {
         1 => Ok(sys::ELobbyType::k_ELobbyTypeFriendsOnly),
         2 => Ok(sys::ELobbyType::k_ELobbyTypePublic),
         3 => Ok(sys::ELobbyType::k_ELobbyTypeInvisible),
+        4 => Ok(sys::ELobbyType::k_ELobbyTypePrivateUnique),
         _ => Err(Error::from_reason("invalid lobby type")),
+    }
+}
+
+fn lobby_comparison_from_i32(value: i32) -> Result<sys::ELobbyComparison, Error> {
+    match value {
+        -2 => Ok(sys::ELobbyComparison::k_ELobbyComparisonEqualToOrLessThan),
+        -1 => Ok(sys::ELobbyComparison::k_ELobbyComparisonLessThan),
+        0 => Ok(sys::ELobbyComparison::k_ELobbyComparisonEqual),
+        1 => Ok(sys::ELobbyComparison::k_ELobbyComparisonGreaterThan),
+        2 => Ok(sys::ELobbyComparison::k_ELobbyComparisonEqualToOrGreaterThan),
+        3 => Ok(sys::ELobbyComparison::k_ELobbyComparisonNotEqual),
+        _ => Err(Error::from_reason("invalid lobby comparison")),
+    }
+}
+
+fn lobby_distance_filter_from_u32(value: u32) -> Result<sys::ELobbyDistanceFilter, Error> {
+    match value {
+        0 => Ok(sys::ELobbyDistanceFilter::k_ELobbyDistanceFilterClose),
+        1 => Ok(sys::ELobbyDistanceFilter::k_ELobbyDistanceFilterDefault),
+        2 => Ok(sys::ELobbyDistanceFilter::k_ELobbyDistanceFilterFar),
+        3 => Ok(sys::ELobbyDistanceFilter::k_ELobbyDistanceFilterWorldwide),
+        _ => Err(Error::from_reason("invalid lobby distance filter")),
     }
 }
 

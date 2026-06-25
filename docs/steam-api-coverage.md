@@ -40,8 +40,10 @@ The native layer currently targets the Steamworks flat C API through
   containers, request priority/defer, and HTTP request callbacks.
 - Steam Input: init/shutdown, connected controllers, action sets, digital
   actions, analog vectors, controller type, and text input helpers.
-- Matchmaking/lobbies: create, join, list, leave, member/owner helpers, lobby
-  data, joinability, and invite dialogs.
+- Matchmaking/lobbies: favorite/history server storage, lobby list filters,
+  create, join, list, leave, member/owner helpers, lobby and member data,
+  joinability, lobby type/owner/limit/link controls, lobby chat, lobby
+  game-server metadata, invites, invite dialogs, and lobby callbacks.
 - Parties: party beacon enumeration/details, location discovery and metadata,
   join/create/change async calls, reservation completion/cancel, destroy, and
   reservation callbacks.
