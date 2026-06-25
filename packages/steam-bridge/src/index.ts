@@ -823,6 +823,20 @@ export const SteamCallback = {
   LobbyGameCreated: 509,
   LobbyMatchList: 510,
   LobbyKicked: 512,
+  IPCountry: 701,
+  LowBatteryPower: 702,
+  SteamAPICallCompleted: 703,
+  SteamShutdown: 704,
+  CheckFileSignature: 705,
+  GamepadTextInputDismissed: 714,
+  AppResumingFromSuspend: 736,
+  FloatingGamepadTextInputDismissed: 738,
+  FilterTextDictionaryChanged: 739,
+  DlcInstalled: 1005,
+  NewUrlLaunchParameters: 1014,
+  AppProofOfPurchaseKeyResponse: 1021,
+  FileDetailsResult: 1023,
+  TimedTrialStatus: 1030,
   SteamNetConnectionStatusChanged: 1221,
   SteamNetAuthenticationStatus: 1222,
   SteamNetworkingFakeIPResult: 1223,
@@ -3937,7 +3951,9 @@ function normalizeCallbackEvent(callbackId: number, event: unknown): unknown {
     "making_change",
     "remote",
     "lobby_steam_id",
-    "friend_steam_id"
+    "friend_steam_id",
+    "async_call",
+    "file_size"
   ]) {
     if (key in result) {
       result[key] = normalizeBigIntLike(result[key]);
@@ -3949,20 +3965,31 @@ function normalizeCallbackEvent(callbackId: number, event: unknown): unknown {
   const aliases: Record<string, string> = {
     account_id: "accountId",
     app_id: "appId",
+    async_call: "asyncCall",
     chat_id: "chatId",
     chat_permissions: "chatPermissions",
     chat_room_enter_response: "chatRoomEnterResponse",
+    check_file_signature: "checkFileSignature",
     conn_port: "connPort",
     entry_type: "entryType",
+    file_size: "fileSize",
     friend_steam_id: "friendSteamId",
     game_id: "gameId",
     game_server: "gameServer",
     ip_address: "ipAddress",
+    is_offline: "isOffline",
+    key_length: "keyLength",
     kicked_due_to_disconnect: "kickedDueToDisconnect",
     lobby_steam_id: "lobbySteamId",
     making_change: "makingChange",
     member_state_change: "memberStateChange",
+    minutes_battery_left: "minutesBatteryLeft",
+    parameter_size: "parameterSize",
     query_port: "queryPort",
+    seconds_allowed: "secondsAllowed",
+    seconds_played: "secondsPlayed",
+    sha_hex: "shaHex",
+    submitted_text: "submittedText",
     user_changed: "userChanged"
   };
   for (const [snake, camel] of Object.entries(aliases)) {

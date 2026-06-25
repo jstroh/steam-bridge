@@ -17,6 +17,10 @@ npm install steam-bridge
 Steam Bridge expects Steamworks SDK redistributables to be present at build or
 package time. It does not vendor Valve SDK files.
 
+Prebuild scaffolding currently targets Windows x64, Linux x64, and Apple
+Silicon macOS (`aarch64-apple-darwin`). No other macOS architecture is
+currently supported.
+
 ## Quick Start
 
 For local smoke tests, use Valve's SpaceWar sample App ID `480`. Replace it with

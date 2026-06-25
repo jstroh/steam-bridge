@@ -144,10 +144,7 @@ pub fn run_callbacks() {
             let callback_id = ptr::addr_of!(callback.m_iCallback).read_unaligned();
             let param = ptr::addr_of!(callback.m_pubParam).read_unaligned();
 
-            if callback_id != sys::SteamAPICallCompleted_t_k_iCallback as i32 {
-                state::dispatch_callback(callback_id, param.cast::<c_void>());
-            }
-
+            state::dispatch_callback(callback_id, param.cast::<c_void>());
             sys::SteamAPI_ManualDispatch_FreeLastCallback(pipe);
         }
     }

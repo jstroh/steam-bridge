@@ -17,6 +17,10 @@ Steam SDK redistributables are not committed. For local/native builds, provide
 the Steamworks SDK in the normal location expected by `steamworks-sys`, or set
 `STEAMWORKS_SDK_PATH` according to your SDK setup.
 
+Prebuild scaffolding currently targets Windows x64, Linux x64, and Apple
+Silicon macOS (`aarch64-apple-darwin`). No other macOS architecture is
+currently supported.
+
 ## Quick Start
 
 Valve's public Steamworks example app is SpaceWar, App ID `480`. It is useful for

@@ -14,7 +14,8 @@ The native layer currently targets the Steamworks flat C API through
   diagnostics, server time, activity timers, connected universe, Steam UI
   language, image reads, battery/IPCCall counts, overlay notification
   placement, VR helpers, China launcher checks, text filtering, IPv6
-  connectivity checks, file signature checks, and gamepad text input helpers.
+  connectivity checks, file signature checks, gamepad text input helpers, and
+  utility callback events.
 - User/auth: local Steam ID helpers, Web API auth tickets, session tickets by
   Steam ID or IP, and ticket cancellation.
 - Friends: persona name/state, friend enumeration, friend profiles, groups,
@@ -27,7 +28,8 @@ The native layer currently targets the Steamworks flat C API through
   install/uninstall/progress helpers, depot listing, build ID, install
   directory, owner, language, launch query/command-line reads, timed trials,
   family sharing, beta enumeration/activation, proof-key requests, and
-  content-corrupt marking, and file detail checks.
+  content-corrupt marking, file detail checks, and DLC, proof-key,
+  file-detail, and timed-trial callback events.
 - User stats, achievements, and leaderboards: achievement activate/clear/check/list,
   metadata, progress, local/user/global stat reads and writes, current-player
   count, global achievement percentages, global stat history, leaderboard
@@ -87,8 +89,8 @@ The native layer currently targets the Steamworks flat C API through
 - Matchmaking server browser and game server APIs.
 - Game server, game server stats, and server-only workflows.
 - Complete callback/event coverage for every implemented interface, including
-  raw `ISteamUtils` APICall/warning-hook helpers, `ISteamApps` proof-key
-  callbacks, and richer streaming HTTP response ergonomics.
+  raw `ISteamUtils` API-call inspection/warning-hook helpers and richer
+  streaming HTTP response ergonomics.
 - Steam Web API and economy flows beyond client auth ticket helpers.
 
 Use Valve's SpaceWar App ID `480` for generic local smoke tests. Use your own

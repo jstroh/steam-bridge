@@ -24,7 +24,20 @@ const CALLBACK_STEAM_SERVERS_CONNECTED: i32 = 101;
 const CALLBACK_STEAM_SERVER_CONNECT_FAILURE: i32 = 102;
 const CALLBACK_STEAM_SERVERS_DISCONNECTED: i32 = 103;
 const CALLBACK_GET_AUTH_SESSION_TICKET_RESPONSE: i32 = 163;
+const CALLBACK_IP_COUNTRY: i32 = 701;
+const CALLBACK_LOW_BATTERY_POWER: i32 = 702;
+const CALLBACK_STEAM_API_CALL_COMPLETED: i32 = 703;
+const CALLBACK_STEAM_SHUTDOWN: i32 = 704;
+const CALLBACK_CHECK_FILE_SIGNATURE: i32 = 705;
 const CALLBACK_GAMEPAD_TEXT_INPUT_DISMISSED: i32 = 714;
+const CALLBACK_APP_RESUMING_FROM_SUSPEND: i32 = 736;
+const CALLBACK_FLOATING_GAMEPAD_TEXT_INPUT_DISMISSED: i32 = 738;
+const CALLBACK_FILTER_TEXT_DICTIONARY_CHANGED: i32 = 739;
+const CALLBACK_DLC_INSTALLED: i32 = 1005;
+const CALLBACK_NEW_URL_LAUNCH_PARAMETERS: i32 = 1014;
+const CALLBACK_APP_PROOF_OF_PURCHASE_KEY_RESPONSE: i32 = 1021;
+const CALLBACK_FILE_DETAILS_RESULT: i32 = 1023;
+const CALLBACK_TIMED_TRIAL_STATUS: i32 = 1030;
 const CALLBACK_FAVORITES_LIST_CHANGED: i32 = 502;
 const CALLBACK_LOBBY_INVITE: i32 = 503;
 const CALLBACK_LOBBY_ENTER: i32 = 504;
@@ -8872,6 +8885,28 @@ fn callback_id_from_compat(callback: i32) -> Result<i32, Error> {
         8 => Ok(CALLBACK_GAME_LOBBY_JOIN_REQUESTED),
         9 => Ok(sys::MicroTxnAuthorizationResponse_t_k_iCallback as i32),
         331 => Ok(sys::GameOverlayActivated_t_k_iCallback as i32),
+        CALLBACK_IP_COUNTRY => Ok(sys::IPCountry_t_k_iCallback as i32),
+        CALLBACK_LOW_BATTERY_POWER => Ok(sys::LowBatteryPower_t_k_iCallback as i32),
+        CALLBACK_STEAM_API_CALL_COMPLETED => Ok(sys::SteamAPICallCompleted_t_k_iCallback as i32),
+        CALLBACK_STEAM_SHUTDOWN => Ok(sys::SteamShutdown_t_k_iCallback as i32),
+        CALLBACK_CHECK_FILE_SIGNATURE => Ok(sys::CheckFileSignature_t_k_iCallback as i32),
+        CALLBACK_GAMEPAD_TEXT_INPUT_DISMISSED => {
+            Ok(sys::GamepadTextInputDismissed_t_k_iCallback as i32)
+        }
+        CALLBACK_APP_RESUMING_FROM_SUSPEND => Ok(sys::AppResumingFromSuspend_t_k_iCallback as i32),
+        CALLBACK_FLOATING_GAMEPAD_TEXT_INPUT_DISMISSED => {
+            Ok(sys::FloatingGamepadTextInputDismissed_t_k_iCallback as i32)
+        }
+        CALLBACK_FILTER_TEXT_DICTIONARY_CHANGED => {
+            Ok(sys::FilterTextDictionaryChanged_t_k_iCallback as i32)
+        }
+        CALLBACK_DLC_INSTALLED => Ok(sys::DlcInstalled_t_k_iCallback as i32),
+        CALLBACK_NEW_URL_LAUNCH_PARAMETERS => Ok(sys::NewUrlLaunchParameters_t_k_iCallback as i32),
+        CALLBACK_APP_PROOF_OF_PURCHASE_KEY_RESPONSE => {
+            Ok(sys::AppProofOfPurchaseKeyResponse_t_k_iCallback as i32)
+        }
+        CALLBACK_FILE_DETAILS_RESULT => Ok(sys::FileDetailsResult_t_k_iCallback as i32),
+        CALLBACK_TIMED_TRIAL_STATUS => Ok(sys::TimedTrialStatus_t_k_iCallback as i32),
         CALLBACK_FAVORITES_LIST_CHANGED => Ok(sys::FavoritesListChanged_t_k_iCallback as i32),
         CALLBACK_LOBBY_INVITE => Ok(sys::LobbyInvite_t_k_iCallback as i32),
         CALLBACK_LOBBY_ENTER => Ok(sys::LobbyEnter_t_k_iCallback as i32),
@@ -8956,6 +8991,79 @@ unsafe fn callback_to_json(callback: i32, param: *mut c_void) -> Value {
             serde_json::json!({
                 "reason": ptr::addr_of!((*event).m_eResult).read_unaligned() as u32,
                 "still_retrying": ptr::addr_of!((*event).m_bStillRetrying).read_unaligned()
+            })
+        }
+        CALLBACK_IP_COUNTRY
+        | CALLBACK_STEAM_SHUTDOWN
+        | CALLBACK_APP_RESUMING_FROM_SUSPEND
+        | CALLBACK_FLOATING_GAMEPAD_TEXT_INPUT_DISMISSED
+        | CALLBACK_NEW_URL_LAUNCH_PARAMETERS => serde_json::json!({}),
+        CALLBACK_LOW_BATTERY_POWER => {
+            let event = param as *const sys::LowBatteryPower_t;
+            serde_json::json!({
+                "minutes_battery_left": ptr::addr_of!((*event).m_nMinutesBatteryLeft).read_unaligned()
+            })
+        }
+        CALLBACK_STEAM_API_CALL_COMPLETED => {
+            let event = param as *const sys::SteamAPICallCompleted_t;
+            serde_json::json!({
+                "async_call": ptr::addr_of!((*event).m_hAsyncCall).read_unaligned().to_string(),
+                "callback": ptr::addr_of!((*event).m_iCallback).read_unaligned(),
+                "parameter_size": ptr::addr_of!((*event).m_cubParam).read_unaligned()
+            })
+        }
+        CALLBACK_CHECK_FILE_SIGNATURE => {
+            let event = param as *const sys::CheckFileSignature_t;
+            serde_json::json!({
+                "check_file_signature": ptr::addr_of!((*event).m_eCheckFileSignature).read_unaligned() as u32
+            })
+        }
+        CALLBACK_GAMEPAD_TEXT_INPUT_DISMISSED => {
+            let event = param as *const sys::GamepadTextInputDismissed_t;
+            serde_json::json!({
+                "submitted": ptr::addr_of!((*event).m_bSubmitted).read_unaligned(),
+                "submitted_text": ptr::addr_of!((*event).m_unSubmittedText).read_unaligned(),
+                "app_id": ptr::addr_of!((*event).m_unAppID).read_unaligned()
+            })
+        }
+        CALLBACK_FILTER_TEXT_DICTIONARY_CHANGED => {
+            let event = param as *const sys::FilterTextDictionaryChanged_t;
+            serde_json::json!({
+                "language": ptr::addr_of!((*event).m_eLanguage).read_unaligned()
+            })
+        }
+        CALLBACK_DLC_INSTALLED => {
+            let event = param as *const sys::DlcInstalled_t;
+            serde_json::json!({
+                "app_id": ptr::addr_of!((*event).m_nAppID).read_unaligned()
+            })
+        }
+        CALLBACK_APP_PROOF_OF_PURCHASE_KEY_RESPONSE => {
+            let event = param as *const sys::AppProofOfPurchaseKeyResponse_t;
+            serde_json::json!({
+                "result": ptr::addr_of!((*event).m_eResult).read_unaligned() as u32,
+                "app_id": ptr::addr_of!((*event).m_nAppID).read_unaligned(),
+                "key_length": ptr::addr_of!((*event).m_cchKeyLength).read_unaligned(),
+                "key": c_buf_to_string(&*ptr::addr_of!((*event).m_rgchKey))
+            })
+        }
+        CALLBACK_FILE_DETAILS_RESULT => {
+            let event = param as *const sys::FileDetailsResult_t;
+            let sha = ptr::addr_of!((*event).m_FileSHA).read_unaligned();
+            serde_json::json!({
+                "result": ptr::addr_of!((*event).m_eResult).read_unaligned() as u32,
+                "file_size": ptr::addr_of!((*event).m_ulFileSize).read_unaligned().to_string(),
+                "sha_hex": bytes_to_hex(&sha),
+                "flags": ptr::addr_of!((*event).m_unFlags).read_unaligned()
+            })
+        }
+        CALLBACK_TIMED_TRIAL_STATUS => {
+            let event = param as *const sys::TimedTrialStatus_t;
+            serde_json::json!({
+                "app_id": ptr::addr_of!((*event).m_unAppID).read_unaligned(),
+                "is_offline": ptr::addr_of!((*event).m_bIsOffline).read_unaligned(),
+                "seconds_allowed": ptr::addr_of!((*event).m_unSecondsAllowed).read_unaligned(),
+                "seconds_played": ptr::addr_of!((*event).m_unSecondsPlayed).read_unaligned()
             })
         }
         CALLBACK_FAVORITES_LIST_CHANGED => {

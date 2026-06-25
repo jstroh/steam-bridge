@@ -403,6 +403,13 @@ test("specific and generic callbacks normalize Steamworks payloads", (t) => {
 
   t.after(clearSteamBridgeCache);
 
+  assert.equal(steam.SteamCallback.SteamAPICallCompleted, 703);
+  assert.equal(steam.SteamCallback.GamepadTextInputDismissed, 714);
+  assert.equal(steam.SteamCallback.DlcInstalled, 1005);
+  assert.equal(steam.SteamCallback.AppProofOfPurchaseKeyResponse, 1021);
+  assert.equal(steam.SteamCallback.FileDetailsResult, 1023);
+  assert.equal(steam.SteamCallback.TimedTrialStatus, 1030);
+
   let txnEvent;
   const txnHandle = steam.onMicroTxnAuthorizationResponse((event) => {
     txnEvent = event;
@@ -433,6 +440,81 @@ test("specific and generic callbacks normalize Steamworks payloads", (t) => {
   assert.equal(lobbyEvent.member, 76561198000000000n);
   assert.equal(lobbyEvent.remote, 42n);
   assert.equal(lobbyEvent.note, "kept");
+
+  let apiCallEvent;
+  steam.callback.register(steam.SteamCallback.SteamAPICallCompleted, (event) => {
+    apiCallEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.SteamAPICallCompleted)({
+    async_call: "12345678901234567890",
+    callback: steam.SteamCallback.AppProofOfPurchaseKeyResponse,
+    parameter_size: 252
+  });
+
+  assert.equal(apiCallEvent.async_call, 12345678901234567890n);
+  assert.equal(apiCallEvent.asyncCall, 12345678901234567890n);
+  assert.equal(apiCallEvent.callback, steam.SteamCallback.AppProofOfPurchaseKeyResponse);
+  assert.equal(apiCallEvent.parameterSize, 252);
+
+  let proofKeyEvent;
+  steam.callback.register(steam.SteamCallback.AppProofOfPurchaseKeyResponse, (event) => {
+    proofKeyEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.AppProofOfPurchaseKeyResponse)({
+    result: 1,
+    app_id: 480,
+    key_length: 8,
+    key: "spacewar"
+  });
+
+  assert.equal(proofKeyEvent.appId, 480);
+  assert.equal(proofKeyEvent.keyLength, 8);
+  assert.equal(proofKeyEvent.key, "spacewar");
+
+  let fileDetailsEvent;
+  steam.callback.register(steam.SteamCallback.FileDetailsResult, (event) => {
+    fileDetailsEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.FileDetailsResult)({
+    result: 1,
+    file_size: "4294967297",
+    sha_hex: "001122",
+    flags: 3
+  });
+
+  assert.equal(fileDetailsEvent.file_size, 4294967297n);
+  assert.equal(fileDetailsEvent.fileSize, 4294967297n);
+  assert.equal(fileDetailsEvent.shaHex, "001122");
+
+  let timedTrialEvent;
+  steam.callback.register(steam.SteamCallback.TimedTrialStatus, (event) => {
+    timedTrialEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.TimedTrialStatus)({
+    app_id: 480,
+    is_offline: false,
+    seconds_allowed: 3600,
+    seconds_played: 120
+  });
+
+  assert.equal(timedTrialEvent.appId, 480);
+  assert.equal(timedTrialEvent.isOffline, false);
+  assert.equal(timedTrialEvent.secondsAllowed, 3600);
+  assert.equal(timedTrialEvent.secondsPlayed, 120);
+
+  let gamepadEvent;
+  steam.callback.register(steam.SteamCallback.GamepadTextInputDismissed, (event) => {
+    gamepadEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.GamepadTextInputDismissed)({
+    submitted: true,
+    submitted_text: 12,
+    app_id: 480
+  });
+
+  assert.equal(gamepadEvent.submitted, true);
+  assert.equal(gamepadEvent.submittedText, 12);
+  assert.equal(gamepadEvent.appId, 480);
 
   txnHandle.disconnect();
   assert.equal(fake.callbacks.has(steam.SteamCallback.MicroTxnAuthorizationResponse), false);
