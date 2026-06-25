@@ -944,12 +944,17 @@ pub struct GameServerPlayerCompatibilityResult {
     pub candidate: PlayerSteamId,
 }
 
-#[derive(Debug)]
 #[napi(object)]
 pub struct NetworkingIdentity {
     pub steam_id64: Option<BigInt>,
     pub text: Option<String>,
     pub generic_string: Option<String>,
+    pub generic_bytes: Option<Buffer>,
+    pub psn_id: Option<BigInt>,
+    pub xbox_pairwise_id: Option<String>,
+    pub ip_address: Option<NetworkingIpAddress>,
+    pub ipv4: Option<u32>,
+    pub port: Option<u32>,
     pub local_host: Option<bool>,
 }
 
@@ -1193,11 +1198,11 @@ pub struct SteamClientLocalUser {
     pub pipe: i32,
 }
 
-#[derive(Debug)]
 #[napi(object)]
 pub struct NetworkingIpAddress {
     pub text: Option<String>,
     pub ipv4: Option<u32>,
+    pub ipv6: Option<Buffer>,
     pub port: Option<u32>,
     pub local_host: Option<bool>,
 }
@@ -12614,13 +12619,21 @@ pub fn networking_utils_ip_address_to_string(
     address: NetworkingIpAddress,
     with_port: Option<bool>,
 ) -> Result<String, Error> {
-    let utils = steam_networking_utils()?;
     let address = networking_ip_address_from_input(address)?;
-    Ok(networking_ip_address_string(
-        utils,
-        &address,
+    Ok(networking_ip_address_string_standalone(
+        address,
         with_port.unwrap_or(true),
     ))
+}
+
+#[napi(js_name = "networkingUtilsIpAddressEquals")]
+pub fn networking_utils_ip_address_equals(
+    address1: NetworkingIpAddress,
+    address2: NetworkingIpAddress,
+) -> Result<bool, Error> {
+    let mut address1 = networking_ip_address_from_input(address1)?;
+    let address2 = networking_ip_address_from_input(address2)?;
+    Ok(unsafe { sys::SteamAPI_SteamNetworkingIPAddr_IsEqualTo(&mut address1, &address2) })
 }
 
 #[napi(js_name = "networkingUtilsGetIpAddressFakeIpType")]
@@ -12681,6 +12694,88 @@ pub fn networking_utils_parse_identity(
         )
     };
     Ok(ok.then(|| networking_identity_info(identity)))
+}
+
+#[napi(js_name = "networkingUtilsIdentityGetSteamId")]
+pub fn networking_utils_identity_get_steam_id(
+    identity: NetworkingIdentity,
+) -> Result<BigInt, Error> {
+    let mut identity = networking_identity_from_input(identity)?;
+    Ok(unsafe { sys::SteamAPI_SteamNetworkingIdentity_GetSteamID(&mut identity) }.into())
+}
+
+#[napi(js_name = "networkingUtilsIdentityGetPsnId")]
+pub fn networking_utils_identity_get_psn_id(identity: NetworkingIdentity) -> Result<BigInt, Error> {
+    let mut identity = networking_identity_from_input(identity)?;
+    Ok(unsafe { sys::SteamAPI_SteamNetworkingIdentity_GetPSNID(&mut identity) }.into())
+}
+
+#[napi(js_name = "networkingUtilsIdentityGetXboxPairwiseId")]
+pub fn networking_utils_identity_get_xbox_pairwise_id(
+    identity: NetworkingIdentity,
+) -> Result<Option<String>, Error> {
+    let mut identity = networking_identity_from_input(identity)?;
+    let value = string_from_ptr(unsafe {
+        sys::SteamAPI_SteamNetworkingIdentity_GetXboxPairwiseID(&mut identity)
+    });
+    Ok((!value.is_empty()).then_some(value))
+}
+
+#[napi(js_name = "networkingUtilsIdentityGetIpAddress")]
+pub fn networking_utils_identity_get_ip_address(
+    identity: NetworkingIdentity,
+) -> Result<Option<NetworkingIpAddressInfo>, Error> {
+    let mut identity = networking_identity_from_input(identity)?;
+    let address = unsafe { sys::SteamAPI_SteamNetworkingIdentity_GetIPAddr(&mut identity) };
+    if address.is_null() {
+        return Ok(None);
+    }
+    let address = unsafe { ptr::read_unaligned(address) };
+    Ok(Some(networking_ip_address_info(
+        steam_networking_utils()?,
+        address,
+        true,
+    )))
+}
+
+#[napi(js_name = "networkingUtilsIdentityGetIpv4")]
+pub fn networking_utils_identity_get_ipv4(identity: NetworkingIdentity) -> Result<u32, Error> {
+    let mut identity = networking_identity_from_input(identity)?;
+    Ok(unsafe { sys::SteamAPI_SteamNetworkingIdentity_GetIPv4(&mut identity) })
+}
+
+#[napi(js_name = "networkingUtilsIdentityGetGenericBytes")]
+pub fn networking_utils_identity_get_generic_bytes(
+    identity: NetworkingIdentity,
+) -> Result<Option<Buffer>, Error> {
+    let mut identity = networking_identity_from_input(identity)?;
+    let mut size = 0i32;
+    let bytes =
+        unsafe { sys::SteamAPI_SteamNetworkingIdentity_GetGenericBytes(&mut identity, &mut size) };
+    if bytes.is_null() || size <= 0 {
+        return Ok(None);
+    }
+    Ok(Some(
+        unsafe { std::slice::from_raw_parts(bytes, size as usize) }
+            .to_vec()
+            .into(),
+    ))
+}
+
+#[napi(js_name = "networkingUtilsIdentityEquals")]
+pub fn networking_utils_identity_equals(
+    identity1: NetworkingIdentity,
+    identity2: NetworkingIdentity,
+) -> Result<bool, Error> {
+    let mut identity1 = networking_identity_from_input(identity1)?;
+    let identity2 = networking_identity_from_input(identity2)?;
+    Ok(unsafe { sys::SteamAPI_SteamNetworkingIdentity_IsEqualTo(&mut identity1, &identity2) })
+}
+
+#[napi(js_name = "networkingUtilsIdentityIsFakeIp")]
+pub fn networking_utils_identity_is_fake_ip(identity: NetworkingIdentity) -> Result<bool, Error> {
+    let mut identity = networking_identity_from_input(identity)?;
+    Ok(unsafe { sys::SteamAPI_SteamNetworkingIdentity_IsFakeIP(&mut identity) })
 }
 
 #[napi(js_name = "networkingUtilsSetConfigValueInt32")]
@@ -17950,17 +18045,22 @@ fn networking_identity_from_input(
         steam_id64,
         text,
         generic_string,
+        generic_bytes,
+        psn_id,
+        xbox_pairwise_id,
+        ip_address,
+        ipv4,
+        port,
         local_host,
     } = identity;
     let mut output = unsafe { MaybeUninit::<sys::SteamNetworkingIdentity>::zeroed().assume_init() };
     unsafe { sys::SteamAPI_SteamNetworkingIdentity_Clear(&mut output) };
 
     if let Some(steam_id64) = steam_id64 {
+        let steam_id64 = bigint_to_u64(steam_id64, "networking identity steamId64")?;
         unsafe {
-            sys::SteamAPI_SteamNetworkingIdentity_SetSteamID64(
-                &mut output,
-                bigint_to_u64(steam_id64, "networking identity steamId64")?,
-            );
+            sys::SteamAPI_SteamNetworkingIdentity_SetSteamID64(&mut output, steam_id64);
+            sys::SteamAPI_SteamNetworkingIdentity_SetSteamID(&mut output, steam_id64);
         }
         return Ok(output);
     }
@@ -17988,13 +18088,66 @@ fn networking_identity_from_input(
             .ok_or_else(|| Error::from_reason("invalid generic networking identity"));
     }
 
+    if let Some(generic_bytes) = generic_bytes {
+        let ok = unsafe {
+            sys::SteamAPI_SteamNetworkingIdentity_SetGenericBytes(
+                &mut output,
+                generic_bytes.as_ptr().cast::<c_void>(),
+                len_to_u32(generic_bytes.len(), "generic networking identity bytes")?,
+            )
+        };
+        return ok
+            .then_some(output)
+            .ok_or_else(|| Error::from_reason("invalid generic networking identity bytes"));
+    }
+
+    if let Some(psn_id) = psn_id {
+        unsafe {
+            sys::SteamAPI_SteamNetworkingIdentity_SetPSNID(
+                &mut output,
+                bigint_to_u64(psn_id, "networking identity PSN id")?,
+            );
+        }
+        return Ok(output);
+    }
+
+    if let Some(xbox_pairwise_id) = xbox_pairwise_id {
+        let xbox_pairwise_id = cstring(xbox_pairwise_id, "Xbox pairwise networking identity")?;
+        let ok = unsafe {
+            sys::SteamAPI_SteamNetworkingIdentity_SetXboxPairwiseID(
+                &mut output,
+                xbox_pairwise_id.as_ptr(),
+            )
+        };
+        return ok
+            .then_some(output)
+            .ok_or_else(|| Error::from_reason("invalid Xbox pairwise networking identity"));
+    }
+
+    if let Some(ip_address) = ip_address {
+        let ip_address = networking_ip_address_from_input(ip_address)?;
+        unsafe { sys::SteamAPI_SteamNetworkingIdentity_SetIPAddr(&mut output, &ip_address) };
+        return Ok(output);
+    }
+
+    if let Some(ipv4) = ipv4 {
+        unsafe {
+            sys::SteamAPI_SteamNetworkingIdentity_SetIPv4Addr(
+                &mut output,
+                ipv4,
+                networking_port(port)?,
+            );
+        }
+        return Ok(output);
+    }
+
     if local_host.unwrap_or(false) {
         unsafe { sys::SteamAPI_SteamNetworkingIdentity_SetLocalHost(&mut output) };
         return Ok(output);
     }
 
     Err(Error::from_reason(
-        "networking identity requires steamId64, text, genericString, or localHost",
+        "networking identity requires steamId64, text, genericString, genericBytes, psnId, xboxPairwiseId, ipAddress, ipv4, or localHost",
     ))
 }
 
@@ -19060,6 +19213,7 @@ fn networking_ip_address_from_input(
     let NetworkingIpAddress {
         text,
         ipv4,
+        ipv6,
         port,
         local_host,
     } = address;
@@ -19078,6 +19232,16 @@ fn networking_ip_address_from_input(
 
     if let Some(ipv4) = ipv4 {
         unsafe { sys::SteamAPI_SteamNetworkingIPAddr_SetIPv4(&mut output, ipv4, port) };
+        return Ok(output);
+    }
+
+    if let Some(ipv6) = ipv6 {
+        if ipv6.len() != 16 {
+            return Err(Error::from_reason(
+                "networking IPv6 address must be 16 bytes",
+            ));
+        }
+        unsafe { sys::SteamAPI_SteamNetworkingIPAddr_SetIPv6(&mut output, ipv6.as_ptr(), port) };
         return Ok(output);
     }
 
@@ -19124,6 +19288,22 @@ fn networking_ip_address_string(
         sys::SteamAPI_ISteamNetworkingUtils_SteamNetworkingIPAddr_ToString(
             utils,
             address,
+            output.as_mut_ptr(),
+            output.len() as u32,
+            with_port,
+        );
+    }
+    c_buf_to_string(&output)
+}
+
+fn networking_ip_address_string_standalone(
+    mut address: sys::SteamNetworkingIPAddr,
+    with_port: bool,
+) -> String {
+    let mut output = vec![0i8; sys::SteamNetworkingIPAddr_k_cchMaxString as usize];
+    unsafe {
+        sys::SteamAPI_SteamNetworkingIPAddr_ToString(
+            &mut address,
             output.as_mut_ptr(),
             output.len() as u32,
             with_port,

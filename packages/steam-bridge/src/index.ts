@@ -934,6 +934,12 @@ export interface NetworkingIdentity {
   steamId64?: bigint;
   text?: string;
   genericString?: string;
+  genericBytes?: Buffer | Uint8Array;
+  psnId?: bigint;
+  xboxPairwiseId?: string;
+  ipAddress?: NetworkingIpAddress;
+  ipv4?: number;
+  port?: number;
   localHost?: boolean;
 }
 
@@ -1139,6 +1145,7 @@ export interface NetworkingPingDataCenter {
 export interface NetworkingIpAddress {
   text?: string;
   ipv4?: number;
+  ipv6?: Buffer | Uint8Array;
   port?: number;
   localHost?: boolean;
 }
@@ -5815,6 +5822,12 @@ export const networking = {
     ipAddressToString(address: NetworkingIpAddress, withPort = true): string {
       return native().networkingUtilsIpAddressToString(nativeNetworkingIpAddress(address), withPort);
     },
+    ipAddressEquals(address1: NetworkingIpAddress, address2: NetworkingIpAddress): boolean {
+      return native().networkingUtilsIpAddressEquals(
+        nativeNetworkingIpAddress(address1),
+        nativeNetworkingIpAddress(address2)
+      );
+    },
     getIpAddressFakeIpType(address: NetworkingIpAddress): number {
       return native().networkingUtilsGetIpAddressFakeIpType(nativeNetworkingIpAddress(address));
     },
@@ -5828,6 +5841,35 @@ export const networking = {
     },
     parseIdentity(text: string): NetworkingIdentityInfo | null {
       return normalizeNetworkingIdentityInfo(native().networkingUtilsParseIdentity(text));
+    },
+    getIdentitySteamId(identity: NetworkingIdentity): bigint {
+      return native().networkingUtilsIdentityGetSteamId(nativeNetworkingIdentity(identity));
+    },
+    getIdentityPsnId(identity: NetworkingIdentity): bigint {
+      return native().networkingUtilsIdentityGetPsnId(nativeNetworkingIdentity(identity));
+    },
+    getIdentityXboxPairwiseId(identity: NetworkingIdentity): string | null {
+      return native().networkingUtilsIdentityGetXboxPairwiseId(nativeNetworkingIdentity(identity)) ?? null;
+    },
+    getIdentityIpAddress(identity: NetworkingIdentity): NetworkingIpAddressInfo | null {
+      return normalizeNetworkingIpAddressInfo(
+        native().networkingUtilsIdentityGetIpAddress(nativeNetworkingIdentity(identity))
+      );
+    },
+    getIdentityIpv4(identity: NetworkingIdentity): number {
+      return native().networkingUtilsIdentityGetIpv4(nativeNetworkingIdentity(identity));
+    },
+    getIdentityGenericBytes(identity: NetworkingIdentity): Buffer | null {
+      return native().networkingUtilsIdentityGetGenericBytes(nativeNetworkingIdentity(identity)) ?? null;
+    },
+    identityEquals(identity1: NetworkingIdentity, identity2: NetworkingIdentity): boolean {
+      return native().networkingUtilsIdentityEquals(
+        nativeNetworkingIdentity(identity1),
+        nativeNetworkingIdentity(identity2)
+      );
+    },
+    identityIsFakeIp(identity: NetworkingIdentity): boolean {
+      return native().networkingUtilsIdentityIsFakeIp(nativeNetworkingIdentity(identity));
     },
     setConfigValueInt32(value: number, scope: number, scopeObj: number, data: number): boolean {
       return native().networkingUtilsSetConfigValueInt32(value, scope, scopeObj, data);
@@ -8969,6 +9011,24 @@ function nativeNetworkingIdentity(identity: NetworkingIdentity): NativeNetworkin
   if (identity.genericString !== undefined) {
     output.genericString = identity.genericString;
   }
+  if (identity.genericBytes !== undefined) {
+    output.genericBytes = Buffer.from(identity.genericBytes);
+  }
+  if (identity.psnId !== undefined) {
+    output.psnId = identity.psnId;
+  }
+  if (identity.xboxPairwiseId !== undefined) {
+    output.xboxPairwiseId = identity.xboxPairwiseId;
+  }
+  if (identity.ipAddress !== undefined) {
+    output.ipAddress = nativeNetworkingIpAddress(identity.ipAddress);
+  }
+  if (identity.ipv4 !== undefined) {
+    output.ipv4 = identity.ipv4;
+  }
+  if (identity.port !== undefined) {
+    output.port = identity.port;
+  }
   if (identity.localHost !== undefined) {
     output.localHost = identity.localHost;
   }
@@ -8982,6 +9042,9 @@ function nativeNetworkingIpAddress(address: NetworkingIpAddress): NativeNetworki
   }
   if (address.ipv4 !== undefined) {
     output.ipv4 = address.ipv4;
+  }
+  if (address.ipv6 !== undefined) {
+    output.ipv6 = Buffer.from(address.ipv6);
   }
   if (address.port !== undefined) {
     output.port = address.port;

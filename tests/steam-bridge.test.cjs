@@ -4954,6 +4954,10 @@ test("networking utils facade covers relay, ping, fake IP, address, config, debu
       this.calls.push({ method: "networkingUtilsIpAddressToString", args: [address, withPort] });
       return withPort ? "127.0.0.1:27015" : "127.0.0.1";
     },
+    networkingUtilsIpAddressEquals(address1, address2) {
+      this.calls.push({ method: "networkingUtilsIpAddressEquals", args: [address1, address2] });
+      return true;
+    },
     networkingUtilsGetIpAddressFakeIpType(address) {
       this.calls.push({ method: "networkingUtilsGetIpAddressFakeIpType", args: [address] });
       return 1;
@@ -4969,6 +4973,48 @@ test("networking utils facade covers relay, ping, fake IP, address, config, debu
     networkingUtilsParseIdentity(text) {
       this.calls.push({ method: "networkingUtilsParseIdentity", args: [text] });
       return text === "bad" ? null : peer;
+    },
+    networkingUtilsIdentityGetSteamId(identity) {
+      this.calls.push({ method: "networkingUtilsIdentityGetSteamId", args: [identity] });
+      return 76561198000000010n;
+    },
+    networkingUtilsIdentityGetPsnId(identity) {
+      this.calls.push({ method: "networkingUtilsIdentityGetPsnId", args: [identity] });
+      return 123456789n;
+    },
+    networkingUtilsIdentityGetXboxPairwiseId(identity) {
+      this.calls.push({ method: "networkingUtilsIdentityGetXboxPairwiseId", args: [identity] });
+      return "xbox-pairwise-id";
+    },
+    networkingUtilsIdentityGetIpAddress(identity) {
+      this.calls.push({ method: "networkingUtilsIdentityGetIpAddress", args: [identity] });
+      return {
+        text: "127.0.0.1:27015",
+        ipv4: 2130706433,
+        port: 27015,
+        ipv4_address: "127.0.0.1",
+        is_ipv4: true,
+        is_local_host: true,
+        is_fake_ip: false,
+        fake_ip_type: 1,
+        ipv6_all_zeros: false
+      };
+    },
+    networkingUtilsIdentityGetIpv4(identity) {
+      this.calls.push({ method: "networkingUtilsIdentityGetIpv4", args: [identity] });
+      return 2130706433;
+    },
+    networkingUtilsIdentityGetGenericBytes(identity) {
+      this.calls.push({ method: "networkingUtilsIdentityGetGenericBytes", args: [identity] });
+      return Buffer.from([1, 2, 3]);
+    },
+    networkingUtilsIdentityEquals(identity1, identity2) {
+      this.calls.push({ method: "networkingUtilsIdentityEquals", args: [identity1, identity2] });
+      return true;
+    },
+    networkingUtilsIdentityIsFakeIp(identity) {
+      this.calls.push({ method: "networkingUtilsIdentityIsFakeIp", args: [identity] });
+      return false;
     },
     networkingUtilsSetConfigValueInt32(value, scope, scopeObj, data) {
       this.calls.push({ method: "networkingUtilsSetConfigValueInt32", args: [value, scope, scopeObj, data] });
@@ -5111,6 +5157,14 @@ test("networking utils facade covers relay, ping, fake IP, address, config, debu
   });
   assert.equal(steam.networking.utils.parseIpAddress("bad"), null);
   assert.equal(steam.networking.utils.ipAddressToString({ ipv4: 2130706433, port: 27015 }, true), "127.0.0.1:27015");
+  assert.equal(
+    steam.networking.utils.ipAddressToString({ ipv6: Buffer.from("00000000000000000000ffff7f000001", "hex"), port: 27015 }, false),
+    "127.0.0.1"
+  );
+  assert.equal(
+    steam.networking.utils.ipAddressEquals({ ipv4: 2130706433, port: 27015 }, { text: "127.0.0.1:27015" }),
+    true
+  );
   assert.equal(steam.networking.utils.getIpAddressFakeIpType({ text: "127.0.0.1:27015" }), 1);
   assert.deepEqual(steam.networking.utils.getRealIdentityForFakeIp({ text: "10.0.0.1:27015" }), {
     result: 1,
@@ -5127,6 +5181,14 @@ test("networking utils facade covers relay, ping, fake IP, address, config, debu
   assert.equal(steam.networking.utils.identityToString({ steamId64: 76561198000000010n }), "steamid:76561198000000010");
   assert.equal(steam.networking.utils.parseIdentity("steamid:76561198000000010").steamId64, 76561198000000010n);
   assert.equal(steam.networking.utils.parseIdentity("bad"), null);
+  assert.equal(steam.networking.utils.getIdentitySteamId({ steamId64: 76561198000000010n }), 76561198000000010n);
+  assert.equal(steam.networking.utils.getIdentityPsnId({ psnId: 123456789n }), 123456789n);
+  assert.equal(steam.networking.utils.getIdentityXboxPairwiseId({ xboxPairwiseId: "xbox-pairwise-id" }), "xbox-pairwise-id");
+  assert.equal(steam.networking.utils.getIdentityIpAddress({ ipAddress: { text: "127.0.0.1:27015" } }).ipv4, 2130706433);
+  assert.equal(steam.networking.utils.getIdentityIpv4({ ipv4: 2130706433, port: 27015 }), 2130706433);
+  assert.deepEqual(steam.networking.utils.getIdentityGenericBytes({ genericBytes: Buffer.from([1, 2, 3]) }), Buffer.from([1, 2, 3]));
+  assert.equal(steam.networking.utils.identityEquals({ steamId64: 76561198000000010n }, { text: "steamid:76561198000000010" }), true);
+  assert.equal(steam.networking.utils.identityIsFakeIp({ ipAddress: { text: "10.0.0.1:27015" } }), false);
   assert.equal(
     steam.networking.utils.setGlobalConfigValueInt32(steam.networking.utils.ConfigValue.TimeoutInitial, 5000),
     true
@@ -5294,6 +5356,39 @@ test("networking utils facade covers relay, ping, fake IP, address, config, debu
   assert.deepEqual(fake.calls.find((call) => call.method === "networkingUtilsIpAddressToString"), {
     method: "networkingUtilsIpAddressToString",
     args: [{ ipv4: 2130706433, port: 27015 }, true]
+  });
+  assert.deepEqual(
+    fake.calls
+      .filter((call) => call.method === "networkingUtilsIpAddressToString")
+      .map((call) => call.args),
+    [
+      [{ ipv4: 2130706433, port: 27015 }, true],
+      [{ ipv6: Buffer.from("00000000000000000000ffff7f000001", "hex"), port: 27015 }, false]
+    ]
+  );
+  assert.deepEqual(fake.calls.find((call) => call.method === "networkingUtilsIpAddressEquals"), {
+    method: "networkingUtilsIpAddressEquals",
+    args: [{ ipv4: 2130706433, port: 27015 }, { text: "127.0.0.1:27015" }]
+  });
+  assert.deepEqual(fake.calls.find((call) => call.method === "networkingUtilsIdentityGetPsnId"), {
+    method: "networkingUtilsIdentityGetPsnId",
+    args: [{ psnId: 123456789n }]
+  });
+  assert.deepEqual(fake.calls.find((call) => call.method === "networkingUtilsIdentityGetXboxPairwiseId"), {
+    method: "networkingUtilsIdentityGetXboxPairwiseId",
+    args: [{ xboxPairwiseId: "xbox-pairwise-id" }]
+  });
+  assert.deepEqual(fake.calls.find((call) => call.method === "networkingUtilsIdentityGetIpAddress"), {
+    method: "networkingUtilsIdentityGetIpAddress",
+    args: [{ ipAddress: { text: "127.0.0.1:27015" } }]
+  });
+  assert.deepEqual(fake.calls.find((call) => call.method === "networkingUtilsIdentityGetIpv4"), {
+    method: "networkingUtilsIdentityGetIpv4",
+    args: [{ ipv4: 2130706433, port: 27015 }]
+  });
+  assert.deepEqual(fake.calls.find((call) => call.method === "networkingUtilsIdentityGetGenericBytes"), {
+    method: "networkingUtilsIdentityGetGenericBytes",
+    args: [{ genericBytes: Buffer.from([1, 2, 3]) }]
   });
   assert.deepEqual(fake.calls.find((call) => call.method === "networkingUtilsSetConfigValueInt64"), {
     method: "networkingUtilsSetConfigValueInt64",

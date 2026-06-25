@@ -528,6 +528,16 @@ export interface NativeNetworkingIdentity {
   text?: string;
   genericString?: string;
   generic_string?: string;
+  genericBytes?: Buffer;
+  generic_bytes?: Buffer;
+  psnId?: bigint | string | number;
+  psn_id?: bigint | string | number;
+  xboxPairwiseId?: string;
+  xbox_pairwise_id?: string;
+  ipAddress?: NativeNetworkingIpAddress;
+  ip_address?: NativeNetworkingIpAddress;
+  ipv4?: number;
+  port?: number;
   localHost?: boolean;
   local_host?: boolean;
 }
@@ -801,6 +811,7 @@ export interface NativeNetworkingPingDataCenter {
 export interface NativeNetworkingIpAddress {
   text?: string;
   ipv4?: number;
+  ipv6?: Buffer;
   port?: number;
   localHost?: boolean;
   local_host?: boolean;
@@ -2352,10 +2363,19 @@ export interface NativeBinding {
   networkingUtilsGetIpv4FakeIpType(ipv4: number): number;
   networkingUtilsParseIpAddress(text: string): NativeNetworkingIpAddressInfo | null | undefined;
   networkingUtilsIpAddressToString(address: NativeNetworkingIpAddress, withPort?: boolean): string;
+  networkingUtilsIpAddressEquals(address1: NativeNetworkingIpAddress, address2: NativeNetworkingIpAddress): boolean;
   networkingUtilsGetIpAddressFakeIpType(address: NativeNetworkingIpAddress): number;
   networkingUtilsGetRealIdentityForFakeIp(address: NativeNetworkingIpAddress): NativeNetworkingFakeIpIdentity;
   networkingUtilsIdentityToString(identity: NativeNetworkingIdentity): string;
   networkingUtilsParseIdentity(text: string): NativeNetworkingIdentityInfo | null | undefined;
+  networkingUtilsIdentityGetSteamId(identity: NativeNetworkingIdentity): bigint;
+  networkingUtilsIdentityGetPsnId(identity: NativeNetworkingIdentity): bigint;
+  networkingUtilsIdentityGetXboxPairwiseId(identity: NativeNetworkingIdentity): string | null | undefined;
+  networkingUtilsIdentityGetIpAddress(identity: NativeNetworkingIdentity): NativeNetworkingIpAddressInfo | null | undefined;
+  networkingUtilsIdentityGetIpv4(identity: NativeNetworkingIdentity): number;
+  networkingUtilsIdentityGetGenericBytes(identity: NativeNetworkingIdentity): Buffer | null | undefined;
+  networkingUtilsIdentityEquals(identity1: NativeNetworkingIdentity, identity2: NativeNetworkingIdentity): boolean;
+  networkingUtilsIdentityIsFakeIp(identity: NativeNetworkingIdentity): boolean;
   networkingUtilsSetConfigValueInt32(value: number, scope: number, scopeObj: number, data: number): boolean;
   networkingUtilsSetConfigValueInt64(value: number, scope: number, scopeObj: number, data: bigint): boolean;
   networkingUtilsSetConfigValueFloat(value: number, scope: number, scopeObj: number, data: number): boolean;
