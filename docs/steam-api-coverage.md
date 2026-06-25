@@ -39,6 +39,11 @@ The native layer currently targets the Steamworks flat C API through
   status/viewer counts.
 - Parental settings: parental lock state, app block checks, and feature block
   checks.
+- Timeline: timeline tooltips, game modes, events, game phases, recording
+  existence checks, phase tags/attributes, and overlay navigation.
+- Remote Play: session enumeration/details, Remote Play Together UI/invites,
+  direct input toggles, input polling, mouse visibility/position, and custom
+  cursor helpers.
 
 ## Not Yet Complete
 

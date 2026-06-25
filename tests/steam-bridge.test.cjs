@@ -199,6 +199,8 @@ test("init reads the Steam app ID from the environment and returns the grouped c
   assert.equal(client.overlay, steam.overlay);
   assert.equal(client.workshop, steam.workshop);
   assert.equal(client.friends, steam.friends);
+  assert.equal(client.timeline, steam.timeline);
+  assert.equal(client.remotePlay, steam.remotePlay);
   assert.equal(client.localplayer.getSteamId().steamId64, 76561198000000000n);
 });
 
@@ -570,6 +572,212 @@ test("screenshots, music, video, and parental facades forward utility interfaces
   assert.equal(steam.parental.isAppInBlockList(480), true);
   assert.equal(steam.parental.isFeatureBlocked(steam.ParentalFeature.Friends), true);
   assert.equal(steam.parental.isFeatureInBlockList(steam.ParentalFeature.Friends), true);
+});
+
+test("timeline and remote play facades normalize timeline and session data", async (t) => {
+  const player = { steamId64: "76561198000000004", steamId32: "STEAM_0:0:19867138", accountId: 39734276 };
+  const fake = createFakeNative({
+    timelineSetTimelineTooltip(description, timeDelta) {
+      this.calls.push({ method: "timelineSetTimelineTooltip", args: [description, timeDelta] });
+    },
+    timelineClearTimelineTooltip(timeDelta) {
+      this.calls.push({ method: "timelineClearTimelineTooltip", args: [timeDelta] });
+    },
+    timelineSetTimelineGameMode(mode) {
+      this.calls.push({ method: "timelineSetTimelineGameMode", args: [mode] });
+    },
+    timelineAddInstantaneousTimelineEvent(...args) {
+      this.calls.push({ method: "timelineAddInstantaneousTimelineEvent", args });
+      return "9001";
+    },
+    timelineAddRangeTimelineEvent(...args) {
+      this.calls.push({ method: "timelineAddRangeTimelineEvent", args });
+      return 9002n;
+    },
+    timelineStartRangeTimelineEvent(...args) {
+      this.calls.push({ method: "timelineStartRangeTimelineEvent", args });
+      return 9003n;
+    },
+    timelineUpdateRangeTimelineEvent(...args) {
+      this.calls.push({ method: "timelineUpdateRangeTimelineEvent", args });
+    },
+    timelineEndRangeTimelineEvent(...args) {
+      this.calls.push({ method: "timelineEndRangeTimelineEvent", args });
+    },
+    timelineRemoveTimelineEvent(event) {
+      this.calls.push({ method: "timelineRemoveTimelineEvent", args: [event] });
+    },
+    timelineDoesEventRecordingExist() {
+      return Promise.resolve({ event: "9001", recording_exists: true });
+    },
+    timelineStartGamePhase() {
+      this.calls.push({ method: "timelineStartGamePhase", args: [] });
+    },
+    timelineEndGamePhase() {
+      this.calls.push({ method: "timelineEndGamePhase", args: [] });
+    },
+    timelineSetGamePhaseId(phaseId) {
+      this.calls.push({ method: "timelineSetGamePhaseId", args: [phaseId] });
+    },
+    timelineDoesGamePhaseRecordingExist() {
+      return Promise.resolve({
+        phase_id: "round-1",
+        recording_ms: "1500",
+        longest_clip_ms: "750",
+        clip_count: 2,
+        screenshot_count: 3
+      });
+    },
+    timelineAddGamePhaseTag(...args) {
+      this.calls.push({ method: "timelineAddGamePhaseTag", args });
+    },
+    timelineSetGamePhaseAttribute(...args) {
+      this.calls.push({ method: "timelineSetGamePhaseAttribute", args });
+    },
+    timelineOpenOverlayToGamePhase(phaseId) {
+      this.calls.push({ method: "timelineOpenOverlayToGamePhase", args: [phaseId] });
+    },
+    timelineOpenOverlayToTimelineEvent(event) {
+      this.calls.push({ method: "timelineOpenOverlayToTimelineEvent", args: [event] });
+    },
+    remotePlayGetSessionCount() {
+      return 1;
+    },
+    remotePlayGetSessionId(index) {
+      return index === 0 ? 42 : 0;
+    },
+    remotePlayGetSessions() {
+      return [
+        {
+          id: 42,
+          remote_play_together: true,
+          steam_id: player,
+          guest_id: 77,
+          small_avatar: 11,
+          medium_avatar: 12,
+          large_avatar: 13,
+          client_name: "Living Room",
+          client_form_factor: 4,
+          resolution: { width: 1920, height: 1080 }
+        }
+      ];
+    },
+    remotePlayIsRemotePlayTogether() {
+      return true;
+    },
+    remotePlayGetSessionSteamId() {
+      return player;
+    },
+    remotePlayGetSessionGuestId() {
+      return 77;
+    },
+    remotePlayGetSmallSessionAvatar() {
+      return 11;
+    },
+    remotePlayGetMediumSessionAvatar() {
+      return 12;
+    },
+    remotePlayGetLargeSessionAvatar() {
+      return 13;
+    },
+    remotePlayGetSessionClientName() {
+      return "Living Room";
+    },
+    remotePlayGetSessionClientFormFactor() {
+      return 4;
+    },
+    remotePlayGetSessionClientResolution() {
+      return { width: 1920, height: 1080 };
+    },
+    remotePlayShowRemotePlayTogetherUi() {
+      return true;
+    },
+    remotePlaySendRemotePlayTogetherInvite(steamId64) {
+      this.calls.push({ method: "remotePlaySendRemotePlayTogetherInvite", args: [steamId64] });
+      return true;
+    },
+    remotePlayEnableRemotePlayTogetherDirectInput() {
+      return true;
+    },
+    remotePlayDisableRemotePlayTogetherDirectInput() {
+      this.calls.push({ method: "remotePlayDisableRemotePlayTogetherDirectInput", args: [] });
+    },
+    remotePlayGetInput(maxEvents) {
+      this.calls.push({ method: "remotePlayGetInput", args: [maxEvents] });
+      return [
+        { session_id: 42, input_type: 1, absolute: true, normalized_x: 0.25, normalized_y: 0.75, delta_x: 3, delta_y: -2 },
+        { session_id: 42, input_type: 5, scancode: 4, modifiers: 1, keycode: 65 }
+      ];
+    },
+    remotePlaySetMouseVisibility(sessionId, visible) {
+      this.calls.push({ method: "remotePlaySetMouseVisibility", args: [sessionId, visible] });
+    },
+    remotePlaySetMousePosition(sessionId, normalizedX, normalizedY) {
+      this.calls.push({ method: "remotePlaySetMousePosition", args: [sessionId, normalizedX, normalizedY] });
+    },
+    remotePlayCreateMouseCursor(width, height, hotX, hotY, bgra, pitch) {
+      this.calls.push({ method: "remotePlayCreateMouseCursor", args: [width, height, hotX, hotY, bgra, pitch] });
+      return 1234;
+    },
+    remotePlaySetMouseCursor(sessionId, cursorId) {
+      this.calls.push({ method: "remotePlaySetMouseCursor", args: [sessionId, cursorId] });
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  steam.timeline.setTimelineTooltip("Overtime", 0.5);
+  steam.timeline.clearTimelineTooltip(0.25);
+  steam.timeline.setTimelineGameMode(steam.TimelineGameMode.Playing);
+  assert.equal(
+    steam.timeline.addInstantaneousTimelineEvent("Goal", "Scored", "icon", 100, -1, steam.TimelineEventClipPriority.Standard),
+    9001n
+  );
+  assert.equal(steam.timeline.addRangeTimelineEvent("Boss", "Fight", "boss", 100, 0, 30, 3), 9002n);
+  assert.equal(steam.timeline.startRangeTimelineEvent("Round", "Start", "round", 100, 0, 2), 9003n);
+  steam.timeline.updateRangeTimelineEvent(9003n, "Round", "Updated", "round", steam.TimelinePriority.KeepCurrentValue, 2);
+  steam.timeline.endRangeTimelineEvent(9003n, 0);
+  steam.timeline.removeTimelineEvent(9003n);
+  assert.deepEqual(await steam.timeline.doesEventRecordingExist(9001n), { event: 9001n, recordingExists: true });
+  steam.timeline.startGamePhase();
+  steam.timeline.setGamePhaseId("round-1");
+  assert.deepEqual(await steam.timeline.doesGamePhaseRecordingExist("round-1"), {
+    phaseId: "round-1",
+    recordingMs: 1500n,
+    longestClipMs: 750n,
+    clipCount: 2,
+    screenshotCount: 3
+  });
+  steam.timeline.addGamePhaseTag("boss", "icon", "encounter", 100);
+  steam.timeline.setGamePhaseAttribute("difficulty", "hard", 100);
+  steam.timeline.openOverlayToGamePhase("round-1");
+  steam.timeline.openOverlayToTimelineEvent(9001n);
+  steam.timeline.endGamePhase();
+
+  assert.equal(steam.remotePlay.getSessionCount(), 1);
+  assert.equal(steam.remotePlay.getSessionId(0), 42);
+  assert.equal(steam.remotePlay.getSessions()[0].steamId.steamId64, 76561198000000004n);
+  assert.deepEqual(steam.remotePlay.getSessions()[0].resolution, { width: 1920, height: 1080 });
+  assert.equal(steam.remotePlay.isRemotePlayTogether(42), true);
+  assert.equal(steam.remotePlay.getSessionSteamId(42).steamId64, 76561198000000004n);
+  assert.equal(steam.remotePlay.getSessionGuestId(42), 77);
+  assert.equal(steam.remotePlay.getSmallSessionAvatar(42), 11);
+  assert.equal(steam.remotePlay.getMediumSessionAvatar(42), 12);
+  assert.equal(steam.remotePlay.getLargeSessionAvatar(42), 13);
+  assert.equal(steam.remotePlay.getSessionClientName(42), "Living Room");
+  assert.equal(steam.remotePlay.getSessionClientFormFactor(42), steam.RemotePlayDeviceFormFactor.TV);
+  assert.deepEqual(steam.remotePlay.getSessionClientResolution(42), { width: 1920, height: 1080 });
+  assert.equal(steam.remotePlay.showRemotePlayTogetherUi(), true);
+  assert.equal(steam.remotePlay.sendRemotePlayTogetherInvite(76561198000000004n), true);
+  assert.equal(steam.remotePlay.enableRemotePlayTogetherDirectInput(), true);
+  steam.remotePlay.disableRemotePlayTogetherDirectInput();
+  assert.equal(steam.remotePlay.getInput(2)[0].normalizedX, 0.25);
+  assert.equal(steam.remotePlay.getInput(2)[1].keycode, 65);
+  steam.remotePlay.setMouseVisibility(42, true);
+  steam.remotePlay.setMousePosition(42, 0.5, 0.5);
+  assert.equal(steam.remotePlay.createMouseCursor(1, 1, 0, 0, Buffer.from([0, 0, 0, 255]), 4), 1234);
+  steam.remotePlay.setMouseCursor(42, 1234);
 });
 
 test("workshop updates and queries normalize progress, IDs, and snake_case fields", async (t) => {

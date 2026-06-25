@@ -231,6 +231,63 @@ pub struct VideoBroadcastStatus {
     pub viewers: i32,
 }
 
+#[derive(Debug)]
+#[napi(object)]
+pub struct TimelineEventRecordingExists {
+    pub event: BigInt,
+    pub recording_exists: bool,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct TimelineGamePhaseRecordingExists {
+    pub phase_id: String,
+    pub recording_ms: BigInt,
+    pub longest_clip_ms: BigInt,
+    pub clip_count: u32,
+    pub screenshot_count: u32,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct RemotePlayResolution {
+    pub width: i32,
+    pub height: i32,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct RemotePlaySessionInfo {
+    pub id: u32,
+    pub remote_play_together: bool,
+    pub steam_id: PlayerSteamId,
+    pub guest_id: u32,
+    pub small_avatar: i32,
+    pub medium_avatar: i32,
+    pub large_avatar: i32,
+    pub client_name: String,
+    pub client_form_factor: u32,
+    pub resolution: Option<RemotePlayResolution>,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct RemotePlayInputEvent {
+    pub session_id: u32,
+    pub input_type: u32,
+    pub absolute: Option<bool>,
+    pub normalized_x: Option<f64>,
+    pub normalized_y: Option<f64>,
+    pub delta_x: Option<i32>,
+    pub delta_y: Option<i32>,
+    pub mouse_button: Option<u32>,
+    pub wheel_direction: Option<u32>,
+    pub wheel_amount: Option<f64>,
+    pub scancode: Option<i32>,
+    pub modifiers: Option<u32>,
+    pub keycode: Option<u32>,
+}
+
 #[napi(js_name = "achievementActivate")]
 pub fn achievement_activate(name: String) -> Result<bool, Error> {
     let stats = steam_user_stats()?;
@@ -1527,6 +1584,520 @@ pub fn parental_is_feature_in_block_list(feature: u32) -> Result<bool, Error> {
     })
 }
 
+#[napi(js_name = "timelineSetTimelineTooltip")]
+pub fn timeline_set_timeline_tooltip(description: String, time_delta: f64) -> Result<(), Error> {
+    let description = cstring(description, "timeline tooltip description")?;
+    unsafe {
+        sys::SteamAPI_ISteamTimeline_SetTimelineTooltip(
+            steam_timeline()?,
+            description.as_ptr(),
+            time_delta as f32,
+        )
+    };
+    Ok(())
+}
+
+#[napi(js_name = "timelineClearTimelineTooltip")]
+pub fn timeline_clear_timeline_tooltip(time_delta: f64) -> Result<(), Error> {
+    unsafe {
+        sys::SteamAPI_ISteamTimeline_ClearTimelineTooltip(steam_timeline()?, time_delta as f32)
+    };
+    Ok(())
+}
+
+#[napi(js_name = "timelineSetTimelineGameMode")]
+pub fn timeline_set_timeline_game_mode(mode: u32) -> Result<(), Error> {
+    unsafe {
+        sys::SteamAPI_ISteamTimeline_SetTimelineGameMode(
+            steam_timeline()?,
+            timeline_game_mode_from_u32(mode)?,
+        )
+    };
+    Ok(())
+}
+
+#[napi(js_name = "timelineAddInstantaneousTimelineEvent")]
+pub fn timeline_add_instantaneous_timeline_event(
+    title: String,
+    description: String,
+    icon: String,
+    icon_priority: u32,
+    start_offset_seconds: f64,
+    clip_priority: u32,
+) -> Result<BigInt, Error> {
+    let title = cstring(title, "timeline event title")?;
+    let description = cstring(description, "timeline event description")?;
+    let icon = cstring(icon, "timeline event icon")?;
+    Ok(unsafe {
+        sys::SteamAPI_ISteamTimeline_AddInstantaneousTimelineEvent(
+            steam_timeline()?,
+            title.as_ptr(),
+            description.as_ptr(),
+            icon.as_ptr(),
+            icon_priority,
+            start_offset_seconds as f32,
+            timeline_clip_priority_from_u32(clip_priority)?,
+        )
+    }
+    .into())
+}
+
+#[napi(js_name = "timelineAddRangeTimelineEvent")]
+pub fn timeline_add_range_timeline_event(
+    title: String,
+    description: String,
+    icon: String,
+    icon_priority: u32,
+    start_offset_seconds: f64,
+    duration: f64,
+    clip_priority: u32,
+) -> Result<BigInt, Error> {
+    let title = cstring(title, "timeline event title")?;
+    let description = cstring(description, "timeline event description")?;
+    let icon = cstring(icon, "timeline event icon")?;
+    Ok(unsafe {
+        sys::SteamAPI_ISteamTimeline_AddRangeTimelineEvent(
+            steam_timeline()?,
+            title.as_ptr(),
+            description.as_ptr(),
+            icon.as_ptr(),
+            icon_priority,
+            start_offset_seconds as f32,
+            duration as f32,
+            timeline_clip_priority_from_u32(clip_priority)?,
+        )
+    }
+    .into())
+}
+
+#[napi(js_name = "timelineStartRangeTimelineEvent")]
+pub fn timeline_start_range_timeline_event(
+    title: String,
+    description: String,
+    icon: String,
+    priority: u32,
+    start_offset_seconds: f64,
+    clip_priority: u32,
+) -> Result<BigInt, Error> {
+    let title = cstring(title, "timeline event title")?;
+    let description = cstring(description, "timeline event description")?;
+    let icon = cstring(icon, "timeline event icon")?;
+    Ok(unsafe {
+        sys::SteamAPI_ISteamTimeline_StartRangeTimelineEvent(
+            steam_timeline()?,
+            title.as_ptr(),
+            description.as_ptr(),
+            icon.as_ptr(),
+            priority,
+            start_offset_seconds as f32,
+            timeline_clip_priority_from_u32(clip_priority)?,
+        )
+    }
+    .into())
+}
+
+#[napi(js_name = "timelineUpdateRangeTimelineEvent")]
+pub fn timeline_update_range_timeline_event(
+    event: BigInt,
+    title: String,
+    description: String,
+    icon: String,
+    priority: u32,
+    clip_priority: u32,
+) -> Result<(), Error> {
+    let title = cstring(title, "timeline event title")?;
+    let description = cstring(description, "timeline event description")?;
+    let icon = cstring(icon, "timeline event icon")?;
+    unsafe {
+        sys::SteamAPI_ISteamTimeline_UpdateRangeTimelineEvent(
+            steam_timeline()?,
+            bigint_to_u64(event, "timeline event")?,
+            title.as_ptr(),
+            description.as_ptr(),
+            icon.as_ptr(),
+            priority,
+            timeline_clip_priority_from_u32(clip_priority)?,
+        )
+    };
+    Ok(())
+}
+
+#[napi(js_name = "timelineEndRangeTimelineEvent")]
+pub fn timeline_end_range_timeline_event(
+    event: BigInt,
+    end_offset_seconds: f64,
+) -> Result<(), Error> {
+    unsafe {
+        sys::SteamAPI_ISteamTimeline_EndRangeTimelineEvent(
+            steam_timeline()?,
+            bigint_to_u64(event, "timeline event")?,
+            end_offset_seconds as f32,
+        )
+    };
+    Ok(())
+}
+
+#[napi(js_name = "timelineRemoveTimelineEvent")]
+pub fn timeline_remove_timeline_event(event: BigInt) -> Result<(), Error> {
+    unsafe {
+        sys::SteamAPI_ISteamTimeline_RemoveTimelineEvent(
+            steam_timeline()?,
+            bigint_to_u64(event, "timeline event")?,
+        )
+    };
+    Ok(())
+}
+
+#[napi(js_name = "timelineDoesEventRecordingExist")]
+pub async fn timeline_does_event_recording_exist(
+    event: BigInt,
+) -> Result<TimelineEventRecordingExists, Error> {
+    let call = unsafe {
+        sys::SteamAPI_ISteamTimeline_DoesEventRecordingExist(
+            steam_timeline()?,
+            bigint_to_u64(event, "timeline event")?,
+        )
+    };
+    let result: sys::SteamTimelineEventRecordingExists_t = wait_for_api_call(
+        call,
+        sys::SteamTimelineEventRecordingExists_t_k_iCallback as i32,
+        DEFAULT_ASYNC_TIMEOUT_SECONDS,
+    )
+    .await?;
+    Ok(TimelineEventRecordingExists {
+        event: unsafe { ptr::addr_of!(result.m_ulEventID).read_unaligned() }.into(),
+        recording_exists: unsafe { ptr::addr_of!(result.m_bRecordingExists).read_unaligned() },
+    })
+}
+
+#[napi(js_name = "timelineStartGamePhase")]
+pub fn timeline_start_game_phase() -> Result<(), Error> {
+    unsafe { sys::SteamAPI_ISteamTimeline_StartGamePhase(steam_timeline()?) };
+    Ok(())
+}
+
+#[napi(js_name = "timelineEndGamePhase")]
+pub fn timeline_end_game_phase() -> Result<(), Error> {
+    unsafe { sys::SteamAPI_ISteamTimeline_EndGamePhase(steam_timeline()?) };
+    Ok(())
+}
+
+#[napi(js_name = "timelineSetGamePhaseId")]
+pub fn timeline_set_game_phase_id(phase_id: String) -> Result<(), Error> {
+    let phase_id = cstring(phase_id, "timeline phase id")?;
+    unsafe { sys::SteamAPI_ISteamTimeline_SetGamePhaseID(steam_timeline()?, phase_id.as_ptr()) };
+    Ok(())
+}
+
+#[napi(js_name = "timelineDoesGamePhaseRecordingExist")]
+pub async fn timeline_does_game_phase_recording_exist(
+    phase_id: String,
+) -> Result<TimelineGamePhaseRecordingExists, Error> {
+    let phase_id = cstring(phase_id, "timeline phase id")?;
+    let call = unsafe {
+        sys::SteamAPI_ISteamTimeline_DoesGamePhaseRecordingExist(
+            steam_timeline()?,
+            phase_id.as_ptr(),
+        )
+    };
+    let result: sys::SteamTimelineGamePhaseRecordingExists_t = wait_for_api_call(
+        call,
+        sys::SteamTimelineGamePhaseRecordingExists_t_k_iCallback as i32,
+        DEFAULT_ASYNC_TIMEOUT_SECONDS,
+    )
+    .await?;
+    let phase_id = unsafe {
+        fixed_char_array_to_string(ptr::addr_of!(result.m_rgchPhaseID).cast::<c_char>(), 64)
+    };
+    Ok(TimelineGamePhaseRecordingExists {
+        phase_id,
+        recording_ms: unsafe { ptr::addr_of!(result.m_ulRecordingMS).read_unaligned() }.into(),
+        longest_clip_ms: unsafe { ptr::addr_of!(result.m_ulLongestClipMS).read_unaligned() }.into(),
+        clip_count: unsafe { ptr::addr_of!(result.m_unClipCount).read_unaligned() },
+        screenshot_count: unsafe { ptr::addr_of!(result.m_unScreenshotCount).read_unaligned() },
+    })
+}
+
+#[napi(js_name = "timelineAddGamePhaseTag")]
+pub fn timeline_add_game_phase_tag(
+    tag_name: String,
+    tag_icon: String,
+    tag_group: String,
+    priority: u32,
+) -> Result<(), Error> {
+    let tag_name = cstring(tag_name, "timeline tag name")?;
+    let tag_icon = cstring(tag_icon, "timeline tag icon")?;
+    let tag_group = cstring(tag_group, "timeline tag group")?;
+    unsafe {
+        sys::SteamAPI_ISteamTimeline_AddGamePhaseTag(
+            steam_timeline()?,
+            tag_name.as_ptr(),
+            tag_icon.as_ptr(),
+            tag_group.as_ptr(),
+            priority,
+        )
+    };
+    Ok(())
+}
+
+#[napi(js_name = "timelineSetGamePhaseAttribute")]
+pub fn timeline_set_game_phase_attribute(
+    attribute_group: String,
+    attribute_value: String,
+    priority: u32,
+) -> Result<(), Error> {
+    let attribute_group = cstring(attribute_group, "timeline attribute group")?;
+    let attribute_value = cstring(attribute_value, "timeline attribute value")?;
+    unsafe {
+        sys::SteamAPI_ISteamTimeline_SetGamePhaseAttribute(
+            steam_timeline()?,
+            attribute_group.as_ptr(),
+            attribute_value.as_ptr(),
+            priority,
+        )
+    };
+    Ok(())
+}
+
+#[napi(js_name = "timelineOpenOverlayToGamePhase")]
+pub fn timeline_open_overlay_to_game_phase(phase_id: String) -> Result<(), Error> {
+    let phase_id = cstring(phase_id, "timeline phase id")?;
+    unsafe {
+        sys::SteamAPI_ISteamTimeline_OpenOverlayToGamePhase(steam_timeline()?, phase_id.as_ptr())
+    };
+    Ok(())
+}
+
+#[napi(js_name = "timelineOpenOverlayToTimelineEvent")]
+pub fn timeline_open_overlay_to_timeline_event(event: BigInt) -> Result<(), Error> {
+    unsafe {
+        sys::SteamAPI_ISteamTimeline_OpenOverlayToTimelineEvent(
+            steam_timeline()?,
+            bigint_to_u64(event, "timeline event")?,
+        )
+    };
+    Ok(())
+}
+
+#[napi(js_name = "remotePlayGetSessionCount")]
+pub fn remote_play_get_session_count() -> Result<u32, Error> {
+    Ok(unsafe { sys::SteamAPI_ISteamRemotePlay_GetSessionCount(steam_remote_play()?) })
+}
+
+#[napi(js_name = "remotePlayGetSessionId")]
+pub fn remote_play_get_session_id(index: i32) -> Result<u32, Error> {
+    Ok(unsafe { sys::SteamAPI_ISteamRemotePlay_GetSessionID(steam_remote_play()?, index) })
+}
+
+#[napi(js_name = "remotePlayGetSessions")]
+pub fn remote_play_get_sessions() -> Result<Vec<RemotePlaySessionInfo>, Error> {
+    let remote_play = steam_remote_play()?;
+    let count = unsafe { sys::SteamAPI_ISteamRemotePlay_GetSessionCount(remote_play) };
+    let mut sessions = Vec::with_capacity(count as usize);
+    for index in 0..count {
+        let id = unsafe { sys::SteamAPI_ISteamRemotePlay_GetSessionID(remote_play, index as i32) };
+        sessions.push(remote_play_session_info(remote_play, id));
+    }
+    Ok(sessions)
+}
+
+#[napi(js_name = "remotePlayIsRemotePlayTogether")]
+pub fn remote_play_is_remote_play_together(session_id: u32) -> Result<bool, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamRemotePlay_BSessionRemotePlayTogether(steam_remote_play()?, session_id)
+    })
+}
+
+#[napi(js_name = "remotePlayGetSessionSteamId")]
+pub fn remote_play_get_session_steam_id(session_id: u32) -> Result<PlayerSteamId, Error> {
+    Ok(steam_id_to_player(unsafe {
+        sys::SteamAPI_ISteamRemotePlay_GetSessionSteamID(steam_remote_play()?, session_id)
+    }))
+}
+
+#[napi(js_name = "remotePlayGetSessionGuestId")]
+pub fn remote_play_get_session_guest_id(session_id: u32) -> Result<u32, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamRemotePlay_GetSessionGuestID(steam_remote_play()?, session_id)
+    })
+}
+
+#[napi(js_name = "remotePlayGetSmallSessionAvatar")]
+pub fn remote_play_get_small_session_avatar(session_id: u32) -> Result<i32, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamRemotePlay_GetSmallSessionAvatar(steam_remote_play()?, session_id)
+    })
+}
+
+#[napi(js_name = "remotePlayGetMediumSessionAvatar")]
+pub fn remote_play_get_medium_session_avatar(session_id: u32) -> Result<i32, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamRemotePlay_GetMediumSessionAvatar(steam_remote_play()?, session_id)
+    })
+}
+
+#[napi(js_name = "remotePlayGetLargeSessionAvatar")]
+pub fn remote_play_get_large_session_avatar(session_id: u32) -> Result<i32, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamRemotePlay_GetLargeSessionAvatar(steam_remote_play()?, session_id)
+    })
+}
+
+#[napi(js_name = "remotePlayGetSessionClientName")]
+pub fn remote_play_get_session_client_name(session_id: u32) -> Result<String, Error> {
+    Ok(string_from_ptr(unsafe {
+        sys::SteamAPI_ISteamRemotePlay_GetSessionClientName(steam_remote_play()?, session_id)
+    }))
+}
+
+#[napi(js_name = "remotePlayGetSessionClientFormFactor")]
+pub fn remote_play_get_session_client_form_factor(session_id: u32) -> Result<u32, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamRemotePlay_GetSessionClientFormFactor(steam_remote_play()?, session_id)
+            as u32
+    })
+}
+
+#[napi(js_name = "remotePlayGetSessionClientResolution")]
+pub fn remote_play_get_session_client_resolution(
+    session_id: u32,
+) -> Result<Option<RemotePlayResolution>, Error> {
+    let mut width = 0;
+    let mut height = 0;
+    let ok = unsafe {
+        sys::SteamAPI_ISteamRemotePlay_BGetSessionClientResolution(
+            steam_remote_play()?,
+            session_id,
+            &mut width,
+            &mut height,
+        )
+    };
+    Ok(ok.then_some(RemotePlayResolution { width, height }))
+}
+
+#[napi(js_name = "remotePlayShowRemotePlayTogetherUi")]
+pub fn remote_play_show_remote_play_together_ui() -> Result<bool, Error> {
+    Ok(unsafe { sys::SteamAPI_ISteamRemotePlay_ShowRemotePlayTogetherUI(steam_remote_play()?) })
+}
+
+#[napi(js_name = "remotePlaySendRemotePlayTogetherInvite")]
+pub fn remote_play_send_remote_play_together_invite(steam_id64: BigInt) -> Result<bool, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamRemotePlay_BSendRemotePlayTogetherInvite(
+            steam_remote_play()?,
+            bigint_to_u64(steam_id64, "steamId64")?,
+        )
+    })
+}
+
+#[napi(js_name = "remotePlayEnableRemotePlayTogetherDirectInput")]
+pub fn remote_play_enable_remote_play_together_direct_input() -> Result<bool, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamRemotePlay_BEnableRemotePlayTogetherDirectInput(steam_remote_play()?)
+    })
+}
+
+#[napi(js_name = "remotePlayDisableRemotePlayTogetherDirectInput")]
+pub fn remote_play_disable_remote_play_together_direct_input() -> Result<(), Error> {
+    unsafe {
+        sys::SteamAPI_ISteamRemotePlay_DisableRemotePlayTogetherDirectInput(steam_remote_play()?)
+    };
+    Ok(())
+}
+
+#[napi(js_name = "remotePlayGetInput")]
+pub fn remote_play_get_input(max_events: u32) -> Result<Vec<RemotePlayInputEvent>, Error> {
+    let count = max_events.clamp(0, 256);
+    if count == 0 {
+        return Ok(Vec::new());
+    }
+    let mut inputs = vec![unsafe { std::mem::zeroed::<sys::RemotePlayInput_t>() }; count as usize];
+    let received = unsafe {
+        sys::SteamAPI_ISteamRemotePlay_GetInput(steam_remote_play()?, inputs.as_mut_ptr(), count)
+    };
+    inputs.truncate(received.min(count) as usize);
+    Ok(inputs.into_iter().map(remote_play_input_event).collect())
+}
+
+#[napi(js_name = "remotePlaySetMouseVisibility")]
+pub fn remote_play_set_mouse_visibility(session_id: u32, visible: bool) -> Result<(), Error> {
+    unsafe {
+        sys::SteamAPI_ISteamRemotePlay_SetMouseVisibility(steam_remote_play()?, session_id, visible)
+    };
+    Ok(())
+}
+
+#[napi(js_name = "remotePlaySetMousePosition")]
+pub fn remote_play_set_mouse_position(
+    session_id: u32,
+    normalized_x: f64,
+    normalized_y: f64,
+) -> Result<(), Error> {
+    if !normalized_x.is_finite() || !normalized_y.is_finite() {
+        return Err(Error::from_reason(
+            "mouse position coordinates must be finite",
+        ));
+    }
+    unsafe {
+        sys::SteamAPI_ISteamRemotePlay_SetMousePosition(
+            steam_remote_play()?,
+            session_id,
+            normalized_x as f32,
+            normalized_y as f32,
+        )
+    };
+    Ok(())
+}
+
+#[napi(js_name = "remotePlayCreateMouseCursor")]
+pub fn remote_play_create_mouse_cursor(
+    width: i32,
+    height: i32,
+    hot_x: i32,
+    hot_y: i32,
+    bgra: Buffer,
+    pitch: i32,
+) -> Result<u32, Error> {
+    if width <= 0 || height <= 0 || pitch <= 0 {
+        return Err(Error::from_reason(
+            "mouse cursor width, height, and pitch must be positive",
+        ));
+    }
+    let minimum_pitch = i64::from(width) * 4;
+    if i64::from(pitch) < minimum_pitch {
+        return Err(Error::from_reason(
+            "mouse cursor pitch must be at least width * 4 bytes",
+        ));
+    }
+    let required_len = (height as usize)
+        .checked_mul(pitch as usize)
+        .ok_or_else(|| Error::from_reason("mouse cursor BGRA buffer size overflows usize"))?;
+    if bgra.len() < required_len {
+        return Err(Error::from_reason(format!(
+            "mouse cursor BGRA buffer must be at least {required_len} bytes"
+        )));
+    }
+    Ok(unsafe {
+        sys::SteamAPI_ISteamRemotePlay_CreateMouseCursor(
+            steam_remote_play()?,
+            width,
+            height,
+            hot_x,
+            hot_y,
+            bgra.as_ptr().cast::<c_void>(),
+            pitch,
+        )
+    })
+}
+
+#[napi(js_name = "remotePlaySetMouseCursor")]
+pub fn remote_play_set_mouse_cursor(session_id: u32, cursor_id: u32) -> Result<(), Error> {
+    unsafe {
+        sys::SteamAPI_ISteamRemotePlay_SetMouseCursor(steam_remote_play()?, session_id, cursor_id)
+    };
+    Ok(())
+}
+
 #[napi(js_name = "overlayActivateDialogToUser")]
 pub fn overlay_activate_dialog_to_user(dialog: String, steam_id64: BigInt) -> Result<(), Error> {
     let dialog = cstring(dialog, "overlay dialog")?;
@@ -2535,6 +3106,22 @@ fn steam_parental_settings() -> Result<*mut sys::ISteamParentalSettings, Error> 
     )
 }
 
+fn steam_timeline() -> Result<*mut sys::ISteamTimeline, Error> {
+    crate::state::ensure_initialized()?;
+    non_null(
+        unsafe { sys::SteamAPI_SteamTimeline_v004() },
+        "ISteamTimeline",
+    )
+}
+
+fn steam_remote_play() -> Result<*mut sys::ISteamRemotePlay, Error> {
+    crate::state::ensure_initialized()?;
+    non_null(
+        unsafe { sys::SteamAPI_SteamRemotePlay_v004() },
+        "ISteamRemotePlay",
+    )
+}
+
 fn vr_screenshot_type_from_u32(value: u32) -> Result<sys::EVRScreenshotType, Error> {
     match value {
         0 => Ok(sys::EVRScreenshotType::k_EVRScreenshotType_None),
@@ -2570,6 +3157,126 @@ fn parental_feature_from_u32(value: u32) -> Result<sys::EParentalFeature, Error>
             "invalid parental feature {value}"
         ))),
     }
+}
+
+fn timeline_game_mode_from_u32(value: u32) -> Result<sys::ETimelineGameMode, Error> {
+    match value {
+        0 => Ok(sys::ETimelineGameMode::k_ETimelineGameMode_Invalid),
+        1 => Ok(sys::ETimelineGameMode::k_ETimelineGameMode_Playing),
+        2 => Ok(sys::ETimelineGameMode::k_ETimelineGameMode_Staging),
+        3 => Ok(sys::ETimelineGameMode::k_ETimelineGameMode_Menus),
+        4 => Ok(sys::ETimelineGameMode::k_ETimelineGameMode_LoadingScreen),
+        5 => Ok(sys::ETimelineGameMode::k_ETimelineGameMode_Max),
+        _ => Err(Error::from_reason(format!(
+            "invalid timeline game mode {value}"
+        ))),
+    }
+}
+
+fn timeline_clip_priority_from_u32(value: u32) -> Result<sys::ETimelineEventClipPriority, Error> {
+    match value {
+        0 => Ok(sys::ETimelineEventClipPriority::k_ETimelineEventClipPriority_Invalid),
+        1 => Ok(sys::ETimelineEventClipPriority::k_ETimelineEventClipPriority_None),
+        2 => Ok(sys::ETimelineEventClipPriority::k_ETimelineEventClipPriority_Standard),
+        3 => Ok(sys::ETimelineEventClipPriority::k_ETimelineEventClipPriority_Featured),
+        _ => Err(Error::from_reason(format!(
+            "invalid timeline clip priority {value}"
+        ))),
+    }
+}
+
+fn remote_play_session_info(
+    remote_play: *mut sys::ISteamRemotePlay,
+    id: u32,
+) -> RemotePlaySessionInfo {
+    let mut width = 0;
+    let mut height = 0;
+    let has_resolution = unsafe {
+        sys::SteamAPI_ISteamRemotePlay_BGetSessionClientResolution(
+            remote_play,
+            id,
+            &mut width,
+            &mut height,
+        )
+    };
+
+    RemotePlaySessionInfo {
+        id,
+        remote_play_together: unsafe {
+            sys::SteamAPI_ISteamRemotePlay_BSessionRemotePlayTogether(remote_play, id)
+        },
+        steam_id: steam_id_to_player(unsafe {
+            sys::SteamAPI_ISteamRemotePlay_GetSessionSteamID(remote_play, id)
+        }),
+        guest_id: unsafe { sys::SteamAPI_ISteamRemotePlay_GetSessionGuestID(remote_play, id) },
+        small_avatar: unsafe {
+            sys::SteamAPI_ISteamRemotePlay_GetSmallSessionAvatar(remote_play, id)
+        },
+        medium_avatar: unsafe {
+            sys::SteamAPI_ISteamRemotePlay_GetMediumSessionAvatar(remote_play, id)
+        },
+        large_avatar: unsafe {
+            sys::SteamAPI_ISteamRemotePlay_GetLargeSessionAvatar(remote_play, id)
+        },
+        client_name: string_from_ptr(unsafe {
+            sys::SteamAPI_ISteamRemotePlay_GetSessionClientName(remote_play, id)
+        }),
+        client_form_factor: unsafe {
+            sys::SteamAPI_ISteamRemotePlay_GetSessionClientFormFactor(remote_play, id) as u32
+        },
+        resolution: has_resolution.then_some(RemotePlayResolution { width, height }),
+    }
+}
+
+fn remote_play_input_event(input: sys::RemotePlayInput_t) -> RemotePlayInputEvent {
+    let input_type = input.m_eType as u32;
+    let mut event = RemotePlayInputEvent {
+        session_id: input.m_unSessionID,
+        input_type,
+        absolute: None,
+        normalized_x: None,
+        normalized_y: None,
+        delta_x: None,
+        delta_y: None,
+        mouse_button: None,
+        wheel_direction: None,
+        wheel_amount: None,
+        scancode: None,
+        modifiers: None,
+        keycode: None,
+    };
+
+    unsafe {
+        match input.m_eType {
+            sys::ERemotePlayInputType::k_ERemotePlayInputMouseMotion => {
+                let motion = input.__bindgen_anon_1.m_MouseMotion;
+                event.absolute = Some(motion.m_bAbsolute);
+                event.normalized_x = Some(f64::from(motion.m_flNormalizedX));
+                event.normalized_y = Some(f64::from(motion.m_flNormalizedY));
+                event.delta_x = Some(motion.m_nDeltaX);
+                event.delta_y = Some(motion.m_nDeltaY);
+            }
+            sys::ERemotePlayInputType::k_ERemotePlayInputMouseButtonDown
+            | sys::ERemotePlayInputType::k_ERemotePlayInputMouseButtonUp => {
+                event.mouse_button = Some(input.__bindgen_anon_1.m_eMouseButton as u32);
+            }
+            sys::ERemotePlayInputType::k_ERemotePlayInputMouseWheel => {
+                let wheel = input.__bindgen_anon_1.m_MouseWheel;
+                event.wheel_direction = Some(wheel.m_eDirection as u32);
+                event.wheel_amount = Some(f64::from(wheel.m_flAmount));
+            }
+            sys::ERemotePlayInputType::k_ERemotePlayInputKeyDown
+            | sys::ERemotePlayInputType::k_ERemotePlayInputKeyUp => {
+                let key = input.__bindgen_anon_1.m_Key;
+                event.scancode = Some(key.m_eScancode);
+                event.modifiers = Some(key.m_unModifiers);
+                event.keycode = Some(key.m_unKeycode);
+            }
+            _ => {}
+        }
+    }
+
+    event
 }
 
 fn bigint_to_u64(value: BigInt, label: &str) -> Result<u64, Error> {

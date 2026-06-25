@@ -19,7 +19,12 @@ import {
   NativeIsFollowingResult,
   NativeOverlayDiagnostics,
   NativeP2PPacket,
+  NativeRemotePlayInputEvent,
+  NativeRemotePlayResolution,
+  NativeRemotePlaySessionInfo,
   NativeSteamId,
+  NativeTimelineEventRecordingExists,
+  NativeTimelineGamePhaseRecordingExists,
   NativeUgcResult,
   NativeVideoBroadcastStatus,
   NativeWorkshopItem,
@@ -142,6 +147,53 @@ export interface P2PPacket {
 export interface VideoBroadcastStatus {
   broadcasting: boolean;
   viewers: number;
+}
+
+export interface TimelineEventRecordingExists {
+  event: bigint;
+  recordingExists: boolean;
+}
+
+export interface TimelineGamePhaseRecordingExists {
+  phaseId: string;
+  recordingMs: bigint;
+  longestClipMs: bigint;
+  clipCount: number;
+  screenshotCount: number;
+}
+
+export interface RemotePlayResolution {
+  width: number;
+  height: number;
+}
+
+export interface RemotePlaySessionInfo {
+  id: number;
+  remotePlayTogether: boolean;
+  steamId: SteamId;
+  guestId: number;
+  smallAvatar: number;
+  mediumAvatar: number;
+  largeAvatar: number;
+  clientName: string;
+  clientFormFactor: number;
+  resolution: RemotePlayResolution | null;
+}
+
+export interface RemotePlayInputEvent {
+  sessionId: number;
+  inputType: number;
+  absolute?: boolean | null;
+  normalizedX?: number | null;
+  normalizedY?: number | null;
+  deltaX?: number | null;
+  deltaY?: number | null;
+  mouseButton?: number | null;
+  wheelDirection?: number | null;
+  wheelAmount?: number | null;
+  scancode?: number | null;
+  modifiers?: number | null;
+  keycode?: number | null;
 }
 
 export interface AnalogActionVector {
@@ -352,6 +404,76 @@ export const ParentalFeature = {
   Test: 12,
   SiteLicense: 13,
   KioskModeDeprecated: 14
+} as const;
+
+export const TimelineGameMode = {
+  Invalid: 0,
+  Playing: 1,
+  Staging: 2,
+  Menus: 3,
+  LoadingScreen: 4,
+  Max: 5
+} as const;
+
+export const TimelineEventClipPriority = {
+  Invalid: 0,
+  None: 1,
+  Standard: 2,
+  Featured: 3
+} as const;
+
+export const TimelinePriority = {
+  Max: 1000,
+  KeepCurrentValue: 1000000
+} as const;
+
+export const RemotePlayDeviceFormFactor = {
+  Unknown: 0,
+  Phone: 1,
+  Tablet: 2,
+  Computer: 3,
+  TV: 4,
+  VRHeadset: 5
+} as const;
+
+export const RemotePlayInputType = {
+  Unknown: 0,
+  MouseMotion: 1,
+  MouseButtonDown: 2,
+  MouseButtonUp: 3,
+  MouseWheel: 4,
+  KeyDown: 5,
+  KeyUp: 6
+} as const;
+
+export const RemotePlayMouseButton = {
+  Left: 1,
+  Right: 2,
+  Middle: 16,
+  X1: 32,
+  X2: 64
+} as const;
+
+export const RemotePlayMouseWheelDirection = {
+  Up: 1,
+  Down: 2,
+  Left: 3,
+  Right: 4
+} as const;
+
+export const RemotePlayKeyModifier = {
+  None: 0,
+  LeftShift: 1,
+  RightShift: 2,
+  LeftControl: 64,
+  RightControl: 128,
+  LeftAlt: 256,
+  RightAlt: 512,
+  LeftGUI: 1024,
+  RightGUI: 2048,
+  NumLock: 4096,
+  CapsLock: 8192,
+  Mask: 65535
 } as const;
 
 export const InputType = {
@@ -1260,6 +1382,172 @@ export const parental = {
   }
 };
 
+export const timeline = {
+  TimelineGameMode,
+  TimelineEventClipPriority,
+  TimelinePriority,
+  setTimelineTooltip(description: string, timeDelta = 0): void {
+    native().timelineSetTimelineTooltip(description, timeDelta);
+  },
+  clearTimelineTooltip(timeDelta = 0): void {
+    native().timelineClearTimelineTooltip(timeDelta);
+  },
+  setTimelineGameMode(mode: number): void {
+    native().timelineSetTimelineGameMode(mode);
+  },
+  addInstantaneousTimelineEvent(
+    title: string,
+    description: string,
+    icon: string,
+    iconPriority: number,
+    startOffsetSeconds: number,
+    clipPriority: number
+  ): bigint {
+    return BigInt(
+      native().timelineAddInstantaneousTimelineEvent(title, description, icon, iconPriority, startOffsetSeconds, clipPriority)
+    );
+  },
+  addRangeTimelineEvent(
+    title: string,
+    description: string,
+    icon: string,
+    iconPriority: number,
+    startOffsetSeconds: number,
+    duration: number,
+    clipPriority: number
+  ): bigint {
+    return BigInt(
+      native().timelineAddRangeTimelineEvent(title, description, icon, iconPriority, startOffsetSeconds, duration, clipPriority)
+    );
+  },
+  startRangeTimelineEvent(
+    title: string,
+    description: string,
+    icon: string,
+    priority: number,
+    startOffsetSeconds: number,
+    clipPriority: number
+  ): bigint {
+    return BigInt(
+      native().timelineStartRangeTimelineEvent(title, description, icon, priority, startOffsetSeconds, clipPriority)
+    );
+  },
+  updateRangeTimelineEvent(
+    event: bigint,
+    title: string,
+    description: string,
+    icon: string,
+    priority: number,
+    clipPriority: number
+  ): void {
+    native().timelineUpdateRangeTimelineEvent(event, title, description, icon, priority, clipPriority);
+  },
+  endRangeTimelineEvent(event: bigint, endOffsetSeconds = 0): void {
+    native().timelineEndRangeTimelineEvent(event, endOffsetSeconds);
+  },
+  removeTimelineEvent(event: bigint): void {
+    native().timelineRemoveTimelineEvent(event);
+  },
+  async doesEventRecordingExist(event: bigint): Promise<TimelineEventRecordingExists> {
+    return normalizeTimelineEventRecordingExists(await native().timelineDoesEventRecordingExist(event));
+  },
+  startGamePhase(): void {
+    native().timelineStartGamePhase();
+  },
+  endGamePhase(): void {
+    native().timelineEndGamePhase();
+  },
+  setGamePhaseId(phaseId: string): void {
+    native().timelineSetGamePhaseId(phaseId);
+  },
+  async doesGamePhaseRecordingExist(phaseId: string): Promise<TimelineGamePhaseRecordingExists> {
+    return normalizeTimelineGamePhaseRecordingExists(await native().timelineDoesGamePhaseRecordingExist(phaseId));
+  },
+  addGamePhaseTag(tagName: string, tagIcon: string, tagGroup: string, priority: number): void {
+    native().timelineAddGamePhaseTag(tagName, tagIcon, tagGroup, priority);
+  },
+  setGamePhaseAttribute(attributeGroup: string, attributeValue: string, priority: number): void {
+    native().timelineSetGamePhaseAttribute(attributeGroup, attributeValue, priority);
+  },
+  openOverlayToGamePhase(phaseId: string): void {
+    native().timelineOpenOverlayToGamePhase(phaseId);
+  },
+  openOverlayToTimelineEvent(event: bigint): void {
+    native().timelineOpenOverlayToTimelineEvent(event);
+  }
+};
+
+export const remotePlay = {
+  RemotePlayDeviceFormFactor,
+  RemotePlayInputType,
+  RemotePlayMouseButton,
+  RemotePlayMouseWheelDirection,
+  RemotePlayKeyModifier,
+  getSessionCount(): number {
+    return native().remotePlayGetSessionCount();
+  },
+  getSessionId(index: number): number {
+    return native().remotePlayGetSessionId(index);
+  },
+  getSessions(): RemotePlaySessionInfo[] {
+    return native().remotePlayGetSessions().map(normalizeRemotePlaySessionInfo);
+  },
+  isRemotePlayTogether(sessionId: number): boolean {
+    return native().remotePlayIsRemotePlayTogether(sessionId);
+  },
+  getSessionSteamId(sessionId: number): SteamId {
+    return normalizeSteamId(native().remotePlayGetSessionSteamId(sessionId));
+  },
+  getSessionGuestId(sessionId: number): number {
+    return native().remotePlayGetSessionGuestId(sessionId);
+  },
+  getSmallSessionAvatar(sessionId: number): number {
+    return native().remotePlayGetSmallSessionAvatar(sessionId);
+  },
+  getMediumSessionAvatar(sessionId: number): number {
+    return native().remotePlayGetMediumSessionAvatar(sessionId);
+  },
+  getLargeSessionAvatar(sessionId: number): number {
+    return native().remotePlayGetLargeSessionAvatar(sessionId);
+  },
+  getSessionClientName(sessionId: number): string {
+    return native().remotePlayGetSessionClientName(sessionId);
+  },
+  getSessionClientFormFactor(sessionId: number): number {
+    return native().remotePlayGetSessionClientFormFactor(sessionId);
+  },
+  getSessionClientResolution(sessionId: number): RemotePlayResolution | null {
+    return normalizeRemotePlayResolution(native().remotePlayGetSessionClientResolution(sessionId));
+  },
+  showRemotePlayTogetherUi(): boolean {
+    return native().remotePlayShowRemotePlayTogetherUi();
+  },
+  sendRemotePlayTogetherInvite(steamId64: bigint): boolean {
+    return native().remotePlaySendRemotePlayTogetherInvite(steamId64);
+  },
+  enableRemotePlayTogetherDirectInput(): boolean {
+    return native().remotePlayEnableRemotePlayTogetherDirectInput();
+  },
+  disableRemotePlayTogetherDirectInput(): void {
+    native().remotePlayDisableRemotePlayTogetherDirectInput();
+  },
+  getInput(maxEvents = 32): RemotePlayInputEvent[] {
+    return native().remotePlayGetInput(maxEvents).map(normalizeRemotePlayInputEvent);
+  },
+  setMouseVisibility(sessionId: number, visible: boolean): void {
+    native().remotePlaySetMouseVisibility(sessionId, visible);
+  },
+  setMousePosition(sessionId: number, normalizedX: number, normalizedY: number): void {
+    native().remotePlaySetMousePosition(sessionId, normalizedX, normalizedY);
+  },
+  createMouseCursor(width: number, height: number, hotX: number, hotY: number, bgra: Buffer, pitch: number): number {
+    return native().remotePlayCreateMouseCursor(width, height, hotX, hotY, bgra, pitch);
+  },
+  setMouseCursor(sessionId: number, cursorId: number): void {
+    native().remotePlaySetMouseCursor(sessionId, cursorId);
+  }
+};
+
 export const utils = {
   GamepadTextInputMode,
   GamepadTextInputLineMode,
@@ -1419,8 +1707,10 @@ export interface SteamBridgeClient {
   overlay: typeof overlay;
   music: typeof music;
   parental: typeof parental;
+  remotePlay: typeof remotePlay;
   screenshots: typeof screenshots;
   stats: typeof stats;
+  timeline: typeof timeline;
   utils: typeof utils;
   video: typeof video;
   workshop: typeof workshop;
@@ -1441,8 +1731,10 @@ export function createCompatibilityClient(): SteamBridgeClient {
     overlay,
     music,
     parental,
+    remotePlay,
     screenshots,
     stats,
+    timeline,
     utils,
     video,
     workshop
@@ -1735,6 +2027,70 @@ function normalizeVideoBroadcastStatus(status: NativeVideoBroadcastStatus): Vide
   };
 }
 
+function normalizeTimelineEventRecordingExists(
+  result: NativeTimelineEventRecordingExists
+): TimelineEventRecordingExists {
+  const source = result as unknown as Record<string, unknown>;
+  return {
+    event: BigInt((source.event ?? 0) as bigint | number | string),
+    recordingExists: Boolean(source.recordingExists ?? source.recording_exists)
+  };
+}
+
+function normalizeTimelineGamePhaseRecordingExists(
+  result: NativeTimelineGamePhaseRecordingExists
+): TimelineGamePhaseRecordingExists {
+  const source = result as unknown as Record<string, unknown>;
+  return {
+    phaseId: String(source.phaseId ?? source.phase_id ?? ""),
+    recordingMs: BigInt((source.recordingMs ?? source.recording_ms ?? 0) as bigint | number | string),
+    longestClipMs: BigInt((source.longestClipMs ?? source.longest_clip_ms ?? 0) as bigint | number | string),
+    clipCount: Number(source.clipCount ?? source.clip_count ?? 0),
+    screenshotCount: Number(source.screenshotCount ?? source.screenshot_count ?? 0)
+  };
+}
+
+function normalizeRemotePlayResolution(
+  resolution: NativeRemotePlayResolution | null | undefined
+): RemotePlayResolution | null {
+  return resolution ? { width: resolution.width, height: resolution.height } : null;
+}
+
+function normalizeRemotePlaySessionInfo(session: NativeRemotePlaySessionInfo): RemotePlaySessionInfo {
+  const source = session as unknown as Record<string, unknown>;
+  return {
+    id: Number(source.id ?? 0),
+    remotePlayTogether: Boolean(source.remotePlayTogether ?? source.remote_play_together),
+    steamId: normalizeSteamId((source.steamId ?? source.steam_id ?? EMPTY_NATIVE_STEAM_ID) as NativeSteamId),
+    guestId: Number(source.guestId ?? source.guest_id ?? 0),
+    smallAvatar: Number(source.smallAvatar ?? source.small_avatar ?? 0),
+    mediumAvatar: Number(source.mediumAvatar ?? source.medium_avatar ?? 0),
+    largeAvatar: Number(source.largeAvatar ?? source.large_avatar ?? 0),
+    clientName: String(source.clientName ?? source.client_name ?? ""),
+    clientFormFactor: Number(source.clientFormFactor ?? source.client_form_factor ?? 0),
+    resolution: normalizeRemotePlayResolution((source.resolution ?? null) as NativeRemotePlayResolution | null)
+  };
+}
+
+function normalizeRemotePlayInputEvent(event: NativeRemotePlayInputEvent): RemotePlayInputEvent {
+  const source = event as unknown as Record<string, unknown>;
+  return {
+    sessionId: Number(source.sessionId ?? source.session_id ?? 0),
+    inputType: Number(source.inputType ?? source.input_type ?? 0),
+    absolute: (source.absolute ?? null) as boolean | null,
+    normalizedX: (source.normalizedX ?? source.normalized_x ?? null) as number | null,
+    normalizedY: (source.normalizedY ?? source.normalized_y ?? null) as number | null,
+    deltaX: (source.deltaX ?? source.delta_x ?? null) as number | null,
+    deltaY: (source.deltaY ?? source.delta_y ?? null) as number | null,
+    mouseButton: (source.mouseButton ?? source.mouse_button ?? null) as number | null,
+    wheelDirection: (source.wheelDirection ?? source.wheel_direction ?? null) as number | null,
+    wheelAmount: (source.wheelAmount ?? source.wheel_amount ?? null) as number | null,
+    scancode: (source.scancode ?? null) as number | null,
+    modifiers: (source.modifiers ?? null) as number | null,
+    keycode: (source.keycode ?? null) as number | null
+  };
+}
+
 function normalizeUgcResult(result: NativeUgcResult): UgcResult {
   return {
     itemId: BigInt(result.itemId ?? result.item_id ?? 0n),
@@ -1865,8 +2221,10 @@ const defaultExport = {
   overlay,
   music,
   parental,
+  remotePlay,
   screenshots,
   stats,
+  timeline,
   utils,
   video,
   workshop,

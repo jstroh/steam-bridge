@@ -156,6 +156,76 @@ export interface NativeVideoBroadcastStatus {
   viewers: number;
 }
 
+export interface NativeTimelineEventRecordingExists {
+  event?: bigint | string | number;
+  recordingExists?: boolean;
+  recording_exists?: boolean;
+}
+
+export interface NativeTimelineGamePhaseRecordingExists {
+  phaseId?: string;
+  phase_id?: string;
+  recordingMs?: bigint | string | number;
+  recording_ms?: bigint | string | number;
+  longestClipMs?: bigint | string | number;
+  longest_clip_ms?: bigint | string | number;
+  clipCount?: number;
+  clip_count?: number;
+  screenshotCount?: number;
+  screenshot_count?: number;
+}
+
+export interface NativeRemotePlayResolution {
+  width: number;
+  height: number;
+}
+
+export interface NativeRemotePlaySessionInfo {
+  id: number;
+  remotePlayTogether?: boolean;
+  remote_play_together?: boolean;
+  steamId?: NativeSteamId;
+  steam_id?: NativeSteamId;
+  guestId?: number;
+  guest_id?: number;
+  smallAvatar?: number;
+  small_avatar?: number;
+  mediumAvatar?: number;
+  medium_avatar?: number;
+  largeAvatar?: number;
+  large_avatar?: number;
+  clientName?: string;
+  client_name?: string;
+  clientFormFactor?: number;
+  client_form_factor?: number;
+  resolution?: NativeRemotePlayResolution | null;
+}
+
+export interface NativeRemotePlayInputEvent {
+  sessionId?: number;
+  session_id?: number;
+  inputType?: number;
+  input_type?: number;
+  absolute?: boolean | null;
+  normalizedX?: number | null;
+  normalized_x?: number | null;
+  normalizedY?: number | null;
+  normalized_y?: number | null;
+  deltaX?: number | null;
+  delta_x?: number | null;
+  deltaY?: number | null;
+  delta_y?: number | null;
+  mouseButton?: number | null;
+  mouse_button?: number | null;
+  wheelDirection?: number | null;
+  wheel_direction?: number | null;
+  wheelAmount?: number | null;
+  wheel_amount?: number | null;
+  scancode?: number | null;
+  modifiers?: number | null;
+  keycode?: number | null;
+}
+
 export interface NativeBinding {
   init(appId: number): void;
   shutdown(): void;
@@ -342,6 +412,47 @@ export interface NativeBinding {
   parentalIsAppInBlockList(appId: number): boolean;
   parentalIsFeatureBlocked(feature: number): boolean;
   parentalIsFeatureInBlockList(feature: number): boolean;
+
+  timelineSetTimelineTooltip(description: string, timeDelta: number): void;
+  timelineClearTimelineTooltip(timeDelta: number): void;
+  timelineSetTimelineGameMode(mode: number): void;
+  timelineAddInstantaneousTimelineEvent(title: string, description: string, icon: string, iconPriority: number, startOffsetSeconds: number, clipPriority: number): bigint;
+  timelineAddRangeTimelineEvent(title: string, description: string, icon: string, iconPriority: number, startOffsetSeconds: number, duration: number, clipPriority: number): bigint;
+  timelineStartRangeTimelineEvent(title: string, description: string, icon: string, priority: number, startOffsetSeconds: number, clipPriority: number): bigint;
+  timelineUpdateRangeTimelineEvent(event: bigint, title: string, description: string, icon: string, priority: number, clipPriority: number): void;
+  timelineEndRangeTimelineEvent(event: bigint, endOffsetSeconds: number): void;
+  timelineRemoveTimelineEvent(event: bigint): void;
+  timelineDoesEventRecordingExist(event: bigint): Promise<NativeTimelineEventRecordingExists>;
+  timelineStartGamePhase(): void;
+  timelineEndGamePhase(): void;
+  timelineSetGamePhaseId(phaseId: string): void;
+  timelineDoesGamePhaseRecordingExist(phaseId: string): Promise<NativeTimelineGamePhaseRecordingExists>;
+  timelineAddGamePhaseTag(tagName: string, tagIcon: string, tagGroup: string, priority: number): void;
+  timelineSetGamePhaseAttribute(attributeGroup: string, attributeValue: string, priority: number): void;
+  timelineOpenOverlayToGamePhase(phaseId: string): void;
+  timelineOpenOverlayToTimelineEvent(event: bigint): void;
+
+  remotePlayGetSessionCount(): number;
+  remotePlayGetSessionId(index: number): number;
+  remotePlayGetSessions(): NativeRemotePlaySessionInfo[];
+  remotePlayIsRemotePlayTogether(sessionId: number): boolean;
+  remotePlayGetSessionSteamId(sessionId: number): NativeSteamId;
+  remotePlayGetSessionGuestId(sessionId: number): number;
+  remotePlayGetSmallSessionAvatar(sessionId: number): number;
+  remotePlayGetMediumSessionAvatar(sessionId: number): number;
+  remotePlayGetLargeSessionAvatar(sessionId: number): number;
+  remotePlayGetSessionClientName(sessionId: number): string;
+  remotePlayGetSessionClientFormFactor(sessionId: number): number;
+  remotePlayGetSessionClientResolution(sessionId: number): NativeRemotePlayResolution | null | undefined;
+  remotePlayShowRemotePlayTogetherUi(): boolean;
+  remotePlaySendRemotePlayTogetherInvite(steamId64: bigint): boolean;
+  remotePlayEnableRemotePlayTogetherDirectInput(): boolean;
+  remotePlayDisableRemotePlayTogetherDirectInput(): void;
+  remotePlayGetInput(maxEvents: number): NativeRemotePlayInputEvent[];
+  remotePlaySetMouseVisibility(sessionId: number, visible: boolean): void;
+  remotePlaySetMousePosition(sessionId: number, normalizedX: number, normalizedY: number): void;
+  remotePlayCreateMouseCursor(width: number, height: number, hotX: number, hotY: number, bgra: Buffer, pitch: number): number;
+  remotePlaySetMouseCursor(sessionId: number, cursorId: number): void;
 
   networkingSendP2PPacket(steamId64: bigint, sendType: number, data: Buffer): boolean;
   networkingIsP2PPacketAvailable(): number;

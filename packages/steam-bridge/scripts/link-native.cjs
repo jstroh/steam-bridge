@@ -1,5 +1,6 @@
 const fs = require("node:fs");
 const path = require("node:path");
+const { spawnSync } = require("node:child_process");
 
 const packageRoot = path.resolve(__dirname, "..");
 const repoRoot = path.resolve(packageRoot, "..", "..");
@@ -31,6 +32,7 @@ if (!runtimeOnly) {
   }
 
   fs.copyFileSync(source, destination);
+  signMacosNodeBinary(destination);
   console.log(`Linked ${destination}`);
 }
 
@@ -127,4 +129,24 @@ function findInDirectory(directory, fileName) {
   }
 
   return undefined;
+}
+
+function signMacosNodeBinary(filePath) {
+  if (process.platform !== "darwin") {
+    return;
+  }
+
+  const result = spawnSync("codesign", ["--force", "--sign", "-", filePath], {
+    encoding: "utf8"
+  });
+
+  if (result.status !== 0) {
+    throw new Error(
+      [
+        `Failed to ad-hoc sign ${filePath}.`,
+        result.stderr.trim(),
+        result.stdout.trim()
+      ].filter(Boolean).join("\n")
+    );
+  }
 }
