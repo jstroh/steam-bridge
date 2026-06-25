@@ -17,8 +17,12 @@ import {
   NativeClanChatJoinResult,
   NativeClanOfficerListResult,
   NativeCloudFileInfo,
+  NativeCloudFileShareResult,
   NativeCloudLocalFileChange,
   NativeCloudQuota,
+  NativeCloudUgcDetails,
+  NativeCloudUgcDownloadProgress,
+  NativeCloudUgcDownloadResult,
   NativeFollowerCountResult,
   NativeFollowingListResult,
   NativeEquippedProfileItemsResult,
@@ -256,6 +260,33 @@ export interface CloudLocalFileChange {
   name: string;
   changeType: number;
   pathType: number;
+}
+
+export interface CloudFileShareResult {
+  result: number;
+  file: bigint;
+  name: string;
+}
+
+export interface CloudUgcDownloadProgress {
+  downloadedBytes: bigint;
+  expectedBytes: bigint;
+}
+
+export interface CloudUgcDetails {
+  appId: number;
+  name: string;
+  size: bigint;
+  owner: SteamId;
+}
+
+export interface CloudUgcDownloadResult {
+  result: number;
+  file: bigint;
+  appId: number;
+  size: bigint;
+  name: string;
+  owner: SteamId;
 }
 
 export interface EquippedProfileItemsResult {
@@ -1170,6 +1201,10 @@ export const SteamCallback = {
   SteamNetworkingMessagesSessionRequest: 1251,
   SteamNetworkingMessagesSessionFailed: 1252,
   SteamRelayNetworkStatus: 1281,
+  RemoteStorageFileShareResult: 1307,
+  RemoteStorageDownloadUGCResult: 1317,
+  RemoteStorageFileWriteAsyncComplete: 1331,
+  RemoteStorageFileReadAsyncComplete: 1332,
   GameServerClientApprove: 201,
   GameServerClientDeny: 202,
   GameServerClientKick: 203,
@@ -1795,6 +1830,12 @@ export const RemoteStorageFilePathType = {
   Invalid: 0,
   Absolute: 1,
   APIFilename: 2
+} as const;
+
+export const UGCReadAction = {
+  ContinueReadingUntilFinished: 0,
+  ContinueReading: 1,
+  Close: 2
 } as const;
 
 export const SteamUniverse = {
@@ -2734,6 +2775,7 @@ export const cloud = {
   RemoteStoragePlatform,
   RemoteStorageLocalFileChange,
   RemoteStorageFilePathType,
+  UGCReadAction,
   isEnabledForAccount(): boolean {
     return native().cloudIsEnabledForAccount();
   },
@@ -2748,6 +2790,25 @@ export const cloud = {
   },
   writeFile(name: string, content: string): boolean {
     return native().cloudWriteFile(name, content);
+  },
+  async writeFileAsync(name: string, data: Buffer | Uint8Array | string, timeoutSeconds?: number | null): Promise<number> {
+    return native().cloudWriteFileAsync(name, Buffer.from(data), timeoutSeconds ?? undefined);
+  },
+  async readFileAsync(
+    name: string,
+    offset?: number | null,
+    bytesToRead?: number | null,
+    timeoutSeconds?: number | null
+  ): Promise<Buffer> {
+    return native().cloudReadFileAsync(
+      name,
+      offset ?? undefined,
+      bytesToRead ?? undefined,
+      timeoutSeconds ?? undefined
+    );
+  },
+  async shareFile(name: string, timeoutSeconds?: number | null): Promise<CloudFileShareResult> {
+    return normalizeCloudFileShareResult(await native().cloudShareFile(name, timeoutSeconds ?? undefined));
   },
   deleteFile(name: string): boolean {
     return native().cloudDeleteFile(name);
@@ -2795,6 +2856,57 @@ export const cloud = {
   },
   endFileWriteBatch(): boolean {
     return native().cloudEndFileWriteBatch();
+  },
+  openFileWriteStream(name: string): bigint | null {
+    const handle = native().cloudOpenFileWriteStream(name);
+    return handle == null ? null : BigInt(handle);
+  },
+  writeFileStreamChunk(handle: bigint, data: Buffer | Uint8Array | string): boolean {
+    return native().cloudWriteFileStreamChunk(handle, Buffer.from(data));
+  },
+  closeFileWriteStream(handle: bigint): boolean {
+    return native().cloudCloseFileWriteStream(handle);
+  },
+  cancelFileWriteStream(handle: bigint): boolean {
+    return native().cloudCancelFileWriteStream(handle);
+  },
+  async downloadUgc(
+    file: bigint,
+    priority?: number | null,
+    timeoutSeconds?: number | null
+  ): Promise<CloudUgcDownloadResult> {
+    return normalizeCloudUgcDownloadResult(
+      await native().cloudDownloadUgc(file, priority ?? undefined, timeoutSeconds ?? undefined)
+    );
+  },
+  async downloadUgcToLocation(
+    file: bigint,
+    location: string,
+    priority?: number | null,
+    timeoutSeconds?: number | null
+  ): Promise<CloudUgcDownloadResult> {
+    return normalizeCloudUgcDownloadResult(
+      await native().cloudDownloadUgcToLocation(file, location, priority ?? undefined, timeoutSeconds ?? undefined)
+    );
+  },
+  getUgcDownloadProgress(file: bigint): CloudUgcDownloadProgress | null {
+    return normalizeCloudUgcDownloadProgress(native().cloudGetUgcDownloadProgress(file));
+  },
+  getUgcDetails(file: bigint): CloudUgcDetails | null {
+    return normalizeCloudUgcDetails(native().cloudGetUgcDetails(file));
+  },
+  readUgc(file: bigint, bytesToRead: number, offset?: number | null, action?: number | null): Buffer | null {
+    return native().cloudReadUgc(file, bytesToRead, offset ?? undefined, action ?? undefined) ?? null;
+  },
+  getCachedUgcCount(): number {
+    return native().cloudGetCachedUgcCount();
+  },
+  getCachedUgcHandle(index: number): bigint | null {
+    const handle = native().cloudGetCachedUgcHandle(index);
+    return handle == null ? null : BigInt(handle);
+  },
+  getCachedUgcHandles(): bigint[] {
+    return native().cloudGetCachedUgcHandles().map((handle) => BigInt(handle));
   }
 };
 
@@ -4930,6 +5042,52 @@ function normalizeCloudLocalFileChange(
     name: change.name,
     changeType: Number(source.changeType ?? source.change_type ?? 0),
     pathType: Number(source.pathType ?? source.path_type ?? 0)
+  };
+}
+
+function normalizeCloudFileShareResult(result: NativeCloudFileShareResult): CloudFileShareResult {
+  return {
+    result: result.result,
+    file: BigInt(result.file),
+    name: result.name
+  };
+}
+
+function normalizeCloudUgcDownloadProgress(
+  progress: NativeCloudUgcDownloadProgress | null | undefined
+): CloudUgcDownloadProgress | null {
+  if (!progress) {
+    return null;
+  }
+  const source = progress as unknown as Record<string, unknown>;
+  return {
+    downloadedBytes: BigInt((source.downloadedBytes ?? source.downloaded_bytes ?? 0) as bigint | number | string),
+    expectedBytes: BigInt((source.expectedBytes ?? source.expected_bytes ?? 0) as bigint | number | string)
+  };
+}
+
+function normalizeCloudUgcDetails(details: NativeCloudUgcDetails | null | undefined): CloudUgcDetails | null {
+  if (!details) {
+    return null;
+  }
+  const source = details as unknown as Record<string, unknown>;
+  return {
+    appId: Number(source.appId ?? source.app_id ?? 0),
+    name: details.name,
+    size: BigInt(details.size),
+    owner: normalizeSteamId(details.owner)
+  };
+}
+
+function normalizeCloudUgcDownloadResult(result: NativeCloudUgcDownloadResult): CloudUgcDownloadResult {
+  const source = result as unknown as Record<string, unknown>;
+  return {
+    result: result.result,
+    file: BigInt(result.file),
+    appId: Number(source.appId ?? source.app_id ?? 0),
+    size: BigInt(result.size),
+    name: result.name,
+    owner: normalizeSteamId(result.owner)
   };
 }
 

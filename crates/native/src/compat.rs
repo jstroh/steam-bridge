@@ -94,6 +94,10 @@ const CALLBACK_GAME_SERVER_PLAYER_COMPATIBILITY: i32 = 211;
 const CALLBACK_GAME_SERVER_STATS_UNLOADED: i32 = 1108;
 const CALLBACK_GAME_SERVER_STATS_RECEIVED: i32 = 1800;
 const CALLBACK_GAME_SERVER_STATS_STORED: i32 = 1801;
+const CALLBACK_REMOTE_STORAGE_FILE_SHARE_RESULT: i32 = 1307;
+const CALLBACK_REMOTE_STORAGE_DOWNLOAD_UGC_RESULT: i32 = 1317;
+const CALLBACK_REMOTE_STORAGE_FILE_WRITE_ASYNC_COMPLETE: i32 = 1331;
+const CALLBACK_REMOTE_STORAGE_FILE_READ_ASYNC_COMPLETE: i32 = 1332;
 
 static NEXT_NETWORKING_FAKE_UDP_PORT_HANDLE: AtomicU32 = AtomicU32::new(1);
 static NETWORKING_FAKE_UDP_PORTS: Lazy<Mutex<HashMap<u32, usize>>> =
@@ -128,6 +132,8 @@ const DEFAULT_USER_VOICE_BYTES: u32 = 64 * 1024;
 const MAX_ENCRYPTED_APP_TICKET_DATA_BYTES: usize = 1024;
 const MAX_ENCRYPTED_APP_TICKET_BYTES: u32 = 4096;
 const USER_DATA_FOLDER_BUFFER_SIZE: usize = 4096;
+const MAX_CLOUD_ASYNC_READ_BYTES: u32 = 100 * 1024 * 1024;
+const MAX_CLOUD_UGC_READ_BYTES: u32 = 100 * 1024 * 1024;
 
 type FatalThreadsafeFunction<T> = ThreadsafeFunction<T, (), Vec<T>, Status, false>;
 type JsCallback<'scope, T> = Function<'scope, T, ()>;
@@ -324,6 +330,41 @@ pub struct CloudLocalFileChange {
     pub name: String,
     pub change_type: u32,
     pub path_type: u32,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct CloudFileShareResult {
+    pub result: u32,
+    pub file: BigInt,
+    pub name: String,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct CloudUgcDownloadProgress {
+    pub downloaded_bytes: BigInt,
+    pub expected_bytes: BigInt,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct CloudUgcDetails {
+    pub app_id: u32,
+    pub name: String,
+    pub size: BigInt,
+    pub owner: PlayerSteamId,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct CloudUgcDownloadResult {
+    pub result: u32,
+    pub file: BigInt,
+    pub app_id: u32,
+    pub size: BigInt,
+    pub name: String,
+    pub owner: PlayerSteamId,
 }
 
 #[derive(Debug)]
@@ -2590,6 +2631,143 @@ pub fn cloud_write_file(name: String, content: String) -> Result<bool, Error> {
     })
 }
 
+#[napi(js_name = "cloudWriteFileAsync")]
+pub async fn cloud_write_file_async(
+    name: String,
+    data: Buffer,
+    timeout_seconds: Option<u32>,
+) -> Result<u32, Error> {
+    let name = cstring(name, "cloud file name")?;
+    let data = data.to_vec();
+    let data_len = len_to_u32(data.len(), "cloud file data")?;
+    let call = {
+        let storage = steam_remote_storage()?;
+        unsafe {
+            sys::SteamAPI_ISteamRemoteStorage_FileWriteAsync(
+                storage,
+                name.as_ptr(),
+                data.as_ptr().cast::<c_void>(),
+                data_len,
+            )
+        }
+    };
+    let result: sys::RemoteStorageFileWriteAsyncComplete_t = wait_for_api_call(
+        call,
+        sys::RemoteStorageFileWriteAsyncComplete_t_k_iCallback as i32,
+        timeout_seconds
+            .map(u64::from)
+            .unwrap_or(DEFAULT_ASYNC_TIMEOUT_SECONDS)
+            .max(1),
+    )
+    .await?;
+    drop(name);
+    drop(data);
+    Ok(unsafe { ptr::addr_of!(result.m_eResult).read_unaligned() } as u32)
+}
+
+#[napi(js_name = "cloudReadFileAsync")]
+pub async fn cloud_read_file_async(
+    name: String,
+    offset: Option<u32>,
+    bytes_to_read: Option<u32>,
+    timeout_seconds: Option<u32>,
+) -> Result<Buffer, Error> {
+    let name = cstring(name, "cloud file name")?;
+    let offset = offset.unwrap_or(0);
+    let bytes_to_read = {
+        let storage = steam_remote_storage()?;
+        match bytes_to_read {
+            Some(bytes) => bytes,
+            None => {
+                let size = unsafe {
+                    sys::SteamAPI_ISteamRemoteStorage_GetFileSize(storage, name.as_ptr())
+                };
+                if size < 0 {
+                    return Err(Error::from_reason("Steam Cloud file does not exist"));
+                }
+                (size as u32).saturating_sub(offset)
+            }
+        }
+    };
+    if bytes_to_read > MAX_CLOUD_ASYNC_READ_BYTES {
+        return Err(Error::from_reason(format!(
+            "cloud async read cannot exceed {MAX_CLOUD_ASYNC_READ_BYTES} bytes"
+        )));
+    }
+    let call = {
+        let storage = steam_remote_storage()?;
+        unsafe {
+            sys::SteamAPI_ISteamRemoteStorage_FileReadAsync(
+                storage,
+                name.as_ptr(),
+                offset,
+                bytes_to_read,
+            )
+        }
+    };
+    let result: sys::RemoteStorageFileReadAsyncComplete_t = wait_for_api_call(
+        call,
+        sys::RemoteStorageFileReadAsyncComplete_t_k_iCallback as i32,
+        timeout_seconds
+            .map(u64::from)
+            .unwrap_or(DEFAULT_ASYNC_TIMEOUT_SECONDS)
+            .max(1),
+    )
+    .await?;
+    let eresult = unsafe { ptr::addr_of!(result.m_eResult).read_unaligned() };
+    if eresult != sys::EResult::k_EResultOK {
+        return Err(Error::from_reason(format!(
+            "Steam Cloud async read failed: {eresult:?}"
+        )));
+    }
+    let read_call = unsafe { ptr::addr_of!(result.m_hFileReadAsync).read_unaligned() };
+    let bytes_read = unsafe { ptr::addr_of!(result.m_cubRead).read_unaligned() };
+    if bytes_read > MAX_CLOUD_ASYNC_READ_BYTES {
+        return Err(Error::from_reason(format!(
+            "cloud async read cannot exceed {MAX_CLOUD_ASYNC_READ_BYTES} bytes"
+        )));
+    }
+    let mut bytes = vec![0u8; bytes_read as usize];
+    let ok = unsafe {
+        sys::SteamAPI_ISteamRemoteStorage_FileReadAsyncComplete(
+            steam_remote_storage()?,
+            read_call,
+            bytes.as_mut_ptr().cast::<c_void>(),
+            bytes_read,
+        )
+    };
+    drop(name);
+    if !ok {
+        return Err(Error::from_reason(
+            "Steam Cloud async read completed but data retrieval failed",
+        ));
+    }
+    Ok(bytes.into())
+}
+
+#[napi(js_name = "cloudShareFile")]
+pub async fn cloud_share_file(
+    name: String,
+    timeout_seconds: Option<u32>,
+) -> Result<CloudFileShareResult, Error> {
+    let name = cstring(name, "cloud file name")?;
+    let call = {
+        let storage = steam_remote_storage()?;
+        unsafe { sys::SteamAPI_ISteamRemoteStorage_FileShare(storage, name.as_ptr()) }
+    };
+    let result: sys::RemoteStorageFileShareResult_t = wait_for_api_call(
+        call,
+        sys::RemoteStorageFileShareResult_t_k_iCallback as i32,
+        timeout_seconds
+            .map(u64::from)
+            .unwrap_or(DEFAULT_ASYNC_TIMEOUT_SECONDS)
+            .max(1),
+    )
+    .await?;
+    drop(name);
+    Ok(remote_storage_file_share_result(&result))
+}
+
 #[napi(js_name = "cloudDeleteFile")]
 pub fn cloud_delete_file(name: String) -> Result<bool, Error> {
     let name = cstring(name, "cloud file name")?;
@@ -2744,6 +2922,205 @@ pub fn cloud_begin_file_write_batch() -> Result<bool, Error> {
 #[napi(js_name = "cloudEndFileWriteBatch")]
 pub fn cloud_end_file_write_batch() -> Result<bool, Error> {
     Ok(unsafe { sys::SteamAPI_ISteamRemoteStorage_EndFileWriteBatch(steam_remote_storage()?) })
+}
+
+#[napi(js_name = "cloudOpenFileWriteStream")]
+pub fn cloud_open_file_write_stream(name: String) -> Result<Option<BigInt>, Error> {
+    let name = cstring(name, "cloud file name")?;
+    let handle = unsafe {
+        sys::SteamAPI_ISteamRemoteStorage_FileWriteStreamOpen(
+            steam_remote_storage()?,
+            name.as_ptr(),
+        )
+    };
+    Ok((handle != sys::k_UGCFileStreamHandleInvalid).then(|| handle.into()))
+}
+
+#[napi(js_name = "cloudWriteFileStreamChunk")]
+pub fn cloud_write_file_stream_chunk(handle: BigInt, data: Buffer) -> Result<bool, Error> {
+    let handle = bigint_to_u64(handle, "cloud file stream handle")?;
+    let data_len = len_to_i32(data.len(), "cloud file stream chunk")?;
+    Ok(unsafe {
+        sys::SteamAPI_ISteamRemoteStorage_FileWriteStreamWriteChunk(
+            steam_remote_storage()?,
+            handle,
+            data.as_ptr().cast::<c_void>(),
+            data_len,
+        )
+    })
+}
+
+#[napi(js_name = "cloudCloseFileWriteStream")]
+pub fn cloud_close_file_write_stream(handle: BigInt) -> Result<bool, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamRemoteStorage_FileWriteStreamClose(
+            steam_remote_storage()?,
+            bigint_to_u64(handle, "cloud file stream handle")?,
+        )
+    })
+}
+
+#[napi(js_name = "cloudCancelFileWriteStream")]
+pub fn cloud_cancel_file_write_stream(handle: BigInt) -> Result<bool, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamRemoteStorage_FileWriteStreamCancel(
+            steam_remote_storage()?,
+            bigint_to_u64(handle, "cloud file stream handle")?,
+        )
+    })
+}
+
+#[napi(js_name = "cloudDownloadUgc")]
+pub async fn cloud_download_ugc(
+    file: BigInt,
+    priority: Option<u32>,
+    timeout_seconds: Option<u32>,
+) -> Result<CloudUgcDownloadResult, Error> {
+    let call = unsafe {
+        sys::SteamAPI_ISteamRemoteStorage_UGCDownload(
+            steam_remote_storage()?,
+            bigint_to_u64(file, "cloud UGC handle")?,
+            priority.unwrap_or(0),
+        )
+    };
+    let result: sys::RemoteStorageDownloadUGCResult_t = wait_for_api_call(
+        call,
+        sys::RemoteStorageDownloadUGCResult_t_k_iCallback as i32,
+        timeout_seconds
+            .map(u64::from)
+            .unwrap_or(DEFAULT_ASYNC_TIMEOUT_SECONDS)
+            .max(1),
+    )
+    .await?;
+    Ok(remote_storage_download_ugc_result(&result))
+}
+
+#[napi(js_name = "cloudDownloadUgcToLocation")]
+pub async fn cloud_download_ugc_to_location(
+    file: BigInt,
+    location: String,
+    priority: Option<u32>,
+    timeout_seconds: Option<u32>,
+) -> Result<CloudUgcDownloadResult, Error> {
+    let location = cstring(location, "cloud UGC download location")?;
+    let call = unsafe {
+        sys::SteamAPI_ISteamRemoteStorage_UGCDownloadToLocation(
+            steam_remote_storage()?,
+            bigint_to_u64(file, "cloud UGC handle")?,
+            location.as_ptr(),
+            priority.unwrap_or(0),
+        )
+    };
+    let result: sys::RemoteStorageDownloadUGCResult_t = wait_for_api_call(
+        call,
+        sys::RemoteStorageDownloadUGCResult_t_k_iCallback as i32,
+        timeout_seconds
+            .map(u64::from)
+            .unwrap_or(DEFAULT_ASYNC_TIMEOUT_SECONDS)
+            .max(1),
+    )
+    .await?;
+    drop(location);
+    Ok(remote_storage_download_ugc_result(&result))
+}
+
+#[napi(js_name = "cloudGetUgcDownloadProgress")]
+pub fn cloud_get_ugc_download_progress(
+    file: BigInt,
+) -> Result<Option<CloudUgcDownloadProgress>, Error> {
+    let mut downloaded = 0i32;
+    let mut expected = 0i32;
+    let ok = unsafe {
+        sys::SteamAPI_ISteamRemoteStorage_GetUGCDownloadProgress(
+            steam_remote_storage()?,
+            bigint_to_u64(file, "cloud UGC handle")?,
+            &mut downloaded,
+            &mut expected,
+        )
+    };
+    Ok(ok.then(|| CloudUgcDownloadProgress {
+        downloaded_bytes: (downloaded.max(0) as u64).into(),
+        expected_bytes: (expected.max(0) as u64).into(),
+    }))
+}
+
+#[napi(js_name = "cloudGetUgcDetails")]
+pub fn cloud_get_ugc_details(file: BigInt) -> Result<Option<CloudUgcDetails>, Error> {
+    let mut app_id = 0u32;
+    let mut name = ptr::null_mut::<c_char>();
+    let mut size = 0i32;
+    let mut owner = u64_to_csteam_id(0);
+    let ok = unsafe {
+        sys::SteamAPI_ISteamRemoteStorage_GetUGCDetails(
+            steam_remote_storage()?,
+            bigint_to_u64(file, "cloud UGC handle")?,
+            &mut app_id,
+            &mut name,
+            &mut size,
+            &mut owner,
+        )
+    };
+    Ok(ok.then(|| CloudUgcDetails {
+        app_id,
+        name: string_from_ptr(name.cast_const()),
+        size: (size.max(0) as u64).into(),
+        owner: csteam_id_to_player(owner),
+    }))
+}
+
+#[napi(js_name = "cloudReadUgc")]
+pub fn cloud_read_ugc(
+    file: BigInt,
+    bytes_to_read: u32,
+    offset: Option<u32>,
+    action: Option<u32>,
+) -> Result<Option<Buffer>, Error> {
+    if bytes_to_read > MAX_CLOUD_UGC_READ_BYTES {
+        return Err(Error::from_reason(format!(
+            "cloud UGC read cannot exceed {MAX_CLOUD_UGC_READ_BYTES} bytes"
+        )));
+    }
+    let mut bytes = vec![0u8; bytes_to_read as usize];
+    let read = unsafe {
+        sys::SteamAPI_ISteamRemoteStorage_UGCRead(
+            steam_remote_storage()?,
+            bigint_to_u64(file, "cloud UGC handle")?,
+            bytes.as_mut_ptr().cast::<c_void>(),
+            len_to_i32(bytes.len(), "cloud UGC read")?,
+            offset.unwrap_or(0),
+            ugc_read_action_from_u32(action.unwrap_or(0))?,
+        )
+    };
+    if read < 0 {
+        return Ok(None);
+    }
+    bytes.truncate(read as usize);
+    Ok(Some(bytes.into()))
+}
+
+#[napi(js_name = "cloudGetCachedUgcCount")]
+pub fn cloud_get_cached_ugc_count() -> Result<i32, Error> {
+    Ok(unsafe { sys::SteamAPI_ISteamRemoteStorage_GetCachedUGCCount(steam_remote_storage()?) })
+}
+
+#[napi(js_name = "cloudGetCachedUgcHandle")]
+pub fn cloud_get_cached_ugc_handle(index: i32) -> Result<Option<BigInt>, Error> {
+    let handle = unsafe {
+        sys::SteamAPI_ISteamRemoteStorage_GetCachedUGCHandle(steam_remote_storage()?, index)
+    };
+    Ok((handle != sys::k_UGCHandleInvalid).then(|| handle.into()))
+}
+
+#[napi(js_name = "cloudGetCachedUgcHandles")]
+pub fn cloud_get_cached_ugc_handles() -> Result<Vec<BigInt>, Error> {
+    let count = cloud_get_cached_ugc_count()?.max(0);
+    let mut handles = Vec::new();
+    for index in 0..count {
+        if let Some(handle) = cloud_get_cached_ugc_handle(index)? {
+            handles.push(handle);
+        }
+    }
+    Ok(handles)
 }
 
 #[napi(js_name = "httpCreateRequest")]
@@ -9963,6 +10340,34 @@ fn steam_matchmaking_servers() -> Result<*mut sys::ISteamMatchmakingServers, Err
     )
 }
 
+fn remote_storage_file_share_result(
+    result: &sys::RemoteStorageFileShareResult_t,
+) -> CloudFileShareResult {
+    let filename = unsafe { ptr::addr_of!(result.m_rgchFilename).read_unaligned() };
+    CloudFileShareResult {
+        result: unsafe { ptr::addr_of!(result.m_eResult).read_unaligned() } as u32,
+        file: unsafe { ptr::addr_of!(result.m_hFile).read_unaligned() }.into(),
+        name: c_buf_to_string(&filename),
+    }
+}
+
+fn remote_storage_download_ugc_result(
+    result: &sys::RemoteStorageDownloadUGCResult_t,
+) -> CloudUgcDownloadResult {
+    let filename = unsafe { ptr::addr_of!(result.m_pchFileName).read_unaligned() };
+    CloudUgcDownloadResult {
+        result: unsafe { ptr::addr_of!(result.m_eResult).read_unaligned() } as u32,
+        file: unsafe { ptr::addr_of!(result.m_hFile).read_unaligned() }.into(),
+        app_id: unsafe { ptr::addr_of!(result.m_nAppID).read_unaligned() },
+        size: (unsafe { ptr::addr_of!(result.m_nSizeInBytes).read_unaligned() }.max(0) as u64)
+            .into(),
+        name: c_buf_to_string(&filename),
+        owner: steam_id_to_player(unsafe {
+            ptr::addr_of!(result.m_ulSteamIDOwner).read_unaligned()
+        }),
+    }
+}
+
 fn steam_ugc() -> Result<*mut sys::ISteamUGC, Error> {
     crate::state::ensure_initialized()?;
     non_null(unsafe { sys::SteamAPI_SteamUGC_v021() }, "ISteamUGC")
@@ -12139,6 +12544,18 @@ fn callback_id_from_compat(callback: i32) -> Result<i32, Error> {
         CALLBACK_GAME_SERVER_STATS_RECEIVED => Ok(sys::GSStatsReceived_t_k_iCallback as i32),
         CALLBACK_GAME_SERVER_STATS_STORED => Ok(sys::GSStatsStored_t_k_iCallback as i32),
         CALLBACK_GAME_SERVER_STATS_UNLOADED => Ok(sys::GSStatsUnloaded_t_k_iCallback as i32),
+        CALLBACK_REMOTE_STORAGE_FILE_SHARE_RESULT => {
+            Ok(sys::RemoteStorageFileShareResult_t_k_iCallback as i32)
+        }
+        CALLBACK_REMOTE_STORAGE_DOWNLOAD_UGC_RESULT => {
+            Ok(sys::RemoteStorageDownloadUGCResult_t_k_iCallback as i32)
+        }
+        CALLBACK_REMOTE_STORAGE_FILE_WRITE_ASYNC_COMPLETE => {
+            Ok(sys::RemoteStorageFileWriteAsyncComplete_t_k_iCallback as i32)
+        }
+        CALLBACK_REMOTE_STORAGE_FILE_READ_ASYNC_COMPLETE => {
+            Ok(sys::RemoteStorageFileReadAsyncComplete_t_k_iCallback as i32)
+        }
         CALLBACK_HTTP_REQUEST_COMPLETED => Ok(sys::HTTPRequestCompleted_t_k_iCallback as i32),
         CALLBACK_HTTP_REQUEST_HEADERS_RECEIVED => {
             Ok(sys::HTTPRequestHeadersReceived_t_k_iCallback as i32)
@@ -12301,6 +12718,42 @@ unsafe fn callback_to_json(callback: i32, param: *mut c_void) -> Value {
                 "file_size": ptr::addr_of!((*event).m_ulFileSize).read_unaligned().to_string(),
                 "sha_hex": bytes_to_hex(&sha),
                 "flags": ptr::addr_of!((*event).m_unFlags).read_unaligned()
+            })
+        }
+        CALLBACK_REMOTE_STORAGE_FILE_SHARE_RESULT => {
+            let event = param as *const sys::RemoteStorageFileShareResult_t;
+            let filename = ptr::addr_of!((*event).m_rgchFilename).read_unaligned();
+            serde_json::json!({
+                "result": ptr::addr_of!((*event).m_eResult).read_unaligned() as u32,
+                "file": ptr::addr_of!((*event).m_hFile).read_unaligned().to_string(),
+                "name": c_buf_to_string(&filename)
+            })
+        }
+        CALLBACK_REMOTE_STORAGE_DOWNLOAD_UGC_RESULT => {
+            let event = param as *const sys::RemoteStorageDownloadUGCResult_t;
+            let filename = ptr::addr_of!((*event).m_pchFileName).read_unaligned();
+            serde_json::json!({
+                "result": ptr::addr_of!((*event).m_eResult).read_unaligned() as u32,
+                "file": ptr::addr_of!((*event).m_hFile).read_unaligned().to_string(),
+                "app_id": ptr::addr_of!((*event).m_nAppID).read_unaligned(),
+                "size": ptr::addr_of!((*event).m_nSizeInBytes).read_unaligned().max(0).to_string(),
+                "name": c_buf_to_string(&filename),
+                "owner": ptr::addr_of!((*event).m_ulSteamIDOwner).read_unaligned().to_string()
+            })
+        }
+        CALLBACK_REMOTE_STORAGE_FILE_WRITE_ASYNC_COMPLETE => {
+            let event = param as *const sys::RemoteStorageFileWriteAsyncComplete_t;
+            serde_json::json!({
+                "result": ptr::addr_of!((*event).m_eResult).read_unaligned() as u32
+            })
+        }
+        CALLBACK_REMOTE_STORAGE_FILE_READ_ASYNC_COMPLETE => {
+            let event = param as *const sys::RemoteStorageFileReadAsyncComplete_t;
+            serde_json::json!({
+                "async_call": ptr::addr_of!((*event).m_hFileReadAsync).read_unaligned().to_string(),
+                "result": ptr::addr_of!((*event).m_eResult).read_unaligned() as u32,
+                "offset": ptr::addr_of!((*event).m_nOffset).read_unaligned(),
+                "bytes_read": ptr::addr_of!((*event).m_cubRead).read_unaligned()
             })
         }
         CALLBACK_TIMED_TRIAL_STATUS => {
@@ -13912,6 +14365,15 @@ fn ugc_matching_type_from_i32(value: i32) -> Result<sys::EUGCMatchingUGCType, Er
         12 => sys::EUGCMatchingUGCType::k_EUGCMatchingUGCType_GameManagedItems,
         13 | -1 => sys::EUGCMatchingUGCType::k_EUGCMatchingUGCType_All,
         _ => return Err(Error::from_reason("invalid UGC type")),
+    })
+}
+
+fn ugc_read_action_from_u32(value: u32) -> Result<sys::EUGCReadAction, Error> {
+    Ok(match value {
+        0 => sys::EUGCReadAction::k_EUGCRead_ContinueReadingUntilFinished,
+        1 => sys::EUGCReadAction::k_EUGCRead_ContinueReading,
+        2 => sys::EUGCReadAction::k_EUGCRead_Close,
+        _ => return Err(Error::from_reason("invalid UGC read action")),
     })
 }
 

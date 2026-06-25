@@ -41,7 +41,9 @@ The native layer currently targets the Steamworks flat C API through
   attachment.
 - Remote storage: cloud enablement, file reads/writes/deletes/forget,
   existence and persistence checks, file metadata, sync platform flags, quota,
-  file listing, local-change enumeration, and file write batch controls.
+  file listing, async file reads/writes, file sharing, write streams, cached
+  UGC download/progress/details/reads, local-change enumeration, and file write
+  batch controls.
 - HTTP: request creation, configuration, send/stream send initiation, response
   header/body reads, progress/timeout checks, raw POST bodies, cookie
   containers, request priority/defer, and HTTP request callbacks.
@@ -101,8 +103,7 @@ The native layer currently targets the Steamworks flat C API through
   `steamworks-sys 0.13` macOS bindings used by this crate.
 - `ISteamMusicRemote` is not exposed by the current `steamworks-sys 0.13` macOS
   bindings used by this crate.
-- Remaining Remote Storage async file/share/write-stream, cached UGC download,
-  and legacy published-file workflows.
+- Remaining legacy `ISteamRemoteStorage` published-file workflows.
 - Remaining modern networking socket and lower-level networking config/debug
   surfaces: parsed relay-auth-ticket payloads, raw pointer-valued networking
   config callbacks, and custom signaling.

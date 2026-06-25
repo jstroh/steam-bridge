@@ -125,6 +125,37 @@ export interface NativeCloudLocalFileChange {
   path_type?: number;
 }
 
+export interface NativeCloudFileShareResult {
+  result: number;
+  file: bigint | string | number;
+  name: string;
+}
+
+export interface NativeCloudUgcDownloadProgress {
+  downloadedBytes?: bigint | string | number;
+  downloaded_bytes?: bigint | string | number;
+  expectedBytes?: bigint | string | number;
+  expected_bytes?: bigint | string | number;
+}
+
+export interface NativeCloudUgcDetails {
+  appId?: number;
+  app_id?: number;
+  name: string;
+  size: bigint | string | number;
+  owner: NativeSteamId;
+}
+
+export interface NativeCloudUgcDownloadResult {
+  result: number;
+  file: bigint | string | number;
+  appId?: number;
+  app_id?: number;
+  size: bigint | string | number;
+  name: string;
+  owner: NativeSteamId;
+}
+
 export interface NativeHttpRequestCompleted {
   request: number;
   contextValue?: bigint | string | number;
@@ -1345,6 +1376,9 @@ export interface NativeBinding {
   cloudSetEnabledForApp(enabled: boolean): void;
   cloudReadFile(name: string): string;
   cloudWriteFile(name: string, content: string): boolean;
+  cloudWriteFileAsync(name: string, data: Buffer, timeoutSeconds?: number): Promise<number>;
+  cloudReadFileAsync(name: string, offset?: number, bytesToRead?: number, timeoutSeconds?: number): Promise<Buffer>;
+  cloudShareFile(name: string, timeoutSeconds?: number): Promise<NativeCloudFileShareResult>;
   cloudDeleteFile(name: string): boolean;
   cloudForgetFile(name: string): boolean;
   cloudFileExists(name: string): boolean;
@@ -1360,6 +1394,18 @@ export interface NativeBinding {
   cloudGetLocalFileChanges(): NativeCloudLocalFileChange[];
   cloudBeginFileWriteBatch(): boolean;
   cloudEndFileWriteBatch(): boolean;
+  cloudOpenFileWriteStream(name: string): bigint | string | number | null | undefined;
+  cloudWriteFileStreamChunk(handle: bigint, data: Buffer): boolean;
+  cloudCloseFileWriteStream(handle: bigint): boolean;
+  cloudCancelFileWriteStream(handle: bigint): boolean;
+  cloudDownloadUgc(file: bigint, priority?: number, timeoutSeconds?: number): Promise<NativeCloudUgcDownloadResult>;
+  cloudDownloadUgcToLocation(file: bigint, location: string, priority?: number, timeoutSeconds?: number): Promise<NativeCloudUgcDownloadResult>;
+  cloudGetUgcDownloadProgress(file: bigint): NativeCloudUgcDownloadProgress | null | undefined;
+  cloudGetUgcDetails(file: bigint): NativeCloudUgcDetails | null | undefined;
+  cloudReadUgc(file: bigint, bytesToRead: number, offset?: number, action?: number): Buffer | null | undefined;
+  cloudGetCachedUgcCount(): number;
+  cloudGetCachedUgcHandle(index: number): bigint | string | number | null | undefined;
+  cloudGetCachedUgcHandles(): Array<bigint | string | number>;
 
   httpCreateRequest(method: number, url: string): number;
   httpSetContextValue(request: number, contextValue: bigint): boolean;

@@ -132,6 +132,18 @@ function createFakeNative(overrides = {}) {
         { name: "settings.json", size: 2048n }
       ];
     },
+    cloudWriteFileAsync(name, data, timeoutSeconds) {
+      calls.push({ method: "cloudWriteFileAsync", args: [name, data, timeoutSeconds] });
+      return Promise.resolve(1);
+    },
+    cloudReadFileAsync(name, offset, bytesToRead, timeoutSeconds) {
+      calls.push({ method: "cloudReadFileAsync", args: [name, offset, bytesToRead, timeoutSeconds] });
+      return Promise.resolve(Buffer.from("async-save"));
+    },
+    cloudShareFile(name, timeoutSeconds) {
+      calls.push({ method: "cloudShareFile", args: [name, timeoutSeconds] });
+      return Promise.resolve({ result: 1, file: "555", name });
+    },
     cloudForgetFile(name) {
       calls.push({ method: "cloudForgetFile", args: [name] });
       return true;
@@ -176,6 +188,71 @@ function createFakeNative(overrides = {}) {
     cloudEndFileWriteBatch() {
       calls.push({ method: "cloudEndFileWriteBatch", args: [] });
       return true;
+    },
+    cloudOpenFileWriteStream(name) {
+      calls.push({ method: "cloudOpenFileWriteStream", args: [name] });
+      return "987";
+    },
+    cloudWriteFileStreamChunk(handle, data) {
+      calls.push({ method: "cloudWriteFileStreamChunk", args: [handle, data] });
+      return true;
+    },
+    cloudCloseFileWriteStream(handle) {
+      calls.push({ method: "cloudCloseFileWriteStream", args: [handle] });
+      return true;
+    },
+    cloudCancelFileWriteStream(handle) {
+      calls.push({ method: "cloudCancelFileWriteStream", args: [handle] });
+      return true;
+    },
+    cloudDownloadUgc(file, priority, timeoutSeconds) {
+      calls.push({ method: "cloudDownloadUgc", args: [file, priority, timeoutSeconds] });
+      return Promise.resolve({
+        result: 1,
+        file: "555",
+        app_id: 480,
+        size: "10",
+        name: "shared.dat",
+        owner: { steamId64: 76561198000000030n, steamId32: "STEAM_0:0:19867151", accountId: 39734302 }
+      });
+    },
+    cloudDownloadUgcToLocation(file, location, priority, timeoutSeconds) {
+      calls.push({ method: "cloudDownloadUgcToLocation", args: [file, location, priority, timeoutSeconds] });
+      return Promise.resolve({
+        result: 1,
+        file: 555n,
+        appId: 480,
+        size: 10n,
+        name: "shared.dat",
+        owner: { steamId64: 76561198000000030n, steamId32: "STEAM_0:0:19867151", accountId: 39734302 }
+      });
+    },
+    cloudGetUgcDownloadProgress(file) {
+      calls.push({ method: "cloudGetUgcDownloadProgress", args: [file] });
+      return { downloaded_bytes: "4", expected_bytes: 10n };
+    },
+    cloudGetUgcDetails(file) {
+      calls.push({ method: "cloudGetUgcDetails", args: [file] });
+      return {
+        app_id: 480,
+        name: "shared.dat",
+        size: "10",
+        owner: { steamId64: 76561198000000030n, steamId32: "STEAM_0:0:19867151", accountId: 39734302 }
+      };
+    },
+    cloudReadUgc(file, bytesToRead, offset, action) {
+      calls.push({ method: "cloudReadUgc", args: [file, bytesToRead, offset, action] });
+      return Buffer.from("ugc");
+    },
+    cloudGetCachedUgcCount() {
+      return 2;
+    },
+    cloudGetCachedUgcHandle(index) {
+      calls.push({ method: "cloudGetCachedUgcHandle", args: [index] });
+      return index === 0 ? "555" : null;
+    },
+    cloudGetCachedUgcHandles() {
+      return ["555", 666n];
     },
     inputGetControllers() {
       return [
@@ -1109,6 +1186,10 @@ test("specific and generic callbacks normalize Steamworks payloads", (t) => {
   assert.equal(steam.SteamCallback.AppProofOfPurchaseKeyResponse, 1021);
   assert.equal(steam.SteamCallback.FileDetailsResult, 1023);
   assert.equal(steam.SteamCallback.TimedTrialStatus, 1030);
+  assert.equal(steam.SteamCallback.RemoteStorageFileShareResult, 1307);
+  assert.equal(steam.SteamCallback.RemoteStorageDownloadUGCResult, 1317);
+  assert.equal(steam.SteamCallback.RemoteStorageFileWriteAsyncComplete, 1331);
+  assert.equal(steam.SteamCallback.RemoteStorageFileReadAsyncComplete, 1332);
   assert.equal(steam.SteamCallback.GameServerClientApprove, 201);
   assert.equal(steam.SteamCallback.GameServerClientDeny, 202);
   assert.equal(steam.SteamCallback.GameServerClientKick, 203);
@@ -2044,7 +2125,7 @@ test("apps facade covers DLC, launch, depot, trial, beta, and file-detail helper
   );
 });
 
-test("cloud, input, and networking facades coerce native values", (t) => {
+test("cloud, input, and networking facades coerce native values", async (t) => {
   const fake = createFakeNative();
   const steam = loadSteamWithFakeNative(fake);
 
@@ -2071,9 +2152,41 @@ test("cloud, input, and networking facades coerce native values", (t) => {
   assert.deepEqual(steam.cloud.getLocalFileChanges(), [{ name: "save.dat", changeType: 1, pathType: 2 }]);
   assert.equal(steam.cloud.beginFileWriteBatch(), true);
   assert.equal(steam.cloud.endFileWriteBatch(), true);
+  assert.equal(steam.cloud.UGCReadAction.Close, 2);
+  assert.equal(await steam.cloud.writeFileAsync("save.dat", new Uint8Array([1, 2]), 9), 1);
+  assert.deepEqual(await steam.cloud.readFileAsync("save.dat", 1, 4, 9), Buffer.from("async-save"));
+  assert.deepEqual(await steam.cloud.shareFile("save.dat", 9), { result: 1, file: 555n, name: "save.dat" });
+  const stream = steam.cloud.openFileWriteStream("stream.dat");
+  assert.equal(stream, 987n);
+  assert.equal(steam.cloud.writeFileStreamChunk(stream, "chunk"), true);
+  assert.equal(steam.cloud.closeFileWriteStream(stream), true);
+  assert.equal(steam.cloud.cancelFileWriteStream(stream), true);
+  const download = await steam.cloud.downloadUgc(555n, 10, 9);
+  assert.equal(download.file, 555n);
+  assert.equal(download.appId, 480);
+  assert.equal(download.size, 10n);
+  assert.equal(download.owner.steamId64, 76561198000000030n);
+  assert.deepEqual(await steam.cloud.downloadUgcToLocation(555n, "/tmp/shared.dat"), download);
+  assert.deepEqual(steam.cloud.getUgcDownloadProgress(555n), { downloadedBytes: 4n, expectedBytes: 10n });
+  const ugcDetails = steam.cloud.getUgcDetails(555n);
+  assert.equal(ugcDetails.appId, 480);
+  assert.equal(ugcDetails.owner.steamId64, 76561198000000030n);
+  assert.deepEqual(steam.cloud.readUgc(555n, 3, 0, steam.cloud.UGCReadAction.Close), Buffer.from("ugc"));
+  assert.equal(steam.cloud.getCachedUgcCount(), 2);
+  assert.equal(steam.cloud.getCachedUgcHandle(0), 555n);
+  assert.equal(steam.cloud.getCachedUgcHandle(1), null);
+  assert.deepEqual(steam.cloud.getCachedUgcHandles(), [555n, 666n]);
   assert.deepEqual(fake.calls.find((call) => call.method === "cloudSetSyncPlatforms"), {
     method: "cloudSetSyncPlatforms",
     args: ["save.dat", 2]
+  });
+  assert.deepEqual(fake.calls.find((call) => call.method === "cloudWriteFileAsync"), {
+    method: "cloudWriteFileAsync",
+    args: ["save.dat", Buffer.from([1, 2]), 9]
+  });
+  assert.deepEqual(fake.calls.find((call) => call.method === "cloudDownloadUgcToLocation"), {
+    method: "cloudDownloadUgcToLocation",
+    args: [555n, "/tmp/shared.dat", undefined, undefined]
   });
 
   const controllers = steam.input.getControllers();
