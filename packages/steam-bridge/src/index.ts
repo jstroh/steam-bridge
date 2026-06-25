@@ -6664,7 +6664,9 @@ function normalizeCallbackEvent(callbackId: number, event: unknown): unknown {
     banned_ip: "bannedIp",
     banned_ip_address: "bannedIpAddress",
     banned_port: "bannedPort",
+    bgra_base64: "bgraBase64",
     bgra_byte_length: "bgraByteLength",
+    bgra_truncated: "bgraTruncated",
     browser_handle: "browserHandle",
     can_go_back: "canGoBack",
     can_go_forward: "canGoForward",
@@ -6778,6 +6780,9 @@ function normalizeCallbackEvent(callbackId: number, event: unknown): unknown {
   if (Array.isArray(result.published_file_ids)) {
     result.published_file_ids = result.published_file_ids.map((value) => normalizeBigIntLike(value));
     result.publishedFileIds = result.published_file_ids;
+  }
+  if (typeof result.bgra_base64 === "string") {
+    result.bgra = Buffer.from(result.bgra_base64, "base64");
   }
   return result;
 }

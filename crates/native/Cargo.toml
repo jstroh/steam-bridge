@@ -9,6 +9,7 @@ publish = false
 crate-type = ["cdylib"]
 
 [dependencies]
+base64 = "0.22"
 napi = { version = "3.9.4", features = ["tokio_rt", "napi6", "serde-json"] }
 napi-derive = "3.5.7"
 once_cell = "1.19"

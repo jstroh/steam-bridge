@@ -4389,7 +4389,9 @@ test("html facade covers browser lifecycle, input, and callbacks", async (t) => 
   fake.callbacks.get(steam.SteamCallback.HTMLNeedsPaint)({
     browser_handle: 55,
     has_bgra_data: true,
-    bgra_byte_length: 64,
+    bgra_byte_length: 4,
+    bgra_base64: Buffer.from([0, 1, 2, 3]).toString("base64"),
+    bgra_truncated: false,
     page_scale: 1,
     page_serial: 7,
     update_x: 1,
@@ -4402,7 +4404,9 @@ test("html facade covers browser lifecycle, input, and callbacks", async (t) => 
 
   assert.equal(paintEvent.browserHandle, 55);
   assert.equal(paintEvent.hasBgraData, true);
-  assert.equal(paintEvent.bgraByteLength, 64);
+  assert.equal(paintEvent.bgraByteLength, 4);
+  assert.deepEqual(paintEvent.bgra, Buffer.from([0, 1, 2, 3]));
+  assert.equal(paintEvent.bgraTruncated, false);
   assert.equal(paintEvent.pageScale, 1);
   assert.equal(paintEvent.pageSerial, 7);
   assert.equal(paintEvent.updateWide, 3);

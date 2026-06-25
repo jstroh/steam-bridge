@@ -3,6 +3,8 @@ use crate::{
     steam_id_to_player, steam_user, steam_user_stats, steam_utils, string_from_ptr, AuthTicket,
     CallbackHandle, PlayerSteamId,
 };
+use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
+use base64::Engine as _;
 use napi::bindgen_prelude::{
     BigInt, Buffer, Env, Error, Function, PromiseRaw, Status, ToNapiValue,
 };
@@ -166,6 +168,7 @@ const CALLBACK_STEAM_UGC_GET_APP_DEPENDENCIES_RESULT: i32 = 3416;
 const CALLBACK_STEAM_UGC_DELETE_ITEM_RESULT: i32 = 3417;
 const CALLBACK_STEAM_UGC_USER_SUBSCRIBED_ITEMS_LIST_CHANGED: i32 = 3418;
 const CALLBACK_STEAM_UGC_WORKSHOP_EULA_STATUS: i32 = 3420;
+const MAX_HTML_PAINT_BUFFER_BYTES: u64 = 256 * 1024 * 1024;
 
 static NEXT_NETWORKING_FAKE_UDP_PORT_HANDLE: AtomicU32 = AtomicU32::new(1);
 static NETWORKING_FAKE_UDP_PORTS: Lazy<Mutex<HashMap<u32, usize>>> =
@@ -16326,10 +16329,19 @@ unsafe fn callback_to_json(callback: i32, param: *mut c_void) -> Value {
             let byte_length = u64::from(wide)
                 .saturating_mul(u64::from(tall))
                 .saturating_mul(4);
+            let (bgra_base64, bgra_truncated) =
+                if !bgra.is_null() && byte_length <= MAX_HTML_PAINT_BUFFER_BYTES {
+                    let bytes = std::slice::from_raw_parts(bgra.cast::<u8>(), byte_length as usize);
+                    (Some(BASE64_STANDARD.encode(bytes)), false)
+                } else {
+                    (None::<String>, !bgra.is_null())
+                };
             serde_json::json!({
                 "browser_handle": ptr::addr_of!((*event).unBrowserHandle).read_unaligned(),
                 "has_bgra_data": !bgra.is_null(),
                 "bgra_byte_length": byte_length,
+                "bgra_base64": bgra_base64,
+                "bgra_truncated": bgra_truncated,
                 "wide": wide,
                 "tall": tall,
                 "update_x": ptr::addr_of!((*event).unUpdateX).read_unaligned(),
