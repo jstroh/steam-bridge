@@ -12821,6 +12821,30 @@ pub fn networking_utils_set_global_config_value_string(
     })
 }
 
+#[napi(js_name = "networkingUtilsSetGlobalConfigValuePtr")]
+pub fn networking_utils_set_global_config_value_ptr(
+    value: u32,
+    data: Option<BigInt>,
+) -> Result<bool, Error> {
+    let data = match data {
+        Some(data) => {
+            let pointer = bigint_to_u64(data, "networking global config pointer")?;
+            let pointer = usize::try_from(pointer).map_err(|_| {
+                Error::from_reason("networking global config pointer exceeds pointer size")
+            })?;
+            pointer as *mut c_void
+        }
+        None => ptr::null_mut(),
+    };
+    Ok(unsafe {
+        sys::SteamAPI_ISteamNetworkingUtils_SetGlobalConfigValuePtr(
+            steam_networking_utils()?,
+            networking_config_value(value)?,
+            data,
+        )
+    })
+}
+
 #[napi(js_name = "networkingUtilsSetConnectionConfigValueInt32")]
 pub fn networking_utils_set_connection_config_value_int32(
     connection: u32,
@@ -12957,6 +12981,147 @@ pub fn networking_utils_iterate_generic_editable_config_values(
         )
     };
     Ok(next as u32)
+}
+
+unsafe extern "C" fn steam_networking_utils_connection_status_changed_callback(
+    event: *mut sys::SteamNetConnectionStatusChangedCallback_t,
+) {
+    if !event.is_null() {
+        crate::state::dispatch_callback(
+            CALLBACK_STEAM_NET_CONNECTION_STATUS_CHANGED,
+            event.cast::<c_void>(),
+        );
+    }
+}
+
+unsafe extern "C" fn steam_networking_utils_authentication_status_changed_callback(
+    event: *mut sys::SteamNetAuthenticationStatus_t,
+) {
+    if !event.is_null() {
+        crate::state::dispatch_callback(
+            CALLBACK_STEAM_NET_AUTHENTICATION_STATUS,
+            event.cast::<c_void>(),
+        );
+    }
+}
+
+unsafe extern "C" fn steam_networking_utils_relay_network_status_changed_callback(
+    event: *mut sys::SteamRelayNetworkStatus_t,
+) {
+    if !event.is_null() {
+        crate::state::dispatch_callback(
+            CALLBACK_STEAM_RELAY_NETWORK_STATUS,
+            event.cast::<c_void>(),
+        );
+    }
+}
+
+unsafe extern "C" fn steam_networking_utils_fake_ip_result_callback(
+    event: *mut sys::SteamNetworkingFakeIPResult_t,
+) {
+    if !event.is_null() {
+        crate::state::dispatch_callback(
+            CALLBACK_STEAM_NETWORKING_FAKE_IP_RESULT,
+            event.cast::<c_void>(),
+        );
+    }
+}
+
+unsafe extern "C" fn steam_networking_utils_messages_session_request_callback(
+    event: *mut sys::SteamNetworkingMessagesSessionRequest_t,
+) {
+    if !event.is_null() {
+        crate::state::dispatch_callback(
+            CALLBACK_STEAM_NETWORKING_MESSAGES_SESSION_REQUEST,
+            event.cast::<c_void>(),
+        );
+    }
+}
+
+unsafe extern "C" fn steam_networking_utils_messages_session_failed_callback(
+    event: *mut sys::SteamNetworkingMessagesSessionFailed_t,
+) {
+    if !event.is_null() {
+        crate::state::dispatch_callback(
+            CALLBACK_STEAM_NETWORKING_MESSAGES_SESSION_FAILED,
+            event.cast::<c_void>(),
+        );
+    }
+}
+
+fn set_networking_utils_global_callbacks(
+    utils: *mut sys::ISteamNetworkingUtils,
+    enabled: bool,
+) -> bool {
+    let mut ok = true;
+    unsafe {
+        if enabled {
+            ok &= sys::SteamAPI_ISteamNetworkingUtils_SetGlobalCallback_SteamNetConnectionStatusChanged(
+                utils,
+                Some(steam_networking_utils_connection_status_changed_callback),
+            );
+            ok &= sys::SteamAPI_ISteamNetworkingUtils_SetGlobalCallback_SteamNetAuthenticationStatusChanged(
+                utils,
+                Some(steam_networking_utils_authentication_status_changed_callback),
+            );
+            ok &= sys::SteamAPI_ISteamNetworkingUtils_SetGlobalCallback_SteamRelayNetworkStatusChanged(
+                utils,
+                Some(steam_networking_utils_relay_network_status_changed_callback),
+            );
+            ok &= sys::SteamAPI_ISteamNetworkingUtils_SetGlobalCallback_FakeIPResult(
+                utils,
+                Some(steam_networking_utils_fake_ip_result_callback),
+            );
+            ok &= sys::SteamAPI_ISteamNetworkingUtils_SetGlobalCallback_MessagesSessionRequest(
+                utils,
+                Some(steam_networking_utils_messages_session_request_callback),
+            );
+            ok &= sys::SteamAPI_ISteamNetworkingUtils_SetGlobalCallback_MessagesSessionFailed(
+                utils,
+                Some(steam_networking_utils_messages_session_failed_callback),
+            );
+        } else {
+            ok &= sys::SteamAPI_ISteamNetworkingUtils_SetGlobalCallback_SteamNetConnectionStatusChanged(
+                utils, None,
+            );
+            ok &= sys::SteamAPI_ISteamNetworkingUtils_SetGlobalCallback_SteamNetAuthenticationStatusChanged(
+                utils, None,
+            );
+            ok &= sys::SteamAPI_ISteamNetworkingUtils_SetGlobalCallback_SteamRelayNetworkStatusChanged(
+                utils, None,
+            );
+            ok &= sys::SteamAPI_ISteamNetworkingUtils_SetGlobalCallback_FakeIPResult(utils, None);
+            ok &= sys::SteamAPI_ISteamNetworkingUtils_SetGlobalCallback_MessagesSessionRequest(
+                utils, None,
+            );
+            ok &= sys::SteamAPI_ISteamNetworkingUtils_SetGlobalCallback_MessagesSessionFailed(
+                utils, None,
+            );
+        }
+    }
+    ok
+}
+
+#[napi(js_name = "networkingUtilsEnableGlobalCallbacks")]
+pub fn networking_utils_enable_global_callbacks() -> Result<bool, Error> {
+    Ok(set_networking_utils_global_callbacks(
+        steam_networking_utils()?,
+        true,
+    ))
+}
+
+#[napi(js_name = "networkingUtilsClearGlobalCallbacks")]
+pub fn networking_utils_clear_global_callbacks() -> Result<bool, Error> {
+    Ok(set_networking_utils_global_callbacks(
+        steam_networking_utils()?,
+        false,
+    ))
+}
+
+pub(crate) fn clear_networking_utils_global_callbacks() {
+    if let Ok(utils) = steam_networking_utils() {
+        set_networking_utils_global_callbacks(utils, false);
+    }
 }
 
 unsafe extern "C" fn steam_networking_debug_output_hook(

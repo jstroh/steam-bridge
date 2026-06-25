@@ -4970,6 +4970,10 @@ test("networking utils facade covers relay, ping, fake IP, address, config, debu
       this.calls.push({ method: "networkingUtilsSetGlobalConfigValueString", args: [value, data] });
       return true;
     },
+    networkingUtilsSetGlobalConfigValuePtr(value, data) {
+      this.calls.push({ method: "networkingUtilsSetGlobalConfigValuePtr", args: [value, data] });
+      return true;
+    },
     networkingUtilsSetConnectionConfigValueInt32(connection, value, data) {
       this.calls.push({ method: "networkingUtilsSetConnectionConfigValueInt32", args: [connection, value, data] });
       return true;
@@ -5005,6 +5009,14 @@ test("networking utils facade covers relay, ping, fake IP, address, config, debu
         return 29;
       }
       return 0;
+    },
+    networkingUtilsEnableGlobalCallbacks() {
+      this.calls.push({ method: "networkingUtilsEnableGlobalCallbacks", args: [] });
+      return true;
+    },
+    networkingUtilsClearGlobalCallbacks() {
+      this.calls.push({ method: "networkingUtilsClearGlobalCallbacks", args: [] });
+      return true;
     },
     networkingUtilsRegisterDebugOutputHook(detailLevel, handler) {
       this.calls.push({ method: "networkingUtilsRegisterDebugOutputHook", args: [detailLevel] });
@@ -5093,6 +5105,14 @@ test("networking utils facade covers relay, ping, fake IP, address, config, debu
   );
   assert.equal(
     steam.networking.utils.setGlobalConfigValueString(steam.networking.utils.ConfigValue.SDRClientForceRelayCluster, "iad"),
+    true
+  );
+  assert.equal(
+    steam.networking.utils.setGlobalConfigValuePointer(steam.networking.utils.ConfigValue.CallbackFakeIPResult, 0x1234n),
+    true
+  );
+  assert.equal(
+    steam.networking.utils.setGlobalConfigValuePointer(steam.networking.utils.ConfigValue.CallbackFakeIPResult, null),
     true
   );
   assert.equal(
@@ -5199,6 +5219,8 @@ test("networking utils facade covers relay, ping, fake IP, address, config, debu
   });
   assert.equal(steam.networking.utils.iterateGenericEditableConfigValues(), 24);
   assert.deepEqual(steam.networking.utils.listGenericEditableConfigValues(), [24, 29]);
+  assert.equal(steam.networking.utils.enableGlobalCallbacks(), true);
+  assert.equal(steam.networking.utils.clearGlobalCallbacks(), true);
 
   let debugEvent;
   const debugHandle = steam.networking.utils.registerDebugOutputHook(
@@ -5257,6 +5279,15 @@ test("networking utils facade covers relay, ping, fake IP, address, config, debu
     method: "networkingUtilsSetGlobalConfigValueString",
     args: [29, "iad"]
   });
+  assert.deepEqual(
+    fake.calls
+      .filter((call) => call.method === "networkingUtilsSetGlobalConfigValuePtr")
+      .map((call) => call.args),
+    [
+      [207, 0x1234n],
+      [207, null]
+    ]
+  );
   assert.deepEqual(fake.calls.find((call) => call.method === "networkingUtilsSetConnectionConfigValueInt32"), {
     method: "networkingUtilsSetConnectionConfigValueInt32",
     args: [77, 24, 2500]
@@ -5282,6 +5313,14 @@ test("networking utils facade covers relay, ping, fake IP, address, config, debu
   assert.deepEqual(fake.calls.find((call) => call.method === "networkingUtilsRegisterDebugOutputHook"), {
     method: "networkingUtilsRegisterDebugOutputHook",
     args: [4]
+  });
+  assert.deepEqual(fake.calls.find((call) => call.method === "networkingUtilsEnableGlobalCallbacks"), {
+    method: "networkingUtilsEnableGlobalCallbacks",
+    args: []
+  });
+  assert.deepEqual(fake.calls.find((call) => call.method === "networkingUtilsClearGlobalCallbacks"), {
+    method: "networkingUtilsClearGlobalCallbacks",
+    args: []
   });
   assert.equal(fake.calls.some((call) => call.method === "disconnectNetworkingDebugOutputHook"), true);
 });

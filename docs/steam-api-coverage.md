@@ -97,7 +97,8 @@ The native layer currently targets the Steamworks flat C API through
   `ISteamNetworkingUtils` relay/auth status, ping location, POP latency,
   fake-IP, IP address, identity conversion, config value, editable config
   iteration, direct global/connection config setters, structured config
-  setters, and debug-output helpers.
+  setters, pointer-valued global config setters, direct global callback hooks,
+  and debug-output helpers.
 - UGC/Workshop: item create/update/query flows, cursor queries, request-details
   calls, query metadata/tags/children/previews/key-value tags/content
   descriptors/game-version data, install/download information, downloaded item
@@ -137,8 +138,8 @@ The native layer currently targets the Steamworks flat C API through
   `steamworks-sys 0.13` macOS bindings used by this crate.
 - `ISteamMusicRemote` is not exposed by the current `steamworks-sys 0.13` macOS
   bindings used by this crate.
-- Remaining modern networking surfaces: parsed relay-auth-ticket payloads, raw
-  pointer-valued networking config callbacks, and custom signaling.
+- Remaining modern networking surfaces: parsed relay-auth-ticket payloads and
+  custom signaling.
 - Remaining callback/event coverage for interfaces that are not yet surfaced by
   the native bindings or still need richer low-level ergonomics.
 - Steam Web API and economy flows beyond client auth ticket helpers.

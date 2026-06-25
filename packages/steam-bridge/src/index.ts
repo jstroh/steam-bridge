@@ -5838,6 +5838,9 @@ export const networking = {
     setGlobalConfigValueString(value: number, data: string): boolean {
       return native().networkingUtilsSetGlobalConfigValueString(value, data);
     },
+    setGlobalConfigValuePointer(value: number, pointer?: bigint | null): boolean {
+      return native().networkingUtilsSetGlobalConfigValuePtr(value, pointer ?? null);
+    },
     setGlobalConfigValueStruct(option: NetworkingConfigOption): boolean {
       return native().networkingUtilsSetConfigValueStruct(
         nativeNetworkingConfigValue(option),
@@ -5891,6 +5894,12 @@ export const networking = {
         values.push(current);
       }
       throw new Error("Steam networking config iteration did not terminate");
+    },
+    enableGlobalCallbacks(): boolean {
+      return native().networkingUtilsEnableGlobalCallbacks();
+    },
+    clearGlobalCallbacks(): boolean {
+      return native().networkingUtilsClearGlobalCallbacks();
     },
     registerDebugOutputHook(
       detailLevel: number,

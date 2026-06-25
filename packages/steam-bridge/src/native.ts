@@ -2360,12 +2360,15 @@ export interface NativeBinding {
   networkingUtilsSetGlobalConfigValueInt32(value: number, data: number): boolean;
   networkingUtilsSetGlobalConfigValueFloat(value: number, data: number): boolean;
   networkingUtilsSetGlobalConfigValueString(value: number, data: string): boolean;
+  networkingUtilsSetGlobalConfigValuePtr(value: number, data?: bigint | null): boolean;
   networkingUtilsSetConnectionConfigValueInt32(connection: number, value: number, data: number): boolean;
   networkingUtilsSetConnectionConfigValueFloat(connection: number, value: number, data: number): boolean;
   networkingUtilsSetConnectionConfigValueString(connection: number, value: number, data: string): boolean;
   networkingUtilsGetConfigValue(value: number, scope: number, scopeObj: number, maxBytes?: number): NativeNetworkingConfigValueResult;
   networkingUtilsGetConfigValueInfo(value: number): NativeNetworkingConfigValueInfo;
   networkingUtilsIterateGenericEditableConfigValues(current: number, enumerateDevVars?: boolean): number;
+  networkingUtilsEnableGlobalCallbacks(): boolean;
+  networkingUtilsClearGlobalCallbacks(): boolean;
   networkingUtilsRegisterDebugOutputHook(detailLevel: number, handler: (event: NativeNetworkingDebugOutput) => void): NativeCallbackHandle;
 
   matchmakingGetFavoriteGameCount(): number;
