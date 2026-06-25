@@ -17,6 +17,8 @@ import {
   NativeClanChatJoinResult,
   NativeClanOfficerListResult,
   NativeCloudFileInfo,
+  NativeCloudLocalFileChange,
+  NativeCloudQuota,
   NativeFollowerCountResult,
   NativeFollowingListResult,
   NativeEquippedProfileItemsResult,
@@ -243,6 +245,17 @@ export interface FriendsGroupInfo {
   id: number;
   name: string;
   members: SteamId[];
+}
+
+export interface CloudQuota {
+  totalBytes: bigint;
+  availableBytes: bigint;
+}
+
+export interface CloudLocalFileChange {
+  name: string;
+  changeType: number;
+  pathType: number;
 }
 
 export interface EquippedProfileItemsResult {
@@ -1760,6 +1773,30 @@ export const StoreFlag = {
   AddToCartAndShow: 2
 } as const;
 
+export const RemoteStoragePlatform = {
+  None: 0,
+  Windows: 1,
+  OSX: 2,
+  PS3: 4,
+  Linux: 8,
+  Switch: 16,
+  Android: 32,
+  IOS: 64,
+  All: 0xffffffff
+} as const;
+
+export const RemoteStorageLocalFileChange = {
+  Invalid: 0,
+  FileUpdated: 1,
+  FileDeleted: 2
+} as const;
+
+export const RemoteStorageFilePathType = {
+  Invalid: 0,
+  Absolute: 1,
+  APIFilename: 2
+} as const;
+
 export const SteamUniverse = {
   Invalid: 0,
   Public: 1,
@@ -2694,6 +2731,9 @@ export const callback = {
 
 export const cloud = {
   FileInfo,
+  RemoteStoragePlatform,
+  RemoteStorageLocalFileChange,
+  RemoteStorageFilePathType,
   isEnabledForAccount(): boolean {
     return native().cloudIsEnabledForAccount();
   },
@@ -2712,11 +2752,49 @@ export const cloud = {
   deleteFile(name: string): boolean {
     return native().cloudDeleteFile(name);
   },
+  forgetFile(name: string): boolean {
+    return native().cloudForgetFile(name);
+  },
   fileExists(name: string): boolean {
     return native().cloudFileExists(name);
   },
+  filePersisted(name: string): boolean {
+    return native().cloudFilePersisted(name);
+  },
+  getFileSize(name: string): bigint | null {
+    const size = native().cloudGetFileSize(name);
+    return size == null ? null : BigInt(size);
+  },
+  getFileTimestamp(name: string): bigint | null {
+    const timestamp = native().cloudGetFileTimestamp(name);
+    return timestamp == null ? null : BigInt(timestamp);
+  },
+  getSyncPlatforms(name: string): number {
+    return native().cloudGetSyncPlatforms(name);
+  },
+  setSyncPlatforms(name: string, platforms: number): boolean {
+    return native().cloudSetSyncPlatforms(name, platforms);
+  },
+  getQuota(): CloudQuota | null {
+    return normalizeCloudQuota(native().cloudGetQuota());
+  },
   listFiles(): FileInfo[] {
     return native().cloudListFiles().map((file: NativeCloudFileInfo) => new FileInfo(file.name, BigInt(file.size)));
+  },
+  getLocalFileChangeCount(): number {
+    return native().cloudGetLocalFileChangeCount();
+  },
+  getLocalFileChange(index: number): CloudLocalFileChange | null {
+    return normalizeCloudLocalFileChange(native().cloudGetLocalFileChange(index));
+  },
+  getLocalFileChanges(): CloudLocalFileChange[] {
+    return native().cloudGetLocalFileChanges().map(normalizeCloudLocalFileChange).filter((change) => change !== null);
+  },
+  beginFileWriteBatch(): boolean {
+    return native().cloudBeginFileWriteBatch();
+  },
+  endFileWriteBatch(): boolean {
+    return native().cloudEndFileWriteBatch();
   }
 };
 
@@ -4827,6 +4905,31 @@ function normalizeFriendsGroupInfo(group: NativeFriendsGroupInfo): FriendsGroupI
     id: group.id,
     name: group.name,
     members: (group.members ?? []).map(normalizeSteamId)
+  };
+}
+
+function normalizeCloudQuota(quota: NativeCloudQuota | null | undefined): CloudQuota | null {
+  if (!quota) {
+    return null;
+  }
+  const source = quota as unknown as Record<string, unknown>;
+  return {
+    totalBytes: BigInt((source.totalBytes ?? source.total_bytes ?? 0) as bigint | number | string),
+    availableBytes: BigInt((source.availableBytes ?? source.available_bytes ?? 0) as bigint | number | string)
+  };
+}
+
+function normalizeCloudLocalFileChange(
+  change: NativeCloudLocalFileChange | null | undefined
+): CloudLocalFileChange | null {
+  if (!change) {
+    return null;
+  }
+  const source = change as unknown as Record<string, unknown>;
+  return {
+    name: change.name,
+    changeType: Number(source.changeType ?? source.change_type ?? 0),
+    pathType: Number(source.pathType ?? source.path_type ?? 0)
   };
 }
 

@@ -132,6 +132,51 @@ function createFakeNative(overrides = {}) {
         { name: "settings.json", size: 2048n }
       ];
     },
+    cloudForgetFile(name) {
+      calls.push({ method: "cloudForgetFile", args: [name] });
+      return true;
+    },
+    cloudFilePersisted(name) {
+      calls.push({ method: "cloudFilePersisted", args: [name] });
+      return name === "save.dat";
+    },
+    cloudGetFileSize(name) {
+      calls.push({ method: "cloudGetFileSize", args: [name] });
+      return name === "save.dat" ? "1024" : null;
+    },
+    cloudGetFileTimestamp(name) {
+      calls.push({ method: "cloudGetFileTimestamp", args: [name] });
+      return name === "save.dat" ? 1700000000n : null;
+    },
+    cloudGetSyncPlatforms(name) {
+      calls.push({ method: "cloudGetSyncPlatforms", args: [name] });
+      return 10;
+    },
+    cloudSetSyncPlatforms(name, platforms) {
+      calls.push({ method: "cloudSetSyncPlatforms", args: [name, platforms] });
+      return true;
+    },
+    cloudGetQuota() {
+      return { total_bytes: "100000", available_bytes: 64000n };
+    },
+    cloudGetLocalFileChangeCount() {
+      return 1;
+    },
+    cloudGetLocalFileChange(index) {
+      calls.push({ method: "cloudGetLocalFileChange", args: [index] });
+      return index === 0 ? { name: "save.dat", change_type: 1, path_type: 2 } : null;
+    },
+    cloudGetLocalFileChanges() {
+      return [{ name: "save.dat", change_type: 1, path_type: 2 }];
+    },
+    cloudBeginFileWriteBatch() {
+      calls.push({ method: "cloudBeginFileWriteBatch", args: [] });
+      return true;
+    },
+    cloudEndFileWriteBatch() {
+      calls.push({ method: "cloudEndFileWriteBatch", args: [] });
+      return true;
+    },
     inputGetControllers() {
       return [
         { handle: "123", inputType: "PS5Controller" },
@@ -2009,6 +2054,27 @@ test("cloud, input, and networking facades coerce native values", (t) => {
   assert.equal(files[0].name, "save.dat");
   assert.equal(files[0].size, 1024n);
   assert.equal(files[1].size, 2048n);
+  assert.equal(steam.cloud.RemoteStoragePlatform.OSX, 2);
+  assert.equal(steam.cloud.RemoteStorageLocalFileChange.FileUpdated, 1);
+  assert.equal(steam.cloud.RemoteStorageFilePathType.APIFilename, 2);
+  assert.equal(steam.cloud.filePersisted("save.dat"), true);
+  assert.equal(steam.cloud.forgetFile("save.dat"), true);
+  assert.equal(steam.cloud.getFileSize("save.dat"), 1024n);
+  assert.equal(steam.cloud.getFileSize("missing.dat"), null);
+  assert.equal(steam.cloud.getFileTimestamp("save.dat"), 1700000000n);
+  assert.equal(steam.cloud.getSyncPlatforms("save.dat"), 10);
+  assert.equal(steam.cloud.setSyncPlatforms("save.dat", steam.cloud.RemoteStoragePlatform.OSX), true);
+  assert.deepEqual(steam.cloud.getQuota(), { totalBytes: 100000n, availableBytes: 64000n });
+  assert.equal(steam.cloud.getLocalFileChangeCount(), 1);
+  assert.deepEqual(steam.cloud.getLocalFileChange(0), { name: "save.dat", changeType: 1, pathType: 2 });
+  assert.equal(steam.cloud.getLocalFileChange(1), null);
+  assert.deepEqual(steam.cloud.getLocalFileChanges(), [{ name: "save.dat", changeType: 1, pathType: 2 }]);
+  assert.equal(steam.cloud.beginFileWriteBatch(), true);
+  assert.equal(steam.cloud.endFileWriteBatch(), true);
+  assert.deepEqual(fake.calls.find((call) => call.method === "cloudSetSyncPlatforms"), {
+    method: "cloudSetSyncPlatforms",
+    args: ["save.dat", 2]
+  });
 
   const controllers = steam.input.getControllers();
   assert.equal(controllers[0].getHandle(), 123n);

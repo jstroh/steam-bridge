@@ -107,7 +107,22 @@ export interface NativeOverlayDiagnostics {
 
 export interface NativeCloudFileInfo {
   name: string;
-  size: bigint;
+  size: bigint | string | number;
+}
+
+export interface NativeCloudQuota {
+  totalBytes?: bigint | string | number;
+  total_bytes?: bigint | string | number;
+  availableBytes?: bigint | string | number;
+  available_bytes?: bigint | string | number;
+}
+
+export interface NativeCloudLocalFileChange {
+  name: string;
+  changeType?: number;
+  change_type?: number;
+  pathType?: number;
+  path_type?: number;
 }
 
 export interface NativeHttpRequestCompleted {
@@ -1331,8 +1346,20 @@ export interface NativeBinding {
   cloudReadFile(name: string): string;
   cloudWriteFile(name: string, content: string): boolean;
   cloudDeleteFile(name: string): boolean;
+  cloudForgetFile(name: string): boolean;
   cloudFileExists(name: string): boolean;
+  cloudFilePersisted(name: string): boolean;
+  cloudGetFileSize(name: string): bigint | string | number | null | undefined;
+  cloudGetFileTimestamp(name: string): bigint | string | number | null | undefined;
+  cloudGetSyncPlatforms(name: string): number;
+  cloudSetSyncPlatforms(name: string, platforms: number): boolean;
+  cloudGetQuota(): NativeCloudQuota | null | undefined;
   cloudListFiles(): NativeCloudFileInfo[];
+  cloudGetLocalFileChangeCount(): number;
+  cloudGetLocalFileChange(index: number): NativeCloudLocalFileChange | null | undefined;
+  cloudGetLocalFileChanges(): NativeCloudLocalFileChange[];
+  cloudBeginFileWriteBatch(): boolean;
+  cloudEndFileWriteBatch(): boolean;
 
   httpCreateRequest(method: number, url: string): number;
   httpSetContextValue(request: number, contextValue: bigint): boolean;

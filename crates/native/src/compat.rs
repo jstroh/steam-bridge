@@ -313,6 +313,21 @@ pub struct CloudFileInfo {
 
 #[derive(Debug)]
 #[napi(object)]
+pub struct CloudQuota {
+    pub total_bytes: BigInt,
+    pub available_bytes: BigInt,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct CloudLocalFileChange {
+    pub name: String,
+    pub change_type: u32,
+    pub path_type: u32,
+}
+
+#[derive(Debug)]
+#[napi(object)]
 pub struct HttpRequestCompleted {
     pub request: u32,
     pub context_value: BigInt,
@@ -2583,12 +2598,82 @@ pub fn cloud_delete_file(name: String) -> Result<bool, Error> {
     })
 }
 
+#[napi(js_name = "cloudForgetFile")]
+pub fn cloud_forget_file(name: String) -> Result<bool, Error> {
+    let name = cstring(name, "cloud file name")?;
+    Ok(unsafe {
+        sys::SteamAPI_ISteamRemoteStorage_FileForget(steam_remote_storage()?, name.as_ptr())
+    })
+}
+
 #[napi(js_name = "cloudFileExists")]
 pub fn cloud_file_exists(name: String) -> Result<bool, Error> {
     let name = cstring(name, "cloud file name")?;
     Ok(unsafe {
         sys::SteamAPI_ISteamRemoteStorage_FileExists(steam_remote_storage()?, name.as_ptr())
     })
+}
+
+#[napi(js_name = "cloudFilePersisted")]
+pub fn cloud_file_persisted(name: String) -> Result<bool, Error> {
+    let name = cstring(name, "cloud file name")?;
+    Ok(unsafe {
+        sys::SteamAPI_ISteamRemoteStorage_FilePersisted(steam_remote_storage()?, name.as_ptr())
+    })
+}
+
+#[napi(js_name = "cloudGetFileSize")]
+pub fn cloud_get_file_size(name: String) -> Result<Option<BigInt>, Error> {
+    let name = cstring(name, "cloud file name")?;
+    let size = unsafe {
+        sys::SteamAPI_ISteamRemoteStorage_GetFileSize(steam_remote_storage()?, name.as_ptr())
+    };
+    Ok((size >= 0).then(|| (size as u64).into()))
+}
+
+#[napi(js_name = "cloudGetFileTimestamp")]
+pub fn cloud_get_file_timestamp(name: String) -> Result<Option<BigInt>, Error> {
+    let storage = steam_remote_storage()?;
+    let name = cstring(name, "cloud file name")?;
+    if !unsafe { sys::SteamAPI_ISteamRemoteStorage_FileExists(storage, name.as_ptr()) } {
+        return Ok(None);
+    }
+    let timestamp =
+        unsafe { sys::SteamAPI_ISteamRemoteStorage_GetFileTimestamp(storage, name.as_ptr()) };
+    Ok(Some(timestamp.into()))
+}
+
+#[napi(js_name = "cloudGetSyncPlatforms")]
+pub fn cloud_get_sync_platforms(name: String) -> Result<u32, Error> {
+    let name = cstring(name, "cloud file name")?;
+    Ok(unsafe {
+        sys::SteamAPI_ISteamRemoteStorage_GetSyncPlatforms(steam_remote_storage()?, name.as_ptr()).0
+    })
+}
+
+#[napi(js_name = "cloudSetSyncPlatforms")]
+pub fn cloud_set_sync_platforms(name: String, platforms: u32) -> Result<bool, Error> {
+    let name = cstring(name, "cloud file name")?;
+    Ok(unsafe {
+        sys::SteamAPI_ISteamRemoteStorage_SetSyncPlatforms(
+            steam_remote_storage()?,
+            name.as_ptr(),
+            sys::ERemoteStoragePlatform(platforms),
+        )
+    })
+}
+
+#[napi(js_name = "cloudGetQuota")]
+pub fn cloud_get_quota() -> Result<Option<CloudQuota>, Error> {
+    let storage = steam_remote_storage()?;
+    let mut total = 0u64;
+    let mut available = 0u64;
+    let ok =
+        unsafe { sys::SteamAPI_ISteamRemoteStorage_GetQuota(storage, &mut total, &mut available) };
+    Ok(ok.then(|| CloudQuota {
+        total_bytes: total.into(),
+        available_bytes: available.into(),
+    }))
 }
 
 #[napi(js_name = "cloudListFiles")]
@@ -2609,6 +2694,56 @@ pub fn cloud_list_files() -> Result<Vec<CloudFileInfo>, Error> {
         }
     }
     Ok(files)
+}
+
+#[napi(js_name = "cloudGetLocalFileChangeCount")]
+pub fn cloud_get_local_file_change_count() -> Result<i32, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamRemoteStorage_GetLocalFileChangeCount(steam_remote_storage()?)
+    })
+}
+
+#[napi(js_name = "cloudGetLocalFileChange")]
+pub fn cloud_get_local_file_change(index: i32) -> Result<Option<CloudLocalFileChange>, Error> {
+    let storage = steam_remote_storage()?;
+    let mut change_type =
+        sys::ERemoteStorageLocalFileChange::k_ERemoteStorageLocalFileChange_Invalid;
+    let mut path_type = sys::ERemoteStorageFilePathType::k_ERemoteStorageFilePathType_Invalid;
+    let name = unsafe {
+        sys::SteamAPI_ISteamRemoteStorage_GetLocalFileChange(
+            storage,
+            index,
+            &mut change_type,
+            &mut path_type,
+        )
+    };
+    Ok((!name.is_null()).then(|| CloudLocalFileChange {
+        name: string_from_ptr(name),
+        change_type: change_type as u32,
+        path_type: path_type as u32,
+    }))
+}
+
+#[napi(js_name = "cloudGetLocalFileChanges")]
+pub fn cloud_get_local_file_changes() -> Result<Vec<CloudLocalFileChange>, Error> {
+    let count = cloud_get_local_file_change_count()?.max(0);
+    let mut changes = Vec::new();
+    for index in 0..count {
+        if let Some(change) = cloud_get_local_file_change(index)? {
+            changes.push(change);
+        }
+    }
+    Ok(changes)
+}
+
+#[napi(js_name = "cloudBeginFileWriteBatch")]
+pub fn cloud_begin_file_write_batch() -> Result<bool, Error> {
+    Ok(unsafe { sys::SteamAPI_ISteamRemoteStorage_BeginFileWriteBatch(steam_remote_storage()?) })
+}
+
+#[napi(js_name = "cloudEndFileWriteBatch")]
+pub fn cloud_end_file_write_batch() -> Result<bool, Error> {
+    Ok(unsafe { sys::SteamAPI_ISteamRemoteStorage_EndFileWriteBatch(steam_remote_storage()?) })
 }
 
 #[napi(js_name = "httpCreateRequest")]
