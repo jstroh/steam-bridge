@@ -453,6 +453,13 @@ test("specific and generic callbacks normalize Steamworks payloads", (t) => {
   t.after(clearSteamBridgeCache);
 
   assert.equal(steam.SteamCallback.SteamAPICallCompleted, 703);
+  assert.equal(steam.SteamCallback.GameServerChangeRequested, 332);
+  assert.equal(steam.SteamCallback.GameLobbyJoinRequestedSteamworks, 333);
+  assert.equal(steam.SteamCallback.AvatarImageLoaded, 334);
+  assert.equal(steam.SteamCallback.FriendRichPresenceUpdate, 336);
+  assert.equal(steam.SteamCallback.FriendsEnumerateFollowingList, 346);
+  assert.equal(steam.SteamCallback.OverlayBrowserProtocolNavigation, 349);
+  assert.equal(steam.SteamCallback.EquippedProfileItems, 351);
   assert.equal(steam.SteamCallback.GamepadTextInputDismissed, 714);
   assert.equal(steam.SteamCallback.DlcInstalled, 1005);
   assert.equal(steam.SteamCallback.AppProofOfPurchaseKeyResponse, 1021);
@@ -564,6 +571,110 @@ test("specific and generic callbacks normalize Steamworks payloads", (t) => {
   assert.equal(gamepadEvent.submitted, true);
   assert.equal(gamepadEvent.submittedText, 12);
   assert.equal(gamepadEvent.appId, 480);
+
+  let avatarEvent;
+  steam.callback.register(steam.SteamCallback.AvatarImageLoaded, (event) => {
+    avatarEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.AvatarImageLoaded)({
+    steam_id: "76561198000000001",
+    image: 17,
+    wide: 64,
+    tall: 64
+  });
+
+  assert.equal(avatarEvent.steamId, 76561198000000001n);
+  assert.equal(avatarEvent.image, 17);
+  assert.equal(avatarEvent.wide, 64);
+  assert.equal(avatarEvent.tall, 64);
+
+  let richPresenceEvent;
+  steam.callback.register(steam.SteamCallback.GameRichPresenceJoinRequested, (event) => {
+    richPresenceEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.GameRichPresenceJoinRequested)({
+    friend: "76561198000000002",
+    connect: "+connect_lobby 109775242022617907"
+  });
+
+  assert.equal(richPresenceEvent.friend, 76561198000000002n);
+  assert.equal(richPresenceEvent.connect, "+connect_lobby 109775242022617907");
+
+  let lobbyJoinEvent;
+  steam.callback.register(steam.SteamCallback.GameLobbyJoinRequestedSteamworks, (event) => {
+    lobbyJoinEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.GameLobbyJoinRequestedSteamworks)({
+    lobby_steam_id: "109775242022617907",
+    friend_steam_id: "76561198000000003"
+  });
+
+  assert.equal(lobbyJoinEvent.lobbySteamId, 109775242022617907n);
+  assert.equal(lobbyJoinEvent.friendSteamId, 76561198000000003n);
+
+  let chatLeaveEvent;
+  steam.callback.register(steam.SteamCallback.GameConnectedChatLeave, (event) => {
+    chatLeaveEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.GameConnectedChatLeave)({
+    clan_chat: "103582791429521408",
+    user: "76561198000000003",
+    kicked: false,
+    dropped: true
+  });
+
+  assert.equal(chatLeaveEvent.clan_chat, 103582791429521408n);
+  assert.equal(chatLeaveEvent.clanChat, 103582791429521408n);
+  assert.equal(chatLeaveEvent.user, 76561198000000003n);
+  assert.equal(chatLeaveEvent.dropped, true);
+
+  let followingEvent;
+  steam.callback.register(steam.SteamCallback.FriendsEnumerateFollowingList, (event) => {
+    followingEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.FriendsEnumerateFollowingList)({
+    result: 1,
+    steam_ids: ["76561198000000004", "76561198000000005"],
+    results_returned: 2,
+    total_result_count: 7
+  });
+
+  assert.deepEqual(followingEvent.steam_ids, [76561198000000004n, 76561198000000005n]);
+  assert.deepEqual(followingEvent.steamIds, [76561198000000004n, 76561198000000005n]);
+  assert.equal(followingEvent.resultsReturned, 2);
+  assert.equal(followingEvent.totalResultCount, 7);
+
+  let equippedItemsEvent;
+  steam.callback.register(steam.SteamCallback.EquippedProfileItems, (event) => {
+    equippedItemsEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.EquippedProfileItems)({
+    result: 1,
+    steam_id: "76561198000000006",
+    has_animated_avatar: true,
+    has_avatar_frame: false,
+    has_profile_modifier: true,
+    has_profile_background: false,
+    has_mini_profile_background: true,
+    from_cache: true
+  });
+
+  assert.equal(equippedItemsEvent.steamId, 76561198000000006n);
+  assert.equal(equippedItemsEvent.hasAnimatedAvatar, true);
+  assert.equal(equippedItemsEvent.hasAvatarFrame, false);
+  assert.equal(equippedItemsEvent.hasProfileModifier, true);
+  assert.equal(equippedItemsEvent.hasMiniProfileBackground, true);
+  assert.equal(equippedItemsEvent.fromCache, true);
+
+  let navigationEvent;
+  steam.callback.register(steam.SteamCallback.OverlayBrowserProtocolNavigation, (event) => {
+    navigationEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.OverlayBrowserProtocolNavigation)({
+    uri: "steam://openurl/https://store.steampowered.com/app/480/"
+  });
+
+  assert.equal(navigationEvent.uri, "steam://openurl/https://store.steampowered.com/app/480/");
 
   txnHandle.disconnect();
   assert.equal(fake.callbacks.has(steam.SteamCallback.MicroTxnAuthorizationResponse), false);

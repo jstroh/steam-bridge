@@ -47,8 +47,25 @@ const CALLBACK_LOBBY_CHAT_MSG: i32 = 507;
 const CALLBACK_LOBBY_GAME_CREATED: i32 = 509;
 const CALLBACK_LOBBY_MATCH_LIST: i32 = 510;
 const CALLBACK_LOBBY_KICKED: i32 = 512;
+const CALLBACK_GAME_SERVER_CHANGE_REQUESTED: i32 = 332;
 const CALLBACK_GAME_LOBBY_JOIN_REQUESTED: i32 = 333;
+const CALLBACK_AVATAR_IMAGE_LOADED: i32 = 334;
+const CALLBACK_CLAN_OFFICER_LIST_RESPONSE: i32 = 335;
+const CALLBACK_FRIEND_RICH_PRESENCE_UPDATE: i32 = 336;
+const CALLBACK_GAME_RICH_PRESENCE_JOIN_REQUESTED: i32 = 337;
+const CALLBACK_GAME_CONNECTED_CLAN_CHAT_MSG: i32 = 338;
+const CALLBACK_GAME_CONNECTED_CHAT_JOIN: i32 = 339;
+const CALLBACK_GAME_CONNECTED_CHAT_LEAVE: i32 = 340;
+const CALLBACK_DOWNLOAD_CLAN_ACTIVITY_COUNTS_RESULT: i32 = 341;
+const CALLBACK_JOIN_CLAN_CHAT_ROOM_COMPLETION_RESULT: i32 = 342;
+const CALLBACK_GAME_CONNECTED_FRIEND_CHAT_MSG: i32 = 343;
+const CALLBACK_FRIENDS_GET_FOLLOWER_COUNT: i32 = 344;
+const CALLBACK_FRIENDS_IS_FOLLOWING: i32 = 345;
+const CALLBACK_FRIENDS_ENUMERATE_FOLLOWING_LIST: i32 = 346;
+const CALLBACK_UNREAD_CHAT_MESSAGES_CHANGED: i32 = 348;
+const CALLBACK_OVERLAY_BROWSER_PROTOCOL_NAVIGATION: i32 = 349;
 const CALLBACK_EQUIPPED_PROFILE_ITEMS_CHANGED: i32 = 350;
+const CALLBACK_EQUIPPED_PROFILE_ITEMS: i32 = 351;
 const CALLBACK_P2P_SESSION_REQUEST: i32 = 1202;
 const CALLBACK_P2P_SESSION_CONNECT_FAIL: i32 = 1203;
 const CALLBACK_STEAM_NET_CONNECTION_STATUS_CHANGED: i32 = 1221;
@@ -9039,12 +9056,54 @@ fn callback_id_from_compat(callback: i32) -> Result<i32, Error> {
         CALLBACK_LOBBY_GAME_CREATED => Ok(sys::LobbyGameCreated_t_k_iCallback as i32),
         CALLBACK_LOBBY_MATCH_LIST => Ok(sys::LobbyMatchList_t_k_iCallback as i32),
         CALLBACK_LOBBY_KICKED => Ok(sys::LobbyKicked_t_k_iCallback as i32),
+        CALLBACK_GAME_SERVER_CHANGE_REQUESTED => {
+            Ok(sys::GameServerChangeRequested_t_k_iCallback as i32)
+        }
+        CALLBACK_GAME_LOBBY_JOIN_REQUESTED => Ok(sys::GameLobbyJoinRequested_t_k_iCallback as i32),
+        CALLBACK_AVATAR_IMAGE_LOADED => Ok(sys::AvatarImageLoaded_t_k_iCallback as i32),
+        CALLBACK_CLAN_OFFICER_LIST_RESPONSE => {
+            Ok(sys::ClanOfficerListResponse_t_k_iCallback as i32)
+        }
+        CALLBACK_FRIEND_RICH_PRESENCE_UPDATE => {
+            Ok(sys::FriendRichPresenceUpdate_t_k_iCallback as i32)
+        }
+        CALLBACK_GAME_RICH_PRESENCE_JOIN_REQUESTED => {
+            Ok(sys::GameRichPresenceJoinRequested_t_k_iCallback as i32)
+        }
+        CALLBACK_GAME_CONNECTED_CLAN_CHAT_MSG => {
+            Ok(sys::GameConnectedClanChatMsg_t_k_iCallback as i32)
+        }
+        CALLBACK_GAME_CONNECTED_CHAT_JOIN => Ok(sys::GameConnectedChatJoin_t_k_iCallback as i32),
+        CALLBACK_GAME_CONNECTED_CHAT_LEAVE => Ok(sys::GameConnectedChatLeave_t_k_iCallback as i32),
+        CALLBACK_DOWNLOAD_CLAN_ACTIVITY_COUNTS_RESULT => {
+            Ok(sys::DownloadClanActivityCountsResult_t_k_iCallback as i32)
+        }
+        CALLBACK_JOIN_CLAN_CHAT_ROOM_COMPLETION_RESULT => {
+            Ok(sys::JoinClanChatRoomCompletionResult_t_k_iCallback as i32)
+        }
+        CALLBACK_GAME_CONNECTED_FRIEND_CHAT_MSG => {
+            Ok(sys::GameConnectedFriendChatMsg_t_k_iCallback as i32)
+        }
+        CALLBACK_FRIENDS_GET_FOLLOWER_COUNT => {
+            Ok(sys::FriendsGetFollowerCount_t_k_iCallback as i32)
+        }
+        CALLBACK_FRIENDS_IS_FOLLOWING => Ok(sys::FriendsIsFollowing_t_k_iCallback as i32),
+        CALLBACK_FRIENDS_ENUMERATE_FOLLOWING_LIST => {
+            Ok(sys::FriendsEnumerateFollowingList_t_k_iCallback as i32)
+        }
+        CALLBACK_UNREAD_CHAT_MESSAGES_CHANGED => {
+            Ok(sys::UnreadChatMessagesChanged_t_k_iCallback as i32)
+        }
+        CALLBACK_OVERLAY_BROWSER_PROTOCOL_NAVIGATION => {
+            Ok(sys::OverlayBrowserProtocolNavigation_t_k_iCallback as i32)
+        }
         CALLBACK_STEAM_NET_CONNECTION_STATUS_CHANGED => {
             Ok(sys::SteamNetConnectionStatusChangedCallback_t_k_iCallback as i32)
         }
         CALLBACK_EQUIPPED_PROFILE_ITEMS_CHANGED => {
             Ok(sys::EquippedProfileItemsChanged_t_k_iCallback as i32)
         }
+        CALLBACK_EQUIPPED_PROFILE_ITEMS => Ok(sys::EquippedProfileItems_t_k_iCallback as i32),
         CALLBACK_STEAM_NETWORKING_FAKE_IP_RESULT => Ok(CALLBACK_STEAM_NETWORKING_FAKE_IP_RESULT),
         CALLBACK_STEAM_NET_AUTHENTICATION_STATUS => {
             Ok(sys::SteamNetAuthenticationStatus_t_k_iCallback as i32)
@@ -9270,6 +9329,142 @@ unsafe fn callback_to_json(callback: i32, param: *mut c_void) -> Value {
                 "kicked_due_to_disconnect": ptr::addr_of!((*event).m_bKickedDueToDisconnect).read_unaligned() != 0
             })
         }
+        CALLBACK_GAME_SERVER_CHANGE_REQUESTED => {
+            let event = param as *const sys::GameServerChangeRequested_t;
+            serde_json::json!({
+                "server": c_buf_to_string(&*ptr::addr_of!((*event).m_rgchServer)),
+                "password": c_buf_to_string(&*ptr::addr_of!((*event).m_rgchPassword))
+            })
+        }
+        8 | CALLBACK_GAME_LOBBY_JOIN_REQUESTED => {
+            let event = param as *const sys::GameLobbyJoinRequested_t;
+            let lobby_steam_id = std::mem::transmute::<sys::CSteamID, u64>(
+                ptr::addr_of!((*event).m_steamIDLobby).read_unaligned(),
+            );
+            let friend_steam_id = std::mem::transmute::<sys::CSteamID, u64>(
+                ptr::addr_of!((*event).m_steamIDFriend).read_unaligned(),
+            );
+            serde_json::json!({
+                "lobby_steam_id": lobby_steam_id.to_string(),
+                "friend_steam_id": friend_steam_id.to_string()
+            })
+        }
+        CALLBACK_AVATAR_IMAGE_LOADED => {
+            let event = param as *const sys::AvatarImageLoaded_t;
+            serde_json::json!({
+                "steam_id": csteam_id_to_u64(ptr::addr_of!((*event).m_steamID).read_unaligned()).to_string(),
+                "image": ptr::addr_of!((*event).m_iImage).read_unaligned(),
+                "wide": ptr::addr_of!((*event).m_iWide).read_unaligned(),
+                "tall": ptr::addr_of!((*event).m_iTall).read_unaligned()
+            })
+        }
+        CALLBACK_CLAN_OFFICER_LIST_RESPONSE => {
+            let event = param as *const sys::ClanOfficerListResponse_t;
+            serde_json::json!({
+                "clan": csteam_id_to_u64(ptr::addr_of!((*event).m_steamIDClan).read_unaligned()).to_string(),
+                "officer_count": ptr::addr_of!((*event).m_cOfficers).read_unaligned(),
+                "success": ptr::addr_of!((*event).m_bSuccess).read_unaligned() != 0
+            })
+        }
+        CALLBACK_FRIEND_RICH_PRESENCE_UPDATE => {
+            let event = param as *const sys::FriendRichPresenceUpdate_t;
+            serde_json::json!({
+                "friend": csteam_id_to_u64(ptr::addr_of!((*event).m_steamIDFriend).read_unaligned()).to_string(),
+                "app_id": ptr::addr_of!((*event).m_nAppID).read_unaligned()
+            })
+        }
+        CALLBACK_GAME_RICH_PRESENCE_JOIN_REQUESTED => {
+            let event = param as *const sys::GameRichPresenceJoinRequested_t;
+            serde_json::json!({
+                "friend": csteam_id_to_u64(ptr::addr_of!((*event).m_steamIDFriend).read_unaligned()).to_string(),
+                "connect": c_buf_to_string(&*ptr::addr_of!((*event).m_rgchConnect))
+            })
+        }
+        CALLBACK_GAME_CONNECTED_CLAN_CHAT_MSG => {
+            let event = param as *const sys::GameConnectedClanChatMsg_t;
+            serde_json::json!({
+                "clan_chat": csteam_id_to_u64(ptr::addr_of!((*event).m_steamIDClanChat).read_unaligned()).to_string(),
+                "user": csteam_id_to_u64(ptr::addr_of!((*event).m_steamIDUser).read_unaligned()).to_string(),
+                "message_id": ptr::addr_of!((*event).m_iMessageID).read_unaligned()
+            })
+        }
+        CALLBACK_GAME_CONNECTED_CHAT_JOIN => {
+            let event = param as *const sys::GameConnectedChatJoin_t;
+            serde_json::json!({
+                "clan_chat": csteam_id_to_u64(ptr::addr_of!((*event).m_steamIDClanChat).read_unaligned()).to_string(),
+                "user": csteam_id_to_u64(ptr::addr_of!((*event).m_steamIDUser).read_unaligned()).to_string()
+            })
+        }
+        CALLBACK_GAME_CONNECTED_CHAT_LEAVE => {
+            let event = param as *const sys::GameConnectedChatLeave_t;
+            serde_json::json!({
+                "clan_chat": csteam_id_to_u64(ptr::addr_of!((*event).m_steamIDClanChat).read_unaligned()).to_string(),
+                "user": csteam_id_to_u64(ptr::addr_of!((*event).m_steamIDUser).read_unaligned()).to_string(),
+                "kicked": ptr::addr_of!((*event).m_bKicked).read_unaligned(),
+                "dropped": ptr::addr_of!((*event).m_bDropped).read_unaligned()
+            })
+        }
+        CALLBACK_DOWNLOAD_CLAN_ACTIVITY_COUNTS_RESULT => {
+            let event = param as *const sys::DownloadClanActivityCountsResult_t;
+            serde_json::json!({
+                "success": ptr::addr_of!((*event).m_bSuccess).read_unaligned()
+            })
+        }
+        CALLBACK_JOIN_CLAN_CHAT_ROOM_COMPLETION_RESULT => {
+            let event = param as *const sys::JoinClanChatRoomCompletionResult_t;
+            serde_json::json!({
+                "clan_chat": csteam_id_to_u64(ptr::addr_of!((*event).m_steamIDClanChat).read_unaligned()).to_string(),
+                "chat_room_enter_response": ptr::addr_of!((*event).m_eChatRoomEnterResponse).read_unaligned() as u32
+            })
+        }
+        CALLBACK_GAME_CONNECTED_FRIEND_CHAT_MSG => {
+            let event = param as *const sys::GameConnectedFriendChatMsg_t;
+            serde_json::json!({
+                "user": csteam_id_to_u64(ptr::addr_of!((*event).m_steamIDUser).read_unaligned()).to_string(),
+                "message_id": ptr::addr_of!((*event).m_iMessageID).read_unaligned()
+            })
+        }
+        CALLBACK_FRIENDS_GET_FOLLOWER_COUNT => {
+            let event = param as *const sys::FriendsGetFollowerCount_t;
+            serde_json::json!({
+                "result": ptr::addr_of!((*event).m_eResult).read_unaligned() as u32,
+                "steam_id": csteam_id_to_u64(ptr::addr_of!((*event).m_steamID).read_unaligned()).to_string(),
+                "count": ptr::addr_of!((*event).m_nCount).read_unaligned()
+            })
+        }
+        CALLBACK_FRIENDS_IS_FOLLOWING => {
+            let event = param as *const sys::FriendsIsFollowing_t;
+            serde_json::json!({
+                "result": ptr::addr_of!((*event).m_eResult).read_unaligned() as u32,
+                "steam_id": csteam_id_to_u64(ptr::addr_of!((*event).m_steamID).read_unaligned()).to_string(),
+                "is_following": ptr::addr_of!((*event).m_bIsFollowing).read_unaligned()
+            })
+        }
+        CALLBACK_FRIENDS_ENUMERATE_FOLLOWING_LIST => {
+            let event = param as *const sys::FriendsEnumerateFollowingList_t;
+            let steam_ids = ptr::addr_of!((*event).m_rgSteamID).read_unaligned();
+            let results_returned = ptr::addr_of!((*event).m_nResultsReturned)
+                .read_unaligned()
+                .clamp(0, steam_ids.len() as i32) as usize;
+            let steam_ids = steam_ids
+                .iter()
+                .take(results_returned)
+                .map(|steam_id| csteam_id_to_u64(*steam_id).to_string())
+                .collect::<Vec<_>>();
+            serde_json::json!({
+                "result": ptr::addr_of!((*event).m_eResult).read_unaligned() as u32,
+                "steam_ids": steam_ids,
+                "results_returned": ptr::addr_of!((*event).m_nResultsReturned).read_unaligned(),
+                "total_result_count": ptr::addr_of!((*event).m_nTotalResultCount).read_unaligned()
+            })
+        }
+        CALLBACK_UNREAD_CHAT_MESSAGES_CHANGED => serde_json::json!({}),
+        CALLBACK_OVERLAY_BROWSER_PROTOCOL_NAVIGATION => {
+            let event = param as *const sys::OverlayBrowserProtocolNavigation_t;
+            serde_json::json!({
+                "uri": c_buf_to_string(&*ptr::addr_of!((*event).rgchURI))
+            })
+        }
         6 => {
             let event = param as *const sys::P2PSessionRequest_t;
             let remote = std::mem::transmute::<sys::CSteamID, u64>(
@@ -9332,19 +9527,6 @@ unsafe fn callback_to_json(callback: i32, param: *mut c_void) -> Value {
                 "debug_message": status.debug_message
             })
         }
-        8 => {
-            let event = param as *const sys::GameLobbyJoinRequested_t;
-            let lobby_steam_id = std::mem::transmute::<sys::CSteamID, u64>(
-                ptr::addr_of!((*event).m_steamIDLobby).read_unaligned(),
-            );
-            let friend_steam_id = std::mem::transmute::<sys::CSteamID, u64>(
-                ptr::addr_of!((*event).m_steamIDFriend).read_unaligned(),
-            );
-            serde_json::json!({
-                "lobby_steam_id": lobby_steam_id.to_string(),
-                "friend_steam_id": friend_steam_id.to_string()
-            })
-        }
         9 => {
             let event = param as *const sys::MicroTxnAuthorizationResponse_t;
             serde_json::json!({
@@ -9366,6 +9548,19 @@ unsafe fn callback_to_json(callback: i32, param: *mut c_void) -> Value {
             let event = param as *const sys::EquippedProfileItemsChanged_t;
             serde_json::json!({
                 "steam_id": csteam_id_to_u64(ptr::addr_of!((*event).m_steamID).read_unaligned()).to_string()
+            })
+        }
+        CALLBACK_EQUIPPED_PROFILE_ITEMS => {
+            let event = param as *const sys::EquippedProfileItems_t;
+            serde_json::json!({
+                "result": ptr::addr_of!((*event).m_eResult).read_unaligned() as u32,
+                "steam_id": csteam_id_to_u64(ptr::addr_of!((*event).m_steamID).read_unaligned()).to_string(),
+                "has_animated_avatar": ptr::addr_of!((*event).m_bHasAnimatedAvatar).read_unaligned(),
+                "has_avatar_frame": ptr::addr_of!((*event).m_bHasAvatarFrame).read_unaligned(),
+                "has_profile_modifier": ptr::addr_of!((*event).m_bHasProfileModifier).read_unaligned(),
+                "has_profile_background": ptr::addr_of!((*event).m_bHasProfileBackground).read_unaligned(),
+                "has_mini_profile_background": ptr::addr_of!((*event).m_bHasMiniProfileBackground).read_unaligned(),
+                "from_cache": ptr::addr_of!((*event).m_bFromCache).read_unaligned()
             })
         }
         CALLBACK_HTTP_REQUEST_COMPLETED => {

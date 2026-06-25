@@ -834,7 +834,25 @@ export const SteamCallback = {
   GameLobbyJoinRequested: 8,
   MicroTxnAuthorizationResponse: 9,
   GameOverlayActivated: 331,
+  GameServerChangeRequested: 332,
+  GameLobbyJoinRequestedSteamworks: 333,
+  AvatarImageLoaded: 334,
+  ClanOfficerListResponse: 335,
+  FriendRichPresenceUpdate: 336,
+  GameRichPresenceJoinRequested: 337,
+  GameConnectedClanChatMsg: 338,
+  GameConnectedChatJoin: 339,
+  GameConnectedChatLeave: 340,
+  DownloadClanActivityCountsResult: 341,
+  JoinClanChatRoomCompletionResult: 342,
+  GameConnectedFriendChatMsg: 343,
+  FriendsGetFollowerCount: 344,
+  FriendsIsFollowing: 345,
+  FriendsEnumerateFollowingList: 346,
+  UnreadChatMessagesChanged: 348,
+  OverlayBrowserProtocolNavigation: 349,
   EquippedProfileItemsChanged: 350,
+  EquippedProfileItems: 351,
   FavoritesListChanged: 502,
   LobbyInvite: 503,
   LobbyEnter: 504,
@@ -3982,6 +4000,9 @@ function normalizeCallbackEvent(callbackId: number, event: unknown): unknown {
   const result: Record<string, unknown> = { ...source };
   for (const key of [
     "steam_id",
+    "clan",
+    "clan_chat",
+    "friend",
     "lobby",
     "member",
     "user",
@@ -4011,32 +4032,49 @@ function normalizeCallbackEvent(callbackId: number, event: unknown): unknown {
     chat_permissions: "chatPermissions",
     chat_room_enter_response: "chatRoomEnterResponse",
     check_file_signature: "checkFileSignature",
+    clan_chat: "clanChat",
     conn_port: "connPort",
     entry_type: "entryType",
     file_size: "fileSize",
     friend_steam_id: "friendSteamId",
+    from_cache: "fromCache",
     game_id: "gameId",
     game_server: "gameServer",
+    has_animated_avatar: "hasAnimatedAvatar",
+    has_avatar_frame: "hasAvatarFrame",
+    has_mini_profile_background: "hasMiniProfileBackground",
+    has_profile_background: "hasProfileBackground",
+    has_profile_modifier: "hasProfileModifier",
     ip_address: "ipAddress",
+    is_following: "isFollowing",
     is_offline: "isOffline",
     key_length: "keyLength",
     kicked_due_to_disconnect: "kickedDueToDisconnect",
     lobby_steam_id: "lobbySteamId",
     making_change: "makingChange",
     member_state_change: "memberStateChange",
+    message_id: "messageId",
     minutes_battery_left: "minutesBatteryLeft",
+    officer_count: "officerCount",
     parameter_size: "parameterSize",
     query_port: "queryPort",
+    results_returned: "resultsReturned",
     seconds_allowed: "secondsAllowed",
     seconds_played: "secondsPlayed",
     sha_hex: "shaHex",
+    steam_ids: "steamIds",
     submitted_text: "submittedText",
+    total_result_count: "totalResultCount",
     user_changed: "userChanged"
   };
   for (const [snake, camel] of Object.entries(aliases)) {
     if (result[snake] !== undefined) {
       result[camel] ??= result[snake];
     }
+  }
+  if (Array.isArray(result.steam_ids)) {
+    result.steam_ids = result.steam_ids.map((value) => normalizeBigIntLike(value));
+    result.steamIds = result.steam_ids;
   }
   return result;
 }
