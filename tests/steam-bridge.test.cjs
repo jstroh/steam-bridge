@@ -437,6 +437,141 @@ test("friends facade normalizes IDs, groups, rich presence, and async results", 
   });
 });
 
+test("screenshots, music, video, and parental facades forward utility interfaces", (t) => {
+  const fake = createFakeNative({
+    screenshotsWriteScreenshot(rgb, width, height) {
+      this.calls.push({ method: "screenshotsWriteScreenshot", args: [rgb, width, height] });
+      return 101;
+    },
+    screenshotsAddScreenshotToLibrary(filename, thumbnailFilename, width, height) {
+      this.calls.push({ method: "screenshotsAddScreenshotToLibrary", args: [filename, thumbnailFilename, width, height] });
+      return 102;
+    },
+    screenshotsTriggerScreenshot() {
+      this.calls.push({ method: "screenshotsTriggerScreenshot", args: [] });
+    },
+    screenshotsHookScreenshots(hook) {
+      this.calls.push({ method: "screenshotsHookScreenshots", args: [hook] });
+    },
+    screenshotsSetLocation(handle, location) {
+      this.calls.push({ method: "screenshotsSetLocation", args: [handle, location] });
+      return true;
+    },
+    screenshotsTagUser(handle, steamId64) {
+      this.calls.push({ method: "screenshotsTagUser", args: [handle, steamId64] });
+      return true;
+    },
+    screenshotsTagPublishedFile(handle, publishedFileId) {
+      this.calls.push({ method: "screenshotsTagPublishedFile", args: [handle, publishedFileId] });
+      return true;
+    },
+    screenshotsIsScreenshotsHooked() {
+      return true;
+    },
+    screenshotsAddVrScreenshotToLibrary(vrType, filename, vrFilename) {
+      this.calls.push({ method: "screenshotsAddVrScreenshotToLibrary", args: [vrType, filename, vrFilename] });
+      return 103;
+    },
+    musicIsEnabled() {
+      return true;
+    },
+    musicIsPlaying() {
+      return false;
+    },
+    musicGetPlaybackStatus() {
+      return 2;
+    },
+    musicPlay() {
+      this.calls.push({ method: "musicPlay", args: [] });
+    },
+    musicPause() {
+      this.calls.push({ method: "musicPause", args: [] });
+    },
+    musicPlayPrevious() {
+      this.calls.push({ method: "musicPlayPrevious", args: [] });
+    },
+    musicPlayNext() {
+      this.calls.push({ method: "musicPlayNext", args: [] });
+    },
+    musicSetVolume(volume) {
+      this.calls.push({ method: "musicSetVolume", args: [volume] });
+    },
+    musicGetVolume() {
+      return 0.5;
+    },
+    videoRequestVideoUrl(appId) {
+      this.calls.push({ method: "videoRequestVideoUrl", args: [appId] });
+    },
+    videoIsBroadcasting() {
+      return { broadcasting: true, viewers: 42 };
+    },
+    videoRequestOpfSettings(appId) {
+      this.calls.push({ method: "videoRequestOpfSettings", args: [appId] });
+    },
+    videoGetOpfStringForApp(appId) {
+      this.calls.push({ method: "videoGetOpfStringForApp", args: [appId] });
+      return "<opf />";
+    },
+    parentalIsParentalLockEnabled() {
+      return true;
+    },
+    parentalIsParentalLockLocked() {
+      return false;
+    },
+    parentalIsAppBlocked(appId) {
+      return appId === 480;
+    },
+    parentalIsAppInBlockList(appId) {
+      return appId === 480;
+    },
+    parentalIsFeatureBlocked(feature) {
+      return feature === 4;
+    },
+    parentalIsFeatureInBlockList(feature) {
+      return feature === 4;
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  const rgb = Buffer.from([255, 0, 0]);
+  assert.equal(steam.screenshots.writeScreenshot(rgb, 1, 1), 101);
+  assert.equal(steam.screenshots.addScreenshotToLibrary("screen.png", null, 1920, 1080), 102);
+  steam.screenshots.triggerScreenshot();
+  steam.screenshots.hookScreenshots(true);
+  assert.equal(steam.screenshots.setLocation(101, "Test Map"), true);
+  assert.equal(steam.screenshots.tagUser(101, 76561198000000003n), true);
+  assert.equal(steam.screenshots.tagPublishedFile(101, 12345678901234567890n), true);
+  assert.equal(steam.screenshots.isScreenshotsHooked(), true);
+  assert.equal(
+    steam.screenshots.addVrScreenshotToLibrary(steam.VRScreenshotType.StereoPanorama, "screen.png", "screen_vr.png"),
+    103
+  );
+
+  assert.equal(steam.music.isEnabled(), true);
+  assert.equal(steam.music.isPlaying(), false);
+  assert.equal(steam.music.getPlaybackStatus(), steam.AudioPlaybackStatus.Paused);
+  steam.music.play();
+  steam.music.pause();
+  steam.music.playPrevious();
+  steam.music.playNext();
+  steam.music.setVolume(0.5);
+  assert.equal(steam.music.getVolume(), 0.5);
+
+  steam.video.requestVideoUrl(480);
+  assert.deepEqual(steam.video.isBroadcasting(), { broadcasting: true, viewers: 42 });
+  steam.video.requestOpfSettings(480);
+  assert.equal(steam.video.getOpfStringForApp(480), "<opf />");
+
+  assert.equal(steam.parental.isParentalLockEnabled(), true);
+  assert.equal(steam.parental.isParentalLockLocked(), false);
+  assert.equal(steam.parental.isAppBlocked(480), true);
+  assert.equal(steam.parental.isAppInBlockList(480), true);
+  assert.equal(steam.parental.isFeatureBlocked(steam.ParentalFeature.Friends), true);
+  assert.equal(steam.parental.isFeatureInBlockList(steam.ParentalFeature.Friends), true);
+});
+
 test("workshop updates and queries normalize progress, IDs, and snake_case fields", async (t) => {
   const fake = createFakeNative();
   const steam = loadSteamWithFakeNative(fake);

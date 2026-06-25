@@ -32,15 +32,22 @@ The native layer currently targets the Steamworks flat C API through
   send-channel close helpers.
 - UGC/Workshop: item create/update/query flows, install/download information,
   subscription list helpers, item state, statistics, and query configuration.
+- Screenshots: screenshot library writes, screenshot triggers/hooks, location
+  and user/published-file tagging, and VR screenshot library writes.
+- Music: playback state, play/pause/previous/next controls, and volume helpers.
+- Video: video URL/OPF request triggers, OPF string fetches, and broadcast
+  status/viewer counts.
+- Parental settings: parental lock state, app block checks, and feature block
+  checks.
 
 ## Not Yet Complete
 
 - Full `ISteamFriends` coverage for buffer-heavy chat reads, profile item APIs,
   and every overlay/social helper.
 - Full stats and leaderboard coverage.
-- `ISteamHTTP`, `ISteamInventory`, `ISteamScreenshots`, `ISteamVideo`,
-  `ISteamMusic`, `ISteamMusicRemote`, `ISteamParentalSettings`, and
-  `ISteamParties`.
+- `ISteamHTTP`, `ISteamInventory`, and `ISteamParties`.
+- `ISteamMusicRemote` is not exposed by the current `steamworks-sys 0.13` macOS
+  bindings used by this crate.
 - Modern networking interfaces: `ISteamNetworkingSockets`,
   `ISteamNetworkingMessages`, and `ISteamNetworkingUtils`.
 - Matchmaking server browser and game server APIs.

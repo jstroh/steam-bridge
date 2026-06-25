@@ -224,6 +224,13 @@ pub struct FollowingListResult {
     pub total_results: i32,
 }
 
+#[derive(Debug)]
+#[napi(object)]
+pub struct VideoBroadcastStatus {
+    pub broadcasting: bool,
+    pub viewers: i32,
+}
+
 #[napi(js_name = "achievementActivate")]
 pub fn achievement_activate(name: String) -> Result<bool, Error> {
     let stats = steam_user_stats()?;
@@ -1258,6 +1265,268 @@ pub fn stats_reset_all(achievements_too: bool) -> Result<bool, Error> {
     })
 }
 
+#[napi(js_name = "screenshotsWriteScreenshot")]
+pub fn screenshots_write_screenshot(rgb: Buffer, width: i32, height: i32) -> Result<u32, Error> {
+    if width <= 0 || height <= 0 {
+        return Err(Error::from_reason(
+            "screenshot width and height must be positive",
+        ));
+    }
+    if rgb.is_empty() {
+        return Err(Error::from_reason("screenshot RGB buffer is empty"));
+    }
+    Ok(unsafe {
+        sys::SteamAPI_ISteamScreenshots_WriteScreenshot(
+            steam_screenshots()?,
+            rgb.as_ptr().cast::<c_void>() as *mut c_void,
+            rgb.len() as u32,
+            width,
+            height,
+        )
+    })
+}
+
+#[napi(js_name = "screenshotsAddScreenshotToLibrary")]
+pub fn screenshots_add_screenshot_to_library(
+    filename: String,
+    thumbnail_filename: Option<String>,
+    width: i32,
+    height: i32,
+) -> Result<u32, Error> {
+    if width <= 0 || height <= 0 {
+        return Err(Error::from_reason(
+            "screenshot width and height must be positive",
+        ));
+    }
+    let filename = cstring(filename, "screenshot filename")?;
+    let thumbnail = thumbnail_filename
+        .map(|value| cstring(value, "screenshot thumbnail filename"))
+        .transpose()?;
+    Ok(unsafe {
+        sys::SteamAPI_ISteamScreenshots_AddScreenshotToLibrary(
+            steam_screenshots()?,
+            filename.as_ptr(),
+            thumbnail
+                .as_ref()
+                .map_or(ptr::null(), |value| value.as_ptr()),
+            width,
+            height,
+        )
+    })
+}
+
+#[napi(js_name = "screenshotsTriggerScreenshot")]
+pub fn screenshots_trigger_screenshot() -> Result<(), Error> {
+    unsafe { sys::SteamAPI_ISteamScreenshots_TriggerScreenshot(steam_screenshots()?) };
+    Ok(())
+}
+
+#[napi(js_name = "screenshotsHookScreenshots")]
+pub fn screenshots_hook_screenshots(hook: bool) -> Result<(), Error> {
+    unsafe { sys::SteamAPI_ISteamScreenshots_HookScreenshots(steam_screenshots()?, hook) };
+    Ok(())
+}
+
+#[napi(js_name = "screenshotsSetLocation")]
+pub fn screenshots_set_location(handle: u32, location: String) -> Result<bool, Error> {
+    let location = cstring(location, "screenshot location")?;
+    Ok(unsafe {
+        sys::SteamAPI_ISteamScreenshots_SetLocation(steam_screenshots()?, handle, location.as_ptr())
+    })
+}
+
+#[napi(js_name = "screenshotsTagUser")]
+pub fn screenshots_tag_user(handle: u32, steam_id64: BigInt) -> Result<bool, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamScreenshots_TagUser(
+            steam_screenshots()?,
+            handle,
+            bigint_to_u64(steam_id64, "steamId64")?,
+        )
+    })
+}
+
+#[napi(js_name = "screenshotsTagPublishedFile")]
+pub fn screenshots_tag_published_file(
+    handle: u32,
+    published_file_id: BigInt,
+) -> Result<bool, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamScreenshots_TagPublishedFile(
+            steam_screenshots()?,
+            handle,
+            bigint_to_u64(published_file_id, "publishedFileId")?,
+        )
+    })
+}
+
+#[napi(js_name = "screenshotsIsScreenshotsHooked")]
+pub fn screenshots_is_screenshots_hooked() -> Result<bool, Error> {
+    Ok(unsafe { sys::SteamAPI_ISteamScreenshots_IsScreenshotsHooked(steam_screenshots()?) })
+}
+
+#[napi(js_name = "screenshotsAddVrScreenshotToLibrary")]
+pub fn screenshots_add_vr_screenshot_to_library(
+    vr_type: u32,
+    filename: String,
+    vr_filename: String,
+) -> Result<u32, Error> {
+    let filename = cstring(filename, "screenshot filename")?;
+    let vr_filename = cstring(vr_filename, "VR screenshot filename")?;
+    Ok(unsafe {
+        sys::SteamAPI_ISteamScreenshots_AddVRScreenshotToLibrary(
+            steam_screenshots()?,
+            vr_screenshot_type_from_u32(vr_type)?,
+            filename.as_ptr(),
+            vr_filename.as_ptr(),
+        )
+    })
+}
+
+#[napi(js_name = "musicIsEnabled")]
+pub fn music_is_enabled() -> Result<bool, Error> {
+    Ok(unsafe { sys::SteamAPI_ISteamMusic_BIsEnabled(steam_music()?) })
+}
+
+#[napi(js_name = "musicIsPlaying")]
+pub fn music_is_playing() -> Result<bool, Error> {
+    Ok(unsafe { sys::SteamAPI_ISteamMusic_BIsPlaying(steam_music()?) })
+}
+
+#[napi(js_name = "musicGetPlaybackStatus")]
+pub fn music_get_playback_status() -> Result<u32, Error> {
+    Ok(unsafe { sys::SteamAPI_ISteamMusic_GetPlaybackStatus(steam_music()?) as u32 })
+}
+
+#[napi(js_name = "musicPlay")]
+pub fn music_play() -> Result<(), Error> {
+    unsafe { sys::SteamAPI_ISteamMusic_Play(steam_music()?) };
+    Ok(())
+}
+
+#[napi(js_name = "musicPause")]
+pub fn music_pause() -> Result<(), Error> {
+    unsafe { sys::SteamAPI_ISteamMusic_Pause(steam_music()?) };
+    Ok(())
+}
+
+#[napi(js_name = "musicPlayPrevious")]
+pub fn music_play_previous() -> Result<(), Error> {
+    unsafe { sys::SteamAPI_ISteamMusic_PlayPrevious(steam_music()?) };
+    Ok(())
+}
+
+#[napi(js_name = "musicPlayNext")]
+pub fn music_play_next() -> Result<(), Error> {
+    unsafe { sys::SteamAPI_ISteamMusic_PlayNext(steam_music()?) };
+    Ok(())
+}
+
+#[napi(js_name = "musicSetVolume")]
+pub fn music_set_volume(volume: f64) -> Result<(), Error> {
+    if !volume.is_finite() || !(0.0..=1.0).contains(&volume) {
+        return Err(Error::from_reason(
+            "Steam Music volume must be between 0 and 1",
+        ));
+    }
+    unsafe { sys::SteamAPI_ISteamMusic_SetVolume(steam_music()?, volume as f32) };
+    Ok(())
+}
+
+#[napi(js_name = "musicGetVolume")]
+pub fn music_get_volume() -> Result<f64, Error> {
+    Ok(unsafe { sys::SteamAPI_ISteamMusic_GetVolume(steam_music()?) } as f64)
+}
+
+#[napi(js_name = "videoRequestVideoUrl")]
+pub fn video_request_video_url(app_id: u32) -> Result<(), Error> {
+    unsafe { sys::SteamAPI_ISteamVideo_GetVideoURL(steam_video()?, app_id) };
+    Ok(())
+}
+
+#[napi(js_name = "videoIsBroadcasting")]
+pub fn video_is_broadcasting() -> Result<VideoBroadcastStatus, Error> {
+    let mut viewers = 0;
+    let broadcasting =
+        unsafe { sys::SteamAPI_ISteamVideo_IsBroadcasting(steam_video()?, &mut viewers) };
+    Ok(VideoBroadcastStatus {
+        broadcasting,
+        viewers,
+    })
+}
+
+#[napi(js_name = "videoRequestOpfSettings")]
+pub fn video_request_opf_settings(app_id: u32) -> Result<(), Error> {
+    unsafe { sys::SteamAPI_ISteamVideo_GetOPFSettings(steam_video()?, app_id) };
+    Ok(())
+}
+
+#[napi(js_name = "videoGetOpfStringForApp")]
+pub fn video_get_opf_string_for_app(app_id: u32) -> Result<Option<String>, Error> {
+    let video = steam_video()?;
+    let mut size = 0i32;
+    unsafe {
+        sys::SteamAPI_ISteamVideo_GetOPFStringForApp(video, app_id, ptr::null_mut(), &mut size);
+    }
+    if size <= 0 {
+        return Ok(None);
+    }
+
+    let mut buf = vec![0i8; size as usize];
+    let ok = unsafe {
+        sys::SteamAPI_ISteamVideo_GetOPFStringForApp(video, app_id, buf.as_mut_ptr(), &mut size)
+    };
+    Ok(ok.then(|| c_buf_to_string(&buf)))
+}
+
+#[napi(js_name = "parentalIsParentalLockEnabled")]
+pub fn parental_is_parental_lock_enabled() -> Result<bool, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamParentalSettings_BIsParentalLockEnabled(steam_parental_settings()?)
+    })
+}
+
+#[napi(js_name = "parentalIsParentalLockLocked")]
+pub fn parental_is_parental_lock_locked() -> Result<bool, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamParentalSettings_BIsParentalLockLocked(steam_parental_settings()?)
+    })
+}
+
+#[napi(js_name = "parentalIsAppBlocked")]
+pub fn parental_is_app_blocked(app_id: u32) -> Result<bool, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamParentalSettings_BIsAppBlocked(steam_parental_settings()?, app_id)
+    })
+}
+
+#[napi(js_name = "parentalIsAppInBlockList")]
+pub fn parental_is_app_in_block_list(app_id: u32) -> Result<bool, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamParentalSettings_BIsAppInBlockList(steam_parental_settings()?, app_id)
+    })
+}
+
+#[napi(js_name = "parentalIsFeatureBlocked")]
+pub fn parental_is_feature_blocked(feature: u32) -> Result<bool, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamParentalSettings_BIsFeatureBlocked(
+            steam_parental_settings()?,
+            parental_feature_from_u32(feature)?,
+        )
+    })
+}
+
+#[napi(js_name = "parentalIsFeatureInBlockList")]
+pub fn parental_is_feature_in_block_list(feature: u32) -> Result<bool, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamParentalSettings_BIsFeatureInBlockList(
+            steam_parental_settings()?,
+            parental_feature_from_u32(feature)?,
+        )
+    })
+}
+
 #[napi(js_name = "overlayActivateDialogToUser")]
 pub fn overlay_activate_dialog_to_user(dialog: String, steam_id64: BigInt) -> Result<(), Error> {
     let dialog = cstring(dialog, "overlay dialog")?;
@@ -2238,6 +2507,69 @@ fn steam_matchmaking() -> Result<*mut sys::ISteamMatchmaking, Error> {
 fn steam_ugc() -> Result<*mut sys::ISteamUGC, Error> {
     crate::state::ensure_initialized()?;
     non_null(unsafe { sys::SteamAPI_SteamUGC_v021() }, "ISteamUGC")
+}
+
+fn steam_screenshots() -> Result<*mut sys::ISteamScreenshots, Error> {
+    crate::state::ensure_initialized()?;
+    non_null(
+        unsafe { sys::SteamAPI_SteamScreenshots_v003() },
+        "ISteamScreenshots",
+    )
+}
+
+fn steam_music() -> Result<*mut sys::ISteamMusic, Error> {
+    crate::state::ensure_initialized()?;
+    non_null(unsafe { sys::SteamAPI_SteamMusic_v001() }, "ISteamMusic")
+}
+
+fn steam_video() -> Result<*mut sys::ISteamVideo, Error> {
+    crate::state::ensure_initialized()?;
+    non_null(unsafe { sys::SteamAPI_SteamVideo_v007() }, "ISteamVideo")
+}
+
+fn steam_parental_settings() -> Result<*mut sys::ISteamParentalSettings, Error> {
+    crate::state::ensure_initialized()?;
+    non_null(
+        unsafe { sys::SteamAPI_SteamParentalSettings_v001() },
+        "ISteamParentalSettings",
+    )
+}
+
+fn vr_screenshot_type_from_u32(value: u32) -> Result<sys::EVRScreenshotType, Error> {
+    match value {
+        0 => Ok(sys::EVRScreenshotType::k_EVRScreenshotType_None),
+        1 => Ok(sys::EVRScreenshotType::k_EVRScreenshotType_Mono),
+        2 => Ok(sys::EVRScreenshotType::k_EVRScreenshotType_Stereo),
+        3 => Ok(sys::EVRScreenshotType::k_EVRScreenshotType_MonoCubemap),
+        4 => Ok(sys::EVRScreenshotType::k_EVRScreenshotType_MonoPanorama),
+        5 => Ok(sys::EVRScreenshotType::k_EVRScreenshotType_StereoPanorama),
+        _ => Err(Error::from_reason(format!(
+            "invalid VR screenshot type {value}"
+        ))),
+    }
+}
+
+fn parental_feature_from_u32(value: u32) -> Result<sys::EParentalFeature, Error> {
+    match value {
+        0 => Ok(sys::EParentalFeature::k_EFeatureInvalid),
+        1 => Ok(sys::EParentalFeature::k_EFeatureStore),
+        2 => Ok(sys::EParentalFeature::k_EFeatureCommunity),
+        3 => Ok(sys::EParentalFeature::k_EFeatureProfile),
+        4 => Ok(sys::EParentalFeature::k_EFeatureFriends),
+        5 => Ok(sys::EParentalFeature::k_EFeatureNews),
+        6 => Ok(sys::EParentalFeature::k_EFeatureTrading),
+        7 => Ok(sys::EParentalFeature::k_EFeatureSettings),
+        8 => Ok(sys::EParentalFeature::k_EFeatureConsole),
+        9 => Ok(sys::EParentalFeature::k_EFeatureBrowser),
+        10 => Ok(sys::EParentalFeature::k_EFeatureParentalSetup),
+        11 => Ok(sys::EParentalFeature::k_EFeatureLibrary),
+        12 => Ok(sys::EParentalFeature::k_EFeatureTest),
+        13 => Ok(sys::EParentalFeature::k_EFeatureSiteLicense),
+        14 => Ok(sys::EParentalFeature::k_EFeatureKioskMode_Deprecated),
+        _ => Err(Error::from_reason(format!(
+            "invalid parental feature {value}"
+        ))),
+    }
 }
 
 fn bigint_to_u64(value: BigInt, label: &str) -> Result<u64, Error> {

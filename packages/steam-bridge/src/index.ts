@@ -21,6 +21,7 @@ import {
   NativeP2PPacket,
   NativeSteamId,
   NativeUgcResult,
+  NativeVideoBroadcastStatus,
   NativeWorkshopItem,
   NativeWorkshopItemsResult
 } from "./native";
@@ -136,6 +137,11 @@ export interface P2PPacket {
   data: Buffer;
   size: number;
   steamId: SteamId;
+}
+
+export interface VideoBroadcastStatus {
+  broadcasting: boolean;
+  viewers: number;
 }
 
 export interface AnalogActionVector {
@@ -312,6 +318,40 @@ export const ChatRoomEnterResponse = {
   MemberBlockedYou: 10,
   YouBlockedMember: 11,
   RatelimitExceeded: 15
+} as const;
+
+export const VRScreenshotType = {
+  None: 0,
+  Mono: 1,
+  Stereo: 2,
+  MonoCubemap: 3,
+  MonoPanorama: 4,
+  StereoPanorama: 5
+} as const;
+
+export const AudioPlaybackStatus = {
+  Undefined: 0,
+  Playing: 1,
+  Paused: 2,
+  Idle: 3
+} as const;
+
+export const ParentalFeature = {
+  Invalid: 0,
+  Store: 1,
+  Community: 2,
+  Profile: 3,
+  Friends: 4,
+  News: 5,
+  Trading: 6,
+  Settings: 7,
+  Console: 8,
+  Browser: 9,
+  ParentalSetup: 10,
+  Library: 11,
+  Test: 12,
+  SiteLicense: 13,
+  KioskModeDeprecated: 14
 } as const;
 
 export const InputType = {
@@ -1116,6 +1156,110 @@ export const stats = {
   }
 };
 
+export const screenshots = {
+  VRScreenshotType,
+  writeScreenshot(rgb: Buffer, width: number, height: number): number {
+    return native().screenshotsWriteScreenshot(rgb, width, height);
+  },
+  addScreenshotToLibrary(
+    filename: string,
+    thumbnailFilename: string | null | undefined,
+    width: number,
+    height: number
+  ): number {
+    return native().screenshotsAddScreenshotToLibrary(filename, thumbnailFilename, width, height);
+  },
+  triggerScreenshot(): void {
+    native().screenshotsTriggerScreenshot();
+  },
+  hookScreenshots(hook: boolean): void {
+    native().screenshotsHookScreenshots(hook);
+  },
+  setLocation(handle: number, location: string): boolean {
+    return native().screenshotsSetLocation(handle, location);
+  },
+  tagUser(handle: number, steamId64: bigint): boolean {
+    return native().screenshotsTagUser(handle, steamId64);
+  },
+  tagPublishedFile(handle: number, publishedFileId: bigint): boolean {
+    return native().screenshotsTagPublishedFile(handle, publishedFileId);
+  },
+  isScreenshotsHooked(): boolean {
+    return native().screenshotsIsScreenshotsHooked();
+  },
+  addVrScreenshotToLibrary(vrType: number, filename: string, vrFilename: string): number {
+    return native().screenshotsAddVrScreenshotToLibrary(vrType, filename, vrFilename);
+  }
+};
+
+export const music = {
+  AudioPlaybackStatus,
+  isEnabled(): boolean {
+    return native().musicIsEnabled();
+  },
+  isPlaying(): boolean {
+    return native().musicIsPlaying();
+  },
+  getPlaybackStatus(): number {
+    return native().musicGetPlaybackStatus();
+  },
+  play(): void {
+    native().musicPlay();
+  },
+  pause(): void {
+    native().musicPause();
+  },
+  playPrevious(): void {
+    native().musicPlayPrevious();
+  },
+  playNext(): void {
+    native().musicPlayNext();
+  },
+  setVolume(volume: number): void {
+    native().musicSetVolume(volume);
+  },
+  getVolume(): number {
+    return native().musicGetVolume();
+  }
+};
+
+export const video = {
+  requestVideoUrl(appId: number): void {
+    native().videoRequestVideoUrl(appId);
+  },
+  isBroadcasting(): VideoBroadcastStatus {
+    return normalizeVideoBroadcastStatus(native().videoIsBroadcasting());
+  },
+  requestOpfSettings(appId: number): void {
+    native().videoRequestOpfSettings(appId);
+  },
+  getOpfStringForApp(appId: number): string | null {
+    return native().videoGetOpfStringForApp(appId) ?? null;
+  }
+};
+
+export const parental = {
+  ParentalFeature,
+  isParentalLockEnabled(): boolean {
+    return native().parentalIsParentalLockEnabled();
+  },
+  isParentalLockLocked(): boolean {
+    return native().parentalIsParentalLockLocked();
+  },
+  isAppBlocked(appId: number): boolean {
+    return native().parentalIsAppBlocked(appId);
+  },
+  isAppInBlockList(appId: number): boolean {
+    return native().parentalIsAppInBlockList(appId);
+  },
+  isFeatureBlocked(feature: number): boolean {
+    return native().parentalIsFeatureBlocked(feature);
+  },
+  isFeatureInBlockList(feature: number): boolean {
+    return native().parentalIsFeatureInBlockList(feature);
+  }
+};
+
 export const utils = {
   GamepadTextInputMode,
   GamepadTextInputLineMode,
@@ -1273,8 +1417,12 @@ export interface SteamBridgeClient {
   matchmaking: typeof matchmaking;
   networking: typeof networking;
   overlay: typeof overlay;
+  music: typeof music;
+  parental: typeof parental;
+  screenshots: typeof screenshots;
   stats: typeof stats;
   utils: typeof utils;
+  video: typeof video;
   workshop: typeof workshop;
 }
 
@@ -1291,8 +1439,12 @@ export function createCompatibilityClient(): SteamBridgeClient {
     matchmaking,
     networking,
     overlay,
+    music,
+    parental,
+    screenshots,
     stats,
     utils,
+    video,
     workshop
   };
 }
@@ -1576,6 +1728,13 @@ function normalizeP2PPacket(packet: NativeP2PPacket): P2PPacket {
   };
 }
 
+function normalizeVideoBroadcastStatus(status: NativeVideoBroadcastStatus): VideoBroadcastStatus {
+  return {
+    broadcasting: Boolean(status.broadcasting),
+    viewers: Number(status.viewers)
+  };
+}
+
 function normalizeUgcResult(result: NativeUgcResult): UgcResult {
   return {
     itemId: BigInt(result.itemId ?? result.item_id ?? 0n),
@@ -1704,8 +1863,12 @@ const defaultExport = {
   matchmaking,
   networking,
   overlay,
+  music,
+  parental,
+  screenshots,
   stats,
   utils,
+  video,
   workshop,
   electronConfigureSteamOverlay,
   electronEnableSteamOverlay,

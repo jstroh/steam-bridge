@@ -151,6 +151,11 @@ export interface NativeFollowingListResult {
   total_results?: number;
 }
 
+export interface NativeVideoBroadcastStatus {
+  broadcasting: boolean;
+  viewers: number;
+}
+
 export interface NativeBinding {
   init(appId: number): void;
   shutdown(): void;
@@ -305,6 +310,38 @@ export interface NativeBinding {
   statsSetInt(name: string, value: number): boolean;
   statsStore(): boolean;
   statsResetAll(achievementsToo: boolean): boolean;
+
+  screenshotsWriteScreenshot(rgb: Buffer, width: number, height: number): number;
+  screenshotsAddScreenshotToLibrary(filename: string, thumbnailFilename: string | null | undefined, width: number, height: number): number;
+  screenshotsTriggerScreenshot(): void;
+  screenshotsHookScreenshots(hook: boolean): void;
+  screenshotsSetLocation(handle: number, location: string): boolean;
+  screenshotsTagUser(handle: number, steamId64: bigint): boolean;
+  screenshotsTagPublishedFile(handle: number, publishedFileId: bigint): boolean;
+  screenshotsIsScreenshotsHooked(): boolean;
+  screenshotsAddVrScreenshotToLibrary(vrType: number, filename: string, vrFilename: string): number;
+
+  musicIsEnabled(): boolean;
+  musicIsPlaying(): boolean;
+  musicGetPlaybackStatus(): number;
+  musicPlay(): void;
+  musicPause(): void;
+  musicPlayPrevious(): void;
+  musicPlayNext(): void;
+  musicSetVolume(volume: number): void;
+  musicGetVolume(): number;
+
+  videoRequestVideoUrl(appId: number): void;
+  videoIsBroadcasting(): NativeVideoBroadcastStatus;
+  videoRequestOpfSettings(appId: number): void;
+  videoGetOpfStringForApp(appId: number): string | null | undefined;
+
+  parentalIsParentalLockEnabled(): boolean;
+  parentalIsParentalLockLocked(): boolean;
+  parentalIsAppBlocked(appId: number): boolean;
+  parentalIsAppInBlockList(appId: number): boolean;
+  parentalIsFeatureBlocked(feature: number): boolean;
+  parentalIsFeatureInBlockList(feature: number): boolean;
 
   networkingSendP2PPacket(steamId64: bigint, sendType: number, data: Buffer): boolean;
   networkingIsP2PPacketAvailable(): number;
