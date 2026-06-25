@@ -77,8 +77,8 @@ The native layer currently targets the Steamworks flat C API through
   reads, eligible promo definition queries, purchase and price requests, dynamic
   property updates, inspect tokens, and inventory callbacks.
 - Networking: legacy P2P send, receive, availability, session accept/close,
-  send-channel close helpers, and modern `ISteamNetworkingMessages`
-  identity/session/message send and receive flows, core
+  send-channel close helpers, modern client and game-server
+  `ISteamNetworkingMessages` identity/session/message send and receive flows, core
   `ISteamNetworkingSockets` connection/listen-socket/single and batch
   message/poll-group helpers, relay-auth-ticket cache helpers, hosted
   dedicated connect/listen helpers, hosted dedicated address and game
@@ -114,7 +114,8 @@ The native layer currently targets the Steamworks flat C API through
   game-socket-share packet helpers, unauthenticated/deprecated user connection
   helpers, user data updates, server reputation, clan association and new-player
   compatibility call results, core game-server callbacks, game-server stats
-  request/read/write/store helpers, and the game-server HTTP shared interface.
+  request/read/write/store helpers, and game-server HTTP and networking
+  messages shared interfaces.
 
 ## Not Yet Complete
 

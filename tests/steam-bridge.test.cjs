@@ -912,6 +912,8 @@ test("init reads the Steam app ID from the environment and returns the grouped c
   assert.equal(client.gameServer, steam.gameServer);
   assert.equal(client.gameServerHttp, steam.gameServerHttp);
   assert.equal(steam.default.gameServerHttp, steam.gameServerHttp);
+  assert.equal(client.gameServerNetworkingMessages, steam.gameServerNetworkingMessages);
+  assert.equal(steam.default.gameServerNetworkingMessages, steam.gameServerNetworkingMessages);
   assert.equal(client.gameServerStats, steam.gameServerStats);
   assert.equal(client.http, steam.http);
   assert.equal(client.inventory, steam.inventory);
@@ -3461,6 +3463,183 @@ test("networking messages facade covers identity, message, session, and callback
   assert.deepEqual(fake.calls.find((call) => call.method === "networkingMessagesSendMessageToUser"), {
     method: "networkingMessagesSendMessageToUser",
     args: [identity, Buffer.from("payload"), 8, 2]
+  });
+});
+
+test("game server networking messages facade dispatches through game server natives", (t) => {
+  const peer = { identity_type: 16, text: "steamid:76561198000000011", steam_id64: "76561198000000011" };
+  const quickStatus = {
+    state: 3,
+    ping: 24,
+    connection_quality_local: 0.8,
+    connection_quality_remote: 0.75,
+    out_packets_per_second: 3.5,
+    out_bytes_per_second: 512.5,
+    in_packets_per_second: 2.5,
+    in_bytes_per_second: 256.25,
+    send_rate_bytes_per_second: 1024,
+    pending_unreliable: 2,
+    pending_reliable: 3,
+    sent_unacked_reliable: 4,
+    queue_time: "6000",
+    max_jitter: 60
+  };
+  const fake = createFakeNative({
+    networkingIdentityToString(identity) {
+      this.calls.push({ method: "networkingIdentityToString", args: [identity] });
+      return identity.steamId64 ? `steamid:${identity.steamId64}` : identity.text;
+    },
+    networkingIdentityParse(text) {
+      this.calls.push({ method: "networkingIdentityParse", args: [text] });
+      return text === "bad" ? null : peer;
+    },
+    gameServerNetworkingMessagesSendMessageToUser(identity, data, sendFlags, channel) {
+      this.calls.push({
+        method: "gameServerNetworkingMessagesSendMessageToUser",
+        args: [identity, data, sendFlags, channel]
+      });
+      return 1;
+    },
+    gameServerNetworkingMessagesReceiveMessagesOnChannel(channel, maxMessages) {
+      this.calls.push({ method: "gameServerNetworkingMessagesReceiveMessagesOnChannel", args: [channel, maxMessages] });
+      return [
+        {
+          data: Buffer.from("server-payload"),
+          size: 14,
+          peer,
+          connection: 100,
+          connection_user_data: "124",
+          time_received: "457",
+          message_number: "8",
+          channel,
+          flags: 8,
+          user_data: "10",
+          lane: 2
+        }
+      ];
+    },
+    gameServerNetworkingMessagesAcceptSessionWithUser(identity) {
+      this.calls.push({ method: "gameServerNetworkingMessagesAcceptSessionWithUser", args: [identity] });
+      return true;
+    },
+    gameServerNetworkingMessagesCloseSessionWithUser(identity) {
+      this.calls.push({ method: "gameServerNetworkingMessagesCloseSessionWithUser", args: [identity] });
+      return true;
+    },
+    gameServerNetworkingMessagesCloseChannelWithUser(identity, channel) {
+      this.calls.push({ method: "gameServerNetworkingMessagesCloseChannelWithUser", args: [identity, channel] });
+      return true;
+    },
+    gameServerNetworkingMessagesGetSessionConnectionInfo(identity) {
+      this.calls.push({ method: "gameServerNetworkingMessagesGetSessionConnectionInfo", args: [identity] });
+      return {
+        state: 3,
+        remote_identity: peer,
+        user_data: "13",
+        listen_socket: 0,
+        remote_pop: 1111,
+        relay_pop: 2222,
+        end_reason: 0,
+        end_debug: "",
+        connection_description: "game server session to peer",
+        flags: 5,
+        quick_status: quickStatus
+      };
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  const identity = { steamId64: 76561198000000011n };
+  assert.equal(steam.gameServerNetworkingMessages.SendFlags.Reliable, 8);
+  assert.equal(steam.gameServerNetworkingMessages.ConnectionState.Connected, 3);
+  assert.equal(steam.gameServerNetworkingMessages.identityToString(identity), "steamid:76561198000000011");
+  assert.deepEqual(steam.gameServerNetworkingMessages.parseIdentity("steamid:76561198000000011"), {
+    identityType: 16,
+    text: "steamid:76561198000000011",
+    steamId64: 76561198000000011n,
+    genericString: null,
+    localHost: false,
+    invalid: false,
+    fakeIpType: 0
+  });
+  assert.equal(steam.gameServerNetworkingMessages.parseIdentity("bad"), null);
+  assert.equal(
+    steam.gameServerNetworkingMessages.sendMessageToUser(
+      identity,
+      Buffer.from("server-payload"),
+      steam.gameServerNetworkingMessages.SendFlags.Reliable,
+      3
+    ),
+    1
+  );
+  assert.deepEqual(steam.gameServerNetworkingMessages.receiveMessagesOnChannel(3, 2), [
+    {
+      data: Buffer.from("server-payload"),
+      size: 14,
+      peer: {
+        identityType: 16,
+        text: "steamid:76561198000000011",
+        steamId64: 76561198000000011n,
+        genericString: null,
+        localHost: false,
+        invalid: false,
+        fakeIpType: 0
+      },
+      connection: 100,
+      connectionUserData: 124n,
+      timeReceived: 457n,
+      messageNumber: 8n,
+      channel: 3,
+      flags: 8,
+      userData: 10n,
+      lane: 2
+    }
+  ]);
+  assert.equal(steam.gameServerNetworkingMessages.acceptSessionWithUser(identity), true);
+  assert.equal(steam.gameServerNetworkingMessages.closeSessionWithUser(identity), true);
+  assert.equal(steam.gameServerNetworkingMessages.closeChannelWithUser(identity, 3), true);
+  assert.deepEqual(steam.gameServerNetworkingMessages.getSessionConnectionInfo(identity), {
+    state: 3,
+    remoteIdentity: {
+      identityType: 16,
+      text: "steamid:76561198000000011",
+      steamId64: 76561198000000011n,
+      genericString: null,
+      localHost: false,
+      invalid: false,
+      fakeIpType: 0
+    },
+    userData: 13n,
+    listenSocket: 0,
+    remotePop: 1111,
+    relayPop: 2222,
+    endReason: 0,
+    endDebug: "",
+    connectionDescription: "game server session to peer",
+    flags: 5,
+    quickStatus: {
+      state: 3,
+      ping: 24,
+      connectionQualityLocal: 0.8,
+      connectionQualityRemote: 0.75,
+      outPacketsPerSecond: 3.5,
+      outBytesPerSecond: 512.5,
+      inPacketsPerSecond: 2.5,
+      inBytesPerSecond: 256.25,
+      sendRateBytesPerSecond: 1024,
+      pendingUnreliable: 2,
+      pendingReliable: 3,
+      sentUnackedReliable: 4,
+      queueTime: 6000n,
+      maxJitter: 60
+    }
+  });
+
+  assert.deepEqual(fake.calls.find((call) => call.method === "gameServerNetworkingMessagesSendMessageToUser"), {
+    method: "gameServerNetworkingMessagesSendMessageToUser",
+    args: [identity, Buffer.from("server-payload"), 8, 3]
   });
 });
 

@@ -9652,8 +9652,10 @@ pub fn networking_identity_parse(text: String) -> Result<Option<NetworkingIdenti
     Ok(ok.then(|| networking_identity_info(identity)))
 }
 
-#[napi(js_name = "networkingMessagesSendMessageToUser")]
-pub fn networking_messages_send_message_to_user(
+type SteamNetworkingMessagesAccessor = fn() -> Result<*mut sys::ISteamNetworkingMessages, Error>;
+
+fn networking_messages_send_message_to_user_with(
+    accessor: SteamNetworkingMessagesAccessor,
     identity: NetworkingIdentity,
     data: Buffer,
     send_flags: Option<i32>,
@@ -9662,7 +9664,7 @@ pub fn networking_messages_send_message_to_user(
     let identity = networking_identity_from_input(identity)?;
     let result = unsafe {
         sys::SteamAPI_ISteamNetworkingMessages_SendMessageToUser(
-            steam_networking_messages()?,
+            accessor()?,
             &identity,
             data.as_ptr().cast::<c_void>(),
             len_to_u32(data.len(), "networking message")?,
@@ -9673,8 +9675,8 @@ pub fn networking_messages_send_message_to_user(
     Ok(result as u32)
 }
 
-#[napi(js_name = "networkingMessagesReceiveMessagesOnChannel")]
-pub fn networking_messages_receive_messages_on_channel(
+fn networking_messages_receive_messages_on_channel_with(
+    accessor: SteamNetworkingMessagesAccessor,
     channel: i32,
     max_messages: Option<u32>,
 ) -> Result<Vec<NetworkingMessage>, Error> {
@@ -9682,7 +9684,7 @@ pub fn networking_messages_receive_messages_on_channel(
     let mut messages = vec![ptr::null_mut(); max_messages as usize];
     let received = unsafe {
         sys::SteamAPI_ISteamNetworkingMessages_ReceiveMessagesOnChannel(
-            steam_networking_messages()?,
+            accessor()?,
             channel,
             messages.as_mut_ptr(),
             max_messages as i32,
@@ -9704,49 +9706,39 @@ pub fn networking_messages_receive_messages_on_channel(
     Ok(output)
 }
 
-#[napi(js_name = "networkingMessagesAcceptSessionWithUser")]
-pub fn networking_messages_accept_session_with_user(
+fn networking_messages_accept_session_with_user_with(
+    accessor: SteamNetworkingMessagesAccessor,
     identity: NetworkingIdentity,
 ) -> Result<bool, Error> {
     let identity = networking_identity_from_input(identity)?;
     Ok(unsafe {
-        sys::SteamAPI_ISteamNetworkingMessages_AcceptSessionWithUser(
-            steam_networking_messages()?,
-            &identity,
-        )
+        sys::SteamAPI_ISteamNetworkingMessages_AcceptSessionWithUser(accessor()?, &identity)
     })
 }
 
-#[napi(js_name = "networkingMessagesCloseSessionWithUser")]
-pub fn networking_messages_close_session_with_user(
+fn networking_messages_close_session_with_user_with(
+    accessor: SteamNetworkingMessagesAccessor,
     identity: NetworkingIdentity,
 ) -> Result<bool, Error> {
     let identity = networking_identity_from_input(identity)?;
     Ok(unsafe {
-        sys::SteamAPI_ISteamNetworkingMessages_CloseSessionWithUser(
-            steam_networking_messages()?,
-            &identity,
-        )
+        sys::SteamAPI_ISteamNetworkingMessages_CloseSessionWithUser(accessor()?, &identity)
     })
 }
 
-#[napi(js_name = "networkingMessagesCloseChannelWithUser")]
-pub fn networking_messages_close_channel_with_user(
+fn networking_messages_close_channel_with_user_with(
+    accessor: SteamNetworkingMessagesAccessor,
     identity: NetworkingIdentity,
     channel: i32,
 ) -> Result<bool, Error> {
     let identity = networking_identity_from_input(identity)?;
     Ok(unsafe {
-        sys::SteamAPI_ISteamNetworkingMessages_CloseChannelWithUser(
-            steam_networking_messages()?,
-            &identity,
-            channel,
-        )
+        sys::SteamAPI_ISteamNetworkingMessages_CloseChannelWithUser(accessor()?, &identity, channel)
     })
 }
 
-#[napi(js_name = "networkingMessagesGetSessionConnectionInfo")]
-pub fn networking_messages_get_session_connection_info(
+fn networking_messages_get_session_connection_info_with(
+    accessor: SteamNetworkingMessagesAccessor,
     identity: NetworkingIdentity,
 ) -> Result<NetworkingMessagesSessionConnectionInfo, Error> {
     let identity = networking_identity_from_input(identity)?;
@@ -9755,7 +9747,7 @@ pub fn networking_messages_get_session_connection_info(
         unsafe { MaybeUninit::<sys::SteamNetConnectionRealTimeStatus_t>::zeroed().assume_init() };
     let state = unsafe {
         sys::SteamAPI_ISteamNetworkingMessages_GetSessionConnectionInfo(
-            steam_networking_messages()?,
+            accessor()?,
             &identity,
             &mut info,
             &mut quick_status,
@@ -9766,6 +9758,133 @@ pub fn networking_messages_get_session_connection_info(
         &info,
         &quick_status,
     ))
+}
+
+#[napi(js_name = "networkingMessagesSendMessageToUser")]
+pub fn networking_messages_send_message_to_user(
+    identity: NetworkingIdentity,
+    data: Buffer,
+    send_flags: Option<i32>,
+    channel: Option<i32>,
+) -> Result<u32, Error> {
+    networking_messages_send_message_to_user_with(
+        steam_networking_messages,
+        identity,
+        data,
+        send_flags,
+        channel,
+    )
+}
+
+#[napi(js_name = "networkingMessagesReceiveMessagesOnChannel")]
+pub fn networking_messages_receive_messages_on_channel(
+    channel: i32,
+    max_messages: Option<u32>,
+) -> Result<Vec<NetworkingMessage>, Error> {
+    networking_messages_receive_messages_on_channel_with(
+        steam_networking_messages,
+        channel,
+        max_messages,
+    )
+}
+
+#[napi(js_name = "networkingMessagesAcceptSessionWithUser")]
+pub fn networking_messages_accept_session_with_user(
+    identity: NetworkingIdentity,
+) -> Result<bool, Error> {
+    networking_messages_accept_session_with_user_with(steam_networking_messages, identity)
+}
+
+#[napi(js_name = "networkingMessagesCloseSessionWithUser")]
+pub fn networking_messages_close_session_with_user(
+    identity: NetworkingIdentity,
+) -> Result<bool, Error> {
+    networking_messages_close_session_with_user_with(steam_networking_messages, identity)
+}
+
+#[napi(js_name = "networkingMessagesCloseChannelWithUser")]
+pub fn networking_messages_close_channel_with_user(
+    identity: NetworkingIdentity,
+    channel: i32,
+) -> Result<bool, Error> {
+    networking_messages_close_channel_with_user_with(steam_networking_messages, identity, channel)
+}
+
+#[napi(js_name = "networkingMessagesGetSessionConnectionInfo")]
+pub fn networking_messages_get_session_connection_info(
+    identity: NetworkingIdentity,
+) -> Result<NetworkingMessagesSessionConnectionInfo, Error> {
+    networking_messages_get_session_connection_info_with(steam_networking_messages, identity)
+}
+
+#[napi(js_name = "gameServerNetworkingMessagesSendMessageToUser")]
+pub fn game_server_networking_messages_send_message_to_user(
+    identity: NetworkingIdentity,
+    data: Buffer,
+    send_flags: Option<i32>,
+    channel: Option<i32>,
+) -> Result<u32, Error> {
+    networking_messages_send_message_to_user_with(
+        steam_game_server_networking_messages,
+        identity,
+        data,
+        send_flags,
+        channel,
+    )
+}
+
+#[napi(js_name = "gameServerNetworkingMessagesReceiveMessagesOnChannel")]
+pub fn game_server_networking_messages_receive_messages_on_channel(
+    channel: i32,
+    max_messages: Option<u32>,
+) -> Result<Vec<NetworkingMessage>, Error> {
+    networking_messages_receive_messages_on_channel_with(
+        steam_game_server_networking_messages,
+        channel,
+        max_messages,
+    )
+}
+
+#[napi(js_name = "gameServerNetworkingMessagesAcceptSessionWithUser")]
+pub fn game_server_networking_messages_accept_session_with_user(
+    identity: NetworkingIdentity,
+) -> Result<bool, Error> {
+    networking_messages_accept_session_with_user_with(
+        steam_game_server_networking_messages,
+        identity,
+    )
+}
+
+#[napi(js_name = "gameServerNetworkingMessagesCloseSessionWithUser")]
+pub fn game_server_networking_messages_close_session_with_user(
+    identity: NetworkingIdentity,
+) -> Result<bool, Error> {
+    networking_messages_close_session_with_user_with(
+        steam_game_server_networking_messages,
+        identity,
+    )
+}
+
+#[napi(js_name = "gameServerNetworkingMessagesCloseChannelWithUser")]
+pub fn game_server_networking_messages_close_channel_with_user(
+    identity: NetworkingIdentity,
+    channel: i32,
+) -> Result<bool, Error> {
+    networking_messages_close_channel_with_user_with(
+        steam_game_server_networking_messages,
+        identity,
+        channel,
+    )
+}
+
+#[napi(js_name = "gameServerNetworkingMessagesGetSessionConnectionInfo")]
+pub fn game_server_networking_messages_get_session_connection_info(
+    identity: NetworkingIdentity,
+) -> Result<NetworkingMessagesSessionConnectionInfo, Error> {
+    networking_messages_get_session_connection_info_with(
+        steam_game_server_networking_messages,
+        identity,
+    )
 }
 
 #[napi(js_name = "networkingSocketsCreateListenSocketIp")]
@@ -13859,6 +13978,14 @@ fn steam_networking_messages() -> Result<*mut sys::ISteamNetworkingMessages, Err
     crate::state::ensure_initialized()?;
     non_null(
         unsafe { sys::SteamAPI_SteamNetworkingMessages_SteamAPI_v002() },
+        "ISteamNetworkingMessages",
+    )
+}
+
+fn steam_game_server_networking_messages() -> Result<*mut sys::ISteamNetworkingMessages, Error> {
+    crate::state::ensure_game_server_initialized()?;
+    non_null(
+        unsafe { sys::SteamAPI_SteamGameServerNetworkingMessages_SteamAPI_v002() },
         "ISteamNetworkingMessages",
     )
 }

@@ -2067,6 +2067,12 @@ export interface NativeBinding {
   networkingMessagesCloseSessionWithUser(identity: NativeNetworkingIdentity): boolean;
   networkingMessagesCloseChannelWithUser(identity: NativeNetworkingIdentity, channel: number): boolean;
   networkingMessagesGetSessionConnectionInfo(identity: NativeNetworkingIdentity): NativeNetworkingMessagesSessionConnectionInfo;
+  gameServerNetworkingMessagesSendMessageToUser(identity: NativeNetworkingIdentity, data: Buffer, sendFlags?: number, channel?: number): number;
+  gameServerNetworkingMessagesReceiveMessagesOnChannel(channel: number, maxMessages?: number): NativeNetworkingMessage[];
+  gameServerNetworkingMessagesAcceptSessionWithUser(identity: NativeNetworkingIdentity): boolean;
+  gameServerNetworkingMessagesCloseSessionWithUser(identity: NativeNetworkingIdentity): boolean;
+  gameServerNetworkingMessagesCloseChannelWithUser(identity: NativeNetworkingIdentity, channel: number): boolean;
+  gameServerNetworkingMessagesGetSessionConnectionInfo(identity: NativeNetworkingIdentity): NativeNetworkingMessagesSessionConnectionInfo;
   networkingSocketsCreateListenSocketIp(address: NativeNetworkingIpAddress): number;
   networkingSocketsConnectByIpAddress(address: NativeNetworkingIpAddress): number;
   networkingSocketsCreateListenSocketP2p(localVirtualPort?: number): number;

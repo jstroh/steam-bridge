@@ -5416,6 +5416,49 @@ export const networking = {
   }
 };
 
+export const gameServerNetworkingMessages = {
+  SendFlags: NetworkingSendFlags,
+  ConnectionState: NetworkingConnectionState,
+  identityToString(identity: NetworkingIdentity): string {
+    return native().networkingIdentityToString(nativeNetworkingIdentity(identity));
+  },
+  parseIdentity(text: string): NetworkingIdentityInfo | null {
+    return normalizeNetworkingIdentityInfo(native().networkingIdentityParse(text));
+  },
+  sendMessageToUser(
+    identity: NetworkingIdentity,
+    data: Buffer | Uint8Array,
+    sendFlags = NetworkingSendFlags.Reliable,
+    channel = 0
+  ): number {
+    return native().gameServerNetworkingMessagesSendMessageToUser(
+      nativeNetworkingIdentity(identity),
+      Buffer.from(data),
+      sendFlags,
+      channel
+    );
+  },
+  receiveMessagesOnChannel(channel = 0, maxMessages?: number | null): NetworkingMessage[] {
+    return native()
+      .gameServerNetworkingMessagesReceiveMessagesOnChannel(channel, maxMessages ?? undefined)
+      .map(normalizeNetworkingMessage);
+  },
+  acceptSessionWithUser(identity: NetworkingIdentity): boolean {
+    return native().gameServerNetworkingMessagesAcceptSessionWithUser(nativeNetworkingIdentity(identity));
+  },
+  closeSessionWithUser(identity: NetworkingIdentity): boolean {
+    return native().gameServerNetworkingMessagesCloseSessionWithUser(nativeNetworkingIdentity(identity));
+  },
+  closeChannelWithUser(identity: NetworkingIdentity, channel: number): boolean {
+    return native().gameServerNetworkingMessagesCloseChannelWithUser(nativeNetworkingIdentity(identity), channel);
+  },
+  getSessionConnectionInfo(identity: NetworkingIdentity): NetworkingMessagesSessionConnectionInfo {
+    return normalizeNetworkingMessagesSessionConnectionInfo(
+      native().gameServerNetworkingMessagesGetSessionConnectionInfo(nativeNetworkingIdentity(identity))
+    );
+  }
+};
+
 export const overlay = {
   Dialog,
   StoreFlag,
@@ -6155,6 +6198,7 @@ export interface SteamBridgeClient {
   friends: typeof friends;
   gameServer: typeof gameServer;
   gameServerHttp: typeof gameServerHttp;
+  gameServerNetworkingMessages: typeof gameServerNetworkingMessages;
   gameServerStats: typeof gameServerStats;
   http: typeof http;
   inventory: typeof inventory;
@@ -6188,6 +6232,7 @@ export function createCompatibilityClient(): SteamBridgeClient {
     friends,
     gameServer,
     gameServerHttp,
+    gameServerNetworkingMessages,
     gameServerStats,
     http,
     inventory,
@@ -8575,6 +8620,7 @@ const defaultExport = {
   friends,
   gameServer,
   gameServerHttp,
+  gameServerNetworkingMessages,
   gameServerStats,
   html,
   http,
