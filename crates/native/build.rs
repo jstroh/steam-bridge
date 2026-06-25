@@ -3,7 +3,17 @@ extern crate napi_build;
 fn main() {
     napi_build::setup();
 
-    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos") {
+    let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+    let target_arch = std::env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default();
+
+    if target_os == "macos" && target_arch != "aarch64" {
+        panic!(
+            "Steam Bridge supports macOS only on Apple Silicon (aarch64-apple-darwin); \
+             target architecture was {target_arch}."
+        );
+    }
+
+    if target_os == "macos" {
         println!("cargo:rerun-if-changed=src/macos_metal_surface.mm");
 
         cc::Build::new()

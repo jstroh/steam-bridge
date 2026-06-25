@@ -18,8 +18,8 @@ the Steamworks SDK in the normal location expected by `steamworks-sys`, or set
 `STEAMWORKS_SDK_PATH` according to your SDK setup.
 
 Prebuild scaffolding currently targets Windows x64, Linux x64, and Apple
-Silicon macOS (`aarch64-apple-darwin`). No other macOS architecture is
-currently supported.
+Silicon macOS (`aarch64-apple-darwin`). Intel macOS is intentionally
+unsupported, and native macOS builds are limited to Apple Silicon.
 
 ## Quick Start
 

@@ -20,9 +20,9 @@ Steamworks SDK files and redistributables are not committed to this repository.
 Use the standard `steamworks-sys` SDK setup or set `STEAMWORKS_SDK_PATH` for
 your local SDK location.
 
-The project currently supports Apple Silicon for macOS
-(`aarch64-apple-darwin`). Do not add other macOS targets unless the support
-policy changes.
+The project supports macOS only on Apple Silicon (`aarch64-apple-darwin`).
+Intel macOS targets are intentionally unsupported and should not be added unless
+the support policy changes.
 
 ## Checks
 
