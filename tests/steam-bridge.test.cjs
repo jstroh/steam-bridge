@@ -86,6 +86,18 @@ function createFakeNative(overrides = {}) {
     setTryCatchCallbacks(enabled) {
       calls.push({ method: "setTryCatchCallbacks", args: [enabled] });
     },
+    setMiniDumpComment(comment) {
+      calls.push({ method: "setMiniDumpComment", args: [comment] });
+    },
+    writeMiniDump(structuredExceptionCode, buildId) {
+      calls.push({ method: "writeMiniDump", args: [structuredExceptionCode, buildId] });
+    },
+    useBreakpadCrashHandler(version, date, time, fullMemoryDumps) {
+      calls.push({ method: "useBreakpadCrashHandler", args: [version, date, time, fullMemoryDumps] });
+    },
+    setBreakpadAppId(appId) {
+      calls.push({ method: "setBreakpadAppId", args: [appId] });
+    },
     getSteamId() {
       return { steamId64: "76561198000000000", steamId32: "STEAM_0:0:19867136", accountId: 39734272 };
     },
@@ -1066,16 +1078,33 @@ test("init reads the Steam app ID from the environment and returns the grouped c
   steam.runLegacyCallbacks();
   steam.releaseCurrentThreadMemory();
   steam.setTryCatchCallbacks(true);
+  steam.setMiniDumpComment("diagnostic");
+  steam.writeMiniDump(0, 480);
+  steam.useBreakpadCrashHandler({
+    version: "1.0.0",
+    date: "Jan 01 2026",
+    time: "00:00:00",
+    fullMemoryDumps: false
+  });
+  steam.setBreakpadAppId(480);
   assert.deepEqual(fake.calls.filter((call) => [
     "initSafe",
     "runLegacyCallbacks",
     "releaseCurrentThreadMemory",
-    "setTryCatchCallbacks"
+    "setTryCatchCallbacks",
+    "setMiniDumpComment",
+    "writeMiniDump",
+    "useBreakpadCrashHandler",
+    "setBreakpadAppId"
   ].includes(call.method)), [
     { method: "initSafe", args: [] },
     { method: "runLegacyCallbacks", args: [] },
     { method: "releaseCurrentThreadMemory", args: [] },
-    { method: "setTryCatchCallbacks", args: [true] }
+    { method: "setTryCatchCallbacks", args: [true] },
+    { method: "setMiniDumpComment", args: ["diagnostic"] },
+    { method: "writeMiniDump", args: [0, 480] },
+    { method: "useBreakpadCrashHandler", args: ["1.0.0", "Jan 01 2026", "00:00:00", false] },
+    { method: "setBreakpadAppId", args: [480] }
   ]);
 });
 

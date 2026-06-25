@@ -1484,6 +1484,10 @@ export interface NativeBinding {
   runLegacyCallbacks(): void;
   releaseCurrentThreadMemory(): void;
   setTryCatchCallbacks(enabled: boolean): void;
+  setMiniDumpComment(comment: string): void;
+  writeMiniDump(structuredExceptionCode: number, buildId: number): void;
+  useBreakpadCrashHandler(version: string, date: string, time: string, fullMemoryDumps: boolean): void;
+  setBreakpadAppId(appId: number): void;
 
   gameServerInit(options: NativeGameServerInitOptions): void;
   gameServerShutdown(): void;

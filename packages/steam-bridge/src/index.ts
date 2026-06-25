@@ -172,6 +172,13 @@ export interface InitOptions {
   callbackIntervalMs?: number;
 }
 
+export interface BreakpadCrashHandlerOptions {
+  version?: string;
+  date?: string;
+  time?: string;
+  fullMemoryDumps?: boolean;
+}
+
 export interface SteamId {
   steamId64: bigint;
   steamId32: string;
@@ -3237,6 +3244,27 @@ export function releaseCurrentThreadMemory(): void {
 
 export function setTryCatchCallbacks(enabled: boolean): void {
   native().setTryCatchCallbacks(enabled);
+}
+
+export function setMiniDumpComment(comment: string): void {
+  native().setMiniDumpComment(comment);
+}
+
+export function writeMiniDump(structuredExceptionCode: number, buildId: number): void {
+  native().writeMiniDump(structuredExceptionCode, buildId);
+}
+
+export function useBreakpadCrashHandler(options: BreakpadCrashHandlerOptions = {}): void {
+  native().useBreakpadCrashHandler(
+    options.version ?? "steam-bridge",
+    options.date ?? "",
+    options.time ?? "",
+    options.fullMemoryDumps ?? false
+  );
+}
+
+export function setBreakpadAppId(appId: number): void {
+  native().setBreakpadAppId(appId);
 }
 
 export function getSteamId(): SteamId {
@@ -10050,6 +10078,10 @@ const defaultExport = {
   runLegacyCallbacks,
   releaseCurrentThreadMemory,
   setTryCatchCallbacks,
+  setMiniDumpComment,
+  writeMiniDump,
+  useBreakpadCrashHandler,
+  setBreakpadAppId,
   getSteamId,
   getAuthTicketForWebApi,
   isSteamDeck,

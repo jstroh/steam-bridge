@@ -11,8 +11,9 @@ The native layer currently targets the Steamworks flat C API through
 
 - Steam lifecycle and utils: initialization, safe initialization, shutdown,
   manual and legacy callback pumping, current-thread API memory release,
-  try/catch callback toggles, restart checks, Steam install path, Steam Deck,
-  Big Picture, App ID, overlay diagnostics, server time, activity timers,
+  try/catch callback toggles, Breakpad crash handler and minidump helpers,
+  restart checks, Steam install path, Steam Deck, Big Picture, App ID,
+  overlay diagnostics, server time, activity timers,
   connected universe, Steam UI language, image reads, battery/IPCCall counts,
   overlay notification placement, VR helpers, China launcher checks, text
   filtering, IPv6 connectivity checks, file signature checks, raw APICall

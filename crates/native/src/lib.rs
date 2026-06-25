@@ -3,6 +3,7 @@
 use napi::bindgen_prelude::{BigInt, Buffer, Error, Function, Status};
 use napi::threadsafe_function::{ThreadsafeFunction, ThreadsafeFunctionCallMode};
 use napi_derive::napi;
+use once_cell::sync::Lazy;
 use std::ffi::{c_char, c_void, CStr, CString};
 use std::ptr;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -16,6 +17,15 @@ mod state;
 
 extern "C" {
     fn SteamAPI_InitSafe() -> bool;
+    fn SteamAPI_UseBreakpadCrashHandler(
+        pchVersion: *const c_char,
+        pchDate: *const c_char,
+        pchTime: *const c_char,
+        bFullMemoryDumps: bool,
+        pvContext: *mut c_void,
+        m_pfnPreMinidumpCallback: sys::PFNPreMinidumpCallback,
+    );
+    fn SteamAPI_SetBreakpadAppID(unAppID: u32);
 }
 
 const CALLBACK_GET_TICKET_FOR_WEB_API_RESPONSE: i32 = 168;
@@ -23,8 +33,17 @@ const CALLBACK_MICRO_TXN_AUTHORIZATION_RESPONSE: i32 = 152;
 const CALLBACK_GAME_OVERLAY_ACTIVATED: i32 = 331;
 const H_AUTH_TICKET_INVALID: sys::HAuthTicket = 0;
 
+static BREAKPAD_CRASH_HANDLER_STRINGS: Lazy<Mutex<Option<BreakpadCrashHandlerStrings>>> =
+    Lazy::new(|| Mutex::new(None));
+
 type FatalThreadsafeFunction<T> = ThreadsafeFunction<T, (), Vec<T>, Status, false>;
 type JsCallback<'scope, T> = Function<'scope, T, ()>;
+
+struct BreakpadCrashHandlerStrings {
+    version: CString,
+    date: CString,
+    time: CString,
+}
 
 #[derive(Debug)]
 #[napi(object)]
@@ -184,6 +203,60 @@ pub fn release_current_thread_memory() {
 #[napi(js_name = "setTryCatchCallbacks")]
 pub fn set_try_catch_callbacks(enabled: bool) {
     unsafe { sys::SteamAPI_SetTryCatchCallbacks(enabled) };
+}
+
+#[napi(js_name = "setMiniDumpComment")]
+pub fn set_mini_dump_comment(comment: String) -> Result<(), Error> {
+    let comment = cstring(comment, "mini dump comment")?;
+    unsafe { sys::SteamAPI_SetMiniDumpComment(comment.as_ptr()) };
+    Ok(())
+}
+
+#[napi(js_name = "writeMiniDump")]
+pub fn write_mini_dump(structured_exception_code: u32, build_id: u32) {
+    unsafe { sys::SteamAPI_WriteMiniDump(structured_exception_code, ptr::null_mut(), build_id) };
+}
+
+#[napi(js_name = "useBreakpadCrashHandler")]
+pub fn use_breakpad_crash_handler(
+    version: String,
+    date: String,
+    time: String,
+    full_memory_dumps: bool,
+) -> Result<(), Error> {
+    let version = cstring(version, "breakpad version")?;
+    let date = cstring(date, "breakpad date")?;
+    let time = cstring(time, "breakpad time")?;
+    let mut strings = BREAKPAD_CRASH_HANDLER_STRINGS.lock().map_err(|_| {
+        Error::new(
+            Status::GenericFailure,
+            "breakpad crash handler string lock poisoned",
+        )
+    })?;
+    *strings = Some(BreakpadCrashHandlerStrings {
+        version,
+        date,
+        time,
+    });
+    let strings = strings
+        .as_ref()
+        .expect("breakpad crash handler strings were just set");
+    unsafe {
+        SteamAPI_UseBreakpadCrashHandler(
+            strings.version.as_ptr(),
+            strings.date.as_ptr(),
+            strings.time.as_ptr(),
+            full_memory_dumps,
+            ptr::null_mut(),
+            None,
+        )
+    };
+    Ok(())
+}
+
+#[napi(js_name = "setBreakpadAppId")]
+pub fn set_breakpad_app_id(app_id: u32) {
+    unsafe { SteamAPI_SetBreakpadAppID(app_id) };
 }
 
 #[napi(js_name = "getSteamId")]
