@@ -2101,6 +2101,10 @@ export interface NativeBinding {
   networkingIsP2PPacketAvailable(): number;
   networkingReadP2PPacket(size: number): NativeP2PPacket | null | undefined;
   networkingAcceptP2PSession(steamId64: bigint): void;
+  gameServerNetworkingSendP2PPacket(steamId64: bigint, sendType: number, data: Buffer): boolean;
+  gameServerNetworkingIsP2PPacketAvailable(): number;
+  gameServerNetworkingReadP2PPacket(size: number): NativeP2PPacket | null | undefined;
+  gameServerNetworkingAcceptP2PSession(steamId64: bigint): void;
   networkingIdentityToString(identity: NativeNetworkingIdentity): string;
   networkingIdentityParse(text: string): NativeNetworkingIdentityInfo | null | undefined;
   networkingMessagesSendMessageToUser(identity: NativeNetworkingIdentity, data: Buffer, sendFlags?: number, channel?: number): number;

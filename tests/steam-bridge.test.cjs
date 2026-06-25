@@ -914,6 +914,8 @@ test("init reads the Steam app ID from the environment and returns the grouped c
   assert.equal(steam.default.gameServerHttp, steam.gameServerHttp);
   assert.equal(client.gameServerInventory, steam.gameServerInventory);
   assert.equal(steam.default.gameServerInventory, steam.gameServerInventory);
+  assert.equal(client.gameServerNetworking, steam.gameServerNetworking);
+  assert.equal(steam.default.gameServerNetworking, steam.gameServerNetworking);
   assert.equal(client.gameServerNetworkingMessages, steam.gameServerNetworkingMessages);
   assert.equal(steam.default.gameServerNetworkingMessages, steam.gameServerNetworkingMessages);
   assert.equal(client.gameServerNetworkingSockets, steam.gameServerNetworkingSockets);
@@ -3469,6 +3471,63 @@ test("networking messages facade covers identity, message, session, and callback
   assert.deepEqual(fake.calls.find((call) => call.method === "networkingMessagesSendMessageToUser"), {
     method: "networkingMessagesSendMessageToUser",
     args: [identity, Buffer.from("payload"), 8, 2]
+  });
+});
+
+test("game server legacy networking facade dispatches through game server natives", (t) => {
+  let nextPacket = {
+    data: Buffer.from("server"),
+    size: 6,
+    steamId: { steamId64: "76561198000000011", steamId32: "STEAM_0:1:19867141", accountId: 39734283 }
+  };
+  const fake = createFakeNative({
+    gameServerNetworkingSendP2PPacket(steamId64, sendType, data) {
+      this.calls.push({ method: "gameServerNetworkingSendP2PPacket", args: [steamId64, sendType, data] });
+      return true;
+    },
+    gameServerNetworkingIsP2PPacketAvailable() {
+      this.calls.push({ method: "gameServerNetworkingIsP2PPacketAvailable", args: [] });
+      return 6;
+    },
+    gameServerNetworkingReadP2PPacket(size) {
+      this.calls.push({ method: "gameServerNetworkingReadP2PPacket", args: [size] });
+      return nextPacket;
+    },
+    gameServerNetworkingAcceptP2PSession(steamId64) {
+      this.calls.push({ method: "gameServerNetworkingAcceptP2PSession", args: [steamId64] });
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  const peer = 76561198000000011n;
+  assert.equal(steam.gameServerNetworking.SendType.Reliable, 2);
+  assert.equal(
+    steam.gameServerNetworking.sendP2PPacket(
+      peer,
+      steam.gameServerNetworking.SendType.Reliable,
+      new Uint8Array([1, 2, 3])
+    ),
+    true
+  );
+  assert.equal(steam.gameServerNetworking.isP2PPacketAvailable(), 6);
+  assert.deepEqual(steam.gameServerNetworking.readP2PPacket(6), {
+    data: Buffer.from("server"),
+    size: 6,
+    steamId: { steamId64: 76561198000000011n, steamId32: "STEAM_0:1:19867141", accountId: 39734283 }
+  });
+  steam.gameServerNetworking.acceptP2PSession(peer);
+
+  nextPacket = null;
+  assert.throws(() => steam.gameServerNetworking.readP2PPacket(6), /No Steam game-server P2P packet is available/);
+  assert.deepEqual(fake.calls.find((call) => call.method === "gameServerNetworkingSendP2PPacket"), {
+    method: "gameServerNetworkingSendP2PPacket",
+    args: [peer, 2, Buffer.from([1, 2, 3])]
+  });
+  assert.deepEqual(fake.calls.find((call) => call.method === "gameServerNetworkingAcceptP2PSession"), {
+    method: "gameServerNetworkingAcceptP2PSession",
+    args: [peer]
   });
 });
 

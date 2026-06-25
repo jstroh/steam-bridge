@@ -9855,8 +9855,10 @@ pub async fn game_server_stats_store_user_stats(
     Ok(game_server_stats_stored_result(result))
 }
 
-#[napi(js_name = "networkingSendP2PPacket")]
-pub fn networking_send_p2p_packet(
+type SteamNetworkingAccessor = fn() -> Result<*mut sys::ISteamNetworking, Error>;
+
+fn networking_send_p2p_packet_with(
+    accessor: SteamNetworkingAccessor,
     steam_id64: BigInt,
     send_type: u32,
     data: Buffer,
@@ -9870,7 +9872,7 @@ pub fn networking_send_p2p_packet(
     };
     Ok(unsafe {
         sys::SteamAPI_ISteamNetworking_SendP2PPacket(
-            steam_networking()?,
+            accessor()?,
             bigint_to_u64(steam_id64, "steam id")?,
             data.as_ptr().cast::<c_void>(),
             data.len() as u32,
@@ -9880,18 +9882,20 @@ pub fn networking_send_p2p_packet(
     })
 }
 
-#[napi(js_name = "networkingIsP2PPacketAvailable")]
-pub fn networking_is_p2p_packet_available() -> Result<u32, Error> {
+fn networking_is_p2p_packet_available_with(
+    accessor: SteamNetworkingAccessor,
+) -> Result<u32, Error> {
     let mut size = 0u32;
-    let ok = unsafe {
-        sys::SteamAPI_ISteamNetworking_IsP2PPacketAvailable(steam_networking()?, &mut size, 0)
-    };
+    let ok =
+        unsafe { sys::SteamAPI_ISteamNetworking_IsP2PPacketAvailable(accessor()?, &mut size, 0) };
     Ok(if ok { size } else { 0 })
 }
 
-#[napi(js_name = "networkingReadP2PPacket")]
-pub fn networking_read_p2p_packet(size: u32) -> Result<Option<P2PPacket>, Error> {
-    let networking = steam_networking()?;
+fn networking_read_p2p_packet_with(
+    accessor: SteamNetworkingAccessor,
+    size: u32,
+) -> Result<Option<P2PPacket>, Error> {
+    let networking = accessor()?;
     let mut data = vec![0u8; size as usize];
     let mut actual_size = 0u32;
     let mut remote: sys::CSteamID = unsafe { std::mem::zeroed() };
@@ -9916,11 +9920,13 @@ pub fn networking_read_p2p_packet(size: u32) -> Result<Option<P2PPacket>, Error>
     }))
 }
 
-#[napi(js_name = "networkingAcceptP2PSession")]
-pub fn networking_accept_p2p_session(steam_id64: BigInt) -> Result<(), Error> {
+fn networking_accept_p2p_session_with(
+    accessor: SteamNetworkingAccessor,
+    steam_id64: BigInt,
+) -> Result<(), Error> {
     let ok = unsafe {
         sys::SteamAPI_ISteamNetworking_AcceptP2PSessionWithUser(
-            steam_networking()?,
+            accessor()?,
             bigint_to_u64(steam_id64, "steam id")?,
         )
     };
@@ -9929,6 +9935,54 @@ pub fn networking_accept_p2p_session(steam_id64: BigInt) -> Result<(), Error> {
     } else {
         Err(Error::from_reason("Steam rejected P2P session"))
     }
+}
+
+#[napi(js_name = "networkingSendP2PPacket")]
+pub fn networking_send_p2p_packet(
+    steam_id64: BigInt,
+    send_type: u32,
+    data: Buffer,
+) -> Result<bool, Error> {
+    networking_send_p2p_packet_with(steam_networking, steam_id64, send_type, data)
+}
+
+#[napi(js_name = "networkingIsP2PPacketAvailable")]
+pub fn networking_is_p2p_packet_available() -> Result<u32, Error> {
+    networking_is_p2p_packet_available_with(steam_networking)
+}
+
+#[napi(js_name = "networkingReadP2PPacket")]
+pub fn networking_read_p2p_packet(size: u32) -> Result<Option<P2PPacket>, Error> {
+    networking_read_p2p_packet_with(steam_networking, size)
+}
+
+#[napi(js_name = "networkingAcceptP2PSession")]
+pub fn networking_accept_p2p_session(steam_id64: BigInt) -> Result<(), Error> {
+    networking_accept_p2p_session_with(steam_networking, steam_id64)
+}
+
+#[napi(js_name = "gameServerNetworkingSendP2PPacket")]
+pub fn game_server_networking_send_p2p_packet(
+    steam_id64: BigInt,
+    send_type: u32,
+    data: Buffer,
+) -> Result<bool, Error> {
+    networking_send_p2p_packet_with(steam_game_server_networking, steam_id64, send_type, data)
+}
+
+#[napi(js_name = "gameServerNetworkingIsP2PPacketAvailable")]
+pub fn game_server_networking_is_p2p_packet_available() -> Result<u32, Error> {
+    networking_is_p2p_packet_available_with(steam_game_server_networking)
+}
+
+#[napi(js_name = "gameServerNetworkingReadP2PPacket")]
+pub fn game_server_networking_read_p2p_packet(size: u32) -> Result<Option<P2PPacket>, Error> {
+    networking_read_p2p_packet_with(steam_game_server_networking, size)
+}
+
+#[napi(js_name = "gameServerNetworkingAcceptP2PSession")]
+pub fn game_server_networking_accept_p2p_session(steam_id64: BigInt) -> Result<(), Error> {
+    networking_accept_p2p_session_with(steam_game_server_networking, steam_id64)
 }
 
 #[napi(js_name = "networkingIdentityToString")]
@@ -14867,6 +14921,14 @@ fn steam_networking() -> Result<*mut sys::ISteamNetworking, Error> {
     crate::state::ensure_initialized()?;
     non_null(
         unsafe { sys::SteamAPI_SteamNetworking_v006() },
+        "ISteamNetworking",
+    )
+}
+
+fn steam_game_server_networking() -> Result<*mut sys::ISteamNetworking, Error> {
+    crate::state::ensure_game_server_initialized()?;
+    non_null(
+        unsafe { sys::SteamAPI_SteamGameServerNetworking_v006() },
         "ISteamNetworking",
     )
 }

@@ -5563,6 +5563,26 @@ export const networking = {
   }
 };
 
+export const gameServerNetworking = {
+  SendType,
+  sendP2PPacket(steamId64: bigint, sendType: number, data: Buffer | Uint8Array): boolean {
+    return native().gameServerNetworkingSendP2PPacket(steamId64, sendType, Buffer.from(data));
+  },
+  isP2PPacketAvailable(): number {
+    return native().gameServerNetworkingIsP2PPacketAvailable();
+  },
+  readP2PPacket(size: number): P2PPacket {
+    const packet = native().gameServerNetworkingReadP2PPacket(size);
+    if (!packet) {
+      throw new Error("No Steam game-server P2P packet is available");
+    }
+    return normalizeP2PPacket(packet);
+  },
+  acceptP2PSession(steamId64: bigint): void {
+    native().gameServerNetworkingAcceptP2PSession(steamId64);
+  }
+};
+
 export const gameServerNetworkingMessages = {
   SendFlags: NetworkingSendFlags,
   ConnectionState: NetworkingConnectionState,
@@ -6712,6 +6732,7 @@ export interface SteamBridgeClient {
   gameServer: typeof gameServer;
   gameServerHttp: typeof gameServerHttp;
   gameServerInventory: typeof gameServerInventory;
+  gameServerNetworking: typeof gameServerNetworking;
   gameServerNetworkingMessages: typeof gameServerNetworkingMessages;
   gameServerNetworkingSockets: typeof gameServerNetworkingSockets;
   gameServerStats: typeof gameServerStats;
@@ -6749,6 +6770,7 @@ export function createCompatibilityClient(): SteamBridgeClient {
     gameServer,
     gameServerHttp,
     gameServerInventory,
+    gameServerNetworking,
     gameServerNetworkingMessages,
     gameServerNetworkingSockets,
     gameServerStats,
@@ -9140,6 +9162,7 @@ const defaultExport = {
   gameServer,
   gameServerHttp,
   gameServerInventory,
+  gameServerNetworking,
   gameServerNetworkingMessages,
   gameServerNetworkingSockets,
   gameServerStats,
