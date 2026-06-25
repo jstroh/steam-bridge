@@ -50,6 +50,11 @@ The native layer currently targets the Steamworks flat C API through
 - HTTP: request creation, configuration, send/stream send initiation, response
   header/body reads, progress/timeout checks, raw POST bodies, cookie
   containers, request priority/defer, and HTTP request callbacks.
+- HTML surface: initialization/shutdown, browser creation/removal, navigation,
+  sizing, headers, JavaScript execution, mouse/key input, scroll/focus,
+  clipboard/source/find/link helpers, cookies, scale/background/DPI controls,
+  developer tools, request/dialog responses, file dialog responses, and HTML
+  callback events with structured metadata.
 - Steam Input: init/shutdown, connected controllers, action sets, digital
   actions, analog vectors, controller type, and text input helpers.
 - Matchmaking/lobbies: favorite/history server storage, lobby list filters,
@@ -115,7 +120,7 @@ The native layer currently targets the Steamworks flat C API through
   pointer-valued networking config callbacks, and custom signaling.
 - Remaining callback/event coverage for interfaces that are not yet surfaced by
   the native bindings or still need richer ergonomics, including streaming HTTP
-  response helpers.
+  response helpers and direct HTML paint-buffer delivery.
 - Steam Web API and economy flows beyond client auth ticket helpers.
 
 Use Valve's SpaceWar App ID `480` for generic local smoke tests. Use your own

@@ -741,6 +741,19 @@ export interface OverlayWebPageOptions {
   modal?: boolean;
 }
 
+export interface HtmlCreateBrowserOptions {
+  userAgent?: string;
+  userCss?: string;
+  timeoutSeconds?: number;
+}
+
+export interface HtmlCookieOptions {
+  path?: string;
+  expires?: number;
+  secure?: boolean;
+  httpOnly?: boolean;
+}
+
 export interface UtilsImageSize {
   width: number;
   height: number;
@@ -1381,6 +1394,29 @@ export const SteamCallback = {
   HTTPRequestCompleted: 2101,
   HTTPRequestHeadersReceived: 2102,
   HTTPRequestDataReceived: 2103,
+  HTMLBrowserReady: 4501,
+  HTMLNeedsPaint: 4502,
+  HTMLStartRequest: 4503,
+  HTMLCloseBrowser: 4504,
+  HTMLURLChanged: 4505,
+  HTMLFinishedRequest: 4506,
+  HTMLOpenLinkInNewTab: 4507,
+  HTMLChangedTitle: 4508,
+  HTMLSearchResults: 4509,
+  HTMLCanGoBackAndForward: 4510,
+  HTMLHorizontalScroll: 4511,
+  HTMLVerticalScroll: 4512,
+  HTMLLinkAtPosition: 4513,
+  HTMLJSAlert: 4514,
+  HTMLJSConfirm: 4515,
+  HTMLFileOpenDialog: 4516,
+  HTMLNewWindow: 4521,
+  HTMLSetCursor: 4522,
+  HTMLStatusText: 4523,
+  HTMLShowToolTip: 4524,
+  HTMLUpdateToolTip: 4525,
+  HTMLHideToolTip: 4526,
+  HTMLBrowserRestarted: 4527,
   ScreenshotReady: 2301,
   ScreenshotRequested: 2302,
   PlaybackStatusHasChanged: 4001,
@@ -1502,6 +1538,64 @@ export const HttpMethod = {
 } as const;
 
 export type HttpMethodValue = typeof HttpMethod[keyof typeof HttpMethod];
+
+export const HtmlMouseButton = {
+  Left: 0,
+  Right: 1,
+  Middle: 2
+} as const;
+
+export const HtmlMouseCursor = {
+  User: 0,
+  None: 1,
+  Arrow: 2,
+  IBeam: 3,
+  Hourglass: 4,
+  WaitArrow: 5,
+  Crosshair: 6,
+  Up: 7,
+  SizeNW: 8,
+  SizeSE: 9,
+  SizeNE: 10,
+  SizeSW: 11,
+  SizeW: 12,
+  SizeE: 13,
+  SizeN: 14,
+  SizeS: 15,
+  SizeWE: 16,
+  SizeNS: 17,
+  SizeAll: 18,
+  No: 19,
+  Hand: 20,
+  Blank: 21,
+  MiddlePan: 22,
+  NorthPan: 23,
+  NorthEastPan: 24,
+  EastPan: 25,
+  SouthEastPan: 26,
+  SouthPan: 27,
+  SouthWestPan: 28,
+  WestPan: 29,
+  NorthWestPan: 30,
+  Alias: 31,
+  Cell: 32,
+  ColResize: 33,
+  Copy: 34,
+  VerticalText: 35,
+  RowResize: 36,
+  ZoomIn: 37,
+  ZoomOut: 38,
+  Help: 39,
+  Custom: 40,
+  Last: 41
+} as const;
+
+export const HtmlKeyModifier = {
+  None: 0,
+  AltDown: 1,
+  CtrlDown: 2,
+  ShiftDown: 4
+} as const;
 
 export const PartyBeaconLocationType = {
   Invalid: 0,
@@ -3427,6 +3521,131 @@ export const http = {
   },
   getRequestWasTimedOut(request: number): boolean | null {
     return native().httpGetRequestWasTimedOut(request) ?? null;
+  }
+};
+
+export const html = {
+  MouseButton: HtmlMouseButton,
+  MouseCursor: HtmlMouseCursor,
+  KeyModifier: HtmlKeyModifier,
+  init(): boolean {
+    return native().htmlInit();
+  },
+  shutdown(): boolean {
+    return native().htmlShutdown();
+  },
+  async createBrowser(options: HtmlCreateBrowserOptions = {}): Promise<number> {
+    return native().htmlCreateBrowser(options.userAgent, options.userCss, options.timeoutSeconds);
+  },
+  removeBrowser(browser: number): void {
+    native().htmlRemoveBrowser(browser);
+  },
+  loadUrl(browser: number, url: string, postData?: string | null): void {
+    native().htmlLoadUrl(browser, url, postData ?? undefined);
+  },
+  setSize(browser: number, width: number, height: number): void {
+    native().htmlSetSize(browser, width, height);
+  },
+  stopLoad(browser: number): void {
+    native().htmlStopLoad(browser);
+  },
+  reload(browser: number): void {
+    native().htmlReload(browser);
+  },
+  goBack(browser: number): void {
+    native().htmlGoBack(browser);
+  },
+  goForward(browser: number): void {
+    native().htmlGoForward(browser);
+  },
+  addHeader(browser: number, key: string, value: string): void {
+    native().htmlAddHeader(browser, key, value);
+  },
+  executeJavascript(browser: number, script: string): void {
+    native().htmlExecuteJavascript(browser, script);
+  },
+  mouseUp(browser: number, mouseButton = HtmlMouseButton.Left): void {
+    native().htmlMouseUp(browser, mouseButton);
+  },
+  mouseDown(browser: number, mouseButton = HtmlMouseButton.Left): void {
+    native().htmlMouseDown(browser, mouseButton);
+  },
+  mouseDoubleClick(browser: number, mouseButton = HtmlMouseButton.Left): void {
+    native().htmlMouseDoubleClick(browser, mouseButton);
+  },
+  mouseMove(browser: number, x: number, y: number): void {
+    native().htmlMouseMove(browser, x, y);
+  },
+  mouseWheel(browser: number, delta: number): void {
+    native().htmlMouseWheel(browser, delta);
+  },
+  keyDown(browser: number, nativeKeyCode: number, keyModifiers = HtmlKeyModifier.None, isSystemKey = false): void {
+    native().htmlKeyDown(browser, nativeKeyCode, keyModifiers, isSystemKey);
+  },
+  keyUp(browser: number, nativeKeyCode: number, keyModifiers = HtmlKeyModifier.None): void {
+    native().htmlKeyUp(browser, nativeKeyCode, keyModifiers);
+  },
+  keyChar(browser: number, unicodeChar: number, keyModifiers = HtmlKeyModifier.None): void {
+    native().htmlKeyChar(browser, unicodeChar, keyModifiers);
+  },
+  setHorizontalScroll(browser: number, absolutePixelScroll: number): void {
+    native().htmlSetHorizontalScroll(browser, absolutePixelScroll);
+  },
+  setVerticalScroll(browser: number, absolutePixelScroll: number): void {
+    native().htmlSetVerticalScroll(browser, absolutePixelScroll);
+  },
+  setKeyFocus(browser: number, hasKeyFocus: boolean): void {
+    native().htmlSetKeyFocus(browser, hasKeyFocus);
+  },
+  viewSource(browser: number): void {
+    native().htmlViewSource(browser);
+  },
+  copyToClipboard(browser: number): void {
+    native().htmlCopyToClipboard(browser);
+  },
+  pasteFromClipboard(browser: number): void {
+    native().htmlPasteFromClipboard(browser);
+  },
+  find(browser: number, search: string, currentlyInFind = false, reverse = false): void {
+    native().htmlFind(browser, search, currentlyInFind, reverse);
+  },
+  stopFind(browser: number): void {
+    native().htmlStopFind(browser);
+  },
+  getLinkAtPosition(browser: number, x: number, y: number): void {
+    native().htmlGetLinkAtPosition(browser, x, y);
+  },
+  setCookie(hostname: string, key: string, value: string, options: HtmlCookieOptions = {}): void {
+    native().htmlSetCookie(
+      hostname,
+      key,
+      value,
+      options.path,
+      options.expires,
+      options.secure,
+      options.httpOnly
+    );
+  },
+  setPageScaleFactor(browser: number, zoom: number, pointX = 0, pointY = 0): void {
+    native().htmlSetPageScaleFactor(browser, zoom, pointX, pointY);
+  },
+  setBackgroundMode(browser: number, backgroundMode: boolean): void {
+    native().htmlSetBackgroundMode(browser, backgroundMode);
+  },
+  setDpiScalingFactor(browser: number, dpiScaling: number): void {
+    native().htmlSetDpiScalingFactor(browser, dpiScaling);
+  },
+  openDeveloperTools(browser: number): void {
+    native().htmlOpenDeveloperTools(browser);
+  },
+  allowStartRequest(browser: number, allowed: boolean): void {
+    native().htmlAllowStartRequest(browser, allowed);
+  },
+  jsDialogResponse(browser: number, result: boolean): void {
+    native().htmlJsDialogResponse(browser, result);
+  },
+  fileLoadDialogResponse(browser: number, selectedFiles: string[]): void {
+    native().htmlFileLoadDialogResponse(browser, selectedFiles);
   }
 };
 
@@ -6287,6 +6506,10 @@ function normalizeCallbackEvent(callbackId: number, event: unknown): unknown {
     banned_ip: "bannedIp",
     banned_ip_address: "bannedIpAddress",
     banned_port: "bannedPort",
+    bgra_byte_length: "bgraByteLength",
+    browser_handle: "browserHandle",
+    can_go_back: "canGoBack",
+    can_go_forward: "canGoForward",
     deny_reason: "denyReason",
     entry_type: "entryType",
     file_size: "fileSize",
@@ -6300,18 +6523,25 @@ function normalizeCallbackEvent(callbackId: number, event: unknown): unknown {
     has_mini_profile_background: "hasMiniProfileBackground",
     has_profile_background: "hasProfileBackground",
     has_profile_modifier: "hasProfileModifier",
+    has_bgra_data: "hasBgraData",
+    initial_file: "initialFile",
     ip_address: "ipAddress",
     is_following: "isFollowing",
     is_offline: "isOffline",
+    is_redirect: "isRedirect",
     is_rtmp: "isRtmp",
     key_length: "keyLength",
     kicked_due_to_disconnect: "kickedDueToDisconnect",
     lobby_steam_id: "lobbySteamId",
     local_handle: "localHandle",
     longest_clip_ms: "longestClipMs",
+    live_link: "liveLink",
     making_change: "makingChange",
     member_state_change: "memberStateChange",
     message_id: "messageId",
+    mouse_cursor: "mouseCursor",
+    new_navigation: "newNavigation",
+    new_window_browser_handle: "newWindowBrowserHandle",
     minutes_battery_left: "minutesBatteryLeft",
     new_volume: "newVolume",
     new_device_cooldown_days: "newDeviceCooldownDays",
@@ -6319,8 +6549,14 @@ function normalizeCallbackEvent(callbackId: number, event: unknown): unknown {
     officer_count: "officerCount",
     optional_text: "optionalText",
     owner_steam_id: "ownerSteamId",
+    old_browser_handle: "oldBrowserHandle",
+    page_scale: "pageScale",
+    page_serial: "pageSerial",
+    page_size: "pageSize",
+    page_title: "pageTitle",
     parameter_size: "parameterSize",
     phase_id: "phaseId",
+    post_data: "postData",
     players_that_candidate_doesnt_like: "playersThatCandidateDoesntLike",
     players_that_dont_like_candidate: "playersThatDontLikeCandidate",
     query_port: "queryPort",
@@ -6336,12 +6572,20 @@ function normalizeCallbackEvent(callbackId: number, event: unknown): unknown {
     session_id: "sessionId",
     sha_hex: "shaHex",
     screenshot_count: "screenshotCount",
+    scroll_current: "scrollCurrent",
+    scroll_max: "scrollMax",
+    scroll_x: "scrollX",
+    scroll_y: "scrollY",
     steam_guard_required_days: "steamGuardRequiredDays",
     steam_ids: "steamIds",
     submitted_text: "submittedText",
     total_connects: "totalConnects",
     total_minutes_played: "totalMinutesPlayed",
     total_result_count: "totalResultCount",
+    update_tall: "updateTall",
+    update_wide: "updateWide",
+    update_x: "updateX",
+    update_y: "updateY",
     user_changed: "userChanged",
     video_app_id: "videoAppId"
   };
@@ -7416,6 +7660,7 @@ const defaultExport = {
   friends,
   gameServer,
   gameServerStats,
+  html,
   http,
   inventory,
   input,

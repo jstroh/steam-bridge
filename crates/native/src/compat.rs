@@ -21,6 +21,35 @@ use std::time::{Duration, Instant};
 use steamworks_sys as sys;
 use tokio::sync::oneshot;
 
+// Steam declares HTML key modifiers as enum flags. Bindgen exposes a fieldless
+// Rust enum, so raw u32 calls preserve Ctrl+Shift-style combinations safely.
+extern "C" {
+    #[link_name = "SteamAPI_ISteamHTMLSurface_KeyDown"]
+    fn steam_api_isteam_html_surface_key_down_raw(
+        self_: *mut sys::ISteamHTMLSurface,
+        un_browser_handle: u32,
+        native_key_code: u32,
+        html_key_modifiers: u32,
+        is_system_key: bool,
+    );
+
+    #[link_name = "SteamAPI_ISteamHTMLSurface_KeyUp"]
+    fn steam_api_isteam_html_surface_key_up_raw(
+        self_: *mut sys::ISteamHTMLSurface,
+        un_browser_handle: u32,
+        native_key_code: u32,
+        html_key_modifiers: u32,
+    );
+
+    #[link_name = "SteamAPI_ISteamHTMLSurface_KeyChar"]
+    fn steam_api_isteam_html_surface_key_char_raw(
+        self_: *mut sys::ISteamHTMLSurface,
+        un_browser_handle: u32,
+        unicode_char: u32,
+        html_key_modifiers: u32,
+    );
+}
+
 const CALLBACK_PERSONA_STATE_CHANGE: i32 = 304;
 const CALLBACK_STEAM_SERVERS_CONNECTED: i32 = 101;
 const CALLBACK_STEAM_SERVER_CONNECT_FAILURE: i32 = 102;
@@ -133,6 +162,29 @@ const CALLBACK_SCREENSHOT_READY: i32 = 2301;
 const CALLBACK_SCREENSHOT_REQUESTED: i32 = 2302;
 const CALLBACK_PLAYBACK_STATUS_HAS_CHANGED: i32 = 4001;
 const CALLBACK_VOLUME_HAS_CHANGED: i32 = 4002;
+const CALLBACK_HTML_BROWSER_READY: i32 = 4501;
+const CALLBACK_HTML_NEEDS_PAINT: i32 = 4502;
+const CALLBACK_HTML_START_REQUEST: i32 = 4503;
+const CALLBACK_HTML_CLOSE_BROWSER: i32 = 4504;
+const CALLBACK_HTML_URL_CHANGED: i32 = 4505;
+const CALLBACK_HTML_FINISHED_REQUEST: i32 = 4506;
+const CALLBACK_HTML_OPEN_LINK_IN_NEW_TAB: i32 = 4507;
+const CALLBACK_HTML_CHANGED_TITLE: i32 = 4508;
+const CALLBACK_HTML_SEARCH_RESULTS: i32 = 4509;
+const CALLBACK_HTML_CAN_GO_BACK_AND_FORWARD: i32 = 4510;
+const CALLBACK_HTML_HORIZONTAL_SCROLL: i32 = 4511;
+const CALLBACK_HTML_VERTICAL_SCROLL: i32 = 4512;
+const CALLBACK_HTML_LINK_AT_POSITION: i32 = 4513;
+const CALLBACK_HTML_JS_ALERT: i32 = 4514;
+const CALLBACK_HTML_JS_CONFIRM: i32 = 4515;
+const CALLBACK_HTML_FILE_OPEN_DIALOG: i32 = 4516;
+const CALLBACK_HTML_NEW_WINDOW: i32 = 4521;
+const CALLBACK_HTML_SET_CURSOR: i32 = 4522;
+const CALLBACK_HTML_STATUS_TEXT: i32 = 4523;
+const CALLBACK_HTML_SHOW_TOOL_TIP: i32 = 4524;
+const CALLBACK_HTML_UPDATE_TOOL_TIP: i32 = 4525;
+const CALLBACK_HTML_HIDE_TOOL_TIP: i32 = 4526;
+const CALLBACK_HTML_BROWSER_RESTARTED: i32 = 4527;
 const CALLBACK_BROADCAST_UPLOAD_START: i32 = 4604;
 const CALLBACK_BROADCAST_UPLOAD_STOP: i32 = 4605;
 const CALLBACK_GET_VIDEO_URL_RESULT: i32 = 4611;
@@ -4352,6 +4404,423 @@ pub fn http_get_request_was_timed_out(request: u32) -> Result<Option<bool>, Erro
         sys::SteamAPI_ISteamHTTP_GetHTTPRequestWasTimedOut(steam_http()?, request, &mut timed_out)
     };
     Ok(ok.then_some(timed_out))
+}
+
+#[napi(js_name = "htmlInit")]
+pub fn html_init() -> Result<bool, Error> {
+    Ok(unsafe { sys::SteamAPI_ISteamHTMLSurface_Init(steam_html_surface()?) })
+}
+
+#[napi(js_name = "htmlShutdown")]
+pub fn html_shutdown() -> Result<bool, Error> {
+    Ok(unsafe { sys::SteamAPI_ISteamHTMLSurface_Shutdown(steam_html_surface()?) })
+}
+
+#[napi(js_name = "htmlCreateBrowser")]
+pub async fn html_create_browser(
+    user_agent: Option<String>,
+    user_css: Option<String>,
+    timeout_seconds: Option<u32>,
+) -> Result<u32, Error> {
+    let user_agent = cstring(user_agent.unwrap_or_default(), "HTML user agent")?;
+    let user_css = cstring(user_css.unwrap_or_default(), "HTML user CSS")?;
+    let call = unsafe {
+        sys::SteamAPI_ISteamHTMLSurface_CreateBrowser(
+            steam_html_surface()?,
+            user_agent.as_ptr(),
+            user_css.as_ptr(),
+        )
+    };
+    let result: sys::HTML_BrowserReady_t = wait_for_api_call(
+        call,
+        sys::HTML_BrowserReady_t_k_iCallback as i32,
+        timeout_seconds
+            .map(u64::from)
+            .unwrap_or(DEFAULT_ASYNC_TIMEOUT_SECONDS)
+            .max(1),
+    )
+    .await?;
+    Ok(unsafe { ptr::addr_of!(result.unBrowserHandle).read_unaligned() })
+}
+
+#[napi(js_name = "htmlRemoveBrowser")]
+pub fn html_remove_browser(browser: u32) -> Result<(), Error> {
+    unsafe { sys::SteamAPI_ISteamHTMLSurface_RemoveBrowser(steam_html_surface()?, browser) };
+    Ok(())
+}
+
+#[napi(js_name = "htmlLoadUrl")]
+pub fn html_load_url(browser: u32, url: String, post_data: Option<String>) -> Result<(), Error> {
+    let url = cstring(url, "HTML URL")?;
+    let post_data = cstring(post_data.unwrap_or_default(), "HTML POST data")?;
+    unsafe {
+        sys::SteamAPI_ISteamHTMLSurface_LoadURL(
+            steam_html_surface()?,
+            browser,
+            url.as_ptr(),
+            post_data.as_ptr(),
+        )
+    };
+    Ok(())
+}
+
+#[napi(js_name = "htmlSetSize")]
+pub fn html_set_size(browser: u32, width: u32, height: u32) -> Result<(), Error> {
+    unsafe {
+        sys::SteamAPI_ISteamHTMLSurface_SetSize(steam_html_surface()?, browser, width, height)
+    };
+    Ok(())
+}
+
+#[napi(js_name = "htmlStopLoad")]
+pub fn html_stop_load(browser: u32) -> Result<(), Error> {
+    unsafe { sys::SteamAPI_ISteamHTMLSurface_StopLoad(steam_html_surface()?, browser) };
+    Ok(())
+}
+
+#[napi(js_name = "htmlReload")]
+pub fn html_reload(browser: u32) -> Result<(), Error> {
+    unsafe { sys::SteamAPI_ISteamHTMLSurface_Reload(steam_html_surface()?, browser) };
+    Ok(())
+}
+
+#[napi(js_name = "htmlGoBack")]
+pub fn html_go_back(browser: u32) -> Result<(), Error> {
+    unsafe { sys::SteamAPI_ISteamHTMLSurface_GoBack(steam_html_surface()?, browser) };
+    Ok(())
+}
+
+#[napi(js_name = "htmlGoForward")]
+pub fn html_go_forward(browser: u32) -> Result<(), Error> {
+    unsafe { sys::SteamAPI_ISteamHTMLSurface_GoForward(steam_html_surface()?, browser) };
+    Ok(())
+}
+
+#[napi(js_name = "htmlAddHeader")]
+pub fn html_add_header(browser: u32, key: String, value: String) -> Result<(), Error> {
+    let key = cstring(key, "HTML header key")?;
+    let value = cstring(value, "HTML header value")?;
+    unsafe {
+        sys::SteamAPI_ISteamHTMLSurface_AddHeader(
+            steam_html_surface()?,
+            browser,
+            key.as_ptr(),
+            value.as_ptr(),
+        )
+    };
+    Ok(())
+}
+
+#[napi(js_name = "htmlExecuteJavascript")]
+pub fn html_execute_javascript(browser: u32, script: String) -> Result<(), Error> {
+    let script = cstring(script, "HTML JavaScript")?;
+    unsafe {
+        sys::SteamAPI_ISteamHTMLSurface_ExecuteJavascript(
+            steam_html_surface()?,
+            browser,
+            script.as_ptr(),
+        )
+    };
+    Ok(())
+}
+
+#[napi(js_name = "htmlMouseUp")]
+pub fn html_mouse_up(browser: u32, mouse_button: u32) -> Result<(), Error> {
+    unsafe {
+        sys::SteamAPI_ISteamHTMLSurface_MouseUp(
+            steam_html_surface()?,
+            browser,
+            html_mouse_button_from_u32(mouse_button)?,
+        )
+    };
+    Ok(())
+}
+
+#[napi(js_name = "htmlMouseDown")]
+pub fn html_mouse_down(browser: u32, mouse_button: u32) -> Result<(), Error> {
+    unsafe {
+        sys::SteamAPI_ISteamHTMLSurface_MouseDown(
+            steam_html_surface()?,
+            browser,
+            html_mouse_button_from_u32(mouse_button)?,
+        )
+    };
+    Ok(())
+}
+
+#[napi(js_name = "htmlMouseDoubleClick")]
+pub fn html_mouse_double_click(browser: u32, mouse_button: u32) -> Result<(), Error> {
+    unsafe {
+        sys::SteamAPI_ISteamHTMLSurface_MouseDoubleClick(
+            steam_html_surface()?,
+            browser,
+            html_mouse_button_from_u32(mouse_button)?,
+        )
+    };
+    Ok(())
+}
+
+#[napi(js_name = "htmlMouseMove")]
+pub fn html_mouse_move(browser: u32, x: i32, y: i32) -> Result<(), Error> {
+    unsafe { sys::SteamAPI_ISteamHTMLSurface_MouseMove(steam_html_surface()?, browser, x, y) };
+    Ok(())
+}
+
+#[napi(js_name = "htmlMouseWheel")]
+pub fn html_mouse_wheel(browser: u32, delta: i32) -> Result<(), Error> {
+    unsafe { sys::SteamAPI_ISteamHTMLSurface_MouseWheel(steam_html_surface()?, browser, delta) };
+    Ok(())
+}
+
+#[napi(js_name = "htmlKeyDown")]
+pub fn html_key_down(
+    browser: u32,
+    native_key_code: u32,
+    key_modifiers: u32,
+    is_system_key: bool,
+) -> Result<(), Error> {
+    unsafe {
+        steam_api_isteam_html_surface_key_down_raw(
+            steam_html_surface()?,
+            browser,
+            native_key_code,
+            html_key_modifiers_from_u32(key_modifiers)?,
+            is_system_key,
+        )
+    };
+    Ok(())
+}
+
+#[napi(js_name = "htmlKeyUp")]
+pub fn html_key_up(browser: u32, native_key_code: u32, key_modifiers: u32) -> Result<(), Error> {
+    unsafe {
+        steam_api_isteam_html_surface_key_up_raw(
+            steam_html_surface()?,
+            browser,
+            native_key_code,
+            html_key_modifiers_from_u32(key_modifiers)?,
+        )
+    };
+    Ok(())
+}
+
+#[napi(js_name = "htmlKeyChar")]
+pub fn html_key_char(browser: u32, unicode_char: u32, key_modifiers: u32) -> Result<(), Error> {
+    unsafe {
+        steam_api_isteam_html_surface_key_char_raw(
+            steam_html_surface()?,
+            browser,
+            unicode_char,
+            html_key_modifiers_from_u32(key_modifiers)?,
+        )
+    };
+    Ok(())
+}
+
+#[napi(js_name = "htmlSetHorizontalScroll")]
+pub fn html_set_horizontal_scroll(browser: u32, absolute_pixel_scroll: u32) -> Result<(), Error> {
+    unsafe {
+        sys::SteamAPI_ISteamHTMLSurface_SetHorizontalScroll(
+            steam_html_surface()?,
+            browser,
+            absolute_pixel_scroll,
+        )
+    };
+    Ok(())
+}
+
+#[napi(js_name = "htmlSetVerticalScroll")]
+pub fn html_set_vertical_scroll(browser: u32, absolute_pixel_scroll: u32) -> Result<(), Error> {
+    unsafe {
+        sys::SteamAPI_ISteamHTMLSurface_SetVerticalScroll(
+            steam_html_surface()?,
+            browser,
+            absolute_pixel_scroll,
+        )
+    };
+    Ok(())
+}
+
+#[napi(js_name = "htmlSetKeyFocus")]
+pub fn html_set_key_focus(browser: u32, has_key_focus: bool) -> Result<(), Error> {
+    unsafe {
+        sys::SteamAPI_ISteamHTMLSurface_SetKeyFocus(steam_html_surface()?, browser, has_key_focus)
+    };
+    Ok(())
+}
+
+#[napi(js_name = "htmlViewSource")]
+pub fn html_view_source(browser: u32) -> Result<(), Error> {
+    unsafe { sys::SteamAPI_ISteamHTMLSurface_ViewSource(steam_html_surface()?, browser) };
+    Ok(())
+}
+
+#[napi(js_name = "htmlCopyToClipboard")]
+pub fn html_copy_to_clipboard(browser: u32) -> Result<(), Error> {
+    unsafe { sys::SteamAPI_ISteamHTMLSurface_CopyToClipboard(steam_html_surface()?, browser) };
+    Ok(())
+}
+
+#[napi(js_name = "htmlPasteFromClipboard")]
+pub fn html_paste_from_clipboard(browser: u32) -> Result<(), Error> {
+    unsafe { sys::SteamAPI_ISteamHTMLSurface_PasteFromClipboard(steam_html_surface()?, browser) };
+    Ok(())
+}
+
+#[napi(js_name = "htmlFind")]
+pub fn html_find(
+    browser: u32,
+    search: String,
+    currently_in_find: bool,
+    reverse: bool,
+) -> Result<(), Error> {
+    let search = cstring(search, "HTML search string")?;
+    unsafe {
+        sys::SteamAPI_ISteamHTMLSurface_Find(
+            steam_html_surface()?,
+            browser,
+            search.as_ptr(),
+            currently_in_find,
+            reverse,
+        )
+    };
+    Ok(())
+}
+
+#[napi(js_name = "htmlStopFind")]
+pub fn html_stop_find(browser: u32) -> Result<(), Error> {
+    unsafe { sys::SteamAPI_ISteamHTMLSurface_StopFind(steam_html_surface()?, browser) };
+    Ok(())
+}
+
+#[napi(js_name = "htmlGetLinkAtPosition")]
+pub fn html_get_link_at_position(browser: u32, x: i32, y: i32) -> Result<(), Error> {
+    unsafe {
+        sys::SteamAPI_ISteamHTMLSurface_GetLinkAtPosition(steam_html_surface()?, browser, x, y)
+    };
+    Ok(())
+}
+
+#[napi(js_name = "htmlSetCookie")]
+pub fn html_set_cookie(
+    hostname: String,
+    key: String,
+    value: String,
+    path: Option<String>,
+    expires: Option<u32>,
+    secure: Option<bool>,
+    http_only: Option<bool>,
+) -> Result<(), Error> {
+    let hostname = cstring(hostname, "HTML cookie hostname")?;
+    let key = cstring(key, "HTML cookie key")?;
+    let value = cstring(value, "HTML cookie value")?;
+    let path = cstring(path.unwrap_or_else(|| "/".to_owned()), "HTML cookie path")?;
+    unsafe {
+        sys::SteamAPI_ISteamHTMLSurface_SetCookie(
+            steam_html_surface()?,
+            hostname.as_ptr(),
+            key.as_ptr(),
+            value.as_ptr(),
+            path.as_ptr(),
+            expires.unwrap_or(0),
+            secure.unwrap_or(false),
+            http_only.unwrap_or(false),
+        )
+    };
+    Ok(())
+}
+
+#[napi(js_name = "htmlSetPageScaleFactor")]
+pub fn html_set_page_scale_factor(
+    browser: u32,
+    zoom: f64,
+    point_x: i32,
+    point_y: i32,
+) -> Result<(), Error> {
+    if !zoom.is_finite() {
+        return Err(Error::from_reason("HTML zoom must be finite"));
+    }
+    unsafe {
+        sys::SteamAPI_ISteamHTMLSurface_SetPageScaleFactor(
+            steam_html_surface()?,
+            browser,
+            zoom as f32,
+            point_x,
+            point_y,
+        )
+    };
+    Ok(())
+}
+
+#[napi(js_name = "htmlSetBackgroundMode")]
+pub fn html_set_background_mode(browser: u32, background_mode: bool) -> Result<(), Error> {
+    unsafe {
+        sys::SteamAPI_ISteamHTMLSurface_SetBackgroundMode(
+            steam_html_surface()?,
+            browser,
+            background_mode,
+        )
+    };
+    Ok(())
+}
+
+#[napi(js_name = "htmlSetDpiScalingFactor")]
+pub fn html_set_dpi_scaling_factor(browser: u32, dpi_scaling: f64) -> Result<(), Error> {
+    if !dpi_scaling.is_finite() {
+        return Err(Error::from_reason("HTML DPI scaling must be finite"));
+    }
+    unsafe {
+        sys::SteamAPI_ISteamHTMLSurface_SetDPIScalingFactor(
+            steam_html_surface()?,
+            browser,
+            dpi_scaling as f32,
+        )
+    };
+    Ok(())
+}
+
+#[napi(js_name = "htmlOpenDeveloperTools")]
+pub fn html_open_developer_tools(browser: u32) -> Result<(), Error> {
+    unsafe { sys::SteamAPI_ISteamHTMLSurface_OpenDeveloperTools(steam_html_surface()?, browser) };
+    Ok(())
+}
+
+#[napi(js_name = "htmlAllowStartRequest")]
+pub fn html_allow_start_request(browser: u32, allowed: bool) -> Result<(), Error> {
+    unsafe {
+        sys::SteamAPI_ISteamHTMLSurface_AllowStartRequest(steam_html_surface()?, browser, allowed)
+    };
+    Ok(())
+}
+
+#[napi(js_name = "htmlJsDialogResponse")]
+pub fn html_js_dialog_response(browser: u32, result: bool) -> Result<(), Error> {
+    unsafe {
+        sys::SteamAPI_ISteamHTMLSurface_JSDialogResponse(steam_html_surface()?, browser, result)
+    };
+    Ok(())
+}
+
+#[napi(js_name = "htmlFileLoadDialogResponse")]
+pub fn html_file_load_dialog_response(
+    browser: u32,
+    selected_files: Vec<String>,
+) -> Result<(), Error> {
+    let selected_files = selected_files
+        .into_iter()
+        .map(|file| cstring(file, "HTML selected file"))
+        .collect::<Result<Vec<_>, _>>()?;
+    let mut pointers: Vec<*const c_char> =
+        selected_files.iter().map(|file| file.as_ptr()).collect();
+    pointers.push(ptr::null());
+    unsafe {
+        sys::SteamAPI_ISteamHTMLSurface_FileLoadDialogResponse(
+            steam_html_surface()?,
+            browser,
+            pointers.as_mut_ptr(),
+        )
+    };
+    Ok(())
 }
 
 #[napi(js_name = "partiesGetNumActiveBeacons")]
@@ -11317,6 +11786,14 @@ fn steam_http() -> Result<*mut sys::ISteamHTTP, Error> {
     non_null(unsafe { sys::SteamAPI_SteamHTTP_v003() }, "ISteamHTTP")
 }
 
+fn steam_html_surface() -> Result<*mut sys::ISteamHTMLSurface, Error> {
+    crate::state::ensure_initialized()?;
+    non_null(
+        unsafe { sys::SteamAPI_SteamHTMLSurface_v005() },
+        "ISteamHTMLSurface",
+    )
+}
+
 fn steam_parties() -> Result<*mut sys::ISteamParties, Error> {
     crate::state::ensure_initialized()?;
     non_null(
@@ -14197,6 +14674,31 @@ fn callback_id_from_compat(callback: i32) -> Result<i32, Error> {
             Ok(sys::PlaybackStatusHasChanged_t_k_iCallback as i32)
         }
         CALLBACK_VOLUME_HAS_CHANGED => Ok(sys::VolumeHasChanged_t_k_iCallback as i32),
+        CALLBACK_HTML_BROWSER_READY => Ok(sys::HTML_BrowserReady_t_k_iCallback as i32),
+        CALLBACK_HTML_NEEDS_PAINT => Ok(sys::HTML_NeedsPaint_t_k_iCallback as i32),
+        CALLBACK_HTML_START_REQUEST => Ok(sys::HTML_StartRequest_t_k_iCallback as i32),
+        CALLBACK_HTML_CLOSE_BROWSER => Ok(sys::HTML_CloseBrowser_t_k_iCallback as i32),
+        CALLBACK_HTML_URL_CHANGED => Ok(sys::HTML_URLChanged_t_k_iCallback as i32),
+        CALLBACK_HTML_FINISHED_REQUEST => Ok(sys::HTML_FinishedRequest_t_k_iCallback as i32),
+        CALLBACK_HTML_OPEN_LINK_IN_NEW_TAB => Ok(sys::HTML_OpenLinkInNewTab_t_k_iCallback as i32),
+        CALLBACK_HTML_CHANGED_TITLE => Ok(sys::HTML_ChangedTitle_t_k_iCallback as i32),
+        CALLBACK_HTML_SEARCH_RESULTS => Ok(sys::HTML_SearchResults_t_k_iCallback as i32),
+        CALLBACK_HTML_CAN_GO_BACK_AND_FORWARD => {
+            Ok(sys::HTML_CanGoBackAndForward_t_k_iCallback as i32)
+        }
+        CALLBACK_HTML_HORIZONTAL_SCROLL => Ok(sys::HTML_HorizontalScroll_t_k_iCallback as i32),
+        CALLBACK_HTML_VERTICAL_SCROLL => Ok(sys::HTML_VerticalScroll_t_k_iCallback as i32),
+        CALLBACK_HTML_LINK_AT_POSITION => Ok(sys::HTML_LinkAtPosition_t_k_iCallback as i32),
+        CALLBACK_HTML_JS_ALERT => Ok(sys::HTML_JSAlert_t_k_iCallback as i32),
+        CALLBACK_HTML_JS_CONFIRM => Ok(sys::HTML_JSConfirm_t_k_iCallback as i32),
+        CALLBACK_HTML_FILE_OPEN_DIALOG => Ok(sys::HTML_FileOpenDialog_t_k_iCallback as i32),
+        CALLBACK_HTML_NEW_WINDOW => Ok(sys::HTML_NewWindow_t_k_iCallback as i32),
+        CALLBACK_HTML_SET_CURSOR => Ok(sys::HTML_SetCursor_t_k_iCallback as i32),
+        CALLBACK_HTML_STATUS_TEXT => Ok(sys::HTML_StatusText_t_k_iCallback as i32),
+        CALLBACK_HTML_SHOW_TOOL_TIP => Ok(sys::HTML_ShowToolTip_t_k_iCallback as i32),
+        CALLBACK_HTML_UPDATE_TOOL_TIP => Ok(sys::HTML_UpdateToolTip_t_k_iCallback as i32),
+        CALLBACK_HTML_HIDE_TOOL_TIP => Ok(sys::HTML_HideToolTip_t_k_iCallback as i32),
+        CALLBACK_HTML_BROWSER_RESTARTED => Ok(sys::HTML_BrowserRestarted_t_k_iCallback as i32),
         CALLBACK_BROADCAST_UPLOAD_START => Ok(sys::BroadcastUploadStart_t_k_iCallback as i32),
         CALLBACK_BROADCAST_UPLOAD_STOP => Ok(sys::BroadcastUploadStop_t_k_iCallback as i32),
         CALLBACK_GET_VIDEO_URL_RESULT => Ok(sys::GetVideoURLResult_t_k_iCallback as i32),
@@ -15088,6 +15590,209 @@ unsafe fn callback_to_json(callback: i32, param: *mut c_void) -> Value {
                 "new_volume": ptr::addr_of!((*event).m_flNewVolume).read_unaligned()
             })
         }
+        CALLBACK_HTML_BROWSER_READY => {
+            let event = param as *const sys::HTML_BrowserReady_t;
+            serde_json::json!({
+                "browser_handle": ptr::addr_of!((*event).unBrowserHandle).read_unaligned()
+            })
+        }
+        CALLBACK_HTML_NEEDS_PAINT => {
+            let event = param as *const sys::HTML_NeedsPaint_t;
+            let bgra = ptr::addr_of!((*event).pBGRA).read_unaligned();
+            let wide = ptr::addr_of!((*event).unWide).read_unaligned();
+            let tall = ptr::addr_of!((*event).unTall).read_unaligned();
+            let byte_length = u64::from(wide)
+                .saturating_mul(u64::from(tall))
+                .saturating_mul(4);
+            serde_json::json!({
+                "browser_handle": ptr::addr_of!((*event).unBrowserHandle).read_unaligned(),
+                "has_bgra_data": !bgra.is_null(),
+                "bgra_byte_length": byte_length,
+                "wide": wide,
+                "tall": tall,
+                "update_x": ptr::addr_of!((*event).unUpdateX).read_unaligned(),
+                "update_y": ptr::addr_of!((*event).unUpdateY).read_unaligned(),
+                "update_wide": ptr::addr_of!((*event).unUpdateWide).read_unaligned(),
+                "update_tall": ptr::addr_of!((*event).unUpdateTall).read_unaligned(),
+                "scroll_x": ptr::addr_of!((*event).unScrollX).read_unaligned(),
+                "scroll_y": ptr::addr_of!((*event).unScrollY).read_unaligned(),
+                "page_scale": ptr::addr_of!((*event).flPageScale).read_unaligned(),
+                "page_serial": ptr::addr_of!((*event).unPageSerial).read_unaligned()
+            })
+        }
+        CALLBACK_HTML_START_REQUEST => {
+            let event = param as *const sys::HTML_StartRequest_t;
+            serde_json::json!({
+                "browser_handle": ptr::addr_of!((*event).unBrowserHandle).read_unaligned(),
+                "url": string_from_ptr(ptr::addr_of!((*event).pchURL).read_unaligned()),
+                "target": string_from_ptr(ptr::addr_of!((*event).pchTarget).read_unaligned()),
+                "post_data": string_from_ptr(ptr::addr_of!((*event).pchPostData).read_unaligned()),
+                "is_redirect": ptr::addr_of!((*event).bIsRedirect).read_unaligned()
+            })
+        }
+        CALLBACK_HTML_CLOSE_BROWSER => {
+            let event = param as *const sys::HTML_CloseBrowser_t;
+            serde_json::json!({
+                "browser_handle": ptr::addr_of!((*event).unBrowserHandle).read_unaligned()
+            })
+        }
+        CALLBACK_HTML_URL_CHANGED => {
+            let event = param as *const sys::HTML_URLChanged_t;
+            serde_json::json!({
+                "browser_handle": ptr::addr_of!((*event).unBrowserHandle).read_unaligned(),
+                "url": string_from_ptr(ptr::addr_of!((*event).pchURL).read_unaligned()),
+                "post_data": string_from_ptr(ptr::addr_of!((*event).pchPostData).read_unaligned()),
+                "is_redirect": ptr::addr_of!((*event).bIsRedirect).read_unaligned(),
+                "page_title": string_from_ptr(ptr::addr_of!((*event).pchPageTitle).read_unaligned()),
+                "new_navigation": ptr::addr_of!((*event).bNewNavigation).read_unaligned()
+            })
+        }
+        CALLBACK_HTML_FINISHED_REQUEST => {
+            let event = param as *const sys::HTML_FinishedRequest_t;
+            serde_json::json!({
+                "browser_handle": ptr::addr_of!((*event).unBrowserHandle).read_unaligned(),
+                "url": string_from_ptr(ptr::addr_of!((*event).pchURL).read_unaligned()),
+                "page_title": string_from_ptr(ptr::addr_of!((*event).pchPageTitle).read_unaligned())
+            })
+        }
+        CALLBACK_HTML_OPEN_LINK_IN_NEW_TAB => {
+            let event = param as *const sys::HTML_OpenLinkInNewTab_t;
+            serde_json::json!({
+                "browser_handle": ptr::addr_of!((*event).unBrowserHandle).read_unaligned(),
+                "url": string_from_ptr(ptr::addr_of!((*event).pchURL).read_unaligned())
+            })
+        }
+        CALLBACK_HTML_CHANGED_TITLE => {
+            let event = param as *const sys::HTML_ChangedTitle_t;
+            serde_json::json!({
+                "browser_handle": ptr::addr_of!((*event).unBrowserHandle).read_unaligned(),
+                "title": string_from_ptr(ptr::addr_of!((*event).pchTitle).read_unaligned())
+            })
+        }
+        CALLBACK_HTML_SEARCH_RESULTS => {
+            let event = param as *const sys::HTML_SearchResults_t;
+            serde_json::json!({
+                "browser_handle": ptr::addr_of!((*event).unBrowserHandle).read_unaligned(),
+                "results": ptr::addr_of!((*event).unResults).read_unaligned(),
+                "current_match": ptr::addr_of!((*event).unCurrentMatch).read_unaligned()
+            })
+        }
+        CALLBACK_HTML_CAN_GO_BACK_AND_FORWARD => {
+            let event = param as *const sys::HTML_CanGoBackAndForward_t;
+            serde_json::json!({
+                "browser_handle": ptr::addr_of!((*event).unBrowserHandle).read_unaligned(),
+                "can_go_back": ptr::addr_of!((*event).bCanGoBack).read_unaligned(),
+                "can_go_forward": ptr::addr_of!((*event).bCanGoForward).read_unaligned()
+            })
+        }
+        CALLBACK_HTML_HORIZONTAL_SCROLL => {
+            let event = param as *const sys::HTML_HorizontalScroll_t;
+            serde_json::json!({
+                "browser_handle": ptr::addr_of!((*event).unBrowserHandle).read_unaligned(),
+                "scroll_max": ptr::addr_of!((*event).unScrollMax).read_unaligned(),
+                "scroll_current": ptr::addr_of!((*event).unScrollCurrent).read_unaligned(),
+                "page_scale": ptr::addr_of!((*event).flPageScale).read_unaligned(),
+                "visible": ptr::addr_of!((*event).bVisible).read_unaligned(),
+                "page_size": ptr::addr_of!((*event).unPageSize).read_unaligned()
+            })
+        }
+        CALLBACK_HTML_VERTICAL_SCROLL => {
+            let event = param as *const sys::HTML_VerticalScroll_t;
+            serde_json::json!({
+                "browser_handle": ptr::addr_of!((*event).unBrowserHandle).read_unaligned(),
+                "scroll_max": ptr::addr_of!((*event).unScrollMax).read_unaligned(),
+                "scroll_current": ptr::addr_of!((*event).unScrollCurrent).read_unaligned(),
+                "page_scale": ptr::addr_of!((*event).flPageScale).read_unaligned(),
+                "visible": ptr::addr_of!((*event).bVisible).read_unaligned(),
+                "page_size": ptr::addr_of!((*event).unPageSize).read_unaligned()
+            })
+        }
+        CALLBACK_HTML_LINK_AT_POSITION => {
+            let event = param as *const sys::HTML_LinkAtPosition_t;
+            serde_json::json!({
+                "browser_handle": ptr::addr_of!((*event).unBrowserHandle).read_unaligned(),
+                "x": ptr::addr_of!((*event).x).read_unaligned(),
+                "y": ptr::addr_of!((*event).y).read_unaligned(),
+                "url": string_from_ptr(ptr::addr_of!((*event).pchURL).read_unaligned()),
+                "input": ptr::addr_of!((*event).bInput).read_unaligned(),
+                "live_link": ptr::addr_of!((*event).bLiveLink).read_unaligned()
+            })
+        }
+        CALLBACK_HTML_JS_ALERT => {
+            let event = param as *const sys::HTML_JSAlert_t;
+            serde_json::json!({
+                "browser_handle": ptr::addr_of!((*event).unBrowserHandle).read_unaligned(),
+                "message": string_from_ptr(ptr::addr_of!((*event).pchMessage).read_unaligned())
+            })
+        }
+        CALLBACK_HTML_JS_CONFIRM => {
+            let event = param as *const sys::HTML_JSConfirm_t;
+            serde_json::json!({
+                "browser_handle": ptr::addr_of!((*event).unBrowserHandle).read_unaligned(),
+                "message": string_from_ptr(ptr::addr_of!((*event).pchMessage).read_unaligned())
+            })
+        }
+        CALLBACK_HTML_FILE_OPEN_DIALOG => {
+            let event = param as *const sys::HTML_FileOpenDialog_t;
+            serde_json::json!({
+                "browser_handle": ptr::addr_of!((*event).unBrowserHandle).read_unaligned(),
+                "title": string_from_ptr(ptr::addr_of!((*event).pchTitle).read_unaligned()),
+                "initial_file": string_from_ptr(ptr::addr_of!((*event).pchInitialFile).read_unaligned())
+            })
+        }
+        CALLBACK_HTML_NEW_WINDOW => {
+            let event = param as *const sys::HTML_NewWindow_t;
+            serde_json::json!({
+                "browser_handle": ptr::addr_of!((*event).unBrowserHandle).read_unaligned(),
+                "url": string_from_ptr(ptr::addr_of!((*event).pchURL).read_unaligned()),
+                "x": ptr::addr_of!((*event).unX).read_unaligned(),
+                "y": ptr::addr_of!((*event).unY).read_unaligned(),
+                "wide": ptr::addr_of!((*event).unWide).read_unaligned(),
+                "tall": ptr::addr_of!((*event).unTall).read_unaligned(),
+                "new_window_browser_handle": ptr::addr_of!((*event).unNewWindow_BrowserHandle_IGNORE).read_unaligned()
+            })
+        }
+        CALLBACK_HTML_SET_CURSOR => {
+            let event = param as *const sys::HTML_SetCursor_t;
+            serde_json::json!({
+                "browser_handle": ptr::addr_of!((*event).unBrowserHandle).read_unaligned(),
+                "mouse_cursor": ptr::addr_of!((*event).eMouseCursor).read_unaligned()
+            })
+        }
+        CALLBACK_HTML_STATUS_TEXT => {
+            let event = param as *const sys::HTML_StatusText_t;
+            serde_json::json!({
+                "browser_handle": ptr::addr_of!((*event).unBrowserHandle).read_unaligned(),
+                "message": string_from_ptr(ptr::addr_of!((*event).pchMsg).read_unaligned())
+            })
+        }
+        CALLBACK_HTML_SHOW_TOOL_TIP => {
+            let event = param as *const sys::HTML_ShowToolTip_t;
+            serde_json::json!({
+                "browser_handle": ptr::addr_of!((*event).unBrowserHandle).read_unaligned(),
+                "message": string_from_ptr(ptr::addr_of!((*event).pchMsg).read_unaligned())
+            })
+        }
+        CALLBACK_HTML_UPDATE_TOOL_TIP => {
+            let event = param as *const sys::HTML_UpdateToolTip_t;
+            serde_json::json!({
+                "browser_handle": ptr::addr_of!((*event).unBrowserHandle).read_unaligned(),
+                "message": string_from_ptr(ptr::addr_of!((*event).pchMsg).read_unaligned())
+            })
+        }
+        CALLBACK_HTML_HIDE_TOOL_TIP => {
+            let event = param as *const sys::HTML_HideToolTip_t;
+            serde_json::json!({
+                "browser_handle": ptr::addr_of!((*event).unBrowserHandle).read_unaligned()
+            })
+        }
+        CALLBACK_HTML_BROWSER_RESTARTED => {
+            let event = param as *const sys::HTML_BrowserRestarted_t;
+            serde_json::json!({
+                "browser_handle": ptr::addr_of!((*event).unBrowserHandle).read_unaligned(),
+                "old_browser_handle": ptr::addr_of!((*event).unOldBrowserHandle).read_unaligned()
+            })
+        }
         CALLBACK_BROADCAST_UPLOAD_START => {
             let event = param as *const sys::BroadcastUploadStart_t;
             serde_json::json!({
@@ -15246,6 +15951,27 @@ fn gamepad_text_input_line_mode_from_u32(
         0 => Ok(sys::EGamepadTextInputLineMode::k_EGamepadTextInputLineModeSingleLine),
         1 => Ok(sys::EGamepadTextInputLineMode::k_EGamepadTextInputLineModeMultipleLines),
         _ => Err(Error::from_reason("invalid gamepad text input line mode")),
+    }
+}
+
+fn html_mouse_button_from_u32(
+    value: u32,
+) -> Result<sys::ISteamHTMLSurface_EHTMLMouseButton, Error> {
+    match value {
+        0 => Ok(sys::ISteamHTMLSurface_EHTMLMouseButton::eHTMLMouseButton_Left),
+        1 => Ok(sys::ISteamHTMLSurface_EHTMLMouseButton::eHTMLMouseButton_Right),
+        2 => Ok(sys::ISteamHTMLSurface_EHTMLMouseButton::eHTMLMouseButton_Middle),
+        _ => Err(Error::from_reason("invalid HTML mouse button")),
+    }
+}
+
+fn html_key_modifiers_from_u32(value: u32) -> Result<u32, Error> {
+    const VALID_HTML_KEY_MODIFIER_MASK: u32 = 0b111;
+
+    if value & !VALID_HTML_KEY_MODIFIER_MASK == 0 {
+        Ok(value)
+    } else {
+        Err(Error::from_reason("invalid HTML key modifiers"))
     }
 }
 

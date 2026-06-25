@@ -4069,6 +4069,288 @@ test("http facade covers request lifecycle, response reads, and callbacks", asyn
   });
 });
 
+test("html facade covers browser lifecycle, input, and callbacks", async (t) => {
+  const fake = createFakeNative({
+    htmlInit() {
+      this.calls.push({ method: "htmlInit", args: [] });
+      return true;
+    },
+    htmlShutdown() {
+      this.calls.push({ method: "htmlShutdown", args: [] });
+      return true;
+    },
+    htmlCreateBrowser(userAgent, userCss, timeoutSeconds) {
+      this.calls.push({ method: "htmlCreateBrowser", args: [userAgent, userCss, timeoutSeconds] });
+      return Promise.resolve(55);
+    },
+    htmlRemoveBrowser(browser) {
+      this.calls.push({ method: "htmlRemoveBrowser", args: [browser] });
+    },
+    htmlLoadUrl(browser, url, postData) {
+      this.calls.push({ method: "htmlLoadUrl", args: [browser, url, postData] });
+    },
+    htmlSetSize(browser, width, height) {
+      this.calls.push({ method: "htmlSetSize", args: [browser, width, height] });
+    },
+    htmlStopLoad(browser) {
+      this.calls.push({ method: "htmlStopLoad", args: [browser] });
+    },
+    htmlReload(browser) {
+      this.calls.push({ method: "htmlReload", args: [browser] });
+    },
+    htmlGoBack(browser) {
+      this.calls.push({ method: "htmlGoBack", args: [browser] });
+    },
+    htmlGoForward(browser) {
+      this.calls.push({ method: "htmlGoForward", args: [browser] });
+    },
+    htmlAddHeader(browser, key, value) {
+      this.calls.push({ method: "htmlAddHeader", args: [browser, key, value] });
+    },
+    htmlExecuteJavascript(browser, script) {
+      this.calls.push({ method: "htmlExecuteJavascript", args: [browser, script] });
+    },
+    htmlMouseUp(browser, mouseButton) {
+      this.calls.push({ method: "htmlMouseUp", args: [browser, mouseButton] });
+    },
+    htmlMouseDown(browser, mouseButton) {
+      this.calls.push({ method: "htmlMouseDown", args: [browser, mouseButton] });
+    },
+    htmlMouseDoubleClick(browser, mouseButton) {
+      this.calls.push({ method: "htmlMouseDoubleClick", args: [browser, mouseButton] });
+    },
+    htmlMouseMove(browser, x, y) {
+      this.calls.push({ method: "htmlMouseMove", args: [browser, x, y] });
+    },
+    htmlMouseWheel(browser, delta) {
+      this.calls.push({ method: "htmlMouseWheel", args: [browser, delta] });
+    },
+    htmlKeyDown(browser, nativeKeyCode, keyModifiers, isSystemKey) {
+      this.calls.push({ method: "htmlKeyDown", args: [browser, nativeKeyCode, keyModifiers, isSystemKey] });
+    },
+    htmlKeyUp(browser, nativeKeyCode, keyModifiers) {
+      this.calls.push({ method: "htmlKeyUp", args: [browser, nativeKeyCode, keyModifiers] });
+    },
+    htmlKeyChar(browser, unicodeChar, keyModifiers) {
+      this.calls.push({ method: "htmlKeyChar", args: [browser, unicodeChar, keyModifiers] });
+    },
+    htmlSetHorizontalScroll(browser, absolutePixelScroll) {
+      this.calls.push({ method: "htmlSetHorizontalScroll", args: [browser, absolutePixelScroll] });
+    },
+    htmlSetVerticalScroll(browser, absolutePixelScroll) {
+      this.calls.push({ method: "htmlSetVerticalScroll", args: [browser, absolutePixelScroll] });
+    },
+    htmlSetKeyFocus(browser, hasKeyFocus) {
+      this.calls.push({ method: "htmlSetKeyFocus", args: [browser, hasKeyFocus] });
+    },
+    htmlViewSource(browser) {
+      this.calls.push({ method: "htmlViewSource", args: [browser] });
+    },
+    htmlCopyToClipboard(browser) {
+      this.calls.push({ method: "htmlCopyToClipboard", args: [browser] });
+    },
+    htmlPasteFromClipboard(browser) {
+      this.calls.push({ method: "htmlPasteFromClipboard", args: [browser] });
+    },
+    htmlFind(browser, search, currentlyInFind, reverse) {
+      this.calls.push({ method: "htmlFind", args: [browser, search, currentlyInFind, reverse] });
+    },
+    htmlStopFind(browser) {
+      this.calls.push({ method: "htmlStopFind", args: [browser] });
+    },
+    htmlGetLinkAtPosition(browser, x, y) {
+      this.calls.push({ method: "htmlGetLinkAtPosition", args: [browser, x, y] });
+    },
+    htmlSetCookie(hostname, key, value, cookiePath, expires, secure, httpOnly) {
+      this.calls.push({ method: "htmlSetCookie", args: [hostname, key, value, cookiePath, expires, secure, httpOnly] });
+    },
+    htmlSetPageScaleFactor(browser, zoom, pointX, pointY) {
+      this.calls.push({ method: "htmlSetPageScaleFactor", args: [browser, zoom, pointX, pointY] });
+    },
+    htmlSetBackgroundMode(browser, backgroundMode) {
+      this.calls.push({ method: "htmlSetBackgroundMode", args: [browser, backgroundMode] });
+    },
+    htmlSetDpiScalingFactor(browser, dpiScaling) {
+      this.calls.push({ method: "htmlSetDpiScalingFactor", args: [browser, dpiScaling] });
+    },
+    htmlOpenDeveloperTools(browser) {
+      this.calls.push({ method: "htmlOpenDeveloperTools", args: [browser] });
+    },
+    htmlAllowStartRequest(browser, allowed) {
+      this.calls.push({ method: "htmlAllowStartRequest", args: [browser, allowed] });
+    },
+    htmlJsDialogResponse(browser, result) {
+      this.calls.push({ method: "htmlJsDialogResponse", args: [browser, result] });
+    },
+    htmlFileLoadDialogResponse(browser, selectedFiles) {
+      this.calls.push({ method: "htmlFileLoadDialogResponse", args: [browser, selectedFiles] });
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  assert.equal(steam.SteamCallback.HTMLBrowserReady, 4501);
+  assert.equal(steam.SteamCallback.HTMLNeedsPaint, 4502);
+  assert.equal(steam.SteamCallback.HTMLStartRequest, 4503);
+  assert.equal(steam.SteamCallback.HTMLBrowserRestarted, 4527);
+  assert.equal(steam.html.MouseButton.Left, 0);
+  assert.equal(steam.html.MouseCursor.Hand, 20);
+  assert.equal(steam.html.MouseCursor.Last, 41);
+  assert.equal(steam.html.KeyModifier.ShiftDown, 4);
+  const ctrlShift = steam.html.KeyModifier.CtrlDown | steam.html.KeyModifier.ShiftDown;
+  assert.equal(ctrlShift, 6);
+
+  assert.equal(steam.html.init(), true);
+  const browser = await steam.html.createBrowser({
+    userAgent: "steam-bridge-test",
+    userCss: "body { color: white; }",
+    timeoutSeconds: 2
+  });
+  assert.equal(browser, 55);
+
+  steam.html.loadUrl(browser, "https://example.invalid/", "a=b");
+  steam.html.setSize(browser, 640, 360);
+  steam.html.addHeader(browser, "Accept", "text/html");
+  steam.html.executeJavascript(browser, "window.__steamBridge = true");
+  steam.html.mouseDown(browser, steam.html.MouseButton.Left);
+  steam.html.mouseUp(browser, steam.html.MouseButton.Left);
+  steam.html.mouseDoubleClick(browser, steam.html.MouseButton.Middle);
+  steam.html.mouseMove(browser, 10, 20);
+  steam.html.mouseWheel(browser, -120);
+  steam.html.keyDown(browser, 65, ctrlShift, false);
+  steam.html.keyUp(browser, 65, steam.html.KeyModifier.ShiftDown);
+  steam.html.keyChar(browser, 65, steam.html.KeyModifier.ShiftDown);
+  steam.html.setHorizontalScroll(browser, 12);
+  steam.html.setVerticalScroll(browser, 24);
+  steam.html.setKeyFocus(browser, true);
+  steam.html.viewSource(browser);
+  steam.html.copyToClipboard(browser);
+  steam.html.pasteFromClipboard(browser);
+  steam.html.find(browser, "space", false, true);
+  steam.html.stopFind(browser);
+  steam.html.getLinkAtPosition(browser, 5, 6);
+  steam.html.setCookie("example.invalid", "session", "test", {
+    path: "/",
+    expires: 1234567890,
+    secure: true,
+    httpOnly: true
+  });
+  steam.html.setPageScaleFactor(browser, 1.25, 10, 20);
+  steam.html.setBackgroundMode(browser, true);
+  steam.html.setDpiScalingFactor(browser, 2);
+  steam.html.openDeveloperTools(browser);
+  steam.html.allowStartRequest(browser, true);
+  steam.html.jsDialogResponse(browser, false);
+  steam.html.fileLoadDialogResponse(browser, ["/tmp/file.txt"]);
+  steam.html.stopLoad(browser);
+  steam.html.reload(browser);
+  steam.html.goBack(browser);
+  steam.html.goForward(browser);
+  steam.html.removeBrowser(browser);
+  assert.equal(steam.html.shutdown(), true);
+
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method.startsWith("html")).map((call) => call.method),
+    [
+      "htmlInit",
+      "htmlCreateBrowser",
+      "htmlLoadUrl",
+      "htmlSetSize",
+      "htmlAddHeader",
+      "htmlExecuteJavascript",
+      "htmlMouseDown",
+      "htmlMouseUp",
+      "htmlMouseDoubleClick",
+      "htmlMouseMove",
+      "htmlMouseWheel",
+      "htmlKeyDown",
+      "htmlKeyUp",
+      "htmlKeyChar",
+      "htmlSetHorizontalScroll",
+      "htmlSetVerticalScroll",
+      "htmlSetKeyFocus",
+      "htmlViewSource",
+      "htmlCopyToClipboard",
+      "htmlPasteFromClipboard",
+      "htmlFind",
+      "htmlStopFind",
+      "htmlGetLinkAtPosition",
+      "htmlSetCookie",
+      "htmlSetPageScaleFactor",
+      "htmlSetBackgroundMode",
+      "htmlSetDpiScalingFactor",
+      "htmlOpenDeveloperTools",
+      "htmlAllowStartRequest",
+      "htmlJsDialogResponse",
+      "htmlFileLoadDialogResponse",
+      "htmlStopLoad",
+      "htmlReload",
+      "htmlGoBack",
+      "htmlGoForward",
+      "htmlRemoveBrowser",
+      "htmlShutdown"
+    ]
+  );
+  assert.deepEqual(fake.calls.find((call) => call.method === "htmlCreateBrowser"), {
+    method: "htmlCreateBrowser",
+    args: ["steam-bridge-test", "body { color: white; }", 2]
+  });
+  assert.deepEqual(fake.calls.find((call) => call.method === "htmlKeyDown"), {
+    method: "htmlKeyDown",
+    args: [browser, 65, 6, false]
+  });
+  assert.deepEqual(fake.calls.find((call) => call.method === "htmlSetCookie"), {
+    method: "htmlSetCookie",
+    args: ["example.invalid", "session", "test", "/", 1234567890, true, true]
+  });
+
+  let paintEvent;
+  steam.callback.register(steam.SteamCallback.HTMLNeedsPaint, (event) => {
+    paintEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.HTMLNeedsPaint)({
+    browser_handle: 55,
+    has_bgra_data: true,
+    bgra_byte_length: 64,
+    page_scale: 1,
+    page_serial: 7,
+    update_x: 1,
+    update_y: 2,
+    update_wide: 3,
+    update_tall: 4,
+    scroll_x: 5,
+    scroll_y: 6
+  });
+
+  assert.equal(paintEvent.browserHandle, 55);
+  assert.equal(paintEvent.hasBgraData, true);
+  assert.equal(paintEvent.bgraByteLength, 64);
+  assert.equal(paintEvent.pageScale, 1);
+  assert.equal(paintEvent.pageSerial, 7);
+  assert.equal(paintEvent.updateWide, 3);
+  assert.equal(paintEvent.scrollY, 6);
+
+  let urlEvent;
+  steam.callback.register(steam.SteamCallback.HTMLURLChanged, (event) => {
+    urlEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.HTMLURLChanged)({
+    browser_handle: 55,
+    url: "https://example.invalid/next",
+    post_data: "a=b",
+    is_redirect: true,
+    page_title: "Example",
+    new_navigation: false
+  });
+
+  assert.equal(urlEvent.browserHandle, 55);
+  assert.equal(urlEvent.postData, "a=b");
+  assert.equal(urlEvent.isRedirect, true);
+  assert.equal(urlEvent.pageTitle, "Example");
+  assert.equal(urlEvent.newNavigation, false);
+});
+
 test("parties facade covers party beacon lifecycle and callbacks", async (t) => {
   const owner = { steamId64: "76561198000000009", steamId32: "STEAM_0:1:19867140", accountId: 39734281 };
   const fake = createFakeNative({
