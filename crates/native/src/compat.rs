@@ -95,7 +95,27 @@ const CALLBACK_GAME_SERVER_STATS_UNLOADED: i32 = 1108;
 const CALLBACK_GAME_SERVER_STATS_RECEIVED: i32 = 1800;
 const CALLBACK_GAME_SERVER_STATS_STORED: i32 = 1801;
 const CALLBACK_REMOTE_STORAGE_FILE_SHARE_RESULT: i32 = 1307;
+const CALLBACK_REMOTE_STORAGE_PUBLISH_FILE_RESULT: i32 = 1309;
+const CALLBACK_REMOTE_STORAGE_DELETE_PUBLISHED_FILE_RESULT: i32 = 1311;
+const CALLBACK_REMOTE_STORAGE_ENUMERATE_USER_PUBLISHED_FILES_RESULT: i32 = 1312;
+const CALLBACK_REMOTE_STORAGE_SUBSCRIBE_PUBLISHED_FILE_RESULT: i32 = 1313;
+const CALLBACK_REMOTE_STORAGE_ENUMERATE_USER_SUBSCRIBED_FILES_RESULT: i32 = 1314;
+const CALLBACK_REMOTE_STORAGE_UNSUBSCRIBE_PUBLISHED_FILE_RESULT: i32 = 1315;
+const CALLBACK_REMOTE_STORAGE_UPDATE_PUBLISHED_FILE_RESULT: i32 = 1316;
 const CALLBACK_REMOTE_STORAGE_DOWNLOAD_UGC_RESULT: i32 = 1317;
+const CALLBACK_REMOTE_STORAGE_GET_PUBLISHED_FILE_DETAILS_RESULT: i32 = 1318;
+const CALLBACK_REMOTE_STORAGE_ENUMERATE_WORKSHOP_FILES_RESULT: i32 = 1319;
+const CALLBACK_REMOTE_STORAGE_GET_PUBLISHED_ITEM_VOTE_DETAILS_RESULT: i32 = 1320;
+const CALLBACK_REMOTE_STORAGE_PUBLISHED_FILE_SUBSCRIBED: i32 = 1321;
+const CALLBACK_REMOTE_STORAGE_PUBLISHED_FILE_UNSUBSCRIBED: i32 = 1322;
+const CALLBACK_REMOTE_STORAGE_PUBLISHED_FILE_DELETED: i32 = 1323;
+const CALLBACK_REMOTE_STORAGE_UPDATE_USER_PUBLISHED_ITEM_VOTE_RESULT: i32 = 1324;
+const CALLBACK_REMOTE_STORAGE_USER_VOTE_DETAILS: i32 = 1325;
+const CALLBACK_REMOTE_STORAGE_ENUMERATE_USER_SHARED_WORKSHOP_FILES_RESULT: i32 = 1326;
+const CALLBACK_REMOTE_STORAGE_SET_USER_PUBLISHED_FILE_ACTION_RESULT: i32 = 1327;
+const CALLBACK_REMOTE_STORAGE_ENUMERATE_PUBLISHED_FILES_BY_USER_ACTION_RESULT: i32 = 1328;
+const CALLBACK_REMOTE_STORAGE_PUBLISH_FILE_PROGRESS: i32 = 1329;
+const CALLBACK_REMOTE_STORAGE_PUBLISHED_FILE_UPDATED: i32 = 1330;
 const CALLBACK_REMOTE_STORAGE_FILE_WRITE_ASYNC_COMPLETE: i32 = 1331;
 const CALLBACK_REMOTE_STORAGE_FILE_READ_ASYNC_COMPLETE: i32 = 1332;
 
@@ -365,6 +385,116 @@ pub struct CloudUgcDownloadResult {
     pub size: BigInt,
     pub name: String,
     pub owner: PlayerSteamId,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct CloudLegacyPublishedFileResult {
+    pub result: u32,
+    pub published_file_id: BigInt,
+    pub needs_to_accept_agreement: Option<bool>,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct CloudLegacyPublishedFileIdResult {
+    pub result: u32,
+    pub published_file_id: BigInt,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct CloudLegacyPublishedFileActionResult {
+    pub result: u32,
+    pub published_file_id: BigInt,
+    pub action: u32,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct CloudLegacyPublishedFileDetails {
+    pub result: u32,
+    pub published_file_id: BigInt,
+    pub creator_app_id: u32,
+    pub consumer_app_id: u32,
+    pub title: String,
+    pub description: String,
+    pub file: BigInt,
+    pub preview_file: BigInt,
+    pub owner: PlayerSteamId,
+    pub time_created: u32,
+    pub time_updated: u32,
+    pub visibility: u32,
+    pub banned: bool,
+    pub tags: Vec<String>,
+    pub tags_truncated: bool,
+    pub file_name: String,
+    pub file_size: BigInt,
+    pub preview_file_size: BigInt,
+    pub url: String,
+    pub file_type: u32,
+    pub accepted_for_use: bool,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct CloudLegacyEnumerateFilesResult {
+    pub result: u32,
+    pub returned_results: i32,
+    pub total_result_count: i32,
+    pub published_file_ids: Vec<BigInt>,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct CloudLegacyEnumerateSubscribedFilesResult {
+    pub result: u32,
+    pub returned_results: i32,
+    pub total_result_count: i32,
+    pub published_file_ids: Vec<BigInt>,
+    pub subscribed_times: Vec<u32>,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct CloudLegacyEnumerateWorkshopFilesResult {
+    pub result: u32,
+    pub returned_results: i32,
+    pub total_result_count: i32,
+    pub published_file_ids: Vec<BigInt>,
+    pub scores: Vec<f64>,
+    pub app_id: u32,
+    pub start_index: u32,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct CloudLegacyEnumerateUserActionFilesResult {
+    pub result: u32,
+    pub action: u32,
+    pub returned_results: i32,
+    pub total_result_count: i32,
+    pub published_file_ids: Vec<BigInt>,
+    pub updated_times: Vec<u32>,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct CloudLegacyPublishedItemVoteDetails {
+    pub result: u32,
+    pub published_file_id: BigInt,
+    pub votes_for: i32,
+    pub votes_against: i32,
+    pub reports: i32,
+    pub score: f64,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct CloudLegacyUserVoteDetails {
+    pub result: u32,
+    pub published_file_id: BigInt,
+    pub vote: u32,
 }
 
 #[derive(Debug)]
@@ -3121,6 +3251,613 @@ pub fn cloud_get_cached_ugc_handles() -> Result<Vec<BigInt>, Error> {
         }
     }
     Ok(handles)
+}
+
+#[napi(js_name = "cloudLegacyPublishWorkshopFile")]
+pub async fn cloud_legacy_publish_workshop_file(
+    file_path: String,
+    preview_path: String,
+    consumer_app_id: u32,
+    title: String,
+    description: String,
+    visibility: u32,
+    tags: Vec<String>,
+    file_type: u32,
+    timeout_seconds: Option<u32>,
+) -> Result<CloudLegacyPublishedFileResult, Error> {
+    let file_path = cstring(file_path, "published file path")?;
+    let preview_path = cstring(preview_path, "published preview path")?;
+    let title = cstring(title, "published file title")?;
+    let description = cstring(description, "published file description")?;
+    let call = {
+        let (tag_strings, tag_pointers, mut tag_array) =
+            steam_param_string_array(tags, "published file tag")?;
+        let call = unsafe {
+            sys::SteamAPI_ISteamRemoteStorage_PublishWorkshopFile(
+                steam_remote_storage()?,
+                file_path.as_ptr(),
+                preview_path.as_ptr(),
+                consumer_app_id,
+                title.as_ptr(),
+                description.as_ptr(),
+                remote_storage_visibility_from_u32(visibility)?,
+                &mut tag_array,
+                workshop_file_type_from_u32(file_type)?,
+            )
+        };
+        drop(tag_pointers);
+        drop(tag_strings);
+        call
+    };
+    let result: sys::RemoteStoragePublishFileResult_t = wait_for_api_call(
+        call,
+        sys::RemoteStoragePublishFileResult_t_k_iCallback as i32,
+        timeout_seconds
+            .map(u64::from)
+            .unwrap_or(DEFAULT_ASYNC_TIMEOUT_SECONDS)
+            .max(1),
+    )
+    .await?;
+    drop(file_path);
+    drop(preview_path);
+    drop(title);
+    drop(description);
+    Ok(remote_storage_publish_file_result(&result))
+}
+
+#[napi(js_name = "cloudLegacyPublishVideo")]
+pub async fn cloud_legacy_publish_video(
+    provider: u32,
+    video_account: String,
+    video_identifier: String,
+    preview_path: String,
+    consumer_app_id: u32,
+    title: String,
+    description: String,
+    visibility: u32,
+    tags: Vec<String>,
+    timeout_seconds: Option<u32>,
+) -> Result<CloudLegacyPublishedFileResult, Error> {
+    let video_account = cstring(video_account, "published video account")?;
+    let video_identifier = cstring(video_identifier, "published video identifier")?;
+    let preview_path = cstring(preview_path, "published video preview path")?;
+    let title = cstring(title, "published video title")?;
+    let description = cstring(description, "published video description")?;
+    let call = {
+        let (tag_strings, tag_pointers, mut tag_array) =
+            steam_param_string_array(tags, "published video tag")?;
+        let call = unsafe {
+            sys::SteamAPI_ISteamRemoteStorage_PublishVideo(
+                steam_remote_storage()?,
+                workshop_video_provider_from_u32(provider)?,
+                video_account.as_ptr(),
+                video_identifier.as_ptr(),
+                preview_path.as_ptr(),
+                consumer_app_id,
+                title.as_ptr(),
+                description.as_ptr(),
+                remote_storage_visibility_from_u32(visibility)?,
+                &mut tag_array,
+            )
+        };
+        drop(tag_pointers);
+        drop(tag_strings);
+        call
+    };
+    let result: sys::RemoteStoragePublishFileResult_t = wait_for_api_call(
+        call,
+        sys::RemoteStoragePublishFileResult_t_k_iCallback as i32,
+        timeout_seconds
+            .map(u64::from)
+            .unwrap_or(DEFAULT_ASYNC_TIMEOUT_SECONDS)
+            .max(1),
+    )
+    .await?;
+    drop(video_account);
+    drop(video_identifier);
+    drop(preview_path);
+    drop(title);
+    drop(description);
+    Ok(remote_storage_publish_file_result(&result))
+}
+
+#[napi(js_name = "cloudLegacyCreatePublishedFileUpdateRequest")]
+pub fn cloud_legacy_create_published_file_update_request(
+    published_file_id: BigInt,
+) -> Result<Option<BigInt>, Error> {
+    let handle = unsafe {
+        sys::SteamAPI_ISteamRemoteStorage_CreatePublishedFileUpdateRequest(
+            steam_remote_storage()?,
+            bigint_to_u64(published_file_id, "published file id")?,
+        )
+    };
+    Ok((handle != sys::k_PublishedFileUpdateHandleInvalid).then(|| handle.into()))
+}
+
+#[napi(js_name = "cloudLegacyUpdatePublishedFileFile")]
+pub fn cloud_legacy_update_published_file_file(
+    handle: BigInt,
+    file_path: String,
+) -> Result<bool, Error> {
+    let file_path = cstring(file_path, "published file path")?;
+    Ok(unsafe {
+        sys::SteamAPI_ISteamRemoteStorage_UpdatePublishedFileFile(
+            steam_remote_storage()?,
+            bigint_to_u64(handle, "published file update handle")?,
+            file_path.as_ptr(),
+        )
+    })
+}
+
+#[napi(js_name = "cloudLegacyUpdatePublishedFilePreviewFile")]
+pub fn cloud_legacy_update_published_file_preview_file(
+    handle: BigInt,
+    preview_path: String,
+) -> Result<bool, Error> {
+    let preview_path = cstring(preview_path, "published preview path")?;
+    Ok(unsafe {
+        sys::SteamAPI_ISteamRemoteStorage_UpdatePublishedFilePreviewFile(
+            steam_remote_storage()?,
+            bigint_to_u64(handle, "published file update handle")?,
+            preview_path.as_ptr(),
+        )
+    })
+}
+
+#[napi(js_name = "cloudLegacyUpdatePublishedFileTitle")]
+pub fn cloud_legacy_update_published_file_title(
+    handle: BigInt,
+    title: String,
+) -> Result<bool, Error> {
+    let title = cstring(title, "published file title")?;
+    Ok(unsafe {
+        sys::SteamAPI_ISteamRemoteStorage_UpdatePublishedFileTitle(
+            steam_remote_storage()?,
+            bigint_to_u64(handle, "published file update handle")?,
+            title.as_ptr(),
+        )
+    })
+}
+
+#[napi(js_name = "cloudLegacyUpdatePublishedFileDescription")]
+pub fn cloud_legacy_update_published_file_description(
+    handle: BigInt,
+    description: String,
+) -> Result<bool, Error> {
+    let description = cstring(description, "published file description")?;
+    Ok(unsafe {
+        sys::SteamAPI_ISteamRemoteStorage_UpdatePublishedFileDescription(
+            steam_remote_storage()?,
+            bigint_to_u64(handle, "published file update handle")?,
+            description.as_ptr(),
+        )
+    })
+}
+
+#[napi(js_name = "cloudLegacyUpdatePublishedFileVisibility")]
+pub fn cloud_legacy_update_published_file_visibility(
+    handle: BigInt,
+    visibility: u32,
+) -> Result<bool, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamRemoteStorage_UpdatePublishedFileVisibility(
+            steam_remote_storage()?,
+            bigint_to_u64(handle, "published file update handle")?,
+            remote_storage_visibility_from_u32(visibility)?,
+        )
+    })
+}
+
+#[napi(js_name = "cloudLegacyUpdatePublishedFileTags")]
+pub fn cloud_legacy_update_published_file_tags(
+    handle: BigInt,
+    tags: Vec<String>,
+) -> Result<bool, Error> {
+    let (tag_strings, tag_pointers, mut tag_array) =
+        steam_param_string_array(tags, "published file tag")?;
+    let ok = unsafe {
+        sys::SteamAPI_ISteamRemoteStorage_UpdatePublishedFileTags(
+            steam_remote_storage()?,
+            bigint_to_u64(handle, "published file update handle")?,
+            &mut tag_array,
+        )
+    };
+    drop(tag_pointers);
+    drop(tag_strings);
+    Ok(ok)
+}
+
+#[napi(js_name = "cloudLegacyUpdatePublishedFileSetChangeDescription")]
+pub fn cloud_legacy_update_published_file_set_change_description(
+    handle: BigInt,
+    change_description: String,
+) -> Result<bool, Error> {
+    let change_description = cstring(change_description, "published file change description")?;
+    Ok(unsafe {
+        sys::SteamAPI_ISteamRemoteStorage_UpdatePublishedFileSetChangeDescription(
+            steam_remote_storage()?,
+            bigint_to_u64(handle, "published file update handle")?,
+            change_description.as_ptr(),
+        )
+    })
+}
+
+#[napi(js_name = "cloudLegacyCommitPublishedFileUpdate")]
+pub async fn cloud_legacy_commit_published_file_update(
+    handle: BigInt,
+    timeout_seconds: Option<u32>,
+) -> Result<CloudLegacyPublishedFileResult, Error> {
+    let call = unsafe {
+        sys::SteamAPI_ISteamRemoteStorage_CommitPublishedFileUpdate(
+            steam_remote_storage()?,
+            bigint_to_u64(handle, "published file update handle")?,
+        )
+    };
+    let result: sys::RemoteStorageUpdatePublishedFileResult_t = wait_for_api_call(
+        call,
+        sys::RemoteStorageUpdatePublishedFileResult_t_k_iCallback as i32,
+        timeout_seconds
+            .map(u64::from)
+            .unwrap_or(DEFAULT_ASYNC_TIMEOUT_SECONDS)
+            .max(1),
+    )
+    .await?;
+    Ok(remote_storage_update_published_file_result(&result))
+}
+
+#[napi(js_name = "cloudLegacyGetPublishedFileDetails")]
+pub async fn cloud_legacy_get_published_file_details(
+    published_file_id: BigInt,
+    max_seconds_old: Option<u32>,
+    timeout_seconds: Option<u32>,
+) -> Result<CloudLegacyPublishedFileDetails, Error> {
+    let call = unsafe {
+        sys::SteamAPI_ISteamRemoteStorage_GetPublishedFileDetails(
+            steam_remote_storage()?,
+            bigint_to_u64(published_file_id, "published file id")?,
+            max_seconds_old.unwrap_or(0),
+        )
+    };
+    let result: sys::RemoteStorageGetPublishedFileDetailsResult_t = wait_for_api_call(
+        call,
+        sys::RemoteStorageGetPublishedFileDetailsResult_t_k_iCallback as i32,
+        timeout_seconds
+            .map(u64::from)
+            .unwrap_or(DEFAULT_ASYNC_TIMEOUT_SECONDS)
+            .max(1),
+    )
+    .await?;
+    Ok(remote_storage_published_file_details(&result))
+}
+
+#[napi(js_name = "cloudLegacyDeletePublishedFile")]
+pub async fn cloud_legacy_delete_published_file(
+    published_file_id: BigInt,
+    timeout_seconds: Option<u32>,
+) -> Result<CloudLegacyPublishedFileIdResult, Error> {
+    let call = unsafe {
+        sys::SteamAPI_ISteamRemoteStorage_DeletePublishedFile(
+            steam_remote_storage()?,
+            bigint_to_u64(published_file_id, "published file id")?,
+        )
+    };
+    let result: sys::RemoteStorageDeletePublishedFileResult_t = wait_for_api_call(
+        call,
+        sys::RemoteStorageDeletePublishedFileResult_t_k_iCallback as i32,
+        timeout_seconds
+            .map(u64::from)
+            .unwrap_or(DEFAULT_ASYNC_TIMEOUT_SECONDS)
+            .max(1),
+    )
+    .await?;
+    Ok(remote_storage_delete_published_file_result(&result))
+}
+
+#[napi(js_name = "cloudLegacyEnumerateUserPublishedFiles")]
+pub async fn cloud_legacy_enumerate_user_published_files(
+    start_index: Option<u32>,
+    timeout_seconds: Option<u32>,
+) -> Result<CloudLegacyEnumerateFilesResult, Error> {
+    let call = unsafe {
+        sys::SteamAPI_ISteamRemoteStorage_EnumerateUserPublishedFiles(
+            steam_remote_storage()?,
+            start_index.unwrap_or(0),
+        )
+    };
+    let result: sys::RemoteStorageEnumerateUserPublishedFilesResult_t = wait_for_api_call(
+        call,
+        sys::RemoteStorageEnumerateUserPublishedFilesResult_t_k_iCallback as i32,
+        timeout_seconds
+            .map(u64::from)
+            .unwrap_or(DEFAULT_ASYNC_TIMEOUT_SECONDS)
+            .max(1),
+    )
+    .await?;
+    Ok(remote_storage_enumerate_user_published_files_result(
+        &result,
+    ))
+}
+
+#[napi(js_name = "cloudLegacySubscribePublishedFile")]
+pub async fn cloud_legacy_subscribe_published_file(
+    published_file_id: BigInt,
+    timeout_seconds: Option<u32>,
+) -> Result<CloudLegacyPublishedFileIdResult, Error> {
+    let call = unsafe {
+        sys::SteamAPI_ISteamRemoteStorage_SubscribePublishedFile(
+            steam_remote_storage()?,
+            bigint_to_u64(published_file_id, "published file id")?,
+        )
+    };
+    let result: sys::RemoteStorageSubscribePublishedFileResult_t = wait_for_api_call(
+        call,
+        sys::RemoteStorageSubscribePublishedFileResult_t_k_iCallback as i32,
+        timeout_seconds
+            .map(u64::from)
+            .unwrap_or(DEFAULT_ASYNC_TIMEOUT_SECONDS)
+            .max(1),
+    )
+    .await?;
+    Ok(remote_storage_subscribe_published_file_result(&result))
+}
+
+#[napi(js_name = "cloudLegacyEnumerateUserSubscribedFiles")]
+pub async fn cloud_legacy_enumerate_user_subscribed_files(
+    start_index: Option<u32>,
+    timeout_seconds: Option<u32>,
+) -> Result<CloudLegacyEnumerateSubscribedFilesResult, Error> {
+    let call = unsafe {
+        sys::SteamAPI_ISteamRemoteStorage_EnumerateUserSubscribedFiles(
+            steam_remote_storage()?,
+            start_index.unwrap_or(0),
+        )
+    };
+    let result: sys::RemoteStorageEnumerateUserSubscribedFilesResult_t = wait_for_api_call(
+        call,
+        sys::RemoteStorageEnumerateUserSubscribedFilesResult_t_k_iCallback as i32,
+        timeout_seconds
+            .map(u64::from)
+            .unwrap_or(DEFAULT_ASYNC_TIMEOUT_SECONDS)
+            .max(1),
+    )
+    .await?;
+    Ok(remote_storage_enumerate_user_subscribed_files_result(
+        &result,
+    ))
+}
+
+#[napi(js_name = "cloudLegacyUnsubscribePublishedFile")]
+pub async fn cloud_legacy_unsubscribe_published_file(
+    published_file_id: BigInt,
+    timeout_seconds: Option<u32>,
+) -> Result<CloudLegacyPublishedFileIdResult, Error> {
+    let call = unsafe {
+        sys::SteamAPI_ISteamRemoteStorage_UnsubscribePublishedFile(
+            steam_remote_storage()?,
+            bigint_to_u64(published_file_id, "published file id")?,
+        )
+    };
+    let result: sys::RemoteStorageUnsubscribePublishedFileResult_t = wait_for_api_call(
+        call,
+        sys::RemoteStorageUnsubscribePublishedFileResult_t_k_iCallback as i32,
+        timeout_seconds
+            .map(u64::from)
+            .unwrap_or(DEFAULT_ASYNC_TIMEOUT_SECONDS)
+            .max(1),
+    )
+    .await?;
+    Ok(remote_storage_unsubscribe_published_file_result(&result))
+}
+
+#[napi(js_name = "cloudLegacyGetPublishedItemVoteDetails")]
+pub async fn cloud_legacy_get_published_item_vote_details(
+    published_file_id: BigInt,
+    timeout_seconds: Option<u32>,
+) -> Result<CloudLegacyPublishedItemVoteDetails, Error> {
+    let call = unsafe {
+        sys::SteamAPI_ISteamRemoteStorage_GetPublishedItemVoteDetails(
+            steam_remote_storage()?,
+            bigint_to_u64(published_file_id, "published file id")?,
+        )
+    };
+    let result: sys::RemoteStorageGetPublishedItemVoteDetailsResult_t = wait_for_api_call(
+        call,
+        sys::RemoteStorageGetPublishedItemVoteDetailsResult_t_k_iCallback as i32,
+        timeout_seconds
+            .map(u64::from)
+            .unwrap_or(DEFAULT_ASYNC_TIMEOUT_SECONDS)
+            .max(1),
+    )
+    .await?;
+    Ok(remote_storage_published_item_vote_details(&result))
+}
+
+#[napi(js_name = "cloudLegacyUpdateUserPublishedItemVote")]
+pub async fn cloud_legacy_update_user_published_item_vote(
+    published_file_id: BigInt,
+    vote_up: bool,
+    timeout_seconds: Option<u32>,
+) -> Result<CloudLegacyPublishedFileIdResult, Error> {
+    let call = unsafe {
+        sys::SteamAPI_ISteamRemoteStorage_UpdateUserPublishedItemVote(
+            steam_remote_storage()?,
+            bigint_to_u64(published_file_id, "published file id")?,
+            vote_up,
+        )
+    };
+    let result: sys::RemoteStorageUpdateUserPublishedItemVoteResult_t = wait_for_api_call(
+        call,
+        sys::RemoteStorageUpdateUserPublishedItemVoteResult_t_k_iCallback as i32,
+        timeout_seconds
+            .map(u64::from)
+            .unwrap_or(DEFAULT_ASYNC_TIMEOUT_SECONDS)
+            .max(1),
+    )
+    .await?;
+    Ok(remote_storage_update_user_published_item_vote_result(
+        &result,
+    ))
+}
+
+#[napi(js_name = "cloudLegacyGetUserPublishedItemVoteDetails")]
+pub async fn cloud_legacy_get_user_published_item_vote_details(
+    published_file_id: BigInt,
+    timeout_seconds: Option<u32>,
+) -> Result<CloudLegacyUserVoteDetails, Error> {
+    let call = unsafe {
+        sys::SteamAPI_ISteamRemoteStorage_GetUserPublishedItemVoteDetails(
+            steam_remote_storage()?,
+            bigint_to_u64(published_file_id, "published file id")?,
+        )
+    };
+    let result: sys::RemoteStorageUserVoteDetails_t = wait_for_api_call(
+        call,
+        sys::RemoteStorageUserVoteDetails_t_k_iCallback as i32,
+        timeout_seconds
+            .map(u64::from)
+            .unwrap_or(DEFAULT_ASYNC_TIMEOUT_SECONDS)
+            .max(1),
+    )
+    .await?;
+    Ok(remote_storage_user_vote_details(&result))
+}
+
+#[napi(js_name = "cloudLegacyEnumerateUserSharedWorkshopFiles")]
+pub async fn cloud_legacy_enumerate_user_shared_workshop_files(
+    steam_id64: BigInt,
+    start_index: Option<u32>,
+    required_tags: Vec<String>,
+    excluded_tags: Vec<String>,
+    timeout_seconds: Option<u32>,
+) -> Result<CloudLegacyEnumerateFilesResult, Error> {
+    let call = {
+        let (required_tag_strings, required_tag_pointers, mut required_tag_array) =
+            steam_param_string_array(required_tags, "required shared workshop tag")?;
+        let (excluded_tag_strings, excluded_tag_pointers, mut excluded_tag_array) =
+            steam_param_string_array(excluded_tags, "excluded shared workshop tag")?;
+        let call = unsafe {
+            sys::SteamAPI_ISteamRemoteStorage_EnumerateUserSharedWorkshopFiles(
+                steam_remote_storage()?,
+                bigint_to_u64(steam_id64, "steamId64")?,
+                start_index.unwrap_or(0),
+                &mut required_tag_array,
+                &mut excluded_tag_array,
+            )
+        };
+        drop(required_tag_pointers);
+        drop(required_tag_strings);
+        drop(excluded_tag_pointers);
+        drop(excluded_tag_strings);
+        call
+    };
+    let result: sys::RemoteStorageEnumerateUserSharedWorkshopFilesResult_t = wait_for_api_call(
+        call,
+        sys::RemoteStorageEnumerateUserSharedWorkshopFilesResult_t_k_iCallback as i32,
+        timeout_seconds
+            .map(u64::from)
+            .unwrap_or(DEFAULT_ASYNC_TIMEOUT_SECONDS)
+            .max(1),
+    )
+    .await?;
+    Ok(remote_storage_enumerate_user_shared_workshop_files_result(
+        &result,
+    ))
+}
+
+#[napi(js_name = "cloudLegacySetUserPublishedFileAction")]
+pub async fn cloud_legacy_set_user_published_file_action(
+    published_file_id: BigInt,
+    action: u32,
+    timeout_seconds: Option<u32>,
+) -> Result<CloudLegacyPublishedFileActionResult, Error> {
+    let call = unsafe {
+        sys::SteamAPI_ISteamRemoteStorage_SetUserPublishedFileAction(
+            steam_remote_storage()?,
+            bigint_to_u64(published_file_id, "published file id")?,
+            workshop_file_action_from_u32(action)?,
+        )
+    };
+    let result: sys::RemoteStorageSetUserPublishedFileActionResult_t = wait_for_api_call(
+        call,
+        sys::RemoteStorageSetUserPublishedFileActionResult_t_k_iCallback as i32,
+        timeout_seconds
+            .map(u64::from)
+            .unwrap_or(DEFAULT_ASYNC_TIMEOUT_SECONDS)
+            .max(1),
+    )
+    .await?;
+    Ok(remote_storage_set_user_published_file_action_result(
+        &result,
+    ))
+}
+
+#[napi(js_name = "cloudLegacyEnumeratePublishedFilesByUserAction")]
+pub async fn cloud_legacy_enumerate_published_files_by_user_action(
+    action: u32,
+    start_index: Option<u32>,
+    timeout_seconds: Option<u32>,
+) -> Result<CloudLegacyEnumerateUserActionFilesResult, Error> {
+    let call = unsafe {
+        sys::SteamAPI_ISteamRemoteStorage_EnumeratePublishedFilesByUserAction(
+            steam_remote_storage()?,
+            workshop_file_action_from_u32(action)?,
+            start_index.unwrap_or(0),
+        )
+    };
+    let result: sys::RemoteStorageEnumeratePublishedFilesByUserActionResult_t = wait_for_api_call(
+        call,
+        sys::RemoteStorageEnumeratePublishedFilesByUserActionResult_t_k_iCallback as i32,
+        timeout_seconds
+            .map(u64::from)
+            .unwrap_or(DEFAULT_ASYNC_TIMEOUT_SECONDS)
+            .max(1),
+    )
+    .await?;
+    Ok(remote_storage_enumerate_published_files_by_user_action_result(&result))
+}
+
+#[napi(js_name = "cloudLegacyEnumeratePublishedWorkshopFiles")]
+pub async fn cloud_legacy_enumerate_published_workshop_files(
+    enumeration_type: u32,
+    start_index: Option<u32>,
+    count: Option<u32>,
+    days: Option<u32>,
+    tags: Vec<String>,
+    user_tags: Vec<String>,
+    timeout_seconds: Option<u32>,
+) -> Result<CloudLegacyEnumerateWorkshopFilesResult, Error> {
+    let call = {
+        let (tag_strings, tag_pointers, mut tag_array) =
+            steam_param_string_array(tags, "published workshop tag")?;
+        let (user_tag_strings, user_tag_pointers, mut user_tag_array) =
+            steam_param_string_array(user_tags, "published workshop user tag")?;
+        let call = unsafe {
+            sys::SteamAPI_ISteamRemoteStorage_EnumeratePublishedWorkshopFiles(
+                steam_remote_storage()?,
+                workshop_enumeration_type_from_u32(enumeration_type)?,
+                start_index.unwrap_or(0),
+                count.unwrap_or(sys::k_unEnumeratePublishedFilesMaxResults),
+                days.unwrap_or(0),
+                &mut tag_array,
+                &mut user_tag_array,
+            )
+        };
+        drop(tag_pointers);
+        drop(tag_strings);
+        drop(user_tag_pointers);
+        drop(user_tag_strings);
+        call
+    };
+    let result: sys::RemoteStorageEnumerateWorkshopFilesResult_t = wait_for_api_call(
+        call,
+        sys::RemoteStorageEnumerateWorkshopFilesResult_t_k_iCallback as i32,
+        timeout_seconds
+            .map(u64::from)
+            .unwrap_or(DEFAULT_ASYNC_TIMEOUT_SECONDS)
+            .max(1),
+    )
+    .await?;
+    Ok(remote_storage_enumerate_workshop_files_result(&result))
 }
 
 #[napi(js_name = "httpCreateRequest")]
@@ -10368,6 +11105,271 @@ fn remote_storage_download_ugc_result(
     }
 }
 
+fn remote_storage_publish_file_result(
+    result: &sys::RemoteStoragePublishFileResult_t,
+) -> CloudLegacyPublishedFileResult {
+    CloudLegacyPublishedFileResult {
+        result: unsafe { ptr::addr_of!(result.m_eResult).read_unaligned() } as u32,
+        published_file_id: unsafe { ptr::addr_of!(result.m_nPublishedFileId).read_unaligned() }
+            .into(),
+        needs_to_accept_agreement: Some(unsafe {
+            ptr::addr_of!(result.m_bUserNeedsToAcceptWorkshopLegalAgreement).read_unaligned()
+        }),
+    }
+}
+
+fn remote_storage_update_published_file_result(
+    result: &sys::RemoteStorageUpdatePublishedFileResult_t,
+) -> CloudLegacyPublishedFileResult {
+    CloudLegacyPublishedFileResult {
+        result: unsafe { ptr::addr_of!(result.m_eResult).read_unaligned() } as u32,
+        published_file_id: unsafe { ptr::addr_of!(result.m_nPublishedFileId).read_unaligned() }
+            .into(),
+        needs_to_accept_agreement: Some(unsafe {
+            ptr::addr_of!(result.m_bUserNeedsToAcceptWorkshopLegalAgreement).read_unaligned()
+        }),
+    }
+}
+
+fn remote_storage_delete_published_file_result(
+    result: &sys::RemoteStorageDeletePublishedFileResult_t,
+) -> CloudLegacyPublishedFileIdResult {
+    CloudLegacyPublishedFileIdResult {
+        result: unsafe { ptr::addr_of!(result.m_eResult).read_unaligned() } as u32,
+        published_file_id: unsafe { ptr::addr_of!(result.m_nPublishedFileId).read_unaligned() }
+            .into(),
+    }
+}
+
+fn remote_storage_subscribe_published_file_result(
+    result: &sys::RemoteStorageSubscribePublishedFileResult_t,
+) -> CloudLegacyPublishedFileIdResult {
+    CloudLegacyPublishedFileIdResult {
+        result: unsafe { ptr::addr_of!(result.m_eResult).read_unaligned() } as u32,
+        published_file_id: unsafe { ptr::addr_of!(result.m_nPublishedFileId).read_unaligned() }
+            .into(),
+    }
+}
+
+fn remote_storage_unsubscribe_published_file_result(
+    result: &sys::RemoteStorageUnsubscribePublishedFileResult_t,
+) -> CloudLegacyPublishedFileIdResult {
+    CloudLegacyPublishedFileIdResult {
+        result: unsafe { ptr::addr_of!(result.m_eResult).read_unaligned() } as u32,
+        published_file_id: unsafe { ptr::addr_of!(result.m_nPublishedFileId).read_unaligned() }
+            .into(),
+    }
+}
+
+fn remote_storage_update_user_published_item_vote_result(
+    result: &sys::RemoteStorageUpdateUserPublishedItemVoteResult_t,
+) -> CloudLegacyPublishedFileIdResult {
+    CloudLegacyPublishedFileIdResult {
+        result: unsafe { ptr::addr_of!(result.m_eResult).read_unaligned() } as u32,
+        published_file_id: unsafe { ptr::addr_of!(result.m_nPublishedFileId).read_unaligned() }
+            .into(),
+    }
+}
+
+fn remote_storage_published_file_details(
+    result: &sys::RemoteStorageGetPublishedFileDetailsResult_t,
+) -> CloudLegacyPublishedFileDetails {
+    let title = unsafe { ptr::addr_of!(result.m_rgchTitle).read_unaligned() };
+    let description = unsafe { ptr::addr_of!(result.m_rgchDescription).read_unaligned() };
+    let tags = unsafe { ptr::addr_of!(result.m_rgchTags).read_unaligned() };
+    let file_name = unsafe { ptr::addr_of!(result.m_pchFileName).read_unaligned() };
+    let url = unsafe { ptr::addr_of!(result.m_rgchURL).read_unaligned() };
+    CloudLegacyPublishedFileDetails {
+        result: unsafe { ptr::addr_of!(result.m_eResult).read_unaligned() } as u32,
+        published_file_id: unsafe { ptr::addr_of!(result.m_nPublishedFileId).read_unaligned() }
+            .into(),
+        creator_app_id: unsafe { ptr::addr_of!(result.m_nCreatorAppID).read_unaligned() },
+        consumer_app_id: unsafe { ptr::addr_of!(result.m_nConsumerAppID).read_unaligned() },
+        title: c_buf_to_string(&title),
+        description: c_buf_to_string(&description),
+        file: unsafe { ptr::addr_of!(result.m_hFile).read_unaligned() }.into(),
+        preview_file: unsafe { ptr::addr_of!(result.m_hPreviewFile).read_unaligned() }.into(),
+        owner: steam_id_to_player(unsafe {
+            ptr::addr_of!(result.m_ulSteamIDOwner).read_unaligned()
+        }),
+        time_created: unsafe { ptr::addr_of!(result.m_rtimeCreated).read_unaligned() },
+        time_updated: unsafe { ptr::addr_of!(result.m_rtimeUpdated).read_unaligned() },
+        visibility: unsafe { ptr::addr_of!(result.m_eVisibility).read_unaligned() } as u32,
+        banned: unsafe { ptr::addr_of!(result.m_bBanned).read_unaligned() },
+        tags: c_buf_to_string(&tags)
+            .split(',')
+            .filter(|tag| !tag.is_empty())
+            .map(ToOwned::to_owned)
+            .collect(),
+        tags_truncated: unsafe { ptr::addr_of!(result.m_bTagsTruncated).read_unaligned() },
+        file_name: c_buf_to_string(&file_name),
+        file_size: (unsafe { ptr::addr_of!(result.m_nFileSize).read_unaligned() }.max(0) as u64)
+            .into(),
+        preview_file_size: (unsafe { ptr::addr_of!(result.m_nPreviewFileSize).read_unaligned() }
+            .max(0) as u64)
+            .into(),
+        url: c_buf_to_string(&url),
+        file_type: unsafe { ptr::addr_of!(result.m_eFileType).read_unaligned() } as u32,
+        accepted_for_use: unsafe { ptr::addr_of!(result.m_bAcceptedForUse).read_unaligned() },
+    }
+}
+
+fn remote_storage_enumerate_user_published_files_result(
+    result: &sys::RemoteStorageEnumerateUserPublishedFilesResult_t,
+) -> CloudLegacyEnumerateFilesResult {
+    let ids = unsafe { ptr::addr_of!(result.m_rgPublishedFileId).read_unaligned() };
+    let returned = unsafe { ptr::addr_of!(result.m_nResultsReturned).read_unaligned() };
+    CloudLegacyEnumerateFilesResult {
+        result: unsafe { ptr::addr_of!(result.m_eResult).read_unaligned() } as u32,
+        returned_results: returned,
+        total_result_count: unsafe { ptr::addr_of!(result.m_nTotalResultCount).read_unaligned() },
+        published_file_ids: remote_storage_published_ids(ids, returned),
+    }
+}
+
+fn remote_storage_enumerate_user_shared_workshop_files_result(
+    result: &sys::RemoteStorageEnumerateUserSharedWorkshopFilesResult_t,
+) -> CloudLegacyEnumerateFilesResult {
+    let ids = unsafe { ptr::addr_of!(result.m_rgPublishedFileId).read_unaligned() };
+    let returned = unsafe { ptr::addr_of!(result.m_nResultsReturned).read_unaligned() };
+    CloudLegacyEnumerateFilesResult {
+        result: unsafe { ptr::addr_of!(result.m_eResult).read_unaligned() } as u32,
+        returned_results: returned,
+        total_result_count: unsafe { ptr::addr_of!(result.m_nTotalResultCount).read_unaligned() },
+        published_file_ids: remote_storage_published_ids(ids, returned),
+    }
+}
+
+fn remote_storage_enumerate_user_subscribed_files_result(
+    result: &sys::RemoteStorageEnumerateUserSubscribedFilesResult_t,
+) -> CloudLegacyEnumerateSubscribedFilesResult {
+    let ids = unsafe { ptr::addr_of!(result.m_rgPublishedFileId).read_unaligned() };
+    let times = unsafe { ptr::addr_of!(result.m_rgRTimeSubscribed).read_unaligned() };
+    let returned = unsafe { ptr::addr_of!(result.m_nResultsReturned).read_unaligned() };
+    let count = remote_storage_result_count(returned);
+    CloudLegacyEnumerateSubscribedFilesResult {
+        result: unsafe { ptr::addr_of!(result.m_eResult).read_unaligned() } as u32,
+        returned_results: returned,
+        total_result_count: unsafe { ptr::addr_of!(result.m_nTotalResultCount).read_unaligned() },
+        published_file_ids: remote_storage_published_ids(ids, returned),
+        subscribed_times: times.into_iter().take(count).collect(),
+    }
+}
+
+fn remote_storage_enumerate_workshop_files_result(
+    result: &sys::RemoteStorageEnumerateWorkshopFilesResult_t,
+) -> CloudLegacyEnumerateWorkshopFilesResult {
+    let ids = unsafe { ptr::addr_of!(result.m_rgPublishedFileId).read_unaligned() };
+    let scores = unsafe { ptr::addr_of!(result.m_rgScore).read_unaligned() };
+    let returned = unsafe { ptr::addr_of!(result.m_nResultsReturned).read_unaligned() };
+    let count = remote_storage_result_count(returned);
+    CloudLegacyEnumerateWorkshopFilesResult {
+        result: unsafe { ptr::addr_of!(result.m_eResult).read_unaligned() } as u32,
+        returned_results: returned,
+        total_result_count: unsafe { ptr::addr_of!(result.m_nTotalResultCount).read_unaligned() },
+        published_file_ids: remote_storage_published_ids(ids, returned),
+        scores: scores.into_iter().take(count).map(f64::from).collect(),
+        app_id: unsafe { ptr::addr_of!(result.m_nAppId).read_unaligned() },
+        start_index: unsafe { ptr::addr_of!(result.m_unStartIndex).read_unaligned() },
+    }
+}
+
+fn remote_storage_enumerate_published_files_by_user_action_result(
+    result: &sys::RemoteStorageEnumeratePublishedFilesByUserActionResult_t,
+) -> CloudLegacyEnumerateUserActionFilesResult {
+    let ids = unsafe { ptr::addr_of!(result.m_rgPublishedFileId).read_unaligned() };
+    let times = unsafe { ptr::addr_of!(result.m_rgRTimeUpdated).read_unaligned() };
+    let returned = unsafe { ptr::addr_of!(result.m_nResultsReturned).read_unaligned() };
+    let count = remote_storage_result_count(returned);
+    CloudLegacyEnumerateUserActionFilesResult {
+        result: unsafe { ptr::addr_of!(result.m_eResult).read_unaligned() } as u32,
+        action: unsafe { ptr::addr_of!(result.m_eAction).read_unaligned() } as u32,
+        returned_results: returned,
+        total_result_count: unsafe { ptr::addr_of!(result.m_nTotalResultCount).read_unaligned() },
+        published_file_ids: remote_storage_published_ids(ids, returned),
+        updated_times: times.into_iter().take(count).collect(),
+    }
+}
+
+fn remote_storage_published_item_vote_details(
+    result: &sys::RemoteStorageGetPublishedItemVoteDetailsResult_t,
+) -> CloudLegacyPublishedItemVoteDetails {
+    CloudLegacyPublishedItemVoteDetails {
+        result: unsafe { ptr::addr_of!(result.m_eResult).read_unaligned() } as u32,
+        published_file_id: unsafe { ptr::addr_of!(result.m_unPublishedFileId).read_unaligned() }
+            .into(),
+        votes_for: unsafe { ptr::addr_of!(result.m_nVotesFor).read_unaligned() },
+        votes_against: unsafe { ptr::addr_of!(result.m_nVotesAgainst).read_unaligned() },
+        reports: unsafe { ptr::addr_of!(result.m_nReports).read_unaligned() },
+        score: f64::from(unsafe { ptr::addr_of!(result.m_fScore).read_unaligned() }),
+    }
+}
+
+fn remote_storage_user_vote_details(
+    result: &sys::RemoteStorageUserVoteDetails_t,
+) -> CloudLegacyUserVoteDetails {
+    CloudLegacyUserVoteDetails {
+        result: unsafe { ptr::addr_of!(result.m_eResult).read_unaligned() } as u32,
+        published_file_id: unsafe { ptr::addr_of!(result.m_nPublishedFileId).read_unaligned() }
+            .into(),
+        vote: unsafe { ptr::addr_of!(result.m_eVote).read_unaligned() } as u32,
+    }
+}
+
+fn remote_storage_set_user_published_file_action_result(
+    result: &sys::RemoteStorageSetUserPublishedFileActionResult_t,
+) -> CloudLegacyPublishedFileActionResult {
+    CloudLegacyPublishedFileActionResult {
+        result: unsafe { ptr::addr_of!(result.m_eResult).read_unaligned() } as u32,
+        published_file_id: unsafe { ptr::addr_of!(result.m_nPublishedFileId).read_unaligned() }
+            .into(),
+        action: unsafe { ptr::addr_of!(result.m_eAction).read_unaligned() } as u32,
+    }
+}
+
+fn remote_storage_published_ids(ids: [u64; 50], returned: i32) -> Vec<BigInt> {
+    ids.into_iter()
+        .take(remote_storage_result_count(returned))
+        .map(Into::into)
+        .collect()
+}
+
+fn published_id_strings(ids: [u64; 50], returned: i32) -> Vec<String> {
+    ids.into_iter()
+        .take(remote_storage_result_count(returned))
+        .map(|id| id.to_string())
+        .collect()
+}
+
+fn remote_storage_result_count(returned: i32) -> usize {
+    returned
+        .max(0)
+        .min(sys::k_unEnumeratePublishedFilesMaxResults as i32) as usize
+}
+
+fn steam_param_string_array(
+    tags: Vec<String>,
+    label: &str,
+) -> Result<
+    (
+        Vec<CString>,
+        Vec<*const c_char>,
+        sys::SteamParamStringArray_t,
+    ),
+    Error,
+> {
+    let tag_strings: Vec<CString> = tags
+        .into_iter()
+        .map(|tag| cstring(tag, label))
+        .collect::<Result<_, _>>()?;
+    let mut pointers: Vec<*const c_char> = tag_strings.iter().map(|tag| tag.as_ptr()).collect();
+    let tag_array = sys::SteamParamStringArray_t {
+        m_ppStrings: pointers.as_mut_ptr(),
+        m_nNumStrings: pointers.len() as i32,
+    };
+    Ok((tag_strings, pointers, tag_array))
+}
+
 fn steam_ugc() -> Result<*mut sys::ISteamUGC, Error> {
     crate::state::ensure_initialized()?;
     non_null(unsafe { sys::SteamAPI_SteamUGC_v021() }, "ISteamUGC")
@@ -12547,8 +13549,68 @@ fn callback_id_from_compat(callback: i32) -> Result<i32, Error> {
         CALLBACK_REMOTE_STORAGE_FILE_SHARE_RESULT => {
             Ok(sys::RemoteStorageFileShareResult_t_k_iCallback as i32)
         }
+        CALLBACK_REMOTE_STORAGE_PUBLISH_FILE_RESULT => {
+            Ok(sys::RemoteStoragePublishFileResult_t_k_iCallback as i32)
+        }
+        CALLBACK_REMOTE_STORAGE_DELETE_PUBLISHED_FILE_RESULT => {
+            Ok(sys::RemoteStorageDeletePublishedFileResult_t_k_iCallback as i32)
+        }
+        CALLBACK_REMOTE_STORAGE_ENUMERATE_USER_PUBLISHED_FILES_RESULT => {
+            Ok(sys::RemoteStorageEnumerateUserPublishedFilesResult_t_k_iCallback as i32)
+        }
+        CALLBACK_REMOTE_STORAGE_SUBSCRIBE_PUBLISHED_FILE_RESULT => {
+            Ok(sys::RemoteStorageSubscribePublishedFileResult_t_k_iCallback as i32)
+        }
+        CALLBACK_REMOTE_STORAGE_ENUMERATE_USER_SUBSCRIBED_FILES_RESULT => {
+            Ok(sys::RemoteStorageEnumerateUserSubscribedFilesResult_t_k_iCallback as i32)
+        }
+        CALLBACK_REMOTE_STORAGE_UNSUBSCRIBE_PUBLISHED_FILE_RESULT => {
+            Ok(sys::RemoteStorageUnsubscribePublishedFileResult_t_k_iCallback as i32)
+        }
+        CALLBACK_REMOTE_STORAGE_UPDATE_PUBLISHED_FILE_RESULT => {
+            Ok(sys::RemoteStorageUpdatePublishedFileResult_t_k_iCallback as i32)
+        }
         CALLBACK_REMOTE_STORAGE_DOWNLOAD_UGC_RESULT => {
             Ok(sys::RemoteStorageDownloadUGCResult_t_k_iCallback as i32)
+        }
+        CALLBACK_REMOTE_STORAGE_GET_PUBLISHED_FILE_DETAILS_RESULT => {
+            Ok(sys::RemoteStorageGetPublishedFileDetailsResult_t_k_iCallback as i32)
+        }
+        CALLBACK_REMOTE_STORAGE_ENUMERATE_WORKSHOP_FILES_RESULT => {
+            Ok(sys::RemoteStorageEnumerateWorkshopFilesResult_t_k_iCallback as i32)
+        }
+        CALLBACK_REMOTE_STORAGE_GET_PUBLISHED_ITEM_VOTE_DETAILS_RESULT => {
+            Ok(sys::RemoteStorageGetPublishedItemVoteDetailsResult_t_k_iCallback as i32)
+        }
+        CALLBACK_REMOTE_STORAGE_PUBLISHED_FILE_SUBSCRIBED => {
+            Ok(sys::RemoteStoragePublishedFileSubscribed_t_k_iCallback as i32)
+        }
+        CALLBACK_REMOTE_STORAGE_PUBLISHED_FILE_UNSUBSCRIBED => {
+            Ok(sys::RemoteStoragePublishedFileUnsubscribed_t_k_iCallback as i32)
+        }
+        CALLBACK_REMOTE_STORAGE_PUBLISHED_FILE_DELETED => {
+            Ok(sys::RemoteStoragePublishedFileDeleted_t_k_iCallback as i32)
+        }
+        CALLBACK_REMOTE_STORAGE_UPDATE_USER_PUBLISHED_ITEM_VOTE_RESULT => {
+            Ok(sys::RemoteStorageUpdateUserPublishedItemVoteResult_t_k_iCallback as i32)
+        }
+        CALLBACK_REMOTE_STORAGE_USER_VOTE_DETAILS => {
+            Ok(sys::RemoteStorageUserVoteDetails_t_k_iCallback as i32)
+        }
+        CALLBACK_REMOTE_STORAGE_ENUMERATE_USER_SHARED_WORKSHOP_FILES_RESULT => {
+            Ok(sys::RemoteStorageEnumerateUserSharedWorkshopFilesResult_t_k_iCallback as i32)
+        }
+        CALLBACK_REMOTE_STORAGE_SET_USER_PUBLISHED_FILE_ACTION_RESULT => {
+            Ok(sys::RemoteStorageSetUserPublishedFileActionResult_t_k_iCallback as i32)
+        }
+        CALLBACK_REMOTE_STORAGE_ENUMERATE_PUBLISHED_FILES_BY_USER_ACTION_RESULT => {
+            Ok(sys::RemoteStorageEnumeratePublishedFilesByUserActionResult_t_k_iCallback as i32)
+        }
+        CALLBACK_REMOTE_STORAGE_PUBLISH_FILE_PROGRESS => {
+            Ok(sys::RemoteStoragePublishFileProgress_t_k_iCallback as i32)
+        }
+        CALLBACK_REMOTE_STORAGE_PUBLISHED_FILE_UPDATED => {
+            Ok(sys::RemoteStoragePublishedFileUpdated_t_k_iCallback as i32)
         }
         CALLBACK_REMOTE_STORAGE_FILE_WRITE_ASYNC_COMPLETE => {
             Ok(sys::RemoteStorageFileWriteAsyncComplete_t_k_iCallback as i32)
@@ -12729,6 +13791,67 @@ unsafe fn callback_to_json(callback: i32, param: *mut c_void) -> Value {
                 "name": c_buf_to_string(&filename)
             })
         }
+        CALLBACK_REMOTE_STORAGE_PUBLISH_FILE_RESULT => {
+            let event = param as *const sys::RemoteStoragePublishFileResult_t;
+            serde_json::json!({
+                "result": ptr::addr_of!((*event).m_eResult).read_unaligned() as u32,
+                "published_file_id": ptr::addr_of!((*event).m_nPublishedFileId).read_unaligned().to_string(),
+                "needs_to_accept_agreement": ptr::addr_of!((*event).m_bUserNeedsToAcceptWorkshopLegalAgreement).read_unaligned()
+            })
+        }
+        CALLBACK_REMOTE_STORAGE_DELETE_PUBLISHED_FILE_RESULT => {
+            let event = param as *const sys::RemoteStorageDeletePublishedFileResult_t;
+            serde_json::json!({
+                "result": ptr::addr_of!((*event).m_eResult).read_unaligned() as u32,
+                "published_file_id": ptr::addr_of!((*event).m_nPublishedFileId).read_unaligned().to_string()
+            })
+        }
+        CALLBACK_REMOTE_STORAGE_ENUMERATE_USER_PUBLISHED_FILES_RESULT => {
+            let event = param as *const sys::RemoteStorageEnumerateUserPublishedFilesResult_t;
+            let returned = ptr::addr_of!((*event).m_nResultsReturned).read_unaligned();
+            let ids = ptr::addr_of!((*event).m_rgPublishedFileId).read_unaligned();
+            serde_json::json!({
+                "result": ptr::addr_of!((*event).m_eResult).read_unaligned() as u32,
+                "returned_results": returned,
+                "total_result_count": ptr::addr_of!((*event).m_nTotalResultCount).read_unaligned(),
+                "published_file_ids": published_id_strings(ids, returned)
+            })
+        }
+        CALLBACK_REMOTE_STORAGE_SUBSCRIBE_PUBLISHED_FILE_RESULT => {
+            let event = param as *const sys::RemoteStorageSubscribePublishedFileResult_t;
+            serde_json::json!({
+                "result": ptr::addr_of!((*event).m_eResult).read_unaligned() as u32,
+                "published_file_id": ptr::addr_of!((*event).m_nPublishedFileId).read_unaligned().to_string()
+            })
+        }
+        CALLBACK_REMOTE_STORAGE_ENUMERATE_USER_SUBSCRIBED_FILES_RESULT => {
+            let event = param as *const sys::RemoteStorageEnumerateUserSubscribedFilesResult_t;
+            let returned = ptr::addr_of!((*event).m_nResultsReturned).read_unaligned();
+            let ids = ptr::addr_of!((*event).m_rgPublishedFileId).read_unaligned();
+            let times = ptr::addr_of!((*event).m_rgRTimeSubscribed).read_unaligned();
+            serde_json::json!({
+                "result": ptr::addr_of!((*event).m_eResult).read_unaligned() as u32,
+                "returned_results": returned,
+                "total_result_count": ptr::addr_of!((*event).m_nTotalResultCount).read_unaligned(),
+                "published_file_ids": published_id_strings(ids, returned),
+                "subscribed_times": times.into_iter().take(remote_storage_result_count(returned)).collect::<Vec<_>>()
+            })
+        }
+        CALLBACK_REMOTE_STORAGE_UNSUBSCRIBE_PUBLISHED_FILE_RESULT => {
+            let event = param as *const sys::RemoteStorageUnsubscribePublishedFileResult_t;
+            serde_json::json!({
+                "result": ptr::addr_of!((*event).m_eResult).read_unaligned() as u32,
+                "published_file_id": ptr::addr_of!((*event).m_nPublishedFileId).read_unaligned().to_string()
+            })
+        }
+        CALLBACK_REMOTE_STORAGE_UPDATE_PUBLISHED_FILE_RESULT => {
+            let event = param as *const sys::RemoteStorageUpdatePublishedFileResult_t;
+            serde_json::json!({
+                "result": ptr::addr_of!((*event).m_eResult).read_unaligned() as u32,
+                "published_file_id": ptr::addr_of!((*event).m_nPublishedFileId).read_unaligned().to_string(),
+                "needs_to_accept_agreement": ptr::addr_of!((*event).m_bUserNeedsToAcceptWorkshopLegalAgreement).read_unaligned()
+            })
+        }
         CALLBACK_REMOTE_STORAGE_DOWNLOAD_UGC_RESULT => {
             let event = param as *const sys::RemoteStorageDownloadUGCResult_t;
             let filename = ptr::addr_of!((*event).m_pchFileName).read_unaligned();
@@ -12739,6 +13862,148 @@ unsafe fn callback_to_json(callback: i32, param: *mut c_void) -> Value {
                 "size": ptr::addr_of!((*event).m_nSizeInBytes).read_unaligned().max(0).to_string(),
                 "name": c_buf_to_string(&filename),
                 "owner": ptr::addr_of!((*event).m_ulSteamIDOwner).read_unaligned().to_string()
+            })
+        }
+        CALLBACK_REMOTE_STORAGE_GET_PUBLISHED_FILE_DETAILS_RESULT => {
+            let event = param as *const sys::RemoteStorageGetPublishedFileDetailsResult_t;
+            let title = ptr::addr_of!((*event).m_rgchTitle).read_unaligned();
+            let description = ptr::addr_of!((*event).m_rgchDescription).read_unaligned();
+            let tags = ptr::addr_of!((*event).m_rgchTags).read_unaligned();
+            let file_name = ptr::addr_of!((*event).m_pchFileName).read_unaligned();
+            let url = ptr::addr_of!((*event).m_rgchURL).read_unaligned();
+            serde_json::json!({
+                "result": ptr::addr_of!((*event).m_eResult).read_unaligned() as u32,
+                "published_file_id": ptr::addr_of!((*event).m_nPublishedFileId).read_unaligned().to_string(),
+                "creator_app_id": ptr::addr_of!((*event).m_nCreatorAppID).read_unaligned(),
+                "consumer_app_id": ptr::addr_of!((*event).m_nConsumerAppID).read_unaligned(),
+                "title": c_buf_to_string(&title),
+                "description": c_buf_to_string(&description),
+                "file": ptr::addr_of!((*event).m_hFile).read_unaligned().to_string(),
+                "preview_file": ptr::addr_of!((*event).m_hPreviewFile).read_unaligned().to_string(),
+                "owner": ptr::addr_of!((*event).m_ulSteamIDOwner).read_unaligned().to_string(),
+                "time_created": ptr::addr_of!((*event).m_rtimeCreated).read_unaligned(),
+                "time_updated": ptr::addr_of!((*event).m_rtimeUpdated).read_unaligned(),
+                "visibility": ptr::addr_of!((*event).m_eVisibility).read_unaligned() as u32,
+                "banned": ptr::addr_of!((*event).m_bBanned).read_unaligned(),
+                "tags": c_buf_to_string(&tags),
+                "tags_truncated": ptr::addr_of!((*event).m_bTagsTruncated).read_unaligned(),
+                "file_name": c_buf_to_string(&file_name),
+                "file_size": ptr::addr_of!((*event).m_nFileSize).read_unaligned().max(0).to_string(),
+                "preview_file_size": ptr::addr_of!((*event).m_nPreviewFileSize).read_unaligned().max(0).to_string(),
+                "url": c_buf_to_string(&url),
+                "file_type": ptr::addr_of!((*event).m_eFileType).read_unaligned() as u32,
+                "accepted_for_use": ptr::addr_of!((*event).m_bAcceptedForUse).read_unaligned()
+            })
+        }
+        CALLBACK_REMOTE_STORAGE_ENUMERATE_WORKSHOP_FILES_RESULT => {
+            let event = param as *const sys::RemoteStorageEnumerateWorkshopFilesResult_t;
+            let returned = ptr::addr_of!((*event).m_nResultsReturned).read_unaligned();
+            let ids = ptr::addr_of!((*event).m_rgPublishedFileId).read_unaligned();
+            let scores = ptr::addr_of!((*event).m_rgScore).read_unaligned();
+            serde_json::json!({
+                "result": ptr::addr_of!((*event).m_eResult).read_unaligned() as u32,
+                "returned_results": returned,
+                "total_result_count": ptr::addr_of!((*event).m_nTotalResultCount).read_unaligned(),
+                "published_file_ids": published_id_strings(ids, returned),
+                "scores": scores.into_iter().take(remote_storage_result_count(returned)).map(f64::from).collect::<Vec<_>>(),
+                "app_id": ptr::addr_of!((*event).m_nAppId).read_unaligned(),
+                "start_index": ptr::addr_of!((*event).m_unStartIndex).read_unaligned()
+            })
+        }
+        CALLBACK_REMOTE_STORAGE_GET_PUBLISHED_ITEM_VOTE_DETAILS_RESULT => {
+            let event = param as *const sys::RemoteStorageGetPublishedItemVoteDetailsResult_t;
+            serde_json::json!({
+                "result": ptr::addr_of!((*event).m_eResult).read_unaligned() as u32,
+                "published_file_id": ptr::addr_of!((*event).m_unPublishedFileId).read_unaligned().to_string(),
+                "votes_for": ptr::addr_of!((*event).m_nVotesFor).read_unaligned(),
+                "votes_against": ptr::addr_of!((*event).m_nVotesAgainst).read_unaligned(),
+                "reports": ptr::addr_of!((*event).m_nReports).read_unaligned(),
+                "score": ptr::addr_of!((*event).m_fScore).read_unaligned()
+            })
+        }
+        CALLBACK_REMOTE_STORAGE_PUBLISHED_FILE_SUBSCRIBED => {
+            let event = param as *const sys::RemoteStoragePublishedFileSubscribed_t;
+            serde_json::json!({
+                "published_file_id": ptr::addr_of!((*event).m_nPublishedFileId).read_unaligned().to_string(),
+                "app_id": ptr::addr_of!((*event).m_nAppID).read_unaligned()
+            })
+        }
+        CALLBACK_REMOTE_STORAGE_PUBLISHED_FILE_UNSUBSCRIBED => {
+            let event = param as *const sys::RemoteStoragePublishedFileUnsubscribed_t;
+            serde_json::json!({
+                "published_file_id": ptr::addr_of!((*event).m_nPublishedFileId).read_unaligned().to_string(),
+                "app_id": ptr::addr_of!((*event).m_nAppID).read_unaligned()
+            })
+        }
+        CALLBACK_REMOTE_STORAGE_PUBLISHED_FILE_DELETED => {
+            let event = param as *const sys::RemoteStoragePublishedFileDeleted_t;
+            serde_json::json!({
+                "published_file_id": ptr::addr_of!((*event).m_nPublishedFileId).read_unaligned().to_string(),
+                "app_id": ptr::addr_of!((*event).m_nAppID).read_unaligned()
+            })
+        }
+        CALLBACK_REMOTE_STORAGE_UPDATE_USER_PUBLISHED_ITEM_VOTE_RESULT => {
+            let event = param as *const sys::RemoteStorageUpdateUserPublishedItemVoteResult_t;
+            serde_json::json!({
+                "result": ptr::addr_of!((*event).m_eResult).read_unaligned() as u32,
+                "published_file_id": ptr::addr_of!((*event).m_nPublishedFileId).read_unaligned().to_string()
+            })
+        }
+        CALLBACK_REMOTE_STORAGE_USER_VOTE_DETAILS => {
+            let event = param as *const sys::RemoteStorageUserVoteDetails_t;
+            serde_json::json!({
+                "result": ptr::addr_of!((*event).m_eResult).read_unaligned() as u32,
+                "published_file_id": ptr::addr_of!((*event).m_nPublishedFileId).read_unaligned().to_string(),
+                "vote": ptr::addr_of!((*event).m_eVote).read_unaligned() as u32
+            })
+        }
+        CALLBACK_REMOTE_STORAGE_ENUMERATE_USER_SHARED_WORKSHOP_FILES_RESULT => {
+            let event = param as *const sys::RemoteStorageEnumerateUserSharedWorkshopFilesResult_t;
+            let returned = ptr::addr_of!((*event).m_nResultsReturned).read_unaligned();
+            let ids = ptr::addr_of!((*event).m_rgPublishedFileId).read_unaligned();
+            serde_json::json!({
+                "result": ptr::addr_of!((*event).m_eResult).read_unaligned() as u32,
+                "returned_results": returned,
+                "total_result_count": ptr::addr_of!((*event).m_nTotalResultCount).read_unaligned(),
+                "published_file_ids": published_id_strings(ids, returned)
+            })
+        }
+        CALLBACK_REMOTE_STORAGE_SET_USER_PUBLISHED_FILE_ACTION_RESULT => {
+            let event = param as *const sys::RemoteStorageSetUserPublishedFileActionResult_t;
+            serde_json::json!({
+                "result": ptr::addr_of!((*event).m_eResult).read_unaligned() as u32,
+                "published_file_id": ptr::addr_of!((*event).m_nPublishedFileId).read_unaligned().to_string(),
+                "action": ptr::addr_of!((*event).m_eAction).read_unaligned() as u32
+            })
+        }
+        CALLBACK_REMOTE_STORAGE_ENUMERATE_PUBLISHED_FILES_BY_USER_ACTION_RESULT => {
+            let event =
+                param as *const sys::RemoteStorageEnumeratePublishedFilesByUserActionResult_t;
+            let returned = ptr::addr_of!((*event).m_nResultsReturned).read_unaligned();
+            let ids = ptr::addr_of!((*event).m_rgPublishedFileId).read_unaligned();
+            let times = ptr::addr_of!((*event).m_rgRTimeUpdated).read_unaligned();
+            serde_json::json!({
+                "result": ptr::addr_of!((*event).m_eResult).read_unaligned() as u32,
+                "action": ptr::addr_of!((*event).m_eAction).read_unaligned() as u32,
+                "returned_results": returned,
+                "total_result_count": ptr::addr_of!((*event).m_nTotalResultCount).read_unaligned(),
+                "published_file_ids": published_id_strings(ids, returned),
+                "updated_times": times.into_iter().take(remote_storage_result_count(returned)).collect::<Vec<_>>()
+            })
+        }
+        CALLBACK_REMOTE_STORAGE_PUBLISH_FILE_PROGRESS => {
+            let event = param as *const sys::RemoteStoragePublishFileProgress_t;
+            serde_json::json!({
+                "percent_file": ptr::addr_of!((*event).m_dPercentFile).read_unaligned(),
+                "preview": ptr::addr_of!((*event).m_bPreview).read_unaligned()
+            })
+        }
+        CALLBACK_REMOTE_STORAGE_PUBLISHED_FILE_UPDATED => {
+            let event = param as *const sys::RemoteStoragePublishedFileUpdated_t;
+            serde_json::json!({
+                "published_file_id": ptr::addr_of!((*event).m_nPublishedFileId).read_unaligned().to_string(),
+                "app_id": ptr::addr_of!((*event).m_nAppID).read_unaligned(),
+                "unused": ptr::addr_of!((*event).m_ulUnused).read_unaligned().to_string()
             })
         }
         CALLBACK_REMOTE_STORAGE_FILE_WRITE_ASYNC_COMPLETE => {
@@ -14374,6 +15639,70 @@ fn ugc_read_action_from_u32(value: u32) -> Result<sys::EUGCReadAction, Error> {
         1 => sys::EUGCReadAction::k_EUGCRead_ContinueReading,
         2 => sys::EUGCReadAction::k_EUGCRead_Close,
         _ => return Err(Error::from_reason("invalid UGC read action")),
+    })
+}
+
+fn remote_storage_visibility_from_u32(
+    value: u32,
+) -> Result<sys::ERemoteStoragePublishedFileVisibility, Error> {
+    Ok(match value {
+        0 => sys::ERemoteStoragePublishedFileVisibility::k_ERemoteStoragePublishedFileVisibilityPublic,
+        1 => sys::ERemoteStoragePublishedFileVisibility::k_ERemoteStoragePublishedFileVisibilityFriendsOnly,
+        2 => sys::ERemoteStoragePublishedFileVisibility::k_ERemoteStoragePublishedFileVisibilityPrivate,
+        3 => sys::ERemoteStoragePublishedFileVisibility::k_ERemoteStoragePublishedFileVisibilityUnlisted,
+        _ => return Err(Error::from_reason("invalid published file visibility")),
+    })
+}
+
+fn workshop_file_type_from_u32(value: u32) -> Result<sys::EWorkshopFileType, Error> {
+    Ok(match value {
+        0 => sys::EWorkshopFileType::k_EWorkshopFileTypeFirst,
+        1 => sys::EWorkshopFileType::k_EWorkshopFileTypeMicrotransaction,
+        2 => sys::EWorkshopFileType::k_EWorkshopFileTypeCollection,
+        3 => sys::EWorkshopFileType::k_EWorkshopFileTypeArt,
+        4 => sys::EWorkshopFileType::k_EWorkshopFileTypeVideo,
+        5 => sys::EWorkshopFileType::k_EWorkshopFileTypeScreenshot,
+        6 => sys::EWorkshopFileType::k_EWorkshopFileTypeGame,
+        7 => sys::EWorkshopFileType::k_EWorkshopFileTypeSoftware,
+        8 => sys::EWorkshopFileType::k_EWorkshopFileTypeConcept,
+        9 => sys::EWorkshopFileType::k_EWorkshopFileTypeWebGuide,
+        10 => sys::EWorkshopFileType::k_EWorkshopFileTypeIntegratedGuide,
+        11 => sys::EWorkshopFileType::k_EWorkshopFileTypeMerch,
+        12 => sys::EWorkshopFileType::k_EWorkshopFileTypeControllerBinding,
+        13 => sys::EWorkshopFileType::k_EWorkshopFileTypeSteamworksAccessInvite,
+        14 => sys::EWorkshopFileType::k_EWorkshopFileTypeSteamVideo,
+        15 => sys::EWorkshopFileType::k_EWorkshopFileTypeGameManagedItem,
+        16 => sys::EWorkshopFileType::k_EWorkshopFileTypeClip,
+        _ => return Err(Error::from_reason("invalid workshop file type")),
+    })
+}
+
+fn workshop_video_provider_from_u32(value: u32) -> Result<sys::EWorkshopVideoProvider, Error> {
+    Ok(match value {
+        0 => sys::EWorkshopVideoProvider::k_EWorkshopVideoProviderNone,
+        1 => sys::EWorkshopVideoProvider::k_EWorkshopVideoProviderYoutube,
+        _ => return Err(Error::from_reason("invalid workshop video provider")),
+    })
+}
+
+fn workshop_file_action_from_u32(value: u32) -> Result<sys::EWorkshopFileAction, Error> {
+    Ok(match value {
+        0 => sys::EWorkshopFileAction::k_EWorkshopFileActionPlayed,
+        1 => sys::EWorkshopFileAction::k_EWorkshopFileActionCompleted,
+        _ => return Err(Error::from_reason("invalid workshop file action")),
+    })
+}
+
+fn workshop_enumeration_type_from_u32(value: u32) -> Result<sys::EWorkshopEnumerationType, Error> {
+    Ok(match value {
+        0 => sys::EWorkshopEnumerationType::k_EWorkshopEnumerationTypeRankedByVote,
+        1 => sys::EWorkshopEnumerationType::k_EWorkshopEnumerationTypeRecent,
+        2 => sys::EWorkshopEnumerationType::k_EWorkshopEnumerationTypeTrending,
+        3 => sys::EWorkshopEnumerationType::k_EWorkshopEnumerationTypeFavoritesOfFriends,
+        4 => sys::EWorkshopEnumerationType::k_EWorkshopEnumerationTypeVotedByFriends,
+        5 => sys::EWorkshopEnumerationType::k_EWorkshopEnumerationTypeContentByFriends,
+        6 => sys::EWorkshopEnumerationType::k_EWorkshopEnumerationTypeRecentFromFollowedUsers,
+        _ => return Err(Error::from_reason("invalid workshop enumeration type")),
     })
 }
 

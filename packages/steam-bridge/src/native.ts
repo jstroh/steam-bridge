@@ -156,6 +156,99 @@ export interface NativeCloudUgcDownloadResult {
   owner: NativeSteamId;
 }
 
+export interface NativeCloudLegacyPublishedFileResult {
+  result: number;
+  publishedFileId?: bigint | string | number;
+  published_file_id?: bigint | string | number;
+  needsToAcceptAgreement?: boolean | null;
+  needs_to_accept_agreement?: boolean | null;
+}
+
+export interface NativeCloudLegacyPublishedFileIdResult {
+  result: number;
+  publishedFileId?: bigint | string | number;
+  published_file_id?: bigint | string | number;
+}
+
+export interface NativeCloudLegacyPublishedFileActionResult extends NativeCloudLegacyPublishedFileIdResult {
+  action: number;
+}
+
+export interface NativeCloudLegacyPublishedFileDetails extends NativeCloudLegacyPublishedFileIdResult {
+  creatorAppId?: number;
+  creator_app_id?: number;
+  consumerAppId?: number;
+  consumer_app_id?: number;
+  title: string;
+  description: string;
+  file: bigint | string | number;
+  previewFile?: bigint | string | number;
+  preview_file?: bigint | string | number;
+  owner: NativeSteamId;
+  timeCreated?: number;
+  time_created?: number;
+  timeUpdated?: number;
+  time_updated?: number;
+  visibility: number;
+  banned: boolean;
+  tags: string[];
+  tagsTruncated?: boolean;
+  tags_truncated?: boolean;
+  fileName?: string;
+  file_name?: string;
+  fileSize?: bigint | string | number;
+  file_size?: bigint | string | number;
+  previewFileSize?: bigint | string | number;
+  preview_file_size?: bigint | string | number;
+  url: string;
+  fileType?: number;
+  file_type?: number;
+  acceptedForUse?: boolean;
+  accepted_for_use?: boolean;
+}
+
+export interface NativeCloudLegacyEnumerateFilesResult {
+  result: number;
+  returnedResults?: number;
+  returned_results?: number;
+  totalResultCount?: number;
+  total_result_count?: number;
+  publishedFileIds?: Array<bigint | string | number>;
+  published_file_ids?: Array<bigint | string | number>;
+}
+
+export interface NativeCloudLegacyEnumerateSubscribedFilesResult extends NativeCloudLegacyEnumerateFilesResult {
+  subscribedTimes?: number[];
+  subscribed_times?: number[];
+}
+
+export interface NativeCloudLegacyEnumerateWorkshopFilesResult extends NativeCloudLegacyEnumerateFilesResult {
+  scores: number[];
+  appId?: number;
+  app_id?: number;
+  startIndex?: number;
+  start_index?: number;
+}
+
+export interface NativeCloudLegacyEnumerateUserActionFilesResult extends NativeCloudLegacyEnumerateFilesResult {
+  action: number;
+  updatedTimes?: number[];
+  updated_times?: number[];
+}
+
+export interface NativeCloudLegacyPublishedItemVoteDetails extends NativeCloudLegacyPublishedFileIdResult {
+  votesFor?: number;
+  votes_for?: number;
+  votesAgainst?: number;
+  votes_against?: number;
+  reports: number;
+  score: number;
+}
+
+export interface NativeCloudLegacyUserVoteDetails extends NativeCloudLegacyPublishedFileIdResult {
+  vote: number;
+}
+
 export interface NativeHttpRequestCompleted {
   request: number;
   contextValue?: bigint | string | number;
@@ -1406,6 +1499,30 @@ export interface NativeBinding {
   cloudGetCachedUgcCount(): number;
   cloudGetCachedUgcHandle(index: number): bigint | string | number | null | undefined;
   cloudGetCachedUgcHandles(): Array<bigint | string | number>;
+  cloudLegacyPublishWorkshopFile(filePath: string, previewPath: string, consumerAppId: number, title: string, description: string, visibility: number, tags: string[], fileType: number, timeoutSeconds?: number): Promise<NativeCloudLegacyPublishedFileResult>;
+  cloudLegacyPublishVideo(provider: number, videoAccount: string, videoIdentifier: string, previewPath: string, consumerAppId: number, title: string, description: string, visibility: number, tags: string[], timeoutSeconds?: number): Promise<NativeCloudLegacyPublishedFileResult>;
+  cloudLegacyCreatePublishedFileUpdateRequest(publishedFileId: bigint): bigint | string | number | null | undefined;
+  cloudLegacyUpdatePublishedFileFile(handle: bigint, filePath: string): boolean;
+  cloudLegacyUpdatePublishedFilePreviewFile(handle: bigint, previewPath: string): boolean;
+  cloudLegacyUpdatePublishedFileTitle(handle: bigint, title: string): boolean;
+  cloudLegacyUpdatePublishedFileDescription(handle: bigint, description: string): boolean;
+  cloudLegacyUpdatePublishedFileVisibility(handle: bigint, visibility: number): boolean;
+  cloudLegacyUpdatePublishedFileTags(handle: bigint, tags: string[]): boolean;
+  cloudLegacyUpdatePublishedFileSetChangeDescription(handle: bigint, changeDescription: string): boolean;
+  cloudLegacyCommitPublishedFileUpdate(handle: bigint, timeoutSeconds?: number): Promise<NativeCloudLegacyPublishedFileResult>;
+  cloudLegacyGetPublishedFileDetails(publishedFileId: bigint, maxSecondsOld?: number, timeoutSeconds?: number): Promise<NativeCloudLegacyPublishedFileDetails>;
+  cloudLegacyDeletePublishedFile(publishedFileId: bigint, timeoutSeconds?: number): Promise<NativeCloudLegacyPublishedFileIdResult>;
+  cloudLegacyEnumerateUserPublishedFiles(startIndex?: number, timeoutSeconds?: number): Promise<NativeCloudLegacyEnumerateFilesResult>;
+  cloudLegacySubscribePublishedFile(publishedFileId: bigint, timeoutSeconds?: number): Promise<NativeCloudLegacyPublishedFileIdResult>;
+  cloudLegacyEnumerateUserSubscribedFiles(startIndex?: number, timeoutSeconds?: number): Promise<NativeCloudLegacyEnumerateSubscribedFilesResult>;
+  cloudLegacyUnsubscribePublishedFile(publishedFileId: bigint, timeoutSeconds?: number): Promise<NativeCloudLegacyPublishedFileIdResult>;
+  cloudLegacyGetPublishedItemVoteDetails(publishedFileId: bigint, timeoutSeconds?: number): Promise<NativeCloudLegacyPublishedItemVoteDetails>;
+  cloudLegacyUpdateUserPublishedItemVote(publishedFileId: bigint, voteUp: boolean, timeoutSeconds?: number): Promise<NativeCloudLegacyPublishedFileIdResult>;
+  cloudLegacyGetUserPublishedItemVoteDetails(publishedFileId: bigint, timeoutSeconds?: number): Promise<NativeCloudLegacyUserVoteDetails>;
+  cloudLegacyEnumerateUserSharedWorkshopFiles(steamId64: bigint, startIndex: number | undefined, requiredTags: string[], excludedTags: string[], timeoutSeconds?: number): Promise<NativeCloudLegacyEnumerateFilesResult>;
+  cloudLegacySetUserPublishedFileAction(publishedFileId: bigint, action: number, timeoutSeconds?: number): Promise<NativeCloudLegacyPublishedFileActionResult>;
+  cloudLegacyEnumeratePublishedFilesByUserAction(action: number, startIndex?: number, timeoutSeconds?: number): Promise<NativeCloudLegacyEnumerateUserActionFilesResult>;
+  cloudLegacyEnumeratePublishedWorkshopFiles(enumerationType: number, startIndex: number | undefined, count: number | undefined, days: number | undefined, tags: string[], userTags: string[], timeoutSeconds?: number): Promise<NativeCloudLegacyEnumerateWorkshopFilesResult>;
 
   httpCreateRequest(method: number, url: string): number;
   httpSetContextValue(request: number, contextValue: bigint): boolean;

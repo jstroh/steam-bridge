@@ -23,6 +23,16 @@ import {
   NativeCloudUgcDetails,
   NativeCloudUgcDownloadProgress,
   NativeCloudUgcDownloadResult,
+  NativeCloudLegacyEnumerateFilesResult,
+  NativeCloudLegacyEnumerateSubscribedFilesResult,
+  NativeCloudLegacyEnumerateUserActionFilesResult,
+  NativeCloudLegacyEnumerateWorkshopFilesResult,
+  NativeCloudLegacyPublishedFileActionResult,
+  NativeCloudLegacyPublishedFileDetails,
+  NativeCloudLegacyPublishedFileIdResult,
+  NativeCloudLegacyPublishedFileResult,
+  NativeCloudLegacyPublishedItemVoteDetails,
+  NativeCloudLegacyUserVoteDetails,
   NativeFollowerCountResult,
   NativeFollowingListResult,
   NativeEquippedProfileItemsResult,
@@ -287,6 +297,109 @@ export interface CloudUgcDownloadResult {
   size: bigint;
   name: string;
   owner: SteamId;
+}
+
+export interface CloudLegacyPublishedFileResult {
+  result: number;
+  publishedFileId: bigint;
+  needsToAcceptAgreement: boolean | null;
+}
+
+export interface CloudLegacyPublishedFileIdResult {
+  result: number;
+  publishedFileId: bigint;
+}
+
+export interface CloudLegacyPublishedFileActionResult extends CloudLegacyPublishedFileIdResult {
+  action: number;
+}
+
+export interface CloudLegacyPublishedFileDetails extends CloudLegacyPublishedFileIdResult {
+  creatorAppId: number;
+  consumerAppId: number;
+  title: string;
+  description: string;
+  file: bigint;
+  previewFile: bigint;
+  owner: SteamId;
+  timeCreated: number;
+  timeUpdated: number;
+  visibility: number;
+  banned: boolean;
+  tags: string[];
+  tagsTruncated: boolean;
+  fileName: string;
+  fileSize: bigint;
+  previewFileSize: bigint;
+  url: string;
+  fileType: number;
+  acceptedForUse: boolean;
+}
+
+export interface CloudLegacyEnumerateFilesResult {
+  result: number;
+  returnedResults: number;
+  totalResultCount: number;
+  publishedFileIds: bigint[];
+}
+
+export interface CloudLegacyEnumerateSubscribedFilesResult extends CloudLegacyEnumerateFilesResult {
+  subscribedTimes: number[];
+}
+
+export interface CloudLegacyEnumerateWorkshopFilesResult extends CloudLegacyEnumerateFilesResult {
+  scores: number[];
+  appId: number;
+  startIndex: number;
+}
+
+export interface CloudLegacyEnumerateUserActionFilesResult extends CloudLegacyEnumerateFilesResult {
+  action: number;
+  updatedTimes: number[];
+}
+
+export interface CloudLegacyPublishedItemVoteDetails extends CloudLegacyPublishedFileIdResult {
+  votesFor: number;
+  votesAgainst: number;
+  reports: number;
+  score: number;
+}
+
+export interface CloudLegacyUserVoteDetails extends CloudLegacyPublishedFileIdResult {
+  vote: number;
+}
+
+export interface CloudLegacyPublishWorkshopFileOptions {
+  filePath: string;
+  previewPath: string;
+  consumerAppId: number;
+  title: string;
+  description: string;
+  visibility?: number;
+  tags?: string[] | null;
+  fileType?: number;
+}
+
+export interface CloudLegacyPublishVideoOptions {
+  provider?: number;
+  videoAccount: string;
+  videoIdentifier: string;
+  previewPath: string;
+  consumerAppId: number;
+  title: string;
+  description: string;
+  visibility?: number;
+  tags?: string[] | null;
+}
+
+export interface CloudLegacyTagFilters {
+  requiredTags?: string[] | null;
+  excludedTags?: string[] | null;
+}
+
+export interface CloudLegacyWorkshopFilters {
+  tags?: string[] | null;
+  userTags?: string[] | null;
 }
 
 export interface EquippedProfileItemsResult {
@@ -1202,7 +1315,27 @@ export const SteamCallback = {
   SteamNetworkingMessagesSessionFailed: 1252,
   SteamRelayNetworkStatus: 1281,
   RemoteStorageFileShareResult: 1307,
+  RemoteStoragePublishFileResult: 1309,
+  RemoteStorageDeletePublishedFileResult: 1311,
+  RemoteStorageEnumerateUserPublishedFilesResult: 1312,
+  RemoteStorageSubscribePublishedFileResult: 1313,
+  RemoteStorageEnumerateUserSubscribedFilesResult: 1314,
+  RemoteStorageUnsubscribePublishedFileResult: 1315,
+  RemoteStorageUpdatePublishedFileResult: 1316,
   RemoteStorageDownloadUGCResult: 1317,
+  RemoteStorageGetPublishedFileDetailsResult: 1318,
+  RemoteStorageEnumerateWorkshopFilesResult: 1319,
+  RemoteStorageGetPublishedItemVoteDetailsResult: 1320,
+  RemoteStoragePublishedFileSubscribed: 1321,
+  RemoteStoragePublishedFileUnsubscribed: 1322,
+  RemoteStoragePublishedFileDeleted: 1323,
+  RemoteStorageUpdateUserPublishedItemVoteResult: 1324,
+  RemoteStorageUserVoteDetails: 1325,
+  RemoteStorageEnumerateUserSharedWorkshopFilesResult: 1326,
+  RemoteStorageSetUserPublishedFileActionResult: 1327,
+  RemoteStorageEnumeratePublishedFilesByUserActionResult: 1328,
+  RemoteStoragePublishFileProgress: 1329,
+  RemoteStoragePublishedFileUpdated: 1330,
   RemoteStorageFileWriteAsyncComplete: 1331,
   RemoteStorageFileReadAsyncComplete: 1332,
   GameServerClientApprove: 201,
@@ -1836,6 +1969,53 @@ export const UGCReadAction = {
   ContinueReadingUntilFinished: 0,
   ContinueReading: 1,
   Close: 2
+} as const;
+
+export const WorkshopFileType = {
+  Community: 0,
+  Microtransaction: 1,
+  Collection: 2,
+  Art: 3,
+  Video: 4,
+  Screenshot: 5,
+  Game: 6,
+  Software: 7,
+  Concept: 8,
+  WebGuide: 9,
+  IntegratedGuide: 10,
+  Merch: 11,
+  ControllerBinding: 12,
+  SteamworksAccessInvite: 13,
+  SteamVideo: 14,
+  GameManagedItem: 15,
+  Clip: 16
+} as const;
+
+export const WorkshopFileAction = {
+  Played: 0,
+  Completed: 1
+} as const;
+
+export const WorkshopEnumerationType = {
+  RankedByVote: 0,
+  Recent: 1,
+  Trending: 2,
+  FavoritesOfFriends: 3,
+  VotedByFriends: 4,
+  ContentByFriends: 5,
+  RecentFromFollowedUsers: 6
+} as const;
+
+export const WorkshopVideoProvider = {
+  None: 0,
+  YouTube: 1
+} as const;
+
+export const WorkshopVote = {
+  Unvoted: 0,
+  For: 1,
+  Against: 2,
+  Later: 3
 } as const;
 
 export const SteamUniverse = {
@@ -2776,6 +2956,220 @@ export const cloud = {
   RemoteStorageLocalFileChange,
   RemoteStorageFilePathType,
   UGCReadAction,
+  legacy: {
+    PublishedFileVisibility: UgcItemVisibility,
+    WorkshopFileType,
+    WorkshopFileAction,
+    WorkshopEnumerationType,
+    WorkshopVideoProvider,
+    WorkshopVote,
+    async publishWorkshopFile(
+      options: CloudLegacyPublishWorkshopFileOptions,
+      timeoutSeconds?: number | null
+    ): Promise<CloudLegacyPublishedFileResult> {
+      return normalizeCloudLegacyPublishedFileResult(
+        await native().cloudLegacyPublishWorkshopFile(
+          options.filePath,
+          options.previewPath,
+          options.consumerAppId,
+          options.title,
+          options.description,
+          options.visibility ?? UgcItemVisibility.Public,
+          options.tags ?? [],
+          options.fileType ?? WorkshopFileType.Community,
+          timeoutSeconds ?? undefined
+        )
+      );
+    },
+    async publishVideo(
+      options: CloudLegacyPublishVideoOptions,
+      timeoutSeconds?: number | null
+    ): Promise<CloudLegacyPublishedFileResult> {
+      return normalizeCloudLegacyPublishedFileResult(
+        await native().cloudLegacyPublishVideo(
+          options.provider ?? WorkshopVideoProvider.YouTube,
+          options.videoAccount,
+          options.videoIdentifier,
+          options.previewPath,
+          options.consumerAppId,
+          options.title,
+          options.description,
+          options.visibility ?? UgcItemVisibility.Public,
+          options.tags ?? [],
+          timeoutSeconds ?? undefined
+        )
+      );
+    },
+    createPublishedFileUpdateRequest(publishedFileId: bigint): bigint | null {
+      const handle = native().cloudLegacyCreatePublishedFileUpdateRequest(publishedFileId);
+      return handle == null ? null : BigInt(handle);
+    },
+    updatePublishedFileFile(handle: bigint, filePath: string): boolean {
+      return native().cloudLegacyUpdatePublishedFileFile(handle, filePath);
+    },
+    updatePublishedFilePreviewFile(handle: bigint, previewPath: string): boolean {
+      return native().cloudLegacyUpdatePublishedFilePreviewFile(handle, previewPath);
+    },
+    updatePublishedFileTitle(handle: bigint, title: string): boolean {
+      return native().cloudLegacyUpdatePublishedFileTitle(handle, title);
+    },
+    updatePublishedFileDescription(handle: bigint, description: string): boolean {
+      return native().cloudLegacyUpdatePublishedFileDescription(handle, description);
+    },
+    updatePublishedFileVisibility(handle: bigint, visibility: number): boolean {
+      return native().cloudLegacyUpdatePublishedFileVisibility(handle, visibility);
+    },
+    updatePublishedFileTags(handle: bigint, tags: string[]): boolean {
+      return native().cloudLegacyUpdatePublishedFileTags(handle, tags);
+    },
+    updatePublishedFileSetChangeDescription(handle: bigint, changeDescription: string): boolean {
+      return native().cloudLegacyUpdatePublishedFileSetChangeDescription(handle, changeDescription);
+    },
+    async commitPublishedFileUpdate(
+      handle: bigint,
+      timeoutSeconds?: number | null
+    ): Promise<CloudLegacyPublishedFileResult> {
+      return normalizeCloudLegacyPublishedFileResult(
+        await native().cloudLegacyCommitPublishedFileUpdate(handle, timeoutSeconds ?? undefined)
+      );
+    },
+    async getPublishedFileDetails(
+      publishedFileId: bigint,
+      maxSecondsOld?: number | null,
+      timeoutSeconds?: number | null
+    ): Promise<CloudLegacyPublishedFileDetails> {
+      return normalizeCloudLegacyPublishedFileDetails(
+        await native().cloudLegacyGetPublishedFileDetails(
+          publishedFileId,
+          maxSecondsOld ?? undefined,
+          timeoutSeconds ?? undefined
+        )
+      );
+    },
+    async deletePublishedFile(
+      publishedFileId: bigint,
+      timeoutSeconds?: number | null
+    ): Promise<CloudLegacyPublishedFileIdResult> {
+      return normalizeCloudLegacyPublishedFileIdResult(
+        await native().cloudLegacyDeletePublishedFile(publishedFileId, timeoutSeconds ?? undefined)
+      );
+    },
+    async enumerateUserPublishedFiles(
+      startIndex?: number | null,
+      timeoutSeconds?: number | null
+    ): Promise<CloudLegacyEnumerateFilesResult> {
+      return normalizeCloudLegacyEnumerateFilesResult(
+        await native().cloudLegacyEnumerateUserPublishedFiles(startIndex ?? undefined, timeoutSeconds ?? undefined)
+      );
+    },
+    async subscribePublishedFile(
+      publishedFileId: bigint,
+      timeoutSeconds?: number | null
+    ): Promise<CloudLegacyPublishedFileIdResult> {
+      return normalizeCloudLegacyPublishedFileIdResult(
+        await native().cloudLegacySubscribePublishedFile(publishedFileId, timeoutSeconds ?? undefined)
+      );
+    },
+    async enumerateUserSubscribedFiles(
+      startIndex?: number | null,
+      timeoutSeconds?: number | null
+    ): Promise<CloudLegacyEnumerateSubscribedFilesResult> {
+      return normalizeCloudLegacyEnumerateSubscribedFilesResult(
+        await native().cloudLegacyEnumerateUserSubscribedFiles(startIndex ?? undefined, timeoutSeconds ?? undefined)
+      );
+    },
+    async unsubscribePublishedFile(
+      publishedFileId: bigint,
+      timeoutSeconds?: number | null
+    ): Promise<CloudLegacyPublishedFileIdResult> {
+      return normalizeCloudLegacyPublishedFileIdResult(
+        await native().cloudLegacyUnsubscribePublishedFile(publishedFileId, timeoutSeconds ?? undefined)
+      );
+    },
+    async getPublishedItemVoteDetails(
+      publishedFileId: bigint,
+      timeoutSeconds?: number | null
+    ): Promise<CloudLegacyPublishedItemVoteDetails> {
+      return normalizeCloudLegacyPublishedItemVoteDetails(
+        await native().cloudLegacyGetPublishedItemVoteDetails(publishedFileId, timeoutSeconds ?? undefined)
+      );
+    },
+    async updateUserPublishedItemVote(
+      publishedFileId: bigint,
+      voteUp: boolean,
+      timeoutSeconds?: number | null
+    ): Promise<CloudLegacyPublishedFileIdResult> {
+      return normalizeCloudLegacyPublishedFileIdResult(
+        await native().cloudLegacyUpdateUserPublishedItemVote(publishedFileId, voteUp, timeoutSeconds ?? undefined)
+      );
+    },
+    async getUserPublishedItemVoteDetails(
+      publishedFileId: bigint,
+      timeoutSeconds?: number | null
+    ): Promise<CloudLegacyUserVoteDetails> {
+      return normalizeCloudLegacyUserVoteDetails(
+        await native().cloudLegacyGetUserPublishedItemVoteDetails(publishedFileId, timeoutSeconds ?? undefined)
+      );
+    },
+    async enumerateUserSharedWorkshopFiles(
+      steamId64: bigint,
+      startIndex?: number | null,
+      filters: CloudLegacyTagFilters = {},
+      timeoutSeconds?: number | null
+    ): Promise<CloudLegacyEnumerateFilesResult> {
+      return normalizeCloudLegacyEnumerateFilesResult(
+        await native().cloudLegacyEnumerateUserSharedWorkshopFiles(
+          steamId64,
+          startIndex ?? undefined,
+          filters.requiredTags ?? [],
+          filters.excludedTags ?? [],
+          timeoutSeconds ?? undefined
+        )
+      );
+    },
+    async setUserPublishedFileAction(
+      publishedFileId: bigint,
+      action: number,
+      timeoutSeconds?: number | null
+    ): Promise<CloudLegacyPublishedFileActionResult> {
+      return normalizeCloudLegacyPublishedFileActionResult(
+        await native().cloudLegacySetUserPublishedFileAction(publishedFileId, action, timeoutSeconds ?? undefined)
+      );
+    },
+    async enumeratePublishedFilesByUserAction(
+      action: number,
+      startIndex?: number | null,
+      timeoutSeconds?: number | null
+    ): Promise<CloudLegacyEnumerateUserActionFilesResult> {
+      return normalizeCloudLegacyEnumerateUserActionFilesResult(
+        await native().cloudLegacyEnumeratePublishedFilesByUserAction(
+          action,
+          startIndex ?? undefined,
+          timeoutSeconds ?? undefined
+        )
+      );
+    },
+    async enumeratePublishedWorkshopFiles(
+      enumerationType: number,
+      startIndex?: number | null,
+      count?: number | null,
+      days?: number | null,
+      filters: CloudLegacyWorkshopFilters = {},
+      timeoutSeconds?: number | null
+    ): Promise<CloudLegacyEnumerateWorkshopFilesResult> {
+      return normalizeCloudLegacyEnumerateWorkshopFilesResult(
+        await native().cloudLegacyEnumeratePublishedWorkshopFiles(
+          enumerationType,
+          startIndex ?? undefined,
+          count ?? undefined,
+          days ?? undefined,
+          filters.tags ?? [],
+          filters.userTags ?? [],
+          timeoutSeconds ?? undefined
+        )
+      );
+    }
+  },
   isEnabledForAccount(): boolean {
     return native().cloudIsEnabledForAccount();
   },
@@ -5088,6 +5482,131 @@ function normalizeCloudUgcDownloadResult(result: NativeCloudUgcDownloadResult): 
     size: BigInt(result.size),
     name: result.name,
     owner: normalizeSteamId(result.owner)
+  };
+}
+
+function normalizeCloudLegacyPublishedFileResult(
+  result: NativeCloudLegacyPublishedFileResult
+): CloudLegacyPublishedFileResult {
+  const source = result as unknown as Record<string, unknown>;
+  return {
+    result: Number(result.result),
+    publishedFileId: BigInt((source.publishedFileId ?? source.published_file_id ?? 0) as bigint | number | string),
+    needsToAcceptAgreement:
+      (source.needsToAcceptAgreement ?? source.needs_to_accept_agreement ?? null) as boolean | null
+  };
+}
+
+function normalizeCloudLegacyPublishedFileIdResult(
+  result: NativeCloudLegacyPublishedFileIdResult
+): CloudLegacyPublishedFileIdResult {
+  const source = result as unknown as Record<string, unknown>;
+  return {
+    result: Number(result.result),
+    publishedFileId: BigInt((source.publishedFileId ?? source.published_file_id ?? 0) as bigint | number | string)
+  };
+}
+
+function normalizeCloudLegacyPublishedFileActionResult(
+  result: NativeCloudLegacyPublishedFileActionResult
+): CloudLegacyPublishedFileActionResult {
+  return {
+    ...normalizeCloudLegacyPublishedFileIdResult(result),
+    action: Number(result.action)
+  };
+}
+
+function normalizeCloudLegacyPublishedFileDetails(
+  details: NativeCloudLegacyPublishedFileDetails
+): CloudLegacyPublishedFileDetails {
+  const source = details as unknown as Record<string, unknown>;
+  return {
+    ...normalizeCloudLegacyPublishedFileIdResult(details),
+    creatorAppId: Number(source.creatorAppId ?? source.creator_app_id ?? 0),
+    consumerAppId: Number(source.consumerAppId ?? source.consumer_app_id ?? 0),
+    title: details.title,
+    description: details.description,
+    file: BigInt(details.file),
+    previewFile: BigInt((source.previewFile ?? source.preview_file ?? 0) as bigint | number | string),
+    owner: normalizeSteamId(details.owner),
+    timeCreated: Number(source.timeCreated ?? source.time_created ?? 0),
+    timeUpdated: Number(source.timeUpdated ?? source.time_updated ?? 0),
+    visibility: Number(details.visibility),
+    banned: Boolean(details.banned),
+    tags: details.tags ?? [],
+    tagsTruncated: Boolean(source.tagsTruncated ?? source.tags_truncated),
+    fileName: String(source.fileName ?? source.file_name ?? ""),
+    fileSize: BigInt((source.fileSize ?? source.file_size ?? 0) as bigint | number | string),
+    previewFileSize: BigInt((source.previewFileSize ?? source.preview_file_size ?? 0) as bigint | number | string),
+    url: details.url,
+    fileType: Number(source.fileType ?? source.file_type ?? 0),
+    acceptedForUse: Boolean(source.acceptedForUse ?? source.accepted_for_use)
+  };
+}
+
+function normalizeCloudLegacyEnumerateFilesResult(
+  result: NativeCloudLegacyEnumerateFilesResult
+): CloudLegacyEnumerateFilesResult {
+  const source = result as unknown as Record<string, unknown>;
+  const ids = (source.publishedFileIds ?? source.published_file_ids ?? []) as Array<bigint | number | string>;
+  return {
+    result: Number(result.result),
+    returnedResults: Number(source.returnedResults ?? source.returned_results ?? 0),
+    totalResultCount: Number(source.totalResultCount ?? source.total_result_count ?? 0),
+    publishedFileIds: ids.map((id) => BigInt(id))
+  };
+}
+
+function normalizeCloudLegacyEnumerateSubscribedFilesResult(
+  result: NativeCloudLegacyEnumerateSubscribedFilesResult
+): CloudLegacyEnumerateSubscribedFilesResult {
+  const source = result as unknown as Record<string, unknown>;
+  return {
+    ...normalizeCloudLegacyEnumerateFilesResult(result),
+    subscribedTimes: ((source.subscribedTimes ?? source.subscribed_times ?? []) as number[]).map(Number)
+  };
+}
+
+function normalizeCloudLegacyEnumerateWorkshopFilesResult(
+  result: NativeCloudLegacyEnumerateWorkshopFilesResult
+): CloudLegacyEnumerateWorkshopFilesResult {
+  const source = result as unknown as Record<string, unknown>;
+  return {
+    ...normalizeCloudLegacyEnumerateFilesResult(result),
+    scores: (result.scores ?? []).map(Number),
+    appId: Number(source.appId ?? source.app_id ?? 0),
+    startIndex: Number(source.startIndex ?? source.start_index ?? 0)
+  };
+}
+
+function normalizeCloudLegacyEnumerateUserActionFilesResult(
+  result: NativeCloudLegacyEnumerateUserActionFilesResult
+): CloudLegacyEnumerateUserActionFilesResult {
+  const source = result as unknown as Record<string, unknown>;
+  return {
+    ...normalizeCloudLegacyEnumerateFilesResult(result),
+    action: Number(result.action),
+    updatedTimes: ((source.updatedTimes ?? source.updated_times ?? []) as number[]).map(Number)
+  };
+}
+
+function normalizeCloudLegacyPublishedItemVoteDetails(
+  result: NativeCloudLegacyPublishedItemVoteDetails
+): CloudLegacyPublishedItemVoteDetails {
+  const source = result as unknown as Record<string, unknown>;
+  return {
+    ...normalizeCloudLegacyPublishedFileIdResult(result),
+    votesFor: Number(source.votesFor ?? source.votes_for ?? 0),
+    votesAgainst: Number(source.votesAgainst ?? source.votes_against ?? 0),
+    reports: Number(result.reports),
+    score: Number(result.score)
+  };
+}
+
+function normalizeCloudLegacyUserVoteDetails(result: NativeCloudLegacyUserVoteDetails): CloudLegacyUserVoteDetails {
+  return {
+    ...normalizeCloudLegacyPublishedFileIdResult(result),
+    vote: Number(result.vote)
   };
 }
 

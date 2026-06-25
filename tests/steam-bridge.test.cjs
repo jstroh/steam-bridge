@@ -254,6 +254,164 @@ function createFakeNative(overrides = {}) {
     cloudGetCachedUgcHandles() {
       return ["555", 666n];
     },
+    cloudLegacyPublishWorkshopFile(filePath, previewPath, consumerAppId, title, description, visibility, tags, fileType, timeoutSeconds) {
+      calls.push({
+        method: "cloudLegacyPublishWorkshopFile",
+        args: [filePath, previewPath, consumerAppId, title, description, visibility, tags, fileType, timeoutSeconds]
+      });
+      return Promise.resolve({ result: 1, published_file_id: "12345678901234567890", needs_to_accept_agreement: true });
+    },
+    cloudLegacyPublishVideo(provider, videoAccount, videoIdentifier, previewPath, consumerAppId, title, description, visibility, tags, timeoutSeconds) {
+      calls.push({
+        method: "cloudLegacyPublishVideo",
+        args: [provider, videoAccount, videoIdentifier, previewPath, consumerAppId, title, description, visibility, tags, timeoutSeconds]
+      });
+      return Promise.resolve({ result: 1, publishedFileId: 12345678901234567890n, needsToAcceptAgreement: false });
+    },
+    cloudLegacyCreatePublishedFileUpdateRequest(publishedFileId) {
+      calls.push({ method: "cloudLegacyCreatePublishedFileUpdateRequest", args: [publishedFileId] });
+      return "999";
+    },
+    cloudLegacyUpdatePublishedFileFile(handle, filePath) {
+      calls.push({ method: "cloudLegacyUpdatePublishedFileFile", args: [handle, filePath] });
+      return true;
+    },
+    cloudLegacyUpdatePublishedFilePreviewFile(handle, previewPath) {
+      calls.push({ method: "cloudLegacyUpdatePublishedFilePreviewFile", args: [handle, previewPath] });
+      return true;
+    },
+    cloudLegacyUpdatePublishedFileTitle(handle, title) {
+      calls.push({ method: "cloudLegacyUpdatePublishedFileTitle", args: [handle, title] });
+      return true;
+    },
+    cloudLegacyUpdatePublishedFileDescription(handle, description) {
+      calls.push({ method: "cloudLegacyUpdatePublishedFileDescription", args: [handle, description] });
+      return true;
+    },
+    cloudLegacyUpdatePublishedFileVisibility(handle, visibility) {
+      calls.push({ method: "cloudLegacyUpdatePublishedFileVisibility", args: [handle, visibility] });
+      return true;
+    },
+    cloudLegacyUpdatePublishedFileTags(handle, tags) {
+      calls.push({ method: "cloudLegacyUpdatePublishedFileTags", args: [handle, tags] });
+      return true;
+    },
+    cloudLegacyUpdatePublishedFileSetChangeDescription(handle, changeDescription) {
+      calls.push({ method: "cloudLegacyUpdatePublishedFileSetChangeDescription", args: [handle, changeDescription] });
+      return true;
+    },
+    cloudLegacyCommitPublishedFileUpdate(handle, timeoutSeconds) {
+      calls.push({ method: "cloudLegacyCommitPublishedFileUpdate", args: [handle, timeoutSeconds] });
+      return Promise.resolve({ result: 1, published_file_id: "12345678901234567890", needs_to_accept_agreement: false });
+    },
+    cloudLegacyGetPublishedFileDetails(publishedFileId, maxSecondsOld, timeoutSeconds) {
+      calls.push({ method: "cloudLegacyGetPublishedFileDetails", args: [publishedFileId, maxSecondsOld, timeoutSeconds] });
+      return Promise.resolve({
+        result: 1,
+        published_file_id: "12345678901234567890",
+        creator_app_id: 480,
+        consumer_app_id: 480,
+        title: "Legacy Item",
+        description: "Legacy description",
+        file: "555",
+        preview_file: 556n,
+        owner: { steamId64: 76561198000000030n, steamId32: "STEAM_0:0:19867151", accountId: 39734302 },
+        time_created: 1700000000,
+        time_updated: 1700000100,
+        visibility: 0,
+        banned: false,
+        tags: ["save", "legacy"],
+        tags_truncated: false,
+        file_name: "legacy.dat",
+        file_size: "1024",
+        preview_file_size: 256n,
+        url: "https://example.invalid/item",
+        file_type: 0,
+        accepted_for_use: true
+      });
+    },
+    cloudLegacyDeletePublishedFile(publishedFileId, timeoutSeconds) {
+      calls.push({ method: "cloudLegacyDeletePublishedFile", args: [publishedFileId, timeoutSeconds] });
+      return Promise.resolve({ result: 1, published_file_id: "12345678901234567890" });
+    },
+    cloudLegacyEnumerateUserPublishedFiles(startIndex, timeoutSeconds) {
+      calls.push({ method: "cloudLegacyEnumerateUserPublishedFiles", args: [startIndex, timeoutSeconds] });
+      return Promise.resolve({ result: 1, returned_results: 1, total_result_count: 2, published_file_ids: ["12345678901234567890"] });
+    },
+    cloudLegacySubscribePublishedFile(publishedFileId, timeoutSeconds) {
+      calls.push({ method: "cloudLegacySubscribePublishedFile", args: [publishedFileId, timeoutSeconds] });
+      return Promise.resolve({ result: 1, published_file_id: "12345678901234567890" });
+    },
+    cloudLegacyEnumerateUserSubscribedFiles(startIndex, timeoutSeconds) {
+      calls.push({ method: "cloudLegacyEnumerateUserSubscribedFiles", args: [startIndex, timeoutSeconds] });
+      return Promise.resolve({
+        result: 1,
+        returned_results: 1,
+        total_result_count: 1,
+        published_file_ids: ["12345678901234567890"],
+        subscribed_times: [1700000200]
+      });
+    },
+    cloudLegacyUnsubscribePublishedFile(publishedFileId, timeoutSeconds) {
+      calls.push({ method: "cloudLegacyUnsubscribePublishedFile", args: [publishedFileId, timeoutSeconds] });
+      return Promise.resolve({ result: 1, published_file_id: "12345678901234567890" });
+    },
+    cloudLegacyGetPublishedItemVoteDetails(publishedFileId, timeoutSeconds) {
+      calls.push({ method: "cloudLegacyGetPublishedItemVoteDetails", args: [publishedFileId, timeoutSeconds] });
+      return Promise.resolve({
+        result: 1,
+        published_file_id: "12345678901234567890",
+        votes_for: 10,
+        votes_against: 2,
+        reports: 1,
+        score: 0.9
+      });
+    },
+    cloudLegacyUpdateUserPublishedItemVote(publishedFileId, voteUp, timeoutSeconds) {
+      calls.push({ method: "cloudLegacyUpdateUserPublishedItemVote", args: [publishedFileId, voteUp, timeoutSeconds] });
+      return Promise.resolve({ result: 1, published_file_id: "12345678901234567890" });
+    },
+    cloudLegacyGetUserPublishedItemVoteDetails(publishedFileId, timeoutSeconds) {
+      calls.push({ method: "cloudLegacyGetUserPublishedItemVoteDetails", args: [publishedFileId, timeoutSeconds] });
+      return Promise.resolve({ result: 1, published_file_id: "12345678901234567890", vote: 1 });
+    },
+    cloudLegacyEnumerateUserSharedWorkshopFiles(steamId64, startIndex, requiredTags, excludedTags, timeoutSeconds) {
+      calls.push({
+        method: "cloudLegacyEnumerateUserSharedWorkshopFiles",
+        args: [steamId64, startIndex, requiredTags, excludedTags, timeoutSeconds]
+      });
+      return Promise.resolve({ result: 1, returned_results: 1, total_result_count: 1, published_file_ids: ["12345678901234567890"] });
+    },
+    cloudLegacySetUserPublishedFileAction(publishedFileId, action, timeoutSeconds) {
+      calls.push({ method: "cloudLegacySetUserPublishedFileAction", args: [publishedFileId, action, timeoutSeconds] });
+      return Promise.resolve({ result: 1, published_file_id: "12345678901234567890", action });
+    },
+    cloudLegacyEnumeratePublishedFilesByUserAction(action, startIndex, timeoutSeconds) {
+      calls.push({ method: "cloudLegacyEnumeratePublishedFilesByUserAction", args: [action, startIndex, timeoutSeconds] });
+      return Promise.resolve({
+        result: 1,
+        action,
+        returned_results: 1,
+        total_result_count: 1,
+        published_file_ids: ["12345678901234567890"],
+        updated_times: [1700000300]
+      });
+    },
+    cloudLegacyEnumeratePublishedWorkshopFiles(enumerationType, startIndex, count, days, tags, userTags, timeoutSeconds) {
+      calls.push({
+        method: "cloudLegacyEnumeratePublishedWorkshopFiles",
+        args: [enumerationType, startIndex, count, days, tags, userTags, timeoutSeconds]
+      });
+      return Promise.resolve({
+        result: 1,
+        returned_results: 1,
+        total_result_count: 1,
+        published_file_ids: ["12345678901234567890"],
+        scores: [0.75],
+        app_id: 480,
+        start_index: 0
+      });
+    },
     inputGetControllers() {
       return [
         { handle: "123", inputType: "PS5Controller" },
@@ -1187,7 +1345,27 @@ test("specific and generic callbacks normalize Steamworks payloads", (t) => {
   assert.equal(steam.SteamCallback.FileDetailsResult, 1023);
   assert.equal(steam.SteamCallback.TimedTrialStatus, 1030);
   assert.equal(steam.SteamCallback.RemoteStorageFileShareResult, 1307);
+  assert.equal(steam.SteamCallback.RemoteStoragePublishFileResult, 1309);
+  assert.equal(steam.SteamCallback.RemoteStorageDeletePublishedFileResult, 1311);
+  assert.equal(steam.SteamCallback.RemoteStorageEnumerateUserPublishedFilesResult, 1312);
+  assert.equal(steam.SteamCallback.RemoteStorageSubscribePublishedFileResult, 1313);
+  assert.equal(steam.SteamCallback.RemoteStorageEnumerateUserSubscribedFilesResult, 1314);
+  assert.equal(steam.SteamCallback.RemoteStorageUnsubscribePublishedFileResult, 1315);
+  assert.equal(steam.SteamCallback.RemoteStorageUpdatePublishedFileResult, 1316);
   assert.equal(steam.SteamCallback.RemoteStorageDownloadUGCResult, 1317);
+  assert.equal(steam.SteamCallback.RemoteStorageGetPublishedFileDetailsResult, 1318);
+  assert.equal(steam.SteamCallback.RemoteStorageEnumerateWorkshopFilesResult, 1319);
+  assert.equal(steam.SteamCallback.RemoteStorageGetPublishedItemVoteDetailsResult, 1320);
+  assert.equal(steam.SteamCallback.RemoteStoragePublishedFileSubscribed, 1321);
+  assert.equal(steam.SteamCallback.RemoteStoragePublishedFileUnsubscribed, 1322);
+  assert.equal(steam.SteamCallback.RemoteStoragePublishedFileDeleted, 1323);
+  assert.equal(steam.SteamCallback.RemoteStorageUpdateUserPublishedItemVoteResult, 1324);
+  assert.equal(steam.SteamCallback.RemoteStorageUserVoteDetails, 1325);
+  assert.equal(steam.SteamCallback.RemoteStorageEnumerateUserSharedWorkshopFilesResult, 1326);
+  assert.equal(steam.SteamCallback.RemoteStorageSetUserPublishedFileActionResult, 1327);
+  assert.equal(steam.SteamCallback.RemoteStorageEnumeratePublishedFilesByUserActionResult, 1328);
+  assert.equal(steam.SteamCallback.RemoteStoragePublishFileProgress, 1329);
+  assert.equal(steam.SteamCallback.RemoteStoragePublishedFileUpdated, 1330);
   assert.equal(steam.SteamCallback.RemoteStorageFileWriteAsyncComplete, 1331);
   assert.equal(steam.SteamCallback.RemoteStorageFileReadAsyncComplete, 1332);
   assert.equal(steam.SteamCallback.GameServerClientApprove, 201);
@@ -2197,6 +2375,176 @@ test("cloud, input, and networking facades coerce native values", async (t) => {
   const packet = steam.networking.readP2PPacket(64);
   assert.deepEqual(packet.data, Buffer.from("hello"));
   assert.equal(packet.steamId.steamId64, 76561198000000001n);
+});
+
+test("cloud legacy facade covers published file workflows", async (t) => {
+  const fake = createFakeNative();
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  const itemId = 12345678901234567890n;
+  assert.equal(steam.cloud.legacy.WorkshopFileType.Community, 0);
+  assert.equal(steam.cloud.legacy.WorkshopFileAction.Completed, 1);
+  assert.equal(steam.cloud.legacy.WorkshopEnumerationType.Trending, 2);
+  assert.equal(steam.cloud.legacy.WorkshopVideoProvider.YouTube, 1);
+  assert.equal(steam.cloud.legacy.WorkshopVote.For, 1);
+
+  assert.deepEqual(
+    await steam.cloud.legacy.publishWorkshopFile(
+      {
+        filePath: "/tmp/content",
+        previewPath: "/tmp/preview.png",
+        consumerAppId: 480,
+        title: "Legacy Item",
+        description: "Legacy description",
+        tags: ["save"],
+        visibility: steam.cloud.legacy.PublishedFileVisibility.Public
+      },
+      9
+    ),
+    { result: 1, publishedFileId: itemId, needsToAcceptAgreement: true }
+  );
+  assert.deepEqual(
+    await steam.cloud.legacy.publishVideo(
+      {
+        videoAccount: "channel",
+        videoIdentifier: "video-id",
+        previewPath: "/tmp/video.png",
+        consumerAppId: 480,
+        title: "Legacy Video",
+        description: "Video description"
+      },
+      9
+    ),
+    { result: 1, publishedFileId: itemId, needsToAcceptAgreement: false }
+  );
+
+  const updateHandle = steam.cloud.legacy.createPublishedFileUpdateRequest(itemId);
+  assert.equal(updateHandle, 999n);
+  assert.equal(steam.cloud.legacy.updatePublishedFileFile(updateHandle, "/tmp/content"), true);
+  assert.equal(steam.cloud.legacy.updatePublishedFilePreviewFile(updateHandle, "/tmp/preview.png"), true);
+  assert.equal(steam.cloud.legacy.updatePublishedFileTitle(updateHandle, "Title"), true);
+  assert.equal(steam.cloud.legacy.updatePublishedFileDescription(updateHandle, "Description"), true);
+  assert.equal(
+    steam.cloud.legacy.updatePublishedFileVisibility(updateHandle, steam.cloud.legacy.PublishedFileVisibility.Unlisted),
+    true
+  );
+  assert.equal(steam.cloud.legacy.updatePublishedFileTags(updateHandle, ["save", "legacy"]), true);
+  assert.equal(steam.cloud.legacy.updatePublishedFileSetChangeDescription(updateHandle, "Changes"), true);
+  assert.deepEqual(await steam.cloud.legacy.commitPublishedFileUpdate(updateHandle, 9), {
+    result: 1,
+    publishedFileId: itemId,
+    needsToAcceptAgreement: false
+  });
+
+  const details = await steam.cloud.legacy.getPublishedFileDetails(itemId, 60, 9);
+  assert.equal(details.publishedFileId, itemId);
+  assert.equal(details.creatorAppId, 480);
+  assert.equal(details.file, 555n);
+  assert.equal(details.previewFile, 556n);
+  assert.equal(details.owner.steamId64, 76561198000000030n);
+  assert.deepEqual(details.tags, ["save", "legacy"]);
+  assert.equal(details.fileSize, 1024n);
+  assert.equal(details.previewFileSize, 256n);
+  assert.equal(details.acceptedForUse, true);
+
+  assert.deepEqual(await steam.cloud.legacy.deletePublishedFile(itemId, 9), { result: 1, publishedFileId: itemId });
+  assert.deepEqual(await steam.cloud.legacy.enumerateUserPublishedFiles(0, 9), {
+    result: 1,
+    returnedResults: 1,
+    totalResultCount: 2,
+    publishedFileIds: [itemId]
+  });
+  assert.deepEqual(await steam.cloud.legacy.subscribePublishedFile(itemId, 9), { result: 1, publishedFileId: itemId });
+  assert.deepEqual(await steam.cloud.legacy.enumerateUserSubscribedFiles(0, 9), {
+    result: 1,
+    returnedResults: 1,
+    totalResultCount: 1,
+    publishedFileIds: [itemId],
+    subscribedTimes: [1700000200]
+  });
+  assert.deepEqual(await steam.cloud.legacy.unsubscribePublishedFile(itemId, 9), {
+    result: 1,
+    publishedFileId: itemId
+  });
+  assert.deepEqual(await steam.cloud.legacy.getPublishedItemVoteDetails(itemId, 9), {
+    result: 1,
+    publishedFileId: itemId,
+    votesFor: 10,
+    votesAgainst: 2,
+    reports: 1,
+    score: 0.9
+  });
+  assert.deepEqual(await steam.cloud.legacy.updateUserPublishedItemVote(itemId, true, 9), {
+    result: 1,
+    publishedFileId: itemId
+  });
+  assert.deepEqual(await steam.cloud.legacy.getUserPublishedItemVoteDetails(itemId, 9), {
+    result: 1,
+    publishedFileId: itemId,
+    vote: steam.cloud.legacy.WorkshopVote.For
+  });
+  assert.deepEqual(
+    await steam.cloud.legacy.enumerateUserSharedWorkshopFiles(
+      76561198000000030n,
+      0,
+      { requiredTags: ["save"], excludedTags: ["spoiler"] },
+      9
+    ),
+    { result: 1, returnedResults: 1, totalResultCount: 1, publishedFileIds: [itemId] }
+  );
+  assert.deepEqual(
+    await steam.cloud.legacy.setUserPublishedFileAction(itemId, steam.cloud.legacy.WorkshopFileAction.Completed, 9),
+    { result: 1, publishedFileId: itemId, action: 1 }
+  );
+  assert.deepEqual(
+    await steam.cloud.legacy.enumeratePublishedFilesByUserAction(steam.cloud.legacy.WorkshopFileAction.Completed, 0, 9),
+    {
+      result: 1,
+      action: 1,
+      returnedResults: 1,
+      totalResultCount: 1,
+      publishedFileIds: [itemId],
+      updatedTimes: [1700000300]
+    }
+  );
+  assert.deepEqual(
+    await steam.cloud.legacy.enumeratePublishedWorkshopFiles(
+      steam.cloud.legacy.WorkshopEnumerationType.Trending,
+      0,
+      10,
+      7,
+      { tags: ["save"], userTags: ["played"] },
+      9
+    ),
+    {
+      result: 1,
+      returnedResults: 1,
+      totalResultCount: 1,
+      publishedFileIds: [itemId],
+      scores: [0.75],
+      appId: 480,
+      startIndex: 0
+    }
+  );
+
+  assert.deepEqual(fake.calls.find((call) => call.method === "cloudLegacyPublishWorkshopFile"), {
+    method: "cloudLegacyPublishWorkshopFile",
+    args: ["/tmp/content", "/tmp/preview.png", 480, "Legacy Item", "Legacy description", 0, ["save"], 0, 9]
+  });
+  assert.deepEqual(fake.calls.find((call) => call.method === "cloudLegacyPublishVideo"), {
+    method: "cloudLegacyPublishVideo",
+    args: [1, "channel", "video-id", "/tmp/video.png", 480, "Legacy Video", "Video description", 0, [], 9]
+  });
+  assert.deepEqual(fake.calls.find((call) => call.method === "cloudLegacyEnumerateUserSharedWorkshopFiles"), {
+    method: "cloudLegacyEnumerateUserSharedWorkshopFiles",
+    args: [76561198000000030n, 0, ["save"], ["spoiler"], 9]
+  });
+  assert.deepEqual(fake.calls.find((call) => call.method === "cloudLegacyEnumeratePublishedWorkshopFiles"), {
+    method: "cloudLegacyEnumeratePublishedWorkshopFiles",
+    args: [2, 0, 10, 7, ["save"], ["played"], 9]
+  });
 });
 
 test("networking messages facade covers identity, message, session, and callback flows", (t) => {
