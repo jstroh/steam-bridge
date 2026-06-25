@@ -200,6 +200,7 @@ test("init reads the Steam app ID from the environment and returns the grouped c
   assert.equal(client.workshop, steam.workshop);
   assert.equal(client.friends, steam.friends);
   assert.equal(client.http, steam.http);
+  assert.equal(client.parties, steam.parties);
   assert.equal(client.timeline, steam.timeline);
   assert.equal(client.remotePlay, steam.remotePlay);
   assert.equal(client.localplayer.getSteamId().steamId64, 76561198000000000n);
@@ -486,6 +487,146 @@ test("http facade covers request lifecycle, response reads, and callbacks", asyn
   assert.deepEqual(fake.calls.find((call) => call.method === "httpCreateRequest"), {
     method: "httpCreateRequest",
     args: [steam.http.HttpMethod.Post, "https://example.invalid/api"]
+  });
+});
+
+test("parties facade covers party beacon lifecycle and callbacks", async (t) => {
+  const owner = { steamId64: "76561198000000009", steamId32: "STEAM_0:1:19867140", accountId: 39734281 };
+  const fake = createFakeNative({
+    partiesGetNumActiveBeacons() {
+      this.calls.push({ method: "partiesGetNumActiveBeacons", args: [] });
+      return 2;
+    },
+    partiesGetBeaconByIndex(index) {
+      this.calls.push({ method: "partiesGetBeaconByIndex", args: [index] });
+      return index === 0 ? "700" : null;
+    },
+    partiesGetActiveBeacons() {
+      this.calls.push({ method: "partiesGetActiveBeacons", args: [] });
+      return ["700", 701n];
+    },
+    partiesGetBeaconDetails(beacon) {
+      this.calls.push({ method: "partiesGetBeaconDetails", args: [beacon] });
+      return {
+        beacon,
+        owner,
+        location: { location_type: 1, location_id: "900" },
+        metadata: "mode=coop"
+      };
+    },
+    partiesJoinParty(beacon, timeoutSeconds) {
+      this.calls.push({ method: "partiesJoinParty", args: [beacon, timeoutSeconds] });
+      return Promise.resolve({ result: 1, beacon, owner, connect_string: "connect 127.0.0.1" });
+    },
+    partiesGetNumAvailableBeaconLocations() {
+      this.calls.push({ method: "partiesGetNumAvailableBeaconLocations", args: [] });
+      return 1;
+    },
+    partiesGetAvailableBeaconLocations(maxLocations) {
+      this.calls.push({ method: "partiesGetAvailableBeaconLocations", args: [maxLocations] });
+      return [{ locationType: 1, locationId: "900" }];
+    },
+    partiesCreateBeacon(openSlots, location, connectString, metadata, timeoutSeconds) {
+      this.calls.push({ method: "partiesCreateBeacon", args: [openSlots, location, connectString, metadata, timeoutSeconds] });
+      return Promise.resolve({ result: 1, beacon: "702" });
+    },
+    partiesOnReservationCompleted(beacon, steamId64) {
+      this.calls.push({ method: "partiesOnReservationCompleted", args: [beacon, steamId64] });
+    },
+    partiesCancelReservation(beacon, steamId64) {
+      this.calls.push({ method: "partiesCancelReservation", args: [beacon, steamId64] });
+    },
+    partiesChangeNumOpenSlots(beacon, openSlots, timeoutSeconds) {
+      this.calls.push({ method: "partiesChangeNumOpenSlots", args: [beacon, openSlots, timeoutSeconds] });
+      return Promise.resolve({ result: 1 });
+    },
+    partiesDestroyBeacon(beacon) {
+      this.calls.push({ method: "partiesDestroyBeacon", args: [beacon] });
+      return true;
+    },
+    partiesGetBeaconLocationData(location, data) {
+      this.calls.push({ method: "partiesGetBeaconLocationData", args: [location, data] });
+      return data === 1 ? "Chat Group" : null;
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  assert.equal(steam.parties.getNumActiveBeacons(), 2);
+  assert.equal(steam.parties.getBeaconByIndex(0), 700n);
+  assert.equal(steam.parties.getBeaconByIndex(1), null);
+  assert.deepEqual(steam.parties.getActiveBeacons(), [700n, 701n]);
+  assert.deepEqual(steam.parties.getBeaconDetails(700n), {
+    beacon: 700n,
+    owner: {
+      steamId64: 76561198000000009n,
+      steamId32: "STEAM_0:1:19867140",
+      accountId: 39734281
+    },
+    location: {
+      locationType: steam.parties.PartyBeaconLocationType.ChatGroup,
+      locationId: 900n
+    },
+    metadata: "mode=coop"
+  });
+  assert.deepEqual(await steam.parties.joinParty(700n, 3), {
+    result: 1,
+    beacon: 700n,
+    owner: {
+      steamId64: 76561198000000009n,
+      steamId32: "STEAM_0:1:19867140",
+      accountId: 39734281
+    },
+    connectString: "connect 127.0.0.1"
+  });
+  assert.equal(steam.parties.getNumAvailableBeaconLocations(), 1);
+  assert.deepEqual(steam.parties.getAvailableBeaconLocations(4), [
+    {
+      locationType: steam.parties.PartyBeaconLocationType.ChatGroup,
+      locationId: 900n
+    }
+  ]);
+  assert.deepEqual(
+    await steam.parties.createBeacon(
+      3,
+      { locationType: steam.parties.PartyBeaconLocationType.ChatGroup, locationId: 900n },
+      "connect 127.0.0.1",
+      "mode=coop",
+      5
+    ),
+    { result: 1, beacon: 702n }
+  );
+  steam.parties.onReservationCompleted(702n, 76561198000000009n);
+  steam.parties.cancelReservation(702n, 76561198000000009n);
+  assert.deepEqual(await steam.parties.changeNumOpenSlots(702n, 2, 6), { result: 1 });
+  assert.equal(steam.parties.destroyBeacon(702n), true);
+  assert.equal(
+    steam.parties.getBeaconLocationData(
+      { locationType: steam.parties.PartyBeaconLocationType.ChatGroup, locationId: 900n },
+      steam.parties.PartyBeaconLocationData.Name
+    ),
+    "Chat Group"
+  );
+  assert.equal(
+    steam.parties.getBeaconLocationData(
+      { locationType: steam.parties.PartyBeaconLocationType.ChatGroup, locationId: 900n },
+      steam.parties.PartyBeaconLocationData.IconURLSmall
+    ),
+    null
+  );
+
+  steam.callback.register(steam.SteamCallback.ReservationNotification, () => {});
+  assert.equal(fake.callbacks.has(steam.SteamCallback.ReservationNotification), true);
+  assert.deepEqual(fake.calls.find((call) => call.method === "partiesCreateBeacon"), {
+    method: "partiesCreateBeacon",
+    args: [
+      3,
+      { locationType: steam.parties.PartyBeaconLocationType.ChatGroup, locationId: 900n },
+      "connect 127.0.0.1",
+      "mode=coop",
+      5
+    ]
   });
 });
 

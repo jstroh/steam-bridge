@@ -34,6 +34,9 @@ The native layer currently targets the Steamworks flat C API through
   actions, analog vectors, controller type, and text input helpers.
 - Matchmaking/lobbies: create, join, list, leave, member/owner helpers, lobby
   data, joinability, and invite dialogs.
+- Parties: party beacon enumeration/details, location discovery and metadata,
+  join/create/change async calls, reservation completion/cancel, destroy, and
+  reservation callbacks.
 - Networking: legacy P2P send, receive, availability, session accept/close, and
   send-channel close helpers.
 - UGC/Workshop: item create/update/query flows, install/download information,
@@ -55,7 +58,7 @@ The native layer currently targets the Steamworks flat C API through
 
 - Full `ISteamFriends` coverage for buffer-heavy chat reads, profile item APIs,
   and every overlay/social helper.
-- `ISteamInventory` and `ISteamParties`.
+- `ISteamInventory`.
 - `ISteamMusicRemote` is not exposed by the current `steamworks-sys 0.13` macOS
   bindings used by this crate.
 - Modern networking interfaces: `ISteamNetworkingSockets`,

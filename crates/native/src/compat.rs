@@ -33,10 +33,15 @@ const CALLBACK_P2P_SESSION_CONNECT_FAIL: i32 = 1203;
 const CALLBACK_HTTP_REQUEST_COMPLETED: i32 = 2101;
 const CALLBACK_HTTP_REQUEST_HEADERS_RECEIVED: i32 = 2102;
 const CALLBACK_HTTP_REQUEST_DATA_RECEIVED: i32 = 2103;
+const CALLBACK_JOIN_PARTY: i32 = 5301;
+const CALLBACK_CREATE_BEACON: i32 = 5302;
+const CALLBACK_RESERVATION_NOTIFICATION: i32 = 5303;
+const CALLBACK_CHANGE_NUM_OPEN_SLOTS: i32 = 5304;
 const H_AUTH_TICKET_INVALID: sys::HAuthTicket = 0;
 const DEFAULT_ASYNC_TIMEOUT_SECONDS: u64 = 30;
 const LEADERBOARD_DETAILS_MAX: u32 = 64;
 const GLOBAL_STAT_HISTORY_MAX: u32 = 10_000;
+const PARTY_METADATA_BUFFER_SIZE: usize = 4096;
 const FRIEND_FLAG_IMMEDIATE: u32 = 4;
 
 type FatalThreadsafeFunction<T> = ThreadsafeFunction<T, (), Vec<T>, Status, false>;
@@ -76,6 +81,44 @@ pub struct HttpRequestCompleted {
 pub struct HttpRequestHeadersReceived {
     pub request: u32,
     pub context_value: BigInt,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct PartyBeaconLocation {
+    pub location_type: u32,
+    pub location_id: BigInt,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct PartyBeaconDetails {
+    pub beacon: BigInt,
+    pub owner: PlayerSteamId,
+    pub location: PartyBeaconLocation,
+    pub metadata: String,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct JoinPartyResult {
+    pub result: u32,
+    pub beacon: BigInt,
+    pub owner: PlayerSteamId,
+    pub connect_string: String,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct CreateBeaconResult {
+    pub result: u32,
+    pub beacon: BigInt,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct ChangeNumOpenSlotsResult {
+    pub result: u32,
 }
 
 #[derive(Debug)]
@@ -1638,6 +1681,238 @@ pub fn http_get_request_was_timed_out(request: u32) -> Result<Option<bool>, Erro
         sys::SteamAPI_ISteamHTTP_GetHTTPRequestWasTimedOut(steam_http()?, request, &mut timed_out)
     };
     Ok(ok.then_some(timed_out))
+}
+
+#[napi(js_name = "partiesGetNumActiveBeacons")]
+pub fn parties_get_num_active_beacons() -> Result<u32, Error> {
+    Ok(unsafe { sys::SteamAPI_ISteamParties_GetNumActiveBeacons(steam_parties()?) })
+}
+
+#[napi(js_name = "partiesGetBeaconByIndex")]
+pub fn parties_get_beacon_by_index(index: u32) -> Result<Option<BigInt>, Error> {
+    let beacon = unsafe { sys::SteamAPI_ISteamParties_GetBeaconByIndex(steam_parties()?, index) };
+    Ok((beacon != sys::k_ulPartyBeaconIdInvalid).then_some(beacon.into()))
+}
+
+#[napi(js_name = "partiesGetActiveBeacons")]
+pub fn parties_get_active_beacons() -> Result<Vec<BigInt>, Error> {
+    let parties = steam_parties()?;
+    let count = unsafe { sys::SteamAPI_ISteamParties_GetNumActiveBeacons(parties) };
+    let mut beacons = Vec::with_capacity(count as usize);
+    for index in 0..count {
+        let beacon = unsafe { sys::SteamAPI_ISteamParties_GetBeaconByIndex(parties, index) };
+        if beacon != sys::k_ulPartyBeaconIdInvalid {
+            beacons.push(beacon.into());
+        }
+    }
+    Ok(beacons)
+}
+
+#[napi(js_name = "partiesGetBeaconDetails")]
+pub fn parties_get_beacon_details(beacon: BigInt) -> Result<Option<PartyBeaconDetails>, Error> {
+    let beacon = bigint_to_u64(beacon, "party beacon")?;
+    let mut owner = MaybeUninit::<sys::CSteamID>::zeroed();
+    let mut location = MaybeUninit::<sys::SteamPartyBeaconLocation_t>::zeroed();
+    let mut metadata = [0i8; PARTY_METADATA_BUFFER_SIZE];
+    let ok = unsafe {
+        sys::SteamAPI_ISteamParties_GetBeaconDetails(
+            steam_parties()?,
+            beacon,
+            owner.as_mut_ptr(),
+            location.as_mut_ptr(),
+            metadata.as_mut_ptr(),
+            metadata.len() as i32,
+        )
+    };
+    if !ok {
+        return Ok(None);
+    }
+    Ok(Some(PartyBeaconDetails {
+        beacon: beacon.into(),
+        owner: csteam_id_to_player(unsafe { owner.assume_init() }),
+        location: party_beacon_location(unsafe { location.assume_init() }),
+        metadata: c_buf_to_string(&metadata),
+    }))
+}
+
+#[napi(js_name = "partiesJoinParty")]
+pub async fn parties_join_party(
+    beacon: BigInt,
+    timeout_seconds: Option<u32>,
+) -> Result<JoinPartyResult, Error> {
+    let call = unsafe {
+        sys::SteamAPI_ISteamParties_JoinParty(
+            steam_parties()?,
+            bigint_to_u64(beacon, "party beacon")?,
+        )
+    };
+    let result: sys::JoinPartyCallback_t = wait_for_api_call(
+        call,
+        sys::JoinPartyCallback_t_k_iCallback as i32,
+        timeout_seconds
+            .map(u64::from)
+            .unwrap_or(DEFAULT_ASYNC_TIMEOUT_SECONDS)
+            .max(1),
+    )
+    .await?;
+    Ok(join_party_result(&result))
+}
+
+#[napi(js_name = "partiesGetNumAvailableBeaconLocations")]
+pub fn parties_get_num_available_beacon_locations() -> Result<Option<u32>, Error> {
+    let mut count = 0u32;
+    let ok = unsafe {
+        sys::SteamAPI_ISteamParties_GetNumAvailableBeaconLocations(steam_parties()?, &mut count)
+    };
+    Ok(ok.then_some(count))
+}
+
+#[napi(js_name = "partiesGetAvailableBeaconLocations")]
+pub fn parties_get_available_beacon_locations(
+    max_locations: Option<u32>,
+) -> Result<Vec<PartyBeaconLocation>, Error> {
+    let parties = steam_parties()?;
+    let mut available_count = 0u32;
+    let ok = unsafe {
+        sys::SteamAPI_ISteamParties_GetNumAvailableBeaconLocations(parties, &mut available_count)
+    };
+    if !ok || available_count == 0 {
+        return Ok(Vec::new());
+    }
+    let count = max_locations
+        .filter(|max_locations| *max_locations > 0)
+        .map(|max_locations| max_locations.min(available_count))
+        .unwrap_or(available_count);
+    if count == 0 {
+        return Ok(Vec::new());
+    }
+    let mut locations =
+        vec![
+            unsafe { MaybeUninit::<sys::SteamPartyBeaconLocation_t>::zeroed().assume_init() };
+            count as usize
+        ];
+    let ok = unsafe {
+        sys::SteamAPI_ISteamParties_GetAvailableBeaconLocations(
+            parties,
+            locations.as_mut_ptr(),
+            count,
+        )
+    };
+    if !ok {
+        return Ok(Vec::new());
+    }
+    Ok(locations.into_iter().map(party_beacon_location).collect())
+}
+
+#[napi(js_name = "partiesCreateBeacon")]
+pub async fn parties_create_beacon(
+    open_slots: u32,
+    location: PartyBeaconLocation,
+    connect_string: String,
+    metadata: String,
+    timeout_seconds: Option<u32>,
+) -> Result<CreateBeaconResult, Error> {
+    let connect_string = cstring(connect_string, "party connect string")?;
+    let metadata = cstring(metadata, "party metadata")?;
+    let mut location = party_beacon_location_to_sys(location)?;
+    let call = unsafe {
+        sys::SteamAPI_ISteamParties_CreateBeacon(
+            steam_parties()?,
+            open_slots,
+            &mut location,
+            connect_string.as_ptr(),
+            metadata.as_ptr(),
+        )
+    };
+    let result: sys::CreateBeaconCallback_t = wait_for_api_call(
+        call,
+        sys::CreateBeaconCallback_t_k_iCallback as i32,
+        timeout_seconds
+            .map(u64::from)
+            .unwrap_or(DEFAULT_ASYNC_TIMEOUT_SECONDS)
+            .max(1),
+    )
+    .await?;
+    Ok(create_beacon_result(&result))
+}
+
+#[napi(js_name = "partiesOnReservationCompleted")]
+pub fn parties_on_reservation_completed(beacon: BigInt, steam_id64: BigInt) -> Result<(), Error> {
+    unsafe {
+        sys::SteamAPI_ISteamParties_OnReservationCompleted(
+            steam_parties()?,
+            bigint_to_u64(beacon, "party beacon")?,
+            bigint_to_u64(steam_id64, "steamId64")?,
+        );
+    }
+    Ok(())
+}
+
+#[napi(js_name = "partiesCancelReservation")]
+pub fn parties_cancel_reservation(beacon: BigInt, steam_id64: BigInt) -> Result<(), Error> {
+    unsafe {
+        sys::SteamAPI_ISteamParties_CancelReservation(
+            steam_parties()?,
+            bigint_to_u64(beacon, "party beacon")?,
+            bigint_to_u64(steam_id64, "steamId64")?,
+        );
+    }
+    Ok(())
+}
+
+#[napi(js_name = "partiesChangeNumOpenSlots")]
+pub async fn parties_change_num_open_slots(
+    beacon: BigInt,
+    open_slots: u32,
+    timeout_seconds: Option<u32>,
+) -> Result<ChangeNumOpenSlotsResult, Error> {
+    let call = unsafe {
+        sys::SteamAPI_ISteamParties_ChangeNumOpenSlots(
+            steam_parties()?,
+            bigint_to_u64(beacon, "party beacon")?,
+            open_slots,
+        )
+    };
+    let result: sys::ChangeNumOpenSlotsCallback_t = wait_for_api_call(
+        call,
+        sys::ChangeNumOpenSlotsCallback_t_k_iCallback as i32,
+        timeout_seconds
+            .map(u64::from)
+            .unwrap_or(DEFAULT_ASYNC_TIMEOUT_SECONDS)
+            .max(1),
+    )
+    .await?;
+    Ok(ChangeNumOpenSlotsResult {
+        result: unsafe { ptr::addr_of!(result.m_eResult).read_unaligned() } as u32,
+    })
+}
+
+#[napi(js_name = "partiesDestroyBeacon")]
+pub fn parties_destroy_beacon(beacon: BigInt) -> Result<bool, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamParties_DestroyBeacon(
+            steam_parties()?,
+            bigint_to_u64(beacon, "party beacon")?,
+        )
+    })
+}
+
+#[napi(js_name = "partiesGetBeaconLocationData")]
+pub fn parties_get_beacon_location_data(
+    location: PartyBeaconLocation,
+    data: u32,
+) -> Result<Option<String>, Error> {
+    let mut output = [0i8; PARTY_METADATA_BUFFER_SIZE];
+    let ok = unsafe {
+        sys::SteamAPI_ISteamParties_GetBeaconLocationData(
+            steam_parties()?,
+            party_beacon_location_to_sys(location)?,
+            party_beacon_location_data_from_u32(data)?,
+            output.as_mut_ptr(),
+            output.len() as i32,
+        )
+    };
+    Ok(ok.then(|| c_buf_to_string(&output)))
 }
 
 #[napi(js_name = "inputInit")]
@@ -4156,6 +4431,14 @@ fn steam_http() -> Result<*mut sys::ISteamHTTP, Error> {
     non_null(unsafe { sys::SteamAPI_SteamHTTP_v003() }, "ISteamHTTP")
 }
 
+fn steam_parties() -> Result<*mut sys::ISteamParties, Error> {
+    crate::state::ensure_initialized()?;
+    non_null(
+        unsafe { sys::SteamAPI_SteamParties_v002() },
+        "ISteamParties",
+    )
+}
+
 fn steam_input() -> Result<*mut sys::ISteamInput, Error> {
     crate::state::ensure_initialized()?;
     non_null(unsafe { sys::SteamAPI_SteamInput_v006() }, "ISteamInput")
@@ -4597,6 +4880,68 @@ fn http_request_headers_received_result(
     }
 }
 
+fn party_beacon_location_type_from_u32(
+    value: u32,
+) -> Result<sys::ESteamPartyBeaconLocationType, Error> {
+    match value {
+        0 => Ok(sys::ESteamPartyBeaconLocationType::k_ESteamPartyBeaconLocationType_Invalid),
+        1 => Ok(sys::ESteamPartyBeaconLocationType::k_ESteamPartyBeaconLocationType_ChatGroup),
+        2 => Ok(sys::ESteamPartyBeaconLocationType::k_ESteamPartyBeaconLocationType_Max),
+        _ => Err(Error::from_reason(format!(
+            "invalid party beacon location type {value}"
+        ))),
+    }
+}
+
+fn party_beacon_location_data_from_u32(
+    value: u32,
+) -> Result<sys::ESteamPartyBeaconLocationData, Error> {
+    match value {
+        0 => Ok(sys::ESteamPartyBeaconLocationData::k_ESteamPartyBeaconLocationDataInvalid),
+        1 => Ok(sys::ESteamPartyBeaconLocationData::k_ESteamPartyBeaconLocationDataName),
+        2 => Ok(sys::ESteamPartyBeaconLocationData::k_ESteamPartyBeaconLocationDataIconURLSmall),
+        3 => Ok(sys::ESteamPartyBeaconLocationData::k_ESteamPartyBeaconLocationDataIconURLMedium),
+        4 => Ok(sys::ESteamPartyBeaconLocationData::k_ESteamPartyBeaconLocationDataIconURLLarge),
+        _ => Err(Error::from_reason(format!(
+            "invalid party beacon location data type {value}"
+        ))),
+    }
+}
+
+fn party_beacon_location(location: sys::SteamPartyBeaconLocation_t) -> PartyBeaconLocation {
+    PartyBeaconLocation {
+        location_type: unsafe { ptr::addr_of!(location.m_eType).read_unaligned() } as u32,
+        location_id: unsafe { ptr::addr_of!(location.m_ulLocationID).read_unaligned() }.into(),
+    }
+}
+
+fn party_beacon_location_to_sys(
+    location: PartyBeaconLocation,
+) -> Result<sys::SteamPartyBeaconLocation_t, Error> {
+    Ok(sys::SteamPartyBeaconLocation_t {
+        m_eType: party_beacon_location_type_from_u32(location.location_type)?,
+        m_ulLocationID: bigint_to_u64(location.location_id, "party beacon location id")?,
+    })
+}
+
+fn join_party_result(result: &sys::JoinPartyCallback_t) -> JoinPartyResult {
+    JoinPartyResult {
+        result: unsafe { ptr::addr_of!(result.m_eResult).read_unaligned() } as u32,
+        beacon: unsafe { ptr::addr_of!(result.m_ulBeaconID).read_unaligned() }.into(),
+        owner: csteam_id_to_player(unsafe {
+            ptr::addr_of!(result.m_SteamIDBeaconOwner).read_unaligned()
+        }),
+        connect_string: c_buf_to_string(unsafe { &*ptr::addr_of!(result.m_rgchConnectString) }),
+    }
+}
+
+fn create_beacon_result(result: &sys::CreateBeaconCallback_t) -> CreateBeaconResult {
+    CreateBeaconResult {
+        result: unsafe { ptr::addr_of!(result.m_eResult).read_unaligned() } as u32,
+        beacon: unsafe { ptr::addr_of!(result.m_ulBeaconID).read_unaligned() }.into(),
+    }
+}
+
 fn c_buf_to_string(buf: &[i8]) -> String {
     let nul = buf
         .iter()
@@ -4783,6 +5128,12 @@ fn callback_id_from_compat(callback: i32) -> Result<i32, Error> {
         CALLBACK_HTTP_REQUEST_DATA_RECEIVED => {
             Ok(sys::HTTPRequestDataReceived_t_k_iCallback as i32)
         }
+        CALLBACK_JOIN_PARTY => Ok(sys::JoinPartyCallback_t_k_iCallback as i32),
+        CALLBACK_CREATE_BEACON => Ok(sys::CreateBeaconCallback_t_k_iCallback as i32),
+        CALLBACK_RESERVATION_NOTIFICATION => {
+            Ok(sys::ReservationNotificationCallback_t_k_iCallback as i32)
+        }
+        CALLBACK_CHANGE_NUM_OPEN_SLOTS => Ok(sys::ChangeNumOpenSlotsCallback_t_k_iCallback as i32),
         _ => Err(Error::from_reason(format!(
             "unsupported Steam callback {callback}"
         ))),
@@ -4895,6 +5246,35 @@ unsafe fn callback_to_json(callback: i32, param: *mut c_void) -> Value {
                 "context_value": ptr::addr_of!((*event).m_ulContextValue).read_unaligned().to_string(),
                 "offset": ptr::addr_of!((*event).m_cOffset).read_unaligned(),
                 "bytes_received": ptr::addr_of!((*event).m_cBytesReceived).read_unaligned()
+            })
+        }
+        CALLBACK_JOIN_PARTY => {
+            let event = param as *const sys::JoinPartyCallback_t;
+            serde_json::json!({
+                "result": ptr::addr_of!((*event).m_eResult).read_unaligned() as u32,
+                "beacon": ptr::addr_of!((*event).m_ulBeaconID).read_unaligned().to_string(),
+                "owner": csteam_id_to_u64(ptr::addr_of!((*event).m_SteamIDBeaconOwner).read_unaligned()).to_string(),
+                "connect_string": c_buf_to_string(&*ptr::addr_of!((*event).m_rgchConnectString))
+            })
+        }
+        CALLBACK_CREATE_BEACON => {
+            let event = param as *const sys::CreateBeaconCallback_t;
+            serde_json::json!({
+                "result": ptr::addr_of!((*event).m_eResult).read_unaligned() as u32,
+                "beacon": ptr::addr_of!((*event).m_ulBeaconID).read_unaligned().to_string()
+            })
+        }
+        CALLBACK_RESERVATION_NOTIFICATION => {
+            let event = param as *const sys::ReservationNotificationCallback_t;
+            serde_json::json!({
+                "beacon": ptr::addr_of!((*event).m_ulBeaconID).read_unaligned().to_string(),
+                "joiner": csteam_id_to_u64(ptr::addr_of!((*event).m_steamIDJoiner).read_unaligned()).to_string()
+            })
+        }
+        CALLBACK_CHANGE_NUM_OPEN_SLOTS => {
+            let event = param as *const sys::ChangeNumOpenSlotsCallback_t;
+            serde_json::json!({
+                "result": ptr::addr_of!((*event).m_eResult).read_unaligned() as u32
             })
         }
         _ => Value::Null,

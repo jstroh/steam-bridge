@@ -49,6 +49,37 @@ export interface NativeHttpRequestHeadersReceived {
   context_value?: bigint | string | number;
 }
 
+export interface NativePartyBeaconLocation {
+  locationType?: number;
+  location_type?: number;
+  locationId?: bigint | string | number;
+  location_id?: bigint | string | number;
+}
+
+export interface NativePartyBeaconDetails {
+  beacon?: bigint | string | number;
+  owner: NativeSteamId;
+  location: NativePartyBeaconLocation;
+  metadata: string;
+}
+
+export interface NativeJoinPartyResult {
+  result: number;
+  beacon?: bigint | string | number;
+  owner: NativeSteamId;
+  connectString?: string;
+  connect_string?: string;
+}
+
+export interface NativeCreateBeaconResult {
+  result: number;
+  beacon?: bigint | string | number;
+}
+
+export interface NativeChangeNumOpenSlotsResult {
+  result: number;
+}
+
 export interface NativeInputControllerInfo {
   handle: bigint;
   inputType: string;
@@ -497,6 +528,26 @@ export interface NativeBinding {
   httpSetRequiresVerifiedCertificate(request: number, requireVerifiedCertificate: boolean): boolean;
   httpSetAbsoluteTimeoutMs(request: number, timeoutMs: number): boolean;
   httpGetRequestWasTimedOut(request: number): boolean | null | undefined;
+
+  partiesGetNumActiveBeacons(): number;
+  partiesGetBeaconByIndex(index: number): bigint | string | number | null | undefined;
+  partiesGetActiveBeacons(): Array<bigint | string | number>;
+  partiesGetBeaconDetails(beacon: bigint): NativePartyBeaconDetails | null | undefined;
+  partiesJoinParty(beacon: bigint, timeoutSeconds?: number): Promise<NativeJoinPartyResult>;
+  partiesGetNumAvailableBeaconLocations(): number | null | undefined;
+  partiesGetAvailableBeaconLocations(maxLocations?: number): NativePartyBeaconLocation[];
+  partiesCreateBeacon(
+    openSlots: number,
+    location: NativePartyBeaconLocation,
+    connectString: string,
+    metadata: string,
+    timeoutSeconds?: number
+  ): Promise<NativeCreateBeaconResult>;
+  partiesOnReservationCompleted(beacon: bigint, steamId64: bigint): void;
+  partiesCancelReservation(beacon: bigint, steamId64: bigint): void;
+  partiesChangeNumOpenSlots(beacon: bigint, openSlots: number, timeoutSeconds?: number): Promise<NativeChangeNumOpenSlotsResult>;
+  partiesDestroyBeacon(beacon: bigint): boolean;
+  partiesGetBeaconLocationData(location: NativePartyBeaconLocation, data: number): string | null | undefined;
 
   inputInit(): void;
   inputShutdown(): void;

@@ -25,6 +25,9 @@ import {
   NativeGlobalStatsReceivedResult,
   NativeHttpRequestCompleted,
   NativeHttpRequestHeadersReceived,
+  NativeChangeNumOpenSlotsResult,
+  NativeCreateBeaconResult,
+  NativeJoinPartyResult,
   NativeLeaderboardEntry,
   NativeLeaderboardFindResult,
   NativeLeaderboardScoresDownloaded,
@@ -32,6 +35,8 @@ import {
   NativeLeaderboardUgcSetResult,
   NativeNumberOfCurrentPlayersResult,
   NativeOverlayDiagnostics,
+  NativePartyBeaconDetails,
+  NativePartyBeaconLocation,
   NativeP2PPacket,
   NativeRemotePlayInputEvent,
   NativeRemotePlayResolution,
@@ -128,6 +133,34 @@ export interface HttpRequestCompleted {
 export interface HttpRequestHeadersReceived {
   request: number;
   contextValue: bigint;
+}
+
+export interface PartyBeaconLocation {
+  locationType: number;
+  locationId: bigint;
+}
+
+export interface PartyBeaconDetails {
+  beacon: bigint;
+  owner: SteamId;
+  location: PartyBeaconLocation;
+  metadata: string;
+}
+
+export interface JoinPartyResult {
+  result: number;
+  beacon: bigint;
+  owner: SteamId;
+  connectString: string;
+}
+
+export interface CreateBeaconResult {
+  result: number;
+  beacon: bigint;
+}
+
+export interface ChangeNumOpenSlotsResult {
+  result: number;
 }
 
 export interface FollowerCountResult {
@@ -423,7 +456,11 @@ export const SteamCallback = {
   GameOverlayActivated: 331,
   HTTPRequestCompleted: 2101,
   HTTPRequestHeadersReceived: 2102,
-  HTTPRequestDataReceived: 2103
+  HTTPRequestDataReceived: 2103,
+  JoinParty: 5301,
+  CreateBeacon: 5302,
+  ReservationNotification: 5303,
+  ChangeNumOpenSlots: 5304
 } as const;
 
 export const HttpMethod = {
@@ -438,6 +475,20 @@ export const HttpMethod = {
 } as const;
 
 export type HttpMethodValue = typeof HttpMethod[keyof typeof HttpMethod];
+
+export const PartyBeaconLocationType = {
+  Invalid: 0,
+  ChatGroup: 1,
+  Max: 2
+} as const;
+
+export const PartyBeaconLocationData = {
+  Invalid: 0,
+  Name: 1,
+  IconURLSmall: 2,
+  IconURLMedium: 3,
+  IconURLLarge: 4
+} as const;
 
 export const FriendFlags = {
   None: 0,
@@ -1218,6 +1269,73 @@ export const http = {
   },
   getRequestWasTimedOut(request: number): boolean | null {
     return native().httpGetRequestWasTimedOut(request) ?? null;
+  }
+};
+
+export const parties = {
+  PartyBeaconLocationType,
+  PartyBeaconLocationData,
+  getNumActiveBeacons(): number {
+    return native().partiesGetNumActiveBeacons();
+  },
+  getBeaconByIndex(index: number): bigint | null {
+    const beacon = native().partiesGetBeaconByIndex(index);
+    return beacon == null ? null : BigInt(beacon);
+  },
+  getActiveBeacons(): bigint[] {
+    return native().partiesGetActiveBeacons().map(BigInt);
+  },
+  getBeaconDetails(beacon: bigint): PartyBeaconDetails | null {
+    return normalizePartyBeaconDetails(native().partiesGetBeaconDetails(beacon));
+  },
+  async joinParty(beacon: bigint, timeoutSeconds?: number | null): Promise<JoinPartyResult> {
+    return normalizeJoinPartyResult(await native().partiesJoinParty(beacon, timeoutSeconds ?? undefined));
+  },
+  getNumAvailableBeaconLocations(): number | null {
+    return native().partiesGetNumAvailableBeaconLocations() ?? null;
+  },
+  getAvailableBeaconLocations(maxLocations?: number | null): PartyBeaconLocation[] {
+    return native()
+      .partiesGetAvailableBeaconLocations(maxLocations ?? undefined)
+      .map(normalizePartyBeaconLocation);
+  },
+  async createBeacon(
+    openSlots: number,
+    location: PartyBeaconLocation,
+    connectString: string,
+    metadata = "",
+    timeoutSeconds?: number | null
+  ): Promise<CreateBeaconResult> {
+    return normalizeCreateBeaconResult(
+      await native().partiesCreateBeacon(
+        openSlots,
+        nativePartyBeaconLocation(location),
+        connectString,
+        metadata,
+        timeoutSeconds ?? undefined
+      )
+    );
+  },
+  onReservationCompleted(beacon: bigint, steamId64: bigint): void {
+    native().partiesOnReservationCompleted(beacon, steamId64);
+  },
+  cancelReservation(beacon: bigint, steamId64: bigint): void {
+    native().partiesCancelReservation(beacon, steamId64);
+  },
+  async changeNumOpenSlots(
+    beacon: bigint,
+    openSlots: number,
+    timeoutSeconds?: number | null
+  ): Promise<ChangeNumOpenSlotsResult> {
+    return normalizeChangeNumOpenSlotsResult(
+      await native().partiesChangeNumOpenSlots(beacon, openSlots, timeoutSeconds ?? undefined)
+    );
+  },
+  destroyBeacon(beacon: bigint): boolean {
+    return native().partiesDestroyBeacon(beacon);
+  },
+  getBeaconLocationData(location: PartyBeaconLocation, data: number): string | null {
+    return native().partiesGetBeaconLocationData(nativePartyBeaconLocation(location), data) ?? null;
   }
 };
 
@@ -2073,6 +2191,7 @@ export interface SteamBridgeClient {
   networking: typeof networking;
   overlay: typeof overlay;
   music: typeof music;
+  parties: typeof parties;
   parental: typeof parental;
   remotePlay: typeof remotePlay;
   screenshots: typeof screenshots;
@@ -2098,6 +2217,7 @@ export function createCompatibilityClient(): SteamBridgeClient {
     networking,
     overlay,
     music,
+    parties,
     parental,
     remotePlay,
     screenshots,
@@ -2214,6 +2334,58 @@ function normalizeHttpRequestHeadersReceived(result: NativeHttpRequestHeadersRec
   return {
     request: Number(source.request ?? 0),
     contextValue: BigInt((source.contextValue ?? source.context_value ?? 0) as bigint | number | string)
+  };
+}
+
+function normalizePartyBeaconLocation(location: NativePartyBeaconLocation): PartyBeaconLocation {
+  const source = location as unknown as Record<string, unknown>;
+  return {
+    locationType: Number(source.locationType ?? source.location_type ?? 0),
+    locationId: BigInt((source.locationId ?? source.location_id ?? 0) as bigint | number | string)
+  };
+}
+
+function nativePartyBeaconLocation(location: PartyBeaconLocation): NativePartyBeaconLocation {
+  return {
+    locationType: location.locationType,
+    locationId: location.locationId
+  };
+}
+
+function normalizePartyBeaconDetails(details: NativePartyBeaconDetails | null | undefined): PartyBeaconDetails | null {
+  if (!details) {
+    return null;
+  }
+  const source = details as unknown as Record<string, unknown>;
+  return {
+    beacon: BigInt((source.beacon ?? 0) as bigint | number | string),
+    owner: normalizeSteamId(details.owner),
+    location: normalizePartyBeaconLocation(details.location),
+    metadata: details.metadata
+  };
+}
+
+function normalizeJoinPartyResult(result: NativeJoinPartyResult): JoinPartyResult {
+  const source = result as unknown as Record<string, unknown>;
+  return {
+    result: result.result,
+    beacon: BigInt((source.beacon ?? 0) as bigint | number | string),
+    owner: normalizeSteamId(result.owner),
+    connectString: String(source.connectString ?? source.connect_string ?? "")
+  };
+}
+
+function normalizeCreateBeaconResult(result: NativeCreateBeaconResult): CreateBeaconResult {
+  const source = result as unknown as Record<string, unknown>;
+  return {
+    result: result.result,
+    beacon: BigInt((source.beacon ?? 0) as bigint | number | string)
+  };
+}
+
+function normalizeChangeNumOpenSlotsResult(result: NativeChangeNumOpenSlotsResult): ChangeNumOpenSlotsResult {
+  return {
+    result: result.result
   };
 }
 
@@ -2741,6 +2913,7 @@ const defaultExport = {
   networking,
   overlay,
   music,
+  parties,
   parental,
   remotePlay,
   screenshots,
