@@ -51,6 +51,7 @@ import {
   NativeFriendMessage,
   NativeFriendsGroupInfo,
   NativeInputAnalogActionData,
+  NativeInputActionEvent,
   NativeInputControllerInfo,
   NativeInputDeviceBindingRevision,
   NativeInputDigitalActionData,
@@ -1323,6 +1324,15 @@ export interface InputDeviceBindingRevision {
   minor: number;
 }
 
+export interface InputActionEvent {
+  controllerHandle: bigint;
+  eventType: number;
+  analogActionHandle?: bigint;
+  analogActionData?: InputAnalogActionData;
+  digitalActionHandle?: bigint;
+  digitalActionData?: InputDigitalActionData;
+}
+
 export interface UgcResult {
   itemId: bigint;
   needsToAcceptAgreement: boolean;
@@ -1668,6 +1678,10 @@ export const SteamCallback = {
   HTTPRequestCompleted: 2101,
   HTTPRequestHeadersReceived: 2102,
   HTTPRequestDataReceived: 2103,
+  SteamInputDeviceConnected: 2801,
+  SteamInputDeviceDisconnected: 2802,
+  SteamInputConfigurationLoaded: 2803,
+  SteamInputGamepadSlotChange: 2804,
   HTMLBrowserReady: 4501,
   HTMLNeedsPaint: 4502,
   HTMLStartRequest: 4503,
@@ -2811,6 +2825,10 @@ export class Controller {
     rightTriggerSpeed: number
   ): void {
     native().inputTriggerVibrationExtended(this.handle, leftSpeed, rightSpeed, leftTriggerSpeed, rightTriggerSpeed);
+  }
+
+  setDualSenseTriggerEffect(effect?: Buffer | null): void {
+    native().inputSetDualSenseTriggerEffect(this.handle, effect ?? undefined);
   }
 
   triggerSimpleHapticEvent(
@@ -4795,6 +4813,16 @@ export const input = {
   },
   newDataAvailable(): boolean {
     return native().inputNewDataAvailable();
+  },
+  enableDeviceCallbacks(): void {
+    native().inputEnableDeviceCallbacks();
+  },
+  registerActionEventCallback(handler: (event: InputActionEvent) => void): CallbackHandle {
+    return wrapCallbackHandle(
+      native().inputRegisterActionEventCallback((event) => {
+        handler(normalizeInputActionEvent(event));
+      })
+    );
   },
   setActionManifestFilePath(path: string): boolean {
     return native().inputSetActionManifestFilePath(path);
@@ -8238,6 +8266,10 @@ function normalizeCallbackEvent(callbackId: number, event: unknown): unknown {
     "group_id",
     "candidate_steam_id",
     "banned_game_id",
+    "connected_device_handle",
+    "disconnected_device_handle",
+    "device_handle",
+    "mapping_creator",
     "recording_ms",
     "longest_clip_ms"
   ]) {
@@ -8267,6 +8299,7 @@ function normalizeCallbackEvent(callbackId: number, event: unknown): unknown {
     clan_chat: "clanChat",
     clan_players_that_dont_like_candidate: "clanPlayersThatDontLikeCandidate",
     clip_count: "clipCount",
+    connected_device_handle: "connectedDeviceHandle",
     conn_port: "connPort",
     connect_url: "connectUrl",
     candidate_steam_id: "candidateSteamId",
@@ -8282,7 +8315,11 @@ function normalizeCallbackEvent(callbackId: number, event: unknown): unknown {
     can_go_back: "canGoBack",
     can_go_forward: "canGoForward",
     deny_reason: "denyReason",
+    device_handle: "deviceHandle",
+    device_type: "deviceType",
+    disconnected_device_handle: "disconnectedDeviceHandle",
     entry_type: "entryType",
+    event_type: "eventType",
     file_size: "fileSize",
     file_type: "fileType",
     friend_steam_id: "friendSteamId",
@@ -8310,11 +8347,15 @@ function normalizeCallbackEvent(callbackId: number, event: unknown): unknown {
     longest_clip_ms: "longestClipMs",
     manifest_id: "manifestId",
     live_link: "liveLink",
+    major_revision: "majorRevision",
     making_change: "makingChange",
+    mapping_creator: "mappingCreator",
     member_state_change: "memberStateChange",
     message_id: "messageId",
+    minor_revision: "minorRevision",
     mouse_cursor: "mouseCursor",
     new_navigation: "newNavigation",
+    new_gamepad_slot: "newGamepadSlot",
     new_window_browser_handle: "newWindowBrowserHandle",
     minutes_battery_left: "minutesBatteryLeft",
     new_volume: "newVolume",
@@ -8325,6 +8366,7 @@ function normalizeCallbackEvent(callbackId: number, event: unknown): unknown {
     officer_count: "officerCount",
     optional_text: "optionalText",
     owner_steam_id: "ownerSteamId",
+    old_gamepad_slot: "oldGamepadSlot",
     old_browser_handle: "oldBrowserHandle",
     page_scale: "pageScale",
     page_serial: "pageSerial",
@@ -8365,6 +8407,8 @@ function normalizeCallbackEvent(callbackId: number, event: unknown): unknown {
     total_results: "totalResults",
     total_minutes_played: "totalMinutesPlayed",
     total_result_count: "totalResultCount",
+    uses_gamepad_api: "usesGamepadApi",
+    uses_steam_input_api: "usesSteamInputApi",
     vote_skipped: "voteSkipped",
     vote_up: "voteUp",
     voted_down: "votedDown",
@@ -8762,6 +8806,25 @@ function normalizeInputAnalogActionData(data: NativeInputAnalogActionData): Inpu
     x: Number(data.x),
     y: Number(data.y),
     active: Boolean(data.active)
+  };
+}
+
+function normalizeInputActionEvent(event: NativeInputActionEvent): InputActionEvent {
+  const analogActionData = event.analogActionData ?? event.analog_action_data;
+  const digitalActionData = event.digitalActionData ?? event.digital_action_data;
+  return {
+    controllerHandle: BigInt(event.controllerHandle ?? event.controller_handle ?? 0),
+    eventType: Number(event.eventType ?? event.event_type ?? 0),
+    analogActionHandle:
+      event.analogActionHandle == null && event.analog_action_handle == null
+        ? undefined
+        : BigInt(event.analogActionHandle ?? event.analog_action_handle ?? 0),
+    analogActionData: analogActionData == null ? undefined : normalizeInputAnalogActionData(analogActionData),
+    digitalActionHandle:
+      event.digitalActionHandle == null && event.digital_action_handle == null
+        ? undefined
+        : BigInt(event.digitalActionHandle ?? event.digital_action_handle ?? 0),
+    digitalActionData: digitalActionData == null ? undefined : normalizeInputDigitalActionData(digitalActionData)
   };
 }
 

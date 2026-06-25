@@ -54,109 +54,6 @@ extern "C" {
         unicode_char: u32,
         html_key_modifiers: u32,
     );
-
-    #[link_name = "SteamAPI_ISteamInput_GetDigitalActionOrigins"]
-    fn steam_api_isteam_input_get_digital_action_origins_raw(
-        self_: *mut sys::ISteamInput,
-        input_handle: u64,
-        action_set_handle: u64,
-        digital_action_handle: u64,
-        origins_out: *mut u32,
-    ) -> i32;
-
-    #[link_name = "SteamAPI_ISteamInput_GetAnalogActionOrigins"]
-    fn steam_api_isteam_input_get_analog_action_origins_raw(
-        self_: *mut sys::ISteamInput,
-        input_handle: u64,
-        action_set_handle: u64,
-        analog_action_handle: u64,
-        origins_out: *mut u32,
-    ) -> i32;
-
-    #[link_name = "SteamAPI_ISteamInput_GetGlyphPNGForActionOrigin"]
-    fn steam_api_isteam_input_get_glyph_png_for_action_origin_raw(
-        self_: *mut sys::ISteamInput,
-        origin: u32,
-        size: sys::ESteamInputGlyphSize,
-        flags: u32,
-    ) -> *const c_char;
-
-    #[link_name = "SteamAPI_ISteamInput_GetGlyphSVGForActionOrigin"]
-    fn steam_api_isteam_input_get_glyph_svg_for_action_origin_raw(
-        self_: *mut sys::ISteamInput,
-        origin: u32,
-        flags: u32,
-    ) -> *const c_char;
-
-    #[link_name = "SteamAPI_ISteamInput_GetGlyphForActionOrigin_Legacy"]
-    fn steam_api_isteam_input_get_legacy_glyph_for_action_origin_raw(
-        self_: *mut sys::ISteamInput,
-        origin: u32,
-    ) -> *const c_char;
-
-    #[link_name = "SteamAPI_ISteamInput_GetStringForActionOrigin"]
-    fn steam_api_isteam_input_get_string_for_action_origin_raw(
-        self_: *mut sys::ISteamInput,
-        origin: u32,
-    ) -> *const c_char;
-
-    #[link_name = "SteamAPI_ISteamInput_GetActionOriginFromXboxOrigin"]
-    fn steam_api_isteam_input_get_action_origin_from_xbox_origin_raw(
-        self_: *mut sys::ISteamInput,
-        input_handle: u64,
-        origin: u32,
-    ) -> u32;
-
-    #[link_name = "SteamAPI_ISteamInput_TranslateActionOrigin"]
-    fn steam_api_isteam_input_translate_action_origin_raw(
-        self_: *mut sys::ISteamInput,
-        destination_input_type: sys::ESteamInputType,
-        source_origin: u32,
-    ) -> u32;
-
-    #[link_name = "SteamAPI_ISteamController_GetDigitalActionOrigins"]
-    fn steam_api_isteam_controller_get_digital_action_origins_raw(
-        self_: *mut sys::ISteamController,
-        controller_handle: u64,
-        action_set_handle: u64,
-        digital_action_handle: u64,
-        origins_out: *mut u32,
-    ) -> i32;
-
-    #[link_name = "SteamAPI_ISteamController_GetAnalogActionOrigins"]
-    fn steam_api_isteam_controller_get_analog_action_origins_raw(
-        self_: *mut sys::ISteamController,
-        controller_handle: u64,
-        action_set_handle: u64,
-        analog_action_handle: u64,
-        origins_out: *mut u32,
-    ) -> i32;
-
-    #[link_name = "SteamAPI_ISteamController_GetGlyphForActionOrigin"]
-    fn steam_api_isteam_controller_get_glyph_for_action_origin_raw(
-        self_: *mut sys::ISteamController,
-        origin: u32,
-    ) -> *const c_char;
-
-    #[link_name = "SteamAPI_ISteamController_GetStringForActionOrigin"]
-    fn steam_api_isteam_controller_get_string_for_action_origin_raw(
-        self_: *mut sys::ISteamController,
-        origin: u32,
-    ) -> *const c_char;
-
-    #[link_name = "SteamAPI_ISteamController_GetActionOriginFromXboxOrigin"]
-    fn steam_api_isteam_controller_get_action_origin_from_xbox_origin_raw(
-        self_: *mut sys::ISteamController,
-        controller_handle: u64,
-        origin: u32,
-    ) -> u32;
-
-    #[link_name = "SteamAPI_ISteamController_TranslateActionOrigin"]
-    fn steam_api_isteam_controller_translate_action_origin_raw(
-        self_: *mut sys::ISteamController,
-        destination_input_type: sys::ESteamInputType,
-        source_origin: u32,
-    ) -> u32;
 }
 
 const CALLBACK_PERSONA_STATE_CHANGE: i32 = 304;
@@ -218,6 +115,10 @@ const CALLBACK_STEAM_NETWORKING_FAKE_IP_RESULT: i32 = 1223;
 const CALLBACK_STEAM_NETWORKING_MESSAGES_SESSION_REQUEST: i32 = 1251;
 const CALLBACK_STEAM_NETWORKING_MESSAGES_SESSION_FAILED: i32 = 1252;
 const CALLBACK_STEAM_RELAY_NETWORK_STATUS: i32 = 1281;
+const CALLBACK_STEAM_INPUT_DEVICE_CONNECTED: i32 = 2801;
+const CALLBACK_STEAM_INPUT_DEVICE_DISCONNECTED: i32 = 2802;
+const CALLBACK_STEAM_INPUT_CONFIGURATION_LOADED: i32 = 2803;
+const CALLBACK_STEAM_INPUT_GAMEPAD_SLOT_CHANGE: i32 = 2804;
 const STEAM_GAME_SERVER_INTERFACE_VERSIONS: &[u8] = b"SteamUtils010\0SteamNetworkingUtils004\0SteamGameServer015\0SteamGameServerStats001\0STEAMHTTP_INTERFACE_VERSION003\0STEAMINVENTORY_INTERFACE_V003\0SteamNetworking006\0SteamNetworkingMessages002\0SteamNetworkingSockets012\0STEAMUGC_INTERFACE_VERSION021\0\0";
 const CALLBACK_GAME_SERVER_CLIENT_APPROVE: i32 = 201;
 const CALLBACK_GAME_SERVER_CLIENT_DENY: i32 = 202;
@@ -276,10 +177,14 @@ const CALLBACK_STEAM_UGC_DELETE_ITEM_RESULT: i32 = 3417;
 const CALLBACK_STEAM_UGC_USER_SUBSCRIBED_ITEMS_LIST_CHANGED: i32 = 3418;
 const CALLBACK_STEAM_UGC_WORKSHOP_EULA_STATUS: i32 = 3420;
 const MAX_HTML_PAINT_BUFFER_BYTES: u64 = 256 * 1024 * 1024;
+const SCE_PAD_TRIGGER_EFFECT_PARAM_BYTES: usize = 120;
 
 static NEXT_NETWORKING_FAKE_UDP_PORT_HANDLE: AtomicU32 = AtomicU32::new(1);
 static NETWORKING_FAKE_UDP_PORTS: Lazy<Mutex<HashMap<u32, usize>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
+static NEXT_INPUT_ACTION_EVENT_REGISTRATION: AtomicU64 = AtomicU64::new(1);
+static INPUT_ACTION_EVENT_HANDLER: Lazy<Mutex<Option<(u64, FatalThreadsafeFunction<Value>)>>> =
+    Lazy::new(|| Mutex::new(None));
 static NEXT_MATCHMAKING_SERVER_LIST_HANDLE: AtomicU64 = AtomicU64::new(1);
 static MATCHMAKING_SERVER_LIST_REQUESTS: Lazy<
     Mutex<HashMap<u64, MatchmakingServerListRequestEntry>>,
@@ -2309,6 +2214,7 @@ pub fn client_register_warning_message_hook(
         registration: None,
         warning_message_registration: Some(registration),
         networking_debug_output_registration: None,
+        input_action_event_registration: None,
     })
 }
 
@@ -7095,6 +7001,83 @@ pub fn input_new_data_available() -> Result<bool, Error> {
     Ok(unsafe { sys::SteamAPI_ISteamInput_BNewDataAvailable(steam_input()?) })
 }
 
+#[napi(js_name = "inputEnableDeviceCallbacks")]
+pub fn input_enable_device_callbacks() -> Result<(), Error> {
+    unsafe { sys::SteamAPI_ISteamInput_EnableDeviceCallbacks(steam_input()?) };
+    Ok(())
+}
+
+pub(crate) struct InputActionEventRegistration {
+    registration_id: u64,
+}
+
+impl Drop for InputActionEventRegistration {
+    fn drop(&mut self) {
+        clear_input_action_event_callback(Some(self.registration_id));
+    }
+}
+
+unsafe extern "C" fn steam_input_action_event_callback(event: *mut sys::SteamInputActionEvent_t) {
+    if event.is_null() {
+        return;
+    }
+    let value = steam_input_action_event_json(event);
+    if let Some((_, handler)) = INPUT_ACTION_EVENT_HANDLER
+        .lock()
+        .expect("Steam input action event handler poisoned")
+        .as_ref()
+    {
+        handler.call(value, ThreadsafeFunctionCallMode::NonBlocking);
+    }
+}
+
+#[napi(js_name = "inputRegisterActionEventCallback")]
+pub fn input_register_action_event_callback(
+    #[napi(ts_arg_type = "(value: any) => void")] handler: JsCallback<'_, Value>,
+) -> Result<CallbackHandle, Error> {
+    crate::state::ensure_initialized()?;
+    let input = steam_input()?;
+    let threadsafe_handler: FatalThreadsafeFunction<Value> = handler
+        .build_threadsafe_function::<Value>()
+        .build_callback(|ctx| Ok(vec![ctx.value]))?;
+    let registration_id = NEXT_INPUT_ACTION_EVENT_REGISTRATION.fetch_add(1, Ordering::Relaxed);
+    *INPUT_ACTION_EVENT_HANDLER
+        .lock()
+        .expect("Steam input action event handler poisoned") =
+        Some((registration_id, threadsafe_handler));
+    unsafe {
+        sys::SteamAPI_ISteamInput_EnableActionEventCallbacks(
+            input,
+            Some(steam_input_action_event_callback),
+        );
+    }
+    Ok(CallbackHandle {
+        registration: None,
+        warning_message_registration: None,
+        networking_debug_output_registration: None,
+        input_action_event_registration: Some(InputActionEventRegistration { registration_id }),
+    })
+}
+
+pub(crate) fn clear_input_action_event_callback(registration_id: Option<u64>) {
+    let mut handler = INPUT_ACTION_EVENT_HANDLER
+        .lock()
+        .expect("Steam input action event handler poisoned");
+    let should_clear = match (registration_id, handler.as_ref()) {
+        (Some(registration_id), Some((active_id, _))) => registration_id == *active_id,
+        (Some(_), None) => false,
+        (None, _) => true,
+    };
+    if should_clear {
+        *handler = None;
+        if let Ok(input) = steam_input() {
+            unsafe {
+                sys::SteamAPI_ISteamInput_EnableActionEventCallbacks(input, None);
+            }
+        }
+    }
+}
+
 #[napi(js_name = "inputSetActionManifestFilePath")]
 pub fn input_set_action_manifest_file_path(path: String) -> Result<bool, Error> {
     let path = cstring(path, "input action manifest path")?;
@@ -7257,9 +7240,12 @@ pub fn input_get_digital_action_origins(
     action: BigInt,
 ) -> Result<Vec<u32>, Error> {
     let input = steam_input()?;
-    let mut origins = vec![0u32; sys::STEAM_INPUT_MAX_ORIGINS as usize];
+    let mut origins = vec![
+        sys::EInputActionOrigin::k_EInputActionOrigin_None;
+        sys::STEAM_INPUT_MAX_ORIGINS as usize
+    ];
     let count = unsafe {
-        steam_api_isteam_input_get_digital_action_origins_raw(
+        sys::SteamAPI_ISteamInput_GetDigitalActionOrigins(
             input,
             bigint_to_u64(controller, "controller handle")?,
             bigint_to_u64(action_set, "action set handle")?,
@@ -7268,7 +7254,7 @@ pub fn input_get_digital_action_origins(
         )
     };
     origins.truncate(count.max(0) as usize);
-    Ok(origins)
+    Ok(origins.into_iter().map(|origin| origin as u32).collect())
 }
 
 #[napi(js_name = "inputGetStringForDigitalActionName")]
@@ -7314,9 +7300,12 @@ pub fn input_get_analog_action_origins(
     action: BigInt,
 ) -> Result<Vec<u32>, Error> {
     let input = steam_input()?;
-    let mut origins = vec![0u32; sys::STEAM_INPUT_MAX_ORIGINS as usize];
+    let mut origins = vec![
+        sys::EInputActionOrigin::k_EInputActionOrigin_None;
+        sys::STEAM_INPUT_MAX_ORIGINS as usize
+    ];
     let count = unsafe {
-        steam_api_isteam_input_get_analog_action_origins_raw(
+        sys::SteamAPI_ISteamInput_GetAnalogActionOrigins(
             input,
             bigint_to_u64(controller, "controller handle")?,
             bigint_to_u64(action_set, "action set handle")?,
@@ -7325,7 +7314,7 @@ pub fn input_get_analog_action_origins(
         )
     };
     origins.truncate(count.max(0) as usize);
-    Ok(origins)
+    Ok(origins.into_iter().map(|origin| origin as u32).collect())
 }
 
 #[napi(js_name = "inputGetStringForAnalogActionName")]
@@ -7345,9 +7334,9 @@ pub fn input_get_glyph_png_for_action_origin(
     flags: Option<u32>,
 ) -> Result<String, Error> {
     Ok(string_from_ptr(unsafe {
-        steam_api_isteam_input_get_glyph_png_for_action_origin_raw(
+        sys::SteamAPI_ISteamInput_GetGlyphPNGForActionOrigin(
             steam_input()?,
-            input_action_origin_value(origin)?,
+            input_action_origin_from_u32(origin)?,
             input_glyph_size_from_u32(size.unwrap_or(1))?,
             flags.unwrap_or(0),
         )
@@ -7360,9 +7349,9 @@ pub fn input_get_glyph_svg_for_action_origin(
     flags: Option<u32>,
 ) -> Result<String, Error> {
     Ok(string_from_ptr(unsafe {
-        steam_api_isteam_input_get_glyph_svg_for_action_origin_raw(
+        sys::SteamAPI_ISteamInput_GetGlyphSVGForActionOrigin(
             steam_input()?,
-            input_action_origin_value(origin)?,
+            input_action_origin_from_u32(origin)?,
             flags.unwrap_or(0),
         )
     }))
@@ -7371,9 +7360,9 @@ pub fn input_get_glyph_svg_for_action_origin(
 #[napi(js_name = "inputGetLegacyGlyphForActionOrigin")]
 pub fn input_get_legacy_glyph_for_action_origin(origin: u32) -> Result<String, Error> {
     Ok(string_from_ptr(unsafe {
-        steam_api_isteam_input_get_legacy_glyph_for_action_origin_raw(
+        sys::SteamAPI_ISteamInput_GetGlyphForActionOrigin_Legacy(
             steam_input()?,
-            input_action_origin_value(origin)?,
+            input_action_origin_from_u32(origin)?,
         )
     }))
 }
@@ -7381,9 +7370,9 @@ pub fn input_get_legacy_glyph_for_action_origin(origin: u32) -> Result<String, E
 #[napi(js_name = "inputGetStringForActionOrigin")]
 pub fn input_get_string_for_action_origin(origin: u32) -> Result<String, Error> {
     Ok(string_from_ptr(unsafe {
-        steam_api_isteam_input_get_string_for_action_origin_raw(
+        sys::SteamAPI_ISteamInput_GetStringForActionOrigin(
             steam_input()?,
-            input_action_origin_value(origin)?,
+            input_action_origin_from_u32(origin)?,
         )
     }))
 }
@@ -7444,6 +7433,31 @@ pub fn input_trigger_vibration_extended(
             input_u16(right_speed, "right speed")?,
             input_u16(left_trigger_speed, "left trigger speed")?,
             input_u16(right_trigger_speed, "right trigger speed")?,
+        );
+    }
+    Ok(())
+}
+
+#[napi(js_name = "inputSetDualSenseTriggerEffect")]
+pub fn input_set_dualsense_trigger_effect(
+    controller: BigInt,
+    effect: Option<Buffer>,
+) -> Result<(), Error> {
+    let effect_ptr = if let Some(effect) = effect.as_ref() {
+        if effect.len() != SCE_PAD_TRIGGER_EFFECT_PARAM_BYTES {
+            return Err(Error::from_reason(format!(
+                "DualSense trigger effect must be {SCE_PAD_TRIGGER_EFFECT_PARAM_BYTES} bytes"
+            )));
+        }
+        effect.as_ptr().cast::<sys::ScePadTriggerEffectParam>()
+    } else {
+        ptr::null()
+    };
+    unsafe {
+        sys::SteamAPI_ISteamInput_SetDualSenseTriggerEffect(
+            steam_input()?,
+            bigint_to_u64(controller, "controller handle")?,
+            effect_ptr,
         );
     }
     Ok(())
@@ -7597,11 +7611,11 @@ pub fn input_get_action_origin_from_xbox_origin(
     origin: u32,
 ) -> Result<u32, Error> {
     Ok(unsafe {
-        steam_api_isteam_input_get_action_origin_from_xbox_origin_raw(
+        sys::SteamAPI_ISteamInput_GetActionOriginFromXboxOrigin(
             steam_input()?,
             bigint_to_u64(controller, "controller handle")?,
-            xbox_origin_value(origin)?,
-        )
+            xbox_origin_from_u32(origin)?,
+        ) as u32
     })
 }
 
@@ -7611,11 +7625,11 @@ pub fn input_translate_action_origin(
     source_origin: u32,
 ) -> Result<u32, Error> {
     Ok(unsafe {
-        steam_api_isteam_input_translate_action_origin_raw(
+        sys::SteamAPI_ISteamInput_TranslateActionOrigin(
             steam_input()?,
             steam_input_type_from_u32(destination_input_type)?,
-            input_action_origin_value(source_origin)?,
-        )
+            input_action_origin_from_u32(source_origin)?,
+        ) as u32
     })
 }
 
@@ -7828,9 +7842,12 @@ pub fn controller_get_digital_action_origins(
     action: BigInt,
 ) -> Result<Vec<u32>, Error> {
     let steam_controller = steam_controller()?;
-    let mut origins = vec![0u32; sys::STEAM_CONTROLLER_MAX_ORIGINS as usize];
+    let mut origins = vec![
+        sys::EControllerActionOrigin::k_EControllerActionOrigin_None;
+        sys::STEAM_CONTROLLER_MAX_ORIGINS as usize
+    ];
     let count = unsafe {
-        steam_api_isteam_controller_get_digital_action_origins_raw(
+        sys::SteamAPI_ISteamController_GetDigitalActionOrigins(
             steam_controller,
             bigint_to_u64(controller, "controller handle")?,
             bigint_to_u64(action_set, "controller action set handle")?,
@@ -7839,7 +7856,7 @@ pub fn controller_get_digital_action_origins(
         )
     };
     origins.truncate(count.max(0) as usize);
-    Ok(origins)
+    Ok(origins.into_iter().map(|origin| origin as u32).collect())
 }
 
 #[napi(js_name = "controllerGetAnalogActionData")]
@@ -7876,9 +7893,12 @@ pub fn controller_get_analog_action_origins(
     action: BigInt,
 ) -> Result<Vec<u32>, Error> {
     let steam_controller = steam_controller()?;
-    let mut origins = vec![0u32; sys::STEAM_CONTROLLER_MAX_ORIGINS as usize];
+    let mut origins = vec![
+        sys::EControllerActionOrigin::k_EControllerActionOrigin_None;
+        sys::STEAM_CONTROLLER_MAX_ORIGINS as usize
+    ];
     let count = unsafe {
-        steam_api_isteam_controller_get_analog_action_origins_raw(
+        sys::SteamAPI_ISteamController_GetAnalogActionOrigins(
             steam_controller,
             bigint_to_u64(controller, "controller handle")?,
             bigint_to_u64(action_set, "controller action set handle")?,
@@ -7887,15 +7907,15 @@ pub fn controller_get_analog_action_origins(
         )
     };
     origins.truncate(count.max(0) as usize);
-    Ok(origins)
+    Ok(origins.into_iter().map(|origin| origin as u32).collect())
 }
 
 #[napi(js_name = "controllerGetGlyphForActionOrigin")]
 pub fn controller_get_glyph_for_action_origin(origin: u32) -> Result<String, Error> {
     Ok(string_from_ptr(unsafe {
-        steam_api_isteam_controller_get_glyph_for_action_origin_raw(
+        sys::SteamAPI_ISteamController_GetGlyphForActionOrigin(
             steam_controller()?,
-            controller_action_origin_value(origin)?,
+            controller_action_origin_from_u32(origin)?,
         )
     }))
 }
@@ -7903,9 +7923,9 @@ pub fn controller_get_glyph_for_action_origin(origin: u32) -> Result<String, Err
 #[napi(js_name = "controllerGetStringForActionOrigin")]
 pub fn controller_get_string_for_action_origin(origin: u32) -> Result<String, Error> {
     Ok(string_from_ptr(unsafe {
-        steam_api_isteam_controller_get_string_for_action_origin_raw(
+        sys::SteamAPI_ISteamController_GetStringForActionOrigin(
             steam_controller()?,
-            controller_action_origin_value(origin)?,
+            controller_action_origin_from_u32(origin)?,
         )
     }))
 }
@@ -8079,11 +8099,11 @@ pub fn controller_get_action_origin_from_xbox_origin(
     origin: u32,
 ) -> Result<u32, Error> {
     Ok(unsafe {
-        steam_api_isteam_controller_get_action_origin_from_xbox_origin_raw(
+        sys::SteamAPI_ISteamController_GetActionOriginFromXboxOrigin(
             steam_controller()?,
             bigint_to_u64(controller, "controller handle")?,
-            xbox_origin_value(origin)?,
-        )
+            xbox_origin_from_u32(origin)?,
+        ) as u32
     })
 }
 
@@ -8093,11 +8113,11 @@ pub fn controller_translate_action_origin(
     source_origin: u32,
 ) -> Result<u32, Error> {
     Ok(unsafe {
-        steam_api_isteam_controller_translate_action_origin_raw(
+        sys::SteamAPI_ISteamController_TranslateActionOrigin(
             steam_controller()?,
             steam_input_type_from_u32(destination_input_type)?,
-            controller_action_origin_value(source_origin)?,
-        )
+            controller_action_origin_from_u32(source_origin)?,
+        ) as u32
     })
 }
 
@@ -12993,6 +13013,7 @@ pub fn networking_utils_register_debug_output_hook(
         registration: None,
         warning_message_registration: None,
         networking_debug_output_registration: Some(registration),
+        input_action_event_registration: None,
     })
 }
 
@@ -13118,6 +13139,7 @@ pub fn utils_register_warning_message_hook(
         registration: None,
         warning_message_registration: Some(registration),
         networking_debug_output_registration: None,
+        input_action_event_registration: None,
     })
 }
 
@@ -13844,6 +13866,7 @@ pub fn register_steam_callback(
         registration: Some(registration),
         warning_message_registration: None,
         networking_debug_output_registration: None,
+        input_action_event_registration: None,
     })
 }
 
@@ -19320,6 +19343,18 @@ fn callback_id_from_compat(callback: i32) -> Result<i32, Error> {
         CALLBACK_STEAM_RELAY_NETWORK_STATUS => {
             Ok(sys::SteamRelayNetworkStatus_t_k_iCallback as i32)
         }
+        CALLBACK_STEAM_INPUT_DEVICE_CONNECTED => {
+            Ok(sys::SteamInputDeviceConnected_t_k_iCallback as i32)
+        }
+        CALLBACK_STEAM_INPUT_DEVICE_DISCONNECTED => {
+            Ok(sys::SteamInputDeviceDisconnected_t_k_iCallback as i32)
+        }
+        CALLBACK_STEAM_INPUT_CONFIGURATION_LOADED => {
+            Ok(sys::SteamInputConfigurationLoaded_t_k_iCallback as i32)
+        }
+        CALLBACK_STEAM_INPUT_GAMEPAD_SLOT_CHANGE => {
+            Ok(sys::SteamInputGamepadSlotChange_t_k_iCallback as i32)
+        }
         CALLBACK_GAME_SERVER_CLIENT_APPROVE => Ok(sys::GSClientApprove_t_k_iCallback as i32),
         CALLBACK_GAME_SERVER_CLIENT_DENY => Ok(sys::GSClientDeny_t_k_iCallback as i32),
         CALLBACK_GAME_SERVER_CLIENT_KICK => Ok(sys::GSClientKick_t_k_iCallback as i32),
@@ -20363,6 +20398,40 @@ unsafe fn callback_to_json(callback: i32, param: *mut c_void) -> Value {
                 "debug_message": status.debug_message
             })
         }
+        CALLBACK_STEAM_INPUT_DEVICE_CONNECTED => {
+            let event = param as *const sys::SteamInputDeviceConnected_t;
+            serde_json::json!({
+                "connected_device_handle": ptr::addr_of!((*event).m_ulConnectedDeviceHandle).read_unaligned().to_string()
+            })
+        }
+        CALLBACK_STEAM_INPUT_DEVICE_DISCONNECTED => {
+            let event = param as *const sys::SteamInputDeviceDisconnected_t;
+            serde_json::json!({
+                "disconnected_device_handle": ptr::addr_of!((*event).m_ulDisconnectedDeviceHandle).read_unaligned().to_string()
+            })
+        }
+        CALLBACK_STEAM_INPUT_CONFIGURATION_LOADED => {
+            let event = param as *const sys::SteamInputConfigurationLoaded_t;
+            serde_json::json!({
+                "app_id": ptr::addr_of!((*event).m_unAppID).read_unaligned(),
+                "device_handle": ptr::addr_of!((*event).m_ulDeviceHandle).read_unaligned().to_string(),
+                "mapping_creator": csteam_id_to_u64(ptr::addr_of!((*event).m_ulMappingCreator).read_unaligned()).to_string(),
+                "major_revision": ptr::addr_of!((*event).m_unMajorRevision).read_unaligned(),
+                "minor_revision": ptr::addr_of!((*event).m_unMinorRevision).read_unaligned(),
+                "uses_steam_input_api": ptr::addr_of!((*event).m_bUsesSteamInputAPI).read_unaligned(),
+                "uses_gamepad_api": ptr::addr_of!((*event).m_bUsesGamepadAPI).read_unaligned()
+            })
+        }
+        CALLBACK_STEAM_INPUT_GAMEPAD_SLOT_CHANGE => {
+            let event = param as *const sys::SteamInputGamepadSlotChange_t;
+            serde_json::json!({
+                "app_id": ptr::addr_of!((*event).m_unAppID).read_unaligned(),
+                "device_handle": ptr::addr_of!((*event).m_ulDeviceHandle).read_unaligned().to_string(),
+                "device_type": ptr::addr_of!((*event).m_eDeviceType).read_unaligned() as u32,
+                "old_gamepad_slot": ptr::addr_of!((*event).m_nOldGamepadSlot).read_unaligned(),
+                "new_gamepad_slot": ptr::addr_of!((*event).m_nNewGamepadSlot).read_unaligned()
+            })
+        }
         CALLBACK_GAME_SERVER_CLIENT_APPROVE => {
             let event = param as *const sys::GSClientApprove_t;
             serde_json::json!({
@@ -21022,6 +21091,47 @@ fn input_analog_action_data(data: sys::InputAnalogActionData_t) -> InputAnalogAc
     }
 }
 
+unsafe fn steam_input_action_event_json(event: *mut sys::SteamInputActionEvent_t) -> Value {
+    let controller_handle = ptr::addr_of!((*event).controllerHandle).read_unaligned();
+    let event_type = ptr::addr_of!((*event).eEventType).read_unaligned();
+    match event_type {
+        sys::ESteamInputActionEventType::ESteamInputActionEventType_DigitalAction => {
+            let digital = ptr::addr_of!((*event).__bindgen_anon_1.digitalAction).read_unaligned();
+            let action_handle = ptr::addr_of!(digital.actionHandle).read_unaligned();
+            let data = ptr::addr_of!(digital.digitalActionData).read_unaligned();
+            serde_json::json!({
+                "controller_handle": controller_handle.to_string(),
+                "event_type": event_type as u32,
+                "digital_action_handle": action_handle.to_string(),
+                "digital_action_data": {
+                    "state": data.bState,
+                    "active": data.bActive
+                }
+            })
+        }
+        sys::ESteamInputActionEventType::ESteamInputActionEventType_AnalogAction => {
+            let analog = ptr::addr_of!((*event).__bindgen_anon_1.analogAction).read_unaligned();
+            let action_handle = ptr::addr_of!(analog.actionHandle).read_unaligned();
+            let data = ptr::addr_of!(analog.analogActionData).read_unaligned();
+            serde_json::json!({
+                "controller_handle": controller_handle.to_string(),
+                "event_type": event_type as u32,
+                "analog_action_handle": action_handle.to_string(),
+                "analog_action_data": {
+                    "mode": ptr::addr_of!(data.eMode).read_unaligned() as u32,
+                    "x": ptr::addr_of!(data.x).read_unaligned(),
+                    "y": ptr::addr_of!(data.y).read_unaligned(),
+                    "active": ptr::addr_of!(data.bActive).read_unaligned()
+                }
+            })
+        }
+        _ => serde_json::json!({
+            "controller_handle": controller_handle.to_string(),
+            "event_type": event_type as u32
+        }),
+    }
+}
+
 fn input_motion_data(data: sys::InputMotionData_t) -> InputMotionData {
     InputMotionData {
         rotation_quaternion_x: unsafe { ptr::addr_of!(data.rotQuatX).read_unaligned() } as f64,
@@ -21037,9 +21147,11 @@ fn input_motion_data(data: sys::InputMotionData_t) -> InputMotionData {
     }
 }
 
-fn input_action_origin_value(value: u32) -> Result<u32, Error> {
-    if value <= sys::EInputActionOrigin::k_EInputActionOrigin_MaximumPossibleValue as u32 {
-        Ok(value)
+fn input_action_origin_from_u32(value: u32) -> Result<sys::EInputActionOrigin, Error> {
+    if value <= sys::EInputActionOrigin::k_EInputActionOrigin_Count as u32
+        || value == sys::EInputActionOrigin::k_EInputActionOrigin_MaximumPossibleValue as u32
+    {
+        Ok(unsafe { std::mem::transmute::<u32, sys::EInputActionOrigin>(value) })
     } else {
         Err(Error::from_reason(format!(
             "invalid input action origin {value}"
@@ -21047,10 +21159,12 @@ fn input_action_origin_value(value: u32) -> Result<u32, Error> {
     }
 }
 
-fn controller_action_origin_value(value: u32) -> Result<u32, Error> {
-    if value <= sys::EControllerActionOrigin::k_EControllerActionOrigin_MaximumPossibleValue as u32
+fn controller_action_origin_from_u32(value: u32) -> Result<sys::EControllerActionOrigin, Error> {
+    if value <= sys::EControllerActionOrigin::k_EControllerActionOrigin_Count as u32
+        || value
+            == sys::EControllerActionOrigin::k_EControllerActionOrigin_MaximumPossibleValue as u32
     {
-        Ok(value)
+        Ok(unsafe { std::mem::transmute::<u32, sys::EControllerActionOrigin>(value) })
     } else {
         Err(Error::from_reason(format!(
             "invalid controller action origin {value}"
@@ -21122,10 +21236,6 @@ fn xbox_origin_from_u32(value: u32) -> Result<sys::EXboxOrigin, Error> {
         27 => Ok(sys::EXboxOrigin::k_EXboxOrigin_DPad_East),
         _ => Err(Error::from_reason(format!("invalid Xbox origin {value}"))),
     }
-}
-
-fn xbox_origin_value(value: u32) -> Result<u32, Error> {
-    xbox_origin_from_u32(value).map(|origin| origin as u32)
 }
 
 fn controller_haptic_location_from_u32(

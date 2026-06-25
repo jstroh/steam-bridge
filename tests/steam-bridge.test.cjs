@@ -473,6 +473,23 @@ function createFakeNative(overrides = {}) {
       calls.push({ method: "inputNewDataAvailable", args: [] });
       return true;
     },
+    inputEnableDeviceCallbacks() {
+      calls.push({ method: "inputEnableDeviceCallbacks", args: [] });
+    },
+    inputRegisterActionEventCallback(handler) {
+      calls.push({ method: "inputRegisterActionEventCallback", args: [] });
+      handler({
+        controller_handle: "123",
+        event_type: 0,
+        digital_action_handle: "20",
+        digital_action_data: { state: true, active: true }
+      });
+      return {
+        disconnect() {
+          calls.push({ method: "disconnectInputActionEventCallback", args: [] });
+        }
+      };
+    },
     inputSetActionManifestFilePath(path) {
       calls.push({ method: "inputSetActionManifestFilePath", args: [path] });
       return true;
@@ -587,6 +604,9 @@ function createFakeNative(overrides = {}) {
         method: "inputTriggerVibrationExtended",
         args: [controller, leftSpeed, rightSpeed, leftTriggerSpeed, rightTriggerSpeed]
       });
+    },
+    inputSetDualSenseTriggerEffect(controller, effect) {
+      calls.push({ method: "inputSetDualSenseTriggerEffect", args: [controller, effect] });
     },
     inputTriggerSimpleHapticEvent(controller, location, intensity, gainDb, otherIntensity, otherGainDb) {
       calls.push({
@@ -1975,6 +1995,10 @@ test("specific and generic callbacks normalize Steamworks payloads", (t) => {
   assert.equal(steam.SteamCallback.GetVideoURLResult, 4611);
   assert.equal(steam.SteamCallback.GetOPFSettingsResult, 4624);
   assert.equal(steam.SteamCallback.SteamParentalSettingsChanged, 5001);
+  assert.equal(steam.SteamCallback.SteamInputDeviceConnected, 2801);
+  assert.equal(steam.SteamCallback.SteamInputDeviceDisconnected, 2802);
+  assert.equal(steam.SteamCallback.SteamInputConfigurationLoaded, 2803);
+  assert.equal(steam.SteamCallback.SteamInputGamepadSlotChange, 2804);
   assert.equal(steam.SteamCallback.SteamRemotePlaySessionConnected, 5701);
   assert.equal(steam.SteamCallback.SteamRemotePlaySessionDisconnected, 5702);
   assert.equal(steam.SteamCallback.SteamRemotePlayTogetherGuestInvite, 5703);
@@ -3143,6 +3167,20 @@ test("cloud, input, and networking facades coerce native values", async (t) => {
   steam.input.runFrame(true);
   assert.equal(steam.input.waitForData(false, 16), true);
   assert.equal(steam.input.newDataAvailable(), true);
+  steam.input.enableDeviceCallbacks();
+  const actionEvents = [];
+  const actionEventHandle = steam.input.registerActionEventCallback((event) => actionEvents.push(event));
+  actionEventHandle.disconnect();
+  assert.deepEqual(actionEvents, [
+    {
+      controllerHandle: 123n,
+      eventType: 0,
+      analogActionHandle: undefined,
+      analogActionData: undefined,
+      digitalActionHandle: 20n,
+      digitalActionData: { state: true, active: true }
+    }
+  ]);
   assert.equal(steam.input.setActionManifestFilePath("/tmp/actions.json"), true);
   assert.equal(steam.input.getControllerForGamepadIndex(0)?.getHandle(), 123n);
   assert.equal(steam.input.getControllerForGamepadIndex(1), null);
@@ -3179,6 +3217,9 @@ test("cloud, input, and networking facades coerce native values", async (t) => {
   assert.equal(controllers[0].getMotionData().rotationVelocityZ, 6);
   controllers[0].triggerVibration(100, 200);
   controllers[0].triggerVibrationExtended(100, 200, 300, 400);
+  const dualSenseEffect = Buffer.alloc(120, 1);
+  controllers[0].setDualSenseTriggerEffect(dualSenseEffect);
+  controllers[0].setDualSenseTriggerEffect(null);
   controllers[0].triggerSimpleHapticEvent(steam.input.InputHapticLocation.Both, 10, -2, 5, -1);
   controllers[0].setLedColor(1, 2, 3);
   controllers[0].legacyTriggerHapticPulse(steam.input.SteamControllerPad.Left, 1000);
@@ -3190,6 +3231,14 @@ test("cloud, input, and networking facades coerce native values", async (t) => {
   assert.deepEqual(fake.calls.find((call) => call.method === "inputSetLedColor"), {
     method: "inputSetLedColor",
     args: [123n, 1, 2, 3, steam.input.InputLedFlag.SetColor]
+  });
+  assert.deepEqual(fake.calls.filter((call) => call.method === "inputSetDualSenseTriggerEffect"), [
+    { method: "inputSetDualSenseTriggerEffect", args: [123n, dualSenseEffect] },
+    { method: "inputSetDualSenseTriggerEffect", args: [123n, undefined] }
+  ]);
+  assert.deepEqual(fake.calls.find((call) => call.method === "disconnectInputActionEventCallback"), {
+    method: "disconnectInputActionEventCallback",
+    args: []
   });
 
   assert.equal(steam.controller.init(), true);

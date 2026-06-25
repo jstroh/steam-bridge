@@ -445,6 +445,21 @@ export interface NativeInputDeviceBindingRevision {
   minor: number;
 }
 
+export interface NativeInputActionEvent {
+  controllerHandle?: bigint | string | number;
+  controller_handle?: bigint | string | number;
+  eventType?: number;
+  event_type?: number;
+  analogActionHandle?: bigint | string | number;
+  analog_action_handle?: bigint | string | number;
+  analogActionData?: NativeInputAnalogActionData;
+  analog_action_data?: NativeInputAnalogActionData;
+  digitalActionHandle?: bigint | string | number;
+  digital_action_handle?: bigint | string | number;
+  digitalActionData?: NativeInputDigitalActionData;
+  digital_action_data?: NativeInputDigitalActionData;
+}
+
 export interface NativeP2PPacket {
   data: Buffer;
   size: number;
@@ -1940,6 +1955,8 @@ export interface NativeBinding {
   inputRunFrame(reserved?: boolean | null): void;
   inputWaitForData(waitForever?: boolean | null, timeoutMs?: number | null): boolean;
   inputNewDataAvailable(): boolean;
+  inputEnableDeviceCallbacks(): void;
+  inputRegisterActionEventCallback(handler: (event: NativeInputActionEvent) => void): NativeCallbackHandle;
   inputSetActionManifestFilePath(path: string): boolean;
   inputGetControllers(): NativeInputControllerInfo[];
   inputGetActionSet(actionSetName: string): bigint;
@@ -1973,6 +1990,7 @@ export interface NativeBinding {
     leftTriggerSpeed: number,
     rightTriggerSpeed: number
   ): void;
+  inputSetDualSenseTriggerEffect(controller: bigint, effect?: Buffer | null): void;
   inputTriggerSimpleHapticEvent(
     controller: bigint,
     location: number,
