@@ -85,12 +85,14 @@ import {
   NativeMatchmakingFavoriteGame,
   NativeMatchmakingServerAddress,
   NativeMatchmakingServerItem,
+  NativeMatchmakingServerListResponseCallbackState,
   NativeMatchmakingServerListResult,
   NativeMatchmakingServerListRequest,
   NativeMatchmakingServerListRequestState,
   NativeMatchmakingServerPingResult,
   NativeMatchmakingServerPlayer,
   NativeMatchmakingServerPlayersResult,
+  NativeMatchmakingServerResponseCallbackSnapshot,
   NativeMatchmakingServerRule,
   NativeMatchmakingServerRulesResult,
   NativeLegacyNetworkingListenSocketAvailable,
@@ -637,6 +639,37 @@ export interface MatchmakingServerRule {
 export interface MatchmakingServerRulesResult {
   responded: boolean;
   rules: MatchmakingServerRule[];
+}
+
+export interface MatchmakingServerListResponseCallbackState {
+  request: bigint;
+  completed: boolean;
+  cancelled: boolean;
+  response: number;
+  responded: number[];
+  failed: number[];
+}
+
+export interface MatchmakingServerResponseCallbackSnapshot {
+  serverList: MatchmakingServerListResponseCallbackState;
+  pingSuccess: MatchmakingServerPingResult;
+  pingFailure: MatchmakingServerPingResult;
+  playersSuccess: MatchmakingServerPlayersResult;
+  playersFailure: MatchmakingServerPlayersResult;
+  rulesSuccess: MatchmakingServerRulesResult;
+  rulesFailure: MatchmakingServerRulesResult;
+}
+
+export interface MatchmakingServerResponseCallbackSnapshotOptions {
+  request?: bigint | number | string;
+  respondedServer?: number;
+  failedServer?: number;
+  response?: number;
+  playerName?: string;
+  playerScore?: number;
+  playerTimePlayed?: number;
+  ruleName?: string;
+  ruleValue?: string;
 }
 
 export interface LobbyChatEntry {
@@ -5377,6 +5410,24 @@ export const matchmakingServers = {
     return normalizeMatchmakingServerItem(
       native().matchmakingServersCreateServerItem(name, ip, queryPort, connectionPort)
     );
+  },
+  createResponseCallbackSnapshot(
+    options: MatchmakingServerResponseCallbackSnapshotOptions = {}
+  ): MatchmakingServerResponseCallbackSnapshot {
+    const request = typeof options.request === "bigint" ? options.request : BigInt(options.request ?? 1);
+    return normalizeMatchmakingServerResponseCallbackSnapshot(
+      native().matchmakingServersCreateResponseCallbackSnapshot(
+        request,
+        options.respondedServer ?? 0,
+        options.failedServer ?? 1,
+        options.response ?? 0,
+        options.playerName ?? "player",
+        options.playerScore ?? 0,
+        options.playerTimePlayed ?? 0,
+        options.ruleName ?? "rule",
+        options.ruleValue ?? "value"
+      )
+    );
   }
 };
 
@@ -7998,6 +8049,57 @@ function normalizeMatchmakingServerListRequestState(
     failed: (state.failed ?? []).map(Number),
     refreshing: Boolean(state.refreshing),
     serverCount: Number(source.serverCount ?? source.server_count ?? 0)
+  };
+}
+
+function normalizeMatchmakingServerListResponseCallbackState(
+  state: NativeMatchmakingServerListResponseCallbackState
+): MatchmakingServerListResponseCallbackState {
+  const source = state as unknown as Record<string, unknown>;
+  return {
+    request: BigInt((source.request ?? 0) as bigint | number | string),
+    completed: Boolean(state.completed),
+    cancelled: Boolean(source.cancelled ?? source.canceled),
+    response: Number(state.response ?? 0),
+    responded: (state.responded ?? []).map(Number),
+    failed: (state.failed ?? []).map(Number)
+  };
+}
+
+function normalizeMatchmakingServerResponseCallbackSnapshot(
+  snapshot: NativeMatchmakingServerResponseCallbackSnapshot
+): MatchmakingServerResponseCallbackSnapshot {
+  const source = snapshot as unknown as Record<string, unknown>;
+  const emptyServerList: NativeMatchmakingServerListResponseCallbackState = {
+    request: 0n,
+    completed: false,
+    cancelled: false,
+    response: 0,
+    responded: [],
+    failed: []
+  };
+  return {
+    serverList: normalizeMatchmakingServerListResponseCallbackState(
+      (source.serverList ?? source.server_list ?? emptyServerList) as NativeMatchmakingServerListResponseCallbackState
+    ),
+    pingSuccess: normalizeMatchmakingServerPingResult(
+      (source.pingSuccess ?? source.ping_success ?? { responded: false }) as NativeMatchmakingServerPingResult
+    ),
+    pingFailure: normalizeMatchmakingServerPingResult(
+      (source.pingFailure ?? source.ping_failure ?? { responded: false }) as NativeMatchmakingServerPingResult
+    ),
+    playersSuccess: normalizeMatchmakingServerPlayersResult(
+      (source.playersSuccess ?? source.players_success ?? { responded: false, players: [] }) as NativeMatchmakingServerPlayersResult
+    ),
+    playersFailure: normalizeMatchmakingServerPlayersResult(
+      (source.playersFailure ?? source.players_failure ?? { responded: false, players: [] }) as NativeMatchmakingServerPlayersResult
+    ),
+    rulesSuccess: normalizeMatchmakingServerRulesResult(
+      (source.rulesSuccess ?? source.rules_success ?? { responded: false, rules: [] }) as NativeMatchmakingServerRulesResult
+    ),
+    rulesFailure: normalizeMatchmakingServerRulesResult(
+      (source.rulesFailure ?? source.rules_failure ?? { responded: false, rules: [] }) as NativeMatchmakingServerRulesResult
+    )
   };
 }
 

@@ -2738,6 +2738,38 @@ test("matchmaking facade covers favorites, lobby filters, metadata, chat, and ca
       this.calls.push({ method: "matchmakingServersCreateServerItem", args: [name, ip, queryPort, connectionPort] });
       return { ...nativeServer, name };
     },
+    matchmakingServersCreateResponseCallbackSnapshot(
+      request,
+      respondedServer,
+      failedServer,
+      response,
+      playerName,
+      playerScore,
+      playerTimePlayed,
+      ruleName,
+      ruleValue
+    ) {
+      this.calls.push({
+        method: "matchmakingServersCreateResponseCallbackSnapshot",
+        args: [request, respondedServer, failedServer, response, playerName, playerScore, playerTimePlayed, ruleName, ruleValue]
+      });
+      return {
+        server_list: {
+          request,
+          completed: true,
+          cancelled: false,
+          response,
+          responded: [respondedServer],
+          failed: [failedServer]
+        },
+        ping_success: { responded: true, server: nativeServer },
+        ping_failure: { responded: false, server: null },
+        players_success: { responded: true, players: [{ name: playerName, score: playerScore, time_played: playerTimePlayed }] },
+        players_failure: { responded: false, players: [] },
+        rules_success: { responded: true, rules: [{ name: ruleName, value: ruleValue }] },
+        rules_failure: { responded: false, rules: [] }
+      };
+    },
     matchmakingCreateLobby(lobbyType, maxMembers) {
       this.calls.push({ method: "matchmakingCreateLobby", args: [lobbyType, maxMembers] });
       return Promise.resolve({ id: lobbyId });
@@ -2964,6 +2996,26 @@ test("matchmaking facade covers favorites, lobby filters, metadata, chat, and ca
   );
   assert.deepEqual(steam.matchmaking.servers.createServerFilter("map", "arena"), { key: "map", value: "arena" });
   assert.equal(steam.matchmaking.servers.createServerItem("Constructed Server", 2130706433, 27016, 27015).name, "Constructed Server");
+  const callbackSnapshot = steam.matchmaking.servers.createResponseCallbackSnapshot({
+    request: 99n,
+    respondedServer: 2,
+    failedServer: 3,
+    response: 0,
+    playerName: "alice",
+    playerScore: 10,
+    playerTimePlayed: 12.5,
+    ruleName: "sv_gravity",
+    ruleValue: "800"
+  });
+  assert.deepEqual(callbackSnapshot.serverList.responded, [2]);
+  assert.deepEqual(callbackSnapshot.serverList.failed, [3]);
+  assert.equal(callbackSnapshot.serverList.request, 99n);
+  assert.equal(callbackSnapshot.pingSuccess.server.name, "Test Server");
+  assert.equal(callbackSnapshot.pingFailure.responded, false);
+  assert.equal(callbackSnapshot.playersSuccess.players[0].timePlayed, 12.5);
+  assert.equal(callbackSnapshot.playersFailure.responded, false);
+  assert.deepEqual(callbackSnapshot.rulesSuccess.rules[0], { name: "sv_gravity", value: "800" });
+  assert.equal(callbackSnapshot.rulesFailure.responded, false);
 
   const lobby = await steam.matchmaking.createLobby(steam.matchmaking.LobbyType.Public, 4);
   assert.equal((await steam.matchmaking.joinLobby(lobbyId)).id, lobbyId);
@@ -3051,6 +3103,10 @@ test("matchmaking facade covers favorites, lobby filters, metadata, chat, and ca
   assert.deepEqual(fake.calls.find((call) => call.method === "matchmakingServersCreateServerItem"), {
     method: "matchmakingServersCreateServerItem",
     args: ["Constructed Server", 2130706433, 27016, 27015]
+  });
+  assert.deepEqual(fake.calls.find((call) => call.method === "matchmakingServersCreateResponseCallbackSnapshot"), {
+    method: "matchmakingServersCreateResponseCallbackSnapshot",
+    args: [99n, 2, 3, 0, "alice", 10, 12.5, "sv_gravity", "800"]
   });
 });
 

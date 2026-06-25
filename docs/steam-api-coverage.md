@@ -73,8 +73,9 @@ The native layer currently targets the Steamworks flat C API through
   joinability, lobby type/owner/limit/link controls, lobby chat, lobby
   game-server metadata, invites, invite dialogs, lobby callbacks, one-shot
   matchmaking server browser list, ping, player-detail, and rule queries, plus
-  server address/item/filter struct helpers, long-lived server-list request
-  handles with details, refresh, cancel, state, and release controls.
+  server address/item/filter struct helpers, response callback dispatch
+  wrappers, long-lived server-list request handles with details, refresh,
+  cancel, state, and release controls.
 - Parties: party beacon enumeration/details, location discovery and metadata,
   join/create/change async calls, reservation completion/cancel, destroy, and
   reservation callbacks.

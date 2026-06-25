@@ -965,6 +965,33 @@ export interface NativeMatchmakingServerRulesResult {
   rules: NativeMatchmakingServerRule[];
 }
 
+export interface NativeMatchmakingServerListResponseCallbackState {
+  request: bigint | string | number;
+  completed: boolean;
+  cancelled?: boolean;
+  canceled?: boolean;
+  response: number;
+  responded: number[];
+  failed: number[];
+}
+
+export interface NativeMatchmakingServerResponseCallbackSnapshot {
+  serverList?: NativeMatchmakingServerListResponseCallbackState;
+  server_list?: NativeMatchmakingServerListResponseCallbackState;
+  pingSuccess?: NativeMatchmakingServerPingResult;
+  ping_success?: NativeMatchmakingServerPingResult;
+  pingFailure?: NativeMatchmakingServerPingResult;
+  ping_failure?: NativeMatchmakingServerPingResult;
+  playersSuccess?: NativeMatchmakingServerPlayersResult;
+  players_success?: NativeMatchmakingServerPlayersResult;
+  playersFailure?: NativeMatchmakingServerPlayersResult;
+  players_failure?: NativeMatchmakingServerPlayersResult;
+  rulesSuccess?: NativeMatchmakingServerRulesResult;
+  rules_success?: NativeMatchmakingServerRulesResult;
+  rulesFailure?: NativeMatchmakingServerRulesResult;
+  rules_failure?: NativeMatchmakingServerRulesResult;
+}
+
 export interface NativeLobbyChatEntry {
   steamId?: NativeSteamId;
   steam_id?: NativeSteamId;
@@ -2441,6 +2468,7 @@ export interface NativeBinding {
   matchmakingServersIsServerAddressLessThan(ip: number, queryPort: number, connectionPort: number, otherIp: number, otherQueryPort: number, otherConnectionPort: number): boolean;
   matchmakingServersCreateServerFilter(key: string, value: string): NativeMatchmakingServerBrowserFilter;
   matchmakingServersCreateServerItem(name: string, ip: number, queryPort: number, connectionPort: number): NativeMatchmakingServerItem;
+  matchmakingServersCreateResponseCallbackSnapshot(request: bigint, respondedServer: number, failedServer: number, response: number, playerName: string, playerScore: number, playerTimePlayed: number, ruleName: string, ruleValue: string): NativeMatchmakingServerResponseCallbackSnapshot;
   matchmakingCreateLobby(lobbyType: number, maxMembers: number): Promise<NativeLobbyResult>;
   matchmakingJoinLobby(lobbyId: bigint): Promise<NativeLobbyResult>;
   matchmakingGetLobbies(): Promise<NativeLobbyResult[]>;

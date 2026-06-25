@@ -1357,6 +1357,29 @@ pub struct MatchmakingServerRulesResult {
     pub rules: Vec<MatchmakingServerRule>,
 }
 
+#[derive(Debug)]
+#[napi(object)]
+pub struct MatchmakingServerListResponseCallbackState {
+    pub request: BigInt,
+    pub completed: bool,
+    pub cancelled: bool,
+    pub response: u32,
+    pub responded: Vec<i32>,
+    pub failed: Vec<i32>,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct MatchmakingServerResponseCallbackSnapshot {
+    pub server_list: MatchmakingServerListResponseCallbackState,
+    pub ping_success: MatchmakingServerPingResult,
+    pub ping_failure: MatchmakingServerPingResult,
+    pub players_success: MatchmakingServerPlayersResult,
+    pub players_failure: MatchmakingServerPlayersResult,
+    pub rules_success: MatchmakingServerRulesResult,
+    pub rules_failure: MatchmakingServerRulesResult,
+}
+
 #[napi(object)]
 pub struct LobbyChatEntry {
     pub steam_id: PlayerSteamId,
@@ -14631,14 +14654,147 @@ pub fn matchmaking_servers_create_server_item(
     query_port: u32,
     connection_port: u32,
 ) -> Result<MatchmakingServerItem, Error> {
-    let mut item = unsafe { MaybeUninit::<sys::gameserveritem_t>::zeroed().assume_init() };
-    unsafe { sys::SteamAPI_gameserveritem_t_Construct(&mut item) };
-    let address = matchmaking_server_address_raw(ip, query_port, connection_port)?;
-    item.m_NetAdr = address;
-    let name = cstring(name, "game server item name")?;
-    unsafe { sys::SteamAPI_gameserveritem_t_SetName(&mut item, name.as_ptr()) };
+    let mut item = matchmaking_server_item_raw(name, ip, query_port, connection_port)?;
     matchmaking_server_item(&mut item)
         .ok_or_else(|| Error::from_reason("failed to construct matchmaking server item"))
+}
+
+#[napi(js_name = "matchmakingServersCreateResponseCallbackSnapshot")]
+pub fn matchmaking_servers_create_response_callback_snapshot(
+    request: BigInt,
+    responded_server: i32,
+    failed_server: i32,
+    response: u32,
+    player_name: String,
+    player_score: i32,
+    player_time_played: f64,
+    rule_name: String,
+    rule_value: String,
+) -> Result<MatchmakingServerResponseCallbackSnapshot, Error> {
+    let request = bigint_to_u64(request, "matchmaking response callback request")?;
+    let response_code = matchmaking_server_response_from_u32(response)?;
+    let request_handle = request as usize as sys::HServerListRequest;
+
+    let server_list = {
+        let mut response = matchmaking_server_list_response();
+        matchmaking_server_list_set_request(&response, request as usize);
+        let response_ptr = response.as_mut() as *mut MatchmakingServerListResponseRaw
+            as *mut sys::ISteamMatchmakingServerListResponse;
+        unsafe {
+            sys::SteamAPI_ISteamMatchmakingServerListResponse_ServerResponded(
+                response_ptr,
+                request_handle,
+                responded_server,
+            );
+            sys::SteamAPI_ISteamMatchmakingServerListResponse_ServerFailedToRespond(
+                response_ptr,
+                request_handle,
+                failed_server,
+            );
+            sys::SteamAPI_ISteamMatchmakingServerListResponse_RefreshComplete(
+                response_ptr,
+                request_handle,
+                response_code,
+            );
+        }
+        let output = matchmaking_server_list_callback_state(&response, request);
+        drop_matchmaking_server_list_response(response);
+        output
+    };
+
+    let ping_success = {
+        let mut response = matchmaking_ping_response();
+        let response_ptr = response.as_mut() as *mut MatchmakingPingResponseRaw
+            as *mut sys::ISteamMatchmakingPingResponse;
+        let mut item =
+            matchmaking_server_item_raw("Callback Server".to_owned(), 0x7f000001, 27016, 27015)?;
+        unsafe {
+            sys::SteamAPI_ISteamMatchmakingPingResponse_ServerResponded(response_ptr, &mut item)
+        };
+        let output = matchmaking_ping_result(&response);
+        drop_matchmaking_ping_response(response);
+        output
+    };
+
+    let ping_failure = {
+        let mut response = matchmaking_ping_response();
+        let response_ptr = response.as_mut() as *mut MatchmakingPingResponseRaw
+            as *mut sys::ISteamMatchmakingPingResponse;
+        unsafe { sys::SteamAPI_ISteamMatchmakingPingResponse_ServerFailedToRespond(response_ptr) };
+        let output = matchmaking_ping_result(&response);
+        drop_matchmaking_ping_response(response);
+        output
+    };
+
+    let players_success = {
+        let mut response = matchmaking_players_response();
+        let response_ptr = response.as_mut() as *mut MatchmakingPlayersResponseRaw
+            as *mut sys::ISteamMatchmakingPlayersResponse;
+        let player_name = cstring(player_name, "matchmaking player response name")?;
+        unsafe {
+            sys::SteamAPI_ISteamMatchmakingPlayersResponse_AddPlayerToList(
+                response_ptr,
+                player_name.as_ptr(),
+                player_score,
+                player_time_played as f32,
+            );
+            sys::SteamAPI_ISteamMatchmakingPlayersResponse_PlayersRefreshComplete(response_ptr);
+        }
+        let output = matchmaking_players_result(&response);
+        drop_matchmaking_players_response(response);
+        output
+    };
+
+    let players_failure = {
+        let mut response = matchmaking_players_response();
+        let response_ptr = response.as_mut() as *mut MatchmakingPlayersResponseRaw
+            as *mut sys::ISteamMatchmakingPlayersResponse;
+        unsafe {
+            sys::SteamAPI_ISteamMatchmakingPlayersResponse_PlayersFailedToRespond(response_ptr)
+        };
+        let output = matchmaking_players_result(&response);
+        drop_matchmaking_players_response(response);
+        output
+    };
+
+    let rules_success = {
+        let mut response = matchmaking_rules_response();
+        let response_ptr = response.as_mut() as *mut MatchmakingRulesResponseRaw
+            as *mut sys::ISteamMatchmakingRulesResponse;
+        let rule_name = cstring(rule_name, "matchmaking rule response name")?;
+        let rule_value = cstring(rule_value, "matchmaking rule response value")?;
+        unsafe {
+            sys::SteamAPI_ISteamMatchmakingRulesResponse_RulesResponded(
+                response_ptr,
+                rule_name.as_ptr(),
+                rule_value.as_ptr(),
+            );
+            sys::SteamAPI_ISteamMatchmakingRulesResponse_RulesRefreshComplete(response_ptr);
+        }
+        let output = matchmaking_rules_result(&response);
+        drop_matchmaking_rules_response(response);
+        output
+    };
+
+    let rules_failure = {
+        let mut response = matchmaking_rules_response();
+        let response_ptr = response.as_mut() as *mut MatchmakingRulesResponseRaw
+            as *mut sys::ISteamMatchmakingRulesResponse;
+        unsafe { sys::SteamAPI_ISteamMatchmakingRulesResponse_RulesFailedToRespond(response_ptr) };
+        let output = matchmaking_rules_result(&response);
+        drop_matchmaking_rules_response(response);
+        output
+    };
+
+    Ok(MatchmakingServerResponseCallbackSnapshot {
+        server_list,
+        ping_success,
+        ping_failure,
+        players_success,
+        players_failure,
+        rules_success,
+        rules_failure,
+    })
 }
 
 #[napi(js_name = "matchmakingCreateLobby")]
@@ -22386,6 +22542,49 @@ fn matchmaking_server_list_events(
     (inner.responded.clone(), inner.failed.clone())
 }
 
+fn matchmaking_server_list_callback_state(
+    response: &MatchmakingServerListResponseRaw,
+    request: u64,
+) -> MatchmakingServerListResponseCallbackState {
+    let inner = unsafe { &*response.state }.inner.lock().unwrap();
+    MatchmakingServerListResponseCallbackState {
+        request: request.into(),
+        completed: inner.completed,
+        cancelled: inner.cancelled,
+        response: inner.response,
+        responded: inner.responded.clone(),
+        failed: inner.failed.clone(),
+    }
+}
+
+fn matchmaking_ping_result(response: &MatchmakingPingResponseRaw) -> MatchmakingServerPingResult {
+    let mut inner = unsafe { &*response.state }.inner.lock().unwrap();
+    MatchmakingServerPingResult {
+        responded: inner.responded,
+        server: inner.server.take(),
+    }
+}
+
+fn matchmaking_players_result(
+    response: &MatchmakingPlayersResponseRaw,
+) -> MatchmakingServerPlayersResult {
+    let mut inner = unsafe { &*response.state }.inner.lock().unwrap();
+    MatchmakingServerPlayersResult {
+        responded: inner.responded,
+        players: std::mem::take(&mut inner.players),
+    }
+}
+
+fn matchmaking_rules_result(
+    response: &MatchmakingRulesResponseRaw,
+) -> MatchmakingServerRulesResult {
+    let mut inner = unsafe { &*response.state }.inner.lock().unwrap();
+    MatchmakingServerRulesResult {
+        responded: inner.responded,
+        rules: std::mem::take(&mut inner.rules),
+    }
+}
+
 async fn wait_for_matchmaking_server_list(
     response: &MatchmakingServerListResponseRaw,
     request: usize,
@@ -22518,6 +22717,20 @@ fn matchmaking_server_address_raw(
     Ok(address)
 }
 
+fn matchmaking_server_item_raw(
+    name: String,
+    ip: u32,
+    query_port: u32,
+    connection_port: u32,
+) -> Result<sys::gameserveritem_t, Error> {
+    let mut item = unsafe { MaybeUninit::<sys::gameserveritem_t>::zeroed().assume_init() };
+    unsafe { sys::SteamAPI_gameserveritem_t_Construct(&mut item) };
+    item.m_NetAdr = matchmaking_server_address_raw(ip, query_port, connection_port)?;
+    let name = cstring(name, "game server item name")?;
+    unsafe { sys::SteamAPI_gameserveritem_t_SetName(&mut item, name.as_ptr()) };
+    Ok(item)
+}
+
 fn matchmaking_server_address(address: &mut sys::servernetadr_t) -> MatchmakingServerAddress {
     let ip = unsafe { sys::SteamAPI_servernetadr_t_GetIP(address) };
     MatchmakingServerAddress {
@@ -22556,6 +22769,19 @@ fn matchmaking_server_filter_pair(
         )?;
     }
     Ok(filter)
+}
+
+fn matchmaking_server_response_from_u32(
+    value: u32,
+) -> Result<sys::EMatchMakingServerResponse, Error> {
+    match value {
+        0 => Ok(sys::EMatchMakingServerResponse::eServerResponded),
+        1 => Ok(sys::EMatchMakingServerResponse::eServerFailedToRespond),
+        2 => Ok(sys::EMatchMakingServerResponse::eNoServersListedOnMasterServer),
+        _ => Err(Error::from_reason(format!(
+            "unsupported matchmaking server response {value}"
+        ))),
+    }
 }
 
 fn write_c_char_buffer(buf: &mut [c_char], value: &str, label: &str) -> Result<(), Error> {
