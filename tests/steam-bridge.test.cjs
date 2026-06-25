@@ -981,6 +981,63 @@ test("networking sockets facade covers connection handles, status, poll groups, 
     networkingSocketsReceiveMessagesOnPollGroup(pollGroup, maxMessages) {
       this.calls.push({ method: "networkingSocketsReceiveMessagesOnPollGroup", args: [pollGroup, maxMessages] });
       return [];
+    },
+    networkingSocketsReceivedRelayAuthTicket(ticket) {
+      this.calls.push({ method: "networkingSocketsReceivedRelayAuthTicket", args: [ticket] });
+      return true;
+    },
+    networkingSocketsFindRelayAuthTicketForServer(identity, remoteVirtualPort) {
+      this.calls.push({ method: "networkingSocketsFindRelayAuthTicketForServer", args: [identity, remoteVirtualPort] });
+      return 120;
+    },
+    networkingSocketsConnectToHostedDedicatedServer(identity, remoteVirtualPort) {
+      this.calls.push({ method: "networkingSocketsConnectToHostedDedicatedServer", args: [identity, remoteVirtualPort] });
+      return 103;
+    },
+    networkingSocketsGetHostedDedicatedServerPort() {
+      this.calls.push({ method: "networkingSocketsGetHostedDedicatedServerPort", args: [] });
+      return 27015;
+    },
+    networkingSocketsGetHostedDedicatedServerPopId() {
+      this.calls.push({ method: "networkingSocketsGetHostedDedicatedServerPopId", args: [] });
+      return 1234;
+    },
+    networkingSocketsCreateHostedDedicatedServerListenSocket(localVirtualPort) {
+      this.calls.push({ method: "networkingSocketsCreateHostedDedicatedServerListenSocket", args: [localVirtualPort] });
+      return 46;
+    },
+    networkingSocketsGetCertificateRequest(maxBytes) {
+      this.calls.push({ method: "networkingSocketsGetCertificateRequest", args: [maxBytes] });
+      return { success: true, data: Buffer.from("cert-request"), error: "" };
+    },
+    networkingSocketsSetCertificate(certificate) {
+      this.calls.push({ method: "networkingSocketsSetCertificate", args: [certificate] });
+      return { success: true, data: Buffer.alloc(0), error: "" };
+    },
+    networkingSocketsResetIdentity(identity) {
+      this.calls.push({ method: "networkingSocketsResetIdentity", args: [identity] });
+    },
+    networkingSocketsBeginAsyncRequestFakeIp(numPorts) {
+      this.calls.push({ method: "networkingSocketsBeginAsyncRequestFakeIp", args: [numPorts] });
+      return true;
+    },
+    networkingSocketsGetFakeIp(idxFirstPort) {
+      this.calls.push({ method: "networkingSocketsGetFakeIp", args: [idxFirstPort] });
+      return {
+        result: 1,
+        identity: peer,
+        ipv4: 167772161,
+        ipv4_address: "10.0.0.1",
+        ports: [27015, 27016]
+      };
+    },
+    networkingSocketsCreateListenSocketP2pFakeIp(idxFakePort) {
+      this.calls.push({ method: "networkingSocketsCreateListenSocketP2pFakeIp", args: [idxFakePort] });
+      return 47;
+    },
+    networkingSocketsGetRemoteFakeIpForConnection(connection) {
+      this.calls.push({ method: "networkingSocketsGetRemoteFakeIpForConnection", args: [connection] });
+      return { result: 1, address };
     }
   });
   const steam = loadSteamWithFakeNative(fake);
@@ -989,6 +1046,7 @@ test("networking sockets facade covers connection handles, status, poll groups, 
 
   const identity = { steamId64: 76561198000000010n };
   assert.equal(steam.SteamCallback.SteamNetConnectionStatusChanged, 1221);
+  assert.equal(steam.SteamCallback.SteamNetworkingFakeIPResult, 1223);
   assert.equal(steam.networking.sockets.ConnectionState.Connected, 3);
   assert.equal(steam.networking.sockets.Availability.Current, 100);
   assert.equal(steam.networking.sockets.createListenSocketIP({ ipv4: 2130706433, port: 27015 }), 44);
@@ -1055,6 +1113,36 @@ test("networking sockets facade covers connection handles, status, poll groups, 
   assert.equal(steam.networking.sockets.setConnectionPollGroup(102, pollGroup), true);
   assert.deepEqual(steam.networking.sockets.receiveMessagesOnPollGroup(pollGroup, 4), []);
   assert.equal(steam.networking.sockets.destroyPollGroup(pollGroup), true);
+  assert.equal(steam.networking.sockets.receivedRelayAuthTicket(Buffer.from("ticket")), true);
+  assert.equal(steam.networking.sockets.findRelayAuthTicketForServer(identity, 7), 120);
+  assert.equal(steam.networking.sockets.connectToHostedDedicatedServer(identity, 7), 103);
+  assert.equal(steam.networking.sockets.getHostedDedicatedServerPort(), 27015);
+  assert.equal(steam.networking.sockets.getHostedDedicatedServerPopId(), 1234);
+  assert.equal(steam.networking.sockets.createHostedDedicatedServerListenSocket(7), 46);
+  const certificateRequest = steam.networking.sockets.getCertificateRequest(256);
+  assert.equal(certificateRequest.success, true);
+  assert.equal(certificateRequest.data.toString(), "cert-request");
+  const certificateSet = steam.networking.sockets.setCertificate(Buffer.from("cert"));
+  assert.equal(certificateSet.success, true);
+  steam.networking.sockets.resetIdentity({ localHost: true });
+  assert.equal(steam.networking.sockets.beginAsyncRequestFakeIP(2), true);
+  assert.deepEqual(steam.networking.sockets.getFakeIP(0), {
+    result: 1,
+    identity: {
+      identityType: 16,
+      text: "steamid:76561198000000010",
+      steamId64: 76561198000000010n,
+      genericString: null,
+      localHost: false,
+      invalid: false,
+      fakeIpType: 0
+    },
+    ipv4: 167772161,
+    ipv4Address: "10.0.0.1",
+    ports: [27015, 27016]
+  });
+  assert.equal(steam.networking.sockets.createListenSocketP2PFakeIP(1), 47);
+  assert.equal(steam.networking.sockets.getRemoteFakeIPForConnection(102).address.port, 27015);
 
   let statusEvent;
   steam.callback.register(steam.SteamCallback.SteamNetConnectionStatusChanged, (event) => {
@@ -1068,6 +1156,21 @@ test("networking sockets facade covers connection handles, status, poll groups, 
   assert.equal(statusEvent.connection, 102);
   assert.equal(statusEvent.oldState, 2);
   assert.equal(statusEvent.info.remoteIdentity.steamId64, 76561198000000010n);
+
+  let fakeIpEvent;
+  steam.callback.register(steam.SteamCallback.SteamNetworkingFakeIPResult, (event) => {
+    fakeIpEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.SteamNetworkingFakeIPResult)({
+    result: 1,
+    identity: peer,
+    ipv4: 167772161,
+    ipv4_address: "10.0.0.1",
+    ports: [27015]
+  });
+  assert.equal(fakeIpEvent.identity.steamId64, 76561198000000010n);
+  assert.equal(fakeIpEvent.ipv4Address, "10.0.0.1");
+  assert.deepEqual(fakeIpEvent.ports, [27015]);
 
   assert.deepEqual(fake.calls.find((call) => call.method === "networkingSocketsConnectP2p"), {
     method: "networkingSocketsConnectP2p",

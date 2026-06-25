@@ -324,6 +324,26 @@ export interface NativeNetworkingSocketSendResult {
   message_number?: bigint | string | number;
 }
 
+export interface NativeNetworkingFakeIpResult {
+  result: number;
+  identity: NativeNetworkingIdentityInfo;
+  ipv4?: number;
+  ipv4Address?: string;
+  ipv4_address?: string;
+  ports: number[];
+}
+
+export interface NativeNetworkingRemoteFakeIpResult {
+  result: number;
+  address?: NativeNetworkingIpAddressInfo | null;
+}
+
+export interface NativeNetworkingCertificateResult {
+  success: boolean;
+  data: Buffer;
+  error: string;
+}
+
 export interface NativeNetworkingAuthenticationStatus {
   availability: number;
   debugMessage?: string;
@@ -1131,6 +1151,19 @@ export interface NativeBinding {
   networkingSocketsDestroyPollGroup(pollGroup: number): boolean;
   networkingSocketsSetConnectionPollGroup(connection: number, pollGroup: number): boolean;
   networkingSocketsReceiveMessagesOnPollGroup(pollGroup: number, maxMessages?: number): NativeNetworkingMessage[];
+  networkingSocketsReceivedRelayAuthTicket(ticket: Buffer): boolean;
+  networkingSocketsFindRelayAuthTicketForServer(identity: NativeNetworkingIdentity, remoteVirtualPort?: number): number;
+  networkingSocketsConnectToHostedDedicatedServer(identity: NativeNetworkingIdentity, remoteVirtualPort?: number): number;
+  networkingSocketsGetHostedDedicatedServerPort(): number;
+  networkingSocketsGetHostedDedicatedServerPopId(): number;
+  networkingSocketsCreateHostedDedicatedServerListenSocket(localVirtualPort?: number): number;
+  networkingSocketsGetCertificateRequest(maxBytes?: number): NativeNetworkingCertificateResult;
+  networkingSocketsSetCertificate(certificate: Buffer): NativeNetworkingCertificateResult;
+  networkingSocketsResetIdentity(identity?: NativeNetworkingIdentity | null): void;
+  networkingSocketsBeginAsyncRequestFakeIp(numPorts: number): boolean;
+  networkingSocketsGetFakeIp(idxFirstPort?: number): NativeNetworkingFakeIpResult;
+  networkingSocketsCreateListenSocketP2pFakeIp(idxFakePort?: number): number;
+  networkingSocketsGetRemoteFakeIpForConnection(connection: number): NativeNetworkingRemoteFakeIpResult;
   networkingUtilsInitRelayNetworkAccess(): void;
   networkingUtilsGetRelayNetworkStatus(): NativeNetworkingRelayNetworkStatus;
   networkingUtilsGetLocalPingLocation(): NativeNetworkingPingLocation;

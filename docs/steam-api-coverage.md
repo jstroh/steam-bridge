@@ -53,8 +53,10 @@ The native layer currently targets the Steamworks flat C API through
   send-channel close helpers, and modern `ISteamNetworkingMessages`
   identity/session/message send and receive flows, core
   `ISteamNetworkingSockets` connection/listen-socket/message/poll-group
-  helpers, plus `ISteamNetworkingUtils` relay/auth status, ping location, POP
-  latency, fake-IP, and IP address helpers.
+  helpers, relay-auth-ticket cache helpers, hosted dedicated connect/listen
+  helpers, certificate request/install/reset helpers, fake-IP allocation and
+  listen helpers, plus `ISteamNetworkingUtils` relay/auth status, ping location,
+  POP latency, fake-IP, and IP address helpers.
 - UGC/Workshop: item create/update/query flows, install/download information,
   subscription list helpers, item state, statistics, and query configuration.
 - Screenshots: screenshot library writes, screenshot triggers/hooks, location
@@ -77,9 +79,9 @@ The native layer currently targets the Steamworks flat C API through
 - `ISteamMusicRemote` is not exposed by the current `steamworks-sys 0.13` macOS
   bindings used by this crate.
 - Remaining modern networking socket and lower-level networking config/debug
-  surfaces: hosted dedicated server, relay-auth-ticket, fake-IP allocation, lane
-  detail, custom signaling, and `ISteamNetworkingUtils` config/debug callback
-  helpers.
+  surfaces: opaque hosted dedicated server address/login blobs, parsed
+  relay-auth-ticket payloads, fake UDP port wrappers, lane detail, custom
+  signaling, and `ISteamNetworkingUtils` config/debug callback helpers.
 - Matchmaking server browser and game server APIs.
 - Game server, game server stats, and server-only workflows.
 - Complete callback/event coverage for every implemented interface, including

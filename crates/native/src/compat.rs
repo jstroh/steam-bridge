@@ -33,6 +33,7 @@ const CALLBACK_P2P_SESSION_REQUEST: i32 = 1202;
 const CALLBACK_P2P_SESSION_CONNECT_FAIL: i32 = 1203;
 const CALLBACK_STEAM_NET_CONNECTION_STATUS_CHANGED: i32 = 1221;
 const CALLBACK_STEAM_NET_AUTHENTICATION_STATUS: i32 = 1222;
+const CALLBACK_STEAM_NETWORKING_FAKE_IP_RESULT: i32 = 1223;
 const CALLBACK_STEAM_NETWORKING_MESSAGES_SESSION_REQUEST: i32 = 1251;
 const CALLBACK_STEAM_NETWORKING_MESSAGES_SESSION_FAILED: i32 = 1252;
 const CALLBACK_STEAM_RELAY_NETWORK_STATUS: i32 = 1281;
@@ -357,6 +358,30 @@ pub struct NetworkingSocketPair {
 pub struct NetworkingSocketSendResult {
     pub result: u32,
     pub message_number: BigInt,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct NetworkingFakeIpResult {
+    pub result: u32,
+    pub identity: NetworkingIdentityInfo,
+    pub ipv4: u32,
+    pub ipv4_address: String,
+    pub ports: Vec<u32>,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct NetworkingRemoteFakeIpResult {
+    pub result: u32,
+    pub address: Option<NetworkingIpAddressInfo>,
+}
+
+#[napi(object)]
+pub struct NetworkingCertificateResult {
+    pub success: bool,
+    pub data: Buffer,
+    pub error: String,
 }
 
 #[derive(Debug)]
@@ -5458,6 +5483,225 @@ pub fn networking_sockets_receive_messages_on_poll_group(
     })
 }
 
+#[napi(js_name = "networkingSocketsReceivedRelayAuthTicket")]
+pub fn networking_sockets_received_relay_auth_ticket(ticket: Buffer) -> Result<bool, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamNetworkingSockets_ReceivedRelayAuthTicket(
+            steam_networking_sockets()?,
+            ticket.as_ptr().cast::<c_void>(),
+            len_to_i32(ticket.len(), "relay auth ticket")?,
+            ptr::null_mut(),
+        )
+    })
+}
+
+#[napi(js_name = "networkingSocketsFindRelayAuthTicketForServer")]
+pub fn networking_sockets_find_relay_auth_ticket_for_server(
+    identity: NetworkingIdentity,
+    remote_virtual_port: Option<i32>,
+) -> Result<i32, Error> {
+    let identity = networking_identity_from_input(identity)?;
+    Ok(unsafe {
+        sys::SteamAPI_ISteamNetworkingSockets_FindRelayAuthTicketForServer(
+            steam_networking_sockets()?,
+            &identity,
+            networking_virtual_port(remote_virtual_port)?,
+            ptr::null_mut(),
+        )
+    })
+}
+
+#[napi(js_name = "networkingSocketsConnectToHostedDedicatedServer")]
+pub fn networking_sockets_connect_to_hosted_dedicated_server(
+    identity: NetworkingIdentity,
+    remote_virtual_port: Option<i32>,
+) -> Result<u32, Error> {
+    let identity = networking_identity_from_input(identity)?;
+    Ok(unsafe {
+        sys::SteamAPI_ISteamNetworkingSockets_ConnectToHostedDedicatedServer(
+            steam_networking_sockets()?,
+            &identity,
+            networking_virtual_port(remote_virtual_port)?,
+            0,
+            ptr::null(),
+        )
+    })
+}
+
+#[napi(js_name = "networkingSocketsGetHostedDedicatedServerPort")]
+pub fn networking_sockets_get_hosted_dedicated_server_port() -> Result<u32, Error> {
+    Ok(u32::from(unsafe {
+        sys::SteamAPI_ISteamNetworkingSockets_GetHostedDedicatedServerPort(
+            steam_networking_sockets()?,
+        )
+    }))
+}
+
+#[napi(js_name = "networkingSocketsGetHostedDedicatedServerPopId")]
+pub fn networking_sockets_get_hosted_dedicated_server_pop_id() -> Result<u32, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamNetworkingSockets_GetHostedDedicatedServerPOPID(
+            steam_networking_sockets()?,
+        )
+    })
+}
+
+#[napi(js_name = "networkingSocketsCreateHostedDedicatedServerListenSocket")]
+pub fn networking_sockets_create_hosted_dedicated_server_listen_socket(
+    local_virtual_port: Option<i32>,
+) -> Result<u32, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamNetworkingSockets_CreateHostedDedicatedServerListenSocket(
+            steam_networking_sockets()?,
+            networking_virtual_port(local_virtual_port)?,
+            0,
+            ptr::null(),
+        )
+    })
+}
+
+#[napi(js_name = "networkingSocketsGetCertificateRequest")]
+pub fn networking_sockets_get_certificate_request(
+    max_bytes: Option<u32>,
+) -> Result<NetworkingCertificateResult, Error> {
+    let size = max_bytes.unwrap_or(1024).clamp(1, 65_536);
+    let mut size_i32 = i32::try_from(size)
+        .map_err(|_| Error::from_reason("certificate request buffer size exceeds i32"))?;
+    let mut data = vec![0u8; size as usize];
+    let mut err_msg = [0 as c_char; sys::k_cchMaxSteamNetworkingErrMsg as usize];
+    let success = unsafe {
+        sys::SteamAPI_ISteamNetworkingSockets_GetCertificateRequest(
+            steam_networking_sockets()?,
+            &mut size_i32,
+            data.as_mut_ptr().cast::<c_void>(),
+            &mut err_msg,
+        )
+    };
+    if success && size_i32 >= 0 {
+        data.truncate((size_i32 as usize).min(data.len()));
+    } else {
+        data.clear();
+    }
+    Ok(NetworkingCertificateResult {
+        success,
+        data: data.into(),
+        error: c_buf_to_string(&err_msg),
+    })
+}
+
+#[napi(js_name = "networkingSocketsSetCertificate")]
+pub fn networking_sockets_set_certificate(
+    certificate: Buffer,
+) -> Result<NetworkingCertificateResult, Error> {
+    let mut err_msg = [0 as c_char; sys::k_cchMaxSteamNetworkingErrMsg as usize];
+    let success = unsafe {
+        sys::SteamAPI_ISteamNetworkingSockets_SetCertificate(
+            steam_networking_sockets()?,
+            certificate.as_ptr().cast::<c_void>(),
+            len_to_i32(certificate.len(), "certificate")?,
+            &mut err_msg,
+        )
+    };
+    Ok(NetworkingCertificateResult {
+        success,
+        data: Vec::new().into(),
+        error: c_buf_to_string(&err_msg),
+    })
+}
+
+#[napi(js_name = "networkingSocketsResetIdentity")]
+pub fn networking_sockets_reset_identity(
+    identity: Option<NetworkingIdentity>,
+) -> Result<(), Error> {
+    let identity = identity.map(networking_identity_from_input).transpose()?;
+    let identity_ptr = identity
+        .as_ref()
+        .map_or(ptr::null(), |identity| identity as *const _);
+    unsafe {
+        sys::SteamAPI_ISteamNetworkingSockets_ResetIdentity(
+            steam_networking_sockets()?,
+            identity_ptr,
+        )
+    };
+    Ok(())
+}
+
+#[napi(js_name = "networkingSocketsBeginAsyncRequestFakeIp")]
+pub fn networking_sockets_begin_async_request_fake_ip(num_ports: i32) -> Result<bool, Error> {
+    if !(1..=8).contains(&num_ports) {
+        return Err(Error::from_reason(
+            "FakeIP port reservation count must be between 1 and 8",
+        ));
+    }
+    Ok(unsafe {
+        sys::SteamAPI_ISteamNetworkingSockets_BeginAsyncRequestFakeIP(
+            steam_networking_sockets()?,
+            num_ports,
+        )
+    })
+}
+
+#[napi(js_name = "networkingSocketsGetFakeIp")]
+pub fn networking_sockets_get_fake_ip(
+    idx_first_port: Option<i32>,
+) -> Result<NetworkingFakeIpResult, Error> {
+    let mut info = unsafe { MaybeUninit::<SteamNetworkingFakeIpResultRaw>::zeroed().assume_init() };
+    unsafe {
+        sys::SteamAPI_ISteamNetworkingSockets_GetFakeIP(
+            steam_networking_sockets()?,
+            idx_first_port.unwrap_or(0),
+            (&mut info as *mut SteamNetworkingFakeIpResultRaw)
+                .cast::<sys::SteamNetworkingFakeIPResult_t>(),
+        )
+    };
+    Ok(networking_fake_ip_result(&info))
+}
+
+#[napi(js_name = "networkingSocketsCreateListenSocketP2pFakeIp")]
+pub fn networking_sockets_create_listen_socket_p2p_fake_ip(
+    idx_fake_port: Option<i32>,
+) -> Result<u32, Error> {
+    let idx_fake_port = idx_fake_port.unwrap_or(0);
+    if idx_fake_port < 0 {
+        return Err(Error::from_reason("FakeIP port index must be non-negative"));
+    }
+    Ok(unsafe {
+        sys::SteamAPI_ISteamNetworkingSockets_CreateListenSocketP2PFakeIP(
+            steam_networking_sockets()?,
+            idx_fake_port,
+            0,
+            ptr::null(),
+        )
+    })
+}
+
+#[napi(js_name = "networkingSocketsGetRemoteFakeIpForConnection")]
+pub fn networking_sockets_get_remote_fake_ip_for_connection(
+    connection: u32,
+) -> Result<NetworkingRemoteFakeIpResult, Error> {
+    let mut address = unsafe { MaybeUninit::<sys::SteamNetworkingIPAddr>::zeroed().assume_init() };
+    let result = unsafe {
+        sys::SteamAPI_ISteamNetworkingSockets_GetRemoteFakeIPForConnection(
+            steam_networking_sockets()?,
+            connection,
+            &mut address,
+        )
+    };
+    let address = if result == sys::EResult::k_EResultOK {
+        Some(networking_ip_address_info(
+            steam_networking_utils()?,
+            address,
+            true,
+        ))
+    } else {
+        None
+    };
+    Ok(NetworkingRemoteFakeIpResult {
+        result: result as u32,
+        address,
+    })
+}
+
 #[napi(js_name = "networkingUtilsInitRelayNetworkAccess")]
 pub fn networking_utils_init_relay_network_access() -> Result<(), Error> {
     unsafe {
@@ -7485,11 +7729,24 @@ fn len_to_u32(len: usize, label: &str) -> Result<u32, Error> {
     u32::try_from(len).map_err(|_| Error::from_reason(format!("{label} length exceeds u32")))
 }
 
+fn len_to_i32(len: usize, label: &str) -> Result<i32, Error> {
+    i32::try_from(len).map_err(|_| Error::from_reason(format!("{label} length exceeds i32")))
+}
+
 fn bigints_to_u64s(values: Vec<BigInt>, label: &str) -> Result<Vec<u64>, Error> {
     values
         .into_iter()
         .map(|value| bigint_to_u64(value, label))
         .collect()
+}
+
+#[repr(C, packed)]
+#[derive(Copy, Clone)]
+struct SteamNetworkingFakeIpResultRaw {
+    result: sys::EResult,
+    identity: sys::SteamNetworkingIdentity,
+    ipv4: u32,
+    ports: [u16; 8],
 }
 
 fn networking_identity_from_input(
@@ -7615,6 +7872,39 @@ fn networking_identity_json(identity: sys::SteamNetworkingIdentity) -> Value {
         "invalid": identity.invalid,
         "fake_ip_type": identity.fake_ip_type
     })
+}
+
+fn networking_fake_ip_result(result: &SteamNetworkingFakeIpResultRaw) -> NetworkingFakeIpResult {
+    let ipv4 = unsafe { ptr::addr_of!(result.ipv4).read_unaligned() };
+    NetworkingFakeIpResult {
+        result: unsafe { ptr::addr_of!(result.result).read_unaligned() } as u32,
+        identity: networking_identity_info(unsafe {
+            ptr::addr_of!(result.identity).read_unaligned()
+        }),
+        ipv4,
+        ipv4_address: ipv4_to_string(ipv4),
+        ports: fake_ip_ports(result),
+    }
+}
+
+fn networking_fake_ip_result_json(result: &SteamNetworkingFakeIpResultRaw) -> Value {
+    let ipv4 = unsafe { ptr::addr_of!(result.ipv4).read_unaligned() };
+    serde_json::json!({
+        "result": unsafe { ptr::addr_of!(result.result).read_unaligned() } as u32,
+        "identity": networking_identity_json(unsafe { ptr::addr_of!(result.identity).read_unaligned() }),
+        "ipv4": ipv4,
+        "ipv4_address": ipv4_to_string(ipv4),
+        "ports": fake_ip_ports(result)
+    })
+}
+
+fn fake_ip_ports(result: &SteamNetworkingFakeIpResultRaw) -> Vec<u32> {
+    let ports = unsafe { ptr::addr_of!(result.ports).read_unaligned() };
+    ports
+        .into_iter()
+        .filter(|port| *port != 0)
+        .map(u32::from)
+        .collect()
 }
 
 fn networking_virtual_port(port: Option<i32>) -> Result<i32, Error> {
@@ -8160,6 +8450,7 @@ fn callback_id_from_compat(callback: i32) -> Result<i32, Error> {
         CALLBACK_EQUIPPED_PROFILE_ITEMS_CHANGED => {
             Ok(sys::EquippedProfileItemsChanged_t_k_iCallback as i32)
         }
+        CALLBACK_STEAM_NETWORKING_FAKE_IP_RESULT => Ok(CALLBACK_STEAM_NETWORKING_FAKE_IP_RESULT),
         CALLBACK_STEAM_NET_AUTHENTICATION_STATUS => {
             Ok(sys::SteamNetAuthenticationStatus_t_k_iCallback as i32)
         }
@@ -8282,6 +8573,10 @@ unsafe fn callback_to_json(callback: i32, param: *mut c_void) -> Value {
                 "old_state": ptr::addr_of!((*event).m_eOldState).read_unaligned() as i32,
                 "info": networking_connection_info_json(&info)
             })
+        }
+        CALLBACK_STEAM_NETWORKING_FAKE_IP_RESULT => {
+            let event = param.cast::<SteamNetworkingFakeIpResultRaw>();
+            networking_fake_ip_result_json(&*event)
         }
         CALLBACK_STEAM_NET_AUTHENTICATION_STATUS => {
             let event = param as *const sys::SteamNetAuthenticationStatus_t;

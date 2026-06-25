@@ -50,8 +50,10 @@ import {
   NativeLeaderboardUgcSetResult,
   NativeNumberOfCurrentPlayersResult,
   NativeNetworkingAuthenticationStatus,
+  NativeNetworkingCertificateResult,
   NativeNetworkingConnectionRealTimeStatus,
   NativeNetworkingConnectionInfo,
+  NativeNetworkingFakeIpResult,
   NativeNetworkingFakeIpIdentity,
   NativeNetworkingIdentity,
   NativeNetworkingIdentityInfo,
@@ -61,6 +63,7 @@ import {
   NativeNetworkingMessagesSessionConnectionInfo,
   NativeNetworkingPingDataCenter,
   NativeNetworkingPingLocation,
+  NativeNetworkingRemoteFakeIpResult,
   NativeNetworkingRelayNetworkStatus,
   NativeNetworkingSocketPair,
   NativeNetworkingSocketSendResult,
@@ -430,6 +433,25 @@ export interface NetworkingSocketSendResult {
   messageNumber: bigint;
 }
 
+export interface NetworkingFakeIpResult {
+  result: number;
+  identity: NetworkingIdentityInfo;
+  ipv4: number;
+  ipv4Address: string;
+  ports: number[];
+}
+
+export interface NetworkingRemoteFakeIpResult {
+  result: number;
+  address: NetworkingIpAddressInfo | null;
+}
+
+export interface NetworkingCertificateResult {
+  success: boolean;
+  data: Buffer;
+  error: string;
+}
+
 export interface NetworkingCloseConnectionOptions {
   reason?: number;
   debug?: string;
@@ -735,6 +757,7 @@ export const SteamCallback = {
   EquippedProfileItemsChanged: 350,
   SteamNetConnectionStatusChanged: 1221,
   SteamNetAuthenticationStatus: 1222,
+  SteamNetworkingFakeIPResult: 1223,
   SteamNetworkingMessagesSessionRequest: 1251,
   SteamNetworkingMessagesSessionFailed: 1252,
   SteamRelayNetworkStatus: 1281,
@@ -2400,6 +2423,51 @@ export const networking = {
       return native()
         .networkingSocketsReceiveMessagesOnPollGroup(pollGroup, maxMessages ?? undefined)
         .map(normalizeNetworkingMessage);
+    },
+    receivedRelayAuthTicket(ticket: Buffer | Uint8Array): boolean {
+      return native().networkingSocketsReceivedRelayAuthTicket(Buffer.from(ticket));
+    },
+    findRelayAuthTicketForServer(identity: NetworkingIdentity, remoteVirtualPort = 0): number {
+      return native().networkingSocketsFindRelayAuthTicketForServer(
+        nativeNetworkingIdentity(identity),
+        remoteVirtualPort
+      );
+    },
+    connectToHostedDedicatedServer(identity: NetworkingIdentity, remoteVirtualPort = 0): number {
+      return native().networkingSocketsConnectToHostedDedicatedServer(
+        nativeNetworkingIdentity(identity),
+        remoteVirtualPort
+      );
+    },
+    getHostedDedicatedServerPort(): number {
+      return native().networkingSocketsGetHostedDedicatedServerPort();
+    },
+    getHostedDedicatedServerPopId(): number {
+      return native().networkingSocketsGetHostedDedicatedServerPopId();
+    },
+    createHostedDedicatedServerListenSocket(localVirtualPort = 0): number {
+      return native().networkingSocketsCreateHostedDedicatedServerListenSocket(localVirtualPort);
+    },
+    getCertificateRequest(maxBytes?: number | null): NetworkingCertificateResult {
+      return normalizeNetworkingCertificateResult(native().networkingSocketsGetCertificateRequest(maxBytes ?? undefined));
+    },
+    setCertificate(certificate: Buffer | Uint8Array): NetworkingCertificateResult {
+      return normalizeNetworkingCertificateResult(native().networkingSocketsSetCertificate(Buffer.from(certificate)));
+    },
+    resetIdentity(identity?: NetworkingIdentity | null): void {
+      native().networkingSocketsResetIdentity(identity ? nativeNetworkingIdentity(identity) : undefined);
+    },
+    beginAsyncRequestFakeIP(numPorts: number): boolean {
+      return native().networkingSocketsBeginAsyncRequestFakeIp(numPorts);
+    },
+    getFakeIP(idxFirstPort = 0): NetworkingFakeIpResult {
+      return normalizeNetworkingFakeIpResult(native().networkingSocketsGetFakeIp(idxFirstPort));
+    },
+    createListenSocketP2PFakeIP(idxFakePort = 0): number {
+      return native().networkingSocketsCreateListenSocketP2pFakeIp(idxFakePort);
+    },
+    getRemoteFakeIPForConnection(connection: number): NetworkingRemoteFakeIpResult {
+      return normalizeNetworkingRemoteFakeIpResult(native().networkingSocketsGetRemoteFakeIpForConnection(connection));
     }
   },
   utils: {
@@ -3585,6 +3653,9 @@ function normalizeCallbackEvent(callbackId: number, event: unknown): unknown {
   if (callbackId === SteamCallback.SteamNetConnectionStatusChanged) {
     return normalizeNetworkingSocketsCallbackEvent(event);
   }
+  if (callbackId === SteamCallback.SteamNetworkingFakeIPResult) {
+    return normalizeNetworkingFakeIpCallbackEvent(event);
+  }
   if (
     callbackId === SteamCallback.SteamNetAuthenticationStatus ||
     callbackId === SteamCallback.SteamRelayNetworkStatus
@@ -3675,6 +3746,17 @@ function normalizeNetworkingSocketsCallbackEvent(event: unknown): unknown {
     normalized.info = normalizeNetworkingConnectionInfo(source.info as NativeNetworkingConnectionInfo);
   }
   return normalized;
+}
+
+function normalizeNetworkingFakeIpCallbackEvent(event: unknown): unknown {
+  if (!event || typeof event !== "object") {
+    return event;
+  }
+  const source = event as Record<string, unknown>;
+  return {
+    ...source,
+    ...normalizeNetworkingFakeIpResult(source as unknown as NativeNetworkingFakeIpResult)
+  };
 }
 
 function normalizeNetworkingUtilsCallbackEvent(callbackId: number, event: unknown): unknown {
@@ -3966,6 +4048,32 @@ function normalizeNetworkingFakeIpIdentity(identity: NativeNetworkingFakeIpIdent
   return {
     result: Number(identity.result ?? 0),
     identity: normalizeNetworkingIdentityInfo(identity.identity)
+  };
+}
+
+function normalizeNetworkingFakeIpResult(result: NativeNetworkingFakeIpResult): NetworkingFakeIpResult {
+  const source = result as unknown as Record<string, unknown>;
+  return {
+    result: Number(source.result ?? 0),
+    identity: normalizeNetworkingIdentityInfoRequired(result.identity),
+    ipv4: Number(source.ipv4 ?? 0),
+    ipv4Address: String(source.ipv4Address ?? source.ipv4_address ?? ""),
+    ports: Array.isArray(source.ports) ? source.ports.map(Number) : []
+  };
+}
+
+function normalizeNetworkingRemoteFakeIpResult(result: NativeNetworkingRemoteFakeIpResult): NetworkingRemoteFakeIpResult {
+  return {
+    result: Number(result.result ?? 0),
+    address: normalizeNetworkingIpAddressInfo(result.address)
+  };
+}
+
+function normalizeNetworkingCertificateResult(result: NativeNetworkingCertificateResult): NetworkingCertificateResult {
+  return {
+    success: Boolean(result.success),
+    data: result.data,
+    error: result.error
   };
 }
 
