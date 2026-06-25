@@ -3342,6 +3342,30 @@ test("networking utils facade covers relay, ping, fake IP, address, config, debu
       this.calls.push({ method: "networkingUtilsSetConfigValueString", args: [value, scope, scopeObj, data] });
       return true;
     },
+    networkingUtilsSetGlobalConfigValueInt32(value, data) {
+      this.calls.push({ method: "networkingUtilsSetGlobalConfigValueInt32", args: [value, data] });
+      return true;
+    },
+    networkingUtilsSetGlobalConfigValueFloat(value, data) {
+      this.calls.push({ method: "networkingUtilsSetGlobalConfigValueFloat", args: [value, data] });
+      return true;
+    },
+    networkingUtilsSetGlobalConfigValueString(value, data) {
+      this.calls.push({ method: "networkingUtilsSetGlobalConfigValueString", args: [value, data] });
+      return true;
+    },
+    networkingUtilsSetConnectionConfigValueInt32(connection, value, data) {
+      this.calls.push({ method: "networkingUtilsSetConnectionConfigValueInt32", args: [connection, value, data] });
+      return true;
+    },
+    networkingUtilsSetConnectionConfigValueFloat(connection, value, data) {
+      this.calls.push({ method: "networkingUtilsSetConnectionConfigValueFloat", args: [connection, value, data] });
+      return true;
+    },
+    networkingUtilsSetConnectionConfigValueString(connection, value, data) {
+      this.calls.push({ method: "networkingUtilsSetConnectionConfigValueString", args: [connection, value, data] });
+      return true;
+    },
     networkingUtilsGetConfigValue(value, scope, scopeObj, maxBytes) {
       this.calls.push({ method: "networkingUtilsGetConfigValue", args: [value, scope, scopeObj, maxBytes] });
       if (value === 40) {
@@ -3445,10 +3469,38 @@ test("networking utils facade covers relay, ping, fake IP, address, config, debu
     true
   );
   assert.equal(
+    steam.networking.utils.setGlobalConfigValueFloat(steam.networking.utils.ConfigValue.FakePacketLossSend, 12.5),
+    true
+  );
+  assert.equal(
+    steam.networking.utils.setGlobalConfigValueString(steam.networking.utils.ConfigValue.SDRClientForceRelayCluster, "iad"),
+    true
+  );
+  assert.equal(
+    steam.networking.utils.setConnectionConfigValueInt32(77, steam.networking.utils.ConfigValue.TimeoutInitial, 2500),
+    true
+  );
+  assert.equal(
     steam.networking.utils.setConnectionConfigValueInt64(
       77,
       steam.networking.utils.ConfigValue.ConnectionUserData,
       9223372036854775807n
+    ),
+    true
+  );
+  assert.equal(
+    steam.networking.utils.setConnectionConfigValueFloat(
+      77,
+      steam.networking.utils.ConfigValue.FakePacketLossSend,
+      1.25
+    ),
+    true
+  );
+  assert.equal(
+    steam.networking.utils.setConnectionConfigValueString(
+      77,
+      steam.networking.utils.ConfigValue.SDRClientForceRelayCluster,
+      "ord"
     ),
     true
   );
@@ -3547,6 +3599,30 @@ test("networking utils facade covers relay, ping, fake IP, address, config, debu
   assert.deepEqual(fake.calls.find((call) => call.method === "networkingUtilsSetConfigValueInt64"), {
     method: "networkingUtilsSetConfigValueInt64",
     args: [40, 4, 77, 9223372036854775807n]
+  });
+  assert.deepEqual(fake.calls.find((call) => call.method === "networkingUtilsSetGlobalConfigValueInt32"), {
+    method: "networkingUtilsSetGlobalConfigValueInt32",
+    args: [24, 5000]
+  });
+  assert.deepEqual(fake.calls.find((call) => call.method === "networkingUtilsSetGlobalConfigValueFloat"), {
+    method: "networkingUtilsSetGlobalConfigValueFloat",
+    args: [2, 12.5]
+  });
+  assert.deepEqual(fake.calls.find((call) => call.method === "networkingUtilsSetGlobalConfigValueString"), {
+    method: "networkingUtilsSetGlobalConfigValueString",
+    args: [29, "iad"]
+  });
+  assert.deepEqual(fake.calls.find((call) => call.method === "networkingUtilsSetConnectionConfigValueInt32"), {
+    method: "networkingUtilsSetConnectionConfigValueInt32",
+    args: [77, 24, 2500]
+  });
+  assert.deepEqual(fake.calls.find((call) => call.method === "networkingUtilsSetConnectionConfigValueFloat"), {
+    method: "networkingUtilsSetConnectionConfigValueFloat",
+    args: [77, 2, 1.25]
+  });
+  assert.deepEqual(fake.calls.find((call) => call.method === "networkingUtilsSetConnectionConfigValueString"), {
+    method: "networkingUtilsSetConnectionConfigValueString",
+    args: [77, 29, "ord"]
   });
   assert.deepEqual(fake.calls.find((call) => call.method === "networkingUtilsRegisterDebugOutputHook"), {
     method: "networkingUtilsRegisterDebugOutputHook",

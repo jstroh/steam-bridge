@@ -8824,6 +8824,98 @@ pub fn networking_utils_set_config_value_string(
     })
 }
 
+#[napi(js_name = "networkingUtilsSetGlobalConfigValueInt32")]
+pub fn networking_utils_set_global_config_value_int32(
+    value: u32,
+    data: i32,
+) -> Result<bool, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamNetworkingUtils_SetGlobalConfigValueInt32(
+            steam_networking_utils()?,
+            networking_config_value(value)?,
+            data,
+        )
+    })
+}
+
+#[napi(js_name = "networkingUtilsSetGlobalConfigValueFloat")]
+pub fn networking_utils_set_global_config_value_float(
+    value: u32,
+    data: f64,
+) -> Result<bool, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamNetworkingUtils_SetGlobalConfigValueFloat(
+            steam_networking_utils()?,
+            networking_config_value(value)?,
+            data as f32,
+        )
+    })
+}
+
+#[napi(js_name = "networkingUtilsSetGlobalConfigValueString")]
+pub fn networking_utils_set_global_config_value_string(
+    value: u32,
+    data: String,
+) -> Result<bool, Error> {
+    let data = cstring(data, "networking global config string value")?;
+    Ok(unsafe {
+        sys::SteamAPI_ISteamNetworkingUtils_SetGlobalConfigValueString(
+            steam_networking_utils()?,
+            networking_config_value(value)?,
+            data.as_ptr(),
+        )
+    })
+}
+
+#[napi(js_name = "networkingUtilsSetConnectionConfigValueInt32")]
+pub fn networking_utils_set_connection_config_value_int32(
+    connection: u32,
+    value: u32,
+    data: i32,
+) -> Result<bool, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamNetworkingUtils_SetConnectionConfigValueInt32(
+            steam_networking_utils()?,
+            connection,
+            networking_config_value(value)?,
+            data,
+        )
+    })
+}
+
+#[napi(js_name = "networkingUtilsSetConnectionConfigValueFloat")]
+pub fn networking_utils_set_connection_config_value_float(
+    connection: u32,
+    value: u32,
+    data: f64,
+) -> Result<bool, Error> {
+    Ok(unsafe {
+        sys::SteamAPI_ISteamNetworkingUtils_SetConnectionConfigValueFloat(
+            steam_networking_utils()?,
+            connection,
+            networking_config_value(value)?,
+            data as f32,
+        )
+    })
+}
+
+#[napi(js_name = "networkingUtilsSetConnectionConfigValueString")]
+pub fn networking_utils_set_connection_config_value_string(
+    connection: u32,
+    value: u32,
+    data: String,
+) -> Result<bool, Error> {
+    let data = cstring(data, "networking connection config string value")?;
+    Ok(unsafe {
+        sys::SteamAPI_ISteamNetworkingUtils_SetConnectionConfigValueString(
+            steam_networking_utils()?,
+            connection,
+            networking_config_value(value)?,
+            data.as_ptr(),
+        )
+    })
+}
+
 #[napi(js_name = "networkingUtilsGetConfigValue")]
 pub fn networking_utils_get_config_value(
     value: u32,

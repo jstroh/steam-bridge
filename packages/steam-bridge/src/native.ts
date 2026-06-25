@@ -1834,6 +1834,12 @@ export interface NativeBinding {
   networkingUtilsSetConfigValueInt64(value: number, scope: number, scopeObj: number, data: bigint): boolean;
   networkingUtilsSetConfigValueFloat(value: number, scope: number, scopeObj: number, data: number): boolean;
   networkingUtilsSetConfigValueString(value: number, scope: number, scopeObj: number, data: string): boolean;
+  networkingUtilsSetGlobalConfigValueInt32(value: number, data: number): boolean;
+  networkingUtilsSetGlobalConfigValueFloat(value: number, data: number): boolean;
+  networkingUtilsSetGlobalConfigValueString(value: number, data: string): boolean;
+  networkingUtilsSetConnectionConfigValueInt32(connection: number, value: number, data: number): boolean;
+  networkingUtilsSetConnectionConfigValueFloat(connection: number, value: number, data: number): boolean;
+  networkingUtilsSetConnectionConfigValueString(connection: number, value: number, data: string): boolean;
   networkingUtilsGetConfigValue(value: number, scope: number, scopeObj: number, maxBytes?: number): NativeNetworkingConfigValueResult;
   networkingUtilsGetConfigValueInfo(value: number): NativeNetworkingConfigValueInfo;
   networkingUtilsIterateGenericEditableConfigValues(current: number, enumerateDevVars?: boolean): number;

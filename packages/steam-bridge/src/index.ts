@@ -4441,28 +4441,28 @@ export const networking = {
       return native().networkingUtilsSetConfigValueString(value, scope, scopeObj, data);
     },
     setGlobalConfigValueInt32(value: number, data: number): boolean {
-      return native().networkingUtilsSetConfigValueInt32(value, NetworkingConfigScope.Global, 0, data);
+      return native().networkingUtilsSetGlobalConfigValueInt32(value, data);
     },
     setGlobalConfigValueInt64(value: number, data: bigint | number | string): boolean {
       return native().networkingUtilsSetConfigValueInt64(value, NetworkingConfigScope.Global, 0, BigInt(data));
     },
     setGlobalConfigValueFloat(value: number, data: number): boolean {
-      return native().networkingUtilsSetConfigValueFloat(value, NetworkingConfigScope.Global, 0, data);
+      return native().networkingUtilsSetGlobalConfigValueFloat(value, data);
     },
     setGlobalConfigValueString(value: number, data: string): boolean {
-      return native().networkingUtilsSetConfigValueString(value, NetworkingConfigScope.Global, 0, data);
+      return native().networkingUtilsSetGlobalConfigValueString(value, data);
     },
     setConnectionConfigValueInt32(connection: number, value: number, data: number): boolean {
-      return native().networkingUtilsSetConfigValueInt32(value, NetworkingConfigScope.Connection, connection, data);
+      return native().networkingUtilsSetConnectionConfigValueInt32(connection, value, data);
     },
     setConnectionConfigValueInt64(connection: number, value: number, data: bigint | number | string): boolean {
       return native().networkingUtilsSetConfigValueInt64(value, NetworkingConfigScope.Connection, connection, BigInt(data));
     },
     setConnectionConfigValueFloat(connection: number, value: number, data: number): boolean {
-      return native().networkingUtilsSetConfigValueFloat(value, NetworkingConfigScope.Connection, connection, data);
+      return native().networkingUtilsSetConnectionConfigValueFloat(connection, value, data);
     },
     setConnectionConfigValueString(connection: number, value: number, data: string): boolean {
-      return native().networkingUtilsSetConfigValueString(value, NetworkingConfigScope.Connection, connection, data);
+      return native().networkingUtilsSetConnectionConfigValueString(connection, value, data);
     },
     getConfigValue(
       value: number,

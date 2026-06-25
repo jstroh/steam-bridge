@@ -76,7 +76,7 @@ The native layer currently targets the Steamworks flat C API through
   helpers, fake UDP port wrappers, connection lane status details, plus
   `ISteamNetworkingUtils` relay/auth status, ping location, POP latency,
   fake-IP, IP address, config value, editable config iteration, and
-  debug-output helpers.
+  direct global/connection config setters, and debug-output helpers.
 - UGC/Workshop: item create/update/query flows, install/download information,
   subscription list helpers, item state, statistics, and query configuration.
 - Screenshots: screenshot library writes, screenshot triggers/hooks, location
