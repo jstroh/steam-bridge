@@ -5701,6 +5701,20 @@ export const networking = {
     connectP2P(identity: NetworkingIdentity, remoteVirtualPort = 0): number {
       return native().networkingSocketsConnectP2p(nativeNetworkingIdentity(identity), remoteVirtualPort);
     },
+    connectP2PCustomSignaling(
+      signalingPointer: bigint,
+      peerIdentity?: NetworkingIdentity | null,
+      remoteVirtualPort = 0
+    ): number {
+      return native().networkingSocketsConnectP2pCustomSignaling(
+        signalingPointer,
+        peerIdentity ? nativeNetworkingIdentity(peerIdentity) : undefined,
+        remoteVirtualPort
+      );
+    },
+    receivedP2PCustomSignal(message: Buffer | Uint8Array, contextPointer: bigint): boolean {
+      return native().networkingSocketsReceivedP2pCustomSignal(Buffer.from(message), contextPointer);
+    },
     acceptConnection(connection: number): number {
       return native().networkingSocketsAcceptConnection(connection);
     },
@@ -6267,6 +6281,20 @@ export const gameServerNetworkingSockets = {
   },
   connectP2P(identity: NetworkingIdentity, remoteVirtualPort = 0): number {
     return native().gameServerNetworkingSocketsConnectP2p(nativeNetworkingIdentity(identity), remoteVirtualPort);
+  },
+  connectP2PCustomSignaling(
+    signalingPointer: bigint,
+    peerIdentity?: NetworkingIdentity | null,
+    remoteVirtualPort = 0
+  ): number {
+    return native().gameServerNetworkingSocketsConnectP2pCustomSignaling(
+      signalingPointer,
+      peerIdentity ? nativeNetworkingIdentity(peerIdentity) : undefined,
+      remoteVirtualPort
+    );
+  },
+  receivedP2PCustomSignal(message: Buffer | Uint8Array, contextPointer: bigint): boolean {
+    return native().gameServerNetworkingSocketsReceivedP2pCustomSignal(Buffer.from(message), contextPointer);
   },
   acceptConnection(connection: number): number {
     return native().gameServerNetworkingSocketsAcceptConnection(connection);

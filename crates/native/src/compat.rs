@@ -11367,6 +11367,54 @@ pub fn networking_sockets_connect_p2p(
     })
 }
 
+#[napi(js_name = "networkingSocketsConnectP2pCustomSignaling")]
+pub fn networking_sockets_connect_p2p_custom_signaling(
+    signaling_pointer: BigInt,
+    peer_identity: Option<NetworkingIdentity>,
+    remote_virtual_port: Option<i32>,
+) -> Result<u32, Error> {
+    let signaling = required_networking_pointer::<sys::ISteamNetworkingConnectionSignaling>(
+        signaling_pointer,
+        "custom signaling pointer",
+    )?;
+    let peer_identity = peer_identity
+        .map(networking_identity_from_input)
+        .transpose()?;
+    let peer_identity_ptr = peer_identity
+        .as_ref()
+        .map_or(ptr::null(), |identity| identity as *const _);
+    Ok(unsafe {
+        sys::SteamAPI_ISteamNetworkingSockets_ConnectP2PCustomSignaling(
+            steam_networking_sockets()?,
+            signaling,
+            peer_identity_ptr,
+            networking_virtual_port(remote_virtual_port)?,
+            0,
+            ptr::null(),
+        )
+    })
+}
+
+#[napi(js_name = "networkingSocketsReceivedP2pCustomSignal")]
+pub fn networking_sockets_received_p2p_custom_signal(
+    message: Buffer,
+    context_pointer: BigInt,
+) -> Result<bool, Error> {
+    let context = required_networking_pointer::<sys::ISteamNetworkingSignalingRecvContext>(
+        context_pointer,
+        "custom signaling receive context pointer",
+    )?;
+    let size = len_to_i32(message.len(), "custom signaling message")?;
+    Ok(unsafe {
+        sys::SteamAPI_ISteamNetworkingSockets_ReceivedP2PCustomSignal(
+            steam_networking_sockets()?,
+            message.as_ptr().cast(),
+            size,
+            context,
+        )
+    })
+}
+
 #[napi(js_name = "networkingSocketsAcceptConnection")]
 pub fn networking_sockets_accept_connection(connection: u32) -> Result<u32, Error> {
     Ok(unsafe {
@@ -12173,6 +12221,23 @@ game_server_networking_sockets_wrapper!(
     "gameServerNetworkingSocketsConnectP2p",
     game_server_networking_sockets_connect_p2p,
     networking_sockets_connect_p2p(identity: NetworkingIdentity, remote_virtual_port: Option<i32>) -> u32
+);
+game_server_networking_sockets_wrapper!(
+    "gameServerNetworkingSocketsConnectP2pCustomSignaling",
+    game_server_networking_sockets_connect_p2p_custom_signaling,
+    networking_sockets_connect_p2p_custom_signaling(
+        signaling_pointer: BigInt,
+        peer_identity: Option<NetworkingIdentity>,
+        remote_virtual_port: Option<i32>
+    ) -> u32
+);
+game_server_networking_sockets_wrapper!(
+    "gameServerNetworkingSocketsReceivedP2pCustomSignal",
+    game_server_networking_sockets_received_p2p_custom_signal,
+    networking_sockets_received_p2p_custom_signal(
+        message: Buffer,
+        context_pointer: BigInt
+    ) -> bool
 );
 game_server_networking_sockets_wrapper!(
     "gameServerNetworkingSocketsAcceptConnection",
@@ -18744,6 +18809,15 @@ fn networking_pointer_value(value: Option<BigInt>, label: &str) -> Result<*mut c
     let pointer = usize::try_from(pointer)
         .map_err(|_| Error::from_reason(format!("{label} exceeds pointer size")))?;
     Ok(pointer as *mut c_void)
+}
+
+fn required_networking_pointer<T>(value: BigInt, label: &str) -> Result<*mut T, Error> {
+    let pointer = networking_pointer_value(Some(value), label)?;
+    if pointer.is_null() {
+        Err(Error::from_reason(format!("{label} cannot be null")))
+    } else {
+        Ok(pointer.cast())
+    }
 }
 
 macro_rules! steam_networking_config_value {

@@ -2302,6 +2302,8 @@ export interface NativeBinding {
   gameServerNetworkingSocketsConnectByIpAddress(address: NativeNetworkingIpAddress): number;
   gameServerNetworkingSocketsCreateListenSocketP2p(localVirtualPort?: number): number;
   gameServerNetworkingSocketsConnectP2p(identity: NativeNetworkingIdentity, remoteVirtualPort?: number): number;
+  gameServerNetworkingSocketsConnectP2pCustomSignaling(signalingPointer: bigint, peerIdentity?: NativeNetworkingIdentity | null, remoteVirtualPort?: number): number;
+  gameServerNetworkingSocketsReceivedP2pCustomSignal(message: Buffer, contextPointer: bigint): boolean;
   gameServerNetworkingSocketsAcceptConnection(connection: number): number;
   gameServerNetworkingSocketsCloseConnection(connection: number, reason?: number, debug?: string, enableLinger?: boolean): boolean;
   gameServerNetworkingSocketsCloseListenSocket(socket: number): boolean;
@@ -2348,6 +2350,8 @@ export interface NativeBinding {
   networkingSocketsConnectByIpAddress(address: NativeNetworkingIpAddress): number;
   networkingSocketsCreateListenSocketP2p(localVirtualPort?: number): number;
   networkingSocketsConnectP2p(identity: NativeNetworkingIdentity, remoteVirtualPort?: number): number;
+  networkingSocketsConnectP2pCustomSignaling(signalingPointer: bigint, peerIdentity?: NativeNetworkingIdentity | null, remoteVirtualPort?: number): number;
+  networkingSocketsReceivedP2pCustomSignal(message: Buffer, contextPointer: bigint): boolean;
   networkingSocketsAcceptConnection(connection: number): number;
   networkingSocketsCloseConnection(connection: number, reason?: number, debug?: string, enableLinger?: boolean): boolean;
   networkingSocketsCloseListenSocket(socket: number): boolean;
