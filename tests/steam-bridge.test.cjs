@@ -1804,9 +1804,38 @@ test("networking sockets facade covers connection handles, status, poll groups, 
       this.calls.push({ method: "networkingSocketsGetHostedDedicatedServerPopId", args: [] });
       return 1234;
     },
+    networkingSocketsGetHostedDedicatedServerAddress() {
+      this.calls.push({ method: "networkingSocketsGetHostedDedicatedServerAddress", args: [] });
+      return {
+        result: 1,
+        routing: {
+          pop_id: 1234,
+          size: 3,
+          data: Buffer.from("sdr")
+        },
+        debug_message: ""
+      };
+    },
     networkingSocketsCreateHostedDedicatedServerListenSocket(localVirtualPort) {
       this.calls.push({ method: "networkingSocketsCreateHostedDedicatedServerListenSocket", args: [localVirtualPort] });
       return 46;
+    },
+    networkingSocketsGetGameCoordinatorServerLogin(appData, maxBlobBytes) {
+      this.calls.push({ method: "networkingSocketsGetGameCoordinatorServerLogin", args: [appData, maxBlobBytes] });
+      return {
+        result: 1,
+        identity: peer,
+        routing: {
+          pop_id: 1234,
+          size: 3,
+          data: Buffer.from("sdr")
+        },
+        app_id: 480,
+        timestamp: 123456,
+        app_data: appData,
+        signed_blob: Buffer.from("signed-login"),
+        debug_message: ""
+      };
     },
     networkingSocketsGetCertificateRequest(maxBytes) {
       this.calls.push({ method: "networkingSocketsGetCertificateRequest", args: [maxBytes] });
@@ -1979,7 +2008,18 @@ test("networking sockets facade covers connection handles, status, poll groups, 
   assert.equal(steam.networking.sockets.connectToHostedDedicatedServer(identity, 7), 103);
   assert.equal(steam.networking.sockets.getHostedDedicatedServerPort(), 27015);
   assert.equal(steam.networking.sockets.getHostedDedicatedServerPopId(), 1234);
+  const hostedAddress = steam.networking.sockets.getHostedDedicatedServerAddress();
+  assert.equal(hostedAddress.result, 1);
+  assert.equal(hostedAddress.routing.popId, 1234);
+  assert.equal(hostedAddress.routing.data.toString(), "sdr");
   assert.equal(steam.networking.sockets.createHostedDedicatedServerListenSocket(7), 46);
+  const serverLogin = steam.networking.sockets.getGameCoordinatorServerLogin(Buffer.from("app-data"), 4096);
+  assert.equal(serverLogin.result, 1);
+  assert.equal(serverLogin.identity.steamId64, 76561198000000010n);
+  assert.equal(serverLogin.routing.data.toString(), "sdr");
+  assert.equal(serverLogin.appId, 480);
+  assert.equal(serverLogin.appData.toString(), "app-data");
+  assert.equal(serverLogin.signedBlob.toString(), "signed-login");
   const certificateRequest = steam.networking.sockets.getCertificateRequest(256);
   assert.equal(certificateRequest.success, true);
   assert.equal(certificateRequest.data.toString(), "cert-request");
@@ -2049,6 +2089,10 @@ test("networking sockets facade covers connection handles, status, poll groups, 
   assert.deepEqual(fake.calls.find((call) => call.method === "networkingFakeUdpPortSendMessageToFakeIp"), {
     method: "networkingFakeUdpPortSendMessageToFakeIp",
     args: [601, { text: "10.0.0.1:27015" }, Buffer.from("udp"), steam.NetworkingSendFlags.Unreliable]
+  });
+  assert.deepEqual(fake.calls.find((call) => call.method === "networkingSocketsGetGameCoordinatorServerLogin"), {
+    method: "networkingSocketsGetGameCoordinatorServerLogin",
+    args: [Buffer.from("app-data"), 4096]
   });
 });
 

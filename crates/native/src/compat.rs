@@ -448,6 +448,32 @@ pub struct NetworkingRemoteFakeIpResult {
 }
 
 #[napi(object)]
+pub struct NetworkingHostedDedicatedServerRouting {
+    pub pop_id: u32,
+    pub size: u32,
+    pub data: Buffer,
+}
+
+#[napi(object)]
+pub struct NetworkingHostedDedicatedServerAddressResult {
+    pub result: u32,
+    pub routing: Option<NetworkingHostedDedicatedServerRouting>,
+    pub debug_message: String,
+}
+
+#[napi(object)]
+pub struct NetworkingGameCoordinatorServerLoginResult {
+    pub result: u32,
+    pub identity: Option<NetworkingIdentityInfo>,
+    pub routing: Option<NetworkingHostedDedicatedServerRouting>,
+    pub app_id: u32,
+    pub timestamp: u32,
+    pub app_data: Buffer,
+    pub signed_blob: Buffer,
+    pub debug_message: String,
+}
+
+#[napi(object)]
 pub struct NetworkingCertificateResult {
     pub success: bool,
     pub data: Buffer,
@@ -5778,6 +5804,29 @@ pub fn networking_sockets_get_hosted_dedicated_server_pop_id() -> Result<u32, Er
     })
 }
 
+#[napi(js_name = "networkingSocketsGetHostedDedicatedServerAddress")]
+pub fn networking_sockets_get_hosted_dedicated_server_address(
+) -> Result<NetworkingHostedDedicatedServerAddressResult, Error> {
+    let mut address = SteamDatagramHostedAddressRaw::default();
+    unsafe {
+        sys::SteamAPI_SteamDatagramHostedAddress_Clear(
+            (&mut address as *mut SteamDatagramHostedAddressRaw)
+                .cast::<sys::SteamDatagramHostedAddress>(),
+        );
+    }
+    let result = unsafe {
+        sys::SteamAPI_ISteamNetworkingSockets_GetHostedDedicatedServerAddress(
+            steam_networking_sockets()?,
+            (&mut address as *mut SteamDatagramHostedAddressRaw)
+                .cast::<sys::SteamDatagramHostedAddress>(),
+        )
+    };
+    Ok(networking_hosted_dedicated_server_address_result(
+        result,
+        &mut address,
+    ))
+}
+
 #[napi(js_name = "networkingSocketsCreateHostedDedicatedServerListenSocket")]
 pub fn networking_sockets_create_hosted_dedicated_server_listen_socket(
     local_virtual_port: Option<i32>,
@@ -5790,6 +5839,47 @@ pub fn networking_sockets_create_hosted_dedicated_server_listen_socket(
             ptr::null(),
         )
     })
+}
+
+#[napi(js_name = "networkingSocketsGetGameCoordinatorServerLogin")]
+pub fn networking_sockets_get_game_coordinator_server_login(
+    app_data: Option<Buffer>,
+    max_blob_bytes: Option<u32>,
+) -> Result<NetworkingGameCoordinatorServerLoginResult, Error> {
+    let app_data = app_data.map(|data| data.to_vec()).unwrap_or_default();
+    if app_data.len() > 2048 {
+        return Err(Error::from_reason(
+            "game coordinator server login app data exceeds 2048 bytes",
+        ));
+    }
+
+    let mut login = unsafe {
+        MaybeUninit::<SteamDatagramGameCoordinatorServerLoginRaw>::zeroed().assume_init()
+    };
+    login.cb_app_data = len_to_i32(app_data.len(), "game coordinator server login app data")?;
+    for (index, byte) in app_data.iter().enumerate() {
+        login.app_data[index] = *byte as c_char;
+    }
+
+    let size = max_blob_bytes.unwrap_or(4096).clamp(1, 65_536);
+    let mut signed_blob_size = i32::try_from(size)
+        .map_err(|_| Error::from_reason("game coordinator server login blob size exceeds i32"))?;
+    let mut signed_blob = vec![0u8; size as usize];
+    let result = unsafe {
+        sys::SteamAPI_ISteamNetworkingSockets_GetGameCoordinatorServerLogin(
+            steam_networking_sockets()?,
+            (&mut login as *mut SteamDatagramGameCoordinatorServerLoginRaw)
+                .cast::<sys::SteamDatagramGameCoordinatorServerLogin>(),
+            &mut signed_blob_size,
+            signed_blob.as_mut_ptr().cast::<c_void>(),
+        )
+    };
+    Ok(networking_game_coordinator_server_login_result(
+        result,
+        &mut login,
+        signed_blob,
+        signed_blob_size,
+    ))
 }
 
 #[napi(js_name = "networkingSocketsGetCertificateRequest")]
@@ -9189,6 +9279,36 @@ fn bigints_to_u64s(values: Vec<BigInt>, label: &str) -> Result<Vec<u64>, Error> 
         .collect()
 }
 
+#[repr(C)]
+#[derive(Copy, Clone)]
+struct SteamDatagramHostedAddressRaw {
+    cb_size: i32,
+    data: [c_char; 128],
+}
+
+impl Default for SteamDatagramHostedAddressRaw {
+    fn default() -> Self {
+        Self {
+            cb_size: 0,
+            data: [0; 128],
+        }
+    }
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+struct SteamDatagramGameCoordinatorServerLoginRaw {
+    identity: sys::SteamNetworkingIdentity,
+    routing: SteamDatagramHostedAddressRaw,
+    app_id: u32,
+    timestamp: u32,
+    cb_app_data: i32,
+    app_data: [c_char; 2048],
+}
+
+const _: [(); 132] = [(); std::mem::size_of::<SteamDatagramHostedAddressRaw>()];
+const _: [(); 2328] = [(); std::mem::size_of::<SteamDatagramGameCoordinatorServerLoginRaw>()];
+
 #[repr(C, packed)]
 #[derive(Copy, Clone)]
 struct SteamNetworkingFakeIpResultRaw {
@@ -9321,6 +9441,78 @@ fn networking_identity_json(identity: sys::SteamNetworkingIdentity) -> Value {
         "invalid": identity.invalid,
         "fake_ip_type": identity.fake_ip_type
     })
+}
+
+fn networking_hosted_dedicated_server_address_result(
+    result: sys::EResult,
+    address: &mut SteamDatagramHostedAddressRaw,
+) -> NetworkingHostedDedicatedServerAddressResult {
+    let routing = (result == sys::EResult::k_EResultOK)
+        .then(|| networking_hosted_dedicated_server_routing(address));
+    let debug_message = if result == sys::EResult::k_EResultOK {
+        String::new()
+    } else {
+        c_buf_to_string(&address.data)
+    };
+    NetworkingHostedDedicatedServerAddressResult {
+        result: result as u32,
+        routing,
+        debug_message,
+    }
+}
+
+fn networking_game_coordinator_server_login_result(
+    result: sys::EResult,
+    login: &mut SteamDatagramGameCoordinatorServerLoginRaw,
+    mut signed_blob: Vec<u8>,
+    signed_blob_size: i32,
+) -> NetworkingGameCoordinatorServerLoginResult {
+    let success = result == sys::EResult::k_EResultOK;
+    let debug_message = if success {
+        let size = signed_blob_size.max(0) as usize;
+        signed_blob.truncate(size.min(signed_blob.len()));
+        String::new()
+    } else {
+        let message = u8_buf_to_string(&signed_blob);
+        signed_blob.clear();
+        message
+    };
+    let app_data_size = login.cb_app_data.max(0) as usize;
+    let app_data = login.app_data[..app_data_size.min(login.app_data.len())]
+        .iter()
+        .map(|value| *value as u8)
+        .collect::<Vec<_>>();
+    NetworkingGameCoordinatorServerLoginResult {
+        result: result as u32,
+        identity: success.then(|| networking_identity_info(login.identity)),
+        routing: success.then(|| networking_hosted_dedicated_server_routing(&mut login.routing)),
+        app_id: login.app_id,
+        timestamp: login.timestamp,
+        app_data: app_data.into(),
+        signed_blob: signed_blob.into(),
+        debug_message,
+    }
+}
+
+fn networking_hosted_dedicated_server_routing(
+    address: &mut SteamDatagramHostedAddressRaw,
+) -> NetworkingHostedDedicatedServerRouting {
+    let size = address.cb_size.max(0) as usize;
+    let data = address.data[..size.min(address.data.len())]
+        .iter()
+        .map(|value| *value as u8)
+        .collect::<Vec<_>>();
+    let pop_id = unsafe {
+        sys::SteamAPI_SteamDatagramHostedAddress_GetPopID(
+            (address as *mut SteamDatagramHostedAddressRaw)
+                .cast::<sys::SteamDatagramHostedAddress>(),
+        )
+    };
+    NetworkingHostedDedicatedServerRouting {
+        pop_id,
+        size: size as u32,
+        data: data.into(),
+    }
 }
 
 fn networking_fake_ip_result(result: &SteamNetworkingFakeIpResultRaw) -> NetworkingFakeIpResult {

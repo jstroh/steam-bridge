@@ -354,6 +354,35 @@ export interface NativeNetworkingRemoteFakeIpResult {
   address?: NativeNetworkingIpAddressInfo | null;
 }
 
+export interface NativeNetworkingHostedDedicatedServerRouting {
+  popId?: number;
+  pop_id?: number;
+  size: number;
+  data: Buffer;
+}
+
+export interface NativeNetworkingHostedDedicatedServerAddressResult {
+  result: number;
+  routing?: NativeNetworkingHostedDedicatedServerRouting | null;
+  debugMessage?: string;
+  debug_message?: string;
+}
+
+export interface NativeNetworkingGameCoordinatorServerLoginResult {
+  result: number;
+  identity?: NativeNetworkingIdentityInfo | null;
+  routing?: NativeNetworkingHostedDedicatedServerRouting | null;
+  appId?: number;
+  app_id?: number;
+  timestamp: number;
+  appData?: Buffer;
+  app_data?: Buffer;
+  signedBlob?: Buffer;
+  signed_blob?: Buffer;
+  debugMessage?: string;
+  debug_message?: string;
+}
+
 export interface NativeNetworkingCertificateResult {
   success: boolean;
   data: Buffer;
@@ -1331,7 +1360,9 @@ export interface NativeBinding {
   networkingSocketsConnectToHostedDedicatedServer(identity: NativeNetworkingIdentity, remoteVirtualPort?: number): number;
   networkingSocketsGetHostedDedicatedServerPort(): number;
   networkingSocketsGetHostedDedicatedServerPopId(): number;
+  networkingSocketsGetHostedDedicatedServerAddress(): NativeNetworkingHostedDedicatedServerAddressResult;
   networkingSocketsCreateHostedDedicatedServerListenSocket(localVirtualPort?: number): number;
+  networkingSocketsGetGameCoordinatorServerLogin(appData?: Buffer, maxBlobBytes?: number): NativeNetworkingGameCoordinatorServerLoginResult;
   networkingSocketsGetCertificateRequest(maxBytes?: number): NativeNetworkingCertificateResult;
   networkingSocketsSetCertificate(certificate: Buffer): NativeNetworkingCertificateResult;
   networkingSocketsResetIdentity(identity?: NativeNetworkingIdentity | null): void;

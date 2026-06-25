@@ -63,6 +63,9 @@ import {
   NativeNetworkingDebugOutput,
   NativeNetworkingFakeIpResult,
   NativeNetworkingFakeIpIdentity,
+  NativeNetworkingGameCoordinatorServerLoginResult,
+  NativeNetworkingHostedDedicatedServerAddressResult,
+  NativeNetworkingHostedDedicatedServerRouting,
   NativeNetworkingIdentity,
   NativeNetworkingIdentityInfo,
   NativeNetworkingIpAddress,
@@ -584,6 +587,29 @@ export interface NetworkingFakeIpResult {
 export interface NetworkingRemoteFakeIpResult {
   result: number;
   address: NetworkingIpAddressInfo | null;
+}
+
+export interface NetworkingHostedDedicatedServerRouting {
+  popId: number;
+  size: number;
+  data: Buffer;
+}
+
+export interface NetworkingHostedDedicatedServerAddressResult {
+  result: number;
+  routing: NetworkingHostedDedicatedServerRouting | null;
+  debugMessage: string;
+}
+
+export interface NetworkingGameCoordinatorServerLoginResult {
+  result: number;
+  identity: NetworkingIdentityInfo | null;
+  routing: NetworkingHostedDedicatedServerRouting | null;
+  appId: number;
+  timestamp: number;
+  appData: Buffer;
+  signedBlob: Buffer;
+  debugMessage: string;
 }
 
 export interface NetworkingCertificateResult {
@@ -3100,8 +3126,24 @@ export const networking = {
     getHostedDedicatedServerPopId(): number {
       return native().networkingSocketsGetHostedDedicatedServerPopId();
     },
+    getHostedDedicatedServerAddress(): NetworkingHostedDedicatedServerAddressResult {
+      return normalizeNetworkingHostedDedicatedServerAddressResult(
+        native().networkingSocketsGetHostedDedicatedServerAddress()
+      );
+    },
     createHostedDedicatedServerListenSocket(localVirtualPort = 0): number {
       return native().networkingSocketsCreateHostedDedicatedServerListenSocket(localVirtualPort);
+    },
+    getGameCoordinatorServerLogin(
+      appData?: Buffer | Uint8Array | null,
+      maxBlobBytes?: number | null
+    ): NetworkingGameCoordinatorServerLoginResult {
+      return normalizeNetworkingGameCoordinatorServerLoginResult(
+        native().networkingSocketsGetGameCoordinatorServerLogin(
+          appData ? Buffer.from(appData) : undefined,
+          maxBlobBytes ?? undefined
+        )
+      );
     },
     getCertificateRequest(maxBytes?: number | null): NetworkingCertificateResult {
       return normalizeNetworkingCertificateResult(native().networkingSocketsGetCertificateRequest(maxBytes ?? undefined));
@@ -5120,6 +5162,47 @@ function normalizeNetworkingRemoteFakeIpResult(result: NativeNetworkingRemoteFak
   return {
     result: Number(result.result ?? 0),
     address: normalizeNetworkingIpAddressInfo(result.address)
+  };
+}
+
+function normalizeNetworkingHostedDedicatedServerRouting(
+  routing: NativeNetworkingHostedDedicatedServerRouting | null | undefined
+): NetworkingHostedDedicatedServerRouting | null {
+  if (!routing) {
+    return null;
+  }
+  const source = routing as unknown as Record<string, unknown>;
+  return {
+    popId: Number(source.popId ?? source.pop_id ?? 0),
+    size: Number(source.size ?? 0),
+    data: routing.data
+  };
+}
+
+function normalizeNetworkingHostedDedicatedServerAddressResult(
+  result: NativeNetworkingHostedDedicatedServerAddressResult
+): NetworkingHostedDedicatedServerAddressResult {
+  const source = result as unknown as Record<string, unknown>;
+  return {
+    result: Number(result.result ?? 0),
+    routing: normalizeNetworkingHostedDedicatedServerRouting(result.routing),
+    debugMessage: String(source.debugMessage ?? source.debug_message ?? "")
+  };
+}
+
+function normalizeNetworkingGameCoordinatorServerLoginResult(
+  result: NativeNetworkingGameCoordinatorServerLoginResult
+): NetworkingGameCoordinatorServerLoginResult {
+  const source = result as unknown as Record<string, unknown>;
+  return {
+    result: Number(result.result ?? 0),
+    identity: normalizeNetworkingIdentityInfo(result.identity),
+    routing: normalizeNetworkingHostedDedicatedServerRouting(result.routing),
+    appId: Number(source.appId ?? source.app_id ?? 0),
+    timestamp: Number(result.timestamp ?? 0),
+    appData: ((source.appData ?? source.app_data) as Buffer | undefined) ?? Buffer.alloc(0),
+    signedBlob: ((source.signedBlob ?? source.signed_blob) as Buffer | undefined) ?? Buffer.alloc(0),
+    debugMessage: String(source.debugMessage ?? source.debug_message ?? "")
   };
 }
 
