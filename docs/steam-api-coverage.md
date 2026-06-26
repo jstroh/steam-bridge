@@ -195,8 +195,9 @@ covered.
   ticket helpers, license and group status checks, public IP reads,
   game-socket-share packet helpers, unauthenticated/deprecated user connection
   helpers, user data updates, server reputation, clan association and new-player
-  compatibility call results, core game-server callbacks, game-server stats
-  request/read/write/store helpers, and game-server HTTP, inventory, UGC,
+  compatibility call results, typed core game-server callback helpers,
+  game-server stats request/read/write/store helpers and callback helpers, and
+  game-server HTTP, inventory, UGC,
   legacy networking, networking messages, and networking sockets shared
   interfaces.
 
@@ -209,10 +210,11 @@ covered.
 - Additional specialized callback/event helpers outside the current lifecycle,
   apps, user/auth, Friends, Matchmaking/lobbies, Parties, Inventory,
   Steam Input, networking, Remote Storage, HTTP, HTML, screenshots, music,
-  video, parental settings, timeline, and Remote Play callback-helper batches,
-  for interfaces where a dedicated `on...` helper would be clearer than the
-  generic name-based subscription API. Generated callback constants and generic
-  name subscriptions are covered by the automated coverage audit.
+  video, parental settings, timeline, Remote Play, and Game Server
+  callback-helper batches, for interfaces where a dedicated `on...` helper would
+  be clearer than the generic name-based subscription API. Generated callback
+  constants and generic name subscriptions are covered by the automated coverage
+  audit.
 - `ISteamPS3OverlayRenderHost` and `ISteamPS3OverlayRender` are PlayStation 3
   overlay interfaces and are outside Steam Bridge's supported Steam desktop
   targets.

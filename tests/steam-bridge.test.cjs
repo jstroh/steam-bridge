@@ -2331,6 +2331,193 @@ test("game server stats facade covers user stat and achievement helpers", async 
   );
 });
 
+test("game server facades expose typed callback helpers", (t) => {
+  const fake = createFakeNative();
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  const events = {};
+  const handles = [
+    steam.gameServer.onServersConnected((event) => {
+      events.connected = event;
+    }),
+    steam.gameServer.onServerConnectFailure((event) => {
+      events.connectFailure = event;
+    }),
+    steam.gameServer.onServersDisconnected((event) => {
+      events.disconnected = event;
+    }),
+    steam.gameServer.onClientApprove((event) => {
+      events.approve = event;
+    }),
+    steam.gameServer.onClientDeny((event) => {
+      events.deny = event;
+    }),
+    steam.gameServer.onClientKick((event) => {
+      events.kick = event;
+    }),
+    steam.gameServer.onClientAchievementStatus((event) => {
+      events.achievementStatus = event;
+    }),
+    steam.gameServer.onPolicyResponse((event) => {
+      events.policy = event;
+    }),
+    steam.gameServer.onGameplayStats((event) => {
+      events.gameplayStats = event;
+    }),
+    steam.gameServer.onClientGroupStatus((event) => {
+      events.groupStatus = event;
+    }),
+    steam.gameServer.onReputation((event) => {
+      events.reputation = event;
+    }),
+    steam.gameServer.onAssociateWithClan((event) => {
+      events.associateWithClan = event;
+    }),
+    steam.gameServer.onPlayerCompatibility((event) => {
+      events.playerCompatibility = event;
+    }),
+    steam.gameServer.stats.onUserStatsReceived((event) => {
+      events.statsReceived = event;
+    }),
+    steam.gameServer.stats.onUserStatsStored((event) => {
+      events.statsStored = event;
+    }),
+    steam.gameServer.stats.onUserStatsUnloaded((event) => {
+      events.statsUnloaded = event;
+    })
+  ];
+
+  fake.callbacks.get(steam.SteamCallback.SteamServersConnectedSteamworks)({});
+  fake.callbacks.get(steam.SteamCallback.SteamServerConnectFailureSteamworks)({
+    reason: 3,
+    still_retrying: true
+  });
+  fake.callbacks.get(steam.SteamCallback.SteamServersDisconnectedSteamworks)({ reason: 2 });
+  fake.callbacks.get(steam.SteamCallback.GameServerClientApprove)({
+    steam_id: "76561198000000020",
+    owner_steam_id: "76561198000000021"
+  });
+  fake.callbacks.get(steam.SteamCallback.GameServerClientDeny)({
+    steam_id: "76561198000000022",
+    deny_reason: 4,
+    optional_text: "bad auth"
+  });
+  fake.callbacks.get(steam.SteamCallback.GameServerClientKick)({
+    steam_id: "76561198000000023",
+    deny_reason: 5
+  });
+  fake.callbacks.get(steam.SteamCallback.GameServerClientAchievementStatus)({
+    steam_id: "76561198000000024",
+    achievement: "ACH_WIN_ONE",
+    unlocked: true
+  });
+  fake.callbacks.get(steam.SteamCallback.GameServerPolicyResponse)({ secure: true });
+  fake.callbacks.get(steam.SteamCallback.GameServerGameplayStats)({
+    result: 1,
+    rank: 7,
+    total_connects: 120,
+    total_minutes_played: 4800
+  });
+  fake.callbacks.get(steam.SteamCallback.GameServerClientGroupStatus)({
+    steam_id: "76561198000000025",
+    group_id: "103582791429521412",
+    member: true,
+    officer: false
+  });
+  fake.callbacks.get(steam.SteamCallback.GameServerReputation)({
+    result: 1,
+    reputation_score: 900,
+    banned: true,
+    banned_ip: 2130706433,
+    banned_ip_address: "127.0.0.1",
+    banned_port: 27015,
+    banned_game_id: "480",
+    ban_expires: 1234567890
+  });
+  fake.callbacks.get(steam.SteamCallback.GameServerAssociateWithClan)({ result: 1 });
+  fake.callbacks.get(steam.SteamCallback.GameServerPlayerCompatibility)({
+    result: 1,
+    players_that_dont_like_candidate: 2,
+    players_that_candidate_doesnt_like: 3,
+    clan_players_that_dont_like_candidate: 4,
+    candidate_steam_id: "76561198000000026"
+  });
+  fake.callbacks.get(steam.SteamCallback.GameServerStatsReceived)({
+    result: 1,
+    steam_id: "76561198000000027"
+  });
+  fake.callbacks.get(steam.SteamCallback.GameServerStatsStored)({
+    result: 1,
+    steam_id: "76561198000000028"
+  });
+  fake.callbacks.get(steam.SteamCallback.GameServerStatsUnloaded)({
+    steam_id: "76561198000000029"
+  });
+
+  assert.deepEqual(events.connected, {});
+  assert.equal(events.connectFailure.reason, 3);
+  assert.equal(events.connectFailure.stillRetrying, true);
+  assert.equal(events.disconnected.reason, 2);
+  assert.equal(events.approve.steamId, 76561198000000020n);
+  assert.equal(events.approve.ownerSteamId, 76561198000000021n);
+  assert.equal(events.deny.steamId, 76561198000000022n);
+  assert.equal(events.deny.denyReason, 4);
+  assert.equal(events.deny.optionalText, "bad auth");
+  assert.equal(events.kick.steamId, 76561198000000023n);
+  assert.equal(events.kick.denyReason, 5);
+  assert.equal(events.achievementStatus.steamId, 76561198000000024n);
+  assert.equal(events.achievementStatus.achievement, "ACH_WIN_ONE");
+  assert.equal(events.achievementStatus.unlocked, true);
+  assert.equal(events.policy.secure, true);
+  assert.equal(events.gameplayStats.rank, 7);
+  assert.equal(events.gameplayStats.totalConnects, 120);
+  assert.equal(events.gameplayStats.totalMinutesPlayed, 4800);
+  assert.equal(events.groupStatus.steamId, 76561198000000025n);
+  assert.equal(events.groupStatus.groupId, 103582791429521412n);
+  assert.equal(events.groupStatus.member, true);
+  assert.equal(events.reputation.reputationScore, 900);
+  assert.equal(events.reputation.bannedGameId, 480n);
+  assert.equal(events.associateWithClan.result, 1);
+  assert.equal(events.playerCompatibility.candidateSteamId, 76561198000000026n);
+  assert.equal(events.playerCompatibility.playersThatDontLikeCandidate, 2);
+  assert.equal(events.statsReceived.steamId, 76561198000000027n);
+  assert.equal(events.statsStored.steamId, 76561198000000028n);
+  assert.equal(events.statsUnloaded.steamId, 76561198000000029n);
+
+  for (const handle of handles) {
+    handle.disconnect();
+  }
+
+  const callbackIds = [
+    steam.SteamCallback.SteamServersConnectedSteamworks,
+    steam.SteamCallback.SteamServerConnectFailureSteamworks,
+    steam.SteamCallback.SteamServersDisconnectedSteamworks,
+    steam.SteamCallback.GameServerClientApprove,
+    steam.SteamCallback.GameServerClientDeny,
+    steam.SteamCallback.GameServerClientKick,
+    steam.SteamCallback.GameServerClientAchievementStatus,
+    steam.SteamCallback.GameServerPolicyResponse,
+    steam.SteamCallback.GameServerGameplayStats,
+    steam.SteamCallback.GameServerClientGroupStatus,
+    steam.SteamCallback.GameServerReputation,
+    steam.SteamCallback.GameServerAssociateWithClan,
+    steam.SteamCallback.GameServerPlayerCompatibility,
+    steam.SteamCallback.GameServerStatsReceived,
+    steam.SteamCallback.GameServerStatsStored,
+    steam.SteamCallback.GameServerStatsUnloaded
+  ];
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "registerSteamCallback"),
+    callbackIds.map((callbackId) => ({ method: "registerSteamCallback", args: [callbackId] }))
+  );
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "disconnectCallback"),
+    callbackIds.map((callbackId) => ({ method: "disconnectCallback", args: [callbackId] }))
+  );
+});
+
 test("utils facade covers activity, images, VR, filtering, and text input helpers", async (t) => {
   const imageData = Buffer.from([255, 0, 0, 255, 0, 255, 0, 255]);
   const fake = createFakeNative({

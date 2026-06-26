@@ -283,6 +283,132 @@ export interface GameServerPlayerCompatibilityResult {
   candidate: SteamId;
 }
 
+export interface GameServerServersConnectedEvent {
+  [key: string]: unknown;
+}
+
+export interface GameServerConnectFailureEvent {
+  reason: number;
+  stillRetrying: boolean;
+  still_retrying?: boolean;
+  [key: string]: unknown;
+}
+
+export interface GameServerServersDisconnectedEvent {
+  reason: number;
+  [key: string]: unknown;
+}
+
+export interface GameServerClientApproveEvent {
+  steamId: bigint;
+  steam_id?: bigint;
+  ownerSteamId: bigint;
+  owner_steam_id?: bigint;
+  [key: string]: unknown;
+}
+
+export interface GameServerClientDenyEvent {
+  steamId: bigint;
+  steam_id?: bigint;
+  denyReason: number;
+  deny_reason?: number;
+  optionalText: string;
+  optional_text?: string;
+  [key: string]: unknown;
+}
+
+export interface GameServerClientKickEvent {
+  steamId: bigint;
+  steam_id?: bigint;
+  denyReason: number;
+  deny_reason?: number;
+  [key: string]: unknown;
+}
+
+export interface GameServerClientAchievementStatusEvent {
+  steamId: bigint;
+  steam_id?: bigint;
+  achievement: string;
+  unlocked: boolean;
+  [key: string]: unknown;
+}
+
+export interface GameServerPolicyResponseEvent {
+  secure: boolean;
+  [key: string]: unknown;
+}
+
+export interface GameServerGameplayStatsEvent {
+  result: number;
+  rank: number;
+  totalConnects: number;
+  total_connects?: number;
+  totalMinutesPlayed: number;
+  total_minutes_played?: number;
+  [key: string]: unknown;
+}
+
+export interface GameServerClientGroupStatusEvent {
+  steamId: bigint;
+  steam_id?: bigint;
+  groupId: bigint;
+  group_id?: bigint;
+  member: boolean;
+  officer: boolean;
+  [key: string]: unknown;
+}
+
+export interface GameServerReputationEvent {
+  result: number;
+  reputationScore: number;
+  reputation_score?: number;
+  banned: boolean;
+  bannedIp: number;
+  banned_ip?: number;
+  bannedIpAddress: string;
+  banned_ip_address?: string;
+  bannedPort: number;
+  banned_port?: number;
+  bannedGameId: bigint;
+  banned_game_id?: bigint;
+  banExpires: number;
+  ban_expires?: number;
+  [key: string]: unknown;
+}
+
+export interface GameServerAssociateWithClanEvent {
+  result: number;
+  [key: string]: unknown;
+}
+
+export interface GameServerPlayerCompatibilityEvent {
+  result: number;
+  playersThatDontLikeCandidate: number;
+  players_that_dont_like_candidate?: number;
+  playersThatCandidateDoesntLike: number;
+  players_that_candidate_doesnt_like?: number;
+  clanPlayersThatDontLikeCandidate: number;
+  clan_players_that_dont_like_candidate?: number;
+  candidateSteamId: bigint;
+  candidate_steam_id?: bigint;
+  [key: string]: unknown;
+}
+
+export interface GameServerStatsReceivedEvent {
+  result: number;
+  steamId: bigint;
+  steam_id?: bigint;
+  [key: string]: unknown;
+}
+
+export interface GameServerStatsStoredEvent extends GameServerStatsReceivedEvent {}
+
+export interface GameServerStatsUnloadedEvent {
+  steamId: bigint;
+  steam_id?: bigint;
+  [key: string]: unknown;
+}
+
 export interface CallbackHandle {
   disconnect(): void;
 }
@@ -6795,6 +6921,21 @@ export const user = {
 };
 
 export const gameServerStats = {
+  onUserStatsReceived(handler: (event: GameServerStatsReceivedEvent) => void): CallbackHandle {
+    return onSteamCallback("GameServerStatsReceived", (event) => {
+      handler(event as GameServerStatsReceivedEvent);
+    });
+  },
+  onUserStatsStored(handler: (event: GameServerStatsStoredEvent) => void): CallbackHandle {
+    return onSteamCallback("GameServerStatsStored", (event) => {
+      handler(event as GameServerStatsStoredEvent);
+    });
+  },
+  onUserStatsUnloaded(handler: (event: GameServerStatsUnloadedEvent) => void): CallbackHandle {
+    return onSteamCallback("GameServerStatsUnloaded", (event) => {
+      handler(event as GameServerStatsUnloadedEvent);
+    });
+  },
   async requestUserStats(steamId64: bigint): Promise<GameServerStatsResult> {
     return normalizeGameServerStatsResult(await native().gameServerStatsRequestUserStats(steamId64));
   },
@@ -6832,6 +6973,71 @@ export const gameServer = {
   BeginAuthSessionResult,
   UserHasLicenseForAppResult,
   stats: gameServerStats,
+  onServersConnected(handler: (event: GameServerServersConnectedEvent) => void): CallbackHandle {
+    return onSteamCallback("SteamServersConnectedSteamworks", (event) => {
+      handler(event as GameServerServersConnectedEvent);
+    });
+  },
+  onServerConnectFailure(handler: (event: GameServerConnectFailureEvent) => void): CallbackHandle {
+    return onSteamCallback("SteamServerConnectFailureSteamworks", (event) => {
+      handler(event as GameServerConnectFailureEvent);
+    });
+  },
+  onServersDisconnected(handler: (event: GameServerServersDisconnectedEvent) => void): CallbackHandle {
+    return onSteamCallback("SteamServersDisconnectedSteamworks", (event) => {
+      handler(event as GameServerServersDisconnectedEvent);
+    });
+  },
+  onClientApprove(handler: (event: GameServerClientApproveEvent) => void): CallbackHandle {
+    return onSteamCallback("GameServerClientApprove", (event) => {
+      handler(event as GameServerClientApproveEvent);
+    });
+  },
+  onClientDeny(handler: (event: GameServerClientDenyEvent) => void): CallbackHandle {
+    return onSteamCallback("GameServerClientDeny", (event) => {
+      handler(event as GameServerClientDenyEvent);
+    });
+  },
+  onClientKick(handler: (event: GameServerClientKickEvent) => void): CallbackHandle {
+    return onSteamCallback("GameServerClientKick", (event) => {
+      handler(event as GameServerClientKickEvent);
+    });
+  },
+  onClientAchievementStatus(handler: (event: GameServerClientAchievementStatusEvent) => void): CallbackHandle {
+    return onSteamCallback("GameServerClientAchievementStatus", (event) => {
+      handler(event as GameServerClientAchievementStatusEvent);
+    });
+  },
+  onPolicyResponse(handler: (event: GameServerPolicyResponseEvent) => void): CallbackHandle {
+    return onSteamCallback("GameServerPolicyResponse", (event) => {
+      handler(event as GameServerPolicyResponseEvent);
+    });
+  },
+  onGameplayStats(handler: (event: GameServerGameplayStatsEvent) => void): CallbackHandle {
+    return onSteamCallback("GameServerGameplayStats", (event) => {
+      handler(event as GameServerGameplayStatsEvent);
+    });
+  },
+  onClientGroupStatus(handler: (event: GameServerClientGroupStatusEvent) => void): CallbackHandle {
+    return onSteamCallback("GameServerClientGroupStatus", (event) => {
+      handler(event as GameServerClientGroupStatusEvent);
+    });
+  },
+  onReputation(handler: (event: GameServerReputationEvent) => void): CallbackHandle {
+    return onSteamCallback("GameServerReputation", (event) => {
+      handler(event as GameServerReputationEvent);
+    });
+  },
+  onAssociateWithClan(handler: (event: GameServerAssociateWithClanEvent) => void): CallbackHandle {
+    return onSteamCallback("GameServerAssociateWithClan", (event) => {
+      handler(event as GameServerAssociateWithClanEvent);
+    });
+  },
+  onPlayerCompatibility(handler: (event: GameServerPlayerCompatibilityEvent) => void): CallbackHandle {
+    return onSteamCallback("GameServerPlayerCompatibility", (event) => {
+      handler(event as GameServerPlayerCompatibilityEvent);
+    });
+  },
   init(options: GameServerInitOptions): void {
     const nativeOptions: NativeGameServerInitOptions = {
       ip: options.ip,
