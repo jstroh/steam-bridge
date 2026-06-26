@@ -5,8 +5,12 @@ const steamworks = require("steam-bridge");
 
 const APP_ID = Number(process.env.STEAM_BRIDGE_APP_ID || "480");
 const AUTH_IDENTITY = process.env.STEAM_BRIDGE_AUTH_IDENTITY || "steam-bridge-electron-smoke";
-const OVERLAY_PROFILE = process.env.STEAM_BRIDGE_ELECTRON_OVERLAY_PROFILE || "compatibility";
+const OVERLAY_PROFILE = process.env.STEAM_BRIDGE_ELECTRON_OVERLAY_PROFILE || "diagnostic";
 const STORE_URL = `https://store.steampowered.com/app/${APP_ID}/`;
+const AUTORUN = process.env.STEAM_BRIDGE_SMOKE_AUTORUN === "1";
+const AUTORUN_ACTION = process.env.STEAM_BRIDGE_SMOKE_AUTORUN_ACTION || "dialog";
+const AUTORUN_ACTION_DELAY_MS = Number(process.env.STEAM_BRIDGE_SMOKE_AUTORUN_ACTION_DELAY_MS || "1500");
+const AUTORUN_RESULT_DELAY_MS = Number(process.env.STEAM_BRIDGE_SMOKE_AUTORUN_RESULT_DELAY_MS || "5000");
 
 steamworks.electronConfigureSteamOverlay({ profile: OVERLAY_PROFILE });
 writeSteamAppIdFiles(APP_ID);
@@ -14,6 +18,7 @@ writeSteamAppIdFiles(APP_ID);
 let client;
 let initError;
 let inputInitialized = false;
+let shutdownComplete = false;
 const callbackHandles = [];
 const eventLog = [];
 
@@ -44,6 +49,9 @@ app.whenReady().then(() => {
   }
 
   createWindow();
+  if (AUTORUN) {
+    runAutorunSmoke();
+  }
 });
 
 ipcMain.handle("steam-smoke:snapshot", () => snapshot());
@@ -57,44 +65,26 @@ ipcMain.handle("steam-smoke:auth-ticket", async () => {
     prefixHex: bytes.subarray(0, 12).toString("hex")
   });
 });
-ipcMain.handle("steam-smoke:overlay-store", () => {
-  const activeClient = requireClient();
-  activeClient.overlay.activateToStore(APP_ID, activeClient.overlay.StoreFlag.None);
-  recordEvent("overlay:store", { appId: APP_ID });
-  return snapshot();
-});
-ipcMain.handle("steam-smoke:overlay-web", () => {
-  const activeClient = requireClient();
-  activeClient.overlay.activateToWebPage(STORE_URL, { modal: false });
-  recordEvent("overlay:web", { url: STORE_URL });
-  return snapshot();
-});
-ipcMain.handle("steam-smoke:overlay-dialog", () => {
-  const activeClient = requireClient();
-  activeClient.overlay.activateDialog("Friends");
-  recordEvent("overlay:dialog", { dialog: "Friends" });
-  return snapshot();
-});
-ipcMain.handle("steam-smoke:native-probe-open", () => {
-  const activeClient = requireClient();
-  activeClient.overlay.openNativeOverlayProbeWindow("Steam Bridge Native Overlay Probe");
-  activeClient.overlay.pumpNativeOverlayProbeWindow();
-  recordEvent("overlay:native-probe-open", {});
-  return snapshot();
-});
-ipcMain.handle("steam-smoke:native-probe-pump", () => {
-  const activeClient = requireClient();
-  activeClient.overlay.pumpNativeOverlayProbeWindow();
-  return snapshot();
-});
-ipcMain.handle("steam-smoke:native-probe-close", () => {
-  const activeClient = requireClient();
-  activeClient.overlay.closeNativeOverlayProbeWindow();
-  recordEvent("overlay:native-probe-close", {});
-  return snapshot();
-});
+ipcMain.handle("steam-smoke:overlay-store", () => openStoreOverlay());
+ipcMain.handle("steam-smoke:overlay-web", () => openWebOverlay());
+ipcMain.handle("steam-smoke:overlay-dialog", () => openDialogOverlay());
+ipcMain.handle("steam-smoke:native-probe-open", () => openNativeProbe());
+ipcMain.handle("steam-smoke:native-probe-pump", () => pumpNativeProbe());
+ipcMain.handle("steam-smoke:native-probe-close", () => closeNativeProbe());
 
 app.on("window-all-closed", () => {
+  app.quit();
+});
+app.on("will-quit", () => {
+  shutdownSteam();
+});
+
+function shutdownSteam() {
+  if (shutdownComplete) {
+    return;
+  }
+  shutdownComplete = true;
+
   for (const handle of callbackHandles.splice(0)) {
     try {
       handle.disconnect();
@@ -107,10 +97,10 @@ app.on("window-all-closed", () => {
     if (client) {
       steamworks.shutdown();
     }
-  } finally {
-    app.quit();
+  } catch {
+    // Best-effort shutdown for an example app.
   }
-});
+}
 
 function registerSteamCallbacks() {
   callbackHandles.push(
@@ -134,6 +124,97 @@ function registerSteamCallbacks() {
   }
 }
 
+async function runAutorunSmoke() {
+  recordEvent("autorun:start", {
+    action: AUTORUN_ACTION,
+    actionDelayMs: AUTORUN_ACTION_DELAY_MS,
+    resultDelayMs: AUTORUN_RESULT_DELAY_MS
+  });
+
+  await delay(AUTORUN_ACTION_DELAY_MS);
+  const actionResult = runAutorunAction(AUTORUN_ACTION);
+  await delay(AUTORUN_RESULT_DELAY_MS);
+
+  const result = sanitize({
+    ok: Boolean(client) && !actionResult.error,
+    action: actionResult,
+    snapshot: snapshot()
+  });
+  const line = `STEAM_BRIDGE_SMOKE_RESULT ${JSON.stringify(result)}\n`;
+  process.stdout.write(line, () => process.exit(0));
+}
+
+function runAutorunAction(action) {
+  try {
+    switch (action) {
+      case "none":
+        recordEvent("autorun:action", { action });
+        return { ok: true, action };
+      case "store":
+        openStoreOverlay();
+        return { ok: true, action };
+      case "web":
+        openWebOverlay();
+        return { ok: true, action };
+      case "dialog":
+      case "friends":
+        openDialogOverlay();
+        return { ok: true, action };
+      case "native-probe":
+        openNativeProbe();
+        return { ok: true, action };
+      default:
+        throw new Error(`Unsupported autorun action: ${action}`);
+    }
+  } catch (error) {
+    const serialized = serializeError(error);
+    recordEvent("autorun:action:error", { action, error: serialized });
+    return { ok: false, action, error: serialized };
+  }
+}
+
+function openStoreOverlay() {
+  const activeClient = requireClient();
+  activeClient.overlay.activateToStore(APP_ID, activeClient.overlay.StoreFlag.None);
+  recordEvent("overlay:store", { appId: APP_ID });
+  return snapshot();
+}
+
+function openWebOverlay() {
+  const activeClient = requireClient();
+  activeClient.overlay.activateToWebPage(STORE_URL, { modal: false });
+  recordEvent("overlay:web", { url: STORE_URL });
+  return snapshot();
+}
+
+function openDialogOverlay() {
+  const activeClient = requireClient();
+  activeClient.overlay.activateDialog("Friends");
+  recordEvent("overlay:dialog", { dialog: "Friends" });
+  return snapshot();
+}
+
+function openNativeProbe() {
+  const activeClient = requireClient();
+  activeClient.overlay.openNativeOverlayProbeWindow("Steam Bridge Native Overlay Probe");
+  activeClient.overlay.pumpNativeOverlayProbeWindow();
+  recordEvent("overlay:native-probe-open", {});
+  return snapshot();
+}
+
+function pumpNativeProbe() {
+  const activeClient = requireClient();
+  activeClient.overlay.pumpNativeOverlayProbeWindow();
+  return snapshot();
+}
+
+function closeNativeProbe() {
+  const activeClient = requireClient();
+  activeClient.overlay.closeNativeOverlayProbeWindow();
+  recordEvent("overlay:native-probe-close", {});
+  return snapshot();
+}
+
 function snapshot() {
   const base = {
     app: {
@@ -141,6 +222,8 @@ function snapshot() {
       appName: "Steam Bridge Electron Smoke",
       authIdentity: AUTH_IDENTITY,
       overlayProfile: OVERLAY_PROFILE,
+      autorun: AUTORUN,
+      autorunAction: AUTORUN_ACTION,
       storeUrl: STORE_URL,
       isPackaged: app.isPackaged
     },
@@ -212,7 +295,7 @@ function snapshot() {
         controllerCount: controllers.length,
         controllers: controllers.map((controller) => ({
           handle: controller.getHandle(),
-          inputType: controller.getInputType()
+          inputType: controller.getType()
         }))
       };
     }),
@@ -237,6 +320,12 @@ function requireClient() {
   }
 
   return client;
+}
+
+function delay(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
 }
 
 function recordEvent(type, payload) {

@@ -15,6 +15,7 @@
     "example:package:mac": "npm run package:mac -w steam-bridge-electron-example --",
     "example:package:win": "npm run package:win -w steam-bridge-electron-example --",
     "example:start": "npm start -w steam-bridge-electron-example",
+    "example:verify-result": "node scripts/verify-electron-smoke-result.cjs",
     "package:smoke": "node scripts/smoke-package.cjs",
     "release:assemble": "node scripts/assemble-release-artifacts.cjs",
     "release:verify": "node scripts/verify-release-artifacts.cjs",

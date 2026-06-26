@@ -1,0 +1,127 @@
+const fs = require("node:fs");
+
+const RESULT_PREFIX = "STEAM_BRIDGE_SMOKE_RESULT ";
+const options = parseArgs(process.argv.slice(2));
+const input = options.file ? fs.readFileSync(options.file, "utf8") : fs.readFileSync(0, "utf8");
+const result = readResult(input);
+const snapshot = result.snapshot || {};
+const steam = snapshot.steam || {};
+const app = snapshot.app || {};
+const processInfo = snapshot.process || {};
+const failures = [];
+
+expect(result.ok === true, "smoke result ok");
+expect(steam.initialized === true, "Steam initialized");
+expect(readOkValue(steam.running) === true, "Steam running");
+expect(readOkValue(steam.appId) === app.appId, "Steam App ID matches app config");
+
+if (options.appId != null) {
+  expect(app.appId === options.appId, `app ID is ${options.appId}`);
+}
+if (options.platform) {
+  expect(processInfo.platform === options.platform, `platform is ${options.platform}`);
+}
+if (options.arch) {
+  expect(processInfo.arch === options.arch, `arch is ${options.arch}`);
+}
+if (options.requireSteamDeck) {
+  expect(readOkValue(steam.steamDeck) === true, "Steam Deck detected");
+}
+if (options.requireBigPicture) {
+  expect(readOkValue(steam.bigPicture) === true, "Big Picture/Game Mode detected");
+}
+if (options.requireOverlayEnabled) {
+  expect(readOkValue(steam.overlayEnabled) === true, "overlay enabled");
+}
+if (options.requireOverlayReady) {
+  expect(readOkValue(steam.overlayEnabled) === true, "overlay enabled");
+  expect(readOkValue(steam.overlayNeedsPresent) === false, "overlay does not need present");
+}
+
+if (failures.length > 0) {
+  for (const failure of failures) {
+    console.error(`Smoke result failed: ${failure}`);
+  }
+  process.exit(1);
+}
+
+console.log(
+  [
+    "Electron smoke result verified",
+    `appId=${app.appId}`,
+    `platform=${processInfo.platform}/${processInfo.arch}`,
+    `steamDeck=${readOkValue(steam.steamDeck)}`,
+    `bigPicture=${readOkValue(steam.bigPicture)}`,
+    `overlayEnabled=${readOkValue(steam.overlayEnabled)}`,
+    `overlayNeedsPresent=${readOkValue(steam.overlayNeedsPresent)}`
+  ].join(" ")
+);
+
+function readResult(text) {
+  const line = text
+    .split(/\r?\n/)
+    .reverse()
+    .find((entry) => entry.startsWith(RESULT_PREFIX));
+  if (!line) {
+    throw new Error(`Missing ${RESULT_PREFIX.trim()} line.`);
+  }
+
+  return JSON.parse(line.slice(RESULT_PREFIX.length));
+}
+
+function readOkValue(entry) {
+  return entry && entry.ok === true ? entry.value : undefined;
+}
+
+function expect(condition, message) {
+  if (!condition) {
+    failures.push(message);
+  }
+}
+
+function parseArgs(args) {
+  const parsed = {
+    appId: undefined,
+    arch: undefined,
+    file: undefined,
+    platform: undefined,
+    requireBigPicture: false,
+    requireOverlayEnabled: false,
+    requireOverlayReady: false,
+    requireSteamDeck: false
+  };
+
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    switch (arg) {
+      case "--app-id":
+        parsed.appId = Number(args[++index]);
+        break;
+      case "--arch":
+        parsed.arch = args[++index];
+        break;
+      case "--file":
+        parsed.file = args[++index];
+        break;
+      case "--platform":
+        parsed.platform = args[++index];
+        break;
+      case "--require-big-picture":
+        parsed.requireBigPicture = true;
+        break;
+      case "--require-overlay-enabled":
+        parsed.requireOverlayEnabled = true;
+        break;
+      case "--require-overlay-ready":
+        parsed.requireOverlayReady = true;
+        break;
+      case "--require-steam-deck":
+        parsed.requireSteamDeck = true;
+        break;
+      default:
+        throw new Error(`Unknown option: ${arg}`);
+    }
+  }
+
+  return parsed;
+}
