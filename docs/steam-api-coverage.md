@@ -18,7 +18,8 @@ documented in headers but omitted from the generated flat bindings.
   connected universe, Steam UI language, image reads, battery/IPCCall counts,
   overlay notification placement, VR helpers, China launcher checks, text
   filtering, IPv6 connectivity checks, file signature checks, raw APICall
-  inspection, raw `CCallbackBase` registration bridges, gamepad text input
+  inspection, raw `CCallbackBase` registration bridges, generic Steamworks
+  callback ID aliases, gamepad text input
   helpers, warning hooks, IPC failure, license update, client/server-deny,
   game-web, and utility callback events.
 - Steam client: low-level Steam pipe/user creation and release helpers, global

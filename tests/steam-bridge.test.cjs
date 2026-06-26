@@ -2057,11 +2057,15 @@ test("specific and generic callbacks normalize Steamworks payloads", (t) => {
 
   t.after(clearSteamBridgeCache);
 
+  assert.equal(steam.SteamCallback.SteamServersConnectedSteamworks, 101);
+  assert.equal(steam.SteamCallback.SteamServerConnectFailureSteamworks, 102);
+  assert.equal(steam.SteamCallback.SteamServersDisconnectedSteamworks, 103);
   assert.equal(steam.SteamCallback.SteamAPICallCompleted, 703);
   assert.equal(steam.SteamCallback.ClientGameServerDeny, 113);
   assert.equal(steam.SteamCallback.IPCFailure, 117);
   assert.equal(steam.SteamCallback.LicensesUpdated, 125);
   assert.equal(steam.SteamCallback.ValidateAuthTicketResponse, 143);
+  assert.equal(steam.SteamCallback.MicroTxnAuthorizationResponseSteamworks, 152);
   assert.equal(steam.SteamCallback.EncryptedAppTicketResponse, 154);
   assert.equal(steam.SteamCallback.GetAuthSessionTicketResponse, 163);
   assert.equal(steam.SteamCallback.GameWebCallback, 164);
@@ -2069,6 +2073,7 @@ test("specific and generic callbacks normalize Steamworks payloads", (t) => {
   assert.equal(steam.SteamCallback.MarketEligibilityResponse, 166);
   assert.equal(steam.SteamCallback.DurationControl, 167);
   assert.equal(steam.SteamCallback.GetTicketForWebApiResponse, 168);
+  assert.equal(steam.SteamCallback.PersonaStateChangeSteamworks, 304);
   assert.equal(steam.SteamCallback.GameServerChangeRequested, 332);
   assert.equal(steam.SteamCallback.GameLobbyJoinRequestedSteamworks, 333);
   assert.equal(steam.SteamCallback.AvatarImageLoaded, 334);
@@ -2077,12 +2082,17 @@ test("specific and generic callbacks normalize Steamworks payloads", (t) => {
   assert.equal(steam.SteamCallback.OverlayBrowserProtocolNavigation, 349);
   assert.equal(steam.SteamCallback.EquippedProfileItems, 351);
   assert.equal(steam.SteamCallback.LobbyCreated, 513);
+  assert.equal(steam.SteamCallback.LobbyDataUpdateSteamworks, 505);
+  assert.equal(steam.SteamCallback.LobbyChatUpdateSteamworks, 506);
   assert.equal(steam.SteamCallback.FavoritesListAccountsUpdated, 516);
   assert.equal(steam.SteamCallback.GamepadTextInputDismissed, 714);
   assert.equal(steam.SteamCallback.DlcInstalled, 1005);
   assert.equal(steam.SteamCallback.AppProofOfPurchaseKeyResponse, 1021);
   assert.equal(steam.SteamCallback.FileDetailsResult, 1023);
   assert.equal(steam.SteamCallback.TimedTrialStatus, 1030);
+  assert.equal(steam.SteamCallback.SocketStatusCallback, 1201);
+  assert.equal(steam.SteamCallback.P2PSessionRequestSteamworks, 1202);
+  assert.equal(steam.SteamCallback.P2PSessionConnectFailSteamworks, 1203);
   assert.equal(steam.SteamCallback.RemoteStorageFileShareResult, 1307);
   assert.equal(steam.SteamCallback.RemoteStoragePublishFileResult, 1309);
   assert.equal(steam.SteamCallback.RemoteStorageDeletePublishedFileResult, 1311);
@@ -2187,6 +2197,56 @@ test("specific and generic callbacks normalize Steamworks payloads", (t) => {
   assert.equal(txnEvent.orderId, 9223372036854775807n);
   assert.equal(txnEvent.authorized, true);
 
+  let txnSteamworksEvent;
+  steam.callback.register(steam.SteamCallback.MicroTxnAuthorizationResponseSteamworks, (event) => {
+    txnSteamworksEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.MicroTxnAuthorizationResponseSteamworks)({
+    app_id: 480,
+    order_id: "9223372036854775808",
+    authorized: false
+  });
+
+  assert.equal(txnSteamworksEvent.appId, 480);
+  assert.equal(txnSteamworksEvent.orderId, 9223372036854775808n);
+  assert.equal(txnSteamworksEvent.authorized, false);
+
+  let personaEvent;
+  steam.callback.register(steam.SteamCallback.PersonaStateChangeSteamworks, (event) => {
+    personaEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.PersonaStateChangeSteamworks)({
+    steam_id: "76561198000000030",
+    flags: { bits: 2 }
+  });
+  assert.equal(personaEvent.steamId, 76561198000000030n);
+  assert.deepEqual(personaEvent.flags, { bits: 2 });
+
+  let serverFailureEvent;
+  steam.callback.register(steam.SteamCallback.SteamServerConnectFailureSteamworks, (event) => {
+    serverFailureEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.SteamServerConnectFailureSteamworks)({
+    reason: 3,
+    still_retrying: true
+  });
+  assert.equal(serverFailureEvent.reason, 3);
+  assert.equal(serverFailureEvent.stillRetrying, true);
+
+  let serverDisconnectedEvent;
+  steam.callback.register(steam.SteamCallback.SteamServersDisconnectedSteamworks, (event) => {
+    serverDisconnectedEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.SteamServersDisconnectedSteamworks)({ reason: 2 });
+  assert.equal(serverDisconnectedEvent.reason, 2);
+
+  let serverConnectedEvent;
+  steam.callback.register(steam.SteamCallback.SteamServersConnectedSteamworks, (event) => {
+    serverConnectedEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.SteamServersConnectedSteamworks)({});
+  assert.deepEqual(serverConnectedEvent, {});
+
   let lobbyEvent;
   steam.callback.register(steam.SteamCallback.LobbyDataUpdate, (event) => {
     lobbyEvent = event;
@@ -2202,6 +2262,33 @@ test("specific and generic callbacks normalize Steamworks payloads", (t) => {
   assert.equal(lobbyEvent.member, 76561198000000000n);
   assert.equal(lobbyEvent.remote, 42n);
   assert.equal(lobbyEvent.note, "kept");
+
+  let lobbySteamworksEvent;
+  steam.callback.register(steam.SteamCallback.LobbyDataUpdateSteamworks, (event) => {
+    lobbySteamworksEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.LobbyDataUpdateSteamworks)({
+    lobby: "109775242022617909",
+    member: "76561198000000031",
+    success: true
+  });
+  assert.equal(lobbySteamworksEvent.lobby, 109775242022617909n);
+  assert.equal(lobbySteamworksEvent.member, 76561198000000031n);
+  assert.equal(lobbySteamworksEvent.success, true);
+
+  let lobbyChatSteamworksEvent;
+  steam.callback.register(steam.SteamCallback.LobbyChatUpdateSteamworks, (event) => {
+    lobbyChatSteamworksEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.LobbyChatUpdateSteamworks)({
+    lobby: "109775242022617909",
+    user_changed: "76561198000000031",
+    making_change: "76561198000000032",
+    member_state_change: 4
+  });
+  assert.equal(lobbyChatSteamworksEvent.userChanged, 76561198000000031n);
+  assert.equal(lobbyChatSteamworksEvent.makingChange, 76561198000000032n);
+  assert.equal(lobbyChatSteamworksEvent.memberStateChange, 4);
 
   let lobbyCreatedEvent;
   steam.callback.register(steam.SteamCallback.LobbyCreated, (event) => {
@@ -2305,6 +2392,39 @@ test("specific and generic callbacks normalize Steamworks payloads", (t) => {
   assert.equal(webApiTicketEvent.authTicket, 88);
   assert.equal(webApiTicketEvent.ticketByteLength, 6);
   assert.equal(webApiTicketEvent.ticket.toString(), "ticket");
+
+  let socketStatusEvent;
+  steam.callback.register(steam.SteamCallback.SocketStatusCallback, (event) => {
+    socketStatusEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.SocketStatusCallback)({
+    socket: 103,
+    listen_socket: 101,
+    remote: "76561198000000033",
+    state: 3
+  });
+  assert.equal(socketStatusEvent.socket, 103);
+  assert.equal(socketStatusEvent.listenSocket, 101);
+  assert.equal(socketStatusEvent.remote, 76561198000000033n);
+  assert.equal(socketStatusEvent.state, 3);
+
+  let p2pRequestEvent;
+  steam.callback.register(steam.SteamCallback.P2PSessionRequestSteamworks, (event) => {
+    p2pRequestEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.P2PSessionRequestSteamworks)({ remote: "76561198000000034" });
+  assert.equal(p2pRequestEvent.remote, 76561198000000034n);
+
+  let p2pConnectFailEvent;
+  steam.callback.register(steam.SteamCallback.P2PSessionConnectFailSteamworks, (event) => {
+    p2pConnectFailEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.P2PSessionConnectFailSteamworks)({
+    remote: "76561198000000035",
+    error: 4
+  });
+  assert.equal(p2pConnectFailEvent.remote, 76561198000000035n);
+  assert.equal(p2pConnectFailEvent.error, 4);
 
   let localFileChangeEvent;
   steam.callback.register(steam.SteamCallback.RemoteStorageLocalFileChange, (event) => {

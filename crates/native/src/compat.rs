@@ -108,6 +108,7 @@ const CALLBACK_CLIENT_GAME_SERVER_DENY: i32 = 113;
 const CALLBACK_IPC_FAILURE: i32 = 117;
 const CALLBACK_LICENSES_UPDATED: i32 = 125;
 const CALLBACK_VALIDATE_AUTH_TICKET_RESPONSE: i32 = 143;
+const CALLBACK_MICRO_TXN_AUTHORIZATION_RESPONSE: i32 = 152;
 const CALLBACK_ENCRYPTED_APP_TICKET_RESPONSE: i32 = 154;
 const CALLBACK_GET_AUTH_SESSION_TICKET_RESPONSE: i32 = 163;
 const CALLBACK_GAME_WEB_CALLBACK: i32 = 164;
@@ -159,6 +160,7 @@ const CALLBACK_UNREAD_CHAT_MESSAGES_CHANGED: i32 = 348;
 const CALLBACK_OVERLAY_BROWSER_PROTOCOL_NAVIGATION: i32 = 349;
 const CALLBACK_EQUIPPED_PROFILE_ITEMS_CHANGED: i32 = 350;
 const CALLBACK_EQUIPPED_PROFILE_ITEMS: i32 = 351;
+const CALLBACK_SOCKET_STATUS: i32 = 1201;
 const CALLBACK_P2P_SESSION_REQUEST: i32 = 1202;
 const CALLBACK_P2P_SESSION_CONNECT_FAIL: i32 = 1203;
 const CALLBACK_STEAM_NET_CONNECTION_STATUS_CHANGED: i32 = 1221;
@@ -20356,11 +20358,22 @@ fn callback_id_from_compat(callback: i32) -> Result<i32, Error> {
         7 => Ok(CALLBACK_P2P_SESSION_CONNECT_FAIL),
         8 => Ok(CALLBACK_GAME_LOBBY_JOIN_REQUESTED),
         9 => Ok(sys::MicroTxnAuthorizationResponse_t_k_iCallback as i32),
+        CALLBACK_PERSONA_STATE_CHANGE => Ok(sys::PersonaStateChange_t_k_iCallback as i32),
+        CALLBACK_STEAM_SERVERS_CONNECTED => Ok(sys::SteamServersConnected_t_k_iCallback as i32),
+        CALLBACK_STEAM_SERVER_CONNECT_FAILURE => {
+            Ok(sys::SteamServerConnectFailure_t_k_iCallback as i32)
+        }
+        CALLBACK_STEAM_SERVERS_DISCONNECTED => {
+            Ok(sys::SteamServersDisconnected_t_k_iCallback as i32)
+        }
         CALLBACK_CLIENT_GAME_SERVER_DENY => Ok(sys::ClientGameServerDeny_t_k_iCallback as i32),
         CALLBACK_IPC_FAILURE => Ok(sys::IPCFailure_t_k_iCallback as i32),
         CALLBACK_LICENSES_UPDATED => Ok(sys::LicensesUpdated_t_k_iCallback as i32),
         CALLBACK_VALIDATE_AUTH_TICKET_RESPONSE => {
             Ok(sys::ValidateAuthTicketResponse_t_k_iCallback as i32)
+        }
+        CALLBACK_MICRO_TXN_AUTHORIZATION_RESPONSE => {
+            Ok(sys::MicroTxnAuthorizationResponse_t_k_iCallback as i32)
         }
         CALLBACK_ENCRYPTED_APP_TICKET_RESPONSE => {
             Ok(sys::EncryptedAppTicketResponse_t_k_iCallback as i32)
@@ -20454,6 +20467,9 @@ fn callback_id_from_compat(callback: i32) -> Result<i32, Error> {
         CALLBACK_OVERLAY_BROWSER_PROTOCOL_NAVIGATION => {
             Ok(sys::OverlayBrowserProtocolNavigation_t_k_iCallback as i32)
         }
+        CALLBACK_SOCKET_STATUS => Ok(sys::SocketStatusCallback_t_k_iCallback as i32),
+        CALLBACK_P2P_SESSION_REQUEST => Ok(sys::P2PSessionRequest_t_k_iCallback as i32),
+        CALLBACK_P2P_SESSION_CONNECT_FAIL => Ok(sys::P2PSessionConnectFail_t_k_iCallback as i32),
         CALLBACK_STEAM_NET_CONNECTION_STATUS_CHANGED => {
             Ok(sys::SteamNetConnectionStatusChangedCallback_t_k_iCallback as i32)
         }
@@ -20767,19 +20783,19 @@ fn callback_id_from_compat(callback: i32) -> Result<i32, Error> {
 
 unsafe fn callback_to_json(callback: i32, param: *mut c_void) -> Value {
     match callback {
-        0 => {
+        0 | CALLBACK_PERSONA_STATE_CHANGE => {
             let event = param as *const sys::PersonaStateChange_t;
             serde_json::json!({
                 "steam_id": ptr::addr_of!((*event).m_ulSteamID).read_unaligned().to_string(),
                 "flags": { "bits": ptr::addr_of!((*event).m_nChangeFlags).read_unaligned() }
             })
         }
-        1 => serde_json::json!({}),
-        2 => {
+        1 | CALLBACK_STEAM_SERVERS_CONNECTED => serde_json::json!({}),
+        2 | CALLBACK_STEAM_SERVERS_DISCONNECTED => {
             let event = param as *const sys::SteamServersDisconnected_t;
             serde_json::json!({ "reason": ptr::addr_of!((*event).m_eResult).read_unaligned() as u32 })
         }
-        3 => {
+        3 | CALLBACK_STEAM_SERVER_CONNECT_FAILURE => {
             let event = param as *const sys::SteamServerConnectFailure_t;
             serde_json::json!({
                 "reason": ptr::addr_of!((*event).m_eResult).read_unaligned() as u32,
@@ -21574,18 +21590,23 @@ unsafe fn callback_to_json(callback: i32, param: *mut c_void) -> Value {
                 "uri": c_buf_to_string(&*ptr::addr_of!((*event).rgchURI))
             })
         }
-        6 => {
+        CALLBACK_SOCKET_STATUS => {
+            let event = param as *const sys::SocketStatusCallback_t;
+            serde_json::json!({
+                "socket": ptr::addr_of!((*event).m_hSocket).read_unaligned(),
+                "listen_socket": ptr::addr_of!((*event).m_hListenSocket).read_unaligned(),
+                "remote": csteam_id_to_u64(ptr::addr_of!((*event).m_steamIDRemote).read_unaligned()).to_string(),
+                "state": ptr::addr_of!((*event).m_eSNetSocketState).read_unaligned()
+            })
+        }
+        6 | CALLBACK_P2P_SESSION_REQUEST => {
             let event = param as *const sys::P2PSessionRequest_t;
-            let remote = std::mem::transmute::<sys::CSteamID, u64>(
-                ptr::addr_of!((*event).m_steamIDRemote).read_unaligned(),
-            );
+            let remote = csteam_id_to_u64(ptr::addr_of!((*event).m_steamIDRemote).read_unaligned());
             serde_json::json!({ "remote": remote.to_string() })
         }
-        7 => {
+        7 | CALLBACK_P2P_SESSION_CONNECT_FAIL => {
             let event = param as *const sys::P2PSessionConnectFail_t;
-            let remote = std::mem::transmute::<sys::CSteamID, u64>(
-                ptr::addr_of!((*event).m_steamIDRemote).read_unaligned(),
-            );
+            let remote = csteam_id_to_u64(ptr::addr_of!((*event).m_steamIDRemote).read_unaligned());
             serde_json::json!({ "remote": remote.to_string(), "error": ptr::addr_of!((*event).m_eP2PSessionError).read_unaligned() })
         }
         CALLBACK_STEAM_NETWORKING_MESSAGES_SESSION_REQUEST => {
@@ -21862,7 +21883,7 @@ unsafe fn callback_to_json(callback: i32, param: *mut c_void) -> Value {
                 "result": ptr::addr_of!((*event).m_eResult).read_unaligned() as u32
             })
         }
-        9 => {
+        9 | CALLBACK_MICRO_TXN_AUTHORIZATION_RESPONSE => {
             let event = param as *const sys::MicroTxnAuthorizationResponse_t;
             serde_json::json!({
                 "app_id": ptr::addr_of!((*event).m_unAppID).read_unaligned(),

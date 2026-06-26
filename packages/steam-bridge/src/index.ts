@@ -1612,16 +1612,21 @@ export const SteamCallback = {
   SteamServersConnected: 1,
   SteamServersDisconnected: 2,
   SteamServerConnectFailure: 3,
+  SteamServersConnectedSteamworks: 101,
+  SteamServerConnectFailureSteamworks: 102,
+  SteamServersDisconnectedSteamworks: 103,
   ClientGameServerDeny: 113,
   IPCFailure: 117,
   LicensesUpdated: 125,
   ValidateAuthTicketResponse: 143,
+  MicroTxnAuthorizationResponseSteamworks: 152,
   LobbyDataUpdate: 4,
   LobbyChatUpdate: 5,
   P2PSessionRequest: 6,
   P2PSessionConnectFail: 7,
   GameLobbyJoinRequested: 8,
   MicroTxnAuthorizationResponse: 9,
+  PersonaStateChangeSteamworks: 304,
   EncryptedAppTicketResponse: 154,
   GetAuthSessionTicketResponse: 163,
   GameWebCallback: 164,
@@ -1652,6 +1657,8 @@ export const SteamCallback = {
   FavoritesListChanged: 502,
   LobbyInvite: 503,
   LobbyEnter: 504,
+  LobbyDataUpdateSteamworks: 505,
+  LobbyChatUpdateSteamworks: 506,
   LobbyChatMsg: 507,
   LobbyGameCreated: 509,
   LobbyMatchList: 510,
@@ -1672,6 +1679,9 @@ export const SteamCallback = {
   AppProofOfPurchaseKeyResponse: 1021,
   FileDetailsResult: 1023,
   TimedTrialStatus: 1030,
+  SocketStatusCallback: 1201,
+  P2PSessionRequestSteamworks: 1202,
+  P2PSessionConnectFailSteamworks: 1203,
   SteamNetConnectionStatusChanged: 1221,
   SteamNetAuthenticationStatus: 1222,
   SteamNetworkingFakeIPResult: 1223,
@@ -8642,7 +8652,10 @@ function wrapCallbackHandle(handle: NativeCallbackHandle): CallbackHandle {
 }
 
 function normalizeCallbackEvent(callbackId: number, event: unknown): unknown {
-  if (callbackId === SteamCallback.MicroTxnAuthorizationResponse) {
+  if (
+    callbackId === SteamCallback.MicroTxnAuthorizationResponse ||
+    callbackId === SteamCallback.MicroTxnAuthorizationResponseSteamworks
+  ) {
     return normalizeMicroTxnEvent(event);
   }
   if (callbackId === SteamCallback.GameOverlayActivated) {
@@ -8805,6 +8818,7 @@ function normalizeCallbackEvent(callbackId: number, event: unknown): unknown {
     icon_handle: "iconHandle",
     key_length: "keyLength",
     kicked_due_to_disconnect: "kickedDueToDisconnect",
+    listen_socket: "listenSocket",
     lobby_steam_id: "lobbySteamId",
     local_handle: "localHandle",
     longest_clip_ms: "longestClipMs",
@@ -8866,6 +8880,7 @@ function normalizeCallbackEvent(callbackId: number, event: unknown): unknown {
     scroll_y: "scrollY",
     steam_guard_required_days: "steamGuardRequiredDays",
     steam_ids: "steamIds",
+    still_retrying: "stillRetrying",
     submitted_text: "submittedText",
     ticket_base64: "ticketBase64",
     ticket_byte_length: "ticketByteLength",
