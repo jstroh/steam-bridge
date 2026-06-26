@@ -172,7 +172,7 @@ covered.
   enumeration, local disable/load-order controls, subscription, favorite, vote,
   playtime tracking, item/app dependency, delete, EULA, content descriptor
   preference, item state, statistics, rich query configuration, client and
-  game-server shared interfaces, and UGC callback-event coverage.
+  game-server shared interfaces, and typed UGC/Workshop callback helpers.
 - Screenshots: screenshot library writes, screenshot triggers/hooks, location
   and user/published-file tagging, VR screenshot library writes, and typed
   screenshot callback helpers.
@@ -212,10 +212,11 @@ covered.
   apps, user/auth, Friends, Matchmaking/lobbies, Parties, Inventory,
   Steam Input, networking, Remote Storage, HTTP, HTML, screenshots, music,
   video, parental settings, timeline, Remote Play, Game Server, stats,
-  achievements, leaderboards, global-stat, and Game Coordinator callback-helper
-  batches, for interfaces where a dedicated `on...` helper would be clearer
-  than the generic name-based subscription API. Generated callback constants and
-  generic name subscriptions are covered by the automated coverage audit.
+  achievements, leaderboards, global-stat, Game Coordinator, and UGC/Workshop
+  callback-helper batches, for interfaces where a dedicated `on...` helper
+  would be clearer than the generic name-based subscription API. Generated
+  callback constants and generic name subscriptions are covered by the automated
+  coverage audit.
 - `ISteamPS3OverlayRenderHost` and `ISteamPS3OverlayRender` are PlayStation 3
   overlay interfaces and are outside Steam Bridge's supported Steam desktop
   targets.

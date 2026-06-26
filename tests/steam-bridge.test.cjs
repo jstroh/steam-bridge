@@ -11297,6 +11297,186 @@ test("workshop updates and queries normalize progress, IDs, and snake_case field
   assert.equal(detailEvents[0].details.previewFile, 99n);
   assert.equal(detailEvents[0].details.acceptedForUse, true);
 
+  const callbackEvents = new Map();
+  const callbackIds = [
+    steam.SteamCallback.SteamUGCQueryCompleted,
+    steam.SteamCallback.SteamUGCRequestDetailsResult,
+    steam.SteamCallback.SteamUGCCreateItemResult,
+    steam.SteamCallback.SteamUGCSubmitItemUpdateResult,
+    steam.SteamCallback.SteamUGCItemInstalled,
+    steam.SteamCallback.SteamUGCDownloadItemResult,
+    steam.SteamCallback.SteamUGCUserFavoriteItemsListChanged,
+    steam.SteamCallback.SteamUGCSetUserItemVoteResult,
+    steam.SteamCallback.SteamUGCGetUserItemVoteResult,
+    steam.SteamCallback.SteamUGCStartPlaytimeTrackingResult,
+    steam.SteamCallback.SteamUGCStopPlaytimeTrackingResult,
+    steam.SteamCallback.SteamUGCAddDependencyResult,
+    steam.SteamCallback.SteamUGCRemoveDependencyResult,
+    steam.SteamCallback.SteamUGCAddAppDependencyResult,
+    steam.SteamCallback.SteamUGCRemoveAppDependencyResult,
+    steam.SteamCallback.SteamUGCGetAppDependenciesResult,
+    steam.SteamCallback.SteamUGCDeleteItemResult,
+    steam.SteamCallback.SteamUGCUserSubscribedItemsListChanged,
+    steam.SteamCallback.SteamUGCWorkshopEULAStatus
+  ];
+  const callbackHandles = [
+    steam.workshop.onQueryCompleted((event) => callbackEvents.set("query", event)),
+    steam.workshop.onRequestDetailsResult((event) => callbackEvents.set("details", event)),
+    steam.workshop.onCreateItemResult((event) => callbackEvents.set("create", event)),
+    steam.workshop.onSubmitItemUpdateResult((event) => callbackEvents.set("submit", event)),
+    steam.workshop.onItemInstalled((event) => callbackEvents.set("installed", event)),
+    steam.workshop.onDownloadItemResult((event) => callbackEvents.set("download", event)),
+    steam.workshop.onUserFavoriteItemsListChanged((event) => callbackEvents.set("favorite", event)),
+    steam.workshop.onSetUserItemVoteResult((event) => callbackEvents.set("setVote", event)),
+    steam.workshop.onGetUserItemVoteResult((event) => callbackEvents.set("getVote", event)),
+    steam.workshop.onStartPlaytimeTrackingResult((event) => callbackEvents.set("startPlaytime", event)),
+    steam.workshop.onStopPlaytimeTrackingResult((event) => callbackEvents.set("stopPlaytime", event)),
+    steam.workshop.onAddDependencyResult((event) => callbackEvents.set("addDependency", event)),
+    steam.workshop.onRemoveDependencyResult((event) => callbackEvents.set("removeDependency", event)),
+    steam.workshop.onAddAppDependencyResult((event) => callbackEvents.set("addAppDependency", event)),
+    steam.workshop.onRemoveAppDependencyResult((event) => callbackEvents.set("removeAppDependency", event)),
+    steam.workshop.onGetAppDependenciesResult((event) => callbackEvents.set("getAppDependencies", event)),
+    steam.workshop.onDeleteItemResult((event) => callbackEvents.set("delete", event)),
+    steam.workshop.onUserSubscribedItemsListChanged((event) => callbackEvents.set("subscribed", event)),
+    steam.workshop.onWorkshopEulaStatus((event) => callbackEvents.set("eula", event))
+  ];
+
+  fake.callbacks.get(steam.SteamCallback.SteamUGCQueryCompleted)({
+    handle: "99",
+    result: 1,
+    returned_results: 2,
+    total_results: 10,
+    was_cached: true,
+    next_cursor: "cursor-3"
+  });
+  fake.callbacks.get(steam.SteamCallback.SteamUGCRequestDetailsResult)({
+    details: { published_file_id: "42", tags: "space,war" },
+    was_cached: true
+  });
+  fake.callbacks.get(steam.SteamCallback.SteamUGCCreateItemResult)({
+    result: 1,
+    item_id: "42",
+    needs_to_accept_agreement: true
+  });
+  fake.callbacks.get(steam.SteamCallback.SteamUGCSubmitItemUpdateResult)({
+    result: 1,
+    item_id: "42",
+    needs_to_accept_agreement: false
+  });
+  fake.callbacks.get(steam.SteamCallback.SteamUGCItemInstalled)({
+    app_id: 480,
+    item_id: "42",
+    legacy_content: "9001",
+    manifest_id: "9002"
+  });
+  fake.callbacks.get(steam.SteamCallback.SteamUGCDownloadItemResult)({
+    app_id: 480,
+    item_id: "42",
+    result: 1
+  });
+  fake.callbacks.get(steam.SteamCallback.SteamUGCUserFavoriteItemsListChanged)({
+    item_id: "42",
+    result: 1,
+    was_add_request: true
+  });
+  fake.callbacks.get(steam.SteamCallback.SteamUGCSetUserItemVoteResult)({
+    item_id: "42",
+    result: 1,
+    vote_up: true
+  });
+  fake.callbacks.get(steam.SteamCallback.SteamUGCGetUserItemVoteResult)({
+    item_id: "42",
+    result: 1,
+    voted_up: true,
+    voted_down: false,
+    vote_skipped: false
+  });
+  fake.callbacks.get(steam.SteamCallback.SteamUGCStartPlaytimeTrackingResult)({ result: 1 });
+  fake.callbacks.get(steam.SteamCallback.SteamUGCStopPlaytimeTrackingResult)({ result: 1 });
+  fake.callbacks.get(steam.SteamCallback.SteamUGCAddDependencyResult)({
+    result: 1,
+    item_id: "42",
+    child_item_id: "43"
+  });
+  fake.callbacks.get(steam.SteamCallback.SteamUGCRemoveDependencyResult)({
+    result: 1,
+    item_id: "42",
+    child_item_id: "43"
+  });
+  fake.callbacks.get(steam.SteamCallback.SteamUGCAddAppDependencyResult)({
+    result: 1,
+    item_id: "42",
+    app_id: 480
+  });
+  fake.callbacks.get(steam.SteamCallback.SteamUGCRemoveAppDependencyResult)({
+    result: 1,
+    item_id: "42",
+    app_id: 480
+  });
+  fake.callbacks.get(steam.SteamCallback.SteamUGCGetAppDependenciesResult)({
+    result: 1,
+    item_id: "42",
+    app_ids: [480, 481],
+    num_app_dependencies: 2,
+    total_num_app_dependencies: 3
+  });
+  fake.callbacks.get(steam.SteamCallback.SteamUGCDeleteItemResult)({ result: 1, item_id: "42" });
+  fake.callbacks.get(steam.SteamCallback.SteamUGCUserSubscribedItemsListChanged)({ app_id: 480 });
+  fake.callbacks.get(steam.SteamCallback.SteamUGCWorkshopEULAStatus)({
+    result: 1,
+    app_id: 480,
+    version: 2,
+    action_time: 1700000400,
+    accepted: true,
+    needs_action: false
+  });
+
+  assert.equal(callbackEvents.get("query").handle, 99n);
+  assert.equal(callbackEvents.get("query").returnedResults, 2);
+  assert.equal(callbackEvents.get("query").totalResults, 10);
+  assert.equal(callbackEvents.get("query").wasCached, true);
+  assert.equal(callbackEvents.get("query").nextCursor, "cursor-3");
+  assert.equal(callbackEvents.get("details").details.publishedFileId, 42n);
+  assert.deepEqual(callbackEvents.get("details").details.tags, ["space", "war"]);
+  assert.equal(callbackEvents.get("create").itemId, 42n);
+  assert.equal(callbackEvents.get("create").needsToAcceptAgreement, true);
+  assert.equal(callbackEvents.get("submit").needsToAcceptAgreement, false);
+  assert.equal(callbackEvents.get("installed").legacyContent, 9001n);
+  assert.equal(callbackEvents.get("installed").manifestId, 9002n);
+  assert.equal(callbackEvents.get("download").appId, 480);
+  assert.equal(callbackEvents.get("favorite").wasAddRequest, true);
+  assert.equal(callbackEvents.get("setVote").voteUp, true);
+  assert.equal(callbackEvents.get("getVote").votedUp, true);
+  assert.equal(callbackEvents.get("startPlaytime").result, 1);
+  assert.equal(callbackEvents.get("stopPlaytime").result, 1);
+  assert.equal(callbackEvents.get("addDependency").childItemId, 43n);
+  assert.equal(callbackEvents.get("removeDependency").childItemId, 43n);
+  assert.equal(callbackEvents.get("addAppDependency").appId, 480);
+  assert.equal(callbackEvents.get("removeAppDependency").appId, 480);
+  assert.deepEqual(callbackEvents.get("getAppDependencies").appIds, [480, 481]);
+  assert.equal(callbackEvents.get("getAppDependencies").totalNumAppDependencies, 3);
+  assert.equal(callbackEvents.get("delete").itemId, 42n);
+  assert.equal(callbackEvents.get("subscribed").appId, 480);
+  assert.equal(callbackEvents.get("eula").needsAction, false);
+
+  assert.deepEqual(
+    fake.calls
+      .filter((call) => call.method === "registerSteamCallback")
+      .slice(-callbackIds.length)
+      .map((call) => call.args[0]),
+    callbackIds
+  );
+  for (const handle of callbackHandles) {
+    handle.disconnect();
+  }
+  assert.deepEqual(
+    fake.calls
+      .filter((call) => call.method === "disconnectCallback")
+      .slice(-callbackIds.length)
+      .map((call) => call.args[0]),
+    callbackIds
+  );
+
   assert.deepEqual(fake.calls.find((call) => call.method === "workshopGetAppDependencies"), {
     method: "workshopGetAppDependencies",
     args: [42n]
@@ -11388,6 +11568,14 @@ test("game server workshop facade uses game-server native bindings", async (t) =
 
   assert.deepEqual(Object.keys(steam.gameServerWorkshop).sort(), Object.keys(steam.workshop).sort());
   assert.equal(steam.gameServerWorkshop.UGCContentDescriptor.AnyMatureContent, 5);
+
+  const serverDeleteEvents = [];
+  const serverDeleteHandle = steam.gameServerWorkshop.onDeleteItemResult((event) => {
+    serverDeleteEvents.push(event);
+  });
+  fake.callbacks.get(steam.SteamCallback.SteamUGCDeleteItemResult)({ result: 1, item_id: "44" });
+  serverDeleteHandle.disconnect();
+  assert.equal(serverDeleteEvents[0].itemId, 44n);
 
   const progressEvents = [];
   const updateDetails = { title: "Game Server Workshop Item" };

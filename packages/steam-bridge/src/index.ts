@@ -2747,6 +2747,57 @@ export interface WorkshopEulaStatus {
   needsAction: boolean;
 }
 
+export interface WorkshopQueryCompletedEvent {
+  handle: bigint;
+  result: number;
+  returnedResults: number;
+  returned_results?: number;
+  totalResults: number;
+  total_results?: number;
+  wasCached: boolean;
+  was_cached?: boolean;
+  nextCursor: string;
+  next_cursor?: string;
+  [key: string]: unknown;
+}
+
+export interface WorkshopCreateItemResultEvent extends UgcResult {
+  result: number;
+  [key: string]: unknown;
+}
+
+export interface WorkshopSubmitItemUpdateResultEvent extends UgcResult {
+  result: number;
+  [key: string]: unknown;
+}
+
+export interface WorkshopItemInstalledEvent {
+  appId: number;
+  app_id?: number;
+  itemId: bigint;
+  item_id?: bigint;
+  legacyContent: bigint;
+  legacy_content?: bigint;
+  manifestId: bigint;
+  manifest_id?: bigint;
+  [key: string]: unknown;
+}
+
+export interface WorkshopDownloadItemResultEvent {
+  appId: number;
+  app_id?: number;
+  itemId: bigint;
+  item_id?: bigint;
+  result: number;
+  [key: string]: unknown;
+}
+
+export interface WorkshopUserSubscribedItemsListChangedEvent {
+  appId: number;
+  app_id?: number;
+  [key: string]: unknown;
+}
+
 export interface UgcUpdate {
   title?: string;
   description?: string;
@@ -11555,6 +11606,76 @@ export const utils = {
   }
 };
 
+function createWorkshopCallbackHelpers() {
+  return {
+    onQueryCompleted(handler: (event: WorkshopQueryCompletedEvent) => void): CallbackHandle {
+      return onWorkshopCallback("SteamUGCQueryCompleted", handler);
+    },
+    onRequestDetailsResult(handler: (event: WorkshopItemDetailsResult) => void): CallbackHandle {
+      return onWorkshopCallback("SteamUGCRequestDetailsResult", handler);
+    },
+    onCreateItemResult(handler: (event: WorkshopCreateItemResultEvent) => void): CallbackHandle {
+      return onWorkshopCallback("SteamUGCCreateItemResult", handler);
+    },
+    onSubmitItemUpdateResult(handler: (event: WorkshopSubmitItemUpdateResultEvent) => void): CallbackHandle {
+      return onWorkshopCallback("SteamUGCSubmitItemUpdateResult", handler);
+    },
+    onItemInstalled(handler: (event: WorkshopItemInstalledEvent) => void): CallbackHandle {
+      return onWorkshopCallback("SteamUGCItemInstalled", handler);
+    },
+    onDownloadItemResult(handler: (event: WorkshopDownloadItemResultEvent) => void): CallbackHandle {
+      return onWorkshopCallback("SteamUGCDownloadItemResult", handler);
+    },
+    onUserFavoriteItemsListChanged(handler: (event: WorkshopFavoriteResult) => void): CallbackHandle {
+      return onWorkshopCallback("SteamUGCUserFavoriteItemsListChanged", handler);
+    },
+    onSetUserItemVoteResult(handler: (event: WorkshopSetUserItemVoteResult) => void): CallbackHandle {
+      return onWorkshopCallback("SteamUGCSetUserItemVoteResult", handler);
+    },
+    onGetUserItemVoteResult(handler: (event: WorkshopGetUserItemVoteResult) => void): CallbackHandle {
+      return onWorkshopCallback("SteamUGCGetUserItemVoteResult", handler);
+    },
+    onStartPlaytimeTrackingResult(handler: (event: WorkshopSimpleResult) => void): CallbackHandle {
+      return onWorkshopCallback("SteamUGCStartPlaytimeTrackingResult", handler);
+    },
+    onStopPlaytimeTrackingResult(handler: (event: WorkshopSimpleResult) => void): CallbackHandle {
+      return onWorkshopCallback("SteamUGCStopPlaytimeTrackingResult", handler);
+    },
+    onAddDependencyResult(handler: (event: WorkshopDependencyResult) => void): CallbackHandle {
+      return onWorkshopCallback("SteamUGCAddDependencyResult", handler);
+    },
+    onRemoveDependencyResult(handler: (event: WorkshopDependencyResult) => void): CallbackHandle {
+      return onWorkshopCallback("SteamUGCRemoveDependencyResult", handler);
+    },
+    onAddAppDependencyResult(handler: (event: WorkshopAppDependencyResult) => void): CallbackHandle {
+      return onWorkshopCallback("SteamUGCAddAppDependencyResult", handler);
+    },
+    onRemoveAppDependencyResult(handler: (event: WorkshopAppDependencyResult) => void): CallbackHandle {
+      return onWorkshopCallback("SteamUGCRemoveAppDependencyResult", handler);
+    },
+    onGetAppDependenciesResult(handler: (event: WorkshopAppDependenciesResult) => void): CallbackHandle {
+      return onWorkshopCallback("SteamUGCGetAppDependenciesResult", handler);
+    },
+    onDeleteItemResult(handler: (event: WorkshopDeleteItemResult) => void): CallbackHandle {
+      return onWorkshopCallback("SteamUGCDeleteItemResult", handler);
+    },
+    onUserSubscribedItemsListChanged(
+      handler: (event: WorkshopUserSubscribedItemsListChangedEvent) => void
+    ): CallbackHandle {
+      return onWorkshopCallback("SteamUGCUserSubscribedItemsListChanged", handler);
+    },
+    onWorkshopEulaStatus(handler: (event: WorkshopEulaStatus) => void): CallbackHandle {
+      return onWorkshopCallback("SteamUGCWorkshopEULAStatus", handler);
+    }
+  };
+}
+
+function onWorkshopCallback<T>(steamCallback: SteamCallbackName, handler: (event: T) => void): CallbackHandle {
+  return onSteamCallback(steamCallback, (event) => {
+    handler(event as T);
+  });
+}
+
 export const workshop = {
   UgcItemVisibility,
   UpdateStatus,
@@ -11564,6 +11685,7 @@ export const workshop = {
   ItemPreviewType,
   UserListType,
   UserListOrder,
+  ...createWorkshopCallbackHelpers(),
   async createItem(appId?: number | null): Promise<UgcResult> {
     return normalizeUgcResult(await native().workshopCreateItem(appId ?? undefined));
   },
@@ -11764,6 +11886,7 @@ export const gameServerWorkshop = {
   ItemPreviewType,
   UserListType,
   UserListOrder,
+  ...createWorkshopCallbackHelpers(),
   async createItem(appId?: number | null): Promise<UgcResult> {
     return normalizeUgcResult(await native().gameServerWorkshopCreateItem(appId ?? undefined));
   },
@@ -16598,6 +16721,7 @@ function normalizeCallbackEvent(callbackId: number, event: unknown): unknown {
     kicked_due_to_disconnect: "kickedDueToDisconnect",
     listen_socket: "listenSocket",
     lobby_steam_id: "lobbySteamId",
+    legacy_content: "legacyContent",
     local_handle: "localHandle",
     longest_clip_ms: "longestClipMs",
     lobbies_matching: "lobbiesMatching",
