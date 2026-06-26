@@ -34,6 +34,19 @@ const CALLBACK_MICRO_TXN_AUTHORIZATION_RESPONSE: i32 = 152;
 const CALLBACK_GAME_OVERLAY_ACTIVATED: i32 = 331;
 const H_AUTH_TICKET_INVALID: sys::HAuthTicket = 0;
 
+// steamworks-sys 0.13.0 generates Valve's header-local
+// k_SteamItemInstanceIDInvalid as an extern static. Export the literal value so
+// Linux/macOS loaders never need a non-exported Steamworks SDK symbol.
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[used]
+#[no_mangle]
+pub static _ZL28k_SteamItemInstanceIDInvalid: sys::SteamItemInstanceID_t = u64::MAX;
+
+#[cfg(target_os = "windows")]
+#[used]
+#[no_mangle]
+pub static k_SteamItemInstanceIDInvalid: sys::SteamItemInstanceID_t = u64::MAX;
+
 static BREAKPAD_CRASH_HANDLER_STRINGS: Lazy<Mutex<Option<BreakpadCrashHandlerStrings>>> =
     Lazy::new(|| Mutex::new(None));
 

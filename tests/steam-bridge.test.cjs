@@ -9555,6 +9555,174 @@ test("web API inventory service facade maps item service methods", async (t) => 
   assert.equal(typeof steam.webApi.inventoryService.modifyItems, "function");
 });
 
+test("web API published file service facade maps workshop service methods", async (t) => {
+  const steam = loadSteamWithFakeNative(createFakeNative());
+  const fetchCalls = [];
+  const fetchImpl = async (url, init = {}) => {
+    fetchCalls.push({ url, init });
+    return {
+      ok: true,
+      status: 200,
+      headers: {
+        forEach(callback) {
+          callback("application/json", "content-type");
+        }
+      },
+      async text() {
+        return JSON.stringify({ response: { ok: true } });
+      }
+    };
+  };
+  const client = steam.createSteamWebApiClient({ apiKey: "workshop-secret", fetch: fetchImpl });
+  const requestUrl = (index) => new URL(fetchCalls[index].url);
+  const queryInputJson = (index) => JSON.parse(requestUrl(index).searchParams.get("input_json"));
+  const bodyInputJson = (index) => JSON.parse(new URLSearchParams(fetchCalls[index].init.body).get("input_json"));
+
+  t.after(clearSteamBridgeCache);
+
+  await client.publishedFileService.deleteFile({ appId: 480, publishedFileId: 111n });
+  await client.publishedFileService.queryFiles({
+    queryType: steam.SteamWebApiPublishedFileQueryType.RankedByTrend,
+    page: 2,
+    cursor: "AoIIPw",
+    numPerPage: 10,
+    creatorAppId: 480,
+    appId: 480,
+    requiredTags: ["co-op", "maps"],
+    excludedTags: "spoiler",
+    matchAllTags: true,
+    requiredFlags: "consumer_app",
+    omittedFlags: "incompatible",
+    searchText: "arena",
+    fileType: steam.SteamWebApiPublishedFileInfoMatchingFileType.Items,
+    childPublishedFileId: 222n,
+    days: 7,
+    includeRecentVotesOnly: false,
+    cacheMaxAgeSeconds: 60,
+    language: 0,
+    requiredKeyValueTags: { mode: "coop" },
+    totalOnly: false,
+    idsOnly: false,
+    returnVoteData: true,
+    returnTags: true,
+    returnKeyValueTags: true,
+    returnPreviews: true,
+    returnChildren: true,
+    returnShortDescription: true,
+    returnForSaleData: false,
+    returnMetadata: true,
+    returnPlaytimeStats: 14
+  });
+  await client.publishedFileService.setDeveloperMetadata({
+    appId: 480,
+    publishedFileId: 111n,
+    metadata: "{\"build\":\"beta\"}"
+  });
+  await client.publishedFileService.updateAppUgcBan({
+    steamId64: 76561198000000000n,
+    appId: 480,
+    expirationTime: 1760000000,
+    reason: "test moderation"
+  });
+  await client.publishedFileService.updateBanStatus({
+    appId: 480,
+    publishedFileId: 111n,
+    banned: true,
+    reason: "policy"
+  });
+  await client.publishedFileService.updateIncompatibleStatus({
+    appId: 480,
+    publishedFileId: 111n,
+    incompatible: false
+  });
+  await client.publishedFileService.updateTags({
+    appId: 480,
+    publishedFileId: 111n,
+    addTags: ["co-op"],
+    removeTags: ["old"]
+  });
+
+  assert.equal(
+    requestUrl(0).origin + requestUrl(0).pathname,
+    "https://api.steampowered.com/IPublishedFileService/Delete/v0001/"
+  );
+  assert.equal(fetchCalls[0].init.method, "GET");
+  assert.deepEqual(queryInputJson(0), { publishedfileid: "111", appid: 480 });
+  assert.equal(
+    requestUrl(1).origin + requestUrl(1).pathname,
+    "https://api.steampowered.com/IPublishedFileService/QueryFiles/v0001/"
+  );
+  assert.deepEqual(queryInputJson(1), {
+    query_type: 3,
+    page: 2,
+    cursor: "AoIIPw",
+    numperpage: 10,
+    creator_appid: 480,
+    appid: 480,
+    requiredtags: ["co-op", "maps"],
+    excludedtags: "spoiler",
+    match_all_tags: true,
+    required_flags: "consumer_app",
+    omitted_flags: "incompatible",
+    search_text: "arena",
+    filetype: 0,
+    child_publishedfileid: "222",
+    days: 7,
+    include_recent_votes_only: false,
+    cache_max_age_seconds: 60,
+    language: 0,
+    required_kv_tags: [{ key: "mode", value: "coop" }],
+    totalonly: false,
+    ids_only: false,
+    return_vote_data: true,
+    return_tags: true,
+    return_kv_tags: true,
+    return_previews: true,
+    return_children: true,
+    return_short_description: true,
+    return_for_sale_data: false,
+    return_metadata: true,
+    return_playtime_stats: 14
+  });
+  assert.equal(
+    requestUrl(2).origin + requestUrl(2).pathname,
+    "https://partner.steam-api.com/IPublishedFileService/SetDeveloperMetadata/v0001/"
+  );
+  assert.deepEqual(bodyInputJson(2), {
+    publishedfileid: "111",
+    appid: 480,
+    metadata: "{\"build\":\"beta\"}"
+  });
+  assert.deepEqual(bodyInputJson(3), {
+    steamid: "76561198000000000",
+    appid: 480,
+    expiration_time: 1760000000,
+    reason: "test moderation"
+  });
+  assert.deepEqual(bodyInputJson(4), {
+    publishedfileid: "111",
+    appid: 480,
+    banned: true,
+    reason: "policy"
+  });
+  assert.deepEqual(bodyInputJson(5), {
+    publishedfileid: "111",
+    appid: 480,
+    incompatible: false
+  });
+  assert.equal(
+    requestUrl(6).origin + requestUrl(6).pathname,
+    "https://partner.steam-api.com/IPublishedFileService/UpdateTags/v0001/"
+  );
+  assert.deepEqual(bodyInputJson(6), {
+    publishedfileid: "111",
+    appid: 480,
+    add_tags: ["co-op"],
+    remove_tags: ["old"]
+  });
+  assert.equal(typeof steam.webApi.publishedFileService.queryFiles, "function");
+});
+
 test("web API player and store service facades use input_json payloads", async (t) => {
   const steam = loadSteamWithFakeNative(createFakeNative());
   const fetchCalls = [];

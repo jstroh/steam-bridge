@@ -1665,6 +1665,7 @@ export interface SteamWebApiClient {
   leaderboards: SteamWebApiLeaderboardsFacade;
   news: SteamWebApiNewsFacade;
   player: SteamWebApiPlayerServiceFacade;
+  publishedFileService: SteamWebApiPublishedFileServiceFacade;
   publishedItemSearch: SteamWebApiPublishedItemSearchFacade;
   publishedItemVoting: SteamWebApiPublishedItemVotingFacade;
   remoteStorage: SteamWebApiRemoteStorageFacade;
@@ -2145,6 +2146,88 @@ export interface SteamWebApiSetLeaderboardScoreOptions extends SteamWebApiLeader
   score: number;
   scoreMethod?: number;
   details?: SteamWebApiBinaryValue;
+}
+
+export interface SteamWebApiPublishedFileServiceFacade {
+  deleteFile<T = unknown>(options: SteamWebApiPublishedFileAppOptions): Promise<SteamWebApiResponse<T>>;
+  queryFiles<T = unknown>(options: SteamWebApiPublishedFileQueryOptions): Promise<SteamWebApiResponse<T>>;
+  setDeveloperMetadata<T = unknown>(
+    options: SteamWebApiPublishedFileDeveloperMetadataOptions
+  ): Promise<SteamWebApiResponse<T>>;
+  updateAppUgcBan<T = unknown>(options: SteamWebApiPublishedFileAppUgcBanOptions): Promise<SteamWebApiResponse<T>>;
+  updateBanStatus<T = unknown>(options: SteamWebApiPublishedFileBanStatusOptions): Promise<SteamWebApiResponse<T>>;
+  updateIncompatibleStatus<T = unknown>(
+    options: SteamWebApiPublishedFileIncompatibleStatusOptions
+  ): Promise<SteamWebApiResponse<T>>;
+  updateTags<T = unknown>(options: SteamWebApiPublishedFileTagsOptions): Promise<SteamWebApiResponse<T>>;
+}
+
+export interface SteamWebApiPublishedFileAppOptions extends SteamWebApiEndpointOptions {
+  publishedFileId: bigint | number | string;
+  appId: number;
+}
+
+export interface SteamWebApiPublishedFileKeyValueTag {
+  key: string;
+  value: string;
+}
+
+export interface SteamWebApiPublishedFileQueryOptions extends SteamWebApiEndpointOptions {
+  queryType: number;
+  page?: number;
+  cursor?: string;
+  numPerPage?: number;
+  creatorAppId?: number;
+  appId?: number;
+  requiredTags?: string | string[];
+  excludedTags?: string | string[];
+  matchAllTags?: boolean;
+  requiredFlags?: string;
+  omittedFlags?: string;
+  searchText?: string;
+  fileType?: number;
+  childPublishedFileId?: bigint | number | string;
+  days?: number;
+  includeRecentVotesOnly?: boolean;
+  cacheMaxAgeSeconds?: number;
+  language?: number;
+  requiredKeyValueTags?: Record<string, string> | SteamWebApiPublishedFileKeyValueTag[];
+  totalOnly?: boolean;
+  idsOnly?: boolean;
+  returnVoteData?: boolean;
+  returnTags?: boolean;
+  returnKeyValueTags?: boolean;
+  returnPreviews?: boolean;
+  returnChildren?: boolean;
+  returnShortDescription?: boolean;
+  returnForSaleData?: boolean;
+  returnMetadata?: boolean;
+  returnPlaytimeStats?: number;
+}
+
+export interface SteamWebApiPublishedFileDeveloperMetadataOptions extends SteamWebApiPublishedFileAppOptions {
+  metadata: string;
+}
+
+export interface SteamWebApiPublishedFileAppUgcBanOptions extends SteamWebApiEndpointOptions {
+  steamId64: bigint | number | string;
+  appId: number;
+  expirationTime: number;
+  reason?: string;
+}
+
+export interface SteamWebApiPublishedFileBanStatusOptions extends SteamWebApiPublishedFileAppOptions {
+  banned: boolean;
+  reason: string;
+}
+
+export interface SteamWebApiPublishedFileIncompatibleStatusOptions extends SteamWebApiPublishedFileAppOptions {
+  incompatible: boolean;
+}
+
+export interface SteamWebApiPublishedFileTagsOptions extends SteamWebApiPublishedFileAppOptions {
+  addTags?: string[];
+  removeTags?: string[];
 }
 
 export interface SteamWebApiPublishedItemSearchFacade {
@@ -3473,6 +3556,55 @@ export const WorkshopFileType = {
   Clip: 16
 } as const;
 
+export const SteamWebApiPublishedFileQueryType = {
+  RankedByVote: 0,
+  RankedByPublicationDate: 1,
+  AcceptedForGameRankedByAcceptanceDate: 2,
+  RankedByTrend: 3,
+  FavoritedByFriendsRankedByPublicationDate: 4,
+  CreatedByFriendsRankedByPublicationDate: 5,
+  RankedByNumTimesReported: 6,
+  CreatedByFollowedUsersRankedByPublicationDate: 7,
+  NotYetRated: 8,
+  RankedByTotalUniqueSubscriptions: 9,
+  RankedByTotalVotesAsc: 10,
+  RankedByVotesUp: 11,
+  RankedByTextSearch: 12,
+  RankedByPlaytimeTrend: 13,
+  RankedByTotalPlaytime: 14,
+  RankedByAveragePlaytimeTrend: 15,
+  RankedByLifetimeAveragePlaytime: 16,
+  RankedByPlaytimeSessionsTrend: 17,
+  RankedByLifetimePlaytimeSessions: 18,
+  RankedByInappropriateContentRating: 19,
+  RankedByBanContentCheck: 20,
+  RankedByLastUpdatedDate: 21
+} as const;
+
+export const SteamWebApiPublishedFileInfoMatchingFileType = {
+  Items: 0,
+  Collections: 1,
+  Art: 2,
+  Videos: 3,
+  Screenshots: 4,
+  CollectionEligible: 5,
+  Games: 6,
+  Software: 7,
+  Concepts: 8,
+  GreenlightItems: 9,
+  AllGuides: 10,
+  WebGuides: 11,
+  IntegratedGuides: 12,
+  UsableInGame: 13,
+  Merch: 14,
+  ControllerBindings: 15,
+  SteamworksAccessInvites: 16,
+  ItemsMtx: 17,
+  ItemsReadyToUse: 18,
+  WorkshopShowcase: 19,
+  GameManagedItems: 20
+} as const;
+
 export const WorkshopFileAction = {
   Played: 0,
   Completed: 1
@@ -4499,6 +4631,7 @@ export function createSteamWebApiClient(options: SteamWebApiClientOptions = {}):
     leaderboards: createSteamWebApiLeaderboardsFacade(clientOptions),
     news: createSteamWebApiNewsFacade(clientOptions),
     player: createSteamWebApiPlayerServiceFacade(clientOptions),
+    publishedFileService: createSteamWebApiPublishedFileServiceFacade(clientOptions),
     publishedItemSearch: createSteamWebApiPublishedItemSearchFacade(clientOptions),
     publishedItemVoting: createSteamWebApiPublishedItemVotingFacade(clientOptions),
     remoteStorage: createSteamWebApiRemoteStorageFacade(clientOptions),
@@ -9446,6 +9579,143 @@ function createSteamWebApiLeaderboardsFacade(clientOptions: SteamWebApiClientOpt
   };
 }
 
+function createSteamWebApiPublishedFileServiceFacade(
+  clientOptions: SteamWebApiClientOptions
+): SteamWebApiPublishedFileServiceFacade {
+  return {
+    deleteFile<T = unknown>(options: SteamWebApiPublishedFileAppOptions): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServiceGet<T>(
+        clientOptions,
+        "IPublishedFileService",
+        "Delete",
+        1,
+        { publishedfileid: options.publishedFileId, appid: options.appId },
+        options,
+        false
+      );
+    },
+    queryFiles<T = unknown>(options: SteamWebApiPublishedFileQueryOptions): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServiceGet<T>(
+        clientOptions,
+        "IPublishedFileService",
+        "QueryFiles",
+        1,
+        {
+          query_type: options.queryType,
+          page: options.page,
+          cursor: options.cursor,
+          numperpage: options.numPerPage,
+          creator_appid: options.creatorAppId,
+          appid: options.appId,
+          requiredtags: options.requiredTags,
+          excludedtags: options.excludedTags,
+          match_all_tags: options.matchAllTags,
+          required_flags: options.requiredFlags,
+          omitted_flags: options.omittedFlags,
+          search_text: options.searchText,
+          filetype: options.fileType,
+          child_publishedfileid: options.childPublishedFileId,
+          days: options.days,
+          include_recent_votes_only: options.includeRecentVotesOnly,
+          cache_max_age_seconds: options.cacheMaxAgeSeconds,
+          language: options.language,
+          required_kv_tags: steamWebApiKeyValueTags(options.requiredKeyValueTags),
+          totalonly: options.totalOnly,
+          ids_only: options.idsOnly,
+          return_vote_data: options.returnVoteData,
+          return_tags: options.returnTags,
+          return_kv_tags: options.returnKeyValueTags,
+          return_previews: options.returnPreviews,
+          return_children: options.returnChildren,
+          return_short_description: options.returnShortDescription,
+          return_for_sale_data: options.returnForSaleData,
+          return_metadata: options.returnMetadata,
+          return_playtime_stats: options.returnPlaytimeStats
+        },
+        options,
+        false
+      );
+    },
+    setDeveloperMetadata<T = unknown>(
+      options: SteamWebApiPublishedFileDeveloperMetadataOptions
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServicePost<T>(
+        clientOptions,
+        "IPublishedFileService",
+        "SetDeveloperMetadata",
+        1,
+        { publishedfileid: options.publishedFileId, appid: options.appId, metadata: options.metadata },
+        options
+      );
+    },
+    updateAppUgcBan<T = unknown>(
+      options: SteamWebApiPublishedFileAppUgcBanOptions
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServicePost<T>(
+        clientOptions,
+        "IPublishedFileService",
+        "UpdateAppUGCBan",
+        1,
+        {
+          steamid: options.steamId64,
+          appid: options.appId,
+          expiration_time: options.expirationTime,
+          reason: options.reason
+        },
+        options
+      );
+    },
+    updateBanStatus<T = unknown>(
+      options: SteamWebApiPublishedFileBanStatusOptions
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServicePost<T>(
+        clientOptions,
+        "IPublishedFileService",
+        "UpdateBanStatus",
+        1,
+        {
+          publishedfileid: options.publishedFileId,
+          appid: options.appId,
+          banned: options.banned,
+          reason: options.reason
+        },
+        options
+      );
+    },
+    updateIncompatibleStatus<T = unknown>(
+      options: SteamWebApiPublishedFileIncompatibleStatusOptions
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServicePost<T>(
+        clientOptions,
+        "IPublishedFileService",
+        "UpdateIncompatibleStatus",
+        1,
+        {
+          publishedfileid: options.publishedFileId,
+          appid: options.appId,
+          incompatible: options.incompatible
+        },
+        options
+      );
+    },
+    updateTags<T = unknown>(options: SteamWebApiPublishedFileTagsOptions): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServicePost<T>(
+        clientOptions,
+        "IPublishedFileService",
+        "UpdateTags",
+        1,
+        {
+          publishedfileid: options.publishedFileId,
+          appid: options.appId,
+          add_tags: options.addTags,
+          remove_tags: options.removeTags
+        },
+        options
+      );
+    }
+  };
+}
+
 function createSteamWebApiPublishedItemSearchFacade(
   clientOptions: SteamWebApiClientOptions
 ): SteamWebApiPublishedItemSearchFacade {
@@ -10025,6 +10295,17 @@ function steamWebApiPublishedItemSearchBody(
   body.fileType = options.fileType;
   Object.assign(body, indexedParams("tag", tags), indexedParams("usertag", userTags));
   return body;
+}
+
+function steamWebApiKeyValueTags(
+  tags: Record<string, string> | readonly SteamWebApiPublishedFileKeyValueTag[] | undefined
+): SteamWebApiInputJsonValue[] | undefined {
+  if (tags === undefined) {
+    return undefined;
+  }
+
+  const entries = Array.isArray(tags) ? tags : Object.entries(tags).map(([key, value]) => ({ key, value }));
+  return entries.map((tag) => ({ key: tag.key, value: tag.value }));
 }
 
 function steamWebApiPublishedItemVoteBody(

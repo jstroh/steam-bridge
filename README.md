@@ -99,6 +99,12 @@ const profile = await web.user.resolveVanityUrl("spacewar");
 const news = await web.news.getNewsForApp({ appId: 480, count: 2 });
 const appStatus = await web.apps.upToDateCheck({ appId: 480, version: 1 });
 const workshopDetails = await web.remoteStorage.getPublishedFileDetails([123456789n]);
+const workshopFiles = await web.publishedFileService.queryFiles({
+  queryType: 3,
+  creatorAppId: 480,
+  appId: 480,
+  numPerPage: 10
+});
 const prices = await web.economy.getAssetPrices({ appId: 480, currency: "USD" });
 const inventoryCount = await web.inventoryService.getQuantity({
   appId: 480,

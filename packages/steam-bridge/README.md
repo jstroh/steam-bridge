@@ -55,6 +55,12 @@ const currentPlayers = await steamworks.webApi.userStats.getNumberOfCurrentPlaye
 const profile = await steamworks.webApi.user.resolveVanityUrl("spacewar");
 const news = await steamworks.webApi.news.getNewsForApp({ appId: 480, count: 2 });
 const appStatus = await steamworks.webApi.apps.upToDateCheck({ appId: 480, version: 1 });
+const workshopFiles = await steamworks.webApi.publishedFileService.queryFiles({
+  queryType: 3,
+  creatorAppId: 480,
+  appId: 480,
+  numPerPage: 10
+});
 const prices = await steamworks.webApi.economy.getAssetPrices({ appId: 480, currency: "USD" });
 const inventoryCount = await steamworks.webApi.inventoryService.getQuantity({
   appId: 480,
