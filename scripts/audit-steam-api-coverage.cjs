@@ -14,14 +14,28 @@ const nativeSourceFiles = [
   path.join(repoRoot, "crates", "native", "src", "lib.rs"),
   path.join(repoRoot, "crates", "native", "src", "compat.rs"),
   path.join(repoRoot, "crates", "native", "src", "steam_music_remote_bridge.cpp"),
-  path.join(repoRoot, "crates", "native", "src", "steam_game_coordinator_bridge.cpp")
+  path.join(repoRoot, "crates", "native", "src", "steam_game_coordinator_bridge.cpp"),
+  path.join(repoRoot, "crates", "native", "src", "steam_header_only_bridge.cpp")
 ];
 const manualCallbackAliases = ["GCMessageAvailable", "GCMessageFailed"];
+const manualHeaderOnlyNativeSymbols = [
+  "steam_bridge_game_server_init_game_server",
+  "steam_bridge_game_server_set_master_server_heartbeat_interval_deprecated",
+  "steam_bridge_game_server_force_master_server_heartbeat_deprecated",
+  "steam_bridge_utils_get_cser_ip_port"
+];
+const manualHeaderOnlyFacadeMethods = [
+  "initGameServer",
+  "setMasterServerHeartbeatIntervalDeprecated",
+  "forceMasterServerHeartbeatDeprecated",
+  "getCSERIPPort"
+];
 
 assertFlatApiCoverage();
+assertHeaderOnlyShimCoverage();
 assertCallbackCoverage();
 
-console.log("Steam API coverage audit passed: flat API references, shim references, and callback aliases are covered.");
+console.log("Steam API coverage audit passed: flat API references, manual shim references, and callback aliases are covered.");
 
 function findSteamworksSysRoot() {
   const metadata = spawnSync("cargo", ["metadata", "--format-version", "1"], {
@@ -88,6 +102,31 @@ function assertCallbackCoverage() {
       [
         `SteamCallback is missing manual shim callback aliases:`,
         ...missingManualAliases.map((callbackName) => `  - ${callbackName}`)
+      ].join("\n")
+    );
+  }
+}
+
+function assertHeaderOnlyShimCoverage() {
+  const nativeSource = readNativeSource();
+  const indexSource = fs.readFileSync(path.join(repoRoot, "packages", "steam-bridge", "src", "index.ts"), "utf8");
+
+  const missingNativeSymbols = manualHeaderOnlyNativeSymbols.filter((symbol) => !nativeSource.includes(symbol));
+  if (missingNativeSymbols.length > 0) {
+    throw new Error(
+      [
+        "Native source is missing manual header-only shim symbols:",
+        ...missingNativeSymbols.map((symbol) => `  - ${symbol}`)
+      ].join("\n")
+    );
+  }
+
+  const missingFacadeMethods = manualHeaderOnlyFacadeMethods.filter((method) => !indexSource.includes(method));
+  if (missingFacadeMethods.length > 0) {
+    throw new Error(
+      [
+        "Public facade is missing manual header-only shim methods:",
+        ...missingFacadeMethods.map((method) => `  - ${method}`)
       ].join("\n")
     );
   }

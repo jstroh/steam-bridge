@@ -31,11 +31,13 @@ fn main() {
 
     println!("cargo:rerun-if-changed=src/steam_music_remote_bridge.cpp");
     println!("cargo:rerun-if-changed=src/steam_game_coordinator_bridge.cpp");
+    println!("cargo:rerun-if-changed=src/steam_header_only_bridge.cpp");
     let mut cpp_shims = cc::Build::new();
     cpp_shims
         .cpp(true)
         .file("src/steam_music_remote_bridge.cpp")
-        .file("src/steam_game_coordinator_bridge.cpp");
+        .file("src/steam_game_coordinator_bridge.cpp")
+        .file("src/steam_header_only_bridge.cpp");
     if target_os == "windows" {
         cpp_shims.flag_if_supported("/std:c++17");
     } else {

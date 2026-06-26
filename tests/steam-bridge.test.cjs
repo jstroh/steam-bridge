@@ -1506,11 +1506,24 @@ test("game server facade covers lifecycle, metadata, auth, async status, and pac
     gameServerInit(options) {
       this.calls.push({ method: "gameServerInit", args: [options] });
     },
+    gameServerInitGameServer(options) {
+      this.calls.push({ method: "gameServerInitGameServer", args: [options] });
+      return true;
+    },
     gameServerShutdown() {
       this.calls.push({ method: "gameServerShutdown", args: [] });
     },
     gameServerRunCallbacks() {
       this.calls.push({ method: "gameServerRunCallbacks", args: [] });
+    },
+    gameServerSetMasterServerHeartbeatIntervalDeprecated(heartbeatInterval) {
+      this.calls.push({
+        method: "gameServerSetMasterServerHeartbeatIntervalDeprecated",
+        args: [heartbeatInterval]
+      });
+    },
+    gameServerForceMasterServerHeartbeatDeprecated() {
+      this.calls.push({ method: "gameServerForceMasterServerHeartbeatDeprecated", args: [] });
     },
     gameServerIsSecure() {
       this.calls.push({ method: "gameServerIsSecure", args: [] });
@@ -1687,7 +1700,20 @@ test("game server facade covers lifecycle, metadata, auth, async status, and pac
     serverMode: steam.ServerMode.AuthenticationAndSecure,
     version: "1.0.0.0"
   });
+  assert.equal(
+    steam.gameServer.initGameServer({
+      ip: 2130706433,
+      gamePort: 27015,
+      queryPort: 27016,
+      flags: 3,
+      appId: 480,
+      version: "1.0.0.0"
+    }),
+    true
+  );
   steam.gameServer.runCallbacks();
+  steam.gameServer.setMasterServerHeartbeatIntervalDeprecated(250);
+  steam.gameServer.forceMasterServerHeartbeatDeprecated();
   assert.equal(steam.gameServer.isSecure(), true);
   assert.equal(steam.gameServer.getSteamID().steamId64, 901234n);
   steam.gameServer.setProduct("spacewar");
@@ -1761,6 +1787,30 @@ test("game server facade covers lifecycle, metadata, auth, async status, and pac
   assert.deepEqual(fake.calls.find((call) => call.method === "gameServerGetAuthSessionTicket"), {
     method: "gameServerGetAuthSessionTicket",
     args: [{ steamId64: 76561198000000020n }, 1024]
+  });
+  assert.deepEqual(fake.calls.find((call) => call.method === "gameServerInitGameServer"), {
+    method: "gameServerInitGameServer",
+    args: [
+      {
+        ip: 2130706433,
+        game_port: 27015,
+        query_port: 27016,
+        flags: 3,
+        app_id: 480,
+        version: "1.0.0.0"
+      }
+    ]
+  });
+  assert.deepEqual(
+    fake.calls.find((call) => call.method === "gameServerSetMasterServerHeartbeatIntervalDeprecated"),
+    {
+      method: "gameServerSetMasterServerHeartbeatIntervalDeprecated",
+      args: [250]
+    }
+  );
+  assert.deepEqual(fake.calls.find((call) => call.method === "gameServerForceMasterServerHeartbeatDeprecated"), {
+    method: "gameServerForceMasterServerHeartbeatDeprecated",
+    args: []
   });
   assert.deepEqual(fake.calls.find((call) => call.method === "gameServerAssociateWithClan"), {
     method: "gameServerAssociateWithClan",
@@ -1880,6 +1930,10 @@ test("utils facade covers activity, images, VR, filtering, and text input helper
       this.calls.push({ method: "utilsGetImageRgba", args: [image] });
       return image === 7 ? imageData : null;
     },
+    utilsGetCserIpPort() {
+      this.calls.push({ method: "utilsGetCserIpPort", args: [] });
+      return { ip: 2130706433, ip_address: "127.0.0.1", port: 27015 };
+    },
     utilsGetCurrentBatteryPower() {
       this.calls.push({ method: "utilsGetCurrentBatteryPower", args: [] });
       return 95;
@@ -1976,6 +2030,7 @@ test("utils facade covers activity, images, VR, filtering, and text input helper
   assert.equal(steam.utils.getImageSize(99), null);
   assert.deepEqual(steam.utils.getImageRGBA(7), imageData);
   assert.equal(steam.utils.getImageRGBA(99), null);
+  assert.deepEqual(steam.utils.getCSERIPPort(), { ip: 2130706433, ipAddress: "127.0.0.1", port: 27015 });
   assert.equal(steam.utils.getCurrentBatteryPower(), 95);
   assert.equal(steam.utils.getIPCCallCount(), 3);
   let warningEvent;

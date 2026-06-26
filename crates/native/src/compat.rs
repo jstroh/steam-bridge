@@ -110,6 +110,19 @@ extern "C" {
         data_length: u32,
         message_size: *mut u32,
     ) -> i32;
+    fn steam_bridge_game_server_init_game_server(
+        ip: u32,
+        game_port: u16,
+        query_port: u16,
+        flags: u32,
+        app_id: u32,
+        version: *const c_char,
+    ) -> bool;
+    fn steam_bridge_game_server_set_master_server_heartbeat_interval_deprecated(
+        heartbeat_interval: i32,
+    );
+    fn steam_bridge_game_server_force_master_server_heartbeat_deprecated();
+    fn steam_bridge_utils_get_cser_ip_port(ip: *mut u32, port: *mut u16) -> bool;
 }
 
 const CALLBACK_PERSONA_STATE_CHANGE: i32 = 304;
@@ -986,6 +999,17 @@ pub struct GameServerInitOptions {
     pub version: String,
 }
 
+#[derive(Debug)]
+#[napi(object)]
+pub struct GameServerInterfaceInitOptions {
+    pub ip: Option<u32>,
+    pub game_port: u32,
+    pub query_port: u32,
+    pub flags: u32,
+    pub app_id: u32,
+    pub version: String,
+}
+
 #[napi(object)]
 pub struct GameServerAuthTicket {
     pub data: Buffer,
@@ -1004,6 +1028,14 @@ pub struct GameServerPublicIp {
 #[napi(object)]
 pub struct GameServerOutgoingPacket {
     pub data: Buffer,
+    pub ip: u32,
+    pub ip_address: String,
+    pub port: u32,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct UtilsCserIpPort {
     pub ip: u32,
     pub ip_address: String,
     pub port: u32,
@@ -10076,6 +10108,24 @@ pub fn game_server_init(options: GameServerInitOptions) -> Result<(), Error> {
     }
 }
 
+#[napi(js_name = "gameServerInitGameServer")]
+pub fn game_server_init_game_server(
+    options: GameServerInterfaceInitOptions,
+) -> Result<bool, Error> {
+    crate::state::ensure_game_server_initialized()?;
+    let version = cstring(options.version, "game server version")?;
+    Ok(unsafe {
+        steam_bridge_game_server_init_game_server(
+            options.ip.unwrap_or(0),
+            port_to_u16(options.game_port, "game server game port")?,
+            port_to_u16(options.query_port, "game server query port")?,
+            options.flags,
+            options.app_id,
+            version.as_ptr(),
+        )
+    })
+}
+
 #[napi(js_name = "gameServerShutdown")]
 pub fn game_server_shutdown() {
     if crate::state::is_game_server_initialized() {
@@ -10090,6 +10140,24 @@ pub fn game_server_shutdown() {
 #[napi(js_name = "gameServerRunCallbacks")]
 pub fn game_server_run_callbacks() {
     run_game_server_callbacks();
+}
+
+#[napi(js_name = "gameServerSetMasterServerHeartbeatIntervalDeprecated")]
+pub fn game_server_set_master_server_heartbeat_interval_deprecated(
+    heartbeat_interval: i32,
+) -> Result<(), Error> {
+    crate::state::ensure_game_server_initialized()?;
+    unsafe {
+        steam_bridge_game_server_set_master_server_heartbeat_interval_deprecated(heartbeat_interval)
+    };
+    Ok(())
+}
+
+#[napi(js_name = "gameServerForceMasterServerHeartbeatDeprecated")]
+pub fn game_server_force_master_server_heartbeat_deprecated() -> Result<(), Error> {
+    crate::state::ensure_game_server_initialized()?;
+    unsafe { steam_bridge_game_server_force_master_server_heartbeat_deprecated() };
+    Ok(())
 }
 
 #[napi(js_name = "gameServerIsSecure")]
@@ -13836,6 +13904,19 @@ pub fn utils_get_image_rgba(image: i32) -> Result<Option<Buffer>, Error> {
         sys::SteamAPI_ISteamUtils_GetImageRGBA(utils, image, data.as_mut_ptr(), data.len() as i32)
     };
     Ok(ok.then(|| data.into()))
+}
+
+#[napi(js_name = "utilsGetCserIpPort")]
+pub fn utils_get_cser_ip_port() -> Result<Option<UtilsCserIpPort>, Error> {
+    crate::state::ensure_initialized()?;
+    let mut ip = 0u32;
+    let mut port = 0u16;
+    let ok = unsafe { steam_bridge_utils_get_cser_ip_port(&mut ip, &mut port) };
+    Ok(ok.then(|| UtilsCserIpPort {
+        ip,
+        ip_address: ipv4_to_string(ip),
+        port: u32::from(port),
+    }))
 }
 
 #[napi(js_name = "utilsGetCurrentBatteryPower")]

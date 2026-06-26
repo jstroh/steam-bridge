@@ -19,6 +19,7 @@ generated callback constant lacks an exported `SteamCallback` alias.
   minidump helpers, restart checks, Steam install path, Steam Deck, Big Picture,
   App ID, overlay diagnostics, server time, activity timers,
   connected universe, Steam UI language, image reads, battery/IPCCall counts,
+  legacy CSER IP/port reads,
   overlay notification placement, VR helpers, China launcher checks, text
   filtering, IPv6 connectivity checks, file signature checks, raw APICall
   inspection, raw `CCallbackBase` registration bridges, generic Steamworks
@@ -168,7 +169,8 @@ generated callback constant lacks an exported `SteamCallback` alias.
   direct input toggles, input polling, mouse visibility/position, custom cursor
   helpers, and session/invite/avatar callback events.
 - Game server: Steam game-server lifecycle, callback pumping, secure/Steam ID
-  status, server metadata publication, login/logoff helpers, auth-session
+  status, header-only interface init, deprecated master-server heartbeat
+  controls, server metadata publication, login/logoff helpers, auth-session
   ticket helpers, license and group status checks, public IP reads,
   game-socket-share packet helpers, unauthenticated/deprecated user connection
   helpers, user data updates, server reputation, clan association and new-player
@@ -189,6 +191,12 @@ generated callback constant lacks an exported `SteamCallback` alias.
 - Remaining callback/event ergonomics for interfaces not surfaced by the current
   SDK bindings; generated callback constants are covered by the automated
   coverage audit.
+- Internal `ISteamClient` process callback pointer hooks are not exposed as raw
+  JavaScript function-pointer setters. They need a safe callback abstraction
+  before they should become public API.
+- `ISteamPS3OverlayRenderHost` and `ISteamPS3OverlayRender` are PlayStation 3
+  overlay interfaces and are outside Steam Bridge's supported Steam desktop
+  targets.
 - Additional endpoint-specific Steam Web API convenience wrappers outside
   Valve's current supported public API list, or for partner/private service
   interfaces that are not advertised by `ISteamWebAPIUtil.GetSupportedAPIList`.

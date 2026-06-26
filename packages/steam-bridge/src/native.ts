@@ -27,6 +27,18 @@ export interface NativeGameServerInitOptions {
   version: string;
 }
 
+export interface NativeGameServerInterfaceInitOptions {
+  ip?: number;
+  gamePort?: number;
+  game_port?: number;
+  queryPort?: number;
+  query_port?: number;
+  flags: number;
+  appId?: number;
+  app_id?: number;
+  version: string;
+}
+
 export interface NativeGameServerAuthTicket {
   data: Buffer;
   handle: number;
@@ -45,6 +57,13 @@ export interface NativeGameServerPublicIp {
 
 export interface NativeGameServerOutgoingPacket {
   data: Buffer;
+  ip: number;
+  ipAddress?: string;
+  ip_address?: string;
+  port: number;
+}
+
+export interface NativeUtilsCserIpPort {
   ip: number;
   ipAddress?: string;
   ip_address?: string;
@@ -1506,8 +1525,11 @@ export interface NativeBinding {
   setBreakpadAppId(appId: number): void;
 
   gameServerInit(options: NativeGameServerInitOptions): void;
+  gameServerInitGameServer(options: NativeGameServerInterfaceInitOptions): boolean;
   gameServerShutdown(): void;
   gameServerRunCallbacks(): void;
+  gameServerSetMasterServerHeartbeatIntervalDeprecated(heartbeatInterval: number): void;
+  gameServerForceMasterServerHeartbeatDeprecated(): void;
   gameServerIsSecure(): boolean;
   gameServerGetSteamId(): NativeSteamId;
   gameServerSetProduct(product: string): void;
@@ -1610,6 +1632,7 @@ export interface NativeBinding {
   utilsGetSteamUiLanguage(): string;
   utilsGetImageSize(image: number): NativeUtilsImageSize | null | undefined;
   utilsGetImageRgba(image: number): Buffer | null | undefined;
+  utilsGetCserIpPort(): NativeUtilsCserIpPort | null | undefined;
   utilsGetCurrentBatteryPower(): number;
   utilsGetIpcCallCount(): number;
   utilsRegisterWarningMessageHook(handler: (event: NativeUtilsWarningMessage) => void): NativeCallbackHandle;

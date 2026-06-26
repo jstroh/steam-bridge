@@ -41,6 +41,7 @@ import {
   NativeGameServerAssociateWithClanResult,
   NativeGameServerAuthTicket,
   NativeGameServerInitOptions,
+  NativeGameServerInterfaceInitOptions,
   NativeGameServerOutgoingPacket,
   NativeGameServerPlayerCompatibilityResult,
   NativeGameServerPublicIp,
@@ -160,6 +161,7 @@ import {
   NativeUserVoiceData,
   NativeUtilsApiCallCompletion,
   NativeUtilsApiCallResult,
+  NativeUtilsCserIpPort,
   NativeUtilsFilteredText,
   NativeUtilsImageSize,
   NativeUtilsWarningMessage,
@@ -197,6 +199,15 @@ export interface GameServerInitOptions {
   gamePort: number;
   queryPort: number;
   serverMode?: number;
+  version: string;
+}
+
+export interface GameServerInterfaceInitOptions {
+  ip?: number;
+  gamePort: number;
+  queryPort: number;
+  flags: number;
+  appId: number;
   version: string;
 }
 
@@ -860,6 +871,12 @@ export interface HtmlCookieOptions {
 export interface UtilsImageSize {
   width: number;
   height: number;
+}
+
+export interface UtilsCserIPPort {
+  ip: number;
+  ipAddress: string;
+  port: number;
 }
 
 export interface UtilsApiCallCompletion {
@@ -5614,11 +5631,28 @@ export const gameServer = {
     };
     native().gameServerInit(nativeOptions);
   },
+  initGameServer(options: GameServerInterfaceInitOptions): boolean {
+    const nativeOptions: NativeGameServerInterfaceInitOptions = {
+      ip: options.ip,
+      game_port: options.gamePort,
+      query_port: options.queryPort,
+      flags: options.flags,
+      app_id: options.appId,
+      version: options.version
+    };
+    return native().gameServerInitGameServer(nativeOptions);
+  },
   shutdown(): void {
     native().gameServerShutdown();
   },
   runCallbacks(): void {
     native().gameServerRunCallbacks();
+  },
+  setMasterServerHeartbeatIntervalDeprecated(heartbeatInterval: number): void {
+    native().gameServerSetMasterServerHeartbeatIntervalDeprecated(heartbeatInterval);
+  },
+  forceMasterServerHeartbeatDeprecated(): void {
+    native().gameServerForceMasterServerHeartbeatDeprecated();
   },
   isSecure(): boolean {
     return native().gameServerIsSecure();
@@ -8956,6 +8990,9 @@ export const utils = {
   },
   getImageRGBA(image: number): Buffer | null {
     return native().utilsGetImageRgba(image) ?? null;
+  },
+  getCSERIPPort(): UtilsCserIPPort | null {
+    return normalizeUtilsCserIPPort(native().utilsGetCserIpPort());
   },
   getCurrentBatteryPower(): number {
     return native().utilsGetCurrentBatteryPower();
@@ -14410,6 +14447,18 @@ function normalizeUtilsImageSize(size: NativeUtilsImageSize | null | undefined):
   return {
     width: size.width,
     height: size.height
+  };
+}
+
+function normalizeUtilsCserIPPort(result: NativeUtilsCserIpPort | null | undefined): UtilsCserIPPort | null {
+  if (!result) {
+    return null;
+  }
+  const source = result as unknown as Record<string, unknown>;
+  return {
+    ip: Number(source.ip ?? 0),
+    ipAddress: String(source.ipAddress ?? source.ip_address ?? ""),
+    port: Number(source.port ?? 0)
   };
 }
 
