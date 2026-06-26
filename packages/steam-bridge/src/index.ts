@@ -3585,6 +3585,14 @@ export const InputTypeCode = {
   SteamDeckController: 14
 } as const;
 
+export const STEAM_INPUT_HANDLE_ALL_CONTROLLERS = 0xffff_ffff_ffff_ffffn;
+export const STEAM_INPUT_MAX_COUNT = 16;
+
+export const InputActionEventType = {
+  DigitalAction: 0,
+  AnalogAction: 1
+} as const;
+
 export const InputGlyphSize = {
   Small: 0,
   Medium: 1,
@@ -6420,6 +6428,9 @@ export const gameServerInventory = {
 };
 
 export const input = {
+  STEAM_INPUT_HANDLE_ALL_CONTROLLERS,
+  STEAM_INPUT_MAX_COUNT,
+  InputActionEventType,
   InputType,
   InputTypeCode,
   InputGlyphSize,
@@ -6472,6 +6483,17 @@ export const input = {
   },
   getStringForDigitalActionName(actionHandle: bigint): string {
     return native().inputGetStringForDigitalActionName(actionHandle);
+  },
+  getDigitalActionStateByName(
+    controller: Controller | bigint,
+    actionSetName: string,
+    actionName: string
+  ): InputDigitalActionData {
+    const handle = typeof controller === "bigint" ? controller : controller.getHandle();
+    const actionSetHandle = BigInt(native().inputGetActionSet(actionSetName));
+    native().inputActivateActionSet(handle, actionSetHandle);
+    const actionHandle = BigInt(native().inputGetDigitalAction(actionName));
+    return normalizeInputDigitalActionData(native().inputGetDigitalActionData(handle, actionHandle));
   },
   getAnalogAction(actionName: string): bigint {
     return BigInt(native().inputGetAnalogAction(actionName));

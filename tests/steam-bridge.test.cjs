@@ -3847,6 +3847,10 @@ test("cloud, input, and networking facades coerce native values", async (t) => {
   assert.equal(controllers[0].getHandle(), 123n);
   assert.equal(controllers[0].getType(), steam.InputType.PS5Controller);
   assert.equal(controllers[1].getType(), steam.InputType.Unknown);
+  assert.equal(steam.input.STEAM_INPUT_HANDLE_ALL_CONTROLLERS, 18446744073709551615n);
+  assert.equal(steam.input.STEAM_INPUT_MAX_COUNT, 16);
+  assert.equal(steam.input.InputActionEventType.DigitalAction, 0);
+  assert.equal(steam.input.InputActionEventType.AnalogAction, 1);
   assert.equal(steam.input.InputGlyphSize.Medium, 1);
   assert.equal(steam.input.InputHapticLocation.Both, 3);
   assert.equal(steam.input.XboxOrigin.A, 0);
@@ -3860,7 +3864,7 @@ test("cloud, input, and networking facades coerce native values", async (t) => {
   assert.deepEqual(actionEvents, [
     {
       controllerHandle: 123n,
-      eventType: 0,
+      eventType: steam.input.InputActionEventType.DigitalAction,
       analogActionHandle: undefined,
       analogActionData: undefined,
       digitalActionHandle: 20n,
@@ -3876,6 +3880,16 @@ test("cloud, input, and networking facades coerce native values", async (t) => {
   assert.equal(actionSet, 10n);
   assert.equal(digitalAction, 20n);
   assert.equal(analogAction, 30n);
+  assert.deepEqual(steam.input.getDigitalActionStateByName(controllers[0], "gameplay", "jump"), {
+    state: true,
+    active: true
+  });
+  assert.deepEqual(fake.calls.slice(-4), [
+    { method: "inputGetActionSet", args: ["gameplay"] },
+    { method: "inputActivateActionSet", args: [123n, 10n] },
+    { method: "inputGetDigitalAction", args: ["jump"] },
+    { method: "inputGetDigitalActionData", args: [123n, 20n] }
+  ]);
   assert.equal(steam.input.getStringForDigitalActionName(digitalAction), "jump");
   assert.equal(steam.input.getStringForAnalogActionName(analogAction), "move");
   assert.equal(steam.input.getGlyphPngForActionOrigin(1), "/glyph.png");
