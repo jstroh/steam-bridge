@@ -33,7 +33,8 @@ covered.
   enum constants, gamepad text input helpers, warning hooks, IPC failure,
   license update, client/server-deny, game-web, and typed API-call,
   shutdown/resume, battery/IP-country, text-input, filter-dictionary, and file
-  signature callback helpers.
+  signature callback helpers, plus legacy Steam server-connection and IPC
+  callback aliases.
 - Steam client: low-level Steam pipe/user creation and release helpers, global
   user connection, local IPv4 binding, typed interface pointer lookup, generic
   interface lookup by version, IPC call counts, warning hooks,
@@ -54,13 +55,14 @@ covered.
   advertisement, legacy game-connection auth blobs, license checks, and ticket
   cancellation, plus typed game-server deny, license update, auth-ticket,
   encrypted-ticket, game-web, store-auth, market eligibility, duration-control,
-  and Web API ticket response callback helpers.
+  Web API ticket response, and legacy microtransaction callback helpers.
 - Friends: persona name/state, friend enumeration, friend profiles, groups,
   clans, rich presence, coplay, clan chat controls, friend message replies, and
   friend and clan chat reads, source membership helpers, downloadable clan
   activity counts, follower async calls, profile item queries, remaining invite
   overlay helpers, and typed Friends persona, rich-presence, lobby, chat,
-  follower, overlay-protocol, and profile-item callback helpers.
+  follower, overlay-protocol, profile-item, and legacy persona/lobby callback
+  helpers.
 - Overlay: dialog, user, invite, store, web page, and macOS diagnostic probe
   helpers.
 - Apps: subscription/install flags, DLC checks and enumeration, DLC
@@ -132,9 +134,10 @@ covered.
   create, join, list, leave, member/owner helpers, lobby and member data,
   joinability, lobby type/owner/limit/link controls, lobby chat, lobby
   game-server metadata, invites, invite dialogs, typed favorite and lobby
-  callback helpers, lobby create and favorite-account update callbacks, one-shot
-  matchmaking server browser list, ping, player-detail, and rule queries, plus
-  server address/item/filter struct helpers, response callback dispatch
+  callback helpers including legacy lobby aliases, lobby create and
+  favorite-account update callbacks, one-shot matchmaking server browser list,
+  ping, player-detail, and rule queries, plus server address/item/filter struct
+  helpers, response callback dispatch
   wrappers, long-lived server-list request handles with details, refresh,
   cancel, state, and release controls.
 - Parties: party beacon enumeration/details, location discovery and metadata,
@@ -148,7 +151,8 @@ covered.
   and typed inventory callback helpers.
 - Networking: legacy client and game-server `ISteamNetworking` P2P send,
   receive, availability, session accept/close/state, relay controls, and
-  legacy socket/listen-socket helpers, modern client and game-server
+  legacy socket/listen-socket helpers, typed legacy P2P/socket callback helpers,
+  modern client and game-server
   `ISteamNetworkingMessages` identity/session/message send and receive flows,
   session/channel close helpers,
   core client and game-server `ISteamNetworkingSockets`
@@ -212,11 +216,11 @@ covered.
   apps, user/auth, Friends, Matchmaking/lobbies, Parties, Inventory,
   Steam Input, networking, Remote Storage, HTTP, HTML, screenshots, music,
   video, parental settings, timeline, Remote Play, Game Server, stats,
-  achievements, leaderboards, global-stat, Game Coordinator, and UGC/Workshop
-  callback-helper batches, for interfaces where a dedicated `on...` helper
-  would be clearer than the generic name-based subscription API. Generated
-  callback constants and generic name subscriptions are covered by the automated
-  coverage audit.
+  achievements, leaderboards, global-stat, Game Coordinator, UGC/Workshop, and
+  legacy callback-alias helper batches, for interfaces where a dedicated
+  `on...` helper would be clearer than the generic name-based subscription API.
+  Generated callback constants and generic name subscriptions are covered by the
+  automated coverage audit.
 - `ISteamPS3OverlayRenderHost` and `ISteamPS3OverlayRender` are PlayStation 3
   overlay interfaces and are outside Steam Bridge's supported Steam desktop
   targets.

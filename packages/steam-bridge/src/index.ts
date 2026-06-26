@@ -474,6 +474,22 @@ export interface GameOverlayActivated {
   [key: string]: unknown;
 }
 
+export interface SteamServersConnectedEvent {
+  [key: string]: unknown;
+}
+
+export interface SteamServerConnectFailureEvent {
+  reason: number;
+  stillRetrying: boolean;
+  still_retrying?: boolean;
+  [key: string]: unknown;
+}
+
+export interface SteamServersDisconnectedEvent {
+  reason: number;
+  [key: string]: unknown;
+}
+
 export interface FriendGameInfo {
   gameId: bigint;
   gameIp: number;
@@ -1756,6 +1772,12 @@ export interface UtilsSteamShutdownEvent {
   [key: string]: unknown;
 }
 
+export interface UtilsIpcFailureEvent {
+  failureType: number;
+  failure_type?: number;
+  [key: string]: unknown;
+}
+
 export interface UtilsCheckFileSignatureEvent {
   checkFileSignature: number;
   check_file_signature?: number;
@@ -1915,6 +1937,26 @@ export interface LegacyNetworkingP2PSessionState {
   remoteIp: number;
   remoteIpAddress: string;
   remotePort: number;
+}
+
+export interface LegacyNetworkingSocketStatusEvent {
+  socket: number;
+  listenSocket: number;
+  listen_socket?: number;
+  remote: bigint;
+  state: number;
+  [key: string]: unknown;
+}
+
+export interface LegacyNetworkingP2PSessionRequestEvent {
+  remote: bigint;
+  [key: string]: unknown;
+}
+
+export interface LegacyNetworkingP2PSessionConnectFailEvent {
+  remote: bigint;
+  error: number;
+  [key: string]: unknown;
 }
 
 export interface LegacyNetworkingListenSocketOptions {
@@ -6438,10 +6480,38 @@ export function onMicroTxnAuthorizationResponse(
   }));
 }
 
+export function onLegacyMicroTxnAuthorizationResponse(
+  handler: (event: MicroTxnAuthorizationResponse) => void
+): CallbackHandle {
+  return onSteamCallback("MicroTxnAuthorizationResponse", (event) => {
+    handler(event as MicroTxnAuthorizationResponse);
+  });
+}
+
 export function onGameOverlayActivated(handler: (event: GameOverlayActivated) => void): CallbackHandle {
   return wrapCallbackHandle(native().registerGameOverlayActivated((event) => {
     handler(normalizeGameOverlayEvent(event));
   }));
+}
+
+export function onSteamServersConnected(handler: (event: SteamServersConnectedEvent) => void): CallbackHandle {
+  return onSteamCallback("SteamServersConnected", (event) => {
+    handler(event as SteamServersConnectedEvent);
+  });
+}
+
+export function onSteamServerConnectFailure(
+  handler: (event: SteamServerConnectFailureEvent) => void
+): CallbackHandle {
+  return onSteamCallback("SteamServerConnectFailure", (event) => {
+    handler(event as SteamServerConnectFailureEvent);
+  });
+}
+
+export function onSteamServersDisconnected(handler: (event: SteamServersDisconnectedEvent) => void): CallbackHandle {
+  return onSteamCallback("SteamServersDisconnected", (event) => {
+    handler(event as SteamServersDisconnectedEvent);
+  });
 }
 
 export function onSteamCallback(
@@ -8989,6 +9059,11 @@ export const friends = {
   ChatEntryType,
   CommunityProfileItemType,
   CommunityProfileItemProperty,
+  onLegacyPersonaStateChange(handler: (event: FriendsPersonaStateChangeEvent) => void): CallbackHandle {
+    return onSteamCallback("PersonaStateChange", (event) => {
+      handler(event as FriendsPersonaStateChangeEvent);
+    });
+  },
   onPersonaStateChange(handler: (event: FriendsPersonaStateChangeEvent) => void): CallbackHandle {
     return onSteamCallback("PersonaStateChangeSteamworks", (event) => {
       handler(event as FriendsPersonaStateChangeEvent);
@@ -8997,6 +9072,11 @@ export const friends = {
   onGameServerChangeRequested(handler: (event: FriendsGameServerChangeRequestedEvent) => void): CallbackHandle {
     return onSteamCallback("GameServerChangeRequested", (event) => {
       handler(event as FriendsGameServerChangeRequestedEvent);
+    });
+  },
+  onLegacyGameLobbyJoinRequested(handler: (event: FriendsGameLobbyJoinRequestedEvent) => void): CallbackHandle {
+    return onSteamCallback("GameLobbyJoinRequested", (event) => {
+      handler(event as FriendsGameLobbyJoinRequestedEvent);
     });
   },
   onGameLobbyJoinRequested(handler: (event: FriendsGameLobbyJoinRequestedEvent) => void): CallbackHandle {
@@ -9526,9 +9606,19 @@ export const matchmaking = {
       handler(event as LobbyEnterEvent);
     });
   },
+  onLegacyLobbyDataUpdate(handler: (event: LobbyDataUpdateEvent) => void): CallbackHandle {
+    return onSteamCallback("LobbyDataUpdate", (event) => {
+      handler(event as LobbyDataUpdateEvent);
+    });
+  },
   onLobbyDataUpdate(handler: (event: LobbyDataUpdateEvent) => void): CallbackHandle {
     return onSteamCallback("LobbyDataUpdateSteamworks", (event) => {
       handler(event as LobbyDataUpdateEvent);
+    });
+  },
+  onLegacyLobbyChatUpdate(handler: (event: LobbyChatUpdateEvent) => void): CallbackHandle {
+    return onSteamCallback("LobbyChatUpdate", (event) => {
+      handler(event as LobbyChatUpdateEvent);
     });
   },
   onLobbyChatUpdate(handler: (event: LobbyChatUpdateEvent) => void): CallbackHandle {
@@ -9629,6 +9719,36 @@ export const matchmaking = {
   }
 };
 
+function createLegacyNetworkingCallbackHelpers() {
+  return {
+    onSocketStatus(handler: (event: LegacyNetworkingSocketStatusEvent) => void): CallbackHandle {
+      return onSteamCallback("SocketStatusCallback", (event) => {
+        handler(event as LegacyNetworkingSocketStatusEvent);
+      });
+    },
+    onP2PSessionRequest(handler: (event: LegacyNetworkingP2PSessionRequestEvent) => void): CallbackHandle {
+      return onSteamCallback("P2PSessionRequestSteamworks", (event) => {
+        handler(event as LegacyNetworkingP2PSessionRequestEvent);
+      });
+    },
+    onP2PSessionConnectFail(handler: (event: LegacyNetworkingP2PSessionConnectFailEvent) => void): CallbackHandle {
+      return onSteamCallback("P2PSessionConnectFailSteamworks", (event) => {
+        handler(event as LegacyNetworkingP2PSessionConnectFailEvent);
+      });
+    },
+    onLegacyP2PSessionRequest(handler: (event: LegacyNetworkingP2PSessionRequestEvent) => void): CallbackHandle {
+      return onSteamCallback("P2PSessionRequest", (event) => {
+        handler(event as LegacyNetworkingP2PSessionRequestEvent);
+      });
+    },
+    onLegacyP2PSessionConnectFail(handler: (event: LegacyNetworkingP2PSessionConnectFailEvent) => void): CallbackHandle {
+      return onSteamCallback("P2PSessionConnectFail", (event) => {
+        handler(event as LegacyNetworkingP2PSessionConnectFailEvent);
+      });
+    }
+  };
+}
+
 export const networking = {
   SendType,
   P2PSessionError,
@@ -9644,6 +9764,7 @@ export const networking = {
   NetworkingDebugOutputType,
   NetworkingConfigValue,
   NetworkingIceEnable,
+  ...createLegacyNetworkingCallbackHelpers(),
   sendP2PPacket(steamId64: bigint, sendType: number, data: Buffer | Uint8Array): boolean {
     return native().networkingSendP2PPacket(steamId64, sendType, Buffer.from(data));
   },
@@ -10283,6 +10404,7 @@ export const gameServerNetworking = {
   P2PSessionError,
   LegacySocketState: LegacyNetworkingSocketState,
   LegacySocketConnectionType: LegacyNetworkingSocketConnectionType,
+  ...createLegacyNetworkingCallbackHelpers(),
   sendP2PPacket(steamId64: bigint, sendType: number, data: Buffer | Uint8Array): boolean {
     return native().gameServerNetworkingSendP2PPacket(steamId64, sendType, Buffer.from(data));
   },
@@ -11443,6 +11565,11 @@ export const utils = {
   onSteamShutdown(handler: (event: UtilsSteamShutdownEvent) => void): CallbackHandle {
     return onSteamCallback("SteamShutdown", (event) => {
       handler(event as UtilsSteamShutdownEvent);
+    });
+  },
+  onIpcFailure(handler: (event: UtilsIpcFailureEvent) => void): CallbackHandle {
+    return onSteamCallback("IPCFailure", (event) => {
+      handler(event as UtilsIpcFailureEvent);
     });
   },
   onCheckFileSignature(handler: (event: UtilsCheckFileSignatureEvent) => void): CallbackHandle {
@@ -18291,7 +18418,11 @@ const defaultExport = {
   getSteamworksEnum,
   getSteamworksEnumValue,
   onMicroTxnAuthorizationResponse,
+  onLegacyMicroTxnAuthorizationResponse,
   onGameOverlayActivated,
+  onSteamServersConnected,
+  onSteamServerConnectFailure,
+  onSteamServersDisconnected,
   onSteamCallback,
   activateOverlay,
   activateOverlayToWebPage,

@@ -2743,6 +2743,9 @@ test("utils facade exposes typed callback helpers", (t) => {
     steam.utils.onSteamShutdown((event) => {
       events.shutdown = event;
     }),
+    steam.utils.onIpcFailure((event) => {
+      events.ipcFailure = event;
+    }),
     steam.utils.onCheckFileSignature((event) => {
       events.signature = event;
     }),
@@ -2768,6 +2771,7 @@ test("utils facade exposes typed callback helpers", (t) => {
     parameter_size: 252
   });
   fake.callbacks.get(steam.SteamCallback.SteamShutdown)({});
+  fake.callbacks.get(steam.SteamCallback.IPCFailure)({ failure_type: 1 });
   fake.callbacks.get(steam.SteamCallback.CheckFileSignature)({
     check_file_signature: steam.utils.CheckFileSignature.ValidSignature
   });
@@ -2786,6 +2790,7 @@ test("utils facade exposes typed callback helpers", (t) => {
   assert.equal(events.apiCall.callback, steam.SteamCallback.FileDetailsResult);
   assert.equal(events.apiCall.parameterSize, 252);
   assert.deepEqual(events.shutdown, {});
+  assert.equal(events.ipcFailure.failureType, 1);
   assert.equal(events.signature.checkFileSignature, steam.utils.CheckFileSignature.ValidSignature);
   assert.equal(events.gamepadText.submitted, true);
   assert.equal(events.gamepadText.submittedText, 12);
@@ -2803,6 +2808,7 @@ test("utils facade exposes typed callback helpers", (t) => {
     steam.SteamCallback.LowBatteryPower,
     steam.SteamCallback.SteamAPICallCompleted,
     steam.SteamCallback.SteamShutdown,
+    steam.SteamCallback.IPCFailure,
     steam.SteamCallback.CheckFileSignature,
     steam.SteamCallback.GamepadTextInputDismissed,
     steam.SteamCallback.AppResumingFromSuspend,
@@ -2967,6 +2973,20 @@ test("specific and generic callbacks normalize Steamworks payloads", (t) => {
   assert.equal(txnEvent.orderId, 9223372036854775807n);
   assert.equal(txnEvent.authorized, true);
 
+  let legacyTxnEvent;
+  const legacyTxnHandle = steam.onLegacyMicroTxnAuthorizationResponse((event) => {
+    legacyTxnEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.MicroTxnAuthorizationResponse)({
+    app_id: 480,
+    order_id: "9223372036854775806",
+    authorized: true
+  });
+  assert.equal(legacyTxnEvent.appId, 480);
+  assert.equal(legacyTxnEvent.orderId, 9223372036854775806n);
+  assert.equal(legacyTxnEvent.authorized, true);
+  legacyTxnHandle.disconnect();
+
   let txnSteamworksEvent;
   steam.callback.register(steam.SteamCallback.MicroTxnAuthorizationResponseSteamworks, (event) => {
     txnSteamworksEvent = event;
@@ -3020,6 +3040,18 @@ test("specific and generic callbacks normalize Steamworks payloads", (t) => {
   assert.equal(serverFailureEvent.reason, 3);
   assert.equal(serverFailureEvent.stillRetrying, true);
 
+  let legacyServerFailureEvent;
+  const legacyServerFailureHandle = steam.onSteamServerConnectFailure((event) => {
+    legacyServerFailureEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.SteamServerConnectFailure)({
+    reason: 4,
+    still_retrying: false
+  });
+  assert.equal(legacyServerFailureEvent.reason, 4);
+  assert.equal(legacyServerFailureEvent.stillRetrying, false);
+  legacyServerFailureHandle.disconnect();
+
   let serverDisconnectedEvent;
   steam.callback.register(steam.SteamCallback.SteamServersDisconnectedSteamworks, (event) => {
     serverDisconnectedEvent = event;
@@ -3027,12 +3059,28 @@ test("specific and generic callbacks normalize Steamworks payloads", (t) => {
   fake.callbacks.get(steam.SteamCallback.SteamServersDisconnectedSteamworks)({ reason: 2 });
   assert.equal(serverDisconnectedEvent.reason, 2);
 
+  let legacyServerDisconnectedEvent;
+  const legacyServerDisconnectedHandle = steam.onSteamServersDisconnected((event) => {
+    legacyServerDisconnectedEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.SteamServersDisconnected)({ reason: 5 });
+  assert.equal(legacyServerDisconnectedEvent.reason, 5);
+  legacyServerDisconnectedHandle.disconnect();
+
   let serverConnectedEvent;
   steam.callback.register(steam.SteamCallback.SteamServersConnectedSteamworks, (event) => {
     serverConnectedEvent = event;
   });
   fake.callbacks.get(steam.SteamCallback.SteamServersConnectedSteamworks)({});
   assert.deepEqual(serverConnectedEvent, {});
+
+  let legacyServerConnectedEvent;
+  const legacyServerConnectedHandle = steam.onSteamServersConnected((event) => {
+    legacyServerConnectedEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.SteamServersConnected)({});
+  assert.deepEqual(legacyServerConnectedEvent, {});
+  legacyServerConnectedHandle.disconnect();
 
   let lobbyEvent;
   steam.callback.register(steam.SteamCallback.LobbyDataUpdate, (event) => {
@@ -4719,8 +4767,14 @@ test("matchmaking facade exposes typed callback helpers", (t) => {
     steam.matchmaking.onLobbyEnter((event) => {
       events.lobbyEnter = event;
     }),
+    steam.matchmaking.onLegacyLobbyDataUpdate((event) => {
+      events.legacyLobbyDataUpdate = event;
+    }),
     steam.matchmaking.onLobbyDataUpdate((event) => {
       events.lobbyDataUpdate = event;
+    }),
+    steam.matchmaking.onLegacyLobbyChatUpdate((event) => {
+      events.legacyLobbyChatUpdate = event;
     }),
     steam.matchmaking.onLobbyChatUpdate((event) => {
       events.lobbyChatUpdate = event;
@@ -4748,7 +4802,9 @@ test("matchmaking facade exposes typed callback helpers", (t) => {
     "FavoritesListChanged",
     "LobbyInvite",
     "LobbyEnter",
+    "LobbyDataUpdate",
     "LobbyDataUpdateSteamworks",
+    "LobbyChatUpdate",
     "LobbyChatUpdateSteamworks",
     "LobbyChatMsg",
     "LobbyGameCreated",
@@ -4782,10 +4838,21 @@ test("matchmaking facade exposes typed callback helpers", (t) => {
     locked: false,
     chat_room_enter_response: 1
   });
+  emit("LobbyDataUpdate", {
+    lobby: String(lobbyId),
+    member: String(adminId),
+    success: false
+  });
   emit("LobbyDataUpdateSteamworks", {
     lobby: String(lobbyId),
     member: String(memberId),
     success: true
+  });
+  emit("LobbyChatUpdate", {
+    lobby: String(lobbyId),
+    user_changed: String(adminId),
+    making_change: String(memberId),
+    member_state_change: 2
   });
   emit("LobbyChatUpdateSteamworks", {
     lobby: String(lobbyId),
@@ -4828,8 +4895,13 @@ test("matchmaking facade exposes typed callback helpers", (t) => {
   assert.equal(events.lobbyInvite.gameId, 480n);
   assert.equal(events.lobbyEnter.chatPermissions, 3);
   assert.equal(events.lobbyEnter.chatRoomEnterResponse, 1);
+  assert.equal(events.legacyLobbyDataUpdate.member, adminId);
+  assert.equal(events.legacyLobbyDataUpdate.success, false);
   assert.equal(events.lobbyDataUpdate.member, memberId);
   assert.equal(events.lobbyDataUpdate.success, true);
+  assert.equal(events.legacyLobbyChatUpdate.userChanged, adminId);
+  assert.equal(events.legacyLobbyChatUpdate.makingChange, memberId);
+  assert.equal(events.legacyLobbyChatUpdate.memberStateChange, 2);
   assert.equal(events.lobbyChatUpdate.userChanged, memberId);
   assert.equal(events.lobbyChatUpdate.makingChange, adminId);
   assert.equal(events.lobbyChatUpdate.memberStateChange, 4);
@@ -5972,6 +6044,50 @@ test("legacy networking facade covers P2P sessions and socket helpers", (t) => {
 
   t.after(clearSteamBridgeCache);
 
+  const callbackEvents = {};
+  const callbackHandles = [
+    steam.networking.onSocketStatus((event) => {
+      callbackEvents.socketStatus = event;
+    }),
+    steam.networking.onP2PSessionRequest((event) => {
+      callbackEvents.p2pRequest = event;
+    }),
+    steam.networking.onP2PSessionConnectFail((event) => {
+      callbackEvents.p2pConnectFail = event;
+    }),
+    steam.networking.onLegacyP2PSessionRequest((event) => {
+      callbackEvents.legacyP2pRequest = event;
+    }),
+    steam.networking.onLegacyP2PSessionConnectFail((event) => {
+      callbackEvents.legacyP2pConnectFail = event;
+    })
+  ];
+  fake.callbacks.get(steam.SteamCallback.SocketStatusCallback)({
+    socket: 103,
+    listen_socket: 101,
+    remote: String(peer),
+    state: steam.networking.LegacySocketState.Connected
+  });
+  fake.callbacks.get(steam.SteamCallback.P2PSessionRequestSteamworks)({ remote: String(peer) });
+  fake.callbacks.get(steam.SteamCallback.P2PSessionConnectFailSteamworks)({
+    remote: String(peer),
+    error: steam.networking.P2PSessionError.Timeout
+  });
+  fake.callbacks.get(steam.SteamCallback.P2PSessionRequest)({ remote: "76561198000000012" });
+  fake.callbacks.get(steam.SteamCallback.P2PSessionConnectFail)({
+    remote: "76561198000000013",
+    error: steam.networking.P2PSessionError.NoRightsToApp
+  });
+
+  assert.equal(callbackEvents.socketStatus.listenSocket, 101);
+  assert.equal(callbackEvents.socketStatus.remote, peer);
+  assert.equal(callbackEvents.socketStatus.state, steam.networking.LegacySocketState.Connected);
+  assert.equal(callbackEvents.p2pRequest.remote, peer);
+  assert.equal(callbackEvents.p2pConnectFail.error, steam.networking.P2PSessionError.Timeout);
+  assert.equal(callbackEvents.legacyP2pRequest.remote, 76561198000000012n);
+  assert.equal(callbackEvents.legacyP2pConnectFail.remote, 76561198000000013n);
+  assert.equal(callbackEvents.legacyP2pConnectFail.error, steam.networking.P2PSessionError.NoRightsToApp);
+
   assert.equal(steam.networking.P2PSessionError.Timeout, 4);
   assert.equal(steam.networking.LegacySocketState.Connected, 1);
   assert.equal(steam.networking.LegacySocketConnectionType.UDPRelay, 2);
@@ -6015,6 +6131,22 @@ test("legacy networking facade covers P2P sessions and socket helpers", (t) => {
   });
   assert.equal(steam.networking.getSocketConnectionType(103), 2);
   assert.equal(steam.networking.getMaxPacketSize(103), 1200);
+  callbackHandles.forEach((handle) => handle.disconnect());
+  const callbackIds = [
+    steam.SteamCallback.SocketStatusCallback,
+    steam.SteamCallback.P2PSessionRequestSteamworks,
+    steam.SteamCallback.P2PSessionConnectFailSteamworks,
+    steam.SteamCallback.P2PSessionRequest,
+    steam.SteamCallback.P2PSessionConnectFail
+  ];
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "registerSteamCallback").map((call) => call.args[0]),
+    callbackIds
+  );
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "disconnectCallback").map((call) => call.args[0]),
+    callbackIds
+  );
   assert.deepEqual(fake.calls.find((call) => call.method === "networkingCreateListenSocket"), {
     method: "networkingCreateListenSocket",
     args: [1, 2130706433, 27016, false]
@@ -6359,6 +6491,14 @@ test("game server legacy networking facade dispatches through game server native
   t.after(clearSteamBridgeCache);
 
   const peer = 76561198000000011n;
+  let serverP2pRequestEvent;
+  const serverP2pRequestHandle = steam.gameServerNetworking.onP2PSessionRequest((event) => {
+    serverP2pRequestEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.P2PSessionRequestSteamworks)({ remote: String(peer) });
+  serverP2pRequestHandle.disconnect();
+  assert.equal(serverP2pRequestEvent.remote, peer);
+
   assert.equal(steam.gameServerNetworking.SendType.Reliable, 2);
   assert.equal(
     steam.gameServerNetworking.sendP2PPacket(
@@ -10356,11 +10496,17 @@ test("friends facade exposes typed callback helpers", (t) => {
 
   const events = {};
   const handles = [
+    steam.friends.onLegacyPersonaStateChange((event) => {
+      events.legacyPersona = event;
+    }),
     steam.friends.onPersonaStateChange((event) => {
       events.persona = event;
     }),
     steam.friends.onGameServerChangeRequested((event) => {
       events.serverChange = event;
+    }),
+    steam.friends.onLegacyGameLobbyJoinRequested((event) => {
+      events.legacyLobbyJoin = event;
     }),
     steam.friends.onGameLobbyJoinRequested((event) => {
       events.lobbyJoin = event;
@@ -10418,6 +10564,10 @@ test("friends facade exposes typed callback helpers", (t) => {
     })
   ];
 
+  fake.callbacks.get(steam.SteamCallback.PersonaStateChange)({
+    steam_id: "76561198000000002",
+    flags: { bits: 2 }
+  });
   fake.callbacks.get(steam.SteamCallback.PersonaStateChangeSteamworks)({
     steam_id: "76561198000000003",
     flags: { bits: 4 }
@@ -10425,6 +10575,10 @@ test("friends facade exposes typed callback helpers", (t) => {
   fake.callbacks.get(steam.SteamCallback.GameServerChangeRequested)({
     server: "127.0.0.1:27015",
     password: "spacewar"
+  });
+  fake.callbacks.get(steam.SteamCallback.GameLobbyJoinRequested)({
+    lobby_steam_id: "109775242022617906",
+    friend_steam_id: "76561198000000002"
   });
   fake.callbacks.get(steam.SteamCallback.GameLobbyJoinRequestedSteamworks)({
     lobby_steam_id: "109775242022617907",
@@ -10503,9 +10657,13 @@ test("friends facade exposes typed callback helpers", (t) => {
     from_cache: true
   });
 
+  assert.equal(events.legacyPersona.steamId, 76561198000000002n);
+  assert.deepEqual(events.legacyPersona.flags, { bits: 2 });
   assert.equal(events.persona.steamId, 76561198000000003n);
   assert.deepEqual(events.persona.flags, { bits: 4 });
   assert.deepEqual(events.serverChange, { server: "127.0.0.1:27015", password: "spacewar" });
+  assert.equal(events.legacyLobbyJoin.lobbySteamId, 109775242022617906n);
+  assert.equal(events.legacyLobbyJoin.friendSteamId, 76561198000000002n);
   assert.equal(events.lobbyJoin.lobbySteamId, 109775242022617907n);
   assert.equal(events.lobbyJoin.friendSteamId, 76561198000000004n);
   assert.equal(events.avatar.steamId, 76561198000000003n);
@@ -10541,8 +10699,10 @@ test("friends facade exposes typed callback helpers", (t) => {
   }
 
   const callbackIds = [
+    steam.SteamCallback.PersonaStateChange,
     steam.SteamCallback.PersonaStateChangeSteamworks,
     steam.SteamCallback.GameServerChangeRequested,
+    steam.SteamCallback.GameLobbyJoinRequested,
     steam.SteamCallback.GameLobbyJoinRequestedSteamworks,
     steam.SteamCallback.AvatarImageLoaded,
     steam.SteamCallback.ClanOfficerListResponse,
