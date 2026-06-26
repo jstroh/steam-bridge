@@ -1691,6 +1691,89 @@ export interface GlobalAchievementInfo {
   achieved: boolean;
 }
 
+export interface ScreenshotReadyEvent {
+  localHandle: number;
+  local_handle?: number;
+  result: number;
+  [key: string]: unknown;
+}
+
+export interface ScreenshotRequestedEvent {
+  [key: string]: unknown;
+}
+
+export interface MusicPlaybackStatusChangedEvent {
+  [key: string]: unknown;
+}
+
+export interface MusicVolumeHasChangedEvent {
+  newVolume: number;
+  new_volume?: number;
+  [key: string]: unknown;
+}
+
+export interface MusicRemoteWantsVolumeEvent {
+  newVolume: number;
+  new_volume?: number;
+  [key: string]: unknown;
+}
+
+export interface MusicRemoteSelectsEntryEvent {
+  entryId: number;
+  entry_id?: number;
+  [key: string]: unknown;
+}
+
+export interface MusicRemoteControlEvent {
+  [key: string]: unknown;
+}
+
+export interface MusicRemoteWantsShuffledEvent {
+  shuffled: boolean;
+  [key: string]: unknown;
+}
+
+export interface MusicRemoteWantsLoopedEvent {
+  looped: boolean;
+  [key: string]: unknown;
+}
+
+export interface MusicRemoteWantsPlayingRepeatStatusEvent {
+  repeatStatus: number;
+  repeat_status?: number;
+  [key: string]: unknown;
+}
+
+export interface VideoBroadcastUploadStartEvent {
+  isRtmp: boolean;
+  is_rtmp?: boolean;
+  [key: string]: unknown;
+}
+
+export interface VideoBroadcastUploadStopEvent {
+  result: number;
+  [key: string]: unknown;
+}
+
+export interface VideoUrlResultEvent {
+  result: number;
+  videoAppId: number;
+  video_app_id?: number;
+  url: string;
+  [key: string]: unknown;
+}
+
+export interface VideoOpfSettingsResultEvent {
+  result: number;
+  videoAppId: number;
+  video_app_id?: number;
+  [key: string]: unknown;
+}
+
+export interface ParentalSettingsChangedEvent {
+  [key: string]: unknown;
+}
+
 export interface AchievementProgressLimitsInt {
   min: number;
   max: number;
@@ -1712,6 +1795,27 @@ export interface TimelineGamePhaseRecordingExists {
   longestClipMs: bigint;
   clipCount: number;
   screenshotCount: number;
+}
+
+export interface TimelineEventRecordingExistsEvent {
+  event: bigint;
+  recordingExists: boolean;
+  recording_exists?: boolean;
+  [key: string]: unknown;
+}
+
+export interface TimelineGamePhaseRecordingExistsEvent {
+  phaseId: string;
+  phase_id?: string;
+  recordingMs: bigint;
+  recording_ms?: bigint;
+  longestClipMs: bigint;
+  longest_clip_ms?: bigint;
+  clipCount: number;
+  clip_count?: number;
+  screenshotCount: number;
+  screenshot_count?: number;
+  [key: string]: unknown;
 }
 
 export interface RemotePlayResolution {
@@ -1746,6 +1850,27 @@ export interface RemotePlayInputEvent {
   scancode?: number | null;
   modifiers?: number | null;
   keycode?: number | null;
+}
+
+export interface RemotePlaySessionEvent {
+  sessionId: number;
+  session_id?: number;
+  [key: string]: unknown;
+}
+
+export interface RemotePlayTogetherGuestInviteEvent {
+  connectUrl: string;
+  connect_url?: string;
+  [key: string]: unknown;
+}
+
+export interface RemotePlaySessionAvatarLoadedEvent {
+  sessionId: number;
+  session_id?: number;
+  image: number;
+  wide: number;
+  tall: number;
+  [key: string]: unknown;
 }
 
 export interface AnalogActionVector {
@@ -9452,6 +9577,16 @@ export const screenshots = {
   },
   addVrScreenshotToLibrary(vrType: number, filename: string, vrFilename: string): number {
     return native().screenshotsAddVrScreenshotToLibrary(vrType, filename, vrFilename);
+  },
+  onReady(handler: (event: ScreenshotReadyEvent) => void): CallbackHandle {
+    return onSteamCallback("ScreenshotReady", (event) => {
+      handler(event as ScreenshotReadyEvent);
+    });
+  },
+  onRequested(handler: (event: ScreenshotRequestedEvent) => void): CallbackHandle {
+    return onSteamCallback("ScreenshotRequested", (event) => {
+      handler(event as ScreenshotRequestedEvent);
+    });
   }
 };
 
@@ -9551,6 +9686,76 @@ export const musicRemote = {
   },
   playlistDidChange(): boolean {
     return native().musicRemotePlaylistDidChange();
+  },
+  onWantsVolume(handler: (event: MusicRemoteWantsVolumeEvent) => void): CallbackHandle {
+    return onSteamCallback("MusicPlayerWantsVolume", (event) => {
+      handler(event as MusicRemoteWantsVolumeEvent);
+    });
+  },
+  onSelectsQueueEntry(handler: (event: MusicRemoteSelectsEntryEvent) => void): CallbackHandle {
+    return onSteamCallback("MusicPlayerSelectsQueueEntry", (event) => {
+      handler(event as MusicRemoteSelectsEntryEvent);
+    });
+  },
+  onSelectsPlaylistEntry(handler: (event: MusicRemoteSelectsEntryEvent) => void): CallbackHandle {
+    return onSteamCallback("MusicPlayerSelectsPlaylistEntry", (event) => {
+      handler(event as MusicRemoteSelectsEntryEvent);
+    });
+  },
+  onRemoteWillActivate(handler: (event: MusicRemoteControlEvent) => void): CallbackHandle {
+    return onSteamCallback("MusicPlayerRemoteWillActivate", (event) => {
+      handler(event as MusicRemoteControlEvent);
+    });
+  },
+  onRemoteWillDeactivate(handler: (event: MusicRemoteControlEvent) => void): CallbackHandle {
+    return onSteamCallback("MusicPlayerRemoteWillDeactivate", (event) => {
+      handler(event as MusicRemoteControlEvent);
+    });
+  },
+  onRemoteToFront(handler: (event: MusicRemoteControlEvent) => void): CallbackHandle {
+    return onSteamCallback("MusicPlayerRemoteToFront", (event) => {
+      handler(event as MusicRemoteControlEvent);
+    });
+  },
+  onWillQuit(handler: (event: MusicRemoteControlEvent) => void): CallbackHandle {
+    return onSteamCallback("MusicPlayerWillQuit", (event) => {
+      handler(event as MusicRemoteControlEvent);
+    });
+  },
+  onWantsPlay(handler: (event: MusicRemoteControlEvent) => void): CallbackHandle {
+    return onSteamCallback("MusicPlayerWantsPlay", (event) => {
+      handler(event as MusicRemoteControlEvent);
+    });
+  },
+  onWantsPause(handler: (event: MusicRemoteControlEvent) => void): CallbackHandle {
+    return onSteamCallback("MusicPlayerWantsPause", (event) => {
+      handler(event as MusicRemoteControlEvent);
+    });
+  },
+  onWantsPlayPrevious(handler: (event: MusicRemoteControlEvent) => void): CallbackHandle {
+    return onSteamCallback("MusicPlayerWantsPlayPrevious", (event) => {
+      handler(event as MusicRemoteControlEvent);
+    });
+  },
+  onWantsPlayNext(handler: (event: MusicRemoteControlEvent) => void): CallbackHandle {
+    return onSteamCallback("MusicPlayerWantsPlayNext", (event) => {
+      handler(event as MusicRemoteControlEvent);
+    });
+  },
+  onWantsShuffled(handler: (event: MusicRemoteWantsShuffledEvent) => void): CallbackHandle {
+    return onSteamCallback("MusicPlayerWantsShuffled", (event) => {
+      handler(event as MusicRemoteWantsShuffledEvent);
+    });
+  },
+  onWantsLooped(handler: (event: MusicRemoteWantsLoopedEvent) => void): CallbackHandle {
+    return onSteamCallback("MusicPlayerWantsLooped", (event) => {
+      handler(event as MusicRemoteWantsLoopedEvent);
+    });
+  },
+  onWantsPlayingRepeatStatus(handler: (event: MusicRemoteWantsPlayingRepeatStatusEvent) => void): CallbackHandle {
+    return onSteamCallback("MusicPlayerWantsPlayingRepeatStatus", (event) => {
+      handler(event as MusicRemoteWantsPlayingRepeatStatusEvent);
+    });
   }
 };
 
@@ -9583,6 +9788,16 @@ export const music = {
   },
   getVolume(): number {
     return native().musicGetVolume();
+  },
+  onPlaybackStatusChanged(handler: (event: MusicPlaybackStatusChangedEvent) => void): CallbackHandle {
+    return onSteamCallback("PlaybackStatusHasChanged", (event) => {
+      handler(event as MusicPlaybackStatusChangedEvent);
+    });
+  },
+  onVolumeChanged(handler: (event: MusicVolumeHasChangedEvent) => void): CallbackHandle {
+    return onSteamCallback("VolumeHasChanged", (event) => {
+      handler(event as MusicVolumeHasChangedEvent);
+    });
   }
 };
 
@@ -9598,6 +9813,26 @@ export const video = {
   },
   getOpfStringForApp(appId: number): string | null {
     return native().videoGetOpfStringForApp(appId) ?? null;
+  },
+  onBroadcastUploadStart(handler: (event: VideoBroadcastUploadStartEvent) => void): CallbackHandle {
+    return onSteamCallback("BroadcastUploadStart", (event) => {
+      handler(event as VideoBroadcastUploadStartEvent);
+    });
+  },
+  onBroadcastUploadStop(handler: (event: VideoBroadcastUploadStopEvent) => void): CallbackHandle {
+    return onSteamCallback("BroadcastUploadStop", (event) => {
+      handler(event as VideoBroadcastUploadStopEvent);
+    });
+  },
+  onGetVideoUrlResult(handler: (event: VideoUrlResultEvent) => void): CallbackHandle {
+    return onSteamCallback("GetVideoURLResult", (event) => {
+      handler(event as VideoUrlResultEvent);
+    });
+  },
+  onGetOpfSettingsResult(handler: (event: VideoOpfSettingsResultEvent) => void): CallbackHandle {
+    return onSteamCallback("GetOPFSettingsResult", (event) => {
+      handler(event as VideoOpfSettingsResultEvent);
+    });
   }
 };
 
@@ -9620,6 +9855,11 @@ export const parental = {
   },
   isFeatureInBlockList(feature: number): boolean {
     return native().parentalIsFeatureInBlockList(feature);
+  },
+  onSettingsChanged(handler: (event: ParentalSettingsChangedEvent) => void): CallbackHandle {
+    return onSteamCallback("SteamParentalSettingsChanged", (event) => {
+      handler(event as ParentalSettingsChangedEvent);
+    });
   }
 };
 
@@ -9715,6 +9955,16 @@ export const timeline = {
   },
   openOverlayToTimelineEvent(event: bigint): void {
     native().timelineOpenOverlayToTimelineEvent(event);
+  },
+  onGamePhaseRecordingExists(handler: (event: TimelineGamePhaseRecordingExistsEvent) => void): CallbackHandle {
+    return onSteamCallback("SteamTimelineGamePhaseRecordingExists", (event) => {
+      handler(event as TimelineGamePhaseRecordingExistsEvent);
+    });
+  },
+  onEventRecordingExists(handler: (event: TimelineEventRecordingExistsEvent) => void): CallbackHandle {
+    return onSteamCallback("SteamTimelineEventRecordingExists", (event) => {
+      handler(event as TimelineEventRecordingExistsEvent);
+    });
   }
 };
 
@@ -9786,6 +10036,26 @@ export const remotePlay = {
   },
   setMouseCursor(sessionId: number, cursorId: number): void {
     native().remotePlaySetMouseCursor(sessionId, cursorId);
+  },
+  onSessionConnected(handler: (event: RemotePlaySessionEvent) => void): CallbackHandle {
+    return onSteamCallback("SteamRemotePlaySessionConnected", (event) => {
+      handler(event as RemotePlaySessionEvent);
+    });
+  },
+  onSessionDisconnected(handler: (event: RemotePlaySessionEvent) => void): CallbackHandle {
+    return onSteamCallback("SteamRemotePlaySessionDisconnected", (event) => {
+      handler(event as RemotePlaySessionEvent);
+    });
+  },
+  onTogetherGuestInvite(handler: (event: RemotePlayTogetherGuestInviteEvent) => void): CallbackHandle {
+    return onSteamCallback("SteamRemotePlayTogetherGuestInvite", (event) => {
+      handler(event as RemotePlayTogetherGuestInviteEvent);
+    });
+  },
+  onSessionAvatarLoaded(handler: (event: RemotePlaySessionAvatarLoadedEvent) => void): CallbackHandle {
+    return onSteamCallback("SteamRemotePlaySessionAvatarLoaded", (event) => {
+      handler(event as RemotePlaySessionAvatarLoadedEvent);
+    });
   }
 };
 

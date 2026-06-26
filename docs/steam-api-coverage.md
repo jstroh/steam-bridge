@@ -171,21 +171,21 @@ covered.
   preference, item state, statistics, rich query configuration, client and
   game-server shared interfaces, and UGC callback-event coverage.
 - Screenshots: screenshot library writes, screenshot triggers/hooks, location
-  and user/published-file tagging, VR screenshot library writes, and screenshot
-  callback events.
+  and user/published-file tagging, VR screenshot library writes, and typed
+  screenshot callback helpers.
 - Music: playback state, play/pause/previous/next controls, volume helpers,
   Music Remote registration, ability/status/current-entry/queue/playlist update
-  helpers, and music and Music Remote callback events.
+  helpers, and typed music and Music Remote callback helpers.
 - Video: video URL/OPF request triggers, OPF string fetches, broadcast
-  status/viewer counts, and video/broadcast callback events.
+  status/viewer counts, and typed video/broadcast callback helpers.
 - Parental settings: parental lock state, app block checks, and feature block
-  checks, plus parental-settings change callback events.
+  checks, plus typed parental-settings change callback helpers.
 - Timeline: timeline tooltips, game modes, events, game phases, recording
   existence checks, phase tags/attributes, overlay navigation, and
-  recording-existence callback events.
+  typed recording-existence callback helpers.
 - Remote Play: session enumeration/details, Remote Play Together UI/invites,
   direct input toggles, input polling, mouse visibility/position, custom cursor
-  helpers, and session/invite/avatar callback events.
+  helpers, and typed session/invite/avatar callback helpers.
 - Game server: Steam game-server lifecycle, callback pumping, secure/Steam ID
   status, Steam game-server user handle reads, header-only interface init,
   deprecated master-server heartbeat controls, server metadata publication,
@@ -205,10 +205,11 @@ covered.
   `SteamDatagramRelayAuthTicket` opaque in the bundled headers, so safe
   structured decoding needs a newer SDK surface or a maintained local shim.
 - Additional specialized callback/event helpers outside the current lifecycle,
-  apps, user/auth, Friends, Steam Input, and networking callback-helper batches,
-  for interfaces where a dedicated `on...` helper would be clearer than the
-  generic name-based subscription API. Generated callback constants and generic
-  name subscriptions are covered by the automated coverage audit.
+  apps, user/auth, Friends, Steam Input, networking, screenshots, music, video,
+  parental settings, timeline, and Remote Play callback-helper batches, for
+  interfaces where a dedicated `on...` helper would be clearer than the generic
+  name-based subscription API. Generated callback constants and generic name
+  subscriptions are covered by the automated coverage audit.
 - `ISteamPS3OverlayRenderHost` and `ISteamPS3OverlayRender` are PlayStation 3
   overlay interfaces and are outside Steam Bridge's supported Steam desktop
   targets.

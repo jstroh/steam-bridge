@@ -3671,6 +3671,238 @@ test("specific and generic callbacks normalize Steamworks payloads", (t) => {
   });
 });
 
+test("media and remote facades expose typed callback helpers", (t) => {
+  const fake = createFakeNative();
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  const events = {};
+  const handles = [
+    steam.screenshots.onReady((event) => {
+      events.screenshotReady = event;
+    }),
+    steam.screenshots.onRequested((event) => {
+      events.screenshotRequested = event;
+    }),
+    steam.music.onPlaybackStatusChanged((event) => {
+      events.playback = event;
+    }),
+    steam.music.onVolumeChanged((event) => {
+      events.volume = event;
+    }),
+    steam.music.remote.onWantsVolume((event) => {
+      events.remoteVolume = event;
+    }),
+    steam.music.remote.onSelectsQueueEntry((event) => {
+      events.queueEntry = event;
+    }),
+    steam.music.remote.onSelectsPlaylistEntry((event) => {
+      events.playlistEntry = event;
+    }),
+    steam.music.remote.onRemoteWillActivate((event) => {
+      events.remoteActivate = event;
+    }),
+    steam.music.remote.onRemoteWillDeactivate((event) => {
+      events.remoteDeactivate = event;
+    }),
+    steam.music.remote.onRemoteToFront((event) => {
+      events.remoteFront = event;
+    }),
+    steam.music.remote.onWillQuit((event) => {
+      events.remoteQuit = event;
+    }),
+    steam.music.remote.onWantsPlay((event) => {
+      events.remotePlay = event;
+    }),
+    steam.music.remote.onWantsPause((event) => {
+      events.remotePause = event;
+    }),
+    steam.music.remote.onWantsPlayPrevious((event) => {
+      events.remotePrevious = event;
+    }),
+    steam.music.remote.onWantsPlayNext((event) => {
+      events.remoteNext = event;
+    }),
+    steam.music.remote.onWantsShuffled((event) => {
+      events.remoteShuffled = event;
+    }),
+    steam.music.remote.onWantsLooped((event) => {
+      events.remoteLooped = event;
+    }),
+    steam.music.remote.onWantsPlayingRepeatStatus((event) => {
+      events.remoteRepeat = event;
+    }),
+    steam.video.onBroadcastUploadStart((event) => {
+      events.broadcastStart = event;
+    }),
+    steam.video.onBroadcastUploadStop((event) => {
+      events.broadcastStop = event;
+    }),
+    steam.video.onGetVideoUrlResult((event) => {
+      events.videoUrl = event;
+    }),
+    steam.video.onGetOpfSettingsResult((event) => {
+      events.opf = event;
+    }),
+    steam.parental.onSettingsChanged((event) => {
+      events.parental = event;
+    }),
+    steam.remotePlay.onSessionConnected((event) => {
+      events.remotePlayConnected = event;
+    }),
+    steam.remotePlay.onSessionDisconnected((event) => {
+      events.remotePlayDisconnected = event;
+    }),
+    steam.remotePlay.onTogetherGuestInvite((event) => {
+      events.remotePlayInvite = event;
+    }),
+    steam.remotePlay.onSessionAvatarLoaded((event) => {
+      events.remotePlayAvatar = event;
+    }),
+    steam.timeline.onGamePhaseRecordingExists((event) => {
+      events.timelinePhase = event;
+    }),
+    steam.timeline.onEventRecordingExists((event) => {
+      events.timelineEvent = event;
+    })
+  ];
+
+  fake.callbacks.get(steam.SteamCallback.ScreenshotReady)({ local_handle: 77, result: 1 });
+  fake.callbacks.get(steam.SteamCallback.ScreenshotRequested)({});
+  fake.callbacks.get(steam.SteamCallback.PlaybackStatusHasChanged)({});
+  fake.callbacks.get(steam.SteamCallback.VolumeHasChanged)({ new_volume: 0.5 });
+  fake.callbacks.get(steam.SteamCallback.MusicPlayerWantsVolume)({ new_volume: 0.75 });
+  fake.callbacks.get(steam.SteamCallback.MusicPlayerSelectsQueueEntry)({ entry_id: 9 });
+  fake.callbacks.get(steam.SteamCallback.MusicPlayerSelectsPlaylistEntry)({ entry_id: 10 });
+  fake.callbacks.get(steam.SteamCallback.MusicPlayerRemoteWillActivate)({});
+  fake.callbacks.get(steam.SteamCallback.MusicPlayerRemoteWillDeactivate)({});
+  fake.callbacks.get(steam.SteamCallback.MusicPlayerRemoteToFront)({});
+  fake.callbacks.get(steam.SteamCallback.MusicPlayerWillQuit)({});
+  fake.callbacks.get(steam.SteamCallback.MusicPlayerWantsPlay)({});
+  fake.callbacks.get(steam.SteamCallback.MusicPlayerWantsPause)({});
+  fake.callbacks.get(steam.SteamCallback.MusicPlayerWantsPlayPrevious)({});
+  fake.callbacks.get(steam.SteamCallback.MusicPlayerWantsPlayNext)({});
+  fake.callbacks.get(steam.SteamCallback.MusicPlayerWantsShuffled)({ shuffled: true });
+  fake.callbacks.get(steam.SteamCallback.MusicPlayerWantsLooped)({ looped: false });
+  fake.callbacks.get(steam.SteamCallback.MusicPlayerWantsPlayingRepeatStatus)({ repeat_status: 2 });
+  fake.callbacks.get(steam.SteamCallback.BroadcastUploadStart)({ is_rtmp: true });
+  fake.callbacks.get(steam.SteamCallback.BroadcastUploadStop)({ result: 1 });
+  fake.callbacks.get(steam.SteamCallback.GetVideoURLResult)({
+    result: 1,
+    video_app_id: 480,
+    url: "https://example.invalid/spacewar.webm"
+  });
+  fake.callbacks.get(steam.SteamCallback.GetOPFSettingsResult)({ result: 1, video_app_id: 480 });
+  fake.callbacks.get(steam.SteamCallback.SteamParentalSettingsChanged)({});
+  fake.callbacks.get(steam.SteamCallback.SteamRemotePlaySessionConnected)({ session_id: 42 });
+  fake.callbacks.get(steam.SteamCallback.SteamRemotePlaySessionDisconnected)({ session_id: 42 });
+  fake.callbacks.get(steam.SteamCallback.SteamRemotePlayTogetherGuestInvite)({
+    connect_url: "steam://join/480/test"
+  });
+  fake.callbacks.get(steam.SteamCallback.SteamRemotePlaySessionAvatarLoaded)({
+    session_id: 42,
+    image: 17,
+    wide: 64,
+    tall: 64
+  });
+  fake.callbacks.get(steam.SteamCallback.SteamTimelineGamePhaseRecordingExists)({
+    phase_id: "round-1",
+    recording_ms: "1500",
+    longest_clip_ms: "750",
+    clip_count: 2,
+    screenshot_count: 3
+  });
+  fake.callbacks.get(steam.SteamCallback.SteamTimelineEventRecordingExists)({
+    event: "9001",
+    recording_exists: true
+  });
+
+  assert.equal(events.screenshotReady.localHandle, 77);
+  assert.equal(events.screenshotReady.result, 1);
+  assert.deepEqual(events.screenshotRequested, {});
+  assert.deepEqual(events.playback, {});
+  assert.equal(events.volume.newVolume, 0.5);
+  assert.equal(events.remoteVolume.newVolume, 0.75);
+  assert.equal(events.queueEntry.entryId, 9);
+  assert.equal(events.playlistEntry.entryId, 10);
+  assert.deepEqual(events.remoteActivate, {});
+  assert.deepEqual(events.remoteDeactivate, {});
+  assert.deepEqual(events.remoteFront, {});
+  assert.deepEqual(events.remoteQuit, {});
+  assert.deepEqual(events.remotePlay, {});
+  assert.deepEqual(events.remotePause, {});
+  assert.deepEqual(events.remotePrevious, {});
+  assert.deepEqual(events.remoteNext, {});
+  assert.equal(events.remoteShuffled.shuffled, true);
+  assert.equal(events.remoteLooped.looped, false);
+  assert.equal(events.remoteRepeat.repeatStatus, 2);
+  assert.equal(events.broadcastStart.isRtmp, true);
+  assert.equal(events.broadcastStop.result, 1);
+  assert.equal(events.videoUrl.videoAppId, 480);
+  assert.equal(events.videoUrl.url, "https://example.invalid/spacewar.webm");
+  assert.equal(events.opf.videoAppId, 480);
+  assert.deepEqual(events.parental, {});
+  assert.equal(events.remotePlayConnected.sessionId, 42);
+  assert.equal(events.remotePlayDisconnected.sessionId, 42);
+  assert.equal(events.remotePlayInvite.connectUrl, "steam://join/480/test");
+  assert.equal(events.remotePlayAvatar.sessionId, 42);
+  assert.equal(events.remotePlayAvatar.image, 17);
+  assert.equal(events.remotePlayAvatar.wide, 64);
+  assert.equal(events.remotePlayAvatar.tall, 64);
+  assert.equal(events.timelinePhase.phaseId, "round-1");
+  assert.equal(events.timelinePhase.recordingMs, 1500n);
+  assert.equal(events.timelinePhase.longestClipMs, 750n);
+  assert.equal(events.timelinePhase.clipCount, 2);
+  assert.equal(events.timelinePhase.screenshotCount, 3);
+  assert.equal(events.timelineEvent.event, 9001n);
+  assert.equal(events.timelineEvent.recordingExists, true);
+
+  for (const handle of handles) {
+    handle.disconnect();
+  }
+
+  const callbackIds = [
+    steam.SteamCallback.ScreenshotReady,
+    steam.SteamCallback.ScreenshotRequested,
+    steam.SteamCallback.PlaybackStatusHasChanged,
+    steam.SteamCallback.VolumeHasChanged,
+    steam.SteamCallback.MusicPlayerWantsVolume,
+    steam.SteamCallback.MusicPlayerSelectsQueueEntry,
+    steam.SteamCallback.MusicPlayerSelectsPlaylistEntry,
+    steam.SteamCallback.MusicPlayerRemoteWillActivate,
+    steam.SteamCallback.MusicPlayerRemoteWillDeactivate,
+    steam.SteamCallback.MusicPlayerRemoteToFront,
+    steam.SteamCallback.MusicPlayerWillQuit,
+    steam.SteamCallback.MusicPlayerWantsPlay,
+    steam.SteamCallback.MusicPlayerWantsPause,
+    steam.SteamCallback.MusicPlayerWantsPlayPrevious,
+    steam.SteamCallback.MusicPlayerWantsPlayNext,
+    steam.SteamCallback.MusicPlayerWantsShuffled,
+    steam.SteamCallback.MusicPlayerWantsLooped,
+    steam.SteamCallback.MusicPlayerWantsPlayingRepeatStatus,
+    steam.SteamCallback.BroadcastUploadStart,
+    steam.SteamCallback.BroadcastUploadStop,
+    steam.SteamCallback.GetVideoURLResult,
+    steam.SteamCallback.GetOPFSettingsResult,
+    steam.SteamCallback.SteamParentalSettingsChanged,
+    steam.SteamCallback.SteamRemotePlaySessionConnected,
+    steam.SteamCallback.SteamRemotePlaySessionDisconnected,
+    steam.SteamCallback.SteamRemotePlayTogetherGuestInvite,
+    steam.SteamCallback.SteamRemotePlaySessionAvatarLoaded,
+    steam.SteamCallback.SteamTimelineGamePhaseRecordingExists,
+    steam.SteamCallback.SteamTimelineEventRecordingExists
+  ];
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "registerSteamCallback"),
+    callbackIds.map((callbackId) => ({ method: "registerSteamCallback", args: [callbackId] }))
+  );
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "disconnectCallback"),
+    callbackIds.map((callbackId) => ({ method: "disconnectCallback", args: [callbackId] }))
+  );
+});
+
 test("overlay helpers map constants and forward modal/store options", (t) => {
   const fake = createFakeNative();
   const steam = loadSteamWithFakeNative(fake);
