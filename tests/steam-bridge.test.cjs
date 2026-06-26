@@ -9349,6 +9349,212 @@ test("web API econ service facade maps trade and cache service methods", async (
   assert.equal(typeof steam.webApi.econService.getTradeOffersSummary, "function");
 });
 
+test("web API inventory service facade maps item service methods", async (t) => {
+  const steam = loadSteamWithFakeNative(createFakeNative());
+  const fetchCalls = [];
+  const fetchImpl = async (url, init = {}) => {
+    fetchCalls.push({ url, init });
+    return {
+      ok: true,
+      status: 200,
+      headers: {
+        forEach(callback) {
+          callback("application/json", "content-type");
+        }
+      },
+      async text() {
+        return JSON.stringify({ response: { success: true } });
+      }
+    };
+  };
+  const client = steam.createSteamWebApiClient({ apiKey: "inventory-secret", fetch: fetchImpl });
+  const requestUrl = (index) => new URL(fetchCalls[index].url);
+  const queryInputJson = (index) => JSON.parse(requestUrl(index).searchParams.get("input_json"));
+  const bodyInputJson = (index) => JSON.parse(new URLSearchParams(fetchCalls[index].init.body).get("input_json"));
+
+  t.after(clearSteamBridgeCache);
+
+  await client.inventoryService.addItem({
+    appId: 480,
+    steamId64: 76561198000000000n,
+    itemDefIds: [100n, 101n],
+    itemPropsJson: "{\"quality\":\"rare\"}",
+    notify: true,
+    requestId: 9001n,
+    tradeRestriction: false
+  });
+  await client.inventoryService.addPromoItem({
+    appId: 480,
+    steamId64: 76561198000000000n,
+    itemDefId: 102n,
+    notify: false,
+    requestId: 9002n
+  });
+  await client.inventoryService.consumeItem({
+    appId: 480,
+    steamId64: 76561198000000000n,
+    itemId: 5000n,
+    quantity: "2",
+    requestId: 9003n
+  });
+  await client.inventoryService.exchangeItem({
+    appId: 480,
+    steamId64: 76561198000000000n,
+    materials: [
+      { itemId: 5001n, quantity: 1 },
+      { itemId: 5002n, quantity: 3 }
+    ],
+    outputItemDefId: 120n
+  });
+  await client.inventoryService.getInventory({ appId: 480, steamId64: 76561198000000000n });
+  await client.inventoryService.getItemDefs({
+    appId: 480,
+    modifiedSince: "20260625T010203Z",
+    itemDefIds: [100n],
+    workshopIds: [123456789n],
+    cacheMaxAgeSeconds: 60
+  });
+  await client.inventoryService.getPriceSheet(1);
+  await client.inventoryService.consolidate({
+    appId: 480,
+    steamId64: 76561198000000000n,
+    itemDefIds: [100n, 101n],
+    force: true
+  });
+  await client.inventoryService.getQuantity({
+    appId: 480,
+    steamId64: 76561198000000000n,
+    itemDefIds: [100n],
+    force: false
+  });
+  await client.inventoryService.modifyItems({
+    appId: 480,
+    steamId64: 76561198000000000n,
+    timestamp: 1760000000,
+    updates: [
+      {
+        itemId: 5001n,
+        propertyName: "fx",
+        propertyValueString: "blue_flames"
+      },
+      {
+        itemId: 5002n,
+        propertyName: "visible",
+        propertyValueBool: true
+      },
+      {
+        itemId: 5003n,
+        propertyName: "quality",
+        propertyValueInt: 5n,
+        propertyValueFloat: "1.5"
+      },
+      {
+        itemId: 5004n,
+        propertyName: "legacy",
+        removeProperty: true
+      }
+    ]
+  });
+
+  assert.equal(
+    requestUrl(0).origin + requestUrl(0).pathname,
+    "https://partner.steam-api.com/IInventoryService/AddItem/v0001/"
+  );
+  assert.equal(fetchCalls[0].init.method, "POST");
+  assert.deepEqual(bodyInputJson(0), {
+    appid: 480,
+    itemdefid: ["100", "101"],
+    itempropsjson: "{\"quality\":\"rare\"}",
+    steamid: "76561198000000000",
+    notify: true,
+    requestid: "9001",
+    trade_restriction: false
+  });
+  assert.equal(
+    requestUrl(1).origin + requestUrl(1).pathname,
+    "https://partner.steam-api.com/IInventoryService/AddPromoItem/v0001/"
+  );
+  assert.deepEqual(bodyInputJson(1), {
+    appid: 480,
+    itemdefid: "102",
+    steamid: "76561198000000000",
+    notify: false,
+    requestid: "9002"
+  });
+  assert.deepEqual(bodyInputJson(2), {
+    appid: 480,
+    itemid: "5000",
+    quantity: "2",
+    steamid: "76561198000000000",
+    requestid: "9003"
+  });
+  assert.deepEqual(bodyInputJson(3), {
+    appid: 480,
+    steamid: "76561198000000000",
+    materialsitemid: ["5001", "5002"],
+    materialsquantity: [1, 3],
+    outputitemdefid: "120"
+  });
+  assert.equal(
+    requestUrl(4).origin + requestUrl(4).pathname,
+    "https://partner.steam-api.com/IInventoryService/GetInventory/v0001/"
+  );
+  assert.deepEqual(queryInputJson(4), { appid: 480, steamid: "76561198000000000" });
+  assert.deepEqual(queryInputJson(5), {
+    appid: 480,
+    modifiedsince: "20260625T010203Z",
+    itemdefids: ["100"],
+    workshopids: ["123456789"],
+    cache_max_age_seconds: 60
+  });
+  assert.equal(
+    requestUrl(6).origin + requestUrl(6).pathname,
+    "https://api.steampowered.com/IInventoryService/GetPriceSheet/v0001/"
+  );
+  assert.deepEqual(queryInputJson(6), { ecurrency: 1 });
+  assert.deepEqual(bodyInputJson(7), {
+    appid: 480,
+    steamid: "76561198000000000",
+    itemdefid: ["100", "101"],
+    force: true
+  });
+  assert.deepEqual(queryInputJson(8), {
+    appid: 480,
+    steamid: "76561198000000000",
+    itemdefid: ["100"],
+    force: false
+  });
+  assert.deepEqual(bodyInputJson(9), {
+    appid: 480,
+    steamid: "76561198000000000",
+    timestamp: 1760000000,
+    updates: [
+      {
+        itemid: "5001",
+        property_name: "fx",
+        property_value_string: "blue_flames"
+      },
+      {
+        itemid: "5002",
+        property_name: "visible",
+        property_value_bool: true
+      },
+      {
+        itemid: "5003",
+        property_name: "quality",
+        property_value_int: "5",
+        property_value_float: "1.5"
+      },
+      {
+        itemid: "5004",
+        property_name: "legacy",
+        remove_property: true
+      }
+    ]
+  });
+  assert.equal(typeof steam.webApi.inventoryService.modifyItems, "function");
+});
+
 test("web API player and store service facades use input_json payloads", async (t) => {
   const steam = loadSteamWithFakeNative(createFakeNative());
   const fetchCalls = [];

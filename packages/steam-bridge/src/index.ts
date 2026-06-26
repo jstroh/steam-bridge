@@ -1661,6 +1661,7 @@ export interface SteamWebApiClient {
   econService: SteamWebApiEconServiceFacade;
   economy: SteamWebApiEconomyFacade;
   gameServerStats: SteamWebApiGameServerStatsFacade;
+  inventoryService: SteamWebApiInventoryServiceFacade;
   leaderboards: SteamWebApiLeaderboardsFacade;
   news: SteamWebApiNewsFacade;
   player: SteamWebApiPlayerServiceFacade;
@@ -1994,6 +1995,84 @@ export interface SteamWebApiTradeOfferOptions extends SteamWebApiEndpointOptions
 
 export interface SteamWebApiTradeOffersSummaryOptions extends SteamWebApiEndpointOptions {
   timeLastVisit?: number;
+}
+
+export interface SteamWebApiInventoryServiceFacade {
+  addItem<T = unknown>(options: SteamWebApiInventoryAddItemOptions): Promise<SteamWebApiResponse<T>>;
+  addPromoItem<T = unknown>(options: SteamWebApiInventoryAddPromoItemOptions): Promise<SteamWebApiResponse<T>>;
+  consumeItem<T = unknown>(options: SteamWebApiInventoryConsumeItemOptions): Promise<SteamWebApiResponse<T>>;
+  exchangeItem<T = unknown>(options: SteamWebApiInventoryExchangeItemOptions): Promise<SteamWebApiResponse<T>>;
+  getInventory<T = unknown>(options: SteamWebApiInventoryUserAppOptions): Promise<SteamWebApiResponse<T>>;
+  getItemDefs<T = unknown>(options: SteamWebApiInventoryItemDefsOptions): Promise<SteamWebApiResponse<T>>;
+  getPriceSheet<T = unknown>(currency: number, options?: SteamWebApiEndpointOptions | null): Promise<SteamWebApiResponse<T>>;
+  consolidate<T = unknown>(options: SteamWebApiInventoryConsolidateOptions): Promise<SteamWebApiResponse<T>>;
+  getQuantity<T = unknown>(options: SteamWebApiInventoryQuantityOptions): Promise<SteamWebApiResponse<T>>;
+  modifyItems<T = unknown>(options: SteamWebApiInventoryModifyItemsOptions): Promise<SteamWebApiResponse<T>>;
+}
+
+export interface SteamWebApiInventoryUserAppOptions extends SteamWebApiEndpointOptions {
+  appId: number;
+  steamId64: bigint | number | string;
+}
+
+export interface SteamWebApiInventoryAddItemOptions extends SteamWebApiInventoryUserAppOptions {
+  itemDefIds: Array<bigint | number | string>;
+  itemPropsJson?: string;
+  notify?: boolean;
+  requestId?: bigint | number | string;
+  tradeRestriction?: boolean;
+}
+
+export interface SteamWebApiInventoryAddPromoItemOptions extends SteamWebApiInventoryUserAppOptions {
+  itemDefId?: bigint | number | string;
+  notify?: boolean;
+  requestId?: bigint | number | string;
+}
+
+export interface SteamWebApiInventoryConsumeItemOptions extends SteamWebApiInventoryUserAppOptions {
+  itemId: bigint | number | string;
+  quantity: bigint | number | string;
+  requestId?: bigint | number | string;
+}
+
+export interface SteamWebApiInventoryExchangeItemOptions extends SteamWebApiInventoryUserAppOptions {
+  materials: SteamWebApiInventoryExchangeMaterial[];
+  outputItemDefId: bigint | number | string;
+}
+
+export interface SteamWebApiInventoryExchangeMaterial {
+  itemId: bigint | number | string;
+  quantity: number;
+}
+
+export interface SteamWebApiInventoryItemDefsOptions extends SteamWebApiEndpointOptions {
+  appId: number;
+  modifiedSince?: string;
+  itemDefIds?: Array<bigint | number | string>;
+  workshopIds?: Array<bigint | number | string>;
+  cacheMaxAgeSeconds?: number;
+}
+
+export interface SteamWebApiInventoryConsolidateOptions extends SteamWebApiInventoryUserAppOptions {
+  itemDefIds: Array<bigint | number | string>;
+  force?: boolean;
+}
+
+export interface SteamWebApiInventoryQuantityOptions extends SteamWebApiInventoryConsolidateOptions {}
+
+export interface SteamWebApiInventoryModifyItemsOptions extends SteamWebApiInventoryUserAppOptions {
+  timestamp: number;
+  updates: SteamWebApiInventoryItemPropertyUpdate[];
+}
+
+export interface SteamWebApiInventoryItemPropertyUpdate {
+  itemId: bigint | number | string;
+  propertyName: string;
+  propertyValueString?: string;
+  propertyValueBool?: boolean;
+  propertyValueInt?: bigint | number | string;
+  propertyValueFloat?: number | string;
+  removeProperty?: boolean;
 }
 
 export interface SteamWebApiGameServerStatsFacade {
@@ -4416,6 +4495,7 @@ export function createSteamWebApiClient(options: SteamWebApiClientOptions = {}):
     econService: createSteamWebApiEconServiceFacade(clientOptions),
     economy: createSteamWebApiEconomyFacade(clientOptions),
     gameServerStats: createSteamWebApiGameServerStatsFacade(clientOptions),
+    inventoryService: createSteamWebApiInventoryServiceFacade(clientOptions),
     leaderboards: createSteamWebApiLeaderboardsFacade(clientOptions),
     news: createSteamWebApiNewsFacade(clientOptions),
     player: createSteamWebApiPlayerServiceFacade(clientOptions),
@@ -9069,6 +9149,172 @@ function createSteamWebApiEconServiceFacade(clientOptions: SteamWebApiClientOpti
         { time_last_visit: options?.timeLastVisit },
         options,
         false
+      );
+    }
+  };
+}
+
+function createSteamWebApiInventoryServiceFacade(
+  clientOptions: SteamWebApiClientOptions
+): SteamWebApiInventoryServiceFacade {
+  return {
+    addItem<T = unknown>(options: SteamWebApiInventoryAddItemOptions): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServicePost<T>(
+        clientOptions,
+        "IInventoryService",
+        "AddItem",
+        1,
+        {
+          appid: options.appId,
+          itemdefid: options.itemDefIds,
+          itempropsjson: options.itemPropsJson,
+          steamid: options.steamId64,
+          notify: options.notify,
+          requestid: options.requestId,
+          trade_restriction: options.tradeRestriction
+        },
+        options
+      );
+    },
+    addPromoItem<T = unknown>(options: SteamWebApiInventoryAddPromoItemOptions): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServicePost<T>(
+        clientOptions,
+        "IInventoryService",
+        "AddPromoItem",
+        1,
+        {
+          appid: options.appId,
+          itemdefid: options.itemDefId,
+          steamid: options.steamId64,
+          notify: options.notify,
+          requestid: options.requestId
+        },
+        options
+      );
+    },
+    consumeItem<T = unknown>(options: SteamWebApiInventoryConsumeItemOptions): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServicePost<T>(
+        clientOptions,
+        "IInventoryService",
+        "ConsumeItem",
+        1,
+        {
+          appid: options.appId,
+          itemid: options.itemId,
+          quantity: options.quantity,
+          steamid: options.steamId64,
+          requestid: options.requestId
+        },
+        options
+      );
+    },
+    exchangeItem<T = unknown>(options: SteamWebApiInventoryExchangeItemOptions): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServicePost<T>(
+        clientOptions,
+        "IInventoryService",
+        "ExchangeItem",
+        1,
+        {
+          appid: options.appId,
+          steamid: options.steamId64,
+          materialsitemid: options.materials.map((material) => material.itemId),
+          materialsquantity: options.materials.map((material) => material.quantity),
+          outputitemdefid: options.outputItemDefId
+        },
+        options
+      );
+    },
+    getInventory<T = unknown>(options: SteamWebApiInventoryUserAppOptions): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServiceGet<T>(
+        clientOptions,
+        "IInventoryService",
+        "GetInventory",
+        1,
+        { appid: options.appId, steamid: options.steamId64 },
+        options
+      );
+    },
+    getItemDefs<T = unknown>(options: SteamWebApiInventoryItemDefsOptions): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServiceGet<T>(
+        clientOptions,
+        "IInventoryService",
+        "GetItemDefs",
+        1,
+        {
+          appid: options.appId,
+          modifiedsince: options.modifiedSince,
+          itemdefids: options.itemDefIds,
+          workshopids: options.workshopIds,
+          cache_max_age_seconds: options.cacheMaxAgeSeconds
+        },
+        options
+      );
+    },
+    getPriceSheet<T = unknown>(
+      currency: number,
+      options?: SteamWebApiEndpointOptions | null
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServiceGet<T>(
+        clientOptions,
+        "IInventoryService",
+        "GetPriceSheet",
+        1,
+        { ecurrency: currency },
+        options,
+        false
+      );
+    },
+    consolidate<T = unknown>(options: SteamWebApiInventoryConsolidateOptions): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServicePost<T>(
+        clientOptions,
+        "IInventoryService",
+        "Consolidate",
+        1,
+        {
+          appid: options.appId,
+          steamid: options.steamId64,
+          itemdefid: options.itemDefIds,
+          force: options.force
+        },
+        options
+      );
+    },
+    getQuantity<T = unknown>(options: SteamWebApiInventoryQuantityOptions): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServiceGet<T>(
+        clientOptions,
+        "IInventoryService",
+        "GetQuantity",
+        1,
+        {
+          appid: options.appId,
+          steamid: options.steamId64,
+          itemdefid: options.itemDefIds,
+          force: options.force
+        },
+        options
+      );
+    },
+    modifyItems<T = unknown>(options: SteamWebApiInventoryModifyItemsOptions): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServicePost<T>(
+        clientOptions,
+        "IInventoryService",
+        "ModifyItems",
+        1,
+        {
+          appid: options.appId,
+          steamid: options.steamId64,
+          timestamp: options.timestamp,
+          updates: options.updates.map((update) => ({
+            itemid: update.itemId,
+            property_name: update.propertyName,
+            property_value_string: update.propertyValueString,
+            property_value_bool: update.propertyValueBool,
+            property_value_int: update.propertyValueInt,
+            property_value_float: update.propertyValueFloat,
+            remove_property: update.removeProperty
+          }))
+        },
+        options
       );
     }
   };
