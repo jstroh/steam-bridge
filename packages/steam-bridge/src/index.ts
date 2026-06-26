@@ -1660,6 +1660,7 @@ export interface SteamWebApiClient {
   community: SteamWebApiCommunityFacade;
   econService: SteamWebApiEconServiceFacade;
   economy: SteamWebApiEconomyFacade;
+  gameNotificationsService: SteamWebApiGameNotificationsServiceFacade;
   gameServersService: SteamWebApiGameServersServiceFacade;
   gameServerStats: SteamWebApiGameServerStatsFacade;
   inventoryService: SteamWebApiInventoryServiceFacade;
@@ -2075,6 +2076,99 @@ export interface SteamWebApiInventoryItemPropertyUpdate {
   propertyValueInt?: bigint | number | string;
   propertyValueFloat?: number | string;
   removeProperty?: boolean;
+}
+
+export interface SteamWebApiGameNotificationsServiceFacade {
+  createSession<T = unknown>(
+    options: SteamWebApiGameNotificationsCreateSessionOptions
+  ): Promise<SteamWebApiResponse<T>>;
+  updateSession<T = unknown>(
+    options: SteamWebApiGameNotificationsUpdateSessionOptions
+  ): Promise<SteamWebApiResponse<T>>;
+  enumerateSessionsForApp<T = unknown>(
+    options: SteamWebApiGameNotificationsEnumerateSessionsOptions
+  ): Promise<SteamWebApiResponse<T>>;
+  getSessionDetailsForApp<T = unknown>(
+    options: SteamWebApiGameNotificationsSessionDetailsOptions
+  ): Promise<SteamWebApiResponse<T>>;
+  requestNotifications<T = unknown>(
+    options: SteamWebApiGameNotificationsUserAppOptions
+  ): Promise<SteamWebApiResponse<T>>;
+  deleteSession<T = unknown>(
+    options: SteamWebApiGameNotificationsDeleteSessionOptions
+  ): Promise<SteamWebApiResponse<T>>;
+  deleteSessionBatch<T = unknown>(
+    options: SteamWebApiGameNotificationsDeleteSessionBatchOptions
+  ): Promise<SteamWebApiResponse<T>>;
+}
+
+export interface SteamWebApiGameNotificationsLocalizedText {
+  token: string;
+  variables?: SteamWebApiGameNotificationsLocalizedTextVariable[];
+}
+
+export interface SteamWebApiGameNotificationsLocalizedTextVariable {
+  key: string;
+  value: bigint | number | string | boolean;
+}
+
+export interface SteamWebApiGameNotificationsUserState {
+  steamId64: bigint | number | string;
+  state: string;
+  title?: SteamWebApiGameNotificationsLocalizedText;
+  message?: SteamWebApiGameNotificationsLocalizedText;
+}
+
+export interface SteamWebApiGameNotificationsCreateSessionOptions extends SteamWebApiEndpointOptions {
+  appId: number;
+  context: bigint | number | string;
+  title: SteamWebApiGameNotificationsLocalizedText;
+  users: SteamWebApiGameNotificationsUserState[];
+  steamId64?: bigint | number | string;
+}
+
+export interface SteamWebApiGameNotificationsUpdateSessionOptions extends SteamWebApiEndpointOptions {
+  sessionId: bigint | number | string;
+  appId: number;
+  title?: SteamWebApiGameNotificationsLocalizedText;
+  users?: SteamWebApiGameNotificationsUserState[];
+  steamId64?: bigint | number | string;
+}
+
+export interface SteamWebApiGameNotificationsEnumerateSessionsOptions extends SteamWebApiEndpointOptions {
+  steamId64: bigint | number | string;
+  appId?: number;
+  includeAllUserMessages?: boolean;
+  includeAuthUserMessage?: boolean;
+  language?: string;
+}
+
+export interface SteamWebApiGameNotificationsSessionDetailsOptions extends SteamWebApiEndpointOptions {
+  appId: number;
+  sessions: SteamWebApiGameNotificationsSessionDetailsRequest[];
+  language: string;
+}
+
+export interface SteamWebApiGameNotificationsSessionDetailsRequest {
+  sessionId: bigint | number | string;
+  includeAllUserMessages?: boolean;
+  includeAuthUserMessage?: boolean;
+}
+
+export interface SteamWebApiGameNotificationsUserAppOptions extends SteamWebApiEndpointOptions {
+  appId: number;
+  steamId64: bigint | number | string;
+}
+
+export interface SteamWebApiGameNotificationsDeleteSessionOptions extends SteamWebApiEndpointOptions {
+  sessionId: bigint | number | string;
+  appId: number;
+  steamId64?: bigint | number | string;
+}
+
+export interface SteamWebApiGameNotificationsDeleteSessionBatchOptions extends SteamWebApiEndpointOptions {
+  sessionIds: Array<bigint | number | string>;
+  appId: number;
 }
 
 export interface SteamWebApiGameServersServiceFacade {
@@ -4664,6 +4758,7 @@ export function createSteamWebApiClient(options: SteamWebApiClientOptions = {}):
     community: createSteamWebApiCommunityFacade(clientOptions),
     econService: createSteamWebApiEconServiceFacade(clientOptions),
     economy: createSteamWebApiEconomyFacade(clientOptions),
+    gameNotificationsService: createSteamWebApiGameNotificationsServiceFacade(clientOptions),
     gameServersService: createSteamWebApiGameServersServiceFacade(clientOptions),
     gameServerStats: createSteamWebApiGameServerStatsFacade(clientOptions),
     inventoryService: createSteamWebApiInventoryServiceFacade(clientOptions),
@@ -9492,6 +9587,119 @@ function createSteamWebApiInventoryServiceFacade(
   };
 }
 
+function createSteamWebApiGameNotificationsServiceFacade(
+  clientOptions: SteamWebApiClientOptions
+): SteamWebApiGameNotificationsServiceFacade {
+  return {
+    createSession<T = unknown>(
+      options: SteamWebApiGameNotificationsCreateSessionOptions
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServicePost<T>(
+        clientOptions,
+        "IGameNotificationsService",
+        "CreateSession",
+        1,
+        {
+          appid: options.appId,
+          context: options.context,
+          title: steamWebApiGameNotificationsLocalizedText(options.title),
+          users: options.users.map(steamWebApiGameNotificationsUserState),
+          steamid: options.steamId64
+        },
+        options
+      );
+    },
+    updateSession<T = unknown>(
+      options: SteamWebApiGameNotificationsUpdateSessionOptions
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServicePost<T>(
+        clientOptions,
+        "IGameNotificationsService",
+        "UpdateSession",
+        1,
+        {
+          sessionid: options.sessionId,
+          appid: options.appId,
+          title: steamWebApiGameNotificationsLocalizedText(options.title),
+          users: options.users?.map(steamWebApiGameNotificationsUserState),
+          steamid: options.steamId64
+        },
+        options
+      );
+    },
+    enumerateSessionsForApp<T = unknown>(
+      options: SteamWebApiGameNotificationsEnumerateSessionsOptions
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServiceGet<T>(
+        clientOptions,
+        "IGameNotificationsService",
+        "EnumerateSessionsForApp",
+        1,
+        {
+          appid: options.appId,
+          steamid: options.steamId64,
+          include_all_user_messages: options.includeAllUserMessages,
+          include_auth_user_message: options.includeAuthUserMessage,
+          language: options.language
+        },
+        options
+      );
+    },
+    getSessionDetailsForApp<T = unknown>(
+      options: SteamWebApiGameNotificationsSessionDetailsOptions
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServiceGet<T>(
+        clientOptions,
+        "IGameNotificationsService",
+        "GetSessionDetailsForApp",
+        1,
+        {
+          appid: options.appId,
+          sessions: options.sessions.map(steamWebApiGameNotificationsSessionDetailsRequest),
+          language: options.language
+        },
+        options
+      );
+    },
+    requestNotifications<T = unknown>(
+      options: SteamWebApiGameNotificationsUserAppOptions
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServicePost<T>(
+        clientOptions,
+        "IGameNotificationsService",
+        "RequestNotifications",
+        1,
+        { steamid: options.steamId64, appid: options.appId },
+        options
+      );
+    },
+    deleteSession<T = unknown>(
+      options: SteamWebApiGameNotificationsDeleteSessionOptions
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServicePost<T>(
+        clientOptions,
+        "IGameNotificationsService",
+        "DeleteSession",
+        1,
+        { sessionid: options.sessionId, appid: options.appId, steamid: options.steamId64 },
+        options
+      );
+    },
+    deleteSessionBatch<T = unknown>(
+      options: SteamWebApiGameNotificationsDeleteSessionBatchOptions
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServicePost<T>(
+        clientOptions,
+        "IGameNotificationsService",
+        "DeleteSessionBatch",
+        1,
+        { sessionid: options.sessionIds, appid: options.appId },
+        options
+      );
+    }
+  };
+}
+
 function createSteamWebApiGameServersServiceFacade(
   clientOptions: SteamWebApiClientOptions
 ): SteamWebApiGameServersServiceFacade {
@@ -10471,6 +10679,39 @@ function steamWebApiKeyValueTags(
 
   const entries = Array.isArray(tags) ? tags : Object.entries(tags).map(([key, value]) => ({ key, value }));
   return entries.map((tag) => ({ key: tag.key, value: tag.value }));
+}
+
+function steamWebApiGameNotificationsLocalizedText(
+  text: SteamWebApiGameNotificationsLocalizedText | undefined
+): SteamWebApiInputJsonValue | undefined {
+  if (!text) {
+    return undefined;
+  }
+  return {
+    token: text.token,
+    variables: text.variables?.map((variable) => ({ key: variable.key, value: variable.value }))
+  };
+}
+
+function steamWebApiGameNotificationsUserState(
+  user: SteamWebApiGameNotificationsUserState
+): SteamWebApiInputJsonValue {
+  return {
+    steamid: user.steamId64,
+    state: user.state,
+    title: steamWebApiGameNotificationsLocalizedText(user.title),
+    message: steamWebApiGameNotificationsLocalizedText(user.message)
+  };
+}
+
+function steamWebApiGameNotificationsSessionDetailsRequest(
+  session: SteamWebApiGameNotificationsSessionDetailsRequest
+): SteamWebApiInputJsonValue {
+  return {
+    sessionid: session.sessionId,
+    include_all_user_messages: session.includeAllUserMessages,
+    include_auth_user_message: session.includeAuthUserMessage
+  };
 }
 
 function steamWebApiPublishedItemVoteBody(

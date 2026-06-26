@@ -99,6 +99,10 @@ const profile = await web.user.resolveVanityUrl("spacewar");
 const news = await web.news.getNewsForApp({ appId: 480, count: 2 });
 const appStatus = await web.apps.upToDateCheck({ appId: 480, version: 1 });
 const gameServerAccounts = await web.gameServersService.getAccountList();
+const notificationSessions = await web.gameNotificationsService.enumerateSessionsForApp({
+  appId: 480,
+  steamId64: 76561198000000000n
+});
 const workshopDetails = await web.remoteStorage.getPublishedFileDetails([123456789n]);
 const workshopFiles = await web.publishedFileService.queryFiles({
   queryType: 3,

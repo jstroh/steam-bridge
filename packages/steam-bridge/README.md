@@ -56,6 +56,10 @@ const profile = await steamworks.webApi.user.resolveVanityUrl("spacewar");
 const news = await steamworks.webApi.news.getNewsForApp({ appId: 480, count: 2 });
 const appStatus = await steamworks.webApi.apps.upToDateCheck({ appId: 480, version: 1 });
 const gameServerAccounts = await steamworks.webApi.gameServersService.getAccountList();
+const notificationSessions = await steamworks.webApi.gameNotificationsService.enumerateSessionsForApp({
+  appId: 480,
+  steamId64: 76561198000000000n
+});
 const workshopFiles = await steamworks.webApi.publishedFileService.queryFiles({
   queryType: 3,
   creatorAppId: 480,

@@ -9636,6 +9636,181 @@ test("web API game servers service facade maps account administration methods", 
   assert.equal(typeof steam.webApi.gameServersService.createAccount, "function");
 });
 
+test("web API game notifications service facade maps session methods", async (t) => {
+  const steam = loadSteamWithFakeNative(createFakeNative());
+  const fetchCalls = [];
+  const fetchImpl = async (url, init = {}) => {
+    fetchCalls.push({ url, init });
+    return {
+      ok: true,
+      status: 200,
+      headers: {
+        forEach(callback) {
+          callback("application/json", "content-type");
+        }
+      },
+      async text() {
+        return JSON.stringify({ response: { ok: true } });
+      }
+    };
+  };
+  const client = steam.createSteamWebApiClient({ apiKey: "notifications-secret", fetch: fetchImpl });
+  const requestUrl = (index) => new URL(fetchCalls[index].url);
+  const queryInputJson = (index) => JSON.parse(requestUrl(index).searchParams.get("input_json"));
+  const bodyInputJson = (index) => JSON.parse(new URLSearchParams(fetchCalls[index].init.body).get("input_json"));
+  const userState = {
+    steamId64: 76561198000000000n,
+    state: "waiting",
+    title: {
+      token: "#TurnTitle",
+      variables: [
+        { key: "username", value: "Alex" },
+        { key: "turn", value: 3n }
+      ]
+    },
+    message: {
+      token: "#TurnMessage",
+      variables: [{ key: "city", value: "Bellevue" }]
+    }
+  };
+
+  t.after(clearSteamBridgeCache);
+
+  await client.gameNotificationsService.createSession({
+    appId: 480,
+    context: 31415926n,
+    title: { token: "#SessionTitle", variables: [{ key: "mode", value: "async" }] },
+    users: [userState],
+    steamId64: 76561198000000000n
+  });
+  await client.gameNotificationsService.updateSession({
+    sessionId: 12n,
+    appId: 480,
+    title: { token: "#UpdatedSession" },
+    users: [{ ...userState, state: "ready" }]
+  });
+  await client.gameNotificationsService.enumerateSessionsForApp({
+    steamId64: 76561198000000000n,
+    appId: 480,
+    includeAllUserMessages: false,
+    includeAuthUserMessage: true,
+    language: "en"
+  });
+  await client.gameNotificationsService.getSessionDetailsForApp({
+    appId: 480,
+    sessions: [
+      { sessionId: 12n, includeAllUserMessages: false },
+      { sessionId: "13", includeAuthUserMessage: true }
+    ],
+    language: "en"
+  });
+  await client.gameNotificationsService.requestNotifications({
+    steamId64: 76561198000000000n,
+    appId: 480
+  });
+  await client.gameNotificationsService.deleteSession({
+    sessionId: 12n,
+    appId: 480,
+    steamId64: 76561198000000000n
+  });
+  await client.gameNotificationsService.deleteSessionBatch({
+    sessionIds: [12n, "13"],
+    appId: 480
+  });
+
+  assert.equal(
+    requestUrl(0).origin + requestUrl(0).pathname,
+    "https://partner.steam-api.com/IGameNotificationsService/CreateSession/v0001/"
+  );
+  assert.equal(fetchCalls[0].init.method, "POST");
+  assert.equal(fetchCalls[0].init.headers["content-type"], "application/x-www-form-urlencoded");
+  assert.deepEqual(bodyInputJson(0), {
+    appid: 480,
+    context: "31415926",
+    title: { token: "#SessionTitle", variables: [{ key: "mode", value: "async" }] },
+    users: [
+      {
+        steamid: "76561198000000000",
+        state: "waiting",
+        title: {
+          token: "#TurnTitle",
+          variables: [
+            { key: "username", value: "Alex" },
+            { key: "turn", value: "3" }
+          ]
+        },
+        message: {
+          token: "#TurnMessage",
+          variables: [{ key: "city", value: "Bellevue" }]
+        }
+      }
+    ],
+    steamid: "76561198000000000"
+  });
+  assert.equal(
+    requestUrl(1).origin + requestUrl(1).pathname,
+    "https://partner.steam-api.com/IGameNotificationsService/UpdateSession/v0001/"
+  );
+  assert.deepEqual(bodyInputJson(1), {
+    sessionid: "12",
+    appid: 480,
+    title: { token: "#UpdatedSession" },
+    users: [
+      {
+        steamid: "76561198000000000",
+        state: "ready",
+        title: {
+          token: "#TurnTitle",
+          variables: [
+            { key: "username", value: "Alex" },
+            { key: "turn", value: "3" }
+          ]
+        },
+        message: {
+          token: "#TurnMessage",
+          variables: [{ key: "city", value: "Bellevue" }]
+        }
+      }
+    ]
+  });
+  assert.equal(
+    requestUrl(2).origin + requestUrl(2).pathname,
+    "https://partner.steam-api.com/IGameNotificationsService/EnumerateSessionsForApp/v0001/"
+  );
+  assert.equal(fetchCalls[2].init.method, "GET");
+  assert.deepEqual(queryInputJson(2), {
+    appid: 480,
+    steamid: "76561198000000000",
+    include_all_user_messages: false,
+    include_auth_user_message: true,
+    language: "en"
+  });
+  assert.equal(
+    requestUrl(3).origin + requestUrl(3).pathname,
+    "https://partner.steam-api.com/IGameNotificationsService/GetSessionDetailsForApp/v0001/"
+  );
+  assert.deepEqual(queryInputJson(3), {
+    appid: 480,
+    sessions: [
+      { sessionid: "12", include_all_user_messages: false },
+      { sessionid: "13", include_auth_user_message: true }
+    ],
+    language: "en"
+  });
+  assert.deepEqual(bodyInputJson(4), { steamid: "76561198000000000", appid: 480 });
+  assert.deepEqual(bodyInputJson(5), {
+    sessionid: "12",
+    appid: 480,
+    steamid: "76561198000000000"
+  });
+  assert.equal(
+    requestUrl(6).origin + requestUrl(6).pathname,
+    "https://partner.steam-api.com/IGameNotificationsService/DeleteSessionBatch/v0001/"
+  );
+  assert.deepEqual(bodyInputJson(6), { sessionid: ["12", "13"], appid: 480 });
+  assert.equal(typeof steam.webApi.gameNotificationsService.createSession, "function");
+});
+
 test("web API published file service facade maps workshop service methods", async (t) => {
   const steam = loadSteamWithFakeNative(createFakeNative());
   const fetchCalls = [];
