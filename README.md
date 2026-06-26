@@ -100,6 +100,13 @@ const news = await web.news.getNewsForApp({ appId: 480, count: 2 });
 const appStatus = await web.apps.upToDateCheck({ appId: 480, version: 1 });
 const workshopDetails = await web.remoteStorage.getPublishedFileDetails([123456789n]);
 const prices = await web.economy.getAssetPrices({ appId: 480, currency: "USD" });
+const storeApps = await web.store.getAppList({ includeGames: true, maxResults: 100 });
+const level = await web.player.getSteamLevel(76561198000000000n);
+const ticketUser = await web.userAuth.authenticateUserTicket({
+  appId: 480,
+  ticket: Buffer.from("ticket-bytes").toString("hex"),
+  identity: "steam-bridge-example"
+});
 
 const txn = await web.microTxnSandbox.initTxn({
   appId: 480,

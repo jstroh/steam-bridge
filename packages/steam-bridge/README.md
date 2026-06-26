@@ -56,6 +56,8 @@ const profile = await steamworks.webApi.user.resolveVanityUrl("spacewar");
 const news = await steamworks.webApi.news.getNewsForApp({ appId: 480, count: 2 });
 const appStatus = await steamworks.webApi.apps.upToDateCheck({ appId: 480, version: 1 });
 const prices = await steamworks.webApi.economy.getAssetPrices({ appId: 480, currency: "USD" });
+const storeApps = await steamworks.webApi.store.getAppList({ includeGames: true, maxResults: 100 });
+const level = await steamworks.webApi.player.getSteamLevel(76561198000000000n);
 
 const txn = await steamworks.webApi.microTxnSandbox.initTxn({
   appId: 480,

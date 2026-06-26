@@ -9221,3 +9221,139 @@ test("web API remote storage and economy facades map indexed fields", async (t) 
     "https://partner.steam-api.com/ISteamEconomy/StartTrade/v0001/?key=publisher-secret&format=json&appid=480&partya=76561198000000000&partyb=76561198000000001"
   );
 });
+
+test("web API player and store service facades use input_json payloads", async (t) => {
+  const steam = loadSteamWithFakeNative(createFakeNative());
+  const fetchCalls = [];
+  const fetchImpl = async (url, init = {}) => {
+    fetchCalls.push({ url, init });
+    return {
+      ok: true,
+      status: 200,
+      headers: {
+        forEach(callback) {
+          callback("application/json", "content-type");
+        }
+      },
+      async text() {
+        return JSON.stringify({ response: { ok: true } });
+      }
+    };
+  };
+  const client = steam.createSteamWebApiClient({ apiKey: "user-secret", fetch: fetchImpl });
+  const inputJson = (index) => JSON.parse(new URL(fetchCalls[index].url).searchParams.get("input_json"));
+
+  t.after(clearSteamBridgeCache);
+
+  await client.player.getRecentlyPlayedGames({ steamId64: 76561198000000000n, count: 3 });
+  await client.player.getSingleGamePlaytime({ steamId64: 76561198000000000n, appId: 480 });
+  await client.player.getOwnedGames({
+    steamId64: 76561198000000000n,
+    includeAppInfo: true,
+    includePlayedFreeGames: false,
+    appIdsFilter: [480, 481]
+  });
+  await client.player.getSteamLevel(76561198000000000n);
+  await client.player.getBadges(76561198000000000n);
+  await client.player.getCommunityBadgeProgress({ steamId64: 76561198000000000n, badgeId: 2 });
+  await client.store.getAppList({
+    ifModifiedSince: 1700000000,
+    haveDescriptionLanguage: "en",
+    includeGames: true,
+    includeDlc: true,
+    includeSoftware: false,
+    includeVideos: false,
+    includeHardware: false,
+    lastAppId: 480,
+    maxResults: 100
+  });
+
+  assert.match(fetchCalls[0].url, /^https:\/\/partner\.steam-api\.com\/IPlayerService\/GetRecentlyPlayedGames\/v0001\//);
+  assert.deepEqual(inputJson(0), { steamid: "76561198000000000", count: 3 });
+  assert.match(fetchCalls[1].url, /IPlayerService\/GetSingleGamePlaytime\/v0001/);
+  assert.deepEqual(inputJson(1), { steamid: "76561198000000000", appid: 480 });
+  assert.match(fetchCalls[2].url, /IPlayerService\/GetOwnedGames\/v0001/);
+  assert.deepEqual(inputJson(2), {
+    steamid: "76561198000000000",
+    include_appinfo: true,
+    include_played_free_games: false,
+    appids_filter: [480, 481]
+  });
+  assert.deepEqual(inputJson(3), { steamid: "76561198000000000" });
+  assert.match(fetchCalls[4].url, /IPlayerService\/GetBadges\/v0001/);
+  assert.deepEqual(inputJson(5), { steamid: "76561198000000000", badgeid: 2 });
+  assert.match(fetchCalls[6].url, /^https:\/\/partner\.steam-api\.com\/IStoreService\/GetAppList\/v0001\//);
+  assert.deepEqual(inputJson(6), {
+    if_modified_since: 1700000000,
+    have_description_language: "en",
+    include_games: true,
+    include_dlc: true,
+    include_software: false,
+    include_videos: false,
+    include_hardware: false,
+    last_appid: 480,
+    max_results: 100
+  });
+  assert.equal(new URL(fetchCalls[6].url).searchParams.get("key"), "user-secret");
+});
+
+test("web API user auth and community facades map ticket and moderation fields", async (t) => {
+  const steam = loadSteamWithFakeNative(createFakeNative());
+  const fetchCalls = [];
+  const fetchImpl = async (url, init = {}) => {
+    fetchCalls.push({ url, init });
+    return {
+      ok: true,
+      status: 200,
+      headers: {
+        forEach(callback) {
+          callback("application/json", "content-type");
+        }
+      },
+      async text() {
+        return JSON.stringify({ response: { ok: true } });
+      }
+    };
+  };
+  const client = steam.createSteamWebApiClient({ apiKey: "publisher-secret", fetch: fetchImpl });
+
+  t.after(clearSteamBridgeCache);
+
+  await client.userAuth.authenticateUser({
+    steamId64: 76561198000000000n,
+    sessionKey: Buffer.from([1, 2, 3]),
+    encryptedLoginKey: Buffer.from([4, 5, 6])
+  });
+  await client.userAuth.authenticateUserTicket({
+    appId: 480,
+    ticket: Buffer.from([10, 11, 12]),
+    identity: "steam-bridge-example"
+  });
+  await client.community.reportAbuse({
+    actorSteamId64: 76561198000000000n,
+    targetSteamId64: 76561198000000001n,
+    appId: 480,
+    abuseType: 1,
+    contentType: 2,
+    description: "Abuse report",
+    gid: 123n
+  });
+
+  assert.equal(
+    fetchCalls[0].url,
+    "https://partner.steam-api.com/ISteamUserAuth/AuthenticateUser/v0001/?format=json"
+  );
+  assert.equal(fetchCalls[0].init.body, "steamid=76561198000000000&sessionkey=010203&encrypted_loginkey=040506");
+  assert.equal(
+    fetchCalls[1].url,
+    "https://partner.steam-api.com/ISteamUserAuth/AuthenticateUserTicket/v0001/?key=publisher-secret&format=json&appid=480&ticket=0a0b0c&identity=steam-bridge-example"
+  );
+  assert.equal(
+    fetchCalls[2].url,
+    "https://partner.steam-api.com/ISteamCommunity/ReportAbuse/v0001/?key=publisher-secret&format=json"
+  );
+  assert.equal(
+    fetchCalls[2].init.body,
+    "steamidActor=76561198000000000&steamidTarget=76561198000000001&appid=480&abuseType=1&contentType=2&description=Abuse+report&gid=123"
+  );
+});
