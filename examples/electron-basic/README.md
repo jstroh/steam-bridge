@@ -83,29 +83,59 @@ npm run example:package:win -- --artifacts-dir /tmp/steam-bridge-release
 ```
 
 Copy `dist/electron-smoke/x86_64-pc-windows-msvc/SteamBridgeSmoke-win32-x64`
-to the Windows machine. For a direct Steamworks initialization check, run from
-PowerShell while Steam is open:
+to the Windows machine. The package includes `windows-electron-smoke.ps1`. For a
+direct Steamworks initialization check, run from PowerShell while Steam is open:
 
 ```powershell
-New-Item -ItemType Directory -Force C:\Temp | Out-Null
+Set-ExecutionPolicy -Scope Process Bypass -ExecutionPolicy Bypass
 Set-Location C:\Path\To\SteamBridgeSmoke-win32-x64
-.\SteamBridgeSmoke.exe `
-  --steam-bridge-app-id=480 `
-  --steam-bridge-smoke-autorun `
-  --steam-bridge-smoke-autorun-action=none `
-  --steam-bridge-smoke-result-file=C:\Temp\steam-bridge-smoke-windows-direct.log
+.\windows-electron-smoke.ps1 `
+  -Mode direct `
+  -Action none `
+  -ResultFile C:\Temp\steam-bridge-smoke-windows-direct.log
 ```
 
 For the overlay check, add `SteamBridgeSmoke.exe` as a non-Steam game in Steam,
-then set this launch options line on the shortcut:
+then use the helper to print the launch options line for the shortcut:
+
+```powershell
+.\windows-electron-smoke.ps1 `
+  -Mode print-launch-options `
+  -Action dialog `
+  -ResultFile C:\Temp\steam-bridge-smoke-windows-steam-launch.log
+```
+
+The line should look like:
 
 ```text
 --steam-bridge-app-id=480 --steam-bridge-electron-overlay-profile=diagnostic --steam-bridge-smoke-autorun --steam-bridge-smoke-autorun-action=dialog --steam-bridge-smoke-autorun-result-delay-ms=8000 --steam-bridge-smoke-result-file=C:\Temp\steam-bridge-smoke-windows-steam-launch.log
 ```
 
-Launch the shortcut from Steam, then copy
-`C:\Temp\steam-bridge-smoke-windows-steam-launch.log` back to the repo host and
-verify:
+Launch the shortcut from Steam, then verify on Windows:
+
+```powershell
+.\windows-electron-smoke.ps1 `
+  -Mode verify `
+  -Action dialog `
+  -ResultFile C:\Temp\steam-bridge-smoke-windows-steam-launch.log `
+  -RequireSteamLaunch `
+  -RequireOverlayReady `
+  -RequireEvent overlay:dialog
+```
+
+If you know the full Steam shortcut game ID, the helper can launch and verify in
+one step:
+
+```powershell
+.\windows-electron-smoke.ps1 `
+  -Mode steam-launch `
+  -ShortcutGameId <shortcut-game-id> `
+  -Action dialog `
+  -ResultFile C:\Temp\steam-bridge-smoke-windows-steam-launch.log
+```
+
+Alternatively, copy `C:\Temp\steam-bridge-smoke-windows-steam-launch.log` back
+to the repo host and verify:
 
 ```sh
 npm run example:verify-result -- \

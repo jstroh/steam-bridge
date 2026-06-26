@@ -162,10 +162,20 @@ async function packageStage(stageDir) {
   });
 
   for (const appPath of appPaths) {
+    copyTargetHelpers(appPath);
     console.log(`Packaged ${appPath}`);
   }
 
   console.log(`Primary launch path: ${path.join(targetOut, config.appPath)}`);
+}
+
+function copyTargetHelpers(appPath) {
+  if (target === "x86_64-pc-windows-msvc") {
+    fs.copyFileSync(
+      path.join(repoRoot, "scripts", "windows-electron-smoke.ps1"),
+      path.join(appPath, "windows-electron-smoke.ps1")
+    );
+  }
 }
 
 function assertPackageArtifacts(target, fileNames) {

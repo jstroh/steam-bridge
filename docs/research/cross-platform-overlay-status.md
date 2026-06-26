@@ -34,9 +34,28 @@ The Windows package contains:
 - `steam_bridge_native.win32-x64-msvc.node`
 - `steam_api64.dll`
 - `sdkencryptedappticket64.dll`
+- `windows-electron-smoke.ps1`
+
+The helper script for the Windows laptop is copied to:
+
+```text
+dist/electron-smoke/x86_64-pc-windows-msvc/SteamBridgeSmoke-win32-x64/windows-electron-smoke.ps1
+```
 
 The required Windows overlay proof is a Steam-launched autorun result that
-passes:
+passes either the local PowerShell verifier:
+
+```powershell
+.\windows-electron-smoke.ps1 `
+  -Mode verify `
+  -Action dialog `
+  -ResultFile C:\Temp\steam-bridge-smoke-windows-steam-launch.log `
+  -RequireSteamLaunch `
+  -RequireOverlayReady `
+  -RequireEvent overlay:dialog
+```
+
+or the repo-host verifier:
 
 ```sh
 npm run example:verify-result -- \
