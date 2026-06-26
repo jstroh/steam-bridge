@@ -6,10 +6,18 @@ on:
 
 jobs:
   check:
-    name: Check Apple Silicon macOS
-    runs-on: macos-14
-    env:
-      STEAM_BRIDGE_TARGET: aarch64-apple-darwin
+    name: Check ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            target: aarch64-apple-darwin
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
 
     steps:
       - uses: actions/checkout@v4
@@ -19,9 +27,9 @@ jobs:
           cache: npm
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ env.STEAM_BRIDGE_TARGET }}
-      - run: node scripts/assert-apple-silicon-target.cjs
+          targets: ${{ matrix.target }}
+      - run: node scripts/assert-supported-targets.cjs
       - run: npm ci
       - run: npm test
       - run: cargo fmt --all --check
-      - run: cargo check -p steam-bridge-native --target ${{ env.STEAM_BRIDGE_TARGET }}
+      - run: cargo check -p steam-bridge-native --target ${{ matrix.target }}

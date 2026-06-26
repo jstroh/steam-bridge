@@ -6,7 +6,7 @@ what is available today and what still needs work.
 
 The native layer primarily targets the Steamworks flat C API through
 `steamworks-sys 0.13`, with narrow local C++ shims for SDK surfaces that are
-documented in headers but omitted from the generated macOS flat bindings.
+documented in headers but omitted from the generated flat bindings.
 
 ## Implemented Areas
 
@@ -35,7 +35,7 @@ documented in headers but omitted from the generated macOS flat bindings.
   clans, rich presence, coplay, clan chat controls, friend message replies, and
   friend and clan chat reads, source membership helpers, downloadable clan
   activity counts, follower async calls, profile item queries, remaining invite
-  overlay helpers, and Friends callback events exposed by the current macOS
+  overlay helpers, and Friends callback events exposed by the current generated
   bindings.
 - Overlay: dialog, user, invite, store, web page, and macOS diagnostic probe
   helpers.
@@ -143,7 +143,7 @@ documented in headers but omitted from the generated macOS flat bindings.
 
 - `ISteamFriends::SetPersonaName` is not exposed because the current
   Steamworks SDK bundled through `steamworks-sys 0.13` does not surface it in
-  the macOS flat API metadata or generated bindings used by this crate.
+  the flat API metadata or generated bindings used by this crate.
 - Remaining modern networking surfaces: parsed relay-auth-ticket payloads.
 - Remaining callback/event coverage for interfaces that are not yet surfaced by
   the native bindings or still need richer low-level ergonomics.

@@ -8,10 +8,18 @@ on:
 
 jobs:
   prebuild:
-    name: Prebuild Apple Silicon macOS
-    runs-on: macos-14
-    env:
-      STEAM_BRIDGE_TARGET: aarch64-apple-darwin
+    name: Prebuild ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            target: aarch64-apple-darwin
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
 
     steps:
       - uses: actions/checkout@v4
@@ -21,15 +29,16 @@ jobs:
           cache: npm
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ env.STEAM_BRIDGE_TARGET }}
-      - run: node scripts/assert-apple-silicon-target.cjs
+          targets: ${{ matrix.target }}
+      - run: node scripts/assert-supported-targets.cjs
       - run: npm ci
       - run: npm run build
-      - run: npx napi build --release --target ${{ env.STEAM_BRIDGE_TARGET }} --platform --no-js --manifest-path crates/native/Cargo.toml --package-json-path packages/steam-bridge/package.json --output-dir packages/steam-bridge
-      - run: node packages/steam-bridge/scripts/link-native.cjs --runtime-only --target ${{ env.STEAM_BRIDGE_TARGET }}
+      - run: npx napi build --release --target ${{ matrix.target }} --platform --no-js --manifest-path crates/native/Cargo.toml --package-json-path packages/steam-bridge/package.json --output-dir packages/steam-bridge
+      - run: node packages/steam-bridge/scripts/link-native.cjs --runtime-only --target ${{ matrix.target }}
       - uses: actions/upload-artifact@v4
         with:
-          name: steam-bridge-${{ env.STEAM_BRIDGE_TARGET }}
+          name: steam-bridge-${{ matrix.target }}
           path: |
             packages/steam-bridge/*.node
             packages/steam-bridge/libsteam_api.*
+            packages/steam-bridge/steam_api*.dll

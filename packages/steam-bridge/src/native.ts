@@ -2696,17 +2696,35 @@ export interface NativeBinding {
 
 let binding: NativeBinding | undefined;
 
+const SUPPORTED_NATIVE_TARGETS: Record<string, { target: string; prebuilds: string[] }> = {
+  "darwin-arm64": {
+    target: "aarch64-apple-darwin",
+    prebuilds: ["steam_bridge_native.darwin-arm64.node"]
+  },
+  "win32-x64": {
+    target: "x86_64-pc-windows-msvc",
+    prebuilds: ["steam_bridge_native.win32-x64-msvc.node", "steam_bridge_native.win32-x64.node"]
+  },
+  "linux-x64": {
+    target: "x86_64-unknown-linux-gnu",
+    prebuilds: ["steam_bridge_native.linux-x64-gnu.node", "steam_bridge_native.linux-x64.node"]
+  }
+};
+
 export function loadNativeBinding(): NativeBinding {
   if (binding) {
     return binding;
   }
 
-  if (process.platform !== "darwin" || process.arch !== "arm64") {
-    throw new Error("Steam Bridge supports Apple Silicon macOS only (aarch64-apple-darwin).");
+  const supportedTarget = nativeTargetForCurrentPlatform();
+  if (!supportedTarget) {
+    throw new Error(
+      "Steam Bridge supports macOS arm64, Windows x64, and Linux x64 only. Intel macOS is not supported."
+    );
   }
 
   const errors: string[] = [];
-  for (const candidate of nativeCandidates()) {
+  for (const candidate of nativeCandidates(supportedTarget)) {
     if (!candidate || !fs.existsSync(candidate)) {
       continue;
     }
@@ -2728,17 +2746,21 @@ export function loadNativeBinding(): NativeBinding {
   );
 }
 
-function nativeCandidates(): string[] {
+function nativeTargetForCurrentPlatform(): { target: string; prebuilds: string[] } | undefined {
+  return SUPPORTED_NATIVE_TARGETS[`${process.platform}-${process.arch}`];
+}
+
+function nativeCandidates(supportedTarget: { target: string; prebuilds: string[] }): string[] {
   const packageRoot = path.resolve(__dirname, "..");
   const repoRoot = path.resolve(packageRoot, "..", "..");
-  const taggedName = `steam_bridge_native.${process.platform}-${process.arch}.node`;
 
   return [
     process.env.STEAM_BRIDGE_NATIVE_PATH || "",
     path.join(packageRoot, "steam_bridge_native.local.node"),
     path.join(packageRoot, "steam_bridge_native.node"),
-    path.join(packageRoot, taggedName),
-    path.join(packageRoot, "native", taggedName),
+    ...supportedTarget.prebuilds.map((taggedName) => path.join(packageRoot, taggedName)),
+    ...supportedTarget.prebuilds.map((taggedName) => path.join(packageRoot, "native", taggedName)),
+    path.join(repoRoot, "target", supportedTarget.target, "release", "steam_bridge_native.node"),
     path.join(repoRoot, "target", "release", "steam_bridge_native.node")
   ];
 }

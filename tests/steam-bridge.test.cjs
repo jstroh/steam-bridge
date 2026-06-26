@@ -1027,24 +1027,45 @@ function createFakeNative(overrides = {}) {
   return fake;
 }
 
-test("project support policy is Apple Silicon macOS only", () => {
+test("project support policy covers Steam desktop targets except Intel macOS", () => {
   const packageJson = require(path.join(repoRoot, "packages", "steam-bridge", "package.json"));
   const rootPackageJson = require(path.join(repoRoot, "package.json"));
   const ciWorkflow = fs.readFileSync(path.join(repoRoot, ".github", "workflows", "ci.yml"), "utf8");
   const releaseWorkflow = fs.readFileSync(path.join(repoRoot, ".github", "workflows", "release.yml"), "utf8");
+  const targetScript = fs.readFileSync(path.join(repoRoot, "scripts", "assert-supported-targets.cjs"), "utf8");
+  const loader = fs.readFileSync(path.join(repoRoot, "packages", "steam-bridge", "src", "native.ts"), "utf8");
+  const linkScript = fs.readFileSync(
+    path.join(repoRoot, "packages", "steam-bridge", "scripts", "link-native.cjs"),
+    "utf8"
+  );
 
-  assert.deepEqual(packageJson.os, ["darwin"]);
-  assert.deepEqual(packageJson.cpu, ["arm64"]);
-  assert.deepEqual(packageJson.napi.targets, ["aarch64-apple-darwin"]);
-  assert.match(rootPackageJson.scripts["native:build"], /--target aarch64-apple-darwin/);
-  assert.match(rootPackageJson.scripts["native:check"], /--target aarch64-apple-darwin/);
-  assert.match(rootPackageJson.scripts["check:platform"], /assert-apple-silicon-target\.cjs/);
+  const supportedTargets = [
+    "aarch64-apple-darwin",
+    "x86_64-pc-windows-msvc",
+    "x86_64-unknown-linux-gnu"
+  ];
+
+  assert.equal(packageJson.os, undefined);
+  assert.equal(packageJson.cpu, undefined);
+  assert.deepEqual(packageJson.napi.targets, supportedTargets);
+  assert.ok(packageJson.files.includes("libsteam_api.*"));
+  assert.ok(packageJson.files.includes("steam_api*.dll"));
+  assert.match(rootPackageJson.scripts["native:build"], /scripts\/build-native\.cjs/);
+  assert.match(rootPackageJson.scripts["native:check"], /scripts\/check-native\.cjs/);
+  assert.match(rootPackageJson.scripts["check:platform"], /assert-supported-targets\.cjs/);
 
   for (const workflow of [ciWorkflow, releaseWorkflow]) {
-    assert.match(workflow, /STEAM_BRIDGE_TARGET: aarch64-apple-darwin/);
-    assert.match(workflow, /node scripts\/assert-apple-silicon-target\.cjs/);
-    assert.doesNotMatch(workflow, /x86_64-apple-darwin|darwin-x64|macos-13/);
+    for (const target of supportedTargets) {
+      assert.match(workflow, new RegExp(target));
+    }
+    assert.match(workflow, /node scripts\/assert-supported-targets\.cjs/);
   }
+
+  for (const source of [ciWorkflow, releaseWorkflow, loader, linkScript]) {
+    assert.doesNotMatch(source, /x86_64-apple-darwin|darwin-x64|macos-13/);
+  }
+  assert.match(targetScript, /x86_64-apple-darwin/);
+  assert.match(loader, /Intel macOS is not supported/);
 });
 
 test("init reads the Steam app ID from the environment and returns the grouped client", (t) => {

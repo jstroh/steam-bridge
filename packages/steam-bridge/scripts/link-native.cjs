@@ -5,42 +5,67 @@ const { spawnSync } = require("node:child_process");
 const packageRoot = path.resolve(__dirname, "..");
 const repoRoot = path.resolve(packageRoot, "..", "..");
 const runtimeOnly = process.argv.includes("--runtime-only");
-const targetArg = readArg("--target");
-const supportedTarget = "aarch64-apple-darwin";
+const target = readArg("--target") || currentTarget();
 
-if (targetArg && targetArg !== supportedTarget) {
-  throw new Error(`Steam Bridge only supports ${supportedTarget}; received ${targetArg}.`);
+const targetConfig = {
+  "aarch64-apple-darwin": {
+    platform: "darwin",
+    arch: "arm64",
+    nativeLibrary: "libsteam_bridge_native.dylib",
+    redistFolder: "osx",
+    redistName: "libsteam_api.dylib"
+  },
+  "x86_64-pc-windows-msvc": {
+    platform: "win32",
+    arch: "x64",
+    nativeLibrary: "steam_bridge_native.dll",
+    redistFolder: "win64",
+    redistName: "steam_api64.dll"
+  },
+  "x86_64-unknown-linux-gnu": {
+    platform: "linux",
+    arch: "x64",
+    nativeLibrary: "libsteam_bridge_native.so",
+    redistFolder: "linux64",
+    redistName: "libsteam_api.so"
+  }
+};
+
+const config = targetConfig[target];
+if (!config) {
+  throw new Error(
+    `Unsupported Steam Bridge target ${target}. Supported targets: ${Object.keys(targetConfig).join(", ")}.`
+  );
 }
 
-if (process.platform !== "darwin" || process.arch !== "arm64") {
-  throw new Error("Steam Bridge native linking is supported only on Apple Silicon macOS.");
+if (!runtimeOnly && (process.platform !== config.platform || process.arch !== config.arch)) {
+  throw new Error(
+    `Target ${target} must be linked on ${config.platform}/${config.arch}; current host is ${process.platform}/${process.arch}.`
+  );
 }
-
-const sourceName = "libsteam_bridge_native.dylib";
-const redistName = "libsteam_api.dylib";
-const redistFolder = "osx";
 
 if (!runtimeOnly) {
   const source = findNativeLibrary();
   const destination = path.join(packageRoot, "steam_bridge_native.local.node");
 
   if (!source) {
-    throw new Error("Native library was not found. Run cargo build -p steam-bridge-native --release first.");
+    throw new Error(`Native library for ${target} was not found. Run npm run native:build first.`);
   }
 
-  fs.copyFileSync(source, destination);
-  signMacosNodeBinary(destination);
+  copyNativeLibrary(source, destination);
   console.log(`Linked ${destination}`);
 }
 
 const redist = findSteamRedistributable();
 if (redist) {
-  const redistDestination = path.join(packageRoot, redistName);
-  copyArm64Binary(redist, redistDestination);
-  signMacosBinary(redistDestination);
+  const redistDestination = path.join(packageRoot, config.redistName);
+  copySteamRedistributable(redist, redistDestination);
   console.log(`Linked ${redistDestination}`);
 } else {
-  console.warn(`Steam runtime library ${redistName} was not found. Set STEAMWORKS_SDK_PATH or copy it next to the .node file before runtime smoke tests.`);
+  console.warn(
+    `Steam runtime library ${config.redistName} was not found. ` +
+      "Set STEAMWORKS_SDK_PATH or copy it next to the .node file before runtime smoke tests."
+  );
 }
 
 function readArg(name) {
@@ -48,15 +73,33 @@ function readArg(name) {
   return index >= 0 ? process.argv[index + 1] : undefined;
 }
 
+function currentTarget() {
+  if (process.platform === "darwin" && process.arch === "arm64") {
+    return "aarch64-apple-darwin";
+  }
+  if (process.platform === "win32" && process.arch === "x64") {
+    return "x86_64-pc-windows-msvc";
+  }
+  if (process.platform === "linux" && process.arch === "x64") {
+    return "x86_64-unknown-linux-gnu";
+  }
+
+  throw new Error(
+    `Unsupported Steam Bridge host ${process.platform}/${process.arch}. ` +
+      "Supported hosts: macOS arm64, Windows x64, Linux x64."
+  );
+}
+
 function releaseDirs() {
   return [
-    path.join(repoRoot, "target", targetArg || supportedTarget, "release")
+    path.join(repoRoot, "target", target, "release"),
+    path.join(repoRoot, "target", "release")
   ];
 }
 
 function findNativeLibrary() {
   for (const dir of releaseDirs()) {
-    const candidate = path.join(dir, sourceName);
+    const candidate = path.join(dir, config.nativeLibrary);
     if (fs.existsSync(candidate)) {
       return candidate;
     }
@@ -68,8 +111,8 @@ function findNativeLibrary() {
 function findSteamRedistributable() {
   const sdkPath = process.env.STEAMWORKS_SDK_PATH || process.env.STEAM_BRIDGE_SDK_PATH;
   const candidates = [
-    sdkPath ? path.join(sdkPath, "redistributable_bin", redistFolder, redistName) : "",
-    path.join(repoRoot, "sdk", "redistributable_bin", redistFolder, redistName),
+    sdkPath ? path.join(sdkPath, "redistributable_bin", config.redistFolder, config.redistName) : "",
+    path.join(repoRoot, "sdk", "redistributable_bin", config.redistFolder, config.redistName),
     ...releaseDirs().map((dir) => path.join(dir, "build"))
   ];
 
@@ -83,7 +126,7 @@ function findSteamRedistributable() {
     }
 
     if (fs.existsSync(candidate) && fs.statSync(candidate).isDirectory()) {
-      const found = findInDirectory(candidate, redistName);
+      const found = findInDirectory(candidate, config.redistName);
       if (found) {
         return found;
       }
@@ -113,7 +156,24 @@ function findInDirectory(directory, fileName) {
   return undefined;
 }
 
-function copyArm64Binary(source, destination) {
+function copyNativeLibrary(source, destination) {
+  fs.copyFileSync(source, destination);
+  if (target === "aarch64-apple-darwin") {
+    signMacosBinary(destination);
+  }
+}
+
+function copySteamRedistributable(source, destination) {
+  if (target === "aarch64-apple-darwin") {
+    copyArm64MachO(source, destination);
+    signMacosBinary(destination);
+    return;
+  }
+
+  fs.copyFileSync(source, destination);
+}
+
+function copyArm64MachO(source, destination) {
   const archs = readMachOArchitectures(source);
 
   if (!archs.includes("arm64")) {
@@ -156,10 +216,6 @@ function readMachOArchitectures(filePath) {
   }
 
   return result.stdout.trim().split(/\s+/).filter(Boolean);
-}
-
-function signMacosNodeBinary(filePath) {
-  signMacosBinary(filePath);
 }
 
 function signMacosBinary(filePath) {

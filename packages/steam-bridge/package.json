@@ -11,16 +11,12 @@
     "native-addon",
     "napi-rs",
     "macos",
+    "windows",
+    "linux",
     "apple-silicon"
   ],
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "os": [
-    "darwin"
-  ],
-  "cpu": [
-    "arm64"
-  ],
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -36,13 +32,16 @@
     "*.node",
     "!steam_bridge_native.local.node",
     "libsteam_api.*",
+    "steam_api*.dll",
     "README.md",
     "LICENSE"
   ],
   "napi": {
     "binaryName": "steam_bridge_native",
     "targets": [
-      "aarch64-apple-darwin"
+      "aarch64-apple-darwin",
+      "x86_64-pc-windows-msvc",
+      "x86_64-unknown-linux-gnu"
     ]
   },
   "scripts": {

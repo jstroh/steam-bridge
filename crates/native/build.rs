@@ -6,16 +6,33 @@ fn main() {
     let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
     let target_arch = std::env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default();
 
-    if target_os != "macos" || target_arch != "aarch64" {
-        panic!(
-            "Steam Bridge supports Apple Silicon macOS only (aarch64-apple-darwin); \
-             target was {target_arch}-{target_os}."
-        );
+    match (target_os.as_str(), target_arch.as_str()) {
+        ("macos", "aarch64") | ("windows", "x86_64") | ("linux", "x86_64") => {}
+        ("macos", "x86_64") => {
+            panic!("Steam Bridge does not support Intel macOS (x86_64-apple-darwin).");
+        }
+        _ => {
+            panic!(
+                "Steam Bridge supports aarch64-apple-darwin, x86_64-pc-windows-msvc, \
+                 and x86_64-unknown-linux-gnu; target was {target_arch}-{target_os}."
+            );
+        }
     }
+
+    println!("cargo:rerun-if-changed=src/steam_music_remote_bridge.cpp");
+    let mut music_remote_bridge = cc::Build::new();
+    music_remote_bridge
+        .cpp(true)
+        .file("src/steam_music_remote_bridge.cpp");
+    if target_os == "windows" {
+        music_remote_bridge.flag_if_supported("/std:c++17");
+    } else {
+        music_remote_bridge.flag("-std=c++17");
+    }
+    music_remote_bridge.compile("steam_bridge_music_remote");
 
     if target_os == "macos" {
         println!("cargo:rerun-if-changed=src/macos_metal_surface.mm");
-        println!("cargo:rerun-if-changed=src/steam_music_remote_bridge.cpp");
 
         cc::Build::new()
             .cpp(true)
@@ -23,12 +40,6 @@ fn main() {
             .flag("-std=c++17")
             .flag("-fobjc-arc")
             .compile("steam_bridge_metal_surface");
-
-        cc::Build::new()
-            .cpp(true)
-            .file("src/steam_music_remote_bridge.cpp")
-            .flag("-std=c++17")
-            .compile("steam_bridge_music_remote");
 
         println!("cargo:rustc-link-lib=framework=Cocoa");
         println!("cargo:rustc-link-lib=framework=Metal");

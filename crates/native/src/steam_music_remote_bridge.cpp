@@ -6,7 +6,7 @@ extern "C" void *SteamInternal_FindOrCreateUserInterface(int32_t hSteamUser, con
 namespace {
 
 // steamworks-sys 0.13 ships isteammusicremote.h, but this interface is omitted
-// from the generated macOS flat bindings. Keep this vtable layout in sync with
+// from the generated flat bindings. Keep this vtable layout in sync with
 // STEAMMUSICREMOTE_INTERFACE_VERSION001.
 enum AudioPlayback_Status {
   AudioPlayback_Undefined = 0,
