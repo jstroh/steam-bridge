@@ -78,6 +78,11 @@ const inventoryCount = await steamworks.webApi.inventoryService.getQuantity({
 });
 const tradeSummary = await steamworks.webApi.econService.getTradeOffersSummary({ timeLastVisit: 0 });
 const storeApps = await steamworks.webApi.store.getAppList({ includeGames: true, maxResults: 100 });
+const siteLicensePlaytime = await steamworks.webApi.siteLicenseService.getTotalPlaytime({
+  startTime: "2026-06-01T00:00:00Z",
+  endTime: "2026-06-02T00:00:00Z",
+  siteId: 0
+});
 const level = await steamworks.webApi.player.getSteamLevel(76561198000000000n);
 const leaderboard = await steamworks.webApi.leaderboards.getLeaderboardsForGame(480);
 const voteSummary = await steamworks.webApi.publishedItemVoting.userVoteSummary({

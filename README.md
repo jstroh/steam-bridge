@@ -122,6 +122,11 @@ const inventoryCount = await web.inventoryService.getQuantity({
 });
 const tradeSummary = await web.econService.getTradeOffersSummary({ timeLastVisit: 0 });
 const storeApps = await web.store.getAppList({ includeGames: true, maxResults: 100 });
+const siteLicensePlaytime = await web.siteLicenseService.getTotalPlaytime({
+  startTime: "2026-06-01T00:00:00Z",
+  endTime: "2026-06-02T00:00:00Z",
+  siteId: 0
+});
 const level = await web.player.getSteamLevel(76561198000000000n);
 const leaderboard = await web.leaderboards.getLeaderboardsForGame(480);
 const voteSummary = await web.publishedItemVoting.userVoteSummary({

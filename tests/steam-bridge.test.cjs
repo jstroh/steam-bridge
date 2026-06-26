@@ -10175,6 +10175,60 @@ test("web API player and store service facades use input_json payloads", async (
   assert.equal(new URL(fetchCalls[6].url).searchParams.get("key"), "user-secret");
 });
 
+test("web API site license service facade maps cafe service methods", async (t) => {
+  const steam = loadSteamWithFakeNative(createFakeNative());
+  const fetchCalls = [];
+  const fetchImpl = async (url, init = {}) => {
+    fetchCalls.push({ url, init });
+    return {
+      ok: true,
+      status: 200,
+      headers: {
+        forEach(callback) {
+          callback("application/json", "content-type");
+        }
+      },
+      async text() {
+        return JSON.stringify({ response: { ok: true } });
+      }
+    };
+  };
+  const client = steam.createSteamWebApiClient({ apiKey: "site-license-secret", fetch: fetchImpl });
+  const requestUrl = (index) => new URL(fetchCalls[index].url);
+
+  t.after(clearSteamBridgeCache);
+
+  await client.siteLicenseService.getCurrentClientConnections({ siteId: 0n });
+  await client.siteLicenseService.getTotalPlaytime({
+    startTime: "2026-06-01T00:00:00Z",
+    endTime: "2026-06-02T00:00:00Z",
+    siteId: 123n
+  });
+
+  assert.equal(
+    requestUrl(0).origin + requestUrl(0).pathname,
+    "https://api.steampowered.com/ISiteLicenseService/GetCurrentClientConnections/v0001/"
+  );
+  assert.equal(fetchCalls[0].init.method, "GET");
+  assert.equal(requestUrl(0).searchParams.get("key"), "site-license-secret");
+  assert.equal(requestUrl(0).searchParams.get("format"), "json");
+  assert.equal(requestUrl(0).searchParams.get("siteid"), "0");
+  assert.equal(requestUrl(0).searchParams.has("input_json"), false);
+
+  assert.equal(
+    requestUrl(1).origin + requestUrl(1).pathname,
+    "https://api.steampowered.com/ISiteLicenseService/GetTotalPlaytime/v0001/"
+  );
+  assert.equal(fetchCalls[1].init.method, "GET");
+  assert.equal(requestUrl(1).searchParams.get("key"), "site-license-secret");
+  assert.equal(requestUrl(1).searchParams.get("format"), "json");
+  assert.equal(requestUrl(1).searchParams.get("start_time"), "2026-06-01T00:00:00Z");
+  assert.equal(requestUrl(1).searchParams.get("end_time"), "2026-06-02T00:00:00Z");
+  assert.equal(requestUrl(1).searchParams.get("siteid"), "123");
+  assert.equal(requestUrl(1).searchParams.has("input_json"), false);
+  assert.equal(typeof steam.webApi.siteLicenseService.getTotalPlaytime, "function");
+});
+
 test("web API user auth and community facades map ticket and moderation fields", async (t) => {
   const steam = loadSteamWithFakeNative(createFakeNative());
   const fetchCalls = [];

@@ -1671,6 +1671,7 @@ export interface SteamWebApiClient {
   publishedItemSearch: SteamWebApiPublishedItemSearchFacade;
   publishedItemVoting: SteamWebApiPublishedItemVotingFacade;
   remoteStorage: SteamWebApiRemoteStorageFacade;
+  siteLicenseService: SteamWebApiSiteLicenseServiceFacade;
   store: SteamWebApiStoreServiceFacade;
   util: SteamWebApiUtilFacade;
   user: SteamWebApiUserFacade;
@@ -1809,6 +1810,24 @@ export interface SteamWebApiCommunityBadgeProgressOptions extends SteamWebApiEnd
 
 export interface SteamWebApiStoreServiceFacade {
   getAppList<T = unknown>(options?: SteamWebApiStoreAppListOptions | null): Promise<SteamWebApiResponse<T>>;
+}
+
+export interface SteamWebApiSiteLicenseServiceFacade {
+  getCurrentClientConnections<T = unknown>(
+    options?: SteamWebApiSiteLicenseSiteOptions | null
+  ): Promise<SteamWebApiResponse<T>>;
+  getTotalPlaytime<T = unknown>(
+    options: SteamWebApiSiteLicenseTotalPlaytimeOptions
+  ): Promise<SteamWebApiResponse<T>>;
+}
+
+export interface SteamWebApiSiteLicenseSiteOptions extends SteamWebApiEndpointOptions {
+  siteId?: bigint | number | string;
+}
+
+export interface SteamWebApiSiteLicenseTotalPlaytimeOptions extends SteamWebApiSiteLicenseSiteOptions {
+  startTime: string;
+  endTime: string;
 }
 
 export interface SteamWebApiStoreAppListOptions extends SteamWebApiEndpointOptions {
@@ -4809,6 +4828,7 @@ export function createSteamWebApiClient(options: SteamWebApiClientOptions = {}):
     publishedItemSearch: createSteamWebApiPublishedItemSearchFacade(clientOptions),
     publishedItemVoting: createSteamWebApiPublishedItemVotingFacade(clientOptions),
     remoteStorage: createSteamWebApiRemoteStorageFacade(clientOptions),
+    siteLicenseService: createSteamWebApiSiteLicenseServiceFacade(clientOptions),
     store: createSteamWebApiStoreServiceFacade(clientOptions),
     util: createSteamWebApiUtilFacade(clientOptions),
     user: createSteamWebApiUserFacade(clientOptions),
@@ -9140,6 +9160,43 @@ function createSteamWebApiStoreServiceFacade(clientOptions: SteamWebApiClientOpt
           max_results: options?.maxResults
         },
         options
+      );
+    }
+  };
+}
+
+function createSteamWebApiSiteLicenseServiceFacade(
+  clientOptions: SteamWebApiClientOptions
+): SteamWebApiSiteLicenseServiceFacade {
+  return {
+    getCurrentClientConnections<T = unknown>(
+      options?: SteamWebApiSiteLicenseSiteOptions | null
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiGet<T>(
+        clientOptions,
+        "ISiteLicenseService",
+        "GetCurrentClientConnections",
+        1,
+        { siteid: options?.siteId },
+        options,
+        false
+      );
+    },
+    getTotalPlaytime<T = unknown>(
+      options: SteamWebApiSiteLicenseTotalPlaytimeOptions
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiGet<T>(
+        clientOptions,
+        "ISiteLicenseService",
+        "GetTotalPlaytime",
+        1,
+        {
+          start_time: options.startTime,
+          end_time: options.endTime,
+          siteid: options.siteId
+        },
+        options,
+        false
       );
     }
   };
