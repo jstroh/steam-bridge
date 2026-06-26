@@ -7120,6 +7120,7 @@ test("inventory facade covers result, item, definition, price, and update flows"
     18
   );
   assert.equal(steam.inventory.transferItemQuantity(1001n, 1, 1002n), 19);
+  assert.equal(steam.inventory.transferItemQuantity(1001n, 1, null), 19);
   steam.inventory.sendItemDropHeartbeat();
   assert.equal(steam.inventory.triggerItemDrop(9), 20);
   assert.equal(steam.inventory.tradeItems(76561198000000008n, [{ itemId: 1001n, quantity: 1 }], [{ itemId: 1002n, quantity: 1 }]), 21);
@@ -7192,6 +7193,13 @@ test("inventory facade covers result, item, definition, price, and update flows"
     method: "inventoryExchangeItems",
     args: [[{ definition: 7, quantity: 1 }], [{ itemId: 1001n, quantity: 1 }]]
   });
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "inventoryTransferItemQuantity").map((call) => call.args),
+    [
+      [1001n, 1, 1002n],
+      [1001n, 1, undefined]
+    ]
+  );
   assert.deepEqual(fake.calls.find((call) => call.method === "inventoryTradeItems"), {
     method: "inventoryTradeItems",
     args: [76561198000000008n, [{ itemId: 1001n, quantity: 1 }], [{ itemId: 1002n, quantity: 1 }]]

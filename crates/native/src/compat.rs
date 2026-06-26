@@ -6409,7 +6409,7 @@ pub fn inventory_transfer_item_quantity(
     let mut result_handle = sys::k_SteamInventoryResultInvalid;
     let destination = match destination_item_id {
         Some(destination) => bigint_to_u64(destination, "destination inventory item id")?,
-        None => unsafe { sys::k_SteamItemInstanceIDInvalid },
+        None => u64::MAX,
     };
     let ok = unsafe {
         sys::SteamAPI_ISteamInventory_TransferItemQuantity(
