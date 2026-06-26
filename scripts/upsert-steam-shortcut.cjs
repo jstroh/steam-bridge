@@ -85,6 +85,7 @@ function main() {
   console.log(`Steam shortcut app ID (internal): ${entry.appid}`);
   console.log(`Steam shortcut game ID (use with steam://rungameid): ${gameId}`);
   console.log(`Launch URL: steam://rungameid/${gameId}`);
+  console.log("Restart or fully reload Steam before launching if Steam was running while this file was updated.");
 }
 
 function buildShortcutEntry(parsed) {

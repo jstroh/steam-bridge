@@ -235,7 +235,9 @@ npm run example:package:win -- --artifacts-dir /tmp/steam-bridge-release
 
 The example README has the Steam Deck Game Mode, Deck Desktop Mode, and desktop
 platform smoke-test flow, including an autorun mode that prints a
-`STEAM_BRIDGE_SMOKE_RESULT` JSON line for scripted checks.
+`STEAM_BRIDGE_SMOKE_RESULT` JSON line for scripted checks. When scripting Steam
+Deck non-Steam shortcuts, reload Steam after writing `shortcuts.vdf` and launch
+the printed full shortcut game ID, not the internal shortcut app ID.
 
 When launching outside Steam, put a `steam_appid.txt` file containing the app ID
 next to the executable or in the working directory used by your app.

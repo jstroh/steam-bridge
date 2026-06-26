@@ -103,7 +103,8 @@ Use the numeric `userdata` folder for the Steam account currently signed in on
 the Deck. The helper backs up an existing shortcut file, writes Steam's binary
 shortcut format, and prints both Steam's internal shortcut app ID and the full
 shortcut game ID. Launch with the printed `Launch URL` after Steam has reloaded
-shortcuts:
+shortcuts. On Steam Deck, restart Steam or switch out of and back into Game Mode
+after writing `shortcuts.vdf`; Game Mode can keep a stale shortcut cache:
 
 ```sh
 steam steam://rungameid/<shortcut-game-id>
@@ -111,7 +112,9 @@ steam steam://rungameid/<shortcut-game-id>
 
 Do not launch the internal shortcut app ID with `steam://rungameid`. Steam can
 show `Game configuration unavailable` when the short app ID is used instead of
-the full shortcut game ID.
+the full shortcut game ID. The same dialog can appear briefly after editing
+`shortcuts.vdf` while Steam is running; reload Steam, then launch the full
+shortcut game ID again.
 
 For Desktop Mode overlay checks, launch the same shortcut URL while Steam is
 running in Desktop Mode. A direct shell or file-manager launch can prove Steam
