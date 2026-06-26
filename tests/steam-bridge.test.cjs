@@ -1341,6 +1341,42 @@ test("Steam IDs and diagnostics are normalized for JavaScript callers", (t) => {
   });
 });
 
+test("localplayer facade covers profile and rich presence helpers", (t) => {
+  const fake = createFakeNative({
+    localplayerGetName() {
+      this.calls.push({ method: "localplayerGetName", args: [] });
+      return "SpaceWar Player";
+    },
+    localplayerGetLevel() {
+      this.calls.push({ method: "localplayerGetLevel", args: [] });
+      return 12;
+    },
+    localplayerGetIpCountry() {
+      this.calls.push({ method: "localplayerGetIpCountry", args: [] });
+      return "US";
+    },
+    localplayerSetRichPresence(key, value) {
+      this.calls.push({ method: "localplayerSetRichPresence", args: [key, value] });
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  assert.equal(steam.localplayer.getName(), "SpaceWar Player");
+  assert.equal(steam.localplayer.getLevel(), 12);
+  assert.equal(steam.localplayer.getIpCountry(), "US");
+  steam.localplayer.setRichPresence("status", "testing");
+  steam.localplayer.setRichPresence("status", null);
+  assert.deepEqual(fake.calls.filter((call) => call.method.startsWith("localplayer")), [
+    { method: "localplayerGetName", args: [] },
+    { method: "localplayerGetLevel", args: [] },
+    { method: "localplayerGetIpCountry", args: [] },
+    { method: "localplayerSetRichPresence", args: ["status", "testing"] },
+    { method: "localplayerSetRichPresence", args: ["status", undefined] }
+  ]);
+});
+
 test("auth facade forwards Steam ID and IP session ticket requests", async (t) => {
   const fake = createFakeNative({
     authGetSessionTicketWithSteamId(steamId64, timeoutSeconds) {
@@ -10576,11 +10612,71 @@ test("friends facade normalizes IDs, groups, rich presence, and async results", 
       friendFlagArgs.push({ steamId64, friendFlags });
       return true;
     },
+    friendsGetFriendRelationship(steamId64) {
+      this.calls.push({ method: "friendsGetFriendRelationship", args: [steamId64] });
+      return 3;
+    },
+    friendsGetFriendPersonaState(steamId64) {
+      this.calls.push({ method: "friendsGetFriendPersonaState", args: [steamId64] });
+      return 1;
+    },
+    friendsGetFriendPersonaName(steamId64) {
+      this.calls.push({ method: "friendsGetFriendPersonaName", args: [steamId64] });
+      return "Grace";
+    },
+    friendsGetFriendPersonaNameHistory(steamId64, index) {
+      this.calls.push({ method: "friendsGetFriendPersonaNameHistory", args: [steamId64, index] });
+      return "Rear Admiral Grace";
+    },
+    friendsGetFriendSteamLevel(steamId64) {
+      this.calls.push({ method: "friendsGetFriendSteamLevel", args: [steamId64] });
+      return 42;
+    },
+    friendsGetPlayerNickname(steamId64) {
+      this.calls.push({ method: "friendsGetPlayerNickname", args: [steamId64] });
+      return "debug-pal";
+    },
     friendsGetFriendGamePlayed() {
       return { game_id: "480", game_ip: 2130706433, game_port: 27015, query_port: 27016, lobby: "109775242022617907" };
     },
+    friendsGetSmallFriendAvatar(steamId64) {
+      this.calls.push({ method: "friendsGetSmallFriendAvatar", args: [steamId64] });
+      return 11;
+    },
+    friendsGetMediumFriendAvatar(steamId64) {
+      this.calls.push({ method: "friendsGetMediumFriendAvatar", args: [steamId64] });
+      return 12;
+    },
+    friendsGetLargeFriendAvatar(steamId64) {
+      this.calls.push({ method: "friendsGetLargeFriendAvatar", args: [steamId64] });
+      return 13;
+    },
+    friendsRequestUserInformation(steamId64, nameOnly) {
+      this.calls.push({ method: "friendsRequestUserInformation", args: [steamId64, nameOnly] });
+      return true;
+    },
     friendsGetFriendsGroups() {
       return [{ id: 7, name: "Co-op", members: [friend] }];
+    },
+    friendsGetClanCount() {
+      this.calls.push({ method: "friendsGetClanCount", args: [] });
+      return 1;
+    },
+    friendsGetClanByIndex(index) {
+      this.calls.push({ method: "friendsGetClanByIndex", args: [index] });
+      return clan;
+    },
+    friendsGetClans() {
+      this.calls.push({ method: "friendsGetClans", args: [] });
+      return [clan];
+    },
+    friendsGetClanName(clanId64) {
+      this.calls.push({ method: "friendsGetClanName", args: [clanId64] });
+      return "SpaceWar Testers";
+    },
+    friendsGetClanTag(clanId64) {
+      this.calls.push({ method: "friendsGetClanTag", args: [clanId64] });
+      return "SWT";
     },
     friendsGetClanActivityCounts() {
       return { online: 5, in_game: 2, chatting: 1 };
@@ -10608,6 +10704,27 @@ test("friends facade normalizes IDs, groups, rich presence, and async results", 
     friendsRequestClanOfficerList() {
       return Promise.resolve({ clan, officers: 4, success: true });
     },
+    friendsGetClanOwner(clanId64) {
+      this.calls.push({ method: "friendsGetClanOwner", args: [clanId64] });
+      return friend;
+    },
+    friendsGetClanOfficerCount(clanId64) {
+      this.calls.push({ method: "friendsGetClanOfficerCount", args: [clanId64] });
+      return 1;
+    },
+    friendsGetClanOfficerByIndex(clanId64, index) {
+      this.calls.push({ method: "friendsGetClanOfficerByIndex", args: [clanId64, index] });
+      return friend;
+    },
+    friendsSetPlayedWith(steamId64) {
+      this.calls.push({ method: "friendsSetPlayedWith", args: [steamId64] });
+    },
+    friendsSetInGameVoiceSpeaking(steamId64, speaking) {
+      this.calls.push({ method: "friendsSetInGameVoiceSpeaking", args: [steamId64, speaking] });
+    },
+    friendsClearRichPresence() {
+      this.calls.push({ method: "friendsClearRichPresence", args: [] });
+    },
     friendsJoinClanChatRoom() {
       return Promise.resolve({ clan_chat: clan, response: 1 });
     },
@@ -10617,12 +10734,75 @@ test("friends facade normalizes IDs, groups, rich presence, and async results", 
     friendsGetFriendRichPresenceKeys() {
       return ["status"];
     },
+    friendsRequestFriendRichPresence(steamId64) {
+      this.calls.push({ method: "friendsRequestFriendRichPresence", args: [steamId64] });
+    },
     friendsInviteUserToGame() {
+      return true;
+    },
+    friendsGetCoplayFriendCount() {
+      this.calls.push({ method: "friendsGetCoplayFriendCount", args: [] });
+      return 1;
+    },
+    friendsGetCoplayFriend(index) {
+      this.calls.push({ method: "friendsGetCoplayFriend", args: [index] });
+      return friend;
+    },
+    friendsGetCoplayFriends() {
+      this.calls.push({ method: "friendsGetCoplayFriends", args: [] });
+      return [friend];
+    },
+    friendsGetFriendCoplayTime(steamId64) {
+      this.calls.push({ method: "friendsGetFriendCoplayTime", args: [steamId64] });
+      return 123456;
+    },
+    friendsGetFriendCoplayGame(steamId64) {
+      this.calls.push({ method: "friendsGetFriendCoplayGame", args: [steamId64] });
+      return 480;
+    },
+    friendsLeaveClanChatRoom(clanId64) {
+      this.calls.push({ method: "friendsLeaveClanChatRoom", args: [clanId64] });
+      return true;
+    },
+    friendsGetClanChatMemberCount(clanChatId64) {
+      this.calls.push({ method: "friendsGetClanChatMemberCount", args: [clanChatId64] });
+      return 1;
+    },
+    friendsGetChatMemberByIndex(clanChatId64, index) {
+      this.calls.push({ method: "friendsGetChatMemberByIndex", args: [clanChatId64, index] });
+      return friend;
+    },
+    friendsSendClanChatMessage(clanChatId64, text) {
+      this.calls.push({ method: "friendsSendClanChatMessage", args: [clanChatId64, text] });
       return true;
     },
     friendsGetClanChatMessage(clanChatId64, messageId, maxBytes) {
       this.calls.push({ method: "friendsGetClanChatMessage", args: [clanChatId64, messageId, maxBytes] });
       return { chatter: friend, data: Buffer.from("clan"), size: 4, text: "clan", entry_type: 1 };
+    },
+    friendsIsClanChatAdmin(clanChatId64, steamId64) {
+      this.calls.push({ method: "friendsIsClanChatAdmin", args: [clanChatId64, steamId64] });
+      return true;
+    },
+    friendsIsClanChatWindowOpenInSteam(clanChatId64) {
+      this.calls.push({ method: "friendsIsClanChatWindowOpenInSteam", args: [clanChatId64] });
+      return false;
+    },
+    friendsOpenClanChatWindowInSteam(clanChatId64) {
+      this.calls.push({ method: "friendsOpenClanChatWindowInSteam", args: [clanChatId64] });
+      return true;
+    },
+    friendsCloseClanChatWindowInSteam(clanChatId64) {
+      this.calls.push({ method: "friendsCloseClanChatWindowInSteam", args: [clanChatId64] });
+      return true;
+    },
+    friendsSetListenForFriendsMessages(enabled) {
+      this.calls.push({ method: "friendsSetListenForFriendsMessages", args: [enabled] });
+      return true;
+    },
+    friendsReplyToFriendMessage(steamId64, message) {
+      this.calls.push({ method: "friendsReplyToFriendMessage", args: [steamId64, message] });
+      return true;
     },
     friendsGetFriendMessage(steamId64, messageId, maxBytes) {
       this.calls.push({ method: "friendsGetFriendMessage", args: [steamId64, messageId, maxBytes] });
@@ -10642,6 +10822,22 @@ test("friends facade normalizes IDs, groups, rich presence, and async results", 
     },
     friendsActivateGameOverlayInviteDialogConnectString(connectString) {
       this.calls.push({ method: "friendsActivateGameOverlayInviteDialogConnectString", args: [connectString] });
+    },
+    friendsIsClanPublic(clanId64) {
+      this.calls.push({ method: "friendsIsClanPublic", args: [clanId64] });
+      return true;
+    },
+    friendsIsClanOfficialGameGroup(clanId64) {
+      this.calls.push({ method: "friendsIsClanOfficialGameGroup", args: [clanId64] });
+      return false;
+    },
+    friendsGetNumChatsWithUnreadPriorityMessages() {
+      this.calls.push({ method: "friendsGetNumChatsWithUnreadPriorityMessages", args: [] });
+      return 2;
+    },
+    friendsRegisterProtocolInOverlayBrowser(protocol) {
+      this.calls.push({ method: "friendsRegisterProtocolInOverlayBrowser", args: [protocol] });
+      return true;
     },
     friendsRequestEquippedProfileItems() {
       return Promise.resolve({
@@ -10679,6 +10875,12 @@ test("friends facade normalizes IDs, groups, rich presence, and async results", 
   assert.equal(steam.friends.getFriendByIndex(0).steamId64, 76561198000000003n);
   assert.equal(steam.friends.getFriends()[0].steamId64, 76561198000000003n);
   assert.equal(steam.friends.hasFriend(76561198000000003n), true);
+  assert.equal(steam.friends.getFriendRelationship(76561198000000003n), steam.FriendRelationship.Friend);
+  assert.equal(steam.friends.getFriendPersonaState(76561198000000003n), steam.PersonaState.Online);
+  assert.equal(steam.friends.getFriendPersonaName(76561198000000003n), "Grace");
+  assert.equal(steam.friends.getFriendPersonaNameHistory(76561198000000003n, 0), "Rear Admiral Grace");
+  assert.equal(steam.friends.getFriendSteamLevel(76561198000000003n), 42);
+  assert.equal(steam.friends.getPlayerNickname(76561198000000003n), "debug-pal");
 
   assert.deepEqual(steam.friends.getFriendGamePlayed(76561198000000003n), {
     gameId: 480n,
@@ -10687,11 +10889,20 @@ test("friends facade normalizes IDs, groups, rich presence, and async results", 
     queryPort: 27016,
     lobby: 109775242022617907n
   });
+  assert.equal(steam.friends.getSmallFriendAvatar(76561198000000003n), 11);
+  assert.equal(steam.friends.getMediumFriendAvatar(76561198000000003n), 12);
+  assert.equal(steam.friends.getLargeFriendAvatar(76561198000000003n), 13);
+  assert.equal(steam.friends.requestUserInformation(76561198000000003n, true), true);
   assert.deepEqual(steam.friends.getFriendsGroups()[0], {
     id: 7,
     name: "Co-op",
     members: [{ steamId64: 76561198000000003n, steamId32: "STEAM_0:1:19867137", accountId: 39734275 }]
   });
+  assert.equal(steam.friends.getClanCount(), 1);
+  assert.equal(steam.friends.getClanByIndex(0).steamId64, 103582791429521412n);
+  assert.equal(steam.friends.getClans()[0].steamId64, 103582791429521412n);
+  assert.equal(steam.friends.getClanName(103582791429521412n), "SpaceWar Testers");
+  assert.equal(steam.friends.getClanTag(103582791429521412n), "SWT");
   assert.deepEqual(steam.friends.getClanActivityCounts(103582791429521412n), {
     online: 5,
     inGame: 2,
@@ -10717,10 +10928,25 @@ test("friends facade normalizes IDs, groups, rich presence, and async results", 
     officers: 4,
     success: true
   });
+  assert.equal(steam.friends.getClanOwner(103582791429521412n).steamId64, 76561198000000003n);
+  assert.equal(steam.friends.getClanOfficerCount(103582791429521412n), 1);
+  assert.equal(steam.friends.getClanOfficerByIndex(103582791429521412n, 0).steamId64, 76561198000000003n);
+  steam.friends.setPlayedWith(76561198000000003n);
+  steam.friends.setInGameVoiceSpeaking(76561198000000003n, true);
+  steam.friends.clearRichPresence();
   assert.deepEqual(await steam.friends.joinClanChatRoom(103582791429521412n), {
     clanChat: { steamId64: 103582791429521412n, steamId32: "STEAM_0:0:0", accountId: 0 },
     response: steam.ChatRoomEnterResponse.Success
   });
+  assert.equal(steam.friends.getCoplayFriendCount(), 1);
+  assert.equal(steam.friends.getCoplayFriend(0).steamId64, 76561198000000003n);
+  assert.equal(steam.friends.getCoplayFriends()[0].steamId64, 76561198000000003n);
+  assert.equal(steam.friends.getFriendCoplayTime(76561198000000003n), 123456);
+  assert.equal(steam.friends.getFriendCoplayGame(76561198000000003n), 480);
+  assert.equal(steam.friends.leaveClanChatRoom(103582791429521412n), true);
+  assert.equal(steam.friends.getClanChatMemberCount(103582791429521412n), 1);
+  assert.equal(steam.friends.getChatMemberByIndex(103582791429521412n, 0).steamId64, 76561198000000003n);
+  assert.equal(steam.friends.sendClanChatMessage(103582791429521412n, "hello clan"), true);
   assert.deepEqual(steam.friends.getClanChatMessage(103582791429521412n, 88, 128), {
     chatter: { steamId64: 76561198000000003n, steamId32: "STEAM_0:1:19867137", accountId: 39734275 },
     data: Buffer.from("clan"),
@@ -10732,8 +10958,15 @@ test("friends facade normalizes IDs, groups, rich presence, and async results", 
     method: "friendsGetClanChatMessage",
     args: [103582791429521412n, 88, 128]
   });
+  assert.equal(steam.friends.isClanChatAdmin(103582791429521412n, 76561198000000003n), true);
+  assert.equal(steam.friends.isClanChatWindowOpenInSteam(103582791429521412n), false);
+  assert.equal(steam.friends.openClanChatWindowInSteam(103582791429521412n), true);
+  assert.equal(steam.friends.closeClanChatWindowInSteam(103582791429521412n), true);
+  assert.equal(steam.friends.setListenForFriendsMessages(true), true);
+  assert.equal(steam.friends.replyToFriendMessage(76561198000000003n, "hello friend"), true);
   assert.deepEqual(steam.friends.getFriendRichPresenceKeys(76561198000000003n), ["status"]);
   assert.equal(steam.friends.getFriendRichPresence(76561198000000003n, "status"), "ready");
+  steam.friends.requestFriendRichPresence(76561198000000003n);
   assert.equal(steam.friends.inviteUserToGame(76561198000000003n, "+connect_lobby 109775242022617907"), true);
   assert.equal(steam.friends.ChatEntryType.ChatMsg, 1);
   assert.deepEqual(steam.friends.getFriendMessage(76561198000000003n, 77, 256), {
@@ -10752,6 +10985,10 @@ test("friends facade normalizes IDs, groups, rich presence, and async results", 
   });
   steam.friends.activateGameOverlayRemotePlayTogetherInviteDialog(109775242022617907n);
   steam.friends.activateGameOverlayInviteDialogConnectString("+connect_lobby 109775242022617907");
+  assert.equal(steam.friends.isClanPublic(103582791429521412n), true);
+  assert.equal(steam.friends.isClanOfficialGameGroup(103582791429521412n), false);
+  assert.equal(steam.friends.getNumChatsWithUnreadPriorityMessages(), 2);
+  assert.equal(steam.friends.registerProtocolInOverlayBrowser("steam-bridge"), true);
   assert.deepEqual(await steam.friends.requestEquippedProfileItems(76561198000000003n), {
     result: 1,
     steamId: { steamId64: 76561198000000003n, steamId32: "STEAM_0:1:19867137", accountId: 39734275 },
