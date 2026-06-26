@@ -1223,6 +1223,36 @@ export interface NetworkingPingLocation {
   ageSeconds: number;
 }
 
+export interface NetworkingMessagesSessionRequestEvent {
+  remoteIdentity: NetworkingIdentityInfo;
+  [key: string]: unknown;
+}
+
+export interface NetworkingMessagesSessionFailedEvent {
+  info: NetworkingMessagesSessionConnectionInfo;
+  [key: string]: unknown;
+}
+
+export interface NetworkingConnectionStatusChangedEvent {
+  connection: number;
+  oldState: number;
+  old_state?: number;
+  info: NetworkingConnectionInfo | null;
+  [key: string]: unknown;
+}
+
+export interface NetworkingFakeIpResultEvent extends NetworkingFakeIpResult {
+  [key: string]: unknown;
+}
+
+export interface NetworkingAuthenticationStatusEvent extends NetworkingAuthenticationStatus {
+  [key: string]: unknown;
+}
+
+export interface NetworkingRelayNetworkStatusEvent extends NetworkingRelayNetworkStatus {
+  [key: string]: unknown;
+}
+
 export interface NetworkingPingDataCenter {
   pingMs: number;
   viaRelayPop: number;
@@ -7809,6 +7839,16 @@ export const networking = {
       return normalizeNetworkingMessagesSessionConnectionInfo(
         native().networkingMessagesGetSessionConnectionInfo(nativeNetworkingIdentity(identity))
       );
+    },
+    onSessionRequest(handler: (event: NetworkingMessagesSessionRequestEvent) => void): CallbackHandle {
+      return onSteamCallback("SteamNetworkingMessagesSessionRequest", (event) => {
+        handler(event as NetworkingMessagesSessionRequestEvent);
+      });
+    },
+    onSessionFailed(handler: (event: NetworkingMessagesSessionFailedEvent) => void): CallbackHandle {
+      return onSteamCallback("SteamNetworkingMessagesSessionFailed", (event) => {
+        handler(event as NetworkingMessagesSessionFailedEvent);
+      });
     }
   },
   sockets: {
@@ -7959,6 +7999,11 @@ export const networking = {
     runCallbacks(): void {
       native().networkingSocketsRunCallbacks();
     },
+    onConnectionStatusChanged(handler: (event: NetworkingConnectionStatusChangedEvent) => void): CallbackHandle {
+      return onSteamCallback("SteamNetConnectionStatusChanged", (event) => {
+        handler(event as NetworkingConnectionStatusChangedEvent);
+      });
+    },
     destroyPollGroup(pollGroup: number): boolean {
       return native().networkingSocketsDestroyPollGroup(pollGroup);
     },
@@ -8038,6 +8083,11 @@ export const networking = {
     beginAsyncRequestFakeIP(numPorts: number): boolean {
       return native().networkingSocketsBeginAsyncRequestFakeIp(numPorts);
     },
+    onFakeIpResult(handler: (event: NetworkingFakeIpResultEvent) => void): CallbackHandle {
+      return onSteamCallback("SteamNetworkingFakeIPResult", (event) => {
+        handler(event as NetworkingFakeIpResultEvent);
+      });
+    },
     getFakeIP(idxFirstPort = 0): NetworkingFakeIpResult {
       return normalizeNetworkingFakeIpResult(native().networkingSocketsGetFakeIp(idxFirstPort));
     },
@@ -8098,6 +8148,16 @@ export const networking = {
     },
     getRelayNetworkStatus(): NetworkingRelayNetworkStatus {
       return normalizeNetworkingRelayNetworkStatus(native().networkingUtilsGetRelayNetworkStatus());
+    },
+    onAuthenticationStatus(handler: (event: NetworkingAuthenticationStatusEvent) => void): CallbackHandle {
+      return onSteamCallback("SteamNetAuthenticationStatus", (event) => {
+        handler(event as NetworkingAuthenticationStatusEvent);
+      });
+    },
+    onRelayNetworkStatus(handler: (event: NetworkingRelayNetworkStatusEvent) => void): CallbackHandle {
+      return onSteamCallback("SteamRelayNetworkStatus", (event) => {
+        handler(event as NetworkingRelayNetworkStatusEvent);
+      });
     },
     getLocalPingLocation(): NetworkingPingLocation {
       return normalizeNetworkingPingLocation(native().networkingUtilsGetLocalPingLocation());

@@ -152,7 +152,8 @@ covered.
   relay-auth-ticket cache helpers, hosted dedicated connect/listen helpers,
   hosted dedicated address, dev-address, and game coordinator login blobs,
   certificate request/install/reset helpers, fake-IP allocation and listen
-  helpers, fake UDP port wrappers, connection lane status details, plus
+  helpers, fake UDP port wrappers, typed connection/session/fake-IP/auth/relay
+  callback helpers, connection lane status details, plus
   `ISteamNetworkingUtils` relay/auth status, ping location, POP latency,
   fake-IP, standalone IP address and identity construction/comparison/getter
   helpers, identity conversion, config value, editable config iteration, direct
@@ -201,7 +202,7 @@ covered.
   `SteamDatagramRelayAuthTicket` opaque in the bundled headers, so safe
   structured decoding needs a newer SDK surface or a maintained local shim.
 - Additional specialized callback/event helpers outside the current Steam Input
-  device/configuration/gamepad-slot batch, for interfaces where a dedicated
+  and networking callback-helper batches, for interfaces where a dedicated
   `on...` helper would be clearer than the generic name-based subscription API.
   Generated callback constants and generic name subscriptions are covered by the
   automated coverage audit.

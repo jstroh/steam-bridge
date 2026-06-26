@@ -4973,14 +4973,14 @@ test("networking messages facade covers identity, message, session, and callback
   });
 
   let requestEvent;
-  steam.callback.register(steam.SteamCallback.SteamNetworkingMessagesSessionRequest, (event) => {
+  const sessionRequestHandle = steam.networking.messages.onSessionRequest((event) => {
     requestEvent = event;
   });
   fake.callbacks.get(steam.SteamCallback.SteamNetworkingMessagesSessionRequest)({ remote_identity: peer });
   assert.equal(requestEvent.remoteIdentity.steamId64, 76561198000000010n);
 
   let failedEvent;
-  steam.callback.register(steam.SteamCallback.SteamNetworkingMessagesSessionFailed, (event) => {
+  const sessionFailedHandle = steam.networking.messages.onSessionFailed((event) => {
     failedEvent = event;
   });
   fake.callbacks.get(steam.SteamCallback.SteamNetworkingMessagesSessionFailed)({
@@ -4994,6 +4994,22 @@ test("networking messages facade covers identity, message, session, and callback
   assert.equal(failedEvent.info.remoteIdentity.steamId64, 76561198000000010n);
   assert.equal(failedEvent.info.userData, 12n);
   assert.equal(failedEvent.info.quickStatus, null);
+  sessionRequestHandle.disconnect();
+  sessionFailedHandle.disconnect();
+  assert.deepEqual(
+    fake.calls.filter(
+      (call) =>
+        call.method === "disconnectCallback" &&
+        [
+          steam.SteamCallback.SteamNetworkingMessagesSessionRequest,
+          steam.SteamCallback.SteamNetworkingMessagesSessionFailed
+        ].includes(call.args[0])
+    ),
+    [
+      { method: "disconnectCallback", args: [steam.SteamCallback.SteamNetworkingMessagesSessionRequest] },
+      { method: "disconnectCallback", args: [steam.SteamCallback.SteamNetworkingMessagesSessionFailed] }
+    ]
+  );
   assert.deepEqual(fake.calls.find((call) => call.method === "networkingMessagesSendMessageToUser"), {
     method: "networkingMessagesSendMessageToUser",
     args: [identity, Buffer.from("payload"), 8, 2]
@@ -6045,7 +6061,7 @@ test("networking sockets facade covers connection handles, status, poll groups, 
   assert.equal(steam.networking.fakeUDP.destroy(fakeUdpPort), true);
 
   let statusEvent;
-  steam.callback.register(steam.SteamCallback.SteamNetConnectionStatusChanged, (event) => {
+  const connectionStatusHandle = steam.networking.sockets.onConnectionStatusChanged((event) => {
     statusEvent = event;
   });
   fake.callbacks.get(steam.SteamCallback.SteamNetConnectionStatusChanged)({
@@ -6058,7 +6074,7 @@ test("networking sockets facade covers connection handles, status, poll groups, 
   assert.equal(statusEvent.info.remoteIdentity.steamId64, 76561198000000010n);
 
   let fakeIpEvent;
-  steam.callback.register(steam.SteamCallback.SteamNetworkingFakeIPResult, (event) => {
+  const fakeIpHandle = steam.networking.sockets.onFakeIpResult((event) => {
     fakeIpEvent = event;
   });
   fake.callbacks.get(steam.SteamCallback.SteamNetworkingFakeIPResult)({
@@ -6071,6 +6087,22 @@ test("networking sockets facade covers connection handles, status, poll groups, 
   assert.equal(fakeIpEvent.identity.steamId64, 76561198000000010n);
   assert.equal(fakeIpEvent.ipv4Address, "10.0.0.1");
   assert.deepEqual(fakeIpEvent.ports, [27015]);
+  connectionStatusHandle.disconnect();
+  fakeIpHandle.disconnect();
+  assert.deepEqual(
+    fake.calls.filter(
+      (call) =>
+        call.method === "disconnectCallback" &&
+        [
+          steam.SteamCallback.SteamNetConnectionStatusChanged,
+          steam.SteamCallback.SteamNetworkingFakeIPResult
+        ].includes(call.args[0])
+    ),
+    [
+      { method: "disconnectCallback", args: [steam.SteamCallback.SteamNetConnectionStatusChanged] },
+      { method: "disconnectCallback", args: [steam.SteamCallback.SteamNetworkingFakeIPResult] }
+    ]
+  );
 
   assert.deepEqual(fake.calls.find((call) => call.method === "networkingSocketsConnectP2p"), {
     method: "networkingSocketsConnectP2p",
@@ -6578,7 +6610,7 @@ test("networking utils facade covers relay, ping, fake IP, address, config, debu
   debugHandle.disconnect();
 
   let authEvent;
-  steam.callback.register(steam.SteamCallback.SteamNetAuthenticationStatus, (event) => {
+  const authStatusHandle = steam.networking.utils.onAuthenticationStatus((event) => {
     authEvent = event;
   });
   fake.callbacks.get(steam.SteamCallback.SteamNetAuthenticationStatus)({
@@ -6588,7 +6620,7 @@ test("networking utils facade covers relay, ping, fake IP, address, config, debu
   assert.equal(authEvent.debugMessage, "auth ready");
 
   let relayEvent;
-  steam.callback.register(steam.SteamCallback.SteamRelayNetworkStatus, (event) => {
+  const relayStatusHandle = steam.networking.utils.onRelayNetworkStatus((event) => {
     relayEvent = event;
   });
   fake.callbacks.get(steam.SteamCallback.SteamRelayNetworkStatus)({
@@ -6602,6 +6634,22 @@ test("networking utils facade covers relay, ping, fake IP, address, config, debu
   assert.equal(relayEvent.networkConfigAvailability, 100);
   assert.equal(relayEvent.anyRelayAvailability, 100);
   assert.equal(relayEvent.debugMessage, "measurement pending");
+  authStatusHandle.disconnect();
+  relayStatusHandle.disconnect();
+  assert.deepEqual(
+    fake.calls.filter(
+      (call) =>
+        call.method === "disconnectCallback" &&
+        [
+          steam.SteamCallback.SteamNetAuthenticationStatus,
+          steam.SteamCallback.SteamRelayNetworkStatus
+        ].includes(call.args[0])
+    ),
+    [
+      { method: "disconnectCallback", args: [steam.SteamCallback.SteamNetAuthenticationStatus] },
+      { method: "disconnectCallback", args: [steam.SteamCallback.SteamRelayNetworkStatus] }
+    ]
+  );
 
   assert.deepEqual(fake.calls.find((call) => call.method === "networkingUtilsIpAddressToString"), {
     method: "networkingUtilsIpAddressToString",
