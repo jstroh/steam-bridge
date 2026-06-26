@@ -68,11 +68,13 @@ documented in headers but omitted from the generated flat bindings.
   enumeration/upload/delete helpers, remote-storage/workshop detail helpers,
   player profile/playtime/library/offline-playtime helpers, store
   app-list/followed-games/recommended-tags service helpers,
-  user-auth ticket validation helpers, CheatReportingService report/game-ban/VAC
+  user-auth ticket validation helpers, AuthenticationService
+  credential/QR/guard/mobile-confirmation polling helpers, OAuth token-detail
+  helpers, CheatReportingService report/game-ban/VAC
   session helpers, public broadcast stats/heartbeat helpers, BroadcastService
-  game-data-frame helpers, help-request log helpers, wishlist helpers, EconMarketService
+  game-data-frame and RTMP-frame helpers, help-request log helpers, wishlist helpers, EconMarketService
   market eligibility/listing/popularity helpers, community abuse-report helpers,
-  game-notification session helpers, game-server account administration and lookup helpers,
+  game-notification session and user-session helpers, game-server account administration and lookup helpers,
   published-file service query/moderation/tag/vote-summary helpers, published-item
   search/voting helpers, WorkshopService payment/contributor/revenue/description
   helpers, SiteLicenseService client-connection/playtime helpers, leaderboard
@@ -180,7 +182,7 @@ documented in headers but omitted from the generated flat bindings.
 - Additional endpoint-specific Steam Web API convenience wrappers for the long
   tail of service interfaces beyond the current utility, app, broadcast,
   directory, content-server-directory, news, player, store, user, user-auth,
-  user-stats, remote-storage, game-notifications service, game-server service,
+  user-oauth, authentication service, user-stats, remote-storage, game-notifications service, game-server service,
   published-file, published-item search/voting, leaderboards, game-server stats,
   community, economy, InventoryService, WorkshopService, SiteLicenseService,
   CloudService, BroadcastService, CheatReportingService, HelpRequestLogsService,

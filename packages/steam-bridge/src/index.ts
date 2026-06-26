@@ -1657,6 +1657,7 @@ export interface SteamWebApiClient {
   get<T = unknown>(options: Omit<SteamWebApiRequestOptions, "method" | "body">): Promise<SteamWebApiResponse<T>>;
   post<T = unknown>(options: Omit<SteamWebApiRequestOptions, "method">): Promise<SteamWebApiResponse<T>>;
   apps: SteamWebApiAppsFacade;
+  authenticationService: SteamWebApiAuthenticationServiceFacade;
   broadcast: SteamWebApiBroadcastFacade;
   broadcastService: SteamWebApiBroadcastServiceFacade;
   cheatReportingService: SteamWebApiCheatReportingServiceFacade;
@@ -1685,6 +1686,7 @@ export interface SteamWebApiClient {
   util: SteamWebApiUtilFacade;
   user: SteamWebApiUserFacade;
   userAuth: SteamWebApiUserAuthFacade;
+  userOAuth: SteamWebApiUserOAuthFacade;
   userStats: SteamWebApiUserStatsFacade;
   wishlistService: SteamWebApiWishlistServiceFacade;
   workshopService: SteamWebApiWorkshopServiceFacade;
@@ -1777,6 +1779,94 @@ export interface SteamWebApiNewsForAppOptions extends SteamWebApiEndpointOptions
   endDate?: number;
   count?: number;
   feeds?: string | string[];
+}
+
+export interface SteamWebApiAuthenticationServiceFacade {
+  pollAuthSessionStatus<T = unknown>(
+    options: SteamWebApiPollAuthSessionStatusOptions
+  ): Promise<SteamWebApiResponse<T>>;
+  getAuthSessionInfo<T = unknown>(
+    clientId: bigint | number | string,
+    options?: SteamWebApiEndpointOptions | null
+  ): Promise<SteamWebApiResponse<T>>;
+  getAuthSessionRiskInfo<T = unknown>(
+    options: SteamWebApiAuthSessionRiskInfoOptions
+  ): Promise<SteamWebApiResponse<T>>;
+  notifyRiskQuizResults<T = unknown>(
+    options: SteamWebApiNotifyRiskQuizResultsOptions
+  ): Promise<SteamWebApiResponse<T>>;
+  getPasswordRsaPublicKey<T = unknown>(
+    accountName: string,
+    options?: SteamWebApiEndpointOptions | null
+  ): Promise<SteamWebApiResponse<T>>;
+  beginAuthSessionViaCredentials<T = unknown>(
+    options: SteamWebApiBeginAuthSessionViaCredentialsOptions
+  ): Promise<SteamWebApiResponse<T>>;
+  updateAuthSessionWithSteamGuardCode<T = unknown>(
+    options: SteamWebApiUpdateAuthSessionWithSteamGuardCodeOptions
+  ): Promise<SteamWebApiResponse<T>>;
+  beginAuthSessionViaQr<T = unknown>(
+    options: SteamWebApiBeginAuthSessionViaQrOptions
+  ): Promise<SteamWebApiResponse<T>>;
+  updateAuthSessionWithMobileConfirmation<T = unknown>(
+    options: SteamWebApiUpdateAuthSessionWithMobileConfirmationOptions
+  ): Promise<SteamWebApiResponse<T>>;
+}
+
+export interface SteamWebApiPollAuthSessionStatusOptions extends SteamWebApiEndpointOptions {
+  clientId: bigint | number | string;
+  requestId: string;
+  tokenToRevoke: bigint | number | string;
+}
+
+export interface SteamWebApiAuthSessionRiskInfoOptions extends SteamWebApiEndpointOptions {
+  clientId: bigint | number | string;
+  language: number;
+}
+
+export interface SteamWebApiNotifyRiskQuizResultsOptions extends SteamWebApiEndpointOptions {
+  clientId: bigint | number | string;
+  results: SteamWebApiInputJsonValue;
+  selectedAction: string;
+  didConfirmLogin: boolean;
+}
+
+export interface SteamWebApiBeginAuthSessionViaCredentialsOptions extends SteamWebApiEndpointOptions {
+  deviceFriendlyName: string;
+  accountName: string;
+  encryptedPassword: string;
+  encryptionTimestamp: bigint | number | string;
+  rememberLogin: boolean;
+  platformType: string | number;
+  persistence?: string | number;
+  websiteId?: string;
+  deviceDetails: SteamWebApiInputJsonValue;
+  guardData: string;
+  language: number;
+  qosLevel?: number;
+}
+
+export interface SteamWebApiUpdateAuthSessionWithSteamGuardCodeOptions extends SteamWebApiEndpointOptions {
+  clientId: bigint | number | string;
+  steamId64: bigint | number | string;
+  code: string;
+  codeType: string | number;
+}
+
+export interface SteamWebApiBeginAuthSessionViaQrOptions extends SteamWebApiEndpointOptions {
+  deviceFriendlyName: string;
+  platformType: string | number;
+  deviceDetails: SteamWebApiInputJsonValue;
+  websiteId?: string;
+}
+
+export interface SteamWebApiUpdateAuthSessionWithMobileConfirmationOptions extends SteamWebApiEndpointOptions {
+  version: number;
+  clientId: bigint | number | string;
+  steamId64: bigint | number | string;
+  signature: string;
+  confirm?: boolean;
+  persistence?: string | number;
 }
 
 export interface SteamWebApiBroadcastFacade {
@@ -2064,12 +2154,22 @@ export interface SteamWebApiBroadcastServiceFacade {
   postGameDataFrame<T = unknown>(
     options: SteamWebApiBroadcastPostGameDataFrameOptions
   ): Promise<SteamWebApiResponse<T>>;
+  postGameDataFrameRtmp<T = unknown>(
+    options: SteamWebApiBroadcastPostGameDataFrameRtmpOptions
+  ): Promise<SteamWebApiResponse<T>>;
 }
 
 export interface SteamWebApiBroadcastPostGameDataFrameOptions extends SteamWebApiEndpointOptions {
   appId: number;
   steamId64: bigint | number | string;
   broadcastId: bigint | number | string;
+  frameData: string;
+}
+
+export interface SteamWebApiBroadcastPostGameDataFrameRtmpOptions extends SteamWebApiEndpointOptions {
+  appId: number;
+  steamId64: bigint | number | string;
+  rtmpToken: string;
   frameData: string;
 }
 
@@ -2460,7 +2560,13 @@ export interface SteamWebApiGameNotificationsServiceFacade {
   createSession<T = unknown>(
     options: SteamWebApiGameNotificationsCreateSessionOptions
   ): Promise<SteamWebApiResponse<T>>;
+  userCreateSession<T = unknown>(
+    options: SteamWebApiGameNotificationsCreateSessionOptions
+  ): Promise<SteamWebApiResponse<T>>;
   updateSession<T = unknown>(
+    options: SteamWebApiGameNotificationsUpdateSessionOptions
+  ): Promise<SteamWebApiResponse<T>>;
+  userUpdateSession<T = unknown>(
     options: SteamWebApiGameNotificationsUpdateSessionOptions
   ): Promise<SteamWebApiResponse<T>>;
   enumerateSessionsForApp<T = unknown>(
@@ -2473,6 +2579,9 @@ export interface SteamWebApiGameNotificationsServiceFacade {
     options: SteamWebApiGameNotificationsUserAppOptions
   ): Promise<SteamWebApiResponse<T>>;
   deleteSession<T = unknown>(
+    options: SteamWebApiGameNotificationsDeleteSessionOptions
+  ): Promise<SteamWebApiResponse<T>>;
+  userDeleteSession<T = unknown>(
     options: SteamWebApiGameNotificationsDeleteSessionOptions
   ): Promise<SteamWebApiResponse<T>>;
   deleteSessionBatch<T = unknown>(
@@ -2880,6 +2989,13 @@ export interface SteamWebApiAuthenticateUserTicketOptions extends SteamWebApiEnd
   appId: number;
   ticket: SteamWebApiBinaryValue;
   identity?: string;
+}
+
+export interface SteamWebApiUserOAuthFacade {
+  getTokenDetails<T = unknown>(
+    accessToken: string,
+    options?: SteamWebApiOAuthEndpointOptions | null
+  ): Promise<SteamWebApiResponse<T>>;
 }
 
 export interface SteamWebApiCommunityFacade {
@@ -5212,6 +5328,7 @@ export function createSteamWebApiClient(options: SteamWebApiClientOptions = {}):
       return requestSteamWebApiWithClient<T>(postRequest, clientOptions);
     },
     apps: createSteamWebApiAppsFacade(clientOptions),
+    authenticationService: createSteamWebApiAuthenticationServiceFacade(clientOptions),
     broadcast: createSteamWebApiBroadcastFacade(clientOptions),
     broadcastService: createSteamWebApiBroadcastServiceFacade(clientOptions),
     cheatReportingService: createSteamWebApiCheatReportingServiceFacade(clientOptions),
@@ -5240,6 +5357,7 @@ export function createSteamWebApiClient(options: SteamWebApiClientOptions = {}):
     util: createSteamWebApiUtilFacade(clientOptions),
     user: createSteamWebApiUserFacade(clientOptions),
     userAuth: createSteamWebApiUserAuthFacade(clientOptions),
+    userOAuth: createSteamWebApiUserOAuthFacade(clientOptions),
     userStats: createSteamWebApiUserStatsFacade(clientOptions),
     wishlistService: createSteamWebApiWishlistServiceFacade(clientOptions),
     workshopService: createSteamWebApiWorkshopServiceFacade(clientOptions),
@@ -9486,6 +9604,171 @@ function createSteamWebApiNewsFacade(clientOptions: SteamWebApiClientOptions): S
   };
 }
 
+function createSteamWebApiAuthenticationServiceFacade(
+  clientOptions: SteamWebApiClientOptions
+): SteamWebApiAuthenticationServiceFacade {
+  return {
+    pollAuthSessionStatus<T = unknown>(
+      options: SteamWebApiPollAuthSessionStatusOptions
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServicePost<T>(
+        clientOptions,
+        "IAuthenticationService",
+        "PollAuthSessionStatus",
+        1,
+        {
+          client_id: options.clientId,
+          request_id: options.requestId,
+          token_to_revoke: options.tokenToRevoke
+        },
+        steamWebApiKeylessEndpointOptions(options),
+        false
+      );
+    },
+    getAuthSessionInfo<T = unknown>(
+      clientId: bigint | number | string,
+      options?: SteamWebApiEndpointOptions | null
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServicePost<T>(
+        clientOptions,
+        "IAuthenticationService",
+        "GetAuthSessionInfo",
+        1,
+        { client_id: clientId },
+        steamWebApiKeylessEndpointOptions(options),
+        false
+      );
+    },
+    getAuthSessionRiskInfo<T = unknown>(
+      options: SteamWebApiAuthSessionRiskInfoOptions
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServicePost<T>(
+        clientOptions,
+        "IAuthenticationService",
+        "GetAuthSessionRiskInfo",
+        1,
+        { client_id: options.clientId, language: options.language },
+        steamWebApiKeylessEndpointOptions(options),
+        false
+      );
+    },
+    notifyRiskQuizResults<T = unknown>(
+      options: SteamWebApiNotifyRiskQuizResultsOptions
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServicePost<T>(
+        clientOptions,
+        "IAuthenticationService",
+        "NotifyRiskQuizResults",
+        1,
+        {
+          client_id: options.clientId,
+          results: options.results,
+          selected_action: options.selectedAction,
+          did_confirm_login: options.didConfirmLogin
+        },
+        steamWebApiKeylessEndpointOptions(options),
+        false
+      );
+    },
+    getPasswordRsaPublicKey<T = unknown>(
+      accountName: string,
+      options?: SteamWebApiEndpointOptions | null
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServiceGet<T>(
+        clientOptions,
+        "IAuthenticationService",
+        "GetPasswordRSAPublicKey",
+        1,
+        { account_name: accountName },
+        steamWebApiKeylessEndpointOptions(options),
+        false
+      );
+    },
+    beginAuthSessionViaCredentials<T = unknown>(
+      options: SteamWebApiBeginAuthSessionViaCredentialsOptions
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServicePost<T>(
+        clientOptions,
+        "IAuthenticationService",
+        "BeginAuthSessionViaCredentials",
+        1,
+        {
+          device_friendly_name: options.deviceFriendlyName,
+          account_name: options.accountName,
+          encrypted_password: options.encryptedPassword,
+          encryption_timestamp: options.encryptionTimestamp,
+          remember_login: options.rememberLogin,
+          platform_type: options.platformType,
+          persistence: options.persistence,
+          website_id: options.websiteId,
+          device_details: options.deviceDetails,
+          guard_data: options.guardData,
+          language: options.language,
+          qos_level: options.qosLevel
+        },
+        steamWebApiKeylessEndpointOptions(options),
+        false
+      );
+    },
+    updateAuthSessionWithSteamGuardCode<T = unknown>(
+      options: SteamWebApiUpdateAuthSessionWithSteamGuardCodeOptions
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServicePost<T>(
+        clientOptions,
+        "IAuthenticationService",
+        "UpdateAuthSessionWithSteamGuardCode",
+        1,
+        {
+          client_id: options.clientId,
+          steamid: options.steamId64,
+          code: options.code,
+          code_type: options.codeType
+        },
+        steamWebApiKeylessEndpointOptions(options),
+        false
+      );
+    },
+    beginAuthSessionViaQr<T = unknown>(
+      options: SteamWebApiBeginAuthSessionViaQrOptions
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServicePost<T>(
+        clientOptions,
+        "IAuthenticationService",
+        "BeginAuthSessionViaQR",
+        1,
+        {
+          device_friendly_name: options.deviceFriendlyName,
+          platform_type: options.platformType,
+          device_details: options.deviceDetails,
+          website_id: options.websiteId
+        },
+        steamWebApiKeylessEndpointOptions(options),
+        false
+      );
+    },
+    updateAuthSessionWithMobileConfirmation<T = unknown>(
+      options: SteamWebApiUpdateAuthSessionWithMobileConfirmationOptions
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServicePost<T>(
+        clientOptions,
+        "IAuthenticationService",
+        "UpdateAuthSessionWithMobileConfirmation",
+        1,
+        {
+          version: options.version,
+          client_id: options.clientId,
+          steamid: options.steamId64,
+          signature: options.signature,
+          confirm: options.confirm,
+          persistence: options.persistence
+        },
+        steamWebApiKeylessEndpointOptions(options),
+        false
+      );
+    }
+  };
+}
+
 function createSteamWebApiBroadcastFacade(clientOptions: SteamWebApiClientOptions): SteamWebApiBroadcastFacade {
   return {
     playerStats<T = unknown>(options?: SteamWebApiEndpointOptions | null): Promise<SteamWebApiResponse<T>> {
@@ -10093,6 +10376,23 @@ function createSteamWebApiBroadcastServiceFacade(
           appid: options.appId,
           steamid: options.steamId64,
           broadcast_id: options.broadcastId,
+          frame_data: options.frameData
+        },
+        options
+      );
+    },
+    postGameDataFrameRtmp<T = unknown>(
+      options: SteamWebApiBroadcastPostGameDataFrameRtmpOptions
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServicePost<T>(
+        clientOptions,
+        "IBroadcastService",
+        "PostGameDataFrameRTMP",
+        1,
+        {
+          appid: options.appId,
+          steamid: options.steamId64,
+          rtmp_token: options.rtmpToken,
           frame_data: options.frameData
         },
         options
@@ -10774,6 +11074,24 @@ function createSteamWebApiGameNotificationsServiceFacade(
         options
       );
     },
+    userCreateSession<T = unknown>(
+      options: SteamWebApiGameNotificationsCreateSessionOptions
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServicePost<T>(
+        clientOptions,
+        "IGameNotificationsService",
+        "UserCreateSession",
+        1,
+        {
+          appid: options.appId,
+          context: options.context,
+          title: steamWebApiGameNotificationsLocalizedText(options.title),
+          users: options.users.map(steamWebApiGameNotificationsUserState),
+          steamid: options.steamId64
+        },
+        options
+      );
+    },
     updateSession<T = unknown>(
       options: SteamWebApiGameNotificationsUpdateSessionOptions
     ): Promise<SteamWebApiResponse<T>> {
@@ -10781,6 +11099,24 @@ function createSteamWebApiGameNotificationsServiceFacade(
         clientOptions,
         "IGameNotificationsService",
         "UpdateSession",
+        1,
+        {
+          sessionid: options.sessionId,
+          appid: options.appId,
+          title: steamWebApiGameNotificationsLocalizedText(options.title),
+          users: options.users?.map(steamWebApiGameNotificationsUserState),
+          steamid: options.steamId64
+        },
+        options
+      );
+    },
+    userUpdateSession<T = unknown>(
+      options: SteamWebApiGameNotificationsUpdateSessionOptions
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServicePost<T>(
+        clientOptions,
+        "IGameNotificationsService",
+        "UserUpdateSession",
         1,
         {
           sessionid: options.sessionId,
@@ -10845,6 +11181,18 @@ function createSteamWebApiGameNotificationsServiceFacade(
         clientOptions,
         "IGameNotificationsService",
         "DeleteSession",
+        1,
+        { sessionid: options.sessionId, appid: options.appId, steamid: options.steamId64 },
+        options
+      );
+    },
+    userDeleteSession<T = unknown>(
+      options: SteamWebApiGameNotificationsDeleteSessionOptions
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServicePost<T>(
+        clientOptions,
+        "IGameNotificationsService",
+        "UserDeleteSession",
         1,
         { sessionid: options.sessionId, appid: options.appId, steamid: options.steamId64 },
         options
@@ -11502,6 +11850,24 @@ function createSteamWebApiUserAuthFacade(clientOptions: SteamWebApiClientOptions
   };
 }
 
+function createSteamWebApiUserOAuthFacade(clientOptions: SteamWebApiClientOptions): SteamWebApiUserOAuthFacade {
+  return {
+    getTokenDetails<T = unknown>(
+      accessToken: string,
+      options?: SteamWebApiOAuthEndpointOptions | null
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiOAuthGet<T>(
+        clientOptions,
+        "ISteamUserOAuth",
+        "GetTokenDetails",
+        1,
+        { access_token: accessToken },
+        options
+      );
+    }
+  };
+}
+
 function createSteamWebApiCommunityFacade(clientOptions: SteamWebApiClientOptions): SteamWebApiCommunityFacade {
   return {
     reportAbuse<T = unknown>(options: SteamWebApiReportAbuseOptions): Promise<SteamWebApiResponse<T>> {
@@ -11939,7 +12305,7 @@ function steamWebApiServicePost<T>(
   );
 }
 
-type SteamWebApiOAuthEndpointOptions = Omit<SteamWebApiEndpointOptions, "key">;
+export type SteamWebApiOAuthEndpointOptions = Omit<SteamWebApiEndpointOptions, "key">;
 
 function steamWebApiOAuthGet<T>(
   clientOptions: SteamWebApiClientOptions,
@@ -12075,6 +12441,12 @@ function steamWebApiPublishedItemVoteBody(
   };
   Object.assign(body, indexedParams("publishedfileid", options.publishedFileIds));
   return body;
+}
+
+function steamWebApiKeylessEndpointOptions(
+  options: SteamWebApiEndpointOptions | null | undefined
+): SteamWebApiEndpointOptions {
+  return options ? { ...options, key: options.key ?? null } : { key: null };
 }
 
 function steamWebApiEndpointRequestOptions(

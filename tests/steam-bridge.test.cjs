@@ -9602,6 +9602,12 @@ test("web API broadcast and market service facades map partner methods", async (
     filterAppId: 480,
     currency: 1
   });
+  await client.broadcastService.postGameDataFrameRtmp({
+    appId: 480,
+    steamId64: 76561198000000000n,
+    rtmpToken: "rtmp-token",
+    frameData: "{\"round\":2,\"score\":42}"
+  });
 
   assert.equal(
     requestUrl(0).origin + requestUrl(0).pathname,
@@ -9651,7 +9657,19 @@ test("web API broadcast and market service facades map partner methods", async (
     filter_appid: 480,
     ecurrency: 1
   });
+  assert.equal(
+    requestUrl(5).origin + requestUrl(5).pathname,
+    "https://partner.steam-api.com/IBroadcastService/PostGameDataFrameRTMP/v0001/"
+  );
+  assert.equal(fetchCalls[5].init.method, "POST");
+  assert.deepEqual(bodyInputJson(5), {
+    appid: 480,
+    steamid: "76561198000000000",
+    rtmp_token: "rtmp-token",
+    frame_data: "{\"round\":2,\"score\":42}"
+  });
   assert.equal(typeof steam.webApi.broadcastService.postGameDataFrame, "function");
+  assert.equal(typeof steam.webApi.broadcastService.postGameDataFrameRtmp, "function");
   assert.equal(typeof steam.webApi.econMarketService.cancelAppListingsForUser, "function");
 });
 
@@ -10265,6 +10283,25 @@ test("web API game notifications service facade maps session methods", async (t)
     sessionIds: [12n, "13"],
     appId: 480
   });
+  await client.gameNotificationsService.userCreateSession({
+    appId: 480,
+    context: 27182818n,
+    title: { token: "#UserSessionTitle" },
+    users: [userState],
+    steamId64: 76561198000000000n
+  });
+  await client.gameNotificationsService.userUpdateSession({
+    sessionId: 14n,
+    appId: 480,
+    title: { token: "#UserUpdatedSession" },
+    users: [{ ...userState, state: "done" }],
+    steamId64: 76561198000000000n
+  });
+  await client.gameNotificationsService.userDeleteSession({
+    sessionId: 14n,
+    appId: 480,
+    steamId64: 76561198000000000n
+  });
 
   assert.equal(
     requestUrl(0).origin + requestUrl(0).pathname,
@@ -10356,7 +10393,71 @@ test("web API game notifications service facade maps session methods", async (t)
     "https://partner.steam-api.com/IGameNotificationsService/DeleteSessionBatch/v0001/"
   );
   assert.deepEqual(bodyInputJson(6), { sessionid: ["12", "13"], appid: 480 });
+  assert.equal(
+    requestUrl(7).origin + requestUrl(7).pathname,
+    "https://partner.steam-api.com/IGameNotificationsService/UserCreateSession/v0001/"
+  );
+  assert.deepEqual(bodyInputJson(7), {
+    appid: 480,
+    context: "27182818",
+    title: { token: "#UserSessionTitle" },
+    users: [
+      {
+        steamid: "76561198000000000",
+        state: "waiting",
+        title: {
+          token: "#TurnTitle",
+          variables: [
+            { key: "username", value: "Alex" },
+            { key: "turn", value: "3" }
+          ]
+        },
+        message: {
+          token: "#TurnMessage",
+          variables: [{ key: "city", value: "Bellevue" }]
+        }
+      }
+    ],
+    steamid: "76561198000000000"
+  });
+  assert.equal(
+    requestUrl(8).origin + requestUrl(8).pathname,
+    "https://partner.steam-api.com/IGameNotificationsService/UserUpdateSession/v0001/"
+  );
+  assert.deepEqual(bodyInputJson(8), {
+    sessionid: "14",
+    appid: 480,
+    title: { token: "#UserUpdatedSession" },
+    users: [
+      {
+        steamid: "76561198000000000",
+        state: "done",
+        title: {
+          token: "#TurnTitle",
+          variables: [
+            { key: "username", value: "Alex" },
+            { key: "turn", value: "3" }
+          ]
+        },
+        message: {
+          token: "#TurnMessage",
+          variables: [{ key: "city", value: "Bellevue" }]
+        }
+      }
+    ],
+    steamid: "76561198000000000"
+  });
+  assert.equal(
+    requestUrl(9).origin + requestUrl(9).pathname,
+    "https://partner.steam-api.com/IGameNotificationsService/UserDeleteSession/v0001/"
+  );
+  assert.deepEqual(bodyInputJson(9), {
+    sessionid: "14",
+    appid: 480,
+    steamid: "76561198000000000"
+  });
   assert.equal(typeof steam.webApi.gameNotificationsService.createSession, "function");
+  assert.equal(typeof steam.webApi.gameNotificationsService.userCreateSession, "function");
 });
 
 test("web API published file service facade maps workshop service methods", async (t) => {
@@ -10957,6 +11058,153 @@ test("web API site license service facade maps cafe service methods", async (t) 
   assert.equal(requestUrl(1).searchParams.get("siteid"), "123");
   assert.equal(requestUrl(1).searchParams.has("input_json"), false);
   assert.equal(typeof steam.webApi.siteLicenseService.getTotalPlaytime, "function");
+});
+
+test("web API authentication service and OAuth facades map auth transport fields", async (t) => {
+  const steam = loadSteamWithFakeNative(createFakeNative());
+  const fetchCalls = [];
+  const fetchImpl = async (url, init = {}) => {
+    fetchCalls.push({ url, init });
+    return {
+      ok: true,
+      status: 200,
+      headers: {
+        forEach(callback) {
+          callback("application/json", "content-type");
+        }
+      },
+      async text() {
+        return JSON.stringify({ response: { ok: true } });
+      }
+    };
+  };
+  const client = steam.createSteamWebApiClient({ apiKey: "auth-secret", fetch: fetchImpl });
+  const requestUrl = (index) => new URL(fetchCalls[index].url);
+  const queryInputJson = (index) => JSON.parse(requestUrl(index).searchParams.get("input_json"));
+  const bodyInputJson = (index) => JSON.parse(new URLSearchParams(fetchCalls[index].init.body).get("input_json"));
+
+  t.after(clearSteamBridgeCache);
+
+  await client.authenticationService.pollAuthSessionStatus({
+    clientId: 111n,
+    requestId: "request-1",
+    tokenToRevoke: 0n
+  });
+  await client.authenticationService.getAuthSessionInfo(111n);
+  await client.authenticationService.getAuthSessionRiskInfo({ clientId: 111n, language: 0 });
+  await client.authenticationService.notifyRiskQuizResults({
+    clientId: 111n,
+    results: { questions: [{ id: 1, correct: true }] },
+    selectedAction: "approve",
+    didConfirmLogin: true
+  });
+  await client.authenticationService.getPasswordRsaPublicKey("player@example.com");
+  await client.authenticationService.beginAuthSessionViaCredentials({
+    deviceFriendlyName: "Steam Bridge Test",
+    accountName: "player",
+    encryptedPassword: "encrypted-password",
+    encryptionTimestamp: 222n,
+    rememberLogin: false,
+    platformType: 2,
+    persistence: 1,
+    websiteId: "steam-bridge",
+    deviceDetails: { device_id: "device-1", platform: "desktop" },
+    guardData: "guard-data",
+    language: 0,
+    qosLevel: 1
+  });
+  await client.authenticationService.updateAuthSessionWithSteamGuardCode({
+    clientId: 111n,
+    steamId64: 76561198000000000n,
+    code: "ABCDE",
+    codeType: 2
+  });
+  await client.authenticationService.beginAuthSessionViaQr({
+    deviceFriendlyName: "Steam Bridge QR",
+    platformType: 2,
+    deviceDetails: { device_id: "device-qr" },
+    websiteId: "steam-bridge"
+  });
+  await client.authenticationService.updateAuthSessionWithMobileConfirmation({
+    version: 1,
+    clientId: 111n,
+    steamId64: 76561198000000000n,
+    signature: "signature",
+    confirm: true,
+    persistence: 1
+  });
+  await client.userOAuth.getTokenDetails("oauth-token");
+
+  assert.equal(
+    requestUrl(0).origin + requestUrl(0).pathname,
+    "https://api.steampowered.com/IAuthenticationService/PollAuthSessionStatus/v0001/"
+  );
+  assert.equal(fetchCalls[0].init.method, "POST");
+  assert.equal(requestUrl(0).searchParams.has("key"), false);
+  assert.deepEqual(bodyInputJson(0), {
+    client_id: "111",
+    request_id: "request-1",
+    token_to_revoke: "0"
+  });
+  assert.deepEqual(bodyInputJson(1), { client_id: "111" });
+  assert.deepEqual(bodyInputJson(2), { client_id: "111", language: 0 });
+  assert.deepEqual(bodyInputJson(3), {
+    client_id: "111",
+    results: { questions: [{ id: 1, correct: true }] },
+    selected_action: "approve",
+    did_confirm_login: true
+  });
+  assert.equal(
+    requestUrl(4).origin + requestUrl(4).pathname,
+    "https://api.steampowered.com/IAuthenticationService/GetPasswordRSAPublicKey/v0001/"
+  );
+  assert.equal(fetchCalls[4].init.method, "GET");
+  assert.deepEqual(queryInputJson(4), { account_name: "player@example.com" });
+  assert.deepEqual(bodyInputJson(5), {
+    device_friendly_name: "Steam Bridge Test",
+    account_name: "player",
+    encrypted_password: "encrypted-password",
+    encryption_timestamp: "222",
+    remember_login: false,
+    platform_type: 2,
+    persistence: 1,
+    website_id: "steam-bridge",
+    device_details: { device_id: "device-1", platform: "desktop" },
+    guard_data: "guard-data",
+    language: 0,
+    qos_level: 1
+  });
+  assert.deepEqual(bodyInputJson(6), {
+    client_id: "111",
+    steamid: "76561198000000000",
+    code: "ABCDE",
+    code_type: 2
+  });
+  assert.equal(
+    requestUrl(7).origin + requestUrl(7).pathname,
+    "https://api.steampowered.com/IAuthenticationService/BeginAuthSessionViaQR/v0001/"
+  );
+  assert.deepEqual(bodyInputJson(7), {
+    device_friendly_name: "Steam Bridge QR",
+    platform_type: 2,
+    device_details: { device_id: "device-qr" },
+    website_id: "steam-bridge"
+  });
+  assert.deepEqual(bodyInputJson(8), {
+    version: 1,
+    client_id: "111",
+    steamid: "76561198000000000",
+    signature: "signature",
+    confirm: true,
+    persistence: 1
+  });
+  assert.equal(
+    fetchCalls[9].url,
+    "https://api.steampowered.com/ISteamUserOAuth/GetTokenDetails/v0001/?format=json&access_token=oauth-token"
+  );
+  assert.equal(requestUrl(9).searchParams.has("key"), false);
+  assert.equal(typeof steam.webApi.authenticationService.beginAuthSessionViaQr, "function");
+  assert.equal(typeof steam.webApi.userOAuth.getTokenDetails, "function");
 });
 
 test("web API user auth and community facades map ticket and moderation fields", async (t) => {
