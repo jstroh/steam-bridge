@@ -3831,6 +3831,7 @@ pub fn cloud_get_sync_platforms(name: String) -> Result<u32, Error> {
     let name = cstring(name, "cloud file name")?;
     Ok(unsafe {
         sys::SteamAPI_ISteamRemoteStorage_GetSyncPlatforms(steam_remote_storage()?, name.as_ptr()).0
+            as u32
     })
 }
 
@@ -3841,7 +3842,7 @@ pub fn cloud_set_sync_platforms(name: String, platforms: u32) -> Result<bool, Er
         sys::SteamAPI_ISteamRemoteStorage_SetSyncPlatforms(
             steam_remote_storage()?,
             name.as_ptr(),
-            sys::ERemoteStoragePlatform(platforms),
+            sys::ERemoteStoragePlatform(platforms as _),
         )
     })
 }
@@ -14496,7 +14497,8 @@ pub async fn user_get_market_eligibility(
     .await?;
     Ok(UserMarketEligibility {
         allowed: unsafe { ptr::addr_of!(result.m_bAllowed).read_unaligned() },
-        not_allowed_reason: unsafe { ptr::addr_of!(result.m_eNotAllowedReason).read_unaligned() }.0,
+        not_allowed_reason: unsafe { ptr::addr_of!(result.m_eNotAllowedReason).read_unaligned() }.0
+            as u32,
         allowed_at_time: unsafe { ptr::addr_of!(result.m_rtAllowedAtTime).read_unaligned() },
         steam_guard_required_days: unsafe {
             ptr::addr_of!(result.m_cdaySteamGuardRequiredDays).read_unaligned()
@@ -17918,7 +17920,7 @@ fn parental_feature_from_u32(value: u32) -> Result<sys::EParentalFeature, Error>
 }
 
 fn overlay_to_store_flag_from_u32(value: u32) -> Result<sys::EOverlayToStoreFlag, Error> {
-    Ok(sys::EOverlayToStoreFlag(value))
+    Ok(sys::EOverlayToStoreFlag(value as _))
 }
 
 fn community_profile_item_type_from_u32(
