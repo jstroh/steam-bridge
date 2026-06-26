@@ -275,9 +275,11 @@ client.overlay.pumpNativeOverlayProbeWindow();
 client.overlay.closeNativeOverlayProbeWindow();
 ```
 
-Set `STEAM_BRIDGE_ELECTRON_OVERLAY_PROFILE=compatibility` to opt into the older
-Electron overlay workaround profile. That profile enables `in-process-gpu`, so
-keep it diagnostic-only unless it proves useful on your target machine.
+Set `STEAM_BRIDGE_ELECTRON_OVERLAY_PROFILE=compatibility`, or pass
+`--steam-bridge-electron-overlay-profile=compatibility` to the Electron smoke
+app, to opt into the older Electron overlay workaround profile. That profile
+enables `in-process-gpu`, so keep it diagnostic-only unless it proves useful on
+your target machine.
 
 ## Notes
 

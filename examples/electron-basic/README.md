@@ -49,6 +49,18 @@ STEAM_BRIDGE_SMOKE_AUTORUN_RESULT_DELAY_MS=5000 \
 ./SteamBridgeSmoke --no-sandbox
 ```
 
+The same controls are also available as launch options, which is usually easier
+for Steam non-Steam shortcuts on macOS and Windows:
+
+```sh
+--steam-bridge-app-id=480 \
+--steam-bridge-electron-overlay-profile=diagnostic \
+--steam-bridge-smoke-autorun \
+--steam-bridge-smoke-autorun-action=dialog \
+--steam-bridge-smoke-autorun-result-delay-ms=8000 \
+--steam-bridge-smoke-result-file=/tmp/steam-bridge-smoke.log
+```
+
 Supported autorun actions are `none`, `dialog`, `friends`, `store`, `web`, and
 `native-probe`.
 
@@ -71,12 +83,20 @@ use the overlay buttons in the app.
 For scripted setup, back up and upsert the non-Steam shortcut with:
 
 ```sh
+LAUNCH_OPTIONS="--no-sandbox \
+  --steam-bridge-app-id=480 \
+  --steam-bridge-electron-overlay-profile=diagnostic \
+  --steam-bridge-smoke-autorun \
+  --steam-bridge-smoke-autorun-action=dialog \
+  --steam-bridge-smoke-autorun-result-delay-ms=8000 \
+  --steam-bridge-smoke-result-file=/tmp/steam-bridge-smoke-steam-launch.log"
+
 npm run steam-shortcut:upsert -- \
   --shortcuts "$HOME/.local/share/Steam/userdata/<steam-user-id>/config/shortcuts.vdf" \
   --app-name "Steam Bridge Smoke" \
   --exe "$HOME/steam-bridge-smoke/SteamBridgeSmoke-linux-x64/SteamBridgeSmoke" \
   --start-dir "$HOME/steam-bridge-smoke/SteamBridgeSmoke-linux-x64" \
-  --launch-options "--no-sandbox"
+  --launch-options "$LAUNCH_OPTIONS"
 ```
 
 Use the numeric `userdata` folder for the Steam account currently signed in on

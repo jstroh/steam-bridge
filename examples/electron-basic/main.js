@@ -3,14 +3,21 @@ const path = require("node:path");
 const { app, BrowserWindow, ipcMain } = require("electron");
 const steamworks = require("steam-bridge");
 
-const APP_ID = Number(process.env.STEAM_BRIDGE_APP_ID || "480");
+const CLI_OPTIONS = parseSmokeArgs(process.argv.slice(1));
+const APP_ID = Number(CLI_OPTIONS.appId || process.env.STEAM_BRIDGE_APP_ID || "480");
 const AUTH_IDENTITY = process.env.STEAM_BRIDGE_AUTH_IDENTITY || "steam-bridge-electron-smoke";
-const OVERLAY_PROFILE = process.env.STEAM_BRIDGE_ELECTRON_OVERLAY_PROFILE || "diagnostic";
+const OVERLAY_PROFILE =
+  CLI_OPTIONS.overlayProfile || process.env.STEAM_BRIDGE_ELECTRON_OVERLAY_PROFILE || "diagnostic";
 const STORE_URL = `https://store.steampowered.com/app/${APP_ID}/`;
-const AUTORUN = process.env.STEAM_BRIDGE_SMOKE_AUTORUN === "1";
-const AUTORUN_ACTION = process.env.STEAM_BRIDGE_SMOKE_AUTORUN_ACTION || "dialog";
-const AUTORUN_ACTION_DELAY_MS = Number(process.env.STEAM_BRIDGE_SMOKE_AUTORUN_ACTION_DELAY_MS || "1500");
-const AUTORUN_RESULT_DELAY_MS = Number(process.env.STEAM_BRIDGE_SMOKE_AUTORUN_RESULT_DELAY_MS || "5000");
+const AUTORUN = CLI_OPTIONS.autorun || process.env.STEAM_BRIDGE_SMOKE_AUTORUN === "1";
+const AUTORUN_ACTION = CLI_OPTIONS.autorunAction || process.env.STEAM_BRIDGE_SMOKE_AUTORUN_ACTION || "dialog";
+const AUTORUN_ACTION_DELAY_MS = Number(
+  CLI_OPTIONS.autorunActionDelayMs || process.env.STEAM_BRIDGE_SMOKE_AUTORUN_ACTION_DELAY_MS || "1500"
+);
+const AUTORUN_RESULT_DELAY_MS = Number(
+  CLI_OPTIONS.autorunResultDelayMs || process.env.STEAM_BRIDGE_SMOKE_AUTORUN_RESULT_DELAY_MS || "5000"
+);
+const AUTORUN_RESULT_FILE = CLI_OPTIONS.resultFile || process.env.STEAM_BRIDGE_SMOKE_RESULT_FILE || "";
 const LAUNCH_ENV_KEYS = [
   "SteamAppId",
   "SteamGameId",
@@ -25,8 +32,8 @@ const LAUNCH_ENV_KEYS = [
   "__COMPAT_LAYER"
 ];
 const STARTUP_LAUNCH_CONTEXT = getLaunchContext();
+const OVERLAY_CONFIG = steamworks.electronConfigureSteamOverlay({ profile: OVERLAY_PROFILE });
 
-steamworks.electronConfigureSteamOverlay({ profile: OVERLAY_PROFILE });
 writeSteamAppIdFiles(APP_ID);
 
 let client;
@@ -155,6 +162,7 @@ async function runAutorunSmoke() {
     snapshot: snapshot()
   });
   const line = `STEAM_BRIDGE_SMOKE_RESULT ${JSON.stringify(result)}\n`;
+  writeSmokeResultLine(line);
   process.stdout.write(line, () => process.exit(0));
 }
 
@@ -236,8 +244,10 @@ function snapshot() {
       appName: "Steam Bridge Electron Smoke",
       authIdentity: AUTH_IDENTITY,
       overlayProfile: OVERLAY_PROFILE,
+      overlayConfig: OVERLAY_CONFIG,
       autorun: AUTORUN,
       autorunAction: AUTORUN_ACTION,
+      autorunResultFile: AUTORUN_RESULT_FILE || null,
       storeUrl: STORE_URL,
       isPackaged: app.isPackaged
     },
@@ -373,6 +383,19 @@ function delay(ms) {
   });
 }
 
+function writeSmokeResultLine(line) {
+  if (!AUTORUN_RESULT_FILE) {
+    return;
+  }
+
+  try {
+    fs.mkdirSync(path.dirname(AUTORUN_RESULT_FILE), { recursive: true });
+    fs.appendFileSync(AUTORUN_RESULT_FILE, line);
+  } catch (error) {
+    console.error(`Failed to write smoke result file ${AUTORUN_RESULT_FILE}:`, error);
+  }
+}
+
 function recordEvent(type, payload) {
   const event = sanitize({
     type,
@@ -400,6 +423,80 @@ function writeSteamAppIdFiles(appId) {
       // Some packaged locations can be read-only. One writable/visible app ID file is enough.
     }
   }
+}
+
+function parseSmokeArgs(args) {
+  const options = {
+    appId: undefined,
+    autorun: false,
+    autorunAction: undefined,
+    autorunActionDelayMs: undefined,
+    autorunResultDelayMs: undefined,
+    overlayProfile: undefined,
+    resultFile: undefined
+  };
+
+  for (let index = 0; index < args.length; index += 1) {
+    const { name, value, consumedValue } = readOption(args, index);
+    if (!name) {
+      continue;
+    }
+
+    switch (name) {
+      case "--steam-bridge-app-id":
+        options.appId = value;
+        break;
+      case "--steam-bridge-smoke-autorun":
+        options.autorun = value == null || value === "" || value === "1" || value === "true";
+        break;
+      case "--steam-bridge-smoke-autorun-action":
+        options.autorunAction = value;
+        break;
+      case "--steam-bridge-smoke-autorun-action-delay-ms":
+        options.autorunActionDelayMs = value;
+        break;
+      case "--steam-bridge-smoke-autorun-result-delay-ms":
+        options.autorunResultDelayMs = value;
+        break;
+      case "--steam-bridge-electron-overlay-profile":
+        options.overlayProfile = value;
+        break;
+      case "--steam-bridge-smoke-result-file":
+        options.resultFile = value;
+        break;
+      default:
+        break;
+    }
+
+    if (consumedValue) {
+      index += 1;
+    }
+  }
+
+  return options;
+}
+
+function readOption(args, index) {
+  const arg = args[index];
+  if (!arg || !arg.startsWith("--steam-bridge-")) {
+    return { name: undefined, value: undefined, consumedValue: false };
+  }
+
+  const equalsIndex = arg.indexOf("=");
+  if (equalsIndex >= 0) {
+    return {
+      name: arg.slice(0, equalsIndex),
+      value: arg.slice(equalsIndex + 1),
+      consumedValue: false
+    };
+  }
+
+  const next = args[index + 1];
+  if (next && !next.startsWith("--")) {
+    return { name: arg, value: next, consumedValue: true };
+  }
+
+  return { name: arg, value: undefined, consumedValue: false };
 }
 
 function serializeError(error) {

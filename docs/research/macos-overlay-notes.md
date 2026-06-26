@@ -21,6 +21,35 @@ Bridge's macOS Electron overlay diagnostics.
   should provide a `usersession=web` fallback when the overlay is unavailable or
   unreliable.
 
+## Local Smoke Evidence
+
+As of 2026-06-26 on macOS Apple Silicon, the packaged Electron smoke app can be
+launched through a Steam non-Steam shortcut with SpaceWar App ID `480`.
+
+Verified:
+
+- Steam launches the shortcut after the client reloads `shortcuts.vdf`.
+- The smoke app receives `SteamClientLaunch=1` and `SteamEnv=1`.
+- Direct executable shortcuts preserve `DYLD_INSERT_LIBRARIES` with
+  `gameoverlayrenderer.dylib`, so `snapshot.launch.overlayInjection` is `true`.
+- The app initializes Steam as App ID `480`, runs the `dialog` autorun action,
+  and writes a verifier-readable `STEAM_BRIDGE_SMOKE_RESULT` line.
+
+Still not verified:
+
+- `client.utils.isOverlayEnabled()` remains `false` for the Electron
+  `BrowserWindow` path even with the `compatibility` overlay profile.
+- Ad-hoc signing the packaged app with
+  `com.apple.security.cs.allow-dyld-environment-variables` and
+  `com.apple.security.cs.disable-library-validation` did not make
+  `overlayEnabled` turn `true` in the local smoke run.
+- A shell-wrapper shortcut can set `SteamAppId=480` before app startup, but macOS
+  strips the Steam `DYLD_INSERT_LIBRARIES` injection before the Electron child
+  process starts, so that path is not useful for overlay verification.
+
+The current macOS result should therefore be treated as Steam launch and
+injection coverage, not completed overlay coverage.
+
 ## Primary References
 
 - Steam Microtransactions Implementation Guide:
