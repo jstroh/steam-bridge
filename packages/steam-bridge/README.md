@@ -60,6 +60,11 @@ const notificationSessions = await steamworks.webApi.gameNotificationsService.en
   appId: 480,
   steamId64: 76561198000000000n
 });
+const cheatReport = await steamworks.webApi.cheatReportingService.reportPlayerCheating({
+  appId: 480,
+  steamId64: 76561198000000000n,
+  noReportId: true
+});
 const cloudFiles = await steamworks.webApi.cloudService.enumerateUserFiles({
   accessToken: "oauth-access-token",
   appId: 480,

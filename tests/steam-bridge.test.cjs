@@ -9351,6 +9351,126 @@ test("web API cloud service facade maps OAuth file operations", async (t) => {
   assert.equal(typeof steam.webApi.cloudService.enumerateUserFiles, "function");
 });
 
+test("web API cheat reporting service facade maps anti-cheat methods", async (t) => {
+  const steam = loadSteamWithFakeNative(createFakeNative());
+  const fetchCalls = [];
+  const fetchImpl = async (url, init = {}) => {
+    fetchCalls.push({ url, init });
+    return {
+      ok: true,
+      status: 200,
+      headers: {
+        forEach(callback) {
+          callback("application/json", "content-type");
+        }
+      },
+      async text() {
+        return JSON.stringify({ response: { ok: true } });
+      }
+    };
+  };
+  const client = steam.createSteamWebApiClient({ apiKey: "anti-cheat-secret", fetch: fetchImpl });
+  const requestUrl = (index) => new URL(fetchCalls[index].url);
+  const bodyInputJson = (index) => JSON.parse(new URLSearchParams(fetchCalls[index].init.body).get("input_json"));
+  const queryInputJson = (index) => JSON.parse(requestUrl(index).searchParams.get("input_json"));
+
+  t.after(clearSteamBridgeCache);
+
+  await client.cheatReportingService.reportPlayerCheating({
+    appId: 480,
+    steamId64: 76561198000000000n,
+    reporterSteamId64: 76561198000000001n,
+    appData: 2n,
+    heuristic: true,
+    detection: false,
+    playerReport: true,
+    noReportId: false,
+    gameMode: 3,
+    suspicionStartTime: 1700000000,
+    severity: 4
+  });
+  await client.cheatReportingService.requestPlayerGameBan({
+    appId: 480,
+    steamId64: 76561198000000000n,
+    reportId: 9001n,
+    cheatDescription: "Example anti-cheat signal",
+    duration: 3600,
+    delayBan: true,
+    flags: 0
+  });
+  await client.cheatReportingService.removePlayerGameBan({ appId: 480, steamId64: 76561198000000000n });
+  await client.cheatReportingService.getCheatingReports({
+    appId: 480,
+    timeBegin: 1700000000,
+    timeEnd: 1700003600,
+    reportIdMin: 0n,
+    includeReports: true,
+    includeBans: true,
+    steamId64: 76561198000000000n
+  });
+  await client.cheatReportingService.requestVacStatusForUser({
+    appId: 480,
+    steamId64: 76561198000000000n,
+    sessionId: 42n
+  });
+  await client.cheatReportingService.startSecureMultiplayerSession({ appId: 480, steamId64: 76561198000000000n });
+  await client.cheatReportingService.endSecureMultiplayerSession({
+    appId: 480,
+    steamId64: 76561198000000000n,
+    sessionId: 42n
+  });
+
+  assert.equal(
+    requestUrl(0).origin + requestUrl(0).pathname,
+    "https://partner.steam-api.com/ICheatReportingService/ReportPlayerCheating/v0001/"
+  );
+  assert.equal(fetchCalls[0].init.method, "POST");
+  assert.equal(requestUrl(0).searchParams.get("key"), "anti-cheat-secret");
+  assert.deepEqual(bodyInputJson(0), {
+    steamid: "76561198000000000",
+    appid: 480,
+    steamidreporter: "76561198000000001",
+    appdata: "2",
+    heuristic: true,
+    detection: false,
+    playerreport: true,
+    noreportid: false,
+    gamemode: 3,
+    suspicionstarttime: 1700000000,
+    severity: 4
+  });
+  assert.deepEqual(bodyInputJson(1), {
+    steamid: "76561198000000000",
+    appid: 480,
+    reportid: "9001",
+    cheatdescription: "Example anti-cheat signal",
+    duration: 3600,
+    delayban: true,
+    flags: 0
+  });
+  assert.deepEqual(bodyInputJson(2), { steamid: "76561198000000000", appid: 480 });
+  assert.equal(
+    requestUrl(3).origin + requestUrl(3).pathname,
+    "https://partner.steam-api.com/ICheatReportingService/GetCheatingReports/v0001/"
+  );
+  assert.equal(fetchCalls[3].init.method, "GET");
+  assert.equal(requestUrl(3).searchParams.get("format"), "json");
+  assert.deepEqual(queryInputJson(3), {
+    appid: 480,
+    timeend: 1700003600,
+    timebegin: 1700000000,
+    reportidmin: "0",
+    includereports: true,
+    includebans: true,
+    steamid: "76561198000000000"
+  });
+  assert.deepEqual(bodyInputJson(4), { steamid: "76561198000000000", appid: 480, session_id: "42" });
+  assert.deepEqual(bodyInputJson(5), { steamid: "76561198000000000", appid: 480 });
+  assert.deepEqual(bodyInputJson(6), { steamid: "76561198000000000", appid: 480, session_id: "42" });
+  assert.match(fetchCalls[6].url, /ICheatReportingService\/EndSecureMultiplayerSession\/v0001/);
+  assert.equal(typeof steam.webApi.cheatReportingService.requestPlayerGameBan, "function");
+});
+
 test("web API econ service facade maps trade and cache service methods", async (t) => {
   const steam = loadSteamWithFakeNative(createFakeNative());
   const fetchCalls = [];

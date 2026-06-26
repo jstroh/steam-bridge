@@ -1657,6 +1657,7 @@ export interface SteamWebApiClient {
   get<T = unknown>(options: Omit<SteamWebApiRequestOptions, "method" | "body">): Promise<SteamWebApiResponse<T>>;
   post<T = unknown>(options: Omit<SteamWebApiRequestOptions, "method">): Promise<SteamWebApiResponse<T>>;
   apps: SteamWebApiAppsFacade;
+  cheatReportingService: SteamWebApiCheatReportingServiceFacade;
   cloudService: SteamWebApiCloudServiceFacade;
   community: SteamWebApiCommunityFacade;
   econService: SteamWebApiEconServiceFacade;
@@ -1917,6 +1918,73 @@ export interface SteamWebApiCloudCommitHttpUploadOptions extends SteamWebApiClou
 
 export interface SteamWebApiCloudDeleteFileOptions extends SteamWebApiCloudEndpointOptions {
   fileName: string;
+}
+
+export interface SteamWebApiCheatReportingServiceFacade {
+  reportPlayerCheating<T = unknown>(
+    options: SteamWebApiReportPlayerCheatingOptions
+  ): Promise<SteamWebApiResponse<T>>;
+  requestPlayerGameBan<T = unknown>(
+    options: SteamWebApiRequestPlayerGameBanOptions
+  ): Promise<SteamWebApiResponse<T>>;
+  removePlayerGameBan<T = unknown>(
+    options: SteamWebApiCheatReportingPlayerOptions
+  ): Promise<SteamWebApiResponse<T>>;
+  getCheatingReports<T = unknown>(
+    options: SteamWebApiGetCheatingReportsOptions
+  ): Promise<SteamWebApiResponse<T>>;
+  requestVacStatusForUser<T = unknown>(
+    options: SteamWebApiRequestVacStatusForUserOptions
+  ): Promise<SteamWebApiResponse<T>>;
+  startSecureMultiplayerSession<T = unknown>(
+    options: SteamWebApiCheatReportingPlayerOptions
+  ): Promise<SteamWebApiResponse<T>>;
+  endSecureMultiplayerSession<T = unknown>(
+    options: SteamWebApiEndSecureMultiplayerSessionOptions
+  ): Promise<SteamWebApiResponse<T>>;
+}
+
+export interface SteamWebApiCheatReportingPlayerOptions extends SteamWebApiEndpointOptions {
+  steamId64: bigint | number | string;
+  appId: number;
+}
+
+export interface SteamWebApiReportPlayerCheatingOptions extends SteamWebApiCheatReportingPlayerOptions {
+  reporterSteamId64?: bigint | number | string;
+  appData?: bigint | number | string;
+  heuristic?: boolean;
+  detection?: boolean;
+  playerReport?: boolean;
+  noReportId?: boolean;
+  gameMode?: number;
+  suspicionStartTime?: number;
+  severity?: number;
+}
+
+export interface SteamWebApiRequestPlayerGameBanOptions extends SteamWebApiCheatReportingPlayerOptions {
+  reportId: bigint | number | string;
+  cheatDescription: string;
+  duration: number;
+  delayBan: boolean;
+  flags: number;
+}
+
+export interface SteamWebApiGetCheatingReportsOptions extends SteamWebApiEndpointOptions {
+  appId: number;
+  timeEnd: number;
+  timeBegin: number;
+  reportIdMin: bigint | number | string;
+  includeReports?: boolean;
+  includeBans?: boolean;
+  steamId64?: bigint | number | string;
+}
+
+export interface SteamWebApiRequestVacStatusForUserOptions extends SteamWebApiCheatReportingPlayerOptions {
+  sessionId?: bigint | number | string;
+}
+
+export interface SteamWebApiEndSecureMultiplayerSessionOptions extends SteamWebApiCheatReportingPlayerOptions {
+  sessionId: bigint | number | string;
 }
 
 export interface SteamWebApiRemoteStorageUserAppOptions extends SteamWebApiEndpointOptions {
@@ -4869,6 +4937,7 @@ export function createSteamWebApiClient(options: SteamWebApiClientOptions = {}):
       return requestSteamWebApiWithClient<T>(postRequest, clientOptions);
     },
     apps: createSteamWebApiAppsFacade(clientOptions),
+    cheatReportingService: createSteamWebApiCheatReportingServiceFacade(clientOptions),
     cloudService: createSteamWebApiCloudServiceFacade(clientOptions),
     community: createSteamWebApiCommunityFacade(clientOptions),
     econService: createSteamWebApiEconServiceFacade(clientOptions),
@@ -9448,6 +9517,125 @@ function createSteamWebApiCloudServiceFacade(clientOptions: SteamWebApiClientOpt
         1,
         options.accessToken,
         { appid: options.appId, filename: options.fileName },
+        options
+      );
+    }
+  };
+}
+
+function createSteamWebApiCheatReportingServiceFacade(
+  clientOptions: SteamWebApiClientOptions
+): SteamWebApiCheatReportingServiceFacade {
+  return {
+    reportPlayerCheating<T = unknown>(
+      options: SteamWebApiReportPlayerCheatingOptions
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServicePost<T>(
+        clientOptions,
+        "ICheatReportingService",
+        "ReportPlayerCheating",
+        1,
+        {
+          steamid: options.steamId64,
+          appid: options.appId,
+          steamidreporter: options.reporterSteamId64,
+          appdata: options.appData,
+          heuristic: options.heuristic,
+          detection: options.detection,
+          playerreport: options.playerReport,
+          noreportid: options.noReportId,
+          gamemode: options.gameMode,
+          suspicionstarttime: options.suspicionStartTime,
+          severity: options.severity
+        },
+        options
+      );
+    },
+    requestPlayerGameBan<T = unknown>(
+      options: SteamWebApiRequestPlayerGameBanOptions
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServicePost<T>(
+        clientOptions,
+        "ICheatReportingService",
+        "RequestPlayerGameBan",
+        1,
+        {
+          steamid: options.steamId64,
+          appid: options.appId,
+          reportid: options.reportId,
+          cheatdescription: options.cheatDescription,
+          duration: options.duration,
+          delayban: options.delayBan,
+          flags: options.flags
+        },
+        options
+      );
+    },
+    removePlayerGameBan<T = unknown>(
+      options: SteamWebApiCheatReportingPlayerOptions
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServicePost<T>(
+        clientOptions,
+        "ICheatReportingService",
+        "RemovePlayerGameBan",
+        1,
+        { steamid: options.steamId64, appid: options.appId },
+        options
+      );
+    },
+    getCheatingReports<T = unknown>(
+      options: SteamWebApiGetCheatingReportsOptions
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServiceGet<T>(
+        clientOptions,
+        "ICheatReportingService",
+        "GetCheatingReports",
+        1,
+        {
+          appid: options.appId,
+          timeend: options.timeEnd,
+          timebegin: options.timeBegin,
+          reportidmin: options.reportIdMin,
+          includereports: options.includeReports,
+          includebans: options.includeBans,
+          steamid: options.steamId64
+        },
+        options
+      );
+    },
+    requestVacStatusForUser<T = unknown>(
+      options: SteamWebApiRequestVacStatusForUserOptions
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServicePost<T>(
+        clientOptions,
+        "ICheatReportingService",
+        "RequestVacStatusForUser",
+        1,
+        { steamid: options.steamId64, appid: options.appId, session_id: options.sessionId },
+        options
+      );
+    },
+    startSecureMultiplayerSession<T = unknown>(
+      options: SteamWebApiCheatReportingPlayerOptions
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServicePost<T>(
+        clientOptions,
+        "ICheatReportingService",
+        "StartSecureMultiplayerSession",
+        1,
+        { steamid: options.steamId64, appid: options.appId },
+        options
+      );
+    },
+    endSecureMultiplayerSession<T = unknown>(
+      options: SteamWebApiEndSecureMultiplayerSessionOptions
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServicePost<T>(
+        clientOptions,
+        "ICheatReportingService",
+        "EndSecureMultiplayerSession",
+        1,
+        { steamid: options.steamId64, appid: options.appId, session_id: options.sessionId },
         options
       );
     }

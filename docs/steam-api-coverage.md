@@ -66,7 +66,8 @@ documented in headers but omitted from the generated flat bindings.
   app/build/server-list helpers, news helpers, OAuth CloudService file
   enumeration/upload/delete helpers, remote-storage/workshop detail helpers,
   player profile/playtime/library helpers, store app-list service helpers,
-  user-auth ticket validation helpers, community abuse-report helpers,
+  user-auth ticket validation helpers, CheatReportingService report/game-ban/VAC
+  session helpers, community abuse-report helpers,
   game-notification session helpers, game-server account administration and lookup helpers,
   published-file service query/moderation/tag helpers, published-item
   search/voting helpers, WorkshopService payment/contributor/revenue/description
@@ -176,7 +177,8 @@ documented in headers but omitted from the generated flat bindings.
   store, user, user-auth, user-stats, remote-storage, game-notifications service,
   game-server service, published-file, published-item search/voting, leaderboards,
   game-server stats, community, economy, InventoryService, WorkshopService,
-  SiteLicenseService, CloudService, EconService, and MicroTxn helpers.
+  SiteLicenseService, CloudService, CheatReportingService, EconService, and
+  MicroTxn helpers.
 
 Use Valve's SpaceWar App ID `480` for generic local smoke tests. Use your own
 Steam app ID for app-specific achievements, stats, inventory, UGC, economy, and

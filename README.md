@@ -103,6 +103,11 @@ const notificationSessions = await web.gameNotificationsService.enumerateSession
   appId: 480,
   steamId64: 76561198000000000n
 });
+const cheatReport = await web.cheatReportingService.reportPlayerCheating({
+  appId: 480,
+  steamId64: 76561198000000000n,
+  noReportId: true
+});
 const cloudFiles = await web.cloudService.enumerateUserFiles({
   accessToken: "oauth-access-token",
   appId: 480,
