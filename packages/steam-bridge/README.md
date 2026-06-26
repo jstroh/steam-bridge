@@ -47,15 +47,20 @@ client.callback.register(
 console.log({ steamId, ticketBytes: ticket.getBytes().length });
 ```
 
-For Steam Web API, publisher, and economy endpoints, use the generic Web API
-client with `STEAM_WEB_API_KEY`, an explicit `apiKey`, or a per-request `key`:
+For Steam Web API, publisher, and economy endpoints, use the Web API client with
+`STEAM_WEB_API_KEY`, an explicit `apiKey`, or a per-request `key`:
 
 ```ts
-const response = await steamworks.webApi.get({
-  interfaceName: "ISteamUserStats",
-  methodName: "GetNumberOfCurrentPlayers",
-  version: 1,
-  params: { appid: 480 }
+const currentPlayers = await steamworks.webApi.userStats.getNumberOfCurrentPlayers(480);
+const profile = await steamworks.webApi.user.resolveVanityUrl("spacewar");
+
+const txn = await steamworks.webApi.microTxnSandbox.initTxn({
+  appId: 480,
+  orderId: 9001n,
+  steamId64: 76561198000000000n,
+  language: "en",
+  currency: "USD",
+  items: [{ itemId: 100, quantity: 1, amount: 199, description: "Credits" }]
 });
 ```
 

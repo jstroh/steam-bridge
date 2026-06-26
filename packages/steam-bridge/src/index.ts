@@ -1634,6 +1634,14 @@ export interface SteamWebApiClientOptions {
   fetch?: SteamWebApiFetch;
 }
 
+export interface SteamWebApiEndpointOptions {
+  key?: string | null;
+  format?: string | null;
+  baseUrl?: string;
+  headers?: Record<string, string>;
+  signal?: AbortSignal;
+}
+
 export interface SteamWebApiResponse<T = unknown> {
   ok: boolean;
   status: number;
@@ -1648,6 +1656,11 @@ export interface SteamWebApiClient {
   request<T = unknown>(options: SteamWebApiRequestOptions): Promise<SteamWebApiResponse<T>>;
   get<T = unknown>(options: Omit<SteamWebApiRequestOptions, "method" | "body">): Promise<SteamWebApiResponse<T>>;
   post<T = unknown>(options: Omit<SteamWebApiRequestOptions, "method">): Promise<SteamWebApiResponse<T>>;
+  util: SteamWebApiUtilFacade;
+  user: SteamWebApiUserFacade;
+  userStats: SteamWebApiUserStatsFacade;
+  microTxn: SteamWebApiMicroTxnFacade;
+  microTxnSandbox: SteamWebApiMicroTxnFacade;
 }
 
 export interface SteamWebApiFetchResponse {
@@ -1668,6 +1681,210 @@ export type SteamWebApiFetch = (
     signal?: AbortSignal;
   }
 ) => Promise<SteamWebApiFetchResponse>;
+
+export interface SteamWebApiUtilFacade {
+  getServerInfo<T = unknown>(options?: SteamWebApiEndpointOptions | null): Promise<SteamWebApiResponse<T>>;
+  getSupportedApiList<T = unknown>(options?: SteamWebApiEndpointOptions | null): Promise<SteamWebApiResponse<T>>;
+}
+
+export interface SteamWebApiUserStatsFacade {
+  getGlobalAchievementPercentagesForApp<T = unknown>(
+    gameId: bigint | number | string,
+    options?: SteamWebApiEndpointOptions | null
+  ): Promise<SteamWebApiResponse<T>>;
+  getGlobalStatsForGame<T = unknown>(
+    options: SteamWebApiGlobalStatsForGameOptions
+  ): Promise<SteamWebApiResponse<T>>;
+  getNumberOfCurrentPlayers<T = unknown>(
+    appId: number,
+    options?: SteamWebApiEndpointOptions | null
+  ): Promise<SteamWebApiResponse<T>>;
+  getPlayerAchievements<T = unknown>(
+    options: SteamWebApiPlayerAchievementsOptions
+  ): Promise<SteamWebApiResponse<T>>;
+  getSchemaForGame<T = unknown>(options: SteamWebApiGameSchemaOptions): Promise<SteamWebApiResponse<T>>;
+  getUserStatsForGame<T = unknown>(options: SteamWebApiUserStatsForGameOptions): Promise<SteamWebApiResponse<T>>;
+  setUserStatsForGame<T = unknown>(options: SteamWebApiSetUserStatsForGameOptions): Promise<SteamWebApiResponse<T>>;
+}
+
+export interface SteamWebApiGlobalStatsForGameOptions extends SteamWebApiEndpointOptions {
+  appId: number;
+  names: string[];
+  startDate?: number;
+  endDate?: number;
+}
+
+export interface SteamWebApiPlayerAchievementsOptions extends SteamWebApiEndpointOptions {
+  appId: number;
+  steamId64: bigint | number | string;
+  language?: string;
+}
+
+export interface SteamWebApiGameSchemaOptions extends SteamWebApiEndpointOptions {
+  appId: number;
+  language?: string;
+}
+
+export interface SteamWebApiUserStatsForGameOptions extends SteamWebApiEndpointOptions {
+  appId: number;
+  steamId64: bigint | number | string;
+}
+
+export interface SteamWebApiSetUserStatsForGameOptions extends SteamWebApiEndpointOptions {
+  appId: number;
+  steamId64: bigint | number | string;
+  stats: Record<string, SteamWebApiParamValue> | Array<{ name: string; value: SteamWebApiParamValue }>;
+}
+
+export interface SteamWebApiUserFacade {
+  checkAppOwnership<T = unknown>(options: SteamWebApiCheckAppOwnershipOptions): Promise<SteamWebApiResponse<T>>;
+  getAppPriceInfo<T = unknown>(options: SteamWebApiAppPriceInfoOptions): Promise<SteamWebApiResponse<T>>;
+  getDeletedSteamIds<T = unknown>(options: SteamWebApiDeletedSteamIdsOptions): Promise<SteamWebApiResponse<T>>;
+  getFriendList<T = unknown>(options: SteamWebApiFriendListOptions): Promise<SteamWebApiResponse<T>>;
+  getPlayerBans<T = unknown>(
+    steamIds: Array<bigint | number | string>,
+    options?: SteamWebApiEndpointOptions | null
+  ): Promise<SteamWebApiResponse<T>>;
+  getPlayerSummaries<T = unknown>(
+    steamIds: Array<bigint | number | string>,
+    options?: SteamWebApiEndpointOptions | null
+  ): Promise<SteamWebApiResponse<T>>;
+  getPublisherAppOwnership<T = unknown>(
+    steamId64: bigint | number | string,
+    options?: SteamWebApiEndpointOptions | null
+  ): Promise<SteamWebApiResponse<T>>;
+  getUserGroupList<T = unknown>(
+    steamId64: bigint | number | string,
+    options?: SteamWebApiEndpointOptions | null
+  ): Promise<SteamWebApiResponse<T>>;
+  resolveVanityUrl<T = unknown>(
+    vanityUrl: string,
+    options?: SteamWebApiResolveVanityUrlOptions | null
+  ): Promise<SteamWebApiResponse<T>>;
+}
+
+export interface SteamWebApiCheckAppOwnershipOptions extends SteamWebApiEndpointOptions {
+  appId: number;
+  steamId64: bigint | number | string;
+}
+
+export interface SteamWebApiAppPriceInfoOptions extends SteamWebApiEndpointOptions {
+  appIds: number[];
+  steamId64: bigint | number | string;
+}
+
+export interface SteamWebApiDeletedSteamIdsOptions extends SteamWebApiEndpointOptions {
+  rowVersion: bigint | number | string;
+}
+
+export interface SteamWebApiFriendListOptions extends SteamWebApiEndpointOptions {
+  steamId64: bigint | number | string;
+  relationship?: string;
+}
+
+export interface SteamWebApiResolveVanityUrlOptions extends SteamWebApiEndpointOptions {
+  urlType?: number;
+}
+
+export interface SteamWebApiMicroTxnFacade {
+  adjustAgreement<T = unknown>(
+    options: SteamWebApiAdjustAgreementOptions
+  ): Promise<SteamWebApiResponse<T>>;
+  cancelAgreement<T = unknown>(
+    options: SteamWebApiAgreementOptions
+  ): Promise<SteamWebApiResponse<T>>;
+  finalizeTxn<T = unknown>(options: SteamWebApiFinalizeTxnOptions): Promise<SteamWebApiResponse<T>>;
+  getReport<T = unknown>(options: SteamWebApiMicroTxnReportOptions): Promise<SteamWebApiResponse<T>>;
+  getUserAgreementInfo<T = unknown>(
+    options: SteamWebApiUserAgreementInfoOptions
+  ): Promise<SteamWebApiResponse<T>>;
+  getUserInfo<T = unknown>(options: SteamWebApiMicroTxnUserInfoOptions): Promise<SteamWebApiResponse<T>>;
+  initTxn<T = unknown>(options: SteamWebApiInitTxnOptions): Promise<SteamWebApiResponse<T>>;
+  processAgreement<T = unknown>(
+    options: SteamWebApiProcessAgreementOptions
+  ): Promise<SteamWebApiResponse<T>>;
+  queryTxn<T = unknown>(options: SteamWebApiQueryTxnOptions): Promise<SteamWebApiResponse<T>>;
+  refundTxn<T = unknown>(options: SteamWebApiRefundTxnOptions): Promise<SteamWebApiResponse<T>>;
+}
+
+export interface SteamWebApiMicroTxnBaseOptions extends SteamWebApiEndpointOptions {
+  appId: number;
+}
+
+export interface SteamWebApiAgreementOptions extends SteamWebApiMicroTxnBaseOptions {
+  steamId64: bigint | number | string;
+  agreementId: bigint | number | string;
+}
+
+export interface SteamWebApiAdjustAgreementOptions extends SteamWebApiAgreementOptions {
+  nextProcessDate: string;
+  oldNextProcessDate?: string;
+}
+
+export interface SteamWebApiFinalizeTxnOptions extends SteamWebApiMicroTxnBaseOptions {
+  orderId: bigint | number | string;
+}
+
+export interface SteamWebApiMicroTxnReportOptions extends SteamWebApiMicroTxnBaseOptions {
+  type?: string;
+  time?: string;
+  maxResults?: number;
+}
+
+export interface SteamWebApiUserAgreementInfoOptions extends SteamWebApiMicroTxnBaseOptions {
+  steamId64: bigint | number | string;
+}
+
+export interface SteamWebApiMicroTxnUserInfoOptions extends SteamWebApiMicroTxnBaseOptions {
+  steamId64?: bigint | number | string;
+  ipAddress?: string;
+}
+
+export interface SteamWebApiInitTxnOptions extends SteamWebApiMicroTxnBaseOptions {
+  orderId: bigint | number | string;
+  steamId64: bigint | number | string;
+  language: string;
+  currency: string;
+  userSession?: string;
+  ipAddress?: string;
+  items: SteamWebApiMicroTxnItem[];
+  bundles?: SteamWebApiMicroTxnBundle[];
+}
+
+export interface SteamWebApiMicroTxnItem {
+  itemId: bigint | number | string;
+  quantity: number;
+  amount: bigint | number | string;
+  description: string;
+  category?: string;
+  associatedBundle?: number;
+  billingType?: string;
+  period?: string;
+  frequency?: number;
+  recurringAmount?: bigint | number | string;
+}
+
+export interface SteamWebApiMicroTxnBundle {
+  bundleId: bigint | number | string;
+  quantity: number;
+  description: string;
+  category?: string;
+}
+
+export interface SteamWebApiProcessAgreementOptions extends SteamWebApiAgreementOptions {
+  orderId: bigint | number | string;
+  amount: number;
+  currency: string;
+}
+
+export interface SteamWebApiQueryTxnOptions extends SteamWebApiMicroTxnBaseOptions {
+  orderId?: bigint | number | string;
+  transactionId?: bigint | number | string;
+}
+
+export interface SteamWebApiRefundTxnOptions extends SteamWebApiMicroTxnBaseOptions {
+  orderId: bigint | number | string;
+}
 
 export const SteamCallback = {
   PersonaStateChange: 0,
@@ -2897,6 +3114,7 @@ export type InputTypeValue = typeof InputType[keyof typeof InputType];
 export type InputTypeCodeValue = typeof InputTypeCode[keyof typeof InputTypeCode];
 
 const DEFAULT_STEAM_WEB_API_BASE_URL = "https://api.steampowered.com";
+const DEFAULT_STEAM_WEB_API_PARTNER_BASE_URL = "https://partner.steam-api.com";
 
 let callbackTimer: NodeJS.Timeout | undefined;
 let activeCallbackIntervalMs = 33;
@@ -3721,7 +3939,12 @@ export function createSteamWebApiClient(options: SteamWebApiClientOptions = {}):
         postRequest.params = undefined;
       }
       return requestSteamWebApiWithClient<T>(postRequest, clientOptions);
-    }
+    },
+    util: createSteamWebApiUtilFacade(clientOptions),
+    user: createSteamWebApiUserFacade(clientOptions),
+    userStats: createSteamWebApiUserStatsFacade(clientOptions),
+    microTxn: createSteamWebApiMicroTxnFacade("ISteamMicroTxn", clientOptions),
+    microTxnSandbox: createSteamWebApiMicroTxnFacade("ISteamMicroTxnSandbox", clientOptions)
   };
 }
 
@@ -7824,6 +8047,437 @@ export function createCompatibilityClient(): SteamBridgeClient {
 
 function native(): NativeBinding {
   return loadNativeBinding();
+}
+
+function createSteamWebApiUtilFacade(clientOptions: SteamWebApiClientOptions): SteamWebApiUtilFacade {
+  return {
+    getServerInfo<T = unknown>(options?: SteamWebApiEndpointOptions | null): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiGet<T>(clientOptions, "ISteamWebAPIUtil", "GetServerInfo", 1, {}, options, false);
+    },
+    getSupportedApiList<T = unknown>(options?: SteamWebApiEndpointOptions | null): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiGet<T>(clientOptions, "ISteamWebAPIUtil", "GetSupportedAPIList", 1, {}, options, false);
+    }
+  };
+}
+
+function createSteamWebApiUserStatsFacade(clientOptions: SteamWebApiClientOptions): SteamWebApiUserStatsFacade {
+  return {
+    getGlobalAchievementPercentagesForApp<T = unknown>(
+      gameId: bigint | number | string,
+      options?: SteamWebApiEndpointOptions | null
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiGet<T>(
+        clientOptions,
+        "ISteamUserStats",
+        "GetGlobalAchievementPercentagesForApp",
+        2,
+        { gameid: gameId },
+        options
+      );
+    },
+    getGlobalStatsForGame<T = unknown>(
+      options: SteamWebApiGlobalStatsForGameOptions
+    ): Promise<SteamWebApiResponse<T>> {
+      const params = indexedParams("name", options.names);
+      params.appid = options.appId;
+      params.count = options.names.length;
+      params.startdate = options.startDate;
+      params.enddate = options.endDate;
+      return steamWebApiGet<T>(clientOptions, "ISteamUserStats", "GetGlobalStatsForGame", 1, params, options);
+    },
+    getNumberOfCurrentPlayers<T = unknown>(
+      appId: number,
+      options?: SteamWebApiEndpointOptions | null
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiGet<T>(
+        clientOptions,
+        "ISteamUserStats",
+        "GetNumberOfCurrentPlayers",
+        1,
+        { appid: appId },
+        options
+      );
+    },
+    getPlayerAchievements<T = unknown>(
+      options: SteamWebApiPlayerAchievementsOptions
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiGet<T>(
+        clientOptions,
+        "ISteamUserStats",
+        "GetPlayerAchievements",
+        1,
+        { appid: options.appId, steamid: options.steamId64, l: options.language },
+        options
+      );
+    },
+    getSchemaForGame<T = unknown>(options: SteamWebApiGameSchemaOptions): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiGet<T>(
+        clientOptions,
+        "ISteamUserStats",
+        "GetSchemaForGame",
+        2,
+        { appid: options.appId, l: options.language },
+        options
+      );
+    },
+    getUserStatsForGame<T = unknown>(
+      options: SteamWebApiUserStatsForGameOptions
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiGet<T>(
+        clientOptions,
+        "ISteamUserStats",
+        "GetUserStatsForGame",
+        2,
+        { appid: options.appId, steamid: options.steamId64 },
+        options
+      );
+    },
+    setUserStatsForGame<T = unknown>(
+      options: SteamWebApiSetUserStatsForGameOptions
+    ): Promise<SteamWebApiResponse<T>> {
+      const stats = Array.isArray(options.stats)
+        ? options.stats
+        : Object.entries(options.stats).map(([name, value]) => ({ name, value }));
+      const body = indexedParams("name", stats.map((stat) => stat.name));
+      Object.assign(body, indexedParams("value", stats.map((stat) => stat.value)));
+      body.appid = options.appId;
+      body.steamid = options.steamId64;
+      body.count = stats.length;
+      return steamWebApiPost<T>(clientOptions, "ISteamUserStats", "SetUserStatsForGame", 1, body, options);
+    }
+  };
+}
+
+function createSteamWebApiUserFacade(clientOptions: SteamWebApiClientOptions): SteamWebApiUserFacade {
+  return {
+    checkAppOwnership<T = unknown>(options: SteamWebApiCheckAppOwnershipOptions): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiGet<T>(
+        clientOptions,
+        "ISteamUser",
+        "CheckAppOwnership",
+        4,
+        { appid: options.appId, steamid: options.steamId64 },
+        options
+      );
+    },
+    getAppPriceInfo<T = unknown>(options: SteamWebApiAppPriceInfoOptions): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiGet<T>(
+        clientOptions,
+        "ISteamUser",
+        "GetAppPriceInfo",
+        1,
+        { appids: options.appIds.join(","), steamid: options.steamId64 },
+        options
+      );
+    },
+    getDeletedSteamIds<T = unknown>(options: SteamWebApiDeletedSteamIdsOptions): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiGet<T>(
+        clientOptions,
+        "ISteamUser",
+        "GetDeletedSteamIDs",
+        1,
+        { rowversion: options.rowVersion },
+        options
+      );
+    },
+    getFriendList<T = unknown>(options: SteamWebApiFriendListOptions): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiGet<T>(
+        clientOptions,
+        "ISteamUser",
+        "GetFriendList",
+        1,
+        { steamid: options.steamId64, relationship: options.relationship },
+        options
+      );
+    },
+    getPlayerBans<T = unknown>(
+      steamIds: Array<bigint | number | string>,
+      options?: SteamWebApiEndpointOptions | null
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiGet<T>(
+        clientOptions,
+        "ISteamUser",
+        "GetPlayerBans",
+        1,
+        { steamids: commaList(steamIds) },
+        options
+      );
+    },
+    getPlayerSummaries<T = unknown>(
+      steamIds: Array<bigint | number | string>,
+      options?: SteamWebApiEndpointOptions | null
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiGet<T>(
+        clientOptions,
+        "ISteamUser",
+        "GetPlayerSummaries",
+        2,
+        { steamids: commaList(steamIds) },
+        options
+      );
+    },
+    getPublisherAppOwnership<T = unknown>(
+      steamId64: bigint | number | string,
+      options?: SteamWebApiEndpointOptions | null
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiGet<T>(
+        clientOptions,
+        "ISteamUser",
+        "GetPublisherAppOwnership",
+        4,
+        { steamid: steamId64 },
+        options
+      );
+    },
+    getUserGroupList<T = unknown>(
+      steamId64: bigint | number | string,
+      options?: SteamWebApiEndpointOptions | null
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiGet<T>(clientOptions, "ISteamUser", "GetUserGroupList", 1, { steamid: steamId64 }, options);
+    },
+    resolveVanityUrl<T = unknown>(
+      vanityUrl: string,
+      options?: SteamWebApiResolveVanityUrlOptions | null
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiGet<T>(
+        clientOptions,
+        "ISteamUser",
+        "ResolveVanityURL",
+        1,
+        { vanityurl: vanityUrl, url_type: options?.urlType },
+        options
+      );
+    }
+  };
+}
+
+function createSteamWebApiMicroTxnFacade(
+  interfaceName: "ISteamMicroTxn" | "ISteamMicroTxnSandbox",
+  clientOptions: SteamWebApiClientOptions
+): SteamWebApiMicroTxnFacade {
+  return {
+    adjustAgreement<T = unknown>(options: SteamWebApiAdjustAgreementOptions): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiPost<T>(
+        clientOptions,
+        interfaceName,
+        "AdjustAgreement",
+        1,
+        {
+          appid: options.appId,
+          steamid: options.steamId64,
+          agreementid: options.agreementId,
+          nextprocessdate: options.nextProcessDate,
+          oldnextprocessdate: options.oldNextProcessDate
+        },
+        options
+      );
+    },
+    cancelAgreement<T = unknown>(options: SteamWebApiAgreementOptions): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiPost<T>(
+        clientOptions,
+        interfaceName,
+        "CancelAgreement",
+        1,
+        { appid: options.appId, steamid: options.steamId64, agreementid: options.agreementId },
+        options
+      );
+    },
+    finalizeTxn<T = unknown>(options: SteamWebApiFinalizeTxnOptions): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiPost<T>(
+        clientOptions,
+        interfaceName,
+        "FinalizeTxn",
+        2,
+        { appid: options.appId, orderid: options.orderId },
+        options
+      );
+    },
+    getReport<T = unknown>(options: SteamWebApiMicroTxnReportOptions): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiGet<T>(
+        clientOptions,
+        interfaceName,
+        "GetReport",
+        5,
+        { appid: options.appId, type: options.type, time: options.time, maxresults: options.maxResults },
+        options
+      );
+    },
+    getUserAgreementInfo<T = unknown>(
+      options: SteamWebApiUserAgreementInfoOptions
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiGet<T>(
+        clientOptions,
+        interfaceName,
+        "GetUserAgreementInfo",
+        1,
+        { appid: options.appId, steamid: options.steamId64 },
+        options
+      );
+    },
+    getUserInfo<T = unknown>(options: SteamWebApiMicroTxnUserInfoOptions): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiGet<T>(
+        clientOptions,
+        interfaceName,
+        "GetUserInfo",
+        2,
+        { appid: options.appId, steamid: options.steamId64, ipaddress: options.ipAddress },
+        options
+      );
+    },
+    initTxn<T = unknown>(options: SteamWebApiInitTxnOptions): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiPost<T>(
+        clientOptions,
+        interfaceName,
+        "InitTxn",
+        3,
+        steamWebApiInitTxnBody(options),
+        options
+      );
+    },
+    processAgreement<T = unknown>(options: SteamWebApiProcessAgreementOptions): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiPost<T>(
+        clientOptions,
+        interfaceName,
+        "ProcessAgreement",
+        1,
+        {
+          appid: options.appId,
+          orderid: options.orderId,
+          steamid: options.steamId64,
+          agreementid: options.agreementId,
+          amount: options.amount,
+          currency: options.currency
+        },
+        options
+      );
+    },
+    queryTxn<T = unknown>(options: SteamWebApiQueryTxnOptions): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiGet<T>(
+        clientOptions,
+        interfaceName,
+        "QueryTxn",
+        3,
+        { appid: options.appId, orderid: options.orderId, transid: options.transactionId },
+        options
+      );
+    },
+    refundTxn<T = unknown>(options: SteamWebApiRefundTxnOptions): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiPost<T>(
+        clientOptions,
+        interfaceName,
+        "RefundTxn",
+        2,
+        { appid: options.appId, orderid: options.orderId },
+        options
+      );
+    }
+  };
+}
+
+function steamWebApiGet<T>(
+  clientOptions: SteamWebApiClientOptions,
+  interfaceName: string,
+  methodName: string,
+  version: number,
+  params: SteamWebApiParams,
+  options?: SteamWebApiEndpointOptions | null,
+  preferPartnerBaseUrl = true
+): Promise<SteamWebApiResponse<T>> {
+  return requestSteamWebApiWithClient<T>(
+    {
+      ...steamWebApiEndpointRequestOptions(options, clientOptions, preferPartnerBaseUrl),
+      interfaceName,
+      methodName,
+      version,
+      method: "GET",
+      params
+    },
+    clientOptions
+  );
+}
+
+function steamWebApiPost<T>(
+  clientOptions: SteamWebApiClientOptions,
+  interfaceName: string,
+  methodName: string,
+  version: number,
+  body: SteamWebApiParams,
+  options?: SteamWebApiEndpointOptions | null
+): Promise<SteamWebApiResponse<T>> {
+  return requestSteamWebApiWithClient<T>(
+    {
+      ...steamWebApiEndpointRequestOptions(options, clientOptions, true),
+      interfaceName,
+      methodName,
+      version,
+      method: "POST",
+      body
+    },
+    clientOptions
+  );
+}
+
+function steamWebApiEndpointRequestOptions(
+  options: SteamWebApiEndpointOptions | null | undefined,
+  clientOptions: SteamWebApiClientOptions,
+  preferPartnerBaseUrl: boolean
+): SteamWebApiEndpointOptions {
+  return {
+    key: options?.key,
+    format: options?.format,
+    baseUrl:
+      options?.baseUrl ?? clientOptions.baseUrl ?? (preferPartnerBaseUrl ? DEFAULT_STEAM_WEB_API_PARTNER_BASE_URL : undefined),
+    headers: options?.headers,
+    signal: options?.signal
+  };
+}
+
+function indexedParams(prefix: string, values: readonly SteamWebApiParamValue[]): SteamWebApiParams {
+  const params: SteamWebApiParams = {};
+  values.forEach((value, index) => {
+    params[`${prefix}[${index}]`] = value;
+  });
+  return params;
+}
+
+function commaList(values: Array<bigint | number | string>): string {
+  return values.map(String).join(",");
+}
+
+function steamWebApiInitTxnBody(options: SteamWebApiInitTxnOptions): SteamWebApiParams {
+  const body: SteamWebApiParams = {
+    orderid: options.orderId,
+    steamid: options.steamId64,
+    appid: options.appId,
+    itemcount: options.items.length,
+    language: options.language,
+    currency: options.currency,
+    usersession: options.userSession,
+    ipaddress: options.ipAddress,
+    bundlecount: options.bundles?.length
+  };
+
+  options.items.forEach((item, index) => {
+    body[`itemid[${index}]`] = item.itemId;
+    body[`qty[${index}]`] = item.quantity;
+    body[`amount[${index}]`] = item.amount;
+    body[`description[${index}]`] = item.description;
+    body[`category[${index}]`] = item.category;
+    body[`associated_bundle[${index}]`] = item.associatedBundle;
+    body[`billingtype[${index}]`] = item.billingType;
+    body[`period[${index}]`] = item.period;
+    body[`frequency[${index}]`] = item.frequency;
+    body[`recurringamt[${index}]`] = item.recurringAmount;
+  });
+
+  options.bundles?.forEach((bundle, index) => {
+    body[`bundleid[${index}]`] = bundle.bundleId;
+    body[`bundle_qty[${index}]`] = bundle.quantity;
+    body[`bundle_desc[${index}]`] = bundle.description;
+    body[`bundle_category[${index}]`] = bundle.category;
+  });
+
+  return body;
 }
 
 function requestSteamWebApiWithDefaults(

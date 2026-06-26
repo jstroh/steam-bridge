@@ -8830,3 +8830,141 @@ test("web API post helper sends form fields and supports partner base URLs", asy
     "https://api.steampowered.com/ISteamApps/GetAppList/v0002/"
   );
 });
+
+test("web API endpoint facades cover util, user stats, and user helpers", async (t) => {
+  const steam = loadSteamWithFakeNative(createFakeNative());
+  const fetchCalls = [];
+  const fetchImpl = async (url, init = {}) => {
+    fetchCalls.push({ url, init });
+    return {
+      ok: true,
+      status: 200,
+      headers: {
+        forEach(callback) {
+          callback("application/json", "content-type");
+        }
+      },
+      async text() {
+        return JSON.stringify({ response: { ok: true } });
+      }
+    };
+  };
+  const client = steam.createSteamWebApiClient({ apiKey: "secret", fetch: fetchImpl });
+
+  t.after(clearSteamBridgeCache);
+
+  await client.util.getSupportedApiList();
+  await client.userStats.getNumberOfCurrentPlayers(480);
+  await client.userStats.getGlobalStatsForGame({
+    appId: 480,
+    names: ["global_wins", "global_losses"],
+    startDate: 1700000000,
+    endDate: 1700003600
+  });
+  await client.user.getPlayerSummaries([76561198000000000n, 76561198000000001n]);
+  await client.user.resolveVanityUrl("spacewar", { urlType: 3 });
+  await client.user.checkAppOwnership({ appId: 480, steamId64: 76561198000000000n });
+
+  assert.equal(
+    fetchCalls[0].url,
+    "https://api.steampowered.com/ISteamWebAPIUtil/GetSupportedAPIList/v0001/?key=secret&format=json"
+  );
+  assert.equal(
+    fetchCalls[1].url,
+    "https://partner.steam-api.com/ISteamUserStats/GetNumberOfCurrentPlayers/v0001/?key=secret&format=json&appid=480"
+  );
+  assert.match(fetchCalls[2].url, /ISteamUserStats\/GetGlobalStatsForGame\/v0001/);
+  assert.match(fetchCalls[2].url, /name%5B0%5D=global_wins/);
+  assert.match(fetchCalls[2].url, /name%5B1%5D=global_losses/);
+  assert.match(fetchCalls[2].url, /count=2/);
+  assert.match(fetchCalls[3].url, /ISteamUser\/GetPlayerSummaries\/v0002/);
+  assert.match(fetchCalls[3].url, /steamids=76561198000000000%2C76561198000000001/);
+  assert.equal(
+    fetchCalls[4].url,
+    "https://partner.steam-api.com/ISteamUser/ResolveVanityURL/v0001/?key=secret&format=json&vanityurl=spacewar&url_type=3"
+  );
+  assert.equal(
+    fetchCalls[5].url,
+    "https://partner.steam-api.com/ISteamUser/CheckAppOwnership/v0004/?key=secret&format=json&appid=480&steamid=76561198000000000"
+  );
+});
+
+test("web API microtransaction facades map economy fields and sandbox endpoints", async (t) => {
+  const steam = loadSteamWithFakeNative(createFakeNative());
+  const fetchCalls = [];
+  const fetchImpl = async (url, init = {}) => {
+    fetchCalls.push({ url, init });
+    return {
+      ok: true,
+      status: 200,
+      headers: {
+        forEach(callback) {
+          callback("application/json", "content-type");
+        }
+      },
+      async text() {
+        return JSON.stringify({ response: { result: "OK" } });
+      }
+    };
+  };
+  const client = steam.createSteamWebApiClient({ apiKey: "publisher-secret", fetch: fetchImpl });
+
+  t.after(clearSteamBridgeCache);
+
+  await client.microTxnSandbox.initTxn({
+    appId: 480,
+    orderId: 9001n,
+    steamId64: 76561198000000000n,
+    language: "en",
+    currency: "USD",
+    userSession: "client",
+    items: [
+      {
+        itemId: 100,
+        quantity: 2,
+        amount: 199,
+        description: "Space credits",
+        category: "currency",
+        billingType: "Steam",
+        period: "Month",
+        frequency: 1,
+        recurringAmount: 99
+      }
+    ],
+    bundles: [
+      {
+        bundleId: 500,
+        quantity: 1,
+        description: "Starter bundle"
+      }
+    ]
+  });
+  await client.microTxn.finalizeTxn({ appId: 480, orderId: 9001n });
+  await client.microTxn.queryTxn({ appId: 480, transactionId: 123456789n });
+  await client.microTxn.refundTxn({ appId: 480, orderId: 9001n });
+
+  assert.equal(
+    fetchCalls[0].url,
+    "https://partner.steam-api.com/ISteamMicroTxnSandbox/InitTxn/v0003/?key=publisher-secret&format=json"
+  );
+  assert.equal(fetchCalls[0].init.method, "POST");
+  assert.match(fetchCalls[0].init.body, /orderid=9001/);
+  assert.match(fetchCalls[0].init.body, /steamid=76561198000000000/);
+  assert.match(fetchCalls[0].init.body, /itemcount=1/);
+  assert.match(fetchCalls[0].init.body, /itemid%5B0%5D=100/);
+  assert.match(fetchCalls[0].init.body, /qty%5B0%5D=2/);
+  assert.match(fetchCalls[0].init.body, /description%5B0%5D=Space\+credits/);
+  assert.match(fetchCalls[0].init.body, /bundlecount=1/);
+  assert.match(fetchCalls[0].init.body, /bundleid%5B0%5D=500/);
+  assert.equal(
+    fetchCalls[1].url,
+    "https://partner.steam-api.com/ISteamMicroTxn/FinalizeTxn/v0002/?key=publisher-secret&format=json"
+  );
+  assert.equal(fetchCalls[1].init.body, "appid=480&orderid=9001");
+  assert.equal(
+    fetchCalls[2].url,
+    "https://partner.steam-api.com/ISteamMicroTxn/QueryTxn/v0003/?key=publisher-secret&format=json&appid=480&transid=123456789"
+  );
+  assert.equal(fetchCalls[3].init.body, "appid=480&orderid=9001");
+  assert.equal(typeof steam.webApi.microTxn.cancelAgreement, "function");
+});

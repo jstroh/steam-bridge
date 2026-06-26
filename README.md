@@ -81,8 +81,9 @@ client.overlay.activateToWebPage("https://store.steampowered.com/app/480/");
 client.achievement.isActivated("ACH_WIN_ONE_GAME");
 ```
 
-Steam Web API calls can use the generic helper. Set `STEAM_WEB_API_KEY` in the
-environment, pass `apiKey`, or pass `key` per request:
+Steam Web API calls can use endpoint helpers or the generic helper. Set
+`STEAM_WEB_API_KEY` in the environment, pass `apiKey`, or pass `key` per
+request:
 
 ```ts
 const web = steamworks.createSteamWebApiClient();
@@ -91,6 +92,18 @@ const players = await web.get({
   methodName: "GetNumberOfCurrentPlayers",
   version: 1,
   params: { appid: 480 }
+});
+
+const schema = await web.userStats.getSchemaForGame({ appId: 480 });
+const profile = await web.user.resolveVanityUrl("spacewar");
+
+const txn = await web.microTxnSandbox.initTxn({
+  appId: 480,
+  orderId: 9001n,
+  steamId64: 76561198000000000n,
+  language: "en",
+  currency: "USD",
+  items: [{ itemId: 100, quantity: 1, amount: 199, description: "Credits" }]
 });
 ```
 
