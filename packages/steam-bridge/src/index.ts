@@ -926,6 +926,105 @@ export interface MatchmakingFavoriteGame {
   lastPlayedOnServer: number;
 }
 
+export interface MatchmakingFavoritesListChangedEvent {
+  ip: number;
+  ipAddress: string;
+  ip_address?: string;
+  queryPort: number;
+  query_port?: number;
+  connPort: number;
+  conn_port?: number;
+  appId: number;
+  app_id?: number;
+  flags: number;
+  add: boolean;
+  accountId: number;
+  account_id?: number;
+  [key: string]: unknown;
+}
+
+export interface MatchmakingFavoritesListAccountsUpdatedEvent {
+  result: number;
+  [key: string]: unknown;
+}
+
+export interface LobbyInviteEvent {
+  user: bigint;
+  lobby: bigint;
+  gameId: bigint;
+  game_id?: bigint;
+  [key: string]: unknown;
+}
+
+export interface LobbyEnterEvent {
+  lobby: bigint;
+  chatPermissions: number;
+  chat_permissions?: number;
+  locked: boolean;
+  chatRoomEnterResponse: number;
+  chat_room_enter_response?: number;
+  [key: string]: unknown;
+}
+
+export interface LobbyDataUpdateEvent {
+  lobby: bigint;
+  member: bigint;
+  success: boolean;
+  [key: string]: unknown;
+}
+
+export interface LobbyChatUpdateEvent {
+  lobby: bigint;
+  userChanged: bigint;
+  user_changed?: bigint;
+  makingChange: bigint;
+  making_change?: bigint;
+  memberStateChange: number;
+  member_state_change?: number;
+  [key: string]: unknown;
+}
+
+export interface LobbyChatMessageEvent {
+  lobby: bigint;
+  user: bigint;
+  entryType: number;
+  entry_type?: number;
+  chatId: number;
+  chat_id?: number;
+  [key: string]: unknown;
+}
+
+export interface LobbyGameCreatedEvent {
+  lobby: bigint;
+  gameServer: bigint;
+  game_server?: bigint;
+  ip: number;
+  ipAddress: string;
+  ip_address?: string;
+  port: number;
+  [key: string]: unknown;
+}
+
+export interface LobbyMatchListEvent {
+  lobbiesMatching: number;
+  lobbies_matching?: number;
+  [key: string]: unknown;
+}
+
+export interface LobbyKickedEvent {
+  lobby: bigint;
+  admin: bigint;
+  kickedDueToDisconnect: boolean;
+  kicked_due_to_disconnect?: boolean;
+  [key: string]: unknown;
+}
+
+export interface LobbyCreatedEvent {
+  result: number;
+  lobby: bigint;
+  [key: string]: unknown;
+}
+
 export interface MatchmakingServerBrowserFilter {
   key: string;
   value?: string;
@@ -8871,6 +8970,63 @@ export const matchmaking = {
   FavoriteFlags,
   Lobby,
   servers: matchmakingServers,
+  onFavoritesListChanged(handler: (event: MatchmakingFavoritesListChangedEvent) => void): CallbackHandle {
+    return onSteamCallback("FavoritesListChanged", (event) => {
+      handler(event as MatchmakingFavoritesListChangedEvent);
+    });
+  },
+  onLobbyInvite(handler: (event: LobbyInviteEvent) => void): CallbackHandle {
+    return onSteamCallback("LobbyInvite", (event) => {
+      handler(event as LobbyInviteEvent);
+    });
+  },
+  onLobbyEnter(handler: (event: LobbyEnterEvent) => void): CallbackHandle {
+    return onSteamCallback("LobbyEnter", (event) => {
+      handler(event as LobbyEnterEvent);
+    });
+  },
+  onLobbyDataUpdate(handler: (event: LobbyDataUpdateEvent) => void): CallbackHandle {
+    return onSteamCallback("LobbyDataUpdateSteamworks", (event) => {
+      handler(event as LobbyDataUpdateEvent);
+    });
+  },
+  onLobbyChatUpdate(handler: (event: LobbyChatUpdateEvent) => void): CallbackHandle {
+    return onSteamCallback("LobbyChatUpdateSteamworks", (event) => {
+      handler(event as LobbyChatUpdateEvent);
+    });
+  },
+  onLobbyChatMessage(handler: (event: LobbyChatMessageEvent) => void): CallbackHandle {
+    return onSteamCallback("LobbyChatMsg", (event) => {
+      handler(event as LobbyChatMessageEvent);
+    });
+  },
+  onLobbyGameCreated(handler: (event: LobbyGameCreatedEvent) => void): CallbackHandle {
+    return onSteamCallback("LobbyGameCreated", (event) => {
+      handler(event as LobbyGameCreatedEvent);
+    });
+  },
+  onLobbyMatchList(handler: (event: LobbyMatchListEvent) => void): CallbackHandle {
+    return onSteamCallback("LobbyMatchList", (event) => {
+      handler(event as LobbyMatchListEvent);
+    });
+  },
+  onLobbyKicked(handler: (event: LobbyKickedEvent) => void): CallbackHandle {
+    return onSteamCallback("LobbyKicked", (event) => {
+      handler(event as LobbyKickedEvent);
+    });
+  },
+  onLobbyCreated(handler: (event: LobbyCreatedEvent) => void): CallbackHandle {
+    return onSteamCallback("LobbyCreated", (event) => {
+      handler(event as LobbyCreatedEvent);
+    });
+  },
+  onFavoritesListAccountsUpdated(
+    handler: (event: MatchmakingFavoritesListAccountsUpdatedEvent) => void
+  ): CallbackHandle {
+    return onSteamCallback("FavoritesListAccountsUpdated", (event) => {
+      handler(event as MatchmakingFavoritesListAccountsUpdatedEvent);
+    });
+  },
   favoriteGameCount(): number {
     return native().matchmakingGetFavoriteGameCount();
   },
@@ -15889,6 +16045,7 @@ function normalizeCallbackEvent(callbackId: number, event: unknown): unknown {
     lobby_steam_id: "lobbySteamId",
     local_handle: "localHandle",
     longest_clip_ms: "longestClipMs",
+    lobbies_matching: "lobbiesMatching",
     manifest_id: "manifestId",
     max_progress: "maxProgress",
     live_link: "liveLink",

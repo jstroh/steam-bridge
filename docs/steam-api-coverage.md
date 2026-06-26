@@ -130,8 +130,8 @@ covered.
 - Matchmaking/lobbies: favorite/history server storage, lobby list filters,
   create, join, list, leave, member/owner helpers, lobby and member data,
   joinability, lobby type/owner/limit/link controls, lobby chat, lobby
-  game-server metadata, invites, invite dialogs, lobby callbacks, lobby create
-  and favorite-account update callbacks, one-shot
+  game-server metadata, invites, invite dialogs, typed favorite and lobby
+  callback helpers, lobby create and favorite-account update callbacks, one-shot
   matchmaking server browser list, ping, player-detail, and rule queries, plus
   server address/item/filter struct helpers, response callback dispatch
   wrappers, long-lived server-list request handles with details, refresh,
@@ -206,12 +206,12 @@ covered.
   `SteamDatagramRelayAuthTicket` opaque in the bundled headers, so safe
   structured decoding needs a newer SDK surface or a maintained local shim.
 - Additional specialized callback/event helpers outside the current lifecycle,
-  apps, user/auth, Friends, Steam Input, networking, Remote Storage,
-  HTTP, HTML, screenshots, music, video, parental settings, timeline, and
-  Remote Play callback-helper batches, for interfaces where a dedicated
-  `on...` helper would be clearer than the generic name-based subscription API.
-  Generated callback constants and generic name subscriptions are covered by
-  the automated coverage audit.
+  apps, user/auth, Friends, Matchmaking/lobbies, Steam Input, networking,
+  Remote Storage, HTTP, HTML, screenshots, music, video, parental settings,
+  timeline, and Remote Play callback-helper batches, for interfaces where a
+  dedicated `on...` helper would be clearer than the generic name-based
+  subscription API. Generated callback constants and generic name subscriptions
+  are covered by the automated coverage audit.
 - `ISteamPS3OverlayRenderHost` and `ISteamPS3OverlayRender` are PlayStation 3
   overlay interfaces and are outside Steam Bridge's supported Steam desktop
   targets.

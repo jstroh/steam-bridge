@@ -4511,6 +4511,164 @@ test("matchmaking facade covers favorites, lobby filters, metadata, chat, and ca
   });
 });
 
+test("matchmaking facade exposes typed callback helpers", (t) => {
+  const fake = createFakeNative();
+  const steam = loadSteamWithFakeNative(fake);
+  const lobbyId = 109775242022617907n;
+  const memberId = 76561198000000010n;
+  const adminId = 76561198000000011n;
+  const serverId = 90123456789012345n;
+
+  t.after(clearSteamBridgeCache);
+
+  const events = {};
+  const handles = [
+    steam.matchmaking.onFavoritesListChanged((event) => {
+      events.favoritesListChanged = event;
+    }),
+    steam.matchmaking.onLobbyInvite((event) => {
+      events.lobbyInvite = event;
+    }),
+    steam.matchmaking.onLobbyEnter((event) => {
+      events.lobbyEnter = event;
+    }),
+    steam.matchmaking.onLobbyDataUpdate((event) => {
+      events.lobbyDataUpdate = event;
+    }),
+    steam.matchmaking.onLobbyChatUpdate((event) => {
+      events.lobbyChatUpdate = event;
+    }),
+    steam.matchmaking.onLobbyChatMessage((event) => {
+      events.lobbyChatMessage = event;
+    }),
+    steam.matchmaking.onLobbyGameCreated((event) => {
+      events.lobbyGameCreated = event;
+    }),
+    steam.matchmaking.onLobbyMatchList((event) => {
+      events.lobbyMatchList = event;
+    }),
+    steam.matchmaking.onLobbyKicked((event) => {
+      events.lobbyKicked = event;
+    }),
+    steam.matchmaking.onLobbyCreated((event) => {
+      events.lobbyCreated = event;
+    }),
+    steam.matchmaking.onFavoritesListAccountsUpdated((event) => {
+      events.favoritesListAccountsUpdated = event;
+    })
+  ];
+  const callbackNames = [
+    "FavoritesListChanged",
+    "LobbyInvite",
+    "LobbyEnter",
+    "LobbyDataUpdateSteamworks",
+    "LobbyChatUpdateSteamworks",
+    "LobbyChatMsg",
+    "LobbyGameCreated",
+    "LobbyMatchList",
+    "LobbyKicked",
+    "LobbyCreated",
+    "FavoritesListAccountsUpdated"
+  ];
+  const emit = (callbackName, payload) => {
+    fake.callbacks.get(steam.SteamCallback[callbackName])(payload);
+  };
+
+  emit("FavoritesListChanged", {
+    ip: 2130706433,
+    ip_address: "127.0.0.1",
+    query_port: 27016,
+    conn_port: 27015,
+    app_id: 480,
+    flags: steam.matchmaking.FavoriteFlags.Favorite,
+    add: true,
+    account_id: 42
+  });
+  emit("LobbyInvite", {
+    user: String(memberId),
+    lobby: String(lobbyId),
+    game_id: "480"
+  });
+  emit("LobbyEnter", {
+    lobby: String(lobbyId),
+    chat_permissions: 3,
+    locked: false,
+    chat_room_enter_response: 1
+  });
+  emit("LobbyDataUpdateSteamworks", {
+    lobby: String(lobbyId),
+    member: String(memberId),
+    success: true
+  });
+  emit("LobbyChatUpdateSteamworks", {
+    lobby: String(lobbyId),
+    user_changed: String(memberId),
+    making_change: String(adminId),
+    member_state_change: 4
+  });
+  emit("LobbyChatMsg", {
+    lobby: String(lobbyId),
+    user: String(memberId),
+    entry_type: 1,
+    chat_id: 7
+  });
+  emit("LobbyGameCreated", {
+    lobby: String(lobbyId),
+    game_server: String(serverId),
+    ip: 2130706433,
+    ip_address: "127.0.0.1",
+    port: 27015
+  });
+  emit("LobbyMatchList", { lobbies_matching: 12 });
+  emit("LobbyKicked", {
+    lobby: String(lobbyId),
+    admin: String(adminId),
+    kicked_due_to_disconnect: true
+  });
+  emit("LobbyCreated", {
+    result: 1,
+    lobby: String(lobbyId)
+  });
+  emit("FavoritesListAccountsUpdated", { result: 1 });
+
+  assert.equal(events.favoritesListChanged.ipAddress, "127.0.0.1");
+  assert.equal(events.favoritesListChanged.queryPort, 27016);
+  assert.equal(events.favoritesListChanged.connPort, 27015);
+  assert.equal(events.favoritesListChanged.appId, 480);
+  assert.equal(events.favoritesListChanged.accountId, 42);
+  assert.equal(events.lobbyInvite.user, memberId);
+  assert.equal(events.lobbyInvite.lobby, lobbyId);
+  assert.equal(events.lobbyInvite.gameId, 480n);
+  assert.equal(events.lobbyEnter.chatPermissions, 3);
+  assert.equal(events.lobbyEnter.chatRoomEnterResponse, 1);
+  assert.equal(events.lobbyDataUpdate.member, memberId);
+  assert.equal(events.lobbyDataUpdate.success, true);
+  assert.equal(events.lobbyChatUpdate.userChanged, memberId);
+  assert.equal(events.lobbyChatUpdate.makingChange, adminId);
+  assert.equal(events.lobbyChatUpdate.memberStateChange, 4);
+  assert.equal(events.lobbyChatMessage.entryType, 1);
+  assert.equal(events.lobbyChatMessage.chatId, 7);
+  assert.equal(events.lobbyGameCreated.gameServer, serverId);
+  assert.equal(events.lobbyGameCreated.ipAddress, "127.0.0.1");
+  assert.equal(events.lobbyGameCreated.port, 27015);
+  assert.equal(events.lobbyMatchList.lobbiesMatching, 12);
+  assert.equal(events.lobbyKicked.admin, adminId);
+  assert.equal(events.lobbyKicked.kickedDueToDisconnect, true);
+  assert.equal(events.lobbyCreated.lobby, lobbyId);
+  assert.equal(events.favoritesListAccountsUpdated.result, 1);
+
+  handles.forEach((handle) => handle.disconnect());
+
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "registerSteamCallback").map((call) => call.args[0]),
+    callbackNames.map((callbackName) => steam.SteamCallback[callbackName])
+  );
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "disconnectCallback").map((call) => call.args[0]),
+    callbackNames.map((callbackName) => steam.SteamCallback[callbackName])
+  );
+});
+
 test("apps facade covers DLC, launch, depot, trial, beta, and file-detail helpers", async (t) => {
   const sha = Buffer.from("00112233445566778899aabbccddeeff00112233", "hex");
   const fake = createFakeNative({
