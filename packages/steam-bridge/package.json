@@ -3,6 +3,15 @@
   "version": "0.1.0",
   "description": "Native-backed Steamworks bridge for Electron and Node.",
   "license": "MIT",
+  "homepage": "https://github.com/jstroh/steam-bridge#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jstroh/steam-bridge.git",
+    "directory": "packages/steam-bridge"
+  },
+  "bugs": {
+    "url": "https://github.com/jstroh/steam-bridge/issues"
+  },
   "keywords": [
     "steam",
     "steamworks",
@@ -38,6 +47,9 @@
     "README.md",
     "LICENSE"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "napi": {
     "binaryName": "steam_bridge_native",
     "targets": [

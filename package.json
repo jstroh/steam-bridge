@@ -11,6 +11,7 @@
     "api:check": "node scripts/audit-steam-api-coverage.cjs",
     "check:platform": "node scripts/assert-supported-targets.cjs",
     "package:smoke": "node scripts/smoke-package.cjs",
+    "release:assemble": "node scripts/assemble-release-artifacts.cjs",
     "release:verify": "node scripts/verify-release-artifacts.cjs",
     "steamworks-enums:generate": "node scripts/generate-steamworks-enums.cjs",
     "typecheck": "npm run typecheck -w steam-bridge",
