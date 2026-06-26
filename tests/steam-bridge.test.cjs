@@ -12213,6 +12213,14 @@ test("workshop updates and queries normalize progress, IDs, and snake_case field
 
 test("game server workshop facade uses game-server native bindings", async (t) => {
   const fake = createFakeNative({
+    gameServerWorkshopCreateItem(appId) {
+      this.calls.push({ method: "gameServerWorkshopCreateItem", args: [appId] });
+      return Promise.resolve({ item_id: "9876543210987654321", needs_to_accept_agreement: false });
+    },
+    gameServerWorkshopUpdateItem(itemId, updateDetails, appId) {
+      this.calls.push({ method: "gameServerWorkshopUpdateItem", args: [itemId, updateDetails, appId] });
+      return Promise.resolve({ item_id: itemId.toString(), needs_to_accept_agreement: true });
+    },
     gameServerWorkshopUpdateItemWithProgress(itemId, updateDetails, appId, progressHandler, progressIntervalMs) {
       this.calls.push({
         method: "gameServerWorkshopUpdateItemWithProgress",
@@ -12221,10 +12229,19 @@ test("game server workshop facade uses game-server native bindings", async (t) =
       progressHandler({ status: 3, progress: "64", total: "128" });
       return Promise.resolve({ item_id: "9876543210987654321", needs_to_accept_agreement: false });
     },
+    gameServerWorkshopSubscribe(itemId) {
+      this.calls.push({ method: "gameServerWorkshopSubscribe", args: [itemId] });
+      return Promise.resolve();
+    },
+    gameServerWorkshopUnsubscribe(itemId) {
+      this.calls.push({ method: "gameServerWorkshopUnsubscribe", args: [itemId] });
+      return Promise.resolve();
+    },
     gameServerWorkshopGetItems(items, queryConfig) {
       this.calls.push({ method: "gameServerWorkshopGetItems", args: [items, queryConfig] });
       return Promise.resolve({
         was_cached: true,
+        next_cursor: "server-cursor-2",
         items: [
           {
             published_file_id: "9876543210987654321",
@@ -12246,6 +12263,46 @@ test("game server workshop facade uses game-server native bindings", async (t) =
       this.calls.push({ method: "gameServerWorkshopAddFavorite", args: [itemId, appId] });
       return Promise.resolve({ result: 1, item_id: itemId, was_add_request: true });
     },
+    gameServerWorkshopRemoveFavorite(itemId, appId) {
+      this.calls.push({ method: "gameServerWorkshopRemoveFavorite", args: [itemId, appId] });
+      return Promise.resolve({ result: 1, item_id: itemId, was_add_request: false });
+    },
+    gameServerWorkshopSetUserItemVote(itemId, voteUp) {
+      this.calls.push({ method: "gameServerWorkshopSetUserItemVote", args: [itemId, voteUp] });
+      return Promise.resolve({ result: 1, item_id: itemId, vote_up: voteUp });
+    },
+    gameServerWorkshopGetUserItemVote(itemId) {
+      this.calls.push({ method: "gameServerWorkshopGetUserItemVote", args: [itemId] });
+      return Promise.resolve({ result: 1, item_id: itemId, voted_up: true, voted_down: false, vote_skipped: false });
+    },
+    gameServerWorkshopStartPlaytimeTracking(itemIds) {
+      this.calls.push({ method: "gameServerWorkshopStartPlaytimeTracking", args: [itemIds] });
+      return Promise.resolve({ result: 1 });
+    },
+    gameServerWorkshopStopPlaytimeTracking(itemIds) {
+      this.calls.push({ method: "gameServerWorkshopStopPlaytimeTracking", args: [itemIds] });
+      return Promise.resolve({ result: 1 });
+    },
+    gameServerWorkshopStopPlaytimeTrackingForAllItems() {
+      this.calls.push({ method: "gameServerWorkshopStopPlaytimeTrackingForAllItems", args: [] });
+      return Promise.resolve({ result: 1 });
+    },
+    gameServerWorkshopAddDependency(parentItemId, childItemId) {
+      this.calls.push({ method: "gameServerWorkshopAddDependency", args: [parentItemId, childItemId] });
+      return Promise.resolve({ result: 1, item_id: parentItemId, child_item_id: childItemId });
+    },
+    gameServerWorkshopRemoveDependency(parentItemId, childItemId) {
+      this.calls.push({ method: "gameServerWorkshopRemoveDependency", args: [parentItemId, childItemId] });
+      return Promise.resolve({ result: 1, item_id: parentItemId, child_item_id: childItemId });
+    },
+    gameServerWorkshopAddAppDependency(itemId, appId) {
+      this.calls.push({ method: "gameServerWorkshopAddAppDependency", args: [itemId, appId] });
+      return Promise.resolve({ result: 1, item_id: itemId, app_id: appId });
+    },
+    gameServerWorkshopRemoveAppDependency(itemId, appId) {
+      this.calls.push({ method: "gameServerWorkshopRemoveAppDependency", args: [itemId, appId] });
+      return Promise.resolve({ result: 1, item_id: itemId, app_id: appId });
+    },
     gameServerWorkshopGetAppDependencies(itemId) {
       this.calls.push({ method: "gameServerWorkshopGetAppDependencies", args: [itemId] });
       return Promise.resolve({
@@ -12256,13 +12313,107 @@ test("game server workshop facade uses game-server native bindings", async (t) =
         total_num_app_dependencies: 1
       });
     },
+    gameServerWorkshopDeleteItem(itemId) {
+      this.calls.push({ method: "gameServerWorkshopDeleteItem", args: [itemId] });
+      return Promise.resolve({ result: 1, item_id: itemId });
+    },
     gameServerWorkshopShowEula() {
       this.calls.push({ method: "gameServerWorkshopShowEula", args: [] });
       return true;
     },
+    gameServerWorkshopGetEulaStatus() {
+      this.calls.push({ method: "gameServerWorkshopGetEulaStatus", args: [] });
+      return Promise.resolve({
+        result: 1,
+        app_id: 480,
+        version: 2,
+        action_time: 1700000400,
+        accepted: true,
+        needs_action: false
+      });
+    },
     gameServerWorkshopGetUserContentDescriptorPreferences(maxEntries) {
       this.calls.push({ method: "gameServerWorkshopGetUserContentDescriptorPreferences", args: [maxEntries] });
       return [5];
+    },
+    gameServerWorkshopState(itemId) {
+      this.calls.push({ method: "gameServerWorkshopState", args: [itemId] });
+      return 4;
+    },
+    gameServerWorkshopInstallInfo(itemId) {
+      this.calls.push({ method: "gameServerWorkshopInstallInfo", args: [itemId] });
+      return { folder: "/tmp/server-workshop", sizeOnDisk: "4096", timestamp: 1700000400 };
+    },
+    gameServerWorkshopDownloadInfo(itemId) {
+      this.calls.push({ method: "gameServerWorkshopDownloadInfo", args: [itemId] });
+      return { current: "128", total: "256" };
+    },
+    gameServerWorkshopDownload(itemId, highPriority) {
+      this.calls.push({ method: "gameServerWorkshopDownload", args: [itemId, highPriority] });
+      return true;
+    },
+    gameServerWorkshopInitWorkshopForGameServer(depotId, folder) {
+      this.calls.push({ method: "gameServerWorkshopInitWorkshopForGameServer", args: [depotId, folder] });
+      return true;
+    },
+    gameServerWorkshopSuspendDownloads(suspend) {
+      this.calls.push({ method: "gameServerWorkshopSuspendDownloads", args: [suspend] });
+    },
+    gameServerWorkshopSetItemsDisabledLocally(itemIds, disabled) {
+      this.calls.push({ method: "gameServerWorkshopSetItemsDisabledLocally", args: [itemIds, disabled] });
+      return true;
+    },
+    gameServerWorkshopSetSubscriptionsLoadOrder(itemIds) {
+      this.calls.push({ method: "gameServerWorkshopSetSubscriptionsLoadOrder", args: [itemIds] });
+      return true;
+    },
+    gameServerWorkshopMarkDownloadedItemAsUnused(itemId) {
+      this.calls.push({ method: "gameServerWorkshopMarkDownloadedItemAsUnused", args: [itemId] });
+      return true;
+    },
+    gameServerWorkshopGetDownloadedItems(maxEntries) {
+      this.calls.push({ method: "gameServerWorkshopGetDownloadedItems", args: [maxEntries] });
+      return [42n, "43"];
+    },
+    gameServerWorkshopGetSubscribedItems() {
+      this.calls.push({ method: "gameServerWorkshopGetSubscribedItems", args: [] });
+      return [42n, "43"];
+    },
+    gameServerWorkshopGetAllItems(page, queryType, itemType, creatorAppId, consumerAppId, queryConfig) {
+      this.calls.push({
+        method: "gameServerWorkshopGetAllItems",
+        args: [page, queryType, itemType, creatorAppId, consumerAppId, queryConfig]
+      });
+      return this.gameServerWorkshopGetItems([], queryConfig);
+    },
+    gameServerWorkshopGetAllItemsByCursor(cursor, queryType, itemType, creatorAppId, consumerAppId, queryConfig) {
+      this.calls.push({
+        method: "gameServerWorkshopGetAllItemsByCursor",
+        args: [cursor, queryType, itemType, creatorAppId, consumerAppId, queryConfig]
+      });
+      return this.gameServerWorkshopGetItems([], queryConfig);
+    },
+    gameServerWorkshopGetUserItems(page, accountId, listType, itemType, sortOrder, creatorAppId, consumerAppId, queryConfig) {
+      this.calls.push({
+        method: "gameServerWorkshopGetUserItems",
+        args: [page, accountId, listType, itemType, sortOrder, creatorAppId, consumerAppId, queryConfig]
+      });
+      return this.gameServerWorkshopGetItems([], queryConfig);
+    },
+    gameServerWorkshopRequestItemDetails(itemId, maxAgeSeconds) {
+      this.calls.push({ method: "gameServerWorkshopRequestItemDetails", args: [itemId, maxAgeSeconds] });
+      return Promise.resolve({
+        details: {
+          published_file_id: itemId.toString(),
+          creator_app_id: 480,
+          title: "Game Server Workshop Item",
+          tags: "server,ugc",
+          file_size: "12",
+          preview_file: "99",
+          accepted_for_use: true
+        },
+        was_cached: true
+      });
     }
   });
   const steam = loadSteamWithFakeNative(fake);
@@ -12312,10 +12463,60 @@ test("game server workshop facade uses game-server native bindings", async (t) =
     total: 64n
   });
 
+  assert.deepEqual(await steam.gameServerWorkshop.createItem(480), {
+    itemId: 9876543210987654321n,
+    needsToAcceptAgreement: false
+  });
+  assert.deepEqual(await steam.gameServerWorkshop.updateItem(42n, updateDetails, 480), {
+    itemId: 42n,
+    needsToAcceptAgreement: true
+  });
+  await steam.gameServerWorkshop.subscribe(42n);
+  await steam.gameServerWorkshop.unsubscribe(42n);
   assert.deepEqual(await steam.gameServerWorkshop.addFavorite(42n, 480), {
     result: 1,
     itemId: 42n,
     wasAddRequest: true
+  });
+  assert.deepEqual(await steam.gameServerWorkshop.removeFavorite(42n, 480), {
+    result: 1,
+    itemId: 42n,
+    wasAddRequest: false
+  });
+  assert.deepEqual(await steam.gameServerWorkshop.setUserItemVote(42n, true), {
+    result: 1,
+    itemId: 42n,
+    voteUp: true
+  });
+  assert.deepEqual(await steam.gameServerWorkshop.getUserItemVote(42n), {
+    result: 1,
+    itemId: 42n,
+    votedUp: true,
+    votedDown: false,
+    voteSkipped: false
+  });
+  assert.deepEqual(await steam.gameServerWorkshop.startPlaytimeTracking([42n]), { result: 1 });
+  assert.deepEqual(await steam.gameServerWorkshop.stopPlaytimeTracking([42n]), { result: 1 });
+  assert.deepEqual(await steam.gameServerWorkshop.stopPlaytimeTrackingForAllItems(), { result: 1 });
+  assert.deepEqual(await steam.gameServerWorkshop.addDependency(42n, 43n), {
+    result: 1,
+    itemId: 42n,
+    childItemId: 43n
+  });
+  assert.deepEqual(await steam.gameServerWorkshop.removeDependency(42n, 43n), {
+    result: 1,
+    itemId: 42n,
+    childItemId: 43n
+  });
+  assert.deepEqual(await steam.gameServerWorkshop.addAppDependency(42n, 480), {
+    result: 1,
+    itemId: 42n,
+    appId: 480
+  });
+  assert.deepEqual(await steam.gameServerWorkshop.removeAppDependency(42n, 480), {
+    result: 1,
+    itemId: 42n,
+    appId: 480
   });
   assert.deepEqual(await steam.gameServerWorkshop.getAppDependencies(42n), {
     result: 1,
@@ -12324,8 +12525,70 @@ test("game server workshop facade uses game-server native bindings", async (t) =
     numAppDependencies: 1,
     totalNumAppDependencies: 1
   });
+  assert.deepEqual(await steam.gameServerWorkshop.deleteItem(42n), { result: 1, itemId: 42n });
   assert.equal(steam.gameServerWorkshop.showEula(), true);
+  assert.deepEqual(await steam.gameServerWorkshop.getEulaStatus(), {
+    result: 1,
+    appId: 480,
+    version: 2,
+    actionTime: 1700000400,
+    accepted: true,
+    needsAction: false
+  });
   assert.deepEqual(steam.gameServerWorkshop.getUserContentDescriptorPreferences(8), [5]);
+  assert.equal(steam.gameServerWorkshop.state(42n), 4);
+  assert.deepEqual(steam.gameServerWorkshop.installInfo(42n), {
+    folder: "/tmp/server-workshop",
+    sizeOnDisk: 4096n,
+    timestamp: 1700000400
+  });
+  assert.deepEqual(steam.gameServerWorkshop.downloadInfo(42n), { current: 128n, total: 256n });
+  assert.equal(steam.gameServerWorkshop.download(42n, true), true);
+  assert.equal(steam.gameServerWorkshop.initWorkshopForGameServer(480, "/tmp/server-workshop"), true);
+  steam.gameServerWorkshop.suspendDownloads(true);
+  assert.equal(steam.gameServerWorkshop.setItemsDisabledLocally([42n, 43n], true), true);
+  assert.equal(steam.gameServerWorkshop.setSubscriptionsLoadOrder([43n, 42n]), true);
+  assert.equal(steam.gameServerWorkshop.markDownloadedItemAsUnused(42n), true);
+  assert.deepEqual(steam.gameServerWorkshop.getDownloadedItems(2), [42n, 43n]);
+  assert.deepEqual(steam.gameServerWorkshop.getSubscribedItems(), [42n, 43n]);
+  assert.equal(
+    (await steam.gameServerWorkshop.getAllItems(
+      1,
+      steam.gameServerWorkshop.UGCQueryType.RankedByVote,
+      steam.gameServerWorkshop.UGCType.Items,
+      480,
+      480,
+      { includeMetadata: true }
+    )).items[0].publishedFileId,
+    9876543210987654321n
+  );
+  assert.equal(
+    (await steam.gameServerWorkshop.getAllItemsByCursor(
+      "server-cursor-1",
+      steam.gameServerWorkshop.UGCQueryType.RankedByVote,
+      steam.gameServerWorkshop.UGCType.Items,
+      480,
+      480,
+      { includeMetadata: true }
+    )).nextCursor,
+    "server-cursor-2"
+  );
+  assert.equal(
+    (await steam.gameServerWorkshop.getUserItems(
+      1,
+      39734274,
+      steam.gameServerWorkshop.UserListType.Published,
+      steam.gameServerWorkshop.UGCType.Items,
+      steam.gameServerWorkshop.UserListOrder.CreationOrderDesc,
+      { creator: 480, consumer: 480 },
+      { includeMetadata: true }
+    )).items[0].statistics.numSubscriptions,
+    5n
+  );
+  const requestedDetails = await steam.gameServerWorkshop.requestItemDetails(42n, 60);
+  assert.equal(requestedDetails.wasCached, true);
+  assert.equal(requestedDetails.details.publishedFileId, 42n);
+  assert.deepEqual(requestedDetails.details.tags, ["server", "ugc"]);
 
   assert.deepEqual(fake.calls.find((call) => call.method === "gameServerWorkshopUpdateItemWithProgress"), {
     method: "gameServerWorkshopUpdateItemWithProgress",
@@ -12338,6 +12601,34 @@ test("game server workshop facade uses game-server native bindings", async (t) =
   assert.deepEqual(fake.calls.find((call) => call.method === "gameServerWorkshopGetAppDependencies"), {
     method: "gameServerWorkshopGetAppDependencies",
     args: [42n]
+  });
+  assert.deepEqual(fake.calls.find((call) => call.method === "gameServerWorkshopGetAllItemsByCursor"), {
+    method: "gameServerWorkshopGetAllItemsByCursor",
+    args: [
+      "server-cursor-1",
+      steam.gameServerWorkshop.UGCQueryType.RankedByVote,
+      steam.gameServerWorkshop.UGCType.Items,
+      480,
+      480,
+      { includeMetadata: true }
+    ]
+  });
+  assert.deepEqual(fake.calls.find((call) => call.method === "gameServerWorkshopGetUserItems"), {
+    method: "gameServerWorkshopGetUserItems",
+    args: [
+      1,
+      39734274,
+      steam.gameServerWorkshop.UserListType.Published,
+      steam.gameServerWorkshop.UGCType.Items,
+      steam.gameServerWorkshop.UserListOrder.CreationOrderDesc,
+      480,
+      480,
+      { includeMetadata: true }
+    ]
+  });
+  assert.deepEqual(fake.calls.find((call) => call.method === "gameServerWorkshopRequestItemDetails"), {
+    method: "gameServerWorkshopRequestItemDetails",
+    args: [42n, 60]
   });
 });
 
