@@ -182,7 +182,8 @@ const txn = await web.microTxnSandbox.initTxn({
 - `examples/electron-basic`: overlay-focused Electron smoke app using App ID
   `480`, with packaged smoke builds for every supported platform.
 - `docs/steam-api-coverage.md`: current Steamworks coverage and known gaps.
-- `docs/research`: implementation notes and platform research.
+- `docs/research`: implementation notes, platform research, and the current
+  cross-platform overlay verification status.
 - `.github/workflows`: CI and release/prebuild scaffolding.
 
 ## Local Development

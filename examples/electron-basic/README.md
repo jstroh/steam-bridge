@@ -74,6 +74,55 @@ npm run example:verify-result -- \
   --arch x64
 ```
 
+## Windows x64 Checks
+
+Package the Windows x64 smoke app on any supported build host:
+
+```sh
+npm run example:package:win -- --artifacts-dir /tmp/steam-bridge-release
+```
+
+Copy `dist/electron-smoke/x86_64-pc-windows-msvc/SteamBridgeSmoke-win32-x64`
+to the Windows machine. For a direct Steamworks initialization check, run from
+PowerShell while Steam is open:
+
+```powershell
+New-Item -ItemType Directory -Force C:\Temp | Out-Null
+Set-Location C:\Path\To\SteamBridgeSmoke-win32-x64
+.\SteamBridgeSmoke.exe `
+  --steam-bridge-app-id=480 `
+  --steam-bridge-smoke-autorun `
+  --steam-bridge-smoke-autorun-action=none `
+  --steam-bridge-smoke-result-file=C:\Temp\steam-bridge-smoke-windows-direct.log
+```
+
+For the overlay check, add `SteamBridgeSmoke.exe` as a non-Steam game in Steam,
+then set this launch options line on the shortcut:
+
+```text
+--steam-bridge-app-id=480 --steam-bridge-electron-overlay-profile=diagnostic --steam-bridge-smoke-autorun --steam-bridge-smoke-autorun-action=dialog --steam-bridge-smoke-autorun-result-delay-ms=8000 --steam-bridge-smoke-result-file=C:\Temp\steam-bridge-smoke-windows-steam-launch.log
+```
+
+Launch the shortcut from Steam, then copy
+`C:\Temp\steam-bridge-smoke-windows-steam-launch.log` back to the repo host and
+verify:
+
+```sh
+npm run example:verify-result -- \
+  --file /tmp/steam-bridge-smoke-windows-steam-launch.log \
+  --platform win32/x64 \
+  --app-id 480 \
+  --require-steam-launch \
+  --require-overlay-ready \
+  --action dialog \
+  --require-event overlay:dialog
+```
+
+On Windows, Steam's overlay hook is a DLL injection path rather than a stable
+environment variable, so `snapshot.launch.overlayInjection` is not currently a
+required assertion. Treat `overlayEnabled=true`, `overlayNeedsPresent=false`,
+and the Steam-launched autorun action as the required overlay signal.
+
 ## Steam Deck Checks
 
 For Game Mode, copy the Linux x64 output folder to the Deck and add the packaged
