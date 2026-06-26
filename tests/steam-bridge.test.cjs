@@ -4282,15 +4282,71 @@ test("media and remote facades expose typed callback helpers", (t) => {
 });
 
 test("overlay helpers map constants and forward modal/store options", (t) => {
-  const fake = createFakeNative();
+  const fake = createFakeNative({
+    openNativeOverlayProbeWindow(title) {
+      this.calls.push({ method: "openNativeOverlayProbeWindow", args: [title] });
+    },
+    attachNativeOverlayHostView(nativeWindowHandle) {
+      this.calls.push({ method: "attachNativeOverlayHostView", args: [nativeWindowHandle] });
+    },
+    pumpNativeOverlayProbeWindow() {
+      this.calls.push({ method: "pumpNativeOverlayProbeWindow", args: [] });
+    },
+    pumpNativeOverlayHostView() {
+      this.calls.push({ method: "pumpNativeOverlayHostView", args: [] });
+    },
+    showNativeOverlayHostView() {
+      this.calls.push({ method: "showNativeOverlayHostView", args: [] });
+    },
+    hideNativeOverlayHostView() {
+      this.calls.push({ method: "hideNativeOverlayHostView", args: [] });
+    },
+    updateNativeOverlayHostFrame(frame, width, height) {
+      this.calls.push({ method: "updateNativeOverlayHostFrame", args: [frame, width, height] });
+    },
+    closeNativeOverlayProbeWindow() {
+      this.calls.push({ method: "closeNativeOverlayProbeWindow", args: [] });
+    },
+    detachNativeOverlayHostView() {
+      this.calls.push({ method: "detachNativeOverlayHostView", args: [] });
+    },
+    isNativeOverlayProbeWindowOpen() {
+      this.calls.push({ method: "isNativeOverlayProbeWindowOpen", args: [] });
+      return true;
+    },
+    isNativeOverlayHostViewOpen() {
+      this.calls.push({ method: "isNativeOverlayHostViewOpen", args: [] });
+      return false;
+    },
+    getMacWindowSnapshot(appId) {
+      this.calls.push({ method: "getMacWindowSnapshot", args: [appId] });
+      return appId === 480 ? "snapshot" : undefined;
+    }
+  });
   const steam = loadSteamWithFakeNative(fake);
 
   t.after(clearSteamBridgeCache);
+
+  const nativeWindowHandle = Buffer.from([1, 2, 3, 4]);
+  const frame = Buffer.alloc(16, 255);
 
   steam.overlay.activateDialog(steam.Dialog.Achievements);
   steam.overlay.activateToWebPage("https://store.steampowered.com/app/480/", { modal: true });
   steam.overlay.activateDialogToUser(steam.Dialog.Friends, 76561198000000000n);
   steam.overlay.activateToStore(480, steam.StoreFlag.AddToCart);
+  steam.openNativeOverlayProbeWindow("Steam Overlay Probe");
+  steam.overlay.attachNativeOverlayHostView(nativeWindowHandle);
+  steam.overlay.pumpNativeOverlayProbeWindow();
+  steam.pumpNativeOverlayHostView();
+  steam.overlay.showNativeOverlayHostView();
+  steam.hideNativeOverlayHostView();
+  steam.overlay.updateNativeOverlayHostFrame(frame, 2, 2);
+  steam.closeNativeOverlayProbeWindow();
+  steam.overlay.detachNativeOverlayHostView();
+  assert.equal(steam.isNativeOverlayProbeWindowOpen(), true);
+  assert.equal(steam.overlay.isNativeOverlayHostViewOpen(), false);
+  assert.equal(steam.getMacWindowSnapshot(480), "snapshot");
+  assert.equal(steam.overlay.getMacWindowSnapshot(), undefined);
 
   assert.deepEqual(
     fake.calls.filter((call) => call.method.startsWith("activate") || call.method.startsWith("overlay")),
@@ -4299,6 +4355,39 @@ test("overlay helpers map constants and forward modal/store options", (t) => {
       { method: "activateOverlayToWebPage", args: ["https://store.steampowered.com/app/480/", true] },
       { method: "overlayActivateDialogToUser", args: ["Friends", 76561198000000000n] },
       { method: "overlayActivateToStore", args: [480, steam.StoreFlag.AddToCart] }
+    ]
+  );
+  assert.deepEqual(
+    fake.calls.filter((call) =>
+      [
+        "openNativeOverlayProbeWindow",
+        "attachNativeOverlayHostView",
+        "pumpNativeOverlayProbeWindow",
+        "pumpNativeOverlayHostView",
+        "showNativeOverlayHostView",
+        "hideNativeOverlayHostView",
+        "updateNativeOverlayHostFrame",
+        "closeNativeOverlayProbeWindow",
+        "detachNativeOverlayHostView",
+        "isNativeOverlayProbeWindowOpen",
+        "isNativeOverlayHostViewOpen",
+        "getMacWindowSnapshot"
+      ].includes(call.method)
+    ),
+    [
+      { method: "openNativeOverlayProbeWindow", args: ["Steam Overlay Probe"] },
+      { method: "attachNativeOverlayHostView", args: [nativeWindowHandle] },
+      { method: "pumpNativeOverlayProbeWindow", args: [] },
+      { method: "pumpNativeOverlayHostView", args: [] },
+      { method: "showNativeOverlayHostView", args: [] },
+      { method: "hideNativeOverlayHostView", args: [] },
+      { method: "updateNativeOverlayHostFrame", args: [frame, 2, 2] },
+      { method: "closeNativeOverlayProbeWindow", args: [] },
+      { method: "detachNativeOverlayHostView", args: [] },
+      { method: "isNativeOverlayProbeWindowOpen", args: [] },
+      { method: "isNativeOverlayHostViewOpen", args: [] },
+      { method: "getMacWindowSnapshot", args: [480] },
+      { method: "getMacWindowSnapshot", args: [undefined] }
     ]
   );
 });
