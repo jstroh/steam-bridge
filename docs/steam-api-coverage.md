@@ -111,12 +111,12 @@ covered.
 - HTTP: client and game-server request creation, configuration,
   send/stream-send initiation, response header/body reads, progress/timeout
   checks, raw POST bodies, cookie containers, request priority/defer, and HTTP
-  request callbacks.
+  request callbacks with typed client and game-server subscription helpers.
 - HTML surface: initialization/shutdown, browser creation/removal, navigation,
   sizing, headers, JavaScript execution, mouse/key input, scroll/focus,
   clipboard/source/find/link helpers, cookies, scale/background/DPI controls,
-  developer tools, request/dialog responses, file dialog responses, and HTML
-  callback events with structured metadata and paint-buffer delivery.
+  developer tools, request/dialog responses, file dialog responses, and typed
+  HTML callback helpers with structured metadata and paint-buffer delivery.
 - Steam Input: init/shutdown, action manifest selection, frame/data polling,
   connected controllers, device and direct action-event callbacks, gamepad
   index mapping, typed device/configuration/gamepad-slot callback helpers,
@@ -207,11 +207,11 @@ covered.
   structured decoding needs a newer SDK surface or a maintained local shim.
 - Additional specialized callback/event helpers outside the current lifecycle,
   apps, user/auth, Friends, Steam Input, networking, Remote Storage,
-  screenshots, music, video, parental settings, timeline, and Remote Play
-  callback-helper batches, for interfaces where a dedicated `on...` helper
-  would be clearer than the generic name-based subscription API. Generated
-  callback constants and generic name subscriptions are covered by the
-  automated coverage audit.
+  HTTP, HTML, screenshots, music, video, parental settings, timeline, and
+  Remote Play callback-helper batches, for interfaces where a dedicated
+  `on...` helper would be clearer than the generic name-based subscription API.
+  Generated callback constants and generic name subscriptions are covered by
+  the automated coverage audit.
 - `ISteamPS3OverlayRenderHost` and `ISteamPS3OverlayRender` are PlayStation 3
   overlay interfaces and are outside Steam Bridge's supported Steam desktop
   targets.

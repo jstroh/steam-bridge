@@ -7954,6 +7954,347 @@ test("game server HTTP facade covers request lifecycle and response reads", asyn
   });
 });
 
+test("http facades expose typed callback helpers", (t) => {
+  const fake = createFakeNative();
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  let completedEvent;
+  let headersEvent;
+  let dataEvent;
+  const handles = [
+    steam.http.onRequestCompleted((event) => {
+      completedEvent = event;
+    }),
+    steam.http.onRequestHeadersReceived((event) => {
+      headersEvent = event;
+    }),
+    steam.http.onRequestDataReceived((event) => {
+      dataEvent = event;
+    })
+  ];
+
+  fake.callbacks.get(steam.SteamCallback.HTTPRequestCompleted)({
+    request: 11,
+    context_value: "9007199254740993",
+    request_successful: true,
+    status_code: 206,
+    body_size: 4096
+  });
+  fake.callbacks.get(steam.SteamCallback.HTTPRequestHeadersReceived)({
+    request: 12,
+    context_value: "9007199254740994"
+  });
+  fake.callbacks.get(steam.SteamCallback.HTTPRequestDataReceived)({
+    request: 13,
+    context_value: "9007199254740995",
+    offset: 128,
+    bytes_received: 512
+  });
+
+  assert.equal(completedEvent.contextValue, 9007199254740993n);
+  assert.equal(completedEvent.requestSuccessful, true);
+  assert.equal(completedEvent.statusCode, 206);
+  assert.equal(completedEvent.bodySize, 4096);
+  assert.equal(headersEvent.contextValue, 9007199254740994n);
+  assert.equal(dataEvent.contextValue, 9007199254740995n);
+  assert.equal(dataEvent.bytesReceived, 512);
+
+  handles.forEach((handle) => handle.disconnect());
+
+  let serverDataEvent;
+  const serverHandle = steam.gameServerHttp.onRequestDataReceived((event) => {
+    serverDataEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.HTTPRequestDataReceived)({
+    request: 14,
+    context_value: "9007199254740996",
+    offset: 256,
+    bytes_received: 1024
+  });
+  assert.equal(serverDataEvent.contextValue, 9007199254740996n);
+  assert.equal(serverDataEvent.bytesReceived, 1024);
+  serverHandle.disconnect();
+
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "registerSteamCallback"),
+    [
+      { method: "registerSteamCallback", args: [steam.SteamCallback.HTTPRequestCompleted] },
+      { method: "registerSteamCallback", args: [steam.SteamCallback.HTTPRequestHeadersReceived] },
+      { method: "registerSteamCallback", args: [steam.SteamCallback.HTTPRequestDataReceived] },
+      { method: "registerSteamCallback", args: [steam.SteamCallback.HTTPRequestDataReceived] }
+    ]
+  );
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "disconnectCallback"),
+    [
+      { method: "disconnectCallback", args: [steam.SteamCallback.HTTPRequestCompleted] },
+      { method: "disconnectCallback", args: [steam.SteamCallback.HTTPRequestHeadersReceived] },
+      { method: "disconnectCallback", args: [steam.SteamCallback.HTTPRequestDataReceived] },
+      { method: "disconnectCallback", args: [steam.SteamCallback.HTTPRequestDataReceived] }
+    ]
+  );
+});
+
+test("html facade exposes typed callback helpers", (t) => {
+  const fake = createFakeNative();
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  const events = {};
+  const handles = [
+    steam.html.onBrowserReady((event) => {
+      events.browserReady = event;
+    }),
+    steam.html.onNeedsPaint((event) => {
+      events.needsPaint = event;
+    }),
+    steam.html.onStartRequest((event) => {
+      events.startRequest = event;
+    }),
+    steam.html.onCloseBrowser((event) => {
+      events.closeBrowser = event;
+    }),
+    steam.html.onUrlChanged((event) => {
+      events.urlChanged = event;
+    }),
+    steam.html.onFinishedRequest((event) => {
+      events.finishedRequest = event;
+    }),
+    steam.html.onOpenLinkInNewTab((event) => {
+      events.openLinkInNewTab = event;
+    }),
+    steam.html.onChangedTitle((event) => {
+      events.changedTitle = event;
+    }),
+    steam.html.onSearchResults((event) => {
+      events.searchResults = event;
+    }),
+    steam.html.onCanGoBackAndForward((event) => {
+      events.canGoBackAndForward = event;
+    }),
+    steam.html.onHorizontalScroll((event) => {
+      events.horizontalScroll = event;
+    }),
+    steam.html.onVerticalScroll((event) => {
+      events.verticalScroll = event;
+    }),
+    steam.html.onLinkAtPosition((event) => {
+      events.linkAtPosition = event;
+    }),
+    steam.html.onJsAlert((event) => {
+      events.jsAlert = event;
+    }),
+    steam.html.onJsConfirm((event) => {
+      events.jsConfirm = event;
+    }),
+    steam.html.onFileOpenDialog((event) => {
+      events.fileOpenDialog = event;
+    }),
+    steam.html.onNewWindow((event) => {
+      events.newWindow = event;
+    }),
+    steam.html.onSetCursor((event) => {
+      events.setCursor = event;
+    }),
+    steam.html.onStatusText((event) => {
+      events.statusText = event;
+    }),
+    steam.html.onShowToolTip((event) => {
+      events.showToolTip = event;
+    }),
+    steam.html.onUpdateToolTip((event) => {
+      events.updateToolTip = event;
+    }),
+    steam.html.onHideToolTip((event) => {
+      events.hideToolTip = event;
+    }),
+    steam.html.onBrowserRestarted((event) => {
+      events.browserRestarted = event;
+    })
+  ];
+  const callbackNames = [
+    "HTMLBrowserReady",
+    "HTMLNeedsPaint",
+    "HTMLStartRequest",
+    "HTMLCloseBrowser",
+    "HTMLURLChanged",
+    "HTMLFinishedRequest",
+    "HTMLOpenLinkInNewTab",
+    "HTMLChangedTitle",
+    "HTMLSearchResults",
+    "HTMLCanGoBackAndForward",
+    "HTMLHorizontalScroll",
+    "HTMLVerticalScroll",
+    "HTMLLinkAtPosition",
+    "HTMLJSAlert",
+    "HTMLJSConfirm",
+    "HTMLFileOpenDialog",
+    "HTMLNewWindow",
+    "HTMLSetCursor",
+    "HTMLStatusText",
+    "HTMLShowToolTip",
+    "HTMLUpdateToolTip",
+    "HTMLHideToolTip",
+    "HTMLBrowserRestarted"
+  ];
+  const emit = (callbackName, payload) => {
+    fake.callbacks.get(steam.SteamCallback[callbackName])(payload);
+  };
+
+  emit("HTMLBrowserReady", { browser_handle: 55 });
+  emit("HTMLNeedsPaint", {
+    browser_handle: 55,
+    has_bgra_data: true,
+    bgra_byte_length: 4,
+    bgra_base64: Buffer.from([4, 3, 2, 1]).toString("base64"),
+    bgra_truncated: false,
+    wide: 1,
+    tall: 1,
+    update_x: 2,
+    update_y: 3,
+    update_wide: 4,
+    update_tall: 5,
+    scroll_x: 6,
+    scroll_y: 7,
+    page_scale: 1.5,
+    page_serial: 8
+  });
+  emit("HTMLStartRequest", {
+    browser_handle: 55,
+    url: "https://example.invalid/start",
+    target: "_blank",
+    post_data: "a=b",
+    is_redirect: true
+  });
+  emit("HTMLCloseBrowser", { browser_handle: 55 });
+  emit("HTMLURLChanged", {
+    browser_handle: 55,
+    url: "https://example.invalid/next",
+    post_data: "c=d",
+    is_redirect: false,
+    page_title: "Next",
+    new_navigation: true
+  });
+  emit("HTMLFinishedRequest", {
+    browser_handle: 55,
+    url: "https://example.invalid/done",
+    page_title: "Done"
+  });
+  emit("HTMLOpenLinkInNewTab", {
+    browser_handle: 55,
+    url: "https://example.invalid/tab"
+  });
+  emit("HTMLChangedTitle", {
+    browser_handle: 55,
+    title: "Changed"
+  });
+  emit("HTMLSearchResults", {
+    browser_handle: 55,
+    results: 9,
+    current_match: 3
+  });
+  emit("HTMLCanGoBackAndForward", {
+    browser_handle: 55,
+    can_go_back: true,
+    can_go_forward: false
+  });
+  emit("HTMLHorizontalScroll", {
+    browser_handle: 55,
+    scroll_max: 100,
+    scroll_current: 25,
+    page_scale: 1.25,
+    visible: true,
+    page_size: 50
+  });
+  emit("HTMLVerticalScroll", {
+    browser_handle: 55,
+    scroll_max: 200,
+    scroll_current: 75,
+    page_scale: 1.75,
+    visible: false,
+    page_size: 80
+  });
+  emit("HTMLLinkAtPosition", {
+    browser_handle: 55,
+    x: 10,
+    y: 20,
+    url: "https://example.invalid/link",
+    input: true,
+    live_link: false
+  });
+  emit("HTMLJSAlert", { browser_handle: 55, message: "alert" });
+  emit("HTMLJSConfirm", { browser_handle: 55, message: "confirm" });
+  emit("HTMLFileOpenDialog", {
+    browser_handle: 55,
+    title: "Open",
+    initial_file: "/tmp/file.txt"
+  });
+  emit("HTMLNewWindow", {
+    browser_handle: 55,
+    url: "https://example.invalid/new",
+    x: 1,
+    y: 2,
+    wide: 640,
+    tall: 360,
+    new_window_browser_handle: 77
+  });
+  emit("HTMLSetCursor", { browser_handle: 55, mouse_cursor: steam.html.MouseCursor.Hand });
+  emit("HTMLStatusText", { browser_handle: 55, message: "status" });
+  emit("HTMLShowToolTip", { browser_handle: 55, message: "show" });
+  emit("HTMLUpdateToolTip", { browser_handle: 55, message: "update" });
+  emit("HTMLHideToolTip", { browser_handle: 55 });
+  emit("HTMLBrowserRestarted", {
+    browser_handle: 56,
+    old_browser_handle: 55
+  });
+
+  assert.equal(events.browserReady.browserHandle, 55);
+  assert.deepEqual(events.needsPaint.bgra, Buffer.from([4, 3, 2, 1]));
+  assert.equal(events.needsPaint.hasBgraData, true);
+  assert.equal(events.needsPaint.updateWide, 4);
+  assert.equal(events.needsPaint.scrollY, 7);
+  assert.equal(events.startRequest.postData, "a=b");
+  assert.equal(events.startRequest.isRedirect, true);
+  assert.equal(events.closeBrowser.browserHandle, 55);
+  assert.equal(events.urlChanged.pageTitle, "Next");
+  assert.equal(events.urlChanged.newNavigation, true);
+  assert.equal(events.finishedRequest.pageTitle, "Done");
+  assert.equal(events.openLinkInNewTab.url, "https://example.invalid/tab");
+  assert.equal(events.changedTitle.title, "Changed");
+  assert.equal(events.searchResults.currentMatch, 3);
+  assert.equal(events.canGoBackAndForward.canGoBack, true);
+  assert.equal(events.canGoBackAndForward.canGoForward, false);
+  assert.equal(events.horizontalScroll.scrollCurrent, 25);
+  assert.equal(events.horizontalScroll.pageSize, 50);
+  assert.equal(events.verticalScroll.scrollCurrent, 75);
+  assert.equal(events.verticalScroll.visible, false);
+  assert.equal(events.linkAtPosition.liveLink, false);
+  assert.equal(events.jsAlert.message, "alert");
+  assert.equal(events.jsConfirm.message, "confirm");
+  assert.equal(events.fileOpenDialog.initialFile, "/tmp/file.txt");
+  assert.equal(events.newWindow.newWindowBrowserHandle, 77);
+  assert.equal(events.setCursor.mouseCursor, steam.html.MouseCursor.Hand);
+  assert.equal(events.statusText.message, "status");
+  assert.equal(events.showToolTip.message, "show");
+  assert.equal(events.updateToolTip.message, "update");
+  assert.equal(events.hideToolTip.browserHandle, 55);
+  assert.equal(events.browserRestarted.oldBrowserHandle, 55);
+
+  handles.forEach((handle) => handle.disconnect());
+
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "registerSteamCallback").map((call) => call.args[0]),
+    callbackNames.map((callbackName) => steam.SteamCallback[callbackName])
+  );
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "disconnectCallback").map((call) => call.args[0]),
+    callbackNames.map((callbackName) => steam.SteamCallback[callbackName])
+  );
+});
+
 test("html facade covers browser lifecycle, input, and callbacks", async (t) => {
   const fake = createFakeNative({
     htmlInit() {

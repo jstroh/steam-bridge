@@ -865,6 +865,29 @@ export interface HttpRequestHeadersReceived {
   contextValue: bigint;
 }
 
+export interface HttpRequestCompletedEvent extends HttpRequestCompleted {
+  context_value?: bigint;
+  request_successful?: boolean;
+  status_code?: number;
+  body_size?: number;
+  [key: string]: unknown;
+}
+
+export interface HttpRequestHeadersReceivedEvent extends HttpRequestHeadersReceived {
+  context_value?: bigint;
+  [key: string]: unknown;
+}
+
+export interface HttpRequestDataReceivedEvent {
+  request: number;
+  contextValue: bigint;
+  context_value?: bigint;
+  offset: number;
+  bytesReceived: number;
+  bytes_received?: number;
+  [key: string]: unknown;
+}
+
 export interface PartyBeaconLocation {
   locationType: number;
   locationId: bigint;
@@ -1237,6 +1260,145 @@ export interface HtmlCookieOptions {
   expires?: number;
   secure?: boolean;
   httpOnly?: boolean;
+}
+
+export interface HtmlBrowserEvent {
+  browserHandle: number;
+  browser_handle?: number;
+  [key: string]: unknown;
+}
+
+export interface HtmlNeedsPaintEvent extends HtmlBrowserEvent {
+  hasBgraData: boolean;
+  has_bgra_data?: boolean;
+  bgraByteLength: number;
+  bgra_byte_length?: number;
+  bgraBase64?: string | null;
+  bgra_base64?: string | null;
+  bgraTruncated: boolean;
+  bgra_truncated?: boolean;
+  bgra?: Buffer;
+  wide: number;
+  tall: number;
+  updateX: number;
+  update_x?: number;
+  updateY: number;
+  update_y?: number;
+  updateWide: number;
+  update_wide?: number;
+  updateTall: number;
+  update_tall?: number;
+  scrollX: number;
+  scroll_x?: number;
+  scrollY: number;
+  scroll_y?: number;
+  pageScale: number;
+  page_scale?: number;
+  pageSerial: number;
+  page_serial?: number;
+}
+
+export interface HtmlStartRequestEvent extends HtmlBrowserEvent {
+  url: string;
+  target: string;
+  postData: string;
+  post_data?: string;
+  isRedirect: boolean;
+  is_redirect?: boolean;
+}
+
+export interface HtmlUrlChangedEvent extends HtmlBrowserEvent {
+  url: string;
+  postData: string;
+  post_data?: string;
+  isRedirect: boolean;
+  is_redirect?: boolean;
+  pageTitle: string;
+  page_title?: string;
+  newNavigation: boolean;
+  new_navigation?: boolean;
+}
+
+export interface HtmlFinishedRequestEvent extends HtmlBrowserEvent {
+  url: string;
+  pageTitle: string;
+  page_title?: string;
+}
+
+export interface HtmlOpenLinkInNewTabEvent extends HtmlBrowserEvent {
+  url: string;
+}
+
+export interface HtmlChangedTitleEvent extends HtmlBrowserEvent {
+  title: string;
+}
+
+export interface HtmlSearchResultsEvent extends HtmlBrowserEvent {
+  results: number;
+  currentMatch: number;
+  current_match?: number;
+}
+
+export interface HtmlCanGoBackAndForwardEvent extends HtmlBrowserEvent {
+  canGoBack: boolean;
+  can_go_back?: boolean;
+  canGoForward: boolean;
+  can_go_forward?: boolean;
+}
+
+export interface HtmlScrollEvent extends HtmlBrowserEvent {
+  scrollMax: number;
+  scroll_max?: number;
+  scrollCurrent: number;
+  scroll_current?: number;
+  pageScale: number;
+  page_scale?: number;
+  visible: boolean;
+  pageSize: number;
+  page_size?: number;
+}
+
+export interface HtmlLinkAtPositionEvent extends HtmlBrowserEvent {
+  x: number;
+  y: number;
+  url: string;
+  input: boolean;
+  liveLink: boolean;
+  live_link?: boolean;
+}
+
+export interface HtmlDialogEvent extends HtmlBrowserEvent {
+  message: string;
+}
+
+export interface HtmlFileOpenDialogEvent extends HtmlBrowserEvent {
+  title: string;
+  initialFile: string;
+  initial_file?: string;
+}
+
+export interface HtmlNewWindowEvent extends HtmlBrowserEvent {
+  url: string;
+  x: number;
+  y: number;
+  wide: number;
+  tall: number;
+  newWindowBrowserHandle: number;
+  new_window_browser_handle?: number;
+}
+
+export interface HtmlSetCursorEvent extends HtmlBrowserEvent {
+  mouseCursor: number;
+  mouse_cursor?: number;
+}
+
+export interface HtmlMessageEvent extends HtmlBrowserEvent {
+  message: string;
+}
+
+export interface HtmlBrowserRestartedEvent extends HtmlBrowserEvent {
+  oldBrowserHandle: number;
+  old_browser_handle?: number;
 }
 
 export interface UtilsImageSize {
@@ -7187,6 +7349,21 @@ export const cloud = {
 
 export const http = {
   HttpMethod,
+  onRequestCompleted(handler: (event: HttpRequestCompletedEvent) => void): CallbackHandle {
+    return onSteamCallback("HTTPRequestCompleted", (event) => {
+      handler(event as HttpRequestCompletedEvent);
+    });
+  },
+  onRequestHeadersReceived(handler: (event: HttpRequestHeadersReceivedEvent) => void): CallbackHandle {
+    return onSteamCallback("HTTPRequestHeadersReceived", (event) => {
+      handler(event as HttpRequestHeadersReceivedEvent);
+    });
+  },
+  onRequestDataReceived(handler: (event: HttpRequestDataReceivedEvent) => void): CallbackHandle {
+    return onSteamCallback("HTTPRequestDataReceived", (event) => {
+      handler(event as HttpRequestDataReceivedEvent);
+    });
+  },
   createRequest(method: HttpMethodValue | number, url: string): number {
     return native().httpCreateRequest(Number(method), url);
   },
@@ -7271,6 +7448,21 @@ export const http = {
 
 export const gameServerHttp = {
   HttpMethod,
+  onRequestCompleted(handler: (event: HttpRequestCompletedEvent) => void): CallbackHandle {
+    return onSteamCallback("HTTPRequestCompleted", (event) => {
+      handler(event as HttpRequestCompletedEvent);
+    });
+  },
+  onRequestHeadersReceived(handler: (event: HttpRequestHeadersReceivedEvent) => void): CallbackHandle {
+    return onSteamCallback("HTTPRequestHeadersReceived", (event) => {
+      handler(event as HttpRequestHeadersReceivedEvent);
+    });
+  },
+  onRequestDataReceived(handler: (event: HttpRequestDataReceivedEvent) => void): CallbackHandle {
+    return onSteamCallback("HTTPRequestDataReceived", (event) => {
+      handler(event as HttpRequestDataReceivedEvent);
+    });
+  },
   createRequest(method: HttpMethodValue | number, url: string): number {
     return native().gameServerHttpCreateRequest(Number(method), url);
   },
@@ -7357,6 +7549,121 @@ export const html = {
   MouseButton: HtmlMouseButton,
   MouseCursor: HtmlMouseCursor,
   KeyModifier: HtmlKeyModifier,
+  onBrowserReady(handler: (event: HtmlBrowserEvent) => void): CallbackHandle {
+    return onSteamCallback("HTMLBrowserReady", (event) => {
+      handler(event as HtmlBrowserEvent);
+    });
+  },
+  onNeedsPaint(handler: (event: HtmlNeedsPaintEvent) => void): CallbackHandle {
+    return onSteamCallback("HTMLNeedsPaint", (event) => {
+      handler(event as HtmlNeedsPaintEvent);
+    });
+  },
+  onStartRequest(handler: (event: HtmlStartRequestEvent) => void): CallbackHandle {
+    return onSteamCallback("HTMLStartRequest", (event) => {
+      handler(event as HtmlStartRequestEvent);
+    });
+  },
+  onCloseBrowser(handler: (event: HtmlBrowserEvent) => void): CallbackHandle {
+    return onSteamCallback("HTMLCloseBrowser", (event) => {
+      handler(event as HtmlBrowserEvent);
+    });
+  },
+  onUrlChanged(handler: (event: HtmlUrlChangedEvent) => void): CallbackHandle {
+    return onSteamCallback("HTMLURLChanged", (event) => {
+      handler(event as HtmlUrlChangedEvent);
+    });
+  },
+  onFinishedRequest(handler: (event: HtmlFinishedRequestEvent) => void): CallbackHandle {
+    return onSteamCallback("HTMLFinishedRequest", (event) => {
+      handler(event as HtmlFinishedRequestEvent);
+    });
+  },
+  onOpenLinkInNewTab(handler: (event: HtmlOpenLinkInNewTabEvent) => void): CallbackHandle {
+    return onSteamCallback("HTMLOpenLinkInNewTab", (event) => {
+      handler(event as HtmlOpenLinkInNewTabEvent);
+    });
+  },
+  onChangedTitle(handler: (event: HtmlChangedTitleEvent) => void): CallbackHandle {
+    return onSteamCallback("HTMLChangedTitle", (event) => {
+      handler(event as HtmlChangedTitleEvent);
+    });
+  },
+  onSearchResults(handler: (event: HtmlSearchResultsEvent) => void): CallbackHandle {
+    return onSteamCallback("HTMLSearchResults", (event) => {
+      handler(event as HtmlSearchResultsEvent);
+    });
+  },
+  onCanGoBackAndForward(handler: (event: HtmlCanGoBackAndForwardEvent) => void): CallbackHandle {
+    return onSteamCallback("HTMLCanGoBackAndForward", (event) => {
+      handler(event as HtmlCanGoBackAndForwardEvent);
+    });
+  },
+  onHorizontalScroll(handler: (event: HtmlScrollEvent) => void): CallbackHandle {
+    return onSteamCallback("HTMLHorizontalScroll", (event) => {
+      handler(event as HtmlScrollEvent);
+    });
+  },
+  onVerticalScroll(handler: (event: HtmlScrollEvent) => void): CallbackHandle {
+    return onSteamCallback("HTMLVerticalScroll", (event) => {
+      handler(event as HtmlScrollEvent);
+    });
+  },
+  onLinkAtPosition(handler: (event: HtmlLinkAtPositionEvent) => void): CallbackHandle {
+    return onSteamCallback("HTMLLinkAtPosition", (event) => {
+      handler(event as HtmlLinkAtPositionEvent);
+    });
+  },
+  onJsAlert(handler: (event: HtmlDialogEvent) => void): CallbackHandle {
+    return onSteamCallback("HTMLJSAlert", (event) => {
+      handler(event as HtmlDialogEvent);
+    });
+  },
+  onJsConfirm(handler: (event: HtmlDialogEvent) => void): CallbackHandle {
+    return onSteamCallback("HTMLJSConfirm", (event) => {
+      handler(event as HtmlDialogEvent);
+    });
+  },
+  onFileOpenDialog(handler: (event: HtmlFileOpenDialogEvent) => void): CallbackHandle {
+    return onSteamCallback("HTMLFileOpenDialog", (event) => {
+      handler(event as HtmlFileOpenDialogEvent);
+    });
+  },
+  onNewWindow(handler: (event: HtmlNewWindowEvent) => void): CallbackHandle {
+    return onSteamCallback("HTMLNewWindow", (event) => {
+      handler(event as HtmlNewWindowEvent);
+    });
+  },
+  onSetCursor(handler: (event: HtmlSetCursorEvent) => void): CallbackHandle {
+    return onSteamCallback("HTMLSetCursor", (event) => {
+      handler(event as HtmlSetCursorEvent);
+    });
+  },
+  onStatusText(handler: (event: HtmlMessageEvent) => void): CallbackHandle {
+    return onSteamCallback("HTMLStatusText", (event) => {
+      handler(event as HtmlMessageEvent);
+    });
+  },
+  onShowToolTip(handler: (event: HtmlMessageEvent) => void): CallbackHandle {
+    return onSteamCallback("HTMLShowToolTip", (event) => {
+      handler(event as HtmlMessageEvent);
+    });
+  },
+  onUpdateToolTip(handler: (event: HtmlMessageEvent) => void): CallbackHandle {
+    return onSteamCallback("HTMLUpdateToolTip", (event) => {
+      handler(event as HtmlMessageEvent);
+    });
+  },
+  onHideToolTip(handler: (event: HtmlBrowserEvent) => void): CallbackHandle {
+    return onSteamCallback("HTMLHideToolTip", (event) => {
+      handler(event as HtmlBrowserEvent);
+    });
+  },
+  onBrowserRestarted(handler: (event: HtmlBrowserRestartedEvent) => void): CallbackHandle {
+    return onSteamCallback("HTMLBrowserRestarted", (event) => {
+      handler(event as HtmlBrowserRestartedEvent);
+    });
+  },
   init(): boolean {
     return native().htmlInit();
   },
@@ -15474,6 +15781,7 @@ function normalizeCallbackEvent(callbackId: number, event: unknown): unknown {
     "lobby_steam_id",
     "friend_steam_id",
     "async_call",
+    "context_value",
     "file_size",
     "owner_steam_id",
     "group_id",
@@ -15528,11 +15836,15 @@ function normalizeCallbackEvent(callbackId: number, event: unknown): unknown {
     bgra_byte_length: "bgraByteLength",
     bgra_truncated: "bgraTruncated",
     browser_handle: "browserHandle",
+    body_size: "bodySize",
+    bytes_received: "bytesReceived",
     bytes_read: "bytesRead",
     can_go_back: "canGoBack",
     can_go_forward: "canGoForward",
+    context_value: "contextValue",
     consumer_app_id: "consumerAppId",
     creator_app_id: "creatorAppId",
+    current_match: "currentMatch",
     deny_reason: "denyReason",
     device_handle: "deviceHandle",
     device_type: "deviceType",
@@ -15621,6 +15933,7 @@ function normalizeCallbackEvent(callbackId: number, event: unknown): unknown {
     recording_ms: "recordingMs",
     reputation_score: "reputationScore",
     repeat_status: "repeatStatus",
+    request_successful: "requestSuccessful",
     results_returned: "resultsReturned",
     returned_results: "returnedResults",
     seconds_allowed: "secondsAllowed",
@@ -15639,6 +15952,7 @@ function normalizeCallbackEvent(callbackId: number, event: unknown): unknown {
     steam_guard_required_days: "steamGuardRequiredDays",
     steam_ids: "steamIds",
     still_retrying: "stillRetrying",
+    status_code: "statusCode",
     start_index: "startIndex",
     submitted_text: "submittedText",
     subscribed_times: "subscribedTimes",
