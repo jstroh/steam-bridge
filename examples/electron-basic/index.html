@@ -5,44 +5,452 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Steam Bridge Electron Smoke</title>
     <style>
+      :root {
+        color-scheme: light;
+        --bg: #f4f7fb;
+        --panel: #ffffff;
+        --text: #142033;
+        --muted: #5d6a7c;
+        --border: #d8e0eb;
+        --good: #0f7b4f;
+        --bad: #b42318;
+        --warn: #9a6700;
+        --button: #17324d;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
       body {
+        margin: 0;
+        color: var(--text);
+        background: var(--bg);
         font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        margin: 32px;
-        color: #172033;
-        background: #f6f8fb;
+      }
+
+      main {
+        display: grid;
+        gap: 16px;
+        max-width: 1180px;
+        margin: 0 auto;
+        padding: 24px;
+      }
+
+      header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 16px;
+      }
+
+      h1,
+      h2 {
+        margin: 0;
+        letter-spacing: 0;
+      }
+
+      h1 {
+        font-size: 28px;
+        line-height: 1.1;
+      }
+
+      h2 {
+        font-size: 15px;
+        line-height: 1.2;
+      }
+
+      .subtle {
+        margin: 6px 0 0;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
       }
 
       button {
-        margin: 0 8px 8px 0;
+        min-height: 36px;
+        border: 1px solid transparent;
+        border-radius: 6px;
+        padding: 0 12px;
+        color: #ffffff;
+        background: var(--button);
+        font: inherit;
+        font-size: 13px;
+        cursor: pointer;
+      }
+
+      button.secondary {
+        color: var(--text);
+        background: #ffffff;
+        border-color: var(--border);
+      }
+
+      button:disabled {
+        cursor: not-allowed;
+        opacity: 0.55;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 16px;
+      }
+
+      section {
+        min-width: 0;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--panel);
+      }
+
+      section.wide {
+        grid-column: 1 / -1;
+      }
+
+      section > header {
+        padding: 14px 16px 0;
+      }
+
+      .body {
+        padding: 14px 16px 16px;
+      }
+
+      .status-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 8px;
+      }
+
+      .status {
+        min-height: 64px;
+        padding: 10px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: #f9fbfe;
+      }
+
+      .label {
+        color: var(--muted);
+        font-size: 11px;
+        text-transform: uppercase;
+      }
+
+      .value {
+        margin-top: 4px;
+        overflow-wrap: anywhere;
+        font-size: 15px;
+        font-weight: 650;
+      }
+
+      .good {
+        color: var(--good);
+      }
+
+      .bad {
+        color: var(--bad);
+      }
+
+      .warn {
+        color: var(--warn);
       }
 
       pre {
-        padding: 16px;
+        max-height: 320px;
+        margin: 0;
         overflow: auto;
-        background: #ffffff;
-        border: 1px solid #dde3ee;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        color: #111827;
+        background: #f8fafc;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 12px;
+        font-size: 12px;
+        line-height: 1.45;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+      }
+
+      th,
+      td {
+        padding: 7px 0;
+        border-bottom: 1px solid #edf1f7;
+        text-align: left;
+        vertical-align: top;
+      }
+
+      th {
+        width: 38%;
+        color: var(--muted);
+        font-weight: 500;
+      }
+
+      td {
+        overflow-wrap: anywhere;
+      }
+
+      @media (max-width: 860px) {
+        main {
+          padding: 16px;
+        }
+
+        header {
+          display: grid;
+        }
+
+        .grid,
+        .status-grid {
+          grid-template-columns: 1fr;
+        }
       }
     </style>
   </head>
   <body>
-    <h1>Steam Bridge Electron Smoke</h1>
-    <p>Uses Valve's SpaceWar sample App ID 480 by default.</p>
-    <button id="id">Steam ID</button>
-    <button id="deck">Steam Deck</button>
-    <button id="ticket">Web API Ticket</button>
-    <button id="overlay">Overlay Web Page</button>
-    <pre id="output">Ready</pre>
+    <main>
+      <header>
+        <div>
+          <h1>Steam Bridge Electron Smoke</h1>
+          <p class="subtle">App ID <span id="app-id">480</span> · overlay-first diagnostics</p>
+        </div>
+        <div class="actions">
+          <button id="refresh" class="secondary">Refresh</button>
+          <button id="ticket">Auth Ticket</button>
+          <button id="store">Store Overlay</button>
+          <button id="web">Web Overlay</button>
+          <button id="dialog" class="secondary">Friends Overlay</button>
+          <button id="probe-open" class="secondary">Open Probe</button>
+          <button id="probe-pump" class="secondary">Pump Probe</button>
+          <button id="probe-close" class="secondary">Close Probe</button>
+        </div>
+      </header>
+
+      <section>
+        <div class="body status-grid" id="status"></div>
+      </section>
+
+      <div class="grid">
+        <section>
+          <header>
+            <h2>Runtime</h2>
+          </header>
+          <div class="body">
+            <table id="runtime"></table>
+          </div>
+        </section>
+
+        <section>
+          <header>
+            <h2>Steam</h2>
+          </header>
+          <div class="body">
+            <table id="steam"></table>
+          </div>
+        </section>
+
+        <section>
+          <header>
+            <h2>Account And App</h2>
+          </header>
+          <div class="body">
+            <pre id="account">Waiting for Steam snapshot...</pre>
+          </div>
+        </section>
+
+        <section>
+          <header>
+            <h2>Input</h2>
+          </header>
+          <div class="body">
+            <pre id="input">Waiting for Steam snapshot...</pre>
+          </div>
+        </section>
+
+        <section class="wide">
+          <header>
+            <h2>Overlay Diagnostics</h2>
+          </header>
+          <div class="body">
+            <pre id="overlay">Waiting for Steam snapshot...</pre>
+          </div>
+        </section>
+
+        <section>
+          <header>
+            <h2>Last Operation</h2>
+          </header>
+          <div class="body">
+            <pre id="operation">Ready</pre>
+          </div>
+        </section>
+
+        <section>
+          <header>
+            <h2>Callbacks</h2>
+          </header>
+          <div class="body">
+            <pre id="events">No callbacks yet</pre>
+          </div>
+        </section>
+      </div>
+    </main>
+
     <script>
-      const output = document.getElementById("output");
-      const write = (value) => {
-        output.textContent = typeof value === "string" ? value : JSON.stringify(value, null, 2);
+      const els = {
+        appId: document.getElementById("app-id"),
+        status: document.getElementById("status"),
+        runtime: document.getElementById("runtime"),
+        steam: document.getElementById("steam"),
+        account: document.getElementById("account"),
+        input: document.getElementById("input"),
+        overlay: document.getElementById("overlay"),
+        operation: document.getElementById("operation"),
+        events: document.getElementById("events")
       };
 
-      document.getElementById("id").onclick = async () => write(await window.steam.getSteamId());
-      document.getElementById("deck").onclick = async () => write({ isSteamDeck: await window.steam.isSteamDeck() });
-      document.getElementById("ticket").onclick = async () => write({ bytes: (await window.steam.getAuthTicketForWebApi()).length });
-      document.getElementById("overlay").onclick = async () => window.steam.activateToWebPage("https://store.steampowered.com/app/480/");
-      window.steam.onMicroTxnAuthorizationResponse((event) => write(event));
+      let latest;
+      let busy = false;
+
+      const unwrap = (entry) => entry && entry.ok ? entry.value : entry;
+      const failed = (entry) => entry && entry.ok === false;
+      const yesNo = (entry) => {
+        if (failed(entry)) return "error";
+        return unwrap(entry) ? "yes" : "no";
+      };
+      const writeJson = (element, value) => {
+        element.textContent = JSON.stringify(value, null, 2);
+      };
+      const row = (label, value) => `<tr><th>${escapeHtml(label)}</th><td>${escapeHtml(format(value))}</td></tr>`;
+      const statusTile = (label, value, tone = "") => `
+        <div class="status">
+          <div class="label">${escapeHtml(label)}</div>
+          <div class="value ${tone}">${escapeHtml(format(value))}</div>
+        </div>
+      `;
+
+      async function refresh() {
+        if (busy) return;
+        busy = true;
+        try {
+          latest = await window.steamSmoke.snapshot();
+          render(latest);
+        } catch (error) {
+          els.operation.textContent = error && error.message ? error.message : String(error);
+        } finally {
+          busy = false;
+        }
+      }
+
+      function render(snapshot) {
+        els.appId.textContent = snapshot.app.appId;
+        const initialized = snapshot.steam.initialized;
+        const running = snapshot.steam.running;
+        const overlayEnabled = snapshot.steam.overlayEnabled;
+        const overlayNeedsPresent = snapshot.steam.overlayNeedsPresent;
+        const deck = snapshot.steam.steamDeck;
+        const probeOpen = snapshot.overlay && snapshot.overlay.nativeProbeOpen;
+
+        els.status.innerHTML = [
+          statusTile("Initialized", initialized ? "yes" : "no", initialized ? "good" : "bad"),
+          statusTile("Steam Running", yesNo(running), yesNo(running) === "yes" ? "good" : "warn"),
+          statusTile("Overlay Enabled", yesNo(overlayEnabled), yesNo(overlayEnabled) === "yes" ? "good" : "warn"),
+          statusTile("Needs Present", yesNo(overlayNeedsPresent), yesNo(overlayNeedsPresent) === "yes" ? "warn" : ""),
+          statusTile("Steam Deck", yesNo(deck), yesNo(deck) === "yes" ? "good" : ""),
+          statusTile("Big Picture", yesNo(snapshot.steam.bigPicture), ""),
+          statusTile("Native Probe", yesNo(probeOpen), yesNo(probeOpen) === "yes" ? "good" : ""),
+          statusTile("Overlay Profile", snapshot.app.overlayProfile, "")
+        ].join("");
+
+        els.runtime.innerHTML = [
+          row("Packaged", snapshot.app.isPackaged),
+          row("Platform", `${snapshot.process.platform}/${snapshot.process.arch}`),
+          row("Electron", snapshot.process.electron),
+          row("Node", snapshot.process.node),
+          row("Working Directory", snapshot.process.cwd),
+          row("Executable", snapshot.process.execPath)
+        ].join("");
+
+        els.steam.innerHTML = [
+          row("Init Error", snapshot.steam.initError ? snapshot.steam.initError.message : ""),
+          row("Steam App ID", unwrap(snapshot.steam.appId)),
+          row("Steam Install", unwrap(snapshot.steam.installPath)),
+          row("UI Language", unwrap(snapshot.steam.uiLanguage)),
+          row("Universe", unwrap(snapshot.steam.universe)),
+          row("Server Time", unwrap(snapshot.steam.serverTime))
+        ].join("");
+
+        writeJson(els.account, {
+          steamId: snapshot.account && snapshot.account.steamId,
+          appOwner: snapshot.account && snapshot.account.appOwner,
+          appInfo: snapshot.appInfo,
+          enumSmoke: snapshot.enumSmoke
+        });
+        writeJson(els.input, snapshot.input || null);
+        writeJson(els.overlay, {
+          overlayDiagnostics: snapshot.steam.overlayDiagnostics,
+          overlayState: snapshot.overlay
+        });
+        writeJson(els.events, snapshot.events || []);
+      }
+
+      async function run(label, fn) {
+        setButtons(false);
+        try {
+          const result = await fn();
+          els.operation.textContent = `${label}\n${JSON.stringify(result, null, 2)}`;
+          await refresh();
+        } catch (error) {
+          els.operation.textContent = `${label} failed\n${error && error.message ? error.message : String(error)}`;
+        } finally {
+          setButtons(true);
+        }
+      }
+
+      function setButtons(enabled) {
+        for (const button of document.querySelectorAll("button")) {
+          button.disabled = !enabled;
+        }
+      }
+
+      function format(value) {
+        if (value == null) return "";
+        if (typeof value === "object") return JSON.stringify(value);
+        return String(value);
+      }
+
+      function escapeHtml(value) {
+        return String(value)
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;");
+      }
+
+      document.getElementById("refresh").onclick = refresh;
+      document.getElementById("ticket").onclick = () => run("Auth Ticket", () => window.steamSmoke.requestAuthTicket());
+      document.getElementById("store").onclick = () => run("Store Overlay", () => window.steamSmoke.openOverlayStore());
+      document.getElementById("web").onclick = () => run("Web Overlay", () => window.steamSmoke.openOverlayWeb());
+      document.getElementById("dialog").onclick = () => run("Friends Overlay", () => window.steamSmoke.openOverlayDialog());
+      document.getElementById("probe-open").onclick = () => run("Open Native Probe", () => window.steamSmoke.openNativeProbe());
+      document.getElementById("probe-pump").onclick = () => run("Pump Native Probe", () => window.steamSmoke.pumpNativeProbe());
+      document.getElementById("probe-close").onclick = () => run("Close Native Probe", () => window.steamSmoke.closeNativeProbe());
+
+      window.steamSmoke.onEvent((event) => {
+        const events = latest && latest.events ? latest.events.slice() : [];
+        events.push(event);
+        writeJson(els.events, events.slice(-20));
+      });
+
+      refresh();
+      setInterval(refresh, 2500);
     </script>
   </body>
 </html>

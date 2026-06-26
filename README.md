@@ -179,7 +179,8 @@ const txn = await web.microTxnSandbox.initTxn({
 
 - `crates/native`: Rust N-API module.
 - `packages/steam-bridge`: TypeScript public package and compatibility adapter.
-- `examples/electron-basic`: minimal Electron smoke app using App ID `480`.
+- `examples/electron-basic`: overlay-focused Electron smoke app using App ID
+  `480`, with packaged smoke builds for every supported platform.
 - `docs/steam-api-coverage.md`: current Steamworks coverage and known gaps.
 - `docs/research`: implementation notes and platform research.
 - `.github/workflows`: CI and release/prebuild scaffolding.
@@ -214,14 +215,26 @@ To run the Electron smoke app:
 ```sh
 npm install
 npm run native:build
-npm start -w steam-bridge-electron-example
+npm run example:start
 ```
 
 You can override the smoke app ID if you have your own Steam app:
 
 ```sh
-STEAM_BRIDGE_APP_ID=480 npm start -w steam-bridge-electron-example
+STEAM_BRIDGE_APP_ID=480 npm run example:start
 ```
+
+To package the smoke app for platform checks, download artifacts from a
+successful `Release` workflow and run one of:
+
+```sh
+npm run example:package:mac -- --artifacts-dir /tmp/steam-bridge-release
+npm run example:package:linux -- --artifacts-dir /tmp/steam-bridge-release
+npm run example:package:win -- --artifacts-dir /tmp/steam-bridge-release
+```
+
+The example README has the Steam Deck Game Mode, Deck Desktop Mode, and desktop
+platform smoke-test flow.
 
 When launching outside Steam, put a `steam_appid.txt` file containing the app ID
 next to the executable or in the working directory used by your app.

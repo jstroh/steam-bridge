@@ -1,13 +1,17 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
-contextBridge.exposeInMainWorld("steam", {
-  getSteamId: () => ipcRenderer.invoke("steam:getSteamId"),
-  isSteamDeck: () => ipcRenderer.invoke("steam:isSteamDeck"),
-  getAuthTicketForWebApi: () => ipcRenderer.invoke("steam:getTicket"),
-  isAchievementActivated: (name) => ipcRenderer.invoke("steam:achievement", name),
-  activateToWebPage: (url) => ipcRenderer.invoke("steam:overlay", url),
-  onMicroTxnAuthorizationResponse: (handler) => {
-    ipcRenderer.on("steam:microtxn", (_event, value) => handler(value));
+contextBridge.exposeInMainWorld("steamSmoke", {
+  snapshot: () => ipcRenderer.invoke("steam-smoke:snapshot"),
+  requestAuthTicket: () => ipcRenderer.invoke("steam-smoke:auth-ticket"),
+  openOverlayStore: () => ipcRenderer.invoke("steam-smoke:overlay-store"),
+  openOverlayWeb: () => ipcRenderer.invoke("steam-smoke:overlay-web"),
+  openOverlayDialog: () => ipcRenderer.invoke("steam-smoke:overlay-dialog"),
+  openNativeProbe: () => ipcRenderer.invoke("steam-smoke:native-probe-open"),
+  pumpNativeProbe: () => ipcRenderer.invoke("steam-smoke:native-probe-pump"),
+  closeNativeProbe: () => ipcRenderer.invoke("steam-smoke:native-probe-close"),
+  onEvent: (handler) => {
+    const listener = (_event, value) => handler(value);
+    ipcRenderer.on("steam-smoke:event", listener);
+    return () => ipcRenderer.removeListener("steam-smoke:event", listener);
   }
 });
-

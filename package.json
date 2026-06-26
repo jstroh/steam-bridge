@@ -10,6 +10,11 @@
     "build": "npm run build -w steam-bridge",
     "api:check": "node scripts/audit-steam-api-coverage.cjs",
     "check:platform": "node scripts/assert-supported-targets.cjs",
+    "example:package": "npm run package -w steam-bridge-electron-example --",
+    "example:package:linux": "npm run package:linux -w steam-bridge-electron-example --",
+    "example:package:mac": "npm run package:mac -w steam-bridge-electron-example --",
+    "example:package:win": "npm run package:win -w steam-bridge-electron-example --",
+    "example:start": "npm start -w steam-bridge-electron-example",
     "package:smoke": "node scripts/smoke-package.cjs",
     "release:assemble": "node scripts/assemble-release-artifacts.cjs",
     "release:verify": "node scripts/verify-release-artifacts.cjs",
@@ -23,6 +28,7 @@
     "test:unit": "npm run build && node --test tests/steam-bridge.test.cjs"
   },
   "devDependencies": {
+    "@electron/packager": "^20.0.1",
     "@emnapi/runtime": "1.11.1",
     "@napi-rs/cli": "3.7.2",
     "typescript": "6.0.3"
