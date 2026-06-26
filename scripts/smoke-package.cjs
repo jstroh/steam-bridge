@@ -1,0 +1,173 @@
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+const { spawnSync } = require("node:child_process");
+
+const repoRoot = path.resolve(__dirname, "..");
+const packageRoot = path.join(repoRoot, "packages", "steam-bridge");
+const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-package-smoke-"));
+const packDir = path.join(tempRoot, "pack");
+const consumerDir = path.join(tempRoot, "consumer");
+const keepTemp = process.env.STEAM_BRIDGE_KEEP_PACKAGE_SMOKE === "1";
+
+try {
+  fs.mkdirSync(packDir);
+  fs.mkdirSync(consumerDir);
+
+  run("npm", ["run", "build", "-w", "steam-bridge"], { cwd: repoRoot });
+  const tarball = packPackage();
+  installConsumer(tarball);
+  runConsumerChecks();
+
+  console.log("Packed steam-bridge package smoke test passed.");
+} finally {
+  if (keepTemp) {
+    console.log(`Keeping package smoke temp directory: ${tempRoot}`);
+  } else {
+    fs.rmSync(tempRoot, { recursive: true, force: true });
+  }
+}
+
+function packPackage() {
+  const result = run("npm", ["pack", "--json", "--pack-destination", packDir], {
+    cwd: packageRoot,
+    encoding: "utf8"
+  });
+  const packages = JSON.parse(result.stdout);
+  const filename = packages[0]?.filename;
+  assert.equal(typeof filename, "string", "npm pack did not return a filename");
+
+  const tarball = path.join(packDir, filename);
+  assertNonEmptyFile(tarball);
+  return tarball;
+}
+
+function installConsumer(tarball) {
+  fs.writeFileSync(
+    path.join(consumerDir, "package.json"),
+    JSON.stringify(
+      {
+        name: "steam-bridge-package-smoke-consumer",
+        private: true,
+        type: "commonjs"
+      },
+      null,
+      2
+    )
+  );
+
+  run("npm", ["install", "--ignore-scripts", "--no-audit", "--no-fund", tarball], {
+    cwd: consumerDir
+  });
+}
+
+function runConsumerChecks() {
+  fs.writeFileSync(
+    path.join(consumerDir, "check-cjs.cjs"),
+    `
+const assert = require("node:assert/strict");
+const steam = require("steam-bridge");
+const electron = require("steam-bridge/electron");
+
+assert.equal(typeof steam.init, "function");
+assert.equal(typeof steam.default.init, "function");
+assert.equal(typeof steam.createSteamWebApiClient, "function");
+assert.equal(typeof steam.overlay.openNativeOverlayProbeWindow, "function");
+assert.equal(steam.SteamworksEnums.EResult.k_EResultOK, 1);
+assert.equal(typeof electron.electronConfigureSteamOverlay, "function");
+assert.equal(electron.electronConfigureSteamOverlay({ profile: "off" }).profile, "off");
+`
+  );
+
+  fs.writeFileSync(
+    path.join(consumerDir, "check-esm.mjs"),
+    `
+import assert from "node:assert/strict";
+import steam, { createSteamWebApiClient, overlay, SteamworksEnums } from "steam-bridge";
+import * as electron from "steam-bridge/electron";
+
+assert.equal(typeof steam.init, "function");
+assert.equal(typeof createSteamWebApiClient, "function");
+assert.equal(typeof overlay.openNativeOverlayProbeWindow, "function");
+assert.equal(SteamworksEnums.EResult.k_EResultOK, 1);
+assert.equal(typeof electron.electronConfigureSteamOverlay, "function");
+assert.equal(electron.electronConfigureSteamOverlay({ profile: "off" }).profile, "off");
+`
+  );
+
+  const typeRoots = path.join(repoRoot, "node_modules", "@types");
+  fs.writeFileSync(
+    path.join(consumerDir, "tsconfig.json"),
+    JSON.stringify(
+      {
+        compilerOptions: {
+          target: "ES2020",
+          module: "Node16",
+          moduleResolution: "Node16",
+          strict: true,
+          skipLibCheck: true,
+          types: ["node"],
+          typeRoots: [typeRoots]
+        },
+        include: ["consumer.ts"]
+      },
+      null,
+      2
+    )
+  );
+
+  fs.writeFileSync(
+    path.join(consumerDir, "consumer.ts"),
+    `
+import steam, {
+  createSteamWebApiClient,
+  overlay,
+  SteamworksEnums,
+  type SteamId
+} from "steam-bridge";
+import { electronConfigureSteamOverlay } from "steam-bridge/electron";
+
+const client = steam.init(480);
+const web = createSteamWebApiClient({ apiKey: "test" });
+const enumValue: number = SteamworksEnums.EResult.k_EResultOK;
+const overlayFn: (title?: string) => void = overlay.openNativeOverlayProbeWindow;
+const config = electronConfigureSteamOverlay({ profile: "off" });
+const steamId: SteamId | undefined = undefined;
+
+void client;
+void web;
+void enumValue;
+void overlayFn;
+void config;
+void steamId;
+`
+  );
+
+  run("node", ["check-cjs.cjs"], { cwd: consumerDir });
+  run("node", ["check-esm.mjs"], { cwd: consumerDir });
+  run("node", [path.join(repoRoot, "node_modules", "typescript", "bin", "tsc"), "--noEmit", "-p", "tsconfig.json"], {
+    cwd: consumerDir
+  });
+}
+
+function assertNonEmptyFile(filePath) {
+  const stat = fs.statSync(filePath);
+  assert.ok(stat.isFile(), `${filePath} is not a file`);
+  assert.ok(stat.size > 0, `${filePath} is empty`);
+}
+
+function run(command, args, options = {}) {
+  const result = spawnSync(command, args, {
+    cwd: options.cwd,
+    encoding: options.encoding,
+    stdio: options.encoding ? ["ignore", "pipe", "inherit"] : "inherit",
+    shell: process.platform === "win32"
+  });
+
+  if (result.status !== 0) {
+    process.exit(result.status ?? 1);
+  }
+
+  return result;
+}
