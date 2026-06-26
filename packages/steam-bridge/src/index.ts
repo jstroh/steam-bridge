@@ -668,6 +668,158 @@ export interface CloudLegacyWorkshopFilters {
   userTags?: string[] | null;
 }
 
+export interface CloudFileShareResultEvent {
+  result: number;
+  file: bigint;
+  name: string;
+  [key: string]: unknown;
+}
+
+export interface CloudPublishedFileResultEvent {
+  result: number;
+  publishedFileId: bigint;
+  published_file_id?: bigint;
+  needsToAcceptAgreement: boolean;
+  needs_to_accept_agreement?: boolean;
+  [key: string]: unknown;
+}
+
+export interface CloudPublishedFileIdResultEvent {
+  result: number;
+  publishedFileId: bigint;
+  published_file_id?: bigint;
+  [key: string]: unknown;
+}
+
+export interface CloudEnumerateFilesResultEvent {
+  result: number;
+  returnedResults: number;
+  returned_results?: number;
+  totalResultCount: number;
+  total_result_count?: number;
+  publishedFileIds: bigint[];
+  published_file_ids?: bigint[];
+  [key: string]: unknown;
+}
+
+export interface CloudEnumerateSubscribedFilesResultEvent extends CloudEnumerateFilesResultEvent {
+  subscribedTimes: number[];
+  subscribed_times?: number[];
+}
+
+export interface CloudEnumerateWorkshopFilesResultEvent extends CloudEnumerateFilesResultEvent {
+  scores: number[];
+  appId: number;
+  app_id?: number;
+  startIndex: number;
+  start_index?: number;
+}
+
+export interface CloudEnumerateUserActionFilesResultEvent extends CloudEnumerateFilesResultEvent {
+  action: number;
+  updatedTimes: number[];
+  updated_times?: number[];
+}
+
+export interface CloudUgcDownloadResultEvent {
+  result: number;
+  file: bigint;
+  appId: number;
+  app_id?: number;
+  size: bigint;
+  name: string;
+  owner: bigint;
+  [key: string]: unknown;
+}
+
+export interface CloudPublishedFileDetailsResultEvent extends CloudPublishedFileIdResultEvent {
+  creatorAppId: number;
+  creator_app_id?: number;
+  consumerAppId: number;
+  consumer_app_id?: number;
+  title: string;
+  description: string;
+  file: bigint;
+  previewFile: bigint;
+  preview_file?: bigint;
+  owner: bigint;
+  timeCreated: number;
+  time_created?: number;
+  timeUpdated: number;
+  time_updated?: number;
+  visibility: number;
+  banned: boolean;
+  tags: string[];
+  tagsTruncated: boolean;
+  tags_truncated?: boolean;
+  fileName: string;
+  file_name?: string;
+  fileSize: bigint;
+  file_size?: bigint;
+  previewFileSize: bigint;
+  preview_file_size?: bigint;
+  url: string;
+  fileType: number;
+  file_type?: number;
+  acceptedForUse: boolean;
+  accepted_for_use?: boolean;
+}
+
+export interface CloudPublishedItemVoteDetailsEvent extends CloudPublishedFileIdResultEvent {
+  votesFor: number;
+  votes_for?: number;
+  votesAgainst: number;
+  votes_against?: number;
+  reports: number;
+  score: number;
+}
+
+export interface CloudUserVoteDetailsEvent extends CloudPublishedFileIdResultEvent {
+  vote: number;
+}
+
+export interface CloudPublishedFileAppEvent {
+  publishedFileId: bigint;
+  published_file_id?: bigint;
+  appId: number;
+  app_id?: number;
+  [key: string]: unknown;
+}
+
+export interface CloudPublishedFileActionResultEvent extends CloudPublishedFileIdResultEvent {
+  action: number;
+}
+
+export interface CloudPublishFileProgressEvent {
+  percentFile: number;
+  percent_file?: number;
+  preview: boolean;
+  [key: string]: unknown;
+}
+
+export interface CloudPublishedFileUpdatedEvent extends CloudPublishedFileAppEvent {
+  unused: bigint;
+}
+
+export interface CloudFileWriteAsyncCompleteEvent {
+  result: number;
+  [key: string]: unknown;
+}
+
+export interface CloudFileReadAsyncCompleteEvent {
+  asyncCall: bigint;
+  async_call?: bigint;
+  result: number;
+  offset: number;
+  bytesRead: number;
+  bytes_read?: number;
+  [key: string]: unknown;
+}
+
+export interface CloudLocalFileChangeEvent {
+  [key: string]: unknown;
+}
+
 export interface EquippedProfileItemsResult {
   result: number;
   steamId: SteamId;
@@ -6761,6 +6913,143 @@ export const cloud = {
         )
       );
     }
+  },
+  onFileShareResult(handler: (event: CloudFileShareResultEvent) => void): CallbackHandle {
+    return onSteamCallback("RemoteStorageFileShareResult", (event) => {
+      handler(event as CloudFileShareResultEvent);
+    });
+  },
+  onPublishFileResult(handler: (event: CloudPublishedFileResultEvent) => void): CallbackHandle {
+    return onSteamCallback("RemoteStoragePublishFileResult", (event) => {
+      handler(event as CloudPublishedFileResultEvent);
+    });
+  },
+  onDeletePublishedFileResult(handler: (event: CloudPublishedFileIdResultEvent) => void): CallbackHandle {
+    return onSteamCallback("RemoteStorageDeletePublishedFileResult", (event) => {
+      handler(event as CloudPublishedFileIdResultEvent);
+    });
+  },
+  onEnumerateUserPublishedFilesResult(handler: (event: CloudEnumerateFilesResultEvent) => void): CallbackHandle {
+    return onSteamCallback("RemoteStorageEnumerateUserPublishedFilesResult", (event) => {
+      handler(event as CloudEnumerateFilesResultEvent);
+    });
+  },
+  onSubscribePublishedFileResult(handler: (event: CloudPublishedFileIdResultEvent) => void): CallbackHandle {
+    return onSteamCallback("RemoteStorageSubscribePublishedFileResult", (event) => {
+      handler(event as CloudPublishedFileIdResultEvent);
+    });
+  },
+  onEnumerateUserSubscribedFilesResult(
+    handler: (event: CloudEnumerateSubscribedFilesResultEvent) => void
+  ): CallbackHandle {
+    return onSteamCallback("RemoteStorageEnumerateUserSubscribedFilesResult", (event) => {
+      handler(event as CloudEnumerateSubscribedFilesResultEvent);
+    });
+  },
+  onUnsubscribePublishedFileResult(handler: (event: CloudPublishedFileIdResultEvent) => void): CallbackHandle {
+    return onSteamCallback("RemoteStorageUnsubscribePublishedFileResult", (event) => {
+      handler(event as CloudPublishedFileIdResultEvent);
+    });
+  },
+  onUpdatePublishedFileResult(handler: (event: CloudPublishedFileResultEvent) => void): CallbackHandle {
+    return onSteamCallback("RemoteStorageUpdatePublishedFileResult", (event) => {
+      handler(event as CloudPublishedFileResultEvent);
+    });
+  },
+  onDownloadUgcResult(handler: (event: CloudUgcDownloadResultEvent) => void): CallbackHandle {
+    return onSteamCallback("RemoteStorageDownloadUGCResult", (event) => {
+      handler(event as CloudUgcDownloadResultEvent);
+    });
+  },
+  onGetPublishedFileDetailsResult(
+    handler: (event: CloudPublishedFileDetailsResultEvent) => void
+  ): CallbackHandle {
+    return onSteamCallback("RemoteStorageGetPublishedFileDetailsResult", (event) => {
+      handler(event as CloudPublishedFileDetailsResultEvent);
+    });
+  },
+  onEnumerateWorkshopFilesResult(handler: (event: CloudEnumerateWorkshopFilesResultEvent) => void): CallbackHandle {
+    return onSteamCallback("RemoteStorageEnumerateWorkshopFilesResult", (event) => {
+      handler(event as CloudEnumerateWorkshopFilesResultEvent);
+    });
+  },
+  onGetPublishedItemVoteDetailsResult(
+    handler: (event: CloudPublishedItemVoteDetailsEvent) => void
+  ): CallbackHandle {
+    return onSteamCallback("RemoteStorageGetPublishedItemVoteDetailsResult", (event) => {
+      handler(event as CloudPublishedItemVoteDetailsEvent);
+    });
+  },
+  onPublishedFileSubscribed(handler: (event: CloudPublishedFileAppEvent) => void): CallbackHandle {
+    return onSteamCallback("RemoteStoragePublishedFileSubscribed", (event) => {
+      handler(event as CloudPublishedFileAppEvent);
+    });
+  },
+  onPublishedFileUnsubscribed(handler: (event: CloudPublishedFileAppEvent) => void): CallbackHandle {
+    return onSteamCallback("RemoteStoragePublishedFileUnsubscribed", (event) => {
+      handler(event as CloudPublishedFileAppEvent);
+    });
+  },
+  onPublishedFileDeleted(handler: (event: CloudPublishedFileAppEvent) => void): CallbackHandle {
+    return onSteamCallback("RemoteStoragePublishedFileDeleted", (event) => {
+      handler(event as CloudPublishedFileAppEvent);
+    });
+  },
+  onUpdateUserPublishedItemVoteResult(handler: (event: CloudPublishedFileIdResultEvent) => void): CallbackHandle {
+    return onSteamCallback("RemoteStorageUpdateUserPublishedItemVoteResult", (event) => {
+      handler(event as CloudPublishedFileIdResultEvent);
+    });
+  },
+  onUserVoteDetails(handler: (event: CloudUserVoteDetailsEvent) => void): CallbackHandle {
+    return onSteamCallback("RemoteStorageUserVoteDetails", (event) => {
+      handler(event as CloudUserVoteDetailsEvent);
+    });
+  },
+  onEnumerateUserSharedWorkshopFilesResult(
+    handler: (event: CloudEnumerateFilesResultEvent) => void
+  ): CallbackHandle {
+    return onSteamCallback("RemoteStorageEnumerateUserSharedWorkshopFilesResult", (event) => {
+      handler(event as CloudEnumerateFilesResultEvent);
+    });
+  },
+  onSetUserPublishedFileActionResult(
+    handler: (event: CloudPublishedFileActionResultEvent) => void
+  ): CallbackHandle {
+    return onSteamCallback("RemoteStorageSetUserPublishedFileActionResult", (event) => {
+      handler(event as CloudPublishedFileActionResultEvent);
+    });
+  },
+  onEnumeratePublishedFilesByUserActionResult(
+    handler: (event: CloudEnumerateUserActionFilesResultEvent) => void
+  ): CallbackHandle {
+    return onSteamCallback("RemoteStorageEnumeratePublishedFilesByUserActionResult", (event) => {
+      handler(event as CloudEnumerateUserActionFilesResultEvent);
+    });
+  },
+  onPublishFileProgress(handler: (event: CloudPublishFileProgressEvent) => void): CallbackHandle {
+    return onSteamCallback("RemoteStoragePublishFileProgress", (event) => {
+      handler(event as CloudPublishFileProgressEvent);
+    });
+  },
+  onPublishedFileUpdated(handler: (event: CloudPublishedFileUpdatedEvent) => void): CallbackHandle {
+    return onSteamCallback("RemoteStoragePublishedFileUpdated", (event) => {
+      handler(event as CloudPublishedFileUpdatedEvent);
+    });
+  },
+  onFileWriteAsyncComplete(handler: (event: CloudFileWriteAsyncCompleteEvent) => void): CallbackHandle {
+    return onSteamCallback("RemoteStorageFileWriteAsyncComplete", (event) => {
+      handler(event as CloudFileWriteAsyncCompleteEvent);
+    });
+  },
+  onFileReadAsyncComplete(handler: (event: CloudFileReadAsyncCompleteEvent) => void): CallbackHandle {
+    return onSteamCallback("RemoteStorageFileReadAsyncComplete", (event) => {
+      handler(event as CloudFileReadAsyncCompleteEvent);
+    });
+  },
+  onLocalFileChange(handler: (event: CloudLocalFileChangeEvent) => void): CallbackHandle {
+    return onSteamCallback("RemoteStorageLocalFileChange", (event) => {
+      handler(event as CloudLocalFileChangeEvent);
+    });
   },
   isEnabledForAccount(): boolean {
     return native().cloudIsEnabledForAccount();
@@ -15169,9 +15458,13 @@ function normalizeCallbackEvent(callbackId: number, event: unknown): unknown {
     "legacy_content",
     "manifest_id",
     "file",
+    "owner",
     "preview_file",
     "published_file_id",
+    "preview_file_size",
+    "size",
     "total_files_size",
+    "unused",
     "handle",
     "leaderboard",
     "entries_handle",
@@ -15205,6 +15498,7 @@ function normalizeCallbackEvent(callbackId: number, event: unknown): unknown {
   }
   const aliases: Record<string, string> = {
     account_id: "accountId",
+    accepted_for_use: "acceptedForUse",
     app_id: "appId",
     auth_session_response: "authSessionResponse",
     async_call: "asyncCall",
@@ -15234,8 +15528,11 @@ function normalizeCallbackEvent(callbackId: number, event: unknown): unknown {
     bgra_byte_length: "bgraByteLength",
     bgra_truncated: "bgraTruncated",
     browser_handle: "browserHandle",
+    bytes_read: "bytesRead",
     can_go_back: "canGoBack",
     can_go_forward: "canGoForward",
+    consumer_app_id: "consumerAppId",
+    creator_app_id: "creatorAppId",
     deny_reason: "denyReason",
     device_handle: "deviceHandle",
     device_type: "deviceType",
@@ -15245,6 +15542,7 @@ function normalizeCallbackEvent(callbackId: number, event: unknown): unknown {
     entry_type: "entryType",
     entries_handle: "entriesHandle",
     event_type: "eventType",
+    file_name: "fileName",
     file_size: "fileSize",
     failure_type: "failureType",
     file_type: "fileType",
@@ -15297,6 +15595,7 @@ function normalizeCallbackEvent(callbackId: number, event: unknown): unknown {
     new_volume: "newVolume",
     new_device_cooldown_days: "newDeviceCooldownDays",
     next_cursor: "nextCursor",
+    needs_to_accept_agreement: "needsToAcceptAgreement",
     num_app_dependencies: "numAppDependencies",
     not_allowed_reason: "notAllowedReason",
     officer_count: "officerCount",
@@ -15309,6 +15608,7 @@ function normalizeCallbackEvent(callbackId: number, event: unknown): unknown {
     page_size: "pageSize",
     page_title: "pageTitle",
     parameter_size: "parameterSize",
+    percent_file: "percentFile",
     phase_id: "phaseId",
     post_data: "postData",
     preview_file: "previewFile",
@@ -15339,9 +15639,14 @@ function normalizeCallbackEvent(callbackId: number, event: unknown): unknown {
     steam_guard_required_days: "steamGuardRequiredDays",
     steam_ids: "steamIds",
     still_retrying: "stillRetrying",
+    start_index: "startIndex",
     submitted_text: "submittedText",
+    subscribed_times: "subscribedTimes",
+    tags_truncated: "tagsTruncated",
     ticket_base64: "ticketBase64",
     ticket_byte_length: "ticketByteLength",
+    time_created: "timeCreated",
+    time_updated: "timeUpdated",
     total_connects: "totalConnects",
     total_files_size: "totalFilesSize",
     total_num_app_dependencies: "totalNumAppDependencies",
@@ -15361,8 +15666,11 @@ function normalizeCallbackEvent(callbackId: number, event: unknown): unknown {
     update_wide: "updateWide",
     update_x: "updateX",
     update_y: "updateY",
+    updated_times: "updatedTimes",
     user_changed: "userChanged",
-    video_app_id: "videoAppId"
+    video_app_id: "videoAppId",
+    votes_against: "votesAgainst",
+    votes_for: "votesFor"
   };
   for (const [snake, camel] of Object.entries(aliases)) {
     if (result[snake] !== undefined) {
@@ -15376,6 +15684,9 @@ function normalizeCallbackEvent(callbackId: number, event: unknown): unknown {
   if (Array.isArray(result.published_file_ids)) {
     result.published_file_ids = result.published_file_ids.map((value) => normalizeBigIntLike(value));
     result.publishedFileIds = result.published_file_ids;
+  }
+  if (typeof result.tags === "string") {
+    result.tags = result.tags.split(",").filter(Boolean);
   }
   if (typeof result.bgra_base64 === "string") {
     result.bgra = Buffer.from(result.bgra_base64, "base64");

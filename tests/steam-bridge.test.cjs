@@ -4732,6 +4732,323 @@ test("apps facade exposes typed callback helpers", (t) => {
   );
 });
 
+test("cloud facade exposes typed callback helpers", (t) => {
+  const fake = createFakeNative();
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  const events = {};
+  const handles = [
+    steam.cloud.onFileShareResult((event) => {
+      events.fileShare = event;
+    }),
+    steam.cloud.onPublishFileResult((event) => {
+      events.publish = event;
+    }),
+    steam.cloud.onDeletePublishedFileResult((event) => {
+      events.delete = event;
+    }),
+    steam.cloud.onEnumerateUserPublishedFilesResult((event) => {
+      events.userPublished = event;
+    }),
+    steam.cloud.onSubscribePublishedFileResult((event) => {
+      events.subscribe = event;
+    }),
+    steam.cloud.onEnumerateUserSubscribedFilesResult((event) => {
+      events.subscribed = event;
+    }),
+    steam.cloud.onUnsubscribePublishedFileResult((event) => {
+      events.unsubscribe = event;
+    }),
+    steam.cloud.onUpdatePublishedFileResult((event) => {
+      events.update = event;
+    }),
+    steam.cloud.onDownloadUgcResult((event) => {
+      events.download = event;
+    }),
+    steam.cloud.onGetPublishedFileDetailsResult((event) => {
+      events.details = event;
+    }),
+    steam.cloud.onEnumerateWorkshopFilesResult((event) => {
+      events.workshop = event;
+    }),
+    steam.cloud.onGetPublishedItemVoteDetailsResult((event) => {
+      events.voteDetails = event;
+    }),
+    steam.cloud.onPublishedFileSubscribed((event) => {
+      events.publishedSubscribed = event;
+    }),
+    steam.cloud.onPublishedFileUnsubscribed((event) => {
+      events.publishedUnsubscribed = event;
+    }),
+    steam.cloud.onPublishedFileDeleted((event) => {
+      events.publishedDeleted = event;
+    }),
+    steam.cloud.onUpdateUserPublishedItemVoteResult((event) => {
+      events.updateVote = event;
+    }),
+    steam.cloud.onUserVoteDetails((event) => {
+      events.userVote = event;
+    }),
+    steam.cloud.onEnumerateUserSharedWorkshopFilesResult((event) => {
+      events.shared = event;
+    }),
+    steam.cloud.onSetUserPublishedFileActionResult((event) => {
+      events.action = event;
+    }),
+    steam.cloud.onEnumeratePublishedFilesByUserActionResult((event) => {
+      events.userAction = event;
+    }),
+    steam.cloud.onPublishFileProgress((event) => {
+      events.progress = event;
+    }),
+    steam.cloud.onPublishedFileUpdated((event) => {
+      events.publishedUpdated = event;
+    }),
+    steam.cloud.onFileWriteAsyncComplete((event) => {
+      events.writeAsync = event;
+    }),
+    steam.cloud.onFileReadAsyncComplete((event) => {
+      events.readAsync = event;
+    }),
+    steam.cloud.onLocalFileChange((event) => {
+      events.localChange = event;
+    })
+  ];
+
+  fake.callbacks.get(steam.SteamCallback.RemoteStorageFileShareResult)({
+    result: 1,
+    file: "555",
+    name: "save.dat"
+  });
+  fake.callbacks.get(steam.SteamCallback.RemoteStoragePublishFileResult)({
+    result: 1,
+    published_file_id: "1001",
+    needs_to_accept_agreement: true
+  });
+  fake.callbacks.get(steam.SteamCallback.RemoteStorageDeletePublishedFileResult)({
+    result: 1,
+    published_file_id: "1001"
+  });
+  fake.callbacks.get(steam.SteamCallback.RemoteStorageEnumerateUserPublishedFilesResult)({
+    result: 1,
+    returned_results: 2,
+    total_result_count: 3,
+    published_file_ids: ["1001", "1002"]
+  });
+  fake.callbacks.get(steam.SteamCallback.RemoteStorageSubscribePublishedFileResult)({
+    result: 1,
+    published_file_id: "1001"
+  });
+  fake.callbacks.get(steam.SteamCallback.RemoteStorageEnumerateUserSubscribedFilesResult)({
+    result: 1,
+    returned_results: 2,
+    total_result_count: 4,
+    published_file_ids: ["1001", "1002"],
+    subscribed_times: [11, 22]
+  });
+  fake.callbacks.get(steam.SteamCallback.RemoteStorageUnsubscribePublishedFileResult)({
+    result: 1,
+    published_file_id: "1002"
+  });
+  fake.callbacks.get(steam.SteamCallback.RemoteStorageUpdatePublishedFileResult)({
+    result: 1,
+    published_file_id: "1001",
+    needs_to_accept_agreement: false
+  });
+  fake.callbacks.get(steam.SteamCallback.RemoteStorageDownloadUGCResult)({
+    result: 1,
+    file: "777",
+    app_id: 480,
+    size: "4096",
+    name: "shared.dat",
+    owner: "76561198000000030"
+  });
+  fake.callbacks.get(steam.SteamCallback.RemoteStorageGetPublishedFileDetailsResult)({
+    result: 1,
+    published_file_id: "1001",
+    creator_app_id: 480,
+    consumer_app_id: 480,
+    title: "SpaceWar Save",
+    description: "A shared save",
+    file: "888",
+    preview_file: "889",
+    owner: "76561198000000030",
+    time_created: 1700000000,
+    time_updated: 1700000100,
+    visibility: 0,
+    banned: false,
+    tags: "spacewar,save",
+    tags_truncated: false,
+    file_name: "save.dat",
+    file_size: "1024",
+    preview_file_size: "256",
+    url: "https://example.invalid/save.dat",
+    file_type: 2,
+    accepted_for_use: true
+  });
+  fake.callbacks.get(steam.SteamCallback.RemoteStorageEnumerateWorkshopFilesResult)({
+    result: 1,
+    returned_results: 1,
+    total_result_count: 1,
+    published_file_ids: ["1001"],
+    scores: [0.5],
+    app_id: 480,
+    start_index: 0
+  });
+  fake.callbacks.get(steam.SteamCallback.RemoteStorageGetPublishedItemVoteDetailsResult)({
+    result: 1,
+    published_file_id: "1001",
+    votes_for: 9,
+    votes_against: 1,
+    reports: 0,
+    score: 0.9
+  });
+  fake.callbacks.get(steam.SteamCallback.RemoteStoragePublishedFileSubscribed)({
+    published_file_id: "1001",
+    app_id: 480
+  });
+  fake.callbacks.get(steam.SteamCallback.RemoteStoragePublishedFileUnsubscribed)({
+    published_file_id: "1002",
+    app_id: 480
+  });
+  fake.callbacks.get(steam.SteamCallback.RemoteStoragePublishedFileDeleted)({
+    published_file_id: "1003",
+    app_id: 480
+  });
+  fake.callbacks.get(steam.SteamCallback.RemoteStorageUpdateUserPublishedItemVoteResult)({
+    result: 1,
+    published_file_id: "1001"
+  });
+  fake.callbacks.get(steam.SteamCallback.RemoteStorageUserVoteDetails)({
+    result: 1,
+    published_file_id: "1001",
+    vote: 1
+  });
+  fake.callbacks.get(steam.SteamCallback.RemoteStorageEnumerateUserSharedWorkshopFilesResult)({
+    result: 1,
+    returned_results: 1,
+    total_result_count: 1,
+    published_file_ids: ["1001"]
+  });
+  fake.callbacks.get(steam.SteamCallback.RemoteStorageSetUserPublishedFileActionResult)({
+    result: 1,
+    published_file_id: "1001",
+    action: 2
+  });
+  fake.callbacks.get(steam.SteamCallback.RemoteStorageEnumeratePublishedFilesByUserActionResult)({
+    result: 1,
+    action: 2,
+    returned_results: 1,
+    total_result_count: 1,
+    published_file_ids: ["1001"],
+    updated_times: [1700000100]
+  });
+  fake.callbacks.get(steam.SteamCallback.RemoteStoragePublishFileProgress)({
+    percent_file: 42.5,
+    preview: true
+  });
+  fake.callbacks.get(steam.SteamCallback.RemoteStoragePublishedFileUpdated)({
+    published_file_id: "1001",
+    app_id: 480,
+    unused: "12345"
+  });
+  fake.callbacks.get(steam.SteamCallback.RemoteStorageFileWriteAsyncComplete)({ result: 1 });
+  fake.callbacks.get(steam.SteamCallback.RemoteStorageFileReadAsyncComplete)({
+    async_call: "12345678901234567890",
+    result: 1,
+    offset: 8,
+    bytes_read: 16
+  });
+  fake.callbacks.get(steam.SteamCallback.RemoteStorageLocalFileChange)({});
+
+  assert.equal(events.fileShare.file, 555n);
+  assert.equal(events.fileShare.name, "save.dat");
+  assert.equal(events.publish.publishedFileId, 1001n);
+  assert.equal(events.publish.needsToAcceptAgreement, true);
+  assert.equal(events.delete.publishedFileId, 1001n);
+  assert.deepEqual(events.userPublished.publishedFileIds, [1001n, 1002n]);
+  assert.equal(events.userPublished.totalResultCount, 3);
+  assert.equal(events.subscribe.publishedFileId, 1001n);
+  assert.deepEqual(events.subscribed.subscribedTimes, [11, 22]);
+  assert.equal(events.unsubscribe.publishedFileId, 1002n);
+  assert.equal(events.update.needsToAcceptAgreement, false);
+  assert.equal(events.download.file, 777n);
+  assert.equal(events.download.appId, 480);
+  assert.equal(events.download.size, 4096n);
+  assert.equal(events.download.owner, 76561198000000030n);
+  assert.equal(events.details.creatorAppId, 480);
+  assert.equal(events.details.consumerAppId, 480);
+  assert.equal(events.details.previewFile, 889n);
+  assert.equal(events.details.owner, 76561198000000030n);
+  assert.deepEqual(events.details.tags, ["spacewar", "save"]);
+  assert.equal(events.details.tagsTruncated, false);
+  assert.equal(events.details.fileName, "save.dat");
+  assert.equal(events.details.fileSize, 1024n);
+  assert.equal(events.details.previewFileSize, 256n);
+  assert.equal(events.details.acceptedForUse, true);
+  assert.deepEqual(events.workshop.publishedFileIds, [1001n]);
+  assert.equal(events.workshop.startIndex, 0);
+  assert.equal(events.voteDetails.votesFor, 9);
+  assert.equal(events.voteDetails.votesAgainst, 1);
+  assert.equal(events.publishedSubscribed.appId, 480);
+  assert.equal(events.publishedUnsubscribed.publishedFileId, 1002n);
+  assert.equal(events.publishedDeleted.publishedFileId, 1003n);
+  assert.equal(events.updateVote.publishedFileId, 1001n);
+  assert.equal(events.userVote.vote, 1);
+  assert.deepEqual(events.shared.publishedFileIds, [1001n]);
+  assert.equal(events.action.action, 2);
+  assert.deepEqual(events.userAction.updatedTimes, [1700000100]);
+  assert.equal(events.progress.percentFile, 42.5);
+  assert.equal(events.progress.preview, true);
+  assert.equal(events.publishedUpdated.unused, 12345n);
+  assert.equal(events.writeAsync.result, 1);
+  assert.equal(events.readAsync.asyncCall, 12345678901234567890n);
+  assert.equal(events.readAsync.bytesRead, 16);
+  assert.deepEqual(events.localChange, {});
+
+  for (const handle of handles) {
+    handle.disconnect();
+  }
+
+  const callbackIds = [
+    steam.SteamCallback.RemoteStorageFileShareResult,
+    steam.SteamCallback.RemoteStoragePublishFileResult,
+    steam.SteamCallback.RemoteStorageDeletePublishedFileResult,
+    steam.SteamCallback.RemoteStorageEnumerateUserPublishedFilesResult,
+    steam.SteamCallback.RemoteStorageSubscribePublishedFileResult,
+    steam.SteamCallback.RemoteStorageEnumerateUserSubscribedFilesResult,
+    steam.SteamCallback.RemoteStorageUnsubscribePublishedFileResult,
+    steam.SteamCallback.RemoteStorageUpdatePublishedFileResult,
+    steam.SteamCallback.RemoteStorageDownloadUGCResult,
+    steam.SteamCallback.RemoteStorageGetPublishedFileDetailsResult,
+    steam.SteamCallback.RemoteStorageEnumerateWorkshopFilesResult,
+    steam.SteamCallback.RemoteStorageGetPublishedItemVoteDetailsResult,
+    steam.SteamCallback.RemoteStoragePublishedFileSubscribed,
+    steam.SteamCallback.RemoteStoragePublishedFileUnsubscribed,
+    steam.SteamCallback.RemoteStoragePublishedFileDeleted,
+    steam.SteamCallback.RemoteStorageUpdateUserPublishedItemVoteResult,
+    steam.SteamCallback.RemoteStorageUserVoteDetails,
+    steam.SteamCallback.RemoteStorageEnumerateUserSharedWorkshopFilesResult,
+    steam.SteamCallback.RemoteStorageSetUserPublishedFileActionResult,
+    steam.SteamCallback.RemoteStorageEnumeratePublishedFilesByUserActionResult,
+    steam.SteamCallback.RemoteStoragePublishFileProgress,
+    steam.SteamCallback.RemoteStoragePublishedFileUpdated,
+    steam.SteamCallback.RemoteStorageFileWriteAsyncComplete,
+    steam.SteamCallback.RemoteStorageFileReadAsyncComplete,
+    steam.SteamCallback.RemoteStorageLocalFileChange
+  ];
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "registerSteamCallback"),
+    callbackIds.map((callbackId) => ({ method: "registerSteamCallback", args: [callbackId] }))
+  );
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "disconnectCallback"),
+    callbackIds.map((callbackId) => ({ method: "disconnectCallback", args: [callbackId] }))
+  );
+});
+
 test("cloud, input, and networking facades coerce native values", async (t) => {
   const fake = createFakeNative();
   const steam = loadSteamWithFakeNative(fake);

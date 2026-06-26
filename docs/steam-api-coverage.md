@@ -79,7 +79,8 @@ covered.
   file listing, async file reads/writes, file sharing, write streams, cached
   UGC download/progress/details/reads, legacy published-file publish/update,
   detail, enumeration, subscription, vote, action, and video flows,
-  local-change enumeration and notifications, and file write batch controls.
+  local-change enumeration and notifications, file write batch controls, and
+  typed Remote Storage callback helpers.
 - Steam Web API: generic URL building and JSON/text fetch helpers for any
   `interface/method/version` path, supported-API discovery helpers, user stats
   and achievement endpoint helpers, user/profile/license endpoint helpers,
@@ -205,11 +206,12 @@ covered.
   `SteamDatagramRelayAuthTicket` opaque in the bundled headers, so safe
   structured decoding needs a newer SDK surface or a maintained local shim.
 - Additional specialized callback/event helpers outside the current lifecycle,
-  apps, user/auth, Friends, Steam Input, networking, screenshots, music, video,
-  parental settings, timeline, and Remote Play callback-helper batches, for
-  interfaces where a dedicated `on...` helper would be clearer than the generic
-  name-based subscription API. Generated callback constants and generic name
-  subscriptions are covered by the automated coverage audit.
+  apps, user/auth, Friends, Steam Input, networking, Remote Storage,
+  screenshots, music, video, parental settings, timeline, and Remote Play
+  callback-helper batches, for interfaces where a dedicated `on...` helper
+  would be clearer than the generic name-based subscription API. Generated
+  callback constants and generic name subscriptions are covered by the
+  automated coverage audit.
 - `ISteamPS3OverlayRenderHost` and `ISteamPS3OverlayRender` are PlayStation 3
   overlay interfaces and are outside Steam Bridge's supported Steam desktop
   targets.
