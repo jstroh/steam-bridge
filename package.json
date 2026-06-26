@@ -19,13 +19,15 @@
     "package:smoke": "node scripts/smoke-package.cjs",
     "release:assemble": "node scripts/assemble-release-artifacts.cjs",
     "release:verify": "node scripts/verify-release-artifacts.cjs",
+    "steam-shortcut:check": "node scripts/upsert-steam-shortcut.cjs --self-test",
+    "steam-shortcut:upsert": "node scripts/upsert-steam-shortcut.cjs",
     "steamworks-enums:generate": "node scripts/generate-steamworks-enums.cjs",
     "typecheck": "npm run typecheck -w steam-bridge",
     "native:build": "node scripts/build-native.cjs",
     "native:check": "node scripts/check-native.cjs",
     "native:fmt": "cargo fmt --all --check",
     "native:link": "npm run native:link -w steam-bridge",
-    "test": "npm run typecheck && npm run test:unit",
+    "test": "npm run typecheck && npm run steam-shortcut:check && npm run test:unit",
     "test:unit": "npm run build && node --test tests/steam-bridge.test.cjs"
   },
   "devDependencies": {

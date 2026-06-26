@@ -68,6 +68,26 @@ For Game Mode, copy the Linux x64 output folder to the Deck and add the packaged
 `SteamBridgeSmoke` executable as a non-Steam game. Launch it from Game Mode and
 use the overlay buttons in the app.
 
+For scripted setup, back up and upsert the non-Steam shortcut with:
+
+```sh
+npm run steam-shortcut:upsert -- \
+  --shortcuts "$HOME/.local/share/Steam/userdata/<steam-user-id>/config/shortcuts.vdf" \
+  --app-name "Steam Bridge Smoke" \
+  --exe "$HOME/steam-bridge-smoke/SteamBridgeSmoke-linux-x64/SteamBridgeSmoke" \
+  --start-dir "$HOME/steam-bridge-smoke/SteamBridgeSmoke-linux-x64" \
+  --launch-options "--no-sandbox"
+```
+
+Use the numeric `userdata` folder for the Steam account currently signed in on
+the Deck. The helper backs up an existing shortcut file, writes Steam's binary
+shortcut format, and prints both the shortcut app ID and the full shortcut game
+ID. Launch the full game ID after Steam has reloaded shortcuts:
+
+```sh
+steam steam://rungameid/<shortcut-game-id>
+```
+
 For Desktop Mode, launch the same Linux x64 executable from the desktop shell or
 file manager while Steam is running. The diagnostics panel should show whether
 Steam is running, whether the app is on Steam Deck, and whether the overlay is
