@@ -81,17 +81,22 @@ npm run steam-shortcut:upsert -- \
 
 Use the numeric `userdata` folder for the Steam account currently signed in on
 the Deck. The helper backs up an existing shortcut file, writes Steam's binary
-shortcut format, and prints both the shortcut app ID and the full shortcut game
-ID. Launch the full game ID after Steam has reloaded shortcuts:
+shortcut format, and prints both Steam's internal shortcut app ID and the full
+shortcut game ID. Launch with the printed `Launch URL` after Steam has reloaded
+shortcuts:
 
 ```sh
 steam steam://rungameid/<shortcut-game-id>
 ```
 
-For Desktop Mode, launch the same Linux x64 executable from the desktop shell or
-file manager while Steam is running. The diagnostics panel should show whether
-Steam is running, whether the app is on Steam Deck, and whether the overlay is
-enabled.
+Do not launch the internal shortcut app ID with `steam://rungameid`. Steam can
+show `Game configuration unavailable` when the short app ID is used instead of
+the full shortcut game ID.
+
+For Desktop Mode overlay checks, launch the same shortcut URL while Steam is
+running in Desktop Mode. A direct shell or file-manager launch can prove Steam
+Bridge initialization, but Steam overlay injection is only expected when Steam
+launches the shortcut.
 
 For longer SSH-driven checks, keep the Deck awake from SteamOS/Desktop Mode
 power settings. `systemd-inhibit` can require interactive authorization over SSH
@@ -148,4 +153,20 @@ npm run example:verify-result -- \
   --file /tmp/steam-bridge-smoke.log \
   --action dialog \
   --require-event overlay:dialog
+```
+
+For a Steam Deck Desktop Mode shortcut launch, omit the Big Picture assertion
+but keep the Steam launch and overlay injection assertions:
+
+```sh
+npm run example:verify-result -- \
+  --file /tmp/steam-bridge-smoke-steam-launch.log \
+  --platform linux/x64 \
+  --require-steam-deck \
+  --require-overlay-ready \
+  --require-steam-launch \
+  --require-overlay-injection \
+  --action dialog \
+  --require-event overlay:dialog \
+  --require-event callback:overlay-activated
 ```

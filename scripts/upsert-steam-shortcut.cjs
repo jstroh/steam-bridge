@@ -80,9 +80,11 @@ function main() {
   }
 
   fs.writeFileSync(outputPath, writeBinaryKeyValues(root));
+  const gameId = computeShortcutGameId(entry.appid);
   console.log(`${existingKey == null ? "Added" : "Updated"} Steam shortcut "${options.appName}" at index ${key}.`);
-  console.log(`Steam shortcut app ID: ${entry.appid}`);
-  console.log(`Steam shortcut game ID: ${computeShortcutGameId(entry.appid)}`);
+  console.log(`Steam shortcut app ID (internal): ${entry.appid}`);
+  console.log(`Steam shortcut game ID (use with steam://rungameid): ${gameId}`);
+  console.log(`Launch URL: steam://rungameid/${gameId}`);
 }
 
 function buildShortcutEntry(parsed) {
@@ -433,7 +435,7 @@ Options:
   --launch-options TEXT  Launch options string.
   --shortcut-path PATH   Optional desktop shortcut path.
   --icon PATH            Optional icon path.
-  --appid ID            Optional explicit unsigned 32-bit shortcut app ID.
+  --appid ID            Optional explicit unsigned 32-bit internal shortcut app ID.
   --hidden              Mark shortcut hidden.
   --no-overlay          Set AllowOverlay to 0.
   --self-test           Run a binary VDF round-trip check.`);
