@@ -121,6 +121,15 @@ extern "C" {
         callback: Option<unsafe extern "C" fn(i32) -> u32>,
     ) -> bool;
     fn steam_bridge_client_destroy_all_interfaces() -> bool;
+    fn steam_bridge_app_ticket_get_app_ownership_ticket_data(
+        app_id: u32,
+        buffer: *mut u8,
+        buffer_length: u32,
+        app_id_offset: *mut u32,
+        steam_id_offset: *mut u32,
+        signature_offset: *mut u32,
+        signature_length: *mut u32,
+    ) -> u32;
     fn steam_bridge_game_server_init_game_server(
         ip: u32,
         game_port: u16,
@@ -388,6 +397,8 @@ const DEFAULT_USER_VOICE_BYTES: u32 = 64 * 1024;
 const DEFAULT_DEPRECATED_GAME_CONNECTION_AUTH_BLOB_BYTES: u32 = 2048;
 const MAX_ENCRYPTED_APP_TICKET_DATA_BYTES: usize = 1024;
 const MAX_ENCRYPTED_APP_TICKET_BYTES: u32 = 4096;
+const DEFAULT_APP_OWNERSHIP_TICKET_BYTES: u32 = 4096;
+const MAX_APP_OWNERSHIP_TICKET_BYTES: u32 = 65_536;
 const USER_DATA_FOLDER_BUFFER_SIZE: usize = 4096;
 const MAX_CLOUD_ASYNC_READ_BYTES: u32 = 100 * 1024 * 1024;
 const MAX_CLOUD_UGC_READ_BYTES: u32 = 100 * 1024 * 1024;
@@ -2087,6 +2098,16 @@ pub struct UserVoiceData {
 pub struct UserEncryptedAppTicket {
     pub result: u32,
     pub ticket: Option<Buffer>,
+}
+
+#[napi(object)]
+pub struct AppOwnershipTicketData {
+    pub ticket: Buffer,
+    pub bytes_written: u32,
+    pub app_id_offset: u32,
+    pub steam_id_offset: u32,
+    pub signature_offset: u32,
+    pub signature_length: u32,
 }
 
 #[derive(Debug)]
@@ -14839,6 +14860,45 @@ pub fn user_get_encrypted_app_ticket(max_bytes: Option<u32>) -> Result<Option<Bu
     }
     ticket.truncate(ticket_len.min(max_bytes) as usize);
     Ok(Some(ticket.into()))
+}
+
+#[napi(js_name = "appTicketGetAppOwnershipTicketData")]
+pub fn app_ticket_get_app_ownership_ticket_data(
+    app_id: u32,
+    max_bytes: Option<u32>,
+) -> Result<Option<AppOwnershipTicketData>, Error> {
+    crate::state::ensure_initialized()?;
+    let max_bytes = max_bytes
+        .unwrap_or(DEFAULT_APP_OWNERSHIP_TICKET_BYTES)
+        .clamp(1, MAX_APP_OWNERSHIP_TICKET_BYTES);
+    let mut ticket = vec![0u8; max_bytes as usize];
+    let mut app_id_offset = 0u32;
+    let mut steam_id_offset = 0u32;
+    let mut signature_offset = 0u32;
+    let mut signature_length = 0u32;
+    let bytes_written = unsafe {
+        steam_bridge_app_ticket_get_app_ownership_ticket_data(
+            app_id,
+            ticket.as_mut_ptr(),
+            max_bytes,
+            &mut app_id_offset,
+            &mut steam_id_offset,
+            &mut signature_offset,
+            &mut signature_length,
+        )
+    };
+    if bytes_written == 0 {
+        return Ok(None);
+    }
+    ticket.truncate(bytes_written.min(max_bytes) as usize);
+    Ok(Some(AppOwnershipTicketData {
+        ticket: ticket.into(),
+        bytes_written,
+        app_id_offset,
+        steam_id_offset,
+        signature_offset,
+        signature_length,
+    }))
 }
 
 #[napi(js_name = "userGetGameBadgeLevel")]

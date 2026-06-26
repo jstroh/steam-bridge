@@ -2,7 +2,9 @@
 
 extern "C" void *SteamAPI_SteamGameServer_v015();
 extern "C" void *SteamAPI_SteamUtils_v010();
+extern "C" int32_t SteamAPI_GetHSteamUser();
 extern "C" void *SteamInternal_CreateInterface(const char *version);
+extern "C" void *SteamInternal_FindOrCreateUserInterface(int32_t hSteamUser, const char *version);
 
 namespace {
 
@@ -10,6 +12,7 @@ namespace {
 // steam_api_flat.h. Keep the vtable layouts in sync with SteamClient023,
 // SteamGameServer015, and SteamUtils010.
 constexpr const char *kSteamClientInterfaceVersion = "SteamClient023";
+constexpr const char *kSteamAppTicketInterfaceVersion = "STEAMAPPTICKET_INTERFACE_VERSION001";
 
 struct SteamIPAddressBridge {
   uint8_t bytes[20];
@@ -79,6 +82,13 @@ class ISteamClientHeaderOnly {
   virtual void *GetISteamRemotePlay(int32_t hSteamUser, int32_t hSteamPipe,
                                     const char *pchVersion) = 0;
   virtual void DestroyAllInterfaces() = 0;
+};
+
+class ISteamAppTicketHeaderOnly {
+ public:
+  virtual uint32_t GetAppOwnershipTicketData(
+      uint32_t nAppID, void *pvBuffer, uint32_t cbBufferLength, uint32_t *piAppId,
+      uint32_t *piSteamId, uint32_t *piSignature, uint32_t *pcbSignature) = 0;
 };
 
 class ISteamGameServerHeaderOnly {
@@ -156,6 +166,11 @@ ISteamClientHeaderOnly *steam_bridge_client_header_only() {
       SteamInternal_CreateInterface(kSteamClientInterfaceVersion));
 }
 
+ISteamAppTicketHeaderOnly *steam_bridge_app_ticket_header_only() {
+  return static_cast<ISteamAppTicketHeaderOnly *>(SteamInternal_FindOrCreateUserInterface(
+      SteamAPI_GetHSteamUser(), kSteamAppTicketInterfaceVersion));
+}
+
 ISteamGameServerHeaderOnly *steam_bridge_game_server_header_only() {
   return static_cast<ISteamGameServerHeaderOnly *>(SteamAPI_SteamGameServer_v015());
 }
@@ -210,6 +225,19 @@ extern "C" bool steam_bridge_client_destroy_all_interfaces() {
   }
   client->DestroyAllInterfaces();
   return true;
+}
+
+extern "C" uint32_t steam_bridge_app_ticket_get_app_ownership_ticket_data(
+    uint32_t app_id, uint8_t *buffer, uint32_t buffer_length, uint32_t *app_id_offset,
+    uint32_t *steam_id_offset, uint32_t *signature_offset, uint32_t *signature_length) {
+  ISteamAppTicketHeaderOnly *app_ticket = steam_bridge_app_ticket_header_only();
+  if (app_ticket == nullptr || buffer == nullptr || app_id_offset == nullptr ||
+      steam_id_offset == nullptr || signature_offset == nullptr || signature_length == nullptr) {
+    return 0;
+  }
+  return app_ticket->GetAppOwnershipTicketData(app_id, buffer, buffer_length, app_id_offset,
+                                               steam_id_offset, signature_offset,
+                                               signature_length);
 }
 
 extern "C" bool steam_bridge_game_server_init_game_server(

@@ -1480,6 +1480,20 @@ export interface NativeUserEncryptedAppTicket {
   ticket?: Buffer | null;
 }
 
+export interface NativeAppOwnershipTicketData {
+  ticket: Buffer;
+  bytesWritten?: number;
+  bytes_written?: number;
+  appIdOffset?: number;
+  app_id_offset?: number;
+  steamIdOffset?: number;
+  steam_id_offset?: number;
+  signatureOffset?: number;
+  signature_offset?: number;
+  signatureLength?: number;
+  signature_length?: number;
+}
+
 export interface NativeUserMarketEligibility {
   allowed: boolean;
   notAllowedReason?: number;
@@ -1588,6 +1602,7 @@ export interface NativeBinding {
   getAuthTicketForWebApi(identity: string, timeoutSeconds?: number): Promise<NativeAuthTicket>;
   authGetSessionTicketWithSteamId(steamId64: bigint, timeoutSeconds?: number): Promise<NativeAuthTicket>;
   authGetSessionTicketWithIp(ip: string, timeoutSeconds?: number): Promise<NativeAuthTicket>;
+  appTicketGetAppOwnershipTicketData(appId: number, maxBytes?: number): NativeAppOwnershipTicketData | null | undefined;
   userStartVoiceRecording(): void;
   userStopVoiceRecording(): void;
   userGetHSteamUser(): number;

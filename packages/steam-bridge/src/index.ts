@@ -9,6 +9,7 @@ import {
   NativeAppDlcData,
   NativeAppDlcDownloadProgress,
   NativeAppFileDetails,
+  NativeAppOwnershipTicketData,
   NativeAppTimedTrialInfo,
   NativeAuthTicket,
   NativeBinding,
@@ -192,6 +193,15 @@ export interface SteamId {
 export interface AuthTicket {
   cancel(): void;
   getBytes(): Buffer;
+}
+
+export interface AppOwnershipTicketData {
+  ticket: Buffer;
+  bytesWritten: number;
+  appIdOffset: number;
+  steamIdOffset: number;
+  signatureOffset: number;
+  signatureLength: number;
 }
 
 export interface GameServerInitOptions {
@@ -5384,6 +5394,14 @@ export const auth = {
   }
 };
 
+export const appTicket = {
+  getAppOwnershipTicketData(appId: number, maxBytes?: number | null): AppOwnershipTicketData | null {
+    return normalizeAppOwnershipTicketData(
+      native().appTicketGetAppOwnershipTicketData(appId, maxBytes ?? undefined)
+    );
+  }
+};
+
 export function buildSteamWebApiUrl(options: SteamWebApiRequestOptions): string {
   const url = new URL(
     `${steamWebApiPathComponent(options.interfaceName, "interfaceName")}/${steamWebApiPathComponent(
@@ -9540,6 +9558,7 @@ export const gameServerWorkshop = {
 
 export interface SteamBridgeClient {
   achievement: typeof achievement;
+  appTicket: typeof appTicket;
   apps: typeof apps;
   auth: typeof auth;
   callback: typeof callback;
@@ -9581,6 +9600,7 @@ export interface SteamBridgeClient {
 export function createCompatibilityClient(): SteamBridgeClient {
   return {
     achievement,
+    appTicket,
     apps,
     auth,
     callback,
@@ -14552,6 +14572,22 @@ function normalizeUserEncryptedAppTicket(result: NativeUserEncryptedAppTicket): 
   };
 }
 
+function normalizeAppOwnershipTicketData(
+  result: NativeAppOwnershipTicketData | null | undefined
+): AppOwnershipTicketData | null {
+  if (!result) {
+    return null;
+  }
+  return {
+    ticket: result.ticket,
+    bytesWritten: Number(result.bytesWritten ?? result.bytes_written ?? result.ticket.length),
+    appIdOffset: Number(result.appIdOffset ?? result.app_id_offset ?? 0),
+    steamIdOffset: Number(result.steamIdOffset ?? result.steam_id_offset ?? 0),
+    signatureOffset: Number(result.signatureOffset ?? result.signature_offset ?? 0),
+    signatureLength: Number(result.signatureLength ?? result.signature_length ?? 0)
+  };
+}
+
 function normalizeUserMarketEligibility(result: NativeUserMarketEligibility): UserMarketEligibility {
   return {
     allowed: Boolean(result.allowed),
@@ -15679,6 +15715,7 @@ const defaultExport = {
   getMacWindowSnapshot,
   isAchievementActivated,
   achievement,
+  appTicket,
   apps,
   auth,
   callback,

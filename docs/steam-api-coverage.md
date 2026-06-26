@@ -37,8 +37,8 @@ generated callback constant lacks an exported `SteamCallback` alias.
   local shim because the interface is not emitted in the flat bindings.
 - User/auth: local Steam ID helpers, Web API auth tickets, session tickets by
   Steam ID, IPv4, or IPv6 identity, auth session validation helpers, voice
-  recording/capture and decompression, encrypted app tickets, store auth URLs,
-  badge/level/account
+  recording/capture and decompression, encrypted app tickets, app ownership
+  ticket data, store auth URLs, badge/level/account
   state helpers, market eligibility, duration control, user-data folder reads,
   app usage events, NAT/logged-on checks, Steam user handle reads, game
   advertisement, legacy game-connection auth blobs, license checks, and ticket
@@ -186,10 +186,6 @@ generated callback constant lacks an exported `SteamCallback` alias.
 
 ## Not Yet Complete
 
-- `ISteamFriends::SetPersonaName` is not exposed because the current
-  Steamworks SDK bundled through `steamworks-sys 0.13` does not include that
-  method in the C++ header, flat API metadata, or generated bindings used by
-  this crate.
 - Remaining modern networking surfaces: field-level parsed relay-auth-ticket
   payloads. `steamworks-sys 0.13` exposes the ticket out-parameter but keeps
   `SteamDatagramRelayAuthTicket` opaque in the bundled headers, so safe

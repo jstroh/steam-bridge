@@ -1337,6 +1337,36 @@ test("auth facade forwards Steam ID and IP session ticket requests", async (t) =
   ]);
 });
 
+test("app ticket facade normalizes ownership ticket data", (t) => {
+  const ticket = Buffer.from([1, 2, 3, 4, 5, 6]);
+  const fake = createFakeNative({
+    appTicketGetAppOwnershipTicketData(appId, maxBytes) {
+      this.calls.push({ method: "appTicketGetAppOwnershipTicketData", args: [appId, maxBytes] });
+      return {
+        ticket,
+        bytes_written: 6,
+        app_id_offset: 1,
+        steam_id_offset: 2,
+        signature_offset: 4,
+        signature_length: 2
+      };
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  assert.deepEqual(steam.appTicket.getAppOwnershipTicketData(480, 2048), {
+    ticket,
+    bytesWritten: 6,
+    appIdOffset: 1,
+    steamIdOffset: 2,
+    signatureOffset: 4,
+    signatureLength: 2
+  });
+  assert.deepEqual(fake.calls, [{ method: "appTicketGetAppOwnershipTicketData", args: [480, 2048] }]);
+});
+
 test("user facade covers voice, auth session, account, and duration helpers", async (t) => {
   const ticketBytes = Buffer.from([9, 8, 7]);
   const fake = createFakeNative({
