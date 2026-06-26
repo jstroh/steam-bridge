@@ -109,10 +109,12 @@ generated callback constant lacks an exported `SteamCallback` alias.
 - Steam Input: init/shutdown, action manifest selection, frame/data polling,
   connected controllers, device and direct action-event callbacks, gamepad
   index mapping, action sets/layers, digital and analog action data/origins/names,
-  glyph/string lookups, Xbox-origin translation, DualSense trigger-effect
-  forwarding, motion data, haptics, LED controls, binding panels, remote-play
-  session IDs, session configuration, controller type, deprecated
-  `ISteamController` compatibility helpers, and text input helpers.
+  named digital-action lookups, all-controller and max-controller constants,
+  action-event type constants, glyph/string lookups, Xbox-origin translation,
+  DualSense trigger-effect forwarding, motion data, haptics, LED controls,
+  binding panels, remote-play session IDs, session configuration, controller
+  type, deprecated `ISteamController` compatibility helpers, and text input
+  helpers.
 - Matchmaking/lobbies: favorite/history server storage, lobby list filters,
   create, join, list, leave, member/owner helpers, lobby and member data,
   joinability, lobby type/owner/limit/link controls, lobby chat, lobby
