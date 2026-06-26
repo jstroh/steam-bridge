@@ -9231,6 +9231,94 @@ test("inventory facade covers result, item, definition, price, and update flows"
   });
 });
 
+test("inventory facades expose typed callback helpers", (t) => {
+  const fake = createFakeNative();
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  const events = {};
+  const callbackNames = [
+    "SteamInventoryResultReady",
+    "SteamInventoryFullUpdate",
+    "SteamInventoryDefinitionUpdate",
+    "SteamInventoryEligiblePromoItemDefIds",
+    "SteamInventoryStartPurchaseResult",
+    "SteamInventoryRequestPricesResult"
+  ];
+  const handles = [
+    steam.inventory.onResultReady((event) => {
+      events.resultReady = event;
+    }),
+    steam.inventory.onFullUpdate((event) => {
+      events.fullUpdate = event;
+    }),
+    steam.inventory.onDefinitionUpdate((event) => {
+      events.definitionUpdate = event;
+    }),
+    steam.inventory.onEligiblePromoItemDefIds((event) => {
+      events.eligiblePromoItemDefIds = event;
+    }),
+    steam.inventory.onStartPurchaseResult((event) => {
+      events.startPurchaseResult = event;
+    }),
+    steam.inventory.onRequestPricesResult((event) => {
+      events.requestPricesResult = event;
+    })
+  ];
+  const emit = (callbackName, payload) => {
+    fake.callbacks.get(steam.SteamCallback[callbackName])(payload);
+  };
+
+  emit("SteamInventoryResultReady", { handle: 10, result: 1 });
+  emit("SteamInventoryFullUpdate", { handle: 11 });
+  emit("SteamInventoryDefinitionUpdate", {});
+  emit("SteamInventoryEligiblePromoItemDefIds", {
+    result: 1,
+    steam_id: "76561198000000008",
+    num_eligible_promo_item_defs: 2,
+    cached_data: true
+  });
+  emit("SteamInventoryStartPurchaseResult", {
+    result: 1,
+    order_id: "9223372036854775807",
+    transaction_id: "9223372036854775808"
+  });
+  emit("SteamInventoryRequestPricesResult", { result: 1, currency: "USD" });
+
+  assert.equal(events.resultReady.handle, 10);
+  assert.equal(events.resultReady.result, 1);
+  assert.equal(events.fullUpdate.handle, 11);
+  assert.deepEqual(events.definitionUpdate, {});
+  assert.equal(events.eligiblePromoItemDefIds.steamId, 76561198000000008n);
+  assert.equal(events.eligiblePromoItemDefIds.numEligiblePromoItemDefs, 2);
+  assert.equal(events.eligiblePromoItemDefIds.cachedData, true);
+  assert.equal(events.startPurchaseResult.orderId, 9223372036854775807n);
+  assert.equal(events.startPurchaseResult.transactionId, 9223372036854775808n);
+  assert.equal(events.requestPricesResult.currency, "USD");
+
+  handles.forEach((handle) => handle.disconnect());
+
+  const serverHandles = [
+    steam.gameServerInventory.onResultReady(() => {}),
+    steam.gameServerInventory.onFullUpdate(() => {}),
+    steam.gameServerInventory.onDefinitionUpdate(() => {}),
+    steam.gameServerInventory.onEligiblePromoItemDefIds(() => {}),
+    steam.gameServerInventory.onStartPurchaseResult(() => {}),
+    steam.gameServerInventory.onRequestPricesResult(() => {})
+  ];
+  serverHandles.forEach((handle) => handle.disconnect());
+
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "registerSteamCallback").map((call) => call.args[0]),
+    [...callbackNames, ...callbackNames].map((callbackName) => steam.SteamCallback[callbackName])
+  );
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "disconnectCallback").map((call) => call.args[0]),
+    [...callbackNames, ...callbackNames].map((callbackName) => steam.SteamCallback[callbackName])
+  );
+});
+
 test("game server inventory facade uses game-server native bindings", async (t) => {
   const player = { steamId64: "76561198000000009", steamId32: "STEAM_0:1:19867140", accountId: 39734281 };
   const fake = createFakeNative({

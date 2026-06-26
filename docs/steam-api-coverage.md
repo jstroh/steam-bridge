@@ -144,7 +144,7 @@ covered.
   item generation/promo/consume/exchange/transfer/trade flows, item definition
   reads, eligible promo definition queries, purchase and price requests, dynamic
   property updates, inspect tokens, client and game-server shared interfaces,
-  and inventory callbacks.
+  and typed inventory callback helpers.
 - Networking: legacy client and game-server `ISteamNetworking` P2P send,
   receive, availability, session accept/close/state, relay controls, and
   legacy socket/listen-socket helpers, modern client and game-server
@@ -207,12 +207,12 @@ covered.
   `SteamDatagramRelayAuthTicket` opaque in the bundled headers, so safe
   structured decoding needs a newer SDK surface or a maintained local shim.
 - Additional specialized callback/event helpers outside the current lifecycle,
-  apps, user/auth, Friends, Matchmaking/lobbies, Parties, Steam Input, networking,
-  Remote Storage, HTTP, HTML, screenshots, music, video, parental settings,
-  timeline, and Remote Play callback-helper batches, for interfaces where a
-  dedicated `on...` helper would be clearer than the generic name-based
-  subscription API. Generated callback constants and generic name subscriptions
-  are covered by the automated coverage audit.
+  apps, user/auth, Friends, Matchmaking/lobbies, Parties, Inventory,
+  Steam Input, networking, Remote Storage, HTTP, HTML, screenshots, music,
+  video, parental settings, timeline, and Remote Play callback-helper batches,
+  for interfaces where a dedicated `on...` helper would be clearer than the
+  generic name-based subscription API. Generated callback constants and generic
+  name subscriptions are covered by the automated coverage audit.
 - `ISteamPS3OverlayRenderHost` and `ISteamPS3OverlayRender` are PlayStation 3
   overlay interfaces and are outside Steam Bridge's supported Steam desktop
   targets.

@@ -1340,6 +1340,47 @@ export interface InventoryRequestPricesResult {
   currency: string;
 }
 
+export interface InventoryResultReadyEvent {
+  handle: number;
+  result: number;
+  [key: string]: unknown;
+}
+
+export interface InventoryFullUpdateEvent {
+  handle: number;
+  [key: string]: unknown;
+}
+
+export interface InventoryDefinitionUpdateEvent {
+  [key: string]: unknown;
+}
+
+export interface InventoryEligiblePromoItemDefIdsEvent {
+  result: number;
+  steamId: bigint;
+  steam_id?: bigint;
+  numEligiblePromoItemDefs: number;
+  num_eligible_promo_item_defs?: number;
+  cachedData: boolean;
+  cached_data?: boolean;
+  [key: string]: unknown;
+}
+
+export interface InventoryStartPurchaseResultEvent {
+  result: number;
+  orderId: bigint;
+  order_id?: bigint | number | string;
+  transactionId: bigint;
+  transaction_id?: bigint | number | string;
+  [key: string]: unknown;
+}
+
+export interface InventoryRequestPricesResultEvent {
+  result: number;
+  currency: string;
+  [key: string]: unknown;
+}
+
 export interface InventoryPrice {
   definition: number;
   currentPrice: bigint;
@@ -8017,6 +8058,36 @@ export const parties = {
 
 export const inventory = {
   InventoryItemFlags,
+  onResultReady(handler: (event: InventoryResultReadyEvent) => void): CallbackHandle {
+    return onSteamCallback("SteamInventoryResultReady", (event) => {
+      handler(event as InventoryResultReadyEvent);
+    });
+  },
+  onFullUpdate(handler: (event: InventoryFullUpdateEvent) => void): CallbackHandle {
+    return onSteamCallback("SteamInventoryFullUpdate", (event) => {
+      handler(event as InventoryFullUpdateEvent);
+    });
+  },
+  onDefinitionUpdate(handler: (event: InventoryDefinitionUpdateEvent) => void): CallbackHandle {
+    return onSteamCallback("SteamInventoryDefinitionUpdate", (event) => {
+      handler(event as InventoryDefinitionUpdateEvent);
+    });
+  },
+  onEligiblePromoItemDefIds(handler: (event: InventoryEligiblePromoItemDefIdsEvent) => void): CallbackHandle {
+    return onSteamCallback("SteamInventoryEligiblePromoItemDefIds", (event) => {
+      handler(event as InventoryEligiblePromoItemDefIdsEvent);
+    });
+  },
+  onStartPurchaseResult(handler: (event: InventoryStartPurchaseResultEvent) => void): CallbackHandle {
+    return onSteamCallback("SteamInventoryStartPurchaseResult", (event) => {
+      handler(event as InventoryStartPurchaseResultEvent);
+    });
+  },
+  onRequestPricesResult(handler: (event: InventoryRequestPricesResultEvent) => void): CallbackHandle {
+    return onSteamCallback("SteamInventoryRequestPricesResult", (event) => {
+      handler(event as InventoryRequestPricesResultEvent);
+    });
+  },
   getResultStatus(resultHandle: number): number {
     return native().inventoryGetResultStatus(resultHandle);
   },
@@ -8161,6 +8232,36 @@ export const inventory = {
 
 export const gameServerInventory = {
   InventoryItemFlags,
+  onResultReady(handler: (event: InventoryResultReadyEvent) => void): CallbackHandle {
+    return onSteamCallback("SteamInventoryResultReady", (event) => {
+      handler(event as InventoryResultReadyEvent);
+    });
+  },
+  onFullUpdate(handler: (event: InventoryFullUpdateEvent) => void): CallbackHandle {
+    return onSteamCallback("SteamInventoryFullUpdate", (event) => {
+      handler(event as InventoryFullUpdateEvent);
+    });
+  },
+  onDefinitionUpdate(handler: (event: InventoryDefinitionUpdateEvent) => void): CallbackHandle {
+    return onSteamCallback("SteamInventoryDefinitionUpdate", (event) => {
+      handler(event as InventoryDefinitionUpdateEvent);
+    });
+  },
+  onEligiblePromoItemDefIds(handler: (event: InventoryEligiblePromoItemDefIdsEvent) => void): CallbackHandle {
+    return onSteamCallback("SteamInventoryEligiblePromoItemDefIds", (event) => {
+      handler(event as InventoryEligiblePromoItemDefIdsEvent);
+    });
+  },
+  onStartPurchaseResult(handler: (event: InventoryStartPurchaseResultEvent) => void): CallbackHandle {
+    return onSteamCallback("SteamInventoryStartPurchaseResult", (event) => {
+      handler(event as InventoryStartPurchaseResultEvent);
+    });
+  },
+  onRequestPricesResult(handler: (event: InventoryRequestPricesResultEvent) => void): CallbackHandle {
+    return onSteamCallback("SteamInventoryRequestPricesResult", (event) => {
+      handler(event as InventoryRequestPricesResultEvent);
+    });
+  },
   getResultStatus(resultHandle: number): number {
     return native().gameServerInventoryGetResultStatus(resultHandle);
   },
