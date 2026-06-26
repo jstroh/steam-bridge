@@ -1,10 +1,16 @@
 extern crate napi_build;
 
+use std::env;
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
+
 fn main() {
     napi_build::setup();
 
-    let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
-    let target_arch = std::env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default();
+    let target = env::var("TARGET").unwrap_or_default();
+    let host = env::var("HOST").unwrap_or_default();
+    let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+    let target_arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default();
 
     match (target_os.as_str(), target_arch.as_str()) {
         ("macos", "aarch64") | ("windows", "x86_64") | ("linux", "x86_64") => {}
@@ -33,6 +39,7 @@ fn main() {
     } else {
         music_remote_bridge.flag("-std=c++17");
     }
+    configure_linux_cross_archive_tools(&mut music_remote_bridge, &host, &target);
     music_remote_bridge.compile("steam_bridge_music_remote");
 
     if target_os == "macos" {
@@ -50,4 +57,72 @@ fn main() {
         println!("cargo:rustc-link-lib=framework=MetalKit");
         println!("cargo:rustc-link-lib=framework=QuartzCore");
     }
+}
+
+fn configure_linux_cross_archive_tools(build: &mut cc::Build, host: &str, target: &str) {
+    if host != "aarch64-apple-darwin" || target != "x86_64-unknown-linux-gnu" {
+        return;
+    }
+
+    println!("cargo:rerun-if-env-changed=PATH");
+
+    if !archive_env_tool_is_set("AR", target) {
+        let ar = find_tool("llvm-ar").unwrap_or_else(|| {
+            panic!(
+                "cross-compiling Steam Bridge for Linux from macOS requires llvm-ar; \
+                 install LLVM or set AR_x86_64_unknown_linux_gnu"
+            )
+        });
+        build.archiver(ar);
+    }
+
+    if !archive_env_tool_is_set("RANLIB", target) {
+        if let Some(ranlib) = find_tool("llvm-ranlib") {
+            build.ranlib(ranlib);
+        }
+    }
+}
+
+fn archive_env_tool_is_set(tool: &str, target: &str) -> bool {
+    let target_underscore = target.replace('-', "_");
+    let env_names = [
+        format!("{tool}_{target}"),
+        format!("{tool}_{target_underscore}"),
+        format!("TARGET_{tool}"),
+        tool.to_string(),
+    ];
+
+    for name in &env_names {
+        println!("cargo:rerun-if-env-changed={name}");
+    }
+
+    env_names.iter().any(|name| env::var_os(name).is_some())
+}
+
+fn find_tool(tool: &str) -> Option<PathBuf> {
+    let path_candidates = env::var_os("PATH").into_iter().flat_map(|paths| {
+        env::split_paths(&paths)
+            .map(move |dir| dir.join(tool))
+            .collect::<Vec<_>>()
+    });
+
+    let homebrew_candidates = [
+        PathBuf::from("/opt/homebrew/opt/llvm/bin").join(tool),
+        PathBuf::from("/usr/local/opt/llvm/bin").join(tool),
+    ];
+
+    path_candidates
+        .chain(homebrew_candidates)
+        .find(|candidate| is_executable_tool(candidate))
+}
+
+fn is_executable_tool(candidate: &Path) -> bool {
+    candidate.is_file()
+        && Command::new(candidate)
+            .arg("--version")
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .is_ok_and(|status| status.success())
 }
