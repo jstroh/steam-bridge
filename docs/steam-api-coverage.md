@@ -63,14 +63,17 @@ documented in headers but omitted from the generated flat bindings.
 - Steam Web API: generic URL building and JSON/text fetch helpers for any
   `interface/method/version` path, supported-API discovery helpers, user stats
   and achievement endpoint helpers, user/profile/license endpoint helpers,
-  app/build/server-list helpers, news helpers, OAuth CloudService file
+  app/build/server-list/SDR-config helpers, news helpers, directory and content
+  server directory helpers, OAuth CloudService file
   enumeration/upload/delete helpers, remote-storage/workshop detail helpers,
-  player profile/playtime/library helpers, store app-list service helpers,
+  player profile/playtime/library/offline-playtime helpers, store
+  app-list/followed-games/recommended-tags service helpers,
   user-auth ticket validation helpers, CheatReportingService report/game-ban/VAC
-  session helpers, BroadcastService game-data-frame helpers, EconMarketService
+  session helpers, public broadcast stats/heartbeat helpers, BroadcastService
+  game-data-frame helpers, help-request log helpers, wishlist helpers, EconMarketService
   market eligibility/listing/popularity helpers, community abuse-report helpers,
   game-notification session helpers, game-server account administration and lookup helpers,
-  published-file service query/moderation/tag helpers, published-item
+  published-file service query/moderation/tag/vote-summary helpers, published-item
   search/voting helpers, WorkshopService payment/contributor/revenue/description
   helpers, SiteLicenseService client-connection/playtime helpers, leaderboard
   helpers, GameInventory history/support/item-definition helpers,
@@ -175,12 +178,14 @@ documented in headers but omitted from the generated flat bindings.
 - Remaining callback/event coverage for interfaces that are not yet surfaced by
   the native bindings or still need richer low-level ergonomics.
 - Additional endpoint-specific Steam Web API convenience wrappers for the long
-  tail of service interfaces beyond the current utility, app, news, player,
-  store, user, user-auth, user-stats, remote-storage, game-notifications service,
-  game-server service, published-file, published-item search/voting, leaderboards,
-  game-server stats, community, economy, InventoryService, WorkshopService,
-  SiteLicenseService, CloudService, BroadcastService, CheatReportingService,
-  EconMarketService, EconService, GameInventory, and MicroTxn helpers.
+  tail of service interfaces beyond the current utility, app, broadcast,
+  directory, content-server-directory, news, player, store, user, user-auth,
+  user-stats, remote-storage, game-notifications service, game-server service,
+  published-file, published-item search/voting, leaderboards, game-server stats,
+  community, economy, InventoryService, WorkshopService, SiteLicenseService,
+  CloudService, BroadcastService, CheatReportingService, HelpRequestLogsService,
+  WishlistService, EconMarketService, EconService, GameInventory, and MicroTxn
+  helpers.
 
 Use Valve's SpaceWar App ID `480` for generic local smoke tests. Use your own
 Steam app ID for app-specific achievements, stats, inventory, UGC, economy, and

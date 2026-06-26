@@ -9091,6 +9091,75 @@ test("web API app and news facades map public and partner endpoints", async (t) 
   );
 });
 
+test("web API public app, broadcast, and directory facades map Valve endpoints", async (t) => {
+  const steam = loadSteamWithFakeNative(createFakeNative());
+  const fetchCalls = [];
+  const fetchImpl = async (url, init = {}) => {
+    fetchCalls.push({ url, init });
+    return {
+      ok: true,
+      status: 200,
+      headers: {
+        forEach(callback) {
+          callback("application/json", "content-type");
+        }
+      },
+      async text() {
+        return JSON.stringify({ response: { ok: true } });
+      }
+    };
+  };
+  const client = steam.createSteamWebApiClient({ apiKey: "secret", fetch: fetchImpl });
+
+  t.after(clearSteamBridgeCache);
+
+  await client.apps.getSdrConfig(480);
+  await client.broadcast.playerStats();
+  await client.broadcast.viewerHeartbeat({
+    steamId64: 76561198000000000n,
+    sessionId: 123n,
+    token: 456n,
+    stream: 1
+  });
+  await client.directory.getCmList({ cellId: 0, maxCount: 4 });
+  await client.directory.getCmListForConnect({
+    cellId: 1,
+    cmType: "websockets",
+    realm: "public",
+    maxCount: 8,
+    qosLevel: 2
+  });
+  await client.directory.getSteamPipeDomains();
+
+  assert.equal(
+    fetchCalls[0].url,
+    "https://api.steampowered.com/ISteamApps/GetSDRConfig/v0001/?key=secret&format=json&appid=480"
+  );
+  assert.equal(
+    fetchCalls[1].url,
+    "https://api.steampowered.com/ISteamBroadcast/PlayerStats/v0001/?key=secret&format=json"
+  );
+  assert.equal(fetchCalls[1].init.method, "POST");
+  assert.equal(
+    fetchCalls[2].url,
+    "https://api.steampowered.com/ISteamBroadcast/ViewerHeartbeat/v0001/?key=secret&format=json&steamid=76561198000000000&sessionid=123&token=456&stream=1"
+  );
+  assert.equal(
+    fetchCalls[3].url,
+    "https://api.steampowered.com/ISteamDirectory/GetCMList/v0001/?key=secret&format=json&cellid=0&maxcount=4"
+  );
+  assert.equal(
+    fetchCalls[4].url,
+    "https://api.steampowered.com/ISteamDirectory/GetCMListForConnect/v0001/?key=secret&format=json&cellid=1&cmtype=websockets&realm=public&maxcount=8&qoslevel=2"
+  );
+  assert.equal(
+    fetchCalls[5].url,
+    "https://api.steampowered.com/ISteamDirectory/GetSteamPipeDomains/v0001/?key=secret&format=json"
+  );
+  assert.equal(typeof steam.webApi.broadcast.viewerHeartbeat, "function");
+  assert.equal(typeof steam.webApi.directory.getSteamPipeDomains, "function");
+});
+
 test("web API remote storage and economy facades map indexed fields", async (t) => {
   const steam = loadSteamWithFakeNative(createFakeNative());
   const fetchCalls = [];
@@ -10348,6 +10417,7 @@ test("web API published file service facade maps workshop service methods", asyn
     returnMetadata: true,
     returnPlaytimeStats: 14
   });
+  await client.publishedFileService.getUserVoteSummary({ publishedFileIds: [333n, 444n] });
   await client.publishedFileService.setDeveloperMetadata({
     appId: 480,
     publishedFileId: 111n,
@@ -10421,35 +10491,40 @@ test("web API published file service facade maps workshop service methods", asyn
   });
   assert.equal(
     requestUrl(2).origin + requestUrl(2).pathname,
+    "https://api.steampowered.com/IPublishedFileService/GetUserVoteSummary/v0001/"
+  );
+  assert.deepEqual(queryInputJson(2), { publishedfileids: ["333", "444"] });
+  assert.equal(
+    requestUrl(3).origin + requestUrl(3).pathname,
     "https://partner.steam-api.com/IPublishedFileService/SetDeveloperMetadata/v0001/"
   );
-  assert.deepEqual(bodyInputJson(2), {
+  assert.deepEqual(bodyInputJson(3), {
     publishedfileid: "111",
     appid: 480,
     metadata: "{\"build\":\"beta\"}"
   });
-  assert.deepEqual(bodyInputJson(3), {
+  assert.deepEqual(bodyInputJson(4), {
     steamid: "76561198000000000",
     appid: 480,
     expiration_time: 1760000000,
     reason: "test moderation"
   });
-  assert.deepEqual(bodyInputJson(4), {
+  assert.deepEqual(bodyInputJson(5), {
     publishedfileid: "111",
     appid: 480,
     banned: true,
     reason: "policy"
   });
-  assert.deepEqual(bodyInputJson(5), {
+  assert.deepEqual(bodyInputJson(6), {
     publishedfileid: "111",
     appid: 480,
     incompatible: false
   });
   assert.equal(
-    requestUrl(6).origin + requestUrl(6).pathname,
+    requestUrl(7).origin + requestUrl(7).pathname,
     "https://partner.steam-api.com/IPublishedFileService/UpdateTags/v0001/"
   );
-  assert.deepEqual(bodyInputJson(6), {
+  assert.deepEqual(bodyInputJson(7), {
     publishedfileid: "111",
     appid: 480,
     add_tags: ["co-op"],
@@ -10599,6 +10674,7 @@ test("web API player and store service facades use input_json payloads", async (
   };
   const client = steam.createSteamWebApiClient({ apiKey: "user-secret", fetch: fetchImpl });
   const inputJson = (index) => JSON.parse(new URL(fetchCalls[index].url).searchParams.get("input_json"));
+  const bodyInputJson = (index) => JSON.parse(new URLSearchParams(fetchCalls[index].init.body).get("input_json"));
 
   t.after(clearSteamBridgeCache);
 
@@ -10613,6 +10689,11 @@ test("web API player and store service facades use input_json payloads", async (
   await client.player.getSteamLevel(76561198000000000n);
   await client.player.getBadges(76561198000000000n);
   await client.player.getCommunityBadgeProgress({ steamId64: 76561198000000000n, badgeId: 2 });
+  await client.player.recordOfflinePlaytime({
+    steamId64: 76561198000000000n,
+    ticket: "ticket",
+    playSessions: [{ appid: 480, playtime_seconds: 60n }]
+  });
   await client.store.getAppList({
     ifModifiedSince: 1700000000,
     haveDescriptionLanguage: "en",
@@ -10623,6 +10704,13 @@ test("web API player and store service facades use input_json payloads", async (
     includeHardware: false,
     lastAppId: 480,
     maxResults: 100
+  });
+  await client.store.getGamesFollowed(76561198000000000n);
+  await client.store.getGamesFollowedCount(76561198000000000n);
+  await client.store.getRecommendedTagsForUser({
+    language: "en",
+    countryCode: "US",
+    favorRarerTags: true
   });
 
   assert.match(fetchCalls[0].url, /^https:\/\/partner\.steam-api\.com\/IPlayerService\/GetRecentlyPlayedGames\/v0001\//);
@@ -10639,8 +10727,15 @@ test("web API player and store service facades use input_json payloads", async (
   assert.deepEqual(inputJson(3), { steamid: "76561198000000000" });
   assert.match(fetchCalls[4].url, /IPlayerService\/GetBadges\/v0001/);
   assert.deepEqual(inputJson(5), { steamid: "76561198000000000", badgeid: 2 });
-  assert.match(fetchCalls[6].url, /^https:\/\/partner\.steam-api\.com\/IStoreService\/GetAppList\/v0001\//);
-  assert.deepEqual(inputJson(6), {
+  assert.match(fetchCalls[6].url, /^https:\/\/partner\.steam-api\.com\/IPlayerService\/RecordOfflinePlaytime\/v0001\//);
+  assert.equal(fetchCalls[6].init.method, "POST");
+  assert.deepEqual(bodyInputJson(6), {
+    steamid: "76561198000000000",
+    ticket: "ticket",
+    play_sessions: [{ appid: 480, playtime_seconds: "60" }]
+  });
+  assert.match(fetchCalls[7].url, /^https:\/\/partner\.steam-api\.com\/IStoreService\/GetAppList\/v0001\//);
+  assert.deepEqual(inputJson(7), {
     if_modified_since: 1700000000,
     have_description_language: "en",
     include_games: true,
@@ -10651,7 +10746,163 @@ test("web API player and store service facades use input_json payloads", async (
     last_appid: 480,
     max_results: 100
   });
-  assert.equal(new URL(fetchCalls[6].url).searchParams.get("key"), "user-secret");
+  assert.equal(new URL(fetchCalls[7].url).searchParams.get("key"), "user-secret");
+  assert.match(fetchCalls[8].url, /IStoreService\/GetGamesFollowed\/v0001/);
+  assert.deepEqual(inputJson(8), { steamid: "76561198000000000" });
+  assert.match(fetchCalls[9].url, /IStoreService\/GetGamesFollowedCount\/v0001/);
+  assert.deepEqual(inputJson(9), { steamid: "76561198000000000" });
+  assert.match(fetchCalls[10].url, /IStoreService\/GetRecommendedTagsForUser\/v0001/);
+  assert.deepEqual(inputJson(10), {
+    language: "en",
+    country_code: "US",
+    favor_rarer_tags: true
+  });
+});
+
+test("web API directory, help logs, and wishlist service facades use input_json payloads", async (t) => {
+  const steam = loadSteamWithFakeNative(createFakeNative());
+  const fetchCalls = [];
+  const fetchImpl = async (url, init = {}) => {
+    fetchCalls.push({ url, init });
+    return {
+      ok: true,
+      status: 200,
+      headers: {
+        forEach(callback) {
+          callback("application/json", "content-type");
+        }
+      },
+      async text() {
+        return JSON.stringify({ response: { ok: true } });
+      }
+    };
+  };
+  const client = steam.createSteamWebApiClient({ apiKey: "service-secret", fetch: fetchImpl });
+  const requestUrl = (index) => new URL(fetchCalls[index].url);
+  const queryInputJson = (index) => JSON.parse(requestUrl(index).searchParams.get("input_json"));
+  const bodyInputJson = (index) => JSON.parse(new URLSearchParams(fetchCalls[index].init.body).get("input_json"));
+
+  t.after(clearSteamBridgeCache);
+
+  await client.contentServerDirectoryService.getCdnForVideo({
+    propertyType: 1,
+    clientIp: "203.0.113.10",
+    clientRegion: "US"
+  });
+  await client.contentServerDirectoryService.pickSingleContentServer({
+    propertyType: 2,
+    cellId: 1,
+    clientIp: "203.0.113.11"
+  });
+  await client.contentServerDirectoryService.getServersForSteamPipe({
+    cellId: 1,
+    maxServers: 4,
+    ipOverride: "203.0.113.12",
+    launcherType: 2,
+    ipv6Public: "2001:db8::1",
+    currentConnections: { source_ids: [1, 2], active_downloads: 1n }
+  });
+  await client.contentServerDirectoryService.getClientUpdateHosts({ cachedSignature: "signature" });
+  await client.contentServerDirectoryService.getDepotPatchInfo({
+    appId: 480,
+    depotId: 481,
+    sourceManifestId: 111n,
+    targetManifestId: 222n
+  });
+  await client.helpRequestLogsService.uploadUserApplicationLog({
+    appId: 480,
+    logType: "client",
+    versionString: "1.0.0",
+    logContents: "log line",
+    requestId: 333n
+  });
+  await client.helpRequestLogsService.getApplicationLogDemand({ appId: 480 });
+  await client.wishlistService.getWishlistSortedFiltered({
+    steamId64: 76561198000000000n,
+    context: { country_code: "US", language: "en" },
+    dataRequest: { include_assets: true },
+    filters: { tagids: [19, 21] },
+    sortOrder: 0,
+    startIndex: 5,
+    pageSize: 10,
+    shareToken: "share-token"
+  });
+  await client.wishlistService.getWishlist(76561198000000000n);
+  await client.wishlistService.getWishlistItemCount(76561198000000000n);
+
+  assert.equal(
+    requestUrl(0).origin + requestUrl(0).pathname,
+    "https://api.steampowered.com/IContentServerDirectoryService/GetCDNForVideo/v0001/"
+  );
+  assert.deepEqual(queryInputJson(0), {
+    property_type: 1,
+    client_ip: "203.0.113.10",
+    client_region: "US"
+  });
+  assert.equal(
+    requestUrl(1).origin + requestUrl(1).pathname,
+    "https://api.steampowered.com/IContentServerDirectoryService/PickSingleContentServer/v0001/"
+  );
+  assert.deepEqual(queryInputJson(1), {
+    property_type: 2,
+    cell_id: 1,
+    client_ip: "203.0.113.11"
+  });
+  assert.equal(
+    requestUrl(2).origin + requestUrl(2).pathname,
+    "https://api.steampowered.com/IContentServerDirectoryService/GetServersForSteamPipe/v0001/"
+  );
+  assert.deepEqual(queryInputJson(2), {
+    cell_id: 1,
+    max_servers: 4,
+    ip_override: "203.0.113.12",
+    launcher_type: 2,
+    ipv6_public: "2001:db8::1",
+    current_connections: { source_ids: [1, 2], active_downloads: "1" }
+  });
+  assert.deepEqual(queryInputJson(3), { cached_signature: "signature" });
+  assert.deepEqual(queryInputJson(4), {
+    appid: 480,
+    depotid: 481,
+    source_manifestid: "111",
+    target_manifestid: "222"
+  });
+  assert.equal(
+    requestUrl(5).origin + requestUrl(5).pathname,
+    "https://partner.steam-api.com/IHelpRequestLogsService/UploadUserApplicationLog/v0001/"
+  );
+  assert.equal(fetchCalls[5].init.method, "POST");
+  assert.deepEqual(bodyInputJson(5), {
+    appid: 480,
+    log_type: "client",
+    version_string: "1.0.0",
+    log_contents: "log line",
+    request_id: "333"
+  });
+  assert.equal(
+    requestUrl(6).origin + requestUrl(6).pathname,
+    "https://partner.steam-api.com/IHelpRequestLogsService/GetApplicationLogDemand/v0001/"
+  );
+  assert.deepEqual(bodyInputJson(6), { appid: 480 });
+  assert.equal(
+    requestUrl(7).origin + requestUrl(7).pathname,
+    "https://api.steampowered.com/IWishlistService/GetWishlistSortedFiltered/v0001/"
+  );
+  assert.deepEqual(queryInputJson(7), {
+    steamid: "76561198000000000",
+    context: { country_code: "US", language: "en" },
+    data_request: { include_assets: true },
+    sort_order: 0,
+    filters: { tagids: [19, 21] },
+    start_index: 5,
+    page_size: 10,
+    share_token: "share-token"
+  });
+  assert.deepEqual(queryInputJson(8), { steamid: "76561198000000000" });
+  assert.deepEqual(queryInputJson(9), { steamid: "76561198000000000" });
+  assert.equal(typeof steam.webApi.contentServerDirectoryService.getServersForSteamPipe, "function");
+  assert.equal(typeof steam.webApi.helpRequestLogsService.getApplicationLogDemand, "function");
+  assert.equal(typeof steam.webApi.wishlistService.getWishlistItemCount, "function");
 });
 
 test("web API site license service facade maps cafe service methods", async (t) => {

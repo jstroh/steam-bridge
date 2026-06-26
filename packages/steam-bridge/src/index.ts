@@ -1657,10 +1657,13 @@ export interface SteamWebApiClient {
   get<T = unknown>(options: Omit<SteamWebApiRequestOptions, "method" | "body">): Promise<SteamWebApiResponse<T>>;
   post<T = unknown>(options: Omit<SteamWebApiRequestOptions, "method">): Promise<SteamWebApiResponse<T>>;
   apps: SteamWebApiAppsFacade;
+  broadcast: SteamWebApiBroadcastFacade;
   broadcastService: SteamWebApiBroadcastServiceFacade;
   cheatReportingService: SteamWebApiCheatReportingServiceFacade;
   cloudService: SteamWebApiCloudServiceFacade;
   community: SteamWebApiCommunityFacade;
+  contentServerDirectoryService: SteamWebApiContentServerDirectoryServiceFacade;
+  directory: SteamWebApiDirectoryFacade;
   econMarketService: SteamWebApiEconMarketServiceFacade;
   econService: SteamWebApiEconServiceFacade;
   economy: SteamWebApiEconomyFacade;
@@ -1668,6 +1671,7 @@ export interface SteamWebApiClient {
   gameNotificationsService: SteamWebApiGameNotificationsServiceFacade;
   gameServersService: SteamWebApiGameServersServiceFacade;
   gameServerStats: SteamWebApiGameServerStatsFacade;
+  helpRequestLogsService: SteamWebApiHelpRequestLogsServiceFacade;
   inventoryService: SteamWebApiInventoryServiceFacade;
   leaderboards: SteamWebApiLeaderboardsFacade;
   news: SteamWebApiNewsFacade;
@@ -1682,6 +1686,7 @@ export interface SteamWebApiClient {
   user: SteamWebApiUserFacade;
   userAuth: SteamWebApiUserAuthFacade;
   userStats: SteamWebApiUserStatsFacade;
+  wishlistService: SteamWebApiWishlistServiceFacade;
   workshopService: SteamWebApiWorkshopServiceFacade;
   microTxn: SteamWebApiMicroTxnFacade;
   microTxnSandbox: SteamWebApiMicroTxnFacade;
@@ -1718,6 +1723,10 @@ export interface SteamWebApiAppsFacade {
     options?: SteamWebApiPartnerAppListOptions | null
   ): Promise<SteamWebApiResponse<T>>;
   getPlayersBanned<T = unknown>(
+    appId: number,
+    options?: SteamWebApiEndpointOptions | null
+  ): Promise<SteamWebApiResponse<T>>;
+  getSdrConfig<T = unknown>(
     appId: number,
     options?: SteamWebApiEndpointOptions | null
   ): Promise<SteamWebApiResponse<T>>;
@@ -1770,6 +1779,39 @@ export interface SteamWebApiNewsForAppOptions extends SteamWebApiEndpointOptions
   feeds?: string | string[];
 }
 
+export interface SteamWebApiBroadcastFacade {
+  playerStats<T = unknown>(options?: SteamWebApiEndpointOptions | null): Promise<SteamWebApiResponse<T>>;
+  viewerHeartbeat<T = unknown>(options: SteamWebApiBroadcastViewerHeartbeatOptions): Promise<SteamWebApiResponse<T>>;
+}
+
+export interface SteamWebApiBroadcastViewerHeartbeatOptions extends SteamWebApiEndpointOptions {
+  steamId64: bigint | number | string;
+  sessionId: bigint | number | string;
+  token: bigint | number | string;
+  stream?: number;
+}
+
+export interface SteamWebApiDirectoryFacade {
+  getCmList<T = unknown>(options: SteamWebApiDirectoryCmListOptions): Promise<SteamWebApiResponse<T>>;
+  getCmListForConnect<T = unknown>(
+    options?: SteamWebApiDirectoryCmListForConnectOptions | null
+  ): Promise<SteamWebApiResponse<T>>;
+  getSteamPipeDomains<T = unknown>(options?: SteamWebApiEndpointOptions | null): Promise<SteamWebApiResponse<T>>;
+}
+
+export interface SteamWebApiDirectoryCmListOptions extends SteamWebApiEndpointOptions {
+  cellId: number;
+  maxCount?: number;
+}
+
+export interface SteamWebApiDirectoryCmListForConnectOptions extends SteamWebApiEndpointOptions {
+  cellId?: number;
+  cmType?: string;
+  realm?: string;
+  maxCount?: number;
+  qosLevel?: number;
+}
+
 export interface SteamWebApiPlayerServiceFacade {
   getRecentlyPlayedGames<T = unknown>(
     options: SteamWebApiRecentlyPlayedGamesOptions
@@ -1788,6 +1830,9 @@ export interface SteamWebApiPlayerServiceFacade {
   ): Promise<SteamWebApiResponse<T>>;
   getCommunityBadgeProgress<T = unknown>(
     options: SteamWebApiCommunityBadgeProgressOptions
+  ): Promise<SteamWebApiResponse<T>>;
+  recordOfflinePlaytime<T = unknown>(
+    options: SteamWebApiRecordOfflinePlaytimeOptions
   ): Promise<SteamWebApiResponse<T>>;
 }
 
@@ -1813,8 +1858,25 @@ export interface SteamWebApiCommunityBadgeProgressOptions extends SteamWebApiEnd
   badgeId: number;
 }
 
+export interface SteamWebApiRecordOfflinePlaytimeOptions extends SteamWebApiEndpointOptions {
+  steamId64: bigint | number | string;
+  ticket: string;
+  playSessions: readonly SteamWebApiInputJsonValue[];
+}
+
 export interface SteamWebApiStoreServiceFacade {
   getAppList<T = unknown>(options?: SteamWebApiStoreAppListOptions | null): Promise<SteamWebApiResponse<T>>;
+  getGamesFollowed<T = unknown>(
+    steamId64: bigint | number | string,
+    options?: SteamWebApiEndpointOptions | null
+  ): Promise<SteamWebApiResponse<T>>;
+  getGamesFollowedCount<T = unknown>(
+    steamId64: bigint | number | string,
+    options?: SteamWebApiEndpointOptions | null
+  ): Promise<SteamWebApiResponse<T>>;
+  getRecommendedTagsForUser<T = unknown>(
+    options: SteamWebApiRecommendedTagsForUserOptions
+  ): Promise<SteamWebApiResponse<T>>;
 }
 
 export interface SteamWebApiSiteLicenseServiceFacade {
@@ -1845,6 +1907,60 @@ export interface SteamWebApiStoreAppListOptions extends SteamWebApiEndpointOptio
   includeHardware?: boolean;
   lastAppId?: number;
   maxResults?: number;
+}
+
+export interface SteamWebApiRecommendedTagsForUserOptions extends SteamWebApiEndpointOptions {
+  language: string;
+  countryCode: string;
+  favorRarerTags: boolean;
+}
+
+export interface SteamWebApiContentServerDirectoryServiceFacade {
+  getCdnForVideo<T = unknown>(
+    options: SteamWebApiContentServerCdnForVideoOptions
+  ): Promise<SteamWebApiResponse<T>>;
+  pickSingleContentServer<T = unknown>(
+    options: SteamWebApiPickSingleContentServerOptions
+  ): Promise<SteamWebApiResponse<T>>;
+  getServersForSteamPipe<T = unknown>(
+    options: SteamWebApiServersForSteamPipeOptions
+  ): Promise<SteamWebApiResponse<T>>;
+  getClientUpdateHosts<T = unknown>(
+    options: SteamWebApiClientUpdateHostsOptions
+  ): Promise<SteamWebApiResponse<T>>;
+  getDepotPatchInfo<T = unknown>(options: SteamWebApiDepotPatchInfoOptions): Promise<SteamWebApiResponse<T>>;
+}
+
+export interface SteamWebApiContentServerCdnForVideoOptions extends SteamWebApiEndpointOptions {
+  propertyType: number;
+  clientIp: string;
+  clientRegion: string;
+}
+
+export interface SteamWebApiPickSingleContentServerOptions extends SteamWebApiEndpointOptions {
+  propertyType: number;
+  cellId: number;
+  clientIp: string;
+}
+
+export interface SteamWebApiServersForSteamPipeOptions extends SteamWebApiEndpointOptions {
+  cellId: number;
+  maxServers?: number;
+  ipOverride?: string;
+  launcherType?: number;
+  ipv6Public?: string;
+  currentConnections?: SteamWebApiInputJsonValue;
+}
+
+export interface SteamWebApiClientUpdateHostsOptions extends SteamWebApiEndpointOptions {
+  cachedSignature: string;
+}
+
+export interface SteamWebApiDepotPatchInfoOptions extends SteamWebApiEndpointOptions {
+  appId: number;
+  depotId: number;
+  sourceManifestId: bigint | number | string;
+  targetManifestId: bigint | number | string;
 }
 
 export interface SteamWebApiRemoteStorageFacade {
@@ -1921,6 +2037,27 @@ export interface SteamWebApiCloudCommitHttpUploadOptions extends SteamWebApiClou
 
 export interface SteamWebApiCloudDeleteFileOptions extends SteamWebApiCloudEndpointOptions {
   fileName: string;
+}
+
+export interface SteamWebApiHelpRequestLogsServiceFacade {
+  uploadUserApplicationLog<T = unknown>(
+    options: SteamWebApiUploadUserApplicationLogOptions
+  ): Promise<SteamWebApiResponse<T>>;
+  getApplicationLogDemand<T = unknown>(
+    options: SteamWebApiApplicationLogDemandOptions
+  ): Promise<SteamWebApiResponse<T>>;
+}
+
+export interface SteamWebApiUploadUserApplicationLogOptions extends SteamWebApiEndpointOptions {
+  appId: number;
+  logType: string;
+  versionString: string;
+  logContents: string;
+  requestId: bigint | number | string;
+}
+
+export interface SteamWebApiApplicationLogDemandOptions extends SteamWebApiEndpointOptions {
+  appId: number;
 }
 
 export interface SteamWebApiBroadcastServiceFacade {
@@ -2524,6 +2661,9 @@ export interface SteamWebApiSetLeaderboardScoreOptions extends SteamWebApiLeader
 export interface SteamWebApiPublishedFileServiceFacade {
   deleteFile<T = unknown>(options: SteamWebApiPublishedFileAppOptions): Promise<SteamWebApiResponse<T>>;
   queryFiles<T = unknown>(options: SteamWebApiPublishedFileQueryOptions): Promise<SteamWebApiResponse<T>>;
+  getUserVoteSummary<T = unknown>(
+    options: SteamWebApiPublishedFileUserVoteSummaryOptions
+  ): Promise<SteamWebApiResponse<T>>;
   setDeveloperMetadata<T = unknown>(
     options: SteamWebApiPublishedFileDeveloperMetadataOptions
   ): Promise<SteamWebApiResponse<T>>;
@@ -2580,6 +2720,10 @@ export interface SteamWebApiPublishedFileQueryOptions extends SteamWebApiEndpoin
 
 export interface SteamWebApiPublishedFileDeveloperMetadataOptions extends SteamWebApiPublishedFileAppOptions {
   metadata: string;
+}
+
+export interface SteamWebApiPublishedFileUserVoteSummaryOptions extends SteamWebApiEndpointOptions {
+  publishedFileIds: Array<bigint | number | string>;
 }
 
 export interface SteamWebApiPublishedFileAppUgcBanOptions extends SteamWebApiEndpointOptions {
@@ -2652,6 +2796,31 @@ export interface SteamWebApiItemVoteSummaryOptions extends SteamWebApiPublishedI
 }
 
 export interface SteamWebApiUserVoteSummaryOptions extends SteamWebApiPublishedItemIdsOptions {}
+
+export interface SteamWebApiWishlistServiceFacade {
+  getWishlistSortedFiltered<T = unknown>(
+    options: SteamWebApiWishlistSortedFilteredOptions
+  ): Promise<SteamWebApiResponse<T>>;
+  getWishlist<T = unknown>(
+    steamId64: bigint | number | string,
+    options?: SteamWebApiEndpointOptions | null
+  ): Promise<SteamWebApiResponse<T>>;
+  getWishlistItemCount<T = unknown>(
+    steamId64: bigint | number | string,
+    options?: SteamWebApiEndpointOptions | null
+  ): Promise<SteamWebApiResponse<T>>;
+}
+
+export interface SteamWebApiWishlistSortedFilteredOptions extends SteamWebApiEndpointOptions {
+  steamId64: bigint | number | string;
+  context: SteamWebApiInputJsonValue;
+  dataRequest: SteamWebApiInputJsonValue;
+  filters: SteamWebApiInputJsonValue;
+  sortOrder?: string | number;
+  startIndex?: number;
+  pageSize?: number;
+  shareToken: string;
+}
 
 export interface SteamWebApiWorkshopServiceFacade {
   setItemPaymentRules<T = unknown>(
@@ -5043,10 +5212,13 @@ export function createSteamWebApiClient(options: SteamWebApiClientOptions = {}):
       return requestSteamWebApiWithClient<T>(postRequest, clientOptions);
     },
     apps: createSteamWebApiAppsFacade(clientOptions),
+    broadcast: createSteamWebApiBroadcastFacade(clientOptions),
     broadcastService: createSteamWebApiBroadcastServiceFacade(clientOptions),
     cheatReportingService: createSteamWebApiCheatReportingServiceFacade(clientOptions),
     cloudService: createSteamWebApiCloudServiceFacade(clientOptions),
     community: createSteamWebApiCommunityFacade(clientOptions),
+    contentServerDirectoryService: createSteamWebApiContentServerDirectoryServiceFacade(clientOptions),
+    directory: createSteamWebApiDirectoryFacade(clientOptions),
     econMarketService: createSteamWebApiEconMarketServiceFacade(clientOptions),
     econService: createSteamWebApiEconServiceFacade(clientOptions),
     economy: createSteamWebApiEconomyFacade(clientOptions),
@@ -5054,6 +5226,7 @@ export function createSteamWebApiClient(options: SteamWebApiClientOptions = {}):
     gameNotificationsService: createSteamWebApiGameNotificationsServiceFacade(clientOptions),
     gameServersService: createSteamWebApiGameServersServiceFacade(clientOptions),
     gameServerStats: createSteamWebApiGameServerStatsFacade(clientOptions),
+    helpRequestLogsService: createSteamWebApiHelpRequestLogsServiceFacade(clientOptions),
     inventoryService: createSteamWebApiInventoryServiceFacade(clientOptions),
     leaderboards: createSteamWebApiLeaderboardsFacade(clientOptions),
     news: createSteamWebApiNewsFacade(clientOptions),
@@ -5068,6 +5241,7 @@ export function createSteamWebApiClient(options: SteamWebApiClientOptions = {}):
     user: createSteamWebApiUserFacade(clientOptions),
     userAuth: createSteamWebApiUserAuthFacade(clientOptions),
     userStats: createSteamWebApiUserStatsFacade(clientOptions),
+    wishlistService: createSteamWebApiWishlistServiceFacade(clientOptions),
     workshopService: createSteamWebApiWorkshopServiceFacade(clientOptions),
     microTxn: createSteamWebApiMicroTxnFacade("ISteamMicroTxn", clientOptions),
     microTxnSandbox: createSteamWebApiMicroTxnFacade("ISteamMicroTxnSandbox", clientOptions)
@@ -9234,6 +9408,12 @@ function createSteamWebApiAppsFacade(clientOptions: SteamWebApiClientOptions): S
     ): Promise<SteamWebApiResponse<T>> {
       return steamWebApiGet<T>(clientOptions, "ISteamApps", "GetPlayersBanned", 1, { appid: appId }, options);
     },
+    getSdrConfig<T = unknown>(
+      appId: number,
+      options?: SteamWebApiEndpointOptions | null
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiGet<T>(clientOptions, "ISteamApps", "GetSDRConfig", 1, { appid: appId }, options, false);
+    },
     getServerList<T = unknown>(options?: SteamWebApiServerListOptions | null): Promise<SteamWebApiResponse<T>> {
       return steamWebApiGet<T>(
         clientOptions,
@@ -9302,6 +9482,72 @@ function createSteamWebApiNewsFacade(clientOptions: SteamWebApiClientOptions): S
         steamWebApiNewsForAppParams(options),
         options
       );
+    }
+  };
+}
+
+function createSteamWebApiBroadcastFacade(clientOptions: SteamWebApiClientOptions): SteamWebApiBroadcastFacade {
+  return {
+    playerStats<T = unknown>(options?: SteamWebApiEndpointOptions | null): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiPost<T>(clientOptions, "ISteamBroadcast", "PlayerStats", 1, {}, options, false);
+    },
+    viewerHeartbeat<T = unknown>(
+      options: SteamWebApiBroadcastViewerHeartbeatOptions
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiGet<T>(
+        clientOptions,
+        "ISteamBroadcast",
+        "ViewerHeartbeat",
+        1,
+        {
+          steamid: options.steamId64,
+          sessionid: options.sessionId,
+          token: options.token,
+          stream: options.stream
+        },
+        options,
+        false
+      );
+    }
+  };
+}
+
+function createSteamWebApiDirectoryFacade(clientOptions: SteamWebApiClientOptions): SteamWebApiDirectoryFacade {
+  return {
+    getCmList<T = unknown>(options: SteamWebApiDirectoryCmListOptions): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiGet<T>(
+        clientOptions,
+        "ISteamDirectory",
+        "GetCMList",
+        1,
+        { cellid: options.cellId, maxcount: options.maxCount },
+        options,
+        false
+      );
+    },
+    getCmListForConnect<T = unknown>(
+      options?: SteamWebApiDirectoryCmListForConnectOptions | null
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiGet<T>(
+        clientOptions,
+        "ISteamDirectory",
+        "GetCMListForConnect",
+        1,
+        {
+          cellid: options?.cellId,
+          cmtype: options?.cmType,
+          realm: options?.realm,
+          maxcount: options?.maxCount,
+          qoslevel: options?.qosLevel
+        },
+        options,
+        false
+      );
+    },
+    getSteamPipeDomains<T = unknown>(
+      options?: SteamWebApiEndpointOptions | null
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiGet<T>(clientOptions, "ISteamDirectory", "GetSteamPipeDomains", 1, {}, options, false);
     }
   };
 }
@@ -9384,6 +9630,22 @@ function createSteamWebApiPlayerServiceFacade(clientOptions: SteamWebApiClientOp
         { steamid: options.steamId64, badgeid: options.badgeId },
         options
       );
+    },
+    recordOfflinePlaytime<T = unknown>(
+      options: SteamWebApiRecordOfflinePlaytimeOptions
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServicePost<T>(
+        clientOptions,
+        "IPlayerService",
+        "RecordOfflinePlaytime",
+        1,
+        {
+          steamid: options.steamId64,
+          ticket: options.ticket,
+          play_sessions: options.playSessions
+        },
+        options
+      );
     }
   };
 }
@@ -9407,6 +9669,175 @@ function createSteamWebApiStoreServiceFacade(clientOptions: SteamWebApiClientOpt
           last_appid: options?.lastAppId,
           max_results: options?.maxResults
         },
+        options
+      );
+    },
+    getGamesFollowed<T = unknown>(
+      steamId64: bigint | number | string,
+      options?: SteamWebApiEndpointOptions | null
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServiceGet<T>(
+        clientOptions,
+        "IStoreService",
+        "GetGamesFollowed",
+        1,
+        { steamid: steamId64 },
+        options
+      );
+    },
+    getGamesFollowedCount<T = unknown>(
+      steamId64: bigint | number | string,
+      options?: SteamWebApiEndpointOptions | null
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServiceGet<T>(
+        clientOptions,
+        "IStoreService",
+        "GetGamesFollowedCount",
+        1,
+        { steamid: steamId64 },
+        options
+      );
+    },
+    getRecommendedTagsForUser<T = unknown>(
+      options: SteamWebApiRecommendedTagsForUserOptions
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServiceGet<T>(
+        clientOptions,
+        "IStoreService",
+        "GetRecommendedTagsForUser",
+        1,
+        {
+          language: options.language,
+          country_code: options.countryCode,
+          favor_rarer_tags: options.favorRarerTags
+        },
+        options
+      );
+    }
+  };
+}
+
+function createSteamWebApiContentServerDirectoryServiceFacade(
+  clientOptions: SteamWebApiClientOptions
+): SteamWebApiContentServerDirectoryServiceFacade {
+  return {
+    getCdnForVideo<T = unknown>(
+      options: SteamWebApiContentServerCdnForVideoOptions
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServiceGet<T>(
+        clientOptions,
+        "IContentServerDirectoryService",
+        "GetCDNForVideo",
+        1,
+        {
+          property_type: options.propertyType,
+          client_ip: options.clientIp,
+          client_region: options.clientRegion
+        },
+        options,
+        false
+      );
+    },
+    pickSingleContentServer<T = unknown>(
+      options: SteamWebApiPickSingleContentServerOptions
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServiceGet<T>(
+        clientOptions,
+        "IContentServerDirectoryService",
+        "PickSingleContentServer",
+        1,
+        {
+          property_type: options.propertyType,
+          cell_id: options.cellId,
+          client_ip: options.clientIp
+        },
+        options,
+        false
+      );
+    },
+    getServersForSteamPipe<T = unknown>(
+      options: SteamWebApiServersForSteamPipeOptions
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServiceGet<T>(
+        clientOptions,
+        "IContentServerDirectoryService",
+        "GetServersForSteamPipe",
+        1,
+        {
+          cell_id: options.cellId,
+          max_servers: options.maxServers,
+          ip_override: options.ipOverride,
+          launcher_type: options.launcherType,
+          ipv6_public: options.ipv6Public,
+          current_connections: options.currentConnections
+        },
+        options,
+        false
+      );
+    },
+    getClientUpdateHosts<T = unknown>(
+      options: SteamWebApiClientUpdateHostsOptions
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServiceGet<T>(
+        clientOptions,
+        "IContentServerDirectoryService",
+        "GetClientUpdateHosts",
+        1,
+        { cached_signature: options.cachedSignature },
+        options,
+        false
+      );
+    },
+    getDepotPatchInfo<T = unknown>(options: SteamWebApiDepotPatchInfoOptions): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServiceGet<T>(
+        clientOptions,
+        "IContentServerDirectoryService",
+        "GetDepotPatchInfo",
+        1,
+        {
+          appid: options.appId,
+          depotid: options.depotId,
+          source_manifestid: options.sourceManifestId,
+          target_manifestid: options.targetManifestId
+        },
+        options,
+        false
+      );
+    }
+  };
+}
+
+function createSteamWebApiHelpRequestLogsServiceFacade(
+  clientOptions: SteamWebApiClientOptions
+): SteamWebApiHelpRequestLogsServiceFacade {
+  return {
+    uploadUserApplicationLog<T = unknown>(
+      options: SteamWebApiUploadUserApplicationLogOptions
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServicePost<T>(
+        clientOptions,
+        "IHelpRequestLogsService",
+        "UploadUserApplicationLog",
+        1,
+        {
+          appid: options.appId,
+          log_type: options.logType,
+          version_string: options.versionString,
+          log_contents: options.logContents,
+          request_id: options.requestId
+        },
+        options
+      );
+    },
+    getApplicationLogDemand<T = unknown>(
+      options: SteamWebApiApplicationLogDemandOptions
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServicePost<T>(
+        clientOptions,
+        "IHelpRequestLogsService",
+        "GetApplicationLogDemand",
+        1,
+        { appid: options.appId },
         options
       );
     }
@@ -10743,6 +11174,19 @@ function createSteamWebApiPublishedFileServiceFacade(
         false
       );
     },
+    getUserVoteSummary<T = unknown>(
+      options: SteamWebApiPublishedFileUserVoteSummaryOptions
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServiceGet<T>(
+        clientOptions,
+        "IPublishedFileService",
+        "GetUserVoteSummary",
+        1,
+        { publishedfileids: options.publishedFileIds },
+        options,
+        false
+      );
+    },
     setDeveloperMetadata<T = unknown>(
       options: SteamWebApiPublishedFileDeveloperMetadataOptions
     ): Promise<SteamWebApiResponse<T>> {
@@ -10893,6 +11337,63 @@ function createSteamWebApiPublishedItemVotingFacade(
         1,
         steamWebApiPublishedItemVoteBody(options),
         options
+      );
+    }
+  };
+}
+
+function createSteamWebApiWishlistServiceFacade(
+  clientOptions: SteamWebApiClientOptions
+): SteamWebApiWishlistServiceFacade {
+  return {
+    getWishlistSortedFiltered<T = unknown>(
+      options: SteamWebApiWishlistSortedFilteredOptions
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServiceGet<T>(
+        clientOptions,
+        "IWishlistService",
+        "GetWishlistSortedFiltered",
+        1,
+        {
+          steamid: options.steamId64,
+          context: options.context,
+          data_request: options.dataRequest,
+          sort_order: options.sortOrder,
+          filters: options.filters,
+          start_index: options.startIndex,
+          page_size: options.pageSize,
+          share_token: options.shareToken
+        },
+        options,
+        false
+      );
+    },
+    getWishlist<T = unknown>(
+      steamId64: bigint | number | string,
+      options?: SteamWebApiEndpointOptions | null
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServiceGet<T>(
+        clientOptions,
+        "IWishlistService",
+        "GetWishlist",
+        1,
+        { steamid: steamId64 },
+        options,
+        false
+      );
+    },
+    getWishlistItemCount<T = unknown>(
+      steamId64: bigint | number | string,
+      options?: SteamWebApiEndpointOptions | null
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServiceGet<T>(
+        clientOptions,
+        "IWishlistService",
+        "GetWishlistItemCount",
+        1,
+        { steamid: steamId64 },
+        options,
+        false
       );
     }
   };
