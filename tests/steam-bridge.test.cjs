@@ -6768,10 +6768,31 @@ test("game server networking sockets facade uses game-server native bindings", (
     queue_time: "3000",
     max_jitter: 40
   };
+  const connectionInfo = {
+    state: 3,
+    remote_identity: peer,
+    user_data: "99",
+    listen_socket: 144,
+    remote_address: address,
+    remote_pop: 1234,
+    relay_pop: 5678,
+    end_reason: 0,
+    end_debug: "",
+    connection_description: "game server socket to peer",
+    flags: 16
+  };
   const fake = createFakeNative({
     gameServerNetworkingSocketsCreateListenSocketIp(addr, options) {
       this.calls.push({ method: "gameServerNetworkingSocketsCreateListenSocketIp", args: [addr, options] });
       return 144;
+    },
+    gameServerNetworkingSocketsConnectByIpAddress(addr, options) {
+      this.calls.push({ method: "gameServerNetworkingSocketsConnectByIpAddress", args: [addr, options] });
+      return 201;
+    },
+    gameServerNetworkingSocketsCreateListenSocketP2p(port, options) {
+      this.calls.push({ method: "gameServerNetworkingSocketsCreateListenSocketP2p", args: [port, options] });
+      return 145;
     },
     gameServerNetworkingSocketsConnectP2p(identity, port, options) {
       this.calls.push({ method: "gameServerNetworkingSocketsConnectP2p", args: [identity, port, options] });
@@ -6791,9 +6812,50 @@ test("game server networking sockets facade uses game-server native bindings", (
       });
       return true;
     },
+    gameServerNetworkingSocketsAcceptConnection(connection) {
+      this.calls.push({ method: "gameServerNetworkingSocketsAcceptConnection", args: [connection] });
+      return 1;
+    },
+    gameServerNetworkingSocketsCloseConnection(connection, reason, debug, enableLinger) {
+      this.calls.push({
+        method: "gameServerNetworkingSocketsCloseConnection",
+        args: [connection, reason, debug, enableLinger]
+      });
+      return true;
+    },
+    gameServerNetworkingSocketsCloseListenSocket(socket) {
+      this.calls.push({ method: "gameServerNetworkingSocketsCloseListenSocket", args: [socket] });
+      return true;
+    },
+    gameServerNetworkingSocketsSetConnectionUserData(connection, userData) {
+      this.calls.push({ method: "gameServerNetworkingSocketsSetConnectionUserData", args: [connection, userData] });
+      return true;
+    },
+    gameServerNetworkingSocketsGetConnectionUserData(connection) {
+      this.calls.push({ method: "gameServerNetworkingSocketsGetConnectionUserData", args: [connection] });
+      return "99";
+    },
+    gameServerNetworkingSocketsSetConnectionName(connection, name) {
+      this.calls.push({ method: "gameServerNetworkingSocketsSetConnectionName", args: [connection, name] });
+    },
+    gameServerNetworkingSocketsGetConnectionName(connection) {
+      this.calls.push({ method: "gameServerNetworkingSocketsGetConnectionName", args: [connection] });
+      return "game-server-peer";
+    },
+    gameServerNetworkingSocketsSendMessageToConnection(connection, data, sendFlags) {
+      this.calls.push({
+        method: "gameServerNetworkingSocketsSendMessageToConnection",
+        args: [connection, data, sendFlags]
+      });
+      return { result: 1, message_number: "902" };
+    },
     gameServerNetworkingSocketsSendMessages(messages) {
       this.calls.push({ method: "gameServerNetworkingSocketsSendMessages", args: [messages] });
       return [{ result: 1, message_number: "901" }];
+    },
+    gameServerNetworkingSocketsFlushMessagesOnConnection(connection) {
+      this.calls.push({ method: "gameServerNetworkingSocketsFlushMessagesOnConnection", args: [connection] });
+      return 1;
     },
     gameServerNetworkingSocketsReceiveMessagesOnConnection(connection, maxMessages) {
       this.calls.push({ method: "gameServerNetworkingSocketsReceiveMessagesOnConnection", args: [connection, maxMessages] });
@@ -6815,19 +6877,11 @@ test("game server networking sockets facade uses game-server native bindings", (
     },
     gameServerNetworkingSocketsGetConnectionInfo(connection) {
       this.calls.push({ method: "gameServerNetworkingSocketsGetConnectionInfo", args: [connection] });
-      return {
-        state: 3,
-        remote_identity: peer,
-        user_data: "99",
-        listen_socket: 144,
-        remote_address: address,
-        remote_pop: 1234,
-        relay_pop: 5678,
-        end_reason: 0,
-        end_debug: "",
-        connection_description: "game server socket to peer",
-        flags: 16
-      };
+      return connectionInfo;
+    },
+    gameServerNetworkingSocketsGetConnectionRealTimeStatus(connection) {
+      this.calls.push({ method: "gameServerNetworkingSocketsGetConnectionRealTimeStatus", args: [connection] });
+      return quickStatus;
     },
     gameServerNetworkingSocketsGetConnectionRealTimeStatusWithLanes(connection, maxLanes) {
       this.calls.push({
@@ -6839,9 +6893,84 @@ test("game server networking sockets facade uses game-server native bindings", (
         lanes: [{ pending_unreliable: 4, pending_reliable: 5, sent_unacked_reliable: 6, queue_time: "7000" }]
       };
     },
+    gameServerNetworkingSocketsGetDetailedConnectionStatus(connection, maxBytes) {
+      this.calls.push({ method: "gameServerNetworkingSocketsGetDetailedConnectionStatus", args: [connection, maxBytes] });
+      return "game server detailed status";
+    },
+    gameServerNetworkingSocketsGetListenSocketAddress(socket) {
+      this.calls.push({ method: "gameServerNetworkingSocketsGetListenSocketAddress", args: [socket] });
+      return address;
+    },
+    gameServerNetworkingSocketsCreateSocketPair(useNetworkLoopback, identity1, identity2) {
+      this.calls.push({
+        method: "gameServerNetworkingSocketsCreateSocketPair",
+        args: [useNetworkLoopback, identity1, identity2]
+      });
+      return { connection1: 301, connection2: 302 };
+    },
+    gameServerNetworkingSocketsConfigureConnectionLanes(connection, priorities, weights) {
+      this.calls.push({
+        method: "gameServerNetworkingSocketsConfigureConnectionLanes",
+        args: [connection, priorities, weights]
+      });
+      return 1;
+    },
+    gameServerNetworkingSocketsGetIdentity() {
+      this.calls.push({ method: "gameServerNetworkingSocketsGetIdentity", args: [] });
+      return peer;
+    },
+    gameServerNetworkingSocketsInitAuthentication() {
+      this.calls.push({ method: "gameServerNetworkingSocketsInitAuthentication", args: [] });
+      return 100;
+    },
     gameServerNetworkingSocketsGetAuthenticationStatus() {
       this.calls.push({ method: "gameServerNetworkingSocketsGetAuthenticationStatus", args: [] });
       return { availability: 100, debug_message: "server auth ready" };
+    },
+    gameServerNetworkingSocketsCreatePollGroup() {
+      this.calls.push({ method: "gameServerNetworkingSocketsCreatePollGroup", args: [] });
+      return 401;
+    },
+    gameServerNetworkingSocketsRunCallbacks() {
+      this.calls.push({ method: "gameServerNetworkingSocketsRunCallbacks", args: [] });
+    },
+    gameServerNetworkingSocketsDestroyPollGroup(pollGroup) {
+      this.calls.push({ method: "gameServerNetworkingSocketsDestroyPollGroup", args: [pollGroup] });
+      return true;
+    },
+    gameServerNetworkingSocketsSetConnectionPollGroup(connection, pollGroup) {
+      this.calls.push({ method: "gameServerNetworkingSocketsSetConnectionPollGroup", args: [connection, pollGroup] });
+      return true;
+    },
+    gameServerNetworkingSocketsReceiveMessagesOnPollGroup(pollGroup, maxMessages) {
+      this.calls.push({ method: "gameServerNetworkingSocketsReceiveMessagesOnPollGroup", args: [pollGroup, maxMessages] });
+      return [];
+    },
+    gameServerNetworkingSocketsReceivedRelayAuthTicket(ticket) {
+      this.calls.push({ method: "gameServerNetworkingSocketsReceivedRelayAuthTicket", args: [ticket] });
+      return true;
+    },
+    gameServerNetworkingSocketsFindRelayAuthTicketForServer(identity, remoteVirtualPort) {
+      this.calls.push({
+        method: "gameServerNetworkingSocketsFindRelayAuthTicketForServer",
+        args: [identity, remoteVirtualPort]
+      });
+      return 121;
+    },
+    gameServerNetworkingSocketsConnectToHostedDedicatedServer(identity, remoteVirtualPort, options) {
+      this.calls.push({
+        method: "gameServerNetworkingSocketsConnectToHostedDedicatedServer",
+        args: [identity, remoteVirtualPort, options]
+      });
+      return 204;
+    },
+    gameServerNetworkingSocketsGetHostedDedicatedServerPort() {
+      this.calls.push({ method: "gameServerNetworkingSocketsGetHostedDedicatedServerPort", args: [] });
+      return 27016;
+    },
+    gameServerNetworkingSocketsGetHostedDedicatedServerPopId() {
+      this.calls.push({ method: "gameServerNetworkingSocketsGetHostedDedicatedServerPopId", args: [] });
+      return 4321;
     },
     gameServerNetworkingSocketsGetHostedDedicatedServerAddress() {
       this.calls.push({ method: "gameServerNetworkingSocketsGetHostedDedicatedServerAddress", args: [] });
@@ -6850,6 +6979,65 @@ test("game server networking sockets facade uses game-server native bindings", (
         routing: { pop_id: 4321, size: 3, data: Buffer.from("sdr") },
         debug_message: ""
       };
+    },
+    gameServerNetworkingSocketsCreateHostedDedicatedServerListenSocket(localVirtualPort, options) {
+      this.calls.push({
+        method: "gameServerNetworkingSocketsCreateHostedDedicatedServerListenSocket",
+        args: [localVirtualPort, options]
+      });
+      return 146;
+    },
+    gameServerNetworkingSocketsGetGameCoordinatorServerLogin(appData, maxBlobBytes) {
+      this.calls.push({
+        method: "gameServerNetworkingSocketsGetGameCoordinatorServerLogin",
+        args: [appData, maxBlobBytes]
+      });
+      return {
+        result: 1,
+        identity: peer,
+        routing: { pop_id: 4321, size: 3, data: Buffer.from("sdr") },
+        app_id: 480,
+        timestamp: 123456,
+        app_data: appData,
+        signed_blob: Buffer.from("signed-server-login"),
+        debug_message: ""
+      };
+    },
+    gameServerNetworkingSocketsGetCertificateRequest(maxBytes) {
+      this.calls.push({ method: "gameServerNetworkingSocketsGetCertificateRequest", args: [maxBytes] });
+      return { success: true, data: Buffer.from("server-cert-request"), error: "" };
+    },
+    gameServerNetworkingSocketsSetCertificate(certificate) {
+      this.calls.push({ method: "gameServerNetworkingSocketsSetCertificate", args: [certificate] });
+      return { success: true, data: Buffer.alloc(0), error: "" };
+    },
+    gameServerNetworkingSocketsResetIdentity(identity) {
+      this.calls.push({ method: "gameServerNetworkingSocketsResetIdentity", args: [identity] });
+    },
+    gameServerNetworkingSocketsBeginAsyncRequestFakeIp(numPorts) {
+      this.calls.push({ method: "gameServerNetworkingSocketsBeginAsyncRequestFakeIp", args: [numPorts] });
+      return true;
+    },
+    gameServerNetworkingSocketsGetFakeIp(idxFirstPort) {
+      this.calls.push({ method: "gameServerNetworkingSocketsGetFakeIp", args: [idxFirstPort] });
+      return {
+        result: 1,
+        identity: peer,
+        ipv4: 167772161,
+        ipv4_address: "10.0.0.1",
+        ports: [27015, 27016]
+      };
+    },
+    gameServerNetworkingSocketsCreateListenSocketP2pFakeIp(idxFakePort, options) {
+      this.calls.push({
+        method: "gameServerNetworkingSocketsCreateListenSocketP2pFakeIp",
+        args: [idxFakePort, options]
+      });
+      return 147;
+    },
+    gameServerNetworkingSocketsGetRemoteFakeIpForConnection(connection) {
+      this.calls.push({ method: "gameServerNetworkingSocketsGetRemoteFakeIpForConnection", args: [connection] });
+      return { result: 1, address };
     },
     gameServerNetworkingSocketsCreateFakeUdpPort(fakeServerPort) {
       this.calls.push({ method: "gameServerNetworkingSocketsCreateFakeUdpPort", args: [fakeServerPort] });
@@ -6871,12 +7059,32 @@ test("game server networking sockets facade uses game-server native bindings", (
     steam.gameServerNetworkingSockets.createListenSocketIP({ ipv4: 2130706433, port: 27015 }, socketOptions),
     144
   );
+  assert.equal(steam.gameServerNetworkingSockets.connectByIPAddress({ text: "127.0.0.1:27015" }, socketOptions), 201);
+  assert.equal(steam.gameServerNetworkingSockets.createListenSocketP2P(7, socketOptions), 145);
   assert.equal(steam.gameServerNetworkingSockets.connectP2P(identity, 7, socketOptions), 202);
   assert.equal(
     steam.gameServerNetworkingSockets.connectP2PCustomSignaling(0x1234n, identity, 8, socketOptions),
     203
   );
   assert.equal(steam.gameServerNetworkingSockets.receivedP2PCustomSignal(Buffer.from("server-signal"), 0x5678n), true);
+  assert.equal(steam.gameServerNetworkingSockets.acceptConnection(202), 1);
+  assert.equal(
+    steam.gameServerNetworkingSockets.closeConnection(202, {
+      reason: 2100,
+      debug: "server-done",
+      enableLinger: true
+    }),
+    true
+  );
+  assert.equal(steam.gameServerNetworkingSockets.closeListenSocket(144), true);
+  assert.equal(steam.gameServerNetworkingSockets.setConnectionUserData(202, 99n), true);
+  assert.equal(steam.gameServerNetworkingSockets.getConnectionUserData(202), 99n);
+  steam.gameServerNetworkingSockets.setConnectionName(202, "game-server-peer");
+  assert.equal(steam.gameServerNetworkingSockets.getConnectionName(202), "game-server-peer");
+  assert.deepEqual(steam.gameServerNetworkingSockets.sendMessageToConnection(202, Buffer.from("server-socket")), {
+    result: 1,
+    messageNumber: 902n
+  });
   assert.deepEqual(
     steam.gameServerNetworkingSockets.sendMessages([
       {
@@ -6900,6 +7108,7 @@ test("game server networking sockets facade uses game-server native bindings", (
   const sendMessagesCall = fake.calls.find((call) => call.method === "gameServerNetworkingSocketsSendMessages");
   assert.equal(sendMessagesCall.args[0][0].data.toString(), "server-batch");
   assert.equal(sendMessagesCall.args[0][0].sendFlags, steam.gameServerNetworkingSockets.SendFlags.ReliableNoNagle);
+  assert.equal(steam.gameServerNetworkingSockets.flushMessagesOnConnection(202), 1);
   assert.deepEqual(fake.calls.find((call) => call.method === "gameServerNetworkingSocketsConnectP2p"), {
     method: "gameServerNetworkingSocketsConnectP2p",
     args: [{ steamId64: 76561198000000012n }, 7, socketOptions]
@@ -6912,10 +7121,107 @@ test("game server networking sockets facade uses game-server native bindings", (
     method: "gameServerNetworkingSocketsCreateListenSocketIp",
     args: [{ ipv4: 2130706433, port: 27015 }, socketOptions]
   });
+  assert.equal(steam.gameServerNetworkingSockets.getConnectionRealTimeStatus(202).queueTime, 3000n);
+  assert.equal(steam.gameServerNetworkingSockets.getDetailedConnectionStatus(202, 512), "game server detailed status");
+  assert.equal(steam.gameServerNetworkingSockets.getListenSocketAddress(144).port, 27015);
+  assert.deepEqual(steam.gameServerNetworkingSockets.createSocketPair(true, { localHost: true }, { genericString: "peer" }), {
+    connection1: 301,
+    connection2: 302
+  });
+  assert.equal(steam.gameServerNetworkingSockets.configureConnectionLanes(202, [10, 5], [100, 50]), 1);
+  assert.equal(steam.gameServerNetworkingSockets.getIdentity().steamId64, 76561198000000012n);
+  assert.equal(steam.gameServerNetworkingSockets.initAuthentication(), 100);
+  const pollGroup = steam.gameServerNetworkingSockets.createPollGroup();
+  steam.gameServerNetworkingSockets.runCallbacks();
+  assert.equal(steam.gameServerNetworkingSockets.setConnectionPollGroup(202, pollGroup), true);
+  assert.deepEqual(steam.gameServerNetworkingSockets.receiveMessagesOnPollGroup(pollGroup, 4), []);
+  assert.equal(steam.gameServerNetworkingSockets.destroyPollGroup(pollGroup), true);
+  assert.equal(steam.gameServerNetworkingSockets.receivedRelayAuthTicket(Buffer.from("ticket")), true);
+  assert.equal(steam.gameServerNetworkingSockets.findRelayAuthTicketForServer(identity, 7), 121);
+  assert.equal(steam.gameServerNetworkingSockets.connectToHostedDedicatedServer(identity, 7, socketOptions), 204);
+  assert.equal(steam.gameServerNetworkingSockets.getHostedDedicatedServerPort(), 27016);
+  assert.equal(steam.gameServerNetworkingSockets.getHostedDedicatedServerPopId(), 4321);
+  assert.equal(steam.gameServerNetworkingSockets.createHostedDedicatedServerListenSocket(7, socketOptions), 146);
+  const serverLogin = steam.gameServerNetworkingSockets.getGameCoordinatorServerLogin(Buffer.from("app-data"), 4096);
+  assert.equal(serverLogin.result, 1);
+  assert.equal(serverLogin.identity.steamId64, 76561198000000012n);
+  assert.equal(serverLogin.routing.data.toString(), "sdr");
+  assert.equal(serverLogin.appId, 480);
+  assert.equal(serverLogin.appData.toString(), "app-data");
+  assert.equal(serverLogin.signedBlob.toString(), "signed-server-login");
+  assert.equal(steam.gameServerNetworkingSockets.getCertificateRequest(256).data.toString(), "server-cert-request");
+  assert.equal(steam.gameServerNetworkingSockets.setCertificate(Buffer.from("server-cert")).success, true);
+  steam.gameServerNetworkingSockets.resetIdentity({ localHost: true });
+  assert.equal(steam.gameServerNetworkingSockets.beginAsyncRequestFakeIP(2), true);
+  assert.deepEqual(steam.gameServerNetworkingSockets.getFakeIP(0), {
+    result: 1,
+    identity: {
+      identityType: 16,
+      text: "steamid:76561198000000012",
+      steamId64: 76561198000000012n,
+      genericString: null,
+      localHost: false,
+      invalid: false,
+      fakeIpType: 0
+    },
+    ipv4: 167772161,
+    ipv4Address: "10.0.0.1",
+    ports: [27015, 27016]
+  });
+  assert.equal(steam.gameServerNetworkingSockets.createListenSocketP2PFakeIP(1, socketOptions), 147);
+  assert.equal(steam.gameServerNetworkingSockets.getRemoteFakeIPForConnection(202).address.port, 27015);
   assert.deepEqual(fake.calls.find((call) => call.method === "gameServerNetworkingSocketsReceivedP2pCustomSignal"), {
     method: "gameServerNetworkingSocketsReceivedP2pCustomSignal",
     args: [Buffer.from("server-signal"), 0x5678n]
   });
+  assert.deepEqual(fake.calls.find((call) => call.method === "gameServerNetworkingSocketsConnectToHostedDedicatedServer"), {
+    method: "gameServerNetworkingSocketsConnectToHostedDedicatedServer",
+    args: [{ steamId64: 76561198000000012n }, 7, socketOptions]
+  });
+
+  let statusEvent;
+  const connectionStatusHandle = steam.gameServerNetworkingSockets.onConnectionStatusChanged((event) => {
+    statusEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.SteamNetConnectionStatusChanged)({
+    connection: 202,
+    old_state: 2,
+    info: connectionInfo
+  });
+  assert.equal(statusEvent.connection, 202);
+  assert.equal(statusEvent.oldState, 2);
+  assert.equal(statusEvent.info.remoteIdentity.steamId64, 76561198000000012n);
+
+  let fakeIpEvent;
+  const fakeIpHandle = steam.gameServerNetworkingSockets.onFakeIpResult((event) => {
+    fakeIpEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.SteamNetworkingFakeIPResult)({
+    result: 1,
+    identity: peer,
+    ipv4: 167772161,
+    ipv4_address: "10.0.0.1",
+    ports: [27015]
+  });
+  assert.equal(fakeIpEvent.identity.steamId64, 76561198000000012n);
+  assert.equal(fakeIpEvent.ipv4Address, "10.0.0.1");
+  assert.deepEqual(fakeIpEvent.ports, [27015]);
+  connectionStatusHandle.disconnect();
+  fakeIpHandle.disconnect();
+  assert.deepEqual(
+    fake.calls.filter(
+      (call) =>
+        call.method === "disconnectCallback" &&
+        [
+          steam.SteamCallback.SteamNetConnectionStatusChanged,
+          steam.SteamCallback.SteamNetworkingFakeIPResult
+        ].includes(call.args[0])
+    ),
+    [
+      { method: "disconnectCallback", args: [steam.SteamCallback.SteamNetConnectionStatusChanged] },
+      { method: "disconnectCallback", args: [steam.SteamCallback.SteamNetworkingFakeIPResult] }
+    ]
+  );
 });
 
 test("networking sockets facade covers connection handles, status, poll groups, and callbacks", (t) => {

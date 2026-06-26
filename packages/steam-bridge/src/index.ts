@@ -10685,6 +10685,11 @@ export const gameServerNetworkingSockets = {
   runCallbacks(): void {
     native().gameServerNetworkingSocketsRunCallbacks();
   },
+  onConnectionStatusChanged(handler: (event: NetworkingConnectionStatusChangedEvent) => void): CallbackHandle {
+    return onSteamCallback("SteamNetConnectionStatusChanged", (event) => {
+      handler(event as NetworkingConnectionStatusChangedEvent);
+    });
+  },
   destroyPollGroup(pollGroup: number): boolean {
     return native().gameServerNetworkingSocketsDestroyPollGroup(pollGroup);
   },
@@ -10762,6 +10767,11 @@ export const gameServerNetworkingSockets = {
   },
   beginAsyncRequestFakeIP(numPorts: number): boolean {
     return native().gameServerNetworkingSocketsBeginAsyncRequestFakeIp(numPorts);
+  },
+  onFakeIpResult(handler: (event: NetworkingFakeIpResultEvent) => void): CallbackHandle {
+    return onSteamCallback("SteamNetworkingFakeIPResult", (event) => {
+      handler(event as NetworkingFakeIpResultEvent);
+    });
   },
   getFakeIP(idxFirstPort = 0): NetworkingFakeIpResult {
     return normalizeNetworkingFakeIpResult(native().gameServerNetworkingSocketsGetFakeIp(idxFirstPort));

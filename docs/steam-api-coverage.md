@@ -162,8 +162,9 @@ covered.
   relay-auth-ticket cache helpers, hosted dedicated connect/listen helpers,
   hosted dedicated address, dev-address, and game coordinator login blobs,
   certificate request/install/reset helpers, fake-IP allocation and listen
-  helpers, fake UDP port wrappers, typed connection/session/fake-IP/auth/relay
-  callback helpers, connection lane status details, plus
+  helpers, fake UDP port wrappers, client and game-server typed
+  connection/fake-IP callback helpers, typed session/auth/relay callback
+  helpers, connection lane status details, plus
   `ISteamNetworkingUtils` relay/auth status, ping location, POP latency,
   fake-IP, standalone IP address and identity construction/comparison/getter
   helpers, identity conversion, config value, editable config iteration, direct
