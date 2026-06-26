@@ -224,6 +224,26 @@ function createFakeNative(overrides = {}) {
         }
       };
     },
+    registerMicroTxnAuthorizationResponse(handler) {
+      calls.push({ method: "registerMicroTxnAuthorizationResponse", args: [] });
+      callbacks.set(152, handler);
+      return {
+        disconnect() {
+          callbacks.delete(152);
+          calls.push({ method: "disconnectMicroTxnAuthorizationResponse", args: [] });
+        }
+      };
+    },
+    registerGameOverlayActivated(handler) {
+      calls.push({ method: "registerGameOverlayActivated", args: [] });
+      callbacks.set(331, handler);
+      return {
+        disconnect() {
+          callbacks.delete(331);
+          calls.push({ method: "disconnectGameOverlayActivated", args: [] });
+        }
+      };
+    },
     registerRawSteamCallback(callbackBasePointer, callbackId) {
       calls.push({ method: "registerRawSteamCallback", args: [callbackBasePointer, callbackId] });
     },
@@ -2484,7 +2504,7 @@ test("specific and generic callbacks normalize Steamworks payloads", (t) => {
     txnEvent = event;
   });
 
-  fake.callbacks.get(steam.SteamCallback.MicroTxnAuthorizationResponse)({
+  fake.callbacks.get(steam.SteamCallback.MicroTxnAuthorizationResponseSteamworks)({
     app_id: 480,
     order_id: "9223372036854775807",
     authorized: true
@@ -3340,8 +3360,32 @@ test("specific and generic callbacks normalize Steamworks payloads", (t) => {
   assert.equal(timelineEvent.event, 9001n);
   assert.equal(timelineEvent.recordingExists, true);
 
+  let overlayEvent;
+  const overlayHandle = steam.onGameOverlayActivated((event) => {
+    overlayEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({
+    active: true,
+    user_initiated: false,
+    app_id: 480
+  });
+
+  assert.equal(overlayEvent.active, true);
+  assert.equal(overlayEvent.userInitiated, false);
+  assert.equal(overlayEvent.appId, 480);
+
   txnHandle.disconnect();
-  assert.equal(fake.callbacks.has(steam.SteamCallback.MicroTxnAuthorizationResponse), false);
+  overlayHandle.disconnect();
+  assert.equal(fake.callbacks.has(steam.SteamCallback.MicroTxnAuthorizationResponseSteamworks), false);
+  assert.equal(fake.callbacks.has(steam.SteamCallback.GameOverlayActivated), false);
+  assert.deepEqual(fake.calls.find((call) => call.method === "registerMicroTxnAuthorizationResponse"), {
+    method: "registerMicroTxnAuthorizationResponse",
+    args: []
+  });
+  assert.deepEqual(fake.calls.find((call) => call.method === "registerGameOverlayActivated"), {
+    method: "registerGameOverlayActivated",
+    args: []
+  });
 });
 
 test("overlay helpers map constants and forward modal/store options", (t) => {

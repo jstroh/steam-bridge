@@ -5115,15 +5115,15 @@ export function getOverlayDiagnostics(): OverlayDiagnostics {
 export function onMicroTxnAuthorizationResponse(
   handler: (event: MicroTxnAuthorizationResponse) => void
 ): CallbackHandle {
-  return callback.register(SteamCallback.MicroTxnAuthorizationResponse, (event) => {
+  return wrapCallbackHandle(native().registerMicroTxnAuthorizationResponse((event) => {
     handler(normalizeMicroTxnEvent(event));
-  });
+  }));
 }
 
 export function onGameOverlayActivated(handler: (event: GameOverlayActivated) => void): CallbackHandle {
-  return callback.register(SteamCallback.GameOverlayActivated, (event) => {
+  return wrapCallbackHandle(native().registerGameOverlayActivated((event) => {
     handler(normalizeGameOverlayEvent(event));
-  });
+  }));
 }
 
 export function activateOverlay(dialog: number | string = "Friends"): void {

@@ -9,9 +9,10 @@ The native layer primarily targets the Steamworks flat C API through
 documented in headers but omitted from the generated flat bindings.
 `npm run api:check` audits the bundled SDK and fails if any generated
 `SteamAPI_*` flat function, public SDK `S_API` export, manual shim, or generated
-callback constant lacks native/public coverage. Valve internal context/bootstrap
-helpers are intentionally excluded when their public inline wrappers are already
-covered.
+callback constant lacks native/public coverage, or when a native N-API export is
+missing TypeScript binding/public facade coverage. Valve internal
+context/bootstrap helpers are intentionally excluded when their public inline
+wrappers are already covered.
 
 ## Implemented Areas
 

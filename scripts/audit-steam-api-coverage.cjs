@@ -18,6 +18,10 @@ const nativeSourceFiles = [
   path.join(repoRoot, "crates", "native", "src", "steam_game_coordinator_bridge.cpp"),
   path.join(repoRoot, "crates", "native", "src", "steam_header_only_bridge.cpp")
 ];
+const napiExportSourceFiles = [
+  path.join(repoRoot, "crates", "native", "src", "lib.rs"),
+  path.join(repoRoot, "crates", "native", "src", "compat.rs")
+];
 const manualCallbackAliases = ["GCMessageAvailable", "GCMessageFailed"];
 const manualHeaderOnlyNativeSymbols = [
   "steam_bridge_client_run_frame",
@@ -47,13 +51,15 @@ const intentionallyInternalSdkExports = [
   "SteamInternal_FindOrCreateGameServerInterface",
   "SteamInternal_SteamAPI_Init"
 ];
+const napiClassMethodExports = ["getBytes"];
 
 assertFlatApiCoverage();
 assertSdkExportCoverage();
 assertHeaderOnlyShimCoverage();
 assertCallbackCoverage();
+assertNativeBindingCoverage();
 
-console.log("Steam API coverage audit passed: SDK exports, flat API references, manual shim references, and callback aliases are covered.");
+console.log("Steam API coverage audit passed: SDK exports, flat API references, native bindings, manual shim references, and callback aliases are covered.");
 
 function findSteamworksSysRoot() {
   const metadata = spawnSync("cargo", ["metadata", "--format-version", "1"], {
@@ -165,8 +171,54 @@ function assertHeaderOnlyShimCoverage() {
   }
 }
 
+function assertNativeBindingCoverage() {
+  const nativeBindingMethods = readNativeBindingMethodNames();
+  const nativeBindingMethodSet = new Set(nativeBindingMethods);
+  const napiExports = readNapiExportNames();
+  const indexSource = fs.readFileSync(path.join(repoRoot, "packages", "steam-bridge", "src", "index.ts"), "utf8");
+
+  const missingBindingMethods = napiExports.filter((method) => !nativeBindingMethodSet.has(method));
+  if (missingBindingMethods.length > 0) {
+    throw new Error(
+      [
+        `NativeBinding is missing declarations for ${missingBindingMethods.length} N-API exports:`,
+        ...missingBindingMethods.map((method) => `  - ${method}`)
+      ].join("\n")
+    );
+  }
+
+  const missingFacadeReferences = nativeBindingMethods.filter((method) => !indexSource.includes(method));
+  if (missingFacadeReferences.length > 0) {
+    throw new Error(
+      [
+        `Public facade is missing references for ${missingFacadeReferences.length} NativeBinding methods:`,
+        ...missingFacadeReferences.map((method) => `  - ${method}`)
+      ].join("\n")
+    );
+  }
+}
+
 function readNativeSource() {
   return nativeSourceFiles.map((file) => fs.readFileSync(file, "utf8")).join("\n");
+}
+
+function readNapiExportNames() {
+  return unique(
+    napiExportSourceFiles.flatMap((file) => {
+      const source = fs.readFileSync(file, "utf8");
+      return [...source.matchAll(/#\[napi\(js_name\s*=\s*"([^"]+)"\)\]/g)].map((match) => match[1]);
+    })
+  ).filter((name) => !napiClassMethodExports.includes(name));
+}
+
+function readNativeBindingMethodNames() {
+  const source = fs.readFileSync(path.join(repoRoot, "packages", "steam-bridge", "src", "native.ts"), "utf8");
+  const match = source.match(/export interface NativeBinding \{([\s\S]*?)\n\}/);
+  if (!match) {
+    throw new Error("Could not find NativeBinding interface.");
+  }
+
+  return unique([...match[1].matchAll(/^\s*([A-Za-z_$][A-Za-z0-9_$]*)\s*\(/gm)].map((entry) => entry[1]));
 }
 
 function readSdkExportNames() {
