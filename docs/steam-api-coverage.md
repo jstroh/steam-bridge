@@ -56,8 +56,8 @@ covered.
   clans, rich presence, coplay, clan chat controls, friend message replies, and
   friend and clan chat reads, source membership helpers, downloadable clan
   activity counts, follower async calls, profile item queries, remaining invite
-  overlay helpers, and Friends callback events exposed by the current generated
-  bindings.
+  overlay helpers, and typed Friends persona, rich-presence, lobby, chat,
+  follower, overlay-protocol, and profile-item callback helpers.
 - Overlay: dialog, user, invite, store, web page, and macOS diagnostic probe
   helpers.
 - Apps: subscription/install flags, DLC checks and enumeration, DLC
@@ -203,8 +203,8 @@ covered.
   `SteamDatagramRelayAuthTicket` opaque in the bundled headers, so safe
   structured decoding needs a newer SDK surface or a maintained local shim.
 - Additional specialized callback/event helpers outside the current user/auth,
-  Steam Input, and networking callback-helper batches, for interfaces where a
-  dedicated `on...` helper would be clearer than the generic name-based
+  Friends, Steam Input, and networking callback-helper batches, for interfaces
+  where a dedicated `on...` helper would be clearer than the generic name-based
   subscription API. Generated callback constants and generic name subscriptions
   are covered by the automated coverage audit.
 - `ISteamPS3OverlayRenderHost` and `ISteamPS3OverlayRender` are PlayStation 3

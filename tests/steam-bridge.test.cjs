@@ -8594,6 +8594,230 @@ test("friends facade normalizes IDs, groups, rich presence, and async results", 
   assert.equal(equippedChangedEvent.steamId, 76561198000000003n);
 });
 
+test("friends facade exposes typed callback helpers", (t) => {
+  const fake = createFakeNative();
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  const events = {};
+  const handles = [
+    steam.friends.onPersonaStateChange((event) => {
+      events.persona = event;
+    }),
+    steam.friends.onGameServerChangeRequested((event) => {
+      events.serverChange = event;
+    }),
+    steam.friends.onGameLobbyJoinRequested((event) => {
+      events.lobbyJoin = event;
+    }),
+    steam.friends.onAvatarImageLoaded((event) => {
+      events.avatar = event;
+    }),
+    steam.friends.onClanOfficerListResponse((event) => {
+      events.officers = event;
+    }),
+    steam.friends.onRichPresenceUpdate((event) => {
+      events.richPresence = event;
+    }),
+    steam.friends.onGameRichPresenceJoinRequested((event) => {
+      events.richPresenceJoin = event;
+    }),
+    steam.friends.onGameConnectedClanChatMessage((event) => {
+      events.clanMessage = event;
+    }),
+    steam.friends.onGameConnectedChatJoin((event) => {
+      events.chatJoin = event;
+    }),
+    steam.friends.onGameConnectedChatLeave((event) => {
+      events.chatLeave = event;
+    }),
+    steam.friends.onDownloadClanActivityCountsResult((event) => {
+      events.activityCounts = event;
+    }),
+    steam.friends.onJoinClanChatRoomCompletionResult((event) => {
+      events.joinClanChat = event;
+    }),
+    steam.friends.onGameConnectedFriendChatMessage((event) => {
+      events.friendMessage = event;
+    }),
+    steam.friends.onFollowerCount((event) => {
+      events.followers = event;
+    }),
+    steam.friends.onIsFollowing((event) => {
+      events.isFollowing = event;
+    }),
+    steam.friends.onEnumerateFollowingList((event) => {
+      events.followingList = event;
+    }),
+    steam.friends.onUnreadChatMessagesChanged((event) => {
+      events.unread = event;
+    }),
+    steam.friends.onOverlayBrowserProtocolNavigation((event) => {
+      events.protocol = event;
+    }),
+    steam.friends.onEquippedProfileItemsChanged((event) => {
+      events.equippedChanged = event;
+    }),
+    steam.friends.onEquippedProfileItems((event) => {
+      events.equipped = event;
+    })
+  ];
+
+  fake.callbacks.get(steam.SteamCallback.PersonaStateChangeSteamworks)({
+    steam_id: "76561198000000003",
+    flags: { bits: 4 }
+  });
+  fake.callbacks.get(steam.SteamCallback.GameServerChangeRequested)({
+    server: "127.0.0.1:27015",
+    password: "spacewar"
+  });
+  fake.callbacks.get(steam.SteamCallback.GameLobbyJoinRequestedSteamworks)({
+    lobby_steam_id: "109775242022617907",
+    friend_steam_id: "76561198000000004"
+  });
+  fake.callbacks.get(steam.SteamCallback.AvatarImageLoaded)({
+    steam_id: "76561198000000003",
+    image: 42,
+    wide: 184,
+    tall: 184
+  });
+  fake.callbacks.get(steam.SteamCallback.ClanOfficerListResponse)({
+    clan: "103582791429521412",
+    officer_count: 4,
+    success: true
+  });
+  fake.callbacks.get(steam.SteamCallback.FriendRichPresenceUpdate)({
+    friend: "76561198000000003",
+    app_id: 480
+  });
+  fake.callbacks.get(steam.SteamCallback.GameRichPresenceJoinRequested)({
+    friend: "76561198000000003",
+    connect: "+connect_lobby 109775242022617907"
+  });
+  fake.callbacks.get(steam.SteamCallback.GameConnectedClanChatMsg)({
+    clan_chat: "103582791429521412",
+    user: "76561198000000003",
+    message_id: 88
+  });
+  fake.callbacks.get(steam.SteamCallback.GameConnectedChatJoin)({
+    clan_chat: "103582791429521412",
+    user: "76561198000000003"
+  });
+  fake.callbacks.get(steam.SteamCallback.GameConnectedChatLeave)({
+    clan_chat: "103582791429521412",
+    user: "76561198000000003",
+    kicked: false,
+    dropped: true
+  });
+  fake.callbacks.get(steam.SteamCallback.DownloadClanActivityCountsResult)({ success: true });
+  fake.callbacks.get(steam.SteamCallback.JoinClanChatRoomCompletionResult)({
+    clan_chat: "103582791429521412",
+    chat_room_enter_response: steam.friends.ChatRoomEnterResponse.Success
+  });
+  fake.callbacks.get(steam.SteamCallback.GameConnectedFriendChatMsg)({
+    user: "76561198000000003",
+    message_id: 77
+  });
+  fake.callbacks.get(steam.SteamCallback.FriendsGetFollowerCount)({
+    result: 1,
+    steam_id: "76561198000000003",
+    count: 12
+  });
+  fake.callbacks.get(steam.SteamCallback.FriendsIsFollowing)({
+    result: 1,
+    steam_id: "76561198000000003",
+    is_following: true
+  });
+  fake.callbacks.get(steam.SteamCallback.FriendsEnumerateFollowingList)({
+    result: 1,
+    steam_ids: ["76561198000000003", "76561198000000004"],
+    results_returned: 2,
+    total_result_count: 5
+  });
+  fake.callbacks.get(steam.SteamCallback.UnreadChatMessagesChanged)({});
+  fake.callbacks.get(steam.SteamCallback.OverlayBrowserProtocolNavigation)({ uri: "steam://open/friends" });
+  fake.callbacks.get(steam.SteamCallback.EquippedProfileItemsChanged)({ steam_id: "76561198000000003" });
+  fake.callbacks.get(steam.SteamCallback.EquippedProfileItems)({
+    result: 1,
+    steam_id: "76561198000000003",
+    has_animated_avatar: true,
+    has_avatar_frame: true,
+    has_profile_modifier: false,
+    has_profile_background: true,
+    has_mini_profile_background: false,
+    from_cache: true
+  });
+
+  assert.equal(events.persona.steamId, 76561198000000003n);
+  assert.deepEqual(events.persona.flags, { bits: 4 });
+  assert.deepEqual(events.serverChange, { server: "127.0.0.1:27015", password: "spacewar" });
+  assert.equal(events.lobbyJoin.lobbySteamId, 109775242022617907n);
+  assert.equal(events.lobbyJoin.friendSteamId, 76561198000000004n);
+  assert.equal(events.avatar.steamId, 76561198000000003n);
+  assert.equal(events.avatar.image, 42);
+  assert.equal(events.avatar.wide, 184);
+  assert.equal(events.officers.clan, 103582791429521412n);
+  assert.equal(events.officers.officerCount, 4);
+  assert.equal(events.richPresence.friend, 76561198000000003n);
+  assert.equal(events.richPresence.appId, 480);
+  assert.equal(events.richPresenceJoin.connect, "+connect_lobby 109775242022617907");
+  assert.equal(events.clanMessage.clanChat, 103582791429521412n);
+  assert.equal(events.clanMessage.messageId, 88);
+  assert.equal(events.chatJoin.user, 76561198000000003n);
+  assert.equal(events.chatLeave.dropped, true);
+  assert.equal(events.activityCounts.success, true);
+  assert.equal(events.joinClanChat.chatRoomEnterResponse, steam.friends.ChatRoomEnterResponse.Success);
+  assert.equal(events.friendMessage.messageId, 77);
+  assert.equal(events.followers.count, 12);
+  assert.equal(events.isFollowing.isFollowing, true);
+  assert.deepEqual(events.followingList.steamIds, [76561198000000003n, 76561198000000004n]);
+  assert.equal(events.followingList.resultsReturned, 2);
+  assert.equal(events.followingList.totalResultCount, 5);
+  assert.deepEqual(events.unread, {});
+  assert.equal(events.protocol.uri, "steam://open/friends");
+  assert.equal(events.equippedChanged.steamId, 76561198000000003n);
+  assert.equal(events.equipped.hasAnimatedAvatar, true);
+  assert.equal(events.equipped.hasAvatarFrame, true);
+  assert.equal(events.equipped.hasProfileBackground, true);
+  assert.equal(events.equipped.fromCache, true);
+
+  for (const handle of handles) {
+    handle.disconnect();
+  }
+
+  const callbackIds = [
+    steam.SteamCallback.PersonaStateChangeSteamworks,
+    steam.SteamCallback.GameServerChangeRequested,
+    steam.SteamCallback.GameLobbyJoinRequestedSteamworks,
+    steam.SteamCallback.AvatarImageLoaded,
+    steam.SteamCallback.ClanOfficerListResponse,
+    steam.SteamCallback.FriendRichPresenceUpdate,
+    steam.SteamCallback.GameRichPresenceJoinRequested,
+    steam.SteamCallback.GameConnectedClanChatMsg,
+    steam.SteamCallback.GameConnectedChatJoin,
+    steam.SteamCallback.GameConnectedChatLeave,
+    steam.SteamCallback.DownloadClanActivityCountsResult,
+    steam.SteamCallback.JoinClanChatRoomCompletionResult,
+    steam.SteamCallback.GameConnectedFriendChatMsg,
+    steam.SteamCallback.FriendsGetFollowerCount,
+    steam.SteamCallback.FriendsIsFollowing,
+    steam.SteamCallback.FriendsEnumerateFollowingList,
+    steam.SteamCallback.UnreadChatMessagesChanged,
+    steam.SteamCallback.OverlayBrowserProtocolNavigation,
+    steam.SteamCallback.EquippedProfileItemsChanged,
+    steam.SteamCallback.EquippedProfileItems
+  ];
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "registerSteamCallback"),
+    callbackIds.map((callbackId) => ({ method: "registerSteamCallback", args: [callbackId] }))
+  );
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "disconnectCallback"),
+    callbackIds.map((callbackId) => ({ method: "disconnectCallback", args: [callbackId] }))
+  );
+});
+
 test("screenshots, music, video, and parental facades forward utility interfaces", (t) => {
   const fake = createFakeNative({
     screenshotsWriteScreenshot(rgb, width, height) {

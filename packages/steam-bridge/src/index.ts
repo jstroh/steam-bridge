@@ -356,6 +356,160 @@ export interface FriendGameInfo {
   lobby: bigint;
 }
 
+export interface FriendsPersonaStateChangeEvent {
+  steamId: bigint;
+  steam_id?: bigint;
+  flags: unknown;
+  [key: string]: unknown;
+}
+
+export interface FriendsGameServerChangeRequestedEvent {
+  server: string;
+  password: string;
+  [key: string]: unknown;
+}
+
+export interface FriendsGameLobbyJoinRequestedEvent {
+  lobbySteamId: bigint;
+  lobby_steam_id?: bigint;
+  friendSteamId: bigint;
+  friend_steam_id?: bigint;
+  [key: string]: unknown;
+}
+
+export interface FriendsAvatarImageLoadedEvent {
+  steamId: bigint;
+  steam_id?: bigint;
+  image: number;
+  wide: number;
+  tall: number;
+  [key: string]: unknown;
+}
+
+export interface FriendsClanOfficerListResponseEvent {
+  clan: bigint;
+  officerCount: number;
+  officer_count?: number;
+  success: boolean;
+  [key: string]: unknown;
+}
+
+export interface FriendsRichPresenceUpdateEvent {
+  friend: bigint;
+  appId: number;
+  app_id?: number;
+  [key: string]: unknown;
+}
+
+export interface FriendsGameRichPresenceJoinRequestedEvent {
+  friend: bigint;
+  connect: string;
+  [key: string]: unknown;
+}
+
+export interface FriendsGameConnectedClanChatMessageEvent {
+  clanChat: bigint;
+  clan_chat?: bigint;
+  user: bigint;
+  messageId: number;
+  message_id?: number;
+  [key: string]: unknown;
+}
+
+export interface FriendsGameConnectedChatJoinEvent {
+  clanChat: bigint;
+  clan_chat?: bigint;
+  user: bigint;
+  [key: string]: unknown;
+}
+
+export interface FriendsGameConnectedChatLeaveEvent extends FriendsGameConnectedChatJoinEvent {
+  kicked: boolean;
+  dropped: boolean;
+}
+
+export interface FriendsDownloadClanActivityCountsResultEvent {
+  success: boolean;
+  [key: string]: unknown;
+}
+
+export interface FriendsJoinClanChatRoomCompletionResultEvent {
+  clanChat: bigint;
+  clan_chat?: bigint;
+  chatRoomEnterResponse: number;
+  chat_room_enter_response?: number;
+  [key: string]: unknown;
+}
+
+export interface FriendsGameConnectedFriendChatMessageEvent {
+  user: bigint;
+  messageId: number;
+  message_id?: number;
+  [key: string]: unknown;
+}
+
+export interface FriendsGetFollowerCountEvent {
+  result: number;
+  steamId: bigint;
+  steam_id?: bigint;
+  count: number;
+  [key: string]: unknown;
+}
+
+export interface FriendsIsFollowingEvent {
+  result: number;
+  steamId: bigint;
+  steam_id?: bigint;
+  isFollowing: boolean;
+  is_following?: boolean;
+  [key: string]: unknown;
+}
+
+export interface FriendsEnumerateFollowingListEvent {
+  result: number;
+  steamIds: bigint[];
+  steam_ids?: bigint[];
+  resultsReturned: number;
+  results_returned?: number;
+  totalResultCount: number;
+  total_result_count?: number;
+  [key: string]: unknown;
+}
+
+export interface FriendsUnreadChatMessagesChangedEvent {
+  [key: string]: unknown;
+}
+
+export interface FriendsOverlayBrowserProtocolNavigationEvent {
+  uri: string;
+  [key: string]: unknown;
+}
+
+export interface FriendsEquippedProfileItemsChangedEvent {
+  steamId: bigint;
+  steam_id?: bigint;
+  [key: string]: unknown;
+}
+
+export interface FriendsEquippedProfileItemsEvent {
+  result: number;
+  steamId: bigint;
+  steam_id?: bigint;
+  hasAnimatedAvatar: boolean;
+  has_animated_avatar?: boolean;
+  hasAvatarFrame: boolean;
+  has_avatar_frame?: boolean;
+  hasProfileModifier: boolean;
+  has_profile_modifier?: boolean;
+  hasProfileBackground: boolean;
+  has_profile_background?: boolean;
+  hasMiniProfileBackground: boolean;
+  has_mini_profile_background?: boolean;
+  fromCache: boolean;
+  from_cache?: boolean;
+  [key: string]: unknown;
+}
+
 export interface FriendMessage {
   data: Buffer;
   size: number;
@@ -7356,6 +7510,114 @@ export const friends = {
   ChatEntryType,
   CommunityProfileItemType,
   CommunityProfileItemProperty,
+  onPersonaStateChange(handler: (event: FriendsPersonaStateChangeEvent) => void): CallbackHandle {
+    return onSteamCallback("PersonaStateChangeSteamworks", (event) => {
+      handler(event as FriendsPersonaStateChangeEvent);
+    });
+  },
+  onGameServerChangeRequested(handler: (event: FriendsGameServerChangeRequestedEvent) => void): CallbackHandle {
+    return onSteamCallback("GameServerChangeRequested", (event) => {
+      handler(event as FriendsGameServerChangeRequestedEvent);
+    });
+  },
+  onGameLobbyJoinRequested(handler: (event: FriendsGameLobbyJoinRequestedEvent) => void): CallbackHandle {
+    return onSteamCallback("GameLobbyJoinRequestedSteamworks", (event) => {
+      handler(event as FriendsGameLobbyJoinRequestedEvent);
+    });
+  },
+  onAvatarImageLoaded(handler: (event: FriendsAvatarImageLoadedEvent) => void): CallbackHandle {
+    return onSteamCallback("AvatarImageLoaded", (event) => {
+      handler(event as FriendsAvatarImageLoadedEvent);
+    });
+  },
+  onClanOfficerListResponse(handler: (event: FriendsClanOfficerListResponseEvent) => void): CallbackHandle {
+    return onSteamCallback("ClanOfficerListResponse", (event) => {
+      handler(event as FriendsClanOfficerListResponseEvent);
+    });
+  },
+  onRichPresenceUpdate(handler: (event: FriendsRichPresenceUpdateEvent) => void): CallbackHandle {
+    return onSteamCallback("FriendRichPresenceUpdate", (event) => {
+      handler(event as FriendsRichPresenceUpdateEvent);
+    });
+  },
+  onGameRichPresenceJoinRequested(handler: (event: FriendsGameRichPresenceJoinRequestedEvent) => void): CallbackHandle {
+    return onSteamCallback("GameRichPresenceJoinRequested", (event) => {
+      handler(event as FriendsGameRichPresenceJoinRequestedEvent);
+    });
+  },
+  onGameConnectedClanChatMessage(handler: (event: FriendsGameConnectedClanChatMessageEvent) => void): CallbackHandle {
+    return onSteamCallback("GameConnectedClanChatMsg", (event) => {
+      handler(event as FriendsGameConnectedClanChatMessageEvent);
+    });
+  },
+  onGameConnectedChatJoin(handler: (event: FriendsGameConnectedChatJoinEvent) => void): CallbackHandle {
+    return onSteamCallback("GameConnectedChatJoin", (event) => {
+      handler(event as FriendsGameConnectedChatJoinEvent);
+    });
+  },
+  onGameConnectedChatLeave(handler: (event: FriendsGameConnectedChatLeaveEvent) => void): CallbackHandle {
+    return onSteamCallback("GameConnectedChatLeave", (event) => {
+      handler(event as FriendsGameConnectedChatLeaveEvent);
+    });
+  },
+  onDownloadClanActivityCountsResult(
+    handler: (event: FriendsDownloadClanActivityCountsResultEvent) => void
+  ): CallbackHandle {
+    return onSteamCallback("DownloadClanActivityCountsResult", (event) => {
+      handler(event as FriendsDownloadClanActivityCountsResultEvent);
+    });
+  },
+  onJoinClanChatRoomCompletionResult(
+    handler: (event: FriendsJoinClanChatRoomCompletionResultEvent) => void
+  ): CallbackHandle {
+    return onSteamCallback("JoinClanChatRoomCompletionResult", (event) => {
+      handler(event as FriendsJoinClanChatRoomCompletionResultEvent);
+    });
+  },
+  onGameConnectedFriendChatMessage(
+    handler: (event: FriendsGameConnectedFriendChatMessageEvent) => void
+  ): CallbackHandle {
+    return onSteamCallback("GameConnectedFriendChatMsg", (event) => {
+      handler(event as FriendsGameConnectedFriendChatMessageEvent);
+    });
+  },
+  onFollowerCount(handler: (event: FriendsGetFollowerCountEvent) => void): CallbackHandle {
+    return onSteamCallback("FriendsGetFollowerCount", (event) => {
+      handler(event as FriendsGetFollowerCountEvent);
+    });
+  },
+  onIsFollowing(handler: (event: FriendsIsFollowingEvent) => void): CallbackHandle {
+    return onSteamCallback("FriendsIsFollowing", (event) => {
+      handler(event as FriendsIsFollowingEvent);
+    });
+  },
+  onEnumerateFollowingList(handler: (event: FriendsEnumerateFollowingListEvent) => void): CallbackHandle {
+    return onSteamCallback("FriendsEnumerateFollowingList", (event) => {
+      handler(event as FriendsEnumerateFollowingListEvent);
+    });
+  },
+  onUnreadChatMessagesChanged(handler: (event: FriendsUnreadChatMessagesChangedEvent) => void): CallbackHandle {
+    return onSteamCallback("UnreadChatMessagesChanged", (event) => {
+      handler(event as FriendsUnreadChatMessagesChangedEvent);
+    });
+  },
+  onOverlayBrowserProtocolNavigation(
+    handler: (event: FriendsOverlayBrowserProtocolNavigationEvent) => void
+  ): CallbackHandle {
+    return onSteamCallback("OverlayBrowserProtocolNavigation", (event) => {
+      handler(event as FriendsOverlayBrowserProtocolNavigationEvent);
+    });
+  },
+  onEquippedProfileItemsChanged(handler: (event: FriendsEquippedProfileItemsChangedEvent) => void): CallbackHandle {
+    return onSteamCallback("EquippedProfileItemsChanged", (event) => {
+      handler(event as FriendsEquippedProfileItemsChangedEvent);
+    });
+  },
+  onEquippedProfileItems(handler: (event: FriendsEquippedProfileItemsEvent) => void): CallbackHandle {
+    return onSteamCallback("EquippedProfileItems", (event) => {
+      handler(event as FriendsEquippedProfileItemsEvent);
+    });
+  },
   getPersonaName(): string {
     return native().friendsGetPersonaName();
   },
