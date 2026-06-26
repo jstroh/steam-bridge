@@ -8968,3 +8968,256 @@ test("web API microtransaction facades map economy fields and sandbox endpoints"
   assert.equal(fetchCalls[3].init.body, "appid=480&orderid=9001");
   assert.equal(typeof steam.webApi.microTxn.cancelAgreement, "function");
 });
+
+test("web API app and news facades map public and partner endpoints", async (t) => {
+  const steam = loadSteamWithFakeNative(createFakeNative());
+  const fetchCalls = [];
+  const fetchImpl = async (url, init = {}) => {
+    fetchCalls.push({ url, init });
+    return {
+      ok: true,
+      status: 200,
+      headers: {
+        forEach(callback) {
+          callback("application/json", "content-type");
+        }
+      },
+      async text() {
+        return JSON.stringify({ response: { ok: true } });
+      }
+    };
+  };
+  const client = steam.createSteamWebApiClient({ apiKey: "secret", fetch: fetchImpl });
+
+  t.after(clearSteamBridgeCache);
+
+  await client.apps.getAppList();
+  await client.apps.getAppBetas(480);
+  await client.apps.getPartnerAppListForWebApiKey({ typeFilter: ["game", "dlc"] });
+  await client.apps.getServersAtAddress("127.0.0.1:27015");
+  await client.apps.setAppBuildLive({
+    appId: 480,
+    buildId: 1234,
+    betaKey: "public",
+    steamId64: 76561198000000000n,
+    description: "Release build"
+  });
+  await client.apps.upToDateCheck({ appId: 480, version: 100 });
+  await client.news.getNewsForApp({
+    appId: 480,
+    maxLength: 300,
+    count: 2,
+    feeds: ["steam_community_announcements", "steam_updates"]
+  });
+  await client.news.getNewsForAppAuthed({ appId: 480, endDate: 1700000000 });
+  await client.apps.getAppBuilds({ appId: 480, count: 3 });
+  await client.apps.getAppDepotVersions(480);
+  await client.apps.getPlayersBanned(480);
+  await client.apps.getServerList({ filter: "\\appid\\480", limit: 5 });
+
+  assert.equal(
+    fetchCalls[0].url,
+    "https://api.steampowered.com/ISteamApps/GetAppList/v0002/?key=secret&format=json"
+  );
+  assert.equal(
+    fetchCalls[1].url,
+    "https://partner.steam-api.com/ISteamApps/GetAppBetas/v0001/?key=secret&format=json&appid=480"
+  );
+  assert.equal(
+    fetchCalls[2].url,
+    "https://partner.steam-api.com/ISteamApps/GetPartnerAppListForWebAPIKey/v0002/?key=secret&format=json&type_filter=game%2Cdlc"
+  );
+  assert.equal(
+    fetchCalls[3].url,
+    "https://api.steampowered.com/ISteamApps/GetServersAtAddress/v0001/?key=secret&format=json&addr=127.0.0.1%3A27015"
+  );
+  assert.equal(
+    fetchCalls[4].url,
+    "https://partner.steam-api.com/ISteamApps/SetAppBuildLive/v0002/?key=secret&format=json"
+  );
+  assert.equal(
+    fetchCalls[4].init.body,
+    "appid=480&buildid=1234&betakey=public&steamid=76561198000000000&description=Release+build"
+  );
+  assert.equal(
+    fetchCalls[5].url,
+    "https://api.steampowered.com/ISteamApps/UpToDateCheck/v0001/?key=secret&format=json&appid=480&version=100"
+  );
+  assert.equal(
+    fetchCalls[6].url,
+    "https://api.steampowered.com/ISteamNews/GetNewsForApp/v0002/?key=secret&format=json&appid=480&maxlength=300&count=2&feeds=steam_community_announcements%2Csteam_updates"
+  );
+  assert.equal(
+    fetchCalls[7].url,
+    "https://partner.steam-api.com/ISteamNews/GetNewsForAppAuthed/v0002/?key=secret&format=json&appid=480&enddate=1700000000"
+  );
+  assert.equal(
+    fetchCalls[8].url,
+    "https://partner.steam-api.com/ISteamApps/GetAppBuilds/v0001/?key=secret&format=json&appid=480&count=3"
+  );
+  assert.equal(
+    fetchCalls[9].url,
+    "https://partner.steam-api.com/ISteamApps/GetAppDepotVersions/v0001/?key=secret&format=json&appid=480"
+  );
+  assert.equal(
+    fetchCalls[10].url,
+    "https://partner.steam-api.com/ISteamApps/GetPlayersBanned/v0001/?key=secret&format=json&appid=480"
+  );
+  assert.equal(
+    fetchCalls[11].url,
+    "https://partner.steam-api.com/ISteamApps/GetServerList/v0001/?key=secret&format=json&filter=%5Cappid%5C480&limit=5"
+  );
+});
+
+test("web API remote storage and economy facades map indexed fields", async (t) => {
+  const steam = loadSteamWithFakeNative(createFakeNative());
+  const fetchCalls = [];
+  const fetchImpl = async (url, init = {}) => {
+    fetchCalls.push({ url, init });
+    return {
+      ok: true,
+      status: 200,
+      headers: {
+        forEach(callback) {
+          callback("application/json", "content-type");
+        }
+      },
+      async text() {
+        return JSON.stringify({ response: { ok: true } });
+      }
+    };
+  };
+  const client = steam.createSteamWebApiClient({ apiKey: "publisher-secret", fetch: fetchImpl });
+
+  t.after(clearSteamBridgeCache);
+
+  await client.remoteStorage.getPublishedFileDetails([111n, 222n]);
+  await client.remoteStorage.getCollectionDetails([333n]);
+  await client.remoteStorage.getUgcFileDetails({
+    appId: 480,
+    ugcId: 444n,
+    steamId64: 76561198000000000n
+  });
+  await client.remoteStorage.enumerateUserSubscribedFiles({
+    appId: 480,
+    steamId64: 76561198000000000n,
+    listType: 1
+  });
+  await client.remoteStorage.subscribePublishedFile({
+    appId: 480,
+    steamId64: 76561198000000000n,
+    publishedFileId: 555n
+  });
+  await client.economy.getAssetClassInfo({
+    appId: 480,
+    classes: [{ classId: 1000n, instanceId: 2000n }],
+    language: "en"
+  });
+  await client.economy.getAssetPrices({ appId: 480, currency: "USD", language: "en" });
+  await client.economy.startAssetTransaction({
+    appId: 480,
+    steamId64: 76561198000000000n,
+    assets: [{ assetId: "sku-1", quantity: 2 }],
+    currency: "USD",
+    language: "en",
+    ipAddress: "127.0.0.1",
+    referrer: "https://example.com/store",
+    clientAuth: true
+  });
+  await client.economy.finalizeAssetTransaction({
+    appId: 480,
+    steamId64: 76561198000000000n,
+    transactionId: "txn-1",
+    language: "en"
+  });
+  await client.economy.canTrade({
+    appId: 480,
+    steamId64: 76561198000000000n,
+    targetSteamId64: 76561198000000001n
+  });
+  await client.remoteStorage.setUgcUsedByGc({
+    appId: 480,
+    steamId64: 76561198000000000n,
+    ugcId: 444n,
+    used: false
+  });
+  await client.remoteStorage.unsubscribePublishedFile({
+    appId: 480,
+    steamId64: 76561198000000000n,
+    publishedFileId: 555n
+  });
+  await client.economy.getExportedAssetsForUser({
+    appId: 480,
+    steamId64: 76561198000000000n,
+    contextId: 2n
+  });
+  await client.economy.getMarketPrices(480);
+  await client.economy.startTrade({
+    appId: 480,
+    partyA: 76561198000000000n,
+    partyB: 76561198000000001n
+  });
+
+  assert.equal(
+    fetchCalls[0].url,
+    "https://api.steampowered.com/ISteamRemoteStorage/GetPublishedFileDetails/v0001/?key=publisher-secret&format=json"
+  );
+  assert.equal(fetchCalls[0].init.body, "publishedfileids%5B0%5D=111&publishedfileids%5B1%5D=222&itemcount=2");
+  assert.equal(
+    fetchCalls[1].url,
+    "https://api.steampowered.com/ISteamRemoteStorage/GetCollectionDetails/v0001/?key=publisher-secret&format=json"
+  );
+  assert.equal(fetchCalls[1].init.body, "publishedfileids%5B0%5D=333&collectioncount=1");
+  assert.equal(
+    fetchCalls[2].url,
+    "https://api.steampowered.com/ISteamRemoteStorage/GetUGCFileDetails/v0001/?key=publisher-secret&format=json&ugcid=444&appid=480&steamid=76561198000000000"
+  );
+  assert.equal(fetchCalls[3].init.body, "steamid=76561198000000000&appid=480&listtype=1");
+  assert.equal(
+    fetchCalls[4].url,
+    "https://partner.steam-api.com/ISteamRemoteStorage/SubscribePublishedFile/v0001/?key=publisher-secret&format=json"
+  );
+  assert.equal(fetchCalls[4].init.body, "steamid=76561198000000000&appid=480&publishedfileid=555");
+  assert.equal(
+    fetchCalls[5].url,
+    "https://api.steampowered.com/ISteamEconomy/GetAssetClassInfo/v0001/?key=publisher-secret&format=json&classid0=1000&instanceid0=2000&appid=480&class_count=1&language=en"
+  );
+  assert.equal(
+    fetchCalls[6].url,
+    "https://api.steampowered.com/ISteamEconomy/GetAssetPrices/v0001/?key=publisher-secret&format=json&appid=480&currency=USD&language=en"
+  );
+  assert.equal(
+    fetchCalls[7].url,
+    "https://partner.steam-api.com/ISteamEconomy/StartAssetTransaction/v0001/?key=publisher-secret&format=json"
+  );
+  assert.match(fetchCalls[7].init.body, /assetid0=sku-1/);
+  assert.match(fetchCalls[7].init.body, /assetquantity0=2/);
+  assert.match(fetchCalls[7].init.body, /clientauth=1/);
+  assert.equal(fetchCalls[8].init.body, "appid=480&steamid=76561198000000000&txnid=txn-1&language=en");
+  assert.equal(
+    fetchCalls[9].url,
+    "https://partner.steam-api.com/ISteamEconomy/CanTrade/v0001/?key=publisher-secret&format=json&appid=480&steamid=76561198000000000&targetid=76561198000000001"
+  );
+  assert.equal(
+    fetchCalls[10].url,
+    "https://partner.steam-api.com/ISteamRemoteStorage/SetUGCUsedByGC/v0001/?key=publisher-secret&format=json"
+  );
+  assert.equal(fetchCalls[10].init.body, "steamid=76561198000000000&ugcid=444&appid=480&used=0");
+  assert.equal(
+    fetchCalls[11].url,
+    "https://partner.steam-api.com/ISteamRemoteStorage/UnsubscribePublishedFile/v0001/?key=publisher-secret&format=json"
+  );
+  assert.equal(fetchCalls[11].init.body, "steamid=76561198000000000&appid=480&publishedfileid=555");
+  assert.equal(
+    fetchCalls[12].url,
+    "https://partner.steam-api.com/ISteamEconomy/GetExportedAssetsForUser/v0001/?key=publisher-secret&format=json&steamid=76561198000000000&appid=480&contextid=2"
+  );
+  assert.equal(
+    fetchCalls[13].url,
+    "https://partner.steam-api.com/ISteamEconomy/GetMarketPrices/v0001/?key=publisher-secret&format=json&appid=480"
+  );
+  assert.equal(
+    fetchCalls[14].url,
+    "https://partner.steam-api.com/ISteamEconomy/StartTrade/v0001/?key=publisher-secret&format=json&appid=480&partya=76561198000000000&partyb=76561198000000001"
+  );
+});

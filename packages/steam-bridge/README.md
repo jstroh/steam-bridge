@@ -53,6 +53,9 @@ For Steam Web API, publisher, and economy endpoints, use the Web API client with
 ```ts
 const currentPlayers = await steamworks.webApi.userStats.getNumberOfCurrentPlayers(480);
 const profile = await steamworks.webApi.user.resolveVanityUrl("spacewar");
+const news = await steamworks.webApi.news.getNewsForApp({ appId: 480, count: 2 });
+const appStatus = await steamworks.webApi.apps.upToDateCheck({ appId: 480, version: 1 });
+const prices = await steamworks.webApi.economy.getAssetPrices({ appId: 480, currency: "USD" });
 
 const txn = await steamworks.webApi.microTxnSandbox.initTxn({
   appId: 480,

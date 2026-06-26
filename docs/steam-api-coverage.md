@@ -62,9 +62,11 @@ documented in headers but omitted from the generated flat bindings.
   local-change enumeration and notifications, and file write batch controls.
 - Steam Web API: generic URL building and JSON/text fetch helpers for any
   `interface/method/version` path, supported-API discovery helpers, user stats
-  and achievement endpoint helpers, user/profile/license endpoint helpers, and
-  production and sandbox MicroTxn/economy transaction helpers through
-  configurable API keys and base URLs.
+  and achievement endpoint helpers, user/profile/license endpoint helpers,
+  app/build/server-list helpers, news helpers, remote-storage/workshop detail
+  helpers, legacy economy/asset helpers, and production and sandbox
+  MicroTxn/economy transaction helpers through configurable API keys and base
+  URLs.
 - HTTP: client and game-server request creation, configuration,
   send/stream-send initiation, response header/body reads, progress/timeout
   checks, raw POST bodies, cookie containers, request priority/defer, and HTTP
@@ -161,8 +163,8 @@ documented in headers but omitted from the generated flat bindings.
 - Remaining callback/event coverage for interfaces that are not yet surfaced by
   the native bindings or still need richer low-level ergonomics.
 - Additional endpoint-specific Steam Web API convenience wrappers for the long
-  tail of service interfaces beyond the current utility, user, user-stats, and
-  MicroTxn helpers.
+  tail of service interfaces beyond the current utility, app, news, user,
+  user-stats, remote-storage, economy, and MicroTxn helpers.
 
 Use Valve's SpaceWar App ID `480` for generic local smoke tests. Use your own
 Steam app ID for app-specific achievements, stats, inventory, UGC, economy, and

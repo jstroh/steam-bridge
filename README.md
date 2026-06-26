@@ -96,6 +96,10 @@ const players = await web.get({
 
 const schema = await web.userStats.getSchemaForGame({ appId: 480 });
 const profile = await web.user.resolveVanityUrl("spacewar");
+const news = await web.news.getNewsForApp({ appId: 480, count: 2 });
+const appStatus = await web.apps.upToDateCheck({ appId: 480, version: 1 });
+const workshopDetails = await web.remoteStorage.getPublishedFileDetails([123456789n]);
+const prices = await web.economy.getAssetPrices({ appId: 480, currency: "USD" });
 
 const txn = await web.microTxnSandbox.initTxn({
   appId: 480,
