@@ -9160,6 +9160,83 @@ test("web API public app, broadcast, and directory facades map Valve endpoints",
   assert.equal(typeof steam.webApi.directory.getSteamPipeDomains, "function");
 });
 
+test("web API app-specific public facades map Valve endpoints", async (t) => {
+  const steam = loadSteamWithFakeNative(createFakeNative());
+  const fetchCalls = [];
+  const fetchImpl = async (url, init = {}) => {
+    fetchCalls.push({ url, init });
+    return {
+      ok: true,
+      status: 200,
+      headers: {
+        forEach(callback) {
+          callback("application/json", "content-type");
+        }
+      },
+      async text() {
+        return JSON.stringify({ response: { ok: true } });
+      }
+    };
+  };
+  const client = steam.createSteamWebApiClient({ apiKey: "secret", fetch: fetchImpl });
+  const requestPath = (index) => {
+    const url = new URL(fetchCalls[index].url);
+    return url.origin + url.pathname;
+  };
+
+  t.after(clearSteamBridgeCache);
+
+  await client.clientStats1046930.reportEvent();
+  await client.gameCoordinatorVersion.app1046930.getClientVersion();
+  await client.gameCoordinatorVersion.app1046930.getServerVersion();
+  await client.gameCoordinatorVersion.app1269260.getClientVersion();
+  await client.gameCoordinatorVersion.app1269260.getServerVersion();
+  await client.gameCoordinatorVersion.app1422450.getClientVersion();
+  await client.gameCoordinatorVersion.app1422450.getServerVersion();
+  await client.gameCoordinatorVersion.teamFortress2.getClientVersion();
+  await client.gameCoordinatorVersion.teamFortress2.getServerVersion();
+  await client.gameCoordinatorVersion.dota2.getClientVersion();
+  await client.gameCoordinatorVersion.dota2.getServerVersion();
+  await client.gameCoordinatorVersion.app583950.getClientVersion();
+  await client.gameCoordinatorVersion.app583950.getServerVersion();
+  await client.gameCoordinatorVersion.counterStrike2.getServerVersion();
+  await client.portal2Leaderboards.getBucketizedData("challenge_portal");
+  await client.tfSystem.getWorldStatus();
+
+  assert.equal(requestPath(0), "https://api.steampowered.com/IClientStats_1046930/ReportEvent/v0001/");
+  assert.equal(fetchCalls[0].init.method, "POST");
+
+  const expectedPaths = [
+    "https://api.steampowered.com/IGCVersion_1046930/GetClientVersion/v0001/",
+    "https://api.steampowered.com/IGCVersion_1046930/GetServerVersion/v0001/",
+    "https://api.steampowered.com/IGCVersion_1269260/GetClientVersion/v0001/",
+    "https://api.steampowered.com/IGCVersion_1269260/GetServerVersion/v0001/",
+    "https://api.steampowered.com/IGCVersion_1422450/GetClientVersion/v0001/",
+    "https://api.steampowered.com/IGCVersion_1422450/GetServerVersion/v0001/",
+    "https://api.steampowered.com/IGCVersion_440/GetClientVersion/v0001/",
+    "https://api.steampowered.com/IGCVersion_440/GetServerVersion/v0001/",
+    "https://api.steampowered.com/IGCVersion_570/GetClientVersion/v0001/",
+    "https://api.steampowered.com/IGCVersion_570/GetServerVersion/v0001/",
+    "https://api.steampowered.com/IGCVersion_583950/GetClientVersion/v0001/",
+    "https://api.steampowered.com/IGCVersion_583950/GetServerVersion/v0001/",
+    "https://api.steampowered.com/IGCVersion_730/GetServerVersion/v0001/",
+    "https://api.steampowered.com/IPortal2Leaderboards_620/GetBucketizedData/v0001/",
+    "https://api.steampowered.com/ITFSystem_440/GetWorldStatus/v0001/"
+  ];
+  expectedPaths.forEach((expectedPath, index) => {
+    assert.equal(requestPath(index + 1), expectedPath);
+    assert.equal(fetchCalls[index + 1].init.method, "GET");
+  });
+
+  const portalUrl = new URL(fetchCalls[14].url);
+  assert.equal(portalUrl.searchParams.get("leaderboardName"), "challenge_portal");
+  assert.equal(portalUrl.searchParams.get("key"), "secret");
+  assert.equal(typeof steam.webApi.clientStats1046930.reportEvent, "function");
+  assert.equal(typeof steam.webApi.gameCoordinatorVersion.dota2.getServerVersion, "function");
+  assert.equal(typeof steam.webApi.portal2Leaderboards.getBucketizedData, "function");
+  assert.equal(typeof steam.webApi.tfSystem.getWorldStatus, "function");
+});
+
 test("web API remote storage and economy facades map indexed fields", async (t) => {
   const steam = loadSteamWithFakeNative(createFakeNative());
   const fetchCalls = [];

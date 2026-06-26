@@ -75,6 +75,9 @@ documented in headers but omitted from the generated flat bindings.
   game-data-frame and RTMP-frame helpers, help-request log helpers, wishlist helpers, EconMarketService
   market eligibility/listing/popularity helpers, community abuse-report helpers,
   game-notification session and user-session helpers, game-server account administration and lookup helpers,
+  app-specific public client-stats, game-coordinator-version, Portal 2
+  leaderboard, and Team Fortress world-status helpers from Valve's supported
+  API list,
   published-file service query/moderation/tag/vote-summary helpers, published-item
   search/voting helpers, WorkshopService payment/contributor/revenue/description
   helpers, SiteLicenseService client-connection/playtime helpers, leaderboard
@@ -179,15 +182,9 @@ documented in headers but omitted from the generated flat bindings.
   structured decoding needs a newer SDK surface or a maintained local shim.
 - Remaining callback/event coverage for interfaces that are not yet surfaced by
   the native bindings or still need richer low-level ergonomics.
-- Additional endpoint-specific Steam Web API convenience wrappers for the long
-  tail of service interfaces beyond the current utility, app, broadcast,
-  directory, content-server-directory, news, player, store, user, user-auth,
-  user-oauth, authentication service, user-stats, remote-storage, game-notifications service, game-server service,
-  published-file, published-item search/voting, leaderboards, game-server stats,
-  community, economy, InventoryService, WorkshopService, SiteLicenseService,
-  CloudService, BroadcastService, CheatReportingService, HelpRequestLogsService,
-  WishlistService, EconMarketService, EconService, GameInventory, and MicroTxn
-  helpers.
+- Additional endpoint-specific Steam Web API convenience wrappers outside
+  Valve's current supported public API list, or for partner/private service
+  interfaces that are not advertised by `ISteamWebAPIUtil.GetSupportedAPIList`.
 
 Use Valve's SpaceWar App ID `480` for generic local smoke tests. Use your own
 Steam app ID for app-specific achievements, stats, inventory, UGC, economy, and

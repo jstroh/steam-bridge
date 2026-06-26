@@ -1661,6 +1661,7 @@ export interface SteamWebApiClient {
   broadcast: SteamWebApiBroadcastFacade;
   broadcastService: SteamWebApiBroadcastServiceFacade;
   cheatReportingService: SteamWebApiCheatReportingServiceFacade;
+  clientStats1046930: SteamWebApiClientStats1046930Facade;
   cloudService: SteamWebApiCloudServiceFacade;
   community: SteamWebApiCommunityFacade;
   contentServerDirectoryService: SteamWebApiContentServerDirectoryServiceFacade;
@@ -1669,6 +1670,7 @@ export interface SteamWebApiClient {
   econService: SteamWebApiEconServiceFacade;
   economy: SteamWebApiEconomyFacade;
   gameInventory: SteamWebApiGameInventoryFacade;
+  gameCoordinatorVersion: SteamWebApiGameCoordinatorVersionFacade;
   gameNotificationsService: SteamWebApiGameNotificationsServiceFacade;
   gameServersService: SteamWebApiGameServersServiceFacade;
   gameServerStats: SteamWebApiGameServerStatsFacade;
@@ -1677,12 +1679,14 @@ export interface SteamWebApiClient {
   leaderboards: SteamWebApiLeaderboardsFacade;
   news: SteamWebApiNewsFacade;
   player: SteamWebApiPlayerServiceFacade;
+  portal2Leaderboards: SteamWebApiPortal2LeaderboardsFacade;
   publishedFileService: SteamWebApiPublishedFileServiceFacade;
   publishedItemSearch: SteamWebApiPublishedItemSearchFacade;
   publishedItemVoting: SteamWebApiPublishedItemVotingFacade;
   remoteStorage: SteamWebApiRemoteStorageFacade;
   siteLicenseService: SteamWebApiSiteLicenseServiceFacade;
   store: SteamWebApiStoreServiceFacade;
+  tfSystem: SteamWebApiTfSystemFacade;
   util: SteamWebApiUtilFacade;
   user: SteamWebApiUserFacade;
   userAuth: SteamWebApiUserAuthFacade;
@@ -1969,6 +1973,10 @@ export interface SteamWebApiStoreServiceFacade {
   ): Promise<SteamWebApiResponse<T>>;
 }
 
+export interface SteamWebApiTfSystemFacade {
+  getWorldStatus<T = unknown>(options?: SteamWebApiEndpointOptions | null): Promise<SteamWebApiResponse<T>>;
+}
+
 export interface SteamWebApiSiteLicenseServiceFacade {
   getCurrentClientConnections<T = unknown>(
     options?: SteamWebApiSiteLicenseSiteOptions | null
@@ -2171,6 +2179,10 @@ export interface SteamWebApiBroadcastPostGameDataFrameRtmpOptions extends SteamW
   steamId64: bigint | number | string;
   rtmpToken: string;
   frameData: string;
+}
+
+export interface SteamWebApiClientStats1046930Facade {
+  reportEvent<T = unknown>(options?: SteamWebApiEndpointOptions | null): Promise<SteamWebApiResponse<T>>;
 }
 
 export interface SteamWebApiCheatReportingServiceFacade {
@@ -2682,6 +2694,25 @@ export interface SteamWebApiGameServersServiceFacade {
   ): Promise<SteamWebApiResponse<T>>;
 }
 
+export interface SteamWebApiGameCoordinatorVersionFacade {
+  app1046930: SteamWebApiGameCoordinatorVersionClientServerFacade;
+  app1269260: SteamWebApiGameCoordinatorVersionClientServerFacade;
+  app1422450: SteamWebApiGameCoordinatorVersionClientServerFacade;
+  teamFortress2: SteamWebApiGameCoordinatorVersionClientServerFacade;
+  dota2: SteamWebApiGameCoordinatorVersionClientServerFacade;
+  app583950: SteamWebApiGameCoordinatorVersionClientServerFacade;
+  counterStrike2: SteamWebApiGameCoordinatorVersionServerFacade;
+}
+
+export interface SteamWebApiGameCoordinatorVersionClientServerFacade
+  extends SteamWebApiGameCoordinatorVersionServerFacade {
+  getClientVersion<T = unknown>(options?: SteamWebApiEndpointOptions | null): Promise<SteamWebApiResponse<T>>;
+}
+
+export interface SteamWebApiGameCoordinatorVersionServerFacade {
+  getServerVersion<T = unknown>(options?: SteamWebApiEndpointOptions | null): Promise<SteamWebApiResponse<T>>;
+}
+
 export interface SteamWebApiGameServersCreateAccountOptions extends SteamWebApiEndpointOptions {
   appId: number;
   memo: string;
@@ -2727,6 +2758,13 @@ export interface SteamWebApiLeaderboardsFacade {
   resetLeaderboard<T = unknown>(options: SteamWebApiLeaderboardIdOptions): Promise<SteamWebApiResponse<T>>;
   setLeaderboardScore<T = unknown>(
     options: SteamWebApiSetLeaderboardScoreOptions
+  ): Promise<SteamWebApiResponse<T>>;
+}
+
+export interface SteamWebApiPortal2LeaderboardsFacade {
+  getBucketizedData<T = unknown>(
+    leaderboardName: string,
+    options?: SteamWebApiEndpointOptions | null
   ): Promise<SteamWebApiResponse<T>>;
 }
 
@@ -5332,6 +5370,7 @@ export function createSteamWebApiClient(options: SteamWebApiClientOptions = {}):
     broadcast: createSteamWebApiBroadcastFacade(clientOptions),
     broadcastService: createSteamWebApiBroadcastServiceFacade(clientOptions),
     cheatReportingService: createSteamWebApiCheatReportingServiceFacade(clientOptions),
+    clientStats1046930: createSteamWebApiClientStats1046930Facade(clientOptions),
     cloudService: createSteamWebApiCloudServiceFacade(clientOptions),
     community: createSteamWebApiCommunityFacade(clientOptions),
     contentServerDirectoryService: createSteamWebApiContentServerDirectoryServiceFacade(clientOptions),
@@ -5340,6 +5379,7 @@ export function createSteamWebApiClient(options: SteamWebApiClientOptions = {}):
     econService: createSteamWebApiEconServiceFacade(clientOptions),
     economy: createSteamWebApiEconomyFacade(clientOptions),
     gameInventory: createSteamWebApiGameInventoryFacade(clientOptions),
+    gameCoordinatorVersion: createSteamWebApiGameCoordinatorVersionFacade(clientOptions),
     gameNotificationsService: createSteamWebApiGameNotificationsServiceFacade(clientOptions),
     gameServersService: createSteamWebApiGameServersServiceFacade(clientOptions),
     gameServerStats: createSteamWebApiGameServerStatsFacade(clientOptions),
@@ -5348,12 +5388,14 @@ export function createSteamWebApiClient(options: SteamWebApiClientOptions = {}):
     leaderboards: createSteamWebApiLeaderboardsFacade(clientOptions),
     news: createSteamWebApiNewsFacade(clientOptions),
     player: createSteamWebApiPlayerServiceFacade(clientOptions),
+    portal2Leaderboards: createSteamWebApiPortal2LeaderboardsFacade(clientOptions),
     publishedFileService: createSteamWebApiPublishedFileServiceFacade(clientOptions),
     publishedItemSearch: createSteamWebApiPublishedItemSearchFacade(clientOptions),
     publishedItemVoting: createSteamWebApiPublishedItemVotingFacade(clientOptions),
     remoteStorage: createSteamWebApiRemoteStorageFacade(clientOptions),
     siteLicenseService: createSteamWebApiSiteLicenseServiceFacade(clientOptions),
     store: createSteamWebApiStoreServiceFacade(clientOptions),
+    tfSystem: createSteamWebApiTfSystemFacade(clientOptions),
     util: createSteamWebApiUtilFacade(clientOptions),
     user: createSteamWebApiUserFacade(clientOptions),
     userAuth: createSteamWebApiUserAuthFacade(clientOptions),
@@ -10000,6 +10042,14 @@ function createSteamWebApiStoreServiceFacade(clientOptions: SteamWebApiClientOpt
   };
 }
 
+function createSteamWebApiTfSystemFacade(clientOptions: SteamWebApiClientOptions): SteamWebApiTfSystemFacade {
+  return {
+    getWorldStatus<T = unknown>(options?: SteamWebApiEndpointOptions | null): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiGet<T>(clientOptions, "ITFSystem_440", "GetWorldStatus", 1, {}, options, false);
+    }
+  };
+}
+
 function createSteamWebApiContentServerDirectoryServiceFacade(
   clientOptions: SteamWebApiClientOptions
 ): SteamWebApiContentServerDirectoryServiceFacade {
@@ -10397,6 +10447,16 @@ function createSteamWebApiBroadcastServiceFacade(
         },
         options
       );
+    }
+  };
+}
+
+function createSteamWebApiClientStats1046930Facade(
+  clientOptions: SteamWebApiClientOptions
+): SteamWebApiClientStats1046930Facade {
+  return {
+    reportEvent<T = unknown>(options?: SteamWebApiEndpointOptions | null): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiPost<T>(clientOptions, "IClientStats_1046930", "ReportEvent", 1, {}, options, false);
     }
   };
 }
@@ -10882,6 +10942,92 @@ function createSteamWebApiGameInventoryFacade(
         { appid: options.appId, itemdefs: steamWebApiInputJsonValue(options.itemDefs) },
         options
       );
+    }
+  };
+}
+
+function createSteamWebApiGameCoordinatorVersionFacade(
+  clientOptions: SteamWebApiClientOptions
+): SteamWebApiGameCoordinatorVersionFacade {
+  return {
+    app1046930: {
+      getClientVersion<T = unknown>(
+        options?: SteamWebApiEndpointOptions | null
+      ): Promise<SteamWebApiResponse<T>> {
+        return steamWebApiGet<T>(clientOptions, "IGCVersion_1046930", "GetClientVersion", 1, {}, options, false);
+      },
+      getServerVersion<T = unknown>(
+        options?: SteamWebApiEndpointOptions | null
+      ): Promise<SteamWebApiResponse<T>> {
+        return steamWebApiGet<T>(clientOptions, "IGCVersion_1046930", "GetServerVersion", 1, {}, options, false);
+      }
+    },
+    app1269260: {
+      getClientVersion<T = unknown>(
+        options?: SteamWebApiEndpointOptions | null
+      ): Promise<SteamWebApiResponse<T>> {
+        return steamWebApiGet<T>(clientOptions, "IGCVersion_1269260", "GetClientVersion", 1, {}, options, false);
+      },
+      getServerVersion<T = unknown>(
+        options?: SteamWebApiEndpointOptions | null
+      ): Promise<SteamWebApiResponse<T>> {
+        return steamWebApiGet<T>(clientOptions, "IGCVersion_1269260", "GetServerVersion", 1, {}, options, false);
+      }
+    },
+    app1422450: {
+      getClientVersion<T = unknown>(
+        options?: SteamWebApiEndpointOptions | null
+      ): Promise<SteamWebApiResponse<T>> {
+        return steamWebApiGet<T>(clientOptions, "IGCVersion_1422450", "GetClientVersion", 1, {}, options, false);
+      },
+      getServerVersion<T = unknown>(
+        options?: SteamWebApiEndpointOptions | null
+      ): Promise<SteamWebApiResponse<T>> {
+        return steamWebApiGet<T>(clientOptions, "IGCVersion_1422450", "GetServerVersion", 1, {}, options, false);
+      }
+    },
+    teamFortress2: {
+      getClientVersion<T = unknown>(
+        options?: SteamWebApiEndpointOptions | null
+      ): Promise<SteamWebApiResponse<T>> {
+        return steamWebApiGet<T>(clientOptions, "IGCVersion_440", "GetClientVersion", 1, {}, options, false);
+      },
+      getServerVersion<T = unknown>(
+        options?: SteamWebApiEndpointOptions | null
+      ): Promise<SteamWebApiResponse<T>> {
+        return steamWebApiGet<T>(clientOptions, "IGCVersion_440", "GetServerVersion", 1, {}, options, false);
+      }
+    },
+    dota2: {
+      getClientVersion<T = unknown>(
+        options?: SteamWebApiEndpointOptions | null
+      ): Promise<SteamWebApiResponse<T>> {
+        return steamWebApiGet<T>(clientOptions, "IGCVersion_570", "GetClientVersion", 1, {}, options, false);
+      },
+      getServerVersion<T = unknown>(
+        options?: SteamWebApiEndpointOptions | null
+      ): Promise<SteamWebApiResponse<T>> {
+        return steamWebApiGet<T>(clientOptions, "IGCVersion_570", "GetServerVersion", 1, {}, options, false);
+      }
+    },
+    app583950: {
+      getClientVersion<T = unknown>(
+        options?: SteamWebApiEndpointOptions | null
+      ): Promise<SteamWebApiResponse<T>> {
+        return steamWebApiGet<T>(clientOptions, "IGCVersion_583950", "GetClientVersion", 1, {}, options, false);
+      },
+      getServerVersion<T = unknown>(
+        options?: SteamWebApiEndpointOptions | null
+      ): Promise<SteamWebApiResponse<T>> {
+        return steamWebApiGet<T>(clientOptions, "IGCVersion_583950", "GetServerVersion", 1, {}, options, false);
+      }
+    },
+    counterStrike2: {
+      getServerVersion<T = unknown>(
+        options?: SteamWebApiEndpointOptions | null
+      ): Promise<SteamWebApiResponse<T>> {
+        return steamWebApiGet<T>(clientOptions, "IGCVersion_730", "GetServerVersion", 1, {}, options, false);
+      }
     }
   };
 }
@@ -11460,6 +11606,27 @@ function createSteamWebApiLeaderboardsFacade(clientOptions: SteamWebApiClientOpt
           details: options.details === undefined ? undefined : steamWebApiBinaryString(options.details)
         },
         options
+      );
+    }
+  };
+}
+
+function createSteamWebApiPortal2LeaderboardsFacade(
+  clientOptions: SteamWebApiClientOptions
+): SteamWebApiPortal2LeaderboardsFacade {
+  return {
+    getBucketizedData<T = unknown>(
+      leaderboardName: string,
+      options?: SteamWebApiEndpointOptions | null
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiGet<T>(
+        clientOptions,
+        "IPortal2Leaderboards_620",
+        "GetBucketizedData",
+        1,
+        { leaderboardName },
+        options,
+        false
       );
     }
   };
