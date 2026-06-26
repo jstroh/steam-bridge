@@ -9230,6 +9230,127 @@ test("web API remote storage and economy facades map indexed fields", async (t) 
   );
 });
 
+test("web API cloud service facade maps OAuth file operations", async (t) => {
+  const steam = loadSteamWithFakeNative(createFakeNative());
+  const fetchCalls = [];
+  const fetchImpl = async (url, init = {}) => {
+    fetchCalls.push({ url, init });
+    return {
+      ok: true,
+      status: 200,
+      headers: {
+        forEach(callback) {
+          callback("application/json", "content-type");
+        }
+      },
+      async text() {
+        return JSON.stringify({ response: { ok: true } });
+      }
+    };
+  };
+  const client = steam.createSteamWebApiClient({ apiKey: "publisher-secret", fetch: fetchImpl });
+  const requestUrl = (index) => new URL(fetchCalls[index].url);
+  const bodyParams = (index) => new URLSearchParams(fetchCalls[index].init.body);
+  const bodyInputJson = (index) => JSON.parse(bodyParams(index).get("input_json"));
+
+  t.after(clearSteamBridgeCache);
+
+  await client.cloudService.enumerateUserFiles({
+    accessToken: "oauth-token",
+    appId: 480,
+    extendedDetails: true,
+    count: 2,
+    startIndex: 1
+  });
+  await client.cloudService.beginAppUploadBatch({
+    accessToken: "oauth-token",
+    appId: 480,
+    machineName: "Steam Deck",
+    filesToUpload: ["save.sav"],
+    filesToDelete: ["old-save.sav"]
+  });
+  await client.cloudService.completeAppUploadBatch({
+    accessToken: "oauth-token",
+    appId: 480,
+    batchId: 123n,
+    batchEResult: 1
+  });
+  await client.cloudService.beginHttpUpload({
+    accessToken: "oauth-token",
+    appId: 480,
+    fileSize: 7448889,
+    fileName: "save.sav",
+    fileSha: "FDFE308499263F9361B472648E9F49DC0B8799C8",
+    platformsToSync: ["all"],
+    uploadBatchId: 123n,
+    isPublic: false
+  });
+  await client.cloudService.commitHttpUpload({
+    accessToken: "oauth-token",
+    appId: 480,
+    transferSucceeded: true,
+    fileName: "save.sav",
+    fileSha: "FDFE308499263F9361B472648E9F49DC0B8799C8"
+  });
+  await client.cloudService.deleteFile({
+    accessToken: "oauth-token",
+    appId: 480,
+    fileName: "old-save.sav"
+  });
+
+  assert.equal(
+    requestUrl(0).origin + requestUrl(0).pathname,
+    "https://api.steampowered.com/ICloudService/EnumerateUserFiles/v0001/"
+  );
+  assert.equal(fetchCalls[0].init.method, "GET");
+  assert.equal(requestUrl(0).searchParams.has("key"), false);
+  assert.equal(requestUrl(0).searchParams.get("format"), "json");
+  assert.equal(requestUrl(0).searchParams.get("access_token"), "oauth-token");
+  assert.equal(requestUrl(0).searchParams.get("appid"), "480");
+  assert.equal(requestUrl(0).searchParams.get("extended_details"), "1");
+  assert.equal(requestUrl(0).searchParams.get("count"), "2");
+  assert.equal(requestUrl(0).searchParams.get("start_index"), "1");
+
+  for (const [index, methodName] of [
+    [1, "BeginAppUploadBatch"],
+    [2, "CompleteAppUploadBatch"],
+    [3, "BeginHTTPUpload"],
+    [4, "CommitHTTPUpload"],
+    [5, "Delete"]
+  ]) {
+    assert.equal(requestUrl(index).origin + requestUrl(index).pathname, `https://api.steampowered.com/ICloudService/${methodName}/v0001/`);
+    assert.equal(requestUrl(index).searchParams.has("key"), false);
+    assert.equal(fetchCalls[index].init.method, "POST");
+    assert.equal(fetchCalls[index].init.headers["content-type"], "application/x-www-form-urlencoded");
+    assert.equal(bodyParams(index).get("access_token"), "oauth-token");
+  }
+
+  assert.deepEqual(bodyInputJson(1), {
+    appid: 480,
+    machine_name: "Steam Deck",
+    files_to_upload: ["save.sav"],
+    files_to_delete: ["old-save.sav"]
+  });
+  assert.deepEqual(bodyInputJson(2), { appid: 480, batch_id: "123", batch_eresult: 1 });
+  assert.deepEqual(bodyInputJson(3), {
+    appid: 480,
+    file_size: 7448889,
+    filename: "save.sav",
+    file_sha: "FDFE308499263F9361B472648E9F49DC0B8799C8",
+    is_public: false,
+    platforms_to_sync: ["all"],
+    upload_batch_id: "123"
+  });
+  assert.deepEqual(bodyInputJson(4), {
+    appid: 480,
+    transfer_succeeded: true,
+    filename: "save.sav",
+    file_sha: "FDFE308499263F9361B472648E9F49DC0B8799C8"
+  });
+  assert.deepEqual(bodyInputJson(5), { appid: 480, filename: "old-save.sav" });
+  assert.equal(typeof steam.webApi.cloudService.enumerateUserFiles, "function");
+});
+
 test("web API econ service facade maps trade and cache service methods", async (t) => {
   const steam = loadSteamWithFakeNative(createFakeNative());
   const fetchCalls = [];

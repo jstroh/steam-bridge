@@ -60,6 +60,11 @@ const notificationSessions = await steamworks.webApi.gameNotificationsService.en
   appId: 480,
   steamId64: 76561198000000000n
 });
+const cloudFiles = await steamworks.webApi.cloudService.enumerateUserFiles({
+  accessToken: "oauth-access-token",
+  appId: 480,
+  extendedDetails: true
+});
 const workshopFiles = await steamworks.webApi.publishedFileService.queryFiles({
   queryType: 3,
   creatorAppId: 480,

@@ -103,6 +103,11 @@ const notificationSessions = await web.gameNotificationsService.enumerateSession
   appId: 480,
   steamId64: 76561198000000000n
 });
+const cloudFiles = await web.cloudService.enumerateUserFiles({
+  accessToken: "oauth-access-token",
+  appId: 480,
+  extendedDetails: true
+});
 const workshopDetails = await web.remoteStorage.getPublishedFileDetails([123456789n]);
 const workshopFiles = await web.publishedFileService.queryFiles({
   queryType: 3,

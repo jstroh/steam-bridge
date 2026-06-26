@@ -1657,6 +1657,7 @@ export interface SteamWebApiClient {
   get<T = unknown>(options: Omit<SteamWebApiRequestOptions, "method" | "body">): Promise<SteamWebApiResponse<T>>;
   post<T = unknown>(options: Omit<SteamWebApiRequestOptions, "method">): Promise<SteamWebApiResponse<T>>;
   apps: SteamWebApiAppsFacade;
+  cloudService: SteamWebApiCloudServiceFacade;
   community: SteamWebApiCommunityFacade;
   econService: SteamWebApiEconServiceFacade;
   economy: SteamWebApiEconomyFacade;
@@ -1862,6 +1863,60 @@ export interface SteamWebApiRemoteStorageFacade {
   unsubscribePublishedFile<T = unknown>(
     options: SteamWebApiPublishedFileUserActionOptions
   ): Promise<SteamWebApiResponse<T>>;
+}
+
+export interface SteamWebApiCloudServiceFacade {
+  enumerateUserFiles<T = unknown>(options: SteamWebApiCloudEnumerateUserFilesOptions): Promise<SteamWebApiResponse<T>>;
+  beginAppUploadBatch<T = unknown>(
+    options: SteamWebApiCloudBeginAppUploadBatchOptions
+  ): Promise<SteamWebApiResponse<T>>;
+  completeAppUploadBatch<T = unknown>(
+    options: SteamWebApiCloudCompleteAppUploadBatchOptions
+  ): Promise<SteamWebApiResponse<T>>;
+  beginHttpUpload<T = unknown>(options: SteamWebApiCloudBeginHttpUploadOptions): Promise<SteamWebApiResponse<T>>;
+  commitHttpUpload<T = unknown>(options: SteamWebApiCloudCommitHttpUploadOptions): Promise<SteamWebApiResponse<T>>;
+  deleteFile<T = unknown>(options: SteamWebApiCloudDeleteFileOptions): Promise<SteamWebApiResponse<T>>;
+}
+
+export interface SteamWebApiCloudEndpointOptions extends Omit<SteamWebApiEndpointOptions, "key"> {
+  accessToken: string;
+  appId: number;
+}
+
+export interface SteamWebApiCloudEnumerateUserFilesOptions extends SteamWebApiCloudEndpointOptions {
+  extendedDetails?: boolean;
+  count?: number;
+  startIndex?: number;
+}
+
+export interface SteamWebApiCloudBeginAppUploadBatchOptions extends SteamWebApiCloudEndpointOptions {
+  machineName: string;
+  filesToUpload: readonly string[];
+  filesToDelete: readonly string[];
+}
+
+export interface SteamWebApiCloudCompleteAppUploadBatchOptions extends SteamWebApiCloudEndpointOptions {
+  batchId: bigint | number | string;
+  batchEResult: number;
+}
+
+export interface SteamWebApiCloudBeginHttpUploadOptions extends SteamWebApiCloudEndpointOptions {
+  fileSize: number;
+  fileName: string;
+  fileSha: string;
+  platformsToSync: readonly string[];
+  uploadBatchId: bigint | number | string;
+  isPublic?: boolean;
+}
+
+export interface SteamWebApiCloudCommitHttpUploadOptions extends SteamWebApiCloudEndpointOptions {
+  transferSucceeded: boolean;
+  fileName: string;
+  fileSha: string;
+}
+
+export interface SteamWebApiCloudDeleteFileOptions extends SteamWebApiCloudEndpointOptions {
+  fileName: string;
 }
 
 export interface SteamWebApiRemoteStorageUserAppOptions extends SteamWebApiEndpointOptions {
@@ -4814,6 +4869,7 @@ export function createSteamWebApiClient(options: SteamWebApiClientOptions = {}):
       return requestSteamWebApiWithClient<T>(postRequest, clientOptions);
     },
     apps: createSteamWebApiAppsFacade(clientOptions),
+    cloudService: createSteamWebApiCloudServiceFacade(clientOptions),
     community: createSteamWebApiCommunityFacade(clientOptions),
     econService: createSteamWebApiEconServiceFacade(clientOptions),
     economy: createSteamWebApiEconomyFacade(clientOptions),
@@ -9298,6 +9354,106 @@ function createSteamWebApiRemoteStorageFacade(
   };
 }
 
+function createSteamWebApiCloudServiceFacade(clientOptions: SteamWebApiClientOptions): SteamWebApiCloudServiceFacade {
+  return {
+    enumerateUserFiles<T = unknown>(
+      options: SteamWebApiCloudEnumerateUserFilesOptions
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiOAuthGet<T>(
+        clientOptions,
+        "ICloudService",
+        "EnumerateUserFiles",
+        1,
+        {
+          access_token: options.accessToken,
+          appid: options.appId,
+          extended_details: options.extendedDetails,
+          count: options.count,
+          start_index: options.startIndex
+        },
+        options
+      );
+    },
+    beginAppUploadBatch<T = unknown>(
+      options: SteamWebApiCloudBeginAppUploadBatchOptions
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiOAuthServicePost<T>(
+        clientOptions,
+        "ICloudService",
+        "BeginAppUploadBatch",
+        1,
+        options.accessToken,
+        {
+          appid: options.appId,
+          machine_name: options.machineName,
+          files_to_upload: options.filesToUpload,
+          files_to_delete: options.filesToDelete
+        },
+        options
+      );
+    },
+    completeAppUploadBatch<T = unknown>(
+      options: SteamWebApiCloudCompleteAppUploadBatchOptions
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiOAuthServicePost<T>(
+        clientOptions,
+        "ICloudService",
+        "CompleteAppUploadBatch",
+        1,
+        options.accessToken,
+        { appid: options.appId, batch_id: options.batchId, batch_eresult: options.batchEResult },
+        options
+      );
+    },
+    beginHttpUpload<T = unknown>(options: SteamWebApiCloudBeginHttpUploadOptions): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiOAuthServicePost<T>(
+        clientOptions,
+        "ICloudService",
+        "BeginHTTPUpload",
+        1,
+        options.accessToken,
+        {
+          appid: options.appId,
+          file_size: options.fileSize,
+          filename: options.fileName,
+          file_sha: options.fileSha,
+          is_public: options.isPublic,
+          platforms_to_sync: options.platformsToSync,
+          upload_batch_id: options.uploadBatchId
+        },
+        options
+      );
+    },
+    commitHttpUpload<T = unknown>(options: SteamWebApiCloudCommitHttpUploadOptions): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiOAuthServicePost<T>(
+        clientOptions,
+        "ICloudService",
+        "CommitHTTPUpload",
+        1,
+        options.accessToken,
+        {
+          appid: options.appId,
+          transfer_succeeded: options.transferSucceeded,
+          filename: options.fileName,
+          file_sha: options.fileSha
+        },
+        options
+      );
+    },
+    deleteFile<T = unknown>(options: SteamWebApiCloudDeleteFileOptions): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiOAuthServicePost<T>(
+        clientOptions,
+        "ICloudService",
+        "Delete",
+        1,
+        options.accessToken,
+        { appid: options.appId, filename: options.fileName },
+        options
+      );
+    }
+  };
+}
+
 function createSteamWebApiEconomyFacade(clientOptions: SteamWebApiClientOptions): SteamWebApiEconomyFacade {
   return {
     canTrade<T = unknown>(options: SteamWebApiCanTradeOptions): Promise<SteamWebApiResponse<T>> {
@@ -10802,6 +10958,54 @@ function steamWebApiServicePost<T>(
   );
 }
 
+type SteamWebApiOAuthEndpointOptions = Omit<SteamWebApiEndpointOptions, "key">;
+
+function steamWebApiOAuthGet<T>(
+  clientOptions: SteamWebApiClientOptions,
+  interfaceName: string,
+  methodName: string,
+  version: number,
+  params: SteamWebApiParams,
+  options?: SteamWebApiOAuthEndpointOptions | null
+): Promise<SteamWebApiResponse<T>> {
+  return requestSteamWebApiWithClient<T>(
+    {
+      ...steamWebApiOAuthEndpointRequestOptions(options, clientOptions),
+      interfaceName,
+      methodName,
+      version,
+      method: "GET",
+      params
+    },
+    clientOptions
+  );
+}
+
+function steamWebApiOAuthServicePost<T>(
+  clientOptions: SteamWebApiClientOptions,
+  interfaceName: string,
+  methodName: string,
+  version: number,
+  accessToken: string,
+  input: Record<string, SteamWebApiInputJsonValue>,
+  options?: SteamWebApiOAuthEndpointOptions | null
+): Promise<SteamWebApiResponse<T>> {
+  return requestSteamWebApiWithClient<T>(
+    {
+      ...steamWebApiOAuthEndpointRequestOptions(options, clientOptions),
+      interfaceName,
+      methodName,
+      version,
+      method: "POST",
+      body: {
+        access_token: accessToken,
+        input_json: steamWebApiInputJson(input)
+      }
+    },
+    clientOptions
+  );
+}
+
 function steamWebApiNewsForAppParams(options: SteamWebApiNewsForAppOptions): SteamWebApiParams {
   return {
     appid: options.appId,
@@ -10902,6 +11106,19 @@ function steamWebApiEndpointRequestOptions(
     format: options?.format,
     baseUrl:
       options?.baseUrl ?? clientOptions.baseUrl ?? (preferPartnerBaseUrl ? DEFAULT_STEAM_WEB_API_PARTNER_BASE_URL : undefined),
+    headers: options?.headers,
+    signal: options?.signal
+  };
+}
+
+function steamWebApiOAuthEndpointRequestOptions(
+  options: SteamWebApiOAuthEndpointOptions | null | undefined,
+  clientOptions: SteamWebApiClientOptions
+): SteamWebApiEndpointOptions {
+  return {
+    key: null,
+    format: options?.format,
+    baseUrl: options?.baseUrl ?? clientOptions.baseUrl,
     headers: options?.headers,
     signal: options?.signal
   };
