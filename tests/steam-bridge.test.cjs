@@ -9894,6 +9894,146 @@ test("stats and achievement facades cover user and global Steam stats", async (t
   assert.deepEqual(steam.stats.getGlobalStatHistoryDouble("daily_ratio", 2), [1.25, 2.5]);
 });
 
+test("stats and achievement facades expose typed callback helpers", (t) => {
+  const fake = createFakeNative();
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  const events = {};
+  const handles = [
+    steam.achievement.onStored((event) => {
+      events.achievementStored = event;
+    }),
+    steam.achievement.onIconFetched((event) => {
+      events.achievementIconFetched = event;
+    }),
+    steam.stats.onUserStatsReceived((event) => {
+      events.userStatsReceived = event;
+    }),
+    steam.stats.onUserStatsStored((event) => {
+      events.userStatsStored = event;
+    }),
+    steam.stats.onUserStatsUnloaded((event) => {
+      events.userStatsUnloaded = event;
+    }),
+    steam.stats.onLeaderboardFindResult((event) => {
+      events.leaderboardFind = event;
+    }),
+    steam.stats.onLeaderboardScoresDownloaded((event) => {
+      events.leaderboardScores = event;
+    }),
+    steam.stats.onLeaderboardScoreUploaded((event) => {
+      events.leaderboardUpload = event;
+    }),
+    steam.stats.onNumberOfCurrentPlayers((event) => {
+      events.currentPlayers = event;
+    }),
+    steam.stats.onGlobalAchievementPercentagesReady((event) => {
+      events.globalAchievementPercentages = event;
+    }),
+    steam.stats.onLeaderboardUgcSet((event) => {
+      events.leaderboardUgc = event;
+    }),
+    steam.stats.onGlobalStatsReceived((event) => {
+      events.globalStats = event;
+    })
+  ];
+
+  fake.callbacks.get(steam.SteamCallback.UserAchievementStored)({
+    game_id: "480",
+    group_achievement: false,
+    achievement: "ACH_WIN",
+    current_progress: 5,
+    max_progress: 10
+  });
+  fake.callbacks.get(steam.SteamCallback.UserAchievementIconFetched)({
+    game_id: "480",
+    achievement: "ACH_WIN",
+    achieved: true,
+    icon_handle: 321
+  });
+  fake.callbacks.get(steam.SteamCallback.UserStatsReceived)({
+    game_id: "480",
+    result: 1,
+    steam_id: "76561198000000030"
+  });
+  fake.callbacks.get(steam.SteamCallback.UserStatsStored)({
+    game_id: "480",
+    result: 1
+  });
+  fake.callbacks.get(steam.SteamCallback.UserStatsUnloaded)({
+    steam_id: "76561198000000031"
+  });
+  fake.callbacks.get(steam.SteamCallback.LeaderboardFindResult)({ leaderboard: "44", found: true });
+  fake.callbacks.get(steam.SteamCallback.LeaderboardScoresDownloaded)({
+    leaderboard: "44",
+    entries_handle: "9000",
+    entry_count: 2
+  });
+  fake.callbacks.get(steam.SteamCallback.LeaderboardScoreUploaded)({
+    success: true,
+    leaderboard: "44",
+    score: 1234,
+    score_changed: true,
+    global_rank_new: 3,
+    global_rank_previous: 9
+  });
+  fake.callbacks.get(steam.SteamCallback.NumberOfCurrentPlayers)({ success: true, players: 123 });
+  fake.callbacks.get(steam.SteamCallback.GlobalAchievementPercentagesReady)({ game_id: "480", result: 1 });
+  fake.callbacks.get(steam.SteamCallback.LeaderboardUGCSet)({ result: 1, leaderboard: "44" });
+  fake.callbacks.get(steam.SteamCallback.GlobalStatsReceived)({ game_id: "480", result: 1 });
+
+  assert.equal(events.achievementStored.gameId, 480n);
+  assert.equal(events.achievementStored.groupAchievement, false);
+  assert.equal(events.achievementStored.currentProgress, 5);
+  assert.equal(events.achievementStored.maxProgress, 10);
+  assert.equal(events.achievementIconFetched.gameId, 480n);
+  assert.equal(events.achievementIconFetched.iconHandle, 321);
+  assert.equal(events.userStatsReceived.gameId, 480n);
+  assert.equal(events.userStatsReceived.steamId, 76561198000000030n);
+  assert.equal(events.userStatsStored.gameId, 480n);
+  assert.equal(events.userStatsUnloaded.steamId, 76561198000000031n);
+  assert.equal(events.leaderboardFind.leaderboard, 44n);
+  assert.equal(events.leaderboardFind.found, true);
+  assert.equal(events.leaderboardScores.entriesHandle, 9000n);
+  assert.equal(events.leaderboardScores.entryCount, 2);
+  assert.equal(events.leaderboardUpload.scoreChanged, true);
+  assert.equal(events.leaderboardUpload.globalRankNew, 3);
+  assert.equal(events.leaderboardUpload.globalRankPrevious, 9);
+  assert.equal(events.currentPlayers.players, 123);
+  assert.equal(events.globalAchievementPercentages.gameId, 480n);
+  assert.equal(events.leaderboardUgc.leaderboard, 44n);
+  assert.equal(events.globalStats.gameId, 480n);
+
+  for (const handle of handles) {
+    handle.disconnect();
+  }
+
+  const callbackIds = [
+    steam.SteamCallback.UserAchievementStored,
+    steam.SteamCallback.UserAchievementIconFetched,
+    steam.SteamCallback.UserStatsReceived,
+    steam.SteamCallback.UserStatsStored,
+    steam.SteamCallback.UserStatsUnloaded,
+    steam.SteamCallback.LeaderboardFindResult,
+    steam.SteamCallback.LeaderboardScoresDownloaded,
+    steam.SteamCallback.LeaderboardScoreUploaded,
+    steam.SteamCallback.NumberOfCurrentPlayers,
+    steam.SteamCallback.GlobalAchievementPercentagesReady,
+    steam.SteamCallback.LeaderboardUGCSet,
+    steam.SteamCallback.GlobalStatsReceived
+  ];
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "registerSteamCallback"),
+    callbackIds.map((callbackId) => ({ method: "registerSteamCallback", args: [callbackId] }))
+  );
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "disconnectCallback"),
+    callbackIds.map((callbackId) => ({ method: "disconnectCallback", args: [callbackId] }))
+  );
+});
+
 test("game coordinator facade normalizes binary messages", (t) => {
   const fake = createFakeNative({
     gameCoordinatorSendMessage(messageType, data) {

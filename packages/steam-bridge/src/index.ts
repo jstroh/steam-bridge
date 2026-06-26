@@ -2271,6 +2271,105 @@ export interface UserStatsReceivedResult {
   steamId: SteamId;
 }
 
+export interface UserStatsReceivedEvent {
+  gameId: bigint;
+  game_id?: bigint;
+  result: number;
+  steamId: bigint;
+  steam_id?: bigint;
+  [key: string]: unknown;
+}
+
+export interface UserStatsStoredEvent {
+  gameId: bigint;
+  game_id?: bigint;
+  result: number;
+  [key: string]: unknown;
+}
+
+export interface UserStatsUnloadedEvent {
+  steamId: bigint;
+  steam_id?: bigint;
+  [key: string]: unknown;
+}
+
+export interface UserAchievementStoredEvent {
+  gameId: bigint;
+  game_id?: bigint;
+  groupAchievement: boolean;
+  group_achievement?: boolean;
+  achievement: string;
+  currentProgress: number;
+  current_progress?: number;
+  maxProgress: number;
+  max_progress?: number;
+  [key: string]: unknown;
+}
+
+export interface UserAchievementIconFetchedEvent {
+  gameId: bigint;
+  game_id?: bigint;
+  achievement: string;
+  achieved: boolean;
+  iconHandle: number;
+  icon_handle?: number;
+  [key: string]: unknown;
+}
+
+export interface LeaderboardFindResultEvent {
+  leaderboard: bigint;
+  found: boolean;
+  [key: string]: unknown;
+}
+
+export interface LeaderboardScoresDownloadedEvent {
+  leaderboard: bigint;
+  entriesHandle: bigint;
+  entries_handle?: bigint;
+  entryCount: number;
+  entry_count?: number;
+  [key: string]: unknown;
+}
+
+export interface LeaderboardScoreUploadedEvent {
+  success: boolean;
+  leaderboard: bigint;
+  score: number;
+  scoreChanged: boolean;
+  score_changed?: boolean;
+  globalRankNew: number;
+  global_rank_new?: number;
+  globalRankPrevious: number;
+  global_rank_previous?: number;
+  [key: string]: unknown;
+}
+
+export interface NumberOfCurrentPlayersEvent {
+  success: boolean;
+  players: number;
+  [key: string]: unknown;
+}
+
+export interface GlobalAchievementPercentagesReadyEvent {
+  gameId: bigint;
+  game_id?: bigint;
+  result: number;
+  [key: string]: unknown;
+}
+
+export interface LeaderboardUgcSetEvent {
+  result: number;
+  leaderboard: bigint;
+  [key: string]: unknown;
+}
+
+export interface GlobalStatsReceivedEvent {
+  gameId: bigint;
+  game_id?: bigint;
+  result: number;
+  [key: string]: unknown;
+}
+
 export interface GameCoordinatorMessageAvailable {
   available: boolean;
   messageSize: number;
@@ -6419,6 +6518,16 @@ export const client = {
 };
 
 export const achievement = {
+  onStored(handler: (event: UserAchievementStoredEvent) => void): CallbackHandle {
+    return onSteamCallback("UserAchievementStored", (event) => {
+      handler(event as UserAchievementStoredEvent);
+    });
+  },
+  onIconFetched(handler: (event: UserAchievementIconFetchedEvent) => void): CallbackHandle {
+    return onSteamCallback("UserAchievementIconFetched", (event) => {
+      handler(event as UserAchievementIconFetchedEvent);
+    });
+  },
   activate(name: string): boolean {
     return native().achievementActivate(name);
   },
@@ -10527,6 +10636,58 @@ export const stats = {
   LeaderboardSortMethod,
   LeaderboardDisplayType,
   LeaderboardUploadScoreMethod,
+  onUserStatsReceived(handler: (event: UserStatsReceivedEvent) => void): CallbackHandle {
+    return onSteamCallback("UserStatsReceived", (event) => {
+      handler(event as UserStatsReceivedEvent);
+    });
+  },
+  onUserStatsStored(handler: (event: UserStatsStoredEvent) => void): CallbackHandle {
+    return onSteamCallback("UserStatsStored", (event) => {
+      handler(event as UserStatsStoredEvent);
+    });
+  },
+  onUserStatsUnloaded(handler: (event: UserStatsUnloadedEvent) => void): CallbackHandle {
+    return onSteamCallback("UserStatsUnloaded", (event) => {
+      handler(event as UserStatsUnloadedEvent);
+    });
+  },
+  onLeaderboardFindResult(handler: (event: LeaderboardFindResultEvent) => void): CallbackHandle {
+    return onSteamCallback("LeaderboardFindResult", (event) => {
+      handler(event as LeaderboardFindResultEvent);
+    });
+  },
+  onLeaderboardScoresDownloaded(handler: (event: LeaderboardScoresDownloadedEvent) => void): CallbackHandle {
+    return onSteamCallback("LeaderboardScoresDownloaded", (event) => {
+      handler(event as LeaderboardScoresDownloadedEvent);
+    });
+  },
+  onLeaderboardScoreUploaded(handler: (event: LeaderboardScoreUploadedEvent) => void): CallbackHandle {
+    return onSteamCallback("LeaderboardScoreUploaded", (event) => {
+      handler(event as LeaderboardScoreUploadedEvent);
+    });
+  },
+  onNumberOfCurrentPlayers(handler: (event: NumberOfCurrentPlayersEvent) => void): CallbackHandle {
+    return onSteamCallback("NumberOfCurrentPlayers", (event) => {
+      handler(event as NumberOfCurrentPlayersEvent);
+    });
+  },
+  onGlobalAchievementPercentagesReady(
+    handler: (event: GlobalAchievementPercentagesReadyEvent) => void
+  ): CallbackHandle {
+    return onSteamCallback("GlobalAchievementPercentagesReady", (event) => {
+      handler(event as GlobalAchievementPercentagesReadyEvent);
+    });
+  },
+  onLeaderboardUgcSet(handler: (event: LeaderboardUgcSetEvent) => void): CallbackHandle {
+    return onSteamCallback("LeaderboardUGCSet", (event) => {
+      handler(event as LeaderboardUgcSetEvent);
+    });
+  },
+  onGlobalStatsReceived(handler: (event: GlobalStatsReceivedEvent) => void): CallbackHandle {
+    return onSteamCallback("GlobalStatsReceived", (event) => {
+      handler(event as GlobalStatsReceivedEvent);
+    });
+  },
   getInt(name: string): number | null {
     return native().statsGetInt(name) ?? null;
   },

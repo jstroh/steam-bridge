@@ -72,8 +72,8 @@ covered.
   metadata, progress, local/user/global stat reads and writes, current-player
   count, global achievement percentages, global stat history, leaderboard
   find/create, metadata, score downloads, entry reads, score uploads, and UGC
-  attachment, plus stats, achievement, leaderboard, and global-stat callback
-  events.
+  attachment, plus typed stats, achievement, leaderboard, and global-stat
+  callback helpers.
 - Remote storage: cloud enablement, file reads/writes/deletes/forget,
   existence and persistence checks, file metadata, sync platform flags, quota,
   file listing, async file reads/writes, file sharing, write streams, cached
@@ -210,11 +210,11 @@ covered.
 - Additional specialized callback/event helpers outside the current lifecycle,
   apps, user/auth, Friends, Matchmaking/lobbies, Parties, Inventory,
   Steam Input, networking, Remote Storage, HTTP, HTML, screenshots, music,
-  video, parental settings, timeline, Remote Play, and Game Server
-  callback-helper batches, for interfaces where a dedicated `on...` helper would
-  be clearer than the generic name-based subscription API. Generated callback
-  constants and generic name subscriptions are covered by the automated coverage
-  audit.
+  video, parental settings, timeline, Remote Play, Game Server, stats,
+  achievements, leaderboards, and global-stat callback-helper batches, for
+  interfaces where a dedicated `on...` helper would be clearer than the generic
+  name-based subscription API. Generated callback constants and generic name
+  subscriptions are covered by the automated coverage audit.
 - `ISteamPS3OverlayRenderHost` and `ISteamPS3OverlayRender` are PlayStation 3
   overlay interfaces and are outside Steam Bridge's supported Steam desktop
   targets.
