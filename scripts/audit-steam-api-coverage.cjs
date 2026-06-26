@@ -10,11 +10,18 @@ const bindingFiles = [
   "linux_bindings.rs",
   "windows_bindings.rs"
 ].map((file) => path.join(steamworksSysRoot, "src", file));
+const nativeSourceFiles = [
+  path.join(repoRoot, "crates", "native", "src", "lib.rs"),
+  path.join(repoRoot, "crates", "native", "src", "compat.rs"),
+  path.join(repoRoot, "crates", "native", "src", "steam_music_remote_bridge.cpp"),
+  path.join(repoRoot, "crates", "native", "src", "steam_game_coordinator_bridge.cpp")
+];
+const manualCallbackAliases = ["GCMessageAvailable", "GCMessageFailed"];
 
 assertFlatApiCoverage();
 assertCallbackCoverage();
 
-console.log("Steam API coverage audit passed: flat API references and callback aliases are covered.");
+console.log("Steam API coverage audit passed: flat API references, shim references, and callback aliases are covered.");
 
 function findSteamworksSysRoot() {
   const metadata = spawnSync("cargo", ["metadata", "--format-version", "1"], {
@@ -40,13 +47,7 @@ function findSteamworksSysRoot() {
 function assertFlatApiCoverage() {
   const flat = fs.readFileSync(flatHeader, "utf8");
   const flatFunctions = unique([...flat.matchAll(/\b(SteamAPI_ISteam[A-Za-z0-9_]+)\s*\(/g)].map((match) => match[1]));
-  const nativeSource = [
-    path.join(repoRoot, "crates", "native", "src", "lib.rs"),
-    path.join(repoRoot, "crates", "native", "src", "compat.rs"),
-    path.join(repoRoot, "crates", "native", "src", "steam_music_remote_bridge.cpp")
-  ]
-    .map((file) => fs.readFileSync(file, "utf8"))
-    .join("\n");
+  const nativeSource = readNativeSource();
 
   const missing = flatFunctions.filter((fnName) => !nativeSource.includes(fnName));
   if (missing.length > 0) {
@@ -80,6 +81,20 @@ function assertCallbackCoverage() {
       ].join("\n")
     );
   }
+
+  const missingManualAliases = manualCallbackAliases.filter((callbackName) => !exported.has(callbackName));
+  if (missingManualAliases.length > 0) {
+    throw new Error(
+      [
+        `SteamCallback is missing manual shim callback aliases:`,
+        ...missingManualAliases.map((callbackName) => `  - ${callbackName}`)
+      ].join("\n")
+    );
+  }
+}
+
+function readNativeSource() {
+  return nativeSourceFiles.map((file) => fs.readFileSync(file, "utf8")).join("\n");
 }
 
 function readSteamCallbackNames() {

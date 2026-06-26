@@ -29,6 +29,9 @@ generated callback constant lacks an exported `SteamCallback` alias.
   user connection, local IPv4 binding, typed interface pointer lookup, generic
   interface lookup by version, IPC call counts, warning hooks, and
   shutdown-if-all-pipes-closed checks.
+- Game coordinator: legacy `ISteamGameCoordinator` binary message send,
+  availability, retrieval, and message-available/failed callbacks through a
+  local shim because the interface is not emitted in the flat bindings.
 - User/auth: local Steam ID helpers, Web API auth tickets, session tickets by
   Steam ID or IP, auth session validation helpers, voice recording/capture and
   decompression, encrypted app tickets, store auth URLs, badge/level/account

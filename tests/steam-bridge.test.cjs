@@ -2143,6 +2143,8 @@ test("specific and generic callbacks normalize Steamworks payloads", (t) => {
   assert.equal(steam.SteamCallback.GlobalAchievementPercentagesReady, 1110);
   assert.equal(steam.SteamCallback.LeaderboardUGCSet, 1111);
   assert.equal(steam.SteamCallback.GlobalStatsReceived, 1112);
+  assert.equal(steam.SteamCallback.GCMessageAvailable, 1701);
+  assert.equal(steam.SteamCallback.GCMessageFailed, 1702);
   assert.equal(steam.SteamCallback.GameServerStatsReceived, 1800);
   assert.equal(steam.SteamCallback.GameServerStatsStored, 1801);
   assert.equal(steam.SteamCallback.HTTPRequestCompleted, 2101);
@@ -2434,6 +2436,20 @@ test("specific and generic callbacks normalize Steamworks payloads", (t) => {
   });
   fake.callbacks.get(steam.SteamCallback.RemoteStorageLocalFileChange)({});
   assert.deepEqual(localFileChangeEvent, {});
+
+  let gcMessageAvailableEvent;
+  steam.callback.register(steam.SteamCallback.GCMessageAvailable, (event) => {
+    gcMessageAvailableEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.GCMessageAvailable)({ message_size: 64 });
+  assert.equal(gcMessageAvailableEvent.messageSize, 64);
+
+  let gcMessageFailedEvent;
+  steam.callback.register(steam.SteamCallback.GCMessageFailed, (event) => {
+    gcMessageFailedEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.GCMessageFailed)({});
+  assert.deepEqual(gcMessageFailedEvent, {});
 
   let availableBeaconLocationsUpdatedEvent;
   steam.callback.register(steam.SteamCallback.AvailableBeaconLocationsUpdated, (event) => {
@@ -7612,6 +7628,40 @@ test("stats and achievement facades cover user and global Steam stats", async (t
   assert.equal(steam.stats.getGlobalStatDouble("total_ratio"), 123.75);
   assert.deepEqual(steam.stats.getGlobalStatHistoryInt("daily_score", 3), [10n, 20n, 30n]);
   assert.deepEqual(steam.stats.getGlobalStatHistoryDouble("daily_ratio", 2), [1.25, 2.5]);
+});
+
+test("game coordinator facade normalizes binary messages", (t) => {
+  const fake = createFakeNative({
+    gameCoordinatorSendMessage(messageType, data) {
+      this.calls.push({ method: "gameCoordinatorSendMessage", args: [messageType, data] });
+      return 0;
+    },
+    gameCoordinatorIsMessageAvailable() {
+      this.calls.push({ method: "gameCoordinatorIsMessageAvailable", args: [] });
+      return { available: true, message_size: 5 };
+    },
+    gameCoordinatorRetrieveMessage(maxBytes) {
+      this.calls.push({ method: "gameCoordinatorRetrieveMessage", args: [maxBytes] });
+      return { result: 0, message_type: 9001, message_size: 5, data: Buffer.from("hello") };
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  assert.equal(steam.gameCoordinator.GameCoordinatorResult.OK, 0);
+  assert.equal(steam.gameCoordinator.sendMessage(9000, "payload"), 0);
+  assert.deepEqual(steam.gameCoordinator.isMessageAvailable(), { available: true, messageSize: 5 });
+  assert.deepEqual(steam.gameCoordinator.retrieveMessage(32), {
+    result: 0,
+    messageType: 9001,
+    messageSize: 5,
+    data: Buffer.from("hello")
+  });
+  assert.deepEqual(fake.calls.find((call) => call.method === "gameCoordinatorSendMessage"), {
+    method: "gameCoordinatorSendMessage",
+    args: [9000, Buffer.from("payload")]
+  });
 });
 
 test("friends facade normalizes IDs, groups, rich presence, and async results", async (t) => {

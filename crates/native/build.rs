@@ -30,17 +30,19 @@ fn main() {
     }
 
     println!("cargo:rerun-if-changed=src/steam_music_remote_bridge.cpp");
-    let mut music_remote_bridge = cc::Build::new();
-    music_remote_bridge
+    println!("cargo:rerun-if-changed=src/steam_game_coordinator_bridge.cpp");
+    let mut cpp_shims = cc::Build::new();
+    cpp_shims
         .cpp(true)
-        .file("src/steam_music_remote_bridge.cpp");
+        .file("src/steam_music_remote_bridge.cpp")
+        .file("src/steam_game_coordinator_bridge.cpp");
     if target_os == "windows" {
-        music_remote_bridge.flag_if_supported("/std:c++17");
+        cpp_shims.flag_if_supported("/std:c++17");
     } else {
-        music_remote_bridge.flag("-std=c++17");
+        cpp_shims.flag("-std=c++17");
     }
-    configure_linux_cross_archive_tools(&mut music_remote_bridge, &host, &target);
-    music_remote_bridge.compile("steam_bridge_music_remote");
+    configure_linux_cross_archive_tools(&mut cpp_shims, &host, &target);
+    cpp_shims.compile("steam_bridge_cpp_shims");
 
     if target_os == "macos" {
         println!("cargo:rerun-if-changed=src/macos_metal_surface.mm");

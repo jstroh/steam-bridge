@@ -98,6 +98,18 @@ extern "C" {
     ) -> bool;
     fn steam_bridge_music_remote_set_current_playlist_entry(id: i32) -> bool;
     fn steam_bridge_music_remote_playlist_did_change() -> bool;
+    fn steam_bridge_game_coordinator_send_message(
+        message_type: u32,
+        data: *const u8,
+        data_length: u32,
+    ) -> i32;
+    fn steam_bridge_game_coordinator_is_message_available(message_size: *mut u32) -> bool;
+    fn steam_bridge_game_coordinator_retrieve_message(
+        message_type: *mut u32,
+        data: *mut u8,
+        data_length: u32,
+        message_size: *mut u32,
+    ) -> i32;
 }
 
 const CALLBACK_PERSONA_STATE_CHANGE: i32 = 304;
@@ -223,6 +235,8 @@ const CALLBACK_REMOTE_STORAGE_PUBLISHED_FILE_UPDATED: i32 = 1330;
 const CALLBACK_REMOTE_STORAGE_FILE_WRITE_ASYNC_COMPLETE: i32 = 1331;
 const CALLBACK_REMOTE_STORAGE_FILE_READ_ASYNC_COMPLETE: i32 = 1332;
 const CALLBACK_REMOTE_STORAGE_LOCAL_FILE_CHANGE: i32 = 1333;
+const CALLBACK_GC_MESSAGE_AVAILABLE: i32 = 1701;
+const CALLBACK_GC_MESSAGE_FAILED: i32 = 1702;
 const CALLBACK_STEAM_UGC_QUERY_COMPLETED: i32 = 3401;
 const CALLBACK_STEAM_UGC_REQUEST_DETAILS_RESULT: i32 = 3402;
 const CALLBACK_STEAM_UGC_CREATE_ITEM_RESULT: i32 = 3403;
@@ -245,7 +259,13 @@ const CALLBACK_STEAM_UGC_WORKSHOP_EULA_STATUS: i32 = 3420;
 const MAX_HTML_PAINT_BUFFER_BYTES: u64 = 256 * 1024 * 1024;
 const STEAM_MUSIC_NAME_MAX_LENGTH: usize = 255;
 const STEAM_MUSIC_PNG_MAX_LENGTH: u32 = 65_535;
+const MAX_GAME_COORDINATOR_MESSAGE_BYTES: u32 = 16 * 1024 * 1024;
 const SCE_PAD_TRIGGER_EFFECT_PARAM_BYTES: usize = 120;
+
+#[repr(C)]
+struct GcMessageAvailableRaw {
+    message_size: u32,
+}
 
 static NEXT_NETWORKING_FAKE_UDP_PORT_HANDLE: AtomicU32 = AtomicU32::new(1);
 static NETWORKING_FAKE_UDP_PORTS: Lazy<Mutex<HashMap<u32, usize>>> =
@@ -1964,6 +1984,21 @@ pub struct UtilsApiCallCompletion {
 pub struct UtilsApiCallResult {
     pub ok: bool,
     pub failed: bool,
+    pub data: Option<Buffer>,
+}
+
+#[derive(Debug)]
+#[napi(object)]
+pub struct GameCoordinatorMessageAvailable {
+    pub available: bool,
+    pub message_size: u32,
+}
+
+#[napi(object)]
+pub struct GameCoordinatorMessage {
+    pub result: u32,
+    pub message_type: u32,
+    pub message_size: u32,
     pub data: Option<Buffer>,
 }
 
@@ -8330,6 +8365,60 @@ pub fn stats_update_avg_rate(
 #[napi(js_name = "statsStore")]
 pub fn stats_store() -> Result<bool, Error> {
     Ok(unsafe { sys::SteamAPI_ISteamUserStats_StoreStats(steam_user_stats()?) })
+}
+
+#[napi(js_name = "gameCoordinatorSendMessage")]
+pub fn game_coordinator_send_message(message_type: u32, data: Buffer) -> Result<u32, Error> {
+    let data_length = game_coordinator_message_len(data.len(), "game coordinator message")?;
+    Ok(unsafe {
+        steam_bridge_game_coordinator_send_message(message_type, data.as_ptr(), data_length) as u32
+    })
+}
+
+#[napi(js_name = "gameCoordinatorIsMessageAvailable")]
+pub fn game_coordinator_is_message_available() -> Result<GameCoordinatorMessageAvailable, Error> {
+    let mut message_size = 0u32;
+    let available =
+        unsafe { steam_bridge_game_coordinator_is_message_available(&mut message_size) };
+    Ok(GameCoordinatorMessageAvailable {
+        available,
+        message_size,
+    })
+}
+
+#[napi(js_name = "gameCoordinatorRetrieveMessage")]
+pub fn game_coordinator_retrieve_message(
+    max_bytes: Option<u32>,
+) -> Result<GameCoordinatorMessage, Error> {
+    let available = game_coordinator_is_message_available()?;
+    let requested_size = max_bytes.unwrap_or(available.message_size);
+    let buffer_size =
+        game_coordinator_message_len(requested_size as usize, "game coordinator receive buffer")?;
+    let mut data = vec![0u8; buffer_size as usize];
+    let mut message_type = 0u32;
+    let mut message_size = 0u32;
+    let result = unsafe {
+        steam_bridge_game_coordinator_retrieve_message(
+            &mut message_type,
+            data.as_mut_ptr(),
+            buffer_size,
+            &mut message_size,
+        )
+    } as u32;
+
+    let data = if result == 0 {
+        data.truncate((message_size as usize).min(data.len()));
+        Some(data.into())
+    } else {
+        None
+    };
+
+    Ok(GameCoordinatorMessage {
+        result,
+        message_type,
+        message_size,
+        data,
+    })
 }
 
 #[napi(js_name = "statsResetAll")]
@@ -18652,6 +18741,16 @@ fn len_to_i32(len: usize, label: &str) -> Result<i32, Error> {
     i32::try_from(len).map_err(|_| Error::from_reason(format!("{label} length exceeds i32")))
 }
 
+fn game_coordinator_message_len(len: usize, label: &str) -> Result<u32, Error> {
+    let len = len_to_u32(len, label)?;
+    if len > MAX_GAME_COORDINATOR_MESSAGE_BYTES {
+        return Err(Error::from_reason(format!(
+            "{label} exceeds {MAX_GAME_COORDINATOR_MESSAGE_BYTES} bytes"
+        )));
+    }
+    Ok(len)
+}
+
 fn music_remote_string(value: String, label: &str) -> Result<CString, Error> {
     if value.len() > STEAM_MUSIC_NAME_MAX_LENGTH {
         return Err(Error::from_reason(format!(
@@ -20617,6 +20716,8 @@ fn callback_id_from_compat(callback: i32) -> Result<i32, Error> {
         CALLBACK_REMOTE_STORAGE_LOCAL_FILE_CHANGE => {
             Ok(sys::RemoteStorageLocalFileChange_t_k_iCallback as i32)
         }
+        CALLBACK_GC_MESSAGE_AVAILABLE => Ok(CALLBACK_GC_MESSAGE_AVAILABLE),
+        CALLBACK_GC_MESSAGE_FAILED => Ok(CALLBACK_GC_MESSAGE_FAILED),
         CALLBACK_STEAM_UGC_QUERY_COMPLETED => Ok(sys::SteamUGCQueryCompleted_t_k_iCallback as i32),
         CALLBACK_STEAM_UGC_REQUEST_DETAILS_RESULT => {
             Ok(sys::SteamUGCRequestUGCDetailsResult_t_k_iCallback as i32)
@@ -21193,6 +21294,13 @@ unsafe fn callback_to_json(callback: i32, param: *mut c_void) -> Value {
             })
         }
         CALLBACK_REMOTE_STORAGE_LOCAL_FILE_CHANGE => serde_json::json!({}),
+        CALLBACK_GC_MESSAGE_AVAILABLE => {
+            let event = param as *const GcMessageAvailableRaw;
+            serde_json::json!({
+                "message_size": ptr::addr_of!((*event).message_size).read_unaligned()
+            })
+        }
+        CALLBACK_GC_MESSAGE_FAILED => serde_json::json!({}),
         CALLBACK_STEAM_UGC_QUERY_COMPLETED => {
             let event = param as *const sys::SteamUGCQueryCompleted_t;
             let next_cursor = ptr::addr_of!((*event).m_rgchNextCursor).read_unaligned();

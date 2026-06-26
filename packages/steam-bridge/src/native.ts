@@ -1412,6 +1412,21 @@ export interface NativeUtilsApiCallResult {
   data?: Buffer | null;
 }
 
+export interface NativeGameCoordinatorMessageAvailable {
+  available: boolean;
+  messageSize?: number;
+  message_size?: number;
+}
+
+export interface NativeGameCoordinatorMessage {
+  result: number;
+  messageType?: number;
+  message_type?: number;
+  messageSize?: number;
+  message_size?: number;
+  data?: Buffer | null;
+}
+
 export interface NativeUtilsWarningMessage {
   severity: number;
   message: string;
@@ -2137,6 +2152,9 @@ export interface NativeBinding {
   statsSetFloat(name: string, value: number): boolean;
   statsUpdateAvgRate(name: string, countThisSession: number, sessionLength: number): boolean;
   statsStore(): boolean;
+  gameCoordinatorSendMessage(messageType: number, data: Buffer): number;
+  gameCoordinatorIsMessageAvailable(): NativeGameCoordinatorMessageAvailable;
+  gameCoordinatorRetrieveMessage(maxBytes?: number | null): NativeGameCoordinatorMessage;
   statsResetAll(achievementsToo: boolean): boolean;
   achievementGetAndUnlockTime(name: string): NativeAchievementUnlockTime | null | undefined;
   achievementGetIcon(name: string): number;

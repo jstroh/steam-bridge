@@ -60,6 +60,8 @@ import {
   NativeAchievementProgressLimitsFloat,
   NativeAchievementProgressLimitsInt,
   NativeAchievementUnlockTime,
+  NativeGameCoordinatorMessage,
+  NativeGameCoordinatorMessageAvailable,
   NativeGlobalAchievementInfo,
   NativeGlobalAchievementPercentagesReady,
   NativeGlobalStatsReceivedResult,
@@ -1259,6 +1261,18 @@ export interface UserStatsReceivedResult {
   gameId: bigint;
   result: number;
   steamId: SteamId;
+}
+
+export interface GameCoordinatorMessageAvailable {
+  available: boolean;
+  messageSize: number;
+}
+
+export interface GameCoordinatorMessage {
+  result: number;
+  messageType: number;
+  messageSize: number;
+  data: Buffer | null;
 }
 
 export interface NumberOfCurrentPlayersResult {
@@ -3402,6 +3416,8 @@ export const SteamCallback = {
   GlobalAchievementPercentagesReady: 1110,
   LeaderboardUGCSet: 1111,
   GlobalStatsReceived: 1112,
+  GCMessageAvailable: 1701,
+  GCMessageFailed: 1702,
   GameServerStatsReceived: 1800,
   GameServerStatsStored: 1801,
   HTTPRequestCompleted: 2101,
@@ -3782,6 +3798,14 @@ export const LeaderboardUploadScoreMethod = {
   None: 0,
   KeepBest: 1,
   ForceUpdate: 2
+} as const;
+
+export const GameCoordinatorResult = {
+  OK: 0,
+  NoMessage: 1,
+  BufferTooSmall: 2,
+  NotLoggedOn: 3,
+  InvalidMessage: 4
 } as const;
 
 export const ParentalFeature = {
@@ -8515,6 +8539,19 @@ export const stats = {
   },
   async attachLeaderboardUgc(leaderboard: bigint, ugcHandle: bigint): Promise<LeaderboardUgcSetResult> {
     return normalizeLeaderboardUgcSetResult(await native().statsAttachLeaderboardUgc(leaderboard, ugcHandle));
+  }
+};
+
+export const gameCoordinator = {
+  GameCoordinatorResult,
+  sendMessage(messageType: number, data: Buffer | Uint8Array | string): number {
+    return native().gameCoordinatorSendMessage(messageType, Buffer.from(data));
+  },
+  isMessageAvailable(): GameCoordinatorMessageAvailable {
+    return normalizeGameCoordinatorMessageAvailable(native().gameCoordinatorIsMessageAvailable());
+  },
+  retrieveMessage(maxBytes?: number | null): GameCoordinatorMessage {
+    return normalizeGameCoordinatorMessage(native().gameCoordinatorRetrieveMessage(maxBytes));
   }
 };
 
@@ -14036,6 +14073,7 @@ function normalizeCallbackEvent(callbackId: number, event: unknown): unknown {
     mapping_creator: "mappingCreator",
     member_state_change: "memberStateChange",
     message_id: "messageId",
+    message_size: "messageSize",
     minor_revision: "minorRevision",
     mouse_cursor: "mouseCursor",
     new_navigation: "newNavigation",
@@ -15100,6 +15138,26 @@ function normalizeUserStatsReceivedResult(result: NativeUserStatsReceivedResult)
   };
 }
 
+function normalizeGameCoordinatorMessageAvailable(
+  result: NativeGameCoordinatorMessageAvailable
+): GameCoordinatorMessageAvailable {
+  const source = result as unknown as Record<string, unknown>;
+  return {
+    available: Boolean(source.available),
+    messageSize: Number(source.messageSize ?? source.message_size ?? 0)
+  };
+}
+
+function normalizeGameCoordinatorMessage(result: NativeGameCoordinatorMessage): GameCoordinatorMessage {
+  const source = result as unknown as Record<string, unknown>;
+  return {
+    result: Number(source.result ?? 0),
+    messageType: Number(source.messageType ?? source.message_type ?? 0),
+    messageSize: Number(source.messageSize ?? source.message_size ?? 0),
+    data: (source.data as Buffer | null | undefined) ?? null
+  };
+}
+
 function normalizeNumberOfCurrentPlayersResult(
   result: NativeNumberOfCurrentPlayersResult
 ): NumberOfCurrentPlayersResult {
@@ -15550,6 +15608,7 @@ const defaultExport = {
   gameServerNetworkingSockets,
   gameServerStats,
   gameServerWorkshop,
+  gameCoordinator,
   html,
   http,
   inventory,
@@ -15577,7 +15636,8 @@ const defaultExport = {
   requestSteamWebApi,
   electronConfigureSteamOverlay,
   electronEnableSteamOverlay,
-  SteamCallback
+  SteamCallback,
+  GameCoordinatorResult
 };
 
 export default defaultExport;
