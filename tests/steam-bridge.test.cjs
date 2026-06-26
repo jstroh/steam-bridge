@@ -2539,8 +2539,25 @@ test("specific and generic callbacks normalize Steamworks payloads", (t) => {
   assert.equal(personaEvent.steamId, 76561198000000030n);
   assert.deepEqual(personaEvent.flags, { bits: 2 });
 
+  let namedPersonaEvent;
+  const namedPersonaHandle = steam.onSteamCallback("PersonaStateChangeSteamworks", (event) => {
+    namedPersonaEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.PersonaStateChangeSteamworks)({
+    steam_id: "76561198000000036",
+    flags: { bits: 4 }
+  });
+  assert.equal(namedPersonaEvent.steamId, 76561198000000036n);
+  assert.deepEqual(namedPersonaEvent.flags, { bits: 4 });
+  namedPersonaHandle.disconnect();
+  assert.equal(fake.callbacks.has(steam.SteamCallback.PersonaStateChangeSteamworks), false);
+  assert.throws(
+    () => steam.onSteamCallback("UnknownCallbackForTest", () => {}),
+    /Unknown Steam callback: UnknownCallbackForTest/
+  );
+
   let serverFailureEvent;
-  steam.callback.register(steam.SteamCallback.SteamServerConnectFailureSteamworks, (event) => {
+  steam.callback.register("SteamServerConnectFailureSteamworks", (event) => {
     serverFailureEvent = event;
   });
   fake.callbacks.get(steam.SteamCallback.SteamServerConnectFailureSteamworks)({
@@ -2778,7 +2795,7 @@ test("specific and generic callbacks normalize Steamworks payloads", (t) => {
   fake.callbacks.get(steam.SteamCallback.ActiveBeaconsUpdated)({});
   assert.deepEqual(activeBeaconsUpdatedEvent, {});
 
-  steam.callback.registerRawCallbackBase(0x1234n, steam.SteamCallback.LobbyDataUpdate);
+  steam.callback.registerRawCallbackBase(0x1234n, "LobbyDataUpdate");
   steam.callback.registerRawCallResult(0x1234n, 12345678901234567890n);
   steam.callback.unregisterRawCallResult(0x1234n, 12345678901234567890n);
   steam.callback.unregisterRawCallbackBase(0x1234n);

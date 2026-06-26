@@ -4590,6 +4590,7 @@ export let electronConfigureSteamOverlay = electronConfigureSteamOverlayImpl;
 export let electronEnableSteamOverlay = electronEnableSteamOverlayImpl;
 
 export type SteamCallbackId = typeof SteamCallback[keyof typeof SteamCallback];
+export type SteamCallbackName = keyof typeof SteamCallback;
 export type InputTypeValue = typeof InputType[keyof typeof InputType];
 export type InputTypeCodeValue = typeof InputTypeCode[keyof typeof InputTypeCode];
 
@@ -5124,6 +5125,18 @@ export function onGameOverlayActivated(handler: (event: GameOverlayActivated) =>
   return wrapCallbackHandle(native().registerGameOverlayActivated((event) => {
     handler(normalizeGameOverlayEvent(event));
   }));
+}
+
+export function onSteamCallback(
+  steamCallback: SteamCallbackName | SteamCallbackId | number,
+  handler: (event: unknown) => void
+): CallbackHandle {
+  const callbackId = resolveSteamCallbackId(steamCallback);
+  return wrapCallbackHandle(
+    native().registerSteamCallback(callbackId, (event) => {
+      handler(normalizeCallbackEvent(callbackId, event));
+    })
+  );
 }
 
 export function activateOverlay(dialog: number | string = "Friends"): void {
@@ -5888,15 +5901,17 @@ export const gameServer = {
 
 export const callback = {
   SteamCallback,
-  register(steamCallback: SteamCallbackId | number, handler: (value: unknown) => void): CallbackHandle {
-    return wrapCallbackHandle(
-      native().registerSteamCallback(Number(steamCallback), (event) => {
-        handler(normalizeCallbackEvent(Number(steamCallback), event));
-      })
-    );
+  register(
+    steamCallback: SteamCallbackName | SteamCallbackId | number,
+    handler: (value: unknown) => void
+  ): CallbackHandle {
+    return onSteamCallback(steamCallback, handler);
   },
-  registerRawCallbackBase(callbackBasePointer: bigint, steamCallback: SteamCallbackId | number): void {
-    native().registerRawSteamCallback(callbackBasePointer, Number(steamCallback));
+  registerRawCallbackBase(
+    callbackBasePointer: bigint,
+    steamCallback: SteamCallbackName | SteamCallbackId | number
+  ): void {
+    native().registerRawSteamCallback(callbackBasePointer, resolveSteamCallbackId(steamCallback));
   },
   unregisterRawCallbackBase(callbackBasePointer: bigint): void {
     native().unregisterRawSteamCallback(callbackBasePointer);
@@ -14108,6 +14123,17 @@ function wrapCallbackHandle(handle: NativeCallbackHandle): CallbackHandle {
   };
 }
 
+function resolveSteamCallbackId(steamCallback: SteamCallbackName | SteamCallbackId | number): number {
+  if (typeof steamCallback === "string") {
+    const callbackId = SteamCallback[steamCallback as SteamCallbackName];
+    if (callbackId === undefined) {
+      throw new Error(`Unknown Steam callback: ${steamCallback}`);
+    }
+    return callbackId;
+  }
+  return Number(steamCallback);
+}
+
 function normalizeCallbackEvent(callbackId: number, event: unknown): unknown {
   if (
     callbackId === SteamCallback.MicroTxnAuthorizationResponse ||
@@ -15829,6 +15855,7 @@ const defaultExport = {
   getOverlayDiagnostics,
   onMicroTxnAuthorizationResponse,
   onGameOverlayActivated,
+  onSteamCallback,
   activateOverlay,
   activateOverlayToWebPage,
   openNativeOverlayProbeWindow,

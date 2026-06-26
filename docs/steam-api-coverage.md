@@ -10,9 +10,10 @@ documented in headers but omitted from the generated flat bindings.
 `npm run api:check` audits the bundled SDK and fails if any generated
 `SteamAPI_*` flat function, public SDK `S_API` export, manual shim, or generated
 callback constant lacks native/public coverage, or when a native N-API export is
-missing TypeScript binding/public facade coverage. Valve internal
-context/bootstrap helpers are intentionally excluded when their public inline
-wrappers are already covered.
+missing TypeScript binding/public facade coverage. It also checks that the
+public callback facade exposes name-based subscription helpers for all exported
+callback aliases. Valve internal context/bootstrap helpers are intentionally
+excluded when their public inline wrappers are already covered.
 
 ## Implemented Areas
 
@@ -26,7 +27,7 @@ wrappers are already covered.
   overlay notification placement, VR helpers, China launcher checks, text
   filtering, IPv6 connectivity checks, file signature checks, raw APICall
   inspection, raw `CCallbackBase` registration bridges, generic Steamworks
-  callback ID aliases, gamepad text input
+  callback ID aliases and name-based subscription helpers, gamepad text input
   helpers, warning hooks, IPC failure, license update, client/server-deny,
   game-web, and utility callback events.
 - Steam client: low-level Steam pipe/user creation and release helpers, global
@@ -196,9 +197,10 @@ wrappers are already covered.
   payloads. `steamworks-sys 0.13` exposes the ticket out-parameter but keeps
   `SteamDatagramRelayAuthTicket` opaque in the bundled headers, so safe
   structured decoding needs a newer SDK surface or a maintained local shim.
-- Remaining callback/event ergonomics for interfaces not surfaced by the current
-  SDK bindings; generated callback constants are covered by the automated
-  coverage audit.
+- Additional specialized callback/event helpers for interfaces where a dedicated
+  `on...` helper would be clearer than the generic name-based subscription API;
+  generated callback constants and generic name subscriptions are covered by the
+  automated coverage audit.
 - `ISteamPS3OverlayRenderHost` and `ISteamPS3OverlayRender` are PlayStation 3
   overlay interfaces and are outside Steam Bridge's supported Steam desktop
   targets.

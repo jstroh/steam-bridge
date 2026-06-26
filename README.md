@@ -74,10 +74,7 @@ client.localplayer.getSteamId().steamId64;
 client.auth
   .getAuthTicketForWebApi("steam-bridge-example")
   .then((ticket) => ticket.getBytes());
-client.callback.register(
-  client.callback.SteamCallback.MicroTxnAuthorizationResponse,
-  (event) => console.log(event)
-);
+client.callback.register("MicroTxnAuthorizationResponse", (event) => console.log(event));
 client.utils.getOverlayDiagnostics();
 client.overlay.activateToWebPage("https://store.steampowered.com/app/480/");
 client.achievement.isActivated("ACH_WIN_ONE_GAME");

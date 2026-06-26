@@ -57,9 +57,10 @@ assertFlatApiCoverage();
 assertSdkExportCoverage();
 assertHeaderOnlyShimCoverage();
 assertCallbackCoverage();
+assertCallbackFacadeCoverage();
 assertNativeBindingCoverage();
 
-console.log("Steam API coverage audit passed: SDK exports, flat API references, native bindings, manual shim references, and callback aliases are covered.");
+console.log("Steam API coverage audit passed: SDK exports, flat API references, native bindings, manual shim references, callback aliases, and callback facade helpers are covered.");
 
 function findSteamworksSysRoot() {
   const metadata = spawnSync("cargo", ["metadata", "--format-version", "1"], {
@@ -141,6 +142,25 @@ function assertCallbackCoverage() {
       [
         `SteamCallback is missing manual shim callback aliases:`,
         ...missingManualAliases.map((callbackName) => `  - ${callbackName}`)
+      ].join("\n")
+    );
+  }
+}
+
+function assertCallbackFacadeCoverage() {
+  const indexSource = fs.readFileSync(path.join(repoRoot, "packages", "steam-bridge", "src", "index.ts"), "utf8");
+  const requiredPatterns = [
+    ["SteamCallbackName type", /export type SteamCallbackName\s*=\s*keyof typeof SteamCallback;/],
+    ["onSteamCallback helper", /export function onSteamCallback\s*\(/],
+    ["name-or-id callback input", /SteamCallbackName\s*\|\s*SteamCallbackId\s*\|\s*number/],
+    ["callback name resolver", /function resolveSteamCallbackId\s*\(/]
+  ];
+  const missing = requiredPatterns.filter(([, pattern]) => !pattern.test(indexSource)).map(([label]) => label);
+  if (missing.length > 0) {
+    throw new Error(
+      [
+        "Public facade is missing generic Steam callback subscription helpers:",
+        ...missing.map((label) => `  - ${label}`)
       ].join("\n")
     );
   }
