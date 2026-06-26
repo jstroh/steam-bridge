@@ -1607,6 +1607,68 @@ export interface AppIDs {
   consumer?: number;
 }
 
+export type SteamWebApiMethod = "GET" | "POST";
+export type SteamWebApiParamValue = string | number | bigint | boolean | null | undefined;
+export type SteamWebApiParams = Record<string, SteamWebApiParamValue | readonly SteamWebApiParamValue[]>;
+export type SteamWebApiBody = SteamWebApiParams | URLSearchParams | string | Buffer | Uint8Array | null | undefined;
+
+export interface SteamWebApiRequestOptions {
+  interfaceName: string;
+  methodName: string;
+  version?: string | number;
+  method?: SteamWebApiMethod;
+  params?: SteamWebApiParams;
+  body?: SteamWebApiBody;
+  key?: string | null;
+  format?: string | null;
+  baseUrl?: string;
+  headers?: Record<string, string>;
+  signal?: AbortSignal;
+}
+
+export interface SteamWebApiClientOptions {
+  apiKey?: string | null;
+  baseUrl?: string;
+  defaultFormat?: string | null;
+  headers?: Record<string, string>;
+  fetch?: SteamWebApiFetch;
+}
+
+export interface SteamWebApiResponse<T = unknown> {
+  ok: boolean;
+  status: number;
+  url: string;
+  headers: Record<string, string>;
+  data: T;
+  text: string;
+}
+
+export interface SteamWebApiClient {
+  buildUrl(options: SteamWebApiRequestOptions): string;
+  request<T = unknown>(options: SteamWebApiRequestOptions): Promise<SteamWebApiResponse<T>>;
+  get<T = unknown>(options: Omit<SteamWebApiRequestOptions, "method" | "body">): Promise<SteamWebApiResponse<T>>;
+  post<T = unknown>(options: Omit<SteamWebApiRequestOptions, "method">): Promise<SteamWebApiResponse<T>>;
+}
+
+export interface SteamWebApiFetchResponse {
+  ok: boolean;
+  status: number;
+  headers: {
+    forEach(callback: (value: string, key: string) => void): void;
+  };
+  text(): Promise<string>;
+}
+
+export type SteamWebApiFetch = (
+  input: string,
+  init?: {
+    method?: string;
+    headers?: Record<string, string>;
+    body?: string | Buffer | Uint8Array;
+    signal?: AbortSignal;
+  }
+) => Promise<SteamWebApiFetchResponse>;
+
 export const SteamCallback = {
   PersonaStateChange: 0,
   SteamServersConnected: 1,
@@ -2834,6 +2896,8 @@ export type SteamCallbackId = typeof SteamCallback[keyof typeof SteamCallback];
 export type InputTypeValue = typeof InputType[keyof typeof InputType];
 export type InputTypeCodeValue = typeof InputTypeCode[keyof typeof InputTypeCode];
 
+const DEFAULT_STEAM_WEB_API_BASE_URL = "https://api.steampowered.com";
+
 let callbackTimer: NodeJS.Timeout | undefined;
 let activeCallbackIntervalMs = 33;
 
@@ -3608,6 +3672,60 @@ export const auth = {
     return new Ticket(await native().getAuthTicketForWebApi(identity, timeoutSeconds ?? undefined));
   }
 };
+
+export function buildSteamWebApiUrl(options: SteamWebApiRequestOptions): string {
+  const url = new URL(
+    `${steamWebApiPathComponent(options.interfaceName, "interfaceName")}/${steamWebApiPathComponent(
+      options.methodName,
+      "methodName"
+    )}/${normalizeSteamWebApiVersion(options.version)}/`,
+    baseUrlWithTrailingSlash(options.baseUrl ?? DEFAULT_STEAM_WEB_API_BASE_URL)
+  );
+
+  if (options.key) {
+    url.searchParams.set("key", options.key);
+  }
+
+  if (options.format) {
+    url.searchParams.set("format", options.format);
+  }
+
+  appendSteamWebApiParams(url.searchParams, options.params);
+  return url.toString();
+}
+
+export async function requestSteamWebApi<T = unknown>(
+  options: SteamWebApiRequestOptions
+): Promise<SteamWebApiResponse<T>> {
+  return requestSteamWebApiWithClient<T>(options, {});
+}
+
+export function createSteamWebApiClient(options: SteamWebApiClientOptions = {}): SteamWebApiClient {
+  const clientOptions = { ...options };
+  return {
+    buildUrl(request) {
+      return buildSteamWebApiUrl(requestSteamWebApiWithDefaults(request, clientOptions));
+    },
+    request<T = unknown>(request: SteamWebApiRequestOptions): Promise<SteamWebApiResponse<T>> {
+      return requestSteamWebApiWithClient<T>(request, clientOptions);
+    },
+    get<T = unknown>(
+      request: Omit<SteamWebApiRequestOptions, "method" | "body">
+    ): Promise<SteamWebApiResponse<T>> {
+      return requestSteamWebApiWithClient<T>({ ...request, method: "GET" }, clientOptions);
+    },
+    post<T = unknown>(request: Omit<SteamWebApiRequestOptions, "method">): Promise<SteamWebApiResponse<T>> {
+      const postRequest: SteamWebApiRequestOptions = { ...request, method: "POST" };
+      if (postRequest.body === undefined && postRequest.params !== undefined) {
+        postRequest.body = postRequest.params;
+        postRequest.params = undefined;
+      }
+      return requestSteamWebApiWithClient<T>(postRequest, clientOptions);
+    }
+  };
+}
+
+export const webApi = createSteamWebApiClient();
 
 export const user = {
   VoiceResult,
@@ -7658,6 +7776,7 @@ export interface SteamBridgeClient {
   user: typeof user;
   utils: typeof utils;
   video: typeof video;
+  webApi: typeof webApi;
   workshop: typeof workshop;
 }
 
@@ -7698,12 +7817,183 @@ export function createCompatibilityClient(): SteamBridgeClient {
     user,
     utils,
     video,
+    webApi,
     workshop
   };
 }
 
 function native(): NativeBinding {
   return loadNativeBinding();
+}
+
+function requestSteamWebApiWithDefaults(
+  request: SteamWebApiRequestOptions,
+  options: SteamWebApiClientOptions
+): SteamWebApiRequestOptions {
+  const envApiKey = process.env.STEAM_WEB_API_KEY ?? process.env.STEAM_API_KEY;
+  const apiKey =
+    request.key !== undefined ? request.key : options.apiKey !== undefined ? options.apiKey : envApiKey;
+  return {
+    ...request,
+    key: apiKey,
+    baseUrl: request.baseUrl ?? options.baseUrl,
+    format: request.format === undefined ? options.defaultFormat ?? "json" : request.format,
+    headers: {
+      ...options.headers,
+      ...request.headers
+    }
+  };
+}
+
+async function requestSteamWebApiWithClient<T = unknown>(
+  request: SteamWebApiRequestOptions,
+  clientOptions: SteamWebApiClientOptions
+): Promise<SteamWebApiResponse<T>> {
+  const options = requestSteamWebApiWithDefaults(request, clientOptions);
+  const fetchImpl = clientOptions.fetch ?? (globalThis.fetch as unknown as SteamWebApiFetch | undefined);
+  if (!fetchImpl) {
+    throw new Error("global fetch is unavailable; pass a fetch implementation to createSteamWebApiClient()");
+  }
+
+  const headers = { ...(options.headers ?? {}) };
+  const body = serializeSteamWebApiBody(options.body, headers);
+  const url = buildSteamWebApiUrl(options);
+  const method = options.method ?? (body == null ? "GET" : "POST");
+  const response = await fetchImpl(url, {
+    method,
+    headers,
+    body,
+    signal: options.signal
+  });
+  const text = await response.text();
+  const responseHeaders = steamWebApiHeadersToRecord(response.headers);
+  return {
+    ok: response.ok,
+    status: response.status,
+    url,
+    headers: responseHeaders,
+    data: parseSteamWebApiResponse<T>(text, responseHeaders, options.format),
+    text
+  };
+}
+
+function baseUrlWithTrailingSlash(value: string): string {
+  return value.endsWith("/") ? value : `${value}/`;
+}
+
+function steamWebApiPathComponent(value: string, name: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    throw new Error(`Steam Web API ${name} is required`);
+  }
+  return encodeURIComponent(trimmed);
+}
+
+function normalizeSteamWebApiVersion(version: string | number | undefined): string {
+  if (version === undefined) {
+    return "v0001";
+  }
+
+  if (typeof version === "number") {
+    return `v${Math.trunc(version).toString().padStart(4, "0")}`;
+  }
+
+  const trimmed = version.trim();
+  const numeric = trimmed.match(/^v?(\d+)$/i);
+  if (numeric) {
+    return `v${numeric[1].padStart(4, "0")}`;
+  }
+  return trimmed;
+}
+
+function appendSteamWebApiParams(searchParams: URLSearchParams, params: SteamWebApiParams | undefined): void {
+  if (!params) {
+    return;
+  }
+
+  for (const [key, value] of Object.entries(params)) {
+    if (Array.isArray(value)) {
+      for (const entry of value as readonly SteamWebApiParamValue[]) {
+        appendSteamWebApiParam(searchParams, key, entry);
+      }
+    } else {
+      appendSteamWebApiParam(searchParams, key, value as SteamWebApiParamValue);
+    }
+  }
+}
+
+function appendSteamWebApiParam(searchParams: URLSearchParams, key: string, value: SteamWebApiParamValue): void {
+  if (value === undefined || value === null) {
+    return;
+  }
+  searchParams.append(key, serializeSteamWebApiValue(value));
+}
+
+function serializeSteamWebApiValue(value: Exclude<SteamWebApiParamValue, null | undefined>): string {
+  if (typeof value === "bigint") {
+    return value.toString();
+  }
+  if (typeof value === "boolean") {
+    return value ? "1" : "0";
+  }
+  return String(value);
+}
+
+function serializeSteamWebApiBody(
+  body: SteamWebApiBody,
+  headers: Record<string, string>
+): string | Buffer | Uint8Array | undefined {
+  if (body === undefined || body === null) {
+    return undefined;
+  }
+
+  if (typeof body === "string" || Buffer.isBuffer(body) || body instanceof Uint8Array) {
+    return body;
+  }
+
+  setSteamWebApiContentType(headers, "application/x-www-form-urlencoded");
+  const searchParams = body instanceof URLSearchParams ? body : new URLSearchParams();
+  if (!(body instanceof URLSearchParams)) {
+    appendSteamWebApiParams(searchParams, body);
+  }
+  return searchParams.toString();
+}
+
+function setSteamWebApiContentType(headers: Record<string, string>, value: string): void {
+  if (Object.keys(headers).some((key) => key.toLowerCase() === "content-type")) {
+    return;
+  }
+  headers["content-type"] = value;
+}
+
+function steamWebApiHeadersToRecord(headers: SteamWebApiFetchResponse["headers"]): Record<string, string> {
+  const output: Record<string, string> = {};
+  headers.forEach((value, key) => {
+    output[key.toLowerCase()] = value;
+  });
+  return output;
+}
+
+function parseSteamWebApiResponse<T>(
+  text: string,
+  headers: Record<string, string>,
+  format: string | null | undefined
+): T {
+  if (!text) {
+    return null as T;
+  }
+
+  const contentType = headers["content-type"] ?? "";
+  const expectsJson = format === "json" || contentType.includes("json") || /^[\s]*[{[]/.test(text);
+  if (expectsJson) {
+    try {
+      return JSON.parse(text) as T;
+    } catch {
+      return text as T;
+    }
+  }
+
+  return text as T;
 }
 
 function normalizeInitOptions(options?: InitOptions | number | null): Required<InitOptions> {
@@ -10364,7 +10654,11 @@ const defaultExport = {
   user,
   utils,
   video,
+  webApi,
   workshop,
+  buildSteamWebApiUrl,
+  createSteamWebApiClient,
+  requestSteamWebApi,
   electronConfigureSteamOverlay,
   electronEnableSteamOverlay,
   SteamCallback

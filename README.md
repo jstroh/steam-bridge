@@ -11,7 +11,8 @@ The native crate calls the Steamworks flat C API through `steamworks-sys` and
 owns Steam API initialization, manual callback dispatch, auth tickets, overlay
 helpers, Steam utility checks, Steam ID helpers, achievements, networking,
 matchmaking, app metadata and DLC helpers, cloud, HTTP, game-server, input,
-stats, inventory, and workshop helpers.
+stats, inventory, workshop helpers, and a generic Steam Web API client for
+publisher/economy endpoints.
 
 Steam SDK redistributables are not committed. For local/native builds, provide
 the Steamworks SDK in the normal location expected by `steamworks-sys`, or set
@@ -78,6 +79,19 @@ client.callback.register(
 client.utils.getOverlayDiagnostics();
 client.overlay.activateToWebPage("https://store.steampowered.com/app/480/");
 client.achievement.isActivated("ACH_WIN_ONE_GAME");
+```
+
+Steam Web API calls can use the generic helper. Set `STEAM_WEB_API_KEY` in the
+environment, pass `apiKey`, or pass `key` per request:
+
+```ts
+const web = steamworks.createSteamWebApiClient();
+const players = await web.get({
+  interfaceName: "ISteamUserStats",
+  methodName: "GetNumberOfCurrentPlayers",
+  version: 1,
+  params: { appid: 480 }
+});
 ```
 
 ## Layout

@@ -47,6 +47,18 @@ client.callback.register(
 console.log({ steamId, ticketBytes: ticket.getBytes().length });
 ```
 
+For Steam Web API, publisher, and economy endpoints, use the generic Web API
+client with `STEAM_WEB_API_KEY`, an explicit `apiKey`, or a per-request `key`:
+
+```ts
+const response = await steamworks.webApi.get({
+  interfaceName: "ISteamUserStats",
+  methodName: "GetNumberOfCurrentPlayers",
+  version: 1,
+  params: { appid: 480 }
+});
+```
+
 The package also includes macOS overlay diagnostics through
 `client.utils.getOverlayDiagnostics()` and the Electron helper export
 `electronConfigureSteamOverlay()`. These are intentionally diagnostics first:

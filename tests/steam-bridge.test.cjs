@@ -8712,3 +8712,121 @@ test("game server workshop facade uses game-server native bindings", async (t) =
     args: [42n]
   });
 });
+
+test("web API client builds generic Steam Web API URLs and parses JSON responses", async (t) => {
+  const steam = loadSteamWithFakeNative(createFakeNative());
+  const fetchCalls = [];
+  const fetchImpl = async (url, init = {}) => {
+    fetchCalls.push({ url, init });
+    return {
+      ok: true,
+      status: 200,
+      headers: {
+        forEach(callback) {
+          callback("application/json; charset=utf-8", "content-type");
+          callback("trace-1", "x-trace-id");
+        }
+      },
+      async text() {
+        return JSON.stringify({ response: { player_count: 123 } });
+      }
+    };
+  };
+  const client = steam.createSteamWebApiClient({ apiKey: "secret", fetch: fetchImpl });
+  const request = {
+    interfaceName: "ISteamUserStats",
+    methodName: "GetNumberOfCurrentPlayers",
+    version: 1,
+    params: {
+      appid: 480,
+      include_appinfo: false,
+      ids: [1n, 2n],
+      omitted: null
+    }
+  };
+
+  t.after(clearSteamBridgeCache);
+
+  assert.equal(
+    client.buildUrl(request),
+    "https://api.steampowered.com/ISteamUserStats/GetNumberOfCurrentPlayers/v0001/?key=secret&format=json&appid=480&include_appinfo=0&ids=1&ids=2"
+  );
+
+  const response = await client.get(request);
+  assert.equal(response.ok, true);
+  assert.equal(response.status, 200);
+  assert.deepEqual(response.data, { response: { player_count: 123 } });
+  assert.equal(response.headers["content-type"], "application/json; charset=utf-8");
+  assert.equal(fetchCalls[0].url, client.buildUrl(request));
+  assert.equal(fetchCalls[0].init.method, "GET");
+});
+
+test("web API post helper sends form fields and supports partner base URLs", async (t) => {
+  const steam = loadSteamWithFakeNative(createFakeNative());
+  const previousWebApiKey = process.env.STEAM_WEB_API_KEY;
+  process.env.STEAM_WEB_API_KEY = "env-secret";
+  const fetchCalls = [];
+  const fetchImpl = async (url, init = {}) => {
+    fetchCalls.push({ url, init });
+    return {
+      ok: true,
+      status: 200,
+      headers: {
+        forEach(callback) {
+          callback("application/json", "content-type");
+        }
+      },
+      async text() {
+        return JSON.stringify({ response: { trade_offers_sent: [] } });
+      }
+    };
+  };
+  const client = steam.createSteamWebApiClient({
+    apiKey: null,
+    baseUrl: "https://partner.steam-api.com",
+    headers: { "x-default": "1" },
+    fetch: fetchImpl
+  });
+
+  t.after(() => {
+    clearSteamBridgeCache();
+    if (previousWebApiKey === undefined) {
+      delete process.env.STEAM_WEB_API_KEY;
+    } else {
+      process.env.STEAM_WEB_API_KEY = previousWebApiKey;
+    }
+  });
+
+  const response = await client.post({
+    interfaceName: "IEconService",
+    methodName: "GetTradeOffers",
+    version: "v1",
+    params: {
+      get_sent_offers: true,
+      appid: 480
+    },
+    headers: { "x-request": "2" }
+  });
+
+  assert.equal(
+    fetchCalls[0].url,
+    "https://partner.steam-api.com/IEconService/GetTradeOffers/v0001/?format=json"
+  );
+  assert.equal(fetchCalls[0].init.method, "POST");
+  assert.equal(fetchCalls[0].init.body, "get_sent_offers=1&appid=480");
+  assert.equal(fetchCalls[0].init.headers["content-type"], "application/x-www-form-urlencoded");
+  assert.equal(fetchCalls[0].init.headers["x-default"], "1");
+  assert.equal(fetchCalls[0].init.headers["x-request"], "2");
+  assert.deepEqual(response.data, { response: { trade_offers_sent: [] } });
+  assert.equal(typeof steam.webApi.buildUrl, "function");
+  assert.equal(
+    steam.buildSteamWebApiUrl({
+      interfaceName: "ISteamApps",
+      methodName: "GetAppList",
+      version: "v2",
+      key: null,
+      format: null
+    }),
+    "https://api.steampowered.com/ISteamApps/GetAppList/v0002/"
+  );
+});

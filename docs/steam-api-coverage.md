@@ -60,6 +60,9 @@ documented in headers but omitted from the generated flat bindings.
   UGC download/progress/details/reads, legacy published-file publish/update,
   detail, enumeration, subscription, vote, action, and video flows,
   local-change enumeration and notifications, and file write batch controls.
+- Steam Web API: generic URL building and JSON/text fetch helpers for any
+  `interface/method/version` path, including publisher/economy endpoints through
+  configurable API keys and base URLs.
 - HTTP: client and game-server request creation, configuration,
   send/stream-send initiation, response header/body reads, progress/timeout
   checks, raw POST bodies, cookie containers, request priority/defer, and HTTP
@@ -155,7 +158,8 @@ documented in headers but omitted from the generated flat bindings.
   structured decoding needs a newer SDK surface or a maintained local shim.
 - Remaining callback/event coverage for interfaces that are not yet surfaced by
   the native bindings or still need richer low-level ergonomics.
-- Steam Web API and economy flows beyond client auth ticket helpers.
+- Endpoint-specific Steam Web API and economy convenience wrappers beyond the
+  generic client.
 
 Use Valve's SpaceWar App ID `480` for generic local smoke tests. Use your own
 Steam app ID for app-specific achievements, stats, inventory, UGC, economy, and
