@@ -1676,6 +1676,7 @@ export interface SteamWebApiClient {
   user: SteamWebApiUserFacade;
   userAuth: SteamWebApiUserAuthFacade;
   userStats: SteamWebApiUserStatsFacade;
+  workshopService: SteamWebApiWorkshopServiceFacade;
   microTxn: SteamWebApiMicroTxnFacade;
   microTxnSandbox: SteamWebApiMicroTxnFacade;
 }
@@ -2411,6 +2412,45 @@ export interface SteamWebApiItemVoteSummaryOptions extends SteamWebApiPublishedI
 }
 
 export interface SteamWebApiUserVoteSummaryOptions extends SteamWebApiPublishedItemIdsOptions {}
+
+export interface SteamWebApiWorkshopServiceFacade {
+  setItemPaymentRules<T = unknown>(
+    options: SteamWebApiWorkshopSetItemPaymentRulesOptions
+  ): Promise<SteamWebApiResponse<T>>;
+  getFinalizedContributors<T = unknown>(
+    options: SteamWebApiWorkshopGameItemOptions
+  ): Promise<SteamWebApiResponse<T>>;
+  getItemDailyRevenue<T = unknown>(
+    options: SteamWebApiWorkshopItemDailyRevenueOptions
+  ): Promise<SteamWebApiResponse<T>>;
+  populateItemDescriptions<T = unknown>(
+    options: SteamWebApiWorkshopPopulateItemDescriptionsOptions
+  ): Promise<SteamWebApiResponse<T>>;
+}
+
+export interface SteamWebApiWorkshopGameItemOptions extends SteamWebApiEndpointOptions {
+  appId: number;
+  gameItemId: bigint | number | string;
+}
+
+export interface SteamWebApiWorkshopSetItemPaymentRulesOptions extends SteamWebApiWorkshopGameItemOptions {
+  associatedWorkshopFiles: SteamWebApiInputJsonValue;
+  partnerAccounts: SteamWebApiInputJsonValue;
+  validateOnly?: boolean;
+  makeWorkshopFilesSubscribable: boolean;
+}
+
+export interface SteamWebApiWorkshopItemDailyRevenueOptions extends SteamWebApiEndpointOptions {
+  appId: number;
+  itemId: bigint | number | string;
+  dateStart: number;
+  dateEnd: number;
+}
+
+export interface SteamWebApiWorkshopPopulateItemDescriptionsOptions extends SteamWebApiEndpointOptions {
+  appId: number;
+  languages: SteamWebApiInputJsonValue;
+}
 
 export interface SteamWebApiUserAuthFacade {
   authenticateUser<T = unknown>(options: SteamWebApiAuthenticateUserOptions): Promise<SteamWebApiResponse<T>>;
@@ -4774,6 +4814,7 @@ export function createSteamWebApiClient(options: SteamWebApiClientOptions = {}):
     user: createSteamWebApiUserFacade(clientOptions),
     userAuth: createSteamWebApiUserAuthFacade(clientOptions),
     userStats: createSteamWebApiUserStatsFacade(clientOptions),
+    workshopService: createSteamWebApiWorkshopServiceFacade(clientOptions),
     microTxn: createSteamWebApiMicroTxnFacade("ISteamMicroTxn", clientOptions),
     microTxnSandbox: createSteamWebApiMicroTxnFacade("ISteamMicroTxnSandbox", clientOptions)
   };
@@ -10164,6 +10205,73 @@ function createSteamWebApiPublishedItemVotingFacade(
   };
 }
 
+function createSteamWebApiWorkshopServiceFacade(
+  clientOptions: SteamWebApiClientOptions
+): SteamWebApiWorkshopServiceFacade {
+  return {
+    setItemPaymentRules<T = unknown>(
+      options: SteamWebApiWorkshopSetItemPaymentRulesOptions
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServicePost<T>(
+        clientOptions,
+        "IWorkshopService",
+        "SetItemPaymentRules",
+        1,
+        {
+          appid: options.appId,
+          gameitemid: options.gameItemId,
+          associated_workshop_files: options.associatedWorkshopFiles,
+          partner_accounts: options.partnerAccounts,
+          validate_only: options.validateOnly,
+          make_workshop_files_subscribable: options.makeWorkshopFilesSubscribable
+        },
+        options
+      );
+    },
+    getFinalizedContributors<T = unknown>(
+      options: SteamWebApiWorkshopGameItemOptions
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServiceGet<T>(
+        clientOptions,
+        "IWorkshopService",
+        "GetFinalizedContributors",
+        1,
+        { appid: options.appId, gameitemid: options.gameItemId },
+        options
+      );
+    },
+    getItemDailyRevenue<T = unknown>(
+      options: SteamWebApiWorkshopItemDailyRevenueOptions
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServiceGet<T>(
+        clientOptions,
+        "IWorkshopService",
+        "GetItemDailyRevenue",
+        1,
+        {
+          appid: options.appId,
+          item_id: options.itemId,
+          date_start: options.dateStart,
+          date_end: options.dateEnd
+        },
+        options
+      );
+    },
+    populateItemDescriptions<T = unknown>(
+      options: SteamWebApiWorkshopPopulateItemDescriptionsOptions
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServicePost<T>(
+        clientOptions,
+        "IWorkshopService",
+        "PopulateItemDescriptions",
+        1,
+        { appid: options.appId, languages: options.languages },
+        options
+      );
+    }
+  };
+}
+
 function createSteamWebApiUserAuthFacade(clientOptions: SteamWebApiClientOptions): SteamWebApiUserAuthFacade {
   return {
     authenticateUser<T = unknown>(options: SteamWebApiAuthenticateUserOptions): Promise<SteamWebApiResponse<T>> {
@@ -10592,7 +10700,7 @@ function steamWebApiPost<T>(
   );
 }
 
-type SteamWebApiInputJsonValue =
+export type SteamWebApiInputJsonValue =
   | SteamWebApiParamValue
   | readonly SteamWebApiInputJsonValue[]
   | { readonly [key: string]: SteamWebApiInputJsonValue };

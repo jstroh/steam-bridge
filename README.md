@@ -110,6 +110,10 @@ const workshopFiles = await web.publishedFileService.queryFiles({
   appId: 480,
   numPerPage: 10
 });
+const workshopContributors = await web.workshopService.getFinalizedContributors({
+  appId: 480,
+  gameItemId: 100
+});
 const prices = await web.economy.getAssetPrices({ appId: 480, currency: "USD" });
 const inventoryCount = await web.inventoryService.getQuantity({
   appId: 480,

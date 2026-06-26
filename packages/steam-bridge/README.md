@@ -66,6 +66,10 @@ const workshopFiles = await steamworks.webApi.publishedFileService.queryFiles({
   appId: 480,
   numPerPage: 10
 });
+const workshopContributors = await steamworks.webApi.workshopService.getFinalizedContributors({
+  appId: 480,
+  gameItemId: 100
+});
 const prices = await steamworks.webApi.economy.getAssetPrices({ appId: 480, currency: "USD" });
 const inventoryCount = await steamworks.webApi.inventoryService.getQuantity({
   appId: 480,

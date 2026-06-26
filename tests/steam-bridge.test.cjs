@@ -9979,6 +9979,127 @@ test("web API published file service facade maps workshop service methods", asyn
   assert.equal(typeof steam.webApi.publishedFileService.queryFiles, "function");
 });
 
+test("web API workshop service facade maps publisher workshop methods", async (t) => {
+  const steam = loadSteamWithFakeNative(createFakeNative());
+  const fetchCalls = [];
+  const fetchImpl = async (url, init = {}) => {
+    fetchCalls.push({ url, init });
+    return {
+      ok: true,
+      status: 200,
+      headers: {
+        forEach(callback) {
+          callback("application/json", "content-type");
+        }
+      },
+      async text() {
+        return JSON.stringify({ response: { ok: true } });
+      }
+    };
+  };
+  const client = steam.createSteamWebApiClient({ apiKey: "workshop-service-secret", fetch: fetchImpl });
+  const requestUrl = (index) => new URL(fetchCalls[index].url);
+  const queryInputJson = (index) => JSON.parse(requestUrl(index).searchParams.get("input_json"));
+  const bodyInputJson = (index) => JSON.parse(new URLSearchParams(fetchCalls[index].init.body).get("input_json"));
+
+  t.after(clearSteamBridgeCache);
+
+  await client.workshopService.setItemPaymentRules({
+    appId: 480,
+    gameItemId: 1001,
+    associatedWorkshopFiles: [
+      { publishedfileid: 123456789n, revenue_percentage: 7500 },
+      { publishedfileid: "987654321", revenue_percentage: 2500 }
+    ],
+    partnerAccounts: [
+      { steamid: 76561198000000000n, revenue_percentage: 7000 },
+      { steamid: "76561198000000001", revenue_percentage: 3000 }
+    ],
+    validateOnly: true,
+    makeWorkshopFilesSubscribable: false
+  });
+  await client.workshopService.getFinalizedContributors({ appId: 480, gameItemId: 1001 });
+  await client.workshopService.getItemDailyRevenue({
+    appId: 480,
+    itemId: 1001,
+    dateStart: 1760000000,
+    dateEnd: 1760086400
+  });
+  await client.workshopService.populateItemDescriptions({
+    appId: 480,
+    languages: [
+      {
+        language: "english",
+        descriptions: [
+          {
+            item_id: 1001,
+            title: "Example Workshop Item",
+            description: "Generic description"
+          }
+        ]
+      }
+    ]
+  });
+
+  assert.equal(
+    requestUrl(0).origin + requestUrl(0).pathname,
+    "https://partner.steam-api.com/IWorkshopService/SetItemPaymentRules/v0001/"
+  );
+  assert.equal(fetchCalls[0].init.method, "POST");
+  assert.equal(fetchCalls[0].init.headers["content-type"], "application/x-www-form-urlencoded");
+  assert.deepEqual(bodyInputJson(0), {
+    appid: 480,
+    gameitemid: 1001,
+    associated_workshop_files: [
+      { publishedfileid: "123456789", revenue_percentage: 7500 },
+      { publishedfileid: "987654321", revenue_percentage: 2500 }
+    ],
+    partner_accounts: [
+      { steamid: "76561198000000000", revenue_percentage: 7000 },
+      { steamid: "76561198000000001", revenue_percentage: 3000 }
+    ],
+    validate_only: true,
+    make_workshop_files_subscribable: false
+  });
+  assert.equal(
+    requestUrl(1).origin + requestUrl(1).pathname,
+    "https://partner.steam-api.com/IWorkshopService/GetFinalizedContributors/v0001/"
+  );
+  assert.equal(fetchCalls[1].init.method, "GET");
+  assert.deepEqual(queryInputJson(1), { appid: 480, gameitemid: 1001 });
+  assert.equal(
+    requestUrl(2).origin + requestUrl(2).pathname,
+    "https://partner.steam-api.com/IWorkshopService/GetItemDailyRevenue/v0001/"
+  );
+  assert.deepEqual(queryInputJson(2), {
+    appid: 480,
+    item_id: 1001,
+    date_start: 1760000000,
+    date_end: 1760086400
+  });
+  assert.equal(
+    requestUrl(3).origin + requestUrl(3).pathname,
+    "https://partner.steam-api.com/IWorkshopService/PopulateItemDescriptions/v0001/"
+  );
+  assert.equal(fetchCalls[3].init.method, "POST");
+  assert.deepEqual(bodyInputJson(3), {
+    appid: 480,
+    languages: [
+      {
+        language: "english",
+        descriptions: [
+          {
+            item_id: 1001,
+            title: "Example Workshop Item",
+            description: "Generic description"
+          }
+        ]
+      }
+    ]
+  });
+  assert.equal(typeof steam.webApi.workshopService.setItemPaymentRules, "function");
+});
+
 test("web API player and store service facades use input_json payloads", async (t) => {
   const steam = loadSteamWithFakeNative(createFakeNative());
   const fetchCalls = [];
