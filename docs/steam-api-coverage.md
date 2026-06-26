@@ -19,7 +19,8 @@ documented in headers but omitted from the generated flat bindings.
   overlay notification placement, VR helpers, China launcher checks, text
   filtering, IPv6 connectivity checks, file signature checks, raw APICall
   inspection, raw `CCallbackBase` registration bridges, gamepad text input
-  helpers, warning hooks, and utility callback events.
+  helpers, warning hooks, IPC failure, license update, client/server-deny,
+  game-web, and utility callback events.
 - Steam client: low-level Steam pipe/user creation and release helpers, global
   user connection, local IPv4 binding, typed interface pointer lookup, generic
   interface lookup by version, IPC call counts, warning hooks, and
@@ -30,7 +31,8 @@ documented in headers but omitted from the generated flat bindings.
   state helpers, market eligibility, duration control, user-data folder reads,
   app usage events, NAT/logged-on checks, Steam user handle reads, game
   advertisement, legacy game-connection auth blobs, license checks, and ticket
-  cancellation.
+  cancellation, plus auth-ticket validation and Web API ticket response callback
+  events.
 - Friends: persona name/state, friend enumeration, friend profiles, groups,
   clans, rich presence, coplay, clan chat controls, friend message replies, and
   friend and clan chat reads, source membership helpers, downloadable clan
@@ -144,7 +146,10 @@ documented in headers but omitted from the generated flat bindings.
 - `ISteamFriends::SetPersonaName` is not exposed because the current
   Steamworks SDK bundled through `steamworks-sys 0.13` does not surface it in
   the flat API metadata or generated bindings used by this crate.
-- Remaining modern networking surfaces: parsed relay-auth-ticket payloads.
+- Remaining modern networking surfaces: field-level parsed relay-auth-ticket
+  payloads. `steamworks-sys 0.13` exposes the ticket out-parameter but keeps
+  `SteamDatagramRelayAuthTicket` opaque in the bundled headers, so safe
+  structured decoding needs a newer SDK surface or a maintained local shim.
 - Remaining callback/event coverage for interfaces that are not yet surfaced by
   the native bindings or still need richer low-level ergonomics.
 - Steam Web API and economy flows beyond client auth ticket helpers.

@@ -104,11 +104,17 @@ const CALLBACK_PERSONA_STATE_CHANGE: i32 = 304;
 const CALLBACK_STEAM_SERVERS_CONNECTED: i32 = 101;
 const CALLBACK_STEAM_SERVER_CONNECT_FAILURE: i32 = 102;
 const CALLBACK_STEAM_SERVERS_DISCONNECTED: i32 = 103;
+const CALLBACK_CLIENT_GAME_SERVER_DENY: i32 = 113;
+const CALLBACK_IPC_FAILURE: i32 = 117;
+const CALLBACK_LICENSES_UPDATED: i32 = 125;
+const CALLBACK_VALIDATE_AUTH_TICKET_RESPONSE: i32 = 143;
 const CALLBACK_ENCRYPTED_APP_TICKET_RESPONSE: i32 = 154;
 const CALLBACK_GET_AUTH_SESSION_TICKET_RESPONSE: i32 = 163;
+const CALLBACK_GAME_WEB_CALLBACK: i32 = 164;
 const CALLBACK_STORE_AUTH_URL_RESPONSE: i32 = 165;
 const CALLBACK_MARKET_ELIGIBILITY_RESPONSE: i32 = 166;
 const CALLBACK_DURATION_CONTROL: i32 = 167;
+const CALLBACK_GET_TICKET_FOR_WEB_API_RESPONSE: i32 = 168;
 const CALLBACK_IP_COUNTRY: i32 = 701;
 const CALLBACK_LOW_BATTERY_POWER: i32 = 702;
 const CALLBACK_STEAM_API_CALL_COMPLETED: i32 = 703;
@@ -20330,17 +20336,27 @@ fn callback_id_from_compat(callback: i32) -> Result<i32, Error> {
         7 => Ok(CALLBACK_P2P_SESSION_CONNECT_FAIL),
         8 => Ok(CALLBACK_GAME_LOBBY_JOIN_REQUESTED),
         9 => Ok(sys::MicroTxnAuthorizationResponse_t_k_iCallback as i32),
+        CALLBACK_CLIENT_GAME_SERVER_DENY => Ok(sys::ClientGameServerDeny_t_k_iCallback as i32),
+        CALLBACK_IPC_FAILURE => Ok(sys::IPCFailure_t_k_iCallback as i32),
+        CALLBACK_LICENSES_UPDATED => Ok(sys::LicensesUpdated_t_k_iCallback as i32),
+        CALLBACK_VALIDATE_AUTH_TICKET_RESPONSE => {
+            Ok(sys::ValidateAuthTicketResponse_t_k_iCallback as i32)
+        }
         CALLBACK_ENCRYPTED_APP_TICKET_RESPONSE => {
             Ok(sys::EncryptedAppTicketResponse_t_k_iCallback as i32)
         }
         CALLBACK_GET_AUTH_SESSION_TICKET_RESPONSE => {
             Ok(sys::GetAuthSessionTicketResponse_t_k_iCallback as i32)
         }
+        CALLBACK_GAME_WEB_CALLBACK => Ok(sys::GameWebCallback_t_k_iCallback as i32),
         CALLBACK_STORE_AUTH_URL_RESPONSE => Ok(sys::StoreAuthURLResponse_t_k_iCallback as i32),
         CALLBACK_MARKET_ELIGIBILITY_RESPONSE => {
             Ok(sys::MarketEligibilityResponse_t_k_iCallback as i32)
         }
         CALLBACK_DURATION_CONTROL => Ok(sys::DurationControl_t_k_iCallback as i32),
+        CALLBACK_GET_TICKET_FOR_WEB_API_RESPONSE => {
+            Ok(sys::GetTicketForWebApiResponse_t_k_iCallback as i32)
+        }
         331 => Ok(sys::GameOverlayActivated_t_k_iCallback as i32),
         CALLBACK_IP_COUNTRY => Ok(sys::IPCountry_t_k_iCallback as i32),
         CALLBACK_LOW_BATTERY_POWER => Ok(sys::LowBatteryPower_t_k_iCallback as i32),
@@ -20720,6 +20736,33 @@ unsafe fn callback_to_json(callback: i32, param: *mut c_void) -> Value {
                 "still_retrying": ptr::addr_of!((*event).m_bStillRetrying).read_unaligned()
             })
         }
+        CALLBACK_CLIENT_GAME_SERVER_DENY => {
+            let event = param as *const sys::ClientGameServerDeny_t;
+            let game_server_ip = ptr::addr_of!((*event).m_unGameServerIP).read_unaligned();
+            serde_json::json!({
+                "app_id": ptr::addr_of!((*event).m_uAppID).read_unaligned(),
+                "game_server_ip": game_server_ip,
+                "game_server_ip_address": ipv4_to_string(game_server_ip),
+                "game_server_port": ptr::addr_of!((*event).m_usGameServerPort).read_unaligned(),
+                "secure": ptr::addr_of!((*event).m_bSecure).read_unaligned() != 0,
+                "reason": ptr::addr_of!((*event).m_uReason).read_unaligned()
+            })
+        }
+        CALLBACK_IPC_FAILURE => {
+            let event = param as *const sys::IPCFailure_t;
+            serde_json::json!({
+                "failure_type": ptr::addr_of!((*event).m_eFailureType).read_unaligned() as u32
+            })
+        }
+        CALLBACK_LICENSES_UPDATED => serde_json::json!({}),
+        CALLBACK_VALIDATE_AUTH_TICKET_RESPONSE => {
+            let event = param as *const sys::ValidateAuthTicketResponse_t;
+            serde_json::json!({
+                "steam_id": csteam_id_to_u64(ptr::addr_of!((*event).m_SteamID).read_unaligned()).to_string(),
+                "auth_session_response": ptr::addr_of!((*event).m_eAuthSessionResponse).read_unaligned() as u32,
+                "owner_steam_id": csteam_id_to_u64(ptr::addr_of!((*event).m_OwnerSteamID).read_unaligned()).to_string()
+            })
+        }
         CALLBACK_ENCRYPTED_APP_TICKET_RESPONSE => {
             let event = param as *const sys::EncryptedAppTicketResponse_t;
             serde_json::json!({
@@ -20731,6 +20774,12 @@ unsafe fn callback_to_json(callback: i32, param: *mut c_void) -> Value {
             serde_json::json!({
                 "auth_ticket": ptr::addr_of!((*event).m_hAuthTicket).read_unaligned(),
                 "result": ptr::addr_of!((*event).m_eResult).read_unaligned() as u32
+            })
+        }
+        CALLBACK_GAME_WEB_CALLBACK => {
+            let event = param as *const sys::GameWebCallback_t;
+            serde_json::json!({
+                "url": c_buf_to_string(&*ptr::addr_of!((*event).m_szURL))
             })
         }
         CALLBACK_STORE_AUTH_URL_RESPONSE => {
@@ -20760,6 +20809,18 @@ unsafe fn callback_to_json(callback: i32, param: *mut c_void) -> Value {
                 "notification": ptr::addr_of!((*event).m_notification).read_unaligned() as u32,
                 "seconds_today": ptr::addr_of!((*event).m_csecsToday).read_unaligned(),
                 "seconds_remaining": ptr::addr_of!((*event).m_csecsRemaining).read_unaligned()
+            })
+        }
+        CALLBACK_GET_TICKET_FOR_WEB_API_RESPONSE => {
+            let event = param as *const sys::GetTicketForWebApiResponse_t;
+            let ticket = ptr::addr_of!((*event).m_rgubTicket).read_unaligned();
+            let ticket_len = ptr::addr_of!((*event).m_cubTicket).read_unaligned().max(0) as usize;
+            let ticket_len = ticket_len.min(ticket.len());
+            serde_json::json!({
+                "auth_ticket": ptr::addr_of!((*event).m_hAuthTicket).read_unaligned(),
+                "result": ptr::addr_of!((*event).m_eResult).read_unaligned() as u32,
+                "ticket_byte_length": ticket_len,
+                "ticket_base64": BASE64_STANDARD.encode(&ticket[..ticket_len])
             })
         }
         CALLBACK_IP_COUNTRY

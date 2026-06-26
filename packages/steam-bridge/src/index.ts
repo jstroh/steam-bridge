@@ -1612,6 +1612,10 @@ export const SteamCallback = {
   SteamServersConnected: 1,
   SteamServersDisconnected: 2,
   SteamServerConnectFailure: 3,
+  ClientGameServerDeny: 113,
+  IPCFailure: 117,
+  LicensesUpdated: 125,
+  ValidateAuthTicketResponse: 143,
   LobbyDataUpdate: 4,
   LobbyChatUpdate: 5,
   P2PSessionRequest: 6,
@@ -1620,9 +1624,11 @@ export const SteamCallback = {
   MicroTxnAuthorizationResponse: 9,
   EncryptedAppTicketResponse: 154,
   GetAuthSessionTicketResponse: 163,
+  GameWebCallback: 164,
   StoreAuthURLResponse: 165,
   MarketEligibilityResponse: 166,
   DurationControl: 167,
+  GetTicketForWebApiResponse: 168,
   GameOverlayActivated: 331,
   GameServerChangeRequested: 332,
   GameLobbyJoinRequestedSteamworks: 333,
@@ -8711,6 +8717,7 @@ function normalizeCallbackEvent(callbackId: number, event: unknown): unknown {
   const aliases: Record<string, string> = {
     account_id: "accountId",
     app_id: "appId",
+    auth_session_response: "authSessionResponse",
     async_call: "asyncCall",
     allowed_at_time: "allowedAtTime",
     action_time: "actionTime",
@@ -8747,8 +8754,12 @@ function normalizeCallbackEvent(callbackId: number, event: unknown): unknown {
     entry_type: "entryType",
     event_type: "eventType",
     file_size: "fileSize",
+    failure_type: "failureType",
     file_type: "fileType",
     friend_steam_id: "friendSteamId",
+    game_server_ip: "gameServerIp",
+    game_server_ip_address: "gameServerIpAddress",
+    game_server_port: "gameServerPort",
     from_cache: "fromCache",
     game_id: "gameId",
     game_server: "gameServer",
@@ -8828,6 +8839,8 @@ function normalizeCallbackEvent(callbackId: number, event: unknown): unknown {
     steam_guard_required_days: "steamGuardRequiredDays",
     steam_ids: "steamIds",
     submitted_text: "submittedText",
+    ticket_base64: "ticketBase64",
+    ticket_byte_length: "ticketByteLength",
     total_connects: "totalConnects",
     total_files_size: "totalFilesSize",
     total_num_app_dependencies: "totalNumAppDependencies",
@@ -8865,6 +8878,9 @@ function normalizeCallbackEvent(callbackId: number, event: unknown): unknown {
   }
   if (typeof result.bgra_base64 === "string") {
     result.bgra = Buffer.from(result.bgra_base64, "base64");
+  }
+  if (typeof result.ticket_base64 === "string") {
+    result.ticket = Buffer.from(result.ticket_base64, "base64");
   }
   return result;
 }

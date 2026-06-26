@@ -2058,11 +2058,17 @@ test("specific and generic callbacks normalize Steamworks payloads", (t) => {
   t.after(clearSteamBridgeCache);
 
   assert.equal(steam.SteamCallback.SteamAPICallCompleted, 703);
+  assert.equal(steam.SteamCallback.ClientGameServerDeny, 113);
+  assert.equal(steam.SteamCallback.IPCFailure, 117);
+  assert.equal(steam.SteamCallback.LicensesUpdated, 125);
+  assert.equal(steam.SteamCallback.ValidateAuthTicketResponse, 143);
   assert.equal(steam.SteamCallback.EncryptedAppTicketResponse, 154);
   assert.equal(steam.SteamCallback.GetAuthSessionTicketResponse, 163);
+  assert.equal(steam.SteamCallback.GameWebCallback, 164);
   assert.equal(steam.SteamCallback.StoreAuthURLResponse, 165);
   assert.equal(steam.SteamCallback.MarketEligibilityResponse, 166);
   assert.equal(steam.SteamCallback.DurationControl, 167);
+  assert.equal(steam.SteamCallback.GetTicketForWebApiResponse, 168);
   assert.equal(steam.SteamCallback.GameServerChangeRequested, 332);
   assert.equal(steam.SteamCallback.GameLobbyJoinRequestedSteamworks, 333);
   assert.equal(steam.SteamCallback.AvatarImageLoaded, 334);
@@ -2194,6 +2200,76 @@ test("specific and generic callbacks normalize Steamworks payloads", (t) => {
   assert.equal(apiCallEvent.asyncCall, 12345678901234567890n);
   assert.equal(apiCallEvent.callback, steam.SteamCallback.AppProofOfPurchaseKeyResponse);
   assert.equal(apiCallEvent.parameterSize, 252);
+
+  let denyEvent;
+  steam.callback.register(steam.SteamCallback.ClientGameServerDeny, (event) => {
+    denyEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.ClientGameServerDeny)({
+    app_id: 480,
+    game_server_ip: 2130706433,
+    game_server_ip_address: "127.0.0.1",
+    game_server_port: 27015,
+    secure: true,
+    reason: 7
+  });
+
+  assert.equal(denyEvent.appId, 480);
+  assert.equal(denyEvent.gameServerIp, 2130706433);
+  assert.equal(denyEvent.gameServerIpAddress, "127.0.0.1");
+  assert.equal(denyEvent.gameServerPort, 27015);
+  assert.equal(denyEvent.secure, true);
+
+  let ipcEvent;
+  steam.callback.register(steam.SteamCallback.IPCFailure, (event) => {
+    ipcEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.IPCFailure)({ failure_type: 1 });
+  assert.equal(ipcEvent.failureType, 1);
+
+  let licenseEvent;
+  steam.callback.register(steam.SteamCallback.LicensesUpdated, (event) => {
+    licenseEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.LicensesUpdated)({});
+  assert.deepEqual(licenseEvent, {});
+
+  let validateTicketEvent;
+  steam.callback.register(steam.SteamCallback.ValidateAuthTicketResponse, (event) => {
+    validateTicketEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.ValidateAuthTicketResponse)({
+    steam_id: "76561198000000010",
+    auth_session_response: 1,
+    owner_steam_id: "76561198000000011"
+  });
+
+  assert.equal(validateTicketEvent.steamId, 76561198000000010n);
+  assert.equal(validateTicketEvent.authSessionResponse, 1);
+  assert.equal(validateTicketEvent.ownerSteamId, 76561198000000011n);
+
+  let gameWebEvent;
+  steam.callback.register(steam.SteamCallback.GameWebCallback, (event) => {
+    gameWebEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.GameWebCallback)({ url: "https://example.invalid/callback" });
+  assert.equal(gameWebEvent.url, "https://example.invalid/callback");
+
+  let webApiTicketEvent;
+  steam.callback.register(steam.SteamCallback.GetTicketForWebApiResponse, (event) => {
+    webApiTicketEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.GetTicketForWebApiResponse)({
+    auth_ticket: 88,
+    result: 1,
+    ticket_byte_length: 6,
+    ticket_base64: Buffer.from("ticket").toString("base64")
+  });
+
+  assert.equal(webApiTicketEvent.authTicket, 88);
+  assert.equal(webApiTicketEvent.ticketByteLength, 6);
+  assert.equal(webApiTicketEvent.ticket.toString(), "ticket");
+
   steam.callback.registerRawCallbackBase(0x1234n, steam.SteamCallback.LobbyDataUpdate);
   steam.callback.registerRawCallResult(0x1234n, 12345678901234567890n);
   steam.callback.unregisterRawCallResult(0x1234n, 12345678901234567890n);
