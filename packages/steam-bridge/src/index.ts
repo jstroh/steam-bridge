@@ -916,6 +916,40 @@ export interface ChangeNumOpenSlotsResult {
   result: number;
 }
 
+export interface PartyJoinPartyEvent {
+  result: number;
+  beacon: bigint;
+  owner: bigint;
+  connectString: string;
+  connect_string?: string;
+  [key: string]: unknown;
+}
+
+export interface PartyCreateBeaconEvent {
+  result: number;
+  beacon: bigint;
+  [key: string]: unknown;
+}
+
+export interface PartyReservationNotificationEvent {
+  beacon: bigint;
+  joiner: bigint;
+  [key: string]: unknown;
+}
+
+export interface PartyChangeNumOpenSlotsEvent {
+  result: number;
+  [key: string]: unknown;
+}
+
+export interface PartyBeaconLocationsUpdatedEvent {
+  [key: string]: unknown;
+}
+
+export interface PartyActiveBeaconsUpdatedEvent {
+  [key: string]: unknown;
+}
+
 export interface MatchmakingFavoriteGame {
   appId: number;
   ip: number;
@@ -7887,6 +7921,36 @@ export const html = {
 export const parties = {
   PartyBeaconLocationType,
   PartyBeaconLocationData,
+  onJoinParty(handler: (event: PartyJoinPartyEvent) => void): CallbackHandle {
+    return onSteamCallback("JoinParty", (event) => {
+      handler(event as PartyJoinPartyEvent);
+    });
+  },
+  onCreateBeacon(handler: (event: PartyCreateBeaconEvent) => void): CallbackHandle {
+    return onSteamCallback("CreateBeacon", (event) => {
+      handler(event as PartyCreateBeaconEvent);
+    });
+  },
+  onReservationNotification(handler: (event: PartyReservationNotificationEvent) => void): CallbackHandle {
+    return onSteamCallback("ReservationNotification", (event) => {
+      handler(event as PartyReservationNotificationEvent);
+    });
+  },
+  onChangeNumOpenSlots(handler: (event: PartyChangeNumOpenSlotsEvent) => void): CallbackHandle {
+    return onSteamCallback("ChangeNumOpenSlots", (event) => {
+      handler(event as PartyChangeNumOpenSlotsEvent);
+    });
+  },
+  onAvailableBeaconLocationsUpdated(handler: (event: PartyBeaconLocationsUpdatedEvent) => void): CallbackHandle {
+    return onSteamCallback("AvailableBeaconLocationsUpdated", (event) => {
+      handler(event as PartyBeaconLocationsUpdatedEvent);
+    });
+  },
+  onActiveBeaconsUpdated(handler: (event: PartyActiveBeaconsUpdatedEvent) => void): CallbackHandle {
+    return onSteamCallback("ActiveBeaconsUpdated", (event) => {
+      handler(event as PartyActiveBeaconsUpdatedEvent);
+    });
+  },
   getNumActiveBeacons(): number {
     return native().partiesGetNumActiveBeacons();
   },
@@ -15916,6 +15980,7 @@ function normalizeCallbackEvent(callbackId: number, event: unknown): unknown {
     "admin",
     "game_id",
     "game_server",
+    "beacon",
     "item_id",
     "child_item_id",
     "legacy_content",
@@ -15938,6 +16003,7 @@ function normalizeCallbackEvent(callbackId: number, event: unknown): unknown {
     "friend_steam_id",
     "async_call",
     "context_value",
+    "joiner",
     "file_size",
     "owner_steam_id",
     "group_id",
@@ -15980,6 +16046,7 @@ function normalizeCallbackEvent(callbackId: number, event: unknown): unknown {
     clip_count: "clipCount",
     connected_device_handle: "connectedDeviceHandle",
     conn_port: "connPort",
+    connect_string: "connectString",
     connect_url: "connectUrl",
     candidate_steam_id: "candidateSteamId",
     current_progress: "currentProgress",

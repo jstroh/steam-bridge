@@ -8879,6 +8879,83 @@ test("parties facade covers party beacon lifecycle and callbacks", async (t) => 
   });
 });
 
+test("parties facade exposes typed callback helpers", (t) => {
+  const fake = createFakeNative();
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  const events = {};
+  const handles = [
+    steam.parties.onJoinParty((event) => {
+      events.joinParty = event;
+    }),
+    steam.parties.onCreateBeacon((event) => {
+      events.createBeacon = event;
+    }),
+    steam.parties.onReservationNotification((event) => {
+      events.reservationNotification = event;
+    }),
+    steam.parties.onChangeNumOpenSlots((event) => {
+      events.changeNumOpenSlots = event;
+    }),
+    steam.parties.onAvailableBeaconLocationsUpdated((event) => {
+      events.availableBeaconLocationsUpdated = event;
+    }),
+    steam.parties.onActiveBeaconsUpdated((event) => {
+      events.activeBeaconsUpdated = event;
+    })
+  ];
+  const callbackNames = [
+    "JoinParty",
+    "CreateBeacon",
+    "ReservationNotification",
+    "ChangeNumOpenSlots",
+    "AvailableBeaconLocationsUpdated",
+    "ActiveBeaconsUpdated"
+  ];
+  const emit = (callbackName, payload) => {
+    fake.callbacks.get(steam.SteamCallback[callbackName])(payload);
+  };
+
+  emit("JoinParty", {
+    result: 1,
+    beacon: "700",
+    owner: "76561198000000009",
+    connect_string: "connect 127.0.0.1"
+  });
+  emit("CreateBeacon", { result: 1, beacon: "701" });
+  emit("ReservationNotification", {
+    beacon: "701",
+    joiner: "76561198000000010"
+  });
+  emit("ChangeNumOpenSlots", { result: 1 });
+  emit("AvailableBeaconLocationsUpdated", {});
+  emit("ActiveBeaconsUpdated", {});
+
+  assert.equal(events.joinParty.result, 1);
+  assert.equal(events.joinParty.beacon, 700n);
+  assert.equal(events.joinParty.owner, 76561198000000009n);
+  assert.equal(events.joinParty.connectString, "connect 127.0.0.1");
+  assert.equal(events.createBeacon.beacon, 701n);
+  assert.equal(events.reservationNotification.beacon, 701n);
+  assert.equal(events.reservationNotification.joiner, 76561198000000010n);
+  assert.equal(events.changeNumOpenSlots.result, 1);
+  assert.deepEqual(events.availableBeaconLocationsUpdated, {});
+  assert.deepEqual(events.activeBeaconsUpdated, {});
+
+  handles.forEach((handle) => handle.disconnect());
+
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "registerSteamCallback").map((call) => call.args[0]),
+    callbackNames.map((callbackName) => steam.SteamCallback[callbackName])
+  );
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "disconnectCallback").map((call) => call.args[0]),
+    callbackNames.map((callbackName) => steam.SteamCallback[callbackName])
+  );
+});
+
 test("inventory facade covers result, item, definition, price, and update flows", async (t) => {
   const player = { steamId64: "76561198000000008", steamId32: "STEAM_0:0:19867140", accountId: 39734280 };
   const fake = createFakeNative({
