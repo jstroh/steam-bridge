@@ -9357,3 +9357,219 @@ test("web API user auth and community facades map ticket and moderation fields",
     "steamidActor=76561198000000000&steamidTarget=76561198000000001&appid=480&abuseType=1&contentType=2&description=Abuse+report&gid=123"
   );
 });
+
+test("web API published item search and voting facades map workshop fields", async (t) => {
+  const steam = loadSteamWithFakeNative(createFakeNative());
+  const fetchCalls = [];
+  const fetchImpl = async (url, init = {}) => {
+    fetchCalls.push({ url, init });
+    return {
+      ok: true,
+      status: 200,
+      headers: {
+        forEach(callback) {
+          callback("application/json", "content-type");
+        }
+      },
+      async text() {
+        return JSON.stringify({ response: { ok: true } });
+      }
+    };
+  };
+  const client = steam.createSteamWebApiClient({ apiKey: "publisher-secret", fetch: fetchImpl });
+
+  t.after(clearSteamBridgeCache);
+
+  await client.publishedItemSearch.rankedByPublicationOrder({
+    steamId64: 76561198000000000n,
+    appId: 480,
+    startIndex: 0,
+    count: 10,
+    tags: ["co-op"],
+    userTags: ["favorite"],
+    hasAppAdminAccess: true,
+    fileType: 1
+  });
+  await client.publishedItemSearch.rankedByTrend({
+    steamId64: 76561198000000000n,
+    appId: 480,
+    startIndex: 10,
+    count: 5,
+    days: 7
+  });
+  await client.publishedItemSearch.rankedByVote({
+    steamId64: 76561198000000000n,
+    appId: 480,
+    startIndex: 20,
+    count: 5
+  });
+  await client.publishedItemSearch.resultSetSummary({
+    steamId64: 76561198000000000n,
+    appId: 480n,
+    tags: ["maps"],
+    userTags: []
+  });
+  await client.publishedItemVoting.itemVoteSummary({
+    steamId64: 76561198000000000n,
+    appId: 480,
+    publishedFileIds: [111n, 222n]
+  });
+  await client.publishedItemVoting.userVoteSummary({
+    steamId64: 76561198000000000n,
+    publishedFileIds: [333n]
+  });
+
+  assert.equal(
+    fetchCalls[0].url,
+    "https://partner.steam-api.com/ISteamPublishedItemSearch/RankedByPublicationOrder/v0001/?key=publisher-secret&format=json"
+  );
+  assert.equal(
+    fetchCalls[0].init.body,
+    "steamid=76561198000000000&appid=480&startidx=0&count=10&tagcount=1&usertagcount=1&hasappadminaccess=1&fileType=1&tag%5B0%5D=co-op&usertag%5B0%5D=favorite"
+  );
+  assert.equal(
+    fetchCalls[1].url,
+    "https://partner.steam-api.com/ISteamPublishedItemSearch/RankedByTrend/v0001/?key=publisher-secret&format=json"
+  );
+  assert.equal(
+    fetchCalls[1].init.body,
+    "steamid=76561198000000000&appid=480&startidx=10&count=5&tagcount=0&usertagcount=0&days=7"
+  );
+  assert.equal(
+    fetchCalls[2].url,
+    "https://partner.steam-api.com/ISteamPublishedItemSearch/RankedByVote/v0001/?key=publisher-secret&format=json"
+  );
+  assert.equal(
+    fetchCalls[2].init.body,
+    "steamid=76561198000000000&appid=480&startidx=20&count=5&tagcount=0&usertagcount=0"
+  );
+  assert.equal(
+    fetchCalls[3].url,
+    "https://partner.steam-api.com/ISteamPublishedItemSearch/ResultSetSummary/v0001/?key=publisher-secret&format=json"
+  );
+  assert.equal(
+    fetchCalls[3].init.body,
+    "steamid=76561198000000000&appid=480&tagcount=1&usertagcount=0&tag%5B0%5D=maps"
+  );
+  assert.equal(
+    fetchCalls[4].url,
+    "https://partner.steam-api.com/ISteamPublishedItemVoting/ItemVoteSummary/v0001/?key=publisher-secret&format=json"
+  );
+  assert.equal(
+    fetchCalls[4].init.body,
+    "steamid=76561198000000000&appid=480&count=2&publishedfileid%5B0%5D=111&publishedfileid%5B1%5D=222"
+  );
+  assert.equal(
+    fetchCalls[5].url,
+    "https://partner.steam-api.com/ISteamPublishedItemVoting/UserVoteSummary/v0001/?key=publisher-secret&format=json"
+  );
+  assert.equal(fetchCalls[5].init.body, "steamid=76561198000000000&count=1&publishedfileid%5B0%5D=333");
+});
+
+test("web API leaderboard and game server stats facades map ranking fields", async (t) => {
+  const steam = loadSteamWithFakeNative(createFakeNative());
+  const fetchCalls = [];
+  const fetchImpl = async (url, init = {}) => {
+    fetchCalls.push({ url, init });
+    return {
+      ok: true,
+      status: 200,
+      headers: {
+        forEach(callback) {
+          callback("application/json", "content-type");
+        }
+      },
+      async text() {
+        return JSON.stringify({ response: { ok: true } });
+      }
+    };
+  };
+  const client = steam.createSteamWebApiClient({ apiKey: "publisher-secret", fetch: fetchImpl });
+
+  t.after(clearSteamBridgeCache);
+
+  await client.leaderboards.deleteLeaderboard({ appId: 480, name: "Daily Score" });
+  await client.leaderboards.deleteLeaderboardScore({
+    appId: 480,
+    leaderboardId: 123n,
+    steamId64: 76561198000000000n
+  });
+  await client.leaderboards.findOrCreateLeaderboard({
+    appId: 480,
+    name: "Daily Score",
+    sortMethod: 1,
+    displayType: 2,
+    createIfNotFound: true,
+    onlyTrustedWrites: false,
+    onlyFriendsReads: true
+  });
+  await client.leaderboards.getLeaderboardEntries({
+    appId: 480,
+    leaderboardId: 123n,
+    rangeStart: 1,
+    rangeEnd: 10,
+    steamId64: 76561198000000000n,
+    dataRequest: 0
+  });
+  await client.leaderboards.getLeaderboardsForGame(480);
+  await client.leaderboards.resetLeaderboard({ appId: 480, leaderboardId: 123n });
+  await client.leaderboards.setLeaderboardScore({
+    appId: 480,
+    leaderboardId: 123n,
+    steamId64: 76561198000000000n,
+    score: 9001,
+    scoreMethod: 1,
+    details: Buffer.from([1, 2, 3])
+  });
+  await client.gameServerStats.getGameServerPlayerStatsForGame({
+    gameId: 480n,
+    appId: 480,
+    rangeStart: "2026-06-01 00:00:00",
+    rangeEnd: "2026-06-02 00:00:00",
+    maxResults: 100
+  });
+
+  assert.equal(
+    fetchCalls[0].url,
+    "https://partner.steam-api.com/ISteamLeaderboards/DeleteLeaderboard/v0001/?key=publisher-secret&format=json"
+  );
+  assert.equal(fetchCalls[0].init.body, "appid=480&name=Daily+Score");
+  assert.equal(
+    fetchCalls[1].url,
+    "https://partner.steam-api.com/ISteamLeaderboards/DeleteLeaderboardScore/v0001/?key=publisher-secret&format=json"
+  );
+  assert.equal(fetchCalls[1].init.body, "appid=480&leaderboardid=123&steamid=76561198000000000");
+  assert.equal(
+    fetchCalls[2].url,
+    "https://partner.steam-api.com/ISteamLeaderboards/FindOrCreateLeaderboard/v0002/?key=publisher-secret&format=json"
+  );
+  assert.equal(
+    fetchCalls[2].init.body,
+    "appid=480&name=Daily+Score&sortmethod=1&displaytype=2&createifnotfound=1&onlytrustedwrites=0&onlyfriendsreads=1"
+  );
+  assert.equal(
+    fetchCalls[3].url,
+    "https://partner.steam-api.com/ISteamLeaderboards/GetLeaderboardEntries/v0001/?key=publisher-secret&format=json&appid=480&rangestart=1&rangeend=10&steamid=76561198000000000&leaderboardid=123&datarequest=0"
+  );
+  assert.equal(
+    fetchCalls[4].url,
+    "https://partner.steam-api.com/ISteamLeaderboards/GetLeaderboardsForGame/v0002/?key=publisher-secret&format=json&appid=480"
+  );
+  assert.equal(
+    fetchCalls[5].url,
+    "https://partner.steam-api.com/ISteamLeaderboards/ResetLeaderboard/v0001/?key=publisher-secret&format=json"
+  );
+  assert.equal(fetchCalls[5].init.body, "appid=480&leaderboardid=123");
+  assert.equal(
+    fetchCalls[6].url,
+    "https://partner.steam-api.com/ISteamLeaderboards/SetLeaderboardScore/v0001/?key=publisher-secret&format=json"
+  );
+  assert.equal(
+    fetchCalls[6].init.body,
+    "appid=480&leaderboardid=123&steamid=76561198000000000&score=9001&scoremethod=1&details=010203"
+  );
+  assert.equal(
+    fetchCalls[7].url,
+    "https://partner.steam-api.com/ISteamGameServerStats/GetGameServerPlayerStatsForGame/v0001/?key=publisher-secret&format=json&gameid=480&appid=480&rangestart=2026-06-01+00%3A00%3A00&rangeend=2026-06-02+00%3A00%3A00&maxresults=100"
+  );
+});

@@ -58,6 +58,11 @@ const appStatus = await steamworks.webApi.apps.upToDateCheck({ appId: 480, versi
 const prices = await steamworks.webApi.economy.getAssetPrices({ appId: 480, currency: "USD" });
 const storeApps = await steamworks.webApi.store.getAppList({ includeGames: true, maxResults: 100 });
 const level = await steamworks.webApi.player.getSteamLevel(76561198000000000n);
+const leaderboard = await steamworks.webApi.leaderboards.getLeaderboardsForGame(480);
+const voteSummary = await steamworks.webApi.publishedItemVoting.userVoteSummary({
+  steamId64: 76561198000000000n,
+  publishedFileIds: [123456789n]
+});
 
 const txn = await steamworks.webApi.microTxnSandbox.initTxn({
   appId: 480,

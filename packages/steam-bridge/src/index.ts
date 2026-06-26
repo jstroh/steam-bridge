@@ -1659,8 +1659,12 @@ export interface SteamWebApiClient {
   apps: SteamWebApiAppsFacade;
   community: SteamWebApiCommunityFacade;
   economy: SteamWebApiEconomyFacade;
+  gameServerStats: SteamWebApiGameServerStatsFacade;
+  leaderboards: SteamWebApiLeaderboardsFacade;
   news: SteamWebApiNewsFacade;
   player: SteamWebApiPlayerServiceFacade;
+  publishedItemSearch: SteamWebApiPublishedItemSearchFacade;
+  publishedItemVoting: SteamWebApiPublishedItemVotingFacade;
   remoteStorage: SteamWebApiRemoteStorageFacade;
   store: SteamWebApiStoreServiceFacade;
   util: SteamWebApiUtilFacade;
@@ -1934,6 +1938,128 @@ export interface SteamWebApiStartTradeOptions extends SteamWebApiEndpointOptions
   partyA: bigint | number | string;
   partyB: bigint | number | string;
 }
+
+export interface SteamWebApiGameServerStatsFacade {
+  getGameServerPlayerStatsForGame<T = unknown>(
+    options: SteamWebApiGameServerPlayerStatsForGameOptions
+  ): Promise<SteamWebApiResponse<T>>;
+}
+
+export interface SteamWebApiGameServerPlayerStatsForGameOptions extends SteamWebApiEndpointOptions {
+  gameId: bigint | number | string;
+  appId: number;
+  rangeStart: string;
+  rangeEnd: string;
+  maxResults?: number;
+}
+
+export interface SteamWebApiLeaderboardsFacade {
+  deleteLeaderboard<T = unknown>(options: SteamWebApiDeleteLeaderboardOptions): Promise<SteamWebApiResponse<T>>;
+  deleteLeaderboardScore<T = unknown>(
+    options: SteamWebApiLeaderboardSteamIdOptions
+  ): Promise<SteamWebApiResponse<T>>;
+  findOrCreateLeaderboard<T = unknown>(
+    options: SteamWebApiFindOrCreateLeaderboardOptions
+  ): Promise<SteamWebApiResponse<T>>;
+  getLeaderboardEntries<T = unknown>(
+    options: SteamWebApiLeaderboardEntriesOptions
+  ): Promise<SteamWebApiResponse<T>>;
+  getLeaderboardsForGame<T = unknown>(
+    appId: number,
+    options?: SteamWebApiEndpointOptions | null
+  ): Promise<SteamWebApiResponse<T>>;
+  resetLeaderboard<T = unknown>(options: SteamWebApiLeaderboardIdOptions): Promise<SteamWebApiResponse<T>>;
+  setLeaderboardScore<T = unknown>(
+    options: SteamWebApiSetLeaderboardScoreOptions
+  ): Promise<SteamWebApiResponse<T>>;
+}
+
+export interface SteamWebApiDeleteLeaderboardOptions extends SteamWebApiEndpointOptions {
+  appId: number;
+  name: string;
+}
+
+export interface SteamWebApiLeaderboardIdOptions extends SteamWebApiEndpointOptions {
+  appId: number;
+  leaderboardId: bigint | number | string;
+}
+
+export interface SteamWebApiLeaderboardSteamIdOptions extends SteamWebApiLeaderboardIdOptions {
+  steamId64: bigint | number | string;
+}
+
+export interface SteamWebApiFindOrCreateLeaderboardOptions extends SteamWebApiEndpointOptions {
+  appId: number;
+  name: string;
+  sortMethod?: number;
+  displayType?: number;
+  createIfNotFound?: boolean;
+  onlyTrustedWrites?: boolean;
+  onlyFriendsReads?: boolean;
+}
+
+export interface SteamWebApiLeaderboardEntriesOptions extends SteamWebApiLeaderboardIdOptions {
+  rangeStart: number;
+  rangeEnd: number;
+  dataRequest: number;
+  steamId64?: bigint | number | string;
+}
+
+export interface SteamWebApiSetLeaderboardScoreOptions extends SteamWebApiLeaderboardSteamIdOptions {
+  score: number;
+  scoreMethod?: number;
+  details?: SteamWebApiBinaryValue;
+}
+
+export interface SteamWebApiPublishedItemSearchFacade {
+  rankedByPublicationOrder<T = unknown>(
+    options: SteamWebApiPublishedItemSearchOptions
+  ): Promise<SteamWebApiResponse<T>>;
+  rankedByTrend<T = unknown>(
+    options: SteamWebApiPublishedItemSearchTrendOptions
+  ): Promise<SteamWebApiResponse<T>>;
+  rankedByVote<T = unknown>(options: SteamWebApiPublishedItemSearchOptions): Promise<SteamWebApiResponse<T>>;
+  resultSetSummary<T = unknown>(
+    options: SteamWebApiPublishedItemSearchSummaryOptions
+  ): Promise<SteamWebApiResponse<T>>;
+}
+
+export interface SteamWebApiPublishedItemSearchBaseOptions extends SteamWebApiEndpointOptions {
+  steamId64: bigint | number | string;
+  appId: bigint | number | string;
+  tags?: string[];
+  userTags?: string[];
+  hasAppAdminAccess?: boolean;
+  fileType?: number;
+}
+
+export interface SteamWebApiPublishedItemSearchOptions extends SteamWebApiPublishedItemSearchBaseOptions {
+  appId: number;
+  startIndex: number;
+  count: number;
+}
+
+export interface SteamWebApiPublishedItemSearchTrendOptions extends SteamWebApiPublishedItemSearchOptions {
+  days?: number;
+}
+
+export interface SteamWebApiPublishedItemSearchSummaryOptions extends SteamWebApiPublishedItemSearchBaseOptions {}
+
+export interface SteamWebApiPublishedItemVotingFacade {
+  itemVoteSummary<T = unknown>(options: SteamWebApiItemVoteSummaryOptions): Promise<SteamWebApiResponse<T>>;
+  userVoteSummary<T = unknown>(options: SteamWebApiUserVoteSummaryOptions): Promise<SteamWebApiResponse<T>>;
+}
+
+export interface SteamWebApiPublishedItemIdsOptions extends SteamWebApiEndpointOptions {
+  steamId64: bigint | number | string;
+  publishedFileIds: Array<bigint | number | string>;
+}
+
+export interface SteamWebApiItemVoteSummaryOptions extends SteamWebApiPublishedItemIdsOptions {
+  appId: number;
+}
+
+export interface SteamWebApiUserVoteSummaryOptions extends SteamWebApiPublishedItemIdsOptions {}
 
 export interface SteamWebApiUserAuthFacade {
   authenticateUser<T = unknown>(options: SteamWebApiAuthenticateUserOptions): Promise<SteamWebApiResponse<T>>;
@@ -4231,8 +4357,12 @@ export function createSteamWebApiClient(options: SteamWebApiClientOptions = {}):
     apps: createSteamWebApiAppsFacade(clientOptions),
     community: createSteamWebApiCommunityFacade(clientOptions),
     economy: createSteamWebApiEconomyFacade(clientOptions),
+    gameServerStats: createSteamWebApiGameServerStatsFacade(clientOptions),
+    leaderboards: createSteamWebApiLeaderboardsFacade(clientOptions),
     news: createSteamWebApiNewsFacade(clientOptions),
     player: createSteamWebApiPlayerServiceFacade(clientOptions),
+    publishedItemSearch: createSteamWebApiPublishedItemSearchFacade(clientOptions),
+    publishedItemVoting: createSteamWebApiPublishedItemVotingFacade(clientOptions),
     remoteStorage: createSteamWebApiRemoteStorageFacade(clientOptions),
     store: createSteamWebApiStoreServiceFacade(clientOptions),
     util: createSteamWebApiUtilFacade(clientOptions),
@@ -8776,6 +8906,207 @@ function createSteamWebApiEconomyFacade(clientOptions: SteamWebApiClientOptions)
   };
 }
 
+function createSteamWebApiGameServerStatsFacade(
+  clientOptions: SteamWebApiClientOptions
+): SteamWebApiGameServerStatsFacade {
+  return {
+    getGameServerPlayerStatsForGame<T = unknown>(
+      options: SteamWebApiGameServerPlayerStatsForGameOptions
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiGet<T>(
+        clientOptions,
+        "ISteamGameServerStats",
+        "GetGameServerPlayerStatsForGame",
+        1,
+        {
+          gameid: options.gameId,
+          appid: options.appId,
+          rangestart: options.rangeStart,
+          rangeend: options.rangeEnd,
+          maxresults: options.maxResults
+        },
+        options
+      );
+    }
+  };
+}
+
+function createSteamWebApiLeaderboardsFacade(clientOptions: SteamWebApiClientOptions): SteamWebApiLeaderboardsFacade {
+  return {
+    deleteLeaderboard<T = unknown>(options: SteamWebApiDeleteLeaderboardOptions): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiPost<T>(
+        clientOptions,
+        "ISteamLeaderboards",
+        "DeleteLeaderboard",
+        1,
+        { appid: options.appId, name: options.name },
+        options
+      );
+    },
+    deleteLeaderboardScore<T = unknown>(
+      options: SteamWebApiLeaderboardSteamIdOptions
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiPost<T>(
+        clientOptions,
+        "ISteamLeaderboards",
+        "DeleteLeaderboardScore",
+        1,
+        { appid: options.appId, leaderboardid: options.leaderboardId, steamid: options.steamId64 },
+        options
+      );
+    },
+    findOrCreateLeaderboard<T = unknown>(
+      options: SteamWebApiFindOrCreateLeaderboardOptions
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiPost<T>(
+        clientOptions,
+        "ISteamLeaderboards",
+        "FindOrCreateLeaderboard",
+        2,
+        {
+          appid: options.appId,
+          name: options.name,
+          sortmethod: options.sortMethod,
+          displaytype: options.displayType,
+          createifnotfound: options.createIfNotFound,
+          onlytrustedwrites: options.onlyTrustedWrites,
+          onlyfriendsreads: options.onlyFriendsReads
+        },
+        options
+      );
+    },
+    getLeaderboardEntries<T = unknown>(
+      options: SteamWebApiLeaderboardEntriesOptions
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiGet<T>(
+        clientOptions,
+        "ISteamLeaderboards",
+        "GetLeaderboardEntries",
+        1,
+        {
+          appid: options.appId,
+          rangestart: options.rangeStart,
+          rangeend: options.rangeEnd,
+          steamid: options.steamId64,
+          leaderboardid: options.leaderboardId,
+          datarequest: options.dataRequest
+        },
+        options
+      );
+    },
+    getLeaderboardsForGame<T = unknown>(
+      appId: number,
+      options?: SteamWebApiEndpointOptions | null
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiGet<T>(clientOptions, "ISteamLeaderboards", "GetLeaderboardsForGame", 2, { appid: appId }, options);
+    },
+    resetLeaderboard<T = unknown>(options: SteamWebApiLeaderboardIdOptions): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiPost<T>(
+        clientOptions,
+        "ISteamLeaderboards",
+        "ResetLeaderboard",
+        1,
+        { appid: options.appId, leaderboardid: options.leaderboardId },
+        options
+      );
+    },
+    setLeaderboardScore<T = unknown>(
+      options: SteamWebApiSetLeaderboardScoreOptions
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiPost<T>(
+        clientOptions,
+        "ISteamLeaderboards",
+        "SetLeaderboardScore",
+        1,
+        {
+          appid: options.appId,
+          leaderboardid: options.leaderboardId,
+          steamid: options.steamId64,
+          score: options.score,
+          scoremethod: options.scoreMethod,
+          details: options.details === undefined ? undefined : steamWebApiBinaryString(options.details)
+        },
+        options
+      );
+    }
+  };
+}
+
+function createSteamWebApiPublishedItemSearchFacade(
+  clientOptions: SteamWebApiClientOptions
+): SteamWebApiPublishedItemSearchFacade {
+  return {
+    rankedByPublicationOrder<T = unknown>(
+      options: SteamWebApiPublishedItemSearchOptions
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiPost<T>(
+        clientOptions,
+        "ISteamPublishedItemSearch",
+        "RankedByPublicationOrder",
+        1,
+        steamWebApiPublishedItemSearchBody(options, true),
+        options
+      );
+    },
+    rankedByTrend<T = unknown>(
+      options: SteamWebApiPublishedItemSearchTrendOptions
+    ): Promise<SteamWebApiResponse<T>> {
+      const body = steamWebApiPublishedItemSearchBody(options, true);
+      body.days = options.days;
+      return steamWebApiPost<T>(clientOptions, "ISteamPublishedItemSearch", "RankedByTrend", 1, body, options);
+    },
+    rankedByVote<T = unknown>(options: SteamWebApiPublishedItemSearchOptions): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiPost<T>(
+        clientOptions,
+        "ISteamPublishedItemSearch",
+        "RankedByVote",
+        1,
+        steamWebApiPublishedItemSearchBody(options, true),
+        options
+      );
+    },
+    resultSetSummary<T = unknown>(
+      options: SteamWebApiPublishedItemSearchSummaryOptions
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiPost<T>(
+        clientOptions,
+        "ISteamPublishedItemSearch",
+        "ResultSetSummary",
+        1,
+        steamWebApiPublishedItemSearchBody(options, false),
+        options
+      );
+    }
+  };
+}
+
+function createSteamWebApiPublishedItemVotingFacade(
+  clientOptions: SteamWebApiClientOptions
+): SteamWebApiPublishedItemVotingFacade {
+  return {
+    itemVoteSummary<T = unknown>(options: SteamWebApiItemVoteSummaryOptions): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiPost<T>(
+        clientOptions,
+        "ISteamPublishedItemVoting",
+        "ItemVoteSummary",
+        1,
+        steamWebApiPublishedItemVoteBody(options, options.appId),
+        options
+      );
+    },
+    userVoteSummary<T = unknown>(options: SteamWebApiUserVoteSummaryOptions): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiPost<T>(
+        clientOptions,
+        "ISteamPublishedItemVoting",
+        "UserVoteSummary",
+        1,
+        steamWebApiPublishedItemVoteBody(options),
+        options
+      );
+    }
+  };
+}
+
 function createSteamWebApiUserAuthFacade(clientOptions: SteamWebApiClientOptions): SteamWebApiUserAuthFacade {
   return {
     authenticateUser<T = unknown>(options: SteamWebApiAuthenticateUserOptions): Promise<SteamWebApiResponse<T>> {
@@ -9237,6 +9568,42 @@ function steamWebApiNewsForAppParams(options: SteamWebApiNewsForAppOptions): Ste
     count: options.count,
     feeds: commaString(options.feeds)
   };
+}
+
+function steamWebApiPublishedItemSearchBody(
+  options: SteamWebApiPublishedItemSearchBaseOptions,
+  includePage: boolean
+): SteamWebApiParams {
+  const tags = options.tags ?? [];
+  const userTags = options.userTags ?? [];
+  const body: SteamWebApiParams = {
+    steamid: options.steamId64,
+    appid: options.appId
+  };
+  if (includePage) {
+    const pagedOptions = options as SteamWebApiPublishedItemSearchOptions;
+    body.startidx = pagedOptions.startIndex;
+    body.count = pagedOptions.count;
+  }
+  body.tagcount = tags.length;
+  body.usertagcount = userTags.length;
+  body.hasappadminaccess = options.hasAppAdminAccess;
+  body.fileType = options.fileType;
+  Object.assign(body, indexedParams("tag", tags), indexedParams("usertag", userTags));
+  return body;
+}
+
+function steamWebApiPublishedItemVoteBody(
+  options: SteamWebApiPublishedItemIdsOptions,
+  appId?: number
+): SteamWebApiParams {
+  const body: SteamWebApiParams = {
+    steamid: options.steamId64,
+    appid: appId,
+    count: options.publishedFileIds.length
+  };
+  Object.assign(body, indexedParams("publishedfileid", options.publishedFileIds));
+  return body;
 }
 
 function steamWebApiEndpointRequestOptions(

@@ -102,6 +102,11 @@ const workshopDetails = await web.remoteStorage.getPublishedFileDetails([1234567
 const prices = await web.economy.getAssetPrices({ appId: 480, currency: "USD" });
 const storeApps = await web.store.getAppList({ includeGames: true, maxResults: 100 });
 const level = await web.player.getSteamLevel(76561198000000000n);
+const leaderboard = await web.leaderboards.getLeaderboardsForGame(480);
+const voteSummary = await web.publishedItemVoting.userVoteSummary({
+  steamId64: 76561198000000000n,
+  publishedFileIds: [123456789n]
+});
 const ticketUser = await web.userAuth.authenticateUserTicket({
   appId: 480,
   ticket: Buffer.from("ticket-bytes").toString("hex"),
