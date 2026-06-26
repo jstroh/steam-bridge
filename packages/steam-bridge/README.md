@@ -65,6 +65,12 @@ const cheatReport = await steamworks.webApi.cheatReportingService.reportPlayerCh
   steamId64: 76561198000000000n,
   noReportId: true
 });
+const broadcastFrame = await steamworks.webApi.broadcastService.postGameDataFrame({
+  appId: 480,
+  steamId64: 76561198000000000n,
+  broadcastId: 123456789n,
+  frameData: JSON.stringify({ round: 1, score: 9001 })
+});
 const cloudFiles = await steamworks.webApi.cloudService.enumerateUserFiles({
   accessToken: "oauth-access-token",
   appId: 480,
@@ -81,6 +87,9 @@ const workshopContributors = await steamworks.webApi.workshopService.getFinalize
   gameItemId: 100
 });
 const prices = await steamworks.webApi.economy.getAssetPrices({ appId: 480, currency: "USD" });
+const marketEligibility = await steamworks.webApi.econMarketService.getMarketEligibility({
+  steamId64: 76561198000000000n
+});
 const inventoryCount = await steamworks.webApi.inventoryService.getQuantity({
   appId: 480,
   steamId64: 76561198000000000n,

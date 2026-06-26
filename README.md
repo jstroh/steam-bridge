@@ -108,6 +108,12 @@ const cheatReport = await web.cheatReportingService.reportPlayerCheating({
   steamId64: 76561198000000000n,
   noReportId: true
 });
+const broadcastFrame = await web.broadcastService.postGameDataFrame({
+  appId: 480,
+  steamId64: 76561198000000000n,
+  broadcastId: 123456789n,
+  frameData: JSON.stringify({ round: 1, score: 9001 })
+});
 const cloudFiles = await web.cloudService.enumerateUserFiles({
   accessToken: "oauth-access-token",
   appId: 480,
@@ -125,6 +131,9 @@ const workshopContributors = await web.workshopService.getFinalizedContributors(
   gameItemId: 100
 });
 const prices = await web.economy.getAssetPrices({ appId: 480, currency: "USD" });
+const marketEligibility = await web.econMarketService.getMarketEligibility({
+  steamId64: 76561198000000000n
+});
 const inventoryCount = await web.inventoryService.getQuantity({
   appId: 480,
   steamId64: 76561198000000000n,

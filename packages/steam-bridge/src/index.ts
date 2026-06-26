@@ -1657,9 +1657,11 @@ export interface SteamWebApiClient {
   get<T = unknown>(options: Omit<SteamWebApiRequestOptions, "method" | "body">): Promise<SteamWebApiResponse<T>>;
   post<T = unknown>(options: Omit<SteamWebApiRequestOptions, "method">): Promise<SteamWebApiResponse<T>>;
   apps: SteamWebApiAppsFacade;
+  broadcastService: SteamWebApiBroadcastServiceFacade;
   cheatReportingService: SteamWebApiCheatReportingServiceFacade;
   cloudService: SteamWebApiCloudServiceFacade;
   community: SteamWebApiCommunityFacade;
+  econMarketService: SteamWebApiEconMarketServiceFacade;
   econService: SteamWebApiEconServiceFacade;
   economy: SteamWebApiEconomyFacade;
   gameNotificationsService: SteamWebApiGameNotificationsServiceFacade;
@@ -1920,6 +1922,19 @@ export interface SteamWebApiCloudDeleteFileOptions extends SteamWebApiCloudEndpo
   fileName: string;
 }
 
+export interface SteamWebApiBroadcastServiceFacade {
+  postGameDataFrame<T = unknown>(
+    options: SteamWebApiBroadcastPostGameDataFrameOptions
+  ): Promise<SteamWebApiResponse<T>>;
+}
+
+export interface SteamWebApiBroadcastPostGameDataFrameOptions extends SteamWebApiEndpointOptions {
+  appId: number;
+  steamId64: bigint | number | string;
+  broadcastId: bigint | number | string;
+  frameData: string;
+}
+
 export interface SteamWebApiCheatReportingServiceFacade {
   reportPlayerCheating<T = unknown>(
     options: SteamWebApiReportPlayerCheatingOptions
@@ -2085,6 +2100,39 @@ export interface SteamWebApiStartTradeOptions extends SteamWebApiEndpointOptions
   appId: number;
   partyA: bigint | number | string;
   partyB: bigint | number | string;
+}
+
+export interface SteamWebApiEconMarketServiceFacade {
+  getMarketEligibility<T = unknown>(
+    options: SteamWebApiEconMarketSteamIdOptions
+  ): Promise<SteamWebApiResponse<T>>;
+  cancelAppListingsForUser<T = unknown>(
+    options: SteamWebApiEconMarketCancelAppListingsOptions
+  ): Promise<SteamWebApiResponse<T>>;
+  getAssetId<T = unknown>(options: SteamWebApiEconMarketAssetIdOptions): Promise<SteamWebApiResponse<T>>;
+  getPopular<T = unknown>(options: SteamWebApiEconMarketPopularOptions): Promise<SteamWebApiResponse<T>>;
+}
+
+export interface SteamWebApiEconMarketSteamIdOptions extends SteamWebApiEndpointOptions {
+  steamId64: bigint | number | string;
+}
+
+export interface SteamWebApiEconMarketCancelAppListingsOptions extends SteamWebApiEconMarketSteamIdOptions {
+  appId: number;
+  synchronous: boolean;
+}
+
+export interface SteamWebApiEconMarketAssetIdOptions extends SteamWebApiEndpointOptions {
+  appId: number;
+  listingId: bigint | number | string;
+}
+
+export interface SteamWebApiEconMarketPopularOptions extends SteamWebApiEndpointOptions {
+  language: string;
+  start: number;
+  rows?: number;
+  filterAppId?: number;
+  currency?: number;
 }
 
 export interface SteamWebApiEconServiceFacade {
@@ -4937,9 +4985,11 @@ export function createSteamWebApiClient(options: SteamWebApiClientOptions = {}):
       return requestSteamWebApiWithClient<T>(postRequest, clientOptions);
     },
     apps: createSteamWebApiAppsFacade(clientOptions),
+    broadcastService: createSteamWebApiBroadcastServiceFacade(clientOptions),
     cheatReportingService: createSteamWebApiCheatReportingServiceFacade(clientOptions),
     cloudService: createSteamWebApiCloudServiceFacade(clientOptions),
     community: createSteamWebApiCommunityFacade(clientOptions),
+    econMarketService: createSteamWebApiEconMarketServiceFacade(clientOptions),
     econService: createSteamWebApiEconServiceFacade(clientOptions),
     economy: createSteamWebApiEconomyFacade(clientOptions),
     gameNotificationsService: createSteamWebApiGameNotificationsServiceFacade(clientOptions),
@@ -9523,6 +9573,30 @@ function createSteamWebApiCloudServiceFacade(clientOptions: SteamWebApiClientOpt
   };
 }
 
+function createSteamWebApiBroadcastServiceFacade(
+  clientOptions: SteamWebApiClientOptions
+): SteamWebApiBroadcastServiceFacade {
+  return {
+    postGameDataFrame<T = unknown>(
+      options: SteamWebApiBroadcastPostGameDataFrameOptions
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServicePost<T>(
+        clientOptions,
+        "IBroadcastService",
+        "PostGameDataFrame",
+        1,
+        {
+          appid: options.appId,
+          steamid: options.steamId64,
+          broadcast_id: options.broadcastId,
+          frame_data: options.frameData
+        },
+        options
+      );
+    }
+  };
+}
+
 function createSteamWebApiCheatReportingServiceFacade(
   clientOptions: SteamWebApiClientOptions
 ): SteamWebApiCheatReportingServiceFacade {
@@ -9636,6 +9710,67 @@ function createSteamWebApiCheatReportingServiceFacade(
         "EndSecureMultiplayerSession",
         1,
         { steamid: options.steamId64, appid: options.appId, session_id: options.sessionId },
+        options
+      );
+    }
+  };
+}
+
+function createSteamWebApiEconMarketServiceFacade(
+  clientOptions: SteamWebApiClientOptions
+): SteamWebApiEconMarketServiceFacade {
+  return {
+    getMarketEligibility<T = unknown>(
+      options: SteamWebApiEconMarketSteamIdOptions
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServiceGet<T>(
+        clientOptions,
+        "IEconMarketService",
+        "GetMarketEligibility",
+        1,
+        { steamid: options.steamId64 },
+        options
+      );
+    },
+    cancelAppListingsForUser<T = unknown>(
+      options: SteamWebApiEconMarketCancelAppListingsOptions
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServicePost<T>(
+        clientOptions,
+        "IEconMarketService",
+        "CancelAppListingsForUser",
+        1,
+        {
+          appid: options.appId,
+          steamid: options.steamId64,
+          synchronous: options.synchronous
+        },
+        options
+      );
+    },
+    getAssetId<T = unknown>(options: SteamWebApiEconMarketAssetIdOptions): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServiceGet<T>(
+        clientOptions,
+        "IEconMarketService",
+        "GetAssetID",
+        1,
+        { appid: options.appId, listingid: options.listingId },
+        options
+      );
+    },
+    getPopular<T = unknown>(options: SteamWebApiEconMarketPopularOptions): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServiceGet<T>(
+        clientOptions,
+        "IEconMarketService",
+        "GetPopular",
+        1,
+        {
+          language: options.language,
+          rows: options.rows,
+          start: options.start,
+          filter_appid: options.filterAppId,
+          ecurrency: options.currency
+        },
         options
       );
     }

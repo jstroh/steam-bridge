@@ -9471,6 +9471,107 @@ test("web API cheat reporting service facade maps anti-cheat methods", async (t)
   assert.equal(typeof steam.webApi.cheatReportingService.requestPlayerGameBan, "function");
 });
 
+test("web API broadcast and market service facades map partner methods", async (t) => {
+  const steam = loadSteamWithFakeNative(createFakeNative());
+  const fetchCalls = [];
+  const fetchImpl = async (url, init = {}) => {
+    fetchCalls.push({ url, init });
+    return {
+      ok: true,
+      status: 200,
+      headers: {
+        forEach(callback) {
+          callback("application/json", "content-type");
+        }
+      },
+      async text() {
+        return JSON.stringify({ response: { ok: true } });
+      }
+    };
+  };
+  const client = steam.createSteamWebApiClient({ apiKey: "market-secret", fetch: fetchImpl });
+  const requestUrl = (index) => new URL(fetchCalls[index].url);
+  const queryInputJson = (index) => JSON.parse(requestUrl(index).searchParams.get("input_json"));
+  const bodyInputJson = (index) => JSON.parse(new URLSearchParams(fetchCalls[index].init.body).get("input_json"));
+
+  t.after(clearSteamBridgeCache);
+
+  await client.broadcastService.postGameDataFrame({
+    appId: 480,
+    steamId64: 76561198000000000n,
+    broadcastId: 123456789n,
+    frameData: "{\"round\":1,\"score\":9001}"
+  });
+  await client.econMarketService.getMarketEligibility({ steamId64: 76561198000000000n });
+  await client.econMarketService.cancelAppListingsForUser({
+    appId: 480,
+    steamId64: 76561198000000000n,
+    synchronous: true
+  });
+  await client.econMarketService.getAssetId({
+    appId: 480,
+    listingId: 987654321n
+  });
+  await client.econMarketService.getPopular({
+    language: "en",
+    rows: 10,
+    start: 0,
+    filterAppId: 480,
+    currency: 1
+  });
+
+  assert.equal(
+    requestUrl(0).origin + requestUrl(0).pathname,
+    "https://partner.steam-api.com/IBroadcastService/PostGameDataFrame/v0001/"
+  );
+  assert.equal(fetchCalls[0].init.method, "POST");
+  assert.equal(requestUrl(0).searchParams.get("key"), "market-secret");
+  assert.deepEqual(bodyInputJson(0), {
+    appid: 480,
+    steamid: "76561198000000000",
+    broadcast_id: "123456789",
+    frame_data: "{\"round\":1,\"score\":9001}"
+  });
+
+  assert.equal(
+    requestUrl(1).origin + requestUrl(1).pathname,
+    "https://partner.steam-api.com/IEconMarketService/GetMarketEligibility/v0001/"
+  );
+  assert.equal(fetchCalls[1].init.method, "GET");
+  assert.deepEqual(queryInputJson(1), { steamid: "76561198000000000" });
+
+  assert.equal(
+    requestUrl(2).origin + requestUrl(2).pathname,
+    "https://partner.steam-api.com/IEconMarketService/CancelAppListingsForUser/v0001/"
+  );
+  assert.equal(fetchCalls[2].init.method, "POST");
+  assert.deepEqual(bodyInputJson(2), {
+    appid: 480,
+    steamid: "76561198000000000",
+    synchronous: true
+  });
+
+  assert.equal(
+    requestUrl(3).origin + requestUrl(3).pathname,
+    "https://partner.steam-api.com/IEconMarketService/GetAssetID/v0001/"
+  );
+  assert.deepEqual(queryInputJson(3), { appid: 480, listingid: "987654321" });
+
+  assert.equal(
+    requestUrl(4).origin + requestUrl(4).pathname,
+    "https://partner.steam-api.com/IEconMarketService/GetPopular/v0001/"
+  );
+  assert.deepEqual(queryInputJson(4), {
+    language: "en",
+    rows: 10,
+    start: 0,
+    filter_appid: 480,
+    ecurrency: 1
+  });
+  assert.equal(typeof steam.webApi.broadcastService.postGameDataFrame, "function");
+  assert.equal(typeof steam.webApi.econMarketService.cancelAppListingsForUser, "function");
+});
+
 test("web API econ service facade maps trade and cache service methods", async (t) => {
   const steam = loadSteamWithFakeNative(createFakeNative());
   const fetchCalls = [];
