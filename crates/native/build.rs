@@ -19,6 +19,10 @@ fn main() {
         }
     }
 
+    if target_os == "linux" {
+        println!("cargo:rustc-link-arg=-Wl,-rpath,$ORIGIN");
+    }
+
     println!("cargo:rerun-if-changed=src/steam_music_remote_bridge.cpp");
     let mut music_remote_bridge = cc::Build::new();
     music_remote_bridge
