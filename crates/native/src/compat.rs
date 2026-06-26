@@ -111,6 +111,15 @@ extern "C" {
         message_size: *mut u32,
     ) -> i32;
     fn steam_bridge_client_run_frame() -> bool;
+    fn steam_bridge_client_set_post_api_result_in_process(
+        callback: Option<unsafe extern "C" fn()>,
+    ) -> bool;
+    fn steam_bridge_client_remove_post_api_result_in_process(
+        callback: Option<unsafe extern "C" fn()>,
+    ) -> bool;
+    fn steam_bridge_client_set_check_callback_registered_in_process(
+        callback: Option<unsafe extern "C" fn(i32) -> u32>,
+    ) -> bool;
     fn steam_bridge_client_destroy_all_interfaces() -> bool;
     fn steam_bridge_game_server_init_game_server(
         ip: u32,
@@ -288,6 +297,13 @@ static NETWORKING_FAKE_UDP_PORTS: Lazy<Mutex<HashMap<u32, usize>>> =
 static NEXT_INPUT_ACTION_EVENT_REGISTRATION: AtomicU64 = AtomicU64::new(1);
 static INPUT_ACTION_EVENT_HANDLER: Lazy<Mutex<Option<(u64, FatalThreadsafeFunction<Value>)>>> =
     Lazy::new(|| Mutex::new(None));
+static NEXT_CLIENT_PROCESS_HOOK_REGISTRATION: AtomicU64 = AtomicU64::new(1);
+static CLIENT_POST_API_RESULT_IN_PROCESS_HANDLER: Lazy<
+    Mutex<Option<(u64, FatalThreadsafeFunction<Value>)>>,
+> = Lazy::new(|| Mutex::new(None));
+static CLIENT_CHECK_CALLBACK_REGISTERED_IN_PROCESS_HANDLER: Lazy<
+    Mutex<Option<(u64, FatalThreadsafeFunction<Value>, u32)>>,
+> = Lazy::new(|| Mutex::new(None));
 static NEXT_MATCHMAKING_SERVER_LIST_HANDLE: AtomicU64 = AtomicU64::new(1);
 static MATCHMAKING_SERVER_LIST_REQUESTS: Lazy<
     Mutex<HashMap<u64, MatchmakingServerListRequestEntry>>,
@@ -2411,6 +2427,7 @@ pub fn client_register_warning_message_hook(
         warning_message_registration: Some(registration),
         networking_debug_output_registration: None,
         input_action_event_registration: None,
+        client_process_hook_registration: None,
     })
 }
 
@@ -2423,6 +2440,172 @@ pub fn client_shutdown_if_all_pipes_closed() -> Result<bool, Error> {
 pub fn client_run_frame_deprecated() -> Result<bool, Error> {
     crate::state::ensure_initialized()?;
     Ok(unsafe { steam_bridge_client_run_frame() })
+}
+
+pub(crate) enum ClientProcessHookRegistration {
+    PostApiResult { registration_id: u64 },
+    CheckCallbackRegistered { registration_id: u64 },
+}
+
+impl Drop for ClientProcessHookRegistration {
+    fn drop(&mut self) {
+        match self {
+            ClientProcessHookRegistration::PostApiResult { registration_id } => {
+                clear_client_post_api_result_in_process_hook(Some(*registration_id));
+            }
+            ClientProcessHookRegistration::CheckCallbackRegistered { registration_id } => {
+                clear_client_check_callback_registered_in_process_hook(Some(*registration_id));
+            }
+        }
+    }
+}
+
+unsafe extern "C" fn steam_client_post_api_result_in_process_callback() {
+    if let Some((_, handler)) = CLIENT_POST_API_RESULT_IN_PROCESS_HANDLER
+        .lock()
+        .expect("Steam client post API-result handler poisoned")
+        .as_ref()
+    {
+        handler.call(
+            serde_json::json!({}),
+            ThreadsafeFunctionCallMode::NonBlocking,
+        );
+    }
+}
+
+unsafe extern "C" fn steam_client_check_callback_registered_in_process_callback(
+    callback_id: i32,
+) -> u32 {
+    if let Some((_, handler, return_value)) = CLIENT_CHECK_CALLBACK_REGISTERED_IN_PROCESS_HANDLER
+        .lock()
+        .expect("Steam client callback registration check handler poisoned")
+        .as_ref()
+    {
+        handler.call(
+            serde_json::json!({ "callbackId": callback_id }),
+            ThreadsafeFunctionCallMode::NonBlocking,
+        );
+        *return_value
+    } else {
+        0
+    }
+}
+
+#[napi(js_name = "clientRegisterPostApiResultInProcessHook")]
+pub fn client_register_post_api_result_in_process_hook(
+    #[napi(ts_arg_type = "(value: any) => void")] handler: JsCallback<'_, Value>,
+) -> Result<CallbackHandle, Error> {
+    crate::state::ensure_initialized()?;
+    let threadsafe_handler: FatalThreadsafeFunction<Value> = handler
+        .build_threadsafe_function::<Value>()
+        .build_callback(|ctx| Ok(vec![ctx.value]))?;
+    let registration_id = NEXT_CLIENT_PROCESS_HOOK_REGISTRATION.fetch_add(1, Ordering::Relaxed);
+    clear_client_post_api_result_in_process_hook(None);
+    *CLIENT_POST_API_RESULT_IN_PROCESS_HANDLER
+        .lock()
+        .expect("Steam client post API-result handler poisoned") =
+        Some((registration_id, threadsafe_handler));
+    let registered = unsafe {
+        steam_bridge_client_set_post_api_result_in_process(Some(
+            steam_client_post_api_result_in_process_callback,
+        ))
+    };
+    if !registered {
+        clear_client_post_api_result_in_process_hook(Some(registration_id));
+        return Err(Error::from_reason(
+            "failed to register Steam client post API-result hook",
+        ));
+    }
+    Ok(CallbackHandle {
+        registration: None,
+        warning_message_registration: None,
+        networking_debug_output_registration: None,
+        input_action_event_registration: None,
+        client_process_hook_registration: Some(ClientProcessHookRegistration::PostApiResult {
+            registration_id,
+        }),
+    })
+}
+
+#[napi(js_name = "clientRegisterCheckCallbackRegisteredInProcessHook")]
+pub fn client_register_check_callback_registered_in_process_hook(
+    #[napi(ts_arg_type = "(value: any) => void")] handler: JsCallback<'_, Value>,
+    registered_return_value: Option<u32>,
+) -> Result<CallbackHandle, Error> {
+    crate::state::ensure_initialized()?;
+    let threadsafe_handler: FatalThreadsafeFunction<Value> = handler
+        .build_threadsafe_function::<Value>()
+        .build_callback(|ctx| Ok(vec![ctx.value]))?;
+    let registration_id = NEXT_CLIENT_PROCESS_HOOK_REGISTRATION.fetch_add(1, Ordering::Relaxed);
+    clear_client_check_callback_registered_in_process_hook(None);
+    *CLIENT_CHECK_CALLBACK_REGISTERED_IN_PROCESS_HANDLER
+        .lock()
+        .expect("Steam client callback registration check handler poisoned") = Some((
+        registration_id,
+        threadsafe_handler,
+        registered_return_value.unwrap_or(1),
+    ));
+    let registered = unsafe {
+        steam_bridge_client_set_check_callback_registered_in_process(Some(
+            steam_client_check_callback_registered_in_process_callback,
+        ))
+    };
+    if !registered {
+        clear_client_check_callback_registered_in_process_hook(Some(registration_id));
+        return Err(Error::from_reason(
+            "failed to register Steam client callback registration check hook",
+        ));
+    }
+    Ok(CallbackHandle {
+        registration: None,
+        warning_message_registration: None,
+        networking_debug_output_registration: None,
+        input_action_event_registration: None,
+        client_process_hook_registration: Some(
+            ClientProcessHookRegistration::CheckCallbackRegistered { registration_id },
+        ),
+    })
+}
+
+pub(crate) fn clear_client_process_hooks() {
+    clear_client_post_api_result_in_process_hook(None);
+    clear_client_check_callback_registered_in_process_hook(None);
+}
+
+fn clear_client_post_api_result_in_process_hook(registration_id: Option<u64>) {
+    let mut handler = CLIENT_POST_API_RESULT_IN_PROCESS_HANDLER
+        .lock()
+        .expect("Steam client post API-result handler poisoned");
+    let should_clear = match (registration_id, handler.as_ref()) {
+        (Some(registration_id), Some((active_id, _))) => registration_id == *active_id,
+        (Some(_), None) => false,
+        (None, _) => true,
+    };
+    if should_clear {
+        *handler = None;
+        unsafe {
+            steam_bridge_client_remove_post_api_result_in_process(Some(
+                steam_client_post_api_result_in_process_callback,
+            ));
+        }
+    }
+}
+
+fn clear_client_check_callback_registered_in_process_hook(registration_id: Option<u64>) {
+    let mut handler = CLIENT_CHECK_CALLBACK_REGISTERED_IN_PROCESS_HANDLER
+        .lock()
+        .expect("Steam client callback registration check handler poisoned");
+    let should_clear = match (registration_id, handler.as_ref()) {
+        (Some(registration_id), Some((active_id, _, _))) => registration_id == *active_id,
+        (Some(_), None) => false,
+        (None, _) => true,
+    };
+    if should_clear {
+        *handler = None;
+        unsafe {
+            steam_bridge_client_set_check_callback_registered_in_process(None);
+        }
+    }
 }
 
 #[napi(js_name = "clientDestroyAllInterfaces")]
@@ -7265,6 +7448,7 @@ pub fn input_register_action_event_callback(
         warning_message_registration: None,
         networking_debug_output_registration: None,
         input_action_event_registration: Some(InputActionEventRegistration { registration_id }),
+        client_process_hook_registration: None,
     })
 }
 
@@ -13854,6 +14038,7 @@ pub fn networking_utils_register_debug_output_hook(
         warning_message_registration: None,
         networking_debug_output_registration: Some(registration),
         input_action_event_registration: None,
+        client_process_hook_registration: None,
     })
 }
 
@@ -13993,6 +14178,7 @@ pub fn utils_register_warning_message_hook(
         warning_message_registration: Some(registration),
         networking_debug_output_registration: None,
         input_action_event_registration: None,
+        client_process_hook_registration: None,
     })
 }
 
@@ -14773,6 +14959,7 @@ pub fn register_steam_callback(
         warning_message_registration: None,
         networking_debug_output_registration: None,
         input_action_event_registration: None,
+        client_process_hook_registration: None,
     })
 }
 

@@ -175,6 +175,34 @@ extern "C" bool steam_bridge_client_run_frame() {
   return true;
 }
 
+extern "C" bool steam_bridge_client_set_post_api_result_in_process(void (*callback)()) {
+  ISteamClientHeaderOnly *client = steam_bridge_client_header_only();
+  if (client == nullptr) {
+    return false;
+  }
+  client->DEPRECATED_Set_SteamAPI_CPostAPIResultInProcess(callback);
+  return true;
+}
+
+extern "C" bool steam_bridge_client_remove_post_api_result_in_process(void (*callback)()) {
+  ISteamClientHeaderOnly *client = steam_bridge_client_header_only();
+  if (client == nullptr) {
+    return false;
+  }
+  client->DEPRECATED_Remove_SteamAPI_CPostAPIResultInProcess(callback);
+  return true;
+}
+
+extern "C" bool steam_bridge_client_set_check_callback_registered_in_process(
+    uint32_t (*callback)(int32_t)) {
+  ISteamClientHeaderOnly *client = steam_bridge_client_header_only();
+  if (client == nullptr) {
+    return false;
+  }
+  client->Set_SteamAPI_CCheckCallbackRegisteredInProcess(callback);
+  return true;
+}
+
 extern "C" bool steam_bridge_client_destroy_all_interfaces() {
   ISteamClientHeaderOnly *client = steam_bridge_client_header_only();
   if (client == nullptr) {

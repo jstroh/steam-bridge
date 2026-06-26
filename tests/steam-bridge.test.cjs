@@ -178,6 +178,27 @@ function createFakeNative(overrides = {}) {
       calls.push({ method: "clientRunFrameDeprecated", args: [] });
       return true;
     },
+    clientRegisterPostApiResultInProcessHook(handler) {
+      calls.push({ method: "clientRegisterPostApiResultInProcessHook", args: [] });
+      handler({});
+      return {
+        disconnect() {
+          calls.push({ method: "disconnectClientPostApiResultInProcessHook", args: [] });
+        }
+      };
+    },
+    clientRegisterCheckCallbackRegisteredInProcessHook(handler, registeredReturnValue) {
+      calls.push({
+        method: "clientRegisterCheckCallbackRegisteredInProcessHook",
+        args: [registeredReturnValue]
+      });
+      handler({ callback_id: 304 });
+      return {
+        disconnect() {
+          calls.push({ method: "disconnectClientCheckCallbackRegisteredInProcessHook", args: [] });
+        }
+      };
+    },
     clientDestroyAllInterfaces() {
       calls.push({ method: "clientDestroyAllInterfaces", args: [] });
       return true;
@@ -1192,6 +1213,20 @@ test("client facade covers low-level Steam client helpers", (t) => {
   assert.equal(steam.client.runFrameDeprecated(), true);
   assert.equal(steam.client.destroyAllInterfaces(), true);
 
+  let postApiResultCount = 0;
+  const postApiResultHook = steam.client.registerPostApiResultInProcessHook(() => {
+    postApiResultCount += 1;
+  });
+  postApiResultHook.disconnect();
+  assert.equal(postApiResultCount, 1);
+
+  const callbackRegistrationChecks = [];
+  const callbackRegistrationHook = steam.client.registerCheckCallbackRegisteredInProcessHook((event) => {
+    callbackRegistrationChecks.push(event);
+  }, false);
+  callbackRegistrationHook.disconnect();
+  assert.deepEqual(callbackRegistrationChecks, [{ callbackId: 304 }]);
+
   const warnings = [];
   const hook = steam.client.registerWarningMessageHook((event) => warnings.push(event));
   hook.disconnect();
@@ -1210,8 +1245,18 @@ test("client facade covers low-level Steam client helpers", (t) => {
     { method: "clientShutdownIfAllPipesClosed", args: [] },
     { method: "clientRunFrameDeprecated", args: [] },
     { method: "clientDestroyAllInterfaces", args: [] },
+    { method: "clientRegisterPostApiResultInProcessHook", args: [] },
+    { method: "clientRegisterCheckCallbackRegisteredInProcessHook", args: [0] },
     { method: "clientRegisterWarningMessageHook", args: [] }
   ]);
+  assert.deepEqual(fake.calls.find((call) => call.method === "disconnectClientPostApiResultInProcessHook"), {
+    method: "disconnectClientPostApiResultInProcessHook",
+    args: []
+  });
+  assert.deepEqual(fake.calls.find((call) => call.method === "disconnectClientCheckCallbackRegisteredInProcessHook"), {
+    method: "disconnectClientCheckCallbackRegisteredInProcessHook",
+    args: []
+  });
   assert.deepEqual(fake.calls.find((call) => call.method === "disconnectClientWarningMessageHook"), {
     method: "disconnectClientWarningMessageHook",
     args: []

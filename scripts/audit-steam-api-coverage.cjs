@@ -20,6 +20,9 @@ const nativeSourceFiles = [
 const manualCallbackAliases = ["GCMessageAvailable", "GCMessageFailed"];
 const manualHeaderOnlyNativeSymbols = [
   "steam_bridge_client_run_frame",
+  "steam_bridge_client_set_post_api_result_in_process",
+  "steam_bridge_client_remove_post_api_result_in_process",
+  "steam_bridge_client_set_check_callback_registered_in_process",
   "steam_bridge_client_destroy_all_interfaces",
   "steam_bridge_game_server_init_game_server",
   "steam_bridge_game_server_set_master_server_heartbeat_interval_deprecated",
@@ -28,6 +31,8 @@ const manualHeaderOnlyNativeSymbols = [
 ];
 const manualHeaderOnlyFacadeMethods = [
   "runFrameDeprecated",
+  "registerPostApiResultInProcessHook",
+  "registerCheckCallbackRegisteredInProcessHook",
   "destroyAllInterfaces",
   "initGameServer",
   "setMasterServerHeartbeatIntervalDeprecated",

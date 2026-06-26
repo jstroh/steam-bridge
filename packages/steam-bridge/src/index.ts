@@ -273,6 +273,10 @@ export interface SteamClientLocalUser {
   pipe: number;
 }
 
+export interface SteamClientCallbackRegistrationCheck {
+  callbackId: number;
+}
+
 export type SteamClientInterfaceName =
   | "user"
   | "gameServer"
@@ -5211,6 +5215,23 @@ export const client = {
   },
   runFrameDeprecated(): boolean {
     return native().clientRunFrameDeprecated();
+  },
+  registerPostApiResultInProcessHook(handler: () => void): CallbackHandle {
+    return wrapCallbackHandle(
+      native().clientRegisterPostApiResultInProcessHook(() => {
+        handler();
+      })
+    );
+  },
+  registerCheckCallbackRegisteredInProcessHook(
+    handler: (event: SteamClientCallbackRegistrationCheck) => void,
+    registered = true
+  ): CallbackHandle {
+    return wrapCallbackHandle(
+      native().clientRegisterCheckCallbackRegisteredInProcessHook((event) => {
+        handler(normalizeSteamClientCallbackRegistrationCheck(event));
+      }, registered ? 1 : 0)
+    );
   },
   destroyAllInterfaces(): boolean {
     return native().clientDestroyAllInterfaces();
@@ -13928,6 +13949,15 @@ function normalizeSteamClientLocalUser(result: NativeSteamClientLocalUser): Stea
   return {
     user: Number(result.user ?? 0),
     pipe: Number(result.pipe ?? 0)
+  };
+}
+
+function normalizeSteamClientCallbackRegistrationCheck(
+  event: unknown
+): SteamClientCallbackRegistrationCheck {
+  const source = (event && typeof event === "object" ? event : {}) as Record<string, unknown>;
+  return {
+    callbackId: Number(source.callbackId ?? source.callback_id ?? 0)
   };
 }
 

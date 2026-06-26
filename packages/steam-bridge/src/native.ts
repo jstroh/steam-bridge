@@ -2599,6 +2599,11 @@ export interface NativeBinding {
   clientRegisterWarningMessageHook(handler: (event: NativeUtilsWarningMessage) => void): NativeCallbackHandle;
   clientShutdownIfAllPipesClosed(): boolean;
   clientRunFrameDeprecated(): boolean;
+  clientRegisterPostApiResultInProcessHook(handler: (event: unknown) => void): NativeCallbackHandle;
+  clientRegisterCheckCallbackRegisteredInProcessHook(
+    handler: (event: unknown) => void,
+    registeredReturnValue?: number
+  ): NativeCallbackHandle;
   clientDestroyAllInterfaces(): boolean;
 
   workshopCreateItem(appId?: number | null): Promise<NativeUgcResult>;

@@ -105,6 +105,7 @@ pub struct CallbackHandle {
     warning_message_registration: Option<state::WarningMessageRegistration>,
     networking_debug_output_registration: Option<state::NetworkingDebugOutputRegistration>,
     input_action_event_registration: Option<compat::InputActionEventRegistration>,
+    client_process_hook_registration: Option<compat::ClientProcessHookRegistration>,
 }
 
 #[napi]
@@ -115,6 +116,7 @@ impl CallbackHandle {
         self.warning_message_registration.take();
         self.networking_debug_output_registration.take();
         self.input_action_event_registration.take();
+        self.client_process_hook_registration.take();
     }
 }
 
@@ -148,6 +150,7 @@ pub fn shutdown() {
         native_surface::close();
         compat::clear_warning_message_hook();
         compat::clear_input_action_event_callback(None);
+        compat::clear_client_process_hooks();
         compat::clear_networking_utils_global_callbacks();
         compat::clear_networking_debug_output_hook();
         compat::clear_networking_fake_udp_ports();
@@ -551,6 +554,7 @@ pub fn register_micro_txn_authorization_response(
         warning_message_registration: None,
         networking_debug_output_registration: None,
         input_action_event_registration: None,
+        client_process_hook_registration: None,
     })
 }
 
@@ -574,6 +578,7 @@ pub fn register_game_overlay_activated(
         warning_message_registration: None,
         networking_debug_output_registration: None,
         input_action_event_registration: None,
+        client_process_hook_registration: None,
     })
 }
 

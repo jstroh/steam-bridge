@@ -30,7 +30,8 @@ generated callback constant lacks an exported `SteamCallback` alias.
   user connection, local IPv4 binding, typed interface pointer lookup, generic
   interface lookup by version, IPC call counts, warning hooks,
   shutdown-if-all-pipes-closed checks, deprecated private client frame pumping,
-  and private destroy-all-interface controls.
+  safe wrappers for internal process callback pointer hooks, and private
+  destroy-all-interface controls.
 - Game coordinator: legacy `ISteamGameCoordinator` binary message send,
   availability, retrieval, and message-available/failed callbacks through a
   local shim because the interface is not emitted in the flat bindings.
@@ -193,10 +194,6 @@ generated callback constant lacks an exported `SteamCallback` alias.
 - Remaining callback/event ergonomics for interfaces not surfaced by the current
   SDK bindings; generated callback constants are covered by the automated
   coverage audit.
-- Internal `ISteamClient` process callback pointer hooks are not exposed as raw
-  JavaScript function-pointer setters. Deprecated client frame pumping and
-  destroy-all-interface controls are exposed, but the callback pointer setters
-  need a safe callback abstraction before they should become public API.
 - `ISteamPS3OverlayRenderHost` and `ISteamPS3OverlayRender` are PlayStation 3
   overlay interfaces and are outside Steam Bridge's supported Steam desktop
   targets.
