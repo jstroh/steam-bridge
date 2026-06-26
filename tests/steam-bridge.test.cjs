@@ -2118,7 +2118,19 @@ test("specific and generic callbacks normalize Steamworks payloads", (t) => {
   assert.equal(steam.SteamCallback.GameServerReputation, 209);
   assert.equal(steam.SteamCallback.GameServerAssociateWithClan, 210);
   assert.equal(steam.SteamCallback.GameServerPlayerCompatibility, 211);
+  assert.equal(steam.SteamCallback.UserStatsReceived, 1101);
+  assert.equal(steam.SteamCallback.UserStatsStored, 1102);
+  assert.equal(steam.SteamCallback.UserAchievementStored, 1103);
+  assert.equal(steam.SteamCallback.LeaderboardFindResult, 1104);
+  assert.equal(steam.SteamCallback.LeaderboardScoresDownloaded, 1105);
+  assert.equal(steam.SteamCallback.LeaderboardScoreUploaded, 1106);
+  assert.equal(steam.SteamCallback.NumberOfCurrentPlayers, 1107);
+  assert.equal(steam.SteamCallback.UserStatsUnloaded, 1108);
   assert.equal(steam.SteamCallback.GameServerStatsUnloaded, 1108);
+  assert.equal(steam.SteamCallback.UserAchievementIconFetched, 1109);
+  assert.equal(steam.SteamCallback.GlobalAchievementPercentagesReady, 1110);
+  assert.equal(steam.SteamCallback.LeaderboardUGCSet, 1111);
+  assert.equal(steam.SteamCallback.GlobalStatsReceived, 1112);
   assert.equal(steam.SteamCallback.GameServerStatsReceived, 1800);
   assert.equal(steam.SteamCallback.GameServerStatsStored, 1801);
   assert.equal(steam.SteamCallback.HTTPRequestCompleted, 2101);
@@ -2412,6 +2424,128 @@ test("specific and generic callbacks normalize Steamworks payloads", (t) => {
   assert.equal(compatibilityEvent.playersThatDontLikeCandidate, 2);
   assert.equal(compatibilityEvent.playersThatCandidateDoesntLike, 3);
   assert.equal(compatibilityEvent.clanPlayersThatDontLikeCandidate, 4);
+
+  let userStatsReceivedEvent;
+  steam.callback.register(steam.SteamCallback.UserStatsReceived, (event) => {
+    userStatsReceivedEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.UserStatsReceived)({
+    game_id: "480",
+    result: 1,
+    steam_id: "76561198000000021"
+  });
+  assert.equal(userStatsReceivedEvent.gameId, 480n);
+  assert.equal(userStatsReceivedEvent.steamId, 76561198000000021n);
+
+  let userStatsStoredEvent;
+  steam.callback.register(steam.SteamCallback.UserStatsStored, (event) => {
+    userStatsStoredEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.UserStatsStored)({ game_id: "480", result: 1 });
+  assert.equal(userStatsStoredEvent.gameId, 480n);
+  assert.equal(userStatsStoredEvent.result, 1);
+
+  let achievementStoredEvent;
+  steam.callback.register(steam.SteamCallback.UserAchievementStored, (event) => {
+    achievementStoredEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.UserAchievementStored)({
+    game_id: "480",
+    group_achievement: false,
+    achievement: "ACH_WIN",
+    current_progress: 5,
+    max_progress: 10
+  });
+  assert.equal(achievementStoredEvent.gameId, 480n);
+  assert.equal(achievementStoredEvent.groupAchievement, false);
+  assert.equal(achievementStoredEvent.achievement, "ACH_WIN");
+  assert.equal(achievementStoredEvent.currentProgress, 5);
+  assert.equal(achievementStoredEvent.maxProgress, 10);
+
+  let leaderboardFindEvent;
+  steam.callback.register(steam.SteamCallback.LeaderboardFindResult, (event) => {
+    leaderboardFindEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.LeaderboardFindResult)({ leaderboard: "44", found: true });
+  assert.equal(leaderboardFindEvent.leaderboard, 44n);
+  assert.equal(leaderboardFindEvent.found, true);
+
+  let leaderboardScoresEvent;
+  steam.callback.register(steam.SteamCallback.LeaderboardScoresDownloaded, (event) => {
+    leaderboardScoresEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.LeaderboardScoresDownloaded)({
+    leaderboard: "44",
+    entries_handle: "9000",
+    entry_count: 2
+  });
+  assert.equal(leaderboardScoresEvent.leaderboard, 44n);
+  assert.equal(leaderboardScoresEvent.entriesHandle, 9000n);
+  assert.equal(leaderboardScoresEvent.entryCount, 2);
+
+  let leaderboardUploadEvent;
+  steam.callback.register(steam.SteamCallback.LeaderboardScoreUploaded, (event) => {
+    leaderboardUploadEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.LeaderboardScoreUploaded)({
+    success: true,
+    leaderboard: "44",
+    score: 1234,
+    score_changed: true,
+    global_rank_new: 3,
+    global_rank_previous: 9
+  });
+  assert.equal(leaderboardUploadEvent.leaderboard, 44n);
+  assert.equal(leaderboardUploadEvent.scoreChanged, true);
+  assert.equal(leaderboardUploadEvent.globalRankNew, 3);
+  assert.equal(leaderboardUploadEvent.globalRankPrevious, 9);
+
+  let currentPlayersEvent;
+  steam.callback.register(steam.SteamCallback.NumberOfCurrentPlayers, (event) => {
+    currentPlayersEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.NumberOfCurrentPlayers)({ success: true, players: 123 });
+  assert.equal(currentPlayersEvent.success, true);
+  assert.equal(currentPlayersEvent.players, 123);
+
+  let achievementIconEvent;
+  steam.callback.register(steam.SteamCallback.UserAchievementIconFetched, (event) => {
+    achievementIconEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.UserAchievementIconFetched)({
+    game_id: "480",
+    achievement: "ACH_WIN",
+    achieved: true,
+    icon_handle: 321
+  });
+  assert.equal(achievementIconEvent.gameId, 480n);
+  assert.equal(achievementIconEvent.achievement, "ACH_WIN");
+  assert.equal(achievementIconEvent.achieved, true);
+  assert.equal(achievementIconEvent.iconHandle, 321);
+
+  let globalAchievementEvent;
+  steam.callback.register(steam.SteamCallback.GlobalAchievementPercentagesReady, (event) => {
+    globalAchievementEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.GlobalAchievementPercentagesReady)({ game_id: "480", result: 1 });
+  assert.equal(globalAchievementEvent.gameId, 480n);
+  assert.equal(globalAchievementEvent.result, 1);
+
+  let leaderboardUgcEvent;
+  steam.callback.register(steam.SteamCallback.LeaderboardUGCSet, (event) => {
+    leaderboardUgcEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.LeaderboardUGCSet)({ result: 1, leaderboard: "44" });
+  assert.equal(leaderboardUgcEvent.result, 1);
+  assert.equal(leaderboardUgcEvent.leaderboard, 44n);
+
+  let globalStatsEvent;
+  steam.callback.register(steam.SteamCallback.GlobalStatsReceived, (event) => {
+    globalStatsEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.GlobalStatsReceived)({ game_id: "480", result: 1 });
+  assert.equal(globalStatsEvent.gameId, 480n);
+  assert.equal(globalStatsEvent.result, 1);
 
   let marketEvent;
   steam.callback.register(steam.SteamCallback.MarketEligibilityResponse, (event) => {

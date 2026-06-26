@@ -51,7 +51,8 @@ documented in headers but omitted from the generated flat bindings.
   metadata, progress, local/user/global stat reads and writes, current-player
   count, global achievement percentages, global stat history, leaderboard
   find/create, metadata, score downloads, entry reads, score uploads, and UGC
-  attachment.
+  attachment, plus stats, achievement, leaderboard, and global-stat callback
+  events.
 - Remote storage: cloud enablement, file reads/writes/deletes/forget,
   existence and persistence checks, file metadata, sync platform flags, quota,
   file listing, async file reads/writes, file sharing, write streams, cached

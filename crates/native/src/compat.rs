@@ -182,7 +182,18 @@ const CALLBACK_GAME_SERVER_CLIENT_GROUP_STATUS: i32 = 208;
 const CALLBACK_GAME_SERVER_REPUTATION: i32 = 209;
 const CALLBACK_GAME_SERVER_ASSOCIATE_WITH_CLAN: i32 = 210;
 const CALLBACK_GAME_SERVER_PLAYER_COMPATIBILITY: i32 = 211;
+const CALLBACK_USER_STATS_RECEIVED: i32 = 1101;
+const CALLBACK_USER_STATS_STORED: i32 = 1102;
+const CALLBACK_USER_ACHIEVEMENT_STORED: i32 = 1103;
+const CALLBACK_LEADERBOARD_FIND_RESULT: i32 = 1104;
+const CALLBACK_LEADERBOARD_SCORES_DOWNLOADED: i32 = 1105;
+const CALLBACK_LEADERBOARD_SCORE_UPLOADED: i32 = 1106;
+const CALLBACK_NUMBER_OF_CURRENT_PLAYERS: i32 = 1107;
 const CALLBACK_GAME_SERVER_STATS_UNLOADED: i32 = 1108;
+const CALLBACK_USER_ACHIEVEMENT_ICON_FETCHED: i32 = 1109;
+const CALLBACK_GLOBAL_ACHIEVEMENT_PERCENTAGES_READY: i32 = 1110;
+const CALLBACK_LEADERBOARD_UGC_SET: i32 = 1111;
+const CALLBACK_GLOBAL_STATS_RECEIVED: i32 = 1112;
 const CALLBACK_GAME_SERVER_STATS_RECEIVED: i32 = 1800;
 const CALLBACK_GAME_SERVER_STATS_STORED: i32 = 1801;
 const CALLBACK_REMOTE_STORAGE_FILE_SHARE_RESULT: i32 = 1307;
@@ -493,6 +504,10 @@ static MATCHMAKING_RULES_RESPONSE_VTABLE: MatchmakingRulesResponseVTable =
 
 fn csteam_id_to_u64(steam_id: sys::CSteamID) -> u64 {
     unsafe { std::mem::transmute::<sys::CSteamID, u64>(steam_id) }
+}
+
+fn cgame_id_to_u64(game_id: sys::CGameID) -> u64 {
+    unsafe { std::mem::transmute::<sys::CGameID, u64>(game_id) }
 }
 
 fn u64_to_csteam_id(steam_id: u64) -> sys::CSteamID {
@@ -20489,9 +20504,28 @@ fn callback_id_from_compat(callback: i32) -> Result<i32, Error> {
         CALLBACK_GAME_SERVER_PLAYER_COMPATIBILITY => {
             Ok(sys::ComputeNewPlayerCompatibilityResult_t_k_iCallback as i32)
         }
+        CALLBACK_USER_STATS_RECEIVED => Ok(sys::UserStatsReceived_t_k_iCallback as i32),
+        CALLBACK_USER_STATS_STORED => Ok(sys::UserStatsStored_t_k_iCallback as i32),
+        CALLBACK_USER_ACHIEVEMENT_STORED => Ok(sys::UserAchievementStored_t_k_iCallback as i32),
+        CALLBACK_LEADERBOARD_FIND_RESULT => Ok(sys::LeaderboardFindResult_t_k_iCallback as i32),
+        CALLBACK_LEADERBOARD_SCORES_DOWNLOADED => {
+            Ok(sys::LeaderboardScoresDownloaded_t_k_iCallback as i32)
+        }
+        CALLBACK_LEADERBOARD_SCORE_UPLOADED => {
+            Ok(sys::LeaderboardScoreUploaded_t_k_iCallback as i32)
+        }
+        CALLBACK_NUMBER_OF_CURRENT_PLAYERS => Ok(sys::NumberOfCurrentPlayers_t_k_iCallback as i32),
         CALLBACK_GAME_SERVER_STATS_RECEIVED => Ok(sys::GSStatsReceived_t_k_iCallback as i32),
         CALLBACK_GAME_SERVER_STATS_STORED => Ok(sys::GSStatsStored_t_k_iCallback as i32),
         CALLBACK_GAME_SERVER_STATS_UNLOADED => Ok(sys::GSStatsUnloaded_t_k_iCallback as i32),
+        CALLBACK_USER_ACHIEVEMENT_ICON_FETCHED => {
+            Ok(sys::UserAchievementIconFetched_t_k_iCallback as i32)
+        }
+        CALLBACK_GLOBAL_ACHIEVEMENT_PERCENTAGES_READY => {
+            Ok(sys::GlobalAchievementPercentagesReady_t_k_iCallback as i32)
+        }
+        CALLBACK_LEADERBOARD_UGC_SET => Ok(sys::LeaderboardUGCSet_t_k_iCallback as i32),
+        CALLBACK_GLOBAL_STATS_RECEIVED => Ok(sys::GlobalStatsReceived_t_k_iCallback as i32),
         CALLBACK_REMOTE_STORAGE_FILE_SHARE_RESULT => {
             Ok(sys::RemoteStorageFileShareResult_t_k_iCallback as i32)
         }
@@ -21720,6 +21754,64 @@ unsafe fn callback_to_json(callback: i32, param: *mut c_void) -> Value {
                 "candidate_steam_id": csteam_id_to_u64(ptr::addr_of!((*event).m_SteamIDCandidate).read_unaligned()).to_string()
             })
         }
+        CALLBACK_USER_STATS_RECEIVED => {
+            let event = param as *const sys::UserStatsReceived_t;
+            serde_json::json!({
+                "game_id": ptr::addr_of!((*event).m_nGameID).read_unaligned().to_string(),
+                "result": ptr::addr_of!((*event).m_eResult).read_unaligned() as u32,
+                "steam_id": csteam_id_to_u64(ptr::addr_of!((*event).m_steamIDUser).read_unaligned()).to_string()
+            })
+        }
+        CALLBACK_USER_STATS_STORED => {
+            let event = param as *const sys::UserStatsStored_t;
+            serde_json::json!({
+                "game_id": ptr::addr_of!((*event).m_nGameID).read_unaligned().to_string(),
+                "result": ptr::addr_of!((*event).m_eResult).read_unaligned() as u32
+            })
+        }
+        CALLBACK_USER_ACHIEVEMENT_STORED => {
+            let event = param as *const sys::UserAchievementStored_t;
+            serde_json::json!({
+                "game_id": ptr::addr_of!((*event).m_nGameID).read_unaligned().to_string(),
+                "group_achievement": ptr::addr_of!((*event).m_bGroupAchievement).read_unaligned(),
+                "achievement": c_buf_to_string(&*ptr::addr_of!((*event).m_rgchAchievementName)),
+                "current_progress": ptr::addr_of!((*event).m_nCurProgress).read_unaligned(),
+                "max_progress": ptr::addr_of!((*event).m_nMaxProgress).read_unaligned()
+            })
+        }
+        CALLBACK_LEADERBOARD_FIND_RESULT => {
+            let event = param as *const sys::LeaderboardFindResult_t;
+            serde_json::json!({
+                "leaderboard": ptr::addr_of!((*event).m_hSteamLeaderboard).read_unaligned().to_string(),
+                "found": ptr::addr_of!((*event).m_bLeaderboardFound).read_unaligned() != 0
+            })
+        }
+        CALLBACK_LEADERBOARD_SCORES_DOWNLOADED => {
+            let event = param as *const sys::LeaderboardScoresDownloaded_t;
+            serde_json::json!({
+                "leaderboard": ptr::addr_of!((*event).m_hSteamLeaderboard).read_unaligned().to_string(),
+                "entries_handle": ptr::addr_of!((*event).m_hSteamLeaderboardEntries).read_unaligned().to_string(),
+                "entry_count": ptr::addr_of!((*event).m_cEntryCount).read_unaligned()
+            })
+        }
+        CALLBACK_LEADERBOARD_SCORE_UPLOADED => {
+            let event = param as *const sys::LeaderboardScoreUploaded_t;
+            serde_json::json!({
+                "success": ptr::addr_of!((*event).m_bSuccess).read_unaligned() != 0,
+                "leaderboard": ptr::addr_of!((*event).m_hSteamLeaderboard).read_unaligned().to_string(),
+                "score": ptr::addr_of!((*event).m_nScore).read_unaligned(),
+                "score_changed": ptr::addr_of!((*event).m_bScoreChanged).read_unaligned() != 0,
+                "global_rank_new": ptr::addr_of!((*event).m_nGlobalRankNew).read_unaligned(),
+                "global_rank_previous": ptr::addr_of!((*event).m_nGlobalRankPrevious).read_unaligned()
+            })
+        }
+        CALLBACK_NUMBER_OF_CURRENT_PLAYERS => {
+            let event = param as *const sys::NumberOfCurrentPlayers_t;
+            serde_json::json!({
+                "success": ptr::addr_of!((*event).m_bSuccess).read_unaligned() != 0,
+                "players": ptr::addr_of!((*event).m_cPlayers).read_unaligned()
+            })
+        }
         CALLBACK_GAME_SERVER_STATS_RECEIVED => {
             let event = param as *const sys::GSStatsReceived_t;
             serde_json::json!({
@@ -21738,6 +21830,36 @@ unsafe fn callback_to_json(callback: i32, param: *mut c_void) -> Value {
             let event = param as *const sys::GSStatsUnloaded_t;
             serde_json::json!({
                 "steam_id": csteam_id_to_u64(ptr::addr_of!((*event).m_steamIDUser).read_unaligned()).to_string()
+            })
+        }
+        CALLBACK_USER_ACHIEVEMENT_ICON_FETCHED => {
+            let event = param as *const sys::UserAchievementIconFetched_t;
+            serde_json::json!({
+                "game_id": cgame_id_to_u64(ptr::addr_of!((*event).m_nGameID).read_unaligned()).to_string(),
+                "achievement": c_buf_to_string(&*ptr::addr_of!((*event).m_rgchAchievementName)),
+                "achieved": ptr::addr_of!((*event).m_bAchieved).read_unaligned(),
+                "icon_handle": ptr::addr_of!((*event).m_nIconHandle).read_unaligned()
+            })
+        }
+        CALLBACK_GLOBAL_ACHIEVEMENT_PERCENTAGES_READY => {
+            let event = param as *const sys::GlobalAchievementPercentagesReady_t;
+            serde_json::json!({
+                "game_id": ptr::addr_of!((*event).m_nGameID).read_unaligned().to_string(),
+                "result": ptr::addr_of!((*event).m_eResult).read_unaligned() as u32
+            })
+        }
+        CALLBACK_LEADERBOARD_UGC_SET => {
+            let event = param as *const sys::LeaderboardUGCSet_t;
+            serde_json::json!({
+                "result": ptr::addr_of!((*event).m_eResult).read_unaligned() as u32,
+                "leaderboard": ptr::addr_of!((*event).m_hSteamLeaderboard).read_unaligned().to_string()
+            })
+        }
+        CALLBACK_GLOBAL_STATS_RECEIVED => {
+            let event = param as *const sys::GlobalStatsReceived_t;
+            serde_json::json!({
+                "game_id": ptr::addr_of!((*event).m_nGameID).read_unaligned().to_string(),
+                "result": ptr::addr_of!((*event).m_eResult).read_unaligned() as u32
             })
         }
         9 => {
