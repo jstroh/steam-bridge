@@ -576,6 +576,12 @@ function createFakeNative(overrides = {}) {
         start_index: 0
       });
     },
+    inputInit() {
+      calls.push({ method: "inputInit", args: [] });
+    },
+    inputShutdown() {
+      calls.push({ method: "inputShutdown", args: [] });
+    },
     inputGetControllers() {
       return [
         { handle: "123", inputType: "PS5Controller" },
@@ -2619,6 +2625,10 @@ test("game server facades expose typed callback helpers", (t) => {
 test("utils facade covers activity, images, VR, filtering, and text input helpers", async (t) => {
   const imageData = Buffer.from([255, 0, 0, 255, 0, 255, 0, 255]);
   const fake = createFakeNative({
+    utilsGetServerRealTime() {
+      this.calls.push({ method: "utilsGetServerRealTime", args: [] });
+      return 1700000000;
+    },
     utilsGetSecondsSinceAppActive() {
       this.calls.push({ method: "utilsGetSecondsSinceAppActive", args: [] });
       return 12;
@@ -2724,6 +2734,17 @@ test("utils facade covers activity, images, VR, filtering, and text input helper
     utilsDismissGamepadTextInput() {
       this.calls.push({ method: "utilsDismissGamepadTextInput", args: [] });
       return true;
+    },
+    utilsShowGamepadTextInput(inputMode, inputLineMode, description, maxCharacters, existingText) {
+      this.calls.push({
+        method: "utilsShowGamepadTextInput",
+        args: [inputMode, inputLineMode, description, maxCharacters, existingText]
+      });
+      return Promise.resolve("accepted text");
+    },
+    utilsShowFloatingGamepadTextInput(keyboardMode, x, y, width, height) {
+      this.calls.push({ method: "utilsShowFloatingGamepadTextInput", args: [keyboardMode, x, y, width, height] });
+      return true;
     }
   });
   const steam = loadSteamWithFakeNative(fake);
@@ -2732,9 +2753,13 @@ test("utils facade covers activity, images, VR, filtering, and text input helper
 
   assert.equal(steam.utils.SteamUniverse.Public, 1);
   assert.equal(steam.utils.OverlayNotificationPosition.BottomRight, 3);
+  assert.equal(steam.utils.GamepadTextInputMode.Normal, 0);
+  assert.equal(steam.utils.GamepadTextInputLineMode.SingleLine, 0);
+  assert.equal(steam.utils.FloatingGamepadTextInputMode.Email, 2);
   assert.equal(steam.utils.TextFilteringContext.Chat, 2);
   assert.equal(steam.utils.IPv6ConnectivityProtocol.HTTP, 1);
   assert.equal(steam.utils.IPv6ConnectivityState.Good, 1);
+  assert.equal(steam.utils.getServerRealTime(), 1700000000);
   assert.equal(steam.utils.getSecondsSinceAppActive(), 12);
   assert.equal(steam.utils.getSecondsSinceComputerActive(), 34);
   assert.equal(steam.utils.getConnectedUniverse(), steam.utils.SteamUniverse.Public);
@@ -2790,11 +2815,26 @@ test("utils facade covers activity, images, VR, filtering, and text input helper
   steam.utils.setGameLauncherMode(true);
   assert.equal(steam.utils.dismissFloatingGamepadTextInput(), true);
   assert.equal(steam.utils.dismissGamepadTextInput(), true);
+  assert.equal(
+    await steam.utils.showGamepadTextInput(
+      steam.utils.GamepadTextInputMode.Normal,
+      steam.utils.GamepadTextInputLineMode.SingleLine,
+      "Enter name",
+      32,
+      "Player"
+    ),
+    "accepted text"
+  );
+  assert.equal(
+    await steam.utils.showFloatingGamepadTextInput(steam.utils.FloatingGamepadTextInputMode.Email, 10, 20, 300, 48),
+    true
+  );
   warningHandle.disconnect();
   assert.deepEqual(
     fake.calls.filter((call) =>
       [
         "utilsRegisterWarningMessageHook",
+        "utilsGetServerRealTime",
         "utilsSetOverlayNotificationPosition",
         "utilsSetOverlayNotificationInset",
         "utilsIsApiCallCompleted",
@@ -2803,10 +2843,13 @@ test("utils facade covers activity, images, VR, filtering, and text input helper
         "utilsCheckFileSignature",
         "utilsFilterText",
         "utilsSetGameLauncherMode",
+        "utilsShowGamepadTextInput",
+        "utilsShowFloatingGamepadTextInput",
         "disconnectWarningMessageHook"
       ].includes(call.method)
     ),
     [
+      { method: "utilsGetServerRealTime", args: [] },
       { method: "utilsRegisterWarningMessageHook", args: [] },
       { method: "utilsIsApiCallCompleted", args: [12345678901234567890n] },
       { method: "utilsGetApiCallFailureReason", args: [12345678901234567890n] },
@@ -2816,6 +2859,8 @@ test("utils facade covers activity, images, VR, filtering, and text input helper
       { method: "utilsSetOverlayNotificationInset", args: [16, 24] },
       { method: "utilsFilterText", args: [2, 76561198000000000n, "hello", 256] },
       { method: "utilsSetGameLauncherMode", args: [true] },
+      { method: "utilsShowGamepadTextInput", args: [0, 0, "Enter name", 32, "Player"] },
+      { method: "utilsShowFloatingGamepadTextInput", args: [2, 10, 20, 300, 48] },
       { method: "disconnectWarningMessageHook", args: [] }
     ]
   );
@@ -5722,6 +5767,7 @@ test("cloud, input, and networking facades coerce native values", async (t) => {
     args: [555n, "/tmp/shared.dat", undefined, undefined]
   });
 
+  assert.equal(steam.input.init(), undefined);
   const controllers = steam.input.getControllers();
   assert.equal(controllers[0].getHandle(), 123n);
   assert.equal(controllers[0].getType(), steam.InputType.PS5Controller);
@@ -5889,6 +5935,15 @@ test("cloud, input, and networking facades coerce native values", async (t) => {
     { method: "inputSetDualSenseTriggerEffect", args: [123n, dualSenseEffect] },
     { method: "inputSetDualSenseTriggerEffect", args: [123n, undefined] }
   ]);
+  assert.equal(steam.input.shutdown(), undefined);
+  assert.deepEqual(fake.calls.find((call) => call.method === "inputInit"), {
+    method: "inputInit",
+    args: []
+  });
+  assert.deepEqual(fake.calls.find((call) => call.method === "inputShutdown"), {
+    method: "inputShutdown",
+    args: []
+  });
   assert.deepEqual(fake.calls.find((call) => call.method === "disconnectInputActionEventCallback"), {
     method: "disconnectInputActionEventCallback",
     args: []
