@@ -49,8 +49,9 @@ covered.
   state helpers, market eligibility, duration control, user-data folder reads,
   app usage events, NAT/logged-on checks, Steam user handle reads, game
   advertisement, legacy game-connection auth blobs, license checks, and ticket
-  cancellation, plus auth-ticket validation and Web API ticket response callback
-  events.
+  cancellation, plus typed game-server deny, license update, auth-ticket,
+  encrypted-ticket, game-web, store-auth, market eligibility, duration-control,
+  and Web API ticket response callback helpers.
 - Friends: persona name/state, friend enumeration, friend profiles, groups,
   clans, rich presence, coplay, clan chat controls, friend message replies, and
   friend and clan chat reads, source membership helpers, downloadable clan
@@ -201,11 +202,11 @@ covered.
   payloads. `steamworks-sys 0.13` exposes the ticket out-parameter but keeps
   `SteamDatagramRelayAuthTicket` opaque in the bundled headers, so safe
   structured decoding needs a newer SDK surface or a maintained local shim.
-- Additional specialized callback/event helpers outside the current Steam Input
-  and networking callback-helper batches, for interfaces where a dedicated
-  `on...` helper would be clearer than the generic name-based subscription API.
-  Generated callback constants and generic name subscriptions are covered by the
-  automated coverage audit.
+- Additional specialized callback/event helpers outside the current user/auth,
+  Steam Input, and networking callback-helper batches, for interfaces where a
+  dedicated `on...` helper would be clearer than the generic name-based
+  subscription API. Generated callback constants and generic name subscriptions
+  are covered by the automated coverage audit.
 - `ISteamPS3OverlayRenderHost` and `ISteamPS3OverlayRender` are PlayStation 3
   overlay interfaces and are outside Steam Bridge's supported Steam desktop
   targets.

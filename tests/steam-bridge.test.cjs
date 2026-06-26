@@ -1770,6 +1770,154 @@ test("user facade covers voice, auth session, account, and duration helpers", as
   );
 });
 
+test("user facade exposes typed callback helpers", (t) => {
+  const fake = createFakeNative();
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  let denyEvent;
+  let licenseEvent;
+  let validateTicketEvent;
+  let encryptedTicketEvent;
+  let authSessionTicketEvent;
+  let gameWebEvent;
+  let storeAuthURLEvent;
+  let marketEvent;
+  let durationEvent;
+  let webApiTicketEvent;
+
+  const handles = [
+    steam.user.onClientGameServerDeny((event) => {
+      denyEvent = event;
+    }),
+    steam.user.onLicensesUpdated((event) => {
+      licenseEvent = event;
+    }),
+    steam.user.onValidateAuthTicketResponse((event) => {
+      validateTicketEvent = event;
+    }),
+    steam.user.onEncryptedAppTicketResponse((event) => {
+      encryptedTicketEvent = event;
+    }),
+    steam.user.onGetAuthSessionTicketResponse((event) => {
+      authSessionTicketEvent = event;
+    }),
+    steam.user.onGameWebCallback((event) => {
+      gameWebEvent = event;
+    }),
+    steam.user.onStoreAuthURLResponse((event) => {
+      storeAuthURLEvent = event;
+    }),
+    steam.user.onMarketEligibilityResponse((event) => {
+      marketEvent = event;
+    }),
+    steam.user.onDurationControl((event) => {
+      durationEvent = event;
+    }),
+    steam.user.onGetTicketForWebApiResponse((event) => {
+      webApiTicketEvent = event;
+    })
+  ];
+
+  fake.callbacks.get(steam.SteamCallback.ClientGameServerDeny)({
+    app_id: 480,
+    game_server_ip: 2130706433,
+    game_server_ip_address: "127.0.0.1",
+    game_server_port: 27015,
+    secure: true,
+    reason: 7
+  });
+  fake.callbacks.get(steam.SteamCallback.LicensesUpdated)({});
+  fake.callbacks.get(steam.SteamCallback.ValidateAuthTicketResponse)({
+    steam_id: "76561198000000010",
+    auth_session_response: 1,
+    owner_steam_id: "76561198000000011"
+  });
+  fake.callbacks.get(steam.SteamCallback.EncryptedAppTicketResponse)({ result: 1 });
+  fake.callbacks.get(steam.SteamCallback.GetAuthSessionTicketResponse)({
+    auth_ticket: 77,
+    result: 1
+  });
+  fake.callbacks.get(steam.SteamCallback.GameWebCallback)({ url: "https://example.invalid/callback" });
+  fake.callbacks.get(steam.SteamCallback.StoreAuthURLResponse)({ url: "https://store.steampowered.com/login/" });
+  fake.callbacks.get(steam.SteamCallback.MarketEligibilityResponse)({
+    allowed: false,
+    not_allowed_reason: 64,
+    allowed_at_time: 1234,
+    steam_guard_required_days: 15,
+    new_device_cooldown_days: 7
+  });
+  fake.callbacks.get(steam.SteamCallback.DurationControl)({
+    result: 1,
+    app_id: 480,
+    applicable: true,
+    seconds_last_5h: 3600,
+    progress: 1,
+    notification: 2,
+    seconds_today: 7200,
+    seconds_remaining: 1800
+  });
+  fake.callbacks.get(steam.SteamCallback.GetTicketForWebApiResponse)({
+    auth_ticket: 88,
+    result: 1,
+    ticket_byte_length: 6,
+    ticket_base64: Buffer.from("ticket").toString("base64")
+  });
+
+  assert.equal(denyEvent.appId, 480);
+  assert.equal(denyEvent.gameServerIp, 2130706433);
+  assert.equal(denyEvent.gameServerIpAddress, "127.0.0.1");
+  assert.equal(denyEvent.gameServerPort, 27015);
+  assert.equal(denyEvent.secure, true);
+  assert.deepEqual(licenseEvent, {});
+  assert.equal(validateTicketEvent.steamId, 76561198000000010n);
+  assert.equal(validateTicketEvent.authSessionResponse, 1);
+  assert.equal(validateTicketEvent.ownerSteamId, 76561198000000011n);
+  assert.equal(encryptedTicketEvent.result, 1);
+  assert.equal(authSessionTicketEvent.authTicket, 77);
+  assert.equal(authSessionTicketEvent.result, 1);
+  assert.equal(gameWebEvent.url, "https://example.invalid/callback");
+  assert.equal(storeAuthURLEvent.url, "https://store.steampowered.com/login/");
+  assert.equal(marketEvent.allowed, false);
+  assert.equal(marketEvent.notAllowedReason, 64);
+  assert.equal(marketEvent.allowedAtTime, 1234);
+  assert.equal(marketEvent.steamGuardRequiredDays, 15);
+  assert.equal(marketEvent.newDeviceCooldownDays, 7);
+  assert.equal(durationEvent.appId, 480);
+  assert.equal(durationEvent.secondsLast5h, 3600);
+  assert.equal(durationEvent.secondsToday, 7200);
+  assert.equal(durationEvent.secondsRemaining, 1800);
+  assert.equal(webApiTicketEvent.authTicket, 88);
+  assert.equal(webApiTicketEvent.ticketByteLength, 6);
+  assert.equal(webApiTicketEvent.ticket.toString(), "ticket");
+
+  for (const handle of handles) {
+    handle.disconnect();
+  }
+
+  const callbackIds = [
+    steam.SteamCallback.ClientGameServerDeny,
+    steam.SteamCallback.LicensesUpdated,
+    steam.SteamCallback.ValidateAuthTicketResponse,
+    steam.SteamCallback.EncryptedAppTicketResponse,
+    steam.SteamCallback.GetAuthSessionTicketResponse,
+    steam.SteamCallback.GameWebCallback,
+    steam.SteamCallback.StoreAuthURLResponse,
+    steam.SteamCallback.MarketEligibilityResponse,
+    steam.SteamCallback.DurationControl,
+    steam.SteamCallback.GetTicketForWebApiResponse
+  ];
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "registerSteamCallback"),
+    callbackIds.map((callbackId) => ({ method: "registerSteamCallback", args: [callbackId] }))
+  );
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "disconnectCallback"),
+    callbackIds.map((callbackId) => ({ method: "disconnectCallback", args: [callbackId] }))
+  );
+});
+
 test("game server facade covers lifecycle, metadata, auth, async status, and packet helpers", async (t) => {
   const serverId = { steamId64: "901234", steamId32: "STEAM_0:0:450617", accountId: 901234 };
   const playerId = { steamId64: "76561198000000020", steamId32: "STEAM_0:0:19867146", accountId: 39734292 };

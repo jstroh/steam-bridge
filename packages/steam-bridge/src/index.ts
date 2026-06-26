@@ -961,6 +961,83 @@ export interface UserDurationControl {
   secondsRemaining: number;
 }
 
+export interface UserClientGameServerDenyEvent {
+  appId: number;
+  app_id?: number;
+  gameServerIp: number;
+  game_server_ip?: number;
+  gameServerIpAddress: string;
+  game_server_ip_address?: string;
+  gameServerPort: number;
+  game_server_port?: number;
+  secure: boolean;
+  reason: number;
+  [key: string]: unknown;
+}
+
+export interface UserLicensesUpdatedEvent {
+  [key: string]: unknown;
+}
+
+export interface UserValidateAuthTicketResponseEvent {
+  steamId: bigint;
+  steam_id?: bigint;
+  authSessionResponse: number;
+  auth_session_response?: number;
+  ownerSteamId: bigint;
+  owner_steam_id?: bigint;
+  [key: string]: unknown;
+}
+
+export interface UserEncryptedAppTicketResponseEvent {
+  result: number;
+  [key: string]: unknown;
+}
+
+export interface UserGetAuthSessionTicketResponseEvent {
+  authTicket: number;
+  auth_ticket?: number;
+  result: number;
+  [key: string]: unknown;
+}
+
+export interface UserGameWebCallbackEvent {
+  url: string;
+  [key: string]: unknown;
+}
+
+export interface UserStoreAuthURLResponseEvent {
+  url: string;
+  [key: string]: unknown;
+}
+
+export interface UserMarketEligibilityResponseEvent extends UserMarketEligibility {
+  not_allowed_reason?: number;
+  allowed_at_time?: number;
+  steam_guard_required_days?: number;
+  new_device_cooldown_days?: number;
+  [key: string]: unknown;
+}
+
+export interface UserDurationControlEvent extends UserDurationControl {
+  app_id?: number;
+  seconds_last_5h?: number;
+  seconds_today?: number;
+  seconds_remaining?: number;
+  [key: string]: unknown;
+}
+
+export interface UserGetTicketForWebApiResponseEvent {
+  authTicket: number;
+  auth_ticket?: number;
+  result: number;
+  ticketByteLength: number;
+  ticket_byte_length?: number;
+  ticket: Buffer;
+  ticket_base64?: string;
+  [key: string]: unknown;
+}
+
 export interface P2PPacket {
   data: Buffer;
   size: number;
@@ -5658,6 +5735,56 @@ export const user = {
   DurationControlProgress,
   DurationControlNotification,
   DurationControlOnlineState,
+  onClientGameServerDeny(handler: (event: UserClientGameServerDenyEvent) => void): CallbackHandle {
+    return onSteamCallback("ClientGameServerDeny", (event) => {
+      handler(event as UserClientGameServerDenyEvent);
+    });
+  },
+  onLicensesUpdated(handler: (event: UserLicensesUpdatedEvent) => void): CallbackHandle {
+    return onSteamCallback("LicensesUpdated", (event) => {
+      handler(event as UserLicensesUpdatedEvent);
+    });
+  },
+  onValidateAuthTicketResponse(handler: (event: UserValidateAuthTicketResponseEvent) => void): CallbackHandle {
+    return onSteamCallback("ValidateAuthTicketResponse", (event) => {
+      handler(event as UserValidateAuthTicketResponseEvent);
+    });
+  },
+  onEncryptedAppTicketResponse(handler: (event: UserEncryptedAppTicketResponseEvent) => void): CallbackHandle {
+    return onSteamCallback("EncryptedAppTicketResponse", (event) => {
+      handler(event as UserEncryptedAppTicketResponseEvent);
+    });
+  },
+  onGetAuthSessionTicketResponse(handler: (event: UserGetAuthSessionTicketResponseEvent) => void): CallbackHandle {
+    return onSteamCallback("GetAuthSessionTicketResponse", (event) => {
+      handler(event as UserGetAuthSessionTicketResponseEvent);
+    });
+  },
+  onGameWebCallback(handler: (event: UserGameWebCallbackEvent) => void): CallbackHandle {
+    return onSteamCallback("GameWebCallback", (event) => {
+      handler(event as UserGameWebCallbackEvent);
+    });
+  },
+  onStoreAuthURLResponse(handler: (event: UserStoreAuthURLResponseEvent) => void): CallbackHandle {
+    return onSteamCallback("StoreAuthURLResponse", (event) => {
+      handler(event as UserStoreAuthURLResponseEvent);
+    });
+  },
+  onMarketEligibilityResponse(handler: (event: UserMarketEligibilityResponseEvent) => void): CallbackHandle {
+    return onSteamCallback("MarketEligibilityResponse", (event) => {
+      handler(event as UserMarketEligibilityResponseEvent);
+    });
+  },
+  onDurationControl(handler: (event: UserDurationControlEvent) => void): CallbackHandle {
+    return onSteamCallback("DurationControl", (event) => {
+      handler(event as UserDurationControlEvent);
+    });
+  },
+  onGetTicketForWebApiResponse(handler: (event: UserGetTicketForWebApiResponseEvent) => void): CallbackHandle {
+    return onSteamCallback("GetTicketForWebApiResponse", (event) => {
+      handler(event as UserGetTicketForWebApiResponseEvent);
+    });
+  },
   startVoiceRecording(): void {
     native().userStartVoiceRecording();
   },
