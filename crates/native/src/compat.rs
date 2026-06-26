@@ -12053,14 +12053,17 @@ pub fn game_server_networking_messages_get_session_connection_info(
 #[napi(js_name = "networkingSocketsCreateListenSocketIp")]
 pub fn networking_sockets_create_listen_socket_ip(
     address: NetworkingIpAddress,
+    options: Option<Vec<NetworkingConfigValue>>,
 ) -> Result<u32, Error> {
     let address = networking_ip_address_from_input(address)?;
+    let (option_count, options, _strings) = networking_config_values(options)?;
+    let option_ptr = networking_config_value_ptr(&options);
     Ok(unsafe {
         sys::SteamAPI_ISteamNetworkingSockets_CreateListenSocketIP(
             steam_networking_sockets()?,
             &address,
-            0,
-            ptr::null(),
+            option_count,
+            option_ptr,
         )
     })
 }
@@ -12068,14 +12071,17 @@ pub fn networking_sockets_create_listen_socket_ip(
 #[napi(js_name = "networkingSocketsConnectByIpAddress")]
 pub fn networking_sockets_connect_by_ip_address(
     address: NetworkingIpAddress,
+    options: Option<Vec<NetworkingConfigValue>>,
 ) -> Result<u32, Error> {
     let address = networking_ip_address_from_input(address)?;
+    let (option_count, options, _strings) = networking_config_values(options)?;
+    let option_ptr = networking_config_value_ptr(&options);
     Ok(unsafe {
         sys::SteamAPI_ISteamNetworkingSockets_ConnectByIPAddress(
             steam_networking_sockets()?,
             &address,
-            0,
-            ptr::null(),
+            option_count,
+            option_ptr,
         )
     })
 }
@@ -12083,13 +12089,16 @@ pub fn networking_sockets_connect_by_ip_address(
 #[napi(js_name = "networkingSocketsCreateListenSocketP2p")]
 pub fn networking_sockets_create_listen_socket_p2p(
     local_virtual_port: Option<i32>,
+    options: Option<Vec<NetworkingConfigValue>>,
 ) -> Result<u32, Error> {
+    let (option_count, options, _strings) = networking_config_values(options)?;
+    let option_ptr = networking_config_value_ptr(&options);
     Ok(unsafe {
         sys::SteamAPI_ISteamNetworkingSockets_CreateListenSocketP2P(
             steam_networking_sockets()?,
             networking_virtual_port(local_virtual_port)?,
-            0,
-            ptr::null(),
+            option_count,
+            option_ptr,
         )
     })
 }
@@ -12098,15 +12107,18 @@ pub fn networking_sockets_create_listen_socket_p2p(
 pub fn networking_sockets_connect_p2p(
     identity: NetworkingIdentity,
     remote_virtual_port: Option<i32>,
+    options: Option<Vec<NetworkingConfigValue>>,
 ) -> Result<u32, Error> {
     let identity = networking_identity_from_input(identity)?;
+    let (option_count, options, _strings) = networking_config_values(options)?;
+    let option_ptr = networking_config_value_ptr(&options);
     Ok(unsafe {
         sys::SteamAPI_ISteamNetworkingSockets_ConnectP2P(
             steam_networking_sockets()?,
             &identity,
             networking_virtual_port(remote_virtual_port)?,
-            0,
-            ptr::null(),
+            option_count,
+            option_ptr,
         )
     })
 }
@@ -12116,6 +12128,7 @@ pub fn networking_sockets_connect_p2p_custom_signaling(
     signaling_pointer: BigInt,
     peer_identity: Option<NetworkingIdentity>,
     remote_virtual_port: Option<i32>,
+    options: Option<Vec<NetworkingConfigValue>>,
 ) -> Result<u32, Error> {
     let signaling = required_networking_pointer::<sys::ISteamNetworkingConnectionSignaling>(
         signaling_pointer,
@@ -12127,14 +12140,16 @@ pub fn networking_sockets_connect_p2p_custom_signaling(
     let peer_identity_ptr = peer_identity
         .as_ref()
         .map_or(ptr::null(), |identity| identity as *const _);
+    let (option_count, options, _strings) = networking_config_values(options)?;
+    let option_ptr = networking_config_value_ptr(&options);
     Ok(unsafe {
         sys::SteamAPI_ISteamNetworkingSockets_ConnectP2PCustomSignaling(
             steam_networking_sockets()?,
             signaling,
             peer_identity_ptr,
             networking_virtual_port(remote_virtual_port)?,
-            0,
-            ptr::null(),
+            option_count,
+            option_ptr,
         )
     })
 }
@@ -12645,15 +12660,18 @@ pub fn networking_sockets_find_relay_auth_ticket_for_server(
 pub fn networking_sockets_connect_to_hosted_dedicated_server(
     identity: NetworkingIdentity,
     remote_virtual_port: Option<i32>,
+    options: Option<Vec<NetworkingConfigValue>>,
 ) -> Result<u32, Error> {
     let identity = networking_identity_from_input(identity)?;
+    let (option_count, options, _strings) = networking_config_values(options)?;
+    let option_ptr = networking_config_value_ptr(&options);
     Ok(unsafe {
         sys::SteamAPI_ISteamNetworkingSockets_ConnectToHostedDedicatedServer(
             steam_networking_sockets()?,
             &identity,
             networking_virtual_port(remote_virtual_port)?,
-            0,
-            ptr::null(),
+            option_count,
+            option_ptr,
         )
     })
 }
@@ -12721,13 +12739,16 @@ pub fn networking_sockets_create_hosted_dedicated_server_dev_address(
 #[napi(js_name = "networkingSocketsCreateHostedDedicatedServerListenSocket")]
 pub fn networking_sockets_create_hosted_dedicated_server_listen_socket(
     local_virtual_port: Option<i32>,
+    options: Option<Vec<NetworkingConfigValue>>,
 ) -> Result<u32, Error> {
+    let (option_count, options, _strings) = networking_config_values(options)?;
+    let option_ptr = networking_config_value_ptr(&options);
     Ok(unsafe {
         sys::SteamAPI_ISteamNetworkingSockets_CreateHostedDedicatedServerListenSocket(
             steam_networking_sockets()?,
             networking_virtual_port(local_virtual_port)?,
-            0,
-            ptr::null(),
+            option_count,
+            option_ptr,
         )
     })
 }
@@ -12873,17 +12894,20 @@ pub fn networking_sockets_get_fake_ip(
 #[napi(js_name = "networkingSocketsCreateListenSocketP2pFakeIp")]
 pub fn networking_sockets_create_listen_socket_p2p_fake_ip(
     idx_fake_port: Option<i32>,
+    options: Option<Vec<NetworkingConfigValue>>,
 ) -> Result<u32, Error> {
     let idx_fake_port = idx_fake_port.unwrap_or(0);
     if idx_fake_port < 0 {
         return Err(Error::from_reason("FakeIP port index must be non-negative"));
     }
+    let (option_count, options, _strings) = networking_config_values(options)?;
+    let option_ptr = networking_config_value_ptr(&options);
     Ok(unsafe {
         sys::SteamAPI_ISteamNetworkingSockets_CreateListenSocketP2PFakeIP(
             steam_networking_sockets()?,
             idx_fake_port,
-            0,
-            ptr::null(),
+            option_count,
+            option_ptr,
         )
     })
 }
@@ -12949,22 +12973,35 @@ macro_rules! game_server_networking_sockets_wrapper {
 game_server_networking_sockets_wrapper!(
     "gameServerNetworkingSocketsCreateListenSocketIp",
     game_server_networking_sockets_create_listen_socket_ip,
-    networking_sockets_create_listen_socket_ip(address: NetworkingIpAddress) -> u32
+    networking_sockets_create_listen_socket_ip(
+        address: NetworkingIpAddress,
+        options: Option<Vec<NetworkingConfigValue>>
+    ) -> u32
 );
 game_server_networking_sockets_wrapper!(
     "gameServerNetworkingSocketsConnectByIpAddress",
     game_server_networking_sockets_connect_by_ip_address,
-    networking_sockets_connect_by_ip_address(address: NetworkingIpAddress) -> u32
+    networking_sockets_connect_by_ip_address(
+        address: NetworkingIpAddress,
+        options: Option<Vec<NetworkingConfigValue>>
+    ) -> u32
 );
 game_server_networking_sockets_wrapper!(
     "gameServerNetworkingSocketsCreateListenSocketP2p",
     game_server_networking_sockets_create_listen_socket_p2p,
-    networking_sockets_create_listen_socket_p2p(local_virtual_port: Option<i32>) -> u32
+    networking_sockets_create_listen_socket_p2p(
+        local_virtual_port: Option<i32>,
+        options: Option<Vec<NetworkingConfigValue>>
+    ) -> u32
 );
 game_server_networking_sockets_wrapper!(
     "gameServerNetworkingSocketsConnectP2p",
     game_server_networking_sockets_connect_p2p,
-    networking_sockets_connect_p2p(identity: NetworkingIdentity, remote_virtual_port: Option<i32>) -> u32
+    networking_sockets_connect_p2p(
+        identity: NetworkingIdentity,
+        remote_virtual_port: Option<i32>,
+        options: Option<Vec<NetworkingConfigValue>>
+    ) -> u32
 );
 game_server_networking_sockets_wrapper!(
     "gameServerNetworkingSocketsConnectP2pCustomSignaling",
@@ -12972,7 +13009,8 @@ game_server_networking_sockets_wrapper!(
     networking_sockets_connect_p2p_custom_signaling(
         signaling_pointer: BigInt,
         peer_identity: Option<NetworkingIdentity>,
-        remote_virtual_port: Option<i32>
+        remote_virtual_port: Option<i32>,
+        options: Option<Vec<NetworkingConfigValue>>
     ) -> u32
 );
 game_server_networking_sockets_wrapper!(
@@ -13160,7 +13198,8 @@ game_server_networking_sockets_wrapper!(
     game_server_networking_sockets_connect_to_hosted_dedicated_server,
     networking_sockets_connect_to_hosted_dedicated_server(
         identity: NetworkingIdentity,
-        remote_virtual_port: Option<i32>
+        remote_virtual_port: Option<i32>,
+        options: Option<Vec<NetworkingConfigValue>>
     ) -> u32
 );
 game_server_networking_sockets_wrapper!(
@@ -13181,7 +13220,10 @@ game_server_networking_sockets_wrapper!(
 game_server_networking_sockets_wrapper!(
     "gameServerNetworkingSocketsCreateHostedDedicatedServerListenSocket",
     game_server_networking_sockets_create_hosted_dedicated_server_listen_socket,
-    networking_sockets_create_hosted_dedicated_server_listen_socket(local_virtual_port: Option<i32>) -> u32
+    networking_sockets_create_hosted_dedicated_server_listen_socket(
+        local_virtual_port: Option<i32>,
+        options: Option<Vec<NetworkingConfigValue>>
+    ) -> u32
 );
 game_server_networking_sockets_wrapper!(
     "gameServerNetworkingSocketsGetGameCoordinatorServerLogin",
@@ -13219,7 +13261,10 @@ game_server_networking_sockets_wrapper!(
 game_server_networking_sockets_wrapper!(
     "gameServerNetworkingSocketsCreateListenSocketP2pFakeIp",
     game_server_networking_sockets_create_listen_socket_p2p_fake_ip,
-    networking_sockets_create_listen_socket_p2p_fake_ip(idx_fake_port: Option<i32>) -> u32
+    networking_sockets_create_listen_socket_p2p_fake_ip(
+        idx_fake_port: Option<i32>,
+        options: Option<Vec<NetworkingConfigValue>>
+    ) -> u32
 );
 game_server_networking_sockets_wrapper!(
     "gameServerNetworkingSocketsGetRemoteFakeIpForConnection",
@@ -19808,6 +19853,41 @@ fn networking_config_value_result(
     }
 
     output
+}
+
+fn networking_config_values(
+    options: Option<Vec<NetworkingConfigValue>>,
+) -> Result<
+    (
+        i32,
+        Vec<sys::SteamNetworkingConfigValue_t>,
+        Vec<Option<CString>>,
+    ),
+    Error,
+> {
+    let options = options.unwrap_or_default();
+    let option_count = i32::try_from(options.len())
+        .map_err(|_| Error::from_reason("networking config option count exceeds i32"))?;
+    let mut values = Vec::with_capacity(options.len());
+    let mut strings = Vec::with_capacity(options.len());
+
+    for option in options {
+        let (value, string) = networking_config_value_struct(option)?;
+        values.push(value);
+        strings.push(string);
+    }
+
+    Ok((option_count, values, strings))
+}
+
+fn networking_config_value_ptr(
+    values: &[sys::SteamNetworkingConfigValue_t],
+) -> *const sys::SteamNetworkingConfigValue_t {
+    if values.is_empty() {
+        ptr::null()
+    } else {
+        values.as_ptr()
+    }
 }
 
 fn networking_config_value_struct(

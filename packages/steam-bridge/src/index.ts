@@ -7716,27 +7716,46 @@ export const networking = {
     SendFlags: NetworkingSendFlags,
     ConnectionState: NetworkingConnectionState,
     Availability: NetworkingAvailability,
-    createListenSocketIP(address: NetworkingIpAddress): number {
-      return native().networkingSocketsCreateListenSocketIp(nativeNetworkingIpAddress(address));
+    createListenSocketIP(address: NetworkingIpAddress, options?: readonly NetworkingConfigOption[] | null): number {
+      return native().networkingSocketsCreateListenSocketIp(
+        nativeNetworkingIpAddress(address),
+        nativeNetworkingConfigValues(options)
+      );
     },
-    connectByIPAddress(address: NetworkingIpAddress): number {
-      return native().networkingSocketsConnectByIpAddress(nativeNetworkingIpAddress(address));
+    connectByIPAddress(address: NetworkingIpAddress, options?: readonly NetworkingConfigOption[] | null): number {
+      return native().networkingSocketsConnectByIpAddress(
+        nativeNetworkingIpAddress(address),
+        nativeNetworkingConfigValues(options)
+      );
     },
-    createListenSocketP2P(localVirtualPort = 0): number {
-      return native().networkingSocketsCreateListenSocketP2p(localVirtualPort);
+    createListenSocketP2P(localVirtualPort = 0, options?: readonly NetworkingConfigOption[] | null): number {
+      return native().networkingSocketsCreateListenSocketP2p(
+        localVirtualPort,
+        nativeNetworkingConfigValues(options)
+      );
     },
-    connectP2P(identity: NetworkingIdentity, remoteVirtualPort = 0): number {
-      return native().networkingSocketsConnectP2p(nativeNetworkingIdentity(identity), remoteVirtualPort);
+    connectP2P(
+      identity: NetworkingIdentity,
+      remoteVirtualPort = 0,
+      options?: readonly NetworkingConfigOption[] | null
+    ): number {
+      return native().networkingSocketsConnectP2p(
+        nativeNetworkingIdentity(identity),
+        remoteVirtualPort,
+        nativeNetworkingConfigValues(options)
+      );
     },
     connectP2PCustomSignaling(
       signalingPointer: bigint,
       peerIdentity?: NetworkingIdentity | null,
-      remoteVirtualPort = 0
+      remoteVirtualPort = 0,
+      options?: readonly NetworkingConfigOption[] | null
     ): number {
       return native().networkingSocketsConnectP2pCustomSignaling(
         signalingPointer,
         peerIdentity ? nativeNetworkingIdentity(peerIdentity) : undefined,
-        remoteVirtualPort
+        remoteVirtualPort,
+        nativeNetworkingConfigValues(options)
       );
     },
     receivedP2PCustomSignal(message: Buffer | Uint8Array, contextPointer: bigint): boolean {
@@ -7861,10 +7880,15 @@ export const networking = {
         remoteVirtualPort
       );
     },
-    connectToHostedDedicatedServer(identity: NetworkingIdentity, remoteVirtualPort = 0): number {
+    connectToHostedDedicatedServer(
+      identity: NetworkingIdentity,
+      remoteVirtualPort = 0,
+      options?: readonly NetworkingConfigOption[] | null
+    ): number {
       return native().networkingSocketsConnectToHostedDedicatedServer(
         nativeNetworkingIdentity(identity),
-        remoteVirtualPort
+        remoteVirtualPort,
+        nativeNetworkingConfigValues(options)
       );
     },
     getHostedDedicatedServerPort(): number {
@@ -7883,8 +7907,14 @@ export const networking = {
         native().networkingSocketsCreateHostedDedicatedServerDevAddress(ip, port, popId)
       )!;
     },
-    createHostedDedicatedServerListenSocket(localVirtualPort = 0): number {
-      return native().networkingSocketsCreateHostedDedicatedServerListenSocket(localVirtualPort);
+    createHostedDedicatedServerListenSocket(
+      localVirtualPort = 0,
+      options?: readonly NetworkingConfigOption[] | null
+    ): number {
+      return native().networkingSocketsCreateHostedDedicatedServerListenSocket(
+        localVirtualPort,
+        nativeNetworkingConfigValues(options)
+      );
     },
     getGameCoordinatorServerLogin(
       appData?: Buffer | Uint8Array | null,
@@ -7912,8 +7942,14 @@ export const networking = {
     getFakeIP(idxFirstPort = 0): NetworkingFakeIpResult {
       return normalizeNetworkingFakeIpResult(native().networkingSocketsGetFakeIp(idxFirstPort));
     },
-    createListenSocketP2PFakeIP(idxFakePort = 0): number {
-      return native().networkingSocketsCreateListenSocketP2pFakeIp(idxFakePort);
+    createListenSocketP2PFakeIP(
+      idxFakePort = 0,
+      options?: readonly NetworkingConfigOption[] | null
+    ): number {
+      return native().networkingSocketsCreateListenSocketP2pFakeIp(
+        idxFakePort,
+        nativeNetworkingConfigValues(options)
+      );
     },
     getRemoteFakeIPForConnection(connection: number): NetworkingRemoteFakeIpResult {
       return normalizeNetworkingRemoteFakeIpResult(native().networkingSocketsGetRemoteFakeIpForConnection(connection));
@@ -8297,27 +8333,46 @@ export const gameServerNetworkingSockets = {
   SendFlags: NetworkingSendFlags,
   ConnectionState: NetworkingConnectionState,
   Availability: NetworkingAvailability,
-  createListenSocketIP(address: NetworkingIpAddress): number {
-    return native().gameServerNetworkingSocketsCreateListenSocketIp(nativeNetworkingIpAddress(address));
+  createListenSocketIP(address: NetworkingIpAddress, options?: readonly NetworkingConfigOption[] | null): number {
+    return native().gameServerNetworkingSocketsCreateListenSocketIp(
+      nativeNetworkingIpAddress(address),
+      nativeNetworkingConfigValues(options)
+    );
   },
-  connectByIPAddress(address: NetworkingIpAddress): number {
-    return native().gameServerNetworkingSocketsConnectByIpAddress(nativeNetworkingIpAddress(address));
+  connectByIPAddress(address: NetworkingIpAddress, options?: readonly NetworkingConfigOption[] | null): number {
+    return native().gameServerNetworkingSocketsConnectByIpAddress(
+      nativeNetworkingIpAddress(address),
+      nativeNetworkingConfigValues(options)
+    );
   },
-  createListenSocketP2P(localVirtualPort = 0): number {
-    return native().gameServerNetworkingSocketsCreateListenSocketP2p(localVirtualPort);
+  createListenSocketP2P(localVirtualPort = 0, options?: readonly NetworkingConfigOption[] | null): number {
+    return native().gameServerNetworkingSocketsCreateListenSocketP2p(
+      localVirtualPort,
+      nativeNetworkingConfigValues(options)
+    );
   },
-  connectP2P(identity: NetworkingIdentity, remoteVirtualPort = 0): number {
-    return native().gameServerNetworkingSocketsConnectP2p(nativeNetworkingIdentity(identity), remoteVirtualPort);
+  connectP2P(
+    identity: NetworkingIdentity,
+    remoteVirtualPort = 0,
+    options?: readonly NetworkingConfigOption[] | null
+  ): number {
+    return native().gameServerNetworkingSocketsConnectP2p(
+      nativeNetworkingIdentity(identity),
+      remoteVirtualPort,
+      nativeNetworkingConfigValues(options)
+    );
   },
   connectP2PCustomSignaling(
     signalingPointer: bigint,
     peerIdentity?: NetworkingIdentity | null,
-    remoteVirtualPort = 0
+    remoteVirtualPort = 0,
+    options?: readonly NetworkingConfigOption[] | null
   ): number {
     return native().gameServerNetworkingSocketsConnectP2pCustomSignaling(
       signalingPointer,
       peerIdentity ? nativeNetworkingIdentity(peerIdentity) : undefined,
-      remoteVirtualPort
+      remoteVirtualPort,
+      nativeNetworkingConfigValues(options)
     );
   },
   receivedP2PCustomSignal(message: Buffer | Uint8Array, contextPointer: bigint): boolean {
@@ -8444,10 +8499,15 @@ export const gameServerNetworkingSockets = {
       remoteVirtualPort
     );
   },
-  connectToHostedDedicatedServer(identity: NetworkingIdentity, remoteVirtualPort = 0): number {
+  connectToHostedDedicatedServer(
+    identity: NetworkingIdentity,
+    remoteVirtualPort = 0,
+    options?: readonly NetworkingConfigOption[] | null
+  ): number {
     return native().gameServerNetworkingSocketsConnectToHostedDedicatedServer(
       nativeNetworkingIdentity(identity),
-      remoteVirtualPort
+      remoteVirtualPort,
+      nativeNetworkingConfigValues(options)
     );
   },
   getHostedDedicatedServerPort(): number {
@@ -8461,8 +8521,14 @@ export const gameServerNetworkingSockets = {
       native().gameServerNetworkingSocketsGetHostedDedicatedServerAddress()
     );
   },
-  createHostedDedicatedServerListenSocket(localVirtualPort = 0): number {
-    return native().gameServerNetworkingSocketsCreateHostedDedicatedServerListenSocket(localVirtualPort);
+  createHostedDedicatedServerListenSocket(
+    localVirtualPort = 0,
+    options?: readonly NetworkingConfigOption[] | null
+  ): number {
+    return native().gameServerNetworkingSocketsCreateHostedDedicatedServerListenSocket(
+      localVirtualPort,
+      nativeNetworkingConfigValues(options)
+    );
   },
   getGameCoordinatorServerLogin(
     appData?: Buffer | Uint8Array | null,
@@ -8494,8 +8560,11 @@ export const gameServerNetworkingSockets = {
   getFakeIP(idxFirstPort = 0): NetworkingFakeIpResult {
     return normalizeNetworkingFakeIpResult(native().gameServerNetworkingSocketsGetFakeIp(idxFirstPort));
   },
-  createListenSocketP2PFakeIP(idxFakePort = 0): number {
-    return native().gameServerNetworkingSocketsCreateListenSocketP2pFakeIp(idxFakePort);
+  createListenSocketP2PFakeIP(idxFakePort = 0, options?: readonly NetworkingConfigOption[] | null): number {
+    return native().gameServerNetworkingSocketsCreateListenSocketP2pFakeIp(
+      idxFakePort,
+      nativeNetworkingConfigValues(options)
+    );
   },
   getRemoteFakeIPForConnection(connection: number): NetworkingRemoteFakeIpResult {
     return normalizeNetworkingRemoteFakeIpResult(
@@ -14912,6 +14981,15 @@ function nativeNetworkingConfigValue(option: NetworkingConfigOption): NativeNetw
     output.pointerValue = option.pointerValue === null ? null : BigInt(option.pointerValue);
   }
   return output;
+}
+
+function nativeNetworkingConfigValues(
+  options?: readonly NetworkingConfigOption[] | null
+): NativeNetworkingConfigValue[] | undefined {
+  if (!options || options.length === 0) {
+    return undefined;
+  }
+  return options.map(nativeNetworkingConfigValue);
 }
 
 function normalizeNetworkingIdentityInfo(

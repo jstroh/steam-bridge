@@ -13,6 +13,8 @@ helpers, encrypted app ticket parsing, Steam utility checks, Steam ID helpers,
 achievements, networking, matchmaking, app metadata and DLC helpers, cloud,
 HTTP, game-server, input, stats, inventory, workshop helpers, and a generic
 Steam Web API client for publisher inventory, trading, and economy endpoints.
+Modern networking socket create/connect helpers accept per-call
+`NetworkingConfigOption` arrays.
 
 Steam SDK redistributables are not committed. For local/native builds, provide
 the Steamworks SDK in the normal location expected by `steamworks-sys`, or set

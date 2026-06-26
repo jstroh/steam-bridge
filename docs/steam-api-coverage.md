@@ -142,7 +142,8 @@ covered.
   session/channel close helpers,
   core client and game-server `ISteamNetworkingSockets`
   connection/listen-socket/single and batch
-  message/poll-group helpers, custom P2P signaling pointer bridges,
+  message/poll-group helpers, per-call socket configuration arrays for
+  create/connect/listen helpers, custom P2P signaling pointer bridges,
   relay-auth-ticket cache helpers, hosted dedicated connect/listen helpers,
   hosted dedicated address, dev-address, and game coordinator login blobs,
   certificate request/install/reset helpers, fake-IP allocation and listen

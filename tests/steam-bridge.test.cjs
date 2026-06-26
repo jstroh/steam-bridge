@@ -5226,18 +5226,18 @@ test("game server networking sockets facade uses game-server native bindings", (
     max_jitter: 40
   };
   const fake = createFakeNative({
-    gameServerNetworkingSocketsCreateListenSocketIp(addr) {
-      this.calls.push({ method: "gameServerNetworkingSocketsCreateListenSocketIp", args: [addr] });
+    gameServerNetworkingSocketsCreateListenSocketIp(addr, options) {
+      this.calls.push({ method: "gameServerNetworkingSocketsCreateListenSocketIp", args: [addr, options] });
       return 144;
     },
-    gameServerNetworkingSocketsConnectP2p(identity, port) {
-      this.calls.push({ method: "gameServerNetworkingSocketsConnectP2p", args: [identity, port] });
+    gameServerNetworkingSocketsConnectP2p(identity, port, options) {
+      this.calls.push({ method: "gameServerNetworkingSocketsConnectP2p", args: [identity, port, options] });
       return 202;
     },
-    gameServerNetworkingSocketsConnectP2pCustomSignaling(signalingPointer, peerIdentity, port) {
+    gameServerNetworkingSocketsConnectP2pCustomSignaling(signalingPointer, peerIdentity, port, options) {
       this.calls.push({
         method: "gameServerNetworkingSocketsConnectP2pCustomSignaling",
-        args: [signalingPointer, peerIdentity, port]
+        args: [signalingPointer, peerIdentity, port, options]
       });
       return 203;
     },
@@ -5318,11 +5318,21 @@ test("game server networking sockets facade uses game-server native bindings", (
   t.after(clearSteamBridgeCache);
 
   const identity = { steamId64: 76561198000000012n };
+  const socketOptions = [
+    { value: steam.networking.utils.ConfigValue.TimeoutInitial, int32Value: 1500 },
+    { value: steam.networking.utils.ConfigValue.SDRClientForceRelayCluster, stringValue: "iad" }
+  ];
   assert.equal(steam.gameServerNetworkingSockets.ConnectionState.Connected, 3);
   assert.equal(steam.gameServerNetworkingSockets.Availability.Current, 100);
-  assert.equal(steam.gameServerNetworkingSockets.createListenSocketIP({ ipv4: 2130706433, port: 27015 }), 144);
-  assert.equal(steam.gameServerNetworkingSockets.connectP2P(identity, 7), 202);
-  assert.equal(steam.gameServerNetworkingSockets.connectP2PCustomSignaling(0x1234n, identity, 8), 203);
+  assert.equal(
+    steam.gameServerNetworkingSockets.createListenSocketIP({ ipv4: 2130706433, port: 27015 }, socketOptions),
+    144
+  );
+  assert.equal(steam.gameServerNetworkingSockets.connectP2P(identity, 7, socketOptions), 202);
+  assert.equal(
+    steam.gameServerNetworkingSockets.connectP2PCustomSignaling(0x1234n, identity, 8, socketOptions),
+    203
+  );
   assert.equal(steam.gameServerNetworkingSockets.receivedP2PCustomSignal(Buffer.from("server-signal"), 0x5678n), true);
   assert.deepEqual(
     steam.gameServerNetworkingSockets.sendMessages([
@@ -5349,11 +5359,15 @@ test("game server networking sockets facade uses game-server native bindings", (
   assert.equal(sendMessagesCall.args[0][0].sendFlags, steam.gameServerNetworkingSockets.SendFlags.ReliableNoNagle);
   assert.deepEqual(fake.calls.find((call) => call.method === "gameServerNetworkingSocketsConnectP2p"), {
     method: "gameServerNetworkingSocketsConnectP2p",
-    args: [{ steamId64: 76561198000000012n }, 7]
+    args: [{ steamId64: 76561198000000012n }, 7, socketOptions]
   });
   assert.deepEqual(fake.calls.find((call) => call.method === "gameServerNetworkingSocketsConnectP2pCustomSignaling"), {
     method: "gameServerNetworkingSocketsConnectP2pCustomSignaling",
-    args: [0x1234n, { steamId64: 76561198000000012n }, 8]
+    args: [0x1234n, { steamId64: 76561198000000012n }, 8, socketOptions]
+  });
+  assert.deepEqual(fake.calls.find((call) => call.method === "gameServerNetworkingSocketsCreateListenSocketIp"), {
+    method: "gameServerNetworkingSocketsCreateListenSocketIp",
+    args: [{ ipv4: 2130706433, port: 27015 }, socketOptions]
   });
   assert.deepEqual(fake.calls.find((call) => call.method === "gameServerNetworkingSocketsReceivedP2pCustomSignal"), {
     method: "gameServerNetworkingSocketsReceivedP2pCustomSignal",
@@ -5404,26 +5418,26 @@ test("networking sockets facade covers connection handles, status, poll groups, 
     flags: 16
   };
   const fake = createFakeNative({
-    networkingSocketsCreateListenSocketIp(addr) {
-      this.calls.push({ method: "networkingSocketsCreateListenSocketIp", args: [addr] });
+    networkingSocketsCreateListenSocketIp(addr, options) {
+      this.calls.push({ method: "networkingSocketsCreateListenSocketIp", args: [addr, options] });
       return 44;
     },
-    networkingSocketsConnectByIpAddress(addr) {
-      this.calls.push({ method: "networkingSocketsConnectByIpAddress", args: [addr] });
+    networkingSocketsConnectByIpAddress(addr, options) {
+      this.calls.push({ method: "networkingSocketsConnectByIpAddress", args: [addr, options] });
       return 101;
     },
-    networkingSocketsCreateListenSocketP2p(port) {
-      this.calls.push({ method: "networkingSocketsCreateListenSocketP2p", args: [port] });
+    networkingSocketsCreateListenSocketP2p(port, options) {
+      this.calls.push({ method: "networkingSocketsCreateListenSocketP2p", args: [port, options] });
       return 45;
     },
-    networkingSocketsConnectP2p(identity, port) {
-      this.calls.push({ method: "networkingSocketsConnectP2p", args: [identity, port] });
+    networkingSocketsConnectP2p(identity, port, options) {
+      this.calls.push({ method: "networkingSocketsConnectP2p", args: [identity, port, options] });
       return 102;
     },
-    networkingSocketsConnectP2pCustomSignaling(signalingPointer, peerIdentity, port) {
+    networkingSocketsConnectP2pCustomSignaling(signalingPointer, peerIdentity, port, options) {
       this.calls.push({
         method: "networkingSocketsConnectP2pCustomSignaling",
-        args: [signalingPointer, peerIdentity, port]
+        args: [signalingPointer, peerIdentity, port, options]
       });
       return 104;
     },
@@ -5571,8 +5585,8 @@ test("networking sockets facade covers connection handles, status, poll groups, 
       this.calls.push({ method: "networkingSocketsFindRelayAuthTicketForServer", args: [identity, remoteVirtualPort] });
       return 120;
     },
-    networkingSocketsConnectToHostedDedicatedServer(identity, remoteVirtualPort) {
-      this.calls.push({ method: "networkingSocketsConnectToHostedDedicatedServer", args: [identity, remoteVirtualPort] });
+    networkingSocketsConnectToHostedDedicatedServer(identity, remoteVirtualPort, options) {
+      this.calls.push({ method: "networkingSocketsConnectToHostedDedicatedServer", args: [identity, remoteVirtualPort, options] });
       return 103;
     },
     networkingSocketsGetHostedDedicatedServerPort() {
@@ -5603,8 +5617,8 @@ test("networking sockets facade covers connection handles, status, poll groups, 
         data: Buffer.from("dev")
       };
     },
-    networkingSocketsCreateHostedDedicatedServerListenSocket(localVirtualPort) {
-      this.calls.push({ method: "networkingSocketsCreateHostedDedicatedServerListenSocket", args: [localVirtualPort] });
+    networkingSocketsCreateHostedDedicatedServerListenSocket(localVirtualPort, options) {
+      this.calls.push({ method: "networkingSocketsCreateHostedDedicatedServerListenSocket", args: [localVirtualPort, options] });
       return 46;
     },
     networkingSocketsGetGameCoordinatorServerLogin(appData, maxBlobBytes) {
@@ -5649,8 +5663,8 @@ test("networking sockets facade covers connection handles, status, poll groups, 
         ports: [27015, 27016]
       };
     },
-    networkingSocketsCreateListenSocketP2pFakeIp(idxFakePort) {
-      this.calls.push({ method: "networkingSocketsCreateListenSocketP2pFakeIp", args: [idxFakePort] });
+    networkingSocketsCreateListenSocketP2pFakeIp(idxFakePort, options) {
+      this.calls.push({ method: "networkingSocketsCreateListenSocketP2pFakeIp", args: [idxFakePort, options] });
       return 47;
     },
     networkingSocketsGetRemoteFakeIpForConnection(connection) {
@@ -5696,15 +5710,19 @@ test("networking sockets facade covers connection handles, status, poll groups, 
   t.after(clearSteamBridgeCache);
 
   const identity = { steamId64: 76561198000000010n };
+  const socketOptions = [
+    { value: steam.networking.utils.ConfigValue.TimeoutInitial, int32Value: 2500 },
+    { value: steam.networking.utils.ConfigValue.SDRClientForceRelayCluster, stringValue: "iad" }
+  ];
   assert.equal(steam.SteamCallback.SteamNetConnectionStatusChanged, 1221);
   assert.equal(steam.SteamCallback.SteamNetworkingFakeIPResult, 1223);
   assert.equal(steam.networking.sockets.ConnectionState.Connected, 3);
   assert.equal(steam.networking.sockets.Availability.Current, 100);
-  assert.equal(steam.networking.sockets.createListenSocketIP({ ipv4: 2130706433, port: 27015 }), 44);
-  assert.equal(steam.networking.sockets.connectByIPAddress({ text: "127.0.0.1:27015" }), 101);
-  assert.equal(steam.networking.sockets.createListenSocketP2P(7), 45);
-  assert.equal(steam.networking.sockets.connectP2P(identity, 7), 102);
-  assert.equal(steam.networking.sockets.connectP2PCustomSignaling(0x1234n, identity, 8), 104);
+  assert.equal(steam.networking.sockets.createListenSocketIP({ ipv4: 2130706433, port: 27015 }, socketOptions), 44);
+  assert.equal(steam.networking.sockets.connectByIPAddress({ text: "127.0.0.1:27015" }, socketOptions), 101);
+  assert.equal(steam.networking.sockets.createListenSocketP2P(7, socketOptions), 45);
+  assert.equal(steam.networking.sockets.connectP2P(identity, 7, socketOptions), 102);
+  assert.equal(steam.networking.sockets.connectP2PCustomSignaling(0x1234n, identity, 8, socketOptions), 104);
   assert.equal(steam.networking.sockets.receivedP2PCustomSignal(Uint8Array.from([1, 2, 3]), 0x5678n), true);
   assert.equal(steam.networking.sockets.acceptConnection(102), 1);
   assert.equal(steam.networking.sockets.closeConnection(102, { reason: 2000, debug: "done", enableLinger: true }), true);
@@ -5808,7 +5826,7 @@ test("networking sockets facade covers connection handles, status, poll groups, 
   assert.equal(steam.networking.sockets.destroyPollGroup(pollGroup), true);
   assert.equal(steam.networking.sockets.receivedRelayAuthTicket(Buffer.from("ticket")), true);
   assert.equal(steam.networking.sockets.findRelayAuthTicketForServer(identity, 7), 120);
-  assert.equal(steam.networking.sockets.connectToHostedDedicatedServer(identity, 7), 103);
+  assert.equal(steam.networking.sockets.connectToHostedDedicatedServer(identity, 7, socketOptions), 103);
   assert.equal(steam.networking.sockets.getHostedDedicatedServerPort(), 27015);
   assert.equal(steam.networking.sockets.getHostedDedicatedServerPopId(), 1234);
   const hostedAddress = steam.networking.sockets.getHostedDedicatedServerAddress();
@@ -5818,7 +5836,7 @@ test("networking sockets facade covers connection handles, status, poll groups, 
   const devAddress = steam.networking.sockets.createHostedDedicatedServerDevAddress(2130706433, 27015, 5678);
   assert.equal(devAddress.popId, 5678);
   assert.equal(devAddress.data.toString(), "dev");
-  assert.equal(steam.networking.sockets.createHostedDedicatedServerListenSocket(7), 46);
+  assert.equal(steam.networking.sockets.createHostedDedicatedServerListenSocket(7, socketOptions), 46);
   const serverLogin = steam.networking.sockets.getGameCoordinatorServerLogin(Buffer.from("app-data"), 4096);
   assert.equal(serverLogin.result, 1);
   assert.equal(serverLogin.identity.steamId64, 76561198000000010n);
@@ -5848,7 +5866,7 @@ test("networking sockets facade covers connection handles, status, poll groups, 
     ipv4Address: "10.0.0.1",
     ports: [27015, 27016]
   });
-  assert.equal(steam.networking.sockets.createListenSocketP2PFakeIP(1), 47);
+  assert.equal(steam.networking.sockets.createListenSocketP2PFakeIP(1, socketOptions), 47);
   assert.equal(steam.networking.sockets.getRemoteFakeIPForConnection(102).address.port, 27015);
   const fakeUdpPort = steam.networking.sockets.createFakeUDPPort(1);
   assert.equal(fakeUdpPort, 601);
@@ -5890,11 +5908,11 @@ test("networking sockets facade covers connection handles, status, poll groups, 
 
   assert.deepEqual(fake.calls.find((call) => call.method === "networkingSocketsConnectP2p"), {
     method: "networkingSocketsConnectP2p",
-    args: [{ steamId64: 76561198000000010n }, 7]
+    args: [{ steamId64: 76561198000000010n }, 7, socketOptions]
   });
   assert.deepEqual(fake.calls.find((call) => call.method === "networkingSocketsConnectP2pCustomSignaling"), {
     method: "networkingSocketsConnectP2pCustomSignaling",
-    args: [0x1234n, { steamId64: 76561198000000010n }, 8]
+    args: [0x1234n, { steamId64: 76561198000000010n }, 8, socketOptions]
   });
   assert.deepEqual(fake.calls.find((call) => call.method === "networkingSocketsReceivedP2pCustomSignal"), {
     method: "networkingSocketsReceivedP2pCustomSignal",
@@ -5911,6 +5929,18 @@ test("networking sockets facade covers connection handles, status, poll groups, 
   assert.deepEqual(fake.calls.find((call) => call.method === "networkingSocketsGetGameCoordinatorServerLogin"), {
     method: "networkingSocketsGetGameCoordinatorServerLogin",
     args: [Buffer.from("app-data"), 4096]
+  });
+  assert.deepEqual(fake.calls.find((call) => call.method === "networkingSocketsCreateListenSocketIp"), {
+    method: "networkingSocketsCreateListenSocketIp",
+    args: [{ ipv4: 2130706433, port: 27015 }, socketOptions]
+  });
+  assert.deepEqual(fake.calls.find((call) => call.method === "networkingSocketsConnectToHostedDedicatedServer"), {
+    method: "networkingSocketsConnectToHostedDedicatedServer",
+    args: [{ steamId64: 76561198000000010n }, 7, socketOptions]
+  });
+  assert.deepEqual(fake.calls.find((call) => call.method === "networkingSocketsCreateListenSocketP2pFakeIp"), {
+    method: "networkingSocketsCreateListenSocketP2pFakeIp",
+    args: [1, socketOptions]
   });
 });
 
