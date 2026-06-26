@@ -955,6 +955,48 @@ export interface AppFileDetails {
   flags: number;
 }
 
+export interface AppDlcInstalledEvent {
+  appId: number;
+  app_id?: number;
+  [key: string]: unknown;
+}
+
+export interface AppNewUrlLaunchParametersEvent {
+  [key: string]: unknown;
+}
+
+export interface AppProofOfPurchaseKeyResponseEvent {
+  result: number;
+  appId: number;
+  app_id?: number;
+  keyLength: number;
+  key_length?: number;
+  key: string;
+  [key: string]: unknown;
+}
+
+export interface AppFileDetailsResultEvent {
+  result: number;
+  fileSize: bigint;
+  file_size?: bigint;
+  shaHex: string;
+  sha_hex?: string;
+  flags: number;
+  [key: string]: unknown;
+}
+
+export interface AppTimedTrialStatusEvent {
+  appId: number;
+  app_id?: number;
+  isOffline: boolean;
+  is_offline?: boolean;
+  secondsAllowed: number;
+  seconds_allowed?: number;
+  secondsPlayed: number;
+  seconds_played?: number;
+  [key: string]: unknown;
+}
+
 export interface InventoryItemDetail {
   itemId: bigint;
   definition: number;
@@ -1075,6 +1117,57 @@ export interface UtilsWarningMessage {
 export interface UtilsFilteredText {
   filtered: string;
   charactersFiltered: number;
+}
+
+export interface UtilsIpCountryEvent {
+  [key: string]: unknown;
+}
+
+export interface UtilsLowBatteryPowerEvent {
+  minutesBatteryLeft: number;
+  minutes_battery_left?: number;
+  [key: string]: unknown;
+}
+
+export interface UtilsApiCallCompletedEvent {
+  asyncCall: bigint;
+  async_call?: bigint;
+  callback: number;
+  parameterSize: number;
+  parameter_size?: number;
+  [key: string]: unknown;
+}
+
+export interface UtilsSteamShutdownEvent {
+  [key: string]: unknown;
+}
+
+export interface UtilsCheckFileSignatureEvent {
+  checkFileSignature: number;
+  check_file_signature?: number;
+  [key: string]: unknown;
+}
+
+export interface UtilsGamepadTextInputDismissedEvent {
+  submitted: boolean;
+  submittedText: number;
+  submitted_text?: number;
+  appId: number;
+  app_id?: number;
+  [key: string]: unknown;
+}
+
+export interface UtilsAppResumingFromSuspendEvent {
+  [key: string]: unknown;
+}
+
+export interface UtilsFloatingGamepadTextInputDismissedEvent {
+  [key: string]: unknown;
+}
+
+export interface UtilsFilterTextDictionaryChangedEvent {
+  language: number;
+  [key: string]: unknown;
 }
 
 export interface UserVoiceAvailable {
@@ -5618,6 +5711,31 @@ export const achievement = {
 };
 
 export const apps = {
+  onDlcInstalled(handler: (event: AppDlcInstalledEvent) => void): CallbackHandle {
+    return onSteamCallback("DlcInstalled", (event) => {
+      handler(event as AppDlcInstalledEvent);
+    });
+  },
+  onNewUrlLaunchParameters(handler: (event: AppNewUrlLaunchParametersEvent) => void): CallbackHandle {
+    return onSteamCallback("NewUrlLaunchParameters", (event) => {
+      handler(event as AppNewUrlLaunchParametersEvent);
+    });
+  },
+  onAppProofOfPurchaseKeyResponse(handler: (event: AppProofOfPurchaseKeyResponseEvent) => void): CallbackHandle {
+    return onSteamCallback("AppProofOfPurchaseKeyResponse", (event) => {
+      handler(event as AppProofOfPurchaseKeyResponseEvent);
+    });
+  },
+  onFileDetailsResult(handler: (event: AppFileDetailsResultEvent) => void): CallbackHandle {
+    return onSteamCallback("FileDetailsResult", (event) => {
+      handler(event as AppFileDetailsResultEvent);
+    });
+  },
+  onTimedTrialStatus(handler: (event: AppTimedTrialStatusEvent) => void): CallbackHandle {
+    return onSteamCallback("TimedTrialStatus", (event) => {
+      handler(event as AppTimedTrialStatusEvent);
+    });
+  },
   isSubscribedApp(appId: number): boolean {
     return native().appsIsSubscribedApp(appId);
   },
@@ -9682,6 +9800,53 @@ export const utils = {
   IPv6ConnectivityState,
   CheckFileSignature,
   getAppId,
+  onIpCountry(handler: (event: UtilsIpCountryEvent) => void): CallbackHandle {
+    return onSteamCallback("IPCountry", (event) => {
+      handler(event as UtilsIpCountryEvent);
+    });
+  },
+  onLowBatteryPower(handler: (event: UtilsLowBatteryPowerEvent) => void): CallbackHandle {
+    return onSteamCallback("LowBatteryPower", (event) => {
+      handler(event as UtilsLowBatteryPowerEvent);
+    });
+  },
+  onApiCallCompleted(handler: (event: UtilsApiCallCompletedEvent) => void): CallbackHandle {
+    return onSteamCallback("SteamAPICallCompleted", (event) => {
+      handler(event as UtilsApiCallCompletedEvent);
+    });
+  },
+  onSteamShutdown(handler: (event: UtilsSteamShutdownEvent) => void): CallbackHandle {
+    return onSteamCallback("SteamShutdown", (event) => {
+      handler(event as UtilsSteamShutdownEvent);
+    });
+  },
+  onCheckFileSignature(handler: (event: UtilsCheckFileSignatureEvent) => void): CallbackHandle {
+    return onSteamCallback("CheckFileSignature", (event) => {
+      handler(event as UtilsCheckFileSignatureEvent);
+    });
+  },
+  onGamepadTextInputDismissed(handler: (event: UtilsGamepadTextInputDismissedEvent) => void): CallbackHandle {
+    return onSteamCallback("GamepadTextInputDismissed", (event) => {
+      handler(event as UtilsGamepadTextInputDismissedEvent);
+    });
+  },
+  onAppResumingFromSuspend(handler: (event: UtilsAppResumingFromSuspendEvent) => void): CallbackHandle {
+    return onSteamCallback("AppResumingFromSuspend", (event) => {
+      handler(event as UtilsAppResumingFromSuspendEvent);
+    });
+  },
+  onFloatingGamepadTextInputDismissed(
+    handler: (event: UtilsFloatingGamepadTextInputDismissedEvent) => void
+  ): CallbackHandle {
+    return onSteamCallback("FloatingGamepadTextInputDismissed", (event) => {
+      handler(event as UtilsFloatingGamepadTextInputDismissedEvent);
+    });
+  },
+  onFilterTextDictionaryChanged(handler: (event: UtilsFilterTextDictionaryChangedEvent) => void): CallbackHandle {
+    return onSteamCallback("FilterTextDictionaryChanged", (event) => {
+      handler(event as UtilsFilterTextDictionaryChangedEvent);
+    });
+  },
   getServerRealTime(): number {
     return native().utilsGetServerRealTime();
   },

@@ -2536,6 +2536,102 @@ test("utils facade covers activity, images, VR, filtering, and text input helper
   );
 });
 
+test("utils facade exposes typed callback helpers", (t) => {
+  const fake = createFakeNative();
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  const events = {};
+  const handles = [
+    steam.utils.onIpCountry((event) => {
+      events.ipCountry = event;
+    }),
+    steam.utils.onLowBatteryPower((event) => {
+      events.lowBattery = event;
+    }),
+    steam.utils.onApiCallCompleted((event) => {
+      events.apiCall = event;
+    }),
+    steam.utils.onSteamShutdown((event) => {
+      events.shutdown = event;
+    }),
+    steam.utils.onCheckFileSignature((event) => {
+      events.signature = event;
+    }),
+    steam.utils.onGamepadTextInputDismissed((event) => {
+      events.gamepadText = event;
+    }),
+    steam.utils.onAppResumingFromSuspend((event) => {
+      events.resume = event;
+    }),
+    steam.utils.onFloatingGamepadTextInputDismissed((event) => {
+      events.floatingText = event;
+    }),
+    steam.utils.onFilterTextDictionaryChanged((event) => {
+      events.dictionary = event;
+    })
+  ];
+
+  fake.callbacks.get(steam.SteamCallback.IPCountry)({});
+  fake.callbacks.get(steam.SteamCallback.LowBatteryPower)({ minutes_battery_left: 15 });
+  fake.callbacks.get(steam.SteamCallback.SteamAPICallCompleted)({
+    async_call: "12345678901234567890",
+    callback: steam.SteamCallback.FileDetailsResult,
+    parameter_size: 252
+  });
+  fake.callbacks.get(steam.SteamCallback.SteamShutdown)({});
+  fake.callbacks.get(steam.SteamCallback.CheckFileSignature)({
+    check_file_signature: steam.utils.CheckFileSignature.ValidSignature
+  });
+  fake.callbacks.get(steam.SteamCallback.GamepadTextInputDismissed)({
+    submitted: true,
+    submitted_text: 12,
+    app_id: 480
+  });
+  fake.callbacks.get(steam.SteamCallback.AppResumingFromSuspend)({});
+  fake.callbacks.get(steam.SteamCallback.FloatingGamepadTextInputDismissed)({});
+  fake.callbacks.get(steam.SteamCallback.FilterTextDictionaryChanged)({ language: 1 });
+
+  assert.deepEqual(events.ipCountry, {});
+  assert.equal(events.lowBattery.minutesBatteryLeft, 15);
+  assert.equal(events.apiCall.asyncCall, 12345678901234567890n);
+  assert.equal(events.apiCall.callback, steam.SteamCallback.FileDetailsResult);
+  assert.equal(events.apiCall.parameterSize, 252);
+  assert.deepEqual(events.shutdown, {});
+  assert.equal(events.signature.checkFileSignature, steam.utils.CheckFileSignature.ValidSignature);
+  assert.equal(events.gamepadText.submitted, true);
+  assert.equal(events.gamepadText.submittedText, 12);
+  assert.equal(events.gamepadText.appId, 480);
+  assert.deepEqual(events.resume, {});
+  assert.deepEqual(events.floatingText, {});
+  assert.equal(events.dictionary.language, 1);
+
+  for (const handle of handles) {
+    handle.disconnect();
+  }
+
+  const callbackIds = [
+    steam.SteamCallback.IPCountry,
+    steam.SteamCallback.LowBatteryPower,
+    steam.SteamCallback.SteamAPICallCompleted,
+    steam.SteamCallback.SteamShutdown,
+    steam.SteamCallback.CheckFileSignature,
+    steam.SteamCallback.GamepadTextInputDismissed,
+    steam.SteamCallback.AppResumingFromSuspend,
+    steam.SteamCallback.FloatingGamepadTextInputDismissed,
+    steam.SteamCallback.FilterTextDictionaryChanged
+  ];
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "registerSteamCallback"),
+    callbackIds.map((callbackId) => ({ method: "registerSteamCallback", args: [callbackId] }))
+  );
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "disconnectCallback"),
+    callbackIds.map((callbackId) => ({ method: "disconnectCallback", args: [callbackId] }))
+  );
+});
+
 test("specific and generic callbacks normalize Steamworks payloads", (t) => {
   const fake = createFakeNative();
   const steam = loadSteamWithFakeNative(fake);
@@ -4318,6 +4414,89 @@ test("apps facade covers DLC, launch, depot, trial, beta, and file-detail helper
       { method: "appsSetActiveBeta", args: ["public"] },
       { method: "appsGetFileDetails", args: ["steam_appid.txt", 5] }
     ]
+  );
+});
+
+test("apps facade exposes typed callback helpers", (t) => {
+  const fake = createFakeNative();
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  const shaHex = "00112233445566778899aabbccddeeff00112233";
+  const events = {};
+  const handles = [
+    steam.apps.onDlcInstalled((event) => {
+      events.dlc = event;
+    }),
+    steam.apps.onNewUrlLaunchParameters((event) => {
+      events.newUrl = event;
+    }),
+    steam.apps.onAppProofOfPurchaseKeyResponse((event) => {
+      events.proofKey = event;
+    }),
+    steam.apps.onFileDetailsResult((event) => {
+      events.fileDetails = event;
+    }),
+    steam.apps.onTimedTrialStatus((event) => {
+      events.timedTrial = event;
+    })
+  ];
+
+  fake.callbacks.get(steam.SteamCallback.DlcInstalled)({ app_id: 481 });
+  fake.callbacks.get(steam.SteamCallback.NewUrlLaunchParameters)({});
+  fake.callbacks.get(steam.SteamCallback.AppProofOfPurchaseKeyResponse)({
+    result: 1,
+    app_id: 480,
+    key_length: 8,
+    key: "proof-key"
+  });
+  fake.callbacks.get(steam.SteamCallback.FileDetailsResult)({
+    result: 1,
+    file_size: "12345",
+    sha_hex: shaHex,
+    flags: 2
+  });
+  fake.callbacks.get(steam.SteamCallback.TimedTrialStatus)({
+    app_id: 480,
+    is_offline: false,
+    seconds_allowed: 3600,
+    seconds_played: 120
+  });
+
+  assert.equal(events.dlc.appId, 481);
+  assert.deepEqual(events.newUrl, {});
+  assert.equal(events.proofKey.result, 1);
+  assert.equal(events.proofKey.appId, 480);
+  assert.equal(events.proofKey.keyLength, 8);
+  assert.equal(events.proofKey.key, "proof-key");
+  assert.equal(events.fileDetails.result, 1);
+  assert.equal(events.fileDetails.fileSize, 12345n);
+  assert.equal(events.fileDetails.shaHex, shaHex);
+  assert.equal(events.fileDetails.flags, 2);
+  assert.equal(events.timedTrial.appId, 480);
+  assert.equal(events.timedTrial.isOffline, false);
+  assert.equal(events.timedTrial.secondsAllowed, 3600);
+  assert.equal(events.timedTrial.secondsPlayed, 120);
+
+  for (const handle of handles) {
+    handle.disconnect();
+  }
+
+  const callbackIds = [
+    steam.SteamCallback.DlcInstalled,
+    steam.SteamCallback.NewUrlLaunchParameters,
+    steam.SteamCallback.AppProofOfPurchaseKeyResponse,
+    steam.SteamCallback.FileDetailsResult,
+    steam.SteamCallback.TimedTrialStatus
+  ];
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "registerSteamCallback"),
+    callbackIds.map((callbackId) => ({ method: "registerSteamCallback", args: [callbackId] }))
+  );
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "disconnectCallback"),
+    callbackIds.map((callbackId) => ({ method: "disconnectCallback", args: [callbackId] }))
   );
 });
 

@@ -31,7 +31,9 @@ covered.
   inspection, raw `CCallbackBase` registration bridges, generic Steamworks
   callback ID aliases and name-based subscription helpers, generated exact SDK
   enum constants, gamepad text input helpers, warning hooks, IPC failure,
-  license update, client/server-deny, game-web, and utility callback events.
+  license update, client/server-deny, game-web, and typed API-call,
+  shutdown/resume, battery/IP-country, text-input, filter-dictionary, and file
+  signature callback helpers.
 - Steam client: low-level Steam pipe/user creation and release helpers, global
   user connection, local IPv4 binding, typed interface pointer lookup, generic
   interface lookup by version, IPC call counts, warning hooks,
@@ -64,8 +66,8 @@ covered.
   install/uninstall/progress helpers, depot listing, build ID, install
   directory, owner, language, launch query/command-line reads, timed trials,
   family sharing, beta enumeration/activation, proof-key requests, and
-  content-corrupt marking, file detail checks, and DLC, proof-key,
-  file-detail, and timed-trial callback events.
+  content-corrupt marking, file detail checks, and typed DLC, launch-parameter,
+  proof-key, file-detail, and timed-trial callback helpers.
 - User stats, achievements, and leaderboards: achievement activate/clear/check/list,
   metadata, progress, local/user/global stat reads and writes, current-player
   count, global achievement percentages, global stat history, leaderboard
@@ -202,11 +204,11 @@ covered.
   payloads. `steamworks-sys 0.13` exposes the ticket out-parameter but keeps
   `SteamDatagramRelayAuthTicket` opaque in the bundled headers, so safe
   structured decoding needs a newer SDK surface or a maintained local shim.
-- Additional specialized callback/event helpers outside the current user/auth,
-  Friends, Steam Input, and networking callback-helper batches, for interfaces
-  where a dedicated `on...` helper would be clearer than the generic name-based
-  subscription API. Generated callback constants and generic name subscriptions
-  are covered by the automated coverage audit.
+- Additional specialized callback/event helpers outside the current lifecycle,
+  apps, user/auth, Friends, Steam Input, and networking callback-helper batches,
+  for interfaces where a dedicated `on...` helper would be clearer than the
+  generic name-based subscription API. Generated callback constants and generic
+  name subscriptions are covered by the automated coverage audit.
 - `ISteamPS3OverlayRenderHost` and `ISteamPS3OverlayRender` are PlayStation 3
   overlay interfaces and are outside Steam Bridge's supported Steam desktop
   targets.
