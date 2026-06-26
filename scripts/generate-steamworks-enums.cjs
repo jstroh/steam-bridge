@@ -9,12 +9,16 @@ const checkOnly = process.argv.includes("--check");
 const generated = renderSteamworksEnums();
 
 if (checkOnly) {
-  const current = fs.existsSync(outputFile) ? fs.readFileSync(outputFile, "utf8") : "";
+  const current = fs.existsSync(outputFile) ? normalizeLineEndings(fs.readFileSync(outputFile, "utf8")) : "";
   if (current !== generated) {
     throw new Error("Generated Steamworks enum constants are out of date. Run `npm run steamworks-enums:generate`.");
   }
 } else {
   fs.writeFileSync(outputFile, generated);
+}
+
+function normalizeLineEndings(value) {
+  return value.replace(/\r\n/g, "\n");
 }
 
 function renderSteamworksEnums() {
