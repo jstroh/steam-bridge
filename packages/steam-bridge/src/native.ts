@@ -1540,6 +1540,7 @@ export interface NativeBinding {
 
   gameServerInit(options: NativeGameServerInitOptions): void;
   gameServerInitGameServer(options: NativeGameServerInterfaceInitOptions): boolean;
+  gameServerGetHSteamUser(): number;
   gameServerShutdown(): void;
   gameServerRunCallbacks(): void;
   gameServerSetMasterServerHeartbeatIntervalDeprecated(heartbeatInterval: number): void;
@@ -1603,6 +1604,18 @@ export interface NativeBinding {
   authGetSessionTicketWithSteamId(steamId64: bigint, timeoutSeconds?: number): Promise<NativeAuthTicket>;
   authGetSessionTicketWithIp(ip: string, timeoutSeconds?: number): Promise<NativeAuthTicket>;
   appTicketGetAppOwnershipTicketData(appId: number, maxBytes?: number): NativeAppOwnershipTicketData | null | undefined;
+  encryptedAppTicketDecrypt(ticket: Buffer, key: Buffer, maxBytes?: number): Buffer | null | undefined;
+  encryptedAppTicketIsTicketForApp(ticket: Buffer, appId: number): boolean;
+  encryptedAppTicketGetTicketIssueTime(ticket: Buffer): number;
+  encryptedAppTicketGetTicketSteamId(ticket: Buffer): NativeSteamId;
+  encryptedAppTicketGetTicketAppId(ticket: Buffer): number;
+  encryptedAppTicketUserOwnsAppInTicket(ticket: Buffer, appId: number): boolean;
+  encryptedAppTicketUserIsVacBanned(ticket: Buffer): boolean;
+  encryptedAppTicketGetAppDefinedValue(ticket: Buffer): number | null | undefined;
+  encryptedAppTicketGetUserVariableData(ticket: Buffer): Buffer | null | undefined;
+  encryptedAppTicketIsTicketSigned(ticket: Buffer, rsaKey: Buffer): boolean;
+  encryptedAppTicketIsLicenseBorrowed(ticket: Buffer): boolean;
+  encryptedAppTicketIsLicenseTemporary(ticket: Buffer): boolean;
   userStartVoiceRecording(): void;
   userStopVoiceRecording(): void;
   userGetHSteamUser(): number;

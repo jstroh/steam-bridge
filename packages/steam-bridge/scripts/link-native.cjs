@@ -12,22 +12,46 @@ const targetConfig = {
     platform: "darwin",
     arch: "arm64",
     nativeLibrary: "libsteam_bridge_native.dylib",
-    redistFolder: "osx",
-    redistName: "libsteam_api.dylib"
+    runtimeLibraries: [
+      {
+        sdkFolder: path.join("redistributable_bin", "osx"),
+        name: "libsteam_api.dylib"
+      },
+      {
+        sdkFolder: path.join("public", "steam", "lib", "osx"),
+        name: "libsdkencryptedappticket.dylib"
+      }
+    ]
   },
   "x86_64-pc-windows-msvc": {
     platform: "win32",
     arch: "x64",
     nativeLibrary: "steam_bridge_native.dll",
-    redistFolder: "win64",
-    redistName: "steam_api64.dll"
+    runtimeLibraries: [
+      {
+        sdkFolder: path.join("redistributable_bin", "win64"),
+        name: "steam_api64.dll"
+      },
+      {
+        sdkFolder: path.join("public", "steam", "lib", "win64"),
+        name: "sdkencryptedappticket64.dll"
+      }
+    ]
   },
   "x86_64-unknown-linux-gnu": {
     platform: "linux",
     arch: "x64",
     nativeLibrary: "libsteam_bridge_native.so",
-    redistFolder: "linux64",
-    redistName: "libsteam_api.so"
+    runtimeLibraries: [
+      {
+        sdkFolder: path.join("redistributable_bin", "linux64"),
+        name: "libsteam_api.so"
+      },
+      {
+        sdkFolder: path.join("public", "steam", "lib", "linux64"),
+        name: "libsdkencryptedappticket.so"
+      }
+    ]
   }
 };
 
@@ -56,16 +80,18 @@ if (!runtimeOnly) {
   console.log(`Linked ${destination}`);
 }
 
-const redist = findSteamRedistributable();
-if (redist) {
-  const redistDestination = path.join(packageRoot, config.redistName);
-  copySteamRedistributable(redist, redistDestination);
-  console.log(`Linked ${redistDestination}`);
-} else {
-  console.warn(
-    `Steam runtime library ${config.redistName} was not found. ` +
-      "Set STEAMWORKS_SDK_PATH or copy it next to the .node file before runtime smoke tests."
-  );
+for (const runtimeLibrary of config.runtimeLibraries) {
+  const redist = findSteamRedistributable(runtimeLibrary);
+  if (redist) {
+    const redistDestination = path.join(packageRoot, runtimeLibrary.name);
+    copySteamRedistributable(redist, redistDestination);
+    console.log(`Linked ${redistDestination}`);
+  } else {
+    console.warn(
+      `Steam runtime library ${runtimeLibrary.name} was not found. ` +
+        "Set STEAMWORKS_SDK_PATH or copy it next to the .node file before runtime smoke tests."
+    );
+  }
 }
 
 function readArg(name) {
@@ -108,11 +134,11 @@ function findNativeLibrary() {
   return undefined;
 }
 
-function findSteamRedistributable() {
+function findSteamRedistributable(runtimeLibrary) {
   const sdkPath = process.env.STEAMWORKS_SDK_PATH || process.env.STEAM_BRIDGE_SDK_PATH;
   const candidates = [
-    sdkPath ? path.join(sdkPath, "redistributable_bin", config.redistFolder, config.redistName) : "",
-    path.join(repoRoot, "sdk", "redistributable_bin", config.redistFolder, config.redistName),
+    sdkPath ? path.join(sdkPath, runtimeLibrary.sdkFolder, runtimeLibrary.name) : "",
+    path.join(repoRoot, "sdk", runtimeLibrary.sdkFolder, runtimeLibrary.name),
     ...releaseDirs().map((dir) => path.join(dir, "build"))
   ];
 
@@ -126,7 +152,7 @@ function findSteamRedistributable() {
     }
 
     if (fs.existsSync(candidate) && fs.statSync(candidate).isDirectory()) {
-      const found = findInDirectory(candidate, config.redistName);
+      const found = findInDirectory(candidate, runtimeLibrary.name);
       if (found) {
         return found;
       }

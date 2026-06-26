@@ -8,8 +8,10 @@ The native layer primarily targets the Steamworks flat C API through
 `steamworks-sys 0.13`, with narrow local C++ shims for SDK surfaces that are
 documented in headers but omitted from the generated flat bindings.
 `npm run api:check` audits the bundled SDK and fails if any generated
-`SteamAPI_ISteam*` flat function is not referenced by the native layer or if a
-generated callback constant lacks an exported `SteamCallback` alias.
+`SteamAPI_*` flat function, public SDK `S_API` export, manual shim, or generated
+callback constant lacks native/public coverage. Valve internal context/bootstrap
+helpers are intentionally excluded when their public inline wrappers are already
+covered.
 
 ## Implemented Areas
 
@@ -37,8 +39,9 @@ generated callback constant lacks an exported `SteamCallback` alias.
   local shim because the interface is not emitted in the flat bindings.
 - User/auth: local Steam ID helpers, Web API auth tickets, session tickets by
   Steam ID, IPv4, or IPv6 identity, auth session validation helpers, voice
-  recording/capture and decompression, encrypted app tickets, app ownership
-  ticket data, store auth URLs, badge/level/account
+  recording/capture and decompression, encrypted app ticket request/retrieval,
+  encrypted ticket decryption and inspection, app ownership ticket data, store
+  auth URLs, badge/level/account
   state helpers, market eligibility, duration control, user-data folder reads,
   app usage events, NAT/logged-on checks, Steam user handle reads, game
   advertisement, legacy game-connection auth blobs, license checks, and ticket
@@ -174,8 +177,9 @@ generated callback constant lacks an exported `SteamCallback` alias.
   direct input toggles, input polling, mouse visibility/position, custom cursor
   helpers, and session/invite/avatar callback events.
 - Game server: Steam game-server lifecycle, callback pumping, secure/Steam ID
-  status, header-only interface init, deprecated master-server heartbeat
-  controls, server metadata publication, login/logoff helpers, auth-session
+  status, Steam game-server user handle reads, header-only interface init,
+  deprecated master-server heartbeat controls, server metadata publication,
+  login/logoff helpers, auth-session
   ticket helpers, license and group status checks, public IP reads,
   game-socket-share packet helpers, unauthenticated/deprecated user connection
   helpers, user data updates, server reputation, clan association and new-player

@@ -130,6 +130,65 @@ extern "C" {
         signature_offset: *mut u32,
         signature_length: *mut u32,
     ) -> u32;
+    fn SteamEncryptedAppTicket_BDecryptTicket(
+        ticket_encrypted: *const u8,
+        ticket_encrypted_length: u32,
+        ticket_decrypted: *mut u8,
+        ticket_decrypted_length: *mut u32,
+        key: *const u8,
+        key_length: i32,
+    ) -> bool;
+    fn SteamEncryptedAppTicket_BIsTicketForApp(
+        ticket_decrypted: *mut u8,
+        ticket_decrypted_length: u32,
+        app_id: u32,
+    ) -> bool;
+    fn SteamEncryptedAppTicket_GetTicketIssueTime(
+        ticket_decrypted: *mut u8,
+        ticket_decrypted_length: u32,
+    ) -> u32;
+    fn SteamEncryptedAppTicket_GetTicketSteamID(
+        ticket_decrypted: *mut u8,
+        ticket_decrypted_length: u32,
+        steam_id: *mut sys::CSteamID,
+    );
+    fn SteamEncryptedAppTicket_GetTicketAppID(
+        ticket_decrypted: *mut u8,
+        ticket_decrypted_length: u32,
+    ) -> u32;
+    fn SteamEncryptedAppTicket_BUserOwnsAppInTicket(
+        ticket_decrypted: *mut u8,
+        ticket_decrypted_length: u32,
+        app_id: u32,
+    ) -> bool;
+    fn SteamEncryptedAppTicket_BUserIsVacBanned(
+        ticket_decrypted: *mut u8,
+        ticket_decrypted_length: u32,
+    ) -> bool;
+    fn SteamEncryptedAppTicket_BGetAppDefinedValue(
+        ticket_decrypted: *mut u8,
+        ticket_decrypted_length: u32,
+        value: *mut u32,
+    ) -> bool;
+    fn SteamEncryptedAppTicket_GetUserVariableData(
+        ticket_decrypted: *mut u8,
+        ticket_decrypted_length: u32,
+        user_data_length: *mut u32,
+    ) -> *const u8;
+    fn SteamEncryptedAppTicket_BIsTicketSigned(
+        ticket_decrypted: *mut u8,
+        ticket_decrypted_length: u32,
+        rsa_key: *const u8,
+        rsa_key_length: u32,
+    ) -> bool;
+    fn SteamEncryptedAppTicket_BIsLicenseBorrowed(
+        ticket_decrypted: *mut u8,
+        ticket_decrypted_length: u32,
+    ) -> bool;
+    fn SteamEncryptedAppTicket_BIsLicenseTemporary(
+        ticket_decrypted: *mut u8,
+        ticket_decrypted_length: u32,
+    ) -> bool;
     fn steam_bridge_game_server_init_game_server(
         ip: u32,
         game_port: u16,
@@ -397,6 +456,9 @@ const DEFAULT_USER_VOICE_BYTES: u32 = 64 * 1024;
 const DEFAULT_DEPRECATED_GAME_CONNECTION_AUTH_BLOB_BYTES: u32 = 2048;
 const MAX_ENCRYPTED_APP_TICKET_DATA_BYTES: usize = 1024;
 const MAX_ENCRYPTED_APP_TICKET_BYTES: u32 = 4096;
+const ENCRYPTED_APP_TICKET_SYMMETRIC_KEY_BYTES: usize = 32;
+const MAX_DECRYPTED_APP_TICKET_BYTES: u32 = 65_536;
+const MAX_ENCRYPTED_APP_TICKET_RSA_KEY_BYTES: u32 = 65_536;
 const DEFAULT_APP_OWNERSHIP_TICKET_BYTES: u32 = 4096;
 const MAX_APP_OWNERSHIP_TICKET_BYTES: u32 = 65_536;
 const USER_DATA_FOLDER_BUFFER_SIZE: usize = 4096;
@@ -10345,6 +10407,12 @@ pub fn game_server_init_game_server(
     })
 }
 
+#[napi(js_name = "gameServerGetHSteamUser")]
+pub fn game_server_get_h_steam_user() -> Result<i32, Error> {
+    crate::state::ensure_game_server_initialized()?;
+    Ok(unsafe { sys::SteamGameServer_GetHSteamUser() })
+}
+
 #[napi(js_name = "gameServerShutdown")]
 pub fn game_server_shutdown() {
     if crate::state::is_game_server_initialized() {
@@ -14862,6 +14930,195 @@ pub fn user_get_encrypted_app_ticket(max_bytes: Option<u32>) -> Result<Option<Bu
     Ok(Some(ticket.into()))
 }
 
+#[napi(js_name = "encryptedAppTicketDecrypt")]
+pub fn encrypted_app_ticket_decrypt(
+    ticket: Buffer,
+    key: Buffer,
+    max_bytes: Option<u32>,
+) -> Result<Option<Buffer>, Error> {
+    if key.len() != ENCRYPTED_APP_TICKET_SYMMETRIC_KEY_BYTES {
+        return Err(Error::from_reason(format!(
+            "encrypted app ticket symmetric key must be {ENCRYPTED_APP_TICKET_SYMMETRIC_KEY_BYTES} bytes"
+        )));
+    }
+    let ticket_len = len_to_u32(ticket.len(), "encrypted app ticket")?;
+    if ticket_len == 0 {
+        return Ok(None);
+    }
+    let max_bytes = max_bytes
+        .unwrap_or(MAX_ENCRYPTED_APP_TICKET_BYTES)
+        .clamp(1, MAX_DECRYPTED_APP_TICKET_BYTES);
+    let mut decrypted = vec![0u8; max_bytes as usize];
+    let mut decrypted_len = max_bytes;
+    let ok = unsafe {
+        SteamEncryptedAppTicket_BDecryptTicket(
+            ticket.as_ptr(),
+            ticket_len,
+            decrypted.as_mut_ptr(),
+            &mut decrypted_len,
+            key.as_ptr(),
+            key.len() as i32,
+        )
+    };
+    if !ok {
+        return Ok(None);
+    }
+    decrypted.truncate(decrypted_len.min(max_bytes) as usize);
+    Ok(Some(decrypted.into()))
+}
+
+#[napi(js_name = "encryptedAppTicketIsTicketForApp")]
+pub fn encrypted_app_ticket_is_ticket_for_app(ticket: Buffer, app_id: u32) -> Result<bool, Error> {
+    let mut ticket = decrypted_app_ticket(ticket)?;
+    Ok(unsafe {
+        SteamEncryptedAppTicket_BIsTicketForApp(
+            ticket.as_mut_ptr(),
+            len_to_u32(ticket.len(), "decrypted app ticket")?,
+            app_id,
+        )
+    })
+}
+
+#[napi(js_name = "encryptedAppTicketGetTicketIssueTime")]
+pub fn encrypted_app_ticket_get_ticket_issue_time(ticket: Buffer) -> Result<u32, Error> {
+    let mut ticket = decrypted_app_ticket(ticket)?;
+    Ok(unsafe {
+        SteamEncryptedAppTicket_GetTicketIssueTime(
+            ticket.as_mut_ptr(),
+            len_to_u32(ticket.len(), "decrypted app ticket")?,
+        )
+    })
+}
+
+#[napi(js_name = "encryptedAppTicketGetTicketSteamId")]
+pub fn encrypted_app_ticket_get_ticket_steam_id(ticket: Buffer) -> Result<PlayerSteamId, Error> {
+    let mut ticket = decrypted_app_ticket(ticket)?;
+    let mut steam_id = MaybeUninit::<sys::CSteamID>::zeroed();
+    unsafe {
+        SteamEncryptedAppTicket_GetTicketSteamID(
+            ticket.as_mut_ptr(),
+            len_to_u32(ticket.len(), "decrypted app ticket")?,
+            steam_id.as_mut_ptr(),
+        )
+    };
+    Ok(csteam_id_to_player(unsafe { steam_id.assume_init() }))
+}
+
+#[napi(js_name = "encryptedAppTicketGetTicketAppId")]
+pub fn encrypted_app_ticket_get_ticket_app_id(ticket: Buffer) -> Result<u32, Error> {
+    let mut ticket = decrypted_app_ticket(ticket)?;
+    Ok(unsafe {
+        SteamEncryptedAppTicket_GetTicketAppID(
+            ticket.as_mut_ptr(),
+            len_to_u32(ticket.len(), "decrypted app ticket")?,
+        )
+    })
+}
+
+#[napi(js_name = "encryptedAppTicketUserOwnsAppInTicket")]
+pub fn encrypted_app_ticket_user_owns_app_in_ticket(
+    ticket: Buffer,
+    app_id: u32,
+) -> Result<bool, Error> {
+    let mut ticket = decrypted_app_ticket(ticket)?;
+    Ok(unsafe {
+        SteamEncryptedAppTicket_BUserOwnsAppInTicket(
+            ticket.as_mut_ptr(),
+            len_to_u32(ticket.len(), "decrypted app ticket")?,
+            app_id,
+        )
+    })
+}
+
+#[napi(js_name = "encryptedAppTicketUserIsVacBanned")]
+pub fn encrypted_app_ticket_user_is_vac_banned(ticket: Buffer) -> Result<bool, Error> {
+    let mut ticket = decrypted_app_ticket(ticket)?;
+    Ok(unsafe {
+        SteamEncryptedAppTicket_BUserIsVacBanned(
+            ticket.as_mut_ptr(),
+            len_to_u32(ticket.len(), "decrypted app ticket")?,
+        )
+    })
+}
+
+#[napi(js_name = "encryptedAppTicketGetAppDefinedValue")]
+pub fn encrypted_app_ticket_get_app_defined_value(ticket: Buffer) -> Result<Option<u32>, Error> {
+    let mut ticket = decrypted_app_ticket(ticket)?;
+    let mut value = 0u32;
+    let ok = unsafe {
+        SteamEncryptedAppTicket_BGetAppDefinedValue(
+            ticket.as_mut_ptr(),
+            len_to_u32(ticket.len(), "decrypted app ticket")?,
+            &mut value,
+        )
+    };
+    Ok(ok.then_some(value))
+}
+
+#[napi(js_name = "encryptedAppTicketGetUserVariableData")]
+pub fn encrypted_app_ticket_get_user_variable_data(
+    ticket: Buffer,
+) -> Result<Option<Buffer>, Error> {
+    let mut ticket = decrypted_app_ticket(ticket)?;
+    let mut user_data_len = 0u32;
+    let user_data = unsafe {
+        SteamEncryptedAppTicket_GetUserVariableData(
+            ticket.as_mut_ptr(),
+            len_to_u32(ticket.len(), "decrypted app ticket")?,
+            &mut user_data_len,
+        )
+    };
+    if user_data.is_null() || user_data_len == 0 {
+        return Ok(None);
+    }
+    let bytes = unsafe { std::slice::from_raw_parts(user_data, user_data_len as usize) };
+    Ok(Some(bytes.to_vec().into()))
+}
+
+#[napi(js_name = "encryptedAppTicketIsTicketSigned")]
+pub fn encrypted_app_ticket_is_ticket_signed(
+    ticket: Buffer,
+    rsa_key: Buffer,
+) -> Result<bool, Error> {
+    let rsa_key_len = len_to_u32(rsa_key.len(), "encrypted app ticket RSA key")?;
+    if rsa_key_len > MAX_ENCRYPTED_APP_TICKET_RSA_KEY_BYTES {
+        return Err(Error::from_reason(format!(
+            "encrypted app ticket RSA key cannot exceed {MAX_ENCRYPTED_APP_TICKET_RSA_KEY_BYTES} bytes"
+        )));
+    }
+    let mut ticket = decrypted_app_ticket(ticket)?;
+    Ok(unsafe {
+        SteamEncryptedAppTicket_BIsTicketSigned(
+            ticket.as_mut_ptr(),
+            len_to_u32(ticket.len(), "decrypted app ticket")?,
+            rsa_key.as_ptr(),
+            rsa_key_len,
+        )
+    })
+}
+
+#[napi(js_name = "encryptedAppTicketIsLicenseBorrowed")]
+pub fn encrypted_app_ticket_is_license_borrowed(ticket: Buffer) -> Result<bool, Error> {
+    let mut ticket = decrypted_app_ticket(ticket)?;
+    Ok(unsafe {
+        SteamEncryptedAppTicket_BIsLicenseBorrowed(
+            ticket.as_mut_ptr(),
+            len_to_u32(ticket.len(), "decrypted app ticket")?,
+        )
+    })
+}
+
+#[napi(js_name = "encryptedAppTicketIsLicenseTemporary")]
+pub fn encrypted_app_ticket_is_license_temporary(ticket: Buffer) -> Result<bool, Error> {
+    let mut ticket = decrypted_app_ticket(ticket)?;
+    Ok(unsafe {
+        SteamEncryptedAppTicket_BIsLicenseTemporary(
+            ticket.as_mut_ptr(),
+            len_to_u32(ticket.len(), "decrypted app ticket")?,
+        )
+    })
+}
+
 #[napi(js_name = "appTicketGetAppOwnershipTicketData")]
 pub fn app_ticket_get_app_ownership_ticket_data(
     app_id: u32,
@@ -19088,6 +19345,18 @@ fn len_to_u32(len: usize, label: &str) -> Result<u32, Error> {
 
 fn len_to_i32(len: usize, label: &str) -> Result<i32, Error> {
     i32::try_from(len).map_err(|_| Error::from_reason(format!("{label} length exceeds i32")))
+}
+
+fn decrypted_app_ticket(ticket: Buffer) -> Result<Vec<u8>, Error> {
+    if ticket.is_empty() {
+        return Err(Error::from_reason("decrypted app ticket cannot be empty"));
+    }
+    if len_to_u32(ticket.len(), "decrypted app ticket")? > MAX_DECRYPTED_APP_TICKET_BYTES {
+        return Err(Error::from_reason(format!(
+            "decrypted app ticket cannot exceed {MAX_DECRYPTED_APP_TICKET_BYTES} bytes"
+        )));
+    }
+    Ok(ticket.to_vec())
 }
 
 fn game_coordinator_message_len(len: usize, label: &str) -> Result<u32, Error> {

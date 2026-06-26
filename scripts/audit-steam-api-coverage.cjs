@@ -4,7 +4,8 @@ const { spawnSync } = require("node:child_process");
 
 const repoRoot = path.resolve(__dirname, "..");
 const steamworksSysRoot = findSteamworksSysRoot();
-const flatHeader = path.join(steamworksSysRoot, "lib", "steam", "public", "steam", "steam_api_flat.h");
+const steamHeadersRoot = path.join(steamworksSysRoot, "lib", "steam", "public", "steam");
+const flatHeader = path.join(steamHeadersRoot, "steam_api_flat.h");
 const bindingFiles = [
   "macos_bindings.rs",
   "linux_bindings.rs",
@@ -41,12 +42,18 @@ const manualHeaderOnlyFacadeMethods = [
   "forceMasterServerHeartbeatDeprecated",
   "getCSERIPPort"
 ];
+const intentionallyInternalSdkExports = [
+  "SteamInternal_ContextInit",
+  "SteamInternal_FindOrCreateGameServerInterface",
+  "SteamInternal_SteamAPI_Init"
+];
 
 assertFlatApiCoverage();
+assertSdkExportCoverage();
 assertHeaderOnlyShimCoverage();
 assertCallbackCoverage();
 
-console.log("Steam API coverage audit passed: flat API references, manual shim references, and callback aliases are covered.");
+console.log("Steam API coverage audit passed: SDK exports, flat API references, manual shim references, and callback aliases are covered.");
 
 function findSteamworksSysRoot() {
   const metadata = spawnSync("cargo", ["metadata", "--format-version", "1"], {
@@ -71,7 +78,7 @@ function findSteamworksSysRoot() {
 
 function assertFlatApiCoverage() {
   const flat = fs.readFileSync(flatHeader, "utf8");
-  const flatFunctions = unique([...flat.matchAll(/\b(SteamAPI_ISteam[A-Za-z0-9_]+)\s*\(/g)].map((match) => match[1]));
+  const flatFunctions = unique([...flat.matchAll(/\b(SteamAPI_[A-Za-z0-9_]+)\s*\(/g)].map((match) => match[1]));
   const nativeSource = readNativeSource();
 
   const missing = flatFunctions.filter((fnName) => !nativeSource.includes(fnName));
@@ -79,6 +86,21 @@ function assertFlatApiCoverage() {
     throw new Error(
       [
         `Native source is missing references for ${missing.length} Steam flat API functions:`,
+        ...missing.map((fnName) => `  - ${fnName}`)
+      ].join("\n")
+    );
+  }
+}
+
+function assertSdkExportCoverage() {
+  const exportedSymbols = readSdkExportNames().filter((name) => !intentionallyInternalSdkExports.includes(name));
+  const nativeSource = readNativeSource();
+
+  const missing = exportedSymbols.filter((fnName) => !nativeSource.includes(fnName));
+  if (missing.length > 0) {
+    throw new Error(
+      [
+        `Native source is missing references for ${missing.length} Steam SDK exports:`,
         ...missing.map((fnName) => `  - ${fnName}`)
       ].join("\n")
     );
@@ -145,6 +167,29 @@ function assertHeaderOnlyShimCoverage() {
 
 function readNativeSource() {
   return nativeSourceFiles.map((file) => fs.readFileSync(file, "utf8")).join("\n");
+}
+
+function readSdkExportNames() {
+  const headerFiles = fs.readdirSync(steamHeadersRoot)
+    .filter((file) => file.endsWith(".h"))
+    .map((file) => path.join(steamHeadersRoot, file));
+  const names = [];
+
+  for (const file of headerFiles) {
+    const header = stripComments(fs.readFileSync(file, "utf8"));
+    for (const match of header.matchAll(/\bS_API(?:_EXPORT)?\s+(?:[^;{}()]|\n)*?\b([A-Za-z_][A-Za-z0-9_]*)\s*\(/g)) {
+      names.push(match[1]);
+    }
+  }
+
+  return unique(names);
+}
+
+function stripComments(source) {
+  return source
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/\/\/.*$/gm, "")
+    .replace(/^\s*#.*$/gm, "");
 }
 
 function readSteamCallbackNames() {

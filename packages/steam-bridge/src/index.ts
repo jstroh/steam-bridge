@@ -5402,6 +5402,53 @@ export const appTicket = {
   }
 };
 
+export const encryptedAppTicket = {
+  decrypt(
+    ticket: Buffer | Uint8Array,
+    key: Buffer | Uint8Array,
+    maxBytes?: number | null
+  ): Buffer | null {
+    return native().encryptedAppTicketDecrypt(
+      Buffer.from(ticket),
+      Buffer.from(key),
+      maxBytes ?? undefined
+    ) ?? null;
+  },
+  isTicketForApp(ticket: Buffer | Uint8Array, appId: number): boolean {
+    return native().encryptedAppTicketIsTicketForApp(Buffer.from(ticket), appId);
+  },
+  getTicketIssueTime(ticket: Buffer | Uint8Array): number {
+    return native().encryptedAppTicketGetTicketIssueTime(Buffer.from(ticket));
+  },
+  getTicketSteamId(ticket: Buffer | Uint8Array): SteamId {
+    return normalizeSteamId(native().encryptedAppTicketGetTicketSteamId(Buffer.from(ticket)));
+  },
+  getTicketAppId(ticket: Buffer | Uint8Array): number {
+    return native().encryptedAppTicketGetTicketAppId(Buffer.from(ticket));
+  },
+  userOwnsAppInTicket(ticket: Buffer | Uint8Array, appId: number): boolean {
+    return native().encryptedAppTicketUserOwnsAppInTicket(Buffer.from(ticket), appId);
+  },
+  userIsVacBanned(ticket: Buffer | Uint8Array): boolean {
+    return native().encryptedAppTicketUserIsVacBanned(Buffer.from(ticket));
+  },
+  getAppDefinedValue(ticket: Buffer | Uint8Array): number | null {
+    return native().encryptedAppTicketGetAppDefinedValue(Buffer.from(ticket)) ?? null;
+  },
+  getUserVariableData(ticket: Buffer | Uint8Array): Buffer | null {
+    return native().encryptedAppTicketGetUserVariableData(Buffer.from(ticket)) ?? null;
+  },
+  isTicketSigned(ticket: Buffer | Uint8Array, rsaKey: Buffer | Uint8Array): boolean {
+    return native().encryptedAppTicketIsTicketSigned(Buffer.from(ticket), Buffer.from(rsaKey));
+  },
+  isLicenseBorrowed(ticket: Buffer | Uint8Array): boolean {
+    return native().encryptedAppTicketIsLicenseBorrowed(Buffer.from(ticket));
+  },
+  isLicenseTemporary(ticket: Buffer | Uint8Array): boolean {
+    return native().encryptedAppTicketIsLicenseTemporary(Buffer.from(ticket));
+  }
+};
+
 export function buildSteamWebApiUrl(options: SteamWebApiRequestOptions): string {
   const url = new URL(
     `${steamWebApiPathComponent(options.interfaceName, "interfaceName")}/${steamWebApiPathComponent(
@@ -5692,6 +5739,9 @@ export const gameServer = {
   },
   runCallbacks(): void {
     native().gameServerRunCallbacks();
+  },
+  getHSteamUser(): number {
+    return native().gameServerGetHSteamUser();
   },
   setMasterServerHeartbeatIntervalDeprecated(heartbeatInterval: number): void {
     native().gameServerSetMasterServerHeartbeatIntervalDeprecated(heartbeatInterval);
@@ -9565,6 +9615,7 @@ export interface SteamBridgeClient {
   client: typeof client;
   cloud: typeof cloud;
   controller: typeof controller;
+  encryptedAppTicket: typeof encryptedAppTicket;
   friends: typeof friends;
   gameServer: typeof gameServer;
   gameServerHttp: typeof gameServerHttp;
@@ -9607,6 +9658,7 @@ export function createCompatibilityClient(): SteamBridgeClient {
     client,
     cloud,
     controller,
+    encryptedAppTicket,
     friends,
     gameServer,
     gameServerHttp,
@@ -15721,6 +15773,7 @@ const defaultExport = {
   callback,
   client,
   cloud,
+  encryptedAppTicket,
   friends,
   gameServer,
   gameServerHttp,

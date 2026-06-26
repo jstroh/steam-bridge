@@ -3,8 +3,11 @@ dist/
 target/
 *.node
 libsteam_api.*
+libsdkencryptedappticket.*
 steam_api64.dll
 steam_api64.lib
+sdkencryptedappticket*.dll
+sdkencryptedappticket*.lib
 *.log
 .DS_Store
 steam_appid.txt

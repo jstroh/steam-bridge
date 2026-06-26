@@ -30,6 +30,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
+      - if: matrix.target == 'x86_64-unknown-linux-gnu'
+        run: sudo apt-get update && sudo apt-get install -y patchelf
       - run: node scripts/assert-supported-targets.cjs
       - run: npm ci
       - run: npm run build
@@ -41,4 +43,6 @@ jobs:
           path: |
             packages/steam-bridge/*.node
             packages/steam-bridge/libsteam_api.*
+            packages/steam-bridge/libsdkencryptedappticket.*
             packages/steam-bridge/steam_api*.dll
+            packages/steam-bridge/sdkencryptedappticket*.dll

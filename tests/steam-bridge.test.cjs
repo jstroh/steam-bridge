@@ -1367,6 +1367,99 @@ test("app ticket facade normalizes ownership ticket data", (t) => {
   assert.deepEqual(fake.calls, [{ method: "appTicketGetAppOwnershipTicketData", args: [480, 2048] }]);
 });
 
+test("encrypted app ticket facade covers decrypt and accessors", (t) => {
+  const encrypted = Uint8Array.from([9, 8, 7]);
+  const decrypted = Buffer.from([1, 2, 3, 4]);
+  const key = Buffer.alloc(32, 7);
+  const rsaKey = Uint8Array.from([5, 6, 7]);
+  const userData = Buffer.from("userdata");
+  const fake = createFakeNative({
+    encryptedAppTicketDecrypt(ticket, symmetricKey, maxBytes) {
+      this.calls.push({ method: "encryptedAppTicketDecrypt", args: [ticket, symmetricKey, maxBytes] });
+      return decrypted;
+    },
+    encryptedAppTicketIsTicketForApp(ticket, appId) {
+      this.calls.push({ method: "encryptedAppTicketIsTicketForApp", args: [ticket, appId] });
+      return true;
+    },
+    encryptedAppTicketGetTicketIssueTime(ticket) {
+      this.calls.push({ method: "encryptedAppTicketGetTicketIssueTime", args: [ticket] });
+      return 12345;
+    },
+    encryptedAppTicketGetTicketSteamId(ticket) {
+      this.calls.push({ method: "encryptedAppTicketGetTicketSteamId", args: [ticket] });
+      return { steamId64: "76561198000000000", steamId32: "STEAM_0:0:19867136", accountId: 39734272 };
+    },
+    encryptedAppTicketGetTicketAppId(ticket) {
+      this.calls.push({ method: "encryptedAppTicketGetTicketAppId", args: [ticket] });
+      return 480;
+    },
+    encryptedAppTicketUserOwnsAppInTicket(ticket, appId) {
+      this.calls.push({ method: "encryptedAppTicketUserOwnsAppInTicket", args: [ticket, appId] });
+      return true;
+    },
+    encryptedAppTicketUserIsVacBanned(ticket) {
+      this.calls.push({ method: "encryptedAppTicketUserIsVacBanned", args: [ticket] });
+      return false;
+    },
+    encryptedAppTicketGetAppDefinedValue(ticket) {
+      this.calls.push({ method: "encryptedAppTicketGetAppDefinedValue", args: [ticket] });
+      return 99;
+    },
+    encryptedAppTicketGetUserVariableData(ticket) {
+      this.calls.push({ method: "encryptedAppTicketGetUserVariableData", args: [ticket] });
+      return userData;
+    },
+    encryptedAppTicketIsTicketSigned(ticket, publicKey) {
+      this.calls.push({ method: "encryptedAppTicketIsTicketSigned", args: [ticket, publicKey] });
+      return true;
+    },
+    encryptedAppTicketIsLicenseBorrowed(ticket) {
+      this.calls.push({ method: "encryptedAppTicketIsLicenseBorrowed", args: [ticket] });
+      return false;
+    },
+    encryptedAppTicketIsLicenseTemporary(ticket) {
+      this.calls.push({ method: "encryptedAppTicketIsLicenseTemporary", args: [ticket] });
+      return true;
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  assert.deepEqual(steam.encryptedAppTicket.decrypt(encrypted, key, 8192), decrypted);
+  assert.equal(steam.encryptedAppTicket.isTicketForApp(decrypted, 480), true);
+  assert.equal(steam.encryptedAppTicket.getTicketIssueTime(decrypted), 12345);
+  assert.deepEqual(steam.encryptedAppTicket.getTicketSteamId(decrypted), {
+    steamId64: 76561198000000000n,
+    steamId32: "STEAM_0:0:19867136",
+    accountId: 39734272
+  });
+  assert.equal(steam.encryptedAppTicket.getTicketAppId(decrypted), 480);
+  assert.equal(steam.encryptedAppTicket.userOwnsAppInTicket(decrypted, 480), true);
+  assert.equal(steam.encryptedAppTicket.userIsVacBanned(decrypted), false);
+  assert.equal(steam.encryptedAppTicket.getAppDefinedValue(decrypted), 99);
+  assert.deepEqual(steam.encryptedAppTicket.getUserVariableData(decrypted), userData);
+  assert.equal(steam.encryptedAppTicket.isTicketSigned(decrypted, rsaKey), true);
+  assert.equal(steam.encryptedAppTicket.isLicenseBorrowed(decrypted), false);
+  assert.equal(steam.encryptedAppTicket.isLicenseTemporary(decrypted), true);
+
+  assert.deepEqual(fake.calls, [
+    { method: "encryptedAppTicketDecrypt", args: [Buffer.from(encrypted), key, 8192] },
+    { method: "encryptedAppTicketIsTicketForApp", args: [decrypted, 480] },
+    { method: "encryptedAppTicketGetTicketIssueTime", args: [decrypted] },
+    { method: "encryptedAppTicketGetTicketSteamId", args: [decrypted] },
+    { method: "encryptedAppTicketGetTicketAppId", args: [decrypted] },
+    { method: "encryptedAppTicketUserOwnsAppInTicket", args: [decrypted, 480] },
+    { method: "encryptedAppTicketUserIsVacBanned", args: [decrypted] },
+    { method: "encryptedAppTicketGetAppDefinedValue", args: [decrypted] },
+    { method: "encryptedAppTicketGetUserVariableData", args: [decrypted] },
+    { method: "encryptedAppTicketIsTicketSigned", args: [decrypted, Buffer.from(rsaKey)] },
+    { method: "encryptedAppTicketIsLicenseBorrowed", args: [decrypted] },
+    { method: "encryptedAppTicketIsLicenseTemporary", args: [decrypted] }
+  ]);
+});
+
 test("user facade covers voice, auth session, account, and duration helpers", async (t) => {
   const ticketBytes = Buffer.from([9, 8, 7]);
   const fake = createFakeNative({
@@ -1652,6 +1745,10 @@ test("game server facade covers lifecycle, metadata, auth, async status, and pac
     gameServerRunCallbacks() {
       this.calls.push({ method: "gameServerRunCallbacks", args: [] });
     },
+    gameServerGetHSteamUser() {
+      this.calls.push({ method: "gameServerGetHSteamUser", args: [] });
+      return 42;
+    },
     gameServerSetMasterServerHeartbeatIntervalDeprecated(heartbeatInterval) {
       this.calls.push({
         method: "gameServerSetMasterServerHeartbeatIntervalDeprecated",
@@ -1848,6 +1945,7 @@ test("game server facade covers lifecycle, metadata, auth, async status, and pac
     true
   );
   steam.gameServer.runCallbacks();
+  assert.equal(steam.gameServer.getHSteamUser(), 42);
   steam.gameServer.setMasterServerHeartbeatIntervalDeprecated(250);
   steam.gameServer.forceMasterServerHeartbeatDeprecated();
   assert.equal(steam.gameServer.isSecure(), true);
@@ -1936,6 +2034,10 @@ test("game server facade covers lifecycle, metadata, auth, async status, and pac
         version: "1.0.0.0"
       }
     ]
+  });
+  assert.deepEqual(fake.calls.find((call) => call.method === "gameServerGetHSteamUser"), {
+    method: "gameServerGetHSteamUser",
+    args: []
   });
   assert.deepEqual(
     fake.calls.find((call) => call.method === "gameServerSetMasterServerHeartbeatIntervalDeprecated"),

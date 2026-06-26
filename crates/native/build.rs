@@ -1,6 +1,7 @@
 extern crate napi_build;
 
 use std::env;
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
@@ -28,6 +29,8 @@ fn main() {
     if target_os == "linux" {
         println!("cargo:rustc-link-arg=-Wl,-rpath,$ORIGIN");
     }
+
+    link_sdk_encrypted_app_ticket(&target, &target_os);
 
     println!("cargo:rerun-if-changed=src/steam_music_remote_bridge.cpp");
     println!("cargo:rerun-if-changed=src/steam_game_coordinator_bridge.cpp");
@@ -60,6 +63,141 @@ fn main() {
         println!("cargo:rustc-link-lib=framework=Metal");
         println!("cargo:rustc-link-lib=framework=MetalKit");
         println!("cargo:rustc-link-lib=framework=QuartzCore");
+    }
+}
+
+fn link_sdk_encrypted_app_ticket(target: &str, target_os: &str) {
+    let sdk_root = find_steamworks_sdk_root().unwrap_or_else(|| {
+        panic!(
+            "Steam SDK root was not found. Set STEAM_SDK_LOCATION, STEAMWORKS_SDK_PATH, \
+             or STEAM_BRIDGE_SDK_PATH so sdkencryptedappticket can be linked."
+        )
+    });
+    let out_dir = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR is set by Cargo"));
+
+    let (sdk_folder, files, link_lib) = if target_os == "macos" {
+        (
+            "osx",
+            vec!["libsdkencryptedappticket.dylib"],
+            "sdkencryptedappticket",
+        )
+    } else if target_os == "linux" {
+        (
+            "linux64",
+            vec!["libsdkencryptedappticket.so"],
+            "sdkencryptedappticket",
+        )
+    } else if target.contains("windows") {
+        (
+            "win64",
+            vec!["sdkencryptedappticket64.dll", "sdkencryptedappticket64.lib"],
+            "sdkencryptedappticket64",
+        )
+    } else {
+        panic!("Unsupported target for sdkencryptedappticket: {target}");
+    };
+
+    let lib_dir = sdk_root
+        .join("public")
+        .join("steam")
+        .join("lib")
+        .join(sdk_folder);
+    for file in files {
+        let source = lib_dir.join(file);
+        let destination = out_dir.join(file);
+        fs::copy(&source, &destination).unwrap_or_else(|error| {
+            panic!(
+                "failed to copy {} to {}: {error}",
+                source.display(),
+                destination.display()
+            )
+        });
+        if target_os == "linux" && file == "libsdkencryptedappticket.so" {
+            set_linux_soname(&destination, "libsdkencryptedappticket.so");
+        }
+    }
+
+    println!("cargo:rustc-link-search={}", out_dir.display());
+    println!("cargo:rustc-link-lib=dylib={link_lib}");
+}
+
+fn find_steamworks_sdk_root() -> Option<PathBuf> {
+    for name in [
+        "STEAM_SDK_LOCATION",
+        "STEAMWORKS_SDK_PATH",
+        "STEAM_BRIDGE_SDK_PATH",
+    ] {
+        println!("cargo:rerun-if-env-changed={name}");
+        if let Some(root) = env::var_os(name).map(PathBuf::from) {
+            if is_steamworks_sdk_root(&root) {
+                return Some(root);
+            }
+        }
+    }
+
+    let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").ok()?);
+    let repo_sdk = manifest_dir.join("..").join("..").join("sdk");
+    if is_steamworks_sdk_root(&repo_sdk) {
+        return Some(repo_sdk);
+    }
+
+    for root in cargo_registry_src_roots() {
+        let candidate = root.join("steamworks-sys-0.13.0").join("lib").join("steam");
+        if is_steamworks_sdk_root(&candidate) {
+            return Some(candidate);
+        }
+    }
+
+    None
+}
+
+fn cargo_registry_src_roots() -> Vec<PathBuf> {
+    let mut roots = Vec::new();
+    let cargo_home = env::var_os("CARGO_HOME")
+        .map(PathBuf::from)
+        .or_else(|| env::var_os("HOME").map(|home| PathBuf::from(home).join(".cargo")));
+
+    if let Some(cargo_home) = cargo_home {
+        let registry_src = cargo_home.join("registry").join("src");
+        if let Ok(entries) = fs::read_dir(registry_src) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    roots.push(path);
+                }
+            }
+        }
+    }
+
+    roots
+}
+
+fn is_steamworks_sdk_root(root: &Path) -> bool {
+    root.join("public")
+        .join("steam")
+        .join("steamencryptedappticket.h")
+        .is_file()
+}
+
+fn set_linux_soname(library: &Path, soname: &str) {
+    println!("cargo:rerun-if-env-changed=PATH");
+    if let Some(patchelf) = find_tool("patchelf") {
+        let status = Command::new(&patchelf)
+            .arg("--set-soname")
+            .arg(soname)
+            .arg(library)
+            .status()
+            .unwrap_or_else(|error| {
+                panic!("failed to run {}: {error}", patchelf.display());
+            });
+        if !status.success() {
+            panic!("failed to set SONAME on {}", library.display());
+        }
+    } else {
+        println!(
+            "cargo:warning=patchelf was not found; Linux release builds may record an absolute \
+             path for libsdkencryptedappticket.so"
+        );
     }
 }
 

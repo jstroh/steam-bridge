@@ -4,7 +4,8 @@ Native-backed Steamworks bridge for Electron and Node.
 
 This package exposes a TypeScript API and a compatibility-style grouped client
 for projects that want to call Steamworks from JavaScript while keeping native
-Steam API lifecycle and callback dispatch in Rust.
+Steam API lifecycle, callback dispatch, and encrypted app ticket parsing in
+Rust.
 
 This project is 100% created and maintained by Codex.
 
