@@ -9555,6 +9555,87 @@ test("web API inventory service facade maps item service methods", async (t) => 
   assert.equal(typeof steam.webApi.inventoryService.modifyItems, "function");
 });
 
+test("web API game servers service facade maps account administration methods", async (t) => {
+  const steam = loadSteamWithFakeNative(createFakeNative());
+  const fetchCalls = [];
+  const fetchImpl = async (url, init = {}) => {
+    fetchCalls.push({ url, init });
+    return {
+      ok: true,
+      status: 200,
+      headers: {
+        forEach(callback) {
+          callback("application/json", "content-type");
+        }
+      },
+      async text() {
+        return JSON.stringify({ response: { ok: true } });
+      }
+    };
+  };
+  const client = steam.createSteamWebApiClient({ apiKey: "server-secret", fetch: fetchImpl });
+  const requestUrl = (index) => new URL(fetchCalls[index].url);
+  const queryInputJson = (index) => JSON.parse(requestUrl(index).searchParams.get("input_json"));
+  const bodyInputJson = (index) => JSON.parse(new URLSearchParams(fetchCalls[index].init.body).get("input_json"));
+
+  t.after(clearSteamBridgeCache);
+
+  await client.gameServersService.getAccountList();
+  await client.gameServersService.createAccount({ appId: 480, memo: "SpaceWar test shard" });
+  await client.gameServersService.setMemo({
+    steamId64: 90123456789012345n,
+    memo: "rotated test server"
+  });
+  await client.gameServersService.resetLoginToken({ steamId64: 90123456789012345n });
+  await client.gameServersService.deleteAccount({ steamId64: 90123456789012345n });
+  await client.gameServersService.getAccountPublicInfo(90123456789012345n);
+  await client.gameServersService.queryLoginToken("abcdef123456");
+  await client.gameServersService.getServerSteamIdsByIp(["203.0.113.10:27015", "203.0.113.11:27015"]);
+  await client.gameServersService.getServerIpsBySteamId([90123456789012345n, "90123456789012346"]);
+
+  assert.equal(
+    requestUrl(0).origin + requestUrl(0).pathname,
+    "https://api.steampowered.com/IGameServersService/GetAccountList/v0001/"
+  );
+  assert.equal(fetchCalls[0].init.method, "GET");
+  assert.deepEqual(queryInputJson(0), {});
+  assert.equal(
+    requestUrl(1).origin + requestUrl(1).pathname,
+    "https://api.steampowered.com/IGameServersService/CreateAccount/v0001/"
+  );
+  assert.equal(fetchCalls[1].init.method, "POST");
+  assert.deepEqual(bodyInputJson(1), { appid: 480, memo: "SpaceWar test shard" });
+  assert.equal(
+    requestUrl(2).origin + requestUrl(2).pathname,
+    "https://api.steampowered.com/IGameServersService/SetMemo/v0001/"
+  );
+  assert.deepEqual(bodyInputJson(2), {
+    steamid: "90123456789012345",
+    memo: "rotated test server"
+  });
+  assert.deepEqual(bodyInputJson(3), { steamid: "90123456789012345" });
+  assert.deepEqual(bodyInputJson(4), { steamid: "90123456789012345" });
+  assert.equal(
+    requestUrl(5).origin + requestUrl(5).pathname,
+    "https://api.steampowered.com/IGameServersService/GetAccountPublicInfo/v0001/"
+  );
+  assert.deepEqual(queryInputJson(5), { steamid: "90123456789012345" });
+  assert.deepEqual(queryInputJson(6), { login_token: "abcdef123456" });
+  assert.equal(
+    requestUrl(7).origin + requestUrl(7).pathname,
+    "https://api.steampowered.com/IGameServersService/GetServerSteamIDsByIP/v0001/"
+  );
+  assert.deepEqual(queryInputJson(7), { server_ips: "203.0.113.10:27015,203.0.113.11:27015" });
+  assert.equal(
+    requestUrl(8).origin + requestUrl(8).pathname,
+    "https://api.steampowered.com/IGameServersService/GetServerIPsBySteamID/v0001/"
+  );
+  assert.deepEqual(queryInputJson(8), {
+    server_steamids: "90123456789012345,90123456789012346"
+  });
+  assert.equal(typeof steam.webApi.gameServersService.createAccount, "function");
+});
+
 test("web API published file service facade maps workshop service methods", async (t) => {
   const steam = loadSteamWithFakeNative(createFakeNative());
   const fetchCalls = [];

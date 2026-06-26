@@ -66,6 +66,7 @@ documented in headers but omitted from the generated flat bindings.
   app/build/server-list helpers, news helpers, remote-storage/workshop detail
   helpers, player profile/playtime/library helpers, store app-list service
   helpers, user-auth ticket validation helpers, community abuse-report helpers,
+  game-server account administration and lookup helpers,
   published-file service query/moderation/tag helpers, published-item
   search/voting helpers, leaderboard helpers, game-server stats export helpers,
   legacy economy/asset helpers, InventoryService item mutation/query helpers,
@@ -169,9 +170,9 @@ documented in headers but omitted from the generated flat bindings.
   the native bindings or still need richer low-level ergonomics.
 - Additional endpoint-specific Steam Web API convenience wrappers for the long
   tail of service interfaces beyond the current utility, app, news, player,
-  store, user, user-auth, user-stats, remote-storage, published-file,
-  published-item search/voting, leaderboards, game-server stats, community,
-  economy, InventoryService, EconService, and MicroTxn helpers.
+  store, user, user-auth, user-stats, remote-storage, game-server service,
+  published-file, published-item search/voting, leaderboards, game-server stats,
+  community, economy, InventoryService, EconService, and MicroTxn helpers.
 
 Use Valve's SpaceWar App ID `480` for generic local smoke tests. Use your own
 Steam app ID for app-specific achievements, stats, inventory, UGC, economy, and

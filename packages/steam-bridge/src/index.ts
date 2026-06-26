@@ -1660,6 +1660,7 @@ export interface SteamWebApiClient {
   community: SteamWebApiCommunityFacade;
   econService: SteamWebApiEconServiceFacade;
   economy: SteamWebApiEconomyFacade;
+  gameServersService: SteamWebApiGameServersServiceFacade;
   gameServerStats: SteamWebApiGameServerStatsFacade;
   inventoryService: SteamWebApiInventoryServiceFacade;
   leaderboards: SteamWebApiLeaderboardsFacade;
@@ -2074,6 +2075,43 @@ export interface SteamWebApiInventoryItemPropertyUpdate {
   propertyValueInt?: bigint | number | string;
   propertyValueFloat?: number | string;
   removeProperty?: boolean;
+}
+
+export interface SteamWebApiGameServersServiceFacade {
+  getAccountList<T = unknown>(options?: SteamWebApiEndpointOptions | null): Promise<SteamWebApiResponse<T>>;
+  createAccount<T = unknown>(options: SteamWebApiGameServersCreateAccountOptions): Promise<SteamWebApiResponse<T>>;
+  setMemo<T = unknown>(options: SteamWebApiGameServersSetMemoOptions): Promise<SteamWebApiResponse<T>>;
+  resetLoginToken<T = unknown>(options: SteamWebApiGameServersSteamIdOptions): Promise<SteamWebApiResponse<T>>;
+  deleteAccount<T = unknown>(options: SteamWebApiGameServersSteamIdOptions): Promise<SteamWebApiResponse<T>>;
+  getAccountPublicInfo<T = unknown>(
+    steamId64: bigint | number | string,
+    options?: SteamWebApiEndpointOptions | null
+  ): Promise<SteamWebApiResponse<T>>;
+  queryLoginToken<T = unknown>(
+    loginToken: string,
+    options?: SteamWebApiEndpointOptions | null
+  ): Promise<SteamWebApiResponse<T>>;
+  getServerSteamIdsByIp<T = unknown>(
+    serverIps: string | string[],
+    options?: SteamWebApiEndpointOptions | null
+  ): Promise<SteamWebApiResponse<T>>;
+  getServerIpsBySteamId<T = unknown>(
+    serverSteamIds: Array<bigint | number | string>,
+    options?: SteamWebApiEndpointOptions | null
+  ): Promise<SteamWebApiResponse<T>>;
+}
+
+export interface SteamWebApiGameServersCreateAccountOptions extends SteamWebApiEndpointOptions {
+  appId: number;
+  memo: string;
+}
+
+export interface SteamWebApiGameServersSteamIdOptions extends SteamWebApiEndpointOptions {
+  steamId64: bigint | number | string;
+}
+
+export interface SteamWebApiGameServersSetMemoOptions extends SteamWebApiGameServersSteamIdOptions {
+  memo: string;
 }
 
 export interface SteamWebApiGameServerStatsFacade {
@@ -4626,6 +4664,7 @@ export function createSteamWebApiClient(options: SteamWebApiClientOptions = {}):
     community: createSteamWebApiCommunityFacade(clientOptions),
     econService: createSteamWebApiEconServiceFacade(clientOptions),
     economy: createSteamWebApiEconomyFacade(clientOptions),
+    gameServersService: createSteamWebApiGameServersServiceFacade(clientOptions),
     gameServerStats: createSteamWebApiGameServerStatsFacade(clientOptions),
     inventoryService: createSteamWebApiInventoryServiceFacade(clientOptions),
     leaderboards: createSteamWebApiLeaderboardsFacade(clientOptions),
@@ -9448,6 +9487,132 @@ function createSteamWebApiInventoryServiceFacade(
           }))
         },
         options
+      );
+    }
+  };
+}
+
+function createSteamWebApiGameServersServiceFacade(
+  clientOptions: SteamWebApiClientOptions
+): SteamWebApiGameServersServiceFacade {
+  return {
+    getAccountList<T = unknown>(
+      options?: SteamWebApiEndpointOptions | null
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServiceGet<T>(
+        clientOptions,
+        "IGameServersService",
+        "GetAccountList",
+        1,
+        {},
+        options,
+        false
+      );
+    },
+    createAccount<T = unknown>(
+      options: SteamWebApiGameServersCreateAccountOptions
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServicePost<T>(
+        clientOptions,
+        "IGameServersService",
+        "CreateAccount",
+        1,
+        { appid: options.appId, memo: options.memo },
+        options,
+        false
+      );
+    },
+    setMemo<T = unknown>(options: SteamWebApiGameServersSetMemoOptions): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServicePost<T>(
+        clientOptions,
+        "IGameServersService",
+        "SetMemo",
+        1,
+        { steamid: options.steamId64, memo: options.memo },
+        options,
+        false
+      );
+    },
+    resetLoginToken<T = unknown>(
+      options: SteamWebApiGameServersSteamIdOptions
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServicePost<T>(
+        clientOptions,
+        "IGameServersService",
+        "ResetLoginToken",
+        1,
+        { steamid: options.steamId64 },
+        options,
+        false
+      );
+    },
+    deleteAccount<T = unknown>(
+      options: SteamWebApiGameServersSteamIdOptions
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServicePost<T>(
+        clientOptions,
+        "IGameServersService",
+        "DeleteAccount",
+        1,
+        { steamid: options.steamId64 },
+        options,
+        false
+      );
+    },
+    getAccountPublicInfo<T = unknown>(
+      steamId64: bigint | number | string,
+      options?: SteamWebApiEndpointOptions | null
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServiceGet<T>(
+        clientOptions,
+        "IGameServersService",
+        "GetAccountPublicInfo",
+        1,
+        { steamid: steamId64 },
+        options,
+        false
+      );
+    },
+    queryLoginToken<T = unknown>(
+      loginToken: string,
+      options?: SteamWebApiEndpointOptions | null
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServiceGet<T>(
+        clientOptions,
+        "IGameServersService",
+        "QueryLoginToken",
+        1,
+        { login_token: loginToken },
+        options,
+        false
+      );
+    },
+    getServerSteamIdsByIp<T = unknown>(
+      serverIps: string | string[],
+      options?: SteamWebApiEndpointOptions | null
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServiceGet<T>(
+        clientOptions,
+        "IGameServersService",
+        "GetServerSteamIDsByIP",
+        1,
+        { server_ips: commaString(serverIps) },
+        options,
+        false
+      );
+    },
+    getServerIpsBySteamId<T = unknown>(
+      serverSteamIds: Array<bigint | number | string>,
+      options?: SteamWebApiEndpointOptions | null
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServiceGet<T>(
+        clientOptions,
+        "IGameServersService",
+        "GetServerIPsBySteamID",
+        1,
+        { server_steamids: commaList(serverSteamIds) },
+        options,
+        false
       );
     }
   };
