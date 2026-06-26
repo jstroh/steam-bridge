@@ -93,7 +93,10 @@ macOS, Deck Game Mode, Deck Desktop Mode, and Windows.
 
 In autorun output, inspect `snapshot.steam.overlayEnabled`,
 `snapshot.steam.overlayNeedsPresent`, `snapshot.steam.overlayDiagnostics`, and
-the final `snapshot.events` list.
+the final `snapshot.events` list. `snapshot.launch.steamLaunch` reports whether
+Steam launch environment markers were present. `snapshot.launch.overlayInjection`
+reports whether the process environment includes a Steam overlay hook marker such
+as `gameoverlayrenderer`.
 
 For Steam Deck Game Mode or gamescope checks, the verifier can assert the Deck
 signals:
@@ -101,9 +104,28 @@ signals:
 ```sh
 npm run example:verify-result -- \
   --file /tmp/steam-bridge-smoke.log \
-  --platform linux \
-  --arch x64 \
+  --platform linux/x64 \
   --require-steam-deck \
   --require-big-picture \
   --require-overlay-ready
+```
+
+For a Steam-launched non-Steam game check, add the stronger launch assertions
+when they are expected on the target platform:
+
+```sh
+npm run example:verify-result -- \
+  --file /tmp/steam-bridge-smoke.log \
+  --require-steam-launch \
+  --require-overlay-injection
+```
+
+For an autorun overlay command, assert both the requested action and the emitted
+event:
+
+```sh
+npm run example:verify-result -- \
+  --file /tmp/steam-bridge-smoke.log \
+  --action dialog \
+  --require-event overlay:dialog
 ```

@@ -11,6 +11,20 @@ const AUTORUN = process.env.STEAM_BRIDGE_SMOKE_AUTORUN === "1";
 const AUTORUN_ACTION = process.env.STEAM_BRIDGE_SMOKE_AUTORUN_ACTION || "dialog";
 const AUTORUN_ACTION_DELAY_MS = Number(process.env.STEAM_BRIDGE_SMOKE_AUTORUN_ACTION_DELAY_MS || "1500");
 const AUTORUN_RESULT_DELAY_MS = Number(process.env.STEAM_BRIDGE_SMOKE_AUTORUN_RESULT_DELAY_MS || "5000");
+const LAUNCH_ENV_KEYS = [
+  "SteamAppId",
+  "SteamGameId",
+  "SteamOverlayGameId",
+  "SteamClientLaunch",
+  "SteamEnv",
+  "STEAM_COMPAT_APP_ID",
+  "STEAM_COMPAT_CLIENT_INSTALL_PATH",
+  "STEAM_COMPAT_DATA_PATH",
+  "LD_PRELOAD",
+  "DYLD_INSERT_LIBRARIES",
+  "__COMPAT_LAYER"
+];
+const STARTUP_LAUNCH_CONTEXT = getLaunchContext();
 
 steamworks.electronConfigureSteamOverlay({ profile: OVERLAY_PROFILE });
 writeSteamAppIdFiles(APP_ID);
@@ -228,6 +242,8 @@ function snapshot() {
       isPackaged: app.isPackaged
     },
     process: {
+      pid: process.pid,
+      ppid: process.ppid,
       platform: process.platform,
       arch: process.arch,
       node: process.versions.node,
@@ -238,6 +254,7 @@ function snapshot() {
       resourcesPath: process.resourcesPath,
       argv: process.argv
     },
+    launch: STARTUP_LAUNCH_CONTEXT,
     steam: {
       initialized: Boolean(client),
       initError
@@ -320,6 +337,34 @@ function requireClient() {
   }
 
   return client;
+}
+
+function getLaunchContext() {
+  const env = {};
+  for (const key of LAUNCH_ENV_KEYS) {
+    if (process.env[key]) {
+      env[key] = process.env[key];
+    }
+  }
+
+  const overlayEnv = [env.LD_PRELOAD, env.DYLD_INSERT_LIBRARIES].filter(Boolean).join("\n");
+  const overlayInjection = /gameoverlayrenderer/i.test(overlayEnv);
+  const steamLaunch = Boolean(
+    overlayInjection ||
+      env.SteamAppId ||
+      env.SteamGameId ||
+      env.SteamOverlayGameId ||
+      env.SteamClientLaunch ||
+      env.SteamEnv ||
+      env.STEAM_COMPAT_APP_ID ||
+      env.STEAM_COMPAT_DATA_PATH
+  );
+
+  return {
+    steamLaunch,
+    overlayInjection,
+    env
+  };
 }
 
 function delay(ms) {

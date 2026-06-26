@@ -7,7 +7,9 @@ const result = readResult(input);
 const snapshot = result.snapshot || {};
 const steam = snapshot.steam || {};
 const app = snapshot.app || {};
+const launch = snapshot.launch || {};
 const processInfo = snapshot.process || {};
+const events = Array.isArray(snapshot.events) ? snapshot.events : [];
 const failures = [];
 
 expect(result.ok === true, "smoke result ok");
@@ -24,6 +26,10 @@ if (options.platform) {
 if (options.arch) {
   expect(processInfo.arch === options.arch, `arch is ${options.arch}`);
 }
+if (options.action) {
+  expect(result.action && result.action.action === options.action, `autorun action is ${options.action}`);
+  expect(result.action && result.action.ok === true, `autorun action ${options.action} succeeded`);
+}
 if (options.requireSteamDeck) {
   expect(readOkValue(steam.steamDeck) === true, "Steam Deck detected");
 }
@@ -36,6 +42,15 @@ if (options.requireOverlayEnabled) {
 if (options.requireOverlayReady) {
   expect(readOkValue(steam.overlayEnabled) === true, "overlay enabled");
   expect(readOkValue(steam.overlayNeedsPresent) === false, "overlay does not need present");
+}
+if (options.requireSteamLaunch) {
+  expect(launch.steamLaunch === true, "Steam launch marker detected");
+}
+if (options.requireOverlayInjection) {
+  expect(launch.overlayInjection === true, "Steam overlay injection marker detected");
+}
+for (const type of options.requiredEvents) {
+  expect(events.some((event) => event && event.type === type), `event ${type} emitted`);
 }
 
 if (failures.length > 0) {
@@ -53,7 +68,10 @@ console.log(
     `steamDeck=${readOkValue(steam.steamDeck)}`,
     `bigPicture=${readOkValue(steam.bigPicture)}`,
     `overlayEnabled=${readOkValue(steam.overlayEnabled)}`,
-    `overlayNeedsPresent=${readOkValue(steam.overlayNeedsPresent)}`
+    `overlayNeedsPresent=${readOkValue(steam.overlayNeedsPresent)}`,
+    `steamLaunch=${launch.steamLaunch}`,
+    `overlayInjection=${launch.overlayInjection}`,
+    `action=${result.action && result.action.action}`
   ].join(" ")
 );
 
@@ -83,17 +101,24 @@ function parseArgs(args) {
   const parsed = {
     appId: undefined,
     arch: undefined,
+    action: undefined,
     file: undefined,
     platform: undefined,
     requireBigPicture: false,
+    requireOverlayInjection: false,
     requireOverlayEnabled: false,
     requireOverlayReady: false,
-    requireSteamDeck: false
+    requireSteamLaunch: false,
+    requireSteamDeck: false,
+    requiredEvents: []
   };
 
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
     switch (arg) {
+      case "--action":
+        parsed.action = args[++index];
+        break;
       case "--app-id":
         parsed.appId = Number(args[++index]);
         break;
@@ -104,16 +129,25 @@ function parseArgs(args) {
         parsed.file = args[++index];
         break;
       case "--platform":
-        parsed.platform = args[++index];
+        parsePlatformValue(parsed, args[++index]);
         break;
       case "--require-big-picture":
         parsed.requireBigPicture = true;
+        break;
+      case "--require-event":
+        parsed.requiredEvents.push(args[++index]);
+        break;
+      case "--require-overlay-injection":
+        parsed.requireOverlayInjection = true;
         break;
       case "--require-overlay-enabled":
         parsed.requireOverlayEnabled = true;
         break;
       case "--require-overlay-ready":
         parsed.requireOverlayReady = true;
+        break;
+      case "--require-steam-launch":
+        parsed.requireSteamLaunch = true;
         break;
       case "--require-steam-deck":
         parsed.requireSteamDeck = true;
@@ -124,4 +158,16 @@ function parseArgs(args) {
   }
 
   return parsed;
+}
+
+function parsePlatformValue(parsed, value) {
+  const [platform, arch, extra] = String(value || "").split("/");
+  if (!platform || extra) {
+    throw new Error(`Invalid platform value: ${value}`);
+  }
+
+  parsed.platform = platform;
+  if (arch) {
+    parsed.arch = arch;
+  }
 }
