@@ -4967,6 +4967,58 @@ test("matchmaking facade exposes typed callback helpers", (t) => {
 test("apps facade covers DLC, launch, depot, trial, beta, and file-detail helpers", async (t) => {
   const sha = Buffer.from("00112233445566778899aabbccddeeff00112233", "hex");
   const fake = createFakeNative({
+    appsIsSubscribedApp(appId) {
+      this.calls.push({ method: "appsIsSubscribedApp", args: [appId] });
+      return appId === 480;
+    },
+    appsIsAppInstalled(appId) {
+      this.calls.push({ method: "appsIsAppInstalled", args: [appId] });
+      return appId === 480;
+    },
+    appsIsDlcInstalled(appId) {
+      this.calls.push({ method: "appsIsDlcInstalled", args: [appId] });
+      return appId === 481;
+    },
+    appsIsSubscribedFromFreeWeekend() {
+      this.calls.push({ method: "appsIsSubscribedFromFreeWeekend", args: [] });
+      return false;
+    },
+    appsIsVacBanned() {
+      this.calls.push({ method: "appsIsVacBanned", args: [] });
+      return false;
+    },
+    appsIsCybercafe() {
+      this.calls.push({ method: "appsIsCybercafe", args: [] });
+      return false;
+    },
+    appsIsLowViolence() {
+      this.calls.push({ method: "appsIsLowViolence", args: [] });
+      return false;
+    },
+    appsAppBuildId() {
+      this.calls.push({ method: "appsAppBuildId", args: [] });
+      return 123456;
+    },
+    appsAppInstallDir(appId) {
+      this.calls.push({ method: "appsAppInstallDir", args: [appId] });
+      return "/tmp/spacewar";
+    },
+    appsAppOwner() {
+      this.calls.push({ method: "appsAppOwner", args: [] });
+      return { steamId64: "76561198000000001", steamId32: "STEAM_0:1:19867136", accountId: 39734273 };
+    },
+    appsAvailableGameLanguages() {
+      this.calls.push({ method: "appsAvailableGameLanguages", args: [] });
+      return ["english", "spanish"];
+    },
+    appsCurrentGameLanguage() {
+      this.calls.push({ method: "appsCurrentGameLanguage", args: [] });
+      return "english";
+    },
+    appsCurrentBetaName() {
+      this.calls.push({ method: "appsCurrentBetaName", args: [] });
+      return "public";
+    },
     appsEarliestPurchaseUnixTime(appId) {
       this.calls.push({ method: "appsEarliestPurchaseUnixTime", args: [appId] });
       return 1700000000;
@@ -5046,6 +5098,23 @@ test("apps facade covers DLC, launch, depot, trial, beta, and file-detail helper
 
   t.after(clearSteamBridgeCache);
 
+  assert.equal(steam.apps.isSubscribedApp(480), true);
+  assert.equal(steam.apps.isAppInstalled(480), true);
+  assert.equal(steam.apps.isDlcInstalled(481), true);
+  assert.equal(steam.apps.isSubscribedFromFreeWeekend(), false);
+  assert.equal(steam.apps.isVacBanned(), false);
+  assert.equal(steam.apps.isCybercafe(), false);
+  assert.equal(steam.apps.isLowViolence(), false);
+  assert.equal(steam.apps.appBuildId(), 123456);
+  assert.equal(steam.apps.appInstallDir(480), "/tmp/spacewar");
+  assert.deepEqual(steam.apps.appOwner(), {
+    steamId64: 76561198000000001n,
+    steamId32: "STEAM_0:1:19867136",
+    accountId: 39734273
+  });
+  assert.deepEqual(steam.apps.availableGameLanguages(), ["english", "spanish"]);
+  assert.equal(steam.apps.currentGameLanguage(), "english");
+  assert.equal(steam.apps.currentBetaName(), "public");
   assert.equal(steam.apps.earliestPurchaseUnixTime(480), 1700000000);
   assert.equal(steam.apps.dlcCount(), 1);
   assert.deepEqual(steam.apps.dlcDataByIndex(0), { appId: 481, available: true, name: "Soundtrack" });
@@ -5085,6 +5154,10 @@ test("apps facade covers DLC, launch, depot, trial, beta, and file-detail helper
   assert.deepEqual(
     fake.calls.filter((call) =>
       [
+        "appsIsSubscribedApp",
+        "appsIsAppInstalled",
+        "appsIsDlcInstalled",
+        "appsAppInstallDir",
         "appsInstalledDepots",
         "appsMarkContentCorrupt",
         "appsLaunchCommandLine",
@@ -5093,6 +5166,10 @@ test("apps facade covers DLC, launch, depot, trial, beta, and file-detail helper
       ].includes(call.method)
     ),
     [
+      { method: "appsIsSubscribedApp", args: [480] },
+      { method: "appsIsAppInstalled", args: [480] },
+      { method: "appsIsDlcInstalled", args: [481] },
+      { method: "appsAppInstallDir", args: [480] },
       { method: "appsMarkContentCorrupt", args: [true] },
       { method: "appsInstalledDepots", args: [480, 4] },
       { method: "appsLaunchCommandLine", args: [512] },
