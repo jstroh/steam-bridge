@@ -8,6 +8,7 @@ const snapshot = result.snapshot || {};
 const steam = snapshot.steam || {};
 const app = snapshot.app || {};
 const launch = snapshot.launch || {};
+const overlay = snapshot.overlay || {};
 const processInfo = snapshot.process || {};
 const events = Array.isArray(snapshot.events) ? snapshot.events : [];
 const failures = [];
@@ -48,6 +49,9 @@ if (options.requireSteamLaunch) {
 }
 if (options.requireOverlayInjection) {
   expect(launch.overlayInjection === true, "Steam overlay injection marker detected");
+}
+if (options.requireNativeProbeOpen) {
+  expect(readOkValue(overlay.nativeProbeOpen) === true, "native overlay probe open");
 }
 for (const type of options.requiredEvents) {
   expect(events.some((event) => event && event.type === type), `event ${type} emitted`);
@@ -108,6 +112,7 @@ function parseArgs(args) {
     requireOverlayInjection: false,
     requireOverlayEnabled: false,
     requireOverlayReady: false,
+    requireNativeProbeOpen: false,
     requireSteamLaunch: false,
     requireSteamDeck: false,
     requiredEvents: []
@@ -145,6 +150,9 @@ function parseArgs(args) {
         break;
       case "--require-overlay-ready":
         parsed.requireOverlayReady = true;
+        break;
+      case "--require-native-probe-open":
+        parsed.requireNativeProbeOpen = true;
         break;
       case "--require-steam-launch":
         parsed.requireSteamLaunch = true;

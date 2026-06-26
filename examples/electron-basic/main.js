@@ -154,16 +154,44 @@ async function runAutorunSmoke() {
 
   await delay(AUTORUN_ACTION_DELAY_MS);
   const actionResult = runAutorunAction(AUTORUN_ACTION);
-  await delay(AUTORUN_RESULT_DELAY_MS);
+  const waitResult = await waitForAutorunResult(AUTORUN_ACTION, AUTORUN_RESULT_DELAY_MS);
 
   const result = sanitize({
-    ok: Boolean(client) && !actionResult.error,
+    ok: Boolean(client) && !actionResult.error && waitResult.ok,
     action: actionResult,
+    wait: waitResult,
     snapshot: snapshot()
   });
   const line = `STEAM_BRIDGE_SMOKE_RESULT ${JSON.stringify(result)}\n`;
   writeSmokeResultLine(line);
   process.stdout.write(line, () => process.exit(0));
+}
+
+async function waitForAutorunResult(action, durationMs) {
+  if (action !== "native-probe") {
+    await delay(durationMs);
+    return { ok: true, action, durationMs };
+  }
+
+  const startedAt = Date.now();
+  const deadline = startedAt + durationMs;
+  let pumps = 0;
+
+  while (Date.now() < deadline) {
+    await delay(Math.min(100, Math.max(0, deadline - Date.now())));
+    try {
+      requireClient().overlay.pumpNativeOverlayProbeWindow();
+      pumps += 1;
+    } catch (error) {
+      const serialized = serializeError(error);
+      recordEvent("overlay:native-probe-pump:error", { pumps, error: serialized });
+      return { ok: false, action, pumps, durationMs: Date.now() - startedAt, error: serialized };
+    }
+  }
+
+  const elapsedMs = Date.now() - startedAt;
+  recordEvent("overlay:native-probe-pump", { pumps, durationMs: elapsedMs });
+  return { ok: true, action, pumps, durationMs: elapsedMs };
 }
 
 function runAutorunAction(action) {

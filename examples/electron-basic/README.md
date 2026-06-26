@@ -168,6 +168,23 @@ npm run example:verify-result -- \
   --require-overlay-injection
 ```
 
+For a macOS Apple Silicon native overlay probe check, use the compatibility
+profile, the `native-probe` autorun action, and assert that the probe stayed
+open while the overlay became ready:
+
+```sh
+npm run example:verify-result -- \
+  --file /tmp/steam-bridge-smoke-macos-steam-launch-native-probe.log \
+  --platform darwin/arm64 \
+  --require-steam-launch \
+  --require-overlay-injection \
+  --require-native-probe-open \
+  --require-overlay-ready \
+  --action native-probe \
+  --require-event overlay:native-probe-open \
+  --require-event overlay:native-probe-pump
+```
+
 For an autorun overlay command, assert both the requested action and the emitted
 event:
 

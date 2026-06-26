@@ -34,21 +34,27 @@ Verified:
   `gameoverlayrenderer.dylib`, so `snapshot.launch.overlayInjection` is `true`.
 - The app initializes Steam as App ID `480`, runs the `dialog` autorun action,
   and writes a verifier-readable `STEAM_BRIDGE_SMOKE_RESULT` line.
+- The `native-probe` autorun action keeps the native probe surface pumped during
+  the result wait. With the `compatibility` overlay profile, the Steam-launched
+  smoke app reports `overlayEnabled=true`, `overlayNeedsPresent=false`, and
+  `nativeProbeOpen=true` on macOS Apple Silicon.
 
 Still not verified:
 
 - `client.utils.isOverlayEnabled()` remains `false` for the Electron
-  `BrowserWindow` path even with the `compatibility` overlay profile.
+  `BrowserWindow`-only path even with the `compatibility` overlay profile. The
+  verified macOS overlay path is the native probe surface.
 - Ad-hoc signing the packaged app with
   `com.apple.security.cs.allow-dyld-environment-variables` and
   `com.apple.security.cs.disable-library-validation` did not make
-  `overlayEnabled` turn `true` in the local smoke run.
+  `overlayEnabled` turn `true` for the BrowserWindow-only smoke run.
 - A shell-wrapper shortcut can set `SteamAppId=480` before app startup, but macOS
   strips the Steam `DYLD_INSERT_LIBRARIES` injection before the Electron child
   process starts, so that path is not useful for overlay verification.
 
-The current macOS result should therefore be treated as Steam launch and
-injection coverage, not completed overlay coverage.
+The current macOS result should therefore be treated as completed overlay
+coverage for the native probe path, plus Steam launch and injection coverage for
+the BrowserWindow path.
 
 ## Primary References
 
