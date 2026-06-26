@@ -2076,6 +2076,8 @@ test("specific and generic callbacks normalize Steamworks payloads", (t) => {
   assert.equal(steam.SteamCallback.FriendsEnumerateFollowingList, 346);
   assert.equal(steam.SteamCallback.OverlayBrowserProtocolNavigation, 349);
   assert.equal(steam.SteamCallback.EquippedProfileItems, 351);
+  assert.equal(steam.SteamCallback.LobbyCreated, 513);
+  assert.equal(steam.SteamCallback.FavoritesListAccountsUpdated, 516);
   assert.equal(steam.SteamCallback.GamepadTextInputDismissed, 714);
   assert.equal(steam.SteamCallback.DlcInstalled, 1005);
   assert.equal(steam.SteamCallback.AppProofOfPurchaseKeyResponse, 1021);
@@ -2105,6 +2107,7 @@ test("specific and generic callbacks normalize Steamworks payloads", (t) => {
   assert.equal(steam.SteamCallback.RemoteStoragePublishedFileUpdated, 1330);
   assert.equal(steam.SteamCallback.RemoteStorageFileWriteAsyncComplete, 1331);
   assert.equal(steam.SteamCallback.RemoteStorageFileReadAsyncComplete, 1332);
+  assert.equal(steam.SteamCallback.RemoteStorageLocalFileChange, 1333);
   assert.equal(steam.SteamCallback.GameServerClientApprove, 201);
   assert.equal(steam.SteamCallback.GameServerClientDeny, 202);
   assert.equal(steam.SteamCallback.GameServerClientKick, 203);
@@ -2144,6 +2147,8 @@ test("specific and generic callbacks normalize Steamworks payloads", (t) => {
   assert.equal(steam.SteamCallback.GetVideoURLResult, 4611);
   assert.equal(steam.SteamCallback.GetOPFSettingsResult, 4624);
   assert.equal(steam.SteamCallback.SteamParentalSettingsChanged, 5001);
+  assert.equal(steam.SteamCallback.AvailableBeaconLocationsUpdated, 5305);
+  assert.equal(steam.SteamCallback.ActiveBeaconsUpdated, 5306);
   assert.equal(steam.SteamCallback.SteamInputDeviceConnected, 2801);
   assert.equal(steam.SteamCallback.SteamInputDeviceDisconnected, 2802);
   assert.equal(steam.SteamCallback.SteamInputConfigurationLoaded, 2803);
@@ -2185,6 +2190,25 @@ test("specific and generic callbacks normalize Steamworks payloads", (t) => {
   assert.equal(lobbyEvent.member, 76561198000000000n);
   assert.equal(lobbyEvent.remote, 42n);
   assert.equal(lobbyEvent.note, "kept");
+
+  let lobbyCreatedEvent;
+  steam.callback.register(steam.SteamCallback.LobbyCreated, (event) => {
+    lobbyCreatedEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.LobbyCreated)({
+    result: 1,
+    lobby: "109775242022617908"
+  });
+
+  assert.equal(lobbyCreatedEvent.result, 1);
+  assert.equal(lobbyCreatedEvent.lobby, 109775242022617908n);
+
+  let favoritesAccountsUpdatedEvent;
+  steam.callback.register(steam.SteamCallback.FavoritesListAccountsUpdated, (event) => {
+    favoritesAccountsUpdatedEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.FavoritesListAccountsUpdated)({ result: 1 });
+  assert.equal(favoritesAccountsUpdatedEvent.result, 1);
 
   let apiCallEvent;
   steam.callback.register(steam.SteamCallback.SteamAPICallCompleted, (event) => {
@@ -2269,6 +2293,27 @@ test("specific and generic callbacks normalize Steamworks payloads", (t) => {
   assert.equal(webApiTicketEvent.authTicket, 88);
   assert.equal(webApiTicketEvent.ticketByteLength, 6);
   assert.equal(webApiTicketEvent.ticket.toString(), "ticket");
+
+  let localFileChangeEvent;
+  steam.callback.register(steam.SteamCallback.RemoteStorageLocalFileChange, (event) => {
+    localFileChangeEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.RemoteStorageLocalFileChange)({});
+  assert.deepEqual(localFileChangeEvent, {});
+
+  let availableBeaconLocationsUpdatedEvent;
+  steam.callback.register(steam.SteamCallback.AvailableBeaconLocationsUpdated, (event) => {
+    availableBeaconLocationsUpdatedEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.AvailableBeaconLocationsUpdated)({});
+  assert.deepEqual(availableBeaconLocationsUpdatedEvent, {});
+
+  let activeBeaconsUpdatedEvent;
+  steam.callback.register(steam.SteamCallback.ActiveBeaconsUpdated, (event) => {
+    activeBeaconsUpdatedEvent = event;
+  });
+  fake.callbacks.get(steam.SteamCallback.ActiveBeaconsUpdated)({});
+  assert.deepEqual(activeBeaconsUpdatedEvent, {});
 
   steam.callback.registerRawCallbackBase(0x1234n, steam.SteamCallback.LobbyDataUpdate);
   steam.callback.registerRawCallResult(0x1234n, 12345678901234567890n);

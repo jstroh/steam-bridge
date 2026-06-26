@@ -138,6 +138,8 @@ const CALLBACK_LOBBY_CHAT_MSG: i32 = 507;
 const CALLBACK_LOBBY_GAME_CREATED: i32 = 509;
 const CALLBACK_LOBBY_MATCH_LIST: i32 = 510;
 const CALLBACK_LOBBY_KICKED: i32 = 512;
+const CALLBACK_LOBBY_CREATED: i32 = 513;
+const CALLBACK_FAVORITES_LIST_ACCOUNTS_UPDATED: i32 = 516;
 const CALLBACK_GAME_SERVER_CHANGE_REQUESTED: i32 = 332;
 const CALLBACK_GAME_LOBBY_JOIN_REQUESTED: i32 = 333;
 const CALLBACK_AVATAR_IMAGE_LOADED: i32 = 334;
@@ -207,6 +209,7 @@ const CALLBACK_REMOTE_STORAGE_PUBLISH_FILE_PROGRESS: i32 = 1329;
 const CALLBACK_REMOTE_STORAGE_PUBLISHED_FILE_UPDATED: i32 = 1330;
 const CALLBACK_REMOTE_STORAGE_FILE_WRITE_ASYNC_COMPLETE: i32 = 1331;
 const CALLBACK_REMOTE_STORAGE_FILE_READ_ASYNC_COMPLETE: i32 = 1332;
+const CALLBACK_REMOTE_STORAGE_LOCAL_FILE_CHANGE: i32 = 1333;
 const CALLBACK_STEAM_UGC_QUERY_COMPLETED: i32 = 3401;
 const CALLBACK_STEAM_UGC_REQUEST_DETAILS_RESULT: i32 = 3402;
 const CALLBACK_STEAM_UGC_CREATE_ITEM_RESULT: i32 = 3403;
@@ -294,6 +297,8 @@ const CALLBACK_JOIN_PARTY: i32 = 5301;
 const CALLBACK_CREATE_BEACON: i32 = 5302;
 const CALLBACK_RESERVATION_NOTIFICATION: i32 = 5303;
 const CALLBACK_CHANGE_NUM_OPEN_SLOTS: i32 = 5304;
+const CALLBACK_AVAILABLE_BEACON_LOCATIONS_UPDATED: i32 = 5305;
+const CALLBACK_ACTIVE_BEACONS_UPDATED: i32 = 5306;
 const CALLBACK_STEAM_REMOTE_PLAY_SESSION_CONNECTED: i32 = 5701;
 const CALLBACK_STEAM_REMOTE_PLAY_SESSION_DISCONNECTED: i32 = 5702;
 const CALLBACK_STEAM_REMOTE_PLAY_TOGETHER_GUEST_INVITE: i32 = 5703;
@@ -20389,6 +20394,10 @@ fn callback_id_from_compat(callback: i32) -> Result<i32, Error> {
         CALLBACK_LOBBY_GAME_CREATED => Ok(sys::LobbyGameCreated_t_k_iCallback as i32),
         CALLBACK_LOBBY_MATCH_LIST => Ok(sys::LobbyMatchList_t_k_iCallback as i32),
         CALLBACK_LOBBY_KICKED => Ok(sys::LobbyKicked_t_k_iCallback as i32),
+        CALLBACK_LOBBY_CREATED => Ok(sys::LobbyCreated_t_k_iCallback as i32),
+        CALLBACK_FAVORITES_LIST_ACCOUNTS_UPDATED => {
+            Ok(sys::FavoritesListAccountsUpdated_t_k_iCallback as i32)
+        }
         CALLBACK_GAME_SERVER_CHANGE_REQUESTED => {
             Ok(sys::GameServerChangeRequested_t_k_iCallback as i32)
         }
@@ -20555,6 +20564,9 @@ fn callback_id_from_compat(callback: i32) -> Result<i32, Error> {
         CALLBACK_REMOTE_STORAGE_FILE_READ_ASYNC_COMPLETE => {
             Ok(sys::RemoteStorageFileReadAsyncComplete_t_k_iCallback as i32)
         }
+        CALLBACK_REMOTE_STORAGE_LOCAL_FILE_CHANGE => {
+            Ok(sys::RemoteStorageLocalFileChange_t_k_iCallback as i32)
+        }
         CALLBACK_STEAM_UGC_QUERY_COMPLETED => Ok(sys::SteamUGCQueryCompleted_t_k_iCallback as i32),
         CALLBACK_STEAM_UGC_REQUEST_DETAILS_RESULT => {
             Ok(sys::SteamUGCRequestUGCDetailsResult_t_k_iCallback as i32)
@@ -20673,6 +20685,10 @@ fn callback_id_from_compat(callback: i32) -> Result<i32, Error> {
             Ok(sys::ReservationNotificationCallback_t_k_iCallback as i32)
         }
         CALLBACK_CHANGE_NUM_OPEN_SLOTS => Ok(sys::ChangeNumOpenSlotsCallback_t_k_iCallback as i32),
+        CALLBACK_AVAILABLE_BEACON_LOCATIONS_UPDATED => {
+            Ok(sys::AvailableBeaconLocationsUpdated_t_k_iCallback as i32)
+        }
+        CALLBACK_ACTIVE_BEACONS_UPDATED => Ok(sys::ActiveBeaconsUpdated_t_k_iCallback as i32),
         CALLBACK_STEAM_REMOTE_PLAY_SESSION_CONNECTED => {
             Ok(sys::SteamRemotePlaySessionConnected_t_k_iCallback as i32)
         }
@@ -21126,6 +21142,7 @@ unsafe fn callback_to_json(callback: i32, param: *mut c_void) -> Value {
                 "bytes_read": ptr::addr_of!((*event).m_cubRead).read_unaligned()
             })
         }
+        CALLBACK_REMOTE_STORAGE_LOCAL_FILE_CHANGE => serde_json::json!({}),
         CALLBACK_STEAM_UGC_QUERY_COMPLETED => {
             let event = param as *const sys::SteamUGCQueryCompleted_t;
             let next_cursor = ptr::addr_of!((*event).m_rgchNextCursor).read_unaligned();
@@ -21306,6 +21323,12 @@ unsafe fn callback_to_json(callback: i32, param: *mut c_void) -> Value {
                 "account_id": ptr::addr_of!((*event).m_unAccountId).read_unaligned()
             })
         }
+        CALLBACK_FAVORITES_LIST_ACCOUNTS_UPDATED => {
+            let event = param as *const sys::FavoritesListAccountsUpdated_t;
+            serde_json::json!({
+                "result": ptr::addr_of!((*event).m_eResult).read_unaligned() as u32
+            })
+        }
         CALLBACK_LOBBY_INVITE => {
             let event = param as *const sys::LobbyInvite_t;
             serde_json::json!({
@@ -21329,6 +21352,13 @@ unsafe fn callback_to_json(callback: i32, param: *mut c_void) -> Value {
                 "lobby": ptr::addr_of!((*event).m_ulSteamIDLobby).read_unaligned().to_string(),
                 "member": ptr::addr_of!((*event).m_ulSteamIDMember).read_unaligned().to_string(),
                 "success": ptr::addr_of!((*event).m_bSuccess).read_unaligned()
+            })
+        }
+        CALLBACK_LOBBY_CREATED => {
+            let event = param as *const sys::LobbyCreated_t;
+            serde_json::json!({
+                "result": ptr::addr_of!((*event).m_eResult).read_unaligned() as u32,
+                "lobby": ptr::addr_of!((*event).m_ulSteamIDLobby).read_unaligned().to_string()
             })
         }
         5 | CALLBACK_LOBBY_CHAT_UPDATE => {
@@ -22089,6 +22119,8 @@ unsafe fn callback_to_json(callback: i32, param: *mut c_void) -> Value {
                 "result": ptr::addr_of!((*event).m_eResult).read_unaligned() as u32
             })
         }
+        CALLBACK_AVAILABLE_BEACON_LOCATIONS_UPDATED => serde_json::json!({}),
+        CALLBACK_ACTIVE_BEACONS_UPDATED => serde_json::json!({}),
         CALLBACK_STEAM_REMOTE_PLAY_SESSION_CONNECTED => {
             let event = param as *const sys::SteamRemotePlaySessionConnected_t;
             serde_json::json!({

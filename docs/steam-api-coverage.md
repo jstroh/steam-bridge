@@ -57,7 +57,7 @@ documented in headers but omitted from the generated flat bindings.
   file listing, async file reads/writes, file sharing, write streams, cached
   UGC download/progress/details/reads, legacy published-file publish/update,
   detail, enumeration, subscription, vote, action, and video flows,
-  local-change enumeration, and file write batch controls.
+  local-change enumeration and notifications, and file write batch controls.
 - HTTP: client and game-server request creation, configuration,
   send/stream-send initiation, response header/body reads, progress/timeout
   checks, raw POST bodies, cookie containers, request priority/defer, and HTTP
@@ -77,14 +77,15 @@ documented in headers but omitted from the generated flat bindings.
 - Matchmaking/lobbies: favorite/history server storage, lobby list filters,
   create, join, list, leave, member/owner helpers, lobby and member data,
   joinability, lobby type/owner/limit/link controls, lobby chat, lobby
-  game-server metadata, invites, invite dialogs, lobby callbacks, one-shot
+  game-server metadata, invites, invite dialogs, lobby callbacks, lobby create
+  and favorite-account update callbacks, one-shot
   matchmaking server browser list, ping, player-detail, and rule queries, plus
   server address/item/filter struct helpers, response callback dispatch
   wrappers, long-lived server-list request handles with details, refresh,
   cancel, state, and release controls.
 - Parties: party beacon enumeration/details, location discovery and metadata,
   join/create/change async calls, reservation completion/cancel, destroy, and
-  reservation callbacks.
+  reservation, available-location, and active-beacon update callbacks.
 - Inventory: result status/items/properties, serialization/deserialization,
   item generation/promo/consume/exchange/transfer/trade flows, item definition
   reads, eligible promo definition queries, purchase and price requests, dynamic
