@@ -115,7 +115,8 @@ covered.
   callback events with structured metadata and paint-buffer delivery.
 - Steam Input: init/shutdown, action manifest selection, frame/data polling,
   connected controllers, device and direct action-event callbacks, gamepad
-  index mapping, action sets/layers, digital and analog action data/origins/names,
+  index mapping, typed device/configuration/gamepad-slot callback helpers,
+  action sets/layers, digital and analog action data/origins/names,
   named digital-action lookups, all-controller and max-controller constants,
   action-event type constants, glyph/string lookups, Xbox-origin translation,
   DualSense trigger-effect forwarding, motion data, haptics, LED controls,
@@ -199,9 +200,10 @@ covered.
   payloads. `steamworks-sys 0.13` exposes the ticket out-parameter but keeps
   `SteamDatagramRelayAuthTicket` opaque in the bundled headers, so safe
   structured decoding needs a newer SDK surface or a maintained local shim.
-- Additional specialized callback/event helpers for interfaces where a dedicated
-  `on...` helper would be clearer than the generic name-based subscription API;
-  generated callback constants and generic name subscriptions are covered by the
+- Additional specialized callback/event helpers outside the current Steam Input
+  device/configuration/gamepad-slot batch, for interfaces where a dedicated
+  `on...` helper would be clearer than the generic name-based subscription API.
+  Generated callback constants and generic name subscriptions are covered by the
   automated coverage audit.
 - `ISteamPS3OverlayRenderHost` and `ISteamPS3OverlayRender` are PlayStation 3
   overlay interfaces and are outside Steam Bridge's supported Steam desktop

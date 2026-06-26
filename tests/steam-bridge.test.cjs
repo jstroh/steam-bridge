@@ -4252,6 +4252,80 @@ test("cloud, input, and networking facades coerce native values", async (t) => {
   assert.equal(steam.input.waitForData(false, 16), true);
   assert.equal(steam.input.newDataAvailable(), true);
   steam.input.enableDeviceCallbacks();
+  const inputDeviceConnectedEvents = [];
+  const inputDeviceDisconnectedEvents = [];
+  const inputConfigurationLoadedEvents = [];
+  const inputGamepadSlotChangeEvents = [];
+  const inputDeviceConnectedHandle = steam.input.onDeviceConnected((event) => inputDeviceConnectedEvents.push(event));
+  const inputDeviceDisconnectedHandle = steam.input.onDeviceDisconnected((event) => {
+    inputDeviceDisconnectedEvents.push(event);
+  });
+  const inputConfigurationLoadedHandle = steam.input.onConfigurationLoaded((event) => {
+    inputConfigurationLoadedEvents.push(event);
+  });
+  const inputGamepadSlotChangeHandle = steam.input.onGamepadSlotChange((event) => {
+    inputGamepadSlotChangeEvents.push(event);
+  });
+  fake.callbacks.get(steam.SteamCallback.SteamInputDeviceConnected)({ connected_device_handle: "123" });
+  fake.callbacks.get(steam.SteamCallback.SteamInputDeviceDisconnected)({ disconnected_device_handle: "124" });
+  fake.callbacks.get(steam.SteamCallback.SteamInputConfigurationLoaded)({
+    app_id: 480,
+    device_handle: "123",
+    mapping_creator: "76561198000000000",
+    major_revision: 1,
+    minor_revision: 2,
+    uses_steam_input_api: true,
+    uses_gamepad_api: false
+  });
+  fake.callbacks.get(steam.SteamCallback.SteamInputGamepadSlotChange)({
+    app_id: 480,
+    device_handle: "123",
+    device_type: steam.input.InputType.PS5Controller,
+    old_gamepad_slot: 0,
+    new_gamepad_slot: 1
+  });
+  assert.deepEqual(inputDeviceConnectedEvents, [
+    { connected_device_handle: 123n, connectedDeviceHandle: 123n }
+  ]);
+  assert.deepEqual(inputDeviceDisconnectedEvents, [
+    { disconnected_device_handle: 124n, disconnectedDeviceHandle: 124n }
+  ]);
+  assert.deepEqual(inputConfigurationLoadedEvents, [
+    {
+      app_id: 480,
+      device_handle: 123n,
+      mapping_creator: 76561198000000000n,
+      major_revision: 1,
+      minor_revision: 2,
+      uses_steam_input_api: true,
+      uses_gamepad_api: false,
+      appId: 480,
+      deviceHandle: 123n,
+      mappingCreator: 76561198000000000n,
+      majorRevision: 1,
+      minorRevision: 2,
+      usesSteamInputApi: true,
+      usesGamepadApi: false
+    }
+  ]);
+  assert.deepEqual(inputGamepadSlotChangeEvents, [
+    {
+      app_id: 480,
+      device_handle: 123n,
+      device_type: steam.input.InputType.PS5Controller,
+      old_gamepad_slot: 0,
+      new_gamepad_slot: 1,
+      appId: 480,
+      deviceHandle: 123n,
+      deviceType: steam.input.InputType.PS5Controller,
+      oldGamepadSlot: 0,
+      newGamepadSlot: 1
+    }
+  ]);
+  inputDeviceConnectedHandle.disconnect();
+  inputDeviceDisconnectedHandle.disconnect();
+  inputConfigurationLoadedHandle.disconnect();
+  inputGamepadSlotChangeHandle.disconnect();
   const actionEvents = [];
   const actionEventHandle = steam.input.registerActionEventCallback((event) => actionEvents.push(event));
   actionEventHandle.disconnect();
@@ -4334,6 +4408,15 @@ test("cloud, input, and networking facades coerce native values", async (t) => {
     method: "disconnectInputActionEventCallback",
     args: []
   });
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "disconnectCallback" && call.args[0] >= 2801 && call.args[0] <= 2804),
+    [
+      { method: "disconnectCallback", args: [steam.SteamCallback.SteamInputDeviceConnected] },
+      { method: "disconnectCallback", args: [steam.SteamCallback.SteamInputDeviceDisconnected] },
+      { method: "disconnectCallback", args: [steam.SteamCallback.SteamInputConfigurationLoaded] },
+      { method: "disconnectCallback", args: [steam.SteamCallback.SteamInputGamepadSlotChange] }
+    ]
+  );
 
   assert.equal(steam.controller.init(), true);
   steam.controller.runFrame();

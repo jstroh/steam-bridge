@@ -1438,6 +1438,50 @@ export interface InputActionEvent {
   digitalActionData?: InputDigitalActionData;
 }
 
+export interface SteamInputDeviceConnectedEvent {
+  connectedDeviceHandle: bigint;
+  connected_device_handle?: bigint;
+  [key: string]: unknown;
+}
+
+export interface SteamInputDeviceDisconnectedEvent {
+  disconnectedDeviceHandle: bigint;
+  disconnected_device_handle?: bigint;
+  [key: string]: unknown;
+}
+
+export interface SteamInputConfigurationLoadedEvent {
+  appId: number;
+  app_id?: number;
+  deviceHandle: bigint;
+  device_handle?: bigint;
+  mappingCreator: bigint;
+  mapping_creator?: bigint;
+  majorRevision: number;
+  major_revision?: number;
+  minorRevision: number;
+  minor_revision?: number;
+  usesSteamInputApi: boolean;
+  uses_steam_input_api?: boolean;
+  usesGamepadApi: boolean;
+  uses_gamepad_api?: boolean;
+  [key: string]: unknown;
+}
+
+export interface SteamInputGamepadSlotChangeEvent {
+  appId: number;
+  app_id?: number;
+  deviceHandle: bigint;
+  device_handle?: bigint;
+  deviceType: number;
+  device_type?: number;
+  oldGamepadSlot: number;
+  old_gamepad_slot?: number;
+  newGamepadSlot: number;
+  new_gamepad_slot?: number;
+  [key: string]: unknown;
+}
+
 export interface UgcResult {
   itemId: bigint;
   needsToAcceptAgreement: boolean;
@@ -6977,6 +7021,26 @@ export const input = {
   },
   enableDeviceCallbacks(): void {
     native().inputEnableDeviceCallbacks();
+  },
+  onDeviceConnected(handler: (event: SteamInputDeviceConnectedEvent) => void): CallbackHandle {
+    return onSteamCallback("SteamInputDeviceConnected", (event) => {
+      handler(event as SteamInputDeviceConnectedEvent);
+    });
+  },
+  onDeviceDisconnected(handler: (event: SteamInputDeviceDisconnectedEvent) => void): CallbackHandle {
+    return onSteamCallback("SteamInputDeviceDisconnected", (event) => {
+      handler(event as SteamInputDeviceDisconnectedEvent);
+    });
+  },
+  onConfigurationLoaded(handler: (event: SteamInputConfigurationLoadedEvent) => void): CallbackHandle {
+    return onSteamCallback("SteamInputConfigurationLoaded", (event) => {
+      handler(event as SteamInputConfigurationLoadedEvent);
+    });
+  },
+  onGamepadSlotChange(handler: (event: SteamInputGamepadSlotChangeEvent) => void): CallbackHandle {
+    return onSteamCallback("SteamInputGamepadSlotChange", (event) => {
+      handler(event as SteamInputGamepadSlotChangeEvent);
+    });
   },
   registerActionEventCallback(handler: (event: InputActionEvent) => void): CallbackHandle {
     return wrapCallbackHandle(
