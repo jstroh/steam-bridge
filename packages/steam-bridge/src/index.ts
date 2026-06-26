@@ -1658,6 +1658,7 @@ export interface SteamWebApiClient {
   post<T = unknown>(options: Omit<SteamWebApiRequestOptions, "method">): Promise<SteamWebApiResponse<T>>;
   apps: SteamWebApiAppsFacade;
   community: SteamWebApiCommunityFacade;
+  econService: SteamWebApiEconServiceFacade;
   economy: SteamWebApiEconomyFacade;
   gameServerStats: SteamWebApiGameServerStatsFacade;
   leaderboards: SteamWebApiLeaderboardsFacade;
@@ -1937,6 +1938,62 @@ export interface SteamWebApiStartTradeOptions extends SteamWebApiEndpointOptions
   appId: number;
   partyA: bigint | number | string;
   partyB: bigint | number | string;
+}
+
+export interface SteamWebApiEconServiceFacade {
+  getTradeHistory<T = unknown>(options: SteamWebApiTradeHistoryOptions): Promise<SteamWebApiResponse<T>>;
+  flushInventoryCache<T = unknown>(
+    options: SteamWebApiFlushInventoryCacheOptions
+  ): Promise<SteamWebApiResponse<T>>;
+  flushAssetAppearanceCache<T = unknown>(
+    appId: number,
+    options?: SteamWebApiEndpointOptions | null
+  ): Promise<SteamWebApiResponse<T>>;
+  flushContextCache<T = unknown>(
+    appId: number,
+    options?: SteamWebApiEndpointOptions | null
+  ): Promise<SteamWebApiResponse<T>>;
+  getTradeOffers<T = unknown>(options: SteamWebApiTradeOffersOptions): Promise<SteamWebApiResponse<T>>;
+  getTradeOffer<T = unknown>(options: SteamWebApiTradeOfferOptions): Promise<SteamWebApiResponse<T>>;
+  getTradeOffersSummary<T = unknown>(
+    options?: SteamWebApiTradeOffersSummaryOptions | null
+  ): Promise<SteamWebApiResponse<T>>;
+}
+
+export interface SteamWebApiTradeHistoryOptions extends SteamWebApiEndpointOptions {
+  maxTrades?: number;
+  startAfterTime?: number;
+  startAfterTradeId?: bigint | number | string;
+  navigatingBack?: boolean;
+  getDescriptions?: boolean;
+  language?: string;
+  includeFailed?: boolean;
+  includeTotal?: boolean;
+}
+
+export interface SteamWebApiFlushInventoryCacheOptions extends SteamWebApiEndpointOptions {
+  steamId64: bigint | number | string;
+  appId: number;
+  contextId: bigint | number | string;
+}
+
+export interface SteamWebApiTradeOffersOptions extends SteamWebApiEndpointOptions {
+  getSentOffers?: boolean;
+  getReceivedOffers?: boolean;
+  getDescriptions?: boolean;
+  language?: string;
+  activeOnly?: boolean;
+  historicalOnly?: boolean;
+  timeHistoricalCutoff?: number;
+}
+
+export interface SteamWebApiTradeOfferOptions extends SteamWebApiEndpointOptions {
+  tradeOfferId: bigint | number | string;
+  language?: string;
+}
+
+export interface SteamWebApiTradeOffersSummaryOptions extends SteamWebApiEndpointOptions {
+  timeLastVisit?: number;
 }
 
 export interface SteamWebApiGameServerStatsFacade {
@@ -4356,6 +4413,7 @@ export function createSteamWebApiClient(options: SteamWebApiClientOptions = {}):
     },
     apps: createSteamWebApiAppsFacade(clientOptions),
     community: createSteamWebApiCommunityFacade(clientOptions),
+    econService: createSteamWebApiEconServiceFacade(clientOptions),
     economy: createSteamWebApiEconomyFacade(clientOptions),
     gameServerStats: createSteamWebApiGameServerStatsFacade(clientOptions),
     leaderboards: createSteamWebApiLeaderboardsFacade(clientOptions),
@@ -8906,6 +8964,116 @@ function createSteamWebApiEconomyFacade(clientOptions: SteamWebApiClientOptions)
   };
 }
 
+function createSteamWebApiEconServiceFacade(clientOptions: SteamWebApiClientOptions): SteamWebApiEconServiceFacade {
+  return {
+    getTradeHistory<T = unknown>(options: SteamWebApiTradeHistoryOptions): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServiceGet<T>(
+        clientOptions,
+        "IEconService",
+        "GetTradeHistory",
+        1,
+        {
+          max_trades: options.maxTrades,
+          start_after_time: options.startAfterTime,
+          start_after_tradeid: options.startAfterTradeId,
+          navigating_back: options.navigatingBack,
+          get_descriptions: options.getDescriptions,
+          language: options.language,
+          include_failed: options.includeFailed,
+          include_total: options.includeTotal
+        },
+        options,
+        false
+      );
+    },
+    flushInventoryCache<T = unknown>(
+      options: SteamWebApiFlushInventoryCacheOptions
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServicePost<T>(
+        clientOptions,
+        "IEconService",
+        "FlushInventoryCache",
+        1,
+        {
+          steamid: options.steamId64,
+          appid: options.appId,
+          contextid: options.contextId
+        },
+        options
+      );
+    },
+    flushAssetAppearanceCache<T = unknown>(
+      appId: number,
+      options?: SteamWebApiEndpointOptions | null
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServicePost<T>(
+        clientOptions,
+        "IEconService",
+        "FlushAssetAppearanceCache",
+        1,
+        { appid: appId },
+        options
+      );
+    },
+    flushContextCache<T = unknown>(
+      appId: number,
+      options?: SteamWebApiEndpointOptions | null
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServicePost<T>(
+        clientOptions,
+        "IEconService",
+        "FlushContextCache",
+        1,
+        { appid: appId },
+        options
+      );
+    },
+    getTradeOffers<T = unknown>(options: SteamWebApiTradeOffersOptions): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServiceGet<T>(
+        clientOptions,
+        "IEconService",
+        "GetTradeOffers",
+        1,
+        {
+          get_sent_offers: options.getSentOffers,
+          get_received_offers: options.getReceivedOffers,
+          get_descriptions: options.getDescriptions,
+          language: options.language,
+          active_only: options.activeOnly,
+          historical_only: options.historicalOnly,
+          time_historical_cutoff: options.timeHistoricalCutoff
+        },
+        options,
+        false
+      );
+    },
+    getTradeOffer<T = unknown>(options: SteamWebApiTradeOfferOptions): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServiceGet<T>(
+        clientOptions,
+        "IEconService",
+        "GetTradeOffer",
+        1,
+        { tradeofferid: options.tradeOfferId, language: options.language },
+        options,
+        false
+      );
+    },
+    getTradeOffersSummary<T = unknown>(
+      options?: SteamWebApiTradeOffersSummaryOptions | null
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiServiceGet<T>(
+        clientOptions,
+        "IEconService",
+        "GetTradeOffersSummary",
+        1,
+        { time_last_visit: options?.timeLastVisit },
+        options,
+        false
+      );
+    }
+  };
+}
+
 function createSteamWebApiGameServerStatsFacade(
   clientOptions: SteamWebApiClientOptions
 ): SteamWebApiGameServerStatsFacade {
@@ -9550,6 +9718,26 @@ function steamWebApiServiceGet<T>(
   preferPartnerBaseUrl = true
 ): Promise<SteamWebApiResponse<T>> {
   return steamWebApiGet<T>(
+    clientOptions,
+    interfaceName,
+    methodName,
+    version,
+    { input_json: steamWebApiInputJson(input) },
+    options,
+    preferPartnerBaseUrl
+  );
+}
+
+function steamWebApiServicePost<T>(
+  clientOptions: SteamWebApiClientOptions,
+  interfaceName: string,
+  methodName: string,
+  version: number,
+  input: Record<string, SteamWebApiInputJsonValue>,
+  options?: SteamWebApiEndpointOptions | null,
+  preferPartnerBaseUrl = true
+): Promise<SteamWebApiResponse<T>> {
+  return steamWebApiPost<T>(
     clientOptions,
     interfaceName,
     methodName,

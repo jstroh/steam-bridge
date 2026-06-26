@@ -9230,6 +9230,125 @@ test("web API remote storage and economy facades map indexed fields", async (t) 
   );
 });
 
+test("web API econ service facade maps trade and cache service methods", async (t) => {
+  const steam = loadSteamWithFakeNative(createFakeNative());
+  const fetchCalls = [];
+  const fetchImpl = async (url, init = {}) => {
+    fetchCalls.push({ url, init });
+    return {
+      ok: true,
+      status: 200,
+      headers: {
+        forEach(callback) {
+          callback("application/json", "content-type");
+        }
+      },
+      async text() {
+        return JSON.stringify({ response: { ok: true } });
+      }
+    };
+  };
+  const client = steam.createSteamWebApiClient({ apiKey: "trader-secret", fetch: fetchImpl });
+  const requestUrl = (index) => new URL(fetchCalls[index].url);
+  const queryInputJson = (index) => JSON.parse(requestUrl(index).searchParams.get("input_json"));
+  const bodyInputJson = (index) => JSON.parse(new URLSearchParams(fetchCalls[index].init.body).get("input_json"));
+
+  t.after(clearSteamBridgeCache);
+
+  await client.econService.getTradeHistory({
+    maxTrades: 25,
+    startAfterTime: 1700000000,
+    startAfterTradeId: 123456789n,
+    navigatingBack: false,
+    getDescriptions: true,
+    language: "en",
+    includeFailed: false,
+    includeTotal: true
+  });
+  await client.econService.flushInventoryCache({
+    steamId64: 76561198000000000n,
+    appId: 480,
+    contextId: 2n
+  });
+  await client.econService.flushAssetAppearanceCache(480);
+  await client.econService.flushContextCache(480);
+  await client.econService.getTradeOffers({
+    getSentOffers: true,
+    getReceivedOffers: true,
+    getDescriptions: false,
+    language: "en",
+    activeOnly: true,
+    historicalOnly: false,
+    timeHistoricalCutoff: 1700000100
+  });
+  await client.econService.getTradeOffer({ tradeOfferId: 987654321n, language: "en" });
+  await client.econService.getTradeOffersSummary({ timeLastVisit: 1700000200 });
+
+  assert.equal(
+    requestUrl(0).origin + requestUrl(0).pathname,
+    "https://api.steampowered.com/IEconService/GetTradeHistory/v0001/"
+  );
+  assert.equal(fetchCalls[0].init.method, "GET");
+  assert.equal(requestUrl(0).searchParams.get("key"), "trader-secret");
+  assert.deepEqual(queryInputJson(0), {
+    max_trades: 25,
+    start_after_time: 1700000000,
+    start_after_tradeid: "123456789",
+    navigating_back: false,
+    get_descriptions: true,
+    language: "en",
+    include_failed: false,
+    include_total: true
+  });
+
+  assert.equal(
+    requestUrl(1).origin + requestUrl(1).pathname,
+    "https://partner.steam-api.com/IEconService/FlushInventoryCache/v0001/"
+  );
+  assert.equal(fetchCalls[1].init.method, "POST");
+  assert.equal(fetchCalls[1].init.headers["content-type"], "application/x-www-form-urlencoded");
+  assert.deepEqual(bodyInputJson(1), {
+    steamid: "76561198000000000",
+    appid: 480,
+    contextid: "2"
+  });
+  assert.equal(
+    requestUrl(2).origin + requestUrl(2).pathname,
+    "https://partner.steam-api.com/IEconService/FlushAssetAppearanceCache/v0001/"
+  );
+  assert.deepEqual(bodyInputJson(2), { appid: 480 });
+  assert.equal(
+    requestUrl(3).origin + requestUrl(3).pathname,
+    "https://partner.steam-api.com/IEconService/FlushContextCache/v0001/"
+  );
+  assert.deepEqual(bodyInputJson(3), { appid: 480 });
+
+  assert.equal(
+    requestUrl(4).origin + requestUrl(4).pathname,
+    "https://api.steampowered.com/IEconService/GetTradeOffers/v0001/"
+  );
+  assert.deepEqual(queryInputJson(4), {
+    get_sent_offers: true,
+    get_received_offers: true,
+    get_descriptions: false,
+    language: "en",
+    active_only: true,
+    historical_only: false,
+    time_historical_cutoff: 1700000100
+  });
+  assert.equal(
+    requestUrl(5).origin + requestUrl(5).pathname,
+    "https://api.steampowered.com/IEconService/GetTradeOffer/v0001/"
+  );
+  assert.deepEqual(queryInputJson(5), { tradeofferid: "987654321", language: "en" });
+  assert.equal(
+    requestUrl(6).origin + requestUrl(6).pathname,
+    "https://api.steampowered.com/IEconService/GetTradeOffersSummary/v0001/"
+  );
+  assert.deepEqual(queryInputJson(6), { time_last_visit: 1700000200 });
+  assert.equal(typeof steam.webApi.econService.getTradeOffersSummary, "function");
+});
+
 test("web API player and store service facades use input_json payloads", async (t) => {
   const steam = loadSteamWithFakeNative(createFakeNative());
   const fetchCalls = [];

@@ -12,7 +12,7 @@ owns Steam API initialization, manual callback dispatch, auth tickets, overlay
 helpers, Steam utility checks, Steam ID helpers, achievements, networking,
 matchmaking, app metadata and DLC helpers, cloud, HTTP, game-server, input,
 stats, inventory, workshop helpers, and a generic Steam Web API client for
-publisher/economy endpoints.
+publisher, trading, and economy endpoints.
 
 Steam SDK redistributables are not committed. For local/native builds, provide
 the Steamworks SDK in the normal location expected by `steamworks-sys`, or set
@@ -100,6 +100,7 @@ const news = await web.news.getNewsForApp({ appId: 480, count: 2 });
 const appStatus = await web.apps.upToDateCheck({ appId: 480, version: 1 });
 const workshopDetails = await web.remoteStorage.getPublishedFileDetails([123456789n]);
 const prices = await web.economy.getAssetPrices({ appId: 480, currency: "USD" });
+const tradeSummary = await web.econService.getTradeOffersSummary({ timeLastVisit: 0 });
 const storeApps = await web.store.getAppList({ includeGames: true, maxResults: 100 });
 const level = await web.player.getSteamLevel(76561198000000000n);
 const leaderboard = await web.leaderboards.getLeaderboardsForGame(480);

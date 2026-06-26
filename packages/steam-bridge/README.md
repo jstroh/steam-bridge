@@ -47,7 +47,7 @@ client.callback.register(
 console.log({ steamId, ticketBytes: ticket.getBytes().length });
 ```
 
-For Steam Web API, publisher, and economy endpoints, use the Web API client with
+For Steam Web API, publisher, trading, and economy endpoints, use the Web API client with
 `STEAM_WEB_API_KEY`, an explicit `apiKey`, or a per-request `key`:
 
 ```ts
@@ -56,6 +56,7 @@ const profile = await steamworks.webApi.user.resolveVanityUrl("spacewar");
 const news = await steamworks.webApi.news.getNewsForApp({ appId: 480, count: 2 });
 const appStatus = await steamworks.webApi.apps.upToDateCheck({ appId: 480, version: 1 });
 const prices = await steamworks.webApi.economy.getAssetPrices({ appId: 480, currency: "USD" });
+const tradeSummary = await steamworks.webApi.econService.getTradeOffersSummary({ timeLastVisit: 0 });
 const storeApps = await steamworks.webApi.store.getAppList({ includeGames: true, maxResults: 100 });
 const level = await steamworks.webApi.player.getSteamLevel(76561198000000000n);
 const leaderboard = await steamworks.webApi.leaderboards.getLeaderboardsForGame(480);
