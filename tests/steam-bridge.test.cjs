@@ -9897,6 +9897,129 @@ test("web API inventory service facade maps item service methods", async (t) => 
   assert.equal(typeof steam.webApi.inventoryService.modifyItems, "function");
 });
 
+test("web API game inventory facade maps history and item definition methods", async (t) => {
+  const steam = loadSteamWithFakeNative(createFakeNative());
+  const fetchCalls = [];
+  const fetchImpl = async (url, init = {}) => {
+    fetchCalls.push({ url, init });
+    return {
+      ok: true,
+      status: 200,
+      headers: {
+        forEach(callback) {
+          callback("application/json", "content-type");
+        }
+      },
+      async text() {
+        return JSON.stringify({ response: { success: true } });
+      }
+    };
+  };
+  const client = steam.createSteamWebApiClient({ apiKey: "game-inventory-secret", fetch: fetchImpl });
+  const requestUrl = (index) => new URL(fetchCalls[index].url);
+  const bodyParams = (index) => new URLSearchParams(fetchCalls[index].init.body);
+
+  t.after(clearSteamBridgeCache);
+
+  await client.gameInventory.getHistoryCommandDetails({
+    appId: 480,
+    steamId64: 76561198000000000n,
+    command: "grant",
+    contextId: 2n,
+    commandArguments: "{\"itemdefid\":100}"
+  });
+  await client.gameInventory.getUserHistory({
+    appId: 480,
+    steamId64: 76561198000000000n,
+    contextId: 2n,
+    startTime: 1760000000,
+    endTime: 1760003600
+  });
+  await client.gameInventory.historyExecuteCommands({
+    appId: 480,
+    steamId64: 76561198000000000n,
+    contextId: 2n,
+    actorId: 42
+  });
+  await client.gameInventory.supportGetAssetHistory({
+    appId: 480,
+    assetId: 5001n,
+    contextId: 2n
+  });
+  await client.gameInventory.updateItemDefs({
+    appId: 480,
+    itemDefs: [
+      {
+        appid: 480,
+        itemdefid: 100n,
+        type: "item",
+        name: "Example Item",
+        tradable: true,
+        tags: "class:example"
+      }
+    ]
+  });
+
+  assert.equal(
+    requestUrl(0).origin + requestUrl(0).pathname,
+    "https://partner.steam-api.com/IGameInventory/GetHistoryCommandDetails/v0001/"
+  );
+  assert.equal(fetchCalls[0].init.method, "GET");
+  assert.equal(requestUrl(0).searchParams.get("key"), "game-inventory-secret");
+  assert.equal(requestUrl(0).searchParams.get("appid"), "480");
+  assert.equal(requestUrl(0).searchParams.get("steamid"), "76561198000000000");
+  assert.equal(requestUrl(0).searchParams.get("command"), "grant");
+  assert.equal(requestUrl(0).searchParams.get("contextid"), "2");
+  assert.equal(requestUrl(0).searchParams.get("arguments"), "{\"itemdefid\":100}");
+
+  assert.equal(
+    requestUrl(1).origin + requestUrl(1).pathname,
+    "https://partner.steam-api.com/IGameInventory/GetUserHistory/v0001/"
+  );
+  assert.equal(requestUrl(1).searchParams.get("appid"), "480");
+  assert.equal(requestUrl(1).searchParams.get("steamid"), "76561198000000000");
+  assert.equal(requestUrl(1).searchParams.get("contextid"), "2");
+  assert.equal(requestUrl(1).searchParams.get("starttime"), "1760000000");
+  assert.equal(requestUrl(1).searchParams.get("endtime"), "1760003600");
+
+  assert.equal(
+    requestUrl(2).origin + requestUrl(2).pathname,
+    "https://partner.steam-api.com/IGameInventory/HistoryExecuteCommands/v0001/"
+  );
+  assert.equal(fetchCalls[2].init.method, "POST");
+  assert.equal(fetchCalls[2].init.headers["content-type"], "application/x-www-form-urlencoded");
+  assert.equal(bodyParams(2).get("appid"), "480");
+  assert.equal(bodyParams(2).get("steamid"), "76561198000000000");
+  assert.equal(bodyParams(2).get("contextid"), "2");
+  assert.equal(bodyParams(2).get("actorid"), "42");
+
+  assert.equal(
+    requestUrl(3).origin + requestUrl(3).pathname,
+    "https://partner.steam-api.com/IGameInventory/SupportGetAssetHistory/v0001/"
+  );
+  assert.equal(requestUrl(3).searchParams.get("appid"), "480");
+  assert.equal(requestUrl(3).searchParams.get("assetid"), "5001");
+  assert.equal(requestUrl(3).searchParams.get("contextid"), "2");
+
+  assert.equal(
+    requestUrl(4).origin + requestUrl(4).pathname,
+    "https://partner.steam-api.com/IGameInventory/UpdateItemDefs/v0001/"
+  );
+  assert.equal(fetchCalls[4].init.method, "POST");
+  assert.equal(bodyParams(4).get("appid"), "480");
+  assert.deepEqual(JSON.parse(bodyParams(4).get("itemdefs")), [
+    {
+      appid: 480,
+      itemdefid: "100",
+      type: "item",
+      name: "Example Item",
+      tradable: true,
+      tags: "class:example"
+    }
+  ]);
+  assert.equal(typeof steam.webApi.gameInventory.updateItemDefs, "function");
+});
+
 test("web API game servers service facade maps account administration methods", async (t) => {
   const steam = loadSteamWithFakeNative(createFakeNative());
   const fetchCalls = [];

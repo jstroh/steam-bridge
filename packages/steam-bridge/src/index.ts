@@ -1664,6 +1664,7 @@ export interface SteamWebApiClient {
   econMarketService: SteamWebApiEconMarketServiceFacade;
   econService: SteamWebApiEconServiceFacade;
   economy: SteamWebApiEconomyFacade;
+  gameInventory: SteamWebApiGameInventoryFacade;
   gameNotificationsService: SteamWebApiGameNotificationsServiceFacade;
   gameServersService: SteamWebApiGameServersServiceFacade;
   gameServerStats: SteamWebApiGameServerStatsFacade;
@@ -2189,6 +2190,55 @@ export interface SteamWebApiTradeOfferOptions extends SteamWebApiEndpointOptions
 
 export interface SteamWebApiTradeOffersSummaryOptions extends SteamWebApiEndpointOptions {
   timeLastVisit?: number;
+}
+
+export interface SteamWebApiGameInventoryFacade {
+  getHistoryCommandDetails<T = unknown>(
+    options: SteamWebApiGameInventoryHistoryCommandOptions
+  ): Promise<SteamWebApiResponse<T>>;
+  getUserHistory<T = unknown>(
+    options: SteamWebApiGameInventoryUserHistoryOptions
+  ): Promise<SteamWebApiResponse<T>>;
+  historyExecuteCommands<T = unknown>(
+    options: SteamWebApiGameInventoryExecuteCommandsOptions
+  ): Promise<SteamWebApiResponse<T>>;
+  supportGetAssetHistory<T = unknown>(
+    options: SteamWebApiGameInventoryAssetHistoryOptions
+  ): Promise<SteamWebApiResponse<T>>;
+  updateItemDefs<T = unknown>(
+    options: SteamWebApiGameInventoryUpdateItemDefsOptions
+  ): Promise<SteamWebApiResponse<T>>;
+}
+
+export interface SteamWebApiGameInventoryUserContextOptions extends SteamWebApiEndpointOptions {
+  appId: number;
+  steamId64: bigint | number | string;
+  contextId: bigint | number | string;
+}
+
+export interface SteamWebApiGameInventoryHistoryCommandOptions extends SteamWebApiGameInventoryUserContextOptions {
+  command: string;
+  commandArguments: string;
+}
+
+export interface SteamWebApiGameInventoryUserHistoryOptions extends SteamWebApiGameInventoryUserContextOptions {
+  startTime: number;
+  endTime: number;
+}
+
+export interface SteamWebApiGameInventoryExecuteCommandsOptions extends SteamWebApiGameInventoryUserContextOptions {
+  actorId: number;
+}
+
+export interface SteamWebApiGameInventoryAssetHistoryOptions extends SteamWebApiEndpointOptions {
+  appId: number;
+  assetId: bigint | number | string;
+  contextId: bigint | number | string;
+}
+
+export interface SteamWebApiGameInventoryUpdateItemDefsOptions extends SteamWebApiEndpointOptions {
+  appId: number;
+  itemDefs: readonly SteamWebApiInputJsonValue[];
 }
 
 export interface SteamWebApiInventoryServiceFacade {
@@ -4992,6 +5042,7 @@ export function createSteamWebApiClient(options: SteamWebApiClientOptions = {}):
     econMarketService: createSteamWebApiEconMarketServiceFacade(clientOptions),
     econService: createSteamWebApiEconServiceFacade(clientOptions),
     economy: createSteamWebApiEconomyFacade(clientOptions),
+    gameInventory: createSteamWebApiGameInventoryFacade(clientOptions),
     gameNotificationsService: createSteamWebApiGameNotificationsServiceFacade(clientOptions),
     gameServersService: createSteamWebApiGameServersServiceFacade(clientOptions),
     gameServerStats: createSteamWebApiGameServerStatsFacade(clientOptions),
@@ -9998,6 +10049,90 @@ function createSteamWebApiEconServiceFacade(clientOptions: SteamWebApiClientOpti
   };
 }
 
+function createSteamWebApiGameInventoryFacade(
+  clientOptions: SteamWebApiClientOptions
+): SteamWebApiGameInventoryFacade {
+  return {
+    getHistoryCommandDetails<T = unknown>(
+      options: SteamWebApiGameInventoryHistoryCommandOptions
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiGet<T>(
+        clientOptions,
+        "IGameInventory",
+        "GetHistoryCommandDetails",
+        1,
+        {
+          appid: options.appId,
+          steamid: options.steamId64,
+          command: options.command,
+          contextid: options.contextId,
+          arguments: options.commandArguments
+        },
+        options
+      );
+    },
+    getUserHistory<T = unknown>(
+      options: SteamWebApiGameInventoryUserHistoryOptions
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiGet<T>(
+        clientOptions,
+        "IGameInventory",
+        "GetUserHistory",
+        1,
+        {
+          appid: options.appId,
+          steamid: options.steamId64,
+          contextid: options.contextId,
+          starttime: options.startTime,
+          endtime: options.endTime
+        },
+        options
+      );
+    },
+    historyExecuteCommands<T = unknown>(
+      options: SteamWebApiGameInventoryExecuteCommandsOptions
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiPost<T>(
+        clientOptions,
+        "IGameInventory",
+        "HistoryExecuteCommands",
+        1,
+        {
+          appid: options.appId,
+          steamid: options.steamId64,
+          contextid: options.contextId,
+          actorid: options.actorId
+        },
+        options
+      );
+    },
+    supportGetAssetHistory<T = unknown>(
+      options: SteamWebApiGameInventoryAssetHistoryOptions
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiGet<T>(
+        clientOptions,
+        "IGameInventory",
+        "SupportGetAssetHistory",
+        1,
+        { appid: options.appId, assetid: options.assetId, contextid: options.contextId },
+        options
+      );
+    },
+    updateItemDefs<T = unknown>(
+      options: SteamWebApiGameInventoryUpdateItemDefsOptions
+    ): Promise<SteamWebApiResponse<T>> {
+      return steamWebApiPost<T>(
+        clientOptions,
+        "IGameInventory",
+        "UpdateItemDefs",
+        1,
+        { appid: options.appId, itemdefs: steamWebApiInputJsonValue(options.itemDefs) },
+        options
+      );
+    }
+  };
+}
+
 function createSteamWebApiInventoryServiceFacade(
   clientOptions: SteamWebApiClientOptions
 ): SteamWebApiInventoryServiceFacade {
@@ -11479,6 +11614,10 @@ function steamWebApiBinaryString(value: SteamWebApiBinaryValue): string {
 }
 
 function steamWebApiInputJson(input: Record<string, SteamWebApiInputJsonValue>): string {
+  return steamWebApiInputJsonValue(input);
+}
+
+function steamWebApiInputJsonValue(input: SteamWebApiInputJsonValue): string {
   return JSON.stringify(steamWebApiJsonReady(input));
 }
 

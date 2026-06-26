@@ -139,6 +139,13 @@ const inventoryCount = await web.inventoryService.getQuantity({
   steamId64: 76561198000000000n,
   itemDefIds: [100]
 });
+const itemHistory = await web.gameInventory.getUserHistory({
+  appId: 480,
+  steamId64: 76561198000000000n,
+  contextId: 2,
+  startTime: 1760000000,
+  endTime: 1760003600
+});
 const tradeSummary = await web.econService.getTradeOffersSummary({ timeLastVisit: 0 });
 const storeApps = await web.store.getAppList({ includeGames: true, maxResults: 100 });
 const siteLicensePlaytime = await web.siteLicenseService.getTotalPlaytime({

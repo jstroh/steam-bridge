@@ -95,6 +95,13 @@ const inventoryCount = await steamworks.webApi.inventoryService.getQuantity({
   steamId64: 76561198000000000n,
   itemDefIds: [100]
 });
+const itemHistory = await steamworks.webApi.gameInventory.getUserHistory({
+  appId: 480,
+  steamId64: 76561198000000000n,
+  contextId: 2,
+  startTime: 1760000000,
+  endTime: 1760003600
+});
 const tradeSummary = await steamworks.webApi.econService.getTradeOffersSummary({ timeLastVisit: 0 });
 const storeApps = await steamworks.webApi.store.getAppList({ includeGames: true, maxResults: 100 });
 const siteLicensePlaytime = await steamworks.webApi.siteLicenseService.getTotalPlaytime({
