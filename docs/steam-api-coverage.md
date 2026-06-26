@@ -36,8 +36,9 @@ generated callback constant lacks an exported `SteamCallback` alias.
   availability, retrieval, and message-available/failed callbacks through a
   local shim because the interface is not emitted in the flat bindings.
 - User/auth: local Steam ID helpers, Web API auth tickets, session tickets by
-  Steam ID or IP, auth session validation helpers, voice recording/capture and
-  decompression, encrypted app tickets, store auth URLs, badge/level/account
+  Steam ID, IPv4, or IPv6 identity, auth session validation helpers, voice
+  recording/capture and decompression, encrypted app tickets, store auth URLs,
+  badge/level/account
   state helpers, market eligibility, duration control, user-data folder reads,
   app usage events, NAT/logged-on checks, Steam user handle reads, game
   advertisement, legacy game-connection auth blobs, license checks, and ticket

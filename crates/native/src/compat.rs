@@ -14465,19 +14465,26 @@ pub async fn auth_get_session_ticket_with_ip(
     let parsed = ip
         .parse::<IpAddr>()
         .map_err(|err| Error::from_reason(err.to_string()))?;
-    let ipv4 = match parsed {
-        IpAddr::V4(v4) => v4,
-        IpAddr::V6(_) => {
-            return Err(Error::from_reason(
-                "IPv6 auth identities are not implemented yet",
-            ))
-        }
-    };
     let mut identity =
         unsafe { MaybeUninit::<sys::SteamNetworkingIdentity>::zeroed().assume_init() };
     unsafe {
         sys::SteamAPI_SteamNetworkingIdentity_Clear(&mut identity);
-        sys::SteamAPI_SteamNetworkingIdentity_SetIPv4Addr(&mut identity, u32::from(ipv4), 0);
+        match parsed {
+            IpAddr::V4(ipv4) => {
+                sys::SteamAPI_SteamNetworkingIdentity_SetIPv4Addr(
+                    &mut identity,
+                    u32::from(ipv4),
+                    0,
+                );
+            }
+            IpAddr::V6(ipv6) => {
+                let mut address = MaybeUninit::<sys::SteamNetworkingIPAddr>::zeroed().assume_init();
+                let octets = ipv6.octets();
+                sys::SteamAPI_SteamNetworkingIPAddr_Clear(&mut address);
+                sys::SteamAPI_SteamNetworkingIPAddr_SetIPv6(&mut address, octets.as_ptr(), 0);
+                sys::SteamAPI_SteamNetworkingIdentity_SetIPAddr(&mut identity, &address);
+            }
+        }
     }
     get_session_ticket(Some(identity), timeout_seconds).await
 }

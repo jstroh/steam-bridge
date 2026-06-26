@@ -47,6 +47,17 @@ function setSteamEnv(values = {}) {
   };
 }
 
+function fakeTicket(label, calls) {
+  return {
+    cancel() {
+      calls.push({ method: "cancelAuthTicket", args: [label] });
+    },
+    getBytes() {
+      return Buffer.from(label);
+    }
+  };
+}
+
 function createFakeNative(overrides = {}) {
   const calls = [];
   const callbacks = new Map();
@@ -1286,6 +1297,44 @@ test("Steam IDs and diagnostics are normalized for JavaScript callers", (t) => {
     arch: process.arch,
     pid: process.pid
   });
+});
+
+test("auth facade forwards Steam ID and IP session ticket requests", async (t) => {
+  const fake = createFakeNative({
+    authGetSessionTicketWithSteamId(steamId64, timeoutSeconds) {
+      this.calls.push({ method: "authGetSessionTicketWithSteamId", args: [steamId64, timeoutSeconds] });
+      return Promise.resolve(fakeTicket("steam-id", this.calls));
+    },
+    authGetSessionTicketWithIp(ip, timeoutSeconds) {
+      this.calls.push({ method: "authGetSessionTicketWithIp", args: [ip, timeoutSeconds] });
+      return Promise.resolve(fakeTicket(ip, this.calls));
+    },
+    getAuthTicketForWebApi(identity, timeoutSeconds) {
+      this.calls.push({ method: "getAuthTicketForWebApi", args: [identity, timeoutSeconds] });
+      return Promise.resolve(fakeTicket("web-api", this.calls));
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  assert.equal(
+    (await steam.auth.getSessionTicketWithSteamId(76561198000000000n, 3)).getBytes().toString(),
+    "steam-id"
+  );
+  assert.equal((await steam.auth.getSessionTicketWithIp("127.0.0.1", 4)).getBytes().toString(), "127.0.0.1");
+  const ipv6Ticket = await steam.auth.getSessionTicketWithIp("2001:db8::1", 5);
+  assert.equal(ipv6Ticket.getBytes().toString(), "2001:db8::1");
+  ipv6Ticket.cancel();
+  assert.equal((await steam.auth.getAuthTicketForWebApi("web", 6)).getBytes().toString(), "web-api");
+
+  assert.deepEqual(fake.calls, [
+    { method: "authGetSessionTicketWithSteamId", args: [76561198000000000n, 3] },
+    { method: "authGetSessionTicketWithIp", args: ["127.0.0.1", 4] },
+    { method: "authGetSessionTicketWithIp", args: ["2001:db8::1", 5] },
+    { method: "cancelAuthTicket", args: ["2001:db8::1"] },
+    { method: "getAuthTicketForWebApi", args: ["web", 6] }
+  ]);
 });
 
 test("user facade covers voice, auth session, account, and duration helpers", async (t) => {
