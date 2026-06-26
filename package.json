@@ -10,6 +10,7 @@
     "build": "npm run build -w steam-bridge",
     "api:check": "node scripts/audit-steam-api-coverage.cjs",
     "check:platform": "node scripts/assert-supported-targets.cjs",
+    "steamworks-enums:generate": "node scripts/generate-steamworks-enums.cjs",
     "typecheck": "npm run typecheck -w steam-bridge",
     "native:build": "node scripts/build-native.cjs",
     "native:check": "node scripts/check-native.cjs",

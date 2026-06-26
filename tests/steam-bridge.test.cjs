@@ -1114,6 +1114,7 @@ test("project support policy covers Steam desktop targets except Intel macOS", (
   assert.match(rootPackageJson.scripts["native:check"], /scripts\/check-native\.cjs/);
   assert.match(rootPackageJson.scripts["check:platform"], /assert-supported-targets\.cjs/);
   assert.match(rootPackageJson.scripts["api:check"], /audit-steam-api-coverage\.cjs/);
+  assert.match(rootPackageJson.scripts["steamworks-enums:generate"], /generate-steamworks-enums\.cjs/);
 
   for (const workflow of [ciWorkflow, releaseWorkflow]) {
     for (const target of supportedTargets) {
@@ -1128,6 +1129,25 @@ test("project support policy covers Steam desktop targets except Intel macOS", (
   }
   assert.match(targetScript, /x86_64-apple-darwin/);
   assert.match(loader, /Intel macOS is not supported/);
+});
+
+test("generated Steamworks enums expose SDK constants and lookup helpers", (t) => {
+  const fake = createFakeNative();
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  assert.equal(steam.SteamworksEnums.EResult.k_EResultOK, 1);
+  assert.equal(steam.SteamworksEnums.EHTTPStatusCode.k_EHTTPStatusCode200OK, 200);
+  assert.equal(steam.SteamworksEnums.EInputActionOrigin.k_EInputActionOrigin_MaximumPossibleValue, 32767);
+  assert.equal(steam.SteamworksEnums.ESteamAPIInitResult.k_ESteamAPIInitResult_VersionMismatch, 3);
+  assert.equal(steam.getSteamworksEnum("EResult"), steam.SteamworksEnums.EResult);
+  assert.equal(steam.getSteamworksEnumValue("EHTTPStatusCode", "k_EHTTPStatusCode404NotFound"), 404);
+  assert.equal(steam.default.SteamworksEnums, steam.SteamworksEnums);
+
+  const client = steam.createCompatibilityClient();
+  assert.equal(client.SteamworksEnums, steam.SteamworksEnums);
+  assert.equal(client.getSteamworksEnumValue("EServerMode", "eServerModeAuthenticationAndSecure"), 3);
 });
 
 test("init reads the Steam app ID from the environment and returns the grouped client", (t) => {
@@ -1165,6 +1185,8 @@ test("init reads the Steam app ID from the environment and returns the grouped c
   assert.equal(client.gameServerStats, steam.gameServerStats);
   assert.equal(client.gameServerWorkshop, steam.gameServerWorkshop);
   assert.equal(steam.default.gameServerWorkshop, steam.gameServerWorkshop);
+  assert.equal(client.SteamworksEnums.EResult.k_EResultOK, 1);
+  assert.equal(client.getSteamworksEnumValue("EUniverse", "k_EUniversePublic"), 1);
   assert.equal(client.http, steam.http);
   assert.equal(client.inventory, steam.inventory);
   assert.equal(client.matchmakingServers, steam.matchmakingServers);

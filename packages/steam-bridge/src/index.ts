@@ -2,6 +2,12 @@ import {
   electronConfigureSteamOverlay as electronConfigureSteamOverlayImpl,
   electronEnableSteamOverlay as electronEnableSteamOverlayImpl
 } from "./electron";
+import { SteamworksEnums } from "./generated-steamworks-enums";
+import type {
+  SteamworksEnumName,
+  SteamworksEnumValue,
+  SteamworksEnumValueName
+} from "./generated-steamworks-enums";
 import {
   loadNativeBinding,
   NativeAppBetaCounts,
@@ -171,6 +177,9 @@ import {
   NativeWorkshopItem,
   NativeWorkshopItemsResult
 } from "./native";
+
+export { SteamworksEnums };
+export type { SteamworksEnumName, SteamworksEnumValue, SteamworksEnumValueName };
 
 export interface InitOptions {
   appId: number;
@@ -5036,6 +5045,17 @@ export function getSteamInstallPath(): string | undefined {
   return native().getSteamInstallPath();
 }
 
+export function getSteamworksEnum<T extends SteamworksEnumName>(enumName: T): typeof SteamworksEnums[T] {
+  return SteamworksEnums[enumName];
+}
+
+export function getSteamworksEnumValue<T extends SteamworksEnumName>(
+  enumName: T,
+  valueName: SteamworksEnumValueName<T>
+): SteamworksEnumValue<T> {
+  return SteamworksEnums[enumName][valueName] as SteamworksEnumValue<T>;
+}
+
 export function runCallbacks(): void {
   native().runCallbacks();
 }
@@ -9691,6 +9711,9 @@ export const gameServerWorkshop = {
 };
 
 export interface SteamBridgeClient {
+  SteamworksEnums: typeof SteamworksEnums;
+  getSteamworksEnum: typeof getSteamworksEnum;
+  getSteamworksEnumValue: typeof getSteamworksEnumValue;
   achievement: typeof achievement;
   appTicket: typeof appTicket;
   apps: typeof apps;
@@ -9734,6 +9757,9 @@ export interface SteamBridgeClient {
 
 export function createCompatibilityClient(): SteamBridgeClient {
   return {
+    SteamworksEnums,
+    getSteamworksEnum,
+    getSteamworksEnumValue,
     achievement,
     appTicket,
     apps,
@@ -15853,6 +15879,8 @@ const defaultExport = {
   isOverlayEnabled,
   overlayNeedsPresent,
   getOverlayDiagnostics,
+  getSteamworksEnum,
+  getSteamworksEnumValue,
   onMicroTxnAuthorizationResponse,
   onGameOverlayActivated,
   onSteamCallback,
@@ -15917,6 +15945,7 @@ const defaultExport = {
   electronConfigureSteamOverlay,
   electronEnableSteamOverlay,
   SteamCallback,
+  SteamworksEnums,
   GameCoordinatorResult
 };
 

@@ -75,6 +75,7 @@ client.auth
   .getAuthTicketForWebApi("steam-bridge-example")
   .then((ticket) => ticket.getBytes());
 client.callback.register("MicroTxnAuthorizationResponse", (event) => console.log(event));
+client.SteamworksEnums.EResult.k_EResultOK;
 client.utils.getOverlayDiagnostics();
 client.overlay.activateToWebPage("https://store.steampowered.com/app/480/");
 client.achievement.isActivated("ACH_WIN_ONE_GAME");
@@ -196,6 +197,13 @@ Prerequisites:
 npm install
 npm run native:build
 npm run build
+```
+
+When updating the bundled Steamworks SDK metadata, regenerate the exact SDK enum
+surface before running checks:
+
+```sh
+npm run steamworks-enums:generate
 ```
 
 If you build the native module by another path, set `STEAM_BRIDGE_NATIVE_PATH`

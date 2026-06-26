@@ -42,6 +42,7 @@ const ticket = await client.auth.getAuthTicketForWebApi("steam-bridge-example");
 
 client.overlay.activateToWebPage("https://store.steampowered.com/app/480/");
 client.callback.register("MicroTxnAuthorizationResponse", (event) => console.log(event));
+client.SteamworksEnums.EResult.k_EResultOK;
 
 console.log({ steamId, ticketBytes: ticket.getBytes().length });
 ```

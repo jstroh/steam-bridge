@@ -12,8 +12,10 @@ documented in headers but omitted from the generated flat bindings.
 callback constant lacks native/public coverage, or when a native N-API export is
 missing TypeScript binding/public facade coverage. It also checks that the
 public callback facade exposes name-based subscription helpers for all exported
-callback aliases. Valve internal context/bootstrap helpers are intentionally
-excluded when their public inline wrappers are already covered.
+callback aliases, and that the generated `SteamworksEnums` export matches all
+SDK enum constants from `steam_api.json`. Valve internal context/bootstrap
+helpers are intentionally excluded when their public inline wrappers are already
+covered.
 
 ## Implemented Areas
 
@@ -27,9 +29,9 @@ excluded when their public inline wrappers are already covered.
   overlay notification placement, VR helpers, China launcher checks, text
   filtering, IPv6 connectivity checks, file signature checks, raw APICall
   inspection, raw `CCallbackBase` registration bridges, generic Steamworks
-  callback ID aliases and name-based subscription helpers, gamepad text input
-  helpers, warning hooks, IPC failure, license update, client/server-deny,
-  game-web, and utility callback events.
+  callback ID aliases and name-based subscription helpers, generated exact SDK
+  enum constants, gamepad text input helpers, warning hooks, IPC failure,
+  license update, client/server-deny, game-web, and utility callback events.
 - Steam client: low-level Steam pipe/user creation and release helpers, global
   user connection, local IPv4 binding, typed interface pointer lookup, generic
   interface lookup by version, IPC call counts, warning hooks,

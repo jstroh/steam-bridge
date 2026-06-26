@@ -59,8 +59,9 @@ assertHeaderOnlyShimCoverage();
 assertCallbackCoverage();
 assertCallbackFacadeCoverage();
 assertNativeBindingCoverage();
+assertSteamworksEnumCoverage();
 
-console.log("Steam API coverage audit passed: SDK exports, flat API references, native bindings, manual shim references, callback aliases, and callback facade helpers are covered.");
+console.log("Steam API coverage audit passed: SDK exports, flat API references, native bindings, manual shim references, callback aliases, callback facade helpers, and SDK enum constants are covered.");
 
 function findSteamworksSysRoot() {
   const metadata = spawnSync("cargo", ["metadata", "--format-version", "1"], {
@@ -215,6 +216,19 @@ function assertNativeBindingCoverage() {
         ...missingFacadeReferences.map((method) => `  - ${method}`)
       ].join("\n")
     );
+  }
+}
+
+function assertSteamworksEnumCoverage() {
+  const check = spawnSync("node", [path.join(repoRoot, "scripts", "generate-steamworks-enums.cjs"), "--check"], {
+    cwd: repoRoot,
+    encoding: "utf8",
+    shell: process.platform === "win32"
+  });
+
+  if (check.status !== 0) {
+    process.stderr.write(check.stderr || check.stdout);
+    process.exit(check.status ?? 1);
   }
 }
 
