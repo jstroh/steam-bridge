@@ -28,8 +28,9 @@ generated callback constant lacks an exported `SteamCallback` alias.
   game-web, and utility callback events.
 - Steam client: low-level Steam pipe/user creation and release helpers, global
   user connection, local IPv4 binding, typed interface pointer lookup, generic
-  interface lookup by version, IPC call counts, warning hooks, and
-  shutdown-if-all-pipes-closed checks.
+  interface lookup by version, IPC call counts, warning hooks,
+  shutdown-if-all-pipes-closed checks, deprecated private client frame pumping,
+  and private destroy-all-interface controls.
 - Game coordinator: legacy `ISteamGameCoordinator` binary message send,
   availability, retrieval, and message-available/failed callbacks through a
   local shim because the interface is not emitted in the flat bindings.
@@ -182,8 +183,9 @@ generated callback constant lacks an exported `SteamCallback` alias.
 ## Not Yet Complete
 
 - `ISteamFriends::SetPersonaName` is not exposed because the current
-  Steamworks SDK bundled through `steamworks-sys 0.13` does not surface it in
-  the flat API metadata or generated bindings used by this crate.
+  Steamworks SDK bundled through `steamworks-sys 0.13` does not include that
+  method in the C++ header, flat API metadata, or generated bindings used by
+  this crate.
 - Remaining modern networking surfaces: field-level parsed relay-auth-ticket
   payloads. `steamworks-sys 0.13` exposes the ticket out-parameter but keeps
   `SteamDatagramRelayAuthTicket` opaque in the bundled headers, so safe
@@ -192,8 +194,9 @@ generated callback constant lacks an exported `SteamCallback` alias.
   SDK bindings; generated callback constants are covered by the automated
   coverage audit.
 - Internal `ISteamClient` process callback pointer hooks are not exposed as raw
-  JavaScript function-pointer setters. They need a safe callback abstraction
-  before they should become public API.
+  JavaScript function-pointer setters. Deprecated client frame pumping and
+  destroy-all-interface controls are exposed, but the callback pointer setters
+  need a safe callback abstraction before they should become public API.
 - `ISteamPS3OverlayRenderHost` and `ISteamPS3OverlayRender` are PlayStation 3
   overlay interfaces and are outside Steam Bridge's supported Steam desktop
   targets.

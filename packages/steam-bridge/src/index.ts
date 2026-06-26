@@ -5208,6 +5208,12 @@ export const client = {
   },
   shutdownIfAllPipesClosed(): boolean {
     return native().clientShutdownIfAllPipesClosed();
+  },
+  runFrameDeprecated(): boolean {
+    return native().clientRunFrameDeprecated();
+  },
+  destroyAllInterfaces(): boolean {
+    return native().clientDestroyAllInterfaces();
   }
 };
 

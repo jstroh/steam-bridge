@@ -19,12 +19,16 @@ const nativeSourceFiles = [
 ];
 const manualCallbackAliases = ["GCMessageAvailable", "GCMessageFailed"];
 const manualHeaderOnlyNativeSymbols = [
+  "steam_bridge_client_run_frame",
+  "steam_bridge_client_destroy_all_interfaces",
   "steam_bridge_game_server_init_game_server",
   "steam_bridge_game_server_set_master_server_heartbeat_interval_deprecated",
   "steam_bridge_game_server_force_master_server_heartbeat_deprecated",
   "steam_bridge_utils_get_cser_ip_port"
 ];
 const manualHeaderOnlyFacadeMethods = [
+  "runFrameDeprecated",
+  "destroyAllInterfaces",
   "initGameServer",
   "setMasterServerHeartbeatIntervalDeprecated",
   "forceMasterServerHeartbeatDeprecated",

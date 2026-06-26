@@ -110,6 +110,8 @@ extern "C" {
         data_length: u32,
         message_size: *mut u32,
     ) -> i32;
+    fn steam_bridge_client_run_frame() -> bool;
+    fn steam_bridge_client_destroy_all_interfaces() -> bool;
     fn steam_bridge_game_server_init_game_server(
         ip: u32,
         game_port: u16,
@@ -2415,6 +2417,18 @@ pub fn client_register_warning_message_hook(
 #[napi(js_name = "clientShutdownIfAllPipesClosed")]
 pub fn client_shutdown_if_all_pipes_closed() -> Result<bool, Error> {
     Ok(unsafe { sys::SteamAPI_ISteamClient_BShutdownIfAllPipesClosed(steam_client()?) })
+}
+
+#[napi(js_name = "clientRunFrameDeprecated")]
+pub fn client_run_frame_deprecated() -> Result<bool, Error> {
+    crate::state::ensure_initialized()?;
+    Ok(unsafe { steam_bridge_client_run_frame() })
+}
+
+#[napi(js_name = "clientDestroyAllInterfaces")]
+pub fn client_destroy_all_interfaces() -> Result<bool, Error> {
+    crate::state::ensure_initialized()?;
+    Ok(unsafe { steam_bridge_client_destroy_all_interfaces() })
 }
 
 #[napi(js_name = "achievementActivate")]

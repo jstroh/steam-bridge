@@ -2598,6 +2598,8 @@ export interface NativeBinding {
   clientGetIpcCallCount(): number;
   clientRegisterWarningMessageHook(handler: (event: NativeUtilsWarningMessage) => void): NativeCallbackHandle;
   clientShutdownIfAllPipesClosed(): boolean;
+  clientRunFrameDeprecated(): boolean;
+  clientDestroyAllInterfaces(): boolean;
 
   workshopCreateItem(appId?: number | null): Promise<NativeUgcResult>;
   workshopUpdateItem(itemId: bigint, updateDetails: unknown, appId?: number | null): Promise<NativeUgcResult>;

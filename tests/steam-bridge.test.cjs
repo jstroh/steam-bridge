@@ -174,6 +174,14 @@ function createFakeNative(overrides = {}) {
       calls.push({ method: "clientShutdownIfAllPipesClosed", args: [] });
       return false;
     },
+    clientRunFrameDeprecated() {
+      calls.push({ method: "clientRunFrameDeprecated", args: [] });
+      return true;
+    },
+    clientDestroyAllInterfaces() {
+      calls.push({ method: "clientDestroyAllInterfaces", args: [] });
+      return true;
+    },
     registerSteamCallback(callbackId, handler) {
       calls.push({ method: "registerSteamCallback", args: [callbackId] });
       callbacks.set(callbackId, handler);
@@ -1181,6 +1189,8 @@ test("client facade covers low-level Steam client helpers", (t) => {
   assert.equal(steam.client.getInterface("generic", { user: 11, pipe: 7, version: "SteamTest001" }), 4096n);
   assert.equal(steam.client.getIPCCallCount(), 13);
   assert.equal(steam.client.shutdownIfAllPipesClosed(), false);
+  assert.equal(steam.client.runFrameDeprecated(), true);
+  assert.equal(steam.client.destroyAllInterfaces(), true);
 
   const warnings = [];
   const hook = steam.client.registerWarningMessageHook((event) => warnings.push(event));
@@ -1198,6 +1208,8 @@ test("client facade covers low-level Steam client helpers", (t) => {
     { method: "clientGetInterface", args: ["generic", 11, 7, "SteamTest001"] },
     { method: "clientGetIpcCallCount", args: [] },
     { method: "clientShutdownIfAllPipesClosed", args: [] },
+    { method: "clientRunFrameDeprecated", args: [] },
+    { method: "clientDestroyAllInterfaces", args: [] },
     { method: "clientRegisterWarningMessageHook", args: [] }
   ]);
   assert.deepEqual(fake.calls.find((call) => call.method === "disconnectClientWarningMessageHook"), {

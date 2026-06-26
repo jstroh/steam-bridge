@@ -2,14 +2,83 @@
 
 extern "C" void *SteamAPI_SteamGameServer_v015();
 extern "C" void *SteamAPI_SteamUtils_v010();
+extern "C" void *SteamInternal_CreateInterface(const char *version);
 
 namespace {
 
 // These methods are present in the SDK C++ headers but omitted from
-// steam_api_flat.h. Keep the vtable layouts in sync with SteamGameServer015 and
-// SteamUtils010.
+// steam_api_flat.h. Keep the vtable layouts in sync with SteamClient023,
+// SteamGameServer015, and SteamUtils010.
+constexpr const char *kSteamClientInterfaceVersion = "SteamClient023";
+
 struct SteamIPAddressBridge {
   uint8_t bytes[20];
+};
+
+class ISteamClientHeaderOnly {
+ public:
+  virtual int32_t CreateSteamPipe() = 0;
+  virtual bool BReleaseSteamPipe(int32_t hSteamPipe) = 0;
+  virtual int32_t ConnectToGlobalUser(int32_t hSteamPipe) = 0;
+  virtual int32_t CreateLocalUser(int32_t *phSteamPipe, int32_t eAccountType) = 0;
+  virtual void ReleaseUser(int32_t hSteamPipe, int32_t hUser) = 0;
+  virtual void *GetISteamUser(int32_t hSteamUser, int32_t hSteamPipe,
+                              const char *pchVersion) = 0;
+  virtual void *GetISteamGameServer(int32_t hSteamUser, int32_t hSteamPipe,
+                                    const char *pchVersion) = 0;
+  virtual void SetLocalIPBinding(const SteamIPAddressBridge &unIP, uint16_t usPort) = 0;
+  virtual void *GetISteamFriends(int32_t hSteamUser, int32_t hSteamPipe,
+                                 const char *pchVersion) = 0;
+  virtual void *GetISteamUtils(int32_t hSteamPipe, const char *pchVersion) = 0;
+  virtual void *GetISteamMatchmaking(int32_t hSteamUser, int32_t hSteamPipe,
+                                     const char *pchVersion) = 0;
+  virtual void *GetISteamMatchmakingServers(int32_t hSteamUser, int32_t hSteamPipe,
+                                            const char *pchVersion) = 0;
+  virtual void *GetISteamGenericInterface(int32_t hSteamUser, int32_t hSteamPipe,
+                                          const char *pchVersion) = 0;
+  virtual void *GetISteamUserStats(int32_t hSteamUser, int32_t hSteamPipe,
+                                   const char *pchVersion) = 0;
+  virtual void *GetISteamGameServerStats(int32_t hSteamUser, int32_t hSteamPipe,
+                                         const char *pchVersion) = 0;
+  virtual void *GetISteamApps(int32_t hSteamUser, int32_t hSteamPipe,
+                              const char *pchVersion) = 0;
+  virtual void *GetISteamNetworking(int32_t hSteamUser, int32_t hSteamPipe,
+                                    const char *pchVersion) = 0;
+  virtual void *GetISteamRemoteStorage(int32_t hSteamUser, int32_t hSteamPipe,
+                                       const char *pchVersion) = 0;
+  virtual void *GetISteamScreenshots(int32_t hSteamUser, int32_t hSteamPipe,
+                                     const char *pchVersion) = 0;
+  virtual void RunFrame() = 0;
+  virtual uint32_t GetIPCCallCount() = 0;
+  virtual void SetWarningMessageHook(void *pFunction) = 0;
+  virtual bool BShutdownIfAllPipesClosed() = 0;
+  virtual void *GetISteamHTTP(int32_t hSteamUser, int32_t hSteamPipe,
+                              const char *pchVersion) = 0;
+  virtual void *GetISteamController(int32_t hSteamUser, int32_t hSteamPipe,
+                                    const char *pchVersion) = 0;
+  virtual void *GetISteamUGC(int32_t hSteamUser, int32_t hSteamPipe,
+                             const char *pchVersion) = 0;
+  virtual void *GetISteamMusic(int32_t hSteamUser, int32_t hSteamPipe,
+                               const char *pchVersion) = 0;
+  virtual void *GetISteamHTMLSurface(int32_t hSteamUser, int32_t hSteamPipe,
+                                     const char *pchVersion) = 0;
+  virtual void DEPRECATED_Set_SteamAPI_CPostAPIResultInProcess(void (*func)()) = 0;
+  virtual void DEPRECATED_Remove_SteamAPI_CPostAPIResultInProcess(void (*func)()) = 0;
+  virtual void Set_SteamAPI_CCheckCallbackRegisteredInProcess(
+      uint32_t (*func)(int32_t iCallbackNum)) = 0;
+  virtual void *GetISteamInventory(int32_t hSteamUser, int32_t hSteamPipe,
+                                   const char *pchVersion) = 0;
+  virtual void *GetISteamVideo(int32_t hSteamUser, int32_t hSteamPipe,
+                               const char *pchVersion) = 0;
+  virtual void *GetISteamParentalSettings(int32_t hSteamUser, int32_t hSteamPipe,
+                                          const char *pchVersion) = 0;
+  virtual void *GetISteamInput(int32_t hSteamUser, int32_t hSteamPipe,
+                               const char *pchVersion) = 0;
+  virtual void *GetISteamParties(int32_t hSteamUser, int32_t hSteamPipe,
+                                 const char *pchVersion) = 0;
+  virtual void *GetISteamRemotePlay(int32_t hSteamUser, int32_t hSteamPipe,
+                                    const char *pchVersion) = 0;
+  virtual void DestroyAllInterfaces() = 0;
 };
 
 class ISteamGameServerHeaderOnly {
@@ -82,6 +151,11 @@ class ISteamUtilsHeaderOnly {
   virtual bool GetCSERIPPort(uint32_t *unIP, uint16_t *usPort) = 0;
 };
 
+ISteamClientHeaderOnly *steam_bridge_client_header_only() {
+  return static_cast<ISteamClientHeaderOnly *>(
+      SteamInternal_CreateInterface(kSteamClientInterfaceVersion));
+}
+
 ISteamGameServerHeaderOnly *steam_bridge_game_server_header_only() {
   return static_cast<ISteamGameServerHeaderOnly *>(SteamAPI_SteamGameServer_v015());
 }
@@ -91,6 +165,24 @@ ISteamUtilsHeaderOnly *steam_bridge_utils_header_only() {
 }
 
 }  // namespace
+
+extern "C" bool steam_bridge_client_run_frame() {
+  ISteamClientHeaderOnly *client = steam_bridge_client_header_only();
+  if (client == nullptr) {
+    return false;
+  }
+  client->RunFrame();
+  return true;
+}
+
+extern "C" bool steam_bridge_client_destroy_all_interfaces() {
+  ISteamClientHeaderOnly *client = steam_bridge_client_header_only();
+  if (client == nullptr) {
+    return false;
+  }
+  client->DestroyAllInterfaces();
+  return true;
+}
 
 extern "C" bool steam_bridge_game_server_init_game_server(
     uint32_t ip, uint16_t game_port, uint16_t query_port, uint32_t flags, uint32_t app_id,
