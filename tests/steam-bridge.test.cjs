@@ -277,6 +277,17 @@ function createFakeNative(overrides = {}) {
         { name: "settings.json", size: 2048n }
       ];
     },
+    cloudIsEnabledForAccount() {
+      calls.push({ method: "cloudIsEnabledForAccount", args: [] });
+      return true;
+    },
+    cloudIsEnabledForApp() {
+      calls.push({ method: "cloudIsEnabledForApp", args: [] });
+      return false;
+    },
+    cloudSetEnabledForApp(enabled) {
+      calls.push({ method: "cloudSetEnabledForApp", args: [enabled] });
+    },
     cloudWriteFileAsync(name, data, timeoutSeconds) {
       calls.push({ method: "cloudWriteFileAsync", args: [name, data, timeoutSeconds] });
       return Promise.resolve(1);
@@ -289,9 +300,17 @@ function createFakeNative(overrides = {}) {
       calls.push({ method: "cloudShareFile", args: [name, timeoutSeconds] });
       return Promise.resolve({ result: 1, file: "555", name });
     },
+    cloudDeleteFile(name) {
+      calls.push({ method: "cloudDeleteFile", args: [name] });
+      return name === "old-save.dat";
+    },
     cloudForgetFile(name) {
       calls.push({ method: "cloudForgetFile", args: [name] });
       return true;
+    },
+    cloudFileExists(name) {
+      calls.push({ method: "cloudFileExists", args: [name] });
+      return name === "save.dat";
     },
     cloudFilePersisted(name) {
       calls.push({ method: "cloudFilePersisted", args: [name] });
@@ -5635,6 +5654,11 @@ test("cloud, input, and networking facades coerce native values", async (t) => {
   assert.equal(steam.cloud.RemoteStoragePlatform.OSX, 2);
   assert.equal(steam.cloud.RemoteStorageLocalFileChange.FileUpdated, 1);
   assert.equal(steam.cloud.RemoteStorageFilePathType.APIFilename, 2);
+  assert.equal(steam.cloud.isEnabledForAccount(), true);
+  assert.equal(steam.cloud.isEnabledForApp(), false);
+  assert.equal(steam.cloud.setEnabledForApp(true), undefined);
+  assert.equal(steam.cloud.deleteFile("old-save.dat"), true);
+  assert.equal(steam.cloud.fileExists("save.dat"), true);
   assert.equal(steam.cloud.filePersisted("save.dat"), true);
   assert.equal(steam.cloud.forgetFile("save.dat"), true);
   assert.equal(steam.cloud.getFileSize("save.dat"), 1024n);
@@ -5676,6 +5700,18 @@ test("cloud, input, and networking facades coerce native values", async (t) => {
   assert.deepEqual(fake.calls.find((call) => call.method === "cloudSetSyncPlatforms"), {
     method: "cloudSetSyncPlatforms",
     args: ["save.dat", 2]
+  });
+  assert.deepEqual(fake.calls.find((call) => call.method === "cloudSetEnabledForApp"), {
+    method: "cloudSetEnabledForApp",
+    args: [true]
+  });
+  assert.deepEqual(fake.calls.find((call) => call.method === "cloudDeleteFile"), {
+    method: "cloudDeleteFile",
+    args: ["old-save.dat"]
+  });
+  assert.deepEqual(fake.calls.find((call) => call.method === "cloudFileExists"), {
+    method: "cloudFileExists",
+    args: ["save.dat"]
   });
   assert.deepEqual(fake.calls.find((call) => call.method === "cloudWriteFileAsync"), {
     method: "cloudWriteFileAsync",
