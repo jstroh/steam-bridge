@@ -226,6 +226,7 @@ npm run check:platform
 npm test
 npm run native:fmt
 npm run native:check
+npm run api:check
 ```
 
 ## macOS Overlay Diagnostics

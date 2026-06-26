@@ -1053,6 +1053,7 @@ test("project support policy covers Steam desktop targets except Intel macOS", (
   assert.match(rootPackageJson.scripts["native:build"], /scripts\/build-native\.cjs/);
   assert.match(rootPackageJson.scripts["native:check"], /scripts\/check-native\.cjs/);
   assert.match(rootPackageJson.scripts["check:platform"], /assert-supported-targets\.cjs/);
+  assert.match(rootPackageJson.scripts["api:check"], /audit-steam-api-coverage\.cjs/);
 
   for (const workflow of [ciWorkflow, releaseWorkflow]) {
     for (const target of supportedTargets) {
@@ -1060,6 +1061,7 @@ test("project support policy covers Steam desktop targets except Intel macOS", (
     }
     assert.match(workflow, /node scripts\/assert-supported-targets\.cjs/);
   }
+  assert.match(ciWorkflow, /npm run api:check/);
 
   for (const source of [ciWorkflow, releaseWorkflow, loader, linkScript]) {
     assert.doesNotMatch(source, /x86_64-apple-darwin|darwin-x64|macos-13/);

@@ -33,6 +33,7 @@ npm run check:platform
 npm test
 npm run native:fmt
 npm run native:check
+npm run api:check
 ```
 
 Use `STEAM_BRIDGE_APP_ID=480 npm start -w steam-bridge-electron-example` for a

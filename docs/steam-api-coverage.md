@@ -7,6 +7,9 @@ what is available today and what still needs work.
 The native layer primarily targets the Steamworks flat C API through
 `steamworks-sys 0.13`, with narrow local C++ shims for SDK surfaces that are
 documented in headers but omitted from the generated flat bindings.
+`npm run api:check` audits the bundled SDK and fails if any generated
+`SteamAPI_ISteam*` flat function is not referenced by the native layer or if a
+generated callback constant lacks an exported `SteamCallback` alias.
 
 ## Implemented Areas
 
@@ -180,8 +183,9 @@ documented in headers but omitted from the generated flat bindings.
   payloads. `steamworks-sys 0.13` exposes the ticket out-parameter but keeps
   `SteamDatagramRelayAuthTicket` opaque in the bundled headers, so safe
   structured decoding needs a newer SDK surface or a maintained local shim.
-- Remaining callback/event coverage for interfaces that are not yet surfaced by
-  the native bindings or still need richer low-level ergonomics.
+- Remaining callback/event ergonomics for interfaces not surfaced by the current
+  SDK bindings; generated callback constants are covered by the automated
+  coverage audit.
 - Additional endpoint-specific Steam Web API convenience wrappers outside
   Valve's current supported public API list, or for partner/private service
   interfaces that are not advertised by `ISteamWebAPIUtil.GetSupportedAPIList`.
