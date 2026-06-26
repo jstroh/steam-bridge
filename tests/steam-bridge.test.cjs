@@ -10053,6 +10053,23 @@ test("game coordinator facade normalizes binary messages", (t) => {
 
   t.after(clearSteamBridgeCache);
 
+  let messageAvailableEvent;
+  let messageFailedEvent;
+  const handles = [
+    steam.gameCoordinator.onMessageAvailable((event) => {
+      messageAvailableEvent = event;
+    }),
+    steam.gameCoordinator.onMessageFailed((event) => {
+      messageFailedEvent = event;
+    })
+  ];
+
+  fake.callbacks.get(steam.SteamCallback.GCMessageAvailable)({ message_size: 64 });
+  fake.callbacks.get(steam.SteamCallback.GCMessageFailed)({});
+
+  assert.equal(messageAvailableEvent.messageSize, 64);
+  assert.deepEqual(messageFailedEvent, {});
+
   assert.equal(steam.gameCoordinator.GameCoordinatorResult.OK, 0);
   assert.equal(steam.gameCoordinator.sendMessage(9000, "payload"), 0);
   assert.deepEqual(steam.gameCoordinator.isMessageAvailable(), { available: true, messageSize: 5 });
@@ -10066,6 +10083,24 @@ test("game coordinator facade normalizes binary messages", (t) => {
     method: "gameCoordinatorSendMessage",
     args: [9000, Buffer.from("payload")]
   });
+
+  for (const handle of handles) {
+    handle.disconnect();
+  }
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "registerSteamCallback"),
+    [
+      { method: "registerSteamCallback", args: [steam.SteamCallback.GCMessageAvailable] },
+      { method: "registerSteamCallback", args: [steam.SteamCallback.GCMessageFailed] }
+    ]
+  );
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "disconnectCallback"),
+    [
+      { method: "disconnectCallback", args: [steam.SteamCallback.GCMessageAvailable] },
+      { method: "disconnectCallback", args: [steam.SteamCallback.GCMessageFailed] }
+    ]
+  );
 });
 
 test("friends facade normalizes IDs, groups, rich presence, and async results", async (t) => {

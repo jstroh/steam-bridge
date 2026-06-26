@@ -2382,6 +2382,16 @@ export interface GameCoordinatorMessage {
   data: Buffer | null;
 }
 
+export interface GameCoordinatorMessageAvailableEvent {
+  messageSize: number;
+  message_size?: number;
+  [key: string]: unknown;
+}
+
+export interface GameCoordinatorMessageFailedEvent {
+  [key: string]: unknown;
+}
+
 export interface NumberOfCurrentPlayersResult {
   success: boolean;
   players: number;
@@ -10817,6 +10827,16 @@ export const stats = {
 
 export const gameCoordinator = {
   GameCoordinatorResult,
+  onMessageAvailable(handler: (event: GameCoordinatorMessageAvailableEvent) => void): CallbackHandle {
+    return onSteamCallback("GCMessageAvailable", (event) => {
+      handler(event as GameCoordinatorMessageAvailableEvent);
+    });
+  },
+  onMessageFailed(handler: (event: GameCoordinatorMessageFailedEvent) => void): CallbackHandle {
+    return onSteamCallback("GCMessageFailed", (event) => {
+      handler(event as GameCoordinatorMessageFailedEvent);
+    });
+  },
   sendMessage(messageType: number, data: Buffer | Uint8Array | string): number {
     return native().gameCoordinatorSendMessage(messageType, Buffer.from(data));
   },

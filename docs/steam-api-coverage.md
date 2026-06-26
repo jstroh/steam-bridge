@@ -41,8 +41,9 @@ covered.
   safe wrappers for internal process callback pointer hooks, and private
   destroy-all-interface controls.
 - Game coordinator: legacy `ISteamGameCoordinator` binary message send,
-  availability, retrieval, and message-available/failed callbacks through a
-  local shim because the interface is not emitted in the flat bindings.
+  availability, retrieval, and typed message-available/failed callback helpers
+  through a local shim because the interface is not emitted in the flat
+  bindings.
 - User/auth: local Steam ID helpers, Web API auth tickets, session tickets by
   Steam ID, IPv4, or IPv6 identity, auth session validation helpers, voice
   recording/capture and decompression, encrypted app ticket request/retrieval,
@@ -211,10 +212,10 @@ covered.
   apps, user/auth, Friends, Matchmaking/lobbies, Parties, Inventory,
   Steam Input, networking, Remote Storage, HTTP, HTML, screenshots, music,
   video, parental settings, timeline, Remote Play, Game Server, stats,
-  achievements, leaderboards, and global-stat callback-helper batches, for
-  interfaces where a dedicated `on...` helper would be clearer than the generic
-  name-based subscription API. Generated callback constants and generic name
-  subscriptions are covered by the automated coverage audit.
+  achievements, leaderboards, global-stat, and Game Coordinator callback-helper
+  batches, for interfaces where a dedicated `on...` helper would be clearer
+  than the generic name-based subscription API. Generated callback constants and
+  generic name subscriptions are covered by the automated coverage audit.
 - `ISteamPS3OverlayRenderHost` and `ISteamPS3OverlayRender` are PlayStation 3
   overlay interfaces and are outside Steam Bridge's supported Steam desktop
   targets.
