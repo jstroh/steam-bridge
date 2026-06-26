@@ -6195,6 +6195,9 @@ test("legacy networking facade covers P2P sessions and socket helpers", (t) => {
       this.calls.push({ method: "networkingIsP2PPacketAvailable", args: [] });
       return 5;
     },
+    networkingAcceptP2PSession(steamId64) {
+      this.calls.push({ method: "networkingAcceptP2PSession", args: [steamId64] });
+    },
     networkingCloseP2PSession(steamId64) {
       this.calls.push({ method: "networkingCloseP2PSession", args: [steamId64] });
       return true;
@@ -6340,6 +6343,7 @@ test("legacy networking facade covers P2P sessions and socket helpers", (t) => {
   assert.equal(steam.networking.LegacySocketConnectionType.UDPRelay, 2);
   assert.equal(steam.networking.sendP2PPacket(peer, steam.networking.SendType.Reliable, new Uint8Array([1, 2])), true);
   assert.equal(steam.networking.isP2PPacketAvailable(), 5);
+  assert.equal(steam.networking.acceptP2PSession(peer), undefined);
   assert.equal(steam.networking.closeP2PSession(peer), true);
   assert.equal(steam.networking.closeP2PChannel(peer, 2), true);
   assert.deepEqual(steam.networking.getP2PSessionState(peer), {
@@ -6401,6 +6405,10 @@ test("legacy networking facade covers P2P sessions and socket helpers", (t) => {
   assert.deepEqual(fake.calls.find((call) => call.method === "networkingSendDataOnSocket"), {
     method: "networkingSendDataOnSocket",
     args: [103, Buffer.from([3, 4]), false]
+  });
+  assert.deepEqual(fake.calls.find((call) => call.method === "networkingAcceptP2PSession"), {
+    method: "networkingAcceptP2PSession",
+    args: [peer]
   });
 });
 
@@ -10622,6 +10630,22 @@ test("stats leaderboard facade normalizes handles, entries, and async results", 
 test("stats and achievement facades cover user and global Steam stats", async (t) => {
   const player = { steamId64: "76561198000000006", steamId32: "STEAM_0:0:19867139", accountId: 39734278 };
   const fake = createFakeNative({
+    isAchievementActivated(name) {
+      this.calls.push({ method: "isAchievementActivated", args: [name] });
+      return name === "ACH_WIN";
+    },
+    achievementActivate(name) {
+      this.calls.push({ method: "achievementActivate", args: [name] });
+      return true;
+    },
+    achievementClear(name) {
+      this.calls.push({ method: "achievementClear", args: [name] });
+      return true;
+    },
+    achievementNames() {
+      this.calls.push({ method: "achievementNames", args: [] });
+      return ["ACH_START", "ACH_WIN"];
+    },
     achievementGetAndUnlockTime(name) {
       this.calls.push({ method: "achievementGetAndUnlockTime", args: [name] });
       return { achieved: true, unlock_time: 1700000000 };
@@ -10720,6 +10744,11 @@ test("stats and achievement facades cover user and global Steam stats", async (t
 
   t.after(clearSteamBridgeCache);
 
+  assert.equal(steam.isAchievementActivated("ACH_WIN"), true);
+  assert.equal(steam.achievement.isActivated("ACH_WIN"), true);
+  assert.equal(steam.achievement.activate("ACH_WIN"), true);
+  assert.equal(steam.achievement.clear("ACH_OLD"), true);
+  assert.deepEqual(steam.achievement.names(), ["ACH_START", "ACH_WIN"]);
   assert.deepEqual(steam.achievement.getAndUnlockTime("ACH_WIN"), { achieved: true, unlockTime: 1700000000 });
   assert.equal(steam.achievement.getIcon("ACH_WIN"), 321);
   assert.equal(steam.achievement.getDisplayAttribute("ACH_WIN", "name"), "ACH_WIN:name");
@@ -10758,6 +10787,22 @@ test("stats and achievement facades cover user and global Steam stats", async (t
   assert.equal(steam.stats.getGlobalStatDouble("total_ratio"), 123.75);
   assert.deepEqual(steam.stats.getGlobalStatHistoryInt("daily_score", 3), [10n, 20n, 30n]);
   assert.deepEqual(steam.stats.getGlobalStatHistoryDouble("daily_ratio", 2), [1.25, 2.5]);
+  assert.deepEqual(fake.calls.filter((call) => call.method === "isAchievementActivated"), [
+    { method: "isAchievementActivated", args: ["ACH_WIN"] },
+    { method: "isAchievementActivated", args: ["ACH_WIN"] }
+  ]);
+  assert.deepEqual(fake.calls.find((call) => call.method === "achievementActivate"), {
+    method: "achievementActivate",
+    args: ["ACH_WIN"]
+  });
+  assert.deepEqual(fake.calls.find((call) => call.method === "achievementClear"), {
+    method: "achievementClear",
+    args: ["ACH_OLD"]
+  });
+  assert.deepEqual(fake.calls.find((call) => call.method === "achievementNames"), {
+    method: "achievementNames",
+    args: []
+  });
 });
 
 test("stats and achievement facades expose typed callback helpers", (t) => {
