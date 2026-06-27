@@ -259,7 +259,7 @@ npm run native:check
 npm run api:check
 ```
 
-## macOS Overlay Diagnostics
+## Overlay Diagnostics
 
 On macOS, Steam API initialization and the in-game overlay are separate
 successes. `steam_appid.txt` can be enough for Steam ID, auth tickets, and
@@ -276,19 +276,36 @@ log what Steam sees:
 - `bigPicture`
 - `steamInstallPath`
 
-Steam Bridge also includes a native overlay probe surface for diagnostics. The
-probe is implemented on macOS and on Linux/X11 with GLX:
+Steam Bridge also includes a managed native overlay session for diagnostics and
+Deck/Desktop proof runs. The session opens a bridge-owned native presenter,
+pumps it on an internal timer, activates the requested Steam overlay target,
+and tracks whether Steam reported overlay activation:
 
 ```ts
-client.overlay.openNativeOverlayProbeWindow("Steam Overlay Probe");
-client.overlay.pumpNativeOverlayProbeWindow();
-client.overlay.closeNativeOverlayProbeWindow();
+const session = client.overlay.activateDialogWithNativeSession("Friends", {
+  title: "Steam Overlay"
+});
+
+// Other overlay targets use the same bridge-owned native presenter lifecycle:
+// const session = client.overlay.activateToStoreWithNativeSession(
+//   480,
+//   client.overlay.StoreFlag.None
+// );
+// const session = client.overlay.activateToWebPageWithNativeSession(
+//   "https://store.steampowered.com/app/480/"
+// );
+
+// Optional explicit cleanup; by default the session keeps the native presenter
+// alive after overlay close so Steam does not lose the hooked surface.
+session.close();
 ```
 
-On Steam Deck Desktop Mode, the Linux native probe is the current generic proof
-path for overlay open and close/back-to-app behavior. The Electron-only
-BrowserWindow path can initialize Steam and activate visible overlay UI, but it
-has not proven reliable overlay input dismissal in Desktop Mode.
+The native presenter currently uses the macOS probe implementation on macOS and
+an X11/GLX probe implementation on Linux. On Steam Deck Desktop Mode, the Linux
+managed session is the current generic proof path for overlay open and close
+behavior. The Electron-only BrowserWindow path can initialize Steam and activate
+visible overlay UI, but it has not proven reliable overlay input dismissal in
+Desktop Mode.
 
 Set `STEAM_BRIDGE_ELECTRON_OVERLAY_PROFILE=repaint`, or pass
 `--steam-bridge-electron-overlay-profile=repaint` to the Electron smoke app, to

@@ -7,7 +7,7 @@ param(
   [string]$ResultFile = "",
   [int]$AppId = 480,
 
-  [ValidateSet("none", "dialog", "friends", "store", "web", "native-probe")]
+  [ValidateSet("none", "dialog", "friends", "store", "web", "native-probe", "native-dialog", "native-store", "native-web")]
   [string]$Action = "none",
 
   [int]$ResultDelayMs = 8000,

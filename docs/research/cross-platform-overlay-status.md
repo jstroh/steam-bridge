@@ -13,7 +13,7 @@ and Steam Deck. The public smoke target is Valve's SpaceWar App ID `480`.
 | Steam Deck Game Mode | Verified for smoke coverage | A Steam-launched non-Steam shortcut reports `steamDeck=true`, `bigPicture=true`, `steamLaunch=true`, `overlayInjection=true`, `overlayEnabled=true`, and can emit overlay events. |
 | Steam Deck Desktop Mode | Verified for smoke coverage | The same packaged app can be launched from Desktop Mode with `steamDeck=true`, `bigPicture=false`, `steamLaunch=true`, `overlayInjection=true`, and `overlayEnabled=true`. Desktop Mode uses the Electron `repaint` overlay profile by default. |
 | Desktop Mode Electron-only overlay | Partial | The Electron-only `friends` action can activate visible Steam overlay UI and emit `callback:overlay-activated` with `active=true`, but Shift+Tab, overlay X, and Back to Game did not reliably dismiss the overlay while the app stayed open. Treat it as callback/render evidence, not full input proof. |
-| Desktop Mode Linux native probe | Verified for open and close | The `native-probe` action opens a bridge-owned X11/GLX native surface, keeps it presenting frames, activates the Friends overlay, and verified Shift+Tab open then Shift+Tab close with `callback:overlay-activated` reporting `active=true` and then `active=false` while the smoke app stayed alive. |
+| Desktop Mode managed native session | Verified for open and close | The `native-dialog` action calls `activateDialogWithNativeSession("Friends")`, which opens a bridge-owned X11/GLX native presenter, keeps it presenting frames, activates the Friends overlay, and verified Shift+Tab open then Shift+Tab close with `callback:overlay-activated` reporting `active=true` and then `active=false` while the smoke app stayed alive. `native-store` and `native-web` use the same managed presenter lifecycle for the store and web-page overlay APIs. The reliable Deck Desktop proof returns to the bridge-owned presenter after close. |
 | Store overlay | Verified from the smoke app | `ActivateGameOverlayToStore` can activate the Steam overlay from the Deck smoke shortcut and produce `callback:overlay-activated` with `active=true`. |
 | General web-page overlay | Not working from the Deck Game Mode smoke shortcut | `ActivateGameOverlayToWebPage` to a normal Steam web page was called successfully, but did not show a visible web overlay or produce `active=true`. |
 | Desktop web-page overlay | Verified from the Deck Desktop Mode smoke shortcut | With the Desktop overlay profile, `ActivateGameOverlayToWebPage` to the public SpaceWar store page produced `callback:overlay-activated` with `active=true` from Desktop Mode. |
@@ -77,6 +77,9 @@ to prove checkout or transaction behavior:
 | API path | Smoke app expectation | What it proves |
 | --- | --- | --- |
 | `activateDialog("Friends")` | May show the Friends panel and emit an overlay callback. | Steamworks initialized, callbacks are flowing, and the overlay IPC path is alive. |
+| `activateDialogWithNativeSession("Friends")` | Should open the bridge-owned native presenter, show the Friends overlay, and return to the running presenter after overlay close in Deck Desktop Mode. | Steam Bridge can own the native presenter lifecycle instead of requiring app-specific Electron overlay controllers. |
+| `activateToStoreWithNativeSession(480, ...)` | Should open the bridge-owned native presenter and activate the Steam store overlay path. | The managed presenter lifecycle is reusable across non-dialog overlay entry points. |
+| `activateToWebPageWithNativeSession("https://store.steampowered.com/app/480/", ...)` | Should open the bridge-owned native presenter and activate the web-page overlay path. | The managed presenter lifecycle is reusable for web-page overlay calls, though normal web-page visibility still depends on Steam accepting that target on the current platform/mode. |
 | `activateToStore(480, ...)` | Should activate the Steam overlay and emit `active=true` from a Steam-launched Deck shortcut. | The Deck/Electron/Steam launch path can display Steam overlay UI. |
 | `activateToWebPage("https://store.steampowered.com/app/480/", ...)` | Currently does not activate a visible web overlay from the Deck Game Mode smoke shortcut, but passes from Desktop Mode with the Desktop overlay profile. | The web-page API call was issued; it does not prove purchase UI unless Steam activates the overlay. |
 | `activateToWebPage(<checkout-or-approval-url>, { modal: true })` | Must be run from the actual Steam app with the matching App ID and a configured product or transaction. | Purchase or transaction overlay behavior. |
@@ -124,9 +127,9 @@ Electron-only Desktop Mode visual proof is Steam's desktop overlay panels over
 the Electron window, such as Game Overview/Friends with a "Back to Game"
 affordance. This proves visible overlay rendering, but it does not currently
 prove overlay input dismissal on Deck Desktop Mode. The full open/close proof
-uses `--action native-probe`: the open capture shows Steam's overlay over the
-native probe surface, and the close capture returns to the running native probe
-surface with a matching `active=false` overlay callback.
+uses `--action native-dialog`: the open capture shows Steam's overlay over the
+bridge-owned native presenter, and the close capture returns to the running
+native presenter with a matching `active=false` overlay callback.
 
 `overlayNeedsPresent=true` is not a hard failure by itself. It means Steam is
 asking an event-driven renderer to keep presenting frames for the overlay. The

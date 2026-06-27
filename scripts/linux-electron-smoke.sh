@@ -46,7 +46,7 @@ Options:
   --result-file PATH             Result log path.
   --diagnostic-dir PATH          Diagnostic log/crash dump directory.
   --app-id ID                    Steam App ID to use. Defaults to 480.
-  --action NAME                  none, dialog, friends, store, web, native-probe.
+  --action NAME                  none, dialog, friends, store, web, native-probe, native-dialog, native-store, native-web.
   --overlay-profile NAME         Electron overlay profile. Defaults to diagnostic.
   --window-mode NAME             Electron window mode: windowed, fullscreen, or borderless.
   --web-url URL                  URL for the web overlay action.

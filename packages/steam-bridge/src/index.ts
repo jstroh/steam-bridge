@@ -1565,6 +1565,35 @@ export interface OverlayWebPageOptions {
   modal?: boolean;
 }
 
+export interface NativeOverlaySessionOptions {
+  title?: string;
+  pumpIntervalMs?: number;
+}
+
+export type NativeOverlayWebPageSessionOptions = NativeOverlaySessionOptions & OverlayWebPageOptions;
+
+export interface NativeOverlaySessionSnapshot {
+  title: string;
+  closed: boolean;
+  startedAt: number;
+  pumpCount: number;
+  overlayActive: boolean;
+  overlayWasActive: boolean;
+  lastOverlayEvent?: GameOverlayActivated;
+  nativeProbeOpen: boolean;
+  nativeHostOpen: boolean;
+  lastPumpAt?: number;
+  lastError?: unknown;
+  diagnostics?: OverlayDiagnostics;
+}
+
+export interface NativeOverlaySession extends CallbackHandle {
+  close(): void;
+  pump(): void;
+  isOpen(): boolean;
+  snapshot(): NativeOverlaySessionSnapshot;
+}
+
 export interface HtmlCreateBrowserOptions {
   userAgent?: string;
   userCss?: string;
@@ -6582,6 +6611,140 @@ export function getMacWindowSnapshot(appId?: number): string | undefined {
   return native().getMacWindowSnapshot(appId);
 }
 
+export function startNativeOverlaySession(options: NativeOverlaySessionOptions = {}): NativeOverlaySession {
+  const title = options.title ?? "Steam Bridge Native Overlay";
+  const pumpIntervalMs = Math.max(1, options.pumpIntervalMs ?? 33);
+
+  let closed = false;
+  let pumpCount = 0;
+  let lastPumpAt: number | undefined;
+  let lastError: unknown;
+  let overlayActive = false;
+  let overlayWasActive = false;
+  let lastOverlayEvent: GameOverlayActivated | undefined;
+  let pumpTimer: NodeJS.Timeout | undefined;
+  let overlayHandle: CallbackHandle | undefined;
+
+  const pump = (): void => {
+    if (closed) {
+      return;
+    }
+
+    try {
+      native().pumpNativeOverlayProbeWindow();
+      pumpCount += 1;
+      lastPumpAt = Date.now();
+    } catch (error) {
+      lastError = error;
+      close();
+      throw error;
+    }
+  };
+
+  const snapshot = (): NativeOverlaySessionSnapshot => {
+    const base = {
+      title,
+      closed,
+      startedAt,
+      pumpCount,
+      overlayActive,
+      overlayWasActive,
+      lastOverlayEvent,
+      nativeProbeOpen: safeBoolean(() => native().isNativeOverlayProbeWindowOpen()),
+      nativeHostOpen: safeBoolean(() => native().isNativeOverlayHostViewOpen()),
+      lastPumpAt,
+      lastError
+    };
+
+    try {
+      return { ...base, diagnostics: getOverlayDiagnostics() };
+    } catch {
+      return base;
+    }
+  };
+
+  const close = (): void => {
+    if (closed) {
+      return;
+    }
+
+    closed = true;
+
+    if (pumpTimer) {
+      clearInterval(pumpTimer);
+      pumpTimer = undefined;
+    }
+
+    if (overlayHandle) {
+      overlayHandle.disconnect();
+      overlayHandle = undefined;
+    }
+
+    native().closeNativeOverlayProbeWindow();
+  };
+
+  const startedAt = Date.now();
+
+  native().openNativeOverlayProbeWindow(title);
+  pump();
+
+  overlayHandle = onGameOverlayActivated((event) => {
+    lastOverlayEvent = event;
+    if (typeof event.active === "boolean") {
+      overlayActive = event.active;
+    }
+    if (event.active === true) {
+      overlayWasActive = true;
+    }
+  });
+
+  pumpTimer = setInterval(() => {
+    try {
+      pump();
+    } catch {
+      // The thrown error is stored in the session snapshot and the session closes itself.
+    }
+  }, pumpIntervalMs);
+  pumpTimer.unref?.();
+
+  return {
+    close,
+    disconnect: close,
+    pump,
+    isOpen: () => !closed && native().isNativeOverlayProbeWindowOpen(),
+    snapshot
+  };
+}
+
+export function activateDialogWithNativeSession(
+  dialog: number | string = "Friends",
+  options?: NativeOverlaySessionOptions
+): NativeOverlaySession {
+  return activateWithNativeOverlaySession(options, () => {
+    activateOverlay(dialog);
+  });
+}
+
+export function activateToWebPageWithNativeSession(
+  url: string,
+  options: NativeOverlayWebPageSessionOptions = {}
+): NativeOverlaySession {
+  const { modal, ...sessionOptions } = options;
+  return activateWithNativeOverlaySession(sessionOptions, () => {
+    activateOverlayToWebPage(url, { modal });
+  });
+}
+
+export function activateToStoreWithNativeSession(
+  appId: number,
+  flag: number,
+  options?: NativeOverlaySessionOptions
+): NativeOverlaySession {
+  return activateWithNativeOverlaySession(options, () => {
+    native().overlayActivateToStore(appId, flag);
+  });
+}
+
 export function isAchievementActivated(name: string): boolean {
   return native().isAchievementActivated(name);
 }
@@ -10810,6 +10973,10 @@ export const overlay = {
   activateToStore(appId: number, flag: number): void {
     native().overlayActivateToStore(appId, flag);
   },
+  startNativeOverlaySession,
+  activateDialogWithNativeSession,
+  activateToWebPageWithNativeSession,
+  activateToStoreWithNativeSession,
   openNativeOverlayProbeWindow,
   attachNativeOverlayHostView,
   pumpNativeOverlayProbeWindow,
@@ -16661,6 +16828,44 @@ function wrapCallbackHandle(handle: NativeCallbackHandle): CallbackHandle {
   };
 }
 
+function safeBoolean(fn: () => boolean): boolean {
+  try {
+    return fn();
+  } catch {
+    return false;
+  }
+}
+
+function activateWithNativeOverlaySession(
+  options: NativeOverlaySessionOptions | undefined,
+  activate: () => void
+): NativeOverlaySession {
+  const session = startNativeOverlaySession(options);
+
+  try {
+    activate();
+  } catch (error) {
+    session.close();
+    throw error;
+  }
+
+  return session;
+}
+
+function unwrapNativeCallbackArgument(event: unknown): unknown {
+  if (!event || typeof event !== "object") {
+    return event;
+  }
+
+  const source = event as Record<string, unknown>;
+  const keys = Object.keys(source);
+  if (keys.length === 1 && keys[0] === "0" && source[0] && typeof source[0] === "object") {
+    return source[0];
+  }
+
+  return event;
+}
+
 function resolveSteamCallbackId(steamCallback: SteamCallbackName | SteamCallbackId | number): number {
   if (typeof steamCallback === "string") {
     const callbackId = SteamCallback[steamCallback as SteamCallbackName];
@@ -17159,6 +17364,7 @@ function normalizeNetworkingUtilsCallbackEvent(callbackId: number, event: unknow
 }
 
 function normalizeMicroTxnEvent(event: unknown): MicroTxnAuthorizationResponse {
+  event = unwrapNativeCallbackArgument(event);
   if (!event || typeof event !== "object") {
     return { value: event };
   }
@@ -17178,6 +17384,7 @@ function normalizeMicroTxnEvent(event: unknown): MicroTxnAuthorizationResponse {
 }
 
 function normalizeGameOverlayEvent(event: unknown): GameOverlayActivated {
+  event = unwrapNativeCallbackArgument(event);
   if (!event || typeof event !== "object") {
     return { value: event };
   }
@@ -18436,6 +18643,10 @@ const defaultExport = {
   onSteamCallback,
   activateOverlay,
   activateOverlayToWebPage,
+  startNativeOverlaySession,
+  activateDialogWithNativeSession,
+  activateToWebPageWithNativeSession,
+  activateToStoreWithNativeSession,
   openNativeOverlayProbeWindow,
   attachNativeOverlayHostView,
   pumpNativeOverlayProbeWindow,

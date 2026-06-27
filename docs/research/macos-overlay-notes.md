@@ -34,16 +34,17 @@ Verified:
   `gameoverlayrenderer.dylib`, so `snapshot.launch.overlayInjection` is `true`.
 - The app initializes Steam as App ID `480`, runs the `dialog` autorun action,
   and writes a verifier-readable `STEAM_BRIDGE_SMOKE_RESULT` line.
-- The `native-probe` autorun action keeps the native probe surface pumped during
-  the result wait. With the `compatibility` overlay profile, the Steam-launched
-  smoke app reports `overlayEnabled=true`, `overlayNeedsPresent=false`, and
-  `nativeProbeOpen=true` on macOS Apple Silicon.
+- The managed native-session autorun action keeps the native presenter pumped
+  during the result wait. With the `compatibility` overlay profile, the
+  Steam-launched smoke app reports `overlayEnabled=true`,
+  `overlayNeedsPresent=false`, and `nativeProbeOpen=true` on macOS Apple
+  Silicon.
 
 Still not verified:
 
 - `client.utils.isOverlayEnabled()` remains `false` for the Electron
   `BrowserWindow`-only path even with the `compatibility` overlay profile. The
-  native probe surface is diagnostic evidence that a native graphics surface can
+  native presenter is diagnostic evidence that a native graphics surface can
   be useful; it is not a completed product overlay path for Electron apps.
 - Ad-hoc signing the packaged app with
   `com.apple.security.cs.allow-dyld-environment-variables` and

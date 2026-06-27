@@ -85,13 +85,15 @@ for Steam non-Steam shortcuts:
 --steam-bridge-smoke-result-file=/tmp/steam-bridge-smoke.log
 ```
 
-Supported autorun actions are `none`, `dialog`, `friends`, `store`, `web`, and
-`native-probe`. On Linux, `native-probe` opens a bridge-owned X11/GLX native
-probe surface, keeps it presenting frames, and activates the Friends overlay.
-Use it when a Deck Desktop Mode test needs to prove overlay open plus
-Shift+Tab close/back-to-app behavior. The Electron-only `dialog` and `friends`
-actions prove Steam callbacks and visible overlay activation, but they do not
-currently prove reliable Desktop Mode overlay input dismissal.
+Supported autorun actions are `none`, `dialog`, `friends`, `store`, `web`,
+`native-dialog`, `native-store`, `native-web`, and `native-probe`.
+`native-probe` is a compatibility alias for `native-dialog`. On Linux, the
+`native-*` actions open a bridge-owned X11/GLX native presenter, keep it
+presenting frames, and activate the requested Steam overlay target through the
+managed Steam Bridge session API. Use them when a Deck Desktop Mode test needs
+to prove overlay open plus Shift+Tab close behavior. The Electron-only `dialog`
+and `friends` actions prove Steam callbacks and visible overlay activation, but
+they do not currently prove reliable Desktop Mode overlay input dismissal.
 
 Each autorun also writes local diagnostics. Pass
 `--steam-bridge-smoke-diagnostic-dir=/tmp/steam-bridge-smoke.log.diagnostics`
@@ -159,14 +161,14 @@ overlay readiness, and overlay callback checks. If preflight cannot reach SSH,
 verify the Deck is awake, SSH is enabled, and the `--host` IP address is still
 current; then rerun `--mode discover`.
 
-For the current Desktop Mode open/close proof, use the native probe action and
-leave the app open after the verifier result:
+For the current Desktop Mode open/close proof, use the managed native dialog
+action and leave the app open after the verifier result:
 
 ```sh
 npm run steam-deck:smoke -- \
   --host deck@<deck-host-or-ip> \
   --mode desktop \
-  --action native-probe \
+  --action native-dialog \
   --keep-open-after-result
 ```
 
@@ -231,9 +233,15 @@ shortcut's launch options before running Desktop Mode overlay checks.
 Desktop Mode visual proof for the Electron-only actions looks like Steam's
 desktop overlay panels over the Electron window, such as Game Overview/Friends
 and a "Back to Game" control. The full open/close proof currently uses
-`--action native-probe`: the open screenshot should show Steam's overlay over
-the native probe surface, and the close screenshot should return to the running
-native probe surface with `callback:overlay-activated` reporting `active=false`.
+`--action native-dialog`, which calls
+`client.overlay.activateDialogWithNativeSession("Friends")`; `native-store` and
+`native-web` call the matching store and web-page managed-session helpers. The
+open screenshot should show Steam's overlay over the bridge-owned native
+presenter, and the close screenshot should return to the running native
+presenter with `callback:overlay-activated` reporting `active=false`. The
+presenter stays alive by default because Deck Desktop Mode can leave Steam's
+overlay UI visible if the hooked surface is hidden or destroyed immediately
+after the close callback.
 
 For longer SSH-driven checks, keep the Deck awake from SteamOS/Desktop Mode
 power settings. Over SSH, `systemd-inhibit --what=sleep sleep infinity` can keep
@@ -249,6 +257,7 @@ The important fields are:
 - `Overlay Enabled`
 - `Needs Present`
 - `Native Probe`
+- `Native Session`
 - `callback:overlay-activated`
 
 The Friends dialog is useful as a baseline that Steamworks and overlay IPC are

@@ -4035,6 +4035,20 @@ test("specific and generic callbacks normalize Steamworks payloads", (t) => {
   assert.equal(overlayEvent.userInitiated, false);
   assert.equal(overlayEvent.appId, 480);
 
+  fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({
+    0: {
+      active: false,
+      user_initiated: true,
+      app_id: 480,
+      overlay_pid: 1234
+    }
+  });
+
+  assert.equal(overlayEvent.active, false);
+  assert.equal(overlayEvent.userInitiated, true);
+  assert.equal(overlayEvent.appId, 480);
+  assert.equal(overlayEvent.overlayPid, 1234);
+
   txnHandle.disconnect();
   overlayHandle.disconnect();
   assert.equal(fake.callbacks.has(steam.SteamCallback.MicroTxnAuthorizationResponseSteamworks), false);
@@ -4388,6 +4402,104 @@ test("overlay helpers map constants and forward modal/store options", (t) => {
       { method: "isNativeOverlayHostViewOpen", args: [] },
       { method: "getMacWindowSnapshot", args: [480] },
       { method: "getMacWindowSnapshot", args: [undefined] }
+    ]
+  );
+});
+
+test("native overlay session owns the probe pump lifecycle", (t) => {
+  let probeOpen = false;
+  const fake = createFakeNative({
+    openNativeOverlayProbeWindow(title) {
+      probeOpen = true;
+      this.calls.push({ method: "openNativeOverlayProbeWindow", args: [title] });
+    },
+    pumpNativeOverlayProbeWindow() {
+      if (!probeOpen) {
+        throw new Error("probe is closed");
+      }
+      this.calls.push({ method: "pumpNativeOverlayProbeWindow", args: [] });
+    },
+    closeNativeOverlayProbeWindow() {
+      probeOpen = false;
+      this.calls.push({ method: "closeNativeOverlayProbeWindow", args: [] });
+    },
+    isNativeOverlayProbeWindowOpen() {
+      this.calls.push({ method: "isNativeOverlayProbeWindowOpen", args: [] });
+      return probeOpen;
+    },
+    isNativeOverlayHostViewOpen() {
+      this.calls.push({ method: "isNativeOverlayHostViewOpen", args: [] });
+      return false;
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  const session = steam.overlay.activateDialogWithNativeSession("Friends", {
+    title: "Managed Overlay",
+    pumpIntervalMs: 10000
+  });
+
+  assert.equal(session.isOpen(), true);
+  assert.equal(session.snapshot().title, "Managed Overlay");
+  assert.equal(session.snapshot().nativeProbeOpen, true);
+
+  fake.callbacks.get(331)({ active: true, app_id: 480 });
+  assert.equal(session.snapshot().overlayActive, true);
+  assert.equal(session.snapshot().overlayWasActive, true);
+
+  fake.callbacks.get(331)({ active: false, app_id: 480 });
+  assert.equal(session.snapshot().overlayActive, false);
+  assert.equal(session.snapshot().lastOverlayEvent.appId, 480);
+  assert.equal(session.snapshot().closed, false);
+  assert.equal(session.isOpen(), true);
+
+  session.close();
+  assert.equal(session.snapshot().closed, true);
+  assert.equal(session.isOpen(), false);
+
+  const webSession = steam.overlay.activateToWebPageWithNativeSession("https://store.steampowered.com/app/480/", {
+    modal: true,
+    title: "Managed Web Overlay",
+    pumpIntervalMs: 10000
+  });
+  webSession.close();
+
+  const storeSession = steam.overlay.activateToStoreWithNativeSession(480, steam.StoreFlag.AddToCart, {
+    title: "Managed Store Overlay",
+    pumpIntervalMs: 10000
+  });
+  storeSession.close();
+
+  assert.deepEqual(
+    fake.calls.filter((call) =>
+      [
+        "openNativeOverlayProbeWindow",
+        "pumpNativeOverlayProbeWindow",
+        "activateOverlay",
+        "activateOverlayToWebPage",
+        "overlayActivateToStore",
+        "disconnectGameOverlayActivated",
+        "closeNativeOverlayProbeWindow"
+      ].includes(call.method)
+    ),
+    [
+      { method: "openNativeOverlayProbeWindow", args: ["Managed Overlay"] },
+      { method: "pumpNativeOverlayProbeWindow", args: [] },
+      { method: "activateOverlay", args: ["Friends"] },
+      { method: "disconnectGameOverlayActivated", args: [] },
+      { method: "closeNativeOverlayProbeWindow", args: [] },
+      { method: "openNativeOverlayProbeWindow", args: ["Managed Web Overlay"] },
+      { method: "pumpNativeOverlayProbeWindow", args: [] },
+      { method: "activateOverlayToWebPage", args: ["https://store.steampowered.com/app/480/", true] },
+      { method: "disconnectGameOverlayActivated", args: [] },
+      { method: "closeNativeOverlayProbeWindow", args: [] },
+      { method: "openNativeOverlayProbeWindow", args: ["Managed Store Overlay"] },
+      { method: "pumpNativeOverlayProbeWindow", args: [] },
+      { method: "overlayActivateToStore", args: [480, steam.StoreFlag.AddToCart] },
+      { method: "disconnectGameOverlayActivated", args: [] },
+      { method: "closeNativeOverlayProbeWindow", args: [] }
     ]
   );
 });

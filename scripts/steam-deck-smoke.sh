@@ -51,7 +51,7 @@ Options:
   --wrapper-path PATH           Remote wrapper script used by the Steam shortcut.
   --skip-copy                   Use the existing remote package directory.
   --app-id ID                   Steam App ID used inside the smoke app. Defaults to 480.
-  --action NAME                 Autorun action. Defaults to dialog.
+  --action NAME                 Autorun action. Defaults to dialog. Supports raw dialog/store/web and managed native-* variants.
   --overlay-profile NAME        Electron overlay profile. Desktop defaults to repaint.
   --window-mode NAME            Electron window mode: windowed, fullscreen, or borderless.
   --web-url URL                 URL for the web overlay action.
@@ -554,8 +554,8 @@ build_steam_launch_args() {
   elif [ "$action" = "store" ] || [ "$action" = "web" ]; then
     helper_args+=("--require-event" "overlay:$action")
     helper_args+=("--require-overlay-activated")
-  elif [ "$action" = "native-probe" ]; then
-    helper_args+=("--require-event" "overlay:native-probe-open")
+  elif [ "$action" = "native-probe" ] || [ "$action" = "native-dialog" ] || [ "$action" = "native-store" ] || [ "$action" = "native-web" ]; then
+    helper_args+=("--require-event" "overlay:native-session-open")
   fi
 
   helper_args+=("--require-event" "callback:overlay-activated")

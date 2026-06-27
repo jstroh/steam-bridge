@@ -132,8 +132,11 @@ const txn = await steamworks.webApi.microTxnSandbox.initTxn({
 ```
 
 The package also includes overlay diagnostics through
-`client.utils.getOverlayDiagnostics()`, the native overlay probe helpers, and
-the Electron helper export `electronConfigureSteamOverlay()`. These are
+`client.utils.getOverlayDiagnostics()`, bridge-owned native overlay session
+helpers such as `client.overlay.activateDialogWithNativeSession()`,
+`client.overlay.activateToStoreWithNativeSession()`, and
+`client.overlay.activateToWebPageWithNativeSession()`, plus the Electron helper
+export `electronConfigureSteamOverlay()`. These are
 intentionally diagnostics first: core Steam API success should not be treated as
 proof that the Steam overlay has hooked Electron.
 
@@ -144,11 +147,16 @@ Electron windows at about 30 FPS so Steam has fresh frames to composite. Use
 `profile: "compatibility"` as the stronger fallback when you also need
 Chromium's GPU work in-process.
 
-On Steam Deck Desktop Mode, the Linux X11/GLX native probe is the current
-generic proof path for overlay open and close/back-to-app behavior. The
-Electron-only BrowserWindow path can initialize Steam and activate visible
-overlay UI, but it has not proven reliable overlay input dismissal in Desktop
-Mode.
+On Steam Deck Desktop Mode, the Linux X11/GLX managed native session is the
+current generic proof path for overlay open and close behavior. It opens and
+pumps the native presenter inside Steam Bridge so Electron examples do not need
+to own the lifecycle. By default the session keeps the presenter alive after
+Steam reports overlay deactivation; call `session.close()` during app cleanup
+or when you are finished with the proof surface. Hiding or destroying the hooked
+surface immediately after the close callback can leave Steam's overlay UI
+visible over Electron in Desktop Mode. The Electron-only BrowserWindow path can
+initialize Steam and activate visible overlay UI, but it has not proven reliable
+overlay input dismissal in Desktop Mode.
 
 ## Development
 
