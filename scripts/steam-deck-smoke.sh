@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-host="${STEAM_DECK_HOST:-deck@192.168.1.13}"
+host="${STEAM_DECK_HOST:-deck@steamdeck.local}"
 local_app_dir="${STEAM_BRIDGE_SMOKE_LOCAL_APP_DIR:-}"
 remote_app_dir="${STEAM_DECK_SMOKE_REMOTE_APP_DIR:-/home/deck/steam-bridge-smoke/SteamBridgeSmoke-linux-x64}"
 mode="game"
 app_id="480"
 action="dialog"
+web_url=""
+web_modal=""
 result_file="/tmp/steam-bridge-smoke-steam-launch.log"
 result_delay_ms="8000"
 timeout_seconds="90"
@@ -38,12 +40,14 @@ Modes:
   --mode self-test              Validate this host runner without SSH.
 
 Options:
-  --host USER@HOST              SSH target. Defaults to deck@192.168.1.13.
+  --host USER@HOST              SSH target. Defaults to deck@steamdeck.local.
   --local-app-dir PATH          Local Linux x64 SteamBridgeSmoke package directory.
   --remote-app-dir PATH         Remote package directory. Defaults under ~/steam-bridge-smoke.
   --skip-copy                   Use the existing remote package directory.
   --app-id ID                   Steam App ID used inside the smoke app. Defaults to 480.
   --action NAME                 Autorun action. Defaults to dialog.
+  --web-url URL                 URL for the web overlay action.
+  --web-modal true|false        Whether the web overlay action should request a modal.
   --result-file PATH            Remote result log path.
   --result-delay-ms MS          Autorun result delay. Defaults to 8000.
   --timeout-seconds SECONDS     Result wait timeout. Defaults to 90.
@@ -91,6 +95,14 @@ while [ "$#" -gt 0 ]; do
       ;;
     --action)
       action="${2:?missing --action value}"
+      shift 2
+      ;;
+    --web-url)
+      web_url="${2:?missing --web-url value}"
+      shift 2
+      ;;
+    --web-modal)
+      web_modal="${2:?missing --web-modal value}"
       shift 2
       ;;
     --result-file)
@@ -369,6 +381,12 @@ append_common_helper_args() {
   if [ -n "$steam_user_id" ]; then
     helper_args+=("--steam-user-id" "$steam_user_id")
   fi
+  if [ -n "$web_url" ]; then
+    helper_args+=("--web-url" "$web_url")
+  fi
+  if [ -n "$web_modal" ]; then
+    helper_args+=("--web-modal" "$web_modal")
+  fi
 }
 
 build_steam_launch_args() {
@@ -384,6 +402,7 @@ build_steam_launch_args() {
     helper_args+=("--require-event" "overlay:dialog")
   elif [ "$action" = "store" ] || [ "$action" = "web" ]; then
     helper_args+=("--require-event" "overlay:$action")
+    helper_args+=("--require-overlay-activated")
   elif [ "$action" = "native-probe" ]; then
     helper_args+=("--require-event" "overlay:native-probe-open")
   fi

@@ -240,6 +240,12 @@ platform smoke-test flow, including an autorun mode that prints a
 Deck non-Steam shortcuts, reload Steam after writing `shortcuts.vdf` and launch
 the printed full shortcut game ID, not the internal shortcut app ID.
 
+SpaceWar `480` and the Electron smoke app are for generic initialization,
+callback, input, and overlay plumbing checks. Purchase overlays need a real
+Steam app launch with a matching App ID and a configured product or transaction;
+keep private app IDs, item definitions, transaction IDs, publisher keys, and
+private URLs out of committed examples.
+
 When launching outside Steam, put a `steam_appid.txt` file containing the app ID
 next to the executable or in the working directory used by your app.
 

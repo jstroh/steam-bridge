@@ -9,6 +9,8 @@ const AUTH_IDENTITY = process.env.STEAM_BRIDGE_AUTH_IDENTITY || "steam-bridge-el
 const OVERLAY_PROFILE =
   CLI_OPTIONS.overlayProfile || process.env.STEAM_BRIDGE_ELECTRON_OVERLAY_PROFILE || "diagnostic";
 const STORE_URL = `https://store.steampowered.com/app/${APP_ID}/`;
+const WEB_URL = CLI_OPTIONS.webUrl || process.env.STEAM_BRIDGE_SMOKE_WEB_URL || STORE_URL;
+const WEB_MODAL = readBoolean(CLI_OPTIONS.webModal || process.env.STEAM_BRIDGE_SMOKE_WEB_MODAL, false);
 const AUTORUN = CLI_OPTIONS.autorun || process.env.STEAM_BRIDGE_SMOKE_AUTORUN === "1";
 const AUTORUN_ACTION = CLI_OPTIONS.autorunAction || process.env.STEAM_BRIDGE_SMOKE_AUTORUN_ACTION || "dialog";
 const AUTORUN_ACTION_DELAY_MS = Number(
@@ -18,6 +20,10 @@ const AUTORUN_RESULT_DELAY_MS = Number(
   CLI_OPTIONS.autorunResultDelayMs || process.env.STEAM_BRIDGE_SMOKE_AUTORUN_RESULT_DELAY_MS || "5000"
 );
 const AUTORUN_RESULT_FILE = CLI_OPTIONS.resultFile || process.env.STEAM_BRIDGE_SMOKE_RESULT_FILE || "";
+const AUTORUN_REQUIRE_OVERLAY_ACTIVE = readBoolean(
+  CLI_OPTIONS.autorunRequireOverlayActive || process.env.STEAM_BRIDGE_SMOKE_REQUIRE_OVERLAY_ACTIVE,
+  false
+);
 const LAUNCH_ENV_KEYS = [
   "SteamAppId",
   "SteamGameId",
@@ -153,8 +159,9 @@ async function runAutorunSmoke() {
   });
 
   await delay(AUTORUN_ACTION_DELAY_MS);
+  const overlayActiveCount = countOverlayActiveEvents();
   const actionResult = runAutorunAction(AUTORUN_ACTION);
-  const waitResult = await waitForAutorunResult(AUTORUN_ACTION, AUTORUN_RESULT_DELAY_MS);
+  const waitResult = await waitForAutorunResult(AUTORUN_ACTION, AUTORUN_RESULT_DELAY_MS, overlayActiveCount);
 
   const result = sanitize({
     ok: Boolean(client) && !actionResult.error && waitResult.ok,
@@ -167,10 +174,24 @@ async function runAutorunSmoke() {
   process.stdout.write(line, () => process.exit(0));
 }
 
-async function waitForAutorunResult(action, durationMs) {
+async function waitForAutorunResult(action, durationMs, overlayActiveCount) {
   if (action !== "native-probe") {
-    await delay(durationMs);
-    return { ok: true, action, durationMs };
+    if (!AUTORUN_REQUIRE_OVERLAY_ACTIVE || !isOverlayAction(action)) {
+      await delay(durationMs);
+      return { ok: true, action, durationMs };
+    }
+
+    const startedAt = Date.now();
+    const deadline = startedAt + durationMs;
+    while (Date.now() < deadline) {
+      if (countOverlayActiveEvents() > overlayActiveCount) {
+        return { ok: true, action, overlayActivated: true, durationMs: Date.now() - startedAt };
+      }
+      await delay(Math.min(100, Math.max(0, deadline - Date.now())));
+    }
+
+    recordEvent("autorun:overlay-active-timeout", { action, durationMs });
+    return { ok: false, action, overlayActivated: false, durationMs };
   }
 
   const startedAt = Date.now();
@@ -232,8 +253,8 @@ function openStoreOverlay() {
 
 function openWebOverlay() {
   const activeClient = requireClient();
-  activeClient.overlay.activateToWebPage(STORE_URL, { modal: false });
-  recordEvent("overlay:web", { url: STORE_URL });
+  activeClient.overlay.activateToWebPage(WEB_URL, { modal: WEB_MODAL });
+  recordEvent("overlay:web", { url: WEB_URL, modal: WEB_MODAL });
   return snapshot();
 }
 
@@ -275,8 +296,11 @@ function snapshot() {
       overlayConfig: OVERLAY_CONFIG,
       autorun: AUTORUN,
       autorunAction: AUTORUN_ACTION,
+      autorunRequireOverlayActive: AUTORUN_REQUIRE_OVERLAY_ACTIVE,
       autorunResultFile: AUTORUN_RESULT_FILE || null,
       storeUrl: STORE_URL,
+      webUrl: WEB_URL,
+      webModal: WEB_MODAL,
       isPackaged: app.isPackaged
     },
     process: {
@@ -438,6 +462,48 @@ function recordEvent(type, payload) {
   }
 }
 
+function countOverlayActiveEvents() {
+  return eventLog.filter(isOverlayActiveEvent).length;
+}
+
+function isOverlayActiveEvent(event) {
+  if (!event || event.type !== "callback:overlay-activated") {
+    return false;
+  }
+
+  const payload = event.payload;
+  if (payload == null) {
+    return false;
+  }
+  if (payload === true || payload === 1) {
+    return true;
+  }
+  if (typeof payload !== "object") {
+    return false;
+  }
+
+  const activePayload = payload["0"] && typeof payload["0"] === "object" ? payload["0"] : payload;
+  return (
+    activePayload.active === true ||
+    activePayload.active === 1 ||
+    activePayload.m_bActive === true ||
+    activePayload.m_bActive === 1
+  );
+}
+
+function isOverlayAction(action) {
+  return action === "dialog" || action === "friends" || action === "store" || action === "web";
+}
+
+function readBoolean(value, fallback) {
+  if (value == null || value === "") {
+    return fallback;
+  }
+
+  const normalized = String(value).toLowerCase();
+  return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on";
+}
+
 function writeSteamAppIdFiles(appId) {
   const directories = new Set([process.cwd(), __dirname]);
   if (app.isPackaged) {
@@ -461,6 +527,9 @@ function parseSmokeArgs(args) {
     autorunActionDelayMs: undefined,
     autorunResultDelayMs: undefined,
     overlayProfile: undefined,
+    autorunRequireOverlayActive: undefined,
+    webModal: undefined,
+    webUrl: undefined,
     resultFile: undefined
   };
 
@@ -485,6 +554,15 @@ function parseSmokeArgs(args) {
         break;
       case "--steam-bridge-smoke-autorun-result-delay-ms":
         options.autorunResultDelayMs = value;
+        break;
+      case "--steam-bridge-smoke-require-overlay-active":
+        options.autorunRequireOverlayActive = value == null || value === "" ? "1" : value;
+        break;
+      case "--steam-bridge-smoke-web-modal":
+        options.webModal = value == null || value === "" ? "1" : value;
+        break;
+      case "--steam-bridge-smoke-web-url":
+        options.webUrl = value;
         break;
       case "--steam-bridge-electron-overlay-profile":
         options.overlayProfile = value;

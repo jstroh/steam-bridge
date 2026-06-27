@@ -47,6 +47,11 @@ client.SteamworksEnums.EResult.k_EResultOK;
 console.log({ steamId, ticketBytes: ticket.getBytes().length });
 ```
 
+SpaceWar is useful for generic initialization, callback, input, and overlay
+plumbing checks. Purchase overlays and `InitTxn` approval flows must be proven
+from your real Steam-launched app with a matching App ID and a configured
+product or transaction.
+
 For Steam Web API, publisher inventory, trading, and economy endpoints, use the Web API client with
 `STEAM_WEB_API_KEY`, an explicit `apiKey`, or a per-request `key`:
 

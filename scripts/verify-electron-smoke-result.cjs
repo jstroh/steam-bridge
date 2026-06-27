@@ -44,6 +44,9 @@ if (options.requireOverlayReady) {
   expect(readOkValue(steam.overlayEnabled) === true, "overlay enabled");
   expect(readOkValue(steam.overlayNeedsPresent) === false, "overlay does not need present");
 }
+if (options.requireOverlayActivated) {
+  expect(events.some(isOverlayActiveEvent), "overlay activation callback active=true emitted");
+}
 if (options.requireSteamLaunch) {
   expect(launch.steamLaunch === true, "Steam launch marker detected");
 }
@@ -73,6 +76,7 @@ console.log(
     `bigPicture=${readOkValue(steam.bigPicture)}`,
     `overlayEnabled=${readOkValue(steam.overlayEnabled)}`,
     `overlayNeedsPresent=${readOkValue(steam.overlayNeedsPresent)}`,
+    `overlayActivated=${events.some(isOverlayActiveEvent)}`,
     `steamLaunch=${launch.steamLaunch}`,
     `overlayInjection=${launch.overlayInjection}`,
     `action=${result.action && result.action.action}`
@@ -101,6 +105,31 @@ function expect(condition, message) {
   }
 }
 
+function isOverlayActiveEvent(event) {
+  if (!event || event.type !== "callback:overlay-activated") {
+    return false;
+  }
+
+  const payload = event.payload;
+  if (payload == null) {
+    return false;
+  }
+  if (payload === true || payload === 1) {
+    return true;
+  }
+  if (typeof payload !== "object") {
+    return false;
+  }
+
+  const activePayload = payload["0"] && typeof payload["0"] === "object" ? payload["0"] : payload;
+  return (
+    activePayload.active === true ||
+    activePayload.active === 1 ||
+    activePayload.m_bActive === true ||
+    activePayload.m_bActive === 1
+  );
+}
+
 function parseArgs(args) {
   const parsed = {
     appId: undefined,
@@ -113,6 +142,7 @@ function parseArgs(args) {
     requireOverlayEnabled: false,
     requireOverlayReady: false,
     requireNativeProbeOpen: false,
+    requireOverlayActivated: false,
     requireSteamLaunch: false,
     requireSteamDeck: false,
     requiredEvents: []
@@ -150,6 +180,9 @@ function parseArgs(args) {
         break;
       case "--require-overlay-ready":
         parsed.requireOverlayReady = true;
+        break;
+      case "--require-overlay-activated":
+        parsed.requireOverlayActivated = true;
         break;
       case "--require-native-probe-open":
         parsed.requireNativeProbeOpen = true;

@@ -6,6 +6,8 @@ app_dir=""
 result_file=""
 app_id="480"
 action="none"
+web_url=""
+web_modal=""
 result_delay_ms="8000"
 timeout_seconds="90"
 shortcut_game_id=""
@@ -14,6 +16,7 @@ steam_user_id=""
 require_steam_launch="0"
 require_overlay_ready="0"
 require_overlay_injection="0"
+require_overlay_activated="0"
 require_steam_deck="0"
 require_big_picture="0"
 require_events=()
@@ -39,6 +42,8 @@ Options:
   --result-file PATH             Result log path.
   --app-id ID                    Steam App ID to use. Defaults to 480.
   --action NAME                  none, dialog, friends, store, web, native-probe.
+  --web-url URL                  URL for the web overlay action.
+  --web-modal true|false         Whether the web overlay action should request a modal.
   --result-delay-ms MS           Autorun result delay. Defaults to 8000.
   --timeout-seconds SECONDS      Result wait timeout. Defaults to 90.
   --shortcut-game-id ID|auto     Full steam://rungameid shortcut game ID.
@@ -47,6 +52,7 @@ Options:
   --require-steam-launch         Require Steam launch markers.
   --require-overlay-ready        Require overlay enabled and needs-present false.
   --require-overlay-injection    Require Linux overlay injection marker.
+  --require-overlay-activated    Require callback:overlay-activated active=true.
   --require-steam-deck           Require Steam Deck detection.
   --require-big-picture          Require Big Picture/Game Mode detection.
   --require-event TYPE           Require an emitted event. May be repeated.
@@ -79,6 +85,14 @@ while [ "$#" -gt 0 ]; do
       action="${2:?missing --action value}"
       shift 2
       ;;
+    --web-url)
+      web_url="${2:?missing --web-url value}"
+      shift 2
+      ;;
+    --web-modal)
+      web_modal="${2:?missing --web-modal value}"
+      shift 2
+      ;;
     --result-delay-ms)
       result_delay_ms="${2:?missing --result-delay-ms value}"
       shift 2
@@ -109,6 +123,10 @@ while [ "$#" -gt 0 ]; do
       ;;
     --require-overlay-injection)
       require_overlay_injection="1"
+      shift
+      ;;
+    --require-overlay-activated)
+      require_overlay_activated="1"
       shift
       ;;
     --require-steam-deck)
@@ -149,6 +167,16 @@ smoke_args() {
     "--steam-bridge-smoke-autorun-action=$action" \
     "--steam-bridge-smoke-autorun-result-delay-ms=$result_delay_ms" \
     "--steam-bridge-smoke-result-file=$result_file"
+
+  if [ "$require_overlay_activated" = "1" ]; then
+    printf '%s\n' "--steam-bridge-smoke-require-overlay-active"
+  fi
+  if [ -n "$web_url" ]; then
+    printf '%s\n' "--steam-bridge-smoke-web-url=$web_url"
+  fi
+  if [ -n "$web_modal" ]; then
+    printf '%s\n' "--steam-bridge-smoke-web-modal=$web_modal"
+  fi
 }
 
 wait_for_result_file() {
@@ -296,6 +324,7 @@ verify_result() {
   REQUIRE_STEAM_LAUNCH="$require_steam_launch" \
   REQUIRE_OVERLAY_READY="$require_overlay_ready" \
   REQUIRE_OVERLAY_INJECTION="$require_overlay_injection" \
+  REQUIRE_OVERLAY_ACTIVATED="$require_overlay_activated" \
   REQUIRE_STEAM_DECK="$require_steam_deck" \
   REQUIRE_BIG_PICTURE="$require_big_picture" \
   REQUIRE_EVENTS="$(IFS=$'\n'; printf '%s' "${require_events[*]}")" \
@@ -329,6 +358,22 @@ failures = []
 def ok_value(entry):
     return entry.get("value") if isinstance(entry, dict) and entry.get("ok") is True else None
 
+def overlay_active_event(event):
+    if not isinstance(event, dict) or event.get("type") != "callback:overlay-activated":
+        return False
+    payload = event.get("payload")
+    if payload is True or payload == 1:
+        return True
+    if not isinstance(payload, dict):
+        return False
+    active_payload = payload.get("0") if isinstance(payload.get("0"), dict) else payload
+    return (
+        active_payload.get("active") is True
+        or active_payload.get("active") == 1
+        or active_payload.get("m_bActive") is True
+        or active_payload.get("m_bActive") == 1
+    )
+
 def expect(condition, message):
     if not condition:
         failures.append(message)
@@ -352,6 +397,8 @@ if os.environ["REQUIRE_OVERLAY_READY"] == "1":
     expect(ok_value(steam.get("overlayNeedsPresent")) is False, "overlay does not need present")
 if os.environ["REQUIRE_OVERLAY_INJECTION"] == "1":
     expect(launch.get("overlayInjection") is True, "Steam overlay injection marker detected")
+if os.environ["REQUIRE_OVERLAY_ACTIVATED"] == "1":
+    expect(any(overlay_active_event(event) for event in events), "overlay activation callback active=true emitted")
 if os.environ["REQUIRE_STEAM_DECK"] == "1":
     expect(ok_value(steam.get("steamDeck")) is True, "Steam Deck detected")
 if os.environ["REQUIRE_BIG_PICTURE"] == "1":
@@ -372,6 +419,7 @@ print(
     f"bigPicture={ok_value(steam.get('bigPicture'))} "
     f"overlayEnabled={ok_value(steam.get('overlayEnabled'))} "
     f"overlayNeedsPresent={ok_value(steam.get('overlayNeedsPresent'))} "
+    f"overlayActivated={any(overlay_active_event(event) for event in events)} "
     f"steamLaunch={launch.get('steamLaunch')} "
     f"overlayInjection={launch.get('overlayInjection')} "
     f"action={(result.get('action') or {}).get('action')}"
@@ -422,11 +470,16 @@ cleanup_self_test() {
 }
 
 run_self_test() {
-  local shortcut_file matches resolved
+  local expected_game_id shortcut_file matches resolved
   self_test_temp_home="$(mktemp -d "${TMPDIR:-/tmp}/steam-bridge-linux-helper.XXXXXX")"
   self_test_old_home="$HOME"
   self_test_previous_result_file="$result_file"
   shortcut_file="$self_test_temp_home/.local/share/Steam/userdata/1686541554/config/shortcuts.vdf"
+  expected_game_id="$(python3 - <<'PY'
+appid = 3855287460
+print((appid << 32) | 0x02000000)
+PY
+)"
 
   trap cleanup_self_test EXIT
 
@@ -478,15 +531,15 @@ PY
   HOME="$self_test_temp_home"
   export HOME
   matches="$(discover_shortcuts)"
-  if ! printf '%s\n' "$matches" | grep -q '"gameId": "16558333557412462592"'; then
+  if ! printf '%s\n' "$matches" | grep -q "\"gameId\": \"$expected_game_id\""; then
     echo "Self-test failed to discover expected Steam shortcut game ID." >&2
     printf '%s\n' "$matches" >&2
     exit 1
   fi
 
   resolved="$(resolve_shortcut_game_id)"
-  if [ "$resolved" != "16558333557412462592" ]; then
-    echo "Self-test resolved $resolved, expected 16558333557412462592." >&2
+  if [ "$resolved" != "$expected_game_id" ]; then
+    echo "Self-test resolved $resolved, expected $expected_game_id." >&2
     exit 1
   fi
 

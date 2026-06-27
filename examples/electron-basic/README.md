@@ -47,6 +47,25 @@ STEAM_BRIDGE_SMOKE_AUTORUN_RESULT_DELAY_MS=5000 \
 ./SteamBridgeSmoke --no-sandbox
 ```
 
+For web overlay checks, the default URL is the app's Steam store page. Override
+it with `STEAM_BRIDGE_SMOKE_WEB_URL` and set
+`STEAM_BRIDGE_SMOKE_WEB_MODAL=1` when you need to exercise a modal checkout or
+approval URL for your own Steam app. Add
+`STEAM_BRIDGE_SMOKE_REQUIRE_OVERLAY_ACTIVE=1` when the test must fail unless
+Steam reports an active overlay.
+
+The Linux and Steam Deck helpers expose the same settings as `--web-url` and
+`--web-modal`:
+
+```sh
+npm run steam-deck:smoke -- \
+  --host deck@<deck-host-or-ip> \
+  --mode game \
+  --action web \
+  --web-url https://store.steampowered.com/app/480/ \
+  --web-modal false
+```
+
 The same controls are also available as launch options, which is usually easier
 for Steam non-Steam shortcuts:
 
@@ -56,6 +75,9 @@ for Steam non-Steam shortcuts:
 --steam-bridge-smoke-autorun \
 --steam-bridge-smoke-autorun-action=dialog \
 --steam-bridge-smoke-autorun-result-delay-ms=8000 \
+--steam-bridge-smoke-web-url=https://store.steampowered.com/app/480/ \
+--steam-bridge-smoke-web-modal=false \
+--steam-bridge-smoke-require-overlay-active=false \
 --steam-bridge-smoke-result-file=/tmp/steam-bridge-smoke.log
 ```
 
@@ -98,14 +120,14 @@ gate:
 ```sh
 npm run steam-deck:smoke -- \
   --mode discover \
-  --discover-subnet 192.168.1
+  --discover-subnet <lan-prefix>
 
 npm run steam-deck:smoke -- \
-  --host deck@192.168.1.13 \
+  --host deck@<deck-host-or-ip> \
   --mode preflight
 
 npm run steam-deck:smoke -- \
-  --host deck@192.168.1.13 \
+  --host deck@<deck-host-or-ip> \
   --mode game
 ```
 
@@ -189,6 +211,19 @@ The important fields are:
 - `Native Probe`
 - `callback:overlay-activated`
 
+The Friends dialog is useful as a baseline that Steamworks and overlay IPC are
+alive. It is not enough to prove the browser or checkout overlay path. For web,
+store, or purchase-style checks, require `callback:overlay-activated` with an
+`active: true` payload by passing `--require-overlay-activated`.
+
+On Steam Deck, `activateToStore` is the best generic proof that the smoke app can
+bring Steam overlay UI over Electron. In current Game Mode smoke testing,
+`activateToWebPage` to a normal Steam web page does not show a visible web
+overlay or emit `active: true`. A web checkout or transaction approval flow
+needs a real Steam app launch and a real configured product or transaction. Do
+not use the non-Steam smoke shortcut to impersonate a private app ID for
+purchase-flow proof.
+
 If Steam initializes but overlay does not show, compare those fields between
 Deck Game Mode and Deck Desktop Mode.
 
@@ -230,6 +265,29 @@ npm run example:verify-result -- \
   --action dialog \
   --require-event overlay:dialog
 ```
+
+For a web overlay command that must prove Steam actually activated the overlay,
+also assert the active callback:
+
+```sh
+npm run example:verify-result -- \
+  --file /tmp/steam-bridge-smoke.log \
+  --action web \
+  --require-event overlay:web \
+  --require-event callback:overlay-activated \
+  --require-overlay-activated
+```
+
+For purchase or `InitTxn` validation, keep this repo generic and run the
+app-specific proof outside the committed examples:
+
+1. Launch your real installed Steam app through Steam.
+2. Confirm the running process reports your real app ID.
+3. Trigger your checkout URL or transaction approval path from inside that app.
+4. Verify the Steam modal appears in both Deck Game Mode and Desktop Mode.
+5. Confirm backing out or closing the Steam surface returns focus to the app.
+6. Keep private app IDs, item definitions, transaction IDs, publisher keys, and
+   private URLs out of committed docs and examples.
 
 For a Steam Deck Desktop Mode shortcut launch, omit the Big Picture assertion
 but keep the Steam launch and overlay injection assertions:
