@@ -91,6 +91,21 @@ cd "$HOME/steam-bridge-smoke/SteamBridgeSmoke-linux-x64"
   --result-file /tmp/steam-bridge-smoke-steam-launch.log
 ```
 
+From this repository, the Deck-only SSH runner can copy the packaged Linux x64
+app to the Deck, keep it awake for the run, and execute the same Steam-launched
+gate:
+
+```sh
+npm run steam-deck:smoke -- \
+  --host deck@192.168.1.13 \
+  --mode game
+```
+
+Run the same command with `--mode desktop` after switching the Deck to Desktop
+Mode. Game Mode requires the Big Picture signal; Desktop Mode intentionally
+omits that assertion while keeping Steam launch, overlay injection, overlay
+readiness, and overlay callback checks.
+
 For scripted setup, back up and upsert the non-Steam shortcut with:
 
 ```sh
@@ -150,7 +165,8 @@ launches the shortcut.
 
 For longer SSH-driven checks, keep the Deck awake from SteamOS/Desktop Mode
 power settings. Over SSH, `systemd-inhibit --what=sleep sleep infinity` can keep
-the Deck awake while a test slice is running.
+the Deck awake while a test slice is running. The host runner starts and stops a
+temporary sleep inhibitor automatically unless `--no-keep-awake` is passed.
 
 ## Overlay Signals
 

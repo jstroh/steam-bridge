@@ -37,6 +37,18 @@ cd "$HOME/steam-bridge-smoke/SteamBridgeSmoke-linux-x64"
   --require-event callback:overlay-activated
 ```
 
+The repository also includes a Deck-only host runner for SSH-driven checks. It
+copies the Linux x64 package to the Deck, starts a temporary sleep inhibitor,
+and runs the packaged helper:
+
+```sh
+npm run steam-deck:smoke -- \
+  --host deck@192.168.1.13 \
+  --mode game
+```
+
+Use `--mode desktop` for the Steam Deck Desktop Mode shortcut check.
+
 The latest Deck Game Mode proof was captured at 2026-06-26 17:03 PDT from
 `/tmp/steam-bridge-smoke-steam-launch.log` with `appId=480`,
 `steamLaunch=true`, `overlayInjection=true`, `overlayEnabled=true`,

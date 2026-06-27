@@ -19,6 +19,7 @@
     "package:smoke": "node scripts/smoke-package.cjs",
     "release:assemble": "node scripts/assemble-release-artifacts.cjs",
     "release:verify": "node scripts/verify-release-artifacts.cjs",
+    "steam-deck:smoke": "bash scripts/steam-deck-smoke.sh",
     "steam-shortcut:check": "node scripts/upsert-steam-shortcut.cjs --self-test",
     "steam-shortcut:upsert": "node scripts/upsert-steam-shortcut.cjs",
     "steamworks-enums:generate": "node scripts/generate-steamworks-enums.cjs",
