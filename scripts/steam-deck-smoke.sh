@@ -34,6 +34,7 @@ remote_inhibit_pid_file="/tmp/steam-bridge-smoke-inhibit.pid"
 collect_diagnostics_dir=""
 visual_capture_dir=""
 visual_close_probe="0"
+visual_toggle_probe="0"
 
 usage() {
   cat <<'EOF'
@@ -83,6 +84,8 @@ Options:
   --visual-capture-dir PATH     Capture Deck screenshots to this local path after the run returns.
   --visual-close-probe          With --visual-capture-dir and --keep-open-after-result, send a
                                 Shift+Tab/Escape close probe and capture the result.
+  --visual-toggle-probe         With --visual-capture-dir and --keep-open-after-result, capture
+                                before Shift+Tab, after opening, and after closing the overlay.
   --connect-timeout SECONDS     SSH connect timeout. Defaults to 6.
 EOF
 }
@@ -212,6 +215,10 @@ while [ "$#" -gt 0 ]; do
       ;;
     --visual-close-probe)
       visual_close_probe="1"
+      shift
+      ;;
+    --visual-toggle-probe)
+      visual_toggle_probe="1"
       shift
       ;;
     --connect-timeout)
@@ -360,6 +367,67 @@ else
 fi"
 }
 
+send_deck_overlay_toggle_probe() {
+  echo "Sending Deck overlay toggle probe"
+  remote_exec "if [ -w /dev/uinput ] && command -v python3 >/dev/null 2>&1; then
+python3 - <<'PY'
+import fcntl
+import os
+import struct
+import time
+
+EV_SYN = 0
+EV_KEY = 1
+SYN_REPORT = 0
+KEY_TAB = 15
+KEY_LEFTSHIFT = 42
+UI_SET_EVBIT = 0x40045564
+UI_SET_KEYBIT = 0x40045565
+UI_DEV_CREATE = 0x5501
+UI_DEV_DESTROY = 0x5502
+
+def emit(fd, event_type, code, value):
+    os.write(fd, struct.pack('llHHI', 0, 0, event_type, code, value))
+
+def sync(fd):
+    emit(fd, EV_SYN, SYN_REPORT, 0)
+
+def tap(fd, key):
+    emit(fd, EV_KEY, key, 1)
+    sync(fd)
+    time.sleep(0.05)
+    emit(fd, EV_KEY, key, 0)
+    sync(fd)
+
+fd = os.open('/dev/uinput', os.O_WRONLY | os.O_NONBLOCK)
+try:
+    fcntl.ioctl(fd, UI_SET_EVBIT, EV_KEY)
+    for key in (KEY_TAB, KEY_LEFTSHIFT):
+        fcntl.ioctl(fd, UI_SET_KEYBIT, key)
+    user_dev = struct.pack('80sHHHH', b'steam-bridge-virtual-keyboard', 0x03, 0x1234, 0x5678, 1)
+    os.write(fd, user_dev + bytes(1028))
+    fcntl.ioctl(fd, UI_DEV_CREATE)
+    time.sleep(0.2)
+    emit(fd, EV_KEY, KEY_LEFTSHIFT, 1)
+    sync(fd)
+    tap(fd, KEY_TAB)
+    emit(fd, EV_KEY, KEY_LEFTSHIFT, 0)
+    sync(fd)
+    time.sleep(0.2)
+finally:
+    try:
+        fcntl.ioctl(fd, UI_DEV_DESTROY)
+    finally:
+        os.close(fd)
+PY
+elif command -v xdotool >/dev/null 2>&1; then
+  xdotool key Shift+Tab
+else
+  echo 'No /dev/uinput or xdotool toggle input helper found on Deck.' >&2
+  exit 127
+fi"
+}
+
 run_visual_capture() {
   if [ -z "$visual_capture_dir" ]; then
     return 0
@@ -371,6 +439,15 @@ run_visual_capture() {
   fi
 
   capture_deck_screenshot "overlay-open"
+  if [ "$visual_toggle_probe" = "1" ]; then
+    capture_deck_screenshot "before-toggle-probe"
+    send_deck_overlay_toggle_probe
+    sleep 2
+    capture_deck_screenshot "after-toggle-open"
+    send_deck_overlay_close_probe
+    sleep 1
+    capture_deck_screenshot "after-toggle-close"
+  fi
   if [ "$visual_close_probe" = "1" ]; then
     send_deck_overlay_close_probe
     sleep 1

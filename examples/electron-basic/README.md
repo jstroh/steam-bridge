@@ -215,6 +215,14 @@ to the local artifact directory. Treat this as evidence collection, not a pass
 condition: Friends/Game Overview is only passed once the captured pixels return
 cleanly to the running app.
 
+Use `--visual-toggle-probe` when the question is whether the Steam overlay
+hotkey opens from the current app state. It captures `before-toggle-probe.png`,
+sends Shift+Tab, captures `after-toggle-open.png`, then sends the close probe and
+captures `after-toggle-close.png`. The latest Deck Desktop passive-presenter run
+passed the toast proof but did not open Steam overlay UI from Shift+Tab, so this
+probe is currently evidence for an unresolved hotkey/social path rather than a
+passing assertion.
+
 For passive toast proof, use the achievement-progress presenter action:
 
 ```sh

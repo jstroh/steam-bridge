@@ -166,6 +166,10 @@ Current evidence:
   remains click-through and transparent, also with a single overlay target.
 - The same path is good enough for checkout-style proof when launched under a
   real installed Steam app with a configured product or transaction.
+- Deck Desktop Mode does not yet have a passing Shift+Tab/hotkey proof. The
+  `--visual-toggle-probe` evidence after a passive-presenter toast run stayed in
+  the Electron app and did not emit `GameOverlayActivated`, so hotkey/social
+  toggling remains separate from the product web/checkout path.
 - Electron-only and native social overlay paths can render only when Electron
   child overlay targets are allowed, but those duplicate targets make visual
   dismissal unreliable in Deck Desktop Mode. Reusable presenter dialog activation
