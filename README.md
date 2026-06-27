@@ -318,6 +318,12 @@ presenting frames at about 30 FPS so Steam has fresh frames to composite when
 `overlayNeedsPresent` is true. Use `compatibility` as the stronger fallback when
 you also need Chromium's in-process GPU path.
 
+The longer-term Linux/macOS overlay plan is tracked in
+[`docs/research/native-overlay-presenter-plan.md`](docs/research/native-overlay-presenter-plan.md).
+It keeps the current session helpers intact while shaping a persistent,
+passive, bridge-owned presenter that can support checkout overlays and Steam
+notifications without app-specific overlay controllers.
+
 ## Notes
 
 - Use App ID `480` only for local Steamworks smoke tests.
