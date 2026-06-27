@@ -4,12 +4,15 @@ set -euo pipefail
 mode="direct"
 app_dir=""
 result_file=""
+diagnostic_dir=""
 app_id="480"
 action="none"
 overlay_profile="diagnostic"
+window_mode=""
 web_url=""
 web_modal=""
 result_delay_ms="8000"
+keep_open_after_result="0"
 timeout_seconds="90"
 shortcut_game_id=""
 app_name="Steam Bridge Smoke"
@@ -41,12 +44,15 @@ Modes:
 Options:
   --app-dir PATH                 Directory containing SteamBridgeSmoke.
   --result-file PATH             Result log path.
+  --diagnostic-dir PATH          Diagnostic log/crash dump directory.
   --app-id ID                    Steam App ID to use. Defaults to 480.
   --action NAME                  none, dialog, friends, store, web, native-probe.
   --overlay-profile NAME         Electron overlay profile. Defaults to diagnostic.
+  --window-mode NAME             Electron window mode: windowed, fullscreen, or borderless.
   --web-url URL                  URL for the web overlay action.
   --web-modal true|false         Whether the web overlay action should request a modal.
   --result-delay-ms MS           Autorun result delay. Defaults to 8000.
+  --keep-open-after-result       Write the result but leave the app running.
   --timeout-seconds SECONDS      Result wait timeout. Defaults to 90.
   --shortcut-game-id ID|auto     Full steam://rungameid shortcut game ID.
   --app-name NAME                Shortcut name to auto-discover.
@@ -79,6 +85,10 @@ while [ "$#" -gt 0 ]; do
       result_file="${2:?missing --result-file value}"
       shift 2
       ;;
+    --diagnostic-dir)
+      diagnostic_dir="${2:?missing --diagnostic-dir value}"
+      shift 2
+      ;;
     --app-id)
       app_id="${2:?missing --app-id value}"
       shift 2
@@ -89,6 +99,10 @@ while [ "$#" -gt 0 ]; do
       ;;
     --overlay-profile)
       overlay_profile="${2:?missing --overlay-profile value}"
+      shift 2
+      ;;
+    --window-mode)
+      window_mode="${2:?missing --window-mode value}"
       shift 2
       ;;
     --web-url)
@@ -102,6 +116,10 @@ while [ "$#" -gt 0 ]; do
     --result-delay-ms)
       result_delay_ms="${2:?missing --result-delay-ms value}"
       shift 2
+      ;;
+    --keep-open-after-result)
+      keep_open_after_result="1"
+      shift
       ;;
     --timeout-seconds)
       timeout_seconds="${2:?missing --timeout-seconds value}"
@@ -160,6 +178,9 @@ script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 if [ -z "$result_file" ]; then
   result_file="${TMPDIR:-/tmp}/steam-bridge-smoke-linux-direct.log"
 fi
+if [ -z "$diagnostic_dir" ]; then
+  diagnostic_dir="$result_file.diagnostics"
+fi
 
 smoke_exe=""
 result_prefix="STEAM_BRIDGE_SMOKE_RESULT "
@@ -172,10 +193,17 @@ smoke_args() {
     "--steam-bridge-smoke-autorun" \
     "--steam-bridge-smoke-autorun-action=$action" \
     "--steam-bridge-smoke-autorun-result-delay-ms=$result_delay_ms" \
-    "--steam-bridge-smoke-result-file=$result_file"
+    "--steam-bridge-smoke-result-file=$result_file" \
+    "--steam-bridge-smoke-diagnostic-dir=$diagnostic_dir"
 
   if [ "$require_overlay_activated" = "1" ]; then
     printf '%s\n' "--steam-bridge-smoke-require-overlay-active"
+  fi
+  if [ "$keep_open_after_result" = "1" ]; then
+    printf '%s\n' "--steam-bridge-smoke-keep-open-after-result"
+  fi
+  if [ -n "$window_mode" ]; then
+    printf '%s\n' "--steam-bridge-smoke-window-mode=$window_mode"
   fi
   if [ -n "$web_url" ]; then
     printf '%s\n' "--steam-bridge-smoke-web-url=$web_url"
@@ -433,7 +461,8 @@ print(
     f"overlayActivated={overlay_activated} "
     f"steamLaunch={launch.get('steamLaunch')} "
     f"overlayInjection={launch.get('overlayInjection')} "
-    f"action={(result.get('action') or {}).get('action')}"
+    f"action={(result.get('action') or {}).get('action')} "
+    f"diagnostics={app.get('diagnosticDir')}"
 )
 PY
 }
@@ -458,6 +487,7 @@ launch_steam_shortcut() {
 
   mkdir -p "$(dirname -- "$result_file")"
   rm -f "$result_file"
+  rm -rf "$diagnostic_dir"
 
   local steam_args=()
   if pgrep -fa 'steam.*-steamdeck' >/dev/null 2>&1; then
@@ -588,6 +618,7 @@ case "$mode" in
     ensure_app
     mkdir -p "$(dirname -- "$result_file")"
     rm -f "$result_file"
+    rm -rf "$diagnostic_dir"
     mapfile -t args < <(smoke_args)
     (cd "$app_dir" && "$smoke_exe" "${args[@]}")
     wait_for_result_file

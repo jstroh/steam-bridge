@@ -1,4 +1,4 @@
-export type ElectronSteamOverlayProfile = "off" | "diagnostic" | "compatibility";
+export type ElectronSteamOverlayProfile = "off" | "diagnostic" | "repaint" | "compatibility";
 
 export interface ElectronOverlayOptions {
   enableInProcessGpu?: boolean;
@@ -62,12 +62,13 @@ export function electronConfigureSteamOverlay(
   }
 
   const compatibilityMode = profile === "compatibility";
+  const repaintMode = profile === "repaint" || compatibilityMode;
   const {
     enableInProcessGpu = compatibilityMode,
     forceHighPerformanceGpu = true,
     disableBackgroundThrottling = true,
     ignoreGpuBlocklist = true,
-    repaintIntervalMs = compatibilityMode ? 33 : 0
+    repaintIntervalMs = repaintMode ? 33 : 0
   } = options;
 
   const electron = require("electron") as ElectronApi;

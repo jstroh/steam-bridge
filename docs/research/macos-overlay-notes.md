@@ -43,7 +43,8 @@ Still not verified:
 
 - `client.utils.isOverlayEnabled()` remains `false` for the Electron
   `BrowserWindow`-only path even with the `compatibility` overlay profile. The
-  verified macOS overlay path is the native probe surface.
+  native probe surface is diagnostic evidence that a native graphics surface can
+  be useful; it is not a completed product overlay path for Electron apps.
 - Ad-hoc signing the packaged app with
   `com.apple.security.cs.allow-dyld-environment-variables` and
   `com.apple.security.cs.disable-library-validation` did not make
@@ -52,9 +53,9 @@ Still not verified:
   strips the Steam `DYLD_INSERT_LIBRARIES` injection before the Electron child
   process starts, so that path is not useful for overlay verification.
 
-The current macOS result should therefore be treated as completed overlay
-coverage for the native probe path, plus Steam launch and injection coverage for
-the BrowserWindow path.
+The current macOS result should therefore be treated as native probe diagnostic
+coverage, plus Steam launch and injection coverage for the BrowserWindow path.
+It should not be described as completed Steam Bridge macOS overlay support.
 
 ## Primary References
 

@@ -1,6 +1,7 @@
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
-const { app, BrowserWindow, ipcMain } = require("electron");
+const { app, BrowserWindow, crashReporter, ipcMain } = require("electron");
 const steamworks = require("steam-bridge");
 
 const CLI_OPTIONS = parseSmokeArgs(process.argv.slice(1));
@@ -8,6 +9,7 @@ const APP_ID = Number(CLI_OPTIONS.appId || process.env.STEAM_BRIDGE_APP_ID || "4
 const AUTH_IDENTITY = process.env.STEAM_BRIDGE_AUTH_IDENTITY || "steam-bridge-electron-smoke";
 const OVERLAY_PROFILE =
   CLI_OPTIONS.overlayProfile || process.env.STEAM_BRIDGE_ELECTRON_OVERLAY_PROFILE || "diagnostic";
+const WINDOW_MODE = CLI_OPTIONS.windowMode || process.env.STEAM_BRIDGE_SMOKE_WINDOW_MODE || "windowed";
 const STORE_URL = `https://store.steampowered.com/app/${APP_ID}/`;
 const WEB_URL = CLI_OPTIONS.webUrl || process.env.STEAM_BRIDGE_SMOKE_WEB_URL || STORE_URL;
 const WEB_MODAL = readBoolean(CLI_OPTIONS.webModal || process.env.STEAM_BRIDGE_SMOKE_WEB_MODAL, false);
@@ -20,6 +22,16 @@ const AUTORUN_RESULT_DELAY_MS = Number(
   CLI_OPTIONS.autorunResultDelayMs || process.env.STEAM_BRIDGE_SMOKE_AUTORUN_RESULT_DELAY_MS || "5000"
 );
 const AUTORUN_RESULT_FILE = CLI_OPTIONS.resultFile || process.env.STEAM_BRIDGE_SMOKE_RESULT_FILE || "";
+const AUTORUN_KEEP_OPEN_AFTER_RESULT = readBoolean(
+  CLI_OPTIONS.keepOpenAfterResult || process.env.STEAM_BRIDGE_SMOKE_KEEP_OPEN_AFTER_RESULT,
+  false
+);
+const DIAGNOSTIC_DIR =
+  CLI_OPTIONS.diagnosticDir ||
+  process.env.STEAM_BRIDGE_SMOKE_DIAGNOSTIC_DIR ||
+  path.join(os.tmpdir(), "steam-bridge-smoke-diagnostics", createRunId());
+const LIFECYCLE_LOG_FILE = path.join(DIAGNOSTIC_DIR, "lifecycle.jsonl");
+const CRASH_DUMP_DIR = path.join(DIAGNOSTIC_DIR, "crash-dumps");
 const AUTORUN_REQUIRE_OVERLAY_ACTIVE = readBoolean(
   CLI_OPTIONS.autorunRequireOverlayActive || process.env.STEAM_BRIDGE_SMOKE_REQUIRE_OVERLAY_ACTIVE,
   false
@@ -40,21 +52,28 @@ const LAUNCH_ENV_KEYS = [
 const STARTUP_LAUNCH_CONTEXT = getLaunchContext();
 const OVERLAY_CONFIG = steamworks.electronConfigureSteamOverlay({ profile: OVERLAY_PROFILE });
 
+setupCrashDiagnostics();
 writeSteamAppIdFiles(APP_ID);
 
 let client;
 let initError;
 let inputInitialized = false;
 let shutdownComplete = false;
+let nativeProbePumpTimer;
 const callbackHandles = [];
 const eventLog = [];
 
 function createWindow() {
+  const fullscreen = WINDOW_MODE === "fullscreen" || WINDOW_MODE === "borderless";
+  const frame = WINDOW_MODE !== "borderless";
   const window = new BrowserWindow({
     width: 1060,
     height: 760,
     minWidth: 860,
     minHeight: 640,
+    fullscreen,
+    frame,
+    autoHideMenuBar: true,
     title: "Steam Bridge Electron Smoke",
     backgroundColor: "#f5f7fb",
     webPreferences: {
@@ -67,6 +86,8 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  recordLifecycle("app:ready", { diagnosticDir: DIAGNOSTIC_DIR, crashDumpDir: CRASH_DUMP_DIR });
+
   try {
     client = steamworks.init({ appId: APP_ID, callbackIntervalMs: 100 });
     registerSteamCallbacks();
@@ -101,10 +122,53 @@ ipcMain.handle("steam-smoke:native-probe-pump", () => pumpNativeProbe());
 ipcMain.handle("steam-smoke:native-probe-close", () => closeNativeProbe());
 
 app.on("window-all-closed", () => {
+  recordLifecycle("app:window-all-closed", {});
   app.quit();
 });
+app.on("before-quit", () => {
+  recordLifecycle("app:before-quit", {});
+});
 app.on("will-quit", () => {
+  recordLifecycle("app:will-quit", {});
   shutdownSteam();
+});
+app.on("quit", (_event, exitCode) => {
+  recordLifecycle("app:quit", { exitCode });
+});
+app.on("render-process-gone", (_event, webContents, details) => {
+  recordLifecycle("app:render-process-gone", {
+    url: webContents.getURL(),
+    details
+  });
+});
+app.on("child-process-gone", (_event, details) => {
+  recordLifecycle("app:child-process-gone", details);
+});
+app.on("gpu-process-crashed", (_event, killed) => {
+  recordLifecycle("app:gpu-process-crashed", { killed });
+});
+
+process.on("uncaughtException", (error) => {
+  recordLifecycle("process:uncaught-exception", serializeError(error));
+  process.exitCode = 1;
+  setImmediate(() => process.exit(1));
+});
+process.on("unhandledRejection", (reason) => {
+  recordLifecycle("process:unhandled-rejection", serializeError(reason));
+});
+process.on("warning", (warning) => {
+  recordLifecycle("process:warning", serializeError(warning));
+});
+process.on("exit", (exitCode) => {
+  recordLifecycle("process:exit", { exitCode });
+});
+process.on("SIGTERM", () => {
+  recordLifecycle("process:signal", { signal: "SIGTERM" });
+  process.exit(143);
+});
+process.on("SIGINT", () => {
+  recordLifecycle("process:signal", { signal: "SIGINT" });
+  process.exit(130);
 });
 
 function shutdownSteam() {
@@ -112,6 +176,7 @@ function shutdownSteam() {
     return;
   }
   shutdownComplete = true;
+  stopNativeProbePumpLoop();
 
   for (const handle of callbackHandles.splice(0)) {
     try {
@@ -172,6 +237,12 @@ async function runAutorunSmoke() {
   });
   const line = `STEAM_BRIDGE_SMOKE_RESULT ${JSON.stringify(result)}\n`;
   writeSmokeResultLine(line);
+  if (AUTORUN_KEEP_OPEN_AFTER_RESULT) {
+    recordEvent("autorun:keep-open-after-result", { resultFile: AUTORUN_RESULT_FILE || null });
+    process.stdout.write(line);
+    return;
+  }
+
   process.stdout.write(line, () => process.exit(0));
 }
 
@@ -239,6 +310,7 @@ function runAutorunAction(action) {
         return { ok: true, action };
       case "native-probe":
         openNativeProbe();
+        openDialogOverlay();
         return { ok: true, action };
       default:
         throw new Error(`Unsupported autorun action: ${action}`);
@@ -274,6 +346,7 @@ function openDialogOverlay() {
 function openNativeProbe() {
   const activeClient = requireClient();
   activeClient.overlay.openNativeOverlayProbeWindow("Steam Bridge Native Overlay Probe");
+  startNativeProbePumpLoop();
   activeClient.overlay.pumpNativeOverlayProbeWindow();
   recordEvent("overlay:native-probe-open", {});
   return snapshot();
@@ -287,9 +360,33 @@ function pumpNativeProbe() {
 
 function closeNativeProbe() {
   const activeClient = requireClient();
+  stopNativeProbePumpLoop();
   activeClient.overlay.closeNativeOverlayProbeWindow();
   recordEvent("overlay:native-probe-close", {});
   return snapshot();
+}
+
+function startNativeProbePumpLoop() {
+  if (nativeProbePumpTimer) {
+    return;
+  }
+
+  nativeProbePumpTimer = setInterval(() => {
+    try {
+      requireClient().overlay.pumpNativeOverlayProbeWindow();
+    } catch (error) {
+      recordEvent("overlay:native-probe-pump-loop:error", serializeError(error));
+      stopNativeProbePumpLoop();
+    }
+  }, 33);
+  nativeProbePumpTimer.unref?.();
+}
+
+function stopNativeProbePumpLoop() {
+  if (nativeProbePumpTimer) {
+    clearInterval(nativeProbePumpTimer);
+    nativeProbePumpTimer = undefined;
+  }
 }
 
 function snapshot() {
@@ -300,10 +397,16 @@ function snapshot() {
       authIdentity: AUTH_IDENTITY,
       overlayProfile: OVERLAY_PROFILE,
       overlayConfig: OVERLAY_CONFIG,
+      windowMode: WINDOW_MODE,
       autorun: AUTORUN,
       autorunAction: AUTORUN_ACTION,
       autorunRequireOverlayActive: AUTORUN_REQUIRE_OVERLAY_ACTIVE,
+      autorunKeepOpenAfterResult: AUTORUN_KEEP_OPEN_AFTER_RESULT,
       autorunResultFile: AUTORUN_RESULT_FILE || null,
+      diagnosticDir: DIAGNOSTIC_DIR,
+      lifecycleLogFile: LIFECYCLE_LOG_FILE,
+      crashDumpDir: CRASH_DUMP_DIR,
+      crashReporterStarted: crashReporterStarted(),
       storeUrl: STORE_URL,
       webUrl: WEB_URL,
       webModal: WEB_MODAL,
@@ -454,6 +557,54 @@ function writeSmokeResultLine(line) {
   }
 }
 
+function setupCrashDiagnostics() {
+  try {
+    fs.mkdirSync(CRASH_DUMP_DIR, { recursive: true });
+    app.setPath("crashDumps", CRASH_DUMP_DIR);
+    crashReporter.start({
+      productName: "Steam Bridge Electron Smoke",
+      uploadToServer: false,
+      ignoreSystemCrashHandler: false,
+      globalExtra: {
+        appId: String(APP_ID),
+        overlayProfile: OVERLAY_PROFILE,
+        runId: path.basename(DIAGNOSTIC_DIR)
+      }
+    });
+    recordLifecycle("crash-reporter:start", {
+      diagnosticDir: DIAGNOSTIC_DIR,
+      crashDumpDir: CRASH_DUMP_DIR,
+      parameters: crashReporter.getParameters()
+    });
+  } catch (error) {
+    recordLifecycle("crash-reporter:error", serializeError(error));
+  }
+}
+
+function crashReporterStarted() {
+  try {
+    return Boolean(crashReporter.getParameters());
+  } catch {
+    return false;
+  }
+}
+
+function recordLifecycle(type, payload) {
+  const entry = sanitize({
+    type,
+    at: new Date().toISOString(),
+    pid: process.pid,
+    payload
+  });
+
+  try {
+    fs.mkdirSync(DIAGNOSTIC_DIR, { recursive: true });
+    fs.appendFileSync(LIFECYCLE_LOG_FILE, `${JSON.stringify(entry)}\n`);
+  } catch (error) {
+    console.error(`Failed to write smoke lifecycle log ${LIFECYCLE_LOG_FILE}:`, error);
+  }
+}
+
 function recordEvent(type, payload) {
   const event = sanitize({
     type,
@@ -462,6 +613,7 @@ function recordEvent(type, payload) {
   });
   eventLog.push(event);
   eventLog.splice(0, Math.max(0, eventLog.length - 100));
+  recordLifecycle(`event:${type}`, payload);
 
   for (const window of BrowserWindow.getAllWindows()) {
     window.webContents.send("steam-smoke:event", event);
@@ -525,6 +677,10 @@ function writeSteamAppIdFiles(appId) {
   }
 }
 
+function createRunId() {
+  return new Date().toISOString().replace(/[:.]/g, "-");
+}
+
 function parseSmokeArgs(args) {
   const options = {
     appId: undefined,
@@ -533,10 +689,13 @@ function parseSmokeArgs(args) {
     autorunActionDelayMs: undefined,
     autorunResultDelayMs: undefined,
     overlayProfile: undefined,
+    windowMode: undefined,
     autorunRequireOverlayActive: undefined,
     webModal: undefined,
     webUrl: undefined,
-    resultFile: undefined
+    resultFile: undefined,
+    diagnosticDir: undefined,
+    keepOpenAfterResult: undefined
   };
 
   for (let index = 0; index < args.length; index += 1) {
@@ -573,8 +732,17 @@ function parseSmokeArgs(args) {
       case "--steam-bridge-electron-overlay-profile":
         options.overlayProfile = value;
         break;
+      case "--steam-bridge-smoke-window-mode":
+        options.windowMode = value;
+        break;
       case "--steam-bridge-smoke-result-file":
         options.resultFile = value;
+        break;
+      case "--steam-bridge-smoke-diagnostic-dir":
+        options.diagnosticDir = value;
+        break;
+      case "--steam-bridge-smoke-keep-open-after-result":
+        options.keepOpenAfterResult = value == null || value === "" ? "1" : value;
         break;
       default:
         break;

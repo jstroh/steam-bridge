@@ -276,7 +276,8 @@ log what Steam sees:
 - `bigPicture`
 - `steamInstallPath`
 
-Steam Bridge also includes a macOS native overlay probe surface:
+Steam Bridge also includes a native overlay probe surface for diagnostics. The
+probe is implemented on macOS and on Linux/X11 with GLX:
 
 ```ts
 client.overlay.openNativeOverlayProbeWindow("Steam Overlay Probe");
@@ -284,11 +285,17 @@ client.overlay.pumpNativeOverlayProbeWindow();
 client.overlay.closeNativeOverlayProbeWindow();
 ```
 
-Set `STEAM_BRIDGE_ELECTRON_OVERLAY_PROFILE=compatibility`, or pass
-`--steam-bridge-electron-overlay-profile=compatibility` to the Electron smoke
-app, to opt into the Linux/Desktop overlay workaround profile. That profile
-enables `in-process-gpu` and keeps Electron presenting frames at about 30 FPS so
-Steam has fresh frames to composite when `overlayNeedsPresent` is true.
+On Steam Deck Desktop Mode, the Linux native probe is the current generic proof
+path for overlay open and close/back-to-app behavior. The Electron-only
+BrowserWindow path can initialize Steam and activate visible overlay UI, but it
+has not proven reliable overlay input dismissal in Desktop Mode.
+
+Set `STEAM_BRIDGE_ELECTRON_OVERLAY_PROFILE=repaint`, or pass
+`--steam-bridge-electron-overlay-profile=repaint` to the Electron smoke app, to
+opt into the Linux/Desktop overlay repaint profile. That profile keeps Electron
+presenting frames at about 30 FPS so Steam has fresh frames to composite when
+`overlayNeedsPresent` is true. Use `compatibility` as the stronger fallback when
+you also need Chromium's in-process GPU path.
 
 ## Notes
 

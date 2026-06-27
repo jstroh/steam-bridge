@@ -131,17 +131,24 @@ const txn = await steamworks.webApi.microTxnSandbox.initTxn({
 });
 ```
 
-The package also includes macOS overlay diagnostics through
-`client.utils.getOverlayDiagnostics()` and the Electron helper export
-`electronConfigureSteamOverlay()`. These are intentionally diagnostics first:
-core Steam API success should not be treated as proof that the Steam overlay has
-hooked Electron.
+The package also includes overlay diagnostics through
+`client.utils.getOverlayDiagnostics()`, the native overlay probe helpers, and
+the Electron helper export `electronConfigureSteamOverlay()`. These are
+intentionally diagnostics first: core Steam API success should not be treated as
+proof that the Steam overlay has hooked Electron.
 
 For Linux Electron apps, use
-`electronConfigureSteamOverlay({ profile: "compatibility" })` when the Steam
-overlay activates but needs additional presents. The compatibility profile keeps
-Chromium's GPU work in-process and invalidates Electron windows at about 30 FPS
-so Steam has fresh frames to composite.
+`electronConfigureSteamOverlay({ profile: "repaint" })` when the Steam overlay
+activates but needs additional presents. The repaint profile invalidates
+Electron windows at about 30 FPS so Steam has fresh frames to composite. Use
+`profile: "compatibility"` as the stronger fallback when you also need
+Chromium's GPU work in-process.
+
+On Steam Deck Desktop Mode, the Linux X11/GLX native probe is the current
+generic proof path for overlay open and close/back-to-app behavior. The
+Electron-only BrowserWindow path can initialize Steam and activate visible
+overlay UI, but it has not proven reliable overlay input dismissal in Desktop
+Mode.
 
 ## Development
 

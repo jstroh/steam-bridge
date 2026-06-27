@@ -9,10 +9,11 @@ It uses Valve's SpaceWar sample App ID `480` by default. Override it with
 
 The default Electron overlay profile is `diagnostic`, which applies conservative
 Electron switches and avoids forcing Chromium's in-process GPU path. Set
-`STEAM_BRIDGE_ELECTRON_OVERLAY_PROFILE=compatibility` when you specifically want
-to test the more aggressive Linux/Desktop overlay workaround profile. That
-profile keeps Electron presenting frames at about 30 FPS because Steam can report
-that the overlay needs fresh presents from event-driven renderers.
+`STEAM_BRIDGE_ELECTRON_OVERLAY_PROFILE=repaint` when an event-driven Electron
+renderer needs fresh frames for Steam's overlay. Set
+`STEAM_BRIDGE_ELECTRON_OVERLAY_PROFILE=compatibility` only when you specifically
+want the more aggressive Linux/Desktop workaround that also enables Chromium's
+in-process GPU path.
 
 ## Development
 
@@ -80,11 +81,28 @@ for Steam non-Steam shortcuts:
 --steam-bridge-smoke-web-url=https://store.steampowered.com/app/480/ \
 --steam-bridge-smoke-web-modal=false \
 --steam-bridge-smoke-require-overlay-active=false \
+--steam-bridge-smoke-keep-open-after-result=false \
 --steam-bridge-smoke-result-file=/tmp/steam-bridge-smoke.log
 ```
 
 Supported autorun actions are `none`, `dialog`, `friends`, `store`, `web`, and
-`native-probe`.
+`native-probe`. On Linux, `native-probe` opens a bridge-owned X11/GLX native
+probe surface, keeps it presenting frames, and activates the Friends overlay.
+Use it when a Deck Desktop Mode test needs to prove overlay open plus
+Shift+Tab close/back-to-app behavior. The Electron-only `dialog` and `friends`
+actions prove Steam callbacks and visible overlay activation, but they do not
+currently prove reliable Desktop Mode overlay input dismissal.
+
+Each autorun also writes local diagnostics. Pass
+`--steam-bridge-smoke-diagnostic-dir=/tmp/steam-bridge-smoke.log.diagnostics`
+or set `STEAM_BRIDGE_SMOKE_DIAGNOSTIC_DIR` to choose the directory. The app
+starts Electron's crash reporter with uploads disabled, stores Crashpad files
+under `crash-dumps/`, and writes lifecycle JSON lines to `lifecycle.jsonl`.
+The smoke snapshot includes `snapshot.app.diagnosticDir`,
+`snapshot.app.lifecycleLogFile`, and `snapshot.app.crashDumpDir`.
+For visual debugging, pass `--steam-bridge-smoke-keep-open-after-result` or set
+`STEAM_BRIDGE_SMOKE_KEEP_OPEN_AFTER_RESULT=1` so the verifier can read a result
+while the app stays open for overlay close/back-to-game checks.
 
 To verify an autorun log:
 
@@ -135,11 +153,26 @@ npm run steam-deck:smoke -- \
 
 Run the same command with `--mode desktop` after switching the Deck to Desktop
 Mode. Game Mode defaults to the `diagnostic` overlay profile and requires the Big
-Picture signal. Desktop Mode defaults to the `compatibility` overlay profile,
+Picture signal. Desktop Mode defaults to the `repaint` overlay profile,
 omits the Big Picture assertion, and keeps Steam launch, overlay injection,
 overlay readiness, and overlay callback checks. If preflight cannot reach SSH,
 verify the Deck is awake, SSH is enabled, and the `--host` IP address is still
 current; then rerun `--mode discover`.
+
+For the current Desktop Mode open/close proof, use the native probe action and
+leave the app open after the verifier result:
+
+```sh
+npm run steam-deck:smoke -- \
+  --host deck@<deck-host-or-ip> \
+  --mode desktop \
+  --action native-probe \
+  --keep-open-after-result
+```
+
+After the result passes, press Shift+Tab to open the Steam overlay, then
+Shift+Tab again to close it. The lifecycle log should include
+`callback:overlay-activated` with `active=true` followed by `active=false`.
 
 For scripted setup, back up and upsert the non-Steam shortcut with:
 
@@ -192,12 +225,15 @@ For Desktop Mode overlay checks, launch the same shortcut URL while Steam is
 running in Desktop Mode. A direct shell or file-manager launch can prove Steam
 Bridge initialization, but Steam overlay injection is only expected when Steam
 launches the shortcut. If you choose a direct executable shortcut instead of the
-wrapper, include `--steam-bridge-electron-overlay-profile=compatibility` in that
+wrapper, include `--steam-bridge-electron-overlay-profile=repaint` in that
 shortcut's launch options before running Desktop Mode overlay checks.
 
-Desktop Mode visual proof looks like Steam's desktop overlay panels over the
-Electron window, such as Game Overview/Friends and a "Back to Game" control. It
-does not necessarily show the Game Mode bottom-right toast.
+Desktop Mode visual proof for the Electron-only actions looks like Steam's
+desktop overlay panels over the Electron window, such as Game Overview/Friends
+and a "Back to Game" control. The full open/close proof currently uses
+`--action native-probe`: the open screenshot should show Steam's overlay over
+the native probe surface, and the close screenshot should return to the running
+native probe surface with `callback:overlay-activated` reporting `active=false`.
 
 For longer SSH-driven checks, keep the Deck awake from SteamOS/Desktop Mode
 power settings. Over SSH, `systemd-inhibit --what=sleep sleep infinity` can keep

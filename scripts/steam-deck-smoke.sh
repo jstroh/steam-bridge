@@ -10,10 +10,12 @@ mode="game"
 app_id="480"
 action="dialog"
 overlay_profile=""
+window_mode=""
 web_url=""
 web_modal=""
 result_file="/tmp/steam-bridge-smoke-steam-launch.log"
 result_delay_ms="8000"
+keep_open_after_result="0"
 timeout_seconds="90"
 shortcut_game_id="auto"
 app_name="Steam Bridge Smoke"
@@ -50,11 +52,13 @@ Options:
   --skip-copy                   Use the existing remote package directory.
   --app-id ID                   Steam App ID used inside the smoke app. Defaults to 480.
   --action NAME                 Autorun action. Defaults to dialog.
-  --overlay-profile NAME        Electron overlay profile. Desktop defaults to compatibility.
+  --overlay-profile NAME        Electron overlay profile. Desktop defaults to repaint.
+  --window-mode NAME            Electron window mode: windowed, fullscreen, or borderless.
   --web-url URL                 URL for the web overlay action.
   --web-modal true|false        Whether the web overlay action should request a modal.
   --result-file PATH            Remote result log path.
   --result-delay-ms MS          Autorun result delay. Defaults to 8000.
+  --keep-open-after-result      Write the result but leave the app running.
   --timeout-seconds SECONDS     Result wait timeout. Defaults to 90.
   --shortcut-game-id ID|auto    Full steam://rungameid shortcut ID. Defaults to auto.
   --app-name NAME               Shortcut name to auto-discover.
@@ -111,6 +115,10 @@ while [ "$#" -gt 0 ]; do
       overlay_profile="${2:?missing --overlay-profile value}"
       shift 2
       ;;
+    --window-mode)
+      window_mode="${2:?missing --window-mode value}"
+      shift 2
+      ;;
     --web-url)
       web_url="${2:?missing --web-url value}"
       shift 2
@@ -126,6 +134,10 @@ while [ "$#" -gt 0 ]; do
     --result-delay-ms)
       result_delay_ms="${2:?missing --result-delay-ms value}"
       shift 2
+      ;;
+    --keep-open-after-result)
+      keep_open_after_result="1"
+      shift
       ;;
     --timeout-seconds)
       timeout_seconds="${2:?missing --timeout-seconds value}"
@@ -384,7 +396,7 @@ resolved_overlay_profile() {
   if [ -n "$overlay_profile" ]; then
     printf '%s\n' "$overlay_profile"
   elif [ "$mode" = "desktop" ]; then
-    printf '%s\n' "compatibility"
+    printf '%s\n' "repaint"
   else
     printf '%s\n' "diagnostic"
   fi
@@ -392,7 +404,7 @@ resolved_overlay_profile() {
 
 prepare_remote_wrapper() {
   local app_dir_q env_q wrapper_q wrapper_dir_q
-  local app_id_q action_q profile_q result_file_q action_delay_q result_delay_q require_active_q web_url_q web_modal_q
+  local app_id_q action_q profile_q window_mode_q result_file_q diagnostic_dir_q action_delay_q result_delay_q keep_open_q require_active_q web_url_q web_modal_q
   local require_overlay_active="0"
 
   if [ "$action" = "store" ] || [ "$action" = "web" ]; then
@@ -406,9 +418,12 @@ prepare_remote_wrapper() {
   app_id_q="$(quote_arg "$app_id")"
   action_q="$(quote_arg "$action")"
   profile_q="$(quote_arg "$(resolved_overlay_profile)")"
+  window_mode_q="$(quote_arg "$window_mode")"
   result_file_q="$(quote_arg "$result_file")"
+  diagnostic_dir_q="$(quote_arg "$result_file.diagnostics")"
   action_delay_q="$(quote_arg "1500")"
   result_delay_q="$(quote_arg "$result_delay_ms")"
+  keep_open_q="$(quote_arg "$keep_open_after_result")"
   require_active_q="$(quote_arg "$require_overlay_active")"
   web_url_q="$(quote_arg "$web_url")"
   web_modal_q="$(quote_arg "$web_modal")"
@@ -421,9 +436,12 @@ APP_DIR=$app_dir_q
 APP_ID=$app_id_q
 AUTORUN_ACTION=$action_q
 OVERLAY_PROFILE=$profile_q
+WINDOW_MODE=$window_mode_q
 RESULT_FILE=$result_file_q
+DIAGNOSTIC_DIR=$diagnostic_dir_q
 ACTION_DELAY_MS=$action_delay_q
 RESULT_DELAY_MS=$result_delay_q
+KEEP_OPEN_AFTER_RESULT=$keep_open_q
 REQUIRE_OVERLAY_ACTIVE=$require_active_q
 WEB_URL=$web_url_q
 WEB_MODAL=$web_modal_q
@@ -444,23 +462,32 @@ APP_DIR=\"\${APP_DIR:-/home/deck/steam-bridge-smoke/SteamBridgeSmoke-linux-x64}\
 APP_ID=\"\${APP_ID:-480}\"
 AUTORUN_ACTION=\"\${AUTORUN_ACTION:-none}\"
 OVERLAY_PROFILE=\"\${OVERLAY_PROFILE:-diagnostic}\"
+WINDOW_MODE=\"\${WINDOW_MODE:-}\"
 RESULT_FILE=\"\${RESULT_FILE:-/tmp/steam-bridge-smoke-default.log}\"
+DIAGNOSTIC_DIR=\"\${DIAGNOSTIC_DIR:-\$RESULT_FILE.diagnostics}\"
 ACTION_DELAY_MS=\"\${ACTION_DELAY_MS:-1500}\"
 RESULT_DELAY_MS=\"\${RESULT_DELAY_MS:-8000}\"
+KEEP_OPEN_AFTER_RESULT=\"\${KEEP_OPEN_AFTER_RESULT:-0}\"
 REQUIRE_OVERLAY_ACTIVE=\"\${REQUIRE_OVERLAY_ACTIVE:-0}\"
 WEB_URL=\"\${WEB_URL:-}\"
 WEB_MODAL=\"\${WEB_MODAL:-}\"
 
 rm -f \"\$RESULT_FILE\"
+rm -rf \"\$DIAGNOSTIC_DIR\"
 export SteamAppId=\"\$APP_ID\"
 export SteamGameId=\"\$APP_ID\"
 export STEAM_BRIDGE_APP_ID=\"\$APP_ID\"
 export STEAM_BRIDGE_ELECTRON_OVERLAY_PROFILE=\"\$OVERLAY_PROFILE\"
+if [ -n \"\$WINDOW_MODE\" ]; then
+  export STEAM_BRIDGE_SMOKE_WINDOW_MODE=\"\$WINDOW_MODE\"
+fi
 export STEAM_BRIDGE_SMOKE_AUTORUN=1
 export STEAM_BRIDGE_SMOKE_AUTORUN_ACTION=\"\$AUTORUN_ACTION\"
 export STEAM_BRIDGE_SMOKE_AUTORUN_ACTION_DELAY_MS=\"\$ACTION_DELAY_MS\"
 export STEAM_BRIDGE_SMOKE_AUTORUN_RESULT_DELAY_MS=\"\$RESULT_DELAY_MS\"
+export STEAM_BRIDGE_SMOKE_KEEP_OPEN_AFTER_RESULT=\"\$KEEP_OPEN_AFTER_RESULT\"
 export STEAM_BRIDGE_SMOKE_RESULT_FILE=\"\$RESULT_FILE\"
+export STEAM_BRIDGE_SMOKE_DIAGNOSTIC_DIR=\"\$DIAGNOSTIC_DIR\"
 export STEAM_BRIDGE_SMOKE_REQUIRE_OVERLAY_ACTIVE=\"\$REQUIRE_OVERLAY_ACTIVE\"
 if [ -n \"\$WEB_URL\" ]; then
   export STEAM_BRIDGE_SMOKE_WEB_URL=\"\$WEB_URL\"
@@ -493,6 +520,14 @@ append_common_helper_args() {
     "--timeout-seconds" "$timeout_seconds"
     "--app-name" "$app_name"
   )
+
+  if [ "$keep_open_after_result" = "1" ]; then
+    helper_args+=("--keep-open-after-result")
+  fi
+
+  if [ -n "$window_mode" ]; then
+    helper_args+=("--window-mode" "$window_mode")
+  fi
 
   if [ -n "$steam_user_id" ]; then
     helper_args+=("--steam-user-id" "$steam_user_id")
@@ -671,8 +706,8 @@ run_self_test() {
     echo "Self-test failed: Desktop Mode args must not require Big Picture." >&2
     exit 1
   fi
-  if [[ "$desktop_args" != *"--overlay-profile compatibility"* ]]; then
-    echo "Self-test failed: Desktop Mode args must default to the compatibility overlay profile." >&2
+  if [[ "$desktop_args" != *"--overlay-profile repaint"* ]]; then
+    echo "Self-test failed: Desktop Mode args must default to the repaint overlay profile." >&2
     exit 1
   fi
 

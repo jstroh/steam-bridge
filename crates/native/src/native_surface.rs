@@ -1005,19 +1005,19 @@ mod macos {
     }
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
 mod fallback {
     use super::Error;
 
     pub fn open(_title: Option<String>) -> Result<(), Error> {
         Err(Error::from_reason(
-            "Steam Bridge native overlay probe is currently implemented only on macOS",
+            "Steam Bridge native overlay probe is not implemented on this platform",
         ))
     }
 
     pub fn attach_to_parent(_parent_handle: usize) -> Result<(), Error> {
         Err(Error::from_reason(
-            "Steam Bridge native overlay host view is currently implemented only on macOS",
+            "Steam Bridge native overlay host view is not implemented on this platform",
         ))
     }
 
@@ -1056,7 +1056,288 @@ mod fallback {
     }
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
 pub use fallback::*;
 #[cfg(target_os = "macos")]
 pub use macos::*;
+
+#[cfg(target_os = "linux")]
+mod linux {
+    use super::{Buffer, Error};
+    use once_cell::sync::Lazy;
+    use std::ffi::{c_void, CString};
+    use std::mem;
+    use std::os::raw::{c_int, c_long, c_uint};
+    use std::ptr;
+    use std::sync::Mutex;
+    use std::time::{SystemTime, UNIX_EPOCH};
+    use x11_dl::{glx, xlib};
+
+    struct NativeSurface {
+        xlib: xlib::Xlib,
+        glx: glx::Glx,
+        display: *mut xlib::Display,
+        window: xlib::Window,
+        colormap: xlib::Colormap,
+        context: glx::GLXContext,
+        frame: u64,
+    }
+
+    unsafe impl Send for NativeSurface {}
+
+    static SURFACE: Lazy<Mutex<Option<NativeSurface>>> = Lazy::new(|| Mutex::new(None));
+
+    pub fn open(title: Option<String>) -> Result<(), Error> {
+        close();
+
+        let title = title.unwrap_or_else(|| "Steam Bridge Native Overlay Probe".to_owned());
+        let surface = unsafe { create_probe_window(&title)? };
+        *SURFACE
+            .lock()
+            .expect("Steam overlay native surface lock poisoned") = Some(surface);
+
+        pump()?;
+        Ok(())
+    }
+
+    pub fn attach_to_parent(_parent_handle: usize) -> Result<(), Error> {
+        Err(Error::from_reason(
+            "Steam Bridge native overlay host view is not implemented on Linux yet",
+        ))
+    }
+
+    pub fn pump() -> Result<(), Error> {
+        let mut guard = SURFACE
+            .lock()
+            .expect("Steam overlay native surface lock poisoned");
+        let Some(surface) = guard.as_mut() else {
+            return Ok(());
+        };
+
+        unsafe {
+            while (surface.xlib.XPending)(surface.display) > 0 {
+                let mut event: xlib::XEvent = mem::MaybeUninit::uninit().assume_init();
+                (surface.xlib.XNextEvent)(surface.display, &mut event);
+            }
+
+            (surface.glx.glXMakeCurrent)(surface.display, surface.window, surface.context);
+            let t = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|duration| duration.as_millis() as f32 / 1000.0)
+                .unwrap_or(0.0);
+            gl::ClearColor(0.015 + (t.sin() + 1.0) * 0.015, 0.02, 0.035, 1.0);
+            gl::Clear(gl::COLOR_BUFFER_BIT);
+            (surface.glx.glXSwapBuffers)(surface.display, surface.window);
+            surface.frame = surface.frame.wrapping_add(1);
+        }
+
+        Ok(())
+    }
+
+    pub fn show() -> Result<(), Error> {
+        with_surface(|surface| unsafe {
+            (surface.xlib.XMapRaised)(surface.display, surface.window);
+            (surface.xlib.XFlush)(surface.display);
+        })
+    }
+
+    pub fn hide() -> Result<(), Error> {
+        with_surface(|surface| unsafe {
+            (surface.xlib.XUnmapWindow)(surface.display, surface.window);
+            (surface.xlib.XFlush)(surface.display);
+        })
+    }
+
+    pub fn update_frame(_buffer: Buffer, _width: u32, _height: u32) -> Result<(), Error> {
+        Ok(())
+    }
+
+    pub fn close() {
+        let surface = SURFACE
+            .lock()
+            .expect("Steam overlay native surface lock poisoned")
+            .take();
+        if let Some(surface) = surface {
+            unsafe {
+                (surface.glx.glXMakeCurrent)(surface.display, 0, ptr::null_mut());
+                (surface.glx.glXDestroyContext)(surface.display, surface.context);
+                (surface.xlib.XDestroyWindow)(surface.display, surface.window);
+                (surface.xlib.XFreeColormap)(surface.display, surface.colormap);
+                (surface.xlib.XCloseDisplay)(surface.display);
+            }
+        }
+    }
+
+    pub fn close_probe() {
+        close();
+    }
+
+    pub fn detach_host() {}
+
+    pub fn is_probe_open() -> bool {
+        SURFACE
+            .lock()
+            .expect("Steam overlay native surface lock poisoned")
+            .is_some()
+    }
+
+    pub fn is_embedded() -> bool {
+        false
+    }
+
+    pub fn mac_window_snapshot_json(_app_id: u32) -> Option<String> {
+        None
+    }
+
+    fn with_surface(run: impl FnOnce(&mut NativeSurface)) -> Result<(), Error> {
+        let mut guard = SURFACE
+            .lock()
+            .expect("Steam overlay native surface lock poisoned");
+        if let Some(surface) = guard.as_mut() {
+            run(surface);
+        }
+        Ok(())
+    }
+
+    unsafe fn create_probe_window(title: &str) -> Result<NativeSurface, Error> {
+        let title = CString::new(title)
+            .map_err(|error| Error::from_reason(format!("Invalid native probe title: {error}")))?;
+        let class_name = CString::new("SteamBridgeNativeProbe").expect("static class name");
+        let xlib = xlib::Xlib::open()
+            .map_err(|error| Error::from_reason(format!("Failed to load Xlib: {error}")))?;
+        let glx = glx::Glx::open()
+            .map_err(|error| Error::from_reason(format!("Failed to load GLX: {error}")))?;
+
+        let display = (xlib.XOpenDisplay)(ptr::null());
+        if display.is_null() {
+            return Err(Error::from_reason(
+                "Failed to open X11 display for Linux native overlay probe",
+            ));
+        }
+
+        let screen = (xlib.XDefaultScreen)(display);
+        let root = (xlib.XRootWindow)(display, screen);
+        let width = (xlib.XDisplayWidth)(display, screen).max(640) as c_uint;
+        let height = (xlib.XDisplayHeight)(display, screen).max(480) as c_uint;
+
+        let mut visual_attrs = [
+            glx::GLX_RGBA,
+            glx::GLX_DOUBLEBUFFER,
+            glx::GLX_RED_SIZE,
+            8,
+            glx::GLX_GREEN_SIZE,
+            8,
+            glx::GLX_BLUE_SIZE,
+            8,
+            glx::GLX_ALPHA_SIZE,
+            8,
+            glx::GLX_DEPTH_SIZE,
+            24,
+            0,
+        ];
+        let visual_info = (glx.glXChooseVisual)(display, screen, visual_attrs.as_mut_ptr());
+        if visual_info.is_null() {
+            (xlib.XCloseDisplay)(display);
+            return Err(Error::from_reason(
+                "Failed to choose a GLX visual for Linux native overlay probe",
+            ));
+        }
+
+        let colormap =
+            (xlib.XCreateColormap)(display, root, (*visual_info).visual, xlib::AllocNone);
+        let mut attributes: xlib::XSetWindowAttributes = mem::MaybeUninit::zeroed().assume_init();
+        attributes.colormap = colormap;
+        attributes.background_pixel = (xlib.XBlackPixel)(display, screen);
+        attributes.border_pixel = 0;
+        attributes.event_mask = xlib::ExposureMask
+            | xlib::StructureNotifyMask
+            | xlib::KeyPressMask
+            | xlib::ButtonPressMask
+            | xlib::ButtonReleaseMask
+            | xlib::PointerMotionMask;
+
+        let window = (xlib.XCreateWindow)(
+            display,
+            root,
+            0,
+            0,
+            width,
+            height,
+            0,
+            (*visual_info).depth,
+            xlib::InputOutput as c_uint,
+            (*visual_info).visual,
+            xlib::CWColormap | xlib::CWBackPixel | xlib::CWBorderPixel | xlib::CWEventMask,
+            &mut attributes,
+        );
+        if window == 0 {
+            (xlib.XFree)(visual_info.cast::<c_void>());
+            (xlib.XFreeColormap)(display, colormap);
+            (xlib.XCloseDisplay)(display);
+            return Err(Error::from_reason(
+                "Failed to create Linux native overlay probe window",
+            ));
+        }
+
+        (xlib.XStoreName)(display, window, title.as_ptr());
+
+        let mut class_hint = xlib::XClassHint {
+            res_name: class_name.as_ptr().cast_mut(),
+            res_class: class_name.as_ptr().cast_mut(),
+        };
+        (xlib.XSetClassHint)(display, window, &mut class_hint);
+
+        let context = (glx.glXCreateContext)(display, visual_info, ptr::null_mut(), xlib::True);
+        (xlib.XFree)(visual_info.cast::<c_void>());
+        if context.is_null() {
+            (xlib.XDestroyWindow)(display, window);
+            (xlib.XFreeColormap)(display, colormap);
+            (xlib.XCloseDisplay)(display);
+            return Err(Error::from_reason(
+                "Failed to create GLX context for Linux native overlay probe",
+            ));
+        }
+
+        if (glx.glXMakeCurrent)(display, window, context) == 0 {
+            (glx.glXDestroyContext)(display, context);
+            (xlib.XDestroyWindow)(display, window);
+            (xlib.XFreeColormap)(display, colormap);
+            (xlib.XCloseDisplay)(display);
+            return Err(Error::from_reason(
+                "Failed to make Linux native overlay probe GLX context current",
+            ));
+        }
+        load_gl_functions(&glx);
+        gl::Viewport(0, 0, width as c_int, height as c_int);
+
+        (xlib.XSelectInput)(display, window, attributes.event_mask as c_long);
+        (xlib.XMapRaised)(display, window);
+        (xlib.XFlush)(display);
+
+        Ok(NativeSurface {
+            xlib,
+            glx,
+            display,
+            window,
+            colormap,
+            context,
+            frame: 0,
+        })
+    }
+
+    fn load_gl_functions(glx: &glx::Glx) {
+        gl::load_with(|name| {
+            let Ok(symbol) = CString::new(name) else {
+                return ptr::null();
+            };
+            unsafe {
+                (glx.glXGetProcAddress)(symbol.as_ptr().cast())
+                    .map(|function| function as *const () as *const c_void)
+                    .unwrap_or(ptr::null())
+            }
+        });
+    }
+}
+
+#[cfg(target_os = "linux")]
+pub use linux::*;
