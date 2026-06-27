@@ -17,6 +17,9 @@ require_overlay_injection="0"
 require_steam_deck="0"
 require_big_picture="0"
 require_events=()
+self_test_old_home=""
+self_test_previous_result_file=""
+self_test_temp_home=""
 
 usage() {
   cat <<'EOF'
@@ -29,6 +32,7 @@ Modes:
   --mode verify                  Verify an existing smoke result log.
   --mode print-launch-options    Print launch options for a Steam shortcut.
   --mode print-shortcuts         Print matching Steam shortcut IDs.
+  --mode self-test               Test shortcut discovery and result verification.
 
 Options:
   --app-dir PATH                 Directory containing SteamBridgeSmoke.
@@ -128,20 +132,12 @@ while [ "$#" -gt 0 ]; do
 done
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-if [ -z "$app_dir" ]; then
-  if [ -x "$script_dir/SteamBridgeSmoke" ]; then
-    app_dir="$script_dir"
-  else
-    app_dir="$(pwd)/dist/electron-smoke/x86_64-unknown-linux-gnu/SteamBridgeSmoke-linux-x64"
-  fi
-fi
-app_dir="$(cd -- "$app_dir" && pwd)"
 
 if [ -z "$result_file" ]; then
   result_file="${TMPDIR:-/tmp}/steam-bridge-smoke-linux-direct.log"
 fi
 
-smoke_exe="$app_dir/SteamBridgeSmoke"
+smoke_exe=""
 result_prefix="STEAM_BRIDGE_SMOKE_RESULT "
 
 smoke_args() {
@@ -170,10 +166,24 @@ wait_for_result_file() {
 }
 
 ensure_app() {
+  resolve_app_dir
   if [ ! -x "$smoke_exe" ]; then
     echo "Missing executable $smoke_exe" >&2
     exit 1
   fi
+}
+
+resolve_app_dir() {
+  if [ -z "$app_dir" ]; then
+    if [ -x "$script_dir/SteamBridgeSmoke" ]; then
+      app_dir="$script_dir"
+    else
+      app_dir="$(pwd)/dist/electron-smoke/x86_64-unknown-linux-gnu/SteamBridgeSmoke-linux-x64"
+    fi
+  fi
+
+  app_dir="$(cd -- "$app_dir" && pwd)"
+  smoke_exe="$app_dir/SteamBridgeSmoke"
 }
 
 discover_shortcuts() {
@@ -401,7 +411,105 @@ launch_steam_shortcut() {
   verify_result
 }
 
+cleanup_self_test() {
+  if [ -n "$self_test_old_home" ]; then
+    HOME="$self_test_old_home"
+  fi
+  result_file="$self_test_previous_result_file"
+  if [ -n "$self_test_temp_home" ]; then
+    rm -rf "$self_test_temp_home"
+  fi
+}
+
+run_self_test() {
+  local shortcut_file matches resolved
+  self_test_temp_home="$(mktemp -d "${TMPDIR:-/tmp}/steam-bridge-linux-helper.XXXXXX")"
+  self_test_old_home="$HOME"
+  self_test_previous_result_file="$result_file"
+  shortcut_file="$self_test_temp_home/.local/share/Steam/userdata/1686541554/config/shortcuts.vdf"
+
+  trap cleanup_self_test EXIT
+
+  mkdir -p "$(dirname -- "$shortcut_file")"
+  python3 - "$shortcut_file" <<'PY'
+import sys
+
+TYPE_OBJECT = 0
+TYPE_STRING = 1
+TYPE_UINT32 = 2
+TYPE_END = 8
+out = bytearray()
+
+def byte(value):
+    out.append(value)
+
+def cstr(value):
+    out.extend(str(value).encode("utf-8"))
+    out.append(0)
+
+def string(name, value):
+    byte(TYPE_STRING)
+    cstr(name)
+    cstr(value)
+
+def uint32(name, value):
+    byte(TYPE_UINT32)
+    cstr(name)
+    out.extend(int(value).to_bytes(4, "little"))
+
+byte(TYPE_OBJECT)
+cstr("shortcuts")
+byte(TYPE_OBJECT)
+cstr("0")
+uint32("appid", 3855287460)
+string("appname", "Steam Bridge Smoke")
+string("Exe", '"/tmp/SteamBridgeSmoke"')
+string("StartDir", "/tmp/")
+string("LaunchOptions", "--steam-bridge-app-id=480")
+uint32("AllowOverlay", 1)
+byte(TYPE_END)
+byte(TYPE_END)
+byte(TYPE_END)
+
+with open(sys.argv[1], "wb") as handle:
+    handle.write(out)
+PY
+
+  HOME="$self_test_temp_home"
+  export HOME
+  matches="$(discover_shortcuts)"
+  if ! printf '%s\n' "$matches" | grep -q '"gameId": "16558333557412462592"'; then
+    echo "Self-test failed to discover expected Steam shortcut game ID." >&2
+    printf '%s\n' "$matches" >&2
+    exit 1
+  fi
+
+  resolved="$(resolve_shortcut_game_id)"
+  if [ "$resolved" != "16558333557412462592" ]; then
+    echo "Self-test resolved $resolved, expected 16558333557412462592." >&2
+    exit 1
+  fi
+
+  result_file="$self_test_temp_home/steam-bridge-smoke-result.log"
+  cat >"$result_file" <<'EOF'
+STEAM_BRIDGE_SMOKE_RESULT {"ok":true,"action":{"ok":true,"action":"dialog"},"snapshot":{"app":{"appId":480},"process":{"platform":"linux","arch":"x64"},"launch":{"steamLaunch":true,"overlayInjection":true},"steam":{"initialized":true,"running":{"ok":true,"value":true},"appId":{"ok":true,"value":480},"steamDeck":{"ok":true,"value":true},"bigPicture":{"ok":true,"value":true},"overlayEnabled":{"ok":true,"value":true},"overlayNeedsPresent":{"ok":true,"value":false}},"events":[{"type":"overlay:dialog"},{"type":"callback:overlay-activated"}]}}
+EOF
+
+  action="dialog"
+  require_steam_launch="1"
+  require_overlay_ready="1"
+  require_overlay_injection="1"
+  require_steam_deck="1"
+  require_big_picture="1"
+  require_events=("overlay:dialog" "callback:overlay-activated")
+  verify_result
+  echo "Linux Electron smoke helper self-test passed."
+}
+
 case "$mode" in
+  self-test)
+    run_self_test
+    ;;
   print-launch-options)
     printf 'Steam shortcut launch options:\n'
     smoke_args | paste -sd' ' -

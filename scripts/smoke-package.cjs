@@ -19,6 +19,9 @@ try {
   const tarball = packPackage();
   installConsumer(tarball);
   runConsumerChecks();
+  run("bash", [path.join(repoRoot, "scripts", "linux-electron-smoke.sh"), "--mode", "self-test"], {
+    cwd: repoRoot
+  });
 
   console.log("Packed steam-bridge package smoke test passed.");
 } finally {
