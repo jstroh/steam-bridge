@@ -667,7 +667,7 @@ prepare_remote_wrapper() {
   local app_id_q action_q profile_q scrub_child_env_q isolate_child_processes_q window_mode_q result_file_q diagnostic_dir_q action_delay_q result_delay_q keep_open_q require_active_q web_url_q web_modal_q achievement_name_q achievement_current_q achievement_max_q
   local require_overlay_active="0"
 
-  if [ "$action" = "store" ] || [ "$action" = "web" ] || [ "$action" = "presenter-store" ] || [ "$action" = "presenter-web" ]; then
+  if [ "$action" = "store" ] || [ "$action" = "web" ] || [ "$action" = "presenter-store" ] || [ "$action" = "presenter-web" ] || [ "$action" = "presenter-friends" ]; then
     require_overlay_active="1"
   fi
 
@@ -863,9 +863,9 @@ build_steam_launch_args() {
     helper_args+=("--require-overlay-activated")
   elif [ "$action" = "native-probe" ] || [ "$action" = "native-dialog" ] || [ "$action" = "native-store" ] || [ "$action" = "native-web" ]; then
     helper_args+=("--require-event" "overlay:native-session-open")
-  elif [ "$action" = "presenter-dialog" ] || [ "$action" = "presenter-store" ] || [ "$action" = "presenter-web" ]; then
+  elif [ "$action" = "presenter-dialog" ] || [ "$action" = "presenter-store" ] || [ "$action" = "presenter-web" ] || [ "$action" = "presenter-friends" ]; then
     helper_args+=("--require-event" "overlay:presenter-open")
-    if [ "$action" = "presenter-store" ] || [ "$action" = "presenter-web" ]; then
+    if [ "$action" = "presenter-store" ] || [ "$action" = "presenter-web" ] || [ "$action" = "presenter-friends" ]; then
       helper_args+=("--require-overlay-activated")
     fi
   elif [ "$action" = "presenter-achievement-progress" ]; then
@@ -1008,7 +1008,7 @@ run_remote_mode() {
 }
 
 run_self_test() {
-  local game_args desktop_args toast_args direct_check
+  local game_args desktop_args friends_args toast_args direct_check
   mode="game"
   build_steam_launch_args
   game_args="$(quote_args "${helper_args[@]}")"
@@ -1042,6 +1042,18 @@ run_self_test() {
   fi
   if ! grep -Fq 'export SteamOverlayGameId=\"\$APP_ID\"' "$0"; then
     echo "Self-test failed: Steam shortcut wrapper must export SteamOverlayGameId." >&2
+    exit 1
+  fi
+
+  action="presenter-friends"
+  build_steam_launch_args
+  friends_args="$(quote_args "${helper_args[@]}")"
+  if [[ "$friends_args" != *"--require-overlay-activated"* ]]; then
+    echo "Self-test failed: Presenter friends args must require overlay activation." >&2
+    exit 1
+  fi
+  if [[ "$friends_args" != *"--require-event callback:overlay-activated"* ]]; then
+    echo "Self-test failed: Presenter friends args must require the overlay callback." >&2
     exit 1
   fi
 

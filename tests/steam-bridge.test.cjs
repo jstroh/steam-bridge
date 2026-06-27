@@ -4349,11 +4349,32 @@ test("overlay helpers map constants and forward modal/store options", (t) => {
 
   const nativeWindowHandle = Buffer.from([1, 2, 3, 4]);
   const frame = Buffer.alloc(16, 255);
+  const presenterCalls = [];
+  const mockPresenter = {
+    prepareForOverlay() {
+      presenterCalls.push("prepareForOverlay");
+    },
+    prepareForPassiveOverlay() {
+      presenterCalls.push("prepareForPassiveOverlay");
+    },
+    close() {},
+    disconnect() {},
+    pump() {},
+    show() {},
+    hide() {},
+    isOpen() {
+      return true;
+    },
+    snapshot() {
+      return {};
+    }
+  };
 
   steam.overlay.activateDialog(steam.Dialog.Achievements);
   steam.overlay.activateToWebPage("https://store.steampowered.com/app/480/", { modal: true });
   steam.overlay.activateDialogToUser(steam.Dialog.Friends, 76561198000000000n);
   steam.overlay.activateToStore(480, steam.StoreFlag.AddToCart);
+  steam.overlay.openFriendsOverlay({ presenter: mockPresenter });
   steam.openNativeOverlayProbeWindow("Steam Overlay Probe");
   steam.overlay.attachNativeOverlayHostView(nativeWindowHandle);
   steam.overlay.pumpNativeOverlayProbeWindow();
@@ -4376,9 +4397,11 @@ test("overlay helpers map constants and forward modal/store options", (t) => {
       { method: "activateOverlay", args: ["Achievements"] },
       { method: "activateOverlayToWebPage", args: ["https://store.steampowered.com/app/480/", true] },
       { method: "overlayActivateDialogToUser", args: ["Friends", 76561198000000000n] },
-      { method: "overlayActivateToStore", args: [480, steam.StoreFlag.AddToCart] }
+      { method: "overlayActivateToStore", args: [480, steam.StoreFlag.AddToCart] },
+      { method: "activateOverlayToWebPage", args: [steam.STEAM_FRIENDS_OVERLAY_URL, true] }
     ]
   );
+  assert.deepEqual(presenterCalls, ["prepareForOverlay"]);
   assert.deepEqual(
     fake.calls.filter((call) =>
       [

@@ -293,7 +293,7 @@ const session = client.overlay.activateToWebPageWithNativeSession("https://store
 //   480,
 //   client.overlay.StoreFlag.None
 // );
-// Friends/Game Overview is still tracked as a social-overlay investigation path.
+// Prefer client.overlay.openFriendsOverlay(...) for a reusable Friends List path.
 
 // Optional explicit cleanup when the proof surface is no longer needed.
 session.close();
@@ -313,6 +313,8 @@ client.overlay.openWebOverlay("https://store.steampowered.com/app/480/", {
   modal: true,
   presenter
 });
+
+client.overlay.openFriendsOverlay({ presenter });
 
 // During app shutdown:
 presenter.close();
@@ -352,28 +354,33 @@ checkout-style overlays prepare the native host as an interactive overlay target
 With the default child-process isolation, Deck Desktop Mode has verified this
 path with a single `gameoverlayui` process, paired active/inactive callbacks, and
 visual return to the Electron app. Passive achievement-progress toasts also
-render with the presenter transparent and click-through. Friends/Game Overview
-is still an investigation path: allowing Steam to hook Electron children can make
-social UI render, but that duplicate hook can leave stale overlay surfaces after
-close; isolating children fixes product overlays but prevents that social path
-from rendering through Chromium.
+render with the presenter transparent and click-through. For a generic Friends
+List surface, use `client.overlay.openFriendsOverlay({ presenter })`; on Steam
+Deck Desktop Mode this opens Steam Community chat through the same native web
+presenter with one `gameoverlayui` target and a clean close/back-to-app result.
+Raw `ActivateGameOverlay("Friends")`, Game Overview, and overlay hotkey toggling
+remain investigation paths: allowing Steam to hook Electron children can make
+Steam's desktop social UI render, but that duplicate hook can leave stale
+overlay surfaces after close; isolating children fixes product overlays but
+prevents that raw dialog path from rendering through Chromium.
 
 The native presenter currently uses the macOS probe implementation on macOS and
 an X11/GLX probe implementation on Linux. On Steam Deck Desktop Mode, the Linux
 reusable presenter path is the current generic proof path for product overlay
 activation, visual open, close, and back-to-app checks. Use
 `client.overlay.attachPresenter(...)` with `client.overlay.openWebOverlay(...)`
-or the Electron smoke app's `presenter-web` action for that proof. The older
+or `client.overlay.openFriendsOverlay(...)`, or the Electron smoke app's
+`presenter-web` / `presenter-friends` actions for that proof. The older
 `activateToWebPageWithNativeSession(..., { modal: true })` / `native-web` path
-remains compatibility coverage. Steam's Desktop Mode social overlay should not
-be treated as a completed dismissal proof.
+remains compatibility coverage. Steam's raw Desktop Mode dialog/Game Overview
+overlay and hotkey toggle should not be treated as completed dismissal proofs.
 
 For repeatable Deck evidence, the smoke host runner can copy the remote result
 log and diagnostics directory back to the local machine with
 `--collect-diagnostics-dir`, and can capture Deck screenshots with
-`--visual-capture-dir`. Add `--visual-close-probe` only for social-overlay
-investigation; it sends a Deck-side Shift+Tab/Escape probe and records before
-and after screenshots.
+`--visual-capture-dir`. Use `--visual-close-probe` for `presenter-friends`
+close/back-to-app proof and for raw social-overlay investigation; it sends a
+Deck-side Shift+Tab/Escape probe and records before and after screenshots.
 
 Set `STEAM_BRIDGE_ELECTRON_OVERLAY_PROFILE=repaint`, or pass
 `--steam-bridge-electron-overlay-profile=repaint` to the Electron smoke app, to

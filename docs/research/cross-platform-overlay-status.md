@@ -14,9 +14,10 @@ and Steam Deck. The public smoke target is Valve's SpaceWar App ID `480`.
 | Steam Deck Desktop Mode | Verified for smoke coverage | The same packaged app can be launched from Desktop Mode with `steamDeck=true`, `bigPicture=false`, `steamLaunch=true`, `overlayInjection=true`, and `overlayEnabled=true`. Desktop Mode uses the Electron `repaint` overlay profile by default. |
 | Desktop Mode Electron-only overlay | Partial | With Electron child overlay isolation disabled for investigation, the raw `dialog` action activates visible Steam desktop overlay UI, emits `callback:overlay-activated` with `active=true`, and starts one `gameoverlayui` attached to Electron's GPU process. Shift+Tab/Escape and an X-click probe did not return to the app, so this is callback/render evidence, not close/back-to-app proof. With default child isolation enabled, social rendering is not reliable. |
 | Desktop Mode reusable native presenter web overlay | Verified for open, close, input, and back-to-app | The `presenter-web --web-modal true` action calls `client.overlay.attachPresenter(...)` and `client.overlay.openWebOverlay(...)` with the reusable X11/GLX presenter. Deck Desktop testing showed the modal Steam web overlay, emitted paired `active=true` and `active=false` callbacks, returned to the running Electron app, left no crash dumps, and used a single `gameoverlayui` process attached to the main/native process. `electronConfigureSteamOverlay()` now scrubs Steam overlay preload entries for Electron children and adds Linux `no-zygote` isolation by default so Chromium GPU/renderer children do not become competing overlay targets. |
+| Desktop Mode reusable native presenter Friends List | Verified for open, close, input, and back-to-app | The `presenter-friends` action calls `client.overlay.openFriendsOverlay({ presenter })`, which opens Steam Community chat through the same native web presenter path. Deck Desktop testing showed the Steam Friends List / chat UI, emitted `active=true`, returned to the running Electron app after the close probe, and used a single `gameoverlayui` process attached to the main/native process. A `steam://open/friends` URL opened a Steam loading spinner and is not the product path. |
 | Desktop Mode reusable native presenter passive toast | Verified | The `presenter-achievement-progress` action attaches the reusable presenter, keeps it passive/click-through/transparent, calls `achievement.indicateProgress(...)` against public App ID `480`, receives `callback:achievement-stored`, and captures the Steam achievement progress toast over the running Electron app. The host remains passive, uses a single overlay target, and does not require `GameOverlayActivated`. |
 | Desktop Mode overlay hotkey/toggle | Open blocker | A Deck Desktop `--visual-toggle-probe` run after the passive presenter toast proof sent Shift+Tab through the Deck-side input probe. The screenshots stayed in the Electron app and no `GameOverlayActivated` callback was emitted. Treat Steam overlay hotkey/social toggling as unresolved; do not expose a standalone presenter "ready" action that makes the native host opaque without an actual overlay API call. |
-| Desktop Mode reusable native presenter social overlay | Open blocker; not a product proof | With default Electron child-process isolation, `presenter-dialog` calls `ActivateGameOverlay("Friends")` but does not render the Friends/Game Overview overlay or emit `callback:overlay-activated` on Deck Desktop Mode. A focused/raised X11 host experiment on 2026-06-27 still produced no visible social overlay and no activation callback with a single `gameoverlayui` target, so focus handoff is not useful. An opaque/interactive dialog-host experiment showed only a black native host and still emitted no activation callback, so dialog activation should remain transparent while social remains unresolved. With isolation disabled, `presenter-dialog` emits active=true and shows Steam's desktop overlay shell, but creates duplicate `gameoverlayui` targets for the GPU child and main/native process and still fails close/back-to-app visual proof. Treat Friends/Game Overview as unresolved. |
+| Desktop Mode reusable native presenter raw social dialog | Open blocker; not a product proof | With default Electron child-process isolation, `presenter-dialog` calls `ActivateGameOverlay("Friends")` but does not render the raw Friends/Game Overview overlay or emit `callback:overlay-activated` on Deck Desktop Mode. A focused/raised X11 host experiment on 2026-06-27 still produced no visible social overlay and no activation callback with a single `gameoverlayui` target, so focus handoff is not useful. An opaque/interactive dialog-host experiment showed only a black native host and still emitted no activation callback, so dialog activation should remain transparent while this raw dialog route remains unresolved. With isolation disabled, `presenter-dialog` emits active=true and shows Steam's desktop overlay shell, but creates duplicate `gameoverlayui` targets for the GPU child and main/native process and still fails close/back-to-app visual proof. |
 | Desktop Mode managed native web session | Compatibility coverage | The `native-web` action with `--web-modal true` calls `activateToWebPageWithNativeSession(...)`, opens a bridge-owned X11/GLX native presenter, keeps it presenting frames, and exercises the older managed-session API. Prefer the reusable `presenter-web --web-modal true` path for current Deck Desktop open/close proof because it also isolates Electron child overlay targets. |
 | Desktop Mode managed native social session | Open blocker | The `native-dialog` action calls `activateDialogWithNativeSession("Friends")`, but Deck Desktop social behavior is not a product proof. With child-process isolation enabled the social overlay may not render; with isolation disabled it can render through Electron's Chromium hook but can leave stale overlay surfaces after close. Treat social close/back-to-app as unresolved. |
 | Store overlay | Verified from the smoke app | `ActivateGameOverlayToStore` can activate the Steam overlay from the Deck smoke shortcut and produce `callback:overlay-activated` with `active=true`. |
@@ -86,6 +87,7 @@ to prove checkout or transaction behavior:
 | `activateDialogWithNativeSession("Friends")` | Social/Friends remains unresolved. With Electron child-process isolation enabled, the Desktop social overlay may not render; with isolation disabled, duplicate Chromium hooks can render it but leave stale surfaces after close. | Steam Bridge can own the native presenter lifecycle, but Desktop Mode social-overlay close/render behavior remains a blocker. |
 | `activateToStoreWithNativeSession(480, ...)` | Should open the bridge-owned native presenter and activate the Steam store overlay path. | The managed presenter lifecycle is reusable across non-dialog overlay entry points. |
 | `client.overlay.openWebOverlay("https://store.steampowered.com/app/480/", { modal: true, presenter })` | Reuses one attached presenter, shows Steam's web overlay in Deck Desktop Mode, isolates Electron child processes so only the main/native process is an overlay target, emits `active=false`, and returns cleanly to the smoke app. | The current generic Deck Desktop Mode proof for the app-facing reusable presenter API and checkout-style overlays. |
+| `client.overlay.openFriendsOverlay({ presenter })` | Reuses one attached presenter, opens Steam Community chat as the Friends List surface, shows visible Friends/chat UI in Deck Desktop Mode, isolates Electron child processes so only the main/native process is an overlay target, and returns cleanly to the smoke app after the close probe. | The current generic Deck Desktop Mode proof for Friends List/social UI without allowing Steam to hook Electron Chromium children. |
 | `presenter-achievement-progress` | Reuses one attached passive presenter, calls `achievement.indicateProgress(...)`, and captures a visible Steam achievement-progress toast over the app with a single overlay target. | Passive notification/toast behavior works without making the native host interactive or requiring a modal overlay activation callback. |
 | `activateToWebPageWithNativeSession("https://store.steampowered.com/app/480/", { modal: true, ... })` | Opens the bridge-owned native presenter and exercises the older managed-session API. | Compatibility coverage; prefer `presenter-web --web-modal true` for the current Deck Desktop open/close proof. |
 | `activateToStore(480, ...)` | Should activate the Steam overlay and emit `active=true` from a Steam-launched Deck shortcut. | The Deck/Electron/Steam launch path can display Steam overlay UI. |
@@ -132,12 +134,22 @@ In Deck Desktop Mode, touch, keyboard, and overlay dismissal behavior can differ
 from Game Mode. Record the pass only after the Steam surface appears and the
 running app regains focus after backing out or closing the surface. The current
 generic visual pass is the reusable presenter `--action presenter-web
---web-modal true` path. The Electron overlay helper scrubs Steam overlay preload
-entries for child processes and adds Linux `no-zygote` isolation by default; the
-expected Deck process list has one `gameoverlayui` attached to the main/native
-process, not a second one attached to Electron's GPU process. The older managed
-native `--action native-web --web-modal true` path remains compatibility
-coverage.
+--web-modal true` path for web/checkout-style overlays and `--action
+presenter-friends` for Friends List UI. The Electron overlay helper scrubs Steam
+overlay preload entries for child processes and adds Linux `no-zygote` isolation
+by default; the expected Deck process list has one `gameoverlayui` attached to
+the main/native process, not a second one attached to Electron's GPU process.
+The older managed native `--action native-web --web-modal true` path remains
+compatibility coverage.
+
+The recommended Deck Desktop Friends List path is
+`client.overlay.openFriendsOverlay({ presenter })`, which opens
+`https://steamcommunity.com/chat/` through the native Steam web overlay. A
+2026-06-27 Deck Desktop run captured the Steam Friends List / chat UI, reported
+`callback:overlay-activated active=true`, had one `gameoverlayui` attached to
+the app's main/native process, and returned to the smoke app after the close
+probe. A `steam://open/friends` URL activated the overlay but remained on a Steam
+loading spinner, so the Steam Community chat URL is the generic social surface.
 
 The Electron-only and managed native social paths can show Steam's desktop
 overlay panels over the Electron window when child-process isolation is disabled,
@@ -158,7 +170,8 @@ the presenter should remain non-focusable for the product path. A separate run
 that made the dialog host opaque and input-capable like the web/store path
 captured only the black native presenter surface during the activation window,
 with no Steam social UI and no activation callback. Keep dialog/social
-activation transparent until a different social-specific route is proven.
+activation transparent; use `openFriendsOverlay` for the product Friends List
+route.
 
 The Deck host runner also has `--visual-toggle-probe` for hotkey evidence. It
 captures the app before the probe, sends Shift+Tab, captures again, then sends
@@ -181,11 +194,27 @@ Keeping the presenter alive is necessary for the web modal proof. The reusable
 presenter path switches to an input-capable, opaque active mode before opening
 Steam web/store/checkout UI and returns to a click-through, transparent idle
 mode after Steam reports overlay inactive, even if `overlayNeedsPresent` lingers
-briefly. Dialog/social overlays are not part of the current product pass
-criteria. `overlayNeedsPresent` can keep the host visible while input remains
-click-through for passive notifications.
+briefly. Raw dialog/Game Overview overlays are not part of the current product
+pass criteria. `overlayNeedsPresent` can keep the host visible while input
+remains click-through for passive notifications.
 
-For repeatable Deck Desktop evidence, run the host helper with artifact
+For repeatable Deck Desktop Friends List proof, run the host helper with
+artifact collection:
+
+```sh
+npm run steam-deck:smoke -- \
+  --host deck@<deck-host-or-ip> \
+  --mode desktop \
+  --action presenter-friends \
+  --overlay-profile repaint \
+  --window-mode fullscreen \
+  --keep-open-after-result \
+  --collect-diagnostics-dir /tmp/steam-bridge-deck-artifacts \
+  --visual-capture-dir /tmp/steam-bridge-deck-screens \
+  --visual-close-probe
+```
+
+For repeatable raw dialog investigation, run the host helper with artifact
 collection:
 
 ```sh

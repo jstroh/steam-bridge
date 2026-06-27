@@ -87,18 +87,19 @@ for Steam non-Steam shortcuts:
 
 Supported autorun actions are `none`, `dialog`, `friends`, `store`, `web`,
 `native-dialog`, `native-store`, `native-web`, `native-probe`,
-`presenter-dialog`, `presenter-store`, `presenter-web`, and
+`presenter-dialog`, `presenter-store`, `presenter-web`, `presenter-friends`, and
 `presenter-achievement-progress`.
 `native-probe` is a compatibility alias for `native-dialog`. On Linux, the
 `native-*` actions open a bridge-owned X11/GLX native presenter, keep it
 presenting frames, and activate the requested Steam overlay target through the
 managed Steam Bridge session API. The current Deck Desktop Mode open, input,
 close, and back-to-app proof is the reusable `presenter-web --web-modal true`
-path below; `native-web` remains compatibility coverage. Current Deck Desktop
-testing still leaves Steam's social overlay visually stuck when Electron child
-overlay targets are allowed, so neither the native nor Electron-only
-`dialog`/`friends` actions prove reliable Desktop Mode social-overlay dismissal
-yet.
+path below; `native-web` remains compatibility coverage. Use
+`presenter-friends` for the generic Friends List proof. Current Deck Desktop
+testing still leaves Steam's raw desktop dialog/Game Overview visually stuck
+when Electron child overlay targets are allowed, so neither the native nor
+Electron-only `dialog`/`friends` actions prove reliable Desktop Mode
+dialog-overlay dismissal yet.
 
 The `presenter-*` actions use `client.overlay.attachPresenter(...)` and reuse the
 same passive, click-through presenter for the requested overlay target. Use
@@ -112,6 +113,10 @@ helper isolates Chromium children by default so Deck Desktop proof runs have one
 overlay target. `presenter-dialog` is an investigation action: with child-process
 isolation enabled, Friends/Game Overview may not render; with isolation disabled,
 it may render through the Chromium hook but still fail close/back-to-app proof.
+Use `presenter-friends` to verify the recommended Friends List path:
+`client.overlay.openFriendsOverlay({ presenter })` opens Steam Community chat
+through the same native web presenter used by checkout/store overlays, keeping a
+single `gameoverlayui` target attached to the main/native process.
 Use
 `presenter-achievement-progress` to verify passive Steam notification rendering:
 the action keeps the presenter transparent and click-through, calls
@@ -216,13 +221,33 @@ to the running app with no black native presenter covering it. The Deck process
 list should show one `gameoverlayui` process for the app, attached to the
 main/native process.
 
-For social-overlay investigation, add `--visual-close-probe` to the same Deck
-Desktop command. The runner captures `overlay-open.png`, sends a Deck-side
-Shift+Tab/Escape probe through `/dev/uinput` when available, captures
-`after-close-probe.png`, and copies the remote result log plus diagnostics back
-to the local artifact directory. Treat this as evidence collection, not a pass
-condition: Friends/Game Overview is only passed once the captured pixels return
-cleanly to the running app.
+For the generic Friends List path, use:
+
+```sh
+npm run steam-deck:smoke -- \
+  --host deck@<deck-host-or-ip> \
+  --mode desktop \
+  --action presenter-friends \
+  --window-mode fullscreen \
+  --keep-open-after-result \
+  --collect-diagnostics-dir /tmp/steam-bridge-deck-artifacts \
+  --visual-capture-dir /tmp/steam-bridge-deck-screens \
+  --visual-close-probe
+```
+
+A passing `overlay-open.png` shows the Steam Friends List / chat UI in the
+native Steam overlay, and `after-close-probe.png` returns to the running smoke
+app. The process list should still show one `gameoverlayui` target attached to
+the main/native process.
+
+For raw dialog/Game Overview investigation, use `presenter-dialog` or
+`dialog`/`friends` with `--visual-close-probe`. The runner captures
+`overlay-open.png`, sends a Deck-side Shift+Tab/Escape probe through
+`/dev/uinput` when available, captures `after-close-probe.png`, and copies the
+remote result log plus diagnostics back to the local artifact directory. Treat
+that raw dialog path as evidence collection, not a pass condition: raw
+Friends/Game Overview is only passed once the captured pixels return cleanly to
+the running app without duplicate `gameoverlayui` targets.
 
 Use `--visual-toggle-probe` when the question is whether the Steam overlay
 hotkey opens from the current app state. It captures `before-toggle-probe.png`,
@@ -311,15 +336,16 @@ Desktop Mode visual proof for the Electron-only social actions looks like
 Steam's desktop overlay panels over the Electron window, such as Game
 Overview/Friends and a "Back to Game" control. Those panels can remain visually
 stuck after Steam has already emitted `active=false`, so do not record Desktop
-Mode social-overlay close/back-to-app as passed until the pixels return cleanly
-to the running app. With the default child-process isolation, those panels may
+Mode raw dialog-overlay close/back-to-app as passed until the pixels return
+cleanly to the running app. With the default child-process isolation, those panels may
 not render because Steam is prevented from hooking Electron's Chromium GPU
-process. The current reusable-presenter close proof is
-`--action presenter-web` with `--web-modal true`, which calls
-`client.overlay.openWebOverlay(...)`, shows Steam's web overlay over the
-bridge-owned native presenter, emits `active=false`, and returns to the smoke
-app. The older `--action native-web` path remains as compatibility coverage for
-`activateToWebPageWithNativeSession(...)`.
+process. The current reusable-presenter close proofs are `--action presenter-web`
+with `--web-modal true` for generic web/checkout-style overlays and
+`--action presenter-friends` for the Friends List surface. These call
+`client.overlay.openWebOverlay(...)` / `client.overlay.openFriendsOverlay(...)`,
+show Steam web overlay UI over the bridge-owned native presenter, and return to
+the smoke app. The older `--action native-web` path remains as compatibility
+coverage for `activateToWebPageWithNativeSession(...)`.
 
 For longer SSH-driven checks, keep the Deck awake from SteamOS/Desktop Mode
 power settings. Over SSH, `systemd-inhibit --what=sleep sleep infinity` can keep

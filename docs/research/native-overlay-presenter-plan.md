@@ -48,10 +48,16 @@ timing hacks.
   transparent and click-through, Steam emits `UserAchievementStored`, and the
   achievement-progress toast renders over the Electron app without a modal
   `GameOverlayActivated` callback.
-- Deck Desktop social overlays remain separate from the current product proof.
-  With Electron child-process isolation enabled, Friends/Game Overview may not
-  render; with isolation disabled, Steam can hook Chromium children and render
-  social UI but may leave stale overlay surfaces after close.
+- Deck Desktop Friends List now has a product-shaped route:
+  `openFriendsOverlay({ presenter })` opens Steam Community chat through the
+  same native web presenter used by checkout/store overlays. Deck Desktop
+  testing captured visible Friends/chat UI, used one `gameoverlayui` target
+  attached to the app's main/native process, and returned cleanly to the app
+  after the close probe.
+- Raw Deck Desktop social dialogs remain separate from the product proof. With
+  Electron child-process isolation enabled, `ActivateGameOverlay("Friends")` /
+  Game Overview may not render; with isolation disabled, Steam can hook Chromium
+  children and render social UI but may leave stale overlay surfaces after close.
 - Steam Bridge's macOS evidence is weaker: Steam launch and native probe coverage
   exist, and a Metal host path exists, but completed product overlay behavior on
   macOS is not proven yet.
@@ -107,8 +113,9 @@ The presenter should:
 - reuse the same surface for checkout, store, web, and passive Steam
   notifications;
 - route overlay targets by behavior: interactive native host for web, store, and
-  checkout; passive host pumping for notifications; social/dialog panels remain
-  a separate investigation path;
+  checkout; Friends List through a Steam web overlay surface; passive host
+  pumping for notifications; raw social/dialog panels remain a separate
+  investigation path;
 - expose diagnostics so app code and tests can tell whether the presenter is
   attached, visible, passive, active, pumping, and recently touched by overlay
   callbacks.
@@ -164,6 +171,13 @@ Current evidence:
 - Deck Desktop Mode can show a passive achievement-progress toast over the
   Electron smoke app through the reusable presenter path while the native host
   remains click-through and transparent, also with a single overlay target.
+- Deck Desktop Mode can show the Steam Friends List / chat UI through
+  `openFriendsOverlay({ presenter })`, which opens Steam Community chat through
+  the reusable native web presenter, preserves Electron child-process isolation,
+  uses one `gameoverlayui` target attached to the app's main/native process, and
+  returns to the smoke app after the close probe. A `steam://open/friends` URI
+  activated the overlay but remained on a Steam loading spinner, so it is not
+  the product path.
 - The same path is good enough for checkout-style proof when launched under a
   real installed Steam app with a configured product or transaction.
 - Deck Desktop Mode does not yet have a passing Shift+Tab/hotkey proof. The
@@ -181,8 +195,8 @@ Current evidence:
   duplicate `gameoverlayui` targets for the GPU child and main/native process and
   still fails close/back-to-app proof. A focused/raised X11 host experiment did
   not make `ActivateGameOverlay("Friends")` render or emit an activation
-  callback, so do not promote host focus handoff into the presenter API as a
-  social-overlay fix. Making the dialog host opaque/input-capable like the
+  callback, so do not promote host focus handoff into the presenter API as a raw
+  social-dialog fix. Making the dialog host opaque/input-capable like the
   web/store path only exposes a black presenter surface and still does not
   activate Steam social UI, so opacity handoff is also not a social-overlay fix.
 
@@ -233,6 +247,8 @@ Pass criteria:
 - Presenter attached and passive without stealing focus.
 - App receives pointer/keyboard/controller input while presenter is passive.
 - Achievement or notification toast appears and disappears.
+- Friends List opens through `openFriendsOverlay`, accepts input, closes, and
+  returns to the app without duplicate Electron child overlay targets.
 - Modal web/checkout overlay opens, accepts input, closes, emits active then
   inactive callbacks, and returns to the app.
 - No crash dumps from Electron or the native binding.

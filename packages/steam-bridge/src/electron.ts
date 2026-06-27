@@ -18,6 +18,8 @@ export interface ElectronSteamOverlayConfigResult {
   profile: ElectronSteamOverlayProfile;
   switches: string[];
   repaintIntervalMs: number;
+  scrubSteamOverlayChildProcessEnv: boolean;
+  isolateSteamOverlayChildProcesses: boolean;
   scrubbedEnvKeys: string[];
 }
 
@@ -88,7 +90,14 @@ export function electronConfigureSteamOverlay(
   const profile = options.profile ?? "diagnostic";
   if (profile === "off") {
     electronDisableSteamOverlayRepaintLoop();
-    return { profile, switches: [], repaintIntervalMs: 0, scrubbedEnvKeys: [] };
+    return {
+      profile,
+      switches: [],
+      repaintIntervalMs: 0,
+      scrubSteamOverlayChildProcessEnv: false,
+      isolateSteamOverlayChildProcesses: false,
+      scrubbedEnvKeys: []
+    };
   }
 
   const compatibilityMode = profile === "compatibility";
@@ -149,7 +158,14 @@ export function electronConfigureSteamOverlay(
     repaintTimer.unref?.();
   }
 
-  return { profile, switches, repaintIntervalMs, scrubbedEnvKeys };
+  return {
+    profile,
+    switches,
+    repaintIntervalMs,
+    scrubSteamOverlayChildProcessEnv,
+    isolateSteamOverlayChildProcesses,
+    scrubbedEnvKeys
+  };
 }
 
 export function electronDisableSteamOverlayRepaintLoop(): void {

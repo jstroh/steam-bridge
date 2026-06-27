@@ -1667,6 +1667,8 @@ type NativeOverlayPresenterInternal = NativeOverlayPresenter & {
   prepareForTransparentInputOverlay?: (durationMs?: number) => void;
 };
 
+export const STEAM_FRIENDS_OVERLAY_URL = "https://steamcommunity.com/chat/";
+
 export interface HtmlCreateBrowserOptions {
   userAgent?: string;
   userCss?: string;
@@ -7289,6 +7291,14 @@ export function openWebOverlay(url: string, options: NativeOverlayWebPagePresent
   );
 }
 
+export function openFriendsOverlay(options: NativeOverlayWebPagePresenterOptions = {}): NativeOverlayPresenter {
+  const { modal = true, ...presenterOptions } = options;
+  return openWebOverlay(STEAM_FRIENDS_OVERLAY_URL, {
+    ...presenterOptions,
+    modal
+  });
+}
+
 export function openStoreOverlay(
   appId: number,
   flag: number,
@@ -11563,6 +11573,7 @@ export const overlay = {
   attachPresenter: attachOverlayPresenter,
   openDialogOverlay,
   openWebOverlay,
+  openFriendsOverlay,
   openStoreOverlay,
   startNativeOverlaySession,
   activateDialogWithNativeSession,
@@ -19280,6 +19291,7 @@ const defaultExport = {
   attachOverlayPresenter,
   openDialogOverlay,
   openWebOverlay,
+  openFriendsOverlay,
   openStoreOverlay,
   startNativeOverlaySession,
   activateDialogWithNativeSession,
@@ -19348,6 +19360,7 @@ const defaultExport = {
   electronNativeOverlaySessionOptions,
   electronOverlayPresenterOptions,
   electronScrubSteamOverlayChildProcessEnv,
+  STEAM_FRIENDS_OVERLAY_URL,
   SteamCallback,
   SteamworksEnums,
   GameCoordinatorResult

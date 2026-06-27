@@ -145,6 +145,7 @@ ipcMain.handle("steam-smoke:overlay-store", () => openStoreOverlay());
 ipcMain.handle("steam-smoke:overlay-web", () => openWebOverlay());
 ipcMain.handle("steam-smoke:overlay-dialog", () => openDialogOverlay());
 ipcMain.handle("steam-smoke:presenter-web", () => openPresenterWebOverlay());
+ipcMain.handle("steam-smoke:presenter-friends", () => openPresenterFriendsOverlay());
 ipcMain.handle("steam-smoke:presenter-achievement-progress", () => openPresenterAchievementProgress());
 ipcMain.handle("steam-smoke:native-probe-open", () => openNativeProbe());
 ipcMain.handle("steam-smoke:native-probe-pump", () => pumpNativeProbe());
@@ -367,6 +368,9 @@ function runAutorunAction(action) {
       case "presenter-web":
         openPresenterWebOverlay();
         return { ok: true, action };
+      case "presenter-friends":
+        openPresenterFriendsOverlay();
+        return { ok: true, action };
       case "presenter-achievement-progress":
         openPresenterAchievementProgress();
         return { ok: true, action };
@@ -493,6 +497,19 @@ function openPresenterWebOverlay() {
     target: "web",
     url: WEB_URL,
     modal: WEB_MODAL,
+    presenter: presenter.snapshot()
+  });
+  return snapshot();
+}
+
+function openPresenterFriendsOverlay() {
+  const activeClient = requireClient();
+  const presenter = ensureNativeOverlayPresenter(activeClient);
+  activeClient.overlay.openFriendsOverlay({ presenter });
+  recordEvent("overlay:presenter-open", {
+    target: "friends",
+    url: steamworks.STEAM_FRIENDS_OVERLAY_URL,
+    modal: true,
     presenter: presenter.snapshot()
   });
   return snapshot();
@@ -640,8 +657,8 @@ function snapshot() {
       appName: "Steam Bridge Electron Smoke",
       authIdentity: AUTH_IDENTITY,
       overlayProfile: OVERLAY_PROFILE,
-      overlayScrubChildEnv: OVERLAY_SCRUB_CHILD_ENV,
-      overlayIsolateChildProcesses: OVERLAY_ISOLATE_CHILD_PROCESSES,
+      overlayScrubChildEnv: OVERLAY_CONFIG.scrubSteamOverlayChildProcessEnv,
+      overlayIsolateChildProcesses: OVERLAY_CONFIG.isolateSteamOverlayChildProcesses,
       overlayConfig: OVERLAY_CONFIG,
       windowMode: WINDOW_MODE,
       autorun: AUTORUN,

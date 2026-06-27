@@ -85,8 +85,10 @@ assert.equal(typeof steam.overlay.activateToWebPageWithNativeSession, "function"
 assert.equal(typeof steam.overlay.activateToStoreWithNativeSession, "function");
 assert.equal(typeof steam.overlay.attachPresenter, "function");
 assert.equal(typeof steam.overlay.openWebOverlay, "function");
+assert.equal(typeof steam.overlay.openFriendsOverlay, "function");
 assert.equal(typeof steam.overlay.setNativeOverlayHostInputPassthrough, "function");
 assert.equal(typeof steam.overlay.setNativeOverlayHostOpacity, "function");
+assert.equal(steam.STEAM_FRIENDS_OVERLAY_URL, "https://steamcommunity.com/chat/");
 assert.equal(typeof steam.electronNativeOverlaySessionOptions, "function");
 assert.equal(typeof steam.electronOverlayPresenterOptions, "function");
 assert.equal(typeof steam.electronScrubSteamOverlayChildProcessEnv, "function");
@@ -114,6 +116,7 @@ assert.equal(typeof overlay.activateToWebPageWithNativeSession, "function");
 assert.equal(typeof overlay.activateToStoreWithNativeSession, "function");
 assert.equal(typeof overlay.attachPresenter, "function");
 assert.equal(typeof overlay.openWebOverlay, "function");
+assert.equal(typeof overlay.openFriendsOverlay, "function");
 assert.equal(typeof overlay.setNativeOverlayHostInputPassthrough, "function");
 assert.equal(typeof overlay.setNativeOverlayHostOpacity, "function");
 assert.equal(typeof steam.electronNativeOverlaySessionOptions, "function");
@@ -155,6 +158,7 @@ assert.equal(electron.electronConfigureSteamOverlay({ profile: "off" }).profile,
 import steam, {
   createSteamWebApiClient,
   overlay,
+  STEAM_FRIENDS_OVERLAY_URL,
   SteamworksEnums,
   type SteamId
 } from "steam-bridge";
@@ -172,8 +176,10 @@ const webSessionFn = overlay.activateToWebPageWithNativeSession;
 const storeSessionFn = overlay.activateToStoreWithNativeSession;
 const presenterFn = overlay.attachPresenter;
 const presenterWebFn = overlay.openWebOverlay;
+const presenterFriendsFn = overlay.openFriendsOverlay;
 const inputPassthroughFn: (passThrough: boolean) => void = overlay.setNativeOverlayHostInputPassthrough;
 const opacityFn: (opaque: boolean) => void = overlay.setNativeOverlayHostOpacity;
+const friendsOverlayUrl: string = STEAM_FRIENDS_OVERLAY_URL;
 const config = electronConfigureSteamOverlay({ profile: "off" });
 const scrubbedKeys: string[] = electronScrubSteamOverlayChildProcessEnv({});
 const electronOptions = electronNativeOverlaySessionOptions({
@@ -205,8 +211,10 @@ void webSessionFn;
 void storeSessionFn;
 void presenterFn;
 void presenterWebFn;
+void presenterFriendsFn;
 void inputPassthroughFn;
 void opacityFn;
+void friendsOverlayUrl;
 void config;
 void electronOptions;
 void presenterOptions;

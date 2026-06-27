@@ -134,7 +134,8 @@ const txn = await steamworks.webApi.microTxnSandbox.initTxn({
 The package also includes overlay diagnostics through
 `client.utils.getOverlayDiagnostics()`, bridge-owned native overlay presenter
 helpers such as `client.overlay.attachPresenter()` and
-`client.overlay.openWebOverlay()`, and compatibility session helpers such as
+`client.overlay.openWebOverlay()` / `client.overlay.openFriendsOverlay()`, and
+compatibility session helpers such as
 `client.overlay.activateDialogWithNativeSession()`,
 `client.overlay.activateToStoreWithNativeSession()`, and
 `client.overlay.activateToWebPageWithNativeSession()`. Electron helpers include
@@ -159,6 +160,8 @@ client.overlay.openWebOverlay(checkoutUrl, {
   modal: true,
   presenter
 });
+
+client.overlay.openFriendsOverlay({ presenter });
 ```
 
 The presenter stays passive and click-through while idle, polls Steam overlay
@@ -168,11 +171,14 @@ transparent and click-through; `overlayNeedsPresent` can make it visible while
 leaving input click-through for passive notifications; opening or active overlay
 mode restores both opacity and input so Steam web or checkout UI can receive
 clicks, then parks the host transparent after Steam reports the overlay
-inactive. Friends/Game Overview is still an investigation path: allowing Steam to
-hook Electron's Chromium children can make social UI render, but that duplicate
-hook can leave stale overlay surfaces after close; the default child-process
-isolation keeps product overlays reliable and prevents that social path from
-rendering through Chromium.
+inactive. Use `client.overlay.openFriendsOverlay({ presenter })` for a generic
+Friends List surface; it opens Steam Community chat through the same native web
+presenter path, keeping Electron child-process isolation intact. The lower-level
+`activateDialog("Friends")` / Game Overview path is still an investigation path:
+allowing Steam to hook Electron's Chromium children can make Steam's desktop
+social UI render, but that duplicate hook can leave stale overlay surfaces after
+close; the default child-process isolation keeps product overlays reliable and
+prevents that raw dialog path from rendering through Chromium.
 
 For Linux Electron apps, use
 `electronConfigureSteamOverlay({ profile: "repaint" })` when the Steam overlay
@@ -184,16 +190,19 @@ Chromium's GPU work in-process.
 On Steam Deck Desktop Mode, the Linux X11/GLX reusable presenter path is the
 current generic proof path for product overlay activation, visual open, close,
 and back-to-app checks. Use `client.overlay.attachPresenter(...)` with
-`client.overlay.openWebOverlay(...)` or the Electron smoke app's `presenter-web`
-action for the generic proof. Deck testing has verified a single Steam overlay
-target, `active=true` and `active=false` overlay callbacks, overlay close input,
-and clean return to the running app. The smoke app's
+`client.overlay.openWebOverlay(...)`, `client.overlay.openFriendsOverlay(...)`,
+or the Electron smoke app's `presenter-web` / `presenter-friends` actions for
+the generic proof. Deck testing has verified a single Steam overlay target,
+`active=true` overlay callbacks, overlay close input, and clean return to the
+running app for the Friends List web surface; the web checkout/store proof also
+captures `active=false` after closing the modal overlay. The smoke app's
 `presenter-achievement-progress` action verifies passive Steam notification
 behavior by keeping the presenter click-through and transparent while Steam
 displays an achievement-progress toast. The older
 `activateToWebPageWithNativeSession(..., { modal: true })` and `native-web` path
-remains compatibility coverage. Treat Friends/Game Overview dismissal as an open
-social-overlay blocker, not a completed cross-platform guarantee. Call
+remains compatibility coverage. Treat raw Friends/Game Overview dialog dismissal
+and Steam overlay hotkey toggling as open social-overlay blockers, not completed
+cross-platform guarantees. Call
 `session.close()` during app cleanup or when you are finished with the proof
 surface.
 
