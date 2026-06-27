@@ -14,7 +14,7 @@ and Steam Deck. The public smoke target is Valve's SpaceWar App ID `480`.
 | Steam Deck Desktop Mode | Verified for smoke coverage | The same packaged app can be launched from Desktop Mode with `steamDeck=true`, `bigPicture=false`, `steamLaunch=true`, `overlayInjection=true`, and `overlayEnabled=true`. Desktop Mode uses the Electron `repaint` overlay profile by default. |
 | Desktop Mode Electron-only overlay | Partial | The Electron-only `friends` action can activate visible Steam overlay UI and emit `callback:overlay-activated` with `active=true`, but Shift+Tab, overlay X, and Back to Game did not reliably dismiss the overlay while the app stayed open. Treat it as callback/render evidence, not full input proof. |
 | Desktop Mode reusable native presenter web overlay | Verified for open, close, input, and back-to-app | The `presenter-web` action calls `client.overlay.attachPresenter(...)` and `client.overlay.openWebOverlay(...)` with the reusable X11/GLX presenter. Deck Desktop testing showed the modal Steam web overlay, accepted the in-overlay close click, emitted paired `active=true` and `active=false` callbacks, returned to the running Electron app, left no crash dumps, and passed `ldd -r` with the bundled Steam libraries. Fully idle mode is click-through and transparent; `overlayNeedsPresent` can be visible while click-through; active overlay mode restores host input and opacity for Steam UI. |
-| Desktop Mode reusable native presenter social overlay | Partial; target-aware host behavior added | `presenter-dialog` now keeps the native host transparent and click-through while calling `ActivateGameOverlay("Friends")`, because Deck Desktop testing showed an interactive native host can cover Steam's social overlay with a black GLX surface. This preserves visible Game Overview/Friends rendering through Steam's social overlay path, but close/back-to-app remains unresolved when tested through synthetic X11 input. |
+| Desktop Mode reusable native presenter social overlay | Partial; target-aware host behavior added | `presenter-dialog` now keeps the native host transparent and click-through while calling `ActivateGameOverlay("Friends")`, because Deck Desktop testing showed an interactive native host can cover Steam's social overlay with a black GLX surface. This preserves visible Game Overview/Friends rendering through Steam's social overlay path. Deck-side `/dev/uinput` Shift+Tab/Escape can affect the Steam overlay shell, but close/back-to-app still did not return cleanly to the app, so social dismissal remains unresolved. |
 | Desktop Mode managed native web session | Verified for open and close/back-to-app | The `native-web` action with `--web-modal true` calls `activateToWebPageWithNativeSession(...)`, opens a bridge-owned X11/GLX native presenter, keeps it presenting frames, shows Steam's web overlay over the presenter, emits `callback:overlay-activated` with `active=true`, and returns cleanly to the smoke app with `active=false` after the overlay close control is clicked. |
 | Desktop Mode managed native social session | Partial; social dismissal blocked | The `native-dialog` action calls `activateDialogWithNativeSession("Friends")`, opens the same bridge-owned presenter, activates the Friends overlay, and emits `active=true` and later `active=false` while the smoke app stays alive. Current Deck Desktop testing can still leave Steam's social overlay renderer or Steam client panels visually stuck after deactivation, even when the native surface is kept alive, hidden after delay, lowered, or Electron child overlay preload is stripped. Treat social close/back-to-app as unresolved. |
 | Store overlay | Verified from the smoke app | `ActivateGameOverlayToStore` can activate the Steam overlay from the Deck smoke shortcut and produce `callback:overlay-activated` with `active=true`. |
@@ -157,6 +157,28 @@ covering Steam's social overlay panel. `overlayNeedsPresent` can keep the host
 visible while input remains click-through for passive notifications. This is
 sufficient for the web modal close proof, but it is not sufficient to prove
 clean social-overlay dismissal.
+
+For repeatable Deck Desktop evidence, run the host helper with artifact
+collection:
+
+```sh
+npm run steam-deck:smoke -- \
+  --host deck@<deck-host-or-ip> \
+  --mode desktop \
+  --action presenter-dialog \
+  --overlay-profile repaint \
+  --window-mode fullscreen \
+  --keep-open-after-result \
+  --collect-diagnostics-dir /tmp/steam-bridge-deck-artifacts \
+  --visual-capture-dir /tmp/steam-bridge-deck-screens \
+  --visual-close-probe
+```
+
+The helper copies the remote result log and diagnostics directory locally,
+captures `overlay-open.png`, sends a Deck-side Shift+Tab/Escape close probe, and
+captures `after-close-probe.png`. These screenshots are evidence for the current
+social-overlay investigation; they are not a passing assertion unless the second
+capture visibly returns to the running app.
 
 ## Purchase Overlay Checklist
 

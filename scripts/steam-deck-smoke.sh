@@ -28,6 +28,9 @@ copy_app="1"
 keep_awake="1"
 inhibit_seconds="900"
 remote_inhibit_pid_file="/tmp/steam-bridge-smoke-inhibit.pid"
+collect_diagnostics_dir=""
+visual_capture_dir=""
+visual_close_probe="0"
 
 usage() {
   cat <<'EOF'
@@ -68,6 +71,11 @@ Options:
   --scan-timeout SECONDS        SSH port scan timeout. Defaults to 1.
   --no-keep-awake               Do not start a temporary systemd sleep inhibitor.
   --inhibit-seconds SECONDS     Sleep inhibitor duration. Defaults to 900.
+  --collect-diagnostics-dir PATH
+                                Copy the remote result log and diagnostics dir to this local path.
+  --visual-capture-dir PATH     Capture Deck screenshots to this local path after the run returns.
+  --visual-close-probe          With --visual-capture-dir and --keep-open-after-result, send a
+                                Shift+Tab/Escape close probe and capture the result.
   --connect-timeout SECONDS     SSH connect timeout. Defaults to 6.
 EOF
 }
@@ -175,6 +183,18 @@ while [ "$#" -gt 0 ]; do
       inhibit_seconds="${2:?missing --inhibit-seconds value}"
       shift 2
       ;;
+    --collect-diagnostics-dir)
+      collect_diagnostics_dir="${2:?missing --collect-diagnostics-dir value}"
+      shift 2
+      ;;
+    --visual-capture-dir)
+      visual_capture_dir="${2:?missing --visual-capture-dir value}"
+      shift 2
+      ;;
+    --visual-close-probe)
+      visual_close_probe="1"
+      shift
+      ;;
     --connect-timeout)
       connect_timeout="${2:?missing --connect-timeout value}"
       shift 2
@@ -207,6 +227,136 @@ quote_args() {
 
 remote_exec() {
   ssh -o BatchMode=yes -o ConnectTimeout="$connect_timeout" "$host" "$1"
+}
+
+collect_remote_diagnostics() {
+  if [ -z "$collect_diagnostics_dir" ]; then
+    return 0
+  fi
+
+  local result_q diagnostics_q result_target
+  result_q="$(quote_arg "$result_file")"
+  diagnostics_q="$(quote_arg "$result_file.diagnostics")"
+  result_target="$collect_diagnostics_dir/$(basename -- "$result_file")"
+
+  mkdir -p "$collect_diagnostics_dir"
+  echo "Collecting Deck diagnostics into $collect_diagnostics_dir"
+
+  if remote_exec "test -f $result_q" >/dev/null 2>&1; then
+    scp -q -o BatchMode=yes -o ConnectTimeout="$connect_timeout" "$host:$result_file" "$result_target"
+    echo "Collected result log: $result_target"
+  else
+    echo "Remote result log was not found: $result_file" >&2
+  fi
+
+  if remote_exec "test -d $diagnostics_q" >/dev/null 2>&1; then
+    scp -qr -o BatchMode=yes -o ConnectTimeout="$connect_timeout" "$host:$result_file.diagnostics" "$collect_diagnostics_dir/"
+    echo "Collected diagnostics dir: $collect_diagnostics_dir/$(basename -- "$result_file").diagnostics"
+  else
+    echo "Remote diagnostics dir was not found: $result_file.diagnostics" >&2
+  fi
+}
+
+capture_deck_screenshot() {
+  local label="$1"
+  if [ -z "$visual_capture_dir" ]; then
+    return 0
+  fi
+
+  local remote_path local_path remote_path_q
+  remote_path="/tmp/steam-bridge-smoke-$label.png"
+  local_path="$visual_capture_dir/$label.png"
+  remote_path_q="$(quote_arg "$remote_path")"
+
+  mkdir -p "$visual_capture_dir"
+  echo "Capturing Deck screenshot: $label"
+  remote_exec "export DISPLAY=\"\${DISPLAY:-:0}\"; if [ -z \"\${XAUTHORITY:-}\" ]; then XAUTHORITY=\"\$(ls /run/user/1000/xauth_* 2>/dev/null | head -n 1 || true)\"; export XAUTHORITY; fi; export DBUS_SESSION_BUS_ADDRESS=\"\${DBUS_SESSION_BUS_ADDRESS:-unix:path=/run/user/1000/bus}\"; if command -v spectacle >/dev/null 2>&1; then spectacle -b -n -o $remote_path_q >/dev/null 2>&1; elif command -v gnome-screenshot >/dev/null 2>&1; then gnome-screenshot -f $remote_path_q; else echo 'No screenshot tool found on Deck.' >&2; exit 127; fi"
+  scp -q -o BatchMode=yes -o ConnectTimeout="$connect_timeout" "$host:$remote_path" "$local_path"
+  echo "Screenshot saved: $local_path"
+}
+
+send_deck_overlay_close_probe() {
+  echo "Sending Deck overlay close probe"
+  remote_exec "if [ -w /dev/uinput ] && command -v python3 >/dev/null 2>&1; then
+python3 - <<'PY'
+import fcntl
+import os
+import struct
+import time
+
+EV_SYN = 0
+EV_KEY = 1
+SYN_REPORT = 0
+KEY_ESC = 1
+KEY_TAB = 15
+KEY_LEFTSHIFT = 42
+UI_SET_EVBIT = 0x40045564
+UI_SET_KEYBIT = 0x40045565
+UI_DEV_CREATE = 0x5501
+UI_DEV_DESTROY = 0x5502
+
+def emit(fd, event_type, code, value):
+    os.write(fd, struct.pack('llHHI', 0, 0, event_type, code, value))
+
+def sync(fd):
+    emit(fd, EV_SYN, SYN_REPORT, 0)
+
+def tap(fd, key):
+    emit(fd, EV_KEY, key, 1)
+    sync(fd)
+    time.sleep(0.05)
+    emit(fd, EV_KEY, key, 0)
+    sync(fd)
+
+fd = os.open('/dev/uinput', os.O_WRONLY | os.O_NONBLOCK)
+try:
+    fcntl.ioctl(fd, UI_SET_EVBIT, EV_KEY)
+    for key in (KEY_ESC, KEY_TAB, KEY_LEFTSHIFT):
+        fcntl.ioctl(fd, UI_SET_KEYBIT, key)
+    user_dev = struct.pack('80sHHHH', b'steam-bridge-virtual-keyboard', 0x03, 0x1234, 0x5678, 1)
+    os.write(fd, user_dev + bytes(1028))
+    fcntl.ioctl(fd, UI_DEV_CREATE)
+    time.sleep(0.2)
+    emit(fd, EV_KEY, KEY_LEFTSHIFT, 1)
+    sync(fd)
+    tap(fd, KEY_TAB)
+    emit(fd, EV_KEY, KEY_LEFTSHIFT, 0)
+    sync(fd)
+    time.sleep(0.35)
+    tap(fd, KEY_ESC)
+    time.sleep(0.2)
+finally:
+    try:
+        fcntl.ioctl(fd, UI_DEV_DESTROY)
+    finally:
+        os.close(fd)
+PY
+elif command -v xdotool >/dev/null 2>&1; then
+  xdotool key Shift+Tab
+  sleep 0.35
+  xdotool key Escape
+else
+  echo 'No /dev/uinput or xdotool close input helper found on Deck.' >&2
+  exit 127
+fi"
+}
+
+run_visual_capture() {
+  if [ -z "$visual_capture_dir" ]; then
+    return 0
+  fi
+
+  if [ "$keep_open_after_result" != "1" ]; then
+    echo "Visual capture is most useful with --keep-open-after-result; skipping screenshots." >&2
+    return 0
+  fi
+
+  capture_deck_screenshot "overlay-open"
+  if [ "$visual_close_probe" = "1" ]; then
+    send_deck_overlay_close_probe
+    sleep 1
+    capture_deck_screenshot "after-close-probe"
+  fi
 }
 
 print_ssh_hint() {
@@ -600,6 +750,19 @@ run_helper() {
   remote_exec "cd $remote_q && ./linux-electron-smoke.sh $args"
 }
 
+run_helper_with_artifacts() {
+  local status
+  set +e
+  run_helper "$@"
+  status=$?
+  set -e
+
+  run_visual_capture || true
+  collect_remote_diagnostics || true
+
+  return "$status"
+}
+
 run_preflight() {
   local remote_q matches
   remote_q="$(quote_arg "$remote_app_dir")"
@@ -650,7 +813,7 @@ run_remote_mode() {
       trap stop_keep_awake EXIT
       build_steam_launch_args
       prepare_remote_wrapper
-      run_helper "${helper_args[@]}"
+      run_helper_with_artifacts "${helper_args[@]}"
       ;;
     direct)
       if [ "$copy_app" = "1" ]; then
@@ -659,7 +822,7 @@ run_remote_mode() {
       start_keep_awake
       trap stop_keep_awake EXIT
       build_direct_args
-      run_helper "${helper_args[@]}"
+      run_helper_with_artifacts "${helper_args[@]}"
       ;;
     discover)
       run_discover

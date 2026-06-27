@@ -184,13 +184,23 @@ npm run steam-deck:smoke -- \
   --action presenter-web \
   --web-url https://store.steampowered.com/app/480/ \
   --web-modal true \
-  --keep-open-after-result
+  --keep-open-after-result \
+  --collect-diagnostics-dir /tmp/steam-bridge-deck-artifacts \
+  --visual-capture-dir /tmp/steam-bridge-deck-screens
 ```
 
 After the result passes, close the Steam web overlay with its in-overlay close
 control. The lifecycle log should include `callback:overlay-activated` with
 `active=true` followed by `active=false`, and the screenshot must return cleanly
 to the running app with no black native presenter covering it.
+
+For social-overlay investigation, add `--visual-close-probe` to the same Deck
+Desktop command. The runner captures `overlay-open.png`, sends a Deck-side
+Shift+Tab/Escape probe through `/dev/uinput` when available, captures
+`after-close-probe.png`, and copies the remote result log plus diagnostics back
+to the local artifact directory. Treat this as evidence collection, not a pass
+condition: Friends/Game Overview is only passed once the captured pixels return
+cleanly to the running app.
 
 For scripted setup, back up and upsert the non-Steam shortcut with:
 

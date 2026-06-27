@@ -352,6 +352,13 @@ remain visually stuck over Electron after deactivation or resist synthetic close
 input, so Friends/Game Overview should be treated as callback/render evidence
 rather than a completed dismissal proof.
 
+For repeatable Deck evidence, the smoke host runner can copy the remote result
+log and diagnostics directory back to the local machine with
+`--collect-diagnostics-dir`, and can capture Deck screenshots with
+`--visual-capture-dir`. Add `--visual-close-probe` only for social-overlay
+investigation; it sends a Deck-side Shift+Tab/Escape probe and records before
+and after screenshots.
+
 Set `STEAM_BRIDGE_ELECTRON_OVERLAY_PROFILE=repaint`, or pass
 `--steam-bridge-electron-overlay-profile=repaint` to the Electron smoke app, to
 opt into the Linux/Desktop overlay repaint profile. That profile keeps Electron
