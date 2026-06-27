@@ -67,7 +67,7 @@ export function electronConfigureSteamOverlay(
     forceHighPerformanceGpu = true,
     disableBackgroundThrottling = true,
     ignoreGpuBlocklist = true,
-    repaintIntervalMs = compatibilityMode ? 1000 : 0
+    repaintIntervalMs = compatibilityMode ? 33 : 0
   } = options;
 
   const electron = require("electron") as ElectronApi;

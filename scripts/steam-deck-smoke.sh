@@ -4,9 +4,12 @@ set -euo pipefail
 host="${STEAM_DECK_HOST:-deck@steamdeck.local}"
 local_app_dir="${STEAM_BRIDGE_SMOKE_LOCAL_APP_DIR:-}"
 remote_app_dir="${STEAM_DECK_SMOKE_REMOTE_APP_DIR:-/home/deck/steam-bridge-smoke/SteamBridgeSmoke-linux-x64}"
+remote_wrapper_path="${STEAM_DECK_SMOKE_WRAPPER_PATH:-/home/deck/steam-bridge-smoke/run-smoke-autorun.sh}"
+remote_wrapper_env_file="${STEAM_DECK_SMOKE_WRAPPER_ENV_FILE:-/home/deck/steam-bridge-smoke/run-smoke-autorun.env}"
 mode="game"
 app_id="480"
 action="dialog"
+overlay_profile=""
 web_url=""
 web_modal=""
 result_file="/tmp/steam-bridge-smoke-steam-launch.log"
@@ -43,9 +46,11 @@ Options:
   --host USER@HOST              SSH target. Defaults to deck@steamdeck.local.
   --local-app-dir PATH          Local Linux x64 SteamBridgeSmoke package directory.
   --remote-app-dir PATH         Remote package directory. Defaults under ~/steam-bridge-smoke.
+  --wrapper-path PATH           Remote wrapper script used by the Steam shortcut.
   --skip-copy                   Use the existing remote package directory.
   --app-id ID                   Steam App ID used inside the smoke app. Defaults to 480.
   --action NAME                 Autorun action. Defaults to dialog.
+  --overlay-profile NAME        Electron overlay profile. Desktop defaults to compatibility.
   --web-url URL                 URL for the web overlay action.
   --web-modal true|false        Whether the web overlay action should request a modal.
   --result-file PATH            Remote result log path.
@@ -85,6 +90,11 @@ while [ "$#" -gt 0 ]; do
       remote_app_dir="${2:?missing --remote-app-dir value}"
       shift 2
       ;;
+    --wrapper-path)
+      remote_wrapper_path="${2:?missing --wrapper-path value}"
+      remote_wrapper_env_file="${remote_wrapper_path%/*}/$(basename -- "$remote_wrapper_path" .sh).env"
+      shift 2
+      ;;
     --skip-copy)
       copy_app="0"
       shift
@@ -95,6 +105,10 @@ while [ "$#" -gt 0 ]; do
       ;;
     --action)
       action="${2:?missing --action value}"
+      shift 2
+      ;;
+    --overlay-profile)
+      overlay_profile="${2:?missing --overlay-profile value}"
       shift 2
       ;;
     --web-url)
@@ -366,12 +380,114 @@ stop_keep_awake() {
   remote_exec "if [ -f $pid_q ]; then kill \$(cat $pid_q) >/dev/null 2>&1 || true; rm -f $pid_q; fi" >/dev/null 2>&1 || true
 }
 
+resolved_overlay_profile() {
+  if [ -n "$overlay_profile" ]; then
+    printf '%s\n' "$overlay_profile"
+  elif [ "$mode" = "desktop" ]; then
+    printf '%s\n' "compatibility"
+  else
+    printf '%s\n' "diagnostic"
+  fi
+}
+
+prepare_remote_wrapper() {
+  local app_dir_q env_q wrapper_q wrapper_dir_q
+  local app_id_q action_q profile_q result_file_q action_delay_q result_delay_q require_active_q web_url_q web_modal_q
+  local require_overlay_active="0"
+
+  if [ "$action" = "store" ] || [ "$action" = "web" ]; then
+    require_overlay_active="1"
+  fi
+
+  app_dir_q="$(quote_arg "$remote_app_dir")"
+  env_q="$(quote_arg "$remote_wrapper_env_file")"
+  wrapper_q="$(quote_arg "$remote_wrapper_path")"
+  wrapper_dir_q="$(quote_arg "$(dirname -- "$remote_wrapper_path")")"
+  app_id_q="$(quote_arg "$app_id")"
+  action_q="$(quote_arg "$action")"
+  profile_q="$(quote_arg "$(resolved_overlay_profile)")"
+  result_file_q="$(quote_arg "$result_file")"
+  action_delay_q="$(quote_arg "1500")"
+  result_delay_q="$(quote_arg "$result_delay_ms")"
+  require_active_q="$(quote_arg "$require_overlay_active")"
+  web_url_q="$(quote_arg "$web_url")"
+  web_modal_q="$(quote_arg "$web_modal")"
+
+  echo "Writing Steam shortcut wrapper config to $host:$remote_wrapper_env_file"
+  remote_exec "set -e
+mkdir -p $wrapper_dir_q
+cat > $env_q <<EOF
+APP_DIR=$app_dir_q
+APP_ID=$app_id_q
+AUTORUN_ACTION=$action_q
+OVERLAY_PROFILE=$profile_q
+RESULT_FILE=$result_file_q
+ACTION_DELAY_MS=$action_delay_q
+RESULT_DELAY_MS=$result_delay_q
+REQUIRE_OVERLAY_ACTIVE=$require_active_q
+WEB_URL=$web_url_q
+WEB_MODAL=$web_modal_q
+EOF
+cat > $wrapper_q <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR=\"\$(cd -- \"\$(dirname -- \"\${BASH_SOURCE[0]}\")\" && pwd)\"
+SCRIPT_NAME=\"\$(basename -- \"\${BASH_SOURCE[0]}\")\"
+CONFIG_FILE=\"\${STEAM_BRIDGE_SMOKE_WRAPPER_ENV_FILE:-\$SCRIPT_DIR/\${SCRIPT_NAME%.sh}.env}\"
+if [ -f \"\$CONFIG_FILE\" ]; then
+  # shellcheck disable=SC1090
+  source \"\$CONFIG_FILE\"
+fi
+
+APP_DIR=\"\${APP_DIR:-/home/deck/steam-bridge-smoke/SteamBridgeSmoke-linux-x64}\"
+APP_ID=\"\${APP_ID:-480}\"
+AUTORUN_ACTION=\"\${AUTORUN_ACTION:-none}\"
+OVERLAY_PROFILE=\"\${OVERLAY_PROFILE:-diagnostic}\"
+RESULT_FILE=\"\${RESULT_FILE:-/tmp/steam-bridge-smoke-default.log}\"
+ACTION_DELAY_MS=\"\${ACTION_DELAY_MS:-1500}\"
+RESULT_DELAY_MS=\"\${RESULT_DELAY_MS:-8000}\"
+REQUIRE_OVERLAY_ACTIVE=\"\${REQUIRE_OVERLAY_ACTIVE:-0}\"
+WEB_URL=\"\${WEB_URL:-}\"
+WEB_MODAL=\"\${WEB_MODAL:-}\"
+
+rm -f \"\$RESULT_FILE\"
+export SteamAppId=\"\$APP_ID\"
+export SteamGameId=\"\$APP_ID\"
+export STEAM_BRIDGE_APP_ID=\"\$APP_ID\"
+export STEAM_BRIDGE_ELECTRON_OVERLAY_PROFILE=\"\$OVERLAY_PROFILE\"
+export STEAM_BRIDGE_SMOKE_AUTORUN=1
+export STEAM_BRIDGE_SMOKE_AUTORUN_ACTION=\"\$AUTORUN_ACTION\"
+export STEAM_BRIDGE_SMOKE_AUTORUN_ACTION_DELAY_MS=\"\$ACTION_DELAY_MS\"
+export STEAM_BRIDGE_SMOKE_AUTORUN_RESULT_DELAY_MS=\"\$RESULT_DELAY_MS\"
+export STEAM_BRIDGE_SMOKE_RESULT_FILE=\"\$RESULT_FILE\"
+export STEAM_BRIDGE_SMOKE_REQUIRE_OVERLAY_ACTIVE=\"\$REQUIRE_OVERLAY_ACTIVE\"
+if [ -n \"\$WEB_URL\" ]; then
+  export STEAM_BRIDGE_SMOKE_WEB_URL=\"\$WEB_URL\"
+fi
+if [ -n \"\$WEB_MODAL\" ]; then
+  export STEAM_BRIDGE_SMOKE_WEB_MODAL=\"\$WEB_MODAL\"
+fi
+
+cd \"\$APP_DIR\"
+if command -v systemd-inhibit >/dev/null 2>&1; then
+  exec systemd-inhibit --what=sleep --why=\"Steam Bridge smoke\" ./SteamBridgeSmoke --no-sandbox
+fi
+exec ./SteamBridgeSmoke --no-sandbox
+EOF
+chmod +x $wrapper_q"
+}
+
 helper_args=()
 
 append_common_helper_args() {
+  local resolved_profile
+  resolved_profile="$(resolved_overlay_profile)"
+
   helper_args+=(
     "--app-id" "$app_id"
     "--action" "$action"
+    "--overlay-profile" "$resolved_profile"
     "--result-file" "$result_file"
     "--result-delay-ms" "$result_delay_ms"
     "--timeout-seconds" "$timeout_seconds"
@@ -492,6 +608,7 @@ run_remote_mode() {
       start_keep_awake
       trap stop_keep_awake EXIT
       build_steam_launch_args
+      prepare_remote_wrapper
       run_helper "${helper_args[@]}"
       ;;
     direct)
@@ -542,12 +659,20 @@ run_self_test() {
     echo "Self-test failed: Steam launch args must require the overlay callback." >&2
     exit 1
   fi
+  if [[ "$game_args" != *"--overlay-profile diagnostic"* ]]; then
+    echo "Self-test failed: Game Mode args must default to the diagnostic overlay profile." >&2
+    exit 1
+  fi
 
   mode="desktop"
   build_steam_launch_args
   desktop_args="$(quote_args "${helper_args[@]}")"
   if [[ "$desktop_args" == *"--require-big-picture"* ]]; then
     echo "Self-test failed: Desktop Mode args must not require Big Picture." >&2
+    exit 1
+  fi
+  if [[ "$desktop_args" != *"--overlay-profile compatibility"* ]]; then
+    echo "Self-test failed: Desktop Mode args must default to the compatibility overlay profile." >&2
     exit 1
   fi
 

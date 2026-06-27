@@ -286,9 +286,9 @@ client.overlay.closeNativeOverlayProbeWindow();
 
 Set `STEAM_BRIDGE_ELECTRON_OVERLAY_PROFILE=compatibility`, or pass
 `--steam-bridge-electron-overlay-profile=compatibility` to the Electron smoke
-app, to opt into the older Electron overlay workaround profile. That profile
-enables `in-process-gpu`, so keep it diagnostic-only unless it proves useful on
-your target machine.
+app, to opt into the Linux/Desktop overlay workaround profile. That profile
+enables `in-process-gpu` and keeps Electron presenting frames at about 30 FPS so
+Steam has fresh frames to composite when `overlayNeedsPresent` is true.
 
 ## Notes
 

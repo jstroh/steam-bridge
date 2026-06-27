@@ -6,6 +6,7 @@ app_dir=""
 result_file=""
 app_id="480"
 action="none"
+overlay_profile="diagnostic"
 web_url=""
 web_modal=""
 result_delay_ms="8000"
@@ -42,6 +43,7 @@ Options:
   --result-file PATH             Result log path.
   --app-id ID                    Steam App ID to use. Defaults to 480.
   --action NAME                  none, dialog, friends, store, web, native-probe.
+  --overlay-profile NAME         Electron overlay profile. Defaults to diagnostic.
   --web-url URL                  URL for the web overlay action.
   --web-modal true|false         Whether the web overlay action should request a modal.
   --result-delay-ms MS           Autorun result delay. Defaults to 8000.
@@ -83,6 +85,10 @@ while [ "$#" -gt 0 ]; do
       ;;
     --action)
       action="${2:?missing --action value}"
+      shift 2
+      ;;
+    --overlay-profile)
+      overlay_profile="${2:?missing --overlay-profile value}"
       shift 2
       ;;
     --web-url)
@@ -162,7 +168,7 @@ smoke_args() {
   printf '%s\n' \
     "--no-sandbox" \
     "--steam-bridge-app-id=$app_id" \
-    "--steam-bridge-electron-overlay-profile=diagnostic" \
+    "--steam-bridge-electron-overlay-profile=$overlay_profile" \
     "--steam-bridge-smoke-autorun" \
     "--steam-bridge-smoke-autorun-action=$action" \
     "--steam-bridge-smoke-autorun-result-delay-ms=$result_delay_ms" \
@@ -374,6 +380,8 @@ def overlay_active_event(event):
         or active_payload.get("m_bActive") == 1
     )
 
+overlay_activated = any(overlay_active_event(event) for event in events)
+
 def expect(condition, message):
     if not condition:
         failures.append(message)
@@ -394,11 +402,14 @@ if os.environ["REQUIRE_STEAM_LAUNCH"] == "1":
     expect(launch.get("steamLaunch") is True, "Steam launch marker detected")
 if os.environ["REQUIRE_OVERLAY_READY"] == "1":
     expect(ok_value(steam.get("overlayEnabled")) is True, "overlay enabled")
-    expect(ok_value(steam.get("overlayNeedsPresent")) is False, "overlay does not need present")
+    expect(
+        ok_value(steam.get("overlayNeedsPresent")) is False or overlay_activated,
+        "overlay does not need present or emitted active overlay callback",
+    )
 if os.environ["REQUIRE_OVERLAY_INJECTION"] == "1":
     expect(launch.get("overlayInjection") is True, "Steam overlay injection marker detected")
 if os.environ["REQUIRE_OVERLAY_ACTIVATED"] == "1":
-    expect(any(overlay_active_event(event) for event in events), "overlay activation callback active=true emitted")
+    expect(overlay_activated, "overlay activation callback active=true emitted")
 if os.environ["REQUIRE_STEAM_DECK"] == "1":
     expect(ok_value(steam.get("steamDeck")) is True, "Steam Deck detected")
 if os.environ["REQUIRE_BIG_PICTURE"] == "1":
@@ -419,7 +430,7 @@ print(
     f"bigPicture={ok_value(steam.get('bigPicture'))} "
     f"overlayEnabled={ok_value(steam.get('overlayEnabled'))} "
     f"overlayNeedsPresent={ok_value(steam.get('overlayNeedsPresent'))} "
-    f"overlayActivated={any(overlay_active_event(event) for event in events)} "
+    f"overlayActivated={overlay_activated} "
     f"steamLaunch={launch.get('steamLaunch')} "
     f"overlayInjection={launch.get('overlayInjection')} "
     f"action={(result.get('action') or {}).get('action')}"

@@ -137,6 +137,12 @@ The package also includes macOS overlay diagnostics through
 core Steam API success should not be treated as proof that the Steam overlay has
 hooked Electron.
 
+For Linux Electron apps, use
+`electronConfigureSteamOverlay({ profile: "compatibility" })` when the Steam
+overlay activates but needs additional presents. The compatibility profile keeps
+Chromium's GPU work in-process and invalidates Electron windows at about 30 FPS
+so Steam has fresh frames to composite.
+
 ## Development
 
 ```sh

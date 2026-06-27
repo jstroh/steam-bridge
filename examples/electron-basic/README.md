@@ -10,7 +10,9 @@ It uses Valve's SpaceWar sample App ID `480` by default. Override it with
 The default Electron overlay profile is `diagnostic`, which applies conservative
 Electron switches and avoids forcing Chromium's in-process GPU path. Set
 `STEAM_BRIDGE_ELECTRON_OVERLAY_PROFILE=compatibility` when you specifically want
-to test the more aggressive overlay workaround profile.
+to test the more aggressive Linux/Desktop overlay workaround profile. That
+profile keeps Electron presenting frames at about 30 FPS because Steam can report
+that the overlay needs fresh presents from event-driven renderers.
 
 ## Development
 
@@ -132,37 +134,33 @@ npm run steam-deck:smoke -- \
 ```
 
 Run the same command with `--mode desktop` after switching the Deck to Desktop
-Mode. Game Mode requires the Big Picture signal; Desktop Mode intentionally
-omits that assertion while keeping Steam launch, overlay injection, overlay
-readiness, and overlay callback checks. If preflight cannot reach SSH, verify
-the Deck is awake, SSH is enabled, and the `--host` IP address is still current;
-then rerun `--mode discover`.
+Mode. Game Mode defaults to the `diagnostic` overlay profile and requires the Big
+Picture signal. Desktop Mode defaults to the `compatibility` overlay profile,
+omits the Big Picture assertion, and keeps Steam launch, overlay injection,
+overlay readiness, and overlay callback checks. If preflight cannot reach SSH,
+verify the Deck is awake, SSH is enabled, and the `--host` IP address is still
+current; then rerun `--mode discover`.
 
 For scripted setup, back up and upsert the non-Steam shortcut with:
 
 ```sh
-LAUNCH_OPTIONS="--no-sandbox \
-  --steam-bridge-app-id=480 \
-  --steam-bridge-electron-overlay-profile=diagnostic \
-  --steam-bridge-smoke-autorun \
-  --steam-bridge-smoke-autorun-action=dialog \
-  --steam-bridge-smoke-autorun-result-delay-ms=8000 \
-  --steam-bridge-smoke-result-file=/tmp/steam-bridge-smoke-steam-launch.log"
-
 npm run steam-shortcut:upsert -- \
   --shortcuts "$HOME/.local/share/Steam/userdata/<steam-user-id>/config/shortcuts.vdf" \
   --app-name "Steam Bridge Smoke" \
-  --exe "$HOME/steam-bridge-smoke/SteamBridgeSmoke-linux-x64/SteamBridgeSmoke" \
-  --start-dir "$HOME/steam-bridge-smoke/SteamBridgeSmoke-linux-x64" \
-  --launch-options "$LAUNCH_OPTIONS"
+  --exe "$HOME/steam-bridge-smoke/run-smoke-autorun.sh" \
+  --start-dir "$HOME/steam-bridge-smoke"
 ```
 
 Use the numeric `userdata` folder for the Steam account currently signed in on
 the Deck. The helper backs up an existing shortcut file, writes Steam's binary
 shortcut format, and prints both Steam's internal shortcut app ID and the full
-shortcut game ID. Launch with the printed `Launch URL` after Steam has reloaded
-shortcuts. On Steam Deck, restart Steam or switch out of and back into Game Mode
-after writing `shortcuts.vdf`; Game Mode can keep a stale shortcut cache:
+shortcut game ID. The host runner writes `run-smoke-autorun.sh` and
+`run-smoke-autorun.env` before each Game Mode or Desktop Mode launch, so the same
+Steam shortcut can run different smoke actions without editing Steam's shortcut
+database every time. Launch with the printed `Launch URL` after Steam has
+reloaded shortcuts. On Steam Deck, restart Steam or switch out of and back into
+Game Mode after writing `shortcuts.vdf`; Game Mode can keep a stale shortcut
+cache:
 
 ```sh
 steam steam://rungameid/<shortcut-game-id>
@@ -193,7 +191,13 @@ full shortcut game ID and run the Game Mode smoke check:
 For Desktop Mode overlay checks, launch the same shortcut URL while Steam is
 running in Desktop Mode. A direct shell or file-manager launch can prove Steam
 Bridge initialization, but Steam overlay injection is only expected when Steam
-launches the shortcut.
+launches the shortcut. If you choose a direct executable shortcut instead of the
+wrapper, include `--steam-bridge-electron-overlay-profile=compatibility` in that
+shortcut's launch options before running Desktop Mode overlay checks.
+
+Desktop Mode visual proof looks like Steam's desktop overlay panels over the
+Electron window, such as Game Overview/Friends and a "Back to Game" control. It
+does not necessarily show the Game Mode bottom-right toast.
 
 For longer SSH-driven checks, keep the Deck awake from SteamOS/Desktop Mode
 power settings. Over SSH, `systemd-inhibit --what=sleep sleep infinity` can keep
@@ -233,6 +237,10 @@ the final `snapshot.events` list. `snapshot.launch.steamLaunch` reports whether
 Steam launch environment markers were present. `snapshot.launch.overlayInjection`
 reports whether the process environment includes a Steam overlay hook marker such
 as `gameoverlayrenderer`.
+
+`overlayNeedsPresent=true` is not a failure by itself. It means Steam is asking
+the app to keep presenting frames for the overlay. The smoke verifier treats an
+active overlay callback as stronger evidence than the raw present-needed flag.
 
 For Steam Deck Game Mode or gamescope checks, the verifier can assert the Deck
 signals:

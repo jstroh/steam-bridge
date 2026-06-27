@@ -11,6 +11,7 @@ const launch = snapshot.launch || {};
 const overlay = snapshot.overlay || {};
 const processInfo = snapshot.process || {};
 const events = Array.isArray(snapshot.events) ? snapshot.events : [];
+const overlayActivated = events.some(isOverlayActiveEvent);
 const failures = [];
 
 expect(result.ok === true, "smoke result ok");
@@ -42,10 +43,13 @@ if (options.requireOverlayEnabled) {
 }
 if (options.requireOverlayReady) {
   expect(readOkValue(steam.overlayEnabled) === true, "overlay enabled");
-  expect(readOkValue(steam.overlayNeedsPresent) === false, "overlay does not need present");
+  expect(
+    readOkValue(steam.overlayNeedsPresent) === false || overlayActivated,
+    "overlay does not need present or emitted active overlay callback"
+  );
 }
 if (options.requireOverlayActivated) {
-  expect(events.some(isOverlayActiveEvent), "overlay activation callback active=true emitted");
+  expect(overlayActivated, "overlay activation callback active=true emitted");
 }
 if (options.requireSteamLaunch) {
   expect(launch.steamLaunch === true, "Steam launch marker detected");
@@ -76,7 +80,7 @@ console.log(
     `bigPicture=${readOkValue(steam.bigPicture)}`,
     `overlayEnabled=${readOkValue(steam.overlayEnabled)}`,
     `overlayNeedsPresent=${readOkValue(steam.overlayNeedsPresent)}`,
-    `overlayActivated=${events.some(isOverlayActiveEvent)}`,
+    `overlayActivated=${overlayActivated}`,
     `steamLaunch=${launch.steamLaunch}`,
     `overlayInjection=${launch.overlayInjection}`,
     `action=${result.action && result.action.action}`

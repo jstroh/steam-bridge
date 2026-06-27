@@ -58,6 +58,7 @@ function createWindow() {
     title: "Steam Bridge Electron Smoke",
     backgroundColor: "#f5f7fb",
     webPreferences: {
+      backgroundThrottling: false,
       preload: path.join(__dirname, "preload.js")
     }
   });
@@ -183,11 +184,16 @@ async function waitForAutorunResult(action, durationMs, overlayActiveCount) {
 
     const startedAt = Date.now();
     const deadline = startedAt + durationMs;
+    let overlayActivated = false;
     while (Date.now() < deadline) {
       if (countOverlayActiveEvents() > overlayActiveCount) {
-        return { ok: true, action, overlayActivated: true, durationMs: Date.now() - startedAt };
+        overlayActivated = true;
       }
       await delay(Math.min(100, Math.max(0, deadline - Date.now())));
+    }
+
+    if (overlayActivated) {
+      return { ok: true, action, overlayActivated: true, durationMs: Date.now() - startedAt };
     }
 
     recordEvent("autorun:overlay-active-timeout", { action, durationMs });

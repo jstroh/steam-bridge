@@ -11,9 +11,10 @@ and Steam Deck. The public smoke target is Valve's SpaceWar App ID `480`.
 | --- | --- | --- |
 | Linux x64 | Verified through Steam Deck | The packaged Linux x64 smoke app launches on Steam Deck and initializes Steam as App ID `480`. The Linux package includes `linux-electron-smoke.sh` for direct, Steam-launched, and verification checks. |
 | Steam Deck Game Mode | Verified for smoke coverage | A Steam-launched non-Steam shortcut reports `steamDeck=true`, `bigPicture=true`, `steamLaunch=true`, `overlayInjection=true`, `overlayEnabled=true`, and can emit overlay events. |
-| Steam Deck Desktop Mode | Verified for smoke coverage | The same packaged app can be launched from Desktop Mode with `steamDeck=true`, `bigPicture=false`, `steamLaunch=true`, `overlayInjection=true`, and `overlayEnabled=true`. |
+| Steam Deck Desktop Mode | Verified for smoke coverage | The same packaged app can be launched from Desktop Mode with `steamDeck=true`, `bigPicture=false`, `steamLaunch=true`, `overlayInjection=true`, and `overlayEnabled=true`. Desktop Mode uses the Electron `compatibility` overlay profile by default. |
 | Store overlay | Verified from the smoke app | `ActivateGameOverlayToStore` can activate the Steam overlay from the Deck smoke shortcut and produce `callback:overlay-activated` with `active=true`. |
 | General web-page overlay | Not working from the Deck Game Mode smoke shortcut | `ActivateGameOverlayToWebPage` to a normal Steam web page was called successfully, but did not show a visible web overlay or produce `active=true`. |
+| Desktop web-page overlay | Verified from the Deck Desktop Mode smoke shortcut | With the `compatibility` overlay profile, `ActivateGameOverlayToWebPage` to the public SpaceWar store page produced `callback:overlay-activated` with `active=true` from Desktop Mode. |
 | Web checkout overlay | Requires a real app/product proof | A non-Steam shortcut is not enough to prove checkout or transaction overlay behavior. Use a real Steam-launched app ID with a configured product or transaction. |
 | Real-app purchase surface | Verified outside the smoke app | A real Steam-launched app with configured commerce opened Steam's purchase or approval surface in both Deck Game Mode and Deck Desktop Mode. App-specific IDs, item details, URLs, and transaction details are intentionally omitted from this repository. |
 
@@ -63,6 +64,9 @@ npm run steam-deck:smoke -- \
 Use `--mode desktop` for the Steam Deck Desktop Mode shortcut check. Discovery
 finds SSH candidates when the Deck address changes; preflight separates a
 network/SSH blocker from package, Steam command, and shortcut setup problems.
+The host runner writes a wrapper script and env file before each Steam launch so
+the shortcut can switch between Game Mode diagnostic checks and Desktop Mode
+compatibility checks without rewriting `shortcuts.vdf`.
 
 ## Overlay Proof Matrix
 
@@ -73,7 +77,7 @@ to prove checkout or transaction behavior:
 | --- | --- | --- |
 | `activateDialog("Friends")` | May show the Friends panel and emit an overlay callback. | Steamworks initialized, callbacks are flowing, and the overlay IPC path is alive. |
 | `activateToStore(480, ...)` | Should activate the Steam overlay and emit `active=true` from a Steam-launched Deck shortcut. | The Deck/Electron/Steam launch path can display Steam overlay UI. |
-| `activateToWebPage("https://store.steampowered.com/app/480/", ...)` | Currently does not activate a visible web overlay from the Deck Game Mode smoke shortcut. | The web-page API call was issued; it does not prove purchase UI unless Steam activates the overlay. |
+| `activateToWebPage("https://store.steampowered.com/app/480/", ...)` | Currently does not activate a visible web overlay from the Deck Game Mode smoke shortcut, but passes from Desktop Mode with the `compatibility` profile. | The web-page API call was issued; it does not prove purchase UI unless Steam activates the overlay. |
 | `activateToWebPage(<checkout-or-approval-url>, { modal: true })` | Must be run from the actual Steam app with the matching App ID and a configured product or transaction. | Purchase or transaction overlay behavior. |
 | Web API `InitTxn` flow | Requires your own backend or publisher credentials. | End-to-end transaction overlay behavior for your app. Deck Game Mode and Desktop Mode should both be validated from the real Steam app, not from the public smoke shortcut. |
 
@@ -114,7 +118,15 @@ out returns to the running app.
 
 In Deck Desktop Mode, touch, keyboard, and overlay dismissal behavior can differ
 from Game Mode. Record the pass only after the Steam surface appears and the
-running app regains focus after backing out or closing the surface.
+running app regains focus after backing out or closing the surface. The Desktop
+Mode visual proof is Steam's desktop overlay panels over the Electron window,
+such as Game Overview/Friends with a "Back to Game" affordance; do not expect the
+Game Mode bottom-right overlay toast in this mode.
+
+`overlayNeedsPresent=true` is not a hard failure by itself. It means Steam is
+asking an event-driven renderer to keep presenting frames for the overlay. The
+Electron `compatibility` profile keeps invalidating the window at about 30 FPS,
+and the verifier accepts an active overlay callback as the stronger pass signal.
 
 ## Purchase Overlay Checklist
 
