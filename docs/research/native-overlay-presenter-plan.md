@@ -37,6 +37,11 @@ timing hacks.
   Mode for a modal web overlay: passive host attached, active input/opacity
   during overlay UI, in-overlay close click accepted, inactive callbacks
   received, and clean return to the Electron smoke app.
+- The reusable presenter path has also been verified for passive Steam
+  achievement-progress notifications on Steam Deck Desktop Mode: the host stays
+  transparent and click-through, Steam emits `UserAchievementStored`, and the
+  achievement-progress toast renders over the Electron app without a modal
+  `GameOverlayActivated` callback.
 - Deck Desktop social overlays need target-aware behavior. Steam web/store
   overlays use the native host as the interactive overlay target, but
   Friends/Game Overview should keep the host passive; otherwise the opaque GLX
@@ -147,6 +152,9 @@ Current evidence:
 - Deck Desktop Mode can do the same through the reusable app-facing presenter
   API (`attachPresenter` plus `openWebOverlay`) while returning the host to
   transparent, click-through passive mode after overlay close.
+- Deck Desktop Mode can show a passive achievement-progress toast over the
+  Electron smoke app through the reusable presenter path while the native host
+  remains click-through and transparent.
 - The same path is good enough for checkout-style proof when launched under a
   real installed Steam app with a configured product or transaction.
 - Electron-only and native social overlay paths can emit callbacks, but social
@@ -177,16 +185,12 @@ Next work:
    available.
 5. Add a kill switch/env flag that disables the presenter and falls back to the
    existing explicit session helpers.
-6. Prove passive notification behavior:
-   - unlock a disposable/test achievement or trigger a Steam notification;
-   - capture screenshots showing the toast over the app;
-   - confirm app input still works while the presenter is passive.
-7. Re-run checkout proof:
+6. Re-run checkout proof:
    - generic App ID `480` for public plumbing where possible;
    - a real app/product only for private purchase proof;
    - keep private app IDs, item definitions, transaction IDs, and URLs out of
      committed files.
-8. Treat Wayland as a later backend unless Steam/Electron are running through
+7. Treat Wayland as a later backend unless Steam/Electron are running through
    Xwayland. If no X11 display is available, fail with explicit diagnostics.
 
 Pass criteria:

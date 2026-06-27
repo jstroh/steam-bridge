@@ -11,6 +11,9 @@ overlay_profile="diagnostic"
 window_mode=""
 web_url=""
 web_modal=""
+achievement_name=""
+achievement_current=""
+achievement_max=""
 result_delay_ms="8000"
 keep_open_after_result="0"
 timeout_seconds="90"
@@ -46,11 +49,15 @@ Options:
   --result-file PATH             Result log path.
   --diagnostic-dir PATH          Diagnostic log/crash dump directory.
   --app-id ID                    Steam App ID to use. Defaults to 480.
-  --action NAME                  none, dialog, friends, store, web, native-probe, native-dialog, native-store, native-web.
+  --action NAME                  none, dialog, friends, store, web, native-probe, native-dialog, native-store, native-web,
+                                 presenter-dialog, presenter-store, presenter-web, presenter-achievement-progress.
   --overlay-profile NAME         Electron overlay profile. Defaults to diagnostic.
   --window-mode NAME             Electron window mode: windowed, fullscreen, or borderless.
   --web-url URL                  URL for the web overlay action.
   --web-modal true|false         Whether the web overlay action should request a modal.
+  --achievement-name NAME        Achievement for presenter-achievement-progress. Defaults to the first progress achievement.
+  --achievement-current VALUE    Progress current value. Defaults to 1.
+  --achievement-max VALUE        Progress max value. Defaults to the achievement limit or 2.
   --result-delay-ms MS           Autorun result delay. Defaults to 8000.
   --keep-open-after-result       Write the result but leave the app running.
   --timeout-seconds SECONDS      Result wait timeout. Defaults to 90.
@@ -111,6 +118,18 @@ while [ "$#" -gt 0 ]; do
       ;;
     --web-modal)
       web_modal="${2:?missing --web-modal value}"
+      shift 2
+      ;;
+    --achievement-name)
+      achievement_name="${2:?missing --achievement-name value}"
+      shift 2
+      ;;
+    --achievement-current)
+      achievement_current="${2:?missing --achievement-current value}"
+      shift 2
+      ;;
+    --achievement-max)
+      achievement_max="${2:?missing --achievement-max value}"
       shift 2
       ;;
     --result-delay-ms)
@@ -210,6 +229,15 @@ smoke_args() {
   fi
   if [ -n "$web_modal" ]; then
     printf '%s\n' "--steam-bridge-smoke-web-modal=$web_modal"
+  fi
+  if [ -n "$achievement_name" ]; then
+    printf '%s\n' "--steam-bridge-smoke-achievement-name=$achievement_name"
+  fi
+  if [ -n "$achievement_current" ]; then
+    printf '%s\n' "--steam-bridge-smoke-achievement-current=$achievement_current"
+  fi
+  if [ -n "$achievement_max" ]; then
+    printf '%s\n' "--steam-bridge-smoke-achievement-max=$achievement_max"
   fi
 }
 

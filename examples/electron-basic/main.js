@@ -13,6 +13,11 @@ const WINDOW_MODE = CLI_OPTIONS.windowMode || process.env.STEAM_BRIDGE_SMOKE_WIN
 const STORE_URL = `https://store.steampowered.com/app/${APP_ID}/`;
 const WEB_URL = CLI_OPTIONS.webUrl || process.env.STEAM_BRIDGE_SMOKE_WEB_URL || STORE_URL;
 const WEB_MODAL = readBoolean(CLI_OPTIONS.webModal || process.env.STEAM_BRIDGE_SMOKE_WEB_MODAL, false);
+const ACHIEVEMENT_NAME = CLI_OPTIONS.achievementName || process.env.STEAM_BRIDGE_SMOKE_ACHIEVEMENT_NAME || "";
+const ACHIEVEMENT_CURRENT = Number(
+  CLI_OPTIONS.achievementCurrent || process.env.STEAM_BRIDGE_SMOKE_ACHIEVEMENT_CURRENT || "1"
+);
+const ACHIEVEMENT_MAX = Number(CLI_OPTIONS.achievementMax || process.env.STEAM_BRIDGE_SMOKE_ACHIEVEMENT_MAX || "2");
 const AUTORUN = CLI_OPTIONS.autorun || process.env.STEAM_BRIDGE_SMOKE_AUTORUN === "1";
 const AUTORUN_ACTION = CLI_OPTIONS.autorunAction || process.env.STEAM_BRIDGE_SMOKE_AUTORUN_ACTION || "dialog";
 const AUTORUN_ACTION_DELAY_MS = Number(
@@ -126,6 +131,7 @@ ipcMain.handle("steam-smoke:overlay-store", () => openStoreOverlay());
 ipcMain.handle("steam-smoke:overlay-web", () => openWebOverlay());
 ipcMain.handle("steam-smoke:overlay-dialog", () => openDialogOverlay());
 ipcMain.handle("steam-smoke:presenter-web", () => openPresenterWebOverlay());
+ipcMain.handle("steam-smoke:presenter-achievement-progress", () => openPresenterAchievementProgress());
 ipcMain.handle("steam-smoke:native-probe-open", () => openNativeProbe());
 ipcMain.handle("steam-smoke:native-probe-pump", () => pumpNativeProbe());
 ipcMain.handle("steam-smoke:native-probe-close", () => closeNativeProbe());
@@ -213,6 +219,16 @@ function registerSteamCallbacks() {
     steamworks.onSteamServersDisconnected((event) => recordEvent("callback:servers-disconnected", event)),
     steamworks.onMicroTxnAuthorizationResponse((event) => recordEvent("callback:microtxn", event))
   );
+
+  try {
+    callbackHandles.push(
+      client.stats.onUserStatsReceived((event) => recordEvent("callback:user-stats-received", event)),
+      client.stats.onUserStatsStored((event) => recordEvent("callback:user-stats-stored", event)),
+      client.achievement.onStored((event) => recordEvent("callback:achievement-stored", event))
+    );
+  } catch (error) {
+    recordEvent("callback:stats-achievement:error", serializeError(error));
+  }
 
   try {
     client.input.enableDeviceCallbacks();
@@ -336,6 +352,9 @@ function runAutorunAction(action) {
         return { ok: true, action };
       case "presenter-web":
         openPresenterWebOverlay();
+        return { ok: true, action };
+      case "presenter-achievement-progress":
+        openPresenterAchievementProgress();
         return { ok: true, action };
       default:
         throw new Error(`Unsupported autorun action: ${action}`);
@@ -465,6 +484,21 @@ function openPresenterWebOverlay() {
   return snapshot();
 }
 
+function openPresenterAchievementProgress() {
+  const activeClient = requireClient();
+  const presenter = ensureNativeOverlayPresenter(activeClient);
+  presenter.prepareForPassiveOverlay();
+
+  const target = resolveAchievementProgressTarget(activeClient);
+  const indicated = activeClient.achievement.indicateProgress(target.name, target.current, target.max);
+  recordEvent("achievement:progress", {
+    ...target,
+    indicated,
+    presenter: presenter.snapshot()
+  });
+  return snapshot();
+}
+
 function ensureNativeOverlayPresenter(activeClient = requireClient()) {
   if (nativeOverlayPresenter && nativeOverlayPresenter.isOpen()) {
     return nativeOverlayPresenter;
@@ -496,6 +530,52 @@ function nativePresenterOptions() {
     activeOverlayFps: 30,
     pollIntervalMs: 250
   });
+}
+
+function resolveAchievementProgressTarget(activeClient) {
+  const names = readValue(() => activeClient.achievement.names());
+  const achievementNames = Array.isArray(names.value) ? names.value.filter(Boolean) : [];
+  const configuredName = ACHIEVEMENT_NAME.trim();
+  const name = configuredName || chooseProgressAchievement(activeClient, achievementNames);
+  if (!name) {
+    throw new Error("No Steam achievement is available for the smoke toast action.");
+  }
+
+  const limits = readValue(() => activeClient.achievement.getProgressLimitsInt(name));
+  const limitValue = limits.value && typeof limits.value === "object" ? limits.value : undefined;
+  const defaultMax = limitValue && Number.isFinite(limitValue.max) && limitValue.max > 1 ? limitValue.max : 2;
+  const max = Math.max(2, normalizePositiveInteger(ACHIEVEMENT_MAX, defaultMax));
+  const defaultCurrent = Math.max(
+    1,
+    Math.min(max - 1, limitValue && Number.isFinite(limitValue.min) ? limitValue.min + 1 : 1)
+  );
+  const current = Math.min(max - 1, normalizePositiveInteger(ACHIEVEMENT_CURRENT, defaultCurrent));
+
+  return {
+    name,
+    configuredName: configuredName || null,
+    availableNames: achievementNames,
+    current,
+    max,
+    limits,
+    displayName: readValue(() => activeClient.achievement.getDisplayAttribute(name, "name")),
+    hidden: readValue(() => activeClient.achievement.getDisplayAttribute(name, "hidden")),
+    unlocked: readValue(() => activeClient.achievement.getAndUnlockTime(name))
+  };
+}
+
+function chooseProgressAchievement(activeClient, achievementNames) {
+  for (const name of achievementNames) {
+    const limits = readValue(() => activeClient.achievement.getProgressLimitsInt(name));
+    if (limits.ok && limits.value && Number.isFinite(limits.value.max) && limits.value.max > 1) {
+      return name;
+    }
+  }
+  return achievementNames[0] || "";
+}
+
+function normalizePositiveInteger(value, fallback) {
+  return Number.isFinite(value) && value > 0 ? Math.floor(value) : fallback;
 }
 
 function pumpNativeProbe() {
@@ -560,6 +640,9 @@ function snapshot() {
       storeUrl: STORE_URL,
       webUrl: WEB_URL,
       webModal: WEB_MODAL,
+      achievementName: ACHIEVEMENT_NAME || null,
+      achievementCurrent: ACHIEVEMENT_CURRENT,
+      achievementMax: ACHIEVEMENT_MAX,
       isPackaged: app.isPackaged
     },
     process: {
@@ -820,7 +903,8 @@ function isNativeSessionAction(action) {
     action === "native-web" ||
     action === "presenter-dialog" ||
     action === "presenter-store" ||
-    action === "presenter-web"
+    action === "presenter-web" ||
+    action === "presenter-achievement-progress"
   );
 }
 
@@ -864,6 +948,9 @@ function parseSmokeArgs(args) {
     autorunRequireOverlayActive: undefined,
     webModal: undefined,
     webUrl: undefined,
+    achievementName: undefined,
+    achievementCurrent: undefined,
+    achievementMax: undefined,
     resultFile: undefined,
     diagnosticDir: undefined,
     keepOpenAfterResult: undefined
@@ -899,6 +986,15 @@ function parseSmokeArgs(args) {
         break;
       case "--steam-bridge-smoke-web-url":
         options.webUrl = value;
+        break;
+      case "--steam-bridge-smoke-achievement-name":
+        options.achievementName = value;
+        break;
+      case "--steam-bridge-smoke-achievement-current":
+        options.achievementCurrent = value;
+        break;
+      case "--steam-bridge-smoke-achievement-max":
+        options.achievementMax = value;
         break;
       case "--steam-bridge-electron-overlay-profile":
         options.overlayProfile = value;

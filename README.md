@@ -334,6 +334,13 @@ mode restores both host opacity and input so Steam web or checkout UI can
 receive clicks; after Steam reports overlay inactive, the host returns to idle
 passive mode.
 
+The Electron smoke app includes a `presenter-achievement-progress` action for
+passive notification proof. On Steam Deck Desktop Mode, this action uses App ID
+`480`, keeps the presenter passive, calls `achievement.indicateProgress(...)`,
+receives an achievement-stored callback, and captures a visible Steam
+achievement-progress toast over the app without requiring a modal overlay
+activation callback.
+
 Steam Bridge routes overlay targets by how Steam renders them. Web, store, and
 checkout-style overlays prepare the native host as an interactive overlay target.
 Dialog/social overlays such as Friends/Game Overview keep the native host

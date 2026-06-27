@@ -180,7 +180,10 @@ back-to-app checks. Use `client.overlay.attachPresenter(...)` with
 `client.overlay.openWebOverlay(...)` or the Electron smoke app's `presenter-web`
 action for the generic proof. Deck testing has verified `active=true` and
 `active=false` overlay callbacks, overlay close input, and clean return to the
-running app. The older `activateToWebPageWithNativeSession(..., { modal: true })`
+running app. The smoke app's `presenter-achievement-progress` action verifies
+passive Steam notification behavior by keeping the presenter click-through and
+transparent while Steam displays an achievement-progress toast. The older
+`activateToWebPageWithNativeSession(..., { modal: true })`
 and `native-web` path remains compatibility coverage.
 Steam's Desktop Mode social overlay can still remain visually stuck over
 Electron after deactivation or resist synthetic close input, so treat

@@ -87,7 +87,8 @@ for Steam non-Steam shortcuts:
 
 Supported autorun actions are `none`, `dialog`, `friends`, `store`, `web`,
 `native-dialog`, `native-store`, `native-web`, `native-probe`,
-`presenter-dialog`, `presenter-store`, and `presenter-web`.
+`presenter-dialog`, `presenter-store`, `presenter-web`, and
+`presenter-achievement-progress`.
 `native-probe` is a compatibility alias for `native-dialog`. On Linux, the
 `native-*` actions open a bridge-owned X11/GLX native presenter, keep it
 presenting frames, and activate the requested Steam overlay target through the
@@ -105,7 +106,11 @@ visible while remaining click-through for `overlayNeedsPresent`, restores both
 opacity and input while opening or showing Steam UI, and returns to passive mode
 after Steam emits overlay inactive callbacks. `presenter-dialog` keeps the native
 host passive while opening Friends/Game Overview so Steam's Desktop Mode social
-panel is not hidden behind the native host.
+panel is not hidden behind the native host. Use
+`presenter-achievement-progress` to verify passive Steam notification rendering:
+the action keeps the presenter transparent and click-through, calls
+`achievement.indicateProgress(...)`, and records `achievement:progress` plus
+`callback:achievement-stored` when Steam accepts the progress notification.
 
 Each autorun also writes local diagnostics. Pass
 `--steam-bridge-smoke-diagnostic-dir=/tmp/steam-bridge-smoke.log.diagnostics`
@@ -201,6 +206,27 @@ Shift+Tab/Escape probe through `/dev/uinput` when available, captures
 to the local artifact directory. Treat this as evidence collection, not a pass
 condition: Friends/Game Overview is only passed once the captured pixels return
 cleanly to the running app.
+
+For passive toast proof, use the achievement-progress presenter action:
+
+```sh
+npm run steam-deck:smoke -- \
+  --host deck@<deck-host-or-ip> \
+  --mode desktop \
+  --action presenter-achievement-progress \
+  --overlay-profile repaint \
+  --window-mode fullscreen \
+  --keep-open-after-result \
+  --result-delay-ms 1200 \
+  --collect-diagnostics-dir /tmp/steam-bridge-deck-artifacts \
+  --visual-capture-dir /tmp/steam-bridge-deck-screens
+```
+
+A passing screenshot shows the Steam achievement progress toast over the running
+app while the presenter snapshot remains passive (`clickThrough=true`,
+`transparent=true`, `overlayActive=false`). With App ID `480`, the current Deck
+proof selected the public SpaceWar achievement `ACH_TRAVEL_FAR_ACCUM` displayed
+as `Interstellar`.
 
 For scripted setup, back up and upsert the non-Steam shortcut with:
 

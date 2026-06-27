@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld("steamSmoke", {
   openOverlayWeb: () => ipcRenderer.invoke("steam-smoke:overlay-web"),
   openOverlayDialog: () => ipcRenderer.invoke("steam-smoke:overlay-dialog"),
   openPresenterWeb: () => ipcRenderer.invoke("steam-smoke:presenter-web"),
+  openPresenterAchievementProgress: () => ipcRenderer.invoke("steam-smoke:presenter-achievement-progress"),
   openNativeProbe: () => ipcRenderer.invoke("steam-smoke:native-probe-open"),
   pumpNativeProbe: () => ipcRenderer.invoke("steam-smoke:native-probe-pump"),
   closeNativeProbe: () => ipcRenderer.invoke("steam-smoke:native-probe-close"),

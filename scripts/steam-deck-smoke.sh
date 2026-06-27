@@ -13,6 +13,9 @@ overlay_profile=""
 window_mode=""
 web_url=""
 web_modal=""
+achievement_name=""
+achievement_current=""
+achievement_max=""
 result_file="/tmp/steam-bridge-smoke-steam-launch.log"
 result_delay_ms="8000"
 keep_open_after_result="0"
@@ -54,11 +57,15 @@ Options:
   --wrapper-path PATH           Remote wrapper script used by the Steam shortcut.
   --skip-copy                   Use the existing remote package directory.
   --app-id ID                   Steam App ID used inside the smoke app. Defaults to 480.
-  --action NAME                 Autorun action. Defaults to dialog. Supports raw dialog/store/web and managed native-* variants.
+  --action NAME                 Autorun action. Defaults to dialog. Supports raw dialog/store/web,
+                                managed native-* variants, and presenter-* variants.
   --overlay-profile NAME        Electron overlay profile. Desktop defaults to repaint.
   --window-mode NAME            Electron window mode: windowed, fullscreen, or borderless.
   --web-url URL                 URL for the web overlay action.
   --web-modal true|false        Whether the web overlay action should request a modal.
+  --achievement-name NAME       Achievement for presenter-achievement-progress. Defaults to the first progress achievement.
+  --achievement-current VALUE   Progress current value. Defaults to 1.
+  --achievement-max VALUE       Progress max value. Defaults to the achievement limit or 2.
   --result-file PATH            Remote result log path.
   --result-delay-ms MS          Autorun result delay. Defaults to 8000.
   --keep-open-after-result      Write the result but leave the app running.
@@ -133,6 +140,18 @@ while [ "$#" -gt 0 ]; do
       ;;
     --web-modal)
       web_modal="${2:?missing --web-modal value}"
+      shift 2
+      ;;
+    --achievement-name)
+      achievement_name="${2:?missing --achievement-name value}"
+      shift 2
+      ;;
+    --achievement-current)
+      achievement_current="${2:?missing --achievement-current value}"
+      shift 2
+      ;;
+    --achievement-max)
+      achievement_max="${2:?missing --achievement-max value}"
       shift 2
       ;;
     --result-file)
@@ -554,7 +573,7 @@ resolved_overlay_profile() {
 
 prepare_remote_wrapper() {
   local app_dir_q env_q wrapper_q wrapper_dir_q
-  local app_id_q action_q profile_q window_mode_q result_file_q diagnostic_dir_q action_delay_q result_delay_q keep_open_q require_active_q web_url_q web_modal_q
+  local app_id_q action_q profile_q window_mode_q result_file_q diagnostic_dir_q action_delay_q result_delay_q keep_open_q require_active_q web_url_q web_modal_q achievement_name_q achievement_current_q achievement_max_q
   local require_overlay_active="0"
 
   if [ "$action" = "store" ] || [ "$action" = "web" ] || [ "$action" = "presenter-store" ] || [ "$action" = "presenter-web" ]; then
@@ -577,6 +596,9 @@ prepare_remote_wrapper() {
   require_active_q="$(quote_arg "$require_overlay_active")"
   web_url_q="$(quote_arg "$web_url")"
   web_modal_q="$(quote_arg "$web_modal")"
+  achievement_name_q="$(quote_arg "$achievement_name")"
+  achievement_current_q="$(quote_arg "$achievement_current")"
+  achievement_max_q="$(quote_arg "$achievement_max")"
 
   echo "Writing Steam shortcut wrapper config to $host:$remote_wrapper_env_file"
   remote_exec "set -e
@@ -595,6 +617,9 @@ KEEP_OPEN_AFTER_RESULT=$keep_open_q
 REQUIRE_OVERLAY_ACTIVE=$require_active_q
 WEB_URL=$web_url_q
 WEB_MODAL=$web_modal_q
+ACHIEVEMENT_NAME=$achievement_name_q
+ACHIEVEMENT_CURRENT=$achievement_current_q
+ACHIEVEMENT_MAX=$achievement_max_q
 EOF
 cat > $wrapper_q <<'EOF'
 #!/usr/bin/env bash
@@ -621,6 +646,9 @@ KEEP_OPEN_AFTER_RESULT=\"\${KEEP_OPEN_AFTER_RESULT:-0}\"
 REQUIRE_OVERLAY_ACTIVE=\"\${REQUIRE_OVERLAY_ACTIVE:-0}\"
 WEB_URL=\"\${WEB_URL:-}\"
 WEB_MODAL=\"\${WEB_MODAL:-}\"
+ACHIEVEMENT_NAME=\"\${ACHIEVEMENT_NAME:-}\"
+ACHIEVEMENT_CURRENT=\"\${ACHIEVEMENT_CURRENT:-}\"
+ACHIEVEMENT_MAX=\"\${ACHIEVEMENT_MAX:-}\"
 
 rm -f \"\$RESULT_FILE\"
 rm -rf \"\$DIAGNOSTIC_DIR\"
@@ -645,6 +673,15 @@ if [ -n \"\$WEB_URL\" ]; then
 fi
 if [ -n \"\$WEB_MODAL\" ]; then
   export STEAM_BRIDGE_SMOKE_WEB_MODAL=\"\$WEB_MODAL\"
+fi
+if [ -n \"\$ACHIEVEMENT_NAME\" ]; then
+  export STEAM_BRIDGE_SMOKE_ACHIEVEMENT_NAME=\"\$ACHIEVEMENT_NAME\"
+fi
+if [ -n \"\$ACHIEVEMENT_CURRENT\" ]; then
+  export STEAM_BRIDGE_SMOKE_ACHIEVEMENT_CURRENT=\"\$ACHIEVEMENT_CURRENT\"
+fi
+if [ -n \"\$ACHIEVEMENT_MAX\" ]; then
+  export STEAM_BRIDGE_SMOKE_ACHIEVEMENT_MAX=\"\$ACHIEVEMENT_MAX\"
 fi
 
 cd \"\$APP_DIR\"
@@ -689,6 +726,15 @@ append_common_helper_args() {
   if [ -n "$web_modal" ]; then
     helper_args+=("--web-modal" "$web_modal")
   fi
+  if [ -n "$achievement_name" ]; then
+    helper_args+=("--achievement-name" "$achievement_name")
+  fi
+  if [ -n "$achievement_current" ]; then
+    helper_args+=("--achievement-current" "$achievement_current")
+  fi
+  if [ -n "$achievement_max" ]; then
+    helper_args+=("--achievement-max" "$achievement_max")
+  fi
 }
 
 build_steam_launch_args() {
@@ -712,9 +758,14 @@ build_steam_launch_args() {
     if [ "$action" = "presenter-store" ] || [ "$action" = "presenter-web" ]; then
       helper_args+=("--require-overlay-activated")
     fi
+  elif [ "$action" = "presenter-achievement-progress" ]; then
+    helper_args+=("--require-event" "overlay:presenter-attach")
+    helper_args+=("--require-event" "achievement:progress")
   fi
 
-  helper_args+=("--require-event" "callback:overlay-activated")
+  if [ "$action" != "none" ] && [ "$action" != "presenter-achievement-progress" ]; then
+    helper_args+=("--require-event" "callback:overlay-activated")
+  fi
 
   if [ "$mode" = "game" ]; then
     helper_args+=("--require-big-picture")
@@ -847,7 +898,7 @@ run_remote_mode() {
 }
 
 run_self_test() {
-  local game_args desktop_args direct_check
+  local game_args desktop_args toast_args direct_check
   mode="game"
   build_steam_launch_args
   game_args="$(quote_args "${helper_args[@]}")"
@@ -884,6 +935,19 @@ run_self_test() {
     exit 1
   fi
 
+  action="presenter-achievement-progress"
+  build_steam_launch_args
+  toast_args="$(quote_args "${helper_args[@]}")"
+  if [[ "$toast_args" != *"--require-event achievement:progress"* ]]; then
+    echo "Self-test failed: Toast args must require the achievement progress event." >&2
+    exit 1
+  fi
+  if [[ "$toast_args" == *"--require-event callback:overlay-activated"* ]]; then
+    echo "Self-test failed: Toast args must not require modal overlay activation." >&2
+    exit 1
+  fi
+
+  action="dialog"
   build_direct_args
   direct_check="$(quote_args "${helper_args[@]}")"
   if [[ "$direct_check" != *"--mode direct"* || "$direct_check" != *"--require-steam-deck"* ]]; then
