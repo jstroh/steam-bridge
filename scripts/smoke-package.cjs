@@ -83,10 +83,16 @@ assert.equal(typeof steam.overlay.openNativeOverlayProbeWindow, "function");
 assert.equal(typeof steam.overlay.activateDialogWithNativeSession, "function");
 assert.equal(typeof steam.overlay.activateToWebPageWithNativeSession, "function");
 assert.equal(typeof steam.overlay.activateToStoreWithNativeSession, "function");
+assert.equal(typeof steam.overlay.attachPresenter, "function");
+assert.equal(typeof steam.overlay.openWebOverlay, "function");
+assert.equal(typeof steam.overlay.setNativeOverlayHostInputPassthrough, "function");
+assert.equal(typeof steam.overlay.setNativeOverlayHostOpacity, "function");
 assert.equal(typeof steam.electronNativeOverlaySessionOptions, "function");
+assert.equal(typeof steam.electronOverlayPresenterOptions, "function");
 assert.equal(steam.SteamworksEnums.EResult.k_EResultOK, 1);
 assert.equal(typeof electron.electronConfigureSteamOverlay, "function");
 assert.equal(typeof electron.electronNativeOverlaySessionOptions, "function");
+assert.equal(typeof electron.electronOverlayPresenterOptions, "function");
 assert.equal(electron.electronConfigureSteamOverlay({ profile: "off" }).profile, "off");
 `
   );
@@ -104,10 +110,16 @@ assert.equal(typeof overlay.openNativeOverlayProbeWindow, "function");
 assert.equal(typeof overlay.activateDialogWithNativeSession, "function");
 assert.equal(typeof overlay.activateToWebPageWithNativeSession, "function");
 assert.equal(typeof overlay.activateToStoreWithNativeSession, "function");
+assert.equal(typeof overlay.attachPresenter, "function");
+assert.equal(typeof overlay.openWebOverlay, "function");
+assert.equal(typeof overlay.setNativeOverlayHostInputPassthrough, "function");
+assert.equal(typeof overlay.setNativeOverlayHostOpacity, "function");
 assert.equal(typeof steam.electronNativeOverlaySessionOptions, "function");
+assert.equal(typeof steam.electronOverlayPresenterOptions, "function");
 assert.equal(SteamworksEnums.EResult.k_EResultOK, 1);
 assert.equal(typeof electron.electronConfigureSteamOverlay, "function");
 assert.equal(typeof electron.electronNativeOverlaySessionOptions, "function");
+assert.equal(typeof electron.electronOverlayPresenterOptions, "function");
 assert.equal(electron.electronConfigureSteamOverlay({ profile: "off" }).profile, "off");
 `
   );
@@ -144,6 +156,7 @@ import steam, {
 } from "steam-bridge";
 import { electronConfigureSteamOverlay } from "steam-bridge/electron";
 import { electronNativeOverlaySessionOptions } from "steam-bridge/electron";
+import { electronOverlayPresenterOptions } from "steam-bridge/electron";
 
 const client = steam.init(480);
 const web = createSteamWebApiClient({ apiKey: "test" });
@@ -152,8 +165,21 @@ const overlayFn: (title?: string) => void = overlay.openNativeOverlayProbeWindow
 const sessionFn = overlay.activateDialogWithNativeSession;
 const webSessionFn = overlay.activateToWebPageWithNativeSession;
 const storeSessionFn = overlay.activateToStoreWithNativeSession;
+const presenterFn = overlay.attachPresenter;
+const presenterWebFn = overlay.openWebOverlay;
+const inputPassthroughFn: (passThrough: boolean) => void = overlay.setNativeOverlayHostInputPassthrough;
+const opacityFn: (opaque: boolean) => void = overlay.setNativeOverlayHostOpacity;
 const config = electronConfigureSteamOverlay({ profile: "off" });
 const electronOptions = electronNativeOverlaySessionOptions({
+  isDestroyed: () => false,
+  getNativeWindowHandle: () => Buffer.from([1, 0, 0, 0, 0, 0, 0, 0]),
+  webContents: {
+    once() {},
+    invalidate() {},
+    send() {}
+  }
+});
+const presenterOptions = electronOverlayPresenterOptions({
   isDestroyed: () => false,
   getNativeWindowHandle: () => Buffer.from([1, 0, 0, 0, 0, 0, 0, 0]),
   webContents: {
@@ -171,8 +197,13 @@ void overlayFn;
 void sessionFn;
 void webSessionFn;
 void storeSessionFn;
+void presenterFn;
+void presenterWebFn;
+void inputPassthroughFn;
+void opacityFn;
 void config;
 void electronOptions;
+void presenterOptions;
 void steamId;
 `
   );

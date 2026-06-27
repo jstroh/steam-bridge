@@ -1,7 +1,8 @@
 import {
   electronConfigureSteamOverlay as electronConfigureSteamOverlayImpl,
   electronEnableSteamOverlay as electronEnableSteamOverlayImpl,
-  electronNativeOverlaySessionOptions as electronNativeOverlaySessionOptionsImpl
+  electronNativeOverlaySessionOptions as electronNativeOverlaySessionOptionsImpl,
+  electronOverlayPresenterOptions as electronOverlayPresenterOptionsImpl
 } from "./electron";
 import { SteamworksEnums } from "./generated-steamworks-enums";
 import type {
@@ -1598,6 +1599,65 @@ export interface NativeOverlaySession extends CallbackHandle {
   isOpen(): boolean;
   snapshot(): NativeOverlaySessionSnapshot;
 }
+
+export type NativeOverlayPresenterMode = "passive" | "active" | "hidden" | "closed";
+
+export interface NativeOverlayPresenterOptions {
+  title?: string;
+  nativeWindowHandle?: Buffer;
+  restoreFocus?: () => void;
+  restoreFocusDelayMs?: number;
+  idleFps?: number;
+  needsPresentFps?: number;
+  activeOverlayFps?: number;
+  pollIntervalMs?: number;
+  activationBoostMs?: number;
+  activeGraceMs?: number;
+}
+
+export interface NativeOverlayPresenterSnapshot {
+  title: string;
+  closed: boolean;
+  startedAt: number;
+  mode: NativeOverlayPresenterMode;
+  attached: boolean;
+  nativeProbeOpen: boolean;
+  nativeHostOpen: boolean;
+  clickThrough: boolean;
+  focusable: boolean;
+  transparent: boolean;
+  idleFps: number;
+  needsPresentFps: number;
+  activeOverlayFps: number;
+  pollIntervalMs: number;
+  currentFps: number;
+  pumpCount: number;
+  pollCount: number;
+  overlayActive: boolean;
+  overlayWasActive: boolean;
+  overlayNeedsPresent: boolean;
+  lastOverlayEvent?: GameOverlayActivated;
+  lastPumpAt?: number;
+  lastPollAt?: number;
+  lastError?: unknown;
+  diagnostics?: OverlayDiagnostics;
+}
+
+export interface NativeOverlayPresenter extends CallbackHandle {
+  close(): void;
+  pump(): void;
+  prepareForOverlay(durationMs?: number): void;
+  show(): void;
+  hide(): void;
+  isOpen(): boolean;
+  snapshot(): NativeOverlayPresenterSnapshot;
+}
+
+export type NativeOverlayPresenterOverlayOptions = NativeOverlayPresenterOptions & {
+  presenter?: NativeOverlayPresenter;
+};
+
+export type NativeOverlayWebPagePresenterOptions = NativeOverlayPresenterOverlayOptions & OverlayWebPageOptions;
 
 export interface HtmlCreateBrowserOptions {
   userAgent?: string;
@@ -5971,6 +6031,7 @@ export const UserListOrder = {
 export let electronConfigureSteamOverlay = electronConfigureSteamOverlayImpl;
 export let electronEnableSteamOverlay = electronEnableSteamOverlayImpl;
 export let electronNativeOverlaySessionOptions = electronNativeOverlaySessionOptionsImpl;
+export let electronOverlayPresenterOptions = electronOverlayPresenterOptionsImpl;
 
 export type SteamCallbackId = typeof SteamCallback[keyof typeof SteamCallback];
 export type SteamCallbackName = keyof typeof SteamCallback;
@@ -6593,6 +6654,14 @@ export function hideNativeOverlayHostView(): void {
   native().hideNativeOverlayHostView();
 }
 
+export function setNativeOverlayHostInputPassthrough(passThrough: boolean): void {
+  native().setNativeOverlayHostInputPassthrough(passThrough);
+}
+
+export function setNativeOverlayHostOpacity(opaque: boolean): void {
+  native().setNativeOverlayHostOpacity(opaque);
+}
+
 export function updateNativeOverlayHostFrame(frame: Buffer, width: number, height: number): void {
   native().updateNativeOverlayHostFrame(frame, width, height);
 }
@@ -6714,6 +6783,8 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
   if (options.nativeWindowHandle) {
     native().attachNativeOverlayHostView(options.nativeWindowHandle);
     native().showNativeOverlayHostView();
+    setHostInputPassthrough(false);
+    setHostOpaque(true);
   } else {
     native().openNativeOverlayProbeWindow(title);
   }
@@ -6726,6 +6797,8 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
     }
     if (event.active === true) {
       overlayWasActive = true;
+      setHostInputPassthrough(false);
+      setHostOpaque(true);
     } else if (event.active === false) {
       scheduleRestoreFocus();
     }
@@ -6751,7 +6824,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
   };
 
   function scheduleRestoreFocus(): void {
-    if (!options.restoreFocus && !hideNativeHostOnOverlayDeactivate) {
+    if (!options.restoreFocus && !hideNativeHostOnOverlayDeactivate && !usesNativeHostView) {
       return;
     }
 
@@ -6780,15 +6853,395 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
           }
           try {
             native().hideNativeOverlayHostView();
+            setHostInputPassthrough(true);
+            setHostOpaque(false);
           } catch (error) {
             lastError = error;
           }
         }, hideNativeHostDelayMs);
         hideNativeHostTimer.unref?.();
+      } else if (usesNativeHostView) {
+        setHostInputPassthrough(true);
+        setHostOpaque(false);
       }
     }, restoreFocusDelayMs);
     restoreFocusTimer.unref?.();
   }
+
+  function setHostInputPassthrough(passThrough: boolean): void {
+    if (!usesNativeHostView) {
+      return;
+    }
+    try {
+      setNativeOverlayHostInputPassthrough(passThrough);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  function setHostOpaque(opaque: boolean): void {
+    if (!usesNativeHostView) {
+      return;
+    }
+    try {
+      setNativeOverlayHostOpacity(opaque);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+}
+
+export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = {}): NativeOverlayPresenter {
+  const title = options.title ?? "Steam Bridge Overlay Presenter";
+  const usesNativeHostView = Boolean(options.nativeWindowHandle);
+  const idleFps = normalizedFps(options.idleFps, 1);
+  const needsPresentFps = normalizedFps(options.needsPresentFps, 30);
+  const activeOverlayFps = normalizedFps(options.activeOverlayFps, 30);
+  const pollIntervalMs = Math.max(50, finiteNumber(options.pollIntervalMs, 250));
+  const activationBoostMs = Math.max(0, finiteNumber(options.activationBoostMs, 5000));
+  const activeGraceMs = Math.max(0, finiteNumber(options.activeGraceMs, 500));
+  const restoreFocusDelayMs = Math.max(0, finiteNumber(options.restoreFocusDelayMs, 250));
+
+  let closed = false;
+  let visible = true;
+  let pumpCount = 0;
+  let pollCount = 0;
+  let currentFps = idleFps;
+  let lastPumpAt: number | undefined;
+  let lastPollAt: number | undefined;
+  let lastError: unknown;
+  let lastDiagnostics: OverlayDiagnostics | undefined;
+  let overlayActive = false;
+  let overlayWasActive = false;
+  let overlayNeedsPresent = false;
+  let lastOverlayEvent: GameOverlayActivated | undefined;
+  let hostInputPassthrough = usesNativeHostView;
+  let hostOpaque = !usesNativeHostView;
+  let boostUntil = 0;
+  let timer: NodeJS.Timeout | undefined;
+  let restoreFocusTimer: NodeJS.Timeout | undefined;
+  let overlayHandle: CallbackHandle | undefined;
+
+  const pump = (): void => {
+    if (closed) {
+      return;
+    }
+
+    try {
+      native().pumpNativeOverlayProbeWindow();
+      pumpCount += 1;
+      lastPumpAt = Date.now();
+    } catch (error) {
+      lastError = error;
+      close();
+      throw error;
+    }
+  };
+
+  const show = (): void => {
+    if (closed) {
+      return;
+    }
+
+    try {
+      if (usesNativeHostView) {
+        native().showNativeOverlayHostView();
+      } else {
+        native().openNativeOverlayProbeWindow(title);
+      }
+      visible = true;
+    } catch (error) {
+      lastError = error;
+      throw error;
+    }
+  };
+
+  const hide = (): void => {
+    if (closed) {
+      return;
+    }
+
+    try {
+      if (usesNativeHostView) {
+        native().hideNativeOverlayHostView();
+      } else {
+        native().closeNativeOverlayProbeWindow();
+      }
+      visible = false;
+    } catch (error) {
+      lastError = error;
+      throw error;
+    }
+  };
+
+  const prepareForOverlay = (durationMs = activationBoostMs): void => {
+    if (closed) {
+      return;
+    }
+
+    if (!visible) {
+      show();
+    }
+
+    boostUntil = Math.max(boostUntil, Date.now() + Math.max(0, durationMs));
+    syncHostInputMode();
+    pump();
+    schedule(0);
+  };
+
+  const snapshot = (): NativeOverlayPresenterSnapshot => {
+    const acceptsOverlayInput = overlayActive || Date.now() < boostUntil;
+    const mode: NativeOverlayPresenterMode = closed
+      ? "closed"
+      : !visible
+        ? "hidden"
+        : acceptsOverlayInput
+          ? "active"
+          : "passive";
+    const nativeProbeOpen = safeBoolean(() => native().isNativeOverlayProbeWindowOpen());
+    const nativeHostOpen = safeBoolean(() => native().isNativeOverlayHostViewOpen());
+    const base = {
+      title,
+      closed,
+      startedAt,
+      mode,
+      attached: usesNativeHostView ? nativeHostOpen : nativeProbeOpen,
+      nativeProbeOpen,
+      nativeHostOpen,
+      clickThrough: hostInputPassthrough,
+      focusable: !usesNativeHostView,
+      transparent: usesNativeHostView && !hostOpaque,
+      idleFps,
+      needsPresentFps,
+      activeOverlayFps,
+      pollIntervalMs,
+      currentFps,
+      pumpCount,
+      pollCount,
+      overlayActive,
+      overlayWasActive,
+      overlayNeedsPresent,
+      lastOverlayEvent,
+      lastPumpAt,
+      lastPollAt,
+      lastError
+    };
+
+    return lastDiagnostics ? { ...base, diagnostics: lastDiagnostics } : base;
+  };
+
+  const close = (): void => {
+    if (closed) {
+      return;
+    }
+
+    closed = true;
+
+    if (timer) {
+      clearTimeout(timer);
+      timer = undefined;
+    }
+
+    if (restoreFocusTimer) {
+      clearTimeout(restoreFocusTimer);
+      restoreFocusTimer = undefined;
+    }
+
+    if (overlayHandle) {
+      overlayHandle.disconnect();
+      overlayHandle = undefined;
+    }
+
+    if (usesNativeHostView) {
+      native().detachNativeOverlayHostView();
+    } else {
+      native().closeNativeOverlayProbeWindow();
+    }
+  };
+
+  const startedAt = Date.now();
+
+  if (options.nativeWindowHandle) {
+    native().attachNativeOverlayHostView(options.nativeWindowHandle);
+    native().showNativeOverlayHostView();
+    setHostInputPassthrough(true);
+    setHostOpaque(false);
+  } else {
+    native().openNativeOverlayProbeWindow(title);
+  }
+  pump();
+
+  overlayHandle = onGameOverlayActivated((event) => {
+    lastOverlayEvent = event;
+    if (typeof event.active === "boolean") {
+      overlayActive = event.active;
+    }
+    if (event.active === true) {
+      overlayWasActive = true;
+      boostUntil = Math.max(boostUntil, Date.now() + activationBoostMs);
+      syncHostInputMode();
+      schedule(0);
+    } else if (event.active === false) {
+      boostUntil = Date.now() + activeGraceMs;
+      scheduleRestoreFocus();
+      syncHostInputMode();
+      schedule(0);
+    }
+  });
+
+  schedule(pollIntervalMs);
+
+  return {
+    close,
+    disconnect: close,
+    pump,
+    prepareForOverlay,
+    show,
+    hide,
+    isOpen: () =>
+      !closed &&
+      (usesNativeHostView ? native().isNativeOverlayHostViewOpen() : native().isNativeOverlayProbeWindowOpen()),
+    snapshot
+  };
+
+  function poll(): void {
+    try {
+      lastDiagnostics = getOverlayDiagnostics();
+      overlayNeedsPresent = lastDiagnostics.overlayNeedsPresent;
+      pollCount += 1;
+      lastPollAt = Date.now();
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  function tick(): void {
+    timer = undefined;
+    if (closed) {
+      return;
+    }
+
+    poll();
+    currentFps = selectCurrentFps();
+    syncHostInputMode();
+    if (currentFps > 0) {
+      try {
+        pump();
+      } catch {
+        return;
+      }
+    }
+
+    schedule(currentFps > 0 ? Math.max(1, Math.round(1000 / currentFps)) : pollIntervalMs);
+  }
+
+  function selectCurrentFps(): number {
+    const now = Date.now();
+    if (overlayActive || now < boostUntil) {
+      return activeOverlayFps;
+    }
+    if (overlayNeedsPresent) {
+      return needsPresentFps;
+    }
+    return idleFps;
+  }
+
+  function syncHostInputMode(): void {
+    if (!usesNativeHostView) {
+      return;
+    }
+    const now = Date.now();
+    const shouldAcceptInput = overlayActive || now < boostUntil;
+    const shouldShowHost = shouldAcceptInput || overlayNeedsPresent;
+    setHostInputPassthrough(!shouldAcceptInput);
+    setHostOpaque(shouldShowHost);
+  }
+
+  function setHostInputPassthrough(passThrough: boolean): void {
+    if (!usesNativeHostView || hostInputPassthrough === passThrough) {
+      return;
+    }
+
+    try {
+      setNativeOverlayHostInputPassthrough(passThrough);
+      hostInputPassthrough = passThrough;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  function setHostOpaque(opaque: boolean): void {
+    if (!usesNativeHostView || hostOpaque === opaque) {
+      return;
+    }
+
+    try {
+      setNativeOverlayHostOpacity(opaque);
+      hostOpaque = opaque;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  function schedule(delayMs: number): void {
+    if (closed) {
+      return;
+    }
+    if (timer) {
+      clearTimeout(timer);
+    }
+    timer = setTimeout(tick, Math.max(0, delayMs));
+    timer.unref?.();
+  }
+
+  function scheduleRestoreFocus(): void {
+    if (!options.restoreFocus) {
+      return;
+    }
+
+    if (restoreFocusTimer) {
+      clearTimeout(restoreFocusTimer);
+    }
+
+    restoreFocusTimer = setTimeout(() => {
+      restoreFocusTimer = undefined;
+      if (closed) {
+        return;
+      }
+      try {
+        options.restoreFocus?.();
+      } catch (error) {
+        lastError = error;
+      }
+    }, restoreFocusDelayMs);
+    restoreFocusTimer.unref?.();
+  }
+}
+
+export function openDialogOverlay(
+  dialog: number | string = "Friends",
+  options: NativeOverlayPresenterOverlayOptions = {}
+): NativeOverlayPresenter {
+  return activateWithOverlayPresenter(options, () => {
+    activateOverlay(dialog);
+  });
+}
+
+export function openWebOverlay(url: string, options: NativeOverlayWebPagePresenterOptions = {}): NativeOverlayPresenter {
+  const { modal, ...presenterOptions } = options;
+  return activateWithOverlayPresenter(presenterOptions, () => {
+    activateOverlayToWebPage(url, { modal });
+  });
+}
+
+export function openStoreOverlay(
+  appId: number,
+  flag: number,
+  options: NativeOverlayPresenterOverlayOptions = {}
+): NativeOverlayPresenter {
+  return activateWithOverlayPresenter(options, () => {
+    native().overlayActivateToStore(appId, flag);
+  });
 }
 
 export function activateDialogWithNativeSession(
@@ -11048,6 +11501,10 @@ export const overlay = {
   activateToStore(appId: number, flag: number): void {
     native().overlayActivateToStore(appId, flag);
   },
+  attachPresenter: attachOverlayPresenter,
+  openDialogOverlay,
+  openWebOverlay,
+  openStoreOverlay,
   startNativeOverlaySession,
   activateDialogWithNativeSession,
   activateToWebPageWithNativeSession,
@@ -11058,6 +11515,8 @@ export const overlay = {
   pumpNativeOverlayHostView,
   showNativeOverlayHostView,
   hideNativeOverlayHostView,
+  setNativeOverlayHostInputPassthrough,
+  setNativeOverlayHostOpacity,
   updateNativeOverlayHostFrame,
   closeNativeOverlayProbeWindow,
   detachNativeOverlayHostView,
@@ -16911,6 +17370,14 @@ function safeBoolean(fn: () => boolean): boolean {
   }
 }
 
+function finiteNumber(value: number | undefined, fallback: number): number {
+  return Number.isFinite(value) ? Number(value) : fallback;
+}
+
+function normalizedFps(value: number | undefined, fallback: number): number {
+  return Math.max(0, finiteNumber(value, fallback));
+}
+
 function activateWithNativeOverlaySession(
   options: NativeOverlaySessionOptions | undefined,
   activate: () => void
@@ -16925,6 +17392,27 @@ function activateWithNativeOverlaySession(
   }
 
   return session;
+}
+
+function activateWithOverlayPresenter(
+  options: NativeOverlayPresenterOverlayOptions,
+  activate: () => void
+): NativeOverlayPresenter {
+  const providedPresenter = options.presenter;
+  const { presenter: _presenter, ...presenterOptions } = options;
+  const activePresenter = providedPresenter ?? attachOverlayPresenter(presenterOptions);
+
+  try {
+    activePresenter.prepareForOverlay();
+    activate();
+  } catch (error) {
+    if (!providedPresenter) {
+      activePresenter.close();
+    }
+    throw error;
+  }
+
+  return activePresenter;
 }
 
 function unwrapNativeCallbackArgument(event: unknown): unknown {
@@ -18718,6 +19206,10 @@ const defaultExport = {
   onSteamCallback,
   activateOverlay,
   activateOverlayToWebPage,
+  attachOverlayPresenter,
+  openDialogOverlay,
+  openWebOverlay,
+  openStoreOverlay,
   startNativeOverlaySession,
   activateDialogWithNativeSession,
   activateToWebPageWithNativeSession,
@@ -18728,6 +19220,8 @@ const defaultExport = {
   pumpNativeOverlayHostView,
   showNativeOverlayHostView,
   hideNativeOverlayHostView,
+  setNativeOverlayHostInputPassthrough,
+  setNativeOverlayHostOpacity,
   updateNativeOverlayHostFrame,
   closeNativeOverlayProbeWindow,
   detachNativeOverlayHostView,
@@ -18781,6 +19275,7 @@ const defaultExport = {
   electronConfigureSteamOverlay,
   electronEnableSteamOverlay,
   electronNativeOverlaySessionOptions,
+  electronOverlayPresenterOptions,
   SteamCallback,
   SteamworksEnums,
   GameCoordinatorResult

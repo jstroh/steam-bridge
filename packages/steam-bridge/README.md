@@ -132,14 +132,37 @@ const txn = await steamworks.webApi.microTxnSandbox.initTxn({
 ```
 
 The package also includes overlay diagnostics through
-`client.utils.getOverlayDiagnostics()`, bridge-owned native overlay session
-helpers such as `client.overlay.activateDialogWithNativeSession()`,
+`client.utils.getOverlayDiagnostics()`, bridge-owned native overlay presenter
+helpers such as `client.overlay.attachPresenter()` and
+`client.overlay.openWebOverlay()`, and compatibility session helpers such as
+`client.overlay.activateDialogWithNativeSession()`,
 `client.overlay.activateToStoreWithNativeSession()`, and
-`client.overlay.activateToWebPageWithNativeSession()`, plus the Electron helper
-exports `electronConfigureSteamOverlay()` and
-`electronNativeOverlaySessionOptions()`. These are intentionally diagnostics
-first: core Steam API success should not be treated as proof that the Steam
-overlay has hooked Electron.
+`client.overlay.activateToWebPageWithNativeSession()`. Electron helpers include
+`electronConfigureSteamOverlay()`, `electronOverlayPresenterOptions()`, and
+`electronNativeOverlaySessionOptions()`. Core Steam API success should not be
+treated as proof that the Steam overlay has hooked Electron.
+
+For Electron apps, attach a reusable presenter once and reuse it for overlay
+work:
+
+```ts
+const presenter = client.overlay.attachPresenter(
+  steamworks.electronOverlayPresenterOptions(mainWindow)
+);
+
+client.overlay.openWebOverlay(checkoutUrl, {
+  modal: true,
+  presenter
+});
+```
+
+The presenter stays passive and click-through while idle, polls Steam overlay
+state cheaply, and only pumps frames when Steam reports `overlayNeedsPresent` or
+an overlay is being opened/active. On Linux/X11, fully idle mode makes the host
+transparent and click-through; `overlayNeedsPresent` can make it visible while
+leaving input click-through for passive notifications; opening or active overlay
+mode restores both opacity and input so Steam web or checkout UI can receive
+clicks, then returns to passive mode after Steam reports the overlay inactive.
 
 For Linux Electron apps, use
 `electronConfigureSteamOverlay({ profile: "repaint" })` when the Steam overlay
@@ -148,13 +171,14 @@ Electron windows at about 30 FPS so Steam has fresh frames to composite. Use
 `profile: "compatibility"` as the stronger fallback when you also need
 Chromium's GPU work in-process.
 
-On Steam Deck Desktop Mode, the Linux X11/GLX managed native web session is the
+On Steam Deck Desktop Mode, the Linux X11/GLX reusable presenter path is the
 current generic proof path for overlay activation, visual open, close, and
-back-to-app checks. It opens and pumps the native presenter inside Steam Bridge
-so Electron examples do not need to own that lifecycle; use
-`activateToWebPageWithNativeSession(..., { modal: true })` or the Electron smoke
-app's `native-web` action for the generic proof. Deck testing has verified
-`active=true` and `active=false` overlay callbacks with the app still alive.
+back-to-app checks. Use `client.overlay.attachPresenter(...)` with
+`client.overlay.openWebOverlay(...)` or the Electron smoke app's `presenter-web`
+action for the generic proof. Deck testing has verified `active=true` and
+`active=false` overlay callbacks, overlay close input, and clean return to the
+running app. The older `activateToWebPageWithNativeSession(..., { modal: true })`
+and `native-web` path remains compatibility coverage.
 Steam's Desktop Mode social overlay can still remain visually stuck over
 Electron after deactivation, so treat Friends/Game Overview dismissal as an open
 social-overlay blocker, not a completed cross-platform guarantee. Call

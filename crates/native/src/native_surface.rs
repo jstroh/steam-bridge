@@ -277,6 +277,14 @@ mod macos {
         Ok(())
     }
 
+    pub fn set_input_passthrough(_pass_through: bool) -> Result<(), Error> {
+        Ok(())
+    }
+
+    pub fn set_opaque(_opaque: bool) -> Result<(), Error> {
+        Ok(())
+    }
+
     pub fn pump() -> Result<(), Error> {
         ensure_main_thread()?;
 
@@ -1033,6 +1041,14 @@ mod fallback {
         Ok(())
     }
 
+    pub fn set_input_passthrough(_pass_through: bool) -> Result<(), Error> {
+        Ok(())
+    }
+
+    pub fn set_opaque(_opaque: bool) -> Result<(), Error> {
+        Ok(())
+    }
+
     pub fn update_frame(_buffer: super::Buffer, _width: u32, _height: u32) -> Result<(), Error> {
         Ok(())
     }
@@ -1067,21 +1083,27 @@ mod linux {
     use once_cell::sync::Lazy;
     use std::ffi::{c_void, CString};
     use std::mem;
-    use std::os::raw::{c_int, c_long, c_uint};
+    use std::os::raw::{c_int, c_long, c_uchar, c_uint};
     use std::ptr;
     use std::sync::Mutex;
     use std::time::{SystemTime, UNIX_EPOCH};
-    use x11_dl::{glx, xlib};
+    use x11_dl::{glx, xfixes, xlib};
+
+    const SHAPE_INPUT: c_int = 2;
 
     struct NativeSurface {
         xlib: xlib::Xlib,
         glx: glx::Glx,
+        xfixes: Option<xfixes::Xlib>,
         display: *mut xlib::Display,
         window: xlib::Window,
         parent_window: Option<xlib::Window>,
+        opacity_atom: xlib::Atom,
         colormap: xlib::Colormap,
         context: glx::GLXContext,
         frame: u64,
+        input_passthrough: bool,
+        opaque: bool,
     }
 
     unsafe impl Send for NativeSurface {}
@@ -1133,13 +1155,20 @@ mod linux {
             }
 
             if let Some(parent_window) = surface.parent_window {
-                let (width, height) =
-                    window_size(&surface.xlib, surface.display, parent_window, 640, 480);
+                let (x, y, width, height) = window_bounds_on_root(
+                    &surface.xlib,
+                    surface.display,
+                    parent_window,
+                    0,
+                    0,
+                    640,
+                    480,
+                );
                 (surface.xlib.XMoveResizeWindow)(
                     surface.display,
                     surface.window,
-                    0,
-                    0,
+                    x,
+                    y,
                     width,
                     height,
                 );
@@ -1147,11 +1176,15 @@ mod linux {
             }
 
             (surface.glx.glXMakeCurrent)(surface.display, surface.window, surface.context);
-            let t = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .map(|duration| duration.as_millis() as f32 / 1000.0)
-                .unwrap_or(0.0);
-            gl::ClearColor(0.015 + (t.sin() + 1.0) * 0.015, 0.02, 0.035, 1.0);
+            if surface.parent_window.is_some() {
+                gl::ClearColor(0.0, 0.0, 0.0, 0.0);
+            } else {
+                let t = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .map(|duration| duration.as_millis() as f32 / 1000.0)
+                    .unwrap_or(0.0);
+                gl::ClearColor(0.015 + (t.sin() + 1.0) * 0.015, 0.02, 0.035, 1.0);
+            }
             gl::Clear(gl::COLOR_BUFFER_BIT);
             (surface.glx.glXSwapBuffers)(surface.display, surface.window);
             surface.frame = surface.frame.wrapping_add(1);
@@ -1171,6 +1204,36 @@ mod linux {
         with_surface(|surface| unsafe {
             (surface.xlib.XUnmapWindow)(surface.display, surface.window);
             (surface.xlib.XFlush)(surface.display);
+        })
+    }
+
+    pub fn set_input_passthrough(pass_through: bool) -> Result<(), Error> {
+        with_surface(|surface| unsafe {
+            if surface.parent_window.is_some() && surface.input_passthrough != pass_through {
+                apply_host_input_mode(
+                    &surface.xlib,
+                    surface.xfixes.as_ref(),
+                    surface.display,
+                    surface.window,
+                    pass_through,
+                );
+                surface.input_passthrough = pass_through;
+            }
+        })
+    }
+
+    pub fn set_opaque(opaque: bool) -> Result<(), Error> {
+        with_surface(|surface| unsafe {
+            if surface.parent_window.is_some() && surface.opaque != opaque {
+                apply_host_opacity(
+                    &surface.xlib,
+                    surface.display,
+                    surface.window,
+                    surface.opacity_atom,
+                    opaque,
+                );
+                surface.opaque = opaque;
+            }
         })
     }
 
@@ -1266,6 +1329,7 @@ mod linux {
             .map_err(|error| Error::from_reason(format!("Failed to load Xlib: {error}")))?;
         let glx = glx::Glx::open()
             .map_err(|error| Error::from_reason(format!("Failed to load GLX: {error}")))?;
+        let xfixes = xfixes::Xlib::open().ok();
 
         let display = (xlib.XOpenDisplay)(ptr::null());
         if display.is_null() {
@@ -1274,7 +1338,7 @@ mod linux {
             ));
         }
 
-        let (screen, parent, width, height) = if let Some(parent_window) = parent_window {
+        let (screen, parent, x, y, width, height) = if let Some(parent_window) = parent_window {
             let mut attributes: xlib::XWindowAttributes = mem::MaybeUninit::zeroed().assume_init();
             if (xlib.XGetWindowAttributes)(display, parent_window, &mut attributes) == 0 {
                 (xlib.XCloseDisplay)(display);
@@ -1288,17 +1352,16 @@ mod linux {
             } else {
                 (xlib.XScreenNumberOfScreen)(attributes.screen)
             };
-            (
-                screen,
-                attributes.root,
-                attributes.width.max(1) as c_uint,
-                attributes.height.max(1) as c_uint,
-            )
+            let (x, y, width, height) =
+                window_bounds_on_root(&xlib, display, parent_window, 0, 0, 640, 480);
+            (screen, attributes.root, x, y, width, height)
         } else {
             let screen = (xlib.XDefaultScreen)(display);
             (
                 screen,
                 (xlib.XRootWindow)(display, screen),
+                0,
+                0,
                 (xlib.XDisplayWidth)(display, screen).max(640) as c_uint,
                 (xlib.XDisplayHeight)(display, screen).max(480) as c_uint,
             )
@@ -1343,8 +1406,8 @@ mod linux {
         let window = (xlib.XCreateWindow)(
             display,
             parent,
-            0,
-            0,
+            x,
+            y,
             width,
             height,
             0,
@@ -1364,8 +1427,16 @@ mod linux {
         }
 
         (xlib.XStoreName)(display, window, title.as_ptr());
+        let opacity_atom_name = CString::new("_NET_WM_WINDOW_OPACITY").expect("static atom");
+        let opacity_atom = (xlib.XInternAtom)(display, opacity_atom_name.as_ptr(), xlib::False);
+        let mut input_passthrough = false;
+        let mut opaque = true;
         if let Some(parent_window) = parent_window {
             (xlib.XSetTransientForHint)(display, window, parent_window);
+            apply_host_input_mode(&xlib, xfixes.as_ref(), display, window, true);
+            apply_host_opacity(&xlib, display, window, opacity_atom, false);
+            input_passthrough = true;
+            opaque = false;
         }
         let mut class_hint = xlib::XClassHint {
             res_name: class_name.as_ptr().cast_mut(),
@@ -1403,30 +1474,114 @@ mod linux {
         Ok(NativeSurface {
             xlib,
             glx,
+            xfixes,
             display,
             window,
             parent_window,
+            opacity_atom,
             colormap,
             context,
             frame: 0,
+            input_passthrough,
+            opaque,
         })
     }
 
-    unsafe fn window_size(
+    unsafe fn window_bounds_on_root(
         xlib: &xlib::Xlib,
         display: *mut xlib::Display,
         window: xlib::Window,
+        fallback_x: c_int,
+        fallback_y: c_int,
         fallback_width: c_uint,
         fallback_height: c_uint,
-    ) -> (c_uint, c_uint) {
+    ) -> (c_int, c_int, c_uint, c_uint) {
         let mut attributes: xlib::XWindowAttributes = mem::MaybeUninit::zeroed().assume_init();
         if (xlib.XGetWindowAttributes)(display, window, &mut attributes) == 0 {
-            return (fallback_width, fallback_height);
+            return (fallback_x, fallback_y, fallback_width, fallback_height);
+        }
+
+        let mut x = fallback_x;
+        let mut y = fallback_y;
+        let mut child: xlib::Window = 0;
+        if (xlib.XTranslateCoordinates)(
+            display,
+            window,
+            attributes.root,
+            0,
+            0,
+            &mut x,
+            &mut y,
+            &mut child,
+        ) == 0
+        {
+            x = fallback_x;
+            y = fallback_y;
         }
         (
+            x,
+            y,
             attributes.width.max(1) as c_uint,
             attributes.height.max(1) as c_uint,
         )
+    }
+
+    unsafe fn apply_host_input_mode(
+        xlib: &xlib::Xlib,
+        xfixes: Option<&xfixes::Xlib>,
+        display: *mut xlib::Display,
+        window: xlib::Window,
+        pass_through: bool,
+    ) {
+        let mut wm_hints: xlib::XWMHints = mem::MaybeUninit::zeroed().assume_init();
+        wm_hints.flags = xlib::InputHint;
+        wm_hints.input = if pass_through {
+            xlib::False
+        } else {
+            xlib::True
+        };
+        (xlib.XSetWMHints)(display, window, &mut wm_hints);
+
+        if let Some(xfixes) = xfixes {
+            let mut event_base = 0;
+            let mut error_base = 0;
+            if (xfixes.XFixesQueryExtension)(display, &mut event_base, &mut error_base) != 0 {
+                let region = if pass_through {
+                    (xfixes.XFixesCreateRegion)(display, ptr::null_mut(), 0)
+                } else {
+                    0
+                };
+                (xfixes.XFixesSetWindowShapeRegion)(display, window, SHAPE_INPUT, 0, 0, region);
+                if region != 0 {
+                    (xfixes.XFixesDestroyRegion)(display, region);
+                }
+            }
+        }
+
+        (xlib.XFlush)(display);
+    }
+
+    unsafe fn apply_host_opacity(
+        xlib: &xlib::Xlib,
+        display: *mut xlib::Display,
+        window: xlib::Window,
+        opacity_atom: xlib::Atom,
+        opaque: bool,
+    ) {
+        if opacity_atom != 0 {
+            let opacity: u32 = if opaque { u32::MAX } else { 0 };
+            (xlib.XChangeProperty)(
+                display,
+                window,
+                opacity_atom,
+                xlib::XA_CARDINAL,
+                32,
+                xlib::PropModeReplace,
+                (&opacity as *const u32).cast::<c_uchar>(),
+                1,
+            );
+        }
+        (xlib.XFlush)(display);
     }
 
     fn load_gl_functions(glx: &glx::Glx) {

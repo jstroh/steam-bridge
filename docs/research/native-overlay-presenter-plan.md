@@ -33,6 +33,10 @@ timing hacks.
   a bridge-owned X11/GLX native presenter can show a modal Steam web overlay,
   emit active/inactive overlay callbacks, and return to the Electron smoke app
   cleanly.
+- The app-facing reusable presenter path has been verified on Steam Deck Desktop
+  Mode for a modal web overlay: passive host attached, active input/opacity
+  during overlay UI, in-overlay close click accepted, inactive callbacks
+  received, and clean return to the Electron smoke app.
 - Steam Bridge's macOS evidence is weaker: Steam launch and native probe coverage
   exist, and a Metal host path exists, but completed product overlay behavior on
   macOS is not proven yet.
@@ -134,6 +138,9 @@ Current evidence:
 
 - Deck Desktop Mode can display and close a modal Steam web overlay over the
   bridge-owned GLX presenter.
+- Deck Desktop Mode can do the same through the reusable app-facing presenter
+  API (`attachPresenter` plus `openWebOverlay`) while returning the host to
+  transparent, click-through passive mode after overlay close.
 - The same path is good enough for checkout-style proof when launched under a
   real installed Steam app with a configured product or transaction.
 - Electron-only and native social overlay paths can emit callbacks, but social
@@ -148,6 +155,10 @@ Next work:
    - non-focusable window hints;
    - attached/transient relationship to the Electron game window;
    - idle frame budget of zero or near-zero.
+   - On Linux/X11, fully idle mode currently uses an empty XFixes input shape
+     and `_NET_WM_WINDOW_OPACITY=0`; `overlayNeedsPresent` can restore opacity
+     while leaving input click-through; active overlay mode restores both input
+     and opacity so Steam UI can receive clicks.
 3. Add an adaptive pump scheduler:
    - idle: no fixed 30 FPS loop;
    - `overlayNeedsPresent=true`: pump around 30 FPS;

@@ -301,15 +301,50 @@ const session = client.overlay.activateDialogWithNativeSession("Friends", {
 session.close();
 ```
 
+For app-facing Electron integration, prefer attaching a reusable presenter once
+and reusing it for overlay work:
+
+```ts
+const presenter = client.overlay.attachPresenter(
+  steamworks.electronOverlayPresenterOptions(mainWindow, {
+    title: "Steam Overlay"
+  })
+);
+
+client.overlay.openWebOverlay("https://store.steampowered.com/app/480/", {
+  modal: true,
+  presenter
+});
+
+// During app shutdown:
+presenter.close();
+```
+
+The presenter stays passive and click-through while idle, polls Steam overlay
+state cheaply, and only pumps frames when Steam reports `overlayNeedsPresent` or
+an overlay is being opened/active. This is the path intended for checkout
+overlays and passive Steam notifications without forcing the Electron game
+window into a constant repaint loop.
+
+On Linux/X11, the presenter separates visibility from input. Fully idle mode is
+transparent, non-focusable, click-through, and cheap to keep alive. When Steam
+reports `overlayNeedsPresent`, the host can become visible while remaining
+click-through so passive notifications can render. Opening or active overlay
+mode restores both host opacity and input so Steam web or checkout UI can
+receive clicks; after Steam reports overlay inactive, the host returns to idle
+passive mode.
+
 The native presenter currently uses the macOS probe implementation on macOS and
 an X11/GLX probe implementation on Linux. On Steam Deck Desktop Mode, the Linux
-managed native web session is the current generic proof path for overlay
+reusable presenter path is the current generic proof path for overlay
 activation, visual open, close, and back-to-app checks. Use
-`activateToWebPageWithNativeSession(..., { modal: true })` or the Electron smoke
-app's `native-web` action for that proof. Steam's Desktop Mode social overlay
-can still remain visually stuck over Electron after deactivation, so
-Friends/Game Overview should be treated as callback/render evidence rather than
-a completed dismissal proof.
+`client.overlay.attachPresenter(...)` with `client.overlay.openWebOverlay(...)`
+or the Electron smoke app's `presenter-web` action for that proof. The older
+`activateToWebPageWithNativeSession(..., { modal: true })` / `native-web` path
+remains compatibility coverage. Steam's Desktop Mode social overlay can still
+remain visually stuck over Electron after deactivation, so Friends/Game Overview
+should be treated as callback/render evidence rather than a completed dismissal
+proof.
 
 Set `STEAM_BRIDGE_ELECTRON_OVERLAY_PROFILE=repaint`, or pass
 `--steam-bridge-electron-overlay-profile=repaint` to the Electron smoke app, to

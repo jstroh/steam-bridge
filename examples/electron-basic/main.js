@@ -61,6 +61,7 @@ let inputInitialized = false;
 let shutdownComplete = false;
 let mainWindow;
 let nativeOverlaySession;
+let nativeOverlayPresenter;
 const callbackHandles = [];
 const eventLog = [];
 
@@ -124,6 +125,7 @@ ipcMain.handle("steam-smoke:auth-ticket", async () => {
 ipcMain.handle("steam-smoke:overlay-store", () => openStoreOverlay());
 ipcMain.handle("steam-smoke:overlay-web", () => openWebOverlay());
 ipcMain.handle("steam-smoke:overlay-dialog", () => openDialogOverlay());
+ipcMain.handle("steam-smoke:presenter-web", () => openPresenterWebOverlay());
 ipcMain.handle("steam-smoke:native-probe-open", () => openNativeProbe());
 ipcMain.handle("steam-smoke:native-probe-pump", () => pumpNativeProbe());
 ipcMain.handle("steam-smoke:native-probe-close", () => closeNativeProbe());
@@ -183,6 +185,7 @@ function shutdownSteam() {
     return;
   }
   shutdownComplete = true;
+  closeNativeOverlayPresenter();
   closeNativeOverlaySession();
 
   for (const handle of callbackHandles.splice(0)) {
@@ -325,6 +328,15 @@ function runAutorunAction(action) {
       case "native-web":
         openNativeWebOverlay();
         return { ok: true, action };
+      case "presenter-dialog":
+        openPresenterDialogOverlay();
+        return { ok: true, action };
+      case "presenter-store":
+        openPresenterStoreOverlay();
+        return { ok: true, action };
+      case "presenter-web":
+        openPresenterWebOverlay();
+        return { ok: true, action };
       default:
         throw new Error(`Unsupported autorun action: ${action}`);
     }
@@ -412,6 +424,60 @@ function openNativeWebOverlay() {
   return snapshot();
 }
 
+function openPresenterDialogOverlay() {
+  const activeClient = requireClient();
+  const presenter = ensureNativeOverlayPresenter(activeClient);
+  activeClient.overlay.openDialogOverlay("Friends", { presenter });
+  recordEvent("overlay:presenter-open", {
+    target: "dialog",
+    dialog: "Friends",
+    presenter: presenter.snapshot()
+  });
+  return snapshot();
+}
+
+function openPresenterStoreOverlay() {
+  const activeClient = requireClient();
+  const presenter = ensureNativeOverlayPresenter(activeClient);
+  activeClient.overlay.openStoreOverlay(APP_ID, activeClient.overlay.StoreFlag.None, { presenter });
+  recordEvent("overlay:presenter-open", {
+    target: "store",
+    appId: APP_ID,
+    flag: activeClient.overlay.StoreFlag.None,
+    presenter: presenter.snapshot()
+  });
+  return snapshot();
+}
+
+function openPresenterWebOverlay() {
+  const activeClient = requireClient();
+  const presenter = ensureNativeOverlayPresenter(activeClient);
+  activeClient.overlay.openWebOverlay(WEB_URL, {
+    modal: WEB_MODAL,
+    presenter
+  });
+  recordEvent("overlay:presenter-open", {
+    target: "web",
+    url: WEB_URL,
+    modal: WEB_MODAL,
+    presenter: presenter.snapshot()
+  });
+  return snapshot();
+}
+
+function ensureNativeOverlayPresenter(activeClient = requireClient()) {
+  if (nativeOverlayPresenter && nativeOverlayPresenter.isOpen()) {
+    return nativeOverlayPresenter;
+  }
+
+  closeNativeOverlaySession();
+  nativeOverlayPresenter = activeClient.overlay.attachPresenter(nativePresenterOptions());
+  recordEvent("overlay:presenter-attach", {
+    presenter: nativeOverlayPresenter.snapshot()
+  });
+  return nativeOverlayPresenter;
+}
+
 function nativeOverlayOptions() {
   const window = requireMainWindow();
   return steamworks.electronNativeOverlaySessionOptions(window, {
@@ -420,8 +486,22 @@ function nativeOverlayOptions() {
   });
 }
 
+function nativePresenterOptions() {
+  const window = requireMainWindow();
+  return steamworks.electronOverlayPresenterOptions(window, {
+    title: "Steam Bridge Overlay Presenter",
+    restoreFocusDelayMs: 500,
+    idleFps: 1,
+    needsPresentFps: 30,
+    activeOverlayFps: 30,
+    pollIntervalMs: 250
+  });
+}
+
 function pumpNativeProbe() {
-  if (nativeOverlaySession) {
+  if (nativeOverlayPresenter) {
+    nativeOverlayPresenter.pump();
+  } else if (nativeOverlaySession) {
     nativeOverlaySession.pump();
   } else {
     requireClient().overlay.pumpNativeOverlayProbeWindow();
@@ -430,9 +510,22 @@ function pumpNativeProbe() {
 }
 
 function closeNativeProbe() {
+  closeNativeOverlayPresenter();
   closeNativeOverlaySession();
   recordEvent("overlay:native-session-close", {});
   return snapshot();
+}
+
+function closeNativeOverlayPresenter() {
+  if (nativeOverlayPresenter) {
+    try {
+      nativeOverlayPresenter.close();
+      recordEvent("overlay:presenter-close", {});
+    } catch (error) {
+      recordEvent("overlay:presenter-close:error", serializeError(error));
+    }
+  }
+  nativeOverlayPresenter = undefined;
 }
 
 function closeNativeOverlaySession() {
@@ -526,7 +619,8 @@ function snapshot() {
     overlay: {
       nativeProbeOpen: readValue(() => client.overlay.isNativeOverlayProbeWindowOpen()),
       nativeHostOpen: readValue(() => client.overlay.isNativeOverlayHostViewOpen()),
-      nativeSession: readValue(() => (nativeOverlaySession ? nativeOverlaySession.snapshot() : null))
+      nativeSession: readValue(() => (nativeOverlaySession ? nativeOverlaySession.snapshot() : null)),
+      nativePresenter: readValue(() => (nativeOverlayPresenter ? nativeOverlayPresenter.snapshot() : null))
     },
     input: readValue(() => {
       if (!inputInitialized) {
@@ -719,7 +813,15 @@ function isOverlayAction(action) {
 }
 
 function isNativeSessionAction(action) {
-  return action === "native-probe" || action === "native-dialog" || action === "native-store" || action === "native-web";
+  return (
+    action === "native-probe" ||
+    action === "native-dialog" ||
+    action === "native-store" ||
+    action === "native-web" ||
+    action === "presenter-dialog" ||
+    action === "presenter-store" ||
+    action === "presenter-web"
+  );
 }
 
 function readBoolean(value, fallback) {

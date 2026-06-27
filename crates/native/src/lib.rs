@@ -408,6 +408,16 @@ pub fn hide_native_overlay_host_view() -> Result<(), Error> {
     native_surface::hide()
 }
 
+#[napi(js_name = "setNativeOverlayHostInputPassthrough")]
+pub fn set_native_overlay_host_input_passthrough(pass_through: bool) -> Result<(), Error> {
+    native_surface::set_input_passthrough(pass_through)
+}
+
+#[napi(js_name = "setNativeOverlayHostOpacity")]
+pub fn set_native_overlay_host_opacity(opaque: bool) -> Result<(), Error> {
+    native_surface::set_opaque(opaque)
+}
+
 #[napi(js_name = "updateNativeOverlayHostFrame")]
 pub fn update_native_overlay_host_frame(
     frame: Buffer,

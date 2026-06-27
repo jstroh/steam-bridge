@@ -1704,6 +1704,8 @@ export interface NativeBinding {
   pumpNativeOverlayHostView(): void;
   showNativeOverlayHostView(): void;
   hideNativeOverlayHostView(): void;
+  setNativeOverlayHostInputPassthrough(passThrough: boolean): void;
+  setNativeOverlayHostOpacity(opaque: boolean): void;
   updateNativeOverlayHostFrame(frame: Buffer, width: number, height: number): void;
   closeNativeOverlayProbeWindow(): void;
   detachNativeOverlayHostView(): void;

@@ -407,7 +407,7 @@ prepare_remote_wrapper() {
   local app_id_q action_q profile_q window_mode_q result_file_q diagnostic_dir_q action_delay_q result_delay_q keep_open_q require_active_q web_url_q web_modal_q
   local require_overlay_active="0"
 
-  if [ "$action" = "store" ] || [ "$action" = "web" ]; then
+  if [ "$action" = "store" ] || [ "$action" = "web" ] || [ "$action" = "presenter-store" ] || [ "$action" = "presenter-web" ]; then
     require_overlay_active="1"
   fi
 
@@ -557,6 +557,11 @@ build_steam_launch_args() {
     helper_args+=("--require-overlay-activated")
   elif [ "$action" = "native-probe" ] || [ "$action" = "native-dialog" ] || [ "$action" = "native-store" ] || [ "$action" = "native-web" ]; then
     helper_args+=("--require-event" "overlay:native-session-open")
+  elif [ "$action" = "presenter-dialog" ] || [ "$action" = "presenter-store" ] || [ "$action" = "presenter-web" ]; then
+    helper_args+=("--require-event" "overlay:presenter-open")
+    if [ "$action" = "presenter-store" ] || [ "$action" = "presenter-web" ]; then
+      helper_args+=("--require-overlay-activated")
+    fi
   fi
 
   helper_args+=("--require-event" "callback:overlay-activated")

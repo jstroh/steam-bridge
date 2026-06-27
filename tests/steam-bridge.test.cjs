@@ -4315,6 +4315,12 @@ test("overlay helpers map constants and forward modal/store options", (t) => {
     hideNativeOverlayHostView() {
       this.calls.push({ method: "hideNativeOverlayHostView", args: [] });
     },
+    setNativeOverlayHostInputPassthrough(passThrough) {
+      this.calls.push({ method: "setNativeOverlayHostInputPassthrough", args: [passThrough] });
+    },
+    setNativeOverlayHostOpacity(opaque) {
+      this.calls.push({ method: "setNativeOverlayHostOpacity", args: [opaque] });
+    },
     updateNativeOverlayHostFrame(frame, width, height) {
       this.calls.push({ method: "updateNativeOverlayHostFrame", args: [frame, width, height] });
     },
@@ -4354,6 +4360,8 @@ test("overlay helpers map constants and forward modal/store options", (t) => {
   steam.pumpNativeOverlayHostView();
   steam.overlay.showNativeOverlayHostView();
   steam.hideNativeOverlayHostView();
+  steam.overlay.setNativeOverlayHostInputPassthrough(true);
+  steam.overlay.setNativeOverlayHostOpacity(false);
   steam.overlay.updateNativeOverlayHostFrame(frame, 2, 2);
   steam.closeNativeOverlayProbeWindow();
   steam.overlay.detachNativeOverlayHostView();
@@ -4380,6 +4388,8 @@ test("overlay helpers map constants and forward modal/store options", (t) => {
         "pumpNativeOverlayHostView",
         "showNativeOverlayHostView",
         "hideNativeOverlayHostView",
+        "setNativeOverlayHostInputPassthrough",
+        "setNativeOverlayHostOpacity",
         "updateNativeOverlayHostFrame",
         "closeNativeOverlayProbeWindow",
         "detachNativeOverlayHostView",
@@ -4395,6 +4405,8 @@ test("overlay helpers map constants and forward modal/store options", (t) => {
       { method: "pumpNativeOverlayHostView", args: [] },
       { method: "showNativeOverlayHostView", args: [] },
       { method: "hideNativeOverlayHostView", args: [] },
+      { method: "setNativeOverlayHostInputPassthrough", args: [true] },
+      { method: "setNativeOverlayHostOpacity", args: [false] },
       { method: "updateNativeOverlayHostFrame", args: [frame, 2, 2] },
       { method: "closeNativeOverlayProbeWindow", args: [] },
       { method: "detachNativeOverlayHostView", args: [] },
@@ -4431,6 +4443,12 @@ test("native overlay session owns the probe pump lifecycle", async (t) => {
     },
     hideNativeOverlayHostView() {
       this.calls.push({ method: "hideNativeOverlayHostView", args: [] });
+    },
+    setNativeOverlayHostInputPassthrough(passThrough) {
+      this.calls.push({ method: "setNativeOverlayHostInputPassthrough", args: [passThrough] });
+    },
+    setNativeOverlayHostOpacity(opaque) {
+      this.calls.push({ method: "setNativeOverlayHostOpacity", args: [opaque] });
     },
     closeNativeOverlayProbeWindow() {
       probeOpen = false;
@@ -4517,6 +4535,8 @@ test("native overlay session owns the probe pump lifecycle", async (t) => {
         "pumpNativeOverlayProbeWindow",
         "showNativeOverlayHostView",
         "hideNativeOverlayHostView",
+        "setNativeOverlayHostInputPassthrough",
+        "setNativeOverlayHostOpacity",
         "activateOverlay",
         "activateOverlayToWebPage",
         "overlayActivateToStore",
@@ -4543,13 +4563,222 @@ test("native overlay session owns the probe pump lifecycle", async (t) => {
       { method: "closeNativeOverlayProbeWindow", args: [] },
       { method: "attachNativeOverlayHostView", args: [hostHandle] },
       { method: "showNativeOverlayHostView", args: [] },
+      { method: "setNativeOverlayHostInputPassthrough", args: [false] },
+      { method: "setNativeOverlayHostOpacity", args: [true] },
       { method: "pumpNativeOverlayProbeWindow", args: [] },
       { method: "activateOverlay", args: ["Friends"] },
       { method: "hideNativeOverlayHostView", args: [] },
+      { method: "setNativeOverlayHostInputPassthrough", args: [true] },
+      { method: "setNativeOverlayHostOpacity", args: [false] },
       { method: "disconnectGameOverlayActivated", args: [] },
       { method: "detachNativeOverlayHostView", args: [] }
     ]
   );
+});
+
+test("native overlay presenter reuses a passive host for overlay activation", async (t) => {
+  let hostOpen = false;
+  let restoreFocusCount = 0;
+  const hostHandle = Buffer.from([1, 3, 3, 7, 0, 0, 0, 0]);
+  const fake = createFakeNative({
+    attachNativeOverlayHostView(nativeWindowHandle) {
+      hostOpen = true;
+      this.calls.push({ method: "attachNativeOverlayHostView", args: [nativeWindowHandle] });
+    },
+    pumpNativeOverlayProbeWindow() {
+      if (!hostOpen) {
+        throw new Error("native overlay presenter is closed");
+      }
+      this.calls.push({ method: "pumpNativeOverlayProbeWindow", args: [] });
+    },
+    showNativeOverlayHostView() {
+      this.calls.push({ method: "showNativeOverlayHostView", args: [] });
+    },
+    hideNativeOverlayHostView() {
+      this.calls.push({ method: "hideNativeOverlayHostView", args: [] });
+    },
+    setNativeOverlayHostInputPassthrough(passThrough) {
+      this.calls.push({ method: "setNativeOverlayHostInputPassthrough", args: [passThrough] });
+    },
+    setNativeOverlayHostOpacity(opaque) {
+      this.calls.push({ method: "setNativeOverlayHostOpacity", args: [opaque] });
+    },
+    detachNativeOverlayHostView() {
+      hostOpen = false;
+      this.calls.push({ method: "detachNativeOverlayHostView", args: [] });
+    },
+    isNativeOverlayProbeWindowOpen() {
+      this.calls.push({ method: "isNativeOverlayProbeWindowOpen", args: [] });
+      return false;
+    },
+    isNativeOverlayHostViewOpen() {
+      this.calls.push({ method: "isNativeOverlayHostViewOpen", args: [] });
+      return hostOpen;
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  const presenter = steam.overlay.attachPresenter({
+    title: "Passive Presenter",
+    nativeWindowHandle: hostHandle,
+    idleFps: 0,
+    pollIntervalMs: 10000,
+    activeGraceMs: 0,
+    restoreFocusDelayMs: 0,
+    restoreFocus() {
+      restoreFocusCount += 1;
+    }
+  });
+
+  assert.equal(presenter.isOpen(), true);
+  assert.equal(presenter.snapshot().mode, "passive");
+  assert.equal(presenter.snapshot().nativeHostOpen, true);
+  assert.equal(presenter.snapshot().clickThrough, true);
+  assert.equal(presenter.snapshot().focusable, false);
+  assert.equal(presenter.snapshot().transparent, true);
+
+  steam.overlay.openWebOverlay("https://store.steampowered.com/app/480/", {
+    modal: true,
+    presenter
+  });
+  assert.equal(presenter.snapshot().mode, "active");
+  assert.equal(presenter.snapshot().clickThrough, false);
+  assert.equal(presenter.snapshot().transparent, false);
+
+  fake.callbacks.get(331)({ active: true, app_id: 480 });
+  assert.equal(presenter.snapshot().overlayActive, true);
+  assert.equal(presenter.snapshot().overlayWasActive, true);
+  assert.equal(presenter.snapshot().clickThrough, false);
+  assert.equal(presenter.snapshot().transparent, false);
+
+  fake.callbacks.get(331)({ active: false, app_id: 480 });
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(presenter.snapshot().overlayActive, false);
+  assert.equal(presenter.snapshot().clickThrough, true);
+  assert.equal(presenter.snapshot().transparent, true);
+  assert.equal(restoreFocusCount, 1);
+
+  presenter.close();
+  assert.equal(presenter.isOpen(), false);
+
+  const oneShot = steam.overlay.openStoreOverlay(480, steam.StoreFlag.None, {
+    nativeWindowHandle: hostHandle,
+    idleFps: 0,
+    pollIntervalMs: 10000
+  });
+  oneShot.close();
+
+  assert.deepEqual(
+    fake.calls.filter((call) =>
+      [
+        "attachNativeOverlayHostView",
+        "showNativeOverlayHostView",
+        "setNativeOverlayHostInputPassthrough",
+        "setNativeOverlayHostOpacity",
+        "pumpNativeOverlayProbeWindow",
+        "activateOverlayToWebPage",
+        "overlayActivateToStore",
+        "disconnectGameOverlayActivated",
+        "detachNativeOverlayHostView"
+      ].includes(call.method)
+    ),
+    [
+      { method: "attachNativeOverlayHostView", args: [hostHandle] },
+      { method: "showNativeOverlayHostView", args: [] },
+      { method: "pumpNativeOverlayProbeWindow", args: [] },
+      { method: "setNativeOverlayHostInputPassthrough", args: [false] },
+      { method: "setNativeOverlayHostOpacity", args: [true] },
+      { method: "pumpNativeOverlayProbeWindow", args: [] },
+      { method: "activateOverlayToWebPage", args: ["https://store.steampowered.com/app/480/", true] },
+      { method: "setNativeOverlayHostInputPassthrough", args: [true] },
+      { method: "setNativeOverlayHostOpacity", args: [false] },
+      { method: "disconnectGameOverlayActivated", args: [] },
+      { method: "detachNativeOverlayHostView", args: [] },
+      { method: "attachNativeOverlayHostView", args: [hostHandle] },
+      { method: "showNativeOverlayHostView", args: [] },
+      { method: "pumpNativeOverlayProbeWindow", args: [] },
+      { method: "setNativeOverlayHostInputPassthrough", args: [false] },
+      { method: "setNativeOverlayHostOpacity", args: [true] },
+      { method: "pumpNativeOverlayProbeWindow", args: [] },
+      { method: "overlayActivateToStore", args: [480, steam.StoreFlag.None] },
+      { method: "disconnectGameOverlayActivated", args: [] },
+      { method: "detachNativeOverlayHostView", args: [] }
+    ]
+  );
+});
+
+test("native overlay presenter keeps passive input while overlay needs present", async (t) => {
+  let hostOpen = false;
+  let overlayNeedsPresent = false;
+  const hostHandle = Buffer.from([4, 8, 0, 0, 0, 0, 0, 0]);
+  const fake = createFakeNative({
+    attachNativeOverlayHostView(nativeWindowHandle) {
+      hostOpen = true;
+      this.calls.push({ method: "attachNativeOverlayHostView", args: [nativeWindowHandle] });
+    },
+    pumpNativeOverlayProbeWindow() {
+      if (!hostOpen) {
+        throw new Error("native overlay presenter is closed");
+      }
+      this.calls.push({ method: "pumpNativeOverlayProbeWindow", args: [] });
+    },
+    showNativeOverlayHostView() {
+      this.calls.push({ method: "showNativeOverlayHostView", args: [] });
+    },
+    setNativeOverlayHostInputPassthrough(passThrough) {
+      this.calls.push({ method: "setNativeOverlayHostInputPassthrough", args: [passThrough] });
+    },
+    setNativeOverlayHostOpacity(opaque) {
+      this.calls.push({ method: "setNativeOverlayHostOpacity", args: [opaque] });
+    },
+    detachNativeOverlayHostView() {
+      hostOpen = false;
+      this.calls.push({ method: "detachNativeOverlayHostView", args: [] });
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return false;
+    },
+    isNativeOverlayHostViewOpen() {
+      return hostOpen;
+    },
+    getOverlayDiagnostics() {
+      return {
+        steamRunning: true,
+        steamInstallPath: "/tmp/steam",
+        appId: 480,
+        overlayEnabled: true,
+        overlayNeedsPresent,
+        steamDeck: false,
+        bigPicture: false
+      };
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  const presenter = steam.overlay.attachPresenter({
+    nativeWindowHandle: hostHandle,
+    idleFps: 0,
+    pollIntervalMs: 5,
+    activeGraceMs: 0
+  });
+
+  assert.equal(presenter.snapshot().mode, "passive");
+  assert.equal(presenter.snapshot().clickThrough, true);
+  assert.equal(presenter.snapshot().transparent, true);
+
+  overlayNeedsPresent = true;
+  await new Promise((resolve) => setTimeout(resolve, 80));
+
+  assert.equal(presenter.snapshot().overlayNeedsPresent, true);
+  assert.equal(presenter.snapshot().mode, "passive");
+  assert.equal(presenter.snapshot().clickThrough, true);
+  assert.equal(presenter.snapshot().transparent, false);
+
+  presenter.close();
 });
 
 test("matchmaking facade covers favorites, lobby filters, metadata, chat, and callbacks", async (t) => {

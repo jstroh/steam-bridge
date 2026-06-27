@@ -27,6 +27,19 @@ export interface ElectronNativeOverlaySessionOptions {
   hideNativeHostOnOverlayDeactivate?: boolean;
 }
 
+export interface ElectronOverlayPresenterOptions {
+  title?: string;
+  nativeWindowHandle?: Buffer;
+  restoreFocus?: () => void;
+  restoreFocusDelayMs?: number;
+  idleFps?: number;
+  needsPresentFps?: number;
+  activeOverlayFps?: number;
+  pollIntervalMs?: number;
+  activationBoostMs?: number;
+  activeGraceMs?: number;
+}
+
 interface ElectronApp {
   commandLine: {
     appendSwitch(name: string, value?: string): void;
@@ -140,6 +153,20 @@ export function electronNativeOverlaySessionOptions(
   window: ElectronWindow,
   options: Omit<ElectronNativeOverlaySessionOptions, "nativeWindowHandle" | "restoreFocus"> = {}
 ): ElectronNativeOverlaySessionOptions {
+  return electronWindowNativeOverlayOptions(window, options);
+}
+
+export function electronOverlayPresenterOptions(
+  window: ElectronWindow,
+  options: Omit<ElectronOverlayPresenterOptions, "nativeWindowHandle" | "restoreFocus"> = {}
+): ElectronOverlayPresenterOptions {
+  return electronWindowNativeOverlayOptions(window, options);
+}
+
+function electronWindowNativeOverlayOptions<T extends { nativeWindowHandle?: Buffer; restoreFocus?: () => void }>(
+  window: ElectronWindow,
+  options: Omit<T, "nativeWindowHandle" | "restoreFocus">
+): T {
   if (typeof window.getNativeWindowHandle !== "function") {
     throw new Error("Electron BrowserWindow does not expose getNativeWindowHandle().");
   }
@@ -158,7 +185,7 @@ export function electronNativeOverlaySessionOptions(
       window.focus?.();
       window.webContents.invalidate();
     }
-  };
+  } as T;
 }
 
 function appendSwitchOnce(
