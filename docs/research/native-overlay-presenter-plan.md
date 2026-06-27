@@ -173,7 +173,10 @@ Current evidence:
 - Electron-only and native social overlay paths can render only when Electron
   child overlay targets are allowed, but those duplicate targets make visual
   dismissal unreliable in Deck Desktop Mode. Reusable presenter dialog activation
-  remains an investigation path, not product proof.
+  remains an investigation path, not product proof. A focused/raised X11 host
+  experiment did not make `ActivateGameOverlay("Friends")` render or emit an
+  activation callback, so do not promote host focus handoff into the presenter
+  API as a social-overlay fix.
 
 Next work:
 
