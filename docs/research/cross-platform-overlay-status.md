@@ -44,10 +44,16 @@ and runs the packaged helper:
 ```sh
 npm run steam-deck:smoke -- \
   --host deck@192.168.1.13 \
+  --mode preflight
+
+npm run steam-deck:smoke -- \
+  --host deck@192.168.1.13 \
   --mode game
 ```
 
-Use `--mode desktop` for the Steam Deck Desktop Mode shortcut check.
+Use `--mode desktop` for the Steam Deck Desktop Mode shortcut check. The
+preflight mode separates a network/SSH blocker from package, Steam command, and
+shortcut setup problems.
 
 The latest Deck Game Mode proof was captured at 2026-06-26 17:03 PDT from
 `/tmp/steam-bridge-smoke-steam-launch.log` with `appId=480`,

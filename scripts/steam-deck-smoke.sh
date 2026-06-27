@@ -28,6 +28,7 @@ Modes:
   --mode game                   Run the Steam-launched Game Mode gate.
   --mode desktop                Run the Steam-launched Desktop Mode gate.
   --mode direct                 Run the app directly on the Deck and verify init.
+  --mode preflight              Check SSH, remote package, Steam, and shortcuts.
   --mode print-shortcuts        Print matching Deck Steam shortcuts.
   --mode print-launch-options   Print shortcut launch options from the Deck helper.
   --mode self-test              Validate this host runner without SSH.
@@ -151,9 +152,24 @@ remote_exec() {
   ssh -o BatchMode=yes -o ConnectTimeout="$connect_timeout" "$host" "$1"
 }
 
+print_ssh_hint() {
+  cat >&2 <<EOF
+Steam Deck SSH is not reachable at $host.
+Check that the Deck is awake, on the same network, has SSH enabled, and still has this IP address.
+If the Deck moved addresses, pass --host deck@<ip-address> or set STEAM_DECK_HOST.
+EOF
+}
+
 check_ssh() {
   echo "Checking SSH reachability for $host"
-  remote_exec "true" >/dev/null
+  if remote_exec "true" >/dev/null; then
+    echo "SSH reachable."
+    return 0
+  fi
+
+  local status=$?
+  print_ssh_hint
+  return "$status"
 }
 
 assert_local_app() {
@@ -270,6 +286,46 @@ run_helper() {
   remote_exec "cd $remote_q && ./linux-electron-smoke.sh $args"
 }
 
+run_preflight() {
+  local remote_q matches
+  remote_q="$(quote_arg "$remote_app_dir")"
+
+  echo "Steam Deck smoke preflight"
+  echo "Target: $host"
+  echo "Remote app dir: $remote_app_dir"
+
+  if [ "$copy_app" = "1" ]; then
+    assert_local_app
+    echo "Local package: $local_app_dir"
+  else
+    echo "Local package copy: skipped"
+  fi
+
+  check_ssh
+
+  remote_exec "set -e; echo \"Remote host: \$(hostname)\"; echo \"Remote kernel: \$(uname -srmo 2>/dev/null || uname -a)\"; if [ -x $remote_q/SteamBridgeSmoke ] && [ -x $remote_q/linux-electron-smoke.sh ]; then echo \"Remote package: present\"; else echo \"Remote package: missing at $remote_app_dir\"; fi; if command -v steam >/dev/null 2>&1; then echo \"Steam command: \$(command -v steam)\"; elif [ -x \"\$HOME/.steam/root/ubuntu12_32/steam\" ]; then echo \"Steam command: \$HOME/.steam/root/ubuntu12_32/steam\"; else echo \"Steam command: missing\"; fi; if command -v systemd-inhibit >/dev/null 2>&1; then echo \"Sleep inhibitor: available\"; else echo \"Sleep inhibitor: missing\"; fi; if ls \"\$HOME/.local/share/Steam/userdata\"/*/config/shortcuts.vdf >/dev/null 2>&1; then echo \"Shortcut files: present\"; else echo \"Shortcut files: missing\"; fi"
+
+  if [ "$copy_app" = "0" ]; then
+    remote_exec "test -x $remote_q/SteamBridgeSmoke && test -x $remote_q/linux-electron-smoke.sh" || {
+      echo "Remote package is required when --skip-copy is used." >&2
+      return 1
+    }
+  fi
+
+  if remote_exec "test -x $remote_q/linux-electron-smoke.sh" >/dev/null 2>&1; then
+    build_print_shortcuts_args
+    matches="$(run_helper "${helper_args[@]}")"
+    echo "Matching shortcuts:"
+    if [ -n "$matches" ]; then
+      printf '%s\n' "$matches"
+    else
+      echo "(none)"
+    fi
+  else
+    echo "Matching shortcuts: skipped until the package is copied"
+  fi
+}
+
 run_remote_mode() {
   case "$mode" in
     game|desktop)
@@ -289,6 +345,9 @@ run_remote_mode() {
       trap stop_keep_awake EXIT
       build_direct_args
       run_helper "${helper_args[@]}"
+      ;;
+    preflight)
+      run_preflight
       ;;
     print-launch-options)
       build_print_launch_options_args
