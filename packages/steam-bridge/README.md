@@ -163,6 +163,9 @@ transparent and click-through; `overlayNeedsPresent` can make it visible while
 leaving input click-through for passive notifications; opening or active overlay
 mode restores both opacity and input so Steam web or checkout UI can receive
 clicks, then returns to passive mode after Steam reports the overlay inactive.
+Dialog/social overlays such as Friends/Game Overview keep the native host
+transparent and click-through while Steam's own social overlay panel is active,
+so the presenter does not cover that UI.
 
 For Linux Electron apps, use
 `electronConfigureSteamOverlay({ profile: "repaint" })` when the Steam overlay
@@ -180,8 +183,9 @@ action for the generic proof. Deck testing has verified `active=true` and
 running app. The older `activateToWebPageWithNativeSession(..., { modal: true })`
 and `native-web` path remains compatibility coverage.
 Steam's Desktop Mode social overlay can still remain visually stuck over
-Electron after deactivation, so treat Friends/Game Overview dismissal as an open
-social-overlay blocker, not a completed cross-platform guarantee. Call
+Electron after deactivation or resist synthetic close input, so treat
+Friends/Game Overview dismissal as an open social-overlay blocker, not a
+completed cross-platform guarantee. Call
 `session.close()` during app cleanup or when you are finished with the proof
 surface.
 

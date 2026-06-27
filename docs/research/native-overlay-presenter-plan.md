@@ -37,6 +37,10 @@ timing hacks.
   Mode for a modal web overlay: passive host attached, active input/opacity
   during overlay UI, in-overlay close click accepted, inactive callbacks
   received, and clean return to the Electron smoke app.
+- Deck Desktop social overlays need target-aware behavior. Steam web/store
+  overlays use the native host as the interactive overlay target, but
+  Friends/Game Overview should keep the host passive; otherwise the opaque GLX
+  host can cover Steam's social overlay panel.
 - Steam Bridge's macOS evidence is weaker: Steam launch and native probe coverage
   exist, and a Metal host path exists, but completed product overlay behavior on
   macOS is not proven yet.
@@ -91,6 +95,8 @@ The presenter should:
   overlay is active;
 - reuse the same surface for checkout, store, web, dialog, and passive Steam
   notifications;
+- route overlay targets by behavior: interactive native host for web, store, and
+  checkout; passive host pumping for Steam social/dialog panels;
 - expose diagnostics so app code and tests can tell whether the presenter is
   attached, visible, passive, active, pumping, and recently touched by overlay
   callbacks.
@@ -145,6 +151,9 @@ Current evidence:
   real installed Steam app with a configured product or transaction.
 - Electron-only and native social overlay paths can emit callbacks, but social
   overlay visual dismissal remains unreliable in Deck Desktop Mode.
+- Reusable presenter dialog activation now keeps the native host transparent and
+  click-through so it does not obscure Steam's social overlay panel. Close and
+  Back to Game input still need stronger proof.
 
 Next work:
 

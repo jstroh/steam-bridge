@@ -1647,6 +1647,7 @@ export interface NativeOverlayPresenter extends CallbackHandle {
   close(): void;
   pump(): void;
   prepareForOverlay(durationMs?: number): void;
+  prepareForPassiveOverlay(durationMs?: number): void;
   show(): void;
   hide(): void;
   isOpen(): boolean;
@@ -6917,6 +6918,7 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
   let lastOverlayEvent: GameOverlayActivated | undefined;
   let hostInputPassthrough = usesNativeHostView;
   let hostOpaque = !usesNativeHostView;
+  let hostActivationMode: "interactive" | "passive" = "passive";
   let boostUntil = 0;
   let timer: NodeJS.Timeout | undefined;
   let restoreFocusTimer: NodeJS.Timeout | undefined;
@@ -6975,6 +6977,14 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
   };
 
   const prepareForOverlay = (durationMs = activationBoostMs): void => {
+    prepareForActivation("interactive", durationMs);
+  };
+
+  const prepareForPassiveOverlay = (durationMs = activationBoostMs): void => {
+    prepareForActivation("passive", durationMs);
+  };
+
+  const prepareForActivation = (activationMode: "interactive" | "passive", durationMs = activationBoostMs): void => {
     if (closed) {
       return;
     }
@@ -6983,6 +6993,7 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
       show();
     }
 
+    hostActivationMode = activationMode;
     boostUntil = Math.max(boostUntil, Date.now() + Math.max(0, durationMs));
     syncHostInputMode();
     pump();
@@ -6990,7 +7001,7 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
   };
 
   const snapshot = (): NativeOverlayPresenterSnapshot => {
-    const acceptsOverlayInput = overlayActive || Date.now() < boostUntil;
+    const acceptsOverlayInput = hostActivationMode === "interactive" && (overlayActive || Date.now() < boostUntil);
     const mode: NativeOverlayPresenterMode = closed
       ? "closed"
       : !visible
@@ -7082,6 +7093,7 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
       syncHostInputMode();
       schedule(0);
     } else if (event.active === false) {
+      hostActivationMode = "passive";
       boostUntil = Date.now() + activeGraceMs;
       scheduleRestoreFocus();
       syncHostInputMode();
@@ -7096,6 +7108,7 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
     disconnect: close,
     pump,
     prepareForOverlay,
+    prepareForPassiveOverlay,
     show,
     hide,
     isOpen: () =>
@@ -7151,7 +7164,7 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
       return;
     }
     const now = Date.now();
-    const shouldAcceptInput = overlayActive || now < boostUntil;
+    const shouldAcceptInput = hostActivationMode === "interactive" && (overlayActive || now < boostUntil);
     const shouldShowHost = shouldAcceptInput || overlayNeedsPresent;
     setHostInputPassthrough(!shouldAcceptInput);
     setHostOpaque(shouldShowHost);
@@ -7222,16 +7235,24 @@ export function openDialogOverlay(
   dialog: number | string = "Friends",
   options: NativeOverlayPresenterOverlayOptions = {}
 ): NativeOverlayPresenter {
-  return activateWithOverlayPresenter(options, () => {
-    activateOverlay(dialog);
-  });
+  return activateWithOverlayPresenter(
+    options,
+    () => {
+      activateOverlay(dialog);
+    },
+    "passive"
+  );
 }
 
 export function openWebOverlay(url: string, options: NativeOverlayWebPagePresenterOptions = {}): NativeOverlayPresenter {
   const { modal, ...presenterOptions } = options;
-  return activateWithOverlayPresenter(presenterOptions, () => {
-    activateOverlayToWebPage(url, { modal });
-  });
+  return activateWithOverlayPresenter(
+    presenterOptions,
+    () => {
+      activateOverlayToWebPage(url, { modal });
+    },
+    "interactive"
+  );
 }
 
 export function openStoreOverlay(
@@ -7239,9 +7260,13 @@ export function openStoreOverlay(
   flag: number,
   options: NativeOverlayPresenterOverlayOptions = {}
 ): NativeOverlayPresenter {
-  return activateWithOverlayPresenter(options, () => {
-    native().overlayActivateToStore(appId, flag);
-  });
+  return activateWithOverlayPresenter(
+    options,
+    () => {
+      native().overlayActivateToStore(appId, flag);
+    },
+    "interactive"
+  );
 }
 
 export function activateDialogWithNativeSession(
@@ -17396,14 +17421,19 @@ function activateWithNativeOverlaySession(
 
 function activateWithOverlayPresenter(
   options: NativeOverlayPresenterOverlayOptions,
-  activate: () => void
+  activate: () => void,
+  activationMode: "interactive" | "passive"
 ): NativeOverlayPresenter {
   const providedPresenter = options.presenter;
   const { presenter: _presenter, ...presenterOptions } = options;
   const activePresenter = providedPresenter ?? attachOverlayPresenter(presenterOptions);
 
   try {
-    activePresenter.prepareForOverlay();
+    if (activationMode === "interactive") {
+      activePresenter.prepareForOverlay();
+    } else {
+      activePresenter.prepareForPassiveOverlay();
+    }
     activate();
   } catch (error) {
     if (!providedPresenter) {

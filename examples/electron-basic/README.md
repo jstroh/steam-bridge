@@ -103,7 +103,9 @@ same passive, click-through presenter for the requested overlay target. Use
 the presenter is transparent and click-through while fully idle, can become
 visible while remaining click-through for `overlayNeedsPresent`, restores both
 opacity and input while opening or showing Steam UI, and returns to passive mode
-after Steam emits overlay inactive callbacks.
+after Steam emits overlay inactive callbacks. `presenter-dialog` keeps the native
+host passive while opening Friends/Game Overview so Steam's Desktop Mode social
+panel is not hidden behind the native host.
 
 Each autorun also writes local diagnostics. Pass
 `--steam-bridge-smoke-diagnostic-dir=/tmp/steam-bridge-smoke.log.diagnostics`

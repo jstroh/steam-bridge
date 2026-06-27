@@ -4781,6 +4781,90 @@ test("native overlay presenter keeps passive input while overlay needs present",
   presenter.close();
 });
 
+test("native overlay presenter keeps dialog overlays off the host surface", async (t) => {
+  let hostOpen = false;
+  const hostHandle = Buffer.from([4, 8, 0, 1, 0, 0, 0, 0]);
+  const fake = createFakeNative({
+    attachNativeOverlayHostView(nativeWindowHandle) {
+      hostOpen = true;
+      this.calls.push({ method: "attachNativeOverlayHostView", args: [nativeWindowHandle] });
+    },
+    pumpNativeOverlayProbeWindow() {
+      if (!hostOpen) {
+        throw new Error("native overlay presenter is closed");
+      }
+      this.calls.push({ method: "pumpNativeOverlayProbeWindow", args: [] });
+    },
+    showNativeOverlayHostView() {
+      this.calls.push({ method: "showNativeOverlayHostView", args: [] });
+    },
+    setNativeOverlayHostInputPassthrough(passThrough) {
+      this.calls.push({ method: "setNativeOverlayHostInputPassthrough", args: [passThrough] });
+    },
+    setNativeOverlayHostOpacity(opaque) {
+      this.calls.push({ method: "setNativeOverlayHostOpacity", args: [opaque] });
+    },
+    detachNativeOverlayHostView() {
+      hostOpen = false;
+      this.calls.push({ method: "detachNativeOverlayHostView", args: [] });
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return false;
+    },
+    isNativeOverlayHostViewOpen() {
+      return hostOpen;
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  const presenter = steam.overlay.attachPresenter({
+    nativeWindowHandle: hostHandle,
+    idleFps: 0,
+    pollIntervalMs: 10000,
+    activeGraceMs: 0
+  });
+
+  steam.overlay.openDialogOverlay("Friends", { presenter });
+  assert.equal(presenter.snapshot().mode, "passive");
+  assert.equal(presenter.snapshot().clickThrough, true);
+  assert.equal(presenter.snapshot().transparent, true);
+
+  fake.callbacks.get(331)({ active: true, app_id: 480 });
+  assert.equal(presenter.snapshot().overlayActive, true);
+  assert.equal(presenter.snapshot().overlayWasActive, true);
+  assert.equal(presenter.snapshot().mode, "passive");
+  assert.equal(presenter.snapshot().clickThrough, true);
+  assert.equal(presenter.snapshot().transparent, true);
+
+  presenter.close();
+
+  assert.deepEqual(
+    fake.calls.filter((call) =>
+      [
+        "attachNativeOverlayHostView",
+        "showNativeOverlayHostView",
+        "pumpNativeOverlayProbeWindow",
+        "activateOverlay",
+        "setNativeOverlayHostInputPassthrough",
+        "setNativeOverlayHostOpacity",
+        "disconnectGameOverlayActivated",
+        "detachNativeOverlayHostView"
+      ].includes(call.method)
+    ),
+    [
+      { method: "attachNativeOverlayHostView", args: [hostHandle] },
+      { method: "showNativeOverlayHostView", args: [] },
+      { method: "pumpNativeOverlayProbeWindow", args: [] },
+      { method: "pumpNativeOverlayProbeWindow", args: [] },
+      { method: "activateOverlay", args: ["Friends"] },
+      { method: "disconnectGameOverlayActivated", args: [] },
+      { method: "detachNativeOverlayHostView", args: [] }
+    ]
+  );
+});
+
 test("matchmaking facade covers favorites, lobby filters, metadata, chat, and callbacks", async (t) => {
   const lobbyId = 109775242022617907n;
   const dependentLobbyId = 109775242022617908n;

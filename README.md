@@ -334,6 +334,12 @@ mode restores both host opacity and input so Steam web or checkout UI can
 receive clicks; after Steam reports overlay inactive, the host returns to idle
 passive mode.
 
+Steam Bridge routes overlay targets by how Steam renders them. Web, store, and
+checkout-style overlays prepare the native host as an interactive overlay target.
+Dialog/social overlays such as Friends/Game Overview keep the native host
+transparent and click-through, because Steam's Desktop Mode social UI renders
+through its own overlay panel and can be hidden by an opaque native host.
+
 The native presenter currently uses the macOS probe implementation on macOS and
 an X11/GLX probe implementation on Linux. On Steam Deck Desktop Mode, the Linux
 reusable presenter path is the current generic proof path for overlay
@@ -342,9 +348,9 @@ activation, visual open, close, and back-to-app checks. Use
 or the Electron smoke app's `presenter-web` action for that proof. The older
 `activateToWebPageWithNativeSession(..., { modal: true })` / `native-web` path
 remains compatibility coverage. Steam's Desktop Mode social overlay can still
-remain visually stuck over Electron after deactivation, so Friends/Game Overview
-should be treated as callback/render evidence rather than a completed dismissal
-proof.
+remain visually stuck over Electron after deactivation or resist synthetic close
+input, so Friends/Game Overview should be treated as callback/render evidence
+rather than a completed dismissal proof.
 
 Set `STEAM_BRIDGE_ELECTRON_OVERLAY_PROFILE=repaint`, or pass
 `--steam-bridge-electron-overlay-profile=repaint` to the Electron smoke app, to
