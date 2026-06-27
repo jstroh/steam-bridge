@@ -170,14 +170,20 @@ Current evidence:
   `--visual-toggle-probe` evidence after a passive-presenter toast run stayed in
   the Electron app and did not emit `GameOverlayActivated`, so hotkey/social
   toggling remains separate from the product web/checkout path.
-- Electron-only and native social overlay paths can render only when Electron
-  child overlay targets are allowed, but those duplicate targets make visual
-  dismissal unreliable in Deck Desktop Mode. Reusable presenter dialog activation
-  remains an investigation path, not product proof. A focused/raised X11 host
-  experiment did not make `ActivateGameOverlay("Friends")` render or emit an
-  activation callback, so do not promote host focus handoff into the presenter
-  API as a social-overlay fix. Making the dialog host opaque/input-capable like
-  the web/store path only exposes a black presenter surface and still does not
+- Electron-only social overlay can render only when Electron child overlay
+  targets are allowed. A Deck Desktop diagnostic run with child env scrubbing and
+  `no-zygote` isolation disabled produced visible Steam desktop overlay UI and
+  `active=true` from the raw `dialog` action, with `gameoverlayui` attached to
+  Electron's GPU process. The same run did not close from Shift+Tab/Escape or an
+  X-click probe, so this is not a pass. Reusable presenter dialog activation
+  remains an investigation path, not product proof: when children are isolated it
+  does not render or emit active=true; when children are unisolated it creates
+  duplicate `gameoverlayui` targets for the GPU child and main/native process and
+  still fails close/back-to-app proof. A focused/raised X11 host experiment did
+  not make `ActivateGameOverlay("Friends")` render or emit an activation
+  callback, so do not promote host focus handoff into the presenter API as a
+  social-overlay fix. Making the dialog host opaque/input-capable like the
+  web/store path only exposes a black presenter surface and still does not
   activate Steam social UI, so opacity handoff is also not a social-overlay fix.
 
 Next work:

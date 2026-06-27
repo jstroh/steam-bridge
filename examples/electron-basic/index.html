@@ -372,7 +372,9 @@
           statusTile("Native Probe", yesNo(probeOpen), yesNo(probeOpen) === "yes" ? "good" : ""),
           statusTile("Steam Launch", yesNo(steamLaunch), yesNo(steamLaunch) === "yes" ? "good" : "warn"),
           statusTile("Overlay Hook", yesNo(overlayInjection), yesNo(overlayInjection) === "yes" ? "good" : ""),
-          statusTile("Overlay Profile", snapshot.app.overlayProfile, "")
+          statusTile("Overlay Profile", snapshot.app.overlayProfile, ""),
+          statusTile("Scrub Children", yesNo(snapshot.app.overlayScrubChildEnv), ""),
+          statusTile("Isolate Children", yesNo(snapshot.app.overlayIsolateChildProcesses), "")
         ].join("");
 
         els.runtime.innerHTML = [

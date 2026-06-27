@@ -9,6 +9,13 @@ const APP_ID = Number(CLI_OPTIONS.appId || process.env.STEAM_BRIDGE_APP_ID || "4
 const AUTH_IDENTITY = process.env.STEAM_BRIDGE_AUTH_IDENTITY || "steam-bridge-electron-smoke";
 const OVERLAY_PROFILE =
   CLI_OPTIONS.overlayProfile || process.env.STEAM_BRIDGE_ELECTRON_OVERLAY_PROFILE || "diagnostic";
+const OVERLAY_SCRUB_CHILD_ENV = readOptionalBoolean(
+  CLI_OPTIONS.overlayScrubChildEnv || process.env.STEAM_BRIDGE_ELECTRON_OVERLAY_SCRUB_CHILD_ENV
+);
+const OVERLAY_ISOLATE_CHILD_PROCESSES = readOptionalBoolean(
+  CLI_OPTIONS.overlayIsolateChildProcesses ||
+    process.env.STEAM_BRIDGE_ELECTRON_OVERLAY_ISOLATE_CHILD_PROCESSES
+);
 const WINDOW_MODE = CLI_OPTIONS.windowMode || process.env.STEAM_BRIDGE_SMOKE_WINDOW_MODE || "windowed";
 const STORE_URL = `https://store.steampowered.com/app/${APP_ID}/`;
 const WEB_URL = CLI_OPTIONS.webUrl || process.env.STEAM_BRIDGE_SMOKE_WEB_URL || STORE_URL;
@@ -55,7 +62,14 @@ const LAUNCH_ENV_KEYS = [
   "__COMPAT_LAYER"
 ];
 const STARTUP_LAUNCH_CONTEXT = getLaunchContext();
-const OVERLAY_CONFIG = steamworks.electronConfigureSteamOverlay({ profile: OVERLAY_PROFILE });
+const OVERLAY_CONFIG_OPTIONS = { profile: OVERLAY_PROFILE };
+if (OVERLAY_SCRUB_CHILD_ENV !== undefined) {
+  OVERLAY_CONFIG_OPTIONS.scrubSteamOverlayChildProcessEnv = OVERLAY_SCRUB_CHILD_ENV;
+}
+if (OVERLAY_ISOLATE_CHILD_PROCESSES !== undefined) {
+  OVERLAY_CONFIG_OPTIONS.isolateSteamOverlayChildProcesses = OVERLAY_ISOLATE_CHILD_PROCESSES;
+}
+const OVERLAY_CONFIG = steamworks.electronConfigureSteamOverlay(OVERLAY_CONFIG_OPTIONS);
 
 setupCrashDiagnostics();
 writeSteamAppIdFiles(APP_ID);
@@ -626,6 +640,8 @@ function snapshot() {
       appName: "Steam Bridge Electron Smoke",
       authIdentity: AUTH_IDENTITY,
       overlayProfile: OVERLAY_PROFILE,
+      overlayScrubChildEnv: OVERLAY_SCRUB_CHILD_ENV,
+      overlayIsolateChildProcesses: OVERLAY_ISOLATE_CHILD_PROCESSES,
       overlayConfig: OVERLAY_CONFIG,
       windowMode: WINDOW_MODE,
       autorun: AUTORUN,
@@ -917,6 +933,21 @@ function readBoolean(value, fallback) {
   return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on";
 }
 
+function readOptionalBoolean(value) {
+  if (value == null || value === "") {
+    return undefined;
+  }
+
+  const normalized = String(value).toLowerCase();
+  if (["1", "true", "yes", "on"].includes(normalized)) {
+    return true;
+  }
+  if (["0", "false", "no", "off"].includes(normalized)) {
+    return false;
+  }
+  return undefined;
+}
+
 function writeSteamAppIdFiles(appId) {
   const directories = new Set([process.cwd(), __dirname]);
   if (app.isPackaged) {
@@ -944,6 +975,8 @@ function parseSmokeArgs(args) {
     autorunActionDelayMs: undefined,
     autorunResultDelayMs: undefined,
     overlayProfile: undefined,
+    overlayScrubChildEnv: undefined,
+    overlayIsolateChildProcesses: undefined,
     windowMode: undefined,
     autorunRequireOverlayActive: undefined,
     webModal: undefined,
@@ -998,6 +1031,12 @@ function parseSmokeArgs(args) {
         break;
       case "--steam-bridge-electron-overlay-profile":
         options.overlayProfile = value;
+        break;
+      case "--steam-bridge-electron-overlay-scrub-child-env":
+        options.overlayScrubChildEnv = value == null || value === "" ? "1" : value;
+        break;
+      case "--steam-bridge-electron-overlay-isolate-child-processes":
+        options.overlayIsolateChildProcesses = value == null || value === "" ? "1" : value;
         break;
       case "--steam-bridge-smoke-window-mode":
         options.windowMode = value;

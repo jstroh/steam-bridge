@@ -118,6 +118,15 @@ the action keeps the presenter transparent and click-through, calls
 `achievement.indicateProgress(...)`, and records `achievement:progress` plus
 `callback:achievement-stored` when Steam accepts the progress notification.
 
+For social-overlay investigation only, the smoke app and Deck host runner expose
+`--steam-bridge-electron-overlay-scrub-child-env`,
+`--steam-bridge-electron-overlay-isolate-child-processes`,
+`--overlay-scrub-child-env`, and `--overlay-isolate-child-processes`. Set both
+to `false` to let Steam's overlay preload reach Chromium children and compare
+that behavior against the default isolated presenter proof. Do not use the
+unisolated mode as the recommended product path unless a run also proves clean
+close/back-to-app pixels and no duplicate stale `gameoverlayui` target.
+
 Each autorun also writes local diagnostics. Pass
 `--steam-bridge-smoke-diagnostic-dir=/tmp/steam-bridge-smoke.log.diagnostics`
 or set `STEAM_BRIDGE_SMOKE_DIAGNOSTIC_DIR` to choose the directory. The app

@@ -10,6 +10,8 @@ mode="game"
 app_id="480"
 action="dialog"
 overlay_profile=""
+overlay_scrub_child_env=""
+overlay_isolate_child_processes=""
 window_mode=""
 web_url=""
 web_modal=""
@@ -61,6 +63,10 @@ Options:
   --action NAME                 Autorun action. Defaults to dialog. Supports raw dialog/store/web,
                                 managed native-* variants, and presenter-* variants.
   --overlay-profile NAME        Electron overlay profile. Desktop defaults to repaint.
+  --overlay-scrub-child-env true|false
+                                Whether to scrub Steam overlay preload entries from Electron child env.
+  --overlay-isolate-child-processes true|false
+                                Whether Linux Chromium children should be isolated from Steam overlay hooks.
   --window-mode NAME            Electron window mode: windowed, fullscreen, or borderless.
   --web-url URL                 URL for the web overlay action.
   --web-modal true|false        Whether the web overlay action should request a modal.
@@ -131,6 +137,14 @@ while [ "$#" -gt 0 ]; do
       ;;
     --overlay-profile)
       overlay_profile="${2:?missing --overlay-profile value}"
+      shift 2
+      ;;
+    --overlay-scrub-child-env)
+      overlay_scrub_child_env="${2:?missing --overlay-scrub-child-env value}"
+      shift 2
+      ;;
+    --overlay-isolate-child-processes)
+      overlay_isolate_child_processes="${2:?missing --overlay-isolate-child-processes value}"
       shift 2
       ;;
     --window-mode)
@@ -650,7 +664,7 @@ resolved_overlay_profile() {
 
 prepare_remote_wrapper() {
   local app_dir_q env_q wrapper_q wrapper_dir_q
-  local app_id_q action_q profile_q window_mode_q result_file_q diagnostic_dir_q action_delay_q result_delay_q keep_open_q require_active_q web_url_q web_modal_q achievement_name_q achievement_current_q achievement_max_q
+  local app_id_q action_q profile_q scrub_child_env_q isolate_child_processes_q window_mode_q result_file_q diagnostic_dir_q action_delay_q result_delay_q keep_open_q require_active_q web_url_q web_modal_q achievement_name_q achievement_current_q achievement_max_q
   local require_overlay_active="0"
 
   if [ "$action" = "store" ] || [ "$action" = "web" ] || [ "$action" = "presenter-store" ] || [ "$action" = "presenter-web" ]; then
@@ -664,6 +678,8 @@ prepare_remote_wrapper() {
   app_id_q="$(quote_arg "$app_id")"
   action_q="$(quote_arg "$action")"
   profile_q="$(quote_arg "$(resolved_overlay_profile)")"
+  scrub_child_env_q="$(quote_arg "$overlay_scrub_child_env")"
+  isolate_child_processes_q="$(quote_arg "$overlay_isolate_child_processes")"
   window_mode_q="$(quote_arg "$window_mode")"
   result_file_q="$(quote_arg "$result_file")"
   diagnostic_dir_q="$(quote_arg "$result_file.diagnostics")"
@@ -685,6 +701,8 @@ APP_DIR=$app_dir_q
 APP_ID=$app_id_q
 AUTORUN_ACTION=$action_q
 OVERLAY_PROFILE=$profile_q
+OVERLAY_SCRUB_CHILD_ENV=$scrub_child_env_q
+OVERLAY_ISOLATE_CHILD_PROCESSES=$isolate_child_processes_q
 WINDOW_MODE=$window_mode_q
 RESULT_FILE=$result_file_q
 DIAGNOSTIC_DIR=$diagnostic_dir_q
@@ -714,6 +732,8 @@ APP_DIR=\"\${APP_DIR:-/home/deck/steam-bridge-smoke/SteamBridgeSmoke-linux-x64}\
 APP_ID=\"\${APP_ID:-480}\"
 AUTORUN_ACTION=\"\${AUTORUN_ACTION:-none}\"
 OVERLAY_PROFILE=\"\${OVERLAY_PROFILE:-diagnostic}\"
+OVERLAY_SCRUB_CHILD_ENV=\"\${OVERLAY_SCRUB_CHILD_ENV:-}\"
+OVERLAY_ISOLATE_CHILD_PROCESSES=\"\${OVERLAY_ISOLATE_CHILD_PROCESSES:-}\"
 WINDOW_MODE=\"\${WINDOW_MODE:-}\"
 RESULT_FILE=\"\${RESULT_FILE:-/tmp/steam-bridge-smoke-default.log}\"
 DIAGNOSTIC_DIR=\"\${DIAGNOSTIC_DIR:-\$RESULT_FILE.diagnostics}\"
@@ -734,6 +754,12 @@ export SteamGameId=\"\$APP_ID\"
 export SteamOverlayGameId=\"\$APP_ID\"
 export STEAM_BRIDGE_APP_ID=\"\$APP_ID\"
 export STEAM_BRIDGE_ELECTRON_OVERLAY_PROFILE=\"\$OVERLAY_PROFILE\"
+if [ -n \"\$OVERLAY_SCRUB_CHILD_ENV\" ]; then
+  export STEAM_BRIDGE_ELECTRON_OVERLAY_SCRUB_CHILD_ENV=\"\$OVERLAY_SCRUB_CHILD_ENV\"
+fi
+if [ -n \"\$OVERLAY_ISOLATE_CHILD_PROCESSES\" ]; then
+  export STEAM_BRIDGE_ELECTRON_OVERLAY_ISOLATE_CHILD_PROCESSES=\"\$OVERLAY_ISOLATE_CHILD_PROCESSES\"
+fi
 if [ -n \"\$WINDOW_MODE\" ]; then
   export STEAM_BRIDGE_SMOKE_WINDOW_MODE=\"\$WINDOW_MODE\"
 fi
@@ -785,6 +811,13 @@ append_common_helper_args() {
     "--timeout-seconds" "$timeout_seconds"
     "--app-name" "$app_name"
   )
+
+  if [ -n "$overlay_scrub_child_env" ]; then
+    helper_args+=("--overlay-scrub-child-env" "$overlay_scrub_child_env")
+  fi
+  if [ -n "$overlay_isolate_child_processes" ]; then
+    helper_args+=("--overlay-isolate-child-processes" "$overlay_isolate_child_processes")
+  fi
 
   if [ "$keep_open_after_result" = "1" ]; then
     helper_args+=("--keep-open-after-result")

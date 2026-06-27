@@ -8,6 +8,8 @@ diagnostic_dir=""
 app_id="480"
 action="none"
 overlay_profile="diagnostic"
+overlay_scrub_child_env=""
+overlay_isolate_child_processes=""
 window_mode=""
 web_url=""
 web_modal=""
@@ -52,6 +54,10 @@ Options:
   --action NAME                  none, dialog, friends, store, web, native-probe, native-dialog, native-store, native-web,
                                  presenter-dialog, presenter-store, presenter-web, presenter-achievement-progress.
   --overlay-profile NAME         Electron overlay profile. Defaults to diagnostic.
+  --overlay-scrub-child-env true|false
+                                 Whether to scrub Steam overlay preload entries from Electron child env.
+  --overlay-isolate-child-processes true|false
+                                 Whether Linux Chromium children should be isolated from Steam overlay hooks.
   --window-mode NAME             Electron window mode: windowed, fullscreen, or borderless.
   --web-url URL                  URL for the web overlay action.
   --web-modal true|false         Whether the web overlay action should request a modal.
@@ -106,6 +112,14 @@ while [ "$#" -gt 0 ]; do
       ;;
     --overlay-profile)
       overlay_profile="${2:?missing --overlay-profile value}"
+      shift 2
+      ;;
+    --overlay-scrub-child-env)
+      overlay_scrub_child_env="${2:?missing --overlay-scrub-child-env value}"
+      shift 2
+      ;;
+    --overlay-isolate-child-processes)
+      overlay_isolate_child_processes="${2:?missing --overlay-isolate-child-processes value}"
       shift 2
       ;;
     --window-mode)
@@ -217,6 +231,12 @@ smoke_args() {
 
   if [ "$require_overlay_activated" = "1" ]; then
     printf '%s\n' "--steam-bridge-smoke-require-overlay-active"
+  fi
+  if [ -n "$overlay_scrub_child_env" ]; then
+    printf '%s\n' "--steam-bridge-electron-overlay-scrub-child-env=$overlay_scrub_child_env"
+  fi
+  if [ -n "$overlay_isolate_child_processes" ]; then
+    printf '%s\n' "--steam-bridge-electron-overlay-isolate-child-processes=$overlay_isolate_child_processes"
   fi
   if [ "$keep_open_after_result" = "1" ]; then
     printf '%s\n' "--steam-bridge-smoke-keep-open-after-result"
