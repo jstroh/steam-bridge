@@ -176,6 +176,11 @@ function copyTargetHelpers(appPath) {
       path.join(appPath, "windows-electron-smoke.ps1")
     );
   }
+  if (target === "x86_64-unknown-linux-gnu") {
+    const helperPath = path.join(appPath, "linux-electron-smoke.sh");
+    fs.copyFileSync(path.join(repoRoot, "scripts", "linux-electron-smoke.sh"), helperPath);
+    fs.chmodSync(helperPath, 0o755);
+  }
 }
 
 function assertPackageArtifacts(target, fileNames) {

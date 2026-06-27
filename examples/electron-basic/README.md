@@ -159,6 +159,19 @@ For Game Mode, copy the Linux x64 output folder to the Deck and add the packaged
 `SteamBridgeSmoke` executable as a non-Steam game. Launch it from Game Mode and
 use the overlay buttons in the app.
 
+The Linux package also includes `linux-electron-smoke.sh`. Use it on Steam Deck
+or Linux x64 to print the launch options, discover the full shortcut game ID,
+launch the Steam shortcut, and verify the autorun log.
+
+```sh
+cd "$HOME/steam-bridge-smoke/SteamBridgeSmoke-linux-x64"
+
+./linux-electron-smoke.sh \
+  --mode print-launch-options \
+  --action dialog \
+  --result-file /tmp/steam-bridge-smoke-steam-launch.log
+```
+
 For scripted setup, back up and upsert the non-Steam shortcut with:
 
 ```sh
@@ -191,9 +204,25 @@ steam steam://rungameid/<shortcut-game-id>
 
 Do not launch the internal shortcut app ID with `steam://rungameid`. Steam can
 show `Game configuration unavailable` when the short app ID is used instead of
-the full shortcut game ID. The same dialog can appear briefly after editing
-`shortcuts.vdf` while Steam is running; reload Steam, then launch the full
-shortcut game ID again.
+the full shortcut game ID. Do not launch `steam://rungameid/480`; `480` is the
+SpaceWar test App ID used inside the running process, not the non-Steam shortcut
+ID. The same dialog can appear briefly after editing `shortcuts.vdf` while Steam
+is running; reload Steam, then launch the full shortcut game ID again.
+
+After Steam has reloaded the shortcut, the packaged helper can auto-discover the
+full shortcut game ID and run the Game Mode smoke check:
+
+```sh
+./linux-electron-smoke.sh \
+  --mode steam-launch \
+  --shortcut-game-id auto \
+  --action dialog \
+  --result-file /tmp/steam-bridge-smoke-steam-launch.log \
+  --require-steam-deck \
+  --require-big-picture \
+  --require-overlay-injection \
+  --require-event callback:overlay-activated
+```
 
 For Desktop Mode overlay checks, launch the same shortcut URL while Steam is
 running in Desktop Mode. A direct shell or file-manager launch can prove Steam
@@ -201,8 +230,8 @@ Bridge initialization, but Steam overlay injection is only expected when Steam
 launches the shortcut.
 
 For longer SSH-driven checks, keep the Deck awake from SteamOS/Desktop Mode
-power settings. `systemd-inhibit` can require interactive authorization over SSH
-on SteamOS.
+power settings. Over SSH, `systemd-inhibit --what=sleep sleep infinity` can keep
+the Deck awake while a test slice is running.
 
 ## Overlay Signals
 

@@ -1,0 +1,440 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+mode="direct"
+app_dir=""
+result_file=""
+app_id="480"
+action="none"
+result_delay_ms="8000"
+timeout_seconds="90"
+shortcut_game_id=""
+app_name="Steam Bridge Smoke"
+steam_user_id=""
+require_steam_launch="0"
+require_overlay_ready="0"
+require_overlay_injection="0"
+require_steam_deck="0"
+require_big_picture="0"
+require_events=()
+
+usage() {
+  cat <<'EOF'
+Usage:
+  linux-electron-smoke.sh [options]
+
+Modes:
+  --mode direct                  Run SteamBridgeSmoke directly and verify it.
+  --mode steam-launch            Launch the Steam shortcut and verify it.
+  --mode verify                  Verify an existing smoke result log.
+  --mode print-launch-options    Print launch options for a Steam shortcut.
+  --mode print-shortcuts         Print matching Steam shortcut IDs.
+
+Options:
+  --app-dir PATH                 Directory containing SteamBridgeSmoke.
+  --result-file PATH             Result log path.
+  --app-id ID                    Steam App ID to use. Defaults to 480.
+  --action NAME                  none, dialog, friends, store, web, native-probe.
+  --result-delay-ms MS           Autorun result delay. Defaults to 8000.
+  --timeout-seconds SECONDS      Result wait timeout. Defaults to 90.
+  --shortcut-game-id ID|auto     Full steam://rungameid shortcut game ID.
+  --app-name NAME                Shortcut name to auto-discover.
+  --steam-user-id ID             Restrict shortcut discovery to one userdata ID.
+  --require-steam-launch         Require Steam launch markers.
+  --require-overlay-ready        Require overlay enabled and needs-present false.
+  --require-overlay-injection    Require Linux overlay injection marker.
+  --require-steam-deck           Require Steam Deck detection.
+  --require-big-picture          Require Big Picture/Game Mode detection.
+  --require-event TYPE           Require an emitted event. May be repeated.
+EOF
+}
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --help|-h)
+      usage
+      exit 0
+      ;;
+    --mode)
+      mode="${2:?missing --mode value}"
+      shift 2
+      ;;
+    --app-dir)
+      app_dir="${2:?missing --app-dir value}"
+      shift 2
+      ;;
+    --result-file)
+      result_file="${2:?missing --result-file value}"
+      shift 2
+      ;;
+    --app-id)
+      app_id="${2:?missing --app-id value}"
+      shift 2
+      ;;
+    --action)
+      action="${2:?missing --action value}"
+      shift 2
+      ;;
+    --result-delay-ms)
+      result_delay_ms="${2:?missing --result-delay-ms value}"
+      shift 2
+      ;;
+    --timeout-seconds)
+      timeout_seconds="${2:?missing --timeout-seconds value}"
+      shift 2
+      ;;
+    --shortcut-game-id)
+      shortcut_game_id="${2:?missing --shortcut-game-id value}"
+      shift 2
+      ;;
+    --app-name)
+      app_name="${2:?missing --app-name value}"
+      shift 2
+      ;;
+    --steam-user-id)
+      steam_user_id="${2:?missing --steam-user-id value}"
+      shift 2
+      ;;
+    --require-steam-launch)
+      require_steam_launch="1"
+      shift
+      ;;
+    --require-overlay-ready)
+      require_overlay_ready="1"
+      shift
+      ;;
+    --require-overlay-injection)
+      require_overlay_injection="1"
+      shift
+      ;;
+    --require-steam-deck)
+      require_steam_deck="1"
+      shift
+      ;;
+    --require-big-picture)
+      require_big_picture="1"
+      shift
+      ;;
+    --require-event)
+      require_events+=("${2:?missing --require-event value}")
+      shift 2
+      ;;
+    *)
+      echo "Unknown option: $1" >&2
+      usage >&2
+      exit 2
+      ;;
+  esac
+done
+
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+if [ -z "$app_dir" ]; then
+  if [ -x "$script_dir/SteamBridgeSmoke" ]; then
+    app_dir="$script_dir"
+  else
+    app_dir="$(pwd)/dist/electron-smoke/x86_64-unknown-linux-gnu/SteamBridgeSmoke-linux-x64"
+  fi
+fi
+app_dir="$(cd -- "$app_dir" && pwd)"
+
+if [ -z "$result_file" ]; then
+  result_file="${TMPDIR:-/tmp}/steam-bridge-smoke-linux-direct.log"
+fi
+
+smoke_exe="$app_dir/SteamBridgeSmoke"
+result_prefix="STEAM_BRIDGE_SMOKE_RESULT "
+
+smoke_args() {
+  printf '%s\n' \
+    "--no-sandbox" \
+    "--steam-bridge-app-id=$app_id" \
+    "--steam-bridge-electron-overlay-profile=diagnostic" \
+    "--steam-bridge-smoke-autorun" \
+    "--steam-bridge-smoke-autorun-action=$action" \
+    "--steam-bridge-smoke-autorun-result-delay-ms=$result_delay_ms" \
+    "--steam-bridge-smoke-result-file=$result_file"
+}
+
+wait_for_result_file() {
+  local deadline now
+  deadline=$((SECONDS + timeout_seconds))
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    if [ -s "$result_file" ] && grep -q "^$result_prefix" "$result_file"; then
+      return 0
+    fi
+    sleep 0.5
+  done
+
+  echo "Timed out waiting for smoke result file $result_file" >&2
+  return 1
+}
+
+ensure_app() {
+  if [ ! -x "$smoke_exe" ]; then
+    echo "Missing executable $smoke_exe" >&2
+    exit 1
+  fi
+}
+
+discover_shortcuts() {
+  APP_NAME="$app_name" STEAM_USER_ID="$steam_user_id" python3 <<'PY'
+import glob
+import json
+import os
+import sys
+
+TYPE_OBJECT = 0
+TYPE_STRING = 1
+TYPE_UINT32 = 2
+TYPE_END = 8
+app_name = os.environ["APP_NAME"]
+steam_user_id = os.environ.get("STEAM_USER_ID", "")
+home = os.path.expanduser("~")
+
+if steam_user_id:
+    paths = [os.path.join(home, ".local/share/Steam/userdata", steam_user_id, "config/shortcuts.vdf")]
+else:
+    paths = sorted(glob.glob(os.path.join(home, ".local/share/Steam/userdata/*/config/shortcuts.vdf")))
+
+def read_c_string(data, offset):
+    end = data.find(b"\0", offset)
+    if end < 0:
+        raise ValueError("unterminated string")
+    return data[offset:end].decode("utf-8"), end + 1
+
+def read_object(data, offset):
+    value = {}
+    while offset < len(data):
+        field_type = data[offset]
+        offset += 1
+        if field_type == TYPE_END:
+            break
+        name, offset = read_c_string(data, offset)
+        if field_type == TYPE_OBJECT:
+            value[name], offset = read_object(data, offset)
+        elif field_type == TYPE_STRING:
+            value[name], offset = read_c_string(data, offset)
+        elif field_type == TYPE_UINT32:
+            value[name] = int.from_bytes(data[offset:offset + 4], "little")
+            offset += 4
+        else:
+            raise ValueError(f"unsupported field type {field_type} for {name}")
+    return value, offset
+
+matches = []
+for path in paths:
+    if not os.path.exists(path):
+        continue
+    data = open(path, "rb").read()
+    if not data or data[0] != TYPE_OBJECT:
+        continue
+    root_name, offset = read_c_string(data, 1)
+    shortcuts, _ = read_object(data, offset)
+    user_id = path.split("/userdata/", 1)[1].split("/", 1)[0]
+    for index, entry in shortcuts.items():
+        if not isinstance(entry, dict) or entry.get("appname") != app_name:
+            continue
+        appid = int(entry["appid"]) & 0xFFFFFFFF
+        game_id = (appid << 32) | 0x02000000
+        matches.append({
+            "userId": user_id,
+            "index": index,
+            "appid": appid,
+            "gameId": str(game_id),
+            "appname": entry.get("appname", ""),
+            "exe": entry.get("Exe", ""),
+            "startDir": entry.get("StartDir", ""),
+            "launchOptions": entry.get("LaunchOptions", ""),
+            "allowOverlay": entry.get("AllowOverlay"),
+        })
+
+for match in matches:
+    print(json.dumps(match, sort_keys=True))
+PY
+}
+
+resolve_shortcut_game_id() {
+  if [ -n "$shortcut_game_id" ] && [ "$shortcut_game_id" != "auto" ]; then
+    printf '%s\n' "$shortcut_game_id"
+    return 0
+  fi
+
+  local matches ids resolved
+  matches="$(discover_shortcuts)"
+  if [ -z "$matches" ]; then
+    echo "Could not find Steam shortcut named \"$app_name\"." >&2
+    echo "Add it as a non-Steam game or pass --shortcut-game-id explicitly." >&2
+    return 1
+  fi
+
+  ids="$(printf '%s\n' "$matches" | python3 -c 'import json,sys; print("\\n".join(sorted({json.loads(line)["gameId"] for line in sys.stdin if line.strip()})))')"
+  if [ "$(printf '%s\n' "$ids" | sed '/^$/d' | wc -l | tr -d ' ')" != "1" ]; then
+    echo "Found multiple shortcut game IDs for \"$app_name\"; pass --shortcut-game-id explicitly:" >&2
+    printf '%s\n' "$matches" >&2
+    return 1
+  fi
+
+  resolved="$(printf '%s\n' "$ids" | sed -n '1p')"
+  printf '%s\n' "$resolved"
+}
+
+verify_result() {
+  RESULT_FILE="$result_file" \
+  RESULT_PREFIX="$result_prefix" \
+  APP_ID="$app_id" \
+  ACTION="$action" \
+  REQUIRE_STEAM_LAUNCH="$require_steam_launch" \
+  REQUIRE_OVERLAY_READY="$require_overlay_ready" \
+  REQUIRE_OVERLAY_INJECTION="$require_overlay_injection" \
+  REQUIRE_STEAM_DECK="$require_steam_deck" \
+  REQUIRE_BIG_PICTURE="$require_big_picture" \
+  REQUIRE_EVENTS="$(IFS=$'\n'; printf '%s' "${require_events[*]}")" \
+  python3 <<'PY'
+import json
+import os
+import sys
+
+path = os.environ["RESULT_FILE"]
+prefix = os.environ["RESULT_PREFIX"]
+expected_app_id = int(os.environ["APP_ID"])
+expected_action = os.environ["ACTION"]
+required_events = [entry for entry in os.environ.get("REQUIRE_EVENTS", "").splitlines() if entry]
+
+with open(path, "r", encoding="utf-8") as handle:
+    lines = [line.rstrip("\n") for line in handle]
+
+line = next((entry for entry in reversed(lines) if entry.startswith(prefix)), None)
+if line is None:
+    raise SystemExit(f"Missing {prefix.strip()} line in {path}")
+
+result = json.loads(line[len(prefix):])
+snapshot = result.get("snapshot") or {}
+steam = snapshot.get("steam") or {}
+app = snapshot.get("app") or {}
+launch = snapshot.get("launch") or {}
+process_info = snapshot.get("process") or {}
+events = snapshot.get("events") or []
+failures = []
+
+def ok_value(entry):
+    return entry.get("value") if isinstance(entry, dict) and entry.get("ok") is True else None
+
+def expect(condition, message):
+    if not condition:
+        failures.append(message)
+
+expect(result.get("ok") is True, "smoke result ok")
+expect(steam.get("initialized") is True, "Steam initialized")
+expect(ok_value(steam.get("running")) is True, "Steam running")
+expect(ok_value(steam.get("appId")) == app.get("appId"), "Steam App ID matches app config")
+expect(app.get("appId") == expected_app_id, f"app ID is {expected_app_id}")
+expect(process_info.get("platform") == "linux", "platform is linux")
+expect(process_info.get("arch") == "x64", "arch is x64")
+
+if expected_action:
+    action = result.get("action") or {}
+    expect(action.get("action") == expected_action, f"autorun action is {expected_action}")
+    expect(action.get("ok") is True, f"autorun action {expected_action} succeeded")
+if os.environ["REQUIRE_STEAM_LAUNCH"] == "1":
+    expect(launch.get("steamLaunch") is True, "Steam launch marker detected")
+if os.environ["REQUIRE_OVERLAY_READY"] == "1":
+    expect(ok_value(steam.get("overlayEnabled")) is True, "overlay enabled")
+    expect(ok_value(steam.get("overlayNeedsPresent")) is False, "overlay does not need present")
+if os.environ["REQUIRE_OVERLAY_INJECTION"] == "1":
+    expect(launch.get("overlayInjection") is True, "Steam overlay injection marker detected")
+if os.environ["REQUIRE_STEAM_DECK"] == "1":
+    expect(ok_value(steam.get("steamDeck")) is True, "Steam Deck detected")
+if os.environ["REQUIRE_BIG_PICTURE"] == "1":
+    expect(ok_value(steam.get("bigPicture")) is True, "Big Picture/Game Mode detected")
+for event_type in required_events:
+    expect(any(event.get("type") == event_type for event in events if isinstance(event, dict)), f"event {event_type} emitted")
+
+if failures:
+    for failure in failures:
+        print(f"Smoke result failed: {failure}", file=sys.stderr)
+    raise SystemExit(1)
+
+print(
+    "Electron smoke result verified "
+    f"appId={app.get('appId')} "
+    f"platform={process_info.get('platform')}/{process_info.get('arch')} "
+    f"steamDeck={ok_value(steam.get('steamDeck'))} "
+    f"bigPicture={ok_value(steam.get('bigPicture'))} "
+    f"overlayEnabled={ok_value(steam.get('overlayEnabled'))} "
+    f"overlayNeedsPresent={ok_value(steam.get('overlayNeedsPresent'))} "
+    f"steamLaunch={launch.get('steamLaunch')} "
+    f"overlayInjection={launch.get('overlayInjection')} "
+    f"action={(result.get('action') or {}).get('action')}"
+)
+PY
+}
+
+steam_command() {
+  if [ -n "${STEAM_BIN:-}" ]; then
+    printf '%s\n' "$STEAM_BIN"
+  elif command -v steam >/dev/null 2>&1; then
+    command -v steam
+  elif [ -x "$HOME/.steam/root/ubuntu12_32/steam" ]; then
+    printf '%s\n' "$HOME/.steam/root/ubuntu12_32/steam"
+  else
+    echo "Could not find Steam command. Set STEAM_BIN=/path/to/steam." >&2
+    return 1
+  fi
+}
+
+launch_steam_shortcut() {
+  local game_id steam_bin
+  game_id="$(resolve_shortcut_game_id)"
+  steam_bin="$(steam_command)"
+
+  mkdir -p "$(dirname -- "$result_file")"
+  rm -f "$result_file"
+
+  local steam_args=()
+  if pgrep -fa 'steam.*-steamdeck' >/dev/null 2>&1; then
+    steam_args+=("-steamdeck" "-pipewire")
+  fi
+
+  echo "Launching steam://rungameid/$game_id"
+  "$steam_bin" "${steam_args[@]}" "steam://rungameid/$game_id" >/tmp/steam-bridge-smoke-rungameid.out 2>/tmp/steam-bridge-smoke-rungameid.err &
+  wait_for_result_file
+  verify_result
+}
+
+case "$mode" in
+  print-launch-options)
+    printf 'Steam shortcut launch options:\n'
+    smoke_args | paste -sd' ' -
+    if [ -n "$shortcut_game_id" ]; then
+      printf 'Launch URL: steam://rungameid/%s\n' "$(resolve_shortcut_game_id)"
+    fi
+    ;;
+  print-shortcuts)
+    discover_shortcuts
+    ;;
+  direct)
+    ensure_app
+    mkdir -p "$(dirname -- "$result_file")"
+    rm -f "$result_file"
+    mapfile -t args < <(smoke_args)
+    (cd "$app_dir" && "$smoke_exe" "${args[@]}")
+    wait_for_result_file
+    verify_result
+    ;;
+  steam-launch)
+    if [ "${#require_events[@]}" -eq 0 ] && [ "$action" = "dialog" ]; then
+      require_events+=("overlay:dialog")
+    fi
+    require_steam_launch="1"
+    require_overlay_ready="1"
+    launch_steam_shortcut
+    ;;
+  verify)
+    verify_result
+    ;;
+  *)
+    echo "Unknown mode: $mode" >&2
+    usage >&2
+    exit 2
+    ;;
+esac

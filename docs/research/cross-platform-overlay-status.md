@@ -10,8 +10,8 @@ App ID `480`.
 | Target | Status | Evidence |
 | --- | --- | --- |
 | macOS Apple Silicon | Verified | Packaged `aarch64-apple-darwin` smoke app launched through a Steam non-Steam shortcut. `native-probe` autorun reported `steamLaunch=true`, `overlayInjection=true`, `nativeProbeOpen=true`, `overlayEnabled=true`, and `overlayNeedsPresent=false`. |
-| Linux x64 | Verified through Steam Deck | Packaged Linux x64 smoke app launches on Steam Deck and initializes Steam as App ID `480`. |
-| Steam Deck Game Mode | Verified | Steam-launched shortcut reported `steamDeck=true`, `bigPicture=true`, `steamLaunch=true`, `overlayInjection=true`, `overlayEnabled=true`, and emitted the `overlay:dialog` autorun event. |
+| Linux x64 | Verified through Steam Deck | Packaged Linux x64 smoke app launches on Steam Deck and initializes Steam as App ID `480`. The Linux package includes `linux-electron-smoke.sh` for direct, Steam-launched, and verification checks. |
+| Steam Deck Game Mode | Verified | Steam-launched shortcut reported `steamDeck=true`, `bigPicture=true`, `steamLaunch=true`, `overlayInjection=true`, `overlayEnabled=true`, and emitted the `overlay:dialog` autorun event. Fresh check on 2026-06-26 launched full shortcut game ID `16558333557412462592` and passed. |
 | Steam Deck Desktop Mode | Verified | Desktop Mode uses the same Linux x64 package and Steam shortcut flow. The verifier gate omits `--require-big-picture` but keeps `--require-steam-deck`, `--require-overlay-ready`, `--require-steam-launch`, `--require-overlay-injection`, and the overlay dialog event assertions. |
 | Windows x64 | Packaged, runtime pending | The Windows x64 smoke app packages locally and CI checks `x86_64-pc-windows-msvc`. Runtime overlay proof still needs the Windows laptop to run the Steam-launched shortcut and return the autorun log. |
 
@@ -71,3 +71,33 @@ npm run example:verify-result -- \
 Windows does not expose the same stable overlay injection environment marker as
 macOS and Linux, so `--require-overlay-injection` is intentionally not part of
 the Windows gate.
+
+## Steam Deck Shortcut Gate
+
+Steam Deck testing uses the packaged Linux x64 app with SpaceWar App ID `480`
+inside the process. The Steam launch URL must use the full non-Steam shortcut
+game ID, not `480` and not Steam's internal 32-bit shortcut app ID. Launching
+the wrong ID can show Steam's `Game configuration unavailable` dialog.
+
+The packaged Linux helper can discover the current shortcut ID from
+`shortcuts.vdf`, launch it, and verify the overlay signal:
+
+```sh
+cd "$HOME/steam-bridge-smoke/SteamBridgeSmoke-linux-x64"
+
+./linux-electron-smoke.sh \
+  --mode steam-launch \
+  --shortcut-game-id auto \
+  --action dialog \
+  --result-file /tmp/steam-bridge-smoke-steam-launch.log \
+  --require-steam-deck \
+  --require-big-picture \
+  --require-overlay-injection \
+  --require-event callback:overlay-activated
+```
+
+The latest Deck Game Mode proof was captured at 2026-06-26 17:03 PDT from
+`/tmp/steam-bridge-smoke-steam-launch.log` with `appId=480`,
+`steamLaunch=true`, `overlayInjection=true`, `overlayEnabled=true`,
+`overlayNeedsPresent=false`, `steamDeck=true`, `bigPicture=true`, and
+`overlay:dialog`.
