@@ -1,8 +1,8 @@
 # Steam Bridge Electron Smoke
 
 This is a tiny Electron app for proving that Steam Bridge can initialize Steam,
-read basic Steamworks state, and exercise overlay paths on macOS Apple Silicon,
-Windows x64, Linux x64, and Steam Deck.
+read basic Steamworks state, and exercise overlay paths on Linux x64 and Steam
+Deck.
 
 It uses Valve's SpaceWar sample App ID `480` by default. Override it with
 `STEAM_BRIDGE_APP_ID` when testing your own app.
@@ -30,8 +30,6 @@ self-contained Electron smoke app:
 ```sh
 gh run download <run-id> --dir /tmp/steam-bridge-release
 npm run example:package:linux -- --artifacts-dir /tmp/steam-bridge-release
-npm run example:package:win -- --artifacts-dir /tmp/steam-bridge-release
-npm run example:package:mac -- --artifacts-dir /tmp/steam-bridge-release
 ```
 
 Outputs are written under `dist/electron-smoke/<target>/`.
@@ -50,7 +48,7 @@ STEAM_BRIDGE_SMOKE_AUTORUN_RESULT_DELAY_MS=5000 \
 ```
 
 The same controls are also available as launch options, which is usually easier
-for Steam non-Steam shortcuts on macOS and Windows:
+for Steam non-Steam shortcuts:
 
 ```sh
 --steam-bridge-app-id=480 \
@@ -73,85 +71,6 @@ npm run example:verify-result -- \
   --platform linux \
   --arch x64
 ```
-
-## Windows x64 Checks
-
-Package the Windows x64 smoke app on any supported build host:
-
-```sh
-npm run example:package:win -- --artifacts-dir /tmp/steam-bridge-release
-```
-
-Copy `dist/electron-smoke/x86_64-pc-windows-msvc/SteamBridgeSmoke-win32-x64`
-to the Windows machine. The package includes `windows-electron-smoke.ps1`. For a
-direct Steamworks initialization check, run from PowerShell while Steam is open:
-
-```powershell
-Set-ExecutionPolicy -Scope Process Bypass -ExecutionPolicy Bypass
-Set-Location C:\Path\To\SteamBridgeSmoke-win32-x64
-.\windows-electron-smoke.ps1 `
-  -Mode direct `
-  -Action none `
-  -ResultFile C:\Temp\steam-bridge-smoke-windows-direct.log
-```
-
-For the overlay check, add `SteamBridgeSmoke.exe` as a non-Steam game in Steam,
-then use the helper to print the launch options line for the shortcut:
-
-```powershell
-.\windows-electron-smoke.ps1 `
-  -Mode print-launch-options `
-  -Action dialog `
-  -ResultFile C:\Temp\steam-bridge-smoke-windows-steam-launch.log
-```
-
-The line should look like:
-
-```text
---steam-bridge-app-id=480 --steam-bridge-electron-overlay-profile=diagnostic --steam-bridge-smoke-autorun --steam-bridge-smoke-autorun-action=dialog --steam-bridge-smoke-autorun-result-delay-ms=8000 --steam-bridge-smoke-result-file=C:\Temp\steam-bridge-smoke-windows-steam-launch.log
-```
-
-Launch the shortcut from Steam, then verify on Windows:
-
-```powershell
-.\windows-electron-smoke.ps1 `
-  -Mode verify `
-  -Action dialog `
-  -ResultFile C:\Temp\steam-bridge-smoke-windows-steam-launch.log `
-  -RequireSteamLaunch `
-  -RequireOverlayReady `
-  -RequireEvent overlay:dialog
-```
-
-If you know the full Steam shortcut game ID, the helper can launch and verify in
-one step:
-
-```powershell
-.\windows-electron-smoke.ps1 `
-  -Mode steam-launch `
-  -ShortcutGameId <shortcut-game-id> `
-  -Action dialog `
-  -ResultFile C:\Temp\steam-bridge-smoke-windows-steam-launch.log
-```
-
-Alternatively, copy `C:\Temp\steam-bridge-smoke-windows-steam-launch.log` back
-to the repo host and verify:
-
-```sh
-npm run example:verify-result -- \
-  --file /tmp/steam-bridge-smoke-windows-steam-launch.log \
-  --platform win32/x64 \
-  --app-id 480 \
-  --require-steam-launch \
-  --require-overlay-ready \
-  --action dialog \
-  --require-event overlay:dialog
-```
-
-On Windows, Steam's overlay hook is a DLL injection path rather than a stable
-environment variable, so `snapshot.launch.overlayInjection` is not currently a
-required assertion. Treat `overlayEnabled=true`, `overlayNeedsPresent=false`,
-and the Steam-launched autorun action as the required overlay signal.
 
 ## Steam Deck Checks
 
@@ -245,7 +164,7 @@ The important fields are:
 - `callback:overlay-activated`
 
 If Steam initializes but overlay does not show, compare those fields between
-macOS, Deck Game Mode, Deck Desktop Mode, and Windows.
+Deck Game Mode and Deck Desktop Mode.
 
 In autorun output, inspect `snapshot.steam.overlayEnabled`,
 `snapshot.steam.overlayNeedsPresent`, `snapshot.steam.overlayDiagnostics`, and
@@ -274,23 +193,6 @@ npm run example:verify-result -- \
   --file /tmp/steam-bridge-smoke.log \
   --require-steam-launch \
   --require-overlay-injection
-```
-
-For a macOS Apple Silicon native overlay probe check, use the compatibility
-profile, the `native-probe` autorun action, and assert that the probe stayed
-open while the overlay became ready:
-
-```sh
-npm run example:verify-result -- \
-  --file /tmp/steam-bridge-smoke-macos-steam-launch-native-probe.log \
-  --platform darwin/arm64 \
-  --require-steam-launch \
-  --require-overlay-injection \
-  --require-native-probe-open \
-  --require-overlay-ready \
-  --action native-probe \
-  --require-event overlay:native-probe-open \
-  --require-event overlay:native-probe-pump
 ```
 
 For an autorun overlay command, assert both the requested action and the emitted
