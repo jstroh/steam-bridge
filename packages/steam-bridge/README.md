@@ -148,15 +148,18 @@ Electron windows at about 30 FPS so Steam has fresh frames to composite. Use
 `profile: "compatibility"` as the stronger fallback when you also need
 Chromium's GPU work in-process.
 
-On Steam Deck Desktop Mode, the Linux X11/GLX managed native session is the
-current generic proof path for overlay activation and visual open checks. It
-opens and pumps the native presenter inside Steam Bridge so Electron examples do
-not need to own that lifecycle. Deck testing has verified `active=true` and
-`active=false` overlay callbacks with the app still alive, but Steam's Desktop
-Mode social overlay can remain visually stuck over Electron after deactivation.
-Treat Desktop Mode Friends/Game Overview dismissal as an open blocker, not a
-completed cross-platform overlay guarantee. Call `session.close()` during app
-cleanup or when you are finished with the proof surface.
+On Steam Deck Desktop Mode, the Linux X11/GLX managed native web session is the
+current generic proof path for overlay activation, visual open, close, and
+back-to-app checks. It opens and pumps the native presenter inside Steam Bridge
+so Electron examples do not need to own that lifecycle; use
+`activateToWebPageWithNativeSession(..., { modal: true })` or the Electron smoke
+app's `native-web` action for the generic proof. Deck testing has verified
+`active=true` and `active=false` overlay callbacks with the app still alive.
+Steam's Desktop Mode social overlay can still remain visually stuck over
+Electron after deactivation, so treat Friends/Game Overview dismissal as an open
+social-overlay blocker, not a completed cross-platform guarantee. Call
+`session.close()` during app cleanup or when you are finished with the proof
+surface.
 
 ## Development
 

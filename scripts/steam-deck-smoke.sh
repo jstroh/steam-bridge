@@ -476,6 +476,7 @@ rm -f \"\$RESULT_FILE\"
 rm -rf \"\$DIAGNOSTIC_DIR\"
 export SteamAppId=\"\$APP_ID\"
 export SteamGameId=\"\$APP_ID\"
+export SteamOverlayGameId=\"\$APP_ID\"
 export STEAM_BRIDGE_APP_ID=\"\$APP_ID\"
 export STEAM_BRIDGE_ELECTRON_OVERLAY_PROFILE=\"\$OVERLAY_PROFILE\"
 if [ -n \"\$WINDOW_MODE\" ]; then
@@ -708,6 +709,10 @@ run_self_test() {
   fi
   if [[ "$desktop_args" != *"--overlay-profile repaint"* ]]; then
     echo "Self-test failed: Desktop Mode args must default to the repaint overlay profile." >&2
+    exit 1
+  fi
+  if ! grep -Fq 'export SteamOverlayGameId=\"\$APP_ID\"' "$0"; then
+    echo "Self-test failed: Steam shortcut wrapper must export SteamOverlayGameId." >&2
     exit 1
   fi
 
