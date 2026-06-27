@@ -18,6 +18,15 @@ export interface ElectronSteamOverlayConfigResult {
   repaintIntervalMs: number;
 }
 
+export interface ElectronNativeOverlaySessionOptions {
+  title?: string;
+  pumpIntervalMs?: number;
+  nativeWindowHandle?: Buffer;
+  restoreFocus?: () => void;
+  restoreFocusDelayMs?: number;
+  hideNativeHostOnOverlayDeactivate?: boolean;
+}
+
 interface ElectronApp {
   commandLine: {
     appendSwitch(name: string, value?: string): void;
@@ -27,6 +36,11 @@ interface ElectronApp {
 
 interface ElectronWindow {
   isDestroyed(): boolean;
+  isMinimized?(): boolean;
+  restore?(): void;
+  show?(): void;
+  focus?(): void;
+  getNativeWindowHandle?(): Buffer;
   webContents: {
     once(event: "did-finish-load", handler: () => void): void;
     invalidate(): void;
@@ -120,6 +134,31 @@ export function electronDisableSteamOverlayRepaintLoop(): void {
     clearInterval(repaintTimer);
     repaintTimer = undefined;
   }
+}
+
+export function electronNativeOverlaySessionOptions(
+  window: ElectronWindow,
+  options: Omit<ElectronNativeOverlaySessionOptions, "nativeWindowHandle" | "restoreFocus"> = {}
+): ElectronNativeOverlaySessionOptions {
+  if (typeof window.getNativeWindowHandle !== "function") {
+    throw new Error("Electron BrowserWindow does not expose getNativeWindowHandle().");
+  }
+
+  return {
+    ...options,
+    nativeWindowHandle: window.getNativeWindowHandle(),
+    restoreFocus: () => {
+      if (window.isDestroyed()) {
+        return;
+      }
+      if (window.isMinimized?.()) {
+        window.restore?.();
+      }
+      window.show?.();
+      window.focus?.();
+      window.webContents.invalidate();
+    }
+  };
 }
 
 function appendSwitchOnce(

@@ -659,13 +659,22 @@ pub(crate) fn string_from_ptr(ptr: *const c_char) -> String {
 
 fn native_handle_from_buffer(handle: &Buffer) -> Result<usize, Error> {
     let bytes: &[u8] = handle.as_ref();
-    let handle_size = std::mem::size_of::<usize>();
-    if bytes.len() < handle_size {
+    let pointer_size = std::mem::size_of::<usize>();
+    let handle_size = if bytes.len() >= pointer_size {
+        pointer_size
+    } else if cfg!(target_os = "linux") && bytes.len() >= std::mem::size_of::<u32>() {
+        std::mem::size_of::<u32>()
+    } else {
+        let minimum_size = if cfg!(target_os = "linux") {
+            std::mem::size_of::<u32>()
+        } else {
+            pointer_size
+        };
         return Err(Error::from_reason(format!(
-            "Electron native window handle buffer is too small: expected at least {handle_size} bytes, got {}",
+            "Electron native window handle buffer is too small: expected at least {minimum_size} bytes, got {}",
             bytes.len()
         )));
-    }
+    };
 
     let mut raw = 0usize;
     for (index, byte) in bytes.iter().take(handle_size).enumerate() {

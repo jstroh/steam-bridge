@@ -1078,6 +1078,7 @@ mod linux {
         glx: glx::Glx,
         display: *mut xlib::Display,
         window: xlib::Window,
+        parent_window: Option<xlib::Window>,
         colormap: xlib::Colormap,
         context: glx::GLXContext,
         frame: u64,
@@ -1091,7 +1092,7 @@ mod linux {
         close();
 
         let title = title.unwrap_or_else(|| "Steam Bridge Native Overlay Probe".to_owned());
-        let surface = unsafe { create_probe_window(&title)? };
+        let surface = unsafe { create_probe_window(&title, None)? };
         *SURFACE
             .lock()
             .expect("Steam overlay native surface lock poisoned") = Some(surface);
@@ -1100,10 +1101,21 @@ mod linux {
         Ok(())
     }
 
-    pub fn attach_to_parent(_parent_handle: usize) -> Result<(), Error> {
-        Err(Error::from_reason(
-            "Steam Bridge native overlay host view is not implemented on Linux yet",
-        ))
+    pub fn attach_to_parent(parent_handle: usize) -> Result<(), Error> {
+        close();
+
+        let surface = unsafe {
+            create_probe_window(
+                "Steam Bridge Native Overlay",
+                Some(parent_handle as xlib::Window),
+            )?
+        };
+        *SURFACE
+            .lock()
+            .expect("Steam overlay native surface lock poisoned") = Some(surface);
+
+        pump()?;
+        Ok(())
     }
 
     pub fn pump() -> Result<(), Error> {
@@ -1118,6 +1130,20 @@ mod linux {
             while (surface.xlib.XPending)(surface.display) > 0 {
                 let mut event: xlib::XEvent = mem::MaybeUninit::uninit().assume_init();
                 (surface.xlib.XNextEvent)(surface.display, &mut event);
+            }
+
+            if let Some(parent_window) = surface.parent_window {
+                let (width, height) =
+                    window_size(&surface.xlib, surface.display, parent_window, 640, 480);
+                (surface.xlib.XMoveResizeWindow)(
+                    surface.display,
+                    surface.window,
+                    0,
+                    0,
+                    width,
+                    height,
+                );
+                gl::Viewport(0, 0, width as c_int, height as c_int);
             }
 
             (surface.glx.glXMakeCurrent)(surface.display, surface.window, surface.context);
@@ -1169,20 +1195,27 @@ mod linux {
     }
 
     pub fn close_probe() {
-        close();
+        close_matching(|surface| surface.parent_window.is_none());
     }
 
-    pub fn detach_host() {}
+    pub fn detach_host() {
+        close_matching(|surface| surface.parent_window.is_some());
+    }
 
     pub fn is_probe_open() -> bool {
         SURFACE
             .lock()
             .expect("Steam overlay native surface lock poisoned")
-            .is_some()
+            .as_ref()
+            .is_some_and(|surface| surface.parent_window.is_none())
     }
 
     pub fn is_embedded() -> bool {
-        false
+        SURFACE
+            .lock()
+            .expect("Steam overlay native surface lock poisoned")
+            .as_ref()
+            .is_some_and(|surface| surface.parent_window.is_some())
     }
 
     pub fn mac_window_snapshot_json(_app_id: u32) -> Option<String> {
@@ -1199,7 +1232,33 @@ mod linux {
         Ok(())
     }
 
-    unsafe fn create_probe_window(title: &str) -> Result<NativeSurface, Error> {
+    fn close_matching(matches: impl FnOnce(&NativeSurface) -> bool) {
+        let surface = {
+            let mut guard = SURFACE
+                .lock()
+                .expect("Steam overlay native surface lock poisoned");
+            if guard.as_ref().map(matches).unwrap_or(false) {
+                guard.take()
+            } else {
+                None
+            }
+        };
+
+        if let Some(surface) = surface {
+            unsafe {
+                (surface.glx.glXMakeCurrent)(surface.display, 0, ptr::null_mut());
+                (surface.glx.glXDestroyContext)(surface.display, surface.context);
+                (surface.xlib.XDestroyWindow)(surface.display, surface.window);
+                (surface.xlib.XFreeColormap)(surface.display, surface.colormap);
+                (surface.xlib.XCloseDisplay)(surface.display);
+            }
+        }
+    }
+
+    unsafe fn create_probe_window(
+        title: &str,
+        parent_window: Option<xlib::Window>,
+    ) -> Result<NativeSurface, Error> {
         let title = CString::new(title)
             .map_err(|error| Error::from_reason(format!("Invalid native probe title: {error}")))?;
         let class_name = CString::new("SteamBridgeNativeProbe").expect("static class name");
@@ -1215,10 +1274,35 @@ mod linux {
             ));
         }
 
-        let screen = (xlib.XDefaultScreen)(display);
-        let root = (xlib.XRootWindow)(display, screen);
-        let width = (xlib.XDisplayWidth)(display, screen).max(640) as c_uint;
-        let height = (xlib.XDisplayHeight)(display, screen).max(480) as c_uint;
+        let (screen, parent, width, height) = if let Some(parent_window) = parent_window {
+            let mut attributes: xlib::XWindowAttributes = mem::MaybeUninit::zeroed().assume_init();
+            if (xlib.XGetWindowAttributes)(display, parent_window, &mut attributes) == 0 {
+                (xlib.XCloseDisplay)(display);
+                return Err(Error::from_reason(
+                    "Failed to inspect Electron X11 window for Linux native overlay host",
+                ));
+            }
+
+            let screen = if attributes.screen.is_null() {
+                (xlib.XDefaultScreen)(display)
+            } else {
+                (xlib.XScreenNumberOfScreen)(attributes.screen)
+            };
+            (
+                screen,
+                attributes.root,
+                attributes.width.max(1) as c_uint,
+                attributes.height.max(1) as c_uint,
+            )
+        } else {
+            let screen = (xlib.XDefaultScreen)(display);
+            (
+                screen,
+                (xlib.XRootWindow)(display, screen),
+                (xlib.XDisplayWidth)(display, screen).max(640) as c_uint,
+                (xlib.XDisplayHeight)(display, screen).max(480) as c_uint,
+            )
+        };
 
         let mut visual_attrs = [
             glx::GLX_RGBA,
@@ -1244,7 +1328,7 @@ mod linux {
         }
 
         let colormap =
-            (xlib.XCreateColormap)(display, root, (*visual_info).visual, xlib::AllocNone);
+            (xlib.XCreateColormap)(display, parent, (*visual_info).visual, xlib::AllocNone);
         let mut attributes: xlib::XSetWindowAttributes = mem::MaybeUninit::zeroed().assume_init();
         attributes.colormap = colormap;
         attributes.background_pixel = (xlib.XBlackPixel)(display, screen);
@@ -1258,7 +1342,7 @@ mod linux {
 
         let window = (xlib.XCreateWindow)(
             display,
-            root,
+            parent,
             0,
             0,
             width,
@@ -1280,7 +1364,9 @@ mod linux {
         }
 
         (xlib.XStoreName)(display, window, title.as_ptr());
-
+        if let Some(parent_window) = parent_window {
+            (xlib.XSetTransientForHint)(display, window, parent_window);
+        }
         let mut class_hint = xlib::XClassHint {
             res_name: class_name.as_ptr().cast_mut(),
             res_class: class_name.as_ptr().cast_mut(),
@@ -1319,10 +1405,28 @@ mod linux {
             glx,
             display,
             window,
+            parent_window,
             colormap,
             context,
             frame: 0,
         })
+    }
+
+    unsafe fn window_size(
+        xlib: &xlib::Xlib,
+        display: *mut xlib::Display,
+        window: xlib::Window,
+        fallback_width: c_uint,
+        fallback_height: c_uint,
+    ) -> (c_uint, c_uint) {
+        let mut attributes: xlib::XWindowAttributes = mem::MaybeUninit::zeroed().assume_init();
+        if (xlib.XGetWindowAttributes)(display, window, &mut attributes) == 0 {
+            return (fallback_width, fallback_height);
+        }
+        (
+            attributes.width.max(1) as c_uint,
+            attributes.height.max(1) as c_uint,
+        )
     }
 
     fn load_gl_functions(glx: &glx::Glx) {

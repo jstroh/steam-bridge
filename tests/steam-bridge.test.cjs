@@ -4406,22 +4406,39 @@ test("overlay helpers map constants and forward modal/store options", (t) => {
   );
 });
 
-test("native overlay session owns the probe pump lifecycle", (t) => {
+test("native overlay session owns the probe pump lifecycle", async (t) => {
   let probeOpen = false;
+  let hostOpen = false;
+  let restoreFocusCount = 0;
+  const hostHandle = Buffer.from([8, 7, 6, 5, 4, 3, 2, 1]);
   const fake = createFakeNative({
     openNativeOverlayProbeWindow(title) {
       probeOpen = true;
       this.calls.push({ method: "openNativeOverlayProbeWindow", args: [title] });
     },
+    attachNativeOverlayHostView(nativeWindowHandle) {
+      hostOpen = true;
+      this.calls.push({ method: "attachNativeOverlayHostView", args: [nativeWindowHandle] });
+    },
     pumpNativeOverlayProbeWindow() {
-      if (!probeOpen) {
-        throw new Error("probe is closed");
+      if (!probeOpen && !hostOpen) {
+        throw new Error("native overlay surface is closed");
       }
       this.calls.push({ method: "pumpNativeOverlayProbeWindow", args: [] });
+    },
+    showNativeOverlayHostView() {
+      this.calls.push({ method: "showNativeOverlayHostView", args: [] });
+    },
+    hideNativeOverlayHostView() {
+      this.calls.push({ method: "hideNativeOverlayHostView", args: [] });
     },
     closeNativeOverlayProbeWindow() {
       probeOpen = false;
       this.calls.push({ method: "closeNativeOverlayProbeWindow", args: [] });
+    },
+    detachNativeOverlayHostView() {
+      hostOpen = false;
+      this.calls.push({ method: "detachNativeOverlayHostView", args: [] });
     },
     isNativeOverlayProbeWindowOpen() {
       this.calls.push({ method: "isNativeOverlayProbeWindowOpen", args: [] });
@@ -4429,7 +4446,7 @@ test("native overlay session owns the probe pump lifecycle", (t) => {
     },
     isNativeOverlayHostViewOpen() {
       this.calls.push({ method: "isNativeOverlayHostViewOpen", args: [] });
-      return false;
+      return hostOpen;
     }
   });
   const steam = loadSteamWithFakeNative(fake);
@@ -4472,16 +4489,40 @@ test("native overlay session owns the probe pump lifecycle", (t) => {
   });
   storeSession.close();
 
+  const hostSession = steam.overlay.activateDialogWithNativeSession("Friends", {
+    title: "Managed Host Overlay",
+    nativeWindowHandle: hostHandle,
+    pumpIntervalMs: 10000,
+    restoreFocusDelayMs: 0,
+    restoreFocus() {
+      restoreFocusCount += 1;
+    }
+  });
+
+  assert.equal(hostSession.isOpen(), true);
+  assert.equal(hostSession.snapshot().nativeHostOpen, true);
+
+  fake.callbacks.get(331)({ active: false, app_id: 480 });
+  await new Promise((resolve) => setTimeout(resolve, 560));
+  assert.equal(restoreFocusCount, 1);
+
+  hostSession.close();
+  assert.equal(hostSession.isOpen(), false);
+
   assert.deepEqual(
     fake.calls.filter((call) =>
       [
         "openNativeOverlayProbeWindow",
+        "attachNativeOverlayHostView",
         "pumpNativeOverlayProbeWindow",
+        "showNativeOverlayHostView",
+        "hideNativeOverlayHostView",
         "activateOverlay",
         "activateOverlayToWebPage",
         "overlayActivateToStore",
         "disconnectGameOverlayActivated",
-        "closeNativeOverlayProbeWindow"
+        "closeNativeOverlayProbeWindow",
+        "detachNativeOverlayHostView"
       ].includes(call.method)
     ),
     [
@@ -4499,7 +4540,14 @@ test("native overlay session owns the probe pump lifecycle", (t) => {
       { method: "pumpNativeOverlayProbeWindow", args: [] },
       { method: "overlayActivateToStore", args: [480, steam.StoreFlag.AddToCart] },
       { method: "disconnectGameOverlayActivated", args: [] },
-      { method: "closeNativeOverlayProbeWindow", args: [] }
+      { method: "closeNativeOverlayProbeWindow", args: [] },
+      { method: "attachNativeOverlayHostView", args: [hostHandle] },
+      { method: "showNativeOverlayHostView", args: [] },
+      { method: "pumpNativeOverlayProbeWindow", args: [] },
+      { method: "activateOverlay", args: ["Friends"] },
+      { method: "hideNativeOverlayHostView", args: [] },
+      { method: "disconnectGameOverlayActivated", args: [] },
+      { method: "detachNativeOverlayHostView", args: [] }
     ]
   );
 });

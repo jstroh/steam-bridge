@@ -59,6 +59,7 @@ let client;
 let initError;
 let inputInitialized = false;
 let shutdownComplete = false;
+let mainWindow;
 let nativeOverlaySession;
 const callbackHandles = [];
 const eventLog = [];
@@ -82,6 +83,12 @@ function createWindow() {
     }
   });
 
+  mainWindow = window;
+  window.on("closed", () => {
+    if (mainWindow === window) {
+      mainWindow = undefined;
+    }
+  });
   window.loadFile(path.join(__dirname, "index.html"));
 }
 
@@ -357,6 +364,7 @@ function openNativeDialogOverlay() {
   const activeClient = requireClient();
   closeNativeOverlaySession();
   nativeOverlaySession = activeClient.overlay.activateDialogWithNativeSession("Friends", {
+    ...nativeOverlayOptions(),
     title: "Steam Bridge Native Overlay"
   });
   recordEvent("overlay:native-session-open", {
@@ -374,6 +382,7 @@ function openNativeStoreOverlay() {
     APP_ID,
     activeClient.overlay.StoreFlag.None,
     {
+      ...nativeOverlayOptions(),
       title: "Steam Bridge Native Overlay"
     }
   );
@@ -390,6 +399,7 @@ function openNativeWebOverlay() {
   const activeClient = requireClient();
   closeNativeOverlaySession();
   nativeOverlaySession = activeClient.overlay.activateToWebPageWithNativeSession(WEB_URL, {
+    ...nativeOverlayOptions(),
     modal: WEB_MODAL,
     title: "Steam Bridge Native Overlay"
   });
@@ -400,6 +410,14 @@ function openNativeWebOverlay() {
     session: nativeOverlaySession.snapshot()
   });
   return snapshot();
+}
+
+function nativeOverlayOptions() {
+  const window = requireMainWindow();
+  return steamworks.electronNativeOverlaySessionOptions(window, {
+    title: "Steam Bridge Native Overlay",
+    restoreFocusDelayMs: 500
+  });
 }
 
 function pumpNativeProbe() {
@@ -548,6 +566,13 @@ function requireClient() {
   }
 
   return client;
+}
+
+function requireMainWindow() {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    throw new Error("Steam Bridge smoke window is not available");
+  }
+  return mainWindow;
 }
 
 function getLaunchContext() {

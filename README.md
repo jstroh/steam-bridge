@@ -283,6 +283,7 @@ and tracks whether Steam reported overlay activation:
 
 ```ts
 const session = client.overlay.activateDialogWithNativeSession("Friends", {
+  ...steamworks.electronNativeOverlaySessionOptions(mainWindow),
   title: "Steam Overlay"
 });
 
@@ -295,17 +296,18 @@ const session = client.overlay.activateDialogWithNativeSession("Friends", {
 //   "https://store.steampowered.com/app/480/"
 // );
 
-// Optional explicit cleanup; by default the session keeps the native presenter
-// alive after overlay close so Steam does not lose the hooked surface.
+// Optional explicit cleanup when the proof surface is no longer needed.
 session.close();
 ```
 
 The native presenter currently uses the macOS probe implementation on macOS and
 an X11/GLX probe implementation on Linux. On Steam Deck Desktop Mode, the Linux
-managed session is the current generic proof path for overlay open and close
-behavior. The Electron-only BrowserWindow path can initialize Steam and activate
-visible overlay UI, but it has not proven reliable overlay input dismissal in
-Desktop Mode.
+managed session is the current generic proof path for overlay activation and
+visual open checks. It has verified `active=true` and `active=false` callbacks
+while the smoke app stays alive, but Steam's Desktop Mode social overlay can
+remain visually stuck over Electron after deactivation. The Electron-only
+BrowserWindow path can initialize Steam and activate visible overlay UI, but it
+has not proven reliable overlay dismissal in Desktop Mode.
 
 Set `STEAM_BRIDGE_ELECTRON_OVERLAY_PROFILE=repaint`, or pass
 `--steam-bridge-electron-overlay-profile=repaint` to the Electron smoke app, to

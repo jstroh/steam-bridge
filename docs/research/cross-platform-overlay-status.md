@@ -13,7 +13,7 @@ and Steam Deck. The public smoke target is Valve's SpaceWar App ID `480`.
 | Steam Deck Game Mode | Verified for smoke coverage | A Steam-launched non-Steam shortcut reports `steamDeck=true`, `bigPicture=true`, `steamLaunch=true`, `overlayInjection=true`, `overlayEnabled=true`, and can emit overlay events. |
 | Steam Deck Desktop Mode | Verified for smoke coverage | The same packaged app can be launched from Desktop Mode with `steamDeck=true`, `bigPicture=false`, `steamLaunch=true`, `overlayInjection=true`, and `overlayEnabled=true`. Desktop Mode uses the Electron `repaint` overlay profile by default. |
 | Desktop Mode Electron-only overlay | Partial | The Electron-only `friends` action can activate visible Steam overlay UI and emit `callback:overlay-activated` with `active=true`, but Shift+Tab, overlay X, and Back to Game did not reliably dismiss the overlay while the app stayed open. Treat it as callback/render evidence, not full input proof. |
-| Desktop Mode managed native session | Verified for open and close | The `native-dialog` action calls `activateDialogWithNativeSession("Friends")`, which opens a bridge-owned X11/GLX native presenter, keeps it presenting frames, activates the Friends overlay, and verified Shift+Tab open then Shift+Tab close with `callback:overlay-activated` reporting `active=true` and then `active=false` while the smoke app stayed alive. `native-store` and `native-web` use the same managed presenter lifecycle for the store and web-page overlay APIs. The reliable Deck Desktop proof returns to the bridge-owned presenter after close. |
+| Desktop Mode managed native session | Partial; open verified, visual dismissal blocked | The `native-dialog` action calls `activateDialogWithNativeSession("Friends")`, opens a bridge-owned X11/GLX native presenter, keeps it presenting frames, activates the Friends overlay, and emits `callback:overlay-activated` with `active=true` and later `active=false` while the smoke app stays alive. Current Deck Desktop testing still leaves Steam's social overlay renderer visually stuck after deactivation, even when the native surface is kept alive, hidden after delay, lowered, or Electron child overlay preload is stripped. Treat visual close/back-to-app as unresolved. |
 | Store overlay | Verified from the smoke app | `ActivateGameOverlayToStore` can activate the Steam overlay from the Deck smoke shortcut and produce `callback:overlay-activated` with `active=true`. |
 | General web-page overlay | Not working from the Deck Game Mode smoke shortcut | `ActivateGameOverlayToWebPage` to a normal Steam web page was called successfully, but did not show a visible web overlay or produce `active=true`. |
 | Desktop web-page overlay | Verified from the Deck Desktop Mode smoke shortcut | With the Desktop overlay profile, `ActivateGameOverlayToWebPage` to the public SpaceWar store page produced `callback:overlay-activated` with `active=true` from Desktop Mode. |
@@ -77,7 +77,7 @@ to prove checkout or transaction behavior:
 | API path | Smoke app expectation | What it proves |
 | --- | --- | --- |
 | `activateDialog("Friends")` | May show the Friends panel and emit an overlay callback. | Steamworks initialized, callbacks are flowing, and the overlay IPC path is alive. |
-| `activateDialogWithNativeSession("Friends")` | Should open the bridge-owned native presenter, show the Friends overlay, and return to the running presenter after overlay close in Deck Desktop Mode. | Steam Bridge can own the native presenter lifecycle instead of requiring app-specific Electron overlay controllers. |
+| `activateDialogWithNativeSession("Friends")` | Opens the bridge-owned native presenter and shows the Friends overlay in Deck Desktop Mode, but visual dismissal is not yet reliable after `active=false`. | Steam Bridge can own the native presenter lifecycle instead of requiring app-specific Electron overlay controllers; Desktop Mode social-overlay close remains a blocker. |
 | `activateToStoreWithNativeSession(480, ...)` | Should open the bridge-owned native presenter and activate the Steam store overlay path. | The managed presenter lifecycle is reusable across non-dialog overlay entry points. |
 | `activateToWebPageWithNativeSession("https://store.steampowered.com/app/480/", ...)` | Should open the bridge-owned native presenter and activate the web-page overlay path. | The managed presenter lifecycle is reusable for web-page overlay calls, though normal web-page visibility still depends on Steam accepting that target on the current platform/mode. |
 | `activateToStore(480, ...)` | Should activate the Steam overlay and emit `active=true` from a Steam-launched Deck shortcut. | The Deck/Electron/Steam launch path can display Steam overlay UI. |
@@ -126,10 +126,11 @@ running app regains focus after backing out or closing the surface. The
 Electron-only Desktop Mode visual proof is Steam's desktop overlay panels over
 the Electron window, such as Game Overview/Friends with a "Back to Game"
 affordance. This proves visible overlay rendering, but it does not currently
-prove overlay input dismissal on Deck Desktop Mode. The full open/close proof
-uses `--action native-dialog`: the open capture shows Steam's overlay over the
-bridge-owned native presenter, and the close capture returns to the running
-native presenter with a matching `active=false` overlay callback.
+prove overlay input dismissal on Deck Desktop Mode. The managed native
+`--action native-dialog` path improves activation reliability by putting a
+bridge-owned GLX surface under Steam, but the close capture can still show the
+social overlay after Steam has already emitted a matching `active=false`
+callback.
 
 `overlayNeedsPresent=true` is not a hard failure by itself. It means Steam is
 asking an event-driven renderer to keep presenting frames for the overlay. The
@@ -138,9 +139,11 @@ forcing Chromium's GPU work in-process, and the verifier accepts an active
 overlay callback as the stronger pass signal. Use the stronger `compatibility`
 profile only when the repaint profile is not enough.
 
-For Deck Desktop Mode open/close proof, the Linux native probe must keep pumping
+For Deck Desktop Mode visual testing, the Linux native probe must keep pumping
 after the smoke result is written. Without continuing GLX presents, Steam may
-report activation but later Shift+Tab toggles can become visually inert.
+report activation but later Shift+Tab toggles can become visually inert. Keeping
+the presenter alive is necessary for the current managed-session proof, but it
+is not sufficient to prove clean social-overlay dismissal.
 
 ## Purchase Overlay Checklist
 

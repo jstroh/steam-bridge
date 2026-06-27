@@ -83,8 +83,10 @@ assert.equal(typeof steam.overlay.openNativeOverlayProbeWindow, "function");
 assert.equal(typeof steam.overlay.activateDialogWithNativeSession, "function");
 assert.equal(typeof steam.overlay.activateToWebPageWithNativeSession, "function");
 assert.equal(typeof steam.overlay.activateToStoreWithNativeSession, "function");
+assert.equal(typeof steam.electronNativeOverlaySessionOptions, "function");
 assert.equal(steam.SteamworksEnums.EResult.k_EResultOK, 1);
 assert.equal(typeof electron.electronConfigureSteamOverlay, "function");
+assert.equal(typeof electron.electronNativeOverlaySessionOptions, "function");
 assert.equal(electron.electronConfigureSteamOverlay({ profile: "off" }).profile, "off");
 `
   );
@@ -102,8 +104,10 @@ assert.equal(typeof overlay.openNativeOverlayProbeWindow, "function");
 assert.equal(typeof overlay.activateDialogWithNativeSession, "function");
 assert.equal(typeof overlay.activateToWebPageWithNativeSession, "function");
 assert.equal(typeof overlay.activateToStoreWithNativeSession, "function");
+assert.equal(typeof steam.electronNativeOverlaySessionOptions, "function");
 assert.equal(SteamworksEnums.EResult.k_EResultOK, 1);
 assert.equal(typeof electron.electronConfigureSteamOverlay, "function");
+assert.equal(typeof electron.electronNativeOverlaySessionOptions, "function");
 assert.equal(electron.electronConfigureSteamOverlay({ profile: "off" }).profile, "off");
 `
   );
@@ -139,6 +143,7 @@ import steam, {
   type SteamId
 } from "steam-bridge";
 import { electronConfigureSteamOverlay } from "steam-bridge/electron";
+import { electronNativeOverlaySessionOptions } from "steam-bridge/electron";
 
 const client = steam.init(480);
 const web = createSteamWebApiClient({ apiKey: "test" });
@@ -148,6 +153,15 @@ const sessionFn = overlay.activateDialogWithNativeSession;
 const webSessionFn = overlay.activateToWebPageWithNativeSession;
 const storeSessionFn = overlay.activateToStoreWithNativeSession;
 const config = electronConfigureSteamOverlay({ profile: "off" });
+const electronOptions = electronNativeOverlaySessionOptions({
+  isDestroyed: () => false,
+  getNativeWindowHandle: () => Buffer.from([1, 0, 0, 0, 0, 0, 0, 0]),
+  webContents: {
+    once() {},
+    invalidate() {},
+    send() {}
+  }
+});
 const steamId: SteamId | undefined = undefined;
 
 void client;
@@ -158,6 +172,7 @@ void sessionFn;
 void webSessionFn;
 void storeSessionFn;
 void config;
+void electronOptions;
 void steamId;
 `
   );

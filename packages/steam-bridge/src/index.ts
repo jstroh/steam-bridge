@@ -1,6 +1,7 @@
 import {
   electronConfigureSteamOverlay as electronConfigureSteamOverlayImpl,
-  electronEnableSteamOverlay as electronEnableSteamOverlayImpl
+  electronEnableSteamOverlay as electronEnableSteamOverlayImpl,
+  electronNativeOverlaySessionOptions as electronNativeOverlaySessionOptionsImpl
 } from "./electron";
 import { SteamworksEnums } from "./generated-steamworks-enums";
 import type {
@@ -1568,6 +1569,10 @@ export interface OverlayWebPageOptions {
 export interface NativeOverlaySessionOptions {
   title?: string;
   pumpIntervalMs?: number;
+  nativeWindowHandle?: Buffer;
+  restoreFocus?: () => void;
+  restoreFocusDelayMs?: number;
+  hideNativeHostOnOverlayDeactivate?: boolean;
 }
 
 export type NativeOverlayWebPageSessionOptions = NativeOverlaySessionOptions & OverlayWebPageOptions;
@@ -5965,6 +5970,7 @@ export const UserListOrder = {
 
 export let electronConfigureSteamOverlay = electronConfigureSteamOverlayImpl;
 export let electronEnableSteamOverlay = electronEnableSteamOverlayImpl;
+export let electronNativeOverlaySessionOptions = electronNativeOverlaySessionOptionsImpl;
 
 export type SteamCallbackId = typeof SteamCallback[keyof typeof SteamCallback];
 export type SteamCallbackName = keyof typeof SteamCallback;
@@ -6614,6 +6620,10 @@ export function getMacWindowSnapshot(appId?: number): string | undefined {
 export function startNativeOverlaySession(options: NativeOverlaySessionOptions = {}): NativeOverlaySession {
   const title = options.title ?? "Steam Bridge Native Overlay";
   const pumpIntervalMs = Math.max(1, options.pumpIntervalMs ?? 33);
+  const usesNativeHostView = Boolean(options.nativeWindowHandle);
+  const hideNativeHostOnOverlayDeactivate = options.hideNativeHostOnOverlayDeactivate ?? usesNativeHostView;
+  const restoreFocusDelayMs = Math.max(0, options.restoreFocusDelayMs ?? 250);
+  const hideNativeHostDelayMs = usesNativeHostView ? 500 : 0;
 
   let closed = false;
   let pumpCount = 0;
@@ -6623,6 +6633,8 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
   let overlayWasActive = false;
   let lastOverlayEvent: GameOverlayActivated | undefined;
   let pumpTimer: NodeJS.Timeout | undefined;
+  let restoreFocusTimer: NodeJS.Timeout | undefined;
+  let hideNativeHostTimer: NodeJS.Timeout | undefined;
   let overlayHandle: CallbackHandle | undefined;
 
   const pump = (): void => {
@@ -6675,17 +6687,36 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       pumpTimer = undefined;
     }
 
+    if (restoreFocusTimer) {
+      clearTimeout(restoreFocusTimer);
+      restoreFocusTimer = undefined;
+    }
+
+    if (hideNativeHostTimer) {
+      clearTimeout(hideNativeHostTimer);
+      hideNativeHostTimer = undefined;
+    }
+
     if (overlayHandle) {
       overlayHandle.disconnect();
       overlayHandle = undefined;
     }
 
-    native().closeNativeOverlayProbeWindow();
+    if (usesNativeHostView) {
+      native().detachNativeOverlayHostView();
+    } else {
+      native().closeNativeOverlayProbeWindow();
+    }
   };
 
   const startedAt = Date.now();
 
-  native().openNativeOverlayProbeWindow(title);
+  if (options.nativeWindowHandle) {
+    native().attachNativeOverlayHostView(options.nativeWindowHandle);
+    native().showNativeOverlayHostView();
+  } else {
+    native().openNativeOverlayProbeWindow(title);
+  }
   pump();
 
   overlayHandle = onGameOverlayActivated((event) => {
@@ -6695,6 +6726,8 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
     }
     if (event.active === true) {
       overlayWasActive = true;
+    } else if (event.active === false) {
+      scheduleRestoreFocus();
     }
   });
 
@@ -6711,9 +6744,51 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
     close,
     disconnect: close,
     pump,
-    isOpen: () => !closed && native().isNativeOverlayProbeWindowOpen(),
+    isOpen: () =>
+      !closed &&
+      (usesNativeHostView ? native().isNativeOverlayHostViewOpen() : native().isNativeOverlayProbeWindowOpen()),
     snapshot
   };
+
+  function scheduleRestoreFocus(): void {
+    if (!options.restoreFocus && !hideNativeHostOnOverlayDeactivate) {
+      return;
+    }
+
+    if (restoreFocusTimer) {
+      clearTimeout(restoreFocusTimer);
+    }
+
+    restoreFocusTimer = setTimeout(() => {
+      restoreFocusTimer = undefined;
+
+      if (closed) {
+        return;
+      }
+
+      try {
+        options.restoreFocus?.();
+      } catch (error) {
+        lastError = error;
+      }
+
+      if (usesNativeHostView && hideNativeHostOnOverlayDeactivate) {
+        hideNativeHostTimer = setTimeout(() => {
+          hideNativeHostTimer = undefined;
+          if (closed) {
+            return;
+          }
+          try {
+            native().hideNativeOverlayHostView();
+          } catch (error) {
+            lastError = error;
+          }
+        }, hideNativeHostDelayMs);
+        hideNativeHostTimer.unref?.();
+      }
+    }, restoreFocusDelayMs);
+    restoreFocusTimer.unref?.();
+  }
 }
 
 export function activateDialogWithNativeSession(
@@ -18705,6 +18780,7 @@ const defaultExport = {
   requestSteamWebApi,
   electronConfigureSteamOverlay,
   electronEnableSteamOverlay,
+  electronNativeOverlaySessionOptions,
   SteamCallback,
   SteamworksEnums,
   GameCoordinatorResult

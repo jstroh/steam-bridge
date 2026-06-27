@@ -136,9 +136,10 @@ The package also includes overlay diagnostics through
 helpers such as `client.overlay.activateDialogWithNativeSession()`,
 `client.overlay.activateToStoreWithNativeSession()`, and
 `client.overlay.activateToWebPageWithNativeSession()`, plus the Electron helper
-export `electronConfigureSteamOverlay()`. These are
-intentionally diagnostics first: core Steam API success should not be treated as
-proof that the Steam overlay has hooked Electron.
+exports `electronConfigureSteamOverlay()` and
+`electronNativeOverlaySessionOptions()`. These are intentionally diagnostics
+first: core Steam API success should not be treated as proof that the Steam
+overlay has hooked Electron.
 
 For Linux Electron apps, use
 `electronConfigureSteamOverlay({ profile: "repaint" })` when the Steam overlay
@@ -148,15 +149,14 @@ Electron windows at about 30 FPS so Steam has fresh frames to composite. Use
 Chromium's GPU work in-process.
 
 On Steam Deck Desktop Mode, the Linux X11/GLX managed native session is the
-current generic proof path for overlay open and close behavior. It opens and
-pumps the native presenter inside Steam Bridge so Electron examples do not need
-to own the lifecycle. By default the session keeps the presenter alive after
-Steam reports overlay deactivation; call `session.close()` during app cleanup
-or when you are finished with the proof surface. Hiding or destroying the hooked
-surface immediately after the close callback can leave Steam's overlay UI
-visible over Electron in Desktop Mode. The Electron-only BrowserWindow path can
-initialize Steam and activate visible overlay UI, but it has not proven reliable
-overlay input dismissal in Desktop Mode.
+current generic proof path for overlay activation and visual open checks. It
+opens and pumps the native presenter inside Steam Bridge so Electron examples do
+not need to own that lifecycle. Deck testing has verified `active=true` and
+`active=false` overlay callbacks with the app still alive, but Steam's Desktop
+Mode social overlay can remain visually stuck over Electron after deactivation.
+Treat Desktop Mode Friends/Game Overview dismissal as an open blocker, not a
+completed cross-platform overlay guarantee. Call `session.close()` during app
+cleanup or when you are finished with the proof surface.
 
 ## Development
 

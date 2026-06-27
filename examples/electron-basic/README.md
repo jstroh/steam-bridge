@@ -91,9 +91,10 @@ Supported autorun actions are `none`, `dialog`, `friends`, `store`, `web`,
 `native-*` actions open a bridge-owned X11/GLX native presenter, keep it
 presenting frames, and activate the requested Steam overlay target through the
 managed Steam Bridge session API. Use them when a Deck Desktop Mode test needs
-to prove overlay open plus Shift+Tab close behavior. The Electron-only `dialog`
-and `friends` actions prove Steam callbacks and visible overlay activation, but
-they do not currently prove reliable Desktop Mode overlay input dismissal.
+to prove managed-presenter overlay activation and visible open behavior. Current
+Deck Desktop testing still leaves Steam's social overlay visually stuck after
+`active=false`, so neither the native nor Electron-only `dialog`/`friends`
+actions prove reliable Desktop Mode overlay dismissal yet.
 
 Each autorun also writes local diagnostics. Pass
 `--steam-bridge-smoke-diagnostic-dir=/tmp/steam-bridge-smoke.log.diagnostics`
@@ -161,7 +162,7 @@ overlay readiness, and overlay callback checks. If preflight cannot reach SSH,
 verify the Deck is awake, SSH is enabled, and the `--host` IP address is still
 current; then rerun `--mode discover`.
 
-For the current Desktop Mode open/close proof, use the managed native dialog
+For the current Desktop Mode activation/open proof, use the managed native dialog
 action and leave the app open after the verifier result:
 
 ```sh
@@ -175,6 +176,8 @@ npm run steam-deck:smoke -- \
 After the result passes, press Shift+Tab to open the Steam overlay, then
 Shift+Tab again to close it. The lifecycle log should include
 `callback:overlay-activated` with `active=true` followed by `active=false`.
+That callback pair is not enough to mark Desktop Mode visual dismissal as
+passed; the screenshot must return cleanly to the running app.
 
 For scripted setup, back up and upsert the non-Steam shortcut with:
 
@@ -232,16 +235,16 @@ shortcut's launch options before running Desktop Mode overlay checks.
 
 Desktop Mode visual proof for the Electron-only actions looks like Steam's
 desktop overlay panels over the Electron window, such as Game Overview/Friends
-and a "Back to Game" control. The full open/close proof currently uses
+and a "Back to Game" control. The managed presenter path currently uses
 `--action native-dialog`, which calls
 `client.overlay.activateDialogWithNativeSession("Friends")`; `native-store` and
 `native-web` call the matching store and web-page managed-session helpers. The
 open screenshot should show Steam's overlay over the bridge-owned native
-presenter, and the close screenshot should return to the running native
-presenter with `callback:overlay-activated` reporting `active=false`. The
-presenter stays alive by default because Deck Desktop Mode can leave Steam's
-overlay UI visible if the hooked surface is hidden or destroyed immediately
-after the close callback.
+presenter. A matching `callback:overlay-activated` with `active=false` proves
+Steam reported deactivation, but current Deck Desktop testing can still leave
+the social overlay renderer visible over Electron after that callback. Do not
+record Desktop Mode social-overlay close/back-to-app as passed until the pixels
+return cleanly to the running app.
 
 For longer SSH-driven checks, keep the Deck awake from SteamOS/Desktop Mode
 power settings. Over SSH, `systemd-inhibit --what=sleep sleep infinity` can keep
