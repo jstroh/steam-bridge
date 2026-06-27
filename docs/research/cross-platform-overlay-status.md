@@ -11,7 +11,7 @@ Steam Deck using Valve's SpaceWar App ID `480`.
 | --- | --- | --- |
 | Linux x64 | Verified through Steam Deck | Packaged Linux x64 smoke app launches on Steam Deck and initializes Steam as App ID `480`. The Linux package includes `linux-electron-smoke.sh` for direct, Steam-launched, and verification checks. |
 | Steam Deck Game Mode | Verified | Steam-launched shortcut reported `steamDeck=true`, `bigPicture=true`, `steamLaunch=true`, `overlayInjection=true`, `overlayEnabled=true`, and emitted the `overlay:dialog` autorun event. Fresh check on 2026-06-26 launched full shortcut game ID `16558333557412462592` and passed. |
-| Steam Deck Desktop Mode | Verified | Desktop Mode uses the same Linux x64 package and Steam shortcut flow. The verifier gate omits `--require-big-picture` but keeps `--require-steam-deck`, `--require-overlay-ready`, `--require-steam-launch`, `--require-overlay-injection`, and the overlay dialog event assertions. |
+| Steam Deck Desktop Mode | Verified | Steam-launched shortcut reported `steamDeck=true`, `bigPicture=false`, `steamLaunch=true`, `overlayInjection=true`, `overlayEnabled=true`, and emitted both the `overlay:dialog` autorun event and overlay activation callback. Fresh check on 2026-06-26 launched full shortcut game ID `16558333557412462592` from Plasma Desktop and passed. |
 
 ## Steam Deck Shortcut Gate
 
@@ -43,6 +43,10 @@ and runs the packaged helper:
 
 ```sh
 npm run steam-deck:smoke -- \
+  --mode discover \
+  --discover-subnet 192.168.1
+
+npm run steam-deck:smoke -- \
   --host deck@192.168.1.13 \
   --mode preflight
 
@@ -51,12 +55,20 @@ npm run steam-deck:smoke -- \
   --mode game
 ```
 
-Use `--mode desktop` for the Steam Deck Desktop Mode shortcut check. The
-preflight mode separates a network/SSH blocker from package, Steam command, and
-shortcut setup problems.
+Use `--mode desktop` for the Steam Deck Desktop Mode shortcut check. Discovery
+finds SSH candidates when the Deck address changes; preflight separates a
+network/SSH blocker from package, Steam command, and shortcut setup problems.
 
-The latest Deck Game Mode proof was captured at 2026-06-26 17:03 PDT from
+The latest Deck Game Mode proof was captured at 2026-06-26 18:02 PDT from
 `/tmp/steam-bridge-smoke-steam-launch.log` with `appId=480`,
 `steamLaunch=true`, `overlayInjection=true`, `overlayEnabled=true`,
 `overlayNeedsPresent=false`, `steamDeck=true`, `bigPicture=true`, and
-`overlay:dialog`.
+`overlay:dialog`. The Steam overlay environment included
+`SteamOverlayGameId=16558333557412462592` and `gameoverlayrenderer` in
+`LD_PRELOAD`.
+
+The latest Deck Desktop Mode proof was captured at 2026-06-26 18:08 PDT from
+the same result path after switching to Plasma Desktop. It reported `appId=480`,
+`steamLaunch=true`, `overlayInjection=true`, `overlayEnabled=true`,
+`overlayNeedsPresent=false`, `steamDeck=true`, `bigPicture=false`,
+`overlay:dialog`, and `callback:overlay-activated`.

@@ -97,6 +97,10 @@ gate:
 
 ```sh
 npm run steam-deck:smoke -- \
+  --mode discover \
+  --discover-subnet 192.168.1
+
+npm run steam-deck:smoke -- \
   --host deck@192.168.1.13 \
   --mode preflight
 
@@ -109,7 +113,8 @@ Run the same command with `--mode desktop` after switching the Deck to Desktop
 Mode. Game Mode requires the Big Picture signal; Desktop Mode intentionally
 omits that assertion while keeping Steam launch, overlay injection, overlay
 readiness, and overlay callback checks. If preflight cannot reach SSH, verify
-the Deck is awake, SSH is enabled, and the `--host` IP address is still current.
+the Deck is awake, SSH is enabled, and the `--host` IP address is still current;
+then rerun `--mode discover`.
 
 For scripted setup, back up and upsert the non-Steam shortcut with:
 

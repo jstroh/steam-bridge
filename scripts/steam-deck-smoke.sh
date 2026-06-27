@@ -14,6 +14,9 @@ shortcut_game_id="auto"
 app_name="Steam Bridge Smoke"
 steam_user_id=""
 connect_timeout="6"
+scan_timeout="1"
+discover_subnet="${STEAM_DECK_DISCOVERY_SUBNET:-}"
+exclude_hosts=()
 copy_app="1"
 keep_awake="1"
 inhibit_seconds="900"
@@ -28,6 +31,7 @@ Modes:
   --mode game                   Run the Steam-launched Game Mode gate.
   --mode desktop                Run the Steam-launched Desktop Mode gate.
   --mode direct                 Run the app directly on the Deck and verify init.
+  --mode discover               Scan a local /24 for Steam Deck SSH candidates.
   --mode preflight              Check SSH, remote package, Steam, and shortcuts.
   --mode print-shortcuts        Print matching Deck Steam shortcuts.
   --mode print-launch-options   Print shortcut launch options from the Deck helper.
@@ -46,6 +50,9 @@ Options:
   --shortcut-game-id ID|auto    Full steam://rungameid shortcut ID. Defaults to auto.
   --app-name NAME               Shortcut name to auto-discover.
   --steam-user-id ID            Restrict shortcut discovery to one userdata ID.
+  --discover-subnet PREFIX      IPv4 /24 prefix to scan, for example 192.168.1.
+  --exclude-host IP             Skip an IP during discovery. May be repeated.
+  --scan-timeout SECONDS        SSH port scan timeout. Defaults to 1.
   --no-keep-awake               Do not start a temporary systemd sleep inhibitor.
   --inhibit-seconds SECONDS     Sleep inhibitor duration. Defaults to 900.
   --connect-timeout SECONDS     SSH connect timeout. Defaults to 6.
@@ -110,6 +117,18 @@ while [ "$#" -gt 0 ]; do
       steam_user_id="${2:?missing --steam-user-id value}"
       shift 2
       ;;
+    --discover-subnet)
+      discover_subnet="${2:?missing --discover-subnet value}"
+      shift 2
+      ;;
+    --exclude-host)
+      exclude_hosts+=("${2:?missing --exclude-host value}")
+      shift 2
+      ;;
+    --scan-timeout)
+      scan_timeout="${2:?missing --scan-timeout value}"
+      shift 2
+      ;;
     --no-keep-awake)
       keep_awake="0"
       shift
@@ -172,6 +191,125 @@ check_ssh() {
   return "$status"
 }
 
+detect_ipv4_prefix() {
+  local ip="" normalized
+
+  if [ -n "$discover_subnet" ]; then
+    normalized="${discover_subnet%/24}"
+    normalized="${normalized%.0}"
+    if printf '%s\n' "$normalized" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+      printf '%s\n' "$normalized"
+      return 0
+    fi
+    if printf '%s\n' "$normalized" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'; then
+      printf '%s\n' "${normalized%.*}"
+      return 0
+    fi
+
+    echo "Invalid --discover-subnet value: $discover_subnet. Use a /24 prefix like 192.168.1." >&2
+    return 1
+  fi
+
+  if command -v ipconfig >/dev/null 2>&1; then
+    ip="$(ipconfig getifaddr en0 2>/dev/null || true)"
+  fi
+
+  if [ -z "$ip" ] && command -v ip >/dev/null 2>&1; then
+    ip="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for (i = 1; i <= NF; i++) if ($i == "src") {print $(i + 1); exit}}')"
+  fi
+
+  if [ -z "$ip" ] && command -v hostname >/dev/null 2>&1; then
+    ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
+  fi
+
+  if ! printf '%s\n' "$ip" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'; then
+    echo "Could not auto-detect a local IPv4 address. Pass --discover-subnet, for example --discover-subnet 192.168.1." >&2
+    return 1
+  fi
+
+  printf '%s\n' "${ip%.*}"
+}
+
+exclude_csv() {
+  local joined="" entry
+  for entry in "${exclude_hosts[@]}"; do
+    if [ -z "$joined" ]; then
+      joined="$entry"
+    else
+      joined="$joined,$entry"
+    fi
+  done
+  printf '%s\n' "$joined"
+}
+
+scan_ssh_hosts() {
+  local prefix excludes
+  if ! command -v nc >/dev/null 2>&1; then
+    echo "Discovery requires nc/netcat on the host." >&2
+    return 1
+  fi
+
+  prefix="$(detect_ipv4_prefix)"
+  excludes="$(exclude_csv)"
+
+  echo "Scanning $prefix.0/24 for SSH on port 22..." >&2
+  seq 1 254 | xargs -I{} -P 64 bash -c '
+    prefix="$1"
+    timeout="$2"
+    excludes="$3"
+    suffix="$4"
+    ip="$prefix.$suffix"
+
+    case ",$excludes," in
+      *",$ip,"*) exit 0 ;;
+    esac
+
+    if nc -h 2>&1 | grep -q -- "-G"; then
+      if nc -z -G "$timeout" "$ip" 22 >/dev/null 2>&1; then
+        printf "%s\n" "$ip"
+      fi
+    elif nc -z -w "$timeout" "$ip" 22 >/dev/null 2>&1; then
+      printf "%s\n" "$ip"
+    fi
+    exit 0
+  ' _ "$prefix" "$scan_timeout" "$excludes" {} | sort -t . -k1,1n -k2,2n -k3,3n -k4,4n
+}
+
+run_discover() {
+  local candidates ip output
+  candidates="$(scan_ssh_hosts)"
+
+  if [ -z "$candidates" ]; then
+    echo "No SSH hosts found on the scanned subnet."
+    return 1
+  fi
+
+  echo "SSH candidates:"
+  printf '%s\n' "$candidates"
+  echo
+  echo "Checking candidates for deck SSH login..."
+
+  while IFS= read -r ip; do
+    [ -n "$ip" ] || continue
+    output="$(
+      ssh \
+        -o BatchMode=yes \
+        -o ConnectTimeout="$connect_timeout" \
+        -o StrictHostKeyChecking=no \
+        -o UserKnownHostsFile=/dev/null \
+        "deck@$ip" \
+        'printf "host=%s user=%s kernel=%s\n" "$(uname -n 2>/dev/null || printf unknown)" "$(whoami)" "$(uname -srmo 2>/dev/null || uname -a)"' \
+        2>/dev/null || true
+    )"
+    if [ -n "$output" ]; then
+      echo "Deck candidate: deck@$ip"
+      printf '%s\n' "$output"
+    else
+      echo "Not deck@$ip"
+    fi
+  done <<<"$candidates"
+}
+
 assert_local_app() {
   if [ ! -x "$local_app_dir/SteamBridgeSmoke" ]; then
     echo "Missing Linux smoke executable: $local_app_dir/SteamBridgeSmoke" >&2
@@ -192,7 +330,7 @@ copy_to_deck() {
   assert_local_app
   check_ssh
   echo "Copying $local_app_dir to $host:$remote_app_dir"
-  tar -C "$local_app_dir" -czf - . | remote_exec "mkdir -p $remote_q && tar -xzf - -C $remote_q && chmod +x $remote_q/SteamBridgeSmoke $remote_q/linux-electron-smoke.sh"
+  COPYFILE_DISABLE=1 tar --no-xattrs -C "$local_app_dir" -czf - . | remote_exec "mkdir -p $remote_q && tar -xzf - -C $remote_q && chmod +x $remote_q/SteamBridgeSmoke $remote_q/linux-electron-smoke.sh"
 }
 
 start_keep_awake() {
@@ -303,7 +441,7 @@ run_preflight() {
 
   check_ssh
 
-  remote_exec "set -e; echo \"Remote host: \$(hostname)\"; echo \"Remote kernel: \$(uname -srmo 2>/dev/null || uname -a)\"; if [ -x $remote_q/SteamBridgeSmoke ] && [ -x $remote_q/linux-electron-smoke.sh ]; then echo \"Remote package: present\"; else echo \"Remote package: missing at $remote_app_dir\"; fi; if command -v steam >/dev/null 2>&1; then echo \"Steam command: \$(command -v steam)\"; elif [ -x \"\$HOME/.steam/root/ubuntu12_32/steam\" ]; then echo \"Steam command: \$HOME/.steam/root/ubuntu12_32/steam\"; else echo \"Steam command: missing\"; fi; if command -v systemd-inhibit >/dev/null 2>&1; then echo \"Sleep inhibitor: available\"; else echo \"Sleep inhibitor: missing\"; fi; if ls \"\$HOME/.local/share/Steam/userdata\"/*/config/shortcuts.vdf >/dev/null 2>&1; then echo \"Shortcut files: present\"; else echo \"Shortcut files: missing\"; fi"
+  remote_exec "set -e; echo \"Remote host: \$(uname -n 2>/dev/null || printf unknown)\"; echo \"Remote kernel: \$(uname -srmo 2>/dev/null || uname -a)\"; if [ -x $remote_q/SteamBridgeSmoke ] && [ -x $remote_q/linux-electron-smoke.sh ]; then echo \"Remote package: present\"; else echo \"Remote package: missing at $remote_app_dir\"; fi; if command -v steam >/dev/null 2>&1; then echo \"Steam command: \$(command -v steam)\"; elif [ -x \"\$HOME/.steam/root/ubuntu12_32/steam\" ]; then echo \"Steam command: \$HOME/.steam/root/ubuntu12_32/steam\"; else echo \"Steam command: missing\"; fi; if command -v systemd-inhibit >/dev/null 2>&1; then echo \"Sleep inhibitor: available\"; else echo \"Sleep inhibitor: missing\"; fi; if ls \"\$HOME/.local/share/Steam/userdata\"/*/config/shortcuts.vdf >/dev/null 2>&1; then echo \"Shortcut files: present\"; else echo \"Shortcut files: missing\"; fi"
 
   if [ "$copy_app" = "0" ]; then
     remote_exec "test -x $remote_q/SteamBridgeSmoke && test -x $remote_q/linux-electron-smoke.sh" || {
@@ -345,6 +483,9 @@ run_remote_mode() {
       trap stop_keep_awake EXIT
       build_direct_args
       run_helper "${helper_args[@]}"
+      ;;
+    discover)
+      run_discover
       ;;
     preflight)
       run_preflight
@@ -395,6 +536,12 @@ run_self_test() {
   direct_check="$(quote_args "${helper_args[@]}")"
   if [[ "$direct_check" != *"--mode direct"* || "$direct_check" != *"--require-steam-deck"* ]]; then
     echo "Self-test failed: Direct args must verify a Deck init result." >&2
+    exit 1
+  fi
+
+  discover_subnet="192.168.50"
+  if [ "$(detect_ipv4_prefix)" != "192.168.50" ]; then
+    echo "Self-test failed: Discovery subnet prefix was not preserved." >&2
     exit 1
   fi
 
