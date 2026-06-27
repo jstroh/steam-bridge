@@ -282,8 +282,9 @@ pumps it on an internal timer, activates the requested Steam overlay target,
 and tracks whether Steam reported overlay activation:
 
 ```ts
-const session = client.overlay.activateDialogWithNativeSession("Friends", {
+const session = client.overlay.activateToWebPageWithNativeSession("https://store.steampowered.com/app/480/", {
   ...steamworks.electronNativeOverlaySessionOptions(mainWindow),
+  modal: true,
   title: "Steam Overlay"
 });
 
@@ -292,10 +293,7 @@ const session = client.overlay.activateDialogWithNativeSession("Friends", {
 //   480,
 //   client.overlay.StoreFlag.None
 // );
-// const session = client.overlay.activateToWebPageWithNativeSession(
-//   "https://store.steampowered.com/app/480/",
-//   { modal: true, ...steamworks.electronNativeOverlaySessionOptions(mainWindow) }
-// );
+// Friends/Game Overview is still tracked as a social-overlay investigation path.
 
 // Optional explicit cleanup when the proof surface is no longer needed.
 session.close();
@@ -326,13 +324,21 @@ an overlay is being opened/active. This is the path intended for checkout
 overlays and passive Steam notifications without forcing the Electron game
 window into a constant repaint loop.
 
+`electronConfigureSteamOverlay()` also keeps Electron's Chromium children from
+becoming competing Steam overlay targets. By default it removes Steam's overlay
+renderer from child-process preload environment variables and, on Linux, adds
+Electron's `no-zygote` switch so GPU/renderer children exec without inheriting
+the already-loaded Steam overlay library. This leaves the bridge-owned native
+presenter as the single overlay target. Pass
+`isolateSteamOverlayChildProcesses: false` only for diagnostics.
+
 On Linux/X11, the presenter separates visibility from input. Fully idle mode is
 transparent, non-focusable, click-through, and cheap to keep alive. When Steam
 reports `overlayNeedsPresent`, the host can become visible while remaining
 click-through so passive notifications can render. Opening or active overlay
 mode restores both host opacity and input so Steam web or checkout UI can
-receive clicks; after Steam reports overlay inactive, the host returns to idle
-passive mode.
+receive clicks; after Steam reports overlay inactive, the host parks back to
+transparent idle mode even if `overlayNeedsPresent` lingers briefly.
 
 The Electron smoke app includes a `presenter-achievement-progress` action for
 passive notification proof. On Steam Deck Desktop Mode, this action uses App ID
@@ -343,21 +349,24 @@ activation callback.
 
 Steam Bridge routes overlay targets by how Steam renders them. Web, store, and
 checkout-style overlays prepare the native host as an interactive overlay target.
-Dialog/social overlays such as Friends/Game Overview keep the native host
-transparent and click-through, because Steam's Desktop Mode social UI renders
-through its own overlay panel and can be hidden by an opaque native host.
+With the default child-process isolation, Deck Desktop Mode has verified this
+path with a single `gameoverlayui` process, paired active/inactive callbacks, and
+visual return to the Electron app. Passive achievement-progress toasts also
+render with the presenter transparent and click-through. Friends/Game Overview
+is still an investigation path: allowing Steam to hook Electron children can make
+social UI render, but that duplicate hook can leave stale overlay surfaces after
+close; isolating children fixes product overlays but prevents that social path
+from rendering through Chromium.
 
 The native presenter currently uses the macOS probe implementation on macOS and
 an X11/GLX probe implementation on Linux. On Steam Deck Desktop Mode, the Linux
-reusable presenter path is the current generic proof path for overlay
+reusable presenter path is the current generic proof path for product overlay
 activation, visual open, close, and back-to-app checks. Use
 `client.overlay.attachPresenter(...)` with `client.overlay.openWebOverlay(...)`
 or the Electron smoke app's `presenter-web` action for that proof. The older
 `activateToWebPageWithNativeSession(..., { modal: true })` / `native-web` path
-remains compatibility coverage. Steam's Desktop Mode social overlay can still
-remain visually stuck over Electron after deactivation or resist synthetic close
-input, so Friends/Game Overview should be treated as callback/render evidence
-rather than a completed dismissal proof.
+remains compatibility coverage. Steam's Desktop Mode social overlay should not
+be treated as a completed dismissal proof.
 
 For repeatable Deck evidence, the smoke host runner can copy the remote result
 log and diagnostics directory back to the local machine with

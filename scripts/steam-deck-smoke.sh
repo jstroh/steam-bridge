@@ -763,7 +763,7 @@ build_steam_launch_args() {
     helper_args+=("--require-event" "achievement:progress")
   fi
 
-  if [ "$action" != "none" ] && [ "$action" != "presenter-achievement-progress" ]; then
+  if [ "$action" != "none" ] && [ "$action" != "presenter-achievement-progress" ] && [ "$action" != "presenter-dialog" ]; then
     helper_args+=("--require-event" "callback:overlay-activated")
   fi
 

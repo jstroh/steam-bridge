@@ -29,23 +29,29 @@ timing hacks.
   the same failure mode: the web runtime often renders in a GPU child process or
   a surface Steam does not reliably hook. Steamworks calls can succeed while the
   visible overlay never appears.
+- Steam Bridge's Deck Desktop testing confirmed a second Electron-specific
+  failure mode: if Steam's overlay renderer is inherited by Chromium child
+  processes, Steam can create competing `gameoverlayui` targets for both the
+  Electron GPU process and the bridge-owned native presenter. The duplicate GPU
+  hook can leave stale overlay surfaces after the native presenter receives
+  `GameOverlayActivated(false)`.
 - Steam Bridge's Deck Desktop proof already validates the core idea on Linux:
   a bridge-owned X11/GLX native presenter can show a modal Steam web overlay,
   emit active/inactive overlay callbacks, and return to the Electron smoke app
   cleanly.
 - The app-facing reusable presenter path has been verified on Steam Deck Desktop
   Mode for a modal web overlay: passive host attached, active input/opacity
-  during overlay UI, in-overlay close click accepted, inactive callbacks
+  during overlay UI, Electron child overlay targets isolated, inactive callbacks
   received, and clean return to the Electron smoke app.
 - The reusable presenter path has also been verified for passive Steam
   achievement-progress notifications on Steam Deck Desktop Mode: the host stays
   transparent and click-through, Steam emits `UserAchievementStored`, and the
   achievement-progress toast renders over the Electron app without a modal
   `GameOverlayActivated` callback.
-- Deck Desktop social overlays need target-aware behavior. Steam web/store
-  overlays use the native host as the interactive overlay target, but
-  Friends/Game Overview should keep the host passive; otherwise the opaque GLX
-  host can cover Steam's social overlay panel.
+- Deck Desktop social overlays remain separate from the current product proof.
+  With Electron child-process isolation enabled, Friends/Game Overview may not
+  render; with isolation disabled, Steam can hook Chromium children and render
+  social UI but may leave stale overlay surfaces after close.
 - Steam Bridge's macOS evidence is weaker: Steam launch and native probe coverage
   exist, and a Metal host path exists, but completed product overlay behavior on
   macOS is not proven yet.
@@ -98,10 +104,11 @@ The presenter should:
 - present no frames or very few frames while idle;
 - increase presentation only when `overlayNeedsPresent` is true or a Steam
   overlay is active;
-- reuse the same surface for checkout, store, web, dialog, and passive Steam
+- reuse the same surface for checkout, store, web, and passive Steam
   notifications;
 - route overlay targets by behavior: interactive native host for web, store, and
-  checkout; passive host pumping for Steam social/dialog panels;
+  checkout; passive host pumping for notifications; social/dialog panels remain
+  a separate investigation path;
 - expose diagnostics so app code and tests can tell whether the presenter is
   attached, visible, passive, active, pumping, and recently touched by overlay
   callbacks.
@@ -151,17 +158,18 @@ Current evidence:
   bridge-owned GLX presenter.
 - Deck Desktop Mode can do the same through the reusable app-facing presenter
   API (`attachPresenter` plus `openWebOverlay`) while returning the host to
-  transparent, click-through passive mode after overlay close.
+  transparent, click-through passive mode after overlay close. This proof uses
+  `electronConfigureSteamOverlay()` child-process isolation so there is only one
+  `gameoverlayui` target attached to the main/native process.
 - Deck Desktop Mode can show a passive achievement-progress toast over the
   Electron smoke app through the reusable presenter path while the native host
-  remains click-through and transparent.
+  remains click-through and transparent, also with a single overlay target.
 - The same path is good enough for checkout-style proof when launched under a
   real installed Steam app with a configured product or transaction.
-- Electron-only and native social overlay paths can emit callbacks, but social
-  overlay visual dismissal remains unreliable in Deck Desktop Mode.
-- Reusable presenter dialog activation now keeps the native host transparent and
-  click-through so it does not obscure Steam's social overlay panel. Close and
-  Back to Game input still need stronger proof.
+- Electron-only and native social overlay paths can render only when Electron
+  child overlay targets are allowed, but those duplicate targets make visual
+  dismissal unreliable in Deck Desktop Mode. Reusable presenter dialog activation
+  remains an investigation path, not product proof.
 
 Next work:
 
@@ -174,8 +182,11 @@ Next work:
    - idle frame budget of zero or near-zero.
    - On Linux/X11, fully idle mode currently uses an empty XFixes input shape
      and `_NET_WM_WINDOW_OPACITY=0`; `overlayNeedsPresent` can restore opacity
-     while leaving input click-through; active overlay mode restores both input
-     and opacity so Steam UI can receive clicks.
+     while leaving input click-through for passive notifications; active overlay
+     mode restores both input and opacity so Steam UI can receive clicks.
+   - When Steam emits `GameOverlayActivated(false)`, park the host transparent
+     even if `overlayNeedsPresent` lingers so stale modal surfaces do not remain
+     over the app.
 3. Add an adaptive pump scheduler:
    - idle: no fixed 30 FPS loop;
    - `overlayNeedsPresent=true`: pump around 30 FPS;
@@ -185,17 +196,25 @@ Next work:
    available.
 5. Add a kill switch/env flag that disables the presenter and falls back to the
    existing explicit session helpers.
-6. Re-run checkout proof:
+6. Keep Electron child overlay targets isolated for product proofs:
+   - scrub Steam overlay renderer entries from `LD_PRELOAD` /
+     `DYLD_INSERT_LIBRARIES` before Electron spawns children;
+   - on Linux, use Electron's `no-zygote` switch so Chromium children exec
+     clean instead of forking the already-loaded Steam overlay library;
+   - assert Deck proofs have one `gameoverlayui` process for the app.
+7. Re-run checkout proof:
    - generic App ID `480` for public plumbing where possible;
    - a real app/product only for private purchase proof;
    - keep private app IDs, item definitions, transaction IDs, and URLs out of
      committed files.
-7. Treat Wayland as a later backend unless Steam/Electron are running through
+8. Treat Wayland as a later backend unless Steam/Electron are running through
    Xwayland. If no X11 display is available, fail with explicit diagnostics.
 
 Pass criteria:
 
 - Steam launch, overlay injection, and `overlayEnabled=true`.
+- One Steam overlay target for product overlay proofs: no competing
+  `gameoverlayui` process attached to Electron's GPU/renderer children.
 - Presenter attached and passive without stealing focus.
 - App receives pointer/keyboard/controller input while presenter is passive.
 - Achievement or notification toast appears and disappears.

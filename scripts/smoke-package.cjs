@@ -89,10 +89,12 @@ assert.equal(typeof steam.overlay.setNativeOverlayHostInputPassthrough, "functio
 assert.equal(typeof steam.overlay.setNativeOverlayHostOpacity, "function");
 assert.equal(typeof steam.electronNativeOverlaySessionOptions, "function");
 assert.equal(typeof steam.electronOverlayPresenterOptions, "function");
+assert.equal(typeof steam.electronScrubSteamOverlayChildProcessEnv, "function");
 assert.equal(steam.SteamworksEnums.EResult.k_EResultOK, 1);
 assert.equal(typeof electron.electronConfigureSteamOverlay, "function");
 assert.equal(typeof electron.electronNativeOverlaySessionOptions, "function");
 assert.equal(typeof electron.electronOverlayPresenterOptions, "function");
+assert.equal(typeof electron.electronScrubSteamOverlayChildProcessEnv, "function");
 assert.equal(electron.electronConfigureSteamOverlay({ profile: "off" }).profile, "off");
 `
   );
@@ -116,10 +118,12 @@ assert.equal(typeof overlay.setNativeOverlayHostInputPassthrough, "function");
 assert.equal(typeof overlay.setNativeOverlayHostOpacity, "function");
 assert.equal(typeof steam.electronNativeOverlaySessionOptions, "function");
 assert.equal(typeof steam.electronOverlayPresenterOptions, "function");
+assert.equal(typeof steam.electronScrubSteamOverlayChildProcessEnv, "function");
 assert.equal(SteamworksEnums.EResult.k_EResultOK, 1);
 assert.equal(typeof electron.electronConfigureSteamOverlay, "function");
 assert.equal(typeof electron.electronNativeOverlaySessionOptions, "function");
 assert.equal(typeof electron.electronOverlayPresenterOptions, "function");
+assert.equal(typeof electron.electronScrubSteamOverlayChildProcessEnv, "function");
 assert.equal(electron.electronConfigureSteamOverlay({ profile: "off" }).profile, "off");
 `
   );
@@ -157,6 +161,7 @@ import steam, {
 import { electronConfigureSteamOverlay } from "steam-bridge/electron";
 import { electronNativeOverlaySessionOptions } from "steam-bridge/electron";
 import { electronOverlayPresenterOptions } from "steam-bridge/electron";
+import { electronScrubSteamOverlayChildProcessEnv } from "steam-bridge/electron";
 
 const client = steam.init(480);
 const web = createSteamWebApiClient({ apiKey: "test" });
@@ -170,6 +175,7 @@ const presenterWebFn = overlay.openWebOverlay;
 const inputPassthroughFn: (passThrough: boolean) => void = overlay.setNativeOverlayHostInputPassthrough;
 const opacityFn: (opaque: boolean) => void = overlay.setNativeOverlayHostOpacity;
 const config = electronConfigureSteamOverlay({ profile: "off" });
+const scrubbedKeys: string[] = electronScrubSteamOverlayChildProcessEnv({});
 const electronOptions = electronNativeOverlaySessionOptions({
   isDestroyed: () => false,
   getNativeWindowHandle: () => Buffer.from([1, 0, 0, 0, 0, 0, 0, 0]),

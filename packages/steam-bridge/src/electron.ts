@@ -10,12 +10,15 @@ export interface ElectronSteamOverlayProfileOptions extends ElectronOverlayOptio
   forceHighPerformanceGpu?: boolean;
   disableBackgroundThrottling?: boolean;
   ignoreGpuBlocklist?: boolean;
+  scrubSteamOverlayChildProcessEnv?: boolean;
+  isolateSteamOverlayChildProcesses?: boolean;
 }
 
 export interface ElectronSteamOverlayConfigResult {
   profile: ElectronSteamOverlayProfile;
   switches: string[];
   repaintIntervalMs: number;
+  scrubbedEnvKeys: string[];
 }
 
 export interface ElectronNativeOverlaySessionOptions {
@@ -85,7 +88,7 @@ export function electronConfigureSteamOverlay(
   const profile = options.profile ?? "diagnostic";
   if (profile === "off") {
     electronDisableSteamOverlayRepaintLoop();
-    return { profile, switches: [], repaintIntervalMs: 0 };
+    return { profile, switches: [], repaintIntervalMs: 0, scrubbedEnvKeys: [] };
   }
 
   const compatibilityMode = profile === "compatibility";
@@ -95,11 +98,18 @@ export function electronConfigureSteamOverlay(
     forceHighPerformanceGpu = true,
     disableBackgroundThrottling = true,
     ignoreGpuBlocklist = true,
-    repaintIntervalMs = repaintMode ? 33 : 0
+    repaintIntervalMs = repaintMode ? 33 : 0,
+    scrubSteamOverlayChildProcessEnv = true,
+    isolateSteamOverlayChildProcesses = scrubSteamOverlayChildProcessEnv && process.platform === "linux"
   } = options;
 
   const electron = require("electron") as ElectronApi;
   const switches: string[] = [];
+  const scrubbedEnvKeys = scrubSteamOverlayChildProcessEnv ? electronScrubSteamOverlayChildProcessEnv() : [];
+
+  if (isolateSteamOverlayChildProcesses) {
+    appendSwitchOnce(electron.app, switches, "no-zygote");
+  }
 
   if (enableInProcessGpu) {
     appendSwitchOnce(electron.app, switches, "in-process-gpu");
@@ -139,7 +149,7 @@ export function electronConfigureSteamOverlay(
     repaintTimer.unref?.();
   }
 
-  return { profile, switches, repaintIntervalMs };
+  return { profile, switches, repaintIntervalMs, scrubbedEnvKeys };
 }
 
 export function electronDisableSteamOverlayRepaintLoop(): void {
@@ -147,6 +157,30 @@ export function electronDisableSteamOverlayRepaintLoop(): void {
     clearInterval(repaintTimer);
     repaintTimer = undefined;
   }
+}
+
+export function electronScrubSteamOverlayChildProcessEnv(env: NodeJS.ProcessEnv = process.env): string[] {
+  const scrubbedEnvKeys: string[] = [];
+  for (const key of ["LD_PRELOAD", "DYLD_INSERT_LIBRARIES"]) {
+    const value = env[key];
+    if (!value || !/gameoverlayrenderer/i.test(value)) {
+      continue;
+    }
+
+    const keptEntries = value
+      .split(":")
+      .flatMap((entry) => entry.split(/\s+/))
+      .filter((entry) => entry && !/gameoverlayrenderer/i.test(entry));
+
+    if (keptEntries.length > 0) {
+      env[key] = keptEntries.join(":");
+    } else {
+      delete env[key];
+    }
+    scrubbedEnvKeys.push(key);
+  }
+
+  return scrubbedEnvKeys;
 }
 
 export function electronNativeOverlaySessionOptions(

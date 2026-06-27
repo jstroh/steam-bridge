@@ -2,7 +2,8 @@ import {
   electronConfigureSteamOverlay as electronConfigureSteamOverlayImpl,
   electronEnableSteamOverlay as electronEnableSteamOverlayImpl,
   electronNativeOverlaySessionOptions as electronNativeOverlaySessionOptionsImpl,
-  electronOverlayPresenterOptions as electronOverlayPresenterOptionsImpl
+  electronOverlayPresenterOptions as electronOverlayPresenterOptionsImpl,
+  electronScrubSteamOverlayChildProcessEnv as electronScrubSteamOverlayChildProcessEnvImpl
 } from "./electron";
 import { SteamworksEnums } from "./generated-steamworks-enums";
 import type {
@@ -1659,6 +1660,12 @@ export type NativeOverlayPresenterOverlayOptions = NativeOverlayPresenterOptions
 };
 
 export type NativeOverlayWebPagePresenterOptions = NativeOverlayPresenterOverlayOptions & OverlayWebPageOptions;
+
+type NativeOverlayPresenterActivationMode = "interactive" | "passive" | "transparent-input";
+
+type NativeOverlayPresenterInternal = NativeOverlayPresenter & {
+  prepareForTransparentInputOverlay?: (durationMs?: number) => void;
+};
 
 export interface HtmlCreateBrowserOptions {
   userAgent?: string;
@@ -6033,6 +6040,7 @@ export let electronConfigureSteamOverlay = electronConfigureSteamOverlayImpl;
 export let electronEnableSteamOverlay = electronEnableSteamOverlayImpl;
 export let electronNativeOverlaySessionOptions = electronNativeOverlaySessionOptionsImpl;
 export let electronOverlayPresenterOptions = electronOverlayPresenterOptionsImpl;
+export let electronScrubSteamOverlayChildProcessEnv = electronScrubSteamOverlayChildProcessEnvImpl;
 
 export type SteamCallbackId = typeof SteamCallback[keyof typeof SteamCallback];
 export type SteamCallbackName = keyof typeof SteamCallback;
@@ -6918,7 +6926,8 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
   let lastOverlayEvent: GameOverlayActivated | undefined;
   let hostInputPassthrough = usesNativeHostView;
   let hostOpaque = !usesNativeHostView;
-  let hostActivationMode: "interactive" | "passive" = "passive";
+  let hostActivationMode: NativeOverlayPresenterActivationMode = "passive";
+  let suppressNeedsPresentOpacity = false;
   let boostUntil = 0;
   let timer: NodeJS.Timeout | undefined;
   let restoreFocusTimer: NodeJS.Timeout | undefined;
@@ -6984,7 +6993,14 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
     prepareForActivation("passive", durationMs);
   };
 
-  const prepareForActivation = (activationMode: "interactive" | "passive", durationMs = activationBoostMs): void => {
+  const prepareForTransparentInputOverlay = (durationMs = activationBoostMs): void => {
+    prepareForActivation("transparent-input", durationMs);
+  };
+
+  const prepareForActivation = (
+    activationMode: NativeOverlayPresenterActivationMode,
+    durationMs = activationBoostMs
+  ): void => {
     if (closed) {
       return;
     }
@@ -6994,6 +7010,7 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
     }
 
     hostActivationMode = activationMode;
+    suppressNeedsPresentOpacity = false;
     boostUntil = Math.max(boostUntil, Date.now() + Math.max(0, durationMs));
     syncHostInputMode();
     pump();
@@ -7001,7 +7018,7 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
   };
 
   const snapshot = (): NativeOverlayPresenterSnapshot => {
-    const acceptsOverlayInput = hostActivationMode === "interactive" && (overlayActive || Date.now() < boostUntil);
+    const acceptsOverlayInput = shouldHostAcceptInput(Date.now());
     const mode: NativeOverlayPresenterMode = closed
       ? "closed"
       : !visible
@@ -7089,11 +7106,13 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
     }
     if (event.active === true) {
       overlayWasActive = true;
+      suppressNeedsPresentOpacity = false;
       boostUntil = Math.max(boostUntil, Date.now() + activationBoostMs);
       syncHostInputMode();
       schedule(0);
     } else if (event.active === false) {
       hostActivationMode = "passive";
+      suppressNeedsPresentOpacity = true;
       boostUntil = Date.now() + activeGraceMs;
       scheduleRestoreFocus();
       syncHostInputMode();
@@ -7103,12 +7122,13 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
 
   schedule(pollIntervalMs);
 
-  return {
+  const presenter: NativeOverlayPresenterInternal = {
     close,
     disconnect: close,
     pump,
     prepareForOverlay,
     prepareForPassiveOverlay,
+    prepareForTransparentInputOverlay,
     show,
     hide,
     isOpen: () =>
@@ -7116,6 +7136,8 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
       (usesNativeHostView ? native().isNativeOverlayHostViewOpen() : native().isNativeOverlayProbeWindowOpen()),
     snapshot
   };
+
+  return presenter;
 
   function poll(): void {
     try {
@@ -7164,10 +7186,22 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
       return;
     }
     const now = Date.now();
-    const shouldAcceptInput = hostActivationMode === "interactive" && (overlayActive || now < boostUntil);
-    const shouldShowHost = shouldAcceptInput || overlayNeedsPresent;
+    const shouldAcceptInput = shouldHostAcceptInput(now);
+    const shouldShowHost =
+      hostActivationMode === "interactive"
+        ? shouldAcceptInput || overlayNeedsPresent
+        : hostActivationMode === "passive"
+          ? overlayNeedsPresent && !suppressNeedsPresentOpacity
+          : false;
     setHostInputPassthrough(!shouldAcceptInput);
     setHostOpaque(shouldShowHost);
+  }
+
+  function shouldHostAcceptInput(now: number): boolean {
+    return (
+      (hostActivationMode === "interactive" || hostActivationMode === "transparent-input") &&
+      (overlayActive || now < boostUntil)
+    );
   }
 
   function setHostInputPassthrough(passThrough: boolean): void {
@@ -7240,7 +7274,7 @@ export function openDialogOverlay(
     () => {
       activateOverlay(dialog);
     },
-    "passive"
+    "transparent-input"
   );
 }
 
@@ -17422,7 +17456,7 @@ function activateWithNativeOverlaySession(
 function activateWithOverlayPresenter(
   options: NativeOverlayPresenterOverlayOptions,
   activate: () => void,
-  activationMode: "interactive" | "passive"
+  activationMode: NativeOverlayPresenterActivationMode
 ): NativeOverlayPresenter {
   const providedPresenter = options.presenter;
   const { presenter: _presenter, ...presenterOptions } = options;
@@ -17431,6 +17465,13 @@ function activateWithOverlayPresenter(
   try {
     if (activationMode === "interactive") {
       activePresenter.prepareForOverlay();
+    } else if (activationMode === "transparent-input") {
+      const presenterInternal = activePresenter as NativeOverlayPresenterInternal;
+      if (typeof presenterInternal.prepareForTransparentInputOverlay === "function") {
+        presenterInternal.prepareForTransparentInputOverlay();
+      } else {
+        activePresenter.prepareForPassiveOverlay();
+      }
     } else {
       activePresenter.prepareForPassiveOverlay();
     }
@@ -19306,6 +19347,7 @@ const defaultExport = {
   electronEnableSteamOverlay,
   electronNativeOverlaySessionOptions,
   electronOverlayPresenterOptions,
+  electronScrubSteamOverlayChildProcessEnv,
   SteamCallback,
   SteamworksEnums,
   GameCoordinatorResult

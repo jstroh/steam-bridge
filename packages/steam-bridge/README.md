@@ -139,8 +139,13 @@ helpers such as `client.overlay.attachPresenter()` and
 `client.overlay.activateToStoreWithNativeSession()`, and
 `client.overlay.activateToWebPageWithNativeSession()`. Electron helpers include
 `electronConfigureSteamOverlay()`, `electronOverlayPresenterOptions()`, and
-`electronNativeOverlaySessionOptions()`. Core Steam API success should not be
-treated as proof that the Steam overlay has hooked Electron.
+`electronNativeOverlaySessionOptions()`; `electronScrubSteamOverlayChildProcessEnv()`
+is also available for explicit diagnostics. `electronConfigureSteamOverlay()`
+scrubs Steam's overlay renderer from Electron child-process preload environment
+variables and adds Electron's Linux `no-zygote` switch by default, leaving the
+bridge-owned native presenter as the single Steam overlay target. Core Steam API
+success should not be treated as proof that the Steam overlay has hooked the
+right surface.
 
 For Electron apps, attach a reusable presenter once and reuse it for overlay
 work:
@@ -162,10 +167,12 @@ an overlay is being opened/active. On Linux/X11, fully idle mode makes the host
 transparent and click-through; `overlayNeedsPresent` can make it visible while
 leaving input click-through for passive notifications; opening or active overlay
 mode restores both opacity and input so Steam web or checkout UI can receive
-clicks, then returns to passive mode after Steam reports the overlay inactive.
-Dialog/social overlays such as Friends/Game Overview keep the native host
-transparent and click-through while Steam's own social overlay panel is active,
-so the presenter does not cover that UI.
+clicks, then parks the host transparent after Steam reports the overlay
+inactive. Friends/Game Overview is still an investigation path: allowing Steam to
+hook Electron's Chromium children can make social UI render, but that duplicate
+hook can leave stale overlay surfaces after close; the default child-process
+isolation keeps product overlays reliable and prevents that social path from
+rendering through Chromium.
 
 For Linux Electron apps, use
 `electronConfigureSteamOverlay({ profile: "repaint" })` when the Steam overlay
@@ -175,20 +182,18 @@ Electron windows at about 30 FPS so Steam has fresh frames to composite. Use
 Chromium's GPU work in-process.
 
 On Steam Deck Desktop Mode, the Linux X11/GLX reusable presenter path is the
-current generic proof path for overlay activation, visual open, close, and
-back-to-app checks. Use `client.overlay.attachPresenter(...)` with
+current generic proof path for product overlay activation, visual open, close,
+and back-to-app checks. Use `client.overlay.attachPresenter(...)` with
 `client.overlay.openWebOverlay(...)` or the Electron smoke app's `presenter-web`
-action for the generic proof. Deck testing has verified `active=true` and
-`active=false` overlay callbacks, overlay close input, and clean return to the
-running app. The smoke app's `presenter-achievement-progress` action verifies
-passive Steam notification behavior by keeping the presenter click-through and
-transparent while Steam displays an achievement-progress toast. The older
-`activateToWebPageWithNativeSession(..., { modal: true })`
-and `native-web` path remains compatibility coverage.
-Steam's Desktop Mode social overlay can still remain visually stuck over
-Electron after deactivation or resist synthetic close input, so treat
-Friends/Game Overview dismissal as an open social-overlay blocker, not a
-completed cross-platform guarantee. Call
+action for the generic proof. Deck testing has verified a single Steam overlay
+target, `active=true` and `active=false` overlay callbacks, overlay close input,
+and clean return to the running app. The smoke app's
+`presenter-achievement-progress` action verifies passive Steam notification
+behavior by keeping the presenter click-through and transparent while Steam
+displays an achievement-progress toast. The older
+`activateToWebPageWithNativeSession(..., { modal: true })` and `native-web` path
+remains compatibility coverage. Treat Friends/Game Overview dismissal as an open
+social-overlay blocker, not a completed cross-platform guarantee. Call
 `session.close()` during app cleanup or when you are finished with the proof
 surface.
 
