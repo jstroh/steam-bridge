@@ -176,7 +176,9 @@ Current evidence:
   remains an investigation path, not product proof. A focused/raised X11 host
   experiment did not make `ActivateGameOverlay("Friends")` render or emit an
   activation callback, so do not promote host focus handoff into the presenter
-  API as a social-overlay fix.
+  API as a social-overlay fix. Making the dialog host opaque/input-capable like
+  the web/store path only exposes a black presenter surface and still does not
+  activate Steam social UI, so opacity handoff is also not a social-overlay fix.
 
 Next work:
 
