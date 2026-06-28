@@ -147,6 +147,8 @@ ipcMain.handle("steam-smoke:overlay-web", () => openWebOverlay());
 ipcMain.handle("steam-smoke:overlay-dialog", () => openDialogOverlay());
 ipcMain.handle("steam-smoke:presenter-web", () => openPresenterWebOverlay());
 ipcMain.handle("steam-smoke:presenter-friends", () => openPresenterFriendsOverlay());
+ipcMain.handle("steam-smoke:presenter-community", () => openPresenterCommunityOverlay());
+ipcMain.handle("steam-smoke:presenter-stats", () => openPresenterStatsOverlay());
 ipcMain.handle("steam-smoke:presenter-achievements", () => openPresenterAchievementsOverlay());
 ipcMain.handle("steam-smoke:presenter-achievement-progress", () => openPresenterAchievementProgress());
 ipcMain.handle("steam-smoke:native-probe-open", () => openNativeProbe());
@@ -373,6 +375,12 @@ function runAutorunAction(action) {
       case "presenter-friends":
         openPresenterFriendsOverlay();
         return { ok: true, action };
+      case "presenter-community":
+        openPresenterCommunityOverlay();
+        return { ok: true, action };
+      case "presenter-stats":
+        openPresenterStatsOverlay();
+        return { ok: true, action };
       case "presenter-achievements":
         openPresenterAchievementsOverlay();
         return { ok: true, action };
@@ -514,6 +522,34 @@ function openPresenterFriendsOverlay() {
   recordEvent("overlay:presenter-open", {
     target: "friends",
     url: steamworks.STEAM_FRIENDS_OVERLAY_URL,
+    modal: true,
+    presenter: presenter.snapshot()
+  });
+  return snapshot();
+}
+
+function openPresenterCommunityOverlay() {
+  const activeClient = requireClient();
+  const presenter = ensureNativeOverlayPresenter(activeClient);
+  activeClient.overlay.openCommunityOverlay({ appId: APP_ID, presenter });
+  recordEvent("overlay:presenter-open", {
+    target: "community",
+    appId: APP_ID,
+    url: steamworks.steamCommunityAppUrl(APP_ID),
+    modal: true,
+    presenter: presenter.snapshot()
+  });
+  return snapshot();
+}
+
+function openPresenterStatsOverlay() {
+  const activeClient = requireClient();
+  const presenter = ensureNativeOverlayPresenter(activeClient);
+  activeClient.overlay.openStatsOverlay({ appId: APP_ID, presenter });
+  recordEvent("overlay:presenter-open", {
+    target: "stats",
+    appId: APP_ID,
+    url: steamworks.steamCommunityUserStatsUrl(APP_ID),
     modal: true,
     presenter: presenter.snapshot()
   });

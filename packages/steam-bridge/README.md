@@ -163,6 +163,16 @@ client.overlay.openWebOverlay(checkoutUrl, {
 
 client.overlay.openFriendsOverlay({ presenter });
 
+client.overlay.openCommunityOverlay({
+  appId: 480,
+  presenter
+});
+
+client.overlay.openStatsOverlay({
+  appId: 480,
+  presenter
+});
+
 client.overlay.openAchievementsOverlay({
   appId: 480,
   presenter
@@ -180,6 +190,10 @@ inactive. The default `idleFps` is `0`; opt into nonzero idle pumping only for
 diagnostics. Use `client.overlay.openFriendsOverlay({ presenter })` for a generic
 Friends List surface; it opens Steam Community chat through the same native web
 presenter path, keeping Electron child-process isolation intact. Use
+`client.overlay.openCommunityOverlay({ appId, presenter })` for the app's Steam
+Community hub and `client.overlay.openStatsOverlay({ appId, presenter })` for
+the current user's app stats page through the same presenter-backed Steam web
+overlay route. Use
 `client.overlay.openAchievementsOverlay({ appId, presenter })` for the current
 user's app achievements page through that same presenter-backed Steam web
 overlay route. Steam Community may redirect apps without public web stats to the
@@ -203,8 +217,11 @@ On Steam Deck Desktop Mode, the Linux X11/GLX reusable presenter path is the
 current generic proof path for product overlay activation, visual open, close,
 and back-to-app checks. Use `client.overlay.attachPresenter(...)` with
 `client.overlay.openWebOverlay(...)`, `client.overlay.openFriendsOverlay(...)`,
-or the Electron smoke app's `presenter-web` / `presenter-friends` actions for
-the generic proof. Deck testing has verified a single Steam overlay target,
+`client.overlay.openCommunityOverlay(...)`, or
+`client.overlay.openStatsOverlay(...)`, or the Electron smoke app's
+`presenter-web` / `presenter-friends` / `presenter-community` /
+`presenter-stats` actions for the generic proof. Deck testing has verified a
+single Steam overlay target,
 `active=true` overlay callbacks, overlay close input, and clean return to the
 running app for the Friends List web surface; the web checkout/store proof also
 captures `active=false` after closing the modal overlay. The smoke app's
@@ -215,7 +232,9 @@ displays an achievement-progress toast. The older
 remains compatibility coverage. Treat raw Friends/Game Overview dialog dismissal
 and Steam overlay hotkey toggling as open social-overlay blockers, not completed
 cross-platform guarantees. The Deck runner can collect focused toggle evidence
-with `--visual-toggle-probe --visual-toggle-input keyboard|guide|both`; current
+with `--visual-toggle-probe --visual-toggle-input keyboard|guide|both`, and can
+close presenter-backed Steam web surfaces through the visible Steam web close
+control with `--visual-close-probe --visual-close-input web`; current
 focused Desktop evidence still does not show Shift+Tab or a virtual
 Guide/Steam-button controller event opening overlay UI. Add
 `--overlay-game-id shortcut` when investigating whether raw Steam overlay

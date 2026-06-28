@@ -88,7 +88,8 @@ for Steam non-Steam shortcuts:
 Supported autorun actions are `none`, `dialog`, `friends`, `store`, `web`,
 `native-dialog`, `native-store`, `native-web`, `native-probe`,
 `presenter-dialog`, `presenter-store`, `presenter-web`, `presenter-friends`,
-`presenter-achievements`, and `presenter-achievement-progress`.
+`presenter-community`, `presenter-stats`, `presenter-achievements`, and
+`presenter-achievement-progress`.
 `native-probe` is a compatibility alias for `native-dialog`. On Linux, the
 `native-*` actions open a bridge-owned X11/GLX native presenter, keep it
 presenting frames, and activate the requested Steam overlay target through the
@@ -122,6 +123,12 @@ Use `presenter-friends` to verify the recommended Friends List path:
 `client.overlay.openFriendsOverlay({ presenter })` opens Steam Community chat
 through the same native web presenter used by checkout/store overlays, keeping a
 single `gameoverlayui` target attached to the main/native process.
+Use `presenter-community` and `presenter-stats` to verify the product-shaped
+Steam Community app hub and current-user app stats routes:
+`client.overlay.openCommunityOverlay({ appId, presenter })` and
+`client.overlay.openStatsOverlay({ appId, presenter })`. Deck Desktop testing
+verified both with visible Steam web content, overlay activation, and return to
+the smoke app through `--visual-close-input web`.
 Use `presenter-achievements` to verify
 `client.overlay.openAchievementsOverlay({ appId, presenter })`, which opens the
 current user's app achievements page through the same presenter-backed Steam web
@@ -285,6 +292,10 @@ that raw dialog path as evidence collection, not a pass condition: raw
 Friends/Game Overview is only passed once the captured pixels return cleanly to
 the running app without duplicate `gameoverlayui` targets.
 
+For presenter-backed Steam web surfaces, add `--visual-close-input web` with
+`--visual-close-probe` to close through the visible Steam web overlay close
+control instead of Shift+Tab/Escape.
+
 Use `--visual-toggle-probe` when the question is whether the Steam overlay
 hotkey opens from the current app state. It focuses the smoke app when possible,
 captures `before-toggle-probe.png`, sends the selected toggle input, captures
@@ -385,11 +396,15 @@ cleanly to the running app. With the default child-process isolation, those pane
 not render because Steam is prevented from hooking Electron's Chromium GPU
 process. The current reusable-presenter close proofs are `--action presenter-web`
 with `--web-modal true` for generic web/checkout-style overlays and
-`--action presenter-friends` for the Friends List surface. These call
-`client.overlay.openWebOverlay(...)` / `client.overlay.openFriendsOverlay(...)`,
-show Steam web overlay UI over the bridge-owned native presenter, and return to
-the smoke app. The older `--action native-web` path remains as compatibility
-coverage for `activateToWebPageWithNativeSession(...)`.
+`--action presenter-friends` / `--action presenter-community` /
+`--action presenter-stats` for the product-shaped social/community surfaces.
+These call `client.overlay.openWebOverlay(...)`,
+`client.overlay.openFriendsOverlay(...)`,
+`client.overlay.openCommunityOverlay(...)`, and
+`client.overlay.openStatsOverlay(...)`, show Steam web overlay UI over the
+bridge-owned native presenter, and return to the smoke app. The older
+`--action native-web` path remains as compatibility coverage for
+`activateToWebPageWithNativeSession(...)`.
 
 For longer SSH-driven checks, keep the Deck awake from SteamOS/Desktop Mode
 power settings. Over SSH, `systemd-inhibit --what=sleep sleep infinity` can keep

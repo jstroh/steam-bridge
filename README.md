@@ -382,9 +382,11 @@ The native presenter currently uses the macOS probe implementation on macOS and
 an X11/GLX probe implementation on Linux. On Steam Deck Desktop Mode, the Linux
 reusable presenter path is the current generic proof path for product overlay
 activation, visual open, close, and back-to-app checks. Use
-`client.overlay.attachPresenter(...)` with `client.overlay.openWebOverlay(...)`
-or `client.overlay.openFriendsOverlay(...)`, or the Electron smoke app's
-`presenter-web` / `presenter-friends` actions for that proof. The older
+`client.overlay.attachPresenter(...)` with `client.overlay.openWebOverlay(...)`,
+`client.overlay.openFriendsOverlay(...)`, `client.overlay.openCommunityOverlay(...)`,
+or `client.overlay.openStatsOverlay(...)`, or the Electron smoke app's
+`presenter-web` / `presenter-friends` / `presenter-community` /
+`presenter-stats` actions for that proof. The older
 `activateToWebPageWithNativeSession(..., { modal: true })` / `native-web` path
 remains compatibility coverage. Steam's raw Desktop Mode dialog/Game Overview
 overlay and hotkey toggle should not be treated as completed dismissal proofs.
@@ -395,6 +397,9 @@ log and diagnostics directory back to the local machine with
 `--visual-capture-dir`. Use `--visual-close-probe` for `presenter-friends`
 close/back-to-app proof and for raw social-overlay investigation; it sends a
 Deck-side Shift+Tab/Escape probe and records before and after screenshots.
+For presenter-backed Steam web surfaces such as `presenter-community` and
+`presenter-stats`, add `--visual-close-input web` to close through the visible
+Steam web overlay close control.
 Use `--visual-toggle-probe` for hotkey evidence. The default
 `--visual-toggle-input keyboard` sends Shift+Tab, while
 `--visual-toggle-input guide` sends a controller Guide/Steam-button event through
@@ -402,7 +407,8 @@ a temporary virtual gamepad. Add `--overlay-game-id shortcut` when investigating
 whether raw Steam overlay close/back routing depends on the full non-Steam
 shortcut game ID. Focused Deck Desktop runs still show this toggle path as
 unresolved; the product overlay paths remain `openWebOverlay`,
-`openStoreOverlay`, `openFriendsOverlay`, and passive presenter notifications.
+`openStoreOverlay`, `openFriendsOverlay`, `openCommunityOverlay`,
+`openStatsOverlay`, and passive presenter notifications.
 
 Set `STEAM_BRIDGE_ELECTRON_OVERLAY_PROFILE=repaint`, or pass
 `--steam-bridge-electron-overlay-profile=repaint` to the Electron smoke app, to

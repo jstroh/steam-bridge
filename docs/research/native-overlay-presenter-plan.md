@@ -54,6 +54,12 @@ timing hacks.
   testing captured visible Friends/chat UI, used one `gameoverlayui` target
   attached to the app's main/native process, and returned cleanly to the app
   after the close probe.
+- Steam Community app hub and stats pages now have product-shaped routes:
+  `openCommunityOverlay({ appId, presenter })` and
+  `openStatsOverlay({ appId, presenter })` use the same native web presenter
+  instead of raw Desktop `Community` / `Stats` dialogs. Deck Desktop testing
+  verified activation, visible Steam web content, and return to the app with the
+  web close probe.
 - Deck Desktop achievements now has a product-shaped web route:
   `openAchievementsOverlay({ appId, presenter })` opens the current user's Steam
   Community stats/achievements URL through the same reusable native web
@@ -201,6 +207,12 @@ Current evidence:
   returns to the smoke app after the close probe. A `steam://open/friends` URI
   activated the overlay but remained on a Steam loading spinner, so it is not
   the product path.
+- Deck Desktop Mode has app-facing `openCommunityOverlay({ appId, presenter })`
+  and `openStatsOverlay({ appId, presenter })` helpers that should follow the
+  same presenter-backed web path for the raw `Community` and `Stats` dialog
+  use cases. A 2026-06-28 Deck Desktop run verified both with visible Steam web
+  content, active overlay callbacks, and clean return to the app through the web
+  close probe.
 - Deck Desktop Mode can open the current user's app achievements/profile web
   page through `openAchievementsOverlay({ appId, presenter })`, preserving the
   same single-overlay-target and close/back-to-app behavior. App ID `480`
@@ -282,6 +294,9 @@ Pass criteria:
 - Achievement or notification toast appears and disappears.
 - Friends List opens through `openFriendsOverlay`, accepts input, closes, and
   returns to the app without duplicate Electron child overlay targets.
+- Community and Stats open through `openCommunityOverlay` and
+  `openStatsOverlay`, accept input, close through the Steam web close control,
+  and return to the app without duplicate Electron child overlay targets.
 - Achievements/profile web overlay opens through `openAchievementsOverlay`,
   accepts input, closes, and returns to the app without duplicate Electron child
   overlay targets. Full achievements content proof requires an app whose Steam

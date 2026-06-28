@@ -38,6 +38,7 @@ remote_inhibit_pid_file="/tmp/steam-bridge-smoke-inhibit.pid"
 collect_diagnostics_dir=""
 visual_capture_dir=""
 visual_close_probe="0"
+visual_close_input="keyboard"
 visual_toggle_probe="0"
 visual_toggle_input="keyboard"
 
@@ -99,6 +100,8 @@ Options:
   --visual-capture-dir PATH     Capture Deck screenshots to this local path after the run returns.
   --visual-close-probe          With --visual-capture-dir and --keep-open-after-result, send a
                                 Shift+Tab/Escape close probe and capture the result.
+  --visual-close-input MODE     Close input for --visual-close-probe: keyboard, web, or both.
+                                web clicks the Steam web overlay close control. Defaults to keyboard.
   --visual-toggle-probe         With --visual-capture-dir and --keep-open-after-result, capture
                                 before toggling, after opening, and after closing the overlay.
   --visual-toggle-input MODE    Toggle input for --visual-toggle-probe: keyboard, guide, or both.
@@ -251,6 +254,10 @@ while [ "$#" -gt 0 ]; do
       visual_close_probe="1"
       shift
       ;;
+    --visual-close-input)
+      visual_close_input="${2:?missing --visual-close-input value}"
+      shift 2
+      ;;
     --visual-toggle-probe)
       visual_toggle_probe="1"
       shift
@@ -276,6 +283,16 @@ case "$visual_toggle_input" in
     ;;
   *)
     echo "Unknown --visual-toggle-input: $visual_toggle_input" >&2
+    usage >&2
+    exit 2
+    ;;
+esac
+
+case "$visual_close_input" in
+  keyboard|web|both)
+    ;;
+  *)
+    echo "Unknown --visual-close-input: $visual_close_input" >&2
     usage >&2
     exit 2
     ;;
@@ -435,6 +452,24 @@ else
   echo 'No /dev/uinput or xdotool close input helper found on Deck.' >&2
   exit 127
 fi"
+}
+
+send_deck_web_overlay_close_probe() {
+  echo "Sending Deck web overlay close probe"
+  remote_exec "export DISPLAY=\"\${DISPLAY:-:0}\"; if [ -z \"\${XAUTHORITY:-}\" ]; then XAUTHORITY=\"\$(ls /run/user/1000/xauth_* 2>/dev/null | head -n 1 || true)\"; export XAUTHORITY; fi
+if ! command -v xdotool >/dev/null 2>&1; then
+  echo 'No xdotool web overlay close helper found on Deck.' >&2
+  exit 127
+fi
+set -- \$(xdotool getdisplaygeometry)
+display_width=\"\${1:-1280}\"
+display_height=\"\${2:-800}\"
+click_x=\$((display_width * 863 / 1000))
+click_y=\$((display_height * 17 / 100))
+xdotool mousemove \"\$click_x\" \"\$click_y\" click 1
+sleep 0.5
+xdotool mousemove \"\$click_x\" \"\$click_y\" click 1
+sleep 0.35"
 }
 
 send_deck_overlay_toggle_probe() {
@@ -633,7 +668,15 @@ run_visual_capture() {
     fi
   fi
   if [ "$visual_close_probe" = "1" ]; then
-    send_deck_overlay_close_probe
+    if [ "$visual_close_input" = "keyboard" ]; then
+      send_deck_overlay_close_probe
+    elif [ "$visual_close_input" = "web" ]; then
+      send_deck_web_overlay_close_probe
+    else
+      send_deck_overlay_close_probe
+      sleep 0.5
+      send_deck_web_overlay_close_probe
+    fi
     sleep 1
     capture_deck_screenshot "after-close-probe"
   fi
@@ -856,7 +899,7 @@ prepare_remote_wrapper() {
   local app_id_q overlay_game_id_q action_q profile_q scrub_child_env_q isolate_child_processes_q window_mode_q result_file_q diagnostic_dir_q action_delay_q result_delay_q keep_open_q require_active_q web_url_q web_modal_q overlay_dialog_q achievement_name_q achievement_current_q achievement_max_q
   local require_overlay_active="0"
 
-  if [ "$action" = "store" ] || [ "$action" = "web" ] || [ "$action" = "presenter-store" ] || [ "$action" = "presenter-web" ] || [ "$action" = "presenter-friends" ] || [ "$action" = "presenter-achievements" ]; then
+  if [ "$action" = "store" ] || [ "$action" = "web" ] || [ "$action" = "presenter-store" ] || [ "$action" = "presenter-web" ] || [ "$action" = "presenter-friends" ] || [ "$action" = "presenter-community" ] || [ "$action" = "presenter-stats" ] || [ "$action" = "presenter-achievements" ]; then
     require_overlay_active="1"
   fi
 
@@ -1066,9 +1109,9 @@ build_steam_launch_args() {
     helper_args+=("--require-overlay-activated")
   elif [ "$action" = "native-probe" ] || [ "$action" = "native-dialog" ] || [ "$action" = "native-store" ] || [ "$action" = "native-web" ]; then
     helper_args+=("--require-event" "overlay:native-session-open")
-  elif [ "$action" = "presenter-dialog" ] || [ "$action" = "presenter-store" ] || [ "$action" = "presenter-web" ] || [ "$action" = "presenter-friends" ] || [ "$action" = "presenter-achievements" ]; then
+  elif [ "$action" = "presenter-dialog" ] || [ "$action" = "presenter-store" ] || [ "$action" = "presenter-web" ] || [ "$action" = "presenter-friends" ] || [ "$action" = "presenter-community" ] || [ "$action" = "presenter-stats" ] || [ "$action" = "presenter-achievements" ]; then
     helper_args+=("--require-event" "overlay:presenter-open")
-    if [ "$action" = "presenter-store" ] || [ "$action" = "presenter-web" ] || [ "$action" = "presenter-friends" ] || [ "$action" = "presenter-achievements" ]; then
+    if [ "$action" = "presenter-store" ] || [ "$action" = "presenter-web" ] || [ "$action" = "presenter-friends" ] || [ "$action" = "presenter-community" ] || [ "$action" = "presenter-stats" ] || [ "$action" = "presenter-achievements" ]; then
       helper_args+=("--require-overlay-activated")
     fi
   elif [ "$action" = "presenter-achievement-progress" ]; then
@@ -1260,7 +1303,7 @@ run_remote_mode() {
 }
 
 run_self_test() {
-  local game_args desktop_args dialog_args friends_args achievements_args toast_args direct_check
+  local game_args desktop_args dialog_args friends_args community_args stats_args achievements_args toast_args direct_check
   mode="game"
   build_steam_launch_args
   game_args="$(quote_args "${helper_args[@]}")"
@@ -1334,6 +1377,30 @@ run_self_test() {
   fi
   if [[ "$friends_args" != *"--require-event callback:overlay-activated"* ]]; then
     echo "Self-test failed: Presenter friends args must require the overlay callback." >&2
+    exit 1
+  fi
+
+  action="presenter-community"
+  build_steam_launch_args
+  community_args="$(quote_args "${helper_args[@]}")"
+  if [[ "$community_args" != *"--require-overlay-activated"* ]]; then
+    echo "Self-test failed: Presenter community args must require overlay activation." >&2
+    exit 1
+  fi
+  if [[ "$community_args" != *"--require-event callback:overlay-activated"* ]]; then
+    echo "Self-test failed: Presenter community args must require the overlay callback." >&2
+    exit 1
+  fi
+
+  action="presenter-stats"
+  build_steam_launch_args
+  stats_args="$(quote_args "${helper_args[@]}")"
+  if [[ "$stats_args" != *"--require-overlay-activated"* ]]; then
+    echo "Self-test failed: Presenter stats args must require overlay activation." >&2
+    exit 1
+  fi
+  if [[ "$stats_args" != *"--require-event callback:overlay-activated"* ]]; then
+    echo "Self-test failed: Presenter stats args must require the overlay callback." >&2
     exit 1
   fi
 

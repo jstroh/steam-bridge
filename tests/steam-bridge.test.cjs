@@ -4375,6 +4375,8 @@ test("overlay helpers map constants and forward modal/store options", (t) => {
   steam.overlay.activateDialogToUser(steam.Dialog.Friends, 76561198000000000n);
   steam.overlay.activateToStore(480, steam.StoreFlag.AddToCart);
   steam.overlay.openFriendsOverlay({ presenter: mockPresenter });
+  steam.overlay.openCommunityOverlay({ appId: 480, presenter: mockPresenter });
+  steam.overlay.openStatsOverlay({ appId: 480, steamId64: 76561198000000000n, presenter: mockPresenter });
   steam.overlay.openAchievementsOverlay({ appId: 480, steamId64: 76561198000000000n, presenter: mockPresenter });
   steam.openNativeOverlayProbeWindow("Steam Overlay Probe");
   steam.overlay.attachNativeOverlayHostView(nativeWindowHandle);
@@ -4400,6 +4402,8 @@ test("overlay helpers map constants and forward modal/store options", (t) => {
       { method: "overlayActivateDialogToUser", args: ["Friends", 76561198000000000n] },
       { method: "overlayActivateToStore", args: [480, steam.StoreFlag.AddToCart] },
       { method: "activateOverlayToWebPage", args: [steam.STEAM_FRIENDS_OVERLAY_URL, true] },
+      { method: "activateOverlayToWebPage", args: [steam.steamCommunityAppUrl(480), true] },
+      { method: "activateOverlayToWebPage", args: [steam.steamCommunityUserStatsUrl(480, 76561198000000000n), true] },
       { method: "activateOverlayToWebPage", args: [steam.steamCommunityAchievementsUrl(480, 76561198000000000n), true] }
     ]
   );
@@ -4416,7 +4420,12 @@ test("overlay helpers map constants and forward modal/store options", (t) => {
   );
   assert.throws(() => steam.steamCommunityAchievementsUrl(0), /Invalid Steam App ID/);
   assert.throws(() => steam.steamCommunityAchievementsUrl(480, "not-a-steam-id"), /Invalid Steam ID/);
-  assert.deepEqual(presenterCalls, ["prepareForOverlay", "prepareForOverlay"]);
+  assert.deepEqual(presenterCalls, [
+    "prepareForOverlay",
+    "prepareForOverlay",
+    "prepareForOverlay",
+    "prepareForOverlay"
+  ]);
   assert.deepEqual(
     fake.calls.filter((call) =>
       [

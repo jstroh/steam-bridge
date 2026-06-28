@@ -7327,6 +7327,24 @@ export function openFriendsOverlay(options: NativeOverlayWebPagePresenterOptions
   });
 }
 
+export function openCommunityOverlay(
+  options: NativeOverlayAppPagePresenterOptions = {}
+): NativeOverlayPresenter {
+  const { appId = getAppId(), modal = true, ...presenterOptions } = options;
+  return openWebOverlay(steamCommunityAppUrl(appId), {
+    ...presenterOptions,
+    modal
+  });
+}
+
+export function openStatsOverlay(options: NativeOverlayAppPagePresenterOptions = {}): NativeOverlayPresenter {
+  const { appId = getAppId(), steamId64 = getSteamId().steamId64, modal = true, ...presenterOptions } = options;
+  return openWebOverlay(steamCommunityUserStatsUrl(appId, steamId64), {
+    ...presenterOptions,
+    modal
+  });
+}
+
 export function openAchievementsOverlay(
   options: NativeOverlayAppPagePresenterOptions = {}
 ): NativeOverlayPresenter {
@@ -11612,6 +11630,8 @@ export const overlay = {
   openDialogOverlay,
   openWebOverlay,
   openFriendsOverlay,
+  openCommunityOverlay,
+  openStatsOverlay,
   openAchievementsOverlay,
   openStoreOverlay,
   startNativeOverlaySession,
@@ -19351,6 +19371,9 @@ const defaultExport = {
   openDialogOverlay,
   openWebOverlay,
   openFriendsOverlay,
+  openCommunityOverlay,
+  openStatsOverlay,
+  openAchievementsOverlay,
   openStoreOverlay,
   startNativeOverlaySession,
   activateDialogWithNativeSession,
