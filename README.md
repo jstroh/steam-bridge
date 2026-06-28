@@ -454,7 +454,10 @@ log and diagnostics directory back to the local machine with
 `--collect-diagnostics-dir`, and can capture Deck screenshots with
 `--visual-capture-dir`. Use `--visual-close-probe` for `presenter-friends`
 close/back-to-app proof and for raw social-overlay investigation; it sends a
-Deck-side Shift+Tab/Escape probe and records before and after screenshots.
+Deck-side Shift+Tab/Escape probe and records before and after screenshots. For
+presenter-backed product web surfaces, the close probe also verifies
+`active=false`, confirms focus returned to the smoke app, and checks for
+post-close crash evidence.
 For presenter-backed Steam web surfaces such as `presenter-community` and
 `presenter-stats`, add `--visual-close-input web` to close through the visible
 Steam web overlay close control.

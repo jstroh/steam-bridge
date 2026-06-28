@@ -44,6 +44,7 @@ visual_close_probe="0"
 visual_close_input="keyboard"
 visual_toggle_probe="0"
 visual_toggle_input="keyboard"
+require_close_deactivated="0"
 require_single_overlay_target="0"
 require_passive_presenter="0"
 require_idle_presenter="0"
@@ -113,6 +114,7 @@ Options:
                                 Shift+Tab/Escape close probe and capture the result.
   --visual-close-input MODE     Close input for --visual-close-probe: keyboard, web, or both.
                                 web clicks the Steam web overlay close control. Defaults to keyboard.
+  --require-close-deactivated   After --visual-close-probe, require active=false, app focus, and no crash evidence.
   --visual-toggle-probe         With --visual-capture-dir and --keep-open-after-result, capture
                                 before toggling, after opening, and after closing the overlay.
   --visual-toggle-input MODE    Toggle input for --visual-toggle-probe: keyboard, guide, or both.
@@ -285,6 +287,10 @@ while [ "$#" -gt 0 ]; do
     --visual-close-input)
       visual_close_input="${2:?missing --visual-close-input value}"
       shift 2
+      ;;
+    --require-close-deactivated)
+      require_close_deactivated="1"
+      shift
       ;;
     --visual-toggle-probe)
       visual_toggle_probe="1"
@@ -589,12 +595,152 @@ fi
 set -- \$(xdotool getdisplaygeometry)
 display_width=\"\${1:-1280}\"
 display_height=\"\${2:-800}\"
-click_x=\$((display_width * 863 / 1000))
-click_y=\$((display_height * 17 / 100))
+host_window=\"\$(xdotool search --name 'Steam Bridge Native Overlay' 2>/dev/null | tail -n 1 || true)\"
+if [ -n \"\$host_window\" ]; then
+  eval \"\$(xdotool getwindowgeometry --shell \"\$host_window\" 2>/dev/null || true)\"
+fi
+host_x=\"\${X:-0}\"
+host_y=\"\${Y:-0}\"
+host_width=\"\${WIDTH:-\$display_width}\"
+host_height=\"\${HEIGHT:-\$display_height}\"
+click_x=\$((host_x + host_width * 86 / 100))
+click_y=\$((host_y + host_height * 15 / 100))
 xdotool mousemove \"\$click_x\" \"\$click_y\" click 1
 sleep 0.5
 xdotool mousemove \"\$click_x\" \"\$click_y\" click 1
 sleep 0.35"
+}
+
+verify_deck_overlay_closed_after_probe() {
+  local result_file_q app_name_q
+  result_file_q="$(quote_arg "$result_file")"
+  app_name_q="$(quote_arg "$app_name")"
+  echo "Verifying Deck overlay close/deactivation evidence"
+  remote_exec "RESULT_FILE=$result_file_q APP_NAME=$app_name_q python3 - <<'PY'
+import glob
+import json
+import os
+import shutil
+import subprocess
+import sys
+
+result_file = os.environ['RESULT_FILE']
+app_name = os.environ.get('APP_NAME') or 'Steam Bridge Smoke'
+diagnostic_dir = result_file + '.diagnostics'
+lifecycle_path = os.path.join(diagnostic_dir, 'lifecycle.jsonl')
+crash_dump_dir = os.path.join(diagnostic_dir, 'crash-dumps')
+fatal_types = {
+    'app:render-process-gone',
+    'app:child-process-gone',
+    'app:gpu-process-crashed',
+    'process:uncaught-exception',
+    'process:unhandled-rejection',
+}
+failures = []
+
+def active_value(payload):
+    if payload is True or payload == 1:
+        return True
+    if payload is False or payload == 0:
+        return False
+    if not isinstance(payload, dict):
+        return None
+    active_payload = payload.get('0') if isinstance(payload.get('0'), dict) else payload
+    for key in ('active', 'm_bActive'):
+        value = active_payload.get(key)
+        if value is True or value == 1:
+            return True
+        if value is False or value == 0:
+            return False
+    return None
+
+entries = []
+try:
+    with open(lifecycle_path, 'r', encoding='utf-8') as handle:
+        for line in handle:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                entries.append(json.loads(line))
+            except json.JSONDecodeError as error:
+                failures.append(f'invalid lifecycle JSON: {error}')
+except FileNotFoundError:
+    failures.append(f'missing lifecycle log: {lifecycle_path}')
+
+overlay_states = []
+for index, entry in enumerate(entries):
+    if entry.get('type') == 'event:callback:overlay-activated':
+        overlay_states.append((index, active_value(entry.get('payload'))))
+
+first_active_index = next((index for index, state in overlay_states if state is True), None)
+if first_active_index is None:
+    failures.append('no active=true overlay callback in lifecycle log')
+elif not any(index > first_active_index and state is False for index, state in overlay_states):
+    failures.append('no active=false overlay callback after active=true')
+
+fatal_entries = [entry for entry in entries if entry.get('type') in fatal_types]
+if fatal_entries:
+    failures.append('fatal lifecycle events recorded after close probe: ' + ', '.join(entry.get('type', 'unknown') for entry in fatal_entries))
+
+crash_dumps = []
+for root, _dirs, files in os.walk(crash_dump_dir):
+    for name in files:
+        normalized = name.lower()
+        if normalized.endswith(('.dmp', '.mdmp', '.dump', '.crash')):
+            crash_dumps.append(os.path.relpath(os.path.join(root, name), crash_dump_dir))
+if crash_dumps:
+    failures.append('crash dump files found after close probe: ' + ', '.join(crash_dumps))
+
+process_check = subprocess.run(
+    ['pgrep', '-af', '[S]teamBridgeSmoke'],
+    text=True,
+    stdout=subprocess.PIPE,
+    stderr=subprocess.DEVNULL,
+)
+if process_check.returncode != 0 or not process_check.stdout.strip():
+    failures.append('SteamBridgeSmoke process is not running after close probe')
+
+focus_env = os.environ.copy()
+focus_env.setdefault('DISPLAY', ':0')
+if not focus_env.get('XAUTHORITY'):
+    xauth_candidates = glob.glob('/run/user/1000/xauth_*')
+    if xauth_candidates:
+        focus_env['XAUTHORITY'] = xauth_candidates[0]
+
+if shutil.which('xdotool') is None:
+    failures.append('could not read focused X11 window after close probe')
+else:
+    focus_id = subprocess.run(
+        ['xdotool', 'getwindowfocus'],
+        env=focus_env,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+    )
+    if focus_id.returncode != 0 or not focus_id.stdout.strip():
+        failures.append('could not read focused X11 window after close probe')
+    else:
+        focus_name_result = subprocess.run(
+            ['xdotool', 'getwindowname', focus_id.stdout.strip()],
+            env=focus_env,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+        )
+        focus_name = focus_name_result.stdout.strip()
+        focus_name_lower = focus_name.lower()
+        expected = [app_name.lower(), 'steam bridge electron smoke', 'steambridgesmoke']
+        if focus_name_result.returncode != 0 or not any(name and name in focus_name_lower for name in expected):
+            failures.append(f'focused window after close probe is not the smoke app: {focus_name!r}')
+
+if failures:
+    for failure in failures:
+        print(f'Deck close verification failed: {failure}', file=sys.stderr)
+    raise SystemExit(1)
+
+print('Deck overlay close verified: active=false observed, app focused, no crash evidence.')
+PY"
 }
 
 send_deck_overlay_toggle_probe() {
@@ -772,6 +918,7 @@ fi"
 }
 
 run_visual_capture() {
+  local status=0
   if [ -z "$visual_capture_dir" ]; then
     return 0
   fi
@@ -781,32 +928,39 @@ run_visual_capture() {
     return 0
   fi
 
-  capture_deck_screenshot "overlay-open"
-  capture_deck_overlay_state "overlay-open"
+  capture_deck_screenshot "overlay-open" || status=$?
+  capture_deck_overlay_state "overlay-open" || status=$?
   if [ "$visual_toggle_probe" = "1" ]; then
     if [ "$visual_toggle_input" = "keyboard" ]; then
-      run_visual_toggle_probe_for_input "keyboard" "" "1"
+      run_visual_toggle_probe_for_input "keyboard" "" "1" || status=$?
     elif [ "$visual_toggle_input" = "guide" ]; then
-      run_visual_toggle_probe_for_input "guide" "" "0"
+      run_visual_toggle_probe_for_input "guide" "" "0" || status=$?
     else
-      run_visual_toggle_probe_for_input "keyboard" "keyboard-" "1"
-      run_visual_toggle_probe_for_input "guide" "guide-" "0"
+      run_visual_toggle_probe_for_input "keyboard" "keyboard-" "1" || status=$?
+      run_visual_toggle_probe_for_input "guide" "guide-" "0" || status=$?
     fi
   fi
   if [ "$visual_close_probe" = "1" ]; then
+    if [ "$require_close_deactivated" != "1" ] && supports_close_deactivation_check; then
+      require_close_deactivated="1"
+    fi
     if [ "$visual_close_input" = "keyboard" ]; then
-      send_deck_overlay_close_probe
+      send_deck_overlay_close_probe || status=$?
     elif [ "$visual_close_input" = "web" ]; then
-      send_deck_web_overlay_close_probe
+      send_deck_web_overlay_close_probe || status=$?
     else
-      send_deck_overlay_close_probe
+      send_deck_overlay_close_probe || status=$?
       sleep 0.5
-      send_deck_web_overlay_close_probe
+      send_deck_web_overlay_close_probe || status=$?
     fi
     sleep 1
-    capture_deck_screenshot "after-close-probe"
-    capture_deck_overlay_state "after-close-probe"
+    capture_deck_screenshot "after-close-probe" || status=$?
+    capture_deck_overlay_state "after-close-probe" || status=$?
+    if [ "$require_close_deactivated" = "1" ]; then
+      verify_deck_overlay_closed_after_probe || status=$?
+    fi
   fi
+  return "$status"
 }
 
 run_visual_toggle_probe_for_input() {
@@ -1040,6 +1194,21 @@ is_presenter_product_action() {
   case "$action" in
     presenter-store|presenter-web|presenter-friends|presenter-dialog-auto|presenter-community|presenter-stats|presenter-achievements|presenter-checkout|presenter-shortcut|presenter-achievement-progress)
       return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+supports_close_deactivation_check() {
+  case "$action" in
+    presenter-store|presenter-web|presenter-friends|presenter-dialog-auto|presenter-community|presenter-stats|presenter-achievements)
+      return 0
+      ;;
+    presenter-checkout)
+      checkout_opens_overlay
+      return $?
       ;;
     *)
       return 1
@@ -1426,14 +1595,17 @@ run_helper() {
 }
 
 run_helper_with_artifacts() {
-  local status
+  local status visual_status
   set +e
   run_helper "$@"
   status=$?
+  run_visual_capture
+  visual_status=$?
+  collect_remote_diagnostics
+  if [ "$status" -eq 0 ] && [ "$visual_status" -ne 0 ]; then
+    status=$visual_status
+  fi
   set -e
-
-  run_visual_capture || true
-  collect_remote_diagnostics || true
 
   return "$status"
 }

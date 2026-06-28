@@ -291,7 +291,9 @@ shortcut bridge is the product path for Electron keyboard toggle behavior. The
 Deck runner can collect focused toggle evidence with
 `--visual-toggle-probe --visual-toggle-input keyboard|guide|both`, and can
 close presenter-backed Steam web surfaces through the visible Steam web close
-control with `--visual-close-probe --visual-close-input web`; current
+control with `--visual-close-probe --visual-close-input web`. For those
+presenter-backed product surfaces, the close probe also verifies the
+post-close `active=false` callback, app focus, and crash diagnostics. Current
 focused Desktop evidence for raw Steam interception still does not show
 Shift+Tab or a virtual Guide/Steam-button controller event opening overlay UI.
 Add

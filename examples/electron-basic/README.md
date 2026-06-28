@@ -266,7 +266,9 @@ main/native process. The Deck runner requires that single-target process shape
 automatically for presenter-backed product actions. It also requires idle
 presenter state for checkout readiness and the managed shortcut bridge, and it
 fails presenter-backed product runs if the smoke app reports crash dumps or
-fatal Electron lifecycle events.
+fatal Electron lifecycle events. With `--visual-close-probe`, presenter-backed
+product web surfaces also require an `active=false` close callback, a still
+running and focused smoke app, and no post-close crash evidence.
 
 For the generic Friends List path, use:
 

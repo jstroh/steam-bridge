@@ -161,6 +161,10 @@ part of the proof: checkout readiness and managed shortcut attach must park with
 click-through, non-focusable, and overlay-inactive while Steam may still pump
 notification frames. Presenter-backed product actions also require clean smoke
 crash diagnostics: no crash dump files and no fatal Electron lifecycle events.
+When `--visual-close-probe` is used on presenter-backed product web surfaces,
+the Deck runner also verifies a post-close `active=false` callback, confirms the
+smoke app remains the focused X11 window, and re-checks crash evidence after
+the close input.
 The older managed native `--action native-web --web-modal true` path remains
 compatibility coverage.
 
