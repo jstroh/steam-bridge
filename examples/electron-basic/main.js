@@ -318,7 +318,7 @@ async function runAutorunSmoke() {
 
   await delay(AUTORUN_ACTION_DELAY_MS);
   const overlayActiveCount = countOverlayActiveEvents();
-  const actionResult = runAutorunAction(AUTORUN_ACTION);
+  const actionResult = await runAutorunAction(AUTORUN_ACTION);
   const waitResult = await waitForAutorunResult(AUTORUN_ACTION, AUTORUN_RESULT_DELAY_MS, overlayActiveCount);
 
   const result = sanitize({
@@ -384,7 +384,7 @@ async function waitForAutorunResult(action, durationMs, overlayActiveCount) {
   return { ok: true, action, pumps, durationMs: elapsedMs };
 }
 
-function runAutorunAction(action) {
+async function runAutorunAction(action) {
   try {
     switch (action) {
       case "none":
@@ -435,7 +435,7 @@ function runAutorunAction(action) {
         openPresenterAchievementsOverlay();
         return { ok: true, action };
       case "presenter-checkout":
-        openPresenterCheckoutOverlay();
+        await openPresenterCheckoutOverlay();
         return { ok: true, action };
       case "presenter-shortcut":
         openPresenterShortcutBridge();
@@ -675,7 +675,7 @@ function openPresenterAchievementsOverlay() {
   return snapshot();
 }
 
-function openPresenterCheckoutOverlay() {
+async function openPresenterCheckoutOverlay() {
   const overlay = ensureElectronSteamOverlay();
   if (CHECKOUT_URL || CHECKOUT_TRANSACTION_ID) {
     const target = {
@@ -703,11 +703,12 @@ function openPresenterCheckoutOverlay() {
       returnUrl: CHECKOUT_RETURN_URL || null
     });
   } else {
-    overlay.prepareForCheckout();
-    recordEvent("overlay:presenter-checkout-ready", {
-      target: "checkout",
-      note: "set STEAM_BRIDGE_SMOKE_CHECKOUT_URL or STEAM_BRIDGE_SMOKE_CHECKOUT_TRANSACTION_ID to open checkout",
-      presenter: overlay.snapshot()
+    await overlay.withCheckoutPrepared(() => {
+      recordEvent("overlay:presenter-checkout-ready", {
+        target: "checkout",
+        note: "set STEAM_BRIDGE_SMOKE_CHECKOUT_URL or STEAM_BRIDGE_SMOKE_CHECKOUT_TRANSACTION_ID to open checkout",
+        presenter: overlay.snapshot()
+      });
     });
   }
   return snapshot();

@@ -146,11 +146,13 @@ await steamOverlay.openAndWait({
   modal: true
 });
 
-steamOverlay.prepareForCheckout();
+const txn = await steamOverlay.withCheckoutPrepared(() =>
+  backend.createSteamTransaction({ itemId: 100 })
+);
 
 await steamOverlay.openAndWait({
   type: "checkout",
-  steamUrl
+  steamUrl: txn.steamurl
 });
 ```
 
@@ -286,14 +288,17 @@ Current evidence:
   transparent/click-through `currentFps=0` with no post-close pumping.
 - The same path is good enough for checkout-style proof when launched under a
   real installed Steam app with a configured product or transaction. The public
-  API now has a named checkout path: `steamOverlay.prepareForCheckout()` primes
-  the presenter before an in-game `InitTxn`, and `steamOverlay.open({ type:
-  "checkout", steamUrl })` or `steamOverlay.open({ type: "checkout",
-  transactionId })` opens a returned or known approval surface through the same
-  verified presenter route. App code can call `openAndWait(...)` for the whole
-  show/close/park lifecycle, or await `waitForOverlayShown()` and
-  `parkWhenSteamOverlayCloses()` when it needs lower-level control, instead of
-  carrying local callback/timer plumbing. `MicroTxnAuthorizationResponse` is
+  API now has a named checkout wrapper:
+  `steamOverlay.withCheckoutPrepared(() => startTxn())` primes the presenter
+  before an in-game `InitTxn` and returns the app/backend result unchanged.
+  `steamOverlay.open({ type: "checkout", steamUrl })` or
+  `steamOverlay.open({ type: "checkout", transactionId })` opens a returned or
+  known approval surface through the same verified presenter route. App code can
+  call `openAndWait(...)` for the whole show/close/park lifecycle, or await
+  `waitForOverlayShown()` and `parkWhenSteamOverlayCloses()` when it needs
+  lower-level control, instead of carrying local callback/timer plumbing.
+  `prepareForCheckout()` remains as the lower-level split-step escape hatch.
+  `MicroTxnAuthorizationResponse` is
   treated as an authorization
   event, not an overlay-close signal; the smoke app records the presenter
   snapshot on `callback:microtxn` so real-app purchase proof can show the native

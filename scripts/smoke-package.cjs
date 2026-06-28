@@ -253,6 +253,11 @@ const openAndWaitPromise = typedElectronSteamOverlay.openAndWait(steamOverlayTar
   showTimeoutMs: 15000,
   closeTimeoutMs: 300000
 });
+const checkoutPreparePromise = typedElectronSteamOverlay.withCheckoutPrepared(() => ({
+  steamUrl: "https://checkout.steampowered.com/checkout/approvetxn/123/"
+}), {
+  durationMs: 5000
+});
 const steamId: SteamId | undefined = undefined;
 
 void client;
@@ -273,6 +278,7 @@ void electronSteamOverlayFn;
 void steamOverlayTarget;
 void typedElectronSteamOverlay;
 void openAndWaitPromise;
+void checkoutPreparePromise;
 void inputPassthroughFn;
 void opacityFn;
 void friendsOverlayUrl;

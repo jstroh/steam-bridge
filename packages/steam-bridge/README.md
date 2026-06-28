@@ -166,9 +166,9 @@ await steamOverlay.openAndWait({
   modal: true
 });
 
-// Before your backend calls InitTxn for an in-game purchase, prime the
-// presenter so Steam's automatic authorization overlay has a native surface.
-steamOverlay.prepareForCheckout();
+const txn = await steamOverlay.withCheckoutPrepared(() =>
+  backend.createSteamTransaction({ itemId: 100 })
+);
 
 // If InitTxn returns a web checkout URL, or you need to reopen a known
 // transaction approval surface, use the checkout target.
@@ -231,12 +231,16 @@ records those await points as `overlay:presenter-wait-shown`,
 `overlay:presenter-wait-closed`, and `overlay:presenter-parked` lifecycle
 events so Deck/Linux artifact review proves the same public API app builders
 call.
-For `InitTxn` flows, call `steamOverlay.prepareForCheckout()` immediately before
-the app asks its backend to start the transaction. If Steam returns a web
-checkout URL, pass it as `steamOverlay.open({ type: "checkout", steamUrl })`.
-If you have a transaction id, call `steamOverlay.open({ type: "checkout",
-transactionId })` and Steam Bridge builds the approval URL for you. Passive
-Steam notifications such as achievement progress toasts are automatically
+For `InitTxn` flows, wrap the app's backend transaction call with
+`steamOverlay.withCheckoutPrepared(() => startTxn())`. Steam Bridge primes the
+native presenter before the backend starts the transaction, then returns the
+backend result unchanged. If Steam returns a web checkout URL, pass it as
+`steamOverlay.open({ type: "checkout", steamUrl })`. If you have a transaction
+id, call `steamOverlay.open({ type: "checkout", transactionId })` and Steam
+Bridge builds the approval URL for you. `steamOverlay.prepareForCheckout()`
+remains available for lower-level flows that need to separate presenter priming
+from the backend call. Passive Steam notifications such as achievement progress
+toasts are automatically
 primed by the managed Electron overlay before the relevant achievement/stats
 calls; use `steamOverlay.prepareForNotification()` only for lower-level or
 custom Steam API calls. On

@@ -358,8 +358,9 @@ await steamOverlay.openAndWait({
   appId: 480
 });
 
-// Prime the presenter before your backend starts an in-game InitTxn flow.
-steamOverlay.prepareForCheckout();
+const txn = await steamOverlay.withCheckoutPrepared(() =>
+  backend.createSteamTransaction({ itemId: 100 })
+);
 
 // Open a Steam checkout URL returned by InitTxn, or pass transactionId when
 // reopening a known transaction approval page.
@@ -475,14 +476,17 @@ to the Steam store web overlay surface because that is the reusable Deck
 Desktop path that opens, accepts input, closes, and returns to Electron cleanly.
 The public smoke app can verify checkout readiness, but
 real purchase-content proof still requires a real Steam app and configured
-product. For in-game microtransactions, call
-`steamOverlay.prepareForCheckout()` before your backend starts `InitTxn` so
-Steam's automatic authorization UI has a native presenter ready. If Steam
-returns a web checkout URL, pass it with `steamOverlay.open({ type: "checkout",
-steamUrl })`. If you have a transaction id, use `transactionId` and Steam
-Bridge builds the approval URL. Treat `MicroTxnAuthorizationResponse` as a
-purchase authorization event, not as an overlay-close event; keep the presenter
-alive until Steam emits overlay inactive and the app has returned. The smoke app
+product. For in-game microtransactions, wrap the backend call that starts
+`InitTxn` with `steamOverlay.withCheckoutPrepared(() => startTxn())` so Steam's
+automatic authorization UI has a native presenter ready before the transaction
+begins. If Steam returns a web checkout URL, pass it with
+`steamOverlay.open({ type: "checkout", steamUrl })`. If you have a transaction
+id, use `transactionId` and Steam Bridge builds the approval URL.
+`steamOverlay.prepareForCheckout()` remains available for lower-level flows
+that need to separate presenter priming from the backend call. Treat
+`MicroTxnAuthorizationResponse` as a purchase authorization event, not as an
+overlay-close event; keep the presenter alive until Steam emits overlay
+inactive and the app has returned. The smoke app
 records presenter diagnostics on `callback:microtxn` so real-app purchase runs
 can prove the presenter was still available during authorization. Passive Steam
 notifications such as achievement progress toasts are automatically primed by

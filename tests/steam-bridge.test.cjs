@@ -4622,7 +4622,7 @@ test("electron overlay helper scrubs Steam overlay preload from child process en
   assert.deepEqual(electron.electronScrubSteamOverlayChildProcessEnv(env), []);
 });
 
-test("electron steam overlay manager owns one presenter and routes opens", (t) => {
+test("electron steam overlay manager owns one presenter and routes opens", async (t) => {
   const hostHandle = Buffer.from([8, 7, 6, 5]);
   let hostOpen = false;
   let closedHandler;
@@ -4698,6 +4698,15 @@ test("electron steam overlay manager owns one presenter and routes opens", (t) =
   overlay.open({ type: "friends" });
   overlay.open({ type: "web", url: "https://store.steampowered.com/app/480/", modal: true });
   overlay.prepareForCheckout();
+  const checkoutPreparedLastCall = [];
+  const checkoutResult = await overlay.withCheckoutPrepared(() => {
+    checkoutPreparedLastCall.push(fake.calls.at(-1)?.method);
+    return { steamUrl: "https://checkout.steampowered.com/checkout/approvetxn/123/" };
+  }, { durationMs: 2500 });
+  assert.deepEqual(checkoutPreparedLastCall, ["pumpNativeOverlayProbeWindow"]);
+  assert.deepEqual(checkoutResult, {
+    steamUrl: "https://checkout.steampowered.com/checkout/approvetxn/123/"
+  });
   overlay.prepareForNotification();
   overlay.pump();
 
@@ -4706,6 +4715,7 @@ test("electron steam overlay manager owns one presenter and routes opens", (t) =
   assert.equal(overlay.isOpen(), false);
   assert.throws(() => overlay.open({ type: "friends" }), /Electron Steam overlay is closed/);
   assert.throws(() => overlay.prepareForCheckout(), /Electron Steam overlay is closed/);
+  await assert.rejects(overlay.withCheckoutPrepared(() => "closed"), /Electron Steam overlay is closed/);
 
   assert.deepEqual(
     fake.calls.filter((call) =>
@@ -4730,6 +4740,7 @@ test("electron steam overlay manager owns one presenter and routes opens", (t) =
       { method: "activateOverlayToWebPage", args: [steam.STEAM_FRIENDS_OVERLAY_URL, true] },
       { method: "pumpNativeOverlayProbeWindow", args: [] },
       { method: "activateOverlayToWebPage", args: ["https://store.steampowered.com/app/480/", true] },
+      { method: "pumpNativeOverlayProbeWindow", args: [] },
       { method: "pumpNativeOverlayProbeWindow", args: [] },
       { method: "setNativeOverlayHostInputPassthrough", args: [true] },
       { method: "setNativeOverlayHostOpacity", args: [false] },

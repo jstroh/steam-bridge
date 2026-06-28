@@ -1792,6 +1792,10 @@ export interface ElectronSteamOverlayOpenAndWaitResult {
   parked: ElectronSteamOverlaySnapshot;
 }
 
+export interface ElectronSteamOverlayCheckoutPrepareOptions {
+  durationMs?: number;
+}
+
 export type ElectronOverlayWindow = Parameters<typeof electronOverlayPresenterOptionsImpl>[0] & {
   once?(event: "closed", handler: () => void): void;
   webContents: Parameters<typeof electronOverlayPresenterOptionsImpl>[0]["webContents"] & {
@@ -1825,6 +1829,10 @@ export interface ElectronSteamOverlay extends CallbackHandle {
     target: SteamOverlayTarget,
     options?: ElectronSteamOverlayOpenAndWaitOptions
   ): Promise<ElectronSteamOverlayOpenAndWaitResult>;
+  withCheckoutPrepared<T>(
+    operation: () => T | Promise<T>,
+    options?: ElectronSteamOverlayCheckoutPrepareOptions
+  ): Promise<T>;
   prepareForCheckout(durationMs?: number): NativeOverlayPresenter;
   prepareForNotification(durationMs?: number): NativeOverlayPresenter;
   waitForOverlayShown(options?: ElectronSteamOverlayWaitOptions): Promise<ElectronSteamOverlaySnapshot>;
@@ -7731,6 +7739,14 @@ export function createElectronSteamOverlay(
         signal: options.signal
       });
       return { shown, parked };
+    },
+    async withCheckoutPrepared<T>(
+      operation: () => T | Promise<T>,
+      options: ElectronSteamOverlayCheckoutPrepareOptions = {}
+    ): Promise<T> {
+      assertOpen();
+      presenter.prepareForOverlay(options.durationMs);
+      return await operation();
     },
     prepareForCheckout(durationMs?: number): NativeOverlayPresenter {
       assertOpen();
