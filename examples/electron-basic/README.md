@@ -109,14 +109,15 @@ The `presenter-*` actions use `client.overlay.attachPresenter(...)` and reuse th
 same passive, click-through presenter for the requested overlay target. Use
 `presenter-web --web-modal true` to verify the app-facing persistent presenter
 path. On Linux/X11, the presenter is transparent and click-through while fully
-idle, can become visible while remaining click-through for `overlayNeedsPresent`,
-restores both opacity and input while opening or showing Steam UI, and parks
-transparent after Steam emits overlay inactive callbacks. The Electron overlay
-helper isolates Chromium children by default so Deck Desktop proof runs have one
-`gameoverlayui` process attached to the main/native process, not a duplicate GPU
-overlay target. `presenter-dialog` is an investigation action: with child-process
-isolation enabled, Friends/Game Overview may not render; with isolation disabled,
-it may render through the Chromium hook but still fail close/back-to-app proof.
+idle, polls without pumping frames by default, can become visible while remaining
+click-through for `overlayNeedsPresent`, restores both opacity and input while
+opening or showing Steam UI, and parks transparent after Steam emits overlay
+inactive callbacks. The Electron overlay helper isolates Chromium children by
+default so Deck Desktop proof runs have one `gameoverlayui` process attached to
+the main/native process, not a duplicate GPU overlay target. `presenter-dialog`
+is an investigation action: with child-process isolation enabled, Friends/Game
+Overview may not render; with isolation disabled, it may render through the
+Chromium hook but still fail close/back-to-app proof.
 Use `presenter-friends` to verify the recommended Friends List path:
 `client.overlay.openFriendsOverlay({ presenter })` opens Steam Community chat
 through the same native web presenter used by checkout/store overlays, keeping a

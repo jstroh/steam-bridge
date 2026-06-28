@@ -329,7 +329,8 @@ The presenter stays passive and click-through while idle, polls Steam overlay
 state cheaply, and only pumps frames when Steam reports `overlayNeedsPresent` or
 an overlay is being opened/active. This is the path intended for checkout
 overlays and passive Steam notifications without forcing the Electron game
-window into a constant repaint loop.
+window into a constant repaint loop. By default `idleFps` is `0`; set it
+explicitly only for diagnostic comparisons.
 
 `electronConfigureSteamOverlay()` also keeps Electron's Chromium children from
 becoming competing Steam overlay targets. By default it removes Steam's overlay

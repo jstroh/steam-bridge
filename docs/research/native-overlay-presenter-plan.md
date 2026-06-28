@@ -183,6 +183,9 @@ Current evidence:
   transparent, click-through passive mode after overlay close. This proof uses
   `electronConfigureSteamOverlay()` child-process isolation so there is only one
   `gameoverlayui` target attached to the main/native process.
+- The reusable presenter defaults to `idleFps: 0`, so an attached idle host polls
+  overlay state without continuously presenting frames. It starts pumping only
+  for activation boost windows, active overlays, or `overlayNeedsPresent`.
 - Deck Desktop Mode can show a passive achievement-progress toast over the
   Electron smoke app through the reusable presenter path while the native host
   remains click-through and transparent, also with a single overlay target.

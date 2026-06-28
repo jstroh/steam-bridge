@@ -4770,6 +4770,67 @@ test("native overlay presenter reuses a passive host for overlay activation", as
   );
 });
 
+test("native overlay presenter does not pump frames while idle by default", async (t) => {
+  let hostOpen = false;
+  const hostHandle = Buffer.from([9, 0, 0, 0, 0, 0, 0, 0]);
+  const fake = createFakeNative({
+    attachNativeOverlayHostView(nativeWindowHandle) {
+      hostOpen = true;
+      this.calls.push({ method: "attachNativeOverlayHostView", args: [nativeWindowHandle] });
+    },
+    pumpNativeOverlayProbeWindow() {
+      if (!hostOpen) {
+        throw new Error("native overlay presenter is closed");
+      }
+      this.calls.push({ method: "pumpNativeOverlayProbeWindow", args: [] });
+    },
+    showNativeOverlayHostView() {
+      this.calls.push({ method: "showNativeOverlayHostView", args: [] });
+    },
+    setNativeOverlayHostInputPassthrough(passThrough) {
+      this.calls.push({ method: "setNativeOverlayHostInputPassthrough", args: [passThrough] });
+    },
+    setNativeOverlayHostOpacity(opaque) {
+      this.calls.push({ method: "setNativeOverlayHostOpacity", args: [opaque] });
+    },
+    detachNativeOverlayHostView() {
+      hostOpen = false;
+      this.calls.push({ method: "detachNativeOverlayHostView", args: [] });
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return false;
+    },
+    isNativeOverlayHostViewOpen() {
+      return hostOpen;
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  const presenter = steam.overlay.attachPresenter({
+    title: "Zero Idle Presenter",
+    nativeWindowHandle: hostHandle,
+    pollIntervalMs: 50
+  });
+
+  assert.equal(presenter.snapshot().idleFps, 0);
+  assert.equal(presenter.snapshot().currentFps, 0);
+  assert.equal(presenter.snapshot().pumpCount, 1);
+
+  await new Promise((resolve) => setTimeout(resolve, 130));
+
+  const afterIdle = presenter.snapshot();
+  assert.equal(afterIdle.currentFps, 0);
+  assert.equal(afterIdle.pumpCount, 1);
+  assert.ok(afterIdle.pollCount >= 1);
+  assert.equal(afterIdle.clickThrough, true);
+  assert.equal(afterIdle.transparent, true);
+  assert.equal(fake.calls.filter((call) => call.method === "pumpNativeOverlayProbeWindow").length, 1);
+
+  presenter.close();
+});
+
 test("native overlay presenter keeps passive input while overlay needs present", async (t) => {
   let hostOpen = false;
   let overlayNeedsPresent = false;

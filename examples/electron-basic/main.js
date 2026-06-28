@@ -575,7 +575,6 @@ function nativePresenterOptions() {
   return steamworks.electronOverlayPresenterOptions(window, {
     title: "Steam Bridge Overlay Presenter",
     restoreFocusDelayMs: 500,
-    idleFps: 1,
     needsPresentFps: 30,
     activeOverlayFps: 30,
     pollIntervalMs: 250

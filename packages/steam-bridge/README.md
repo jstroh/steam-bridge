@@ -176,7 +176,8 @@ transparent and click-through; `overlayNeedsPresent` can make it visible while
 leaving input click-through for passive notifications; opening or active overlay
 mode restores both opacity and input so Steam web or checkout UI can receive
 clicks, then parks the host transparent after Steam reports the overlay
-inactive. Use `client.overlay.openFriendsOverlay({ presenter })` for a generic
+inactive. The default `idleFps` is `0`; opt into nonzero idle pumping only for
+diagnostics. Use `client.overlay.openFriendsOverlay({ presenter })` for a generic
 Friends List surface; it opens Steam Community chat through the same native web
 presenter path, keeping Electron child-process isolation intact. Use
 `client.overlay.openAchievementsOverlay({ appId, presenter })` for the current
