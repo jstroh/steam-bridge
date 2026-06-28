@@ -348,6 +348,8 @@ steamOverlay.open({
   url: "https://store.steampowered.com/app/480/",
   modal: true
 });
+await steamOverlay.waitForOverlayShown();
+await steamOverlay.parkWhenSteamOverlayCloses();
 
 steamOverlay.open({
   type: "store",
@@ -363,6 +365,8 @@ steamOverlay.open({
   type: "checkout",
   steamUrl: txn.steamurl
 });
+await steamOverlay.waitForOverlayShown();
+await steamOverlay.parkWhenSteamOverlayCloses();
 
 // Prime the same presenter for passive Steam notifications.
 steamOverlay.prepareForNotification();
@@ -392,8 +396,10 @@ forcing the Electron game window into a constant repaint loop. By default
 `idleFps` is `0`; set it explicitly only for diagnostic comparisons. Use
 `attachPresenter(...)` and pass `presenter` to `openSteamOverlay(...)` directly
 only when you need lower-level lifecycle control.
-Call `steamOverlay.snapshot()` when you need diagnostics; it returns the native
-presenter state plus an `electronOverlay` block with the presenter mode,
+Use `waitForOverlayShown()`, `waitForOverlayClosed()`, and
+`parkWhenSteamOverlayCloses()` when app code needs explicit lifecycle await
+points. Call `steamOverlay.snapshot()` when you need diagnostics; it returns the
+native presenter state plus an `electronOverlay` block with the presenter mode,
 shortcut policy, and window-close ownership.
 The smoke verifiers can require those managed diagnostics with
 `--require-electron-overlay`, `--require-presenter-mode <persistent|session>`,

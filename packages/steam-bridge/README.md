@@ -165,6 +165,8 @@ steamOverlay.open({
   url: checkoutUrl,
   modal: true
 });
+await steamOverlay.waitForOverlayShown();
+await steamOverlay.parkWhenSteamOverlayCloses();
 
 // Before your backend calls InitTxn for an in-game purchase, prime the
 // presenter so Steam's automatic authorization overlay has a native surface.
@@ -176,6 +178,8 @@ steamOverlay.open({
   type: "checkout",
   steamUrl: txn.steamurl
 });
+await steamOverlay.waitForOverlayShown();
+await steamOverlay.parkWhenSteamOverlayCloses();
 
 // Prime the same presenter for passive Steam notifications, such as
 // achievement progress toasts, without making it interactive.
@@ -222,6 +226,10 @@ used by the Steam Deck Desktop Mode proofs; `openSteamOverlay(...)` and the
 lower-level named helpers remain available for apps that prefer explicit
 lifecycle control. The public smoke app can verify checkout readiness, but real
 purchase-content proof still requires a real Steam app and configured product.
+Use `waitForOverlayShown()`, `waitForOverlayClosed()`, and
+`parkWhenSteamOverlayCloses()` when app code needs explicit lifecycle await
+points; these wait on Steam Bridge's callback/snapshot state and keep the native
+presenter parking behavior inside the bridge.
 For `InitTxn` flows, call `steamOverlay.prepareForCheckout()` immediately before
 the app asks its backend to start the transaction. If Steam returns a web
 checkout URL, pass it as `steamOverlay.open({ type: "checkout", steamUrl })`.

@@ -5055,6 +5055,104 @@ test("electron steam overlay manager opens the presenter route from the default 
   assert.equal(overlay.isOpen(), false);
 });
 
+test("electron steam overlay manager exposes lifecycle wait helpers", async (t) => {
+  const hostHandle = Buffer.from([2, 4, 6, 8]);
+  let hostOpen = false;
+  const fake = createFakeNative({
+    attachNativeOverlayHostView(nativeWindowHandle) {
+      hostOpen = true;
+      this.calls.push({ method: "attachNativeOverlayHostView", args: [nativeWindowHandle] });
+    },
+    pumpNativeOverlayProbeWindow() {
+      this.calls.push({ method: "pumpNativeOverlayProbeWindow", args: [] });
+    },
+    showNativeOverlayHostView() {
+      this.calls.push({ method: "showNativeOverlayHostView", args: [] });
+    },
+    setNativeOverlayHostInputPassthrough(passThrough) {
+      this.calls.push({ method: "setNativeOverlayHostInputPassthrough", args: [passThrough] });
+    },
+    setNativeOverlayHostOpacity(opaque) {
+      this.calls.push({ method: "setNativeOverlayHostOpacity", args: [opaque] });
+    },
+    detachNativeOverlayHostView() {
+      hostOpen = false;
+      this.calls.push({ method: "detachNativeOverlayHostView", args: [] });
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return false;
+    },
+    isNativeOverlayHostViewOpen() {
+      return hostOpen;
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  const window = {
+    isDestroyed() {
+      return false;
+    },
+    getNativeWindowHandle() {
+      return hostHandle;
+    },
+    once() {},
+    webContents: {
+      once() {},
+      invalidate() {},
+      send() {}
+    }
+  };
+
+  const overlay = steam.overlay.createElectronSteamOverlay(window, {
+    title: "Electron Lifecycle Overlay",
+    activationBoostMs: 0,
+    activeGraceMs: 0,
+    pollIntervalMs: 50
+  });
+
+  overlay.open({ type: "friends" });
+
+  const shown = overlay.waitForOverlayShown({ timeoutMs: 200, pollIntervalMs: 5 });
+  fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: true });
+  const shownSnapshot = await shown;
+
+  assert.equal(shownSnapshot.overlayActive, true);
+  assert.equal(shownSnapshot.overlayWasActive, true);
+
+  const closed = overlay.waitForOverlayClosed({ timeoutMs: 200, pollIntervalMs: 5 });
+  const parked = overlay.parkWhenSteamOverlayCloses({ timeoutMs: 200, pollIntervalMs: 5 });
+  fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: false });
+
+  const closedSnapshot = await closed;
+  const parkedSnapshot = await parked;
+
+  assert.equal(closedSnapshot.overlayActive, false);
+  assert.equal(closedSnapshot.overlayWasActive, true);
+  assert.equal(parkedSnapshot.mode, "passive");
+  assert.equal(parkedSnapshot.clickThrough, true);
+  assert.equal(parkedSnapshot.transparent, true);
+  assert.equal(parkedSnapshot.currentFps, 0);
+
+  await assert.rejects(
+    overlay.waitForOverlayShown({ timeoutMs: 5, pollIntervalMs: 1 }),
+    /Timed out waiting for Steam overlay to become active after 5ms/
+  );
+
+  const abortController = new AbortController();
+  const aborted = overlay.waitForOverlayShown({
+    timeoutMs: 200,
+    pollIntervalMs: 5,
+    signal: abortController.signal
+  });
+  abortController.abort();
+  await assert.rejects(aborted, /Aborted waiting for Steam overlay to become active/);
+
+  overlay.close();
+  assert.throws(() => overlay.waitForOverlayShown(), /Electron Steam overlay is closed/);
+});
+
 test("electron steam overlay manager tolerates destroyed webContents during window close", (t) => {
   const hostHandle = Buffer.from([23, 42, 108, 15]);
   let hostOpen = false;

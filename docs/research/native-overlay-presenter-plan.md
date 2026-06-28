@@ -142,6 +142,8 @@ steamOverlay.open({
   url: checkoutUrl,
   modal: true
 });
+await steamOverlay.waitForOverlayShown();
+await steamOverlay.parkWhenSteamOverlayCloses();
 
 steamOverlay.prepareForCheckout();
 
@@ -149,6 +151,8 @@ steamOverlay.open({
   type: "checkout",
   steamUrl
 });
+await steamOverlay.waitForOverlayShown();
+await steamOverlay.parkWhenSteamOverlayCloses();
 ```
 
 The presenter should:
@@ -284,12 +288,14 @@ Current evidence:
   the presenter before an in-game `InitTxn`, and `steamOverlay.open({ type:
   "checkout", steamUrl })` or `steamOverlay.open({ type: "checkout",
   transactionId })` opens a returned or known approval surface through the same
-  verified presenter route. `MicroTxnAuthorizationResponse` is treated as an
-  authorization event, not an overlay-close signal; the smoke app records the
-  presenter snapshot on `callback:microtxn` so real-app purchase proof can show
-  the native presenter remained available through authorization and parked only
-  after Steam emitted overlay inactive. A 2026-06-28 Deck Desktop prepare-only
-  run verified checkout readiness returns to passive idle, and a synthetic
+  verified presenter route. App code can await `waitForOverlayShown()` and
+  `parkWhenSteamOverlayCloses()` instead of carrying local callback/timer
+  plumbing. `MicroTxnAuthorizationResponse` is treated as an authorization
+  event, not an overlay-close signal; the smoke app records the presenter
+  snapshot on `callback:microtxn` so real-app purchase proof can show the native
+  presenter remained available through authorization and parked only after Steam
+  emitted overlay inactive. A 2026-06-28 Deck Desktop prepare-only run verified
+  checkout readiness returns to passive idle, and a synthetic
   transaction approval URL run verified checkout-style open, close, app focus,
   no crash evidence, and no post-close pumping without committing private app
   details.

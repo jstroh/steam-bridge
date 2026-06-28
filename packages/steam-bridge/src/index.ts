@@ -1765,6 +1765,12 @@ export interface ElectronSteamOverlayShortcutSnapshot {
   targetType: ElectronSteamOverlayShortcutTargetType;
 }
 
+export interface ElectronSteamOverlayWaitOptions {
+  timeoutMs?: number;
+  pollIntervalMs?: number;
+  signal?: AbortSignal;
+}
+
 export interface ElectronSteamOverlaySnapshot extends NativeOverlayPresenterSnapshot {
   electronOverlay: {
     presenterMode: ElectronSteamOverlayPresenterMode;
@@ -1803,6 +1809,9 @@ export interface ElectronSteamOverlay extends CallbackHandle {
   open(target: SteamOverlayTarget): NativeOverlayPresenter;
   prepareForCheckout(durationMs?: number): NativeOverlayPresenter;
   prepareForNotification(durationMs?: number): NativeOverlayPresenter;
+  waitForOverlayShown(options?: ElectronSteamOverlayWaitOptions): Promise<ElectronSteamOverlaySnapshot>;
+  waitForOverlayClosed(options?: ElectronSteamOverlayWaitOptions): Promise<ElectronSteamOverlaySnapshot>;
+  parkWhenSteamOverlayCloses(options?: ElectronSteamOverlayWaitOptions): Promise<ElectronSteamOverlaySnapshot>;
   close(): void;
   pump(): void;
   isOpen(): boolean;
@@ -7659,6 +7668,36 @@ export function createElectronSteamOverlay(
       presenter.prepareForPassiveOverlay(durationMs);
       return presenter;
     },
+    waitForOverlayShown(options?: ElectronSteamOverlayWaitOptions): Promise<ElectronSteamOverlaySnapshot> {
+      assertOpen();
+      return waitForElectronSteamOverlayState(
+        controller,
+        "become active",
+        (snapshot) => snapshot.overlayActive === true,
+        options
+      );
+    },
+    waitForOverlayClosed(options?: ElectronSteamOverlayWaitOptions): Promise<ElectronSteamOverlaySnapshot> {
+      assertOpen();
+      return waitForElectronSteamOverlayState(
+        controller,
+        "close",
+        (snapshot) => snapshot.overlayWasActive === true && snapshot.overlayActive === false,
+        options
+      );
+    },
+    parkWhenSteamOverlayCloses(options?: ElectronSteamOverlayWaitOptions): Promise<ElectronSteamOverlaySnapshot> {
+      assertOpen();
+      return waitForElectronSteamOverlayState(
+        controller,
+        "close and park",
+        (snapshot) =>
+          snapshot.overlayWasActive === true &&
+          snapshot.overlayActive === false &&
+          isElectronSteamOverlayParked(snapshot),
+        options
+      );
+    },
     close(): void {
       if (closed) {
         return;
@@ -7928,6 +7967,101 @@ function isElectronWebContentsDestroyed(webContents: ElectronOverlayWindow["webC
   } catch {
     return true;
   }
+}
+
+function waitForElectronSteamOverlayState(
+  controller: ElectronSteamOverlay,
+  stateLabel: string,
+  predicate: (snapshot: ElectronSteamOverlaySnapshot) => boolean,
+  options: ElectronSteamOverlayWaitOptions = {}
+): Promise<ElectronSteamOverlaySnapshot> {
+  const timeoutMs = Math.max(0, finiteNumber(options.timeoutMs, 15000));
+  const pollIntervalMs = Math.max(1, finiteNumber(options.pollIntervalMs, 50));
+  const deadline = Date.now() + timeoutMs;
+  const signal = options.signal;
+
+  return new Promise((resolve, reject) => {
+    let timer: NodeJS.Timeout | undefined;
+    let abortHandler: (() => void) | undefined;
+
+    const cleanup = (): void => {
+      if (timer) {
+        clearTimeout(timer);
+        timer = undefined;
+      }
+      if (abortHandler) {
+        signal?.removeEventListener("abort", abortHandler);
+        abortHandler = undefined;
+      }
+    };
+
+    const settleReject = (error: unknown): void => {
+      cleanup();
+      reject(error);
+    };
+
+    const settleResolve = (snapshot: ElectronSteamOverlaySnapshot): void => {
+      cleanup();
+      resolve(snapshot);
+    };
+
+    abortHandler = (): void => {
+      settleReject(new Error(`Aborted waiting for Steam overlay to ${stateLabel}.`));
+    };
+
+    const tick = (): void => {
+      if (signal?.aborted) {
+        abortHandler?.();
+        return;
+      }
+
+      let snapshot: ElectronSteamOverlaySnapshot;
+      try {
+        snapshot = controller.snapshot();
+      } catch (error) {
+        settleReject(error);
+        return;
+      }
+
+      if (predicate(snapshot)) {
+        settleResolve(snapshot);
+        return;
+      }
+
+      if (!controller.isOpen()) {
+        settleReject(new Error(`Electron Steam overlay closed while waiting for Steam overlay to ${stateLabel}.`));
+        return;
+      }
+
+      const remainingMs = deadline - Date.now();
+      if (remainingMs <= 0) {
+        settleReject(new Error(`Timed out waiting for Steam overlay to ${stateLabel} after ${timeoutMs}ms.`));
+        return;
+      }
+
+      timer = setTimeout(tick, Math.min(pollIntervalMs, remainingMs));
+    };
+
+    signal?.addEventListener("abort", abortHandler, { once: true });
+    tick();
+  });
+}
+
+function isElectronSteamOverlayParked(snapshot: ElectronSteamOverlaySnapshot): boolean {
+  if (snapshot.electronOverlay.presenterMode === "session") {
+    return snapshot.overlayActive === false;
+  }
+
+  return (
+    snapshot.closed === false &&
+    snapshot.attached === true &&
+    snapshot.mode === "passive" &&
+    snapshot.clickThrough === true &&
+    snapshot.transparent === true &&
+    snapshot.overlayActive === false &&
+    snapshot.overlayNeedsPresent === false &&
+    snapshot.currentFps === 0
+  );
 }
 
 type NormalizedElectronSteamOverlayShortcutOptions = Required<
