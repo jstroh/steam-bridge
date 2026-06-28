@@ -1661,13 +1661,19 @@ export type NativeOverlayPresenterOverlayOptions = NativeOverlayPresenterOptions
 
 export type NativeOverlayWebPagePresenterOptions = NativeOverlayPresenterOverlayOptions & OverlayWebPageOptions;
 
+export type NativeOverlayAppPagePresenterOptions = NativeOverlayWebPagePresenterOptions & {
+  appId?: number;
+  steamId64?: bigint | number | string;
+};
+
 type NativeOverlayPresenterActivationMode = "interactive" | "passive" | "transparent-input";
 
 type NativeOverlayPresenterInternal = NativeOverlayPresenter & {
   prepareForTransparentInputOverlay?: (durationMs?: number) => void;
 };
 
-export const STEAM_FRIENDS_OVERLAY_URL = "https://steamcommunity.com/chat/";
+export const STEAM_COMMUNITY_BASE_URL = "https://steamcommunity.com";
+export const STEAM_FRIENDS_OVERLAY_URL = `${STEAM_COMMUNITY_BASE_URL}/chat/`;
 
 export interface HtmlCreateBrowserOptions {
   userAgent?: string;
@@ -6575,6 +6581,28 @@ export function overlayNeedsPresent(): boolean {
   return native().overlayNeedsPresent();
 }
 
+export function steamCommunityAppUrl(appId: number = getAppId()): string {
+  return `${STEAM_COMMUNITY_BASE_URL}/app/${normalizeSteamAppId(appId)}/`;
+}
+
+export function steamCommunityStatsUrl(appId: number = getAppId()): string {
+  return `${STEAM_COMMUNITY_BASE_URL}/stats/${normalizeSteamAppId(appId)}/`;
+}
+
+export function steamCommunityUserStatsUrl(
+  appId: number = getAppId(),
+  steamId64: bigint | number | string = getSteamId().steamId64
+): string {
+  return `${STEAM_COMMUNITY_BASE_URL}/profiles/${normalizeSteamId64(steamId64)}/stats/${normalizeSteamAppId(appId)}/`;
+}
+
+export function steamCommunityAchievementsUrl(
+  appId: number = getAppId(),
+  steamId64: bigint | number | string = getSteamId().steamId64
+): string {
+  return `${steamCommunityUserStatsUrl(appId, steamId64)}achievements/`;
+}
+
 export function getOverlayDiagnostics(): OverlayDiagnostics {
   return normalizeOverlayDiagnostics(native().getOverlayDiagnostics());
 }
@@ -7294,6 +7322,16 @@ export function openWebOverlay(url: string, options: NativeOverlayWebPagePresent
 export function openFriendsOverlay(options: NativeOverlayWebPagePresenterOptions = {}): NativeOverlayPresenter {
   const { modal = true, ...presenterOptions } = options;
   return openWebOverlay(STEAM_FRIENDS_OVERLAY_URL, {
+    ...presenterOptions,
+    modal
+  });
+}
+
+export function openAchievementsOverlay(
+  options: NativeOverlayAppPagePresenterOptions = {}
+): NativeOverlayPresenter {
+  const { appId = getAppId(), steamId64 = getSteamId().steamId64, modal = true, ...presenterOptions } = options;
+  return openWebOverlay(steamCommunityAchievementsUrl(appId, steamId64), {
     ...presenterOptions,
     modal
   });
@@ -11574,6 +11612,7 @@ export const overlay = {
   openDialogOverlay,
   openWebOverlay,
   openFriendsOverlay,
+  openAchievementsOverlay,
   openStoreOverlay,
   startNativeOverlaySession,
   activateDialogWithNativeSession,
@@ -17444,6 +17483,26 @@ function finiteNumber(value: number | undefined, fallback: number): number {
   return Number.isFinite(value) ? Number(value) : fallback;
 }
 
+function normalizeSteamAppId(appId: number): number {
+  if (!Number.isInteger(appId) || appId <= 0) {
+    throw new Error(`Invalid Steam App ID: ${appId}`);
+  }
+  return appId;
+}
+
+function normalizeSteamId64(steamId64: bigint | number | string): string {
+  let normalized: bigint;
+  try {
+    normalized = BigInt(steamId64);
+  } catch {
+    throw new Error(`Invalid Steam ID: ${steamId64}`);
+  }
+  if (normalized <= 0n) {
+    throw new Error(`Invalid Steam ID: ${steamId64}`);
+  }
+  return normalized.toString();
+}
+
 function normalizedFps(value: number | undefined, fallback: number): number {
   return Math.max(0, finiteNumber(value, fallback));
 }
@@ -19360,6 +19419,11 @@ const defaultExport = {
   electronNativeOverlaySessionOptions,
   electronOverlayPresenterOptions,
   electronScrubSteamOverlayChildProcessEnv,
+  steamCommunityAppUrl,
+  steamCommunityStatsUrl,
+  steamCommunityUserStatsUrl,
+  steamCommunityAchievementsUrl,
+  STEAM_COMMUNITY_BASE_URL,
   STEAM_FRIENDS_OVERLAY_URL,
   SteamCallback,
   SteamworksEnums,

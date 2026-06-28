@@ -228,6 +228,7 @@
           <button id="web">Web Overlay</button>
           <button id="presenter-web">Presenter Web Overlay</button>
           <button id="presenter-friends">Presenter Friends</button>
+          <button id="presenter-achievements">Presenter Achievements</button>
           <button id="toast">Presenter Toast</button>
           <button id="dialog" class="secondary">Friends Overlay</button>
           <button id="probe-open" class="secondary">Open Probe</button>
@@ -454,6 +455,8 @@
         run("Presenter Web Overlay", () => window.steamSmoke.openPresenterWeb());
       document.getElementById("presenter-friends").onclick = () =>
         run("Presenter Friends", () => window.steamSmoke.openPresenterFriends());
+      document.getElementById("presenter-achievements").onclick = () =>
+        run("Presenter Achievements", () => window.steamSmoke.openPresenterAchievements());
       document.getElementById("toast").onclick = () =>
         run("Presenter Toast", () => window.steamSmoke.openPresenterAchievementProgress());
       document.getElementById("dialog").onclick = () => run("Friends Overlay", () => window.steamSmoke.openOverlayDialog());

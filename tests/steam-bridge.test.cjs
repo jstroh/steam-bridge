@@ -4375,6 +4375,7 @@ test("overlay helpers map constants and forward modal/store options", (t) => {
   steam.overlay.activateDialogToUser(steam.Dialog.Friends, 76561198000000000n);
   steam.overlay.activateToStore(480, steam.StoreFlag.AddToCart);
   steam.overlay.openFriendsOverlay({ presenter: mockPresenter });
+  steam.overlay.openAchievementsOverlay({ appId: 480, steamId64: 76561198000000000n, presenter: mockPresenter });
   steam.openNativeOverlayProbeWindow("Steam Overlay Probe");
   steam.overlay.attachNativeOverlayHostView(nativeWindowHandle);
   steam.overlay.pumpNativeOverlayProbeWindow();
@@ -4398,10 +4399,24 @@ test("overlay helpers map constants and forward modal/store options", (t) => {
       { method: "activateOverlayToWebPage", args: ["https://store.steampowered.com/app/480/", true] },
       { method: "overlayActivateDialogToUser", args: ["Friends", 76561198000000000n] },
       { method: "overlayActivateToStore", args: [480, steam.StoreFlag.AddToCart] },
-      { method: "activateOverlayToWebPage", args: [steam.STEAM_FRIENDS_OVERLAY_URL, true] }
+      { method: "activateOverlayToWebPage", args: [steam.STEAM_FRIENDS_OVERLAY_URL, true] },
+      { method: "activateOverlayToWebPage", args: [steam.steamCommunityAchievementsUrl(480, 76561198000000000n), true] }
     ]
   );
-  assert.deepEqual(presenterCalls, ["prepareForOverlay"]);
+  assert.equal(steam.STEAM_COMMUNITY_BASE_URL, "https://steamcommunity.com");
+  assert.equal(steam.steamCommunityAppUrl(480), "https://steamcommunity.com/app/480/");
+  assert.equal(steam.steamCommunityStatsUrl(480), "https://steamcommunity.com/stats/480/");
+  assert.equal(
+    steam.steamCommunityUserStatsUrl(480, 76561198000000000n),
+    "https://steamcommunity.com/profiles/76561198000000000/stats/480/"
+  );
+  assert.equal(
+    steam.steamCommunityAchievementsUrl(480, 76561198000000000n),
+    "https://steamcommunity.com/profiles/76561198000000000/stats/480/achievements/"
+  );
+  assert.throws(() => steam.steamCommunityAchievementsUrl(0), /Invalid Steam App ID/);
+  assert.throws(() => steam.steamCommunityAchievementsUrl(480, "not-a-steam-id"), /Invalid Steam ID/);
+  assert.deepEqual(presenterCalls, ["prepareForOverlay", "prepareForOverlay"]);
   assert.deepEqual(
     fake.calls.filter((call) =>
       [

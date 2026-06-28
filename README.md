@@ -316,6 +316,11 @@ client.overlay.openWebOverlay("https://store.steampowered.com/app/480/", {
 
 client.overlay.openFriendsOverlay({ presenter });
 
+client.overlay.openAchievementsOverlay({
+  appId: 480,
+  presenter
+});
+
 // During app shutdown:
 presenter.close();
 ```
@@ -358,6 +363,11 @@ render with the presenter transparent and click-through. For a generic Friends
 List surface, use `client.overlay.openFriendsOverlay({ presenter })`; on Steam
 Deck Desktop Mode this opens Steam Community chat through the same native web
 presenter with one `gameoverlayui` target and a clean close/back-to-app result.
+For app achievements, use `client.overlay.openAchievementsOverlay({ appId,
+presenter })`; it opens the current user's app achievements page through the same
+presenter-backed Steam web overlay route instead of relying on the raw Desktop
+achievements dialog. Steam Community may redirect apps without public web stats
+to the user's profile, so use your real app for achievements content proof.
 Do not use `steam://open/overlay` as a generic overlay-toggle substitute; Deck
 Desktop testing showed it can activate Steam's callback path while leaving the
 native presenter black and the smoke process unrecovered.

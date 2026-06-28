@@ -1,6 +1,6 @@
 # Native Overlay Presenter Plan
 
-Last updated: 2026-06-27
+Last updated: 2026-06-28
 
 This is the forward plan for reliable Steam overlay behavior in Electron apps on
 Linux/Steam Deck and macOS. Windows overlay behavior appears lower risk, so the
@@ -54,6 +54,13 @@ timing hacks.
   testing captured visible Friends/chat UI, used one `gameoverlayui` target
   attached to the app's main/native process, and returned cleanly to the app
   after the close probe.
+- Deck Desktop achievements now has a product-shaped web route:
+  `openAchievementsOverlay({ appId, presenter })` opens the current user's Steam
+  Community stats/achievements URL through the same reusable native web
+  presenter. Deck Desktop testing with App ID `480` emitted active/inactive
+  overlay callbacks and returned cleanly to the app. SpaceWar's web achievements
+  URL redirects to the user profile because it has no public web stats page, so
+  achievements content proof needs a real app with web-visible stats.
 - A generic `steam://open/overlay` URI is not a reliable shortcut around the
   unresolved raw social/toggle path. On Deck Desktop Mode it can emit an overlay
   activation callback while leaving the native presenter black and crashing the
@@ -186,6 +193,11 @@ Current evidence:
   returns to the smoke app after the close probe. A `steam://open/friends` URI
   activated the overlay but remained on a Steam loading spinner, so it is not
   the product path.
+- Deck Desktop Mode can open the current user's app achievements/profile web
+  page through `openAchievementsOverlay({ appId, presenter })`, preserving the
+  same single-overlay-target and close/back-to-app behavior. App ID `480`
+  redirects to the user's profile because Steam Community does not expose a
+  public web stats page for it.
 - The same path is good enough for checkout-style proof when launched under a
   real installed Steam app with a configured product or transaction.
 - Deck Desktop Mode does not yet have a passing overlay-toggle proof. Focused
@@ -259,6 +271,10 @@ Pass criteria:
 - Achievement or notification toast appears and disappears.
 - Friends List opens through `openFriendsOverlay`, accepts input, closes, and
   returns to the app without duplicate Electron child overlay targets.
+- Achievements/profile web overlay opens through `openAchievementsOverlay`,
+  accepts input, closes, and returns to the app without duplicate Electron child
+  overlay targets. Full achievements content proof requires an app whose Steam
+  Community stats page is exposed.
 - Modal web/checkout overlay opens, accepts input, closes, emits active then
   inactive callbacks, and returns to the app.
 - No crash dumps from Electron or the native binding.

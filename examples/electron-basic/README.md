@@ -87,8 +87,8 @@ for Steam non-Steam shortcuts:
 
 Supported autorun actions are `none`, `dialog`, `friends`, `store`, `web`,
 `native-dialog`, `native-store`, `native-web`, `native-probe`,
-`presenter-dialog`, `presenter-store`, `presenter-web`, `presenter-friends`, and
-`presenter-achievement-progress`.
+`presenter-dialog`, `presenter-store`, `presenter-web`, `presenter-friends`,
+`presenter-achievements`, and `presenter-achievement-progress`.
 `native-probe` is a compatibility alias for `native-dialog`. On Linux, the
 `native-*` actions open a bridge-owned X11/GLX native presenter, keep it
 presenting frames, and activate the requested Steam overlay target through the
@@ -121,6 +121,13 @@ Use `presenter-friends` to verify the recommended Friends List path:
 `client.overlay.openFriendsOverlay({ presenter })` opens Steam Community chat
 through the same native web presenter used by checkout/store overlays, keeping a
 single `gameoverlayui` target attached to the main/native process.
+Use `presenter-achievements` to verify
+`client.overlay.openAchievementsOverlay({ appId, presenter })`, which opens the
+current user's app achievements page through the same presenter-backed Steam web
+overlay route instead of the raw Desktop achievements dialog. SpaceWar App ID
+`480` can redirect that web achievements URL to the user's profile because Steam
+Community does not expose a public web stats page for it; a real app with
+web-visible stats is needed for achievements content proof.
 Do not use `steam://open/overlay` as a generic overlay-toggle substitute in this
 example. Deck Desktop testing showed it can activate Steam's callback path while
 leaving the native presenter black and the smoke process unrecovered.
@@ -246,6 +253,26 @@ A passing `overlay-open.png` shows the Steam Friends List / chat UI in the
 native Steam overlay, and `after-close-probe.png` returns to the running smoke
 app. The process list should still show one `gameoverlayui` target attached to
 the main/native process.
+
+For the generic achievements page path, use:
+
+```sh
+npm run steam-deck:smoke -- \
+  --host deck@<deck-host-or-ip> \
+  --mode desktop \
+  --action presenter-achievements \
+  --window-mode fullscreen \
+  --keep-open-after-result \
+  --collect-diagnostics-dir /tmp/steam-bridge-deck-artifacts \
+  --visual-capture-dir /tmp/steam-bridge-deck-screens \
+  --visual-close-probe
+```
+
+This exercises the product-shaped achievements route. It should show a Steam web
+overlay, emit active/inactive callbacks, and return to the running smoke app
+after the close probe. With App ID `480`, Steam Community may redirect the
+achievements URL to the user's profile, so treat this as lifecycle proof rather
+than achievements content proof.
 
 For raw dialog/Game Overview investigation, use `presenter-dialog` or
 `dialog`/`friends` with `--visual-close-probe`; add `--dialog <name>` to compare

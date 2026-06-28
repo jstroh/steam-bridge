@@ -147,6 +147,7 @@ ipcMain.handle("steam-smoke:overlay-web", () => openWebOverlay());
 ipcMain.handle("steam-smoke:overlay-dialog", () => openDialogOverlay());
 ipcMain.handle("steam-smoke:presenter-web", () => openPresenterWebOverlay());
 ipcMain.handle("steam-smoke:presenter-friends", () => openPresenterFriendsOverlay());
+ipcMain.handle("steam-smoke:presenter-achievements", () => openPresenterAchievementsOverlay());
 ipcMain.handle("steam-smoke:presenter-achievement-progress", () => openPresenterAchievementProgress());
 ipcMain.handle("steam-smoke:native-probe-open", () => openNativeProbe());
 ipcMain.handle("steam-smoke:native-probe-pump", () => pumpNativeProbe());
@@ -372,6 +373,9 @@ function runAutorunAction(action) {
       case "presenter-friends":
         openPresenterFriendsOverlay();
         return { ok: true, action };
+      case "presenter-achievements":
+        openPresenterAchievementsOverlay();
+        return { ok: true, action };
       case "presenter-achievement-progress":
         openPresenterAchievementProgress();
         return { ok: true, action };
@@ -510,6 +514,20 @@ function openPresenterFriendsOverlay() {
   recordEvent("overlay:presenter-open", {
     target: "friends",
     url: steamworks.STEAM_FRIENDS_OVERLAY_URL,
+    modal: true,
+    presenter: presenter.snapshot()
+  });
+  return snapshot();
+}
+
+function openPresenterAchievementsOverlay() {
+  const activeClient = requireClient();
+  const presenter = ensureNativeOverlayPresenter(activeClient);
+  activeClient.overlay.openAchievementsOverlay({ appId: APP_ID, presenter });
+  recordEvent("overlay:presenter-open", {
+    target: "achievements",
+    appId: APP_ID,
+    url: steamworks.steamCommunityAchievementsUrl(APP_ID),
     modal: true,
     presenter: presenter.snapshot()
   });
@@ -940,6 +958,7 @@ function isNativeSessionAction(action) {
     action === "presenter-store" ||
     action === "presenter-web" ||
     action === "presenter-friends" ||
+    action === "presenter-achievements" ||
     action === "presenter-achievement-progress"
   );
 }

@@ -162,6 +162,11 @@ client.overlay.openWebOverlay(checkoutUrl, {
 });
 
 client.overlay.openFriendsOverlay({ presenter });
+
+client.overlay.openAchievementsOverlay({
+  appId: 480,
+  presenter
+});
 ```
 
 The presenter stays passive and click-through while idle, polls Steam overlay
@@ -173,7 +178,12 @@ mode restores both opacity and input so Steam web or checkout UI can receive
 clicks, then parks the host transparent after Steam reports the overlay
 inactive. Use `client.overlay.openFriendsOverlay({ presenter })` for a generic
 Friends List surface; it opens Steam Community chat through the same native web
-presenter path, keeping Electron child-process isolation intact. The lower-level
+presenter path, keeping Electron child-process isolation intact. Use
+`client.overlay.openAchievementsOverlay({ appId, presenter })` for the current
+user's app achievements page through that same presenter-backed Steam web
+overlay route. Steam Community may redirect apps without public web stats to the
+user's profile, so use your real app for achievements content proof.
+The lower-level
 `activateDialog("Friends")` / Game Overview path is still an investigation path,
 and `steam://open/overlay` should not be used as a generic toggle substitute:
 allowing Steam to hook Electron's Chromium children can make Steam's desktop
