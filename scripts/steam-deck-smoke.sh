@@ -697,21 +697,34 @@ def find_overlay_state_indices(loaded_entries):
         inactive_after_active = next((index for index, state in states if index > first_active and state is False), None)
     return first_active, inactive_after_active
 
-def has_presenter_after_close_event(loaded_entries):
+def has_presenter_after_close_stable_event(loaded_entries):
     _first_active, inactive_after_active = find_overlay_state_indices(loaded_entries)
     if inactive_after_active is None:
         return False
     return any(
-        index > inactive_after_active and entry.get('type') == 'event:overlay:presenter-after-close'
+        index > inactive_after_active and entry.get('type') == 'event:overlay:presenter-after-close-stable'
         for index, entry in enumerate(loaded_entries)
     )
+
+def expect_parked_presenter(presenter, label):
+    expect_presenter_field(presenter, 'closed', False, f'native presenter closed {label}')
+    expect_presenter_field(presenter, 'attached', True, f'native presenter attached {label}')
+    expect_presenter_field(presenter, 'nativeHostOpen', True, f'native presenter host open {label}')
+    expect_presenter_field(presenter, 'mode', 'passive', f'native presenter mode {label}')
+    expect_presenter_field(presenter, 'clickThrough', True, f'native presenter click-through {label}')
+    expect_presenter_field(presenter, 'focusable', False, f'native presenter focusable {label}')
+    expect_presenter_field(presenter, 'transparent', True, f'native presenter transparent {label}')
+    expect_presenter_field(presenter, 'overlayActive', False, f'native presenter overlay active {label}')
+    expect_presenter_field(presenter, 'idleFps', 0, f'native presenter idle FPS {label}')
+    expect_presenter_field(presenter, 'currentFps', 0, f'native presenter current FPS {label}')
+    expect_presenter_field(presenter, 'overlayNeedsPresent', False, f'native presenter overlay needs present {label}')
 
 entries = []
 lifecycle_failures = []
 deadline = time.monotonic() + 5
 while True:
     entries, lifecycle_failures = read_lifecycle_entries()
-    if not lifecycle_failures and (has_presenter_after_close_event(entries) or time.monotonic() >= deadline):
+    if not lifecycle_failures and (has_presenter_after_close_stable_event(entries) or time.monotonic() >= deadline):
         break
     if lifecycle_failures and time.monotonic() >= deadline:
         failures.extend(lifecycle_failures)
@@ -727,29 +740,37 @@ if first_active_index is None:
 elif inactive_after_active_index is None:
     failures.append('no active=false overlay callback after active=true')
 else:
-    after_close_entries = [
+    first_after_close_entries = [
         (index, presenter_payload(entry))
         for index, entry in enumerate(entries)
         if index > inactive_after_active_index and entry.get('type') == 'event:overlay:presenter-after-close'
     ]
-    after_close_presenters = [(index, presenter) for index, presenter in after_close_entries if presenter]
-    if not after_close_entries:
+    stable_after_close_entries = [
+        (index, presenter_payload(entry))
+        for index, entry in enumerate(entries)
+        if index > inactive_after_active_index and entry.get('type') == 'event:overlay:presenter-after-close-stable'
+    ]
+    first_after_close_presenters = [(index, presenter) for index, presenter in first_after_close_entries if presenter]
+    stable_after_close_presenters = [(index, presenter) for index, presenter in stable_after_close_entries if presenter]
+    if not first_after_close_entries:
         failures.append('no overlay:presenter-after-close event after active=false in lifecycle log')
-    elif not after_close_presenters:
+    elif not first_after_close_presenters:
         failures.append('overlay:presenter-after-close did not include a presenter snapshot')
-    else:
-        _presenter_index, presenter = after_close_presenters[-1]
-        expect_presenter_field(presenter, 'closed', False, 'native presenter closed')
-        expect_presenter_field(presenter, 'attached', True, 'native presenter attached')
-        expect_presenter_field(presenter, 'nativeHostOpen', True, 'native presenter host open')
-        expect_presenter_field(presenter, 'mode', 'passive', 'native presenter mode')
-        expect_presenter_field(presenter, 'clickThrough', True, 'native presenter click-through')
-        expect_presenter_field(presenter, 'focusable', False, 'native presenter focusable')
-        expect_presenter_field(presenter, 'transparent', True, 'native presenter transparent')
-        expect_presenter_field(presenter, 'overlayActive', False, 'native presenter overlay active')
-        expect_presenter_field(presenter, 'idleFps', 0, 'native presenter idle FPS')
-        expect_presenter_field(presenter, 'currentFps', 0, 'native presenter current FPS')
-        expect_presenter_field(presenter, 'overlayNeedsPresent', False, 'native presenter overlay needs present')
+    if not stable_after_close_entries:
+        failures.append('no overlay:presenter-after-close-stable event after active=false in lifecycle log')
+    elif not stable_after_close_presenters:
+        failures.append('overlay:presenter-after-close-stable did not include a presenter snapshot')
+    if first_after_close_presenters and stable_after_close_presenters:
+        _first_presenter_index, first_presenter = first_after_close_presenters[-1]
+        _stable_presenter_index, stable_presenter = stable_after_close_presenters[-1]
+        expect_parked_presenter(first_presenter, 'first sample')
+        expect_parked_presenter(stable_presenter, 'stable sample')
+        first_pump_count = first_presenter.get('pumpCount')
+        stable_pump_count = stable_presenter.get('pumpCount')
+        if first_pump_count != stable_pump_count:
+            failures.append(
+                f'native presenter pump count changed after close: first={first_pump_count!r}, stable={stable_pump_count!r}'
+            )
 
 if require_shortcut_open and not any(entry.get('type') == 'event:overlay:shortcut-open' for entry in entries):
     failures.append('no overlay:shortcut-open event in lifecycle log')
@@ -814,7 +835,7 @@ if failures:
         print(f'Deck close verification failed: {failure}', file=sys.stderr)
     raise SystemExit(1)
 
-print('Deck overlay close verified: active=false observed, presenter parked idle, app focused, no crash evidence.')
+print('Deck overlay close verified: active=false observed, presenter parked idle without pumping, app focused, no crash evidence.')
 PY"
 }
 
@@ -1836,8 +1857,12 @@ run_self_test() {
     echo "Self-test failed: Deck close verification must require post-close presenter parking evidence." >&2
     exit 1
   fi
-  if ! grep -Fq "native presenter current FPS after close expected 0" "$0"; then
-    echo "Self-test failed: Deck close verification must require the presenter to stop pumping after close." >&2
+  if ! grep -Fq "event:overlay:presenter-after-close-stable" "$0"; then
+    echo "Self-test failed: Deck close verification must require stable post-close presenter parking evidence." >&2
+    exit 1
+  fi
+  if ! grep -Fq "native presenter pump count changed after close" "$0"; then
+    echo "Self-test failed: Deck close verification must require no post-close presenter pumping." >&2
     exit 1
   fi
 

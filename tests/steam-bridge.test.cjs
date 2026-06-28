@@ -5330,6 +5330,12 @@ test("native overlay presenter parks modal overlays after inactive callbacks", a
   assert.equal(presenter.snapshot().mode, "passive");
   assert.equal(presenter.snapshot().clickThrough, true);
   assert.equal(presenter.snapshot().transparent, true);
+  const parkedPumpCount = presenter.snapshot().pumpCount;
+
+  await new Promise((resolve) => setTimeout(resolve, 40));
+  const afterParkedIdle = presenter.snapshot();
+  assert.equal(afterParkedIdle.currentFps, 0);
+  assert.equal(afterParkedIdle.pumpCount, parkedPumpCount);
 
   presenter.close();
 

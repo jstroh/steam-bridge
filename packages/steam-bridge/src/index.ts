@@ -7337,7 +7337,7 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
     if (overlayActive || now < boostUntil) {
       return activeOverlayFps;
     }
-    if (overlayNeedsPresent) {
+    if (overlayNeedsPresent && !suppressNeedsPresentOpacity) {
       return needsPresentFps;
     }
     return idleFps;

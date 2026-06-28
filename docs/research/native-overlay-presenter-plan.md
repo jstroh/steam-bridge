@@ -354,10 +354,12 @@ Pass criteria:
 - Modal web/checkout overlay opens, accepts input, closes, emits active then
   inactive callbacks, and returns to the app.
 - Deck visual close probes for presenter-backed product web surfaces verify the
-  inactive callback, app focus, delayed post-close presenter parking, and no
-  post-close crash evidence.
+  inactive callback, app focus, delayed post-close presenter parking, no
+  post-close pumping, and no post-close crash evidence.
 - Post-close presenter parking means the reusable host is transparent,
   click-through, non-focusable, overlay-inactive, and back at `currentFps=0`.
+- Post-close no-pumping means the stable presenter snapshot has the same
+  `pumpCount` as the first parked snapshot after overlay close.
 - No crash dumps from Electron or the native binding, and no fatal Electron
   lifecycle events in the smoke diagnostics.
 - No sustained 30 FPS pumping while idle.

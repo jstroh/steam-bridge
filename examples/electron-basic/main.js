@@ -51,7 +51,7 @@ const DIAGNOSTIC_DIR =
   path.join(os.tmpdir(), "steam-bridge-smoke-diagnostics", createRunId());
 const LIFECYCLE_LOG_FILE = path.join(DIAGNOSTIC_DIR, "lifecycle.jsonl");
 const CRASH_DUMP_DIR = path.join(DIAGNOSTIC_DIR, "crash-dumps");
-const POST_CLOSE_PRESENTER_SNAPSHOT_DELAY_MS = 1800;
+const POST_CLOSE_PRESENTER_SNAPSHOT_DELAYS_MS = [1800, 3200];
 const FATAL_LIFECYCLE_EVENT_TYPES = new Set([
   "app:render-process-gone",
   "app:child-process-gone",
@@ -96,7 +96,7 @@ let shutdownComplete = false;
 let mainWindow;
 let nativeOverlaySession;
 let electronSteamOverlay;
-let postClosePresenterSnapshotTimer;
+let postClosePresenterSnapshotTimers = [];
 const callbackHandles = [];
 const eventLog = [];
 
@@ -226,10 +226,7 @@ function shutdownSteam() {
     return;
   }
   shutdownComplete = true;
-  if (postClosePresenterSnapshotTimer) {
-    clearTimeout(postClosePresenterSnapshotTimer);
-    postClosePresenterSnapshotTimer = undefined;
-  }
+  clearPostClosePresenterSnapshotTimers();
   closeNativeOverlayPresenter();
   closeNativeOverlaySession();
 
@@ -1263,21 +1260,30 @@ function maybeRecordPostClosePresenterSnapshot(type, payload) {
     return;
   }
 
-  if (postClosePresenterSnapshotTimer) {
-    clearTimeout(postClosePresenterSnapshotTimer);
-  }
-  postClosePresenterSnapshotTimer = setTimeout(() => {
-    postClosePresenterSnapshotTimer = undefined;
-    if (shutdownComplete || !electronSteamOverlay || !electronSteamOverlay.isOpen()) {
-      return;
-    }
+  clearPostClosePresenterSnapshotTimers();
+  postClosePresenterSnapshotTimers = POST_CLOSE_PRESENTER_SNAPSHOT_DELAYS_MS.map((delayMs, index) => {
+    const timer = setTimeout(() => {
+      postClosePresenterSnapshotTimers = postClosePresenterSnapshotTimers.filter((entry) => entry !== timer);
+      if (shutdownComplete || !electronSteamOverlay || !electronSteamOverlay.isOpen()) {
+        return;
+      }
 
-    recordEvent("overlay:presenter-after-close", {
-      delayMs: POST_CLOSE_PRESENTER_SNAPSHOT_DELAY_MS,
-      presenter: electronSteamOverlay.snapshot()
-    });
-  }, POST_CLOSE_PRESENTER_SNAPSHOT_DELAY_MS);
-  postClosePresenterSnapshotTimer.unref?.();
+      recordEvent(index === 0 ? "overlay:presenter-after-close" : "overlay:presenter-after-close-stable", {
+        delayMs,
+        sample: index + 1,
+        presenter: electronSteamOverlay.snapshot()
+      });
+    }, delayMs);
+    timer.unref?.();
+    return timer;
+  });
+}
+
+function clearPostClosePresenterSnapshotTimers() {
+  for (const timer of postClosePresenterSnapshotTimers) {
+    clearTimeout(timer);
+  }
+  postClosePresenterSnapshotTimers = [];
 }
 
 function readOverlayActiveValue(payload) {
