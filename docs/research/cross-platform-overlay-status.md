@@ -418,7 +418,8 @@ audited with `npm run steam-deck:overlay-matrix:summarize -- --artifact-root <pa
 This remains generic App ID `480` plumbing evidence; real purchase content still
 needs the app-specific purchase checklist below. A 2026-06-28 full-suite Deck
 Desktop run passed 16 cases with 33 screenshots and a clean artifact summary
-that reported `parked=true` for every active overlay case.
+that reported `parked=true` and `managedWaits=true` for every active overlay
+case.
 
 ## Purchase Overlay Checklist
 
