@@ -31,6 +31,8 @@ require_overlay_ready="0"
 require_overlay_injection="0"
 require_overlay_activated="0"
 require_single_overlay_target="0"
+require_passive_presenter="0"
+require_idle_presenter="0"
 require_steam_deck="0"
 require_big_picture="0"
 require_events=()
@@ -87,6 +89,8 @@ Options:
   --require-overlay-activated    Require callback:overlay-activated active=true.
   --require-single-overlay-target
                                  Require one gameoverlayui target attached to the app process.
+  --require-passive-presenter    Require the reusable presenter to be passive/click-through/transparent.
+  --require-idle-presenter       Require --require-passive-presenter plus zero current/idle FPS.
   --require-steam-deck           Require Steam Deck detection.
   --require-big-picture          Require Big Picture/Game Mode detection.
   --require-event TYPE           Require an emitted event. May be repeated.
@@ -217,6 +221,15 @@ while [ "$#" -gt 0 ]; do
       ;;
     --require-single-overlay-target)
       require_single_overlay_target="1"
+      shift
+      ;;
+    --require-passive-presenter)
+      require_passive_presenter="1"
+      shift
+      ;;
+    --require-idle-presenter)
+      require_idle_presenter="1"
+      require_passive_presenter="1"
       shift
       ;;
     --require-steam-deck)
@@ -453,6 +466,8 @@ verify_result() {
   REQUIRE_OVERLAY_INJECTION="$require_overlay_injection" \
   REQUIRE_OVERLAY_ACTIVATED="$require_overlay_activated" \
   REQUIRE_SINGLE_OVERLAY_TARGET="$require_single_overlay_target" \
+  REQUIRE_PASSIVE_PRESENTER="$require_passive_presenter" \
+  REQUIRE_IDLE_PRESENTER="$require_idle_presenter" \
   REQUIRE_STEAM_DECK="$require_steam_deck" \
   REQUIRE_BIG_PICTURE="$require_big_picture" \
   REQUIRE_EVENTS="$(IFS=$'\n'; printf '%s' "${require_events[*]}")" \
@@ -481,11 +496,14 @@ app = snapshot.get("app") or {}
 launch = snapshot.get("launch") or {}
 process_info = snapshot.get("process") or {}
 overlay_processes = snapshot.get("overlayProcesses") or {}
+overlay = snapshot.get("overlay") or {}
 events = snapshot.get("events") or []
 failures = []
 
 def ok_value(entry):
     return entry.get("value") if isinstance(entry, dict) and entry.get("ok") is True else None
+
+native_presenter = ok_value(overlay.get("nativePresenter"))
 
 def overlay_active_event(event):
     if not isinstance(event, dict) or event.get("type") != "callback:overlay-activated":
@@ -543,6 +561,20 @@ if os.environ["REQUIRE_SINGLE_OVERLAY_TARGET"] == "1":
     expect(len(gameoverlayui) == 1, "exactly one gameoverlayui target detected")
     if gameoverlayui:
         expect(gameoverlayui[0].get("targetPid") == process_info.get("pid"), "gameoverlayui targets the smoke app process")
+if os.environ["REQUIRE_PASSIVE_PRESENTER"] == "1" or os.environ["REQUIRE_IDLE_PRESENTER"] == "1":
+    expect(isinstance(native_presenter, dict), "native presenter snapshot available")
+    if isinstance(native_presenter, dict):
+        expect(native_presenter.get("attached") is True, "native presenter attached")
+        expect(native_presenter.get("nativeHostOpen") is True, "native presenter host open")
+        expect(native_presenter.get("mode") == "passive", "native presenter is passive")
+        expect(native_presenter.get("clickThrough") is True, "native presenter is click-through")
+        expect(native_presenter.get("focusable") is False, "native presenter is non-focusable")
+        expect(native_presenter.get("transparent") is True, "native presenter is transparent")
+        expect(native_presenter.get("overlayActive") is False, "native presenter overlay inactive")
+if os.environ["REQUIRE_IDLE_PRESENTER"] == "1" and isinstance(native_presenter, dict):
+    expect(native_presenter.get("idleFps") == 0, "native presenter idle FPS is zero")
+    expect(native_presenter.get("currentFps") == 0, "native presenter current FPS is zero")
+    expect(native_presenter.get("overlayNeedsPresent") is False, "native presenter overlay does not need present")
 if os.environ["REQUIRE_STEAM_DECK"] == "1":
     expect(ok_value(steam.get("steamDeck")) is True, "Steam Deck detected")
 if os.environ["REQUIRE_BIG_PICTURE"] == "1":
@@ -705,15 +737,19 @@ EOF
 
   result_file="$self_test_temp_home/steam-bridge-smoke-single-target.log"
   cat >"$result_file" <<'EOF'
-STEAM_BRIDGE_SMOKE_RESULT {"ok":true,"action":{"ok":true,"action":"presenter-web"},"snapshot":{"app":{"appId":480},"process":{"pid":4242,"platform":"linux","arch":"x64"},"launch":{"steamLaunch":true,"overlayInjection":true},"overlayProcesses":{"available":true,"gameoverlayui":[{"pid":9001,"targetPid":4242,"gameId":"480","command":"gameoverlayui -pid 4242 -gameid 480"}]},"steam":{"initialized":true,"running":{"ok":true,"value":true},"appId":{"ok":true,"value":480},"steamDeck":{"ok":true,"value":true},"bigPicture":{"ok":true,"value":false},"overlayEnabled":{"ok":true,"value":true},"overlayNeedsPresent":{"ok":true,"value":false}},"events":[{"type":"overlay:presenter-open"},{"type":"callback:overlay-activated"}]}}
+STEAM_BRIDGE_SMOKE_RESULT {"ok":true,"action":{"ok":true,"action":"presenter-web"},"snapshot":{"app":{"appId":480},"process":{"pid":4242,"platform":"linux","arch":"x64"},"launch":{"steamLaunch":true,"overlayInjection":true},"overlayProcesses":{"available":true,"gameoverlayui":[{"pid":9001,"targetPid":4242,"gameId":"480","command":"gameoverlayui -pid 4242 -gameid 480"}]},"overlay":{"nativePresenter":{"ok":true,"value":{"attached":true,"nativeHostOpen":true,"mode":"passive","clickThrough":true,"focusable":false,"transparent":true,"overlayActive":false,"overlayNeedsPresent":false,"idleFps":0,"currentFps":0}}},"steam":{"initialized":true,"running":{"ok":true,"value":true},"appId":{"ok":true,"value":480},"steamDeck":{"ok":true,"value":true},"bigPicture":{"ok":true,"value":false},"overlayEnabled":{"ok":true,"value":true},"overlayNeedsPresent":{"ok":true,"value":false}},"events":[{"type":"overlay:presenter-open"},{"type":"callback:overlay-activated"}]}}
 EOF
 
   action="presenter-web"
   require_big_picture="0"
   require_single_overlay_target="1"
+  require_idle_presenter="1"
+  require_passive_presenter="1"
   require_events=("overlay:presenter-open" "callback:overlay-activated")
   verify_result
   require_single_overlay_target="0"
+  require_idle_presenter="0"
+  require_passive_presenter="0"
 
   overlay_dialog="Achievements"
   launch_options="$(smoke_args | paste -sd' ' -)"

@@ -155,7 +155,11 @@ by default; the expected Deck process list has one `gameoverlayui` attached to
 the main/native process, not a second one attached to Electron's GPU process.
 The smoke app snapshots `gameoverlayui` target metadata, and the Deck runner
 requires this single-target invariant automatically for presenter-backed product
-actions.
+actions. The runner also machine-checks idle/passive presenter state where it is
+part of the proof: checkout readiness and managed shortcut attach must park with
+`idleFps=0` and `currentFps=0`; passive toast proof must remain transparent,
+click-through, non-focusable, and overlay-inactive while Steam may still pump
+notification frames.
 The older managed native `--action native-web --web-modal true` path remains
 compatibility coverage.
 
@@ -360,7 +364,8 @@ npm run steam-deck:smoke -- \
 A passing capture shows the Steam achievement-progress toast over the running
 Electron app while the lifecycle log includes `achievement:progress`,
 `callback:achievement-stored`, and a passive presenter snapshot
-(`clickThrough=true`, `transparent=true`, `overlayActive=false`). The current
+(`clickThrough=true`, `transparent=true`, `overlayActive=false`). The runner now
+requires that passive presenter shape automatically for this action. The current
 Deck proof selected SpaceWar achievement `ACH_TRAVEL_FAR_ACCUM` displayed as
 `Interstellar`, reported `indicated=true`, and captured the toast over the app.
 

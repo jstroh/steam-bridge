@@ -366,6 +366,10 @@ presenter as the single overlay target. Pass
 The Steam Deck smoke runner can assert this with
 `--require-single-overlay-target`, and it enables that assertion automatically
 for presenter-backed product actions.
+It also asserts idle/passive presenter state where appropriate: checkout
+readiness and the managed shortcut bridge must be parked at `idleFps: 0` /
+`currentFps: 0`, while passive notification tests must remain transparent,
+click-through, non-focusable, and overlay-inactive.
 
 On Linux/X11, the presenter separates visibility from input. Fully idle mode is
 transparent, non-focusable, click-through, and cheap to keep alive. When Steam

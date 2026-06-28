@@ -45,6 +45,8 @@ visual_close_input="keyboard"
 visual_toggle_probe="0"
 visual_toggle_input="keyboard"
 require_single_overlay_target="0"
+require_passive_presenter="0"
+require_idle_presenter="0"
 
 usage() {
   cat <<'EOF'
@@ -117,6 +119,8 @@ Options:
                                 button through a temporary uinput device. Defaults to keyboard.
   --require-single-overlay-target
                                 Require one gameoverlayui target attached to the smoke app.
+  --require-passive-presenter   Require the reusable presenter to be passive/click-through/transparent.
+  --require-idle-presenter      Require --require-passive-presenter plus zero current/idle FPS.
   --connect-timeout SECONDS     SSH connect timeout. Defaults to 6.
 EOF
 }
@@ -290,6 +294,15 @@ while [ "$#" -gt 0 ]; do
       ;;
     --require-single-overlay-target)
       require_single_overlay_target="1"
+      shift
+      ;;
+    --require-passive-presenter)
+      require_passive_presenter="1"
+      shift
+      ;;
+    --require-idle-presenter)
+      require_idle_presenter="1"
+      require_passive_presenter="1"
       shift
       ;;
     --connect-timeout)
@@ -1258,6 +1271,12 @@ append_common_helper_args() {
   if [ "$require_single_overlay_target" = "1" ]; then
     helper_args+=("--require-single-overlay-target")
   fi
+  if [ "$require_passive_presenter" = "1" ]; then
+    helper_args+=("--require-passive-presenter")
+  fi
+  if [ "$require_idle_presenter" = "1" ]; then
+    helper_args+=("--require-idle-presenter")
+  fi
 }
 
 build_steam_launch_args() {
@@ -1305,6 +1324,12 @@ build_steam_launch_args() {
 
   if is_presenter_product_action; then
     helper_args+=("--require-single-overlay-target")
+  fi
+  if [ "$action" = "presenter-shortcut" ] ||
+    { [ "$action" = "presenter-checkout" ] && ! checkout_opens_overlay; }; then
+    helper_args+=("--require-idle-presenter")
+  elif [ "$action" = "presenter-achievement-progress" ]; then
+    helper_args+=("--require-passive-presenter")
   fi
 
   if [ "$mode" = "game" ]; then

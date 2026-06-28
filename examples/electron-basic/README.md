@@ -263,7 +263,8 @@ control. The lifecycle log should include `callback:overlay-activated` with
 to the running app with no black native presenter covering it. The Deck process
 list should show one `gameoverlayui` process for the app, attached to the
 main/native process. The Deck runner requires that single-target process shape
-automatically for presenter-backed product actions.
+automatically for presenter-backed product actions. It also requires idle
+presenter state for checkout readiness and the managed shortcut bridge.
 
 For the generic Friends List path, use:
 
@@ -355,9 +356,11 @@ npm run steam-deck:smoke -- \
 
 A passing screenshot shows the Steam achievement progress toast over the running
 app while the presenter snapshot remains passive (`clickThrough=true`,
-`transparent=true`, `overlayActive=false`). With App ID `480`, the current Deck
-proof selected the public SpaceWar achievement `ACH_TRAVEL_FAR_ACCUM` displayed
-as `Interstellar`.
+`transparent=true`, `overlayActive=false`). The Deck runner machine-checks that
+passive presenter state for `presenter-achievement-progress`; it does not require
+`currentFps=0` because Steam can still be presenting the notification. With App
+ID `480`, the current Deck proof selected the public SpaceWar achievement
+`ACH_TRAVEL_FAR_ACCUM` displayed as `Interstellar`.
 
 For scripted setup, back up and upsert the non-Steam shortcut with:
 

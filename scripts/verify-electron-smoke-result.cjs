@@ -11,6 +11,7 @@ const launch = snapshot.launch || {};
 const overlay = snapshot.overlay || {};
 const overlayProcesses = snapshot.overlayProcesses || {};
 const processInfo = snapshot.process || {};
+const nativePresenter = readOkValue(overlay.nativePresenter);
 const events = Array.isArray(snapshot.events) ? snapshot.events : [];
 const overlayActivated = events.some(isOverlayActiveEvent);
 const failures = [];
@@ -60,6 +61,25 @@ if (options.requireSingleOverlayTarget) {
   expect(gameoverlayui.length === 1, "exactly one gameoverlayui target detected");
   if (gameoverlayui.length > 0) {
     expect(gameoverlayui[0].targetPid === processInfo.pid, "gameoverlayui targets the smoke app process");
+  }
+}
+if (options.requirePassivePresenter || options.requireIdlePresenter) {
+  expect(Boolean(nativePresenter), "native presenter snapshot available");
+  if (nativePresenter) {
+    expect(nativePresenter.attached === true, "native presenter attached");
+    expect(nativePresenter.nativeHostOpen === true, "native presenter host open");
+    expect(nativePresenter.mode === "passive", "native presenter is passive");
+    expect(nativePresenter.clickThrough === true, "native presenter is click-through");
+    expect(nativePresenter.focusable === false, "native presenter is non-focusable");
+    expect(nativePresenter.transparent === true, "native presenter is transparent");
+    expect(nativePresenter.overlayActive === false, "native presenter overlay inactive");
+  }
+}
+if (options.requireIdlePresenter) {
+  if (nativePresenter) {
+    expect(nativePresenter.idleFps === 0, "native presenter idle FPS is zero");
+    expect(nativePresenter.currentFps === 0, "native presenter current FPS is zero");
+    expect(nativePresenter.overlayNeedsPresent === false, "native presenter overlay does not need present");
   }
 }
 if (options.requireSteamLaunch) {
@@ -159,6 +179,8 @@ function parseArgs(args) {
     requireNativeProbeOpen: false,
     requireOverlayActivated: false,
     requireSingleOverlayTarget: false,
+    requirePassivePresenter: false,
+    requireIdlePresenter: false,
     requireSteamLaunch: false,
     requireSteamDeck: false,
     requiredEvents: []
@@ -202,6 +224,13 @@ function parseArgs(args) {
         break;
       case "--require-single-overlay-target":
         parsed.requireSingleOverlayTarget = true;
+        break;
+      case "--require-passive-presenter":
+        parsed.requirePassivePresenter = true;
+        break;
+      case "--require-idle-presenter":
+        parsed.requireIdlePresenter = true;
+        parsed.requirePassivePresenter = true;
         break;
       case "--require-native-probe-open":
         parsed.requireNativeProbeOpen = true;
