@@ -409,6 +409,9 @@ dumps, fatal Electron lifecycle events, duplicate overlay targets, or missing
 presenter diagnostics. For active overlay cases, the summary also verifies
 post-close presenter parking: `active=false`, transparent/click-through presenter
 snapshots, `currentFps=0`, and no pump-count increase between delayed samples.
+It also requires the smoke app's managed wait-helper lifecycle events:
+`overlay:presenter-wait-shown`, `overlay:presenter-wait-closed`, and
+`overlay:presenter-parked`.
 Live matrix runs also write `matrix-cases.jsonl`, and the summary prints/audits
 the close/toggle input used for each case. Existing artifact roots can be
 audited with `npm run steam-deck:overlay-matrix:summarize -- --artifact-root <path>`.

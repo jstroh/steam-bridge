@@ -411,7 +411,8 @@ Pass criteria:
   inactive callbacks, and returns to the app.
 - Deck visual close probes for presenter-backed product web surfaces verify the
   inactive callback, app focus, delayed post-close presenter parking, no
-  post-close pumping, and no post-close crash evidence.
+  post-close pumping, managed wait-helper shown/closed/parked lifecycle events,
+  and no post-close crash evidence.
 - Post-close presenter parking means the reusable host is transparent,
   click-through, non-focusable, overlay-inactive, and back at `currentFps=0`.
 - Post-close no-pumping means the stable presenter snapshot has the same

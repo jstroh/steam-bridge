@@ -65,6 +65,14 @@ const DIAGNOSTIC_DIR =
 const LIFECYCLE_LOG_FILE = path.join(DIAGNOSTIC_DIR, "lifecycle.jsonl");
 const CRASH_DUMP_DIR = path.join(DIAGNOSTIC_DIR, "crash-dumps");
 const POST_CLOSE_PRESENTER_SNAPSHOT_DELAYS_MS = [1800, 3200];
+const MANAGED_OVERLAY_WAIT_TIMEOUT_MS = normalizePositiveInteger(
+  Number(CLI_OPTIONS.managedOverlayWaitTimeoutMs || process.env.STEAM_BRIDGE_SMOKE_MANAGED_OVERLAY_WAIT_TIMEOUT_MS),
+  45000
+);
+const MANAGED_OVERLAY_PARK_TIMEOUT_MS = normalizePositiveInteger(
+  Number(CLI_OPTIONS.managedOverlayParkTimeoutMs || process.env.STEAM_BRIDGE_SMOKE_MANAGED_OVERLAY_PARK_TIMEOUT_MS),
+  90000
+);
 const FATAL_LIFECYCLE_EVENT_TYPES = new Set([
   "app:render-process-gone",
   "app:child-process-gone",
@@ -110,6 +118,8 @@ let mainWindow;
 let nativeOverlaySession;
 let electronSteamOverlay;
 let postClosePresenterSnapshotTimers = [];
+let managedOverlayWaitSequence = 0;
+const managedOverlayWaitControllers = new Set();
 const callbackHandles = [];
 const eventLog = [];
 
@@ -240,6 +250,7 @@ function shutdownSteam() {
   }
   shutdownComplete = true;
   clearPostClosePresenterSnapshotTimers();
+  abortManagedOverlayWaits();
   closeNativeOverlayPresenter();
   closeNativeOverlaySession();
 
@@ -542,6 +553,12 @@ function openPresenterDialogAutoOverlay() {
     appId: APP_ID,
     presenter: overlay.snapshot()
   });
+  observeManagedOverlayLifecycle(overlay, {
+    target: "dialog",
+    dialog: OVERLAY_DIALOG,
+    route: "auto",
+    appId: APP_ID
+  });
   return snapshot();
 }
 
@@ -558,6 +575,12 @@ function openPresenterStoreOverlay() {
     url,
     presenter: overlay.snapshot()
   });
+  observeManagedOverlayLifecycle(overlay, {
+    target: "store",
+    appId: APP_ID,
+    route: "web",
+    url
+  });
   return snapshot();
 }
 
@@ -570,6 +593,11 @@ function openPresenterWebOverlay() {
     modal: WEB_MODAL,
     presenter: overlay.snapshot()
   });
+  observeManagedOverlayLifecycle(overlay, {
+    target: "web",
+    url: WEB_URL,
+    modal: WEB_MODAL
+  });
   return snapshot();
 }
 
@@ -581,6 +609,11 @@ function openPresenterFriendsOverlay() {
     url: steamworks.STEAM_FRIENDS_OVERLAY_URL,
     modal: true,
     presenter: overlay.snapshot()
+  });
+  observeManagedOverlayLifecycle(overlay, {
+    target: "friends",
+    url: steamworks.STEAM_FRIENDS_OVERLAY_URL,
+    modal: true
   });
   return snapshot();
 }
@@ -595,6 +628,12 @@ function openPresenterCommunityOverlay() {
     modal: true,
     presenter: overlay.snapshot()
   });
+  observeManagedOverlayLifecycle(overlay, {
+    target: "community",
+    appId: APP_ID,
+    url: steamworks.steamCommunityAppUrl(APP_ID),
+    modal: true
+  });
   return snapshot();
 }
 
@@ -608,6 +647,12 @@ function openPresenterStatsOverlay() {
     modal: true,
     presenter: overlay.snapshot()
   });
+  observeManagedOverlayLifecycle(overlay, {
+    target: "stats",
+    appId: APP_ID,
+    url: steamworks.steamCommunityUserStatsUrl(APP_ID),
+    modal: true
+  });
   return snapshot();
 }
 
@@ -620,6 +665,12 @@ function openPresenterAchievementsOverlay() {
     url: steamworks.steamCommunityAchievementsUrl(APP_ID),
     modal: true,
     presenter: overlay.snapshot()
+  });
+  observeManagedOverlayLifecycle(overlay, {
+    target: "achievements",
+    appId: APP_ID,
+    url: steamworks.steamCommunityAchievementsUrl(APP_ID),
+    modal: true
   });
   return snapshot();
 }
@@ -644,6 +695,12 @@ function openPresenterCheckoutOverlay() {
       transactionId: CHECKOUT_URL ? null : CHECKOUT_TRANSACTION_ID,
       returnUrl: CHECKOUT_RETURN_URL || null,
       presenter: overlay.snapshot()
+    });
+    observeManagedOverlayLifecycle(overlay, {
+      target: "checkout",
+      route: "web",
+      transactionId: CHECKOUT_URL ? null : CHECKOUT_TRANSACTION_ID,
+      returnUrl: CHECKOUT_RETURN_URL || null
     });
   } else {
     overlay.prepareForCheckout();
@@ -703,6 +760,14 @@ function ensureElectronSteamOverlay(activeClient = requireClient()) {
           target: SHORTCUT_TARGET,
           overlayTarget: target
         });
+        if (electronSteamOverlay && electronSteamOverlay.isOpen()) {
+          observeManagedOverlayLifecycle(electronSteamOverlay, {
+            target: "shortcut",
+            shortcut: "Shift+Tab",
+            shortcutTarget: SHORTCUT_TARGET,
+            overlayTarget: target
+          });
+        }
         return target;
       },
       onError: (error) => {
@@ -1356,6 +1421,113 @@ function clearPostClosePresenterSnapshotTimers() {
   postClosePresenterSnapshotTimers = [];
 }
 
+function observeManagedOverlayLifecycle(overlay, context) {
+  if (!overlay || !overlay.isOpen()) {
+    return;
+  }
+
+  const sequence = ++managedOverlayWaitSequence;
+  const waitContext = { sequence, ...context };
+  const controller = new AbortController();
+  managedOverlayWaitControllers.add(controller);
+  let pending = 3;
+
+  recordEvent("overlay:presenter-wait-start", {
+    ...waitContext,
+    waitTimeoutMs: MANAGED_OVERLAY_WAIT_TIMEOUT_MS,
+    parkTimeoutMs: MANAGED_OVERLAY_PARK_TIMEOUT_MS,
+    presenter: overlay.snapshot()
+  });
+
+  recordManagedOverlayWait(
+    "overlay:presenter-wait-shown",
+    overlay.waitForOverlayShown({
+      timeoutMs: MANAGED_OVERLAY_WAIT_TIMEOUT_MS,
+      pollIntervalMs: 100,
+      signal: controller.signal
+    }),
+    waitContext,
+    overlay,
+    () => {
+      pending -= 1;
+      if (pending === 0) {
+        managedOverlayWaitControllers.delete(controller);
+      }
+    }
+  );
+  recordManagedOverlayWait(
+    "overlay:presenter-wait-closed",
+    overlay.waitForOverlayClosed({
+      timeoutMs: MANAGED_OVERLAY_PARK_TIMEOUT_MS,
+      pollIntervalMs: 100,
+      signal: controller.signal
+    }),
+    waitContext,
+    overlay,
+    () => {
+      pending -= 1;
+      if (pending === 0) {
+        managedOverlayWaitControllers.delete(controller);
+      }
+    }
+  );
+  recordManagedOverlayWait(
+    "overlay:presenter-parked",
+    overlay.parkWhenSteamOverlayCloses({
+      timeoutMs: MANAGED_OVERLAY_PARK_TIMEOUT_MS,
+      pollIntervalMs: 100,
+      signal: controller.signal
+    }),
+    waitContext,
+    overlay,
+    () => {
+      pending -= 1;
+      if (pending === 0) {
+        managedOverlayWaitControllers.delete(controller);
+      }
+    }
+  );
+}
+
+function recordManagedOverlayWait(type, promise, context, overlay, onDone) {
+  promise
+    .then((presenter) => {
+      recordEvent(type, {
+        ...context,
+        presenter
+      });
+    })
+    .catch((error) => {
+      if (!shutdownComplete) {
+        recordEvent(`${type}:error`, {
+          ...context,
+          error: serializeError(error),
+          presenter: safeOverlaySnapshot(overlay)
+        });
+      }
+    })
+    .finally(onDone);
+}
+
+function safeOverlaySnapshot(overlay) {
+  try {
+    return overlay && overlay.isOpen() ? overlay.snapshot() : null;
+  } catch (error) {
+    return { error: serializeError(error) };
+  }
+}
+
+function abortManagedOverlayWaits() {
+  for (const controller of managedOverlayWaitControllers) {
+    try {
+      controller.abort();
+    } catch {
+      // Best-effort shutdown for pending smoke observers.
+    }
+  }
+  managedOverlayWaitControllers.clear();
+}
+
 function readOverlayActiveValue(payload) {
   if (payload == null) {
     return undefined;
@@ -1469,6 +1641,8 @@ function parseSmokeArgs(args) {
     checkoutUrl: undefined,
     checkoutTransactionId: undefined,
     checkoutReturnUrl: undefined,
+    managedOverlayWaitTimeoutMs: undefined,
+    managedOverlayParkTimeoutMs: undefined,
     achievementName: undefined,
     achievementCurrent: undefined,
     achievementMax: undefined,
@@ -1516,6 +1690,12 @@ function parseSmokeArgs(args) {
         break;
       case "--steam-bridge-smoke-checkout-return-url":
         options.checkoutReturnUrl = value;
+        break;
+      case "--steam-bridge-smoke-managed-overlay-wait-timeout-ms":
+        options.managedOverlayWaitTimeoutMs = value;
+        break;
+      case "--steam-bridge-smoke-managed-overlay-park-timeout-ms":
+        options.managedOverlayParkTimeoutMs = value;
         break;
       case "--steam-bridge-smoke-overlay-dialog":
         options.overlayDialog = value;

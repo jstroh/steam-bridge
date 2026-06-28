@@ -12,6 +12,16 @@ const FATAL_LIFECYCLE_EVENT_TYPES = new Set([
   "process:uncaught-exception",
   "process:unhandled-rejection"
 ]);
+const MANAGED_LIFECYCLE_ACTIONS = new Set([
+  "presenter-web",
+  "presenter-store",
+  "presenter-friends",
+  "presenter-dialog-auto",
+  "presenter-community",
+  "presenter-stats",
+  "presenter-achievements",
+  "presenter-shortcut"
+]);
 
 main();
 
@@ -196,6 +206,7 @@ function summarizeMatrixArtifacts(root) {
       );
     }
     const parking = verifyLifecycleParking(caseName, lifecycle.entries, resultFailures);
+    const managedWaits = verifyManagedLifecycleWaits(caseName, action.action, lifecycle.entries, resultFailures);
 
     failures.push(...resultFailures);
     caseSummaries.push({
@@ -215,6 +226,7 @@ function summarizeMatrixArtifacts(root) {
       closeInput: caseMetadata?.visualCloseInput || "n/a",
       toggleInput: caseMetadata?.visualToggleInput || "n/a",
       parked: parking.required ? parking.ok : "n/a",
+      managedWaits: managedWaits.required ? managedWaits.ok : "n/a",
       crashOk: crashDiagnostics.ok === true,
       overlayTargets: overlayTargetCount,
       screenshots: countScreenshots(path.join(screenshotsRoot, caseName))
@@ -235,6 +247,7 @@ function summarizeMatrixArtifacts(root) {
         `closeInput=${item.closeInput}`,
         `toggleInput=${item.toggleInput}`,
         `parked=${item.parked}`,
+        `managedWaits=${item.managedWaits}`,
         `overlayTargets=${item.overlayTargets}`,
         `crashOk=${item.crashOk}`,
         `screenshots=${item.screenshots}`
@@ -319,7 +332,10 @@ function createSelfTestFixture(root) {
     path.join(runDiagnosticsDir, "lifecycle.jsonl"),
     [
       { type: "event:callback:overlay-activated", payload: { active: true } },
+      { type: "event:overlay:presenter-wait-shown", payload: { presenter: activePresenterFixture(8) } },
       { type: "event:callback:overlay-activated", payload: { active: false } },
+      { type: "event:overlay:presenter-wait-closed", payload: { presenter: parkedPresenterFixture(7) } },
+      { type: "event:overlay:presenter-parked", payload: { presenter: parkedPresenterFixture(7) } },
       { type: "event:overlay:presenter-after-close", payload: { presenter: parkedPresenterFixture(7) } },
       { type: "event:overlay:presenter-after-close-stable", payload: { presenter: parkedPresenterFixture(7) } }
     ]
@@ -348,7 +364,10 @@ function createSelfTestFixture(root) {
     path.join(shortcutRunDiagnosticsDir, "lifecycle.jsonl"),
     [
       { type: "event:callback:overlay-activated", payload: { active: true } },
+      { type: "event:overlay:presenter-wait-shown", payload: { presenter: activePresenterFixture(12) } },
       { type: "event:callback:overlay-activated", payload: { active: false } },
+      { type: "event:overlay:presenter-wait-closed", payload: { presenter: parkedPresenterFixture(11) } },
+      { type: "event:overlay:presenter-parked", payload: { presenter: parkedPresenterFixture(11) } },
       { type: "event:overlay:presenter-after-close", payload: { presenter: parkedPresenterFixture(11) } },
       { type: "event:overlay:presenter-after-close-stable", payload: { presenter: parkedPresenterFixture(11) } }
     ]
@@ -386,6 +405,23 @@ function createSelfTestFixture(root) {
   );
 }
 
+function activePresenterFixture(pumpCount) {
+  return {
+    closed: false,
+    attached: true,
+    nativeHostOpen: true,
+    mode: "active",
+    clickThrough: false,
+    focusable: true,
+    transparent: false,
+    overlayActive: true,
+    idleFps: 0,
+    currentFps: 30,
+    overlayNeedsPresent: true,
+    pumpCount
+  };
+}
+
 function parkedPresenterFixture(pumpCount) {
   return {
     closed: false,
@@ -401,6 +437,76 @@ function parkedPresenterFixture(pumpCount) {
     overlayNeedsPresent: false,
     pumpCount
   };
+}
+
+function verifyManagedLifecycleWaits(caseName, action, entries, failures) {
+  if (!requiresManagedLifecycleWaits(action, entries)) {
+    return { required: false, ok: true };
+  }
+  const failuresBefore = failures.length;
+
+  const firstActiveIndex = entries.findIndex(isLifecycleOverlayActiveEvent);
+  if (firstActiveIndex === -1) {
+    return { required: true, ok: false };
+  }
+
+  const inactiveAfterActiveIndex = entries.findIndex(
+    (entry, index) => index > firstActiveIndex && isLifecycleOverlayInactiveEvent(entry)
+  );
+  if (inactiveAfterActiveIndex === -1) {
+    return { required: true, ok: false };
+  }
+
+  const shown = entries.find(
+    (entry, index) => index > firstActiveIndex && entry.type === "event:overlay:presenter-wait-shown"
+  );
+  const closed = entries.find(
+    (entry, index) => index > inactiveAfterActiveIndex && entry.type === "event:overlay:presenter-wait-closed"
+  );
+  const parked = entries.find(
+    (entry, index) => index > inactiveAfterActiveIndex && entry.type === "event:overlay:presenter-parked"
+  );
+
+  if (!shown) {
+    failures.push(`${caseName}: no overlay:presenter-wait-shown event after active=true`);
+  } else if (!presenterPayload(shown)) {
+    failures.push(`${caseName}: overlay:presenter-wait-shown did not include a presenter snapshot`);
+  }
+  if (!closed) {
+    failures.push(`${caseName}: no overlay:presenter-wait-closed event after active=false`);
+  } else if (!presenterPayload(closed)) {
+    failures.push(`${caseName}: overlay:presenter-wait-closed did not include a presenter snapshot`);
+  }
+  const parkedPresenter = parked ? presenterPayload(parked) : undefined;
+  if (!parked) {
+    failures.push(`${caseName}: no overlay:presenter-parked event after active=false`);
+  } else if (!parkedPresenter) {
+    failures.push(`${caseName}: overlay:presenter-parked did not include a presenter snapshot`);
+  }
+
+  if (parkedPresenter && readPresenterMode(parkedPresenter) !== "session") {
+    expectParkedPresenter(caseName, parkedPresenter, "managed park wait", failures);
+  }
+
+  return { required: true, ok: failures.length === failuresBefore };
+}
+
+function requiresManagedLifecycleWaits(action, entries) {
+  if (MANAGED_LIFECYCLE_ACTIONS.has(action)) {
+    return entries.some((entry) => entry.type === "event:callback:overlay-activated");
+  }
+  if (action === "presenter-checkout") {
+    return entries.some((entry) => entry.type === "event:overlay:presenter-open");
+  }
+  return false;
+}
+
+function readPresenterMode(presenter) {
+  const electronOverlay =
+    presenter && typeof presenter.electronOverlay === "object" && !Array.isArray(presenter.electronOverlay)
+      ? presenter.electronOverlay
+      : undefined;
+  return electronOverlay && typeof electronOverlay.presenterMode === "string" ? electronOverlay.presenterMode : "";
 }
 
 function findResultLog(caseDir, failures) {

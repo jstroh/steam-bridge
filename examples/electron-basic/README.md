@@ -165,7 +165,9 @@ callback.
 The managed overlay also exposes `waitForOverlayShown()`,
 `waitForOverlayClosed()`, and `parkWhenSteamOverlayCloses()` for app code that
 needs explicit lifecycle await points without owning Steam callbacks or native
-presenter parking.
+presenter parking. The smoke lifecycle log records those public wait helpers as
+`overlay:presenter-wait-shown`, `overlay:presenter-wait-closed`, and
+`overlay:presenter-parked` during managed presenter proofs.
 Do not use `steam://open/overlay` as a generic overlay-toggle substitute in this
 example. Deck Desktop testing showed it can activate Steam's callback path while
 leaving the native presenter black and the smoke process unrecovered.
@@ -281,7 +283,8 @@ dialog equivalents, checkout readiness, synthetic checkout approval-route
 plumbing, Shift+Tab shortcut routing, and passive achievement-progress toasts.
 It also summarizes every collected result and lifecycle log, failing if a case
 reports crash dumps, fatal Electron lifecycle events, duplicate overlay targets,
-missing presenter diagnostics, or post-close presenter parking regressions. It
+missing presenter diagnostics, post-close presenter parking regressions, or
+missing managed wait-helper shown/closed/parked lifecycle evidence. It
 writes per-case diagnostics and screenshots under
 `/tmp/steam-bridge-deck-overlay-matrix-*` plus `matrix-cases.jsonl`, which lets
 the summary print and audit each case's close/toggle input. Use `--suite
@@ -387,7 +390,8 @@ Shift+Tab. For `presenter-shortcut`, keyboard toggle probes close with the
 keyboard path by default and also require
 `overlay:shortcut-open`, active/inactive callbacks, focus returning to the smoke
 app, delayed post-close presenter snapshots parked at passive idle with no
-`pumpCount` increase, and no post-close crash evidence. Use
+`pumpCount` increase, managed wait-helper shown/closed/parked events, and no
+post-close crash evidence. Use
 `--shortcut-target web --web-modal true --visual-toggle-open-delay 6` to prove
 the modal web/checkout-style target from a focused fullscreen app instead of
 capturing the launch-time Desktop overview. Use

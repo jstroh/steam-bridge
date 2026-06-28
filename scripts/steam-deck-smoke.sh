@@ -837,6 +837,34 @@ else:
                     f'native presenter pump count changed after close: first={first_pump_count!r}, stable={stable_pump_count!r}'
                 )
 
+        wait_shown_presenters = [
+            presenter_payload(entry)
+            for index, entry in enumerate(entries)
+            if index > first_active_index and entry.get('type') == 'event:overlay:presenter-wait-shown'
+        ]
+        wait_closed_presenters = [
+            presenter_payload(entry)
+            for index, entry in enumerate(entries)
+            if index > inactive_after_active_index and entry.get('type') == 'event:overlay:presenter-wait-closed'
+        ]
+        wait_parked_presenters = [
+            presenter_payload(entry)
+            for index, entry in enumerate(entries)
+            if index > inactive_after_active_index and entry.get('type') == 'event:overlay:presenter-parked'
+        ]
+        if not wait_shown_presenters:
+            failures.append('no overlay:presenter-wait-shown event after active=true in lifecycle log')
+        elif not any(wait_shown_presenters):
+            failures.append('overlay:presenter-wait-shown did not include a presenter snapshot')
+        if not wait_closed_presenters:
+            failures.append('no overlay:presenter-wait-closed event after active=false in lifecycle log')
+        elif not any(wait_closed_presenters):
+            failures.append('overlay:presenter-wait-closed did not include a presenter snapshot')
+        if not wait_parked_presenters:
+            failures.append('no overlay:presenter-parked event after active=false in lifecycle log')
+        elif not any(wait_parked_presenters):
+            failures.append('overlay:presenter-parked did not include a presenter snapshot')
+
 if require_shortcut_open and not any(entry.get('type') == 'event:overlay:shortcut-open' for entry in entries):
     failures.append('no overlay:shortcut-open event in lifecycle log')
 
@@ -1994,6 +2022,18 @@ run_self_test() {
   fi
   if ! grep -Fq "native presenter pump count changed after close" "$0"; then
     echo "Self-test failed: Deck close verification must require no post-close presenter pumping." >&2
+    exit 1
+  fi
+  if ! grep -Fq "event:overlay:presenter-wait-shown" "$0"; then
+    echo "Self-test failed: Deck close verification must require managed overlay shown wait evidence." >&2
+    exit 1
+  fi
+  if ! grep -Fq "event:overlay:presenter-wait-closed" "$0"; then
+    echo "Self-test failed: Deck close verification must require managed overlay closed wait evidence." >&2
+    exit 1
+  fi
+  if ! grep -Fq "event:overlay:presenter-parked" "$0"; then
+    echo "Self-test failed: Deck close verification must require managed overlay parked wait evidence." >&2
     exit 1
   fi
 

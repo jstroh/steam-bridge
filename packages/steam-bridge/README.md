@@ -229,7 +229,11 @@ purchase-content proof still requires a real Steam app and configured product.
 Use `waitForOverlayShown()`, `waitForOverlayClosed()`, and
 `parkWhenSteamOverlayCloses()` when app code needs explicit lifecycle await
 points; these wait on Steam Bridge's callback/snapshot state and keep the native
-presenter parking behavior inside the bridge.
+presenter parking behavior inside the bridge. The Electron smoke app records
+those await points as `overlay:presenter-wait-shown`,
+`overlay:presenter-wait-closed`, and `overlay:presenter-parked` lifecycle
+events so Deck/Linux artifact review proves the same public API app builders
+call.
 For `InitTxn` flows, call `steamOverlay.prepareForCheckout()` immediately before
 the app asks its backend to start the transaction. If Steam returns a web
 checkout URL, pass it as `steamOverlay.open({ type: "checkout", steamUrl })`.
@@ -312,8 +316,9 @@ paths. Close/toggle probes also require delayed post-close presenter snapshots
 showing the reusable host transparent, click-through, overlay-inactive, and back
 at `currentFps: 0`; the verifier fails if `pumpCount` increases between the
 first and stable post-close samples. Presenter-backed product runs also require
-clean crash diagnostics: no crash dump files and no fatal Electron lifecycle
-events. The smoke app's
+the smoke app's managed wait-helper lifecycle events for shown, closed, and
+parked states, plus clean crash diagnostics: no crash dump files and no fatal
+Electron lifecycle events. The smoke app's
 `presenter-achievement-progress` action verifies passive Steam notification
 behavior by keeping the presenter click-through and transparent while Steam
 displays an achievement-progress toast. The older
@@ -360,9 +365,10 @@ dialog equivalents, checkout readiness, synthetic checkout approval-route
 plumbing, Shift+Tab shortcut routing, and passive toasts. After a live run it
 summarizes every result and lifecycle log, failing if a case reports crash
 dumps, fatal Electron lifecycle events, duplicate overlay targets, or missing
-presenter diagnostics, and it verifies post-close presenter parking for active
-overlay cases. It still uses public App ID `480`, so real purchase content must
-be validated from a real configured Steam app. Live runs also write
+presenter diagnostics, and it verifies post-close presenter parking plus the
+managed wait-helper shown/closed/parked lifecycle events for active overlay
+cases. It still uses public App ID `480`, so real purchase content must be
+validated from a real configured Steam app. Live runs also write
 `matrix-cases.jsonl` so summaries can print and audit the close/toggle input
 used for each case. To audit an existing artifact root, run
 `npm run steam-deck:overlay-matrix:summarize -- --artifact-root <path>`.

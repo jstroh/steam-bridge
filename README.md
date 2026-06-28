@@ -267,7 +267,11 @@ overlay targets, missing presenter diagnostics, and post-close presenter parking
 regressions fail the run. Screenshots and diagnostics are collected under
 `/tmp/steam-bridge-deck-overlay-matrix-*`; live runs also write
 `matrix-cases.jsonl` so summaries can print and audit the close/toggle input
-used for each case.
+used for each case. Active presenter-backed cases also record the managed
+builder-facing lifecycle waits as `overlay:presenter-wait-shown`,
+`overlay:presenter-wait-closed`, and `overlay:presenter-parked` lifecycle
+events, so Deck artifacts prove the public wait helpers as well as the raw
+Steam callbacks.
 
 For CI/local maintenance without a Deck, `npm run steam-deck:overlay-matrix:check`
 validates the generated minimal, core, and full matrix command sets plus the
@@ -398,7 +402,10 @@ forcing the Electron game window into a constant repaint loop. By default
 only when you need lower-level lifecycle control.
 Use `waitForOverlayShown()`, `waitForOverlayClosed()`, and
 `parkWhenSteamOverlayCloses()` when app code needs explicit lifecycle await
-points. Call `steamOverlay.snapshot()` when you need diagnostics; it returns the
+points. The Electron smoke app records those await points in its lifecycle log
+as `overlay:presenter-wait-shown`, `overlay:presenter-wait-closed`, and
+`overlay:presenter-parked` for Deck/Linux artifact review. Call
+`steamOverlay.snapshot()` when you need diagnostics; it returns the
 native presenter state plus an `electronOverlay` block with the presenter mode,
 shortcut policy, and window-close ownership.
 The smoke verifiers can require those managed diagnostics with
@@ -437,6 +444,8 @@ post-close presenter snapshots showing the reusable host parked back at passive
 idle: transparent, click-through, non-focusable, overlay-inactive, and
 `currentFps: 0`. The Deck verifier compares the first and stable post-close
 samples and fails if `pumpCount` increases after the host should be idle.
+For active managed presenter routes it also requires the smoke app's public
+wait-helper events for shown, closed, and parked lifecycle states.
 Presenter-backed product actions also require the smoke app's crash diagnostics
 to stay clean: no crash dump files and no fatal Electron lifecycle events.
 
