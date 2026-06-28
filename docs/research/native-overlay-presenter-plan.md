@@ -67,6 +67,14 @@ timing hacks.
   overlay callbacks and returned cleanly to the app. SpaceWar's web achievements
   URL redirects to the user profile because it has no public web stats page, so
   achievements content proof needs a real app with web-visible stats.
+- Deck Desktop store pages now have a product-shaped web route:
+  `openStoreOverlay(appId, flag, { presenter })` and
+  `steamOverlay.open({ type: "store", appId })` default to the Steam store web
+  overlay URL through the reusable native web presenter. A 2026-06-28 Deck
+  Desktop run for App ID `480` recorded route `web`, emitted active/inactive
+  callbacks, returned to the app after the web close probe, and stayed parked
+  without post-close pumping. Pass `route: "native"` only for raw
+  `ActivateGameOverlayToStore` diagnostics.
 - Deck Desktop keyboard toggle now has a product-shaped Electron route:
   `createElectronSteamOverlay(...)` installs a default Shift+Tab shortcut bridge
   that opens the verified Friends/chat presenter-backed web overlay instead of
@@ -344,6 +352,9 @@ Pass criteria:
   accepts input, closes, and returns to the app without duplicate Electron child
   overlay targets. Full achievements content proof requires an app whose Steam
   Community stats page is exposed.
+- Store pages open through `openStoreOverlay` / `steamOverlay.open({ type:
+  "store", appId })`, accept input, close through the Steam web close control,
+  and return to the app without duplicate Electron child overlay targets.
 - High-level `dialog` targets for Friends, Community, OfficialGameGroup, Stats,
   and Achievements route to the same presenter-backed web equivalents by
   default; raw native dialog activation remains explicit diagnostic behavior.
@@ -351,7 +362,7 @@ Pass criteria:
   closes through the Steam web close control, returns to the app, and is
   machine-verified through `overlay:shortcut-open`, active/inactive callbacks,
   app focus, and post-close crash diagnostics.
-- Modal web/checkout overlay opens, accepts input, closes, emits active then
+- Modal web/store/checkout overlay opens, accepts input, closes, emits active then
   inactive callbacks, and returns to the app.
 - Deck visual close probes for presenter-backed product web surfaces verify the
   inactive callback, app focus, delayed post-close presenter parking, no

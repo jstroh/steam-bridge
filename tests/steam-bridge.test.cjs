@@ -4398,6 +4398,13 @@ test("overlay helpers map constants and forward modal/store options", (t) => {
     flag: steam.StoreFlag.AddToCart,
     presenter: mockPresenter
   });
+  steam.overlay.openSteamOverlay({
+    type: "store",
+    appId: 480,
+    flag: steam.StoreFlag.AddToCart,
+    route: "native",
+    presenter: mockPresenter
+  });
   steam.overlay.openSteamOverlay({ type: "friends", presenter: mockPresenter });
   steam.overlay.openSteamOverlay({ type: "community", appId: 480, presenter: mockPresenter });
   steam.overlay.openSteamOverlay({
@@ -4485,6 +4492,7 @@ test("overlay helpers map constants and forward modal/store options", (t) => {
         ]
       },
       { method: "activateOverlayToWebPage", args: ["https://store.steampowered.com/app/480/", true] },
+      { method: "activateOverlayToWebPage", args: [steam.steamStoreAppUrl(480), true] },
       { method: "overlayActivateToStore", args: [480, steam.StoreFlag.AddToCart] },
       { method: "activateOverlayToWebPage", args: [steam.STEAM_FRIENDS_OVERLAY_URL, true] },
       { method: "activateOverlayToWebPage", args: [steam.steamCommunityAppUrl(480), true] },
@@ -4503,6 +4511,8 @@ test("overlay helpers map constants and forward modal/store options", (t) => {
       { method: "activateOverlay", args: ["Settings"] }
     ]
   );
+  assert.equal(steam.STEAM_STORE_BASE_URL, "https://store.steampowered.com");
+  assert.equal(steam.steamStoreAppUrl(480), "https://store.steampowered.com/app/480/");
   assert.equal(steam.STEAM_COMMUNITY_BASE_URL, "https://steamcommunity.com");
   assert.equal(steam.steamCommunityAppUrl(480), "https://steamcommunity.com/app/480/");
   assert.equal(steam.steamCommunityStatsUrl(480), "https://steamcommunity.com/stats/480/");
@@ -4529,6 +4539,7 @@ test("overlay helpers map constants and forward modal/store options", (t) => {
   assert.throws(() => steam.steamCheckoutTransactionUrl(Number.MAX_SAFE_INTEGER + 1), /Invalid Steam transaction ID/);
   assert.throws(() => steam.overlay.openCheckoutOverlay({ presenter: mockPresenter }), /requires a url, steamUrl, or transactionId/);
   assert.deepEqual(presenterCalls, [
+    "prepareForOverlay",
     "prepareForOverlay",
     "prepareForOverlay",
     "prepareForOverlay",
@@ -5115,7 +5126,7 @@ test("native overlay presenter reuses a passive host for overlay activation", as
       { method: "setNativeOverlayHostInputPassthrough", args: [false] },
       { method: "setNativeOverlayHostOpacity", args: [true] },
       { method: "pumpNativeOverlayProbeWindow", args: [] },
-      { method: "overlayActivateToStore", args: [480, steam.StoreFlag.None] },
+      { method: "activateOverlayToWebPage", args: [steam.steamStoreAppUrl(480), true] },
       { method: "disconnectGameOverlayActivated", args: [] },
       { method: "detachNativeOverlayHostView", args: [] }
     ]

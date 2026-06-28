@@ -529,11 +529,14 @@ function openPresenterDialogAutoOverlay() {
 function openPresenterStoreOverlay() {
   const activeClient = requireClient();
   const overlay = ensureElectronSteamOverlay(activeClient);
+  const url = typeof steamworks.steamStoreAppUrl === "function" ? steamworks.steamStoreAppUrl(APP_ID) : STORE_URL;
   overlay.open({ type: "store", appId: APP_ID, flag: activeClient.overlay.StoreFlag.None });
   recordEvent("overlay:presenter-open", {
     target: "store",
     appId: APP_ID,
     flag: activeClient.overlay.StoreFlag.None,
+    route: "web",
+    url,
     presenter: overlay.snapshot()
   });
   return snapshot();

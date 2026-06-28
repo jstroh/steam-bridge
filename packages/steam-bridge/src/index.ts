@@ -1666,12 +1666,18 @@ export type NativeOverlayAppPagePresenterOptions = NativeOverlayWebPagePresenter
   steamId64?: bigint | number | string;
 };
 
+export type SteamOverlayStoreRoute = "web" | "native";
+
+export type NativeOverlayStorePresenterOptions = NativeOverlayWebPagePresenterOptions & {
+  route?: SteamOverlayStoreRoute;
+};
+
 export type SteamOverlayWebTarget = NativeOverlayWebPagePresenterOptions & {
   type: "web";
   url: string;
 };
 
-export type SteamOverlayStoreTarget = NativeOverlayPresenterOverlayOptions & {
+export type SteamOverlayStoreTarget = NativeOverlayStorePresenterOptions & {
   type: "store";
   appId?: number;
   flag?: number;
@@ -1789,6 +1795,7 @@ type NativeOverlayPresenterInternal = NativeOverlayPresenter & {
   prepareForTransparentInputOverlay?: (durationMs?: number) => void;
 };
 
+export const STEAM_STORE_BASE_URL = "https://store.steampowered.com";
 export const STEAM_COMMUNITY_BASE_URL = "https://steamcommunity.com";
 export const STEAM_FRIENDS_OVERLAY_URL = `${STEAM_COMMUNITY_BASE_URL}/chat/`;
 export const STEAM_CHECKOUT_BASE_URL = "https://checkout.steampowered.com";
@@ -6699,6 +6706,10 @@ export function overlayNeedsPresent(): boolean {
   return native().overlayNeedsPresent();
 }
 
+export function steamStoreAppUrl(appId: number = getAppId()): string {
+  return `${STEAM_STORE_BASE_URL}/app/${normalizeSteamAppId(appId)}/`;
+}
+
 export function steamCommunityAppUrl(appId: number = getAppId()): string {
   return `${STEAM_COMMUNITY_BASE_URL}/app/${normalizeSteamAppId(appId)}/`;
 }
@@ -7522,9 +7533,9 @@ export function openDialogEquivalentOverlay(
   }
 }
 
-export function openStoreOverlay(
-  appId: number,
-  flag: number,
+export function openNativeStoreOverlay(
+  appId: number = getAppId(),
+  flag: number = StoreFlag.None,
   options: NativeOverlayPresenterOverlayOptions = {}
 ): NativeOverlayPresenter {
   return activateWithOverlayPresenter(
@@ -7534,6 +7545,21 @@ export function openStoreOverlay(
     },
     "interactive"
   );
+}
+
+export function openStoreOverlay(
+  appId: number = getAppId(),
+  flag: number = StoreFlag.None,
+  options: NativeOverlayStorePresenterOptions = {}
+): NativeOverlayPresenter {
+  const { route = "web", modal = true, ...presenterOptions } = options;
+  if (route === "native") {
+    return openNativeStoreOverlay(appId, flag, presenterOptions);
+  }
+  return openWebOverlay(steamStoreAppUrl(appId), {
+    ...presenterOptions,
+    modal
+  });
 }
 
 export function openSteamOverlay(target: SteamOverlayTarget): NativeOverlayPresenter {
@@ -11998,6 +12024,7 @@ export const overlay = {
   openAchievementsOverlay,
   openCheckoutOverlay,
   openDialogEquivalentOverlay,
+  openNativeStoreOverlay,
   openStoreOverlay,
   openSteamOverlay,
   createElectronSteamOverlay,
@@ -19772,6 +19799,7 @@ const defaultExport = {
   openAchievementsOverlay,
   openCheckoutOverlay,
   openDialogEquivalentOverlay,
+  openNativeStoreOverlay,
   openStoreOverlay,
   openSteamOverlay,
   createElectronSteamOverlay,
@@ -19842,11 +19870,13 @@ const defaultExport = {
   electronNativeOverlaySessionOptions,
   electronOverlayPresenterOptions,
   electronScrubSteamOverlayChildProcessEnv,
+  steamStoreAppUrl,
   steamCommunityAppUrl,
   steamCommunityStatsUrl,
   steamCommunityUserStatsUrl,
   steamCommunityAchievementsUrl,
   steamCheckoutTransactionUrl,
+  STEAM_STORE_BASE_URL,
   STEAM_COMMUNITY_BASE_URL,
   STEAM_FRIENDS_OVERLAY_URL,
   STEAM_CHECKOUT_BASE_URL,

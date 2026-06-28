@@ -317,6 +317,11 @@ steamOverlay.open({
   modal: true
 });
 
+steamOverlay.open({
+  type: "store",
+  appId: 480
+});
+
 // Prime the presenter before your backend starts an in-game InitTxn flow.
 steamOverlay.prepareForCheckout();
 
@@ -397,8 +402,11 @@ Steam Bridge routes overlay targets by how Steam renders them. Prefer
 `client.overlay.createElectronSteamOverlay(mainWindow).open(...)` for Electron
 app code: web, store, Friends, Community, Stats, Achievements, and checkout
 targets use the presenter-backed paths proven on Steam Deck Desktop Mode, while
-`openSteamOverlay(...)` and the lower-level named helpers remain available for
-explicit integrations. The public smoke app can verify checkout readiness, but
+`route: "native"`, `openNativeStoreOverlay(...)`, and the lower-level named
+helpers remain available for explicit native diagnostics. Store targets default
+to the Steam store web overlay surface because that is the reusable Deck
+Desktop path that opens, accepts input, closes, and returns to Electron cleanly.
+The public smoke app can verify checkout readiness, but
 real purchase-content proof still requires a real Steam app and configured
 product. For in-game microtransactions, call
 `steamOverlay.prepareForCheckout()` before your backend starts `InitTxn` so
@@ -445,9 +453,9 @@ activation, visual open, close, and back-to-app checks. Use
 or the lower-level `client.overlay.attachPresenter(...)`,
 `client.overlay.openSteamOverlay(...)`, `client.overlay.openWebOverlay(...)`,
 `client.overlay.openFriendsOverlay(...)`, `client.overlay.openCommunityOverlay(...)`,
-`client.overlay.openStatsOverlay(...)`, and
-`client.overlay.openDialogEquivalentOverlay(...)` helpers, or the Electron smoke app's
-`presenter-web` / `presenter-friends` / `presenter-community` /
+`client.overlay.openStatsOverlay(...)`, `client.overlay.openStoreOverlay(...)`,
+and `client.overlay.openDialogEquivalentOverlay(...)` helpers, or the Electron smoke app's
+`presenter-web` / `presenter-store` / `presenter-friends` / `presenter-community` /
 `presenter-stats` / `presenter-dialog-auto` / `presenter-shortcut` actions for
 that proof. The older
 `activateToWebPageWithNativeSession(..., { modal: true })` / `native-web` path
