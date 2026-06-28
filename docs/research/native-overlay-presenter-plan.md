@@ -342,6 +342,9 @@ Next work:
      persistent presenter and lazily fall back to the older native-session
      lifecycle while preserving the same `steamOverlay.open(...)` app-facing
      calls.
+   - The Electron smoke app and Linux/Deck helpers expose the same switch as
+     `STEAM_BRIDGE_SMOKE_PRESENTER_MODE` / `--presenter-mode session` so
+     comparison runs do not require manual Steam shortcut edits.
    - Treat this as emergency diagnostics or compatibility comparison; the
      default persistent presenter remains the Deck Desktop product path because
      it parks idle at `currentFps=0`.
@@ -405,8 +408,9 @@ Pass criteria:
   lifecycle events in the smoke diagnostics.
 - No sustained 30 FPS pumping while idle.
 - The session fallback is available as a kill switch without changing app
-  overlay call sites, but it is documented as diagnostic coverage rather than
-  the default product path.
+  overlay call sites, and the smoke runners can select it with
+  `--presenter-mode session`, but it is documented as diagnostic coverage
+  rather than the default product path.
 
 ## macOS Apple Silicon Plan
 

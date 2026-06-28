@@ -18,6 +18,7 @@ checkout_transaction_id=""
 checkout_return_url=""
 overlay_dialog=""
 shortcut_target=""
+presenter_mode=""
 achievement_name=""
 achievement_current=""
 achievement_max=""
@@ -78,6 +79,8 @@ Options:
   --dialog NAME                  Dialog name for dialog/native-dialog/presenter-dialog actions. Defaults to Friends.
   --shortcut-target NAME         Presenter shortcut target: friends, web, store, community,
                                  stats, achievements, dialog, or checkout. Defaults to friends.
+  --presenter-mode MODE          Managed Electron overlay presenter mode: persistent or session.
+                                 Defaults to persistent.
   --achievement-name NAME        Achievement for presenter-achievement-progress. Defaults to the first progress achievement.
   --achievement-current VALUE    Progress current value. Defaults to 1.
   --achievement-max VALUE        Progress max value. Defaults to the achievement limit or 2.
@@ -174,6 +177,10 @@ while [ "$#" -gt 0 ]; do
       ;;
     --shortcut-target)
       shortcut_target="${2:?missing --shortcut-target value}"
+      shift 2
+      ;;
+    --presenter-mode)
+      presenter_mode="${2:?missing --presenter-mode value}"
       shift 2
       ;;
     --achievement-name)
@@ -323,6 +330,9 @@ smoke_args() {
   fi
   if [ -n "$shortcut_target" ]; then
     printf '%s\n' "--steam-bridge-smoke-shortcut-target=$shortcut_target"
+  fi
+  if [ -n "$presenter_mode" ]; then
+    printf '%s\n' "--steam-bridge-smoke-presenter-mode=$presenter_mode"
   fi
   if [ -n "$achievement_name" ]; then
     printf '%s\n' "--steam-bridge-smoke-achievement-name=$achievement_name"
@@ -783,11 +793,17 @@ EOF
   require_no_crashes="0"
 
   overlay_dialog="Achievements"
+  presenter_mode="session"
   launch_options="$(smoke_args | paste -sd' ' -)"
   if [[ "$launch_options" != *"--steam-bridge-smoke-overlay-dialog=Achievements"* ]]; then
     echo "Self-test failed: Launch options must pass the requested overlay dialog." >&2
     exit 1
   fi
+  if [[ "$launch_options" != *"--steam-bridge-smoke-presenter-mode=session"* ]]; then
+    echo "Self-test failed: Launch options must pass the requested presenter mode." >&2
+    exit 1
+  fi
+  presenter_mode=""
 
   checkout_transaction_id="123456789"
   checkout_return_url="steam://open/main"

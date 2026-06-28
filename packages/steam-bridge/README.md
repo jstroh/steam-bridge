@@ -236,7 +236,9 @@ transparent after Steam reports the overlay inactive. The default `idleFps` is
 `STEAM_BRIDGE_DISABLE_ELECTRON_OVERLAY_PRESENTER=1` only as an emergency
 compatibility switch: it disables the reusable presenter, uses the older
 one-shot native-session lifecycle for the same `steamOverlay.open(...)` calls,
-and may pump more aggressively while a session is open. Use
+and may pump more aggressively while a session is open. The Linux and Steam Deck
+smoke helpers expose this as `--presenter-mode session` for repeatable
+diagnostic comparisons. Use
 `steamOverlay.open({ type: "friends" })` for a generic Friends List surface; it
 opens Steam Community chat through the same native web presenter path, keeping
 Electron child-process isolation intact. Use
@@ -302,7 +304,9 @@ shortcut bridge is the product path for Electron keyboard toggle behavior. The
 managed overlay also exposes `presenterMode: "session"` and
 `STEAM_BRIDGE_ELECTRON_OVERLAY_PRESENTER=session` for diagnostic comparison
 against the reusable presenter; keep the default persistent mode for Deck
-Desktop product proof. The Deck runner can collect focused toggle evidence with
+Desktop product proof. The packaged helper and Deck runner can pass the fallback
+explicitly with `--presenter-mode session`. The Deck runner can collect focused
+toggle evidence with
 `--visual-toggle-probe --visual-toggle-input keyboard|guide|both`; for the
 managed `presenter-shortcut` keyboard path, that probe verifies
 `overlay:shortcut-open`, active/inactive callbacks, app focus, and crash

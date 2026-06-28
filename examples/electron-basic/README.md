@@ -172,7 +172,9 @@ For emergency compatibility comparison, set
 `STEAM_BRIDGE_DISABLE_ELECTRON_OVERLAY_PRESENTER=1` before launching the smoke
 app. The same high-level `presenter-*` actions then use the older native-session
 lifecycle instead of the reusable persistent presenter; this is diagnostic
-coverage, not the recommended Deck Desktop product path.
+coverage, not the recommended Deck Desktop product path. The Linux and Steam
+Deck helpers also accept `--presenter-mode session` to run the same comparison
+through repeatable smoke commands without editing the Steam shortcut by hand.
 
 For social-overlay investigation only, the smoke app and Deck host runner expose
 `--steam-bridge-electron-overlay-scrub-child-env`,
@@ -330,6 +332,9 @@ the running app without duplicate `gameoverlayui` targets.
 For presenter-backed Steam web surfaces, add `--visual-close-input web` with
 `--visual-close-probe` to close through the visible Steam web overlay close
 control instead of Shift+Tab/Escape.
+Add `--presenter-mode session` only when you need to compare the compatibility
+native-session fallback against the default persistent presenter; the default
+persistent mode remains the product proof path.
 
 Use `--visual-toggle-probe` when the question is whether an overlay shortcut
 opens from the current app state. With `presenter-shortcut`, this tests Steam

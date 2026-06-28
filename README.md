@@ -370,6 +370,9 @@ presenter and fall back to the older one-shot native-session lifecycle while
 keeping the same `steamOverlay.open(...)` calls. That mode is intended for
 isolating presenter regressions; it may pump more aggressively and is not the
 recommended Steam Deck Desktop product path.
+The smoke helpers expose the same comparison as `--presenter-mode session`, so
+Deck and Linux runs can switch modes without hand-editing Steam shortcut launch
+options.
 
 `electronConfigureSteamOverlay()` also keeps Electron's Chromium children from
 becoming competing Steam overlay targets. By default it removes Steam's overlay
@@ -482,7 +485,9 @@ overlay and hotkey toggle should not be treated as completed dismissal proofs.
 The managed Electron overlay also exposes a compatibility fallback through
 `presenterMode: "session"` or
 `STEAM_BRIDGE_ELECTRON_OVERLAY_PRESENTER=session`; use it only to compare
-against the reusable presenter when diagnosing a platform regression.
+against the reusable presenter when diagnosing a platform regression. The
+packaged Linux helper and Deck SSH runner also accept `--presenter-mode session`
+for that repeatable comparison.
 
 For repeatable Deck evidence, the smoke host runner can copy the remote result
 log and diagnostics directory back to the local machine with

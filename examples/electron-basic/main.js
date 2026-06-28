@@ -29,6 +29,17 @@ const CHECKOUT_RETURN_URL =
 const OVERLAY_DIALOG = CLI_OPTIONS.overlayDialog || process.env.STEAM_BRIDGE_SMOKE_OVERLAY_DIALOG || "Friends";
 const SHORTCUT_TARGET =
   CLI_OPTIONS.shortcutTarget || process.env.STEAM_BRIDGE_SMOKE_SHORTCUT_TARGET || "friends";
+const PRESENTER_MODE =
+  CLI_OPTIONS.presenterMode ||
+  process.env.STEAM_BRIDGE_SMOKE_PRESENTER_MODE ||
+  process.env.STEAM_BRIDGE_ELECTRON_OVERLAY_PRESENTER ||
+  "";
+const DISABLE_ELECTRON_OVERLAY_PRESENTER = readBoolean(
+  process.env.STEAM_BRIDGE_DISABLE_ELECTRON_OVERLAY_PRESENTER,
+  false
+);
+const EFFECTIVE_PRESENTER_MODE =
+  PRESENTER_MODE || (DISABLE_ELECTRON_OVERLAY_PRESENTER ? "session" : "persistent");
 const ACHIEVEMENT_NAME = CLI_OPTIONS.achievementName || process.env.STEAM_BRIDGE_SMOKE_ACHIEVEMENT_NAME || "";
 const ACHIEVEMENT_CURRENT = Number(
   CLI_OPTIONS.achievementCurrent || process.env.STEAM_BRIDGE_SMOKE_ACHIEVEMENT_CURRENT || "1"
@@ -679,6 +690,7 @@ function ensureElectronSteamOverlay(activeClient = requireClient()) {
   closeNativeOverlaySession();
   electronSteamOverlay = activeClient.overlay.createElectronSteamOverlay(requireMainWindow(), {
     title: "Steam Bridge Overlay Presenter",
+    presenterMode: PRESENTER_MODE || undefined,
     restoreFocusDelayMs: 500,
     needsPresentFps: 30,
     activeOverlayFps: 30,
@@ -699,6 +711,8 @@ function ensureElectronSteamOverlay(activeClient = requireClient()) {
     }
   });
   recordEvent("overlay:presenter-attach", {
+    presenterMode: EFFECTIVE_PRESENTER_MODE,
+    configuredPresenterMode: PRESENTER_MODE || null,
     presenter: electronSteamOverlay.snapshot()
   });
   return electronSteamOverlay;
@@ -856,6 +870,9 @@ function snapshot() {
       webModal: WEB_MODAL,
       overlayDialog: OVERLAY_DIALOG,
       shortcutTarget: SHORTCUT_TARGET,
+      presenterMode: EFFECTIVE_PRESENTER_MODE,
+      configuredPresenterMode: PRESENTER_MODE || null,
+      disableElectronOverlayPresenter: DISABLE_ELECTRON_OVERLAY_PRESENTER,
       achievementName: ACHIEVEMENT_NAME || null,
       achievementCurrent: ACHIEVEMENT_CURRENT,
       achievementMax: ACHIEVEMENT_MAX,
@@ -1442,6 +1459,7 @@ function parseSmokeArgs(args) {
     overlayProfile: undefined,
     overlayDialog: undefined,
     shortcutTarget: undefined,
+    presenterMode: undefined,
     overlayScrubChildEnv: undefined,
     overlayIsolateChildProcesses: undefined,
     windowMode: undefined,
@@ -1504,6 +1522,9 @@ function parseSmokeArgs(args) {
         break;
       case "--steam-bridge-smoke-shortcut-target":
         options.shortcutTarget = value;
+        break;
+      case "--steam-bridge-smoke-presenter-mode":
+        options.presenterMode = value;
         break;
       case "--steam-bridge-smoke-achievement-name":
         options.achievementName = value;
