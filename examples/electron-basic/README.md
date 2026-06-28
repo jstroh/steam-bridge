@@ -330,7 +330,9 @@ actions, this tests Steam's raw hotkey interception. The runner focuses the
 smoke app when possible, captures `before-toggle-probe.png`, sends the selected
 toggle input, captures `after-toggle-open.png`, then closes and captures
 `after-toggle-close.png`. The default `--visual-toggle-input keyboard` sends
-Shift+Tab. Use
+Shift+Tab. For `presenter-shortcut`, keyboard toggle probes also require
+`overlay:shortcut-open`, active/inactive callbacks, focus returning to the smoke
+app, and no post-close crash evidence. Use
 `--visual-toggle-input guide` to send the controller Guide/Steam button through a
 temporary `/dev/uinput` device, or `--visual-toggle-input both` to compare both
 paths in one run. Keyboard probes use the existing Shift+Tab/Escape close probe;

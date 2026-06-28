@@ -612,11 +612,12 @@ sleep 0.35"
 }
 
 verify_deck_overlay_closed_after_probe() {
+  local require_shortcut_open="${1:-0}"
   local result_file_q app_name_q
   result_file_q="$(quote_arg "$result_file")"
   app_name_q="$(quote_arg "$app_name")"
   echo "Verifying Deck overlay close/deactivation evidence"
-  remote_exec "RESULT_FILE=$result_file_q APP_NAME=$app_name_q python3 - <<'PY'
+  remote_exec "RESULT_FILE=$result_file_q APP_NAME=$app_name_q REQUIRE_SHORTCUT_OPEN=$require_shortcut_open python3 - <<'PY'
 import glob
 import json
 import os
@@ -626,6 +627,7 @@ import sys
 
 result_file = os.environ['RESULT_FILE']
 app_name = os.environ.get('APP_NAME') or 'Steam Bridge Smoke'
+require_shortcut_open = os.environ.get('REQUIRE_SHORTCUT_OPEN') == '1'
 diagnostic_dir = result_file + '.diagnostics'
 lifecycle_path = os.path.join(diagnostic_dir, 'lifecycle.jsonl')
 crash_dump_dir = os.path.join(diagnostic_dir, 'crash-dumps')
@@ -678,6 +680,9 @@ if first_active_index is None:
     failures.append('no active=true overlay callback in lifecycle log')
 elif not any(index > first_active_index and state is False for index, state in overlay_states):
     failures.append('no active=false overlay callback after active=true')
+
+if require_shortcut_open and not any(entry.get('type') == 'event:overlay:shortcut-open' for entry in entries):
+    failures.append('no overlay:shortcut-open event in lifecycle log')
 
 fatal_entries = [entry for entry in entries if entry.get('type') in fatal_types]
 if fatal_entries:
@@ -967,30 +972,35 @@ run_visual_toggle_probe_for_input() {
   local input="$1"
   local label_prefix="$2"
   local use_close_probe="$3"
+  local status=0
 
-  focus_deck_smoke_window
-  capture_deck_screenshot "${label_prefix}before-toggle-probe"
-  capture_deck_overlay_state "${label_prefix}before-toggle-probe"
-  send_deck_overlay_toggle_probe "$input"
+  focus_deck_smoke_window || status=$?
+  capture_deck_screenshot "${label_prefix}before-toggle-probe" || status=$?
+  capture_deck_overlay_state "${label_prefix}before-toggle-probe" || status=$?
+  send_deck_overlay_toggle_probe "$input" || status=$?
   sleep 2
-  capture_deck_screenshot "${label_prefix}after-toggle-open"
-  capture_deck_overlay_state "${label_prefix}after-toggle-open"
+  capture_deck_screenshot "${label_prefix}after-toggle-open" || status=$?
+  capture_deck_overlay_state "${label_prefix}after-toggle-open" || status=$?
   if [ "$use_close_probe" = "1" ]; then
     if [ "$visual_close_input" = "web" ]; then
-      send_deck_web_overlay_close_probe
+      send_deck_web_overlay_close_probe || status=$?
     elif [ "$visual_close_input" = "both" ]; then
-      send_deck_overlay_close_probe
+      send_deck_overlay_close_probe || status=$?
       sleep 0.5
-      send_deck_web_overlay_close_probe
+      send_deck_web_overlay_close_probe || status=$?
     else
-      send_deck_overlay_close_probe
+      send_deck_overlay_close_probe || status=$?
     fi
   else
-    send_deck_overlay_toggle_probe "$input"
+    send_deck_overlay_toggle_probe "$input" || status=$?
   fi
   sleep 1
-  capture_deck_screenshot "${label_prefix}after-toggle-close"
-  capture_deck_overlay_state "${label_prefix}after-toggle-close"
+  capture_deck_screenshot "${label_prefix}after-toggle-close" || status=$?
+  capture_deck_overlay_state "${label_prefix}after-toggle-close" || status=$?
+  if [ "$action" = "presenter-shortcut" ] && [ "$input" = "keyboard" ]; then
+    verify_deck_overlay_closed_after_probe "1" || status=$?
+  fi
+  return "$status"
 }
 
 print_ssh_hint() {
@@ -1746,6 +1756,10 @@ run_self_test() {
   fi
   if ! grep -Fq 'capture_deck_overlay_state "${label_prefix}after-toggle-open"' "$0"; then
     echo "Self-test failed: Visual toggle probes must capture Deck overlay state." >&2
+    exit 1
+  fi
+  if ! grep -Fq 'verify_deck_overlay_closed_after_probe "1"' "$0"; then
+    echo "Self-test failed: Managed shortcut toggle probes must verify close/deactivation evidence." >&2
     exit 1
   fi
 

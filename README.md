@@ -463,9 +463,11 @@ For presenter-backed Steam web surfaces such as `presenter-community` and
 Steam web overlay close control.
 Use `--visual-toggle-probe` for shortcut evidence. With `presenter-shortcut`,
 the default `--visual-toggle-input keyboard` sends Shift+Tab into Steam Bridge's
-managed Electron shortcut bridge. With passive presenter or raw dialog actions,
-the same probe tests raw Steam hotkey interception. `--visual-toggle-input guide`
-sends a controller Guide/Steam-button event through a temporary virtual gamepad.
+managed Electron shortcut bridge and verifies `overlay:shortcut-open`,
+`active=true`, `active=false`, focus return, and no post-close crash evidence.
+With passive presenter or raw dialog actions, the same probe tests raw Steam
+hotkey interception. `--visual-toggle-input guide` sends a controller
+Guide/Steam-button event through a temporary virtual gamepad.
 Add `--overlay-game-id shortcut` when investigating
 whether raw Steam overlay close/back routing depends on the full non-Steam
 shortcut game ID. Focused Deck Desktop runs still show the raw toggle path as

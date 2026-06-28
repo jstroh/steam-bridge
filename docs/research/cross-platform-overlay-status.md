@@ -241,7 +241,9 @@ device, and `--visual-toggle-input both` compares both paths in one run. The
 runner focuses the smoke app with `xdotool` before toggle-probe screenshots
 when that tool is available on the Deck. For the product keyboard path, use
 `--action presenter-shortcut`, `--visual-toggle-probe`,
-`--visual-toggle-input keyboard`, and `--visual-close-input web`; a 2026-06-28
+`--visual-toggle-input keyboard`, and `--visual-close-input web`; the Deck
+runner verifies `overlay:shortcut-open`, active/inactive callbacks, app focus,
+and no post-close crash evidence for this managed shortcut path. A 2026-06-28
 Deck Desktop run proved that Steam Bridge's managed Electron shortcut bridge
 opens the Friends/chat presenter route from Shift+Tab and returns to the app
 after the web close probe. Focused

@@ -348,7 +348,9 @@ Pass criteria:
   and Achievements route to the same presenter-backed web equivalents by
   default; raw native dialog activation remains explicit diagnostic behavior.
 - The managed Electron Shift+Tab shortcut opens a presenter-backed overlay,
-  closes through the Steam web close control, and returns to the app.
+  closes through the Steam web close control, returns to the app, and is
+  machine-verified through `overlay:shortcut-open`, active/inactive callbacks,
+  app focus, and post-close crash diagnostics.
 - Modal web/checkout overlay opens, accepts input, closes, emits active then
   inactive callbacks, and returns to the app.
 - Deck visual close probes for presenter-backed product web surfaces verify the
