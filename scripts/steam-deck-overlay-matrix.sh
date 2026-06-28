@@ -3,6 +3,7 @@ set -euo pipefail
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 deck_runner="${STEAM_BRIDGE_DECK_RUNNER:-$script_dir/steam-deck-smoke.sh}"
+summary_runner="${STEAM_BRIDGE_DECK_MATRIX_SUMMARY:-$script_dir/summarize-steam-deck-overlay-matrix.cjs}"
 
 host="${STEAM_DECK_HOST:-deck@steamdeck.local}"
 mode="desktop"
@@ -15,6 +16,7 @@ inhibit_seconds="1800"
 artifact_root="${STEAM_BRIDGE_DECK_MATRIX_ARTIFACT_ROOT:-/tmp/steam-bridge-deck-overlay-matrix-$(date +%Y%m%d-%H%M%S)}"
 skip_package="0"
 skip_preflight="0"
+skip_summary="0"
 copy_each_case="0"
 dry_run="0"
 local_app_dir=""
@@ -31,7 +33,7 @@ Electron smoke app and SpaceWar App ID 480 by default.
 
 Options:
   --host USER@HOST             Steam Deck SSH target. Defaults to deck@steamdeck.local.
-  --mode desktop|game|self-test
+  --mode desktop|game|self-test|summarize
                                Steam launch mode. Defaults to desktop.
   --suite core|full|minimal    Matrix size. Defaults to core.
   --app-id ID                  Steam App ID inside the smoke app. Defaults to 480.
@@ -45,6 +47,7 @@ Options:
   --inhibit-seconds SECONDS    Per-case Deck sleep inhibitor duration. Defaults to 1800.
   --skip-package               Do not run npm run example:package:linux first.
   --skip-preflight             Do not run the Deck preflight before the matrix.
+  --skip-summary               Do not summarize collected artifacts after the matrix.
   --copy-each-case             Re-copy the package before every case.
   --dry-run                    Print commands without running them.
   --help                       Show this help.
@@ -119,6 +122,10 @@ while [ "$#" -gt 0 ]; do
       skip_preflight="1"
       shift
       ;;
+    --skip-summary)
+      skip_summary="1"
+      shift
+      ;;
     --copy-each-case)
       copy_each_case="1"
       shift
@@ -136,7 +143,7 @@ while [ "$#" -gt 0 ]; do
 done
 
 case "$mode" in
-  desktop|game|self-test)
+  desktop|game|self-test|summarize)
     ;;
   *)
     echo "Unknown --mode: $mode" >&2
@@ -180,6 +187,11 @@ cleanup_remote_smoke() {
     return 0
   fi
   ssh -o BatchMode=yes -o ConnectTimeout="$connect_timeout" "$host" "$cleanup_cmd" >/dev/null 2>&1 || true
+}
+
+summarize_matrix_artifacts() {
+  local root="$1"
+  node "$summary_runner" --artifact-root "$root"
 }
 
 case_index=0
@@ -314,6 +326,12 @@ require_case_count() {
   fi
 }
 
+run_summary_self_test() {
+  local summary_output
+  summary_output="$(node "$summary_runner" --self-test)"
+  require_contains "$summary_output" "Steam Deck overlay matrix summary self-test passed." "summary self-test must pass the fixture."
+}
+
 run_self_test() {
   local self_path minimal_output core_output full_output first_core_case second_core_case checkout_prepare_case passive_toast_case shortcut_web_case
   self_path="${BASH_SOURCE[0]}"
@@ -379,12 +397,18 @@ run_self_test() {
   require_not_contains "$checkout_prepare_case" "--result-delay-ms" "checkout readiness must use the normal settling delay."
   require_contains "$passive_toast_case" "--result-delay-ms 1200" "passive toast should use the short notification capture delay."
   require_contains "$shortcut_web_case" "--visual-toggle-open-delay 6" "web shortcut proof should wait for the web surface to load."
+  run_summary_self_test
 
   echo "Steam Deck overlay matrix self-test passed."
 }
 
 if [ "$mode" = "self-test" ]; then
   run_self_test
+  exit 0
+fi
+
+if [ "$mode" = "summarize" ]; then
+  summarize_matrix_artifacts "$artifact_root"
   exit 0
 fi
 
@@ -475,3 +499,8 @@ echo
 echo "Steam Deck overlay matrix passed."
 echo "Diagnostics: $artifact_root/diagnostics"
 echo "Screenshots: $artifact_root/screens"
+
+if [ "$dry_run" != "1" ] && [ "$skip_summary" != "1" ]; then
+  echo
+  summarize_matrix_artifacts "$artifact_root"
+fi

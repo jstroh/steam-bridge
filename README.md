@@ -259,10 +259,14 @@ The matrix packages the Linux x64 smoke app, runs preflight, then exercises the
 managed presenter routes for modal web, store, Friends, community, stats,
 achievements, dialog equivalents, checkout readiness, synthetic checkout
 approval-route plumbing, Shift+Tab shortcut routing, and passive
-achievement-progress toasts. Screenshots and diagnostics are collected under
-`/tmp/steam-bridge-deck-overlay-matrix-*`.
+achievement-progress toasts. It also summarizes every collected result and
+lifecycle log so hidden crash dumps, fatal Electron lifecycle events, duplicate
+overlay targets, and missing presenter diagnostics fail the run. Screenshots
+and diagnostics are collected under `/tmp/steam-bridge-deck-overlay-matrix-*`.
 For CI/local maintenance without a Deck, `npm run steam-deck:overlay-matrix:check`
-validates the generated minimal, core, and full matrix command sets.
+validates the generated minimal, core, and full matrix command sets plus the
+artifact summarizer. To audit an existing artifact root, run
+`npm run steam-deck:overlay-matrix:summarize -- --artifact-root <path>`.
 
 SpaceWar `480` and the Electron smoke app are for generic initialization,
 callback, input, and overlay plumbing checks. Purchase overlays need a real

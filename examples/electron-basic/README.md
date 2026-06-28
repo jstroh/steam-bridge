@@ -273,8 +273,10 @@ This packages the Linux x64 smoke app, runs preflight, then drives the managed
 presenter routes for modal web, store, Friends, community, stats, achievements,
 dialog equivalents, checkout readiness, synthetic checkout approval-route
 plumbing, Shift+Tab shortcut routing, and passive achievement-progress toasts.
-It writes per-case diagnostics and screenshots under
-`/tmp/steam-bridge-deck-overlay-matrix-*`. Use `--suite minimal` for the
+It also summarizes every collected result and lifecycle log, failing if a case
+reports crash dumps, fatal Electron lifecycle events, duplicate overlay targets,
+or missing presenter diagnostics. It writes per-case diagnostics and screenshots
+under `/tmp/steam-bridge-deck-overlay-matrix-*`. Use `--suite minimal` for the
 shortest product smoke pass or `--suite full` to include every known
 dialog-equivalent route.
 

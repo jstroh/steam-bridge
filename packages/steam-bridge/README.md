@@ -346,9 +346,12 @@ npm run steam-deck:overlay-matrix -- \
 The matrix collects per-case screenshots and diagnostics for the managed
 presenter routes: modal web, store, Friends, community, stats, achievements,
 dialog equivalents, checkout readiness, synthetic checkout approval-route
-plumbing, Shift+Tab shortcut routing, and passive toasts. It still uses public
-App ID `480`, so real purchase content must be validated from a real configured
-Steam app.
+plumbing, Shift+Tab shortcut routing, and passive toasts. After a live run it
+summarizes every result and lifecycle log, failing if a case reports crash
+dumps, fatal Electron lifecycle events, duplicate overlay targets, or missing
+presenter diagnostics. It still uses public App ID `480`, so real purchase
+content must be validated from a real configured Steam app. To audit an
+existing artifact root, run `npm run steam-deck:overlay-matrix:summarize -- --artifact-root <path>`.
 
 Add
 `--overlay-game-id shortcut` when investigating whether raw Steam overlay

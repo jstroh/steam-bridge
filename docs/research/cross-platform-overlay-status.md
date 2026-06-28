@@ -400,9 +400,14 @@ The matrix packages the Linux x64 smoke app, runs preflight, and collects
 per-case diagnostics plus screenshots for the managed presenter routes:
 web/store/Friends/community/stats/achievements, dialog equivalents, checkout
 readiness, synthetic checkout approval-route plumbing, managed Shift+Tab
-shortcut routing, and passive achievement-progress toasts. This remains generic
-App ID `480` plumbing evidence; real purchase content still needs the app-specific
-purchase checklist below.
+shortcut routing, and passive achievement-progress toasts. After a live run, it
+summarizes the collected result and lifecycle logs and fails on hidden crash
+dumps, fatal Electron lifecycle events, duplicate overlay targets, or missing
+presenter diagnostics. Existing artifact roots can be audited with
+`npm run steam-deck:overlay-matrix:summarize -- --artifact-root <path>`. This
+remains generic App ID `480` plumbing evidence; real purchase content still
+needs the app-specific purchase checklist below. A 2026-06-28 full-suite Deck
+Desktop run passed 16 cases with 33 screenshots and a clean artifact summary.
 
 ## Purchase Overlay Checklist
 
