@@ -366,6 +366,9 @@ function runAutorunAction(action) {
       case "presenter-dialog":
         openPresenterDialogOverlay();
         return { ok: true, action };
+      case "presenter-dialog-auto":
+        openPresenterDialogAutoOverlay();
+        return { ok: true, action };
       case "presenter-store":
         openPresenterStoreOverlay();
         return { ok: true, action };
@@ -477,10 +480,24 @@ function openNativeWebOverlay() {
 function openPresenterDialogOverlay() {
   const activeClient = requireClient();
   const overlay = ensureElectronSteamOverlay(activeClient);
-  overlay.open({ type: "dialog", dialog: OVERLAY_DIALOG });
+  overlay.open({ type: "dialog", dialog: OVERLAY_DIALOG, route: "native" });
   recordEvent("overlay:presenter-open", {
     target: "dialog",
     dialog: OVERLAY_DIALOG,
+    route: "native",
+    presenter: overlay.snapshot()
+  });
+  return snapshot();
+}
+
+function openPresenterDialogAutoOverlay() {
+  const overlay = ensureElectronSteamOverlay();
+  overlay.open({ type: "dialog", dialog: OVERLAY_DIALOG, appId: APP_ID });
+  recordEvent("overlay:presenter-open", {
+    target: "dialog",
+    dialog: OVERLAY_DIALOG,
+    route: "auto",
+    appId: APP_ID,
     presenter: overlay.snapshot()
   });
   return snapshot();
@@ -978,9 +995,12 @@ function isNativeSessionAction(action) {
     action === "native-store" ||
     action === "native-web" ||
     action === "presenter-dialog" ||
+    action === "presenter-dialog-auto" ||
     action === "presenter-store" ||
     action === "presenter-web" ||
     action === "presenter-friends" ||
+    action === "presenter-community" ||
+    action === "presenter-stats" ||
     action === "presenter-achievements" ||
     action === "presenter-achievement-progress"
   );

@@ -81,6 +81,7 @@ assert.equal(typeof steam.default.init, "function");
 assert.equal(typeof steam.default.openCommunityOverlay, "function");
 assert.equal(typeof steam.default.openStatsOverlay, "function");
 assert.equal(typeof steam.default.openAchievementsOverlay, "function");
+assert.equal(typeof steam.default.openDialogEquivalentOverlay, "function");
 assert.equal(typeof steam.default.openSteamOverlay, "function");
 assert.equal(typeof steam.default.createElectronSteamOverlay, "function");
 assert.equal(typeof steam.createSteamWebApiClient, "function");
@@ -94,6 +95,7 @@ assert.equal(typeof steam.overlay.openFriendsOverlay, "function");
 assert.equal(typeof steam.overlay.openCommunityOverlay, "function");
 assert.equal(typeof steam.overlay.openStatsOverlay, "function");
 assert.equal(typeof steam.overlay.openAchievementsOverlay, "function");
+assert.equal(typeof steam.overlay.openDialogEquivalentOverlay, "function");
 assert.equal(typeof steam.overlay.openSteamOverlay, "function");
 assert.equal(typeof steam.overlay.createElectronSteamOverlay, "function");
 assert.equal(typeof steam.overlay.setNativeOverlayHostInputPassthrough, "function");
@@ -115,14 +117,16 @@ assert.equal(electron.electronConfigureSteamOverlay({ profile: "off" }).profile,
     path.join(consumerDir, "check-esm.mjs"),
     `
 import assert from "node:assert/strict";
-import steam, { createSteamWebApiClient, overlay, SteamworksEnums } from "steam-bridge";
+import steam, { createSteamWebApiClient, openDialogEquivalentOverlay, overlay, SteamworksEnums } from "steam-bridge";
 import * as electron from "steam-bridge/electron";
 
 assert.equal(typeof steam.init, "function");
 assert.equal(typeof steam.openCommunityOverlay, "function");
 assert.equal(typeof steam.openStatsOverlay, "function");
 assert.equal(typeof steam.openAchievementsOverlay, "function");
+assert.equal(typeof steam.openDialogEquivalentOverlay, "function");
 assert.equal(typeof steam.openSteamOverlay, "function");
+assert.equal(typeof openDialogEquivalentOverlay, "function");
 assert.equal(typeof steam.createElectronSteamOverlay, "function");
 assert.equal(typeof createSteamWebApiClient, "function");
 assert.equal(typeof overlay.openNativeOverlayProbeWindow, "function");
@@ -135,6 +139,7 @@ assert.equal(typeof overlay.openFriendsOverlay, "function");
 assert.equal(typeof overlay.openCommunityOverlay, "function");
 assert.equal(typeof overlay.openStatsOverlay, "function");
 assert.equal(typeof overlay.openAchievementsOverlay, "function");
+assert.equal(typeof overlay.openDialogEquivalentOverlay, "function");
 assert.equal(typeof overlay.openSteamOverlay, "function");
 assert.equal(typeof overlay.createElectronSteamOverlay, "function");
 assert.equal(typeof overlay.setNativeOverlayHostInputPassthrough, "function");

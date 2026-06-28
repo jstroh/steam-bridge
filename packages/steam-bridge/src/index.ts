@@ -1693,9 +1693,12 @@ export type SteamOverlayAchievementsTarget = NativeOverlayAppPagePresenterOption
   type: "achievements";
 };
 
-export type SteamOverlayDialogTarget = NativeOverlayPresenterOverlayOptions & {
+export type SteamOverlayDialogRoute = "auto" | "native";
+
+export type SteamOverlayDialogTarget = NativeOverlayAppPagePresenterOptions & {
   type: "dialog";
   dialog?: number | string;
+  route?: SteamOverlayDialogRoute;
 };
 
 export type SteamOverlayTarget =
@@ -7413,6 +7416,26 @@ export function openAchievementsOverlay(
   });
 }
 
+export function openDialogEquivalentOverlay(
+  dialog: number | string = "Friends",
+  options: NativeOverlayAppPagePresenterOptions = {}
+): NativeOverlayPresenter {
+  const name = dialogName(dialog).toLowerCase();
+  switch (name) {
+    case "friends":
+      return openFriendsOverlay(options);
+    case "community":
+    case "officialgamegroup":
+      return openCommunityOverlay(options);
+    case "stats":
+      return openStatsOverlay(options);
+    case "achievements":
+      return openAchievementsOverlay(options);
+    default:
+      return openDialogOverlay(dialog, options);
+  }
+}
+
 export function openStoreOverlay(
   appId: number,
   flag: number,
@@ -7454,8 +7477,11 @@ export function openSteamOverlay(target: SteamOverlayTarget): NativeOverlayPrese
       return openAchievementsOverlay(options);
     }
     case "dialog": {
-      const { type, dialog = "Friends", ...options } = target;
-      return openDialogOverlay(dialog, options);
+      const { type, dialog = "Friends", route = "auto", ...options } = target;
+      if (route === "native") {
+        return openDialogOverlay(dialog, options);
+      }
+      return openDialogEquivalentOverlay(dialog, options);
     }
   }
 }
@@ -11764,6 +11790,7 @@ export const overlay = {
   openCommunityOverlay,
   openStatsOverlay,
   openAchievementsOverlay,
+  openDialogEquivalentOverlay,
   openStoreOverlay,
   openSteamOverlay,
   createElectronSteamOverlay,
@@ -19507,6 +19534,7 @@ const defaultExport = {
   openCommunityOverlay,
   openStatsOverlay,
   openAchievementsOverlay,
+  openDialogEquivalentOverlay,
   openStoreOverlay,
   openSteamOverlay,
   createElectronSteamOverlay,

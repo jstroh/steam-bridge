@@ -4357,6 +4357,9 @@ test("overlay helpers map constants and forward modal/store options", (t) => {
     prepareForPassiveOverlay() {
       presenterCalls.push("prepareForPassiveOverlay");
     },
+    prepareForTransparentInputOverlay() {
+      presenterCalls.push("prepareForTransparentInputOverlay");
+    },
     close() {},
     disconnect() {},
     pump() {},
@@ -4404,6 +4407,34 @@ test("overlay helpers map constants and forward modal/store options", (t) => {
     steamId64: 76561198000000000n,
     presenter: mockPresenter
   });
+  steam.overlay.openSteamOverlay({ type: "dialog", dialog: steam.Dialog.Friends, presenter: mockPresenter });
+  steam.overlay.openSteamOverlay({ type: "dialog", dialog: steam.Dialog.Community, appId: 480, presenter: mockPresenter });
+  steam.overlay.openSteamOverlay({
+    type: "dialog",
+    dialog: steam.Dialog.OfficialGameGroup,
+    appId: 480,
+    presenter: mockPresenter
+  });
+  steam.overlay.openSteamOverlay({
+    type: "dialog",
+    dialog: steam.Dialog.Stats,
+    appId: 480,
+    steamId64: 76561198000000000n,
+    presenter: mockPresenter
+  });
+  steam.overlay.openSteamOverlay({
+    type: "dialog",
+    dialog: steam.Dialog.Achievements,
+    appId: 480,
+    steamId64: 76561198000000000n,
+    presenter: mockPresenter
+  });
+  steam.overlay.openSteamOverlay({
+    type: "dialog",
+    dialog: steam.Dialog.Friends,
+    route: "native",
+    presenter: mockPresenter
+  });
   steam.overlay.openSteamOverlay({
     type: "dialog",
     dialog: steam.Dialog.Settings,
@@ -4442,6 +4473,12 @@ test("overlay helpers map constants and forward modal/store options", (t) => {
       { method: "activateOverlayToWebPage", args: [steam.steamCommunityAppUrl(480), true] },
       { method: "activateOverlayToWebPage", args: [steam.steamCommunityUserStatsUrl(480, 76561198000000000n), true] },
       { method: "activateOverlayToWebPage", args: [steam.steamCommunityAchievementsUrl(480, 76561198000000000n), true] },
+      { method: "activateOverlayToWebPage", args: [steam.STEAM_FRIENDS_OVERLAY_URL, true] },
+      { method: "activateOverlayToWebPage", args: [steam.steamCommunityAppUrl(480), true] },
+      { method: "activateOverlayToWebPage", args: [steam.steamCommunityAppUrl(480), true] },
+      { method: "activateOverlayToWebPage", args: [steam.steamCommunityUserStatsUrl(480, 76561198000000000n), true] },
+      { method: "activateOverlayToWebPage", args: [steam.steamCommunityAchievementsUrl(480, 76561198000000000n), true] },
+      { method: "activateOverlay", args: ["Friends"] },
       { method: "activateOverlay", args: ["Settings"] }
     ]
   );
@@ -4469,7 +4506,13 @@ test("overlay helpers map constants and forward modal/store options", (t) => {
     "prepareForOverlay",
     "prepareForOverlay",
     "prepareForOverlay",
-    "prepareForPassiveOverlay"
+    "prepareForOverlay",
+    "prepareForOverlay",
+    "prepareForOverlay",
+    "prepareForOverlay",
+    "prepareForOverlay",
+    "prepareForTransparentInputOverlay",
+    "prepareForTransparentInputOverlay"
   ]);
   assert.deepEqual(
     fake.calls.filter((call) =>

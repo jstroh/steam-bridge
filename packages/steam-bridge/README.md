@@ -164,6 +164,12 @@ steamOverlay.open({
 steamOverlay.open({ type: "friends" });
 
 steamOverlay.open({
+  type: "dialog",
+  dialog: "Achievements",
+  appId: 480
+});
+
+steamOverlay.open({
   type: "community",
   appId: 480
 });
@@ -201,7 +207,12 @@ page, and `steamOverlay.open({ type: "achievements", appId })` for the current
 user's app achievements page through that same presenter-backed Steam web
 overlay route. Steam Community may redirect apps without public web stats to the
 user's profile, so use your real app for achievements content proof.
-The lower-level
+The high-level dialog target also routes known dialog names through these
+verified equivalents: `Friends` opens chat, `Community` and
+`OfficialGameGroup` open the app Community hub, `Stats` opens the current user's
+app stats page, and `Achievements` opens the current user's achievements page.
+Pass `route: "native"` only when you intentionally need raw
+`ActivateGameOverlay` dialog behavior for diagnostics. The lower-level
 `activateDialog("Friends")` / Game Overview path is still an investigation path,
 and `steam://open/overlay` should not be used as a generic toggle substitute:
 allowing Steam to hook Electron's Chromium children can make Steam's desktop
@@ -222,9 +233,10 @@ and back-to-app checks. Use `client.overlay.createElectronSteamOverlay(...)`
 with `steamOverlay.open(...)`, or the lower-level `client.overlay.attachPresenter(...)`,
 `client.overlay.openSteamOverlay(...)`, `client.overlay.openWebOverlay(...)`,
 `client.overlay.openFriendsOverlay(...)`, `client.overlay.openCommunityOverlay(...)`,
-and `client.overlay.openStatsOverlay(...)` helpers, or the Electron smoke app's
+`client.overlay.openStatsOverlay(...)`, and
+`client.overlay.openDialogEquivalentOverlay(...)` helpers, or the Electron smoke app's
 `presenter-web` / `presenter-friends` / `presenter-community` /
-`presenter-stats` actions for the generic proof. Deck testing has verified a
+`presenter-stats` / `presenter-dialog-auto` actions for the generic proof. Deck testing has verified a
 single Steam overlay target,
 `active=true` overlay callbacks, overlay close input, and clean return to the
 running app for the Friends List web surface; the web checkout/store proof also

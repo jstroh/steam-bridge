@@ -316,6 +316,12 @@ steamOverlay.open({
 steamOverlay.open({ type: "friends" });
 
 steamOverlay.open({
+  type: "dialog",
+  dialog: "Achievements",
+  appId: 480
+});
+
+steamOverlay.open({
   type: "achievements",
   appId: 480
 });
@@ -374,6 +380,12 @@ opens the current user's app achievements page through the same presenter-backed
 Steam web overlay route instead of relying on the raw Desktop achievements
 dialog. Steam Community may redirect apps without public web stats to the user's
 profile, so use your real app for achievements content proof.
+The high-level dialog target also uses these verified equivalents for known
+dialog names: `Friends` opens chat, `Community` and `OfficialGameGroup` open the
+app Community hub, `Stats` opens the current user's app stats page, and
+`Achievements` opens the current user's achievements page. Pass
+`route: "native"` only when you intentionally need raw `ActivateGameOverlay`
+dialog behavior for diagnostics.
 Do not use `steam://open/overlay` as a generic overlay-toggle substitute; Deck
 Desktop testing showed it can activate Steam's callback path while leaving the
 native presenter black and the smoke process unrecovered.
@@ -391,9 +403,10 @@ activation, visual open, close, and back-to-app checks. Use
 or the lower-level `client.overlay.attachPresenter(...)`,
 `client.overlay.openSteamOverlay(...)`, `client.overlay.openWebOverlay(...)`,
 `client.overlay.openFriendsOverlay(...)`, `client.overlay.openCommunityOverlay(...)`,
-and `client.overlay.openStatsOverlay(...)` helpers, or the Electron smoke app's
+`client.overlay.openStatsOverlay(...)`, and
+`client.overlay.openDialogEquivalentOverlay(...)` helpers, or the Electron smoke app's
 `presenter-web` / `presenter-friends` / `presenter-community` /
-`presenter-stats` actions for that proof. The older
+`presenter-stats` / `presenter-dialog-auto` actions for that proof. The older
 `activateToWebPageWithNativeSession(..., { modal: true })` / `native-web` path
 remains compatibility coverage. Steam's raw Desktop Mode dialog/Game Overview
 overlay and hotkey toggle should not be treated as completed dismissal proofs.

@@ -224,6 +224,17 @@ Current evidence:
   single-overlay-target and close/back-to-app behavior. App ID `480` redirects
   to the user's profile because Steam Community does not expose a public web
   stats page for it.
+- The high-level `openSteamOverlay({ type: "dialog", dialog })` router maps
+  known Desktop dialog names to those verified presenter-backed web equivalents:
+  `Friends`, `Community`, `OfficialGameGroup`, `Stats`, and `Achievements`.
+  `route: "native"` keeps raw `ActivateGameOverlay(...)` dialog behavior
+  available for diagnostics, and the smoke app's `presenter-dialog` action uses
+  that native route explicitly. The smoke app's `presenter-dialog-auto` action
+  exercises the high-level router as a product-path proof. A 2026-06-28 Deck
+  Desktop run of `presenter-dialog-auto --dialog Friends` showed visible
+  Friends/chat content through the native overlay host, emitted active then
+  inactive overlay callbacks, used one `gameoverlayui` target for App ID `480`,
+  and returned focus to the Electron app through the web close probe.
 - The same path is good enough for checkout-style proof when launched under a
   real installed Steam app with a configured product or transaction.
 - Deck Desktop Mode does not yet have a passing overlay-toggle proof. Focused
@@ -307,6 +318,9 @@ Pass criteria:
   accepts input, closes, and returns to the app without duplicate Electron child
   overlay targets. Full achievements content proof requires an app whose Steam
   Community stats page is exposed.
+- High-level `dialog` targets for Friends, Community, OfficialGameGroup, Stats,
+  and Achievements route to the same presenter-backed web equivalents by
+  default; raw native dialog activation remains explicit diagnostic behavior.
 - Modal web/checkout overlay opens, accepts input, closes, emits active then
   inactive callbacks, and returns to the app.
 - No crash dumps from Electron or the native binding.
