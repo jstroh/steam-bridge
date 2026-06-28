@@ -98,7 +98,7 @@ Options:
   --checkout-return-url URL     Optional return URL for transaction checkout.
   --dialog NAME                 Dialog name for dialog/native-dialog/presenter-dialog actions.
                                 Defaults to Friends.
-  --shortcut-target NAME        Presenter shortcut target: friends, web, store, community,
+  --shortcut-target NAME        Presenter shortcut target: friends, profile, web, store, community,
                                 stats, achievements, dialog, or checkout. Defaults to friends.
   --presenter-mode MODE         Managed Electron overlay presenter mode: persistent or session.
                                 Defaults to persistent.
@@ -1414,7 +1414,7 @@ persistent_presenter_parking_required() {
 
 is_presenter_product_action() {
   case "$action" in
-    presenter-store|presenter-web|presenter-friends|presenter-dialog-auto|presenter-community|presenter-stats|presenter-achievements|presenter-checkout|presenter-shortcut|presenter-achievement-progress)
+    presenter-store|presenter-web|presenter-friends|presenter-profile|presenter-dialog-auto|presenter-community|presenter-stats|presenter-achievements|presenter-checkout|presenter-shortcut|presenter-achievement-progress)
       return 0
       ;;
     *)
@@ -1425,7 +1425,7 @@ is_presenter_product_action() {
 
 supports_close_deactivation_check() {
   case "$action" in
-    presenter-store|presenter-web|presenter-friends|presenter-dialog-auto|presenter-community|presenter-stats|presenter-achievements)
+    presenter-store|presenter-web|presenter-friends|presenter-profile|presenter-dialog-auto|presenter-community|presenter-stats|presenter-achievements)
       return 0
       ;;
     presenter-checkout)
@@ -1443,7 +1443,7 @@ prepare_remote_wrapper() {
   local app_id_q overlay_game_id_q action_q profile_q scrub_child_env_q isolate_child_processes_q window_mode_q result_file_q diagnostic_dir_q action_delay_q result_delay_q keep_open_q require_active_q web_url_q web_modal_q checkout_url_q checkout_transaction_id_q checkout_return_url_q overlay_dialog_q shortcut_target_q presenter_mode_q achievement_name_q achievement_current_q achievement_max_q
   local require_overlay_active="0"
 
-  if [ "$action" = "store" ] || [ "$action" = "web" ] || [ "$action" = "presenter-store" ] || [ "$action" = "presenter-web" ] || [ "$action" = "presenter-friends" ] || [ "$action" = "presenter-dialog-auto" ] || [ "$action" = "presenter-community" ] || [ "$action" = "presenter-stats" ] || [ "$action" = "presenter-achievements" ]; then
+  if [ "$action" = "store" ] || [ "$action" = "web" ] || [ "$action" = "presenter-store" ] || [ "$action" = "presenter-web" ] || [ "$action" = "presenter-friends" ] || [ "$action" = "presenter-profile" ] || [ "$action" = "presenter-dialog-auto" ] || [ "$action" = "presenter-community" ] || [ "$action" = "presenter-stats" ] || [ "$action" = "presenter-achievements" ]; then
     require_overlay_active="1"
   fi
   if [ "$action" = "presenter-checkout" ] && checkout_opens_overlay; then
@@ -1732,9 +1732,9 @@ build_steam_launch_args() {
     else
       helper_args+=("--require-event" "overlay:presenter-checkout-ready")
     fi
-  elif [ "$action" = "presenter-dialog" ] || [ "$action" = "presenter-dialog-auto" ] || [ "$action" = "presenter-store" ] || [ "$action" = "presenter-web" ] || [ "$action" = "presenter-friends" ] || [ "$action" = "presenter-community" ] || [ "$action" = "presenter-stats" ] || [ "$action" = "presenter-achievements" ]; then
+  elif [ "$action" = "presenter-dialog" ] || [ "$action" = "presenter-dialog-auto" ] || [ "$action" = "presenter-store" ] || [ "$action" = "presenter-web" ] || [ "$action" = "presenter-friends" ] || [ "$action" = "presenter-profile" ] || [ "$action" = "presenter-community" ] || [ "$action" = "presenter-stats" ] || [ "$action" = "presenter-achievements" ]; then
     helper_args+=("--require-event" "overlay:presenter-open")
-    if [ "$action" = "presenter-store" ] || [ "$action" = "presenter-web" ] || [ "$action" = "presenter-friends" ] || [ "$action" = "presenter-dialog-auto" ] || [ "$action" = "presenter-community" ] || [ "$action" = "presenter-stats" ] || [ "$action" = "presenter-achievements" ]; then
+    if [ "$action" = "presenter-store" ] || [ "$action" = "presenter-web" ] || [ "$action" = "presenter-friends" ] || [ "$action" = "presenter-profile" ] || [ "$action" = "presenter-dialog-auto" ] || [ "$action" = "presenter-community" ] || [ "$action" = "presenter-stats" ] || [ "$action" = "presenter-achievements" ]; then
       helper_args+=("--require-overlay-activated")
     fi
   elif [ "$action" = "presenter-achievement-progress" ]; then

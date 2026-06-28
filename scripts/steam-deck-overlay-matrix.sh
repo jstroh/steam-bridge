@@ -55,7 +55,7 @@ Options:
 
 Suites:
   minimal  presenter web, Friends, shortcut, checkout prepare, and passive toast.
-  core     minimal plus store, community, stats, achievements, OfficialGameGroup
+  core     minimal plus store, profile, community, stats, achievements, OfficialGameGroup
            dialog equivalent, checkout approval-route plumbing, and web shortcut.
   full     core plus all known high-level dialog-equivalent routes.
 EOF
@@ -410,8 +410,8 @@ run_self_test() {
   )"
 
   require_case_count "$minimal_output" "5" "minimal matrix"
-  require_case_count "$core_output" "12" "core matrix"
-  require_case_count "$full_output" "16" "full matrix"
+  require_case_count "$core_output" "13" "core matrix"
+  require_case_count "$full_output" "17" "full matrix"
 
   require_contains "$core_output" "--action presenter-web" "core matrix must include presenter web."
   require_contains "$core_output" "--action presenter-friends" "core matrix must include Friends."
@@ -419,6 +419,7 @@ run_self_test() {
   require_contains "$core_output" "--action presenter-checkout" "core matrix must include checkout."
   require_contains "$core_output" "--action presenter-achievement-progress" "core matrix must include passive toast."
   require_contains "$core_output" "--action presenter-store" "core matrix must include store."
+  require_contains "$core_output" "--action presenter-profile" "core matrix must include profile."
   require_contains "$core_output" "--action presenter-community" "core matrix must include community."
   require_contains "$core_output" "--action presenter-stats" "core matrix must include stats."
   require_contains "$core_output" "--action presenter-achievements" "core matrix must include achievements."
@@ -436,7 +437,7 @@ run_self_test() {
   shortcut_friends_case="$(matrix_case_command "$core_output" "03-shortcut-friends")"
   checkout_prepare_case="$(matrix_case_command "$core_output" "04-checkout-prepare")"
   passive_toast_case="$(matrix_case_command "$core_output" "05-passive-toast")"
-  shortcut_web_case="$(matrix_case_command "$core_output" "12-shortcut-web")"
+  shortcut_web_case="$(matrix_case_command "$core_output" "13-shortcut-web")"
 
   require_not_contains "$first_core_case" "--skip-copy" "first matrix case must copy the package."
   require_contains "$second_core_case" "--skip-copy" "later matrix cases should reuse the copied package."
@@ -517,6 +518,9 @@ run_deck_case "passive-toast" \
 if [ "$suite" = "core" ] || [ "$suite" = "full" ]; then
   run_web_surface_case "store" \
     --action presenter-store
+
+  run_web_surface_case "profile" \
+    --action presenter-profile
 
   run_web_surface_case "community" \
     --action presenter-community

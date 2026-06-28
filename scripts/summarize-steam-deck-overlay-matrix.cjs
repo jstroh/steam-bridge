@@ -16,6 +16,7 @@ const MANAGED_LIFECYCLE_ACTIONS = new Set([
   "presenter-web",
   "presenter-store",
   "presenter-friends",
+  "presenter-profile",
   "presenter-dialog-auto",
   "presenter-community",
   "presenter-stats",

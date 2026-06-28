@@ -135,6 +135,10 @@ Use `presenter-friends` to verify the recommended Friends List path:
 `client.overlay.openFriendsOverlay({ presenter })` opens Steam Community chat
 through the same native web presenter used by checkout/store overlays, keeping a
 single `gameoverlayui` target attached to the main/native process.
+Use `presenter-profile` to verify
+`client.overlay.openProfileOverlay({ steamId64, presenter })`, which opens the
+current user's Steam Community profile through the same presenter-backed Steam
+web overlay route instead of the raw `ActivateGameOverlayToUser` profile path.
 Use `presenter-community` and `presenter-stats` to verify the product-shaped
 Steam Community app hub and current-user app stats routes:
 `client.overlay.openCommunityOverlay({ appId, presenter })` and
@@ -286,7 +290,7 @@ npm run steam-deck:overlay-matrix -- \
 ```
 
 This packages the Linux x64 smoke app, runs preflight, then drives the managed
-presenter routes for modal web, store, Friends, community, stats, achievements,
+presenter routes for modal web, store, Friends, profile, community, stats, achievements,
 dialog equivalents, checkout readiness, synthetic checkout approval-route
 plumbing, Shift+Tab shortcut routing, and passive achievement-progress toasts.
 It also summarizes every collected result and lifecycle log, failing if a case

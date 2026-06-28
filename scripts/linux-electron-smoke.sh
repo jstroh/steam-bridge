@@ -66,7 +66,7 @@ Options:
   --app-id ID                    Steam App ID to use. Defaults to 480.
   --action NAME                  none, dialog, friends, store, web, native-probe, native-dialog, native-store, native-web,
                                  presenter-dialog, presenter-dialog-auto, presenter-store, presenter-web, presenter-friends,
-                                 presenter-community, presenter-stats, presenter-achievements, presenter-checkout,
+                                 presenter-profile, presenter-community, presenter-stats, presenter-achievements, presenter-checkout,
                                  presenter-shortcut, presenter-achievement-progress.
   --overlay-profile NAME         Electron overlay profile. Defaults to diagnostic.
   --overlay-scrub-child-env true|false
@@ -80,7 +80,7 @@ Options:
   --checkout-transaction-id ID   Steam checkout transaction ID for presenter-checkout.
   --checkout-return-url URL      Optional return URL for transaction checkout.
   --dialog NAME                  Dialog name for dialog/native-dialog/presenter-dialog actions. Defaults to Friends.
-  --shortcut-target NAME         Presenter shortcut target: friends, web, store, community,
+  --shortcut-target NAME         Presenter shortcut target: friends, profile, web, store, community,
                                  stats, achievements, dialog, or checkout. Defaults to friends.
   --presenter-mode MODE          Managed Electron overlay presenter mode: persistent or session.
                                  Defaults to persistent.

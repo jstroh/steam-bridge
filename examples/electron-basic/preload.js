@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld("steamSmoke", {
   openOverlayDialog: () => ipcRenderer.invoke("steam-smoke:overlay-dialog"),
   openPresenterWeb: () => ipcRenderer.invoke("steam-smoke:presenter-web"),
   openPresenterFriends: () => ipcRenderer.invoke("steam-smoke:presenter-friends"),
+  openPresenterProfile: () => ipcRenderer.invoke("steam-smoke:presenter-profile"),
   openPresenterCommunity: () => ipcRenderer.invoke("steam-smoke:presenter-community"),
   openPresenterStats: () => ipcRenderer.invoke("steam-smoke:presenter-stats"),
   openPresenterAchievements: () => ipcRenderer.invoke("steam-smoke:presenter-achievements"),

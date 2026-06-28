@@ -258,7 +258,7 @@ npm run steam-deck:overlay-matrix -- \
 ```
 
 The matrix packages the Linux x64 smoke app, runs preflight, then exercises the
-managed presenter routes for modal web, store, Friends, community, stats,
+managed presenter routes for modal web, store, Friends, profile, community, stats,
 achievements, dialog equivalents, checkout readiness, synthetic checkout
 approval-route plumbing, Shift+Tab shortcut routing, and passive
 achievement-progress toasts. It also summarizes every collected result and
@@ -374,6 +374,8 @@ await steamOverlay.openAndWait({
 
 await steamOverlay.openAndWait({ type: "friends" });
 
+await steamOverlay.openAndWait({ type: "profile" });
+
 await steamOverlay.openAndWait({
   type: "dialog",
   dialog: "Achievements",
@@ -468,7 +470,7 @@ activation callback.
 
 Steam Bridge routes overlay targets by how Steam renders them. Prefer
 `client.overlay.createElectronSteamOverlay(mainWindow).open(...)` for Electron
-app code: web, store, Friends, Community, Stats, Achievements, and checkout
+app code: web, store, Friends, Profile, Community, Stats, Achievements, and checkout
 targets use the presenter-backed paths proven on Steam Deck Desktop Mode, while
 `route: "native"`, `openNativeStoreOverlay(...)`, and the lower-level named
 helpers remain available for explicit native diagnostics. Store targets default
@@ -499,7 +501,11 @@ return to the Electron app. Passive achievement-progress toasts also render with
 the presenter transparent and click-through. For a generic Friends List surface,
 call `steamOverlay.open({ type: "friends" })`; on Steam Deck Desktop Mode this
 opens Steam Community chat through the same native web presenter with one
-`gameoverlayui` target and a clean close/back-to-app result. For app
+`gameoverlayui` target and a clean close/back-to-app result. For a Steam
+profile page, call `steamOverlay.open({ type: "profile", steamId64 })`; omit
+`steamId64` to open the current user's profile. This replaces the common
+profile case for raw `ActivateGameOverlayToUser` with the same presenter-backed
+Steam web surface. For app
 achievements, call `steamOverlay.open({ type: "achievements", appId })`; it
 opens the current user's app achievements page through the same presenter-backed
 Steam web overlay route instead of relying on the raw Desktop achievements

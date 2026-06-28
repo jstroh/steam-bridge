@@ -57,6 +57,14 @@ timing hacks.
   testing captured visible Friends/chat UI, used one `gameoverlayui` target
   attached to the app's main/native process, and returned cleanly to the app
   after the close probe.
+- Deck Desktop Steam profile pages now have a product-shaped route:
+  `openProfileOverlay({ steamId64, presenter })` and
+  `steamOverlay.open({ type: "profile", steamId64 })` open a Steam Community
+  profile through the same reusable native web presenter. A 2026-06-28 Deck
+  Desktop run for the current user emitted active/inactive callbacks, showed
+  profile web content in the native overlay host, returned focus to the Electron
+  smoke app after the web close probe, and parked at `currentFps=0` without
+  post-close pumping.
 - Steam Community app hub and stats pages now have product-shaped routes:
   `openCommunityOverlay({ appId, presenter })` and
   `openStatsOverlay({ appId, presenter })` use the same native web presenter
@@ -241,6 +249,14 @@ Current evidence:
   main/native process, and returns to the smoke app after the close probe. A
   `steam://open/friends` URI activated the overlay but remained on a Steam
   loading spinner, so it is not the product path.
+- Deck Desktop Mode can open Steam profile pages through
+  `steamOverlay.open({ type: "profile", steamId64 })`, backed by
+  `openProfileOverlay({ steamId64, presenter })`. A 2026-06-28 Deck Desktop run
+  opened the current user's Steam Community profile through the reusable native
+  web presenter, emitted active then inactive overlay callbacks, returned focus
+  to the Electron smoke app through the web close probe, used one
+  `gameoverlayui` target attached to the app's main/native process, and parked
+  transparent/click-through at `currentFps=0` with stable `pumpCount`.
 - Deck Desktop Mode has app-facing
   `steamOverlay.open({ type: "community", appId })` /
   `steamOverlay.open({ type: "stats", appId })` routes and lower-level

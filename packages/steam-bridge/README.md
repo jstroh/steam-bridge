@@ -182,6 +182,8 @@ await steamOverlay.openAndWait({
 
 await steamOverlay.openAndWait({ type: "friends" });
 
+await steamOverlay.openAndWait({ type: "profile" });
+
 await steamOverlay.openAndWait({
   type: "dialog",
   dialog: "Achievements",
@@ -215,8 +217,9 @@ presenter-backed target. The bridge consumes Shift+Tab only when it is opening a
 managed presenter-backed target; once Steam reports an active overlay, it lets
 Shift+Tab pass through so Steam can handle the close/toggle side if that key
 event reaches the app. It is the
-recommended builder-facing entry point: web, store, Friends, Community, Stats,
-Achievements, and checkout targets route through the presenter-backed paths
+recommended builder-facing entry point: web, store, Friends, Profile,
+Community, Stats, Achievements, and checkout targets route through the
+presenter-backed paths
 used by the Steam Deck Desktop Mode proofs; `openSteamOverlay(...)` and the
 lower-level named helpers remain available for apps that prefer explicit
 lifecycle control. The public smoke app can verify checkout readiness, but real
@@ -271,6 +274,10 @@ diagnostic comparisons. Use
 `steamOverlay.open({ type: "friends" })` for a generic Friends List surface; it
 opens Steam Community chat through the same native web presenter path, keeping
 Electron child-process isolation intact. Use
+`steamOverlay.open({ type: "profile", steamId64 })` for a Steam profile page;
+omit `steamId64` to open the current user's profile. This covers the common
+profile case for raw `ActivateGameOverlayToUser` through the same
+presenter-backed Steam web surface. Use
 `steamOverlay.open({ type: "community", appId })` for the app's Steam Community hub,
 `steamOverlay.open({ type: "stats", appId })` for the current user's app stats
 page, and `steamOverlay.open({ type: "achievements", appId })` for the current
@@ -364,7 +371,7 @@ npm run steam-deck:overlay-matrix -- \
 ```
 
 The matrix collects per-case screenshots and diagnostics for the managed
-presenter routes: modal web, store, Friends, community, stats, achievements,
+presenter routes: modal web, store, Friends, profile, community, stats, achievements,
 dialog equivalents, checkout readiness, synthetic checkout approval-route
 plumbing, Shift+Tab shortcut routing, and passive toasts. After a live run it
 summarizes every result and lifecycle log, failing if a case reports crash

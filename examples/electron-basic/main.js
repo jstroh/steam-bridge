@@ -185,6 +185,7 @@ ipcMain.handle("steam-smoke:overlay-web", () => openWebOverlay());
 ipcMain.handle("steam-smoke:overlay-dialog", () => openDialogOverlay());
 ipcMain.handle("steam-smoke:presenter-web", () => openPresenterWebOverlay());
 ipcMain.handle("steam-smoke:presenter-friends", () => openPresenterFriendsOverlay());
+ipcMain.handle("steam-smoke:presenter-profile", () => openPresenterProfileOverlay());
 ipcMain.handle("steam-smoke:presenter-community", () => openPresenterCommunityOverlay());
 ipcMain.handle("steam-smoke:presenter-stats", () => openPresenterStatsOverlay());
 ipcMain.handle("steam-smoke:presenter-achievements", () => openPresenterAchievementsOverlay());
@@ -425,6 +426,9 @@ async function runAutorunAction(action) {
       case "presenter-friends":
         openPresenterFriendsOverlay();
         return { ok: true, action };
+      case "presenter-profile":
+        openPresenterProfileOverlay();
+        return { ok: true, action };
       case "presenter-community":
         openPresenterCommunityOverlay();
         return { ok: true, action };
@@ -618,6 +622,27 @@ function openPresenterFriendsOverlay() {
   return snapshot();
 }
 
+function openPresenterProfileOverlay() {
+  const activeClient = requireClient();
+  const overlay = ensureElectronSteamOverlay(activeClient);
+  const steamId64 = activeClient.localplayer.getSteamId().steamId64;
+  overlay.open({ type: "profile", steamId64 });
+  recordEvent("overlay:presenter-open", {
+    target: "profile",
+    steamId64,
+    url: steamworks.steamCommunityProfileUrl(steamId64),
+    modal: true,
+    presenter: overlay.snapshot()
+  });
+  observeManagedOverlayLifecycle(overlay, {
+    target: "profile",
+    steamId64,
+    url: steamworks.steamCommunityProfileUrl(steamId64),
+    modal: true
+  });
+  return snapshot();
+}
+
 function openPresenterCommunityOverlay() {
   const overlay = ensureElectronSteamOverlay();
   overlay.open({ type: "community", appId: APP_ID });
@@ -792,6 +817,8 @@ function resolveShortcutOverlayTarget() {
       return { type: "web", url: WEB_URL, modal: WEB_MODAL };
     case "store":
       return { type: "store", appId: APP_ID };
+    case "profile":
+      return { type: "profile" };
     case "community":
       return { type: "community", appId: APP_ID };
     case "stats":
@@ -1569,6 +1596,7 @@ function isNativeSessionAction(action) {
     action === "presenter-store" ||
     action === "presenter-web" ||
     action === "presenter-friends" ||
+    action === "presenter-profile" ||
     action === "presenter-community" ||
     action === "presenter-stats" ||
     action === "presenter-achievements" ||
