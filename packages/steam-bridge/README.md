@@ -174,7 +174,8 @@ clicks, then parks the host transparent after Steam reports the overlay
 inactive. Use `client.overlay.openFriendsOverlay({ presenter })` for a generic
 Friends List surface; it opens Steam Community chat through the same native web
 presenter path, keeping Electron child-process isolation intact. The lower-level
-`activateDialog("Friends")` / Game Overview path is still an investigation path:
+`activateDialog("Friends")` / Game Overview path is still an investigation path,
+and `steam://open/overlay` should not be used as a generic toggle substitute:
 allowing Steam to hook Electron's Chromium children can make Steam's desktop
 social UI render, but that duplicate hook can leave stale overlay surfaces after
 close; the default child-process isolation keeps product overlays reliable and

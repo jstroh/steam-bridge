@@ -15,6 +15,7 @@ overlay_isolate_child_processes=""
 window_mode=""
 web_url=""
 web_modal=""
+overlay_dialog=""
 achievement_name=""
 achievement_current=""
 achievement_max=""
@@ -71,6 +72,8 @@ Options:
   --window-mode NAME            Electron window mode: windowed, fullscreen, or borderless.
   --web-url URL                 URL for the web overlay action.
   --web-modal true|false        Whether the web overlay action should request a modal.
+  --dialog NAME                 Dialog name for dialog/native-dialog/presenter-dialog actions.
+                                Defaults to Friends.
   --achievement-name NAME       Achievement for presenter-achievement-progress. Defaults to the first progress achievement.
   --achievement-current VALUE   Progress current value. Defaults to 1.
   --achievement-max VALUE       Progress max value. Defaults to the achievement limit or 2.
@@ -161,6 +164,10 @@ while [ "$#" -gt 0 ]; do
       ;;
     --web-modal)
       web_modal="${2:?missing --web-modal value}"
+      shift 2
+      ;;
+    --dialog)
+      overlay_dialog="${2:?missing --dialog value}"
       shift 2
       ;;
     --achievement-name)
@@ -837,7 +844,7 @@ resolved_overlay_profile() {
 
 prepare_remote_wrapper() {
   local app_dir_q env_q wrapper_q wrapper_dir_q
-  local app_id_q action_q profile_q scrub_child_env_q isolate_child_processes_q window_mode_q result_file_q diagnostic_dir_q action_delay_q result_delay_q keep_open_q require_active_q web_url_q web_modal_q achievement_name_q achievement_current_q achievement_max_q
+  local app_id_q action_q profile_q scrub_child_env_q isolate_child_processes_q window_mode_q result_file_q diagnostic_dir_q action_delay_q result_delay_q keep_open_q require_active_q web_url_q web_modal_q overlay_dialog_q achievement_name_q achievement_current_q achievement_max_q
   local require_overlay_active="0"
 
   if [ "$action" = "store" ] || [ "$action" = "web" ] || [ "$action" = "presenter-store" ] || [ "$action" = "presenter-web" ] || [ "$action" = "presenter-friends" ]; then
@@ -862,6 +869,7 @@ prepare_remote_wrapper() {
   require_active_q="$(quote_arg "$require_overlay_active")"
   web_url_q="$(quote_arg "$web_url")"
   web_modal_q="$(quote_arg "$web_modal")"
+  overlay_dialog_q="$(quote_arg "$overlay_dialog")"
   achievement_name_q="$(quote_arg "$achievement_name")"
   achievement_current_q="$(quote_arg "$achievement_current")"
   achievement_max_q="$(quote_arg "$achievement_max")"
@@ -885,6 +893,7 @@ KEEP_OPEN_AFTER_RESULT=$keep_open_q
 REQUIRE_OVERLAY_ACTIVE=$require_active_q
 WEB_URL=$web_url_q
 WEB_MODAL=$web_modal_q
+OVERLAY_DIALOG=$overlay_dialog_q
 ACHIEVEMENT_NAME=$achievement_name_q
 ACHIEVEMENT_CURRENT=$achievement_current_q
 ACHIEVEMENT_MAX=$achievement_max_q
@@ -916,6 +925,7 @@ KEEP_OPEN_AFTER_RESULT=\"\${KEEP_OPEN_AFTER_RESULT:-0}\"
 REQUIRE_OVERLAY_ACTIVE=\"\${REQUIRE_OVERLAY_ACTIVE:-0}\"
 WEB_URL=\"\${WEB_URL:-}\"
 WEB_MODAL=\"\${WEB_MODAL:-}\"
+OVERLAY_DIALOG=\"\${OVERLAY_DIALOG:-}\"
 ACHIEVEMENT_NAME=\"\${ACHIEVEMENT_NAME:-}\"
 ACHIEVEMENT_CURRENT=\"\${ACHIEVEMENT_CURRENT:-}\"
 ACHIEVEMENT_MAX=\"\${ACHIEVEMENT_MAX:-}\"
@@ -949,6 +959,9 @@ if [ -n \"\$WEB_URL\" ]; then
 fi
 if [ -n \"\$WEB_MODAL\" ]; then
   export STEAM_BRIDGE_SMOKE_WEB_MODAL=\"\$WEB_MODAL\"
+fi
+if [ -n \"\$OVERLAY_DIALOG\" ]; then
+  export STEAM_BRIDGE_SMOKE_OVERLAY_DIALOG=\"\$OVERLAY_DIALOG\"
 fi
 if [ -n \"\$ACHIEVEMENT_NAME\" ]; then
   export STEAM_BRIDGE_SMOKE_ACHIEVEMENT_NAME=\"\$ACHIEVEMENT_NAME\"
@@ -1008,6 +1021,9 @@ append_common_helper_args() {
   fi
   if [ -n "$web_modal" ]; then
     helper_args+=("--web-modal" "$web_modal")
+  fi
+  if [ -n "$overlay_dialog" ]; then
+    helper_args+=("--dialog" "$overlay_dialog")
   fi
   if [ -n "$achievement_name" ]; then
     helper_args+=("--achievement-name" "$achievement_name")
@@ -1181,7 +1197,7 @@ run_remote_mode() {
 }
 
 run_self_test() {
-  local game_args desktop_args friends_args toast_args direct_check
+  local game_args desktop_args dialog_args friends_args toast_args direct_check
   mode="game"
   build_steam_launch_args
   game_args="$(quote_args "${helper_args[@]}")"
@@ -1217,6 +1233,20 @@ run_self_test() {
     echo "Self-test failed: Steam shortcut wrapper must export SteamOverlayGameId." >&2
     exit 1
   fi
+
+  action="presenter-dialog"
+  overlay_dialog="Achievements"
+  build_steam_launch_args
+  dialog_args="$(quote_args "${helper_args[@]}")"
+  if [[ "$dialog_args" != *"--dialog Achievements"* ]]; then
+    echo "Self-test failed: Presenter dialog args must pass the requested dialog target." >&2
+    exit 1
+  fi
+  if [[ "$dialog_args" == *"--require-overlay-activated"* ]]; then
+    echo "Self-test failed: Presenter dialog investigation args must not require overlay activation." >&2
+    exit 1
+  fi
+  overlay_dialog=""
 
   action="presenter-friends"
   build_steam_launch_args

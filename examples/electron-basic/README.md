@@ -100,6 +100,10 @@ testing still leaves Steam's raw desktop dialog/Game Overview visually stuck
 when Electron child overlay targets are allowed, so neither the native nor
 Electron-only `dialog`/`friends` actions prove reliable Desktop Mode
 dialog-overlay dismissal yet.
+For raw dialog investigation, set `STEAM_BRIDGE_SMOKE_OVERLAY_DIALOG` or pass
+`--dialog <name>` to the Linux/Deck helpers. The default is `Friends`; useful
+generic comparison values include `Achievements`, `Community`, `Players`,
+`Settings`, `OfficialGameGroup`, and `Stats`.
 
 The `presenter-*` actions use `client.overlay.attachPresenter(...)` and reuse the
 same passive, click-through presenter for the requested overlay target. Use
@@ -117,6 +121,9 @@ Use `presenter-friends` to verify the recommended Friends List path:
 `client.overlay.openFriendsOverlay({ presenter })` opens Steam Community chat
 through the same native web presenter used by checkout/store overlays, keeping a
 single `gameoverlayui` target attached to the main/native process.
+Do not use `steam://open/overlay` as a generic overlay-toggle substitute in this
+example. Deck Desktop testing showed it can activate Steam's callback path while
+leaving the native presenter black and the smoke process unrecovered.
 Use
 `presenter-achievement-progress` to verify passive Steam notification rendering:
 the action keeps the presenter transparent and click-through, calls
@@ -241,7 +248,8 @@ app. The process list should still show one `gameoverlayui` target attached to
 the main/native process.
 
 For raw dialog/Game Overview investigation, use `presenter-dialog` or
-`dialog`/`friends` with `--visual-close-probe`. The runner captures
+`dialog`/`friends` with `--visual-close-probe`; add `--dialog <name>` to compare
+Steam dialog targets without editing the example app. The runner captures
 `overlay-open.png`, sends a Deck-side Shift+Tab/Escape probe through
 `/dev/uinput` when available, captures `after-close-probe.png`, and copies the
 remote result log plus diagnostics back to the local artifact directory. Treat

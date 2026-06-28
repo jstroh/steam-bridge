@@ -20,6 +20,7 @@ const WINDOW_MODE = CLI_OPTIONS.windowMode || process.env.STEAM_BRIDGE_SMOKE_WIN
 const STORE_URL = `https://store.steampowered.com/app/${APP_ID}/`;
 const WEB_URL = CLI_OPTIONS.webUrl || process.env.STEAM_BRIDGE_SMOKE_WEB_URL || STORE_URL;
 const WEB_MODAL = readBoolean(CLI_OPTIONS.webModal || process.env.STEAM_BRIDGE_SMOKE_WEB_MODAL, false);
+const OVERLAY_DIALOG = CLI_OPTIONS.overlayDialog || process.env.STEAM_BRIDGE_SMOKE_OVERLAY_DIALOG || "Friends";
 const ACHIEVEMENT_NAME = CLI_OPTIONS.achievementName || process.env.STEAM_BRIDGE_SMOKE_ACHIEVEMENT_NAME || "";
 const ACHIEVEMENT_CURRENT = Number(
   CLI_OPTIONS.achievementCurrent || process.env.STEAM_BRIDGE_SMOKE_ACHIEVEMENT_CURRENT || "1"
@@ -400,8 +401,8 @@ function openWebOverlay() {
 
 function openDialogOverlay() {
   const activeClient = requireClient();
-  activeClient.overlay.activateDialog("Friends");
-  recordEvent("overlay:dialog", { dialog: "Friends" });
+  activeClient.overlay.activateDialog(OVERLAY_DIALOG);
+  recordEvent("overlay:dialog", { dialog: OVERLAY_DIALOG });
   return snapshot();
 }
 
@@ -412,13 +413,13 @@ function openNativeProbe() {
 function openNativeDialogOverlay() {
   const activeClient = requireClient();
   closeNativeOverlaySession();
-  nativeOverlaySession = activeClient.overlay.activateDialogWithNativeSession("Friends", {
+  nativeOverlaySession = activeClient.overlay.activateDialogWithNativeSession(OVERLAY_DIALOG, {
     ...nativeOverlayOptions(),
     title: "Steam Bridge Native Overlay"
   });
   recordEvent("overlay:native-session-open", {
     target: "dialog",
-    dialog: "Friends",
+    dialog: OVERLAY_DIALOG,
     session: nativeOverlaySession.snapshot()
   });
   return snapshot();
@@ -464,10 +465,10 @@ function openNativeWebOverlay() {
 function openPresenterDialogOverlay() {
   const activeClient = requireClient();
   const presenter = ensureNativeOverlayPresenter(activeClient);
-  activeClient.overlay.openDialogOverlay("Friends", { presenter });
+  activeClient.overlay.openDialogOverlay(OVERLAY_DIALOG, { presenter });
   recordEvent("overlay:presenter-open", {
     target: "dialog",
-    dialog: "Friends",
+    dialog: OVERLAY_DIALOG,
     presenter: presenter.snapshot()
   });
   return snapshot();
@@ -673,6 +674,7 @@ function snapshot() {
       storeUrl: STORE_URL,
       webUrl: WEB_URL,
       webModal: WEB_MODAL,
+      overlayDialog: OVERLAY_DIALOG,
       achievementName: ACHIEVEMENT_NAME || null,
       achievementCurrent: ACHIEVEMENT_CURRENT,
       achievementMax: ACHIEVEMENT_MAX,
@@ -937,6 +939,7 @@ function isNativeSessionAction(action) {
     action === "presenter-dialog" ||
     action === "presenter-store" ||
     action === "presenter-web" ||
+    action === "presenter-friends" ||
     action === "presenter-achievement-progress"
   );
 }
@@ -992,6 +995,7 @@ function parseSmokeArgs(args) {
     autorunActionDelayMs: undefined,
     autorunResultDelayMs: undefined,
     overlayProfile: undefined,
+    overlayDialog: undefined,
     overlayScrubChildEnv: undefined,
     overlayIsolateChildProcesses: undefined,
     windowMode: undefined,
@@ -1036,6 +1040,9 @@ function parseSmokeArgs(args) {
         break;
       case "--steam-bridge-smoke-web-url":
         options.webUrl = value;
+        break;
+      case "--steam-bridge-smoke-overlay-dialog":
+        options.overlayDialog = value;
         break;
       case "--steam-bridge-smoke-achievement-name":
         options.achievementName = value;

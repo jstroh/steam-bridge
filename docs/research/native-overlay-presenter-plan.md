@@ -54,10 +54,18 @@ timing hacks.
   testing captured visible Friends/chat UI, used one `gameoverlayui` target
   attached to the app's main/native process, and returned cleanly to the app
   after the close probe.
+- A generic `steam://open/overlay` URI is not a reliable shortcut around the
+  unresolved raw social/toggle path. On Deck Desktop Mode it can emit an overlay
+  activation callback while leaving the native presenter black and crashing the
+  smoke process, so it should not become a public API strategy.
 - Raw Deck Desktop social dialogs remain separate from the product proof. With
   Electron child-process isolation enabled, `ActivateGameOverlay("Friends")` /
-  Game Overview may not render; with isolation disabled, Steam can hook Chromium
-  children and render social UI but may leave stale overlay surfaces after close.
+  Game Overview may not render. With the reusable presenter and child isolation
+  enabled, `ActivateGameOverlay("Achievements")` can render Steam's achievements
+  panel through the main/native overlay target, but it does not emit
+  `GameOverlayActivated` and does not return cleanly to the Electron app through
+  generic close probes. With isolation disabled, Steam can hook Chromium children
+  and render social UI but may leave stale overlay surfaces after close.
 - Steam Bridge's macOS evidence is weaker: Steam launch and native probe coverage
   exist, and a Metal host path exists, but completed product overlay behavior on
   macOS is not proven yet.

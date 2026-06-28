@@ -13,6 +13,7 @@ overlay_isolate_child_processes=""
 window_mode=""
 web_url=""
 web_modal=""
+overlay_dialog=""
 achievement_name=""
 achievement_current=""
 achievement_max=""
@@ -62,6 +63,7 @@ Options:
   --window-mode NAME             Electron window mode: windowed, fullscreen, or borderless.
   --web-url URL                  URL for the web overlay action.
   --web-modal true|false         Whether the web overlay action should request a modal.
+  --dialog NAME                  Dialog name for dialog/native-dialog/presenter-dialog actions. Defaults to Friends.
   --achievement-name NAME        Achievement for presenter-achievement-progress. Defaults to the first progress achievement.
   --achievement-current VALUE    Progress current value. Defaults to 1.
   --achievement-max VALUE        Progress max value. Defaults to the achievement limit or 2.
@@ -133,6 +135,10 @@ while [ "$#" -gt 0 ]; do
       ;;
     --web-modal)
       web_modal="${2:?missing --web-modal value}"
+      shift 2
+      ;;
+    --dialog)
+      overlay_dialog="${2:?missing --dialog value}"
       shift 2
       ;;
     --achievement-name)
@@ -250,6 +256,9 @@ smoke_args() {
   fi
   if [ -n "$web_modal" ]; then
     printf '%s\n' "--steam-bridge-smoke-web-modal=$web_modal"
+  fi
+  if [ -n "$overlay_dialog" ]; then
+    printf '%s\n' "--steam-bridge-smoke-overlay-dialog=$overlay_dialog"
   fi
   if [ -n "$achievement_name" ]; then
     printf '%s\n' "--steam-bridge-smoke-achievement-name=$achievement_name"
@@ -646,6 +655,14 @@ EOF
   require_big_picture="1"
   require_events=("overlay:dialog" "callback:overlay-activated")
   verify_result
+
+  overlay_dialog="Achievements"
+  launch_options="$(smoke_args | paste -sd' ' -)"
+  if [[ "$launch_options" != *"--steam-bridge-smoke-overlay-dialog=Achievements"* ]]; then
+    echo "Self-test failed: Launch options must pass the requested overlay dialog." >&2
+    exit 1
+  fi
+
   echo "Linux Electron smoke helper self-test passed."
 }
 

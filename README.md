@@ -358,6 +358,9 @@ render with the presenter transparent and click-through. For a generic Friends
 List surface, use `client.overlay.openFriendsOverlay({ presenter })`; on Steam
 Deck Desktop Mode this opens Steam Community chat through the same native web
 presenter with one `gameoverlayui` target and a clean close/back-to-app result.
+Do not use `steam://open/overlay` as a generic overlay-toggle substitute; Deck
+Desktop testing showed it can activate Steam's callback path while leaving the
+native presenter black and the smoke process unrecovered.
 Raw `ActivateGameOverlay("Friends")`, Game Overview, and overlay hotkey toggling
 remain investigation paths: allowing Steam to hook Electron children can make
 Steam's desktop social UI render, but that duplicate hook can leave stale
