@@ -366,6 +366,86 @@ capture_deck_screenshot() {
   echo "Screenshot saved: $local_path"
 }
 
+capture_deck_overlay_state() {
+  local label="$1"
+  if [ -z "$visual_capture_dir" ]; then
+    return 0
+  fi
+
+  local local_path
+  local_path="$visual_capture_dir/$label-state.txt"
+
+  mkdir -p "$visual_capture_dir"
+  echo "Capturing Deck overlay state: $label"
+  remote_exec "export DISPLAY=\"\${DISPLAY:-:0}\"
+if [ -z \"\${XAUTHORITY:-}\" ]; then
+  XAUTHORITY=\"\$(ls /run/user/1000/xauth_* 2>/dev/null | head -n 1 || true)\"
+  export XAUTHORITY
+fi
+export DBUS_SESSION_BUS_ADDRESS=\"\${DBUS_SESSION_BUS_ADDRESS:-unix:path=/run/user/1000/bus}\"
+capture_pid=\"\$\$\"
+
+echo '== timestamp =='
+date -Is 2>/dev/null || date
+echo
+
+echo '== focused-window =='
+if command -v xdotool >/dev/null 2>&1; then
+  focus_id=\"\$(xdotool getwindowfocus 2>/dev/null || true)\"
+  echo \"focus_id=\$focus_id\"
+  if [ -n \"\$focus_id\" ]; then
+    echo -n 'focus_name='
+    xdotool getwindowname \"\$focus_id\" 2>/dev/null || true
+    echo -n 'focus_pid='
+    xdotool getwindowpid \"\$focus_id\" 2>/dev/null || true
+    if command -v xprop >/dev/null 2>&1; then
+      xprop -id \"\$focus_id\" WM_CLASS WM_NAME _NET_WM_PID _NET_WM_STATE 2>/dev/null || true
+    fi
+  fi
+else
+  echo 'xdotool unavailable'
+fi
+echo
+
+echo '== active-window =='
+if command -v xprop >/dev/null 2>&1; then
+  xprop -root _NET_ACTIVE_WINDOW 2>/dev/null || true
+else
+  echo 'xprop unavailable'
+fi
+echo
+
+echo '== overlay-processes =='
+pgrep -af '[S]teamBridgeSmoke|[g]ameoverlayui|[s]teamwebhelper' 2>/dev/null | awk -v self=\"\$capture_pid\" '\$1 != self' || true
+echo
+
+echo '== overlay-env =='
+for pid in \$(pgrep -f '[S]teamBridgeSmoke|[g]ameoverlayui' 2>/dev/null | awk -v self=\"\$capture_pid\" '\$1 != self' || true); do
+  if [ -r \"/proc/\$pid/environ\" ]; then
+    echo \"-- pid \$pid --\"
+    tr '\\000' '\\n' < \"/proc/\$pid/environ\" 2>/dev/null | grep -E '^(SteamAppId|SteamGameId|SteamOverlayGameId|LD_PRELOAD|STEAM_BRIDGE_|DISPLAY=)' || true
+  fi
+done
+echo
+
+echo '== wmctrl =='
+if command -v wmctrl >/dev/null 2>&1; then
+  wmctrl -lp 2>/dev/null | grep -Ei 'steam|overlay|smoke|electron|gameoverlayui' || true
+else
+  echo 'wmctrl unavailable'
+fi
+echo
+
+echo '== xwininfo-filtered =='
+if command -v xwininfo >/dev/null 2>&1; then
+  xwininfo -root -tree 2>/dev/null | grep -Ei 'steam|overlay|smoke|electron|gameoverlayui' | head -n 160 || true
+else
+  echo 'xwininfo unavailable'
+fi
+" > "$local_path" 2>&1 || true
+  echo "Overlay state saved: $local_path"
+}
+
 focus_deck_smoke_window() {
   local app_name_q
   app_name_q="$(quote_arg "$app_name")"
@@ -657,6 +737,7 @@ run_visual_capture() {
   fi
 
   capture_deck_screenshot "overlay-open"
+  capture_deck_overlay_state "overlay-open"
   if [ "$visual_toggle_probe" = "1" ]; then
     if [ "$visual_toggle_input" = "keyboard" ]; then
       run_visual_toggle_probe_for_input "keyboard" "" "1"
@@ -679,6 +760,7 @@ run_visual_capture() {
     fi
     sleep 1
     capture_deck_screenshot "after-close-probe"
+    capture_deck_overlay_state "after-close-probe"
   fi
 }
 
@@ -689,9 +771,11 @@ run_visual_toggle_probe_for_input() {
 
   focus_deck_smoke_window
   capture_deck_screenshot "${label_prefix}before-toggle-probe"
+  capture_deck_overlay_state "${label_prefix}before-toggle-probe"
   send_deck_overlay_toggle_probe "$input"
   sleep 2
   capture_deck_screenshot "${label_prefix}after-toggle-open"
+  capture_deck_overlay_state "${label_prefix}after-toggle-open"
   if [ "$use_close_probe" = "1" ]; then
     send_deck_overlay_close_probe
   else
@@ -699,6 +783,7 @@ run_visual_toggle_probe_for_input() {
   fi
   sleep 1
   capture_deck_screenshot "${label_prefix}after-toggle-close"
+  capture_deck_overlay_state "${label_prefix}after-toggle-close"
 }
 
 print_ssh_hint() {
@@ -1351,6 +1436,10 @@ run_self_test() {
   overlay_game_id="app"
   if [ "$(resolve_overlay_game_id)" != "$app_id" ]; then
     echo "Self-test failed: app overlay game ID did not resolve to app ID." >&2
+    exit 1
+  fi
+  if ! grep -Fq 'capture_deck_overlay_state "${label_prefix}after-toggle-open"' "$0"; then
+    echo "Self-test failed: Visual toggle probes must capture Deck overlay state." >&2
     exit 1
   fi
 

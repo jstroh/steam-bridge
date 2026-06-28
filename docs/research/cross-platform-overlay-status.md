@@ -18,7 +18,7 @@ and Steam Deck. The public smoke target is Valve's SpaceWar App ID `480`.
 | Desktop Mode reusable native presenter app community/stats web overlays | Verified for open, close, input, and back-to-app | The `presenter-community` and `presenter-stats` actions use `steamOverlay.open({ type: "community", appId })` and `steamOverlay.open({ type: "stats", appId })`. They route Steam Community app hub and current-user app stats surfaces through the same modal native web presenter as Friends/Achievements instead of raw `ActivateGameOverlay("Community")` or `ActivateGameOverlay("Stats")`. Deck Desktop runs on 2026-06-28 verified overlay activation, captured visible Steam web content in the native overlay surface, and returned to the running smoke app with `--visual-close-input web`. |
 | Desktop Mode reusable native presenter achievements/profile web overlay | Verified for open, close, input, and back-to-app | The `presenter-achievements` action uses `steamOverlay.open({ type: "achievements", appId })`, which opens the current user's Steam Community stats/achievements URL through the reusable native web presenter. Deck Desktop testing emitted paired `active=true` and `active=false` callbacks, returned to the running Electron app after the close probe, and used one `gameoverlayui` process attached to the main/native process. SpaceWar App ID `480` redirects that web achievements URL to the user's profile because Steam Community does not expose a public web stats page for it; use a real app with web-visible stats for content proof. |
 | Desktop Mode reusable native presenter passive toast | Verified | The `presenter-achievement-progress` action attaches the reusable presenter, keeps it passive/click-through/transparent, calls `achievement.indicateProgress(...)` against public App ID `480`, receives `callback:achievement-stored`, and captures the Steam achievement progress toast over the running Electron app. The host remains passive, uses a single overlay target, and does not require `GameOverlayActivated`. |
-| Desktop Mode overlay hotkey/toggle | Open blocker | Deck Desktop `--visual-toggle-probe` runs after the passive presenter toast proof stayed in the Electron app and emitted no `GameOverlayActivated` callback. This has been reproduced with Shift+Tab and with a controller-shaped virtual Guide/Steam-button uinput device after explicitly focusing the smoke app. The Guide run briefly changed `overlayNeedsPresent` to `true` but did not render overlay UI. A 2026-06-28 run with `--overlay-game-id shortcut` proved Steam's overlay renderer can attach to the full non-Steam shortcut game ID, but Shift+Tab and Guide still did not open visible overlay UI. Treat Steam overlay hotkey/social toggling as unresolved; do not expose a standalone presenter "ready" action that makes the native host opaque without an actual overlay API call. |
+| Desktop Mode overlay hotkey/toggle | Open blocker | Deck Desktop `--visual-toggle-probe` runs after the passive presenter toast proof stayed in the Electron app and emitted no `GameOverlayActivated` callback. This has been reproduced with Shift+Tab and with a controller-shaped virtual Guide/Steam-button uinput device after explicitly focusing the smoke app. The Guide run briefly changed `overlayNeedsPresent` to `true` but did not render overlay UI. A 2026-06-28 run with `--overlay-game-id shortcut` proved Steam's overlay renderer can attach to the full non-Steam shortcut game ID, but Shift+Tab and Guide still did not open visible overlay UI. A filtered 2026-06-28 state-capture run confirmed the focused and active X11 window stayed on the smoke app, `gameoverlayui` stayed attached to the app process with game ID `480`, and the X11 tree contained the passive native host plus the Electron window without a visible Steam overlay shell after Shift+Tab. Treat Steam overlay hotkey/social toggling as unresolved; do not expose a standalone presenter "ready" action that makes the native host opaque without an actual overlay API call. |
 | Desktop Mode generic Steam overlay URI | Failed; do not use as a product path | A `presenter-web --web-url steam://open/overlay --web-modal true` Deck Desktop run emitted `GameOverlayActivated(true)` but did not write a result, showed a black native presenter/Steam overview thumbnail, and triggered a SteamOS coredump hook for the smoke app. Do not use `steam://open/overlay` as a generic overlay-toggle fallback. |
 | Desktop Mode reusable native presenter raw social dialog | Open blocker; not a product proof | With default Electron child-process isolation, `presenter-dialog` calls `ActivateGameOverlay(...)`. The tested `Friends` dialog did not render or emit `callback:overlay-activated`; `--dialog Achievements` rendered Steam's SpaceWar achievements panel through one `gameoverlayui` target attached to the main/native process, but still emitted no activation callback, the Shift+Tab/Escape close probe did not dismiss it, and the visible close control returned to Steam Library instead of the running Electron app. The smoke app and Deck runner now accept `--dialog <name>` so other Steam dialog names can be compared without source edits. A 2026-06-28 `--overlay-game-id shortcut` run set `SteamOverlayGameId` to the full non-Steam shortcut game ID and `gameoverlayui` attached to that ID, but the raw Achievements dialog still emitted no activation callback and the open screenshot showed Desktop Mode's window overview rather than a stable in-app modal surface. The close probe returned to the smoke app, but this remains diagnostic evidence, not a product pass. A focused/raised X11 host experiment on 2026-06-27 still produced no visible Friends overlay and no activation callback with a single `gameoverlayui` target, so focus handoff is not useful. An opaque/interactive dialog-host experiment showed only a black native host and still emitted no activation callback, so dialog activation should remain transparent while this raw dialog route remains unresolved. With isolation disabled, `presenter-dialog` emits active=true and shows Steam's desktop overlay shell, but creates duplicate `gameoverlayui` targets for the GPU child and main/native process and still fails close/back-to-app visual proof. |
 | Desktop Mode managed native web session | Compatibility coverage | The `native-web` action with `--web-modal true` calls `activateToWebPageWithNativeSession(...)`, opens a bridge-owned X11/GLX native presenter, keeps it presenting frames, and exercises the older managed-session API. Prefer the reusable `presenter-web --web-modal true` path for current Deck Desktop open/close proof because it also isolates Electron child overlay targets. |
@@ -225,6 +225,18 @@ the same probe with `--overlay-game-id shortcut` made `gameoverlayui` attach to
 the full non-Steam shortcut game ID instead of App ID `480`, but did not make
 Shift+Tab or Guide open visible overlay UI.
 
+A filtered 2026-06-28 Desktop Mode run of `presenter-achievement-progress` with
+`--visual-toggle-probe --visual-toggle-input keyboard` validated the state
+capture path itself. The post-toggle screenshot remained on the Electron smoke
+app, lifecycle logs still contained no `GameOverlayActivated` event, and the
+matching `after-toggle-open-state.txt` showed the active/focused X11 window as
+`Steam Bridge Electron Smoke`, `SteamOverlayGameId=480`, one
+`gameoverlayui -pid <app-pid> ... -gameid 480`, and the X11 tree entries for the
+passive `Steam Bridge Native Overlay` plus the Electron window. That means the
+current keyboard-toggle failure is not caused by focus drifting away from the
+app or by Steam attaching the overlay renderer to an obvious Electron child
+process during the probe.
+
 `overlayNeedsPresent=true` is not a hard failure by itself. It means Steam is
 asking an event-driven renderer to keep presenting frames for the overlay. The
 Electron `repaint` profile keeps invalidating the window at about 30 FPS without
@@ -296,13 +308,17 @@ Use `--visual-toggle-probe` when the question is whether the overlay toggle open
 from the current app state. It focuses the smoke app before the toggle probe when
 possible, captures `before-toggle-probe.png`, sends the selected input, captures
 `after-toggle-open.png`, then captures `after-toggle-close.png` in addition to
-the normal `overlay-open.png`. Add `--visual-toggle-input guide` to send a
-controller Guide/Steam-button event through a temporary virtual gamepad, or
-`--visual-toggle-input both` to compare Shift+Tab and Guide in one run. Add
-`--overlay-game-id shortcut` to run the same visual probe while the wrapper sets
-`SteamOverlayGameId` to the full non-Steam shortcut game ID; this is an
-investigation switch for raw overlay close/back behavior, not a requirement for
-the verified presenter web/Friends/checkout paths.
+the normal `overlay-open.png`. Each visual capture also writes a matching
+`*-state.txt` file with the focused X11 window, active window property, matching
+Steam/Electron overlay processes, selected Steam overlay environment variables,
+and filtered `wmctrl`/`xwininfo` output when those tools are available on the
+Deck. Add `--visual-toggle-input guide` to send a controller Guide/Steam-button
+event through a temporary virtual gamepad, or `--visual-toggle-input both` to
+compare Shift+Tab and Guide in one run. Add `--overlay-game-id shortcut` to run
+the same visual probe while the wrapper sets `SteamOverlayGameId` to the full
+non-Steam shortcut game ID; this is an investigation switch for raw overlay
+close/back behavior, not a requirement for the verified presenter
+web/Friends/checkout paths.
 
 For passive toast proof, run:
 
