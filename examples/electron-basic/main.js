@@ -51,6 +51,7 @@ const DIAGNOSTIC_DIR =
   path.join(os.tmpdir(), "steam-bridge-smoke-diagnostics", createRunId());
 const LIFECYCLE_LOG_FILE = path.join(DIAGNOSTIC_DIR, "lifecycle.jsonl");
 const CRASH_DUMP_DIR = path.join(DIAGNOSTIC_DIR, "crash-dumps");
+const POST_CLOSE_PRESENTER_SNAPSHOT_DELAY_MS = 1800;
 const FATAL_LIFECYCLE_EVENT_TYPES = new Set([
   "app:render-process-gone",
   "app:child-process-gone",
@@ -95,6 +96,7 @@ let shutdownComplete = false;
 let mainWindow;
 let nativeOverlaySession;
 let electronSteamOverlay;
+let postClosePresenterSnapshotTimer;
 const callbackHandles = [];
 const eventLog = [];
 
@@ -224,6 +226,10 @@ function shutdownSteam() {
     return;
   }
   shutdownComplete = true;
+  if (postClosePresenterSnapshotTimer) {
+    clearTimeout(postClosePresenterSnapshotTimer);
+    postClosePresenterSnapshotTimer = undefined;
+  }
   closeNativeOverlayPresenter();
   closeNativeOverlaySession();
 
@@ -1233,6 +1239,8 @@ function recordEvent(type, payload) {
   for (const window of BrowserWindow.getAllWindows()) {
     window.webContents.send("steam-smoke:event", event);
   }
+
+  maybeRecordPostClosePresenterSnapshot(type, payload);
 }
 
 function countOverlayActiveEvents() {
@@ -1244,24 +1252,58 @@ function isOverlayActiveEvent(event) {
     return false;
   }
 
-  const payload = event.payload;
+  return readOverlayActiveValue(event.payload) === true;
+}
+
+function maybeRecordPostClosePresenterSnapshot(type, payload) {
+  if (type !== "callback:overlay-activated" || readOverlayActiveValue(payload) !== false) {
+    return;
+  }
+  if (!electronSteamOverlay || !electronSteamOverlay.isOpen()) {
+    return;
+  }
+
+  if (postClosePresenterSnapshotTimer) {
+    clearTimeout(postClosePresenterSnapshotTimer);
+  }
+  postClosePresenterSnapshotTimer = setTimeout(() => {
+    postClosePresenterSnapshotTimer = undefined;
+    if (shutdownComplete || !electronSteamOverlay || !electronSteamOverlay.isOpen()) {
+      return;
+    }
+
+    recordEvent("overlay:presenter-after-close", {
+      delayMs: POST_CLOSE_PRESENTER_SNAPSHOT_DELAY_MS,
+      presenter: electronSteamOverlay.snapshot()
+    });
+  }, POST_CLOSE_PRESENTER_SNAPSHOT_DELAY_MS);
+  postClosePresenterSnapshotTimer.unref?.();
+}
+
+function readOverlayActiveValue(payload) {
   if (payload == null) {
-    return false;
+    return undefined;
   }
   if (payload === true || payload === 1) {
     return true;
   }
-  if (typeof payload !== "object") {
+  if (payload === false || payload === 0) {
     return false;
+  }
+  if (typeof payload !== "object") {
+    return undefined;
   }
 
   const activePayload = payload["0"] && typeof payload["0"] === "object" ? payload["0"] : payload;
-  return (
-    activePayload.active === true ||
-    activePayload.active === 1 ||
-    activePayload.m_bActive === true ||
-    activePayload.m_bActive === 1
-  );
+  for (const key of ["active", "m_bActive"]) {
+    if (activePayload[key] === true || activePayload[key] === 1) {
+      return true;
+    }
+    if (activePayload[key] === false || activePayload[key] === 0) {
+      return false;
+    }
+  }
+  return undefined;
 }
 
 function isOverlayAction(action) {
