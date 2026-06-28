@@ -5035,6 +5035,98 @@ test("electron steam overlay manager opens the presenter route from the default 
   assert.equal(overlay.isOpen(), false);
 });
 
+test("electron steam overlay manager tolerates destroyed webContents during window close", (t) => {
+  const hostHandle = Buffer.from([23, 42, 108, 15]);
+  let hostOpen = false;
+  let closedHandler;
+  let beforeInputHandler;
+  let webContentsDestroyed = false;
+  let removedHandler = false;
+  const fake = createFakeNative({
+    attachNativeOverlayHostView(nativeWindowHandle) {
+      hostOpen = true;
+      this.calls.push({ method: "attachNativeOverlayHostView", args: [nativeWindowHandle] });
+    },
+    pumpNativeOverlayProbeWindow() {
+      this.calls.push({ method: "pumpNativeOverlayProbeWindow", args: [] });
+    },
+    showNativeOverlayHostView() {
+      this.calls.push({ method: "showNativeOverlayHostView", args: [] });
+    },
+    setNativeOverlayHostInputPassthrough(passThrough) {
+      this.calls.push({ method: "setNativeOverlayHostInputPassthrough", args: [passThrough] });
+    },
+    setNativeOverlayHostOpacity(opaque) {
+      this.calls.push({ method: "setNativeOverlayHostOpacity", args: [opaque] });
+    },
+    detachNativeOverlayHostView() {
+      hostOpen = false;
+      this.calls.push({ method: "detachNativeOverlayHostView", args: [] });
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return false;
+    },
+    isNativeOverlayHostViewOpen() {
+      return hostOpen;
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  const window = {
+    isDestroyed() {
+      return webContentsDestroyed;
+    },
+    getNativeWindowHandle() {
+      return hostHandle;
+    },
+    once(event, handler) {
+      if (event === "closed") {
+        closedHandler = handler;
+      }
+    },
+    webContents: {
+      isDestroyed() {
+        return webContentsDestroyed;
+      },
+      once() {},
+      invalidate() {},
+      send() {},
+      on(event, handler) {
+        if (event === "before-input-event") {
+          beforeInputHandler = handler;
+        }
+      },
+      off(event) {
+        if (webContentsDestroyed) {
+          throw new TypeError("Object has been destroyed");
+        }
+        if (event === "before-input-event") {
+          removedHandler = true;
+        }
+      }
+    }
+  };
+
+  const overlay = steam.overlay.createElectronSteamOverlay(window, {
+    title: "Electron Destroyed Window Overlay",
+    pollIntervalMs: 10000
+  });
+
+  assert.equal(typeof beforeInputHandler, "function");
+  assert.equal(typeof closedHandler, "function");
+  webContentsDestroyed = true;
+  assert.doesNotThrow(() => closedHandler());
+  assert.equal(overlay.isOpen(), false);
+  assert.equal(removedHandler, false);
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "detachNativeOverlayHostView"),
+    [{ method: "detachNativeOverlayHostView", args: [] }]
+  );
+  assert.doesNotThrow(() => overlay.close());
+});
+
 test("native overlay session owns the probe pump lifecycle", async (t) => {
   let probeOpen = false;
   let hostOpen = false;

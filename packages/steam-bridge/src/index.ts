@@ -1776,6 +1776,7 @@ export interface ElectronSteamOverlaySnapshot extends NativeOverlayPresenterSnap
 export type ElectronOverlayWindow = Parameters<typeof electronOverlayPresenterOptionsImpl>[0] & {
   once?(event: "closed", handler: () => void): void;
   webContents: Parameters<typeof electronOverlayPresenterOptionsImpl>[0]["webContents"] & {
+    isDestroyed?(): boolean;
     on?(
       event: "before-input-event",
       handler: (event: ElectronOverlayInputEvent, input: ElectronOverlayKeyboardInput) => void
@@ -7659,6 +7660,9 @@ export function createElectronSteamOverlay(
       return presenter;
     },
     close(): void {
+      if (closed) {
+        return;
+      }
       closed = true;
       removeShortcutListener?.();
       removeShortcutListener = undefined;
@@ -7851,7 +7855,8 @@ function installElectronSteamOverlayShortcut(
   controller: ElectronSteamOverlay,
   shortcut: NormalizedElectronSteamOverlayShortcutOptions
 ): () => void {
-  if (!shortcut.enabled || typeof window.webContents.on !== "function") {
+  const webContents = window.webContents;
+  if (!shortcut.enabled || typeof webContents.on !== "function") {
     return () => {};
   }
 
@@ -7893,15 +7898,33 @@ function installElectronSteamOverlayShortcut(
     }
   };
 
-  window.webContents.on("before-input-event", handler);
+  webContents.on("before-input-event", handler);
 
   return () => {
-    if (typeof window.webContents.off === "function") {
-      window.webContents.off("before-input-event", handler);
-    } else if (typeof window.webContents.removeListener === "function") {
-      window.webContents.removeListener("before-input-event", handler);
+    if (isElectronWebContentsDestroyed(webContents)) {
+      return;
+    }
+
+    try {
+      if (typeof webContents.off === "function") {
+        webContents.off("before-input-event", handler);
+      } else if (typeof webContents.removeListener === "function") {
+        webContents.removeListener("before-input-event", handler);
+      }
+    } catch (error) {
+      if (!isElectronWebContentsDestroyed(webContents)) {
+        throw error;
+      }
     }
   };
+}
+
+function isElectronWebContentsDestroyed(webContents: ElectronOverlayWindow["webContents"]): boolean {
+  try {
+    return typeof webContents.isDestroyed === "function" && webContents.isDestroyed();
+  } catch {
+    return true;
+  }
 }
 
 type NormalizedElectronSteamOverlayShortcutOptions = Required<

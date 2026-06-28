@@ -246,6 +246,22 @@ child processes. Apps can set `overlayShortcut.target` to any presenter-backed
 target when they want Shift+Tab to open store, web, checkout, community, stats,
 achievements, or dialog-equivalent surfaces instead.
 
+To rerun the Steam Deck Desktop Mode product overlay proof matrix from this
+repo, keep the Deck awake in Desktop Mode with Steam running and use:
+
+```sh
+npm run steam-deck:overlay-matrix -- \
+  --host deck@<deck-host-or-ip> \
+  --suite core
+```
+
+The matrix packages the Linux x64 smoke app, runs preflight, then exercises the
+managed presenter routes for modal web, store, Friends, community, stats,
+achievements, dialog equivalents, checkout readiness, synthetic checkout
+approval-route plumbing, Shift+Tab shortcut routing, and passive
+achievement-progress toasts. Screenshots and diagnostics are collected under
+`/tmp/steam-bridge-deck-overlay-matrix-*`.
+
 SpaceWar `480` and the Electron smoke app are for generic initialization,
 callback, input, and overlay plumbing checks. Purchase overlays need a real
 Steam app launch with a matching App ID and a configured product or transaction;

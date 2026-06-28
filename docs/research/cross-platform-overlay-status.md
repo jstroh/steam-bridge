@@ -387,6 +387,23 @@ requires that passive presenter shape automatically for this action. The current
 Deck proof selected SpaceWar achievement `ACH_TRAVEL_FAR_ACCUM` displayed as
 `Interstellar`, reported `indicated=true`, and captured the toast over the app.
 
+To rerun the product Deck Desktop matrix without hand assembling each proof
+command, use:
+
+```sh
+npm run steam-deck:overlay-matrix -- \
+  --host deck@<deck-host-or-ip> \
+  --suite core
+```
+
+The matrix packages the Linux x64 smoke app, runs preflight, and collects
+per-case diagnostics plus screenshots for the managed presenter routes:
+web/store/Friends/community/stats/achievements, dialog equivalents, checkout
+readiness, synthetic checkout approval-route plumbing, managed Shift+Tab
+shortcut routing, and passive achievement-progress toasts. This remains generic
+App ID `480` plumbing evidence; real purchase content still needs the app-specific
+purchase checklist below.
+
 ## Purchase Overlay Checklist
 
 Use this checklist for app-specific purchase validation without committing

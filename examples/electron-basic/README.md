@@ -261,6 +261,23 @@ overlay readiness, and overlay callback checks. If preflight cannot reach SSH,
 verify the Deck is awake, SSH is enabled, and the `--host` IP address is still
 current; then rerun `--mode discover`.
 
+To repeat the Deck Desktop product overlay matrix, run:
+
+```sh
+npm run steam-deck:overlay-matrix -- \
+  --host deck@<deck-host-or-ip> \
+  --suite core
+```
+
+This packages the Linux x64 smoke app, runs preflight, then drives the managed
+presenter routes for modal web, store, Friends, community, stats, achievements,
+dialog equivalents, checkout readiness, synthetic checkout approval-route
+plumbing, Shift+Tab shortcut routing, and passive achievement-progress toasts.
+It writes per-case diagnostics and screenshots under
+`/tmp/steam-bridge-deck-overlay-matrix-*`. Use `--suite minimal` for the
+shortest product smoke pass or `--suite full` to include every known
+dialog-equivalent route.
+
 For the current Desktop Mode visual proof of the reusable presenter path, use the
 presenter web action with a modal web overlay and leave the app open after the
 verifier result:

@@ -333,6 +333,23 @@ Shift+Tab or a virtual Guide/Steam-button controller event opening overlay UI.
 Session-mode smoke comparisons skip the persistent-host single-target,
 idle-parking, and no-post-close-pumping assertions because the fallback opens
 lazily and may pump while a session exists.
+
+Use the repository-level matrix runner when you need to repeat the full Deck
+Desktop product proof instead of hand-running each case:
+
+```sh
+npm run steam-deck:overlay-matrix -- \
+  --host deck@<deck-host-or-ip> \
+  --suite core
+```
+
+The matrix collects per-case screenshots and diagnostics for the managed
+presenter routes: modal web, store, Friends, community, stats, achievements,
+dialog equivalents, checkout readiness, synthetic checkout approval-route
+plumbing, Shift+Tab shortcut routing, and passive toasts. It still uses public
+App ID `480`, so real purchase content must be validated from a real configured
+Steam app.
+
 Add
 `--overlay-game-id shortcut` when investigating whether raw Steam overlay
 close/back routing depends on the full non-Steam shortcut game ID. Call
