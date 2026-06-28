@@ -31,7 +31,8 @@ Electron smoke app and SpaceWar App ID 480 by default.
 
 Options:
   --host USER@HOST             Steam Deck SSH target. Defaults to deck@steamdeck.local.
-  --mode desktop|game          Steam launch mode. Defaults to desktop.
+  --mode desktop|game|self-test
+                               Steam launch mode. Defaults to desktop.
   --suite core|full|minimal    Matrix size. Defaults to core.
   --app-id ID                  Steam App ID inside the smoke app. Defaults to 480.
   --window-mode MODE           Smoke app window mode. Defaults to fullscreen.
@@ -135,7 +136,7 @@ while [ "$#" -gt 0 ]; do
 done
 
 case "$mode" in
-  desktop|game)
+  desktop|game|self-test)
     ;;
   *)
     echo "Unknown --mode: $mode" >&2
@@ -264,6 +265,128 @@ run_dialog_auto_case() {
     --action presenter-dialog-auto \
     --dialog "$dialog"
 }
+
+count_matrix_cases() {
+  awk '/^== Deck overlay matrix:/ { count += 1 } END { print count + 0 }'
+}
+
+matrix_case_command() {
+  local output="$1"
+  local case_id="$2"
+  printf '%s\n' "$output" | awk -v marker="== Deck overlay matrix: $case_id ==" '
+    $0 == marker {
+      getline
+      print
+      exit
+    }
+  '
+}
+
+require_contains() {
+  local output="$1"
+  local pattern="$2"
+  local message="$3"
+  if ! printf '%s\n' "$output" | grep -Fq -- "$pattern"; then
+    echo "Self-test failed: $message" >&2
+    exit 1
+  fi
+}
+
+require_not_contains() {
+  local output="$1"
+  local pattern="$2"
+  local message="$3"
+  if printf '%s\n' "$output" | grep -Fq -- "$pattern"; then
+    echo "Self-test failed: $message" >&2
+    exit 1
+  fi
+}
+
+require_case_count() {
+  local output="$1"
+  local expected="$2"
+  local label="$3"
+  local actual
+  actual="$(printf '%s\n' "$output" | count_matrix_cases)"
+  if [ "$actual" != "$expected" ]; then
+    echo "Self-test failed: $label generated $actual cases, expected $expected." >&2
+    exit 1
+  fi
+}
+
+run_self_test() {
+  local self_path minimal_output core_output full_output first_core_case second_core_case checkout_prepare_case passive_toast_case shortcut_web_case
+  self_path="${BASH_SOURCE[0]}"
+
+  minimal_output="$(
+    bash "$self_path" \
+      --host deck@example.invalid \
+      --suite minimal \
+      --skip-package \
+      --skip-preflight \
+      --dry-run \
+      --artifact-root /tmp/steam-bridge-deck-overlay-matrix-self-test
+  )"
+  core_output="$(
+    bash "$self_path" \
+      --host deck@example.invalid \
+      --suite core \
+      --skip-package \
+      --skip-preflight \
+      --dry-run \
+      --artifact-root /tmp/steam-bridge-deck-overlay-matrix-self-test
+  )"
+  full_output="$(
+    bash "$self_path" \
+      --host deck@example.invalid \
+      --suite full \
+      --skip-package \
+      --skip-preflight \
+      --dry-run \
+      --artifact-root /tmp/steam-bridge-deck-overlay-matrix-self-test
+  )"
+
+  require_case_count "$minimal_output" "5" "minimal matrix"
+  require_case_count "$core_output" "12" "core matrix"
+  require_case_count "$full_output" "16" "full matrix"
+
+  require_contains "$core_output" "--action presenter-web" "core matrix must include presenter web."
+  require_contains "$core_output" "--action presenter-friends" "core matrix must include Friends."
+  require_contains "$core_output" "--action presenter-shortcut" "core matrix must include shortcut probes."
+  require_contains "$core_output" "--action presenter-checkout" "core matrix must include checkout."
+  require_contains "$core_output" "--action presenter-achievement-progress" "core matrix must include passive toast."
+  require_contains "$core_output" "--action presenter-store" "core matrix must include store."
+  require_contains "$core_output" "--action presenter-community" "core matrix must include community."
+  require_contains "$core_output" "--action presenter-stats" "core matrix must include stats."
+  require_contains "$core_output" "--action presenter-achievements" "core matrix must include achievements."
+  require_contains "$core_output" "--action presenter-dialog-auto --dialog OfficialGameGroup" "core matrix must include a dialog-equivalent route."
+  require_contains "$core_output" "--checkout-transaction-id 123456789" "core matrix must include synthetic checkout approval-route plumbing."
+  require_contains "$core_output" "--shortcut-target web" "core matrix must include configurable shortcut target proof."
+  require_contains "$core_output" "--visual-close-input web" "core matrix must close web-backed overlays through the Steam web close control."
+  require_contains "$full_output" "--dialog Friends" "full matrix must include Friends dialog equivalent."
+  require_contains "$full_output" "--dialog Community" "full matrix must include Community dialog equivalent."
+  require_contains "$full_output" "--dialog Stats" "full matrix must include Stats dialog equivalent."
+  require_contains "$full_output" "--dialog Achievements" "full matrix must include Achievements dialog equivalent."
+
+  first_core_case="$(matrix_case_command "$core_output" "01-web-modal")"
+  second_core_case="$(matrix_case_command "$core_output" "02-friends")"
+  checkout_prepare_case="$(matrix_case_command "$core_output" "04-checkout-prepare")"
+  passive_toast_case="$(matrix_case_command "$core_output" "05-passive-toast")"
+  shortcut_web_case="$(matrix_case_command "$core_output" "12-shortcut-web")"
+
+  require_not_contains "$first_core_case" "--skip-copy" "first matrix case must copy the package."
+  require_contains "$second_core_case" "--skip-copy" "later matrix cases should reuse the copied package."
+  require_not_contains "$checkout_prepare_case" "--result-delay-ms" "checkout readiness must use the normal settling delay."
+  require_contains "$passive_toast_case" "--result-delay-ms 1200" "passive toast should use the short notification capture delay."
+  require_contains "$shortcut_web_case" "--visual-toggle-open-delay 6" "web shortcut proof should wait for the web surface to load."
+
+  echo "Steam Deck overlay matrix self-test passed."
+}
+
+if [ "$mode" = "self-test" ]; then
+  run_self_test
+  exit 0
+fi
 
 if [ "$dry_run" != "1" ]; then
   mkdir -p "$artifact_root"

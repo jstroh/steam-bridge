@@ -25,6 +25,9 @@ try {
   run("bash", [path.join(repoRoot, "scripts", "steam-deck-smoke.sh"), "--mode", "self-test"], {
     cwd: repoRoot
   });
+  run("bash", [path.join(repoRoot, "scripts", "steam-deck-overlay-matrix.sh"), "--mode", "self-test"], {
+    cwd: repoRoot
+  });
 
   console.log("Packed steam-bridge package smoke test passed.");
 } finally {

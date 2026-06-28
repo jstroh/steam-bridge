@@ -261,6 +261,8 @@ achievements, dialog equivalents, checkout readiness, synthetic checkout
 approval-route plumbing, Shift+Tab shortcut routing, and passive
 achievement-progress toasts. Screenshots and diagnostics are collected under
 `/tmp/steam-bridge-deck-overlay-matrix-*`.
+For CI/local maintenance without a Deck, `npm run steam-deck:overlay-matrix:check`
+validates the generated minimal, core, and full matrix command sets.
 
 SpaceWar `480` and the Electron smoke app are for generic initialization,
 callback, input, and overlay plumbing checks. Purchase overlays need a real
