@@ -1771,12 +1771,24 @@ export interface ElectronSteamOverlayWaitOptions {
   signal?: AbortSignal;
 }
 
+export interface ElectronSteamOverlayOpenAndWaitOptions {
+  showTimeoutMs?: number;
+  closeTimeoutMs?: number;
+  pollIntervalMs?: number;
+  signal?: AbortSignal;
+}
+
 export interface ElectronSteamOverlaySnapshot extends NativeOverlayPresenterSnapshot {
   electronOverlay: {
     presenterMode: ElectronSteamOverlayPresenterMode;
     closeWithWindow: boolean;
     overlayShortcut: ElectronSteamOverlayShortcutSnapshot;
   };
+}
+
+export interface ElectronSteamOverlayOpenAndWaitResult {
+  shown: ElectronSteamOverlaySnapshot;
+  parked: ElectronSteamOverlaySnapshot;
 }
 
 export type ElectronOverlayWindow = Parameters<typeof electronOverlayPresenterOptionsImpl>[0] & {
@@ -1807,6 +1819,10 @@ export type ElectronSteamOverlayOptions = NonNullable<Parameters<typeof electron
 export interface ElectronSteamOverlay extends CallbackHandle {
   readonly presenter: NativeOverlayPresenter;
   open(target: SteamOverlayTarget): NativeOverlayPresenter;
+  openAndWait(
+    target: SteamOverlayTarget,
+    options?: ElectronSteamOverlayOpenAndWaitOptions
+  ): Promise<ElectronSteamOverlayOpenAndWaitResult>;
   prepareForCheckout(durationMs?: number): NativeOverlayPresenter;
   prepareForNotification(durationMs?: number): NativeOverlayPresenter;
   waitForOverlayShown(options?: ElectronSteamOverlayWaitOptions): Promise<ElectronSteamOverlaySnapshot>;
@@ -7657,6 +7673,24 @@ export function createElectronSteamOverlay(
     open(target: SteamOverlayTarget): NativeOverlayPresenter {
       assertOpen();
       return openSteamOverlay({ ...target, presenter } as SteamOverlayTarget);
+    },
+    async openAndWait(
+      target: SteamOverlayTarget,
+      options: ElectronSteamOverlayOpenAndWaitOptions = {}
+    ): Promise<ElectronSteamOverlayOpenAndWaitResult> {
+      assertOpen();
+      controller.open(target);
+      const shown = await controller.waitForOverlayShown({
+        timeoutMs: finiteNumber(options.showTimeoutMs, 15000),
+        pollIntervalMs: options.pollIntervalMs,
+        signal: options.signal
+      });
+      const parked = await controller.parkWhenSteamOverlayCloses({
+        timeoutMs: finiteNumber(options.closeTimeoutMs, 300000),
+        pollIntervalMs: options.pollIntervalMs,
+        signal: options.signal
+      });
+      return { shown, parked };
     },
     prepareForCheckout(durationMs?: number): NativeOverlayPresenter {
       assertOpen();

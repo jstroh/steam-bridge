@@ -137,22 +137,18 @@ const steamOverlay = client.overlay.createElectronSteamOverlay(mainWindow, {
   activeOverlayFps: 30
 });
 
-steamOverlay.open({
+await steamOverlay.openAndWait({
   type: "web",
   url: checkoutUrl,
   modal: true
 });
-await steamOverlay.waitForOverlayShown();
-await steamOverlay.parkWhenSteamOverlayCloses();
 
 steamOverlay.prepareForCheckout();
 
-steamOverlay.open({
+await steamOverlay.openAndWait({
   type: "checkout",
   steamUrl
 });
-await steamOverlay.waitForOverlayShown();
-await steamOverlay.parkWhenSteamOverlayCloses();
 ```
 
 The presenter should:
@@ -288,9 +284,11 @@ Current evidence:
   the presenter before an in-game `InitTxn`, and `steamOverlay.open({ type:
   "checkout", steamUrl })` or `steamOverlay.open({ type: "checkout",
   transactionId })` opens a returned or known approval surface through the same
-  verified presenter route. App code can await `waitForOverlayShown()` and
-  `parkWhenSteamOverlayCloses()` instead of carrying local callback/timer
-  plumbing. `MicroTxnAuthorizationResponse` is treated as an authorization
+  verified presenter route. App code can call `openAndWait(...)` for the whole
+  show/close/park lifecycle, or await `waitForOverlayShown()` and
+  `parkWhenSteamOverlayCloses()` when it needs lower-level control, instead of
+  carrying local callback/timer plumbing. `MicroTxnAuthorizationResponse` is
+  treated as an authorization
   event, not an overlay-close signal; the smoke app records the presenter
   snapshot on `callback:microtxn` so real-app purchase proof can show the native
   presenter remained available through authorization and parked only after Steam

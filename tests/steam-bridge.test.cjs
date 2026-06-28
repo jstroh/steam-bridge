@@ -5149,8 +5149,29 @@ test("electron steam overlay manager exposes lifecycle wait helpers", async (t) 
   abortController.abort();
   await assert.rejects(aborted, /Aborted waiting for Steam overlay to become active/);
 
+  const managedOpen = overlay.openAndWait(
+    { type: "web", url: "https://store.steampowered.com/app/480/", modal: true },
+    { showTimeoutMs: 200, closeTimeoutMs: 200, pollIntervalMs: 5 }
+  );
+  fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: true });
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: false });
+  const managedResult = await managedOpen;
+
+  assert.equal(managedResult.shown.overlayActive, true);
+  assert.equal(managedResult.shown.overlayWasActive, true);
+  assert.equal(managedResult.parked.overlayActive, false);
+  assert.equal(managedResult.parked.mode, "passive");
+  assert.equal(managedResult.parked.clickThrough, true);
+  assert.equal(managedResult.parked.currentFps, 0);
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "activateOverlayToWebPage").at(-1),
+    { method: "activateOverlayToWebPage", args: ["https://store.steampowered.com/app/480/", true] }
+  );
+
   overlay.close();
   assert.throws(() => overlay.waitForOverlayShown(), /Electron Steam overlay is closed/);
+  await assert.rejects(overlay.openAndWait({ type: "friends" }), /Electron Steam overlay is closed/);
 });
 
 test("electron steam overlay manager tolerates destroyed webContents during window close", (t) => {

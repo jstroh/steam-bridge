@@ -347,15 +347,13 @@ const steamOverlay = client.overlay.createElectronSteamOverlay(mainWindow, {
   // presenterMode: "session"
 });
 
-steamOverlay.open({
+await steamOverlay.openAndWait({
   type: "web",
   url: "https://store.steampowered.com/app/480/",
   modal: true
 });
-await steamOverlay.waitForOverlayShown();
-await steamOverlay.parkWhenSteamOverlayCloses();
 
-steamOverlay.open({
+await steamOverlay.openAndWait({
   type: "store",
   appId: 480
 });
@@ -365,25 +363,23 @@ steamOverlay.prepareForCheckout();
 
 // Open a Steam checkout URL returned by InitTxn, or pass transactionId when
 // reopening a known transaction approval page.
-steamOverlay.open({
+await steamOverlay.openAndWait({
   type: "checkout",
   steamUrl: txn.steamurl
 });
-await steamOverlay.waitForOverlayShown();
-await steamOverlay.parkWhenSteamOverlayCloses();
 
 // Prime the same presenter for passive Steam notifications.
 steamOverlay.prepareForNotification();
 
-steamOverlay.open({ type: "friends" });
+await steamOverlay.openAndWait({ type: "friends" });
 
-steamOverlay.open({
+await steamOverlay.openAndWait({
   type: "dialog",
   dialog: "Achievements",
   appId: 480
 });
 
-steamOverlay.open({
+await steamOverlay.openAndWait({
   type: "achievements",
   appId: 480
 });
@@ -400,8 +396,10 @@ forcing the Electron game window into a constant repaint loop. By default
 `idleFps` is `0`; set it explicitly only for diagnostic comparisons. Use
 `attachPresenter(...)` and pass `presenter` to `openSteamOverlay(...)` directly
 only when you need lower-level lifecycle control.
+Use `openAndWait(...)` for modal web, store, checkout, and dialog-equivalent
+overlays when app code should wait until Steam closes and the presenter parks.
 Use `waitForOverlayShown()`, `waitForOverlayClosed()`, and
-`parkWhenSteamOverlayCloses()` when app code needs explicit lifecycle await
+`parkWhenSteamOverlayCloses()` only when you need lower-level lifecycle await
 points. The Electron smoke app records those await points in its lifecycle log
 as `overlay:presenter-wait-shown`, `overlay:presenter-wait-closed`, and
 `overlay:presenter-parked` for Deck/Linux artifact review. Call

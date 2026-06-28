@@ -247,6 +247,10 @@ const electronSteamOverlay = overlay.createElectronSteamOverlay({
   }
 });
 const typedElectronSteamOverlay: ElectronSteamOverlay = electronSteamOverlay;
+const openAndWaitPromise = typedElectronSteamOverlay.openAndWait(steamOverlayTarget, {
+  showTimeoutMs: 15000,
+  closeTimeoutMs: 300000
+});
 const steamId: SteamId | undefined = undefined;
 
 void client;
@@ -266,6 +270,7 @@ void presenterSteamFn;
 void electronSteamOverlayFn;
 void steamOverlayTarget;
 void typedElectronSteamOverlay;
+void openAndWaitPromise;
 void inputPassthroughFn;
 void opacityFn;
 void friendsOverlayUrl;

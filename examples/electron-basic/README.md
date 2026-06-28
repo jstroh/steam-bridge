@@ -162,11 +162,13 @@ The Linux and Steam Deck helpers expose the same inputs as `--checkout-url`,
 or transaction ID the helpers only require `overlay:presenter-checkout-ready`;
 with one, they require `overlay:presenter-open` and a Steam overlay activation
 callback.
+For normal app code, `steamOverlay.openAndWait(...)` opens a modal
+presenter-backed target and resolves after Steam closes and the presenter parks.
 The managed overlay also exposes `waitForOverlayShown()`,
 `waitForOverlayClosed()`, and `parkWhenSteamOverlayCloses()` for app code that
-needs explicit lifecycle await points without owning Steam callbacks or native
-presenter parking. The smoke lifecycle log records those public wait helpers as
-`overlay:presenter-wait-shown`, `overlay:presenter-wait-closed`, and
+needs lower-level lifecycle await points without owning Steam callbacks or
+native presenter parking. The smoke lifecycle log records those public wait
+helpers as `overlay:presenter-wait-shown`, `overlay:presenter-wait-closed`, and
 `overlay:presenter-parked` during managed presenter proofs.
 Do not use `steam://open/overlay` as a generic overlay-toggle substitute in this
 example. Deck Desktop testing showed it can activate Steam's callback path while

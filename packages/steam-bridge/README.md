@@ -160,13 +160,11 @@ const steamOverlay = client.overlay.createElectronSteamOverlay(mainWindow, {
   // presenterMode: "session"
 });
 
-steamOverlay.open({
+await steamOverlay.openAndWait({
   type: "web",
   url: checkoutUrl,
   modal: true
 });
-await steamOverlay.waitForOverlayShown();
-await steamOverlay.parkWhenSteamOverlayCloses();
 
 // Before your backend calls InitTxn for an in-game purchase, prime the
 // presenter so Steam's automatic authorization overlay has a native surface.
@@ -174,36 +172,34 @@ steamOverlay.prepareForCheckout();
 
 // If InitTxn returns a web checkout URL, or you need to reopen a known
 // transaction approval surface, use the checkout target.
-steamOverlay.open({
+await steamOverlay.openAndWait({
   type: "checkout",
   steamUrl: txn.steamurl
 });
-await steamOverlay.waitForOverlayShown();
-await steamOverlay.parkWhenSteamOverlayCloses();
 
 // Prime the same presenter for passive Steam notifications, such as
 // achievement progress toasts, without making it interactive.
 steamOverlay.prepareForNotification();
 
-steamOverlay.open({ type: "friends" });
+await steamOverlay.openAndWait({ type: "friends" });
 
-steamOverlay.open({
+await steamOverlay.openAndWait({
   type: "dialog",
   dialog: "Achievements",
   appId: 480
 });
 
-steamOverlay.open({
+await steamOverlay.openAndWait({
   type: "community",
   appId: 480
 });
 
-steamOverlay.open({
+await steamOverlay.openAndWait({
   type: "stats",
   appId: 480
 });
 
-steamOverlay.open({
+await steamOverlay.openAndWait({
   type: "achievements",
   appId: 480
 });
@@ -226,11 +222,13 @@ used by the Steam Deck Desktop Mode proofs; `openSteamOverlay(...)` and the
 lower-level named helpers remain available for apps that prefer explicit
 lifecycle control. The public smoke app can verify checkout readiness, but real
 purchase-content proof still requires a real Steam app and configured product.
+Use `openAndWait(...)` for modal web, store, checkout, and dialog-equivalent
+overlays when app code should wait until Steam closes and the presenter parks.
 Use `waitForOverlayShown()`, `waitForOverlayClosed()`, and
-`parkWhenSteamOverlayCloses()` when app code needs explicit lifecycle await
-points; these wait on Steam Bridge's callback/snapshot state and keep the native
-presenter parking behavior inside the bridge. The Electron smoke app records
-those await points as `overlay:presenter-wait-shown`,
+`parkWhenSteamOverlayCloses()` only when app code needs lower-level lifecycle
+await points; these wait on Steam Bridge's callback/snapshot state and keep the
+native presenter parking behavior inside the bridge. The Electron smoke app
+records those await points as `overlay:presenter-wait-shown`,
 `overlay:presenter-wait-closed`, and `overlay:presenter-parked` lifecycle
 events so Deck/Linux artifact review proves the same public API app builders
 call.
