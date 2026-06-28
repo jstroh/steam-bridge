@@ -81,7 +81,7 @@ let inputInitialized = false;
 let shutdownComplete = false;
 let mainWindow;
 let nativeOverlaySession;
-let nativeOverlayPresenter;
+let electronSteamOverlay;
 const callbackHandles = [];
 const eventLog = [];
 
@@ -476,103 +476,96 @@ function openNativeWebOverlay() {
 
 function openPresenterDialogOverlay() {
   const activeClient = requireClient();
-  const presenter = ensureNativeOverlayPresenter(activeClient);
-  activeClient.overlay.openDialogOverlay(OVERLAY_DIALOG, { presenter });
+  const overlay = ensureElectronSteamOverlay(activeClient);
+  overlay.open({ type: "dialog", dialog: OVERLAY_DIALOG });
   recordEvent("overlay:presenter-open", {
     target: "dialog",
     dialog: OVERLAY_DIALOG,
-    presenter: presenter.snapshot()
+    presenter: overlay.snapshot()
   });
   return snapshot();
 }
 
 function openPresenterStoreOverlay() {
   const activeClient = requireClient();
-  const presenter = ensureNativeOverlayPresenter(activeClient);
-  activeClient.overlay.openStoreOverlay(APP_ID, activeClient.overlay.StoreFlag.None, { presenter });
+  const overlay = ensureElectronSteamOverlay(activeClient);
+  overlay.open({ type: "store", appId: APP_ID, flag: activeClient.overlay.StoreFlag.None });
   recordEvent("overlay:presenter-open", {
     target: "store",
     appId: APP_ID,
     flag: activeClient.overlay.StoreFlag.None,
-    presenter: presenter.snapshot()
+    presenter: overlay.snapshot()
   });
   return snapshot();
 }
 
 function openPresenterWebOverlay() {
-  const activeClient = requireClient();
-  const presenter = ensureNativeOverlayPresenter(activeClient);
-  activeClient.overlay.openWebOverlay(WEB_URL, {
-    modal: WEB_MODAL,
-    presenter
-  });
+  const overlay = ensureElectronSteamOverlay();
+  overlay.open({ type: "web", url: WEB_URL, modal: WEB_MODAL });
   recordEvent("overlay:presenter-open", {
     target: "web",
     url: WEB_URL,
     modal: WEB_MODAL,
-    presenter: presenter.snapshot()
+    presenter: overlay.snapshot()
   });
   return snapshot();
 }
 
 function openPresenterFriendsOverlay() {
-  const activeClient = requireClient();
-  const presenter = ensureNativeOverlayPresenter(activeClient);
-  activeClient.overlay.openSteamOverlay({ type: "friends", presenter });
+  const overlay = ensureElectronSteamOverlay();
+  overlay.open({ type: "friends" });
   recordEvent("overlay:presenter-open", {
     target: "friends",
     url: steamworks.STEAM_FRIENDS_OVERLAY_URL,
     modal: true,
-    presenter: presenter.snapshot()
+    presenter: overlay.snapshot()
   });
   return snapshot();
 }
 
 function openPresenterCommunityOverlay() {
-  const activeClient = requireClient();
-  const presenter = ensureNativeOverlayPresenter(activeClient);
-  activeClient.overlay.openSteamOverlay({ type: "community", appId: APP_ID, presenter });
+  const overlay = ensureElectronSteamOverlay();
+  overlay.open({ type: "community", appId: APP_ID });
   recordEvent("overlay:presenter-open", {
     target: "community",
     appId: APP_ID,
     url: steamworks.steamCommunityAppUrl(APP_ID),
     modal: true,
-    presenter: presenter.snapshot()
+    presenter: overlay.snapshot()
   });
   return snapshot();
 }
 
 function openPresenterStatsOverlay() {
-  const activeClient = requireClient();
-  const presenter = ensureNativeOverlayPresenter(activeClient);
-  activeClient.overlay.openSteamOverlay({ type: "stats", appId: APP_ID, presenter });
+  const overlay = ensureElectronSteamOverlay();
+  overlay.open({ type: "stats", appId: APP_ID });
   recordEvent("overlay:presenter-open", {
     target: "stats",
     appId: APP_ID,
     url: steamworks.steamCommunityUserStatsUrl(APP_ID),
     modal: true,
-    presenter: presenter.snapshot()
+    presenter: overlay.snapshot()
   });
   return snapshot();
 }
 
 function openPresenterAchievementsOverlay() {
-  const activeClient = requireClient();
-  const presenter = ensureNativeOverlayPresenter(activeClient);
-  activeClient.overlay.openSteamOverlay({ type: "achievements", appId: APP_ID, presenter });
+  const overlay = ensureElectronSteamOverlay();
+  overlay.open({ type: "achievements", appId: APP_ID });
   recordEvent("overlay:presenter-open", {
     target: "achievements",
     appId: APP_ID,
     url: steamworks.steamCommunityAchievementsUrl(APP_ID),
     modal: true,
-    presenter: presenter.snapshot()
+    presenter: overlay.snapshot()
   });
   return snapshot();
 }
 
 function openPresenterAchievementProgress() {
   const activeClient = requireClient();
-  const presenter = ensureNativeOverlayPresenter(activeClient);
+  const overlay = ensureElectronSteamOverlay(activeClient);
+  const presenter = overlay.presenter;
   presenter.prepareForPassiveOverlay();
 
   const target = resolveAchievementProgressTarget(activeClient);
@@ -585,17 +578,23 @@ function openPresenterAchievementProgress() {
   return snapshot();
 }
 
-function ensureNativeOverlayPresenter(activeClient = requireClient()) {
-  if (nativeOverlayPresenter && nativeOverlayPresenter.isOpen()) {
-    return nativeOverlayPresenter;
+function ensureElectronSteamOverlay(activeClient = requireClient()) {
+  if (electronSteamOverlay && electronSteamOverlay.isOpen()) {
+    return electronSteamOverlay;
   }
 
   closeNativeOverlaySession();
-  nativeOverlayPresenter = activeClient.overlay.attachPresenter(nativePresenterOptions());
-  recordEvent("overlay:presenter-attach", {
-    presenter: nativeOverlayPresenter.snapshot()
+  electronSteamOverlay = activeClient.overlay.createElectronSteamOverlay(requireMainWindow(), {
+    title: "Steam Bridge Overlay Presenter",
+    restoreFocusDelayMs: 500,
+    needsPresentFps: 30,
+    activeOverlayFps: 30,
+    pollIntervalMs: 250
   });
-  return nativeOverlayPresenter;
+  recordEvent("overlay:presenter-attach", {
+    presenter: electronSteamOverlay.snapshot()
+  });
+  return electronSteamOverlay;
 }
 
 function nativeOverlayOptions() {
@@ -603,17 +602,6 @@ function nativeOverlayOptions() {
   return steamworks.electronNativeOverlaySessionOptions(window, {
     title: "Steam Bridge Native Overlay",
     restoreFocusDelayMs: 500
-  });
-}
-
-function nativePresenterOptions() {
-  const window = requireMainWindow();
-  return steamworks.electronOverlayPresenterOptions(window, {
-    title: "Steam Bridge Overlay Presenter",
-    restoreFocusDelayMs: 500,
-    needsPresentFps: 30,
-    activeOverlayFps: 30,
-    pollIntervalMs: 250
   });
 }
 
@@ -664,8 +652,8 @@ function normalizePositiveInteger(value, fallback) {
 }
 
 function pumpNativeProbe() {
-  if (nativeOverlayPresenter) {
-    nativeOverlayPresenter.pump();
+  if (electronSteamOverlay) {
+    electronSteamOverlay.pump();
   } else if (nativeOverlaySession) {
     nativeOverlaySession.pump();
   } else {
@@ -682,15 +670,15 @@ function closeNativeProbe() {
 }
 
 function closeNativeOverlayPresenter() {
-  if (nativeOverlayPresenter) {
+  if (electronSteamOverlay) {
     try {
-      nativeOverlayPresenter.close();
+      electronSteamOverlay.close();
       recordEvent("overlay:presenter-close", {});
     } catch (error) {
       recordEvent("overlay:presenter-close:error", serializeError(error));
     }
   }
-  nativeOverlayPresenter = undefined;
+  electronSteamOverlay = undefined;
 }
 
 function closeNativeOverlaySession() {
@@ -791,7 +779,7 @@ function snapshot() {
       nativeProbeOpen: readValue(() => client.overlay.isNativeOverlayProbeWindowOpen()),
       nativeHostOpen: readValue(() => client.overlay.isNativeOverlayHostViewOpen()),
       nativeSession: readValue(() => (nativeOverlaySession ? nativeOverlaySession.snapshot() : null)),
-      nativePresenter: readValue(() => (nativeOverlayPresenter ? nativeOverlayPresenter.snapshot() : null))
+      nativePresenter: readValue(() => (electronSteamOverlay ? electronSteamOverlay.snapshot() : null))
     },
     input: readValue(() => {
       if (!inputInitialized) {

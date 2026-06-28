@@ -117,19 +117,16 @@ Useful public references:
 Build a Steam Bridge owned native overlay presenter:
 
 ```ts
-const presenter = client.overlay.attachPresenter(
-  steamworks.electronOverlayPresenterOptions(mainWindow, {
-    idleFps: 0,
-    needsPresentFps: 30,
-    activeOverlayFps: 30
-  })
-);
+const steamOverlay = client.overlay.createElectronSteamOverlay(mainWindow, {
+  idleFps: 0,
+  needsPresentFps: 30,
+  activeOverlayFps: 30
+});
 
-client.overlay.openSteamOverlay({
+steamOverlay.open({
   type: "web",
   url: checkoutUrl,
-  modal: true,
-  presenter
+  modal: true
 });
 ```
 
@@ -160,20 +157,15 @@ to know whether the active platform uses X11/GLX, Metal, or another backend.
 Initial product-shaped API:
 
 ```ts
-const presenter = client.overlay.attachPresenter(
-  steamworks.electronOverlayPresenterOptions(mainWindow, {
-    mode: "passive"
-  })
-);
+const steamOverlay = client.overlay.createElectronSteamOverlay(mainWindow);
 
-client.overlay.openSteamOverlay({
+steamOverlay.open({
   type: "web",
   url,
-  modal: true,
-  presenter
+  modal: true
 });
 
-client.overlay.openSteamOverlay({ type: "friends", presenter });
+steamOverlay.open({ type: "friends" });
 ```
 
 Near-term compatibility API:
@@ -198,11 +190,11 @@ Current evidence:
 - Deck Desktop Mode can display and close a modal Steam web overlay over the
   bridge-owned GLX presenter.
 - Deck Desktop Mode can do the same through the reusable app-facing presenter
-  API (`attachPresenter` plus `openSteamOverlay`/`openWebOverlay`) while
-  returning the host to transparent, click-through passive mode after overlay
-  close. This proof uses `electronConfigureSteamOverlay()` child-process
-  isolation so there is only one `gameoverlayui` target attached to the
-  main/native process.
+  API (`createElectronSteamOverlay(...).open(...)`, backed by
+  `openSteamOverlay`/`openWebOverlay`) while returning the host to transparent,
+  click-through passive mode after overlay close. This proof uses
+  `electronConfigureSteamOverlay()` child-process isolation so there is only one
+  `gameoverlayui` target attached to the main/native process.
 - The reusable presenter defaults to `idleFps: 0`, so an attached idle host polls
   overlay state without continuously presenting frames. It starts pumping only
   for activation boost windows, active overlays, or `overlayNeedsPresent`.
@@ -210,24 +202,24 @@ Current evidence:
   Electron smoke app through the reusable presenter path while the native host
   remains click-through and transparent, also with a single overlay target.
 - Deck Desktop Mode can show the Steam Friends List / chat UI through
-  `openSteamOverlay({ type: "friends", presenter })` or
-  `openFriendsOverlay({ presenter })`, which opens Steam Community chat through
-  the reusable native web presenter, preserves Electron child-process isolation,
-  uses one `gameoverlayui` target attached to the app's main/native process, and
-  returns to the smoke app after the close probe. A `steam://open/friends` URI
-  activated the overlay but remained on a Steam loading spinner, so it is not
-  the product path.
+  `steamOverlay.open({ type: "friends" })`, backed by
+  `openSteamOverlay({ type: "friends", presenter })`, which opens Steam
+  Community chat through the reusable native web presenter, preserves Electron
+  child-process isolation, uses one `gameoverlayui` target attached to the app's
+  main/native process, and returns to the smoke app after the close probe. A
+  `steam://open/friends` URI activated the overlay but remained on a Steam
+  loading spinner, so it is not the product path.
 - Deck Desktop Mode has app-facing
-  `openSteamOverlay({ type: "community", appId, presenter })` /
-  `openSteamOverlay({ type: "stats", appId, presenter })` routes and
-  lower-level `openCommunityOverlay({ appId, presenter })` /
+  `steamOverlay.open({ type: "community", appId })` /
+  `steamOverlay.open({ type: "stats", appId })` routes and lower-level
+  `openCommunityOverlay({ appId, presenter })` /
   `openStatsOverlay({ appId, presenter })` helpers that follow the same
   presenter-backed web path for the raw `Community` and `Stats` dialog use
   cases. A 2026-06-28 Deck Desktop run verified both with visible Steam web
   content, active overlay callbacks, and clean return to the app through the web
   close probe.
 - Deck Desktop Mode can open the current user's app achievements/profile web
-  page through `openSteamOverlay({ type: "achievements", appId, presenter })` or
+  page through `steamOverlay.open({ type: "achievements", appId })` or
   `openAchievementsOverlay({ appId, presenter })`, preserving the same
   single-overlay-target and close/back-to-app behavior. App ID `480` redirects
   to the user's profile because Steam Community does not expose a public web
@@ -409,14 +401,14 @@ beside them instead of replacing them.
 ## Milestones
 
 1. Document the plan and keep existing session helpers intact.
-2. Add `attachPresenter` as an experimental API behind an explicit option or
-   environment flag.
-3. Refactor the existing native-session helpers to use the same presenter
-   lifecycle internally.
+2. Ship the reusable presenter lifecycle and Electron manager API
+   (`createElectronSteamOverlay(...).open(...)`) as the app-facing path.
+3. Keep lower-level `attachPresenter(...)` and native-session helpers for
+   diagnostics and compatibility.
 4. Harden Linux X11/GLX passive mode and verify on Steam Deck Desktop Mode.
 5. Verify Linux passive achievement/toast behavior.
-6. Verify Linux checkout/web close and back-to-app behavior with the persistent
-   presenter.
+6. Verify Linux checkout/web close and back-to-app behavior with the managed
+   persistent presenter.
 7. Harden macOS Apple Silicon Metal passive mode.
 8. Verify macOS passive notification/toast behavior.
 9. Verify macOS checkout/web close and back-to-app behavior.

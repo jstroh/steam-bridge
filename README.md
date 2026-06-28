@@ -299,41 +299,39 @@ const session = client.overlay.activateToWebPageWithNativeSession("https://store
 session.close();
 ```
 
-For app-facing Electron integration, prefer attaching a reusable presenter once
-and reusing it for overlay work:
+For app-facing Electron integration, create one managed overlay for the game
+window and use it for overlay work:
 
 ```ts
-const presenter = client.overlay.attachPresenter(
-  steamworks.electronOverlayPresenterOptions(mainWindow, {
-    title: "Steam Overlay"
-  })
-);
+const steamOverlay = client.overlay.createElectronSteamOverlay(mainWindow, {
+  title: "Steam Overlay"
+});
 
-client.overlay.openSteamOverlay({
+steamOverlay.open({
   type: "web",
   url: "https://store.steampowered.com/app/480/",
-  modal: true,
-  presenter
+  modal: true
 });
 
-client.overlay.openSteamOverlay({ type: "friends", presenter });
+steamOverlay.open({ type: "friends" });
 
-client.overlay.openSteamOverlay({
+steamOverlay.open({
   type: "achievements",
-  appId: 480,
-  presenter
+  appId: 480
 });
 
-// During app shutdown:
-presenter.close();
+// Optional; the manager closes itself when the Electron window closes.
+steamOverlay.close();
 ```
 
-The presenter stays passive and click-through while idle, polls Steam overlay
-state cheaply, and only pumps frames when Steam reports `overlayNeedsPresent` or
-an overlay is being opened/active. This is the path intended for checkout
-overlays and passive Steam notifications without forcing the Electron game
-window into a constant repaint loop. By default `idleFps` is `0`; set it
-explicitly only for diagnostic comparisons.
+The manager owns a reusable native presenter, keeps it passive and click-through
+while idle, polls Steam overlay state cheaply, and only pumps frames when Steam
+reports `overlayNeedsPresent` or an overlay is being opened/active. This is the
+path intended for checkout overlays and passive Steam notifications without
+forcing the Electron game window into a constant repaint loop. By default
+`idleFps` is `0`; set it explicitly only for diagnostic comparisons. Use
+`attachPresenter(...)` and pass `presenter` to `openSteamOverlay(...)` directly
+only when you need lower-level lifecycle control.
 
 `electronConfigureSteamOverlay()` also keeps Electron's Chromium children from
 becoming competing Steam overlay targets. By default it removes Steam's overlay
@@ -359,24 +357,23 @@ achievement-progress toast over the app without requiring a modal overlay
 activation callback.
 
 Steam Bridge routes overlay targets by how Steam renders them. Prefer
-`client.overlay.openSteamOverlay(...)` for app code: web, store, Friends,
-Community, Stats, and Achievements targets prepare the native host through the
-presenter-backed paths validated on Steam Deck Desktop Mode, while the
-lower-level named helpers remain available for explicit integrations. With the
+`client.overlay.createElectronSteamOverlay(mainWindow).open(...)` for Electron
+app code: web, store, Friends, Community, Stats, and Achievements targets prepare
+the native host through the presenter-backed paths validated on Steam Deck
+Desktop Mode, while `openSteamOverlay(...)` and the lower-level named helpers
+remain available for explicit integrations. With the
 default child-process isolation, Deck Desktop Mode has verified this path with a
 single `gameoverlayui` process, paired active/inactive callbacks, and visual
 return to the Electron app. Passive achievement-progress toasts also render with
 the presenter transparent and click-through. For a generic Friends List surface,
-use `client.overlay.openSteamOverlay({ type: "friends", presenter })` or
-`client.overlay.openFriendsOverlay({ presenter })`; on Steam Deck Desktop Mode
-this opens Steam Community chat through the same native web presenter with one
+call `steamOverlay.open({ type: "friends" })`; on Steam Deck Desktop Mode this
+opens Steam Community chat through the same native web presenter with one
 `gameoverlayui` target and a clean close/back-to-app result. For app
-achievements, use `client.overlay.openSteamOverlay({ type: "achievements",
-appId, presenter })` or `client.overlay.openAchievementsOverlay({ appId,
-presenter })`; it opens the current user's app achievements page through the same
-presenter-backed Steam web overlay route instead of relying on the raw Desktop
-achievements dialog. Steam Community may redirect apps without public web stats
-to the user's profile, so use your real app for achievements content proof.
+achievements, call `steamOverlay.open({ type: "achievements", appId })`; it
+opens the current user's app achievements page through the same presenter-backed
+Steam web overlay route instead of relying on the raw Desktop achievements
+dialog. Steam Community may redirect apps without public web stats to the user's
+profile, so use your real app for achievements content proof.
 Do not use `steam://open/overlay` as a generic overlay-toggle substitute; Deck
 Desktop testing showed it can activate Steam's callback path while leaving the
 native presenter black and the smoke process unrecovered.
@@ -390,8 +387,9 @@ The native presenter currently uses the macOS probe implementation on macOS and
 an X11/GLX probe implementation on Linux. On Steam Deck Desktop Mode, the Linux
 reusable presenter path is the current generic proof path for product overlay
 activation, visual open, close, and back-to-app checks. Use
-`client.overlay.attachPresenter(...)` with `client.overlay.openSteamOverlay(...)`,
-or the lower-level `client.overlay.openWebOverlay(...)`,
+`client.overlay.createElectronSteamOverlay(...)` with `steamOverlay.open(...)`,
+or the lower-level `client.overlay.attachPresenter(...)`,
+`client.overlay.openSteamOverlay(...)`, `client.overlay.openWebOverlay(...)`,
 `client.overlay.openFriendsOverlay(...)`, `client.overlay.openCommunityOverlay(...)`,
 and `client.overlay.openStatsOverlay(...)` helpers, or the Electron smoke app's
 `presenter-web` / `presenter-friends` / `presenter-community` /

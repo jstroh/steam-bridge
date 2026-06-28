@@ -4533,6 +4533,108 @@ test("electron overlay helper scrubs Steam overlay preload from child process en
   assert.deepEqual(electron.electronScrubSteamOverlayChildProcessEnv(env), []);
 });
 
+test("electron steam overlay manager owns one presenter and routes opens", (t) => {
+  const hostHandle = Buffer.from([8, 7, 6, 5]);
+  let hostOpen = false;
+  let closedHandler;
+  const fake = createFakeNative({
+    attachNativeOverlayHostView(nativeWindowHandle) {
+      hostOpen = true;
+      this.calls.push({ method: "attachNativeOverlayHostView", args: [nativeWindowHandle] });
+    },
+    pumpNativeOverlayProbeWindow() {
+      this.calls.push({ method: "pumpNativeOverlayProbeWindow", args: [] });
+    },
+    showNativeOverlayHostView() {
+      this.calls.push({ method: "showNativeOverlayHostView", args: [] });
+    },
+    setNativeOverlayHostInputPassthrough(passThrough) {
+      this.calls.push({ method: "setNativeOverlayHostInputPassthrough", args: [passThrough] });
+    },
+    setNativeOverlayHostOpacity(opaque) {
+      this.calls.push({ method: "setNativeOverlayHostOpacity", args: [opaque] });
+    },
+    detachNativeOverlayHostView() {
+      hostOpen = false;
+      this.calls.push({ method: "detachNativeOverlayHostView", args: [] });
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return false;
+    },
+    isNativeOverlayHostViewOpen() {
+      return hostOpen;
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  const window = {
+    isDestroyed() {
+      return false;
+    },
+    getNativeWindowHandle() {
+      return hostHandle;
+    },
+    once(event, handler) {
+      if (event === "closed") {
+        closedHandler = handler;
+      }
+    },
+    webContents: {
+      once() {},
+      invalidate() {},
+      send() {}
+    }
+  };
+
+  const overlay = steam.overlay.createElectronSteamOverlay(window, {
+    title: "Electron Managed Overlay",
+    pollIntervalMs: 10000
+  });
+
+  assert.equal(overlay.isOpen(), true);
+  assert.equal(overlay.snapshot().nativeHostOpen, true);
+
+  overlay.open({ type: "friends" });
+  overlay.open({ type: "web", url: "https://store.steampowered.com/app/480/", modal: true });
+  overlay.pump();
+
+  assert.equal(typeof closedHandler, "function");
+  closedHandler();
+  assert.equal(overlay.isOpen(), false);
+  assert.throws(() => overlay.open({ type: "friends" }), /Electron Steam overlay is closed/);
+
+  assert.deepEqual(
+    fake.calls.filter((call) =>
+      [
+        "attachNativeOverlayHostView",
+        "showNativeOverlayHostView",
+        "setNativeOverlayHostInputPassthrough",
+        "setNativeOverlayHostOpacity",
+        "pumpNativeOverlayProbeWindow",
+        "activateOverlayToWebPage",
+        "disconnectGameOverlayActivated",
+        "detachNativeOverlayHostView"
+      ].includes(call.method)
+    ),
+    [
+      { method: "attachNativeOverlayHostView", args: [hostHandle] },
+      { method: "showNativeOverlayHostView", args: [] },
+      { method: "pumpNativeOverlayProbeWindow", args: [] },
+      { method: "setNativeOverlayHostInputPassthrough", args: [false] },
+      { method: "setNativeOverlayHostOpacity", args: [true] },
+      { method: "pumpNativeOverlayProbeWindow", args: [] },
+      { method: "activateOverlayToWebPage", args: [steam.STEAM_FRIENDS_OVERLAY_URL, true] },
+      { method: "pumpNativeOverlayProbeWindow", args: [] },
+      { method: "activateOverlayToWebPage", args: ["https://store.steampowered.com/app/480/", true] },
+      { method: "pumpNativeOverlayProbeWindow", args: [] },
+      { method: "disconnectGameOverlayActivated", args: [] },
+      { method: "detachNativeOverlayHostView", args: [] }
+    ]
+  );
+});
+
 test("native overlay session owns the probe pump lifecycle", async (t) => {
   let probeOpen = false;
   let hostOpen = false;

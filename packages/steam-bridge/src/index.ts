@@ -1707,6 +1707,23 @@ export type SteamOverlayTarget =
   | SteamOverlayAchievementsTarget
   | SteamOverlayDialogTarget;
 
+export type ElectronOverlayWindow = Parameters<typeof electronOverlayPresenterOptionsImpl>[0] & {
+  once?(event: "closed", handler: () => void): void;
+};
+
+export type ElectronSteamOverlayOptions = NonNullable<Parameters<typeof electronOverlayPresenterOptionsImpl>[1]> & {
+  closeWithWindow?: boolean;
+};
+
+export interface ElectronSteamOverlay extends CallbackHandle {
+  readonly presenter: NativeOverlayPresenter;
+  open(target: SteamOverlayTarget): NativeOverlayPresenter;
+  close(): void;
+  pump(): void;
+  isOpen(): boolean;
+  snapshot(): NativeOverlayPresenterSnapshot;
+}
+
 type NativeOverlayPresenterActivationMode = "interactive" | "passive" | "transparent-input";
 
 type NativeOverlayPresenterInternal = NativeOverlayPresenter & {
@@ -7443,6 +7460,46 @@ export function openSteamOverlay(target: SteamOverlayTarget): NativeOverlayPrese
   }
 }
 
+export function createElectronSteamOverlay(
+  window: ElectronOverlayWindow,
+  options: ElectronSteamOverlayOptions = {}
+): ElectronSteamOverlay {
+  const { closeWithWindow = true, ...presenterOptions } = options;
+  const presenter = attachOverlayPresenter(electronOverlayPresenterOptions(window, presenterOptions));
+  const controller: ElectronSteamOverlay = {
+    presenter,
+    open(target: SteamOverlayTarget): NativeOverlayPresenter {
+      if (!presenter.isOpen()) {
+        throw new Error("Electron Steam overlay is closed.");
+      }
+      return openSteamOverlay({ ...target, presenter } as SteamOverlayTarget);
+    },
+    close(): void {
+      presenter.close();
+    },
+    disconnect(): void {
+      presenter.disconnect();
+    },
+    pump(): void {
+      presenter.pump();
+    },
+    isOpen(): boolean {
+      return presenter.isOpen();
+    },
+    snapshot(): NativeOverlayPresenterSnapshot {
+      return presenter.snapshot();
+    }
+  };
+
+  if (closeWithWindow && typeof window.once === "function") {
+    window.once("closed", () => {
+      controller.close();
+    });
+  }
+
+  return controller;
+}
+
 export function activateDialogWithNativeSession(
   dialog: number | string = "Friends",
   options?: NativeOverlaySessionOptions
@@ -11709,6 +11766,7 @@ export const overlay = {
   openAchievementsOverlay,
   openStoreOverlay,
   openSteamOverlay,
+  createElectronSteamOverlay,
   startNativeOverlaySession,
   activateDialogWithNativeSession,
   activateToWebPageWithNativeSession,
@@ -19451,6 +19509,7 @@ const defaultExport = {
   openAchievementsOverlay,
   openStoreOverlay,
   openSteamOverlay,
+  createElectronSteamOverlay,
   startNativeOverlaySession,
   activateDialogWithNativeSession,
   activateToWebPageWithNativeSession,

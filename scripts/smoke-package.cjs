@@ -82,6 +82,7 @@ assert.equal(typeof steam.default.openCommunityOverlay, "function");
 assert.equal(typeof steam.default.openStatsOverlay, "function");
 assert.equal(typeof steam.default.openAchievementsOverlay, "function");
 assert.equal(typeof steam.default.openSteamOverlay, "function");
+assert.equal(typeof steam.default.createElectronSteamOverlay, "function");
 assert.equal(typeof steam.createSteamWebApiClient, "function");
 assert.equal(typeof steam.overlay.openNativeOverlayProbeWindow, "function");
 assert.equal(typeof steam.overlay.activateDialogWithNativeSession, "function");
@@ -94,6 +95,7 @@ assert.equal(typeof steam.overlay.openCommunityOverlay, "function");
 assert.equal(typeof steam.overlay.openStatsOverlay, "function");
 assert.equal(typeof steam.overlay.openAchievementsOverlay, "function");
 assert.equal(typeof steam.overlay.openSteamOverlay, "function");
+assert.equal(typeof steam.overlay.createElectronSteamOverlay, "function");
 assert.equal(typeof steam.overlay.setNativeOverlayHostInputPassthrough, "function");
 assert.equal(typeof steam.overlay.setNativeOverlayHostOpacity, "function");
 assert.equal(steam.STEAM_FRIENDS_OVERLAY_URL, "https://steamcommunity.com/chat/");
@@ -121,6 +123,7 @@ assert.equal(typeof steam.openCommunityOverlay, "function");
 assert.equal(typeof steam.openStatsOverlay, "function");
 assert.equal(typeof steam.openAchievementsOverlay, "function");
 assert.equal(typeof steam.openSteamOverlay, "function");
+assert.equal(typeof steam.createElectronSteamOverlay, "function");
 assert.equal(typeof createSteamWebApiClient, "function");
 assert.equal(typeof overlay.openNativeOverlayProbeWindow, "function");
 assert.equal(typeof overlay.activateDialogWithNativeSession, "function");
@@ -133,6 +136,7 @@ assert.equal(typeof overlay.openCommunityOverlay, "function");
 assert.equal(typeof overlay.openStatsOverlay, "function");
 assert.equal(typeof overlay.openAchievementsOverlay, "function");
 assert.equal(typeof overlay.openSteamOverlay, "function");
+assert.equal(typeof overlay.createElectronSteamOverlay, "function");
 assert.equal(typeof overlay.setNativeOverlayHostInputPassthrough, "function");
 assert.equal(typeof overlay.setNativeOverlayHostOpacity, "function");
 assert.equal(typeof steam.electronNativeOverlaySessionOptions, "function");
@@ -176,6 +180,7 @@ import steam, {
   overlay,
   STEAM_FRIENDS_OVERLAY_URL,
   SteamworksEnums,
+  type ElectronSteamOverlay,
   type SteamId,
   type SteamOverlayTarget
 } from "steam-bridge";
@@ -198,6 +203,7 @@ const presenterCommunityFn = overlay.openCommunityOverlay;
 const presenterStatsFn = overlay.openStatsOverlay;
 const presenterAchievementsFn = overlay.openAchievementsOverlay;
 const presenterSteamFn = overlay.openSteamOverlay;
+const electronSteamOverlayFn = overlay.createElectronSteamOverlay;
 const steamOverlayTarget: SteamOverlayTarget = { type: "friends" };
 const inputPassthroughFn: (passThrough: boolean) => void = overlay.setNativeOverlayHostInputPassthrough;
 const opacityFn: (opaque: boolean) => void = overlay.setNativeOverlayHostOpacity;
@@ -222,6 +228,17 @@ const presenterOptions = electronOverlayPresenterOptions({
     send() {}
   }
 });
+const electronSteamOverlay = overlay.createElectronSteamOverlay({
+  isDestroyed: () => false,
+  getNativeWindowHandle: () => Buffer.from([1, 0, 0, 0, 0, 0, 0, 0]),
+  once() {},
+  webContents: {
+    once() {},
+    invalidate() {},
+    send() {}
+  }
+});
+const typedElectronSteamOverlay: ElectronSteamOverlay = electronSteamOverlay;
 const steamId: SteamId | undefined = undefined;
 
 void client;
@@ -237,6 +254,10 @@ void presenterFriendsFn;
 void presenterCommunityFn;
 void presenterStatsFn;
 void presenterAchievementsFn;
+void presenterSteamFn;
+void electronSteamOverlayFn;
+void steamOverlayTarget;
+void typedElectronSteamOverlay;
 void inputPassthroughFn;
 void opacityFn;
 void friendsOverlayUrl;
