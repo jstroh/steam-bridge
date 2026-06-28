@@ -269,7 +269,15 @@ Current evidence:
   the presenter before an in-game `InitTxn`, and `steamOverlay.open({ type:
   "checkout", steamUrl })` or `steamOverlay.open({ type: "checkout",
   transactionId })` opens a returned or known approval surface through the same
-  verified presenter route.
+  verified presenter route. `MicroTxnAuthorizationResponse` is treated as an
+  authorization event, not an overlay-close signal; the smoke app records the
+  presenter snapshot on `callback:microtxn` so real-app purchase proof can show
+  the native presenter remained available through authorization and parked only
+  after Steam emitted overlay inactive. A 2026-06-28 Deck Desktop prepare-only
+  run verified checkout readiness returns to passive idle, and a synthetic
+  transaction approval URL run verified checkout-style open, close, app focus,
+  no crash evidence, and no post-close pumping without committing private app
+  details.
 - Deck Desktop Mode does not yet have a passing raw Steam hotkey/Guide toggle proof. Focused
   `--visual-toggle-probe` evidence for raw Steam hotkey interception after
   passive-presenter toast runs stayed in the Electron app and did not emit
@@ -330,6 +338,8 @@ Next work:
 7. Re-run checkout proof:
    - generic App ID `480` for public plumbing where possible;
    - a real app/product only for private purchase proof;
+   - require `callback:microtxn` diagnostics to include presenter state during
+     real purchase authorization;
    - keep private app IDs, item definitions, transaction IDs, and URLs out of
      committed files.
 8. Treat Wayland as a later backend unless Steam/Electron are running through

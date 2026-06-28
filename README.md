@@ -413,7 +413,12 @@ product. For in-game microtransactions, call
 Steam's automatic authorization UI has a native presenter ready. If Steam
 returns a web checkout URL, pass it with `steamOverlay.open({ type: "checkout",
 steamUrl })`. If you have a transaction id, use `transactionId` and Steam
-Bridge builds the approval URL. For passive Steam notifications such as
+Bridge builds the approval URL. Treat `MicroTxnAuthorizationResponse` as a
+purchase authorization event, not as an overlay-close event; keep the presenter
+alive until Steam emits overlay inactive and the app has returned. The smoke app
+records presenter diagnostics on `callback:microtxn` so real-app purchase runs
+can prove the presenter was still available during authorization. For passive
+Steam notifications such as
 achievement progress toasts, call `steamOverlay.prepareForNotification()` before
 invoking the Steam API. With the
 default child-process isolation, Deck Desktop Mode has verified this path with a

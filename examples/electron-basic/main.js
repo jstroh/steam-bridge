@@ -253,7 +253,7 @@ function registerSteamCallbacks() {
     steamworks.onSteamServersConnected((event) => recordEvent("callback:servers-connected", event)),
     steamworks.onSteamServerConnectFailure((event) => recordEvent("callback:server-connect-failure", event)),
     steamworks.onSteamServersDisconnected((event) => recordEvent("callback:servers-disconnected", event)),
-    steamworks.onMicroTxnAuthorizationResponse((event) => recordEvent("callback:microtxn", event))
+    steamworks.onMicroTxnAuthorizationResponse(recordMicroTxnAuthorizationResponse)
   );
 
   try {
@@ -277,6 +277,12 @@ function registerSteamCallbacks() {
   } catch (error) {
     recordEvent("callback:input:error", serializeError(error));
   }
+}
+
+function recordMicroTxnAuthorizationResponse(event) {
+  const payload = event && typeof event === "object" && !Array.isArray(event) ? { ...event } : { event };
+  payload.presenter = electronSteamOverlay && electronSteamOverlay.isOpen() ? electronSteamOverlay.snapshot() : null;
+  recordEvent("callback:microtxn", payload);
 }
 
 async function runAutorunSmoke() {
@@ -617,9 +623,13 @@ function openPresenterCheckoutOverlay() {
     overlay.open(target);
     recordEvent("overlay:presenter-open", {
       target: "checkout",
+      route: "web",
       url: CHECKOUT_URL || steamworks.steamCheckoutTransactionUrl(CHECKOUT_TRANSACTION_ID, {
         returnUrl: CHECKOUT_RETURN_URL || undefined
       }),
+      modal: true,
+      transactionId: CHECKOUT_URL ? null : CHECKOUT_TRANSACTION_ID,
+      returnUrl: CHECKOUT_RETURN_URL || null,
       presenter: overlay.snapshot()
     });
   } else {
