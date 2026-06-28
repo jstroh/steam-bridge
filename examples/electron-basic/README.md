@@ -250,12 +250,18 @@ Friends/Game Overview is only passed once the captured pixels return cleanly to
 the running app without duplicate `gameoverlayui` targets.
 
 Use `--visual-toggle-probe` when the question is whether the Steam overlay
-hotkey opens from the current app state. It captures `before-toggle-probe.png`,
-sends Shift+Tab, captures `after-toggle-open.png`, then sends the close probe and
-captures `after-toggle-close.png`. The latest Deck Desktop passive-presenter run
-passed the toast proof but did not open Steam overlay UI from Shift+Tab, so this
-probe is currently evidence for an unresolved hotkey/social path rather than a
-passing assertion.
+hotkey opens from the current app state. It focuses the smoke app when possible,
+captures `before-toggle-probe.png`, sends the selected toggle input, captures
+`after-toggle-open.png`, then closes and captures `after-toggle-close.png`. The default
+`--visual-toggle-input keyboard` sends Shift+Tab. Use
+`--visual-toggle-input guide` to send the controller Guide/Steam button through a
+temporary `/dev/uinput` device, or `--visual-toggle-input both` to compare both
+paths in one run. Keyboard probes use the existing Shift+Tab/Escape close probe;
+Guide probes press Guide again. Focused Deck Desktop passive-presenter runs
+passed the toast proof but did not open Steam overlay UI from Shift+Tab or from
+the virtual controller Guide/Steam-button event, so this probe is currently
+evidence for an unresolved hotkey/social path rather than a passing assertion
+until a visual run captures the overlay opening and returning cleanly to the app.
 
 For passive toast proof, use the achievement-progress presenter action:
 

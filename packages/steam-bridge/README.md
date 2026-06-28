@@ -202,7 +202,10 @@ displays an achievement-progress toast. The older
 `activateToWebPageWithNativeSession(..., { modal: true })` and `native-web` path
 remains compatibility coverage. Treat raw Friends/Game Overview dialog dismissal
 and Steam overlay hotkey toggling as open social-overlay blockers, not completed
-cross-platform guarantees. Call
+cross-platform guarantees. The Deck runner can collect focused toggle evidence
+with `--visual-toggle-probe --visual-toggle-input keyboard|guide|both`; current
+focused Desktop evidence still does not show Shift+Tab or a virtual
+Guide/Steam-button controller event opening overlay UI. Call
 `session.close()` during app cleanup or when you are finished with the proof
 surface.
 

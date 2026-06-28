@@ -381,6 +381,12 @@ log and diagnostics directory back to the local machine with
 `--visual-capture-dir`. Use `--visual-close-probe` for `presenter-friends`
 close/back-to-app proof and for raw social-overlay investigation; it sends a
 Deck-side Shift+Tab/Escape probe and records before and after screenshots.
+Use `--visual-toggle-probe` for hotkey evidence. The default
+`--visual-toggle-input keyboard` sends Shift+Tab, while
+`--visual-toggle-input guide` sends a controller Guide/Steam-button event through
+a temporary virtual gamepad. Focused Deck Desktop runs still show this toggle
+path as unresolved; the product overlay paths remain `openWebOverlay`,
+`openStoreOverlay`, `openFriendsOverlay`, and passive presenter notifications.
 
 Set `STEAM_BRIDGE_ELECTRON_OVERLAY_PROFILE=repaint`, or pass
 `--steam-bridge-electron-overlay-profile=repaint` to the Electron smoke app, to

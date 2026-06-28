@@ -180,10 +180,12 @@ Current evidence:
   the product path.
 - The same path is good enough for checkout-style proof when launched under a
   real installed Steam app with a configured product or transaction.
-- Deck Desktop Mode does not yet have a passing Shift+Tab/hotkey proof. The
-  `--visual-toggle-probe` evidence after a passive-presenter toast run stayed in
-  the Electron app and did not emit `GameOverlayActivated`, so hotkey/social
-  toggling remains separate from the product web/checkout path.
+- Deck Desktop Mode does not yet have a passing overlay-toggle proof. Focused
+  `--visual-toggle-probe` evidence after passive-presenter toast runs stayed in
+  the Electron app and did not emit `GameOverlayActivated` for either Shift+Tab
+  or a controller-shaped virtual Guide/Steam-button uinput device. The virtual
+  Guide path can move `overlayNeedsPresent` to `true`, but it has not rendered
+  overlay UI, so toggle support remains unresolved.
 - Electron-only social overlay can render only when Electron child overlay
   targets are allowed. A Deck Desktop diagnostic run with child env scrubbing and
   `no-zygote` isolation disabled produced visible Steam desktop overlay UI and

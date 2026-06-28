@@ -37,6 +37,7 @@ collect_diagnostics_dir=""
 visual_capture_dir=""
 visual_close_probe="0"
 visual_toggle_probe="0"
+visual_toggle_input="keyboard"
 
 usage() {
   cat <<'EOF'
@@ -91,7 +92,10 @@ Options:
   --visual-close-probe          With --visual-capture-dir and --keep-open-after-result, send a
                                 Shift+Tab/Escape close probe and capture the result.
   --visual-toggle-probe         With --visual-capture-dir and --keep-open-after-result, capture
-                                before Shift+Tab, after opening, and after closing the overlay.
+                                before toggling, after opening, and after closing the overlay.
+  --visual-toggle-input MODE    Toggle input for --visual-toggle-probe: keyboard, guide, or both.
+                                keyboard sends Shift+Tab. guide sends the controller Guide/Steam
+                                button through a temporary uinput device. Defaults to keyboard.
   --connect-timeout SECONDS     SSH connect timeout. Defaults to 6.
 EOF
 }
@@ -235,6 +239,10 @@ while [ "$#" -gt 0 ]; do
       visual_toggle_probe="1"
       shift
       ;;
+    --visual-toggle-input)
+      visual_toggle_input="${2:?missing --visual-toggle-input value}"
+      shift 2
+      ;;
     --connect-timeout)
       connect_timeout="${2:?missing --connect-timeout value}"
       shift 2
@@ -246,6 +254,16 @@ while [ "$#" -gt 0 ]; do
       ;;
   esac
 done
+
+case "$visual_toggle_input" in
+  keyboard|guide|both)
+    ;;
+  *)
+    echo "Unknown --visual-toggle-input: $visual_toggle_input" >&2
+    usage >&2
+    exit 2
+    ;;
+esac
 
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 if [ -z "$local_app_dir" ]; then
@@ -315,6 +333,28 @@ capture_deck_screenshot() {
   echo "Screenshot saved: $local_path"
 }
 
+focus_deck_smoke_window() {
+  local app_name_q
+  app_name_q="$(quote_arg "$app_name")"
+  echo "Focusing Deck smoke app window before visual probe"
+  remote_exec "export DISPLAY=\"\${DISPLAY:-:0}\"; if [ -z \"\${XAUTHORITY:-}\" ]; then XAUTHORITY=\"\$(ls /run/user/1000/xauth_* 2>/dev/null | head -n 1 || true)\"; export XAUTHORITY; fi; if command -v xdotool >/dev/null 2>&1; then
+  xdotool key Escape >/dev/null 2>&1 || true
+  sleep 0.2
+  app_name=$app_name_q
+  window_id=\"\"
+  for pattern in \"Steam Bridge Electron Smoke\" \"\$app_name\" \"SteamBridgeSmoke\"; do
+    window_id=\"\$(xdotool search --name \"\$pattern\" 2>/dev/null | tail -n 1 || true)\"
+    if [ -n \"\$window_id\" ]; then
+      break
+    fi
+  done
+  if [ -n \"\$window_id\" ]; then
+    xdotool windowactivate --sync \"\$window_id\" >/dev/null 2>&1 || xdotool windowfocus \"\$window_id\" >/dev/null 2>&1 || true
+    sleep 0.35
+  fi
+fi"
+}
+
 send_deck_overlay_close_probe() {
   echo "Sending Deck overlay close probe"
   remote_exec "if [ -w /dev/uinput ] && command -v python3 >/dev/null 2>&1; then
@@ -382,7 +422,23 @@ fi"
 }
 
 send_deck_overlay_toggle_probe() {
-  echo "Sending Deck overlay toggle probe"
+  local input="${1:-keyboard}"
+  case "$input" in
+    keyboard)
+      send_deck_overlay_keyboard_toggle_probe
+      ;;
+    guide)
+      send_deck_overlay_guide_toggle_probe
+      ;;
+    *)
+      echo "Unknown Deck overlay toggle input: $input" >&2
+      return 2
+      ;;
+  esac
+}
+
+send_deck_overlay_keyboard_toggle_probe() {
+  echo "Sending Deck overlay keyboard toggle probe"
   remote_exec "if [ -w /dev/uinput ] && command -v python3 >/dev/null 2>&1; then
 python3 - <<'PY'
 import fcntl
@@ -442,6 +498,103 @@ else
 fi"
 }
 
+send_deck_overlay_guide_toggle_probe() {
+  echo "Sending Deck overlay Guide/Steam-button toggle probe"
+  remote_exec "if [ -w /dev/uinput ] && command -v python3 >/dev/null 2>&1; then
+python3 - <<'PY'
+import fcntl
+import os
+import struct
+import time
+
+EV_SYN = 0
+EV_KEY = 1
+EV_ABS = 3
+SYN_REPORT = 0
+ABS_X = 0
+ABS_Y = 1
+ABS_Z = 2
+ABS_RX = 3
+ABS_RY = 4
+ABS_RZ = 5
+ABS_HAT0X = 16
+ABS_HAT0Y = 17
+BTN_SOUTH = 304
+BTN_EAST = 305
+BTN_NORTH = 307
+BTN_WEST = 308
+BTN_TL = 310
+BTN_TR = 311
+BTN_SELECT = 314
+BTN_START = 315
+BTN_MODE = 316
+BTN_THUMBL = 317
+BTN_THUMBR = 318
+UI_SET_EVBIT = 0x40045564
+UI_SET_KEYBIT = 0x40045565
+UI_SET_ABSBIT = 0x40045567
+UI_DEV_CREATE = 0x5501
+UI_DEV_DESTROY = 0x5502
+ABS_CNT = 64
+
+def emit(fd, event_type, code, value):
+    os.write(fd, struct.pack('llHHI', 0, 0, event_type, code, value))
+
+def sync(fd):
+    emit(fd, EV_SYN, SYN_REPORT, 0)
+
+def user_dev():
+    data = bytearray(80 + 8 + 4 + ABS_CNT * 4 * 4)
+    struct.pack_into('80sHHHHI', data, 0, b'steam-bridge-virtual-gamepad', 0x03, 0x28de, 0x11ff, 1, 0)
+    absmax_offset = 92
+    absmin_offset = absmax_offset + ABS_CNT * 4
+    absfuzz_offset = absmin_offset + ABS_CNT * 4
+    absflat_offset = absfuzz_offset + ABS_CNT * 4
+    for axis in (ABS_X, ABS_Y, ABS_RX, ABS_RY):
+        struct.pack_into('i', data, absmin_offset + axis * 4, -32768)
+        struct.pack_into('i', data, absmax_offset + axis * 4, 32767)
+        struct.pack_into('i', data, absflat_offset + axis * 4, 4096)
+    for axis in (ABS_Z, ABS_RZ):
+        struct.pack_into('i', data, absmin_offset + axis * 4, 0)
+        struct.pack_into('i', data, absmax_offset + axis * 4, 255)
+    for axis in (ABS_HAT0X, ABS_HAT0Y):
+        struct.pack_into('i', data, absmin_offset + axis * 4, -1)
+        struct.pack_into('i', data, absmax_offset + axis * 4, 1)
+    return data
+
+fd = os.open('/dev/uinput', os.O_WRONLY | os.O_NONBLOCK)
+try:
+    fcntl.ioctl(fd, UI_SET_EVBIT, EV_KEY)
+    fcntl.ioctl(fd, UI_SET_EVBIT, EV_ABS)
+    for key in (BTN_SOUTH, BTN_EAST, BTN_NORTH, BTN_WEST, BTN_TL, BTN_TR, BTN_SELECT, BTN_START, BTN_MODE, BTN_THUMBL, BTN_THUMBR):
+        fcntl.ioctl(fd, UI_SET_KEYBIT, key)
+    for axis in (ABS_X, ABS_Y, ABS_Z, ABS_RX, ABS_RY, ABS_RZ, ABS_HAT0X, ABS_HAT0Y):
+        fcntl.ioctl(fd, UI_SET_ABSBIT, axis)
+    os.write(fd, user_dev())
+    fcntl.ioctl(fd, UI_DEV_CREATE)
+    time.sleep(1.2)
+    for axis, value in ((ABS_X, 0), (ABS_Y, 0), (ABS_RX, 0), (ABS_RY, 0), (ABS_Z, 0), (ABS_RZ, 0), (ABS_HAT0X, 0), (ABS_HAT0Y, 0)):
+        emit(fd, EV_ABS, axis, value)
+    sync(fd)
+    time.sleep(0.2)
+    emit(fd, EV_KEY, BTN_MODE, 1)
+    sync(fd)
+    time.sleep(0.15)
+    emit(fd, EV_KEY, BTN_MODE, 0)
+    sync(fd)
+    time.sleep(1.0)
+finally:
+    try:
+        fcntl.ioctl(fd, UI_DEV_DESTROY)
+    finally:
+        os.close(fd)
+PY
+else
+  echo 'No /dev/uinput Guide-button input helper found on Deck.' >&2
+  exit 127
+fi"
+}
+
 run_visual_capture() {
   if [ -z "$visual_capture_dir" ]; then
     return 0
@@ -454,19 +607,39 @@ run_visual_capture() {
 
   capture_deck_screenshot "overlay-open"
   if [ "$visual_toggle_probe" = "1" ]; then
-    capture_deck_screenshot "before-toggle-probe"
-    send_deck_overlay_toggle_probe
-    sleep 2
-    capture_deck_screenshot "after-toggle-open"
-    send_deck_overlay_close_probe
-    sleep 1
-    capture_deck_screenshot "after-toggle-close"
+    if [ "$visual_toggle_input" = "keyboard" ]; then
+      run_visual_toggle_probe_for_input "keyboard" "" "1"
+    elif [ "$visual_toggle_input" = "guide" ]; then
+      run_visual_toggle_probe_for_input "guide" "" "0"
+    else
+      run_visual_toggle_probe_for_input "keyboard" "keyboard-" "1"
+      run_visual_toggle_probe_for_input "guide" "guide-" "0"
+    fi
   fi
   if [ "$visual_close_probe" = "1" ]; then
     send_deck_overlay_close_probe
     sleep 1
     capture_deck_screenshot "after-close-probe"
   fi
+}
+
+run_visual_toggle_probe_for_input() {
+  local input="$1"
+  local label_prefix="$2"
+  local use_close_probe="$3"
+
+  focus_deck_smoke_window
+  capture_deck_screenshot "${label_prefix}before-toggle-probe"
+  send_deck_overlay_toggle_probe "$input"
+  sleep 2
+  capture_deck_screenshot "${label_prefix}after-toggle-open"
+  if [ "$use_close_probe" = "1" ]; then
+    send_deck_overlay_close_probe
+  else
+    send_deck_overlay_toggle_probe "$input"
+  fi
+  sleep 1
+  capture_deck_screenshot "${label_prefix}after-toggle-close"
 }
 
 print_ssh_hint() {
