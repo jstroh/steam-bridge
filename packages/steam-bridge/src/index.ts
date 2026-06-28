@@ -1757,6 +1757,22 @@ export type ElectronSteamOverlayShortcutConfig = boolean | ElectronSteamOverlayS
 
 export type ElectronSteamOverlayPresenterMode = "persistent" | "session";
 
+export type ElectronSteamOverlayShortcutTargetType = SteamOverlayTarget["type"] | "function" | null;
+
+export interface ElectronSteamOverlayShortcutSnapshot {
+  enabled: boolean;
+  preventDefault: boolean;
+  targetType: ElectronSteamOverlayShortcutTargetType;
+}
+
+export interface ElectronSteamOverlaySnapshot extends NativeOverlayPresenterSnapshot {
+  electronOverlay: {
+    presenterMode: ElectronSteamOverlayPresenterMode;
+    closeWithWindow: boolean;
+    overlayShortcut: ElectronSteamOverlayShortcutSnapshot;
+  };
+}
+
 export type ElectronOverlayWindow = Parameters<typeof electronOverlayPresenterOptionsImpl>[0] & {
   once?(event: "closed", handler: () => void): void;
   webContents: Parameters<typeof electronOverlayPresenterOptionsImpl>[0]["webContents"] & {
@@ -1789,7 +1805,7 @@ export interface ElectronSteamOverlay extends CallbackHandle {
   close(): void;
   pump(): void;
   isOpen(): boolean;
-  snapshot(): NativeOverlayPresenterSnapshot;
+  snapshot(): ElectronSteamOverlaySnapshot;
 }
 
 type NativeOverlayPresenterActivationMode = "interactive" | "passive" | "transparent-input";
@@ -7611,6 +7627,7 @@ export function createElectronSteamOverlay(
 ): ElectronSteamOverlay {
   const { closeWithWindow = true, overlayShortcut = true, presenterMode: modeOption, ...presenterOptions } = options;
   const presenterMode = resolveElectronSteamOverlayPresenterMode(modeOption);
+  const shortcut = normalizeElectronSteamOverlayShortcut(overlayShortcut);
   const presenter =
     presenterMode === "session"
       ? createNativeOverlaySessionPresenter(electronNativeOverlaySessionOptions(window, {
@@ -7656,12 +7673,19 @@ export function createElectronSteamOverlay(
     isOpen(): boolean {
       return !closed && (presenterMode === "session" || presenter.isOpen());
     },
-    snapshot(): NativeOverlayPresenterSnapshot {
-      return presenter.snapshot();
+    snapshot(): ElectronSteamOverlaySnapshot {
+      return {
+        ...presenter.snapshot(),
+        electronOverlay: {
+          presenterMode,
+          closeWithWindow,
+          overlayShortcut: snapshotElectronSteamOverlayShortcut(shortcut)
+        }
+      };
     }
   };
 
-  removeShortcutListener = installElectronSteamOverlayShortcut(window, controller, overlayShortcut);
+  removeShortcutListener = installElectronSteamOverlayShortcut(window, controller, shortcut);
 
   if (closeWithWindow && typeof window.once === "function") {
     window.once("closed", () => {
@@ -7825,9 +7849,8 @@ function createNativeOverlaySessionPresenter(options: NativeOverlaySessionOption
 function installElectronSteamOverlayShortcut(
   window: ElectronOverlayWindow,
   controller: ElectronSteamOverlay,
-  shortcutConfig: ElectronSteamOverlayShortcutConfig
+  shortcut: NormalizedElectronSteamOverlayShortcutOptions
 ): () => void {
-  const shortcut = normalizeElectronSteamOverlayShortcut(shortcutConfig);
   if (!shortcut.enabled || typeof window.webContents.on !== "function") {
     return () => {};
   }
@@ -7881,10 +7904,14 @@ function installElectronSteamOverlayShortcut(
   };
 }
 
+type NormalizedElectronSteamOverlayShortcutOptions = Required<
+  Pick<ElectronSteamOverlayShortcutOptions, "enabled" | "preventDefault">
+> &
+  Omit<ElectronSteamOverlayShortcutOptions, "enabled" | "preventDefault">;
+
 function normalizeElectronSteamOverlayShortcut(
   shortcutConfig: ElectronSteamOverlayShortcutConfig
-): Required<Pick<ElectronSteamOverlayShortcutOptions, "enabled" | "preventDefault">> &
-  Omit<ElectronSteamOverlayShortcutOptions, "enabled" | "preventDefault"> {
+): NormalizedElectronSteamOverlayShortcutOptions {
   if (typeof shortcutConfig === "boolean") {
     return {
       enabled: shortcutConfig,
@@ -7897,6 +7924,25 @@ function normalizeElectronSteamOverlayShortcut(
     enabled: shortcutConfig.enabled ?? true,
     preventDefault: shortcutConfig.preventDefault ?? true
   };
+}
+
+function snapshotElectronSteamOverlayShortcut(
+  shortcut: NormalizedElectronSteamOverlayShortcutOptions
+): ElectronSteamOverlayShortcutSnapshot {
+  return {
+    enabled: shortcut.enabled,
+    preventDefault: shortcut.preventDefault,
+    targetType: shortcut.enabled ? describeElectronSteamOverlayShortcutTarget(shortcut.target) : null
+  };
+}
+
+function describeElectronSteamOverlayShortcutTarget(
+  target?: ElectronSteamOverlayShortcutTarget
+): ElectronSteamOverlayShortcutTargetType {
+  if (typeof target === "function") {
+    return "function";
+  }
+  return target?.type ?? "friends";
 }
 
 function isElectronSteamOverlayShortcutInput(input: ElectronOverlayKeyboardInput): boolean {

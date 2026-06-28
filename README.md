@@ -364,6 +364,9 @@ forcing the Electron game window into a constant repaint loop. By default
 `idleFps` is `0`; set it explicitly only for diagnostic comparisons. Use
 `attachPresenter(...)` and pass `presenter` to `openSteamOverlay(...)` directly
 only when you need lower-level lifecycle control.
+Call `steamOverlay.snapshot()` when you need diagnostics; it returns the native
+presenter state plus an `electronOverlay` block with the presenter mode,
+shortcut policy, and window-close ownership.
 For emergency diagnostics, set `presenterMode: "session"` or
 `STEAM_BRIDGE_DISABLE_ELECTRON_OVERLAY_PRESENTER=1` to disable the reusable
 presenter and fall back to the older one-shot native-session lifecycle while

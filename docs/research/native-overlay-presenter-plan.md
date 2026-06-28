@@ -168,7 +168,8 @@ The presenter should:
   investigation path;
 - expose diagnostics so app code and tests can tell whether the presenter is
   attached, visible, passive, active, pumping, and recently touched by overlay
-  callbacks.
+  callbacks; the managed Electron overlay snapshot also reports the selected
+  presenter mode, shortcut policy, and window-close ownership.
 
 This should replace app-owned overlay controllers. App builders should not need
 to know whether the active platform uses X11/GLX, Metal, or another backend.

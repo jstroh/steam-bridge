@@ -232,6 +232,9 @@ passive notifications; opening or active overlay mode restores both opacity and
 input so Steam web or checkout UI can receive clicks, then parks the host
 transparent after Steam reports the overlay inactive. The default `idleFps` is
 `0`; opt into nonzero idle pumping only for diagnostics. Use
+`steamOverlay.snapshot()` for diagnostics; it returns the native presenter state
+plus an `electronOverlay` block with the active presenter mode, shortcut policy,
+and whether the manager owns Electron window-close cleanup. Use
 `presenterMode: "session"` or
 `STEAM_BRIDGE_DISABLE_ELECTRON_OVERLAY_PRESENTER=1` only as an emergency
 compatibility switch: it disables the reusable presenter, uses the older

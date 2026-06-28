@@ -121,6 +121,9 @@ the main/native process, not a duplicate GPU overlay target. `presenter-dialog`
 is an investigation action: with child-process isolation enabled, Friends/Game
 Overview may not render; with isolation disabled, it may render through the
 Chromium hook but still fail close/back-to-app proof.
+Smoke snapshots include `snapshot.overlay.nativePresenter`, whose
+`electronOverlay` diagnostics show the managed presenter mode and shortcut
+policy used for the run.
 Use `presenter-friends` to verify the recommended Friends List path:
 `client.overlay.openFriendsOverlay({ presenter })` opens Steam Community chat
 through the same native web presenter used by checkout/store overlays, keeping a

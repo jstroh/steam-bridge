@@ -4684,6 +4684,15 @@ test("electron steam overlay manager owns one presenter and routes opens", (t) =
 
   assert.equal(overlay.isOpen(), true);
   assert.equal(overlay.snapshot().nativeHostOpen, true);
+  assert.deepEqual(overlay.snapshot().electronOverlay, {
+    presenterMode: "persistent",
+    closeWithWindow: true,
+    overlayShortcut: {
+      enabled: true,
+      preventDefault: true,
+      targetType: "friends"
+    }
+  });
 
   overlay.open({ type: "friends" });
   overlay.open({ type: "web", url: "https://store.steampowered.com/app/480/", modal: true });
@@ -4788,6 +4797,15 @@ test("electron steam overlay manager can fall back to native overlay sessions", 
 
   assert.equal(overlay.isOpen(), true);
   assert.equal(overlay.snapshot().attached, false);
+  assert.deepEqual(overlay.snapshot().electronOverlay, {
+    presenterMode: "session",
+    closeWithWindow: true,
+    overlayShortcut: {
+      enabled: true,
+      preventDefault: true,
+      targetType: "friends"
+    }
+  });
   assert.deepEqual(fake.calls.filter((call) => call.method === "attachNativeOverlayHostView"), []);
 
   overlay.open({ type: "web", url: "https://store.steampowered.com/app/480/", modal: true });
@@ -4890,6 +4908,7 @@ test("electron steam overlay manager honors the presenter kill switch env flag",
   });
 
   assert.equal(overlay.snapshot().attached, false);
+  assert.equal(overlay.snapshot().electronOverlay.presenterMode, "session");
   assert.deepEqual(fake.calls.filter((call) => call.method === "attachNativeOverlayHostView"), []);
   overlay.prepareForCheckout();
   overlay.close();
@@ -4969,6 +4988,11 @@ test("electron steam overlay manager opens the presenter route from the default 
   });
 
   assert.equal(typeof beforeInputHandler, "function");
+  assert.deepEqual(overlay.snapshot().electronOverlay.overlayShortcut, {
+    enabled: true,
+    preventDefault: true,
+    targetType: "friends"
+  });
   let preventDefaultCount = 0;
   beforeInputHandler(
     {
