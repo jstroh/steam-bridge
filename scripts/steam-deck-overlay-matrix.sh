@@ -14,6 +14,7 @@ timeout_seconds="120"
 connect_timeout="6"
 inhibit_seconds="1800"
 artifact_root="${STEAM_BRIDGE_DECK_MATRIX_ARTIFACT_ROOT:-/tmp/steam-bridge-deck-overlay-matrix-$(date +%Y%m%d-%H%M%S)}"
+case_manifest=""
 skip_package="0"
 skip_preflight="0"
 skip_summary="0"
@@ -194,6 +195,49 @@ summarize_matrix_artifacts() {
   node "$summary_runner" --artifact-root "$root"
 }
 
+write_case_metadata() {
+  local case_id="$1"
+  local case_name="$2"
+  shift 2
+
+  if [ "$dry_run" = "1" ]; then
+    return 0
+  fi
+
+  mkdir -p "$artifact_root"
+  node - "$case_manifest" "$case_id" "$case_name" "$@" <<'NODE'
+const fs = require("node:fs");
+
+const [file, caseId, caseName, ...command] = process.argv.slice(2);
+
+function optionValue(name) {
+  const index = command.indexOf(name);
+  if (index === -1) {
+    return null;
+  }
+  return command[index + 1] ?? "";
+}
+
+const metadata = {
+  caseId,
+  caseName,
+  command,
+  action: optionValue("--action"),
+  appId: optionValue("--app-id"),
+  mode: optionValue("--mode"),
+  visualCloseInput: optionValue("--visual-close-input"),
+  visualToggleInput: optionValue("--visual-toggle-input"),
+  shortcutTarget: optionValue("--shortcut-target"),
+  webModal: optionValue("--web-modal"),
+  resultFile: optionValue("--result-file"),
+  diagnosticsDir: optionValue("--collect-diagnostics-dir"),
+  screenshotsDir: optionValue("--visual-capture-dir")
+};
+
+fs.appendFileSync(file, `${JSON.stringify(metadata)}\n`);
+NODE
+}
+
 case_index=0
 copy_done="0"
 
@@ -236,6 +280,7 @@ run_deck_case() {
 
   echo
   echo "== Deck overlay matrix: $case_id =="
+  write_case_metadata "$case_id" "$name" "${cmd[@]}"
   local status=0
   set +e
   run_or_print "${cmd[@]}"
@@ -415,8 +460,11 @@ if [ "$mode" = "summarize" ]; then
   exit 0
 fi
 
+case_manifest="$artifact_root/matrix-cases.jsonl"
+
 if [ "$dry_run" != "1" ]; then
   mkdir -p "$artifact_root"
+  : > "$case_manifest"
 fi
 
 echo "Steam Deck overlay matrix"

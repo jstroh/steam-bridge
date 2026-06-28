@@ -354,8 +354,10 @@ summarizes every result and lifecycle log, failing if a case reports crash
 dumps, fatal Electron lifecycle events, duplicate overlay targets, or missing
 presenter diagnostics, and it verifies post-close presenter parking for active
 overlay cases. It still uses public App ID `480`, so real purchase content must
-be validated from a real configured Steam app. To audit an existing artifact
-root, run `npm run steam-deck:overlay-matrix:summarize -- --artifact-root <path>`.
+be validated from a real configured Steam app. Live runs also write
+`matrix-cases.jsonl` so summaries can print and audit the close/toggle input
+used for each case. To audit an existing artifact root, run
+`npm run steam-deck:overlay-matrix:summarize -- --artifact-root <path>`.
 
 Add
 `--overlay-game-id shortcut` when investigating whether raw Steam overlay

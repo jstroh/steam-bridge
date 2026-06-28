@@ -279,9 +279,10 @@ It also summarizes every collected result and lifecycle log, failing if a case
 reports crash dumps, fatal Electron lifecycle events, duplicate overlay targets,
 missing presenter diagnostics, or post-close presenter parking regressions. It
 writes per-case diagnostics and screenshots under
-`/tmp/steam-bridge-deck-overlay-matrix-*`. Use `--suite minimal` for the shortest
-product smoke pass or `--suite full` to include every known
-dialog-equivalent route.
+`/tmp/steam-bridge-deck-overlay-matrix-*` plus `matrix-cases.jsonl`, which lets
+the summary print and audit each case's close/toggle input. Use `--suite
+minimal` for the shortest product smoke pass or `--suite full` to include every
+known dialog-equivalent route.
 
 For the current Desktop Mode visual proof of the reusable presenter path, use the
 presenter web action with a modal web overlay and leave the app open after the

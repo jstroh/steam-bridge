@@ -92,6 +92,7 @@ function summarizeMatrixArtifacts(root) {
   const screenshotsRoot = path.join(root, "screens");
   const failures = [];
   const caseSummaries = [];
+  const caseManifest = readCaseManifest(path.join(root, "matrix-cases.jsonl"), failures);
 
   if (!fs.existsSync(root)) {
     failures.push(`missing artifact root: ${root}`);
@@ -137,6 +138,7 @@ function summarizeMatrixArtifacts(root) {
     const overlayProcesses = objectOrEmpty(snapshot.overlayProcesses);
     const events = Array.isArray(snapshot.events) ? snapshot.events : [];
     const action = objectOrEmpty(result.action);
+    const caseMetadata = caseManifest.byCase.get(caseName);
     const nativePresenter = readOkValue(overlay.nativePresenter);
     const overlayTargetCount = countOverlayTargets(overlayProcesses);
     const overlayActivated = events.some(isOverlayActiveEvent);
@@ -173,6 +175,7 @@ function summarizeMatrixArtifacts(root) {
     if (overlayTargetCount > 1) {
       resultFailures.push(`${caseName}: duplicate gameoverlayui targets detected (${overlayTargetCount})`);
     }
+    verifyCaseMetadata(caseName, caseManifest, action, resultFailures);
 
     const lifecycle = readLifecycle(caseDir);
     if (!lifecycle.found) {
@@ -209,6 +212,8 @@ function summarizeMatrixArtifacts(root) {
         nativePresenter && typeof nativePresenter === "object" && nativePresenter.currentFps != null
           ? nativePresenter.currentFps
           : "n/a",
+      closeInput: caseMetadata?.visualCloseInput || "n/a",
+      toggleInput: caseMetadata?.visualToggleInput || "n/a",
       parked: parking.required ? parking.ok : "n/a",
       crashOk: crashDiagnostics.ok === true,
       overlayTargets: overlayTargetCount,
@@ -227,6 +232,8 @@ function summarizeMatrixArtifacts(root) {
         `overlayInactive=${item.lifecycleInactive}`,
         `presenter=${item.presenterMode}`,
         `fps=${item.presenterFps}`,
+        `closeInput=${item.closeInput}`,
+        `toggleInput=${item.toggleInput}`,
         `parked=${item.parked}`,
         `overlayTargets=${item.overlayTargets}`,
         `crashOk=${item.crashOk}`,
@@ -254,8 +261,8 @@ function runSelfTest() {
   try {
     createSelfTestFixture(fixtureRoot);
     const summary = summarizeMatrixArtifacts(fixtureRoot);
-    assert(summary.caseSummaries.length === 1, "summary self-test should include one case");
-    assert(summary.totalScreenshots === 1, "summary self-test should count one screenshot");
+    assert(summary.caseSummaries.length === 2, "summary self-test should include two cases");
+    assert(summary.totalScreenshots === 5, "summary self-test should count five screenshots");
     console.log("Steam Deck overlay matrix summary self-test passed.");
   } finally {
     fs.rmSync(fixtureRoot, { recursive: true, force: true });
@@ -320,6 +327,63 @@ function createSelfTestFixture(root) {
       .join("\n") + "\n"
   );
   fs.writeFileSync(path.join(screensDir, "after-open.png"), "");
+
+  const shortcutCaseId = "02-shortcut-friends";
+  const shortcutDiagnosticsDir = path.join(root, "diagnostics", shortcutCaseId);
+  const shortcutRunDiagnosticsDir = path.join(
+    shortcutDiagnosticsDir,
+    "steam-bridge-smoke-matrix-02-shortcut-friends.log.diagnostics"
+  );
+  const shortcutScreensDir = path.join(root, "screens", shortcutCaseId);
+  const shortcutResult = JSON.parse(JSON.stringify(result));
+
+  shortcutResult.action.action = "presenter-shortcut";
+  fs.mkdirSync(shortcutRunDiagnosticsDir, { recursive: true });
+  fs.mkdirSync(shortcutScreensDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(shortcutDiagnosticsDir, "steam-bridge-smoke-matrix-02-shortcut-friends.log"),
+    `STEAM_BRIDGE_SMOKE_RESULT ${JSON.stringify(shortcutResult)}\n`
+  );
+  fs.writeFileSync(
+    path.join(shortcutRunDiagnosticsDir, "lifecycle.jsonl"),
+    [
+      { type: "event:callback:overlay-activated", payload: { active: true } },
+      { type: "event:callback:overlay-activated", payload: { active: false } },
+      { type: "event:overlay:presenter-after-close", payload: { presenter: parkedPresenterFixture(11) } },
+      { type: "event:overlay:presenter-after-close-stable", payload: { presenter: parkedPresenterFixture(11) } }
+    ]
+      .map((entry) => JSON.stringify(entry))
+      .join("\n") + "\n"
+  );
+  for (const screenshot of [
+    "overlay-open.png",
+    "before-toggle-probe.png",
+    "after-toggle-open.png",
+    "after-toggle-close.png"
+  ]) {
+    fs.writeFileSync(path.join(shortcutScreensDir, screenshot), "");
+  }
+  fs.writeFileSync(
+    path.join(root, "matrix-cases.jsonl"),
+    [
+      {
+        caseId,
+        caseName: "web-modal",
+        action: "presenter-web",
+        visualCloseInput: "web",
+        visualToggleInput: null
+      },
+      {
+        caseId: shortcutCaseId,
+        caseName: "shortcut-friends",
+        action: "presenter-shortcut",
+        visualCloseInput: "keyboard",
+        visualToggleInput: "keyboard"
+      }
+    ]
+      .map((entry) => JSON.stringify(entry))
+      .join("\n") + "\n"
+  );
 }
 
 function parkedPresenterFixture(pumpCount) {
@@ -364,6 +428,72 @@ function readSmokeResult(file) {
     throw new Error(`missing ${RESULT_PREFIX.trim()} line in ${file}`);
   }
   return JSON.parse(line.slice(RESULT_PREFIX.length));
+}
+
+function readCaseManifest(file, failures) {
+  const byCase = new Map();
+  if (!fs.existsSync(file)) {
+    return { found: false, byCase };
+  }
+
+  const text = fs.readFileSync(file, "utf8");
+  for (const [index, line] of text.split(/\r?\n/).entries()) {
+    if (!line.trim()) {
+      continue;
+    }
+    let metadata;
+    try {
+      metadata = JSON.parse(line);
+    } catch (error) {
+      failures.push(`invalid matrix case manifest JSON in ${file}:${index + 1}: ${error.message}`);
+      continue;
+    }
+    if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+      failures.push(`invalid matrix case manifest entry in ${file}:${index + 1}`);
+      continue;
+    }
+    if (!metadata.caseId || typeof metadata.caseId !== "string") {
+      failures.push(`matrix case manifest entry missing caseId in ${file}:${index + 1}`);
+      continue;
+    }
+    if (byCase.has(metadata.caseId)) {
+      failures.push(`duplicate matrix case manifest entry for ${metadata.caseId}`);
+      continue;
+    }
+    byCase.set(metadata.caseId, metadata);
+  }
+
+  return { found: true, byCase };
+}
+
+function verifyCaseMetadata(caseName, caseManifest, action, failures) {
+  const metadata = caseManifest.byCase.get(caseName);
+  if (!metadata) {
+    if (caseManifest.found) {
+      failures.push(`${caseName}: missing matrix case metadata`);
+    }
+    return;
+  }
+
+  const actionName = action.action || "unknown";
+  if (metadata.action !== actionName) {
+    failures.push(
+      `${caseName}: matrix metadata action expected ${formatValue(actionName)}, got ${formatValue(metadata.action)}`
+    );
+  }
+
+  if (actionName === "presenter-shortcut") {
+    if (metadata.visualToggleInput !== "keyboard") {
+      failures.push(
+        `${caseName}: shortcut matrix metadata visualToggleInput expected "keyboard", got ${formatValue(metadata.visualToggleInput)}`
+      );
+    }
+    if (metadata.visualCloseInput !== "keyboard") {
+      failures.push(
+        `${caseName}: shortcut matrix metadata visualCloseInput expected "keyboard", got ${formatValue(metadata.visualCloseInput)}`
+      );
+    }
+  }
 }
 
 function readLifecycle(caseDir) {
