@@ -351,7 +351,8 @@ Pass criteria:
   closes through the Steam web close control, and returns to the app.
 - Modal web/checkout overlay opens, accepts input, closes, emits active then
   inactive callbacks, and returns to the app.
-- No crash dumps from Electron or the native binding.
+- No crash dumps from Electron or the native binding, and no fatal Electron
+  lifecycle events in the smoke diagnostics.
 - No sustained 30 FPS pumping while idle.
 
 ## macOS Apple Silicon Plan

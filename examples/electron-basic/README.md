@@ -264,7 +264,9 @@ to the running app with no black native presenter covering it. The Deck process
 list should show one `gameoverlayui` process for the app, attached to the
 main/native process. The Deck runner requires that single-target process shape
 automatically for presenter-backed product actions. It also requires idle
-presenter state for checkout readiness and the managed shortcut bridge.
+presenter state for checkout readiness and the managed shortcut bridge, and it
+fails presenter-backed product runs if the smoke app reports crash dumps or
+fatal Electron lifecycle events.
 
 For the generic Friends List path, use:
 

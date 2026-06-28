@@ -33,6 +33,7 @@ require_overlay_activated="0"
 require_single_overlay_target="0"
 require_passive_presenter="0"
 require_idle_presenter="0"
+require_no_crashes="0"
 require_steam_deck="0"
 require_big_picture="0"
 require_events=()
@@ -91,6 +92,7 @@ Options:
                                  Require one gameoverlayui target attached to the app process.
   --require-passive-presenter    Require the reusable presenter to be passive/click-through/transparent.
   --require-idle-presenter       Require --require-passive-presenter plus zero current/idle FPS.
+  --require-no-crashes           Require no crash dumps or fatal Electron lifecycle events.
   --require-steam-deck           Require Steam Deck detection.
   --require-big-picture          Require Big Picture/Game Mode detection.
   --require-event TYPE           Require an emitted event. May be repeated.
@@ -230,6 +232,10 @@ while [ "$#" -gt 0 ]; do
     --require-idle-presenter)
       require_idle_presenter="1"
       require_passive_presenter="1"
+      shift
+      ;;
+    --require-no-crashes)
+      require_no_crashes="1"
       shift
       ;;
     --require-steam-deck)
@@ -468,6 +474,7 @@ verify_result() {
   REQUIRE_SINGLE_OVERLAY_TARGET="$require_single_overlay_target" \
   REQUIRE_PASSIVE_PRESENTER="$require_passive_presenter" \
   REQUIRE_IDLE_PRESENTER="$require_idle_presenter" \
+  REQUIRE_NO_CRASHES="$require_no_crashes" \
   REQUIRE_STEAM_DECK="$require_steam_deck" \
   REQUIRE_BIG_PICTURE="$require_big_picture" \
   REQUIRE_EVENTS="$(IFS=$'\n'; printf '%s' "${require_events[*]}")" \
@@ -496,6 +503,7 @@ app = snapshot.get("app") or {}
 launch = snapshot.get("launch") or {}
 process_info = snapshot.get("process") or {}
 overlay_processes = snapshot.get("overlayProcesses") or {}
+crash_diagnostics = snapshot.get("crashDiagnostics") or {}
 overlay = snapshot.get("overlay") or {}
 events = snapshot.get("events") or []
 failures = []
@@ -575,6 +583,17 @@ if os.environ["REQUIRE_IDLE_PRESENTER"] == "1" and isinstance(native_presenter, 
     expect(native_presenter.get("idleFps") == 0, "native presenter idle FPS is zero")
     expect(native_presenter.get("currentFps") == 0, "native presenter current FPS is zero")
     expect(native_presenter.get("overlayNeedsPresent") is False, "native presenter overlay does not need present")
+if os.environ["REQUIRE_NO_CRASHES"] == "1":
+    crash_dumps = crash_diagnostics.get("crashDumps") if isinstance(crash_diagnostics.get("crashDumps"), list) else []
+    fatal_lifecycle_events = (
+        crash_diagnostics.get("fatalLifecycleEvents")
+        if isinstance(crash_diagnostics.get("fatalLifecycleEvents"), list)
+        else []
+    )
+    expect(crash_diagnostics.get("available") is True, "crash diagnostics available")
+    expect(crash_diagnostics.get("ok") is True, "no crash diagnostics reported")
+    expect(len(crash_dumps) == 0, "no crash dumps found")
+    expect(len(fatal_lifecycle_events) == 0, "no fatal lifecycle events recorded")
 if os.environ["REQUIRE_STEAM_DECK"] == "1":
     expect(ok_value(steam.get("steamDeck")) is True, "Steam Deck detected")
 if os.environ["REQUIRE_BIG_PICTURE"] == "1":
@@ -723,7 +742,7 @@ PY
 
   result_file="$self_test_temp_home/steam-bridge-smoke-result.log"
   cat >"$result_file" <<'EOF'
-STEAM_BRIDGE_SMOKE_RESULT {"ok":true,"action":{"ok":true,"action":"dialog"},"snapshot":{"app":{"appId":480},"process":{"platform":"linux","arch":"x64"},"launch":{"steamLaunch":true,"overlayInjection":true},"steam":{"initialized":true,"running":{"ok":true,"value":true},"appId":{"ok":true,"value":480},"steamDeck":{"ok":true,"value":true},"bigPicture":{"ok":true,"value":true},"overlayEnabled":{"ok":true,"value":true},"overlayNeedsPresent":{"ok":true,"value":false}},"events":[{"type":"overlay:dialog"},{"type":"callback:overlay-activated"}]}}
+STEAM_BRIDGE_SMOKE_RESULT {"ok":true,"action":{"ok":true,"action":"dialog"},"snapshot":{"app":{"appId":480},"process":{"platform":"linux","arch":"x64"},"launch":{"steamLaunch":true,"overlayInjection":true},"crashDiagnostics":{"available":true,"ok":true,"crashDumps":[],"fatalLifecycleEvents":[]},"steam":{"initialized":true,"running":{"ok":true,"value":true},"appId":{"ok":true,"value":480},"steamDeck":{"ok":true,"value":true},"bigPicture":{"ok":true,"value":true},"overlayEnabled":{"ok":true,"value":true},"overlayNeedsPresent":{"ok":true,"value":false}},"events":[{"type":"overlay:dialog"},{"type":"callback:overlay-activated"}]}}
 EOF
 
   action="dialog"
@@ -737,7 +756,7 @@ EOF
 
   result_file="$self_test_temp_home/steam-bridge-smoke-single-target.log"
   cat >"$result_file" <<'EOF'
-STEAM_BRIDGE_SMOKE_RESULT {"ok":true,"action":{"ok":true,"action":"presenter-web"},"snapshot":{"app":{"appId":480},"process":{"pid":4242,"platform":"linux","arch":"x64"},"launch":{"steamLaunch":true,"overlayInjection":true},"overlayProcesses":{"available":true,"gameoverlayui":[{"pid":9001,"targetPid":4242,"gameId":"480","command":"gameoverlayui -pid 4242 -gameid 480"}]},"overlay":{"nativePresenter":{"ok":true,"value":{"attached":true,"nativeHostOpen":true,"mode":"passive","clickThrough":true,"focusable":false,"transparent":true,"overlayActive":false,"overlayNeedsPresent":false,"idleFps":0,"currentFps":0}}},"steam":{"initialized":true,"running":{"ok":true,"value":true},"appId":{"ok":true,"value":480},"steamDeck":{"ok":true,"value":true},"bigPicture":{"ok":true,"value":false},"overlayEnabled":{"ok":true,"value":true},"overlayNeedsPresent":{"ok":true,"value":false}},"events":[{"type":"overlay:presenter-open"},{"type":"callback:overlay-activated"}]}}
+STEAM_BRIDGE_SMOKE_RESULT {"ok":true,"action":{"ok":true,"action":"presenter-web"},"snapshot":{"app":{"appId":480},"process":{"pid":4242,"platform":"linux","arch":"x64"},"launch":{"steamLaunch":true,"overlayInjection":true},"crashDiagnostics":{"available":true,"ok":true,"crashDumps":[],"fatalLifecycleEvents":[]},"overlayProcesses":{"available":true,"gameoverlayui":[{"pid":9001,"targetPid":4242,"gameId":"480","command":"gameoverlayui -pid 4242 -gameid 480"}]},"overlay":{"nativePresenter":{"ok":true,"value":{"attached":true,"nativeHostOpen":true,"mode":"passive","clickThrough":true,"focusable":false,"transparent":true,"overlayActive":false,"overlayNeedsPresent":false,"idleFps":0,"currentFps":0}}},"steam":{"initialized":true,"running":{"ok":true,"value":true},"appId":{"ok":true,"value":480},"steamDeck":{"ok":true,"value":true},"bigPicture":{"ok":true,"value":false},"overlayEnabled":{"ok":true,"value":true},"overlayNeedsPresent":{"ok":true,"value":false}},"events":[{"type":"overlay:presenter-open"},{"type":"callback:overlay-activated"}]}}
 EOF
 
   action="presenter-web"
@@ -745,11 +764,13 @@ EOF
   require_single_overlay_target="1"
   require_idle_presenter="1"
   require_passive_presenter="1"
+  require_no_crashes="1"
   require_events=("overlay:presenter-open" "callback:overlay-activated")
   verify_result
   require_single_overlay_target="0"
   require_idle_presenter="0"
   require_passive_presenter="0"
+  require_no_crashes="0"
 
   overlay_dialog="Achievements"
   launch_options="$(smoke_args | paste -sd' ' -)"

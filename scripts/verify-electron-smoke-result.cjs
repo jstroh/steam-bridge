@@ -10,6 +10,7 @@ const app = snapshot.app || {};
 const launch = snapshot.launch || {};
 const overlay = snapshot.overlay || {};
 const overlayProcesses = snapshot.overlayProcesses || {};
+const crashDiagnostics = snapshot.crashDiagnostics || {};
 const processInfo = snapshot.process || {};
 const nativePresenter = readOkValue(overlay.nativePresenter);
 const events = Array.isArray(snapshot.events) ? snapshot.events : [];
@@ -81,6 +82,16 @@ if (options.requireIdlePresenter) {
     expect(nativePresenter.currentFps === 0, "native presenter current FPS is zero");
     expect(nativePresenter.overlayNeedsPresent === false, "native presenter overlay does not need present");
   }
+}
+if (options.requireNoCrashes) {
+  const crashDumps = Array.isArray(crashDiagnostics.crashDumps) ? crashDiagnostics.crashDumps : [];
+  const fatalLifecycleEvents = Array.isArray(crashDiagnostics.fatalLifecycleEvents)
+    ? crashDiagnostics.fatalLifecycleEvents
+    : [];
+  expect(crashDiagnostics.available === true, "crash diagnostics available");
+  expect(crashDiagnostics.ok === true, "no crash diagnostics reported");
+  expect(crashDumps.length === 0, "no crash dumps found");
+  expect(fatalLifecycleEvents.length === 0, "no fatal lifecycle events recorded");
 }
 if (options.requireSteamLaunch) {
   expect(launch.steamLaunch === true, "Steam launch marker detected");
@@ -181,6 +192,7 @@ function parseArgs(args) {
     requireSingleOverlayTarget: false,
     requirePassivePresenter: false,
     requireIdlePresenter: false,
+    requireNoCrashes: false,
     requireSteamLaunch: false,
     requireSteamDeck: false,
     requiredEvents: []
@@ -231,6 +243,9 @@ function parseArgs(args) {
       case "--require-idle-presenter":
         parsed.requireIdlePresenter = true;
         parsed.requirePassivePresenter = true;
+        break;
+      case "--require-no-crashes":
+        parsed.requireNoCrashes = true;
         break;
       case "--require-native-probe-open":
         parsed.requireNativeProbeOpen = true;

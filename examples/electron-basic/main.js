@@ -51,6 +51,13 @@ const DIAGNOSTIC_DIR =
   path.join(os.tmpdir(), "steam-bridge-smoke-diagnostics", createRunId());
 const LIFECYCLE_LOG_FILE = path.join(DIAGNOSTIC_DIR, "lifecycle.jsonl");
 const CRASH_DUMP_DIR = path.join(DIAGNOSTIC_DIR, "crash-dumps");
+const FATAL_LIFECYCLE_EVENT_TYPES = new Set([
+  "app:render-process-gone",
+  "app:child-process-gone",
+  "app:gpu-process-crashed",
+  "process:uncaught-exception",
+  "process:unhandled-rejection"
+]);
 const AUTORUN_REQUIRE_OVERLAY_ACTIVE = readBoolean(
   CLI_OPTIONS.autorunRequireOverlayActive || process.env.STEAM_BRIDGE_SMOKE_REQUIRE_OVERLAY_ACTIVE,
   false
@@ -812,6 +819,7 @@ function snapshot() {
       argv: process.argv
     },
     launch: STARTUP_LAUNCH_CONTEXT,
+    crashDiagnostics: collectCrashDiagnostics(),
     overlayProcesses: collectOverlayProcessSnapshot(),
     steam: {
       initialized: Boolean(client),
@@ -881,6 +889,142 @@ function snapshot() {
       overlayDialogFriends: client.overlay.Dialog.Friends
     }
   });
+}
+
+function collectCrashDiagnostics() {
+  const crashDumpSnapshot = collectCrashDumpSnapshot(CRASH_DUMP_DIR);
+  const lifecycleSnapshot = collectFatalLifecycleSnapshot(LIFECYCLE_LOG_FILE);
+  const available = crashDumpSnapshot.available && lifecycleSnapshot.available;
+  const crashDumps = crashDumpSnapshot.crashDumps;
+  const fatalLifecycleEvents = lifecycleSnapshot.fatalLifecycleEvents;
+
+  return {
+    available,
+    ok: available && crashDumps.length === 0 && fatalLifecycleEvents.length === 0,
+    crashDumpDir: CRASH_DUMP_DIR,
+    lifecycleLogFile: LIFECYCLE_LOG_FILE,
+    crashDumps,
+    fatalLifecycleEvents,
+    crashDumpFiles: crashDumpSnapshot.files,
+    errors: [...crashDumpSnapshot.errors, ...lifecycleSnapshot.errors]
+  };
+}
+
+function collectCrashDumpSnapshot(rootDir) {
+  const files = [];
+  const crashDumps = [];
+  const errors = [];
+
+  visitCrashDumpDir(rootDir, "");
+
+  return {
+    available: errors.length === 0,
+    files: files.slice(0, 100),
+    crashDumps: crashDumps.slice(0, 100),
+    errors
+  };
+
+  function visitCrashDumpDir(currentDir, relativeDir) {
+    let entries;
+    try {
+      entries = fs.readdirSync(currentDir, { withFileTypes: true });
+    } catch (error) {
+      if (error && error.code === "ENOENT") {
+        return;
+      }
+      errors.push({ path: currentDir, error: serializeError(error) });
+      return;
+    }
+
+    for (const entry of entries) {
+      const relativePath = relativeDir ? path.join(relativeDir, entry.name) : entry.name;
+      const fullPath = path.join(currentDir, entry.name);
+      if (entry.isDirectory()) {
+        visitCrashDumpDir(fullPath, relativePath);
+        continue;
+      }
+      if (!entry.isFile()) {
+        continue;
+      }
+
+      const file = crashDiagnosticFileSnapshot(fullPath, relativePath);
+      files.push(file);
+      if (isCrashDumpFile(relativePath)) {
+        crashDumps.push(file);
+      }
+    }
+  }
+}
+
+function crashDiagnosticFileSnapshot(fullPath, relativePath) {
+  const file = {
+    path: relativePath
+  };
+  try {
+    const stats = fs.statSync(fullPath);
+    file.size = stats.size;
+    file.modifiedAt = stats.mtime.toISOString();
+  } catch (error) {
+    file.statError = serializeError(error);
+  }
+  return file;
+}
+
+function isCrashDumpFile(relativePath) {
+  const normalized = String(relativePath).replace(/\\/g, "/").toLowerCase();
+  return (
+    normalized.endsWith(".dmp") ||
+    normalized.endsWith(".mdmp") ||
+    normalized.endsWith(".dump") ||
+    normalized.endsWith(".crash")
+  );
+}
+
+function collectFatalLifecycleSnapshot(logFile) {
+  const fatalLifecycleEvents = [];
+  const errors = [];
+
+  let text;
+  try {
+    text = fs.readFileSync(logFile, "utf8");
+  } catch (error) {
+    if (error && error.code === "ENOENT") {
+      return {
+        available: true,
+        fatalLifecycleEvents,
+        errors
+      };
+    }
+    return {
+      available: false,
+      fatalLifecycleEvents,
+      errors: [{ path: logFile, error: serializeError(error) }]
+    };
+  }
+
+  for (const line of text.split(/\r?\n/)) {
+    if (!line.trim()) {
+      continue;
+    }
+
+    let entry;
+    try {
+      entry = JSON.parse(line);
+    } catch (error) {
+      errors.push({ path: logFile, error: serializeError(error), line: line.slice(0, 200) });
+      continue;
+    }
+
+    if (entry && FATAL_LIFECYCLE_EVENT_TYPES.has(entry.type)) {
+      fatalLifecycleEvents.push(entry);
+    }
+  }
+
+  return {
+    available: errors.length === 0,
+    fatalLifecycleEvents: fatalLifecycleEvents.slice(-100),
+    errors
+  };
 }
 
 function collectOverlayProcessSnapshot() {

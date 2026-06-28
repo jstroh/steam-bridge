@@ -47,6 +47,7 @@ visual_toggle_input="keyboard"
 require_single_overlay_target="0"
 require_passive_presenter="0"
 require_idle_presenter="0"
+require_no_crashes="0"
 
 usage() {
   cat <<'EOF'
@@ -121,6 +122,7 @@ Options:
                                 Require one gameoverlayui target attached to the smoke app.
   --require-passive-presenter   Require the reusable presenter to be passive/click-through/transparent.
   --require-idle-presenter      Require --require-passive-presenter plus zero current/idle FPS.
+  --require-no-crashes          Require no crash dumps or fatal Electron lifecycle events.
   --connect-timeout SECONDS     SSH connect timeout. Defaults to 6.
 EOF
 }
@@ -303,6 +305,10 @@ while [ "$#" -gt 0 ]; do
     --require-idle-presenter)
       require_idle_presenter="1"
       require_passive_presenter="1"
+      shift
+      ;;
+    --require-no-crashes)
+      require_no_crashes="1"
       shift
       ;;
     --connect-timeout)
@@ -1277,6 +1283,9 @@ append_common_helper_args() {
   if [ "$require_idle_presenter" = "1" ]; then
     helper_args+=("--require-idle-presenter")
   fi
+  if [ "$require_no_crashes" = "1" ]; then
+    helper_args+=("--require-no-crashes")
+  fi
 }
 
 build_steam_launch_args() {
@@ -1324,6 +1333,7 @@ build_steam_launch_args() {
 
   if is_presenter_product_action; then
     helper_args+=("--require-single-overlay-target")
+    helper_args+=("--require-no-crashes")
   fi
   if [ "$action" = "presenter-shortcut" ] ||
     { [ "$action" = "presenter-checkout" ] && ! checkout_opens_overlay; }; then
@@ -1610,6 +1620,10 @@ run_self_test() {
     echo "Self-test failed: Presenter friends args must require the overlay callback." >&2
     exit 1
   fi
+  if [[ "$friends_args" != *"--require-no-crashes"* ]]; then
+    echo "Self-test failed: Presenter product args must require no crash diagnostics." >&2
+    exit 1
+  fi
 
   action="presenter-community"
   build_steam_launch_args
@@ -1666,15 +1680,25 @@ run_self_test() {
     echo "Self-test failed: Presenter product args must require a single overlay target." >&2
     exit 1
   fi
+  if [[ "$shortcut_args" != *"--require-no-crashes"* ]]; then
+    echo "Self-test failed: Presenter shortcut args must require no crash diagnostics." >&2
+    exit 1
+  fi
 
   require_single_overlay_target="1"
+  require_no_crashes="1"
   build_steam_launch_args
   shortcut_args="$(quote_args "${helper_args[@]}")"
   if [[ "$shortcut_args" != *"--require-single-overlay-target"* ]]; then
     echo "Self-test failed: Deck args must pass the single overlay target requirement when requested." >&2
     exit 1
   fi
+  if [[ "$shortcut_args" != *"--require-no-crashes"* ]]; then
+    echo "Self-test failed: Deck args must pass the no crash requirement when requested." >&2
+    exit 1
+  fi
   require_single_overlay_target="0"
+  require_no_crashes="0"
 
   action="presenter-checkout"
   checkout_url=""
@@ -1692,6 +1716,10 @@ run_self_test() {
   fi
   if [[ "$checkout_args" == *"--require-event callback:overlay-activated"* ]]; then
     echo "Self-test failed: Prepare-only checkout args must not require the overlay callback." >&2
+    exit 1
+  fi
+  if [[ "$checkout_args" != *"--require-no-crashes"* ]]; then
+    echo "Self-test failed: Checkout args must require no crash diagnostics." >&2
     exit 1
   fi
 
@@ -1725,6 +1753,10 @@ run_self_test() {
   fi
   if [[ "$toast_args" == *"--require-event callback:overlay-activated"* ]]; then
     echo "Self-test failed: Toast args must not require modal overlay activation." >&2
+    exit 1
+  fi
+  if [[ "$toast_args" != *"--require-no-crashes"* ]]; then
+    echo "Self-test failed: Toast args must require no crash diagnostics." >&2
     exit 1
   fi
 

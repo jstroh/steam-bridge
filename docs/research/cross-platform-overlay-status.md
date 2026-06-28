@@ -159,7 +159,8 @@ actions. The runner also machine-checks idle/passive presenter state where it is
 part of the proof: checkout readiness and managed shortcut attach must park with
 `idleFps=0` and `currentFps=0`; passive toast proof must remain transparent,
 click-through, non-focusable, and overlay-inactive while Steam may still pump
-notification frames.
+notification frames. Presenter-backed product actions also require clean smoke
+crash diagnostics: no crash dump files and no fatal Electron lifecycle events.
 The older managed native `--action native-web --web-modal true` path remains
 compatibility coverage.
 

@@ -370,6 +370,8 @@ It also asserts idle/passive presenter state where appropriate: checkout
 readiness and the managed shortcut bridge must be parked at `idleFps: 0` /
 `currentFps: 0`, while passive notification tests must remain transparent,
 click-through, non-focusable, and overlay-inactive.
+Presenter-backed product actions also require the smoke app's crash diagnostics
+to stay clean: no crash dump files and no fatal Electron lifecycle events.
 
 On Linux/X11, the presenter separates visibility from input. Fully idle mode is
 transparent, non-focusable, click-through, and cheap to keep alive. When Steam
