@@ -1,4 +1,5 @@
 const fs = require("node:fs");
+const { execFileSync } = require("node:child_process");
 const os = require("node:os");
 const path = require("node:path");
 const { app, BrowserWindow, crashReporter, ipcMain } = require("electron");
@@ -811,6 +812,7 @@ function snapshot() {
       argv: process.argv
     },
     launch: STARTUP_LAUNCH_CONTEXT,
+    overlayProcesses: collectOverlayProcessSnapshot(),
     steam: {
       initialized: Boolean(client),
       initError
@@ -879,6 +881,81 @@ function snapshot() {
       overlayDialogFriends: client.overlay.Dialog.Friends
     }
   });
+}
+
+function collectOverlayProcessSnapshot() {
+  if (process.platform !== "linux") {
+    return {
+      available: false,
+      reason: "unsupported-platform",
+      platform: process.platform,
+      gameoverlayui: []
+    };
+  }
+
+  try {
+    const output = execFileSync("pgrep", ["-af", "gameoverlayui"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: 1000
+    });
+    const entries = output
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map(parseOverlayProcessLine)
+      .filter(Boolean);
+    return {
+      available: true,
+      gameoverlayui: entries
+    };
+  } catch (error) {
+    if (error && error.status === 1) {
+      return {
+        available: true,
+        gameoverlayui: []
+      };
+    }
+    return {
+      available: false,
+      reason: "pgrep-failed",
+      error: serializeError(error),
+      gameoverlayui: []
+    };
+  }
+}
+
+function parseOverlayProcessLine(line) {
+  const match = /^(\d+)\s+(.*)$/.exec(line);
+  if (!match) {
+    return undefined;
+  }
+
+  const command = match[2];
+  return {
+    pid: Number(match[1]),
+    targetPid: readCommandNumberArg(command, "-pid"),
+    gameId: readCommandStringArg(command, "-gameid"),
+    command
+  };
+}
+
+function readCommandNumberArg(command, name) {
+  const value = readCommandStringArg(command, name);
+  if (!value || !/^\d+$/.test(value)) {
+    return undefined;
+  }
+  return Number(value);
+}
+
+function readCommandStringArg(command, name) {
+  const pattern = new RegExp(`${escapeRegExp(name)}(?:=|\\s+)(\\S+)`);
+  const match = pattern.exec(command);
+  return match ? match[1] : undefined;
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function readValue(fn) {

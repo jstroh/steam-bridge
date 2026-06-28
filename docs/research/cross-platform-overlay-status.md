@@ -153,6 +153,9 @@ presenter-friends` for Friends List UI. The Electron overlay helper scrubs Steam
 overlay preload entries for child processes and adds Linux `no-zygote` isolation
 by default; the expected Deck process list has one `gameoverlayui` attached to
 the main/native process, not a second one attached to Electron's GPU process.
+The smoke app snapshots `gameoverlayui` target metadata, and the Deck runner
+requires this single-target invariant automatically for presenter-backed product
+actions.
 The older managed native `--action native-web --web-modal true` path remains
 compatibility coverage.
 

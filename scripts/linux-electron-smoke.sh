@@ -30,6 +30,7 @@ require_steam_launch="0"
 require_overlay_ready="0"
 require_overlay_injection="0"
 require_overlay_activated="0"
+require_single_overlay_target="0"
 require_steam_deck="0"
 require_big_picture="0"
 require_events=()
@@ -84,6 +85,8 @@ Options:
   --require-overlay-ready        Require overlay enabled and needs-present false.
   --require-overlay-injection    Require Linux overlay injection marker.
   --require-overlay-activated    Require callback:overlay-activated active=true.
+  --require-single-overlay-target
+                                 Require one gameoverlayui target attached to the app process.
   --require-steam-deck           Require Steam Deck detection.
   --require-big-picture          Require Big Picture/Game Mode detection.
   --require-event TYPE           Require an emitted event. May be repeated.
@@ -210,6 +213,10 @@ while [ "$#" -gt 0 ]; do
       ;;
     --require-overlay-activated)
       require_overlay_activated="1"
+      shift
+      ;;
+    --require-single-overlay-target)
+      require_single_overlay_target="1"
       shift
       ;;
     --require-steam-deck)
@@ -445,6 +452,7 @@ verify_result() {
   REQUIRE_OVERLAY_READY="$require_overlay_ready" \
   REQUIRE_OVERLAY_INJECTION="$require_overlay_injection" \
   REQUIRE_OVERLAY_ACTIVATED="$require_overlay_activated" \
+  REQUIRE_SINGLE_OVERLAY_TARGET="$require_single_overlay_target" \
   REQUIRE_STEAM_DECK="$require_steam_deck" \
   REQUIRE_BIG_PICTURE="$require_big_picture" \
   REQUIRE_EVENTS="$(IFS=$'\n'; printf '%s' "${require_events[*]}")" \
@@ -472,6 +480,7 @@ steam = snapshot.get("steam") or {}
 app = snapshot.get("app") or {}
 launch = snapshot.get("launch") or {}
 process_info = snapshot.get("process") or {}
+overlay_processes = snapshot.get("overlayProcesses") or {}
 events = snapshot.get("events") or []
 failures = []
 
@@ -524,6 +533,16 @@ if os.environ["REQUIRE_OVERLAY_INJECTION"] == "1":
     expect(launch.get("overlayInjection") is True, "Steam overlay injection marker detected")
 if os.environ["REQUIRE_OVERLAY_ACTIVATED"] == "1":
     expect(overlay_activated, "overlay activation callback active=true emitted")
+if os.environ["REQUIRE_SINGLE_OVERLAY_TARGET"] == "1":
+    gameoverlayui = [
+        entry
+        for entry in overlay_processes.get("gameoverlayui") or []
+        if isinstance(entry, dict) and entry.get("targetPid") is not None
+    ]
+    expect(overlay_processes.get("available") is True, "overlay process snapshot available")
+    expect(len(gameoverlayui) == 1, "exactly one gameoverlayui target detected")
+    if gameoverlayui:
+        expect(gameoverlayui[0].get("targetPid") == process_info.get("pid"), "gameoverlayui targets the smoke app process")
 if os.environ["REQUIRE_STEAM_DECK"] == "1":
     expect(ok_value(steam.get("steamDeck")) is True, "Steam Deck detected")
 if os.environ["REQUIRE_BIG_PICTURE"] == "1":
@@ -683,6 +702,18 @@ EOF
   require_big_picture="1"
   require_events=("overlay:dialog" "callback:overlay-activated")
   verify_result
+
+  result_file="$self_test_temp_home/steam-bridge-smoke-single-target.log"
+  cat >"$result_file" <<'EOF'
+STEAM_BRIDGE_SMOKE_RESULT {"ok":true,"action":{"ok":true,"action":"presenter-web"},"snapshot":{"app":{"appId":480},"process":{"pid":4242,"platform":"linux","arch":"x64"},"launch":{"steamLaunch":true,"overlayInjection":true},"overlayProcesses":{"available":true,"gameoverlayui":[{"pid":9001,"targetPid":4242,"gameId":"480","command":"gameoverlayui -pid 4242 -gameid 480"}]},"steam":{"initialized":true,"running":{"ok":true,"value":true},"appId":{"ok":true,"value":480},"steamDeck":{"ok":true,"value":true},"bigPicture":{"ok":true,"value":false},"overlayEnabled":{"ok":true,"value":true},"overlayNeedsPresent":{"ok":true,"value":false}},"events":[{"type":"overlay:presenter-open"},{"type":"callback:overlay-activated"}]}}
+EOF
+
+  action="presenter-web"
+  require_big_picture="0"
+  require_single_overlay_target="1"
+  require_events=("overlay:presenter-open" "callback:overlay-activated")
+  verify_result
+  require_single_overlay_target="0"
 
   overlay_dialog="Achievements"
   launch_options="$(smoke_args | paste -sd' ' -)"

@@ -262,7 +262,8 @@ control. The lifecycle log should include `callback:overlay-activated` with
 `active=true` followed by `active=false`, and the screenshot must return cleanly
 to the running app with no black native presenter covering it. The Deck process
 list should show one `gameoverlayui` process for the app, attached to the
-main/native process.
+main/native process. The Deck runner requires that single-target process shape
+automatically for presenter-backed product actions.
 
 For the generic Friends List path, use:
 

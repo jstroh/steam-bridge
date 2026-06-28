@@ -44,6 +44,7 @@ visual_close_probe="0"
 visual_close_input="keyboard"
 visual_toggle_probe="0"
 visual_toggle_input="keyboard"
+require_single_overlay_target="0"
 
 usage() {
   cat <<'EOF'
@@ -114,6 +115,8 @@ Options:
   --visual-toggle-input MODE    Toggle input for --visual-toggle-probe: keyboard, guide, or both.
                                 keyboard sends Shift+Tab. guide sends the controller Guide/Steam
                                 button through a temporary uinput device. Defaults to keyboard.
+  --require-single-overlay-target
+                                Require one gameoverlayui target attached to the smoke app.
   --connect-timeout SECONDS     SSH connect timeout. Defaults to 6.
 EOF
 }
@@ -284,6 +287,10 @@ while [ "$#" -gt 0 ]; do
     --visual-toggle-input)
       visual_toggle_input="${2:?missing --visual-toggle-input value}"
       shift 2
+      ;;
+    --require-single-overlay-target)
+      require_single_overlay_target="1"
+      shift
       ;;
     --connect-timeout)
       connect_timeout="${2:?missing --connect-timeout value}"
@@ -1010,6 +1017,17 @@ checkout_opens_overlay() {
   [ -n "$checkout_url" ] || [ -n "$checkout_transaction_id" ]
 }
 
+is_presenter_product_action() {
+  case "$action" in
+    presenter-store|presenter-web|presenter-friends|presenter-dialog-auto|presenter-community|presenter-stats|presenter-achievements|presenter-checkout|presenter-shortcut|presenter-achievement-progress)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
 prepare_remote_wrapper() {
   local app_dir_q env_q wrapper_q wrapper_dir_q
   local app_id_q overlay_game_id_q action_q profile_q scrub_child_env_q isolate_child_processes_q window_mode_q result_file_q diagnostic_dir_q action_delay_q result_delay_q keep_open_q require_active_q web_url_q web_modal_q checkout_url_q checkout_transaction_id_q checkout_return_url_q overlay_dialog_q achievement_name_q achievement_current_q achievement_max_q
@@ -1237,6 +1255,9 @@ append_common_helper_args() {
   if [ -n "$achievement_max" ]; then
     helper_args+=("--achievement-max" "$achievement_max")
   fi
+  if [ "$require_single_overlay_target" = "1" ]; then
+    helper_args+=("--require-single-overlay-target")
+  fi
 }
 
 build_steam_launch_args() {
@@ -1280,6 +1301,10 @@ build_steam_launch_args() {
     [ "$action" != "presenter-shortcut" ] &&
     { [ "$action" != "presenter-checkout" ] || checkout_opens_overlay; }; then
     helper_args+=("--require-event" "callback:overlay-activated")
+  fi
+
+  if is_presenter_product_action; then
+    helper_args+=("--require-single-overlay-target")
   fi
 
   if [ "$mode" = "game" ]; then
@@ -1612,6 +1637,19 @@ run_self_test() {
     echo "Self-test failed: Presenter shortcut args must not require the overlay callback before the visual toggle probe." >&2
     exit 1
   fi
+  if [[ "$shortcut_args" != *"--require-single-overlay-target"* ]]; then
+    echo "Self-test failed: Presenter product args must require a single overlay target." >&2
+    exit 1
+  fi
+
+  require_single_overlay_target="1"
+  build_steam_launch_args
+  shortcut_args="$(quote_args "${helper_args[@]}")"
+  if [[ "$shortcut_args" != *"--require-single-overlay-target"* ]]; then
+    echo "Self-test failed: Deck args must pass the single overlay target requirement when requested." >&2
+    exit 1
+  fi
+  require_single_overlay_target="0"
 
   action="presenter-checkout"
   checkout_url=""

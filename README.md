@@ -363,6 +363,9 @@ Electron's `no-zygote` switch so GPU/renderer children exec without inheriting
 the already-loaded Steam overlay library. This leaves the bridge-owned native
 presenter as the single overlay target. Pass
 `isolateSteamOverlayChildProcesses: false` only for diagnostics.
+The Steam Deck smoke runner can assert this with
+`--require-single-overlay-target`, and it enables that assertion automatically
+for presenter-backed product actions.
 
 On Linux/X11, the presenter separates visibility from input. Fully idle mode is
 transparent, non-focusable, click-through, and cheap to keep alive. When Steam

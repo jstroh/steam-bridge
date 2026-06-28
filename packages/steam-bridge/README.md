@@ -275,7 +275,9 @@ the generic proof. Deck testing has verified a
 single Steam overlay target,
 `active=true` overlay callbacks, overlay close input, and clean return to the
 running app for the Friends List web surface; the web checkout/store proof also
-captures `active=false` after closing the modal overlay. The smoke app's
+captures `active=false` after closing the modal overlay. The Steam Deck runner
+now machine-checks the single-target invariant for presenter-backed product
+actions. The smoke app's
 `presenter-achievement-progress` action verifies passive Steam notification
 behavior by keeping the presenter click-through and transparent while Steam
 displays an achievement-progress toast. The older

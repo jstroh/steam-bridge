@@ -9,6 +9,7 @@ const steam = snapshot.steam || {};
 const app = snapshot.app || {};
 const launch = snapshot.launch || {};
 const overlay = snapshot.overlay || {};
+const overlayProcesses = snapshot.overlayProcesses || {};
 const processInfo = snapshot.process || {};
 const events = Array.isArray(snapshot.events) ? snapshot.events : [];
 const overlayActivated = events.some(isOverlayActiveEvent);
@@ -50,6 +51,16 @@ if (options.requireOverlayReady) {
 }
 if (options.requireOverlayActivated) {
   expect(overlayActivated, "overlay activation callback active=true emitted");
+}
+if (options.requireSingleOverlayTarget) {
+  const gameoverlayui = Array.isArray(overlayProcesses.gameoverlayui)
+    ? overlayProcesses.gameoverlayui.filter((entry) => entry && entry.targetPid != null)
+    : [];
+  expect(overlayProcesses.available === true, "overlay process snapshot available");
+  expect(gameoverlayui.length === 1, "exactly one gameoverlayui target detected");
+  if (gameoverlayui.length > 0) {
+    expect(gameoverlayui[0].targetPid === processInfo.pid, "gameoverlayui targets the smoke app process");
+  }
 }
 if (options.requireSteamLaunch) {
   expect(launch.steamLaunch === true, "Steam launch marker detected");
@@ -147,6 +158,7 @@ function parseArgs(args) {
     requireOverlayReady: false,
     requireNativeProbeOpen: false,
     requireOverlayActivated: false,
+    requireSingleOverlayTarget: false,
     requireSteamLaunch: false,
     requireSteamDeck: false,
     requiredEvents: []
@@ -187,6 +199,9 @@ function parseArgs(args) {
         break;
       case "--require-overlay-activated":
         parsed.requireOverlayActivated = true;
+        break;
+      case "--require-single-overlay-target":
+        parsed.requireSingleOverlayTarget = true;
         break;
       case "--require-native-probe-open":
         parsed.requireNativeProbeOpen = true;
