@@ -309,14 +309,17 @@ const presenter = client.overlay.attachPresenter(
   })
 );
 
-client.overlay.openWebOverlay("https://store.steampowered.com/app/480/", {
+client.overlay.openSteamOverlay({
+  type: "web",
+  url: "https://store.steampowered.com/app/480/",
   modal: true,
   presenter
 });
 
-client.overlay.openFriendsOverlay({ presenter });
+client.overlay.openSteamOverlay({ type: "friends", presenter });
 
-client.overlay.openAchievementsOverlay({
+client.overlay.openSteamOverlay({
+  type: "achievements",
   appId: 480,
   presenter
 });
@@ -355,16 +358,21 @@ receives an achievement-stored callback, and captures a visible Steam
 achievement-progress toast over the app without requiring a modal overlay
 activation callback.
 
-Steam Bridge routes overlay targets by how Steam renders them. Web, store, and
-checkout-style overlays prepare the native host as an interactive overlay target.
-With the default child-process isolation, Deck Desktop Mode has verified this
-path with a single `gameoverlayui` process, paired active/inactive callbacks, and
-visual return to the Electron app. Passive achievement-progress toasts also
-render with the presenter transparent and click-through. For a generic Friends
-List surface, use `client.overlay.openFriendsOverlay({ presenter })`; on Steam
-Deck Desktop Mode this opens Steam Community chat through the same native web
-presenter with one `gameoverlayui` target and a clean close/back-to-app result.
-For app achievements, use `client.overlay.openAchievementsOverlay({ appId,
+Steam Bridge routes overlay targets by how Steam renders them. Prefer
+`client.overlay.openSteamOverlay(...)` for app code: web, store, Friends,
+Community, Stats, and Achievements targets prepare the native host through the
+presenter-backed paths validated on Steam Deck Desktop Mode, while the
+lower-level named helpers remain available for explicit integrations. With the
+default child-process isolation, Deck Desktop Mode has verified this path with a
+single `gameoverlayui` process, paired active/inactive callbacks, and visual
+return to the Electron app. Passive achievement-progress toasts also render with
+the presenter transparent and click-through. For a generic Friends List surface,
+use `client.overlay.openSteamOverlay({ type: "friends", presenter })` or
+`client.overlay.openFriendsOverlay({ presenter })`; on Steam Deck Desktop Mode
+this opens Steam Community chat through the same native web presenter with one
+`gameoverlayui` target and a clean close/back-to-app result. For app
+achievements, use `client.overlay.openSteamOverlay({ type: "achievements",
+appId, presenter })` or `client.overlay.openAchievementsOverlay({ appId,
 presenter })`; it opens the current user's app achievements page through the same
 presenter-backed Steam web overlay route instead of relying on the raw Desktop
 achievements dialog. Steam Community may redirect apps without public web stats
@@ -382,9 +390,10 @@ The native presenter currently uses the macOS probe implementation on macOS and
 an X11/GLX probe implementation on Linux. On Steam Deck Desktop Mode, the Linux
 reusable presenter path is the current generic proof path for product overlay
 activation, visual open, close, and back-to-app checks. Use
-`client.overlay.attachPresenter(...)` with `client.overlay.openWebOverlay(...)`,
+`client.overlay.attachPresenter(...)` with `client.overlay.openSteamOverlay(...)`,
+or the lower-level `client.overlay.openWebOverlay(...)`,
 `client.overlay.openFriendsOverlay(...)`, `client.overlay.openCommunityOverlay(...)`,
-or `client.overlay.openStatsOverlay(...)`, or the Electron smoke app's
+and `client.overlay.openStatsOverlay(...)` helpers, or the Electron smoke app's
 `presenter-web` / `presenter-friends` / `presenter-community` /
 `presenter-stats` actions for that proof. The older
 `activateToWebPageWithNativeSession(..., { modal: true })` / `native-web` path
@@ -406,9 +415,9 @@ Use `--visual-toggle-probe` for hotkey evidence. The default
 a temporary virtual gamepad. Add `--overlay-game-id shortcut` when investigating
 whether raw Steam overlay close/back routing depends on the full non-Steam
 shortcut game ID. Focused Deck Desktop runs still show this toggle path as
-unresolved; the product overlay paths remain `openWebOverlay`,
-`openStoreOverlay`, `openFriendsOverlay`, `openCommunityOverlay`,
-`openStatsOverlay`, and passive presenter notifications.
+unresolved; the product overlay paths remain `openSteamOverlay(...)`, the
+lower-level web/store/Friends/Community/Stats helpers, and passive presenter
+notifications.
 
 Set `STEAM_BRIDGE_ELECTRON_OVERLAY_PROFILE=repaint`, or pass
 `--steam-bridge-electron-overlay-profile=repaint` to the Electron smoke app, to

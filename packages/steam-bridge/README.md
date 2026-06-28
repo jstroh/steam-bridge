@@ -134,7 +134,8 @@ const txn = await steamworks.webApi.microTxnSandbox.initTxn({
 The package also includes overlay diagnostics through
 `client.utils.getOverlayDiagnostics()`, bridge-owned native overlay presenter
 helpers such as `client.overlay.attachPresenter()` and
-`client.overlay.openWebOverlay()` / `client.overlay.openFriendsOverlay()`, and
+`client.overlay.openSteamOverlay()`, `client.overlay.openWebOverlay()`, and
+`client.overlay.openFriendsOverlay()`, and
 compatibility session helpers such as
 `client.overlay.activateDialogWithNativeSession()`,
 `client.overlay.activateToStoreWithNativeSession()`, and
@@ -156,24 +157,29 @@ const presenter = client.overlay.attachPresenter(
   steamworks.electronOverlayPresenterOptions(mainWindow)
 );
 
-client.overlay.openWebOverlay(checkoutUrl, {
+client.overlay.openSteamOverlay({
+  type: "web",
+  url: checkoutUrl,
   modal: true,
   presenter
 });
 
-client.overlay.openFriendsOverlay({ presenter });
+client.overlay.openSteamOverlay({ type: "friends", presenter });
 
-client.overlay.openCommunityOverlay({
+client.overlay.openSteamOverlay({
+  type: "community",
   appId: 480,
   presenter
 });
 
-client.overlay.openStatsOverlay({
+client.overlay.openSteamOverlay({
+  type: "stats",
   appId: 480,
   presenter
 });
 
-client.overlay.openAchievementsOverlay({
+client.overlay.openSteamOverlay({
+  type: "achievements",
   appId: 480,
   presenter
 });
@@ -181,23 +187,31 @@ client.overlay.openAchievementsOverlay({
 
 The presenter stays passive and click-through while idle, polls Steam overlay
 state cheaply, and only pumps frames when Steam reports `overlayNeedsPresent` or
-an overlay is being opened/active. On Linux/X11, fully idle mode makes the host
-transparent and click-through; `overlayNeedsPresent` can make it visible while
-leaving input click-through for passive notifications; opening or active overlay
-mode restores both opacity and input so Steam web or checkout UI can receive
-clicks, then parks the host transparent after Steam reports the overlay
-inactive. The default `idleFps` is `0`; opt into nonzero idle pumping only for
-diagnostics. Use `client.overlay.openFriendsOverlay({ presenter })` for a generic
-Friends List surface; it opens Steam Community chat through the same native web
-presenter path, keeping Electron child-process isolation intact. Use
+an overlay is being opened/active. `openSteamOverlay()` is the recommended
+builder-facing entry point: web, store, Friends, Community, Stats, and
+Achievements targets route through the presenter-backed paths validated on Steam
+Deck Desktop Mode; the lower-level named helpers remain available for apps that
+prefer explicit calls. On Linux/X11, fully idle mode makes the host transparent
+and click-through; `overlayNeedsPresent` can make it visible while leaving input
+click-through for passive notifications; opening or active overlay mode restores
+both opacity and input so Steam web or checkout UI can receive clicks, then
+parks the host transparent after Steam reports the overlay inactive. The default
+`idleFps` is `0`; opt into nonzero idle pumping only for diagnostics. Use
+`client.overlay.openSteamOverlay({ type: "friends", presenter })` or
+`client.overlay.openFriendsOverlay({ presenter })` for a generic Friends List
+surface; it opens Steam Community chat through the same native web presenter
+path, keeping Electron child-process isolation intact. Use
+`client.overlay.openSteamOverlay({ type: "community", appId, presenter })` or
 `client.overlay.openCommunityOverlay({ appId, presenter })` for the app's Steam
-Community hub and `client.overlay.openStatsOverlay({ appId, presenter })` for
+Community hub, and `client.overlay.openSteamOverlay({ type: "stats", appId,
+presenter })` or `client.overlay.openStatsOverlay({ appId, presenter })` for
 the current user's app stats page through the same presenter-backed Steam web
-overlay route. Use
-`client.overlay.openAchievementsOverlay({ appId, presenter })` for the current
-user's app achievements page through that same presenter-backed Steam web
-overlay route. Steam Community may redirect apps without public web stats to the
-user's profile, so use your real app for achievements content proof.
+overlay route. Use `client.overlay.openSteamOverlay({ type: "achievements",
+appId, presenter })` or `client.overlay.openAchievementsOverlay({ appId,
+presenter })` for the current user's app achievements page through that same
+presenter-backed Steam web overlay route. Steam Community may redirect apps
+without public web stats to the user's profile, so use your real app for
+achievements content proof.
 The lower-level
 `activateDialog("Friends")` / Game Overview path is still an investigation path,
 and `steam://open/overlay` should not be used as a generic toggle substitute:
@@ -216,9 +230,10 @@ Chromium's GPU work in-process.
 On Steam Deck Desktop Mode, the Linux X11/GLX reusable presenter path is the
 current generic proof path for product overlay activation, visual open, close,
 and back-to-app checks. Use `client.overlay.attachPresenter(...)` with
+`client.overlay.openSteamOverlay(...)`, or the lower-level
 `client.overlay.openWebOverlay(...)`, `client.overlay.openFriendsOverlay(...)`,
-`client.overlay.openCommunityOverlay(...)`, or
-`client.overlay.openStatsOverlay(...)`, or the Electron smoke app's
+`client.overlay.openCommunityOverlay(...)`, and
+`client.overlay.openStatsOverlay(...)` helpers, or the Electron smoke app's
 `presenter-web` / `presenter-friends` / `presenter-community` /
 `presenter-stats` actions for the generic proof. Deck testing has verified a
 single Steam overlay target,

@@ -1666,6 +1666,47 @@ export type NativeOverlayAppPagePresenterOptions = NativeOverlayWebPagePresenter
   steamId64?: bigint | number | string;
 };
 
+export type SteamOverlayWebTarget = NativeOverlayWebPagePresenterOptions & {
+  type: "web";
+  url: string;
+};
+
+export type SteamOverlayStoreTarget = NativeOverlayPresenterOverlayOptions & {
+  type: "store";
+  appId?: number;
+  flag?: number;
+};
+
+export type SteamOverlayFriendsTarget = NativeOverlayWebPagePresenterOptions & {
+  type: "friends";
+};
+
+export type SteamOverlayCommunityTarget = NativeOverlayAppPagePresenterOptions & {
+  type: "community";
+};
+
+export type SteamOverlayStatsTarget = NativeOverlayAppPagePresenterOptions & {
+  type: "stats";
+};
+
+export type SteamOverlayAchievementsTarget = NativeOverlayAppPagePresenterOptions & {
+  type: "achievements";
+};
+
+export type SteamOverlayDialogTarget = NativeOverlayPresenterOverlayOptions & {
+  type: "dialog";
+  dialog?: number | string;
+};
+
+export type SteamOverlayTarget =
+  | SteamOverlayWebTarget
+  | SteamOverlayStoreTarget
+  | SteamOverlayFriendsTarget
+  | SteamOverlayCommunityTarget
+  | SteamOverlayStatsTarget
+  | SteamOverlayAchievementsTarget
+  | SteamOverlayDialogTarget;
+
 type NativeOverlayPresenterActivationMode = "interactive" | "passive" | "transparent-input";
 
 type NativeOverlayPresenterInternal = NativeOverlayPresenter & {
@@ -7369,6 +7410,39 @@ export function openStoreOverlay(
   );
 }
 
+export function openSteamOverlay(target: SteamOverlayTarget): NativeOverlayPresenter {
+  switch (target.type) {
+    case "web": {
+      const { type, url, ...options } = target;
+      return openWebOverlay(url, options);
+    }
+    case "store": {
+      const { type, appId = getAppId(), flag = StoreFlag.None, ...options } = target;
+      return openStoreOverlay(appId, flag, options);
+    }
+    case "friends": {
+      const { type, ...options } = target;
+      return openFriendsOverlay(options);
+    }
+    case "community": {
+      const { type, ...options } = target;
+      return openCommunityOverlay(options);
+    }
+    case "stats": {
+      const { type, ...options } = target;
+      return openStatsOverlay(options);
+    }
+    case "achievements": {
+      const { type, ...options } = target;
+      return openAchievementsOverlay(options);
+    }
+    case "dialog": {
+      const { type, dialog = "Friends", ...options } = target;
+      return openDialogOverlay(dialog, options);
+    }
+  }
+}
+
 export function activateDialogWithNativeSession(
   dialog: number | string = "Friends",
   options?: NativeOverlaySessionOptions
@@ -11634,6 +11708,7 @@ export const overlay = {
   openStatsOverlay,
   openAchievementsOverlay,
   openStoreOverlay,
+  openSteamOverlay,
   startNativeOverlaySession,
   activateDialogWithNativeSession,
   activateToWebPageWithNativeSession,
@@ -19375,6 +19450,7 @@ const defaultExport = {
   openStatsOverlay,
   openAchievementsOverlay,
   openStoreOverlay,
+  openSteamOverlay,
   startNativeOverlaySession,
   activateDialogWithNativeSession,
   activateToWebPageWithNativeSession,

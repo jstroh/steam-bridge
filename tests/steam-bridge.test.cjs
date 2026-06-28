@@ -4378,6 +4378,37 @@ test("overlay helpers map constants and forward modal/store options", (t) => {
   steam.overlay.openCommunityOverlay({ appId: 480, presenter: mockPresenter });
   steam.overlay.openStatsOverlay({ appId: 480, steamId64: 76561198000000000n, presenter: mockPresenter });
   steam.overlay.openAchievementsOverlay({ appId: 480, steamId64: 76561198000000000n, presenter: mockPresenter });
+  steam.overlay.openSteamOverlay({
+    type: "web",
+    url: "https://store.steampowered.com/app/480/",
+    modal: true,
+    presenter: mockPresenter
+  });
+  steam.overlay.openSteamOverlay({
+    type: "store",
+    appId: 480,
+    flag: steam.StoreFlag.AddToCart,
+    presenter: mockPresenter
+  });
+  steam.overlay.openSteamOverlay({ type: "friends", presenter: mockPresenter });
+  steam.overlay.openSteamOverlay({ type: "community", appId: 480, presenter: mockPresenter });
+  steam.overlay.openSteamOverlay({
+    type: "stats",
+    appId: 480,
+    steamId64: 76561198000000000n,
+    presenter: mockPresenter
+  });
+  steam.overlay.openSteamOverlay({
+    type: "achievements",
+    appId: 480,
+    steamId64: 76561198000000000n,
+    presenter: mockPresenter
+  });
+  steam.overlay.openSteamOverlay({
+    type: "dialog",
+    dialog: steam.Dialog.Settings,
+    presenter: mockPresenter
+  });
   steam.openNativeOverlayProbeWindow("Steam Overlay Probe");
   steam.overlay.attachNativeOverlayHostView(nativeWindowHandle);
   steam.overlay.pumpNativeOverlayProbeWindow();
@@ -4404,7 +4435,14 @@ test("overlay helpers map constants and forward modal/store options", (t) => {
       { method: "activateOverlayToWebPage", args: [steam.STEAM_FRIENDS_OVERLAY_URL, true] },
       { method: "activateOverlayToWebPage", args: [steam.steamCommunityAppUrl(480), true] },
       { method: "activateOverlayToWebPage", args: [steam.steamCommunityUserStatsUrl(480, 76561198000000000n), true] },
-      { method: "activateOverlayToWebPage", args: [steam.steamCommunityAchievementsUrl(480, 76561198000000000n), true] }
+      { method: "activateOverlayToWebPage", args: [steam.steamCommunityAchievementsUrl(480, 76561198000000000n), true] },
+      { method: "activateOverlayToWebPage", args: ["https://store.steampowered.com/app/480/", true] },
+      { method: "overlayActivateToStore", args: [480, steam.StoreFlag.AddToCart] },
+      { method: "activateOverlayToWebPage", args: [steam.STEAM_FRIENDS_OVERLAY_URL, true] },
+      { method: "activateOverlayToWebPage", args: [steam.steamCommunityAppUrl(480), true] },
+      { method: "activateOverlayToWebPage", args: [steam.steamCommunityUserStatsUrl(480, 76561198000000000n), true] },
+      { method: "activateOverlayToWebPage", args: [steam.steamCommunityAchievementsUrl(480, 76561198000000000n), true] },
+      { method: "activateOverlay", args: ["Settings"] }
     ]
   );
   assert.equal(steam.STEAM_COMMUNITY_BASE_URL, "https://steamcommunity.com");
@@ -4424,7 +4462,14 @@ test("overlay helpers map constants and forward modal/store options", (t) => {
     "prepareForOverlay",
     "prepareForOverlay",
     "prepareForOverlay",
-    "prepareForOverlay"
+    "prepareForOverlay",
+    "prepareForOverlay",
+    "prepareForOverlay",
+    "prepareForOverlay",
+    "prepareForOverlay",
+    "prepareForOverlay",
+    "prepareForOverlay",
+    "prepareForPassiveOverlay"
   ]);
   assert.deepEqual(
     fake.calls.filter((call) =>

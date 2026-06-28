@@ -518,7 +518,7 @@ function openPresenterWebOverlay() {
 function openPresenterFriendsOverlay() {
   const activeClient = requireClient();
   const presenter = ensureNativeOverlayPresenter(activeClient);
-  activeClient.overlay.openFriendsOverlay({ presenter });
+  activeClient.overlay.openSteamOverlay({ type: "friends", presenter });
   recordEvent("overlay:presenter-open", {
     target: "friends",
     url: steamworks.STEAM_FRIENDS_OVERLAY_URL,
@@ -531,7 +531,7 @@ function openPresenterFriendsOverlay() {
 function openPresenterCommunityOverlay() {
   const activeClient = requireClient();
   const presenter = ensureNativeOverlayPresenter(activeClient);
-  activeClient.overlay.openCommunityOverlay({ appId: APP_ID, presenter });
+  activeClient.overlay.openSteamOverlay({ type: "community", appId: APP_ID, presenter });
   recordEvent("overlay:presenter-open", {
     target: "community",
     appId: APP_ID,
@@ -545,7 +545,7 @@ function openPresenterCommunityOverlay() {
 function openPresenterStatsOverlay() {
   const activeClient = requireClient();
   const presenter = ensureNativeOverlayPresenter(activeClient);
-  activeClient.overlay.openStatsOverlay({ appId: APP_ID, presenter });
+  activeClient.overlay.openSteamOverlay({ type: "stats", appId: APP_ID, presenter });
   recordEvent("overlay:presenter-open", {
     target: "stats",
     appId: APP_ID,
@@ -559,7 +559,7 @@ function openPresenterStatsOverlay() {
 function openPresenterAchievementsOverlay() {
   const activeClient = requireClient();
   const presenter = ensureNativeOverlayPresenter(activeClient);
-  activeClient.overlay.openAchievementsOverlay({ appId: APP_ID, presenter });
+  activeClient.overlay.openSteamOverlay({ type: "achievements", appId: APP_ID, presenter });
   recordEvent("overlay:presenter-open", {
     target: "achievements",
     appId: APP_ID,
