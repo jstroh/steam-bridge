@@ -367,6 +367,11 @@ only when you need lower-level lifecycle control.
 Call `steamOverlay.snapshot()` when you need diagnostics; it returns the native
 presenter state plus an `electronOverlay` block with the presenter mode,
 shortcut policy, and window-close ownership.
+The smoke verifiers can require those managed diagnostics with
+`--require-electron-overlay`, `--require-presenter-mode <persistent|session>`,
+and `--require-overlay-shortcut-target <target>`. The Deck runner adds the
+presenter-mode requirement automatically for presenter-backed product actions
+and adds the shortcut-target requirement for `presenter-shortcut`.
 For emergency diagnostics, set `presenterMode: "session"` or
 `STEAM_BRIDGE_DISABLE_ELECTRON_OVERLAY_PRESENTER=1` to disable the reusable
 presenter and fall back to the older one-shot native-session lifecycle while

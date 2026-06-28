@@ -169,7 +169,9 @@ The presenter should:
 - expose diagnostics so app code and tests can tell whether the presenter is
   attached, visible, passive, active, pumping, and recently touched by overlay
   callbacks; the managed Electron overlay snapshot also reports the selected
-  presenter mode, shortcut policy, and window-close ownership.
+  presenter mode, shortcut policy, and window-close ownership. The smoke
+  verifiers can require those managed Electron fields so Deck/Linux runs fail if
+  the wrong presenter mode or shortcut target is active.
 
 This should replace app-owned overlay controllers. App builders should not need
 to know whether the active platform uses X11/GLX, Metal, or another backend.

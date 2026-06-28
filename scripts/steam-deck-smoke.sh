@@ -51,6 +51,9 @@ require_close_deactivated="0"
 require_single_overlay_target="0"
 require_passive_presenter="0"
 require_idle_presenter="0"
+require_electron_overlay="0"
+require_presenter_mode=""
+require_overlay_shortcut_target=""
 require_no_crashes="0"
 
 usage() {
@@ -134,6 +137,10 @@ Options:
                                 Require one gameoverlayui target attached to the smoke app.
   --require-passive-presenter   Require the reusable presenter to be passive/click-through/transparent.
   --require-idle-presenter      Require --require-passive-presenter plus zero current/idle FPS.
+  --require-electron-overlay    Require managed Electron overlay diagnostics in the presenter snapshot.
+  --require-presenter-mode MODE Require managed Electron overlay presenter mode: persistent or session.
+  --require-overlay-shortcut-target NAME
+                                Require managed Electron Shift+Tab target type.
   --require-no-crashes          Require no crash dumps or fatal Electron lifecycle events.
   --connect-timeout SECONDS     SSH connect timeout. Defaults to 6.
 EOF
@@ -334,6 +341,20 @@ while [ "$#" -gt 0 ]; do
       require_idle_presenter="1"
       require_passive_presenter="1"
       shift
+      ;;
+    --require-electron-overlay)
+      require_electron_overlay="1"
+      shift
+      ;;
+    --require-presenter-mode)
+      require_presenter_mode="${2:?missing --require-presenter-mode value}"
+      require_electron_overlay="1"
+      shift 2
+      ;;
+    --require-overlay-shortcut-target)
+      require_overlay_shortcut_target="${2:?missing --require-overlay-shortcut-target value}"
+      require_electron_overlay="1"
+      shift 2
       ;;
     --require-no-crashes)
       require_no_crashes="1"
@@ -1339,6 +1360,22 @@ uses_persistent_presenter() {
   [ -z "$presenter_mode" ] || [ "$presenter_mode" = "persistent" ]
 }
 
+effective_presenter_mode() {
+  if [ -n "$presenter_mode" ]; then
+    printf '%s\n' "$presenter_mode"
+  else
+    printf '%s\n' "persistent"
+  fi
+}
+
+resolved_shortcut_target() {
+  if [ -n "$shortcut_target" ]; then
+    printf '%s\n' "$shortcut_target"
+  else
+    printf '%s\n' "friends"
+  fi
+}
+
 persistent_presenter_parking_required() {
   if uses_persistent_presenter; then
     printf '%s\n' "1"
@@ -1628,6 +1665,15 @@ append_common_helper_args() {
   if [ "$require_idle_presenter" = "1" ]; then
     helper_args+=("--require-idle-presenter")
   fi
+  if [ "$require_electron_overlay" = "1" ]; then
+    helper_args+=("--require-electron-overlay")
+  fi
+  if [ -n "$require_presenter_mode" ]; then
+    helper_args+=("--require-presenter-mode" "$require_presenter_mode")
+  fi
+  if [ -n "$require_overlay_shortcut_target" ]; then
+    helper_args+=("--require-overlay-shortcut-target" "$require_overlay_shortcut_target")
+  fi
   if [ "$require_no_crashes" = "1" ]; then
     helper_args+=("--require-no-crashes")
   fi
@@ -1681,6 +1727,12 @@ build_steam_launch_args() {
   fi
   if is_presenter_product_action; then
     helper_args+=("--require-no-crashes")
+    if [ -z "$require_presenter_mode" ]; then
+      helper_args+=("--require-presenter-mode" "$(effective_presenter_mode)")
+    fi
+  fi
+  if [ "$action" = "presenter-shortcut" ] && [ -z "$require_overlay_shortcut_target" ]; then
+    helper_args+=("--require-overlay-shortcut-target" "$(resolved_shortcut_target)")
   fi
   if uses_persistent_presenter; then
     if [ "$action" = "presenter-shortcut" ] ||
@@ -1992,6 +2044,10 @@ run_self_test() {
     echo "Self-test failed: Presenter product args must require no crash diagnostics." >&2
     exit 1
   fi
+  if [[ "$friends_args" != *"--require-presenter-mode persistent"* ]]; then
+    echo "Self-test failed: Presenter product args must require persistent presenter mode by default." >&2
+    exit 1
+  fi
 
   action="presenter-community"
   build_steam_launch_args
@@ -2046,6 +2102,14 @@ run_self_test() {
     echo "Self-test failed: Presenter shortcut args must pass the requested presenter mode." >&2
     exit 1
   fi
+  if [[ "$shortcut_args" != *"--require-presenter-mode session"* ]]; then
+    echo "Self-test failed: Session presenter shortcut args must require session presenter diagnostics." >&2
+    exit 1
+  fi
+  if [[ "$shortcut_args" != *"--require-overlay-shortcut-target web"* ]]; then
+    echo "Self-test failed: Presenter shortcut args must require the requested shortcut target diagnostics." >&2
+    exit 1
+  fi
   if [[ "$shortcut_args" == *"--require-overlay-activated"* ]]; then
     echo "Self-test failed: Presenter shortcut args must not require overlay activation before the visual toggle probe." >&2
     exit 1
@@ -2085,6 +2149,14 @@ run_self_test() {
     echo "Self-test failed: Persistent presenter shortcut args must require idle presenter parking." >&2
     exit 1
   fi
+  if [[ "$shortcut_args" != *"--require-presenter-mode persistent"* ]]; then
+    echo "Self-test failed: Persistent presenter shortcut args must require persistent presenter diagnostics." >&2
+    exit 1
+  fi
+  if [[ "$shortcut_args" != *"--require-overlay-shortcut-target friends"* ]]; then
+    echo "Self-test failed: Persistent presenter shortcut args must require default shortcut target diagnostics." >&2
+    exit 1
+  fi
   require_single_overlay_target="0"
   require_no_crashes="0"
 
@@ -2108,6 +2180,10 @@ run_self_test() {
   fi
   if [[ "$checkout_args" != *"--require-no-crashes"* ]]; then
     echo "Self-test failed: Checkout args must require no crash diagnostics." >&2
+    exit 1
+  fi
+  if [[ "$checkout_args" != *"--require-presenter-mode persistent"* ]]; then
+    echo "Self-test failed: Checkout args must require persistent presenter diagnostics." >&2
     exit 1
   fi
 
@@ -2145,6 +2221,10 @@ run_self_test() {
   fi
   if [[ "$toast_args" != *"--require-no-crashes"* ]]; then
     echo "Self-test failed: Toast args must require no crash diagnostics." >&2
+    exit 1
+  fi
+  if [[ "$toast_args" != *"--require-presenter-mode persistent"* ]]; then
+    echo "Self-test failed: Toast args must require persistent presenter diagnostics." >&2
     exit 1
   fi
 

@@ -234,7 +234,12 @@ transparent after Steam reports the overlay inactive. The default `idleFps` is
 `0`; opt into nonzero idle pumping only for diagnostics. Use
 `steamOverlay.snapshot()` for diagnostics; it returns the native presenter state
 plus an `electronOverlay` block with the active presenter mode, shortcut policy,
-and whether the manager owns Electron window-close cleanup. Use
+and whether the manager owns Electron window-close cleanup. The smoke verifiers
+can require those managed diagnostics with `--require-electron-overlay`,
+`--require-presenter-mode <persistent|session>`, and
+`--require-overlay-shortcut-target <target>`. The Deck runner adds the
+presenter-mode requirement automatically for presenter-backed product actions
+and adds the shortcut-target requirement for `presenter-shortcut`. Use
 `presenterMode: "session"` or
 `STEAM_BRIDGE_DISABLE_ELECTRON_OVERLAY_PRESENTER=1` only as an emergency
 compatibility switch: it disables the reusable presenter, uses the older

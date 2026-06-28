@@ -13,6 +13,7 @@ const overlayProcesses = snapshot.overlayProcesses || {};
 const crashDiagnostics = snapshot.crashDiagnostics || {};
 const processInfo = snapshot.process || {};
 const nativePresenter = readOkValue(overlay.nativePresenter);
+const electronOverlay = nativePresenter && typeof nativePresenter === "object" ? nativePresenter.electronOverlay : undefined;
 const events = Array.isArray(snapshot.events) ? snapshot.events : [];
 const overlayActivated = events.some(isOverlayActiveEvent);
 const failures = [];
@@ -75,6 +76,23 @@ if (options.requirePassivePresenter || options.requireIdlePresenter) {
     expect(nativePresenter.transparent === true, "native presenter is transparent");
     expect(nativePresenter.overlayActive === false, "native presenter overlay inactive");
   }
+}
+if (options.requireElectronOverlay || options.requirePresenterMode || options.requireOverlayShortcutTarget) {
+  expect(Boolean(electronOverlay), "managed Electron overlay diagnostics available");
+}
+if (options.requirePresenterMode && electronOverlay) {
+  expect(
+    electronOverlay.presenterMode === options.requirePresenterMode,
+    `managed Electron presenter mode is ${options.requirePresenterMode}`
+  );
+}
+if (options.requireOverlayShortcutTarget && electronOverlay) {
+  const overlayShortcut = electronOverlay.overlayShortcut || {};
+  expect(overlayShortcut.enabled === true, "managed Electron overlay shortcut is enabled");
+  expect(
+    overlayShortcut.targetType === options.requireOverlayShortcutTarget,
+    `managed Electron overlay shortcut target is ${options.requireOverlayShortcutTarget}`
+  );
 }
 if (options.requireIdlePresenter) {
   if (nativePresenter) {
@@ -192,6 +210,9 @@ function parseArgs(args) {
     requireSingleOverlayTarget: false,
     requirePassivePresenter: false,
     requireIdlePresenter: false,
+    requireElectronOverlay: false,
+    requirePresenterMode: undefined,
+    requireOverlayShortcutTarget: undefined,
     requireNoCrashes: false,
     requireSteamLaunch: false,
     requireSteamDeck: false,
@@ -243,6 +264,17 @@ function parseArgs(args) {
       case "--require-idle-presenter":
         parsed.requireIdlePresenter = true;
         parsed.requirePassivePresenter = true;
+        break;
+      case "--require-electron-overlay":
+        parsed.requireElectronOverlay = true;
+        break;
+      case "--require-presenter-mode":
+        parsed.requirePresenterMode = args[++index];
+        parsed.requireElectronOverlay = true;
+        break;
+      case "--require-overlay-shortcut-target":
+        parsed.requireOverlayShortcutTarget = args[++index];
+        parsed.requireElectronOverlay = true;
         break;
       case "--require-no-crashes":
         parsed.requireNoCrashes = true;

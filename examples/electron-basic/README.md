@@ -123,7 +123,12 @@ Overview may not render; with isolation disabled, it may render through the
 Chromium hook but still fail close/back-to-app proof.
 Smoke snapshots include `snapshot.overlay.nativePresenter`, whose
 `electronOverlay` diagnostics show the managed presenter mode and shortcut
-policy used for the run.
+policy used for the run. The Node verifier and packaged Linux helper can assert
+those fields with `--require-electron-overlay`,
+`--require-presenter-mode <persistent|session>`, and
+`--require-overlay-shortcut-target <target>`. The Deck runner adds the
+presenter-mode assertion automatically for presenter-backed product actions and
+adds the shortcut-target assertion for `presenter-shortcut`.
 Use `presenter-friends` to verify the recommended Friends List path:
 `client.overlay.openFriendsOverlay({ presenter })` opens Steam Community chat
 through the same native web presenter used by checkout/store overlays, keeping a

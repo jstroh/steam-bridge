@@ -35,6 +35,9 @@ require_overlay_activated="0"
 require_single_overlay_target="0"
 require_passive_presenter="0"
 require_idle_presenter="0"
+require_electron_overlay="0"
+require_presenter_mode=""
+require_overlay_shortcut_target=""
 require_no_crashes="0"
 require_steam_deck="0"
 require_big_picture="0"
@@ -98,6 +101,10 @@ Options:
                                  Require one gameoverlayui target attached to the app process.
   --require-passive-presenter    Require the reusable presenter to be passive/click-through/transparent.
   --require-idle-presenter       Require --require-passive-presenter plus zero current/idle FPS.
+  --require-electron-overlay     Require managed Electron overlay diagnostics in the presenter snapshot.
+  --require-presenter-mode MODE  Require managed Electron overlay presenter mode: persistent or session.
+  --require-overlay-shortcut-target NAME
+                                 Require managed Electron Shift+Tab target type.
   --require-no-crashes           Require no crash dumps or fatal Electron lifecycle events.
   --require-steam-deck           Require Steam Deck detection.
   --require-big-picture          Require Big Picture/Game Mode detection.
@@ -247,6 +254,20 @@ while [ "$#" -gt 0 ]; do
       require_idle_presenter="1"
       require_passive_presenter="1"
       shift
+      ;;
+    --require-electron-overlay)
+      require_electron_overlay="1"
+      shift
+      ;;
+    --require-presenter-mode)
+      require_presenter_mode="${2:?missing --require-presenter-mode value}"
+      require_electron_overlay="1"
+      shift 2
+      ;;
+    --require-overlay-shortcut-target)
+      require_overlay_shortcut_target="${2:?missing --require-overlay-shortcut-target value}"
+      require_electron_overlay="1"
+      shift 2
       ;;
     --require-no-crashes)
       require_no_crashes="1"
@@ -494,6 +515,9 @@ verify_result() {
   REQUIRE_SINGLE_OVERLAY_TARGET="$require_single_overlay_target" \
   REQUIRE_PASSIVE_PRESENTER="$require_passive_presenter" \
   REQUIRE_IDLE_PRESENTER="$require_idle_presenter" \
+  REQUIRE_ELECTRON_OVERLAY="$require_electron_overlay" \
+  REQUIRE_PRESENTER_MODE="$require_presenter_mode" \
+  REQUIRE_OVERLAY_SHORTCUT_TARGET="$require_overlay_shortcut_target" \
   REQUIRE_NO_CRASHES="$require_no_crashes" \
   REQUIRE_STEAM_DECK="$require_steam_deck" \
   REQUIRE_BIG_PICTURE="$require_big_picture" \
@@ -532,6 +556,7 @@ def ok_value(entry):
     return entry.get("value") if isinstance(entry, dict) and entry.get("ok") is True else None
 
 native_presenter = ok_value(overlay.get("nativePresenter"))
+electron_overlay = native_presenter.get("electronOverlay") if isinstance(native_presenter, dict) else None
 
 def overlay_active_event(event):
     if not isinstance(event, dict) or event.get("type") != "callback:overlay-activated":
@@ -603,6 +628,24 @@ if os.environ["REQUIRE_IDLE_PRESENTER"] == "1" and isinstance(native_presenter, 
     expect(native_presenter.get("idleFps") == 0, "native presenter idle FPS is zero")
     expect(native_presenter.get("currentFps") == 0, "native presenter current FPS is zero")
     expect(native_presenter.get("overlayNeedsPresent") is False, "native presenter overlay does not need present")
+if (
+    os.environ["REQUIRE_ELECTRON_OVERLAY"] == "1"
+    or os.environ["REQUIRE_PRESENTER_MODE"]
+    or os.environ["REQUIRE_OVERLAY_SHORTCUT_TARGET"]
+):
+    expect(isinstance(electron_overlay, dict), "managed Electron overlay diagnostics available")
+if os.environ["REQUIRE_PRESENTER_MODE"] and isinstance(electron_overlay, dict):
+    expect(
+        electron_overlay.get("presenterMode") == os.environ["REQUIRE_PRESENTER_MODE"],
+        f"managed Electron presenter mode is {os.environ['REQUIRE_PRESENTER_MODE']}",
+    )
+if os.environ["REQUIRE_OVERLAY_SHORTCUT_TARGET"] and isinstance(electron_overlay, dict):
+    overlay_shortcut = electron_overlay.get("overlayShortcut") or {}
+    expect(overlay_shortcut.get("enabled") is True, "managed Electron overlay shortcut is enabled")
+    expect(
+        overlay_shortcut.get("targetType") == os.environ["REQUIRE_OVERLAY_SHORTCUT_TARGET"],
+        f"managed Electron overlay shortcut target is {os.environ['REQUIRE_OVERLAY_SHORTCUT_TARGET']}",
+    )
 if os.environ["REQUIRE_NO_CRASHES"] == "1":
     crash_dumps = crash_diagnostics.get("crashDumps") if isinstance(crash_diagnostics.get("crashDumps"), list) else []
     fatal_lifecycle_events = (
@@ -776,7 +819,7 @@ EOF
 
   result_file="$self_test_temp_home/steam-bridge-smoke-single-target.log"
   cat >"$result_file" <<'EOF'
-STEAM_BRIDGE_SMOKE_RESULT {"ok":true,"action":{"ok":true,"action":"presenter-web"},"snapshot":{"app":{"appId":480},"process":{"pid":4242,"platform":"linux","arch":"x64"},"launch":{"steamLaunch":true,"overlayInjection":true},"crashDiagnostics":{"available":true,"ok":true,"crashDumps":[],"fatalLifecycleEvents":[]},"overlayProcesses":{"available":true,"gameoverlayui":[{"pid":9001,"targetPid":4242,"gameId":"480","command":"gameoverlayui -pid 4242 -gameid 480"}]},"overlay":{"nativePresenter":{"ok":true,"value":{"attached":true,"nativeHostOpen":true,"mode":"passive","clickThrough":true,"focusable":false,"transparent":true,"overlayActive":false,"overlayNeedsPresent":false,"idleFps":0,"currentFps":0}}},"steam":{"initialized":true,"running":{"ok":true,"value":true},"appId":{"ok":true,"value":480},"steamDeck":{"ok":true,"value":true},"bigPicture":{"ok":true,"value":false},"overlayEnabled":{"ok":true,"value":true},"overlayNeedsPresent":{"ok":true,"value":false}},"events":[{"type":"overlay:presenter-open"},{"type":"callback:overlay-activated"}]}}
+STEAM_BRIDGE_SMOKE_RESULT {"ok":true,"action":{"ok":true,"action":"presenter-web"},"snapshot":{"app":{"appId":480},"process":{"pid":4242,"platform":"linux","arch":"x64"},"launch":{"steamLaunch":true,"overlayInjection":true},"crashDiagnostics":{"available":true,"ok":true,"crashDumps":[],"fatalLifecycleEvents":[]},"overlayProcesses":{"available":true,"gameoverlayui":[{"pid":9001,"targetPid":4242,"gameId":"480","command":"gameoverlayui -pid 4242 -gameid 480"}]},"overlay":{"nativePresenter":{"ok":true,"value":{"attached":true,"nativeHostOpen":true,"mode":"passive","clickThrough":true,"focusable":false,"transparent":true,"overlayActive":false,"overlayNeedsPresent":false,"idleFps":0,"currentFps":0,"electronOverlay":{"presenterMode":"persistent","closeWithWindow":true,"overlayShortcut":{"enabled":true,"preventDefault":true,"targetType":"friends"}}}}},"steam":{"initialized":true,"running":{"ok":true,"value":true},"appId":{"ok":true,"value":480},"steamDeck":{"ok":true,"value":true},"bigPicture":{"ok":true,"value":false},"overlayEnabled":{"ok":true,"value":true},"overlayNeedsPresent":{"ok":true,"value":false}},"events":[{"type":"overlay:presenter-open"},{"type":"callback:overlay-activated"}]}}
 EOF
 
   action="presenter-web"
@@ -784,12 +827,16 @@ EOF
   require_single_overlay_target="1"
   require_idle_presenter="1"
   require_passive_presenter="1"
+  require_presenter_mode="persistent"
+  require_overlay_shortcut_target="friends"
   require_no_crashes="1"
   require_events=("overlay:presenter-open" "callback:overlay-activated")
   verify_result
   require_single_overlay_target="0"
   require_idle_presenter="0"
   require_passive_presenter="0"
+  require_presenter_mode=""
+  require_overlay_shortcut_target=""
   require_no_crashes="0"
 
   overlay_dialog="Achievements"
