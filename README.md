@@ -261,8 +261,9 @@ achievements, dialog equivalents, checkout readiness, synthetic checkout
 approval-route plumbing, Shift+Tab shortcut routing, and passive
 achievement-progress toasts. It also summarizes every collected result and
 lifecycle log so hidden crash dumps, fatal Electron lifecycle events, duplicate
-overlay targets, and missing presenter diagnostics fail the run. Screenshots
-and diagnostics are collected under `/tmp/steam-bridge-deck-overlay-matrix-*`.
+overlay targets, missing presenter diagnostics, and post-close presenter parking
+regressions fail the run. Screenshots and diagnostics are collected under
+`/tmp/steam-bridge-deck-overlay-matrix-*`.
 For CI/local maintenance without a Deck, `npm run steam-deck:overlay-matrix:check`
 validates the generated minimal, core, and full matrix command sets plus the
 artifact summarizer. To audit an existing artifact root, run

@@ -275,9 +275,10 @@ dialog equivalents, checkout readiness, synthetic checkout approval-route
 plumbing, Shift+Tab shortcut routing, and passive achievement-progress toasts.
 It also summarizes every collected result and lifecycle log, failing if a case
 reports crash dumps, fatal Electron lifecycle events, duplicate overlay targets,
-or missing presenter diagnostics. It writes per-case diagnostics and screenshots
-under `/tmp/steam-bridge-deck-overlay-matrix-*`. Use `--suite minimal` for the
-shortest product smoke pass or `--suite full` to include every known
+missing presenter diagnostics, or post-close presenter parking regressions. It
+writes per-case diagnostics and screenshots under
+`/tmp/steam-bridge-deck-overlay-matrix-*`. Use `--suite minimal` for the shortest
+product smoke pass or `--suite full` to include every known
 dialog-equivalent route.
 
 For the current Desktop Mode visual proof of the reusable presenter path, use the

@@ -403,11 +403,15 @@ readiness, synthetic checkout approval-route plumbing, managed Shift+Tab
 shortcut routing, and passive achievement-progress toasts. After a live run, it
 summarizes the collected result and lifecycle logs and fails on hidden crash
 dumps, fatal Electron lifecycle events, duplicate overlay targets, or missing
-presenter diagnostics. Existing artifact roots can be audited with
+presenter diagnostics. For active overlay cases, the summary also verifies
+post-close presenter parking: `active=false`, transparent/click-through presenter
+snapshots, `currentFps=0`, and no pump-count increase between delayed samples.
+Existing artifact roots can be audited with
 `npm run steam-deck:overlay-matrix:summarize -- --artifact-root <path>`. This
 remains generic App ID `480` plumbing evidence; real purchase content still
 needs the app-specific purchase checklist below. A 2026-06-28 full-suite Deck
-Desktop run passed 16 cases with 33 screenshots and a clean artifact summary.
+Desktop run passed 16 cases with 33 screenshots and a clean artifact summary
+that reported `parked=true` for every active overlay case.
 
 ## Purchase Overlay Checklist
 

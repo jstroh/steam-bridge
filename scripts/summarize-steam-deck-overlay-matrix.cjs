@@ -192,6 +192,7 @@ function summarizeMatrixArtifacts(root) {
         `${caseName}: fatal lifecycle events recorded (${lifecycleFatalEvents.map((entry) => entry.type).join(", ")})`
       );
     }
+    const parking = verifyLifecycleParking(caseName, lifecycle.entries, resultFailures);
 
     failures.push(...resultFailures);
     caseSummaries.push({
@@ -208,6 +209,7 @@ function summarizeMatrixArtifacts(root) {
         nativePresenter && typeof nativePresenter === "object" && nativePresenter.currentFps != null
           ? nativePresenter.currentFps
           : "n/a",
+      parked: parking.required ? parking.ok : "n/a",
       crashOk: crashDiagnostics.ok === true,
       overlayTargets: overlayTargetCount,
       screenshots: countScreenshots(path.join(screenshotsRoot, caseName))
@@ -225,6 +227,7 @@ function summarizeMatrixArtifacts(root) {
         `overlayInactive=${item.lifecycleInactive}`,
         `presenter=${item.presenterMode}`,
         `fps=${item.presenterFps}`,
+        `parked=${item.parked}`,
         `overlayTargets=${item.overlayTargets}`,
         `crashOk=${item.crashOk}`,
         `screenshots=${item.screenshots}`
@@ -310,12 +313,30 @@ function createSelfTestFixture(root) {
     [
       { type: "event:callback:overlay-activated", payload: { active: true } },
       { type: "event:callback:overlay-activated", payload: { active: false } },
-      { type: "event:overlay:presenter-after-close-stable", payload: { presenter: { currentFps: 0 } } }
+      { type: "event:overlay:presenter-after-close", payload: { presenter: parkedPresenterFixture(7) } },
+      { type: "event:overlay:presenter-after-close-stable", payload: { presenter: parkedPresenterFixture(7) } }
     ]
       .map((entry) => JSON.stringify(entry))
       .join("\n") + "\n"
   );
   fs.writeFileSync(path.join(screensDir, "after-open.png"), "");
+}
+
+function parkedPresenterFixture(pumpCount) {
+  return {
+    closed: false,
+    attached: true,
+    nativeHostOpen: true,
+    mode: "passive",
+    clickThrough: true,
+    focusable: false,
+    transparent: true,
+    overlayActive: false,
+    idleFps: 0,
+    currentFps: 0,
+    overlayNeedsPresent: false,
+    pumpCount
+  };
 }
 
 function findResultLog(caseDir, failures) {
@@ -375,6 +396,102 @@ function readLifecycle(caseDir) {
   }
 
   return { found: true, rawText, entries, errors };
+}
+
+function verifyLifecycleParking(caseName, entries, failures) {
+  const firstActiveIndex = entries.findIndex(isLifecycleOverlayActiveEvent);
+  if (firstActiveIndex === -1) {
+    return { required: false, ok: true };
+  }
+
+  const inactiveAfterActiveIndex = entries.findIndex(
+    (entry, index) => index > firstActiveIndex && isLifecycleOverlayInactiveEvent(entry)
+  );
+  if (inactiveAfterActiveIndex === -1) {
+    failures.push(`${caseName}: no active=false overlay callback after active=true`);
+    return { required: true, ok: false };
+  }
+
+  const firstAfterClosePresenters = entries
+    .map((entry, index) => ({ entry, index, presenter: presenterPayload(entry) }))
+    .filter(
+      ({ entry, index }) => index > inactiveAfterActiveIndex && entry.type === "event:overlay:presenter-after-close"
+    );
+  const stableAfterClosePresenters = entries
+    .map((entry, index) => ({ entry, index, presenter: presenterPayload(entry) }))
+    .filter(
+      ({ entry, index }) =>
+        index > inactiveAfterActiveIndex && entry.type === "event:overlay:presenter-after-close-stable"
+    );
+  const firstPresenter = firstAfterClosePresenters.filter(({ presenter }) => presenter).at(-1)?.presenter;
+  const stablePresenter = stableAfterClosePresenters.filter(({ presenter }) => presenter).at(-1)?.presenter;
+
+  if (firstAfterClosePresenters.length === 0) {
+    failures.push(`${caseName}: no overlay:presenter-after-close event after active=false`);
+  } else if (!firstPresenter) {
+    failures.push(`${caseName}: overlay:presenter-after-close did not include a presenter snapshot`);
+  }
+  if (stableAfterClosePresenters.length === 0) {
+    failures.push(`${caseName}: no overlay:presenter-after-close-stable event after active=false`);
+  } else if (!stablePresenter) {
+    failures.push(`${caseName}: overlay:presenter-after-close-stable did not include a presenter snapshot`);
+  }
+
+  if (!firstPresenter || !stablePresenter) {
+    return { required: true, ok: false };
+  }
+
+  const parkingFailuresBefore = failures.length;
+  expectParkedPresenter(caseName, firstPresenter, "first sample", failures);
+  expectParkedPresenter(caseName, stablePresenter, "stable sample", failures);
+
+  const firstPumpCount = firstPresenter.pumpCount;
+  const stablePumpCount = stablePresenter.pumpCount;
+  if (firstPumpCount !== stablePumpCount) {
+    failures.push(
+      `${caseName}: native presenter pump count changed after close: first=${formatValue(firstPumpCount)} stable=${formatValue(stablePumpCount)}`
+    );
+  }
+
+  return { required: true, ok: failures.length === parkingFailuresBefore };
+}
+
+function presenterPayload(entry) {
+  const payload = entry && typeof entry.payload === "object" && !Array.isArray(entry.payload) ? entry.payload : {};
+  return payload.presenter && typeof payload.presenter === "object" && !Array.isArray(payload.presenter)
+    ? payload.presenter
+    : undefined;
+}
+
+function expectParkedPresenter(caseName, presenter, label, failures) {
+  expectPresenterField(caseName, presenter, "closed", false, `native presenter closed ${label}`, failures);
+  expectPresenterField(caseName, presenter, "attached", true, `native presenter attached ${label}`, failures);
+  expectPresenterField(caseName, presenter, "nativeHostOpen", true, `native presenter host open ${label}`, failures);
+  expectPresenterField(caseName, presenter, "mode", "passive", `native presenter mode ${label}`, failures);
+  expectPresenterField(caseName, presenter, "clickThrough", true, `native presenter click-through ${label}`, failures);
+  expectPresenterField(caseName, presenter, "focusable", false, `native presenter focusable ${label}`, failures);
+  expectPresenterField(caseName, presenter, "transparent", true, `native presenter transparent ${label}`, failures);
+  expectPresenterField(caseName, presenter, "overlayActive", false, `native presenter overlay active ${label}`, failures);
+  expectPresenterField(caseName, presenter, "idleFps", 0, `native presenter idle FPS ${label}`, failures);
+  expectPresenterField(caseName, presenter, "currentFps", 0, `native presenter current FPS ${label}`, failures);
+  expectPresenterField(
+    caseName,
+    presenter,
+    "overlayNeedsPresent",
+    false,
+    `native presenter overlay needs present ${label}`,
+    failures
+  );
+}
+
+function expectPresenterField(caseName, presenter, key, expected, label, failures) {
+  if (presenter[key] !== expected) {
+    failures.push(`${caseName}: ${label} expected ${formatValue(expected)}, got ${formatValue(presenter[key])}`);
+  }
+}
+
+function formatValue(value) {
+  return JSON.stringify(value);
 }
 
 function findFiles(rootDir, name) {
