@@ -310,7 +310,6 @@ run_shortcut_case() {
     --visual-toggle-probe \
     --visual-toggle-input keyboard \
     --visual-close-input keyboard \
-    --visual-toggle-open-delay 6 \
     "$@"
 }
 
@@ -444,7 +443,7 @@ run_self_test() {
   require_contains "$shortcut_friends_case" "--visual-close-input keyboard" "shortcut proof should close with keyboard toggle input."
   require_not_contains "$checkout_prepare_case" "--result-delay-ms" "checkout readiness must use the normal settling delay."
   require_contains "$passive_toast_case" "--result-delay-ms 1200" "passive toast should use the short notification capture delay."
-  require_contains "$shortcut_web_case" "--visual-toggle-open-delay 6" "web shortcut proof should wait for the web surface to load."
+  require_not_contains "$shortcut_web_case" "--visual-toggle-open-delay" "web shortcut proof should use lifecycle evidence instead of a fixed open delay."
   require_contains "$shortcut_web_case" "--visual-close-input keyboard" "web shortcut proof should close with keyboard toggle input."
   run_summary_self_test
 

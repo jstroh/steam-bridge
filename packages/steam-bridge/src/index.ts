@@ -8021,7 +8021,6 @@ function installElectronSteamOverlayShortcut(
   }
 
   let opening = false;
-  let lastOpenedAt = 0;
   const handler = (event: ElectronOverlayInputEvent, input: ElectronOverlayKeyboardInput): void => {
     if (!isElectronSteamOverlayShortcutInput(input)) {
       return;
@@ -8033,8 +8032,7 @@ function installElectronSteamOverlayShortcut(
         return;
       }
 
-      const now = Date.now();
-      if (opening || now - lastOpenedAt < 750) {
+      if (opening || isElectronSteamOverlayShortcutOpening(snapshot)) {
         if (shortcut.preventDefault) {
           event.preventDefault?.();
         }
@@ -8046,7 +8044,6 @@ function installElectronSteamOverlayShortcut(
       }
 
       opening = true;
-      lastOpenedAt = now;
       controller.open(resolveElectronSteamOverlayShortcutTarget(shortcut.target));
     } catch (error) {
       if (shortcut.onError) {
@@ -8224,6 +8221,17 @@ function describeElectronSteamOverlayShortcutTarget(
     return "function";
   }
   return target?.type ?? "friends";
+}
+
+function isElectronSteamOverlayShortcutOpening(snapshot: ElectronSteamOverlaySnapshot): boolean {
+  if (snapshot.electronOverlay.presenterMode === "session") {
+    return snapshot.overlayNeedsPresent === true;
+  }
+
+  return (
+    snapshot.mode === "active" ||
+    snapshot.clickThrough === false
+  );
 }
 
 function isElectronSteamOverlayShortcutInput(input: ElectronOverlayKeyboardInput): boolean {

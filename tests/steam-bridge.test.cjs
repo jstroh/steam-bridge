@@ -5220,6 +5220,25 @@ test("electron steam overlay manager opens the presenter route from the default 
     [{ method: "activateOverlayToWebPage", args: [steam.STEAM_FRIENDS_OVERLAY_URL, true] }]
   );
 
+  beforeInputHandler(
+    {
+      preventDefault() {
+        preventDefaultCount += 1;
+      }
+    },
+    {
+      type: "keyDown",
+      key: "Tab",
+      code: "Tab",
+      shift: true
+    }
+  );
+  assert.equal(preventDefaultCount, 2);
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "activateOverlayToWebPage"),
+    [{ method: "activateOverlayToWebPage", args: [steam.STEAM_FRIENDS_OVERLAY_URL, true] }]
+  );
+
   fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: true });
   beforeInputHandler(
     {
@@ -5234,7 +5253,7 @@ test("electron steam overlay manager opens the presenter route from the default 
       shift: true
     }
   );
-  assert.equal(preventDefaultCount, 1);
+  assert.equal(preventDefaultCount, 2);
   assert.deepEqual(
     fake.calls.filter((call) => call.method === "activateOverlayToWebPage"),
     [{ method: "activateOverlayToWebPage", args: [steam.STEAM_FRIENDS_OVERLAY_URL, true] }]
@@ -5254,11 +5273,119 @@ test("electron steam overlay manager opens the presenter route from the default 
       isAutoRepeat: true
     }
   );
-  assert.equal(preventDefaultCount, 1);
+  assert.equal(preventDefaultCount, 2);
 
   overlay.close();
   assert.equal(removedHandler !== undefined, true);
   assert.equal(overlay.isOpen(), false);
+});
+
+test("electron steam overlay shortcut still opens during passive notification presentation", async (t) => {
+  const hostHandle = Buffer.from([9, 2, 6, 5]);
+  let hostOpen = false;
+  let overlayNeedsPresent = false;
+  let beforeInputHandler;
+  const fake = createFakeNative({
+    attachNativeOverlayHostView(nativeWindowHandle) {
+      hostOpen = true;
+      this.calls.push({ method: "attachNativeOverlayHostView", args: [nativeWindowHandle] });
+    },
+    pumpNativeOverlayProbeWindow() {
+      this.calls.push({ method: "pumpNativeOverlayProbeWindow", args: [] });
+    },
+    showNativeOverlayHostView() {
+      this.calls.push({ method: "showNativeOverlayHostView", args: [] });
+    },
+    setNativeOverlayHostInputPassthrough(passThrough) {
+      this.calls.push({ method: "setNativeOverlayHostInputPassthrough", args: [passThrough] });
+    },
+    setNativeOverlayHostOpacity(opaque) {
+      this.calls.push({ method: "setNativeOverlayHostOpacity", args: [opaque] });
+    },
+    detachNativeOverlayHostView() {
+      hostOpen = false;
+      this.calls.push({ method: "detachNativeOverlayHostView", args: [] });
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return false;
+    },
+    isNativeOverlayHostViewOpen() {
+      return hostOpen;
+    },
+    getOverlayDiagnostics() {
+      return {
+        steamRunning: true,
+        steamInstallPath: "/tmp/steam",
+        appId: 480,
+        overlayEnabled: true,
+        overlayNeedsPresent,
+        steamDeck: false,
+        bigPicture: false
+      };
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  const window = {
+    isDestroyed() {
+      return false;
+    },
+    getNativeWindowHandle() {
+      return hostHandle;
+    },
+    once() {},
+    webContents: {
+      once() {},
+      invalidate() {},
+      send() {},
+      on(event, handler) {
+        if (event === "before-input-event") {
+          beforeInputHandler = handler;
+        }
+      },
+      off() {}
+    }
+  };
+
+  const overlay = steam.overlay.createElectronSteamOverlay(window, {
+    title: "Electron Passive Notification Shortcut Overlay",
+    pollIntervalMs: 5
+  });
+
+  overlay.prepareForNotification();
+  overlayNeedsPresent = true;
+  await new Promise((resolve) => setTimeout(resolve, 40));
+
+  const passiveSnapshot = overlay.snapshot();
+  assert.equal(passiveSnapshot.mode, "passive");
+  assert.equal(passiveSnapshot.clickThrough, true);
+  assert.equal(passiveSnapshot.transparent, false);
+  assert.equal(passiveSnapshot.currentFps > passiveSnapshot.idleFps, true);
+
+  let preventDefaultCount = 0;
+  beforeInputHandler(
+    {
+      preventDefault() {
+        preventDefaultCount += 1;
+      }
+    },
+    {
+      type: "keyDown",
+      key: "Tab",
+      code: "Tab",
+      shift: true
+    }
+  );
+
+  assert.equal(preventDefaultCount, 1);
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "activateOverlayToWebPage"),
+    [{ method: "activateOverlayToWebPage", args: [steam.STEAM_FRIENDS_OVERLAY_URL, true] }]
+  );
+
+  overlay.close();
 });
 
 test("electron steam overlay manager exposes lifecycle wait helpers", async (t) => {

@@ -538,11 +538,12 @@ activation, visual open, close, and back-to-app checks. Use
 `client.overlay.createElectronSteamOverlay(...)` with `steamOverlay.open(...)`,
 or the lower-level `client.overlay.attachPresenter(...)`,
 `client.overlay.openSteamOverlay(...)`, `client.overlay.openWebOverlay(...)`,
-`client.overlay.openFriendsOverlay(...)`, `client.overlay.openCommunityOverlay(...)`,
+`client.overlay.openFriendsOverlay(...)`, `client.overlay.openProfileOverlay(...)`,
+`client.overlay.openCommunityOverlay(...)`,
 `client.overlay.openStatsOverlay(...)`, `client.overlay.openStoreOverlay(...)`,
 and `client.overlay.openDialogEquivalentOverlay(...)` helpers, or the Electron smoke app's
-`presenter-web` / `presenter-store` / `presenter-friends` / `presenter-community` /
-`presenter-stats` / `presenter-dialog-auto` / `presenter-shortcut` actions for
+`presenter-web` / `presenter-store` / `presenter-friends` / `presenter-profile` /
+`presenter-community` / `presenter-stats` / `presenter-dialog-auto` / `presenter-shortcut` actions for
 that proof. The older
 `activateToWebPageWithNativeSession(..., { modal: true })` / `native-web` path
 remains compatibility coverage. Steam's raw Desktop Mode dialog/Game Overview
@@ -574,8 +575,8 @@ managed Electron shortcut bridge and verifies `overlay:shortcut-open`,
 `active=true`, `active=false`, focus return, and no post-close crash evidence.
 Pass `--shortcut-target <name>` to prove non-default shortcut targets; Deck
 Desktop fullscreen testing has verified `--shortcut-target web --web-modal true`
-with `--visual-toggle-open-delay 6` so the app is focused first and the opened
-Steam web surface is captured after it finishes loading.
+by waiting for the smoke lifecycle log to report `overlay:shortcut-open` and
+`active=true` before capturing the opened Steam web surface.
 With passive presenter or raw dialog actions, the same probe tests raw Steam
 hotkey interception. `--visual-toggle-input guide` sends a controller
 Guide/Steam-button event through a temporary virtual gamepad.

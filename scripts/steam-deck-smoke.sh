@@ -47,6 +47,7 @@ visual_close_input="keyboard"
 visual_toggle_probe="0"
 visual_toggle_input="keyboard"
 visual_toggle_open_delay="2"
+visual_toggle_open_delay_explicit="0"
 require_close_deactivated="0"
 require_single_overlay_target="0"
 require_passive_presenter="0"
@@ -131,8 +132,9 @@ Options:
                                 keyboard sends Shift+Tab. guide sends the controller Guide/Steam
                                 button through a temporary uinput device. Defaults to keyboard.
   --visual-toggle-open-delay SECONDS
-                                Delay before capturing the opened overlay during --visual-toggle-probe.
-                                Defaults to 2.
+                                Extra delay before capturing the opened overlay during
+                                --visual-toggle-probe. Managed shortcut probes first wait
+                                for lifecycle evidence. Defaults to 2 for raw probes.
   --require-single-overlay-target
                                 Require one gameoverlayui target attached to the smoke app.
   --require-passive-presenter   Require the reusable presenter to be passive/click-through/transparent.
@@ -327,6 +329,7 @@ while [ "$#" -gt 0 ]; do
       ;;
     --visual-toggle-open-delay)
       visual_toggle_open_delay="${2:?missing --visual-toggle-open-delay value}"
+      visual_toggle_open_delay_explicit="1"
       shift 2
       ;;
     --require-single-overlay-target)
@@ -1152,17 +1155,76 @@ run_visual_capture() {
   return "$status"
 }
 
+wait_for_deck_shortcut_overlay_open() {
+  local result_file_q
+  result_file_q="$(quote_arg "$result_file")"
+  remote_exec "RESULT_FILE=$result_file_q python3 - <<'PY'
+import json
+import os
+import sys
+import time
+
+result_file = os.environ['RESULT_FILE']
+lifecycle_path = os.path.join(result_file + '.diagnostics', 'lifecycle.jsonl')
+deadline = time.monotonic() + 12
+
+def active_value(payload):
+    if not isinstance(payload, dict):
+        return None
+    if isinstance(payload.get('active'), bool):
+        return payload.get('active')
+    first = payload.get('0')
+    if isinstance(first, dict) and isinstance(first.get('active'), bool):
+        return first.get('active')
+    return None
+
+while time.monotonic() < deadline:
+    shortcut_open = False
+    overlay_active = False
+    try:
+        with open(lifecycle_path, 'r', encoding='utf-8') as handle:
+            for line in handle:
+                if not line.strip():
+                    continue
+                entry = json.loads(line)
+                if entry.get('type') == 'event:overlay:shortcut-open':
+                    shortcut_open = True
+                elif entry.get('type') == 'event:callback:overlay-activated' and active_value(entry.get('payload')) is True:
+                    overlay_active = True
+    except FileNotFoundError:
+        pass
+    except json.JSONDecodeError as error:
+        print(f'Invalid lifecycle JSON while waiting for shortcut overlay open: {error}', file=sys.stderr)
+        sys.exit(1)
+
+    if shortcut_open and overlay_active:
+        print('Deck shortcut overlay open verified from lifecycle log.')
+        sys.exit(0)
+    time.sleep(0.1)
+
+print(f'Timed out waiting for managed shortcut overlay open in {lifecycle_path}', file=sys.stderr)
+sys.exit(1)
+PY"
+}
+
 run_visual_toggle_probe_for_input() {
   local input="$1"
   local label_prefix="$2"
   local use_close_probe="$3"
   local status=0
+  local waited_for_open="0"
 
   focus_deck_smoke_window || status=$?
   capture_deck_screenshot "${label_prefix}before-toggle-probe" || status=$?
   capture_deck_overlay_state "${label_prefix}before-toggle-probe" || status=$?
   send_deck_overlay_toggle_probe "$input" || status=$?
-  sleep "$visual_toggle_open_delay"
+  if [ "$action" = "presenter-shortcut" ] && [ "$input" = "keyboard" ]; then
+    wait_for_deck_shortcut_overlay_open || status=$?
+    waited_for_open="1"
+  fi
+  if [ "$waited_for_open" != "1" ] || [ "$visual_toggle_open_delay_explicit" = "1" ]; then
+    sleep "$visual_toggle_open_delay"
+  fi
   capture_deck_screenshot "${label_prefix}after-toggle-open" || status=$?
   capture_deck_overlay_state "${label_prefix}after-toggle-open" || status=$?
   if [ "$use_close_probe" = "1" ]; then

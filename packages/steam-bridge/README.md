@@ -311,11 +311,12 @@ current generic proof path for product overlay activation, visual open, close,
 and back-to-app checks. Use `client.overlay.createElectronSteamOverlay(...)`
 with `steamOverlay.open(...)`, or the lower-level `client.overlay.attachPresenter(...)`,
 `client.overlay.openSteamOverlay(...)`, `client.overlay.openWebOverlay(...)`,
-`client.overlay.openFriendsOverlay(...)`, `client.overlay.openCommunityOverlay(...)`,
+`client.overlay.openFriendsOverlay(...)`, `client.overlay.openProfileOverlay(...)`,
+`client.overlay.openCommunityOverlay(...)`,
 `client.overlay.openStatsOverlay(...)`, and
 `client.overlay.openDialogEquivalentOverlay(...)` helpers, or the Electron smoke app's
-`presenter-web` / `presenter-friends` / `presenter-community` /
-`presenter-stats` / `presenter-dialog-auto` / `presenter-shortcut` actions for
+`presenter-web` / `presenter-friends` / `presenter-profile` /
+`presenter-community` / `presenter-stats` / `presenter-dialog-auto` / `presenter-shortcut` actions for
 the generic proof. Deck testing has verified a
 single Steam overlay target,
 `active=true` overlay callbacks, overlay close input, and clean return to the
@@ -348,9 +349,11 @@ toggle evidence with
 managed `presenter-shortcut` keyboard path, that probe verifies
 `overlay:shortcut-open`, active/inactive callbacks, app focus, and crash
 diagnostics. Use `--shortcut-target <name>` to test non-default shortcut
-targets such as `web`, `store`, `community`, `stats`, `achievements`, `dialog`,
+targets such as `profile`, `web`, `store`, `community`, `stats`, `achievements`, `dialog`,
 or `checkout`; Deck Desktop fullscreen proof includes
-`--shortcut-target web --web-modal true --visual-toggle-open-delay 6`. The Deck runner can also
+`--shortcut-target web --web-modal true`, with the Deck runner waiting for the
+smoke lifecycle log to report shortcut-open and active overlay events before
+capturing the opened surface. The Deck runner can also
 close presenter-backed Steam web surfaces through the visible Steam web close
 control with `--visual-close-probe --visual-close-input web`. For those
 presenter-backed product surfaces, the close probe also verifies the

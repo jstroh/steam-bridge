@@ -297,10 +297,11 @@ Current evidence:
   managed target; once Steam reports an active overlay, it lets Shift+Tab pass
   through so Steam can handle close/toggle if that event reaches Electron. A
   focused fullscreen run with
-  `presenter-shortcut --shortcut-target web --web-modal true
-  --visual-toggle-open-delay 6` captured the loaded Steam web overlay over the
-  fullscreen app, emitted active then inactive overlay callbacks, returned focus
-  to Electron after the keyboard close probe, and parked at
+  `presenter-shortcut --shortcut-target web --web-modal true` waited for
+  lifecycle evidence of shortcut-open and active overlay events before capturing
+  the opened Steam web overlay over the fullscreen app, emitted active then
+  inactive overlay callbacks, returned focus to Electron after the keyboard
+  close probe, and parked at
   transparent/click-through `currentFps=0` with no post-close pumping.
 - The same path is good enough for checkout-style proof when launched under a
   real installed Steam app with a configured product or transaction. The public

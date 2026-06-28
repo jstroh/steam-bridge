@@ -196,7 +196,7 @@ verified Friends/chat presenter-backed Steam web overlay. When Steam reports an
 active overlay, the bridge lets Shift+Tab pass through instead of swallowing it,
 so Steam can handle close/toggle behavior if that key event reaches Electron. Add
 `--shortcut-target <name>` to test another presenter-backed target through the
-same focused Shift+Tab path; supported smoke targets are `friends`, `web`,
+same focused Shift+Tab path; supported smoke targets are `friends`, `profile`, `web`,
 `store`, `community`, `stats`, `achievements`, `dialog`, and `checkout`.
 For emergency compatibility comparison, set
 `STEAM_BRIDGE_DISABLE_ELECTRON_OVERLAY_PRESENTER=1` before launching the smoke
@@ -404,9 +404,10 @@ keyboard path by default and also require
 app, delayed post-close presenter snapshots parked at passive idle with no
 `pumpCount` increase, managed wait-helper shown/closed/parked events, and no
 post-close crash evidence. Use
-`--shortcut-target web --web-modal true --visual-toggle-open-delay 6` to prove
-the modal web/checkout-style target from a focused fullscreen app instead of
-capturing the launch-time Desktop overview. Use
+`--shortcut-target web --web-modal true` to prove the modal web/checkout-style
+target from a focused fullscreen app; the Deck runner waits for the smoke
+lifecycle log to report shortcut-open and active overlay events before capturing
+the opened surface. Use
 `--visual-toggle-input guide` to send the controller Guide/Steam button through a
 temporary `/dev/uinput` device, or `--visual-toggle-input both` to compare both
 paths in one run. Keyboard probes use the existing Shift+Tab/Escape close probe;
@@ -506,9 +507,11 @@ not render because Steam is prevented from hooking Electron's Chromium GPU
 process. The current reusable-presenter close proofs are `--action presenter-web`
 with `--web-modal true` for generic web/checkout-style overlays and
 `--action presenter-friends` / `--action presenter-community` /
-`--action presenter-stats` for the product-shaped social/community surfaces.
+`--action presenter-profile` / `--action presenter-stats` for the
+product-shaped social/community surfaces.
 These call `client.overlay.openWebOverlay(...)`,
 `client.overlay.openFriendsOverlay(...)`,
+`client.overlay.openProfileOverlay(...)`,
 `client.overlay.openCommunityOverlay(...)`, and
 `client.overlay.openStatsOverlay(...)`, show Steam web overlay UI over the
 bridge-owned native presenter, and return to the smoke app. The older
