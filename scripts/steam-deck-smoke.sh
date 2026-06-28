@@ -8,6 +8,7 @@ remote_wrapper_path="${STEAM_DECK_SMOKE_WRAPPER_PATH:-/home/deck/steam-bridge-sm
 remote_wrapper_env_file="${STEAM_DECK_SMOKE_WRAPPER_ENV_FILE:-/home/deck/steam-bridge-smoke/run-smoke-autorun.env}"
 mode="game"
 app_id="480"
+overlay_game_id="app"
 action="dialog"
 overlay_profile=""
 overlay_scrub_child_env=""
@@ -62,6 +63,10 @@ Options:
   --wrapper-path PATH           Remote wrapper script used by the Steam shortcut.
   --skip-copy                   Use the existing remote package directory.
   --app-id ID                   Steam App ID used inside the smoke app. Defaults to 480.
+  --overlay-game-id ID|app|shortcut|inherit
+                                SteamOverlayGameId value for the wrapper. Defaults to app.
+                                app uses --app-id; shortcut uses the full non-Steam shortcut
+                                game ID; inherit leaves SteamOverlayGameId untouched.
   --action NAME                 Autorun action. Defaults to dialog. Supports raw dialog/store/web,
                                 managed native-* variants, and presenter-* variants.
   --overlay-profile NAME        Electron overlay profile. Desktop defaults to repaint.
@@ -136,6 +141,10 @@ while [ "$#" -gt 0 ]; do
       ;;
     --app-id)
       app_id="${2:?missing --app-id value}"
+      shift 2
+      ;;
+    --overlay-game-id)
+      overlay_game_id="${2:?missing --overlay-game-id value}"
       shift 2
       ;;
     --action)
@@ -844,7 +853,7 @@ resolved_overlay_profile() {
 
 prepare_remote_wrapper() {
   local app_dir_q env_q wrapper_q wrapper_dir_q
-  local app_id_q action_q profile_q scrub_child_env_q isolate_child_processes_q window_mode_q result_file_q diagnostic_dir_q action_delay_q result_delay_q keep_open_q require_active_q web_url_q web_modal_q overlay_dialog_q achievement_name_q achievement_current_q achievement_max_q
+  local app_id_q overlay_game_id_q action_q profile_q scrub_child_env_q isolate_child_processes_q window_mode_q result_file_q diagnostic_dir_q action_delay_q result_delay_q keep_open_q require_active_q web_url_q web_modal_q overlay_dialog_q achievement_name_q achievement_current_q achievement_max_q
   local require_overlay_active="0"
 
   if [ "$action" = "store" ] || [ "$action" = "web" ] || [ "$action" = "presenter-store" ] || [ "$action" = "presenter-web" ] || [ "$action" = "presenter-friends" ] || [ "$action" = "presenter-achievements" ]; then
@@ -856,6 +865,7 @@ prepare_remote_wrapper() {
   wrapper_q="$(quote_arg "$remote_wrapper_path")"
   wrapper_dir_q="$(quote_arg "$(dirname -- "$remote_wrapper_path")")"
   app_id_q="$(quote_arg "$app_id")"
+  overlay_game_id_q="$(quote_arg "$(resolve_overlay_game_id)")"
   action_q="$(quote_arg "$action")"
   profile_q="$(quote_arg "$(resolved_overlay_profile)")"
   scrub_child_env_q="$(quote_arg "$overlay_scrub_child_env")"
@@ -880,6 +890,7 @@ mkdir -p $wrapper_dir_q
 cat > $env_q <<EOF
 APP_DIR=$app_dir_q
 APP_ID=$app_id_q
+OVERLAY_GAME_ID=$overlay_game_id_q
 AUTORUN_ACTION=$action_q
 OVERLAY_PROFILE=$profile_q
 OVERLAY_SCRUB_CHILD_ENV=$scrub_child_env_q
@@ -912,6 +923,7 @@ fi
 
 APP_DIR=\"\${APP_DIR:-/home/deck/steam-bridge-smoke/SteamBridgeSmoke-linux-x64}\"
 APP_ID=\"\${APP_ID:-480}\"
+OVERLAY_GAME_ID=\"\${OVERLAY_GAME_ID:-\$APP_ID}\"
 AUTORUN_ACTION=\"\${AUTORUN_ACTION:-none}\"
 OVERLAY_PROFILE=\"\${OVERLAY_PROFILE:-diagnostic}\"
 OVERLAY_SCRUB_CHILD_ENV=\"\${OVERLAY_SCRUB_CHILD_ENV:-}\"
@@ -934,7 +946,9 @@ rm -f \"\$RESULT_FILE\"
 rm -rf \"\$DIAGNOSTIC_DIR\"
 export SteamAppId=\"\$APP_ID\"
 export SteamGameId=\"\$APP_ID\"
-export SteamOverlayGameId=\"\$APP_ID\"
+if [ \"\$OVERLAY_GAME_ID\" != \"inherit\" ]; then
+  export SteamOverlayGameId=\"\$OVERLAY_GAME_ID\"
+fi
 export STEAM_BRIDGE_APP_ID=\"\$APP_ID\"
 export STEAM_BRIDGE_ELECTRON_OVERLAY_PROFILE=\"\$OVERLAY_PROFILE\"
 if [ -n \"\$OVERLAY_SCRUB_CHILD_ENV\" ]; then
@@ -1092,6 +1106,55 @@ build_print_shortcuts_args() {
   fi
 }
 
+resolve_overlay_game_id() {
+  case "$overlay_game_id" in
+    ""|app)
+      printf '%s\n' "$app_id"
+      ;;
+    inherit)
+      printf '%s\n' "inherit"
+      ;;
+    shortcut)
+      resolve_overlay_shortcut_game_id
+      ;;
+    *[!0-9]*)
+      echo "Invalid --overlay-game-id: $overlay_game_id" >&2
+      return 2
+      ;;
+    *)
+      printf '%s\n' "$overlay_game_id"
+      ;;
+  esac
+}
+
+resolve_overlay_shortcut_game_id() {
+  if [ -n "$shortcut_game_id" ] && [ "$shortcut_game_id" != "auto" ]; then
+    printf '%s\n' "$shortcut_game_id"
+    return 0
+  fi
+
+  local matches ids count
+  local shortcut_args=("--mode" "print-shortcuts" "--app-name" "$app_name")
+  if [ -n "$steam_user_id" ]; then
+    shortcut_args+=("--steam-user-id" "$steam_user_id")
+  fi
+  matches="$(run_helper "${shortcut_args[@]}")"
+  if [ -z "$matches" ]; then
+    echo "Could not find Steam shortcut named \"$app_name\" to resolve --overlay-game-id shortcut." >&2
+    return 1
+  fi
+
+  ids="$(printf '%s\n' "$matches" | python3 -c 'import json,sys; print("\n".join(sorted({json.loads(line)["gameId"] for line in sys.stdin if line.strip()})))')"
+  count="$(printf '%s\n' "$ids" | sed '/^$/d' | wc -l | tr -d ' ')"
+  if [ "$count" != "1" ]; then
+    echo "Found multiple shortcut game IDs for \"$app_name\"; pass --shortcut-game-id explicitly:" >&2
+    printf '%s\n' "$matches" >&2
+    return 1
+  fi
+
+  printf '%s\n' "$ids" | sed -n '1p'
+}
+
 run_helper() {
   local args
   local remote_q
@@ -1229,8 +1292,22 @@ run_self_test() {
     echo "Self-test failed: Desktop Mode args must default to the repaint overlay profile." >&2
     exit 1
   fi
-  if ! grep -Fq 'export SteamOverlayGameId=\"\$APP_ID\"' "$0"; then
-    echo "Self-test failed: Steam shortcut wrapper must export SteamOverlayGameId." >&2
+  if ! grep -Fq 'export SteamOverlayGameId=\"\$OVERLAY_GAME_ID\"' "$0"; then
+    echo "Self-test failed: Steam shortcut wrapper must export configurable SteamOverlayGameId." >&2
+    exit 1
+  fi
+  if ! grep -Fq 'OVERLAY_GAME_ID=\"\${OVERLAY_GAME_ID:-\$APP_ID}\"' "$0"; then
+    echo "Self-test failed: Steam shortcut wrapper must default overlay game ID to the app ID." >&2
+    exit 1
+  fi
+  overlay_game_id="123456789"
+  if [ "$(resolve_overlay_game_id)" != "123456789" ]; then
+    echo "Self-test failed: explicit overlay game ID did not resolve." >&2
+    exit 1
+  fi
+  overlay_game_id="app"
+  if [ "$(resolve_overlay_game_id)" != "$app_id" ]; then
+    echo "Self-test failed: app overlay game ID did not resolve to app ID." >&2
     exit 1
   fi
 

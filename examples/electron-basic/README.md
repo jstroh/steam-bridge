@@ -298,6 +298,8 @@ passed the toast proof but did not open Steam overlay UI from Shift+Tab or from
 the virtual controller Guide/Steam-button event, so this probe is currently
 evidence for an unresolved hotkey/social path rather than a passing assertion
 until a visual run captures the overlay opening and returning cleanly to the app.
+Add `--overlay-game-id shortcut` when comparing whether raw Steam overlay
+dismissal depends on the full non-Steam shortcut game ID.
 
 For passive toast proof, use the achievement-progress presenter action:
 

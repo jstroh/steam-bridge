@@ -73,6 +73,11 @@ timing hacks.
   `GameOverlayActivated` and does not return cleanly to the Electron app through
   generic close probes. With isolation disabled, Steam can hook Chromium children
   and render social UI but may leave stale overlay surfaces after close.
+- Setting `SteamOverlayGameId` to the full non-Steam shortcut game ID is useful
+  diagnostic coverage, but it is not a raw overlay fix. A Deck Desktop run
+  proved `gameoverlayui` attached with the shortcut ID, while the hotkey/toggle
+  path still failed to render overlay UI and the raw Achievements dialog still
+  emitted no activation callback.
 - Steam Bridge's macOS evidence is weaker: Steam launch and native probe coverage
   exist, and a Metal host path exists, but completed product overlay behavior on
   macOS is not proven yet.
@@ -208,7 +213,10 @@ Current evidence:
   the Electron app and did not emit `GameOverlayActivated` for either Shift+Tab
   or a controller-shaped virtual Guide/Steam-button uinput device. The virtual
   Guide path can move `overlayNeedsPresent` to `true`, but it has not rendered
-  overlay UI, so toggle support remains unresolved.
+  overlay UI, so toggle support remains unresolved. The same probe with
+  `SteamOverlayGameId` set to the full non-Steam shortcut game ID attached
+  Steam's overlay renderer to that shortcut ID but still did not open visible
+  overlay UI.
 - Electron-only social overlay can render only when Electron child overlay
   targets are allowed. A Deck Desktop diagnostic run with child env scrubbing and
   `no-zygote` isolation disabled produced visible Steam desktop overlay UI and
