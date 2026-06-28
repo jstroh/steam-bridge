@@ -27,6 +27,8 @@ const CHECKOUT_TRANSACTION_ID =
 const CHECKOUT_RETURN_URL =
   CLI_OPTIONS.checkoutReturnUrl || process.env.STEAM_BRIDGE_SMOKE_CHECKOUT_RETURN_URL || "";
 const OVERLAY_DIALOG = CLI_OPTIONS.overlayDialog || process.env.STEAM_BRIDGE_SMOKE_OVERLAY_DIALOG || "Friends";
+const SHORTCUT_TARGET =
+  CLI_OPTIONS.shortcutTarget || process.env.STEAM_BRIDGE_SMOKE_SHORTCUT_TARGET || "friends";
 const ACHIEVEMENT_NAME = CLI_OPTIONS.achievementName || process.env.STEAM_BRIDGE_SMOKE_ACHIEVEMENT_NAME || "";
 const ACHIEVEMENT_CURRENT = Number(
   CLI_OPTIONS.achievementCurrent || process.env.STEAM_BRIDGE_SMOKE_ACHIEVEMENT_CURRENT || "1"
@@ -662,7 +664,7 @@ function openPresenterAchievementProgress() {
 function openPresenterShortcutBridge() {
   const overlay = ensureElectronSteamOverlay();
   recordEvent("overlay:presenter-shortcut-ready", {
-    target: "friends",
+    target: SHORTCUT_TARGET,
     shortcut: "Shift+Tab",
     presenter: overlay.snapshot()
   });
@@ -683,8 +685,13 @@ function ensureElectronSteamOverlay(activeClient = requireClient()) {
     pollIntervalMs: 250,
     overlayShortcut: {
       target: () => {
-        recordEvent("overlay:shortcut-open", { shortcut: "Shift+Tab", target: "friends" });
-        return { type: "friends" };
+        const target = resolveShortcutOverlayTarget();
+        recordEvent("overlay:shortcut-open", {
+          shortcut: "Shift+Tab",
+          target: SHORTCUT_TARGET,
+          overlayTarget: target
+        });
+        return target;
       },
       onError: (error) => {
         recordEvent("overlay:shortcut-open:error", serializeError(error));
@@ -695,6 +702,38 @@ function ensureElectronSteamOverlay(activeClient = requireClient()) {
     presenter: electronSteamOverlay.snapshot()
   });
   return electronSteamOverlay;
+}
+
+function resolveShortcutOverlayTarget() {
+  const target = String(SHORTCUT_TARGET || "friends").trim().toLowerCase();
+  switch (target) {
+    case "friends":
+      return { type: "friends" };
+    case "web":
+      return { type: "web", url: WEB_URL, modal: WEB_MODAL };
+    case "store":
+      return { type: "store", appId: APP_ID };
+    case "community":
+      return { type: "community", appId: APP_ID };
+    case "stats":
+      return { type: "stats", appId: APP_ID };
+    case "achievements":
+      return { type: "achievements", appId: APP_ID };
+    case "dialog":
+      return { type: "dialog", dialog: OVERLAY_DIALOG, appId: APP_ID };
+    case "checkout":
+      if (!CHECKOUT_URL && !CHECKOUT_TRANSACTION_ID) {
+        throw new Error("Shortcut checkout target requires a checkout URL or transaction ID.");
+      }
+      return {
+        type: "checkout",
+        steamUrl: CHECKOUT_URL || undefined,
+        transactionId: CHECKOUT_TRANSACTION_ID || undefined,
+        returnUrl: CHECKOUT_RETURN_URL || undefined
+      };
+    default:
+      throw new Error(`Unsupported shortcut target: ${SHORTCUT_TARGET}`);
+  }
 }
 
 function nativeOverlayOptions() {
@@ -816,6 +855,7 @@ function snapshot() {
       webUrl: WEB_URL,
       webModal: WEB_MODAL,
       overlayDialog: OVERLAY_DIALOG,
+      shortcutTarget: SHORTCUT_TARGET,
       achievementName: ACHIEVEMENT_NAME || null,
       achievementCurrent: ACHIEVEMENT_CURRENT,
       achievementMax: ACHIEVEMENT_MAX,
@@ -1401,6 +1441,7 @@ function parseSmokeArgs(args) {
     autorunResultDelayMs: undefined,
     overlayProfile: undefined,
     overlayDialog: undefined,
+    shortcutTarget: undefined,
     overlayScrubChildEnv: undefined,
     overlayIsolateChildProcesses: undefined,
     windowMode: undefined,
@@ -1460,6 +1501,9 @@ function parseSmokeArgs(args) {
         break;
       case "--steam-bridge-smoke-overlay-dialog":
         options.overlayDialog = value;
+        break;
+      case "--steam-bridge-smoke-shortcut-target":
+        options.shortcutTarget = value;
         break;
       case "--steam-bridge-smoke-achievement-name":
         options.achievementName = value;

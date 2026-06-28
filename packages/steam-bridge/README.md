@@ -296,7 +296,10 @@ Deck runner can collect focused toggle evidence with
 `--visual-toggle-probe --visual-toggle-input keyboard|guide|both`; for the
 managed `presenter-shortcut` keyboard path, that probe verifies
 `overlay:shortcut-open`, active/inactive callbacks, app focus, and crash
-diagnostics. The Deck runner can also
+diagnostics. Use `--shortcut-target <name>` to test non-default shortcut
+targets such as `web`, `store`, `community`, `stats`, `achievements`, `dialog`,
+or `checkout`; Deck Desktop fullscreen proof includes
+`--shortcut-target web --web-modal true --visual-toggle-open-delay 6`. The Deck runner can also
 close presenter-backed Steam web surfaces through the visible Steam web close
 control with `--visual-close-probe --visual-close-input web`. For those
 presenter-backed product surfaces, the close probe also verifies the

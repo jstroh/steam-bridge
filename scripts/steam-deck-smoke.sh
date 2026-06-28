@@ -20,6 +20,7 @@ checkout_url=""
 checkout_transaction_id=""
 checkout_return_url=""
 overlay_dialog=""
+shortcut_target=""
 achievement_name=""
 achievement_current=""
 achievement_max=""
@@ -44,6 +45,7 @@ visual_close_probe="0"
 visual_close_input="keyboard"
 visual_toggle_probe="0"
 visual_toggle_input="keyboard"
+visual_toggle_open_delay="2"
 require_close_deactivated="0"
 require_single_overlay_target="0"
 require_passive_presenter="0"
@@ -92,6 +94,8 @@ Options:
   --checkout-return-url URL     Optional return URL for transaction checkout.
   --dialog NAME                 Dialog name for dialog/native-dialog/presenter-dialog actions.
                                 Defaults to Friends.
+  --shortcut-target NAME        Presenter shortcut target: friends, web, store, community,
+                                stats, achievements, dialog, or checkout. Defaults to friends.
   --achievement-name NAME       Achievement for presenter-achievement-progress. Defaults to the first progress achievement.
   --achievement-current VALUE   Progress current value. Defaults to 1.
   --achievement-max VALUE       Progress max value. Defaults to the achievement limit or 2.
@@ -120,6 +124,9 @@ Options:
   --visual-toggle-input MODE    Toggle input for --visual-toggle-probe: keyboard, guide, or both.
                                 keyboard sends Shift+Tab. guide sends the controller Guide/Steam
                                 button through a temporary uinput device. Defaults to keyboard.
+  --visual-toggle-open-delay SECONDS
+                                Delay before capturing the opened overlay during --visual-toggle-probe.
+                                Defaults to 2.
   --require-single-overlay-target
                                 Require one gameoverlayui target attached to the smoke app.
   --require-passive-presenter   Require the reusable presenter to be passive/click-through/transparent.
@@ -212,6 +219,10 @@ while [ "$#" -gt 0 ]; do
       overlay_dialog="${2:?missing --dialog value}"
       shift 2
       ;;
+    --shortcut-target)
+      shortcut_target="${2:?missing --shortcut-target value}"
+      shift 2
+      ;;
     --achievement-name)
       achievement_name="${2:?missing --achievement-name value}"
       shift 2
@@ -298,6 +309,10 @@ while [ "$#" -gt 0 ]; do
       ;;
     --visual-toggle-input)
       visual_toggle_input="${2:?missing --visual-toggle-input value}"
+      shift 2
+      ;;
+    --visual-toggle-open-delay)
+      visual_toggle_open_delay="${2:?missing --visual-toggle-open-delay value}"
       shift 2
       ;;
     --require-single-overlay-target)
@@ -1069,7 +1084,7 @@ run_visual_toggle_probe_for_input() {
   capture_deck_screenshot "${label_prefix}before-toggle-probe" || status=$?
   capture_deck_overlay_state "${label_prefix}before-toggle-probe" || status=$?
   send_deck_overlay_toggle_probe "$input" || status=$?
-  sleep 2
+  sleep "$visual_toggle_open_delay"
   capture_deck_screenshot "${label_prefix}after-toggle-open" || status=$?
   capture_deck_overlay_state "${label_prefix}after-toggle-open" || status=$?
   if [ "$use_close_probe" = "1" ]; then
@@ -1319,7 +1334,7 @@ supports_close_deactivation_check() {
 
 prepare_remote_wrapper() {
   local app_dir_q env_q wrapper_q wrapper_dir_q
-  local app_id_q overlay_game_id_q action_q profile_q scrub_child_env_q isolate_child_processes_q window_mode_q result_file_q diagnostic_dir_q action_delay_q result_delay_q keep_open_q require_active_q web_url_q web_modal_q checkout_url_q checkout_transaction_id_q checkout_return_url_q overlay_dialog_q achievement_name_q achievement_current_q achievement_max_q
+  local app_id_q overlay_game_id_q action_q profile_q scrub_child_env_q isolate_child_processes_q window_mode_q result_file_q diagnostic_dir_q action_delay_q result_delay_q keep_open_q require_active_q web_url_q web_modal_q checkout_url_q checkout_transaction_id_q checkout_return_url_q overlay_dialog_q shortcut_target_q achievement_name_q achievement_current_q achievement_max_q
   local require_overlay_active="0"
 
   if [ "$action" = "store" ] || [ "$action" = "web" ] || [ "$action" = "presenter-store" ] || [ "$action" = "presenter-web" ] || [ "$action" = "presenter-friends" ] || [ "$action" = "presenter-dialog-auto" ] || [ "$action" = "presenter-community" ] || [ "$action" = "presenter-stats" ] || [ "$action" = "presenter-achievements" ]; then
@@ -1352,6 +1367,7 @@ prepare_remote_wrapper() {
   checkout_transaction_id_q="$(quote_arg "$checkout_transaction_id")"
   checkout_return_url_q="$(quote_arg "$checkout_return_url")"
   overlay_dialog_q="$(quote_arg "$overlay_dialog")"
+  shortcut_target_q="$(quote_arg "$shortcut_target")"
   achievement_name_q="$(quote_arg "$achievement_name")"
   achievement_current_q="$(quote_arg "$achievement_current")"
   achievement_max_q="$(quote_arg "$achievement_max")"
@@ -1380,6 +1396,7 @@ CHECKOUT_URL=$checkout_url_q
 CHECKOUT_TRANSACTION_ID=$checkout_transaction_id_q
 CHECKOUT_RETURN_URL=$checkout_return_url_q
 OVERLAY_DIALOG=$overlay_dialog_q
+SHORTCUT_TARGET=$shortcut_target_q
 ACHIEVEMENT_NAME=$achievement_name_q
 ACHIEVEMENT_CURRENT=$achievement_current_q
 ACHIEVEMENT_MAX=$achievement_max_q
@@ -1416,6 +1433,7 @@ CHECKOUT_URL=\"\${CHECKOUT_URL:-}\"
 CHECKOUT_TRANSACTION_ID=\"\${CHECKOUT_TRANSACTION_ID:-}\"
 CHECKOUT_RETURN_URL=\"\${CHECKOUT_RETURN_URL:-}\"
 OVERLAY_DIALOG=\"\${OVERLAY_DIALOG:-}\"
+SHORTCUT_TARGET=\"\${SHORTCUT_TARGET:-}\"
 ACHIEVEMENT_NAME=\"\${ACHIEVEMENT_NAME:-}\"
 ACHIEVEMENT_CURRENT=\"\${ACHIEVEMENT_CURRENT:-}\"
 ACHIEVEMENT_MAX=\"\${ACHIEVEMENT_MAX:-}\"
@@ -1463,6 +1481,9 @@ if [ -n \"\$CHECKOUT_RETURN_URL\" ]; then
 fi
 if [ -n \"\$OVERLAY_DIALOG\" ]; then
   export STEAM_BRIDGE_SMOKE_OVERLAY_DIALOG=\"\$OVERLAY_DIALOG\"
+fi
+if [ -n \"\$SHORTCUT_TARGET\" ]; then
+  export STEAM_BRIDGE_SMOKE_SHORTCUT_TARGET=\"\$SHORTCUT_TARGET\"
 fi
 if [ -n \"\$ACHIEVEMENT_NAME\" ]; then
   export STEAM_BRIDGE_SMOKE_ACHIEVEMENT_NAME=\"\$ACHIEVEMENT_NAME\"
@@ -1534,6 +1555,9 @@ append_common_helper_args() {
   fi
   if [ -n "$overlay_dialog" ]; then
     helper_args+=("--dialog" "$overlay_dialog")
+  fi
+  if [ -n "$shortcut_target" ]; then
+    helper_args+=("--shortcut-target" "$shortcut_target")
   fi
   if [ -n "$achievement_name" ]; then
     helper_args+=("--achievement-name" "$achievement_name")
@@ -1951,10 +1975,15 @@ run_self_test() {
   fi
 
   action="presenter-shortcut"
+  shortcut_target="web"
   build_steam_launch_args
   shortcut_args="$(quote_args "${helper_args[@]}")"
   if [[ "$shortcut_args" != *"--require-event overlay:presenter-shortcut-ready"* ]]; then
     echo "Self-test failed: Presenter shortcut args must require the shortcut-ready event." >&2
+    exit 1
+  fi
+  if [[ "$shortcut_args" != *"--shortcut-target web"* ]]; then
+    echo "Self-test failed: Presenter shortcut args must pass the requested shortcut target." >&2
     exit 1
   fi
   if [[ "$shortcut_args" == *"--require-overlay-activated"* ]]; then
@@ -1973,6 +2002,7 @@ run_self_test() {
     echo "Self-test failed: Presenter shortcut args must require no crash diagnostics." >&2
     exit 1
   fi
+  shortcut_target=""
 
   require_single_overlay_target="1"
   require_no_crashes="1"

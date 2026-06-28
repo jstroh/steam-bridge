@@ -164,7 +164,10 @@ Use `presenter-shortcut` with
 `--visual-toggle-probe --visual-toggle-input keyboard --visual-close-input web`
 to verify the managed Electron shortcut bridge: the app attaches the reusable
 presenter, waits for Shift+Tab, and the bridge routes that shortcut to the
-verified Friends/chat presenter-backed Steam web overlay.
+verified Friends/chat presenter-backed Steam web overlay. Add
+`--shortcut-target <name>` to test another presenter-backed target through the
+same focused Shift+Tab path; supported smoke targets are `friends`, `web`,
+`store`, `community`, `stats`, `achievements`, `dialog`, and `checkout`.
 
 For social-overlay investigation only, the smoke app and Deck host runner expose
 `--steam-bridge-electron-overlay-scrub-child-env`,
@@ -334,6 +337,9 @@ Shift+Tab. For `presenter-shortcut`, keyboard toggle probes also require
 `overlay:shortcut-open`, active/inactive callbacks, focus returning to the smoke
 app, delayed post-close presenter snapshots parked at passive idle with no
 `pumpCount` increase, and no post-close crash evidence. Use
+`--shortcut-target web --web-modal true --visual-toggle-open-delay 6` to prove
+the modal web/checkout-style target from a focused fullscreen app instead of
+capturing the launch-time Desktop overview. Use
 `--visual-toggle-input guide` to send the controller Guide/Steam button through a
 temporary `/dev/uinput` device, or `--visual-toggle-input both` to compare both
 paths in one run. Keyboard probes use the existing Shift+Tab/Escape close probe;

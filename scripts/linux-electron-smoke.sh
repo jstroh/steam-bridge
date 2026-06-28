@@ -17,6 +17,7 @@ checkout_url=""
 checkout_transaction_id=""
 checkout_return_url=""
 overlay_dialog=""
+shortcut_target=""
 achievement_name=""
 achievement_current=""
 achievement_max=""
@@ -75,6 +76,8 @@ Options:
   --checkout-transaction-id ID   Steam checkout transaction ID for presenter-checkout.
   --checkout-return-url URL      Optional return URL for transaction checkout.
   --dialog NAME                  Dialog name for dialog/native-dialog/presenter-dialog actions. Defaults to Friends.
+  --shortcut-target NAME         Presenter shortcut target: friends, web, store, community,
+                                 stats, achievements, dialog, or checkout. Defaults to friends.
   --achievement-name NAME        Achievement for presenter-achievement-progress. Defaults to the first progress achievement.
   --achievement-current VALUE    Progress current value. Defaults to 1.
   --achievement-max VALUE        Progress max value. Defaults to the achievement limit or 2.
@@ -167,6 +170,10 @@ while [ "$#" -gt 0 ]; do
       ;;
     --dialog)
       overlay_dialog="${2:?missing --dialog value}"
+      shift 2
+      ;;
+    --shortcut-target)
+      shortcut_target="${2:?missing --shortcut-target value}"
       shift 2
       ;;
     --achievement-name)
@@ -313,6 +320,9 @@ smoke_args() {
   fi
   if [ -n "$overlay_dialog" ]; then
     printf '%s\n' "--steam-bridge-smoke-overlay-dialog=$overlay_dialog"
+  fi
+  if [ -n "$shortcut_target" ]; then
+    printf '%s\n' "--steam-bridge-smoke-shortcut-target=$shortcut_target"
   fi
   if [ -n "$achievement_name" ]; then
     printf '%s\n' "--steam-bridge-smoke-achievement-name=$achievement_name"

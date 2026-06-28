@@ -242,7 +242,9 @@ the printed full shortcut game ID, not the internal shortcut app ID.
 The managed Electron overlay helper also owns the default Shift+Tab keyboard
 shortcut bridge, routing it through the same presenter-backed Friends/chat path
 used by the Deck Desktop proof instead of relying on Steam to hook Chromium
-child processes.
+child processes. Apps can set `overlayShortcut.target` to any presenter-backed
+target when they want Shift+Tab to open store, web, checkout, community, stats,
+achievements, or dialog-equivalent surfaces instead.
 
 SpaceWar `480` and the Electron smoke app are for generic initialization,
 callback, input, and overlay plumbing checks. Purchase overlays need a real
@@ -486,6 +488,10 @@ Use `--visual-toggle-probe` for shortcut evidence. With `presenter-shortcut`,
 the default `--visual-toggle-input keyboard` sends Shift+Tab into Steam Bridge's
 managed Electron shortcut bridge and verifies `overlay:shortcut-open`,
 `active=true`, `active=false`, focus return, and no post-close crash evidence.
+Pass `--shortcut-target <name>` to prove non-default shortcut targets; Deck
+Desktop fullscreen testing has verified `--shortcut-target web --web-modal true`
+with `--visual-toggle-open-delay 6` so the app is focused first and the opened
+Steam web surface is captured after it finishes loading.
 With passive presenter or raw dialog actions, the same probe tests raw Steam
 hotkey interception. `--visual-toggle-input guide` sends a controller
 Guide/Steam-button event through a temporary virtual gamepad.

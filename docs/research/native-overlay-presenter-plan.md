@@ -264,7 +264,14 @@ Current evidence:
   `overlayShortcut: false` and `overlayShortcut.target` available for apps that
   need to opt out or choose another presenter-backed target. A 2026-06-28 Deck
   Desktop `presenter-shortcut` run proved visible overlay open, active/inactive
-  callbacks, and return to the app after web close.
+  callbacks, and return to the app after web close. The smoke app and Deck
+  runner now expose `--shortcut-target` for focused shortcut proofs of other
+  presenter-backed targets. A focused fullscreen run with
+  `presenter-shortcut --shortcut-target web --web-modal true
+  --visual-toggle-open-delay 6` captured the loaded Steam web overlay over the
+  fullscreen app, emitted active then inactive overlay callbacks, returned focus
+  to Electron after the web close probe, and parked at transparent/click-through
+  `currentFps=0` with no post-close pumping.
 - The same path is good enough for checkout-style proof when launched under a
   real installed Steam app with a configured product or transaction. The public
   API now has a named checkout path: `steamOverlay.prepareForCheckout()` primes
@@ -375,7 +382,9 @@ Pass criteria:
 - The managed Electron Shift+Tab shortcut opens a presenter-backed overlay,
   closes through the Steam web close control, returns to the app, and is
   machine-verified through `overlay:shortcut-open`, active/inactive callbacks,
-  app focus, and post-close crash diagnostics.
+  app focus, and post-close crash diagnostics. The shortcut target can be
+  changed by app code, and the smoke runner can prove non-default targets with
+  `--shortcut-target`.
 - Modal web/store/checkout overlay opens, accepts input, closes, emits active then
   inactive callbacks, and returns to the app.
 - Deck visual close probes for presenter-backed product web surfaces verify the
