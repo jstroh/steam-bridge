@@ -371,6 +371,17 @@ case "$visual_close_input" in
     ;;
 esac
 
+presenter_mode="$(printf '%s' "$presenter_mode" | tr '[:upper:]' '[:lower:]')"
+case "$presenter_mode" in
+  ""|persistent|session)
+    ;;
+  *)
+    echo "Unknown --presenter-mode: $presenter_mode" >&2
+    usage >&2
+    exit 2
+    ;;
+esac
+
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 if [ -z "$local_app_dir" ]; then
   local_app_dir="$repo_root/dist/electron-smoke/x86_64-unknown-linux-gnu/SteamBridgeSmoke-linux-x64"
@@ -635,11 +646,12 @@ sleep 0.35"
 
 verify_deck_overlay_closed_after_probe() {
   local require_shortcut_open="${1:-0}"
+  local require_presenter_parking="${2:-1}"
   local result_file_q app_name_q
   result_file_q="$(quote_arg "$result_file")"
   app_name_q="$(quote_arg "$app_name")"
   echo "Verifying Deck overlay close/deactivation evidence"
-  remote_exec "RESULT_FILE=$result_file_q APP_NAME=$app_name_q REQUIRE_SHORTCUT_OPEN=$require_shortcut_open python3 - <<'PY'
+  remote_exec "RESULT_FILE=$result_file_q APP_NAME=$app_name_q REQUIRE_SHORTCUT_OPEN=$require_shortcut_open REQUIRE_PRESENTER_PARKING=$require_presenter_parking python3 - <<'PY'
 import glob
 import json
 import os
@@ -651,6 +663,7 @@ import time
 result_file = os.environ['RESULT_FILE']
 app_name = os.environ.get('APP_NAME') or 'Steam Bridge Smoke'
 require_shortcut_open = os.environ.get('REQUIRE_SHORTCUT_OPEN') == '1'
+require_presenter_parking = os.environ.get('REQUIRE_PRESENTER_PARKING') == '1'
 diagnostic_dir = result_file + '.diagnostics'
 lifecycle_path = os.path.join(diagnostic_dir, 'lifecycle.jsonl')
 crash_dump_dir = os.path.join(diagnostic_dir, 'crash-dumps')
@@ -728,6 +741,14 @@ def has_presenter_after_close_stable_event(loaded_entries):
         for index, entry in enumerate(loaded_entries)
     )
 
+def has_required_close_evidence(loaded_entries):
+    _first_active, inactive_after_active = find_overlay_state_indices(loaded_entries)
+    if inactive_after_active is None:
+        return False
+    if require_presenter_parking:
+        return has_presenter_after_close_stable_event(loaded_entries)
+    return True
+
 def expect_parked_presenter(presenter, label):
     expect_presenter_field(presenter, 'closed', False, f'native presenter closed {label}')
     expect_presenter_field(presenter, 'attached', True, f'native presenter attached {label}')
@@ -746,7 +767,7 @@ lifecycle_failures = []
 deadline = time.monotonic() + 5
 while True:
     entries, lifecycle_failures = read_lifecycle_entries()
-    if not lifecycle_failures and (has_presenter_after_close_stable_event(entries) or time.monotonic() >= deadline):
+    if not lifecycle_failures and (has_required_close_evidence(entries) or time.monotonic() >= deadline):
         break
     if lifecycle_failures and time.monotonic() >= deadline:
         failures.extend(lifecycle_failures)
@@ -762,37 +783,38 @@ if first_active_index is None:
 elif inactive_after_active_index is None:
     failures.append('no active=false overlay callback after active=true')
 else:
-    first_after_close_entries = [
-        (index, presenter_payload(entry))
-        for index, entry in enumerate(entries)
-        if index > inactive_after_active_index and entry.get('type') == 'event:overlay:presenter-after-close'
-    ]
-    stable_after_close_entries = [
-        (index, presenter_payload(entry))
-        for index, entry in enumerate(entries)
-        if index > inactive_after_active_index and entry.get('type') == 'event:overlay:presenter-after-close-stable'
-    ]
-    first_after_close_presenters = [(index, presenter) for index, presenter in first_after_close_entries if presenter]
-    stable_after_close_presenters = [(index, presenter) for index, presenter in stable_after_close_entries if presenter]
-    if not first_after_close_entries:
-        failures.append('no overlay:presenter-after-close event after active=false in lifecycle log')
-    elif not first_after_close_presenters:
-        failures.append('overlay:presenter-after-close did not include a presenter snapshot')
-    if not stable_after_close_entries:
-        failures.append('no overlay:presenter-after-close-stable event after active=false in lifecycle log')
-    elif not stable_after_close_presenters:
-        failures.append('overlay:presenter-after-close-stable did not include a presenter snapshot')
-    if first_after_close_presenters and stable_after_close_presenters:
-        _first_presenter_index, first_presenter = first_after_close_presenters[-1]
-        _stable_presenter_index, stable_presenter = stable_after_close_presenters[-1]
-        expect_parked_presenter(first_presenter, 'first sample')
-        expect_parked_presenter(stable_presenter, 'stable sample')
-        first_pump_count = first_presenter.get('pumpCount')
-        stable_pump_count = stable_presenter.get('pumpCount')
-        if first_pump_count != stable_pump_count:
-            failures.append(
-                f'native presenter pump count changed after close: first={first_pump_count!r}, stable={stable_pump_count!r}'
-            )
+    if require_presenter_parking:
+        first_after_close_entries = [
+            (index, presenter_payload(entry))
+            for index, entry in enumerate(entries)
+            if index > inactive_after_active_index and entry.get('type') == 'event:overlay:presenter-after-close'
+        ]
+        stable_after_close_entries = [
+            (index, presenter_payload(entry))
+            for index, entry in enumerate(entries)
+            if index > inactive_after_active_index and entry.get('type') == 'event:overlay:presenter-after-close-stable'
+        ]
+        first_after_close_presenters = [(index, presenter) for index, presenter in first_after_close_entries if presenter]
+        stable_after_close_presenters = [(index, presenter) for index, presenter in stable_after_close_entries if presenter]
+        if not first_after_close_entries:
+            failures.append('no overlay:presenter-after-close event after active=false in lifecycle log')
+        elif not first_after_close_presenters:
+            failures.append('overlay:presenter-after-close did not include a presenter snapshot')
+        if not stable_after_close_entries:
+            failures.append('no overlay:presenter-after-close-stable event after active=false in lifecycle log')
+        elif not stable_after_close_presenters:
+            failures.append('overlay:presenter-after-close-stable did not include a presenter snapshot')
+        if first_after_close_presenters and stable_after_close_presenters:
+            _first_presenter_index, first_presenter = first_after_close_presenters[-1]
+            _stable_presenter_index, stable_presenter = stable_after_close_presenters[-1]
+            expect_parked_presenter(first_presenter, 'first sample')
+            expect_parked_presenter(stable_presenter, 'stable sample')
+            first_pump_count = first_presenter.get('pumpCount')
+            stable_pump_count = stable_presenter.get('pumpCount')
+            if first_pump_count != stable_pump_count:
+                failures.append(
+                    f'native presenter pump count changed after close: first={first_pump_count!r}, stable={stable_pump_count!r}'
+                )
 
 if require_shortcut_open and not any(entry.get('type') == 'event:overlay:shortcut-open' for entry in entries):
     failures.append('no overlay:shortcut-open event in lifecycle log')
@@ -1075,7 +1097,7 @@ run_visual_capture() {
     capture_deck_screenshot "after-close-probe" || status=$?
     capture_deck_overlay_state "after-close-probe" || status=$?
     if [ "$require_close_deactivated" = "1" ]; then
-      verify_deck_overlay_closed_after_probe || status=$?
+      verify_deck_overlay_closed_after_probe "0" "$(persistent_presenter_parking_required)" || status=$?
     fi
   fi
   return "$status"
@@ -1111,7 +1133,7 @@ run_visual_toggle_probe_for_input() {
   capture_deck_screenshot "${label_prefix}after-toggle-close" || status=$?
   capture_deck_overlay_state "${label_prefix}after-toggle-close" || status=$?
   if [ "$action" = "presenter-shortcut" ] && [ "$input" = "keyboard" ]; then
-    verify_deck_overlay_closed_after_probe "1" || status=$?
+    verify_deck_overlay_closed_after_probe "1" "$(persistent_presenter_parking_required)" || status=$?
   fi
   return "$status"
 }
@@ -1311,6 +1333,18 @@ resolved_overlay_profile() {
 
 checkout_opens_overlay() {
   [ -n "$checkout_url" ] || [ -n "$checkout_transaction_id" ]
+}
+
+uses_persistent_presenter() {
+  [ -z "$presenter_mode" ] || [ "$presenter_mode" = "persistent" ]
+}
+
+persistent_presenter_parking_required() {
+  if uses_persistent_presenter; then
+    printf '%s\n' "1"
+  else
+    printf '%s\n' "0"
+  fi
 }
 
 is_presenter_product_action() {
@@ -1642,15 +1676,19 @@ build_steam_launch_args() {
     helper_args+=("--require-event" "callback:overlay-activated")
   fi
 
-  if is_presenter_product_action; then
+  if is_presenter_product_action && uses_persistent_presenter; then
     helper_args+=("--require-single-overlay-target")
+  fi
+  if is_presenter_product_action; then
     helper_args+=("--require-no-crashes")
   fi
-  if [ "$action" = "presenter-shortcut" ] ||
-    { [ "$action" = "presenter-checkout" ] && ! checkout_opens_overlay; }; then
-    helper_args+=("--require-idle-presenter")
-  elif [ "$action" = "presenter-achievement-progress" ]; then
-    helper_args+=("--require-passive-presenter")
+  if uses_persistent_presenter; then
+    if [ "$action" = "presenter-shortcut" ] ||
+      { [ "$action" = "presenter-checkout" ] && ! checkout_opens_overlay; }; then
+      helper_args+=("--require-idle-presenter")
+    elif [ "$action" = "presenter-achievement-progress" ]; then
+      helper_args+=("--require-passive-presenter")
+    fi
   fi
 
   if [ "$mode" = "game" ]; then
@@ -2016,12 +2054,16 @@ run_self_test() {
     echo "Self-test failed: Presenter shortcut args must not require the overlay callback before the visual toggle probe." >&2
     exit 1
   fi
-  if [[ "$shortcut_args" != *"--require-single-overlay-target"* ]]; then
-    echo "Self-test failed: Presenter product args must require a single overlay target." >&2
+  if [[ "$shortcut_args" == *"--require-single-overlay-target"* ]]; then
+    echo "Self-test failed: Session presenter shortcut args must not require a persistent overlay target before the visual toggle probe." >&2
+    exit 1
+  fi
+  if [[ "$shortcut_args" == *"--require-idle-presenter"* ]]; then
+    echo "Self-test failed: Session presenter shortcut args must not require persistent idle presenter parking." >&2
     exit 1
   fi
   if [[ "$shortcut_args" != *"--require-no-crashes"* ]]; then
-    echo "Self-test failed: Presenter shortcut args must require no crash diagnostics." >&2
+    echo "Self-test failed: Session presenter shortcut args must still require no crash diagnostics." >&2
     exit 1
   fi
   shortcut_target=""
@@ -2037,6 +2079,10 @@ run_self_test() {
   fi
   if [[ "$shortcut_args" != *"--require-no-crashes"* ]]; then
     echo "Self-test failed: Deck args must pass the no crash requirement when requested." >&2
+    exit 1
+  fi
+  if [[ "$shortcut_args" != *"--require-idle-presenter"* ]]; then
+    echo "Self-test failed: Persistent presenter shortcut args must require idle presenter parking." >&2
     exit 1
   fi
   require_single_overlay_target="0"

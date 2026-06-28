@@ -410,7 +410,9 @@ Pass criteria:
 - The session fallback is available as a kill switch without changing app
   overlay call sites, and the smoke runners can select it with
   `--presenter-mode session`, but it is documented as diagnostic coverage
-  rather than the default product path.
+  rather than the default product path. Session-mode runner checks do not assert
+  persistent-host single-target, idle-parking, or no-post-close-pump invariants
+  because the fallback opens lazily and may pump while a session exists.
 
 ## macOS Apple Silicon Plan
 

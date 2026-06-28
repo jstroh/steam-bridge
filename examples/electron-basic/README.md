@@ -334,7 +334,10 @@ For presenter-backed Steam web surfaces, add `--visual-close-input web` with
 control instead of Shift+Tab/Escape.
 Add `--presenter-mode session` only when you need to compare the compatibility
 native-session fallback against the default persistent presenter; the default
-persistent mode remains the product proof path.
+persistent mode remains the product proof path. Session-mode Deck runs still
+check overlay callbacks, focus return, and crash diagnostics, but skip
+persistent-host single-target, idle-parking, and no-post-close-pumping
+assertions because the fallback opens lazily and may pump while a session exists.
 
 Use `--visual-toggle-probe` when the question is whether an overlay shortcut
 opens from the current app state. With `presenter-shortcut`, this tests Steam

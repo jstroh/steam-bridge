@@ -320,6 +320,9 @@ presenter-backed product surfaces, the close probe also verifies the
 post-close `active=false` callback, app focus, and crash diagnostics. Current
 focused Desktop evidence for raw Steam interception still does not show
 Shift+Tab or a virtual Guide/Steam-button controller event opening overlay UI.
+Session-mode smoke comparisons skip the persistent-host single-target,
+idle-parking, and no-post-close-pumping assertions because the fallback opens
+lazily and may pump while a session exists.
 Add
 `--overlay-game-id shortcut` when investigating whether raw Steam overlay
 close/back routing depends on the full non-Steam shortcut game ID. Call

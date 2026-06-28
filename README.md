@@ -487,7 +487,9 @@ The managed Electron overlay also exposes a compatibility fallback through
 `STEAM_BRIDGE_ELECTRON_OVERLAY_PRESENTER=session`; use it only to compare
 against the reusable presenter when diagnosing a platform regression. The
 packaged Linux helper and Deck SSH runner also accept `--presenter-mode session`
-for that repeatable comparison.
+for that repeatable comparison. In session mode the Deck runner still checks
+overlay callbacks, focus return, and crash diagnostics, but it skips the
+persistent-host single-target and post-close parking invariants.
 
 For repeatable Deck evidence, the smoke host runner can copy the remote result
 log and diagnostics directory back to the local machine with

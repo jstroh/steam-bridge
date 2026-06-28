@@ -158,21 +158,24 @@ overlay preload entries for child processes and adds Linux `no-zygote` isolation
 by default; the expected Deck process list has one `gameoverlayui` attached to
 the main/native process, not a second one attached to Electron's GPU process.
 The smoke app snapshots `gameoverlayui` target metadata, and the Deck runner
-requires this single-target invariant automatically for presenter-backed product
-actions. The runner also machine-checks idle/passive presenter state where it is
-part of the proof: checkout readiness and managed shortcut attach must park with
-`idleFps=0` and `currentFps=0`; passive toast proof must remain transparent,
-click-through, non-focusable, and overlay-inactive while Steam may still pump
-notification frames. Presenter-backed product actions also require clean smoke
-crash diagnostics: no crash dump files and no fatal Electron lifecycle events.
-When `--visual-close-probe` is used on presenter-backed product web surfaces,
-the Deck runner also verifies a post-close `active=false` callback, confirms the
-smoke app remains the focused X11 window, requires delayed
+requires this single-target invariant automatically for default persistent
+presenter-backed product actions. The runner also machine-checks idle/passive
+presenter state where it is part of the persistent proof: checkout readiness and
+managed shortcut attach must park with `idleFps=0` and `currentFps=0`; passive
+toast proof must remain transparent, click-through, non-focusable, and
+overlay-inactive while Steam may still pump notification frames. Presenter-backed
+product actions also require clean smoke crash diagnostics: no crash dump files
+and no fatal Electron lifecycle events. When `--visual-close-probe` is used on
+presenter-backed product web surfaces, the Deck runner also verifies a
+post-close `active=false` callback, confirms the smoke app remains the focused
+X11 window, and re-checks crash evidence after the close input. In default
+persistent mode it additionally requires delayed
 `overlay:presenter-after-close` and `overlay:presenter-after-close-stable`
-snapshots parked at passive idle
-(`transparent=true`, `clickThrough=true`, `overlayActive=false`,
-`currentFps=0`), verifies `pumpCount` does not increase between those samples,
-and re-checks crash evidence after the close input.
+snapshots parked at passive idle (`transparent=true`, `clickThrough=true`,
+`overlayActive=false`, `currentFps=0`) and verifies `pumpCount` does not
+increase between those samples. The `--presenter-mode session` compatibility
+comparison skips those persistent-host parking and single-target assertions
+because the session fallback opens lazily and may pump while a session exists.
 The older managed native `--action native-web --web-modal true` path remains
 compatibility coverage.
 
