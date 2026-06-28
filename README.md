@@ -239,6 +239,10 @@ platform smoke-test flow, including an autorun mode that prints a
 `STEAM_BRIDGE_SMOKE_RESULT` JSON line for scripted checks. When scripting Steam
 Deck non-Steam shortcuts, reload Steam after writing `shortcuts.vdf` and launch
 the printed full shortcut game ID, not the internal shortcut app ID.
+The managed Electron overlay helper also owns the default Shift+Tab keyboard
+shortcut bridge, routing it through the same presenter-backed Friends/chat path
+used by the Deck Desktop proof instead of relying on Steam to hook Chromium
+child processes.
 
 SpaceWar `480` and the Electron smoke app are for generic initialization,
 callback, input, and overlay plumbing checks. Purchase overlays need a real
@@ -393,7 +397,9 @@ Raw `ActivateGameOverlay("Friends")`, Game Overview, and overlay hotkey toggling
 remain investigation paths: allowing Steam to hook Electron children can make
 Steam's desktop social UI render, but that duplicate hook can leave stale
 overlay surfaces after close; isolating children fixes product overlays but
-prevents that raw dialog path from rendering through Chromium.
+prevents that raw dialog path from rendering through Chromium. For Electron
+keyboard toggle behavior, `createElectronSteamOverlay(...)` installs a default
+Shift+Tab bridge that opens the verified Friends/chat presenter route.
 
 The native presenter currently uses the macOS probe implementation on macOS and
 an X11/GLX probe implementation on Linux. On Steam Deck Desktop Mode, the Linux
@@ -406,7 +412,8 @@ or the lower-level `client.overlay.attachPresenter(...)`,
 `client.overlay.openStatsOverlay(...)`, and
 `client.overlay.openDialogEquivalentOverlay(...)` helpers, or the Electron smoke app's
 `presenter-web` / `presenter-friends` / `presenter-community` /
-`presenter-stats` / `presenter-dialog-auto` actions for that proof. The older
+`presenter-stats` / `presenter-dialog-auto` / `presenter-shortcut` actions for
+that proof. The older
 `activateToWebPageWithNativeSession(..., { modal: true })` / `native-web` path
 remains compatibility coverage. Steam's raw Desktop Mode dialog/Game Overview
 overlay and hotkey toggle should not be treated as completed dismissal proofs.
@@ -420,15 +427,17 @@ Deck-side Shift+Tab/Escape probe and records before and after screenshots.
 For presenter-backed Steam web surfaces such as `presenter-community` and
 `presenter-stats`, add `--visual-close-input web` to close through the visible
 Steam web overlay close control.
-Use `--visual-toggle-probe` for hotkey evidence. The default
-`--visual-toggle-input keyboard` sends Shift+Tab, while
-`--visual-toggle-input guide` sends a controller Guide/Steam-button event through
-a temporary virtual gamepad. Add `--overlay-game-id shortcut` when investigating
+Use `--visual-toggle-probe` for shortcut evidence. With `presenter-shortcut`,
+the default `--visual-toggle-input keyboard` sends Shift+Tab into Steam Bridge's
+managed Electron shortcut bridge. With passive presenter or raw dialog actions,
+the same probe tests raw Steam hotkey interception. `--visual-toggle-input guide`
+sends a controller Guide/Steam-button event through a temporary virtual gamepad.
+Add `--overlay-game-id shortcut` when investigating
 whether raw Steam overlay close/back routing depends on the full non-Steam
-shortcut game ID. Focused Deck Desktop runs still show this toggle path as
-unresolved; the product overlay paths remain `openSteamOverlay(...)`, the
-lower-level web/store/Friends/Community/Stats helpers, and passive presenter
-notifications.
+shortcut game ID. Focused Deck Desktop runs still show the raw toggle path as
+unresolved; the product overlay paths remain the managed shortcut bridge,
+`openSteamOverlay(...)`, the lower-level web/store/Friends/Community/Stats
+helpers, and passive presenter notifications.
 
 Set `STEAM_BRIDGE_ELECTRON_OVERLAY_PROFILE=repaint`, or pass
 `--steam-bridge-electron-overlay-profile=repaint` to the Electron smoke app, to

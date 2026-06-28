@@ -153,7 +153,10 @@ For Electron apps, create one managed overlay for the game window and reuse it
 for overlay work:
 
 ```ts
-const steamOverlay = client.overlay.createElectronSteamOverlay(mainWindow);
+const steamOverlay = client.overlay.createElectronSteamOverlay(mainWindow, {
+  // Enabled by default. Shift+Tab opens the verified Friends/chat presenter route.
+  overlayShortcut: true
+});
 
 steamOverlay.open({
   type: "web",
@@ -187,7 +190,12 @@ steamOverlay.open({
 
 The manager owns a reusable native presenter, keeps it passive and click-through
 while idle, polls Steam overlay state cheaply, and only pumps frames when Steam
-reports `overlayNeedsPresent` or an overlay is being opened/active. It is the
+reports `overlayNeedsPresent` or an overlay is being opened/active. It also
+installs a default Electron `Shift+Tab` shortcut bridge that opens the verified
+Friends/chat presenter route without asking Steam to hook Chromium child
+processes; pass `overlayShortcut: false` to disable it, or provide
+`overlayShortcut: { target: { type: "community", appId } }` to choose another
+presenter-backed target. It is the
 recommended builder-facing entry point: web, store, Friends, Community, Stats,
 and Achievements targets route through the presenter-backed paths validated on
 Steam Deck Desktop Mode; `openSteamOverlay(...)` and the lower-level named
@@ -218,7 +226,9 @@ and `steam://open/overlay` should not be used as a generic toggle substitute:
 allowing Steam to hook Electron's Chromium children can make Steam's desktop
 social UI render, but that duplicate hook can leave stale overlay surfaces after
 close; the default child-process isolation keeps product overlays reliable and
-prevents that raw dialog path from rendering through Chromium.
+prevents that raw dialog path from rendering through Chromium. For Electron
+keyboard toggle behavior, use the managed `overlayShortcut` bridge rather than
+raw Steam hotkey interception.
 
 For Linux Electron apps, use
 `electronConfigureSteamOverlay({ profile: "repaint" })` when the Steam overlay
@@ -236,7 +246,8 @@ with `steamOverlay.open(...)`, or the lower-level `client.overlay.attachPresente
 `client.overlay.openStatsOverlay(...)`, and
 `client.overlay.openDialogEquivalentOverlay(...)` helpers, or the Electron smoke app's
 `presenter-web` / `presenter-friends` / `presenter-community` /
-`presenter-stats` / `presenter-dialog-auto` actions for the generic proof. Deck testing has verified a
+`presenter-stats` / `presenter-dialog-auto` / `presenter-shortcut` actions for
+the generic proof. Deck testing has verified a
 single Steam overlay target,
 `active=true` overlay callbacks, overlay close input, and clean return to the
 running app for the Friends List web surface; the web checkout/store proof also
@@ -246,13 +257,16 @@ behavior by keeping the presenter click-through and transparent while Steam
 displays an achievement-progress toast. The older
 `activateToWebPageWithNativeSession(..., { modal: true })` and `native-web` path
 remains compatibility coverage. Treat raw Friends/Game Overview dialog dismissal
-and Steam overlay hotkey toggling as open social-overlay blockers, not completed
-cross-platform guarantees. The Deck runner can collect focused toggle evidence
-with `--visual-toggle-probe --visual-toggle-input keyboard|guide|both`, and can
+and raw Steam overlay hotkey interception as open social-overlay diagnostics,
+not completed cross-platform guarantees. The managed Electron `Shift+Tab`
+shortcut bridge is the product path for Electron keyboard toggle behavior. The
+Deck runner can collect focused toggle evidence with
+`--visual-toggle-probe --visual-toggle-input keyboard|guide|both`, and can
 close presenter-backed Steam web surfaces through the visible Steam web close
 control with `--visual-close-probe --visual-close-input web`; current
-focused Desktop evidence still does not show Shift+Tab or a virtual
-Guide/Steam-button controller event opening overlay UI. Add
+focused Desktop evidence for raw Steam interception still does not show
+Shift+Tab or a virtual Guide/Steam-button controller event opening overlay UI.
+Add
 `--overlay-game-id shortcut` when investigating whether raw Steam overlay
 close/back routing depends on the full non-Steam shortcut game ID. Call
 `session.close()` during app cleanup or when you are finished with the proof

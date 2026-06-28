@@ -4678,6 +4678,117 @@ test("electron steam overlay manager owns one presenter and routes opens", (t) =
   );
 });
 
+test("electron steam overlay manager opens the presenter route from the default Shift+Tab shortcut", (t) => {
+  const hostHandle = Buffer.from([4, 8, 15, 16]);
+  let hostOpen = false;
+  let beforeInputHandler;
+  let removedHandler;
+  const fake = createFakeNative({
+    attachNativeOverlayHostView(nativeWindowHandle) {
+      hostOpen = true;
+      this.calls.push({ method: "attachNativeOverlayHostView", args: [nativeWindowHandle] });
+    },
+    pumpNativeOverlayProbeWindow() {
+      this.calls.push({ method: "pumpNativeOverlayProbeWindow", args: [] });
+    },
+    showNativeOverlayHostView() {
+      this.calls.push({ method: "showNativeOverlayHostView", args: [] });
+    },
+    setNativeOverlayHostInputPassthrough(passThrough) {
+      this.calls.push({ method: "setNativeOverlayHostInputPassthrough", args: [passThrough] });
+    },
+    setNativeOverlayHostOpacity(opaque) {
+      this.calls.push({ method: "setNativeOverlayHostOpacity", args: [opaque] });
+    },
+    detachNativeOverlayHostView() {
+      hostOpen = false;
+      this.calls.push({ method: "detachNativeOverlayHostView", args: [] });
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return false;
+    },
+    isNativeOverlayHostViewOpen() {
+      return hostOpen;
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  const window = {
+    isDestroyed() {
+      return false;
+    },
+    getNativeWindowHandle() {
+      return hostHandle;
+    },
+    once() {},
+    webContents: {
+      once() {},
+      invalidate() {},
+      send() {},
+      on(event, handler) {
+        if (event === "before-input-event") {
+          beforeInputHandler = handler;
+        }
+      },
+      off(event, handler) {
+        if (event === "before-input-event") {
+          removedHandler = handler;
+          beforeInputHandler = undefined;
+        }
+      }
+    }
+  };
+
+  const overlay = steam.overlay.createElectronSteamOverlay(window, {
+    title: "Electron Shortcut Overlay",
+    pollIntervalMs: 10000
+  });
+
+  assert.equal(typeof beforeInputHandler, "function");
+  let preventDefaultCount = 0;
+  beforeInputHandler(
+    {
+      preventDefault() {
+        preventDefaultCount += 1;
+      }
+    },
+    {
+      type: "keyDown",
+      key: "Tab",
+      code: "Tab",
+      shift: true
+    }
+  );
+
+  assert.equal(preventDefaultCount, 1);
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "activateOverlayToWebPage"),
+    [{ method: "activateOverlayToWebPage", args: [steam.STEAM_FRIENDS_OVERLAY_URL, true] }]
+  );
+
+  beforeInputHandler(
+    {
+      preventDefault() {
+        preventDefaultCount += 1;
+      }
+    },
+    {
+      type: "keyDown",
+      key: "Tab",
+      code: "Tab",
+      shift: true,
+      isAutoRepeat: true
+    }
+  );
+  assert.equal(preventDefaultCount, 1);
+
+  overlay.close();
+  assert.equal(removedHandler !== undefined, true);
+  assert.equal(overlay.isOpen(), false);
+});
+
 test("native overlay session owns the probe pump lifecycle", async (t) => {
   let probeOpen = false;
   let hostOpen = false;

@@ -387,6 +387,9 @@ function runAutorunAction(action) {
       case "presenter-achievements":
         openPresenterAchievementsOverlay();
         return { ok: true, action };
+      case "presenter-shortcut":
+        openPresenterShortcutBridge();
+        return { ok: true, action };
       case "presenter-achievement-progress":
         openPresenterAchievementProgress();
         return { ok: true, action };
@@ -595,6 +598,16 @@ function openPresenterAchievementProgress() {
   return snapshot();
 }
 
+function openPresenterShortcutBridge() {
+  const overlay = ensureElectronSteamOverlay();
+  recordEvent("overlay:presenter-shortcut-ready", {
+    target: "friends",
+    shortcut: "Shift+Tab",
+    presenter: overlay.snapshot()
+  });
+  return snapshot();
+}
+
 function ensureElectronSteamOverlay(activeClient = requireClient()) {
   if (electronSteamOverlay && electronSteamOverlay.isOpen()) {
     return electronSteamOverlay;
@@ -606,7 +619,16 @@ function ensureElectronSteamOverlay(activeClient = requireClient()) {
     restoreFocusDelayMs: 500,
     needsPresentFps: 30,
     activeOverlayFps: 30,
-    pollIntervalMs: 250
+    pollIntervalMs: 250,
+    overlayShortcut: {
+      target: () => {
+        recordEvent("overlay:shortcut-open", { shortcut: "Shift+Tab", target: "friends" });
+        return { type: "friends" };
+      },
+      onError: (error) => {
+        recordEvent("overlay:shortcut-open:error", serializeError(error));
+      }
+    }
   });
   recordEvent("overlay:presenter-attach", {
     presenter: electronSteamOverlay.snapshot()
@@ -1002,6 +1024,7 @@ function isNativeSessionAction(action) {
     action === "presenter-community" ||
     action === "presenter-stats" ||
     action === "presenter-achievements" ||
+    action === "presenter-shortcut" ||
     action === "presenter-achievement-progress"
   );
 }

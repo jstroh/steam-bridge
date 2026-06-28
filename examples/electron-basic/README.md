@@ -88,8 +88,8 @@ for Steam non-Steam shortcuts:
 Supported autorun actions are `none`, `dialog`, `friends`, `store`, `web`,
 `native-dialog`, `native-store`, `native-web`, `native-probe`,
 `presenter-dialog`, `presenter-store`, `presenter-web`, `presenter-friends`,
-`presenter-community`, `presenter-stats`, `presenter-achievements`, and
-`presenter-achievement-progress`.
+`presenter-community`, `presenter-stats`, `presenter-achievements`,
+`presenter-shortcut`, and `presenter-achievement-progress`.
 `native-probe` is a compatibility alias for `native-dialog`. On Linux, the
 `native-*` actions open a bridge-owned X11/GLX native presenter, keep it
 presenting frames, and activate the requested Steam overlay target through the
@@ -144,6 +144,11 @@ Use
 the action keeps the presenter transparent and click-through, calls
 `achievement.indicateProgress(...)`, and records `achievement:progress` plus
 `callback:achievement-stored` when Steam accepts the progress notification.
+Use `presenter-shortcut` with
+`--visual-toggle-probe --visual-toggle-input keyboard --visual-close-input web`
+to verify the managed Electron shortcut bridge: the app attaches the reusable
+presenter, waits for Shift+Tab, and the bridge routes that shortcut to the
+verified Friends/chat presenter-backed Steam web overlay.
 
 For social-overlay investigation only, the smoke app and Deck host runner expose
 `--steam-bridge-electron-overlay-scrub-child-env`,
@@ -296,19 +301,23 @@ For presenter-backed Steam web surfaces, add `--visual-close-input web` with
 `--visual-close-probe` to close through the visible Steam web overlay close
 control instead of Shift+Tab/Escape.
 
-Use `--visual-toggle-probe` when the question is whether the Steam overlay
-hotkey opens from the current app state. It focuses the smoke app when possible,
-captures `before-toggle-probe.png`, sends the selected toggle input, captures
-`after-toggle-open.png`, then closes and captures `after-toggle-close.png`. The default
-`--visual-toggle-input keyboard` sends Shift+Tab. Use
+Use `--visual-toggle-probe` when the question is whether an overlay shortcut
+opens from the current app state. With `presenter-shortcut`, this tests Steam
+Bridge's managed Electron Shift+Tab bridge. With passive presenter or raw dialog
+actions, this tests Steam's raw hotkey interception. The runner focuses the
+smoke app when possible, captures `before-toggle-probe.png`, sends the selected
+toggle input, captures `after-toggle-open.png`, then closes and captures
+`after-toggle-close.png`. The default `--visual-toggle-input keyboard` sends
+Shift+Tab. Use
 `--visual-toggle-input guide` to send the controller Guide/Steam button through a
 temporary `/dev/uinput` device, or `--visual-toggle-input both` to compare both
 paths in one run. Keyboard probes use the existing Shift+Tab/Escape close probe;
 Guide probes press Guide again. Focused Deck Desktop passive-presenter runs
 passed the toast proof but did not open Steam overlay UI from Shift+Tab or from
-the virtual controller Guide/Steam-button event, so this probe is currently
-evidence for an unresolved hotkey/social path rather than a passing assertion
-until a visual run captures the overlay opening and returning cleanly to the app.
+the virtual controller Guide/Steam-button event, so that raw interception probe
+remains evidence for an unresolved hotkey/social path unless the action under
+test is the managed `presenter-shortcut` bridge and the visual run captures the
+overlay opening and returning cleanly to the app.
 Add `--overlay-game-id shortcut` when comparing whether raw Steam overlay
 dismissal depends on the full non-Steam shortcut game ID.
 

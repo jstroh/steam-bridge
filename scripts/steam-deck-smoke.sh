@@ -777,7 +777,15 @@ run_visual_toggle_probe_for_input() {
   capture_deck_screenshot "${label_prefix}after-toggle-open"
   capture_deck_overlay_state "${label_prefix}after-toggle-open"
   if [ "$use_close_probe" = "1" ]; then
-    send_deck_overlay_close_probe
+    if [ "$visual_close_input" = "web" ]; then
+      send_deck_web_overlay_close_probe
+    elif [ "$visual_close_input" = "both" ]; then
+      send_deck_overlay_close_probe
+      sleep 0.5
+      send_deck_web_overlay_close_probe
+    else
+      send_deck_overlay_close_probe
+    fi
   else
     send_deck_overlay_toggle_probe "$input"
   fi
@@ -1194,6 +1202,8 @@ build_steam_launch_args() {
     helper_args+=("--require-overlay-activated")
   elif [ "$action" = "native-probe" ] || [ "$action" = "native-dialog" ] || [ "$action" = "native-store" ] || [ "$action" = "native-web" ]; then
     helper_args+=("--require-event" "overlay:native-session-open")
+  elif [ "$action" = "presenter-shortcut" ]; then
+    helper_args+=("--require-event" "overlay:presenter-shortcut-ready")
   elif [ "$action" = "presenter-dialog" ] || [ "$action" = "presenter-dialog-auto" ] || [ "$action" = "presenter-store" ] || [ "$action" = "presenter-web" ] || [ "$action" = "presenter-friends" ] || [ "$action" = "presenter-community" ] || [ "$action" = "presenter-stats" ] || [ "$action" = "presenter-achievements" ]; then
     helper_args+=("--require-event" "overlay:presenter-open")
     if [ "$action" = "presenter-store" ] || [ "$action" = "presenter-web" ] || [ "$action" = "presenter-friends" ] || [ "$action" = "presenter-dialog-auto" ] || [ "$action" = "presenter-community" ] || [ "$action" = "presenter-stats" ] || [ "$action" = "presenter-achievements" ]; then
@@ -1204,7 +1214,7 @@ build_steam_launch_args() {
     helper_args+=("--require-event" "achievement:progress")
   fi
 
-  if [ "$action" != "none" ] && [ "$action" != "presenter-achievement-progress" ] && [ "$action" != "presenter-dialog" ]; then
+  if [ "$action" != "none" ] && [ "$action" != "presenter-achievement-progress" ] && [ "$action" != "presenter-dialog" ] && [ "$action" != "presenter-shortcut" ]; then
     helper_args+=("--require-event" "callback:overlay-activated")
   fi
 
@@ -1520,6 +1530,22 @@ run_self_test() {
   fi
   if [[ "$achievements_args" != *"--require-event callback:overlay-activated"* ]]; then
     echo "Self-test failed: Presenter achievements args must require the overlay callback." >&2
+    exit 1
+  fi
+
+  action="presenter-shortcut"
+  build_steam_launch_args
+  shortcut_args="$(quote_args "${helper_args[@]}")"
+  if [[ "$shortcut_args" != *"--require-event overlay:presenter-shortcut-ready"* ]]; then
+    echo "Self-test failed: Presenter shortcut args must require the shortcut-ready event." >&2
+    exit 1
+  fi
+  if [[ "$shortcut_args" == *"--require-overlay-activated"* ]]; then
+    echo "Self-test failed: Presenter shortcut args must not require overlay activation before the visual toggle probe." >&2
+    exit 1
+  fi
+  if [[ "$shortcut_args" == *"--require-event callback:overlay-activated"* ]]; then
+    echo "Self-test failed: Presenter shortcut args must not require the overlay callback before the visual toggle probe." >&2
     exit 1
   fi
 

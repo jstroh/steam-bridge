@@ -1710,12 +1710,53 @@ export type SteamOverlayTarget =
   | SteamOverlayAchievementsTarget
   | SteamOverlayDialogTarget;
 
+export interface ElectronOverlayKeyboardInput {
+  type?: string;
+  key?: string;
+  code?: string;
+  shift?: boolean;
+  control?: boolean;
+  alt?: boolean;
+  meta?: boolean;
+  isAutoRepeat?: boolean;
+}
+
+export interface ElectronOverlayInputEvent {
+  preventDefault?(): void;
+}
+
+export type ElectronSteamOverlayShortcutTarget = SteamOverlayTarget | (() => SteamOverlayTarget);
+
+export interface ElectronSteamOverlayShortcutOptions {
+  enabled?: boolean;
+  target?: ElectronSteamOverlayShortcutTarget;
+  preventDefault?: boolean;
+  onError?: (error: unknown) => void;
+}
+
+export type ElectronSteamOverlayShortcutConfig = boolean | ElectronSteamOverlayShortcutOptions;
+
 export type ElectronOverlayWindow = Parameters<typeof electronOverlayPresenterOptionsImpl>[0] & {
   once?(event: "closed", handler: () => void): void;
+  webContents: Parameters<typeof electronOverlayPresenterOptionsImpl>[0]["webContents"] & {
+    on?(
+      event: "before-input-event",
+      handler: (event: ElectronOverlayInputEvent, input: ElectronOverlayKeyboardInput) => void
+    ): void;
+    off?(
+      event: "before-input-event",
+      handler: (event: ElectronOverlayInputEvent, input: ElectronOverlayKeyboardInput) => void
+    ): void;
+    removeListener?(
+      event: "before-input-event",
+      handler: (event: ElectronOverlayInputEvent, input: ElectronOverlayKeyboardInput) => void
+    ): void;
+  };
 };
 
 export type ElectronSteamOverlayOptions = NonNullable<Parameters<typeof electronOverlayPresenterOptionsImpl>[1]> & {
   closeWithWindow?: boolean;
+  overlayShortcut?: ElectronSteamOverlayShortcutConfig;
 };
 
 export interface ElectronSteamOverlay extends CallbackHandle {
@@ -7490,8 +7531,9 @@ export function createElectronSteamOverlay(
   window: ElectronOverlayWindow,
   options: ElectronSteamOverlayOptions = {}
 ): ElectronSteamOverlay {
-  const { closeWithWindow = true, ...presenterOptions } = options;
+  const { closeWithWindow = true, overlayShortcut = true, ...presenterOptions } = options;
   const presenter = attachOverlayPresenter(electronOverlayPresenterOptions(window, presenterOptions));
+  let removeShortcutListener: (() => void) | undefined;
   const controller: ElectronSteamOverlay = {
     presenter,
     open(target: SteamOverlayTarget): NativeOverlayPresenter {
@@ -7501,10 +7543,12 @@ export function createElectronSteamOverlay(
       return openSteamOverlay({ ...target, presenter } as SteamOverlayTarget);
     },
     close(): void {
+      removeShortcutListener?.();
+      removeShortcutListener = undefined;
       presenter.close();
     },
     disconnect(): void {
-      presenter.disconnect();
+      controller.close();
     },
     pump(): void {
       presenter.pump();
@@ -7517,6 +7561,8 @@ export function createElectronSteamOverlay(
     }
   };
 
+  removeShortcutListener = installElectronSteamOverlayShortcut(window, controller, overlayShortcut);
+
   if (closeWithWindow && typeof window.once === "function") {
     window.once("closed", () => {
       controller.close();
@@ -7524,6 +7570,104 @@ export function createElectronSteamOverlay(
   }
 
   return controller;
+}
+
+function installElectronSteamOverlayShortcut(
+  window: ElectronOverlayWindow,
+  controller: ElectronSteamOverlay,
+  shortcutConfig: ElectronSteamOverlayShortcutConfig
+): () => void {
+  const shortcut = normalizeElectronSteamOverlayShortcut(shortcutConfig);
+  if (!shortcut.enabled || typeof window.webContents.on !== "function") {
+    return () => {};
+  }
+
+  let opening = false;
+  let lastOpenedAt = 0;
+  const handler = (event: ElectronOverlayInputEvent, input: ElectronOverlayKeyboardInput): void => {
+    if (!isElectronSteamOverlayShortcutInput(input)) {
+      return;
+    }
+
+    if (shortcut.preventDefault) {
+      event.preventDefault?.();
+    }
+
+    const now = Date.now();
+    if (opening || now - lastOpenedAt < 750) {
+      return;
+    }
+
+    try {
+      const snapshot = controller.snapshot();
+      if (snapshot.overlayActive) {
+        return;
+      }
+
+      opening = true;
+      lastOpenedAt = now;
+      controller.open(resolveElectronSteamOverlayShortcutTarget(shortcut.target));
+    } catch (error) {
+      if (shortcut.onError) {
+        shortcut.onError(error);
+      } else {
+        process.emitWarning(error instanceof Error ? error : String(error), {
+          type: "SteamBridgeOverlayShortcutWarning"
+        });
+      }
+    } finally {
+      opening = false;
+    }
+  };
+
+  window.webContents.on("before-input-event", handler);
+
+  return () => {
+    if (typeof window.webContents.off === "function") {
+      window.webContents.off("before-input-event", handler);
+    } else if (typeof window.webContents.removeListener === "function") {
+      window.webContents.removeListener("before-input-event", handler);
+    }
+  };
+}
+
+function normalizeElectronSteamOverlayShortcut(
+  shortcutConfig: ElectronSteamOverlayShortcutConfig
+): Required<Pick<ElectronSteamOverlayShortcutOptions, "enabled" | "preventDefault">> &
+  Omit<ElectronSteamOverlayShortcutOptions, "enabled" | "preventDefault"> {
+  if (typeof shortcutConfig === "boolean") {
+    return {
+      enabled: shortcutConfig,
+      preventDefault: true
+    };
+  }
+
+  return {
+    ...shortcutConfig,
+    enabled: shortcutConfig.enabled ?? true,
+    preventDefault: shortcutConfig.preventDefault ?? true
+  };
+}
+
+function isElectronSteamOverlayShortcutInput(input: ElectronOverlayKeyboardInput): boolean {
+  const key = input.key?.toLowerCase();
+  const code = input.code?.toLowerCase();
+  return (
+    input.type === "keyDown" &&
+    !input.isAutoRepeat &&
+    input.shift === true &&
+    input.control !== true &&
+    input.alt !== true &&
+    input.meta !== true &&
+    (key === "tab" || code === "tab")
+  );
+}
+
+function resolveElectronSteamOverlayShortcutTarget(target?: ElectronSteamOverlayShortcutTarget): SteamOverlayTarget {
+  if (typeof target === "function") {
+    return target();
+  }
+  return target ?? { type: "friends" };
 }
 
 export function activateDialogWithNativeSession(

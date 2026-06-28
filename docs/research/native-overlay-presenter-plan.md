@@ -67,6 +67,12 @@ timing hacks.
   overlay callbacks and returned cleanly to the app. SpaceWar's web achievements
   URL redirects to the user profile because it has no public web stats page, so
   achievements content proof needs a real app with web-visible stats.
+- Deck Desktop keyboard toggle now has a product-shaped Electron route:
+  `createElectronSteamOverlay(...)` installs a default Shift+Tab shortcut bridge
+  that opens the verified Friends/chat presenter-backed web overlay instead of
+  asking Steam to hook Chromium children. A 2026-06-28 `presenter-shortcut` run
+  emitted shortcut-open and active/inactive overlay callbacks, captured visible
+  Friends/chat UI, and returned to the smoke app after the web close probe.
 - A generic `steam://open/overlay` URI is not a reliable shortcut around the
   unresolved raw social/toggle path. On Deck Desktop Mode it can emit an overlay
   activation callback while leaving the native presenter black and crashing the
@@ -235,14 +241,22 @@ Current evidence:
   Friends/chat content through the native overlay host, emitted active then
   inactive overlay callbacks, used one `gameoverlayui` target for App ID `480`,
   and returned focus to the Electron app through the web close probe.
+- The managed Electron shortcut bridge is the product keyboard-toggle path:
+  `createElectronSteamOverlay(mainWindow)` listens for Shift+Tab in Electron and
+  opens `steamOverlay.open({ type: "friends" })` by default, with
+  `overlayShortcut: false` and `overlayShortcut.target` available for apps that
+  need to opt out or choose another presenter-backed target. A 2026-06-28 Deck
+  Desktop `presenter-shortcut` run proved visible overlay open, active/inactive
+  callbacks, and return to the app after web close.
 - The same path is good enough for checkout-style proof when launched under a
   real installed Steam app with a configured product or transaction.
-- Deck Desktop Mode does not yet have a passing overlay-toggle proof. Focused
-  `--visual-toggle-probe` evidence after passive-presenter toast runs stayed in
-  the Electron app and did not emit `GameOverlayActivated` for either Shift+Tab
-  or a controller-shaped virtual Guide/Steam-button uinput device. The virtual
-  Guide path can move `overlayNeedsPresent` to `true`, but it has not rendered
-  overlay UI, so toggle support remains unresolved. The same probe with
+- Deck Desktop Mode does not yet have a passing raw Steam hotkey/Guide toggle proof. Focused
+  `--visual-toggle-probe` evidence for raw Steam hotkey interception after
+  passive-presenter toast runs stayed in the Electron app and did not emit
+  `GameOverlayActivated` for either Shift+Tab or a controller-shaped virtual
+  Guide/Steam-button uinput device. The virtual Guide path can move
+  `overlayNeedsPresent` to `true`, but it has not rendered overlay UI, so raw
+  Steam hotkey/Guide support remains unresolved. The same probe with
   `SteamOverlayGameId` set to the full non-Steam shortcut game ID attached
   Steam's overlay renderer to that shortcut ID but still did not open visible
   overlay UI.
@@ -321,6 +335,8 @@ Pass criteria:
 - High-level `dialog` targets for Friends, Community, OfficialGameGroup, Stats,
   and Achievements route to the same presenter-backed web equivalents by
   default; raw native dialog activation remains explicit diagnostic behavior.
+- The managed Electron Shift+Tab shortcut opens a presenter-backed overlay,
+  closes through the Steam web close control, and returns to the app.
 - Modal web/checkout overlay opens, accepts input, closes, emits active then
   inactive callbacks, and returns to the app.
 - No crash dumps from Electron or the native binding.
