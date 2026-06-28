@@ -182,6 +182,17 @@ function summarizeMatrixArtifacts(root) {
       expect(nativePresenter.attached === true, `${caseName}: native presenter attached`, resultFailures);
       expect(nativePresenter.nativeHostOpen === true, `${caseName}: native presenter host open`, resultFailures);
     }
+    if (String(action.action || "").startsWith("presenter-")) {
+      const electronOverlay = readElectronOverlay(nativePresenter);
+      expect(Boolean(electronOverlay), `${caseName}: managed Electron overlay diagnostics available`, resultFailures);
+      if (electronOverlay) {
+        expect(
+          electronOverlay.autoPrepareForNotifications === true,
+          `${caseName}: managed Electron overlay automatic notification priming is enabled`,
+          resultFailures
+        );
+      }
+    }
     if (overlayTargetCount > 1) {
       resultFailures.push(`${caseName}: duplicate gameoverlayui targets detected (${overlayTargetCount})`);
     }
@@ -306,12 +317,7 @@ function createSelfTestFixture(root) {
       overlay: {
         nativePresenter: {
           ok: true,
-          value: {
-            attached: true,
-            nativeHostOpen: true,
-            mode: "passive",
-            currentFps: 0
-          }
+          value: parkedPresenterFixture(0)
         }
       },
       steam: {
@@ -418,7 +424,8 @@ function activePresenterFixture(pumpCount) {
     idleFps: 0,
     currentFps: 30,
     overlayNeedsPresent: true,
-    pumpCount
+    pumpCount,
+    electronOverlay: electronOverlayFixture()
   };
 }
 
@@ -435,7 +442,21 @@ function parkedPresenterFixture(pumpCount) {
     idleFps: 0,
     currentFps: 0,
     overlayNeedsPresent: false,
-    pumpCount
+    pumpCount,
+    electronOverlay: electronOverlayFixture()
+  };
+}
+
+function electronOverlayFixture() {
+  return {
+    presenterMode: "persistent",
+    closeWithWindow: true,
+    autoPrepareForNotifications: true,
+    overlayShortcut: {
+      enabled: true,
+      preventDefault: true,
+      targetType: "function"
+    }
   };
 }
 
@@ -502,11 +523,14 @@ function requiresManagedLifecycleWaits(action, entries) {
 }
 
 function readPresenterMode(presenter) {
-  const electronOverlay =
-    presenter && typeof presenter.electronOverlay === "object" && !Array.isArray(presenter.electronOverlay)
-      ? presenter.electronOverlay
-      : undefined;
+  const electronOverlay = readElectronOverlay(presenter);
   return electronOverlay && typeof electronOverlay.presenterMode === "string" ? electronOverlay.presenterMode : "";
+}
+
+function readElectronOverlay(presenter) {
+  return presenter && typeof presenter.electronOverlay === "object" && !Array.isArray(presenter.electronOverlay)
+    ? presenter.electronOverlay
+    : undefined;
 }
 
 function findResultLog(caseDir, failures) {

@@ -1782,6 +1782,7 @@ export interface ElectronSteamOverlaySnapshot extends NativeOverlayPresenterSnap
   electronOverlay: {
     presenterMode: ElectronSteamOverlayPresenterMode;
     closeWithWindow: boolean;
+    autoPrepareForNotifications: boolean;
     overlayShortcut: ElectronSteamOverlayShortcutSnapshot;
   };
 }
@@ -1814,6 +1815,7 @@ export type ElectronSteamOverlayOptions = NonNullable<Parameters<typeof electron
   closeWithWindow?: boolean;
   overlayShortcut?: ElectronSteamOverlayShortcutConfig;
   presenterMode?: ElectronSteamOverlayPresenterMode;
+  autoPrepareForNotifications?: boolean;
 };
 
 export interface ElectronSteamOverlay extends CallbackHandle {
@@ -1839,6 +1841,37 @@ type NativeOverlayPresenterActivationMode = "interactive" | "passive" | "transpa
 type NativeOverlayPresenterInternal = NativeOverlayPresenter & {
   prepareForTransparentInputOverlay?: (durationMs?: number) => void;
 };
+
+const electronNotificationPresenters = new Set<NativeOverlayPresenter>();
+
+function registerElectronNotificationPresenter(presenter: NativeOverlayPresenter): CallbackHandle {
+  electronNotificationPresenters.add(presenter);
+  return {
+    disconnect() {
+      electronNotificationPresenters.delete(presenter);
+    }
+  };
+}
+
+function prepareElectronNotificationPresenters(): void {
+  for (const presenter of Array.from(electronNotificationPresenters)) {
+    try {
+      if (!presenter.isOpen()) {
+        electronNotificationPresenters.delete(presenter);
+        continue;
+      }
+
+      const snapshot = presenter.snapshot();
+      if (snapshot.overlayActive || snapshot.mode === "active") {
+        continue;
+      }
+
+      presenter.prepareForPassiveOverlay();
+    } catch {
+      electronNotificationPresenters.delete(presenter);
+    }
+  }
+}
 
 export const STEAM_STORE_BASE_URL = "https://store.steampowered.com";
 export const STEAM_COMMUNITY_BASE_URL = "https://steamcommunity.com";
@@ -7651,7 +7684,13 @@ export function createElectronSteamOverlay(
   window: ElectronOverlayWindow,
   options: ElectronSteamOverlayOptions = {}
 ): ElectronSteamOverlay {
-  const { closeWithWindow = true, overlayShortcut = true, presenterMode: modeOption, ...presenterOptions } = options;
+  const {
+    closeWithWindow = true,
+    overlayShortcut = true,
+    presenterMode: modeOption,
+    autoPrepareForNotifications = true,
+    ...presenterOptions
+  } = options;
   const presenterMode = resolveElectronSteamOverlayPresenterMode(modeOption);
   const shortcut = normalizeElectronSteamOverlayShortcut(overlayShortcut);
   const presenter =
@@ -7662,6 +7701,7 @@ export function createElectronSteamOverlay(
         }))
       : attachOverlayPresenter(electronOverlayPresenterOptions(window, presenterOptions));
   let removeShortcutListener: (() => void) | undefined;
+  let notificationPresenterHandle: CallbackHandle | undefined;
   let closed = false;
   const assertOpen = (): void => {
     if (closed || (presenterMode === "persistent" && !presenter.isOpen())) {
@@ -7739,6 +7779,8 @@ export function createElectronSteamOverlay(
       closed = true;
       removeShortcutListener?.();
       removeShortcutListener = undefined;
+      notificationPresenterHandle?.disconnect();
+      notificationPresenterHandle = undefined;
       presenter.close();
     },
     disconnect(): void {
@@ -7756,6 +7798,7 @@ export function createElectronSteamOverlay(
         electronOverlay: {
           presenterMode,
           closeWithWindow,
+          autoPrepareForNotifications,
           overlayShortcut: snapshotElectronSteamOverlayShortcut(shortcut)
         }
       };
@@ -7763,6 +7806,9 @@ export function createElectronSteamOverlay(
   };
 
   removeShortcutListener = installElectronSteamOverlayShortcut(window, controller, shortcut);
+  if (autoPrepareForNotifications) {
+    notificationPresenterHandle = registerElectronNotificationPresenter(presenter);
+  }
 
   if (closeWithWindow && typeof window.once === "function") {
     window.once("closed", () => {
@@ -8267,6 +8313,7 @@ export const achievement = {
     });
   },
   activate(name: string): boolean {
+    prepareElectronNotificationPresenters();
     return native().achievementActivate(name);
   },
   isActivated: isAchievementActivated,
@@ -8286,6 +8333,7 @@ export const achievement = {
     return native().achievementGetDisplayAttribute(name, key);
   },
   indicateProgress(name: string, current: number, max: number): boolean {
+    prepareElectronNotificationPresenters();
     return native().achievementIndicateProgress(name, current, max);
   },
   getProgressLimitsInt(name: string): AchievementProgressLimitsInt | null {
@@ -12523,6 +12571,7 @@ export const stats = {
     return native().statsUpdateAvgRate(name, countThisSession, sessionLength);
   },
   store(): boolean {
+    prepareElectronNotificationPresenters();
     return native().statsStore();
   },
   resetAll(achievementsToo: boolean): boolean {

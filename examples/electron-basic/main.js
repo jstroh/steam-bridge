@@ -717,7 +717,6 @@ function openPresenterAchievementProgress() {
   const activeClient = requireClient();
   const overlay = ensureElectronSteamOverlay(activeClient);
   const presenter = overlay.presenter;
-  overlay.prepareForNotification();
 
   const target = resolveAchievementProgressTarget(activeClient);
   const indicated = activeClient.achievement.indicateProgress(target.name, target.current, target.max);

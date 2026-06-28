@@ -177,9 +177,8 @@ await steamOverlay.openAndWait({
   steamUrl: txn.steamurl
 });
 
-// Prime the same presenter for passive Steam notifications, such as
-// achievement progress toasts, without making it interactive.
-steamOverlay.prepareForNotification();
+// Achievement progress/store notifications are automatically primed while the
+// managed overlay is open. Use prepareForNotification() only for custom cases.
 
 await steamOverlay.openAndWait({ type: "friends" });
 
@@ -236,9 +235,11 @@ For `InitTxn` flows, call `steamOverlay.prepareForCheckout()` immediately before
 the app asks its backend to start the transaction. If Steam returns a web
 checkout URL, pass it as `steamOverlay.open({ type: "checkout", steamUrl })`.
 If you have a transaction id, call `steamOverlay.open({ type: "checkout",
-transactionId })` and Steam Bridge builds the approval URL for you. For passive
-Steam notifications such as achievement progress toasts, call
-`steamOverlay.prepareForNotification()` before invoking the Steam API. On
+transactionId })` and Steam Bridge builds the approval URL for you. Passive
+Steam notifications such as achievement progress toasts are automatically
+primed by the managed Electron overlay before the relevant achievement/stats
+calls; use `steamOverlay.prepareForNotification()` only for lower-level or
+custom Steam API calls. On
 Linux/X11, fully idle mode makes the host transparent and click-through;
 `overlayNeedsPresent` can make it visible while leaving input click-through for
 passive notifications; opening or active overlay mode restores both opacity and
@@ -246,8 +247,9 @@ input so Steam web or checkout UI can receive clicks, then parks the host
 transparent after Steam reports the overlay inactive. The default `idleFps` is
 `0`; opt into nonzero idle pumping only for diagnostics. Use
 `steamOverlay.snapshot()` for diagnostics; it returns the native presenter state
-plus an `electronOverlay` block with the active presenter mode, shortcut policy,
-and whether the manager owns Electron window-close cleanup. The smoke verifiers
+plus an `electronOverlay` block with the active presenter mode,
+notification-priming policy, shortcut policy, and whether the manager owns
+Electron window-close cleanup. The smoke verifiers
 can require those managed diagnostics with `--require-electron-overlay`,
 `--require-presenter-mode <persistent|session>`, and
 `--require-overlay-shortcut-target <target>`. For resolver-backed shortcut

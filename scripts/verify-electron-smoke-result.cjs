@@ -79,6 +79,12 @@ if (options.requirePassivePresenter || options.requireIdlePresenter) {
 }
 if (options.requireElectronOverlay || options.requirePresenterMode || options.requireOverlayShortcutTarget) {
   expect(Boolean(electronOverlay), "managed Electron overlay diagnostics available");
+  if (electronOverlay) {
+    expect(
+      electronOverlay.autoPrepareForNotifications === true,
+      "managed Electron overlay automatic notification priming is enabled"
+    );
+  }
 }
 if (options.requirePresenterMode && electronOverlay) {
   expect(

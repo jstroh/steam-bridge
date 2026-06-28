@@ -4687,6 +4687,7 @@ test("electron steam overlay manager owns one presenter and routes opens", (t) =
   assert.deepEqual(overlay.snapshot().electronOverlay, {
     presenterMode: "persistent",
     closeWithWindow: true,
+    autoPrepareForNotifications: true,
     overlayShortcut: {
       enabled: true,
       preventDefault: true,
@@ -4738,6 +4739,188 @@ test("electron steam overlay manager owns one presenter and routes opens", (t) =
       { method: "detachNativeOverlayHostView", args: [] }
     ]
   );
+});
+
+test("electron steam overlay manager primes passive notification toasts automatically", (t) => {
+  const hostHandle = Buffer.from([3, 1, 4, 1]);
+  let hostOpen = false;
+  const fake = createFakeNative({
+    attachNativeOverlayHostView(nativeWindowHandle) {
+      hostOpen = true;
+      this.calls.push({ method: "attachNativeOverlayHostView", args: [nativeWindowHandle] });
+    },
+    pumpNativeOverlayProbeWindow() {
+      this.calls.push({ method: "pumpNativeOverlayProbeWindow", args: [] });
+    },
+    showNativeOverlayHostView() {
+      this.calls.push({ method: "showNativeOverlayHostView", args: [] });
+    },
+    setNativeOverlayHostInputPassthrough(passThrough) {
+      this.calls.push({ method: "setNativeOverlayHostInputPassthrough", args: [passThrough] });
+    },
+    setNativeOverlayHostOpacity(opaque) {
+      this.calls.push({ method: "setNativeOverlayHostOpacity", args: [opaque] });
+    },
+    detachNativeOverlayHostView() {
+      hostOpen = false;
+      this.calls.push({ method: "detachNativeOverlayHostView", args: [] });
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return false;
+    },
+    isNativeOverlayHostViewOpen() {
+      return hostOpen;
+    },
+    achievementActivate(name) {
+      this.calls.push({ method: "achievementActivate", args: [name] });
+      return true;
+    },
+    achievementIndicateProgress(name, current, max) {
+      this.calls.push({ method: "achievementIndicateProgress", args: [name, current, max] });
+      return true;
+    },
+    statsStore() {
+      this.calls.push({ method: "statsStore", args: [] });
+      return true;
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  const window = {
+    isDestroyed() {
+      return false;
+    },
+    getNativeWindowHandle() {
+      return hostHandle;
+    },
+    once() {},
+    webContents: {
+      once() {},
+      invalidate() {},
+      send() {}
+    }
+  };
+
+  const overlay = steam.overlay.createElectronSteamOverlay(window, {
+    title: "Electron Notification Overlay",
+    pollIntervalMs: 10000
+  });
+
+  assert.equal(overlay.snapshot().electronOverlay.autoPrepareForNotifications, true);
+  assert.deepEqual(notificationCalls(), ["pumpNativeOverlayProbeWindow"]);
+
+  assert.equal(steam.achievement.indicateProgress("ACH_PROGRESS", 1, 2), true);
+  assert.deepEqual(notificationCalls(), [
+    "pumpNativeOverlayProbeWindow",
+    "pumpNativeOverlayProbeWindow",
+    "achievementIndicateProgress"
+  ]);
+
+  assert.equal(steam.achievement.activate("ACH_WIN"), true);
+  assert.equal(steam.stats.store(), true);
+  assert.deepEqual(notificationCalls(), [
+    "pumpNativeOverlayProbeWindow",
+    "pumpNativeOverlayProbeWindow",
+    "achievementIndicateProgress",
+    "pumpNativeOverlayProbeWindow",
+    "achievementActivate",
+    "pumpNativeOverlayProbeWindow",
+    "statsStore"
+  ]);
+
+  fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: true });
+  const activeCallCount = notificationCalls().length;
+  assert.equal(steam.achievement.indicateProgress("ACH_ACTIVE", 2, 3), true);
+  assert.deepEqual(notificationCalls().slice(activeCallCount), ["achievementIndicateProgress"]);
+
+  overlay.close();
+
+  function notificationCalls() {
+    return fake.calls
+      .filter((call) =>
+        [
+          "pumpNativeOverlayProbeWindow",
+          "achievementIndicateProgress",
+          "achievementActivate",
+          "statsStore"
+        ].includes(call.method)
+      )
+      .map((call) => call.method);
+  }
+});
+
+test("electron steam overlay manager can disable automatic passive notification priming", (t) => {
+  const hostHandle = Buffer.from([2, 7, 1, 8]);
+  let hostOpen = false;
+  const fake = createFakeNative({
+    attachNativeOverlayHostView(nativeWindowHandle) {
+      hostOpen = true;
+      this.calls.push({ method: "attachNativeOverlayHostView", args: [nativeWindowHandle] });
+    },
+    pumpNativeOverlayProbeWindow() {
+      this.calls.push({ method: "pumpNativeOverlayProbeWindow", args: [] });
+    },
+    showNativeOverlayHostView() {
+      this.calls.push({ method: "showNativeOverlayHostView", args: [] });
+    },
+    setNativeOverlayHostInputPassthrough(passThrough) {
+      this.calls.push({ method: "setNativeOverlayHostInputPassthrough", args: [passThrough] });
+    },
+    setNativeOverlayHostOpacity(opaque) {
+      this.calls.push({ method: "setNativeOverlayHostOpacity", args: [opaque] });
+    },
+    detachNativeOverlayHostView() {
+      hostOpen = false;
+      this.calls.push({ method: "detachNativeOverlayHostView", args: [] });
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return false;
+    },
+    isNativeOverlayHostViewOpen() {
+      return hostOpen;
+    },
+    achievementIndicateProgress(name, current, max) {
+      this.calls.push({ method: "achievementIndicateProgress", args: [name, current, max] });
+      return true;
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  const window = {
+    isDestroyed() {
+      return false;
+    },
+    getNativeWindowHandle() {
+      return hostHandle;
+    },
+    once() {},
+    webContents: {
+      once() {},
+      invalidate() {},
+      send() {}
+    }
+  };
+
+  const overlay = steam.overlay.createElectronSteamOverlay(window, {
+    title: "Electron Manual Notification Overlay",
+    autoPrepareForNotifications: false,
+    pollIntervalMs: 10000
+  });
+
+  assert.equal(overlay.snapshot().electronOverlay.autoPrepareForNotifications, false);
+  assert.equal(steam.achievement.indicateProgress("ACH_MANUAL", 1, 2), true);
+  assert.deepEqual(
+    fake.calls
+      .filter((call) => ["pumpNativeOverlayProbeWindow", "achievementIndicateProgress"].includes(call.method))
+      .map((call) => call.method),
+    ["pumpNativeOverlayProbeWindow", "achievementIndicateProgress"]
+  );
+
+  overlay.close();
 });
 
 test("electron steam overlay manager can fall back to native overlay sessions", (t) => {
@@ -4800,6 +4983,7 @@ test("electron steam overlay manager can fall back to native overlay sessions", 
   assert.deepEqual(overlay.snapshot().electronOverlay, {
     presenterMode: "session",
     closeWithWindow: true,
+    autoPrepareForNotifications: true,
     overlayShortcut: {
       enabled: true,
       preventDefault: true,

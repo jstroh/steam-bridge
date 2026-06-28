@@ -368,8 +368,8 @@ await steamOverlay.openAndWait({
   steamUrl: txn.steamurl
 });
 
-// Prime the same presenter for passive Steam notifications.
-steamOverlay.prepareForNotification();
+// Achievement progress/store notifications are automatically primed while the
+// managed overlay is open. Use prepareForNotification() only for custom cases.
 
 await steamOverlay.openAndWait({ type: "friends" });
 
@@ -390,9 +390,12 @@ steamOverlay.close();
 
 The manager owns a reusable native presenter, keeps it passive and click-through
 while idle, polls Steam overlay state cheaply, and only pumps frames when Steam
-reports `overlayNeedsPresent` or an overlay is being opened/active. This is the
-path intended for checkout overlays and passive Steam notifications without
-forcing the Electron game window into a constant repaint loop. By default
+reports `overlayNeedsPresent` or an overlay is being opened/active. While the
+managed overlay is open, Steam Bridge automatically primes that passive
+presenter before achievement progress, achievement unlock, and stats-store calls
+that can produce Steam notification toasts. This is the path intended for
+checkout overlays and passive Steam notifications without forcing the Electron
+game window into a constant repaint loop. By default
 `idleFps` is `0`; set it explicitly only for diagnostic comparisons. Use
 `attachPresenter(...)` and pass `presenter` to `openSteamOverlay(...)` directly
 only when you need lower-level lifecycle control.
@@ -405,7 +408,7 @@ as `overlay:presenter-wait-shown`, `overlay:presenter-wait-closed`, and
 `overlay:presenter-parked` for Deck/Linux artifact review. Call
 `steamOverlay.snapshot()` when you need diagnostics; it returns the
 native presenter state plus an `electronOverlay` block with the presenter mode,
-shortcut policy, and window-close ownership.
+notification-priming policy, shortcut policy, and window-close ownership.
 The smoke verifiers can require those managed diagnostics with
 `--require-electron-overlay`, `--require-presenter-mode <persistent|session>`,
 and `--require-overlay-shortcut-target <target>`. For resolver-backed shortcut
@@ -481,10 +484,11 @@ Bridge builds the approval URL. Treat `MicroTxnAuthorizationResponse` as a
 purchase authorization event, not as an overlay-close event; keep the presenter
 alive until Steam emits overlay inactive and the app has returned. The smoke app
 records presenter diagnostics on `callback:microtxn` so real-app purchase runs
-can prove the presenter was still available during authorization. For passive
-Steam notifications such as
-achievement progress toasts, call `steamOverlay.prepareForNotification()` before
-invoking the Steam API. With the
+can prove the presenter was still available during authorization. Passive Steam
+notifications such as achievement progress toasts are automatically primed by
+the managed Electron overlay before the relevant achievement/stats calls; use
+`steamOverlay.prepareForNotification()` only for lower-level or custom Steam API
+calls. With the
 default child-process isolation, Deck Desktop Mode has verified this path with a
 single `gameoverlayui` process, paired active/inactive callbacks, and visual
 return to the Electron app. Passive achievement-progress toasts also render with

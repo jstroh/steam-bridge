@@ -245,6 +245,8 @@ const electronSteamOverlay = overlay.createElectronSteamOverlay({
     invalidate() {},
     send() {}
   }
+}, {
+  autoPrepareForNotifications: true
 });
 const typedElectronSteamOverlay: ElectronSteamOverlay = electronSteamOverlay;
 const openAndWaitPromise = typedElectronSteamOverlay.openAndWait(steamOverlayTarget, {

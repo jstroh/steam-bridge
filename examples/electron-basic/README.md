@@ -170,14 +170,19 @@ needs lower-level lifecycle await points without owning Steam callbacks or
 native presenter parking. The smoke lifecycle log records those public wait
 helpers as `overlay:presenter-wait-shown`, `overlay:presenter-wait-closed`, and
 `overlay:presenter-parked` during managed presenter proofs.
+The managed overlay automatically primes its passive presenter before
+achievement progress, achievement unlock, and stats-store calls that can produce
+Steam notification toasts; `prepareForNotification()` remains available for
+lower-level custom cases.
 Do not use `steam://open/overlay` as a generic overlay-toggle substitute in this
 example. Deck Desktop testing showed it can activate Steam's callback path while
 leaving the native presenter black and the smoke process unrecovered.
 Use
 `presenter-achievement-progress` to verify passive Steam notification rendering:
-the action keeps the presenter transparent and click-through, calls
-`achievement.indicateProgress(...)`, and records `achievement:progress` plus
-`callback:achievement-stored` when Steam accepts the progress notification.
+the action relies on automatic passive priming, keeps the presenter transparent
+and click-through, calls `achievement.indicateProgress(...)`, and records
+`achievement:progress` plus `callback:achievement-stored` when Steam accepts the
+progress notification.
 Use `presenter-shortcut` with
 `--visual-toggle-probe --visual-toggle-input keyboard --visual-close-input keyboard`
 to verify the managed Electron shortcut bridge: the app attaches the reusable

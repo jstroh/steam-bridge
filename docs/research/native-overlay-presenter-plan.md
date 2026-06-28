@@ -47,7 +47,10 @@ timing hacks.
   achievement-progress notifications on Steam Deck Desktop Mode: the host stays
   transparent and click-through, Steam emits `UserAchievementStored`, and the
   achievement-progress toast renders over the Electron app without a modal
-  `GameOverlayActivated` callback.
+  `GameOverlayActivated` callback. The managed Electron overlay now registers
+  its presenter for automatic passive notification priming, so normal
+  achievement progress, achievement unlock, and stats-store calls do not require
+  app code to manually call `prepareForNotification()`.
 - Deck Desktop Friends List now has a product-shaped route:
   `openFriendsOverlay({ presenter })` opens Steam Community chat through the
   same native web presenter used by checkout/store overlays. Deck Desktop
@@ -169,9 +172,10 @@ The presenter should:
 - expose diagnostics so app code and tests can tell whether the presenter is
   attached, visible, passive, active, pumping, and recently touched by overlay
   callbacks; the managed Electron overlay snapshot also reports the selected
-  presenter mode, shortcut policy, and window-close ownership. The smoke
-  verifiers can require those managed Electron fields so Deck/Linux runs fail if
-  the wrong presenter mode or shortcut target is active.
+  presenter mode, automatic notification-priming policy, shortcut policy, and
+  window-close ownership. The smoke verifiers can require those managed Electron
+  fields so Deck/Linux runs fail if the wrong presenter mode, notification
+  policy, or shortcut target is active.
 
 This should replace app-owned overlay controllers. App builders should not need
 to know whether the active platform uses X11/GLX, Metal, or another backend.
@@ -224,7 +228,9 @@ Current evidence:
   for activation boost windows, active overlays, or `overlayNeedsPresent`.
 - Deck Desktop Mode can show a passive achievement-progress toast over the
   Electron smoke app through the reusable presenter path while the native host
-  remains click-through and transparent, also with a single overlay target.
+  remains click-through and transparent, also with a single overlay target. The
+  smoke app's toast route now relies on the managed overlay's automatic passive
+  notification priming instead of calling `prepareForNotification()` directly.
 - Deck Desktop Mode can show the Steam Friends List / chat UI through
   `steamOverlay.open({ type: "friends" })`, backed by
   `openSteamOverlay({ type: "friends", presenter })`, which opens Steam
