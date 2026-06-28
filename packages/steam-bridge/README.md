@@ -212,7 +212,10 @@ installs a default Electron `Shift+Tab` shortcut bridge that opens the verified
 Friends/chat presenter route without asking Steam to hook Chromium child
 processes; pass `overlayShortcut: false` to disable it, or provide
 `overlayShortcut: { target: { type: "community", appId } }` to choose another
-presenter-backed target. It is the
+presenter-backed target. The bridge consumes Shift+Tab only when it is opening a
+managed presenter-backed target; once Steam reports an active overlay, it lets
+Shift+Tab pass through so Steam can handle the close/toggle side if that key
+event reaches the app. It is the
 recommended builder-facing entry point: web, store, Friends, Community, Stats,
 Achievements, and checkout targets route through the presenter-backed paths
 used by the Steam Deck Desktop Mode proofs; `openSteamOverlay(...)` and the

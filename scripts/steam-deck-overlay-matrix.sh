@@ -264,7 +264,7 @@ run_shortcut_case() {
     --keep-open-after-result \
     --visual-toggle-probe \
     --visual-toggle-input keyboard \
-    --visual-close-input web \
+    --visual-close-input keyboard \
     --visual-toggle-open-delay 6 \
     "$@"
 }
@@ -333,7 +333,7 @@ run_summary_self_test() {
 }
 
 run_self_test() {
-  local self_path minimal_output core_output full_output first_core_case second_core_case checkout_prepare_case passive_toast_case shortcut_web_case
+  local self_path minimal_output core_output full_output first_core_case second_core_case shortcut_friends_case checkout_prepare_case passive_toast_case shortcut_web_case
   self_path="${BASH_SOURCE[0]}"
 
   minimal_output="$(
@@ -388,15 +388,18 @@ run_self_test() {
 
   first_core_case="$(matrix_case_command "$core_output" "01-web-modal")"
   second_core_case="$(matrix_case_command "$core_output" "02-friends")"
+  shortcut_friends_case="$(matrix_case_command "$core_output" "03-shortcut-friends")"
   checkout_prepare_case="$(matrix_case_command "$core_output" "04-checkout-prepare")"
   passive_toast_case="$(matrix_case_command "$core_output" "05-passive-toast")"
   shortcut_web_case="$(matrix_case_command "$core_output" "12-shortcut-web")"
 
   require_not_contains "$first_core_case" "--skip-copy" "first matrix case must copy the package."
   require_contains "$second_core_case" "--skip-copy" "later matrix cases should reuse the copied package."
+  require_contains "$shortcut_friends_case" "--visual-close-input keyboard" "shortcut proof should close with keyboard toggle input."
   require_not_contains "$checkout_prepare_case" "--result-delay-ms" "checkout readiness must use the normal settling delay."
   require_contains "$passive_toast_case" "--result-delay-ms 1200" "passive toast should use the short notification capture delay."
   require_contains "$shortcut_web_case" "--visual-toggle-open-delay 6" "web shortcut proof should wait for the web surface to load."
+  require_contains "$shortcut_web_case" "--visual-close-input keyboard" "web shortcut proof should close with keyboard toggle input."
   run_summary_self_test
 
   echo "Steam Deck overlay matrix self-test passed."

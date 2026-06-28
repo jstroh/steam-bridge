@@ -171,10 +171,12 @@ the action keeps the presenter transparent and click-through, calls
 `achievement.indicateProgress(...)`, and records `achievement:progress` plus
 `callback:achievement-stored` when Steam accepts the progress notification.
 Use `presenter-shortcut` with
-`--visual-toggle-probe --visual-toggle-input keyboard --visual-close-input web`
+`--visual-toggle-probe --visual-toggle-input keyboard --visual-close-input keyboard`
 to verify the managed Electron shortcut bridge: the app attaches the reusable
 presenter, waits for Shift+Tab, and the bridge routes that shortcut to the
-verified Friends/chat presenter-backed Steam web overlay. Add
+verified Friends/chat presenter-backed Steam web overlay. When Steam reports an
+active overlay, the bridge lets Shift+Tab pass through instead of swallowing it,
+so Steam can handle close/toggle behavior if that key event reaches Electron. Add
 `--shortcut-target <name>` to test another presenter-backed target through the
 same focused Shift+Tab path; supported smoke targets are `friends`, `web`,
 `store`, `community`, `stats`, `achievements`, `dialog`, and `checkout`.
@@ -376,7 +378,8 @@ actions, this tests Steam's raw hotkey interception. The runner focuses the
 smoke app when possible, captures `before-toggle-probe.png`, sends the selected
 toggle input, captures `after-toggle-open.png`, then closes and captures
 `after-toggle-close.png`. The default `--visual-toggle-input keyboard` sends
-Shift+Tab. For `presenter-shortcut`, keyboard toggle probes also require
+Shift+Tab. For `presenter-shortcut`, keyboard toggle probes close with the
+keyboard path by default and also require
 `overlay:shortcut-open`, active/inactive callbacks, focus returning to the smoke
 app, delayed post-close presenter snapshots parked at passive idle with no
 `pumpCount` increase, and no post-close crash evidence. Use

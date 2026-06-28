@@ -5014,6 +5014,26 @@ test("electron steam overlay manager opens the presenter route from the default 
     [{ method: "activateOverlayToWebPage", args: [steam.STEAM_FRIENDS_OVERLAY_URL, true] }]
   );
 
+  fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: true });
+  beforeInputHandler(
+    {
+      preventDefault() {
+        preventDefaultCount += 1;
+      }
+    },
+    {
+      type: "keyDown",
+      key: "Tab",
+      code: "Tab",
+      shift: true
+    }
+  );
+  assert.equal(preventDefaultCount, 1);
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "activateOverlayToWebPage"),
+    [{ method: "activateOverlayToWebPage", args: [steam.STEAM_FRIENDS_OVERLAY_URL, true] }]
+  );
+
   beforeInputHandler(
     {
       preventDefault() {

@@ -7867,19 +7867,22 @@ function installElectronSteamOverlayShortcut(
       return;
     }
 
-    if (shortcut.preventDefault) {
-      event.preventDefault?.();
-    }
-
-    const now = Date.now();
-    if (opening || now - lastOpenedAt < 750) {
-      return;
-    }
-
     try {
       const snapshot = controller.snapshot();
       if (snapshot.overlayActive) {
         return;
+      }
+
+      const now = Date.now();
+      if (opening || now - lastOpenedAt < 750) {
+        if (shortcut.preventDefault) {
+          event.preventDefault?.();
+        }
+        return;
+      }
+
+      if (shortcut.preventDefault) {
+        event.preventDefault?.();
       }
 
       opening = true;

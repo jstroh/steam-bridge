@@ -244,7 +244,9 @@ shortcut bridge, routing it through the same presenter-backed Friends/chat path
 used by the Deck Desktop proof instead of relying on Steam to hook Chromium
 child processes. Apps can set `overlayShortcut.target` to any presenter-backed
 target when they want Shift+Tab to open store, web, checkout, community, stats,
-achievements, or dialog-equivalent surfaces instead.
+achievements, or dialog-equivalent surfaces instead. Once Steam reports an
+active overlay, the shortcut bridge no longer consumes Shift+Tab, so Steam can
+handle the close/toggle side if that key event reaches the app.
 
 To rerun the Steam Deck Desktop Mode product overlay proof matrix from this
 repo, keep the Deck awake in Desktop Mode with Steam running and use:
