@@ -147,6 +147,11 @@ app. When testing a real app with a configured product, set
 `STEAM_BRIDGE_SMOKE_CHECKOUT_URL` to the Steam URL returned by `InitTxn`, or set
 `STEAM_BRIDGE_SMOKE_CHECKOUT_TRANSACTION_ID` to build and open the Steam
 transaction approval page through `steamOverlay.open({ type: "checkout", ... })`.
+The Linux and Steam Deck helpers expose the same inputs as `--checkout-url`,
+`--checkout-transaction-id`, and `--checkout-return-url`. Without a checkout URL
+or transaction ID the helpers only require `overlay:presenter-checkout-ready`;
+with one, they require `overlay:presenter-open` and a Steam overlay activation
+callback.
 Do not use `steam://open/overlay` as a generic overlay-toggle substitute in this
 example. Deck Desktop testing showed it can activate Steam's callback path while
 leaving the native presenter black and the smoke process unrecovered.

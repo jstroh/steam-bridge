@@ -1125,6 +1125,9 @@ function parseSmokeArgs(args) {
     autorunRequireOverlayActive: undefined,
     webModal: undefined,
     webUrl: undefined,
+    checkoutUrl: undefined,
+    checkoutTransactionId: undefined,
+    checkoutReturnUrl: undefined,
     achievementName: undefined,
     achievementCurrent: undefined,
     achievementMax: undefined,
@@ -1163,6 +1166,15 @@ function parseSmokeArgs(args) {
         break;
       case "--steam-bridge-smoke-web-url":
         options.webUrl = value;
+        break;
+      case "--steam-bridge-smoke-checkout-url":
+        options.checkoutUrl = value;
+        break;
+      case "--steam-bridge-smoke-checkout-transaction-id":
+        options.checkoutTransactionId = value;
+        break;
+      case "--steam-bridge-smoke-checkout-return-url":
+        options.checkoutReturnUrl = value;
         break;
       case "--steam-bridge-smoke-overlay-dialog":
         options.overlayDialog = value;

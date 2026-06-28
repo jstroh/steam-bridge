@@ -16,6 +16,9 @@ overlay_isolate_child_processes=""
 window_mode=""
 web_url=""
 web_modal=""
+checkout_url=""
+checkout_transaction_id=""
+checkout_return_url=""
 overlay_dialog=""
 achievement_name=""
 achievement_current=""
@@ -69,7 +72,8 @@ Options:
                                 app uses --app-id; shortcut uses the full non-Steam shortcut
                                 game ID; inherit leaves SteamOverlayGameId untouched.
   --action NAME                 Autorun action. Defaults to dialog. Supports raw dialog/store/web,
-                                managed native-* variants, and presenter-* variants.
+                                managed native-* variants, and presenter-* variants,
+                                including presenter-checkout.
   --overlay-profile NAME        Electron overlay profile. Desktop defaults to repaint.
   --overlay-scrub-child-env true|false
                                 Whether to scrub Steam overlay preload entries from Electron child env.
@@ -78,6 +82,9 @@ Options:
   --window-mode NAME            Electron window mode: windowed, fullscreen, or borderless.
   --web-url URL                 URL for the web overlay action.
   --web-modal true|false        Whether the web overlay action should request a modal.
+  --checkout-url URL            Full Steam checkout URL for presenter-checkout.
+  --checkout-transaction-id ID  Steam checkout transaction ID for presenter-checkout.
+  --checkout-return-url URL     Optional return URL for transaction checkout.
   --dialog NAME                 Dialog name for dialog/native-dialog/presenter-dialog actions.
                                 Defaults to Friends.
   --achievement-name NAME       Achievement for presenter-achievement-progress. Defaults to the first progress achievement.
@@ -176,6 +183,18 @@ while [ "$#" -gt 0 ]; do
       ;;
     --web-modal)
       web_modal="${2:?missing --web-modal value}"
+      shift 2
+      ;;
+    --checkout-url)
+      checkout_url="${2:?missing --checkout-url value}"
+      shift 2
+      ;;
+    --checkout-transaction-id)
+      checkout_transaction_id="${2:?missing --checkout-transaction-id value}"
+      shift 2
+      ;;
+    --checkout-return-url)
+      checkout_return_url="${2:?missing --checkout-return-url value}"
       shift 2
       ;;
     --dialog)
@@ -987,12 +1006,19 @@ resolved_overlay_profile() {
   fi
 }
 
+checkout_opens_overlay() {
+  [ -n "$checkout_url" ] || [ -n "$checkout_transaction_id" ]
+}
+
 prepare_remote_wrapper() {
   local app_dir_q env_q wrapper_q wrapper_dir_q
-  local app_id_q overlay_game_id_q action_q profile_q scrub_child_env_q isolate_child_processes_q window_mode_q result_file_q diagnostic_dir_q action_delay_q result_delay_q keep_open_q require_active_q web_url_q web_modal_q overlay_dialog_q achievement_name_q achievement_current_q achievement_max_q
+  local app_id_q overlay_game_id_q action_q profile_q scrub_child_env_q isolate_child_processes_q window_mode_q result_file_q diagnostic_dir_q action_delay_q result_delay_q keep_open_q require_active_q web_url_q web_modal_q checkout_url_q checkout_transaction_id_q checkout_return_url_q overlay_dialog_q achievement_name_q achievement_current_q achievement_max_q
   local require_overlay_active="0"
 
   if [ "$action" = "store" ] || [ "$action" = "web" ] || [ "$action" = "presenter-store" ] || [ "$action" = "presenter-web" ] || [ "$action" = "presenter-friends" ] || [ "$action" = "presenter-dialog-auto" ] || [ "$action" = "presenter-community" ] || [ "$action" = "presenter-stats" ] || [ "$action" = "presenter-achievements" ]; then
+    require_overlay_active="1"
+  fi
+  if [ "$action" = "presenter-checkout" ] && checkout_opens_overlay; then
     require_overlay_active="1"
   fi
 
@@ -1015,6 +1041,9 @@ prepare_remote_wrapper() {
   require_active_q="$(quote_arg "$require_overlay_active")"
   web_url_q="$(quote_arg "$web_url")"
   web_modal_q="$(quote_arg "$web_modal")"
+  checkout_url_q="$(quote_arg "$checkout_url")"
+  checkout_transaction_id_q="$(quote_arg "$checkout_transaction_id")"
+  checkout_return_url_q="$(quote_arg "$checkout_return_url")"
   overlay_dialog_q="$(quote_arg "$overlay_dialog")"
   achievement_name_q="$(quote_arg "$achievement_name")"
   achievement_current_q="$(quote_arg "$achievement_current")"
@@ -1040,6 +1069,9 @@ KEEP_OPEN_AFTER_RESULT=$keep_open_q
 REQUIRE_OVERLAY_ACTIVE=$require_active_q
 WEB_URL=$web_url_q
 WEB_MODAL=$web_modal_q
+CHECKOUT_URL=$checkout_url_q
+CHECKOUT_TRANSACTION_ID=$checkout_transaction_id_q
+CHECKOUT_RETURN_URL=$checkout_return_url_q
 OVERLAY_DIALOG=$overlay_dialog_q
 ACHIEVEMENT_NAME=$achievement_name_q
 ACHIEVEMENT_CURRENT=$achievement_current_q
@@ -1073,6 +1105,9 @@ KEEP_OPEN_AFTER_RESULT=\"\${KEEP_OPEN_AFTER_RESULT:-0}\"
 REQUIRE_OVERLAY_ACTIVE=\"\${REQUIRE_OVERLAY_ACTIVE:-0}\"
 WEB_URL=\"\${WEB_URL:-}\"
 WEB_MODAL=\"\${WEB_MODAL:-}\"
+CHECKOUT_URL=\"\${CHECKOUT_URL:-}\"
+CHECKOUT_TRANSACTION_ID=\"\${CHECKOUT_TRANSACTION_ID:-}\"
+CHECKOUT_RETURN_URL=\"\${CHECKOUT_RETURN_URL:-}\"
 OVERLAY_DIALOG=\"\${OVERLAY_DIALOG:-}\"
 ACHIEVEMENT_NAME=\"\${ACHIEVEMENT_NAME:-}\"
 ACHIEVEMENT_CURRENT=\"\${ACHIEVEMENT_CURRENT:-}\"
@@ -1109,6 +1144,15 @@ if [ -n \"\$WEB_URL\" ]; then
 fi
 if [ -n \"\$WEB_MODAL\" ]; then
   export STEAM_BRIDGE_SMOKE_WEB_MODAL=\"\$WEB_MODAL\"
+fi
+if [ -n \"\$CHECKOUT_URL\" ]; then
+  export STEAM_BRIDGE_SMOKE_CHECKOUT_URL=\"\$CHECKOUT_URL\"
+fi
+if [ -n \"\$CHECKOUT_TRANSACTION_ID\" ]; then
+  export STEAM_BRIDGE_SMOKE_CHECKOUT_TRANSACTION_ID=\"\$CHECKOUT_TRANSACTION_ID\"
+fi
+if [ -n \"\$CHECKOUT_RETURN_URL\" ]; then
+  export STEAM_BRIDGE_SMOKE_CHECKOUT_RETURN_URL=\"\$CHECKOUT_RETURN_URL\"
 fi
 if [ -n \"\$OVERLAY_DIALOG\" ]; then
   export STEAM_BRIDGE_SMOKE_OVERLAY_DIALOG=\"\$OVERLAY_DIALOG\"
@@ -1172,6 +1216,15 @@ append_common_helper_args() {
   if [ -n "$web_modal" ]; then
     helper_args+=("--web-modal" "$web_modal")
   fi
+  if [ -n "$checkout_url" ]; then
+    helper_args+=("--checkout-url" "$checkout_url")
+  fi
+  if [ -n "$checkout_transaction_id" ]; then
+    helper_args+=("--checkout-transaction-id" "$checkout_transaction_id")
+  fi
+  if [ -n "$checkout_return_url" ]; then
+    helper_args+=("--checkout-return-url" "$checkout_return_url")
+  fi
   if [ -n "$overlay_dialog" ]; then
     helper_args+=("--dialog" "$overlay_dialog")
   fi
@@ -1204,6 +1257,13 @@ build_steam_launch_args() {
     helper_args+=("--require-event" "overlay:native-session-open")
   elif [ "$action" = "presenter-shortcut" ]; then
     helper_args+=("--require-event" "overlay:presenter-shortcut-ready")
+  elif [ "$action" = "presenter-checkout" ]; then
+    if checkout_opens_overlay; then
+      helper_args+=("--require-event" "overlay:presenter-open")
+      helper_args+=("--require-overlay-activated")
+    else
+      helper_args+=("--require-event" "overlay:presenter-checkout-ready")
+    fi
   elif [ "$action" = "presenter-dialog" ] || [ "$action" = "presenter-dialog-auto" ] || [ "$action" = "presenter-store" ] || [ "$action" = "presenter-web" ] || [ "$action" = "presenter-friends" ] || [ "$action" = "presenter-community" ] || [ "$action" = "presenter-stats" ] || [ "$action" = "presenter-achievements" ]; then
     helper_args+=("--require-event" "overlay:presenter-open")
     if [ "$action" = "presenter-store" ] || [ "$action" = "presenter-web" ] || [ "$action" = "presenter-friends" ] || [ "$action" = "presenter-dialog-auto" ] || [ "$action" = "presenter-community" ] || [ "$action" = "presenter-stats" ] || [ "$action" = "presenter-achievements" ]; then
@@ -1214,7 +1274,11 @@ build_steam_launch_args() {
     helper_args+=("--require-event" "achievement:progress")
   fi
 
-  if [ "$action" != "none" ] && [ "$action" != "presenter-achievement-progress" ] && [ "$action" != "presenter-dialog" ] && [ "$action" != "presenter-shortcut" ]; then
+  if [ "$action" != "none" ] &&
+    [ "$action" != "presenter-achievement-progress" ] &&
+    [ "$action" != "presenter-dialog" ] &&
+    [ "$action" != "presenter-shortcut" ] &&
+    { [ "$action" != "presenter-checkout" ] || checkout_opens_overlay; }; then
     helper_args+=("--require-event" "callback:overlay-activated")
   fi
 
@@ -1398,7 +1462,7 @@ run_remote_mode() {
 }
 
 run_self_test() {
-  local game_args desktop_args dialog_args friends_args community_args stats_args achievements_args toast_args direct_check
+  local game_args desktop_args dialog_args friends_args community_args stats_args achievements_args checkout_args real_checkout_args toast_args direct_check
   mode="game"
   build_steam_launch_args
   game_args="$(quote_args "${helper_args[@]}")"
@@ -1548,6 +1612,46 @@ run_self_test() {
     echo "Self-test failed: Presenter shortcut args must not require the overlay callback before the visual toggle probe." >&2
     exit 1
   fi
+
+  action="presenter-checkout"
+  checkout_url=""
+  checkout_transaction_id=""
+  checkout_return_url=""
+  build_steam_launch_args
+  checkout_args="$(quote_args "${helper_args[@]}")"
+  if [[ "$checkout_args" != *"--require-event overlay:presenter-checkout-ready"* ]]; then
+    echo "Self-test failed: Prepare-only checkout args must require the checkout-ready event." >&2
+    exit 1
+  fi
+  if [[ "$checkout_args" == *"--require-overlay-activated"* ]]; then
+    echo "Self-test failed: Prepare-only checkout args must not require overlay activation." >&2
+    exit 1
+  fi
+  if [[ "$checkout_args" == *"--require-event callback:overlay-activated"* ]]; then
+    echo "Self-test failed: Prepare-only checkout args must not require the overlay callback." >&2
+    exit 1
+  fi
+
+  checkout_transaction_id="123456789"
+  build_steam_launch_args
+  real_checkout_args="$(quote_args "${helper_args[@]}")"
+  if [[ "$real_checkout_args" != *"--checkout-transaction-id 123456789"* ]]; then
+    echo "Self-test failed: Real checkout args must pass the transaction ID." >&2
+    exit 1
+  fi
+  if [[ "$real_checkout_args" != *"--require-event overlay:presenter-open"* ]]; then
+    echo "Self-test failed: Real checkout args must require presenter-open." >&2
+    exit 1
+  fi
+  if [[ "$real_checkout_args" != *"--require-overlay-activated"* ]]; then
+    echo "Self-test failed: Real checkout args must require overlay activation." >&2
+    exit 1
+  fi
+  if [[ "$real_checkout_args" != *"--require-event callback:overlay-activated"* ]]; then
+    echo "Self-test failed: Real checkout args must require the overlay callback." >&2
+    exit 1
+  fi
+  checkout_transaction_id=""
 
   action="presenter-achievement-progress"
   build_steam_launch_args

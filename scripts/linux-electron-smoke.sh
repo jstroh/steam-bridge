@@ -13,6 +13,9 @@ overlay_isolate_child_processes=""
 window_mode=""
 web_url=""
 web_modal=""
+checkout_url=""
+checkout_transaction_id=""
+checkout_return_url=""
 overlay_dialog=""
 achievement_name=""
 achievement_current=""
@@ -54,7 +57,7 @@ Options:
   --app-id ID                    Steam App ID to use. Defaults to 480.
   --action NAME                  none, dialog, friends, store, web, native-probe, native-dialog, native-store, native-web,
                                  presenter-dialog, presenter-dialog-auto, presenter-store, presenter-web, presenter-friends,
-                                 presenter-community, presenter-stats, presenter-achievements,
+                                 presenter-community, presenter-stats, presenter-achievements, presenter-checkout,
                                  presenter-shortcut, presenter-achievement-progress.
   --overlay-profile NAME         Electron overlay profile. Defaults to diagnostic.
   --overlay-scrub-child-env true|false
@@ -64,6 +67,9 @@ Options:
   --window-mode NAME             Electron window mode: windowed, fullscreen, or borderless.
   --web-url URL                  URL for the web overlay action.
   --web-modal true|false         Whether the web overlay action should request a modal.
+  --checkout-url URL             Full Steam checkout URL for presenter-checkout.
+  --checkout-transaction-id ID   Steam checkout transaction ID for presenter-checkout.
+  --checkout-return-url URL      Optional return URL for transaction checkout.
   --dialog NAME                  Dialog name for dialog/native-dialog/presenter-dialog actions. Defaults to Friends.
   --achievement-name NAME        Achievement for presenter-achievement-progress. Defaults to the first progress achievement.
   --achievement-current VALUE    Progress current value. Defaults to 1.
@@ -136,6 +142,18 @@ while [ "$#" -gt 0 ]; do
       ;;
     --web-modal)
       web_modal="${2:?missing --web-modal value}"
+      shift 2
+      ;;
+    --checkout-url)
+      checkout_url="${2:?missing --checkout-url value}"
+      shift 2
+      ;;
+    --checkout-transaction-id)
+      checkout_transaction_id="${2:?missing --checkout-transaction-id value}"
+      shift 2
+      ;;
+    --checkout-return-url)
+      checkout_return_url="${2:?missing --checkout-return-url value}"
       shift 2
       ;;
     --dialog)
@@ -257,6 +275,15 @@ smoke_args() {
   fi
   if [ -n "$web_modal" ]; then
     printf '%s\n' "--steam-bridge-smoke-web-modal=$web_modal"
+  fi
+  if [ -n "$checkout_url" ]; then
+    printf '%s\n' "--steam-bridge-smoke-checkout-url=$checkout_url"
+  fi
+  if [ -n "$checkout_transaction_id" ]; then
+    printf '%s\n' "--steam-bridge-smoke-checkout-transaction-id=$checkout_transaction_id"
+  fi
+  if [ -n "$checkout_return_url" ]; then
+    printf '%s\n' "--steam-bridge-smoke-checkout-return-url=$checkout_return_url"
   fi
   if [ -n "$overlay_dialog" ]; then
     printf '%s\n' "--steam-bridge-smoke-overlay-dialog=$overlay_dialog"
@@ -664,6 +691,18 @@ EOF
     exit 1
   fi
 
+  checkout_transaction_id="123456789"
+  checkout_return_url="steam://open/main"
+  launch_options="$(smoke_args | paste -sd' ' -)"
+  if [[ "$launch_options" != *"--steam-bridge-smoke-checkout-transaction-id=123456789"* ]]; then
+    echo "Self-test failed: Launch options must pass the checkout transaction ID." >&2
+    exit 1
+  fi
+  if [[ "$launch_options" != *"--steam-bridge-smoke-checkout-return-url=steam://open/main"* ]]; then
+    echo "Self-test failed: Launch options must pass the checkout return URL." >&2
+    exit 1
+  fi
+
   echo "Linux Electron smoke helper self-test passed."
 }
 
@@ -692,8 +731,17 @@ case "$mode" in
     verify_result
     ;;
   steam-launch)
-    if [ "${#require_events[@]}" -eq 0 ] && [ "$action" = "dialog" ]; then
-      require_events+=("overlay:dialog")
+    if [ "${#require_events[@]}" -eq 0 ]; then
+      if [ "$action" = "dialog" ]; then
+        require_events+=("overlay:dialog")
+      elif [ "$action" = "presenter-checkout" ]; then
+        if [ -n "$checkout_url" ] || [ -n "$checkout_transaction_id" ]; then
+          require_events+=("overlay:presenter-open")
+          require_overlay_activated="1"
+        else
+          require_events+=("overlay:presenter-checkout-ready")
+        fi
+      fi
     fi
     require_steam_launch="1"
     require_overlay_ready="1"
