@@ -237,9 +237,11 @@ plus an `electronOverlay` block with the active presenter mode, shortcut policy,
 and whether the manager owns Electron window-close cleanup. The smoke verifiers
 can require those managed diagnostics with `--require-electron-overlay`,
 `--require-presenter-mode <persistent|session>`, and
-`--require-overlay-shortcut-target <target>`. The Deck runner adds the
-presenter-mode requirement automatically for presenter-backed product actions
-and adds the shortcut-target requirement for `presenter-shortcut`. Use
+`--require-overlay-shortcut-target <target>`. For resolver-backed shortcut
+targets, the verifier checks the smoke app's configured target while preserving
+`electronOverlay.overlayShortcut.targetType: "function"`. The Deck runner adds
+the presenter-mode requirement automatically for presenter-backed product
+actions and adds the shortcut-target requirement for `presenter-shortcut`. Use
 `presenterMode: "session"` or
 `STEAM_BRIDGE_DISABLE_ELECTRON_OVERLAY_PRESENTER=1` only as an emergency
 compatibility switch: it disables the reusable presenter, uses the older

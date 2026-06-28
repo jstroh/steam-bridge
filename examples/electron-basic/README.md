@@ -126,9 +126,11 @@ Smoke snapshots include `snapshot.overlay.nativePresenter`, whose
 policy used for the run. The Node verifier and packaged Linux helper can assert
 those fields with `--require-electron-overlay`,
 `--require-presenter-mode <persistent|session>`, and
-`--require-overlay-shortcut-target <target>`. The Deck runner adds the
-presenter-mode assertion automatically for presenter-backed product actions and
-adds the shortcut-target assertion for `presenter-shortcut`.
+`--require-overlay-shortcut-target <target>`. For resolver-backed shortcut
+targets, the verifier checks this smoke app's configured shortcut target while
+preserving `electronOverlay.overlayShortcut.targetType: "function"`. The Deck
+runner adds the presenter-mode assertion automatically for presenter-backed
+product actions and adds the shortcut-target assertion for `presenter-shortcut`.
 Use `presenter-friends` to verify the recommended Friends List path:
 `client.overlay.openFriendsOverlay({ presenter })` opens Steam Community chat
 through the same native web presenter used by checkout/store overlays, keeping a

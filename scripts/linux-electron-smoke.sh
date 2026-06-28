@@ -641,9 +641,15 @@ if os.environ["REQUIRE_PRESENTER_MODE"] and isinstance(electron_overlay, dict):
     )
 if os.environ["REQUIRE_OVERLAY_SHORTCUT_TARGET"] and isinstance(electron_overlay, dict):
     overlay_shortcut = electron_overlay.get("overlayShortcut") or {}
+    target_type = overlay_shortcut.get("targetType")
+    configured_shortcut_target = app.get("shortcutTarget")
     expect(overlay_shortcut.get("enabled") is True, "managed Electron overlay shortcut is enabled")
     expect(
-        overlay_shortcut.get("targetType") == os.environ["REQUIRE_OVERLAY_SHORTCUT_TARGET"],
+        target_type == os.environ["REQUIRE_OVERLAY_SHORTCUT_TARGET"]
+        or (
+            target_type == "function"
+            and configured_shortcut_target == os.environ["REQUIRE_OVERLAY_SHORTCUT_TARGET"]
+        ),
         f"managed Electron overlay shortcut target is {os.environ['REQUIRE_OVERLAY_SHORTCUT_TARGET']}",
     )
 if os.environ["REQUIRE_NO_CRASHES"] == "1":
@@ -819,7 +825,7 @@ EOF
 
   result_file="$self_test_temp_home/steam-bridge-smoke-single-target.log"
   cat >"$result_file" <<'EOF'
-STEAM_BRIDGE_SMOKE_RESULT {"ok":true,"action":{"ok":true,"action":"presenter-web"},"snapshot":{"app":{"appId":480},"process":{"pid":4242,"platform":"linux","arch":"x64"},"launch":{"steamLaunch":true,"overlayInjection":true},"crashDiagnostics":{"available":true,"ok":true,"crashDumps":[],"fatalLifecycleEvents":[]},"overlayProcesses":{"available":true,"gameoverlayui":[{"pid":9001,"targetPid":4242,"gameId":"480","command":"gameoverlayui -pid 4242 -gameid 480"}]},"overlay":{"nativePresenter":{"ok":true,"value":{"attached":true,"nativeHostOpen":true,"mode":"passive","clickThrough":true,"focusable":false,"transparent":true,"overlayActive":false,"overlayNeedsPresent":false,"idleFps":0,"currentFps":0,"electronOverlay":{"presenterMode":"persistent","closeWithWindow":true,"overlayShortcut":{"enabled":true,"preventDefault":true,"targetType":"friends"}}}}},"steam":{"initialized":true,"running":{"ok":true,"value":true},"appId":{"ok":true,"value":480},"steamDeck":{"ok":true,"value":true},"bigPicture":{"ok":true,"value":false},"overlayEnabled":{"ok":true,"value":true},"overlayNeedsPresent":{"ok":true,"value":false}},"events":[{"type":"overlay:presenter-open"},{"type":"callback:overlay-activated"}]}}
+STEAM_BRIDGE_SMOKE_RESULT {"ok":true,"action":{"ok":true,"action":"presenter-web"},"snapshot":{"app":{"appId":480,"shortcutTarget":"friends"},"process":{"pid":4242,"platform":"linux","arch":"x64"},"launch":{"steamLaunch":true,"overlayInjection":true},"crashDiagnostics":{"available":true,"ok":true,"crashDumps":[],"fatalLifecycleEvents":[]},"overlayProcesses":{"available":true,"gameoverlayui":[{"pid":9001,"targetPid":4242,"gameId":"480","command":"gameoverlayui -pid 4242 -gameid 480"}]},"overlay":{"nativePresenter":{"ok":true,"value":{"attached":true,"nativeHostOpen":true,"mode":"passive","clickThrough":true,"focusable":false,"transparent":true,"overlayActive":false,"overlayNeedsPresent":false,"idleFps":0,"currentFps":0,"electronOverlay":{"presenterMode":"persistent","closeWithWindow":true,"overlayShortcut":{"enabled":true,"preventDefault":true,"targetType":"function"}}}}},"steam":{"initialized":true,"running":{"ok":true,"value":true},"appId":{"ok":true,"value":480},"steamDeck":{"ok":true,"value":true},"bigPicture":{"ok":true,"value":false},"overlayEnabled":{"ok":true,"value":true},"overlayNeedsPresent":{"ok":true,"value":false}},"events":[{"type":"overlay:presenter-open"},{"type":"callback:overlay-activated"}]}}
 EOF
 
   action="presenter-web"

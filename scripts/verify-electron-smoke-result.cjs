@@ -88,9 +88,12 @@ if (options.requirePresenterMode && electronOverlay) {
 }
 if (options.requireOverlayShortcutTarget && electronOverlay) {
   const overlayShortcut = electronOverlay.overlayShortcut || {};
+  const targetType = overlayShortcut.targetType;
+  const configuredShortcutTarget = typeof app.shortcutTarget === "string" ? app.shortcutTarget : undefined;
   expect(overlayShortcut.enabled === true, "managed Electron overlay shortcut is enabled");
   expect(
-    overlayShortcut.targetType === options.requireOverlayShortcutTarget,
+    targetType === options.requireOverlayShortcutTarget ||
+      (targetType === "function" && configuredShortcutTarget === options.requireOverlayShortcutTarget),
     `managed Electron overlay shortcut target is ${options.requireOverlayShortcutTarget}`
   );
 }
