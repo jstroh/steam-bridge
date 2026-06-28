@@ -164,6 +164,21 @@ steamOverlay.open({
   modal: true
 });
 
+// Before your backend calls InitTxn for an in-game purchase, prime the
+// presenter so Steam's automatic authorization overlay has a native surface.
+steamOverlay.prepareForCheckout();
+
+// If InitTxn returns a web checkout URL, or you need to reopen a known
+// transaction approval surface, use the checkout target.
+steamOverlay.open({
+  type: "checkout",
+  steamUrl: txn.steamurl
+});
+
+// Prime the same presenter for passive Steam notifications, such as
+// achievement progress toasts, without making it interactive.
+steamOverlay.prepareForNotification();
+
 steamOverlay.open({ type: "friends" });
 
 steamOverlay.open({
@@ -197,9 +212,18 @@ processes; pass `overlayShortcut: false` to disable it, or provide
 `overlayShortcut: { target: { type: "community", appId } }` to choose another
 presenter-backed target. It is the
 recommended builder-facing entry point: web, store, Friends, Community, Stats,
-and Achievements targets route through the presenter-backed paths validated on
-Steam Deck Desktop Mode; `openSteamOverlay(...)` and the lower-level named
-helpers remain available for apps that prefer explicit lifecycle control. On
+Achievements, and checkout targets route through the presenter-backed paths
+used by the Steam Deck Desktop Mode proofs; `openSteamOverlay(...)` and the
+lower-level named helpers remain available for apps that prefer explicit
+lifecycle control. The public smoke app can verify checkout readiness, but real
+purchase-content proof still requires a real Steam app and configured product.
+For `InitTxn` flows, call `steamOverlay.prepareForCheckout()` immediately before
+the app asks its backend to start the transaction. If Steam returns a web
+checkout URL, pass it as `steamOverlay.open({ type: "checkout", steamUrl })`.
+If you have a transaction id, call `steamOverlay.open({ type: "checkout",
+transactionId })` and Steam Bridge builds the approval URL for you. For passive
+Steam notifications such as achievement progress toasts, call
+`steamOverlay.prepareForNotification()` before invoking the Steam API. On
 Linux/X11, fully idle mode makes the host transparent and click-through;
 `overlayNeedsPresent` can make it visible while leaving input click-through for
 passive notifications; opening or active overlay mode restores both opacity and

@@ -95,6 +95,7 @@ to prove checkout or transaction behavior:
 | `activateDialogWithNativeSession("Friends")` | Social/Friends remains unresolved. With Electron child-process isolation enabled, the Desktop social overlay may not render; with isolation disabled, duplicate Chromium hooks can render it but leave stale surfaces after close. | Steam Bridge can own the native presenter lifecycle, but Desktop Mode social-overlay close/render behavior remains a blocker. |
 | `activateToStoreWithNativeSession(480, ...)` | Should open the bridge-owned native presenter and activate the Steam store overlay path. | The managed presenter lifecycle is reusable across non-dialog overlay entry points. |
 | `client.overlay.createElectronSteamOverlay(mainWindow).open({ type: "web", url: "https://store.steampowered.com/app/480/", modal: true })` | Reuses one managed presenter, shows Steam's web overlay in Deck Desktop Mode, isolates Electron child processes so only the main/native process is an overlay target, emits `active=false`, and returns cleanly to the smoke app. | The current generic Deck Desktop Mode proof for the app-facing reusable presenter API and checkout-style overlays. |
+| `steamOverlay.prepareForCheckout()` and `steamOverlay.open({ type: "checkout", ... })` | With the public SpaceWar smoke app, `presenter-checkout` safely primes the reusable presenter without opening purchase UI unless `STEAM_BRIDGE_SMOKE_CHECKOUT_URL` or `STEAM_BRIDGE_SMOKE_CHECKOUT_TRANSACTION_ID` is provided. | App-facing checkout plumbing no longer requires apps to touch presenter internals or build Steam approval URLs by hand. A real app/product is still required for purchase-content proof. |
 | `client.overlay.createElectronSteamOverlay(mainWindow).open({ type: "friends" })` | Reuses one managed presenter, opens Steam Community chat as the Friends List surface, shows visible Friends/chat UI in Deck Desktop Mode, isolates Electron child processes so only the main/native process is an overlay target, and returns cleanly to the smoke app after the close probe. | The current generic Deck Desktop Mode proof for Friends List/social UI without allowing Steam to hook Electron Chromium children. |
 | `steamOverlay.open({ type: "community", appId })` | Reuses one managed presenter and opens the app's Steam Community hub through the native Steam web overlay. A 2026-06-28 Deck Desktop run emitted `callback:overlay-activated`, captured Steam web content, and returned to the smoke app after the web close probe. | Product-shaped replacement for raw Desktop Community dialog attempts. |
 | `steamOverlay.open({ type: "stats", appId })` | Reuses one managed presenter and opens the current user's app stats page through the native Steam web overlay. A 2026-06-28 Deck Desktop run emitted `callback:overlay-activated`, captured stats/profile web content, and returned to the smoke app after the web close probe. | Product-shaped replacement for raw Desktop Stats dialog attempts. |
@@ -105,7 +106,7 @@ to prove checkout or transaction behavior:
 | `activateToWebPageWithNativeSession("https://store.steampowered.com/app/480/", { modal: true, ... })` | Opens the bridge-owned native presenter and exercises the older managed-session API. | Compatibility coverage; prefer `presenter-web --web-modal true` for the current Deck Desktop open/close proof. |
 | `activateToStore(480, ...)` | Should activate the Steam overlay and emit `active=true` from a Steam-launched Deck shortcut. | The Deck/Electron/Steam launch path can display Steam overlay UI. |
 | `activateToWebPage("https://store.steampowered.com/app/480/", ...)` | Currently does not activate a visible web overlay from the Deck Game Mode smoke shortcut, but passes from Desktop Mode with the Desktop overlay profile. | The web-page API call was issued; it does not prove purchase UI unless Steam activates the overlay. |
-| `activateToWebPage(<checkout-or-approval-url>, { modal: true })` | Must be run from the actual Steam app with the matching App ID and a configured product or transaction. | Purchase or transaction overlay behavior. |
+| `steamOverlay.open({ type: "checkout", steamUrl })` or `steamOverlay.open({ type: "checkout", transactionId })` | Must be run from the actual Steam app with the matching App ID and a configured product or transaction. | Purchase or transaction overlay behavior through the same managed presenter as generic web overlays. |
 | Web API `InitTxn` flow | Requires your own backend or publisher credentials. | End-to-end transaction overlay behavior for your app. Deck Game Mode and Desktop Mode should both be validated from the real Steam app, not from the public smoke shortcut. |
 
 Important Deck finding: a non-Steam shortcut can initialize Steamworks with
@@ -368,8 +369,9 @@ private app details to this repository:
 1. Install the real Steam app on the Deck.
 2. Launch it through Steam, not through the generic smoke shortcut.
 3. Confirm `utils.getAppId()` reports your real app ID.
-4. Trigger `activateToWebPage(<checkout-or-approval-url>, { modal: true })` or
-   the app's real `InitTxn` approval path from inside the running app.
+4. Call `steamOverlay.prepareForCheckout()` before starting `InitTxn`, then
+   trigger the app's real checkout URL or transaction approval path from inside
+   the running app.
 5. Verify the Steam checkout or approval surface appears.
 6. Press Back to confirm Steam returns to the running app.
 7. Keep private app IDs, item definitions, transaction IDs, publisher keys, and

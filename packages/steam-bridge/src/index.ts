@@ -1693,6 +1693,18 @@ export type SteamOverlayAchievementsTarget = NativeOverlayAppPagePresenterOption
   type: "achievements";
 };
 
+export interface SteamOverlayCheckoutUrlOptions {
+  returnUrl?: string;
+}
+
+export type SteamOverlayCheckoutTarget = NativeOverlayWebPagePresenterOptions &
+  SteamOverlayCheckoutUrlOptions & {
+    type: "checkout";
+    url?: string;
+    steamUrl?: string;
+    transactionId?: bigint | number | string;
+  };
+
 export type SteamOverlayDialogRoute = "auto" | "native";
 
 export type SteamOverlayDialogTarget = NativeOverlayAppPagePresenterOptions & {
@@ -1708,6 +1720,7 @@ export type SteamOverlayTarget =
   | SteamOverlayCommunityTarget
   | SteamOverlayStatsTarget
   | SteamOverlayAchievementsTarget
+  | SteamOverlayCheckoutTarget
   | SteamOverlayDialogTarget;
 
 export interface ElectronOverlayKeyboardInput {
@@ -1762,6 +1775,8 @@ export type ElectronSteamOverlayOptions = NonNullable<Parameters<typeof electron
 export interface ElectronSteamOverlay extends CallbackHandle {
   readonly presenter: NativeOverlayPresenter;
   open(target: SteamOverlayTarget): NativeOverlayPresenter;
+  prepareForCheckout(durationMs?: number): NativeOverlayPresenter;
+  prepareForNotification(durationMs?: number): NativeOverlayPresenter;
   close(): void;
   pump(): void;
   isOpen(): boolean;
@@ -1776,6 +1791,7 @@ type NativeOverlayPresenterInternal = NativeOverlayPresenter & {
 
 export const STEAM_COMMUNITY_BASE_URL = "https://steamcommunity.com";
 export const STEAM_FRIENDS_OVERLAY_URL = `${STEAM_COMMUNITY_BASE_URL}/chat/`;
+export const STEAM_CHECKOUT_BASE_URL = "https://checkout.steampowered.com";
 
 export interface HtmlCreateBrowserOptions {
   userAgent?: string;
@@ -6705,6 +6721,20 @@ export function steamCommunityAchievementsUrl(
   return `${steamCommunityUserStatsUrl(appId, steamId64)}achievements/`;
 }
 
+export function steamCheckoutTransactionUrl(
+  transactionId: bigint | number | string,
+  options: SteamOverlayCheckoutUrlOptions = {}
+): string {
+  const url = new URL(
+    `/checkout/approvetxn/${encodeURIComponent(normalizeSteamTransactionId(transactionId))}/`,
+    STEAM_CHECKOUT_BASE_URL
+  );
+  if (options.returnUrl) {
+    url.searchParams.set("returnurl", options.returnUrl);
+  }
+  return url.toString();
+}
+
 export function getOverlayDiagnostics(): OverlayDiagnostics {
   return normalizeOverlayDiagnostics(native().getOverlayDiagnostics());
 }
@@ -7457,6 +7487,21 @@ export function openAchievementsOverlay(
   });
 }
 
+export function openCheckoutOverlay(options: Omit<SteamOverlayCheckoutTarget, "type"> = {}): NativeOverlayPresenter {
+  const {
+    modal = true,
+    url: _url,
+    steamUrl: _steamUrl,
+    transactionId: _transactionId,
+    returnUrl: _returnUrl,
+    ...presenterOptions
+  } = options;
+  return openWebOverlay(resolveSteamCheckoutOverlayUrl(options), {
+    ...presenterOptions,
+    modal
+  });
+}
+
 export function openDialogEquivalentOverlay(
   dialog: number | string = "Friends",
   options: NativeOverlayAppPagePresenterOptions = {}
@@ -7517,6 +7562,10 @@ export function openSteamOverlay(target: SteamOverlayTarget): NativeOverlayPrese
       const { type, ...options } = target;
       return openAchievementsOverlay(options);
     }
+    case "checkout": {
+      const { type, ...options } = target;
+      return openCheckoutOverlay(options);
+    }
     case "dialog": {
       const { type, dialog = "Friends", route = "auto", ...options } = target;
       if (route === "native") {
@@ -7534,13 +7583,26 @@ export function createElectronSteamOverlay(
   const { closeWithWindow = true, overlayShortcut = true, ...presenterOptions } = options;
   const presenter = attachOverlayPresenter(electronOverlayPresenterOptions(window, presenterOptions));
   let removeShortcutListener: (() => void) | undefined;
+  const assertOpen = (): void => {
+    if (!presenter.isOpen()) {
+      throw new Error("Electron Steam overlay is closed.");
+    }
+  };
   const controller: ElectronSteamOverlay = {
     presenter,
     open(target: SteamOverlayTarget): NativeOverlayPresenter {
-      if (!presenter.isOpen()) {
-        throw new Error("Electron Steam overlay is closed.");
-      }
+      assertOpen();
       return openSteamOverlay({ ...target, presenter } as SteamOverlayTarget);
+    },
+    prepareForCheckout(durationMs?: number): NativeOverlayPresenter {
+      assertOpen();
+      presenter.prepareForOverlay(durationMs);
+      return presenter;
+    },
+    prepareForNotification(durationMs?: number): NativeOverlayPresenter {
+      assertOpen();
+      presenter.prepareForPassiveOverlay(durationMs);
+      return presenter;
     },
     close(): void {
       removeShortcutListener?.();
@@ -11934,6 +11996,7 @@ export const overlay = {
   openCommunityOverlay,
   openStatsOverlay,
   openAchievementsOverlay,
+  openCheckoutOverlay,
   openDialogEquivalentOverlay,
   openStoreOverlay,
   openSteamOverlay,
@@ -17827,6 +17890,35 @@ function normalizeSteamId64(steamId64: bigint | number | string): string {
   return normalized.toString();
 }
 
+function normalizeSteamTransactionId(transactionId: bigint | number | string): string {
+  if (typeof transactionId === "number" && !Number.isSafeInteger(transactionId)) {
+    throw new Error(`Invalid Steam transaction ID: ${transactionId}`);
+  }
+  let normalized: bigint;
+  try {
+    normalized = BigInt(transactionId);
+  } catch {
+    throw new Error(`Invalid Steam transaction ID: ${transactionId}`);
+  }
+  if (normalized <= 0n) {
+    throw new Error(`Invalid Steam transaction ID: ${transactionId}`);
+  }
+  return normalized.toString();
+}
+
+function resolveSteamCheckoutOverlayUrl(options: Omit<SteamOverlayCheckoutTarget, "type">): string {
+  const url = options.steamUrl ?? options.url;
+  if (url) {
+    return String(url);
+  }
+  if (options.transactionId != null) {
+    return steamCheckoutTransactionUrl(options.transactionId, {
+      returnUrl: options.returnUrl
+    });
+  }
+  throw new Error("A Steam checkout overlay requires a url, steamUrl, or transactionId.");
+}
+
 function normalizedFps(value: number | undefined, fallback: number): number {
   return Math.max(0, finiteNumber(value, fallback));
 }
@@ -19678,6 +19770,7 @@ const defaultExport = {
   openCommunityOverlay,
   openStatsOverlay,
   openAchievementsOverlay,
+  openCheckoutOverlay,
   openDialogEquivalentOverlay,
   openStoreOverlay,
   openSteamOverlay,
@@ -19753,8 +19846,10 @@ const defaultExport = {
   steamCommunityStatsUrl,
   steamCommunityUserStatsUrl,
   steamCommunityAchievementsUrl,
+  steamCheckoutTransactionUrl,
   STEAM_COMMUNITY_BASE_URL,
   STEAM_FRIENDS_OVERLAY_URL,
+  STEAM_CHECKOUT_BASE_URL,
   SteamCallback,
   SteamworksEnums,
   GameCoordinatorResult

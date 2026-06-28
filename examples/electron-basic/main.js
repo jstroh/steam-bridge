@@ -20,6 +20,11 @@ const WINDOW_MODE = CLI_OPTIONS.windowMode || process.env.STEAM_BRIDGE_SMOKE_WIN
 const STORE_URL = `https://store.steampowered.com/app/${APP_ID}/`;
 const WEB_URL = CLI_OPTIONS.webUrl || process.env.STEAM_BRIDGE_SMOKE_WEB_URL || STORE_URL;
 const WEB_MODAL = readBoolean(CLI_OPTIONS.webModal || process.env.STEAM_BRIDGE_SMOKE_WEB_MODAL, false);
+const CHECKOUT_URL = CLI_OPTIONS.checkoutUrl || process.env.STEAM_BRIDGE_SMOKE_CHECKOUT_URL || "";
+const CHECKOUT_TRANSACTION_ID =
+  CLI_OPTIONS.checkoutTransactionId || process.env.STEAM_BRIDGE_SMOKE_CHECKOUT_TRANSACTION_ID || "";
+const CHECKOUT_RETURN_URL =
+  CLI_OPTIONS.checkoutReturnUrl || process.env.STEAM_BRIDGE_SMOKE_CHECKOUT_RETURN_URL || "";
 const OVERLAY_DIALOG = CLI_OPTIONS.overlayDialog || process.env.STEAM_BRIDGE_SMOKE_OVERLAY_DIALOG || "Friends";
 const ACHIEVEMENT_NAME = CLI_OPTIONS.achievementName || process.env.STEAM_BRIDGE_SMOKE_ACHIEVEMENT_NAME || "";
 const ACHIEVEMENT_CURRENT = Number(
@@ -150,6 +155,7 @@ ipcMain.handle("steam-smoke:presenter-friends", () => openPresenterFriendsOverla
 ipcMain.handle("steam-smoke:presenter-community", () => openPresenterCommunityOverlay());
 ipcMain.handle("steam-smoke:presenter-stats", () => openPresenterStatsOverlay());
 ipcMain.handle("steam-smoke:presenter-achievements", () => openPresenterAchievementsOverlay());
+ipcMain.handle("steam-smoke:presenter-checkout", () => openPresenterCheckoutOverlay());
 ipcMain.handle("steam-smoke:presenter-achievement-progress", () => openPresenterAchievementProgress());
 ipcMain.handle("steam-smoke:native-probe-open", () => openNativeProbe());
 ipcMain.handle("steam-smoke:native-probe-pump", () => pumpNativeProbe());
@@ -387,6 +393,9 @@ function runAutorunAction(action) {
       case "presenter-achievements":
         openPresenterAchievementsOverlay();
         return { ok: true, action };
+      case "presenter-checkout":
+        openPresenterCheckoutOverlay();
+        return { ok: true, action };
       case "presenter-shortcut":
         openPresenterShortcutBridge();
         return { ok: true, action };
@@ -582,11 +591,39 @@ function openPresenterAchievementsOverlay() {
   return snapshot();
 }
 
+function openPresenterCheckoutOverlay() {
+  const overlay = ensureElectronSteamOverlay();
+  if (CHECKOUT_URL || CHECKOUT_TRANSACTION_ID) {
+    const target = {
+      type: "checkout",
+      steamUrl: CHECKOUT_URL || undefined,
+      transactionId: CHECKOUT_URL ? undefined : CHECKOUT_TRANSACTION_ID,
+      returnUrl: CHECKOUT_RETURN_URL || undefined
+    };
+    overlay.open(target);
+    recordEvent("overlay:presenter-open", {
+      target: "checkout",
+      url: CHECKOUT_URL || steamworks.steamCheckoutTransactionUrl(CHECKOUT_TRANSACTION_ID, {
+        returnUrl: CHECKOUT_RETURN_URL || undefined
+      }),
+      presenter: overlay.snapshot()
+    });
+  } else {
+    overlay.prepareForCheckout();
+    recordEvent("overlay:presenter-checkout-ready", {
+      target: "checkout",
+      note: "set STEAM_BRIDGE_SMOKE_CHECKOUT_URL or STEAM_BRIDGE_SMOKE_CHECKOUT_TRANSACTION_ID to open checkout",
+      presenter: overlay.snapshot()
+    });
+  }
+  return snapshot();
+}
+
 function openPresenterAchievementProgress() {
   const activeClient = requireClient();
   const overlay = ensureElectronSteamOverlay(activeClient);
   const presenter = overlay.presenter;
-  presenter.prepareForPassiveOverlay();
+  overlay.prepareForNotification();
 
   const target = resolveAchievementProgressTarget(activeClient);
   const indicated = activeClient.achievement.indicateProgress(target.name, target.current, target.max);
@@ -1024,6 +1061,7 @@ function isNativeSessionAction(action) {
     action === "presenter-community" ||
     action === "presenter-stats" ||
     action === "presenter-achievements" ||
+    action === "presenter-checkout" ||
     action === "presenter-shortcut" ||
     action === "presenter-achievement-progress"
   );

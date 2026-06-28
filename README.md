@@ -317,6 +317,19 @@ steamOverlay.open({
   modal: true
 });
 
+// Prime the presenter before your backend starts an in-game InitTxn flow.
+steamOverlay.prepareForCheckout();
+
+// Open a Steam checkout URL returned by InitTxn, or pass transactionId when
+// reopening a known transaction approval page.
+steamOverlay.open({
+  type: "checkout",
+  steamUrl: txn.steamurl
+});
+
+// Prime the same presenter for passive Steam notifications.
+steamOverlay.prepareForNotification();
+
 steamOverlay.open({ type: "friends" });
 
 steamOverlay.open({
@@ -368,10 +381,19 @@ activation callback.
 
 Steam Bridge routes overlay targets by how Steam renders them. Prefer
 `client.overlay.createElectronSteamOverlay(mainWindow).open(...)` for Electron
-app code: web, store, Friends, Community, Stats, and Achievements targets prepare
-the native host through the presenter-backed paths validated on Steam Deck
-Desktop Mode, while `openSteamOverlay(...)` and the lower-level named helpers
-remain available for explicit integrations. With the
+app code: web, store, Friends, Community, Stats, Achievements, and checkout
+targets use the presenter-backed paths proven on Steam Deck Desktop Mode, while
+`openSteamOverlay(...)` and the lower-level named helpers remain available for
+explicit integrations. The public smoke app can verify checkout readiness, but
+real purchase-content proof still requires a real Steam app and configured
+product. For in-game microtransactions, call
+`steamOverlay.prepareForCheckout()` before your backend starts `InitTxn` so
+Steam's automatic authorization UI has a native presenter ready. If Steam
+returns a web checkout URL, pass it with `steamOverlay.open({ type: "checkout",
+steamUrl })`. If you have a transaction id, use `transactionId` and Steam
+Bridge builds the approval URL. For passive Steam notifications such as
+achievement progress toasts, call `steamOverlay.prepareForNotification()` before
+invoking the Steam API. With the
 default child-process isolation, Deck Desktop Mode has verified this path with a
 single `gameoverlayui` process, paired active/inactive callbacks, and visual
 return to the Electron app. Passive achievement-progress toasts also render with

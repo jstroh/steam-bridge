@@ -134,6 +134,13 @@ steamOverlay.open({
   url: checkoutUrl,
   modal: true
 });
+
+steamOverlay.prepareForCheckout();
+
+steamOverlay.open({
+  type: "checkout",
+  steamUrl
+});
 ```
 
 The presenter should:
@@ -249,7 +256,12 @@ Current evidence:
   Desktop `presenter-shortcut` run proved visible overlay open, active/inactive
   callbacks, and return to the app after web close.
 - The same path is good enough for checkout-style proof when launched under a
-  real installed Steam app with a configured product or transaction.
+  real installed Steam app with a configured product or transaction. The public
+  API now has a named checkout path: `steamOverlay.prepareForCheckout()` primes
+  the presenter before an in-game `InitTxn`, and `steamOverlay.open({ type:
+  "checkout", steamUrl })` or `steamOverlay.open({ type: "checkout",
+  transactionId })` opens a returned or known approval surface through the same
+  verified presenter route.
 - Deck Desktop Mode does not yet have a passing raw Steam hotkey/Guide toggle proof. Focused
   `--visual-toggle-probe` evidence for raw Steam hotkey interception after
   passive-presenter toast runs stayed in the Electron app and did not emit

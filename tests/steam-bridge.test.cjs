@@ -4381,6 +4381,11 @@ test("overlay helpers map constants and forward modal/store options", (t) => {
   steam.overlay.openCommunityOverlay({ appId: 480, presenter: mockPresenter });
   steam.overlay.openStatsOverlay({ appId: 480, steamId64: 76561198000000000n, presenter: mockPresenter });
   steam.overlay.openAchievementsOverlay({ appId: 480, steamId64: 76561198000000000n, presenter: mockPresenter });
+  steam.overlay.openCheckoutOverlay({
+    transactionId: 123456789n,
+    returnUrl: "steam://return",
+    presenter: mockPresenter
+  });
   steam.overlay.openSteamOverlay({
     type: "web",
     url: "https://store.steampowered.com/app/480/",
@@ -4405,6 +4410,11 @@ test("overlay helpers map constants and forward modal/store options", (t) => {
     type: "achievements",
     appId: 480,
     steamId64: 76561198000000000n,
+    presenter: mockPresenter
+  });
+  steam.overlay.openSteamOverlay({
+    type: "checkout",
+    steamUrl: "https://checkout.steampowered.com/checkout/approvetxn/987/",
     presenter: mockPresenter
   });
   steam.overlay.openSteamOverlay({ type: "dialog", dialog: steam.Dialog.Friends, presenter: mockPresenter });
@@ -4467,12 +4477,23 @@ test("overlay helpers map constants and forward modal/store options", (t) => {
       { method: "activateOverlayToWebPage", args: [steam.steamCommunityAppUrl(480), true] },
       { method: "activateOverlayToWebPage", args: [steam.steamCommunityUserStatsUrl(480, 76561198000000000n), true] },
       { method: "activateOverlayToWebPage", args: [steam.steamCommunityAchievementsUrl(480, 76561198000000000n), true] },
+      {
+        method: "activateOverlayToWebPage",
+        args: [
+          "https://checkout.steampowered.com/checkout/approvetxn/123456789/?returnurl=steam%3A%2F%2Freturn",
+          true
+        ]
+      },
       { method: "activateOverlayToWebPage", args: ["https://store.steampowered.com/app/480/", true] },
       { method: "overlayActivateToStore", args: [480, steam.StoreFlag.AddToCart] },
       { method: "activateOverlayToWebPage", args: [steam.STEAM_FRIENDS_OVERLAY_URL, true] },
       { method: "activateOverlayToWebPage", args: [steam.steamCommunityAppUrl(480), true] },
       { method: "activateOverlayToWebPage", args: [steam.steamCommunityUserStatsUrl(480, 76561198000000000n), true] },
       { method: "activateOverlayToWebPage", args: [steam.steamCommunityAchievementsUrl(480, 76561198000000000n), true] },
+      {
+        method: "activateOverlayToWebPage",
+        args: ["https://checkout.steampowered.com/checkout/approvetxn/987/", true]
+      },
       { method: "activateOverlayToWebPage", args: [steam.STEAM_FRIENDS_OVERLAY_URL, true] },
       { method: "activateOverlayToWebPage", args: [steam.steamCommunityAppUrl(480), true] },
       { method: "activateOverlayToWebPage", args: [steam.steamCommunityAppUrl(480), true] },
@@ -4493,9 +4514,23 @@ test("overlay helpers map constants and forward modal/store options", (t) => {
     steam.steamCommunityAchievementsUrl(480, 76561198000000000n),
     "https://steamcommunity.com/profiles/76561198000000000/stats/480/achievements/"
   );
+  assert.equal(steam.STEAM_CHECKOUT_BASE_URL, "https://checkout.steampowered.com");
+  assert.equal(
+    steam.steamCheckoutTransactionUrl(123456789n),
+    "https://checkout.steampowered.com/checkout/approvetxn/123456789/"
+  );
+  assert.equal(
+    steam.steamCheckoutTransactionUrl("123456789", { returnUrl: "steam://return" }),
+    "https://checkout.steampowered.com/checkout/approvetxn/123456789/?returnurl=steam%3A%2F%2Freturn"
+  );
   assert.throws(() => steam.steamCommunityAchievementsUrl(0), /Invalid Steam App ID/);
   assert.throws(() => steam.steamCommunityAchievementsUrl(480, "not-a-steam-id"), /Invalid Steam ID/);
+  assert.throws(() => steam.steamCheckoutTransactionUrl(0), /Invalid Steam transaction ID/);
+  assert.throws(() => steam.steamCheckoutTransactionUrl(Number.MAX_SAFE_INTEGER + 1), /Invalid Steam transaction ID/);
+  assert.throws(() => steam.overlay.openCheckoutOverlay({ presenter: mockPresenter }), /requires a url, steamUrl, or transactionId/);
   assert.deepEqual(presenterCalls, [
+    "prepareForOverlay",
+    "prepareForOverlay",
     "prepareForOverlay",
     "prepareForOverlay",
     "prepareForOverlay",
@@ -4641,12 +4676,15 @@ test("electron steam overlay manager owns one presenter and routes opens", (t) =
 
   overlay.open({ type: "friends" });
   overlay.open({ type: "web", url: "https://store.steampowered.com/app/480/", modal: true });
+  overlay.prepareForCheckout();
+  overlay.prepareForNotification();
   overlay.pump();
 
   assert.equal(typeof closedHandler, "function");
   closedHandler();
   assert.equal(overlay.isOpen(), false);
   assert.throws(() => overlay.open({ type: "friends" }), /Electron Steam overlay is closed/);
+  assert.throws(() => overlay.prepareForCheckout(), /Electron Steam overlay is closed/);
 
   assert.deepEqual(
     fake.calls.filter((call) =>
@@ -4671,6 +4709,10 @@ test("electron steam overlay manager owns one presenter and routes opens", (t) =
       { method: "activateOverlayToWebPage", args: [steam.STEAM_FRIENDS_OVERLAY_URL, true] },
       { method: "pumpNativeOverlayProbeWindow", args: [] },
       { method: "activateOverlayToWebPage", args: ["https://store.steampowered.com/app/480/", true] },
+      { method: "pumpNativeOverlayProbeWindow", args: [] },
+      { method: "setNativeOverlayHostInputPassthrough", args: [true] },
+      { method: "setNativeOverlayHostOpacity", args: [false] },
+      { method: "pumpNativeOverlayProbeWindow", args: [] },
       { method: "pumpNativeOverlayProbeWindow", args: [] },
       { method: "disconnectGameOverlayActivated", args: [] },
       { method: "detachNativeOverlayHostView", args: [] }

@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld("steamSmoke", {
   openPresenterCommunity: () => ipcRenderer.invoke("steam-smoke:presenter-community"),
   openPresenterStats: () => ipcRenderer.invoke("steam-smoke:presenter-stats"),
   openPresenterAchievements: () => ipcRenderer.invoke("steam-smoke:presenter-achievements"),
+  openPresenterCheckout: () => ipcRenderer.invoke("steam-smoke:presenter-checkout"),
   openPresenterAchievementProgress: () => ipcRenderer.invoke("steam-smoke:presenter-achievement-progress"),
   openNativeProbe: () => ipcRenderer.invoke("steam-smoke:native-probe-open"),
   pumpNativeProbe: () => ipcRenderer.invoke("steam-smoke:native-probe-pump"),

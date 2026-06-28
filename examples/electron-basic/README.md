@@ -89,7 +89,8 @@ Supported autorun actions are `none`, `dialog`, `friends`, `store`, `web`,
 `native-dialog`, `native-store`, `native-web`, `native-probe`,
 `presenter-dialog`, `presenter-store`, `presenter-web`, `presenter-friends`,
 `presenter-community`, `presenter-stats`, `presenter-achievements`,
-`presenter-shortcut`, and `presenter-achievement-progress`.
+`presenter-checkout`, `presenter-shortcut`, and
+`presenter-achievement-progress`.
 `native-probe` is a compatibility alias for `native-dialog`. On Linux, the
 `native-*` actions open a bridge-owned X11/GLX native presenter, keep it
 presenting frames, and activate the requested Steam overlay target through the
@@ -106,8 +107,9 @@ For raw dialog investigation, set `STEAM_BRIDGE_SMOKE_OVERLAY_DIALOG` or pass
 generic comparison values include `Achievements`, `Community`, `Players`,
 `Settings`, `OfficialGameGroup`, and `Stats`.
 
-The `presenter-*` actions use `client.overlay.attachPresenter(...)` and reuse the
-same passive, click-through presenter for the requested overlay target. Use
+The `presenter-*` actions use `client.overlay.createElectronSteamOverlay(...)`
+and reuse the same passive, click-through presenter for the requested overlay
+target. Use
 `presenter-web --web-modal true` to verify the app-facing persistent presenter
 path. On Linux/X11, the presenter is transparent and click-through while fully
 idle, polls without pumping frames by default, can become visible while remaining
@@ -136,6 +138,15 @@ overlay route instead of the raw Desktop achievements dialog. SpaceWar App ID
 `480` can redirect that web achievements URL to the user's profile because Steam
 Community does not expose a public web stats page for it; a real app with
 web-visible stats is needed for achievements content proof.
+Use `presenter-checkout` to verify checkout readiness. Without
+`STEAM_BRIDGE_SMOKE_CHECKOUT_URL` or
+`STEAM_BRIDGE_SMOKE_CHECKOUT_TRANSACTION_ID`, it only calls
+`steamOverlay.prepareForCheckout()` and records
+`overlay:presenter-checkout-ready`; this is safe for the public SpaceWar smoke
+app. When testing a real app with a configured product, set
+`STEAM_BRIDGE_SMOKE_CHECKOUT_URL` to the Steam URL returned by `InitTxn`, or set
+`STEAM_BRIDGE_SMOKE_CHECKOUT_TRANSACTION_ID` to build and open the Steam
+transaction approval page through `steamOverlay.open({ type: "checkout", ... })`.
 Do not use `steam://open/overlay` as a generic overlay-toggle substitute in this
 example. Deck Desktop testing showed it can activate Steam's callback path while
 leaving the native presenter black and the smoke process unrecovered.
@@ -508,10 +519,11 @@ app-specific proof outside the committed examples:
 
 1. Launch your real installed Steam app through Steam.
 2. Confirm the running process reports your real app ID.
-3. Trigger your checkout URL or transaction approval path from inside that app.
-4. Verify the Steam modal appears in both Deck Game Mode and Desktop Mode.
-5. Confirm backing out or closing the Steam surface returns focus to the app.
-6. Keep private app IDs, item definitions, transaction IDs, publisher keys, and
+3. Call `steamOverlay.prepareForCheckout()` before the backend starts `InitTxn`.
+4. Trigger your checkout URL or transaction approval path from inside that app.
+5. Verify the Steam modal appears in both Deck Game Mode and Desktop Mode.
+6. Confirm backing out or closing the Steam surface returns focus to the app.
+7. Keep private app IDs, item definitions, transaction IDs, publisher keys, and
    private URLs out of committed docs and examples.
 
 For a Steam Deck Desktop Mode shortcut launch, omit the Big Picture assertion
