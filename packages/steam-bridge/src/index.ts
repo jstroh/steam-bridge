@@ -1755,6 +1755,8 @@ export interface ElectronSteamOverlayShortcutOptions {
 
 export type ElectronSteamOverlayShortcutConfig = boolean | ElectronSteamOverlayShortcutOptions;
 
+export type ElectronSteamOverlayPresenterMode = "persistent" | "session";
+
 export type ElectronOverlayWindow = Parameters<typeof electronOverlayPresenterOptionsImpl>[0] & {
   once?(event: "closed", handler: () => void): void;
   webContents: Parameters<typeof electronOverlayPresenterOptionsImpl>[0]["webContents"] & {
@@ -1776,6 +1778,7 @@ export type ElectronOverlayWindow = Parameters<typeof electronOverlayPresenterOp
 export type ElectronSteamOverlayOptions = NonNullable<Parameters<typeof electronOverlayPresenterOptionsImpl>[1]> & {
   closeWithWindow?: boolean;
   overlayShortcut?: ElectronSteamOverlayShortcutConfig;
+  presenterMode?: ElectronSteamOverlayPresenterMode;
 };
 
 export interface ElectronSteamOverlay extends CallbackHandle {
@@ -7606,11 +7609,19 @@ export function createElectronSteamOverlay(
   window: ElectronOverlayWindow,
   options: ElectronSteamOverlayOptions = {}
 ): ElectronSteamOverlay {
-  const { closeWithWindow = true, overlayShortcut = true, ...presenterOptions } = options;
-  const presenter = attachOverlayPresenter(electronOverlayPresenterOptions(window, presenterOptions));
+  const { closeWithWindow = true, overlayShortcut = true, presenterMode: modeOption, ...presenterOptions } = options;
+  const presenterMode = resolveElectronSteamOverlayPresenterMode(modeOption);
+  const presenter =
+    presenterMode === "session"
+      ? createNativeOverlaySessionPresenter(electronNativeOverlaySessionOptions(window, {
+          title: presenterOptions.title,
+          restoreFocusDelayMs: presenterOptions.restoreFocusDelayMs
+        }))
+      : attachOverlayPresenter(electronOverlayPresenterOptions(window, presenterOptions));
   let removeShortcutListener: (() => void) | undefined;
+  let closed = false;
   const assertOpen = (): void => {
-    if (!presenter.isOpen()) {
+    if (closed || (presenterMode === "persistent" && !presenter.isOpen())) {
       throw new Error("Electron Steam overlay is closed.");
     }
   };
@@ -7631,6 +7642,7 @@ export function createElectronSteamOverlay(
       return presenter;
     },
     close(): void {
+      closed = true;
       removeShortcutListener?.();
       removeShortcutListener = undefined;
       presenter.close();
@@ -7642,7 +7654,7 @@ export function createElectronSteamOverlay(
       presenter.pump();
     },
     isOpen(): boolean {
-      return presenter.isOpen();
+      return !closed && (presenterMode === "session" || presenter.isOpen());
     },
     snapshot(): NativeOverlayPresenterSnapshot {
       return presenter.snapshot();
@@ -7658,6 +7670,156 @@ export function createElectronSteamOverlay(
   }
 
   return controller;
+}
+
+function resolveElectronSteamOverlayPresenterMode(
+  modeOption?: ElectronSteamOverlayPresenterMode
+): ElectronSteamOverlayPresenterMode {
+  if (modeOption !== undefined) {
+    if (modeOption === "persistent" || modeOption === "session") {
+      return modeOption;
+    }
+    throw new Error(`Unsupported Electron Steam overlay presenter mode: ${String(modeOption)}`);
+  }
+
+  const disabled = parseBooleanEnvironment(process.env.STEAM_BRIDGE_DISABLE_ELECTRON_OVERLAY_PRESENTER);
+  if (disabled === true) {
+    return "session";
+  }
+
+  const envMode = process.env.STEAM_BRIDGE_ELECTRON_OVERLAY_PRESENTER;
+  if (!envMode) {
+    return "persistent";
+  }
+
+  const normalized = envMode.trim().toLowerCase();
+  if (["persistent", "presenter", "native", "auto", "on", "true", "1"].includes(normalized)) {
+    return "persistent";
+  }
+  if (["session", "fallback", "compatibility", "off", "false", "0", "disabled"].includes(normalized)) {
+    return "session";
+  }
+
+  process.emitWarning(
+    `Ignoring unsupported STEAM_BRIDGE_ELECTRON_OVERLAY_PRESENTER value: ${envMode}`,
+    { type: "SteamBridgeOverlayPresenterWarning" }
+  );
+  return "persistent";
+}
+
+function parseBooleanEnvironment(value: string | undefined): boolean | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  if (["1", "true", "yes", "on"].includes(normalized)) {
+    return true;
+  }
+  if (["0", "false", "no", "off"].includes(normalized)) {
+    return false;
+  }
+  return undefined;
+}
+
+function createNativeOverlaySessionPresenter(options: NativeOverlaySessionOptions = {}): NativeOverlayPresenter {
+  const title = options.title ?? "Steam Bridge Electron Overlay Session";
+  const pumpIntervalMs = Math.max(1, options.pumpIntervalMs ?? 33);
+  const startedAt = Date.now();
+  let closed = false;
+  let session: NativeOverlaySession | undefined;
+  let lastSessionSnapshot: NativeOverlaySessionSnapshot | undefined;
+  let lastError: unknown;
+
+  const ensureSession = (): NativeOverlaySession => {
+    if (closed) {
+      throw new Error("Electron Steam overlay is closed.");
+    }
+    if (!session || !session.isOpen()) {
+      session = startNativeOverlaySession({ ...options, title, pumpIntervalMs });
+    }
+    return session;
+  };
+
+  const prepare = (): void => {
+    try {
+      const activeSession = ensureSession();
+      activeSession.pump();
+      lastSessionSnapshot = activeSession.snapshot();
+    } catch (error) {
+      lastError = error;
+      throw error;
+    }
+  };
+
+  const close = (): void => {
+    if (closed) {
+      return;
+    }
+    closed = true;
+    session?.close();
+    session = undefined;
+  };
+
+  const presenter: NativeOverlayPresenter = {
+    close,
+    disconnect: close,
+    pump(): void {
+      session?.pump();
+      if (session) {
+        lastSessionSnapshot = session.snapshot();
+      }
+    },
+    prepareForOverlay: prepare,
+    prepareForPassiveOverlay: prepare,
+    show: prepare,
+    hide(): void {
+      session?.close();
+      session = undefined;
+    },
+    isOpen(): boolean {
+      return !closed;
+    },
+    snapshot(): NativeOverlayPresenterSnapshot {
+      const snapshot = session?.snapshot() ?? lastSessionSnapshot;
+      const diagnostics = snapshot?.diagnostics;
+      const nativeProbeOpen = closed ? false : (snapshot?.nativeProbeOpen ?? false);
+      const nativeHostOpen = closed ? false : (snapshot?.nativeHostOpen ?? false);
+      const attached = nativeProbeOpen || nativeHostOpen;
+      const overlayActive = closed ? false : (snapshot?.overlayActive ?? false);
+      const overlayNeedsPresent = closed ? false : (diagnostics?.overlayNeedsPresent ?? false);
+      const active = attached && (overlayActive || overlayNeedsPresent);
+      const fps = Math.round(1000 / pumpIntervalMs);
+      return {
+        title,
+        closed,
+        startedAt,
+        mode: closed ? "closed" : attached ? (active ? "active" : "passive") : "hidden",
+        attached,
+        nativeProbeOpen,
+        nativeHostOpen,
+        clickThrough: !active,
+        focusable: nativeProbeOpen,
+        transparent: !active,
+        idleFps: 0,
+        needsPresentFps: fps,
+        activeOverlayFps: fps,
+        pollIntervalMs: pumpIntervalMs,
+        currentFps: attached ? fps : 0,
+        pumpCount: snapshot?.pumpCount ?? 0,
+        pollCount: 0,
+        overlayActive,
+        overlayWasActive: snapshot?.overlayWasActive ?? false,
+        overlayNeedsPresent,
+        lastOverlayEvent: snapshot?.lastOverlayEvent,
+        lastPumpAt: snapshot?.lastPumpAt,
+        lastError: snapshot?.lastError ?? lastError,
+        diagnostics
+      };
+    }
+  };
+
+  return presenter;
 }
 
 function installElectronSteamOverlayShortcut(

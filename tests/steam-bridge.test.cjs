@@ -4731,6 +4731,175 @@ test("electron steam overlay manager owns one presenter and routes opens", (t) =
   );
 });
 
+test("electron steam overlay manager can fall back to native overlay sessions", (t) => {
+  const hostHandle = Buffer.from([9, 9, 9, 9]);
+  let hostOpen = false;
+  const fake = createFakeNative({
+    attachNativeOverlayHostView(nativeWindowHandle) {
+      hostOpen = true;
+      this.calls.push({ method: "attachNativeOverlayHostView", args: [nativeWindowHandle] });
+    },
+    pumpNativeOverlayProbeWindow() {
+      this.calls.push({ method: "pumpNativeOverlayProbeWindow", args: [] });
+    },
+    showNativeOverlayHostView() {
+      this.calls.push({ method: "showNativeOverlayHostView", args: [] });
+    },
+    setNativeOverlayHostInputPassthrough(passThrough) {
+      this.calls.push({ method: "setNativeOverlayHostInputPassthrough", args: [passThrough] });
+    },
+    setNativeOverlayHostOpacity(opaque) {
+      this.calls.push({ method: "setNativeOverlayHostOpacity", args: [opaque] });
+    },
+    detachNativeOverlayHostView() {
+      hostOpen = false;
+      this.calls.push({ method: "detachNativeOverlayHostView", args: [] });
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return false;
+    },
+    isNativeOverlayHostViewOpen() {
+      return hostOpen;
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  const window = {
+    isDestroyed() {
+      return false;
+    },
+    getNativeWindowHandle() {
+      return hostHandle;
+    },
+    once() {},
+    webContents: {
+      once() {},
+      invalidate() {},
+      send() {}
+    }
+  };
+
+  const overlay = steam.overlay.createElectronSteamOverlay(window, {
+    title: "Electron Session Fallback",
+    presenterMode: "session"
+  });
+
+  assert.equal(overlay.isOpen(), true);
+  assert.equal(overlay.snapshot().attached, false);
+  assert.deepEqual(fake.calls.filter((call) => call.method === "attachNativeOverlayHostView"), []);
+
+  overlay.open({ type: "web", url: "https://store.steampowered.com/app/480/", modal: true });
+
+  assert.equal(overlay.snapshot().attached, true);
+  overlay.close();
+  assert.equal(overlay.isOpen(), false);
+  assert.equal(overlay.snapshot().attached, false);
+  assert.equal(overlay.snapshot().currentFps, 0);
+
+  assert.deepEqual(
+    fake.calls.filter((call) =>
+      [
+        "attachNativeOverlayHostView",
+        "showNativeOverlayHostView",
+        "setNativeOverlayHostInputPassthrough",
+        "setNativeOverlayHostOpacity",
+        "pumpNativeOverlayProbeWindow",
+        "activateOverlayToWebPage",
+        "disconnectGameOverlayActivated",
+        "detachNativeOverlayHostView"
+      ].includes(call.method)
+    ),
+    [
+      { method: "attachNativeOverlayHostView", args: [hostHandle] },
+      { method: "showNativeOverlayHostView", args: [] },
+      { method: "setNativeOverlayHostInputPassthrough", args: [false] },
+      { method: "setNativeOverlayHostOpacity", args: [true] },
+      { method: "pumpNativeOverlayProbeWindow", args: [] },
+      { method: "pumpNativeOverlayProbeWindow", args: [] },
+      { method: "activateOverlayToWebPage", args: ["https://store.steampowered.com/app/480/", true] },
+      { method: "disconnectGameOverlayActivated", args: [] },
+      { method: "detachNativeOverlayHostView", args: [] }
+    ]
+  );
+});
+
+test("electron steam overlay manager honors the presenter kill switch env flag", (t) => {
+  const previous = process.env.STEAM_BRIDGE_DISABLE_ELECTRON_OVERLAY_PRESENTER;
+  process.env.STEAM_BRIDGE_DISABLE_ELECTRON_OVERLAY_PRESENTER = "1";
+
+  t.after(() => {
+    if (previous === undefined) {
+      delete process.env.STEAM_BRIDGE_DISABLE_ELECTRON_OVERLAY_PRESENTER;
+    } else {
+      process.env.STEAM_BRIDGE_DISABLE_ELECTRON_OVERLAY_PRESENTER = previous;
+    }
+    clearSteamBridgeCache();
+  });
+
+  const hostHandle = Buffer.from([1, 2, 3, 4]);
+  let hostOpen = false;
+  const fake = createFakeNative({
+    attachNativeOverlayHostView(nativeWindowHandle) {
+      hostOpen = true;
+      this.calls.push({ method: "attachNativeOverlayHostView", args: [nativeWindowHandle] });
+    },
+    pumpNativeOverlayProbeWindow() {
+      this.calls.push({ method: "pumpNativeOverlayProbeWindow", args: [] });
+    },
+    showNativeOverlayHostView() {
+      this.calls.push({ method: "showNativeOverlayHostView", args: [] });
+    },
+    setNativeOverlayHostInputPassthrough(passThrough) {
+      this.calls.push({ method: "setNativeOverlayHostInputPassthrough", args: [passThrough] });
+    },
+    setNativeOverlayHostOpacity(opaque) {
+      this.calls.push({ method: "setNativeOverlayHostOpacity", args: [opaque] });
+    },
+    detachNativeOverlayHostView() {
+      hostOpen = false;
+      this.calls.push({ method: "detachNativeOverlayHostView", args: [] });
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return false;
+    },
+    isNativeOverlayHostViewOpen() {
+      return hostOpen;
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  const window = {
+    isDestroyed() {
+      return false;
+    },
+    getNativeWindowHandle() {
+      return hostHandle;
+    },
+    once() {},
+    webContents: {
+      once() {},
+      invalidate() {},
+      send() {}
+    }
+  };
+
+  const overlay = steam.overlay.createElectronSteamOverlay(window, {
+    title: "Electron Env Fallback"
+  });
+
+  assert.equal(overlay.snapshot().attached, false);
+  assert.deepEqual(fake.calls.filter((call) => call.method === "attachNativeOverlayHostView"), []);
+  overlay.prepareForCheckout();
+  overlay.close();
+
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "attachNativeOverlayHostView"),
+    [{ method: "attachNativeOverlayHostView", args: [hostHandle] }]
+  );
+});
+
 test("electron steam overlay manager opens the presenter route from the default Shift+Tab shortcut", (t) => {
   const hostHandle = Buffer.from([4, 8, 15, 16]);
   let hostOpen = false;

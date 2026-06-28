@@ -155,7 +155,9 @@ for overlay work:
 ```ts
 const steamOverlay = client.overlay.createElectronSteamOverlay(mainWindow, {
   // Enabled by default. Shift+Tab opens the verified Friends/chat presenter route.
-  overlayShortcut: true
+  overlayShortcut: true,
+  // Optional diagnostics only:
+  // presenterMode: "session"
 });
 
 steamOverlay.open({
@@ -230,6 +232,11 @@ passive notifications; opening or active overlay mode restores both opacity and
 input so Steam web or checkout UI can receive clicks, then parks the host
 transparent after Steam reports the overlay inactive. The default `idleFps` is
 `0`; opt into nonzero idle pumping only for diagnostics. Use
+`presenterMode: "session"` or
+`STEAM_BRIDGE_DISABLE_ELECTRON_OVERLAY_PRESENTER=1` only as an emergency
+compatibility switch: it disables the reusable presenter, uses the older
+one-shot native-session lifecycle for the same `steamOverlay.open(...)` calls,
+and may pump more aggressively while a session is open. Use
 `steamOverlay.open({ type: "friends" })` for a generic Friends List surface; it
 opens Steam Community chat through the same native web presenter path, keeping
 Electron child-process isolation intact. Use
@@ -292,7 +299,10 @@ remains compatibility coverage. Treat raw Friends/Game Overview dialog dismissal
 and raw Steam overlay hotkey interception as open social-overlay diagnostics,
 not completed cross-platform guarantees. The managed Electron `Shift+Tab`
 shortcut bridge is the product path for Electron keyboard toggle behavior. The
-Deck runner can collect focused toggle evidence with
+managed overlay also exposes `presenterMode: "session"` and
+`STEAM_BRIDGE_ELECTRON_OVERLAY_PRESENTER=session` for diagnostic comparison
+against the reusable presenter; keep the default persistent mode for Deck
+Desktop product proof. The Deck runner can collect focused toggle evidence with
 `--visual-toggle-probe --visual-toggle-input keyboard|guide|both`; for the
 managed `presenter-shortcut` keyboard path, that probe verifies
 `overlay:shortcut-open`, active/inactive callbacks, app focus, and crash

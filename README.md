@@ -310,7 +310,9 @@ window and use it for overlay work:
 
 ```ts
 const steamOverlay = client.overlay.createElectronSteamOverlay(mainWindow, {
-  title: "Steam Overlay"
+  title: "Steam Overlay",
+  // Optional diagnostics only:
+  // presenterMode: "session"
 });
 
 steamOverlay.open({
@@ -362,6 +364,12 @@ forcing the Electron game window into a constant repaint loop. By default
 `idleFps` is `0`; set it explicitly only for diagnostic comparisons. Use
 `attachPresenter(...)` and pass `presenter` to `openSteamOverlay(...)` directly
 only when you need lower-level lifecycle control.
+For emergency diagnostics, set `presenterMode: "session"` or
+`STEAM_BRIDGE_DISABLE_ELECTRON_OVERLAY_PRESENTER=1` to disable the reusable
+presenter and fall back to the older one-shot native-session lifecycle while
+keeping the same `steamOverlay.open(...)` calls. That mode is intended for
+isolating presenter regressions; it may pump more aggressively and is not the
+recommended Steam Deck Desktop product path.
 
 `electronConfigureSteamOverlay()` also keeps Electron's Chromium children from
 becoming competing Steam overlay targets. By default it removes Steam's overlay
@@ -471,6 +479,10 @@ that proof. The older
 `activateToWebPageWithNativeSession(..., { modal: true })` / `native-web` path
 remains compatibility coverage. Steam's raw Desktop Mode dialog/Game Overview
 overlay and hotkey toggle should not be treated as completed dismissal proofs.
+The managed Electron overlay also exposes a compatibility fallback through
+`presenterMode: "session"` or
+`STEAM_BRIDGE_ELECTRON_OVERLAY_PRESENTER=session`; use it only to compare
+against the reusable presenter when diagnosing a platform regression.
 
 For repeatable Deck evidence, the smoke host runner can copy the remote result
 log and diagnostics directory back to the local machine with

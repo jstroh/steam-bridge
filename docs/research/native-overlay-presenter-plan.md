@@ -336,8 +336,15 @@ Next work:
    - `GameOverlayActivated(false)`: return to passive after a short grace period.
 4. Track resize/fullscreen state every pump and through window events where
    available.
-5. Add a kill switch/env flag that disables the presenter and falls back to the
-   existing explicit session helpers.
+5. Keep the presenter kill switch covered:
+   - `createElectronSteamOverlay(..., { presenterMode: "session" })` and
+     `STEAM_BRIDGE_DISABLE_ELECTRON_OVERLAY_PRESENTER=1` disable the reusable
+     persistent presenter and lazily fall back to the older native-session
+     lifecycle while preserving the same `steamOverlay.open(...)` app-facing
+     calls.
+   - Treat this as emergency diagnostics or compatibility comparison; the
+     default persistent presenter remains the Deck Desktop product path because
+     it parks idle at `currentFps=0`.
 6. Keep Electron child overlay targets isolated for product proofs:
    - scrub Steam overlay renderer entries from `LD_PRELOAD` /
      `DYLD_INSERT_LIBRARIES` before Electron spawns children;
@@ -397,6 +404,9 @@ Pass criteria:
 - No crash dumps from Electron or the native binding, and no fatal Electron
   lifecycle events in the smoke diagnostics.
 - No sustained 30 FPS pumping while idle.
+- The session fallback is available as a kill switch without changing app
+  overlay call sites, but it is documented as diagnostic coverage rather than
+  the default product path.
 
 ## macOS Apple Silicon Plan
 

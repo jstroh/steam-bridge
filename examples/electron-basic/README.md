@@ -168,6 +168,11 @@ verified Friends/chat presenter-backed Steam web overlay. Add
 `--shortcut-target <name>` to test another presenter-backed target through the
 same focused Shift+Tab path; supported smoke targets are `friends`, `web`,
 `store`, `community`, `stats`, `achievements`, `dialog`, and `checkout`.
+For emergency compatibility comparison, set
+`STEAM_BRIDGE_DISABLE_ELECTRON_OVERLAY_PRESENTER=1` before launching the smoke
+app. The same high-level `presenter-*` actions then use the older native-session
+lifecycle instead of the reusable persistent presenter; this is diagnostic
+coverage, not the recommended Deck Desktop product path.
 
 For social-overlay investigation only, the smoke app and Deck host runner expose
 `--steam-bridge-electron-overlay-scrub-child-env`,
