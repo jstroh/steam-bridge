@@ -253,6 +253,7 @@ run_self_test() {
   fi
 
   require_contains "$core_output" "--action presenter-web-open-and-wait" "core matrix must include web openAndWait."
+  require_contains "$core_output" "--require-restore-focus-delay-ms 0" "core matrix must require zero restore focus delay."
   require_contains "$core_output" "--steam-bridge-launch-env-file=/tmp/steam-bridge-macos-smoke.env" "matrix shortcut must use the stable launcher env file."
   require_contains "$core_output" "ENV /tmp/steam-bridge-macos-smoke.env" "matrix must write per-case launcher env."
   require_contains "$core_output" "--action presenter-store-open-and-wait" "core matrix must include store openAndWait."
@@ -659,6 +660,10 @@ run_case() {
   local result_file="$artifact_root/$case_id.log"
   local diagnostic_dir="$result_file.diagnostics"
   local run_cmd
+  local case_args=("$@")
+  if case_uses_presenter_action "${case_args[@]}" && ! case_has_restore_focus_requirement "${case_args[@]}"; then
+    case_args+=(--require-restore-focus-delay-ms 0)
+  fi
   run_cmd=(
     "$helper_path"
     --mode steam-launch
@@ -672,7 +677,7 @@ run_case() {
   if [ -n "$steam_user_id" ]; then
     run_cmd+=(--steam-user-id "$steam_user_id")
   fi
-  run_cmd+=("$@")
+  run_cmd+=("${case_args[@]}")
 
   echo "CASE $case_id"
   echo "ENV $launcher_env_file"
@@ -683,10 +688,32 @@ run_case() {
   fi
 
   mkdir -p "$(dirname -- "$result_file")"
-  write_case_manifest "$case_id" "$result_file" "$diagnostic_dir"
-  write_case_launcher_env "$result_file" "$diagnostic_dir" "$@"
+  write_case_manifest "$case_id" "$result_file" "$diagnostic_dir" "${case_args[@]}"
+  write_case_launcher_env "$result_file" "$diagnostic_dir" "${case_args[@]}"
   "${run_cmd[@]}"
   cleanup_macos_smoke_processes
+}
+
+case_uses_presenter_action() {
+  local previous=""
+  local arg
+  for arg in "$@"; do
+    if [ "$previous" = "--action" ] && [[ "$arg" == presenter-* ]]; then
+      return 0
+    fi
+    previous="$arg"
+  done
+  return 1
+}
+
+case_has_restore_focus_requirement() {
+  local arg
+  for arg in "$@"; do
+    if [ "$arg" = "--require-restore-focus-delay-ms" ]; then
+      return 0
+    fi
+  done
+  return 1
 }
 
 run_matrix() {

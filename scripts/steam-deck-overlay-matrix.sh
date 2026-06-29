@@ -246,6 +246,10 @@ copy_done="0"
 run_deck_case() {
   local name="$1"
   shift
+  local case_args=("$@")
+  if case_uses_presenter_action "${case_args[@]}" && ! case_has_restore_focus_requirement "${case_args[@]}"; then
+    case_args+=(--require-restore-focus-delay-ms 0)
+  fi
 
   case_index=$((case_index + 1))
   local case_id
@@ -278,7 +282,7 @@ run_deck_case() {
     cmd+=(--skip-copy)
   fi
 
-  cmd+=("$@")
+  cmd+=("${case_args[@]}")
 
   echo
   echo "== Deck overlay matrix: $case_id =="
@@ -291,6 +295,28 @@ run_deck_case() {
   copy_done="1"
   cleanup_remote_smoke
   return "$status"
+}
+
+case_uses_presenter_action() {
+  local previous=""
+  local arg
+  for arg in "$@"; do
+    if [ "$previous" = "--action" ] && [[ "$arg" == presenter-* ]]; then
+      return 0
+    fi
+    previous="$arg"
+  done
+  return 1
+}
+
+case_has_restore_focus_requirement() {
+  local arg
+  for arg in "$@"; do
+    if [ "$arg" = "--require-restore-focus-delay-ms" ]; then
+      return 0
+    fi
+  done
+  return 1
 }
 
 run_web_surface_case() {
@@ -415,6 +441,7 @@ run_self_test() {
   require_case_count "$full_output" "26" "full matrix"
 
   require_contains "$core_output" "--action presenter-web" "core matrix must include presenter web."
+  require_contains "$core_output" "--require-restore-focus-delay-ms 0" "core matrix must require zero restore focus delay."
   require_contains "$core_output" "--action presenter-web-open-and-wait" "core matrix must include presenter openAndWait web."
   require_contains "$core_output" "--action presenter-store-open-and-wait" "core matrix must include presenter openAndWait store."
   require_contains "$core_output" "--action presenter-dialog-auto-open-and-wait" "core matrix must include dialog-equivalent openAndWait."

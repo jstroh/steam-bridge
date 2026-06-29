@@ -219,6 +219,21 @@ function summarizeMatrixArtifacts(root) {
           `${caseName}: managed Electron overlay automatic notification priming is enabled`,
           resultFailures
         );
+        expect(
+          electronOverlay.restoreFocusDelayMs === 0,
+          `${caseName}: managed Electron overlay restore focus delay is zero`,
+          resultFailures
+        );
+        expect(
+          electronOverlay.activationBoostMs === 0,
+          `${caseName}: managed Electron overlay activation boost is zero`,
+          resultFailures
+        );
+        expect(
+          electronOverlay.activeGraceMs === 0,
+          `${caseName}: managed Electron overlay active grace is zero`,
+          resultFailures
+        );
       }
     }
     if (overlayTargetCount > 1) {
@@ -825,6 +840,9 @@ function electronOverlayFixture() {
     presenterMode: "persistent",
     closeWithWindow: true,
     autoPrepareForNotifications: true,
+    restoreFocusDelayMs: 0,
+    activationBoostMs: 0,
+    activeGraceMs: 0,
     overlayShortcut: {
       enabled: true,
       preventDefault: true,

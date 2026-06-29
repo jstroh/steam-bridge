@@ -56,6 +56,7 @@ require_idle_presenter="0"
 require_electron_overlay="0"
 require_presenter_mode=""
 require_overlay_shortcut_target=""
+require_restore_focus_delay_ms=""
 require_no_crashes="0"
 
 usage() {
@@ -150,6 +151,8 @@ Options:
   --require-presenter-mode MODE Require managed Electron overlay presenter mode: persistent or session.
   --require-overlay-shortcut-target NAME
                                 Require managed Electron Shift+Tab target type.
+  --require-restore-focus-delay-ms MS
+                                Require managed Electron overlay restore focus delay in milliseconds.
   --require-no-crashes          Require no crash dumps or fatal Electron lifecycle events.
   --connect-timeout SECONDS     SSH connect timeout. Defaults to 6.
 EOF
@@ -367,6 +370,11 @@ while [ "$#" -gt 0 ]; do
       ;;
     --require-overlay-shortcut-target)
       require_overlay_shortcut_target="${2:?missing --require-overlay-shortcut-target value}"
+      require_electron_overlay="1"
+      shift 2
+      ;;
+    --require-restore-focus-delay-ms)
+      require_restore_focus_delay_ms="${2:?missing --require-restore-focus-delay-ms value}"
       require_electron_overlay="1"
       shift 2
       ;;
@@ -1903,6 +1911,9 @@ append_common_helper_args() {
   if [ -n "$require_overlay_shortcut_target" ]; then
     helper_args+=("--require-overlay-shortcut-target" "$require_overlay_shortcut_target")
   fi
+  if [ -n "$require_restore_focus_delay_ms" ]; then
+    helper_args+=("--require-restore-focus-delay-ms" "$require_restore_focus_delay_ms")
+  fi
   if [ "$require_no_crashes" = "1" ]; then
     helper_args+=("--require-no-crashes")
   fi
@@ -1965,6 +1976,9 @@ build_steam_launch_args() {
     helper_args+=("--require-no-crashes")
     if [ -z "$require_presenter_mode" ]; then
       helper_args+=("--require-presenter-mode" "$(effective_presenter_mode)")
+    fi
+    if [ -z "$require_restore_focus_delay_ms" ]; then
+      helper_args+=("--require-restore-focus-delay-ms" "0")
     fi
   fi
   if [ "$action" = "presenter-shortcut" ] && [ -z "$require_overlay_shortcut_target" ]; then
@@ -2314,6 +2328,10 @@ run_self_test() {
     echo "Self-test failed: Presenter product args must require persistent presenter mode by default." >&2
     exit 1
   fi
+  if [[ "$friends_args" != *"--require-restore-focus-delay-ms 0"* ]]; then
+    echo "Self-test failed: Presenter product args must require zero restore focus delay by default." >&2
+    exit 1
+  fi
 
   action="presenter-web-open-and-wait"
   build_steam_launch_args
@@ -2336,6 +2354,10 @@ run_self_test() {
   fi
   if [[ "$open_wait_args" != *"--require-presenter-mode persistent"* ]]; then
     echo "Self-test failed: Presenter openAndWait args must require persistent presenter diagnostics." >&2
+    exit 1
+  fi
+  if [[ "$open_wait_args" != *"--require-restore-focus-delay-ms 0"* ]]; then
+    echo "Self-test failed: Presenter openAndWait args must require zero restore focus delay diagnostics." >&2
     exit 1
   fi
 
@@ -2492,6 +2514,10 @@ run_self_test() {
     echo "Self-test failed: Session presenter shortcut args must require session presenter diagnostics." >&2
     exit 1
   fi
+  if [[ "$shortcut_args" != *"--require-restore-focus-delay-ms 0"* ]]; then
+    echo "Self-test failed: Session presenter shortcut args must require zero restore focus delay diagnostics." >&2
+    exit 1
+  fi
   if [[ "$shortcut_args" != *"--require-overlay-shortcut-target web"* ]]; then
     echo "Self-test failed: Presenter shortcut args must require the requested shortcut target diagnostics." >&2
     exit 1
@@ -2615,6 +2641,10 @@ run_self_test() {
   fi
   if [[ "$toast_args" != *"--require-presenter-mode persistent"* ]]; then
     echo "Self-test failed: Toast args must require persistent presenter diagnostics." >&2
+    exit 1
+  fi
+  if [[ "$toast_args" != *"--require-restore-focus-delay-ms 0"* ]]; then
+    echo "Self-test failed: Toast args must require zero restore focus delay diagnostics." >&2
     exit 1
   fi
 

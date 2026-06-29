@@ -428,9 +428,10 @@ Electron app while the lifecycle log includes `achievement:progress`,
 (`clickThrough=true`, `transparent=true`, `overlayActive=false`) with
 `electronOverlay.autoPrepareForNotifications=true` and managed timing
 diagnostics such as `restoreFocusDelayMs=0`. The runner now requires that
-passive presenter shape automatically for this action, and packaged helper
-verification can require `--require-restore-focus-delay-ms 0` for timing
-regressions. The smoke action tries the available public App ID `480`
+passive presenter shape and zero managed restore-focus delay automatically for
+this action, and packaged helper verification can require
+`--require-restore-focus-delay-ms 0` for targeted timing regressions. The smoke
+action tries the available public App ID `480`
 achievements until Steam accepts
 `achievement.indicateProgress(...)`, records the accepted achievement and
 attempts, and the matrix summary fails if the progress event is not
