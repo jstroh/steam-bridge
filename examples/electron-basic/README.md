@@ -115,9 +115,11 @@ path. On Linux/X11, the presenter is transparent and click-through while fully
 idle, polls without pumping frames by default, can become visible while remaining
 click-through for `overlayNeedsPresent`, restores both opacity and input while
 opening or showing Steam UI, and parks transparent after Steam emits overlay
-inactive callbacks. The Electron overlay helper isolates Chromium children by
-default so Deck Desktop proof runs have one `gameoverlayui` process attached to
-the main/native process, not a duplicate GPU overlay target. `presenter-dialog`
+inactive callbacks. The Electron overlay helper also syncs the native presenter
+on BrowserWindow move, resize, fullscreen, maximize, restore, and show events
+with one native pump per event. It isolates Chromium children by default so Deck
+Desktop proof runs have one `gameoverlayui` process attached to the main/native
+process, not a duplicate GPU overlay target. `presenter-dialog`
 is an investigation action: with child-process isolation enabled, Friends/Game
 Overview may not render; with isolation disabled, it may render through the
 Chromium hook but still fail close/back-to-app proof.

@@ -4808,6 +4808,102 @@ test("electron steam overlay manager owns one presenter and routes opens", async
   );
 });
 
+test("electron steam overlay manager syncs the presenter on window geometry events", (t) => {
+  const hostHandle = Buffer.from([6, 7, 8, 9]);
+  let hostOpen = false;
+  let windowBounds = { x: 12, y: 24, width: 900, height: 600 };
+  const fake = createFakeNative({
+    attachNativeOverlayHostView(nativeWindowHandle) {
+      hostOpen = true;
+      this.calls.push({ method: "attachNativeOverlayHostView", args: [nativeWindowHandle] });
+    },
+    pumpNativeOverlayProbeWindow() {
+      this.calls.push({ method: "pumpNativeOverlayProbeWindow", args: [] });
+    },
+    showNativeOverlayHostView() {
+      this.calls.push({ method: "showNativeOverlayHostView", args: [] });
+    },
+    setNativeOverlayHostInputPassthrough(passThrough) {
+      this.calls.push({ method: "setNativeOverlayHostInputPassthrough", args: [passThrough] });
+    },
+    setNativeOverlayHostOpacity(opaque) {
+      this.calls.push({ method: "setNativeOverlayHostOpacity", args: [opaque] });
+    },
+    detachNativeOverlayHostView() {
+      hostOpen = false;
+      this.calls.push({ method: "detachNativeOverlayHostView", args: [] });
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return false;
+    },
+    isNativeOverlayHostViewOpen() {
+      return hostOpen;
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  const handlers = new Map();
+  const removedEvents = [];
+  const window = {
+    isDestroyed() {
+      return false;
+    },
+    getNativeWindowHandle() {
+      return hostHandle;
+    },
+    getBounds() {
+      return windowBounds;
+    },
+    on(event, handler) {
+      handlers.set(event, handler);
+    },
+    off(event, handler) {
+      if (handlers.get(event) === handler) {
+        handlers.delete(event);
+      }
+      removedEvents.push(event);
+    },
+    webContents: {
+      once() {},
+      invalidate() {},
+      send() {}
+    }
+  };
+
+  const overlay = steam.overlay.createElectronSteamOverlay(window, {
+    title: "Electron Geometry Sync Overlay",
+    pollIntervalMs: 10000
+  });
+
+  assert.equal(handlers.has("resize"), true);
+  assert.equal(handlers.has("move"), true);
+  assert.equal(handlers.has("enter-full-screen"), true);
+  assert.equal(pumpCalls().length, 1);
+
+  const resizeHandler = handlers.get("resize");
+  windowBounds = { x: 16, y: 32, width: 1280, height: 720 };
+  resizeHandler();
+  assert.equal(pumpCalls().length, 2);
+  assert.deepEqual(overlay.snapshot().bounds, windowBounds);
+
+  handlers.get("enter-full-screen")();
+  assert.equal(pumpCalls().length, 3);
+
+  overlay.close();
+  assert.equal(handlers.size, 0);
+  assert.equal(removedEvents.includes("resize"), true);
+  assert.equal(removedEvents.includes("enter-full-screen"), true);
+
+  resizeHandler();
+  assert.equal(pumpCalls().length, 3);
+
+  function pumpCalls() {
+    return fake.calls.filter((call) => call.method === "pumpNativeOverlayProbeWindow");
+  }
+});
+
 test("electron steam overlay manager primes passive notification toasts automatically", (t) => {
   const hostHandle = Buffer.from([3, 1, 4, 1]);
   let hostOpen = false;

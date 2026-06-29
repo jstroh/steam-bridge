@@ -1,6 +1,6 @@
 # Native Overlay Presenter Plan
 
-Last updated: 2026-06-28
+Last updated: 2026-06-29
 
 This is the forward plan for reliable Steam overlay behavior in Electron apps on
 Linux/Steam Deck and macOS. Windows overlay behavior appears lower risk, so the
@@ -239,6 +239,10 @@ Current evidence:
 - The reusable presenter defaults to `idleFps: 0`, so an attached idle host polls
   overlay state without continuously presenting frames. It starts pumping only
   for activation boost windows, active overlays, or `overlayNeedsPresent`.
+- Native hosts realign to their parent window on each pump. The managed
+  Electron overlay also listens to BrowserWindow move, resize, fullscreen,
+  maximize, restore, and show events and triggers one native presenter pump per
+  event, keeping geometry current without introducing an idle frame loop.
 - Deck Desktop Mode can show a passive achievement-progress toast over the
   Electron smoke app through the reusable presenter path while the native host
   remains click-through and transparent, also with a single overlay target. The
@@ -384,6 +388,10 @@ Next work:
    - `GameOverlayActivated(false)`: return to passive after a short grace period.
 4. Track resize/fullscreen state every pump and through window events where
    available.
+   - Native X11/GLX and macOS hosts already realign during pump, and the managed
+     Electron overlay now repumps once for BrowserWindow move, resize,
+     fullscreen, maximize, restore, and show events without adding a continuous
+     timer.
 5. Keep the presenter kill switch covered:
    - `createElectronSteamOverlay(..., { presenterMode: "session" })` and
      `STEAM_BRIDGE_DISABLE_ELECTRON_OVERLAY_PRESENTER=1` disable the reusable

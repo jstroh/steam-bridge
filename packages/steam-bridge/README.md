@@ -253,7 +253,10 @@ Linux/X11, fully idle mode makes the host transparent and click-through;
 passive notifications; opening or active overlay mode restores both opacity and
 input so Steam web or checkout UI can receive clicks, then parks the host
 transparent after Steam reports the overlay inactive. The default `idleFps` is
-`0`; opt into nonzero idle pumping only for diagnostics. Use
+`0`; opt into nonzero idle pumping only for diagnostics. The managed Electron
+helper also keeps the presenter aligned on BrowserWindow move, resize,
+fullscreen, maximize, restore, and show events with one native pump per event
+instead of a steady render loop. Use
 `steamOverlay.snapshot()` for diagnostics; it returns the native presenter state
 including the selected `backend` (`x11-glx`, `macos-metal`, `macos-opengl`, or
 `none`) and, when available from the Electron window, current `bounds`, plus an

@@ -401,6 +401,9 @@ that can produce Steam notification toasts. This is the path intended for
 checkout overlays and passive Steam notifications without forcing the Electron
 game window into a constant repaint loop. By default
 `idleFps` is `0`; set it explicitly only for diagnostic comparisons. Use
+the managed Electron helper to keep the presenter aligned with BrowserWindow
+move, resize, fullscreen, maximize, restore, and show events; each event triggers
+one native presenter pump rather than a steady render loop. Use
 `attachPresenter(...)` and pass `presenter` to `openSteamOverlay(...)` directly
 only when you need lower-level lifecycle control.
 Use `openAndWait(...)` for modal web, store, checkout, and dialog-equivalent

@@ -1823,6 +1823,9 @@ export interface ElectronSteamOverlayCheckoutPrepareOptions {
 }
 
 export type ElectronOverlayWindow = Parameters<typeof electronOverlayPresenterOptionsImpl>[0] & {
+  on?(event: ElectronOverlayWindowGeometryEvent, handler: () => void): void;
+  off?(event: ElectronOverlayWindowGeometryEvent, handler: () => void): void;
+  removeListener?(event: ElectronOverlayWindowGeometryEvent, handler: () => void): void;
   once?(event: "closed", handler: () => void): void;
   webContents: Parameters<typeof electronOverlayPresenterOptionsImpl>[0]["webContents"] & {
     isDestroyed?(): boolean;
@@ -1840,6 +1843,20 @@ export type ElectronOverlayWindow = Parameters<typeof electronOverlayPresenterOp
     ): void;
   };
 };
+
+type ElectronOverlayWindowGeometryEvent =
+  | "move"
+  | "moved"
+  | "resize"
+  | "resized"
+  | "maximize"
+  | "unmaximize"
+  | "restore"
+  | "show"
+  | "enter-full-screen"
+  | "leave-full-screen"
+  | "enter-html-full-screen"
+  | "leave-html-full-screen";
 
 export type ElectronSteamOverlayOptions = NonNullable<Parameters<typeof electronOverlayPresenterOptionsImpl>[1]> & {
   closeWithWindow?: boolean;
@@ -7846,6 +7863,7 @@ export function createElectronSteamOverlay(
         }))
       : attachOverlayPresenter(electronOverlayPresenterOptions(window, presenterOptions));
   let removeShortcutListener: (() => void) | undefined;
+  let removeWindowSyncListeners: (() => void) | undefined;
   let notificationPresenterHandle: CallbackHandle | undefined;
   let closed = false;
   const assertOpen = (): void => {
@@ -7930,6 +7948,8 @@ export function createElectronSteamOverlay(
         return;
       }
       closed = true;
+      removeWindowSyncListeners?.();
+      removeWindowSyncListeners = undefined;
       removeShortcutListener?.();
       removeShortcutListener = undefined;
       notificationPresenterHandle?.disconnect();
@@ -7958,6 +7978,7 @@ export function createElectronSteamOverlay(
     }
   };
 
+  removeWindowSyncListeners = installElectronSteamOverlayWindowSync(window, controller, presenterMode);
   removeShortcutListener = installElectronSteamOverlayShortcut(window, controller, shortcut);
   if (autoPrepareForNotifications) {
     notificationPresenterHandle = registerElectronNotificationPresenter(presenter);
@@ -8123,6 +8144,66 @@ function createNativeOverlaySessionPresenter(options: NativeOverlaySessionOption
   };
 
   return presenter;
+}
+
+const ELECTRON_STEAM_OVERLAY_WINDOW_SYNC_EVENTS: ElectronOverlayWindowGeometryEvent[] = [
+  "move",
+  "moved",
+  "resize",
+  "resized",
+  "maximize",
+  "unmaximize",
+  "restore",
+  "show",
+  "enter-full-screen",
+  "leave-full-screen",
+  "enter-html-full-screen",
+  "leave-html-full-screen"
+];
+
+function installElectronSteamOverlayWindowSync(
+  window: ElectronOverlayWindow,
+  controller: ElectronSteamOverlay,
+  presenterMode: ElectronSteamOverlayPresenterMode
+): (() => void) | undefined {
+  if (presenterMode !== "persistent" || typeof window.on !== "function") {
+    return undefined;
+  }
+
+  const sync = (): void => {
+    if (!controller.isOpen()) {
+      return;
+    }
+    try {
+      controller.pump();
+    } catch (error) {
+      process.emitWarning(error instanceof Error ? error : String(error), {
+        type: "SteamBridgeOverlayWindowSyncWarning"
+      });
+    }
+  };
+
+  for (const event of ELECTRON_STEAM_OVERLAY_WINDOW_SYNC_EVENTS) {
+    window.on(event, sync);
+  }
+
+  return () => {
+    for (const event of ELECTRON_STEAM_OVERLAY_WINDOW_SYNC_EVENTS) {
+      removeElectronSteamOverlayWindowListener(window, event, sync);
+    }
+  };
+}
+
+function removeElectronSteamOverlayWindowListener(
+  window: ElectronOverlayWindow,
+  event: ElectronOverlayWindowGeometryEvent,
+  handler: () => void
+): void {
+  if (typeof window.off === "function") {
+    window.off(event, handler);
+  } else if (typeof window.removeListener === "function") {
+    window.removeListener(event, handler);
+  }
 }
 
 function installElectronSteamOverlayShortcut(
