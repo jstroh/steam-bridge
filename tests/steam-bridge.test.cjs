@@ -7258,6 +7258,101 @@ test("native overlay presenter defers macOS host attach while locked or display-
   presenter.close();
 });
 
+test("electron steam overlay manager fails fast while the macOS native host is unavailable", async (t) => {
+  setProcessPlatformForTest(t, "darwin");
+
+  const hostHandle = Buffer.from([8, 6, 7, 5, 3, 0, 9, 0]);
+  let hostOpen = false;
+  const fake = createFakeNative({
+    getMacOverlayEnvironment() {
+      this.calls.push({ method: "getMacOverlayEnvironment", args: [] });
+      return { screenLocked: true, displayAsleep: false };
+    },
+    attachNativeOverlayHostView(nativeWindowHandle) {
+      hostOpen = true;
+      this.calls.push({ method: "attachNativeOverlayHostView", args: [nativeWindowHandle] });
+    },
+    pumpNativeOverlayProbeWindow() {
+      if (!hostOpen) {
+        throw new Error("native overlay presenter is closed");
+      }
+      this.calls.push({ method: "pumpNativeOverlayProbeWindow", args: [] });
+    },
+    showNativeOverlayHostView() {
+      this.calls.push({ method: "showNativeOverlayHostView", args: [] });
+    },
+    setNativeOverlayHostInputPassthrough(passThrough) {
+      this.calls.push({ method: "setNativeOverlayHostInputPassthrough", args: [passThrough] });
+    },
+    setNativeOverlayHostOpacity(opaque) {
+      this.calls.push({ method: "setNativeOverlayHostOpacity", args: [opaque] });
+    },
+    detachNativeOverlayHostView() {
+      hostOpen = false;
+      this.calls.push({ method: "detachNativeOverlayHostView", args: [] });
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return false;
+    },
+    isNativeOverlayHostViewOpen() {
+      return hostOpen;
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  const window = {
+    isDestroyed() {
+      return false;
+    },
+    getNativeWindowHandle() {
+      return hostHandle;
+    },
+    once() {},
+    webContents: {
+      once() {},
+      invalidate() {},
+      send() {}
+    }
+  };
+
+  const overlay = steam.overlay.createElectronSteamOverlay(window, {
+    title: "Electron Locked macOS Overlay",
+    pollIntervalMs: 10000
+  });
+
+  assert.equal(overlay.snapshot().nativeHostUnavailableReason, "macos-screen-locked");
+  assert.throws(() => overlay.open({ type: "friends" }), /macOS screen is locked/);
+
+  await assert.rejects(
+    overlay.openAndWait(
+      { type: "web", url: "https://store.steampowered.com/app/480/", modal: true },
+      { showTimeoutMs: 200, closeTimeoutMs: 200 }
+    ),
+    /macOS screen is locked/
+  );
+  await assert.rejects(overlay.waitForOverlayShown({ timeoutMs: 200 }), /macOS screen is locked/);
+
+  let checkoutOperationRan = false;
+  await assert.rejects(
+    overlay.openCheckoutAndWait(
+      () => {
+        checkoutOperationRan = true;
+        return { transactionId: 123n };
+      },
+      { showTimeoutMs: 200, closeTimeoutMs: 200 }
+    ),
+    /macOS screen is locked/
+  );
+  assert.equal(checkoutOperationRan, false);
+
+  assert.deepEqual(fake.calls.filter((call) => call.method === "attachNativeOverlayHostView"), []);
+  assert.deepEqual(fake.calls.filter((call) => call.method === "activateOverlayToWebPage"), []);
+
+  overlay.close();
+});
+
 test("native overlay presenter does not pump frames while idle by default", async (t) => {
   let hostOpen = false;
   const hostHandle = Buffer.from([9, 0, 0, 0, 0, 0, 0, 0]);

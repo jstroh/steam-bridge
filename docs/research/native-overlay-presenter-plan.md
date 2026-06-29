@@ -650,8 +650,11 @@ Current evidence:
   presenter skips native host creation, reports
   `nativeHostUnavailableReason` as `macos-screen-locked` or
   `macos-display-asleep`, keeps `currentFps=0`, and retries attachment on the
-  next presenter operation after the Mac becomes interactive again. Unit
-  coverage verifies locked, display-asleep, and post-unlock lazy attach paths.
+  next presenter operation after the Mac becomes interactive again. Managed
+  Electron overlay open/wait and checkout helpers fail before Steam overlay
+  activation while that unavailable reason is present, so callers can fall back
+  without waiting for a guard timeout. Unit coverage verifies locked,
+  display-asleep, post-unlock lazy attach, and managed fail-fast paths.
 - BrowserWindow-only overlay support is not proven.
 - Steam launch, app ID, auth, and callbacks are not enough to claim overlay
   support.
@@ -676,8 +679,9 @@ Pass criteria:
 - Web/store/Friends/dialog-equivalent overlays open and close with
   active/inactive callbacks and parked presenter state; checkout gets the same
   proof with a real app/product.
-- Locked-screen or display-asleep macOS sessions do not create a native host and
-  report an explicit unavailable reason until the session becomes interactive.
+- Locked-screen or display-asleep macOS sessions do not create a native host,
+  do not start managed overlay activation, and report an explicit unavailable
+  reason until the session becomes interactive.
 - No sustained high-FPS idle rendering.
 
 Unsupported for now:

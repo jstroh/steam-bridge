@@ -8338,6 +8338,7 @@ export function createElectronSteamOverlay(
     presenter,
     open(target: SteamOverlayTarget): NativeOverlayPresenter {
       assertOpen();
+      assertElectronSteamOverlayNativeHostAvailable(controller.snapshot());
       const presenterInternal = presenter as NativeOverlayPresenterInternal;
       const activationHandle = presenterInternal.beginOverlayActivation?.(overlayActivationModeForTarget(target));
       try {
@@ -8360,6 +8361,7 @@ export function createElectronSteamOverlay(
       options: ElectronSteamOverlayOpenAndWaitOptions = {}
     ): Promise<ElectronSteamOverlayOpenAndWaitResult> {
       assertOpen();
+      assertElectronSteamOverlayNativeHostAvailable(controller.snapshot());
       const presenterInternal = presenter as NativeOverlayPresenterInternal;
       const activationHandle = presenterInternal.beginOverlayActivation?.(overlayActivationModeForTarget(target));
       let activationReleased = false;
@@ -8397,6 +8399,7 @@ export function createElectronSteamOverlay(
     ): Promise<ElectronSteamOverlayCheckoutAndWaitResult<T>> {
       assertOpen();
       const { modal, returnUrl, ...waitOptions } = options;
+      assertElectronSteamOverlayNativeHostAvailable(controller.snapshot());
       const presenterInternal = presenter as NativeOverlayPresenterInternal;
       const activationHandle = presenterInternal.beginOverlayActivation?.("interactive");
       let activationReleased = false;
@@ -8441,6 +8444,7 @@ export function createElectronSteamOverlay(
       options: ElectronSteamOverlayCheckoutPrepareOptions = {}
     ): Promise<T> {
       assertOpen();
+      assertElectronSteamOverlayNativeHostAvailable(controller.snapshot());
       const presenterInternal = presenter as NativeOverlayPresenterInternal;
       const activationHandle = presenterInternal.beginOverlayActivation?.("interactive");
       if (!activationHandle) {
@@ -9093,6 +9097,12 @@ function waitForElectronSteamOverlayState(
         return true;
       }
 
+      const unavailableError = electronSteamOverlayNativeHostUnavailableError(snapshot);
+      if (unavailableError) {
+        settleReject(unavailableError);
+        return true;
+      }
+
       if (predicate(snapshot)) {
         settleResolve(snapshot);
         return true;
@@ -9147,6 +9157,36 @@ function waitForElectronSteamOverlayState(
 
 const ELECTRON_STEAM_OVERLAY_SESSION_WAIT_POLL_INTERVAL_MS = 50;
 const ELECTRON_STEAM_OVERLAY_OPEN_GUARD_TIMEOUT_MS = 15000;
+
+function assertElectronSteamOverlayNativeHostAvailable(snapshot: ElectronSteamOverlaySnapshot): void {
+  const error = electronSteamOverlayNativeHostUnavailableError(snapshot);
+  if (error) {
+    throw error;
+  }
+}
+
+function electronSteamOverlayNativeHostUnavailableError(snapshot: ElectronSteamOverlaySnapshot): Error | undefined {
+  if (snapshot.electronOverlay.presenterMode === "session" || !snapshot.nativeHostUnavailableReason) {
+    return undefined;
+  }
+
+  return new Error(
+    `Steam overlay native host is unavailable: ${formatNativeOverlayHostUnavailableReason(
+      snapshot.nativeHostUnavailableReason
+    )}. Wait until the session is interactive before opening the Steam overlay.`
+  );
+}
+
+function formatNativeOverlayHostUnavailableReason(reason: NativeOverlayHostUnavailableReason): string {
+  switch (reason) {
+    case "macos-screen-locked":
+      return "macOS screen is locked";
+    case "macos-display-asleep":
+      return "macOS display is asleep";
+    default:
+      return reason;
+  }
+}
 
 function releaseElectronSteamOverlayActivationWhenShown(
   controller: ElectronSteamOverlay,
