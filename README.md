@@ -411,6 +411,10 @@ overlays when app code should wait until Steam closes and the presenter parks.
 `openAndWait(...)` keeps the presenter active until Steam reports the overlay
 shown, then parks from overlay callbacks and presenter state changes instead of
 depending on a fixed activation window.
+Managed Electron presenters default their activation boost and close grace
+durations to zero; the helper methods hold the presenter with scoped activation
+handles and Steam callback/state waits instead. Pass explicit durations only
+for lower-level split-step diagnostics.
 Use `waitForOverlayShown()`, `waitForOverlayClosed()`, and
 `parkWhenSteamOverlayCloses()` only when you need lower-level lifecycle await
 points. In persistent presenter mode those waits resolve from Steam overlay
@@ -460,7 +464,7 @@ It also asserts idle/passive presenter state where appropriate: checkout
 readiness and the managed shortcut bridge must be parked at `idleFps: 0` /
 `currentFps: 0`, while passive notification tests must remain transparent,
 click-through, non-focusable, and overlay-inactive.
-Presenter close and managed shortcut close probes also require delayed
+Presenter close and managed shortcut close probes also require state-driven
 post-close presenter snapshots showing the reusable host parked back at passive
 idle: transparent, click-through, non-focusable, overlay-inactive, and
 `currentFps: 0`. The Deck verifier compares the first and stable post-close
@@ -512,7 +516,9 @@ parks. That preparation is operation-scoped rather than timer-tuned app code;
 timeouts are failure guardrails. `steamOverlay.withCheckoutPrepared(...)`,
 `steamOverlay.open({ type: "checkout", ... })`, and
 `steamOverlay.prepareForCheckout()` remain available for lower-level flows that
-need to separate presenter priming from transaction creation or overlay opening.
+need to separate presenter priming from transaction creation or overlay opening;
+pass an explicit preparation duration there only when you intentionally need a
+standalone split-step hold.
 Treat `MicroTxnAuthorizationResponse` as a purchase authorization event, not as
 an overlay-close event; keep the presenter alive until Steam emits overlay
 inactive and the app has returned. The smoke app

@@ -380,12 +380,14 @@ Current evidence:
   `steamOverlay.openCheckoutAndWait(() => startTxn())` primes the presenter
   before an in-game `InitTxn`, accepts common backend result shapes such as
   `steamurl`, `steamUrl`, `transactionId`, or `transid`, opens the checkout
-  surface, then resolves after Steam closes and the presenter parks. App code can
-  still use `withCheckoutPrepared(...)`, `open({ type: "checkout", ... })`,
+  surface under the same scoped activation hold, then resolves after Steam
+  closes and the presenter parks. App code can still use
+  `withCheckoutPrepared(...)`, `open({ type: "checkout", ... })`,
   `openAndWait(...)`, or the lower-level wait helpers when it needs split-step
   control, instead of carrying local callback/timer plumbing. In default
   persistent presenter mode these waits resolve from Steam Bridge's overlay
-  callback and presenter state changes, with timeouts kept as guardrails.
+  callback and presenter state changes, with timeouts kept as guardrails and
+  managed Electron activation/grace durations defaulting to zero.
   The smoke app's `presenter-checkout` action now exercises that exact
   checkout helper when a checkout URL or transaction ID is provided, and records
   `overlay:presenter-checkout-open-and-wait-complete` after
@@ -456,7 +458,8 @@ duplicate child overlay targets.
    - idle: no fixed 30 FPS loop;
    - `overlayNeedsPresent=true`: pump around 30 FPS;
    - `GameOverlayActivated(true)`: pump around 30 FPS;
-   - `GameOverlayActivated(false)`: return to passive after a short grace period.
+   - `GameOverlayActivated(false)`: return to passive from the callback/state
+     transition, with no default grace timer in the managed Electron path.
 4. Track resize/fullscreen state every pump and through window events where
    available.
    - Native X11/GLX and macOS hosts already realign during pump, and the managed
@@ -574,7 +577,8 @@ Next work:
 4. Add passive mode and adaptive pumping like Linux:
    - idle: no steady render loop;
    - `overlayNeedsPresent` or active overlay: present around 30 FPS;
-   - after overlay close: return to passive.
+   - after Steam reports overlay inactive: return to passive without a default
+     grace timer.
 5. Add screen-lock/display-sleep awareness so the presenter does not open into a
    black or invalid state while the user cannot interact.
 6. Keep code signing requirements explicit in docs and examples. Local smoke

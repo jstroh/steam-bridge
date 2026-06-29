@@ -699,6 +699,11 @@ app-specific proof outside the committed examples:
 7. Keep private app IDs, item definitions, transaction IDs, publisher keys, and
    private URLs out of committed docs and examples.
 
+The managed Electron overlay defaults to scoped activation holds instead of
+duration-based preparation. Lower-level split-step helpers such as
+`prepareForCheckout(durationMs)` are for diagnostics or unusual custom flows
+where a standalone hold is intentional.
+
 For a Steam Deck Desktop Mode shortcut launch, omit the Big Picture assertion
 but keep the Steam launch and overlay injection assertions:
 

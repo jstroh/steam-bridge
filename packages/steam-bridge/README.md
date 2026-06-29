@@ -241,6 +241,10 @@ web, store, checkout, and dialog-equivalent overlays when app code should also
 wait until Steam closes and the presenter parks. `openAndWait(...)` uses the
 same show hold, then parks from overlay callbacks and presenter state changes
 instead of depending on a fixed activation window.
+Managed Electron presenters default activation-boost and close-grace durations
+to zero; the public helpers use scoped activation handles and Steam
+callback/state waits. Use explicit duration-based preparation only for
+lower-level diagnostics or custom split-step flows.
 Use `waitForOverlayShown()`, `waitForOverlayClosed()`, and
 `parkWhenSteamOverlayCloses()` only when app code needs lower-level lifecycle
 await points; in the default persistent presenter mode these resolve from Steam
@@ -260,7 +264,9 @@ presenter parks. The preparation is operation-scoped rather than an app-tuned
 timer. `steamOverlay.withCheckoutPrepared(...)`,
 `steamOverlay.open({ type: "checkout", ... })`, and
 `steamOverlay.prepareForCheckout()` remain available for lower-level flows that
-need to separate presenter priming from transaction creation or overlay opening.
+need to separate presenter priming from transaction creation or overlay opening;
+pass an explicit preparation duration there only when a standalone split-step
+hold is intentional.
 Passive Steam notifications such as achievement progress
 or achievement unlock toasts are automatically primed by the managed Electron
 overlay before the relevant achievement/stats calls and pump only when Steam

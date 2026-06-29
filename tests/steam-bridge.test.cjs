@@ -5033,10 +5033,15 @@ test("electron steam overlay checkout preparation holds only for the wrapped ope
 
   const overlay = steam.overlay.createElectronSteamOverlay(window, {
     title: "Electron Checkout Overlay",
-    activationBoostMs: 0,
-    activeGraceMs: 0,
     pollIntervalMs: 10000
   });
+
+  overlay.prepareForCheckout();
+  const prepareOnly = overlay.snapshot();
+  assert.equal(prepareOnly.mode, "passive");
+  assert.equal(prepareOnly.clickThrough, true);
+  assert.equal(prepareOnly.transparent, true);
+  assert.equal(prepareOnly.currentFps, 0);
 
   let duringOperation;
   const result = await overlay.withCheckoutPrepared(() => {
@@ -6163,8 +6168,6 @@ test("electron steam overlay manager exposes lifecycle wait helpers", async (t) 
 
   const overlay = steam.overlay.createElectronSteamOverlay(window, {
     title: "Electron Lifecycle Overlay",
-    activationBoostMs: 0,
-    activeGraceMs: 0,
     pollIntervalMs: 50
   });
 
@@ -6291,8 +6294,6 @@ test("electron steam overlay checkout helper prepares, opens, and waits with bac
 
   const overlay = steam.overlay.createElectronSteamOverlay(window, {
     title: "Electron Checkout And Wait Overlay",
-    activationBoostMs: 0,
-    activeGraceMs: 0,
     pollIntervalMs: 10000
   });
 

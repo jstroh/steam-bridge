@@ -8130,13 +8130,18 @@ export function createElectronSteamOverlay(
   } = options;
   const presenterMode = resolveElectronSteamOverlayPresenterMode(modeOption);
   const shortcut = normalizeElectronSteamOverlayShortcut(overlayShortcut);
+  const managedPresenterOptions = {
+    ...presenterOptions,
+    activationBoostMs: presenterOptions.activationBoostMs ?? 0,
+    activeGraceMs: presenterOptions.activeGraceMs ?? 0
+  };
   const presenter =
     presenterMode === "session"
       ? createNativeOverlaySessionPresenter(electronNativeOverlaySessionOptions(window, {
-          title: presenterOptions.title,
-          restoreFocusDelayMs: presenterOptions.restoreFocusDelayMs
+          title: managedPresenterOptions.title,
+          restoreFocusDelayMs: managedPresenterOptions.restoreFocusDelayMs
         }))
-      : attachOverlayPresenter(electronOverlayPresenterOptions(window, presenterOptions));
+      : attachOverlayPresenter(electronOverlayPresenterOptions(window, managedPresenterOptions));
   let removeShortcutListener: (() => void) | undefined;
   let removeWindowSyncListeners: (() => void) | undefined;
   let notificationPresenterHandle: CallbackHandle | undefined;
@@ -8209,15 +8214,44 @@ export function createElectronSteamOverlay(
     ): Promise<ElectronSteamOverlayCheckoutAndWaitResult<T>> {
       assertOpen();
       const { modal, returnUrl, ...waitOptions } = options;
-      const transaction = await controller.withCheckoutPrepared(operation);
-      const target = electronSteamOverlayCheckoutTargetFromResult(transaction, { modal, returnUrl });
-      const result = await controller.openAndWait(target, waitOptions);
-      return {
-        transaction,
-        target,
-        shown: result.shown,
-        parked: result.parked
+      const presenterInternal = presenter as NativeOverlayPresenterInternal;
+      const activationHandle = presenterInternal.beginOverlayActivation?.("interactive");
+      let activationReleased = false;
+      const releaseActivation = (): void => {
+        if (activationReleased) {
+          return;
+        }
+        activationReleased = true;
+        activationHandle?.disconnect();
       };
+
+      try {
+        const transaction = await operation();
+        const target = electronSteamOverlayCheckoutTargetFromResult(transaction, { modal, returnUrl });
+        openSteamOverlay({
+          ...target,
+          presenter,
+          ...(activationHandle ? { [SKIP_NATIVE_OVERLAY_PRESENTER_PREPARE]: true } : {})
+        } as SteamOverlayTarget);
+        const shown = await controller.waitForOverlayShown({
+          timeoutMs: finiteNumber(waitOptions.showTimeoutMs, 15000),
+          signal: waitOptions.signal
+        });
+        releaseActivation();
+        const parked = await controller.parkWhenSteamOverlayCloses({
+          timeoutMs: finiteNumber(waitOptions.closeTimeoutMs, 300000),
+          signal: waitOptions.signal
+        });
+        return {
+          transaction,
+          target,
+          shown,
+          parked
+        };
+      } catch (error) {
+        releaseActivation();
+        throw error;
+      }
     },
     async withCheckoutPrepared<T>(
       operation: () => T | Promise<T>,
