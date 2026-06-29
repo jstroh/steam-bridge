@@ -186,6 +186,9 @@ ipcMain.handle("steam-smoke:overlay-dialog", () => openDialogOverlay());
 ipcMain.handle("steam-smoke:presenter-web", () => openPresenterWebOverlay());
 ipcMain.handle("steam-smoke:presenter-web-open-and-wait", () => openPresenterWebOpenAndWaitOverlay());
 ipcMain.handle("steam-smoke:presenter-store-open-and-wait", () => openPresenterStoreOpenAndWaitOverlay());
+ipcMain.handle("steam-smoke:presenter-dialog-auto-open-and-wait", () =>
+  openPresenterDialogAutoOpenAndWaitOverlay()
+);
 ipcMain.handle("steam-smoke:presenter-friends", () => openPresenterFriendsOverlay());
 ipcMain.handle("steam-smoke:presenter-friends-open-and-wait", () => openPresenterFriendsOpenAndWaitOverlay());
 ipcMain.handle("steam-smoke:presenter-profile", () => openPresenterProfileOverlay());
@@ -421,6 +424,9 @@ async function runAutorunAction(action) {
         return { ok: true, action };
       case "presenter-dialog-auto":
         openPresenterDialogAutoOverlay();
+        return { ok: true, action };
+      case "presenter-dialog-auto-open-and-wait":
+        openPresenterDialogAutoOpenAndWaitOverlay();
         return { ok: true, action };
       case "presenter-store":
         openPresenterStoreOverlay();
@@ -663,6 +669,19 @@ function openPresenterFriendsOpenAndWaitOverlay() {
     target: "friends",
     url: steamworks.STEAM_FRIENDS_OVERLAY_URL,
     modal: true,
+    api: "openAndWait"
+  };
+  return openPresenterTargetAndWaitOverlay(overlay, target, context);
+}
+
+function openPresenterDialogAutoOpenAndWaitOverlay() {
+  const overlay = ensureElectronSteamOverlay();
+  const target = { type: "dialog", dialog: OVERLAY_DIALOG, appId: APP_ID };
+  const context = {
+    target: "dialog",
+    dialog: OVERLAY_DIALOG,
+    route: "auto",
+    appId: APP_ID,
     api: "openAndWait"
   };
   return openPresenterTargetAndWaitOverlay(overlay, target, context);
@@ -1920,6 +1939,7 @@ function isNativeSessionAction(action) {
     action === "native-web" ||
     action === "presenter-dialog" ||
     action === "presenter-dialog-auto" ||
+    action === "presenter-dialog-auto-open-and-wait" ||
     action === "presenter-store" ||
     action === "presenter-store-open-and-wait" ||
     action === "presenter-web" ||

@@ -102,6 +102,16 @@ timing hacks.
   `steamOverlay.openAndWait({ type: "store", appId: 480 })` and requires the
   promise completion event only after Steam reports overlay inactive and the
   presenter parks.
+- Deck Desktop dialog-equivalent pages now have a builder-facing wait proof:
+  `presenter-dialog-auto-open-and-wait --dialog OfficialGameGroup` exercises
+  `steamOverlay.openAndWait({ type: "dialog", dialog, appId: 480 })` through
+  the high-level presenter-backed dialog router and requires the same
+  completion-after-inactive-and-parked evidence as web, store, and Friends wait
+  actions. A 2026-06-29 Deck Desktop fullscreen run opened, closed, returned
+  focus to the Electron smoke app, recorded completion after parking, and kept
+  the stable post-close verifier sample at `currentFps=0` without advancing
+  `pumpCount`. This extends the product path without depending on raw Desktop
+  `ActivateGameOverlay(...)` dialogs.
 - Deck Desktop keyboard toggle now has a product-shaped Electron route:
   `createElectronSteamOverlay(...)` installs a default Shift+Tab shortcut bridge
   that opens the verified Friends/chat presenter-backed web overlay instead of

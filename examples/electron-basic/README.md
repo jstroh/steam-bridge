@@ -89,7 +89,7 @@ Supported autorun actions are `none`, `dialog`, `friends`, `store`, `web`,
 `native-dialog`, `native-store`, `native-web`, `native-probe`,
 `presenter-dialog`, `presenter-store`, `presenter-web`,
 `presenter-web-open-and-wait`, `presenter-store-open-and-wait`,
-`presenter-friends`,
+`presenter-dialog-auto-open-and-wait`, `presenter-friends`,
 `presenter-friends-open-and-wait`, `presenter-profile`,
 `presenter-players`, `presenter-community`, `presenter-stats`,
 `presenter-achievements`,
@@ -121,7 +121,9 @@ builder-facing `steamOverlay.openAndWait(...)` path; the smoke app records
 `overlay:presenter-open-and-wait-complete` only after Steam closes and the
 presenter parks. Use `presenter-store-open-and-wait` and
 `presenter-friends-open-and-wait` for the same one-call open/close/park proof
-against the Steam store and Friends List surfaces. On Linux/X11, the
+against the Steam store and Friends List surfaces. Use
+`presenter-dialog-auto-open-and-wait --dialog OfficialGameGroup` for the same
+proof through the verified high-level dialog-equivalent router. On Linux/X11, the
 presenter is transparent and click-through
 while fully idle, polls without pumping frames by default, can become visible while remaining
 click-through for `overlayNeedsPresent`, restores both opacity and input while

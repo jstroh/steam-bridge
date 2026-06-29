@@ -6222,7 +6222,7 @@ test("electron steam overlay manager exposes lifecycle wait helpers", async (t) 
   assert.equal(pumpsAfterManagedOpen, pumpsBeforeManagedOpen + 1);
 
   fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: true });
-  await new Promise((resolve) => setTimeout(resolve, 10));
+  await Promise.resolve();
   fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: false });
   const managedResult = await managedOpen;
 
@@ -6261,6 +6261,22 @@ test("electron steam overlay manager exposes lifecycle wait helpers", async (t) 
   assert.deepEqual(
     fake.calls.filter((call) => call.method === "activateOverlayToWebPage").at(-1),
     { method: "activateOverlayToWebPage", args: ["https://store.steampowered.com/app/480/", true] }
+  );
+
+  const managedDialogOpen = overlay.openAndWait(
+    { type: "dialog", dialog: steam.Dialog.OfficialGameGroup, appId: 480 },
+    { showTimeoutMs: 200, closeTimeoutMs: 200 }
+  );
+  fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: true });
+  fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: false });
+  const managedDialogResult = await managedDialogOpen;
+
+  assert.equal(managedDialogResult.shown.overlayActive, true);
+  assert.equal(managedDialogResult.parked.overlayActive, false);
+  assert.equal(managedDialogResult.parked.currentFps, 0);
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "activateOverlayToWebPage").at(-1),
+    { method: "activateOverlayToWebPage", args: [steam.steamCommunityAppUrl(480), true] }
   );
 
   overlay.close();

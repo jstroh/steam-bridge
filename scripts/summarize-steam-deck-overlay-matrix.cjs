@@ -21,6 +21,7 @@ const MANAGED_LIFECYCLE_ACTIONS = new Set([
   "presenter-profile",
   "presenter-players",
   "presenter-dialog-auto",
+  "presenter-dialog-auto-open-and-wait",
   "presenter-community",
   "presenter-stats",
   "presenter-achievements",
@@ -30,6 +31,7 @@ const MANAGED_LIFECYCLE_ACTIONS = new Set([
 const OPEN_AND_WAIT_ACTIONS = new Set([
   "presenter-web-open-and-wait",
   "presenter-store-open-and-wait",
+  "presenter-dialog-auto-open-and-wait",
   "presenter-friends-open-and-wait"
 ]);
 const PASSIVE_NOTIFICATION_ACTIONS = new Map([
@@ -328,8 +330,8 @@ function runSelfTest() {
   try {
     createSelfTestFixture(fixtureRoot);
     const summary = summarizeMatrixArtifacts(fixtureRoot);
-    assert(summary.caseSummaries.length === 7, "summary self-test should include seven cases");
-    assert(summary.totalScreenshots === 10, "summary self-test should count ten screenshots");
+    assert(summary.caseSummaries.length === 8, "summary self-test should include eight cases");
+    assert(summary.totalScreenshots === 11, "summary self-test should count eleven screenshots");
     console.log("Steam Deck overlay matrix summary self-test passed.");
   } finally {
     fs.rmSync(fixtureRoot, { recursive: true, force: true });
@@ -643,6 +645,62 @@ function createSelfTestFixture(root) {
   );
   fs.writeFileSync(path.join(storeOpenWaitScreensDir, "overlay-open.png"), "");
 
+  const dialogOpenWaitCaseId = "08-dialog-auto-open-and-wait";
+  const dialogOpenWaitDiagnosticsDir = path.join(root, "diagnostics", dialogOpenWaitCaseId);
+  const dialogOpenWaitRunDiagnosticsDir = path.join(
+    dialogOpenWaitDiagnosticsDir,
+    "steam-bridge-smoke-matrix-08-dialog-auto-open-and-wait.log.diagnostics"
+  );
+  const dialogOpenWaitScreensDir = path.join(root, "screens", dialogOpenWaitCaseId);
+  const dialogOpenWaitResult = JSON.parse(JSON.stringify(result));
+
+  dialogOpenWaitResult.action.action = "presenter-dialog-auto-open-and-wait";
+  fs.mkdirSync(dialogOpenWaitRunDiagnosticsDir, { recursive: true });
+  fs.mkdirSync(dialogOpenWaitScreensDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(dialogOpenWaitDiagnosticsDir, "steam-bridge-smoke-matrix-08-dialog-auto-open-and-wait.log"),
+    `STEAM_BRIDGE_SMOKE_RESULT ${JSON.stringify(dialogOpenWaitResult)}\n`
+  );
+  fs.writeFileSync(
+    path.join(dialogOpenWaitRunDiagnosticsDir, "lifecycle.jsonl"),
+    [
+      {
+        type: "event:overlay:presenter-open-and-wait-start",
+        payload: {
+          target: "dialog",
+          dialog: "OfficialGameGroup",
+          appId: 480,
+          route: "auto",
+          api: "openAndWait",
+          presenter: activePresenterFixture(22)
+        }
+      },
+      { type: "event:callback:overlay-activated", payload: { active: true } },
+      { type: "event:overlay:presenter-wait-shown", payload: { presenter: activePresenterFixture(23) } },
+      { type: "event:callback:overlay-activated", payload: { active: false } },
+      { type: "event:overlay:presenter-wait-closed", payload: { presenter: parkedPresenterFixture(24) } },
+      { type: "event:overlay:presenter-parked", payload: { presenter: parkedPresenterFixture(24) } },
+      {
+        type: "event:overlay:presenter-open-and-wait-complete",
+        payload: {
+          target: "dialog",
+          dialog: "OfficialGameGroup",
+          appId: 480,
+          route: "auto",
+          api: "openAndWait",
+          shown: activePresenterFixture(23),
+          parked: parkedPresenterFixture(24),
+          presenter: parkedPresenterFixture(24)
+        }
+      },
+      { type: "event:overlay:presenter-after-close", payload: { presenter: parkedPresenterFixture(24) } },
+      { type: "event:overlay:presenter-after-close-stable", payload: { presenter: parkedPresenterFixture(24) } }
+    ]
+      .map((entry) => JSON.stringify(entry))
+      .join("\n") + "\n"
+  );
+  fs.writeFileSync(path.join(dialogOpenWaitScreensDir, "overlay-open.png"), "");
+
   fs.writeFileSync(
     path.join(root, "matrix-cases.jsonl"),
     [
@@ -692,6 +750,13 @@ function createSelfTestFixture(root) {
         caseId: storeOpenWaitCaseId,
         caseName: "store-open-and-wait",
         action: "presenter-store-open-and-wait",
+        visualCloseInput: "web",
+        visualToggleInput: null
+      },
+      {
+        caseId: dialogOpenWaitCaseId,
+        caseName: "dialog-auto-open-and-wait",
+        action: "presenter-dialog-auto-open-and-wait",
         visualCloseInput: "web",
         visualToggleInput: null
       }

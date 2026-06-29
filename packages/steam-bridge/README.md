@@ -375,7 +375,8 @@ with `steamOverlay.open(...)`, or the lower-level `client.overlay.attachPresente
 `presenter-store-open-and-wait` / `presenter-friends` /
 `presenter-friends-open-and-wait` / `presenter-profile` /
 `presenter-players` / `presenter-community` / `presenter-stats` /
-`presenter-achievements` / `presenter-user` / `presenter-dialog-auto` / `presenter-shortcut` actions for
+`presenter-achievements` / `presenter-user` / `presenter-dialog-auto` /
+`presenter-dialog-auto-open-and-wait` / `presenter-shortcut` actions for
 the generic proof. Deck testing has verified a
 single Steam overlay target,
 `active=true` overlay callbacks, overlay close input, and clean return to the

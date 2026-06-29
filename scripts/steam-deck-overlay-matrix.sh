@@ -411,12 +411,13 @@ run_self_test() {
   )"
 
   require_case_count "$minimal_output" "6" "minimal matrix"
-  require_case_count "$core_output" "20" "core matrix"
-  require_case_count "$full_output" "25" "full matrix"
+  require_case_count "$core_output" "21" "core matrix"
+  require_case_count "$full_output" "26" "full matrix"
 
   require_contains "$core_output" "--action presenter-web" "core matrix must include presenter web."
   require_contains "$core_output" "--action presenter-web-open-and-wait" "core matrix must include presenter openAndWait web."
   require_contains "$core_output" "--action presenter-store-open-and-wait" "core matrix must include presenter openAndWait store."
+  require_contains "$core_output" "--action presenter-dialog-auto-open-and-wait" "core matrix must include dialog-equivalent openAndWait."
   require_contains "$core_output" "--action presenter-friends" "core matrix must include Friends."
   require_contains "$core_output" "--action presenter-friends-open-and-wait" "core matrix must include Friends openAndWait."
   require_contains "$core_output" "--action presenter-shortcut" "core matrix must include shortcut probes."
@@ -585,6 +586,10 @@ if [ "$suite" = "core" ] || [ "$suite" = "full" ]; then
 
   run_web_surface_case "store-open-and-wait" \
     --action presenter-store-open-and-wait
+
+  run_web_surface_case "dialog-auto-open-and-wait" \
+    --action presenter-dialog-auto-open-and-wait \
+    --dialog OfficialGameGroup
 fi
 
 if [ "$suite" = "full" ]; then
