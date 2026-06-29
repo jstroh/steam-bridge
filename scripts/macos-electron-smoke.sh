@@ -750,6 +750,7 @@ const requireOpenAndWaitCompletion = new Set([
   "presenter-dialog-auto-open-and-wait",
   "presenter-friends-open-and-wait"
 ]).has(action);
+const requireCheckoutCompletion = action === "presenter-checkout";
 const fatalTypes = new Set([
   "app:render-process-gone",
   "app:child-process-gone",
@@ -874,6 +875,33 @@ if (firstActiveIndex == null) {
       }
     }
   }
+
+  if (requireCheckoutCompletion) {
+    const checkoutEntries = entries.filter((entry, index) => {
+      return index > inactiveAfterActiveIndex && entry.type === "event:overlay:presenter-checkout-open-and-wait-complete";
+    });
+    if (checkoutEntries.length === 0) {
+      failures.push("no overlay:presenter-checkout-open-and-wait-complete event after active=false in lifecycle log");
+    } else {
+      const payload = checkoutEntries[checkoutEntries.length - 1].payload;
+      if (!payload || typeof payload !== "object") {
+        failures.push("overlay:presenter-checkout-open-and-wait-complete did not include a payload");
+      } else {
+        const shown = payload.shown;
+        const parked = payload.parked;
+        if (!shown || typeof shown !== "object") {
+          failures.push("overlay:presenter-checkout-open-and-wait-complete did not include a shown snapshot");
+        } else if (shown.overlayActive !== true) {
+          failures.push("checkout shown snapshot did not report overlayActive=true");
+        }
+        if (!parked || typeof parked !== "object") {
+          failures.push("overlay:presenter-checkout-open-and-wait-complete did not include a parked snapshot");
+        } else {
+          expectParkedPresenter(parked, "checkout parked result");
+        }
+      }
+    }
+  }
 }
 
 const fatalEntries = entries.filter((entry) => fatalTypes.has(entry.type));
@@ -982,11 +1010,16 @@ function hasRequiredCloseEvidence(loadedEntries) {
   if (!hasStableClose) {
     return false;
   }
-  if (!requireOpenAndWaitCompletion) {
+  if (!requireOpenAndWaitCompletion && !requireCheckoutCompletion) {
     return true;
   }
+  if (requireOpenAndWaitCompletion) {
+    return loadedEntries.some((entry, index) => {
+      return index > inactiveAfterActiveIndex && entry.type === "event:overlay:presenter-open-and-wait-complete";
+    });
+  }
   return loadedEntries.some((entry, index) => {
-    return index > inactiveAfterActiveIndex && entry.type === "event:overlay:presenter-open-and-wait-complete";
+    return index > inactiveAfterActiveIndex && entry.type === "event:overlay:presenter-checkout-open-and-wait-complete";
   });
 }
 

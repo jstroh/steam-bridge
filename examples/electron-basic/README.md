@@ -147,6 +147,24 @@ dist/electron-smoke/aarch64-apple-darwin/SteamBridgeSmoke-darwin-arm64/macos-ele
   --require-no-crashes
 ```
 
+To run the repeatable macOS proof matrix after the Steam shortcut is configured,
+use:
+
+```sh
+npm run macos:overlay-matrix -- \
+  --steam-user-id <steam-userdata-id> \
+  --suite core
+```
+
+The matrix rewrites the Steam shortcut launch options for each case, restarts
+Steam so the client reloads `shortcuts.vdf`, runs the packaged helper, and
+collects result and diagnostic logs under `/tmp`. Its `minimal` suite covers the
+web/store/Friends/dialog `openAndWait(...)` paths plus passive achievement
+toast verification; `core` adds passive unlock, synthetic checkout approval
+route, profile, community, stats, achievements, and user chat/profile routes.
+Use `--dry-run` to inspect the exact shortcut updates and helper commands
+without launching Steam.
+
 For launcher-aware macOS checks, generate shortcut launch options with
 `--macos-native-launcher` and fully restart Steam after editing
 `shortcuts.vdf`. If Steam is not fully restarted, it can keep stale shortcut

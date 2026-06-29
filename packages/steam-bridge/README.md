@@ -443,6 +443,11 @@ helper also exposes `--require-passive-notification` for macOS toast proof; that
 gate requires the smoke result and lifecycle log to show the accepted
 achievement event, the matching Steam callback, no modal overlay activation, and
 a passive managed-presenter snapshot.
+The repository also provides `npm run macos:overlay-matrix`, which rewrites the
+macOS Steam shortcut launch options per case, restarts Steam so `shortcuts.vdf`
+is reloaded, runs the packaged helper, and records per-case diagnostics. Its
+self-test is part of package smoke coverage; live runs still require clearing
+Steam game processes on other machines first.
 
 Use the repository-level matrix runner when you need to repeat the full Deck
 Desktop product proof instead of hand-running each case:

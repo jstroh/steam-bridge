@@ -129,6 +129,12 @@ timing hacks.
   overlay activation, and checks the passive managed-presenter snapshot. This
   aligns the macOS helper with the Deck matrix's passive-toast assertions without
   claiming live macOS toast proof before it is run.
+- The macOS proof flow now has a matrix runner. `scripts/macos-overlay-matrix.sh`
+  can dry-run or execute Steam-launched helper cases, rewrites the non-Steam
+  shortcut launch options per case, restarts Steam to reload `shortcuts.vdf`,
+  and collects diagnostics for web/store/Friends/dialog wait routes, passive
+  toasts, synthetic checkout approval-route plumbing, and common presenter-backed
+  web targets. Its self-test keeps the matrix shape covered in package smoke.
 - Deck Desktop keyboard toggle now has a product-shaped Electron route:
   `createElectronSteamOverlay(...)` installs a default Shift+Tab shortcut bridge
   that opens the verified Friends/chat presenter-backed web overlay instead of
@@ -652,10 +658,10 @@ Next work:
    signing is not enough to claim shipped macOS overlay support.
 7. Finish the remaining Apple Silicon proof:
    - passive Steam notification/toast using the packaged helper's
-     `--require-passive-notification` gate;
+     `--require-passive-notification` gate and macOS matrix case;
    - checkout or purchase-specific overlay behavior from a real app/product;
-   - broader presenter target regression coverage beyond the current
-     web/store/Friends/dialog-equivalent wait routes.
+   - run the macOS matrix live for broader presenter target regression coverage
+     beyond the current web/store/Friends/dialog-equivalent wait routes.
 
 Pass criteria:
 

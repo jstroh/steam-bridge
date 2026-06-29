@@ -127,6 +127,12 @@ Verified:
   modal overlay activation, and a passive managed-presenter snapshot. This is
   harness coverage for the next live macOS toast run; it is not a live macOS
   toast pass by itself.
+- `scripts/macos-overlay-matrix.sh` now owns repeatable macOS proof setup. It
+  prints or runs a matrix of Steam-launched helper cases, rewrites the Steam
+  shortcut launch options per case with the native launcher flags, restarts Steam
+  so shortcut changes are not served from Steam's cache, and collects result and
+  diagnostic logs. Its self-test validates the matrix shape without launching
+  Steam.
 
 Still not verified:
 
@@ -145,7 +151,7 @@ Still not verified:
   live macOS evidence currently proven on Steam Deck Desktop Mode. The 2026-06-29
   macOS proof now covers the managed web, store, Friends/chat, and
   dialog-equivalent `openAndWait(...)` routes, while passive-toast verification
-  now has a macOS helper gate ready for live use.
+  now has a macOS helper gate and matrix case ready for live use.
 - Real purchase UI and `InitTxn` proof still require a real Steam app ID with a
   configured product or transaction. App ID `480` remains suitable only for
   generic overlay smoke tests.

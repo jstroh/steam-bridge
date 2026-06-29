@@ -17,6 +17,8 @@
     "example:start": "npm start -w steam-bridge-electron-example",
     "example:verify-result": "node scripts/verify-electron-smoke-result.cjs",
     "package:smoke": "node scripts/smoke-package.cjs",
+    "macos:overlay-matrix:check": "bash scripts/macos-overlay-matrix.sh --mode self-test",
+    "macos:overlay-matrix": "bash scripts/macos-overlay-matrix.sh",
     "release:assemble": "node scripts/assemble-release-artifacts.cjs",
     "release:verify": "node scripts/verify-release-artifacts.cjs",
     "steam-deck:overlay-matrix:check": "bash scripts/steam-deck-overlay-matrix.sh --mode self-test",
