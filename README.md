@@ -363,16 +363,9 @@ await steamOverlay.openAndWait({
   appId: 480
 });
 
-const txn = await steamOverlay.withCheckoutPrepared(() =>
+await steamOverlay.openCheckoutAndWait(() =>
   backend.createSteamTransaction({ itemId: 100 })
 );
-
-// Open a Steam checkout URL returned by InitTxn, or pass transactionId when
-// reopening a known transaction approval page.
-await steamOverlay.openAndWait({
-  type: "checkout",
-  steamUrl: txn.steamurl
-});
 
 // Achievement progress/store notifications are automatically primed while the
 // managed overlay is open. Use prepareForNotification() only for custom cases.
@@ -510,20 +503,18 @@ to the Steam store web overlay surface because that is the reusable Deck
 Desktop path that opens, accepts input, closes, and returns to Electron cleanly.
 The public smoke app can verify checkout readiness, but
 real purchase-content proof still requires a real Steam app and configured
-product. For in-game microtransactions, wrap the backend call that starts
-`InitTxn` with `steamOverlay.withCheckoutPrepared(() => startTxn())` so Steam's
-automatic authorization UI has a native presenter ready before the transaction
-begins. The wrapper holds the presenter active only while that operation is
-pending and then releases it back to passive idle, so app code does not tune
-overlay-preparation timers. If Steam returns a web checkout URL, pass it with
-`steamOverlay.open({ type: "checkout", steamUrl })`; `open(...)` keeps the
-presenter active until Steam reports the overlay shown, with its timeout only as
-a failure guard if Steam never activates the overlay. If you have a transaction
-id, use `transactionId` and Steam Bridge builds the approval URL.
-`steamOverlay.prepareForCheckout()` remains available for lower-level flows
-that need to separate presenter priming from the backend call. Treat
-`MicroTxnAuthorizationResponse` as a purchase authorization event, not as an
-overlay-close event; keep the presenter alive until Steam emits overlay
+product. For in-game microtransactions, call
+`steamOverlay.openCheckoutAndWait(() => startTxn())`. Steam Bridge primes the
+native presenter before the backend starts `InitTxn`, accepts common backend
+result shapes such as `steamurl`, `steamUrl`, `transactionId`, or `transid`,
+opens the checkout surface, then resolves after Steam closes and the presenter
+parks. That preparation is operation-scoped rather than timer-tuned app code;
+timeouts are failure guardrails. `steamOverlay.withCheckoutPrepared(...)`,
+`steamOverlay.open({ type: "checkout", ... })`, and
+`steamOverlay.prepareForCheckout()` remain available for lower-level flows that
+need to separate presenter priming from transaction creation or overlay opening.
+Treat `MicroTxnAuthorizationResponse` as a purchase authorization event, not as
+an overlay-close event; keep the presenter alive until Steam emits overlay
 inactive and the app has returned. The smoke app
 records presenter diagnostics on `callback:microtxn` so real-app purchase runs
 can prove the presenter was still available during authorization. Passive Steam

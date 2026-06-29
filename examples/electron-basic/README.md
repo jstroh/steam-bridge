@@ -190,12 +190,13 @@ presenter active only for the wrapped operation and then parks it. When testing
 a real app with a configured product, set
 `STEAM_BRIDGE_SMOKE_CHECKOUT_URL` to the Steam URL returned by `InitTxn`, or set
 `STEAM_BRIDGE_SMOKE_CHECKOUT_TRANSACTION_ID` to build and open the Steam
-transaction approval page through `steamOverlay.open({ type: "checkout", ... })`.
+transaction approval page through `steamOverlay.openCheckoutAndWait(...)`.
 The Linux and Steam Deck helpers expose the same inputs as `--checkout-url`,
 `--checkout-transaction-id`, and `--checkout-return-url`. Without a checkout URL
 or transaction ID the helpers only require `overlay:presenter-checkout-ready`;
-with one, they require `overlay:presenter-open` and a Steam overlay activation
-callback.
+with one, they require `overlay:presenter-open`, a Steam overlay activation
+callback, and lifecycle logs show `overlay:presenter-checkout-open-and-wait-complete`
+after Steam closes and the presenter parks.
 For normal app code, `steamOverlay.open(...)` opens a presenter-backed target and
 keeps the presenter active until Steam reports the overlay shown. Its timeout is
 only a failure guard if Steam never activates the overlay. Use
@@ -689,9 +690,10 @@ app-specific proof outside the committed examples:
 
 1. Launch your real installed Steam app through Steam.
 2. Confirm the running process reports your real app ID.
-3. Wrap the backend `InitTxn` call in `steamOverlay.withCheckoutPrepared(...)`;
-   do not tune local overlay-preparation timers around that call.
-4. Trigger your checkout URL or transaction approval path from inside that app.
+3. Trigger the backend `InitTxn` call through
+   `steamOverlay.openCheckoutAndWait(() => startTxn())`; do not tune local
+   overlay-preparation timers around that call.
+4. Let Steam Bridge open the returned checkout URL or transaction approval path.
 5. Verify the Steam modal appears in both Deck Game Mode and Desktop Mode.
 6. Confirm backing out or closing the Steam surface returns focus to the app.
 7. Keep private app IDs, item definitions, transaction IDs, publisher keys, and

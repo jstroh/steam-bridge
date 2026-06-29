@@ -1840,6 +1840,23 @@ export interface ElectronSteamOverlayOpenAndWaitOptions {
   signal?: AbortSignal;
 }
 
+export type ElectronSteamOverlayCheckoutOperationResult =
+  | string
+  | number
+  | bigint
+  | (Partial<Omit<SteamOverlayCheckoutTarget, "type" | "presenter">> & {
+      type?: "checkout";
+      steamurl?: string;
+      transactionID?: bigint | number | string;
+      transid?: bigint | number | string;
+      returnurl?: string;
+    });
+
+export interface ElectronSteamOverlayCheckoutAndWaitOptions extends ElectronSteamOverlayOpenAndWaitOptions {
+  modal?: boolean;
+  returnUrl?: string;
+}
+
 export interface ElectronSteamOverlaySnapshot extends NativeOverlayPresenterSnapshot {
   electronOverlay: {
     presenterMode: ElectronSteamOverlayPresenterMode;
@@ -1852,6 +1869,12 @@ export interface ElectronSteamOverlaySnapshot extends NativeOverlayPresenterSnap
 export interface ElectronSteamOverlayOpenAndWaitResult {
   shown: ElectronSteamOverlaySnapshot;
   parked: ElectronSteamOverlaySnapshot;
+}
+
+export interface ElectronSteamOverlayCheckoutAndWaitResult<T = ElectronSteamOverlayCheckoutOperationResult>
+  extends ElectronSteamOverlayOpenAndWaitResult {
+  transaction: T;
+  target: SteamOverlayCheckoutTarget;
 }
 
 export interface ElectronSteamOverlayCheckoutPrepareOptions {
@@ -1913,6 +1936,10 @@ export interface ElectronSteamOverlay extends CallbackHandle {
     target: SteamOverlayTarget,
     options?: ElectronSteamOverlayOpenAndWaitOptions
   ): Promise<ElectronSteamOverlayOpenAndWaitResult>;
+  openCheckoutAndWait<T extends ElectronSteamOverlayCheckoutOperationResult>(
+    operation: () => T | Promise<T>,
+    options?: ElectronSteamOverlayCheckoutAndWaitOptions
+  ): Promise<ElectronSteamOverlayCheckoutAndWaitResult<T>>;
   withCheckoutPrepared<T>(
     operation: () => T | Promise<T>,
     options?: ElectronSteamOverlayCheckoutPrepareOptions
@@ -8176,6 +8203,22 @@ export function createElectronSteamOverlay(
         throw error;
       }
     },
+    async openCheckoutAndWait<T extends ElectronSteamOverlayCheckoutOperationResult>(
+      operation: () => T | Promise<T>,
+      options: ElectronSteamOverlayCheckoutAndWaitOptions = {}
+    ): Promise<ElectronSteamOverlayCheckoutAndWaitResult<T>> {
+      assertOpen();
+      const { modal, returnUrl, ...waitOptions } = options;
+      const transaction = await controller.withCheckoutPrepared(operation);
+      const target = electronSteamOverlayCheckoutTargetFromResult(transaction, { modal, returnUrl });
+      const result = await controller.openAndWait(target, waitOptions);
+      return {
+        transaction,
+        target,
+        shown: result.shown,
+        parked: result.parked
+      };
+    },
     async withCheckoutPrepared<T>(
       operation: () => T | Promise<T>,
       options: ElectronSteamOverlayCheckoutPrepareOptions = {}
@@ -8829,6 +8872,84 @@ function isElectronSteamOverlayParked(snapshot: ElectronSteamOverlaySnapshot): b
     snapshot.overlayNeedsPresent === false &&
     snapshot.currentFps === 0
   );
+}
+
+function electronSteamOverlayCheckoutTargetFromResult(
+  result: ElectronSteamOverlayCheckoutOperationResult,
+  defaults: Pick<ElectronSteamOverlayCheckoutAndWaitOptions, "modal" | "returnUrl"> = {}
+): SteamOverlayCheckoutTarget {
+  const target: SteamOverlayCheckoutTarget = { type: "checkout" };
+
+  if (typeof defaults.modal === "boolean") {
+    target.modal = defaults.modal;
+  }
+  if (typeof defaults.returnUrl === "string" && defaults.returnUrl.length > 0) {
+    target.returnUrl = defaults.returnUrl;
+  }
+
+  if (typeof result === "string") {
+    assignElectronSteamOverlayCheckoutString(target, result);
+    resolveSteamCheckoutOverlayUrl(target);
+    return target;
+  }
+
+  if (typeof result === "number" || typeof result === "bigint") {
+    target.transactionId = result;
+    resolveSteamCheckoutOverlayUrl(target);
+    return target;
+  }
+
+  if (!result || typeof result !== "object" || Array.isArray(result)) {
+    throw new Error("A Steam checkout operation must return a checkout URL, transaction ID, or checkout object.");
+  }
+
+  if (result.type !== undefined && result.type !== "checkout") {
+    throw new Error(`Unsupported Steam checkout operation target type: ${String(result.type)}`);
+  }
+
+  const steamUrl = nonEmptyString(result.steamUrl ?? result.steamurl);
+  const url = nonEmptyString(result.url);
+  const transactionId = result.transactionId ?? result.transactionID ?? result.transid;
+  const returnUrl = nonEmptyString(result.returnUrl ?? result.returnurl);
+
+  if (steamUrl) {
+    target.steamUrl = steamUrl;
+  }
+  if (url) {
+    target.url = url;
+  }
+  if (transactionId != null) {
+    target.transactionId = transactionId;
+  }
+  if (returnUrl) {
+    target.returnUrl = returnUrl;
+  }
+  if (typeof result.modal === "boolean") {
+    target.modal = result.modal;
+  }
+
+  resolveSteamCheckoutOverlayUrl(target);
+  return target;
+}
+
+function assignElectronSteamOverlayCheckoutString(target: SteamOverlayCheckoutTarget, value: string): void {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    throw new Error("A Steam checkout operation returned an empty checkout URL or transaction ID.");
+  }
+  if (/^\d+$/.test(trimmed)) {
+    target.transactionId = trimmed;
+    return;
+  }
+  target.steamUrl = trimmed;
+}
+
+function nonEmptyString(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
 }
 
 type NormalizedElectronSteamOverlayShortcutOptions = Required<

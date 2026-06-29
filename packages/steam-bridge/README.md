@@ -172,16 +172,9 @@ await steamOverlay.openAndWait({
   modal: true
 });
 
-const txn = await steamOverlay.withCheckoutPrepared(() =>
+await steamOverlay.openCheckoutAndWait(() =>
   backend.createSteamTransaction({ itemId: 100 })
 );
-
-// If InitTxn returns a web checkout URL, or you need to reopen a known
-// transaction approval surface, use the checkout target.
-await steamOverlay.openAndWait({
-  type: "checkout",
-  steamUrl: txn.steamurl
-});
 
 // Achievement progress/store notifications are automatically primed while the
 // managed overlay is open. Use prepareForNotification() only for custom cases.
@@ -258,18 +251,17 @@ records those await points as `overlay:presenter-wait-shown`,
 `overlay:presenter-wait-closed`, and `overlay:presenter-parked` lifecycle
 events so Deck/Linux artifact review proves the same public API app builders
 call.
-For `InitTxn` flows, wrap the app's backend transaction call with
-`steamOverlay.withCheckoutPrepared(() => startTxn())`. Steam Bridge primes the
-native presenter before the backend starts the transaction, then returns the
-backend result unchanged. The wrapper owns an operation-scoped activation hold:
-it keeps the presenter ready while the backend call is pending and parks it
-immediately afterward without app-tuned preparation timers. If Steam returns a
-web checkout URL, pass it as
-`steamOverlay.open({ type: "checkout", steamUrl })`. If you have a transaction
-id, call `steamOverlay.open({ type: "checkout", transactionId })` and Steam
-Bridge builds the approval URL for you. `steamOverlay.prepareForCheckout()`
-remains available for lower-level flows that need to separate presenter priming
-from the backend call. Passive Steam notifications such as achievement progress
+For `InitTxn` flows, call
+`steamOverlay.openCheckoutAndWait(() => startTxn())`. Steam Bridge primes the
+native presenter before the backend starts the transaction, accepts common
+backend result shapes such as `steamurl`, `steamUrl`, `transactionId`, or
+`transid`, opens the checkout surface, then resolves after Steam closes and the
+presenter parks. The preparation is operation-scoped rather than an app-tuned
+timer. `steamOverlay.withCheckoutPrepared(...)`,
+`steamOverlay.open({ type: "checkout", ... })`, and
+`steamOverlay.prepareForCheckout()` remain available for lower-level flows that
+need to separate presenter priming from transaction creation or overlay opening.
+Passive Steam notifications such as achievement progress
 or achievement unlock toasts are automatically primed by the managed Electron
 overlay before the relevant achievement/stats calls and pump only when Steam
 reports `overlayNeedsPresent`; use

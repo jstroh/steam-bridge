@@ -246,6 +246,7 @@ function summarizeMatrixArtifacts(root) {
     );
     const parking = verifyLifecycleParking(caseName, lifecycle.entries, resultFailures);
     const managedWaits = verifyManagedLifecycleWaits(caseName, action.action, lifecycle.entries, resultFailures);
+    const checkoutWait = verifyCheckoutOpenAndWait(caseName, action.action, lifecycle.entries, resultFailures);
 
     failures.push(...resultFailures);
     caseSummaries.push({
@@ -267,6 +268,7 @@ function summarizeMatrixArtifacts(root) {
       passiveToast: passiveNotification.required ? passiveNotification.ok : "n/a",
       parked: parking.required ? parking.ok : "n/a",
       managedWaits: managedWaits.required ? managedWaits.ok : "n/a",
+      checkoutWait: checkoutWait.required ? checkoutWait.ok : "n/a",
       crashOk: crashDiagnostics.ok === true,
       overlayTargets: overlayTargetCount,
       screenshots: countScreenshots(path.join(screenshotsRoot, caseName))
@@ -289,6 +291,7 @@ function summarizeMatrixArtifacts(root) {
         `passiveToast=${item.passiveToast}`,
         `parked=${item.parked}`,
         `managedWaits=${item.managedWaits}`,
+        `checkoutWait=${item.checkoutWait}`,
         `overlayTargets=${item.overlayTargets}`,
         `crashOk=${item.crashOk}`,
         `screenshots=${item.screenshots}`
@@ -315,8 +318,8 @@ function runSelfTest() {
   try {
     createSelfTestFixture(fixtureRoot);
     const summary = summarizeMatrixArtifacts(fixtureRoot);
-    assert(summary.caseSummaries.length === 4, "summary self-test should include four cases");
-    assert(summary.totalScreenshots === 7, "summary self-test should count seven screenshots");
+    assert(summary.caseSummaries.length === 5, "summary self-test should include five cases");
+    assert(summary.totalScreenshots === 8, "summary self-test should count eight screenshots");
     console.log("Steam Deck overlay matrix summary self-test passed.");
   } finally {
     fs.rmSync(fixtureRoot, { recursive: true, force: true });
@@ -488,6 +491,54 @@ function createSelfTestFixture(root) {
   );
   fs.writeFileSync(path.join(sessionScreensDir, "overlay-open.png"), "");
 
+  const checkoutCaseId = "05-checkout-approval-route";
+  const checkoutDiagnosticsDir = path.join(root, "diagnostics", checkoutCaseId);
+  const checkoutRunDiagnosticsDir = path.join(
+    checkoutDiagnosticsDir,
+    "steam-bridge-smoke-matrix-05-checkout-approval-route.log.diagnostics"
+  );
+  const checkoutScreensDir = path.join(root, "screens", checkoutCaseId);
+  const checkoutResult = JSON.parse(JSON.stringify(result));
+
+  checkoutResult.action.action = "presenter-checkout";
+  fs.mkdirSync(checkoutRunDiagnosticsDir, { recursive: true });
+  fs.mkdirSync(checkoutScreensDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(checkoutDiagnosticsDir, "steam-bridge-smoke-matrix-05-checkout-approval-route.log"),
+    `STEAM_BRIDGE_SMOKE_RESULT ${JSON.stringify(checkoutResult)}\n`
+  );
+  fs.writeFileSync(
+    path.join(checkoutRunDiagnosticsDir, "lifecycle.jsonl"),
+    [
+      {
+        type: "event:overlay:presenter-open",
+        payload: {
+          target: "checkout",
+          api: "openCheckoutAndWait",
+          checkout: { hasCheckoutUrl: false, hasTransactionId: true, hasReturnUrl: false }
+        }
+      },
+      { type: "event:callback:overlay-activated", payload: { active: true } },
+      { type: "event:overlay:presenter-wait-shown", payload: { presenter: activePresenterFixture(16) } },
+      { type: "event:callback:overlay-activated", payload: { active: false } },
+      { type: "event:overlay:presenter-wait-closed", payload: { presenter: parkedPresenterFixture(15) } },
+      { type: "event:overlay:presenter-parked", payload: { presenter: parkedPresenterFixture(15) } },
+      {
+        type: "event:overlay:presenter-checkout-open-and-wait-complete",
+        payload: {
+          parked: parkedPresenterFixture(15),
+          presenter: parkedPresenterFixture(15),
+          resolvedTarget: { hasCheckoutUrl: true, hasTransactionId: true, hasReturnUrl: false }
+        }
+      },
+      { type: "event:overlay:presenter-after-close", payload: { presenter: parkedPresenterFixture(15) } },
+      { type: "event:overlay:presenter-after-close-stable", payload: { presenter: parkedPresenterFixture(15) } }
+    ]
+      .map((entry) => JSON.stringify(entry))
+      .join("\n") + "\n"
+  );
+  fs.writeFileSync(path.join(checkoutScreensDir, "overlay-open.png"), "");
+
   fs.writeFileSync(
     path.join(root, "matrix-cases.jsonl"),
     [
@@ -516,6 +567,13 @@ function createSelfTestFixture(root) {
         caseId: sessionCaseId,
         caseName: "session-web",
         action: "presenter-web",
+        visualCloseInput: "web",
+        visualToggleInput: null
+      },
+      {
+        caseId: checkoutCaseId,
+        caseName: "checkout-approval-route",
+        action: "presenter-checkout",
         visualCloseInput: "web",
         visualToggleInput: null
       }
@@ -734,6 +792,51 @@ function requiresManagedLifecycleWaits(action, entries) {
     return entries.some((entry) => entry.type === "event:overlay:presenter-open");
   }
   return false;
+}
+
+function verifyCheckoutOpenAndWait(caseName, action, entries, failures) {
+  if (action !== "presenter-checkout") {
+    return { required: false, ok: true };
+  }
+  const open = entries.find((entry) => {
+    const payload = entry && typeof entry.payload === "object" && !Array.isArray(entry.payload) ? entry.payload : {};
+    return entry.type === "event:overlay:presenter-open" && payload.target === "checkout";
+  });
+  if (!open) {
+    return { required: false, ok: true };
+  }
+
+  const failuresBefore = failures.length;
+  const openPayload = open && typeof open.payload === "object" && !Array.isArray(open.payload) ? open.payload : {};
+  if (openPayload.api !== "openCheckoutAndWait") {
+    failures.push(`${caseName}: checkout presenter-open did not use openCheckoutAndWait`);
+  }
+
+  const inactiveIndex = entries.findIndex(isLifecycleOverlayInactiveEvent);
+  if (inactiveIndex === -1) {
+    failures.push(`${caseName}: checkout openAndWait did not record active=false before completion`);
+    return { required: true, ok: false };
+  }
+
+  const complete = entries.find(
+    (entry, index) => index > inactiveIndex && entry.type === "event:overlay:presenter-checkout-open-and-wait-complete"
+  );
+  if (!complete) {
+    failures.push(`${caseName}: missing overlay:presenter-checkout-open-and-wait-complete after active=false`);
+    return { required: true, ok: false };
+  }
+
+  const payload = complete && typeof complete.payload === "object" && !Array.isArray(complete.payload) ? complete.payload : {};
+  const parked = payload.parked && typeof payload.parked === "object" && !Array.isArray(payload.parked)
+    ? payload.parked
+    : undefined;
+  if (!parked) {
+    failures.push(`${caseName}: checkout completion did not include parked presenter snapshot`);
+  } else if (readPresenterMode(parked) !== "session") {
+    expectParkedPresenter(caseName, parked, "checkout openAndWait completion", failures);
+  }
+
+  return { required: true, ok: failures.length === failuresBefore };
 }
 
 function readPresenterMode(presenter) {

@@ -174,14 +174,9 @@ await steamOverlay.openAndWait({
   modal: true
 });
 
-const txn = await steamOverlay.withCheckoutPrepared(() =>
+await steamOverlay.openCheckoutAndWait(() =>
   backend.createSteamTransaction({ itemId: 100 })
 );
-
-await steamOverlay.openAndWait({
-  type: "checkout",
-  steamUrl: txn.steamurl
-});
 ```
 
 The presenter should:
@@ -381,23 +376,20 @@ Current evidence:
   `currentFps=0`.
 - The same path is good enough for checkout-style proof when launched under a
   real installed Steam app with a configured product or transaction. The public
-  API now has a named checkout wrapper:
-  `steamOverlay.withCheckoutPrepared(() => startTxn())` primes the presenter
-  before an in-game `InitTxn`, holds it only while the backend operation is
-  pending, and returns the app/backend result unchanged.
-  `steamOverlay.open({ type: "checkout", steamUrl })` or
-  `steamOverlay.open({ type: "checkout", transactionId })` opens a returned or
-  known approval surface through the same verified presenter route. App code can
-  call `openAndWait(...)` for the whole show/close/park lifecycle, or await
-  `waitForOverlayShown()` and `parkWhenSteamOverlayCloses()` when it needs
-  lower-level control, instead of carrying local callback/timer plumbing. In
-  default persistent presenter mode `open(...)` and `openAndWait(...)` hold the
-  presenter until Steam reports the overlay shown, then those waits resolve from
-  Steam Bridge's overlay callback and presenter state changes, with timeouts kept
-  as guardrails.
-  The smoke app's `presenter-web-open-and-wait` action now exercises that exact
-  builder-facing helper and the Deck close verifier requires its completion
-  event after `GameOverlayActivated(false)` and presenter parking.
+  API now has a one-call checkout wrapper:
+  `steamOverlay.openCheckoutAndWait(() => startTxn())` primes the presenter
+  before an in-game `InitTxn`, accepts common backend result shapes such as
+  `steamurl`, `steamUrl`, `transactionId`, or `transid`, opens the checkout
+  surface, then resolves after Steam closes and the presenter parks. App code can
+  still use `withCheckoutPrepared(...)`, `open({ type: "checkout", ... })`,
+  `openAndWait(...)`, or the lower-level wait helpers when it needs split-step
+  control, instead of carrying local callback/timer plumbing. In default
+  persistent presenter mode these waits resolve from Steam Bridge's overlay
+  callback and presenter state changes, with timeouts kept as guardrails.
+  The smoke app's `presenter-checkout` action now exercises that exact
+  checkout helper when a checkout URL or transaction ID is provided, and records
+  `overlay:presenter-checkout-open-and-wait-complete` after
+  `GameOverlayActivated(false)` and presenter parking.
   `prepareForCheckout()` remains as the lower-level split-step escape hatch.
   `MicroTxnAuthorizationResponse` is
   treated as an authorization

@@ -6239,6 +6239,139 @@ test("electron steam overlay manager exposes lifecycle wait helpers", async (t) 
   await assert.rejects(overlay.openAndWait({ type: "friends" }), /Electron Steam overlay is closed/);
 });
 
+test("electron steam overlay checkout helper prepares, opens, and waits with backend result shapes", async (t) => {
+  const hostHandle = Buffer.from([31, 41, 59, 26]);
+  let hostOpen = false;
+  const fake = createFakeNative({
+    attachNativeOverlayHostView(nativeWindowHandle) {
+      hostOpen = true;
+      this.calls.push({ method: "attachNativeOverlayHostView", args: [nativeWindowHandle] });
+    },
+    pumpNativeOverlayProbeWindow() {
+      this.calls.push({ method: "pumpNativeOverlayProbeWindow", args: [] });
+    },
+    showNativeOverlayHostView() {
+      this.calls.push({ method: "showNativeOverlayHostView", args: [] });
+    },
+    setNativeOverlayHostInputPassthrough(passThrough) {
+      this.calls.push({ method: "setNativeOverlayHostInputPassthrough", args: [passThrough] });
+    },
+    setNativeOverlayHostOpacity(opaque) {
+      this.calls.push({ method: "setNativeOverlayHostOpacity", args: [opaque] });
+    },
+    detachNativeOverlayHostView() {
+      hostOpen = false;
+      this.calls.push({ method: "detachNativeOverlayHostView", args: [] });
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return false;
+    },
+    isNativeOverlayHostViewOpen() {
+      return hostOpen;
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  const window = {
+    isDestroyed() {
+      return false;
+    },
+    getNativeWindowHandle() {
+      return hostHandle;
+    },
+    once() {},
+    webContents: {
+      once() {},
+      invalidate() {},
+      send() {}
+    }
+  };
+
+  const overlay = steam.overlay.createElectronSteamOverlay(window, {
+    title: "Electron Checkout And Wait Overlay",
+    activationBoostMs: 0,
+    activeGraceMs: 0,
+    pollIntervalMs: 10000
+  });
+
+  let operationSnapshot;
+  const checkout = overlay.openCheckoutAndWait(
+    () => {
+      operationSnapshot = overlay.snapshot();
+      return {
+        steamurl: "https://checkout.steampowered.com/checkout/approvetxn/987/",
+        returnurl: "steam://return-from-backend"
+      };
+    },
+    { modal: false, showTimeoutMs: 200, closeTimeoutMs: 200 }
+  );
+
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(operationSnapshot.mode, "active");
+  assert.equal(operationSnapshot.clickThrough, false);
+  assert.equal(operationSnapshot.transparent, false);
+  assert.equal(operationSnapshot.currentFps, 30);
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "activateOverlayToWebPage").at(-1),
+    { method: "activateOverlayToWebPage", args: ["https://checkout.steampowered.com/checkout/approvetxn/987/", false] }
+  );
+
+  fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: true });
+  fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: false });
+  const checkoutResult = await checkout;
+
+  assert.equal(checkoutResult.transaction.steamurl, "https://checkout.steampowered.com/checkout/approvetxn/987/");
+  assert.deepEqual(checkoutResult.target, {
+    type: "checkout",
+    modal: false,
+    steamUrl: "https://checkout.steampowered.com/checkout/approvetxn/987/",
+    returnUrl: "steam://return-from-backend"
+  });
+  assert.equal(checkoutResult.shown.overlayActive, true);
+  assert.equal(checkoutResult.parked.mode, "passive");
+  assert.equal(checkoutResult.parked.currentFps, 0);
+
+  const transactionCheckout = overlay.openCheckoutAndWait(
+    () => "123456789",
+    { returnUrl: "steam://return-from-options", showTimeoutMs: 200, closeTimeoutMs: 200 }
+  );
+
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "activateOverlayToWebPage").at(-1),
+    {
+      method: "activateOverlayToWebPage",
+      args: [
+        "https://checkout.steampowered.com/checkout/approvetxn/123456789/?returnurl=steam%3A%2F%2Freturn-from-options",
+        true
+      ]
+    }
+  );
+
+  fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: true });
+  fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: false });
+  const transactionResult = await transactionCheckout;
+
+  assert.deepEqual(transactionResult.target, {
+    type: "checkout",
+    returnUrl: "steam://return-from-options",
+    transactionId: "123456789"
+  });
+  assert.equal(transactionResult.parked.clickThrough, true);
+
+  await assert.rejects(
+    overlay.openCheckoutAndWait(() => ({ type: "checkout" }), { showTimeoutMs: 200, closeTimeoutMs: 200 }),
+    /requires a url, steamUrl, or transactionId/
+  );
+
+  overlay.close();
+  await assert.rejects(overlay.openCheckoutAndWait(() => "123"), /Electron Steam overlay is closed/);
+});
+
 test("electron steam overlay manager tolerates destroyed webContents during window close", (t) => {
   const hostHandle = Buffer.from([23, 42, 108, 15]);
   let hostOpen = false;

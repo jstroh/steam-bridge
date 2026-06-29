@@ -800,30 +800,46 @@ function openPresenterUserOverlay() {
 async function openPresenterCheckoutOverlay() {
   const overlay = ensureElectronSteamOverlay();
   if (CHECKOUT_URL || CHECKOUT_TRANSACTION_ID) {
-    const target = {
-      type: "checkout",
-      steamUrl: CHECKOUT_URL || undefined,
+    const transaction = {
+      steamurl: CHECKOUT_URL || undefined,
       transactionId: CHECKOUT_URL ? undefined : CHECKOUT_TRANSACTION_ID,
-      returnUrl: CHECKOUT_RETURN_URL || undefined
+      returnurl: CHECKOUT_RETURN_URL || undefined
     };
-    overlay.open(target);
-    recordEvent("overlay:presenter-open", {
+    const context = {
       target: "checkout",
       route: "web",
-      url: CHECKOUT_URL || steamworks.steamCheckoutTransactionUrl(CHECKOUT_TRANSACTION_ID, {
-        returnUrl: CHECKOUT_RETURN_URL || undefined
-      }),
       modal: true,
-      transactionId: CHECKOUT_URL ? null : CHECKOUT_TRANSACTION_ID,
-      returnUrl: CHECKOUT_RETURN_URL || null,
+      api: "openCheckoutAndWait",
+      checkout: checkoutDiagnostic(transaction)
+    };
+    const openAndWait = overlay.openCheckoutAndWait(() => transaction, {
+      showTimeoutMs: MANAGED_OVERLAY_WAIT_TIMEOUT_MS,
+      closeTimeoutMs: MANAGED_OVERLAY_PARK_TIMEOUT_MS
+    });
+    recordEvent("overlay:presenter-open", {
+      ...context,
       presenter: overlay.snapshot()
     });
-    observeManagedOverlayLifecycle(overlay, {
-      target: "checkout",
-      route: "web",
-      transactionId: CHECKOUT_URL ? null : CHECKOUT_TRANSACTION_ID,
-      returnUrl: CHECKOUT_RETURN_URL || null
-    });
+    observeManagedOverlayLifecycle(overlay, context);
+    openAndWait
+      .then((result) => {
+        recordEvent("overlay:presenter-checkout-open-and-wait-complete", {
+          ...context,
+          resolvedTarget: checkoutDiagnostic(result.target),
+          shown: result.shown,
+          parked: result.parked,
+          presenter: safeOverlaySnapshot(overlay)
+        });
+      })
+      .catch((error) => {
+        if (!shutdownComplete) {
+          recordEvent("overlay:presenter-checkout-open-and-wait:error", {
+            ...context,
+            error: serializeError(error),
+            presenter: safeOverlaySnapshot(overlay)
+          });
+        }
+      });
   } else {
     await overlay.withCheckoutPrepared(() => {
       recordEvent("overlay:presenter-checkout-ready", {
@@ -834,6 +850,15 @@ async function openPresenterCheckoutOverlay() {
     });
   }
   return snapshot();
+}
+
+function checkoutDiagnostic(target) {
+  return {
+    hasCheckoutUrl: Boolean(target && (target.steamUrl || target.steamurl || target.url)),
+    hasTransactionId: Boolean(target && (target.transactionId || target.transactionID || target.transid)),
+    hasReturnUrl: Boolean(target && (target.returnUrl || target.returnurl)),
+    modal: target && typeof target.modal === "boolean" ? target.modal : true
+  };
 }
 
 function openPresenterAchievementProgress() {
