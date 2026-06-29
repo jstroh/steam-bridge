@@ -644,8 +644,9 @@ Current evidence:
   Electron starts.
 - Steam-launched macOS Apple Silicon runs now verify managed modal web, store,
   Friends/chat, dialog-equivalent `openAndWait(...)`, passive progress/unlock
-  toasts, synthetic checkout approval-route plumbing, managed Shift+Tab
-  shortcut open/close, profile, community, stats, achievements, user
+  toasts, synthetic checkout `openCheckoutAndWait(...)` approval-route
+  plumbing, managed Shift+Tab shortcut open/close, profile, community, stats,
+  achievements, user
   chat/profile, and known dialog-equivalent routes with paired active/inactive
   callbacks where expected, app focus return, clean crash diagnostics, and idle
   presenter parking at `currentFps=0`.
@@ -760,12 +761,23 @@ Deck/Linux/macOS artifacts can verify presenter alignment without scraping logs.
 5. Verify Linux passive achievement/toast behavior.
 6. Verify Linux checkout/web close and back-to-app behavior with the managed
    persistent presenter.
-7. Harden macOS Apple Silicon Metal modal overlay mode for web, store, Friends,
-   and dialog-equivalent wait routes.
-8. Verify macOS passive notification/toast behavior.
-9. Verify macOS checkout/purchase close and back-to-app behavior.
-10. Promote the presenter API from experimental to recommended only after both
-    Linux/Deck and macOS Apple Silicon meet the pass criteria.
+7. Keep macOS Apple Silicon Metal modal overlay mode green for web, store,
+   Friends, profile, community, stats, achievements, user, and
+   dialog-equivalent wait routes. The current full macOS matrix passes these
+   routes with paired active/inactive callbacks, focus return, parked presenter
+   state, and no crash diagnostics.
+8. Keep macOS passive notification/toast behavior green. The current matrix
+   verifies managed achievement progress and unlock toasts for App ID `480`
+   without modal overlay activation.
+9. Keep macOS checkout plumbing green. The current matrix verifies synthetic
+   checkout approval-route open, close, focus return, parked presenter state,
+   and `openCheckoutAndWait(...)` completion after close/parking. Real
+   purchase-content and `InitTxn` proof remain app-specific and require a real
+   configured Steam product.
+10. Keep the presenter API as the recommended app-facing path for Electron.
+    Continue treating raw social dialogs, raw overlay hotkey interception,
+    real purchase content, and live lock/display-sleep captures as separate
+    evidence tracks.
 
 ## Non-Goals
 

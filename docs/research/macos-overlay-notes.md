@@ -204,11 +204,11 @@ Still not verified:
 The current macOS result should therefore be treated as Steam launch, injection,
 identity alignment, native presenter startup, modal web overlay activation,
 close, app focus return, builder-facing `openAndWait(...)` parking coverage,
-synthetic checkout approval-route plumbing, managed Shift+Tab shortcut routing,
-known presenter-backed web/dialog targets, and passive achievement-progress and
-unlock notifications. Real purchase-content and `InitTxn` coverage still need a
-real Steam app ID with a configured product before describing purchase overlay
-support as complete.
+synthetic checkout `openCheckoutAndWait(...)` approval-route plumbing, managed
+Shift+Tab shortcut routing, known presenter-backed web/dialog targets, and
+passive achievement-progress and unlock notifications. Real purchase-content
+and `InitTxn` coverage still need a real Steam app ID with a configured product
+before describing purchase overlay support as complete.
 
 ## Primary References
 
