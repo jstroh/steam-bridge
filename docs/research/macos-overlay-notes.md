@@ -147,6 +147,12 @@ Verified:
   return, presenter parking, and no crash evidence. The shortcut case verified
   `overlay:shortcut-open`, `active=true`, presenter shown, Shift+Tab close,
   `active=false`, app frontmost, parked presenter state, and no crash evidence.
+- A 2026-06-29 minimal macOS overlay matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-minimal-zero-timing-20260629-151701`
+  re-ran web, store, Friends, dialog, and passive achievement-progress routes
+  with `--require-zero-managed-overlay-timing` enforced. All five cases passed
+  with Steam launch, overlay injection, overlay-enabled diagnostics, no crash
+  evidence, and close/focus/park checks for the interactive routes.
 - `scripts/macos-overlay-matrix.sh` now owns repeatable macOS proof setup. It
   prints or runs a matrix of Steam-launched helper cases, installs or updates one
   stable Steam shortcut with the native launcher env-file flag, restarts Steam
