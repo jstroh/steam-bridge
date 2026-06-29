@@ -523,8 +523,9 @@ process. The current reusable-presenter close proofs are `--action presenter-web
 with `--web-modal true` for generic web/checkout-style overlays and
 `--action presenter-friends` / `--action presenter-community` /
 `--action presenter-profile` / `--action presenter-stats` for the
-product-shaped social/community surfaces. `presenter-players` uses the same
-route shape and is included in the matrix, but still needs its visual Deck pass.
+product-shaped social/community surfaces. `presenter-players` now has the same
+Deck Desktop visual pass, including active/inactive callbacks, web close, focus
+return, no crash evidence, and idle presenter parking.
 These call `client.overlay.openWebOverlay(...)`,
 `client.overlay.openFriendsOverlay(...)`,
 `client.overlay.openProfileOverlay(...)`,

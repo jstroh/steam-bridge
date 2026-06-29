@@ -267,10 +267,12 @@ Current evidence:
 - Steam Bridge has a product-shaped Players route through
   `steamOverlay.open({ type: "players", steamId64 })`, backed by
   `openPlayersOverlay({ steamId64, presenter })`, which opens the Steam
-  Community players page through the reusable native web presenter. This route
-  is covered by local unit tests, the Electron smoke app, the Deck runner, and
-  the Deck overlay matrix; it still needs the same visual Deck open/close pass
-  before it should be listed as Deck-verified.
+  Community players page through the reusable native web presenter. A
+  2026-06-28 Deck Desktop run captured visible Steam Community players content,
+  emitted active then inactive overlay callbacks, returned focus to the Electron
+  smoke app through the web close probe, used one `gameoverlayui` target
+  attached to the app's main/native process, and parked transparent/click-through
+  at `currentFps=0` with stable `pumpCount`.
 - Deck Desktop Mode has app-facing
   `steamOverlay.open({ type: "community", appId })` /
   `steamOverlay.open({ type: "stats", appId })` routes and lower-level
@@ -300,9 +302,10 @@ Current evidence:
   content through the native overlay host, emitted active then inactive overlay
   callbacks, used one `gameoverlayui` target for App ID `480`, returned focus to
   the Electron app through the web close probe, parked transparent/click-through
-  at `currentFps=0`, and showed no post-close pumping or crash evidence. The
-  `Players` dialog equivalent is implemented and included in the matrix but
-  still awaits that visual Deck proof.
+  at `currentFps=0`, and showed no post-close pumping or crash evidence. A
+  focused 2026-06-28 Deck Desktop run also verified
+  `presenter-dialog-auto --dialog Players` with the same active/inactive, web
+  close, focus return, idle parking, single-target, and no-crash evidence.
 - The managed Electron shortcut bridge is the product keyboard-toggle path:
   `createElectronSteamOverlay(mainWindow)` listens for Shift+Tab in Electron and
   opens `steamOverlay.open({ type: "friends" })` by default, with
@@ -454,11 +457,9 @@ Pass criteria:
   and return to the app without duplicate Electron child overlay targets.
 - High-level `dialog` targets for Friends, Players, Community,
   OfficialGameGroup, Stats, and Achievements route to the same
-  presenter-backed web equivalents by default. The already verified routes pass
-  the same open, close, back-to-app, no-crash, and no-post-close-pumping checks;
-  Players should pass those checks before being promoted from implemented to
-  Deck-verified. Raw native dialog activation remains explicit diagnostic
-  behavior.
+  presenter-backed web equivalents by default and pass the same open, close,
+  back-to-app, no-crash, and no-post-close-pumping checks. Raw native dialog
+  activation remains explicit diagnostic behavior.
 - The managed Electron Shift+Tab shortcut opens a presenter-backed overlay,
   closes through the Steam web close control, returns to the app, and is
   machine-verified through `overlay:shortcut-open`, active/inactive callbacks,

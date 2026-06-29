@@ -530,12 +530,13 @@ Mode, the public App ID `480` smoke matrix has verified `Friends`, `Community`,
 `OfficialGameGroup`, `Stats`, and `Achievements` through
 `presenter-dialog-auto` with visible Steam web content, active/inactive
 callbacks, one overlay target, clean return to Electron, parked idle presenter
-state, and no crash evidence. `Players` is implemented and included in the
-matrix, but still needs the same visual Deck pass before it should be called
-Deck-verified. In `route: "auto"` mode, unsupported dialog names throw instead
-of silently falling back to raw Steam overlay behavior. Pass `route: "native"`
-only when you intentionally need raw `ActivateGameOverlay` dialog behavior for
-diagnostics.
+state, and no crash evidence. A 2026-06-28 Deck Desktop run verified `Players`
+through both `presenter-players` and `presenter-dialog-auto --dialog Players`
+with the same active/inactive callbacks, single overlay target, web close,
+focus return, idle parking, and no crash evidence. In `route: "auto"` mode,
+unsupported dialog names throw instead of silently falling back to raw Steam
+overlay behavior. Pass `route: "native"` only when you intentionally need raw
+`ActivateGameOverlay` dialog behavior for diagnostics.
 Do not use `steam://open/overlay` as a generic overlay-toggle substitute; Deck
 Desktop testing showed it can activate Steam's callback path while leaving the
 native presenter black and the smoke process unrecovered.

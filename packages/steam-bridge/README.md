@@ -297,10 +297,13 @@ The high-level dialog target also routes known dialog names through
 presenter-backed equivalents: `Friends` opens chat, `Players` opens the current
 user's Steam Community players page, `Community` and `OfficialGameGroup` open
 the app Community hub, `Stats` opens the current user's app stats page, and
-`Achievements` opens the current user's achievements page. `Players` is
-implemented and matrix-covered, but still needs a visual Deck pass before it is
-called Deck-verified. In `route: "auto"` mode, unsupported dialog names throw
-instead of silently falling back to raw Steam overlay behavior. Pass
+`Achievements` opens the current user's achievements page. A 2026-06-28 Deck
+Desktop run verified `Players` through both the direct `presenter-players`
+action and the `presenter-dialog-auto --dialog Players` route, with visible
+Steam web content, active/inactive callbacks, one overlay target, clean return
+to Electron, idle presenter parking, and no crash evidence. In `route: "auto"`
+mode, unsupported dialog names throw instead of silently falling back to raw
+Steam overlay behavior. Pass
 `route: "native"` only when you intentionally need raw `ActivateGameOverlay`
 dialog behavior for diagnostics.
 The lower-level `activateDialog("Friends")` / Game Overview path is still an
