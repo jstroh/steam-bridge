@@ -168,8 +168,10 @@ Verified:
   notifications, synthetic checkout approval-route plumbing, managed Shift+Tab
   shortcut open/close, profile, community, stats, achievements, user chat and
   Steam ID panels, and known dialog variants. Interactive cases verified overlay
-  activation/deactivation, close/focus return, parked idle presenter state, and
-  no crash evidence. The artifact also passes
+  activation/deactivation, active shown presenter snapshots, close/focus
+  return, parked idle presenter state, an interactive macOS host environment
+  (`screenLocked=false`, `displayAsleep=false`), and no crash evidence. The
+  artifact also passes
   `npm run macos:overlay-matrix:summarize -- --artifact-root <path>`, which
   audits each collected result and lifecycle log. Non-store overlay targets must
   attach Steam's `gameoverlayui` to the smoke process under game ID `480`; the
@@ -184,6 +186,7 @@ Verified:
   then runs `scripts/summarize-macos-overlay-matrix.cjs` to audit Steam
   launch/injection identity, one `gameoverlayui` target attached to the smoke
   process, zero managed overlay timing, passive notification callbacks,
+  active shown presenter snapshots in an interactive macOS host environment,
   close-and-park lifecycle evidence, checkout `openCheckoutAndWait(...)`
   completion after close/parking, and crash diagnostics. Its self-test validates
   the matrix shape and the artifact summarizer without launching Steam.

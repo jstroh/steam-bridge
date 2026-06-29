@@ -99,7 +99,8 @@ function printUsage(stream) {
 
 Audits a macOS overlay matrix artifact root for collected smoke results,
 lifecycle close/park evidence, Steam overlay injection, managed Electron
-zero-timing diagnostics, passive notification callbacks, and crash diagnostics.
+zero-timing diagnostics, interactive macOS host state, passive notification
+callbacks, and crash diagnostics.
 `);
 }
 
@@ -171,7 +172,9 @@ function summarizeMatrixArtifacts(root) {
         `passive=${summary.passive}`,
         `overlayTargets=${summary.overlayTargets}`,
         `overlayGameIds=${summary.overlayGameIds.join(",") || "none"}`,
+        `macInteractive=${summary.macInteractive}`,
         `zeroTiming=${summary.zeroTiming}`,
+        `shown=${summary.shown}`,
         `openAndWait=${summary.openAndWait}`,
         `checkoutWait=${summary.checkoutWait}`,
         `crashOk=${summary.crashOk}`
@@ -221,6 +224,8 @@ function verifyCase(caseId, metadata, result, lifecycle, failures) {
   const crashOk = crashDiagnostics.available === true && crashDiagnostics.ok === true;
   const openAndWait = verifyOpenAndWaitCompletion(caseId, actionName, lifecycleEntries, failures);
   const checkoutWait = verifyCheckoutOpenAndWait(caseId, actionName, lifecycleEntries, failures);
+  const shown = verifyShownPresenter(caseId, lifecycleEntries, isPassive, failures);
+  let macInteractive = false;
 
   expect(result.ok === true, `${caseId}: smoke result ok`, failures);
   expect(action.ok === true, `${caseId}: autorun action succeeded`, failures);
@@ -267,6 +272,7 @@ function verifyCase(caseId, metadata, result, lifecycle, failures) {
     expect(nativePresenter.attached === true, `${caseId}: native presenter attached`, failures);
     expect(nativePresenter.nativeHostOpen === true, `${caseId}: native presenter host open`, failures);
     expect(nativePresenter.idleFps === 0, `${caseId}: native presenter idle FPS is zero`, failures);
+    macInteractive = expectMacOverlayEnvironmentAvailable(caseId, nativePresenter, "native presenter snapshot", failures);
     expect(Boolean(electronOverlay), `${caseId}: managed Electron overlay diagnostics available`, failures);
   }
   if (electronOverlay) {
@@ -328,7 +334,9 @@ function verifyCase(caseId, metadata, result, lifecycle, failures) {
     passive: isPassive,
     overlayTargets,
     overlayGameIds,
+    macInteractive,
     zeroTiming,
+    shown: shown.required ? shown.ok : "n/a",
     openAndWait: openAndWait.required ? openAndWait.ok : "n/a",
     checkoutWait: checkoutWait.required ? checkoutWait.ok : "n/a",
     crashOk
@@ -376,8 +384,8 @@ function verifyOpenAndWaitCompletion(caseId, actionName, entries, failures) {
   const parked = objectField(payload, "parked");
   if (!shown) {
     failures.push(`${caseId}: openAndWait completion did not include shown presenter snapshot`);
-  } else if (shown.overlayActive !== true) {
-    failures.push(`${caseId}: openAndWait shown snapshot did not report overlayActive=true`);
+  } else {
+    expectActivePresenter(caseId, shown, "openAndWait shown completion", failures);
   }
   if (!parked) {
     failures.push(`${caseId}: openAndWait completion did not include parked presenter snapshot`);
@@ -427,13 +435,32 @@ function verifyCheckoutOpenAndWait(caseId, actionName, entries, failures) {
   const parked = objectField(payload, "parked");
   if (!shown) {
     failures.push(`${caseId}: checkout completion did not include shown presenter snapshot`);
-  } else if (shown.overlayActive !== true) {
-    failures.push(`${caseId}: checkout shown snapshot did not report overlayActive=true`);
+  } else {
+    expectActivePresenter(caseId, shown, "checkout shown completion", failures);
   }
   if (!parked) {
     failures.push(`${caseId}: checkout completion did not include parked presenter snapshot`);
   } else {
     expectParkedPresenter(caseId, parked, "checkout openAndWait completion", failures);
+  }
+
+  return { required: true, ok: failures.length === failuresBefore };
+}
+
+function verifyShownPresenter(caseId, entries, isPassive, failures) {
+  if (isPassive) {
+    return { required: false, ok: true };
+  }
+
+  const failuresBefore = failures.length;
+  const shown = entries
+    .filter((entry) => entry.type === "event:overlay:presenter-wait-shown")
+    .map((entry) => presenterPayload(entry))
+    .filter(Boolean);
+
+  expect(shown.length > 0, `${caseId}: active shown presenter event recorded`, failures);
+  for (const presenter of shown) {
+    expectActivePresenter(caseId, presenter, "shown sample", failures);
   }
 
   return { required: true, ok: failures.length === failuresBefore };
@@ -541,6 +568,7 @@ function verifyLifecycleParking(caseId, entries, isPassive, failures) {
 }
 
 function expectParkedPresenter(caseId, presenter, label, failures) {
+  expectMacOverlayEnvironmentAvailable(caseId, presenter, label, failures);
   expectPresenterField(caseId, presenter, "closed", false, `native presenter closed ${label}`, failures);
   expectPresenterField(caseId, presenter, "attached", true, `native presenter attached ${label}`, failures);
   expectPresenterField(caseId, presenter, "nativeHostOpen", true, `native presenter host open ${label}`, failures);
@@ -552,6 +580,51 @@ function expectParkedPresenter(caseId, presenter, label, failures) {
   expectPresenterField(caseId, presenter, "idleFps", 0, `native presenter idle FPS ${label}`, failures);
   expectPresenterField(caseId, presenter, "currentFps", 0, `native presenter current FPS ${label}`, failures);
   expectPresenterField(caseId, presenter, "overlayNeedsPresent", false, `native presenter overlay needs present ${label}`, failures);
+}
+
+function expectActivePresenter(caseId, presenter, label, failures) {
+  expectMacOverlayEnvironmentAvailable(caseId, presenter, label, failures);
+  expectPresenterField(caseId, presenter, "closed", false, `native presenter closed ${label}`, failures);
+  expectPresenterField(caseId, presenter, "attached", true, `native presenter attached ${label}`, failures);
+  expectPresenterField(caseId, presenter, "nativeHostOpen", true, `native presenter host open ${label}`, failures);
+  expectPresenterField(caseId, presenter, "mode", "active", `native presenter mode ${label}`, failures);
+  expectPresenterField(caseId, presenter, "clickThrough", false, `native presenter click-through ${label}`, failures);
+  expectPresenterField(caseId, presenter, "focusable", false, `native presenter focusable ${label}`, failures);
+  expectPresenterField(caseId, presenter, "transparent", false, `native presenter transparent ${label}`, failures);
+  expectPresenterField(caseId, presenter, "overlayActive", true, `native presenter overlay active ${label}`, failures);
+  expectPresenterField(caseId, presenter, "idleFps", 0, `native presenter idle FPS ${label}`, failures);
+  expectPresenterField(caseId, presenter, "activeOverlayFps", 30, `native presenter active overlay FPS ${label}`, failures);
+  expectPresenterField(caseId, presenter, "currentFps", 30, `native presenter current FPS ${label}`, failures);
+}
+
+function expectMacOverlayEnvironmentAvailable(caseId, presenter, label, failures) {
+  const environment = objectField(presenter, "macOverlayEnvironment");
+  if (!environment) {
+    failures.push(`${caseId}: ${label} missing macOS overlay environment`);
+    return false;
+  }
+
+  expect(
+    environment.screenLocked === false,
+    `${caseId}: ${label} screen locked expected false, got ${formatValue(environment.screenLocked)}`,
+    failures
+  );
+  expect(
+    environment.displayAsleep === false,
+    `${caseId}: ${label} display asleep expected false, got ${formatValue(environment.displayAsleep)}`,
+    failures
+  );
+  expect(
+    presenter.nativeHostUnavailableReason == null,
+    `${caseId}: ${label} native host unavailable reason expected none, got ${formatValue(presenter.nativeHostUnavailableReason)}`,
+    failures
+  );
+
+  return (
+    environment.screenLocked === false &&
+    environment.displayAsleep === false &&
+    presenter.nativeHostUnavailableReason == null
+  );
 }
 
 function expectPresenterField(caseId, presenter, key, expected, label, failures) {
@@ -738,6 +811,10 @@ function parkedPresenterFixture(pumpCount) {
     attached: true,
     nativeProbeOpen: false,
     nativeHostOpen: true,
+    macOverlayEnvironment: {
+      screenLocked: false,
+      displayAsleep: false
+    },
     clickThrough: true,
     focusable: false,
     transparent: true,

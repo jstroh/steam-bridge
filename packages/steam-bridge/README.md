@@ -475,7 +475,9 @@ diagnostics. A 2026-06-29 full macOS matrix at
 store, Friends/chat, profile, community, stats, achievements, user chat/profile,
 known dialog equivalents, synthetic checkout approval-route plumbing, passive
 notification toasts, and managed Shift+Tab shortcut open/close through the
-presenter. The helper verifies macOS passive notification proof through
+presenter. The summary gate now requires active shown presenter snapshots and
+an interactive macOS host environment for successful overlay cases. The helper
+verifies macOS passive notification proof through
 `--require-passive-notification`; that gate requires the smoke result and
 lifecycle log to show the accepted achievement event, the matching Steam
 callback, no modal overlay activation, and a passive managed-presenter snapshot.
@@ -491,7 +493,8 @@ nonzero managed overlay timing, reports crash diagnostics, duplicates
 `gameoverlayui` targets attached to the smoke process, attaches a non-store
 overlay target under a game ID other than `480`, misses passive
 notification callbacks, misses checkout `openCheckoutAndWait(...)` completion
-after close/parking, or misses active/inactive close-and-park evidence for
+after close/parking, misses active shown presenter snapshots in an interactive
+macOS host environment, or misses active/inactive close-and-park evidence for
 interactive overlays. To audit an
 existing macOS artifact root, run
 `npm run macos:overlay-matrix:summarize -- --artifact-root <path>`. Live runs

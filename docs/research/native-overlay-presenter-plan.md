@@ -648,11 +648,12 @@ Current evidence:
   plumbing, managed Shift+Tab shortcut open/close, profile, community, stats,
   achievements, user
   chat/profile, and known dialog-equivalent routes with paired active/inactive
-  callbacks where expected, one `gameoverlayui` target, app focus return, clean
-  crash diagnostics, and idle presenter parking at `currentFps=0`. Non-store
-  targets attach under game ID `480`; the Steam store surface can report the
-  generated shortcut game ID while still emitting app ID `480` callbacks and
-  passing the same close-and-park proof.
+  callbacks where expected, active shown presenter snapshots, one
+  `gameoverlayui` target, app focus return, clean crash diagnostics, an
+  interactive macOS host state, and idle presenter parking at `currentFps=0`.
+  Non-store targets attach under game ID `480`; the Steam store surface can
+  report the generated shortcut game ID while still emitting app ID `480`
+  callbacks and passing the same close-and-park proof.
 - The macOS native presenter now reads CoreGraphics session/display state before
   creating the host. If the screen is locked or the main display is asleep, the
   presenter skips native host creation, reports
@@ -696,8 +697,8 @@ Pass criteria:
 - Notification/toast appears over the app; the current matrix proves the managed
   passive-progress and unlock paths for App ID `480`.
 - Web/store/Friends/dialog-equivalent overlays open and close with
-  active/inactive callbacks and parked presenter state; checkout gets the same
-  proof with a real app/product.
+  active/inactive callbacks, active shown presenter snapshots, and parked
+  presenter state; checkout gets the same proof with a real app/product.
 - Locked-screen or display-asleep macOS sessions do not create a native host,
   do not start managed overlay activation, and report an explicit unavailable
   reason until the session becomes interactive.
