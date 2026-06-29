@@ -1,8 +1,10 @@
 # Steam Bridge Electron Smoke
 
 This is a tiny Electron app for proving that Steam Bridge can initialize Steam,
-read basic Steamworks state, and exercise overlay paths on Linux x64 and Steam
-Deck.
+read basic Steamworks state, and exercise overlay paths on supported Steam
+desktop platforms. The deepest automated coverage currently targets Linux x64
+and Steam Deck; macOS Apple Silicon packaging and helper verification are ready
+for live overlay proof.
 
 It uses Valve's SpaceWar sample App ID `480` by default. Override it with
 `STEAM_BRIDGE_APP_ID` when testing your own app.
@@ -32,10 +34,23 @@ self-contained Electron smoke app:
 
 ```sh
 gh run download <run-id> --dir /tmp/steam-bridge-release
+npm run example:package:mac -- --artifacts-dir /tmp/steam-bridge-release
 npm run example:package:linux -- --artifacts-dir /tmp/steam-bridge-release
+npm run example:package:win -- --artifacts-dir /tmp/steam-bridge-release
+```
+
+For the current host platform, `npm run native:build` is enough for a local
+package check. The packager will stage `steam_bridge_native.local.node` under
+the target prebuild name when a release prebuild is not present:
+
+```sh
+npm run native:build
+npm run example:package:mac
 ```
 
 Outputs are written under `dist/electron-smoke/<target>/`.
+The macOS package includes `macos-electron-smoke.sh` beside
+`SteamBridgeSmoke.app`; the Linux package includes `linux-electron-smoke.sh`.
 
 ## Autorun Logs
 
@@ -57,8 +72,8 @@ approval URL for your own Steam app. Add
 `STEAM_BRIDGE_SMOKE_REQUIRE_OVERLAY_ACTIVE=1` when the test must fail unless
 Steam reports an active overlay.
 
-The Linux and Steam Deck helpers expose the same settings as `--web-url` and
-`--web-modal`:
+The Linux, Steam Deck, and macOS helpers expose the same settings as
+`--web-url` and `--web-modal`:
 
 ```sh
 npm run steam-deck:smoke -- \
@@ -67,6 +82,17 @@ npm run steam-deck:smoke -- \
   --action web \
   --web-url https://store.steampowered.com/app/480/ \
   --web-modal false
+```
+
+For macOS Apple Silicon packaging checks, use the packaged helper beside the
+`.app` bundle:
+
+```sh
+dist/electron-smoke/aarch64-apple-darwin/SteamBridgeSmoke-darwin-arm64/macos-electron-smoke.sh \
+  --mode print-launch-options \
+  --action presenter-web \
+  --web-url https://store.steampowered.com/app/480/ \
+  --web-modal true
 ```
 
 The same controls are also available as launch options, which is usually easier

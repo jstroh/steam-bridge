@@ -63,7 +63,7 @@ async function main() {
       run("npm", ["run", "release:assemble", "--", "--artifacts-dir", artifactsDir], repoRoot);
     }
 
-    assertPackageArtifacts(target, config.requiredFiles);
+    const packageArtifactSources = resolvePackageArtifactSources(target, config.requiredFiles);
     run("npm", ["run", "build", "-w", "steam-bridge"], repoRoot);
 
     tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-electron-smoke-"));
@@ -75,6 +75,7 @@ async function main() {
     const tarball = packSteamBridge(packDir);
     stageExample(stageDir, tarball);
     installStageDependencies(stageDir);
+    copyStagePackageArtifacts(stageDir, packageArtifactSources);
     pruneStagePackageArtifacts(stageDir, config.requiredFiles);
     await packageStage(stageDir);
   } finally {
@@ -170,6 +171,15 @@ async function packageStage(stageDir) {
 }
 
 function copyTargetHelpers(appPath) {
+  if (target === "aarch64-apple-darwin") {
+    const helperPath = path.join(appPath, "macos-electron-smoke.sh");
+    fs.copyFileSync(path.join(repoRoot, "scripts", "macos-electron-smoke.sh"), helperPath);
+    fs.chmodSync(helperPath, 0o755);
+    fs.copyFileSync(
+      path.join(repoRoot, "scripts", "verify-electron-smoke-result.cjs"),
+      path.join(appPath, "verify-electron-smoke-result.cjs")
+    );
+  }
   if (target === "x86_64-pc-windows-msvc") {
     fs.copyFileSync(
       path.join(repoRoot, "scripts", "windows-electron-smoke.ps1"),
@@ -183,19 +193,57 @@ function copyTargetHelpers(appPath) {
   }
 }
 
-function assertPackageArtifacts(target, fileNames) {
+function resolvePackageArtifactSources(target, fileNames) {
+  const sources = new Map();
+
   for (const fileName of fileNames) {
     const filePath = path.join(packageRoot, fileName);
-    if (!fs.existsSync(filePath) || fs.statSync(filePath).size === 0) {
-      throw new Error(
-        [
-          `Missing ${target} package artifact: ${fileName}`,
-          "Run a Release workflow, download artifacts with `gh run download <run-id> --dir /tmp/steam-bridge-release`,",
-          "then pass `--artifacts-dir /tmp/steam-bridge-release`."
-        ].join("\n")
-      );
+    if (isNonEmptyFile(filePath)) {
+      sources.set(fileName, filePath);
+      continue;
     }
+
+    const localNativePath = path.join(packageRoot, "steam_bridge_native.local.node");
+    if (fileName.endsWith(".node") && isCurrentHostTarget(target) && isNonEmptyFile(localNativePath)) {
+      sources.set(fileName, localNativePath);
+      continue;
+    }
+
+    throw new Error(
+      [
+        `Missing ${target} package artifact: ${fileName}`,
+        "Run `npm run native:build` for the current host target, or run a Release workflow,",
+        "download artifacts with `gh run download <run-id> --dir /tmp/steam-bridge-release`,",
+        "then pass `--artifacts-dir /tmp/steam-bridge-release`."
+      ].join("\n")
+    );
   }
+
+  return sources;
+}
+
+function copyStagePackageArtifacts(stageDir, artifactSources) {
+  const bridgeDir = path.join(stageDir, "node_modules", "steam-bridge");
+  for (const [fileName, source] of artifactSources) {
+    const destination = path.join(bridgeDir, fileName);
+    if (path.resolve(source) === path.resolve(destination)) {
+      continue;
+    }
+    fs.copyFileSync(source, destination);
+    fs.chmodSync(destination, fs.statSync(source).mode);
+  }
+}
+
+function isCurrentHostTarget(target) {
+  try {
+    return currentTarget() === target;
+  } catch {
+    return false;
+  }
+}
+
+function isNonEmptyFile(filePath) {
+  return fs.existsSync(filePath) && fs.statSync(filePath).isFile() && fs.statSync(filePath).size > 0;
 }
 
 function cleanPackageArtifacts() {

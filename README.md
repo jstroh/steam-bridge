@@ -234,6 +234,15 @@ npm run example:package:linux -- --artifacts-dir /tmp/steam-bridge-release
 npm run example:package:win -- --artifacts-dir /tmp/steam-bridge-release
 ```
 
+For the current host platform, a local native build is enough for a local smoke
+package. The example packager stages `steam_bridge_native.local.node` under the
+target prebuild name when a release prebuild is not present:
+
+```sh
+npm run native:build
+npm run example:package:mac
+```
+
 The example README has the Steam Deck Game Mode, Deck Desktop Mode, and desktop
 platform smoke-test flow, including an autorun mode that prints a
 `STEAM_BRIDGE_SMOKE_RESULT` JSON line for scripted checks. When scripting Steam

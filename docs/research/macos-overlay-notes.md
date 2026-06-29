@@ -23,6 +23,20 @@ Bridge's macOS Electron overlay diagnostics.
 
 ## Local Smoke Evidence
 
+As of 2026-06-29, the Apple Silicon local developer path can build and package
+the Electron smoke app without downloaded release artifacts:
+
+- `npm run native:build` builds the macOS arm64 native addon and links the Steam
+  dylibs into `packages/steam-bridge`.
+- `npm run example:package:mac` stages `steam_bridge_native.local.node` under
+  the release-style `steam_bridge_native.darwin-arm64.node` name when a release
+  prebuild is not present.
+- The packaged app contains arm64-only `steam_bridge_native.darwin-arm64.node`,
+  `libsteam_api.dylib`, and `libsdkencryptedappticket.dylib`.
+- The package includes `macos-electron-smoke.sh` beside `SteamBridgeSmoke.app`;
+  its self-test uses the shared Node smoke verifier against `darwin/arm64`
+  presenter diagnostics.
+
 As of 2026-06-26 on macOS Apple Silicon, the packaged Electron smoke app can be
 launched through a Steam non-Steam shortcut with SpaceWar App ID `480`.
 
