@@ -48,6 +48,15 @@ npm run native:build
 npm run example:package:mac
 ```
 
+The Windows package includes `windows-electron-smoke.ps1`. Use
+`-Mode print-launch-options` to generate non-Steam shortcut arguments, or
+`-Mode steam-launch` with `-ShortcutGameId` to verify the shortcut result. The
+helper accepts the same generic smoke action names as the Deck/macOS helpers,
+including `presenter-web-open-and-wait`,
+`presenter-store-open-and-wait`, `presenter-friends-open-and-wait`,
+`presenter-dialog-auto-open-and-wait`, `presenter-checkout`,
+`presenter-shortcut`, and the passive achievement notification actions.
+
 Outputs are written under `dist/electron-smoke/<target>/`.
 The macOS package includes `macos-electron-smoke.sh` beside
 `SteamBridgeSmoke.app`; the Linux package includes `linux-electron-smoke.sh`.

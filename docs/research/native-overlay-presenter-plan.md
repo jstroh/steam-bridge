@@ -689,7 +689,10 @@ Windows gates:
 
 - existing Electron overlay path still passes;
 - native package still loads;
-- checkout/web/store overlay smoke checks do not regress.
+- checkout/web/store/Friends/dialog-equivalent overlay smoke checks do not
+  regress;
+- checkout approval-route plumbing and passive notification smoke actions can
+  be launched through the packaged Windows helper for baseline coverage.
 
 ## Presenter Diagnostics
 

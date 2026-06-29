@@ -27,6 +27,10 @@ Steam Bridge targets Steam desktop platforms for Electron and Node:
 
 Intel macOS is intentionally not supported.
 
+The packaged Windows smoke helper accepts the same generic smoke actions as the
+Deck/macOS helpers for web, store, Friends, dialog-equivalent, checkout,
+shortcut, and passive notification regression checks.
+
 ## Quick Start
 
 For local smoke tests, use Valve's SpaceWar sample App ID `480`. Replace it with

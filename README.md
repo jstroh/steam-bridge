@@ -248,6 +248,13 @@ platform smoke-test flow, including an autorun mode that prints a
 `STEAM_BRIDGE_SMOKE_RESULT` JSON line for scripted checks. When scripting Steam
 Deck non-Steam shortcuts, reload Steam after writing `shortcuts.vdf` and launch
 the printed full shortcut game ID, not the internal shortcut app ID.
+
+The packaged Windows smoke helper can drive the same generic smoke actions used
+by the other platforms, including presenter-backed web, store, Friends,
+dialog-equivalent, checkout, shortcut, and passive notification routes. Windows
+is treated as a regression baseline: use those actions to confirm the ordinary
+Electron/Steam overlay path still works before shipping a Windows build.
+
 The managed Electron overlay helper also owns the default Shift+Tab keyboard
 shortcut bridge, routing it through the same presenter-backed Friends/chat path
 used by the Deck Desktop proof instead of relying on Steam to hook Chromium

@@ -31,6 +31,7 @@ try {
   run("bash", [path.join(repoRoot, "scripts", "macos-overlay-matrix.sh"), "--mode", "self-test"], {
     cwd: repoRoot
   });
+  runWindowsSmokeHelperStaticChecks();
 
   console.log("Packed steam-bridge package smoke test passed.");
 } finally {
@@ -38,6 +39,28 @@ try {
     console.log(`Keeping package smoke temp directory: ${tempRoot}`);
   } else {
     fs.rmSync(tempRoot, { recursive: true, force: true });
+  }
+}
+
+function runWindowsSmokeHelperStaticChecks() {
+  const helper = fs.readFileSync(path.join(repoRoot, "scripts", "windows-electron-smoke.ps1"), "utf8");
+  for (const expected of [
+    "presenter-web-open-and-wait",
+    "presenter-store-open-and-wait",
+    "presenter-friends-open-and-wait",
+    "presenter-dialog-auto-open-and-wait",
+    "presenter-checkout",
+    "presenter-shortcut",
+    "presenter-achievement-progress",
+    "presenter-achievement-unlock",
+    "--steam-bridge-smoke-diagnostic-dir=$DiagnosticDir",
+    "--steam-bridge-smoke-web-url=$WebUrl",
+    "--steam-bridge-smoke-checkout-transaction-id=$CheckoutTransactionId",
+    "function Test-OverlayActiveEvent",
+    "RequireOverlayActivated",
+    "function Add-DefaultRequireEvents"
+  ]) {
+    assert.ok(helper.includes(expected), `Windows smoke helper missing ${expected}`);
   }
 }
 
