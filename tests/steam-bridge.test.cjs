@@ -5832,6 +5832,9 @@ test("electron steam overlay open holds the presenter until Steam reports shown"
 
   t.after(clearSteamBridgeCache);
 
+  let focusCount = 0;
+  let showCount = 0;
+  let invalidateCount = 0;
   const window = {
     isDestroyed() {
       return false;
@@ -5839,10 +5842,18 @@ test("electron steam overlay open holds the presenter until Steam reports shown"
     getNativeWindowHandle() {
       return hostHandle;
     },
+    show() {
+      showCount += 1;
+    },
+    focus() {
+      focusCount += 1;
+    },
     once() {},
     webContents: {
       once() {},
-      invalidate() {},
+      invalidate() {
+        invalidateCount += 1;
+      },
       send() {}
     }
   };
@@ -5878,6 +5889,9 @@ test("electron steam overlay open holds the presenter until Steam reports shown"
   assert.equal(parked.clickThrough, true);
   assert.equal(parked.transparent, true);
   assert.equal(parked.currentFps, 0);
+  assert.equal(showCount, 1);
+  assert.equal(focusCount, 1);
+  assert.equal(invalidateCount, 1);
 
   overlay.close();
 });
@@ -7466,6 +7480,7 @@ test("native overlay session owns the probe pump lifecycle", async (t) => {
   assert.equal(hostSession.snapshot().nativeHostOpen, true);
 
   fake.callbacks.get(331)({ active: false, app_id: 480 });
+  assert.equal(restoreFocusCount, 1);
   await new Promise((resolve) => setTimeout(resolve, 560));
   assert.equal(restoreFocusCount, 1);
 

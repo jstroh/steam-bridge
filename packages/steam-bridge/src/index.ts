@@ -7334,7 +7334,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       clearTimeout(restoreFocusTimer);
     }
 
-    restoreFocusTimer = setTimeout(() => {
+    const restoreFocus = (): void => {
       restoreFocusTimer = undefined;
 
       if (closed) {
@@ -7366,7 +7366,14 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
         setHostInputPassthrough(true);
         setHostOpaque(false);
       }
-    }, restoreFocusDelayMs);
+    };
+
+    if (restoreFocusDelayMs === 0) {
+      restoreFocus();
+      return;
+    }
+
+    restoreFocusTimer = setTimeout(restoreFocus, restoreFocusDelayMs);
     restoreFocusTimer.unref?.();
   }
 
@@ -7867,7 +7874,7 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
       clearTimeout(restoreFocusTimer);
     }
 
-    restoreFocusTimer = setTimeout(() => {
+    const restoreFocus = (): void => {
       restoreFocusTimer = undefined;
       if (closed) {
         return;
@@ -7878,7 +7885,14 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
       } catch (error) {
         lastError = error;
       }
-    }, restoreFocusDelayMs);
+    };
+
+    if (restoreFocusDelayMs === 0) {
+      restoreFocus();
+      return;
+    }
+
+    restoreFocusTimer = setTimeout(restoreFocus, restoreFocusDelayMs);
     restoreFocusTimer.unref?.();
   }
 
