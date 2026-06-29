@@ -56,7 +56,8 @@ Options:
 Suites:
   minimal  presenter web, Friends, shortcut, checkout prepare, and passive toast.
   core     minimal plus unlock toast, store, profile, community, stats, achievements,
-           OfficialGameGroup dialog equivalent, checkout approval-route plumbing, and web shortcut.
+           user profile dialog, OfficialGameGroup dialog equivalent, checkout approval-route
+           plumbing, and web shortcut.
   full     core plus all known high-level dialog-equivalent routes.
 EOF
 }
@@ -228,6 +229,7 @@ const metadata = {
   visualCloseInput: optionValue("--visual-close-input"),
   visualToggleInput: optionValue("--visual-toggle-input"),
   shortcutTarget: optionValue("--shortcut-target"),
+  userDialog: optionValue("--user-dialog"),
   webModal: optionValue("--web-modal"),
   resultFile: optionValue("--result-file"),
   diagnosticsDir: optionValue("--collect-diagnostics-dir"),
@@ -377,7 +379,7 @@ run_summary_self_test() {
 }
 
 run_self_test() {
-  local self_path minimal_output core_output full_output first_core_case second_core_case shortcut_friends_case checkout_prepare_case passive_toast_case passive_unlock_case shortcut_web_case
+  local self_path minimal_output core_output full_output first_core_case second_core_case shortcut_friends_case checkout_prepare_case passive_toast_case passive_unlock_case user_case shortcut_web_case
   self_path="${BASH_SOURCE[0]}"
 
   minimal_output="$(
@@ -409,8 +411,8 @@ run_self_test() {
   )"
 
   require_case_count "$minimal_output" "5" "minimal matrix"
-  require_case_count "$core_output" "15" "core matrix"
-  require_case_count "$full_output" "20" "full matrix"
+  require_case_count "$core_output" "16" "core matrix"
+  require_case_count "$full_output" "21" "full matrix"
 
   require_contains "$core_output" "--action presenter-web" "core matrix must include presenter web."
   require_contains "$core_output" "--action presenter-friends" "core matrix must include Friends."
@@ -424,6 +426,7 @@ run_self_test() {
   require_contains "$core_output" "--action presenter-community" "core matrix must include community."
   require_contains "$core_output" "--action presenter-stats" "core matrix must include stats."
   require_contains "$core_output" "--action presenter-achievements" "core matrix must include achievements."
+  require_contains "$core_output" "--action presenter-user --user-dialog steamid" "core matrix must include user dialog equivalent routing."
   require_contains "$core_output" "--action presenter-dialog-auto --dialog OfficialGameGroup" "core matrix must include a dialog-equivalent route."
   require_contains "$core_output" "--checkout-transaction-id 123456789" "core matrix must include synthetic checkout approval-route plumbing."
   require_contains "$core_output" "--shortcut-target web" "core matrix must include configurable shortcut target proof."
@@ -440,7 +443,8 @@ run_self_test() {
   checkout_prepare_case="$(matrix_case_command "$core_output" "04-checkout-prepare")"
   passive_toast_case="$(matrix_case_command "$core_output" "06-passive-toast")"
   passive_unlock_case="$(matrix_case_command "$core_output" "07-passive-unlock-toast")"
-  shortcut_web_case="$(matrix_case_command "$core_output" "15-shortcut-web")"
+  user_case="$(matrix_case_command "$core_output" "14-user-steamid")"
+  shortcut_web_case="$(matrix_case_command "$core_output" "16-shortcut-web")"
 
   require_not_contains "$first_core_case" "--skip-copy" "first matrix case must copy the package."
   require_contains "$second_core_case" "--skip-copy" "later matrix cases should reuse the copied package."
@@ -448,6 +452,7 @@ run_self_test() {
   require_not_contains "$checkout_prepare_case" "--result-delay-ms" "checkout readiness must use the normal settling delay."
   require_contains "$passive_toast_case" "--result-delay-ms 1200" "passive toast should use the short notification capture delay."
   require_contains "$passive_unlock_case" "--result-delay-ms 1200" "passive unlock toast should use the short notification capture delay."
+  require_contains "$user_case" "--user-dialog steamid" "user dialog proof should pass the user dialog name."
   require_not_contains "$shortcut_web_case" "--visual-toggle-open-delay" "web shortcut proof should use lifecycle evidence instead of a fixed open delay."
   require_contains "$shortcut_web_case" "--visual-close-input toggle" "web shortcut proof should close with Shift+Tab-only toggle input."
   run_summary_self_test
@@ -548,6 +553,10 @@ if [ "$suite" = "core" ] || [ "$suite" = "full" ]; then
 
   run_web_surface_case "achievements" \
     --action presenter-achievements
+
+  run_web_surface_case "user-steamid" \
+    --action presenter-user \
+    --user-dialog steamid
 
   run_dialog_auto_case "OfficialGameGroup"
 

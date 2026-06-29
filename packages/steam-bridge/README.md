@@ -135,7 +135,8 @@ The package also includes overlay diagnostics through
 `client.utils.getOverlayDiagnostics()`, bridge-owned native overlay presenter
 helpers such as `client.overlay.attachPresenter()` and
 `client.overlay.createElectronSteamOverlay()`, `client.overlay.openSteamOverlay()`,
-`client.overlay.openWebOverlay()`, and `client.overlay.openFriendsOverlay()`, and
+`client.overlay.openWebOverlay()`, `client.overlay.openFriendsOverlay()`, and
+`client.overlay.openUserOverlay()`, and
 compatibility session helpers such as
 `client.overlay.activateDialogWithNativeSession()`,
 `client.overlay.activateToStoreWithNativeSession()`, and
@@ -204,6 +205,11 @@ await steamOverlay.openAndWait({
   type: "achievements",
   appId: 480
 });
+
+await steamOverlay.openAndWait({
+  type: "user",
+  dialog: client.overlay.UserDialog.SteamId
+});
 ```
 
 The manager owns a reusable native presenter, keeps it passive and click-through
@@ -219,7 +225,7 @@ Shift+Tab pass through so Steam can handle the close/toggle side. Deck Desktop
 proof now verifies a second Shift+Tab closes the managed overlay and returns
 focus to the app. It is the
 recommended builder-facing entry point: web, store, Friends, Profile,
-Community, Stats, Achievements, and checkout targets route through the
+Community, Stats, Achievements, user-profile, and checkout targets route through the
 presenter-backed paths
 used by the Steam Deck Desktop Mode proofs; `openSteamOverlay(...)` and the
 lower-level named helpers remain available for apps that prefer explicit
@@ -285,6 +291,14 @@ Electron child-process isolation intact. Use
 omit `steamId64` to open the current user's profile. This covers the common
 profile case for raw `ActivateGameOverlayToUser` through the same
 presenter-backed Steam web surface. Use
+`steamOverlay.open({ type: "user", dialog: client.overlay.UserDialog.SteamId, steamId64 })`
+for the same profile route through the high-level user-dialog router. The
+`user` target routes verified web-backed user dialog names through the presenter
+by default: `steamid`/`profile`, `stats`, and `achievements`. Native-only prompt
+dialogs such as `chat`, `jointrade`, and friend request actions remain raw
+Steamworks diagnostics; pass `route: "native"` or call
+`openNativeUserOverlay(...)` only when explicitly testing
+`ActivateGameOverlayToUser(...)` behavior. Use
 `steamOverlay.open({ type: "players", steamId64 })` for the current user's or a
 specified user's Steam Community players page through the same presenter-backed
 web surface. Use
@@ -332,9 +346,11 @@ with `steamOverlay.open(...)`, or the lower-level `client.overlay.attachPresente
 `client.overlay.openFriendsOverlay(...)`, `client.overlay.openProfileOverlay(...)`,
 `client.overlay.openPlayersOverlay(...)`, `client.overlay.openCommunityOverlay(...)`,
 `client.overlay.openStatsOverlay(...)`, and
+`client.overlay.openAchievementsOverlay(...)`, `client.overlay.openUserOverlay(...)`, and
 `client.overlay.openDialogEquivalentOverlay(...)` helpers, or the Electron smoke app's
 `presenter-web` / `presenter-friends` / `presenter-profile` /
-`presenter-players` / `presenter-community` / `presenter-stats` / `presenter-dialog-auto` / `presenter-shortcut` actions for
+`presenter-players` / `presenter-community` / `presenter-stats` /
+`presenter-achievements` / `presenter-user` / `presenter-dialog-auto` / `presenter-shortcut` actions for
 the generic proof. Deck testing has verified a
 single Steam overlay target,
 `active=true` overlay callbacks, overlay close input, and clean return to the
@@ -375,7 +391,7 @@ managed `presenter-shortcut` keyboard path, that probe verifies
 diagnostics. Shortcut matrix cases use `--visual-close-input toggle` to prove a
 Shift+Tab-only close. Use `--shortcut-target <name>` to test non-default shortcut
 targets such as `profile`, `web`, `store`, `community`, `stats`, `achievements`, `dialog`,
-or `checkout`; Deck Desktop fullscreen proof includes
+`user`, or `checkout`; Deck Desktop fullscreen proof includes
 `--shortcut-target web --web-modal true`, with the Deck runner waiting for the
 smoke lifecycle log to report shortcut-open and active overlay events before
 capturing the opened surface. The Deck runner can also
@@ -399,7 +415,7 @@ npm run steam-deck:overlay-matrix -- \
 ```
 
 The matrix collects per-case screenshots and diagnostics for the managed
-presenter routes: modal web, store, Friends, profile, community, stats, achievements,
+presenter routes: modal web, store, Friends, profile, community, stats, achievements, user,
 dialog equivalents, checkout readiness, synthetic checkout approval-route
 plumbing, Shift+Tab shortcut routing, and passive progress/unlock toasts. After a live run it
 summarizes every result and lifecycle log, failing if a case reports crash

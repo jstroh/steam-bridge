@@ -22,6 +22,7 @@ const MANAGED_LIFECYCLE_ACTIONS = new Set([
   "presenter-community",
   "presenter-stats",
   "presenter-achievements",
+  "presenter-user",
   "presenter-shortcut"
 ]);
 const PASSIVE_NOTIFICATION_ACTIONS = new Map([

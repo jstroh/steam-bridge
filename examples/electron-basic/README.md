@@ -90,7 +90,7 @@ Supported autorun actions are `none`, `dialog`, `friends`, `store`, `web`,
 `presenter-dialog`, `presenter-store`, `presenter-web`, `presenter-friends`,
 `presenter-profile`, `presenter-players`, `presenter-community`,
 `presenter-stats`, `presenter-achievements`,
-`presenter-checkout`, `presenter-shortcut`, and
+`presenter-user`, `presenter-checkout`, `presenter-shortcut`, and
 `presenter-achievement-progress`, and `presenter-achievement-unlock`.
 `native-probe` is a compatibility alias for `native-dialog`. On Linux, the
 `native-*` actions open a bridge-owned X11/GLX native presenter, keep it
@@ -161,6 +161,12 @@ overlay route instead of the raw Desktop achievements dialog. SpaceWar App ID
 `480` can redirect that web achievements URL to the user's profile because Steam
 Community does not expose a public web stats page for it; a real app with
 web-visible stats is needed for achievements content proof.
+Use `presenter-user --user-dialog steamid` to verify the high-level
+`client.overlay.openUserOverlay(...)` route for the common
+`ActivateGameOverlayToUser("steamid", user)` profile case. The same router maps
+`stats` and `achievements` to presenter-backed web surfaces; prompt-style names
+such as `chat`, `jointrade`, and friend request actions are native-only
+diagnostics and should be tested explicitly with `route: "native"` in app code.
 Use `presenter-checkout` to verify checkout readiness. Without
 `STEAM_BRIDGE_SMOKE_CHECKOUT_URL` or
 `STEAM_BRIDGE_SMOKE_CHECKOUT_TRANSACTION_ID`, it calls
@@ -213,7 +219,7 @@ so Steam can handle close/toggle behavior. Deck Desktop proof now verifies the
 second Shift+Tab closes the overlay and returns focus to the app. Add
 `--shortcut-target <name>` to test another presenter-backed target through the
 same focused Shift+Tab path; supported smoke targets are `friends`, `profile`,
-`players`, `web`, `store`, `community`, `stats`, `achievements`, `dialog`, and
+`players`, `web`, `store`, `community`, `stats`, `achievements`, `user`, `dialog`, and
 `checkout`.
 The `dialog` target uses the high-level auto router; unsupported dialog names
 throw instead of silently falling back to raw Steam overlay behavior. Use the
@@ -310,7 +316,7 @@ npm run steam-deck:overlay-matrix -- \
 ```
 
 This packages the Linux x64 smoke app, runs preflight, then drives the managed
-presenter routes for modal web, store, Friends, profile, community, stats, achievements,
+presenter routes for modal web, store, Friends, profile, community, stats, achievements, user,
 dialog equivalents, checkout readiness, synthetic checkout approval-route
 plumbing, Shift+Tab shortcut routing, and passive achievement progress/unlock
 toasts.

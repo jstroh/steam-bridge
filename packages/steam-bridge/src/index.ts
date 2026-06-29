@@ -1732,6 +1732,18 @@ export type SteamOverlayAchievementsTarget = NativeOverlayAppPagePresenterOption
   type: "achievements";
 };
 
+export type SteamOverlayUserDialogRoute = "auto" | "native";
+
+export type NativeOverlayUserDialogPresenterOptions = NativeOverlayAppPagePresenterOptions & {
+  dialog?: string;
+  steamId64?: bigint | number | string;
+  route?: SteamOverlayUserDialogRoute;
+};
+
+export type SteamOverlayUserTarget = NativeOverlayUserDialogPresenterOptions & {
+  type: "user";
+};
+
 export interface SteamOverlayCheckoutUrlOptions {
   returnUrl?: string;
 }
@@ -1761,6 +1773,7 @@ export type SteamOverlayTarget =
   | SteamOverlayCommunityTarget
   | SteamOverlayStatsTarget
   | SteamOverlayAchievementsTarget
+  | SteamOverlayUserTarget
   | SteamOverlayCheckoutTarget
   | SteamOverlayDialogTarget;
 
@@ -6020,6 +6033,19 @@ export const Dialog = {
   Achievements: 6
 } as const;
 
+export const UserDialog = {
+  SteamId: "steamid",
+  Profile: "steamid",
+  Chat: "chat",
+  JoinTrade: "jointrade",
+  Stats: "stats",
+  Achievements: "achievements",
+  FriendAdd: "friendadd",
+  FriendRemove: "friendremove",
+  FriendRequestAccept: "friendrequestaccept",
+  FriendRequestIgnore: "friendrequestignore"
+} as const;
+
 export const StoreFlag = {
   None: 0,
   AddToCart: 1,
@@ -7789,6 +7815,52 @@ export function openAchievementsOverlay(
   });
 }
 
+export function openNativeUserOverlay(
+  dialog: string = UserDialog.SteamId,
+  steamId64: bigint | number | string = getSteamId().steamId64,
+  options: NativeOverlayPresenterOverlayOptions = {}
+): NativeOverlayPresenter {
+  return activateWithOverlayPresenter(
+    options,
+    () => {
+      native().overlayActivateDialogToUser(userDialogName(dialog), BigInt(normalizeSteamId64(steamId64)));
+    },
+    "transparent-input"
+  );
+}
+
+export function openUserOverlay(options: NativeOverlayUserDialogPresenterOptions = {}): NativeOverlayPresenter {
+  const { dialog = UserDialog.SteamId, route = "auto", steamId64 = getSteamId().steamId64, ...presenterOptions } = options;
+  if (route === "native") {
+    return openNativeUserOverlay(dialog, steamId64, presenterOptions);
+  }
+  return openUserEquivalentOverlay(dialog, {
+    ...presenterOptions,
+    steamId64
+  });
+}
+
+export function openUserEquivalentOverlay(
+  dialog: string = UserDialog.SteamId,
+  options: NativeOverlayAppPagePresenterOptions = {}
+): NativeOverlayPresenter {
+  const name = userDialogName(dialog);
+  switch (name) {
+    case "steamid":
+    case "profile":
+      return openProfileOverlay(options);
+    case "stats":
+      return openStatsOverlay(options);
+    case "achievements":
+      return openAchievementsOverlay(options);
+    default:
+      throw new Error(
+        `Steam overlay user dialog "${name}" does not have a verified presenter-backed route. ` +
+          'Pass route: "native" or call openNativeUserOverlay(...) to use raw ActivateGameOverlayToUser diagnostics.'
+      );
+  }
+}
+
 export function openCheckoutOverlay(options: Omit<SteamOverlayCheckoutTarget, "type"> = {}): NativeOverlayPresenter {
   const {
     modal = true,
@@ -7893,6 +7965,10 @@ export function openSteamOverlay(target: SteamOverlayTarget): NativeOverlayPrese
     case "achievements": {
       const { type, ...options } = target;
       return openAchievementsOverlay(options);
+    }
+    case "user": {
+      const { type, ...options } = target;
+      return openUserOverlay(options);
     }
     case "checkout": {
       const { type, ...options } = target;
@@ -12856,6 +12932,7 @@ export const gameServerNetworkingSockets = {
 
 export const overlay = {
   Dialog,
+  UserDialog,
   StoreFlag,
   activateDialog(dialog: number | string): void {
     activateOverlay(dialog);
@@ -12881,6 +12958,9 @@ export const overlay = {
   openCommunityOverlay,
   openStatsOverlay,
   openAchievementsOverlay,
+  openNativeUserOverlay,
+  openUserOverlay,
+  openUserEquivalentOverlay,
   openCheckoutOverlay,
   openDialogEquivalentOverlay,
   openNativeStoreOverlay,
@@ -19635,6 +19715,14 @@ function dialogName(dialog: number | string): string {
   return ["Friends", "Community", "Players", "Settings", "OfficialGameGroup", "Stats", "Achievements"][dialog] ?? "Friends";
 }
 
+function userDialogName(dialog: string): string {
+  const name = dialog.trim().toLowerCase();
+  if (!name) {
+    throw new Error("Steam overlay user dialog name cannot be empty.");
+  }
+  return name;
+}
+
 function normalizeP2PPacket(packet: NativeP2PPacket): P2PPacket {
   return {
     data: packet.data,
@@ -20659,6 +20747,9 @@ const defaultExport = {
   openCommunityOverlay,
   openStatsOverlay,
   openAchievementsOverlay,
+  openNativeUserOverlay,
+  openUserOverlay,
+  openUserEquivalentOverlay,
   openCheckoutOverlay,
   openDialogEquivalentOverlay,
   openNativeStoreOverlay,

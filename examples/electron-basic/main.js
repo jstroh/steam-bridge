@@ -27,6 +27,7 @@ const CHECKOUT_TRANSACTION_ID =
 const CHECKOUT_RETURN_URL =
   CLI_OPTIONS.checkoutReturnUrl || process.env.STEAM_BRIDGE_SMOKE_CHECKOUT_RETURN_URL || "";
 const OVERLAY_DIALOG = CLI_OPTIONS.overlayDialog || process.env.STEAM_BRIDGE_SMOKE_OVERLAY_DIALOG || "Friends";
+const USER_DIALOG = CLI_OPTIONS.userDialog || process.env.STEAM_BRIDGE_SMOKE_USER_DIALOG || "steamid";
 const SHORTCUT_TARGET =
   CLI_OPTIONS.shortcutTarget || process.env.STEAM_BRIDGE_SMOKE_SHORTCUT_TARGET || "friends";
 const PRESENTER_MODE =
@@ -442,6 +443,9 @@ async function runAutorunAction(action) {
       case "presenter-achievements":
         openPresenterAchievementsOverlay();
         return { ok: true, action };
+      case "presenter-user":
+        openPresenterUserOverlay();
+        return { ok: true, action };
       case "presenter-checkout":
         await openPresenterCheckoutOverlay();
         return { ok: true, action };
@@ -728,6 +732,25 @@ function openPresenterAchievementsOverlay() {
   return snapshot();
 }
 
+function openPresenterUserOverlay() {
+  const overlay = ensureElectronSteamOverlay();
+  overlay.open({ type: "user", dialog: USER_DIALOG, appId: APP_ID });
+  recordEvent("overlay:presenter-open", {
+    target: "user",
+    dialog: USER_DIALOG,
+    route: "auto",
+    appId: APP_ID,
+    presenter: overlay.snapshot()
+  });
+  observeManagedOverlayLifecycle(overlay, {
+    target: "user",
+    dialog: USER_DIALOG,
+    route: "auto",
+    appId: APP_ID
+  });
+  return snapshot();
+}
+
 async function openPresenterCheckoutOverlay() {
   const overlay = ensureElectronSteamOverlay();
   if (CHECKOUT_URL || CHECKOUT_TRANSACTION_ID) {
@@ -907,6 +930,8 @@ function resolveShortcutOverlayTarget() {
       return { type: "stats", appId: APP_ID };
     case "achievements":
       return { type: "achievements", appId: APP_ID };
+    case "user":
+      return { type: "user", dialog: USER_DIALOG, appId: APP_ID };
     case "dialog":
       return { type: "dialog", dialog: OVERLAY_DIALOG, appId: APP_ID };
     case "checkout":
@@ -1107,6 +1132,7 @@ function snapshot() {
       webUrl: WEB_URL,
       webModal: WEB_MODAL,
       overlayDialog: OVERLAY_DIALOG,
+      userDialog: USER_DIALOG,
       shortcutTarget: SHORTCUT_TARGET,
       presenterMode: EFFECTIVE_PRESENTER_MODE,
       configuredPresenterMode: PRESENTER_MODE || null,
@@ -1197,7 +1223,8 @@ function snapshot() {
     }),
     enumSmoke: {
       okResult: client.SteamworksEnums.EResult.k_EResultOK,
-      overlayDialogFriends: client.overlay.Dialog.Friends
+      overlayDialogFriends: client.overlay.Dialog.Friends,
+      overlayUserDialogSteamId: client.overlay.UserDialog.SteamId
     }
   });
 }
@@ -1583,7 +1610,7 @@ function maybeRecordPostClosePresenterSnapshot(type, payload) {
       return;
     }
 
-    if (!firstParkedSnapshot) {
+    if (!firstParkedSnapshot || presenter.pumpCount !== firstParkedSnapshot.pumpCount) {
       firstParkedSnapshot = presenter;
       recordEvent("overlay:presenter-after-close", {
         source: "state-change",
@@ -1785,6 +1812,7 @@ function isNativeSessionAction(action) {
     action === "presenter-community" ||
     action === "presenter-stats" ||
     action === "presenter-achievements" ||
+    action === "presenter-user" ||
     action === "presenter-checkout" ||
     action === "presenter-shortcut" ||
     action === "presenter-achievement-progress" ||
@@ -1844,6 +1872,7 @@ function parseSmokeArgs(args) {
     autorunResultDelayMs: undefined,
     overlayProfile: undefined,
     overlayDialog: undefined,
+    userDialog: undefined,
     shortcutTarget: undefined,
     presenterMode: undefined,
     overlayScrubChildEnv: undefined,
@@ -1913,6 +1942,9 @@ function parseSmokeArgs(args) {
         break;
       case "--steam-bridge-smoke-overlay-dialog":
         options.overlayDialog = value;
+        break;
+      case "--steam-bridge-smoke-user-dialog":
+        options.userDialog = value;
         break;
       case "--steam-bridge-smoke-shortcut-target":
         options.shortcutTarget = value;

@@ -17,6 +17,7 @@ checkout_url=""
 checkout_transaction_id=""
 checkout_return_url=""
 overlay_dialog=""
+user_dialog=""
 shortcut_target=""
 presenter_mode=""
 achievement_name=""
@@ -66,7 +67,7 @@ Options:
   --app-id ID                    Steam App ID to use. Defaults to 480.
   --action NAME                  none, dialog, friends, store, web, native-probe, native-dialog, native-store, native-web,
                                  presenter-dialog, presenter-dialog-auto, presenter-store, presenter-web, presenter-friends,
-                                 presenter-profile, presenter-players, presenter-community, presenter-stats, presenter-achievements, presenter-checkout,
+                                 presenter-profile, presenter-players, presenter-community, presenter-stats, presenter-achievements, presenter-user, presenter-checkout,
                                  presenter-shortcut, presenter-achievement-progress, presenter-achievement-unlock.
   --overlay-profile NAME         Electron overlay profile. Defaults to diagnostic.
   --overlay-scrub-child-env true|false
@@ -80,8 +81,9 @@ Options:
   --checkout-transaction-id ID   Steam checkout transaction ID for presenter-checkout.
   --checkout-return-url URL      Optional return URL for transaction checkout.
   --dialog NAME                  Dialog name for dialog/native-dialog/presenter-dialog actions. Defaults to Friends.
+  --user-dialog NAME             User dialog name for presenter-user. Defaults to steamid.
   --shortcut-target NAME         Presenter shortcut target: friends, profile, web, store, community,
-                                 stats, achievements, dialog, or checkout. Defaults to friends.
+                                 stats, achievements, user, dialog, or checkout. Defaults to friends.
   --presenter-mode MODE          Managed Electron overlay presenter mode: persistent or session.
                                  Defaults to persistent.
   --achievement-name NAME        Achievement for presenter-achievement-progress or presenter-achievement-unlock.
@@ -181,6 +183,10 @@ while [ "$#" -gt 0 ]; do
       ;;
     --dialog)
       overlay_dialog="${2:?missing --dialog value}"
+      shift 2
+      ;;
+    --user-dialog)
+      user_dialog="${2:?missing --user-dialog value}"
       shift 2
       ;;
     --shortcut-target)
@@ -349,6 +355,9 @@ smoke_args() {
   fi
   if [ -n "$overlay_dialog" ]; then
     printf '%s\n' "--steam-bridge-smoke-overlay-dialog=$overlay_dialog"
+  fi
+  if [ -n "$user_dialog" ]; then
+    printf '%s\n' "--steam-bridge-smoke-user-dialog=$user_dialog"
   fi
   if [ -n "$shortcut_target" ]; then
     printf '%s\n' "--steam-bridge-smoke-shortcut-target=$shortcut_target"
@@ -852,16 +861,22 @@ EOF
   require_no_crashes="0"
 
   overlay_dialog="Achievements"
+  user_dialog="steamid"
   presenter_mode="session"
   launch_options="$(smoke_args | paste -sd' ' -)"
   if [[ "$launch_options" != *"--steam-bridge-smoke-overlay-dialog=Achievements"* ]]; then
     echo "Self-test failed: Launch options must pass the requested overlay dialog." >&2
     exit 1
   fi
+  if [[ "$launch_options" != *"--steam-bridge-smoke-user-dialog=steamid"* ]]; then
+    echo "Self-test failed: Launch options must pass the requested user dialog." >&2
+    exit 1
+  fi
   if [[ "$launch_options" != *"--steam-bridge-smoke-presenter-mode=session"* ]]; then
     echo "Self-test failed: Launch options must pass the requested presenter mode." >&2
     exit 1
   fi
+  user_dialog=""
   presenter_mode=""
 
   checkout_transaction_id="123456789"

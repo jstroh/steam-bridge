@@ -78,6 +78,15 @@ timing hacks.
   overlay callbacks and returned cleanly to the app. SpaceWar's web achievements
   URL redirects to the user profile because it has no public web stats page, so
   achievements content proof needs a real app with web-visible stats.
+- Deck Desktop user dialog equivalents now have a product-shaped route:
+  `openUserOverlay({ dialog: "steamid", presenter })` and
+  `steamOverlay.open({ type: "user", dialog: "steamid" })` route the common
+  `ActivateGameOverlayToUser("steamid", user)` profile case through the same
+  reusable native web presenter. A 2026-06-28 Deck Desktop core matrix run for
+  App ID `480` emitted active/inactive callbacks, returned focus to the Electron
+  smoke app after the web close probe, used one `gameoverlayui` target attached
+  to the app process, and parked transparent/click-through at `currentFps=0`
+  without post-close pumping.
 - Deck Desktop store pages now have a product-shaped web route:
   `openStoreOverlay(appId, flag, { presenter })` and
   `steamOverlay.open({ type: "store", appId })` default to the Steam store web
@@ -464,6 +473,10 @@ Pass criteria:
   accepts input, closes, and returns to the app without duplicate Electron child
   overlay targets. Full achievements content proof requires an app whose Steam
   Community stats page is exposed.
+- User dialog equivalents for `steamid`/profile, `stats`, and `achievements`
+  route through `openUserOverlay` / `steamOverlay.open({ type: "user", ... })`
+  by default. Native-only prompt-style user dialogs remain explicit raw
+  diagnostics through `route: "native"`.
 - Store pages open through `openStoreOverlay` / `steamOverlay.open({ type:
   "store", appId })`, accept input, close through the Steam web close control,
   and return to the app without duplicate Electron child overlay targets.
