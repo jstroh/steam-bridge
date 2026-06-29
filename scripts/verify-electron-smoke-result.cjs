@@ -268,9 +268,15 @@ function verifyPassiveNotification() {
 
   const eventPresenter = presenterPayload(resultActionEvent) || presenterPayload(lifecycleActionEvent);
   const passivePresenter = eventPresenter || nativePresenter;
+  const managedOverlay = findManagedOverlayDiagnostics([
+    eventPresenter,
+    nativePresenter,
+    ...events.map(presenterPayload),
+    ...lifecycleEntries.map(presenterPayload)
+  ]);
   expect(Boolean(passivePresenter), "passive notification presenter snapshot available");
   if (passivePresenter) {
-    expectPassiveNotificationPresenter(passivePresenter, "passive notification");
+    expectPassiveNotificationPresenter(passivePresenter, "passive notification", managedOverlay);
   }
 }
 
@@ -349,7 +355,7 @@ function presenterPayload(event) {
   return presenter && typeof presenter === "object" ? presenter : undefined;
 }
 
-function expectPassiveNotificationPresenter(presenter, label) {
+function expectPassiveNotificationPresenter(presenter, label, managedOverlay) {
   expect(presenter.closed === false, `native presenter closed ${label}`);
   expect(presenter.attached === true, `native presenter attached ${label}`);
   expect(presenter.nativeHostOpen === true, `native presenter host open ${label}`);
@@ -359,7 +365,6 @@ function expectPassiveNotificationPresenter(presenter, label) {
   expect(presenter.transparent === true, `native presenter transparent ${label}`);
   expect(presenter.overlayActive === false, `native presenter overlay inactive ${label}`);
   expect(presenter.idleFps === 0, `native presenter idle FPS ${label}`);
-  const managedOverlay = presenter.electronOverlay;
   expect(Boolean(managedOverlay), `managed Electron overlay diagnostics available ${label}`);
   if (managedOverlay) {
     expect(
@@ -367,6 +372,15 @@ function expectPassiveNotificationPresenter(presenter, label) {
       `managed Electron overlay automatic notification priming enabled ${label}`
     );
   }
+}
+
+function findManagedOverlayDiagnostics(presenters) {
+  for (const presenter of presenters) {
+    if (presenter && typeof presenter === "object" && presenter.electronOverlay && typeof presenter.electronOverlay === "object") {
+      return presenter.electronOverlay;
+    }
+  }
+  return undefined;
 }
 
 function parseArgs(args) {

@@ -340,8 +340,24 @@ ensure_ready() {
 }
 
 cleanup_macos_smoke_processes() {
-  pkill -f 'SteamBridgeSmoke' 2>/dev/null || true
-  pkill -f 'gameoverlayui' 2>/dev/null || true
+  pkill -f '/SteamBridgeSmoke\.app/' 2>/dev/null || true
+  pkill -x 'gameoverlayui' 2>/dev/null || true
+}
+
+macos_steam_running() {
+  pgrep -f 'steam_osx|Steam Helper|Steam\.AppBundle|gameoverlayui' >/dev/null 2>&1
+}
+
+wait_for_macos_steam_exit() {
+  local deadline
+  deadline=$((SECONDS + ${1:?missing wait seconds}))
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    if ! macos_steam_running; then
+      return 0
+    fi
+    sleep 0.2
+  done
+  ! macos_steam_running
 }
 
 stop_macos_steam() {
@@ -357,24 +373,50 @@ stop_macos_steam() {
     kill "$quit_pid" >/dev/null 2>&1 || true
   fi
   wait "$quit_pid" >/dev/null 2>&1 || true
-  sleep 1
-  pkill -f 'steam_osx' 2>/dev/null || true
-  pkill -f 'Steam Helper' 2>/dev/null || true
-  pkill -f 'Steam\.AppBundle' 2>/dev/null || true
+  if wait_for_macos_steam_exit 5; then
+    return 0
+  fi
+  pkill -TERM -f 'steam_osx|Steam Helper|Steam\.AppBundle|gameoverlayui' 2>/dev/null || true
+  if wait_for_macos_steam_exit 5; then
+    return 0
+  fi
+  pkill -KILL -f 'steam_osx|Steam Helper|Steam\.AppBundle|gameoverlayui' 2>/dev/null || true
+  if ! wait_for_macos_steam_exit 5; then
+    echo "Failed to stop macOS Steam processes." >&2
+    return 1
+  fi
 }
 
 start_macos_steam() {
+  local started_at deadline
+  started_at="$(date '+%Y-%m-%d %H:%M:%S')"
   open -a Steam
-  local deadline
   deadline=$((SECONDS + 30))
   while [ "$SECONDS" -lt "$deadline" ]; do
-    if pgrep -f 'steam_osx|Steam Helper' >/dev/null 2>&1; then
+    if pgrep -f 'steam_osx' >/dev/null 2>&1 && macos_steam_logged_on_since "$started_at"; then
       return 0
     fi
     sleep 1
   done
-  echo "Timed out waiting for Steam to start." >&2
+  echo "Timed out waiting for Steam to start and log on." >&2
   return 1
+}
+
+macos_steam_logged_on_since() {
+  local started_at="$1"
+  local log_file="$HOME/Library/Application Support/Steam/logs/connection_log.txt"
+  [ -f "$log_file" ] || return 1
+  awk -v started_at="$started_at" '
+    /^\[[0-9-]+ [0-9:]+\]/ {
+      timestamp = substr($0, 2, 19)
+    }
+    timestamp >= started_at && /\[Logged On,/ {
+      found = 1
+    }
+    END {
+      exit found ? 0 : 1
+    }
+  ' "$log_file"
 }
 
 restart_macos_steam() {

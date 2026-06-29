@@ -443,10 +443,10 @@ verifies active/inactive callbacks, app focus return, `openAndWait(...)`
 completion after parking, no post-close presenter pumping, and no crash
 diagnostics. Current macOS proof covers modal web, store, Friends/chat, and the
 `OfficialGameGroup` dialog-equivalent route through the managed presenter. The
-helper also exposes `--require-passive-notification` for macOS toast proof; that
-gate requires the smoke result and lifecycle log to show the accepted
-achievement event, the matching Steam callback, no modal overlay activation, and
-a passive managed-presenter snapshot.
+helper also verifies macOS passive notification proof through
+`--require-passive-notification`; that gate requires the smoke result and
+lifecycle log to show the accepted achievement event, the matching Steam
+callback, no modal overlay activation, and a passive managed-presenter snapshot.
 The repository also provides `npm run macos:overlay-matrix`, which installs or
 updates one stable macOS Steam shortcut pointing at the in-bundle native
 launcher and a launcher env file. Each case rewrites only that env file, so

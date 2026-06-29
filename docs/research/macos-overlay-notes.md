@@ -124,9 +124,13 @@ Verified:
 - The macOS packaged helper now has a passive notification verification gate:
   `--require-passive-notification` requires the smoke result and lifecycle log
   to contain the accepted achievement event, the matching Steam callback, no
-  modal overlay activation, and a passive managed-presenter snapshot. This is
-  harness coverage for the next live macOS toast run; it is not a live macOS
-  toast pass by itself.
+  modal overlay activation, and a passive managed-presenter snapshot. A
+  2026-06-29 focused live run at
+  `/tmp/steam-bridge-macos-passive-toast-20260629-094107` passed this gate for
+  `presenter-achievement-progress`: Steam accepted progress for App ID `480`,
+  emitted `callback:achievement-stored`, kept the presenter passive,
+  transparent, click-through, non-focusable, overlay-inactive, and reported no
+  crash evidence.
 - `scripts/macos-overlay-matrix.sh` now owns repeatable macOS proof setup. It
   prints or runs a matrix of Steam-launched helper cases, installs or updates one
   stable Steam shortcut with the native launcher env-file flag, restarts Steam
@@ -147,11 +151,10 @@ Still not verified:
 - A shell-wrapper shortcut can set `SteamAppId=480` before app startup, but macOS
   strips the Steam `DYLD_INSERT_LIBRARIES` injection before the Electron child
   process starts, so that path is not useful for overlay verification.
-- Passive notification/toast and checkout presenter routes still need the same
-  live macOS evidence currently proven on Steam Deck Desktop Mode. The 2026-06-29
-  macOS proof now covers the managed web, store, Friends/chat, and
-  dialog-equivalent `openAndWait(...)` routes, while passive-toast verification
-  now has a macOS helper gate and matrix case ready for live use.
+- Checkout presenter routes still need the same live macOS evidence currently
+  proven on Steam Deck Desktop Mode. The 2026-06-29 macOS proof now covers the
+  managed web, store, Friends/chat, dialog-equivalent `openAndWait(...)`, and
+  passive achievement-progress notification routes.
 - Real purchase UI and `InitTxn` proof still require a real Steam app ID with a
   configured product or transaction. App ID `480` remains suitable only for
   generic overlay smoke tests.
@@ -159,10 +162,10 @@ Still not verified:
 The current macOS result should therefore be treated as Steam launch, injection,
 identity alignment, native presenter startup, modal web overlay activation,
 close, app focus return, and builder-facing `openAndWait(...)` parking coverage
-for Apple Silicon across web, store, Friends/chat, and dialog-equivalent wait
-routes. Passive notification/toast, checkout, and broader presenter-target
-coverage still need to be run before describing macOS overlay support as
-complete.
+for Apple Silicon across web, store, Friends/chat, dialog-equivalent wait
+routes, and passive achievement-progress notifications. Checkout and broader
+presenter-target coverage still need to be run before describing macOS overlay
+support as complete.
 
 ## Primary References
 

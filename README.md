@@ -512,6 +512,10 @@ behavior can be checked without app-facing overlay code. A 2026-06-28 Deck
 Desktop fullscreen run captured the `Interstellar` unlock toast over the smoke
 app with one overlay target, app focus preserved, passive presenter state, and
 no crash evidence.
+On macOS Apple Silicon, the packaged helper now uses the same passive progress
+action as a live verification gate: it requires the accepted achievement event,
+`callback:achievement-stored`, no modal overlay activation, a passive
+transparent/click-through presenter, and clean crash diagnostics.
 
 Steam Bridge routes overlay targets by how Steam renders them. Prefer
 `client.overlay.createElectronSteamOverlay(mainWindow).open(...)` for Electron

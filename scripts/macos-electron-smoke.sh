@@ -351,6 +351,7 @@ smoke_args() {
       "--steam-bridge-launch-overlay-game-id=$app_id"
     if [ -n "$launcher_env_file" ]; then
       printf '%s\n' "--steam-bridge-launch-env-file=$launcher_env_file"
+      return 0
     fi
   fi
 
@@ -440,11 +441,24 @@ ensure_app() {
 }
 
 wait_for_result_file() {
-  local deadline
+  local deadline no_steam_deadline steam_seen
   deadline=$((SECONDS + timeout_seconds))
+  no_steam_deadline=$((SECONDS + 15))
+  steam_seen="0"
   while [ "$SECONDS" -lt "$deadline" ]; do
     if [ -s "$result_file" ] && grep -q "^$result_prefix" "$result_file"; then
       return 0
+    fi
+    if [ "$mode" = "steam-launch" ]; then
+      if pgrep -f 'steam_osx' >/dev/null 2>&1; then
+        steam_seen="1"
+      elif [ "$steam_seen" = "1" ]; then
+        echo "Steam exited while waiting for smoke result file $result_file" >&2
+        return 1
+      elif [ "$SECONDS" -ge "$no_steam_deadline" ]; then
+        echo "Steam did not start while waiting for smoke result file $result_file" >&2
+        return 1
+      fi
     fi
     sleep 0.5
   done
@@ -924,11 +938,13 @@ if (crashDumps.length > 0) {
 }
 
 if (requireSmokeProcess) {
-  const processSnapshot = childProcess.spawnSync("ps", ["-axo", "command"], { encoding: "utf8" });
+  const expectedSmokePid = readResultPid();
+  const processSnapshot = childProcess.spawnSync("ps", ["-axo", "pid=,command="], { encoding: "utf8" });
   if (processSnapshot.status !== 0) {
     failures.push("could not read process list after close probe");
-  } else if (!processSnapshot.stdout.split(/\r?\n/).some(isSmokeAppMainProcess)) {
-    failures.push("SteamBridgeSmoke process is not running after close probe");
+  } else if (!processSnapshot.stdout.split(/\r?\n/).some((line) => isSmokeAppMainProcess(line, expectedSmokePid))) {
+    const expectedMessage = expectedSmokePid ? ` with pid ${expectedSmokePid}` : "";
+    failures.push(`SteamBridgeSmoke process${expectedMessage} is not running after close probe`);
   }
   const frontmostSnapshot = childProcess.spawnSync(
     "osascript",
@@ -1096,10 +1112,38 @@ function listCrashDumps(root) {
   }
 }
 
-function isSmokeAppMainProcess(command) {
-  return (
+function readResultPid() {
+  try {
+    const resultText = fs.readFileSync(resultFile, "utf8");
+    const resultLine = resultText
+      .split(/\r?\n/)
+      .reverse()
+      .find((line) => line.startsWith("STEAM_BRIDGE_SMOKE_RESULT "));
+    if (!resultLine) {
+      return undefined;
+    }
+    const parsed = JSON.parse(resultLine.slice("STEAM_BRIDGE_SMOKE_RESULT ".length));
+    const pid = parsed && parsed.snapshot && parsed.snapshot.process && parsed.snapshot.process.pid;
+    return Number.isSafeInteger(pid) && pid > 0 ? pid : undefined;
+  } catch (_error) {
+    return undefined;
+  }
+}
+
+function isSmokeAppMainProcess(processLine, expectedPid) {
+  const match = String(processLine).match(/^\s*(\d+)\s+(.+)$/);
+  const pid = match ? Number(match[1]) : undefined;
+  const command = match ? match[2] : String(processLine);
+  const executableMatches =
     /\/Contents\/MacOS\/SteamBridgeSmoke(?:\.electron)?(?:\s|$)/.test(command) &&
-    !/\/Helpers\//.test(command) &&
+    !/\/Helpers\//.test(command);
+  if (!executableMatches) {
+    return false;
+  }
+  if (expectedPid) {
+    return pid === expectedPid;
+  }
+  return (
     command.includes(`--steam-bridge-smoke-result-file=${resultFile}`)
   );
 }
@@ -1240,17 +1284,26 @@ NODE
     echo "Self-test failed: native launcher options must pass the overlay game ID." >&2
     exit 1
   fi
+  if [[ "$launch_options" != *"--steam-bridge-smoke-overlay-dialog=Achievements"* ]]; then
+    echo "Self-test failed: launch options must pass the requested overlay dialog." >&2
+    exit 1
+  fi
   launcher_env_file="/tmp/steam-bridge-macos-smoke.env"
   launch_options="$(smoke_args | paste -sd' ' -)"
   if [[ "$launch_options" != *"--steam-bridge-launch-env-file=/tmp/steam-bridge-macos-smoke.env"* ]]; then
     echo "Self-test failed: native launcher options must pass the launcher env file." >&2
     exit 1
   fi
-  launcher_env_file=""
-  if [[ "$launch_options" != *"--steam-bridge-smoke-overlay-dialog=Achievements"* ]]; then
-    echo "Self-test failed: launch options must pass the requested overlay dialog." >&2
+  if [[ "$launch_options" == *"--steam-bridge-smoke-result-file="* ]]; then
+    echo "Self-test failed: launcher env-file options must not include stale smoke result args." >&2
     exit 1
   fi
+  if [[ "$launch_options" == *"--steam-bridge-smoke-overlay-dialog=Achievements"* ]]; then
+    echo "Self-test failed: launcher env-file options must not include stale per-case smoke args." >&2
+    exit 1
+  fi
+  launcher_env_file=""
+  launch_options="$(smoke_args | paste -sd' ' -)"
   if [[ "$launch_options" != *"--steam-bridge-smoke-user-dialog=steamid"* ]]; then
     echo "Self-test failed: launch options must pass the requested user dialog." >&2
     exit 1
