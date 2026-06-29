@@ -229,8 +229,12 @@ updates after the managed shortcut opens; static targets should not need a
 resolver function just for side effects. The bridge consumes Shift+Tab only when
 it is opening a managed presenter-backed target; once Steam reports an active
 overlay, it lets Shift+Tab pass through so Steam can handle the close/toggle
-side. Deck Desktop proof now verifies a second Shift+Tab closes the managed
-overlay and returns focus to the app. It is the
+side. On macOS, Steam can consume Shift+Tab before Electron's normal
+`before-input-event` hook sees it, so Steam Bridge registers a focused-window
+global shortcut fallback only while the game window is focused, then unregisters
+it while Steam's overlay is active so the second Shift+Tab still closes
+normally. Deck Desktop and macOS proof now verify a second Shift+Tab closes the
+managed overlay and returns focus to the app. It is the
 recommended builder-facing entry point: web, store, Friends, Profile,
 Community, Stats, Achievements, user-profile, and checkout targets route through the
 presenter-backed paths
@@ -441,12 +445,14 @@ so Steam keeps `DYLD_INSERT_LIBRARIES` while the launcher aligns `SteamAppId`,
 can run `--close-probe`; it focuses the smoke app, sends the close input, and
 verifies active/inactive callbacks, app focus return, `openAndWait(...)`
 completion after parking, no post-close presenter pumping, and no crash
-diagnostics. Current macOS proof covers modal web, store, Friends/chat, and the
-`OfficialGameGroup` dialog-equivalent route through the managed presenter. The
-helper also verifies macOS passive notification proof through
-`--require-passive-notification`; that gate requires the smoke result and
-lifecycle log to show the accepted achievement event, the matching Steam
-callback, no modal overlay activation, and a passive managed-presenter snapshot.
+diagnostics. Current macOS proof covers modal web, store, Friends/chat, profile,
+community, stats, achievements, user chat/profile, known dialog equivalents,
+synthetic checkout approval-route plumbing, passive notification toasts, and
+managed Shift+Tab shortcut open/close through the presenter. The helper verifies
+macOS passive notification proof through `--require-passive-notification`; that
+gate requires the smoke result and lifecycle log to show the accepted
+achievement event, the matching Steam callback, no modal overlay activation, and
+a passive managed-presenter snapshot.
 The repository also provides `npm run macos:overlay-matrix`, which installs or
 updates one stable macOS Steam shortcut pointing at the in-bundle native
 launcher and a launcher env file. Each case rewrites only that env file, so
@@ -465,9 +471,10 @@ npm run steam-deck:overlay-matrix -- \
 ```
 
 The matrix collects per-case screenshots and diagnostics for the managed
-presenter routes: modal web, store, Friends, profile, community, stats, achievements, user,
-dialog equivalents, checkout readiness, synthetic checkout approval-route
-plumbing, Shift+Tab shortcut routing, and passive progress/unlock toasts. After a live run it
+presenter routes: modal web, store, Friends, profile, community, stats,
+achievements, user, dialog equivalents, checkout readiness, synthetic checkout
+approval-route plumbing, Shift+Tab shortcut routing, and passive
+progress/unlock toasts. After a live run it
 summarizes every result and lifecycle log, failing if a case reports crash
 dumps, fatal Electron lifecycle events, duplicate overlay targets, or missing
 presenter diagnostics, and it verifies post-close presenter parking plus the

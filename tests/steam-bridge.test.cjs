@@ -1,6 +1,7 @@
 const assert = require("node:assert/strict");
 const childProcess = require("node:child_process");
 const fs = require("node:fs");
+const Module = require("node:module");
 const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
@@ -45,6 +46,19 @@ function setProcessPlatformForTest(t, platform) {
     if (previous) {
       Object.defineProperty(process, "platform", previous);
     }
+  });
+}
+
+function mockElectronModule(t, electron) {
+  const previousLoad = Module._load;
+  Module._load = function mockElectronLoad(request, parent, isMain) {
+    if (request === "electron") {
+      return electron;
+    }
+    return previousLoad.call(this, request, parent, isMain);
+  };
+  t.after(() => {
+    Module._load = previousLoad;
   });
 }
 
@@ -5995,6 +6009,127 @@ test("electron steam overlay manager opens the presenter route from the default 
   overlay.close();
   assert.equal(removedHandler !== undefined, true);
   assert.equal(overlay.isOpen(), false);
+});
+
+test("electron steam overlay manager uses a focused macOS global shortcut fallback", async (t) => {
+  setProcessPlatformForTest(t, "darwin");
+
+  const hostHandle = Buffer.from([4, 8, 15, 16]);
+  let hostOpen = false;
+  let registeredHandler;
+  let registerCount = 0;
+  let unregisterCount = 0;
+  mockElectronModule(t, {
+    globalShortcut: {
+      register(accelerator, handler) {
+        assert.equal(accelerator, "Shift+Tab");
+        registeredHandler = handler;
+        registerCount += 1;
+        return true;
+      },
+      unregister(accelerator) {
+        assert.equal(accelerator, "Shift+Tab");
+        registeredHandler = undefined;
+        unregisterCount += 1;
+      }
+    }
+  });
+
+  const fake = createFakeNative({
+    attachNativeOverlayHostView(nativeWindowHandle) {
+      hostOpen = true;
+      this.calls.push({ method: "attachNativeOverlayHostView", args: [nativeWindowHandle] });
+    },
+    pumpNativeOverlayProbeWindow() {
+      this.calls.push({ method: "pumpNativeOverlayProbeWindow", args: [] });
+    },
+    showNativeOverlayHostView() {
+      this.calls.push({ method: "showNativeOverlayHostView", args: [] });
+    },
+    setNativeOverlayHostInputPassthrough(passThrough) {
+      this.calls.push({ method: "setNativeOverlayHostInputPassthrough", args: [passThrough] });
+    },
+    setNativeOverlayHostOpacity(opaque) {
+      this.calls.push({ method: "setNativeOverlayHostOpacity", args: [opaque] });
+    },
+    detachNativeOverlayHostView() {
+      hostOpen = false;
+      this.calls.push({ method: "detachNativeOverlayHostView", args: [] });
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return false;
+    },
+    isNativeOverlayHostViewOpen() {
+      return hostOpen;
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+  t.after(clearSteamBridgeCache);
+
+  const windowHandlers = new Map();
+  const window = {
+    isDestroyed() {
+      return false;
+    },
+    isFocused() {
+      return true;
+    },
+    getNativeWindowHandle() {
+      return hostHandle;
+    },
+    once() {},
+    on(event, handler) {
+      windowHandlers.set(event, handler);
+    },
+    off(event, handler) {
+      if (windowHandlers.get(event) === handler) {
+        windowHandlers.delete(event);
+      }
+    },
+    webContents: {
+      once() {},
+      invalidate() {},
+      send() {},
+      on() {},
+      off() {}
+    }
+  };
+
+  const overlay = steam.overlay.createElectronSteamOverlay(window, {
+    title: "Electron macOS Shortcut Overlay",
+    pollIntervalMs: 10000
+  });
+
+  assert.equal(registerCount, 1);
+  assert.equal(typeof registeredHandler, "function");
+  assert.equal(typeof windowHandlers.get("focus"), "function");
+  assert.equal(typeof windowHandlers.get("blur"), "function");
+
+  registeredHandler();
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "activateOverlayToWebPage"),
+    [{ method: "activateOverlayToWebPage", args: [steam.STEAM_FRIENDS_OVERLAY_URL, true] }]
+  );
+  assert.equal(unregisterCount, 1);
+  assert.equal(registeredHandler, undefined);
+
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(registerCount, 1);
+
+  fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: true });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(registerCount, 1);
+
+  fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: false });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(registerCount, 2);
+  assert.equal(typeof registeredHandler, "function");
+
+  overlay.close();
+  assert.equal(unregisterCount, 2);
+  assert.equal(windowHandlers.has("focus"), false);
+  assert.equal(windowHandlers.has("blur"), false);
 });
 
 test("electron steam overlay shortcut snapshots static targets without leaking private values", async (t) => {

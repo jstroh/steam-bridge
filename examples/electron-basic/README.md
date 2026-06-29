@@ -172,7 +172,8 @@ shortcut itself was added or materially changed. It runs the packaged helper and
 collects result and diagnostic logs under `/tmp`. Its `minimal` suite covers the
 web/store/Friends/dialog `openAndWait(...)` paths plus passive achievement
 toast verification; `core` adds passive unlock, synthetic checkout approval
-route, profile, community, stats, achievements, and user chat/profile routes.
+route, managed Shift+Tab shortcut routing, profile, community, stats,
+achievements, and user chat/profile routes.
 Use `--dry-run` to inspect the stable shortcut setup, env-file path, and helper commands
 without launching Steam.
 

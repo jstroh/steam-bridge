@@ -243,11 +243,11 @@ run_self_test() {
     echo "Self-test failed: minimal matrix case count changed." >&2
     exit 1
   fi
-  if [ "$(printf '%s\n' "$core_output" | count_cases)" != "12" ]; then
+  if [ "$(printf '%s\n' "$core_output" | count_cases)" != "13" ]; then
     echo "Self-test failed: core matrix case count changed." >&2
     exit 1
   fi
-  if [ "$(printf '%s\n' "$full_output" | count_cases)" != "19" ]; then
+  if [ "$(printf '%s\n' "$full_output" | count_cases)" != "20" ]; then
     echo "Self-test failed: full matrix case count changed." >&2
     exit 1
   fi
@@ -262,6 +262,9 @@ run_self_test() {
   require_contains "$core_output" "--action presenter-achievement-unlock" "core matrix must include passive unlock toast."
   require_contains "$core_output" "--action presenter-checkout" "core matrix must include synthetic checkout."
   require_contains "$core_output" "--checkout-transaction-id 123456789" "core matrix must include checkout approval-route plumbing."
+  require_contains "$core_output" "--action presenter-shortcut" "core matrix must include managed shortcut routing."
+  require_contains "$core_output" "--shortcut-open-probe" "shortcut proof must open through the managed Shift+Tab bridge."
+  require_contains "$core_output" "--close-input toggle" "shortcut proof must close with Shift+Tab."
   require_contains "$core_output" "--require-passive-notification" "passive toast cases must use the passive notification gate."
   require_contains "$core_output" "--close-probe" "interactive overlay cases must close and verify back-to-app behavior."
   require_contains "$full_output" "--dialog Friends" "full matrix must include Friends dialog equivalent."
@@ -577,6 +580,10 @@ write_case_launcher_env() {
       --require-*)
         shift
         ;;
+      --shortcut-open-probe)
+        env_keep_open="1"
+        shift
+        ;;
       *)
         shift
         ;;
@@ -760,6 +767,20 @@ run_matrix() {
     --require-event overlay:presenter-open \
     --require-no-crashes \
     --close-probe
+
+  run_case "08-shortcut-friends" \
+    --action presenter-shortcut \
+    --shortcut-target friends \
+    --require-steam-launch \
+    --require-overlay-injection \
+    --require-overlay-enabled \
+    --require-electron-overlay \
+    --require-overlay-shortcut-target friends \
+    --require-event overlay:presenter-shortcut-ready \
+    --require-no-crashes \
+    --shortcut-open-probe \
+    --close-probe \
+    --close-input toggle
 
   run_case "08-profile" \
     --action presenter-profile \

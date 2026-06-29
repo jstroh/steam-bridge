@@ -131,6 +131,23 @@ Verified:
   emitted `callback:achievement-stored`, kept the presenter passive,
   transparent, click-through, non-focusable, overlay-inactive, and reported no
   crash evidence.
+- A 2026-06-29 full macOS overlay matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-full-20260629-094648` passed 19
+  Steam-launched cases for App ID `480`: web/store/Friends/dialog
+  `openAndWait(...)`, passive progress/unlock toasts, synthetic checkout
+  approval-route plumbing, profile, community, stats, achievements, user
+  chat/profile, and known dialog equivalents. Interactive cases verified
+  active/inactive callbacks, app focus return, presenter parking, and no crash
+  evidence.
+- The managed Electron Shift+Tab shortcut bridge now has a macOS-specific
+  focused-window `globalShortcut` fallback. `before-input-event` is too late on
+  macOS because Steam can consume Shift+Tab first; the fallback registers only
+  while the game window is focused, opens the configured presenter-backed target,
+  then unregisters while Steam's overlay is active so a second Shift+Tab closes
+  normally. A focused live run at
+  `/tmp/steam-bridge-macos-shortcut-friends-20260629-100036` verified
+  `overlay:shortcut-open`, `active=true`, presenter shown, Shift+Tab close,
+  `active=false`, app frontmost, parked presenter state, and no crash evidence.
 - `scripts/macos-overlay-matrix.sh` now owns repeatable macOS proof setup. It
   prints or runs a matrix of Steam-launched helper cases, installs or updates one
   stable Steam shortcut with the native launcher env-file flag, restarts Steam
@@ -151,20 +168,17 @@ Still not verified:
 - A shell-wrapper shortcut can set `SteamAppId=480` before app startup, but macOS
   strips the Steam `DYLD_INSERT_LIBRARIES` injection before the Electron child
   process starts, so that path is not useful for overlay verification.
-- Checkout presenter routes still need the same live macOS evidence currently
-  proven on Steam Deck Desktop Mode. The 2026-06-29 macOS proof now covers the
-  managed web, store, Friends/chat, dialog-equivalent `openAndWait(...)`, and
-  passive achievement-progress notification routes.
 - Real purchase UI and `InitTxn` proof still require a real Steam app ID with a
   configured product or transaction. App ID `480` remains suitable only for
   generic overlay smoke tests.
 
 The current macOS result should therefore be treated as Steam launch, injection,
 identity alignment, native presenter startup, modal web overlay activation,
-close, app focus return, and builder-facing `openAndWait(...)` parking coverage
-for Apple Silicon across web, store, Friends/chat, dialog-equivalent wait
-routes, and passive achievement-progress notifications. Checkout and broader
-presenter-target coverage still need to be run before describing macOS overlay
+close, app focus return, builder-facing `openAndWait(...)` parking coverage,
+synthetic checkout approval-route plumbing, managed Shift+Tab shortcut routing,
+known presenter-backed web/dialog targets, and passive achievement-progress and
+unlock notifications. Real purchase-content and `InitTxn` coverage still need a
+real Steam app ID with a configured product before describing purchase overlay
 support as complete.
 
 ## Primary References

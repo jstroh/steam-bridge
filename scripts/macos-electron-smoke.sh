@@ -30,6 +30,7 @@ keep_open_after_result="0"
 timeout_seconds="90"
 close_probe="0"
 close_input="escape"
+shortcut_open_probe="0"
 require_close_deactivated="0"
 shortcut_game_id=""
 app_name="Steam Bridge Smoke"
@@ -93,6 +94,8 @@ Options:
                                  and require active=false plus presenter parking evidence.
   --close-input MODE             macOS close input: escape, keyboard, or toggle. Defaults to escape.
                                  keyboard is an alias for escape; toggle sends Shift+Tab.
+  --shortcut-open-probe          Focus the app, send Shift+Tab, and require managed
+                                 shortcut-open plus active overlay evidence.
   --require-close-deactivated    Verify existing lifecycle close/parking evidence.
   --shortcut-game-id ID|auto     Full steam://rungameid shortcut game ID.
   --app-name NAME                Shortcut name to auto-discover.
@@ -238,6 +241,11 @@ while [ "$#" -gt 0 ]; do
     --close-input)
       close_input="${2:?missing --close-input value}"
       shift 2
+      ;;
+    --shortcut-open-probe)
+      shortcut_open_probe="1"
+      keep_open_after_result="1"
+      shift
       ;;
     --require-close-deactivated)
       require_close_deactivated="1"
@@ -631,6 +639,10 @@ launch_steam_shortcut() {
   open "steam://rungameid/$game_id"
   wait_for_result_file
   verify_result
+  if [ "$shortcut_open_probe" = "1" ]; then
+    send_macos_overlay_shortcut_open_probe
+    verify_macos_shortcut_open_after_probe
+  fi
   if [ "$close_probe" = "1" ]; then
     send_macos_overlay_close_probe
     verify_macos_overlay_closed_after_probe
@@ -734,6 +746,16 @@ OSA
   esac
 }
 
+send_macos_overlay_shortcut_open_probe() {
+  focus_macos_smoke_app_for_probe
+  echo "Sending macOS overlay Shift+Tab shortcut open probe"
+  osascript <<'OSA'
+tell application "System Events"
+  key code 48 using shift down
+end tell
+OSA
+}
+
 focus_macos_smoke_app_for_probe() {
   osascript <<'OSA'
 tell application "System Events"
@@ -749,6 +771,201 @@ tell application "System Events"
   end if
 end tell
 OSA
+}
+
+verify_macos_shortcut_open_after_probe() {
+  local open_timeout_seconds="${1:-12}"
+  echo "Verifying macOS managed shortcut open evidence"
+  RESULT_FILE="$result_file" DIAGNOSTIC_DIR="$diagnostic_dir" SHORTCUT_TARGET="$shortcut_target" OPEN_TIMEOUT_SECONDS="$open_timeout_seconds" node <<'NODE'
+const fs = require("node:fs");
+const path = require("node:path");
+
+const resultFile = process.env.RESULT_FILE;
+const diagnosticDir = process.env.DIAGNOSTIC_DIR || `${resultFile}.diagnostics`;
+const expectedTarget = process.env.SHORTCUT_TARGET || "";
+const timeoutSeconds = Number(process.env.OPEN_TIMEOUT_SECONDS || "12");
+const lifecyclePath = path.join(diagnosticDir, "lifecycle.jsonl");
+const crashDumpDir = path.join(diagnosticDir, "crash-dumps");
+const fatalTypes = new Set([
+  "app:render-process-gone",
+  "app:child-process-gone",
+  "app:gpu-process-crashed",
+  "process:uncaught-exception",
+  "process:unhandled-rejection"
+]);
+const failures = [];
+
+let entries = [];
+let lifecycleFailures = [];
+const deadline = Date.now() + timeoutSeconds * 1000;
+while (true) {
+  ({ entries, lifecycleFailures } = readLifecycleEntries());
+  if (lifecycleFailures.length === 0 && (hasRequiredOpenEvidence(entries) || Date.now() >= deadline)) {
+    break;
+  }
+  if (lifecycleFailures.length > 0 && Date.now() >= deadline) {
+    failures.push(...lifecycleFailures);
+    break;
+  }
+  sleep(200);
+}
+
+if (failures.length === 0 && lifecycleFailures.length > 0) {
+  failures.push(...lifecycleFailures);
+}
+
+const shortcutOpenIndex = entries.findIndex((entry) => entry.type === "event:overlay:shortcut-open");
+if (shortcutOpenIndex < 0) {
+  failures.push("no overlay:shortcut-open event in lifecycle log");
+} else {
+  const shortcutOpen = entries[shortcutOpenIndex];
+  const payload = shortcutOpen.payload && typeof shortcutOpen.payload === "object" ? shortcutOpen.payload : {};
+  if (expectedTarget && payload.target !== expectedTarget) {
+    failures.push(`shortcut open target expected ${format(expectedTarget)}, got ${format(payload.target)}`);
+  }
+}
+
+const activeAfterShortcutIndex = entries.findIndex((entry, index) => {
+  return index > shortcutOpenIndex && entry.type === "event:callback:overlay-activated" && activeValue(entry.payload) === true;
+});
+if (shortcutOpenIndex >= 0 && activeAfterShortcutIndex < 0) {
+  failures.push("no active=true overlay callback after shortcut-open");
+}
+
+const shownPresenter = entries
+  .map((entry, index) => ({ entry, index, presenter: presenterPayload(entry) }))
+  .find(({ entry, index, presenter }) => {
+    return index > activeAfterShortcutIndex && entry.type === "event:overlay:presenter-wait-shown" && presenter;
+  });
+if (activeAfterShortcutIndex >= 0 && !shownPresenter) {
+  failures.push("no presenter-wait-shown snapshot after shortcut active=true");
+}
+
+const fatalEntries = entries.filter((entry) => fatalTypes.has(entry.type));
+if (fatalEntries.length > 0) {
+  failures.push(`fatal lifecycle events recorded after shortcut probe: ${fatalEntries.map((entry) => entry.type).join(", ")}`);
+}
+
+const crashDumps = listCrashDumps(crashDumpDir);
+if (crashDumps.length > 0) {
+  failures.push(`crash dump files found after shortcut probe: ${crashDumps.join(", ")}`);
+}
+
+if (failures.length > 0) {
+  for (const failure of failures) {
+    console.error(`macOS shortcut open verification failed: ${failure}`);
+  }
+  process.exit(1);
+}
+
+console.log("macOS managed shortcut open verified: shortcut-open emitted, overlay activated, presenter shown, no crash evidence.");
+
+function readLifecycleEntries() {
+  const loadedEntries = [];
+  const loadFailures = [];
+  try {
+    const text = fs.readFileSync(lifecyclePath, "utf8");
+    for (const line of text.split(/\r?\n/)) {
+      if (!line.trim()) {
+        continue;
+      }
+      try {
+        loadedEntries.push(JSON.parse(line));
+      } catch (error) {
+        loadFailures.push(`invalid lifecycle JSON: ${error.message}`);
+      }
+    }
+  } catch (error) {
+    if (error && error.code === "ENOENT") {
+      loadFailures.push(`missing lifecycle log: ${lifecyclePath}`);
+    } else {
+      loadFailures.push(`could not read lifecycle log: ${error.message}`);
+    }
+  }
+  return { entries: loadedEntries, lifecycleFailures: loadFailures };
+}
+
+function hasRequiredOpenEvidence(loadedEntries) {
+  const shortcutOpenIndex = loadedEntries.findIndex((entry) => entry.type === "event:overlay:shortcut-open");
+  if (shortcutOpenIndex < 0) {
+    return false;
+  }
+  const activeAfterShortcutIndex = loadedEntries.findIndex((entry, index) => {
+    return index > shortcutOpenIndex && entry.type === "event:callback:overlay-activated" && activeValue(entry.payload) === true;
+  });
+  if (activeAfterShortcutIndex < 0) {
+    return false;
+  }
+  return loadedEntries.some((entry, index) => {
+    return index > activeAfterShortcutIndex && entry.type === "event:overlay:presenter-wait-shown" && presenterPayload(entry);
+  });
+}
+
+function activeValue(payload) {
+  if (payload === true || payload === 1) {
+    return true;
+  }
+  if (payload === false || payload === 0) {
+    return false;
+  }
+  if (!payload || typeof payload !== "object") {
+    return undefined;
+  }
+  const activePayload = payload["0"] && typeof payload["0"] === "object" ? payload["0"] : payload;
+  for (const key of ["active", "m_bActive"]) {
+    if (activePayload[key] === true || activePayload[key] === 1) {
+      return true;
+    }
+    if (activePayload[key] === false || activePayload[key] === 0) {
+      return false;
+    }
+  }
+  return undefined;
+}
+
+function presenterPayload(entry) {
+  const payload = entry && entry.payload;
+  if (!payload || typeof payload !== "object") {
+    return undefined;
+  }
+  return payload.presenter && typeof payload.presenter === "object" ? payload.presenter : undefined;
+}
+
+function listCrashDumps(root) {
+  const crashDumps = [];
+  walk(root);
+  return crashDumps;
+
+  function walk(currentPath) {
+    let entriesForPath;
+    try {
+      entriesForPath = fs.readdirSync(currentPath, { withFileTypes: true });
+    } catch (error) {
+      if (error && error.code === "ENOENT") {
+        return;
+      }
+      failures.push(`could not read crash dump directory: ${error.message}`);
+      return;
+    }
+    for (const entry of entriesForPath) {
+      const entryPath = path.join(currentPath, entry.name);
+      if (entry.isDirectory()) {
+        walk(entryPath);
+      } else if (/\.(?:dmp|mdmp|dump|crash)$/i.test(entry.name)) {
+        crashDumps.push(path.relative(root, entryPath));
+      }
+    }
+  }
+}
+
+function sleep(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+function format(value) {
+  return JSON.stringify(value);
+}
+NODE
 }
 
 verify_macos_overlay_closed_after_probe() {

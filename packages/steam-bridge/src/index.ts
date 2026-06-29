@@ -1887,6 +1887,7 @@ export interface ElectronSteamOverlayCheckoutPrepareOptions {
 }
 
 export type ElectronOverlayWindow = Parameters<typeof electronOverlayPresenterOptionsImpl>[0] & {
+  isFocused?(): boolean;
   on?(event: ElectronOverlayWindowGeometryEvent, handler: () => void): void;
   off?(event: ElectronOverlayWindowGeometryEvent, handler: () => void): void;
   removeListener?(event: ElectronOverlayWindowGeometryEvent, handler: () => void): void;
@@ -8617,32 +8618,29 @@ function installElectronSteamOverlayShortcut(
   }
 
   let opening = false;
-  const handler = (event: ElectronOverlayInputEvent, input: ElectronOverlayKeyboardInput): void => {
-    if (!isElectronSteamOverlayShortcutInput(input)) {
-      return;
-    }
-
+  const handleShortcut = (event?: ElectronOverlayInputEvent): ElectronSteamOverlayShortcutHandleResult => {
     try {
       const snapshot = controller.snapshot();
       if (snapshot.overlayActive) {
-        return;
+        return "ignored";
       }
 
       if (opening || isElectronSteamOverlayShortcutOpening(snapshot)) {
         if (shortcut.preventDefault) {
-          event.preventDefault?.();
+          event?.preventDefault?.();
         }
-        return;
+        return "handled";
       }
 
       if (shortcut.preventDefault) {
-        event.preventDefault?.();
+        event?.preventDefault?.();
       }
 
       opening = true;
       const target = resolveElectronSteamOverlayShortcutTarget(shortcut.target);
       controller.open(target);
       notifyElectronSteamOverlayShortcutOpened(shortcut, target);
+      return "opened";
     } catch (error) {
       if (shortcut.onError) {
         shortcut.onError(error);
@@ -8651,14 +8649,23 @@ function installElectronSteamOverlayShortcut(
           type: "SteamBridgeOverlayShortcutWarning"
         });
       }
+      return "handled";
     } finally {
       opening = false;
     }
   };
 
+  const handler = (event: ElectronOverlayInputEvent, input: ElectronOverlayKeyboardInput): void => {
+    if (isElectronSteamOverlayShortcutInput(input)) {
+      handleShortcut(event);
+    }
+  };
+  const removeGlobalShortcut = installElectronSteamOverlayGlobalShortcut(window, controller, handleShortcut);
+
   webContents.on("before-input-event", handler);
 
   return () => {
+    removeGlobalShortcut();
     if (isElectronWebContentsDestroyed(webContents)) {
       return;
     }
@@ -8675,6 +8682,129 @@ function installElectronSteamOverlayShortcut(
       }
     }
   };
+}
+
+function installElectronSteamOverlayGlobalShortcut(
+  window: ElectronOverlayWindow,
+  controller: ElectronSteamOverlay,
+  handleShortcut: () => ElectronSteamOverlayShortcutHandleResult
+): () => void {
+  if (process.platform !== "darwin") {
+    return () => {};
+  }
+
+  const globalShortcut = loadElectronGlobalShortcut();
+  const shortcutWindow = window as ElectronOverlayWindowShortcutEvents;
+  if (!globalShortcut || typeof shortcutWindow.on !== "function") {
+    return () => {};
+  }
+
+  const accelerator = "Shift+Tab";
+  let closed = false;
+  let registered = false;
+  let suspended = false;
+  let warnedRegisterFailure = false;
+
+  const unregister = (): void => {
+    if (!registered) {
+      return;
+    }
+    registered = false;
+    try {
+      globalShortcut.unregister(accelerator);
+    } catch (error) {
+      process.emitWarning(error instanceof Error ? error : String(error), {
+        type: "SteamBridgeOverlayShortcutWarning"
+      });
+    }
+  };
+
+  const registerIfFocused = (): void => {
+    if (closed || suspended || registered || shortcutWindow.isFocused?.() !== true) {
+      return;
+    }
+    let didRegister = false;
+    try {
+      didRegister = globalShortcut.register(accelerator, () => {
+        const result = handleShortcut();
+        if (result === "opened") {
+          suspendUntilOverlayCloses();
+        }
+      });
+    } catch (error) {
+      process.emitWarning(error instanceof Error ? error : String(error), {
+        type: "SteamBridgeOverlayShortcutWarning"
+      });
+      return;
+    }
+    if (didRegister) {
+      registered = true;
+    } else if (!warnedRegisterFailure) {
+      warnedRegisterFailure = true;
+      process.emitWarning("Could not register macOS Shift+Tab overlay shortcut.", {
+        type: "SteamBridgeOverlayShortcutWarning"
+      });
+    }
+  };
+
+  const suspendUntilOverlayCloses = (): void => {
+    suspended = true;
+    unregister();
+    void (async () => {
+      try {
+        await controller.waitForOverlayShown({ timeoutMs: ELECTRON_STEAM_OVERLAY_OPEN_GUARD_TIMEOUT_MS });
+        await controller.waitForOverlayClosed({ timeoutMs: 300000 });
+      } catch (error) {
+        if (!closed) {
+          process.emitWarning(error instanceof Error ? error : String(error), {
+            type: "SteamBridgeOverlayShortcutWarning"
+          });
+        }
+      } finally {
+        suspended = false;
+        registerIfFocused();
+      }
+    })();
+  };
+
+  const onFocus = (): void => {
+    registerIfFocused();
+  };
+  const onBlur = (): void => {
+    unregister();
+  };
+
+  shortcutWindow.on("focus", onFocus);
+  shortcutWindow.on("blur", onBlur);
+  registerIfFocused();
+
+  return () => {
+    closed = true;
+    unregister();
+    removeElectronSteamOverlayShortcutWindowListener(shortcutWindow, "focus", onFocus);
+    removeElectronSteamOverlayShortcutWindowListener(shortcutWindow, "blur", onBlur);
+  };
+}
+
+function loadElectronGlobalShortcut(): ElectronGlobalShortcutApi | undefined {
+  try {
+    const electron = require("electron") as ElectronShortcutApi;
+    return electron.globalShortcut;
+  } catch (_error) {
+    return undefined;
+  }
+}
+
+function removeElectronSteamOverlayShortcutWindowListener(
+  window: ElectronOverlayWindowShortcutEvents,
+  event: ElectronOverlayWindowShortcutEvent,
+  handler: () => void
+): void {
+  if (typeof window.off === "function") {
+    window.off(event, handler);
+  } else if (typeof window.removeListener === "function") {
+    window.removeListener(event, handler);
+  }
 }
 
 function notifyElectronSteamOverlayShortcutOpened(
@@ -8990,6 +9120,26 @@ type NormalizedElectronSteamOverlayShortcutOptions = Required<
   Pick<ElectronSteamOverlayShortcutOptions, "enabled" | "preventDefault">
 > &
   Omit<ElectronSteamOverlayShortcutOptions, "enabled" | "preventDefault">;
+
+type ElectronSteamOverlayShortcutHandleResult = "ignored" | "handled" | "opened";
+
+interface ElectronGlobalShortcutApi {
+  register(accelerator: string, callback: () => void): boolean;
+  unregister(accelerator: string): void;
+}
+
+interface ElectronShortcutApi {
+  globalShortcut?: ElectronGlobalShortcutApi;
+}
+
+type ElectronOverlayWindowShortcutEvent = "focus" | "blur";
+
+interface ElectronOverlayWindowShortcutEvents {
+  isFocused?(): boolean;
+  on?(event: ElectronOverlayWindowShortcutEvent, handler: () => void): void;
+  off?(event: ElectronOverlayWindowShortcutEvent, handler: () => void): void;
+  removeListener?(event: ElectronOverlayWindowShortcutEvent, handler: () => void): void;
+}
 
 function normalizeElectronSteamOverlayShortcut(
   shortcutConfig: ElectronSteamOverlayShortcutConfig
