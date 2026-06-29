@@ -301,16 +301,14 @@ Current evidence:
   instead of silently falling back to raw Steam overlay behavior. The smoke app's
   `presenter-dialog` action uses that native route explicitly. The smoke app's
   `presenter-dialog-auto` action exercises the high-level router as a
-  product-path proof. A 2026-06-28 Deck
-  Desktop matrix of `presenter-dialog-auto --dialog Friends`, `Community`,
-  `OfficialGameGroup`, `Stats`, and `Achievements` showed visible Steam web
-  content through the native overlay host, emitted active then inactive overlay
-  callbacks, used one `gameoverlayui` target for App ID `480`, returned focus to
-  the Electron app through the web close probe, parked transparent/click-through
-  at `currentFps=0`, and showed no post-close pumping or crash evidence. A
-  focused 2026-06-28 Deck Desktop run also verified
-  `presenter-dialog-auto --dialog Players` with the same active/inactive, web
-  close, focus return, idle parking, single-target, and no-crash evidence.
+  product-path proof. A 2026-06-28 Deck Desktop full matrix verified
+  `presenter-dialog-auto --dialog Friends`, `Players`, `Community`,
+  `OfficialGameGroup`, `Stats`, and `Achievements`; each route showed visible
+  Steam web content through the native overlay host, emitted active then
+  inactive overlay callbacks, used one `gameoverlayui` target for App ID `480`,
+  returned focus to the Electron app through the web close probe, parked
+  transparent/click-through at `currentFps=0`, and showed no post-close pumping
+  or crash evidence.
 - The managed Electron shortcut bridge is the product keyboard-toggle path:
   `createElectronSteamOverlay(mainWindow)` listens for Shift+Tab in Electron and
   opens `steamOverlay.open({ type: "friends" })` by default, with
