@@ -495,6 +495,13 @@ interactive overlays. To audit an
 existing macOS artifact root, run
 `npm run macos:overlay-matrix:summarize -- --artifact-root <path>`. Live runs
 still require clearing Steam game processes on other machines first.
+For shipped macOS builds, sign the app bundle with Steam-compatible entitlements
+like `examples/electron-basic/entitlements.steam.macos.plist`: enable
+`com.apple.security.cs.allow-dyld-environment-variables` and
+`com.apple.security.cs.disable-library-validation`, and do not enable the App
+Sandbox. Keep the in-bundle native launcher as the app's main executable so the
+process Steam launches is also the process that aligns the Steam app and overlay
+game IDs before Electron starts.
 
 Use the repository-level matrix runner when you need to repeat the full Deck
 Desktop product proof instead of hand-running each case:

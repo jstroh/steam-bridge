@@ -31,6 +31,7 @@ try {
   run("bash", [path.join(repoRoot, "scripts", "macos-overlay-matrix.sh"), "--mode", "self-test"], {
     cwd: repoRoot
   });
+  runMacosEntitlementsStaticChecks();
   runWindowsSmokeHelperStaticChecks();
 
   console.log("Packed steam-bridge package smoke test passed.");
@@ -40,6 +41,29 @@ try {
   } else {
     fs.rmSync(tempRoot, { recursive: true, force: true });
   }
+}
+
+function runMacosEntitlementsStaticChecks() {
+  const entitlementsPath = path.join(repoRoot, "examples", "electron-basic", "entitlements.steam.macos.plist");
+  const entitlements = fs.readFileSync(entitlementsPath, "utf8");
+  for (const expected of [
+    "com.apple.security.cs.allow-dyld-environment-variables",
+    "com.apple.security.cs.disable-library-validation"
+  ]) {
+    assert.ok(entitlements.includes(`<key>${expected}</key>`), `macOS Steam entitlements missing ${expected}`);
+  }
+  assert.ok(
+    /<key>com\.apple\.security\.cs\.allow-dyld-environment-variables<\/key>\s*<true\/>/.test(entitlements),
+    "macOS Steam entitlements must enable allow-dyld-environment-variables"
+  );
+  assert.ok(
+    /<key>com\.apple\.security\.cs\.disable-library-validation<\/key>\s*<true\/>/.test(entitlements),
+    "macOS Steam entitlements must enable disable-library-validation"
+  );
+  assert.ok(
+    !entitlements.includes("com.apple.security.app-sandbox"),
+    "macOS Steam entitlements must not enable the App Sandbox"
+  );
 }
 
 function runWindowsSmokeHelperStaticChecks() {

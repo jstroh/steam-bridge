@@ -677,8 +677,13 @@ Next work:
 2. Add a live lock/display-sleep regression capture if it can be automated
    without destabilizing the user's macOS session; the runtime guard and unit
    proof are implemented.
-3. Keep code signing requirements explicit in docs and examples. Local smoke
-   signing is not enough to claim shipped macOS overlay support.
+3. Keep code signing requirements explicit in docs and examples. The generic
+   example now includes `entitlements.steam.macos.plist` with
+   `com.apple.security.cs.allow-dyld-environment-variables` and
+   `com.apple.security.cs.disable-library-validation` enabled, and no App
+   Sandbox entitlement. Local smoke signing is still not enough to claim shipped
+   macOS overlay support; real shipped apps must apply those entitlements to the
+   signed app bundle that Steam launches.
 
 Pass criteria:
 

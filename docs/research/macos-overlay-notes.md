@@ -200,6 +200,10 @@ Still not verified:
 - Real purchase UI and `InitTxn` proof still require a real Steam app ID with a
   configured product or transaction. App ID `480` remains suitable only for
   generic overlay smoke tests.
+- Shipped macOS apps should sign the app bundle Steam launches with the generic
+  entitlement template in `examples/electron-basic/entitlements.steam.macos.plist`:
+  allow dyld environment variables, disable library validation, and keep App
+  Sandbox disabled.
 
 The current macOS result should therefore be treated as Steam launch, injection,
 identity alignment, native presenter startup, modal web overlay activation,
