@@ -5860,10 +5860,12 @@ test("electron steam overlay open holds the presenter until Steam reports shown"
 
   const overlay = steam.overlay.createElectronSteamOverlay(window, {
     title: "Electron Managed Open Overlay",
-    activationBoostMs: 0,
-    activeGraceMs: 0,
     pollIntervalMs: 10000
   });
+
+  assert.equal(overlay.snapshot().electronOverlay.restoreFocusDelayMs, 0);
+  assert.equal(overlay.snapshot().electronOverlay.activationBoostMs, 0);
+  assert.equal(overlay.snapshot().electronOverlay.activeGraceMs, 0);
 
   overlay.open({ type: "friends" });
 
