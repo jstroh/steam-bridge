@@ -153,8 +153,10 @@ timing hacks.
   path still failed to render overlay UI and the raw Achievements dialog still
   emitted no activation callback.
 - Steam Bridge's macOS evidence is weaker: Steam launch and native probe coverage
-  exist, and a Metal host path exists, but completed product overlay behavior on
-  macOS is not proven yet.
+  exist, and crash-free Metal/OpenGL presenter startup has been verified after
+  fixing macOS `DYLD_INSERT_LIBRARIES` child-process scrubbing. Steam starts
+  `gameoverlayui` for the packaged smoke process, but completed product overlay
+  activation on macOS is not proven yet.
 
 Useful public references:
 

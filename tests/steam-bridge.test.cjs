@@ -4731,7 +4731,8 @@ test("electron overlay helper scrubs Steam overlay preload from child process en
   const env = {
     LD_PRELOAD:
       "/tmp/keep.so:/home/deck/.local/share/Steam/ubuntu12_64/gameoverlayrenderer.so /home/deck/.local/share/Steam/ubuntu12_32/gameoverlayrenderer.so",
-    DYLD_INSERT_LIBRARIES: "/tmp/GameOverlayRenderer.dylib:/tmp/keep.dylib",
+    DYLD_INSERT_LIBRARIES:
+      "/Users/me/Library/Application Support/Steam/Steam.AppBundle/Steam/Contents/MacOS/steamloader.dylib:/Users/me/Library/Application Support/Steam/Steam.AppBundle/Steam/Contents/MacOS/gameoverlayrenderer.dylib",
     OTHER: "untouched"
   };
 
@@ -4740,7 +4741,10 @@ test("electron overlay helper scrubs Steam overlay preload from child process en
     "DYLD_INSERT_LIBRARIES"
   ]);
   assert.equal(env.LD_PRELOAD, "/tmp/keep.so");
-  assert.equal(env.DYLD_INSERT_LIBRARIES, "/tmp/keep.dylib");
+  assert.equal(
+    env.DYLD_INSERT_LIBRARIES,
+    "/Users/me/Library/Application Support/Steam/Steam.AppBundle/Steam/Contents/MacOS/steamloader.dylib"
+  );
   assert.equal(env.OTHER, "untouched");
 
   assert.deepEqual(electron.electronScrubSteamOverlayChildProcessEnv(env), []);

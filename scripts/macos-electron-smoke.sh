@@ -18,12 +18,16 @@ overlay_dialog=""
 user_dialog=""
 shortcut_target=""
 presenter_mode=""
+native_host_backend=""
 achievement_name=""
 achievement_current=""
 achievement_max=""
 result_delay_ms="8000"
 keep_open_after_result="0"
 timeout_seconds="90"
+shortcut_game_id=""
+app_name="Steam Bridge Smoke"
+steam_user_id=""
 require_steam_launch="0"
 require_overlay_injection="0"
 require_overlay_enabled="0"
@@ -45,8 +49,10 @@ Usage:
 
 Modes:
   --mode direct                  Run SteamBridgeSmoke directly and verify it.
+  --mode steam-launch            Launch the Steam shortcut and verify it.
   --mode verify                  Verify an existing smoke result log.
   --mode print-launch-options    Print launch options for a Steam shortcut.
+  --mode print-shortcuts         Print matching Steam shortcut IDs.
   --mode self-test               Test argument assembly and result verification.
 
 Options:
@@ -66,12 +72,16 @@ Options:
   --user-dialog NAME             User dialog name for presenter-user.
   --shortcut-target NAME         Managed presenter shortcut target.
   --presenter-mode MODE          Managed Electron overlay presenter mode: persistent or session.
+  --native-host-backend NAME     macOS native presenter backend: metal or opengl.
   --achievement-name NAME        Achievement for presenter-achievement-progress or unlock.
   --achievement-current VALUE    Progress current value.
   --achievement-max VALUE        Progress max value.
   --result-delay-ms MS           Autorun result delay. Defaults to 8000.
   --keep-open-after-result       Write the result but leave the app running.
   --timeout-seconds SECONDS      Result wait timeout. Defaults to 90.
+  --shortcut-game-id ID|auto     Full steam://rungameid shortcut game ID.
+  --app-name NAME                Shortcut name to auto-discover.
+  --steam-user-id ID             Restrict shortcut discovery to one userdata ID.
   --require-steam-launch         Require Steam launch markers.
   --require-overlay-injection    Require macOS overlay injection marker.
   --require-overlay-enabled      Require overlayEnabled=true.
@@ -163,6 +173,10 @@ while [ "$#" -gt 0 ]; do
       presenter_mode="${2:?missing --presenter-mode value}"
       shift 2
       ;;
+    --native-host-backend)
+      native_host_backend="${2:?missing --native-host-backend value}"
+      shift 2
+      ;;
     --achievement-name)
       achievement_name="${2:?missing --achievement-name value}"
       shift 2
@@ -185,6 +199,18 @@ while [ "$#" -gt 0 ]; do
       ;;
     --timeout-seconds)
       timeout_seconds="${2:?missing --timeout-seconds value}"
+      shift 2
+      ;;
+    --shortcut-game-id)
+      shortcut_game_id="${2:?missing --shortcut-game-id value}"
+      shift 2
+      ;;
+    --app-name)
+      app_name="${2:?missing --app-name value}"
+      shift 2
+      ;;
+    --steam-user-id)
+      steam_user_id="${2:?missing --steam-user-id value}"
       shift 2
       ;;
     --require-steam-launch)
@@ -307,6 +333,9 @@ smoke_args() {
   if [ -n "$presenter_mode" ]; then
     printf '%s\n' "--steam-bridge-smoke-presenter-mode=$presenter_mode"
   fi
+  if [ -n "$native_host_backend" ]; then
+    printf '%s\n' "--steam-bridge-smoke-native-host-backend=$native_host_backend"
+  fi
   if [ -n "$achievement_name" ]; then
     printf '%s\n' "--steam-bridge-smoke-achievement-name=$achievement_name"
   fi
@@ -353,6 +382,172 @@ wait_for_result_file() {
 
   echo "Timed out waiting for smoke result file $result_file" >&2
   return 1
+}
+
+discover_shortcuts() {
+  node - "$app_name" "$steam_user_id" <<'NODE'
+const fs = require("node:fs");
+const path = require("node:path");
+
+const [appName, steamUserId] = process.argv.slice(2);
+const TYPE_OBJECT = 0;
+const TYPE_STRING = 1;
+const TYPE_UINT32 = 2;
+const TYPE_END = 8;
+const home = process.env.HOME || "";
+const userdataRoot = path.join(home, "Library", "Application Support", "Steam", "userdata");
+const paths = [];
+
+if (steamUserId) {
+  paths.push(path.join(userdataRoot, steamUserId, "config", "shortcuts.vdf"));
+} else if (fs.existsSync(userdataRoot)) {
+  for (const entry of fs.readdirSync(userdataRoot, { withFileTypes: true })) {
+    if (entry.isDirectory()) {
+      paths.push(path.join(userdataRoot, entry.name, "config", "shortcuts.vdf"));
+    }
+  }
+}
+
+for (const shortcutPath of paths.sort()) {
+  if (!fs.existsSync(shortcutPath)) {
+    continue;
+  }
+
+  let root;
+  try {
+    root = readBinaryKeyValues(fs.readFileSync(shortcutPath));
+  } catch {
+    continue;
+  }
+  if (root.name !== "shortcuts" || !root.value || typeof root.value !== "object") {
+    continue;
+  }
+
+  const userId = shortcutPath.split(`${path.sep}userdata${path.sep}`)[1]?.split(path.sep)[0] || "";
+  for (const [index, entry] of Object.entries(root.value)) {
+    if (!entry || typeof entry !== "object" || entry.appname !== appName) {
+      continue;
+    }
+    const appid = Number(entry.appid) >>> 0;
+    const gameId = ((BigInt(appid) << 32n) | 0x02000000n).toString();
+    console.log(JSON.stringify({
+      userId,
+      index,
+      appid,
+      gameId,
+      appname: entry.appname || "",
+      exe: entry.Exe || "",
+      startDir: entry.StartDir || "",
+      launchOptions: entry.LaunchOptions || "",
+      allowOverlay: entry.AllowOverlay
+    }));
+  }
+}
+
+function readBinaryKeyValues(buffer) {
+  let offset = 0;
+  const rootType = readByte();
+  if (rootType !== TYPE_OBJECT) {
+    throw new Error(`Expected binary VDF root object, got type ${rootType}.`);
+  }
+  const name = readCString();
+  return { name, value: readObject() };
+
+  function readObject() {
+    const object = {};
+    while (offset < buffer.length) {
+      const type = readByte();
+      if (type === TYPE_END) {
+        break;
+      }
+
+      const fieldName = readCString();
+      switch (type) {
+        case TYPE_OBJECT:
+          object[fieldName] = readObject();
+          break;
+        case TYPE_STRING:
+          object[fieldName] = readCString();
+          break;
+        case TYPE_UINT32:
+          object[fieldName] = readUInt32();
+          break;
+        default:
+          throw new Error(`Unsupported binary VDF field type ${type} for ${fieldName}.`);
+      }
+    }
+    return object;
+  }
+
+  function readByte() {
+    if (offset >= buffer.length) {
+      throw new Error("Unexpected end of binary VDF.");
+    }
+    return buffer[offset++];
+  }
+
+  function readCString() {
+    const start = offset;
+    while (offset < buffer.length && buffer[offset] !== 0) {
+      offset += 1;
+    }
+    if (offset >= buffer.length) {
+      throw new Error("Unterminated binary VDF string.");
+    }
+    const value = buffer.toString("utf8", start, offset);
+    offset += 1;
+    return value;
+  }
+
+  function readUInt32() {
+    if (offset + 4 > buffer.length) {
+      throw new Error("Unexpected end of binary VDF uint32.");
+    }
+    const value = buffer.readUInt32LE(offset);
+    offset += 4;
+    return value;
+  }
+}
+NODE
+}
+
+resolve_shortcut_game_id() {
+  if [ -n "$shortcut_game_id" ] && [ "$shortcut_game_id" != "auto" ]; then
+    printf '%s\n' "$shortcut_game_id"
+    return 0
+  fi
+
+  local matches ids resolved
+  matches="$(discover_shortcuts)"
+  if [ -z "$matches" ]; then
+    echo "Could not find Steam shortcut named \"$app_name\"." >&2
+    echo "Add it as a non-Steam game or pass --shortcut-game-id explicitly." >&2
+    return 1
+  fi
+
+  ids="$(printf '%s\n' "$matches" | node -e 'const fs=require("node:fs"); const ids=new Set(); for (const line of fs.readFileSync(0,"utf8").split(/\n/)) { if (!line.trim()) continue; ids.add(JSON.parse(line).gameId); } console.log([...ids].sort().join("\n"));')"
+  if [ "$(printf '%s\n' "$ids" | sed '/^$/d' | wc -l | tr -d ' ')" != "1" ]; then
+    echo "Found multiple shortcut game IDs for \"$app_name\"; pass --shortcut-game-id explicitly:" >&2
+    printf '%s\n' "$matches" >&2
+    return 1
+  fi
+
+  resolved="$(printf '%s\n' "$ids" | sed -n '1p')"
+  printf '%s\n' "$resolved"
+}
+
+launch_steam_shortcut() {
+  local game_id
+  game_id="$(resolve_shortcut_game_id)"
+
+  mkdir -p "$(dirname -- "$result_file")"
+  rm -f "$result_file"
+  rm -rf "$diagnostic_dir"
+
+  echo "Launching steam://rungameid/$game_id"
+  open "steam://rungameid/$game_id"
+  wait_for_result_file
+  verify_result
 }
 
 verifier_path() {
@@ -417,15 +612,17 @@ verify_result() {
   if [ "$require_no_crashes" = "1" ]; then
     args+=("--require-no-crashes")
   fi
-  for event_type in "${require_events[@]}"; do
-    args+=("--require-event" "$event_type")
-  done
+  if [ "${#require_events[@]}" -gt 0 ]; then
+    for event_type in "${require_events[@]}"; do
+      args+=("--require-event" "$event_type")
+    done
+  fi
 
   node "${args[@]}"
 }
 
 run_self_test() {
-  local temp_result launch_options
+  local temp_result launch_options temp_home old_home shortcut_file expected_game_id matches resolved
   temp_result="$(mktemp "${TMPDIR:-/tmp}/steam-bridge-macos-helper.XXXXXX")"
   result_file="$temp_result"
   cat >"$result_file" <<'EOF'
@@ -444,9 +641,87 @@ EOF
   require_events=("overlay:presenter-open" "callback:overlay-activated")
   verify_result
 
+  temp_home="$(mktemp -d "${TMPDIR:-/tmp}/steam-bridge-macos-helper-home.XXXXXX")"
+  old_home="$HOME"
+  shortcut_file="$temp_home/Library/Application Support/Steam/userdata/1686541554/config/shortcuts.vdf"
+  expected_game_id="$(node - <<'NODE'
+const appid = 3855287460;
+console.log(((BigInt(appid) << 32n) | 0x02000000n).toString());
+NODE
+)"
+
+  mkdir -p "$(dirname -- "$shortcut_file")"
+  node - "$shortcut_file" <<'NODE'
+const fs = require("node:fs");
+
+const TYPE_OBJECT = 0;
+const TYPE_STRING = 1;
+const TYPE_UINT32 = 2;
+const TYPE_END = 8;
+const chunks = [];
+
+byte(TYPE_OBJECT);
+cstr("shortcuts");
+byte(TYPE_OBJECT);
+cstr("0");
+uint32("appid", 3855287460);
+string("appname", "Steam Bridge Smoke");
+string("Exe", '"/tmp/SteamBridgeSmoke.app/Contents/MacOS/SteamBridgeSmoke"');
+string("StartDir", "/tmp/SteamBridgeSmoke.app/Contents/MacOS/");
+string("LaunchOptions", "--steam-bridge-app-id=480");
+uint32("AllowOverlay", 1);
+byte(TYPE_END);
+byte(TYPE_END);
+byte(TYPE_END);
+
+fs.writeFileSync(process.argv[2], Buffer.concat(chunks));
+
+function byte(value) {
+  chunks.push(Buffer.from([value]));
+}
+
+function cstr(value) {
+  chunks.push(Buffer.from(String(value), "utf8"), Buffer.from([0]));
+}
+
+function string(name, value) {
+  byte(TYPE_STRING);
+  cstr(name);
+  cstr(value);
+}
+
+function uint32(name, value) {
+  const buffer = Buffer.allocUnsafe(4);
+  byte(TYPE_UINT32);
+  cstr(name);
+  buffer.writeUInt32LE(Number(value) >>> 0, 0);
+  chunks.push(buffer);
+}
+NODE
+
+  HOME="$temp_home"
+  export HOME
+  matches="$(discover_shortcuts)"
+  if ! printf '%s\n' "$matches" | grep -q "\"gameId\":\"$expected_game_id\""; then
+    echo "Self-test failed to discover expected Steam shortcut game ID." >&2
+    printf '%s\n' "$matches" >&2
+    exit 1
+  fi
+
+  resolved="$(resolve_shortcut_game_id)"
+  if [ "$resolved" != "$expected_game_id" ]; then
+    echo "Self-test resolved $resolved, expected $expected_game_id." >&2
+    exit 1
+  fi
+
+  HOME="$old_home"
+  export HOME
+  rm -rf "$temp_home"
+
   overlay_dialog="Achievements"
   user_dialog="steamid"
   presenter_mode="session"
+  native_host_backend="opengl"
   launch_options="$(smoke_args | paste -sd' ' -)"
   if [[ "$launch_options" != *"--steam-bridge-smoke-overlay-dialog=Achievements"* ]]; then
     echo "Self-test failed: launch options must pass the requested overlay dialog." >&2
@@ -458,6 +733,10 @@ EOF
   fi
   if [[ "$launch_options" != *"--steam-bridge-smoke-presenter-mode=session"* ]]; then
     echo "Self-test failed: launch options must pass the requested presenter mode." >&2
+    exit 1
+  fi
+  if [[ "$launch_options" != *"--steam-bridge-smoke-native-host-backend=opengl"* ]]; then
+    echo "Self-test failed: launch options must pass the requested native host backend." >&2
     exit 1
   fi
 
@@ -472,6 +751,12 @@ case "$mode" in
   print-launch-options)
     printf 'Steam shortcut launch options:\n'
     smoke_args | paste -sd' ' -
+    if [ -n "$shortcut_game_id" ]; then
+      printf 'Launch URL: steam://rungameid/%s\n' "$(resolve_shortcut_game_id)"
+    fi
+    ;;
+  print-shortcuts)
+    discover_shortcuts
     ;;
   direct)
     ensure_app
@@ -485,6 +770,10 @@ case "$mode" in
     (cd "$app_dir" && "$smoke_exe" "${args[@]}")
     wait_for_result_file
     verify_result
+    ;;
+  steam-launch)
+    require_steam_launch="1"
+    launch_steam_shortcut
     ;;
   verify)
     verify_result

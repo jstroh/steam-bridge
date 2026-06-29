@@ -35,7 +35,9 @@ the Electron smoke app without downloaded release artifacts:
   `libsteam_api.dylib`, and `libsdkencryptedappticket.dylib`.
 - The package includes `macos-electron-smoke.sh` beside `SteamBridgeSmoke.app`;
   its self-test uses the shared Node smoke verifier against `darwin/arm64`
-  presenter diagnostics.
+  presenter diagnostics. The helper can also discover the Steam non-Steam
+  shortcut, print matching shortcut IDs, launch the shortcut with
+  `steam://rungameid`, wait for the smoke result, and verify the result.
 
 As of 2026-06-26 on macOS Apple Silicon, the packaged Electron smoke app can be
 launched through a Steam non-Steam shortcut with SpaceWar App ID `480`.
@@ -53,6 +55,16 @@ Verified:
   Steam-launched smoke app reports `overlayEnabled=true`,
   `overlayNeedsPresent=false`, and `nativeProbeOpen=true` on macOS Apple
   Silicon.
+- `electronScrubSteamOverlayChildProcessEnv()` now preserves macOS
+  `DYLD_INSERT_LIBRARIES` entries whose paths contain spaces, such as Steam's
+  `Application Support` install path. Before this fix, Electron helper
+  processes inherited a broken dyld path and crashed with `DYLD` termination
+  before overlay activation could be diagnosed cleanly.
+- Strict Steam-launched `presenter-web` runs after that fix are crash-free for
+  both `macos-metal` and `macos-opengl` presenter backends. Steam reports the
+  smoke process as App ID `480`, `overlayEnabled=true`,
+  `overlayNeedsPresent=false`, and Steam's `console_log.txt` shows
+  `gameoverlayui` starting for the smoke process.
 
 Still not verified:
 
@@ -67,10 +79,15 @@ Still not verified:
 - A shell-wrapper shortcut can set `SteamAppId=480` before app startup, but macOS
   strips the Steam `DYLD_INSERT_LIBRARIES` injection before the Electron child
   process starts, so that path is not useful for overlay verification.
+- The reusable macOS presenter path still has not emitted
+  `GameOverlayActivated(true)` in the packaged Electron smoke app. Both Metal
+  and OpenGL host backends can be launched and pumped without crashes, but the
+  Steam web overlay does not become an active, verifier-proven overlay surface.
 
 The current macOS result should therefore be treated as native probe diagnostic
-coverage, plus Steam launch and injection coverage for the BrowserWindow path.
-It should not be described as completed Steam Bridge macOS overlay support.
+coverage, Steam launch and injection coverage, and crash-free native presenter
+startup coverage. It should not be described as completed Steam Bridge macOS
+overlay support.
 
 ## Primary References
 

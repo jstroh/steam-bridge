@@ -193,10 +193,9 @@ export function electronScrubSteamOverlayChildProcessEnv(env: NodeJS.ProcessEnv 
       continue;
     }
 
-    const keptEntries = value
-      .split(":")
-      .flatMap((entry) => entry.split(/\s+/))
-      .filter((entry) => entry && !/gameoverlayrenderer/i.test(entry));
+    const keptEntries = splitSteamOverlayPreloadEntries(key, value).filter(
+      (entry) => entry && !/gameoverlayrenderer/i.test(entry)
+    );
 
     if (keptEntries.length > 0) {
       env[key] = keptEntries.join(":");
@@ -207,6 +206,14 @@ export function electronScrubSteamOverlayChildProcessEnv(env: NodeJS.ProcessEnv 
   }
 
   return scrubbedEnvKeys;
+}
+
+function splitSteamOverlayPreloadEntries(key: string, value: string): string[] {
+  if (key === "DYLD_INSERT_LIBRARIES") {
+    return value.split(":").map((entry) => entry.trim());
+  }
+
+  return value.split(/[:\s]+/).map((entry) => entry.trim());
 }
 
 export function electronNativeOverlaySessionOptions(

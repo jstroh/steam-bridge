@@ -18,6 +18,10 @@ const OVERLAY_ISOLATE_CHILD_PROCESSES = readOptionalBoolean(
     process.env.STEAM_BRIDGE_ELECTRON_OVERLAY_ISOLATE_CHILD_PROCESSES
 );
 const WINDOW_MODE = CLI_OPTIONS.windowMode || process.env.STEAM_BRIDGE_SMOKE_WINDOW_MODE || "windowed";
+const MAC_NATIVE_HOST_BACKEND = normalizeMacNativeHostBackend(
+  CLI_OPTIONS.nativeHostBackend || process.env.STEAM_BRIDGE_SMOKE_NATIVE_HOST_BACKEND || ""
+);
+configureMacNativeHostBackend(MAC_NATIVE_HOST_BACKEND);
 const STORE_URL = `https://store.steampowered.com/app/${APP_ID}/`;
 const WEB_URL = CLI_OPTIONS.webUrl || process.env.STEAM_BRIDGE_SMOKE_WEB_URL || STORE_URL;
 const WEB_MODAL = readBoolean(CLI_OPTIONS.webModal || process.env.STEAM_BRIDGE_SMOKE_WEB_MODAL, false);
@@ -1256,6 +1260,7 @@ function snapshot() {
       overlayScrubChildEnv: OVERLAY_CONFIG.scrubSteamOverlayChildProcessEnv,
       overlayIsolateChildProcesses: OVERLAY_CONFIG.isolateSteamOverlayChildProcesses,
       overlayConfig: OVERLAY_CONFIG,
+      nativeHostBackend: MAC_NATIVE_HOST_BACKEND || null,
       windowMode: WINDOW_MODE,
       autorun: AUTORUN,
       autorunAction: AUTORUN_ACTION,
@@ -1983,6 +1988,28 @@ function readOptionalBoolean(value) {
   return undefined;
 }
 
+function normalizeMacNativeHostBackend(value) {
+  const normalized = String(value || "").toLowerCase();
+  if (normalized === "metal" || normalized === "opengl") {
+    return normalized;
+  }
+  return "";
+}
+
+function configureMacNativeHostBackend(backend) {
+  if (process.platform !== "darwin") {
+    return;
+  }
+
+  if (backend === "opengl") {
+    process.env.STEAM_BRIDGE_MAC_NATIVE_OPENGL_HOST = "1";
+    delete process.env.STEAM_BRIDGE_MAC_NATIVE_METAL_HOST;
+  } else if (backend === "metal") {
+    process.env.STEAM_BRIDGE_MAC_NATIVE_METAL_HOST = "1";
+    delete process.env.STEAM_BRIDGE_MAC_NATIVE_OPENGL_HOST;
+  }
+}
+
 function writeSteamAppIdFiles(appId) {
   const directories = new Set([process.cwd(), __dirname]);
   if (app.isPackaged) {
@@ -2017,6 +2044,7 @@ function parseSmokeArgs(args) {
     overlayScrubChildEnv: undefined,
     overlayIsolateChildProcesses: undefined,
     windowMode: undefined,
+    nativeHostBackend: undefined,
     autorunRequireOverlayActive: undefined,
     webModal: undefined,
     webUrl: undefined,
@@ -2111,6 +2139,9 @@ function parseSmokeArgs(args) {
         break;
       case "--steam-bridge-smoke-window-mode":
         options.windowMode = value;
+        break;
+      case "--steam-bridge-smoke-native-host-backend":
+        options.nativeHostBackend = value;
         break;
       case "--steam-bridge-smoke-result-file":
         options.resultFile = value;

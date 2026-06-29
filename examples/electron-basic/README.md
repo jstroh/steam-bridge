@@ -95,6 +95,25 @@ dist/electron-smoke/aarch64-apple-darwin/SteamBridgeSmoke-darwin-arm64/macos-ele
   --web-modal true
 ```
 
+The macOS helper can also discover and launch the matching Steam non-Steam
+shortcut after you add or update it in `shortcuts.vdf` and restart Steam:
+
+```sh
+dist/electron-smoke/aarch64-apple-darwin/SteamBridgeSmoke-darwin-arm64/macos-electron-smoke.sh \
+  --mode print-shortcuts
+
+dist/electron-smoke/aarch64-apple-darwin/SteamBridgeSmoke-darwin-arm64/macos-electron-smoke.sh \
+  --mode steam-launch \
+  --action presenter-web \
+  --require-steam-launch \
+  --require-overlay-injection \
+  --require-overlay-enabled
+```
+
+For macOS presenter diagnostics, `--native-host-backend metal` and
+`--native-host-backend opengl` select the native host backend used by the smoke
+app. This is a diagnostic comparison control, not an app-builder API.
+
 The same controls are also available as launch options, which is usually easier
 for Steam non-Steam shortcuts:
 
