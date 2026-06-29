@@ -168,13 +168,20 @@ Verified:
   shortcut open/close, profile, community, stats, achievements, user chat and
   Steam ID panels, and known dialog variants. Interactive cases verified overlay
   activation/deactivation, close/focus return, parked idle presenter state, and
-  no crash evidence.
+  no crash evidence. The artifact also passes
+  `npm run macos:overlay-matrix:summarize -- --artifact-root <path>`, which
+  audits each collected result and lifecycle log.
 - `scripts/macos-overlay-matrix.sh` now owns repeatable macOS proof setup. It
   prints or runs a matrix of Steam-launched helper cases, installs or updates one
   stable Steam shortcut with the native launcher env-file flag, restarts Steam
   only when that shortcut is added or materially changed, and passes per-case
-  launch state through the env file. It collects result and diagnostic logs, and
-  its self-test validates the matrix shape without launching Steam.
+  launch state through the env file. It collects result and diagnostic logs,
+  then runs `scripts/summarize-macos-overlay-matrix.cjs` to audit Steam
+  launch/injection identity, one `gameoverlayui` target attached to the smoke
+  process, zero managed overlay timing, passive notification callbacks,
+  close-and-park lifecycle evidence, and crash diagnostics. Its self-test
+  validates the matrix shape and the artifact summarizer without launching
+  Steam.
 
 Still not verified:
 

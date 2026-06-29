@@ -4,6 +4,7 @@ set -euo pipefail
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd -- "$script_dir/.." && pwd)"
 
+summary_runner="${STEAM_BRIDGE_MACOS_MATRIX_SUMMARY:-$script_dir/summarize-macos-overlay-matrix.cjs}"
 mode="steam-launch"
 suite="core"
 app_id="480"
@@ -22,6 +23,7 @@ skip_package="0"
 dry_run="0"
 restart_steam="1"
 close_steam_after="0"
+skip_summary="0"
 
 usage() {
   cat <<'EOF'
@@ -32,7 +34,8 @@ Runs the macOS Apple Silicon Steam-launched overlay proof matrix with the
 packaged Electron smoke app and SpaceWar App ID 480 by default.
 
 Options:
-  --mode steam-launch|self-test  Run live or validate dry-run matrix shape.
+  --mode steam-launch|self-test|summarize
+                                  Run live, validate dry-run matrix shape, or summarize artifacts.
   --suite minimal|core|full      Matrix size. Defaults to core.
   --app-id ID                    Steam App ID inside the smoke app. Defaults to 480.
   --app-name NAME                Steam non-Steam shortcut name.
@@ -49,6 +52,7 @@ Options:
   --skip-package                 Do not run npm run example:package:mac first.
   --no-restart-steam             Do not restart Steam after changing shortcut options.
   --close-steam-after            Close Steam after the matrix finishes.
+  --skip-summary                 Do not summarize collected artifacts after the matrix.
   --dry-run                      Print commands without running them.
   --help                         Show this help.
 
@@ -134,6 +138,10 @@ while [ "$#" -gt 0 ]; do
       close_steam_after="1"
       shift
       ;;
+    --skip-summary)
+      skip_summary="1"
+      shift
+      ;;
     --dry-run)
       dry_run="1"
       shift
@@ -147,7 +155,7 @@ while [ "$#" -gt 0 ]; do
 done
 
 case "$mode" in
-  steam-launch|self-test)
+  steam-launch|self-test|summarize)
     ;;
   *)
     echo "Unknown --mode: $mode" >&2
@@ -287,6 +295,12 @@ run_self_test() {
 
 if [ "$mode" = "self-test" ]; then
   run_self_test
+  node "$summary_runner" --self-test
+  exit 0
+fi
+
+if [ "$mode" = "summarize" ]; then
+  node "$summary_runner" --artifact-root "$artifact_root"
   exit 0
 fi
 
@@ -469,10 +483,31 @@ write_case_manifest() {
   local case_id="$1"
   local result_file="$2"
   local diagnostic_dir="$3"
-  node - "$artifact_root/macos-matrix-cases.jsonl" "$case_id" "$result_file" "$diagnostic_dir" <<'NODE'
+  shift 3
+  node - "$artifact_root/macos-matrix-cases.jsonl" "$case_id" "$result_file" "$diagnostic_dir" "$@" <<'NODE'
 const fs = require("node:fs");
-const [manifestPath, caseId, resultFile, diagnosticDir] = process.argv.slice(2);
-fs.appendFileSync(manifestPath, `${JSON.stringify({ caseId, resultFile, diagnosticDir })}\n`);
+const [manifestPath, caseId, resultFile, diagnosticDir, ...command] = process.argv.slice(2);
+
+function optionValue(name) {
+  const index = command.indexOf(name);
+  if (index === -1) {
+    return null;
+  }
+  return command[index + 1] ?? "";
+}
+
+fs.appendFileSync(
+  manifestPath,
+  `${JSON.stringify({
+    caseId,
+    resultFile,
+    diagnosticDir,
+    command,
+    action: optionValue("--action"),
+    closeProbe: command.includes("--close-probe"),
+    shortcutOpenProbe: command.includes("--shortcut-open-probe")
+  })}\n`
+);
 NODE
 }
 
@@ -887,3 +922,8 @@ trap 'if [ "$close_steam_after" = "1" ] && [ "$dry_run" != "1" ]; then stop_maco
 run_matrix
 
 echo "macOS overlay matrix complete. Artifacts: $artifact_root"
+
+if [ "$dry_run" != "1" ] && [ "$skip_summary" != "1" ]; then
+  echo
+  node "$summary_runner" --artifact-root "$artifact_root"
+fi

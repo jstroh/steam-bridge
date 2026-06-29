@@ -484,8 +484,16 @@ updates one stable macOS Steam shortcut pointing at the in-bundle native
 launcher and a launcher env file. Each case rewrites only that env file, so
 Steam is restarted only when the shortcut itself is added or materially changed.
 The matrix runs the packaged helper and records per-case diagnostics. Its
-self-test is part of package smoke coverage; live runs still require clearing
-Steam game processes on other machines first.
+self-test is part of package smoke coverage and includes the macOS artifact
+summary self-test. After a live run it summarizes every macOS result and
+lifecycle log, failing if a case loses Steam launch/injection identity, uses
+nonzero managed overlay timing, reports crash diagnostics, duplicates
+`gameoverlayui` targets attached to the smoke process, misses passive
+notification callbacks, or misses active/inactive close-and-park evidence for
+interactive overlays. To audit an
+existing macOS artifact root, run
+`npm run macos:overlay-matrix:summarize -- --artifact-root <path>`. Live runs
+still require clearing Steam game processes on other machines first.
 
 Use the repository-level matrix runner when you need to repeat the full Deck
 Desktop product proof instead of hand-running each case:
