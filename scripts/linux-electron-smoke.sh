@@ -41,6 +41,7 @@ require_presenter_mode=""
 require_overlay_shortcut_target=""
 require_action_error_code=""
 require_action_error_reason=""
+require_native_host_unavailable_reason=""
 require_no_crashes="0"
 require_steam_deck="0"
 require_big_picture="0"
@@ -116,6 +117,8 @@ Options:
                                  Require the autorun action to fail with this serialized error code.
   --require-action-error-reason REASON
                                  Require the autorun action to fail with this serialized error reason.
+  --require-native-host-unavailable-reason REASON
+                                 Require managed presenter diagnostics to report this native host unavailable reason.
   --require-no-crashes           Require no crash dumps or fatal Electron lifecycle events.
   --require-steam-deck           Require Steam Deck detection.
   --require-big-picture          Require Big Picture/Game Mode detection.
@@ -290,6 +293,10 @@ while [ "$#" -gt 0 ]; do
       ;;
     --require-action-error-reason)
       require_action_error_reason="${2:?missing --require-action-error-reason value}"
+      shift 2
+      ;;
+    --require-native-host-unavailable-reason)
+      require_native_host_unavailable_reason="${2:?missing --require-native-host-unavailable-reason value}"
       shift 2
       ;;
     --require-no-crashes)
@@ -546,6 +553,7 @@ verify_result() {
   REQUIRE_OVERLAY_SHORTCUT_TARGET="$require_overlay_shortcut_target" \
   REQUIRE_ACTION_ERROR_CODE="$require_action_error_code" \
   REQUIRE_ACTION_ERROR_REASON="$require_action_error_reason" \
+  REQUIRE_NATIVE_HOST_UNAVAILABLE_REASON="$require_native_host_unavailable_reason" \
   REQUIRE_NO_CRASHES="$require_no_crashes" \
   REQUIRE_STEAM_DECK="$require_steam_deck" \
   REQUIRE_BIG_PICTURE="$require_big_picture" \
@@ -562,6 +570,7 @@ expected_action = os.environ["ACTION"]
 expected_action_error_code = os.environ.get("REQUIRE_ACTION_ERROR_CODE", "")
 expected_action_error_reason = os.environ.get("REQUIRE_ACTION_ERROR_REASON", "")
 expected_action_error = bool(expected_action_error_code or expected_action_error_reason)
+expected_native_host_unavailable_reason = os.environ.get("REQUIRE_NATIVE_HOST_UNAVAILABLE_REASON", "")
 required_events = [entry for entry in os.environ.get("REQUIRE_EVENTS", "").splitlines() if entry]
 
 with open(path, "r", encoding="utf-8") as handle:
@@ -642,6 +651,25 @@ if expected_action_error:
             expect(
                 action_error.get("reason") == expected_action_error_reason,
                 f"autorun action error reason is {expected_action_error_reason}",
+            )
+if expected_native_host_unavailable_reason:
+    expect(isinstance(native_presenter, dict), "native presenter snapshot available")
+    if isinstance(native_presenter, dict):
+        expect(
+            native_presenter.get("nativeHostUnavailableReason") == expected_native_host_unavailable_reason,
+            f"native host unavailable reason is {expected_native_host_unavailable_reason}",
+        )
+        expect(native_presenter.get("attached") is False, "native presenter is not attached while host is unavailable")
+        expect(native_presenter.get("nativeHostOpen") is False, "native presenter host is closed while unavailable")
+        expect(native_presenter.get("currentFps") == 0, "native presenter current FPS is zero while unavailable")
+        expected_environment = {
+            "macos-screen-locked": {"screenLocked": True, "displayAsleep": False},
+            "macos-display-asleep": {"screenLocked": False, "displayAsleep": True},
+        }.get(expected_native_host_unavailable_reason)
+        if expected_environment is not None:
+            expect(
+                native_presenter.get("macOverlayEnvironment") == expected_environment,
+                f"mac overlay environment matches {expected_native_host_unavailable_reason}",
             )
 if os.environ["REQUIRE_STEAM_LAUNCH"] == "1":
     expect(launch.get("steamLaunch") is True, "Steam launch marker detected")

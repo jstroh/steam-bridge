@@ -63,6 +63,7 @@ param(
   [switch]$RequireOverlayActivated,
   [string]$RequireActionErrorCode = "",
   [string]$RequireActionErrorReason = "",
+  [string]$RequireNativeHostUnavailableReason = "",
   [switch]$KeepOpenAfterResult
 )
 
@@ -276,6 +277,8 @@ function Assert-SmokeResult {
   $app = $snapshot.app
   $launch = $snapshot.launch
   $processInfo = $snapshot.process
+  $overlay = $snapshot.overlay
+  $nativePresenter = Read-OkValue $overlay.nativePresenter
   $events = @($snapshot.events)
   $overlayActivated = @($events | Where-Object { Test-OverlayActiveEvent $_ }).Count -gt 0
   $expectedActionError = ($RequireActionErrorCode -or $RequireActionErrorReason)
@@ -324,6 +327,38 @@ function Assert-SmokeResult {
     }
   } elseif ($Result.action.ok -ne $true) {
     $failures.Add("autorun action $Action succeeded")
+  }
+  if ($RequireNativeHostUnavailableReason) {
+    if (-not $nativePresenter) {
+      $failures.Add("native presenter snapshot available")
+    } else {
+      if ($nativePresenter.nativeHostUnavailableReason -ne $RequireNativeHostUnavailableReason) {
+        $failures.Add("native host unavailable reason is $RequireNativeHostUnavailableReason")
+      }
+      if ($nativePresenter.attached -ne $false) {
+        $failures.Add("native presenter is not attached while host is unavailable")
+      }
+      if ($nativePresenter.nativeHostOpen -ne $false) {
+        $failures.Add("native presenter host is closed while unavailable")
+      }
+      if ($nativePresenter.currentFps -ne 0) {
+        $failures.Add("native presenter current FPS is zero while unavailable")
+      }
+      $expectedMacEnvironment = $null
+      if ($RequireNativeHostUnavailableReason -eq "macos-screen-locked") {
+        $expectedMacEnvironment = [pscustomobject]@{ screenLocked = $true; displayAsleep = $false }
+      } elseif ($RequireNativeHostUnavailableReason -eq "macos-display-asleep") {
+        $expectedMacEnvironment = [pscustomobject]@{ screenLocked = $false; displayAsleep = $true }
+      }
+      if ($expectedMacEnvironment) {
+        if (
+          $nativePresenter.macOverlayEnvironment.screenLocked -ne $expectedMacEnvironment.screenLocked -or
+          $nativePresenter.macOverlayEnvironment.displayAsleep -ne $expectedMacEnvironment.displayAsleep
+        ) {
+          $failures.Add("mac overlay environment matches $RequireNativeHostUnavailableReason")
+        }
+      }
+    }
   }
   if ($RequireSteamLaunch -and $launch.steamLaunch -ne $true) {
     $failures.Add("Steam launch marker detected")

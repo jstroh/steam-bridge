@@ -65,6 +65,9 @@ if (options.action) {
 if (expectedActionError) {
   verifyExpectedActionError();
 }
+if (options.requireNativeHostUnavailableReason) {
+  verifyNativeHostUnavailableReason();
+}
 if (options.requireSteamDeck) {
   expect(readOkValue(steam.steamDeck) === true, "Steam Deck detected");
 }
@@ -312,6 +315,42 @@ function verifyExpectedActionError() {
   }
 }
 
+function verifyNativeHostUnavailableReason() {
+  expect(Boolean(nativePresenter), "native presenter snapshot available");
+  if (!nativePresenter || typeof nativePresenter !== "object") {
+    return;
+  }
+
+  expect(
+    nativePresenter.nativeHostUnavailableReason === options.requireNativeHostUnavailableReason,
+    `native host unavailable reason is ${options.requireNativeHostUnavailableReason}`
+  );
+  expect(nativePresenter.attached === false, "native presenter is not attached while host is unavailable");
+  expect(nativePresenter.nativeHostOpen === false, "native presenter host is closed while unavailable");
+  expect(nativePresenter.currentFps === 0, "native presenter current FPS is zero while unavailable");
+  const expectedEnvironment = expectedMacOverlayEnvironment(options.requireNativeHostUnavailableReason);
+  if (expectedEnvironment) {
+    const actualEnvironment = nativePresenter.macOverlayEnvironment;
+    expect(
+      actualEnvironment &&
+        actualEnvironment.screenLocked === expectedEnvironment.screenLocked &&
+        actualEnvironment.displayAsleep === expectedEnvironment.displayAsleep,
+      `mac overlay environment matches ${options.requireNativeHostUnavailableReason}`
+    );
+  }
+}
+
+function expectedMacOverlayEnvironment(reason) {
+  switch (reason) {
+    case "macos-screen-locked":
+      return { screenLocked: true, displayAsleep: false };
+    case "macos-display-asleep":
+      return { screenLocked: false, displayAsleep: true };
+    default:
+      return undefined;
+  }
+}
+
 function readLifecycleEntries() {
   if (!options.diagnosticDir) {
     failures.push("diagnostic dir is required for passive notification lifecycle verification");
@@ -437,6 +476,7 @@ function parseArgs(args) {
     requireOverlayShortcutTarget: undefined,
     requireActionErrorCode: undefined,
     requireActionErrorReason: undefined,
+    requireNativeHostUnavailableReason: undefined,
     requireNoCrashes: false,
     requirePassiveNotification: false,
     requireSteamLaunch: false,
@@ -513,6 +553,9 @@ function parseArgs(args) {
         break;
       case "--require-action-error-reason":
         parsed.requireActionErrorReason = args[++index];
+        break;
+      case "--require-native-host-unavailable-reason":
+        parsed.requireNativeHostUnavailableReason = args[++index];
         break;
       case "--require-no-crashes":
         parsed.requireNoCrashes = true;

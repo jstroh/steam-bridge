@@ -430,7 +430,8 @@ npm run example:verify-result -- \
   --platform darwin/arm64 \
   --action presenter-web-open-and-wait \
   --require-action-error-code STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE \
-  --require-action-error-reason macos-screen-locked
+  --require-action-error-reason macos-screen-locked \
+  --require-native-host-unavailable-reason macos-screen-locked
 ```
 
 ## Steam Deck Checks
@@ -858,8 +859,9 @@ overlay helpers fail before activation with
 `STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE` code and `reason` field for fallback
 logic; do not wait for overlay timeouts in that state. The packaged macOS helper
 and other platform helpers accept `--require-action-error-code` and
-`--require-action-error-reason` so this fallback can be machine-checked from the
-smoke result.
+`--require-action-error-reason`; add `--require-native-host-unavailable-reason`
+to verify the presenter snapshot also stayed unattached, host-closed, and at
+zero current FPS.
 
 For a Steam Deck Desktop Mode shortcut launch, omit the Big Picture assertion
 but keep the Steam launch and overlay injection assertions:

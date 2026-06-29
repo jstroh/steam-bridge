@@ -49,6 +49,7 @@ require_presenter_mode=""
 require_overlay_shortcut_target=""
 require_action_error_code=""
 require_action_error_reason=""
+require_native_host_unavailable_reason=""
 require_no_crashes="0"
 require_events=()
 
@@ -119,6 +120,8 @@ Options:
                                  Require the autorun action to fail with this serialized error code.
   --require-action-error-reason REASON
                                  Require the autorun action to fail with this serialized error reason.
+  --require-native-host-unavailable-reason REASON
+                                 Require managed presenter diagnostics to report this native host unavailable reason.
   --require-no-crashes           Require no crash dumps or fatal Electron lifecycle events.
   --require-event TYPE           Require an emitted event. May be repeated.
 EOF
@@ -327,6 +330,10 @@ while [ "$#" -gt 0 ]; do
       ;;
     --require-action-error-reason)
       require_action_error_reason="${2:?missing --require-action-error-reason value}"
+      shift 2
+      ;;
+    --require-native-host-unavailable-reason)
+      require_native_host_unavailable_reason="${2:?missing --require-native-host-unavailable-reason value}"
       shift 2
       ;;
     --require-no-crashes)
@@ -731,6 +738,9 @@ verify_result() {
   fi
   if [ -n "$require_action_error_reason" ]; then
     args+=("--require-action-error-reason" "$require_action_error_reason")
+  fi
+  if [ -n "$require_native_host_unavailable_reason" ]; then
+    args+=("--require-native-host-unavailable-reason" "$require_native_host_unavailable_reason")
   fi
   if [ "$require_no_crashes" = "1" ]; then
     args+=("--require-no-crashes")

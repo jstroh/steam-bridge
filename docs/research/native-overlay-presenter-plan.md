@@ -657,8 +657,10 @@ Current evidence:
   `macOverlayEnvironment` and fall back without waiting for a guard timeout.
   Unit coverage verifies locked, display-asleep, post-unlock lazy attach, and
   managed fail-fast paths. The shared smoke verifier and packaged platform
-  helpers can also require the serialized action `code` and `reason` fields so
-  locked/asleep fallback artifacts can be checked automatically.
+  helpers can also require the serialized action `code` and `reason` fields,
+  plus the presenter `nativeHostUnavailableReason`, no-host, unattached,
+  zero-FPS snapshot state, so locked/asleep fallback artifacts can be checked
+  automatically.
 - BrowserWindow-only overlay support is not proven.
 - Steam launch, app ID, auth, and callbacks are not enough to claim overlay
   support.
