@@ -159,6 +159,16 @@ Verified:
   passed the same five routes with zero managed overlay timing enforced,
   close/focus/park checks for interactive overlays, passive toast diagnostics,
   and no crash evidence.
+- A 2026-06-29 full macOS overlay matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-full-immediate-focus-20260629-153448`
+  passed all 20 Steam-launched App ID `480` cases after that immediate-focus
+  change, with zero managed overlay timing enforced. Coverage included
+  web/store/Friends/dialog `openAndWait(...)`, passive progress and unlock
+  notifications, synthetic checkout approval-route plumbing, managed Shift+Tab
+  shortcut open/close, profile, community, stats, achievements, user chat and
+  Steam ID panels, and known dialog variants. Interactive cases verified overlay
+  activation/deactivation, close/focus return, parked idle presenter state, and
+  no crash evidence.
 - `scripts/macos-overlay-matrix.sh` now owns repeatable macOS proof setup. It
   prints or runs a matrix of Steam-launched helper cases, installs or updates one
   stable Steam shortcut with the native launcher env-file flag, restarts Steam
