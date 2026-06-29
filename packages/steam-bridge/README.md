@@ -246,7 +246,10 @@ call.
 For `InitTxn` flows, wrap the app's backend transaction call with
 `steamOverlay.withCheckoutPrepared(() => startTxn())`. Steam Bridge primes the
 native presenter before the backend starts the transaction, then returns the
-backend result unchanged. If Steam returns a web checkout URL, pass it as
+backend result unchanged. The wrapper owns an operation-scoped activation hold:
+it keeps the presenter ready while the backend call is pending and parks it
+immediately afterward without app-tuned preparation timers. If Steam returns a
+web checkout URL, pass it as
 `steamOverlay.open({ type: "checkout", steamUrl })`. If you have a transaction
 id, call `steamOverlay.open({ type: "checkout", transactionId })` and Steam
 Bridge builds the approval URL for you. `steamOverlay.prepareForCheckout()`

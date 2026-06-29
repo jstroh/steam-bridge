@@ -4977,6 +4977,94 @@ test("electron steam overlay manager syncs the presenter on window geometry even
   }
 });
 
+test("electron steam overlay checkout preparation holds only for the wrapped operation", async (t) => {
+  const hostHandle = Buffer.from([1, 3, 5, 7]);
+  let hostOpen = false;
+  const fake = createFakeNative({
+    attachNativeOverlayHostView(nativeWindowHandle) {
+      hostOpen = true;
+      this.calls.push({ method: "attachNativeOverlayHostView", args: [nativeWindowHandle] });
+    },
+    pumpNativeOverlayProbeWindow() {
+      this.calls.push({ method: "pumpNativeOverlayProbeWindow", args: [] });
+    },
+    showNativeOverlayHostView() {
+      this.calls.push({ method: "showNativeOverlayHostView", args: [] });
+    },
+    setNativeOverlayHostInputPassthrough(passThrough) {
+      this.calls.push({ method: "setNativeOverlayHostInputPassthrough", args: [passThrough] });
+    },
+    setNativeOverlayHostOpacity(opaque) {
+      this.calls.push({ method: "setNativeOverlayHostOpacity", args: [opaque] });
+    },
+    detachNativeOverlayHostView() {
+      hostOpen = false;
+      this.calls.push({ method: "detachNativeOverlayHostView", args: [] });
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return false;
+    },
+    isNativeOverlayHostViewOpen() {
+      return hostOpen;
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  const window = {
+    isDestroyed() {
+      return false;
+    },
+    getNativeWindowHandle() {
+      return hostHandle;
+    },
+    once() {},
+    webContents: {
+      once() {},
+      invalidate() {},
+      send() {}
+    }
+  };
+
+  const overlay = steam.overlay.createElectronSteamOverlay(window, {
+    title: "Electron Checkout Overlay",
+    activationBoostMs: 0,
+    activeGraceMs: 0,
+    pollIntervalMs: 10000
+  });
+
+  let duringOperation;
+  const result = await overlay.withCheckoutPrepared(() => {
+    duringOperation = overlay.snapshot();
+    return "ready";
+  }, { durationMs: 999999 });
+  const afterOperation = overlay.snapshot();
+
+  assert.equal(result, "ready");
+  assert.equal(duringOperation.mode, "active");
+  assert.equal(duringOperation.clickThrough, false);
+  assert.equal(duringOperation.transparent, false);
+  assert.equal(duringOperation.currentFps, 30);
+  assert.equal(duringOperation.overlayActive, false);
+  assert.equal(afterOperation.mode, "passive");
+  assert.equal(afterOperation.clickThrough, true);
+  assert.equal(afterOperation.transparent, true);
+  assert.equal(afterOperation.currentFps, 0);
+  assert.deepEqual(
+    fake.calls
+      .filter((call) => call.method === "setNativeOverlayHostInputPassthrough")
+      .map((call) => call.args[0]),
+    [false, true]
+  );
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "setNativeOverlayHostOpacity").map((call) => call.args[0]),
+    [true, false]
+  );
+
+  overlay.close();
+});
+
 test("electron steam overlay manager primes passive notification toasts automatically", (t) => {
   const hostHandle = Buffer.from([3, 1, 4, 1]);
   let hostOpen = false;

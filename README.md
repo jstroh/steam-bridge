@@ -499,7 +499,9 @@ real purchase-content proof still requires a real Steam app and configured
 product. For in-game microtransactions, wrap the backend call that starts
 `InitTxn` with `steamOverlay.withCheckoutPrepared(() => startTxn())` so Steam's
 automatic authorization UI has a native presenter ready before the transaction
-begins. If Steam returns a web checkout URL, pass it with
+begins. The wrapper holds the presenter active only while that operation is
+pending and then releases it back to passive idle, so app code does not tune
+overlay-preparation timers. If Steam returns a web checkout URL, pass it with
 `steamOverlay.open({ type: "checkout", steamUrl })`. If you have a transaction
 id, use `transactionId` and Steam Bridge builds the approval URL.
 `steamOverlay.prepareForCheckout()` remains available for lower-level flows

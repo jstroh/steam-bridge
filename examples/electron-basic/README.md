@@ -172,8 +172,10 @@ Use `presenter-checkout` to verify checkout readiness. Without
 `STEAM_BRIDGE_SMOKE_CHECKOUT_TRANSACTION_ID`, it calls
 `steamOverlay.withCheckoutPrepared(...)` and records
 `overlay:presenter-checkout-ready`; this is safe for the public SpaceWar smoke
-app and proves the public checkout wrapper without opening purchase UI. When
-testing a real app with a configured product, set
+app and proves the public checkout wrapper without opening purchase UI or
+depending on a fixed presenter-preparation duration. The helper holds the
+presenter active only for the wrapped operation and then parks it. When testing
+a real app with a configured product, set
 `STEAM_BRIDGE_SMOKE_CHECKOUT_URL` to the Steam URL returned by `InitTxn`, or set
 `STEAM_BRIDGE_SMOKE_CHECKOUT_TRANSACTION_ID` to build and open the Steam
 transaction approval page through `steamOverlay.open({ type: "checkout", ... })`.
@@ -668,7 +670,8 @@ app-specific proof outside the committed examples:
 
 1. Launch your real installed Steam app through Steam.
 2. Confirm the running process reports your real app ID.
-3. Wrap the backend `InitTxn` call in `steamOverlay.withCheckoutPrepared(...)`.
+3. Wrap the backend `InitTxn` call in `steamOverlay.withCheckoutPrepared(...)`;
+   do not tune local overlay-preparation timers around that call.
 4. Trigger your checkout URL or transaction approval path from inside that app.
 5. Verify the Steam modal appears in both Deck Game Mode and Desktop Mode.
 6. Confirm backing out or closing the Steam surface returns focus to the app.

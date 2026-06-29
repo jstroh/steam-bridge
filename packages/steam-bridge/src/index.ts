@@ -1839,6 +1839,11 @@ export interface ElectronSteamOverlayOpenAndWaitResult {
 }
 
 export interface ElectronSteamOverlayCheckoutPrepareOptions {
+  /**
+   * @deprecated `withCheckoutPrepared()` now keeps the presenter ready for the
+   * lifetime of the wrapped operation. This is only used as a fallback when a
+   * custom presenter does not support operation-scoped activation holds.
+   */
   durationMs?: number;
 }
 
@@ -1911,6 +1916,7 @@ type NativeOverlayPresenterActivationMode = "interactive" | "passive" | "transpa
 
 type NativeOverlayPresenterInternal = NativeOverlayPresenter & {
   prepareForTransparentInputOverlay?: (durationMs?: number) => void;
+  beginOverlayActivation?: (activationMode?: NativeOverlayPresenterActivationMode) => CallbackHandle;
   onStateChange?: (listener: () => void) => CallbackHandle;
 };
 
@@ -7286,6 +7292,7 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
   let hostActivationMode: NativeOverlayPresenterActivationMode = "passive";
   let suppressNeedsPresentOpacity = false;
   let boostUntil = 0;
+  let activationHoldCount = 0;
   let timer: NodeJS.Timeout | undefined;
   let restoreFocusTimer: NodeJS.Timeout | undefined;
   let overlayHandle: CallbackHandle | undefined;
@@ -7356,6 +7363,47 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
 
   const prepareForTransparentInputOverlay = (durationMs = activationBoostMs): void => {
     prepareForActivation("transparent-input", durationMs);
+  };
+
+  const beginOverlayActivation = (
+    activationMode: NativeOverlayPresenterActivationMode = "interactive"
+  ): CallbackHandle => {
+    if (closed) {
+      return {
+        disconnect() {}
+      };
+    }
+
+    activationHoldCount += 1;
+    if (!visible) {
+      show();
+    }
+    hostActivationMode = activationMode;
+    suppressNeedsPresentOpacity = false;
+    currentFps = selectCurrentFps();
+    syncHostInputMode();
+    pump();
+    schedule(0);
+    emitStateChange();
+
+    let disconnected = false;
+    return {
+      disconnect() {
+        if (disconnected) {
+          return;
+        }
+        disconnected = true;
+        activationHoldCount = Math.max(0, activationHoldCount - 1);
+        if (activationHoldCount === 0 && !overlayActive && Date.now() >= boostUntil) {
+          hostActivationMode = "passive";
+          suppressNeedsPresentOpacity = true;
+        }
+        currentFps = selectCurrentFps();
+        syncHostInputMode();
+        schedule(0);
+        emitStateChange();
+      }
+    };
   };
 
   const prepareForActivation = (
@@ -7434,6 +7482,7 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
     }
 
     closed = true;
+    activationHoldCount = 0;
 
     if (timer) {
       clearTimeout(timer);
@@ -7485,6 +7534,7 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
       schedule(0);
       emitStateChange();
     } else if (event.active === false) {
+      activationHoldCount = 0;
       hostActivationMode = "passive";
       suppressNeedsPresentOpacity = true;
       boostUntil = Date.now() + activeGraceMs;
@@ -7505,6 +7555,7 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
     prepareForOverlay,
     prepareForPassiveOverlay,
     prepareForTransparentInputOverlay,
+    beginOverlayActivation,
     show,
     hide,
     isOpen: () =>
@@ -7550,7 +7601,7 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
 
   function selectCurrentFps(): number {
     const now = Date.now();
-    if (overlayActive || now < boostUntil) {
+    if (overlayActive || activationHoldCount > 0 || now < boostUntil) {
       return activeOverlayFps;
     }
     if (overlayNeedsPresent && !suppressNeedsPresentOpacity) {
@@ -7578,7 +7629,7 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
   function shouldHostAcceptInput(now: number): boolean {
     return (
       (hostActivationMode === "interactive" || hostActivationMode === "transparent-input") &&
-      (overlayActive || now < boostUntil)
+      (overlayActive || activationHoldCount > 0 || now < boostUntil)
     );
   }
 
@@ -8038,8 +8089,16 @@ export function createElectronSteamOverlay(
       options: ElectronSteamOverlayCheckoutPrepareOptions = {}
     ): Promise<T> {
       assertOpen();
-      presenter.prepareForOverlay(options.durationMs);
-      return await operation();
+      const presenterInternal = presenter as NativeOverlayPresenterInternal;
+      const activationHandle = presenterInternal.beginOverlayActivation?.("interactive");
+      if (!activationHandle) {
+        presenter.prepareForOverlay(options.durationMs);
+      }
+      try {
+        return await operation();
+      } finally {
+        activationHandle?.disconnect();
+      }
     },
     prepareForCheckout(durationMs?: number): NativeOverlayPresenter {
       assertOpen();
@@ -8236,6 +8295,12 @@ function createNativeOverlaySessionPresenter(options: NativeOverlaySessionOption
     },
     prepareForOverlay: prepare,
     prepareForPassiveOverlay: prepare,
+    beginOverlayActivation(): CallbackHandle {
+      prepare();
+      return {
+        disconnect() {}
+      };
+    },
     show: prepare,
     hide(): void {
       session?.close();

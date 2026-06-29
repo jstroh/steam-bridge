@@ -356,7 +356,8 @@ Current evidence:
   real installed Steam app with a configured product or transaction. The public
   API now has a named checkout wrapper:
   `steamOverlay.withCheckoutPrepared(() => startTxn())` primes the presenter
-  before an in-game `InitTxn` and returns the app/backend result unchanged.
+  before an in-game `InitTxn`, holds it only while the backend operation is
+  pending, and returns the app/backend result unchanged.
   `steamOverlay.open({ type: "checkout", steamUrl })` or
   `steamOverlay.open({ type: "checkout", transactionId })` opens a returned or
   known approval surface through the same verified presenter route. App code can
