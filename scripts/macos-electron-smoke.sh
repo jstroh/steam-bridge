@@ -27,6 +27,9 @@ macos_native_launcher="0"
 result_delay_ms="8000"
 keep_open_after_result="0"
 timeout_seconds="90"
+close_probe="0"
+close_input="escape"
+require_close_deactivated="0"
 shortcut_game_id=""
 app_name="Steam Bridge Smoke"
 steam_user_id=""
@@ -83,6 +86,11 @@ Options:
   --result-delay-ms MS           Autorun result delay. Defaults to 8000.
   --keep-open-after-result       Write the result but leave the app running.
   --timeout-seconds SECONDS      Result wait timeout. Defaults to 90.
+  --close-probe                  Keep the app open, send a macOS overlay close input,
+                                 and require active=false plus presenter parking evidence.
+  --close-input MODE             macOS close input: escape, keyboard, or toggle. Defaults to escape.
+                                 keyboard is an alias for escape; toggle sends Shift+Tab.
+  --require-close-deactivated    Verify existing lifecycle close/parking evidence.
   --shortcut-game-id ID|auto     Full steam://rungameid shortcut game ID.
   --app-name NAME                Shortcut name to auto-discover.
   --steam-user-id ID             Restrict shortcut discovery to one userdata ID.
@@ -213,6 +221,20 @@ while [ "$#" -gt 0 ]; do
       timeout_seconds="${2:?missing --timeout-seconds value}"
       shift 2
       ;;
+    --close-probe)
+      close_probe="1"
+      require_close_deactivated="1"
+      keep_open_after_result="1"
+      shift
+      ;;
+    --close-input)
+      close_input="${2:?missing --close-input value}"
+      shift 2
+      ;;
+    --require-close-deactivated)
+      require_close_deactivated="1"
+      shift
+      ;;
     --shortcut-game-id)
       shortcut_game_id="${2:?missing --shortcut-game-id value}"
       shift 2
@@ -287,6 +309,16 @@ while [ "$#" -gt 0 ]; do
       ;;
   esac
 done
+
+case "$close_input" in
+  escape|keyboard|toggle)
+    ;;
+  *)
+    echo "Unknown --close-input: $close_input" >&2
+    usage >&2
+    exit 2
+    ;;
+esac
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 result_prefix="STEAM_BRIDGE_SMOKE_RESULT "
@@ -569,6 +601,10 @@ launch_steam_shortcut() {
   open "steam://rungameid/$game_id"
   wait_for_result_file
   verify_result
+  if [ "$close_probe" = "1" ]; then
+    send_macos_overlay_close_probe
+    verify_macos_overlay_closed_after_probe
+  fi
 }
 
 verifier_path() {
@@ -642,12 +678,389 @@ verify_result() {
   node "${args[@]}"
 }
 
+send_macos_overlay_close_probe() {
+  case "$close_input" in
+    escape|keyboard)
+      echo "Sending macOS overlay Escape close probe"
+      osascript <<'OSA'
+tell application "System Events"
+  key code 53
+end tell
+OSA
+      ;;
+    toggle)
+      echo "Sending macOS overlay Shift+Tab close probe"
+      osascript <<'OSA'
+tell application "System Events"
+  key code 48 using shift down
+end tell
+OSA
+      ;;
+  esac
+}
+
+verify_macos_overlay_closed_after_probe() {
+  local close_timeout_seconds="${1:-8}"
+  local require_smoke_process="${2:-$close_probe}"
+  echo "Verifying macOS overlay close/deactivation evidence"
+  RESULT_FILE="$result_file" DIAGNOSTIC_DIR="$diagnostic_dir" ACTION="$action" CLOSE_TIMEOUT_SECONDS="$close_timeout_seconds" REQUIRE_SMOKE_PROCESS="$require_smoke_process" node <<'NODE'
+const fs = require("node:fs");
+const path = require("node:path");
+const childProcess = require("node:child_process");
+
+const resultFile = process.env.RESULT_FILE;
+const diagnosticDir = process.env.DIAGNOSTIC_DIR || `${resultFile}.diagnostics`;
+const action = process.env.ACTION || "";
+const timeoutSeconds = Number(process.env.CLOSE_TIMEOUT_SECONDS || "8");
+const requireSmokeProcess = process.env.REQUIRE_SMOKE_PROCESS === "1";
+const lifecyclePath = path.join(diagnosticDir, "lifecycle.jsonl");
+const crashDumpDir = path.join(diagnosticDir, "crash-dumps");
+const requireOpenAndWaitCompletion = new Set([
+  "presenter-web-open-and-wait",
+  "presenter-store-open-and-wait",
+  "presenter-dialog-auto-open-and-wait",
+  "presenter-friends-open-and-wait"
+]).has(action);
+const fatalTypes = new Set([
+  "app:render-process-gone",
+  "app:child-process-gone",
+  "app:gpu-process-crashed",
+  "process:uncaught-exception",
+  "process:unhandled-rejection"
+]);
+const failures = [];
+
+let entries = [];
+let lifecycleFailures = [];
+const deadline = Date.now() + timeoutSeconds * 1000;
+while (true) {
+  ({ entries, lifecycleFailures } = readLifecycleEntries());
+  if (lifecycleFailures.length === 0 && (hasRequiredCloseEvidence(entries) || Date.now() >= deadline)) {
+    break;
+  }
+  if (lifecycleFailures.length > 0 && Date.now() >= deadline) {
+    failures.push(...lifecycleFailures);
+    break;
+  }
+  sleep(200);
+}
+
+if (failures.length === 0 && lifecycleFailures.length > 0) {
+  failures.push(...lifecycleFailures);
+}
+
+const { firstActiveIndex, inactiveAfterActiveIndex } = findOverlayStateIndices(entries);
+if (firstActiveIndex == null) {
+  failures.push("no active=true overlay callback in lifecycle log");
+} else if (inactiveAfterActiveIndex == null) {
+  failures.push("no active=false overlay callback after active=true");
+} else {
+  const reactivatedAfterClose = entries.some((entry, index) => {
+    return (
+      index > inactiveAfterActiveIndex &&
+      entry.type === "event:callback:overlay-activated" &&
+      activeValue(entry.payload) === true
+    );
+  });
+  if (reactivatedAfterClose) {
+    failures.push("overlay reactivated after close probe");
+  }
+
+  const firstAfterClosePresenters = entries
+    .map((entry, index) => ({ entry, index, presenter: presenterPayload(entry) }))
+    .filter(({ entry, index }) => index > inactiveAfterActiveIndex && entry.type === "event:overlay:presenter-after-close");
+  const stableAfterClosePresenters = entries
+    .map((entry, index) => ({ entry, index, presenter: presenterPayload(entry) }))
+    .filter(({ entry, index }) => index > inactiveAfterActiveIndex && entry.type === "event:overlay:presenter-after-close-stable");
+  if (firstAfterClosePresenters.length === 0) {
+    failures.push("no overlay:presenter-after-close event after active=false in lifecycle log");
+  } else if (!firstAfterClosePresenters.some(({ presenter }) => presenter)) {
+    failures.push("overlay:presenter-after-close did not include a presenter snapshot");
+  }
+  if (stableAfterClosePresenters.length === 0) {
+    failures.push("no overlay:presenter-after-close-stable event after active=false in lifecycle log");
+  } else if (!stableAfterClosePresenters.some(({ presenter }) => presenter)) {
+    failures.push("overlay:presenter-after-close-stable did not include a presenter snapshot");
+  }
+  const firstPresenter = lastPresenter(firstAfterClosePresenters);
+  const stablePresenter = lastPresenter(stableAfterClosePresenters);
+  if (firstPresenter && stablePresenter) {
+    expectParkedPresenter(firstPresenter, "first sample");
+    expectParkedPresenter(stablePresenter, "stable sample");
+    if (firstPresenter.pumpCount !== stablePresenter.pumpCount) {
+      failures.push(
+        `native presenter pump count changed after close: first=${format(firstPresenter.pumpCount)}, stable=${format(stablePresenter.pumpCount)}`
+      );
+    }
+  }
+
+  const waitShownPresenters = entries
+    .map((entry, index) => ({ entry, index, presenter: presenterPayload(entry) }))
+    .filter(({ entry, index }) => index > firstActiveIndex && entry.type === "event:overlay:presenter-wait-shown");
+  const waitClosedPresenters = entries
+    .map((entry, index) => ({ entry, index, presenter: presenterPayload(entry) }))
+    .filter(({ entry, index }) => index > inactiveAfterActiveIndex && entry.type === "event:overlay:presenter-wait-closed");
+  const waitParkedPresenters = entries
+    .map((entry, index) => ({ entry, index, presenter: presenterPayload(entry) }))
+    .filter(({ entry, index }) => index > inactiveAfterActiveIndex && entry.type === "event:overlay:presenter-parked");
+  if (waitShownPresenters.length === 0) {
+    failures.push("no overlay:presenter-wait-shown event after active=true in lifecycle log");
+  } else if (!waitShownPresenters.some(({ presenter }) => presenter)) {
+    failures.push("overlay:presenter-wait-shown did not include a presenter snapshot");
+  }
+  if (waitClosedPresenters.length === 0) {
+    failures.push("no overlay:presenter-wait-closed event after active=false in lifecycle log");
+  } else if (!waitClosedPresenters.some(({ presenter }) => presenter)) {
+    failures.push("overlay:presenter-wait-closed did not include a presenter snapshot");
+  }
+  if (waitParkedPresenters.length === 0) {
+    failures.push("no overlay:presenter-parked event after active=false in lifecycle log");
+  } else if (!waitParkedPresenters.some(({ presenter }) => presenter)) {
+    failures.push("overlay:presenter-parked did not include a presenter snapshot");
+  }
+
+  if (requireOpenAndWaitCompletion) {
+    const openAndWaitEntries = entries.filter((entry, index) => {
+      return index > inactiveAfterActiveIndex && entry.type === "event:overlay:presenter-open-and-wait-complete";
+    });
+    if (openAndWaitEntries.length === 0) {
+      failures.push("no overlay:presenter-open-and-wait-complete event after active=false in lifecycle log");
+    } else {
+      const payload = openAndWaitEntries[openAndWaitEntries.length - 1].payload;
+      if (!payload || typeof payload !== "object") {
+        failures.push("overlay:presenter-open-and-wait-complete did not include a payload");
+      } else {
+        const shown = payload.shown;
+        const parked = payload.parked;
+        if (!shown || typeof shown !== "object") {
+          failures.push("overlay:presenter-open-and-wait-complete did not include a shown snapshot");
+        } else if (shown.overlayActive !== true) {
+          failures.push("openAndWait shown snapshot did not report overlayActive=true");
+        }
+        if (!parked || typeof parked !== "object") {
+          failures.push("overlay:presenter-open-and-wait-complete did not include a parked snapshot");
+        } else {
+          expectParkedPresenter(parked, "openAndWait parked result");
+        }
+      }
+    }
+  }
+}
+
+const fatalEntries = entries.filter((entry) => fatalTypes.has(entry.type));
+if (fatalEntries.length > 0) {
+  failures.push(`fatal lifecycle events recorded after close probe: ${fatalEntries.map((entry) => entry.type).join(", ")}`);
+}
+
+const crashDumps = listCrashDumps(crashDumpDir);
+if (crashDumps.length > 0) {
+  failures.push(`crash dump files found after close probe: ${crashDumps.join(", ")}`);
+}
+
+if (requireSmokeProcess) {
+  const processSnapshot = childProcess.spawnSync("ps", ["-axo", "command"], { encoding: "utf8" });
+  if (processSnapshot.status !== 0) {
+    failures.push("could not read process list after close probe");
+  } else if (!processSnapshot.stdout.split(/\r?\n/).some(isSmokeAppMainProcess)) {
+    failures.push("SteamBridgeSmoke process is not running after close probe");
+  }
+  const frontmostSnapshot = childProcess.spawnSync(
+    "osascript",
+    ["-e", 'tell application "System Events" to get name of first application process whose frontmost is true'],
+    { encoding: "utf8" }
+  );
+  const frontmostName = String(frontmostSnapshot.stdout || "").trim();
+  if (frontmostSnapshot.status !== 0 || !/SteamBridgeSmoke/i.test(frontmostName)) {
+    failures.push(`frontmost app after close probe is not SteamBridgeSmoke: ${format(frontmostName)}`);
+  }
+}
+
+if (failures.length > 0) {
+  for (const failure of failures) {
+    console.error(`macOS close verification failed: ${failure}`);
+  }
+  process.exit(1);
+}
+
+const focusMessage = requireSmokeProcess ? ", app frontmost" : "";
+console.log(`macOS overlay close verified: active=false observed, openAndWait completed after close when applicable, presenter parked idle without pumping${focusMessage}, no crash evidence.`);
+
+function readLifecycleEntries() {
+  const loadedEntries = [];
+  const loadFailures = [];
+  try {
+    const text = fs.readFileSync(lifecyclePath, "utf8");
+    for (const line of text.split(/\r?\n/)) {
+      if (!line.trim()) {
+        continue;
+      }
+      try {
+        loadedEntries.push(JSON.parse(line));
+      } catch (error) {
+        loadFailures.push(`invalid lifecycle JSON: ${error.message}`);
+      }
+    }
+  } catch (error) {
+    if (error && error.code === "ENOENT") {
+      loadFailures.push(`missing lifecycle log: ${lifecyclePath}`);
+    } else {
+      loadFailures.push(`could not read lifecycle log: ${error.message}`);
+    }
+  }
+  return { entries: loadedEntries, lifecycleFailures: loadFailures };
+}
+
+function activeValue(payload) {
+  if (payload === true || payload === 1) {
+    return true;
+  }
+  if (payload === false || payload === 0) {
+    return false;
+  }
+  if (!payload || typeof payload !== "object") {
+    return undefined;
+  }
+  const activePayload = payload["0"] && typeof payload["0"] === "object" ? payload["0"] : payload;
+  for (const key of ["active", "m_bActive"]) {
+    if (activePayload[key] === true || activePayload[key] === 1) {
+      return true;
+    }
+    if (activePayload[key] === false || activePayload[key] === 0) {
+      return false;
+    }
+  }
+  return undefined;
+}
+
+function findOverlayStateIndices(loadedEntries) {
+  const states = loadedEntries
+    .map((entry, index) => ({ index, state: entry.type === "event:callback:overlay-activated" ? activeValue(entry.payload) : undefined }))
+    .filter(({ state }) => state === true || state === false);
+  const firstActiveIndex = states.find(({ state }) => state === true)?.index;
+  const inactiveAfterActiveIndex =
+    firstActiveIndex == null ? undefined : states.find(({ index, state }) => index > firstActiveIndex && state === false)?.index;
+  return { firstActiveIndex, inactiveAfterActiveIndex };
+}
+
+function hasRequiredCloseEvidence(loadedEntries) {
+  const { inactiveAfterActiveIndex } = findOverlayStateIndices(loadedEntries);
+  if (inactiveAfterActiveIndex == null) {
+    return false;
+  }
+  const hasStableClose = loadedEntries.some((entry, index) => {
+    return index > inactiveAfterActiveIndex && entry.type === "event:overlay:presenter-after-close-stable";
+  });
+  if (!hasStableClose) {
+    return false;
+  }
+  if (!requireOpenAndWaitCompletion) {
+    return true;
+  }
+  return loadedEntries.some((entry, index) => {
+    return index > inactiveAfterActiveIndex && entry.type === "event:overlay:presenter-open-and-wait-complete";
+  });
+}
+
+function presenterPayload(entry) {
+  const payload = entry && entry.payload;
+  if (!payload || typeof payload !== "object") {
+    return undefined;
+  }
+  return payload.presenter && typeof payload.presenter === "object" ? payload.presenter : undefined;
+}
+
+function lastPresenter(items) {
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    if (items[index].presenter) {
+      return items[index].presenter;
+    }
+  }
+  return undefined;
+}
+
+function expectParkedPresenter(presenter, label) {
+  expectPresenterField(presenter, "closed", false, `native presenter closed ${label}`);
+  expectPresenterField(presenter, "attached", true, `native presenter attached ${label}`);
+  expectPresenterField(presenter, "nativeHostOpen", true, `native presenter host open ${label}`);
+  expectPresenterField(presenter, "mode", "passive", `native presenter mode ${label}`);
+  expectPresenterField(presenter, "clickThrough", true, `native presenter click-through ${label}`);
+  expectPresenterField(presenter, "focusable", false, `native presenter focusable ${label}`);
+  expectPresenterField(presenter, "transparent", true, `native presenter transparent ${label}`);
+  expectPresenterField(presenter, "overlayActive", false, `native presenter overlay active ${label}`);
+  expectPresenterField(presenter, "idleFps", 0, `native presenter idle FPS ${label}`);
+  expectPresenterField(presenter, "currentFps", 0, `native presenter current FPS ${label}`);
+  expectPresenterField(presenter, "overlayNeedsPresent", false, `native presenter overlay needs present ${label}`);
+}
+
+function expectPresenterField(presenter, key, expected, label) {
+  if (presenter[key] !== expected) {
+    failures.push(`${label} expected ${format(expected)}, got ${format(presenter[key])}`);
+  }
+}
+
+function listCrashDumps(root) {
+  const crashDumps = [];
+  walk(root);
+  return crashDumps;
+
+  function walk(currentPath) {
+    let entriesForPath;
+    try {
+      entriesForPath = fs.readdirSync(currentPath, { withFileTypes: true });
+    } catch (error) {
+      if (error && error.code === "ENOENT") {
+        return;
+      }
+      failures.push(`could not read crash dump directory: ${error.message}`);
+      return;
+    }
+    for (const entry of entriesForPath) {
+      const entryPath = path.join(currentPath, entry.name);
+      if (entry.isDirectory()) {
+        walk(entryPath);
+      } else if (/\.(?:dmp|mdmp|dump|crash)$/i.test(entry.name)) {
+        crashDumps.push(path.relative(root, entryPath));
+      }
+    }
+  }
+}
+
+function isSmokeAppMainProcess(command) {
+  return (
+    /\/Contents\/MacOS\/SteamBridgeSmoke(?:\.electron)?(?:\s|$)/.test(command) &&
+    !/\/Helpers\//.test(command) &&
+    command.includes(`--steam-bridge-smoke-result-file=${resultFile}`)
+  );
+}
+
+function sleep(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+function format(value) {
+  return JSON.stringify(value);
+}
+NODE
+}
+
 run_self_test() {
   local temp_result launch_options temp_home old_home shortcut_file expected_game_id matches resolved
   temp_result="$(mktemp "${TMPDIR:-/tmp}/steam-bridge-macos-helper.XXXXXX")"
   result_file="$temp_result"
+  diagnostic_dir="$result_file.diagnostics"
   cat >"$result_file" <<'EOF'
 STEAM_BRIDGE_SMOKE_RESULT {"ok":true,"action":{"ok":true,"action":"presenter-web"},"snapshot":{"app":{"appId":480,"shortcutTarget":"friends"},"process":{"pid":4242,"platform":"darwin","arch":"arm64"},"launch":{"steamLaunch":true,"overlayInjection":true},"crashDiagnostics":{"available":true,"ok":true,"crashDumps":[],"fatalLifecycleEvents":[]},"overlay":{"nativePresenter":{"ok":true,"value":{"backend":"macos-metal","attached":true,"nativeHostOpen":true,"mode":"passive","clickThrough":true,"focusable":false,"transparent":true,"overlayActive":false,"overlayNeedsPresent":false,"idleFps":0,"currentFps":0,"electronOverlay":{"presenterMode":"persistent","closeWithWindow":true,"autoPrepareForNotifications":true,"overlayShortcut":{"enabled":true,"preventDefault":true,"targetType":"friends","target":{"type":"friends"}}}}}},"steam":{"initialized":true,"running":{"ok":true,"value":true},"appId":{"ok":true,"value":480},"steamDeck":{"ok":true,"value":false},"bigPicture":{"ok":true,"value":false},"overlayEnabled":{"ok":true,"value":true},"overlayNeedsPresent":{"ok":true,"value":false}},"events":[{"type":"overlay:presenter-open"},{"type":"callback:overlay-activated","payload":{"active":true}}]}}
+EOF
+  mkdir -p "$diagnostic_dir/crash-dumps"
+  cat >"$diagnostic_dir/lifecycle.jsonl" <<'EOF'
+{"type":"event:callback:overlay-activated","payload":{"active":true}}
+{"type":"event:overlay:presenter-wait-shown","payload":{"presenter":{"closed":false,"attached":true,"nativeHostOpen":true,"mode":"active","clickThrough":false,"focusable":false,"transparent":false,"overlayActive":true,"idleFps":0,"currentFps":30,"overlayNeedsPresent":false,"pumpCount":5}}}
+{"type":"event:callback:overlay-activated","payload":{"active":false}}
+{"type":"event:overlay:presenter-wait-closed","payload":{"presenter":{"closed":false,"attached":true,"nativeHostOpen":true,"mode":"passive","clickThrough":true,"focusable":false,"transparent":true,"overlayActive":false,"idleFps":0,"currentFps":0,"overlayNeedsPresent":false,"pumpCount":10}}}
+{"type":"event:overlay:presenter-after-close","payload":{"presenter":{"closed":false,"attached":true,"nativeHostOpen":true,"mode":"passive","clickThrough":true,"focusable":false,"transparent":true,"overlayActive":false,"idleFps":0,"currentFps":0,"overlayNeedsPresent":false,"pumpCount":10}}}
+{"type":"event:overlay:presenter-parked","payload":{"presenter":{"closed":false,"attached":true,"nativeHostOpen":true,"mode":"passive","clickThrough":true,"focusable":false,"transparent":true,"overlayActive":false,"idleFps":0,"currentFps":0,"overlayNeedsPresent":false,"pumpCount":10}}}
+{"type":"event:overlay:presenter-open-and-wait-complete","payload":{"shown":{"overlayActive":true},"parked":{"closed":false,"attached":true,"nativeHostOpen":true,"mode":"passive","clickThrough":true,"focusable":false,"transparent":true,"overlayActive":false,"idleFps":0,"currentFps":0,"overlayNeedsPresent":false,"pumpCount":10}}}
+{"type":"event:overlay:presenter-after-close-stable","payload":{"presenter":{"closed":false,"attached":true,"nativeHostOpen":true,"mode":"passive","clickThrough":true,"focusable":false,"transparent":true,"overlayActive":false,"idleFps":0,"currentFps":0,"overlayNeedsPresent":false,"pumpCount":10}}}
 EOF
 
   action="presenter-web"
@@ -661,6 +1074,8 @@ EOF
   require_no_crashes="1"
   require_events=("overlay:presenter-open" "callback:overlay-activated")
   verify_result
+  action="presenter-web-open-and-wait"
+  verify_macos_overlay_closed_after_probe "0" "0"
 
   temp_home="$(mktemp -d "${TMPDIR:-/tmp}/steam-bridge-macos-helper-home.XXXXXX")"
   old_home="$HOME"
@@ -770,12 +1185,20 @@ NODE
     echo "Self-test failed: launch options must pass the requested native host backend." >&2
     exit 1
   fi
+  close_probe="1"
+  keep_open_after_result="1"
+  launch_options="$(smoke_args | paste -sd' ' -)"
+  if [[ "$launch_options" != *"--steam-bridge-smoke-keep-open-after-result"* ]]; then
+    echo "Self-test failed: close probes must keep the app open after the initial result." >&2
+    exit 1
+  fi
   if [[ "$launch_options" != *"--steam-bridge-smoke-autorun-action-delay-ms=2500"* ]]; then
     echo "Self-test failed: launch options must pass the requested action delay." >&2
     exit 1
   fi
 
   rm -f "$temp_result"
+  rm -rf "$diagnostic_dir"
   echo "macOS Electron smoke helper self-test passed."
 }
 
@@ -794,6 +1217,10 @@ case "$mode" in
     discover_shortcuts
     ;;
   direct)
+    if [ "$close_probe" = "1" ]; then
+      echo "--close-probe is only supported with --mode steam-launch or --mode verify." >&2
+      exit 2
+    fi
     ensure_app
     mkdir -p "$(dirname -- "$result_file")"
     rm -f "$result_file"
@@ -812,6 +1239,9 @@ case "$mode" in
     ;;
   verify)
     verify_result
+    if [ "$require_close_deactivated" = "1" ]; then
+      verify_macos_overlay_closed_after_probe
+    fi
     ;;
   *)
     echo "Unknown mode: $mode" >&2

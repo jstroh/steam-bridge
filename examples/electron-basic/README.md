@@ -109,16 +109,26 @@ dist/electron-smoke/aarch64-apple-darwin/SteamBridgeSmoke-darwin-arm64/macos-ele
 
 dist/electron-smoke/aarch64-apple-darwin/SteamBridgeSmoke-darwin-arm64/macos-electron-smoke.sh \
   --mode steam-launch \
-  --action presenter-web \
+  --action presenter-web-open-and-wait \
+  --web-url https://store.steampowered.com/app/480/ \
+  --web-modal true \
   --require-steam-launch \
   --require-overlay-injection \
   --require-overlay-enabled \
-  --require-overlay-activated
+  --require-overlay-activated \
+  --require-event overlay:presenter-open-and-wait-start \
+  --require-no-crashes \
+  --close-probe
 ```
 
 For macOS presenter diagnostics, `--native-host-backend metal` and
 `--native-host-backend opengl` select the native host backend used by the smoke
 app. This is a diagnostic comparison control, not an app-builder API.
+
+`--close-probe` is a helper-runner check, not an app launch option. It keeps the
+smoke app open after the initial result, sends the macOS overlay close input,
+and verifies `active=false`, app focus return, `openAndWait(...)` completion
+after close, idle presenter parking, and no crash evidence.
 
 For launcher-aware macOS checks, generate shortcut launch options with
 `--macos-native-launcher` and fully restart Steam after editing
@@ -177,7 +187,9 @@ path. Use `presenter-web-open-and-wait --web-modal true` to exercise the exact
 builder-facing `steamOverlay.openAndWait(...)` path; the smoke app records
 `overlay:presenter-open-and-wait-start` before writing its result, then records
 `overlay:presenter-open-and-wait-complete` only after Steam closes and the
-presenter parks. Use `presenter-store-open-and-wait` and
+presenter parks. The macOS helper's `--close-probe` and Deck runner's visual
+close probes verify that close/park lifecycle from outside the app. Use
+`presenter-store-open-and-wait` and
 `presenter-friends-open-and-wait` for the same one-call open/close/park proof
 against the Steam store and Friends List surfaces. Use
 `presenter-dialog-auto-open-and-wait --dialog OfficialGameGroup` for the same

@@ -1,6 +1,6 @@
 # macOS Steam Overlay Notes
 
-Date: 2026-06-24
+Last updated: 2026-06-29
 
 These notes summarize public guidance and issue reports that shaped Steam
 Bridge's macOS Electron overlay diagnostics.
@@ -37,7 +37,10 @@ the Electron smoke app without downloaded release artifacts:
   its self-test uses the shared Node smoke verifier against `darwin/arm64`
   presenter diagnostics. The helper can also discover the Steam non-Steam
   shortcut, print matching shortcut IDs, launch the shortcut with
-  `steam://rungameid`, wait for the smoke result, and verify the result.
+  `steam://rungameid`, wait for the smoke result, verify the result, and run a
+  close probe that requires `GameOverlayActivated(false)`, `openAndWait(...)`
+  completion after close, a parked idle presenter, no crash evidence, and the
+  smoke app returned frontmost.
 
 As of 2026-06-26 on macOS Apple Silicon, the packaged Electron smoke app can be
 launched through a Steam non-Steam shortcut with SpaceWar App ID `480`.
@@ -101,6 +104,15 @@ Verified:
   preserved Steam overlay injection, emitted `GameOverlayActivated(true)`, and
   showed `gameoverlayui -pid <app-pid> -gameid 480` attached to the Electron
   process.
+- A 2026-06-29 strict `presenter-web-open-and-wait --web-modal true` run through
+  the in-bundle native launcher verified the app-facing managed presenter wait
+  path on macOS Apple Silicon. The helper launched the non-Steam shortcut,
+  wrote the smoke result while the Steam web overlay was active, sent an Escape
+  close probe, observed `GameOverlayActivated(false)`, recorded
+  `overlay:presenter-open-and-wait-complete` only after close and parking, kept
+  the post-close stable presenter at `currentFps=0` with unchanged `pumpCount`,
+  found no crash dumps or fatal lifecycle events, and confirmed the smoke app
+  was frontmost after close.
 
 Still not verified:
 
@@ -115,16 +127,19 @@ Still not verified:
 - A shell-wrapper shortcut can set `SteamAppId=480` before app startup, but macOS
   strips the Steam `DYLD_INSERT_LIBRARIES` injection before the Electron child
   process starts, so that path is not useful for overlay verification.
-- The reusable macOS presenter path has emitted `GameOverlayActivated(true)` for
-  a modal web overlay through the in-bundle native launcher, but close,
-  back-to-app, and `openAndWait(...)` parking proof have not been completed on
-  macOS yet.
+- Store, Friends/chat, dialog-equivalent, passive notification, and checkout
+  presenter routes still need the same macOS close/back-to-app matrix currently
+  proven on Steam Deck Desktop Mode. The 2026-06-29 macOS proof covers the
+  managed modal web `openAndWait(...)` route, not every presenter-backed target.
+- Real purchase UI and `InitTxn` proof still require a real Steam app ID with a
+  configured product or transaction. App ID `480` remains suitable only for
+  generic overlay smoke tests.
 
 The current macOS result should therefore be treated as Steam launch, injection,
-identity alignment, native presenter startup, and modal web overlay activation
-coverage. It should not yet be described as completed Steam Bridge macOS overlay
-support until close/back-to-app behavior and the builder-facing wait helpers are
-verified.
+identity alignment, native presenter startup, modal web overlay activation,
+close, app focus return, and builder-facing `openAndWait(...)` parking coverage
+for Apple Silicon. Broader presenter-target and transaction coverage still needs
+to be run before describing macOS overlay support as complete.
 
 ## Primary References
 

@@ -112,6 +112,14 @@ timing hacks.
   the stable post-close verifier sample at `currentFps=0` without advancing
   `pumpCount`. This extends the product path without depending on raw Desktop
   `ActivateGameOverlay(...)` dialogs.
+- macOS Apple Silicon now has the same builder-facing wait proof for the modal
+  web route. A 2026-06-29 Steam-launched
+  `presenter-web-open-and-wait --web-modal true` run through the in-bundle
+  native launcher preserved Steam overlay injection, aligned `SteamOverlayGameId`
+  to App ID `480`, emitted active and inactive overlay callbacks, returned the
+  smoke app frontmost after the Escape close probe, completed
+  `openAndWait(...)` only after close and parking, and kept the parked presenter
+  at `currentFps=0` without advancing `pumpCount`.
 - Deck Desktop keyboard toggle now has a product-shaped Electron route:
   `createElectronSteamOverlay(...)` installs a default Shift+Tab shortcut bridge
   that opens the verified Friends/chat presenter-backed web overlay instead of
