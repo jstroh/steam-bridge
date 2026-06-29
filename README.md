@@ -411,8 +411,10 @@ points. The Electron smoke app records those await points in its lifecycle log
 as `overlay:presenter-wait-shown`, `overlay:presenter-wait-closed`, and
 `overlay:presenter-parked` for Deck/Linux artifact review. Call
 `steamOverlay.snapshot()` when you need diagnostics; it returns the
-native presenter state plus an `electronOverlay` block with the presenter mode,
-notification-priming policy, shortcut policy, and window-close ownership.
+native presenter state, including the selected `backend`
+(`x11-glx`, `macos-metal`, `macos-opengl`, or `none`), plus an
+`electronOverlay` block with the presenter mode, notification-priming policy,
+shortcut policy, and window-close ownership.
 The smoke verifiers can require those managed diagnostics with
 `--require-electron-overlay`, `--require-presenter-mode <persistent|session>`,
 and `--require-overlay-shortcut-target <target>`. For resolver-backed shortcut

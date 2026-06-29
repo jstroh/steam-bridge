@@ -162,9 +162,11 @@ the main/native process, not a second one attached to Electron's GPU process.
 The smoke app snapshots `gameoverlayui` target metadata, and the Deck runner
 requires this single-target invariant automatically for default persistent
 presenter-backed product actions. The runner also machine-checks idle/passive
-presenter state where it is part of the persistent proof: checkout readiness and
-managed shortcut attach must park with `idleFps=0` and `currentFps=0`; passive
-toast proof must remain transparent, click-through, non-focusable, and
+presenter state where it is part of the persistent proof: snapshots now include
+`backend` (`x11-glx`, `macos-metal`, `macos-opengl`, or `none`); checkout
+readiness and managed shortcut attach must park with `idleFps=0` and
+`currentFps=0`; passive toast proof must remain transparent, click-through,
+non-focusable, and
 overlay-inactive while Steam may still pump notification frames. Presenter-backed
 product actions also require clean smoke crash diagnostics: no crash dump files
 and no fatal Electron lifecycle events. When `--visual-close-probe` is used on

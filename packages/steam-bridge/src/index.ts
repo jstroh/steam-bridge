@@ -1579,8 +1579,11 @@ export interface NativeOverlaySessionOptions {
 
 export type NativeOverlayWebPageSessionOptions = NativeOverlaySessionOptions & OverlayWebPageOptions;
 
+export type NativeOverlayBackend = "x11-glx" | "macos-metal" | "macos-opengl" | "none";
+
 export interface NativeOverlaySessionSnapshot {
   title: string;
+  backend: NativeOverlayBackend;
   closed: boolean;
   startedAt: number;
   pumpCount: number;
@@ -1618,6 +1621,7 @@ export interface NativeOverlayPresenterOptions {
 
 export interface NativeOverlayPresenterSnapshot {
   title: string;
+  backend: NativeOverlayBackend;
   closed: boolean;
   startedAt: number;
   mode: NativeOverlayPresenterMode;
@@ -6971,6 +6975,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
   assertLinuxNativeOverlayDisplayAvailable();
 
   const title = options.title ?? "Steam Bridge Native Overlay";
+  const backend = resolveNativeOverlayBackend(options);
   const pumpIntervalMs = Math.max(1, options.pumpIntervalMs ?? 33);
   const usesNativeHostView = Boolean(options.nativeWindowHandle);
   const hideNativeHostOnOverlayDeactivate = options.hideNativeHostOnOverlayDeactivate ?? usesNativeHostView;
@@ -7008,6 +7013,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
   const snapshot = (): NativeOverlaySessionSnapshot => {
     const base = {
       title,
+      backend: closed ? "none" : backend,
       closed,
       startedAt,
       pumpCount,
@@ -7178,6 +7184,7 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
   assertLinuxNativeOverlayDisplayAvailable();
 
   const title = options.title ?? "Steam Bridge Overlay Presenter";
+  const backend = resolveNativeOverlayBackend(options);
   const usesNativeHostView = Boolean(options.nativeWindowHandle);
   const idleFps = normalizedFps(options.idleFps, 0);
   const needsPresentFps = normalizedFps(options.needsPresentFps, 30);
@@ -7306,6 +7313,7 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
     const nativeHostOpen = safeBoolean(() => native().isNativeOverlayHostViewOpen());
     const base = {
       title,
+      backend: closed ? "none" : backend,
       closed,
       startedAt,
       mode,
@@ -7539,6 +7547,28 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
     }, restoreFocusDelayMs);
     restoreFocusTimer.unref?.();
   }
+}
+
+function resolveNativeOverlayBackend(options: { nativeWindowHandle?: Buffer } = {}): NativeOverlayBackend {
+  if (process.platform === "linux") {
+    return "x11-glx";
+  }
+
+  if (process.platform === "darwin") {
+    if (options.nativeWindowHandle && shouldUseMacMetalOverlayHost()) {
+      return "macos-metal";
+    }
+    return "macos-opengl";
+  }
+
+  return "none";
+}
+
+function shouldUseMacMetalOverlayHost(): boolean {
+  if (process.env.STEAM_BRIDGE_MAC_NATIVE_OPENGL_HOST !== undefined) {
+    return false;
+  }
+  return parseBooleanEnvironment(process.env.STEAM_BRIDGE_MAC_NATIVE_METAL_HOST) ?? true;
 }
 
 function assertLinuxNativeOverlayDisplayAvailable(): void {
@@ -8008,6 +8038,7 @@ function createNativeOverlaySessionPresenter(options: NativeOverlaySessionOption
       const fps = Math.round(1000 / pumpIntervalMs);
       return {
         title,
+        backend: closed ? "none" : (snapshot?.backend ?? "none"),
         closed,
         startedAt,
         mode: closed ? "closed" : attached ? (active ? "active" : "passive") : "hidden",

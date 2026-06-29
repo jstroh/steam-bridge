@@ -255,7 +255,8 @@ input so Steam web or checkout UI can receive clicks, then parks the host
 transparent after Steam reports the overlay inactive. The default `idleFps` is
 `0`; opt into nonzero idle pumping only for diagnostics. Use
 `steamOverlay.snapshot()` for diagnostics; it returns the native presenter state
-plus an `electronOverlay` block with the active presenter mode,
+including the selected `backend` (`x11-glx`, `macos-metal`, `macos-opengl`, or
+`none`), plus an `electronOverlay` block with the active presenter mode,
 notification-priming policy, shortcut policy, and whether the manager owns
 Electron window-close cleanup. The smoke verifiers
 can require those managed diagnostics with `--require-electron-overlay`,

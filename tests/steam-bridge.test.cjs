@@ -46,6 +46,16 @@ function setProcessPlatformForTest(t, platform) {
   });
 }
 
+function expectedNativeOverlayBackend(nativeWindowHandle = false) {
+  if (process.platform === "linux") {
+    return "x11-glx";
+  }
+  if (process.platform === "darwin") {
+    return nativeWindowHandle ? "macos-metal" : "macos-opengl";
+  }
+  return "none";
+}
+
 function setSteamEnv(values = {}) {
   const previous = new Map(steamEnvKeys.map((key) => [key, process.env[key]]));
   for (const key of steamEnvKeys) {
@@ -5029,6 +5039,7 @@ test("electron steam overlay manager can fall back to native overlay sessions", 
 
   assert.equal(overlay.isOpen(), true);
   assert.equal(overlay.snapshot().attached, false);
+  assert.equal(overlay.snapshot().backend, "none");
   assert.deepEqual(overlay.snapshot().electronOverlay, {
     presenterMode: "session",
     closeWithWindow: true,
@@ -5044,9 +5055,11 @@ test("electron steam overlay manager can fall back to native overlay sessions", 
   overlay.open({ type: "web", url: "https://store.steampowered.com/app/480/", modal: true });
 
   assert.equal(overlay.snapshot().attached, true);
+  assert.equal(overlay.snapshot().backend, expectedNativeOverlayBackend(true));
   overlay.close();
   assert.equal(overlay.isOpen(), false);
   assert.equal(overlay.snapshot().attached, false);
+  assert.equal(overlay.snapshot().backend, "none");
   assert.equal(overlay.snapshot().currentFps, 0);
 
   assert.deepEqual(
@@ -5141,6 +5154,7 @@ test("electron steam overlay manager honors the presenter kill switch env flag",
   });
 
   assert.equal(overlay.snapshot().attached, false);
+  assert.equal(overlay.snapshot().backend, "none");
   assert.equal(overlay.snapshot().electronOverlay.presenterMode, "session");
   assert.deepEqual(fake.calls.filter((call) => call.method === "attachNativeOverlayHostView"), []);
   overlay.prepareForCheckout();
@@ -5203,6 +5217,7 @@ test("electron steam overlay manager fails clearly on Linux without X11 display"
     title: "Linux Headless Session Overlay",
     presenterMode: "session"
   });
+  assert.equal(sessionOverlay.snapshot().backend, "none");
   assert.equal(sessionOverlay.snapshot().electronOverlay.presenterMode, "session");
   assert.throws(
     () =>
@@ -5219,6 +5234,83 @@ test("electron steam overlay manager fails clearly on Linux without X11 display"
     fake.calls.filter((call) => ["attachNativeOverlayHostView", "activateOverlayToWebPage"].includes(call.method)),
     []
   );
+});
+
+test("native overlay presenter snapshots identify the macOS host backend", (t) => {
+  const previousOpenGlHost = process.env.STEAM_BRIDGE_MAC_NATIVE_OPENGL_HOST;
+  const previousMetalHost = process.env.STEAM_BRIDGE_MAC_NATIVE_METAL_HOST;
+  setProcessPlatformForTest(t, "darwin");
+
+  t.after(() => {
+    if (previousOpenGlHost === undefined) {
+      delete process.env.STEAM_BRIDGE_MAC_NATIVE_OPENGL_HOST;
+    } else {
+      process.env.STEAM_BRIDGE_MAC_NATIVE_OPENGL_HOST = previousOpenGlHost;
+    }
+    if (previousMetalHost === undefined) {
+      delete process.env.STEAM_BRIDGE_MAC_NATIVE_METAL_HOST;
+    } else {
+      process.env.STEAM_BRIDGE_MAC_NATIVE_METAL_HOST = previousMetalHost;
+    }
+    clearSteamBridgeCache();
+  });
+
+  let hostOpen = false;
+  const hostHandle = Buffer.from([6, 2, 6, 2]);
+  const fake = createFakeNative({
+    attachNativeOverlayHostView(nativeWindowHandle) {
+      hostOpen = true;
+      this.calls.push({ method: "attachNativeOverlayHostView", args: [nativeWindowHandle] });
+    },
+    pumpNativeOverlayProbeWindow() {
+      this.calls.push({ method: "pumpNativeOverlayProbeWindow", args: [] });
+    },
+    showNativeOverlayHostView() {
+      this.calls.push({ method: "showNativeOverlayHostView", args: [] });
+    },
+    setNativeOverlayHostInputPassthrough(passThrough) {
+      this.calls.push({ method: "setNativeOverlayHostInputPassthrough", args: [passThrough] });
+    },
+    setNativeOverlayHostOpacity(opaque) {
+      this.calls.push({ method: "setNativeOverlayHostOpacity", args: [opaque] });
+    },
+    detachNativeOverlayHostView() {
+      hostOpen = false;
+      this.calls.push({ method: "detachNativeOverlayHostView", args: [] });
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return false;
+    },
+    isNativeOverlayHostViewOpen() {
+      return hostOpen;
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  delete process.env.STEAM_BRIDGE_MAC_NATIVE_OPENGL_HOST;
+  delete process.env.STEAM_BRIDGE_MAC_NATIVE_METAL_HOST;
+  const metalPresenter = steam.overlay.attachPresenter({
+    nativeWindowHandle: hostHandle,
+    pollIntervalMs: 10000
+  });
+  assert.equal(metalPresenter.snapshot().backend, "macos-metal");
+  metalPresenter.close();
+
+  process.env.STEAM_BRIDGE_MAC_NATIVE_METAL_HOST = "0";
+  const disabledMetalPresenter = steam.overlay.attachPresenter({
+    nativeWindowHandle: hostHandle,
+    pollIntervalMs: 10000
+  });
+  assert.equal(disabledMetalPresenter.snapshot().backend, "macos-opengl");
+  disabledMetalPresenter.close();
+
+  process.env.STEAM_BRIDGE_MAC_NATIVE_OPENGL_HOST = "1";
+  const openGlPresenter = steam.overlay.attachPresenter({
+    nativeWindowHandle: hostHandle,
+    pollIntervalMs: 10000
+  });
+  assert.equal(openGlPresenter.snapshot().backend, "macos-opengl");
+  openGlPresenter.close();
 });
 
 test("electron steam overlay manager opens the presenter route from the default Shift+Tab shortcut", (t) => {
@@ -5755,6 +5847,7 @@ test("native overlay session owns the probe pump lifecycle", async (t) => {
 
   assert.equal(session.isOpen(), true);
   assert.equal(session.snapshot().title, "Managed Overlay");
+  assert.equal(session.snapshot().backend, expectedNativeOverlayBackend(false));
   assert.equal(session.snapshot().nativeProbeOpen, true);
 
   fake.callbacks.get(331)({ active: true, app_id: 480 });
@@ -5769,6 +5862,7 @@ test("native overlay session owns the probe pump lifecycle", async (t) => {
 
   session.close();
   assert.equal(session.snapshot().closed, true);
+  assert.equal(session.snapshot().backend, "none");
   assert.equal(session.isOpen(), false);
 
   const webSession = steam.overlay.activateToWebPageWithNativeSession("https://store.steampowered.com/app/480/", {
@@ -5795,6 +5889,7 @@ test("native overlay session owns the probe pump lifecycle", async (t) => {
   });
 
   assert.equal(hostSession.isOpen(), true);
+  assert.equal(hostSession.snapshot().backend, expectedNativeOverlayBackend(true));
   assert.equal(hostSession.snapshot().nativeHostOpen, true);
 
   fake.callbacks.get(331)({ active: false, app_id: 480 });
@@ -5911,6 +6006,7 @@ test("native overlay presenter reuses a passive host for overlay activation", as
 
   assert.equal(presenter.isOpen(), true);
   assert.equal(presenter.snapshot().mode, "passive");
+  assert.equal(presenter.snapshot().backend, expectedNativeOverlayBackend(true));
   assert.equal(presenter.snapshot().nativeHostOpen, true);
   assert.equal(presenter.snapshot().clickThrough, true);
   assert.equal(presenter.snapshot().focusable, false);
@@ -5939,6 +6035,7 @@ test("native overlay presenter reuses a passive host for overlay activation", as
 
   presenter.close();
   assert.equal(presenter.isOpen(), false);
+  assert.equal(presenter.snapshot().backend, "none");
 
   const oneShot = steam.overlay.openStoreOverlay(480, steam.StoreFlag.None, {
     nativeWindowHandle: hostHandle,
