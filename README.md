@@ -471,15 +471,17 @@ transparent idle mode even if `overlayNeedsPresent` lingers briefly.
 The Electron smoke app includes `presenter-achievement-progress` and
 `presenter-achievement-unlock` actions for passive notification proof. On Steam
 Deck Desktop Mode, the progress action uses App ID `480`, keeps the presenter
-passive, calls `achievement.indicateProgress(...)`, receives an
-achievement-stored callback, and captures a visible Steam achievement-progress
-toast over the app without requiring a modal overlay activation callback. The
-unlock action uses the same passive presenter path, clears and re-unlocks the
-selected public test achievement, stores stats, and records `achievement:unlock`
-so unlock-toast behavior can be checked without app-facing overlay code. A
-2026-06-28 Deck Desktop fullscreen run captured the `Interstellar` unlock toast
-over the smoke app with one overlay target, app focus preserved, passive
-presenter state, and no crash evidence.
+passive, tries the available public achievements until Steam accepts
+`achievement.indicateProgress(...)`, receives an achievement-stored callback,
+and captures a visible Steam achievement-progress toast over the app without
+requiring a modal overlay activation callback. The matrix summary fails if the
+recorded progress event is not `indicated=true`. The unlock action uses the same
+passive presenter path, clears and re-unlocks the selected public test
+achievement, stores stats, and records `achievement:unlock` so unlock-toast
+behavior can be checked without app-facing overlay code. A 2026-06-28 Deck
+Desktop fullscreen run captured the `Interstellar` unlock toast over the smoke
+app with one overlay target, app focus preserved, passive presenter state, and
+no crash evidence.
 
 Steam Bridge routes overlay targets by how Steam renders them. Prefer
 `client.overlay.createElectronSteamOverlay(mainWindow).open(...)` for Electron

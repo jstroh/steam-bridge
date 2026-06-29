@@ -462,8 +462,10 @@ app while the presenter snapshot remains passive (`clickThrough=true`,
 `transparent=true`, `overlayActive=false`). The Deck runner machine-checks that
 passive presenter state for `presenter-achievement-progress`; it does not require
 `currentFps=0` because Steam can still be presenting the notification. With App
-ID `480`, the current Deck proof selected the public SpaceWar achievement
-`ACH_TRAVEL_FAR_ACCUM` displayed as `Interstellar`.
+ID `480`, the smoke action tries the available public achievements until Steam
+accepts `achievement.indicateProgress(...)`, records the accepted achievement
+and attempts, and the matrix summary requires `indicated=true` plus
+`callback:achievement-stored`.
 
 For achievement unlock toasts, use the matching passive unlock action:
 

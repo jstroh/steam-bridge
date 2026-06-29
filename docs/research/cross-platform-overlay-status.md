@@ -407,9 +407,14 @@ Electron app while the lifecycle log includes `achievement:progress`,
 `callback:achievement-stored`, and a passive presenter snapshot
 (`clickThrough=true`, `transparent=true`, `overlayActive=false`) with
 `electronOverlay.autoPrepareForNotifications=true`. The runner now requires that
-passive presenter shape automatically for this action. The current Deck proof
-selected SpaceWar achievement `ACH_TRAVEL_FAR_ACCUM` displayed as
-`Interstellar`, reported `indicated=true`, and captured the toast over the app.
+passive presenter shape automatically for this action. The smoke action tries
+the available public App ID `480` achievements until Steam accepts
+`achievement.indicateProgress(...)`, records the accepted achievement and
+attempts, and the matrix summary fails if the progress event is not
+`indicated=true` or if `callback:achievement-stored` is missing. A 2026-06-28
+Deck Desktop core matrix selected `ACH_TRAVEL_FAR_SINGLE`, reported
+`indicated=true`, received `callback:achievement-stored`, and passed the passive
+toast audit.
 
 For passive unlock-toast proof, run:
 
@@ -467,7 +472,9 @@ that reported `parked=true` and `managedWaits=true` for every active overlay
 case. A later 2026-06-28 core run passed 13 cases with 27 screenshots after
 moving the synthetic checkout approval route earlier in the suite; both shortcut
 cases recorded `closeInput=toggle`, proving Shift+Tab-only managed close in the
-matrix.
+matrix. A later 2026-06-28 core run passed 15 cases with 30 screenshots after
+the passive progress proof started requiring an accepted `indicated=true`
+achievement-progress call plus `callback:achievement-stored`.
 
 ## Purchase Overlay Checklist
 

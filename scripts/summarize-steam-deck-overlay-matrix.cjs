@@ -567,6 +567,14 @@ function verifyPassiveNotificationAction(
   if (!lifecycleActionEvent) {
     failures.push(`${caseName}: missing ${lifecycleEventType(requirements.event)} in lifecycle log`);
   }
+  if (action === "presenter-achievement-progress") {
+    if (resultActionEvent && (!resultActionEvent.payload || resultActionEvent.payload.indicated !== true)) {
+      failures.push(`${caseName}: achievement progress was not indicated by Steam`);
+    }
+    if (lifecycleActionEvent && (!lifecycleActionEvent.payload || lifecycleActionEvent.payload.indicated !== true)) {
+      failures.push(`${caseName}: lifecycle achievement progress was not indicated by Steam`);
+    }
+  }
   for (const eventType of requirements.callbacks) {
     if (!findEvent(resultEvents, eventType)) {
       failures.push(`${caseName}: missing ${eventType} in result snapshot events`);

@@ -773,14 +773,45 @@ function openPresenterAchievementProgress() {
   const overlay = ensureElectronSteamOverlay(activeClient);
   const presenter = overlay.presenter;
 
-  const target = resolveAchievementProgressTarget(activeClient);
-  const indicated = activeClient.achievement.indicateProgress(target.name, target.current, target.max);
+  const candidates = resolveAchievementProgressTargets(activeClient);
+  const attempts = [];
+
+  for (const target of candidates) {
+    const progressSetup = prepareAchievementProgressTarget(activeClient, target.name, target.unlocked);
+    const indicated = activeClient.achievement.indicateProgress(target.name, target.current, target.max);
+    const attempt = {
+      name: target.name,
+      current: target.current,
+      max: target.max,
+      unlocked: target.unlocked,
+      ...progressSetup,
+      indicated
+    };
+    attempts.push(attempt);
+
+    if (!indicated) {
+      continue;
+    }
+
+    recordEvent("achievement:progress", {
+      ...target,
+      availableNames: candidates.map((candidate) => candidate.name),
+      ...progressSetup,
+      indicated,
+      attempts,
+      presenter: presenter.snapshot()
+    });
+    return snapshot();
+  }
+
   recordEvent("achievement:progress", {
-    ...target,
-    indicated,
+    configuredName: ACHIEVEMENT_NAME.trim() || null,
+    availableNames: candidates.map((candidate) => candidate.name),
+    attempts,
+    indicated: false,
     presenter: presenter.snapshot()
   });
-  return snapshot();
+  throw new Error("Steam did not accept achievement progress for any available smoke achievement.");
 }
 
 function openPresenterAchievementUnlock() {
@@ -902,15 +933,20 @@ function nativeOverlayOptions() {
   });
 }
 
-function resolveAchievementProgressTarget(activeClient) {
+function resolveAchievementProgressTargets(activeClient) {
   const names = readValue(() => activeClient.achievement.names());
   const achievementNames = Array.isArray(names.value) ? names.value.filter(Boolean) : [];
   const configuredName = ACHIEVEMENT_NAME.trim();
-  const name = configuredName || chooseProgressAchievement(activeClient, achievementNames);
-  if (!name) {
+  const targetNames = configuredName ? [configuredName] : orderProgressAchievementNames(activeClient, achievementNames);
+  const targets = targetNames.map((name) => readAchievementProgressTarget(activeClient, name, configuredName));
+  if (targets.length === 0) {
     throw new Error("No Steam achievement is available for the smoke toast action.");
   }
 
+  return targets;
+}
+
+function readAchievementProgressTarget(activeClient, name, configuredName) {
   const limits = readValue(() => activeClient.achievement.getProgressLimitsInt(name));
   const limitValue = limits.value && typeof limits.value === "object" ? limits.value : undefined;
   const defaultMax = limitValue && Number.isFinite(limitValue.max) && limitValue.max > 1 ? limitValue.max : 2;
@@ -924,7 +960,6 @@ function resolveAchievementProgressTarget(activeClient) {
   return {
     name,
     configuredName: configuredName || null,
-    availableNames: achievementNames,
     current,
     max,
     limits,
@@ -953,14 +988,55 @@ function resolveAchievementUnlockTarget(activeClient) {
   };
 }
 
-function chooseProgressAchievement(activeClient, achievementNames) {
-  for (const name of achievementNames) {
-    const limits = readValue(() => activeClient.achievement.getProgressLimitsInt(name));
-    if (limits.ok && limits.value && Number.isFinite(limits.value.max) && limits.value.max > 1) {
-      return name;
-    }
+function prepareAchievementProgressTarget(activeClient, name, unlocked) {
+  if (!isAchievementAchieved(unlocked)) {
+    return {
+      wasUnlocked: false,
+      clearedForProgress: false
+    };
   }
-  return achievementNames[0] || "";
+
+  const cleared = activeClient.achievement.clear(name);
+  const clearStored = activeClient.stats.store();
+  return {
+    wasUnlocked: true,
+    clearedForProgress: cleared,
+    clearStoredForProgress: clearStored,
+    unlockedAfterClear: readValue(() => activeClient.achievement.getAndUnlockTime(name))
+  };
+}
+
+function orderProgressAchievementNames(activeClient, achievementNames) {
+  return achievementNames
+    .map((name, index) => {
+      const limits = readValue(() => activeClient.achievement.getProgressLimitsInt(name));
+      const unlocked = readValue(() => activeClient.achievement.getAndUnlockTime(name));
+      const limitValue = limits.value && typeof limits.value === "object" ? limits.value : undefined;
+      return {
+        name,
+        index,
+        unlocked,
+        hasProgressLimits: Boolean(
+          limits.ok && limitValue && Number.isFinite(limitValue.max) && limitValue.max > 1
+        )
+      };
+    })
+    .sort((left, right) => {
+      const achievedSort = Number(isAchievementAchieved(left.unlocked)) - Number(isAchievementAchieved(right.unlocked));
+      if (achievedSort !== 0) {
+        return achievedSort;
+      }
+      const limitSort = Number(right.hasProgressLimits) - Number(left.hasProgressLimits);
+      if (limitSort !== 0) {
+        return limitSort;
+      }
+      return left.index - right.index;
+    })
+    .map((entry) => entry.name);
+}
+
+function isAchievementAchieved(unlocked) {
+  return Boolean(unlocked && unlocked.ok && unlocked.value && unlocked.value.achieved === true);
 }
 
 function normalizePositiveInteger(value, fallback) {
