@@ -5892,6 +5892,7 @@ test("electron steam overlay shortcut snapshots static targets without leaking p
     }
   };
 
+  const openedTargets = [];
   const overlay = steam.overlay.createElectronSteamOverlay(window, {
     title: "Electron Static Shortcut Overlay",
     pollIntervalMs: 10000,
@@ -5900,6 +5901,9 @@ test("electron steam overlay shortcut snapshots static targets without leaking p
         type: "web",
         url: "https://example.invalid/private-checkout-token",
         modal: true
+      },
+      onOpen(target) {
+        openedTargets.push(target);
       }
     }
   });
@@ -5930,6 +5934,13 @@ test("electron steam overlay shortcut snapshots static targets without leaking p
     fake.calls.filter((call) => call.method === "activateOverlayToWebPage"),
     [{ method: "activateOverlayToWebPage", args: ["https://example.invalid/private-checkout-token", true] }]
   );
+  assert.deepEqual(openedTargets, [
+    {
+      type: "web",
+      url: "https://example.invalid/private-checkout-token",
+      modal: true
+    }
+  ]);
   overlay.close();
 
   const checkoutOverlay = steam.overlay.createElectronSteamOverlay(window, {
@@ -5960,6 +5971,36 @@ test("electron steam overlay shortcut snapshots static targets without leaking p
   assert.equal(checkoutSnapshotJson.includes("123456789"), false);
   assert.equal(checkoutSnapshotJson.includes("steam://return"), false);
   checkoutOverlay.close();
+
+  let observedShortcutError;
+  const errorOverlay = steam.overlay.createElectronSteamOverlay(window, {
+    title: "Electron Shortcut Observer Error Overlay",
+    pollIntervalMs: 10000,
+    overlayShortcut: {
+      target: { type: "friends" },
+      onOpen() {
+        throw new Error("shortcut observer failed");
+      },
+      onError(error) {
+        observedShortcutError = error;
+      }
+    }
+  });
+  assert.doesNotThrow(() =>
+    beforeInputHandler(
+      {
+        preventDefault() {}
+      },
+      {
+        type: "keyDown",
+        key: "Tab",
+        code: "Tab",
+        shift: true
+      }
+    )
+  );
+  assert.equal(observedShortcutError?.message, "shortcut observer failed");
+  errorOverlay.close();
 });
 
 test("electron steam overlay shortcut still opens during passive notification presentation", async (t) => {

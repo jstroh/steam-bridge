@@ -587,8 +587,8 @@ function electronOverlayFixture() {
     overlayShortcut: {
       enabled: true,
       preventDefault: true,
-      targetType: "function",
-      target: { type: "function" }
+      targetType: "friends",
+      target: { type: "friends" }
     }
   };
 }

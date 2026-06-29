@@ -919,6 +919,7 @@ function ensureElectronSteamOverlay(activeClient = requireClient()) {
   }
 
   closeNativeOverlaySession();
+  const shortcutTarget = resolveInitialShortcutOverlayTarget();
   electronSteamOverlay = activeClient.overlay.createElectronSteamOverlay(requireMainWindow(), {
     title: "Steam Bridge Overlay Presenter",
     presenterMode: PRESENTER_MODE || undefined,
@@ -927,8 +928,8 @@ function ensureElectronSteamOverlay(activeClient = requireClient()) {
     activeOverlayFps: 30,
     pollIntervalMs: 250,
     overlayShortcut: {
-      target: () => {
-        const target = resolveShortcutOverlayTarget();
+      target: shortcutTarget,
+      onOpen: (target) => {
         recordEvent("overlay:shortcut-open", {
           shortcut: "Shift+Tab",
           target: SHORTCUT_TARGET,
@@ -942,7 +943,6 @@ function ensureElectronSteamOverlay(activeClient = requireClient()) {
             overlayTarget: target
           });
         }
-        return target;
       },
       onError: (error) => {
         recordEvent("overlay:shortcut-open:error", serializeError(error));
@@ -955,6 +955,14 @@ function ensureElectronSteamOverlay(activeClient = requireClient()) {
     presenter: electronSteamOverlay.snapshot()
   });
   return electronSteamOverlay;
+}
+
+function resolveInitialShortcutOverlayTarget() {
+  try {
+    return resolveShortcutOverlayTarget();
+  } catch {
+    return () => resolveShortcutOverlayTarget();
+  }
 }
 
 function resolveShortcutOverlayTarget() {

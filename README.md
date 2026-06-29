@@ -244,10 +244,13 @@ shortcut bridge, routing it through the same presenter-backed Friends/chat path
 used by the Deck Desktop proof instead of relying on Steam to hook Chromium
 child processes. Apps can set `overlayShortcut.target` to any presenter-backed
 target when they want Shift+Tab to open store, web, checkout, community, stats,
-achievements, or dialog-equivalent surfaces instead. Once Steam reports an
-active overlay, the shortcut bridge no longer consumes Shift+Tab; Deck Desktop
-proof now verifies that a second Shift+Tab closes the managed overlay and
-returns focus to the app.
+achievements, or dialog-equivalent surfaces instead, and can use
+`overlayShortcut.onOpen` for app logging or state updates after the managed
+shortcut opens. Static shortcut targets are the normal path; resolver functions
+are only needed when the target has to be computed at keypress time. Once Steam
+reports an active overlay, the shortcut bridge no longer consumes Shift+Tab;
+Deck Desktop proof now verifies that a second Shift+Tab closes the managed
+overlay and returns focus to the app.
 
 To rerun the Steam Deck Desktop Mode product overlay proof matrix from this
 repo, keep the Deck awake in Desktop Mode with Steam running and use:
@@ -435,7 +438,7 @@ and `--require-overlay-shortcut-target <target>`. For static shortcut targets,
 `electronOverlay.overlayShortcut.target` records sanitized target metadata such
 as type, route, modal flag, and whether URL/transaction fields were configured;
 it does not serialize checkout URLs, transaction IDs, return URLs, or Steam IDs.
-For resolver-backed shortcut targets, the verifier checks the smoke app's
+For dynamic resolver-backed shortcut targets, the verifier checks the smoke app's
 configured target while preserving
 `electronOverlay.overlayShortcut.targetType: "function"`. The Deck runner adds
 the presenter-mode requirement automatically for presenter-backed product

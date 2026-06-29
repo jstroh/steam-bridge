@@ -1798,6 +1798,7 @@ export interface ElectronSteamOverlayShortcutOptions {
   enabled?: boolean;
   target?: ElectronSteamOverlayShortcutTarget;
   preventDefault?: boolean;
+  onOpen?: (target: SteamOverlayTarget) => void;
   onError?: (error: unknown) => void;
 }
 
@@ -8562,7 +8563,9 @@ function installElectronSteamOverlayShortcut(
       }
 
       opening = true;
-      controller.open(resolveElectronSteamOverlayShortcutTarget(shortcut.target));
+      const target = resolveElectronSteamOverlayShortcutTarget(shortcut.target);
+      controller.open(target);
+      notifyElectronSteamOverlayShortcutOpened(shortcut, target);
     } catch (error) {
       if (shortcut.onError) {
         shortcut.onError(error);
@@ -8595,6 +8598,32 @@ function installElectronSteamOverlayShortcut(
       }
     }
   };
+}
+
+function notifyElectronSteamOverlayShortcutOpened(
+  shortcut: NormalizedElectronSteamOverlayShortcutOptions,
+  target: SteamOverlayTarget
+): void {
+  if (!shortcut.onOpen) {
+    return;
+  }
+  try {
+    shortcut.onOpen(target);
+  } catch (error) {
+    if (shortcut.onError) {
+      try {
+        shortcut.onError(error);
+      } catch (onErrorError) {
+        process.emitWarning(onErrorError instanceof Error ? onErrorError : String(onErrorError), {
+          type: "SteamBridgeOverlayShortcutWarning"
+        });
+      }
+    } else {
+      process.emitWarning(error instanceof Error ? error : String(error), {
+        type: "SteamBridgeOverlayShortcutWarning"
+      });
+    }
+  }
 }
 
 function isElectronWebContentsDestroyed(webContents: ElectronOverlayWindow["webContents"]): boolean {

@@ -155,8 +155,13 @@ for overlay work:
 
 ```ts
 const steamOverlay = client.overlay.createElectronSteamOverlay(mainWindow, {
-  // Enabled by default. Shift+Tab opens the verified Friends/chat presenter route.
-  overlayShortcut: true,
+  overlayShortcut: {
+    // Enabled by default. Shift+Tab opens the verified Friends/chat presenter route.
+    target: { type: "friends" },
+    onOpen(target) {
+      console.info("Steam overlay shortcut opened", target.type);
+    }
+  },
   // Optional diagnostics only:
   // presenterMode: "session"
 });
@@ -222,11 +227,13 @@ installs a default Electron `Shift+Tab` shortcut bridge that opens the verified
 Friends/chat presenter route without asking Steam to hook Chromium child
 processes; pass `overlayShortcut: false` to disable it, or provide
 `overlayShortcut: { target: { type: "community", appId } }` to choose another
-presenter-backed target. The bridge consumes Shift+Tab only when it is opening a
-managed presenter-backed target; once Steam reports an active overlay, it lets
-Shift+Tab pass through so Steam can handle the close/toggle side. Deck Desktop
-proof now verifies a second Shift+Tab closes the managed overlay and returns
-focus to the app. It is the
+presenter-backed target. Use `overlayShortcut.onOpen` for app logging or state
+updates after the managed shortcut opens; static targets should not need a
+resolver function just for side effects. The bridge consumes Shift+Tab only when
+it is opening a managed presenter-backed target; once Steam reports an active
+overlay, it lets Shift+Tab pass through so Steam can handle the close/toggle
+side. Deck Desktop proof now verifies a second Shift+Tab closes the managed
+overlay and returns focus to the app. It is the
 recommended builder-facing entry point: web, store, Friends, Profile,
 Community, Stats, Achievements, user-profile, and checkout targets route through the
 presenter-backed paths
@@ -289,7 +296,7 @@ can require those managed diagnostics with `--require-electron-overlay`,
 `electronOverlay.overlayShortcut.target` records sanitized target metadata such
 as type, route, modal flag, and whether URL/transaction fields were configured;
 it does not serialize checkout URLs, transaction IDs, return URLs, or Steam IDs.
-For resolver-backed shortcut targets, the verifier checks the smoke app's
+For dynamic resolver-backed shortcut targets, the verifier checks the smoke app's
 configured target while preserving
 `electronOverlay.overlayShortcut.targetType: "function"`. The Deck runner adds
 the presenter-mode requirement automatically for presenter-backed product

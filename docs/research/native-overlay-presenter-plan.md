@@ -106,7 +106,12 @@ timing hacks.
   Friends/chat UI, and returned to the smoke app after the close probe.
   Follow-up Deck Desktop runs with `--visual-close-input toggle` proved
   Shift+Tab-only close for managed profile and web shortcut targets, including
-  `active=false`, focus return, and post-close parking at `currentFps=0`.
+  `active=false`, focus return, and post-close parking at `currentFps=0`. A
+  2026-06-29 focused fullscreen web shortcut run verified the smoke app now uses
+  a static shortcut target plus `overlayShortcut.onOpen` for lifecycle logging:
+  presenter diagnostics reported `targetType: "web"` and a sanitized target
+  snapshot, then emitted shortcut-open, active/inactive callbacks, Shift+Tab-only
+  close, focus return, and stable parked presenter state.
 - A generic `steam://open/overlay` URI is not a reliable shortcut around the
   unresolved raw social/toggle path. On Deck Desktop Mode it can emit an overlay
   activation callback while leaving the native presenter black and crashing the
@@ -364,7 +369,10 @@ Current evidence:
   `presenter-shortcut --shortcut-target web --web-modal true` Deck Desktop runs
   used `--visual-close-input toggle`, sending only the second Shift+Tab for
   close, and passed the same active=false, focus-return, and idle-parking
-  verifier.
+  verifier. A 2026-06-29 web shortcut run also proved the cleaner static-target
+  path: `overlayShortcut.target` reported sanitized web target metadata while
+  `overlayShortcut.onOpen` recorded `overlay:shortcut-open`, avoiding target
+  resolver side effects for normal shortcut diagnostics.
 - The Deck close verifier no longer uses fixed post-close sample delays. A
   2026-06-28 Deck Desktop core matrix passed 15 cases with 30 screenshots after
   switching `overlay:presenter-after-close` and

@@ -139,8 +139,11 @@ run. The Node verifier and packaged Linux helper can assert those fields with
 `--require-overlay-shortcut-target <target>`. Static shortcut targets report a
 sanitized `electronOverlay.overlayShortcut.target` snapshot with target type and
 non-sensitive flags; checkout URLs, transaction IDs, return URLs, and Steam IDs
-are not serialized. For resolver-backed shortcut targets, the verifier checks
-this smoke app's configured shortcut target while preserving
+are not serialized. The smoke app uses `overlayShortcut.onOpen` for shortcut
+lifecycle logging so normal shortcut targets can stay static; dynamic resolver
+targets are only used when a target cannot be validated until keypress time. For
+resolver-backed shortcut targets, the verifier checks this smoke app's
+configured shortcut target while preserving
 `electronOverlay.overlayShortcut.targetType: "function"`. The Deck runner adds
 the presenter-mode assertion automatically for presenter-backed product actions
 and adds the shortcut-target assertion for `presenter-shortcut`.
