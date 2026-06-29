@@ -23,10 +23,18 @@ export interface ElectronSteamOverlayConfigResult {
   scrubbedEnvKeys: string[];
 }
 
+export interface ElectronOverlayBounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 export interface ElectronNativeOverlaySessionOptions {
   title?: string;
   pumpIntervalMs?: number;
   nativeWindowHandle?: Buffer;
+  getBounds?: () => ElectronOverlayBounds | undefined;
   restoreFocus?: () => void;
   restoreFocusDelayMs?: number;
   hideNativeHostOnOverlayDeactivate?: boolean;
@@ -35,6 +43,7 @@ export interface ElectronNativeOverlaySessionOptions {
 export interface ElectronOverlayPresenterOptions {
   title?: string;
   nativeWindowHandle?: Buffer;
+  getBounds?: () => ElectronOverlayBounds | undefined;
   restoreFocus?: () => void;
   restoreFocusDelayMs?: number;
   idleFps?: number;
@@ -58,6 +67,7 @@ interface ElectronWindow {
   restore?(): void;
   show?(): void;
   focus?(): void;
+  getBounds?(): ElectronOverlayBounds;
   getNativeWindowHandle?(): Buffer;
   webContents: {
     once(event: "did-finish-load", handler: () => void): void;
@@ -201,21 +211,27 @@ export function electronScrubSteamOverlayChildProcessEnv(env: NodeJS.ProcessEnv 
 
 export function electronNativeOverlaySessionOptions(
   window: ElectronWindow,
-  options: Omit<ElectronNativeOverlaySessionOptions, "nativeWindowHandle" | "restoreFocus"> = {}
+  options: Omit<ElectronNativeOverlaySessionOptions, "nativeWindowHandle" | "getBounds" | "restoreFocus"> = {}
 ): ElectronNativeOverlaySessionOptions {
   return electronWindowNativeOverlayOptions(window, options);
 }
 
 export function electronOverlayPresenterOptions(
   window: ElectronWindow,
-  options: Omit<ElectronOverlayPresenterOptions, "nativeWindowHandle" | "restoreFocus"> = {}
+  options: Omit<ElectronOverlayPresenterOptions, "nativeWindowHandle" | "getBounds" | "restoreFocus"> = {}
 ): ElectronOverlayPresenterOptions {
   return electronWindowNativeOverlayOptions(window, options);
 }
 
-function electronWindowNativeOverlayOptions<T extends { nativeWindowHandle?: Buffer; restoreFocus?: () => void }>(
+function electronWindowNativeOverlayOptions<
+  T extends {
+    nativeWindowHandle?: Buffer;
+    getBounds?: () => ElectronOverlayBounds | undefined;
+    restoreFocus?: () => void;
+  }
+>(
   window: ElectronWindow,
-  options: Omit<T, "nativeWindowHandle" | "restoreFocus">
+  options: Omit<T, "nativeWindowHandle" | "getBounds" | "restoreFocus">
 ): T {
   if (typeof window.getNativeWindowHandle !== "function") {
     throw new Error("Electron BrowserWindow does not expose getNativeWindowHandle().");
@@ -224,6 +240,7 @@ function electronWindowNativeOverlayOptions<T extends { nativeWindowHandle?: Buf
   return {
     ...options,
     nativeWindowHandle: window.getNativeWindowHandle(),
+    getBounds: () => readElectronWindowBounds(window),
     restoreFocus: () => {
       if (window.isDestroyed()) {
         return;
@@ -236,6 +253,27 @@ function electronWindowNativeOverlayOptions<T extends { nativeWindowHandle?: Buf
       window.webContents.invalidate();
     }
   } as T;
+}
+
+function readElectronWindowBounds(window: ElectronWindow): ElectronOverlayBounds | undefined {
+  if (window.isDestroyed() || typeof window.getBounds !== "function") {
+    return undefined;
+  }
+
+  return normalizeElectronOverlayBounds(window.getBounds());
+}
+
+function normalizeElectronOverlayBounds(bounds: ElectronOverlayBounds | undefined): ElectronOverlayBounds | undefined {
+  if (!bounds) {
+    return undefined;
+  }
+
+  const { x, y, width, height } = bounds;
+  if (![x, y, width, height].every(Number.isFinite) || width < 0 || height < 0) {
+    return undefined;
+  }
+
+  return { x, y, width, height };
 }
 
 function appendSwitchOnce(

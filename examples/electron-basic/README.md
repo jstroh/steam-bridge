@@ -123,10 +123,11 @@ Overview may not render; with isolation disabled, it may render through the
 Chromium hook but still fail close/back-to-app proof.
 Smoke snapshots include `snapshot.overlay.nativePresenter`, whose
 `backend` reports the selected native host (`x11-glx`, `macos-metal`,
-`macos-opengl`, or `none`) and whose `electronOverlay` diagnostics show the
-managed presenter mode and shortcut policy used for the run. The Node verifier
-and packaged Linux helper can assert those fields with `--require-electron-overlay`,
-`--require-presenter-mode <persistent|session>`, and
+`macos-opengl`, or `none`) and whose `bounds`, when available, report the
+Electron window geometry used for presenter alignment. Its `electronOverlay`
+diagnostics show the managed presenter mode and shortcut policy used for the
+run. The Node verifier and packaged Linux helper can assert those fields with
+`--require-electron-overlay`, `--require-presenter-mode <persistent|session>`, and
 `--require-overlay-shortcut-target <target>`. For resolver-backed shortcut
 targets, the verifier checks this smoke app's configured shortcut target while
 preserving `electronOverlay.overlayShortcut.targetType: "function"`. The Deck

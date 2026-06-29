@@ -256,9 +256,10 @@ transparent after Steam reports the overlay inactive. The default `idleFps` is
 `0`; opt into nonzero idle pumping only for diagnostics. Use
 `steamOverlay.snapshot()` for diagnostics; it returns the native presenter state
 including the selected `backend` (`x11-glx`, `macos-metal`, `macos-opengl`, or
-`none`), plus an `electronOverlay` block with the active presenter mode,
-notification-priming policy, shortcut policy, and whether the manager owns
-Electron window-close cleanup. The smoke verifiers
+`none`) and, when available from the Electron window, current `bounds`, plus an
+`electronOverlay` block with the active presenter mode, notification-priming
+policy, shortcut policy, and whether the manager owns Electron window-close
+cleanup. The smoke verifiers
 can require those managed diagnostics with `--require-electron-overlay`,
 `--require-presenter-mode <persistent|session>`, and
 `--require-overlay-shortcut-target <target>`. For resolver-backed shortcut

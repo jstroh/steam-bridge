@@ -1572,6 +1572,7 @@ export interface NativeOverlaySessionOptions {
   title?: string;
   pumpIntervalMs?: number;
   nativeWindowHandle?: Buffer;
+  getBounds?: NativeOverlayBoundsProvider;
   restoreFocus?: () => void;
   restoreFocusDelayMs?: number;
   hideNativeHostOnOverlayDeactivate?: boolean;
@@ -1581,9 +1582,19 @@ export type NativeOverlayWebPageSessionOptions = NativeOverlaySessionOptions & O
 
 export type NativeOverlayBackend = "x11-glx" | "macos-metal" | "macos-opengl" | "none";
 
+export interface NativeOverlayBounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export type NativeOverlayBoundsProvider = () => NativeOverlayBounds | undefined;
+
 export interface NativeOverlaySessionSnapshot {
   title: string;
   backend: NativeOverlayBackend;
+  bounds?: NativeOverlayBounds;
   closed: boolean;
   startedAt: number;
   pumpCount: number;
@@ -1609,6 +1620,7 @@ export type NativeOverlayPresenterMode = "passive" | "active" | "hidden" | "clos
 export interface NativeOverlayPresenterOptions {
   title?: string;
   nativeWindowHandle?: Buffer;
+  getBounds?: NativeOverlayBoundsProvider;
   restoreFocus?: () => void;
   restoreFocusDelayMs?: number;
   idleFps?: number;
@@ -1622,6 +1634,7 @@ export interface NativeOverlayPresenterOptions {
 export interface NativeOverlayPresenterSnapshot {
   title: string;
   backend: NativeOverlayBackend;
+  bounds?: NativeOverlayBounds;
   closed: boolean;
   startedAt: number;
   mode: NativeOverlayPresenterMode;
@@ -7011,9 +7024,15 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
   };
 
   const snapshot = (): NativeOverlaySessionSnapshot => {
+    const bounds = closed
+      ? undefined
+      : readNativeOverlayBounds(options.getBounds, (error) => {
+          lastError = error;
+        });
     const base = {
       title,
       backend: closed ? "none" : backend,
+      ...(bounds ? { bounds } : {}),
       closed,
       startedAt,
       pumpCount,
@@ -7311,9 +7330,15 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
           : "passive";
     const nativeProbeOpen = safeBoolean(() => native().isNativeOverlayProbeWindowOpen());
     const nativeHostOpen = safeBoolean(() => native().isNativeOverlayHostViewOpen());
+    const bounds = closed
+      ? undefined
+      : readNativeOverlayBounds(options.getBounds, (error) => {
+          lastError = error;
+        });
     const base = {
       title,
       backend: closed ? "none" : backend,
+      ...(bounds ? { bounds } : {}),
       closed,
       startedAt,
       mode,
@@ -7562,6 +7587,35 @@ function resolveNativeOverlayBackend(options: { nativeWindowHandle?: Buffer } = 
   }
 
   return "none";
+}
+
+function readNativeOverlayBounds(
+  getBounds: NativeOverlayBoundsProvider | undefined,
+  onError?: (error: unknown) => void
+): NativeOverlayBounds | undefined {
+  if (!getBounds) {
+    return undefined;
+  }
+
+  try {
+    return normalizeNativeOverlayBounds(getBounds());
+  } catch (error) {
+    onError?.(error);
+    return undefined;
+  }
+}
+
+function normalizeNativeOverlayBounds(bounds: NativeOverlayBounds | undefined): NativeOverlayBounds | undefined {
+  if (!bounds) {
+    return undefined;
+  }
+
+  const { x, y, width, height } = bounds;
+  if (![x, y, width, height].every(Number.isFinite) || width < 0 || height < 0) {
+    return undefined;
+  }
+
+  return { x, y, width, height };
 }
 
 function shouldUseMacMetalOverlayHost(): boolean {
@@ -8036,9 +8090,11 @@ function createNativeOverlaySessionPresenter(options: NativeOverlaySessionOption
       const overlayNeedsPresent = closed ? false : (diagnostics?.overlayNeedsPresent ?? false);
       const active = attached && (overlayActive || overlayNeedsPresent);
       const fps = Math.round(1000 / pumpIntervalMs);
+      const bounds = closed ? undefined : snapshot?.bounds;
       return {
         title,
         backend: closed ? "none" : (snapshot?.backend ?? "none"),
+        ...(bounds ? { bounds } : {}),
         closed,
         startedAt,
         mode: closed ? "closed" : attached ? (active ? "active" : "passive") : "hidden",

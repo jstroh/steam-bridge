@@ -553,7 +553,9 @@ Keep the current `getOverlayDiagnostics()` fields and add presenter diagnostics
 beside them instead of replacing them. Snapshots now include the selected
 `backend` (`x11-glx`, `macos-metal`, `macos-opengl`, or `none`) so Deck,
 Linux, macOS, and fallback artifacts can assert which native host path is in
-use without scraping logs. Bounds remain follow-up diagnostic coverage.
+use without scraping logs. Snapshots also include `bounds` when Electron's
+`BrowserWindow.getBounds()` or a lower-level bounds provider is available, so
+Deck/Linux/macOS artifacts can verify presenter alignment without scraping logs.
 
 ## Milestones
 

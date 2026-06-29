@@ -4672,6 +4672,7 @@ test("electron overlay helper scrubs Steam overlay preload from child process en
 
 test("electron steam overlay manager owns one presenter and routes opens", async (t) => {
   const hostHandle = Buffer.from([8, 7, 6, 5]);
+  let windowBounds = { x: 10, y: 20, width: 1280, height: 720 };
   let hostOpen = false;
   let closedHandler;
   const fake = createFakeNative({
@@ -4713,6 +4714,9 @@ test("electron steam overlay manager owns one presenter and routes opens", async
     getNativeWindowHandle() {
       return hostHandle;
     },
+    getBounds() {
+      return windowBounds;
+    },
     once(event, handler) {
       if (event === "closed") {
         closedHandler = handler;
@@ -4731,8 +4735,10 @@ test("electron steam overlay manager owns one presenter and routes opens", async
   });
 
   assert.equal(overlay.isOpen(), true);
-  assert.equal(overlay.snapshot().nativeHostOpen, true);
-  assert.deepEqual(overlay.snapshot().electronOverlay, {
+  const initialSnapshot = overlay.snapshot();
+  assert.equal(initialSnapshot.nativeHostOpen, true);
+  assert.deepEqual(initialSnapshot.bounds, windowBounds);
+  assert.deepEqual(initialSnapshot.electronOverlay, {
     presenterMode: "persistent",
     closeWithWindow: true,
     autoPrepareForNotifications: true,
@@ -4742,6 +4748,8 @@ test("electron steam overlay manager owns one presenter and routes opens", async
       targetType: "friends"
     }
   });
+  windowBounds = { x: 24, y: 32, width: 1920, height: 1080 };
+  assert.deepEqual(overlay.snapshot().bounds, windowBounds);
 
   overlay.open({ type: "friends" });
   overlay.open({ type: "web", url: "https://store.steampowered.com/app/480/", modal: true });
@@ -4984,6 +4992,7 @@ test("electron steam overlay manager can disable automatic passive notification 
 
 test("electron steam overlay manager can fall back to native overlay sessions", (t) => {
   const hostHandle = Buffer.from([9, 9, 9, 9]);
+  const windowBounds = { x: 4, y: 8, width: 1024, height: 768 };
   let hostOpen = false;
   const fake = createFakeNative({
     attachNativeOverlayHostView(nativeWindowHandle) {
@@ -5024,6 +5033,9 @@ test("electron steam overlay manager can fall back to native overlay sessions", 
     getNativeWindowHandle() {
       return hostHandle;
     },
+    getBounds() {
+      return windowBounds;
+    },
     once() {},
     webContents: {
       once() {},
@@ -5040,6 +5052,7 @@ test("electron steam overlay manager can fall back to native overlay sessions", 
   assert.equal(overlay.isOpen(), true);
   assert.equal(overlay.snapshot().attached, false);
   assert.equal(overlay.snapshot().backend, "none");
+  assert.equal(overlay.snapshot().bounds, undefined);
   assert.deepEqual(overlay.snapshot().electronOverlay, {
     presenterMode: "session",
     closeWithWindow: true,
@@ -5056,10 +5069,12 @@ test("electron steam overlay manager can fall back to native overlay sessions", 
 
   assert.equal(overlay.snapshot().attached, true);
   assert.equal(overlay.snapshot().backend, expectedNativeOverlayBackend(true));
+  assert.deepEqual(overlay.snapshot().bounds, windowBounds);
   overlay.close();
   assert.equal(overlay.isOpen(), false);
   assert.equal(overlay.snapshot().attached, false);
   assert.equal(overlay.snapshot().backend, "none");
+  assert.equal(overlay.snapshot().bounds, undefined);
   assert.equal(overlay.snapshot().currentFps, 0);
 
   assert.deepEqual(
@@ -5792,6 +5807,7 @@ test("native overlay session owns the probe pump lifecycle", async (t) => {
   let hostOpen = false;
   let restoreFocusCount = 0;
   const hostHandle = Buffer.from([8, 7, 6, 5, 4, 3, 2, 1]);
+  const hostBounds = { x: 30, y: 40, width: 1440, height: 900 };
   const fake = createFakeNative({
     openNativeOverlayProbeWindow(title) {
       probeOpen = true;
@@ -5848,6 +5864,7 @@ test("native overlay session owns the probe pump lifecycle", async (t) => {
   assert.equal(session.isOpen(), true);
   assert.equal(session.snapshot().title, "Managed Overlay");
   assert.equal(session.snapshot().backend, expectedNativeOverlayBackend(false));
+  assert.equal(session.snapshot().bounds, undefined);
   assert.equal(session.snapshot().nativeProbeOpen, true);
 
   fake.callbacks.get(331)({ active: true, app_id: 480 });
@@ -5881,6 +5898,9 @@ test("native overlay session owns the probe pump lifecycle", async (t) => {
   const hostSession = steam.overlay.activateDialogWithNativeSession("Friends", {
     title: "Managed Host Overlay",
     nativeWindowHandle: hostHandle,
+    getBounds() {
+      return hostBounds;
+    },
     pumpIntervalMs: 10000,
     restoreFocusDelayMs: 0,
     restoreFocus() {
@@ -5890,6 +5910,7 @@ test("native overlay session owns the probe pump lifecycle", async (t) => {
 
   assert.equal(hostSession.isOpen(), true);
   assert.equal(hostSession.snapshot().backend, expectedNativeOverlayBackend(true));
+  assert.deepEqual(hostSession.snapshot().bounds, hostBounds);
   assert.equal(hostSession.snapshot().nativeHostOpen, true);
 
   fake.callbacks.get(331)({ active: false, app_id: 480 });
@@ -5952,6 +5973,7 @@ test("native overlay presenter reuses a passive host for overlay activation", as
   let hostOpen = false;
   let restoreFocusCount = 0;
   const hostHandle = Buffer.from([1, 3, 3, 7, 0, 0, 0, 0]);
+  let hostBounds = { x: 5, y: 6, width: 800, height: 600 };
   const fake = createFakeNative({
     attachNativeOverlayHostView(nativeWindowHandle) {
       hostOpen = true;
@@ -5999,6 +6021,9 @@ test("native overlay presenter reuses a passive host for overlay activation", as
     pollIntervalMs: 10000,
     activeGraceMs: 0,
     restoreFocusDelayMs: 0,
+    getBounds() {
+      return hostBounds;
+    },
     restoreFocus() {
       restoreFocusCount += 1;
     }
@@ -6007,6 +6032,7 @@ test("native overlay presenter reuses a passive host for overlay activation", as
   assert.equal(presenter.isOpen(), true);
   assert.equal(presenter.snapshot().mode, "passive");
   assert.equal(presenter.snapshot().backend, expectedNativeOverlayBackend(true));
+  assert.deepEqual(presenter.snapshot().bounds, hostBounds);
   assert.equal(presenter.snapshot().nativeHostOpen, true);
   assert.equal(presenter.snapshot().clickThrough, true);
   assert.equal(presenter.snapshot().focusable, false);
@@ -6019,6 +6045,8 @@ test("native overlay presenter reuses a passive host for overlay activation", as
   assert.equal(presenter.snapshot().mode, "active");
   assert.equal(presenter.snapshot().clickThrough, false);
   assert.equal(presenter.snapshot().transparent, false);
+  hostBounds = { x: 6, y: 7, width: 1024, height: 640 };
+  assert.deepEqual(presenter.snapshot().bounds, hostBounds);
 
   fake.callbacks.get(331)({ active: true, app_id: 480 });
   assert.equal(presenter.snapshot().overlayActive, true);
@@ -6036,6 +6064,7 @@ test("native overlay presenter reuses a passive host for overlay activation", as
   presenter.close();
   assert.equal(presenter.isOpen(), false);
   assert.equal(presenter.snapshot().backend, "none");
+  assert.equal(presenter.snapshot().bounds, undefined);
 
   const oneShot = steam.overlay.openStoreOverlay(480, steam.StoreFlag.None, {
     nativeWindowHandle: hostHandle,
