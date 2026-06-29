@@ -471,7 +471,7 @@ can run `--close-probe`; it focuses the smoke app, sends the close input, and
 verifies active/inactive callbacks, app focus return, `openAndWait(...)`
 completion after parking, no post-close presenter pumping, and no crash
 diagnostics. A 2026-06-29 full macOS matrix at
-`/tmp/steam-bridge-macos-overlay-matrix-full-20260629-101221` covers modal web,
+`/tmp/steam-bridge-macos-overlay-matrix-full-current-20260629-160125` covers modal web,
 store, Friends/chat, profile, community, stats, achievements, user chat/profile,
 known dialog equivalents, synthetic checkout approval-route plumbing, passive
 notification toasts, and managed Shift+Tab shortcut open/close through the
