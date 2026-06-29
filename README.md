@@ -329,9 +329,9 @@ log what Steam sees:
 - `steamInstallPath`
 
 Steam Bridge also includes a managed native overlay session for diagnostics and
-Deck/Desktop proof runs. The session opens a bridge-owned native presenter,
-pumps it on an internal timer, activates the requested Steam overlay target,
-and tracks whether Steam reported overlay activation:
+Deck/Desktop proof runs. This older compatibility path opens a bridge-owned
+native presenter, keeps it alive while the requested Steam overlay target is
+active, and tracks whether Steam reported overlay activation:
 
 ```ts
 const session = client.overlay.activateToWebPageWithNativeSession("https://store.steampowered.com/app/480/", {

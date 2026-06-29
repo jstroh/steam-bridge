@@ -262,9 +262,7 @@ const openAndWaitPromise = typedElectronSteamOverlay.openAndWait(steamOverlayTar
 });
 const checkoutPreparePromise = typedElectronSteamOverlay.withCheckoutPrepared(() => ({
   steamUrl: "https://checkout.steampowered.com/checkout/approvetxn/123/"
-}), {
-  durationMs: 5000
-});
+}));
 const steamId: SteamId | undefined = undefined;
 
 void client;
