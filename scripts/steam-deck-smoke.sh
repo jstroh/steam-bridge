@@ -1435,6 +1435,11 @@ detect_ipv4_prefix() {
 
 exclude_csv() {
   local joined="" entry
+  if [ "${#exclude_hosts[@]}" -eq 0 ]; then
+    printf '\n'
+    return 0
+  fi
+
   for entry in "${exclude_hosts[@]}"; do
     if [ -z "$joined" ]; then
       joined="$entry"
