@@ -314,8 +314,8 @@ function runSelfTest() {
   try {
     createSelfTestFixture(fixtureRoot);
     const summary = summarizeMatrixArtifacts(fixtureRoot);
-    assert(summary.caseSummaries.length === 3, "summary self-test should include three cases");
-    assert(summary.totalScreenshots === 6, "summary self-test should count six screenshots");
+    assert(summary.caseSummaries.length === 4, "summary self-test should include four cases");
+    assert(summary.totalScreenshots === 7, "summary self-test should count seven screenshots");
     console.log("Steam Deck overlay matrix summary self-test passed.");
   } finally {
     fs.rmSync(fixtureRoot, { recursive: true, force: true });
@@ -456,6 +456,37 @@ function createSelfTestFixture(root) {
       .join("\n") + "\n"
   );
   fs.writeFileSync(path.join(unlockScreensDir, "overlay-open.png"), "");
+
+  const sessionCaseId = "04-session-web";
+  const sessionDiagnosticsDir = path.join(root, "diagnostics", sessionCaseId);
+  const sessionRunDiagnosticsDir = path.join(
+    sessionDiagnosticsDir,
+    "steam-bridge-smoke-matrix-04-session-web.log.diagnostics"
+  );
+  const sessionScreensDir = path.join(root, "screens", sessionCaseId);
+  const sessionResult = JSON.parse(JSON.stringify(result));
+
+  sessionResult.snapshot.overlay.nativePresenter.value = sessionPresenterFixture(4, false);
+  fs.mkdirSync(sessionRunDiagnosticsDir, { recursive: true });
+  fs.mkdirSync(sessionScreensDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(sessionDiagnosticsDir, "steam-bridge-smoke-matrix-04-session-web.log"),
+    `STEAM_BRIDGE_SMOKE_RESULT ${JSON.stringify(sessionResult)}\n`
+  );
+  fs.writeFileSync(
+    path.join(sessionRunDiagnosticsDir, "lifecycle.jsonl"),
+    [
+      { type: "event:callback:overlay-activated", payload: { active: true } },
+      { type: "event:overlay:presenter-wait-shown", payload: { presenter: sessionPresenterFixture(8, true) } },
+      { type: "event:callback:overlay-activated", payload: { active: false } },
+      { type: "event:overlay:presenter-wait-closed", payload: { presenter: sessionPresenterFixture(9, false) } },
+      { type: "event:overlay:presenter-parked", payload: { presenter: sessionPresenterFixture(9, false) } }
+    ]
+      .map((entry) => JSON.stringify(entry))
+      .join("\n") + "\n"
+  );
+  fs.writeFileSync(path.join(sessionScreensDir, "overlay-open.png"), "");
+
   fs.writeFileSync(
     path.join(root, "matrix-cases.jsonl"),
     [
@@ -478,6 +509,13 @@ function createSelfTestFixture(root) {
         caseName: "passive-unlock-toast",
         action: "presenter-achievement-unlock",
         visualCloseInput: null,
+        visualToggleInput: null
+      },
+      {
+        caseId: sessionCaseId,
+        caseName: "session-web",
+        action: "presenter-web",
+        visualCloseInput: "web",
         visualToggleInput: null
       }
     ]
@@ -527,6 +565,16 @@ function passiveNotificationPresenterFixture(pumpCount) {
     ...parkedPresenterFixture(pumpCount),
     currentFps: 30,
     overlayNeedsPresent: true
+  };
+}
+
+function sessionPresenterFixture(pumpCount, active) {
+  return {
+    ...(active ? activePresenterFixture(pumpCount) : parkedPresenterFixture(pumpCount)),
+    electronOverlay: {
+      ...electronOverlayFixture(),
+      presenterMode: "session"
+    }
   };
 }
 
@@ -834,6 +882,10 @@ function verifyLifecycleParking(caseName, entries, failures) {
   if (inactiveAfterActiveIndex === -1) {
     failures.push(`${caseName}: no active=false overlay callback after active=true`);
     return { required: true, ok: false };
+  }
+
+  if (entries.some((entry) => readPresenterMode(presenterPayload(entry)) === "session")) {
+    return { required: false, ok: true };
   }
 
   const firstAfterClosePresenters = entries

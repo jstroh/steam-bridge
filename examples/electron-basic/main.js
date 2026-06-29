@@ -64,7 +64,6 @@ const DIAGNOSTIC_DIR =
   path.join(os.tmpdir(), "steam-bridge-smoke-diagnostics", createRunId());
 const LIFECYCLE_LOG_FILE = path.join(DIAGNOSTIC_DIR, "lifecycle.jsonl");
 const CRASH_DUMP_DIR = path.join(DIAGNOSTIC_DIR, "crash-dumps");
-const POST_CLOSE_PRESENTER_SNAPSHOT_DELAYS_MS = [1800, 3200];
 const MANAGED_OVERLAY_WAIT_TIMEOUT_MS = normalizePositiveInteger(
   Number(CLI_OPTIONS.managedOverlayWaitTimeoutMs || process.env.STEAM_BRIDGE_SMOKE_MANAGED_OVERLAY_WAIT_TIMEOUT_MS),
   45000
@@ -117,7 +116,7 @@ let shutdownComplete = false;
 let mainWindow;
 let nativeOverlaySession;
 let electronSteamOverlay;
-let postClosePresenterSnapshotTimers = [];
+let postClosePresenterSnapshotHandle;
 let managedOverlayWaitSequence = 0;
 const managedOverlayWaitControllers = new Set();
 const callbackHandles = [];
@@ -252,7 +251,7 @@ function shutdownSteam() {
     return;
   }
   shutdownComplete = true;
-  clearPostClosePresenterSnapshotTimers();
+  clearPostClosePresenterSnapshotObserver();
   abortManagedOverlayWaits();
   closeNativeOverlayPresenter();
   closeNativeOverlaySession();
@@ -1565,34 +1564,72 @@ function maybeRecordPostClosePresenterSnapshot(type, payload) {
   if (type !== "callback:overlay-activated" || readOverlayActiveValue(payload) !== false) {
     return;
   }
-  if (!electronSteamOverlay || !electronSteamOverlay.isOpen()) {
+  const overlay = electronSteamOverlay;
+  if (!overlay || !overlay.isOpen()) {
     return;
   }
 
-  clearPostClosePresenterSnapshotTimers();
-  postClosePresenterSnapshotTimers = POST_CLOSE_PRESENTER_SNAPSHOT_DELAYS_MS.map((delayMs, index) => {
-    const timer = setTimeout(() => {
-      postClosePresenterSnapshotTimers = postClosePresenterSnapshotTimers.filter((entry) => entry !== timer);
-      if (shutdownComplete || !electronSteamOverlay || !electronSteamOverlay.isOpen()) {
-        return;
-      }
+  clearPostClosePresenterSnapshotObserver();
 
-      recordEvent(index === 0 ? "overlay:presenter-after-close" : "overlay:presenter-after-close-stable", {
-        delayMs,
-        sample: index + 1,
-        presenter: electronSteamOverlay.snapshot()
+  let firstParkedSnapshot;
+  const observe = () => {
+    if (shutdownComplete || !overlay.isOpen()) {
+      clearPostClosePresenterSnapshotObserver();
+      return;
+    }
+
+    const presenter = overlay.snapshot();
+    if (!isParkedPersistentPresenter(presenter)) {
+      return;
+    }
+
+    if (!firstParkedSnapshot) {
+      firstParkedSnapshot = presenter;
+      recordEvent("overlay:presenter-after-close", {
+        source: "state-change",
+        sample: 1,
+        presenter
       });
-    }, delayMs);
-    timer.unref?.();
-    return timer;
-  });
+      return;
+    }
+
+    recordEvent("overlay:presenter-after-close-stable", {
+      source: "state-change",
+      sample: 2,
+      presenter
+    });
+    clearPostClosePresenterSnapshotObserver();
+  };
+
+  const stateHandle = overlay.presenter && overlay.presenter.onStateChange?.(observe);
+  if (stateHandle) {
+    postClosePresenterSnapshotHandle = stateHandle;
+  }
+  observe();
 }
 
-function clearPostClosePresenterSnapshotTimers() {
-  for (const timer of postClosePresenterSnapshotTimers) {
-    clearTimeout(timer);
+function isParkedPersistentPresenter(presenter) {
+  const electronOverlay = presenter && presenter.electronOverlay;
+  if (!electronOverlay || electronOverlay.presenterMode !== "persistent") {
+    return false;
   }
-  postClosePresenterSnapshotTimers = [];
+
+  return (
+    presenter.closed === false &&
+    presenter.attached === true &&
+    presenter.mode === "passive" &&
+    presenter.clickThrough === true &&
+    presenter.focusable === false &&
+    presenter.transparent === true &&
+    presenter.overlayActive === false &&
+    presenter.overlayNeedsPresent === false &&
+    presenter.currentFps === 0
+  );
+}
+
+function clearPostClosePresenterSnapshotObserver() {
+  postClosePresenterSnapshotHandle?.disconnect?.();
+  postClosePresenterSnapshotHandle = undefined;
 }
 
 function observeManagedOverlayLifecycle(overlay, context) {

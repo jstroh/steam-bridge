@@ -342,10 +342,11 @@ running app for the Friends List web surface; the web checkout/store proof also
 captures `active=false` after closing the modal overlay. The Steam Deck runner
 now machine-checks the single-target invariant for presenter-backed product
 actions, and it also checks idle/passive presenter state for non-modal presenter
-paths. Close/toggle probes also require delayed post-close presenter snapshots
-showing the reusable host transparent, click-through, overlay-inactive, and back
-at `currentFps: 0`; the verifier fails if `pumpCount` increases between the
-first and stable post-close samples. Presenter-backed product runs also require
+paths. Close/toggle probes also require state-driven post-close presenter
+snapshots showing the reusable host transparent, click-through,
+overlay-inactive, and back at `currentFps: 0`; the verifier fails if
+`pumpCount` increases between the first parked state-change sample and the
+following stable sample. Presenter-backed product runs also require
 the smoke app's managed wait-helper lifecycle events for shown, closed, and
 parked states, plus clean crash diagnostics: no crash dump files and no fatal
 Electron lifecycle events. The smoke app's `presenter-achievement-progress` and

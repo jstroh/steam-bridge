@@ -332,6 +332,12 @@ Current evidence:
   used `--visual-close-input toggle`, sending only the second Shift+Tab for
   close, and passed the same active=false, focus-return, and idle-parking
   verifier.
+- The Deck close verifier no longer uses fixed post-close sample delays. A
+  2026-06-28 Deck Desktop core matrix passed 15 cases with 30 screenshots after
+  switching `overlay:presenter-after-close` and
+  `overlay:presenter-after-close-stable` to presenter state-change samples; the
+  web-modal proof recorded both parked samples with unchanged `pumpCount` and
+  `currentFps=0`.
 - The same path is good enough for checkout-style proof when launched under a
   real installed Steam app with a configured product or transaction. The public
   API now has a named checkout wrapper:
@@ -475,7 +481,7 @@ Pass criteria:
 - Modal web/store/checkout overlay opens, accepts input, closes, emits active then
   inactive callbacks, and returns to the app.
 - Deck visual close probes for presenter-backed product web surfaces verify the
-  inactive callback, app focus, delayed post-close presenter parking, no
+  inactive callback, app focus, state-driven post-close presenter parking, no
   post-close pumping, managed wait-helper shown/closed/parked lifecycle events,
   and no post-close crash evidence.
 - Post-close presenter parking means the reusable host is transparent,

@@ -422,7 +422,7 @@ toggle input, captures `after-toggle-open.png`, then closes and captures
 Shift+Tab. For `presenter-shortcut`, keyboard toggle probes should use
 `--visual-close-input toggle` so close is Shift+Tab-only; they also require
 `overlay:shortcut-open`, active/inactive callbacks, focus returning to the smoke
-app, delayed post-close presenter snapshots parked at passive idle with no
+app, state-driven post-close presenter snapshots parked at passive idle with no
 `pumpCount` increase, managed wait-helper shown/closed/parked events, and no
 post-close crash evidence. Use
 `--shortcut-target web --web-modal true` to prove the modal web/checkout-style
