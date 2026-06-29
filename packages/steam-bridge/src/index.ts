@@ -1815,14 +1815,12 @@ export interface ElectronSteamOverlayShortcutSnapshot {
 
 export interface ElectronSteamOverlayWaitOptions {
   timeoutMs?: number;
-  pollIntervalMs?: number;
   signal?: AbortSignal;
 }
 
 export interface ElectronSteamOverlayOpenAndWaitOptions {
   showTimeoutMs?: number;
   closeTimeoutMs?: number;
-  pollIntervalMs?: number;
   signal?: AbortSignal;
 }
 
@@ -8027,12 +8025,10 @@ export function createElectronSteamOverlay(
       controller.open(target);
       const shown = await controller.waitForOverlayShown({
         timeoutMs: finiteNumber(options.showTimeoutMs, 15000),
-        pollIntervalMs: options.pollIntervalMs,
         signal: options.signal
       });
       const parked = await controller.parkWhenSteamOverlayCloses({
         timeoutMs: finiteNumber(options.closeTimeoutMs, 300000),
-        pollIntervalMs: options.pollIntervalMs,
         signal: options.signal
       });
       return { shown, parked };
@@ -8460,7 +8456,6 @@ function waitForElectronSteamOverlayState(
   options: ElectronSteamOverlayWaitOptions = {}
 ): Promise<ElectronSteamOverlaySnapshot> {
   const timeoutMs = Math.max(0, finiteNumber(options.timeoutMs, 15000));
-  const pollIntervalMs = Math.max(1, finiteNumber(options.pollIntervalMs, 50));
   const deadline = Date.now() + timeoutMs;
   const signal = options.signal;
 
@@ -8550,7 +8545,7 @@ function waitForElectronSteamOverlayState(
         if (!check()) {
           scheduleFallbackPoll();
         }
-      }, Math.min(pollIntervalMs, remainingMs));
+      }, Math.min(ELECTRON_STEAM_OVERLAY_SESSION_WAIT_POLL_INTERVAL_MS, remainingMs));
     };
 
     signal?.addEventListener("abort", abortHandler, { once: true });
@@ -8575,6 +8570,8 @@ function waitForElectronSteamOverlayState(
     scheduleFallbackPoll();
   });
 }
+
+const ELECTRON_STEAM_OVERLAY_SESSION_WAIT_POLL_INTERVAL_MS = 50;
 
 function shouldUseElectronSteamOverlayFallbackPolling(
   controller: ElectronSteamOverlay,

@@ -410,9 +410,12 @@ Use `openAndWait(...)` for modal web, store, checkout, and dialog-equivalent
 overlays when app code should wait until Steam closes and the presenter parks.
 Use `waitForOverlayShown()`, `waitForOverlayClosed()`, and
 `parkWhenSteamOverlayCloses()` only when you need lower-level lifecycle await
-points. The Electron smoke app records those await points in its lifecycle log
-as `overlay:presenter-wait-shown`, `overlay:presenter-wait-closed`, and
-`overlay:presenter-parked` for Deck/Linux artifact review. Call
+points. In persistent presenter mode those waits resolve from Steam overlay
+callbacks and native presenter state changes; callers provide deadlines or abort
+signals, not polling intervals. The Electron smoke app records those await
+points in its lifecycle log as `overlay:presenter-wait-shown`,
+`overlay:presenter-wait-closed`, and `overlay:presenter-parked` for Deck/Linux
+artifact review. Call
 `steamOverlay.snapshot()` when you need diagnostics; it returns the
 native presenter state, including the selected `backend`
 (`x11-glx`, `macos-metal`, `macos-opengl`, or `none`) and, when available from

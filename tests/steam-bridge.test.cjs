@@ -5819,15 +5819,15 @@ test("electron steam overlay manager exposes lifecycle wait helpers", async (t) 
 
   overlay.open({ type: "friends" });
 
-  const shown = overlay.waitForOverlayShown({ timeoutMs: 200, pollIntervalMs: 5 });
+  const shown = overlay.waitForOverlayShown({ timeoutMs: 200 });
   fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: true });
   const shownSnapshot = await shown;
 
   assert.equal(shownSnapshot.overlayActive, true);
   assert.equal(shownSnapshot.overlayWasActive, true);
 
-  const closed = overlay.waitForOverlayClosed({ timeoutMs: 200, pollIntervalMs: 5 });
-  const parked = overlay.parkWhenSteamOverlayCloses({ timeoutMs: 200, pollIntervalMs: 5 });
+  const closed = overlay.waitForOverlayClosed({ timeoutMs: 200 });
+  const parked = overlay.parkWhenSteamOverlayCloses({ timeoutMs: 200 });
   fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: false });
 
   const closedSnapshot = await closed;
@@ -5841,14 +5841,13 @@ test("electron steam overlay manager exposes lifecycle wait helpers", async (t) 
   assert.equal(parkedSnapshot.currentFps, 0);
 
   await assert.rejects(
-    overlay.waitForOverlayShown({ timeoutMs: 5, pollIntervalMs: 1 }),
+    overlay.waitForOverlayShown({ timeoutMs: 5 }),
     /Timed out waiting for Steam overlay to become active after 5ms/
   );
 
   const abortController = new AbortController();
   const aborted = overlay.waitForOverlayShown({
     timeoutMs: 200,
-    pollIntervalMs: 5,
     signal: abortController.signal
   });
   abortController.abort();
@@ -5856,7 +5855,7 @@ test("electron steam overlay manager exposes lifecycle wait helpers", async (t) 
 
   const managedOpen = overlay.openAndWait(
     { type: "web", url: "https://store.steampowered.com/app/480/", modal: true },
-    { showTimeoutMs: 200, closeTimeoutMs: 200, pollIntervalMs: 5 }
+    { showTimeoutMs: 200, closeTimeoutMs: 200 }
   );
   fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: true });
   await new Promise((resolve) => setTimeout(resolve, 10));

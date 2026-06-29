@@ -189,9 +189,11 @@ The managed overlay also exposes `waitForOverlayShown()`,
 needs lower-level lifecycle await points without owning Steam callbacks or
 native presenter parking. In default persistent presenter mode, those helpers
 resolve from Steam Bridge overlay callback and presenter state changes instead
-of app-authored timing loops. The smoke lifecycle log records those public wait
-helpers as `overlay:presenter-wait-shown`, `overlay:presenter-wait-closed`, and
-`overlay:presenter-parked` during managed presenter proofs.
+of app-authored timing loops. The public wait options expose deadlines and abort
+signals, not polling intervals. The smoke lifecycle log records those public
+wait helpers as `overlay:presenter-wait-shown`,
+`overlay:presenter-wait-closed`, and `overlay:presenter-parked` during managed
+presenter proofs.
 The managed overlay automatically primes its passive presenter before
 achievement progress, achievement unlock, and stats-store calls that can produce
 Steam notification toasts; `prepareForNotification()` remains available for

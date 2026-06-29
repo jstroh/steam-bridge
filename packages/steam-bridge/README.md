@@ -236,8 +236,9 @@ overlays when app code should wait until Steam closes and the presenter parks.
 Use `waitForOverlayShown()`, `waitForOverlayClosed()`, and
 `parkWhenSteamOverlayCloses()` only when app code needs lower-level lifecycle
 await points; in the default persistent presenter mode these resolve from Steam
-Bridge's overlay callback and presenter state changes, with timeout handling as
-a guardrail rather than app-facing timing glue. The Electron smoke app
+Bridge's overlay callback and presenter state changes. App code supplies
+deadlines or abort signals, not polling intervals; timeout handling is a
+guardrail rather than app-facing timing glue. The Electron smoke app
 records those await points as `overlay:presenter-wait-shown`,
 `overlay:presenter-wait-closed`, and `overlay:presenter-parked` lifecycle
 events so Deck/Linux artifact review proves the same public API app builders

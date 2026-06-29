@@ -248,6 +248,11 @@ Current evidence:
 - The reusable presenter defaults to `idleFps: 0`, so an attached idle host polls
   overlay state without continuously presenting frames. It starts pumping only
   for activation boost windows, active overlays, or `overlayNeedsPresent`.
+- The managed Electron lifecycle waits are app-facing state waits, not tuning
+  loops. `openAndWait(...)`, `waitForOverlayShown()`, `waitForOverlayClosed()`,
+  and `parkWhenSteamOverlayCloses()` resolve from Steam overlay callbacks and
+  native presenter state changes in persistent presenter mode; app code can pass
+  timeouts or abort signals, but not polling intervals.
 - Native hosts realign to their parent window on each pump. The managed
   Electron overlay also listens to BrowserWindow move, resize, fullscreen,
   maximize, restore, and show events and triggers one native presenter pump per

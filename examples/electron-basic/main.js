@@ -1681,7 +1681,6 @@ function observeManagedOverlayLifecycle(overlay, context) {
     "overlay:presenter-wait-shown",
     overlay.waitForOverlayShown({
       timeoutMs: MANAGED_OVERLAY_WAIT_TIMEOUT_MS,
-      pollIntervalMs: 100,
       signal: controller.signal
     }),
     waitContext,
@@ -1697,7 +1696,6 @@ function observeManagedOverlayLifecycle(overlay, context) {
     "overlay:presenter-wait-closed",
     overlay.waitForOverlayClosed({
       timeoutMs: MANAGED_OVERLAY_PARK_TIMEOUT_MS,
-      pollIntervalMs: 100,
       signal: controller.signal
     }),
     waitContext,
@@ -1713,7 +1711,6 @@ function observeManagedOverlayLifecycle(overlay, context) {
     "overlay:presenter-parked",
     overlay.parkWhenSteamOverlayCloses({
       timeoutMs: MANAGED_OVERLAY_PARK_TIMEOUT_MS,
-      pollIntervalMs: 100,
       signal: controller.signal
     }),
     waitContext,
