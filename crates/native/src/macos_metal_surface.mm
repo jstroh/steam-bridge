@@ -1,4 +1,6 @@
 #import <Cocoa/Cocoa.h>
+#import <CoreFoundation/CoreFoundation.h>
+#import <CoreGraphics/CoreGraphics.h>
 #import <Metal/Metal.h>
 #import <MetalKit/MetalKit.h>
 #import <QuartzCore/CAMetalLayer.h>
@@ -516,6 +518,26 @@ extern "C" char *steam_bridge_macos_window_snapshot_json(uint32_t app_id) {
         NSString *json = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
         return strdup(json.UTF8String ?: "{\"windows\":[]}");
     }
+}
+
+extern "C" bool steam_bridge_macos_session_screen_is_locked(void) {
+    CFDictionaryRef session = CGSessionCopyCurrentDictionary();
+    if (!session) {
+        return false;
+    }
+
+    bool locked = false;
+    CFTypeRef value = CFDictionaryGetValue(session, CFSTR("CGSSessionScreenIsLocked"));
+    if (value && CFGetTypeID(value) == CFBooleanGetTypeID()) {
+        locked = CFBooleanGetValue((CFBooleanRef)value);
+    }
+
+    CFRelease(session);
+    return locked;
+}
+
+extern "C" bool steam_bridge_macos_main_display_is_asleep(void) {
+    return CGDisplayIsAsleep(CGMainDisplayID());
 }
 
 extern "C" void steam_bridge_macos_free_string(char *value) {

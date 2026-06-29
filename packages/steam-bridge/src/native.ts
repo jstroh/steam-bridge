@@ -124,6 +124,13 @@ export interface NativeOverlayDiagnostics {
   bigPicture: boolean;
 }
 
+export interface NativeMacOverlayEnvironment {
+  screenLocked?: boolean;
+  screen_locked?: boolean;
+  displayAsleep?: boolean;
+  display_asleep?: boolean;
+}
+
 export interface NativeCloudFileInfo {
   name: string;
   size: bigint | string | number;
@@ -1712,6 +1719,7 @@ export interface NativeBinding {
   isNativeOverlayProbeWindowOpen(): boolean;
   isNativeOverlayHostViewOpen(): boolean;
   getMacWindowSnapshot(appId?: number): string | undefined;
+  getMacOverlayEnvironment(): NativeMacOverlayEnvironment;
 
   isAchievementActivated(name: string): boolean;
   achievementActivate(name: string): boolean;

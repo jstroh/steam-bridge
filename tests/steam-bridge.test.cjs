@@ -7113,6 +7113,97 @@ test("native overlay presenter reuses a passive host for overlay activation", as
   );
 });
 
+test("native overlay presenter defers macOS host attach while locked or display-asleep", (t) => {
+  setProcessPlatformForTest(t, "darwin");
+
+  const hostHandle = Buffer.from([2, 4, 6, 8, 0, 0, 0, 0]);
+  let hostOpen = false;
+  let macEnvironment = { screenLocked: true, displayAsleep: false };
+  const fake = createFakeNative({
+    getMacOverlayEnvironment() {
+      this.calls.push({ method: "getMacOverlayEnvironment", args: [] });
+      return macEnvironment;
+    },
+    attachNativeOverlayHostView(nativeWindowHandle) {
+      hostOpen = true;
+      this.calls.push({ method: "attachNativeOverlayHostView", args: [nativeWindowHandle] });
+    },
+    pumpNativeOverlayProbeWindow() {
+      if (!hostOpen) {
+        throw new Error("native overlay presenter is closed");
+      }
+      this.calls.push({ method: "pumpNativeOverlayProbeWindow", args: [] });
+    },
+    showNativeOverlayHostView() {
+      this.calls.push({ method: "showNativeOverlayHostView", args: [] });
+    },
+    setNativeOverlayHostInputPassthrough(passThrough) {
+      this.calls.push({ method: "setNativeOverlayHostInputPassthrough", args: [passThrough] });
+    },
+    setNativeOverlayHostOpacity(opaque) {
+      this.calls.push({ method: "setNativeOverlayHostOpacity", args: [opaque] });
+    },
+    detachNativeOverlayHostView() {
+      hostOpen = false;
+      this.calls.push({ method: "detachNativeOverlayHostView", args: [] });
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return false;
+    },
+    isNativeOverlayHostViewOpen() {
+      return hostOpen;
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  assert.deepEqual(steam.getMacOverlayEnvironment(), { screenLocked: true, displayAsleep: false });
+
+  const presenter = steam.overlay.attachPresenter({
+    title: "macOS Availability Presenter",
+    nativeWindowHandle: hostHandle,
+    pollIntervalMs: 10000,
+    activationBoostMs: 0
+  });
+
+  const locked = presenter.snapshot();
+  assert.equal(presenter.isOpen(), true);
+  assert.equal(locked.backend, "macos-metal");
+  assert.equal(locked.nativeHostUnavailableReason, "macos-screen-locked");
+  assert.equal(locked.mode, "hidden");
+  assert.equal(locked.attached, false);
+  assert.equal(locked.nativeHostOpen, false);
+  assert.deepEqual(locked.macOverlayEnvironment, { screenLocked: true, displayAsleep: false });
+  assert.equal(locked.currentFps, 0);
+  assert.deepEqual(fake.calls.filter((call) => call.method === "attachNativeOverlayHostView"), []);
+
+  macEnvironment = { screenLocked: false, displayAsleep: true };
+  presenter.pump();
+  const asleep = presenter.snapshot();
+  assert.equal(asleep.nativeHostUnavailableReason, "macos-display-asleep");
+  assert.deepEqual(asleep.macOverlayEnvironment, { screenLocked: false, displayAsleep: true });
+  assert.deepEqual(fake.calls.filter((call) => call.method === "attachNativeOverlayHostView"), []);
+
+  macEnvironment = { screenLocked: false, displayAsleep: false };
+  presenter.prepareForOverlay(1000);
+  const available = presenter.snapshot();
+  assert.equal(available.nativeHostUnavailableReason, undefined);
+  assert.deepEqual(available.macOverlayEnvironment, { screenLocked: false, displayAsleep: false });
+  assert.equal(available.attached, true);
+  assert.equal(available.nativeHostOpen, true);
+  assert.equal(available.mode, "active");
+  assert.equal(available.clickThrough, false);
+  assert.equal(available.transparent, false);
+  assert.equal(available.currentFps, 30);
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "attachNativeOverlayHostView"),
+    [{ method: "attachNativeOverlayHostView", args: [hostHandle] }]
+  );
+
+  presenter.close();
+});
+
 test("native overlay presenter does not pump frames while idle by default", async (t) => {
   let hostOpen = false;
   const hostHandle = Buffer.from([9, 0, 0, 0, 0, 0, 0, 0]);

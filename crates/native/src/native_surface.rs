@@ -184,6 +184,8 @@ mod macos {
         fn steam_bridge_metal_surface_pump(surface: *mut c_void);
         fn steam_bridge_metal_surface_destroy(surface: *mut c_void);
         fn steam_bridge_macos_window_snapshot_json(app_id: u32) -> *mut i8;
+        fn steam_bridge_macos_session_screen_is_locked() -> bool;
+        fn steam_bridge_macos_main_display_is_asleep() -> bool;
         fn steam_bridge_macos_free_string(value: *mut i8);
     }
 
@@ -626,6 +628,14 @@ mod macos {
             steam_bridge_macos_free_string(value);
             Some(json)
         }
+    }
+
+    pub fn mac_screen_locked() -> bool {
+        unsafe { steam_bridge_macos_session_screen_is_locked() }
+    }
+
+    pub fn mac_display_asleep() -> bool {
+        unsafe { steam_bridge_macos_main_display_is_asleep() }
     }
 
     unsafe fn create_probe_window(title: &str) -> Result<NativeSurface, Error> {
@@ -1141,6 +1151,14 @@ mod fallback {
     pub fn mac_window_snapshot_json(_app_id: u32) -> Option<String> {
         None
     }
+
+    pub fn mac_screen_locked() -> bool {
+        false
+    }
+
+    pub fn mac_display_asleep() -> bool {
+        false
+    }
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "linux")))]
@@ -1354,6 +1372,14 @@ mod linux {
 
     pub fn mac_window_snapshot_json(_app_id: u32) -> Option<String> {
         None
+    }
+
+    pub fn mac_screen_locked() -> bool {
+        false
+    }
+
+    pub fn mac_display_asleep() -> bool {
+        false
     }
 
     fn with_surface(run: impl FnOnce(&mut NativeSurface)) -> Result<(), Error> {

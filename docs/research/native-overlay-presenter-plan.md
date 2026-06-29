@@ -645,6 +645,13 @@ Current evidence:
   chat/profile, and known dialog-equivalent routes with paired active/inactive
   callbacks where expected, app focus return, clean crash diagnostics, and idle
   presenter parking at `currentFps=0`.
+- The macOS native presenter now reads CoreGraphics session/display state before
+  creating the host. If the screen is locked or the main display is asleep, the
+  presenter skips native host creation, reports
+  `nativeHostUnavailableReason` as `macos-screen-locked` or
+  `macos-display-asleep`, keeps `currentFps=0`, and retries attachment on the
+  next presenter operation after the Mac becomes interactive again. Unit
+  coverage verifies locked, display-asleep, and post-unlock lazy attach paths.
 - BrowserWindow-only overlay support is not proven.
 - Steam launch, app ID, auth, and callbacks are not enough to claim overlay
   support.
@@ -653,8 +660,9 @@ Next work:
 
 1. Run real purchase-content and `InitTxn` proof from a real configured Steam
    app ID; App ID `480` only proves generic checkout routing.
-2. Add screen-lock/display-sleep awareness so the presenter does not open into a
-   black or invalid state while the user cannot interact.
+2. Add a live lock/display-sleep regression capture if it can be automated
+   without destabilizing the user's macOS session; the runtime guard and unit
+   proof are implemented.
 3. Keep code signing requirements explicit in docs and examples. Local smoke
    signing is not enough to claim shipped macOS overlay support.
 
@@ -668,6 +676,8 @@ Pass criteria:
 - Web/store/Friends/dialog-equivalent overlays open and close with
   active/inactive callbacks and parked presenter state; checkout gets the same
   proof with a real app/product.
+- Locked-screen or display-asleep macOS sessions do not create a native host and
+  report an explicit unavailable reason until the session becomes interactive.
 - No sustained high-FPS idle rendering.
 
 Unsupported for now:

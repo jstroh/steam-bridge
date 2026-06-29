@@ -292,8 +292,11 @@ fullscreen, maximize, restore, and show events with one native pump per event
 instead of a steady render loop. Use
 `steamOverlay.snapshot()` for diagnostics; it returns the native presenter state
 including the selected `backend` (`x11-glx`, `macos-metal`, `macos-opengl`, or
-`none`) and, when available from the Electron window, current `bounds`, plus an
-`electronOverlay` block with the active presenter mode, notification-priming
+`none`) and, when available from the Electron window, current `bounds`. On
+macOS, snapshots also report `macOverlayEnvironment` and
+`nativeHostUnavailableReason` when a locked screen or sleeping display prevents
+safe native host creation. The snapshot also includes an `electronOverlay` block
+with the active presenter mode, notification-priming
 policy, shortcut policy, and whether the manager owns Electron window-close
 cleanup. The smoke verifiers
 can require those managed diagnostics with `--require-electron-overlay`,

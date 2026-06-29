@@ -79,6 +79,13 @@ pub struct OverlayDiagnostics {
     pub big_picture: bool,
 }
 
+#[derive(Debug)]
+#[napi(object)]
+pub struct MacOverlayEnvironment {
+    pub screen_locked: bool,
+    pub display_asleep: bool,
+}
+
 #[napi]
 pub struct AuthTicket {
     pub(crate) data: Vec<u8>,
@@ -450,6 +457,14 @@ pub fn is_native_overlay_host_view_open() -> bool {
 #[napi(js_name = "getMacWindowSnapshot")]
 pub fn get_mac_window_snapshot(app_id: Option<u32>) -> Option<String> {
     native_surface::mac_window_snapshot_json(app_id.unwrap_or(0))
+}
+
+#[napi(js_name = "getMacOverlayEnvironment")]
+pub fn get_mac_overlay_environment() -> MacOverlayEnvironment {
+    MacOverlayEnvironment {
+        screen_locked: native_surface::mac_screen_locked(),
+        display_asleep: native_surface::mac_display_asleep(),
+    }
 }
 
 #[napi(js_name = "isAchievementActivated")]
