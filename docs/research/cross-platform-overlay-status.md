@@ -245,6 +245,13 @@ callback. Keep dialog/social activation transparent; use the Friends target on
 `openSteamOverlay(...)` or call `openFriendsOverlay(...)` for the product
 Friends List route.
 
+On Linux, the reusable native presenter requires an X11 or Xwayland `DISPLAY`.
+`createElectronSteamOverlay(...)` in persistent mode, `attachPresenter(...)`,
+and the lazy session fallback when it opens fail with an explicit diagnostic
+when `DISPLAY` is missing. A Wayland-only or headless process is not expected to
+host the current Steam overlay presenter; launch from Steam Deck Desktop Mode,
+an X11 session, or an Xwayland-enabled session that exports `DISPLAY`.
+
 The Deck host runner also has `--visual-toggle-probe` for shortcut evidence. It
 captures the app before the probe, sends the selected toggle input, captures
 again, then closes and captures the return state. The default

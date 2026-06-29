@@ -6968,6 +6968,8 @@ export function getMacWindowSnapshot(appId?: number): string | undefined {
 }
 
 export function startNativeOverlaySession(options: NativeOverlaySessionOptions = {}): NativeOverlaySession {
+  assertLinuxNativeOverlayDisplayAvailable();
+
   const title = options.title ?? "Steam Bridge Native Overlay";
   const pumpIntervalMs = Math.max(1, options.pumpIntervalMs ?? 33);
   const usesNativeHostView = Boolean(options.nativeWindowHandle);
@@ -7173,6 +7175,8 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
 }
 
 export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = {}): NativeOverlayPresenter {
+  assertLinuxNativeOverlayDisplayAvailable();
+
   const title = options.title ?? "Steam Bridge Overlay Presenter";
   const usesNativeHostView = Boolean(options.nativeWindowHandle);
   const idleFps = normalizedFps(options.idleFps, 0);
@@ -7535,6 +7539,27 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
     }, restoreFocusDelayMs);
     restoreFocusTimer.unref?.();
   }
+}
+
+function assertLinuxNativeOverlayDisplayAvailable(): void {
+  if (process.platform !== "linux") {
+    return;
+  }
+
+  if (process.env.DISPLAY?.trim()) {
+    return;
+  }
+
+  const waylandDisplay = process.env.WAYLAND_DISPLAY?.trim();
+  const waylandNote = waylandDisplay
+    ? ` WAYLAND_DISPLAY is set to "${waylandDisplay}", but Steam Bridge needs Xwayland's DISPLAY for this presenter.`
+    : "";
+  throw new Error(
+    "Steam Bridge native overlay presenter requires an X11/Xwayland DISPLAY on Linux. " +
+      "Start the Electron app from Steam Deck Desktop Mode, an X11 session, or an Xwayland-enabled session that exports DISPLAY. " +
+      "Wayland-only and headless sessions cannot host the native overlay presenter yet." +
+      waylandNote
+  );
 }
 
 export function openDialogOverlay(

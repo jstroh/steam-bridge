@@ -410,7 +410,10 @@ Next work:
    - keep private app IDs, item definitions, transaction IDs, and URLs out of
      committed files.
 8. Treat Wayland as a later backend unless Steam/Electron are running through
-   Xwayland. If no X11 display is available, fail with explicit diagnostics.
+   Xwayland. The managed presenter, and the session fallback when it opens, now
+   fail before native attachment on Linux when `DISPLAY` is missing, with an
+   explicit X11/Xwayland diagnostic; Wayland-only and headless sessions are not
+   a supported overlay host yet.
 
 Pass criteria:
 

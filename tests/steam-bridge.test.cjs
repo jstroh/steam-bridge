@@ -22,11 +22,28 @@ function clearSteamBridgeCache() {
   }
 }
 
-function loadSteamWithFakeNative(fakeNative) {
+function loadSteamWithFakeNative(fakeNative, options = {}) {
+  if (options.linuxDisplay !== false && process.platform === "linux" && !process.env.DISPLAY) {
+    process.env.DISPLAY = ":99";
+  }
   clearSteamBridgeCache();
   const nativeModule = require(distFile("native.js"));
   nativeModule.loadNativeBinding = () => fakeNative;
   return require(distFile("index.js"));
+}
+
+function setProcessPlatformForTest(t, platform) {
+  const previous = Object.getOwnPropertyDescriptor(process, "platform");
+  Object.defineProperty(process, "platform", {
+    value: platform,
+    configurable: true,
+    enumerable: previous?.enumerable ?? true
+  });
+  t.after(() => {
+    if (previous) {
+      Object.defineProperty(process, "platform", previous);
+    }
+  });
 }
 
 function setSteamEnv(values = {}) {
@@ -5132,6 +5149,75 @@ test("electron steam overlay manager honors the presenter kill switch env flag",
   assert.deepEqual(
     fake.calls.filter((call) => call.method === "attachNativeOverlayHostView"),
     [{ method: "attachNativeOverlayHostView", args: [hostHandle] }]
+  );
+});
+
+test("electron steam overlay manager fails clearly on Linux without X11 display", (t) => {
+  const previousDisplay = process.env.DISPLAY;
+  const previousWaylandDisplay = process.env.WAYLAND_DISPLAY;
+  const fake = createFakeNative();
+  const steam = loadSteamWithFakeNative(fake, { linuxDisplay: false });
+  const hostHandle = Buffer.from([3, 1, 4, 1]);
+  const window = {
+    isDestroyed() {
+      return false;
+    },
+    getNativeWindowHandle() {
+      return hostHandle;
+    },
+    once() {},
+    webContents: {
+      once() {},
+      invalidate() {},
+      send() {}
+    }
+  };
+
+  setProcessPlatformForTest(t, "linux");
+  delete process.env.DISPLAY;
+  process.env.WAYLAND_DISPLAY = "wayland-0";
+
+  t.after(() => {
+    if (previousDisplay === undefined) {
+      delete process.env.DISPLAY;
+    } else {
+      process.env.DISPLAY = previousDisplay;
+    }
+    if (previousWaylandDisplay === undefined) {
+      delete process.env.WAYLAND_DISPLAY;
+    } else {
+      process.env.WAYLAND_DISPLAY = previousWaylandDisplay;
+    }
+    clearSteamBridgeCache();
+  });
+
+  assert.throws(
+    () =>
+      steam.overlay.createElectronSteamOverlay(window, {
+        title: "Linux Headless Persistent Overlay"
+      }),
+    /requires an X11\/Xwayland DISPLAY on Linux/
+  );
+
+  const sessionOverlay = steam.overlay.createElectronSteamOverlay(window, {
+    title: "Linux Headless Session Overlay",
+    presenterMode: "session"
+  });
+  assert.equal(sessionOverlay.snapshot().electronOverlay.presenterMode, "session");
+  assert.throws(
+    () =>
+      sessionOverlay.open({
+        type: "web",
+        url: "https://store.steampowered.com/app/480/",
+        modal: true
+      }),
+    /WAYLAND_DISPLAY is set to "wayland-0"/
+  );
+  sessionOverlay.close();
+
+  assert.deepEqual(
+    fake.calls.filter((call) => ["attachNativeOverlayHostView", "activateOverlayToWebPage"].includes(call.method)),
+    []
   );
 });
 
