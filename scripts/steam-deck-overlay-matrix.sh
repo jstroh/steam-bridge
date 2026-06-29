@@ -411,10 +411,11 @@ run_self_test() {
   )"
 
   require_case_count "$minimal_output" "5" "minimal matrix"
-  require_case_count "$core_output" "16" "core matrix"
-  require_case_count "$full_output" "21" "full matrix"
+  require_case_count "$core_output" "17" "core matrix"
+  require_case_count "$full_output" "22" "full matrix"
 
   require_contains "$core_output" "--action presenter-web" "core matrix must include presenter web."
+  require_contains "$core_output" "--action presenter-web-open-and-wait" "core matrix must include presenter openAndWait web."
   require_contains "$core_output" "--action presenter-friends" "core matrix must include Friends."
   require_contains "$core_output" "--action presenter-shortcut" "core matrix must include shortcut probes."
   require_contains "$core_output" "--action presenter-checkout" "core matrix must include checkout."
@@ -444,7 +445,7 @@ run_self_test() {
   passive_toast_case="$(matrix_case_command "$core_output" "06-passive-toast")"
   passive_unlock_case="$(matrix_case_command "$core_output" "07-passive-unlock-toast")"
   user_case="$(matrix_case_command "$core_output" "14-user-steamid")"
-  shortcut_web_case="$(matrix_case_command "$core_output" "16-shortcut-web")"
+  shortcut_web_case="$(matrix_case_command "$core_output" "17-shortcut-web")"
 
   require_not_contains "$first_core_case" "--skip-copy" "first matrix case must copy the package."
   require_contains "$second_core_case" "--skip-copy" "later matrix cases should reuse the copied package."
@@ -559,6 +560,11 @@ if [ "$suite" = "core" ] || [ "$suite" = "full" ]; then
     --user-dialog steamid
 
   run_dialog_auto_case "OfficialGameGroup"
+
+  run_web_surface_case "web-open-and-wait" \
+    --action presenter-web-open-and-wait \
+    --web-url "https://store.steampowered.com/app/$app_id/" \
+    --web-modal true
 
   run_shortcut_case "shortcut-web" \
     --shortcut-target web \

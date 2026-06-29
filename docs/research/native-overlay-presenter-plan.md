@@ -372,6 +372,9 @@ Current evidence:
   default persistent presenter mode `openAndWait(...)` holds the presenter until
   Steam reports the overlay shown, then those waits resolve from Steam Bridge's
   overlay callback and presenter state changes, with timeouts kept as guardrails.
+  The smoke app's `presenter-web-open-and-wait` action now exercises that exact
+  builder-facing helper and the Deck close verifier requires its completion
+  event after `GameOverlayActivated(false)` and presenter parking.
   `prepareForCheckout()` remains as the lower-level split-step escape hatch.
   `MicroTxnAuthorizationResponse` is
   treated as an authorization

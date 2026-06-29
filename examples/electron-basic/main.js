@@ -184,6 +184,7 @@ ipcMain.handle("steam-smoke:overlay-store", () => openStoreOverlay());
 ipcMain.handle("steam-smoke:overlay-web", () => openWebOverlay());
 ipcMain.handle("steam-smoke:overlay-dialog", () => openDialogOverlay());
 ipcMain.handle("steam-smoke:presenter-web", () => openPresenterWebOverlay());
+ipcMain.handle("steam-smoke:presenter-web-open-and-wait", () => openPresenterWebOpenAndWaitOverlay());
 ipcMain.handle("steam-smoke:presenter-friends", () => openPresenterFriendsOverlay());
 ipcMain.handle("steam-smoke:presenter-profile", () => openPresenterProfileOverlay());
 ipcMain.handle("steam-smoke:presenter-players", () => openPresenterPlayersOverlay());
@@ -425,6 +426,9 @@ async function runAutorunAction(action) {
       case "presenter-web":
         openPresenterWebOverlay();
         return { ok: true, action };
+      case "presenter-web-open-and-wait":
+        openPresenterWebOpenAndWaitOverlay();
+        return { ok: true, action };
       case "presenter-friends":
         openPresenterFriendsOverlay();
         return { ok: true, action };
@@ -613,6 +617,48 @@ function openPresenterWebOverlay() {
     url: WEB_URL,
     modal: WEB_MODAL
   });
+  return snapshot();
+}
+
+function openPresenterWebOpenAndWaitOverlay() {
+  const overlay = ensureElectronSteamOverlay();
+  const target = { type: "web", url: WEB_URL, modal: WEB_MODAL };
+  const context = {
+    target: "web",
+    url: WEB_URL,
+    modal: WEB_MODAL,
+    api: "openAndWait"
+  };
+  const openAndWait = overlay.openAndWait(target, {
+    showTimeoutMs: MANAGED_OVERLAY_WAIT_TIMEOUT_MS,
+    closeTimeoutMs: MANAGED_OVERLAY_PARK_TIMEOUT_MS
+  });
+
+  recordEvent("overlay:presenter-open-and-wait-start", {
+    ...context,
+    presenter: overlay.snapshot()
+  });
+  observeManagedOverlayLifecycle(overlay, context);
+
+  openAndWait
+    .then((result) => {
+      recordEvent("overlay:presenter-open-and-wait-complete", {
+        ...context,
+        shown: result.shown,
+        parked: result.parked,
+        presenter: safeOverlaySnapshot(overlay)
+      });
+    })
+    .catch((error) => {
+      if (!shutdownComplete) {
+        recordEvent("overlay:presenter-open-and-wait:error", {
+          ...context,
+          error: serializeError(error),
+          presenter: safeOverlaySnapshot(overlay)
+        });
+      }
+    });
+
   return snapshot();
 }
 

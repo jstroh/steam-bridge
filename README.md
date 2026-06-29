@@ -259,9 +259,10 @@ npm run steam-deck:overlay-matrix -- \
 ```
 
 The matrix packages the Linux x64 smoke app, runs preflight, then exercises the
-managed presenter routes for modal web, store, Friends, profile, community, stats,
-achievements, dialog equivalents, checkout readiness, synthetic checkout
-approval-route plumbing, Shift+Tab shortcut routing, and passive
+managed presenter routes for modal web, the builder-facing `openAndWait` web
+path, store, Friends, profile, community, stats, achievements, dialog
+equivalents, checkout readiness, synthetic checkout approval-route plumbing,
+Shift+Tab shortcut routing, and passive
 achievement progress/unlock toasts. It also summarizes every collected result and
 lifecycle log so hidden crash dumps, fatal Electron lifecycle events, duplicate
 overlay targets, missing presenter diagnostics, and post-close presenter parking
@@ -582,7 +583,10 @@ or the lower-level `client.overlay.attachPresenter(...)`,
 and `client.overlay.openDialogEquivalentOverlay(...)` helpers, or the Electron smoke app's
 `presenter-web` / `presenter-store` / `presenter-friends` / `presenter-profile` /
 `presenter-players` / `presenter-community` / `presenter-stats` / `presenter-dialog-auto` / `presenter-shortcut` actions for
-that proof. The older
+that proof. The `presenter-web-open-and-wait` smoke action exercises the same
+Steam web surface through the builder-facing `steamOverlay.openAndWait(...)`
+helper and records completion only after Steam closes and the presenter parks.
+The older
 `activateToWebPageWithNativeSession(..., { modal: true })` / `native-web` path
 remains compatibility coverage. Steam's raw Desktop Mode dialog/Game Overview
 overlay and hotkey toggle should not be treated as completed dismissal proofs.
