@@ -302,6 +302,7 @@ function verifyCase(caseId, metadata, result, lifecycle, failures) {
     expect(activated, `${caseId}: overlay active callback observed`, failures);
     expect(closed, `${caseId}: overlay inactive callback observed after active`, failures);
     verifyOverlayCallbackAppIds(caseId, lifecycleEntries, 480, failures);
+    verifyOverlayCallbackPids(caseId, lifecycleEntries, overlayProcesses, failures);
     expect(parked, `${caseId}: presenter parked after overlay close`, failures);
   }
 
@@ -469,6 +470,24 @@ function verifyOverlayCallbackAppIds(caseId, entries, expectedAppId, failures) {
   }
 }
 
+function verifyOverlayCallbackPids(caseId, entries, overlayProcesses, failures) {
+  const expectedPids = new Set(
+    (Array.isArray(overlayProcesses.gameoverlayui) ? overlayProcesses.gameoverlayui : [])
+      .map((target) => Number(target.pid))
+      .filter(Number.isFinite)
+  );
+  for (const entry of entries.filter((item) => item && item.type === "event:callback:overlay-activated")) {
+    const overlayPid = overlayEventPid(entry);
+    if (overlayPid === undefined) {
+      failures.push(`${caseId}: overlay callback did not include overlay PID`);
+    } else if (!expectedPids.has(overlayPid)) {
+      failures.push(
+        `${caseId}: overlay callback PID expected one of ${formatValue([...expectedPids])}, got ${formatValue(overlayPid)}`
+      );
+    }
+  }
+}
+
 function verifyLifecycleParking(caseId, entries, isPassive, failures) {
   if (isPassive) {
     return true;
@@ -594,9 +613,9 @@ function createSelfTestFixture(root) {
       resultPresenter: activePresenterFixture(10),
       lifecycle: [
         { type: "event:overlay:presenter-open-and-wait-start", payload: { presenter: activePresenterFixture(10) } },
-        { type: "event:callback:overlay-activated", payload: { active: true, appId: 480 } },
+        { type: "event:callback:overlay-activated", payload: { active: true, appId: 480, overlayPid: 9001 } },
         { type: "event:overlay:presenter-wait-shown", payload: { presenter: activePresenterFixture(11) } },
-        { type: "event:callback:overlay-activated", payload: { active: false, appId: 480 } },
+        { type: "event:callback:overlay-activated", payload: { active: false, appId: 480, overlayPid: 9001 } },
         { type: "event:overlay:presenter-after-close", payload: { presenter: parkedPresenterFixture(12) } },
         { type: "event:overlay:presenter-parked", payload: { presenter: parkedPresenterFixture(12) } },
         {
@@ -622,9 +641,9 @@ function createSelfTestFixture(root) {
       resultPresenter: activePresenterFixture(14),
       lifecycle: [
         { type: "event:overlay:presenter-open-and-wait-start", payload: { presenter: activePresenterFixture(14) } },
-        { type: "event:callback:overlay-activated", payload: { active: true, appId: 480 } },
+        { type: "event:callback:overlay-activated", payload: { active: true, appId: 480, overlayPid: 9001 } },
         { type: "event:overlay:presenter-wait-shown", payload: { presenter: activePresenterFixture(15) } },
-        { type: "event:callback:overlay-activated", payload: { active: false, appId: 480 } },
+        { type: "event:callback:overlay-activated", payload: { active: false, appId: 480, overlayPid: 9001 } },
         { type: "event:overlay:presenter-after-close", payload: { presenter: parkedPresenterFixture(16) } },
         { type: "event:overlay:presenter-parked", payload: { presenter: parkedPresenterFixture(16) } },
         {
@@ -640,9 +659,9 @@ function createSelfTestFixture(root) {
       resultPresenter: parkedPresenterFixture(1),
       lifecycle: [
         { type: "event:overlay:shortcut-open", payload: { target: "friends" } },
-        { type: "event:callback:overlay-activated", payload: { active: true, appId: 480 } },
+        { type: "event:callback:overlay-activated", payload: { active: true, appId: 480, overlayPid: 9001 } },
         { type: "event:overlay:presenter-wait-shown", payload: { presenter: activePresenterFixture(20) } },
-        { type: "event:callback:overlay-activated", payload: { active: false, appId: 480 } },
+        { type: "event:callback:overlay-activated", payload: { active: false, appId: 480, overlayPid: 9001 } },
         { type: "event:overlay:presenter-after-close", payload: { presenter: parkedPresenterFixture(21) } },
         { type: "event:overlay:presenter-parked", payload: { presenter: parkedPresenterFixture(21) } },
         { type: "event:overlay:presenter-after-close-stable", payload: { presenter: parkedPresenterFixture(21) } }
@@ -657,9 +676,9 @@ function createSelfTestFixture(root) {
           type: "event:overlay:presenter-open",
           payload: { target: "checkout", api: "openCheckoutAndWait", presenter: activePresenterFixture(30) }
         },
-        { type: "event:callback:overlay-activated", payload: { active: true, appId: 480 } },
+        { type: "event:callback:overlay-activated", payload: { active: true, appId: 480, overlayPid: 9001 } },
         { type: "event:overlay:presenter-wait-shown", payload: { presenter: activePresenterFixture(31) } },
-        { type: "event:callback:overlay-activated", payload: { active: false, appId: 480 } },
+        { type: "event:callback:overlay-activated", payload: { active: false, appId: 480, overlayPid: 9001 } },
         { type: "event:overlay:presenter-after-close", payload: { presenter: parkedPresenterFixture(32) } },
         { type: "event:overlay:presenter-parked", payload: { presenter: parkedPresenterFixture(32) } },
         {
@@ -888,6 +907,24 @@ function overlayEventAppId(event) {
   for (const key of ["appId", "app_id", "m_nAppID"]) {
     if (activePayload[key] != null) {
       return Number(activePayload[key]);
+    }
+  }
+  return undefined;
+}
+
+function overlayEventPid(event) {
+  if (!event) {
+    return undefined;
+  }
+  const payload = event.payload;
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return undefined;
+  }
+  const activePayload = payload["0"] && typeof payload["0"] === "object" ? payload["0"] : payload;
+  for (const key of ["overlayPid", "overlay_pid", "m_unOverlayPID"]) {
+    if (activePayload[key] != null) {
+      const pid = Number(activePayload[key]);
+      return Number.isFinite(pid) ? pid : undefined;
     }
   }
   return undefined;
