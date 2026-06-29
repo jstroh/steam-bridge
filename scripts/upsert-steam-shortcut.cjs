@@ -58,6 +58,7 @@ function main() {
   assertOption("exe", options.exe);
 
   const shortcutsPath = path.resolve(options.shortcuts);
+  const outputPath = path.resolve(options.output || shortcutsPath);
   const root = fs.existsSync(shortcutsPath)
     ? readBinaryKeyValues(fs.readFileSync(shortcutsPath))
     : { name: "shortcuts", value: {} };
@@ -69,23 +70,36 @@ function main() {
   const entry = buildShortcutEntry(options);
   const existingKey = findShortcutKey(shortcuts, options.appName);
   const key = existingKey ?? nextShortcutKey(shortcuts);
-  shortcuts[key] = entry;
+  const existingEntry = existingKey == null ? null : shortcuts[existingKey];
+  const unchanged =
+    existingEntry != null && outputPath === shortcutsPath && shortcutLaunchFieldsMatch(existingEntry, entry);
 
-  const outputPath = path.resolve(options.output || shortcutsPath);
-  if (options.backup && fs.existsSync(shortcutsPath)) {
+  if (!unchanged) {
+    shortcuts[key] = entry;
+  }
+
+  if (!unchanged && options.backup && fs.existsSync(shortcutsPath)) {
     const backupPath =
       typeof options.backup === "string" ? path.resolve(options.backup) : `${shortcutsPath}.bak-${timestamp()}`;
     fs.copyFileSync(shortcutsPath, backupPath);
     console.log(`Backed up ${shortcutsPath} to ${backupPath}`);
   }
 
-  fs.writeFileSync(outputPath, writeBinaryKeyValues(root));
+  if (!unchanged) {
+    fs.writeFileSync(outputPath, writeBinaryKeyValues(root));
+  }
   const gameId = computeShortcutGameId(entry.appid);
-  console.log(`${existingKey == null ? "Added" : "Updated"} Steam shortcut "${options.appName}" at index ${key}.`);
+  if (unchanged) {
+    console.log(`Steam shortcut "${options.appName}" is already up to date at index ${key}.`);
+  } else {
+    console.log(`${existingKey == null ? "Added" : "Updated"} Steam shortcut "${options.appName}" at index ${key}.`);
+  }
   console.log(`Steam shortcut app ID (internal): ${entry.appid}`);
   console.log(`Steam shortcut game ID (use with steam://rungameid): ${gameId}`);
   console.log(`Launch URL: steam://rungameid/${gameId}`);
-  console.log("Restart or fully reload Steam before launching if Steam was running while this file was updated.");
+  if (!unchanged) {
+    console.log("Restart or fully reload Steam before launching if Steam was running while this file was updated.");
+  }
 }
 
 function buildShortcutEntry(parsed) {
@@ -248,6 +262,22 @@ function findShortcutKey(shortcuts, appName) {
   return Object.keys(shortcuts).find((key) => shortcuts[key] && shortcuts[key].appname === appName);
 }
 
+function shortcutLaunchFieldsMatch(existing, expected) {
+  for (const key of SHORTCUT_FIELD_ORDER) {
+    if (key === "LastPlayTime" || key === "tags") {
+      continue;
+    }
+    if (UINT32_FIELDS.includes(key)) {
+      if ((Number(existing[key] || 0) >>> 0) !== (Number(expected[key] || 0) >>> 0)) {
+        return false;
+      }
+    } else if (String(existing[key] || "") !== String(expected[key] || "")) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function nextShortcutKey(shortcuts) {
   const keys = Object.keys(shortcuts)
     .filter((key) => /^\d+$/.test(key))
@@ -405,12 +435,18 @@ function runSelfTest() {
   const encoded = writeBinaryKeyValues(root);
   const terminator = encoded.slice(-2);
   const shortcut = roundTrip.value[0];
+  const materialMatch = shortcutLaunchFieldsMatch(shortcut, {
+    ...shortcut,
+    LastPlayTime: 999999,
+    tags: { local: "ignored" }
+  });
   if (
     !shortcut ||
     shortcut.appname !== "Example" ||
     shortcut.AllowOverlay !== 1 ||
     terminator[0] !== TYPE_END ||
-    terminator[1] !== TYPE_END
+    terminator[1] !== TYPE_END ||
+    !materialMatch
   ) {
     throw new Error("Binary VDF self-test failed.");
   }

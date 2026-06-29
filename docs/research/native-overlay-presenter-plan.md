@@ -130,11 +130,13 @@ timing hacks.
   aligns the macOS helper with the Deck matrix's passive-toast assertions without
   claiming live macOS toast proof before it is run.
 - The macOS proof flow now has a matrix runner. `scripts/macos-overlay-matrix.sh`
-  can dry-run or execute Steam-launched helper cases, rewrites the non-Steam
-  shortcut launch options per case, restarts Steam to reload `shortcuts.vdf`,
-  and collects diagnostics for web/store/Friends/dialog wait routes, passive
-  toasts, synthetic checkout approval-route plumbing, and common presenter-backed
-  web targets. Its self-test keeps the matrix shape covered in package smoke.
+  can dry-run or execute Steam-launched helper cases, installs or updates one
+  stable non-Steam shortcut that points at the in-bundle native launcher and a
+  launcher env file, restarts Steam only when that shortcut materially changes,
+  and writes per-case launch state through the env file. It collects diagnostics
+  for web/store/Friends/dialog wait routes, passive toasts, synthetic checkout
+  approval-route plumbing, and common presenter-backed web targets. Its
+  self-test keeps the matrix shape covered in package smoke.
 - Deck Desktop keyboard toggle now has a product-shaped Electron route:
   `createElectronSteamOverlay(...)` installs a default Shift+Tab shortcut bridge
   that opens the verified Friends/chat presenter-backed web overlay instead of

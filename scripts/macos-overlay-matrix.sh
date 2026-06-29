@@ -12,6 +12,7 @@ steam_user_id=""
 shortcut_game_id="auto"
 shortcuts_path=""
 artifact_root="${STEAM_BRIDGE_MACOS_MATRIX_ARTIFACT_ROOT:-/tmp/steam-bridge-macos-overlay-matrix-$(date +%Y%m%d-%H%M%S)}"
+launcher_env_file="${STEAM_BRIDGE_MACOS_LAUNCHER_ENV_FILE:-/tmp/steam-bridge-macos-smoke.env}"
 helper_path="$repo_root/dist/electron-smoke/aarch64-apple-darwin/SteamBridgeSmoke-darwin-arm64/macos-electron-smoke.sh"
 app_exe="$repo_root/dist/electron-smoke/aarch64-apple-darwin/SteamBridgeSmoke-darwin-arm64/SteamBridgeSmoke.app/Contents/MacOS/SteamBridgeSmoke"
 overlay_profile="compatibility"
@@ -39,13 +40,14 @@ Options:
   --shortcut-game-id ID|auto     steam://rungameid ID. Defaults to auto.
   --shortcuts PATH               Explicit shortcuts.vdf path.
   --artifact-root PATH           Result and diagnostic output root.
+  --launcher-env-file PATH       Stable native launcher env file.
   --helper-path PATH             Packaged macos-electron-smoke.sh path.
   --app-exe PATH                 Steam shortcut executable path.
   --overlay-profile NAME         Electron overlay profile. Defaults to compatibility.
   --native-host-backend NAME     macOS native presenter backend: metal or opengl.
   --timeout-seconds SECONDS      Per-case result timeout. Defaults to 120.
   --skip-package                 Do not run npm run example:package:mac first.
-  --no-restart-steam             Do not restart Steam after rewriting shortcut options.
+  --no-restart-steam             Do not restart Steam after changing shortcut options.
   --close-steam-after            Close Steam after the matrix finishes.
   --dry-run                      Print commands without running them.
   --help                         Show this help.
@@ -94,6 +96,10 @@ while [ "$#" -gt 0 ]; do
       ;;
     --artifact-root)
       artifact_root="${2:?missing --artifact-root value}"
+      shift 2
+      ;;
+    --launcher-env-file)
+      launcher_env_file="${2:?missing --launcher-env-file value}"
       shift 2
       ;;
     --helper-path)
@@ -247,6 +253,8 @@ run_self_test() {
   fi
 
   require_contains "$core_output" "--action presenter-web-open-and-wait" "core matrix must include web openAndWait."
+  require_contains "$core_output" "--steam-bridge-launch-env-file=/tmp/steam-bridge-macos-smoke.env" "matrix shortcut must use the stable launcher env file."
+  require_contains "$core_output" "ENV /tmp/steam-bridge-macos-smoke.env" "matrix must write per-case launcher env."
   require_contains "$core_output" "--action presenter-store-open-and-wait" "core matrix must include store openAndWait."
   require_contains "$core_output" "--action presenter-friends-open-and-wait" "core matrix must include Friends openAndWait."
   require_contains "$core_output" "--action presenter-dialog-auto-open-and-wait" "core matrix must include dialog openAndWait."
@@ -328,6 +336,7 @@ ensure_ready() {
   shortcuts_path="$(resolve_shortcuts_path)"
   mkdir -p "$artifact_root"
   : > "$artifact_root/macos-matrix-cases.jsonl"
+  ensure_stable_shortcut
 }
 
 cleanup_macos_smoke_processes() {
@@ -336,8 +345,18 @@ cleanup_macos_smoke_processes() {
 }
 
 stop_macos_steam() {
+  local quit_pid deadline
   cleanup_macos_smoke_processes
-  osascript -e 'tell application "Steam" to quit' >/dev/null 2>&1 || true
+  osascript -e 'tell application "Steam" to quit' >/dev/null 2>&1 &
+  quit_pid="$!"
+  deadline=$((SECONDS + 5))
+  while kill -0 "$quit_pid" >/dev/null 2>&1 && [ "$SECONDS" -lt "$deadline" ]; do
+    sleep 0.2
+  done
+  if kill -0 "$quit_pid" >/dev/null 2>&1; then
+    kill "$quit_pid" >/dev/null 2>&1 || true
+  fi
+  wait "$quit_pid" >/dev/null 2>&1 || true
   sleep 1
   pkill -f 'steam_osx' 2>/dev/null || true
   pkill -f 'Steam Helper' 2>/dev/null || true
@@ -366,6 +385,40 @@ restart_macos_steam() {
   start_macos_steam
 }
 
+ensure_stable_shortcut() {
+  local launch_options start_dir upsert_cmd upsert_output
+
+  launch_options="$(
+    "$helper_path" \
+      --mode print-launch-options \
+      --macos-native-launcher \
+      --launcher-env-file "$launcher_env_file" \
+      --app-id "$app_id" |
+      sed -n '2p'
+  )"
+  start_dir="$(dirname -- "$app_exe")"
+  upsert_cmd=(
+    node "$script_dir/upsert-steam-shortcut.cjs"
+    --shortcuts "$shortcuts_path"
+    --backup "$artifact_root/shortcuts-stable.vdf.bak"
+    --app-name "$app_name"
+    --exe "$app_exe"
+    --start-dir "$start_dir"
+    --launch-options "$launch_options"
+  )
+
+  echo "SHORTCUT $(quote_command "${upsert_cmd[@]}")"
+  if [ "$dry_run" = "1" ]; then
+    return 0
+  fi
+
+  upsert_output="$("${upsert_cmd[@]}")"
+  printf '%s\n' "$upsert_output"
+  if [[ "$upsert_output" != *"already up to date"* ]]; then
+    restart_macos_steam
+  fi
+}
+
 write_case_manifest() {
   local case_id="$1"
   local result_file="$2"
@@ -377,8 +430,178 @@ fs.appendFileSync(manifestPath, `${JSON.stringify({ caseId, resultFile, diagnost
 NODE
 }
 
-launch_options_for_case() {
-  "$helper_path" "$@" | sed -n '2p'
+write_env_line() {
+  local key="$1"
+  local value="$2"
+  printf '%s=%s\n' "$key" "$value" >> "$launcher_env_file"
+}
+
+write_case_launcher_env() {
+  local result_file="$1"
+  local diagnostic_dir="$2"
+  shift 2
+
+  local env_action="none"
+  local env_result_delay="8000"
+  local env_keep_open="0"
+  local env_require_active="0"
+  local env_window_mode=""
+  local env_web_url=""
+  local env_web_modal=""
+  local env_checkout_url=""
+  local env_checkout_transaction_id=""
+  local env_checkout_return_url=""
+  local env_overlay_dialog=""
+  local env_user_dialog=""
+  local env_shortcut_target=""
+  local env_presenter_mode=""
+  local env_achievement_name=""
+  local env_achievement_current=""
+  local env_achievement_max=""
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --action)
+        env_action="${2:?missing --action value}"
+        shift 2
+        ;;
+      --result-delay-ms)
+        env_result_delay="${2:?missing --result-delay-ms value}"
+        shift 2
+        ;;
+      --keep-open-after-result|--close-probe)
+        env_keep_open="1"
+        shift
+        ;;
+      --require-overlay-activated)
+        env_require_active="1"
+        shift
+        ;;
+      --window-mode)
+        env_window_mode="${2:?missing --window-mode value}"
+        shift 2
+        ;;
+      --web-url)
+        env_web_url="${2:?missing --web-url value}"
+        shift 2
+        ;;
+      --web-modal)
+        env_web_modal="${2:?missing --web-modal value}"
+        shift 2
+        ;;
+      --checkout-url)
+        env_checkout_url="${2:?missing --checkout-url value}"
+        shift 2
+        ;;
+      --checkout-transaction-id)
+        env_checkout_transaction_id="${2:?missing --checkout-transaction-id value}"
+        shift 2
+        ;;
+      --checkout-return-url)
+        env_checkout_return_url="${2:?missing --checkout-return-url value}"
+        shift 2
+        ;;
+      --dialog)
+        env_overlay_dialog="${2:?missing --dialog value}"
+        shift 2
+        ;;
+      --user-dialog)
+        env_user_dialog="${2:?missing --user-dialog value}"
+        shift 2
+        ;;
+      --shortcut-target)
+        env_shortcut_target="${2:?missing --shortcut-target value}"
+        shift 2
+        ;;
+      --presenter-mode)
+        env_presenter_mode="${2:?missing --presenter-mode value}"
+        shift 2
+        ;;
+      --achievement-name)
+        env_achievement_name="${2:?missing --achievement-name value}"
+        shift 2
+        ;;
+      --achievement-current)
+        env_achievement_current="${2:?missing --achievement-current value}"
+        shift 2
+        ;;
+      --achievement-max)
+        env_achievement_max="${2:?missing --achievement-max value}"
+        shift 2
+        ;;
+      --require-event)
+        shift 2
+        ;;
+      --require-*)
+        shift
+        ;;
+      *)
+        shift
+        ;;
+    esac
+  done
+
+  if [ "$dry_run" = "1" ]; then
+    return 0
+  fi
+
+  mkdir -p "$(dirname -- "$launcher_env_file")"
+  : > "$launcher_env_file"
+  write_env_line "SteamAppId" "$app_id"
+  write_env_line "SteamGameId" "$app_id"
+  write_env_line "SteamOverlayGameId" "$app_id"
+  write_env_line "STEAM_BRIDGE_APP_ID" "$app_id"
+  write_env_line "STEAM_BRIDGE_ELECTRON_OVERLAY_PROFILE" "$overlay_profile"
+  write_env_line "STEAM_BRIDGE_SMOKE_AUTORUN" "1"
+  write_env_line "STEAM_BRIDGE_SMOKE_AUTORUN_ACTION" "$env_action"
+  write_env_line "STEAM_BRIDGE_SMOKE_AUTORUN_RESULT_DELAY_MS" "$env_result_delay"
+  write_env_line "STEAM_BRIDGE_SMOKE_KEEP_OPEN_AFTER_RESULT" "$env_keep_open"
+  write_env_line "STEAM_BRIDGE_SMOKE_REQUIRE_OVERLAY_ACTIVE" "$env_require_active"
+  write_env_line "STEAM_BRIDGE_SMOKE_RESULT_FILE" "$result_file"
+  write_env_line "STEAM_BRIDGE_SMOKE_DIAGNOSTIC_DIR" "$diagnostic_dir"
+  if [ -n "$native_host_backend" ]; then
+    write_env_line "STEAM_BRIDGE_SMOKE_NATIVE_HOST_BACKEND" "$native_host_backend"
+  fi
+  if [ -n "$env_window_mode" ]; then
+    write_env_line "STEAM_BRIDGE_SMOKE_WINDOW_MODE" "$env_window_mode"
+  fi
+  if [ -n "$env_web_url" ]; then
+    write_env_line "STEAM_BRIDGE_SMOKE_WEB_URL" "$env_web_url"
+  fi
+  if [ -n "$env_web_modal" ]; then
+    write_env_line "STEAM_BRIDGE_SMOKE_WEB_MODAL" "$env_web_modal"
+  fi
+  if [ -n "$env_checkout_url" ]; then
+    write_env_line "STEAM_BRIDGE_SMOKE_CHECKOUT_URL" "$env_checkout_url"
+  fi
+  if [ -n "$env_checkout_transaction_id" ]; then
+    write_env_line "STEAM_BRIDGE_SMOKE_CHECKOUT_TRANSACTION_ID" "$env_checkout_transaction_id"
+  fi
+  if [ -n "$env_checkout_return_url" ]; then
+    write_env_line "STEAM_BRIDGE_SMOKE_CHECKOUT_RETURN_URL" "$env_checkout_return_url"
+  fi
+  if [ -n "$env_overlay_dialog" ]; then
+    write_env_line "STEAM_BRIDGE_SMOKE_OVERLAY_DIALOG" "$env_overlay_dialog"
+  fi
+  if [ -n "$env_user_dialog" ]; then
+    write_env_line "STEAM_BRIDGE_SMOKE_USER_DIALOG" "$env_user_dialog"
+  fi
+  if [ -n "$env_shortcut_target" ]; then
+    write_env_line "STEAM_BRIDGE_SMOKE_SHORTCUT_TARGET" "$env_shortcut_target"
+  fi
+  if [ -n "$env_presenter_mode" ]; then
+    write_env_line "STEAM_BRIDGE_SMOKE_PRESENTER_MODE" "$env_presenter_mode"
+    write_env_line "STEAM_BRIDGE_ELECTRON_OVERLAY_PRESENTER" "$env_presenter_mode"
+  fi
+  if [ -n "$env_achievement_name" ]; then
+    write_env_line "STEAM_BRIDGE_SMOKE_ACHIEVEMENT_NAME" "$env_achievement_name"
+  fi
+  if [ -n "$env_achievement_current" ]; then
+    write_env_line "STEAM_BRIDGE_SMOKE_ACHIEVEMENT_CURRENT" "$env_achievement_current"
+  fi
+  if [ -n "$env_achievement_max" ]; then
+    write_env_line "STEAM_BRIDGE_SMOKE_ACHIEVEMENT_MAX" "$env_achievement_max"
+  fi
 }
 
 run_case() {
@@ -386,37 +609,7 @@ run_case() {
   shift
   local result_file="$artifact_root/$case_id.log"
   local diagnostic_dir="$result_file.diagnostics"
-  local start_dir
-  local launch_options
-  local print_args
-  local upsert_cmd
   local run_cmd
-
-  print_args=(
-    --mode print-launch-options
-    --macos-native-launcher
-    --app-id "$app_id"
-    --overlay-profile "$overlay_profile"
-    --result-file "$result_file"
-    --diagnostic-dir "$diagnostic_dir"
-    --timeout-seconds "$timeout_seconds"
-  )
-  if [ -n "$native_host_backend" ]; then
-    print_args+=(--native-host-backend "$native_host_backend")
-  fi
-  print_args+=("$@")
-
-  launch_options="$(launch_options_for_case "${print_args[@]}")"
-  start_dir="$(dirname -- "$app_exe")"
-  upsert_cmd=(
-    node "$script_dir/upsert-steam-shortcut.cjs"
-    --shortcuts "$shortcuts_path"
-    --backup "$artifact_root/shortcuts-$case_id.vdf.bak"
-    --app-name "$app_name"
-    --exe "$app_exe"
-    --start-dir "$start_dir"
-    --launch-options "$launch_options"
-  )
   run_cmd=(
     "$helper_path"
     --mode steam-launch
@@ -433,7 +626,7 @@ run_case() {
   run_cmd+=("$@")
 
   echo "CASE $case_id"
-  echo "UPDATE $(quote_command "${upsert_cmd[@]}")"
+  echo "ENV $launcher_env_file"
   echo "RUN $(quote_command "${run_cmd[@]}")"
 
   if [ "$dry_run" = "1" ]; then
@@ -442,8 +635,7 @@ run_case() {
 
   mkdir -p "$(dirname -- "$result_file")"
   write_case_manifest "$case_id" "$result_file" "$diagnostic_dir"
-  "${upsert_cmd[@]}"
-  restart_macos_steam
+  write_case_launcher_env "$result_file" "$diagnostic_dir" "$@"
   "${run_cmd[@]}"
   cleanup_macos_smoke_processes
 }

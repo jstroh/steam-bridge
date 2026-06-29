@@ -24,6 +24,7 @@ achievement_current=""
 achievement_max=""
 action_delay_ms=""
 macos_native_launcher="0"
+launcher_env_file=""
 result_delay_ms="8000"
 keep_open_after_result="0"
 timeout_seconds="90"
@@ -84,6 +85,7 @@ Options:
   --achievement-max VALUE        Progress max value.
   --action-delay-ms MS           Autorun delay before the action. Defaults to app default.
   --macos-native-launcher        Prefix launch options for the packaged native env launcher.
+  --launcher-env-file PATH       Native launcher env file for stable Steam shortcuts.
   --result-delay-ms MS           Autorun result delay. Defaults to 8000.
   --keep-open-after-result       Write the result but leave the app running.
   --timeout-seconds SECONDS      Result wait timeout. Defaults to 90.
@@ -210,6 +212,10 @@ while [ "$#" -gt 0 ]; do
     --macos-native-launcher)
       macos_native_launcher="1"
       shift
+      ;;
+    --launcher-env-file)
+      launcher_env_file="${2:?missing --launcher-env-file value}"
+      shift 2
       ;;
     --result-delay-ms)
       result_delay_ms="${2:?missing --result-delay-ms value}"
@@ -343,6 +349,9 @@ smoke_args() {
     printf '%s\n' \
       "--steam-bridge-launch-app-id=$app_id" \
       "--steam-bridge-launch-overlay-game-id=$app_id"
+    if [ -n "$launcher_env_file" ]; then
+      printf '%s\n' "--steam-bridge-launch-env-file=$launcher_env_file"
+    fi
   fi
 
   printf '%s\n' \
@@ -1231,6 +1240,13 @@ NODE
     echo "Self-test failed: native launcher options must pass the overlay game ID." >&2
     exit 1
   fi
+  launcher_env_file="/tmp/steam-bridge-macos-smoke.env"
+  launch_options="$(smoke_args | paste -sd' ' -)"
+  if [[ "$launch_options" != *"--steam-bridge-launch-env-file=/tmp/steam-bridge-macos-smoke.env"* ]]; then
+    echo "Self-test failed: native launcher options must pass the launcher env file." >&2
+    exit 1
+  fi
+  launcher_env_file=""
   if [[ "$launch_options" != *"--steam-bridge-smoke-overlay-dialog=Achievements"* ]]; then
     echo "Self-test failed: launch options must pass the requested overlay dialog." >&2
     exit 1

@@ -165,19 +165,21 @@ npm run macos:overlay-matrix -- \
   --suite core
 ```
 
-The matrix rewrites the Steam shortcut launch options for each case, restarts
-Steam so the client reloads `shortcuts.vdf`, runs the packaged helper, and
+The matrix installs or updates one stable Steam shortcut that points at the
+in-bundle native launcher and a launcher env file. Each case rewrites only that
+env file before launching the shortcut, so Steam is restarted only when the
+shortcut itself was added or materially changed. It runs the packaged helper and
 collects result and diagnostic logs under `/tmp`. Its `minimal` suite covers the
 web/store/Friends/dialog `openAndWait(...)` paths plus passive achievement
 toast verification; `core` adds passive unlock, synthetic checkout approval
 route, profile, community, stats, achievements, and user chat/profile routes.
-Use `--dry-run` to inspect the exact shortcut updates and helper commands
+Use `--dry-run` to inspect the stable shortcut setup, env-file path, and helper commands
 without launching Steam.
 
 For launcher-aware macOS checks, generate shortcut launch options with
-`--macos-native-launcher` and fully restart Steam after editing
-`shortcuts.vdf`. If Steam is not fully restarted, it can keep stale shortcut
-state and fail before launching the app.
+`--macos-native-launcher --launcher-env-file <path>` and fully restart Steam
+after editing `shortcuts.vdf`. Once that stable shortcut is loaded, repeat
+cases can update the env file without restarting Steam.
 `--action-delay-ms` can move the autorun action later when comparing Steam
 launch/readiness behavior; keep normal product paths callback-driven.
 

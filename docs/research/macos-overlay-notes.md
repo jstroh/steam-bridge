@@ -128,11 +128,11 @@ Verified:
   harness coverage for the next live macOS toast run; it is not a live macOS
   toast pass by itself.
 - `scripts/macos-overlay-matrix.sh` now owns repeatable macOS proof setup. It
-  prints or runs a matrix of Steam-launched helper cases, rewrites the Steam
-  shortcut launch options per case with the native launcher flags, restarts Steam
-  so shortcut changes are not served from Steam's cache, and collects result and
-  diagnostic logs. Its self-test validates the matrix shape without launching
-  Steam.
+  prints or runs a matrix of Steam-launched helper cases, installs or updates one
+  stable Steam shortcut with the native launcher env-file flag, restarts Steam
+  only when that shortcut is added or materially changed, and passes per-case
+  launch state through the env file. It collects result and diagnostic logs, and
+  its self-test validates the matrix shape without launching Steam.
 
 Still not verified:
 

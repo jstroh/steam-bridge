@@ -117,10 +117,81 @@ static void set_required_env(const char *name, const char *value) {
   }
 }
 
+static int is_env_name_char(char value) {
+  return (value >= 'A' && value <= 'Z') || (value >= 'a' && value <= 'z') || (value >= '0' && value <= '9') ||
+    value == '_';
+}
+
+static void read_env_file(const char *path) {
+  FILE *file;
+  char line[8192];
+  unsigned long line_number = 0;
+
+  if (!path || path[0] == '\0') {
+    return;
+  }
+
+  file = fopen(path, "r");
+  if (!file) {
+    fprintf(stderr, "Failed to open launcher env file %s: %s\n", path, strerror(errno));
+    exit(2);
+  }
+
+  while (fgets(line, sizeof(line), file)) {
+    char *equals;
+    char *value;
+    size_t length;
+
+    line_number += 1;
+    length = strlen(line);
+    while (length > 0 && (line[length - 1] == '\n' || line[length - 1] == '\r')) {
+      line[--length] = '\0';
+    }
+    if (length == sizeof(line) - 1 && line[length - 1] != '\0') {
+      fprintf(stderr, "Launcher env file line is too long at %s:%lu\n", path, line_number);
+      fclose(file);
+      exit(2);
+    }
+    if (line[0] == '\0' || line[0] == '#') {
+      continue;
+    }
+
+    equals = strchr(line, '=');
+    if (!equals || equals == line) {
+      fprintf(stderr, "Invalid launcher env file line at %s:%lu\n", path, line_number);
+      fclose(file);
+      exit(2);
+    }
+
+    *equals = '\0';
+    value = equals + 1;
+    for (char *name_cursor = line; *name_cursor; name_cursor += 1) {
+      if (!is_env_name_char(*name_cursor)) {
+        fprintf(stderr, "Invalid environment variable name at %s:%lu: %s\n", path, line_number, line);
+        fclose(file);
+        exit(2);
+      }
+    }
+    if (setenv(line, value, 1) != 0) {
+      fprintf(stderr, "Failed to set %s from %s:%lu: %s\n", line, path, line_number, strerror(errno));
+      fclose(file);
+      exit(2);
+    }
+  }
+
+  if (ferror(file)) {
+    fprintf(stderr, "Failed to read launcher env file %s: %s\n", path, strerror(errno));
+    fclose(file);
+    exit(2);
+  }
+  fclose(file);
+}
+
 int main(int argc, char **argv) {
   char *target = NULL;
   const char *app_id = NULL;
   const char *overlay_game_id = NULL;
+  const char *env_file = NULL;
   char **child_argv = calloc((size_t)argc + 1, sizeof(char *));
   int child_argc = 1;
 
@@ -151,6 +222,12 @@ int main(int argc, char **argv) {
       continue;
     }
 
+    value = read_option_value(argc, argv, &index, "--steam-bridge-launch-env-file");
+    if (value) {
+      env_file = value;
+      continue;
+    }
+
     if (strcmp(argv[index], "--") == 0) {
       for (index += 1; index < argc; index += 1) {
         child_argv[child_argc++] = argv[index];
@@ -165,6 +242,7 @@ int main(int argc, char **argv) {
     target = default_target_for_launcher(argv[0]);
   }
 
+  read_env_file(env_file);
   set_required_env("SteamAppId", app_id);
   set_required_env("SteamGameId", app_id);
   set_required_env("SteamOverlayGameId", overlay_game_id ? overlay_game_id : app_id);
