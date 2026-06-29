@@ -1015,7 +1015,7 @@ function ensureElectronSteamOverlay(activeClient = requireClient()) {
   electronSteamOverlay = activeClient.overlay.createElectronSteamOverlay(requireMainWindow(), {
     title: "Steam Bridge Overlay Presenter",
     presenterMode: PRESENTER_MODE || undefined,
-    restoreFocusDelayMs: 500,
+    restoreFocusDelayMs: 0,
     needsPresentFps: 30,
     activeOverlayFps: 30,
     pollIntervalMs: 250,
@@ -1099,7 +1099,7 @@ function nativeOverlayOptions() {
   const window = requireMainWindow();
   return steamworks.electronNativeOverlaySessionOptions(window, {
     title: "Steam Bridge Native Overlay",
-    restoreFocusDelayMs: 500
+    restoreFocusDelayMs: 0
   });
 }
 
