@@ -39,6 +39,8 @@ require_idle_presenter="0"
 require_electron_overlay="0"
 require_presenter_mode=""
 require_overlay_shortcut_target=""
+require_action_error_code=""
+require_action_error_reason=""
 require_no_crashes="0"
 require_steam_deck="0"
 require_big_picture="0"
@@ -110,6 +112,10 @@ Options:
   --require-presenter-mode MODE  Require managed Electron overlay presenter mode: persistent or session.
   --require-overlay-shortcut-target NAME
                                  Require managed Electron Shift+Tab target type.
+  --require-action-error-code CODE
+                                 Require the autorun action to fail with this serialized error code.
+  --require-action-error-reason REASON
+                                 Require the autorun action to fail with this serialized error reason.
   --require-no-crashes           Require no crash dumps or fatal Electron lifecycle events.
   --require-steam-deck           Require Steam Deck detection.
   --require-big-picture          Require Big Picture/Game Mode detection.
@@ -276,6 +282,14 @@ while [ "$#" -gt 0 ]; do
     --require-overlay-shortcut-target)
       require_overlay_shortcut_target="${2:?missing --require-overlay-shortcut-target value}"
       require_electron_overlay="1"
+      shift 2
+      ;;
+    --require-action-error-code)
+      require_action_error_code="${2:?missing --require-action-error-code value}"
+      shift 2
+      ;;
+    --require-action-error-reason)
+      require_action_error_reason="${2:?missing --require-action-error-reason value}"
       shift 2
       ;;
     --require-no-crashes)
@@ -530,6 +544,8 @@ verify_result() {
   REQUIRE_ELECTRON_OVERLAY="$require_electron_overlay" \
   REQUIRE_PRESENTER_MODE="$require_presenter_mode" \
   REQUIRE_OVERLAY_SHORTCUT_TARGET="$require_overlay_shortcut_target" \
+  REQUIRE_ACTION_ERROR_CODE="$require_action_error_code" \
+  REQUIRE_ACTION_ERROR_REASON="$require_action_error_reason" \
   REQUIRE_NO_CRASHES="$require_no_crashes" \
   REQUIRE_STEAM_DECK="$require_steam_deck" \
   REQUIRE_BIG_PICTURE="$require_big_picture" \
@@ -543,6 +559,9 @@ path = os.environ["RESULT_FILE"]
 prefix = os.environ["RESULT_PREFIX"]
 expected_app_id = int(os.environ["APP_ID"])
 expected_action = os.environ["ACTION"]
+expected_action_error_code = os.environ.get("REQUIRE_ACTION_ERROR_CODE", "")
+expected_action_error_reason = os.environ.get("REQUIRE_ACTION_ERROR_REASON", "")
+expected_action_error = bool(expected_action_error_code or expected_action_error_reason)
 required_events = [entry for entry in os.environ.get("REQUIRE_EVENTS", "").splitlines() if entry]
 
 with open(path, "r", encoding="utf-8") as handle:
@@ -592,7 +611,10 @@ def expect(condition, message):
     if not condition:
         failures.append(message)
 
-expect(result.get("ok") is True, "smoke result ok")
+if expected_action_error:
+    expect(result.get("ok") is False, "smoke result failed with expected action error")
+else:
+    expect(result.get("ok") is True, "smoke result ok")
 expect(steam.get("initialized") is True, "Steam initialized")
 expect(ok_value(steam.get("running")) is True, "Steam running")
 expect(ok_value(steam.get("appId")) == app.get("appId"), "Steam App ID matches app config")
@@ -603,7 +625,24 @@ expect(process_info.get("arch") == "x64", "arch is x64")
 if expected_action:
     action = result.get("action") or {}
     expect(action.get("action") == expected_action, f"autorun action is {expected_action}")
-    expect(action.get("ok") is True, f"autorun action {expected_action} succeeded")
+    if expected_action_error:
+        expect(action.get("ok") is False, f"autorun action {expected_action} failed with expected error")
+    else:
+        expect(action.get("ok") is True, f"autorun action {expected_action} succeeded")
+if expected_action_error:
+    action_error = (result.get("action") or {}).get("error")
+    expect(isinstance(action_error, dict), "autorun action error is serialized")
+    if isinstance(action_error, dict):
+        if expected_action_error_code:
+            expect(
+                action_error.get("code") == expected_action_error_code,
+                f"autorun action error code is {expected_action_error_code}",
+            )
+        if expected_action_error_reason:
+            expect(
+                action_error.get("reason") == expected_action_error_reason,
+                f"autorun action error reason is {expected_action_error_reason}",
+            )
 if os.environ["REQUIRE_STEAM_LAUNCH"] == "1":
     expect(launch.get("steamLaunch") is True, "Steam launch marker detected")
 if os.environ["REQUIRE_OVERLAY_READY"] == "1":

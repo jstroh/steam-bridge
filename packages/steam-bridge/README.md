@@ -309,9 +309,13 @@ policy, shortcut policy, and whether the manager owns Electron window-close
 cleanup. The smoke verifiers
 can require those managed diagnostics with `--require-electron-overlay`,
 `--require-presenter-mode <persistent|session>`, and
-`--require-overlay-shortcut-target <target>`. For static shortcut targets,
-`electronOverlay.overlayShortcut.target` records sanitized target metadata such
-as type, route, modal flag, and whether URL/transaction fields were configured;
+`--require-overlay-shortcut-target <target>`. They can also verify expected
+managed overlay fail-fast artifacts with `--require-action-error-code` and
+`--require-action-error-reason`, which is the preferred way to prove locked or
+asleep macOS fallback behavior from a smoke result log. For static shortcut
+targets, `electronOverlay.overlayShortcut.target` records sanitized target
+metadata such as type, route, modal flag, and whether URL/transaction fields
+were configured;
 it does not serialize checkout URLs, transaction IDs, return URLs, or Steam IDs.
 For dynamic resolver-backed shortcut targets, the verifier checks the smoke app's
 configured target while preserving

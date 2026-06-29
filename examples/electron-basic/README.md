@@ -419,6 +419,20 @@ npm run example:verify-result -- \
   --arch x64
 ```
 
+Expected managed overlay failures can be verified explicitly instead of
+hand-inspecting logs. For example, a macOS locked-screen or sleeping-display
+fallback artifact should be checked with:
+
+```sh
+npm run example:verify-result -- \
+  --file /tmp/steam-bridge-smoke.log \
+  --app-id 480 \
+  --platform darwin/arm64 \
+  --action presenter-web-open-and-wait \
+  --require-action-error-code STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE \
+  --require-action-error-reason macos-screen-locked
+```
+
 ## Steam Deck Checks
 
 For Game Mode, copy the Linux x64 output folder to the Deck and add the packaged
@@ -842,7 +856,10 @@ On macOS, if the screen is locked or the display is asleep, the managed
 overlay helpers fail before activation with
 `SteamOverlayNativeHostUnavailableError`. Use its
 `STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE` code and `reason` field for fallback
-logic; do not wait for overlay timeouts in that state.
+logic; do not wait for overlay timeouts in that state. The packaged macOS helper
+and other platform helpers accept `--require-action-error-code` and
+`--require-action-error-reason` so this fallback can be machine-checked from the
+smoke result.
 
 For a Steam Deck Desktop Mode shortcut launch, omit the Big Picture assertion
 but keep the Steam launch and overlay injection assertions:

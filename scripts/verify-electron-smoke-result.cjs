@@ -33,9 +33,14 @@ const nativePresenter = readOkValue(overlay.nativePresenter);
 const electronOverlay = nativePresenter && typeof nativePresenter === "object" ? nativePresenter.electronOverlay : undefined;
 const events = Array.isArray(snapshot.events) ? snapshot.events : [];
 const overlayActivated = events.some(isOverlayActiveEvent);
+const expectedActionError = Boolean(options.requireActionErrorCode || options.requireActionErrorReason);
 const failures = [];
 
-expect(result.ok === true, "smoke result ok");
+if (expectedActionError) {
+  expect(result.ok === false, "smoke result failed with expected action error");
+} else {
+  expect(result.ok === true, "smoke result ok");
+}
 expect(steam.initialized === true, "Steam initialized");
 expect(readOkValue(steam.running) === true, "Steam running");
 expect(readOkValue(steam.appId) === app.appId, "Steam App ID matches app config");
@@ -51,7 +56,14 @@ if (options.arch) {
 }
 if (options.action) {
   expect(result.action && result.action.action === options.action, `autorun action is ${options.action}`);
-  expect(result.action && result.action.ok === true, `autorun action ${options.action} succeeded`);
+  if (expectedActionError) {
+    expect(result.action && result.action.ok === false, `autorun action ${options.action} failed with expected error`);
+  } else {
+    expect(result.action && result.action.ok === true, `autorun action ${options.action} succeeded`);
+  }
+}
+if (expectedActionError) {
+  verifyExpectedActionError();
 }
 if (options.requireSteamDeck) {
   expect(readOkValue(steam.steamDeck) === true, "Steam Deck detected");
@@ -280,6 +292,26 @@ function verifyPassiveNotification() {
   }
 }
 
+function verifyExpectedActionError() {
+  const actionError = result.action && result.action.error;
+  expect(Boolean(actionError && typeof actionError === "object"), "autorun action error is serialized");
+  if (!actionError || typeof actionError !== "object") {
+    return;
+  }
+  if (options.requireActionErrorCode) {
+    expect(
+      actionError.code === options.requireActionErrorCode,
+      `autorun action error code is ${options.requireActionErrorCode}`
+    );
+  }
+  if (options.requireActionErrorReason) {
+    expect(
+      actionError.reason === options.requireActionErrorReason,
+      `autorun action error reason is ${options.requireActionErrorReason}`
+    );
+  }
+}
+
 function readLifecycleEntries() {
   if (!options.diagnosticDir) {
     failures.push("diagnostic dir is required for passive notification lifecycle verification");
@@ -403,6 +435,8 @@ function parseArgs(args) {
     requireElectronOverlay: false,
     requirePresenterMode: undefined,
     requireOverlayShortcutTarget: undefined,
+    requireActionErrorCode: undefined,
+    requireActionErrorReason: undefined,
     requireNoCrashes: false,
     requirePassiveNotification: false,
     requireSteamLaunch: false,
@@ -473,6 +507,12 @@ function parseArgs(args) {
       case "--require-overlay-shortcut-target":
         parsed.requireOverlayShortcutTarget = args[++index];
         parsed.requireElectronOverlay = true;
+        break;
+      case "--require-action-error-code":
+        parsed.requireActionErrorCode = args[++index];
+        break;
+      case "--require-action-error-reason":
+        parsed.requireActionErrorReason = args[++index];
         break;
       case "--require-no-crashes":
         parsed.requireNoCrashes = true;

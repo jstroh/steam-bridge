@@ -238,6 +238,39 @@ function passiveNotificationResult(presenter) {
   };
 }
 
+function actionErrorSmokeResult(error) {
+  return {
+    ok: false,
+    action: {
+      ok: false,
+      action: "presenter-web-open-and-wait",
+      error
+    },
+    snapshot: {
+      steam: {
+        initialized: true,
+        running: { ok: true, value: true },
+        appId: { ok: true, value: 480 },
+        steamDeck: { ok: true, value: false },
+        bigPicture: { ok: true, value: false },
+        overlayEnabled: { ok: true, value: true },
+        overlayNeedsPresent: { ok: true, value: false }
+      },
+      app: { appId: 480 },
+      launch: {
+        steamLaunch: true,
+        overlayInjection: true
+      },
+      process: {
+        platform: "darwin",
+        arch: "arm64",
+        pid: 1234
+      },
+      events: []
+    }
+  };
+}
+
 function createFakeNative(overrides = {}) {
   const calls = [];
   const callbacks = new Map();
@@ -1462,6 +1495,90 @@ test("smoke result verifier rejects passive notification evidence without lifecy
 
   assert.notEqual(verifier.status, 0);
   assert.match(verifier.stderr, /lifecycle event event:callback:achievement-stored emitted/);
+});
+
+test("smoke result verifier accepts expected overlay action errors", (t) => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-action-error-verify-"));
+  t.after(() => fs.rmSync(tempDir, { recursive: true, force: true }));
+
+  const resultFile = path.join(tempDir, "smoke.log");
+  fs.writeFileSync(
+    resultFile,
+    `STEAM_BRIDGE_SMOKE_RESULT ${JSON.stringify(
+      actionErrorSmokeResult({
+        name: "SteamOverlayNativeHostUnavailableError",
+        message: "Steam overlay native host is unavailable: macOS screen is locked.",
+        code: "STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE",
+        reason: "macos-screen-locked",
+        macOverlayEnvironment: { screenLocked: true, displayAsleep: false }
+      })
+    )}\n`
+  );
+
+  const verifier = childProcess.spawnSync(
+    process.execPath,
+    [
+      path.join(repoRoot, "scripts", "verify-electron-smoke-result.cjs"),
+      "--file",
+      resultFile,
+      "--app-id",
+      "480",
+      "--platform",
+      "darwin/arm64",
+      "--action",
+      "presenter-web-open-and-wait",
+      "--require-action-error-code",
+      "STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE",
+      "--require-action-error-reason",
+      "macos-screen-locked"
+    ],
+    { encoding: "utf8" }
+  );
+
+  assert.equal(verifier.status, 0, verifier.stderr);
+  assert.match(verifier.stdout, /Electron smoke result verified/);
+});
+
+test("smoke result verifier rejects unexpected overlay action error reasons", (t) => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-action-error-verify-mismatch-"));
+  t.after(() => fs.rmSync(tempDir, { recursive: true, force: true }));
+
+  const resultFile = path.join(tempDir, "smoke.log");
+  fs.writeFileSync(
+    resultFile,
+    `STEAM_BRIDGE_SMOKE_RESULT ${JSON.stringify(
+      actionErrorSmokeResult({
+        name: "SteamOverlayNativeHostUnavailableError",
+        message: "Steam overlay native host is unavailable: macOS screen is locked.",
+        code: "STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE",
+        reason: "macos-screen-locked",
+        macOverlayEnvironment: { screenLocked: true, displayAsleep: false }
+      })
+    )}\n`
+  );
+
+  const verifier = childProcess.spawnSync(
+    process.execPath,
+    [
+      path.join(repoRoot, "scripts", "verify-electron-smoke-result.cjs"),
+      "--file",
+      resultFile,
+      "--app-id",
+      "480",
+      "--platform",
+      "darwin/arm64",
+      "--action",
+      "presenter-web-open-and-wait",
+      "--require-action-error-code",
+      "STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE",
+      "--require-action-error-reason",
+      "macos-display-asleep"
+    ],
+    { encoding: "utf8" }
+  );
+
+  assert.notEqual(verifier.status, 0);
+  assert.match(verifier.stderr, /autorun action error reason is macos-display-asleep/);
 });
 
 test("generated Steamworks enums expose SDK constants and lookup helpers", (t) => {

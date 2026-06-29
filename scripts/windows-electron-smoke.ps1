@@ -61,6 +61,8 @@ param(
   [switch]$RequireSteamLaunch,
   [switch]$RequireOverlayReady,
   [switch]$RequireOverlayActivated,
+  [string]$RequireActionErrorCode = "",
+  [string]$RequireActionErrorReason = "",
   [switch]$KeepOpenAfterResult
 )
 
@@ -276,8 +278,13 @@ function Assert-SmokeResult {
   $processInfo = $snapshot.process
   $events = @($snapshot.events)
   $overlayActivated = @($events | Where-Object { Test-OverlayActiveEvent $_ }).Count -gt 0
+  $expectedActionError = ($RequireActionErrorCode -or $RequireActionErrorReason)
 
-  if ($Result.ok -ne $true) {
+  if ($expectedActionError) {
+    if ($Result.ok -ne $false) {
+      $failures.Add("smoke result failed with expected action error")
+    }
+  } elseif ($Result.ok -ne $true) {
     $failures.Add("smoke result ok")
   }
   if ($steam.initialized -ne $true) {
@@ -298,7 +305,24 @@ function Assert-SmokeResult {
   if ($processInfo.arch -ne "x64") {
     $failures.Add("arch is x64")
   }
-  if ($Result.action.action -ne $Action -or $Result.action.ok -ne $true) {
+  if ($Result.action.action -ne $Action) {
+    $failures.Add("autorun action is $Action")
+  }
+  if ($expectedActionError) {
+    if ($Result.action.ok -ne $false) {
+      $failures.Add("autorun action $Action failed with expected error")
+    }
+    if (-not $Result.action.error) {
+      $failures.Add("autorun action error is serialized")
+    } else {
+      if ($RequireActionErrorCode -and $Result.action.error.code -ne $RequireActionErrorCode) {
+        $failures.Add("autorun action error code is $RequireActionErrorCode")
+      }
+      if ($RequireActionErrorReason -and $Result.action.error.reason -ne $RequireActionErrorReason) {
+        $failures.Add("autorun action error reason is $RequireActionErrorReason")
+      }
+    }
+  } elseif ($Result.action.ok -ne $true) {
     $failures.Add("autorun action $Action succeeded")
   }
   if ($RequireSteamLaunch -and $launch.steamLaunch -ne $true) {
