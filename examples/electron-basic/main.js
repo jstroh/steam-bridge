@@ -186,6 +186,7 @@ ipcMain.handle("steam-smoke:overlay-dialog", () => openDialogOverlay());
 ipcMain.handle("steam-smoke:presenter-web", () => openPresenterWebOverlay());
 ipcMain.handle("steam-smoke:presenter-web-open-and-wait", () => openPresenterWebOpenAndWaitOverlay());
 ipcMain.handle("steam-smoke:presenter-friends", () => openPresenterFriendsOverlay());
+ipcMain.handle("steam-smoke:presenter-friends-open-and-wait", () => openPresenterFriendsOpenAndWaitOverlay());
 ipcMain.handle("steam-smoke:presenter-profile", () => openPresenterProfileOverlay());
 ipcMain.handle("steam-smoke:presenter-players", () => openPresenterPlayersOverlay());
 ipcMain.handle("steam-smoke:presenter-community", () => openPresenterCommunityOverlay());
@@ -432,6 +433,9 @@ async function runAutorunAction(action) {
       case "presenter-friends":
         openPresenterFriendsOverlay();
         return { ok: true, action };
+      case "presenter-friends-open-and-wait":
+        openPresenterFriendsOpenAndWaitOverlay();
+        return { ok: true, action };
       case "presenter-profile":
         openPresenterProfileOverlay();
         return { ok: true, action };
@@ -629,6 +633,22 @@ function openPresenterWebOpenAndWaitOverlay() {
     modal: WEB_MODAL,
     api: "openAndWait"
   };
+  return openPresenterTargetAndWaitOverlay(overlay, target, context);
+}
+
+function openPresenterFriendsOpenAndWaitOverlay() {
+  const overlay = ensureElectronSteamOverlay();
+  const target = { type: "friends" };
+  const context = {
+    target: "friends",
+    url: steamworks.STEAM_FRIENDS_OVERLAY_URL,
+    modal: true,
+    api: "openAndWait"
+  };
+  return openPresenterTargetAndWaitOverlay(overlay, target, context);
+}
+
+function openPresenterTargetAndWaitOverlay(overlay, target, context) {
   const openAndWait = overlay.openAndWait(target, {
     showTimeoutMs: MANAGED_OVERLAY_WAIT_TIMEOUT_MS,
     closeTimeoutMs: MANAGED_OVERLAY_PARK_TIMEOUT_MS
@@ -1882,7 +1902,9 @@ function isNativeSessionAction(action) {
     action === "presenter-dialog-auto" ||
     action === "presenter-store" ||
     action === "presenter-web" ||
+    action === "presenter-web-open-and-wait" ||
     action === "presenter-friends" ||
+    action === "presenter-friends-open-and-wait" ||
     action === "presenter-profile" ||
     action === "presenter-players" ||
     action === "presenter-community" ||

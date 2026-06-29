@@ -593,11 +593,13 @@ or the lower-level `client.overlay.attachPresenter(...)`,
 `client.overlay.openPlayersOverlay(...)`, `client.overlay.openCommunityOverlay(...)`,
 `client.overlay.openStatsOverlay(...)`, `client.overlay.openStoreOverlay(...)`,
 and `client.overlay.openDialogEquivalentOverlay(...)` helpers, or the Electron smoke app's
-`presenter-web` / `presenter-store` / `presenter-friends` / `presenter-profile` /
+`presenter-web` / `presenter-web-open-and-wait` / `presenter-store` /
+`presenter-friends` / `presenter-friends-open-and-wait` / `presenter-profile` /
 `presenter-players` / `presenter-community` / `presenter-stats` / `presenter-dialog-auto` / `presenter-shortcut` actions for
-that proof. The `presenter-web-open-and-wait` smoke action exercises the same
-Steam web surface through the builder-facing `steamOverlay.openAndWait(...)`
-helper and records completion only after Steam closes and the presenter parks.
+that proof. The `presenter-web-open-and-wait` and
+`presenter-friends-open-and-wait` smoke actions exercise the builder-facing
+`steamOverlay.openAndWait(...)` helper and record completion only after Steam
+closes and the presenter parks.
 The older
 `activateToWebPageWithNativeSession(..., { modal: true })` / `native-web` path
 remains compatibility coverage. Steam's raw Desktop Mode dialog/Game Overview

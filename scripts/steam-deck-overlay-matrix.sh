@@ -410,13 +410,14 @@ run_self_test() {
       --artifact-root /tmp/steam-bridge-deck-overlay-matrix-self-test
   )"
 
-  require_case_count "$minimal_output" "5" "minimal matrix"
-  require_case_count "$core_output" "18" "core matrix"
-  require_case_count "$full_output" "23" "full matrix"
+  require_case_count "$minimal_output" "6" "minimal matrix"
+  require_case_count "$core_output" "19" "core matrix"
+  require_case_count "$full_output" "24" "full matrix"
 
   require_contains "$core_output" "--action presenter-web" "core matrix must include presenter web."
   require_contains "$core_output" "--action presenter-web-open-and-wait" "core matrix must include presenter openAndWait web."
   require_contains "$core_output" "--action presenter-friends" "core matrix must include Friends."
+  require_contains "$core_output" "--action presenter-friends-open-and-wait" "core matrix must include Friends openAndWait."
   require_contains "$core_output" "--action presenter-shortcut" "core matrix must include shortcut probes."
   require_contains "$core_output" "--action presenter-checkout" "core matrix must include checkout."
   require_contains "$core_output" "--action presenter-achievement-progress" "core matrix must include passive toast."
@@ -441,13 +442,13 @@ run_self_test() {
 
   first_core_case="$(matrix_case_command "$core_output" "01-web-modal")"
   second_core_case="$(matrix_case_command "$core_output" "02-friends")"
-  shortcut_friends_case="$(matrix_case_command "$core_output" "03-shortcut-friends")"
-  checkout_prepare_case="$(matrix_case_command "$core_output" "04-checkout-prepare")"
-  passive_toast_case="$(matrix_case_command "$core_output" "06-passive-toast")"
-  passive_unlock_case="$(matrix_case_command "$core_output" "07-passive-unlock-toast")"
-  user_case="$(matrix_case_command "$core_output" "14-user-steamid")"
-  user_chat_case="$(matrix_case_command "$core_output" "15-user-chat")"
-  shortcut_web_case="$(matrix_case_command "$core_output" "18-shortcut-web")"
+  shortcut_friends_case="$(matrix_case_command "$core_output" "04-shortcut-friends")"
+  checkout_prepare_case="$(matrix_case_command "$core_output" "05-checkout-prepare")"
+  passive_toast_case="$(matrix_case_command "$core_output" "07-passive-toast")"
+  passive_unlock_case="$(matrix_case_command "$core_output" "08-passive-unlock-toast")"
+  user_case="$(matrix_case_command "$core_output" "15-user-steamid")"
+  user_chat_case="$(matrix_case_command "$core_output" "16-user-chat")"
+  shortcut_web_case="$(matrix_case_command "$core_output" "19-shortcut-web")"
 
   require_not_contains "$first_core_case" "--skip-copy" "first matrix case must copy the package."
   require_contains "$second_core_case" "--skip-copy" "later matrix cases should reuse the copied package."
@@ -517,6 +518,9 @@ run_web_surface_case "web-modal" \
 
 run_web_surface_case "friends" \
   --action presenter-friends
+
+run_web_surface_case "friends-open-and-wait" \
+  --action presenter-friends-open-and-wait
 
 run_shortcut_case "shortcut-friends"
 

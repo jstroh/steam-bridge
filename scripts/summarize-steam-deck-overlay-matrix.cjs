@@ -16,6 +16,7 @@ const MANAGED_LIFECYCLE_ACTIONS = new Set([
   "presenter-web",
   "presenter-store",
   "presenter-friends",
+  "presenter-friends-open-and-wait",
   "presenter-profile",
   "presenter-players",
   "presenter-dialog-auto",
@@ -25,6 +26,7 @@ const MANAGED_LIFECYCLE_ACTIONS = new Set([
   "presenter-user",
   "presenter-shortcut"
 ]);
+const OPEN_AND_WAIT_ACTIONS = new Set(["presenter-web-open-and-wait", "presenter-friends-open-and-wait"]);
 const PASSIVE_NOTIFICATION_ACTIONS = new Map([
   [
     "presenter-achievement-progress",
@@ -246,6 +248,7 @@ function summarizeMatrixArtifacts(root) {
     );
     const parking = verifyLifecycleParking(caseName, lifecycle.entries, resultFailures);
     const managedWaits = verifyManagedLifecycleWaits(caseName, action.action, lifecycle.entries, resultFailures);
+    const openAndWait = verifyOpenAndWaitCompletion(caseName, action.action, lifecycle.entries, resultFailures);
     const checkoutWait = verifyCheckoutOpenAndWait(caseName, action.action, lifecycle.entries, resultFailures);
 
     failures.push(...resultFailures);
@@ -268,6 +271,7 @@ function summarizeMatrixArtifacts(root) {
       passiveToast: passiveNotification.required ? passiveNotification.ok : "n/a",
       parked: parking.required ? parking.ok : "n/a",
       managedWaits: managedWaits.required ? managedWaits.ok : "n/a",
+      openAndWait: openAndWait.required ? openAndWait.ok : "n/a",
       checkoutWait: checkoutWait.required ? checkoutWait.ok : "n/a",
       crashOk: crashDiagnostics.ok === true,
       overlayTargets: overlayTargetCount,
@@ -291,6 +295,7 @@ function summarizeMatrixArtifacts(root) {
         `passiveToast=${item.passiveToast}`,
         `parked=${item.parked}`,
         `managedWaits=${item.managedWaits}`,
+        `openAndWait=${item.openAndWait}`,
         `checkoutWait=${item.checkoutWait}`,
         `overlayTargets=${item.overlayTargets}`,
         `crashOk=${item.crashOk}`,
@@ -318,8 +323,8 @@ function runSelfTest() {
   try {
     createSelfTestFixture(fixtureRoot);
     const summary = summarizeMatrixArtifacts(fixtureRoot);
-    assert(summary.caseSummaries.length === 5, "summary self-test should include five cases");
-    assert(summary.totalScreenshots === 8, "summary self-test should count eight screenshots");
+    assert(summary.caseSummaries.length === 6, "summary self-test should include six cases");
+    assert(summary.totalScreenshots === 9, "summary self-test should count nine screenshots");
     console.log("Steam Deck overlay matrix summary self-test passed.");
   } finally {
     fs.rmSync(fixtureRoot, { recursive: true, force: true });
@@ -539,6 +544,52 @@ function createSelfTestFixture(root) {
   );
   fs.writeFileSync(path.join(checkoutScreensDir, "overlay-open.png"), "");
 
+  const friendsOpenWaitCaseId = "06-friends-open-and-wait";
+  const friendsOpenWaitDiagnosticsDir = path.join(root, "diagnostics", friendsOpenWaitCaseId);
+  const friendsOpenWaitRunDiagnosticsDir = path.join(
+    friendsOpenWaitDiagnosticsDir,
+    "steam-bridge-smoke-matrix-06-friends-open-and-wait.log.diagnostics"
+  );
+  const friendsOpenWaitScreensDir = path.join(root, "screens", friendsOpenWaitCaseId);
+  const friendsOpenWaitResult = JSON.parse(JSON.stringify(result));
+
+  friendsOpenWaitResult.action.action = "presenter-friends-open-and-wait";
+  fs.mkdirSync(friendsOpenWaitRunDiagnosticsDir, { recursive: true });
+  fs.mkdirSync(friendsOpenWaitScreensDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(friendsOpenWaitDiagnosticsDir, "steam-bridge-smoke-matrix-06-friends-open-and-wait.log"),
+    `STEAM_BRIDGE_SMOKE_RESULT ${JSON.stringify(friendsOpenWaitResult)}\n`
+  );
+  fs.writeFileSync(
+    path.join(friendsOpenWaitRunDiagnosticsDir, "lifecycle.jsonl"),
+    [
+      {
+        type: "event:overlay:presenter-open-and-wait-start",
+        payload: { target: "friends", api: "openAndWait", presenter: activePresenterFixture(16) }
+      },
+      { type: "event:callback:overlay-activated", payload: { active: true } },
+      { type: "event:overlay:presenter-wait-shown", payload: { presenter: activePresenterFixture(17) } },
+      { type: "event:callback:overlay-activated", payload: { active: false } },
+      { type: "event:overlay:presenter-wait-closed", payload: { presenter: parkedPresenterFixture(18) } },
+      { type: "event:overlay:presenter-parked", payload: { presenter: parkedPresenterFixture(18) } },
+      {
+        type: "event:overlay:presenter-open-and-wait-complete",
+        payload: {
+          target: "friends",
+          api: "openAndWait",
+          shown: activePresenterFixture(17),
+          parked: parkedPresenterFixture(18),
+          presenter: parkedPresenterFixture(18)
+        }
+      },
+      { type: "event:overlay:presenter-after-close", payload: { presenter: parkedPresenterFixture(18) } },
+      { type: "event:overlay:presenter-after-close-stable", payload: { presenter: parkedPresenterFixture(18) } }
+    ]
+      .map((entry) => JSON.stringify(entry))
+      .join("\n") + "\n"
+  );
+  fs.writeFileSync(path.join(friendsOpenWaitScreensDir, "overlay-open.png"), "");
+
   fs.writeFileSync(
     path.join(root, "matrix-cases.jsonl"),
     [
@@ -574,6 +625,13 @@ function createSelfTestFixture(root) {
         caseId: checkoutCaseId,
         caseName: "checkout-approval-route",
         action: "presenter-checkout",
+        visualCloseInput: "web",
+        visualToggleInput: null
+      },
+      {
+        caseId: friendsOpenWaitCaseId,
+        caseName: "friends-open-and-wait",
+        action: "presenter-friends-open-and-wait",
         visualCloseInput: "web",
         visualToggleInput: null
       }
@@ -792,6 +850,53 @@ function requiresManagedLifecycleWaits(action, entries) {
     return entries.some((entry) => entry.type === "event:overlay:presenter-open");
   }
   return false;
+}
+
+function verifyOpenAndWaitCompletion(caseName, action, entries, failures) {
+  if (!OPEN_AND_WAIT_ACTIONS.has(action)) {
+    return { required: false, ok: true };
+  }
+
+  const failuresBefore = failures.length;
+  const start = entries.find((entry) => entry.type === "event:overlay:presenter-open-and-wait-start");
+  if (!start) {
+    failures.push(`${caseName}: missing overlay:presenter-open-and-wait-start`);
+  }
+
+  const inactiveIndex = entries.findIndex(isLifecycleOverlayInactiveEvent);
+  if (inactiveIndex === -1) {
+    failures.push(`${caseName}: openAndWait did not record active=false before completion`);
+    return { required: true, ok: false };
+  }
+
+  const complete = entries.find(
+    (entry, index) => index > inactiveIndex && entry.type === "event:overlay:presenter-open-and-wait-complete"
+  );
+  if (!complete) {
+    failures.push(`${caseName}: missing overlay:presenter-open-and-wait-complete after active=false`);
+    return { required: true, ok: false };
+  }
+
+  const payload = complete && typeof complete.payload === "object" && !Array.isArray(complete.payload) ? complete.payload : {};
+  const shown = payload.shown && typeof payload.shown === "object" && !Array.isArray(payload.shown)
+    ? payload.shown
+    : undefined;
+  const parked = payload.parked && typeof payload.parked === "object" && !Array.isArray(payload.parked)
+    ? payload.parked
+    : undefined;
+
+  if (!shown) {
+    failures.push(`${caseName}: openAndWait completion did not include shown presenter snapshot`);
+  } else if (shown.overlayActive !== true) {
+    failures.push(`${caseName}: openAndWait shown snapshot did not report overlayActive=true`);
+  }
+  if (!parked) {
+    failures.push(`${caseName}: openAndWait completion did not include parked presenter snapshot`);
+  } else if (readPresenterMode(parked) !== "session") {
+    expectParkedPresenter(caseName, parked, "openAndWait completion", failures);
+  }
+
+  return { required: true, ok: failures.length === failuresBefore };
 }
 
 function verifyCheckoutOpenAndWait(caseName, action, entries, failures) {

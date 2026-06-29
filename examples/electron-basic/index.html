@@ -227,7 +227,9 @@
           <button id="store">Store Overlay</button>
           <button id="web">Web Overlay</button>
           <button id="presenter-web">Presenter Web Overlay</button>
+          <button id="presenter-web-wait">Presenter Web Wait</button>
           <button id="presenter-friends">Presenter Friends</button>
+          <button id="presenter-friends-wait">Presenter Friends Wait</button>
           <button id="presenter-profile">Presenter Profile</button>
           <button id="presenter-players">Presenter Players</button>
           <button id="presenter-community">Presenter Community</button>
@@ -459,8 +461,12 @@
       document.getElementById("web").onclick = () => run("Web Overlay", () => window.steamSmoke.openOverlayWeb());
       document.getElementById("presenter-web").onclick = () =>
         run("Presenter Web Overlay", () => window.steamSmoke.openPresenterWeb());
+      document.getElementById("presenter-web-wait").onclick = () =>
+        run("Presenter Web Wait", () => window.steamSmoke.openPresenterWebOpenAndWait());
       document.getElementById("presenter-friends").onclick = () =>
         run("Presenter Friends", () => window.steamSmoke.openPresenterFriends());
+      document.getElementById("presenter-friends-wait").onclick = () =>
+        run("Presenter Friends Wait", () => window.steamSmoke.openPresenterFriendsOpenAndWait());
       document.getElementById("presenter-profile").onclick = () =>
         run("Presenter Profile", () => window.steamSmoke.openPresenterProfile());
       document.getElementById("presenter-players").onclick = () =>

@@ -283,7 +283,11 @@ Current evidence:
   child-process isolation, uses one `gameoverlayui` target attached to the app's
   main/native process, and returns to the smoke app after the close probe. A
   `steam://open/friends` URI activated the overlay but remained on a Steam
-  loading spinner, so it is not the product path.
+  loading spinner, so it is not the product path. The smoke app also has
+  `presenter-friends-open-and-wait`, which exercises
+  `steamOverlay.openAndWait({ type: "friends" })` and requires the promise
+  completion event only after Steam reports overlay inactive and the presenter
+  parks.
 - Deck Desktop Mode can open Steam profile pages through
   `steamOverlay.open({ type: "profile", steamId64 })`, backed by
   `openProfileOverlay({ steamId64, presenter })`. A 2026-06-28 Deck Desktop run
