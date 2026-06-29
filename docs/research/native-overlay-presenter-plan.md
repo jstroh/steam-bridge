@@ -126,6 +126,15 @@ timing hacks.
   presenter diagnostics reported `targetType: "web"` and a sanitized target
   snapshot, then emitted shortcut-open, active/inactive callbacks, Shift+Tab-only
   close, focus return, and stable parked presenter state.
+- A 2026-06-29 full Deck Desktop overlay matrix passed 26 cases with 52
+  screenshots under App ID `480`, covering managed web, store, Friends, profile,
+  players, community, stats, achievements, user chat, known dialog-equivalent
+  routes, passive achievement-progress/unlock toasts, checkout readiness,
+  synthetic checkout approval-route plumbing, `openAndWait` helpers, and managed
+  Shift+Tab shortcut open/close. The matrix verified single overlay target
+  attachment, active/inactive callbacks where expected, focus return, parked
+  presenter state at `currentFps=0`, no post-close `pumpCount` increase for
+  persistent presenter routes, and clean crash diagnostics.
 - A generic `steam://open/overlay` URI is not a reliable shortcut around the
   unresolved raw social/toggle path. On Deck Desktop Mode it can emit an overlay
   activation callback while leaving the native presenter black and crashing the
@@ -391,7 +400,11 @@ Current evidence:
   switching `overlay:presenter-after-close` and
   `overlay:presenter-after-close-stable` to presenter state-change samples; the
   web-modal proof recorded both parked samples with unchanged `pumpCount` and
-  `currentFps=0`.
+  `currentFps=0`. The 2026-06-29 full matrix also hardened the visual close
+  probe itself: presenter-backed web surfaces get one Steam web close-control
+  click, the runner waits for lifecycle evidence of `active=false`, KWin
+  overview/window-switcher effects are cleared before that click when active,
+  and the verifier rejects any overlay reactivation after the close probe.
 - The same path is good enough for checkout-style proof when launched under a
   real installed Steam app with a configured product or transaction. The public
   API now has a one-call checkout wrapper:
@@ -557,7 +570,8 @@ Pass criteria:
 - Deck visual close probes for presenter-backed product web surfaces verify the
   inactive callback, app focus, state-driven post-close presenter parking, no
   post-close pumping, managed wait-helper shown/closed/parked lifecycle events,
-  and no post-close crash evidence.
+  no post-close crash evidence, and no overlay reactivation after the close
+  probe.
 - Post-close presenter parking means the reusable host is transparent,
   click-through, non-focusable, overlay-inactive, and back at `currentFps=0`.
 - Post-close no-pumping means the stable presenter snapshot has the same
@@ -672,6 +686,9 @@ Deck/Linux/macOS artifacts can verify presenter alignment without scraping logs.
 3. Keep lower-level `attachPresenter(...)` and native-session helpers for
    diagnostics and compatibility.
 4. Harden Linux X11/GLX passive mode and verify on Steam Deck Desktop Mode.
+   The current Deck Desktop matrix proof is green for managed presenter-backed
+   product routes; keep rerunning it as regression coverage while macOS is
+   brought up.
 5. Verify Linux passive achievement/toast behavior.
 6. Verify Linux checkout/web close and back-to-app behavior with the managed
    persistent presenter.

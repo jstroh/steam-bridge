@@ -587,6 +587,13 @@ focus_deck_smoke_window() {
 fi"
 }
 
+clear_deck_transient_shells() {
+  echo "Clearing Deck transient desktop shell state"
+  remote_exec "export DISPLAY=\"\${DISPLAY:-:0}\"; if [ -z \"\${XAUTHORITY:-}\" ]; then XAUTHORITY=\"\$(ls /run/user/1000/xauth_* 2>/dev/null | head -n 1 || true)\"; export XAUTHORITY; fi; export DBUS_SESSION_BUS_ADDRESS=\"\${DBUS_SESSION_BUS_ADDRESS:-unix:path=/run/user/1000/bus}\"; if command -v xdotool >/dev/null 2>&1; then
+  xdotool key Escape >/dev/null 2>&1 || true
+fi"
+}
+
 send_deck_overlay_close_probe() {
   echo "Sending Deck overlay close probe"
   remote_exec "if [ -w /dev/uinput ] && command -v python3 >/dev/null 2>&1; then
@@ -654,12 +661,71 @@ fi"
 }
 
 send_deck_web_overlay_close_probe() {
+  local result_file_q
+  result_file_q="$(quote_arg "$result_file")"
   echo "Sending Deck web overlay close probe"
-  remote_exec "export DISPLAY=\"\${DISPLAY:-:0}\"; if [ -z \"\${XAUTHORITY:-}\" ]; then XAUTHORITY=\"\$(ls /run/user/1000/xauth_* 2>/dev/null | head -n 1 || true)\"; export XAUTHORITY; fi
+  remote_exec "export DISPLAY=\"\${DISPLAY:-:0}\"; RESULT_FILE=$result_file_q; if [ -z \"\${XAUTHORITY:-}\" ]; then XAUTHORITY=\"\$(ls /run/user/1000/xauth_* 2>/dev/null | head -n 1 || true)\"; export XAUTHORITY; fi
 if ! command -v xdotool >/dev/null 2>&1; then
   echo 'No xdotool web overlay close helper found on Deck.' >&2
   exit 127
 fi
+wait_for_web_overlay_closed() {
+  CLOSE_WAIT_SECONDS=\"\${1:-2.5}\" python3 - <<'PY'
+import os
+import sys
+import time
+
+result_file = os.environ.get('RESULT_FILE') or ''
+lifecycle_path = result_file + '.diagnostics/lifecycle.jsonl'
+deadline = time.monotonic() + float(os.environ.get('CLOSE_WAIT_SECONDS') or 2.5)
+
+def has_closed_after_active():
+    try:
+        with open(lifecycle_path, 'r', encoding='utf-8') as handle:
+            saw_active = False
+            for line in handle:
+                if 'event:callback:overlay-activated' not in line:
+                    continue
+                if '\"active\":true' in line or '\"m_bActive\":true' in line or '\"active\":1' in line:
+                    saw_active = True
+                elif saw_active and (
+                    '\"active\":false' in line or '\"m_bActive\":false' in line or '\"active\":0' in line
+                ):
+                    return True
+    except FileNotFoundError:
+        return False
+    return False
+
+while time.monotonic() < deadline:
+    if has_closed_after_active():
+        sys.exit(0)
+    time.sleep(0.1)
+sys.exit(1)
+PY
+}
+active_kwin_effects() {
+  if command -v qdbus >/dev/null 2>&1; then
+    qdbus org.kde.KWin /Effects activeEffects 2>/dev/null || true
+  elif command -v qdbus6 >/dev/null 2>&1; then
+    qdbus6 org.kde.KWin /Effects activeEffects 2>/dev/null || true
+  fi
+}
+kwin_overview_active() {
+  active_kwin_effects | grep -Eq '^(overview|windowview|scale)$'
+}
+clear_kwin_overview_if_active() {
+  if ! kwin_overview_active; then
+    return 0
+  fi
+  xdotool key Escape >/dev/null 2>&1 || true
+  for attempt in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+    if ! kwin_overview_active; then
+      return 0
+    fi
+    sleep 0.1
+  done
+}
+clear_kwin_overview_if_active
 set -- \$(xdotool getdisplaygeometry)
 display_width=\"\${1:-1280}\"
 display_height=\"\${2:-800}\"
@@ -674,9 +740,7 @@ host_height=\"\${HEIGHT:-\$display_height}\"
 click_x=\$((host_x + host_width * 86 / 100))
 click_y=\$((host_y + host_height * 15 / 100))
 xdotool mousemove \"\$click_x\" \"\$click_y\" click 1
-sleep 0.5
-xdotool mousemove \"\$click_x\" \"\$click_y\" click 1
-sleep 0.35"
+wait_for_web_overlay_closed 3.0 || true"
 }
 
 verify_deck_overlay_closed_after_probe() {
@@ -831,6 +895,15 @@ if first_active_index is None:
 elif inactive_after_active_index is None:
     failures.append('no active=false overlay callback after active=true')
 else:
+    reactivated_after_close = any(
+        index > inactive_after_active_index
+        and entry.get('type') == 'event:callback:overlay-activated'
+        and active_value(entry.get('payload')) is True
+        for index, entry in enumerate(entries)
+    )
+    if reactivated_after_close:
+        failures.append('overlay reactivated after close probe')
+
     if require_presenter_parking:
         first_after_close_entries = [
             (index, presenter_payload(entry))
@@ -2046,6 +2119,7 @@ run_remote_mode() {
       if [ "$copy_app" = "1" ]; then
         copy_to_deck
       fi
+      clear_deck_transient_shells
       start_keep_awake
       trap stop_keep_awake EXIT
       build_steam_launch_args
@@ -2056,6 +2130,7 @@ run_remote_mode() {
       if [ "$copy_app" = "1" ]; then
         copy_to_deck
       fi
+      clear_deck_transient_shells
       start_keep_awake
       trap stop_keep_awake EXIT
       build_direct_args
@@ -2152,6 +2227,22 @@ run_self_test() {
   fi
   if ! grep -Fq "native presenter pump count changed after close" "$0"; then
     echo "Self-test failed: Deck close verification must require no post-close presenter pumping." >&2
+    exit 1
+  fi
+  if ! grep -Fq "wait_for_web_overlay_closed 3.0 || true" "$0"; then
+    echo "Self-test failed: Web close probe must wait for close evidence after clicking the Steam web close control." >&2
+    exit 1
+  fi
+  if [ "$(awk '/^send_deck_web_overlay_close_probe[(][)]/ { inside=1; next } inside && /^verify_deck_overlay_closed_after_probe[(][)]/ { print clicks + 0; exit } inside && /xdotool mousemove .* click 1/ { clicks += 1 }' "$0")" != "1" ]; then
+    echo "Self-test failed: Web close probe must use one Steam web close-control click." >&2
+    exit 1
+  fi
+  if ! grep -Fq "clear_kwin_overview_if_active" "$0"; then
+    echo "Self-test failed: Web close probe must clear KWin overview before clicking the Steam web close control." >&2
+    exit 1
+  fi
+  if ! grep -Fq "clear_deck_transient_shells" "$0"; then
+    echo "Self-test failed: Deck launch path must clear transient desktop shell state before visual proofs." >&2
     exit 1
   fi
   if ! grep -Fq "event:overlay:presenter-wait-shown" "$0"; then
