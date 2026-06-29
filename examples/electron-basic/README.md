@@ -263,9 +263,12 @@ run. The Node verifier and packaged Linux helper can assert those fields with
 `--require-overlay-shortcut-target <target>`. Static shortcut targets report a
 sanitized `electronOverlay.overlayShortcut.target` snapshot with target type and
 non-sensitive flags; checkout URLs, transaction IDs, return URLs, and Steam IDs
-are not serialized. The smoke app uses `overlayShortcut.onOpen` for shortcut
-lifecycle logging so normal shortcut targets can stay static; dynamic resolver
-targets are only used when a target cannot be validated until keypress time. For
+are not serialized. Lifecycle and result artifacts also redact real checkout
+URLs, transaction IDs, return URLs, Steam IDs, auth-ticket bytes, and private
+CLI arguments while preserving verifier-safe presence flags and presenter
+snapshots. The smoke app uses `overlayShortcut.onOpen` for shortcut lifecycle
+logging so normal shortcut targets can stay static; dynamic resolver targets are
+only used when a target cannot be validated until keypress time. For
 resolver-backed shortcut targets, the verifier checks this smoke app's
 configured shortcut target while preserving
 `electronOverlay.overlayShortcut.targetType: "function"`. The Deck runner adds
@@ -320,7 +323,10 @@ The Linux and Steam Deck helpers expose the same inputs as `--checkout-url`,
 or transaction ID the helpers only require `overlay:presenter-checkout-ready`;
 with one, they require `overlay:presenter-open`, a Steam overlay activation
 callback, and lifecycle logs show `overlay:presenter-checkout-open-and-wait-complete`
-after Steam closes and the presenter parks.
+after Steam closes and the presenter parks. Those lifecycle logs preserve
+presence flags such as `hasTransactionId` and the shown/parked presenter
+snapshots, but redact the actual checkout URL, transaction ID, return URL, and
+Steam ID values.
 For normal app code, `steamOverlay.open(...)` opens a presenter-backed target and
 keeps the presenter active until Steam reports the overlay shown. Its timeout is
 only a failure guard if Steam never activates the overlay. Use
@@ -823,7 +829,9 @@ app-specific proof outside the committed examples:
 4. Let Steam Bridge open the returned checkout URL or transaction approval path.
 5. Verify the Steam modal appears in both Deck Game Mode and Desktop Mode.
 6. Confirm backing out or closing the Steam surface returns focus to the app.
-7. Keep private app IDs, item definitions, transaction IDs, publisher keys, and
+7. Confirm any `callback:microtxn` artifact keeps the presenter snapshot while
+   redacting order IDs, transaction IDs, Steam IDs, and checkout URLs.
+8. Keep private app IDs, item definitions, transaction IDs, publisher keys, and
    private URLs out of committed docs and examples.
 
 The managed Electron overlay defaults to scoped activation holds instead of

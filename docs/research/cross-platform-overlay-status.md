@@ -529,7 +529,8 @@ private app details to this repository:
    `steamOverlay.openCheckoutAndWait(() => startTxn())`.
 5. Verify the Steam checkout or approval surface appears.
 6. Confirm `callback:microtxn` includes a presenter snapshot if authorization
-   occurs.
+   occurs, with order IDs, transaction IDs, Steam IDs, and checkout URLs redacted
+   from any shared artifact.
 7. Press Back to confirm Steam returns to the running app and the presenter
    parks after `GameOverlayActivated(false)`.
 8. Keep private app IDs, item definitions, transaction IDs, publisher keys, and

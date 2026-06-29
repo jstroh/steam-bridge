@@ -275,6 +275,10 @@ timer. `steamOverlay.withCheckoutPrepared(...)`,
 need to separate presenter priming from transaction creation or overlay opening;
 pass an explicit preparation duration there only when a standalone split-step
 hold is intentional.
+The Electron smoke app redacts real checkout URLs, transaction IDs, return URLs,
+Steam IDs, auth-ticket bytes, and private CLI arguments from result and lifecycle
+artifacts while preserving machine-checkable presence flags and presenter
+snapshots.
 Passive Steam notifications such as achievement progress
 or achievement unlock toasts are automatically primed by the managed Electron
 overlay before the relevant achievement/stats calls and pump only when Steam

@@ -90,6 +90,60 @@ function setSteamEnv(values = {}) {
   };
 }
 
+test("electron smoke sanitizer redacts private overlay proof fields", () => {
+  const { sanitizeSmokeValue } = require(path.join(repoRoot, "examples", "electron-basic", "smoke-sanitize.cjs"));
+  const sanitized = sanitizeSmokeValue({
+    appId: 480,
+    steamId64: 76561198000000000n,
+    orderId: "order-private-001",
+    transactionId: 123456789n,
+    steamUrl: "https://checkout.steampowered.com/checkout/approvetxn/123456789/",
+    returnUrl: "steam://return/private-token",
+    checkout: {
+      hasCheckoutUrl: true,
+      hasTransactionId: true,
+      hasReturnUrl: true
+    },
+    presenter: {
+      currentFps: 0,
+      overlayActive: false
+    },
+    callback: {
+      authorized: true,
+      owner: 76561198000000001n
+    },
+    launch: {
+      argv: [
+        "SteamBridgeSmoke",
+        "--steam-bridge-smoke-checkout-transaction-id=123456789",
+        "--steam-bridge-smoke-web-url=https://store.steampowered.com/app/480/"
+      ]
+    },
+    message: "approval https://checkout.steampowered.com/checkout/approvetxn/123456789/"
+  });
+
+  assert.equal(sanitized.appId, 480);
+  assert.equal(sanitized.checkout.hasCheckoutUrl, true);
+  assert.equal(sanitized.checkout.hasTransactionId, true);
+  assert.equal(sanitized.checkout.hasReturnUrl, true);
+  assert.equal(sanitized.presenter.currentFps, 0);
+  assert.equal(sanitized.callback.authorized, true);
+  assert.equal(sanitized.callback.owner, "[redacted-steam-id]");
+  assert.equal(sanitized.steamId64.redacted, true);
+  assert.equal(sanitized.transactionId.redacted, true);
+  assert.equal(sanitized.steamUrl.redacted, true);
+  assert.equal(sanitized.returnUrl.redacted, true);
+  assert.equal(sanitized.launch.argv[1].redacted, true);
+  assert.equal(sanitized.message.redacted, true);
+
+  const serialized = JSON.stringify(sanitized);
+  assert.equal(serialized.includes("76561198000000000"), false);
+  assert.equal(serialized.includes("76561198000000001"), false);
+  assert.equal(serialized.includes("123456789"), false);
+  assert.equal(serialized.includes("order-private-001"), false);
+  assert.equal(serialized.includes("steam://return/private-token"), false);
+});
+
 function fakeTicket(label, calls) {
   return {
     cancel() {

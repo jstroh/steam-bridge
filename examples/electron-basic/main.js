@@ -4,6 +4,7 @@ const os = require("node:os");
 const path = require("node:path");
 const { app, BrowserWindow, crashReporter, ipcMain } = require("electron");
 const steamworks = require("steam-bridge");
+const { sanitizeSmokeValue } = require("./smoke-sanitize.cjs");
 
 const CLI_OPTIONS = parseSmokeArgs(process.argv.slice(1));
 const APP_ID = Number(CLI_OPTIONS.appId || process.env.STEAM_BRIDGE_APP_ID || "480");
@@ -2240,25 +2241,5 @@ function serializeError(error) {
 }
 
 function sanitize(value) {
-  if (typeof value === "bigint") {
-    return value.toString();
-  }
-
-  if (Buffer.isBuffer(value)) {
-    return {
-      type: "Buffer",
-      byteLength: value.length,
-      prefixHex: value.subarray(0, 12).toString("hex")
-    };
-  }
-
-  if (Array.isArray(value)) {
-    return value.map(sanitize);
-  }
-
-  if (value && typeof value === "object") {
-    return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, sanitize(entry)]));
-  }
-
-  return value;
+  return sanitizeSmokeValue(value);
 }
