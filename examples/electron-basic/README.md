@@ -51,6 +51,10 @@ npm run example:package:mac
 Outputs are written under `dist/electron-smoke/<target>/`.
 The macOS package includes `macos-electron-smoke.sh` beside
 `SteamBridgeSmoke.app`; the Linux package includes `linux-electron-smoke.sh`.
+On macOS, the packaged app installs a small native launcher as the bundle's main
+executable and moves Electron to `SteamBridgeSmoke.electron`. Steam still
+launches the normal `.app` executable path, while the launcher sets the Steam app
+and overlay game IDs before `exec`ing Electron.
 
 ## Autorun Logs
 
@@ -90,6 +94,7 @@ For macOS Apple Silicon packaging checks, use the packaged helper beside the
 ```sh
 dist/electron-smoke/aarch64-apple-darwin/SteamBridgeSmoke-darwin-arm64/macos-electron-smoke.sh \
   --mode print-launch-options \
+  --macos-native-launcher \
   --action presenter-web \
   --web-url https://store.steampowered.com/app/480/ \
   --web-modal true
@@ -107,12 +112,18 @@ dist/electron-smoke/aarch64-apple-darwin/SteamBridgeSmoke-darwin-arm64/macos-ele
   --action presenter-web \
   --require-steam-launch \
   --require-overlay-injection \
-  --require-overlay-enabled
+  --require-overlay-enabled \
+  --require-overlay-activated
 ```
 
 For macOS presenter diagnostics, `--native-host-backend metal` and
 `--native-host-backend opengl` select the native host backend used by the smoke
 app. This is a diagnostic comparison control, not an app-builder API.
+
+For launcher-aware macOS checks, generate shortcut launch options with
+`--macos-native-launcher` and fully restart Steam after editing
+`shortcuts.vdf`. If Steam is not fully restarted, it can keep stale shortcut
+state and fail before launching the app.
 `--action-delay-ms` can move the autorun action later when comparing Steam
 launch/readiness behavior; keep normal product paths callback-driven.
 

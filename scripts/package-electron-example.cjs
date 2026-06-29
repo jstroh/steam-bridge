@@ -175,6 +175,7 @@ function copyTargetHelpers(appPath) {
     const helperPath = path.join(appPath, "macos-electron-smoke.sh");
     fs.copyFileSync(path.join(repoRoot, "scripts", "macos-electron-smoke.sh"), helperPath);
     fs.chmodSync(helperPath, 0o755);
+    compileMacSteamEnvLauncher(appPath);
     fs.copyFileSync(
       path.join(repoRoot, "scripts", "verify-electron-smoke-result.cjs"),
       path.join(appPath, "verify-electron-smoke-result.cjs")
@@ -191,6 +192,15 @@ function copyTargetHelpers(appPath) {
     fs.copyFileSync(path.join(repoRoot, "scripts", "linux-electron-smoke.sh"), helperPath);
     fs.chmodSync(helperPath, 0o755);
   }
+}
+
+function compileMacSteamEnvLauncher(appPath) {
+  const launcherSource = path.join(repoRoot, "scripts", "macos-steam-env-launcher.c");
+  const launcherPath = path.join(appPath, "SteamBridgeSmoke.app", "Contents", "MacOS", "SteamBridgeSmoke");
+  const electronPath = `${launcherPath}.electron`;
+  fs.renameSync(launcherPath, electronPath);
+  run("clang", ["-Wall", "-Wextra", "-O2", "-arch", "arm64", "-o", launcherPath, launcherSource], repoRoot);
+  fs.chmodSync(launcherPath, 0o755);
 }
 
 function resolvePackageArtifactSources(target, fileNames) {

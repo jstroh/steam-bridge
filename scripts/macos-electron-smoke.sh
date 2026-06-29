@@ -23,6 +23,7 @@ achievement_name=""
 achievement_current=""
 achievement_max=""
 action_delay_ms=""
+macos_native_launcher="0"
 result_delay_ms="8000"
 keep_open_after_result="0"
 timeout_seconds="90"
@@ -78,6 +79,7 @@ Options:
   --achievement-current VALUE    Progress current value.
   --achievement-max VALUE        Progress max value.
   --action-delay-ms MS           Autorun delay before the action. Defaults to app default.
+  --macos-native-launcher        Prefix launch options for the packaged native env launcher.
   --result-delay-ms MS           Autorun result delay. Defaults to 8000.
   --keep-open-after-result       Write the result but leave the app running.
   --timeout-seconds SECONDS      Result wait timeout. Defaults to 90.
@@ -195,6 +197,10 @@ while [ "$#" -gt 0 ]; do
       action_delay_ms="${2:?missing --action-delay-ms value}"
       shift 2
       ;;
+    --macos-native-launcher)
+      macos_native_launcher="1"
+      shift
+      ;;
     --result-delay-ms)
       result_delay_ms="${2:?missing --result-delay-ms value}"
       shift 2
@@ -294,6 +300,12 @@ if [ -z "$diagnostic_dir" ]; then
 fi
 
 smoke_args() {
+  if [ "$macos_native_launcher" = "1" ]; then
+    printf '%s\n' \
+      "--steam-bridge-launch-app-id=$app_id" \
+      "--steam-bridge-launch-overlay-game-id=$app_id"
+  fi
+
   printf '%s\n' \
     "--steam-bridge-app-id=$app_id" \
     "--steam-bridge-electron-overlay-profile=$overlay_profile" \
@@ -732,7 +744,16 @@ NODE
   presenter_mode="session"
   native_host_backend="opengl"
   action_delay_ms="2500"
+  macos_native_launcher="1"
   launch_options="$(smoke_args | paste -sd' ' -)"
+  if [[ "$launch_options" != *"--steam-bridge-launch-app-id=480"* ]]; then
+    echo "Self-test failed: native launcher options must pass the Steam app ID." >&2
+    exit 1
+  fi
+  if [[ "$launch_options" != *"--steam-bridge-launch-overlay-game-id=480"* ]]; then
+    echo "Self-test failed: native launcher options must pass the overlay game ID." >&2
+    exit 1
+  fi
   if [[ "$launch_options" != *"--steam-bridge-smoke-overlay-dialog=Achievements"* ]]; then
     echo "Self-test failed: launch options must pass the requested overlay dialog." >&2
     exit 1

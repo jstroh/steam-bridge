@@ -152,19 +152,20 @@ timing hacks.
   proved `gameoverlayui` attached with the shortcut ID, while the hotkey/toggle
   path still failed to render overlay UI and the raw Achievements dialog still
   emitted no activation callback.
-- Steam Bridge's macOS evidence is weaker: Steam launch and native probe coverage
-  exist, and crash-free Metal/OpenGL presenter startup has been verified after
-  fixing macOS `DYLD_INSERT_LIBRARIES` child-process scrubbing. Steam starts
-  `gameoverlayui` for the packaged smoke process, but completed product overlay
-  activation on macOS is not proven yet. The macOS native host now applies the
-  same active/passive input and opacity transitions as the Linux presenter; a
-  strict Metal run proved the host entered active, opaque, input-capable mode
-  without crashes, but still did not emit `GameOverlayActivated(true)`. A delayed
-  activation diagnostic also failed, so the remaining macOS gap is not explained
-  by a simple "activation called before gameoverlayui started" race. The newest
-  macOS diagnostics show `gameoverlayui` targeting the smoke process with the
-  non-Steam shortcut game ID while Steamworks reports App ID `480`; resolving or
-  bypassing that identity mismatch is the next macOS proof point.
+- Steam Bridge's macOS evidence now has a first strict activation proof for the
+  reusable presenter web path. Direct executable shortcuts preserved
+  `DYLD_INSERT_LIBRARIES` but let `gameoverlayui` inherit the full non-Steam
+  shortcut game ID while Steamworks inside the process reported App ID `480`.
+  Forcing the shortcut's internal `appid` to `480` was rejected by Steam, and a
+  standalone native launcher shortcut failed before process creation. The
+  working path is a package-time launcher installed as the `.app` bundle's main
+  executable: it sets `SteamAppId`, `SteamGameId`, and `SteamOverlayGameId` to
+  the real app ID before `exec`ing the renamed Electron binary. A cold-start
+  macOS Apple Silicon `presenter-web` run preserved Steam overlay injection,
+  emitted `GameOverlayActivated(true)`, and showed one `gameoverlayui` target on
+  the Electron process with `-gameid 480`. macOS still needs the same close,
+  back-to-app, and `openAndWait(...)` parking proof already completed on Deck
+  Desktop Mode.
 
 Useful public references:
 

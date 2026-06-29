@@ -69,14 +69,14 @@ Verified:
   presenter: parked hosts are transparent and click-through, while active
   overlay preparation makes the host opaque and input-capable. The Metal backend
   applies that opacity to the render-pass clear color as well as the Cocoa
-  window/layer state. A strict Steam-launched Metal `presenter-web` run verified
-  the smoke snapshot moved to `mode=active`, `clickThrough=false`,
-  `transparent=false`, and `currentFps=30` with no crash diagnostics. It still
-  did not emit `GameOverlayActivated(true)`.
-- A delayed diagnostic activation run, with the action fired after Steam had
-  enough time to start `gameoverlayui`, also failed to emit
-  `GameOverlayActivated(true)`. This weakens the theory that the macOS failure
-  is only an early activation race.
+  window/layer state. Before the launcher identity fix, a strict Steam-launched
+  Metal `presenter-web` run verified the smoke snapshot moved to `mode=active`,
+  `clickThrough=false`, `transparent=false`, and `currentFps=30` with no crash
+  diagnostics, but it still did not emit `GameOverlayActivated(true)`.
+- Before the launcher identity fix, a delayed diagnostic activation run, with
+  the action fired after Steam had enough time to start `gameoverlayui`, also
+  failed to emit `GameOverlayActivated(true)`. This weakened the theory that the
+  macOS failure was only an early activation race.
 - The smoke app now records macOS `gameoverlayui` process snapshots and
   CoreGraphics Steam/window snapshots in the result payload, instead of
   reporting overlay process diagnostics as Linux-only.
@@ -85,15 +85,29 @@ Verified:
   inside the process reports App ID `480`. On Deck/Linux the wrapper can set
   `SteamOverlayGameId=480`; on macOS the direct executable shortcut preserves
   `DYLD_INSERT_LIBRARIES` but inherits Steam's shortcut overlay game ID. This
-  app-ID/overlay-game-ID mismatch is now the leading generic macOS smoke
-  hypothesis to resolve or avoid with a real installed Steam app proof.
+  app-ID/overlay-game-ID mismatch explained why the native presenter could be
+  active and pumped without a `GameOverlayActivated(true)` callback.
+- Forcing the non-Steam shortcut's internal `appid` to `480` is not viable:
+  Steam sanitizes it back to a generated local shortcut app ID because the local
+  shortcut flag is missing. Pointing the shortcut at a standalone native
+  launcher binary is also not viable on macOS; Steam rejected that configuration
+  before process creation with `AppError_9`.
+- The packaged macOS smoke app now installs a native launcher as the app
+  bundle's main executable and moves the Electron binary to
+  `SteamBridgeSmoke.electron`. Steam still launches the normal `.app` executable
+  path, preserving `DYLD_INSERT_LIBRARIES`; the launcher sets `SteamAppId`,
+  `SteamGameId`, and `SteamOverlayGameId` to `480` before `exec`ing Electron.
+  A cold-start strict `presenter-web` run verified `overlayEnabled=true`,
+  preserved Steam overlay injection, emitted `GameOverlayActivated(true)`, and
+  showed `gameoverlayui -pid <app-pid> -gameid 480` attached to the Electron
+  process.
 
 Still not verified:
 
 - `client.utils.isOverlayEnabled()` remains `false` for the Electron
   `BrowserWindow`-only path even with the `compatibility` overlay profile. The
-  native presenter is diagnostic evidence that a native graphics surface can
-  be useful; it is not a completed product overlay path for Electron apps.
+  native presenter path is the product-shaped overlay route; the Chromium-only
+  window remains a diagnostic baseline, not the expected overlay target.
 - Ad-hoc signing the packaged app with
   `com.apple.security.cs.allow-dyld-environment-variables` and
   `com.apple.security.cs.disable-library-validation` did not make
@@ -101,15 +115,16 @@ Still not verified:
 - A shell-wrapper shortcut can set `SteamAppId=480` before app startup, but macOS
   strips the Steam `DYLD_INSERT_LIBRARIES` injection before the Electron child
   process starts, so that path is not useful for overlay verification.
-- The reusable macOS presenter path still has not emitted
-  `GameOverlayActivated(true)` in the packaged Electron smoke app. Both Metal
-  and OpenGL host backends can be launched and pumped without crashes, but the
-  Steam web overlay does not become an active, verifier-proven overlay surface.
+- The reusable macOS presenter path has emitted `GameOverlayActivated(true)` for
+  a modal web overlay through the in-bundle native launcher, but close,
+  back-to-app, and `openAndWait(...)` parking proof have not been completed on
+  macOS yet.
 
-The current macOS result should therefore be treated as native probe diagnostic
-coverage, Steam launch and injection coverage, and crash-free native presenter
-startup coverage. It should not be described as completed Steam Bridge macOS
-overlay support.
+The current macOS result should therefore be treated as Steam launch, injection,
+identity alignment, native presenter startup, and modal web overlay activation
+coverage. It should not yet be described as completed Steam Bridge macOS overlay
+support until close/back-to-app behavior and the builder-facing wait helpers are
+verified.
 
 ## Primary References
 
