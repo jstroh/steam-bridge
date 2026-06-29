@@ -172,7 +172,10 @@ presenter state where it is part of the persistent proof: snapshots now include
 Electron window exposes it, current `bounds`; checkout readiness and managed
 shortcut attach must park with `idleFps=0` and `currentFps=0`; passive toast
 proof must remain transparent, click-through, non-focusable, and
-overlay-inactive while Steam may still pump notification frames. Presenter-backed
+overlay-inactive while Steam may still pump notification frames. The matrix
+summary also requires passive toast actions to record their achievement event,
+required Steam callbacks, a single overlay target, and a passive presenter
+snapshot without requiring modal overlay activation. Presenter-backed
 product actions also require clean smoke crash diagnostics: no crash dump files
 and no fatal Electron lifecycle events. When `--visual-close-probe` is used on
 presenter-backed product web surfaces, the Deck runner also verifies a

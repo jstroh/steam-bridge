@@ -24,6 +24,22 @@ const MANAGED_LIFECYCLE_ACTIONS = new Set([
   "presenter-achievements",
   "presenter-shortcut"
 ]);
+const PASSIVE_NOTIFICATION_ACTIONS = new Map([
+  [
+    "presenter-achievement-progress",
+    {
+      event: "achievement:progress",
+      callbacks: ["callback:achievement-stored"]
+    }
+  ],
+  [
+    "presenter-achievement-unlock",
+    {
+      event: "achievement:unlock",
+      callbacks: ["callback:user-stats-stored", "callback:achievement-stored"]
+    }
+  ]
+]);
 
 main();
 
@@ -218,6 +234,15 @@ function summarizeMatrixArtifacts(root) {
         `${caseName}: fatal lifecycle events recorded (${lifecycleFatalEvents.map((entry) => entry.type).join(", ")})`
       );
     }
+    const passiveNotification = verifyPassiveNotificationAction(
+      caseName,
+      action.action,
+      events,
+      lifecycle.entries,
+      nativePresenter,
+      overlayTargetCount,
+      resultFailures
+    );
     const parking = verifyLifecycleParking(caseName, lifecycle.entries, resultFailures);
     const managedWaits = verifyManagedLifecycleWaits(caseName, action.action, lifecycle.entries, resultFailures);
 
@@ -238,6 +263,7 @@ function summarizeMatrixArtifacts(root) {
           : "n/a",
       closeInput: caseMetadata?.visualCloseInput || "n/a",
       toggleInput: caseMetadata?.visualToggleInput || "n/a",
+      passiveToast: passiveNotification.required ? passiveNotification.ok : "n/a",
       parked: parking.required ? parking.ok : "n/a",
       managedWaits: managedWaits.required ? managedWaits.ok : "n/a",
       crashOk: crashDiagnostics.ok === true,
@@ -259,6 +285,7 @@ function summarizeMatrixArtifacts(root) {
         `fps=${item.presenterFps}`,
         `closeInput=${item.closeInput}`,
         `toggleInput=${item.toggleInput}`,
+        `passiveToast=${item.passiveToast}`,
         `parked=${item.parked}`,
         `managedWaits=${item.managedWaits}`,
         `overlayTargets=${item.overlayTargets}`,
@@ -287,8 +314,8 @@ function runSelfTest() {
   try {
     createSelfTestFixture(fixtureRoot);
     const summary = summarizeMatrixArtifacts(fixtureRoot);
-    assert(summary.caseSummaries.length === 2, "summary self-test should include two cases");
-    assert(summary.totalScreenshots === 5, "summary self-test should count five screenshots");
+    assert(summary.caseSummaries.length === 3, "summary self-test should include three cases");
+    assert(summary.totalScreenshots === 6, "summary self-test should count six screenshots");
     console.log("Steam Deck overlay matrix summary self-test passed.");
   } finally {
     fs.rmSync(fixtureRoot, { recursive: true, force: true });
@@ -390,6 +417,45 @@ function createSelfTestFixture(root) {
   ]) {
     fs.writeFileSync(path.join(shortcutScreensDir, screenshot), "");
   }
+
+  const unlockCaseId = "03-passive-unlock-toast";
+  const unlockDiagnosticsDir = path.join(root, "diagnostics", unlockCaseId);
+  const unlockRunDiagnosticsDir = path.join(
+    unlockDiagnosticsDir,
+    "steam-bridge-smoke-matrix-03-passive-unlock-toast.log.diagnostics"
+  );
+  const unlockScreensDir = path.join(root, "screens", unlockCaseId);
+  const unlockResult = JSON.parse(JSON.stringify(result));
+  const passivePresenter = passiveNotificationPresenterFixture(14);
+
+  unlockResult.action.action = "presenter-achievement-unlock";
+  unlockResult.snapshot.overlay.nativePresenter.value = passivePresenter;
+  unlockResult.snapshot.events = [
+    { type: "achievement:unlock", payload: { achievement: "ACH_TRAVEL_FAR_ACCUM", presenter: passivePresenter } },
+    { type: "callback:user-stats-stored", payload: { gameId: "480" } },
+    { type: "callback:achievement-stored", payload: { achievement: "ACH_TRAVEL_FAR_ACCUM" } }
+  ];
+
+  fs.mkdirSync(unlockRunDiagnosticsDir, { recursive: true });
+  fs.mkdirSync(unlockScreensDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(unlockDiagnosticsDir, "steam-bridge-smoke-matrix-03-passive-unlock-toast.log"),
+    `STEAM_BRIDGE_SMOKE_RESULT ${JSON.stringify(unlockResult)}\n`
+  );
+  fs.writeFileSync(
+    path.join(unlockRunDiagnosticsDir, "lifecycle.jsonl"),
+    [
+      {
+        type: "event:achievement:unlock",
+        payload: { achievement: "ACH_TRAVEL_FAR_ACCUM", presenter: passivePresenter }
+      },
+      { type: "event:callback:user-stats-stored", payload: { gameId: "480" } },
+      { type: "event:callback:achievement-stored", payload: { achievement: "ACH_TRAVEL_FAR_ACCUM" } }
+    ]
+      .map((entry) => JSON.stringify(entry))
+      .join("\n") + "\n"
+  );
+  fs.writeFileSync(path.join(unlockScreensDir, "overlay-open.png"), "");
   fs.writeFileSync(
     path.join(root, "matrix-cases.jsonl"),
     [
@@ -406,6 +472,13 @@ function createSelfTestFixture(root) {
         action: "presenter-shortcut",
         visualCloseInput: "toggle",
         visualToggleInput: "keyboard"
+      },
+      {
+        caseId: unlockCaseId,
+        caseName: "passive-unlock-toast",
+        action: "presenter-achievement-unlock",
+        visualCloseInput: null,
+        visualToggleInput: null
       }
     ]
       .map((entry) => JSON.stringify(entry))
@@ -449,6 +522,14 @@ function parkedPresenterFixture(pumpCount) {
   };
 }
 
+function passiveNotificationPresenterFixture(pumpCount) {
+  return {
+    ...parkedPresenterFixture(pumpCount),
+    currentFps: 30,
+    overlayNeedsPresent: true
+  };
+}
+
 function electronOverlayFixture() {
   return {
     presenterMode: "persistent",
@@ -460,6 +541,79 @@ function electronOverlayFixture() {
       targetType: "function"
     }
   };
+}
+
+function verifyPassiveNotificationAction(
+  caseName,
+  action,
+  resultEvents,
+  lifecycleEntries,
+  nativePresenter,
+  overlayTargetCount,
+  failures
+) {
+  const requirements = PASSIVE_NOTIFICATION_ACTIONS.get(action);
+  if (!requirements) {
+    return { required: false, ok: true };
+  }
+
+  const failuresBefore = failures.length;
+  const resultActionEvent = findEvent(resultEvents, requirements.event);
+  const lifecycleActionEvent = findEvent(lifecycleEntries, lifecycleEventType(requirements.event));
+
+  if (!resultActionEvent) {
+    failures.push(`${caseName}: missing ${requirements.event} in result snapshot events`);
+  }
+  if (!lifecycleActionEvent) {
+    failures.push(`${caseName}: missing ${lifecycleEventType(requirements.event)} in lifecycle log`);
+  }
+  for (const eventType of requirements.callbacks) {
+    if (!findEvent(resultEvents, eventType)) {
+      failures.push(`${caseName}: missing ${eventType} in result snapshot events`);
+    }
+    const lifecycleType = lifecycleEventType(eventType);
+    if (!findEvent(lifecycleEntries, lifecycleType)) {
+      failures.push(`${caseName}: missing ${lifecycleType} in lifecycle log`);
+    }
+  }
+
+  const activeOverlayEvents = [...resultEvents, ...lifecycleEntries].filter((event) => overlayEventState(event) === true);
+  if (activeOverlayEvents.length > 0) {
+    failures.push(`${caseName}: passive notification unexpectedly activated a modal Steam overlay`);
+  }
+  if (overlayTargetCount !== 1) {
+    failures.push(`${caseName}: passive notification expected one gameoverlayui target, got ${overlayTargetCount}`);
+  }
+
+  const eventPresenter = presenterPayload(resultActionEvent) || presenterPayload(lifecycleActionEvent);
+  const passivePresenter = eventPresenter || nativePresenter;
+  if (!passivePresenter || typeof passivePresenter !== "object") {
+    failures.push(`${caseName}: passive notification did not include a presenter snapshot`);
+  } else {
+    expectPassiveNotificationPresenter(caseName, passivePresenter, "passive notification", failures);
+  }
+
+  return { required: true, ok: failures.length === failuresBefore };
+}
+
+function findEvent(events, type) {
+  return Array.isArray(events) ? events.find((event) => event && event.type === type) : undefined;
+}
+
+function lifecycleEventType(type) {
+  return `event:${type}`;
+}
+
+function expectPassiveNotificationPresenter(caseName, presenter, label, failures) {
+  expectPresenterField(caseName, presenter, "closed", false, `native presenter closed ${label}`, failures);
+  expectPresenterField(caseName, presenter, "attached", true, `native presenter attached ${label}`, failures);
+  expectPresenterField(caseName, presenter, "nativeHostOpen", true, `native presenter host open ${label}`, failures);
+  expectPresenterField(caseName, presenter, "mode", "passive", `native presenter mode ${label}`, failures);
+  expectPresenterField(caseName, presenter, "clickThrough", true, `native presenter click-through ${label}`, failures);
+  expectPresenterField(caseName, presenter, "focusable", false, `native presenter focusable ${label}`, failures);
+  expectPresenterField(caseName, presenter, "transparent", true, `native presenter transparent ${label}`, failures);
+  expectPresenterField(caseName, presenter, "overlayActive", false, `native presenter overlay active ${label}`, failures);
+  expectPresenterField(caseName, presenter, "idleFps", 0, `native presenter idle FPS ${label}`, failures);
 }
 
 function verifyManagedLifecycleWaits(caseName, action, entries, failures) {
