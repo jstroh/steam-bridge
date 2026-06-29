@@ -171,7 +171,11 @@ Verified:
   activation/deactivation, close/focus return, parked idle presenter state, and
   no crash evidence. The artifact also passes
   `npm run macos:overlay-matrix:summarize -- --artifact-root <path>`, which
-  audits each collected result and lifecycle log.
+  audits each collected result and lifecycle log. Non-store overlay targets must
+  attach Steam's `gameoverlayui` to the smoke process under game ID `480`; the
+  Steam store surface may report the generated shortcut game ID, so that case is
+  validated by Steam launch/injection identity, app ID `480` callbacks,
+  close-and-park lifecycle evidence, and crash diagnostics instead.
 - `scripts/macos-overlay-matrix.sh` now owns repeatable macOS proof setup. It
   prints or runs a matrix of Steam-launched helper cases, installs or updates one
   stable Steam shortcut with the native launcher env-file flag, restarts Steam

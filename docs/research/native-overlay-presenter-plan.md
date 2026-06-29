@@ -648,8 +648,11 @@ Current evidence:
   plumbing, managed Shift+Tab shortcut open/close, profile, community, stats,
   achievements, user
   chat/profile, and known dialog-equivalent routes with paired active/inactive
-  callbacks where expected, app focus return, clean crash diagnostics, and idle
-  presenter parking at `currentFps=0`.
+  callbacks where expected, one `gameoverlayui` target, app focus return, clean
+  crash diagnostics, and idle presenter parking at `currentFps=0`. Non-store
+  targets attach under game ID `480`; the Steam store surface can report the
+  generated shortcut game ID while still emitting app ID `480` callbacks and
+  passing the same close-and-park proof.
 - The macOS native presenter now reads CoreGraphics session/display state before
   creating the host. If the screen is locked or the main display is asleep, the
   presenter skips native host creation, reports

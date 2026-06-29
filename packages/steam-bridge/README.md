@@ -488,7 +488,8 @@ self-test is part of package smoke coverage and includes the macOS artifact
 summary self-test. After a live run it summarizes every macOS result and
 lifecycle log, failing if a case loses Steam launch/injection identity, uses
 nonzero managed overlay timing, reports crash diagnostics, duplicates
-`gameoverlayui` targets attached to the smoke process, misses passive
+`gameoverlayui` targets attached to the smoke process, attaches a non-store
+overlay target under a game ID other than `480`, misses passive
 notification callbacks, misses checkout `openCheckoutAndWait(...)` completion
 after close/parking, or misses active/inactive close-and-park evidence for
 interactive overlays. To audit an

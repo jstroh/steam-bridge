@@ -170,6 +170,7 @@ function summarizeMatrixArtifacts(root) {
         `parked=${summary.parked}`,
         `passive=${summary.passive}`,
         `overlayTargets=${summary.overlayTargets}`,
+        `overlayGameIds=${summary.overlayGameIds.join(",") || "none"}`,
         `zeroTiming=${summary.zeroTiming}`,
         `openAndWait=${summary.openAndWait}`,
         `checkoutWait=${summary.checkoutWait}`,
@@ -205,6 +206,7 @@ function verifyCase(caseId, metadata, result, lifecycle, failures) {
   const electronOverlay = readElectronOverlay(nativePresenter);
   const lifecycleEntries = lifecycle.entries;
   const overlayTargets = countOverlayTargets(overlayProcesses);
+  const overlayGameIds = collectOverlayGameIds(overlayProcesses);
   const passiveConfig = PASSIVE_NOTIFICATION_ACTIONS.get(actionName);
   const isPassive = Boolean(passiveConfig);
   const activated = lifecycleEntries.some(isLifecycleOverlayActiveEvent);
@@ -278,9 +280,20 @@ function verifyCase(caseId, metadata, result, lifecycle, failures) {
   expect(overlayProcesses.available === true, `${caseId}: overlay process diagnostics available`, failures);
   expect(overlayProcesses.platform === "darwin", `${caseId}: overlay process platform is darwin`, failures);
   expect(overlayTargets === 1, `${caseId}: exactly one gameoverlayui target`, failures);
+  const requirePublicOverlayGameId = !isStoreOverlayAction(actionName);
   for (const target of Array.isArray(overlayProcesses.gameoverlayui) ? overlayProcesses.gameoverlayui : []) {
     expect(target.gameId != null, `${caseId}: gameoverlayui game ID is recorded`, failures);
+    if (requirePublicOverlayGameId) {
+      expect(String(target.gameId) === "480", `${caseId}: gameoverlayui game ID is public test App ID 480`, failures);
+    }
     expect(Number(target.targetPid) === Number(processInfo.pid), `${caseId}: gameoverlayui targets the smoke process`, failures);
+    if (requirePublicOverlayGameId && typeof target.command === "string" && target.command.length > 0) {
+      expect(
+        /\s-gameid\s+480(?:\s|$)/.test(target.command),
+        `${caseId}: gameoverlayui command line uses -gameid 480`,
+        failures
+      );
+    }
   }
 
   if (isPassive) {
@@ -312,11 +325,23 @@ function verifyCase(caseId, metadata, result, lifecycle, failures) {
     parked,
     passive: isPassive,
     overlayTargets,
+    overlayGameIds,
     zeroTiming,
     openAndWait: openAndWait.required ? openAndWait.ok : "n/a",
     checkoutWait: checkoutWait.required ? checkoutWait.ok : "n/a",
     crashOk
   };
+}
+
+function isStoreOverlayAction(actionName) {
+  return actionName === "presenter-store" || actionName === "presenter-store-open-and-wait";
+}
+
+function collectOverlayGameIds(overlayProcesses) {
+  if (!Array.isArray(overlayProcesses.gameoverlayui)) {
+    return [];
+  }
+  return [...new Set(overlayProcesses.gameoverlayui.map((target) => String(target.gameId ?? "unknown")))];
 }
 
 function verifyOpenAndWaitCompletion(caseId, actionName, entries, failures) {
@@ -509,7 +534,7 @@ function runSelfTest() {
   try {
     createSelfTestFixture(fixtureRoot);
     const summary = summarizeMatrixArtifacts(fixtureRoot);
-    assert.equal(summary.caseSummaries.length, 4, "summary self-test should include four cases");
+    assert.equal(summary.caseSummaries.length, 5, "summary self-test should include five cases");
     console.log("macOS overlay matrix summary self-test passed.");
   } finally {
     fs.rmSync(fixtureRoot, { recursive: true, force: true });
@@ -579,7 +604,26 @@ function createSelfTestFixture(root) {
       ]
     },
     {
-      caseId: "03-shortcut-friends",
+      caseId: "03-store-openwait",
+      action: "presenter-store-open-and-wait",
+      overlayGameId: "15338446133907161088",
+      resultPresenter: activePresenterFixture(14),
+      lifecycle: [
+        { type: "event:overlay:presenter-open-and-wait-start", payload: { presenter: activePresenterFixture(14) } },
+        { type: "event:callback:overlay-activated", payload: { active: true, appId: 480 } },
+        { type: "event:overlay:presenter-wait-shown", payload: { presenter: activePresenterFixture(15) } },
+        { type: "event:callback:overlay-activated", payload: { active: false, appId: 480 } },
+        { type: "event:overlay:presenter-after-close", payload: { presenter: parkedPresenterFixture(16) } },
+        { type: "event:overlay:presenter-parked", payload: { presenter: parkedPresenterFixture(16) } },
+        {
+          type: "event:overlay:presenter-open-and-wait-complete",
+          payload: { shown: activePresenterFixture(15), parked: parkedPresenterFixture(16) }
+        },
+        { type: "event:overlay:presenter-after-close-stable", payload: { presenter: parkedPresenterFixture(16) } }
+      ]
+    },
+    {
+      caseId: "04-shortcut-friends",
       action: "presenter-shortcut",
       resultPresenter: parkedPresenterFixture(1),
       lifecycle: [
@@ -593,7 +637,7 @@ function createSelfTestFixture(root) {
       ]
     },
     {
-      caseId: "04-checkout",
+      caseId: "05-checkout",
       action: "presenter-checkout",
       resultPresenter: activePresenterFixture(30),
       lifecycle: [
@@ -622,6 +666,9 @@ function createSelfTestFixture(root) {
     const result = JSON.parse(JSON.stringify(baseResult));
     result.action.action = fixture.action;
     result.snapshot.overlay.nativePresenter.value = fixture.resultPresenter;
+    const overlayGameId = fixture.overlayGameId || "480";
+    result.snapshot.overlayProcesses.gameoverlayui[0].gameId = overlayGameId;
+    result.snapshot.overlayProcesses.gameoverlayui[0].command = `gameoverlayui -pid 4242 -gameid ${overlayGameId}`;
     fs.mkdirSync(diagnosticDir, { recursive: true });
     fs.writeFileSync(resultFile, `${RESULT_PREFIX}${JSON.stringify(result)}\n`);
     fs.writeFileSync(
