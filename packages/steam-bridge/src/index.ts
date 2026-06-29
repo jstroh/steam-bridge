@@ -1898,6 +1898,29 @@ export interface ElectronSteamOverlayCheckoutPrepareOptions {
   durationMs?: number;
 }
 
+export class SteamOverlayNativeHostUnavailableError extends Error {
+  readonly code = "STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE";
+  readonly reason: NativeOverlayHostUnavailableReason;
+  readonly macOverlayEnvironment?: MacOverlayEnvironment;
+
+  constructor(snapshot: Pick<ElectronSteamOverlaySnapshot, "nativeHostUnavailableReason" | "macOverlayEnvironment">) {
+    const reason = snapshot.nativeHostUnavailableReason;
+    if (!reason) {
+      throw new Error("Cannot create SteamOverlayNativeHostUnavailableError without an unavailable reason.");
+    }
+
+    super(
+      `Steam overlay native host is unavailable: ${formatNativeOverlayHostUnavailableReason(
+        reason
+      )}. Wait until the session is interactive before opening the Steam overlay.`
+    );
+    this.name = "SteamOverlayNativeHostUnavailableError";
+    Object.setPrototypeOf(this, new.target.prototype);
+    this.reason = reason;
+    this.macOverlayEnvironment = snapshot.macOverlayEnvironment;
+  }
+}
+
 export type ElectronOverlayWindow = Parameters<typeof electronOverlayPresenterOptionsImpl>[0] & {
   isFocused?(): boolean;
   on?(event: ElectronOverlayWindowGeometryEvent, handler: () => void): void;
@@ -9165,16 +9188,14 @@ function assertElectronSteamOverlayNativeHostAvailable(snapshot: ElectronSteamOv
   }
 }
 
-function electronSteamOverlayNativeHostUnavailableError(snapshot: ElectronSteamOverlaySnapshot): Error | undefined {
+function electronSteamOverlayNativeHostUnavailableError(
+  snapshot: ElectronSteamOverlaySnapshot
+): SteamOverlayNativeHostUnavailableError | undefined {
   if (snapshot.electronOverlay.presenterMode === "session" || !snapshot.nativeHostUnavailableReason) {
     return undefined;
   }
 
-  return new Error(
-    `Steam overlay native host is unavailable: ${formatNativeOverlayHostUnavailableReason(
-      snapshot.nativeHostUnavailableReason
-    )}. Wait until the session is interactive before opening the Steam overlay.`
-  );
+  return new SteamOverlayNativeHostUnavailableError(snapshot);
 }
 
 function formatNativeOverlayHostUnavailableReason(reason: NativeOverlayHostUnavailableReason): string {

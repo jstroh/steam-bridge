@@ -7323,16 +7323,26 @@ test("electron steam overlay manager fails fast while the macOS native host is u
   });
 
   assert.equal(overlay.snapshot().nativeHostUnavailableReason, "macos-screen-locked");
-  assert.throws(() => overlay.open({ type: "friends" }), /macOS screen is locked/);
+  const assertUnavailableError = (error) => {
+    assert.equal(error instanceof steam.SteamOverlayNativeHostUnavailableError, true);
+    assert.equal(error.name, "SteamOverlayNativeHostUnavailableError");
+    assert.equal(error.code, "STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE");
+    assert.equal(error.reason, "macos-screen-locked");
+    assert.deepEqual(error.macOverlayEnvironment, { screenLocked: true, displayAsleep: false });
+    assert.match(error.message, /macOS screen is locked/);
+    return true;
+  };
+
+  assert.throws(() => overlay.open({ type: "friends" }), assertUnavailableError);
 
   await assert.rejects(
     overlay.openAndWait(
       { type: "web", url: "https://store.steampowered.com/app/480/", modal: true },
       { showTimeoutMs: 200, closeTimeoutMs: 200 }
     ),
-    /macOS screen is locked/
+    assertUnavailableError
   );
-  await assert.rejects(overlay.waitForOverlayShown({ timeoutMs: 200 }), /macOS screen is locked/);
+  await assert.rejects(overlay.waitForOverlayShown({ timeoutMs: 200 }), assertUnavailableError);
 
   let checkoutOperationRan = false;
   await assert.rejects(
@@ -7343,7 +7353,7 @@ test("electron steam overlay manager fails fast while the macOS native host is u
       },
       { showTimeoutMs: 200, closeTimeoutMs: 200 }
     ),
-    /macOS screen is locked/
+    assertUnavailableError
   );
   assert.equal(checkoutOperationRan, false);
 

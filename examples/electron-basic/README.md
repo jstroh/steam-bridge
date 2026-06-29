@@ -838,6 +838,11 @@ The managed Electron overlay defaults to scoped activation holds instead of
 duration-based preparation. Lower-level split-step helpers such as
 `prepareForCheckout(durationMs)` are for diagnostics or unusual custom flows
 where a standalone hold is intentional.
+On macOS, if the screen is locked or the display is asleep, the managed
+overlay helpers fail before activation with
+`SteamOverlayNativeHostUnavailableError`. Use its
+`STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE` code and `reason` field for fallback
+logic; do not wait for overlay timeouts in that state.
 
 For a Steam Deck Desktop Mode shortcut launch, omit the Big Picture assertion
 but keep the Steam launch and overlay injection assertions:

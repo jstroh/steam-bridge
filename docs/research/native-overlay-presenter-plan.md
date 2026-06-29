@@ -652,8 +652,10 @@ Current evidence:
   `macos-display-asleep`, keeps `currentFps=0`, and retries attachment on the
   next presenter operation after the Mac becomes interactive again. Managed
   Electron overlay open/wait and checkout helpers fail before Steam overlay
-  activation while that unavailable reason is present, so callers can fall back
-  without waiting for a guard timeout. Unit coverage verifies locked,
+  activation with `SteamOverlayNativeHostUnavailableError` while that
+  unavailable reason is present, so callers can check `code`, `reason`, and
+  `macOverlayEnvironment` and fall back without waiting for a guard timeout.
+  Unit coverage verifies locked,
   display-asleep, post-unlock lazy attach, and managed fail-fast paths.
 - BrowserWindow-only overlay support is not proven.
 - Steam launch, app ID, auth, and callbacks are not enough to claim overlay

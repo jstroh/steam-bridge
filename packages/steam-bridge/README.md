@@ -299,8 +299,12 @@ including the selected `backend` (`x11-glx`, `macos-metal`, `macos-opengl`, or
 `none`) and, when available from the Electron window, current `bounds`. On
 macOS, snapshots also report `macOverlayEnvironment` and
 `nativeHostUnavailableReason` when a locked screen or sleeping display prevents
-safe native host creation. The snapshot also includes an `electronOverlay` block
-with the active presenter mode, notification-priming
+safe native host creation. Managed overlay open/wait and checkout helpers throw
+`SteamOverlayNativeHostUnavailableError` in that state; check
+`error.code === "STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE"` and `error.reason`
+instead of parsing the message when falling back to another purchase or browser
+flow. The snapshot also includes an `electronOverlay` block with the active
+presenter mode, notification-priming
 policy, shortcut policy, and whether the manager owns Electron window-close
 cleanup. The smoke verifiers
 can require those managed diagnostics with `--require-electron-overlay`,
