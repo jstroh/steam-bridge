@@ -4406,6 +4406,7 @@ test("overlay helpers map constants and forward modal/store options", (t) => {
   steam.overlay.activateToStore(480, steam.StoreFlag.AddToCart);
   steam.overlay.openFriendsOverlay({ presenter: mockPresenter });
   steam.overlay.openProfileOverlay({ steamId64: 76561198000000000n, presenter: mockPresenter });
+  steam.overlay.openPlayersOverlay({ steamId64: 76561198000000000n, presenter: mockPresenter });
   steam.overlay.openCommunityOverlay({ appId: 480, presenter: mockPresenter });
   steam.overlay.openStatsOverlay({ appId: 480, steamId64: 76561198000000000n, presenter: mockPresenter });
   steam.overlay.openAchievementsOverlay({ appId: 480, steamId64: 76561198000000000n, presenter: mockPresenter });
@@ -4435,6 +4436,7 @@ test("overlay helpers map constants and forward modal/store options", (t) => {
   });
   steam.overlay.openSteamOverlay({ type: "friends", presenter: mockPresenter });
   steam.overlay.openSteamOverlay({ type: "profile", steamId64: 76561198000000000n, presenter: mockPresenter });
+  steam.overlay.openSteamOverlay({ type: "players", steamId64: 76561198000000000n, presenter: mockPresenter });
   steam.overlay.openSteamOverlay({ type: "community", appId: 480, presenter: mockPresenter });
   steam.overlay.openSteamOverlay({
     type: "stats",
@@ -4454,6 +4456,13 @@ test("overlay helpers map constants and forward modal/store options", (t) => {
     presenter: mockPresenter
   });
   steam.overlay.openSteamOverlay({ type: "dialog", dialog: steam.Dialog.Friends, presenter: mockPresenter });
+  steam.overlay.openSteamOverlay({
+    type: "dialog",
+    dialog: steam.Dialog.Players,
+    appId: 480,
+    steamId64: 76561198000000000n,
+    presenter: mockPresenter
+  });
   steam.overlay.openSteamOverlay({ type: "dialog", dialog: steam.Dialog.Community, appId: 480, presenter: mockPresenter });
   steam.overlay.openSteamOverlay({
     type: "dialog",
@@ -4521,6 +4530,7 @@ test("overlay helpers map constants and forward modal/store options", (t) => {
       { method: "overlayActivateToStore", args: [480, steam.StoreFlag.AddToCart] },
       { method: "activateOverlayToWebPage", args: [steam.STEAM_FRIENDS_OVERLAY_URL, true] },
       { method: "activateOverlayToWebPage", args: [steam.steamCommunityProfileUrl(76561198000000000n), true] },
+      { method: "activateOverlayToWebPage", args: [steam.steamCommunityPlayersUrl(76561198000000000n), true] },
       { method: "activateOverlayToWebPage", args: [steam.steamCommunityAppUrl(480), true] },
       { method: "activateOverlayToWebPage", args: [steam.steamCommunityUserStatsUrl(480, 76561198000000000n), true] },
       { method: "activateOverlayToWebPage", args: [steam.steamCommunityAchievementsUrl(480, 76561198000000000n), true] },
@@ -4536,6 +4546,7 @@ test("overlay helpers map constants and forward modal/store options", (t) => {
       { method: "overlayActivateToStore", args: [480, steam.StoreFlag.AddToCart] },
       { method: "activateOverlayToWebPage", args: [steam.STEAM_FRIENDS_OVERLAY_URL, true] },
       { method: "activateOverlayToWebPage", args: [steam.steamCommunityProfileUrl(76561198000000000n), true] },
+      { method: "activateOverlayToWebPage", args: [steam.steamCommunityPlayersUrl(76561198000000000n), true] },
       { method: "activateOverlayToWebPage", args: [steam.steamCommunityAppUrl(480), true] },
       { method: "activateOverlayToWebPage", args: [steam.steamCommunityUserStatsUrl(480, 76561198000000000n), true] },
       { method: "activateOverlayToWebPage", args: [steam.steamCommunityAchievementsUrl(480, 76561198000000000n), true] },
@@ -4544,6 +4555,7 @@ test("overlay helpers map constants and forward modal/store options", (t) => {
         args: ["https://checkout.steampowered.com/checkout/approvetxn/987/", true]
       },
       { method: "activateOverlayToWebPage", args: [steam.STEAM_FRIENDS_OVERLAY_URL, true] },
+      { method: "activateOverlayToWebPage", args: [steam.steamCommunityPlayersUrl(76561198000000000n), true] },
       { method: "activateOverlayToWebPage", args: [steam.steamCommunityAppUrl(480), true] },
       { method: "activateOverlayToWebPage", args: [steam.steamCommunityAppUrl(480), true] },
       { method: "activateOverlayToWebPage", args: [steam.steamCommunityUserStatsUrl(480, 76561198000000000n), true] },
@@ -4559,6 +4571,10 @@ test("overlay helpers map constants and forward modal/store options", (t) => {
   assert.equal(
     steam.steamCommunityProfileUrl(76561198000000000n),
     "https://steamcommunity.com/profiles/76561198000000000/"
+  );
+  assert.equal(
+    steam.steamCommunityPlayersUrl(76561198000000000n),
+    "https://steamcommunity.com/profiles/76561198000000000/friends/coplay/"
   );
   assert.equal(steam.steamCommunityStatsUrl(480), "https://steamcommunity.com/stats/480/");
   assert.equal(
@@ -4580,31 +4596,13 @@ test("overlay helpers map constants and forward modal/store options", (t) => {
   );
   assert.throws(() => steam.steamCommunityAchievementsUrl(0), /Invalid Steam App ID/);
   assert.throws(() => steam.steamCommunityProfileUrl("not-a-steam-id"), /Invalid Steam ID/);
+  assert.throws(() => steam.steamCommunityPlayersUrl("not-a-steam-id"), /Invalid Steam ID/);
   assert.throws(() => steam.steamCommunityAchievementsUrl(480, "not-a-steam-id"), /Invalid Steam ID/);
   assert.throws(() => steam.steamCheckoutTransactionUrl(0), /Invalid Steam transaction ID/);
   assert.throws(() => steam.steamCheckoutTransactionUrl(Number.MAX_SAFE_INTEGER + 1), /Invalid Steam transaction ID/);
   assert.throws(() => steam.overlay.openCheckoutOverlay({ presenter: mockPresenter }), /requires a url, steamUrl, or transactionId/);
   assert.deepEqual(presenterCalls, [
-    "prepareForOverlay",
-    "prepareForOverlay",
-    "prepareForOverlay",
-    "prepareForOverlay",
-    "prepareForOverlay",
-    "prepareForOverlay",
-    "prepareForOverlay",
-    "prepareForOverlay",
-    "prepareForOverlay",
-    "prepareForOverlay",
-    "prepareForOverlay",
-    "prepareForOverlay",
-    "prepareForOverlay",
-    "prepareForOverlay",
-    "prepareForOverlay",
-    "prepareForOverlay",
-    "prepareForOverlay",
-    "prepareForOverlay",
-    "prepareForOverlay",
-    "prepareForOverlay",
+    ...Array(23).fill("prepareForOverlay"),
     "prepareForTransparentInputOverlay",
     "prepareForTransparentInputOverlay"
   ]);

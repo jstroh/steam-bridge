@@ -66,7 +66,7 @@ Options:
   --app-id ID                    Steam App ID to use. Defaults to 480.
   --action NAME                  none, dialog, friends, store, web, native-probe, native-dialog, native-store, native-web,
                                  presenter-dialog, presenter-dialog-auto, presenter-store, presenter-web, presenter-friends,
-                                 presenter-profile, presenter-community, presenter-stats, presenter-achievements, presenter-checkout,
+                                 presenter-profile, presenter-players, presenter-community, presenter-stats, presenter-achievements, presenter-checkout,
                                  presenter-shortcut, presenter-achievement-progress.
   --overlay-profile NAME         Electron overlay profile. Defaults to diagnostic.
   --overlay-scrub-child-env true|false

@@ -186,6 +186,7 @@ ipcMain.handle("steam-smoke:overlay-dialog", () => openDialogOverlay());
 ipcMain.handle("steam-smoke:presenter-web", () => openPresenterWebOverlay());
 ipcMain.handle("steam-smoke:presenter-friends", () => openPresenterFriendsOverlay());
 ipcMain.handle("steam-smoke:presenter-profile", () => openPresenterProfileOverlay());
+ipcMain.handle("steam-smoke:presenter-players", () => openPresenterPlayersOverlay());
 ipcMain.handle("steam-smoke:presenter-community", () => openPresenterCommunityOverlay());
 ipcMain.handle("steam-smoke:presenter-stats", () => openPresenterStatsOverlay());
 ipcMain.handle("steam-smoke:presenter-achievements", () => openPresenterAchievementsOverlay());
@@ -429,6 +430,9 @@ async function runAutorunAction(action) {
       case "presenter-profile":
         openPresenterProfileOverlay();
         return { ok: true, action };
+      case "presenter-players":
+        openPresenterPlayersOverlay();
+        return { ok: true, action };
       case "presenter-community":
         openPresenterCommunityOverlay();
         return { ok: true, action };
@@ -643,6 +647,27 @@ function openPresenterProfileOverlay() {
   return snapshot();
 }
 
+function openPresenterPlayersOverlay() {
+  const activeClient = requireClient();
+  const overlay = ensureElectronSteamOverlay(activeClient);
+  const steamId64 = activeClient.localplayer.getSteamId().steamId64;
+  overlay.open({ type: "players", steamId64 });
+  recordEvent("overlay:presenter-open", {
+    target: "players",
+    steamId64,
+    url: steamworks.steamCommunityPlayersUrl(steamId64),
+    modal: true,
+    presenter: overlay.snapshot()
+  });
+  observeManagedOverlayLifecycle(overlay, {
+    target: "players",
+    steamId64,
+    url: steamworks.steamCommunityPlayersUrl(steamId64),
+    modal: true
+  });
+  return snapshot();
+}
+
 function openPresenterCommunityOverlay() {
   const overlay = ensureElectronSteamOverlay();
   overlay.open({ type: "community", appId: APP_ID });
@@ -819,6 +844,8 @@ function resolveShortcutOverlayTarget() {
       return { type: "store", appId: APP_ID };
     case "profile":
       return { type: "profile" };
+    case "players":
+      return { type: "players" };
     case "community":
       return { type: "community", appId: APP_ID };
     case "stats":
@@ -1597,6 +1624,7 @@ function isNativeSessionAction(action) {
     action === "presenter-web" ||
     action === "presenter-friends" ||
     action === "presenter-profile" ||
+    action === "presenter-players" ||
     action === "presenter-community" ||
     action === "presenter-stats" ||
     action === "presenter-achievements" ||

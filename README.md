@@ -477,7 +477,7 @@ activation callback.
 
 Steam Bridge routes overlay targets by how Steam renders them. Prefer
 `client.overlay.createElectronSteamOverlay(mainWindow).open(...)` for Electron
-app code: web, store, Friends, Profile, Community, Stats, Achievements, and checkout
+app code: web, store, Friends, Profile, Players, Community, Stats, Achievements, and checkout
 targets use the presenter-backed paths proven on Steam Deck Desktop Mode, while
 `route: "native"`, `openNativeStoreOverlay(...)`, and the lower-level named
 helpers remain available for explicit native diagnostics. Store targets default
@@ -512,23 +512,30 @@ opens Steam Community chat through the same native web presenter with one
 profile page, call `steamOverlay.open({ type: "profile", steamId64 })`; omit
 `steamId64` to open the current user's profile. This replaces the common
 profile case for raw `ActivateGameOverlayToUser` with the same presenter-backed
-Steam web surface. For app
+Steam web surface. For recently played-with players, call
+`steamOverlay.open({ type: "players", steamId64 })`; omit `steamId64` to open
+the current user's Steam Community players page through the same
+presenter-backed web surface. For app
 achievements, call `steamOverlay.open({ type: "achievements", appId })`; it
 opens the current user's app achievements page through the same presenter-backed
 Steam web overlay route instead of relying on the raw Desktop achievements
 dialog. Steam Community may redirect apps without public web stats to the user's
 profile, so use your real app for achievements content proof.
-The high-level dialog target also uses these verified equivalents for known
-dialog names: `Friends` opens chat, `Community` and `OfficialGameGroup` open the
-app Community hub, `Stats` opens the current user's app stats page, and
+The high-level dialog target also uses presenter-backed equivalents for known
+dialog names: `Friends` opens chat, `Players` opens the current user's Steam
+Community players page, `Community` and `OfficialGameGroup` open the app
+Community hub, `Stats` opens the current user's app stats page, and
 `Achievements` opens the current user's achievements page. On Steam Deck Desktop
-Mode, the public App ID `480` smoke matrix has verified all five dialog names
-through `presenter-dialog-auto` with visible Steam web content, active/inactive
+Mode, the public App ID `480` smoke matrix has verified `Friends`, `Community`,
+`OfficialGameGroup`, `Stats`, and `Achievements` through
+`presenter-dialog-auto` with visible Steam web content, active/inactive
 callbacks, one overlay target, clean return to Electron, parked idle presenter
-state, and no crash evidence. In `route: "auto"` mode, unsupported dialog names
-throw instead of silently falling back to raw Steam overlay behavior. Pass
-`route: "native"` only when you intentionally need raw `ActivateGameOverlay`
-dialog behavior for diagnostics.
+state, and no crash evidence. `Players` is implemented and included in the
+matrix, but still needs the same visual Deck pass before it should be called
+Deck-verified. In `route: "auto"` mode, unsupported dialog names throw instead
+of silently falling back to raw Steam overlay behavior. Pass `route: "native"`
+only when you intentionally need raw `ActivateGameOverlay` dialog behavior for
+diagnostics.
 Do not use `steam://open/overlay` as a generic overlay-toggle substitute; Deck
 Desktop testing showed it can activate Steam's callback path while leaving the
 native presenter black and the smoke process unrecovered.
@@ -548,11 +555,11 @@ activation, visual open, close, and back-to-app checks. Use
 or the lower-level `client.overlay.attachPresenter(...)`,
 `client.overlay.openSteamOverlay(...)`, `client.overlay.openWebOverlay(...)`,
 `client.overlay.openFriendsOverlay(...)`, `client.overlay.openProfileOverlay(...)`,
-`client.overlay.openCommunityOverlay(...)`,
+`client.overlay.openPlayersOverlay(...)`, `client.overlay.openCommunityOverlay(...)`,
 `client.overlay.openStatsOverlay(...)`, `client.overlay.openStoreOverlay(...)`,
 and `client.overlay.openDialogEquivalentOverlay(...)` helpers, or the Electron smoke app's
 `presenter-web` / `presenter-store` / `presenter-friends` / `presenter-profile` /
-`presenter-community` / `presenter-stats` / `presenter-dialog-auto` / `presenter-shortcut` actions for
+`presenter-players` / `presenter-community` / `presenter-stats` / `presenter-dialog-auto` / `presenter-shortcut` actions for
 that proof. The older
 `activateToWebPageWithNativeSession(..., { modal: true })` / `native-web` path
 remains compatibility coverage. Steam's raw Desktop Mode dialog/Game Overview
@@ -595,7 +602,7 @@ Add `--overlay-game-id shortcut` when investigating
 whether raw Steam overlay close/back routing depends on the full non-Steam
 shortcut game ID. Focused Deck Desktop runs still show the raw toggle path as
 unresolved; the product overlay paths remain the managed shortcut bridge,
-`openSteamOverlay(...)`, the lower-level web/store/Friends/Community/Stats
+`openSteamOverlay(...)`, the lower-level web/store/Friends/Players/Community/Stats
 helpers, and passive presenter notifications.
 
 Set `STEAM_BRIDGE_ELECTRON_OVERLAY_PROFILE=repaint`, or pass

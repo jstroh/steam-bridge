@@ -88,7 +88,8 @@ for Steam non-Steam shortcuts:
 Supported autorun actions are `none`, `dialog`, `friends`, `store`, `web`,
 `native-dialog`, `native-store`, `native-web`, `native-probe`,
 `presenter-dialog`, `presenter-store`, `presenter-web`, `presenter-friends`,
-`presenter-community`, `presenter-stats`, `presenter-achievements`,
+`presenter-profile`, `presenter-players`, `presenter-community`,
+`presenter-stats`, `presenter-achievements`,
 `presenter-checkout`, `presenter-shortcut`, and
 `presenter-achievement-progress`.
 `native-probe` is a compatibility alias for `native-dialog`. On Linux, the
@@ -143,6 +144,10 @@ Use `presenter-profile` to verify
 `client.overlay.openProfileOverlay({ steamId64, presenter })`, which opens the
 current user's Steam Community profile through the same presenter-backed Steam
 web overlay route instead of the raw `ActivateGameOverlayToUser` profile path.
+Use `presenter-players` to verify
+`client.overlay.openPlayersOverlay({ steamId64, presenter })`, which opens the
+current user's Steam Community players page through the same presenter-backed
+Steam web overlay route instead of the raw Desktop Players dialog.
 Use `presenter-community` and `presenter-stats` to verify the product-shaped
 Steam Community app hub and current-user app stats routes:
 `client.overlay.openCommunityOverlay({ appId, presenter })` and
@@ -201,8 +206,9 @@ active overlay, the bridge lets Shift+Tab pass through instead of swallowing it,
 so Steam can handle close/toggle behavior. Deck Desktop proof now verifies the
 second Shift+Tab closes the overlay and returns focus to the app. Add
 `--shortcut-target <name>` to test another presenter-backed target through the
-same focused Shift+Tab path; supported smoke targets are `friends`, `profile`, `web`,
-`store`, `community`, `stats`, `achievements`, `dialog`, and `checkout`.
+same focused Shift+Tab path; supported smoke targets are `friends`, `profile`,
+`players`, `web`, `store`, `community`, `stats`, `achievements`, `dialog`, and
+`checkout`.
 The `dialog` target uses the high-level auto router; unsupported dialog names
 throw instead of silently falling back to raw Steam overlay behavior. Use the
 raw `presenter-dialog` action only for explicit diagnostics.
@@ -517,10 +523,12 @@ process. The current reusable-presenter close proofs are `--action presenter-web
 with `--web-modal true` for generic web/checkout-style overlays and
 `--action presenter-friends` / `--action presenter-community` /
 `--action presenter-profile` / `--action presenter-stats` for the
-product-shaped social/community surfaces.
+product-shaped social/community surfaces. `presenter-players` uses the same
+route shape and is included in the matrix, but still needs its visual Deck pass.
 These call `client.overlay.openWebOverlay(...)`,
 `client.overlay.openFriendsOverlay(...)`,
 `client.overlay.openProfileOverlay(...)`,
+`client.overlay.openPlayersOverlay(...)`,
 `client.overlay.openCommunityOverlay(...)`, and
 `client.overlay.openStatsOverlay(...)`, show Steam web overlay UI over the
 bridge-owned native presenter, and return to the smoke app. The older

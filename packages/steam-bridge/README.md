@@ -284,19 +284,25 @@ Electron child-process isolation intact. Use
 omit `steamId64` to open the current user's profile. This covers the common
 profile case for raw `ActivateGameOverlayToUser` through the same
 presenter-backed Steam web surface. Use
+`steamOverlay.open({ type: "players", steamId64 })` for the current user's or a
+specified user's Steam Community players page through the same presenter-backed
+web surface. Use
 `steamOverlay.open({ type: "community", appId })` for the app's Steam Community hub,
 `steamOverlay.open({ type: "stats", appId })` for the current user's app stats
 page, and `steamOverlay.open({ type: "achievements", appId })` for the current
 user's app achievements page through that same presenter-backed Steam web
 overlay route. Steam Community may redirect apps without public web stats to the
 user's profile, so use your real app for achievements content proof.
-The high-level dialog target also routes known dialog names through these
-verified equivalents: `Friends` opens chat, `Community` and
-`OfficialGameGroup` open the app Community hub, `Stats` opens the current user's
-app stats page, and `Achievements` opens the current user's achievements page.
-In `route: "auto"` mode, unsupported dialog names throw instead of silently
-falling back to raw Steam overlay behavior. Pass `route: "native"` only when you
-intentionally need raw `ActivateGameOverlay` dialog behavior for diagnostics.
+The high-level dialog target also routes known dialog names through
+presenter-backed equivalents: `Friends` opens chat, `Players` opens the current
+user's Steam Community players page, `Community` and `OfficialGameGroup` open
+the app Community hub, `Stats` opens the current user's app stats page, and
+`Achievements` opens the current user's achievements page. `Players` is
+implemented and matrix-covered, but still needs a visual Deck pass before it is
+called Deck-verified. In `route: "auto"` mode, unsupported dialog names throw
+instead of silently falling back to raw Steam overlay behavior. Pass
+`route: "native"` only when you intentionally need raw `ActivateGameOverlay`
+dialog behavior for diagnostics.
 The lower-level `activateDialog("Friends")` / Game Overview path is still an
 investigation path, and `steam://open/overlay` should not be used as a generic
 toggle substitute:
@@ -320,11 +326,11 @@ and back-to-app checks. Use `client.overlay.createElectronSteamOverlay(...)`
 with `steamOverlay.open(...)`, or the lower-level `client.overlay.attachPresenter(...)`,
 `client.overlay.openSteamOverlay(...)`, `client.overlay.openWebOverlay(...)`,
 `client.overlay.openFriendsOverlay(...)`, `client.overlay.openProfileOverlay(...)`,
-`client.overlay.openCommunityOverlay(...)`,
+`client.overlay.openPlayersOverlay(...)`, `client.overlay.openCommunityOverlay(...)`,
 `client.overlay.openStatsOverlay(...)`, and
 `client.overlay.openDialogEquivalentOverlay(...)` helpers, or the Electron smoke app's
 `presenter-web` / `presenter-friends` / `presenter-profile` /
-`presenter-community` / `presenter-stats` / `presenter-dialog-auto` / `presenter-shortcut` actions for
+`presenter-players` / `presenter-community` / `presenter-stats` / `presenter-dialog-auto` / `presenter-shortcut` actions for
 the generic proof. Deck testing has verified a
 single Steam overlay target,
 `active=true` overlay callbacks, overlay close input, and clean return to the

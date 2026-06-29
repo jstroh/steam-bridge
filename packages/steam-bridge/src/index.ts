@@ -1712,6 +1712,14 @@ export type SteamOverlayProfileTarget = NativeOverlayProfilePresenterOptions & {
   type: "profile";
 };
 
+export type NativeOverlayPlayersPresenterOptions = NativeOverlayWebPagePresenterOptions & {
+  steamId64?: bigint | number | string;
+};
+
+export type SteamOverlayPlayersTarget = NativeOverlayPlayersPresenterOptions & {
+  type: "players";
+};
+
 export type SteamOverlayCommunityTarget = NativeOverlayAppPagePresenterOptions & {
   type: "community";
 };
@@ -1749,6 +1757,7 @@ export type SteamOverlayTarget =
   | SteamOverlayStoreTarget
   | SteamOverlayFriendsTarget
   | SteamOverlayProfileTarget
+  | SteamOverlayPlayersTarget
   | SteamOverlayCommunityTarget
   | SteamOverlayStatsTarget
   | SteamOverlayAchievementsTarget
@@ -6851,6 +6860,10 @@ export function steamCommunityProfileUrl(steamId64: bigint | number | string = g
   return `${STEAM_COMMUNITY_BASE_URL}/profiles/${normalizeSteamId64(steamId64)}/`;
 }
 
+export function steamCommunityPlayersUrl(steamId64: bigint | number | string = getSteamId().steamId64): string {
+  return `${steamCommunityProfileUrl(steamId64)}friends/coplay/`;
+}
+
 export function steamCommunityUserStatsUrl(
   appId: number = getAppId(),
   steamId64: bigint | number | string = getSteamId().steamId64
@@ -7703,6 +7716,14 @@ export function openProfileOverlay(options: NativeOverlayProfilePresenterOptions
   });
 }
 
+export function openPlayersOverlay(options: NativeOverlayPlayersPresenterOptions = {}): NativeOverlayPresenter {
+  const { steamId64 = getSteamId().steamId64, modal = true, ...presenterOptions } = options;
+  return openWebOverlay(steamCommunityPlayersUrl(steamId64), {
+    ...presenterOptions,
+    modal
+  });
+}
+
 export function openCommunityOverlay(
   options: NativeOverlayAppPagePresenterOptions = {}
 ): NativeOverlayPresenter {
@@ -7754,6 +7775,10 @@ export function openDialogEquivalentOverlay(
   switch (name) {
     case "friends":
       return openFriendsOverlay(options);
+    case "players": {
+      const { appId: _appId, ...playersOptions } = options;
+      return openPlayersOverlay(playersOptions);
+    }
     case "community":
     case "officialgamegroup":
       return openCommunityOverlay(options);
@@ -7815,6 +7840,10 @@ export function openSteamOverlay(target: SteamOverlayTarget): NativeOverlayPrese
     case "profile": {
       const { type, ...options } = target;
       return openProfileOverlay(options);
+    }
+    case "players": {
+      const { type, ...options } = target;
+      return openPlayersOverlay(options);
     }
     case "community": {
       const { type, ...options } = target;
@@ -12715,6 +12744,7 @@ export const overlay = {
   openWebOverlay,
   openFriendsOverlay,
   openProfileOverlay,
+  openPlayersOverlay,
   openCommunityOverlay,
   openStatsOverlay,
   openAchievementsOverlay,
@@ -20492,6 +20522,7 @@ const defaultExport = {
   openWebOverlay,
   openFriendsOverlay,
   openProfileOverlay,
+  openPlayersOverlay,
   openCommunityOverlay,
   openStatsOverlay,
   openAchievementsOverlay,
@@ -20571,6 +20602,7 @@ const defaultExport = {
   steamStoreAppUrl,
   steamCommunityAppUrl,
   steamCommunityProfileUrl,
+  steamCommunityPlayersUrl,
   steamCommunityStatsUrl,
   steamCommunityUserStatsUrl,
   steamCommunityAchievementsUrl,

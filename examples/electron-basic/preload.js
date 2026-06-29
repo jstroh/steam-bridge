@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld("steamSmoke", {
   openPresenterWeb: () => ipcRenderer.invoke("steam-smoke:presenter-web"),
   openPresenterFriends: () => ipcRenderer.invoke("steam-smoke:presenter-friends"),
   openPresenterProfile: () => ipcRenderer.invoke("steam-smoke:presenter-profile"),
+  openPresenterPlayers: () => ipcRenderer.invoke("steam-smoke:presenter-players"),
   openPresenterCommunity: () => ipcRenderer.invoke("steam-smoke:presenter-community"),
   openPresenterStats: () => ipcRenderer.invoke("steam-smoke:presenter-stats"),
   openPresenterAchievements: () => ipcRenderer.invoke("steam-smoke:presenter-achievements"),
