@@ -301,6 +301,7 @@ function verifyCase(caseId, metadata, result, lifecycle, failures) {
   } else {
     expect(activated, `${caseId}: overlay active callback observed`, failures);
     expect(closed, `${caseId}: overlay inactive callback observed after active`, failures);
+    verifyOverlayCallbackAppIds(caseId, lifecycleEntries, 480, failures);
     expect(parked, `${caseId}: presenter parked after overlay close`, failures);
   }
 
@@ -457,6 +458,17 @@ function verifyPassiveNotification(caseId, entries, presenter, config, failures)
   }
 }
 
+function verifyOverlayCallbackAppIds(caseId, entries, expectedAppId, failures) {
+  for (const entry of entries.filter((item) => item && item.type === "event:callback:overlay-activated")) {
+    const appId = overlayEventAppId(entry);
+    if (appId !== expectedAppId) {
+      failures.push(
+        `${caseId}: overlay callback app ID expected ${formatValue(expectedAppId)}, got ${formatValue(appId)}`
+      );
+    }
+  }
+}
+
 function verifyLifecycleParking(caseId, entries, isPassive, failures) {
   if (isPassive) {
     return true;
@@ -582,9 +594,9 @@ function createSelfTestFixture(root) {
       resultPresenter: activePresenterFixture(10),
       lifecycle: [
         { type: "event:overlay:presenter-open-and-wait-start", payload: { presenter: activePresenterFixture(10) } },
-        { type: "event:callback:overlay-activated", payload: { active: true } },
+        { type: "event:callback:overlay-activated", payload: { active: true, appId: 480 } },
         { type: "event:overlay:presenter-wait-shown", payload: { presenter: activePresenterFixture(11) } },
-        { type: "event:callback:overlay-activated", payload: { active: false } },
+        { type: "event:callback:overlay-activated", payload: { active: false, appId: 480 } },
         { type: "event:overlay:presenter-after-close", payload: { presenter: parkedPresenterFixture(12) } },
         { type: "event:overlay:presenter-parked", payload: { presenter: parkedPresenterFixture(12) } },
         {
@@ -628,9 +640,9 @@ function createSelfTestFixture(root) {
       resultPresenter: parkedPresenterFixture(1),
       lifecycle: [
         { type: "event:overlay:shortcut-open", payload: { target: "friends" } },
-        { type: "event:callback:overlay-activated", payload: { active: true } },
+        { type: "event:callback:overlay-activated", payload: { active: true, appId: 480 } },
         { type: "event:overlay:presenter-wait-shown", payload: { presenter: activePresenterFixture(20) } },
-        { type: "event:callback:overlay-activated", payload: { active: false } },
+        { type: "event:callback:overlay-activated", payload: { active: false, appId: 480 } },
         { type: "event:overlay:presenter-after-close", payload: { presenter: parkedPresenterFixture(21) } },
         { type: "event:overlay:presenter-parked", payload: { presenter: parkedPresenterFixture(21) } },
         { type: "event:overlay:presenter-after-close-stable", payload: { presenter: parkedPresenterFixture(21) } }
@@ -645,9 +657,9 @@ function createSelfTestFixture(root) {
           type: "event:overlay:presenter-open",
           payload: { target: "checkout", api: "openCheckoutAndWait", presenter: activePresenterFixture(30) }
         },
-        { type: "event:callback:overlay-activated", payload: { active: true } },
+        { type: "event:callback:overlay-activated", payload: { active: true, appId: 480 } },
         { type: "event:overlay:presenter-wait-shown", payload: { presenter: activePresenterFixture(31) } },
-        { type: "event:callback:overlay-activated", payload: { active: false } },
+        { type: "event:callback:overlay-activated", payload: { active: false, appId: 480 } },
         { type: "event:overlay:presenter-after-close", payload: { presenter: parkedPresenterFixture(32) } },
         { type: "event:overlay:presenter-parked", payload: { presenter: parkedPresenterFixture(32) } },
         {
@@ -859,6 +871,23 @@ function overlayEventState(event) {
     }
     if (activePayload[key] === false || activePayload[key] === 0) {
       return false;
+    }
+  }
+  return undefined;
+}
+
+function overlayEventAppId(event) {
+  if (!event) {
+    return undefined;
+  }
+  const payload = event.payload;
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return undefined;
+  }
+  const activePayload = payload["0"] && typeof payload["0"] === "object" ? payload["0"] : payload;
+  for (const key of ["appId", "app_id", "m_nAppID"]) {
+    if (activePayload[key] != null) {
+      return Number(activePayload[key]);
     }
   }
   return undefined;
