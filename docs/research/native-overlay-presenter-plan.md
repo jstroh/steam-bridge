@@ -247,15 +247,16 @@ Current evidence:
   `gameoverlayui` target attached to the main/native process.
 - The reusable presenter defaults to `idleFps: 0`, so an attached idle host polls
   overlay state without continuously presenting frames. It starts pumping only
-  for interactive activation boost windows, active overlays, or
-  `overlayNeedsPresent`. Passive notification priming now performs one
-  presenter wake-up/poll and then waits for `overlayNeedsPresent` instead of
-  entering a fixed high-FPS boost window.
+  for operation-scoped activation holds, active overlays, lower-level explicit
+  preparation, or `overlayNeedsPresent`. Passive notification priming now
+  performs one presenter wake-up/poll and then waits for `overlayNeedsPresent`
+  instead of entering a fixed high-FPS boost window.
 - The managed Electron lifecycle waits are app-facing state waits, not tuning
-  loops. `openAndWait(...)`, `waitForOverlayShown()`, `waitForOverlayClosed()`,
-  and `parkWhenSteamOverlayCloses()` resolve from Steam overlay callbacks and
-  native presenter state changes in persistent presenter mode; app code can pass
-  timeouts or abort signals, but not polling intervals.
+  loops. `open(...)` and `openAndWait(...)` keep the presenter active until Steam
+  reports the overlay shown; `openAndWait(...)`, `waitForOverlayShown()`,
+  `waitForOverlayClosed()`, and `parkWhenSteamOverlayCloses()` resolve from Steam
+  overlay callbacks and native presenter state changes in persistent presenter
+  mode. App code can pass timeouts or abort signals, but not polling intervals.
 - Native hosts realign to their parent window on each pump. The managed
   Electron overlay also listens to BrowserWindow move, resize, fullscreen,
   maximize, restore, and show events and triggers one native presenter pump per
@@ -369,9 +370,10 @@ Current evidence:
   call `openAndWait(...)` for the whole show/close/park lifecycle, or await
   `waitForOverlayShown()` and `parkWhenSteamOverlayCloses()` when it needs
   lower-level control, instead of carrying local callback/timer plumbing. In
-  default persistent presenter mode `openAndWait(...)` holds the presenter until
-  Steam reports the overlay shown, then those waits resolve from Steam Bridge's
-  overlay callback and presenter state changes, with timeouts kept as guardrails.
+  default persistent presenter mode `open(...)` and `openAndWait(...)` hold the
+  presenter until Steam reports the overlay shown, then those waits resolve from
+  Steam Bridge's overlay callback and presenter state changes, with timeouts kept
+  as guardrails.
   The smoke app's `presenter-web-open-and-wait` action now exercises that exact
   builder-facing helper and the Deck close verifier requires its completion
   event after `GameOverlayActivated(false)` and presenter parking.

@@ -121,10 +121,10 @@ to prove checkout or transaction behavior:
 | `steamOverlay.open({ type: "checkout", steamUrl })` or `steamOverlay.open({ type: "checkout", transactionId })` | Must be run from the actual Steam app with the matching App ID and a configured product or transaction. | Purchase or transaction overlay behavior through the same managed presenter as generic web overlays. |
 | Web API `InitTxn` flow | Requires your own backend or publisher credentials. | End-to-end transaction overlay behavior for your app. Deck Game Mode and Desktop Mode should both be validated from the real Steam app, not from the public smoke shortcut. |
 
-For managed Electron product paths, `openAndWait(...)` keeps the presenter active
-until Steam reports the overlay shown, then parks from overlay callbacks and
-presenter state changes. The timeout options remain failure guardrails rather
-than activation timing controls.
+For managed Electron product paths, `open(...)` and `openAndWait(...)` keep the
+presenter active until Steam reports the overlay shown. `openAndWait(...)` then
+parks from overlay callbacks and presenter state changes. Timeout options and
+internal guards remain failure guardrails rather than activation timing controls.
 
 Important Deck finding: a non-Steam shortcut can initialize Steamworks with
 App ID `480` and can prove the store overlay, but it should not be used to

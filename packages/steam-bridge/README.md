@@ -234,11 +234,13 @@ used by the Steam Deck Desktop Mode proofs; `openSteamOverlay(...)` and the
 lower-level named helpers remain available for apps that prefer explicit
 lifecycle control. The public smoke app can verify checkout readiness, but real
 purchase-content proof still requires a real Steam app and configured product.
-Use `openAndWait(...)` for modal web, store, checkout, and dialog-equivalent
-overlays when app code should wait until Steam closes and the presenter parks.
-`openAndWait(...)` keeps the presenter active until Steam reports the overlay
-shown, then parks from overlay callbacks and presenter state changes instead of
-depending on a fixed activation window.
+`open(...)` keeps the presenter active with an operation-scoped hold until Steam
+reports the overlay shown; its internal timeout is only a failure guard for the
+case where Steam never activates the overlay. Use `openAndWait(...)` for modal
+web, store, checkout, and dialog-equivalent overlays when app code should also
+wait until Steam closes and the presenter parks. `openAndWait(...)` uses the
+same show hold, then parks from overlay callbacks and presenter state changes
+instead of depending on a fixed activation window.
 Use `waitForOverlayShown()`, `waitForOverlayClosed()`, and
 `parkWhenSteamOverlayCloses()` only when app code needs lower-level lifecycle
 await points; in the default persistent presenter mode these resolve from Steam

@@ -509,7 +509,9 @@ automatic authorization UI has a native presenter ready before the transaction
 begins. The wrapper holds the presenter active only while that operation is
 pending and then releases it back to passive idle, so app code does not tune
 overlay-preparation timers. If Steam returns a web checkout URL, pass it with
-`steamOverlay.open({ type: "checkout", steamUrl })`. If you have a transaction
+`steamOverlay.open({ type: "checkout", steamUrl })`; `open(...)` keeps the
+presenter active until Steam reports the overlay shown, with its timeout only as
+a failure guard if Steam never activates the overlay. If you have a transaction
 id, use `transactionId` and Steam Bridge builds the approval URL.
 `steamOverlay.prepareForCheckout()` remains available for lower-level flows
 that need to separate presenter priming from the backend call. Treat

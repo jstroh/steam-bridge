@@ -8105,7 +8105,22 @@ export function createElectronSteamOverlay(
     presenter,
     open(target: SteamOverlayTarget): NativeOverlayPresenter {
       assertOpen();
-      return openSteamOverlay({ ...target, presenter } as SteamOverlayTarget);
+      const presenterInternal = presenter as NativeOverlayPresenterInternal;
+      const activationHandle = presenterInternal.beginOverlayActivation?.(overlayActivationModeForTarget(target));
+      try {
+        const openedPresenter = openSteamOverlay({
+          ...target,
+          presenter,
+          ...(activationHandle ? { [SKIP_NATIVE_OVERLAY_PRESENTER_PREPARE]: true } : {})
+        } as SteamOverlayTarget);
+        if (activationHandle) {
+          releaseElectronSteamOverlayActivationWhenShown(controller, activationHandle);
+        }
+        return openedPresenter;
+      } catch (error) {
+        activationHandle?.disconnect();
+        throw error;
+      }
     },
     async openAndWait(
       target: SteamOverlayTarget,
@@ -8696,6 +8711,39 @@ function waitForElectronSteamOverlayState(
 }
 
 const ELECTRON_STEAM_OVERLAY_SESSION_WAIT_POLL_INTERVAL_MS = 50;
+const ELECTRON_STEAM_OVERLAY_OPEN_GUARD_TIMEOUT_MS = 15000;
+
+function releaseElectronSteamOverlayActivationWhenShown(
+  controller: ElectronSteamOverlay,
+  activationHandle: CallbackHandle
+): void {
+  let released = false;
+  const release = (): void => {
+    if (released) {
+      return;
+    }
+    released = true;
+    try {
+      activationHandle.disconnect();
+    } catch (error) {
+      process.emitWarning(error instanceof Error ? error : String(error), {
+        type: "SteamBridgeOverlayActivationWarning"
+      });
+    }
+  };
+
+  let waitForShown: Promise<ElectronSteamOverlaySnapshot>;
+  try {
+    waitForShown = controller.waitForOverlayShown({
+      timeoutMs: ELECTRON_STEAM_OVERLAY_OPEN_GUARD_TIMEOUT_MS
+    });
+  } catch {
+    release();
+    return;
+  }
+
+  void waitForShown.then(release, release);
+}
 
 function shouldUseElectronSteamOverlayFallbackPolling(
   controller: ElectronSteamOverlay,
