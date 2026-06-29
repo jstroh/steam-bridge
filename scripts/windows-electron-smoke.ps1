@@ -63,6 +63,7 @@ param(
   [switch]$RequireOverlayActivated,
   [switch]$RequireNoOverlayActivation,
   [int]$RequireRestoreFocusDelayMs = -1,
+  [switch]$RequireZeroManagedOverlayTiming,
   [string]$RequireActionErrorCode = "",
   [string]$RequireActionErrorReason = "",
   [string]$RequireNativeHostUnavailableReason = "",
@@ -368,6 +369,21 @@ function Assert-SmokeResult {
       $failures.Add("managed Electron overlay diagnostics available")
     } elseif ($electronOverlay.restoreFocusDelayMs -ne $RequireRestoreFocusDelayMs) {
       $failures.Add("managed Electron overlay restore focus delay is ${RequireRestoreFocusDelayMs}ms")
+    }
+  }
+  if ($RequireZeroManagedOverlayTiming) {
+    if (-not $electronOverlay) {
+      $failures.Add("managed Electron overlay diagnostics available")
+    } else {
+      if ($electronOverlay.restoreFocusDelayMs -ne 0) {
+        $failures.Add("managed Electron overlay restore focus delay is zero")
+      }
+      if ($electronOverlay.activationBoostMs -ne 0) {
+        $failures.Add("managed Electron overlay activation boost is zero")
+      }
+      if ($electronOverlay.activeGraceMs -ne 0) {
+        $failures.Add("managed Electron overlay active grace is zero")
+      }
     }
   }
   if ($RequireSteamLaunch -and $launch.steamLaunch -ne $true) {

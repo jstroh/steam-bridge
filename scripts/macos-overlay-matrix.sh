@@ -253,7 +253,7 @@ run_self_test() {
   fi
 
   require_contains "$core_output" "--action presenter-web-open-and-wait" "core matrix must include web openAndWait."
-  require_contains "$core_output" "--require-restore-focus-delay-ms 0" "core matrix must require zero restore focus delay."
+  require_contains "$core_output" "--require-zero-managed-overlay-timing" "core matrix must require zero managed overlay timing."
   require_contains "$core_output" "--steam-bridge-launch-env-file=/tmp/steam-bridge-macos-smoke.env" "matrix shortcut must use the stable launcher env file."
   require_contains "$core_output" "ENV /tmp/steam-bridge-macos-smoke.env" "matrix must write per-case launcher env."
   require_contains "$core_output" "--action presenter-store-open-and-wait" "core matrix must include store openAndWait."
@@ -661,8 +661,8 @@ run_case() {
   local diagnostic_dir="$result_file.diagnostics"
   local run_cmd
   local case_args=("$@")
-  if case_uses_presenter_action "${case_args[@]}" && ! case_has_restore_focus_requirement "${case_args[@]}"; then
-    case_args+=(--require-restore-focus-delay-ms 0)
+  if case_uses_presenter_action "${case_args[@]}" && ! case_has_managed_timing_requirement "${case_args[@]}"; then
+    case_args+=(--require-zero-managed-overlay-timing)
   fi
   run_cmd=(
     "$helper_path"
@@ -706,10 +706,10 @@ case_uses_presenter_action() {
   return 1
 }
 
-case_has_restore_focus_requirement() {
+case_has_managed_timing_requirement() {
   local arg
   for arg in "$@"; do
-    if [ "$arg" = "--require-restore-focus-delay-ms" ]; then
+    if [ "$arg" = "--require-restore-focus-delay-ms" ] || [ "$arg" = "--require-zero-managed-overlay-timing" ]; then
       return 0
     fi
   done

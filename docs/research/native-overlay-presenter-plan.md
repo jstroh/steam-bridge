@@ -260,8 +260,8 @@ The presenter should:
   activation timing, shortcut policy, and window-close ownership. The managed
   app-facing helper defaults restore-focus delay, activation boost, and active
   grace timing to `0`; the smoke verifiers can require those managed Electron
-  fields, and the Deck/macOS matrix runners require zero restore-focus delay by
-  default so runs fail if the wrong presenter mode, notification policy,
+  fields, and the Deck/macOS matrix runners require zero managed overlay timing
+  by default so runs fail if the wrong presenter mode, notification policy,
   timing, or shortcut target is active.
 
 This should replace app-owned overlay controllers. App builders should not need

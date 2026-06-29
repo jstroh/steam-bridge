@@ -312,8 +312,10 @@ The smoke verifiers
 can require those managed diagnostics with `--require-electron-overlay`,
 `--require-presenter-mode <persistent|session>`, and
 `--require-overlay-shortcut-target <target>`. Use
-`--require-restore-focus-delay-ms 0` to prove a smoke artifact is not relying on
-a delayed focus-restore path. They can also verify expected
+`--require-zero-managed-overlay-timing` to prove a smoke artifact is not relying
+on delayed restore-focus, activation boost, or active grace timing; use
+`--require-restore-focus-delay-ms 0` only for targeted restore-focus checks.
+They can also verify expected
 managed overlay fail-fast artifacts with `--require-action-error-code` and
 `--require-action-error-reason`; add
 `--require-native-host-unavailable-reason` to require the presenter snapshot to

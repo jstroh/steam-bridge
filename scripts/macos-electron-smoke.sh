@@ -49,6 +49,7 @@ require_electron_overlay="0"
 require_presenter_mode=""
 require_overlay_shortcut_target=""
 require_restore_focus_delay_ms=""
+require_zero_managed_overlay_timing="0"
 require_action_error_code=""
 require_action_error_reason=""
 require_native_host_unavailable_reason=""
@@ -122,6 +123,8 @@ Options:
                                  Require managed Electron Shift+Tab target type.
   --require-restore-focus-delay-ms MS
                                  Require managed Electron overlay restore focus delay in milliseconds.
+  --require-zero-managed-overlay-timing
+                                 Require managed Electron restore-focus, activation boost, and active grace timing to be zero.
   --require-action-error-code CODE
                                  Require the autorun action to fail with this serialized error code.
   --require-action-error-reason REASON
@@ -338,6 +341,11 @@ while [ "$#" -gt 0 ]; do
       require_restore_focus_delay_ms="${2:?missing --require-restore-focus-delay-ms value}"
       require_electron_overlay="1"
       shift 2
+      ;;
+    --require-zero-managed-overlay-timing)
+      require_zero_managed_overlay_timing="1"
+      require_electron_overlay="1"
+      shift
       ;;
     --require-action-error-code)
       require_action_error_code="${2:?missing --require-action-error-code value}"
@@ -753,6 +761,9 @@ verify_result() {
   fi
   if [ -n "$require_restore_focus_delay_ms" ]; then
     args+=("--require-restore-focus-delay-ms" "$require_restore_focus_delay_ms")
+  fi
+  if [ "$require_zero_managed_overlay_timing" = "1" ]; then
+    args+=("--require-zero-managed-overlay-timing")
   fi
   if [ -n "$require_action_error_code" ]; then
     args+=("--require-action-error-code" "$require_action_error_code")
@@ -1454,7 +1465,7 @@ EOF
   require_electron_overlay="1"
   require_presenter_mode="persistent"
   require_overlay_shortcut_target="friends"
-  require_restore_focus_delay_ms="0"
+  require_zero_managed_overlay_timing="1"
   require_no_crashes="1"
   require_events=("overlay:presenter-open" "callback:overlay-activated")
   verify_result

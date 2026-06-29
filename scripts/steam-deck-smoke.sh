@@ -57,6 +57,7 @@ require_electron_overlay="0"
 require_presenter_mode=""
 require_overlay_shortcut_target=""
 require_restore_focus_delay_ms=""
+require_zero_managed_overlay_timing="0"
 require_no_crashes="0"
 
 usage() {
@@ -153,6 +154,8 @@ Options:
                                 Require managed Electron Shift+Tab target type.
   --require-restore-focus-delay-ms MS
                                 Require managed Electron overlay restore focus delay in milliseconds.
+  --require-zero-managed-overlay-timing
+                                Require managed Electron restore-focus, activation boost, and active grace timing to be zero.
   --require-no-crashes          Require no crash dumps or fatal Electron lifecycle events.
   --connect-timeout SECONDS     SSH connect timeout. Defaults to 6.
 EOF
@@ -377,6 +380,11 @@ while [ "$#" -gt 0 ]; do
       require_restore_focus_delay_ms="${2:?missing --require-restore-focus-delay-ms value}"
       require_electron_overlay="1"
       shift 2
+      ;;
+    --require-zero-managed-overlay-timing)
+      require_zero_managed_overlay_timing="1"
+      require_electron_overlay="1"
+      shift
       ;;
     --require-no-crashes)
       require_no_crashes="1"
@@ -1914,6 +1922,9 @@ append_common_helper_args() {
   if [ -n "$require_restore_focus_delay_ms" ]; then
     helper_args+=("--require-restore-focus-delay-ms" "$require_restore_focus_delay_ms")
   fi
+  if [ "$require_zero_managed_overlay_timing" = "1" ]; then
+    helper_args+=("--require-zero-managed-overlay-timing")
+  fi
   if [ "$require_no_crashes" = "1" ]; then
     helper_args+=("--require-no-crashes")
   fi
@@ -1977,8 +1988,8 @@ build_steam_launch_args() {
     if [ -z "$require_presenter_mode" ]; then
       helper_args+=("--require-presenter-mode" "$(effective_presenter_mode)")
     fi
-    if [ -z "$require_restore_focus_delay_ms" ]; then
-      helper_args+=("--require-restore-focus-delay-ms" "0")
+    if [ "$require_zero_managed_overlay_timing" != "1" ] && [ -z "$require_restore_focus_delay_ms" ]; then
+      helper_args+=("--require-zero-managed-overlay-timing")
     fi
   fi
   if [ "$action" = "presenter-shortcut" ] && [ -z "$require_overlay_shortcut_target" ]; then
@@ -2328,8 +2339,8 @@ run_self_test() {
     echo "Self-test failed: Presenter product args must require persistent presenter mode by default." >&2
     exit 1
   fi
-  if [[ "$friends_args" != *"--require-restore-focus-delay-ms 0"* ]]; then
-    echo "Self-test failed: Presenter product args must require zero restore focus delay by default." >&2
+  if [[ "$friends_args" != *"--require-zero-managed-overlay-timing"* ]]; then
+    echo "Self-test failed: Presenter product args must require zero managed overlay timing by default." >&2
     exit 1
   fi
 
@@ -2356,8 +2367,8 @@ run_self_test() {
     echo "Self-test failed: Presenter openAndWait args must require persistent presenter diagnostics." >&2
     exit 1
   fi
-  if [[ "$open_wait_args" != *"--require-restore-focus-delay-ms 0"* ]]; then
-    echo "Self-test failed: Presenter openAndWait args must require zero restore focus delay diagnostics." >&2
+  if [[ "$open_wait_args" != *"--require-zero-managed-overlay-timing"* ]]; then
+    echo "Self-test failed: Presenter openAndWait args must require zero managed overlay timing diagnostics." >&2
     exit 1
   fi
 
@@ -2514,8 +2525,8 @@ run_self_test() {
     echo "Self-test failed: Session presenter shortcut args must require session presenter diagnostics." >&2
     exit 1
   fi
-  if [[ "$shortcut_args" != *"--require-restore-focus-delay-ms 0"* ]]; then
-    echo "Self-test failed: Session presenter shortcut args must require zero restore focus delay diagnostics." >&2
+  if [[ "$shortcut_args" != *"--require-zero-managed-overlay-timing"* ]]; then
+    echo "Self-test failed: Session presenter shortcut args must require zero managed overlay timing diagnostics." >&2
     exit 1
   fi
   if [[ "$shortcut_args" != *"--require-overlay-shortcut-target web"* ]]; then
@@ -2643,8 +2654,8 @@ run_self_test() {
     echo "Self-test failed: Toast args must require persistent presenter diagnostics." >&2
     exit 1
   fi
-  if [[ "$toast_args" != *"--require-restore-focus-delay-ms 0"* ]]; then
-    echo "Self-test failed: Toast args must require zero restore focus delay diagnostics." >&2
+  if [[ "$toast_args" != *"--require-zero-managed-overlay-timing"* ]]; then
+    echo "Self-test failed: Toast args must require zero managed overlay timing diagnostics." >&2
     exit 1
   fi
 

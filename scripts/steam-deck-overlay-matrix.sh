@@ -247,8 +247,8 @@ run_deck_case() {
   local name="$1"
   shift
   local case_args=("$@")
-  if case_uses_presenter_action "${case_args[@]}" && ! case_has_restore_focus_requirement "${case_args[@]}"; then
-    case_args+=(--require-restore-focus-delay-ms 0)
+  if case_uses_presenter_action "${case_args[@]}" && ! case_has_managed_timing_requirement "${case_args[@]}"; then
+    case_args+=(--require-zero-managed-overlay-timing)
   fi
 
   case_index=$((case_index + 1))
@@ -309,10 +309,10 @@ case_uses_presenter_action() {
   return 1
 }
 
-case_has_restore_focus_requirement() {
+case_has_managed_timing_requirement() {
   local arg
   for arg in "$@"; do
-    if [ "$arg" = "--require-restore-focus-delay-ms" ]; then
+    if [ "$arg" = "--require-restore-focus-delay-ms" ] || [ "$arg" = "--require-zero-managed-overlay-timing" ]; then
       return 0
     fi
   done
@@ -441,7 +441,7 @@ run_self_test() {
   require_case_count "$full_output" "26" "full matrix"
 
   require_contains "$core_output" "--action presenter-web" "core matrix must include presenter web."
-  require_contains "$core_output" "--require-restore-focus-delay-ms 0" "core matrix must require zero restore focus delay."
+  require_contains "$core_output" "--require-zero-managed-overlay-timing" "core matrix must require zero managed overlay timing."
   require_contains "$core_output" "--action presenter-web-open-and-wait" "core matrix must include presenter openAndWait web."
   require_contains "$core_output" "--action presenter-store-open-and-wait" "core matrix must include presenter openAndWait store."
   require_contains "$core_output" "--action presenter-dialog-auto-open-and-wait" "core matrix must include dialog-equivalent openAndWait."

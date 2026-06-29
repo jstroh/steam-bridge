@@ -116,6 +116,7 @@ if (
   options.requireElectronOverlay ||
   options.requirePresenterMode ||
   options.requireOverlayShortcutTarget ||
+  options.requireZeroManagedOverlayTiming ||
   options.requireRestoreFocusDelayMs != null
 ) {
   expect(Boolean(electronOverlay), "managed Electron overlay diagnostics available");
@@ -137,6 +138,11 @@ if (options.requireRestoreFocusDelayMs != null && electronOverlay) {
     electronOverlay.restoreFocusDelayMs === options.requireRestoreFocusDelayMs,
     `managed Electron overlay restore focus delay is ${options.requireRestoreFocusDelayMs}ms`
   );
+}
+if (options.requireZeroManagedOverlayTiming && electronOverlay) {
+  expect(electronOverlay.restoreFocusDelayMs === 0, "managed Electron overlay restore focus delay is zero");
+  expect(electronOverlay.activationBoostMs === 0, "managed Electron overlay activation boost is zero");
+  expect(electronOverlay.activeGraceMs === 0, "managed Electron overlay active grace is zero");
 }
 if (options.requireOverlayShortcutTarget && electronOverlay) {
   const overlayShortcut = electronOverlay.overlayShortcut || {};
@@ -492,6 +498,7 @@ function parseArgs(args) {
     requireActionErrorReason: undefined,
     requireNativeHostUnavailableReason: undefined,
     requireRestoreFocusDelayMs: undefined,
+    requireZeroManagedOverlayTiming: false,
     requireNoOverlayActivation: false,
     requireNoCrashes: false,
     requirePassiveNotification: false,
@@ -578,6 +585,10 @@ function parseArgs(args) {
         break;
       case "--require-restore-focus-delay-ms":
         parsed.requireRestoreFocusDelayMs = parseRequiredInteger(arg, args[++index]);
+        parsed.requireElectronOverlay = true;
+        break;
+      case "--require-zero-managed-overlay-timing":
+        parsed.requireZeroManagedOverlayTiming = true;
         parsed.requireElectronOverlay = true;
         break;
       case "--require-no-crashes":

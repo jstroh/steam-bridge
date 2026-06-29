@@ -41,6 +41,7 @@ require_electron_overlay="0"
 require_presenter_mode=""
 require_overlay_shortcut_target=""
 require_restore_focus_delay_ms=""
+require_zero_managed_overlay_timing="0"
 require_action_error_code=""
 require_action_error_reason=""
 require_native_host_unavailable_reason=""
@@ -119,6 +120,8 @@ Options:
                                  Require managed Electron Shift+Tab target type.
   --require-restore-focus-delay-ms MS
                                  Require managed Electron overlay restore focus delay in milliseconds.
+  --require-zero-managed-overlay-timing
+                                 Require managed Electron restore-focus, activation boost, and active grace timing to be zero.
   --require-action-error-code CODE
                                  Require the autorun action to fail with this serialized error code.
   --require-action-error-reason REASON
@@ -301,6 +304,11 @@ while [ "$#" -gt 0 ]; do
       require_restore_focus_delay_ms="${2:?missing --require-restore-focus-delay-ms value}"
       require_electron_overlay="1"
       shift 2
+      ;;
+    --require-zero-managed-overlay-timing)
+      require_zero_managed_overlay_timing="1"
+      require_electron_overlay="1"
+      shift
       ;;
     --require-action-error-code)
       require_action_error_code="${2:?missing --require-action-error-code value}"
@@ -568,6 +576,7 @@ verify_result() {
   REQUIRE_PRESENTER_MODE="$require_presenter_mode" \
   REQUIRE_OVERLAY_SHORTCUT_TARGET="$require_overlay_shortcut_target" \
   REQUIRE_RESTORE_FOCUS_DELAY_MS="$require_restore_focus_delay_ms" \
+  REQUIRE_ZERO_MANAGED_OVERLAY_TIMING="$require_zero_managed_overlay_timing" \
   REQUIRE_ACTION_ERROR_CODE="$require_action_error_code" \
   REQUIRE_ACTION_ERROR_REASON="$require_action_error_reason" \
   REQUIRE_NATIVE_HOST_UNAVAILABLE_REASON="$require_native_host_unavailable_reason" \
@@ -731,6 +740,7 @@ if (
     or os.environ["REQUIRE_PRESENTER_MODE"]
     or os.environ["REQUIRE_OVERLAY_SHORTCUT_TARGET"]
     or os.environ["REQUIRE_RESTORE_FOCUS_DELAY_MS"]
+    or os.environ["REQUIRE_ZERO_MANAGED_OVERLAY_TIMING"] == "1"
 ):
     expect(isinstance(electron_overlay, dict), "managed Electron overlay diagnostics available")
     if isinstance(electron_overlay, dict):
@@ -749,6 +759,10 @@ if os.environ["REQUIRE_RESTORE_FOCUS_DELAY_MS"] and isinstance(electron_overlay,
         electron_overlay.get("restoreFocusDelayMs") == expected_restore_focus_delay_ms,
         f"managed Electron overlay restore focus delay is {expected_restore_focus_delay_ms}ms",
     )
+if os.environ["REQUIRE_ZERO_MANAGED_OVERLAY_TIMING"] == "1" and isinstance(electron_overlay, dict):
+    expect(electron_overlay.get("restoreFocusDelayMs") == 0, "managed Electron overlay restore focus delay is zero")
+    expect(electron_overlay.get("activationBoostMs") == 0, "managed Electron overlay activation boost is zero")
+    expect(electron_overlay.get("activeGraceMs") == 0, "managed Electron overlay active grace is zero")
 if os.environ["REQUIRE_OVERLAY_SHORTCUT_TARGET"] and isinstance(electron_overlay, dict):
     overlay_shortcut = electron_overlay.get("overlayShortcut") or {}
     target_type = overlay_shortcut.get("targetType")
@@ -945,7 +959,7 @@ EOF
   require_passive_presenter="1"
   require_presenter_mode="persistent"
   require_overlay_shortcut_target="friends"
-  require_restore_focus_delay_ms="0"
+  require_zero_managed_overlay_timing="1"
   require_no_crashes="1"
   require_events=("overlay:presenter-open" "callback:overlay-activated")
   verify_result
@@ -954,7 +968,7 @@ EOF
   require_passive_presenter="0"
   require_presenter_mode=""
   require_overlay_shortcut_target=""
-  require_restore_focus_delay_ms=""
+  require_zero_managed_overlay_timing="0"
   require_no_crashes="0"
 
   overlay_dialog="Achievements"
