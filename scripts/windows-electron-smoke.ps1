@@ -61,6 +61,7 @@ param(
   [switch]$RequireSteamLaunch,
   [switch]$RequireOverlayReady,
   [switch]$RequireOverlayActivated,
+  [switch]$RequireNoOverlayActivation,
   [string]$RequireActionErrorCode = "",
   [string]$RequireActionErrorReason = "",
   [string]$RequireNativeHostUnavailableReason = "",
@@ -373,6 +374,9 @@ function Assert-SmokeResult {
   }
   if ($RequireOverlayActivated -and -not $overlayActivated) {
     $failures.Add("overlay activation callback active=true emitted")
+  }
+  if ($RequireNoOverlayActivation -and $overlayActivated) {
+    $failures.Add("overlay activation callback active=true was not emitted")
   }
   foreach ($eventType in $RequireEvent) {
     if (-not ($events | Where-Object { $_.type -eq $eventType } | Select-Object -First 1)) {

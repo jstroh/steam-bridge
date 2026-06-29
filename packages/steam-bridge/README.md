@@ -314,8 +314,9 @@ managed overlay fail-fast artifacts with `--require-action-error-code` and
 `--require-action-error-reason`; add
 `--require-native-host-unavailable-reason` to require the presenter snapshot to
 show the matching unavailable native host, no attachment, and zero current FPS.
-That is the preferred way to prove locked or asleep macOS fallback behavior from
-a smoke result log. For static shortcut targets,
+Use `--require-no-overlay-activation` with those flags to prove Steam overlay
+activation did not start. That is the preferred way to prove locked or asleep
+macOS fallback behavior from a smoke result log. For static shortcut targets,
 `electronOverlay.overlayShortcut.target` records sanitized target
 metadata such as type, route, modal flag, and whether URL/transaction fields
 were configured;

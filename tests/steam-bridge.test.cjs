@@ -271,7 +271,7 @@ function nativeHostUnavailablePresenterFixture(reason = "macos-screen-locked") {
   };
 }
 
-function actionErrorSmokeResult(error, presenter = undefined) {
+function actionErrorSmokeResult(error, presenter = undefined, events = []) {
   return {
     ok: false,
     action: {
@@ -304,7 +304,7 @@ function actionErrorSmokeResult(error, presenter = undefined) {
             nativePresenter: { ok: true, value: presenter }
           }
         : undefined,
-      events: []
+      events
     }
   };
 }
@@ -1711,6 +1711,103 @@ test("smoke result verifier rejects unexpected native host unavailable presenter
 
   assert.notEqual(verifier.status, 0);
   assert.match(verifier.stderr, /native host unavailable reason is macos-display-asleep/);
+});
+
+test("smoke result verifier accepts expected absence of overlay activation", (t) => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-no-overlay-activation-"));
+  t.after(() => fs.rmSync(tempDir, { recursive: true, force: true }));
+
+  const resultFile = path.join(tempDir, "smoke.log");
+  fs.writeFileSync(
+    resultFile,
+    `STEAM_BRIDGE_SMOKE_RESULT ${JSON.stringify(
+      actionErrorSmokeResult(
+        {
+          name: "SteamOverlayNativeHostUnavailableError",
+          message: "Steam overlay native host is unavailable: macOS screen is locked.",
+          code: "STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE",
+          reason: "macos-screen-locked",
+          macOverlayEnvironment: { screenLocked: true, displayAsleep: false }
+        },
+        nativeHostUnavailablePresenterFixture("macos-screen-locked")
+      )
+    )}\n`
+  );
+
+  const verifier = childProcess.spawnSync(
+    process.execPath,
+    [
+      path.join(repoRoot, "scripts", "verify-electron-smoke-result.cjs"),
+      "--file",
+      resultFile,
+      "--app-id",
+      "480",
+      "--platform",
+      "darwin/arm64",
+      "--action",
+      "presenter-web-open-and-wait",
+      "--require-action-error-code",
+      "STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE",
+      "--require-action-error-reason",
+      "macos-screen-locked",
+      "--require-native-host-unavailable-reason",
+      "macos-screen-locked",
+      "--require-no-overlay-activation"
+    ],
+    { encoding: "utf8" }
+  );
+
+  assert.equal(verifier.status, 0, verifier.stderr);
+  assert.match(verifier.stdout, /Electron smoke result verified/);
+});
+
+test("smoke result verifier rejects unexpected overlay activation", (t) => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-no-overlay-activation-reject-"));
+  t.after(() => fs.rmSync(tempDir, { recursive: true, force: true }));
+
+  const resultFile = path.join(tempDir, "smoke.log");
+  fs.writeFileSync(
+    resultFile,
+    `STEAM_BRIDGE_SMOKE_RESULT ${JSON.stringify(
+      actionErrorSmokeResult(
+        {
+          name: "SteamOverlayNativeHostUnavailableError",
+          message: "Steam overlay native host is unavailable: macOS screen is locked.",
+          code: "STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE",
+          reason: "macos-screen-locked",
+          macOverlayEnvironment: { screenLocked: true, displayAsleep: false }
+        },
+        nativeHostUnavailablePresenterFixture("macos-screen-locked"),
+        [{ type: "callback:overlay-activated", payload: { active: true } }]
+      )
+    )}\n`
+  );
+
+  const verifier = childProcess.spawnSync(
+    process.execPath,
+    [
+      path.join(repoRoot, "scripts", "verify-electron-smoke-result.cjs"),
+      "--file",
+      resultFile,
+      "--app-id",
+      "480",
+      "--platform",
+      "darwin/arm64",
+      "--action",
+      "presenter-web-open-and-wait",
+      "--require-action-error-code",
+      "STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE",
+      "--require-action-error-reason",
+      "macos-screen-locked",
+      "--require-native-host-unavailable-reason",
+      "macos-screen-locked",
+      "--require-no-overlay-activation"
+    ],
+    { encoding: "utf8" }
+  );
+
+  assert.notEqual(verifier.status, 0);
+  assert.match(verifier.stderr, /overlay activation callback active=true was not emitted/);
 });
 
 test("generated Steamworks enums expose SDK constants and lookup helpers", (t) => {

@@ -33,6 +33,7 @@ require_steam_launch="0"
 require_overlay_ready="0"
 require_overlay_injection="0"
 require_overlay_activated="0"
+require_no_overlay_activation="0"
 require_single_overlay_target="0"
 require_passive_presenter="0"
 require_idle_presenter="0"
@@ -105,6 +106,8 @@ Options:
   --require-overlay-ready        Require overlay enabled and needs-present false.
   --require-overlay-injection    Require Linux overlay injection marker.
   --require-overlay-activated    Require callback:overlay-activated active=true.
+  --require-no-overlay-activation
+                                 Require no callback:overlay-activated active=true event.
   --require-single-overlay-target
                                  Require one gameoverlayui target attached to the app process.
   --require-passive-presenter    Require the reusable presenter to be passive/click-through/transparent.
@@ -258,6 +261,10 @@ while [ "$#" -gt 0 ]; do
       ;;
     --require-overlay-activated)
       require_overlay_activated="1"
+      shift
+      ;;
+    --require-no-overlay-activation)
+      require_no_overlay_activation="1"
       shift
       ;;
     --require-single-overlay-target)
@@ -545,6 +552,7 @@ verify_result() {
   REQUIRE_OVERLAY_READY="$require_overlay_ready" \
   REQUIRE_OVERLAY_INJECTION="$require_overlay_injection" \
   REQUIRE_OVERLAY_ACTIVATED="$require_overlay_activated" \
+  REQUIRE_NO_OVERLAY_ACTIVATION="$require_no_overlay_activation" \
   REQUIRE_SINGLE_OVERLAY_TARGET="$require_single_overlay_target" \
   REQUIRE_PASSIVE_PRESENTER="$require_passive_presenter" \
   REQUIRE_IDLE_PRESENTER="$require_idle_presenter" \
@@ -683,6 +691,8 @@ if os.environ["REQUIRE_OVERLAY_INJECTION"] == "1":
     expect(launch.get("overlayInjection") is True, "Steam overlay injection marker detected")
 if os.environ["REQUIRE_OVERLAY_ACTIVATED"] == "1":
     expect(overlay_activated, "overlay activation callback active=true emitted")
+if os.environ["REQUIRE_NO_OVERLAY_ACTIVATION"] == "1":
+    expect(not overlay_activated, "overlay activation callback active=true was not emitted")
 if os.environ["REQUIRE_SINGLE_OVERLAY_TARGET"] == "1":
     gameoverlayui = [
         entry

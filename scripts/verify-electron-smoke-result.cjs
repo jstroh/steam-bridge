@@ -87,6 +87,9 @@ if (options.requireOverlayReady) {
 if (options.requireOverlayActivated) {
   expect(overlayActivated, "overlay activation callback active=true emitted");
 }
+if (options.requireNoOverlayActivation) {
+  expect(!overlayActivated, "overlay activation callback active=true was not emitted");
+}
 if (options.requireSingleOverlayTarget) {
   const gameoverlayui = Array.isArray(overlayProcesses.gameoverlayui)
     ? overlayProcesses.gameoverlayui.filter((entry) => entry && entry.targetPid != null)
@@ -477,6 +480,7 @@ function parseArgs(args) {
     requireActionErrorCode: undefined,
     requireActionErrorReason: undefined,
     requireNativeHostUnavailableReason: undefined,
+    requireNoOverlayActivation: false,
     requireNoCrashes: false,
     requirePassiveNotification: false,
     requireSteamLaunch: false,
@@ -522,6 +526,9 @@ function parseArgs(args) {
         break;
       case "--require-overlay-activated":
         parsed.requireOverlayActivated = true;
+        break;
+      case "--require-no-overlay-activation":
+        parsed.requireNoOverlayActivation = true;
         break;
       case "--require-single-overlay-target":
         parsed.requireSingleOverlayTarget = true;

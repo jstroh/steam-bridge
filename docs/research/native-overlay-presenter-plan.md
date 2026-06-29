@@ -659,8 +659,8 @@ Current evidence:
   managed fail-fast paths. The shared smoke verifier and packaged platform
   helpers can also require the serialized action `code` and `reason` fields,
   plus the presenter `nativeHostUnavailableReason`, no-host, unattached,
-  zero-FPS snapshot state, so locked/asleep fallback artifacts can be checked
-  automatically.
+  zero-FPS snapshot state, and absence of Steam overlay activation, so
+  locked/asleep fallback artifacts can be checked automatically.
 - BrowserWindow-only overlay support is not proven.
 - Steam launch, app ID, auth, and callbacks are not enough to claim overlay
   support.

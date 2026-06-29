@@ -40,6 +40,7 @@ require_overlay_injection="0"
 require_overlay_enabled="0"
 require_overlay_ready="0"
 require_overlay_activated="0"
+require_no_overlay_activation="0"
 require_native_probe_open="0"
 require_passive_presenter="0"
 require_passive_notification="0"
@@ -108,6 +109,8 @@ Options:
   --require-overlay-enabled      Require overlayEnabled=true.
   --require-overlay-ready        Require overlayEnabled=true and no pending present.
   --require-overlay-activated    Require callback:overlay-activated active=true.
+  --require-no-overlay-activation
+                                 Require no callback:overlay-activated active=true event.
   --require-native-probe-open    Require the lower-level native probe to be open.
   --require-passive-presenter    Require the reusable presenter to be passive.
   --require-passive-notification Require passive Steam notification proof for toast actions.
@@ -290,6 +293,10 @@ while [ "$#" -gt 0 ]; do
       ;;
     --require-overlay-activated)
       require_overlay_activated="1"
+      shift
+      ;;
+    --require-no-overlay-activation)
+      require_no_overlay_activation="1"
       shift
       ;;
     --require-native-probe-open)
@@ -711,6 +718,9 @@ verify_result() {
   fi
   if [ "$require_overlay_activated" = "1" ]; then
     args+=("--require-overlay-activated")
+  fi
+  if [ "$require_no_overlay_activation" = "1" ]; then
+    args+=("--require-no-overlay-activation")
   fi
   if [ "$require_native_probe_open" = "1" ]; then
     args+=("--require-native-probe-open")
