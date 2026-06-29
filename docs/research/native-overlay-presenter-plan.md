@@ -112,31 +112,31 @@ timing hacks.
   the stable post-close verifier sample at `currentFps=0` without advancing
   `pumpCount`. This extends the product path without depending on raw Desktop
   `ActivateGameOverlay(...)` dialogs.
-- macOS Apple Silicon now has the same builder-facing wait proof for the modal
-  web, store, Friends/chat, and dialog-equivalent routes. A 2026-06-29
-  Steam-launched `presenter-web-open-and-wait --web-modal true` run through the
-  in-bundle native launcher preserved Steam overlay injection, aligned
-  `SteamOverlayGameId` to App ID `480`, emitted active and inactive overlay
-  callbacks, returned the smoke app frontmost after the Escape close probe,
-  completed `openAndWait(...)` only after close and parking, and kept the parked
-  presenter at `currentFps=0` without advancing `pumpCount`. Follow-up macOS
-  runs verified the same completion-after-inactive-and-parked contract for
-  `presenter-store-open-and-wait`, `presenter-friends-open-and-wait`, and
-  `presenter-dialog-auto-open-and-wait --dialog OfficialGameGroup`.
-- The macOS smoke helper now has a passive-toast-specific verification gate for
-  the next live run. `--require-passive-notification` requires result and
-  lifecycle evidence for the achievement event and Steam callback, rejects modal
-  overlay activation, and checks the passive managed-presenter snapshot. This
-  aligns the macOS helper with the Deck matrix's passive-toast assertions without
-  claiming live macOS toast proof before it is run.
+- macOS Apple Silicon now has the same builder-facing wait proof for modal web,
+  store, Friends/chat, and dialog-equivalent routes. A 2026-06-29 full
+  Steam-launched matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-full-20260629-101221` passed 20 cases
+  through the in-bundle native launcher: web/store/Friends/dialog
+  `openAndWait(...)`, passive achievement progress/unlock toasts, synthetic
+  checkout approval-route plumbing, managed Shift+Tab shortcut open/close,
+  profile, community, stats, achievements, user chat/profile, and known dialog
+  equivalents. Interactive cases emitted active/inactive callbacks, returned the
+  smoke app frontmost after close, completed waits only after close and parking,
+  kept the parked presenter at `currentFps=0` without advancing `pumpCount`, and
+  reported no crash evidence.
+- The macOS smoke helper has a passive-toast-specific verification gate.
+  `--require-passive-notification` requires result and lifecycle evidence for
+  the achievement event and Steam callback, rejects modal overlay activation, and
+  checks the passive managed-presenter snapshot. The 20-case matrix above passed
+  that gate for both progress and unlock toasts.
 - The macOS proof flow now has a matrix runner. `scripts/macos-overlay-matrix.sh`
   can dry-run or execute Steam-launched helper cases, installs or updates one
   stable non-Steam shortcut that points at the in-bundle native launcher and a
   launcher env file, restarts Steam only when that shortcut materially changes,
   and writes per-case launch state through the env file. It collects diagnostics
   for web/store/Friends/dialog wait routes, passive toasts, synthetic checkout
-  approval-route plumbing, and common presenter-backed web targets. Its
-  self-test keeps the matrix shape covered in package smoke.
+  approval-route plumbing, managed shortcut routing, and common presenter-backed
+  web targets. Its self-test keeps the matrix shape covered in package smoke.
 - Deck Desktop keyboard toggle now has a product-shaped Electron route:
   `createElectronSteamOverlay(...)` installs a default Shift+Tab shortcut bridge
   that opens the verified Friends/chat presenter-backed web overlay instead of
@@ -630,47 +630,41 @@ but Metal should be the product path.
 Current evidence:
 
 - Steam Bridge can create a macOS native presenter/probe.
-- A Metal host implementation exists and can attach above an Electron window.
+- Metal is the default macOS host path when an Electron native window handle is
+  available; OpenGL remains a diagnostic fallback.
+- The Metal host is borderless, transparent/click-through while idle, cannot
+  become key or main, attaches above the Electron parent window, and is kept
+  aligned by the managed Electron window sync hooks.
 - The packaged app uses an in-bundle native launcher that preserves Steam's
   overlay injection and aligns `SteamOverlayGameId` with the app ID before
   Electron starts.
 - Steam-launched macOS Apple Silicon runs now verify managed modal web, store,
-  Friends/chat, and dialog-equivalent `openAndWait(...)` routes with paired
-  active/inactive callbacks, app focus return, and idle presenter parking at
-  `currentFps=0`.
+  Friends/chat, dialog-equivalent `openAndWait(...)`, passive progress/unlock
+  toasts, synthetic checkout approval-route plumbing, managed Shift+Tab
+  shortcut open/close, profile, community, stats, achievements, user
+  chat/profile, and known dialog-equivalent routes with paired active/inactive
+  callbacks where expected, app focus return, clean crash diagnostics, and idle
+  presenter parking at `currentFps=0`.
 - BrowserWindow-only overlay support is not proven.
 - Steam launch, app ID, auth, and callbacks are not enough to claim overlay
   support.
 
 Next work:
 
-1. Make the Metal presenter the default macOS host path for Apple Silicon.
-2. Keep the host borderless, transparent, click-through, and unable to become key
-   or main.
-3. Attach it as a child/auxiliary window above the Electron game window and keep
-   it aligned during move, resize, fullscreen, display scale, and space changes.
-4. Add passive mode and adaptive pumping like Linux:
-   - idle: no steady render loop;
-   - `overlayNeedsPresent` or active overlay: present around 30 FPS;
-   - after Steam reports overlay inactive: return to passive without a default
-     grace timer.
-5. Add screen-lock/display-sleep awareness so the presenter does not open into a
+1. Run real purchase-content and `InitTxn` proof from a real configured Steam
+   app ID; App ID `480` only proves generic checkout routing.
+2. Add screen-lock/display-sleep awareness so the presenter does not open into a
    black or invalid state while the user cannot interact.
-6. Keep code signing requirements explicit in docs and examples. Local smoke
+3. Keep code signing requirements explicit in docs and examples. Local smoke
    signing is not enough to claim shipped macOS overlay support.
-7. Finish the remaining Apple Silicon proof:
-   - passive Steam notification/toast using the packaged helper's
-     `--require-passive-notification` gate and macOS matrix case;
-   - checkout or purchase-specific overlay behavior from a real app/product;
-   - run the macOS matrix live for broader presenter target regression coverage
-     beyond the current web/store/Friends/dialog-equivalent wait routes.
 
 Pass criteria:
 
 - Steam launch preserves overlay injection into the shipped app process.
 - `overlayEnabled=true` with the native presenter path.
 - Passive presenter does not steal focus, input, or visible pixels.
-- Notification/toast appears over the app.
+- Notification/toast appears over the app; the current matrix proves the managed
+  passive-progress and unlock paths for App ID `480`.
 - Web/store/Friends/dialog-equivalent overlays open and close with
   active/inactive callbacks and parked presenter state; checkout gets the same
   proof with a real app/product.

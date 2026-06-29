@@ -131,21 +131,20 @@ Verified:
   emitted `callback:achievement-stored`, kept the presenter passive,
   transparent, click-through, non-focusable, overlay-inactive, and reported no
   crash evidence.
-- A 2026-06-29 full macOS overlay matrix at
-  `/tmp/steam-bridge-macos-overlay-matrix-full-20260629-094648` passed 19
-  Steam-launched cases for App ID `480`: web/store/Friends/dialog
-  `openAndWait(...)`, passive progress/unlock toasts, synthetic checkout
-  approval-route plumbing, profile, community, stats, achievements, user
-  chat/profile, and known dialog equivalents. Interactive cases verified
-  active/inactive callbacks, app focus return, presenter parking, and no crash
-  evidence.
 - The managed Electron Shift+Tab shortcut bridge now has a macOS-specific
   focused-window `globalShortcut` fallback. `before-input-event` is too late on
   macOS because Steam can consume Shift+Tab first; the fallback registers only
   while the game window is focused, opens the configured presenter-backed target,
   then unregisters while Steam's overlay is active so a second Shift+Tab closes
-  normally. A focused live run at
-  `/tmp/steam-bridge-macos-shortcut-friends-20260629-100036` verified
+  normally.
+- A 2026-06-29 full macOS overlay matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-full-20260629-101221` passed 20
+  Steam-launched cases for App ID `480`: web/store/Friends/dialog
+  `openAndWait(...)`, passive progress/unlock toasts, synthetic checkout
+  approval-route plumbing, managed Shift+Tab shortcut open/close, profile,
+  community, stats, achievements, user chat/profile, and known dialog
+  equivalents. Interactive cases verified active/inactive callbacks, app focus
+  return, presenter parking, and no crash evidence. The shortcut case verified
   `overlay:shortcut-open`, `active=true`, presenter shown, Shift+Tab close,
   `active=false`, app frontmost, parked presenter state, and no crash evidence.
 - `scripts/macos-overlay-matrix.sh` now owns repeatable macOS proof setup. It

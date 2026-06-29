@@ -445,14 +445,15 @@ so Steam keeps `DYLD_INSERT_LIBRARIES` while the launcher aligns `SteamAppId`,
 can run `--close-probe`; it focuses the smoke app, sends the close input, and
 verifies active/inactive callbacks, app focus return, `openAndWait(...)`
 completion after parking, no post-close presenter pumping, and no crash
-diagnostics. Current macOS proof covers modal web, store, Friends/chat, profile,
-community, stats, achievements, user chat/profile, known dialog equivalents,
-synthetic checkout approval-route plumbing, passive notification toasts, and
-managed Shift+Tab shortcut open/close through the presenter. The helper verifies
-macOS passive notification proof through `--require-passive-notification`; that
-gate requires the smoke result and lifecycle log to show the accepted
-achievement event, the matching Steam callback, no modal overlay activation, and
-a passive managed-presenter snapshot.
+diagnostics. A 2026-06-29 full macOS matrix at
+`/tmp/steam-bridge-macos-overlay-matrix-full-20260629-101221` covers modal web,
+store, Friends/chat, profile, community, stats, achievements, user chat/profile,
+known dialog equivalents, synthetic checkout approval-route plumbing, passive
+notification toasts, and managed Shift+Tab shortcut open/close through the
+presenter. The helper verifies macOS passive notification proof through
+`--require-passive-notification`; that gate requires the smoke result and
+lifecycle log to show the accepted achievement event, the matching Steam
+callback, no modal overlay activation, and a passive managed-presenter snapshot.
 The repository also provides `npm run macos:overlay-matrix`, which installs or
 updates one stable macOS Steam shortcut pointing at the in-bundle native
 launcher and a launcher env file. Each case rewrites only that env file, so

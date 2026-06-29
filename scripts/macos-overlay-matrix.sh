@@ -782,7 +782,7 @@ run_matrix() {
     --close-probe \
     --close-input toggle
 
-  run_case "08-profile" \
+  run_case "09-profile" \
     --action presenter-profile \
     --require-steam-launch \
     --require-overlay-injection \
@@ -791,7 +791,7 @@ run_matrix() {
     --require-no-crashes \
     --close-probe
 
-  run_case "09-community" \
+  run_case "10-community" \
     --action presenter-community \
     --require-steam-launch \
     --require-overlay-injection \
@@ -800,7 +800,7 @@ run_matrix() {
     --require-no-crashes \
     --close-probe
 
-  run_case "10-stats" \
+  run_case "11-stats" \
     --action presenter-stats \
     --require-steam-launch \
     --require-overlay-injection \
@@ -809,7 +809,7 @@ run_matrix() {
     --require-no-crashes \
     --close-probe
 
-  run_case "11-achievements" \
+  run_case "12-achievements" \
     --action presenter-achievements \
     --require-steam-launch \
     --require-overlay-injection \
@@ -818,7 +818,7 @@ run_matrix() {
     --require-no-crashes \
     --close-probe
 
-  run_case "12-user-chat" \
+  run_case "13-user-chat" \
     --action presenter-user \
     --user-dialog chat \
     --require-steam-launch \
@@ -832,7 +832,7 @@ run_matrix() {
     return 0
   fi
 
-  run_case "13-user-steamid" \
+  run_case "14-user-steamid" \
     --action presenter-user \
     --user-dialog steamid \
     --require-steam-launch \
