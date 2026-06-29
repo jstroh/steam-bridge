@@ -1015,7 +1015,6 @@ function ensureElectronSteamOverlay(activeClient = requireClient()) {
   electronSteamOverlay = activeClient.overlay.createElectronSteamOverlay(requireMainWindow(), {
     title: "Steam Bridge Overlay Presenter",
     presenterMode: PRESENTER_MODE || undefined,
-    restoreFocusDelayMs: 0,
     needsPresentFps: 30,
     activeOverlayFps: 30,
     pollIntervalMs: 250,

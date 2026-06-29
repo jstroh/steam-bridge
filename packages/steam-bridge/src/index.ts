@@ -1874,6 +1874,9 @@ export interface ElectronSteamOverlaySnapshot extends NativeOverlayPresenterSnap
     presenterMode: ElectronSteamOverlayPresenterMode;
     closeWithWindow: boolean;
     autoPrepareForNotifications: boolean;
+    restoreFocusDelayMs: number;
+    activationBoostMs: number;
+    activeGraceMs: number;
     overlayShortcut: ElectronSteamOverlayShortcutSnapshot;
   };
 }
@@ -8336,10 +8339,14 @@ export function createElectronSteamOverlay(
   } = options;
   const presenterMode = resolveElectronSteamOverlayPresenterMode(modeOption);
   const shortcut = normalizeElectronSteamOverlayShortcut(overlayShortcut);
+  const restoreFocusDelayMs = Math.max(0, finiteNumber(presenterOptions.restoreFocusDelayMs, 0));
+  const activationBoostMs = Math.max(0, finiteNumber(presenterOptions.activationBoostMs, 0));
+  const activeGraceMs = Math.max(0, finiteNumber(presenterOptions.activeGraceMs, 0));
   const managedPresenterOptions = {
     ...presenterOptions,
-    activationBoostMs: presenterOptions.activationBoostMs ?? 0,
-    activeGraceMs: presenterOptions.activeGraceMs ?? 0
+    restoreFocusDelayMs,
+    activationBoostMs,
+    activeGraceMs
   };
   const presenter =
     presenterMode === "session"
@@ -8548,6 +8555,9 @@ export function createElectronSteamOverlay(
           presenterMode,
           closeWithWindow,
           autoPrepareForNotifications,
+          restoreFocusDelayMs,
+          activationBoostMs,
+          activeGraceMs,
           overlayShortcut: snapshotElectronSteamOverlayShortcut(shortcut)
         }
       };

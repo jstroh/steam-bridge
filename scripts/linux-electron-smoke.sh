@@ -40,6 +40,7 @@ require_idle_presenter="0"
 require_electron_overlay="0"
 require_presenter_mode=""
 require_overlay_shortcut_target=""
+require_restore_focus_delay_ms=""
 require_action_error_code=""
 require_action_error_reason=""
 require_native_host_unavailable_reason=""
@@ -116,6 +117,8 @@ Options:
   --require-presenter-mode MODE  Require managed Electron overlay presenter mode: persistent or session.
   --require-overlay-shortcut-target NAME
                                  Require managed Electron Shift+Tab target type.
+  --require-restore-focus-delay-ms MS
+                                 Require managed Electron overlay restore focus delay in milliseconds.
   --require-action-error-code CODE
                                  Require the autorun action to fail with this serialized error code.
   --require-action-error-reason REASON
@@ -291,6 +294,11 @@ while [ "$#" -gt 0 ]; do
       ;;
     --require-overlay-shortcut-target)
       require_overlay_shortcut_target="${2:?missing --require-overlay-shortcut-target value}"
+      require_electron_overlay="1"
+      shift 2
+      ;;
+    --require-restore-focus-delay-ms)
+      require_restore_focus_delay_ms="${2:?missing --require-restore-focus-delay-ms value}"
       require_electron_overlay="1"
       shift 2
       ;;
@@ -559,6 +567,7 @@ verify_result() {
   REQUIRE_ELECTRON_OVERLAY="$require_electron_overlay" \
   REQUIRE_PRESENTER_MODE="$require_presenter_mode" \
   REQUIRE_OVERLAY_SHORTCUT_TARGET="$require_overlay_shortcut_target" \
+  REQUIRE_RESTORE_FOCUS_DELAY_MS="$require_restore_focus_delay_ms" \
   REQUIRE_ACTION_ERROR_CODE="$require_action_error_code" \
   REQUIRE_ACTION_ERROR_REASON="$require_action_error_reason" \
   REQUIRE_NATIVE_HOST_UNAVAILABLE_REASON="$require_native_host_unavailable_reason" \
@@ -721,6 +730,7 @@ if (
     os.environ["REQUIRE_ELECTRON_OVERLAY"] == "1"
     or os.environ["REQUIRE_PRESENTER_MODE"]
     or os.environ["REQUIRE_OVERLAY_SHORTCUT_TARGET"]
+    or os.environ["REQUIRE_RESTORE_FOCUS_DELAY_MS"]
 ):
     expect(isinstance(electron_overlay, dict), "managed Electron overlay diagnostics available")
     if isinstance(electron_overlay, dict):
@@ -732,6 +742,12 @@ if os.environ["REQUIRE_PRESENTER_MODE"] and isinstance(electron_overlay, dict):
     expect(
         electron_overlay.get("presenterMode") == os.environ["REQUIRE_PRESENTER_MODE"],
         f"managed Electron presenter mode is {os.environ['REQUIRE_PRESENTER_MODE']}",
+    )
+if os.environ["REQUIRE_RESTORE_FOCUS_DELAY_MS"] and isinstance(electron_overlay, dict):
+    expected_restore_focus_delay_ms = int(os.environ["REQUIRE_RESTORE_FOCUS_DELAY_MS"])
+    expect(
+        electron_overlay.get("restoreFocusDelayMs") == expected_restore_focus_delay_ms,
+        f"managed Electron overlay restore focus delay is {expected_restore_focus_delay_ms}ms",
     )
 if os.environ["REQUIRE_OVERLAY_SHORTCUT_TARGET"] and isinstance(electron_overlay, dict):
     overlay_shortcut = electron_overlay.get("overlayShortcut") or {}
@@ -919,7 +935,7 @@ EOF
 
   result_file="$self_test_temp_home/steam-bridge-smoke-single-target.log"
   cat >"$result_file" <<'EOF'
-STEAM_BRIDGE_SMOKE_RESULT {"ok":true,"action":{"ok":true,"action":"presenter-web"},"snapshot":{"app":{"appId":480,"shortcutTarget":"friends"},"process":{"pid":4242,"platform":"linux","arch":"x64"},"launch":{"steamLaunch":true,"overlayInjection":true},"crashDiagnostics":{"available":true,"ok":true,"crashDumps":[],"fatalLifecycleEvents":[]},"overlayProcesses":{"available":true,"gameoverlayui":[{"pid":9001,"targetPid":4242,"gameId":"480","command":"gameoverlayui -pid 4242 -gameid 480"}]},"overlay":{"nativePresenter":{"ok":true,"value":{"attached":true,"nativeHostOpen":true,"mode":"passive","clickThrough":true,"focusable":false,"transparent":true,"overlayActive":false,"overlayNeedsPresent":false,"idleFps":0,"currentFps":0,"electronOverlay":{"presenterMode":"persistent","closeWithWindow":true,"autoPrepareForNotifications":true,"overlayShortcut":{"enabled":true,"preventDefault":true,"targetType":"function"}}}}},"steam":{"initialized":true,"running":{"ok":true,"value":true},"appId":{"ok":true,"value":480},"steamDeck":{"ok":true,"value":true},"bigPicture":{"ok":true,"value":false},"overlayEnabled":{"ok":true,"value":true},"overlayNeedsPresent":{"ok":true,"value":false}},"events":[{"type":"overlay:presenter-open"},{"type":"callback:overlay-activated"}]}}
+STEAM_BRIDGE_SMOKE_RESULT {"ok":true,"action":{"ok":true,"action":"presenter-web"},"snapshot":{"app":{"appId":480,"shortcutTarget":"friends"},"process":{"pid":4242,"platform":"linux","arch":"x64"},"launch":{"steamLaunch":true,"overlayInjection":true},"crashDiagnostics":{"available":true,"ok":true,"crashDumps":[],"fatalLifecycleEvents":[]},"overlayProcesses":{"available":true,"gameoverlayui":[{"pid":9001,"targetPid":4242,"gameId":"480","command":"gameoverlayui -pid 4242 -gameid 480"}]},"overlay":{"nativePresenter":{"ok":true,"value":{"attached":true,"nativeHostOpen":true,"mode":"passive","clickThrough":true,"focusable":false,"transparent":true,"overlayActive":false,"overlayNeedsPresent":false,"idleFps":0,"currentFps":0,"electronOverlay":{"presenterMode":"persistent","closeWithWindow":true,"autoPrepareForNotifications":true,"restoreFocusDelayMs":0,"activationBoostMs":0,"activeGraceMs":0,"overlayShortcut":{"enabled":true,"preventDefault":true,"targetType":"function"}}}}},"steam":{"initialized":true,"running":{"ok":true,"value":true},"appId":{"ok":true,"value":480},"steamDeck":{"ok":true,"value":true},"bigPicture":{"ok":true,"value":false},"overlayEnabled":{"ok":true,"value":true},"overlayNeedsPresent":{"ok":true,"value":false}},"events":[{"type":"overlay:presenter-open"},{"type":"callback:overlay-activated"}]}}
 EOF
 
   action="presenter-web"
@@ -929,6 +945,7 @@ EOF
   require_passive_presenter="1"
   require_presenter_mode="persistent"
   require_overlay_shortcut_target="friends"
+  require_restore_focus_delay_ms="0"
   require_no_crashes="1"
   require_events=("overlay:presenter-open" "callback:overlay-activated")
   verify_result
@@ -937,6 +954,7 @@ EOF
   require_passive_presenter="0"
   require_presenter_mode=""
   require_overlay_shortcut_target=""
+  require_restore_focus_delay_ms=""
   require_no_crashes="0"
 
   overlay_dialog="Achievements"

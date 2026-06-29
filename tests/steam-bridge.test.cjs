@@ -183,7 +183,11 @@ function passiveNotificationPresenterFixture() {
     currentFps: 0,
     electronOverlay: {
       presenterMode: "persistent",
+      closeWithWindow: true,
       autoPrepareForNotifications: true,
+      restoreFocusDelayMs: 0,
+      activationBoostMs: 0,
+      activeGraceMs: 0,
       overlayShortcut: {
         enabled: true,
         targetType: "friends",
@@ -261,7 +265,11 @@ function nativeHostUnavailablePresenterFixture(reason = "macos-screen-locked") {
     macOverlayEnvironment,
     electronOverlay: {
       presenterMode: "persistent",
+      closeWithWindow: true,
       autoPrepareForNotifications: true,
+      restoreFocusDelayMs: 0,
+      activationBoostMs: 0,
+      activeGraceMs: 0,
       overlayShortcut: {
         enabled: true,
         targetType: "friends",
@@ -1808,6 +1816,69 @@ test("smoke result verifier rejects unexpected overlay activation", (t) => {
 
   assert.notEqual(verifier.status, 0);
   assert.match(verifier.stderr, /overlay activation callback active=true was not emitted/);
+});
+
+test("smoke result verifier accepts expected managed overlay restore focus delay", (t) => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-restore-delay-verify-"));
+  t.after(() => fs.rmSync(tempDir, { recursive: true, force: true }));
+
+  const resultFile = path.join(tempDir, "smoke.log");
+  fs.writeFileSync(
+    resultFile,
+    `STEAM_BRIDGE_SMOKE_RESULT ${JSON.stringify(passiveNotificationResult(passiveNotificationPresenterFixture()))}\n`
+  );
+
+  const verifier = childProcess.spawnSync(
+    process.execPath,
+    [
+      path.join(repoRoot, "scripts", "verify-electron-smoke-result.cjs"),
+      "--file",
+      resultFile,
+      "--app-id",
+      "480",
+      "--platform",
+      "darwin/arm64",
+      "--action",
+      "presenter-achievement-progress",
+      "--require-restore-focus-delay-ms",
+      "0"
+    ],
+    { encoding: "utf8" }
+  );
+
+  assert.equal(verifier.status, 0, verifier.stderr);
+  assert.match(verifier.stdout, /Electron smoke result verified/);
+});
+
+test("smoke result verifier rejects unexpected managed overlay restore focus delay", (t) => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-restore-delay-reject-"));
+  t.after(() => fs.rmSync(tempDir, { recursive: true, force: true }));
+
+  const presenter = passiveNotificationPresenterFixture();
+  presenter.electronOverlay.restoreFocusDelayMs = 250;
+  const resultFile = path.join(tempDir, "smoke.log");
+  fs.writeFileSync(resultFile, `STEAM_BRIDGE_SMOKE_RESULT ${JSON.stringify(passiveNotificationResult(presenter))}\n`);
+
+  const verifier = childProcess.spawnSync(
+    process.execPath,
+    [
+      path.join(repoRoot, "scripts", "verify-electron-smoke-result.cjs"),
+      "--file",
+      resultFile,
+      "--app-id",
+      "480",
+      "--platform",
+      "darwin/arm64",
+      "--action",
+      "presenter-achievement-progress",
+      "--require-restore-focus-delay-ms",
+      "0"
+    ],
+    { encoding: "utf8" }
+  );
+
+  assert.notEqual(verifier.status, 0);
+  assert.match(verifier.stderr, /managed Electron overlay restore focus delay is 0ms/);
 });
 
 test("generated Steamworks enums expose SDK constants and lookup helpers", (t) => {
@@ -5406,6 +5477,9 @@ test("electron steam overlay manager owns one presenter and routes opens", async
     presenterMode: "persistent",
     closeWithWindow: true,
     autoPrepareForNotifications: true,
+    restoreFocusDelayMs: 0,
+    activationBoostMs: 0,
+    activeGraceMs: 0,
     overlayShortcut: {
       enabled: true,
       preventDefault: true,
@@ -5996,6 +6070,9 @@ test("electron steam overlay manager can fall back to native overlay sessions", 
     presenterMode: "session",
     closeWithWindow: true,
     autoPrepareForNotifications: true,
+    restoreFocusDelayMs: 0,
+    activationBoostMs: 0,
+    activeGraceMs: 0,
     overlayShortcut: {
       enabled: true,
       preventDefault: true,

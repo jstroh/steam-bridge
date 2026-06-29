@@ -48,6 +48,7 @@ require_idle_presenter="0"
 require_electron_overlay="0"
 require_presenter_mode=""
 require_overlay_shortcut_target=""
+require_restore_focus_delay_ms=""
 require_action_error_code=""
 require_action_error_reason=""
 require_native_host_unavailable_reason=""
@@ -119,6 +120,8 @@ Options:
   --require-presenter-mode MODE  Require managed Electron overlay presenter mode.
   --require-overlay-shortcut-target NAME
                                  Require managed Electron Shift+Tab target type.
+  --require-restore-focus-delay-ms MS
+                                 Require managed Electron overlay restore focus delay in milliseconds.
   --require-action-error-code CODE
                                  Require the autorun action to fail with this serialized error code.
   --require-action-error-reason REASON
@@ -328,6 +331,11 @@ while [ "$#" -gt 0 ]; do
       ;;
     --require-overlay-shortcut-target)
       require_overlay_shortcut_target="${2:?missing --require-overlay-shortcut-target value}"
+      require_electron_overlay="1"
+      shift 2
+      ;;
+    --require-restore-focus-delay-ms)
+      require_restore_focus_delay_ms="${2:?missing --require-restore-focus-delay-ms value}"
       require_electron_overlay="1"
       shift 2
       ;;
@@ -742,6 +750,9 @@ verify_result() {
   fi
   if [ -n "$require_overlay_shortcut_target" ]; then
     args+=("--require-overlay-shortcut-target" "$require_overlay_shortcut_target")
+  fi
+  if [ -n "$require_restore_focus_delay_ms" ]; then
+    args+=("--require-restore-focus-delay-ms" "$require_restore_focus_delay_ms")
   fi
   if [ -n "$require_action_error_code" ]; then
     args+=("--require-action-error-code" "$require_action_error_code")
@@ -1421,7 +1432,7 @@ run_self_test() {
   result_file="$temp_result"
   diagnostic_dir="$result_file.diagnostics"
   cat >"$result_file" <<'EOF'
-STEAM_BRIDGE_SMOKE_RESULT {"ok":true,"action":{"ok":true,"action":"presenter-web"},"snapshot":{"app":{"appId":480,"shortcutTarget":"friends"},"process":{"pid":4242,"platform":"darwin","arch":"arm64"},"launch":{"steamLaunch":true,"overlayInjection":true},"crashDiagnostics":{"available":true,"ok":true,"crashDumps":[],"fatalLifecycleEvents":[]},"overlay":{"nativePresenter":{"ok":true,"value":{"backend":"macos-metal","attached":true,"nativeHostOpen":true,"mode":"passive","clickThrough":true,"focusable":false,"transparent":true,"overlayActive":false,"overlayNeedsPresent":false,"idleFps":0,"currentFps":0,"electronOverlay":{"presenterMode":"persistent","closeWithWindow":true,"autoPrepareForNotifications":true,"overlayShortcut":{"enabled":true,"preventDefault":true,"targetType":"friends","target":{"type":"friends"}}}}}},"steam":{"initialized":true,"running":{"ok":true,"value":true},"appId":{"ok":true,"value":480},"steamDeck":{"ok":true,"value":false},"bigPicture":{"ok":true,"value":false},"overlayEnabled":{"ok":true,"value":true},"overlayNeedsPresent":{"ok":true,"value":false}},"events":[{"type":"overlay:presenter-open"},{"type":"callback:overlay-activated","payload":{"active":true}}]}}
+STEAM_BRIDGE_SMOKE_RESULT {"ok":true,"action":{"ok":true,"action":"presenter-web"},"snapshot":{"app":{"appId":480,"shortcutTarget":"friends"},"process":{"pid":4242,"platform":"darwin","arch":"arm64"},"launch":{"steamLaunch":true,"overlayInjection":true},"crashDiagnostics":{"available":true,"ok":true,"crashDumps":[],"fatalLifecycleEvents":[]},"overlay":{"nativePresenter":{"ok":true,"value":{"backend":"macos-metal","attached":true,"nativeHostOpen":true,"mode":"passive","clickThrough":true,"focusable":false,"transparent":true,"overlayActive":false,"overlayNeedsPresent":false,"idleFps":0,"currentFps":0,"electronOverlay":{"presenterMode":"persistent","closeWithWindow":true,"autoPrepareForNotifications":true,"restoreFocusDelayMs":0,"activationBoostMs":0,"activeGraceMs":0,"overlayShortcut":{"enabled":true,"preventDefault":true,"targetType":"friends","target":{"type":"friends"}}}}}},"steam":{"initialized":true,"running":{"ok":true,"value":true},"appId":{"ok":true,"value":480},"steamDeck":{"ok":true,"value":false},"bigPicture":{"ok":true,"value":false},"overlayEnabled":{"ok":true,"value":true},"overlayNeedsPresent":{"ok":true,"value":false}},"events":[{"type":"overlay:presenter-open"},{"type":"callback:overlay-activated","payload":{"active":true}}]}}
 EOF
   mkdir -p "$diagnostic_dir/crash-dumps"
   cat >"$diagnostic_dir/lifecycle.jsonl" <<'EOF'
@@ -1443,6 +1454,7 @@ EOF
   require_electron_overlay="1"
   require_presenter_mode="persistent"
   require_overlay_shortcut_target="friends"
+  require_restore_focus_delay_ms="0"
   require_no_crashes="1"
   require_events=("overlay:presenter-open" "callback:overlay-activated")
   verify_result

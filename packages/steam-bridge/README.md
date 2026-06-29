@@ -303,13 +303,17 @@ safe native host creation. Managed overlay open/wait and checkout helpers throw
 `SteamOverlayNativeHostUnavailableError` in that state; check
 `error.code === "STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE"` and `error.reason`
 instead of parsing the message when falling back to another purchase or browser
-flow. The snapshot also includes an `electronOverlay` block with the active
-presenter mode, notification-priming
-policy, shortcut policy, and whether the manager owns Electron window-close
-cleanup. The smoke verifiers
+flow. The app-facing managed helper defaults its restore-focus delay,
+activation boost, and active grace window to `0` unless explicitly configured.
+The snapshot also includes an `electronOverlay` block with the active presenter
+mode, notification-priming policy, restore-focus delay, activation timing,
+shortcut policy, and whether the manager owns Electron window-close cleanup.
+The smoke verifiers
 can require those managed diagnostics with `--require-electron-overlay`,
 `--require-presenter-mode <persistent|session>`, and
-`--require-overlay-shortcut-target <target>`. They can also verify expected
+`--require-overlay-shortcut-target <target>`. Use
+`--require-restore-focus-delay-ms 0` to prove a smoke artifact is not relying on
+a delayed focus-restore path. They can also verify expected
 managed overlay fail-fast artifacts with `--require-action-error-code` and
 `--require-action-error-reason`; add
 `--require-native-host-unavailable-reason` to require the presenter snapshot to

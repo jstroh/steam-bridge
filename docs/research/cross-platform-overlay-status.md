@@ -426,9 +426,12 @@ A passing capture shows the Steam achievement-progress toast over the running
 Electron app while the lifecycle log includes `achievement:progress`,
 `callback:achievement-stored`, and a passive presenter snapshot
 (`clickThrough=true`, `transparent=true`, `overlayActive=false`) with
-`electronOverlay.autoPrepareForNotifications=true`. The runner now requires that
-passive presenter shape automatically for this action. The smoke action tries
-the available public App ID `480` achievements until Steam accepts
+`electronOverlay.autoPrepareForNotifications=true` and managed timing
+diagnostics such as `restoreFocusDelayMs=0`. The runner now requires that
+passive presenter shape automatically for this action, and packaged helper
+verification can require `--require-restore-focus-delay-ms 0` for timing
+regressions. The smoke action tries the available public App ID `480`
+achievements until Steam accepts
 `achievement.indicateProgress(...)`, records the accepted achievement and
 attempts, and the matrix summary fails if the progress event is not
 `indicated=true` or if `callback:achievement-stored` is missing. A 2026-06-28

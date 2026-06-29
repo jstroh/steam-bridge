@@ -62,6 +62,7 @@ param(
   [switch]$RequireOverlayReady,
   [switch]$RequireOverlayActivated,
   [switch]$RequireNoOverlayActivation,
+  [int]$RequireRestoreFocusDelayMs = -1,
   [string]$RequireActionErrorCode = "",
   [string]$RequireActionErrorReason = "",
   [string]$RequireNativeHostUnavailableReason = "",
@@ -280,6 +281,7 @@ function Assert-SmokeResult {
   $processInfo = $snapshot.process
   $overlay = $snapshot.overlay
   $nativePresenter = Read-OkValue $overlay.nativePresenter
+  $electronOverlay = if ($nativePresenter) { $nativePresenter.electronOverlay } else { $null }
   $events = @($snapshot.events)
   $overlayActivated = @($events | Where-Object { Test-OverlayActiveEvent $_ }).Count -gt 0
   $expectedActionError = ($RequireActionErrorCode -or $RequireActionErrorReason)
@@ -359,6 +361,13 @@ function Assert-SmokeResult {
           $failures.Add("mac overlay environment matches $RequireNativeHostUnavailableReason")
         }
       }
+    }
+  }
+  if ($RequireRestoreFocusDelayMs -ge 0) {
+    if (-not $electronOverlay) {
+      $failures.Add("managed Electron overlay diagnostics available")
+    } elseif ($electronOverlay.restoreFocusDelayMs -ne $RequireRestoreFocusDelayMs) {
+      $failures.Add("managed Electron overlay restore focus delay is ${RequireRestoreFocusDelayMs}ms")
     }
   }
   if ($RequireSteamLaunch -and $launch.steamLaunch -ne $true) {

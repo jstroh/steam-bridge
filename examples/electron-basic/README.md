@@ -257,10 +257,15 @@ Smoke snapshots include `snapshot.overlay.nativePresenter`, whose
 `backend` reports the selected native host (`x11-glx`, `macos-metal`,
 `macos-opengl`, or `none`) and whose `bounds`, when available, report the
 Electron window geometry used for presenter alignment. Its `electronOverlay`
-diagnostics show the managed presenter mode and shortcut policy used for the
-run. The Node verifier and packaged Linux helper can assert those fields with
+diagnostics show the managed presenter mode, restore-focus delay, activation
+timing, and shortcut policy used for the run. The app-facing managed helper
+defaults restore-focus delay, activation boost, and active grace timing to `0`
+unless explicitly configured. The Node verifier and packaged platform helpers
+can assert those fields with
 `--require-electron-overlay`, `--require-presenter-mode <persistent|session>`, and
-`--require-overlay-shortcut-target <target>`. Static shortcut targets report a
+`--require-overlay-shortcut-target <target>`. Add
+`--require-restore-focus-delay-ms 0` to prove a smoke artifact is not relying on
+a delayed focus-restore path. Static shortcut targets report a
 sanitized `electronOverlay.overlayShortcut.target` snapshot with target type and
 non-sensitive flags; checkout URLs, transaction IDs, return URLs, and Steam IDs
 are not serialized. Lifecycle and result artifacts also redact real checkout
@@ -854,6 +859,8 @@ The managed Electron overlay defaults to scoped activation holds instead of
 duration-based preparation. Lower-level split-step helpers such as
 `prepareForCheckout(durationMs)` are for diagnostics or unusual custom flows
 where a standalone hold is intentional.
+The managed smoke path also uses `restoreFocusDelayMs=0`; platform helper
+verification can require that with `--require-restore-focus-delay-ms 0`.
 On macOS, if the screen is locked or the display is asleep, the managed
 overlay helpers fail before activation with
 `SteamOverlayNativeHostUnavailableError`. Use its

@@ -112,7 +112,12 @@ if (options.requirePassivePresenter || options.requireIdlePresenter) {
     expect(nativePresenter.overlayActive === false, "native presenter overlay inactive");
   }
 }
-if (options.requireElectronOverlay || options.requirePresenterMode || options.requireOverlayShortcutTarget) {
+if (
+  options.requireElectronOverlay ||
+  options.requirePresenterMode ||
+  options.requireOverlayShortcutTarget ||
+  options.requireRestoreFocusDelayMs != null
+) {
   expect(Boolean(electronOverlay), "managed Electron overlay diagnostics available");
   if (electronOverlay) {
     expect(
@@ -125,6 +130,12 @@ if (options.requirePresenterMode && electronOverlay) {
   expect(
     electronOverlay.presenterMode === options.requirePresenterMode,
     `managed Electron presenter mode is ${options.requirePresenterMode}`
+  );
+}
+if (options.requireRestoreFocusDelayMs != null && electronOverlay) {
+  expect(
+    electronOverlay.restoreFocusDelayMs === options.requireRestoreFocusDelayMs,
+    `managed Electron overlay restore focus delay is ${options.requireRestoreFocusDelayMs}ms`
   );
 }
 if (options.requireOverlayShortcutTarget && electronOverlay) {
@@ -480,6 +491,7 @@ function parseArgs(args) {
     requireActionErrorCode: undefined,
     requireActionErrorReason: undefined,
     requireNativeHostUnavailableReason: undefined,
+    requireRestoreFocusDelayMs: undefined,
     requireNoOverlayActivation: false,
     requireNoCrashes: false,
     requirePassiveNotification: false,
@@ -564,6 +576,10 @@ function parseArgs(args) {
       case "--require-native-host-unavailable-reason":
         parsed.requireNativeHostUnavailableReason = args[++index];
         break;
+      case "--require-restore-focus-delay-ms":
+        parsed.requireRestoreFocusDelayMs = parseRequiredInteger(arg, args[++index]);
+        parsed.requireElectronOverlay = true;
+        break;
       case "--require-no-crashes":
         parsed.requireNoCrashes = true;
         break;
@@ -581,6 +597,14 @@ function parseArgs(args) {
     }
   }
 
+  return parsed;
+}
+
+function parseRequiredInteger(name, value) {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 0) {
+    throw new Error(`Invalid ${name} value: ${value}`);
+  }
   return parsed;
 }
 
