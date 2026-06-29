@@ -431,6 +431,15 @@ Session-mode smoke comparisons skip the persistent-host single-target,
 idle-parking, and no-post-close-pumping assertions because the fallback opens
 lazily and may pump while a session exists.
 
+On macOS Apple Silicon, the packaged smoke app uses an in-bundle native launcher
+so Steam keeps `DYLD_INSERT_LIBRARIES` while the launcher aligns `SteamAppId`,
+`SteamGameId`, and `SteamOverlayGameId` before Electron starts. The macOS helper
+can run `--close-probe`; it focuses the smoke app, sends the close input, and
+verifies active/inactive callbacks, app focus return, `openAndWait(...)`
+completion after parking, no post-close presenter pumping, and no crash
+diagnostics. Current macOS proof covers modal web, store, Friends/chat, and the
+`OfficialGameGroup` dialog-equivalent route through the managed presenter.
+
 Use the repository-level matrix runner when you need to repeat the full Deck
 Desktop product proof instead of hand-running each case:
 

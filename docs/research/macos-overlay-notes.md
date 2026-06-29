@@ -113,6 +113,14 @@ Verified:
   the post-close stable presenter at `currentFps=0` with unchanged `pumpCount`,
   found no crash dumps or fatal lifecycle events, and confirmed the smoke app
   was frontmost after close.
+- The macOS close probe now focuses the smoke app process before sending its
+  close input. This avoids false failures where the helper process or Codex is
+  frontmost and receives Escape instead of the Steam overlay. With that focused
+  close input, 2026-06-29 follow-up runs verified the same
+  `active=true`/`active=false`, `openAndWait(...)` completion-after-park,
+  `currentFps=0`, unchanged-`pumpCount`, app-frontmost, and no-crash evidence
+  for `presenter-store-open-and-wait`, `presenter-friends-open-and-wait`, and
+  `presenter-dialog-auto-open-and-wait --dialog OfficialGameGroup`.
 
 Still not verified:
 
@@ -127,10 +135,10 @@ Still not verified:
 - A shell-wrapper shortcut can set `SteamAppId=480` before app startup, but macOS
   strips the Steam `DYLD_INSERT_LIBRARIES` injection before the Electron child
   process starts, so that path is not useful for overlay verification.
-- Store, Friends/chat, dialog-equivalent, passive notification, and checkout
-  presenter routes still need the same macOS close/back-to-app matrix currently
-  proven on Steam Deck Desktop Mode. The 2026-06-29 macOS proof covers the
-  managed modal web `openAndWait(...)` route, not every presenter-backed target.
+- Passive notification/toast and checkout presenter routes still need the same
+  macOS evidence currently proven on Steam Deck Desktop Mode. The 2026-06-29
+  macOS proof now covers the managed web, store, Friends/chat, and
+  dialog-equivalent `openAndWait(...)` routes, not every presenter-backed target.
 - Real purchase UI and `InitTxn` proof still require a real Steam app ID with a
   configured product or transaction. App ID `480` remains suitable only for
   generic overlay smoke tests.
@@ -138,8 +146,10 @@ Still not verified:
 The current macOS result should therefore be treated as Steam launch, injection,
 identity alignment, native presenter startup, modal web overlay activation,
 close, app focus return, and builder-facing `openAndWait(...)` parking coverage
-for Apple Silicon. Broader presenter-target and transaction coverage still needs
-to be run before describing macOS overlay support as complete.
+for Apple Silicon across web, store, Friends/chat, and dialog-equivalent wait
+routes. Passive notification/toast, checkout, and broader presenter-target
+coverage still need to be run before describing macOS overlay support as
+complete.
 
 ## Primary References
 

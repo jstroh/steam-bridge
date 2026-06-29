@@ -126,9 +126,10 @@ For macOS presenter diagnostics, `--native-host-backend metal` and
 app. This is a diagnostic comparison control, not an app-builder API.
 
 `--close-probe` is a helper-runner check, not an app launch option. It keeps the
-smoke app open after the initial result, sends the macOS overlay close input,
-and verifies `active=false`, app focus return, `openAndWait(...)` completion
-after close, idle presenter parking, and no crash evidence.
+smoke app open after the initial result, focuses the smoke app, sends the macOS
+overlay close input, and verifies `active=false`, app focus return,
+`openAndWait(...)` completion after close, idle presenter parking, and no crash
+evidence.
 
 For launcher-aware macOS checks, generate shortcut launch options with
 `--macos-native-launcher` and fully restart Steam after editing

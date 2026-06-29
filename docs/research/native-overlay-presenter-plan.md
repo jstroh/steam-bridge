@@ -113,13 +113,16 @@ timing hacks.
   `pumpCount`. This extends the product path without depending on raw Desktop
   `ActivateGameOverlay(...)` dialogs.
 - macOS Apple Silicon now has the same builder-facing wait proof for the modal
-  web route. A 2026-06-29 Steam-launched
-  `presenter-web-open-and-wait --web-modal true` run through the in-bundle
-  native launcher preserved Steam overlay injection, aligned `SteamOverlayGameId`
-  to App ID `480`, emitted active and inactive overlay callbacks, returned the
-  smoke app frontmost after the Escape close probe, completed
-  `openAndWait(...)` only after close and parking, and kept the parked presenter
-  at `currentFps=0` without advancing `pumpCount`.
+  web, store, Friends/chat, and dialog-equivalent routes. A 2026-06-29
+  Steam-launched `presenter-web-open-and-wait --web-modal true` run through the
+  in-bundle native launcher preserved Steam overlay injection, aligned
+  `SteamOverlayGameId` to App ID `480`, emitted active and inactive overlay
+  callbacks, returned the smoke app frontmost after the Escape close probe,
+  completed `openAndWait(...)` only after close and parking, and kept the parked
+  presenter at `currentFps=0` without advancing `pumpCount`. Follow-up macOS
+  runs verified the same completion-after-inactive-and-parked contract for
+  `presenter-store-open-and-wait`, `presenter-friends-open-and-wait`, and
+  `presenter-dialog-auto-open-and-wait --dialog OfficialGameGroup`.
 - Deck Desktop keyboard toggle now has a product-shaped Electron route:
   `createElectronSteamOverlay(...)` installs a default Shift+Tab shortcut bridge
   that opens the verified Friends/chat presenter-backed web overlay instead of
@@ -168,12 +171,12 @@ timing hacks.
   standalone native launcher shortcut failed before process creation. The
   working path is a package-time launcher installed as the `.app` bundle's main
   executable: it sets `SteamAppId`, `SteamGameId`, and `SteamOverlayGameId` to
-  the real app ID before `exec`ing the renamed Electron binary. A cold-start
-  macOS Apple Silicon `presenter-web` run preserved Steam overlay injection,
-  emitted `GameOverlayActivated(true)`, and showed one `gameoverlayui` target on
-  the Electron process with `-gameid 480`. macOS still needs the same close,
-  back-to-app, and `openAndWait(...)` parking proof already completed on Deck
-  Desktop Mode.
+  the real app ID before `exec`ing the renamed Electron binary. Cold-start macOS
+  Apple Silicon presenter runs now preserve Steam overlay injection, emit paired
+  `GameOverlayActivated(true/false)` callbacks, show one `gameoverlayui` target
+  on the Electron process with `-gameid 480`, complete `openAndWait(...)` only
+  after close and parking for web/store/Friends/dialog-equivalent targets, and
+  leave the app frontmost with the presenter parked at `currentFps=0`.
 
 Useful public references:
 
@@ -614,6 +617,13 @@ Current evidence:
 
 - Steam Bridge can create a macOS native presenter/probe.
 - A Metal host implementation exists and can attach above an Electron window.
+- The packaged app uses an in-bundle native launcher that preserves Steam's
+  overlay injection and aligns `SteamOverlayGameId` with the app ID before
+  Electron starts.
+- Steam-launched macOS Apple Silicon runs now verify managed modal web, store,
+  Friends/chat, and dialog-equivalent `openAndWait(...)` routes with paired
+  active/inactive callbacks, app focus return, and idle presenter parking at
+  `currentFps=0`.
 - BrowserWindow-only overlay support is not proven.
 - Steam launch, app ID, auth, and callbacks are not enough to claim overlay
   support.
@@ -634,10 +644,11 @@ Next work:
    black or invalid state while the user cannot interact.
 6. Keep code signing requirements explicit in docs and examples. Local smoke
    signing is not enough to claim shipped macOS overlay support.
-7. Prove the same three behaviors on Apple Silicon:
+7. Finish the remaining Apple Silicon proof:
    - passive Steam notification/toast;
-   - modal web/checkout overlay;
-   - close/back-to-app without focus loss or stuck overlay UI.
+   - checkout or purchase-specific overlay behavior from a real app/product;
+   - broader presenter target regression coverage beyond the current
+     web/store/Friends/dialog-equivalent wait routes.
 
 Pass criteria:
 
@@ -645,7 +656,9 @@ Pass criteria:
 - `overlayEnabled=true` with the native presenter path.
 - Passive presenter does not steal focus, input, or visible pixels.
 - Notification/toast appears over the app.
-- Web/checkout overlay opens and closes with active/inactive callbacks.
+- Web/store/Friends/dialog-equivalent overlays open and close with
+  active/inactive callbacks and parked presenter state; checkout gets the same
+  proof with a real app/product.
 - No sustained high-FPS idle rendering.
 
 Unsupported for now:
@@ -711,9 +724,10 @@ Deck/Linux/macOS artifacts can verify presenter alignment without scraping logs.
 5. Verify Linux passive achievement/toast behavior.
 6. Verify Linux checkout/web close and back-to-app behavior with the managed
    persistent presenter.
-7. Harden macOS Apple Silicon Metal passive mode.
+7. Harden macOS Apple Silicon Metal modal overlay mode for web, store, Friends,
+   and dialog-equivalent wait routes.
 8. Verify macOS passive notification/toast behavior.
-9. Verify macOS checkout/web close and back-to-app behavior.
+9. Verify macOS checkout/purchase close and back-to-app behavior.
 10. Promote the presenter API from experimental to recommended only after both
     Linux/Deck and macOS Apple Silicon meet the pass criteria.
 

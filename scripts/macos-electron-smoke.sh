@@ -679,6 +679,7 @@ verify_result() {
 }
 
 send_macos_overlay_close_probe() {
+  focus_macos_smoke_app_for_probe
   case "$close_input" in
     escape|keyboard)
       echo "Sending macOS overlay Escape close probe"
@@ -697,6 +698,23 @@ end tell
 OSA
       ;;
   esac
+}
+
+focus_macos_smoke_app_for_probe() {
+  osascript <<'OSA'
+tell application "System Events"
+  set smokeProcesses to every application process whose name is "SteamBridgeSmoke.electron"
+  if (count of smokeProcesses) is 0 then
+    set smokeProcesses to every application process whose name is "SteamBridgeSmoke"
+  end if
+  if (count of smokeProcesses) is 0 then
+    set smokeProcesses to every application process whose name contains "SteamBridgeSmoke" and name does not contain "Helper"
+  end if
+  if (count of smokeProcesses) > 0 then
+    set frontmost of item 1 of smokeProcesses to true
+  end if
+end tell
+OSA
 }
 
 verify_macos_overlay_closed_after_probe() {
