@@ -587,7 +587,8 @@ function electronOverlayFixture() {
     overlayShortcut: {
       enabled: true,
       preventDefault: true,
-      targetType: "function"
+      targetType: "function",
+      target: { type: "function" }
     }
   };
 }

@@ -431,8 +431,12 @@ presenter mode, notification-priming policy, shortcut policy, and
 window-close ownership.
 The smoke verifiers can require those managed diagnostics with
 `--require-electron-overlay`, `--require-presenter-mode <persistent|session>`,
-and `--require-overlay-shortcut-target <target>`. For resolver-backed shortcut
-targets, the verifier checks the smoke app's configured target while preserving
+and `--require-overlay-shortcut-target <target>`. For static shortcut targets,
+`electronOverlay.overlayShortcut.target` records sanitized target metadata such
+as type, route, modal flag, and whether URL/transaction fields were configured;
+it does not serialize checkout URLs, transaction IDs, return URLs, or Steam IDs.
+For resolver-backed shortcut targets, the verifier checks the smoke app's
+configured target while preserving
 `electronOverlay.overlayShortcut.targetType: "function"`. The Deck runner adds
 the presenter-mode requirement automatically for presenter-backed product
 actions and adds the shortcut-target requirement for `presenter-shortcut`.

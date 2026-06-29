@@ -1807,10 +1807,25 @@ export type ElectronSteamOverlayPresenterMode = "persistent" | "session";
 
 export type ElectronSteamOverlayShortcutTargetType = SteamOverlayTarget["type"] | "function" | null;
 
+export type ElectronSteamOverlayShortcutTargetSnapshot = {
+  type: Exclude<ElectronSteamOverlayShortcutTargetType, null>;
+  appId?: number;
+  dialog?: number | string;
+  flag?: number;
+  route?: string;
+  modal?: boolean;
+  hasUrl?: boolean;
+  hasSteamUrl?: boolean;
+  hasTransactionId?: boolean;
+  hasReturnUrl?: boolean;
+  hasSteamId64?: boolean;
+};
+
 export interface ElectronSteamOverlayShortcutSnapshot {
   enabled: boolean;
   preventDefault: boolean;
   targetType: ElectronSteamOverlayShortcutTargetType;
+  target: ElectronSteamOverlayShortcutTargetSnapshot | null;
 }
 
 export interface ElectronSteamOverlayWaitOptions {
@@ -8812,20 +8827,54 @@ function normalizeElectronSteamOverlayShortcut(
 function snapshotElectronSteamOverlayShortcut(
   shortcut: NormalizedElectronSteamOverlayShortcutOptions
 ): ElectronSteamOverlayShortcutSnapshot {
+  const target = shortcut.enabled ? snapshotElectronSteamOverlayShortcutTarget(shortcut.target) : null;
   return {
     enabled: shortcut.enabled,
     preventDefault: shortcut.preventDefault,
-    targetType: shortcut.enabled ? describeElectronSteamOverlayShortcutTarget(shortcut.target) : null
+    targetType: target?.type ?? null,
+    target
   };
 }
 
-function describeElectronSteamOverlayShortcutTarget(
+function snapshotElectronSteamOverlayShortcutTarget(
   target?: ElectronSteamOverlayShortcutTarget
-): ElectronSteamOverlayShortcutTargetType {
+): ElectronSteamOverlayShortcutTargetSnapshot {
   if (typeof target === "function") {
-    return "function";
+    return { type: "function" };
   }
-  return target?.type ?? "friends";
+  const overlayTarget: SteamOverlayTarget = target ?? { type: "friends" };
+  const snapshot: ElectronSteamOverlayShortcutTargetSnapshot = { type: overlayTarget.type };
+  if ("appId" in overlayTarget && typeof overlayTarget.appId === "number" && Number.isFinite(overlayTarget.appId)) {
+    snapshot.appId = overlayTarget.appId;
+  }
+  if ("dialog" in overlayTarget && overlayTarget.dialog !== undefined) {
+    snapshot.dialog = overlayTarget.dialog;
+  }
+  if ("flag" in overlayTarget && typeof overlayTarget.flag === "number" && Number.isFinite(overlayTarget.flag)) {
+    snapshot.flag = overlayTarget.flag;
+  }
+  if ("route" in overlayTarget && typeof overlayTarget.route === "string") {
+    snapshot.route = overlayTarget.route;
+  }
+  if ("modal" in overlayTarget && typeof overlayTarget.modal === "boolean") {
+    snapshot.modal = overlayTarget.modal;
+  }
+  if ("url" in overlayTarget) {
+    snapshot.hasUrl = typeof overlayTarget.url === "string" && overlayTarget.url.length > 0;
+  }
+  if ("steamUrl" in overlayTarget) {
+    snapshot.hasSteamUrl = typeof overlayTarget.steamUrl === "string" && overlayTarget.steamUrl.length > 0;
+  }
+  if ("transactionId" in overlayTarget) {
+    snapshot.hasTransactionId = overlayTarget.transactionId !== undefined && overlayTarget.transactionId !== null;
+  }
+  if ("returnUrl" in overlayTarget) {
+    snapshot.hasReturnUrl = typeof overlayTarget.returnUrl === "string" && overlayTarget.returnUrl.length > 0;
+  }
+  if ("steamId64" in overlayTarget) {
+    snapshot.hasSteamId64 = overlayTarget.steamId64 !== undefined && overlayTarget.steamId64 !== null;
+  }
+  return snapshot;
 }
 
 function isElectronSteamOverlayShortcutOpening(snapshot: ElectronSteamOverlaySnapshot): boolean {

@@ -4821,7 +4821,8 @@ test("electron steam overlay manager owns one presenter and routes opens", async
     overlayShortcut: {
       enabled: true,
       preventDefault: true,
-      targetType: "friends"
+      targetType: "friends",
+      target: { type: "friends" }
     }
   });
   windowBounds = { x: 24, y: 32, width: 1920, height: 1080 };
@@ -5405,7 +5406,8 @@ test("electron steam overlay manager can fall back to native overlay sessions", 
     overlayShortcut: {
       enabled: true,
       preventDefault: true,
-      targetType: "friends"
+      targetType: "friends",
+      target: { type: "friends" }
     }
   });
   assert.deepEqual(fake.calls.filter((call) => call.method === "attachNativeOverlayHostView"), []);
@@ -5745,7 +5747,8 @@ test("electron steam overlay manager opens the presenter route from the default 
   assert.deepEqual(overlay.snapshot().electronOverlay.overlayShortcut, {
     enabled: true,
     preventDefault: true,
-    targetType: "friends"
+    targetType: "friends",
+    target: { type: "friends" }
   });
   let preventDefaultCount = 0;
   beforeInputHandler(
@@ -5826,6 +5829,137 @@ test("electron steam overlay manager opens the presenter route from the default 
   overlay.close();
   assert.equal(removedHandler !== undefined, true);
   assert.equal(overlay.isOpen(), false);
+});
+
+test("electron steam overlay shortcut snapshots static targets without leaking private values", async (t) => {
+  const hostHandle = Buffer.from([7, 7, 1, 4]);
+  let hostOpen = false;
+  let beforeInputHandler;
+  const fake = createFakeNative({
+    attachNativeOverlayHostView(nativeWindowHandle) {
+      hostOpen = true;
+      this.calls.push({ method: "attachNativeOverlayHostView", args: [nativeWindowHandle] });
+    },
+    pumpNativeOverlayProbeWindow() {
+      this.calls.push({ method: "pumpNativeOverlayProbeWindow", args: [] });
+    },
+    showNativeOverlayHostView() {
+      this.calls.push({ method: "showNativeOverlayHostView", args: [] });
+    },
+    setNativeOverlayHostInputPassthrough(passThrough) {
+      this.calls.push({ method: "setNativeOverlayHostInputPassthrough", args: [passThrough] });
+    },
+    setNativeOverlayHostOpacity(opaque) {
+      this.calls.push({ method: "setNativeOverlayHostOpacity", args: [opaque] });
+    },
+    detachNativeOverlayHostView() {
+      hostOpen = false;
+      this.calls.push({ method: "detachNativeOverlayHostView", args: [] });
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return false;
+    },
+    isNativeOverlayHostViewOpen() {
+      return hostOpen;
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  const window = {
+    isDestroyed() {
+      return false;
+    },
+    getNativeWindowHandle() {
+      return hostHandle;
+    },
+    once() {},
+    webContents: {
+      once() {},
+      invalidate() {},
+      send() {},
+      on(event, handler) {
+        if (event === "before-input-event") {
+          beforeInputHandler = handler;
+        }
+      },
+      off(event) {
+        if (event === "before-input-event") {
+          beforeInputHandler = undefined;
+        }
+      }
+    }
+  };
+
+  const overlay = steam.overlay.createElectronSteamOverlay(window, {
+    title: "Electron Static Shortcut Overlay",
+    pollIntervalMs: 10000,
+    overlayShortcut: {
+      target: {
+        type: "web",
+        url: "https://example.invalid/private-checkout-token",
+        modal: true
+      }
+    }
+  });
+
+  assert.deepEqual(overlay.snapshot().electronOverlay.overlayShortcut, {
+    enabled: true,
+    preventDefault: true,
+    targetType: "web",
+    target: {
+      type: "web",
+      modal: true,
+      hasUrl: true
+    }
+  });
+  assert.equal(JSON.stringify(overlay.snapshot()).includes("private-checkout-token"), false);
+  beforeInputHandler(
+    {
+      preventDefault() {}
+    },
+    {
+      type: "keyDown",
+      key: "Tab",
+      code: "Tab",
+      shift: true
+    }
+  );
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "activateOverlayToWebPage"),
+    [{ method: "activateOverlayToWebPage", args: ["https://example.invalid/private-checkout-token", true] }]
+  );
+  overlay.close();
+
+  const checkoutOverlay = steam.overlay.createElectronSteamOverlay(window, {
+    title: "Electron Checkout Shortcut Overlay",
+    pollIntervalMs: 10000,
+    overlayShortcut: {
+      target: {
+        type: "checkout",
+        steamUrl: "https://checkout.steampowered.com/checkout/approvetxn/123456789/",
+        transactionId: 123456789n,
+        returnUrl: "steam://return"
+      }
+    }
+  });
+
+  assert.deepEqual(checkoutOverlay.snapshot().electronOverlay.overlayShortcut, {
+    enabled: true,
+    preventDefault: true,
+    targetType: "checkout",
+    target: {
+      type: "checkout",
+      hasSteamUrl: true,
+      hasTransactionId: true,
+      hasReturnUrl: true
+    }
+  });
+  const checkoutSnapshotJson = JSON.stringify(checkoutOverlay.snapshot());
+  assert.equal(checkoutSnapshotJson.includes("123456789"), false);
+  assert.equal(checkoutSnapshotJson.includes("steam://return"), false);
+  checkoutOverlay.close();
 });
 
 test("electron steam overlay shortcut still opens during passive notification presentation", async (t) => {

@@ -427,7 +427,16 @@ Current evidence:
   web/store path only exposes a black presenter surface and still does not
   activate Steam social UI, so opacity handoff is also not a social-overlay fix.
 
-Next work:
+Linux/Deck implementation checklist:
+
+The first six items below describe the implemented Deck Desktop product path:
+the persistent X11/GLX presenter, passive mode, adaptive pumping, geometry sync,
+session fallback, and Electron child-process isolation. Keep them here as the
+design checklist for regression review. The current Deck Desktop product path is
+the managed presenter route plus the managed `overlayShortcut` bridge. Raw Steam
+hotkey/Guide interception and raw social/Game Overview dialogs remain explicit
+investigation paths until they can open, close, and return to the app without
+duplicate child overlay targets.
 
 1. Promote the current X11/GLX probe into a persistent presenter object.
 2. Add passive mode:
