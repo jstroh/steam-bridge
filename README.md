@@ -258,28 +258,23 @@ next to the executable or in the working directory used by your app.
 
 ## Electron Overlay
 
-For Electron apps, create one managed overlay for the game window and use it for
-Steam overlay work. Steam Bridge owns the native presenter lifecycle, waits for
-Steam overlay callbacks, handles the default Shift+Tab bridge, and parks the
-presenter when Steam reports the overlay closed.
+Electron apps should create one managed Steam overlay for each game window. The
+managed overlay owns the native presenter, routes common Steam surfaces, waits
+for Steam overlay callbacks, and parks itself when Steam reports that the
+overlay has closed.
 
 ```ts
 const steamOverlay = client.overlay.createElectronSteamOverlay(mainWindow, {
   title: "Steam Overlay"
 });
 
+await steamOverlay.openAndWait({ type: "store", appId: 480 });
+await steamOverlay.openAndWait({ type: "friends" });
 await steamOverlay.openAndWait({
   type: "web",
   url: "https://store.steampowered.com/app/480/",
   modal: true
 });
-
-await steamOverlay.openAndWait({
-  type: "store",
-  appId: 480
-});
-
-await steamOverlay.openAndWait({ type: "friends" });
 
 await steamOverlay.openCheckoutAndWait(() =>
   backend.createSteamTransaction({ itemId: 100 })
@@ -288,79 +283,56 @@ await steamOverlay.openCheckoutAndWait(() =>
 steamOverlay.close();
 ```
 
-The high-level router supports the product-shaped overlay targets that are
-verified by the smoke app:
+Supported high-level targets include web pages, store pages, checkout,
+Friends/chat, profiles, players, community hubs, stats, achievements, and known
+dialog equivalents.
 
-| Target | Example |
-| --- | --- |
-| Web | `steamOverlay.open({ type: "web", url, modal: true })` |
-| Store | `steamOverlay.open({ type: "store", appId })` |
-| Checkout | `steamOverlay.openCheckoutAndWait(() => startTxn())` |
-| Friends/chat | `steamOverlay.open({ type: "friends" })` |
-| Profile | `steamOverlay.open({ type: "profile", steamId64 })` |
-| Players | `steamOverlay.open({ type: "players", steamId64 })` |
-| Community | `steamOverlay.open({ type: "community", appId })` |
-| Stats | `steamOverlay.open({ type: "stats", appId })` |
-| Achievements | `steamOverlay.open({ type: "achievements", appId })` |
-| Known dialogs | `steamOverlay.open({ type: "dialog", dialog: "Achievements", appId })` |
+While inactive, the presenter stays transparent, click-through, non-focusable,
+and idle at `0` FPS. Passive Steam notifications use the same presenter without
+forcing a permanent Electron repaint loop. The default Shift+Tab bridge opens
+the Friends/chat route; set `overlayShortcut.target` to choose another verified
+target.
 
-The manager keeps the native presenter transparent, click-through,
-non-focusable, and idle at `0` FPS while no overlay is active. Passive Steam
-notifications use the same presenter without forcing a permanent Electron
-repaint loop. `electronConfigureSteamOverlay()` also keeps Chromium child
-processes from becoming competing Steam overlay targets.
+`MicroTxnAuthorizationResponse` is a purchase authorization event, not an
+overlay-close signal. Keep the managed presenter alive until Steam reports the
+overlay inactive. Real purchase UI and `InitTxn` proof require your own Steam
+app ID with configured products; App ID `480` is only for generic smoke tests.
 
-For microtransactions, treat `MicroTxnAuthorizationResponse` as a purchase
-authorization event, not an overlay-close event. Keep the managed presenter
-alive until Steam reports overlay inactive and the app has returned. Real
-purchase UI and `InitTxn` proof require a real Steam app ID with configured
-products; App ID `480` is only for generic smoke tests.
+## Diagnostics
 
-The default Shift+Tab bridge opens the presenter-backed Friends/chat route. Set
-`overlayShortcut.target` when Shift+Tab should open a different verified target.
-Use `presenterMode: "session"` or
-`STEAM_BRIDGE_ELECTRON_OVERLAY_PRESENTER=session` only as a diagnostic fallback
-for comparing the older one-shot native-session lifecycle.
+Steam API initialization and overlay readiness are different states. A
+`steam_appid.txt` file can be enough for Steam ID, auth tickets, and callbacks
+while the overlay still cannot hook the process.
 
-## Overlay Diagnostics
-
-Steam API initialization and in-game overlay readiness are separate signals.
-`steam_appid.txt` can be enough for Steam ID, auth tickets, and callbacks while
-the overlay still cannot hook the running process.
-
-Steam Bridge exposes `client.utils.getOverlayDiagnostics()` so the host app can
-log `steamRunning`, `appId`, `overlayEnabled`, `overlayNeedsPresent`,
-`steamDeck`, `bigPicture`, and `steamInstallPath`.
+Use `client.utils.getOverlayDiagnostics()` to log `steamRunning`, `appId`,
+`overlayEnabled`, `overlayNeedsPresent`, `steamDeck`, `bigPicture`, and
+`steamInstallPath`.
 
 ## Verification
 
-The repository includes a small Electron smoke app under
-`examples/electron-basic`. It packages platform helpers that print a
-`STEAM_BRIDGE_SMOKE_RESULT` JSON line, lifecycle logs, screenshots where
-available, and crash diagnostics.
+The Electron smoke app lives in
+[`examples/electron-basic`](examples/electron-basic). Its platform helpers emit
+`STEAM_BRIDGE_SMOKE_RESULT` JSON, lifecycle logs, screenshots where available,
+and crash diagnostics.
 
-Steam Deck Desktop Mode matrix:
+Run platform matrix checks:
 
 ```sh
 npm run steam-deck:overlay-matrix -- \
   --host deck@<deck-host-or-ip> \
   --suite core
-```
 
-macOS Apple Silicon matrix:
-
-```sh
 npm run macos:overlay-matrix -- --suite core
 ```
 
-Local matrix command validation without platform hardware:
+Validate matrix commands without platform hardware:
 
 ```sh
 npm run steam-deck:overlay-matrix:check
 npm run macos:overlay-matrix:check
 ```
 
-Before opening a pull request, run the checks that CI runs:
+Run the same core checks as CI:
 
 ```sh
 npm run check:platform
@@ -370,14 +342,14 @@ npm run native:check
 npm run api:check
 ```
 
-The current evidence status is tracked in
+Current overlay evidence is tracked in
 [`docs/research/cross-platform-overlay-status.md`](docs/research/cross-platform-overlay-status.md).
-The native presenter design notes are tracked in
+Native presenter design notes are tracked in
 [`docs/research/native-overlay-presenter-plan.md`](docs/research/native-overlay-presenter-plan.md).
 
-## Notes
+## Shipping Notes
 
 - Use App ID `480` only for local Steamworks smoke tests.
-- Use your own App ID before shipping, publishing builds, or testing
-  app-specific achievements, stats, inventory, UGC, or economy flows.
+- Use your own App ID before shipping or testing app-specific achievements,
+  stats, inventory, UGC, economy, checkout, or transaction flows.
 - Steam Bridge does not vendor the Steamworks SDK or Valve redistributables.
