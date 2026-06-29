@@ -214,7 +214,10 @@ await steamOverlay.openAndWait({
 
 The manager owns a reusable native presenter, keeps it passive and click-through
 while idle, polls Steam overlay state cheaply, and only pumps frames when Steam
-reports `overlayNeedsPresent` or an overlay is being opened/active. It also
+reports `overlayNeedsPresent` or an overlay is being opened/active. Automatic
+passive notification priming performs one wake-up/poll and then waits for
+Steam's `overlayNeedsPresent` signal before entering the notification frame
+loop, so quiet achievement/stat calls do not start a fixed high-FPS boost. It also
 installs a default Electron `Shift+Tab` shortcut bridge that opens the verified
 Friends/chat presenter route without asking Steam to hook Chromium child
 processes; pass `overlayShortcut: false` to disable it, or provide
@@ -256,7 +259,8 @@ Bridge builds the approval URL for you. `steamOverlay.prepareForCheckout()`
 remains available for lower-level flows that need to separate presenter priming
 from the backend call. Passive Steam notifications such as achievement progress
 or achievement unlock toasts are automatically primed by the managed Electron
-overlay before the relevant achievement/stats calls; use
+overlay before the relevant achievement/stats calls and pump only when Steam
+reports `overlayNeedsPresent`; use
 `steamOverlay.prepareForNotification()` only for lower-level or custom Steam API
 calls. On
 Linux/X11, fully idle mode makes the host transparent and click-through;

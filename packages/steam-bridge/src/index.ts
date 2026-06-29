@@ -7357,8 +7357,12 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
     prepareForActivation("interactive", durationMs);
   };
 
-  const prepareForPassiveOverlay = (durationMs = activationBoostMs): void => {
-    prepareForActivation("passive", durationMs);
+  const prepareForPassiveOverlay = (durationMs?: number): void => {
+    if (durationMs !== undefined) {
+      prepareForActivation("passive", durationMs);
+      return;
+    }
+    prepareForPassiveActivation();
   };
 
   const prepareForTransparentInputOverlay = (durationMs = activationBoostMs): void => {
@@ -7421,6 +7425,25 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
     hostActivationMode = activationMode;
     suppressNeedsPresentOpacity = false;
     boostUntil = Math.max(boostUntil, Date.now() + Math.max(0, durationMs));
+    currentFps = selectCurrentFps();
+    syncHostInputMode();
+    pump();
+    schedule(0);
+    emitStateChange();
+  };
+
+  const prepareForPassiveActivation = (): void => {
+    if (closed) {
+      return;
+    }
+
+    if (!visible) {
+      show();
+    }
+
+    hostActivationMode = "passive";
+    suppressNeedsPresentOpacity = false;
+    poll();
     currentFps = selectCurrentFps();
     syncHostInputMode();
     pump();

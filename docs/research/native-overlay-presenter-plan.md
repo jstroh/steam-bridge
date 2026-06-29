@@ -247,7 +247,10 @@ Current evidence:
   `gameoverlayui` target attached to the main/native process.
 - The reusable presenter defaults to `idleFps: 0`, so an attached idle host polls
   overlay state without continuously presenting frames. It starts pumping only
-  for activation boost windows, active overlays, or `overlayNeedsPresent`.
+  for interactive activation boost windows, active overlays, or
+  `overlayNeedsPresent`. Passive notification priming now performs one
+  presenter wake-up/poll and then waits for `overlayNeedsPresent` instead of
+  entering a fixed high-FPS boost window.
 - The managed Electron lifecycle waits are app-facing state waits, not tuning
   loops. `openAndWait(...)`, `waitForOverlayShown()`, `waitForOverlayClosed()`,
   and `parkWhenSteamOverlayCloses()` resolve from Steam overlay callbacks and
@@ -262,7 +265,9 @@ Current evidence:
   presenter path while the native host remains click-through and transparent,
   also with a single overlay target. The smoke app's toast routes now rely on
   the managed overlay's automatic passive notification priming instead of
-  calling `prepareForNotification()` directly. A 2026-06-28 fullscreen unlock
+  calling `prepareForNotification()` directly; that priming repolls immediately
+  and pumps frames only after Steam reports `overlayNeedsPresent`. A
+  2026-06-28 fullscreen unlock
   run selected `ACH_TRAVEL_FAR_ACCUM` (`Interstellar`), cleared and re-unlocked
   it, emitted `achievement:unlock`, `callback:user-stats-stored`, and
   `callback:achievement-stored`, captured the Steam unlock toast over the app,

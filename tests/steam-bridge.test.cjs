@@ -6429,6 +6429,89 @@ test("native overlay presenter does not pump frames while idle by default", asyn
   presenter.close();
 });
 
+test("native overlay presenter primes passive notifications without a blind frame loop", async (t) => {
+  let hostOpen = false;
+  let overlayNeedsPresent = false;
+  const hostHandle = Buffer.from([9, 0, 1, 0, 0, 0, 0, 0]);
+  const fake = createFakeNative({
+    attachNativeOverlayHostView(nativeWindowHandle) {
+      hostOpen = true;
+      this.calls.push({ method: "attachNativeOverlayHostView", args: [nativeWindowHandle] });
+    },
+    pumpNativeOverlayProbeWindow() {
+      if (!hostOpen) {
+        throw new Error("native overlay presenter is closed");
+      }
+      this.calls.push({ method: "pumpNativeOverlayProbeWindow", args: [] });
+    },
+    showNativeOverlayHostView() {
+      this.calls.push({ method: "showNativeOverlayHostView", args: [] });
+    },
+    setNativeOverlayHostInputPassthrough(passThrough) {
+      this.calls.push({ method: "setNativeOverlayHostInputPassthrough", args: [passThrough] });
+    },
+    setNativeOverlayHostOpacity(opaque) {
+      this.calls.push({ method: "setNativeOverlayHostOpacity", args: [opaque] });
+    },
+    detachNativeOverlayHostView() {
+      hostOpen = false;
+      this.calls.push({ method: "detachNativeOverlayHostView", args: [] });
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return false;
+    },
+    isNativeOverlayHostViewOpen() {
+      return hostOpen;
+    },
+    getOverlayDiagnostics() {
+      return {
+        steamRunning: true,
+        steamInstallPath: "/tmp/steam",
+        appId: 480,
+        overlayEnabled: true,
+        overlayNeedsPresent,
+        steamDeck: false,
+        bigPicture: false
+      };
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  const presenter = steam.overlay.attachPresenter({
+    title: "Passive Notification Presenter",
+    nativeWindowHandle: hostHandle,
+    idleFps: 0,
+    pollIntervalMs: 10
+  });
+
+  presenter.prepareForPassiveOverlay();
+  const prepared = presenter.snapshot();
+  assert.equal(prepared.mode, "passive");
+  assert.equal(prepared.clickThrough, true);
+  assert.equal(prepared.transparent, true);
+  assert.equal(prepared.currentFps, 0);
+  assert.equal(prepared.pumpCount, 2);
+
+  await new Promise((resolve) => setTimeout(resolve, 45));
+  const stillIdle = presenter.snapshot();
+  assert.equal(stillIdle.currentFps, 0);
+  assert.equal(stillIdle.pumpCount, 2);
+
+  overlayNeedsPresent = true;
+  await new Promise((resolve) => setTimeout(resolve, 45));
+  const presenting = presenter.snapshot();
+  assert.equal(presenting.overlayNeedsPresent, true);
+  assert.equal(presenting.mode, "passive");
+  assert.equal(presenting.clickThrough, true);
+  assert.equal(presenting.transparent, false);
+  assert.equal(presenting.currentFps, presenting.needsPresentFps);
+  assert.equal(presenting.pumpCount > 2, true);
+
+  presenter.close();
+});
+
 test("native overlay presenter keeps passive input while overlay needs present", async (t) => {
   let hostOpen = false;
   let overlayNeedsPresent = false;

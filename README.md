@@ -397,9 +397,12 @@ while idle, polls Steam overlay state cheaply, and only pumps frames when Steam
 reports `overlayNeedsPresent` or an overlay is being opened/active. While the
 managed overlay is open, Steam Bridge automatically primes that passive
 presenter before achievement progress, achievement unlock, and stats-store calls
-that can produce Steam notification toasts. This is the path intended for
-checkout overlays and passive Steam notifications without forcing the Electron
-game window into a constant repaint loop. By default
+that can produce Steam notification toasts. Passive priming performs one
+presenter wake-up/poll and then waits for Steam's `overlayNeedsPresent` signal
+before entering the notification frame loop, so quiet notification calls do not
+start a fixed high-FPS boost window. This is the path intended for checkout
+overlays and passive Steam notifications without forcing the Electron game
+window into a constant repaint loop. By default
 `idleFps` is `0`; set it explicitly only for diagnostic comparisons. Use
 the managed Electron helper to keep the presenter aligned with BrowserWindow
 move, resize, fullscreen, maximize, restore, and show events; each event triggers
@@ -513,7 +516,8 @@ records presenter diagnostics on `callback:microtxn` so real-app purchase runs
 can prove the presenter was still available during authorization. Passive Steam
 notifications such as achievement progress and achievement unlock toasts are
 automatically primed by the managed Electron overlay before the relevant
-achievement/stats calls; use `steamOverlay.prepareForNotification()` only for
+achievement/stats calls and pump only when Steam reports
+`overlayNeedsPresent`; use `steamOverlay.prepareForNotification()` only for
 lower-level or custom Steam API
 calls. With the
 default child-process isolation, Deck Desktop Mode has verified this path with a

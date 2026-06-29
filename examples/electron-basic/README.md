@@ -199,7 +199,9 @@ presenter proofs.
 The managed overlay automatically primes its passive presenter before
 achievement progress, achievement unlock, and stats-store calls that can produce
 Steam notification toasts; `prepareForNotification()` remains available for
-lower-level custom cases.
+lower-level custom cases. Passive priming wakes and repolls the presenter once,
+then waits for Steam's `overlayNeedsPresent` signal before entering the
+notification frame loop, so quiet calls do not start a fixed high-FPS boost.
 Do not use `steam://open/overlay` as a generic overlay-toggle substitute in this
 example. Deck Desktop testing showed it can activate Steam's callback path while
 leaving the native presenter black and the smoke process unrecovered.
