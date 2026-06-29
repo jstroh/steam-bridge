@@ -113,6 +113,8 @@ dist/electron-smoke/aarch64-apple-darwin/SteamBridgeSmoke-darwin-arm64/macos-ele
 For macOS presenter diagnostics, `--native-host-backend metal` and
 `--native-host-backend opengl` select the native host backend used by the smoke
 app. This is a diagnostic comparison control, not an app-builder API.
+`--action-delay-ms` can move the autorun action later when comparing Steam
+launch/readiness behavior; keep normal product paths callback-driven.
 
 The same controls are also available as launch options, which is usually easier
 for Steam non-Steam shortcuts:

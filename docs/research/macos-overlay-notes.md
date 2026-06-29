@@ -65,6 +65,28 @@ Verified:
   smoke process as App ID `480`, `overlayEnabled=true`,
   `overlayNeedsPresent=false`, and Steam's `console_log.txt` shows
   `gameoverlayui` starting for the smoke process.
+- The macOS native host now honors the same state contract as the Linux/X11
+  presenter: parked hosts are transparent and click-through, while active
+  overlay preparation makes the host opaque and input-capable. The Metal backend
+  applies that opacity to the render-pass clear color as well as the Cocoa
+  window/layer state. A strict Steam-launched Metal `presenter-web` run verified
+  the smoke snapshot moved to `mode=active`, `clickThrough=false`,
+  `transparent=false`, and `currentFps=30` with no crash diagnostics. It still
+  did not emit `GameOverlayActivated(true)`.
+- A delayed diagnostic activation run, with the action fired after Steam had
+  enough time to start `gameoverlayui`, also failed to emit
+  `GameOverlayActivated(true)`. This weakens the theory that the macOS failure
+  is only an early activation race.
+- The smoke app now records macOS `gameoverlayui` process snapshots and
+  CoreGraphics Steam/window snapshots in the result payload, instead of
+  reporting overlay process diagnostics as Linux-only.
+- Those macOS diagnostics show `gameoverlayui` attached to the smoke process,
+  but with `-gameid` set to the full non-Steam shortcut game ID while Steamworks
+  inside the process reports App ID `480`. On Deck/Linux the wrapper can set
+  `SteamOverlayGameId=480`; on macOS the direct executable shortcut preserves
+  `DYLD_INSERT_LIBRARIES` but inherits Steam's shortcut overlay game ID. This
+  app-ID/overlay-game-ID mismatch is now the leading generic macOS smoke
+  hypothesis to resolve or avoid with a real installed Steam app proof.
 
 Still not verified:
 

@@ -170,6 +170,11 @@ mod macos {
         );
         fn steam_bridge_metal_surface_show(surface: *mut c_void);
         fn steam_bridge_metal_surface_hide(surface: *mut c_void);
+        fn steam_bridge_metal_surface_set_input_passthrough(
+            surface: *mut c_void,
+            pass_through: bool,
+        );
+        fn steam_bridge_metal_surface_set_opaque(surface: *mut c_void, opaque: bool);
         fn steam_bridge_metal_surface_render_frame(
             surface: *mut c_void,
             bytes: *const c_void,
@@ -277,11 +282,65 @@ mod macos {
         Ok(())
     }
 
-    pub fn set_input_passthrough(_pass_through: bool) -> Result<(), Error> {
+    pub fn set_input_passthrough(pass_through: bool) -> Result<(), Error> {
+        ensure_main_thread()?;
+
+        let mut guard = SURFACE
+            .lock()
+            .expect("Steam overlay native surface lock poisoned");
+        let Some(surface) = guard.as_mut() else {
+            return Ok(());
+        };
+
+        unsafe {
+            if !surface.metal_surface.is_null() {
+                steam_bridge_metal_surface_set_input_passthrough(
+                    surface.metal_surface,
+                    pass_through,
+                );
+                return Ok(());
+            }
+
+            match surface.owner {
+                SurfaceOwner::EmbeddedWindow { window, .. } => {
+                    let _: () = msg_send![
+                        window,
+                        setIgnoresMouseEvents: if pass_through { YES } else { NO }
+                    ];
+                    let _: () = msg_send![
+                        window,
+                        setAcceptsMouseMovedEvents: if pass_through { NO } else { YES }
+                    ];
+                }
+                SurfaceOwner::ProbeWindow { .. } | SurfaceOwner::MetalOverlayWindow { .. } => {}
+            }
+        }
+
         Ok(())
     }
 
-    pub fn set_opaque(_opaque: bool) -> Result<(), Error> {
+    pub fn set_opaque(opaque: bool) -> Result<(), Error> {
+        ensure_main_thread()?;
+
+        let mut guard = SURFACE
+            .lock()
+            .expect("Steam overlay native surface lock poisoned");
+        let Some(surface) = guard.as_mut() else {
+            return Ok(());
+        };
+
+        unsafe {
+            if !surface.metal_surface.is_null() {
+                steam_bridge_metal_surface_set_opaque(surface.metal_surface, opaque);
+                return Ok(());
+            }
+
+            if let SurfaceOwner::EmbeddedWindow { window, .. } = surface.owner {
+                set_embedded_window_opacity(window, surface.view, opaque);
+                surface.transparent_background = !opaque;
+            }
+        }
+
         Ok(())
     }
 
@@ -930,6 +989,18 @@ mod macos {
     unsafe fn update_embedded_window_frame(window: Id, parent_window: Id, parent_view: Id) {
         let screen_rect = screen_rect_for_parent_view(parent_window, parent_view);
         let _: () = msg_send![window, setFrame: screen_rect display: NO];
+    }
+
+    unsafe fn set_embedded_window_opacity(window: Id, view: Id, opaque: bool) {
+        let clear_color: Id = msg_send![class!(NSColor), clearColor];
+        let black_color: Id = msg_send![class!(NSColor), blackColor];
+        let _: () = msg_send![window, setOpaque: if opaque { YES } else { NO }];
+        let _: () = msg_send![
+            window,
+            setBackgroundColor: if opaque { black_color } else { clear_color }
+        ];
+        let _: () = msg_send![view, setAlphaValue: 1.0_f64];
+        let _: () = msg_send![view, setNeedsDisplay: YES];
     }
 
     unsafe fn screen_rect_for_parent_view(parent_window: Id, parent_view: Id) -> NSRect {

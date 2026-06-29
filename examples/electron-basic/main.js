@@ -1509,7 +1509,7 @@ function collectFatalLifecycleSnapshot(logFile) {
 }
 
 function collectOverlayProcessSnapshot() {
-  if (process.platform !== "linux") {
+  if (process.platform !== "linux" && process.platform !== "darwin") {
     return {
       available: false,
       reason: "unsupported-platform",
@@ -1519,25 +1519,20 @@ function collectOverlayProcessSnapshot() {
   }
 
   try {
-    const output = execFileSync("pgrep", ["-af", "gameoverlayui"], {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-      timeout: 1000
-    });
-    const entries = output
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .map(parseOverlayProcessLine)
-      .filter(Boolean);
+    const entries =
+      process.platform === "darwin" ? collectMacOverlayProcesses() : collectLinuxOverlayProcesses();
     return {
       available: true,
+      platform: process.platform,
+      ...(process.platform === "darwin" ? { macWindows: collectMacWindowSnapshot() } : {}),
       gameoverlayui: entries
     };
   } catch (error) {
     if (error && error.status === 1) {
       return {
         available: true,
+        platform: process.platform,
+        ...(process.platform === "darwin" ? { macWindows: collectMacWindowSnapshot() } : {}),
         gameoverlayui: []
       };
     }
@@ -1547,6 +1542,46 @@ function collectOverlayProcessSnapshot() {
       error: serializeError(error),
       gameoverlayui: []
     };
+  }
+}
+
+function collectLinuxOverlayProcesses() {
+  const output = execFileSync("pgrep", ["-af", "gameoverlayui"], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "ignore"],
+    timeout: 1000
+  });
+  return output
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map(parseOverlayProcessLine)
+    .filter(Boolean);
+}
+
+function collectMacOverlayProcesses() {
+  const output = execFileSync("ps", ["-axo", "pid=,command="], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "ignore"],
+    timeout: 1000
+  });
+  return output
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => /gameoverlayui/i.test(line))
+    .map(parseOverlayProcessLine)
+    .filter(Boolean);
+}
+
+function collectMacWindowSnapshot() {
+  try {
+    const raw = typeof steamworks.getMacWindowSnapshot === "function" ? steamworks.getMacWindowSnapshot(APP_ID) : "";
+    if (!raw) {
+      return { available: true, appId: APP_ID, windows: [] };
+    }
+    return { available: true, ...JSON.parse(raw) };
+  } catch (error) {
+    return { available: false, appId: APP_ID, error: serializeError(error), windows: [] };
   }
 }
 

@@ -156,7 +156,15 @@ timing hacks.
   exist, and crash-free Metal/OpenGL presenter startup has been verified after
   fixing macOS `DYLD_INSERT_LIBRARIES` child-process scrubbing. Steam starts
   `gameoverlayui` for the packaged smoke process, but completed product overlay
-  activation on macOS is not proven yet.
+  activation on macOS is not proven yet. The macOS native host now applies the
+  same active/passive input and opacity transitions as the Linux presenter; a
+  strict Metal run proved the host entered active, opaque, input-capable mode
+  without crashes, but still did not emit `GameOverlayActivated(true)`. A delayed
+  activation diagnostic also failed, so the remaining macOS gap is not explained
+  by a simple "activation called before gameoverlayui started" race. The newest
+  macOS diagnostics show `gameoverlayui` targeting the smoke process with the
+  non-Steam shortcut game ID while Steamworks reports App ID `480`; resolving or
+  bypassing that identity mismatch is the next macOS proof point.
 
 Useful public references:
 

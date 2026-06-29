@@ -22,6 +22,7 @@ native_host_backend=""
 achievement_name=""
 achievement_current=""
 achievement_max=""
+action_delay_ms=""
 result_delay_ms="8000"
 keep_open_after_result="0"
 timeout_seconds="90"
@@ -76,6 +77,7 @@ Options:
   --achievement-name NAME        Achievement for presenter-achievement-progress or unlock.
   --achievement-current VALUE    Progress current value.
   --achievement-max VALUE        Progress max value.
+  --action-delay-ms MS           Autorun delay before the action. Defaults to app default.
   --result-delay-ms MS           Autorun result delay. Defaults to 8000.
   --keep-open-after-result       Write the result but leave the app running.
   --timeout-seconds SECONDS      Result wait timeout. Defaults to 90.
@@ -187,6 +189,10 @@ while [ "$#" -gt 0 ]; do
       ;;
     --achievement-max)
       achievement_max="${2:?missing --achievement-max value}"
+      shift 2
+      ;;
+    --action-delay-ms)
+      action_delay_ms="${2:?missing --action-delay-ms value}"
       shift 2
       ;;
     --result-delay-ms)
@@ -344,6 +350,9 @@ smoke_args() {
   fi
   if [ -n "$achievement_max" ]; then
     printf '%s\n' "--steam-bridge-smoke-achievement-max=$achievement_max"
+  fi
+  if [ -n "$action_delay_ms" ]; then
+    printf '%s\n' "--steam-bridge-smoke-autorun-action-delay-ms=$action_delay_ms"
   fi
 }
 
@@ -722,6 +731,7 @@ NODE
   user_dialog="steamid"
   presenter_mode="session"
   native_host_backend="opengl"
+  action_delay_ms="2500"
   launch_options="$(smoke_args | paste -sd' ' -)"
   if [[ "$launch_options" != *"--steam-bridge-smoke-overlay-dialog=Achievements"* ]]; then
     echo "Self-test failed: launch options must pass the requested overlay dialog." >&2
@@ -737,6 +747,10 @@ NODE
   fi
   if [[ "$launch_options" != *"--steam-bridge-smoke-native-host-backend=opengl"* ]]; then
     echo "Self-test failed: launch options must pass the requested native host backend." >&2
+    exit 1
+  fi
+  if [[ "$launch_options" != *"--steam-bridge-smoke-autorun-action-delay-ms=2500"* ]]; then
+    echo "Self-test failed: launch options must pass the requested action delay." >&2
     exit 1
   fi
 

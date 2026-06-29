@@ -31,6 +31,7 @@
 @property(nonatomic, strong) id<MTLSamplerState> samplerState;
 @property(nonatomic, assign) BOOL destroyed;
 @property(nonatomic, assign) BOOL attachedAsChild;
+@property(nonatomic, assign) BOOL opaqueBackground;
 @end
 
 @implementation SteamBridgeMetalSurface
@@ -300,7 +301,9 @@
     }
 
     pass.colorAttachments[0].loadAction = MTLLoadActionClear;
-    pass.colorAttachments[0].clearColor = MTLClearColorMake(0.0, 0.0, 0.0, 0.0);
+    pass.colorAttachments[0].clearColor = _opaqueBackground
+        ? MTLClearColorMake(0.0, 0.0, 0.0, 1.0)
+        : MTLClearColorMake(0.0, 0.0, 0.0, 0.0);
 
     id<MTLCommandBuffer> commandBuffer = [_commandQueue commandBuffer];
     id<MTLRenderCommandEncoder> encoder = [commandBuffer renderCommandEncoderWithDescriptor:pass];
@@ -389,6 +392,39 @@ extern "C" void steam_bridge_metal_surface_hide(void *surface) {
     @autoreleasepool {
         SteamBridgeMetalSurface *metalSurface = (__bridge SteamBridgeMetalSurface *)surface;
         [metalSurface hide];
+    }
+}
+
+extern "C" void steam_bridge_metal_surface_set_input_passthrough(void *surface, bool passThrough) {
+    if (!surface) {
+        return;
+    }
+
+    @autoreleasepool {
+        SteamBridgeMetalSurface *metalSurface = (__bridge SteamBridgeMetalSurface *)surface;
+        [metalSurface.window setIgnoresMouseEvents:passThrough ? YES : NO];
+        [metalSurface.window setAcceptsMouseMovedEvents:passThrough ? NO : YES];
+    }
+}
+
+extern "C" void steam_bridge_metal_surface_set_opaque(void *surface, bool opaque) {
+    if (!surface) {
+        return;
+    }
+
+    @autoreleasepool {
+        SteamBridgeMetalSurface *metalSurface = (__bridge SteamBridgeMetalSurface *)surface;
+        NSColor *background = opaque ? [NSColor blackColor] : [NSColor clearColor];
+        [metalSurface.window setOpaque:opaque ? YES : NO];
+        [metalSurface.window setBackgroundColor:background];
+        metalSurface.opaqueBackground = opaque ? YES : NO;
+        metalSurface.view.layer.opaque = opaque ? YES : NO;
+        metalSurface.view.clearColor = opaque
+            ? MTLClearColorMake(0.0, 0.0, 0.0, 1.0)
+            : MTLClearColorMake(0.0, 0.0, 0.0, 0.0);
+
+        CAMetalLayer *layer = (CAMetalLayer *)metalSurface.view.layer;
+        layer.opaque = opaque ? YES : NO;
     }
 }
 
