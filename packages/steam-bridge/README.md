@@ -289,10 +289,12 @@ The high-level dialog target also routes known dialog names through these
 verified equivalents: `Friends` opens chat, `Community` and
 `OfficialGameGroup` open the app Community hub, `Stats` opens the current user's
 app stats page, and `Achievements` opens the current user's achievements page.
-Pass `route: "native"` only when you intentionally need raw
-`ActivateGameOverlay` dialog behavior for diagnostics. The lower-level
-`activateDialog("Friends")` / Game Overview path is still an investigation path,
-and `steam://open/overlay` should not be used as a generic toggle substitute:
+In `route: "auto"` mode, unsupported dialog names throw instead of silently
+falling back to raw Steam overlay behavior. Pass `route: "native"` only when you
+intentionally need raw `ActivateGameOverlay` dialog behavior for diagnostics.
+The lower-level `activateDialog("Friends")` / Game Overview path is still an
+investigation path, and `steam://open/overlay` should not be used as a generic
+toggle substitute:
 allowing Steam to hook Electron's Chromium children can make Steam's desktop
 social UI render, but that duplicate hook can leave stale overlay surfaces after
 close; the default child-process isolation keeps product overlays reliable and

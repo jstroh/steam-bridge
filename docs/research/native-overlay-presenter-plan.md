@@ -279,9 +279,11 @@ Current evidence:
   known Desktop dialog names to those verified presenter-backed web equivalents:
   `Friends`, `Community`, `OfficialGameGroup`, `Stats`, and `Achievements`.
   `route: "native"` keeps raw `ActivateGameOverlay(...)` dialog behavior
-  available for diagnostics, and the smoke app's `presenter-dialog` action uses
-  that native route explicitly. The smoke app's `presenter-dialog-auto` action
-  exercises the high-level router as a product-path proof. A 2026-06-28 Deck
+  available for diagnostics, and unsupported auto dialog names throw instead of
+  silently falling back to raw Steam overlay behavior. The smoke app's
+  `presenter-dialog` action uses that native route explicitly. The smoke app's
+  `presenter-dialog-auto` action exercises the high-level router as a
+  product-path proof. A 2026-06-28 Deck
   Desktop matrix of `presenter-dialog-auto --dialog Friends`, `Community`,
   `OfficialGameGroup`, `Stats`, and `Achievements` showed visible Steam web
   content through the native overlay host, emitted active then inactive overlay

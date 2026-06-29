@@ -519,8 +519,10 @@ app Community hub, `Stats` opens the current user's app stats page, and
 Mode, the public App ID `480` smoke matrix has verified all five dialog names
 through `presenter-dialog-auto` with visible Steam web content, active/inactive
 callbacks, one overlay target, clean return to Electron, parked idle presenter
-state, and no crash evidence. Pass `route: "native"` only when you intentionally
-need raw `ActivateGameOverlay` dialog behavior for diagnostics.
+state, and no crash evidence. In `route: "auto"` mode, unsupported dialog names
+throw instead of silently falling back to raw Steam overlay behavior. Pass
+`route: "native"` only when you intentionally need raw `ActivateGameOverlay`
+dialog behavior for diagnostics.
 Do not use `steam://open/overlay` as a generic overlay-toggle substitute; Deck
 Desktop testing showed it can activate Steam's callback path while leaving the
 native presenter black and the smoke process unrecovered.

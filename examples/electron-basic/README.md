@@ -199,6 +199,9 @@ second Shift+Tab closes the overlay and returns focus to the app. Add
 `--shortcut-target <name>` to test another presenter-backed target through the
 same focused Shift+Tab path; supported smoke targets are `friends`, `profile`, `web`,
 `store`, `community`, `stats`, `achievements`, `dialog`, and `checkout`.
+The `dialog` target uses the high-level auto router; unsupported dialog names
+throw instead of silently falling back to raw Steam overlay behavior. Use the
+raw `presenter-dialog` action only for explicit diagnostics.
 For emergency compatibility comparison, set
 `STEAM_BRIDGE_DISABLE_ELECTRON_OVERLAY_PRESENTER=1` before launching the smoke
 app. The same high-level `presenter-*` actions then use the older native-session

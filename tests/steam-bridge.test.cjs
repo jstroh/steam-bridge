@@ -4454,9 +4454,19 @@ test("overlay helpers map constants and forward modal/store options", (t) => {
     route: "native",
     presenter: mockPresenter
   });
+  assert.throws(
+    () =>
+      steam.overlay.openSteamOverlay({
+        type: "dialog",
+        dialog: steam.Dialog.Settings,
+        presenter: mockPresenter
+      }),
+    /does not have a verified presenter-backed route/
+  );
   steam.overlay.openSteamOverlay({
     type: "dialog",
     dialog: steam.Dialog.Settings,
+    route: "native",
     presenter: mockPresenter
   });
   steam.openNativeOverlayProbeWindow("Steam Overlay Probe");

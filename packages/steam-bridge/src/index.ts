@@ -7636,7 +7636,10 @@ export function openDialogEquivalentOverlay(
     case "achievements":
       return openAchievementsOverlay(options);
     default:
-      return openDialogOverlay(dialog, options);
+      throw new Error(
+        `Steam overlay dialog "${dialogName(dialog)}" does not have a verified presenter-backed route. ` +
+          'Pass route: "native" or call openDialogOverlay(...) to use raw ActivateGameOverlay diagnostics.'
+      );
   }
 }
 
