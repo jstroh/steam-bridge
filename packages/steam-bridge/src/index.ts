@@ -1900,6 +1900,7 @@ type NativeOverlayPresenterActivationMode = "interactive" | "passive" | "transpa
 
 type NativeOverlayPresenterInternal = NativeOverlayPresenter & {
   prepareForTransparentInputOverlay?: (durationMs?: number) => void;
+  onStateChange?: (listener: () => void) => CallbackHandle;
 };
 
 const electronNotificationPresenters = new Set<NativeOverlayPresenter>();
@@ -7264,6 +7265,7 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
   let timer: NodeJS.Timeout | undefined;
   let restoreFocusTimer: NodeJS.Timeout | undefined;
   let overlayHandle: CallbackHandle | undefined;
+  const stateListeners = new Set<() => void>();
 
   const pump = (): void => {
     if (closed) {
@@ -7274,6 +7276,7 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
       native().pumpNativeOverlayProbeWindow();
       pumpCount += 1;
       lastPumpAt = Date.now();
+      emitStateChange();
     } catch (error) {
       lastError = error;
       close();
@@ -7293,6 +7296,7 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
         native().openNativeOverlayProbeWindow(title);
       }
       visible = true;
+      emitStateChange();
     } catch (error) {
       lastError = error;
       throw error;
@@ -7311,6 +7315,7 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
         native().closeNativeOverlayProbeWindow();
       }
       visible = false;
+      emitStateChange();
     } catch (error) {
       lastError = error;
       throw error;
@@ -7344,9 +7349,11 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
     hostActivationMode = activationMode;
     suppressNeedsPresentOpacity = false;
     boostUntil = Math.max(boostUntil, Date.now() + Math.max(0, durationMs));
+    currentFps = selectCurrentFps();
     syncHostInputMode();
     pump();
     schedule(0);
+    emitStateChange();
   };
 
   const snapshot = (): NativeOverlayPresenterSnapshot => {
@@ -7424,6 +7431,8 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
     } else {
       native().closeNativeOverlayProbeWindow();
     }
+    emitStateChange();
+    stateListeners.clear();
   };
 
   const startedAt = Date.now();
@@ -7447,15 +7456,19 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
       overlayWasActive = true;
       suppressNeedsPresentOpacity = false;
       boostUntil = Math.max(boostUntil, Date.now() + activationBoostMs);
+      currentFps = selectCurrentFps();
       syncHostInputMode();
       schedule(0);
+      emitStateChange();
     } else if (event.active === false) {
       hostActivationMode = "passive";
       suppressNeedsPresentOpacity = true;
       boostUntil = Date.now() + activeGraceMs;
       scheduleRestoreFocus();
+      currentFps = selectCurrentFps();
       syncHostInputMode();
       schedule(0);
+      emitStateChange();
     }
   });
 
@@ -7473,7 +7486,8 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
     isOpen: () =>
       !closed &&
       (usesNativeHostView ? native().isNativeOverlayHostViewOpen() : native().isNativeOverlayProbeWindowOpen()),
-    snapshot
+    snapshot,
+    onStateChange: subscribeStateChange
   };
 
   return presenter;
@@ -7506,6 +7520,7 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
       }
     }
 
+    emitStateChange();
     schedule(currentFps > 0 ? Math.max(1, Math.round(1000 / currentFps)) : pollIntervalMs);
   }
 
@@ -7596,11 +7611,33 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
       }
       try {
         options.restoreFocus?.();
+        emitStateChange();
       } catch (error) {
         lastError = error;
       }
     }, restoreFocusDelayMs);
     restoreFocusTimer.unref?.();
+  }
+
+  function subscribeStateChange(listener: () => void): CallbackHandle {
+    stateListeners.add(listener);
+    return {
+      disconnect() {
+        stateListeners.delete(listener);
+      }
+    };
+  }
+
+  function emitStateChange(): void {
+    for (const listener of Array.from(stateListeners)) {
+      try {
+        listener();
+      } catch (error) {
+        process.emitWarning(error instanceof Error ? error : String(error), {
+          type: "SteamBridgeOverlayStateListenerWarning"
+        });
+      }
+    }
   }
 }
 
@@ -8080,6 +8117,7 @@ function createNativeOverlaySessionPresenter(options: NativeOverlaySessionOption
   let session: NativeOverlaySession | undefined;
   let lastSessionSnapshot: NativeOverlaySessionSnapshot | undefined;
   let lastError: unknown;
+  const stateListeners = new Set<() => void>();
 
   const ensureSession = (): NativeOverlaySession => {
     if (closed) {
@@ -8096,6 +8134,7 @@ function createNativeOverlaySessionPresenter(options: NativeOverlaySessionOption
       const activeSession = ensureSession();
       activeSession.pump();
       lastSessionSnapshot = activeSession.snapshot();
+      emitStateChange();
     } catch (error) {
       lastError = error;
       throw error;
@@ -8109,15 +8148,18 @@ function createNativeOverlaySessionPresenter(options: NativeOverlaySessionOption
     closed = true;
     session?.close();
     session = undefined;
+    emitStateChange();
+    stateListeners.clear();
   };
 
-  const presenter: NativeOverlayPresenter = {
+  const presenter: NativeOverlayPresenterInternal = {
     close,
     disconnect: close,
     pump(): void {
       session?.pump();
       if (session) {
         lastSessionSnapshot = session.snapshot();
+        emitStateChange();
       }
     },
     prepareForOverlay: prepare,
@@ -8126,6 +8168,7 @@ function createNativeOverlaySessionPresenter(options: NativeOverlaySessionOption
     hide(): void {
       session?.close();
       session = undefined;
+      emitStateChange();
     },
     isOpen(): boolean {
       return !closed;
@@ -8169,10 +8212,32 @@ function createNativeOverlaySessionPresenter(options: NativeOverlaySessionOption
         lastError: snapshot?.lastError ?? lastError,
         diagnostics
       };
-    }
+    },
+    onStateChange: subscribeStateChange
   };
 
   return presenter;
+
+  function subscribeStateChange(listener: () => void): CallbackHandle {
+    stateListeners.add(listener);
+    return {
+      disconnect() {
+        stateListeners.delete(listener);
+      }
+    };
+  }
+
+  function emitStateChange(): void {
+    for (const listener of Array.from(stateListeners)) {
+      try {
+        listener();
+      } catch (error) {
+        process.emitWarning(error instanceof Error ? error : String(error), {
+          type: "SteamBridgeOverlayStateListenerWarning"
+        });
+      }
+    }
+  }
 }
 
 const ELECTRON_STEAM_OVERLAY_WINDOW_SYNC_EVENTS: ElectronOverlayWindowGeometryEvent[] = [
@@ -8324,26 +8389,43 @@ function waitForElectronSteamOverlayState(
   const signal = options.signal;
 
   return new Promise((resolve, reject) => {
-    let timer: NodeJS.Timeout | undefined;
+    let timeoutTimer: NodeJS.Timeout | undefined;
+    let fallbackPollTimer: NodeJS.Timeout | undefined;
     let abortHandler: (() => void) | undefined;
+    let stateChangeHandle: CallbackHandle | undefined;
+    let settled = false;
 
     const cleanup = (): void => {
-      if (timer) {
-        clearTimeout(timer);
-        timer = undefined;
+      if (timeoutTimer) {
+        clearTimeout(timeoutTimer);
+        timeoutTimer = undefined;
+      }
+      if (fallbackPollTimer) {
+        clearTimeout(fallbackPollTimer);
+        fallbackPollTimer = undefined;
       }
       if (abortHandler) {
         signal?.removeEventListener("abort", abortHandler);
         abortHandler = undefined;
       }
+      stateChangeHandle?.disconnect();
+      stateChangeHandle = undefined;
     };
 
     const settleReject = (error: unknown): void => {
+      if (settled) {
+        return;
+      }
+      settled = true;
       cleanup();
       reject(error);
     };
 
     const settleResolve = (snapshot: ElectronSteamOverlaySnapshot): void => {
+      if (settled) {
+        return;
+      }
+      settled = true;
       cleanup();
       resolve(snapshot);
     };
@@ -8352,10 +8434,10 @@ function waitForElectronSteamOverlayState(
       settleReject(new Error(`Aborted waiting for Steam overlay to ${stateLabel}.`));
     };
 
-    const tick = (): void => {
+    const check = (): boolean => {
       if (signal?.aborted) {
         abortHandler?.();
-        return;
+        return true;
       }
 
       let snapshot: ElectronSteamOverlaySnapshot;
@@ -8363,31 +8445,82 @@ function waitForElectronSteamOverlayState(
         snapshot = controller.snapshot();
       } catch (error) {
         settleReject(error);
-        return;
+        return true;
       }
 
       if (predicate(snapshot)) {
         settleResolve(snapshot);
-        return;
+        return true;
       }
 
       if (!controller.isOpen()) {
         settleReject(new Error(`Electron Steam overlay closed while waiting for Steam overlay to ${stateLabel}.`));
-        return;
+        return true;
       }
 
+      return false;
+    };
+
+    const scheduleFallbackPoll = (): void => {
+      if (settled || !shouldUseElectronSteamOverlayFallbackPolling(controller, stateChangeHandle)) {
+        return;
+      }
       const remainingMs = deadline - Date.now();
       if (remainingMs <= 0) {
-        settleReject(new Error(`Timed out waiting for Steam overlay to ${stateLabel} after ${timeoutMs}ms.`));
         return;
       }
-
-      timer = setTimeout(tick, Math.min(pollIntervalMs, remainingMs));
+      fallbackPollTimer = setTimeout(() => {
+        fallbackPollTimer = undefined;
+        if (!check()) {
+          scheduleFallbackPoll();
+        }
+      }, Math.min(pollIntervalMs, remainingMs));
     };
 
     signal?.addEventListener("abort", abortHandler, { once: true });
-    tick();
+    stateChangeHandle = subscribeElectronSteamOverlayStateChanges(controller, () => {
+      check();
+    });
+
+    if (check()) {
+      return;
+    }
+
+    if (timeoutMs <= 0) {
+      settleReject(new Error(`Timed out waiting for Steam overlay to ${stateLabel} after ${timeoutMs}ms.`));
+      return;
+    }
+
+    timeoutTimer = setTimeout(() => {
+      if (!check()) {
+        settleReject(new Error(`Timed out waiting for Steam overlay to ${stateLabel} after ${timeoutMs}ms.`));
+      }
+    }, timeoutMs);
+    scheduleFallbackPoll();
   });
+}
+
+function shouldUseElectronSteamOverlayFallbackPolling(
+  controller: ElectronSteamOverlay,
+  stateChangeHandle: CallbackHandle | undefined
+): boolean {
+  if (!stateChangeHandle) {
+    return true;
+  }
+
+  try {
+    return controller.snapshot().electronOverlay.presenterMode === "session";
+  } catch {
+    return false;
+  }
+}
+
+function subscribeElectronSteamOverlayStateChanges(
+  controller: ElectronSteamOverlay,
+  listener: () => void
+): CallbackHandle | undefined {
+  const presenter = controller.presenter as NativeOverlayPresenterInternal;
+  return typeof presenter.onStateChange === "function" ? presenter.onStateChange(listener) : undefined;
 }
 
 function isElectronSteamOverlayParked(snapshot: ElectronSteamOverlaySnapshot): boolean {

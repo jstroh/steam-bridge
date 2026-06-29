@@ -181,7 +181,9 @@ presenter-backed target and resolves after Steam closes and the presenter parks.
 The managed overlay also exposes `waitForOverlayShown()`,
 `waitForOverlayClosed()`, and `parkWhenSteamOverlayCloses()` for app code that
 needs lower-level lifecycle await points without owning Steam callbacks or
-native presenter parking. The smoke lifecycle log records those public wait
+native presenter parking. In default persistent presenter mode, those helpers
+resolve from Steam Bridge overlay callback and presenter state changes instead
+of app-authored timing loops. The smoke lifecycle log records those public wait
 helpers as `overlay:presenter-wait-shown`, `overlay:presenter-wait-closed`, and
 `overlay:presenter-parked` during managed presenter proofs.
 The managed overlay automatically primes its passive presenter before
