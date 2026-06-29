@@ -1920,6 +1920,12 @@ type NativeOverlayPresenterInternal = NativeOverlayPresenter & {
   onStateChange?: (listener: () => void) => CallbackHandle;
 };
 
+const SKIP_NATIVE_OVERLAY_PRESENTER_PREPARE = Symbol("skipNativeOverlayPresenterPrepare");
+
+type InternalNativeOverlayPresenterOverlayOptions = NativeOverlayPresenterOverlayOptions & {
+  [SKIP_NATIVE_OVERLAY_PRESENTER_PREPARE]?: boolean;
+};
+
 const electronNotificationPresenters = new Set<NativeOverlayPresenter>();
 
 function registerElectronNotificationPresenter(presenter: NativeOverlayPresenter): CallbackHandle {
@@ -8056,6 +8062,16 @@ export function openSteamOverlay(target: SteamOverlayTarget): NativeOverlayPrese
   }
 }
 
+function overlayActivationModeForTarget(target: SteamOverlayTarget): NativeOverlayPresenterActivationMode {
+  if (target.type === "dialog" && target.route === "native") {
+    return "transparent-input";
+  }
+  if (target.type === "user" && target.route === "native") {
+    return "transparent-input";
+  }
+  return "interactive";
+}
+
 export function createElectronSteamOverlay(
   window: ElectronOverlayWindow,
   options: ElectronSteamOverlayOptions = {}
@@ -8096,16 +8112,36 @@ export function createElectronSteamOverlay(
       options: ElectronSteamOverlayOpenAndWaitOptions = {}
     ): Promise<ElectronSteamOverlayOpenAndWaitResult> {
       assertOpen();
-      controller.open(target);
-      const shown = await controller.waitForOverlayShown({
-        timeoutMs: finiteNumber(options.showTimeoutMs, 15000),
-        signal: options.signal
-      });
-      const parked = await controller.parkWhenSteamOverlayCloses({
-        timeoutMs: finiteNumber(options.closeTimeoutMs, 300000),
-        signal: options.signal
-      });
-      return { shown, parked };
+      const presenterInternal = presenter as NativeOverlayPresenterInternal;
+      const activationHandle = presenterInternal.beginOverlayActivation?.(overlayActivationModeForTarget(target));
+      let activationReleased = false;
+      const releaseActivation = (): void => {
+        if (activationReleased) {
+          return;
+        }
+        activationReleased = true;
+        activationHandle?.disconnect();
+      };
+      try {
+        openSteamOverlay({
+          ...target,
+          presenter,
+          ...(activationHandle ? { [SKIP_NATIVE_OVERLAY_PRESENTER_PREPARE]: true } : {})
+        } as SteamOverlayTarget);
+        const shown = await controller.waitForOverlayShown({
+          timeoutMs: finiteNumber(options.showTimeoutMs, 15000),
+          signal: options.signal
+        });
+        releaseActivation();
+        const parked = await controller.parkWhenSteamOverlayCloses({
+          timeoutMs: finiteNumber(options.closeTimeoutMs, 300000),
+          signal: options.signal
+        });
+        return { shown, parked };
+      } catch (error) {
+        releaseActivation();
+        throw error;
+      }
     },
     async withCheckoutPrepared<T>(
       operation: () => T | Promise<T>,
@@ -18997,21 +19033,26 @@ function activateWithOverlayPresenter(
   activationMode: NativeOverlayPresenterActivationMode
 ): NativeOverlayPresenter {
   const providedPresenter = options.presenter;
+  const skipPrepare = Boolean(
+    (options as InternalNativeOverlayPresenterOverlayOptions)[SKIP_NATIVE_OVERLAY_PRESENTER_PREPARE]
+  );
   const { presenter: _presenter, ...presenterOptions } = options;
   const activePresenter = providedPresenter ?? attachOverlayPresenter(presenterOptions);
 
   try {
-    if (activationMode === "interactive") {
-      activePresenter.prepareForOverlay();
-    } else if (activationMode === "transparent-input") {
-      const presenterInternal = activePresenter as NativeOverlayPresenterInternal;
-      if (typeof presenterInternal.prepareForTransparentInputOverlay === "function") {
-        presenterInternal.prepareForTransparentInputOverlay();
+    if (!skipPrepare) {
+      if (activationMode === "interactive") {
+        activePresenter.prepareForOverlay();
+      } else if (activationMode === "transparent-input") {
+        const presenterInternal = activePresenter as NativeOverlayPresenterInternal;
+        if (typeof presenterInternal.prepareForTransparentInputOverlay === "function") {
+          presenterInternal.prepareForTransparentInputOverlay();
+        } else {
+          activePresenter.prepareForPassiveOverlay();
+        }
       } else {
         activePresenter.prepareForPassiveOverlay();
       }
-    } else {
-      activePresenter.prepareForPassiveOverlay();
     }
     activate();
   } catch (error) {

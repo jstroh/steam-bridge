@@ -5941,10 +5941,20 @@ test("electron steam overlay manager exposes lifecycle wait helpers", async (t) 
   abortController.abort();
   await assert.rejects(aborted, /Aborted waiting for Steam overlay to become active/);
 
+  const pumpsBeforeManagedOpen = fake.calls.filter((call) => call.method === "pumpNativeOverlayProbeWindow").length;
   const managedOpen = overlay.openAndWait(
     { type: "web", url: "https://store.steampowered.com/app/480/", modal: true },
     { showTimeoutMs: 200, closeTimeoutMs: 200 }
   );
+  const waitingForShown = overlay.snapshot();
+  const pumpsAfterManagedOpen = fake.calls.filter((call) => call.method === "pumpNativeOverlayProbeWindow").length;
+
+  assert.equal(waitingForShown.mode, "active");
+  assert.equal(waitingForShown.clickThrough, false);
+  assert.equal(waitingForShown.transparent, false);
+  assert.equal(waitingForShown.currentFps, 30);
+  assert.equal(pumpsAfterManagedOpen, pumpsBeforeManagedOpen + 1);
+
   fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: true });
   await new Promise((resolve) => setTimeout(resolve, 10));
   fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: false });

@@ -411,6 +411,9 @@ one native presenter pump rather than a steady render loop. Use
 only when you need lower-level lifecycle control.
 Use `openAndWait(...)` for modal web, store, checkout, and dialog-equivalent
 overlays when app code should wait until Steam closes and the presenter parks.
+`openAndWait(...)` keeps the presenter active until Steam reports the overlay
+shown, then parks from overlay callbacks and presenter state changes instead of
+depending on a fixed activation window.
 Use `waitForOverlayShown()`, `waitForOverlayClosed()`, and
 `parkWhenSteamOverlayCloses()` only when you need lower-level lifecycle await
 points. In persistent presenter mode those waits resolve from Steam overlay

@@ -186,6 +186,9 @@ with one, they require `overlay:presenter-open` and a Steam overlay activation
 callback.
 For normal app code, `steamOverlay.openAndWait(...)` opens a modal
 presenter-backed target and resolves after Steam closes and the presenter parks.
+It keeps the presenter active until Steam reports the overlay shown, then parks
+from overlay callbacks and presenter state changes instead of relying on a fixed
+activation window.
 The managed overlay also exposes `waitForOverlayShown()`,
 `waitForOverlayClosed()`, and `parkWhenSteamOverlayCloses()` for app code that
 needs lower-level lifecycle await points without owning Steam callbacks or

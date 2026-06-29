@@ -369,7 +369,8 @@ Current evidence:
   call `openAndWait(...)` for the whole show/close/park lifecycle, or await
   `waitForOverlayShown()` and `parkWhenSteamOverlayCloses()` when it needs
   lower-level control, instead of carrying local callback/timer plumbing. In
-  default persistent presenter mode those waits now resolve from Steam Bridge's
+  default persistent presenter mode `openAndWait(...)` holds the presenter until
+  Steam reports the overlay shown, then those waits resolve from Steam Bridge's
   overlay callback and presenter state changes, with timeouts kept as guardrails.
   `prepareForCheckout()` remains as the lower-level split-step escape hatch.
   `MicroTxnAuthorizationResponse` is
