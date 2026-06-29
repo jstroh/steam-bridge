@@ -489,7 +489,8 @@ summary self-test. After a live run it summarizes every macOS result and
 lifecycle log, failing if a case loses Steam launch/injection identity, uses
 nonzero managed overlay timing, reports crash diagnostics, duplicates
 `gameoverlayui` targets attached to the smoke process, misses passive
-notification callbacks, or misses active/inactive close-and-park evidence for
+notification callbacks, misses checkout `openCheckoutAndWait(...)` completion
+after close/parking, or misses active/inactive close-and-park evidence for
 interactive overlays. To audit an
 existing macOS artifact root, run
 `npm run macos:overlay-matrix:summarize -- --artifact-root <path>`. Live runs

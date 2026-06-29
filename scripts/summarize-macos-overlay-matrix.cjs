@@ -171,6 +171,8 @@ function summarizeMatrixArtifacts(root) {
         `passive=${summary.passive}`,
         `overlayTargets=${summary.overlayTargets}`,
         `zeroTiming=${summary.zeroTiming}`,
+        `openAndWait=${summary.openAndWait}`,
+        `checkoutWait=${summary.checkoutWait}`,
         `crashOk=${summary.crashOk}`
       ].join(" ")
     );
@@ -215,6 +217,8 @@ function verifyCase(caseId, metadata, result, lifecycle, failures) {
       electronOverlay.activeGraceMs === 0
   );
   const crashOk = crashDiagnostics.available === true && crashDiagnostics.ok === true;
+  const openAndWait = verifyOpenAndWaitCompletion(caseId, actionName, lifecycleEntries, failures);
+  const checkoutWait = verifyCheckoutOpenAndWait(caseId, actionName, lifecycleEntries, failures);
 
   expect(result.ok === true, `${caseId}: smoke result ok`, failures);
   expect(action.ok === true, `${caseId}: autorun action succeeded`, failures);
@@ -287,25 +291,6 @@ function verifyCase(caseId, metadata, result, lifecycle, failures) {
     expect(parked, `${caseId}: presenter parked after overlay close`, failures);
   }
 
-  if (OPEN_AND_WAIT_ACTIONS.has(actionName)) {
-    expect(
-      lifecycleEntries.some((entry) => entry.type === "event:overlay:presenter-open-and-wait-start"),
-      `${caseId}: openAndWait start event recorded`,
-      failures
-    );
-    expect(
-      lifecycleEntries.some((entry) => entry.type === "event:overlay:presenter-open-and-wait-complete"),
-      `${caseId}: openAndWait completion event recorded`,
-      failures
-    );
-  }
-  if (actionName === "presenter-checkout") {
-    expect(
-      lifecycleEntries.some((entry) => entry.type === "event:overlay:presenter-open"),
-      `${caseId}: checkout presenter open event recorded`,
-      failures
-    );
-  }
   if (actionName === "presenter-shortcut") {
     expect(
       lifecycleEntries.some((entry) => entry.type === "event:overlay:shortcut-open"),
@@ -328,8 +313,103 @@ function verifyCase(caseId, metadata, result, lifecycle, failures) {
     passive: isPassive,
     overlayTargets,
     zeroTiming,
+    openAndWait: openAndWait.required ? openAndWait.ok : "n/a",
+    checkoutWait: checkoutWait.required ? checkoutWait.ok : "n/a",
     crashOk
   };
+}
+
+function verifyOpenAndWaitCompletion(caseId, actionName, entries, failures) {
+  if (!OPEN_AND_WAIT_ACTIONS.has(actionName)) {
+    return { required: false, ok: true };
+  }
+
+  const failuresBefore = failures.length;
+  const start = entries.find((entry) => entry.type === "event:overlay:presenter-open-and-wait-start");
+  if (!start) {
+    failures.push(`${caseId}: missing overlay:presenter-open-and-wait-start`);
+  }
+
+  const inactiveIndex = entries.findIndex(isLifecycleOverlayInactiveEvent);
+  if (inactiveIndex === -1) {
+    failures.push(`${caseId}: openAndWait did not record active=false before completion`);
+    return { required: true, ok: false };
+  }
+
+  const complete = entries.find(
+    (entry, index) => index > inactiveIndex && entry.type === "event:overlay:presenter-open-and-wait-complete"
+  );
+  if (!complete) {
+    failures.push(`${caseId}: missing overlay:presenter-open-and-wait-complete after active=false`);
+    return { required: true, ok: false };
+  }
+
+  const payload = objectOrEmpty(complete.payload);
+  const shown = objectField(payload, "shown");
+  const parked = objectField(payload, "parked");
+  if (!shown) {
+    failures.push(`${caseId}: openAndWait completion did not include shown presenter snapshot`);
+  } else if (shown.overlayActive !== true) {
+    failures.push(`${caseId}: openAndWait shown snapshot did not report overlayActive=true`);
+  }
+  if (!parked) {
+    failures.push(`${caseId}: openAndWait completion did not include parked presenter snapshot`);
+  } else {
+    expectParkedPresenter(caseId, parked, "openAndWait completion", failures);
+  }
+
+  return { required: true, ok: failures.length === failuresBefore };
+}
+
+function verifyCheckoutOpenAndWait(caseId, actionName, entries, failures) {
+  if (actionName !== "presenter-checkout") {
+    return { required: false, ok: true };
+  }
+
+  const open = entries.find((entry) => {
+    const payload = objectOrEmpty(entry.payload);
+    return entry.type === "event:overlay:presenter-open" && payload.target === "checkout";
+  });
+  if (!open) {
+    failures.push(`${caseId}: missing checkout overlay:presenter-open event`);
+    return { required: true, ok: false };
+  }
+
+  const failuresBefore = failures.length;
+  const openPayload = objectOrEmpty(open.payload);
+  if (openPayload.api !== "openCheckoutAndWait") {
+    failures.push(`${caseId}: checkout presenter-open did not use openCheckoutAndWait`);
+  }
+
+  const inactiveIndex = entries.findIndex(isLifecycleOverlayInactiveEvent);
+  if (inactiveIndex === -1) {
+    failures.push(`${caseId}: checkout openAndWait did not record active=false before completion`);
+    return { required: true, ok: false };
+  }
+
+  const complete = entries.find(
+    (entry, index) => index > inactiveIndex && entry.type === "event:overlay:presenter-checkout-open-and-wait-complete"
+  );
+  if (!complete) {
+    failures.push(`${caseId}: missing overlay:presenter-checkout-open-and-wait-complete after active=false`);
+    return { required: true, ok: false };
+  }
+
+  const payload = objectOrEmpty(complete.payload);
+  const shown = objectField(payload, "shown");
+  const parked = objectField(payload, "parked");
+  if (!shown) {
+    failures.push(`${caseId}: checkout completion did not include shown presenter snapshot`);
+  } else if (shown.overlayActive !== true) {
+    failures.push(`${caseId}: checkout shown snapshot did not report overlayActive=true`);
+  }
+  if (!parked) {
+    failures.push(`${caseId}: checkout completion did not include parked presenter snapshot`);
+  } else {
+    expectParkedPresenter(caseId, parked, "checkout openAndWait completion", failures);
+  }
+
+  return { required: true, ok: failures.length === failuresBefore };
 }
 
 function verifyPassiveNotification(caseId, entries, presenter, config, failures) {
@@ -517,12 +597,19 @@ function createSelfTestFixture(root) {
       action: "presenter-checkout",
       resultPresenter: activePresenterFixture(30),
       lifecycle: [
-        { type: "event:overlay:presenter-open", payload: { target: "checkout", presenter: activePresenterFixture(30) } },
+        {
+          type: "event:overlay:presenter-open",
+          payload: { target: "checkout", api: "openCheckoutAndWait", presenter: activePresenterFixture(30) }
+        },
         { type: "event:callback:overlay-activated", payload: { active: true } },
         { type: "event:overlay:presenter-wait-shown", payload: { presenter: activePresenterFixture(31) } },
         { type: "event:callback:overlay-activated", payload: { active: false } },
         { type: "event:overlay:presenter-after-close", payload: { presenter: parkedPresenterFixture(32) } },
         { type: "event:overlay:presenter-parked", payload: { presenter: parkedPresenterFixture(32) } },
+        {
+          type: "event:overlay:presenter-checkout-open-and-wait-complete",
+          payload: { shown: activePresenterFixture(31), parked: parkedPresenterFixture(32) }
+        },
         { type: "event:overlay:presenter-after-close-stable", payload: { presenter: parkedPresenterFixture(32) } }
       ]
     }
@@ -732,6 +819,11 @@ function overlayEventState(event) {
 
 function objectOrEmpty(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+
+function objectField(value, key) {
+  const object = objectOrEmpty(value);
+  return object[key] && typeof object[key] === "object" && !Array.isArray(object[key]) ? object[key] : undefined;
 }
 
 function readOkValue(entry) {

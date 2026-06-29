@@ -180,9 +180,9 @@ Verified:
   then runs `scripts/summarize-macos-overlay-matrix.cjs` to audit Steam
   launch/injection identity, one `gameoverlayui` target attached to the smoke
   process, zero managed overlay timing, passive notification callbacks,
-  close-and-park lifecycle evidence, and crash diagnostics. Its self-test
-  validates the matrix shape and the artifact summarizer without launching
-  Steam.
+  close-and-park lifecycle evidence, checkout `openCheckoutAndWait(...)`
+  completion after close/parking, and crash diagnostics. Its self-test validates
+  the matrix shape and the artifact summarizer without launching Steam.
 
 Still not verified:
 
