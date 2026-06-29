@@ -88,7 +88,8 @@ for Steam non-Steam shortcuts:
 Supported autorun actions are `none`, `dialog`, `friends`, `store`, `web`,
 `native-dialog`, `native-store`, `native-web`, `native-probe`,
 `presenter-dialog`, `presenter-store`, `presenter-web`,
-`presenter-web-open-and-wait`, `presenter-friends`,
+`presenter-web-open-and-wait`, `presenter-store-open-and-wait`,
+`presenter-friends`,
 `presenter-friends-open-and-wait`, `presenter-profile`,
 `presenter-players`, `presenter-community`, `presenter-stats`,
 `presenter-achievements`,
@@ -118,8 +119,9 @@ path. Use `presenter-web-open-and-wait --web-modal true` to exercise the exact
 builder-facing `steamOverlay.openAndWait(...)` path; the smoke app records
 `overlay:presenter-open-and-wait-start` before writing its result, then records
 `overlay:presenter-open-and-wait-complete` only after Steam closes and the
-presenter parks. Use `presenter-friends-open-and-wait` for the same one-call
-open/close/park proof against the Friends List surface. On Linux/X11, the
+presenter parks. Use `presenter-store-open-and-wait` and
+`presenter-friends-open-and-wait` for the same one-call open/close/park proof
+against the Steam store and Friends List surfaces. On Linux/X11, the
 presenter is transparent and click-through
 while fully idle, polls without pumping frames by default, can become visible while remaining
 click-through for `overlayNeedsPresent`, restores both opacity and input while

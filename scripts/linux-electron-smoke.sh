@@ -66,7 +66,7 @@ Options:
   --diagnostic-dir PATH          Diagnostic log/crash dump directory.
   --app-id ID                    Steam App ID to use. Defaults to 480.
   --action NAME                  none, dialog, friends, store, web, native-probe, native-dialog, native-store, native-web,
-                                 presenter-dialog, presenter-dialog-auto, presenter-store, presenter-web, presenter-web-open-and-wait,
+                                 presenter-dialog, presenter-dialog-auto, presenter-store, presenter-store-open-and-wait, presenter-web, presenter-web-open-and-wait,
                                  presenter-friends, presenter-friends-open-and-wait,
                                  presenter-profile, presenter-players, presenter-community, presenter-stats, presenter-achievements, presenter-user, presenter-checkout,
                                  presenter-shortcut, presenter-achievement-progress, presenter-achievement-unlock.

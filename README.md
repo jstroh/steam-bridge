@@ -262,9 +262,9 @@ npm run steam-deck:overlay-matrix -- \
 ```
 
 The matrix packages the Linux x64 smoke app, runs preflight, then exercises the
-managed presenter routes for modal web, the builder-facing `openAndWait` web
-path, store, Friends, profile, community, stats, achievements, dialog
-equivalents, checkout readiness, synthetic checkout approval-route plumbing,
+managed presenter routes for modal web, store, Friends, profile, community,
+stats, achievements, dialog equivalents, builder-facing `openAndWait` web/store
+paths, checkout readiness, synthetic checkout approval-route plumbing,
 Shift+Tab shortcut routing, and passive
 achievement progress/unlock toasts. It also summarizes every collected result and
 lifecycle log so hidden crash dumps, fatal Electron lifecycle events, duplicate
@@ -594,10 +594,12 @@ or the lower-level `client.overlay.attachPresenter(...)`,
 `client.overlay.openStatsOverlay(...)`, `client.overlay.openStoreOverlay(...)`,
 and `client.overlay.openDialogEquivalentOverlay(...)` helpers, or the Electron smoke app's
 `presenter-web` / `presenter-web-open-and-wait` / `presenter-store` /
-`presenter-friends` / `presenter-friends-open-and-wait` / `presenter-profile` /
+`presenter-store-open-and-wait` / `presenter-friends` /
+`presenter-friends-open-and-wait` / `presenter-profile` /
 `presenter-players` / `presenter-community` / `presenter-stats` / `presenter-dialog-auto` / `presenter-shortcut` actions for
-that proof. The `presenter-web-open-and-wait` and
-`presenter-friends-open-and-wait` smoke actions exercise the builder-facing
+that proof. The `presenter-web-open-and-wait`,
+`presenter-store-open-and-wait`, and `presenter-friends-open-and-wait` smoke
+actions exercise the builder-facing
 `steamOverlay.openAndWait(...)` helper and record completion only after Steam
 closes and the presenter parks.
 The older

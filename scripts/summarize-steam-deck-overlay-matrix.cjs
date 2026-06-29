@@ -15,6 +15,7 @@ const FATAL_LIFECYCLE_EVENT_TYPES = new Set([
 const MANAGED_LIFECYCLE_ACTIONS = new Set([
   "presenter-web",
   "presenter-store",
+  "presenter-store-open-and-wait",
   "presenter-friends",
   "presenter-friends-open-and-wait",
   "presenter-profile",
@@ -26,7 +27,11 @@ const MANAGED_LIFECYCLE_ACTIONS = new Set([
   "presenter-user",
   "presenter-shortcut"
 ]);
-const OPEN_AND_WAIT_ACTIONS = new Set(["presenter-web-open-and-wait", "presenter-friends-open-and-wait"]);
+const OPEN_AND_WAIT_ACTIONS = new Set([
+  "presenter-web-open-and-wait",
+  "presenter-store-open-and-wait",
+  "presenter-friends-open-and-wait"
+]);
 const PASSIVE_NOTIFICATION_ACTIONS = new Map([
   [
     "presenter-achievement-progress",
@@ -323,8 +328,8 @@ function runSelfTest() {
   try {
     createSelfTestFixture(fixtureRoot);
     const summary = summarizeMatrixArtifacts(fixtureRoot);
-    assert(summary.caseSummaries.length === 6, "summary self-test should include six cases");
-    assert(summary.totalScreenshots === 9, "summary self-test should count nine screenshots");
+    assert(summary.caseSummaries.length === 7, "summary self-test should include seven cases");
+    assert(summary.totalScreenshots === 10, "summary self-test should count ten screenshots");
     console.log("Steam Deck overlay matrix summary self-test passed.");
   } finally {
     fs.rmSync(fixtureRoot, { recursive: true, force: true });
@@ -590,6 +595,54 @@ function createSelfTestFixture(root) {
   );
   fs.writeFileSync(path.join(friendsOpenWaitScreensDir, "overlay-open.png"), "");
 
+  const storeOpenWaitCaseId = "07-store-open-and-wait";
+  const storeOpenWaitDiagnosticsDir = path.join(root, "diagnostics", storeOpenWaitCaseId);
+  const storeOpenWaitRunDiagnosticsDir = path.join(
+    storeOpenWaitDiagnosticsDir,
+    "steam-bridge-smoke-matrix-07-store-open-and-wait.log.diagnostics"
+  );
+  const storeOpenWaitScreensDir = path.join(root, "screens", storeOpenWaitCaseId);
+  const storeOpenWaitResult = JSON.parse(JSON.stringify(result));
+
+  storeOpenWaitResult.action.action = "presenter-store-open-and-wait";
+  fs.mkdirSync(storeOpenWaitRunDiagnosticsDir, { recursive: true });
+  fs.mkdirSync(storeOpenWaitScreensDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(storeOpenWaitDiagnosticsDir, "steam-bridge-smoke-matrix-07-store-open-and-wait.log"),
+    `STEAM_BRIDGE_SMOKE_RESULT ${JSON.stringify(storeOpenWaitResult)}\n`
+  );
+  fs.writeFileSync(
+    path.join(storeOpenWaitRunDiagnosticsDir, "lifecycle.jsonl"),
+    [
+      {
+        type: "event:overlay:presenter-open-and-wait-start",
+        payload: { target: "store", appId: 480, route: "web", api: "openAndWait", presenter: activePresenterFixture(19) }
+      },
+      { type: "event:callback:overlay-activated", payload: { active: true } },
+      { type: "event:overlay:presenter-wait-shown", payload: { presenter: activePresenterFixture(20) } },
+      { type: "event:callback:overlay-activated", payload: { active: false } },
+      { type: "event:overlay:presenter-wait-closed", payload: { presenter: parkedPresenterFixture(21) } },
+      { type: "event:overlay:presenter-parked", payload: { presenter: parkedPresenterFixture(21) } },
+      {
+        type: "event:overlay:presenter-open-and-wait-complete",
+        payload: {
+          target: "store",
+          appId: 480,
+          route: "web",
+          api: "openAndWait",
+          shown: activePresenterFixture(20),
+          parked: parkedPresenterFixture(21),
+          presenter: parkedPresenterFixture(21)
+        }
+      },
+      { type: "event:overlay:presenter-after-close", payload: { presenter: parkedPresenterFixture(21) } },
+      { type: "event:overlay:presenter-after-close-stable", payload: { presenter: parkedPresenterFixture(21) } }
+    ]
+      .map((entry) => JSON.stringify(entry))
+      .join("\n") + "\n"
+  );
+  fs.writeFileSync(path.join(storeOpenWaitScreensDir, "overlay-open.png"), "");
+
   fs.writeFileSync(
     path.join(root, "matrix-cases.jsonl"),
     [
@@ -632,6 +685,13 @@ function createSelfTestFixture(root) {
         caseId: friendsOpenWaitCaseId,
         caseName: "friends-open-and-wait",
         action: "presenter-friends-open-and-wait",
+        visualCloseInput: "web",
+        visualToggleInput: null
+      },
+      {
+        caseId: storeOpenWaitCaseId,
+        caseName: "store-open-and-wait",
+        action: "presenter-store-open-and-wait",
         visualCloseInput: "web",
         visualToggleInput: null
       }

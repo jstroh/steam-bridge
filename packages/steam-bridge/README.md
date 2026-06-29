@@ -371,7 +371,8 @@ with `steamOverlay.open(...)`, or the lower-level `client.overlay.attachPresente
 `client.overlay.openStatsOverlay(...)`, and
 `client.overlay.openAchievementsOverlay(...)`, `client.overlay.openUserOverlay(...)`, and
 `client.overlay.openDialogEquivalentOverlay(...)` helpers, or the Electron smoke app's
-`presenter-web` / `presenter-web-open-and-wait` / `presenter-friends` /
+`presenter-web` / `presenter-web-open-and-wait` / `presenter-store` /
+`presenter-store-open-and-wait` / `presenter-friends` /
 `presenter-friends-open-and-wait` / `presenter-profile` /
 `presenter-players` / `presenter-community` / `presenter-stats` /
 `presenter-achievements` / `presenter-user` / `presenter-dialog-auto` / `presenter-shortcut` actions for

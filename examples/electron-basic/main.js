@@ -185,6 +185,7 @@ ipcMain.handle("steam-smoke:overlay-web", () => openWebOverlay());
 ipcMain.handle("steam-smoke:overlay-dialog", () => openDialogOverlay());
 ipcMain.handle("steam-smoke:presenter-web", () => openPresenterWebOverlay());
 ipcMain.handle("steam-smoke:presenter-web-open-and-wait", () => openPresenterWebOpenAndWaitOverlay());
+ipcMain.handle("steam-smoke:presenter-store-open-and-wait", () => openPresenterStoreOpenAndWaitOverlay());
 ipcMain.handle("steam-smoke:presenter-friends", () => openPresenterFriendsOverlay());
 ipcMain.handle("steam-smoke:presenter-friends-open-and-wait", () => openPresenterFriendsOpenAndWaitOverlay());
 ipcMain.handle("steam-smoke:presenter-profile", () => openPresenterProfileOverlay());
@@ -430,6 +431,9 @@ async function runAutorunAction(action) {
       case "presenter-web-open-and-wait":
         openPresenterWebOpenAndWaitOverlay();
         return { ok: true, action };
+      case "presenter-store-open-and-wait":
+        openPresenterStoreOpenAndWaitOverlay();
+        return { ok: true, action };
       case "presenter-friends":
         openPresenterFriendsOverlay();
         return { ok: true, action };
@@ -631,6 +635,22 @@ function openPresenterWebOpenAndWaitOverlay() {
     target: "web",
     url: WEB_URL,
     modal: WEB_MODAL,
+    api: "openAndWait"
+  };
+  return openPresenterTargetAndWaitOverlay(overlay, target, context);
+}
+
+function openPresenterStoreOpenAndWaitOverlay() {
+  const activeClient = requireClient();
+  const overlay = ensureElectronSteamOverlay(activeClient);
+  const url = typeof steamworks.steamStoreAppUrl === "function" ? steamworks.steamStoreAppUrl(APP_ID) : STORE_URL;
+  const target = { type: "store", appId: APP_ID, flag: activeClient.overlay.StoreFlag.None };
+  const context = {
+    target: "store",
+    appId: APP_ID,
+    flag: activeClient.overlay.StoreFlag.None,
+    route: "web",
+    url,
     api: "openAndWait"
   };
   return openPresenterTargetAndWaitOverlay(overlay, target, context);
@@ -1901,6 +1921,7 @@ function isNativeSessionAction(action) {
     action === "presenter-dialog" ||
     action === "presenter-dialog-auto" ||
     action === "presenter-store" ||
+    action === "presenter-store-open-and-wait" ||
     action === "presenter-web" ||
     action === "presenter-web-open-and-wait" ||
     action === "presenter-friends" ||

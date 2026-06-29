@@ -97,7 +97,11 @@ timing hacks.
   Desktop run for App ID `480` recorded route `web`, emitted active/inactive
   callbacks, returned to the app after the web close probe, and stayed parked
   without post-close pumping. Pass `route: "native"` only for raw
-  `ActivateGameOverlayToStore` diagnostics.
+  `ActivateGameOverlayToStore` diagnostics. The smoke app also has
+  `presenter-store-open-and-wait`, which exercises
+  `steamOverlay.openAndWait({ type: "store", appId: 480 })` and requires the
+  promise completion event only after Steam reports overlay inactive and the
+  presenter parks.
 - Deck Desktop keyboard toggle now has a product-shaped Electron route:
   `createElectronSteamOverlay(...)` installs a default Shift+Tab shortcut bridge
   that opens the verified Friends/chat presenter-backed web overlay instead of

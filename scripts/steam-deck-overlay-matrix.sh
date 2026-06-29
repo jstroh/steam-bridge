@@ -411,11 +411,12 @@ run_self_test() {
   )"
 
   require_case_count "$minimal_output" "6" "minimal matrix"
-  require_case_count "$core_output" "19" "core matrix"
-  require_case_count "$full_output" "24" "full matrix"
+  require_case_count "$core_output" "20" "core matrix"
+  require_case_count "$full_output" "25" "full matrix"
 
   require_contains "$core_output" "--action presenter-web" "core matrix must include presenter web."
   require_contains "$core_output" "--action presenter-web-open-and-wait" "core matrix must include presenter openAndWait web."
+  require_contains "$core_output" "--action presenter-store-open-and-wait" "core matrix must include presenter openAndWait store."
   require_contains "$core_output" "--action presenter-friends" "core matrix must include Friends."
   require_contains "$core_output" "--action presenter-friends-open-and-wait" "core matrix must include Friends openAndWait."
   require_contains "$core_output" "--action presenter-shortcut" "core matrix must include shortcut probes."
@@ -581,6 +582,9 @@ if [ "$suite" = "core" ] || [ "$suite" = "full" ]; then
     --shortcut-target web \
     --web-modal true \
     --web-url "https://store.steampowered.com/app/$app_id/"
+
+  run_web_surface_case "store-open-and-wait" \
+    --action presenter-store-open-and-wait
 fi
 
 if [ "$suite" = "full" ]; then

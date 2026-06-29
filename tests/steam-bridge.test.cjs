@@ -6250,6 +6250,19 @@ test("electron steam overlay manager exposes lifecycle wait helpers", async (t) 
     { method: "activateOverlayToWebPage", args: [steam.STEAM_FRIENDS_OVERLAY_URL, true] }
   );
 
+  const managedStoreOpen = overlay.openAndWait({ type: "store", appId: 480 }, { showTimeoutMs: 200, closeTimeoutMs: 200 });
+  fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: true });
+  fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: false });
+  const managedStoreResult = await managedStoreOpen;
+
+  assert.equal(managedStoreResult.shown.overlayActive, true);
+  assert.equal(managedStoreResult.parked.overlayActive, false);
+  assert.equal(managedStoreResult.parked.currentFps, 0);
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "activateOverlayToWebPage").at(-1),
+    { method: "activateOverlayToWebPage", args: ["https://store.steampowered.com/app/480/", true] }
+  );
+
   overlay.close();
   assert.throws(() => overlay.waitForOverlayShown(), /Electron Steam overlay is closed/);
   await assert.rejects(overlay.openAndWait({ type: "friends" }), /Electron Steam overlay is closed/);
