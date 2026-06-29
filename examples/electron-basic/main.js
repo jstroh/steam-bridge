@@ -192,6 +192,7 @@ ipcMain.handle("steam-smoke:presenter-stats", () => openPresenterStatsOverlay())
 ipcMain.handle("steam-smoke:presenter-achievements", () => openPresenterAchievementsOverlay());
 ipcMain.handle("steam-smoke:presenter-checkout", () => openPresenterCheckoutOverlay());
 ipcMain.handle("steam-smoke:presenter-achievement-progress", () => openPresenterAchievementProgress());
+ipcMain.handle("steam-smoke:presenter-achievement-unlock", () => openPresenterAchievementUnlock());
 ipcMain.handle("steam-smoke:native-probe-open", () => openNativeProbe());
 ipcMain.handle("steam-smoke:native-probe-pump", () => pumpNativeProbe());
 ipcMain.handle("steam-smoke:native-probe-close", () => closeNativeProbe());
@@ -450,6 +451,9 @@ async function runAutorunAction(action) {
         return { ok: true, action };
       case "presenter-achievement-progress":
         openPresenterAchievementProgress();
+        return { ok: true, action };
+      case "presenter-achievement-unlock":
+        openPresenterAchievementUnlock();
         return { ok: true, action };
       default:
         throw new Error(`Unsupported autorun action: ${action}`);
@@ -779,6 +783,27 @@ function openPresenterAchievementProgress() {
   return snapshot();
 }
 
+function openPresenterAchievementUnlock() {
+  const activeClient = requireClient();
+  const overlay = ensureElectronSteamOverlay(activeClient);
+  const presenter = overlay.presenter;
+
+  const target = resolveAchievementUnlockTarget(activeClient);
+  const cleared = activeClient.achievement.clear(target.name);
+  const clearStored = activeClient.stats.store();
+  const activated = activeClient.achievement.activate(target.name);
+  const unlockStored = activeClient.stats.store();
+  recordEvent("achievement:unlock", {
+    ...target,
+    cleared,
+    clearStored,
+    activated,
+    unlockStored,
+    presenter: presenter.snapshot()
+  });
+  return snapshot();
+}
+
 function openPresenterShortcutBridge() {
   const overlay = ensureElectronSteamOverlay();
   recordEvent("overlay:presenter-shortcut-ready", {
@@ -906,6 +931,25 @@ function resolveAchievementProgressTarget(activeClient) {
     displayName: readValue(() => activeClient.achievement.getDisplayAttribute(name, "name")),
     hidden: readValue(() => activeClient.achievement.getDisplayAttribute(name, "hidden")),
     unlocked: readValue(() => activeClient.achievement.getAndUnlockTime(name))
+  };
+}
+
+function resolveAchievementUnlockTarget(activeClient) {
+  const names = readValue(() => activeClient.achievement.names());
+  const achievementNames = Array.isArray(names.value) ? names.value.filter(Boolean) : [];
+  const configuredName = ACHIEVEMENT_NAME.trim();
+  const name = configuredName || achievementNames[0] || "";
+  if (!name) {
+    throw new Error("No Steam achievement is available for the smoke unlock action.");
+  }
+
+  return {
+    name,
+    configuredName: configuredName || null,
+    availableNames: achievementNames,
+    beforeUnlock: readValue(() => activeClient.achievement.getAndUnlockTime(name)),
+    displayName: readValue(() => activeClient.achievement.getDisplayAttribute(name, "name")),
+    hidden: readValue(() => activeClient.achievement.getDisplayAttribute(name, "hidden"))
   };
 }
 
@@ -1630,7 +1674,8 @@ function isNativeSessionAction(action) {
     action === "presenter-achievements" ||
     action === "presenter-checkout" ||
     action === "presenter-shortcut" ||
-    action === "presenter-achievement-progress"
+    action === "presenter-achievement-progress" ||
+    action === "presenter-achievement-unlock"
   );
 }
 

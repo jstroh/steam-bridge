@@ -67,7 +67,7 @@ Options:
   --action NAME                  none, dialog, friends, store, web, native-probe, native-dialog, native-store, native-web,
                                  presenter-dialog, presenter-dialog-auto, presenter-store, presenter-web, presenter-friends,
                                  presenter-profile, presenter-players, presenter-community, presenter-stats, presenter-achievements, presenter-checkout,
-                                 presenter-shortcut, presenter-achievement-progress.
+                                 presenter-shortcut, presenter-achievement-progress, presenter-achievement-unlock.
   --overlay-profile NAME         Electron overlay profile. Defaults to diagnostic.
   --overlay-scrub-child-env true|false
                                  Whether to scrub Steam overlay preload entries from Electron child env.
@@ -84,7 +84,8 @@ Options:
                                  stats, achievements, dialog, or checkout. Defaults to friends.
   --presenter-mode MODE          Managed Electron overlay presenter mode: persistent or session.
                                  Defaults to persistent.
-  --achievement-name NAME        Achievement for presenter-achievement-progress. Defaults to the first progress achievement.
+  --achievement-name NAME        Achievement for presenter-achievement-progress or presenter-achievement-unlock.
+                                 Defaults to the first suitable public test achievement.
   --achievement-current VALUE    Progress current value. Defaults to 1.
   --achievement-max VALUE        Progress max value. Defaults to the achievement limit or 2.
   --result-delay-ms MS           Autorun result delay. Defaults to 8000.

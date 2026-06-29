@@ -91,7 +91,7 @@ Supported autorun actions are `none`, `dialog`, `friends`, `store`, `web`,
 `presenter-profile`, `presenter-players`, `presenter-community`,
 `presenter-stats`, `presenter-achievements`,
 `presenter-checkout`, `presenter-shortcut`, and
-`presenter-achievement-progress`.
+`presenter-achievement-progress`, and `presenter-achievement-unlock`.
 `native-probe` is a compatibility alias for `native-dialog`. On Linux, the
 `native-*` actions open a bridge-owned X11/GLX native presenter, keep it
 presenting frames, and activate the requested Steam overlay target through the
@@ -197,6 +197,10 @@ the action relies on automatic passive priming, keeps the presenter transparent
 and click-through, calls `achievement.indicateProgress(...)`, and records
 `achievement:progress` plus `callback:achievement-stored` when Steam accepts the
 progress notification.
+Use `presenter-achievement-unlock` to exercise the unlock-toast path through the
+same passive presenter. It clears and re-unlocks the selected public test
+achievement, stores stats, and records `achievement:unlock`; pass
+`--achievement-name <name>` when you want a specific test achievement.
 Use `presenter-shortcut` with
 `--visual-toggle-probe --visual-toggle-input keyboard --visual-close-input toggle`
 to verify the managed Electron shortcut bridge: the app attaches the reusable
@@ -306,7 +310,8 @@ npm run steam-deck:overlay-matrix -- \
 This packages the Linux x64 smoke app, runs preflight, then drives the managed
 presenter routes for modal web, store, Friends, profile, community, stats, achievements,
 dialog equivalents, checkout readiness, synthetic checkout approval-route
-plumbing, Shift+Tab shortcut routing, and passive achievement-progress toasts.
+plumbing, Shift+Tab shortcut routing, and passive achievement progress/unlock
+toasts.
 It also summarizes every collected result and lifecycle log, failing if a case
 reports crash dumps, fatal Electron lifecycle events, duplicate overlay targets,
 missing presenter diagnostics, post-close presenter parking regressions, or
@@ -457,6 +462,28 @@ passive presenter state for `presenter-achievement-progress`; it does not requir
 `currentFps=0` because Steam can still be presenting the notification. With App
 ID `480`, the current Deck proof selected the public SpaceWar achievement
 `ACH_TRAVEL_FAR_ACCUM` displayed as `Interstellar`.
+
+For achievement unlock toasts, use the matching passive unlock action:
+
+```sh
+npm run steam-deck:smoke -- \
+  --host deck@<deck-host-or-ip> \
+  --mode desktop \
+  --action presenter-achievement-unlock \
+  --overlay-profile repaint \
+  --window-mode fullscreen \
+  --keep-open-after-result \
+  --result-delay-ms 1200 \
+  --collect-diagnostics-dir /tmp/steam-bridge-deck-artifacts \
+  --visual-capture-dir /tmp/steam-bridge-deck-screens
+```
+
+This smoke action intentionally clears and re-unlocks the selected public test
+achievement so repeated runs can prove a real unlock notification without
+changing Electron app-facing overlay code. A 2026-06-28 Deck Desktop fullscreen
+run selected `ACH_TRAVEL_FAR_ACCUM` (`Interstellar`), captured the unlock toast
+over the app, kept focus on the smoke window, used one `gameoverlayui` target
+attached to the main process, and reported no crash evidence.
 
 For scripted setup, back up and upsert the non-Steam shortcut with:
 

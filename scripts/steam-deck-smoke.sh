@@ -103,7 +103,8 @@ Options:
                                 community, stats, achievements, dialog, or checkout. Defaults to friends.
   --presenter-mode MODE         Managed Electron overlay presenter mode: persistent or session.
                                 Defaults to persistent.
-  --achievement-name NAME       Achievement for presenter-achievement-progress. Defaults to the first progress achievement.
+  --achievement-name NAME       Achievement for presenter-achievement-progress or presenter-achievement-unlock.
+                                Defaults to the first suitable public test achievement.
   --achievement-current VALUE   Progress current value. Defaults to 1.
   --achievement-max VALUE       Progress max value. Defaults to the achievement limit or 2.
   --result-file PATH            Remote result log path.
@@ -1481,7 +1482,7 @@ persistent_presenter_parking_required() {
 
 is_presenter_product_action() {
   case "$action" in
-    presenter-store|presenter-web|presenter-friends|presenter-profile|presenter-players|presenter-dialog-auto|presenter-community|presenter-stats|presenter-achievements|presenter-checkout|presenter-shortcut|presenter-achievement-progress)
+    presenter-store|presenter-web|presenter-friends|presenter-profile|presenter-players|presenter-dialog-auto|presenter-community|presenter-stats|presenter-achievements|presenter-checkout|presenter-shortcut|presenter-achievement-progress|presenter-achievement-unlock)
       return 0
       ;;
     *)
@@ -1807,10 +1808,14 @@ build_steam_launch_args() {
   elif [ "$action" = "presenter-achievement-progress" ]; then
     helper_args+=("--require-event" "overlay:presenter-attach")
     helper_args+=("--require-event" "achievement:progress")
+  elif [ "$action" = "presenter-achievement-unlock" ]; then
+    helper_args+=("--require-event" "overlay:presenter-attach")
+    helper_args+=("--require-event" "achievement:unlock")
   fi
 
   if [ "$action" != "none" ] &&
     [ "$action" != "presenter-achievement-progress" ] &&
+    [ "$action" != "presenter-achievement-unlock" ] &&
     [ "$action" != "presenter-dialog" ] &&
     [ "$action" != "presenter-shortcut" ] &&
     { [ "$action" != "presenter-checkout" ] || checkout_opens_overlay; }; then
@@ -1833,7 +1838,7 @@ build_steam_launch_args() {
     if [ "$action" = "presenter-shortcut" ] ||
       { [ "$action" = "presenter-checkout" ] && ! checkout_opens_overlay; }; then
       helper_args+=("--require-idle-presenter")
-    elif [ "$action" = "presenter-achievement-progress" ]; then
+    elif [ "$action" = "presenter-achievement-progress" ] || [ "$action" = "presenter-achievement-unlock" ]; then
       helper_args+=("--require-passive-presenter")
     fi
   fi
@@ -2021,7 +2026,7 @@ run_remote_mode() {
 }
 
 run_self_test() {
-  local game_args desktop_args dialog_args friends_args community_args stats_args achievements_args checkout_args real_checkout_args toast_args direct_check
+  local game_args desktop_args dialog_args friends_args community_args stats_args achievements_args checkout_args real_checkout_args toast_args unlock_toast_args direct_check
   mode="game"
   build_steam_launch_args
   game_args="$(quote_args "${helper_args[@]}")"
@@ -2330,8 +2335,36 @@ run_self_test() {
     echo "Self-test failed: Toast args must require no crash diagnostics." >&2
     exit 1
   fi
+  if [[ "$toast_args" != *"--require-passive-presenter"* ]]; then
+    echo "Self-test failed: Toast args must require passive presenter diagnostics." >&2
+    exit 1
+  fi
   if [[ "$toast_args" != *"--require-presenter-mode persistent"* ]]; then
     echo "Self-test failed: Toast args must require persistent presenter diagnostics." >&2
+    exit 1
+  fi
+
+  action="presenter-achievement-unlock"
+  build_steam_launch_args
+  unlock_toast_args="$(quote_args "${helper_args[@]}")"
+  if [[ "$unlock_toast_args" != *"--require-event achievement:unlock"* ]]; then
+    echo "Self-test failed: Unlock toast args must require the achievement unlock event." >&2
+    exit 1
+  fi
+  if [[ "$unlock_toast_args" == *"--require-event callback:overlay-activated"* ]]; then
+    echo "Self-test failed: Unlock toast args must not require modal overlay activation." >&2
+    exit 1
+  fi
+  if [[ "$unlock_toast_args" != *"--require-no-crashes"* ]]; then
+    echo "Self-test failed: Unlock toast args must require no crash diagnostics." >&2
+    exit 1
+  fi
+  if [[ "$unlock_toast_args" != *"--require-passive-presenter"* ]]; then
+    echo "Self-test failed: Unlock toast args must require passive presenter diagnostics." >&2
+    exit 1
+  fi
+  if [[ "$unlock_toast_args" != *"--require-presenter-mode persistent"* ]]; then
+    echo "Self-test failed: Unlock toast args must require persistent presenter diagnostics." >&2
     exit 1
   fi
 

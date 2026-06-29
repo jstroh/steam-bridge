@@ -244,10 +244,10 @@ id, call `steamOverlay.open({ type: "checkout", transactionId })` and Steam
 Bridge builds the approval URL for you. `steamOverlay.prepareForCheckout()`
 remains available for lower-level flows that need to separate presenter priming
 from the backend call. Passive Steam notifications such as achievement progress
-toasts are automatically
-primed by the managed Electron overlay before the relevant achievement/stats
-calls; use `steamOverlay.prepareForNotification()` only for lower-level or
-custom Steam API calls. On
+or achievement unlock toasts are automatically primed by the managed Electron
+overlay before the relevant achievement/stats calls; use
+`steamOverlay.prepareForNotification()` only for lower-level or custom Steam API
+calls. On
 Linux/X11, fully idle mode makes the host transparent and click-through;
 `overlayNeedsPresent` can make it visible while leaving input click-through for
 passive notifications; opening or active overlay mode restores both opacity and
@@ -347,10 +347,15 @@ at `currentFps: 0`; the verifier fails if `pumpCount` increases between the
 first and stable post-close samples. Presenter-backed product runs also require
 the smoke app's managed wait-helper lifecycle events for shown, closed, and
 parked states, plus clean crash diagnostics: no crash dump files and no fatal
-Electron lifecycle events. The smoke app's
-`presenter-achievement-progress` action verifies passive Steam notification
+Electron lifecycle events. The smoke app's `presenter-achievement-progress` and
+`presenter-achievement-unlock` actions verify passive Steam notification
 behavior by keeping the presenter click-through and transparent while Steam
-displays an achievement-progress toast. The older
+displays achievement-progress or achievement-unlock toast surfaces. The unlock
+action clears and re-unlocks the selected public test achievement so repeated
+smoke runs can exercise a real unlock notification path. A 2026-06-28 Deck
+Desktop fullscreen run captured the `Interstellar` unlock toast over the smoke
+app with one overlay target, app focus preserved, passive presenter state, and
+no crash evidence. The older
 `activateToWebPageWithNativeSession(..., { modal: true })` and `native-web` path
 remains compatibility coverage. Treat raw Friends/Game Overview dialog dismissal
 and raw Steam overlay hotkey interception as open social-overlay diagnostics,
@@ -394,7 +399,7 @@ npm run steam-deck:overlay-matrix -- \
 The matrix collects per-case screenshots and diagnostics for the managed
 presenter routes: modal web, store, Friends, profile, community, stats, achievements,
 dialog equivalents, checkout readiness, synthetic checkout approval-route
-plumbing, Shift+Tab shortcut routing, and passive toasts. After a live run it
+plumbing, Shift+Tab shortcut routing, and passive progress/unlock toasts. After a live run it
 summarizes every result and lifecycle log, failing if a case reports crash
 dumps, fatal Electron lifecycle events, duplicate overlay targets, or missing
 presenter diagnostics, and it verifies post-close presenter parking plus the

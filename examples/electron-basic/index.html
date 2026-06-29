@@ -235,6 +235,7 @@
           <button id="presenter-achievements">Presenter Achievements</button>
           <button id="presenter-checkout">Presenter Checkout</button>
           <button id="toast">Presenter Toast</button>
+          <button id="unlock-toast">Presenter Unlock Toast</button>
           <button id="dialog" class="secondary">Friends Overlay</button>
           <button id="probe-open" class="secondary">Open Probe</button>
           <button id="probe-pump" class="secondary">Pump Probe</button>
@@ -474,6 +475,8 @@
         run("Presenter Checkout", () => window.steamSmoke.openPresenterCheckout());
       document.getElementById("toast").onclick = () =>
         run("Presenter Toast", () => window.steamSmoke.openPresenterAchievementProgress());
+      document.getElementById("unlock-toast").onclick = () =>
+        run("Presenter Unlock Toast", () => window.steamSmoke.openPresenterAchievementUnlock());
       document.getElementById("dialog").onclick = () => run("Friends Overlay", () => window.steamSmoke.openOverlayDialog());
       document.getElementById("probe-open").onclick = () => run("Open Native Probe", () => window.steamSmoke.openNativeProbe());
       document.getElementById("probe-pump").onclick = () => run("Pump Native Probe", () => window.steamSmoke.pumpNativeProbe());

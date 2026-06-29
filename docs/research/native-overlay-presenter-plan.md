@@ -44,11 +44,11 @@ timing hacks.
   during overlay UI, Electron child overlay targets isolated, inactive callbacks
   received, and clean return to the Electron smoke app.
 - The reusable presenter path has also been verified for passive Steam
-  achievement-progress notifications on Steam Deck Desktop Mode: the host stays
-  transparent and click-through, Steam emits `UserAchievementStored`, and the
-  achievement-progress toast renders over the Electron app without a modal
-  `GameOverlayActivated` callback. The managed Electron overlay now registers
-  its presenter for automatic passive notification priming, so normal
+  achievement-progress and achievement-unlock notifications on Steam Deck
+  Desktop Mode: the host stays transparent and click-through, Steam emits stats
+  and achievement callbacks, and the toast renders over the Electron app without
+  a modal `GameOverlayActivated` callback. The managed Electron overlay now
+  registers its presenter for automatic passive notification priming, so normal
   achievement progress, achievement unlock, and stats-store calls do not require
   app code to manually call `prepareForNotification()`.
 - Deck Desktop Friends List now has a product-shaped route:
@@ -243,11 +243,16 @@ Current evidence:
   Electron overlay also listens to BrowserWindow move, resize, fullscreen,
   maximize, restore, and show events and triggers one native presenter pump per
   event, keeping geometry current without introducing an idle frame loop.
-- Deck Desktop Mode can show a passive achievement-progress toast over the
-  Electron smoke app through the reusable presenter path while the native host
-  remains click-through and transparent, also with a single overlay target. The
-  smoke app's toast route now relies on the managed overlay's automatic passive
-  notification priming instead of calling `prepareForNotification()` directly.
+- Deck Desktop Mode can show passive achievement-progress and
+  achievement-unlock toasts over the Electron smoke app through the reusable
+  presenter path while the native host remains click-through and transparent,
+  also with a single overlay target. The smoke app's toast routes now rely on
+  the managed overlay's automatic passive notification priming instead of
+  calling `prepareForNotification()` directly. A 2026-06-28 fullscreen unlock
+  run selected `ACH_TRAVEL_FAR_ACCUM` (`Interstellar`), cleared and re-unlocked
+  it, emitted `achievement:unlock`, `callback:user-stats-stored`, and
+  `callback:achievement-stored`, captured the Steam unlock toast over the app,
+  kept the app focused, and reported no crash evidence.
 - Deck Desktop Mode can show the Steam Friends List / chat UI through
   `steamOverlay.open({ type: "friends" })`, backed by
   `openSteamOverlay({ type: "friends", presenter })`, which opens Steam
@@ -442,7 +447,8 @@ Pass criteria:
   `gameoverlayui` process attached to Electron's GPU/renderer children.
 - Presenter attached and passive without stealing focus.
 - App receives pointer/keyboard/controller input while presenter is passive.
-- Achievement or notification toast appears and disappears.
+- Achievement-progress and achievement-unlock notification toasts appear over
+  the app through the passive presenter without modal overlay activation.
 - Friends List opens through `openFriendsOverlay`, accepts input, closes, and
   returns to the app without duplicate Electron child overlay targets.
 - Community and Stats open through `openCommunityOverlay` and

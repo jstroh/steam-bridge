@@ -55,8 +55,8 @@ Options:
 
 Suites:
   minimal  presenter web, Friends, shortcut, checkout prepare, and passive toast.
-  core     minimal plus store, profile, community, stats, achievements, OfficialGameGroup
-           dialog equivalent, checkout approval-route plumbing, and web shortcut.
+  core     minimal plus unlock toast, store, profile, community, stats, achievements,
+           OfficialGameGroup dialog equivalent, checkout approval-route plumbing, and web shortcut.
   full     core plus all known high-level dialog-equivalent routes.
 EOF
 }
@@ -377,7 +377,7 @@ run_summary_self_test() {
 }
 
 run_self_test() {
-  local self_path minimal_output core_output full_output first_core_case second_core_case shortcut_friends_case checkout_prepare_case passive_toast_case shortcut_web_case
+  local self_path minimal_output core_output full_output first_core_case second_core_case shortcut_friends_case checkout_prepare_case passive_toast_case passive_unlock_case shortcut_web_case
   self_path="${BASH_SOURCE[0]}"
 
   minimal_output="$(
@@ -409,14 +409,15 @@ run_self_test() {
   )"
 
   require_case_count "$minimal_output" "5" "minimal matrix"
-  require_case_count "$core_output" "14" "core matrix"
-  require_case_count "$full_output" "19" "full matrix"
+  require_case_count "$core_output" "15" "core matrix"
+  require_case_count "$full_output" "20" "full matrix"
 
   require_contains "$core_output" "--action presenter-web" "core matrix must include presenter web."
   require_contains "$core_output" "--action presenter-friends" "core matrix must include Friends."
   require_contains "$core_output" "--action presenter-shortcut" "core matrix must include shortcut probes."
   require_contains "$core_output" "--action presenter-checkout" "core matrix must include checkout."
   require_contains "$core_output" "--action presenter-achievement-progress" "core matrix must include passive toast."
+  require_contains "$core_output" "--action presenter-achievement-unlock" "core matrix must include passive unlock toast."
   require_contains "$core_output" "--action presenter-store" "core matrix must include store."
   require_contains "$core_output" "--action presenter-profile" "core matrix must include profile."
   require_contains "$core_output" "--action presenter-players" "core matrix must include players."
@@ -438,13 +439,15 @@ run_self_test() {
   shortcut_friends_case="$(matrix_case_command "$core_output" "03-shortcut-friends")"
   checkout_prepare_case="$(matrix_case_command "$core_output" "04-checkout-prepare")"
   passive_toast_case="$(matrix_case_command "$core_output" "06-passive-toast")"
-  shortcut_web_case="$(matrix_case_command "$core_output" "14-shortcut-web")"
+  passive_unlock_case="$(matrix_case_command "$core_output" "07-passive-unlock-toast")"
+  shortcut_web_case="$(matrix_case_command "$core_output" "15-shortcut-web")"
 
   require_not_contains "$first_core_case" "--skip-copy" "first matrix case must copy the package."
   require_contains "$second_core_case" "--skip-copy" "later matrix cases should reuse the copied package."
   require_contains "$shortcut_friends_case" "--visual-close-input toggle" "shortcut proof should close with Shift+Tab-only toggle input."
   require_not_contains "$checkout_prepare_case" "--result-delay-ms" "checkout readiness must use the normal settling delay."
   require_contains "$passive_toast_case" "--result-delay-ms 1200" "passive toast should use the short notification capture delay."
+  require_contains "$passive_unlock_case" "--result-delay-ms 1200" "passive unlock toast should use the short notification capture delay."
   require_not_contains "$shortcut_web_case" "--visual-toggle-open-delay" "web shortcut proof should use lifecycle evidence instead of a fixed open delay."
   require_contains "$shortcut_web_case" "--visual-close-input toggle" "web shortcut proof should close with Shift+Tab-only toggle input."
   run_summary_self_test
@@ -523,6 +526,11 @@ run_deck_case "passive-toast" \
   --keep-open-after-result
 
 if [ "$suite" = "core" ] || [ "$suite" = "full" ]; then
+  run_deck_case "passive-unlock-toast" \
+    --action presenter-achievement-unlock \
+    --result-delay-ms 1200 \
+    --keep-open-after-result
+
   run_web_surface_case "store" \
     --action presenter-store
 
