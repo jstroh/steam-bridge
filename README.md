@@ -243,132 +243,29 @@ npm run native:build
 npm run example:package:mac
 ```
 
-The example README has the Steam Deck Game Mode, Deck Desktop Mode, and desktop
-platform smoke-test flow, including an autorun mode that prints a
-`STEAM_BRIDGE_SMOKE_RESULT` JSON line for scripted checks. When scripting Steam
-Deck non-Steam shortcuts, reload Steam after writing `shortcuts.vdf` and launch
-the printed full shortcut game ID, not the internal shortcut app ID.
-
-The packaged Windows smoke helper can drive the same generic smoke actions used
-by the other platforms, including presenter-backed web, store, Friends,
-dialog-equivalent, checkout, shortcut, and passive notification routes. Windows
-is treated as a regression baseline: use those actions to confirm the ordinary
-Electron/Steam overlay path still works before shipping a Windows build.
-
-The managed Electron overlay helper also owns the default Shift+Tab keyboard
-shortcut bridge, routing it through the same presenter-backed Friends/chat path
-used by the Deck Desktop proof instead of relying on Steam to hook Chromium
-child processes. Apps can set `overlayShortcut.target` to any presenter-backed
-target when they want Shift+Tab to open store, web, checkout, community, stats,
-achievements, or dialog-equivalent surfaces instead, and can use
-`overlayShortcut.onOpen` for app logging or state updates after the managed
-shortcut opens. Static shortcut targets are the normal path; resolver functions
-are only needed when the target has to be computed at keypress time. Once Steam
-reports an active overlay, the shortcut bridge no longer consumes Shift+Tab;
-on macOS, where Steam can consume Shift+Tab before Electron's normal key event,
-Steam Bridge uses a focused-window global shortcut fallback while the game
-window is focused and unregisters it while Steam's overlay is active. Deck
-Desktop and macOS proof now verify that a second Shift+Tab closes the managed
-overlay and returns focus to the app.
-
-To rerun the Steam Deck Desktop Mode product overlay proof matrix from this
-repo, keep the Deck awake in Desktop Mode with Steam running and use:
-
-```sh
-npm run steam-deck:overlay-matrix -- \
-  --host deck@<deck-host-or-ip> \
-  --suite core
-```
-
-The matrix packages the Linux x64 smoke app, runs preflight, then exercises the
-managed presenter routes for modal web, store, Friends, profile, community,
-stats, achievements, dialog equivalents, builder-facing `openAndWait`
-web/store/Friends/dialog-equivalent paths, checkout readiness, synthetic checkout approval-route plumbing,
-Shift+Tab shortcut routing, and passive
-achievement progress/unlock toasts. It also summarizes every collected result and
-lifecycle log so hidden crash dumps, fatal Electron lifecycle events, duplicate
-overlay targets, missing presenter diagnostics, and post-close presenter parking
-regressions fail the run. Screenshots and diagnostics are collected under
-`/tmp/steam-bridge-deck-overlay-matrix-*`; live runs also write
-`matrix-cases.jsonl` so summaries can print and audit the close/toggle input
-used for each case. Active presenter-backed cases also record the managed
-builder-facing lifecycle waits as `overlay:presenter-wait-shown`,
-`overlay:presenter-wait-closed`, and `overlay:presenter-parked` lifecycle
-events, so Deck artifacts prove the public wait helpers as well as the raw
-Steam callbacks.
-
-For CI/local maintenance without a Deck, `npm run steam-deck:overlay-matrix:check`
-validates the generated minimal, core, and full matrix command sets plus the
-artifact summarizer. To audit an existing artifact root, run
-`npm run steam-deck:overlay-matrix:summarize -- --artifact-root <path>`.
+The [`examples/electron-basic` README](examples/electron-basic/README.md) has
+the Steam Deck Game Mode, Steam Deck Desktop Mode, and desktop smoke-test flows,
+including autorun JSON output, screenshots, and crash diagnostics.
 
 SpaceWar `480` and the Electron smoke app are for generic initialization,
 callback, input, and overlay plumbing checks. Purchase overlays need a real
-Steam app launch with a matching App ID and a configured product or transaction;
-keep private app IDs, item definitions, transaction IDs, publisher keys, and
+Steam app launch with a matching App ID and a configured product or transaction.
+Keep private app IDs, item definitions, transaction IDs, publisher keys, and
 private URLs out of committed examples.
 
 When launching outside Steam, put a `steam_appid.txt` file containing the app ID
 next to the executable or in the working directory used by your app.
 
-Before opening a pull request, run the checks that CI runs:
+## Electron Overlay
 
-```sh
-npm run check:platform
-npm test
-npm run native:fmt
-npm run native:check
-npm run api:check
-```
-
-## Overlay Diagnostics
-
-On macOS, Steam API initialization and the in-game overlay are separate
-successes. `steam_appid.txt` can be enough for Steam ID, auth tickets, and
-callbacks while the overlay still never hooks an Electron `BrowserWindow`.
-
-Steam Bridge exposes `client.utils.getOverlayDiagnostics()` so the host app can
-log what Steam sees:
-
-- `steamRunning`
-- `appId`
-- `overlayEnabled`
-- `overlayNeedsPresent`
-- `steamDeck`
-- `bigPicture`
-- `steamInstallPath`
-
-Steam Bridge also includes a managed native overlay session for diagnostics and
-Deck/Desktop proof runs. This older compatibility path opens a bridge-owned
-native presenter, keeps it alive while the requested Steam overlay target is
-active, and tracks whether Steam reported overlay activation:
-
-```ts
-const session = client.overlay.activateToWebPageWithNativeSession("https://store.steampowered.com/app/480/", {
-  ...steamworks.electronNativeOverlaySessionOptions(mainWindow),
-  modal: true,
-  title: "Steam Overlay"
-});
-
-// Other overlay targets use the same bridge-owned native presenter lifecycle:
-// const session = client.overlay.activateToStoreWithNativeSession(
-//   480,
-//   client.overlay.StoreFlag.None
-// );
-// Prefer client.overlay.openFriendsOverlay(...) for a reusable Friends List path.
-
-// Optional explicit cleanup when the proof surface is no longer needed.
-session.close();
-```
-
-For app-facing Electron integration, create one managed overlay for the game
-window and use it for overlay work:
+For Electron apps, create one managed overlay for the game window and use it for
+Steam overlay work. Steam Bridge owns the native presenter lifecycle, waits for
+Steam overlay callbacks, handles the default Shift+Tab bridge, and parks the
+presenter when Steam reports the overlay closed.
 
 ```ts
 const steamOverlay = client.overlay.createElectronSteamOverlay(mainWindow, {
-  title: "Steam Overlay",
-  // Optional diagnostics only:
-  // presenterMode: "session"
+  title: "Steam Overlay"
 });
 
 await steamOverlay.openAndWait({
@@ -382,59 +279,17 @@ await steamOverlay.openAndWait({
   appId: 480
 });
 
+await steamOverlay.openAndWait({ type: "friends" });
+
 await steamOverlay.openCheckoutAndWait(() =>
   backend.createSteamTransaction({ itemId: 100 })
 );
 
-// Achievement progress/store notifications are automatically primed while the
-// managed overlay is open. Use prepareForNotification() only for custom cases.
-
-await steamOverlay.openAndWait({ type: "friends" });
-
-await steamOverlay.openAndWait({ type: "profile" });
-
-await steamOverlay.openAndWait({
-  type: "dialog",
-  dialog: "Achievements",
-  appId: 480
-});
-
-await steamOverlay.openAndWait({
-  type: "achievements",
-  appId: 480
-});
-
-// Optional; the manager closes itself when the Electron window closes.
 steamOverlay.close();
 ```
 
-### Managed Presenter Behavior
-
-The manager owns a reusable native presenter and keeps it passive while idle:
-transparent, click-through, non-focusable, and `idleFps: 0`. It wakes the
-presenter for the current overlay operation, waits on Steam overlay callbacks
-and presenter state, then parks it again after Steam reports inactive. The
-normal app-facing API is `steamOverlay.open(...)` or
-`steamOverlay.openAndWait(...)`; lower-level `attachPresenter(...)` and
-`openSteamOverlay(...)` calls are available for diagnostics.
-
-Passive Steam notifications are handled through the same presenter. Achievement
-progress, achievement unlock, and stats-store calls are primed without forcing
-the Electron game window into a permanent repaint loop. The presenter only pumps
-frames when Steam reports `overlayNeedsPresent` or while an overlay operation is
-active.
-
-`electronConfigureSteamOverlay()` keeps Chromium child processes from becoming
-competing Steam overlay targets. By default it strips Steam overlay preload
-entries from child-process environments and, on Linux, enables Electron
-`no-zygote` isolation. Set `isolateSteamOverlayChildProcesses: false` only for
-diagnostics.
-
-### Overlay Targets
-
-Prefer `client.overlay.createElectronSteamOverlay(mainWindow)` for Electron app
-code. The high-level router uses presenter-backed paths for targets that have
-reliable Steam web surfaces:
+The high-level router supports the product-shaped overlay targets that are
+verified by the smoke app:
 
 | Target | Example |
 | --- | --- |
@@ -449,11 +304,11 @@ reliable Steam web surfaces:
 | Achievements | `steamOverlay.open({ type: "achievements", appId })` |
 | Known dialogs | `steamOverlay.open({ type: "dialog", dialog: "Achievements", appId })` |
 
-Use `route: "native"` or the lower-level native helpers only when you
-intentionally need raw `ActivateGameOverlay...` behavior for diagnostics. Raw
-Steam dialog surfaces, Game Overview, and `steam://open/overlay` are not treated
-as completed product paths unless a platform proof run verifies open, input,
-close, focus return, and presenter parking.
+The manager keeps the native presenter transparent, click-through,
+non-focusable, and idle at `0` FPS while no overlay is active. Passive Steam
+notifications use the same presenter without forcing a permanent Electron
+repaint loop. `electronConfigureSteamOverlay()` also keeps Chromium child
+processes from becoming competing Steam overlay targets.
 
 For microtransactions, treat `MicroTxnAuthorizationResponse` as a purchase
 authorization event, not an overlay-close event. Keep the managed presenter
@@ -461,21 +316,23 @@ alive until Steam reports overlay inactive and the app has returned. Real
 purchase UI and `InitTxn` proof require a real Steam app ID with configured
 products; App ID `480` is only for generic smoke tests.
 
-### Shortcut Handling
+The default Shift+Tab bridge opens the presenter-backed Friends/chat route. Set
+`overlayShortcut.target` when Shift+Tab should open a different verified target.
+Use `presenterMode: "session"` or
+`STEAM_BRIDGE_ELECTRON_OVERLAY_PRESENTER=session` only as a diagnostic fallback
+for comparing the older one-shot native-session lifecycle.
 
-The Electron manager installs a default Shift+Tab bridge that opens the
-presenter-backed Friends/chat route. Apps can change
-`overlayShortcut.target` to any presenter-backed target. Static targets are the
-normal path; resolver functions are only needed when the target must be computed
-at keypress time.
+## Overlay Diagnostics
 
-Once Steam reports an active overlay, Steam Bridge stops consuming Shift+Tab so
-Steam can handle close/toggle normally. On macOS, Steam can intercept Shift+Tab
-before Electron receives `before-input-event`, so Steam Bridge registers a
-focused-window `globalShortcut` fallback while the game window is focused and
-unregisters it while Steam's overlay is active.
+Steam API initialization and in-game overlay readiness are separate signals.
+`steam_appid.txt` can be enough for Steam ID, auth tickets, and callbacks while
+the overlay still cannot hook the running process.
 
-### Verification
+Steam Bridge exposes `client.utils.getOverlayDiagnostics()` so the host app can
+log `steamRunning`, `appId`, `overlayEnabled`, `overlayNeedsPresent`,
+`steamDeck`, `bigPicture`, and `steamInstallPath`.
+
+## Verification
 
 The repository includes a small Electron smoke app under
 `examples/electron-basic`. It packages platform helpers that print a
@@ -503,20 +360,20 @@ npm run steam-deck:overlay-matrix:check
 npm run macos:overlay-matrix:check
 ```
 
+Before opening a pull request, run the checks that CI runs:
+
+```sh
+npm run check:platform
+npm test
+npm run native:fmt
+npm run native:check
+npm run api:check
+```
+
 The current evidence status is tracked in
 [`docs/research/cross-platform-overlay-status.md`](docs/research/cross-platform-overlay-status.md).
 The native presenter design notes are tracked in
 [`docs/research/native-overlay-presenter-plan.md`](docs/research/native-overlay-presenter-plan.md).
-
-### Diagnostic Fallbacks
-
-Set `presenterMode: "session"` or
-`STEAM_BRIDGE_ELECTRON_OVERLAY_PRESENTER=session` to compare against the older
-one-shot native-session lifecycle. This mode is useful for isolating presenter
-regressions, but it is not the recommended product path because it skips the
-persistent-host parking invariants. On Linux/Desktop, use
-`STEAM_BRIDGE_ELECTRON_OVERLAY_PROFILE=repaint` only when diagnosing a platform
-that needs a steady Electron repaint source.
 
 ## Notes
 
