@@ -121,6 +121,12 @@ Verified:
   `currentFps=0`, unchanged-`pumpCount`, app-frontmost, and no-crash evidence
   for `presenter-store-open-and-wait`, `presenter-friends-open-and-wait`, and
   `presenter-dialog-auto-open-and-wait --dialog OfficialGameGroup`.
+- The macOS packaged helper now has a passive notification verification gate:
+  `--require-passive-notification` requires the smoke result and lifecycle log
+  to contain the accepted achievement event, the matching Steam callback, no
+  modal overlay activation, and a passive managed-presenter snapshot. This is
+  harness coverage for the next live macOS toast run; it is not a live macOS
+  toast pass by itself.
 
 Still not verified:
 
@@ -136,9 +142,10 @@ Still not verified:
   strips the Steam `DYLD_INSERT_LIBRARIES` injection before the Electron child
   process starts, so that path is not useful for overlay verification.
 - Passive notification/toast and checkout presenter routes still need the same
-  macOS evidence currently proven on Steam Deck Desktop Mode. The 2026-06-29
+  live macOS evidence currently proven on Steam Deck Desktop Mode. The 2026-06-29
   macOS proof now covers the managed web, store, Friends/chat, and
-  dialog-equivalent `openAndWait(...)` routes, not every presenter-backed target.
+  dialog-equivalent `openAndWait(...)` routes, while passive-toast verification
+  now has a macOS helper gate ready for live use.
 - Real purchase UI and `InitTxn` proof still require a real Steam app ID with a
   configured product or transaction. App ID `480` remains suitable only for
   generic overlay smoke tests.

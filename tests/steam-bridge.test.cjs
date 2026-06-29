@@ -1,5 +1,7 @@
 const assert = require("node:assert/strict");
+const childProcess = require("node:child_process");
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
 
@@ -81,6 +83,76 @@ function fakeTicket(label, calls) {
     },
     getBytes() {
       return Buffer.from(label);
+    }
+  };
+}
+
+function passiveNotificationPresenterFixture() {
+  return {
+    closed: false,
+    attached: true,
+    nativeHostOpen: true,
+    mode: "passive",
+    clickThrough: true,
+    focusable: false,
+    transparent: true,
+    overlayActive: false,
+    overlayNeedsPresent: false,
+    idleFps: 0,
+    currentFps: 0,
+    electronOverlay: {
+      presenterMode: "persistent",
+      autoPrepareForNotifications: true,
+      overlayShortcut: {
+        enabled: true,
+        targetType: "friends",
+        target: { type: "friends" }
+      }
+    }
+  };
+}
+
+function passiveNotificationResult(presenter) {
+  return {
+    ok: true,
+    action: { ok: true, action: "presenter-achievement-progress" },
+    snapshot: {
+      steam: {
+        initialized: true,
+        running: { ok: true, value: true },
+        appId: { ok: true, value: 480 },
+        steamDeck: { ok: true, value: false },
+        bigPicture: { ok: true, value: false },
+        overlayEnabled: { ok: true, value: true },
+        overlayNeedsPresent: { ok: true, value: false }
+      },
+      app: { appId: 480 },
+      launch: {
+        steamLaunch: true,
+        overlayInjection: true
+      },
+      process: {
+        platform: "darwin",
+        arch: "arm64",
+        pid: 1234
+      },
+      overlay: {
+        nativePresenter: { ok: true, value: presenter }
+      },
+      events: [
+        {
+          type: "achievement:progress",
+          payload: {
+            achievement: "ACH_TRAVEL_FAR_SINGLE",
+            indicated: true,
+            presenter
+          }
+        },
+        {
+          type: "callback:achievement-stored",
+          payload: { achievement: "ACH_TRAVEL_FAR_SINGLE" }
+        }
+      ]
     }
   };
 }
@@ -1224,6 +1296,91 @@ test("project support policy covers Steam desktop targets except Intel macOS", (
   }
   assert.match(targetScript, /x86_64-apple-darwin/);
   assert.match(loader, /Intel macOS is not supported/);
+});
+
+test("smoke result verifier accepts passive notification evidence with lifecycle callbacks", (t) => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-passive-verify-"));
+  t.after(() => fs.rmSync(tempDir, { recursive: true, force: true }));
+
+  const presenter = passiveNotificationPresenterFixture();
+  const resultFile = path.join(tempDir, "smoke.log");
+  const diagnosticDir = path.join(tempDir, "diagnostics");
+  fs.mkdirSync(diagnosticDir, { recursive: true });
+  fs.writeFileSync(
+    resultFile,
+    `STEAM_BRIDGE_SMOKE_RESULT ${JSON.stringify(passiveNotificationResult(presenter))}\n`
+  );
+  fs.writeFileSync(
+    path.join(diagnosticDir, "lifecycle.jsonl"),
+    [
+      { type: "event:achievement:progress", payload: { indicated: true, presenter } },
+      { type: "event:callback:achievement-stored", payload: { achievement: "ACH_TRAVEL_FAR_SINGLE" } }
+    ]
+      .map((entry) => JSON.stringify(entry))
+      .join("\n")
+  );
+
+  const verifier = childProcess.spawnSync(
+    process.execPath,
+    [
+      path.join(repoRoot, "scripts", "verify-electron-smoke-result.cjs"),
+      "--file",
+      resultFile,
+      "--diagnostic-dir",
+      diagnosticDir,
+      "--app-id",
+      "480",
+      "--platform",
+      "darwin/arm64",
+      "--action",
+      "presenter-achievement-progress",
+      "--require-passive-notification"
+    ],
+    { encoding: "utf8" }
+  );
+
+  assert.equal(verifier.status, 0, verifier.stderr);
+  assert.match(verifier.stdout, /Electron smoke result verified/);
+});
+
+test("smoke result verifier rejects passive notification evidence without lifecycle callbacks", (t) => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-passive-verify-missing-"));
+  t.after(() => fs.rmSync(tempDir, { recursive: true, force: true }));
+
+  const presenter = passiveNotificationPresenterFixture();
+  const resultFile = path.join(tempDir, "smoke.log");
+  const diagnosticDir = path.join(tempDir, "diagnostics");
+  fs.mkdirSync(diagnosticDir, { recursive: true });
+  fs.writeFileSync(
+    resultFile,
+    `STEAM_BRIDGE_SMOKE_RESULT ${JSON.stringify(passiveNotificationResult(presenter))}\n`
+  );
+  fs.writeFileSync(
+    path.join(diagnosticDir, "lifecycle.jsonl"),
+    `${JSON.stringify({ type: "event:achievement:progress", payload: { indicated: true, presenter } })}\n`
+  );
+
+  const verifier = childProcess.spawnSync(
+    process.execPath,
+    [
+      path.join(repoRoot, "scripts", "verify-electron-smoke-result.cjs"),
+      "--file",
+      resultFile,
+      "--diagnostic-dir",
+      diagnosticDir,
+      "--app-id",
+      "480",
+      "--platform",
+      "darwin/arm64",
+      "--action",
+      "presenter-achievement-progress",
+      "--require-passive-notification"
+    ],
+    { encoding: "utf8" }
+  );
+
+  assert.notEqual(verifier.status, 0);
+  assert.match(verifier.stderr, /lifecycle event event:callback:achievement-stored emitted/);
 });
 
 test("generated Steamworks enums expose SDK constants and lookup helpers", (t) => {

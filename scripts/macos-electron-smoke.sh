@@ -40,6 +40,7 @@ require_overlay_ready="0"
 require_overlay_activated="0"
 require_native_probe_open="0"
 require_passive_presenter="0"
+require_passive_notification="0"
 require_idle_presenter="0"
 require_electron_overlay="0"
 require_presenter_mode=""
@@ -101,6 +102,7 @@ Options:
   --require-overlay-activated    Require callback:overlay-activated active=true.
   --require-native-probe-open    Require the lower-level native probe to be open.
   --require-passive-presenter    Require the reusable presenter to be passive.
+  --require-passive-notification Require passive Steam notification proof for toast actions.
   --require-idle-presenter       Require passive presenter plus zero current/idle FPS.
   --require-electron-overlay     Require managed Electron overlay diagnostics.
   --require-presenter-mode MODE  Require managed Electron overlay presenter mode.
@@ -273,6 +275,11 @@ while [ "$#" -gt 0 ]; do
       ;;
     --require-passive-presenter)
       require_passive_presenter="1"
+      shift
+      ;;
+    --require-passive-notification)
+      require_passive_notification="1"
+      require_electron_overlay="1"
       shift
       ;;
     --require-idle-presenter)
@@ -627,6 +634,7 @@ verify_result() {
   args=(
     "$verifier"
     "--file" "$result_file"
+    "--diagnostic-dir" "$diagnostic_dir"
     "--app-id" "$app_id"
     "--platform" "darwin/arm64"
   )
@@ -653,6 +661,9 @@ verify_result() {
   fi
   if [ "$require_passive_presenter" = "1" ]; then
     args+=("--require-passive-presenter")
+  fi
+  if [ "$require_passive_notification" = "1" ]; then
+    args+=("--require-passive-notification")
   fi
   if [ "$require_idle_presenter" = "1" ]; then
     args+=("--require-idle-presenter")

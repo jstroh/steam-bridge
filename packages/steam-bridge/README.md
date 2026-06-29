@@ -438,7 +438,11 @@ can run `--close-probe`; it focuses the smoke app, sends the close input, and
 verifies active/inactive callbacks, app focus return, `openAndWait(...)`
 completion after parking, no post-close presenter pumping, and no crash
 diagnostics. Current macOS proof covers modal web, store, Friends/chat, and the
-`OfficialGameGroup` dialog-equivalent route through the managed presenter.
+`OfficialGameGroup` dialog-equivalent route through the managed presenter. The
+helper also exposes `--require-passive-notification` for macOS toast proof; that
+gate requires the smoke result and lifecycle log to show the accepted
+achievement event, the matching Steam callback, no modal overlay activation, and
+a passive managed-presenter snapshot.
 
 Use the repository-level matrix runner when you need to repeat the full Deck
 Desktop product proof instead of hand-running each case:

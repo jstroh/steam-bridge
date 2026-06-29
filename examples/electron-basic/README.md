@@ -131,6 +131,22 @@ overlay close input, and verifies `active=false`, app focus return,
 `openAndWait(...)` completion after close, idle presenter parking, and no crash
 evidence.
 
+For macOS passive-toast proof, use the same packaged helper with the passive
+notification gate:
+
+```sh
+dist/electron-smoke/aarch64-apple-darwin/SteamBridgeSmoke-darwin-arm64/macos-electron-smoke.sh \
+  --mode steam-launch \
+  --action presenter-achievement-progress \
+  --result-delay-ms 1200 \
+  --keep-open-after-result \
+  --require-steam-launch \
+  --require-overlay-injection \
+  --require-overlay-enabled \
+  --require-passive-notification \
+  --require-no-crashes
+```
+
 For launcher-aware macOS checks, generate shortcut launch options with
 `--macos-native-launcher` and fully restart Steam after editing
 `shortcuts.vdf`. If Steam is not fully restarted, it can keep stale shortcut
@@ -306,7 +322,10 @@ Use
 the action relies on automatic passive priming, keeps the presenter transparent
 and click-through, calls `achievement.indicateProgress(...)`, and records
 `achievement:progress` plus `callback:achievement-stored` when Steam accepts the
-progress notification.
+progress notification. On macOS, add `--require-passive-notification` to the
+packaged helper command so verification requires both the result snapshot and
+`lifecycle.jsonl` to contain the accepted achievement event and Steam callback,
+with no modal overlay activation and with a passive presenter snapshot.
 Use `presenter-achievement-unlock` to exercise the unlock-toast path through the
 same passive presenter. It clears and re-unlocks the selected public test
 achievement, stores stats, and records `achievement:unlock`; pass

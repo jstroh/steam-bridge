@@ -123,6 +123,12 @@ timing hacks.
   runs verified the same completion-after-inactive-and-parked contract for
   `presenter-store-open-and-wait`, `presenter-friends-open-and-wait`, and
   `presenter-dialog-auto-open-and-wait --dialog OfficialGameGroup`.
+- The macOS smoke helper now has a passive-toast-specific verification gate for
+  the next live run. `--require-passive-notification` requires result and
+  lifecycle evidence for the achievement event and Steam callback, rejects modal
+  overlay activation, and checks the passive managed-presenter snapshot. This
+  aligns the macOS helper with the Deck matrix's passive-toast assertions without
+  claiming live macOS toast proof before it is run.
 - Deck Desktop keyboard toggle now has a product-shaped Electron route:
   `createElectronSteamOverlay(...)` installs a default Shift+Tab shortcut bridge
   that opens the verified Friends/chat presenter-backed web overlay instead of
@@ -645,7 +651,8 @@ Next work:
 6. Keep code signing requirements explicit in docs and examples. Local smoke
    signing is not enough to claim shipped macOS overlay support.
 7. Finish the remaining Apple Silicon proof:
-   - passive Steam notification/toast;
+   - passive Steam notification/toast using the packaged helper's
+     `--require-passive-notification` gate;
    - checkout or purchase-specific overlay behavior from a real app/product;
    - broader presenter target regression coverage beyond the current
      web/store/Friends/dialog-equivalent wait routes.

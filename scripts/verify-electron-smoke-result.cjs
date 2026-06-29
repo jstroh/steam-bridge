@@ -1,6 +1,23 @@
 const fs = require("node:fs");
+const path = require("node:path");
 
 const RESULT_PREFIX = "STEAM_BRIDGE_SMOKE_RESULT ";
+const PASSIVE_NOTIFICATION_ACTIONS = new Map([
+  [
+    "presenter-achievement-progress",
+    {
+      event: "achievement:progress",
+      callbacks: ["callback:achievement-stored"]
+    }
+  ],
+  [
+    "presenter-achievement-unlock",
+    {
+      event: "achievement:unlock",
+      callbacks: ["callback:user-stats-stored", "callback:achievement-stored"]
+    }
+  ]
+]);
 const options = parseArgs(process.argv.slice(2));
 const input = options.file ? fs.readFileSync(options.file, "utf8") : fs.readFileSync(0, "utf8");
 const result = readResult(input);
@@ -137,6 +154,9 @@ if (options.requireNativeProbeOpen) {
 for (const type of options.requiredEvents) {
   expect(events.some((event) => event && event.type === type), `event ${type} emitted`);
 }
+if (options.requirePassiveNotification) {
+  verifyPassiveNotification();
+}
 
 if (failures.length > 0) {
   for (const failure of failures) {
@@ -208,11 +228,153 @@ function isOverlayActiveEvent(event) {
   );
 }
 
+function verifyPassiveNotification() {
+  const action = options.action || (result.action && result.action.action);
+  const requirements = PASSIVE_NOTIFICATION_ACTIONS.get(action);
+  if (!requirements) {
+    failures.push(`passive notification requirements are not defined for action ${action || "<unknown>"}`);
+    return;
+  }
+
+  const lifecycleEntries = readLifecycleEntries();
+  const resultActionEvent = findEvent(events, requirements.event);
+  const lifecycleActionEvent = findEvent(lifecycleEntries, lifecycleEventType(requirements.event));
+
+  expect(Boolean(resultActionEvent), `event ${requirements.event} emitted`);
+  expect(Boolean(lifecycleActionEvent), `lifecycle event ${lifecycleEventType(requirements.event)} emitted`);
+
+  if (action === "presenter-achievement-progress") {
+    if (resultActionEvent) {
+      expect(
+        resultActionEvent.payload && resultActionEvent.payload.indicated === true,
+        "achievement progress was accepted by Steam"
+      );
+    }
+    if (lifecycleActionEvent) {
+      expect(
+        lifecycleActionEvent.payload && lifecycleActionEvent.payload.indicated === true,
+        "lifecycle achievement progress was accepted by Steam"
+      );
+    }
+  }
+
+  for (const eventType of requirements.callbacks) {
+    expect(Boolean(findEvent(events, eventType)), `event ${eventType} emitted`);
+    expect(Boolean(findEvent(lifecycleEntries, lifecycleEventType(eventType))), `lifecycle event ${lifecycleEventType(eventType)} emitted`);
+  }
+
+  const activeOverlayEvents = [...events, ...lifecycleEntries].filter((event) => overlayEventState(event) === true);
+  expect(activeOverlayEvents.length === 0, "passive notification did not activate a modal Steam overlay");
+
+  const eventPresenter = presenterPayload(resultActionEvent) || presenterPayload(lifecycleActionEvent);
+  const passivePresenter = eventPresenter || nativePresenter;
+  expect(Boolean(passivePresenter), "passive notification presenter snapshot available");
+  if (passivePresenter) {
+    expectPassiveNotificationPresenter(passivePresenter, "passive notification");
+  }
+}
+
+function readLifecycleEntries() {
+  if (!options.diagnosticDir) {
+    failures.push("diagnostic dir is required for passive notification lifecycle verification");
+    return [];
+  }
+
+  const lifecyclePath = path.join(options.diagnosticDir, "lifecycle.jsonl");
+  let text;
+  try {
+    text = fs.readFileSync(lifecyclePath, "utf8");
+  } catch (error) {
+    failures.push(`could not read lifecycle log ${lifecyclePath}: ${error.message}`);
+    return [];
+  }
+
+  const entries = [];
+  for (const line of text.split(/\r?\n/)) {
+    if (!line.trim()) {
+      continue;
+    }
+    try {
+      entries.push(JSON.parse(line));
+    } catch (error) {
+      failures.push(`invalid lifecycle JSON in ${lifecyclePath}: ${error.message}`);
+    }
+  }
+  return entries;
+}
+
+function findEvent(eventList, type) {
+  return Array.isArray(eventList) ? eventList.find((event) => event && event.type === type) : undefined;
+}
+
+function lifecycleEventType(type) {
+  return `event:${type}`;
+}
+
+function overlayEventState(event) {
+  if (!event || (event.type !== "callback:overlay-activated" && event.type !== "event:callback:overlay-activated")) {
+    return undefined;
+  }
+  return activeValue(event.payload);
+}
+
+function activeValue(payload) {
+  if (payload === true || payload === 1) {
+    return true;
+  }
+  if (payload === false || payload === 0) {
+    return false;
+  }
+  if (!payload || typeof payload !== "object") {
+    return undefined;
+  }
+  const activePayload = payload["0"] && typeof payload["0"] === "object" ? payload["0"] : payload;
+  for (const key of ["active", "m_bActive"]) {
+    if (activePayload[key] === true || activePayload[key] === 1) {
+      return true;
+    }
+    if (activePayload[key] === false || activePayload[key] === 0) {
+      return false;
+    }
+  }
+  return undefined;
+}
+
+function presenterPayload(event) {
+  const payload = event && event.payload;
+  if (!payload || typeof payload !== "object") {
+    return undefined;
+  }
+  const presenter = payload.presenter;
+  return presenter && typeof presenter === "object" ? presenter : undefined;
+}
+
+function expectPassiveNotificationPresenter(presenter, label) {
+  expect(presenter.closed === false, `native presenter closed ${label}`);
+  expect(presenter.attached === true, `native presenter attached ${label}`);
+  expect(presenter.nativeHostOpen === true, `native presenter host open ${label}`);
+  expect(presenter.mode === "passive", `native presenter mode ${label}`);
+  expect(presenter.clickThrough === true, `native presenter click-through ${label}`);
+  expect(presenter.focusable === false, `native presenter focusable ${label}`);
+  expect(presenter.transparent === true, `native presenter transparent ${label}`);
+  expect(presenter.overlayActive === false, `native presenter overlay inactive ${label}`);
+  expect(presenter.idleFps === 0, `native presenter idle FPS ${label}`);
+  const managedOverlay = presenter.electronOverlay;
+  expect(Boolean(managedOverlay), `managed Electron overlay diagnostics available ${label}`);
+  if (managedOverlay) {
+    expect(
+      managedOverlay.autoPrepareForNotifications === true,
+      `managed Electron overlay automatic notification priming enabled ${label}`
+    );
+  }
+}
+
 function parseArgs(args) {
   const parsed = {
     appId: undefined,
     arch: undefined,
     action: undefined,
+    diagnosticDir: undefined,
     file: undefined,
     platform: undefined,
     requireBigPicture: false,
@@ -228,6 +390,7 @@ function parseArgs(args) {
     requirePresenterMode: undefined,
     requireOverlayShortcutTarget: undefined,
     requireNoCrashes: false,
+    requirePassiveNotification: false,
     requireSteamLaunch: false,
     requireSteamDeck: false,
     requiredEvents: []
@@ -247,6 +410,9 @@ function parseArgs(args) {
         break;
       case "--file":
         parsed.file = args[++index];
+        break;
+      case "--diagnostic-dir":
+        parsed.diagnosticDir = args[++index];
         break;
       case "--platform":
         parsePlatformValue(parsed, args[++index]);
@@ -274,6 +440,10 @@ function parseArgs(args) {
         break;
       case "--require-passive-presenter":
         parsed.requirePassivePresenter = true;
+        break;
+      case "--require-passive-notification":
+        parsed.requirePassiveNotification = true;
+        parsed.requireElectronOverlay = true;
         break;
       case "--require-idle-presenter":
         parsed.requireIdlePresenter = true;
