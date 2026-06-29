@@ -307,8 +307,9 @@ presenter-backed Steam web surface. Use
 `steamOverlay.open({ type: "user", dialog: client.overlay.UserDialog.SteamId, steamId64 })`
 for the same profile route through the high-level user-dialog router. The
 `user` target routes verified web-backed user dialog names through the presenter
-by default: `steamid`/`profile`, `stats`, and `achievements`. Native-only prompt
-dialogs such as `chat`, `jointrade`, and friend request actions remain raw
+by default: `steamid`/`profile`, `chat`, `stats`, and `achievements`. The
+`chat` route opens the verified Steam Community chat/Friends surface. Native-only
+prompt dialogs such as `jointrade` and friend request actions remain raw
 Steamworks diagnostics; pass `route: "native"` or call
 `openNativeUserOverlay(...)` only when explicitly testing
 `ActivateGameOverlayToUser(...)` behavior. Use

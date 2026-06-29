@@ -4416,6 +4416,11 @@ test("overlay helpers map constants and forward modal/store options", (t) => {
     presenter: mockPresenter
   });
   steam.overlay.openUserOverlay({
+    dialog: steam.UserDialog.Chat,
+    steamId64: 76561198000000000n,
+    presenter: mockPresenter
+  });
+  steam.overlay.openUserOverlay({
     dialog: steam.UserDialog.Stats,
     appId: 480,
     steamId64: 76561198000000000n,
@@ -4475,6 +4480,12 @@ test("overlay helpers map constants and forward modal/store options", (t) => {
   });
   steam.overlay.openSteamOverlay({
     type: "user",
+    dialog: steam.UserDialog.Chat,
+    steamId64: 76561198000000000n,
+    presenter: mockPresenter
+  });
+  steam.overlay.openSteamOverlay({
+    type: "user",
     dialog: steam.UserDialog.Stats,
     appId: 480,
     steamId64: 76561198000000000n,
@@ -4487,16 +4498,6 @@ test("overlay helpers map constants and forward modal/store options", (t) => {
     steamId64: 76561198000000000n,
     presenter: mockPresenter
   });
-  assert.throws(
-    () =>
-      steam.overlay.openSteamOverlay({
-        type: "user",
-        dialog: steam.UserDialog.Chat,
-        steamId64: 76561198000000000n,
-        presenter: mockPresenter
-      }),
-    /does not have a verified presenter-backed route/
-  );
   assert.throws(
     () =>
       steam.overlay.openSteamOverlay({
@@ -4599,6 +4600,7 @@ test("overlay helpers map constants and forward modal/store options", (t) => {
       { method: "activateOverlayToWebPage", args: [steam.steamCommunityUserStatsUrl(480, 76561198000000000n), true] },
       { method: "activateOverlayToWebPage", args: [steam.steamCommunityAchievementsUrl(480, 76561198000000000n), true] },
       { method: "activateOverlayToWebPage", args: [steam.steamCommunityProfileUrl(76561198000000000n), true] },
+      { method: "activateOverlayToWebPage", args: [steam.STEAM_FRIENDS_OVERLAY_URL, true] },
       { method: "activateOverlayToWebPage", args: [steam.steamCommunityUserStatsUrl(480, 76561198000000000n), true] },
       { method: "activateOverlayToWebPage", args: [steam.steamCommunityAchievementsUrl(480, 76561198000000000n), true] },
       {
@@ -4618,6 +4620,7 @@ test("overlay helpers map constants and forward modal/store options", (t) => {
       { method: "activateOverlayToWebPage", args: [steam.steamCommunityUserStatsUrl(480, 76561198000000000n), true] },
       { method: "activateOverlayToWebPage", args: [steam.steamCommunityAchievementsUrl(480, 76561198000000000n), true] },
       { method: "activateOverlayToWebPage", args: [steam.steamCommunityProfileUrl(76561198000000000n), true] },
+      { method: "activateOverlayToWebPage", args: [steam.STEAM_FRIENDS_OVERLAY_URL, true] },
       { method: "activateOverlayToWebPage", args: [steam.steamCommunityUserStatsUrl(480, 76561198000000000n), true] },
       { method: "activateOverlayToWebPage", args: [steam.steamCommunityAchievementsUrl(480, 76561198000000000n), true] },
       { method: "overlayActivateDialogToUser", args: ["friendadd", 76561198000000000n] },
@@ -4675,7 +4678,7 @@ test("overlay helpers map constants and forward modal/store options", (t) => {
   assert.throws(() => steam.steamCheckoutTransactionUrl(Number.MAX_SAFE_INTEGER + 1), /Invalid Steam transaction ID/);
   assert.throws(() => steam.overlay.openCheckoutOverlay({ presenter: mockPresenter }), /requires a url, steamUrl, or transactionId/);
   assert.deepEqual(presenterCalls, [
-    ...Array(22).fill("prepareForOverlay"),
+    ...Array(24).fill("prepareForOverlay"),
     "prepareForTransparentInputOverlay",
     ...Array(7).fill("prepareForOverlay"),
     "prepareForTransparentInputOverlay",

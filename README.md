@@ -536,7 +536,13 @@ opens Steam Community chat through the same native web presenter with one
 profile page, call `steamOverlay.open({ type: "profile", steamId64 })`; omit
 `steamId64` to open the current user's profile. This replaces the common
 profile case for raw `ActivateGameOverlayToUser` with the same presenter-backed
-Steam web surface. For recently played-with players, call
+Steam web surface. For the high-level user-dialog router,
+`steamOverlay.open({ type: "user", dialog: client.overlay.UserDialog.Chat })`
+opens the same verified Steam Community chat/Friends surface; `steamid` /
+`profile`, `stats`, and `achievements` also route through presenter-backed web
+surfaces by default. Native-only prompt actions such as trade joins and friend
+request actions remain explicit raw diagnostics through `route: "native"`. For
+recently played-with players, call
 `steamOverlay.open({ type: "players", steamId64 })`; omit `steamId64` to open
 the current user's Steam Community players page through the same
 presenter-backed web surface. For app

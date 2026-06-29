@@ -86,7 +86,10 @@ timing hacks.
   App ID `480` emitted active/inactive callbacks, returned focus to the Electron
   smoke app after the web close probe, used one `gameoverlayui` target attached
   to the app process, and parked transparent/click-through at `currentFps=0`
-  without post-close pumping.
+  without post-close pumping. The same high-level user router now maps `chat` to
+  the verified Steam Community chat/Friends presenter-backed web surface; exact
+  native prompt actions such as trade joins and friend requests remain explicit
+  raw diagnostics.
 - Deck Desktop store pages now have a product-shaped web route:
   `openStoreOverlay(appId, flag, { presenter })` and
   `steamOverlay.open({ type: "store", appId })` default to the Steam store web
@@ -329,6 +332,16 @@ Current evidence:
   returned focus to the Electron app through the web close probe, parked
   transparent/click-through at `currentFps=0`, and showed no post-close pumping
   or crash evidence.
+- The high-level user-dialog router maps the common web-backed cases through the
+  presenter by default: `steamid`/`profile`, `chat`, `stats`, and
+  `achievements`. `chat` opens the same Steam Community chat/Friends surface as
+  the verified Friends List route. A 2026-06-29 focused Deck Desktop fullscreen
+  run of `presenter-user --user-dialog chat` emitted active/inactive callbacks,
+  captured visible Steam chat/Friends content, returned focus to the Electron
+  app, used one `gameoverlayui` target, parked at `currentFps=0` with stable
+  `pumpCount`, and reported no crash evidence. Native-only prompt actions such
+  as trade join and friend request dialogs remain available only through
+  `route: "native"` for explicit raw diagnostics.
 - The managed Electron shortcut bridge is the product keyboard-toggle path:
   `createElectronSteamOverlay(mainWindow)` listens for Shift+Tab in Electron and
   opens `steamOverlay.open({ type: "friends" })` by default, with
@@ -490,10 +503,11 @@ Pass criteria:
   accepts input, closes, and returns to the app without duplicate Electron child
   overlay targets. Full achievements content proof requires an app whose Steam
   Community stats page is exposed.
-- User dialog equivalents for `steamid`/profile, `stats`, and `achievements`
+- User dialog equivalents for `steamid`/profile, `chat`, `stats`, and `achievements`
   route through `openUserOverlay` / `steamOverlay.open({ type: "user", ... })`
-  by default. Native-only prompt-style user dialogs remain explicit raw
-  diagnostics through `route: "native"`.
+  by default; `chat` uses the verified Steam Community chat/Friends surface.
+  Native-only prompt-style user dialogs remain explicit raw diagnostics through
+  `route: "native"`.
 - Store pages open through `openStoreOverlay` / `steamOverlay.open({ type:
   "store", appId })`, accept input, close through the Steam web close control,
   and return to the app without duplicate Electron child overlay targets.

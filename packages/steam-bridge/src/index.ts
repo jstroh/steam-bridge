@@ -7927,6 +7927,8 @@ export function openUserEquivalentOverlay(
     case "steamid":
     case "profile":
       return openProfileOverlay(options);
+    case "chat":
+      return openFriendsOverlay(options);
     case "stats":
       return openStatsOverlay(options);
     case "achievements":

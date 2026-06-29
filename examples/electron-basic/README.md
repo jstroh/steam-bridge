@@ -169,9 +169,10 @@ web-visible stats is needed for achievements content proof.
 Use `presenter-user --user-dialog steamid` to verify the high-level
 `client.overlay.openUserOverlay(...)` route for the common
 `ActivateGameOverlayToUser("steamid", user)` profile case. The same router maps
-`stats` and `achievements` to presenter-backed web surfaces; prompt-style names
-such as `chat`, `jointrade`, and friend request actions are native-only
-diagnostics and should be tested explicitly with `route: "native"` in app code.
+`chat`, `stats`, and `achievements` to presenter-backed web surfaces; `chat`
+opens the verified Steam Community chat/Friends surface. Prompt-style names such
+as `jointrade` and friend request actions are native-only diagnostics and should
+be tested explicitly with `route: "native"` in app code.
 Use `presenter-checkout` to verify checkout readiness. Without
 `STEAM_BRIDGE_SMOKE_CHECKOUT_URL` or
 `STEAM_BRIDGE_SMOKE_CHECKOUT_TRANSACTION_ID`, it calls
