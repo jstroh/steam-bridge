@@ -105,7 +105,7 @@ function packSteamBridge(packDir) {
 }
 
 function stageExample(stageDir, tarball) {
-  for (const fileName of ["main.js", "preload.js", "index.html", "smoke-sanitize.cjs"]) {
+  for (const fileName of ["main.js", "preload.js", "index.html", "smoke-sanitize.cjs", "smoke-error.cjs"]) {
     fs.copyFileSync(path.join(exampleRoot, fileName), path.join(stageDir, fileName));
   }
 

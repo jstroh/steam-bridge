@@ -5,6 +5,7 @@ const path = require("node:path");
 const { app, BrowserWindow, crashReporter, ipcMain } = require("electron");
 const steamworks = require("steam-bridge");
 const { sanitizeSmokeValue } = require("./smoke-sanitize.cjs");
+const { serializeSmokeError } = require("./smoke-error.cjs");
 
 const CLI_OPTIONS = parseSmokeArgs(process.argv.slice(1));
 const APP_ID = Number(CLI_OPTIONS.appId || process.env.STEAM_BRIDGE_APP_ID || "480");
@@ -2226,18 +2227,7 @@ function readOption(args, index) {
 }
 
 function serializeError(error) {
-  if (error instanceof Error) {
-    return {
-      name: error.name,
-      message: error.message,
-      stack: error.stack
-    };
-  }
-
-  return {
-    name: "Error",
-    message: String(error)
-  };
+  return serializeSmokeError(error);
 }
 
 function sanitize(value) {

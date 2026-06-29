@@ -92,6 +92,14 @@ function setSteamEnv(values = {}) {
 
 test("electron smoke sanitizer redacts private overlay proof fields", () => {
   const { sanitizeSmokeValue } = require(path.join(repoRoot, "examples", "electron-basic", "smoke-sanitize.cjs"));
+  const { serializeSmokeError } = require(path.join(repoRoot, "examples", "electron-basic", "smoke-error.cjs"));
+  const overlayError = new Error("Steam overlay native host is unavailable: macOS screen is locked.");
+  overlayError.name = "SteamOverlayNativeHostUnavailableError";
+  overlayError.code = "STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE";
+  overlayError.reason = "macos-screen-locked";
+  overlayError.macOverlayEnvironment = { screenLocked: true, displayAsleep: false };
+  overlayError.privateTransactionId = 123456789n;
+
   const sanitized = sanitizeSmokeValue({
     appId: 480,
     steamId64: 76561198000000000n,
@@ -112,6 +120,7 @@ test("electron smoke sanitizer redacts private overlay proof fields", () => {
       authorized: true,
       owner: 76561198000000001n
     },
+    error: serializeSmokeError(overlayError),
     launch: {
       argv: [
         "SteamBridgeSmoke",
@@ -129,6 +138,10 @@ test("electron smoke sanitizer redacts private overlay proof fields", () => {
   assert.equal(sanitized.presenter.currentFps, 0);
   assert.equal(sanitized.callback.authorized, true);
   assert.equal(sanitized.callback.owner, "[redacted-steam-id]");
+  assert.equal(sanitized.error.name, "SteamOverlayNativeHostUnavailableError");
+  assert.equal(sanitized.error.code, "STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE");
+  assert.equal(sanitized.error.reason, "macos-screen-locked");
+  assert.deepEqual(sanitized.error.macOverlayEnvironment, { screenLocked: true, displayAsleep: false });
   assert.equal(sanitized.steamId64.redacted, true);
   assert.equal(sanitized.transactionId.redacted, true);
   assert.equal(sanitized.steamUrl.redacted, true);
