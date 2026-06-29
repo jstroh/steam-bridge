@@ -122,8 +122,9 @@ Options:
                                 Copy the remote result log and diagnostics dir to this local path.
   --visual-capture-dir PATH     Capture Deck screenshots to this local path after the run returns.
   --visual-close-probe          With --visual-capture-dir and --keep-open-after-result, send a
-                                Shift+Tab/Escape close probe and capture the result.
-  --visual-close-input MODE     Close input for --visual-close-probe: keyboard, web, or both.
+                                close probe and capture the result.
+  --visual-close-input MODE     Close input for --visual-close-probe: keyboard, toggle, web, or both.
+                                keyboard sends Shift+Tab then Escape. toggle sends Shift+Tab only.
                                 web clicks the Steam web overlay close control. Defaults to keyboard.
   --require-close-deactivated   After --visual-close-probe, require active=false, app focus, and no crash evidence.
   --visual-toggle-probe         With --visual-capture-dir and --keep-open-after-result, capture
@@ -386,7 +387,7 @@ case "$visual_toggle_input" in
 esac
 
 case "$visual_close_input" in
-  keyboard|web|both)
+  keyboard|toggle|web|both)
     ;;
   *)
     echo "Unknown --visual-close-input: $visual_close_input" >&2
@@ -1138,6 +1139,8 @@ run_visual_capture() {
     fi
     if [ "$visual_close_input" = "keyboard" ]; then
       send_deck_overlay_close_probe || status=$?
+    elif [ "$visual_close_input" = "toggle" ]; then
+      send_deck_overlay_keyboard_toggle_probe || status=$?
     elif [ "$visual_close_input" = "web" ]; then
       send_deck_web_overlay_close_probe || status=$?
     else
@@ -1230,6 +1233,8 @@ run_visual_toggle_probe_for_input() {
   if [ "$use_close_probe" = "1" ]; then
     if [ "$visual_close_input" = "web" ]; then
       send_deck_web_overlay_close_probe || status=$?
+    elif [ "$visual_close_input" = "toggle" ]; then
+      send_deck_overlay_keyboard_toggle_probe || status=$?
     elif [ "$visual_close_input" = "both" ]; then
       send_deck_overlay_close_probe || status=$?
       sleep 0.5

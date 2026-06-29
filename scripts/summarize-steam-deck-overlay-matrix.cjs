@@ -403,7 +403,7 @@ function createSelfTestFixture(root) {
         caseId: shortcutCaseId,
         caseName: "shortcut-friends",
         action: "presenter-shortcut",
-        visualCloseInput: "keyboard",
+        visualCloseInput: "toggle",
         visualToggleInput: "keyboard"
       }
     ]
@@ -619,9 +619,9 @@ function verifyCaseMetadata(caseName, caseManifest, action, failures) {
         `${caseName}: shortcut matrix metadata visualToggleInput expected "keyboard", got ${formatValue(metadata.visualToggleInput)}`
       );
     }
-    if (metadata.visualCloseInput !== "keyboard") {
+    if (metadata.visualCloseInput !== "toggle") {
       failures.push(
-        `${caseName}: shortcut matrix metadata visualCloseInput expected "keyboard", got ${formatValue(metadata.visualCloseInput)}`
+        `${caseName}: shortcut matrix metadata visualCloseInput expected "toggle", got ${formatValue(metadata.visualCloseInput)}`
       );
     }
   }

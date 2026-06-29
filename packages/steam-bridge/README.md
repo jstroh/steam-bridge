@@ -215,8 +215,9 @@ processes; pass `overlayShortcut: false` to disable it, or provide
 `overlayShortcut: { target: { type: "community", appId } }` to choose another
 presenter-backed target. The bridge consumes Shift+Tab only when it is opening a
 managed presenter-backed target; once Steam reports an active overlay, it lets
-Shift+Tab pass through so Steam can handle the close/toggle side if that key
-event reaches the app. It is the
+Shift+Tab pass through so Steam can handle the close/toggle side. Deck Desktop
+proof now verifies a second Shift+Tab closes the managed overlay and returns
+focus to the app. It is the
 recommended builder-facing entry point: web, store, Friends, Profile,
 Community, Stats, Achievements, and checkout targets route through the
 presenter-backed paths
@@ -348,7 +349,8 @@ toggle evidence with
 `--visual-toggle-probe --visual-toggle-input keyboard|guide|both`; for the
 managed `presenter-shortcut` keyboard path, that probe verifies
 `overlay:shortcut-open`, active/inactive callbacks, app focus, and crash
-diagnostics. Use `--shortcut-target <name>` to test non-default shortcut
+diagnostics. Shortcut matrix cases use `--visual-close-input toggle` to prove a
+Shift+Tab-only close. Use `--shortcut-target <name>` to test non-default shortcut
 targets such as `profile`, `web`, `store`, `community`, `stats`, `achievements`, `dialog`,
 or `checkout`; Deck Desktop fullscreen proof includes
 `--shortcut-target web --web-modal true`, with the Deck runner waiting for the

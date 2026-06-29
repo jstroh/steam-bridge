@@ -916,7 +916,9 @@ case "$mode" in
       fi
     fi
     require_steam_launch="1"
-    require_overlay_ready="1"
+    if [ "$action" != "presenter-checkout" ] || { [ -n "$checkout_url" ] || [ -n "$checkout_transaction_id" ]; }; then
+      require_overlay_ready="1"
+    fi
     launch_steam_shortcut
     ;;
   verify)

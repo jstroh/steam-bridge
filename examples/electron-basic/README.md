@@ -189,12 +189,13 @@ and click-through, calls `achievement.indicateProgress(...)`, and records
 `achievement:progress` plus `callback:achievement-stored` when Steam accepts the
 progress notification.
 Use `presenter-shortcut` with
-`--visual-toggle-probe --visual-toggle-input keyboard --visual-close-input keyboard`
+`--visual-toggle-probe --visual-toggle-input keyboard --visual-close-input toggle`
 to verify the managed Electron shortcut bridge: the app attaches the reusable
 presenter, waits for Shift+Tab, and the bridge routes that shortcut to the
 verified Friends/chat presenter-backed Steam web overlay. When Steam reports an
 active overlay, the bridge lets Shift+Tab pass through instead of swallowing it,
-so Steam can handle close/toggle behavior if that key event reaches Electron. Add
+so Steam can handle close/toggle behavior. Deck Desktop proof now verifies the
+second Shift+Tab closes the overlay and returns focus to the app. Add
 `--shortcut-target <name>` to test another presenter-backed target through the
 same focused Shift+Tab path; supported smoke targets are `friends`, `profile`, `web`,
 `store`, `community`, `stats`, `achievements`, `dialog`, and `checkout`.
@@ -398,8 +399,8 @@ actions, this tests Steam's raw hotkey interception. The runner focuses the
 smoke app when possible, captures `before-toggle-probe.png`, sends the selected
 toggle input, captures `after-toggle-open.png`, then closes and captures
 `after-toggle-close.png`. The default `--visual-toggle-input keyboard` sends
-Shift+Tab. For `presenter-shortcut`, keyboard toggle probes close with the
-keyboard path by default and also require
+Shift+Tab. For `presenter-shortcut`, keyboard toggle probes should use
+`--visual-close-input toggle` so close is Shift+Tab-only; they also require
 `overlay:shortcut-open`, active/inactive callbacks, focus returning to the smoke
 app, delayed post-close presenter snapshots parked at passive idle with no
 `pumpCount` increase, managed wait-helper shown/closed/parked events, and no
@@ -410,7 +411,8 @@ lifecycle log to report shortcut-open and active overlay events before capturing
 the opened surface. Use
 `--visual-toggle-input guide` to send the controller Guide/Steam button through a
 temporary `/dev/uinput` device, or `--visual-toggle-input both` to compare both
-paths in one run. Keyboard probes use the existing Shift+Tab/Escape close probe;
+paths in one run. The generic `keyboard` close mode still sends Shift+Tab then
+Escape for raw investigations; the managed shortcut proof uses `toggle`.
 Guide probes press Guide again. Focused Deck Desktop passive-presenter runs
 passed the toast proof but did not open Steam overlay UI from Shift+Tab or from
 the virtual controller Guide/Steam-button event, so that raw interception probe

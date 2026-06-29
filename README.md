@@ -245,8 +245,9 @@ used by the Deck Desktop proof instead of relying on Steam to hook Chromium
 child processes. Apps can set `overlayShortcut.target` to any presenter-backed
 target when they want Shift+Tab to open store, web, checkout, community, stats,
 achievements, or dialog-equivalent surfaces instead. Once Steam reports an
-active overlay, the shortcut bridge no longer consumes Shift+Tab, so Steam can
-handle the close/toggle side if that key event reaches the app.
+active overlay, the shortcut bridge no longer consumes Shift+Tab; Deck Desktop
+proof now verifies that a second Shift+Tab closes the managed overlay and
+returns focus to the app.
 
 To rerun the Steam Deck Desktop Mode product overlay proof matrix from this
 repo, keep the Deck awake in Desktop Mode with Steam running and use:
@@ -561,11 +562,11 @@ For repeatable Deck evidence, the smoke host runner can copy the remote result
 log and diagnostics directory back to the local machine with
 `--collect-diagnostics-dir`, and can capture Deck screenshots with
 `--visual-capture-dir`. Use `--visual-close-probe` for `presenter-friends`
-close/back-to-app proof and for raw social-overlay investigation; it sends a
-Deck-side Shift+Tab/Escape probe and records before and after screenshots. For
-presenter-backed product web surfaces, the close probe also verifies
-`active=false`, confirms focus returned to the smoke app, and checks for
-post-close crash evidence.
+close/back-to-app proof and for raw social-overlay investigation; by default it
+sends a Deck-side Shift+Tab/Escape probe and records before and after
+screenshots. For presenter-backed product web surfaces, the close probe also
+verifies `active=false`, confirms focus returned to the smoke app, and checks
+for post-close crash evidence.
 For presenter-backed Steam web surfaces such as `presenter-community` and
 `presenter-stats`, add `--visual-close-input web` to close through the visible
 Steam web overlay close control.
@@ -573,6 +574,8 @@ Use `--visual-toggle-probe` for shortcut evidence. With `presenter-shortcut`,
 the default `--visual-toggle-input keyboard` sends Shift+Tab into Steam Bridge's
 managed Electron shortcut bridge and verifies `overlay:shortcut-open`,
 `active=true`, `active=false`, focus return, and no post-close crash evidence.
+Shortcut matrix cases use `--visual-close-input toggle`, which sends only the
+second Shift+Tab for close.
 Pass `--shortcut-target <name>` to prove non-default shortcut targets; Deck
 Desktop fullscreen testing has verified `--shortcut-target web --web-modal true`
 by waiting for the smoke lifecycle log to report `overlay:shortcut-open` and

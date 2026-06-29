@@ -91,7 +91,10 @@ timing hacks.
   that opens the verified Friends/chat presenter-backed web overlay instead of
   asking Steam to hook Chromium children. A 2026-06-28 `presenter-shortcut` run
   emitted shortcut-open and active/inactive overlay callbacks, captured visible
-  Friends/chat UI, and returned to the smoke app after the keyboard close probe.
+  Friends/chat UI, and returned to the smoke app after the close probe.
+  Follow-up Deck Desktop runs with `--visual-close-input toggle` proved
+  Shift+Tab-only close for managed profile and web shortcut targets, including
+  `active=false`, focus return, and post-close parking at `currentFps=0`.
 - A generic `steam://open/overlay` URI is not a reliable shortcut around the
   unresolved raw social/toggle path. On Deck Desktop Mode it can emit an overlay
   activation callback while leaving the native presenter black and crashing the
@@ -291,18 +294,23 @@ Current evidence:
   `overlayShortcut: false` and `overlayShortcut.target` available for apps that
   need to opt out or choose another presenter-backed target. A 2026-06-28 Deck
   Desktop `presenter-shortcut` run proved visible overlay open, active/inactive
-  callbacks, and return to the app after keyboard close. The smoke app and Deck
+  callbacks, and return to the app after close. The smoke app and Deck
   runner now expose `--shortcut-target` for focused shortcut proofs of other
   presenter-backed targets. The bridge consumes Shift+Tab only while opening a
   managed target; once Steam reports an active overlay, it lets Shift+Tab pass
-  through so Steam can handle close/toggle if that event reaches Electron. A
+  through so Steam can handle close/toggle. A
   focused fullscreen run with
   `presenter-shortcut --shortcut-target web --web-modal true` waited for
   lifecycle evidence of shortcut-open and active overlay events before capturing
   the opened Steam web overlay over the fullscreen app, emitted active then
-  inactive overlay callbacks, returned focus to Electron after the keyboard
-  close probe, and parked at
+  inactive overlay callbacks, returned focus to Electron after the close probe,
+  and parked at
   transparent/click-through `currentFps=0` with no post-close pumping.
+  Separate `presenter-shortcut --shortcut-target profile` and
+  `presenter-shortcut --shortcut-target web --web-modal true` Deck Desktop runs
+  used `--visual-close-input toggle`, sending only the second Shift+Tab for
+  close, and passed the same active=false, focus-return, and idle-parking
+  verifier.
 - The same path is good enough for checkout-style proof when launched under a
   real installed Steam app with a configured product or transaction. The public
   API now has a named checkout wrapper:
