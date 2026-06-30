@@ -251,11 +251,11 @@ run_self_test() {
     echo "Self-test failed: minimal matrix case count changed." >&2
     exit 1
   fi
-  if [ "$(printf '%s\n' "$core_output" | count_cases)" != "15" ]; then
+  if [ "$(printf '%s\n' "$core_output" | count_cases)" != "16" ]; then
     echo "Self-test failed: core matrix case count changed." >&2
     exit 1
   fi
-  if [ "$(printf '%s\n' "$full_output" | count_cases)" != "22" ]; then
+  if [ "$(printf '%s\n' "$full_output" | count_cases)" != "23" ]; then
     echo "Self-test failed: full matrix case count changed." >&2
     exit 1
   fi
@@ -275,6 +275,7 @@ run_self_test() {
   require_contains "$core_output" "--shortcut-target friends" "core matrix must include Friends shortcut routing."
   require_contains "$core_output" "--shortcut-target web" "core matrix must include web shortcut routing."
   require_contains "$core_output" "--shortcut-target store" "core matrix must include store shortcut routing."
+  require_contains "$core_output" "--action presenter-players" "core matrix must include players."
   require_contains "$core_output" "--shortcut-open-probe" "shortcut proof must open through the managed Shift+Tab bridge."
   require_contains "$core_output" "--close-input toggle" "shortcut proof must close with Shift+Tab."
   require_contains "$core_output" "--require-passive-notification" "passive toast cases must use the passive notification gate."
@@ -887,7 +888,16 @@ run_matrix() {
     --require-no-crashes \
     --close-probe
 
-  run_case "12-community" \
+  run_case "12-players" \
+    --action presenter-players \
+    --require-steam-launch \
+    --require-overlay-injection \
+    --require-overlay-enabled \
+    --require-overlay-activated \
+    --require-no-crashes \
+    --close-probe
+
+  run_case "13-community" \
     --action presenter-community \
     --require-steam-launch \
     --require-overlay-injection \
@@ -896,7 +906,7 @@ run_matrix() {
     --require-no-crashes \
     --close-probe
 
-  run_case "13-stats" \
+  run_case "14-stats" \
     --action presenter-stats \
     --require-steam-launch \
     --require-overlay-injection \
@@ -905,7 +915,7 @@ run_matrix() {
     --require-no-crashes \
     --close-probe
 
-  run_case "14-achievements" \
+  run_case "15-achievements" \
     --action presenter-achievements \
     --require-steam-launch \
     --require-overlay-injection \
@@ -914,7 +924,7 @@ run_matrix() {
     --require-no-crashes \
     --close-probe
 
-  run_case "15-user-chat" \
+  run_case "16-user-chat" \
     --action presenter-user \
     --user-dialog chat \
     --require-steam-launch \

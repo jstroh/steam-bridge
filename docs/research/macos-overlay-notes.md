@@ -209,6 +209,17 @@ Verified:
   `openAndWait(...)`, passive progress/unlock notifications, synthetic checkout
   approval-route plumbing, profile, community, stats, achievements, and user
   chat routes.
+- A 2026-06-29 core macOS overlay matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-core-players-20260629-185333`
+  passed 16 Steam-launched App ID `480` cases after adding the direct
+  presenter-backed `players` target to regular macOS coverage. The new Players
+  case verified Steam launch/injection, overlay activation/deactivation, active
+  shown presenter state, one `gameoverlayui` target under App ID `480`, app
+  focus return, parked idle presenter state, zero managed overlay timing, and
+  clean crash diagnostics. The same run re-verified the web/store/Friends/dialog
+  `openAndWait(...)` routes, passive progress/unlock notifications, synthetic
+  checkout approval-route plumbing, managed Shift+Tab Friends/web/store targets,
+  profile, community, stats, achievements, and user chat.
 - A 2026-06-29 minimal macOS overlay matrix at
   `/tmp/steam-bridge-macos-overlay-matrix-minimal-helper-current-20260629-170723`
   re-ran the packaged helper after the source-level presenter-shape checks were

@@ -509,6 +509,13 @@ web, and store shortcut targets. The summary gate now reads the expected shortcu
 target from the matrix manifest and verifies both the `overlay:shortcut-open`
 lifecycle payload and `overlayShortcut.targetType` snapshot before accepting a
 shortcut case.
+A later 2026-06-29 core macOS matrix at
+`/tmp/steam-bridge-macos-overlay-matrix-core-players-20260629-185333`
+added direct `presenter-players` coverage to the regular macOS suite. The
+16-case artifact passed the same Steam launch/injection, active/inactive
+callback, active shown presenter, focus return, zero managed timing, parked idle
+presenter, and crash-diagnostic gates as the other presenter-backed community
+surfaces.
 The repository also provides `npm run macos:overlay-matrix`, which installs or
 updates one stable macOS Steam shortcut pointing at the in-bundle native
 launcher and a launcher env file. Each case rewrites only that env file, so

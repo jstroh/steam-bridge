@@ -162,6 +162,13 @@ timing hacks.
   presenter snapshot. The same 15-case run re-verified the core macOS overlay
   surface set with active/inactive callbacks, focus return, zero managed timing,
   parked idle presenter state, and clean crash diagnostics.
+- A later 2026-06-29 core macOS matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-core-players-20260629-185333`
+  added direct high-level `presenter-players` coverage to the regular macOS
+  suite. The 16-case artifact passed the same Steam launch/injection,
+  active/inactive callback, active shown presenter, focus return, zero managed
+  timing, parked idle presenter, and crash-diagnostic gates as the other
+  presenter-backed community surfaces.
 - A 2026-06-29 full Deck Desktop overlay matrix passed 26 cases with 52
   screenshots under App ID `480`, covering managed web, store, Friends, profile,
   players, community, stats, achievements, user chat, known dialog-equivalent
@@ -655,8 +662,8 @@ Current evidence:
 - Steam-launched macOS Apple Silicon runs now verify managed modal web, store,
   Friends/chat, dialog-equivalent `openAndWait(...)`, passive progress/unlock
   toasts, synthetic checkout `openCheckoutAndWait(...)` approval-route
-  plumbing, managed Shift+Tab shortcut open/close, profile, community, stats,
-  achievements, user
+  plumbing, managed Shift+Tab shortcut open/close, profile, players, community,
+  stats, achievements, user
   chat/profile, and known dialog-equivalent routes with paired active/inactive
   callbacks where expected, active shown presenter snapshots, one
   `gameoverlayui` target, app focus return, clean crash diagnostics, an
