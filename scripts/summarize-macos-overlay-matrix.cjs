@@ -262,6 +262,8 @@ function verifyCase(caseId, metadata, result, lifecycle, macosCrashReports, fail
     metadata.requireNoOverlayActivation === true ||
     metadata.expectedNoOverlayActivation === true ||
     Boolean(expectedNativeHostUnavailableReason);
+  const requireMicroTxnCallback =
+    metadata.requireMicroTxnCallback === true || metadata.expectedMicroTxnCallback === true;
   const activated = lifecycleEntries.some(isLifecycleOverlayActiveEvent);
   const closed = hasInactiveAfterActive(lifecycleEntries);
   const parked = hasExpectedActionError ? false : verifyLifecycleParking(caseId, lifecycleEntries, isPassive, failures);
@@ -284,7 +286,9 @@ function verifyCase(caseId, metadata, result, lifecycle, macosCrashReports, fail
     : verifyCheckoutOpenAndWait(caseId, actionName, lifecycleEntries, expectedCheckoutSource, failures);
   const microTxnCallback = hasExpectedActionError
     ? { required: false, ok: true }
-    : verifyMicroTxnCallbackPresenterSnapshots(caseId, lifecycleEntries, failures);
+    : verifyMicroTxnCallbackPresenterSnapshots(caseId, lifecycleEntries, failures, {
+        required: requireMicroTxnCallback
+      });
   const managedWaits = hasExpectedActionError
     ? { required: false, ok: true }
     : verifyManagedLifecycleWaits(caseId, actionName, lifecycleEntries, isPassive, failures);
@@ -599,9 +603,13 @@ function verifyCheckoutOpenAndWait(caseId, actionName, entries, expectedCheckout
   return { required: true, ok: failures.length === failuresBefore, source: openPayload.checkoutSource || "" };
 }
 
-function verifyMicroTxnCallbackPresenterSnapshots(caseId, entries, failures) {
+function verifyMicroTxnCallbackPresenterSnapshots(caseId, entries, failures, options = {}) {
   const callbacks = entries.filter((entry) => entry && entry.type === "event:callback:microtxn");
   if (callbacks.length === 0) {
+    if (options.required === true) {
+      failures.push(`${caseId}: required MicroTxnAuthorizationResponse callback was not recorded`);
+      return { required: true, ok: false };
+    }
     return { required: false, ok: true };
   }
 
@@ -1087,6 +1095,9 @@ function runSelfTest() {
   const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-macos-matrix-summary."));
   const unredactedFixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-macos-matrix-summary-unredacted."));
   const crashFixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-macos-matrix-summary-crash."));
+  const missingMicroTxnFixtureRoot = fs.mkdtempSync(
+    path.join(os.tmpdir(), "steam-bridge-macos-matrix-summary-missing-microtxn.")
+  );
   const persistentFixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-macos-matrix-summary-persistent."));
   try {
     createSelfTestFixture(fixtureRoot);
@@ -1101,11 +1112,15 @@ function runSelfTest() {
     createSelfTestFixture(crashFixtureRoot);
     injectMacosCrashReport(crashFixtureRoot, "01-web-openwait");
     assertMacosCrashReportRejected(crashFixtureRoot);
+    createSelfTestFixture(missingMicroTxnFixtureRoot);
+    injectMicroTxnCallbackRequirement(missingMicroTxnFixtureRoot, "01-web-openwait");
+    assertMissingMicroTxnCallbackRejected(missingMicroTxnFixtureRoot);
     console.log("macOS overlay matrix summary self-test passed.");
   } finally {
     fs.rmSync(fixtureRoot, { recursive: true, force: true });
     fs.rmSync(unredactedFixtureRoot, { recursive: true, force: true });
     fs.rmSync(crashFixtureRoot, { recursive: true, force: true });
+    fs.rmSync(missingMicroTxnFixtureRoot, { recursive: true, force: true });
     fs.rmSync(persistentFixtureRoot, { recursive: true, force: true });
   }
 }
@@ -1172,6 +1187,31 @@ function assertMacosCrashReportRejected(root) {
     result.stderr,
     /BOverlayNeedsPresent/,
     "summary rejection should include the crash top symbol"
+  );
+}
+
+function injectMicroTxnCallbackRequirement(root, caseId) {
+  const manifestPath = path.join(root, "macos-matrix-cases.jsonl");
+  const rows = fs
+    .readFileSync(manifestPath, "utf8")
+    .trim()
+    .split(/\r?\n/)
+    .map((line) => JSON.parse(line));
+  const row = rows.find((entry) => entry.caseId === caseId);
+  assert.ok(row, `self-test fixture should include ${caseId}`);
+  row.requireMicroTxnCallback = true;
+  fs.writeFileSync(manifestPath, rows.map((entry) => JSON.stringify(entry)).join("\n") + "\n");
+}
+
+function assertMissingMicroTxnCallbackRejected(root) {
+  const result = spawnSync(process.execPath, [__filename, "--artifact-root", root], {
+    encoding: "utf8"
+  });
+  assert.notEqual(result.status, 0, "summary should reject missing required MicroTxn callbacks");
+  assert.match(
+    result.stderr,
+    /required MicroTxnAuthorizationResponse callback was not recorded/,
+    "summary rejection should identify the missing MicroTxn callback"
   );
 }
 
@@ -1298,6 +1338,7 @@ function createSelfTestFixture(root) {
       action: "presenter-checkout",
       expectedAppId: 9000,
       checkoutSource: "json-file",
+      requireMicroTxnCallback: true,
       command: [
         "--action",
         "presenter-checkout",
@@ -1416,7 +1457,8 @@ function createSelfTestFixture(root) {
       requireActionErrorCode: fixture.requireActionErrorCode || null,
       requireActionErrorReason: fixture.requireActionErrorReason || null,
       requireNativeHostUnavailableReason: fixture.requireNativeHostUnavailableReason || null,
-      requireNoOverlayActivation: fixture.requireNoOverlayActivation === true
+      requireNoOverlayActivation: fixture.requireNoOverlayActivation === true,
+      requireMicroTxnCallback: fixture.requireMicroTxnCallback === true
     });
   }
 

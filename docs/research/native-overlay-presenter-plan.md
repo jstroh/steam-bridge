@@ -730,7 +730,9 @@ duplicate child overlay targets.
    - a real app/product only for private purchase proof;
    - require `callback:microtxn` diagnostics to include presenter state during
      real purchase authorization; current Deck/macOS summary auditors fail if
-     that callback lacks a presenter snapshot;
+     that callback lacks a presenter snapshot, and the macOS matrix can add
+     `--require-microtxn-callback` to fail if the direct checkout callback is
+     missing entirely;
    - keep private app IDs, item definitions, transaction IDs, and URLs out of
      committed files.
 8. Treat Wayland as a later backend unless Steam/Electron are running through
@@ -886,9 +888,9 @@ Next work:
    app ID; App ID `480` only proves generic checkout routing. Use the smoke
    app's private checkout JSON file input for artifact capture so transaction
    responses stay outside the repository and launch arguments. The macOS matrix
-   can run with `--app-id <your-app-id> --checkout-json-file <path>` and audits
-   the expected app ID plus `checkoutSource=json-file` without recording the
-   JSON path.
+   can run with `--app-id <your-app-id>`, `--checkout-json-file <path>`, and
+   `--require-microtxn-callback`, then audits the expected app ID plus
+   `checkoutSource=json-file` without recording the JSON path.
 2. Keep code signing requirements explicit in docs and examples. The generic
    example now includes `entitlements.steam.macos.plist` with
    `com.apple.security.cs.allow-dyld-environment-variables` and

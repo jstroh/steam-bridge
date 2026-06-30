@@ -20,6 +20,7 @@ signing_verifier="$script_dir/verify-macos-steam-signing.cjs"
 overlay_profile="compatibility"
 native_host_backend=""
 checkout_json_file=""
+require_microtxn_callback="0"
 timeout_seconds="120"
 skip_package="0"
 dry_run="0"
@@ -61,6 +62,8 @@ Options:
   --checkout-json-file PATH      Private InitTxn/checkout response JSON for checkout cases.
                                   The Steam shortcut only receives the stable launcher env-file flag;
                                   matrix manifests record this as source=json-file without the path.
+  --require-microtxn-callback    Require direct checkout cases to record a
+                                  MicroTxnAuthorizationResponse callback.
   --timeout-seconds SECONDS      Per-case result timeout. Defaults to 120.
   --skip-package                 Do not run npm run example:package:mac first.
   --no-restart-steam             Do not restart Steam after changing shortcut options.
@@ -154,6 +157,10 @@ while [ "$#" -gt 0 ]; do
     --checkout-json-file)
       checkout_json_file="${2:?missing --checkout-json-file value}"
       shift 2
+      ;;
+    --require-microtxn-callback)
+      require_microtxn_callback="1"
+      shift
       ;;
     --timeout-seconds)
       timeout_seconds="${2:?missing --timeout-seconds value}"
@@ -281,8 +288,18 @@ case_command() {
   '
 }
 
+case_block() {
+  local output="$1"
+  local case_id="$2"
+  printf '%s\n' "$output" | awk -v id="$case_id" '
+    $0 == "CASE " id { found = 1 }
+    found && /^CASE / && $0 != "CASE " id { exit }
+    found { print }
+  '
+}
+
 run_self_test() {
-  local self_path minimal_output core_output full_output persistent_output unavailable_output opengl_output checkout_json_output passive_case checkout_case checkout_json_case shortcut_checkout_json_case web_case persistent_web_case unavailable_web_case unavailable_checkout_case
+  local self_path minimal_output core_output full_output persistent_output unavailable_output opengl_output checkout_json_output checkout_callback_output passive_case checkout_case checkout_json_case checkout_callback_case checkout_callback_checkout_block checkout_callback_web_block shortcut_checkout_json_case web_case persistent_web_case unavailable_web_case unavailable_checkout_case
   self_path="${BASH_SOURCE[0]}"
   minimal_output="$(
     bash "$self_path" \
@@ -365,6 +382,20 @@ run_self_test() {
       --app-id 9000 \
       --checkout-json-file /tmp/private-init-txn-response.json
   )"
+  checkout_callback_output="$(
+    bash "$self_path" \
+      --mode steam-launch \
+      --suite core \
+      --skip-package \
+      --dry-run \
+      --helper-path "$script_dir/macos-electron-smoke.sh" \
+      --app-exe /tmp/SteamBridgeSmoke.app/Contents/MacOS/SteamBridgeSmoke \
+      --shortcuts /tmp/shortcuts.vdf \
+      --artifact-root /tmp/steam-bridge-macos-overlay-matrix-self-test \
+      --app-id 9000 \
+      --checkout-json-file /tmp/private-init-txn-response.json \
+      --require-microtxn-callback
+  )"
 
   if [ "$(printf '%s\n' "$minimal_output" | count_cases)" != "5" ]; then
     echo "Self-test failed: minimal matrix case count changed." >&2
@@ -400,6 +431,7 @@ run_self_test() {
   require_contains "$opengl_output" "NATIVE_HOST_BACKEND opengl" "matrix must pass requested native host backend through the launcher env."
   require_contains "$checkout_json_output" "--app-id 9000" "matrix must pass the requested private proof app ID through helper commands."
   require_contains "$checkout_json_output" "--checkout-json-file /tmp/private-init-txn-response.json" "matrix must pass private checkout JSON into checkout cases."
+  require_contains "$checkout_callback_output" "REQUIRE_MICROTXN_CALLBACK direct-checkout" "matrix must mark direct checkout when MicroTxn callbacks are required."
   require_contains "$core_output" "--action presenter-store-open-and-wait" "core matrix must include store openAndWait."
   require_contains "$core_output" "--action presenter-friends-open-and-wait" "core matrix must include Friends openAndWait."
   require_contains "$core_output" "--action presenter-dialog-auto-open-and-wait" "core matrix must include dialog openAndWait."
@@ -467,6 +499,9 @@ run_self_test() {
   passive_case="$(case_command "$core_output" "05-passive-toast")"
   checkout_case="$(case_command "$core_output" "07-checkout-approval")"
   checkout_json_case="$(case_command "$checkout_json_output" "07-checkout-approval")"
+  checkout_callback_case="$(case_command "$checkout_callback_output" "07-checkout-approval")"
+  checkout_callback_checkout_block="$(case_block "$checkout_callback_output" "07-checkout-approval")"
+  checkout_callback_web_block="$(case_block "$checkout_callback_output" "01-web-openwait")"
   shortcut_checkout_json_case="$(case_command "$checkout_json_output" "11-shortcut-checkout")"
   persistent_web_case="$(case_command "$persistent_output" "01-persistent-web-openwait")"
   unavailable_web_case="$(case_command "$unavailable_output" "01-unavailable-web-openwait")"
@@ -476,6 +511,9 @@ run_self_test() {
   require_not_contains "$passive_case" "--close-probe" "passive toast should not require modal close proof."
   require_contains "$checkout_case" "--close-probe" "checkout proof should close and verify parked state."
   require_contains "$checkout_json_case" "--checkout-json-file /tmp/private-init-txn-response.json" "private checkout proof should use the JSON-file handoff."
+  require_contains "$checkout_callback_case" "--checkout-json-file /tmp/private-init-txn-response.json" "private callback proof should still use the JSON-file handoff."
+  require_contains "$checkout_callback_checkout_block" "REQUIRE_MICROTXN_CALLBACK direct-checkout" "MicroTxn callback requirement should apply to direct checkout cases."
+  require_not_contains "$checkout_callback_web_block" "REQUIRE_MICROTXN_CALLBACK" "MicroTxn callback requirement should not apply to non-checkout cases."
   require_contains "$shortcut_checkout_json_case" "--checkout-json-file /tmp/private-init-txn-response.json" "checkout shortcut proof should use the JSON-file handoff."
   require_not_contains "$checkout_json_case" "--checkout-transaction-id 123456789" "private checkout proof should not also use the synthetic transaction ID."
   require_not_contains "$shortcut_checkout_json_case" "--checkout-transaction-id 123456789" "checkout shortcut proof should not also use the synthetic transaction ID."
@@ -1005,12 +1043,15 @@ write_case_manifest() {
   local result_file="$2"
   local diagnostic_dir="$3"
   shift 3
-  EXPECTED_NATIVE_HOST_BACKEND="$native_host_backend" EXPECTED_APP_ID="$app_id" node - "$artifact_root/macos-matrix-cases.jsonl" "$case_id" "$result_file" "$diagnostic_dir" "$@" <<'NODE'
+  EXPECTED_NATIVE_HOST_BACKEND="$native_host_backend" EXPECTED_APP_ID="$app_id" REQUIRE_MICROTXN_CALLBACK="$require_microtxn_callback" node - "$artifact_root/macos-matrix-cases.jsonl" "$case_id" "$result_file" "$diagnostic_dir" "$@" <<'NODE'
 const fs = require("node:fs");
 const [manifestPath, caseId, resultFile, diagnosticDir, ...command] = process.argv.slice(2);
 const requestedNativeHostBackend = process.env.EXPECTED_NATIVE_HOST_BACKEND || "";
 const expectedNativeHostBackend = requestedNativeHostBackend ? `macos-${requestedNativeHostBackend}` : null;
 const expectedAppId = Number(process.env.EXPECTED_APP_ID || "480");
+const action = optionValue("--action");
+const requireMicroTxnCallback =
+  process.env.REQUIRE_MICROTXN_CALLBACK === "1" && action === "presenter-checkout";
 
 function optionValue(name) {
   const index = command.indexOf(name);
@@ -1057,7 +1098,7 @@ fs.appendFileSync(
     diagnosticDir,
     command: redactCommand(command),
     expectedAppId,
-    action: optionValue("--action"),
+    action,
     closeProbe: command.includes("--close-probe"),
     shortcutOpenProbe: command.includes("--shortcut-open-probe"),
     shortcutTarget: optionValue("--shortcut-target"),
@@ -1072,7 +1113,8 @@ fs.appendFileSync(
     requireActionErrorCode: optionValue("--require-action-error-code"),
     requireActionErrorReason: optionValue("--require-action-error-reason"),
     requireNativeHostUnavailableReason: optionValue("--require-native-host-unavailable-reason"),
-    requireNoOverlayActivation: command.includes("--require-no-overlay-activation")
+    requireNoOverlayActivation: command.includes("--require-no-overlay-activation"),
+    requireMicroTxnCallback
   })}\n`
 );
 NODE
@@ -1332,6 +1374,9 @@ run_case() {
   if [ -n "$native_host_backend" ]; then
     echo "NATIVE_HOST_BACKEND $native_host_backend"
   fi
+  if [ "$require_microtxn_callback" = "1" ] && case_is_direct_checkout_action "${case_args[@]}"; then
+    echo "REQUIRE_MICROTXN_CALLBACK direct-checkout"
+  fi
   echo "RUN $(quote_command "${run_cmd[@]}")"
 
   if [ "$dry_run" = "1" ]; then
@@ -1399,6 +1444,19 @@ case_has_managed_timing_requirement() {
   return 1
 }
 
+case_is_direct_checkout_action() {
+  local previous=""
+  local arg
+  for arg in "$@"; do
+    if [ "$previous" = "--action" ]; then
+      [ "$arg" = "presenter-checkout" ]
+      return
+    fi
+    previous="$arg"
+  done
+  return 1
+}
+
 run_persistent_case() {
   local control_file="$1"
   local control_token="$2"
@@ -1427,6 +1485,9 @@ run_persistent_case() {
 
   echo "CASE $case_id"
   echo "CONTROL $control_file"
+  if [ "$require_microtxn_callback" = "1" ] && case_is_direct_checkout_action "${case_args[@]}"; then
+    echo "REQUIRE_MICROTXN_CALLBACK direct-checkout"
+  fi
   echo "RUN $(quote_command "${run_cmd[@]}")"
 
   if [ "$dry_run" = "1" ]; then

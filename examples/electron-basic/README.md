@@ -436,7 +436,10 @@ prevents a late checkout surface from opening.
 The macOS helper and matrix expose the private-file path as
 `--checkout-json-file`; the matrix can pair it with `--app-id <your-app-id>`
 and records only `checkoutSource=json-file` plus the expected app ID in its
-manifest. The Linux and Steam Deck helpers expose direct inputs as `--checkout-url`,
+manifest. Add `--require-microtxn-callback` when a real direct checkout proof is
+expected to produce `MicroTxnAuthorizationResponse`; the matrix summary will
+fail if the callback is missing or lacks a presenter snapshot. The Linux and
+Steam Deck helpers expose direct inputs as `--checkout-url`,
 `--checkout-transaction-id`, and `--checkout-return-url`. Without a checkout
 file, URL, or transaction ID the helpers only require
 `overlay:presenter-checkout-ready`;
@@ -999,7 +1002,9 @@ app-specific proof outside the committed examples:
    overlay-preparation timers around that call.
 4. For smoke proof, save the returned JSON to a private temp file and pass it
    with `STEAM_BRIDGE_SMOKE_CHECKOUT_JSON_FILE` or the macOS helper's
-   `--checkout-json-file`.
+   `--checkout-json-file`. For macOS matrix proof, add
+   `--require-microtxn-callback` when the direct checkout case should receive
+   Steam's authorization callback.
 5. Let Steam Bridge open the returned checkout URL or transaction approval path.
 6. Verify the Steam modal appears in both Deck Game Mode and Desktop Mode.
 7. Confirm backing out or closing the Steam surface returns focus to the app.

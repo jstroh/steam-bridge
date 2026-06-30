@@ -345,9 +345,12 @@ checkout response JSON to a private temp file and pass its path with
 `STEAM_BRIDGE_SMOKE_CHECKOUT_JSON_FILE` or the macOS helper/matrix
 `--checkout-json-file` option; the smoke app feeds that object through
 `openCheckoutAndWait(...)` without committing private data or putting transaction
-values in launch arguments. Shortcut checkout cases feed that same parsed object
-through `checkoutTargetFromResult(...)`, so direct and Shortcut checkout proof
-share one accepted envelope parser. The macOS matrix also accepts
+values in launch arguments. Add `--require-microtxn-callback` to the macOS
+matrix when the private direct checkout case is expected to produce a
+`MicroTxnAuthorizationResponse`; the summary will fail if that callback is
+missing or lacks a presenter snapshot. Shortcut checkout cases feed that same
+parsed object through `checkoutTargetFromResult(...)`, so direct and Shortcut
+checkout proof share one accepted envelope parser. The macOS matrix also accepts
 `--app-id <your-app-id>` and summarizes the expected app ID plus
 `checkoutSource=json-file` without persisting the JSON path; the matrix
 summarizer rejects new manifests that include unredacted checkout file paths,
