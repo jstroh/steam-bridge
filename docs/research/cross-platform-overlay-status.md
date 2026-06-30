@@ -248,7 +248,11 @@ A live interactive macOS success rerun is still pending because the 2026-06-30
 attempt at
 `/tmp/steam-bridge-macos-overlay-matrix-core-checkout-prepare-metal-crash-20260630-114417`
 stopped at the preflight with `screenLocked=true` and `displayAsleep=true`
-before launching any cases.
+before launching any cases. Success suites can now be launched with
+`--wait-for-interactive-seconds <seconds>` or
+`STEAM_BRIDGE_MACOS_MATRIX_WAIT_FOR_INTERACTIVE_SECONDS` to wait at that
+preflight boundary for unlock/wake; the default remains immediate failure so
+locked/asleep state is still captured explicitly with `--suite unavailable`.
 
 ## Steam Deck Shortcut Gate
 

@@ -570,6 +570,10 @@ On macOS, the helper's `--require-no-crashes` gate also copies fresh
 `SteamBridgeSmoke`, into `macos-crash-reports/` and fails with the report
 timestamp, exception, responsible process, and top symbols. The macOS matrix
 summarizer rejects those copied reports when auditing saved artifacts.
+Success matrix runs stop before launching cases while macOS is locked or the
+display is asleep; use `--suite unavailable` to capture that state, or pass
+`--wait-for-interactive-seconds <seconds>` for a bounded harness-only wait at
+the preflight boundary.
 The smoke snapshot includes `snapshot.app.diagnosticDir`,
 `snapshot.app.lifecycleLogFile`, and `snapshot.app.crashDumpDir`.
 For visual debugging, pass `--steam-bridge-smoke-keep-open-after-result` or set

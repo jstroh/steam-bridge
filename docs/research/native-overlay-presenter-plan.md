@@ -960,7 +960,12 @@ Current evidence:
   and records the same manifest metadata consumed by the artifact summarizer.
   Success matrices preflight the
   same environment and stop before launching case 1 if the Mac is locked or the
-  display is asleep. A live 2026-06-30 unavailable matrix at
+  display is asleep. The matrix runner has an optional
+  `--wait-for-interactive-seconds <seconds>` preflight wait, also exposed as
+  `STEAM_BRIDGE_MACOS_MATRIX_WAIT_FOR_INTERACTIVE_SECONDS`, for unattended runs
+  where the Mac may be unlocked shortly after invocation. The default is still
+  immediate failure, and this wait is harness-only rather than a product overlay
+  lifecycle timer. A live 2026-06-30 unavailable matrix at
   `/tmp/steam-bridge-macos-overlay-matrix-unavailable-checkout-prepare-20260630-115145`
   passed all three fail-fast cases in a genuine locked/asleep session. The
   artifact proves Steam launch/injection, typed unavailable action errors, no

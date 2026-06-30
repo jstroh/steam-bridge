@@ -22,6 +22,7 @@ native_host_backend=""
 checkout_json_file=""
 require_microtxn_callback="0"
 timeout_seconds="120"
+wait_for_interactive_seconds="${STEAM_BRIDGE_MACOS_MATRIX_WAIT_FOR_INTERACTIVE_SECONDS:-0}"
 skip_package="0"
 dry_run="0"
 restart_steam="1"
@@ -65,6 +66,12 @@ Options:
   --require-microtxn-callback    Require direct checkout cases to record a
                                   MicroTxnAuthorizationResponse callback.
   --timeout-seconds SECONDS      Per-case result timeout. Defaults to 120.
+  --wait-for-interactive-seconds SECONDS
+                                  Success suites wait up to SECONDS for macOS
+                                  to become unlocked/awake before preflight
+                                  fails. Defaults to
+                                  STEAM_BRIDGE_MACOS_MATRIX_WAIT_FOR_INTERACTIVE_SECONDS
+                                  or 0.
   --skip-package                 Do not run npm run example:package:mac first.
   --no-restart-steam             Do not restart Steam after changing shortcut options.
   --close-steam-after            Close Steam after the matrix finishes.
@@ -167,6 +174,10 @@ while [ "$#" -gt 0 ]; do
       timeout_seconds="${2:?missing --timeout-seconds value}"
       shift 2
       ;;
+    --wait-for-interactive-seconds)
+      wait_for_interactive_seconds="${2:?missing --wait-for-interactive-seconds value}"
+      shift 2
+      ;;
     --skip-package)
       skip_package="1"
       shift
@@ -231,6 +242,13 @@ case "$native_host_backend" in
     ;;
   *)
     echo "Unknown --native-host-backend: $native_host_backend" >&2
+    exit 2
+    ;;
+esac
+
+case "$wait_for_interactive_seconds" in
+  ""|*[!0-9]*)
+    echo "Invalid --wait-for-interactive-seconds: $wait_for_interactive_seconds" >&2
     exit 2
     ;;
 esac
@@ -300,7 +318,7 @@ case_block() {
 }
 
 run_self_test() {
-  local self_path minimal_output core_output full_output persistent_output unavailable_output opengl_output checkout_json_output checkout_callback_output passive_case checkout_case checkout_prepare_case checkout_json_case checkout_callback_case checkout_callback_checkout_block checkout_callback_prepare_block checkout_callback_web_block shortcut_checkout_json_case web_case full_shortcut_open_wait_case full_shortcut_checkout_open_wait_case full_shortcut_user_open_wait_case full_shortcut_dialog_open_wait_case persistent_web_case persistent_checkout_prepare_case persistent_shortcut_open_wait_case persistent_shortcut_checkout_open_wait_case persistent_shortcut_user_open_wait_case persistent_shortcut_dialog_open_wait_case unavailable_web_case unavailable_checkout_case unavailable_checkout_prepare_case unavailable_passive_case
+  local self_path minimal_output core_output full_output persistent_output unavailable_output wait_output opengl_output checkout_json_output checkout_callback_output passive_case checkout_case checkout_prepare_case checkout_json_case checkout_callback_case checkout_callback_checkout_block checkout_callback_prepare_block checkout_callback_web_block shortcut_checkout_json_case web_case full_shortcut_open_wait_case full_shortcut_checkout_open_wait_case full_shortcut_user_open_wait_case full_shortcut_dialog_open_wait_case persistent_web_case persistent_checkout_prepare_case persistent_shortcut_open_wait_case persistent_shortcut_checkout_open_wait_case persistent_shortcut_user_open_wait_case persistent_shortcut_dialog_open_wait_case unavailable_web_case unavailable_checkout_case unavailable_checkout_prepare_case unavailable_passive_case
   self_path="${BASH_SOURCE[0]}"
   minimal_output="$(
     bash "$self_path" \
@@ -358,6 +376,31 @@ run_self_test() {
       --shortcuts /tmp/shortcuts.vdf \
       --artifact-root /tmp/steam-bridge-macos-overlay-matrix-self-test
   )"
+  wait_output="$(
+    bash "$self_path" \
+      --mode steam-launch \
+      --suite minimal \
+      --skip-package \
+      --dry-run \
+      --helper-path "$script_dir/macos-electron-smoke.sh" \
+      --app-exe /tmp/SteamBridgeSmoke.app/Contents/MacOS/SteamBridgeSmoke \
+      --shortcuts /tmp/shortcuts.vdf \
+      --artifact-root /tmp/steam-bridge-macos-overlay-matrix-self-test \
+      --wait-for-interactive-seconds 1
+  )"
+  if bash "$self_path" \
+    --mode steam-launch \
+    --suite minimal \
+    --skip-package \
+    --dry-run \
+    --helper-path "$script_dir/macos-electron-smoke.sh" \
+    --app-exe /tmp/SteamBridgeSmoke.app/Contents/MacOS/SteamBridgeSmoke \
+    --shortcuts /tmp/shortcuts.vdf \
+    --artifact-root /tmp/steam-bridge-macos-overlay-matrix-self-test \
+    --wait-for-interactive-seconds nope >/dev/null 2>&1; then
+    echo "Self-test failed: invalid wait seconds must be rejected." >&2
+    exit 1
+  fi
   opengl_output="$(
     bash "$self_path" \
       --mode steam-launch \
@@ -416,6 +459,10 @@ run_self_test() {
   fi
   if [ "$(printf '%s\n' "$unavailable_output" | count_cases)" != "4" ]; then
     echo "Self-test failed: unavailable matrix case count changed." >&2
+    exit 1
+  fi
+  if [ "$(printf '%s\n' "$wait_output" | count_cases)" != "5" ]; then
+    echo "Self-test failed: wait-for-interactive dry-run matrix case count changed." >&2
     exit 1
   fi
   require_unique_case_ids "$minimal_output" "minimal"
@@ -973,34 +1020,76 @@ require_interactive_macos_overlay_environment() {
     exit 1
   fi
 
-  node - "$repo_root" <<'NODE'
+  node - "$repo_root" "$wait_for_interactive_seconds" <<'NODE'
 const path = require("node:path");
 const repoRoot = process.argv[2];
+const waitSeconds = Number(process.argv[3] || "0");
 
-let environment;
-try {
-  const steamBridge = require(path.join(repoRoot, "packages", "steam-bridge"));
-  environment = steamBridge.getMacOverlayEnvironment?.();
-} catch (error) {
-  console.error(`Failed to read macOS overlay environment: ${error && error.message ? error.message : error}`);
-  process.exit(1);
+function readEnvironment() {
+  try {
+    const steamBridge = require(path.join(repoRoot, "packages", "steam-bridge"));
+    return steamBridge.getMacOverlayEnvironment?.();
+  } catch (error) {
+    console.error(`Failed to read macOS overlay environment: ${error && error.message ? error.message : error}`);
+    process.exit(1);
+  }
 }
 
-console.log(`MACOS_OVERLAY_ENVIRONMENT ${JSON.stringify(environment ?? null)}`);
-
-if (!environment || typeof environment !== "object") {
-  console.error("macOS overlay environment is unavailable; cannot run a success overlay matrix.");
-  process.exit(1);
+function unavailableReason(environment) {
+  if (!environment || typeof environment !== "object") {
+    return "unavailable";
+  }
+  if (environment.screenLocked) {
+    return "macos-screen-locked";
+  }
+  if (environment.displayAsleep) {
+    return "macos-display-asleep";
+  }
+  return "";
 }
 
-if (environment.screenLocked || environment.displayAsleep) {
-  const reason = environment.screenLocked ? "macos-screen-locked" : "macos-display-asleep";
+async function main() {
+  let environment = readEnvironment();
+  let reason = unavailableReason(environment);
+  console.log(`MACOS_OVERLAY_ENVIRONMENT ${JSON.stringify(environment ?? null)}`);
+
+  if (!reason) {
+    return;
+  }
+
+  if (waitSeconds > 0) {
+    const deadline = Date.now() + waitSeconds * 1000;
+    console.error(`Waiting up to ${waitSeconds}s for an interactive macOS overlay environment...`);
+
+    while (Date.now() < deadline) {
+      const delayMs = Math.min(1000, Math.max(1, deadline - Date.now()));
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+      environment = readEnvironment();
+      reason = unavailableReason(environment);
+      if (!reason) {
+        console.log(`MACOS_OVERLAY_ENVIRONMENT ${JSON.stringify(environment ?? null)}`);
+        return;
+      }
+    }
+  }
+
+  if (!environment || typeof environment !== "object") {
+    console.error("macOS overlay environment is unavailable; cannot run a success overlay matrix.");
+    process.exit(1);
+  }
+
+  const waited = waitSeconds > 0 ? ` after waiting ${waitSeconds}s` : "";
   console.error(
-    `macOS overlay success matrix requires an interactive display; current environment is ${reason}. ` +
+    `macOS overlay success matrix requires an interactive display; current environment is ${reason}${waited}. ` +
       "Unlock/wake the Mac before running the success matrix, or run --suite unavailable to capture this state."
   );
   process.exit(1);
 }
+
+main().catch((error) => {
+  console.error(`Failed to wait for macOS overlay environment: ${error && error.message ? error.message : error}`);
+  process.exit(1);
+});
 NODE
 }
 

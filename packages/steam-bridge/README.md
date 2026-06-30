@@ -701,6 +701,11 @@ checkout-prepare helpers to throw `STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE` before
 Steam overlay activation. The unavailable suite also exercises passive
 achievement-progress notifications, requiring the presenter to stay registered
 for automatic notification priming without attaching or opening the native host.
+For unattended proof runs, pass
+`--wait-for-interactive-seconds <seconds>` or set
+`STEAM_BRIDGE_MACOS_MATRIX_WAIT_FOR_INTERACTIVE_SECONDS` to wait at this
+preflight boundary only; the default is `0`, and product overlay lifecycle code
+does not depend on this wait.
 All unavailable cases record the matching presenter
 `nativeHostUnavailableReason`. Locked macOS sessions can also report the display
 asleep; `macos-screen-locked` takes
