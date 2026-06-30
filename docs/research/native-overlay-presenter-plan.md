@@ -201,6 +201,16 @@ timing hacks.
   Shift+Tab, returned focus to the app, parked at `currentFps=0` without
   post-close pumping, and passed crash diagnostics. This remains public App ID
   `480` approval-route plumbing, not real purchase-content proof.
+- A later 2026-06-29 core macOS matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-core-all-shortcuts-20260629-203243`
+  expanded the same managed Shift+Tab proof to every supported presenter-backed
+  shortcut target: Friends, modal web, store, checkout approval route, profile,
+  players, community, stats, achievements, user chat, and the dialog-equivalent
+  router. The 24-case Steam-launched run passed with active/inactive callbacks
+  where expected, second-Shift+Tab close for every shortcut target, one
+  `gameoverlayui` target under App ID `480`, app focus return, parked idle
+  presenter state at `currentFps=0`, no post-close pumping, zero managed overlay
+  timing, an interactive macOS host environment, and clean crash diagnostics.
 - A 2026-06-29 full Deck Desktop overlay matrix passed 26 cases with 52
   screenshots under App ID `480`, covering managed web, store, Friends, profile,
   players, community, stats, achievements, user chat, known dialog-equivalent

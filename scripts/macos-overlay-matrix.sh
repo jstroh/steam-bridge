@@ -59,8 +59,8 @@ Options:
 Suites:
   minimal  web/store/Friends/dialog openAndWait plus passive achievement toast.
   core     minimal plus passive unlock, synthetic checkout approval route,
-           checkout shortcut routing, profile, community, stats, achievements,
-           and user chat/profile routes.
+           all managed shortcut targets, profile, community, stats,
+           achievements, and user chat/profile routes.
   full     core plus all known high-level dialog-equivalent routes.
 EOF
 }
@@ -264,11 +264,11 @@ run_self_test() {
     echo "Self-test failed: minimal matrix case count changed." >&2
     exit 1
   fi
-  if [ "$(printf '%s\n' "$core_output" | count_cases)" != "17" ]; then
+  if [ "$(printf '%s\n' "$core_output" | count_cases)" != "24" ]; then
     echo "Self-test failed: core matrix case count changed." >&2
     exit 1
   fi
-  if [ "$(printf '%s\n' "$full_output" | count_cases)" != "24" ]; then
+  if [ "$(printf '%s\n' "$full_output" | count_cases)" != "31" ]; then
     echo "Self-test failed: full matrix case count changed." >&2
     exit 1
   fi
@@ -292,6 +292,13 @@ run_self_test() {
   require_contains "$core_output" "--shortcut-target web" "core matrix must include web shortcut routing."
   require_contains "$core_output" "--shortcut-target store" "core matrix must include store shortcut routing."
   require_contains "$core_output" "--shortcut-target checkout" "core matrix must include checkout shortcut routing."
+  require_contains "$core_output" "--shortcut-target profile" "core matrix must include profile shortcut routing."
+  require_contains "$core_output" "--shortcut-target players" "core matrix must include players shortcut routing."
+  require_contains "$core_output" "--shortcut-target community" "core matrix must include community shortcut routing."
+  require_contains "$core_output" "--shortcut-target stats" "core matrix must include stats shortcut routing."
+  require_contains "$core_output" "--shortcut-target achievements" "core matrix must include achievements shortcut routing."
+  require_contains "$core_output" "--shortcut-target user" "core matrix must include user shortcut routing."
+  require_contains "$core_output" "--shortcut-target dialog" "core matrix must include dialog shortcut routing."
   require_contains "$core_output" "--action presenter-profile-open-and-wait" "core matrix must include profile openAndWait."
   require_contains "$core_output" "--action presenter-players-open-and-wait" "core matrix must include players openAndWait."
   require_contains "$core_output" "--action presenter-community-open-and-wait" "core matrix must include community openAndWait."
@@ -902,66 +909,54 @@ run_matrix() {
     --require-no-crashes \
     --close-probe
 
-  run_case "08-shortcut-friends" \
-    --action presenter-shortcut \
-    --shortcut-target friends \
-    --require-steam-launch \
-    --require-overlay-injection \
-    --require-overlay-enabled \
-    --require-electron-overlay \
-    --require-overlay-shortcut-target friends \
-    --require-event overlay:presenter-shortcut-ready \
-    --require-no-crashes \
-    --shortcut-open-probe \
-    --close-probe \
-    --close-input toggle
+  run_shortcut_case() {
+    local case_id="$1"
+    local target="$2"
+    shift 2
+    run_case "$case_id" \
+      --action presenter-shortcut \
+      --shortcut-target "$target" \
+      --require-steam-launch \
+      --require-overlay-injection \
+      --require-overlay-enabled \
+      --require-electron-overlay \
+      --require-overlay-shortcut-target "$target" \
+      --require-event overlay:presenter-shortcut-ready \
+      --require-no-crashes \
+      --shortcut-open-probe \
+      --close-probe \
+      --close-input toggle \
+      "$@"
+  }
 
-  run_case "09-shortcut-web" \
-    --action presenter-shortcut \
-    --shortcut-target web \
+  run_shortcut_case "08-shortcut-friends" friends
+
+  run_shortcut_case "09-shortcut-web" web \
     --web-url "https://store.steampowered.com/app/$app_id/" \
-    --web-modal true \
-    --require-steam-launch \
-    --require-overlay-injection \
-    --require-overlay-enabled \
-    --require-electron-overlay \
-    --require-overlay-shortcut-target web \
-    --require-event overlay:presenter-shortcut-ready \
-    --require-no-crashes \
-    --shortcut-open-probe \
-    --close-probe \
-    --close-input toggle
+    --web-modal true
 
-  run_case "10-shortcut-store" \
-    --action presenter-shortcut \
-    --shortcut-target store \
-    --require-steam-launch \
-    --require-overlay-injection \
-    --require-overlay-enabled \
-    --require-electron-overlay \
-    --require-overlay-shortcut-target store \
-    --require-event overlay:presenter-shortcut-ready \
-    --require-no-crashes \
-    --shortcut-open-probe \
-    --close-probe \
-    --close-input toggle
+  run_shortcut_case "10-shortcut-store" store
 
-  run_case "11-shortcut-checkout" \
-    --action presenter-shortcut \
-    --shortcut-target checkout \
-    --checkout-transaction-id 123456789 \
-    --require-steam-launch \
-    --require-overlay-injection \
-    --require-overlay-enabled \
-    --require-electron-overlay \
-    --require-overlay-shortcut-target checkout \
-    --require-event overlay:presenter-shortcut-ready \
-    --require-no-crashes \
-    --shortcut-open-probe \
-    --close-probe \
-    --close-input toggle
+  run_shortcut_case "11-shortcut-checkout" checkout \
+    --checkout-transaction-id 123456789
 
-  run_case "12-profile" \
+  run_shortcut_case "12-shortcut-profile" profile
+
+  run_shortcut_case "13-shortcut-players" players
+
+  run_shortcut_case "14-shortcut-community" community
+
+  run_shortcut_case "15-shortcut-stats" stats
+
+  run_shortcut_case "16-shortcut-achievements" achievements
+
+  run_shortcut_case "17-shortcut-user-chat" user \
+    --user-dialog chat
+
+  run_shortcut_case "18-shortcut-dialog" dialog \
+    --dialog OfficialGameGroup
+
+  run_case "19-profile" \
     --action presenter-profile-open-and-wait \
     --require-steam-launch \
     --require-overlay-injection \
@@ -971,7 +966,7 @@ run_matrix() {
     --require-no-crashes \
     --close-probe
 
-  run_case "13-players" \
+  run_case "20-players" \
     --action presenter-players-open-and-wait \
     --require-steam-launch \
     --require-overlay-injection \
@@ -981,7 +976,7 @@ run_matrix() {
     --require-no-crashes \
     --close-probe
 
-  run_case "14-community" \
+  run_case "21-community" \
     --action presenter-community-open-and-wait \
     --require-steam-launch \
     --require-overlay-injection \
@@ -991,7 +986,7 @@ run_matrix() {
     --require-no-crashes \
     --close-probe
 
-  run_case "15-stats" \
+  run_case "22-stats" \
     --action presenter-stats-open-and-wait \
     --require-steam-launch \
     --require-overlay-injection \
@@ -1001,7 +996,7 @@ run_matrix() {
     --require-no-crashes \
     --close-probe
 
-  run_case "16-achievements" \
+  run_case "23-achievements" \
     --action presenter-achievements-open-and-wait \
     --require-steam-launch \
     --require-overlay-injection \
@@ -1011,7 +1006,7 @@ run_matrix() {
     --require-no-crashes \
     --close-probe
 
-  run_case "17-user-chat" \
+  run_case "24-user-chat" \
     --action presenter-user-open-and-wait \
     --user-dialog chat \
     --require-steam-launch \
@@ -1026,7 +1021,7 @@ run_matrix() {
     return 0
   fi
 
-  run_case "18-user-steamid" \
+  run_case "25-user-steamid" \
     --action presenter-user-open-and-wait \
     --user-dialog steamid \
     --require-steam-launch \
@@ -1037,7 +1032,7 @@ run_matrix() {
     --require-no-crashes \
     --close-probe
 
-  local dialog_index=19
+  local dialog_index=26
   for dialog in Friends Players Community OfficialGameGroup Stats Achievements; do
     run_case "$(printf '%02d-dialog-%s' "$dialog_index" "$dialog")" \
       --action presenter-dialog-auto-open-and-wait \

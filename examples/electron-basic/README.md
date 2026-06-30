@@ -173,8 +173,8 @@ shortcut itself was added or materially changed. It runs the packaged helper and
 collects result and diagnostic logs under `/tmp`. Its `minimal` suite covers the
 web/store/Friends/dialog `openAndWait(...)` paths plus passive achievement
 toast verification; `core` adds passive unlock, synthetic checkout approval
-route, managed Shift+Tab shortcut routing for Friends/web/store/checkout
-targets, profile, community, stats, achievements, and user chat/profile routes.
+route, managed Shift+Tab shortcut routing for every supported presenter-backed
+target, profile, community, stats, achievements, and user chat/profile routes.
 Use `--suite full` to add user SteamID plus every known high-level
 dialog-equivalent route through the same managed `openAndWait(...)` close/park
 proof.

@@ -255,6 +255,16 @@ Verified:
   one `gameoverlayui` target under App ID `480`, and clean crash diagnostics.
   The checkout shortcut case uses public transaction-ID approval-route plumbing;
   real purchase content still requires a real app/product.
+- A later 2026-06-29 core macOS overlay matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-core-all-shortcuts-20260629-203243`
+  expanded that proof to every supported presenter-backed shortcut target:
+  Friends, modal web, store, checkout approval route, profile, players,
+  community, stats, achievements, user chat, and dialog-equivalent. The 24-case
+  Steam-launched run passed with active/inactive callbacks, second-Shift+Tab
+  close for every shortcut target, focus return, parked idle presenter state,
+  zero managed overlay timing, one `gameoverlayui` target under App ID `480`,
+  an interactive macOS host environment, no post-close pumping, and clean crash
+  diagnostics.
 - A 2026-06-29 minimal macOS overlay matrix at
   `/tmp/steam-bridge-macos-overlay-matrix-minimal-helper-current-20260629-170723`
   re-ran the packaged helper after the source-level presenter-shape checks were

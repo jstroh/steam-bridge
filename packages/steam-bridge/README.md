@@ -533,6 +533,14 @@ Shift+Tab open/close, active/inactive callbacks, app focus return, idle parking
 at `currentFps=0`, zero managed overlay timing, and no crash diagnostics. The
 checkout shortcut remains App ID `480` approval-route plumbing; real purchase
 content still needs a real configured product.
+A later 2026-06-29 core macOS matrix at
+`/tmp/steam-bridge-macos-overlay-matrix-core-all-shortcuts-20260629-203243`
+expanded shortcut proof to every supported presenter-backed target: Friends,
+modal web, store, checkout approval route, profile, players, community, stats,
+achievements, user chat, and dialog-equivalent. The 24-case run verified
+Shift+Tab open/close, active/inactive callbacks, app focus return, idle parking
+at `currentFps=0`, zero managed overlay timing, one `gameoverlayui` target, no
+post-close pumping, and no crash diagnostics.
 The repository also provides `npm run macos:overlay-matrix`, which installs or
 updates one stable macOS Steam shortcut pointing at the in-bundle native
 launcher and a launcher env file. Each case rewrites only that env file, so
