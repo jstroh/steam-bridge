@@ -178,6 +178,15 @@ Verified:
   Steam store surface may report the generated shortcut game ID, so that case is
   validated by Steam launch/injection identity, app ID `480` callbacks,
   close-and-park lifecycle evidence, and crash diagnostics instead.
+- A 2026-06-29 minimal macOS overlay matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-minimal-helper-current-20260629-170723`
+  re-ran the packaged helper after the source-level presenter-shape checks were
+  added. It passed web, store, Friends, dialog, and passive achievement-progress
+  routes with Steam launch, overlay injection, one `gameoverlayui` target under
+  App ID `480`, active shown presenter snapshots for interactive routes,
+  interactive macOS host state, zero managed overlay timing, close/focus/park
+  checks, passive toast diagnostics, no crash evidence, and no Steam restart
+  because the stable shortcut was already up to date.
 - `scripts/macos-overlay-matrix.sh` now owns repeatable macOS proof setup. It
   prints or runs a matrix of Steam-launched helper cases, installs or updates one
   stable Steam shortcut with the native launcher env-file flag, restarts Steam
