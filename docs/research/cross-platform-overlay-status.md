@@ -253,6 +253,8 @@ before launching any cases. Success suites can now be launched with
 `STEAM_BRIDGE_MACOS_MATRIX_WAIT_FOR_INTERACTIVE_SECONDS` to wait at that
 preflight boundary for unlock/wake; the default remains immediate failure so
 locked/asleep state is still captured explicitly with `--suite unavailable`.
+`npm run macos:overlay-matrix:preflight` performs only this readiness check,
+without package rebuild, shortcut mutation, Steam restart, or case launch.
 
 ## Steam Deck Shortcut Gate
 

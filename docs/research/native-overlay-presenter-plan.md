@@ -965,7 +965,9 @@ Current evidence:
   `STEAM_BRIDGE_MACOS_MATRIX_WAIT_FOR_INTERACTIVE_SECONDS`, for unattended runs
   where the Mac may be unlocked shortly after invocation. The default is still
   immediate failure, and this wait is harness-only rather than a product overlay
-  lifecycle timer. A live 2026-06-30 unavailable matrix at
+  lifecycle timer. `npm run macos:overlay-matrix:preflight` runs the same
+  readiness check without packaging, shortcut updates, Steam restarts, or smoke
+  case launches. A live 2026-06-30 unavailable matrix at
   `/tmp/steam-bridge-macos-overlay-matrix-unavailable-checkout-prepare-20260630-115145`
   passed all three fail-fast cases in a genuine locked/asleep session. The
   artifact proves Steam launch/injection, typed unavailable action errors, no

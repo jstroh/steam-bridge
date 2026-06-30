@@ -39,8 +39,9 @@ Runs the macOS Apple Silicon Steam-launched overlay proof matrix with the
 packaged Electron smoke app and SpaceWar App ID 480 by default.
 
 Options:
-  --mode steam-launch|self-test|summarize
-                                  Run live, validate dry-run matrix shape, or summarize artifacts.
+  --mode steam-launch|preflight|self-test|summarize
+                                  Run live, check macOS interactive readiness,
+                                  validate dry-run matrix shape, or summarize artifacts.
   --suite minimal|core|full|persistent|unavailable
                                   Matrix size. Defaults to core. "unavailable"
                                   captures expected macOS lock/asleep fail-fast
@@ -211,7 +212,7 @@ while [ "$#" -gt 0 ]; do
 done
 
 case "$mode" in
-  steam-launch|self-test|summarize)
+  steam-launch|preflight|self-test|summarize)
     ;;
   *)
     echo "Unknown --mode: $mode" >&2
@@ -318,7 +319,7 @@ case_block() {
 }
 
 run_self_test() {
-  local self_path minimal_output core_output full_output persistent_output unavailable_output wait_output opengl_output checkout_json_output checkout_callback_output passive_case checkout_case checkout_prepare_case checkout_json_case checkout_callback_case checkout_callback_checkout_block checkout_callback_prepare_block checkout_callback_web_block shortcut_checkout_json_case web_case full_shortcut_open_wait_case full_shortcut_checkout_open_wait_case full_shortcut_user_open_wait_case full_shortcut_dialog_open_wait_case persistent_web_case persistent_checkout_prepare_case persistent_shortcut_open_wait_case persistent_shortcut_checkout_open_wait_case persistent_shortcut_user_open_wait_case persistent_shortcut_dialog_open_wait_case unavailable_web_case unavailable_checkout_case unavailable_checkout_prepare_case unavailable_passive_case
+  local self_path minimal_output core_output full_output persistent_output unavailable_output wait_output preflight_output opengl_output checkout_json_output checkout_callback_output passive_case checkout_case checkout_prepare_case checkout_json_case checkout_callback_case checkout_callback_checkout_block checkout_callback_prepare_block checkout_callback_web_block shortcut_checkout_json_case web_case full_shortcut_open_wait_case full_shortcut_checkout_open_wait_case full_shortcut_user_open_wait_case full_shortcut_dialog_open_wait_case persistent_web_case persistent_checkout_prepare_case persistent_shortcut_open_wait_case persistent_shortcut_checkout_open_wait_case persistent_shortcut_user_open_wait_case persistent_shortcut_dialog_open_wait_case unavailable_web_case unavailable_checkout_case unavailable_checkout_prepare_case unavailable_passive_case
   self_path="${BASH_SOURCE[0]}"
   minimal_output="$(
     bash "$self_path" \
@@ -387,6 +388,11 @@ run_self_test() {
       --shortcuts /tmp/shortcuts.vdf \
       --artifact-root /tmp/steam-bridge-macos-overlay-matrix-self-test \
       --wait-for-interactive-seconds 1
+  )"
+  preflight_output="$(
+    bash "$self_path" \
+      --mode preflight \
+      --dry-run
   )"
   if bash "$self_path" \
     --mode steam-launch \
@@ -465,6 +471,7 @@ run_self_test() {
     echo "Self-test failed: wait-for-interactive dry-run matrix case count changed." >&2
     exit 1
   fi
+  require_contains "$preflight_output" "DRY-RUN macOS overlay preflight skipped." "preflight mode should support dry-run without package or Steam work."
   require_unique_case_ids "$minimal_output" "minimal"
   require_unique_case_ids "$core_output" "core"
   require_unique_case_ids "$full_output" "full"
@@ -1013,6 +1020,7 @@ macos_steam_logged_on_since() {
 
 require_interactive_macos_overlay_environment() {
   if [ "$dry_run" = "1" ]; then
+    echo "DRY-RUN macOS overlay preflight skipped."
     return 0
   fi
   if [ "$(uname -s)" != "Darwin" ]; then
@@ -1160,6 +1168,14 @@ require_macos_overlay_environment_for_suite() {
 
   require_interactive_macos_overlay_environment
 }
+
+if [ "$mode" = "preflight" ]; then
+  require_interactive_macos_overlay_environment
+  if [ "$dry_run" != "1" ]; then
+    echo "macOS overlay preflight passed: interactive display available."
+  fi
+  exit 0
+fi
 
 restart_macos_steam() {
   if [ "$restart_steam" != "1" ]; then

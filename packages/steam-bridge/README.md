@@ -701,6 +701,9 @@ checkout-prepare helpers to throw `STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE` before
 Steam overlay activation. The unavailable suite also exercises passive
 achievement-progress notifications, requiring the presenter to stay registered
 for automatic notification priming without attaching or opening the native host.
+Use `npm run macos:overlay-matrix:preflight` for a cheap readiness check that
+reads the macOS overlay environment without rebuilding the package, touching the
+Steam shortcut, or launching smoke cases.
 For unattended proof runs, pass
 `--wait-for-interactive-seconds <seconds>` or set
 `STEAM_BRIDGE_MACOS_MATRIX_WAIT_FOR_INTERACTIVE_SECONDS` to wait at this

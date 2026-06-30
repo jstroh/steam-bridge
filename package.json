@@ -18,6 +18,7 @@
     "example:verify-result": "node scripts/verify-electron-smoke-result.cjs",
     "package:smoke": "node scripts/smoke-package.cjs",
     "macos:overlay-matrix:check": "bash scripts/macos-overlay-matrix.sh --mode self-test",
+    "macos:overlay-matrix:preflight": "bash scripts/macos-overlay-matrix.sh --mode preflight",
     "macos:overlay-matrix:summarize": "bash scripts/macos-overlay-matrix.sh --mode summarize",
     "macos:overlay-matrix": "bash scripts/macos-overlay-matrix.sh",
     "macos:verify-signing": "node scripts/verify-macos-steam-signing.cjs",
