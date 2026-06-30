@@ -179,6 +179,17 @@ Verified:
   Steam store surface may report the generated shortcut game ID, so that case is
   validated by Steam launch/injection identity, app ID `480` callbacks,
   close-and-park lifecycle evidence, and crash diagnostics instead.
+- A later 2026-06-29 full macOS overlay matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-full-current-20260629-181707`
+  repeated the full 20-case Steam-launched suite without updating the stable
+  shortcut or restarting Steam. It passed web/store/Friends/dialog
+  `openAndWait(...)`, passive progress and unlock notifications, synthetic
+  checkout approval-route plumbing, managed Shift+Tab shortcut open/close,
+  profile, community, stats, achievements, user chat and Steam ID panels, and
+  known dialog variants. Each interactive case verified overlay activation,
+  close/deactivation, presenter parking, app focus return, zero managed overlay
+  timing, and no crash evidence; passive cases remained parked/passive without
+  modal overlay activation.
 - A 2026-06-29 minimal macOS overlay matrix at
   `/tmp/steam-bridge-macos-overlay-matrix-minimal-helper-current-20260629-170723`
   re-ran the packaged helper after the source-level presenter-shape checks were

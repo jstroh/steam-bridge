@@ -115,7 +115,7 @@ timing hacks.
 - macOS Apple Silicon now has the same builder-facing wait proof for modal web,
   store, Friends/chat, and dialog-equivalent routes. A 2026-06-29 full
   Steam-launched matrix at
-  `/tmp/steam-bridge-macos-overlay-matrix-full-helper-current-20260629-171348`
+  `/tmp/steam-bridge-macos-overlay-matrix-full-current-20260629-181707`
   passed 20 cases through the in-bundle native launcher with the current
   packaged helper-level presenter checks: web/store/Friends/dialog
   `openAndWait(...)`, passive achievement progress/unlock toasts, synthetic
@@ -125,7 +125,7 @@ timing hacks.
   smoke app frontmost after close, completed waits only after close and parking,
   kept the parked presenter at `currentFps=0` without advancing `pumpCount`, and
   reported no crash evidence. The stable Steam shortcut was already up to date,
-  so this run did not require a Steam restart.
+  so this run did not update the shortcut or require a Steam restart.
 - The macOS smoke helper has a passive-toast-specific verification gate.
   `--require-passive-notification` requires result and lifecycle evidence for
   the achievement event and Steam callback, rejects modal overlay activation, and
