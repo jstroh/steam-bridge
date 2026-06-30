@@ -365,6 +365,13 @@ Verified:
   cases. The passing artifact re-verified every shortcut target, user SteamID,
   all known high-level dialog-equivalent routes, close/back-to-app proof, zero
   managed overlay timing, and clean crash diagnostics.
+- A follow-up 2026-06-30 full macOS matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-full-reopened-steam-electron42-20260630-013125`
+  reused a freshly reopened Steam client, skipped repackaging, verified the
+  existing signed Electron `42.5.1` bundle, and passed the same 31
+  Steam-launched App ID `480` cases without restarting Steam. This confirms the
+  PID-focused close/shortcut probes and managed presenter lifecycle are stable
+  across a normal Steam client restart.
 - The live macOS matrix now runs `scripts/verify-macos-steam-signing.cjs`
   before touching Steam. It checks the native launcher and renamed Electron
   executable for arm64-only slices, valid executable signatures, the dyld

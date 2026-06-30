@@ -59,6 +59,11 @@ user SteamID, and every high-level dialog-equivalent route. The helper now
 focuses the exact smoke process PID from each result log before sending close or
 shortcut probes and waits for old smoke/gameoverlayui processes to exit between
 cases, preventing stale app instances from receiving overlay input.
+A follow-up full run at
+`/tmp/steam-bridge-macos-overlay-matrix-full-reopened-steam-electron42-20260630-013125`
+then reused the freshly reopened Steam client, skipped repackaging, verified the
+existing signed Electron `42.5.1` bundle, and passed the same 31-case summary
+audit without a Steam restart.
 
 ## Steam Deck Shortcut Gate
 
