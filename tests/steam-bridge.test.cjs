@@ -6223,6 +6223,120 @@ test("electron steam overlay manager primes passive notification toasts automati
   }
 });
 
+test("electron steam overlay notification priming retries after macOS host becomes available", (t) => {
+  setProcessPlatformForTest(t, "darwin");
+
+  const hostHandle = Buffer.from([2, 4, 6, 8]);
+  let hostOpen = false;
+  let macEnvironment = { screenLocked: true, displayAsleep: false };
+  const fake = createFakeNative({
+    getMacOverlayEnvironment() {
+      this.calls.push({ method: "getMacOverlayEnvironment", args: [] });
+      return macEnvironment;
+    },
+    attachNativeOverlayHostView(nativeWindowHandle) {
+      hostOpen = true;
+      this.calls.push({ method: "attachNativeOverlayHostView", args: [nativeWindowHandle] });
+    },
+    pumpNativeOverlayProbeWindow() {
+      if (!hostOpen) {
+        throw new Error("native overlay presenter is closed");
+      }
+      this.calls.push({ method: "pumpNativeOverlayProbeWindow", args: [] });
+    },
+    showNativeOverlayHostView() {
+      this.calls.push({ method: "showNativeOverlayHostView", args: [] });
+    },
+    setNativeOverlayHostInputPassthrough(passThrough) {
+      this.calls.push({ method: "setNativeOverlayHostInputPassthrough", args: [passThrough] });
+    },
+    setNativeOverlayHostOpacity(opaque) {
+      this.calls.push({ method: "setNativeOverlayHostOpacity", args: [opaque] });
+    },
+    detachNativeOverlayHostView() {
+      hostOpen = false;
+      this.calls.push({ method: "detachNativeOverlayHostView", args: [] });
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return false;
+    },
+    isNativeOverlayHostViewOpen() {
+      return hostOpen;
+    },
+    achievementActivate(name) {
+      this.calls.push({ method: "achievementActivate", args: [name] });
+      return true;
+    },
+    achievementIndicateProgress(name, current, max) {
+      this.calls.push({ method: "achievementIndicateProgress", args: [name, current, max] });
+      return true;
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  const window = {
+    isDestroyed() {
+      return false;
+    },
+    getNativeWindowHandle() {
+      return hostHandle;
+    },
+    once() {},
+    webContents: {
+      once() {},
+      invalidate() {},
+      send() {}
+    }
+  };
+
+  const overlay = steam.overlay.createElectronSteamOverlay(window, {
+    title: "Electron Notification macOS Availability Overlay",
+    pollIntervalMs: 10000
+  });
+
+  assert.equal(overlay.snapshot().nativeHostUnavailableReason, "macos-screen-locked");
+  assert.equal(overlay.snapshot().currentFps, 0);
+
+  assert.equal(steam.achievement.indicateProgress("ACH_LOCKED", 1, 2), true);
+  assert.deepEqual(notificationCalls(), ["achievementIndicateProgress"]);
+  assert.equal(overlay.snapshot().nativeHostUnavailableReason, "macos-screen-locked");
+  assert.equal(overlay.snapshot().nativeHostOpen, false);
+  assert.equal(overlay.snapshot().currentFps, 0);
+
+  macEnvironment = { screenLocked: false, displayAsleep: false };
+
+  assert.equal(steam.achievement.activate("ACH_UNLOCKED"), true);
+  assert.deepEqual(notificationCalls(), [
+    "achievementIndicateProgress",
+    "attachNativeOverlayHostView",
+    "showNativeOverlayHostView",
+    "pumpNativeOverlayProbeWindow",
+    "achievementActivate"
+  ]);
+  const available = overlay.snapshot();
+  assert.equal(available.nativeHostUnavailableReason, undefined);
+  assert.equal(available.nativeHostOpen, true);
+  assert.equal(available.currentFps, 0);
+
+  overlay.close();
+
+  function notificationCalls() {
+    return fake.calls
+      .filter((call) =>
+        [
+          "attachNativeOverlayHostView",
+          "showNativeOverlayHostView",
+          "pumpNativeOverlayProbeWindow",
+          "achievementIndicateProgress",
+          "achievementActivate"
+        ].includes(call.method)
+      )
+      .map((call) => call.method);
+  }
+});
+
 test("electron steam overlay manager can disable automatic passive notification priming", (t) => {
   const hostHandle = Buffer.from([2, 7, 1, 8]);
   let hostOpen = false;

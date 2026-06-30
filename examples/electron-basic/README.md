@@ -902,6 +902,9 @@ where a standalone hold is intentional.
 The managed smoke path also uses zero restore-focus, activation boost, and active
 grace timing; platform helper verification can require that with
 `--require-zero-managed-overlay-timing`.
+Passive notification priming also respects macOS host availability: locked or
+display-asleep sessions skip native host work and retry on the next
+notification-producing call after the host becomes available.
 On macOS, if the screen is locked or the display is asleep, the managed
 overlay helpers fail before activation with
 `SteamOverlayNativeHostUnavailableError`. Use

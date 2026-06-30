@@ -745,11 +745,15 @@ Current evidence:
   unless app code provides `overlayShortcut.onError`, so those sessions do not
   produce default shortcut warning noise or Steam activation attempts. If the
   host becomes unavailable while the fallback is already waiting for Steam's
-  overlay callback, that wait also stays quiet.
+  overlay callback, that wait also stays quiet. Automatic passive notification
+  priming skips native host work while unavailable but keeps the presenter
+  registered, so the next notification-producing achievement/stat call after
+  unlock or display wake can prime normally.
   Unit coverage verifies locked, display-asleep, post-unlock lazy attach, and
   managed fail-fast paths, including pending checkout cancellation and quiet
-  shortcut behavior when macOS becomes unavailable mid-operation. The shared
-  smoke verifier and packaged
+  shortcut behavior when macOS becomes unavailable mid-operation, plus passive
+  notification retry after the host becomes available. The shared smoke verifier
+  and packaged
   platform helpers can also require the serialized action `code` and `reason`
   fields, plus the presenter `nativeHostUnavailableReason`, no-host, unattached,
   zero-FPS snapshot state, and absence of Steam overlay activation, so

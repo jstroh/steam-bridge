@@ -292,10 +292,13 @@ only for explicit diagnostics.
 
 While inactive, the presenter stays transparent, click-through, non-focusable,
 and idle at `0` FPS. Passive Steam notifications use the same presenter without
-forcing a permanent Electron repaint loop. The default Shift+Tab bridge opens
-the Friends/chat route; set `overlayShortcut.target` to choose another verified
-target. The macOS matrix verifies Friends/chat, modal web, and store shortcut
-targets with target-aware lifecycle and presenter snapshot checks.
+forcing a permanent Electron repaint loop. If macOS is locked or asleep,
+automatic notification priming skips native host work and retries on the next
+notification-producing call after the host becomes available. The default
+Shift+Tab bridge opens the Friends/chat route; set `overlayShortcut.target` to
+choose another verified target. The macOS matrix verifies Friends/chat, modal
+web, and store shortcut targets with target-aware lifecycle and presenter
+snapshot checks.
 
 On macOS, the managed helper fails fast before Steam overlay activation if the
 screen is locked or the display is asleep. Use

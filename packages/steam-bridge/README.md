@@ -307,8 +307,11 @@ artifacts while preserving machine-checkable presence flags and presenter
 snapshots.
 Passive Steam notifications such as achievement progress
 or achievement unlock toasts are automatically primed by the managed Electron
-overlay before the relevant achievement/stats calls and pump only when Steam
-reports `overlayNeedsPresent`; use
+overlay before the relevant achievement/stats calls. If macOS reports the
+native host unavailable because the screen is locked or display is asleep,
+automatic notification priming skips native host work but keeps the presenter
+registered, so the next notification-producing call after unlock/wake can prime
+normally. The helpers pump only when Steam reports `overlayNeedsPresent`; use
 `steamOverlay.prepareForNotification()` only for lower-level or custom Steam API
 calls. On
 Linux/X11, fully idle mode makes the host transparent and click-through;

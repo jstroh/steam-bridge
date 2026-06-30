@@ -2149,6 +2149,9 @@ function prepareElectronNotificationPresenters(): void {
       }
 
       const snapshot = presenter.snapshot();
+      if (snapshot.nativeHostUnavailableReason) {
+        continue;
+      }
       if (snapshot.overlayActive || snapshot.mode === "active") {
         continue;
       }
