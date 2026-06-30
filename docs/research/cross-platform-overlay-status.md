@@ -49,7 +49,8 @@ The macOS matrix can now pair `--app-id <your-app-id>` with
 `--checkout-json-file <path>` for private configured-product proof. Its manifest
 and summary audit the expected app ID and `checkoutSource=json-file`, while
 leaving the JSON path, transaction ID, return URL, and product details outside
-committed artifacts.
+committed artifacts. The macOS summary auditor now rejects newly generated
+checkout manifests that carry unredacted sensitive checkout command values.
 
 ## Latest macOS Evidence
 

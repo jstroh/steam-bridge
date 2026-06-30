@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 const assert = require("node:assert/strict");
+const { spawnSync } = require("node:child_process");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -33,6 +34,13 @@ const PASSIVE_NOTIFICATION_ACTIONS = new Map([
       callbacks: ["callback:user-stats-stored", "callback:achievement-stored"]
     }
   ]
+]);
+const REDACTED_COMMAND_VALUE = "<redacted>";
+const SENSITIVE_MANIFEST_OPTIONS = new Set([
+  "--checkout-json-file",
+  "--checkout-return-url",
+  "--checkout-transaction-id",
+  "--checkout-url"
 ]);
 
 main();
@@ -1009,14 +1017,47 @@ function expectPresenterField(caseId, presenter, key, expected, label, failures)
 
 function runSelfTest() {
   const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-macos-matrix-summary."));
+  const unredactedFixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-macos-matrix-summary-unredacted."));
   try {
     createSelfTestFixture(fixtureRoot);
     const summary = summarizeMatrixArtifacts(fixtureRoot);
     assert.equal(summary.caseSummaries.length, 6, "summary self-test should include six cases");
+    createSelfTestFixture(unredactedFixtureRoot);
+    injectUnredactedCheckoutManifestCommand(unredactedFixtureRoot);
+    assertUnredactedManifestRejected(unredactedFixtureRoot);
     console.log("macOS overlay matrix summary self-test passed.");
   } finally {
     fs.rmSync(fixtureRoot, { recursive: true, force: true });
+    fs.rmSync(unredactedFixtureRoot, { recursive: true, force: true });
   }
+}
+
+function injectUnredactedCheckoutManifestCommand(root) {
+  const manifestPath = path.join(root, "macos-matrix-cases.jsonl");
+  const rows = fs
+    .readFileSync(manifestPath, "utf8")
+    .trim()
+    .split(/\r?\n/)
+    .map((line) => JSON.parse(line));
+  for (const row of rows) {
+    if (row.caseId === "05-checkout") {
+      row.command = ["--action", "presenter-checkout", "--checkout-json-file", "/tmp/private-init-txn-response.json"];
+      row.checkoutSource = "json-file";
+    }
+  }
+  fs.writeFileSync(manifestPath, rows.map((row) => JSON.stringify(row)).join("\n") + "\n");
+}
+
+function assertUnredactedManifestRejected(root) {
+  const result = spawnSync(process.execPath, [__filename, "--artifact-root", root], {
+    encoding: "utf8"
+  });
+  assert.notEqual(result.status, 0, "summary should reject unredacted sensitive manifest values");
+  assert.match(
+    result.stderr,
+    /unredacted sensitive manifest option --checkout-json-file/,
+    "summary rejection should identify the unredacted checkout JSON option"
+  );
 }
 
 function createSelfTestFixture(root) {
@@ -1124,6 +1165,14 @@ function createSelfTestFixture(root) {
       action: "presenter-checkout",
       expectedAppId: 9000,
       checkoutSource: "json-file",
+      command: [
+        "--action",
+        "presenter-checkout",
+        "--checkout-json-file",
+        REDACTED_COMMAND_VALUE,
+        "--checkout-return-url",
+        REDACTED_COMMAND_VALUE
+      ],
       resultPresenter: activePresenterFixture(30),
       lifecycle: [
         {
@@ -1226,6 +1275,7 @@ function createSelfTestFixture(root) {
       resultFile,
       diagnosticDir,
       expectedAppId,
+      command: fixture.command || [],
       action: fixture.action,
       shortcutTarget: fixture.shortcutTarget || null,
       checkoutSource: fixture.checkoutSource || null,
@@ -1398,10 +1448,48 @@ function readCaseManifest(file, failures) {
       failures.push(`duplicate macOS matrix manifest entry for ${metadata.caseId}`);
       continue;
     }
+    if (metadata.checkoutSource) {
+      verifyManifestCommandRedaction(file, index + 1, metadata, failures);
+    }
     byCase.set(metadata.caseId, metadata);
   }
 
   return { found: true, byCase };
+}
+
+function verifyManifestCommandRedaction(file, lineNumber, metadata, failures) {
+  if (!Array.isArray(metadata.command)) {
+    return;
+  }
+
+  for (let index = 0; index < metadata.command.length; index += 1) {
+    const arg = metadata.command[index];
+    if (typeof arg !== "string") {
+      continue;
+    }
+    const equalsIndex = arg.indexOf("=");
+    const optionName = equalsIndex === -1 ? arg : arg.slice(0, equalsIndex);
+    if (!SENSITIVE_MANIFEST_OPTIONS.has(optionName)) {
+      continue;
+    }
+
+    if (equalsIndex !== -1) {
+      const value = arg.slice(equalsIndex + 1);
+      if (value !== REDACTED_COMMAND_VALUE) {
+        failures.push(
+          `${metadata.caseId}: unredacted sensitive manifest option ${optionName} in ${file}:${lineNumber}`
+        );
+      }
+      continue;
+    }
+
+    const value = metadata.command[index + 1];
+    if (value !== REDACTED_COMMAND_VALUE) {
+      failures.push(`${metadata.caseId}: unredacted sensitive manifest option ${optionName} in ${file}:${lineNumber}`);
+    } else {
+      index += 1;
+    }
+  }
 }
 
 function readLifecycle(file) {

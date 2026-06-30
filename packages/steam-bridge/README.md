@@ -333,7 +333,9 @@ checkout response JSON to a private temp file and pass its path with
 `openCheckoutAndWait(...)` without committing private data or putting transaction
 values in launch arguments. The macOS matrix also accepts
 `--app-id <your-app-id>` and summarizes the expected app ID plus
-`checkoutSource=json-file` without persisting the JSON path.
+`checkoutSource=json-file` without persisting the JSON path; the matrix
+summarizer rejects new manifests that include unredacted checkout file paths,
+transaction IDs, return URLs, or checkout URLs in command metadata.
 Passive Steam notifications such as achievement progress
 or achievement unlock toasts are automatically primed by the managed Electron
 overlay before the relevant achievement/stats calls. If macOS reports the
