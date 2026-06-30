@@ -251,11 +251,11 @@ run_self_test() {
     echo "Self-test failed: minimal matrix case count changed." >&2
     exit 1
   fi
-  if [ "$(printf '%s\n' "$core_output" | count_cases)" != "13" ]; then
+  if [ "$(printf '%s\n' "$core_output" | count_cases)" != "15" ]; then
     echo "Self-test failed: core matrix case count changed." >&2
     exit 1
   fi
-  if [ "$(printf '%s\n' "$full_output" | count_cases)" != "20" ]; then
+  if [ "$(printf '%s\n' "$full_output" | count_cases)" != "22" ]; then
     echo "Self-test failed: full matrix case count changed." >&2
     exit 1
   fi
@@ -272,6 +272,9 @@ run_self_test() {
   require_contains "$core_output" "--action presenter-checkout" "core matrix must include synthetic checkout."
   require_contains "$core_output" "--checkout-transaction-id 123456789" "core matrix must include checkout approval-route plumbing."
   require_contains "$core_output" "--action presenter-shortcut" "core matrix must include managed shortcut routing."
+  require_contains "$core_output" "--shortcut-target friends" "core matrix must include Friends shortcut routing."
+  require_contains "$core_output" "--shortcut-target web" "core matrix must include web shortcut routing."
+  require_contains "$core_output" "--shortcut-target store" "core matrix must include store shortcut routing."
   require_contains "$core_output" "--shortcut-open-probe" "shortcut proof must open through the managed Shift+Tab bridge."
   require_contains "$core_output" "--close-input toggle" "shortcut proof must close with Shift+Tab."
   require_contains "$core_output" "--require-passive-notification" "passive toast cases must use the passive notification gate."
@@ -505,7 +508,8 @@ fs.appendFileSync(
     command,
     action: optionValue("--action"),
     closeProbe: command.includes("--close-probe"),
-    shortcutOpenProbe: command.includes("--shortcut-open-probe")
+    shortcutOpenProbe: command.includes("--shortcut-open-probe"),
+    shortcutTarget: optionValue("--shortcut-target")
   })}\n`
 );
 NODE
@@ -844,7 +848,37 @@ run_matrix() {
     --close-probe \
     --close-input toggle
 
-  run_case "09-profile" \
+  run_case "09-shortcut-web" \
+    --action presenter-shortcut \
+    --shortcut-target web \
+    --web-url "https://store.steampowered.com/app/$app_id/" \
+    --web-modal true \
+    --require-steam-launch \
+    --require-overlay-injection \
+    --require-overlay-enabled \
+    --require-electron-overlay \
+    --require-overlay-shortcut-target web \
+    --require-event overlay:presenter-shortcut-ready \
+    --require-no-crashes \
+    --shortcut-open-probe \
+    --close-probe \
+    --close-input toggle
+
+  run_case "10-shortcut-store" \
+    --action presenter-shortcut \
+    --shortcut-target store \
+    --require-steam-launch \
+    --require-overlay-injection \
+    --require-overlay-enabled \
+    --require-electron-overlay \
+    --require-overlay-shortcut-target store \
+    --require-event overlay:presenter-shortcut-ready \
+    --require-no-crashes \
+    --shortcut-open-probe \
+    --close-probe \
+    --close-input toggle
+
+  run_case "11-profile" \
     --action presenter-profile \
     --require-steam-launch \
     --require-overlay-injection \
@@ -853,7 +887,7 @@ run_matrix() {
     --require-no-crashes \
     --close-probe
 
-  run_case "10-community" \
+  run_case "12-community" \
     --action presenter-community \
     --require-steam-launch \
     --require-overlay-injection \
@@ -862,7 +896,7 @@ run_matrix() {
     --require-no-crashes \
     --close-probe
 
-  run_case "11-stats" \
+  run_case "13-stats" \
     --action presenter-stats \
     --require-steam-launch \
     --require-overlay-injection \
@@ -871,7 +905,7 @@ run_matrix() {
     --require-no-crashes \
     --close-probe
 
-  run_case "12-achievements" \
+  run_case "14-achievements" \
     --action presenter-achievements \
     --require-steam-launch \
     --require-overlay-injection \
@@ -880,7 +914,7 @@ run_matrix() {
     --require-no-crashes \
     --close-probe
 
-  run_case "13-user-chat" \
+  run_case "15-user-chat" \
     --action presenter-user \
     --user-dialog chat \
     --require-steam-launch \

@@ -197,6 +197,18 @@ Verified:
   dialog-equivalent `openAndWait(...)` routes plus passive achievement-progress
   notification proof with zero managed overlay timing, close/focus/park checks
   for interactive overlays, and no crash evidence.
+- A 2026-06-29 core macOS overlay matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-core-shortcut-targets-20260629-184303`
+  passed 15 Steam-launched App ID `480` cases after expanding managed Shift+Tab
+  shortcut coverage from Friends/chat to Friends/chat, modal web, and store
+  targets. The shortcut cases verified the expected target in the lifecycle
+  `overlay:shortcut-open` event and presenter snapshot, then proved
+  Shift+Tab-only open/close, active/inactive callbacks, app focus return,
+  parked idle presenter state, zero managed overlay timing, and no crash
+  evidence. The same run also re-verified web/store/Friends/dialog
+  `openAndWait(...)`, passive progress/unlock notifications, synthetic checkout
+  approval-route plumbing, profile, community, stats, achievements, and user
+  chat routes.
 - A 2026-06-29 minimal macOS overlay matrix at
   `/tmp/steam-bridge-macos-overlay-matrix-minimal-helper-current-20260629-170723`
   re-ran the packaged helper after the source-level presenter-shape checks were

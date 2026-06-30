@@ -153,6 +153,15 @@ timing hacks.
   presenter diagnostics reported `targetType: "web"` and a sanitized target
   snapshot, then emitted shortcut-open, active/inactive callbacks, Shift+Tab-only
   close, focus return, and stable parked presenter state.
+- A 2026-06-29 core macOS matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-core-shortcut-targets-20260629-184303`
+  expanded that managed shortcut proof into regular macOS coverage for
+  Friends/chat, modal web, and store targets. The artifact summary now reads the
+  expected shortcut target from each case manifest and rejects mismatches in the
+  `overlay:shortcut-open` lifecycle payload or `overlayShortcut.targetType`
+  presenter snapshot. The same 15-case run re-verified the core macOS overlay
+  surface set with active/inactive callbacks, focus return, zero managed timing,
+  parked idle presenter state, and clean crash diagnostics.
 - A 2026-06-29 full Deck Desktop overlay matrix passed 26 cases with 52
   screenshots under App ID `480`, covering managed web, store, Friends, profile,
   players, community, stats, achievements, user chat, known dialog-equivalent

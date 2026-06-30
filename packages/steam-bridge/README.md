@@ -502,6 +502,13 @@ verifies macOS passive notification proof through `--require-passive-notificatio
 that gate requires the smoke result and lifecycle log to show the accepted
 achievement event, the matching Steam callback, no modal overlay activation, and
 a passive managed-presenter snapshot.
+A later 2026-06-29 core macOS matrix at
+`/tmp/steam-bridge-macos-overlay-matrix-core-shortcut-targets-20260629-184303`
+expanded the managed Shift+Tab proof from Friends/chat to Friends/chat, modal
+web, and store shortcut targets. The summary gate now reads the expected shortcut
+target from the matrix manifest and verifies both the `overlay:shortcut-open`
+lifecycle payload and `overlayShortcut.targetType` snapshot before accepting a
+shortcut case.
 The repository also provides `npm run macos:overlay-matrix`, which installs or
 updates one stable macOS Steam shortcut pointing at the in-bundle native
 launcher and a launcher env file. Each case rewrites only that env file, so

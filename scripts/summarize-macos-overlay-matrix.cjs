@@ -313,15 +313,34 @@ function verifyCase(caseId, metadata, result, lifecycle, failures) {
   }
 
   if (actionName === "presenter-shortcut") {
+    const expectedShortcutTarget =
+      typeof metadata.shortcutTarget === "string" && metadata.shortcutTarget.length > 0
+        ? metadata.shortcutTarget
+        : "friends";
+    const shortcutOpen = lifecycleEntries.find((entry) => entry.type === "event:overlay:shortcut-open");
     expect(
-      lifecycleEntries.some((entry) => entry.type === "event:overlay:shortcut-open"),
+      Boolean(shortcutOpen),
       `${caseId}: managed shortcut open event recorded`,
       failures
     );
+    if (shortcutOpen) {
+      const payload = objectOrEmpty(shortcutOpen.payload);
+      expect(
+        payload.target === expectedShortcutTarget,
+        `${caseId}: shortcut open target expected ${formatValue(expectedShortcutTarget)}, got ${formatValue(payload.target)}`,
+        failures
+      );
+    }
     if (electronOverlay) {
       const shortcut = objectOrEmpty(electronOverlay.overlayShortcut);
       expect(shortcut.enabled === true, `${caseId}: overlay shortcut enabled`, failures);
-      expect(shortcut.targetType === "friends", `${caseId}: overlay shortcut target is friends`, failures);
+      expect(
+        shortcut.targetType === expectedShortcutTarget,
+        `${caseId}: overlay shortcut target expected ${formatValue(expectedShortcutTarget)}, got ${formatValue(
+          shortcut.targetType
+        )}`,
+        failures
+      );
     }
   }
 
@@ -729,6 +748,7 @@ function createSelfTestFixture(root) {
     {
       caseId: "04-shortcut-friends",
       action: "presenter-shortcut",
+      shortcutTarget: "friends",
       resultPresenter: parkedPresenterFixture(1),
       lifecycle: [
         { type: "event:overlay:shortcut-open", payload: { target: "friends" } },
@@ -783,7 +803,8 @@ function createSelfTestFixture(root) {
       caseId: fixture.caseId,
       resultFile,
       diagnosticDir,
-      action: fixture.action
+      action: fixture.action,
+      shortcutTarget: fixture.shortcutTarget || null
     });
   }
 
