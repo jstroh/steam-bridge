@@ -179,7 +179,8 @@ const txn = await web.microTxnSandbox.initTxn({
 
 - `crates/native`: Rust N-API module.
 - `packages/steam-bridge`: TypeScript public package, compatibility adapter,
-  and reusable macOS launcher/signing templates for Electron overlay packaging.
+  reusable macOS launcher/signing templates, and a macOS app preparation CLI for
+  Electron overlay packaging.
 - `examples/electron-basic`: overlay-focused Electron smoke app using App ID
   `480`, with packaged smoke builds for every supported platform.
 - `docs/steam-api-coverage.md`: current Steamworks coverage and known gaps.
@@ -400,18 +401,20 @@ Native presenter design notes are tracked in
 - Use App ID `480` only for local Steamworks smoke tests.
 - Use your own App ID before shipping or testing app-specific achievements,
   stats, inventory, UGC, economy, checkout, or transaction flows.
-- The macOS smoke package ad-hoc signs the native launcher and renamed Electron
-  executable with `examples/electron-basic/entitlements.steam.macos.plist`.
-  For shipped macOS builds, apply equivalent entitlements through your normal
-  Apple signing/notarization pipeline: allow dyld environment variables,
-  disable library validation, and keep App Sandbox disabled so Steam can inject
-  the overlay into the launched process. The signed smoke package is part of
-  the live macOS overlay matrix, and the matrix verifies the bundle
-  `Info.plist` names the native launcher as `CFBundleExecutable`, then checks
-  both smoke executables are arm64-only and signed with those entitlements
-  before it launches Steam. These packaging requirements are covered by the
-  same Steam-launched proof as the public overlay helpers. Published package
-  consumers can run
+- The macOS smoke package uses
+  `npx steam-bridge-prepare-macos-app --app-exe <YourApp.app/Contents/MacOS/YourApp>`
+  to install the published native launcher as the bundle executable, rename
+  Electron to `<AppExecutable>.electron`, apply the Steam overlay entitlements,
+  and verify the prepared app shape. For shipped macOS builds, apply equivalent
+  entitlements through your normal Apple signing/notarization pipeline: allow
+  dyld environment variables, disable library validation, and keep App Sandbox
+  disabled so Steam can inject the overlay into the launched process. The signed
+  smoke package is part of the live macOS overlay matrix, and the matrix
+  verifies the bundle `Info.plist` names the native launcher as
+  `CFBundleExecutable`, then checks both smoke executables are arm64-only and
+  signed with those entitlements before it launches Steam. These packaging
+  requirements are covered by the same Steam-launched proof as the public
+  overlay helpers. Published package consumers can also run
   `npx steam-bridge-verify-macos-signing --app-exe <YourApp.app/Contents/MacOS/YourApp>`
   against their shipped launcher shape.
 - Steam Bridge does not vendor the Steamworks SDK or Valve redistributables.

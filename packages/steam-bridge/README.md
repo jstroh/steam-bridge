@@ -220,12 +220,15 @@ await steamOverlay.openAndWait({
 The macOS smoke package verifies this managed overlay path from the same shape
 apps should ship: Steam launches the bundle's native launcher, the launcher sets
 the Steam App ID environment before `exec`ing Electron, and both executables are
-signed with Steam-compatible entitlements. Steam Bridge publishes the reusable
-launcher source at `templates/macos-steam-env-launcher.c` and the matching
-entitlement template at `templates/entitlements.steam.macos.plist`. For a real
-app, rename the Electron executable to `<AppExecutable>.electron`, compile the
-launcher template back to `<AppExecutable>`, keep that launcher as
-`CFBundleExecutable`, and sign both executables with equivalent entitlements.
+signed with Steam-compatible entitlements. Use
+`npx steam-bridge-prepare-macos-app --app-exe <YourApp.app/Contents/MacOS/YourApp>`
+after packaging an arm64 macOS Electron app to install the published native
+launcher, rename Electron to `<AppExecutable>.electron`, keep that launcher as
+`CFBundleExecutable`, sign both executables, and verify the prepared app shape.
+Steam Bridge also publishes the reusable launcher source at
+`templates/macos-steam-env-launcher.c` and the matching entitlement template at
+`templates/entitlements.steam.macos.plist` for build systems that need to call
+the lower-level pieces directly.
 The live macOS matrix then exercises the signed package through App ID `480`
 overlay cases, including managed waits, shortcut targets, passive notifications,
 checkout approval routing, all high-level dialog-equivalent routes,

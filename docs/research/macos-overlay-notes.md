@@ -580,6 +580,20 @@ Verified:
   target per case, close/back-to-app proof, zero managed overlay timing,
   `overlayNeedsPresentPollingEnabled=false`, clean quit behavior, and no fresh
   crash reports.
+- A later 2026-06-30 persistent macOS matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-persistent-prepare-cli-visible-close-20260630-094316`
+  rebuilt and signed the same Electron `43.0.0` package through the published
+  `steam-bridge-prepare-macos-app` CLI. It reused the stable Steam shortcut
+  without restarting Steam, launched once through Steam, drove all 31 overlay
+  cases over the control server, and passed the summary audit. Active
+  web-backed cases now close only after the helper observes visible Steam web
+  content inside the presenter host; this is a harness readiness gate for the
+  close probe because `GameOverlayActivated(true)` can precede the first web
+  paint. The run re-verified the Metal presenter lifecycle, one overlay target
+  per case, app focus return, parked zero-FPS state, zero managed timing,
+  `overlayNeedsPresentPollingEnabled=false`, clean control-server quit, no
+  leftover smoke/gameoverlay process, and no fresh crash report beyond the older
+  known `BOverlayNeedsPresent()` reports.
 - The live macOS matrix now runs `scripts/verify-macos-steam-signing.cjs`
   before touching Steam. It checks the native launcher and renamed Electron
   executable for arm64-only slices, valid executable signatures, the dyld

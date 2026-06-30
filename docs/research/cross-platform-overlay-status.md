@@ -141,7 +141,18 @@ reused the stable Steam shortcut without restarting Steam, passed all 31
 control-server-driven overlay cases, and re-verified one Metal presenter-backed
 overlay target per case, close/back-to-app proof, zero managed timing,
 `overlayNeedsPresentPollingEnabled=false`, clean quit behavior, and no fresh
-crash reports.
+crash reports. A newer persistent suite at
+`/tmp/steam-bridge-macos-overlay-matrix-persistent-prepare-cli-visible-close-20260630-094316`
+rebuilt the same Electron `43.0.0` package through the published
+`steam-bridge-prepare-macos-app` CLI, reused the stable Steam shortcut without
+restarting Steam, passed all 31 control-server-driven overlay cases, and
+confirmed active Steam web overlays can be closed after the helper sees visible
+web content in the presenter host. This closes the race where
+`GameOverlayActivated(true)` can arrive before Steam has painted web overlay
+content; the product API remains callback-driven, while the live harness waits
+for visible pixels before sending the close probe. The post-run check found no
+smoke/gameoverlay process left behind and no fresh `SteamBridgeSmoke` crash
+report beyond the older known `BOverlayNeedsPresent()` reports.
 
 ## Steam Deck Shortcut Gate
 

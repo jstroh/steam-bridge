@@ -229,11 +229,13 @@ cases can update the env file without restarting Steam.
 `--action-delay-ms` can move the autorun action later when comparing Steam
 launch/readiness behavior; keep normal product paths callback-driven.
 
-For packaged macOS smoke builds, Steam Bridge compiles the published
-`templates/macos-steam-env-launcher.c` launcher, renames Electron to
-`<AppExecutable>.electron`, keeps the launcher as `CFBundleExecutable`, and
-ad-hoc signs both executables with the Steam-compatible entitlements in
-`templates/entitlements.steam.macos.plist`. That template enables
+For packaged macOS smoke builds, the example packager runs
+`steam-bridge-prepare-macos-app` from the staged package. That CLI compiles the
+published `templates/macos-steam-env-launcher.c` launcher, renames Electron to
+`<AppExecutable>.electron`, keeps the launcher as `CFBundleExecutable`, ad-hoc
+signs both executables with the Steam-compatible entitlements in
+`templates/entitlements.steam.macos.plist`, and verifies the final shape before
+Steam launches it. That template enables
 `com.apple.security.cs.allow-dyld-environment-variables` and
 `com.apple.security.cs.disable-library-validation`, and intentionally does not
 enable `com.apple.security.app-sandbox`. The native launcher remains the main
@@ -260,6 +262,10 @@ native launcher as `CFBundleExecutable`, and both the native launcher and
 renamed Electron executable must be arm64-only, validly signed, allow dyld
 environment variables, disable library validation, and omit App Sandbox before
 Steam is launched.
+The preparation CLI is published with the package as
+`steam-bridge-prepare-macos-app`, so app projects can run
+`npx steam-bridge-prepare-macos-app --app-exe <YourApp.app/Contents/MacOS/YourApp>`
+after their normal Electron package step.
 The same verifier is published with the package as
 `steam-bridge-verify-macos-signing`, so app projects can run
 `npx steam-bridge-verify-macos-signing --app-exe <YourApp.app/Contents/MacOS/YourApp>`

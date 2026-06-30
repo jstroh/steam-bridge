@@ -665,7 +665,17 @@ Current evidence:
   launcher and entitlement templates, reused the stable Steam shortcut without a
   Steam restart, and passed the same 31-case inventory. That run proves the
   builder-facing package templates are now the path being exercised by live
-  macOS overlay evidence, not a smoke-only launcher source. A 2026-06-28 Deck Desktop
+  macOS overlay evidence, not a smoke-only launcher source. A later 2026-06-30
+  persistent macOS run at
+  `/tmp/steam-bridge-macos-overlay-matrix-persistent-prepare-cli-visible-close-20260630-094316`
+  rebuilt and signed the Electron `43.0.0` package through the published
+  `steam-bridge-prepare-macos-app` CLI, reused the same stable shortcut without
+  restarting Steam, and passed all 31 cases again. The macOS harness now waits
+  for visible Steam web content inside the presenter host before sending the
+  active web close probe because `GameOverlayActivated(true)` can precede the
+  first web paint; this is test evidence plumbing, not a product runtime timer.
+  The run left no smoke/gameoverlay process and produced no fresh crash report
+  beyond the older known `BOverlayNeedsPresent()` reports. A 2026-06-28 Deck Desktop
   prepare-only run verified
   checkout readiness returns to passive idle, and a synthetic
   transaction approval URL run verified checkout-style open, close, app focus,
@@ -921,9 +931,11 @@ Next work:
    `checkoutSource=json-file` without recording the JSON path.
 2. Keep code signing requirements explicit in docs and examples. The package now
    publishes `templates/macos-steam-env-launcher.c` plus
-   `templates/entitlements.steam.macos.plist`, and the generic Electron example
-   compiles/signs from those package templates instead of carrying a private
-   launcher source. The entitlement template enables
+   `templates/entitlements.steam.macos.plist`, plus the
+   `steam-bridge-prepare-macos-app` CLI that renames Electron, installs the
+   launcher as `CFBundleExecutable`, signs both executables, and runs the
+   verifier. The generic Electron example uses that package CLI instead of
+   carrying private launcher/signing glue. The entitlement template enables
    `com.apple.security.cs.allow-dyld-environment-variables` and
    `com.apple.security.cs.disable-library-validation`, and omits App Sandbox.
    The launcher template is app-name generic: package tooling renames Electron to

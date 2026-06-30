@@ -81,27 +81,48 @@ function runMacosPackageSigningStaticChecks() {
   const packageJson = JSON.parse(fs.readFileSync(path.join(packageRoot, "package.json"), "utf8"));
   const packagerScript = fs.readFileSync(path.join(repoRoot, "scripts", "package-electron-example.cjs"), "utf8");
   const matrixScript = fs.readFileSync(path.join(repoRoot, "scripts", "macos-overlay-matrix.sh"), "utf8");
+  const prepareScript = fs.readFileSync(path.join(packageRoot, "bin", "prepare-macos-app.cjs"), "utf8");
   const verifierScript = fs.readFileSync(path.join(packageRoot, "bin", "verify-macos-signing.cjs"), "utf8");
   const launcherTemplate = fs.readFileSync(path.join(packageRoot, "templates", "macos-steam-env-launcher.c"), "utf8");
+  assert.equal(
+    packageJson.bin?.["steam-bridge-prepare-macos-app"],
+    "bin/prepare-macos-app.cjs",
+    "steam-bridge package must expose the macOS app preparation CLI"
+  );
   assert.equal(
     packageJson.bin?.["steam-bridge-verify-macos-signing"],
     "bin/verify-macos-signing.cjs",
     "steam-bridge package must expose the macOS signing verifier CLI"
   );
+  assertExecutableFile(path.join(packageRoot, "bin", "prepare-macos-app.cjs"));
+  assertExecutableFile(path.join(packageRoot, "bin", "verify-macos-signing.cjs"));
   assert.ok(packageJson.files.includes("bin"), "steam-bridge package must publish verifier CLI files");
   assert.ok(packageJson.files.includes("templates"), "steam-bridge package must publish macOS launcher templates");
   for (const expected of [
-    "signMacSteamExecutable(launcherPath)",
-    "signMacSteamExecutable(electronPath)",
+    "prepare-macos-app.cjs",
     "validateStagePackageArtifacts(stageDir, config.requiredFiles)",
     "isOverlayNeedsPresentPollingEnabled",
-    "loadNativeBinding",
+    "loadNativeBinding"
+  ]) {
+    assert.ok(packagerScript.includes(expected), `macOS package script missing ${expected}`);
+  }
+  assert.ok(
+    !packagerScript.includes("signMacSteamExecutable"),
+    "macOS package script must use the published Steam Bridge preparation CLI"
+  );
+  for (const expected of [
     "templates\", \"macos-steam-env-launcher.c",
     "templates\", \"entitlements.steam.macos.plist",
+    "readCfBundleExecutable",
+    "verifyMacAppBundleLauncher",
+    "verifySignedExecutable",
+    "--skip-sign",
+    "--dry-run",
+    "\"clang\"",
     "\"codesign\"",
     "\"--entitlements\""
   ]) {
-    assert.ok(packagerScript.includes(expected), `macOS package script missing ${expected}`);
+    assert.ok(prepareScript.includes(expected), `macOS preparation CLI missing ${expected}`);
   }
   for (const expected of [
     "--steam-bridge-launch-target",
@@ -130,9 +151,9 @@ function runMacosPackageSigningStaticChecks() {
     assert.ok(verifierScript.includes(expected), `macOS signing verifier missing ${expected}`);
   }
   assert.ok(
-    packagerScript.indexOf("signMacSteamExecutable(electronPath)") <
-      packagerScript.indexOf("signMacSteamExecutable(launcherPath)"),
-    "macOS package script must sign the nested Electron executable before the launcher"
+    prepareScript.indexOf("signExecutable(resolved.electronExe") <
+      prepareScript.indexOf("signExecutable(resolved.appExe"),
+    "macOS preparation CLI must sign the nested Electron executable before the launcher"
   );
 }
 
@@ -193,12 +214,17 @@ function installConsumer(tarball) {
 
 function runConsumerChecks() {
   const installedPackageRoot = path.join(consumerDir, "node_modules", "steam-bridge");
+  const macosPrepareApp = path.join(installedPackageRoot, "bin", "prepare-macos-app.cjs");
   const macosSigningVerifier = path.join(installedPackageRoot, "bin", "verify-macos-signing.cjs");
   const macosLauncherTemplate = path.join(installedPackageRoot, "templates", "macos-steam-env-launcher.c");
   const macosEntitlementsTemplate = path.join(installedPackageRoot, "templates", "entitlements.steam.macos.plist");
+  assertNonEmptyFile(macosPrepareApp);
   assertNonEmptyFile(macosSigningVerifier);
   assertNonEmptyFile(macosLauncherTemplate);
   assertNonEmptyFile(macosEntitlementsTemplate);
+  assertExecutableFile(macosPrepareApp);
+  assertExecutableFile(macosSigningVerifier);
+  run("node", [macosPrepareApp, "--self-test"], { cwd: consumerDir });
   run("node", [macosSigningVerifier, "--self-test"], { cwd: consumerDir });
 
   fs.writeFileSync(
@@ -458,6 +484,14 @@ function assertNonEmptyFile(filePath) {
   const stat = fs.statSync(filePath);
   assert.ok(stat.isFile(), `${filePath} is not a file`);
   assert.ok(stat.size > 0, `${filePath} is empty`);
+}
+
+function assertExecutableFile(filePath) {
+  const stat = fs.statSync(filePath);
+  assert.ok(stat.isFile(), `${filePath} is not a file`);
+  if (process.platform !== "win32") {
+    assert.ok((stat.mode & 0o111) !== 0, `${filePath} is not executable`);
+  }
 }
 
 function run(command, args, options = {}) {

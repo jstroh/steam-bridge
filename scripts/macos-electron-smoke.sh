@@ -109,8 +109,10 @@ Options:
   --timeout-seconds SECONDS      Result wait timeout. Defaults to 90.
   --close-probe                  Keep the app open, send a macOS overlay close input,
                                  and require active=false plus presenter parking evidence.
-  --close-input MODE             macOS close input: escape, keyboard, or toggle. Defaults to escape.
-                                 keyboard is an alias for escape; toggle sends Shift+Tab.
+  --close-input MODE             macOS close input: escape, keyboard, toggle, or web.
+                                 Defaults to escape. keyboard is an alias for escape;
+                                 toggle sends Shift+Tab; web waits for visible
+                                 Steam web content before sending Escape.
   --shortcut-open-probe          Focus the app, send Shift+Tab, and require managed
                                  shortcut-open plus active overlay evidence.
   --require-close-deactivated    Verify existing lifecycle close/parking evidence.
@@ -404,7 +406,7 @@ while [ "$#" -gt 0 ]; do
 done
 
 case "$close_input" in
-  escape|keyboard|toggle)
+  escape|keyboard|toggle|web)
     ;;
   *)
     echo "Unknown --close-input: $close_input" >&2
@@ -1275,6 +1277,160 @@ verify_result() {
   verify_no_fresh_macos_crash_reports
 }
 
+read_macos_presenter_capture_rect() {
+  RESULT_FILE="$result_file" DIAGNOSTIC_DIR="$diagnostic_dir" node <<'NODE'
+const fs = require("node:fs");
+const path = require("node:path");
+
+const resultFile = process.env.RESULT_FILE;
+const diagnosticDir = process.env.DIAGNOSTIC_DIR || `${resultFile}.diagnostics`;
+const lifecyclePath = path.join(diagnosticDir, "lifecycle.jsonl");
+const presenters = [];
+
+function addPresenter(value) {
+  if (value && typeof value === "object") {
+    presenters.push(value);
+  }
+}
+
+try {
+  const text = fs.readFileSync(lifecyclePath, "utf8");
+  for (const line of text.split(/\r?\n/)) {
+    if (!line.trim()) {
+      continue;
+    }
+    try {
+      const entry = JSON.parse(line);
+      if (entry.type === "event:overlay:presenter-wait-shown") {
+        addPresenter(entry.payload?.presenter);
+      }
+      if (entry.type === "event:overlay:presenter-open") {
+        addPresenter(entry.payload?.presenter);
+      }
+    } catch {
+      // Ignore partial lifecycle lines while the app is still running.
+    }
+  }
+} catch {
+  // Fall back to the result payload below.
+}
+
+try {
+  const line = fs
+    .readFileSync(resultFile, "utf8")
+    .split(/\r?\n/)
+    .find((entry) => entry.startsWith("STEAM_BRIDGE_SMOKE_RESULT "));
+  if (line) {
+    const result = JSON.parse(line.slice("STEAM_BRIDGE_SMOKE_RESULT ".length));
+    addPresenter(result.wait?.presenter);
+    addPresenter(result.snapshot?.overlay?.nativePresenter?.value);
+  }
+} catch {
+  // The close verifier will fail later if the probe cannot be checked.
+}
+
+const presenter = presenters
+  .slice()
+  .reverse()
+  .find((candidate) => candidate.bounds && Number.isFinite(candidate.bounds.width) && Number.isFinite(candidate.bounds.height));
+
+if (!presenter) {
+  console.error("could not find macOS native presenter bounds for web close probe");
+  process.exit(1);
+}
+
+const { x, y, width, height } = presenter.bounds;
+process.stdout.write(
+  `${Math.round(Number(x))},${Math.round(Number(y))},${Math.round(Number(width))},${Math.round(Number(height))}`
+);
+NODE
+}
+
+wait_for_macos_web_overlay_visible() {
+  local rect temp_dir png_path bmp_path attempt
+  rect="$(read_macos_presenter_capture_rect)"
+  if [ -z "$rect" ]; then
+    echo "Could not determine macOS presenter bounds for web overlay visibility." >&2
+    return 1
+  fi
+
+  temp_dir="$(mktemp -d "${TMPDIR:-/tmp}/steam-bridge-macos-web-visible.XXXXXX")"
+  png_path="$temp_dir/capture.png"
+  bmp_path="$temp_dir/capture.bmp"
+  for attempt in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24; do
+    if screencapture -x -R "$rect" "$png_path" >/dev/null 2>&1 &&
+      sips -s format bmp "$png_path" --out "$bmp_path" >/dev/null 2>&1 &&
+      node - "$bmp_path" <<'NODE'
+const fs = require("node:fs");
+const bmpPath = process.argv[2];
+const data = fs.readFileSync(bmpPath);
+
+if (data.slice(0, 2).toString("ascii") !== "BM") {
+  process.exit(2);
+}
+
+const offset = data.readUInt32LE(10);
+const width = Math.abs(data.readInt32LE(18));
+const rawHeight = data.readInt32LE(22);
+const height = Math.abs(rawHeight);
+const bitsPerPixel = data.readUInt16LE(28);
+
+if (bitsPerPixel !== 32 || width <= 0 || height <= 0) {
+  process.exit(2);
+}
+
+const topDown = rawHeight < 0;
+const left = Math.floor(width * 0.15);
+const right = Math.ceil(width * 0.85);
+const top = Math.floor(height * 0.25);
+const bottom = Math.ceil(height * 0.85);
+const stepX = Math.max(1, Math.floor(width / 120));
+const stepY = Math.max(1, Math.floor(height / 90));
+let sampled = 0;
+let visible = 0;
+
+for (let y = top; y < bottom; y += stepY) {
+  const row = topDown ? y : height - 1 - y;
+  for (let x = left; x < right; x += stepX) {
+    const index = offset + (row * width + x) * 4;
+    if (index + 2 >= data.length) {
+      continue;
+    }
+    const b = data[index];
+    const g = data[index + 1];
+    const r = data[index + 2];
+    sampled += 1;
+    if (r + g + b > 75) {
+      visible += 1;
+    }
+  }
+}
+
+process.exit(sampled > 0 && visible / sampled > 0.02 ? 0 : 1);
+NODE
+    then
+      rm -rf "$temp_dir"
+      return 0
+    fi
+    sleep 0.25
+  done
+
+  rm -rf "$temp_dir"
+  echo "Timed out waiting for visible macOS Steam web overlay content." >&2
+  return 1
+}
+
+send_macos_web_overlay_close_probe() {
+  echo "Waiting for visible macOS Steam web overlay content"
+  wait_for_macos_web_overlay_visible
+  echo "Sending macOS web overlay Escape close probe"
+  osascript <<'OSA'
+tell application "System Events"
+  key code 53
+end tell
+OSA
+}
+
 send_macos_overlay_close_probe() {
   case "$close_input" in
     escape|keyboard)
@@ -1292,6 +1448,9 @@ tell application "System Events"
   key code 48 using shift down
 end tell
 OSA
+      ;;
+    web)
+      send_macos_web_overlay_close_probe
       ;;
   esac
 }

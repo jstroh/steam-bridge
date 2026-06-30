@@ -27,6 +27,7 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
+    "steam-bridge-prepare-macos-app": "bin/prepare-macos-app.cjs",
     "steam-bridge-verify-macos-signing": "bin/verify-macos-signing.cjs"
   },
   "exports": {

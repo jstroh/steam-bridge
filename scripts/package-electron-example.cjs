@@ -241,25 +241,10 @@ function copyTargetHelpers(appPath) {
 }
 
 function compileMacSteamEnvLauncher(appPath) {
-  const launcherSource = path.join(packageRoot, "templates", "macos-steam-env-launcher.c");
   const launcherPath = path.join(appPath, "SteamBridgeSmoke.app", "Contents", "MacOS", "SteamBridgeSmoke");
-  const electronPath = `${launcherPath}.electron`;
-  fs.renameSync(launcherPath, electronPath);
-  run("clang", ["-Wall", "-Wextra", "-O2", "-arch", "arm64", "-o", launcherPath, launcherSource], repoRoot);
-  fs.chmodSync(launcherPath, 0o755);
-  signMacSteamExecutable(electronPath);
-  signMacSteamExecutable(launcherPath);
-}
-
-function signMacSteamExecutable(filePath) {
-  if (process.platform !== "darwin") {
-    return;
-  }
-
-  const entitlementsPath = path.join(packageRoot, "templates", "entitlements.steam.macos.plist");
   run(
-    "codesign",
-    ["--force", "--sign", "-", "--entitlements", entitlementsPath, filePath],
+    process.execPath,
+    [path.join(packageRoot, "bin", "prepare-macos-app.cjs"), "--app-exe", launcherPath],
     repoRoot
   );
 }

@@ -507,6 +507,7 @@ run_self_test() {
   unavailable_web_case="$(case_command "$unavailable_output" "01-unavailable-web-openwait")"
   unavailable_checkout_case="$(case_command "$unavailable_output" "02-unavailable-checkout")"
   require_contains "$web_case" "--web-modal true" "web proof should use modal Steam web overlay."
+  require_contains "$web_case" "--close-input web" "active web proof should close through the Steam web close control."
   require_contains "$passive_case" "--result-delay-ms 1200" "passive toast should use the short notification capture delay."
   require_not_contains "$passive_case" "--close-probe" "passive toast should not require modal close proof."
   require_contains "$checkout_case" "--close-probe" "checkout proof should close and verify parked state."
@@ -518,6 +519,7 @@ run_self_test() {
   require_not_contains "$checkout_json_case" "--checkout-transaction-id 123456789" "private checkout proof should not also use the synthetic transaction ID."
   require_not_contains "$shortcut_checkout_json_case" "--checkout-transaction-id 123456789" "checkout shortcut proof should not also use the synthetic transaction ID."
   require_contains "$persistent_web_case" "--close-probe" "persistent web proof should close and verify parked state."
+  require_contains "$persistent_web_case" "--close-input web" "persistent web proof should close through the Steam web close control."
   require_contains "$persistent_web_case" "--require-zero-managed-overlay-timing" "persistent web proof should require zero managed overlay timing."
   require_not_contains "$unavailable_web_case" "--close-probe" "unavailable web case must not require close proof."
   require_not_contains "$unavailable_checkout_case" "--close-probe" "unavailable checkout case must not require close proof."
@@ -1352,6 +1354,9 @@ run_case() {
   local status=0
   local case_args=("$@")
   local cleanup_status gameprocess_log_offset smoke_pid
+  if case_needs_default_web_close "${case_args[@]}"; then
+    case_args+=(--close-input web)
+  fi
   if case_uses_presenter_action "${case_args[@]}" && ! case_has_managed_timing_requirement "${case_args[@]}"; then
     case_args+=(--require-zero-managed-overlay-timing)
   fi
@@ -1445,6 +1450,25 @@ case_has_managed_timing_requirement() {
   return 1
 }
 
+case_has_arg() {
+  local expected="$1"
+  shift
+  local arg
+  for arg in "$@"; do
+    if [ "$arg" = "$expected" ]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+case_needs_default_web_close() {
+  if case_uses_presenter_action "$@" && case_has_arg "--close-probe" "$@" && ! case_has_arg "--close-input" "$@"; then
+    return 0
+  fi
+  return 1
+}
+
 case_is_direct_checkout_action() {
   local previous=""
   local arg
@@ -1467,6 +1491,9 @@ run_persistent_case() {
   local result_file="$artifact_root/$case_id.log"
   local run_cmd
   local case_args=("$@")
+  if case_needs_default_web_close "${case_args[@]}"; then
+    case_args+=(--close-input web)
+  fi
 
   if case_uses_presenter_action "${case_args[@]}" && ! case_has_managed_timing_requirement "${case_args[@]}"; then
     case_args+=(--require-zero-managed-overlay-timing)
