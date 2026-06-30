@@ -1852,17 +1852,23 @@ export interface ElectronSteamOverlayOpenAndWaitOptions {
   signal?: AbortSignal;
 }
 
+export interface ElectronSteamOverlayCheckoutOperationObject
+  extends Partial<Omit<SteamOverlayCheckoutTarget, "type" | "presenter">> {
+  type?: "checkout";
+  steamurl?: string;
+  transactionID?: bigint | number | string;
+  transid?: bigint | number | string;
+  returnurl?: string;
+  data?: unknown;
+  response?: unknown;
+  params?: unknown;
+}
+
 export type ElectronSteamOverlayCheckoutOperationResult =
   | string
   | number
   | bigint
-  | (Partial<Omit<SteamOverlayCheckoutTarget, "type" | "presenter">> & {
-      type?: "checkout";
-      steamurl?: string;
-      transactionID?: bigint | number | string;
-      transid?: bigint | number | string;
-      returnurl?: string;
-    });
+  | ElectronSteamOverlayCheckoutOperationObject;
 
 export interface ElectronSteamOverlayCheckoutAndWaitOptions extends ElectronSteamOverlayOpenAndWaitOptions {
   modal?: boolean;
@@ -9573,14 +9579,16 @@ function electronSteamOverlayCheckoutTargetFromResult(
     throw new Error("A Steam checkout operation must return a checkout URL, transaction ID, or checkout object.");
   }
 
-  if (result.type !== undefined && result.type !== "checkout") {
-    throw new Error(`Unsupported Steam checkout operation target type: ${String(result.type)}`);
+  const source = electronSteamOverlayCheckoutSourceFromObject(result);
+
+  if (source.type !== undefined && source.type !== "checkout") {
+    throw new Error(`Unsupported Steam checkout operation target type: ${String(source.type)}`);
   }
 
-  const steamUrl = nonEmptyString(result.steamUrl ?? result.steamurl);
-  const url = nonEmptyString(result.url);
-  const transactionId = result.transactionId ?? result.transactionID ?? result.transid;
-  const returnUrl = nonEmptyString(result.returnUrl ?? result.returnurl);
+  const steamUrl = nonEmptyString(source.steamUrl ?? source.steamurl);
+  const url = nonEmptyString(source.url);
+  const transactionId = source.transactionId ?? source.transactionID ?? source.transid;
+  const returnUrl = nonEmptyString(source.returnUrl ?? source.returnurl);
 
   if (steamUrl) {
     target.steamUrl = steamUrl;
@@ -9589,17 +9597,90 @@ function electronSteamOverlayCheckoutTargetFromResult(
     target.url = url;
   }
   if (transactionId != null) {
+    if (!isElectronSteamOverlayCheckoutTransactionId(transactionId)) {
+      throw new Error("A Steam checkout operation returned an invalid transaction ID.");
+    }
     target.transactionId = transactionId;
   }
   if (returnUrl) {
     target.returnUrl = returnUrl;
   }
-  if (typeof result.modal === "boolean") {
-    target.modal = result.modal;
+  if (typeof source.modal === "boolean") {
+    target.modal = source.modal;
   }
 
   resolveSteamCheckoutOverlayUrl(target);
   return target;
+}
+
+function electronSteamOverlayCheckoutSourceFromObject(
+  result: ElectronSteamOverlayCheckoutOperationObject
+): Record<string, unknown> {
+  return findElectronSteamOverlayCheckoutSource(result) ?? (result as Record<string, unknown>);
+}
+
+function findElectronSteamOverlayCheckoutSource(
+  value: unknown,
+  seen = new Set<unknown>(),
+  depth = 0
+): Record<string, unknown> | undefined {
+  if (!isElectronSteamOverlayCheckoutSourceCandidate(value) || seen.has(value) || depth > 8) {
+    return undefined;
+  }
+
+  seen.add(value);
+  if (isSteamWebApiResponseEnvelopeLike(value)) {
+    const source = findElectronSteamOverlayCheckoutSource(value.data, seen, depth + 1);
+    if (source) {
+      return source;
+    }
+  }
+
+  if (hasElectronSteamOverlayCheckoutFields(value)) {
+    return value;
+  }
+
+  for (const key of ["data", "response", "params"]) {
+    const source = findElectronSteamOverlayCheckoutSource(value[key], seen, depth + 1);
+    if (source) {
+      return source;
+    }
+  }
+
+  return undefined;
+}
+
+function isElectronSteamOverlayCheckoutSourceCandidate(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function hasElectronSteamOverlayCheckoutFields(value: Record<string, unknown>): boolean {
+  return [
+    "type",
+    "url",
+    "steamUrl",
+    "steamurl",
+    "transactionId",
+    "transactionID",
+    "transid",
+    "returnUrl",
+    "returnurl",
+    "modal"
+  ].some((key) => Object.prototype.hasOwnProperty.call(value, key));
+}
+
+function isSteamWebApiResponseEnvelopeLike(value: Record<string, unknown>): boolean {
+  return (
+    Object.prototype.hasOwnProperty.call(value, "data") &&
+    (Object.prototype.hasOwnProperty.call(value, "ok") ||
+      Object.prototype.hasOwnProperty.call(value, "status") ||
+      Object.prototype.hasOwnProperty.call(value, "headers") ||
+      Object.prototype.hasOwnProperty.call(value, "text"))
+  );
+}
+
+function isElectronSteamOverlayCheckoutTransactionId(value: unknown): value is bigint | number | string {
+  return typeof value === "bigint" || typeof value === "number" || typeof value === "string";
 }
 
 function assignElectronSteamOverlayCheckoutString(target: SteamOverlayCheckoutTarget, value: string): void {

@@ -7685,6 +7685,85 @@ test("electron steam overlay checkout helper prepares, opens, and waits with bac
   });
   assert.equal(transactionResult.parked.clickThrough, true);
 
+  const initTxnCheckout = overlay.openCheckoutAndWait(
+    () => ({
+      response: {
+        result: "OK",
+        params: {
+          transid: "246813579",
+          steamurl: "https://checkout.steampowered.com/checkout/approvetxn/246813579/",
+          returnurl: "steam://return-from-init-txn"
+        }
+      }
+    }),
+    { showTimeoutMs: 200, closeTimeoutMs: 200 }
+  );
+
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "activateOverlayToWebPage").at(-1),
+    {
+      method: "activateOverlayToWebPage",
+      args: ["https://checkout.steampowered.com/checkout/approvetxn/246813579/", true]
+    }
+  );
+
+  fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: true });
+  fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: false });
+  const initTxnResult = await initTxnCheckout;
+
+  assert.deepEqual(initTxnResult.target, {
+    type: "checkout",
+    steamUrl: "https://checkout.steampowered.com/checkout/approvetxn/246813579/",
+    transactionId: "246813579",
+    returnUrl: "steam://return-from-init-txn"
+  });
+  assert.equal(initTxnResult.parked.currentFps, 0);
+
+  const webApiEnvelopeCheckout = overlay.openCheckoutAndWait(
+    () => ({
+      ok: true,
+      status: 200,
+      url: "https://partner.steam-api.com/ISteamMicroTxnSandbox/InitTxn/v0003/",
+      headers: { "content-type": "application/json; charset=utf-8" },
+      text: JSON.stringify({ response: { params: { transid: "97531" } } }),
+      data: {
+        response: {
+          result: "OK",
+          params: {
+            transid: "97531"
+          }
+        }
+      }
+    }),
+    { returnUrl: "steam://return-from-web-api", showTimeoutMs: 200, closeTimeoutMs: 200 }
+  );
+
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "activateOverlayToWebPage").at(-1),
+    {
+      method: "activateOverlayToWebPage",
+      args: [
+        "https://checkout.steampowered.com/checkout/approvetxn/97531/?returnurl=steam%3A%2F%2Freturn-from-web-api",
+        true
+      ]
+    }
+  );
+
+  fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: true });
+  fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: false });
+  const webApiEnvelopeResult = await webApiEnvelopeCheckout;
+
+  assert.deepEqual(webApiEnvelopeResult.target, {
+    type: "checkout",
+    returnUrl: "steam://return-from-web-api",
+    transactionId: "97531"
+  });
+  assert.equal(webApiEnvelopeResult.transaction.data.response.params.transid, "97531");
+
   await assert.rejects(
     overlay.openCheckoutAndWait(() => ({ type: "checkout" }), { showTimeoutMs: 200, closeTimeoutMs: 200 }),
     /requires a url, steamUrl, or transactionId/

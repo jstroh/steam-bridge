@@ -278,9 +278,11 @@ For `InitTxn` flows, call
 `steamOverlay.openCheckoutAndWait(() => startTxn())`. Steam Bridge primes the
 native presenter before the backend starts the transaction, accepts common
 backend result shapes such as `steamurl`, `steamUrl`, `transactionId`, or
-`transid`, opens the checkout surface, then resolves after Steam closes and the
-presenter parks. The preparation is operation-scoped rather than an app-tuned
-timer. `steamOverlay.withCheckoutPrepared(...)`,
+`transid`, and also unwraps documented `InitTxn` envelopes such as
+`response.params.transid` and Steam Bridge Web API responses at
+`data.response.params`. It opens the checkout surface, then resolves after
+Steam closes and the presenter parks. The preparation is operation-scoped
+rather than an app-tuned timer. `steamOverlay.withCheckoutPrepared(...)`,
 `steamOverlay.open({ type: "checkout", ... })`, and
 `steamOverlay.prepareForCheckout()` remain available for lower-level flows that
 need to separate presenter priming from transaction creation or overlay opening;
