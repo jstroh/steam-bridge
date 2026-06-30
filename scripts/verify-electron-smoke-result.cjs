@@ -105,6 +105,9 @@ if (options.requirePassivePresenter || options.requireIdlePresenter) {
   if (nativePresenter) {
     expect(nativePresenter.attached === true, "native presenter attached");
     expect(nativePresenter.nativeHostOpen === true, "native presenter host open");
+    if (processInfo.platform === "darwin") {
+      expectMacOverlayEnvironmentAvailable(nativePresenter, "native presenter");
+    }
     expect(nativePresenter.mode === "passive", "native presenter is passive");
     expect(nativePresenter.clickThrough === true, "native presenter is click-through");
     expect(nativePresenter.focusable === false, "native presenter is non-focusable");
@@ -450,6 +453,9 @@ function expectPassiveNotificationPresenter(presenter, label, managedOverlay) {
   expect(presenter.closed === false, `native presenter closed ${label}`);
   expect(presenter.attached === true, `native presenter attached ${label}`);
   expect(presenter.nativeHostOpen === true, `native presenter host open ${label}`);
+  if (processInfo.platform === "darwin") {
+    expectMacOverlayEnvironmentAvailable(presenter, label);
+  }
   expect(presenter.mode === "passive", `native presenter mode ${label}`);
   expect(presenter.clickThrough === true, `native presenter click-through ${label}`);
   expect(presenter.focusable === false, `native presenter focusable ${label}`);
@@ -463,6 +469,17 @@ function expectPassiveNotificationPresenter(presenter, label, managedOverlay) {
       `managed Electron overlay automatic notification priming enabled ${label}`
     );
   }
+}
+
+function expectMacOverlayEnvironmentAvailable(presenter, label) {
+  const environment = presenter && typeof presenter === "object" ? presenter.macOverlayEnvironment : undefined;
+  if (!environment || typeof environment !== "object") {
+    failures.push(`${label} mac overlay environment available`);
+    return;
+  }
+  expect(environment.screenLocked === false, `${label} screen is unlocked`);
+  expect(environment.displayAsleep === false, `${label} display is awake`);
+  expect(presenter.nativeHostUnavailableReason == null, `${label} native host unavailable reason is absent`);
 }
 
 function findManagedOverlayDiagnostics(presenters) {

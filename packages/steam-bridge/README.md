@@ -477,7 +477,8 @@ known dialog equivalents, synthetic checkout approval-route plumbing, passive
 notification toasts, and managed Shift+Tab shortcut open/close through the
 presenter. The summary gate now requires active shown presenter snapshots and
 an interactive macOS host environment for successful overlay cases. The helper
-verifies macOS passive notification proof through
+also checks the same presenter shape directly during close, shortcut-open, and
+passive-notification verification. It verifies macOS passive notification proof through
 `--require-passive-notification`; that gate requires the smoke result and
 lifecycle log to show the accepted achievement event, the matching Steam
 callback, no modal overlay activation, and a passive managed-presenter snapshot.

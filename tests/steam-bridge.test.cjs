@@ -173,6 +173,10 @@ function passiveNotificationPresenterFixture() {
     closed: false,
     attached: true,
     nativeHostOpen: true,
+    macOverlayEnvironment: {
+      screenLocked: false,
+      displayAsleep: false
+    },
     mode: "passive",
     clickThrough: true,
     focusable: false,
@@ -1501,6 +1505,52 @@ test("smoke result verifier accepts passive notification evidence with lifecycle
 
   assert.equal(verifier.status, 0, verifier.stderr);
   assert.match(verifier.stdout, /Electron smoke result verified/);
+});
+
+test("smoke result verifier rejects Darwin passive notification evidence without mac overlay environment", (t) => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-passive-verify-macenv-"));
+  t.after(() => fs.rmSync(tempDir, { recursive: true, force: true }));
+
+  const presenter = passiveNotificationPresenterFixture();
+  delete presenter.macOverlayEnvironment;
+  const resultFile = path.join(tempDir, "smoke.log");
+  const diagnosticDir = path.join(tempDir, "diagnostics");
+  fs.mkdirSync(diagnosticDir, { recursive: true });
+  fs.writeFileSync(
+    resultFile,
+    `STEAM_BRIDGE_SMOKE_RESULT ${JSON.stringify(passiveNotificationResult(presenter))}\n`
+  );
+  fs.writeFileSync(
+    path.join(diagnosticDir, "lifecycle.jsonl"),
+    [
+      { type: "event:achievement:progress", payload: { indicated: true, presenter } },
+      { type: "event:callback:achievement-stored", payload: { achievement: "ACH_TRAVEL_FAR_SINGLE" } }
+    ]
+      .map((entry) => JSON.stringify(entry))
+      .join("\n")
+  );
+
+  const verifier = childProcess.spawnSync(
+    process.execPath,
+    [
+      path.join(repoRoot, "scripts", "verify-electron-smoke-result.cjs"),
+      "--file",
+      resultFile,
+      "--diagnostic-dir",
+      diagnosticDir,
+      "--app-id",
+      "480",
+      "--platform",
+      "darwin/arm64",
+      "--action",
+      "presenter-achievement-progress",
+      "--require-passive-notification"
+    ],
+    { encoding: "utf8" }
+  );
+
+  assert.notEqual(verifier.status, 0);
+  assert.match(verifier.stderr, /mac overlay environment available/);
 });
 
 test("smoke result verifier rejects passive notification evidence without lifecycle callbacks", (t) => {

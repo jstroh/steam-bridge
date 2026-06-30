@@ -190,6 +190,11 @@ Verified:
   close-and-park lifecycle evidence, checkout `openCheckoutAndWait(...)`
   completion after close/parking, and crash diagnostics. Its self-test validates
   the matrix shape and the artifact summarizer without launching Steam.
+- The packaged macOS helper now performs the same presenter-shape checks at the
+  source for close, shortcut-open, and passive-notification verification: active
+  shown presenter snapshots must be active/opaque/input-capable with an
+  interactive macOS host environment, and parked/passive snapshots must remain
+  transparent, click-through, overlay-inactive, idle, and interactive.
 
 Still not verified:
 
