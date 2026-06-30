@@ -8592,6 +8592,7 @@ export function createElectronSteamOverlay(
     },
     prepareForCheckout(durationMs?: number): NativeOverlayPresenter {
       assertOpen();
+      assertElectronSteamOverlayNativeHostAvailable(controller.snapshot());
       presenter.prepareForOverlay(durationMs);
       return presenter;
     },

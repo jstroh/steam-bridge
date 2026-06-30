@@ -268,7 +268,9 @@ Verified:
   summary auditor also support expected native-host-unavailable fail-fast cases:
   an artifact can require the serialized action error code/reason, matching
   `nativeHostUnavailableReason`, unattached/no-host/zero-FPS presenter state,
-  and no overlay activation. Live success runs now preflight the same macOS
+  and no overlay activation. The managed checkout fail-fast path covers both
+  one-call checkout opening and lower-level `prepareForCheckout()` split-step
+  preparation. Live success runs now preflight the same macOS
   environment and stop before launching case 1 while the session is locked or
   the display is asleep. Its self-test validates the matrix shape and the
   artifact summarizer without launching Steam.

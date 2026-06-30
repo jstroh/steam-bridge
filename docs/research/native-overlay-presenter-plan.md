@@ -703,10 +703,11 @@ Current evidence:
   `nativeHostUnavailableReason` as `macos-screen-locked` or
   `macos-display-asleep`, keeps `currentFps=0`, and retries attachment on the
   next presenter operation after the Mac becomes interactive again. Managed
-  Electron overlay open/wait and checkout helpers fail before Steam overlay
-  activation with `SteamOverlayNativeHostUnavailableError` while that
-  unavailable reason is present, so callers can check `code`, `reason`, and
-  `macOverlayEnvironment` and fall back without waiting for a guard timeout.
+  Electron overlay open/wait and checkout helpers, including split-step
+  `prepareForCheckout()` flows, fail before Steam overlay activation with
+  `SteamOverlayNativeHostUnavailableError` while that unavailable reason is
+  present, so callers can check `code`, `reason`, and `macOverlayEnvironment`
+  and fall back without waiting for a guard timeout.
   Unit coverage verifies locked, display-asleep, post-unlock lazy attach, and
   managed fail-fast paths. The shared smoke verifier and packaged platform
   helpers can also require the serialized action `code` and `reason` fields,

@@ -304,7 +304,8 @@ including the selected `backend` (`x11-glx`, `macos-metal`, `macos-opengl`, or
 macOS, snapshots also report `macOverlayEnvironment` and
 `nativeHostUnavailableReason` when a locked screen or sleeping display prevents
 safe native host creation. Managed overlay open/wait and checkout helpers throw
-`SteamOverlayNativeHostUnavailableError` in that state; use
+`SteamOverlayNativeHostUnavailableError` in that state, including lower-level
+`prepareForCheckout()` split-step flows; use
 `isSteamOverlayNativeHostUnavailableError(error)` and then check `error.reason`
 instead of parsing the message when falling back to another purchase or browser
 flow:

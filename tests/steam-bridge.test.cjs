@@ -8144,6 +8144,7 @@ test("electron steam overlay manager fails fast while the macOS native host is u
   };
 
   assert.throws(() => overlay.open({ type: "friends" }), assertUnavailableError);
+  assert.throws(() => overlay.prepareForCheckout(), assertUnavailableError);
 
   await assert.rejects(
     overlay.openAndWait(
