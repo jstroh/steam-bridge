@@ -514,7 +514,10 @@ Current evidence:
   closes and the presenter parks. Abort signals now apply while the backend
   checkout operation is still pending as well as during the Steam overlay wait:
   aborting before `InitTxn` returns releases the scoped presenter hold and parks
-  back to zero FPS without opening a checkout surface. App code can still use
+  back to zero FPS without opening a checkout surface. Closing the overlay
+  manager while that operation is pending also releases the hold and rejects
+  with the same typed close error used by the overlay wait helpers, preventing
+  a late checkout surface after the app window is gone. App code can still use
   `withCheckoutPrepared(...)`, `open({ type: "checkout", ... })`,
   `openAndWait(...)`, or the lower-level wait helpers when it needs split-step
   control, instead of carrying local callback/timer plumbing. In default

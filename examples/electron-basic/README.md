@@ -351,7 +351,9 @@ matrices exercise the same unwrapping path a real backend response uses.
 Abort signals passed to `openCheckoutAndWait(...)` also cover the pending
 checkout operation: aborting before the backend returns releases the presenter
 hold and parks it back at zero FPS. Pass that same signal to your backend
-request when the network request itself should be canceled too.
+request when the network request itself should be canceled too. Closing the
+overlay manager while that operation is pending also releases the hold and
+prevents a late checkout surface from opening.
 The Linux and Steam Deck helpers expose the same inputs as `--checkout-url`,
 `--checkout-transaction-id`, and `--checkout-return-url`. Without a checkout URL
 or transaction ID the helpers only require `overlay:presenter-checkout-ready`;

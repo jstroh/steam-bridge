@@ -9532,23 +9532,18 @@ function runElectronSteamOverlayAbortableOperation<T>(
   operation: () => T | Promise<T>,
   signal?: AbortSignal
 ): Promise<T> {
-  if (!signal) {
-    try {
-      return Promise.resolve(operation());
-    } catch (error) {
-      return Promise.reject(error);
-    }
-  }
-
   return new Promise<T>((resolve, reject) => {
     let abortHandler: (() => void) | undefined;
+    let stateChangeHandle: CallbackHandle | undefined;
     let settled = false;
 
     const cleanup = (): void => {
       if (abortHandler) {
-        signal.removeEventListener("abort", abortHandler);
+        signal?.removeEventListener("abort", abortHandler);
         abortHandler = undefined;
       }
+      stateChangeHandle?.disconnect();
+      stateChangeHandle = undefined;
     };
 
     const currentSnapshot = (): ElectronSteamOverlaySnapshot | undefined => {
@@ -9581,14 +9576,53 @@ function runElectronSteamOverlayAbortableOperation<T>(
       settleReject(new SteamOverlayWaitAbortedError(stateLabel, currentSnapshot()));
     };
 
-    signal.addEventListener("abort", abortHandler, { once: true });
-    if (signal.aborted) {
+    const checkOpen = (): boolean => {
+      let snapshot: ElectronSteamOverlaySnapshot;
+      try {
+        snapshot = controller.snapshot();
+      } catch (error) {
+        settleReject(error);
+        return true;
+      }
+
+      const unavailableError = electronSteamOverlayNativeHostUnavailableError(snapshot);
+      if (unavailableError) {
+        settleReject(unavailableError);
+        return true;
+      }
+
+      if (snapshot.closed || !controller.isOpen()) {
+        settleReject(new SteamOverlayWaitClosedError(stateLabel, snapshot));
+        return true;
+      }
+
+      return false;
+    };
+
+    if (signal) {
+      signal.addEventListener("abort", abortHandler, { once: true });
+    }
+
+    stateChangeHandle = subscribeElectronSteamOverlayStateChanges(controller, () => {
+      checkOpen();
+    });
+
+    if (signal?.aborted) {
       abortHandler();
       return;
     }
 
+    if (checkOpen()) {
+      return;
+    }
+
     try {
-      Promise.resolve(operation()).then(settleResolve, settleReject);
+      Promise.resolve(operation()).then((value) => {
+        if (checkOpen()) {
+          return;
+        }
+        settleResolve(value);
+      }, settleReject);
     } catch (error) {
       settleReject(error);
     }

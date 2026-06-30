@@ -284,8 +284,11 @@ backend result shapes such as `steamurl`, `steamUrl`, `transactionId`, or
 Steam closes and the presenter parks. If you pass an abort signal, Steam Bridge
 also honors it while the transaction operation is still pending, releases the
 presenter hold, and throws `SteamOverlayWaitAbortedError`; pass the same signal
-to your backend request if you also want to cancel the network I/O. The
-preparation is operation-scoped rather than an app-tuned timer.
+to your backend request if you also want to cancel the network I/O. If the
+overlay manager closes while that operation is pending, the scoped hold is
+released and `SteamOverlayWaitClosedError` is thrown without opening a late
+checkout surface. The preparation is operation-scoped rather than an app-tuned
+timer.
 `steamOverlay.withCheckoutPrepared(...)`,
 `steamOverlay.open({ type: "checkout", ... })`, and
 `steamOverlay.prepareForCheckout()` remain available for lower-level flows that

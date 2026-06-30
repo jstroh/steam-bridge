@@ -7856,7 +7856,39 @@ test("electron steam overlay checkout helper prepares, opens, and waits with bac
     /requires a url, steamUrl, or transactionId/
   );
 
+  const activationCallsBeforeClose = fake.calls.filter((call) => call.method === "activateOverlayToWebPage").length;
+  let resolveClosingCheckoutOperation;
+  const closedCheckout = overlay.openCheckoutAndWait(
+    () =>
+      new Promise((resolve) => {
+        resolveClosingCheckoutOperation = resolve;
+      }),
+    { showTimeoutMs: 200, closeTimeoutMs: 200 }
+  );
+
+  await Promise.resolve();
+  assert.equal(typeof resolveClosingCheckoutOperation, "function");
+  const duringClosedCheckout = overlay.snapshot();
+  assert.equal(duringClosedCheckout.mode, "active");
+  assert.equal(duringClosedCheckout.currentFps, 30);
+
   overlay.close();
+  await assert.rejects(closedCheckout, (error) => {
+    assert.equal(error instanceof steam.SteamOverlayWaitClosedError, true);
+    assert.equal(error.name, "SteamOverlayWaitClosedError");
+    assert.equal(error.code, "STEAM_OVERLAY_WAIT_CLOSED");
+    assert.equal(error.state, "finish checkout operation");
+    assert.equal(error.snapshot.closed, true);
+    assert.equal(error.snapshot.mode, "closed");
+    assert.match(error.message, /closed while waiting for Steam overlay to finish checkout operation/);
+    return true;
+  });
+  resolveClosingCheckoutOperation({
+    steamurl: "https://checkout.steampowered.com/checkout/approvetxn/222/"
+  });
+  await Promise.resolve();
+  assert.equal(fake.calls.filter((call) => call.method === "activateOverlayToWebPage").length, activationCallsBeforeClose);
+
   await assert.rejects(overlay.openCheckoutAndWait(() => "123"), /Electron Steam overlay is closed/);
 });
 
