@@ -341,11 +341,38 @@ Verified:
   click-through, overlay-inactive, and interactive. A 2026-06-30 OpenGL rerun
   exposed a macOS Steam renderer crash inside `BOverlayNeedsPresent()` before
   the helper could write a result, so Steam Bridge now disables that SDK call
-  for the macOS OpenGL diagnostic backend and reports
-  `overlayNeedsPresent=false` there. The macOS Metal product path and Linux/Deck
-  still use needs-present polling for overlay presentation. After modal overlays
-  close, the stable parked macOS state must return to `currentFps=0` without
-  post-close pumping.
+  on macOS by default and reports `overlayNeedsPresent=false` there. A later
+  2026-06-30 Electron `42.5.1` Metal run at
+  `/tmp/steam-bridge-macos-overlay-matrix-minimal-shown-gated-20260630-043833`
+  reproduced the same crash in the Metal product path during
+  `04-dialog-official-openwait`, with
+  `SteamBridgeSmoke.electron-2026-06-30-043943.ips` showing
+  `gameoverlayrenderer.dylib BOverlayNeedsPresent` above
+  `steam_bridge_native::overlay_needs_present_c_callback`. Linux/Deck still use
+  needs-present polling for overlay presentation. After modal overlays close, the
+  stable parked macOS state must return to `currentFps=0` without post-close
+  pumping.
+- Managed macOS `openAndWait(...)` now waits for Steam's overlay diagnostics to
+  report `overlayEnabled=true` before calling the Steam overlay activation API.
+  If Steam has injected the renderer but still reports the app as not overlay
+  ready, the helper fails with the typed `STEAM_OVERLAY_WAIT_TIMEOUT` state
+  `be ready` and includes the latest presenter, Steam, crash, and macOS
+  environment diagnostics. This replaces the old false-positive path where a
+  matrix case could mark success before Steam actually showed an overlay.
+- A 2026-06-30 rapid-relaunch macOS matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-minimal-readiness-retry-20260630-052030`
+  and the follow-up graceful-cleanup run at
+  `/tmp/steam-bridge-macos-overlay-matrix-minimal-graceful-overlay-cleanup-20260630-052538`
+  show the remaining harness-local failure mode: after one Steam-launched App ID
+  `480` process exits, the next immediate process can report Steam launch and
+  overlay injection while `overlayEnabled=false` until the managed readiness wait
+  times out. The matrix retries only this narrow, crash-free readiness case and
+  preserves the first attempt artifacts; fixed cooldowns and repeated Steam
+  restarts are intentionally avoided. Focused standalone product-route proofs at
+  `/tmp/steam-bridge-macos-store-openwait-envfile-20260630-051802.log` and
+  `/tmp/steam-bridge-macos-friends-openwait-envfile-20260630-052406.log` passed
+  with active/inactive overlay callbacks, close/back-to-app, parked presenter
+  state, and no newer crash report than the known `BOverlayNeedsPresent` crash.
 - A 2026-06-30 core macOS matrix at
   `/tmp/steam-bridge-macos-overlay-matrix-core-inittxn-envelope-20260630-000000`
   passed 24 Steam-launched App ID `480` cases after the smoke app began wrapping
@@ -466,7 +493,11 @@ Verified:
   maps to the earlier OpenGL diagnostic rerun
   `/tmp/steam-bridge-macos-overlay-matrix-minimal-opengl-rerun-20260630-015020/04-dialog-official-openwait`,
   where Steam's renderer crashed inside `BOverlayNeedsPresent()` before the
-  OpenGL guard; it is not a failure from this Metal product-path matrix.
+  OpenGL guard; it is not a failure from this Metal product-path matrix. A later
+  Metal-path crash in
+  `/tmp/steam-bridge-macos-overlay-matrix-minimal-shown-gated-20260630-043833`
+  supersedes the old Metal-safe assumption, so current macOS defaults avoid
+  `BOverlayNeedsPresent()` entirely unless explicitly opted in for diagnostics.
 - The live macOS matrix now runs `scripts/verify-macos-steam-signing.cjs`
   before touching Steam. It checks the native launcher and renamed Electron
   executable for arm64-only slices, valid executable signatures, the dyld

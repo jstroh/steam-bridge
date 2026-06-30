@@ -244,7 +244,10 @@ timing hacks.
   `/tmp/steam-bridge-macos-overlay-matrix-full-narrow-needs-present-20260630-023000`
   skipped repackaging, reused the signed Electron `42.5.1` bundle, and passed
   all 31 Steam-launched App ID `480` cases after the needs-present guard was
-  narrowed to the OpenGL diagnostic backend. The artifact re-verified all
+  narrowed to the OpenGL diagnostic backend. A later Metal-path
+  `BOverlayNeedsPresent()` crash invalidated that narrower policy, so current
+  macOS defaults disable the needs-present SDK call entirely. The artifact still
+  re-verified all
   managed modal routes, passive toasts, checkout approval-route plumbing,
   presenter-backed shortcut targets, close/back-to-app proof, zero managed
   overlay timing, one overlay target, and clean crash diagnostics on the Metal
@@ -415,15 +418,23 @@ Current evidence:
   `overlayNeedsPresent` on platforms that support safe needs-present polling.
   Passive notification priming now performs one presenter wake-up/poll and then
   waits for `overlayNeedsPresent` on those platforms instead of entering a fixed
-  high-FPS boost window. On macOS, the Metal product path keeps this signal; the
-  OpenGL diagnostic backend disables `BOverlayNeedsPresent()` because Steam's
-  injected renderer can crash inside that call on the OpenGL path.
+  high-FPS boost window. On macOS, Steam Bridge disables `BOverlayNeedsPresent()`
+  by default because Steam's injected renderer can crash inside that call on both
+  the OpenGL diagnostic and Metal presenter paths; macOS uses operation-scoped
+  activation holds and Steam overlay callbacks instead.
 - The managed Electron lifecycle waits are app-facing state waits, not tuning
   loops. `open(...)` and `openAndWait(...)` keep the presenter active until Steam
   reports the overlay shown; `openAndWait(...)`, `waitForOverlayShown()`,
   `waitForOverlayClosed()`, and `parkWhenSteamOverlayCloses()` resolve from Steam
   overlay callbacks and native presenter state changes in persistent presenter
   mode. App code can pass timeouts or abort signals, but not polling intervals.
+- On macOS, `openAndWait(...)` and checkout approval-route helpers also wait for
+  Steam's overlay diagnostics to become ready before calling the activation API.
+  If a rapid relaunch leaves the process injected but `overlayEnabled=false`,
+  the app sees a typed readiness timeout with diagnostics instead of a silent
+  no-op. Focused standalone Store/Friends proofs pass with this guard; the
+  remaining failure is the live matrix's rapid multi-process relaunch shape, not
+  the product-facing overlay primitive.
 - Native hosts realign to their parent window on each pump. The managed
   Electron overlay also listens to BrowserWindow move, resize, fullscreen,
   maximize, restore, and show events and triggers one native presenter pump per

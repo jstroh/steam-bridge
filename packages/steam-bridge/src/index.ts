@@ -2111,6 +2111,7 @@ export interface ElectronSteamOverlay extends CallbackHandle {
   readonly presenter: NativeOverlayPresenter;
   open(target: SteamOverlayTarget): NativeOverlayPresenter;
   openShortcutTarget(): NativeOverlayPresenter | null;
+  waitForOverlayReady(options?: ElectronSteamOverlayWaitOptions): Promise<ElectronSteamOverlaySnapshot>;
   openAndWait(
     target: SteamOverlayTarget,
     options?: ElectronSteamOverlayOpenAndWaitOptions
@@ -8660,6 +8661,10 @@ export function createElectronSteamOverlay(
         activationHandle?.disconnect();
       };
       try {
+        await controller.waitForOverlayReady({
+          timeoutMs: finiteNumber(options.showTimeoutMs, 15000),
+          signal: options.signal
+        });
         openSteamOverlay({
           ...target,
           presenter,
@@ -8706,6 +8711,10 @@ export function createElectronSteamOverlay(
           waitOptions.signal
         );
         const target = electronSteamOverlayCheckoutTargetFromResult(transaction, { modal, returnUrl });
+        await controller.waitForOverlayReady({
+          timeoutMs: finiteNumber(waitOptions.showTimeoutMs, 15000),
+          signal: waitOptions.signal
+        });
         openSteamOverlay({
           ...target,
           presenter,
@@ -8763,6 +8772,19 @@ export function createElectronSteamOverlay(
       assertOpen();
       presenter.prepareForPassiveOverlay(durationMs);
       return presenter;
+    },
+    waitForOverlayReady(options?: ElectronSteamOverlayWaitOptions): Promise<ElectronSteamOverlaySnapshot> {
+      assertOpen();
+      return waitForElectronSteamOverlayState(
+        controller,
+        "be ready",
+        (snapshot) => snapshot.diagnostics?.overlayEnabled === true,
+        options,
+        {
+          forcePolling: true,
+          refreshDiagnostics: true
+        }
+      );
     },
     waitForOverlayShown(options?: ElectronSteamOverlayWaitOptions): Promise<ElectronSteamOverlaySnapshot> {
       assertOpen();
@@ -9398,7 +9420,8 @@ function waitForElectronSteamOverlayState(
   controller: ElectronSteamOverlay,
   stateLabel: string,
   predicate: (snapshot: ElectronSteamOverlaySnapshot) => boolean,
-  options: ElectronSteamOverlayWaitOptions = {}
+  options: ElectronSteamOverlayWaitOptions = {},
+  internalOptions: ElectronSteamOverlayStateWaitInternalOptions = {}
 ): Promise<ElectronSteamOverlaySnapshot> {
   const timeoutMs = Math.max(0, finiteNumber(options.timeoutMs, 15000));
   const deadline = Date.now() + timeoutMs;
@@ -9455,6 +9478,9 @@ function waitForElectronSteamOverlayState(
       let snapshot: ElectronSteamOverlaySnapshot;
       try {
         snapshot = controller.snapshot();
+        if (internalOptions.refreshDiagnostics) {
+          snapshot = refreshElectronSteamOverlaySnapshotDiagnostics(snapshot);
+        }
         lastSnapshot = snapshot;
       } catch (error) {
         settleReject(error);
@@ -9486,7 +9512,10 @@ function waitForElectronSteamOverlayState(
     };
 
     const scheduleFallbackPoll = (): void => {
-      if (settled || !shouldUseElectronSteamOverlayFallbackPolling(controller, stateChangeHandle)) {
+      if (
+        settled ||
+        (!internalOptions.forcePolling && !shouldUseElectronSteamOverlayFallbackPolling(controller, stateChangeHandle))
+      ) {
         return;
       }
       const remainingMs = deadline - Date.now();
@@ -9526,6 +9555,21 @@ function waitForElectronSteamOverlayState(
 
 const ELECTRON_STEAM_OVERLAY_SESSION_WAIT_POLL_INTERVAL_MS = 50;
 const ELECTRON_STEAM_OVERLAY_OPEN_GUARD_TIMEOUT_MS = 15000;
+
+interface ElectronSteamOverlayStateWaitInternalOptions {
+  forcePolling?: boolean;
+  refreshDiagnostics?: boolean;
+}
+
+function refreshElectronSteamOverlaySnapshotDiagnostics(
+  snapshot: ElectronSteamOverlaySnapshot
+): ElectronSteamOverlaySnapshot {
+  try {
+    return { ...snapshot, diagnostics: getOverlayDiagnostics() };
+  } catch {
+    return snapshot;
+  }
+}
 
 function assertElectronSteamOverlayNativeHostAvailable(snapshot: ElectronSteamOverlaySnapshot): void {
   const error = electronSteamOverlayNativeHostUnavailableError(snapshot);

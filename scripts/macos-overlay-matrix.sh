@@ -518,11 +518,192 @@ verify_macos_package_signing() {
 
 cleanup_macos_smoke_processes() {
   pkill -TERM -f '/SteamBridgeSmoke\.app/' 2>/dev/null || true
-  pkill -TERM -x 'gameoverlayui' 2>/dev/null || true
   if ! wait_for_macos_smoke_processes_exit 8; then
+    pkill -TERM -x 'gameoverlayui' 2>/dev/null || true
+  fi
+  if ! wait_for_macos_smoke_processes_exit 3; then
     pkill -KILL -f '/SteamBridgeSmoke\.app/' 2>/dev/null || true
     pkill -KILL -x 'gameoverlayui' 2>/dev/null || true
     wait_for_macos_smoke_processes_exit 3 || true
+  fi
+}
+
+macos_steam_gameprocess_log() {
+  printf '%s\n' "$HOME/Library/Application Support/Steam/logs/gameprocess_log.txt"
+}
+
+macos_steam_log_size() {
+  local log_file="$1"
+  if [ ! -f "$log_file" ]; then
+    printf '0\n'
+    return 0
+  fi
+  stat -f '%z' "$log_file"
+}
+
+read_smoke_result_pid() {
+  local result_file="$1"
+  RESULT_FILE="$result_file" node <<'NODE'
+const fs = require("node:fs");
+const resultFile = process.env.RESULT_FILE;
+const prefix = "STEAM_BRIDGE_SMOKE_RESULT ";
+
+if (!resultFile || !fs.existsSync(resultFile)) {
+  process.exit(0);
+}
+
+const lines = fs.readFileSync(resultFile, "utf8").split(/\r?\n/).reverse();
+for (const line of lines) {
+  if (!line.startsWith(prefix)) {
+    continue;
+  }
+  try {
+    const parsed = JSON.parse(line.slice(prefix.length));
+    const pid = parsed?.snapshot?.process?.pid;
+    if (Number.isInteger(pid) && pid > 0) {
+      console.log(pid);
+    }
+  } catch {}
+  break;
+}
+NODE
+}
+
+wait_for_macos_steam_app_pid_untracked() {
+  local pid="$1"
+  local start_offset="$2"
+  local timeout_seconds="$3"
+  local log_file current_size tail_start pattern deadline
+  if [ -z "$pid" ] || [ "$dry_run" = "1" ]; then
+    return 0
+  fi
+
+  log_file="$(macos_steam_gameprocess_log)"
+  pattern="AppID $app_id no longer tracking PID $pid"
+  deadline=$((SECONDS + timeout_seconds))
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    if [ -f "$log_file" ]; then
+      current_size="$(macos_steam_log_size "$log_file")"
+      tail_start=$((start_offset + 1))
+      if [ "$current_size" -lt "$start_offset" ]; then
+        tail_start=1
+      fi
+      if tail -c +"$tail_start" "$log_file" 2>/dev/null | grep -Fq "$pattern"; then
+        return 0
+      fi
+    fi
+    sleep 0.25
+  done
+
+  echo "Timed out waiting for Steam to stop tracking AppID $app_id PID $pid in $log_file." >&2
+  return 1
+}
+
+wait_for_macos_steam_app_removed_from_running_list() {
+  local start_offset="$1"
+  local timeout_seconds="$2"
+  local log_file current_size tail_start pattern deadline
+  if [ "$dry_run" = "1" ]; then
+    return 0
+  fi
+
+  log_file="$(macos_steam_gameprocess_log)"
+  pattern="Remove $app_id from running list"
+  deadline=$((SECONDS + timeout_seconds))
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    if [ -f "$log_file" ]; then
+      current_size="$(macos_steam_log_size "$log_file")"
+      tail_start=$((start_offset + 1))
+      if [ "$current_size" -lt "$start_offset" ]; then
+        tail_start=1
+      fi
+      if tail -c +"$tail_start" "$log_file" 2>/dev/null | grep -Fq "$pattern"; then
+        return 0
+      fi
+    fi
+    sleep 0.25
+  done
+
+  echo "Timed out waiting for Steam to remove AppID $app_id from the running list in $log_file." >&2
+  return 1
+}
+
+should_retry_macos_overlay_readiness_failure() {
+  local result_file="$1"
+  RESULT_FILE="$result_file" node <<'NODE'
+const fs = require("node:fs");
+const resultFile = process.env.RESULT_FILE;
+const prefix = "STEAM_BRIDGE_SMOKE_RESULT ";
+
+if (!resultFile || !fs.existsSync(resultFile)) {
+  process.exit(1);
+}
+
+const line = fs.readFileSync(resultFile, "utf8")
+  .split(/\r?\n/)
+  .reverse()
+  .find((entry) => entry.startsWith(prefix));
+
+if (!line) {
+  process.exit(1);
+}
+
+let result;
+try {
+  result = JSON.parse(line.slice(prefix.length));
+} catch {
+  process.exit(1);
+}
+
+const events = Array.isArray(result?.snapshot?.events) ? result.snapshot.events : [];
+const readyTimeout = events.some((event) =>
+  event?.type === "overlay:presenter-open-and-wait:error" &&
+  event?.payload?.error?.code === "STEAM_OVERLAY_WAIT_TIMEOUT" &&
+  event?.payload?.error?.state === "be ready"
+);
+const overlayEnabled = result?.snapshot?.steam?.overlayEnabled?.value;
+const steamLaunch = result?.snapshot?.launch?.steamLaunch === true;
+const overlayInjection = result?.snapshot?.launch?.overlayInjection === true;
+const crashOk = result?.snapshot?.crashDiagnostics?.ok !== false;
+const macEnvironment = result?.snapshot?.overlay?.nativePresenter?.value?.macOverlayEnvironment;
+const macInteractive = !macEnvironment || (!macEnvironment.screenLocked && !macEnvironment.displayAsleep);
+
+if (
+  result?.ok === false &&
+  result?.action?.ok === true &&
+  readyTimeout &&
+  overlayEnabled === false &&
+  steamLaunch &&
+  overlayInjection &&
+  crashOk &&
+  macInteractive
+) {
+  process.exit(0);
+}
+
+process.exit(1);
+NODE
+}
+
+preserve_macos_retry_artifacts() {
+  local result_file="$1"
+  local diagnostic_dir="$2"
+  local attempt="$3"
+  local attempt_result_file attempt_diagnostic_dir
+  if [[ "$result_file" == *.log ]]; then
+    attempt_result_file="${result_file%.log}.attempt$attempt.log"
+  else
+    attempt_result_file="$result_file.attempt$attempt"
+  fi
+  attempt_diagnostic_dir="$attempt_result_file.diagnostics"
+
+  rm -f "$attempt_result_file"
+  rm -rf "$attempt_diagnostic_dir"
+  if [ -f "$result_file" ]; then
+    mv "$result_file" "$attempt_result_file"
+  fi
+  if [ -d "$diagnostic_dir" ]; then
+    mv "$diagnostic_dir" "$attempt_diagnostic_dir"
   fi
 }
 
@@ -1042,6 +1223,7 @@ run_case() {
   local run_cmd
   local status=0
   local case_args=("$@")
+  local cleanup_status gameprocess_log_offset smoke_pid
   if case_uses_presenter_action "${case_args[@]}" && ! case_has_managed_timing_requirement "${case_args[@]}"; then
     case_args+=(--require-zero-managed-overlay-timing)
   fi
@@ -1073,10 +1255,41 @@ run_case() {
 
   mkdir -p "$(dirname -- "$result_file")"
   write_case_manifest "$case_id" "$result_file" "$diagnostic_dir" "${case_args[@]}"
-  write_case_launcher_env "$result_file" "$diagnostic_dir" "${case_args[@]}"
-  "${run_cmd[@]}" || status=$?
-  cleanup_macos_smoke_processes
-  return "$status"
+
+  local attempt=1
+  local max_attempts=2
+  while true; do
+    status=0
+    cleanup_status=0
+    write_case_launcher_env "$result_file" "$diagnostic_dir" "${case_args[@]}"
+    gameprocess_log_offset="$(macos_steam_log_size "$(macos_steam_gameprocess_log)")"
+    "${run_cmd[@]}" || status=$?
+    smoke_pid="$(read_smoke_result_pid "$result_file" || true)"
+    cleanup_macos_smoke_processes
+    if ! wait_for_macos_steam_app_pid_untracked "$smoke_pid" "$gameprocess_log_offset" 30; then
+      cleanup_status=1
+    fi
+    if ! wait_for_macos_steam_app_removed_from_running_list "$gameprocess_log_offset" 30; then
+      cleanup_status=1
+    fi
+    if [ "$status" -eq 0 ] && [ "$cleanup_status" -ne 0 ]; then
+      status=1
+    fi
+
+    if [ "$status" -eq 0 ]; then
+      return 0
+    fi
+
+    if [ "$cleanup_status" -ne 0 ] ||
+      [ "$attempt" -ge "$max_attempts" ] ||
+      ! should_retry_macos_overlay_readiness_failure "$result_file"; then
+      return "$status"
+    fi
+
+    echo "RETRY $case_id after Steam overlay readiness timeout on attempt $attempt"
+    preserve_macos_retry_artifacts "$result_file" "$diagnostic_dir" "$attempt"
+    attempt=$((attempt + 1))
+  done
 }
 
 case_uses_presenter_action() {

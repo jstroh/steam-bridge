@@ -294,15 +294,19 @@ against the Steam store and Friends List surfaces. Use
 `presenter-dialog-auto-open-and-wait --dialog OfficialGameGroup` for the same
 proof through the verified high-level dialog-equivalent router. The profile,
 players, community, stats, achievements, and user routes also have
-`*-open-and-wait` actions for the same managed wait-helper proof. On Linux/X11, the
-presenter is transparent and click-through
-while fully idle, polls without pumping frames by default, can become visible while remaining
+`*-open-and-wait` actions for the same managed wait-helper proof. Managed
+`*-open-and-wait` actions wait for Steam's overlay diagnostics to report the app
+ready before activating Steam and only mark the autorun successful after the
+shown lifecycle wait resolves. On Linux/X11, the presenter is transparent and
+click-through while fully idle, polls without pumping frames by default, can
+become visible while remaining
 click-through for `overlayNeedsPresent`, restores both opacity and input while
 opening or showing Steam UI, and parks transparent after Steam emits overlay
-inactive callbacks. On macOS, the Metal presenter keeps the Steam
-needs-present signal available; the OpenGL diagnostic backend reports
-`overlayNeedsPresent=false` because Steam's injected renderer can crash inside
-`BOverlayNeedsPresent()` on that path. The Electron overlay helper also syncs the native presenter
+inactive callbacks. On macOS, Steam Bridge reports `overlayNeedsPresent=false`
+by default because Steam's injected renderer can crash inside
+`BOverlayNeedsPresent()` even on the Metal presenter path; macOS presentation is
+driven by explicit overlay opens and Steam overlay activation callbacks instead.
+The Electron overlay helper also syncs the native presenter
 on BrowserWindow move, resize, fullscreen, maximize, restore, and show events
 with one native pump per event. It isolates Chromium children by default so Deck
 Desktop proof runs have one `gameoverlayui` process attached to the main/native
@@ -448,9 +452,9 @@ Steam notification toasts; `prepareForNotification()` remains available for
 lower-level custom cases. Passive priming wakes and repolls the presenter once,
 then waits for Steam's `overlayNeedsPresent` signal on platforms where that
 Steam SDK call is safe before entering the notification frame loop, so quiet
-calls do not start a fixed high-FPS boost. On macOS OpenGL diagnostics, the
-smoke app keeps needs-present polling disabled and relies on Steam overlay
-callbacks plus the managed open/close lifecycle.
+calls do not start a fixed high-FPS boost. On macOS, the smoke app keeps
+needs-present polling disabled by default and relies on Steam overlay callbacks
+plus the managed open/close lifecycle.
 Do not use `steam://open/overlay` as a generic overlay-toggle substitute in this
 example. Deck Desktop testing showed it can activate Steam's callback path while
 leaving the native presenter black and the smoke process unrecovered.
@@ -905,9 +909,8 @@ as `gameoverlayrenderer`.
 `overlayNeedsPresent=true` is not a failure by itself. It means Steam is asking
 the app to keep presenting frames for the overlay. The smoke verifier treats an
 active overlay callback as stronger evidence than the raw present-needed flag.
-On macOS OpenGL diagnostics, Steam Bridge intentionally reports
-`overlayNeedsPresent=false` instead of calling Steam's crash-prone
-needs-present API on that path.
+On macOS, Steam Bridge intentionally reports `overlayNeedsPresent=false` by
+default instead of calling Steam's crash-prone needs-present API.
 
 For Steam Deck Game Mode or gamescope checks, the verifier can assert the Deck
 signals:

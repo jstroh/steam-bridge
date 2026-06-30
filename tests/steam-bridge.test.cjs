@@ -1634,6 +1634,30 @@ function createFakeNative(overrides = {}) {
   return fake;
 }
 
+async function waitForCondition(predicate, timeoutMs = 500, intervalMs = 10) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() <= deadline) {
+    if (predicate()) {
+      return true;
+    }
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
+  return false;
+}
+
+function steamWebOverlayCalls(fake) {
+  return fake.calls.filter((call) => call.method === "activateOverlayToWebPage");
+}
+
+async function waitForNextSteamWebOverlayCall(fake, afterCount, expectedArgs, timeoutMs = 500) {
+  const activated = await waitForCondition(() => steamWebOverlayCalls(fake).length > afterCount, timeoutMs);
+  assert.equal(activated, true);
+  assert.deepEqual(steamWebOverlayCalls(fake).at(-1), {
+    method: "activateOverlayToWebPage",
+    args: expectedArgs
+  });
+}
+
 test("project support policy covers Steam desktop targets except Intel macOS", () => {
   const packageJson = require(path.join(repoRoot, "packages", "steam-bridge", "package.json"));
   const rootPackageJson = require(path.join(repoRoot, "package.json"));
@@ -7920,6 +7944,7 @@ test("electron steam overlay manager exposes lifecycle wait helpers", async (t) 
   assert.equal(waitingForShown.currentFps, 30);
   assert.equal(pumpsAfterManagedOpen, pumpsBeforeManagedOpen + 1);
 
+  await waitForNextSteamWebOverlayCall(fake, 0, ["https://store.steampowered.com/app/480/", true]);
   fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: true });
   await Promise.resolve();
   fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: false });
@@ -7936,7 +7961,9 @@ test("electron steam overlay manager exposes lifecycle wait helpers", async (t) 
     { method: "activateOverlayToWebPage", args: ["https://store.steampowered.com/app/480/", true] }
   );
 
+  const webOverlayCallsAfterManagedOpen = steamWebOverlayCalls(fake).length;
   const managedFriendsOpen = overlay.openAndWait({ type: "friends" }, { showTimeoutMs: 200, closeTimeoutMs: 200 });
+  await waitForNextSteamWebOverlayCall(fake, webOverlayCallsAfterManagedOpen, [steam.STEAM_FRIENDS_OVERLAY_URL, true]);
   fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: true });
   fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: false });
   const managedFriendsResult = await managedFriendsOpen;
@@ -7949,7 +7976,9 @@ test("electron steam overlay manager exposes lifecycle wait helpers", async (t) 
     { method: "activateOverlayToWebPage", args: [steam.STEAM_FRIENDS_OVERLAY_URL, true] }
   );
 
+  const webOverlayCallsAfterFriends = steamWebOverlayCalls(fake).length;
   const managedStoreOpen = overlay.openAndWait({ type: "store", appId: 480 }, { showTimeoutMs: 200, closeTimeoutMs: 200 });
+  await waitForNextSteamWebOverlayCall(fake, webOverlayCallsAfterFriends, ["https://store.steampowered.com/app/480/", true]);
   fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: true });
   fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: false });
   const managedStoreResult = await managedStoreOpen;
@@ -7962,10 +7991,12 @@ test("electron steam overlay manager exposes lifecycle wait helpers", async (t) 
     { method: "activateOverlayToWebPage", args: ["https://store.steampowered.com/app/480/", true] }
   );
 
+  const webOverlayCallsAfterStore = steamWebOverlayCalls(fake).length;
   const managedDialogOpen = overlay.openAndWait(
     { type: "dialog", dialog: steam.Dialog.OfficialGameGroup, appId: 480 },
     { showTimeoutMs: 200, closeTimeoutMs: 200 }
   );
+  await waitForNextSteamWebOverlayCall(fake, webOverlayCallsAfterStore, [steam.steamCommunityAppUrl(480), true]);
   fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: true });
   fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: false });
   const managedDialogResult = await managedDialogOpen;
@@ -7993,6 +8024,105 @@ test("electron steam overlay manager exposes lifecycle wait helpers", async (t) 
   });
   assert.throws(() => overlay.waitForOverlayShown(), /Electron Steam overlay is closed/);
   await assert.rejects(overlay.openAndWait({ type: "friends" }), /Electron Steam overlay is closed/);
+});
+
+test("electron steam overlay openAndWait waits for overlay readiness before activating Steam", async (t) => {
+  const hostHandle = Buffer.from([4, 8, 1, 6]);
+  let hostOpen = false;
+  let overlayEnabled = false;
+  const fake = createFakeNative({
+    attachNativeOverlayHostView(nativeWindowHandle) {
+      hostOpen = true;
+      this.calls.push({ method: "attachNativeOverlayHostView", args: [nativeWindowHandle] });
+    },
+    pumpNativeOverlayProbeWindow() {
+      this.calls.push({ method: "pumpNativeOverlayProbeWindow", args: [] });
+    },
+    showNativeOverlayHostView() {
+      this.calls.push({ method: "showNativeOverlayHostView", args: [] });
+    },
+    setNativeOverlayHostInputPassthrough(passThrough) {
+      this.calls.push({ method: "setNativeOverlayHostInputPassthrough", args: [passThrough] });
+    },
+    setNativeOverlayHostOpacity(opaque) {
+      this.calls.push({ method: "setNativeOverlayHostOpacity", args: [opaque] });
+    },
+    detachNativeOverlayHostView() {
+      hostOpen = false;
+      this.calls.push({ method: "detachNativeOverlayHostView", args: [] });
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return false;
+    },
+    isNativeOverlayHostViewOpen() {
+      return hostOpen;
+    },
+    getOverlayDiagnostics() {
+      return {
+        steamRunning: true,
+        steamInstallPath: "/tmp/steam",
+        appId: 480,
+        overlayEnabled,
+        overlayNeedsPresent: false,
+        steamDeck: false,
+        bigPicture: false
+      };
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  const window = {
+    isDestroyed() {
+      return false;
+    },
+    getNativeWindowHandle() {
+      return hostHandle;
+    },
+    once() {},
+    webContents: {
+      once() {},
+      invalidate() {},
+      send() {}
+    }
+  };
+
+  const overlay = steam.overlay.createElectronSteamOverlay(window, {
+    title: "Electron Readiness Overlay",
+    pollIntervalMs: 50
+  });
+
+  const managedOpen = overlay.openAndWait(
+    { type: "web", url: "https://store.steampowered.com/app/480/", modal: true },
+    { showTimeoutMs: 500, closeTimeoutMs: 500 }
+  );
+
+  await new Promise((resolve) => setTimeout(resolve, 80));
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "activateOverlayToWebPage"),
+    []
+  );
+
+  overlayEnabled = true;
+  const activated = await waitForCondition(
+    () => fake.calls.some((call) => call.method === "activateOverlayToWebPage"),
+    500
+  );
+  assert.equal(activated, true);
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "activateOverlayToWebPage").at(-1),
+    { method: "activateOverlayToWebPage", args: ["https://store.steampowered.com/app/480/", true] }
+  );
+
+  fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: true });
+  fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: false });
+  const result = await managedOpen;
+
+  assert.equal(result.shown.overlayActive, true);
+  assert.equal(result.parked.overlayActive, false);
+  assert.equal(result.parked.currentFps, 0);
+  overlay.close();
 });
 
 test("electron steam overlay manager validates managed targets before presenter activation", async (t) => {
@@ -8164,6 +8294,7 @@ test("electron steam overlay checkout helper prepares, opens, and waits with bac
   });
 
   let operationSnapshot;
+  const checkoutCallsBefore = steamWebOverlayCalls(fake).length;
   const checkout = overlay.openCheckoutAndWait(
     () => {
       operationSnapshot = overlay.snapshot();
@@ -8181,10 +8312,10 @@ test("electron steam overlay checkout helper prepares, opens, and waits with bac
   assert.equal(operationSnapshot.clickThrough, false);
   assert.equal(operationSnapshot.transparent, false);
   assert.equal(operationSnapshot.currentFps, 30);
-  assert.deepEqual(
-    fake.calls.filter((call) => call.method === "activateOverlayToWebPage").at(-1),
-    { method: "activateOverlayToWebPage", args: ["https://checkout.steampowered.com/checkout/approvetxn/987/", false] }
-  );
+  await waitForNextSteamWebOverlayCall(fake, checkoutCallsBefore, [
+    "https://checkout.steampowered.com/checkout/approvetxn/987/",
+    false
+  ]);
 
   fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: true });
   fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: false });
@@ -8201,6 +8332,7 @@ test("electron steam overlay checkout helper prepares, opens, and waits with bac
   assert.equal(checkoutResult.parked.mode, "passive");
   assert.equal(checkoutResult.parked.currentFps, 0);
 
+  const transactionCallsBefore = steamWebOverlayCalls(fake).length;
   const transactionCheckout = overlay.openCheckoutAndWait(
     () => "123456789",
     { returnUrl: "steam://return-from-options", showTimeoutMs: 200, closeTimeoutMs: 200 }
@@ -8208,16 +8340,10 @@ test("electron steam overlay checkout helper prepares, opens, and waits with bac
 
   await Promise.resolve();
   await Promise.resolve();
-  assert.deepEqual(
-    fake.calls.filter((call) => call.method === "activateOverlayToWebPage").at(-1),
-    {
-      method: "activateOverlayToWebPage",
-      args: [
-        "https://checkout.steampowered.com/checkout/approvetxn/123456789/?returnurl=steam%3A%2F%2Freturn-from-options",
-        true
-      ]
-    }
-  );
+  await waitForNextSteamWebOverlayCall(fake, transactionCallsBefore, [
+    "https://checkout.steampowered.com/checkout/approvetxn/123456789/?returnurl=steam%3A%2F%2Freturn-from-options",
+    true
+  ]);
 
   fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: true });
   fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: false });
@@ -8230,6 +8356,7 @@ test("electron steam overlay checkout helper prepares, opens, and waits with bac
   });
   assert.equal(transactionResult.parked.clickThrough, true);
 
+  const initTxnCallsBefore = steamWebOverlayCalls(fake).length;
   const initTxnCheckout = overlay.openCheckoutAndWait(
     () => ({
       response: {
@@ -8246,13 +8373,10 @@ test("electron steam overlay checkout helper prepares, opens, and waits with bac
 
   await Promise.resolve();
   await Promise.resolve();
-  assert.deepEqual(
-    fake.calls.filter((call) => call.method === "activateOverlayToWebPage").at(-1),
-    {
-      method: "activateOverlayToWebPage",
-      args: ["https://checkout.steampowered.com/checkout/approvetxn/246813579/", true]
-    }
-  );
+  await waitForNextSteamWebOverlayCall(fake, initTxnCallsBefore, [
+    "https://checkout.steampowered.com/checkout/approvetxn/246813579/",
+    true
+  ]);
 
   fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: true });
   fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: false });
@@ -8266,6 +8390,7 @@ test("electron steam overlay checkout helper prepares, opens, and waits with bac
   });
   assert.equal(initTxnResult.parked.currentFps, 0);
 
+  const webApiEnvelopeCallsBefore = steamWebOverlayCalls(fake).length;
   const webApiEnvelopeCheckout = overlay.openCheckoutAndWait(
     () => ({
       ok: true,
@@ -8287,16 +8412,10 @@ test("electron steam overlay checkout helper prepares, opens, and waits with bac
 
   await Promise.resolve();
   await Promise.resolve();
-  assert.deepEqual(
-    fake.calls.filter((call) => call.method === "activateOverlayToWebPage").at(-1),
-    {
-      method: "activateOverlayToWebPage",
-      args: [
-        "https://checkout.steampowered.com/checkout/approvetxn/97531/?returnurl=steam%3A%2F%2Freturn-from-web-api",
-        true
-      ]
-    }
-  );
+  await waitForNextSteamWebOverlayCall(fake, webApiEnvelopeCallsBefore, [
+    "https://checkout.steampowered.com/checkout/approvetxn/97531/?returnurl=steam%3A%2F%2Freturn-from-web-api",
+    true
+  ]);
 
   fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: true });
   fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: false });

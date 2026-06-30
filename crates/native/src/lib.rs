@@ -359,7 +359,23 @@ fn overlay_needs_present_value(utils: *mut sys::ISteamUtils) -> bool {
 }
 
 fn overlay_needs_present_disabled() -> bool {
-    let Ok(value) = std::env::var("STEAM_BRIDGE_DISABLE_OVERLAY_NEEDS_PRESENT") else {
+    if steam_bridge_env_flag("STEAM_BRIDGE_DISABLE_OVERLAY_NEEDS_PRESENT") {
+        return true;
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        !steam_bridge_env_flag("STEAM_BRIDGE_ENABLE_OVERLAY_NEEDS_PRESENT")
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        false
+    }
+}
+
+fn steam_bridge_env_flag(name: &str) -> bool {
+    let Ok(value) = std::env::var(name) else {
         return false;
     };
     matches!(

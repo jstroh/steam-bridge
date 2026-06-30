@@ -129,6 +129,7 @@ let nativeOverlaySession;
 let electronSteamOverlay;
 let postClosePresenterSnapshotHandle;
 let managedOverlayWaitSequence = 0;
+let pendingManagedOverlayShownWait;
 const managedOverlayWaitControllers = new Set();
 const callbackHandles = [];
 const eventLog = [];
@@ -344,6 +345,7 @@ async function runAutorunSmoke() {
   await delay(AUTORUN_ACTION_DELAY_MS);
   const overlayActiveCount = countOverlayActiveEvents();
   recordEvent("autorun:action-begin", { action: AUTORUN_ACTION });
+  pendingManagedOverlayShownWait = undefined;
   const actionResult = await runAutorunAction(AUTORUN_ACTION);
   recordEvent("autorun:action-complete", {
     action: AUTORUN_ACTION,
@@ -370,6 +372,10 @@ async function runAutorunSmoke() {
 }
 
 async function waitForAutorunResult(action, durationMs, overlayActiveCount) {
+  if (pendingManagedOverlayShownWait || isManagedOverlayShownWaitAction(action)) {
+    return waitForManagedOverlayShownResult(action);
+  }
+
   if (!isNativeSessionAction(action)) {
     if (!AUTORUN_REQUIRE_OVERLAY_ACTIVE || !isOverlayAction(action)) {
       await delay(durationMs);
@@ -413,6 +419,28 @@ async function waitForAutorunResult(action, durationMs, overlayActiveCount) {
   const elapsedMs = Date.now() - startedAt;
   recordEvent("overlay:native-session-pump", { action, pumps, durationMs: elapsedMs });
   return { ok: true, action, pumps, durationMs: elapsedMs };
+}
+
+async function waitForManagedOverlayShownResult(action) {
+  const shownWait = pendingManagedOverlayShownWait;
+  pendingManagedOverlayShownWait = undefined;
+  const startedAt = Date.now();
+
+  if (!shownWait) {
+    const error = { message: "No managed overlay shown wait was registered for autorun action." };
+    recordEvent("autorun:managed-overlay-shown-missing", { action, error });
+    return { ok: false, action, overlayShown: false, durationMs: 0, error };
+  }
+
+  const result = await shownWait;
+  return {
+    ok: result.ok === true,
+    action,
+    overlayShown: result.ok === true,
+    durationMs: Date.now() - startedAt,
+    ...(result.error ? { error: result.error } : {}),
+    ...(result.presenter ? { presenter: result.presenter } : {})
+  };
 }
 
 async function runAutorunAction(action) {
@@ -738,7 +766,8 @@ function openPresenterTargetAndWaitOverlay(overlay, target, context) {
     ...context,
     presenter: initialSnapshot
   });
-  observeManagedOverlayLifecycle(overlay, context);
+  const lifecycle = observeManagedOverlayLifecycle(overlay, context);
+  pendingManagedOverlayShownWait = lifecycle.shown;
 
   openAndWait
     .then((result) => {
@@ -985,7 +1014,8 @@ async function openPresenterCheckoutOverlay() {
       ...context,
       presenter: initialSnapshot
     });
-    observeManagedOverlayLifecycle(overlay, context);
+    const lifecycle = observeManagedOverlayLifecycle(overlay, context);
+    pendingManagedOverlayShownWait = lifecycle.shown;
     openAndWait
       .then((result) => {
         recordEvent("overlay:presenter-checkout-open-and-wait-complete", {
@@ -2019,7 +2049,7 @@ function observeManagedOverlayLifecycle(overlay, context) {
     presenter: overlay.snapshot()
   });
 
-  recordManagedOverlayWait(
+  const shown = recordManagedOverlayWait(
     "overlay:presenter-wait-shown",
     overlay.waitForOverlayShown({
       timeoutMs: MANAGED_OVERLAY_WAIT_TIMEOUT_MS,
@@ -2034,7 +2064,7 @@ function observeManagedOverlayLifecycle(overlay, context) {
       }
     }
   );
-  recordManagedOverlayWait(
+  const closed = recordManagedOverlayWait(
     "overlay:presenter-wait-closed",
     overlay.waitForOverlayClosed({
       timeoutMs: MANAGED_OVERLAY_PARK_TIMEOUT_MS,
@@ -2049,7 +2079,7 @@ function observeManagedOverlayLifecycle(overlay, context) {
       }
     }
   );
-  recordManagedOverlayWait(
+  const parked = recordManagedOverlayWait(
     "overlay:presenter-parked",
     overlay.parkWhenSteamOverlayCloses({
       timeoutMs: MANAGED_OVERLAY_PARK_TIMEOUT_MS,
@@ -2064,24 +2094,29 @@ function observeManagedOverlayLifecycle(overlay, context) {
       }
     }
   );
+
+  return { shown, closed, parked };
 }
 
 function recordManagedOverlayWait(type, promise, context, overlay, onDone) {
-  promise
+  return promise
     .then((presenter) => {
       recordEvent(type, {
         ...context,
         presenter
       });
+      return { ok: true, type, context, presenter };
     })
     .catch((error) => {
+      const serialized = serializeError(error);
       if (!shutdownComplete) {
         recordEvent(`${type}:error`, {
           ...context,
-          error: serializeError(error),
+          error: serialized,
           presenter: safeOverlaySnapshot(overlay)
         });
       }
+      return { ok: false, type, context, error: serialized, presenter: safeOverlaySnapshot(overlay) };
     })
     .finally(onDone);
 }
@@ -2166,6 +2201,21 @@ function isNativeSessionAction(action) {
     action === "presenter-shortcut" ||
     action === "presenter-achievement-progress" ||
     action === "presenter-achievement-unlock"
+  );
+}
+
+function isManagedOverlayShownWaitAction(action) {
+  return (
+    action === "presenter-dialog-auto-open-and-wait" ||
+    action === "presenter-store-open-and-wait" ||
+    action === "presenter-web-open-and-wait" ||
+    action === "presenter-friends-open-and-wait" ||
+    action === "presenter-profile-open-and-wait" ||
+    action === "presenter-players-open-and-wait" ||
+    action === "presenter-community-open-and-wait" ||
+    action === "presenter-stats-open-and-wait" ||
+    action === "presenter-achievements-open-and-wait" ||
+    action === "presenter-user-open-and-wait"
   );
 }
 
