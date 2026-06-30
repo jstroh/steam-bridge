@@ -871,6 +871,7 @@ function verifyLifecycleParking(caseId, entries, isPassive, failures) {
 
 function expectParkedPresenter(caseId, presenter, label, failures) {
   expectMacOverlayEnvironmentAvailable(caseId, presenter, label, failures);
+  expectMacosNeedsPresentPollingDisabled(caseId, presenter, label, failures);
   expectPresenterField(caseId, presenter, "closed", false, `native presenter closed ${label}`, failures);
   expectPresenterField(caseId, presenter, "attached", true, `native presenter attached ${label}`, failures);
   expectPresenterField(caseId, presenter, "nativeHostOpen", true, `native presenter host open ${label}`, failures);
@@ -886,6 +887,7 @@ function expectParkedPresenter(caseId, presenter, label, failures) {
 
 function expectActivePresenter(caseId, presenter, label, failures) {
   expectMacOverlayEnvironmentAvailable(caseId, presenter, label, failures);
+  expectMacosNeedsPresentPollingDisabled(caseId, presenter, label, failures);
   expectPresenterField(caseId, presenter, "closed", false, `native presenter closed ${label}`, failures);
   expectPresenterField(caseId, presenter, "attached", true, `native presenter attached ${label}`, failures);
   expectPresenterField(caseId, presenter, "nativeHostOpen", true, `native presenter host open ${label}`, failures);
@@ -901,6 +903,7 @@ function expectActivePresenter(caseId, presenter, label, failures) {
 
 function expectClosedWaitPresenter(caseId, presenter, label, failures) {
   expectMacOverlayEnvironmentAvailable(caseId, presenter, label, failures);
+  expectMacosNeedsPresentPollingDisabled(caseId, presenter, label, failures);
   expectPresenterField(caseId, presenter, "closed", false, `native presenter closed ${label}`, failures);
   expectPresenterField(caseId, presenter, "attached", true, `native presenter attached ${label}`, failures);
   expectPresenterField(caseId, presenter, "nativeHostOpen", true, `native presenter host open ${label}`, failures);
@@ -912,6 +915,7 @@ function expectClosedWaitPresenter(caseId, presenter, label, failures) {
 
 function expectPassiveNotificationPresenter(caseId, presenter, label, failures) {
   expectMacOverlayEnvironmentAvailable(caseId, presenter, label, failures);
+  expectMacosNeedsPresentPollingDisabled(caseId, presenter, label, failures);
   expectPresenterField(caseId, presenter, "closed", false, `native presenter closed ${label}`, failures);
   expectPresenterField(caseId, presenter, "attached", true, `native presenter attached ${label}`, failures);
   expectPresenterField(caseId, presenter, "nativeHostOpen", true, `native presenter host open ${label}`, failures);
@@ -956,6 +960,7 @@ function verifyExpectedActionError(caseId, action, expected, failures) {
 }
 
 function verifyNativeHostUnavailablePresenter(caseId, presenter, expectedReason, failures) {
+  expectMacosNeedsPresentPollingDisabled(caseId, presenter, "while host unavailable", failures);
   expectPresenterField(
     caseId,
     presenter,
@@ -1083,6 +1088,31 @@ function expectMacOverlayEnvironmentAvailable(caseId, presenter, label, failures
     environment.displayAsleep === false &&
     presenter.nativeHostUnavailableReason == null
   );
+}
+
+function expectMacosNeedsPresentPollingDisabled(caseId, presenter, label, failures) {
+  const values = [];
+  if (Object.prototype.hasOwnProperty.call(presenter, "overlayNeedsPresentPollingEnabled")) {
+    values.push({ source: "presenter", value: presenter.overlayNeedsPresentPollingEnabled });
+  }
+  const diagnostics = objectOrEmpty(presenter.diagnostics);
+  if (Object.prototype.hasOwnProperty.call(diagnostics, "overlayNeedsPresentPollingEnabled")) {
+    values.push({ source: "presenter diagnostics", value: diagnostics.overlayNeedsPresentPollingEnabled });
+  }
+  for (const entry of values) {
+    expect(
+      entry.value === false,
+      `${caseId}: macOS needs-present polling disabled in ${entry.source} ${label}`,
+      failures
+    );
+  }
+  if (values.some((entry) => entry.value === false)) {
+    expect(
+      presenter.overlayNeedsPresent !== true,
+      `${caseId}: native presenter overlay needs present stays false while macOS polling is disabled ${label}`,
+      failures
+    );
+  }
 }
 
 function expectPresenterField(caseId, presenter, key, expected, label, failures) {
@@ -1272,7 +1302,7 @@ function createSelfTestFixture(root) {
     {
       caseId: "02-passive-toast",
       action: "presenter-achievement-progress",
-      resultPresenter: passiveNotificationNeedsPresentPresenterFixture(3),
+      resultPresenter: passiveNotificationPresenterFixture(3),
       lifecycle: [
         { type: "event:achievement:progress", payload: { indicated: true, presenter: parkedPresenterFixture(2) } },
         { type: "event:callback:achievement-stored", payload: { achievement: "ACH_TEST" } }
@@ -1622,13 +1652,8 @@ function activePresenterFixture(pumpCount, backend) {
   };
 }
 
-function passiveNotificationNeedsPresentPresenterFixture(pumpCount) {
-  return {
-    ...parkedPresenterFixture(pumpCount),
-    transparent: false,
-    currentFps: 30,
-    overlayNeedsPresent: true
-  };
+function passiveNotificationPresenterFixture(pumpCount) {
+  return parkedPresenterFixture(pumpCount);
 }
 
 function parkedPresenterFixture(pumpCount, backend = "macos-metal") {
@@ -1655,6 +1680,7 @@ function parkedPresenterFixture(pumpCount, backend = "macos-metal") {
     overlayActive: false,
     overlayWasActive: false,
     overlayNeedsPresent: false,
+    overlayNeedsPresentPollingEnabled: false,
     electronOverlay: {
       presenterMode: "persistent",
       closeWithWindow: true,
@@ -1712,6 +1738,7 @@ function nativeHostUnavailablePresenterFixture(reason, macOverlayEnvironmentOver
     overlayActive: false,
     overlayWasActive: false,
     overlayNeedsPresent: false,
+    overlayNeedsPresentPollingEnabled: false,
     electronOverlay: {
       presenterMode: "persistent",
       closeWithWindow: true,

@@ -1558,6 +1558,7 @@ export interface OverlayDiagnostics {
   appId: number;
   overlayEnabled: boolean;
   overlayNeedsPresent: boolean;
+  overlayNeedsPresentPollingEnabled: boolean;
   steamDeck: boolean;
   bigPicture: boolean;
   platform: NodeJS.Platform;
@@ -1666,6 +1667,7 @@ export interface NativeOverlayPresenterSnapshot {
   overlayActive: boolean;
   overlayWasActive: boolean;
   overlayNeedsPresent: boolean;
+  overlayNeedsPresentPollingEnabled: boolean;
   lastOverlayEvent?: GameOverlayActivated;
   lastPumpAt?: number;
   lastPollAt?: number;
@@ -7107,6 +7109,10 @@ export function overlayNeedsPresent(): boolean {
   return native().overlayNeedsPresent();
 }
 
+export function isOverlayNeedsPresentPollingEnabled(): boolean {
+  return native().isOverlayNeedsPresentPollingEnabled();
+}
+
 export function steamStoreAppUrl(appId: number = getAppId()): string {
   return `${STEAM_STORE_BASE_URL}/app/${normalizeSteamAppId(appId)}/`;
 }
@@ -7801,6 +7807,8 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
       overlayActive,
       overlayWasActive,
       overlayNeedsPresent,
+      overlayNeedsPresentPollingEnabled:
+        lastDiagnostics?.overlayNeedsPresentPollingEnabled ?? safeBoolean(() => isOverlayNeedsPresentPollingEnabled()),
       lastOverlayEvent,
       lastPumpAt,
       lastPollAt,
@@ -8997,6 +9005,8 @@ function createNativeOverlaySessionPresenter(options: NativeOverlaySessionOption
       const attached = nativeProbeOpen || nativeHostOpen;
       const overlayActive = closed ? false : (snapshot?.overlayActive ?? false);
       const overlayNeedsPresent = closed ? false : (diagnostics?.overlayNeedsPresent ?? false);
+      const overlayNeedsPresentPollingEnabled =
+        diagnostics?.overlayNeedsPresentPollingEnabled ?? safeBoolean(() => isOverlayNeedsPresentPollingEnabled());
       const active = attached && (overlayActive || overlayNeedsPresent);
       const fps = Math.round(1000 / pumpIntervalMs);
       const bounds = closed ? undefined : snapshot?.bounds;
@@ -9023,6 +9033,7 @@ function createNativeOverlaySessionPresenter(options: NativeOverlaySessionOption
         overlayActive,
         overlayWasActive: snapshot?.overlayWasActive ?? false,
         overlayNeedsPresent,
+        overlayNeedsPresentPollingEnabled,
         lastOverlayEvent: snapshot?.lastOverlayEvent,
         lastPumpAt: snapshot?.lastPumpAt,
         lastError: snapshot?.lastError ?? lastError,
@@ -15271,6 +15282,7 @@ export const utils = {
   isSteamInBigPictureMode,
   isOverlayEnabled,
   overlayNeedsPresent,
+  isOverlayNeedsPresentPollingEnabled,
   getOverlayDiagnostics,
   isSteamRunningInVR(): boolean {
     return native().utilsIsSteamRunningInVr();
@@ -20937,6 +20949,7 @@ function normalizeOverlayDiagnostics(diagnostics: NativeOverlayDiagnostics): Ove
     appId: diagnostics.appId,
     overlayEnabled: diagnostics.overlayEnabled,
     overlayNeedsPresent: diagnostics.overlayNeedsPresent,
+    overlayNeedsPresentPollingEnabled: diagnostics.overlayNeedsPresentPollingEnabled,
     steamDeck: diagnostics.steamDeck,
     bigPicture: diagnostics.bigPicture,
     platform: process.platform,
@@ -22162,6 +22175,7 @@ const defaultExport = {
   isSteamInBigPictureMode,
   isOverlayEnabled,
   overlayNeedsPresent,
+  isOverlayNeedsPresentPollingEnabled,
   getOverlayDiagnostics,
   getSteamworksEnum,
   getSteamworksEnumValue,

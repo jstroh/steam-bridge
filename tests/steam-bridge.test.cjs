@@ -613,6 +613,9 @@ function createFakeNative(overrides = {}) {
     overlayNeedsPresent() {
       return false;
     },
+    isOverlayNeedsPresentPollingEnabled() {
+      return true;
+    },
     getOverlayDiagnostics() {
       return {
         steamRunning: true,
@@ -620,6 +623,7 @@ function createFakeNative(overrides = {}) {
         appId: 480,
         overlayEnabled: true,
         overlayNeedsPresent: false,
+        overlayNeedsPresentPollingEnabled: true,
         steamDeck: false,
         bigPicture: false
       };
@@ -2485,12 +2489,14 @@ test("Steam IDs and diagnostics are normalized for JavaScript callers", (t) => {
     appId: 480,
     overlayEnabled: true,
     overlayNeedsPresent: false,
+    overlayNeedsPresentPollingEnabled: true,
     steamDeck: false,
     bigPicture: false,
     platform: process.platform,
     arch: process.arch,
     pid: process.pid
   });
+  assert.equal(steam.utils.isOverlayNeedsPresentPollingEnabled(), true);
 });
 
 test("localplayer facade covers profile and rich presence helpers", (t) => {
@@ -7754,6 +7760,7 @@ test("electron steam overlay shortcut still opens during passive notification pr
         appId: 480,
         overlayEnabled: true,
         overlayNeedsPresent,
+        overlayNeedsPresentPollingEnabled: true,
         steamDeck: false,
         bigPicture: false
       };
@@ -8067,6 +8074,7 @@ test("electron steam overlay openAndWait waits for overlay readiness before acti
         appId: 480,
         overlayEnabled,
         overlayNeedsPresent: false,
+        overlayNeedsPresentPollingEnabled: true,
         steamDeck: false,
         bigPicture: false
       };
@@ -9345,6 +9353,7 @@ test("native overlay presenter primes passive notifications without a blind fram
         appId: 480,
         overlayEnabled: true,
         overlayNeedsPresent,
+        overlayNeedsPresentPollingEnabled: true,
         steamDeck: false,
         bigPicture: false
       };
@@ -9428,6 +9437,7 @@ test("native overlay presenter keeps passive input while overlay needs present",
         appId: 480,
         overlayEnabled: true,
         overlayNeedsPresent,
+        overlayNeedsPresentPollingEnabled: true,
         steamDeck: false,
         bigPicture: false
       };
@@ -9500,6 +9510,7 @@ test("native overlay presenter parks modal overlays after inactive callbacks", a
         appId: 480,
         overlayEnabled: true,
         overlayNeedsPresent,
+        overlayNeedsPresentPollingEnabled: true,
         steamDeck: false,
         bigPicture: false
       };

@@ -75,6 +75,7 @@ pub struct OverlayDiagnostics {
     pub app_id: u32,
     pub overlay_enabled: bool,
     pub overlay_needs_present: bool,
+    pub overlay_needs_present_polling_enabled: bool,
     pub steam_deck: bool,
     pub big_picture: bool,
 }
@@ -336,6 +337,11 @@ pub fn overlay_needs_present() -> Result<bool, Error> {
     Ok(overlay_needs_present_value(utils))
 }
 
+#[napi(js_name = "isOverlayNeedsPresentPollingEnabled")]
+pub fn is_overlay_needs_present_polling_enabled() -> bool {
+    overlay_needs_present_polling_enabled()
+}
+
 #[napi(js_name = "getOverlayDiagnostics")]
 pub fn get_overlay_diagnostics() -> Result<OverlayDiagnostics, Error> {
     let utils = steam_utils()?;
@@ -346,6 +352,7 @@ pub fn get_overlay_diagnostics() -> Result<OverlayDiagnostics, Error> {
         app_id: unsafe { sys::SteamAPI_ISteamUtils_GetAppID(utils) },
         overlay_enabled: unsafe { sys::SteamAPI_ISteamUtils_IsOverlayEnabled(utils) },
         overlay_needs_present: overlay_needs_present_value(utils),
+        overlay_needs_present_polling_enabled: overlay_needs_present_polling_enabled(),
         steam_deck: unsafe { sys::SteamAPI_ISteamUtils_IsSteamRunningOnSteamDeck(utils) },
         big_picture: unsafe { sys::SteamAPI_ISteamUtils_IsSteamInBigPictureMode(utils) },
     })
@@ -356,6 +363,10 @@ fn overlay_needs_present_value(utils: *mut sys::ISteamUtils) -> bool {
         return false;
     }
     unsafe { sys::SteamAPI_ISteamUtils_BOverlayNeedsPresent(utils) }
+}
+
+fn overlay_needs_present_polling_enabled() -> bool {
+    !overlay_needs_present_disabled()
 }
 
 fn overlay_needs_present_disabled() -> bool {

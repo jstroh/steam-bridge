@@ -101,6 +101,9 @@ if (options.requireSingleOverlayTarget) {
     expect(gameoverlayui[0].targetPid === processInfo.pid, "gameoverlayui targets the smoke app process");
   }
 }
+if (processInfo.platform === "darwin" && nativePresenter) {
+  expectMacosNeedsPresentPollingDisabled(nativePresenter, "native presenter");
+}
 if (options.requirePassivePresenter || options.requireIdlePresenter) {
   expect(Boolean(nativePresenter), "native presenter snapshot available");
   if (nativePresenter) {
@@ -213,6 +216,7 @@ console.log(
     `bigPicture=${readOkValue(steam.bigPicture)}`,
     `overlayEnabled=${readOkValue(steam.overlayEnabled)}`,
     `overlayNeedsPresent=${readOkValue(steam.overlayNeedsPresent)}`,
+    `overlayNeedsPresentPollingEnabled=${readOkValue(steam.overlayNeedsPresentPollingEnabled)}`,
     `overlayActivated=${overlayActivated}`,
     `steamLaunch=${launch.steamLaunch}`,
     `overlayInjection=${launch.overlayInjection}`,
@@ -499,6 +503,27 @@ function expectMacOverlayEnvironmentAvailable(presenter, label) {
   expect(environment.screenLocked === false, `${label} screen is unlocked`);
   expect(environment.displayAsleep === false, `${label} display is awake`);
   expect(presenter.nativeHostUnavailableReason == null, `${label} native host unavailable reason is absent`);
+}
+
+function expectMacosNeedsPresentPollingDisabled(presenter, label) {
+  const values = [];
+  if (Object.prototype.hasOwnProperty.call(presenter, "overlayNeedsPresentPollingEnabled")) {
+    values.push({ source: "presenter", value: presenter.overlayNeedsPresentPollingEnabled });
+  }
+  const diagnostics =
+    presenter && presenter.diagnostics && typeof presenter.diagnostics === "object" ? presenter.diagnostics : {};
+  if (Object.prototype.hasOwnProperty.call(diagnostics, "overlayNeedsPresentPollingEnabled")) {
+    values.push({ source: "presenter diagnostics", value: diagnostics.overlayNeedsPresentPollingEnabled });
+  }
+  for (const entry of values) {
+    expect(entry.value === false, `macOS needs-present polling disabled in ${entry.source} ${label}`);
+  }
+  if (values.some((entry) => entry.value === false)) {
+    expect(
+      presenter.overlayNeedsPresent !== true,
+      `native presenter overlay does not need present while macOS polling is disabled ${label}`
+    );
+  }
 }
 
 function findManagedOverlayDiagnostics(presenters) {

@@ -239,6 +239,9 @@ being opened/active. On macOS, Steam Bridge disables the
 `BOverlayNeedsPresent()` poll by default because Steam's injected renderer can
 crash inside that call even on the Metal presenter path; macOS presentation is
 driven by explicit overlay opens and Steam overlay activation callbacks instead.
+`client.utils.getOverlayDiagnostics()` reports
+`overlayNeedsPresentPollingEnabled=false` on that default path so logs can
+distinguish a disabled poll from a safe poll that simply returned false.
 Set `STEAM_BRIDGE_ENABLE_OVERLAY_NEEDS_PRESENT=1` only for macOS diagnostics
 where that crash risk is acceptable. Set
 `STEAM_BRIDGE_DISABLE_OVERLAY_NEEDS_PRESENT=1` for the same escape hatch on
@@ -368,7 +371,8 @@ normally. On platforms with safe needs-present polling, the helpers pump only
 when Steam reports `overlayNeedsPresent`; use
 `steamOverlay.prepareForNotification()` only for lower-level or custom Steam API
 calls. On macOS, presenter snapshots keep `overlayNeedsPresent=false` by default
-because Steam Bridge avoids the crash-prone Steam polling call there. On
+because Steam Bridge avoids the crash-prone Steam polling call there, and
+`overlayNeedsPresentPollingEnabled=false` records that policy. On
 Linux/X11, fully idle mode makes the host transparent and click-through;
 `overlayNeedsPresent` can make it visible while leaving input click-through for
 passive notifications; opening or active overlay mode restores both opacity and

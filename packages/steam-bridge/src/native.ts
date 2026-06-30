@@ -120,6 +120,7 @@ export interface NativeOverlayDiagnostics {
   appId: number;
   overlayEnabled: boolean;
   overlayNeedsPresent: boolean;
+  overlayNeedsPresentPollingEnabled: boolean;
   steamDeck: boolean;
   bigPicture: boolean;
 }
@@ -1659,6 +1660,7 @@ export interface NativeBinding {
   isSteamInBigPictureMode(): boolean;
   isOverlayEnabled(): boolean;
   overlayNeedsPresent(): boolean;
+  isOverlayNeedsPresentPollingEnabled(): boolean;
   getOverlayDiagnostics(): NativeOverlayDiagnostics;
   utilsGetServerRealTime(): number;
   utilsGetSecondsSinceAppActive(): number;

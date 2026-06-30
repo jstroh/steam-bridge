@@ -1809,6 +1809,7 @@ function snapshot() {
       bigPicture: readValue(() => client.utils.isSteamInBigPictureMode()),
       overlayEnabled: readValue(() => client.utils.isOverlayEnabled()),
       overlayNeedsPresent: readValue(() => client.utils.overlayNeedsPresent()),
+      overlayNeedsPresentPollingEnabled: readValue(() => client.utils.isOverlayNeedsPresentPollingEnabled()),
       overlayDiagnostics: readValue(() => client.utils.getOverlayDiagnostics()),
       uiLanguage: readValue(() => client.utils.getSteamUILanguage()),
       universe: readValue(() => client.utils.getConnectedUniverse()),

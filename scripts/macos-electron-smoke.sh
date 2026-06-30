@@ -1545,6 +1545,7 @@ function presenterPayload(entry) {
 
 function expectActivePresenter(presenter, label) {
   expectMacOverlayEnvironmentAvailable(presenter, label);
+  expectMacosNeedsPresentPollingDisabled(presenter, label);
   expectPresenterField(presenter, "closed", false, `native presenter closed ${label}`);
   expectPresenterField(presenter, "attached", true, `native presenter attached ${label}`);
   expectPresenterField(presenter, "nativeHostOpen", true, `native presenter host open ${label}`);
@@ -1571,6 +1572,26 @@ function expectMacOverlayEnvironmentAvailable(presenter, label) {
   }
   if (presenter.nativeHostUnavailableReason != null) {
     failures.push(`${label} native host unavailable reason expected none, got ${format(presenter.nativeHostUnavailableReason)}`);
+  }
+}
+
+function expectMacosNeedsPresentPollingDisabled(presenter, label) {
+  const values = [];
+  if (presenter && Object.prototype.hasOwnProperty.call(presenter, "overlayNeedsPresentPollingEnabled")) {
+    values.push({ source: "presenter", value: presenter.overlayNeedsPresentPollingEnabled });
+  }
+  const diagnostics =
+    presenter && presenter.diagnostics && typeof presenter.diagnostics === "object" ? presenter.diagnostics : {};
+  if (Object.prototype.hasOwnProperty.call(diagnostics, "overlayNeedsPresentPollingEnabled")) {
+    values.push({ source: "presenter diagnostics", value: diagnostics.overlayNeedsPresentPollingEnabled });
+  }
+  for (const entry of values) {
+    if (entry.value !== false) {
+      failures.push(`macOS needs-present polling disabled in ${entry.source} ${label} expected false, got ${format(entry.value)}`);
+    }
+  }
+  if (values.some((entry) => entry.value === false) && presenter.overlayNeedsPresent === true) {
+    failures.push(`native presenter overlay needs present stays false while macOS polling is disabled ${label}`);
   }
 }
 
@@ -1973,6 +1994,7 @@ function verifyMicroTxnCallbackPresenterSnapshots(loadedEntries) {
 
 function expectMicroTxnCallbackPresenter(presenter, label) {
   expectMacOverlayEnvironmentAvailable(presenter, label);
+  expectMacosNeedsPresentPollingDisabled(presenter, label);
   expectPresenterField(presenter, "closed", false, `native presenter closed ${label}`);
   expectPresenterField(presenter, "attached", true, `native presenter attached ${label}`);
   expectPresenterField(presenter, "nativeHostOpen", true, `native presenter host open ${label}`);
@@ -1999,6 +2021,7 @@ function lastPresenter(items) {
 
 function expectParkedPresenter(presenter, label) {
   expectMacOverlayEnvironmentAvailable(presenter, label);
+  expectMacosNeedsPresentPollingDisabled(presenter, label);
   expectPresenterField(presenter, "closed", false, `native presenter closed ${label}`);
   expectPresenterField(presenter, "attached", true, `native presenter attached ${label}`);
   expectPresenterField(presenter, "nativeHostOpen", true, `native presenter host open ${label}`);
@@ -2014,6 +2037,7 @@ function expectParkedPresenter(presenter, label) {
 
 function expectActivePresenter(presenter, label) {
   expectMacOverlayEnvironmentAvailable(presenter, label);
+  expectMacosNeedsPresentPollingDisabled(presenter, label);
   expectPresenterField(presenter, "closed", false, `native presenter closed ${label}`);
   expectPresenterField(presenter, "attached", true, `native presenter attached ${label}`);
   expectPresenterField(presenter, "nativeHostOpen", true, `native presenter host open ${label}`);
@@ -2028,6 +2052,7 @@ function expectActivePresenter(presenter, label) {
 
 function expectClosedWaitPresenter(presenter, label) {
   expectMacOverlayEnvironmentAvailable(presenter, label);
+  expectMacosNeedsPresentPollingDisabled(presenter, label);
   expectPresenterField(presenter, "closed", false, `native presenter closed ${label}`);
   expectPresenterField(presenter, "attached", true, `native presenter attached ${label}`);
   expectPresenterField(presenter, "nativeHostOpen", true, `native presenter host open ${label}`);
@@ -2051,6 +2076,26 @@ function expectMacOverlayEnvironmentAvailable(presenter, label) {
   }
   if (presenter.nativeHostUnavailableReason != null) {
     failures.push(`${label} native host unavailable reason expected none, got ${format(presenter.nativeHostUnavailableReason)}`);
+  }
+}
+
+function expectMacosNeedsPresentPollingDisabled(presenter, label) {
+  const values = [];
+  if (presenter && Object.prototype.hasOwnProperty.call(presenter, "overlayNeedsPresentPollingEnabled")) {
+    values.push({ source: "presenter", value: presenter.overlayNeedsPresentPollingEnabled });
+  }
+  const diagnostics =
+    presenter && presenter.diagnostics && typeof presenter.diagnostics === "object" ? presenter.diagnostics : {};
+  if (Object.prototype.hasOwnProperty.call(diagnostics, "overlayNeedsPresentPollingEnabled")) {
+    values.push({ source: "presenter diagnostics", value: diagnostics.overlayNeedsPresentPollingEnabled });
+  }
+  for (const entry of values) {
+    if (entry.value !== false) {
+      failures.push(`macOS needs-present polling disabled in ${entry.source} ${label} expected false, got ${format(entry.value)}`);
+    }
+  }
+  if (values.some((entry) => entry.value === false) && presenter.overlayNeedsPresent === true) {
+    failures.push(`native presenter overlay needs present stays false while macOS polling is disabled ${label}`);
   }
 }
 
@@ -2140,7 +2185,7 @@ run_self_test() {
   result_file="$temp_result"
   diagnostic_dir="$result_file.diagnostics"
   cat >"$result_file" <<'EOF'
-STEAM_BRIDGE_SMOKE_RESULT {"ok":true,"action":{"ok":true,"action":"presenter-web"},"snapshot":{"app":{"appId":480,"shortcutTarget":"friends"},"process":{"pid":4242,"platform":"darwin","arch":"arm64"},"launch":{"steamLaunch":true,"overlayInjection":true},"crashDiagnostics":{"available":true,"ok":true,"crashDumps":[],"fatalLifecycleEvents":[]},"overlay":{"nativePresenter":{"ok":true,"value":{"backend":"macos-metal","attached":true,"nativeHostOpen":true,"macOverlayEnvironment":{"screenLocked":false,"displayAsleep":false},"mode":"passive","clickThrough":true,"focusable":false,"transparent":true,"overlayActive":false,"overlayNeedsPresent":false,"idleFps":0,"currentFps":0,"electronOverlay":{"presenterMode":"persistent","closeWithWindow":true,"autoPrepareForNotifications":true,"restoreFocusDelayMs":0,"activationBoostMs":0,"activeGraceMs":0,"overlayShortcut":{"enabled":true,"preventDefault":true,"targetType":"friends","target":{"type":"friends"}}}}}},"steam":{"initialized":true,"running":{"ok":true,"value":true},"appId":{"ok":true,"value":480},"steamDeck":{"ok":true,"value":false},"bigPicture":{"ok":true,"value":false},"overlayEnabled":{"ok":true,"value":true},"overlayNeedsPresent":{"ok":true,"value":false}},"events":[{"type":"overlay:presenter-open"},{"type":"callback:overlay-activated","payload":{"active":true}}]}}
+STEAM_BRIDGE_SMOKE_RESULT {"ok":true,"action":{"ok":true,"action":"presenter-web"},"snapshot":{"app":{"appId":480,"shortcutTarget":"friends"},"process":{"pid":4242,"platform":"darwin","arch":"arm64"},"launch":{"steamLaunch":true,"overlayInjection":true},"crashDiagnostics":{"available":true,"ok":true,"crashDumps":[],"fatalLifecycleEvents":[]},"overlay":{"nativePresenter":{"ok":true,"value":{"backend":"macos-metal","attached":true,"nativeHostOpen":true,"macOverlayEnvironment":{"screenLocked":false,"displayAsleep":false},"mode":"passive","clickThrough":true,"focusable":false,"transparent":true,"overlayActive":false,"overlayNeedsPresent":false,"overlayNeedsPresentPollingEnabled":false,"idleFps":0,"currentFps":0,"electronOverlay":{"presenterMode":"persistent","closeWithWindow":true,"autoPrepareForNotifications":true,"restoreFocusDelayMs":0,"activationBoostMs":0,"activeGraceMs":0,"overlayShortcut":{"enabled":true,"preventDefault":true,"targetType":"friends","target":{"type":"friends"}}}}}},"steam":{"initialized":true,"running":{"ok":true,"value":true},"appId":{"ok":true,"value":480},"steamDeck":{"ok":true,"value":false},"bigPicture":{"ok":true,"value":false},"overlayEnabled":{"ok":true,"value":true},"overlayNeedsPresent":{"ok":true,"value":false},"overlayNeedsPresentPollingEnabled":{"ok":true,"value":false}},"events":[{"type":"overlay:presenter-open"},{"type":"callback:overlay-activated","payload":{"active":true}}]}}
 EOF
   mkdir -p "$diagnostic_dir/crash-dumps"
   if [ "$(read_macos_smoke_result_pid)" != "4242" ]; then
@@ -2149,13 +2194,13 @@ EOF
   fi
   cat >"$diagnostic_dir/lifecycle.jsonl" <<'EOF'
 {"type":"event:callback:overlay-activated","payload":{"active":true}}
-{"type":"event:overlay:presenter-wait-shown","payload":{"presenter":{"closed":false,"attached":true,"nativeHostOpen":true,"macOverlayEnvironment":{"screenLocked":false,"displayAsleep":false},"mode":"active","clickThrough":false,"focusable":false,"transparent":false,"overlayActive":true,"idleFps":0,"currentFps":30,"overlayNeedsPresent":false,"pumpCount":5}}}
+{"type":"event:overlay:presenter-wait-shown","payload":{"presenter":{"closed":false,"attached":true,"nativeHostOpen":true,"macOverlayEnvironment":{"screenLocked":false,"displayAsleep":false},"mode":"active","clickThrough":false,"focusable":false,"transparent":false,"overlayActive":true,"idleFps":0,"currentFps":30,"overlayNeedsPresent":false,"overlayNeedsPresentPollingEnabled":false,"pumpCount":5}}}
 {"type":"event:callback:overlay-activated","payload":{"active":false}}
-{"type":"event:overlay:presenter-wait-closed","payload":{"presenter":{"closed":false,"attached":true,"nativeHostOpen":true,"macOverlayEnvironment":{"screenLocked":false,"displayAsleep":false},"mode":"passive","clickThrough":false,"focusable":false,"transparent":false,"overlayActive":false,"idleFps":0,"currentFps":30,"overlayNeedsPresent":false,"pumpCount":10}}}
-{"type":"event:overlay:presenter-after-close","payload":{"presenter":{"closed":false,"attached":true,"nativeHostOpen":true,"macOverlayEnvironment":{"screenLocked":false,"displayAsleep":false},"mode":"passive","clickThrough":true,"focusable":false,"transparent":true,"overlayActive":false,"idleFps":0,"currentFps":0,"overlayNeedsPresent":false,"pumpCount":10}}}
-{"type":"event:overlay:presenter-parked","payload":{"presenter":{"closed":false,"attached":true,"nativeHostOpen":true,"macOverlayEnvironment":{"screenLocked":false,"displayAsleep":false},"mode":"passive","clickThrough":true,"focusable":false,"transparent":true,"overlayActive":false,"idleFps":0,"currentFps":0,"overlayNeedsPresent":false,"pumpCount":10}}}
-{"type":"event:overlay:presenter-open-and-wait-complete","payload":{"shown":{"closed":false,"attached":true,"nativeHostOpen":true,"macOverlayEnvironment":{"screenLocked":false,"displayAsleep":false},"mode":"active","clickThrough":false,"focusable":false,"transparent":false,"overlayActive":true,"idleFps":0,"currentFps":30,"overlayNeedsPresent":false,"pumpCount":5},"parked":{"closed":false,"attached":true,"nativeHostOpen":true,"macOverlayEnvironment":{"screenLocked":false,"displayAsleep":false},"mode":"passive","clickThrough":true,"focusable":false,"transparent":true,"overlayActive":false,"idleFps":0,"currentFps":0,"overlayNeedsPresent":false,"pumpCount":10}}}
-{"type":"event:overlay:presenter-after-close-stable","payload":{"presenter":{"closed":false,"attached":true,"nativeHostOpen":true,"macOverlayEnvironment":{"screenLocked":false,"displayAsleep":false},"mode":"passive","clickThrough":true,"focusable":false,"transparent":true,"overlayActive":false,"idleFps":0,"currentFps":0,"overlayNeedsPresent":false,"pumpCount":10}}}
+{"type":"event:overlay:presenter-wait-closed","payload":{"presenter":{"closed":false,"attached":true,"nativeHostOpen":true,"macOverlayEnvironment":{"screenLocked":false,"displayAsleep":false},"mode":"passive","clickThrough":false,"focusable":false,"transparent":false,"overlayActive":false,"idleFps":0,"currentFps":30,"overlayNeedsPresent":false,"overlayNeedsPresentPollingEnabled":false,"pumpCount":10}}}
+{"type":"event:overlay:presenter-after-close","payload":{"presenter":{"closed":false,"attached":true,"nativeHostOpen":true,"macOverlayEnvironment":{"screenLocked":false,"displayAsleep":false},"mode":"passive","clickThrough":true,"focusable":false,"transparent":true,"overlayActive":false,"idleFps":0,"currentFps":0,"overlayNeedsPresent":false,"overlayNeedsPresentPollingEnabled":false,"pumpCount":10}}}
+{"type":"event:overlay:presenter-parked","payload":{"presenter":{"closed":false,"attached":true,"nativeHostOpen":true,"macOverlayEnvironment":{"screenLocked":false,"displayAsleep":false},"mode":"passive","clickThrough":true,"focusable":false,"transparent":true,"overlayActive":false,"idleFps":0,"currentFps":0,"overlayNeedsPresent":false,"overlayNeedsPresentPollingEnabled":false,"pumpCount":10}}}
+{"type":"event:overlay:presenter-open-and-wait-complete","payload":{"shown":{"closed":false,"attached":true,"nativeHostOpen":true,"macOverlayEnvironment":{"screenLocked":false,"displayAsleep":false},"mode":"active","clickThrough":false,"focusable":false,"transparent":false,"overlayActive":true,"idleFps":0,"currentFps":30,"overlayNeedsPresent":false,"overlayNeedsPresentPollingEnabled":false,"pumpCount":5},"parked":{"closed":false,"attached":true,"nativeHostOpen":true,"macOverlayEnvironment":{"screenLocked":false,"displayAsleep":false},"mode":"passive","clickThrough":true,"focusable":false,"transparent":true,"overlayActive":false,"idleFps":0,"currentFps":0,"overlayNeedsPresent":false,"overlayNeedsPresentPollingEnabled":false,"pumpCount":10}}}
+{"type":"event:overlay:presenter-after-close-stable","payload":{"presenter":{"closed":false,"attached":true,"nativeHostOpen":true,"macOverlayEnvironment":{"screenLocked":false,"displayAsleep":false},"mode":"passive","clickThrough":true,"focusable":false,"transparent":true,"overlayActive":false,"idleFps":0,"currentFps":0,"overlayNeedsPresent":false,"overlayNeedsPresentPollingEnabled":false,"pumpCount":10}}}
 EOF
 
   action="presenter-web"

@@ -332,8 +332,10 @@ click-through for `overlayNeedsPresent`, restores both opacity and input while
 opening or showing Steam UI, and parks transparent after Steam emits overlay
 inactive callbacks. On macOS, Steam Bridge reports `overlayNeedsPresent=false`
 by default because Steam's injected renderer can crash inside
-`BOverlayNeedsPresent()` even on the Metal presenter path; macOS presentation is
-driven by explicit overlay opens and Steam overlay activation callbacks instead.
+`BOverlayNeedsPresent()` even on the Metal presenter path; smoke snapshots also
+report `overlayNeedsPresentPollingEnabled=false` to prove the poll was disabled.
+macOS presentation is driven by explicit overlay opens and Steam overlay
+activation callbacks instead.
 The Electron overlay helper also syncs the native presenter
 on BrowserWindow move, resize, fullscreen, maximize, restore, and show events
 with one native pump per event. It isolates Chromium children by default so Deck
@@ -936,7 +938,9 @@ If Steam initializes but overlay does not show, compare those fields between
 Deck Game Mode and Deck Desktop Mode.
 
 In autorun output, inspect `snapshot.steam.overlayEnabled`,
-`snapshot.steam.overlayNeedsPresent`, `snapshot.steam.overlayDiagnostics`, and
+`snapshot.steam.overlayNeedsPresent`,
+`snapshot.steam.overlayNeedsPresentPollingEnabled`,
+`snapshot.steam.overlayDiagnostics`, and
 the final `snapshot.events` list. `snapshot.launch.steamLaunch` reports whether
 Steam launch environment markers were present. `snapshot.launch.overlayInjection`
 reports whether the process environment includes a Steam overlay hook marker such
@@ -946,7 +950,8 @@ as `gameoverlayrenderer`.
 the app to keep presenting frames for the overlay. The smoke verifier treats an
 active overlay callback as stronger evidence than the raw present-needed flag.
 On macOS, Steam Bridge intentionally reports `overlayNeedsPresent=false` by
-default instead of calling Steam's crash-prone needs-present API.
+default instead of calling Steam's crash-prone needs-present API, and
+`overlayNeedsPresentPollingEnabled=false` is the explicit proof of that policy.
 
 For Steam Deck Game Mode or gamescope checks, the verifier can assert the Deck
 signals:

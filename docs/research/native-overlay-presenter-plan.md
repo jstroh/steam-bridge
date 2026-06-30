@@ -955,6 +955,7 @@ Presenter diagnostics should be machine-readable:
   lastPumpAt?: number;
   overlayActive: boolean;
   overlayNeedsPresent: boolean;
+  overlayNeedsPresentPollingEnabled: boolean;
   lastOverlayEvent?: unknown;
   lastError?: unknown;
 }
@@ -964,7 +965,12 @@ Keep the current `getOverlayDiagnostics()` fields and add presenter diagnostics
 beside them instead of replacing them. Snapshots now include the selected
 `backend` (`x11-glx`, `macos-metal`, `macos-opengl`, or `none`) so Deck,
 Linux, macOS, and fallback artifacts can assert which native host path is in
-use without scraping logs. Snapshots also include `bounds` when Electron's
+use without scraping logs. On macOS, snapshots and
+`getOverlayDiagnostics()` should report
+`overlayNeedsPresentPollingEnabled=false` by default so artifacts prove Steam
+Bridge avoided the crash-prone `BOverlayNeedsPresent()` SDK call instead of
+merely observing `overlayNeedsPresent=false`. Snapshots also include `bounds`
+when Electron's
 `BrowserWindow.getBounds()` or a lower-level bounds provider is available, so
 Deck/Linux/macOS artifacts can verify presenter alignment without scraping logs.
 

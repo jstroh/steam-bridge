@@ -342,8 +342,12 @@ Steam API initialization and overlay readiness are different states. A
 while the overlay still cannot hook the process.
 
 Use `client.utils.getOverlayDiagnostics()` to log `steamRunning`, `appId`,
-`overlayEnabled`, `overlayNeedsPresent`, `steamDeck`, `bigPicture`, and
-`steamInstallPath`.
+`overlayEnabled`, `overlayNeedsPresent`,
+`overlayNeedsPresentPollingEnabled`, `steamDeck`, `bigPicture`, and
+`steamInstallPath`. On macOS,
+`overlayNeedsPresentPollingEnabled=false` means Steam Bridge is avoiding
+Steam's crash-prone `BOverlayNeedsPresent()` call; `overlayNeedsPresent=false`
+alone is not enough to prove that.
 
 ## Verification
 

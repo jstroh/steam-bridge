@@ -613,7 +613,10 @@ purchase overlay support as complete.
 ## Practical Guidance
 
 1. Initialize Steam early in the main process.
-2. Log `client.utils.getOverlayDiagnostics()` during local testing.
+2. Log `client.utils.getOverlayDiagnostics()` during local testing. On macOS,
+   `overlayNeedsPresentPollingEnabled=false` is the explicit proof that Steam
+   Bridge avoided Steam's crash-prone `BOverlayNeedsPresent()` poll; do not rely
+   on `overlayNeedsPresent=false` alone for that conclusion.
 3. Use App ID `480` only for generic smoke tests; switch to your own App ID for
    app-specific achievements, stats, workshop, inventory, or economy flows.
 4. For Electron overlay debugging, test both the BrowserWindow path and the
