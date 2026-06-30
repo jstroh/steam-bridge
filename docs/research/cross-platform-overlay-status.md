@@ -237,7 +237,14 @@ Electron `43.0.0` package, a fresh locked/asleep unavailable matrix at
 `/tmp/steam-bridge-macos-overlay-matrix-unavailable-needs-present-20260630-120650`
 re-ran web open/wait, checkout-open, and checkout prepare-only with the same
 fail-fast/no-activation/zero-target evidence and no fresh `SteamBridgeSmoke` or
-attributed `MTLCompilerService` crash reports. A
+attributed `MTLCompilerService` crash reports. A later rebuilt locked/asleep
+matrix at
+`/tmp/steam-bridge-macos-overlay-matrix-unavailable-passive-toast-final-20260630-123114`
+expanded that suite to four cases by adding passive achievement-progress proof:
+the presenter stayed registered for automatic passive notification priming but
+remained hidden, unattached, host-closed, zero-FPS, `macos-screen-locked`,
+overlay-inactive, and produced no `gameoverlayui` target or fresh crash report.
+A
 live interactive macOS success rerun is still pending because the 2026-06-30
 attempt at
 `/tmp/steam-bridge-macos-overlay-matrix-core-checkout-prepare-metal-crash-20260630-114417`

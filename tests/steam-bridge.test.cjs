@@ -406,6 +406,7 @@ function passiveNotificationPresenterFixture() {
     transparent: true,
     overlayActive: false,
     overlayNeedsPresent: false,
+    overlayNeedsPresentPollingEnabled: false,
     idleFps: 0,
     currentFps: 0,
     electronOverlay: {
@@ -488,6 +489,7 @@ function nativeHostUnavailablePresenterFixture(reason = "macos-screen-locked", m
     transparent: true,
     overlayActive: false,
     overlayNeedsPresent: false,
+    overlayNeedsPresentPollingEnabled: false,
     idleFps: 0,
     currentFps: 0,
     macOverlayEnvironment,
@@ -1759,6 +1761,57 @@ test("smoke result verifier accepts passive notification evidence with lifecycle
   assert.match(verifier.stdout, /Electron smoke result verified/);
 });
 
+test("smoke result verifier accepts unavailable macOS passive notification evidence", (t) => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-passive-unavailable-verify-"));
+  t.after(() => fs.rmSync(tempDir, { recursive: true, force: true }));
+
+  const presenter = nativeHostUnavailablePresenterFixture("macos-screen-locked", {
+    screenLocked: true,
+    displayAsleep: true
+  });
+  const resultFile = path.join(tempDir, "smoke.log");
+  const diagnosticDir = path.join(tempDir, "diagnostics");
+  fs.mkdirSync(diagnosticDir, { recursive: true });
+  fs.writeFileSync(
+    resultFile,
+    `STEAM_BRIDGE_SMOKE_RESULT ${JSON.stringify(passiveNotificationResult(presenter))}\n`
+  );
+  fs.writeFileSync(
+    path.join(diagnosticDir, "lifecycle.jsonl"),
+    [
+      { type: "event:achievement:progress", payload: { indicated: true, presenter } },
+      { type: "event:callback:achievement-stored", payload: { achievement: "ACH_TRAVEL_FAR_SINGLE" } }
+    ]
+      .map((entry) => JSON.stringify(entry))
+      .join("\n")
+  );
+
+  const verifier = childProcess.spawnSync(
+    process.execPath,
+    [
+      path.join(repoRoot, "scripts", "verify-electron-smoke-result.cjs"),
+      "--file",
+      resultFile,
+      "--diagnostic-dir",
+      diagnosticDir,
+      "--app-id",
+      "480",
+      "--platform",
+      "darwin/arm64",
+      "--action",
+      "presenter-achievement-progress",
+      "--require-native-host-unavailable-reason",
+      "macos-screen-locked",
+      "--require-no-overlay-activation",
+      "--require-passive-notification"
+    ],
+    { encoding: "utf8" }
+  );
+
+  assert.equal(verifier.status, 0, verifier.stderr);
+  assert.match(verifier.stdout, /Electron smoke result verified/);
+});
+
 test("smoke result verifier rejects Darwin passive notification evidence without mac overlay environment", (t) => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-passive-verify-macenv-"));
   t.after(() => fs.rmSync(tempDir, { recursive: true, force: true }));
@@ -1803,6 +1856,54 @@ test("smoke result verifier rejects Darwin passive notification evidence without
 
   assert.notEqual(verifier.status, 0);
   assert.match(verifier.stderr, /mac overlay environment available/);
+});
+
+test("smoke result verifier rejects available passive evidence when unavailable is required", (t) => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-passive-unavailable-missing-"));
+  t.after(() => fs.rmSync(tempDir, { recursive: true, force: true }));
+
+  const presenter = passiveNotificationPresenterFixture();
+  const resultFile = path.join(tempDir, "smoke.log");
+  const diagnosticDir = path.join(tempDir, "diagnostics");
+  fs.mkdirSync(diagnosticDir, { recursive: true });
+  fs.writeFileSync(
+    resultFile,
+    `STEAM_BRIDGE_SMOKE_RESULT ${JSON.stringify(passiveNotificationResult(presenter))}\n`
+  );
+  fs.writeFileSync(
+    path.join(diagnosticDir, "lifecycle.jsonl"),
+    [
+      { type: "event:achievement:progress", payload: { indicated: true, presenter } },
+      { type: "event:callback:achievement-stored", payload: { achievement: "ACH_TRAVEL_FAR_SINGLE" } }
+    ]
+      .map((entry) => JSON.stringify(entry))
+      .join("\n")
+  );
+
+  const verifier = childProcess.spawnSync(
+    process.execPath,
+    [
+      path.join(repoRoot, "scripts", "verify-electron-smoke-result.cjs"),
+      "--file",
+      resultFile,
+      "--diagnostic-dir",
+      diagnosticDir,
+      "--app-id",
+      "480",
+      "--platform",
+      "darwin/arm64",
+      "--action",
+      "presenter-achievement-progress",
+      "--require-native-host-unavailable-reason",
+      "macos-screen-locked",
+      "--require-no-overlay-activation",
+      "--require-passive-notification"
+    ],
+    { encoding: "utf8" }
+  );
+
+  assert.notEqual(verifier.status, 0);
+  assert.match(verifier.stderr, /native host unavailable reason is macos-screen-locked/);
 });
 
 test("smoke result verifier rejects passive notification evidence without lifecycle callbacks", (t) => {

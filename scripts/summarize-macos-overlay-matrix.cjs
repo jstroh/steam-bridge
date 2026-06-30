@@ -429,7 +429,9 @@ function verifyCase(caseId, metadata, result, lifecycle, macosCrashReports, fail
       verifyNoOverlayActivation(caseId, resultEvents, lifecycleEntries, failures);
     }
   } else if (isPassive) {
-    verifyPassiveNotification(caseId, resultEvents, lifecycleEntries, nativePresenter, passiveConfig, failures);
+    verifyPassiveNotification(caseId, resultEvents, lifecycleEntries, nativePresenter, passiveConfig, failures, {
+      expectedNativeHostUnavailableReason
+    });
   } else if (checkoutPrepareOnly) {
     verifyNoOverlayActivation(caseId, resultEvents, lifecycleEntries, failures);
     expect(checkoutPrepared.ok, `${caseId}: checkout presenter prepared and released without opening overlay`, failures);
@@ -821,7 +823,7 @@ function isShortcutAction(actionName) {
   return actionName === "presenter-shortcut" || actionName === "presenter-shortcut-open-and-wait";
 }
 
-function verifyPassiveNotification(caseId, resultEvents, entries, presenter, config, failures) {
+function verifyPassiveNotification(caseId, resultEvents, entries, presenter, config, failures, options = {}) {
   expect(
     ![...resultEvents, ...entries].some(isOverlayActiveEvent),
     `${caseId}: passive notification did not activate modal overlay`,
@@ -846,6 +848,17 @@ function verifyPassiveNotification(caseId, resultEvents, entries, presenter, con
     .find(Boolean);
   const passivePresenter = eventPresenter || presenter;
   if (passivePresenter) {
+    if (options.expectedNativeHostUnavailableReason) {
+      if (passivePresenter.nativeHostUnavailableReason !== options.expectedNativeHostUnavailableReason) {
+        failures.push(
+          `${caseId}: passive notification native host unavailable reason expected ` +
+            `${options.expectedNativeHostUnavailableReason}, got ${formatValue(passivePresenter.nativeHostUnavailableReason)}`
+        );
+        return;
+      }
+      verifyNativeHostUnavailablePresenter(caseId, passivePresenter, options.expectedNativeHostUnavailableReason, failures);
+      return;
+    }
     expectPassiveNotificationPresenter(caseId, passivePresenter, "passive notification snapshot", failures);
   } else {
     failures.push(`${caseId}: passive notification presenter snapshot available`);
@@ -1032,6 +1045,7 @@ function verifyExpectedActionError(caseId, action, expected, failures) {
 
 function verifyNativeHostUnavailablePresenter(caseId, presenter, expectedReason, failures) {
   expectMacosNeedsPresentPollingDisabled(caseId, presenter, "while host unavailable", failures);
+  expectPresenterField(caseId, presenter, "closed", false, "native presenter closed while host unavailable", failures);
   expectPresenterField(
     caseId,
     presenter,
@@ -1044,8 +1058,10 @@ function verifyNativeHostUnavailablePresenter(caseId, presenter, expectedReason,
   expectPresenterField(caseId, presenter, "nativeHostOpen", false, "native presenter host open while unavailable", failures);
   expectPresenterField(caseId, presenter, "mode", "hidden", "native presenter mode while unavailable", failures);
   expectPresenterField(caseId, presenter, "clickThrough", true, "native presenter click-through while unavailable", failures);
+  expectPresenterField(caseId, presenter, "focusable", false, "native presenter focusable while unavailable", failures);
   expectPresenterField(caseId, presenter, "transparent", true, "native presenter transparent while unavailable", failures);
   expectPresenterField(caseId, presenter, "overlayActive", false, "native presenter overlay active while unavailable", failures);
+  expectPresenterField(caseId, presenter, "idleFps", 0, "native presenter idle FPS while unavailable", failures);
   expectPresenterField(caseId, presenter, "currentFps", 0, "native presenter current FPS while unavailable", failures);
   expectPresenterField(
     caseId,
@@ -1257,7 +1273,7 @@ function runSelfTest() {
   try {
     createSelfTestFixture(fixtureRoot);
     const summary = summarizeMatrixArtifacts(fixtureRoot);
-    assert.equal(summary.caseSummaries.length, 8, "summary self-test should include eight cases");
+    assert.equal(summary.caseSummaries.length, 9, "summary self-test should include nine cases");
     createPersistentSelfTestFixture(persistentFixtureRoot);
     const persistentSummary = summarizeMatrixArtifacts(persistentFixtureRoot);
     assert.equal(persistentSummary.caseSummaries.length, 2, "persistent summary self-test should include two cases");
@@ -1697,6 +1713,38 @@ function createSelfTestFixture(root) {
       requireNativeHostUnavailableReason: "macos-screen-locked",
       requireNoOverlayActivation: true,
       lifecycle: []
+    },
+    {
+      caseId: "08-passive-toast-unavailable",
+      action: "presenter-achievement-progress",
+      command: [
+        "--action",
+        "presenter-achievement-progress",
+        "--require-passive-notification",
+        "--require-native-host-unavailable-reason",
+        "macos-screen-locked",
+        "--require-no-overlay-activation"
+      ],
+      resultPresenter: nativeHostUnavailablePresenterFixture("macos-screen-locked", {
+        screenLocked: true,
+        displayAsleep: true
+      }),
+      overlayTargets: [],
+      requireNativeHostUnavailableReason: "macos-screen-locked",
+      requireNoOverlayActivation: true,
+      lifecycle: [
+        {
+          type: "event:achievement:progress",
+          payload: {
+            indicated: true,
+            presenter: nativeHostUnavailablePresenterFixture("macos-screen-locked", {
+              screenLocked: true,
+              displayAsleep: true
+            })
+          }
+        },
+        { type: "event:callback:achievement-stored", payload: { achievement: "ACH_TEST" } }
+      ]
     }
   ];
 

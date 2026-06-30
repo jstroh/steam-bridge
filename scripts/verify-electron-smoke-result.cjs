@@ -474,6 +474,42 @@ function presenterPayload(event) {
 
 function expectPassiveNotificationPresenter(presenter, label, managedOverlay) {
   expect(presenter.closed === false, `native presenter closed ${label}`);
+  if (
+    processInfo.platform === "darwin" &&
+    options.requireNativeHostUnavailableReason
+  ) {
+    const hasExpectedReason = presenter.nativeHostUnavailableReason === options.requireNativeHostUnavailableReason;
+    expect(
+      hasExpectedReason,
+      `${label} native host unavailable reason is ${options.requireNativeHostUnavailableReason}`
+    );
+    if (!hasExpectedReason) {
+      return;
+    }
+    expectMacosNeedsPresentPollingDisabled(presenter, label);
+    expect(presenter.attached === false, `native presenter is not attached ${label}`);
+    expect(presenter.nativeHostOpen === false, `native presenter host is closed ${label}`);
+    expect(presenter.mode === "hidden", `native presenter mode ${label}`);
+    expect(presenter.clickThrough === true, `native presenter click-through ${label}`);
+    expect(presenter.focusable === false, `native presenter focusable ${label}`);
+    expect(presenter.transparent === true, `native presenter transparent ${label}`);
+    expect(presenter.overlayActive === false, `native presenter overlay inactive ${label}`);
+    expect(presenter.idleFps === 0, `native presenter idle FPS ${label}`);
+    expect(presenter.currentFps === 0, `native presenter current FPS ${label}`);
+    expect(presenter.overlayNeedsPresent === false, `native presenter overlay does not need present ${label}`);
+    expect(
+      macOverlayEnvironmentMatchesReason(presenter.macOverlayEnvironment, options.requireNativeHostUnavailableReason),
+      `${label} mac overlay environment matches ${options.requireNativeHostUnavailableReason}`
+    );
+    expect(Boolean(managedOverlay), `managed Electron overlay diagnostics available ${label}`);
+    if (managedOverlay) {
+      expect(
+        managedOverlay.autoPrepareForNotifications === true,
+        `managed Electron overlay automatic notification priming enabled ${label}`
+      );
+    }
+    return;
+  }
   expect(presenter.attached === true, `native presenter attached ${label}`);
   expect(presenter.nativeHostOpen === true, `native presenter host open ${label}`);
   if (processInfo.platform === "darwin") {

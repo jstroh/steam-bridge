@@ -698,7 +698,10 @@ Live success runs preflight `getMacOverlayEnvironment()` and stop before case
 launch while the Mac is locked or the display is asleep; capture those states
 with `--suite unavailable`, which expects managed web, checkout-open, and
 checkout-prepare helpers to throw `STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE` before
-Steam overlay activation and records the matching presenter
+Steam overlay activation. The unavailable suite also exercises passive
+achievement-progress notifications, requiring the presenter to stay registered
+for automatic notification priming without attaching or opening the native host.
+All unavailable cases record the matching presenter
 `nativeHostUnavailableReason`. Locked macOS sessions can also report the display
 asleep; `macos-screen-locked` takes
 precedence, and unavailable captures do not require `overlayEnabled=true`

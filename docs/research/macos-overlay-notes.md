@@ -633,6 +633,17 @@ Verified:
   `nativeHostUnavailable=macos-screen-locked`, no Steam overlay activation, zero
   `gameoverlayui` targets, zero managed overlay timing, and no fresh
   `SteamBridgeSmoke` or attributed `MTLCompilerService` crash reports.
+- A rebuilt locked/asleep unavailable macOS matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-unavailable-passive-toast-final-20260630-123114`
+  repackaged the Electron `43.0.0` smoke app so the packaged helper contained
+  the passive-unavailable verifier changes, reused the stable Steam shortcut
+  without restarting Steam, and passed four unavailable cases. The added passive
+  achievement-progress case received `callback:achievement-stored` while the
+  presenter stayed hidden, unattached, host-closed, click-through,
+  non-focusable, transparent, zero-FPS, `overlayActive=false`,
+  `nativeHostUnavailable=macos-screen-locked`, and produced no modal activation,
+  `gameoverlayui` target, `SteamBridgeSmoke` crash report, or attributed
+  `MTLCompilerService` crash report.
 - The live macOS matrix now runs `scripts/verify-macos-steam-signing.cjs`
   before touching Steam. It checks the native launcher and renamed Electron
   executable for arm64-only slices, valid executable signatures, the dyld

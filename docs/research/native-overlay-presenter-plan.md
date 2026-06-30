@@ -955,9 +955,10 @@ Current evidence:
   locked/asleep fallback artifacts can be checked automatically. The macOS
   `unavailable` matrix suite is the explicit live capture path for those
   states: it auto-detects `macos-screen-locked` or `macos-display-asleep`,
-  exercises managed web, checkout-open, and checkout prepare-only fail-fast
-  behavior, requires no Steam overlay activation, and records the same manifest
-  metadata consumed by the artifact summarizer. Success matrices preflight the
+  exercises managed web, checkout-open, checkout prepare-only, and passive
+  achievement-progress no-host behavior, requires no Steam overlay activation,
+  and records the same manifest metadata consumed by the artifact summarizer.
+  Success matrices preflight the
   same environment and stop before launching case 1 if the Mac is locked or the
   display is asleep. A live 2026-06-30 unavailable matrix at
   `/tmp/steam-bridge-macos-overlay-matrix-unavailable-checkout-prepare-20260630-115145`
@@ -974,7 +975,12 @@ Current evidence:
   Electron `43.0.0` package with the JavaScript needs-present guard. It proved
   the locked/asleep path reports `overlayNeedsPresent=false` and
   `overlayNeedsPresentPollingEnabled=false` without fresh `SteamBridgeSmoke` or
-  attributed `MTLCompilerService` crash reports.
+  attributed `MTLCompilerService` crash reports. A later rebuilt unavailable
+  matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-unavailable-passive-toast-final-20260630-123114`
+  passed all four cases, adding passive achievement-progress proof that
+  automatic passive notification priming keeps the presenter registered but
+  does not attach or open the macOS native host while the screen is locked.
 - BrowserWindow-only overlay support is not proven.
 - Steam launch, app ID, auth, and callbacks are not enough to claim overlay
   support.
