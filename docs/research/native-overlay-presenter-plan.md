@@ -650,7 +650,16 @@ Current evidence:
   It re-verified direct and shortcut checkout, every supported shortcut target,
   every high-level dialog-equivalent route, Metal presenter lifecycle,
   close/back-to-app proof, zero managed overlay timing, and clean crash
-  diagnostics. A 2026-06-28 Deck Desktop prepare-only run verified
+  diagnostics. A later 2026-06-30 persistent macOS run at
+  `/tmp/steam-bridge-macos-overlay-matrix-persistent-electron43-20260630-084237`
+  rebuilt and signed the smoke app with Electron `43.0.0`, reused the stable
+  Steam shortcut without restarting Steam, launched once through Steam, and
+  passed all 31 control-server-driven cases. The summary re-proved the same
+  managed overlay surface set plus one Metal presenter-backed overlay target per
+  case, close/back-to-app proof, zero managed overlay timing,
+  `overlayNeedsPresentPollingEnabled=false`, clean crash diagnostics, and clean
+  quit behavior on the current Electron package. A 2026-06-28 Deck Desktop
+  prepare-only run verified
   checkout readiness returns to passive idle, and a synthetic
   transaction approval URL run verified checkout-style open, close, app focus,
   no crash evidence, and no post-close pumping without committing private app
@@ -912,6 +921,9 @@ Next work:
    signing is still not enough to claim shipped macOS overlay support; real
    shipped apps must apply equivalent entitlements through the normal Apple
    signing and notarization pipeline.
+3. Keep the smoke app on the current stable Electron release, and rerun at least
+   the persistent macOS matrix after Electron major-version bumps so overlay
+   evidence follows the package developers are actually testing.
 
 Pass criteria:
 

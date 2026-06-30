@@ -120,6 +120,18 @@ The immediately preceding failed artifact was crash-free and already had the
 disabled-polling proof, but Steam reported `overlayEnabled=false` and spawned
 multiple `gameoverlayui` processes for the same smoke PID, so that one Steam
 client reset was a client-state recovery rather than a shortcut/package change.
+A newer persistent suite at
+`/tmp/steam-bridge-macos-overlay-matrix-persistent-electron43-20260630-084237`
+rebuilt and signed the smoke app with Electron `43.0.0`, reused the stable Steam
+shortcut without restarting Steam, launched the app once through Steam, drove all
+31 overlay cases through the localhost control server, and quit cleanly. The
+summary re-proved web/store/Friends/dialog wait routes, passive progress/unlock
+toasts, synthetic checkout approval routing, every supported Shift+Tab shortcut
+target including checkout, direct profile/players/community/stats/achievements/
+user wait routes, user SteamID, every high-level dialog-equivalent route, one
+overlay target per case, Metal presenter lifecycle, close/back-to-app proof,
+zero managed overlay timing, `overlayNeedsPresentPollingEnabled=false`, and
+clean crash diagnostics on the current Electron package.
 
 ## Steam Deck Shortcut Gate
 

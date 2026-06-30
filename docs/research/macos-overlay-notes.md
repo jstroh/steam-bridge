@@ -553,6 +553,19 @@ Verified:
   `/tmp/steam-bridge-macos-overlay-matrix-minimal-shown-gated-20260630-043833`
   supersedes the old Metal-safe assumption, so current macOS defaults avoid
   `BOverlayNeedsPresent()` entirely unless explicitly opted in for diagnostics.
+- A later 2026-06-30 persistent macOS matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-persistent-electron43-20260630-084237`
+  rebuilt and signed the smoke app with Electron `43.0.0`, reused the stable
+  Steam shortcut without restarting Steam, launched once through Steam, and
+  drove all 31 overlay cases through the localhost control server. The run
+  re-verified web/store/Friends/dialog wait routes, passive progress/unlock
+  toasts, synthetic checkout approval routing, every supported Shift+Tab
+  shortcut target including checkout, direct profile/players/community/stats/
+  achievements/user wait routes, user SteamID, every high-level
+  dialog-equivalent route, one Metal presenter-backed overlay target per case,
+  close/back-to-app proof, zero managed overlay timing,
+  `overlayNeedsPresentPollingEnabled=false`, clean crash diagnostics, and clean
+  control-server quit behavior on the current Electron package.
 - The live macOS matrix now runs `scripts/verify-macos-steam-signing.cjs`
   before touching Steam. It checks the native launcher and renamed Electron
   executable for arm64-only slices, valid executable signatures, the dyld
