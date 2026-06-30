@@ -373,14 +373,22 @@ Verified:
   `/tmp/steam-bridge-macos-friends-openwait-envfile-20260630-052406.log` passed
   with active/inactive overlay callbacks, close/back-to-app, parked presenter
   state, and no newer crash report than the known `BOverlayNeedsPresent` crash.
-- The next macOS proof shape is a persistent, Steam-launched smoke process
-  rather than a rapid process-per-route matrix. The packaged smoke app now has
+- The macOS proof shape now includes a persistent, Steam-launched smoke process
+  rather than only rapid process-per-route matrices. The packaged smoke app has
   an opt-in localhost control server that writes a token-protected control file,
   accepts action requests against the same internal smoke actions as autorun,
   and can write the same `STEAM_BRIDGE_SMOKE_RESULT` payload shape per action.
   This keeps repeated web/store/Friends/checkout/shortcut proof in one real app
   lifecycle without introducing fixed cooldowns, repeated Steam restarts, or
-  user-facing Electron builder complexity.
+  user-facing Electron builder complexity. A 2026-06-30 live persistent suite at
+  `/tmp/steam-bridge-macos-overlay-matrix-20260630-061247` launched the signed
+  Electron `42.5.1` App ID `480` smoke app once through Steam, drove modal web,
+  store, Friends, and `OfficialGameGroup` dialog `openAndWait(...)` actions over
+  the control server, verified close/back-to-app and parked presenter state after
+  each active overlay, verified a passive achievement-progress toast in the same
+  process, then quit through the control server. The stable shortcut was already
+  up to date, so the run did not restart Steam, left no smoke/gameoverlay
+  processes behind, and produced no fresh `SteamBridgeSmoke` crash report.
 - A 2026-06-30 core macOS matrix at
   `/tmp/steam-bridge-macos-overlay-matrix-core-inittxn-envelope-20260630-000000`
   passed 24 Steam-launched App ID `480` cases after the smoke app began wrapping

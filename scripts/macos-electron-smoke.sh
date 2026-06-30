@@ -5,6 +5,7 @@ mode="direct"
 app_dir=""
 result_file=""
 diagnostic_dir=""
+diagnostic_dir_explicit="0"
 app_id="480"
 action="none"
 overlay_profile="compatibility"
@@ -68,6 +69,8 @@ Usage:
 Modes:
   --mode direct                  Run SteamBridgeSmoke directly and verify it.
   --mode steam-launch            Launch the Steam shortcut and verify it.
+  --mode control-action          Run one action against an existing smoke control server.
+  --mode control-quit            Ask an existing smoke control server to quit.
   --mode verify                  Verify an existing smoke result log.
   --mode print-launch-options    Print launch options for a Steam shortcut.
   --mode print-shortcuts         Print matching Steam shortcut IDs.
@@ -164,6 +167,7 @@ while [ "$#" -gt 0 ]; do
       ;;
     --diagnostic-dir)
       diagnostic_dir="${2:?missing --diagnostic-dir value}"
+      diagnostic_dir_explicit="1"
       shift 2
       ;;
     --app-id)
@@ -666,6 +670,192 @@ NODE
   return 1
 }
 
+read_control_field() {
+  local field="$1"
+  if [ -z "$control_file" ] || [ ! -s "$control_file" ]; then
+    return 0
+  fi
+
+  CONTROL_FILE="$control_file" CONTROL_FIELD="$field" node <<'NODE'
+const fs = require("node:fs");
+const controlFile = process.env.CONTROL_FILE;
+const field = process.env.CONTROL_FIELD;
+let parsed;
+try {
+  parsed = JSON.parse(fs.readFileSync(controlFile, "utf8"));
+} catch {
+  process.exit(0);
+}
+const value = parsed && parsed[field];
+if (value != null) {
+  process.stdout.write(String(value));
+}
+NODE
+}
+
+use_control_diagnostic_dir_default() {
+  local control_diagnostic_dir
+  if [ "$diagnostic_dir_explicit" = "1" ]; then
+    return 0
+  fi
+
+  control_diagnostic_dir="$(read_control_field diagnosticDir || true)"
+  if [ -n "$control_diagnostic_dir" ]; then
+    diagnostic_dir="$control_diagnostic_dir"
+  fi
+}
+
+post_smoke_control_action() {
+  if [ -z "$control_file" ]; then
+    echo "--control-file is required with --mode control-action." >&2
+    return 2
+  fi
+
+  use_control_diagnostic_dir_default
+  mkdir -p "$(dirname -- "$result_file")"
+  rm -f "$result_file"
+
+  CONTROL_FILE="$control_file" \
+    CONTROL_TOKEN="$control_token" \
+    SMOKE_ACTION="$action" \
+    RESULT_FILE="$result_file" \
+    RESULT_DELAY_MS="$result_delay_ms" \
+    REQUIRE_OVERLAY_ACTIVE="$require_overlay_activated" \
+    TIMEOUT_SECONDS="$timeout_seconds" \
+    node <<'NODE'
+const fs = require("node:fs");
+const http = require("node:http");
+
+const controlFile = process.env.CONTROL_FILE;
+const control = JSON.parse(fs.readFileSync(controlFile, "utf8"));
+const token = process.env.CONTROL_TOKEN || control.token || "";
+const action = process.env.SMOKE_ACTION || "none";
+const resultFile = process.env.RESULT_FILE || "";
+const resultDelayMs = Number(process.env.RESULT_DELAY_MS || "");
+const timeoutSeconds = Number(process.env.TIMEOUT_SECONDS || "90");
+const body = {
+  action,
+  ...(resultFile ? { resultFile } : {}),
+  ...(Number.isFinite(resultDelayMs) && resultDelayMs > 0 ? { resultDelayMs } : {}),
+  ...(process.env.REQUIRE_OVERLAY_ACTIVE === "1" ? { requireOverlayActive: true } : {})
+};
+const payload = JSON.stringify(body);
+const request = http.request(
+  {
+    host: control.host,
+    port: control.port,
+    method: "POST",
+    path: "/action",
+    headers: {
+      "content-type": "application/json; charset=utf-8",
+      "content-length": Buffer.byteLength(payload),
+      ...(token ? { "x-steam-bridge-smoke-token": token } : {})
+    }
+  },
+  (response) => {
+    let text = "";
+    response.setEncoding("utf8");
+    response.on("data", (chunk) => {
+      text += chunk;
+    });
+    response.on("end", () => {
+      let parsed;
+      try {
+        parsed = text ? JSON.parse(text) : {};
+      } catch (error) {
+        console.error(`Invalid smoke control response: ${error.message}`);
+        process.exit(1);
+      }
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        console.error(`Smoke control action failed with HTTP ${response.statusCode}: ${text}`);
+        process.exit(1);
+      }
+      if (!parsed.result && parsed.ok !== true) {
+        console.error(`Smoke control action did not return a result: ${text}`);
+        process.exit(1);
+      }
+    });
+  }
+);
+request.on("error", (error) => {
+  console.error(`Smoke control action request failed: ${error.message}`);
+  process.exit(1);
+});
+request.setTimeout(Math.max(1, timeoutSeconds + 30) * 1000, () => {
+  request.destroy(new Error("Timed out waiting for smoke control action response."));
+});
+request.end(payload);
+NODE
+}
+
+post_smoke_control_quit() {
+  if [ -z "$control_file" ]; then
+    echo "--control-file is required with --mode control-quit." >&2
+    return 2
+  fi
+  if [ ! -s "$control_file" ]; then
+    echo "Smoke control file does not exist: $control_file" >&2
+    return 1
+  fi
+
+  CONTROL_FILE="$control_file" CONTROL_TOKEN="$control_token" TIMEOUT_SECONDS="$timeout_seconds" node <<'NODE'
+const fs = require("node:fs");
+const http = require("node:http");
+
+const control = JSON.parse(fs.readFileSync(process.env.CONTROL_FILE, "utf8"));
+const token = process.env.CONTROL_TOKEN || control.token || "";
+const timeoutSeconds = Number(process.env.TIMEOUT_SECONDS || "90");
+const request = http.request(
+  {
+    host: control.host,
+    port: control.port,
+    method: "POST",
+    path: "/quit",
+    headers: {
+      "content-length": 0,
+      ...(token ? { "x-steam-bridge-smoke-token": token } : {})
+    }
+  },
+  (response) => {
+    response.resume();
+    response.on("end", () => {
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        console.error(`Smoke control quit failed with HTTP ${response.statusCode}.`);
+        process.exit(1);
+      }
+    });
+  }
+);
+request.on("error", (error) => {
+  console.error(`Smoke control quit request failed: ${error.message}`);
+  process.exit(1);
+});
+request.setTimeout(Math.max(1, timeoutSeconds) * 1000, () => {
+  request.destroy(new Error("Timed out waiting for smoke control quit response."));
+});
+request.end();
+NODE
+}
+
+wait_for_control_process_exit() {
+  local control_pid deadline
+  control_pid="$(read_control_field pid || true)"
+  if [ -z "$control_pid" ]; then
+    return 0
+  fi
+
+  deadline=$((SECONDS + 12))
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    if ! kill -0 "$control_pid" 2>/dev/null; then
+      return 0
+    fi
+    sleep 0.2
+  done
+
+  echo "Timed out waiting for smoke control process $control_pid to exit." >&2
+  return 1
+}
+
 discover_shortcuts() {
   node - "$app_name" "$steam_user_id" <<'NODE'
 const fs = require("node:fs");
@@ -1034,12 +1224,13 @@ NODE
 verify_macos_shortcut_open_after_probe() {
   local open_timeout_seconds="${1:-12}"
   echo "Verifying macOS managed shortcut open evidence"
-  RESULT_FILE="$result_file" DIAGNOSTIC_DIR="$diagnostic_dir" SHORTCUT_TARGET="$shortcut_target" OPEN_TIMEOUT_SECONDS="$open_timeout_seconds" node <<'NODE'
+  RESULT_FILE="$result_file" DIAGNOSTIC_DIR="$diagnostic_dir" ACTION="$action" SHORTCUT_TARGET="$shortcut_target" OPEN_TIMEOUT_SECONDS="$open_timeout_seconds" node <<'NODE'
 const fs = require("node:fs");
 const path = require("node:path");
 
 const resultFile = process.env.RESULT_FILE;
 const diagnosticDir = process.env.DIAGNOSTIC_DIR || `${resultFile}.diagnostics`;
+const action = process.env.ACTION || "";
 const expectedTarget = process.env.SHORTCUT_TARGET || "";
 const timeoutSeconds = Number(process.env.OPEN_TIMEOUT_SECONDS || "12");
 const lifecyclePath = path.join(diagnosticDir, "lifecycle.jsonl");
@@ -1142,7 +1333,24 @@ function readLifecycleEntries() {
       loadFailures.push(`could not read lifecycle log: ${error.message}`);
     }
   }
-  return { entries: loadedEntries, lifecycleFailures: loadFailures };
+  return { entries: sliceEntriesForCurrentAction(loadedEntries), lifecycleFailures: loadFailures };
+}
+
+function sliceEntriesForCurrentAction(loadedEntries) {
+  if (!action) {
+    return loadedEntries;
+  }
+  for (let index = loadedEntries.length - 1; index >= 0; index -= 1) {
+    const entry = loadedEntries[index];
+    const payload = entry && entry.payload && typeof entry.payload === "object" ? entry.payload : {};
+    if (
+      (entry.type === "event:control:action-begin" || entry.type === "event:autorun:action-begin") &&
+      payload.action === action
+    ) {
+      return loadedEntries.slice(index);
+    }
+  }
+  return loadedEntries;
 }
 
 function hasRequiredOpenEvidence(loadedEntries) {
@@ -1521,7 +1729,24 @@ function readLifecycleEntries() {
       loadFailures.push(`could not read lifecycle log: ${error.message}`);
     }
   }
-  return { entries: loadedEntries, lifecycleFailures: loadFailures };
+  return { entries: sliceEntriesForCurrentAction(loadedEntries), lifecycleFailures: loadFailures };
+}
+
+function sliceEntriesForCurrentAction(loadedEntries) {
+  if (!action) {
+    return loadedEntries;
+  }
+  for (let index = loadedEntries.length - 1; index >= 0; index -= 1) {
+    const entry = loadedEntries[index];
+    const payload = entry && entry.payload && typeof entry.payload === "object" ? entry.payload : {};
+    if (
+      (entry.type === "event:control:action-begin" || entry.type === "event:autorun:action-begin") &&
+      payload.action === action
+    ) {
+      return loadedEntries.slice(index);
+    }
+  }
+  return loadedEntries;
 }
 
 function activeValue(payload) {
@@ -2014,6 +2239,26 @@ case "$mode" in
   steam-launch)
     require_steam_launch="1"
     launch_steam_shortcut
+    ;;
+  control-action)
+    post_smoke_control_action || {
+      collect_recent_macos_crash_reports
+      exit 1
+    }
+    wait_for_result_file
+    verify_result
+    if [ "$shortcut_open_probe" = "1" ]; then
+      send_macos_overlay_shortcut_open_probe
+      verify_macos_shortcut_open_after_probe
+    fi
+    if [ "$close_probe" = "1" ]; then
+      send_macos_overlay_close_probe
+      verify_macos_overlay_closed_after_probe
+    fi
+    ;;
+  control-quit)
+    post_smoke_control_quit
+    wait_for_control_process_exit
     ;;
   verify)
     verify_result

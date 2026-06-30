@@ -39,10 +39,13 @@ packaged Electron smoke app and SpaceWar App ID 480 by default.
 Options:
   --mode steam-launch|self-test|summarize
                                   Run live, validate dry-run matrix shape, or summarize artifacts.
-  --suite minimal|core|full|unavailable
+  --suite minimal|core|full|persistent|unavailable
                                   Matrix size. Defaults to core. "unavailable"
                                   captures expected macOS lock/asleep fail-fast
                                   artifacts instead of success overlay cases.
+                                  "persistent" launches one Steam-owned smoke
+                                  process and drives several actions through
+                                  the localhost control server.
   --app-id ID                    Steam App ID inside the smoke app. Defaults to 480.
   --app-name NAME                Steam non-Steam shortcut name.
   --steam-user-id ID             Steam userdata ID containing shortcuts.vdf.
@@ -76,6 +79,9 @@ Suites:
            all managed shortcut targets, profile, community, stats,
            achievements, and user chat/profile routes.
   full     core plus all known high-level dialog-equivalent routes.
+  persistent
+           one Steam launch, then web/store/Friends/dialog openAndWait plus
+           passive achievement toast through the smoke control server.
   unavailable
            managed web and checkout fail-fast cases for locked/asleep macOS.
 EOF
@@ -193,7 +199,7 @@ case "$mode" in
 esac
 
 case "$suite" in
-  minimal|core|full|unavailable)
+  minimal|core|full|persistent|unavailable)
     ;;
   *)
     echo "Unknown --suite: $suite" >&2
@@ -222,6 +228,10 @@ esac
 quote_command() {
   printf '%q ' "$@"
   printf '\n'
+}
+
+generate_control_token() {
+  node -e 'process.stdout.write(require("node:crypto").randomBytes(24).toString("hex"))'
 }
 
 require_contains() {
@@ -270,7 +280,7 @@ case_command() {
 }
 
 run_self_test() {
-  local self_path minimal_output core_output full_output unavailable_output opengl_output checkout_json_output passive_case checkout_case checkout_json_case shortcut_checkout_json_case web_case unavailable_web_case unavailable_checkout_case
+  local self_path minimal_output core_output full_output persistent_output unavailable_output opengl_output checkout_json_output passive_case checkout_case checkout_json_case shortcut_checkout_json_case web_case persistent_web_case unavailable_web_case unavailable_checkout_case
   self_path="${BASH_SOURCE[0]}"
   minimal_output="$(
     bash "$self_path" \
@@ -317,6 +327,17 @@ run_self_test() {
       --artifact-root /tmp/steam-bridge-macos-overlay-matrix-self-test \
       --expected-native-host-unavailable-reason macos-screen-locked
   )"
+  persistent_output="$(
+    bash "$self_path" \
+      --mode steam-launch \
+      --suite persistent \
+      --skip-package \
+      --dry-run \
+      --helper-path "$script_dir/macos-electron-smoke.sh" \
+      --app-exe /tmp/SteamBridgeSmoke.app/Contents/MacOS/SteamBridgeSmoke \
+      --shortcuts /tmp/shortcuts.vdf \
+      --artifact-root /tmp/steam-bridge-macos-overlay-matrix-self-test
+  )"
   opengl_output="$(
     bash "$self_path" \
       --mode steam-launch \
@@ -355,6 +376,10 @@ run_self_test() {
     echo "Self-test failed: full matrix case count changed." >&2
     exit 1
   fi
+  if [ "$(printf '%s\n' "$persistent_output" | count_cases)" != "5" ]; then
+    echo "Self-test failed: persistent matrix case count changed." >&2
+    exit 1
+  fi
   if [ "$(printf '%s\n' "$unavailable_output" | count_cases)" != "2" ]; then
     echo "Self-test failed: unavailable matrix case count changed." >&2
     exit 1
@@ -362,6 +387,7 @@ run_self_test() {
   require_unique_case_ids "$minimal_output" "minimal"
   require_unique_case_ids "$core_output" "core"
   require_unique_case_ids "$full_output" "full"
+  require_unique_case_ids "$persistent_output" "persistent"
   require_unique_case_ids "$unavailable_output" "unavailable"
 
   require_contains "$core_output" "--action presenter-web-open-and-wait" "core matrix must include web openAndWait."
@@ -401,6 +427,14 @@ run_self_test() {
   require_contains "$core_output" "--close-input toggle" "shortcut proof must close with Shift+Tab."
   require_contains "$core_output" "--require-passive-notification" "passive toast cases must use the passive notification gate."
   require_contains "$core_output" "--close-probe" "interactive overlay cases must close and verify back-to-app behavior."
+  require_contains "$persistent_output" "--control-server" "persistent matrix must launch the smoke control server."
+  require_contains "$persistent_output" "--mode control-action" "persistent matrix must drive actions through the control client."
+  require_contains "$persistent_output" "CONTROL /tmp/steam-bridge-macos-overlay-matrix-self-test/persistent-control.json" "persistent matrix must use an artifact-scoped control file."
+  require_contains "$persistent_output" "--action presenter-web-open-and-wait" "persistent matrix must include web openAndWait."
+  require_contains "$persistent_output" "--action presenter-store-open-and-wait" "persistent matrix must include store openAndWait."
+  require_contains "$persistent_output" "--action presenter-friends-open-and-wait" "persistent matrix must include Friends openAndWait."
+  require_contains "$persistent_output" "--action presenter-dialog-auto-open-and-wait" "persistent matrix must include dialog openAndWait."
+  require_contains "$persistent_output" "--action presenter-achievement-progress" "persistent matrix must include passive toast."
   require_contains "$full_output" "--dialog Friends" "full matrix must include Friends dialog equivalent."
   require_contains "$full_output" "--dialog Players" "full matrix must include Players dialog equivalent."
   require_contains "$full_output" "--dialog Community" "full matrix must include Community dialog equivalent."
@@ -419,6 +453,7 @@ run_self_test() {
   checkout_case="$(case_command "$core_output" "07-checkout-approval")"
   checkout_json_case="$(case_command "$checkout_json_output" "07-checkout-approval")"
   shortcut_checkout_json_case="$(case_command "$checkout_json_output" "11-shortcut-checkout")"
+  persistent_web_case="$(case_command "$persistent_output" "01-persistent-web-openwait")"
   unavailable_web_case="$(case_command "$unavailable_output" "01-unavailable-web-openwait")"
   unavailable_checkout_case="$(case_command "$unavailable_output" "02-unavailable-checkout")"
   require_contains "$web_case" "--web-modal true" "web proof should use modal Steam web overlay."
@@ -429,6 +464,8 @@ run_self_test() {
   require_contains "$shortcut_checkout_json_case" "--checkout-json-file /tmp/private-init-txn-response.json" "checkout shortcut proof should use the JSON-file handoff."
   require_not_contains "$checkout_json_case" "--checkout-transaction-id 123456789" "private checkout proof should not also use the synthetic transaction ID."
   require_not_contains "$shortcut_checkout_json_case" "--checkout-transaction-id 123456789" "checkout shortcut proof should not also use the synthetic transaction ID."
+  require_contains "$persistent_web_case" "--close-probe" "persistent web proof should close and verify parked state."
+  require_contains "$persistent_web_case" "--require-zero-managed-overlay-timing" "persistent web proof should require zero managed overlay timing."
   require_not_contains "$unavailable_web_case" "--close-probe" "unavailable web case must not require close proof."
   require_not_contains "$unavailable_checkout_case" "--close-probe" "unavailable checkout case must not require close proof."
   require_not_contains "$unavailable_web_case" "--require-overlay-enabled" "unavailable web case must not require overlay readiness while macOS is unavailable."
@@ -1215,6 +1252,39 @@ write_case_launcher_env() {
   fi
 }
 
+write_control_launcher_env() {
+  local result_file="$1"
+  local diagnostic_dir="$2"
+  local control_file="$3"
+  local control_token="$4"
+
+  if [ "$dry_run" = "1" ]; then
+    return 0
+  fi
+
+  mkdir -p "$(dirname -- "$launcher_env_file")"
+  : > "$launcher_env_file"
+  write_env_line "SteamAppId" "$app_id"
+  write_env_line "SteamGameId" "$app_id"
+  write_env_line "SteamOverlayGameId" "$app_id"
+  write_env_line "STEAM_BRIDGE_APP_ID" "$app_id"
+  write_env_line "STEAM_BRIDGE_ELECTRON_OVERLAY_PROFILE" "$overlay_profile"
+  write_env_line "STEAM_BRIDGE_SMOKE_CONTROL_SERVER" "1"
+  write_env_line "STEAM_BRIDGE_SMOKE_CONTROL_FILE" "$control_file"
+  write_env_line "STEAM_BRIDGE_SMOKE_CONTROL_TOKEN" "$control_token"
+  write_env_line "STEAM_BRIDGE_SMOKE_RESULT_FILE" "$result_file"
+  write_env_line "STEAM_BRIDGE_SMOKE_DIAGNOSTIC_DIR" "$diagnostic_dir"
+  write_env_line "STEAM_BRIDGE_SMOKE_WEB_URL" "https://store.steampowered.com/app/$app_id/"
+  write_env_line "STEAM_BRIDGE_SMOKE_WEB_MODAL" "true"
+  write_env_line "STEAM_BRIDGE_SMOKE_OVERLAY_DIALOG" "OfficialGameGroup"
+  if [ -n "$native_host_backend" ]; then
+    write_env_line "STEAM_BRIDGE_SMOKE_NATIVE_HOST_BACKEND" "$native_host_backend"
+    if [ "$native_host_backend" = "opengl" ]; then
+      write_env_line "STEAM_BRIDGE_DISABLE_OVERLAY_NEEDS_PRESENT" "1"
+    fi
+  fi
+}
+
 run_case() {
   local case_id="$1"
   shift
@@ -1314,10 +1384,168 @@ case_has_managed_timing_requirement() {
   return 1
 }
 
+run_persistent_case() {
+  local control_file="$1"
+  local control_token="$2"
+  local shared_diagnostic_dir="$3"
+  local case_id="$4"
+  shift 4
+  local result_file="$artifact_root/$case_id.log"
+  local run_cmd
+  local case_args=("$@")
+
+  if case_uses_presenter_action "${case_args[@]}" && ! case_has_managed_timing_requirement "${case_args[@]}"; then
+    case_args+=(--require-zero-managed-overlay-timing)
+  fi
+
+  run_cmd=(
+    "$helper_path"
+    --mode control-action
+    --app-id "$app_id"
+    --result-file "$result_file"
+    --diagnostic-dir "$shared_diagnostic_dir"
+    --control-file "$control_file"
+    --control-token "$control_token"
+    --timeout-seconds "$timeout_seconds"
+  )
+  run_cmd+=("${case_args[@]}")
+
+  echo "CASE $case_id"
+  echo "CONTROL $control_file"
+  echo "RUN $(quote_command "${run_cmd[@]}")"
+
+  if [ "$dry_run" = "1" ]; then
+    return 0
+  fi
+
+  mkdir -p "$(dirname -- "$result_file")"
+  write_case_manifest "$case_id" "$result_file" "$shared_diagnostic_dir" "${case_args[@]}"
+  "${run_cmd[@]}"
+}
+
+run_persistent_matrix() {
+  local control_file="$artifact_root/persistent-control.json"
+  local control_token
+  local launch_result_file="$artifact_root/persistent-launch.log"
+  local shared_diagnostic_dir="$artifact_root/persistent.diagnostics"
+  local launch_cmd quit_cmd status
+
+  control_token="$(generate_control_token)"
+  launch_cmd=(
+    "$helper_path"
+    --mode steam-launch
+    --app-id "$app_id"
+    --app-name "$app_name"
+    --shortcut-game-id "$shortcut_game_id"
+    --result-file "$launch_result_file"
+    --diagnostic-dir "$shared_diagnostic_dir"
+    --timeout-seconds "$timeout_seconds"
+    --control-server
+    --control-file "$control_file"
+    --control-token "$control_token"
+  )
+  if [ -n "$steam_user_id" ]; then
+    launch_cmd+=(--steam-user-id "$steam_user_id")
+  fi
+
+  echo "PERSISTENT persistent-launch"
+  echo "ENV $launcher_env_file"
+  echo "CONTROL $control_file"
+  echo "RUN $(quote_command "${launch_cmd[@]}")"
+
+  if [ "$dry_run" != "1" ]; then
+    mkdir -p "$artifact_root"
+    rm -f "$control_file" "$launch_result_file"
+    rm -rf "$shared_diagnostic_dir"
+    write_control_launcher_env "$launch_result_file" "$shared_diagnostic_dir" "$control_file" "$control_token"
+    "${launch_cmd[@]}"
+  fi
+
+  status=0
+  if [ "$status" -eq 0 ]; then
+    run_persistent_case "$control_file" "$control_token" "$shared_diagnostic_dir" "01-persistent-web-openwait" \
+      --action presenter-web-open-and-wait \
+      --require-steam-launch \
+      --require-overlay-injection \
+      --require-overlay-enabled \
+      --require-overlay-activated \
+      --require-event overlay:presenter-open-and-wait-start \
+      --require-no-crashes \
+      --close-probe || status=1
+  fi
+
+  if [ "$status" -eq 0 ]; then
+    run_persistent_case "$control_file" "$control_token" "$shared_diagnostic_dir" "02-persistent-store-openwait" \
+      --action presenter-store-open-and-wait \
+      --require-steam-launch \
+      --require-overlay-injection \
+      --require-overlay-enabled \
+      --require-overlay-activated \
+      --require-event overlay:presenter-open-and-wait-start \
+      --require-no-crashes \
+      --close-probe || status=1
+  fi
+
+  if [ "$status" -eq 0 ]; then
+    run_persistent_case "$control_file" "$control_token" "$shared_diagnostic_dir" "03-persistent-friends-openwait" \
+      --action presenter-friends-open-and-wait \
+      --require-steam-launch \
+      --require-overlay-injection \
+      --require-overlay-enabled \
+      --require-overlay-activated \
+      --require-event overlay:presenter-open-and-wait-start \
+      --require-no-crashes \
+      --close-probe || status=1
+  fi
+
+  if [ "$status" -eq 0 ]; then
+    run_persistent_case "$control_file" "$control_token" "$shared_diagnostic_dir" "04-persistent-dialog-official-openwait" \
+      --action presenter-dialog-auto-open-and-wait \
+      --require-steam-launch \
+      --require-overlay-injection \
+      --require-overlay-enabled \
+      --require-overlay-activated \
+      --require-event overlay:presenter-open-and-wait-start \
+      --require-no-crashes \
+      --close-probe || status=1
+  fi
+
+  if [ "$status" -eq 0 ]; then
+    run_persistent_case "$control_file" "$control_token" "$shared_diagnostic_dir" "05-persistent-passive-toast" \
+      --action presenter-achievement-progress \
+      --result-delay-ms 1200 \
+      --require-steam-launch \
+      --require-overlay-injection \
+      --require-overlay-enabled \
+      --require-passive-notification \
+      --require-no-crashes || status=1
+  fi
+
+  if [ "$dry_run" != "1" ]; then
+    quit_cmd=(
+      "$helper_path"
+      --mode control-quit
+      --control-file "$control_file"
+      --control-token "$control_token"
+      --timeout-seconds "$timeout_seconds"
+    )
+    echo "QUIT $(quote_command "${quit_cmd[@]}")"
+    "${quit_cmd[@]}" || status=1
+    cleanup_macos_smoke_processes
+  fi
+
+  return "$status"
+}
+
 run_matrix() {
   if [ "$suite" = "unavailable" ]; then
     run_unavailable_matrix
     return 0
+  fi
+
+  if [ "$suite" = "persistent" ]; then
+    run_persistent_matrix
+    return $?
   fi
 
   run_case "01-web-openwait" \
@@ -1578,7 +1806,10 @@ run_matrix
 
 echo "macOS overlay matrix complete. Artifacts: $artifact_root"
 
-if [ "$dry_run" != "1" ] && [ "$skip_summary" != "1" ]; then
+if [ "$dry_run" != "1" ] && [ "$skip_summary" != "1" ] && [ "$suite" != "persistent" ]; then
   echo
   node "$summary_runner" --artifact-root "$artifact_root"
+elif [ "$dry_run" != "1" ] && [ "$skip_summary" != "1" ] && [ "$suite" = "persistent" ]; then
+  echo
+  echo "Skipping aggregate summary for persistent suite; per-action helper verification already ran against the shared lifecycle log."
 fi

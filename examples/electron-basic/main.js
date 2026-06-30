@@ -2236,7 +2236,6 @@ function observeManagedOverlayLifecycle(overlay, context) {
   const waitContext = { sequence, ...context };
   const controller = new AbortController();
   managedOverlayWaitControllers.add(controller);
-  let pending = 3;
 
   recordEvent("overlay:presenter-wait-start", {
     ...waitContext,
@@ -2252,49 +2251,45 @@ function observeManagedOverlayLifecycle(overlay, context) {
       signal: controller.signal
     }),
     waitContext,
-    overlay,
-    () => {
-      pending -= 1;
-      if (pending === 0) {
-        managedOverlayWaitControllers.delete(controller);
-      }
-    }
+    overlay
   );
-  const closed = recordManagedOverlayWait(
-    "overlay:presenter-wait-closed",
-    overlay.waitForOverlayClosed({
-      timeoutMs: MANAGED_OVERLAY_PARK_TIMEOUT_MS,
-      signal: controller.signal
-    }),
-    waitContext,
-    overlay,
-    () => {
-      pending -= 1;
-      if (pending === 0) {
-        managedOverlayWaitControllers.delete(controller);
-      }
+  const closed = shown.then((result) => {
+    if (!result.ok) {
+      return result;
     }
-  );
-  const parked = recordManagedOverlayWait(
-    "overlay:presenter-parked",
-    overlay.parkWhenSteamOverlayCloses({
-      timeoutMs: MANAGED_OVERLAY_PARK_TIMEOUT_MS,
-      signal: controller.signal
-    }),
-    waitContext,
-    overlay,
-    () => {
-      pending -= 1;
-      if (pending === 0) {
-        managedOverlayWaitControllers.delete(controller);
-      }
+    return recordManagedOverlayWait(
+      "overlay:presenter-wait-closed",
+      overlay.waitForOverlayClosed({
+        timeoutMs: MANAGED_OVERLAY_PARK_TIMEOUT_MS,
+        signal: controller.signal
+      }),
+      waitContext,
+      overlay
+    );
+  });
+  const parked = shown.then((result) => {
+    if (!result.ok) {
+      return result;
     }
-  );
+    return recordManagedOverlayWait(
+      "overlay:presenter-parked",
+      overlay.parkWhenSteamOverlayCloses({
+        timeoutMs: MANAGED_OVERLAY_PARK_TIMEOUT_MS,
+        signal: controller.signal
+      }),
+      waitContext,
+      overlay
+    );
+  });
+
+  Promise.allSettled([shown, closed, parked]).finally(() => {
+    managedOverlayWaitControllers.delete(controller);
+  });
 
   return { shown, closed, parked };
 }
 
-function recordManagedOverlayWait(type, promise, context, overlay, onDone) {
+function recordManagedOverlayWait(type, promise, context, overlay, onDone = () => {}) {
   return promise
     .then((presenter) => {
       recordEvent(type, {

@@ -428,6 +428,16 @@ Current evidence:
   `waitForOverlayClosed()`, and `parkWhenSteamOverlayCloses()` resolve from Steam
   overlay callbacks and native presenter state changes in persistent presenter
   mode. App code can pass timeouts or abort signals, but not polling intervals.
+- The macOS smoke harness now has a persistent one-process proof mode. A
+  2026-06-30 live run at
+  `/tmp/steam-bridge-macos-overlay-matrix-20260630-061247` launched the signed
+  Electron `42.5.1` App ID `480` smoke app once through Steam, started the
+  token-protected localhost control server, drove modal web, store, Friends, and
+  dialog-equivalent `openAndWait(...)` routes plus a passive achievement-progress
+  toast through that running process, verified close/back-to-app and parked
+  presenter state for every active overlay, and quit cleanly through the control
+  server. This validates repeated presenter reuse without fixed cooldowns,
+  rapid relaunches, or Steam restarts.
 - On macOS, `openAndWait(...)` and checkout approval-route helpers also wait for
   Steam's overlay diagnostics to become ready before calling the activation API.
   If a rapid relaunch leaves the process injected but `overlayEnabled=false`,

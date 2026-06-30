@@ -92,6 +92,13 @@ the Metal presenter backend, one overlay target per case, `checkoutSource=json-f
 for direct and shortcut checkout, managed wait-helper shown/closed/parked
 lifecycle, app focus return, zero managed overlay timing, and clean crash
 diagnostics.
+A persistent one-process macOS suite at
+`/tmp/steam-bridge-macos-overlay-matrix-20260630-061247` launched the same signed
+Electron `42.5.1` App ID `480` smoke app once through Steam, drove web, store,
+Friends, dialog-equivalent, and passive achievement-progress actions through the
+localhost control server, verified close/back-to-app and parked presenter state
+for active overlays, quit cleanly, left no smoke/gameoverlay processes behind,
+and produced no fresh `SteamBridgeSmoke` crash report.
 
 ## Steam Deck Shortcut Gate
 

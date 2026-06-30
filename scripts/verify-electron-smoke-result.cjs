@@ -31,7 +31,8 @@ const crashDiagnostics = snapshot.crashDiagnostics || {};
 const processInfo = snapshot.process || {};
 const nativePresenter = readOkValue(overlay.nativePresenter);
 const electronOverlay = nativePresenter && typeof nativePresenter === "object" ? nativePresenter.electronOverlay : undefined;
-const events = Array.isArray(snapshot.events) ? snapshot.events : [];
+const expectedActionName = options.action || (result.action && result.action.action) || "";
+const events = sliceEntriesForCurrentAction(Array.isArray(snapshot.events) ? snapshot.events : [], expectedActionName);
 const overlayActivated = events.some(isOverlayActiveEvent);
 const expectedActionError = Boolean(options.requireActionErrorCode || options.requireActionErrorReason);
 const failures = [];
@@ -267,7 +268,7 @@ function isOverlayActiveEvent(event) {
 }
 
 function verifyPassiveNotification() {
-  const action = options.action || (result.action && result.action.action);
+  const action = expectedActionName;
   const requirements = PASSIVE_NOTIFICATION_ACTIONS.get(action);
   if (!requirements) {
     failures.push(`passive notification requirements are not defined for action ${action || "<unknown>"}`);
@@ -398,11 +399,31 @@ function readLifecycleEntries() {
       failures.push(`invalid lifecycle JSON in ${lifecyclePath}: ${error.message}`);
     }
   }
-  return entries;
+  return sliceEntriesForCurrentAction(entries, expectedActionName);
 }
 
 function findEvent(eventList, type) {
   return Array.isArray(eventList) ? eventList.find((event) => event && event.type === type) : undefined;
+}
+
+function sliceEntriesForCurrentAction(entries, action) {
+  if (!action) {
+    return entries;
+  }
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const entry = entries[index];
+    const payload = entry && entry.payload && typeof entry.payload === "object" ? entry.payload : {};
+    if (
+      (entry.type === "control:action-begin" ||
+        entry.type === "autorun:action-begin" ||
+        entry.type === "event:control:action-begin" ||
+        entry.type === "event:autorun:action-begin") &&
+      payload.action === action
+    ) {
+      return entries.slice(index);
+    }
+  }
+  return entries;
 }
 
 function lifecycleEventType(type) {

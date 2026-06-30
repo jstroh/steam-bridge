@@ -178,6 +178,12 @@ target, profile, community, stats, achievements, and user chat/profile routes.
 Use `--suite full` to add user SteamID plus every known high-level
 dialog-equivalent route through the same managed `openAndWait(...)` close/park
 proof.
+Use `--suite persistent` to launch the smoke app once through Steam, start the
+token-protected localhost control server, drive web/store/Friends/dialog
+`openAndWait(...)` plus passive achievement-progress checks through that one
+running process, and then quit it through the control server. This suite is for
+proving repeated overlay routes inside one app lifecycle without fixed
+cooldowns, repeated app launches, or Steam restarts.
 Use `--suite unavailable` only when macOS genuinely reports the screen locked or
 the display asleep. That suite captures expected managed web and checkout
 fail-fast artifacts with
@@ -198,9 +204,13 @@ one-process overlay proof work. Launch it through the same Steam shortcut with
 the helper returns once the running app writes the control JSON instead of
 waiting for an autorun result. The server is bound to `127.0.0.1`, requires the
 token on every request, and reuses the same internal smoke actions and
-`STEAM_BRIDGE_SMOKE_RESULT` payload shape as autorun. This is test harness
-plumbing for persistent app-lifecycle matrices; it is not part of the app-facing
-Steam Bridge API and Electron builders do not need to use it.
+`STEAM_BRIDGE_SMOKE_RESULT` payload shape as autorun. Use
+`macos-electron-smoke.sh --mode control-action --control-file <path> --control-token <token>`
+to run and verify one action against the live process, and
+`macos-electron-smoke.sh --mode control-quit --control-file <path> --control-token <token>`
+to shut it down. This is test harness plumbing for persistent app-lifecycle
+matrices; it is not part of the app-facing Steam Bridge API and Electron
+builders do not need to use it.
 
 For launcher-aware macOS checks, generate shortcut launch options with
 `--macos-native-launcher --launcher-env-file <path>` and fully restart Steam
