@@ -63,9 +63,13 @@ web/store/Friends/dialog wait routes, passive progress/unlock toasts, synthetic
 checkout approval routing, every supported Shift+Tab shortcut target including
 checkout, direct profile/players/community/stats/achievements/user wait routes,
 user SteamID, and every high-level dialog-equivalent route. The helper now
-focuses the exact smoke process PID from each result log before sending close or
-shortcut probes and waits for old smoke/gameoverlayui processes to exit between
-cases, preventing stale app instances from receiving overlay input.
+focuses the exact smoke process PID from each result log before shortcut-open
+probes and waits for old smoke/gameoverlayui processes to exit between cases,
+preventing stale app instances from receiving overlay input. A later minimal run
+at `/tmp/steam-bridge-macos-overlay-matrix-minimal-close-focus-fix-20260630-042214`
+left the active Steam overlay focused for close input and passed web, store,
+Friends, dialog-equivalent, and passive-toast cases with app focus return,
+parked zero-FPS presenter state, and clean crash diagnostics.
 A follow-up full run at
 `/tmp/steam-bridge-macos-overlay-matrix-full-reopened-steam-electron42-20260630-013125`
 then reused the freshly reopened Steam client, skipped repackaging, verified the

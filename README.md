@@ -280,6 +280,9 @@ await steamOverlay.openCheckoutAndWait(() =>
   backend.createSteamTransaction({ itemId: 100 })
 );
 
+// Optional: reuse the configured Shift+Tab target from a controller/menu button.
+steamOverlay.openShortcutTarget();
+
 steamOverlay.close();
 ```
 
@@ -300,7 +303,11 @@ choose another verified target. The macOS matrix verifies every supported
 presenter-backed shortcut target, including Friends/chat, modal web, store,
 checkout approval routing, profile, players, community, stats, achievements,
 user, and dialog-equivalent routes, with target-aware lifecycle and presenter
-snapshot checks.
+snapshot checks. Controller or in-game menu buttons can call
+`steamOverlay.openShortcutTarget()` to open that same configured managed target;
+it returns `null` while the Steam overlay is already active/opening or when the
+shortcut bridge is disabled, so apps do not need to duplicate target resolver
+logic.
 
 On macOS, the managed helper fails fast before Steam overlay activation if the
 screen is locked or the display is asleep. Use

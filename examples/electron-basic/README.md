@@ -136,8 +136,8 @@ For macOS presenter diagnostics, `--native-host-backend metal` and
 app. This is a diagnostic comparison control, not an app-builder API.
 
 `--close-probe` is a helper-runner check, not an app launch option. It keeps the
-smoke app open after the initial result, focuses the smoke app, sends the macOS
-overlay close input, and verifies `active=false`, app focus return,
+smoke app open after the initial result, leaves the active Steam overlay focused
+for the macOS close input, and verifies `active=false`, app focus return,
 `openAndWait(...)` completion after close, idle presenter parking, and no crash
 evidence.
 
@@ -478,7 +478,9 @@ second Shift+Tab closes the overlay and returns focus to the app. Add
 `--shortcut-target <name>` to test another presenter-backed target through the
 same focused Shift+Tab path; supported smoke targets are `friends`, `profile`,
 `players`, `web`, `store`, `community`, `stats`, `achievements`, `user`, `dialog`, and
-`checkout`.
+`checkout`. App code can also call `steamOverlay.openShortcutTarget()` from a
+controller or in-game menu button to reuse that same configured target without
+duplicating shortcut resolver logic.
 The `dialog` target uses the high-level auto router; unsupported dialog names
 throw instead of silently falling back to raw Steam overlay behavior. Use the
 raw `presenter-dialog` action only for explicit diagnostics.

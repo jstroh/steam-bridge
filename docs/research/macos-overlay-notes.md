@@ -113,10 +113,13 @@ Verified:
   the post-close stable presenter at `currentFps=0` with unchanged `pumpCount`,
   found no crash dumps or fatal lifecycle events, and confirmed the smoke app
   was frontmost after close.
-- The macOS close probe now focuses the smoke app process before sending its
-  close input. This avoids false failures where the helper process or Codex is
-  frontmost and receives Escape instead of the Steam overlay. With that focused
-  close input, 2026-06-29 follow-up runs verified the same
+- The macOS close probe initially focused the smoke app process before sending
+  close input to avoid helper/Codex focus stealing. A 2026-06-30 minimal matrix
+  showed that pre-close refocus can itself steal input from Steam's active
+  overlay, causing a false Store close failure. The helper now leaves the active
+  Steam overlay focused for close input and verifies the smoke app returns
+  frontmost after `GameOverlayActivated(false)`. With that close input,
+  2026-06-29 follow-up runs verified the same
   `active=true`/`active=false`, `openAndWait(...)` completion-after-park,
   `currentFps=0`, unchanged-`pumpCount`, app-frontmost, and no-crash evidence
   for `presenter-store-open-and-wait`, `presenter-friends-open-and-wait`, and
@@ -417,7 +420,7 @@ Verified:
   ID `480` cases. An earlier full attempt exposed a verifier harness issue:
   stale smoke app instances could remain alive briefly after a successful case,
   and the name-based macOS focus probe could send Escape to the wrong process.
-  The helper now focuses the exact result PID before close/shortcut probes, and
+  The helper now focuses the exact result PID before shortcut-open probes, and
   the matrix waits for previous smoke/gameoverlayui processes to exit between
   cases. The passing artifact re-verified every shortcut target, user SteamID,
   all known high-level dialog-equivalent routes, close/back-to-app proof, zero
@@ -427,7 +430,7 @@ Verified:
   reused a freshly reopened Steam client, skipped repackaging, verified the
   existing signed Electron `42.5.1` bundle, and passed the same 31
   Steam-launched App ID `480` cases without restarting Steam. This confirms the
-  PID-focused close/shortcut probes and managed presenter lifecycle are stable
+  PID-focused shortcut probes and managed presenter lifecycle are stable
   across a normal Steam client restart.
 - A later 2026-06-30 full macOS matrix at
   `/tmp/steam-bridge-macos-overlay-matrix-full-json-after-reopen-20260630-040037`
@@ -440,6 +443,16 @@ Verified:
   target per case, managed wait-helper shown/closed/parked lifecycle events,
   Shift+Tab open/close for every supported shortcut target, app focus return,
   zero managed overlay timing, and clean crash diagnostics.
+- A later 2026-06-30 minimal macOS matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-minimal-close-focus-fix-20260630-042214`
+  rebuilt and signed the Electron `42.5.1` smoke package, reused the stable
+  Steam shortcut without restarting Steam, and passed web, store, Friends,
+  dialog-equivalent, and passive-toast cases after the close probe stopped
+  refocusing the smoke app before sending Escape. The Store case that had
+  previously missed `active=false` closed cleanly with the active Steam overlay
+  left focused, then returned the smoke app frontmost, parked the presenter at
+  `currentFps=0`, kept zero managed overlay timing, and reported no crash
+  evidence.
 - A later 2026-06-30 full macOS Metal matrix at
   `/tmp/steam-bridge-macos-overlay-matrix-full-narrow-needs-present-20260630-023000`
   skipped repackaging, reused the signed Electron `42.5.1` bundle, and passed

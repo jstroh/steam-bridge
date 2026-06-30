@@ -180,6 +180,9 @@ await steamOverlay.openCheckoutAndWait(() =>
   backend.createSteamTransaction({ itemId: 100 })
 );
 
+// Optional: reuse the configured Shift+Tab target from a controller/menu button.
+steamOverlay.openShortcutTarget();
+
 // Achievement progress/store notifications are automatically primed while the
 // managed overlay is open. Use prepareForNotification() only for custom cases.
 
@@ -246,10 +249,14 @@ processes; pass `overlayShortcut: false` to disable it, or provide
 `overlayShortcut: { target: { type: "community", appId } }` to choose another
 presenter-backed target. Use `overlayShortcut.onOpen` for app logging or state
 updates after the managed shortcut opens; static targets should not need a
-resolver function just for side effects. The bridge consumes Shift+Tab only when
-it is opening a managed presenter-backed target; once Steam reports an active
-overlay, it lets Shift+Tab pass through so Steam can handle the close/toggle
-side. On macOS, Steam can consume Shift+Tab before Electron's normal
+resolver function just for side effects. Controller or in-game menu buttons can
+call `steamOverlay.openShortcutTarget()` to open that same configured managed
+target; it returns `null` while the Steam overlay is already active/opening or
+when the shortcut bridge is disabled, so apps do not need to duplicate the target
+resolver. The bridge consumes Shift+Tab only when it is opening a managed
+presenter-backed target; once Steam reports an active overlay, it lets Shift+Tab
+pass through so Steam can handle the close/toggle side. On macOS, Steam can
+consume Shift+Tab before Electron's normal
 `before-input-event` hook sees it, so Steam Bridge registers a focused-window
 global shortcut fallback only while the game window is focused, then unregisters
 it while Steam's overlay is active so the second Shift+Tab still closes
@@ -552,8 +559,8 @@ lazily and may pump while a session exists.
 On macOS Apple Silicon, the packaged smoke app uses an in-bundle native launcher
 so Steam keeps `DYLD_INSERT_LIBRARIES` while the launcher aligns `SteamAppId`,
 `SteamGameId`, and `SteamOverlayGameId` before Electron starts. The macOS helper
-can run `--close-probe`; it focuses the smoke app, sends the close input, and
-verifies active/inactive callbacks, app focus return, `openAndWait(...)`
+can run `--close-probe`; it leaves the active Steam overlay focused for the
+close input and verifies active/inactive callbacks, app focus return, `openAndWait(...)`
 completion after parking, no post-close presenter pumping, and no crash
 diagnostics. A 2026-06-29 full macOS matrix at
 `/tmp/steam-bridge-macos-overlay-matrix-full-dialog-openwait-20260629-195732`

@@ -849,7 +849,6 @@ verify_result() {
 }
 
 send_macos_overlay_close_probe() {
-  focus_macos_smoke_app_for_probe
   case "$close_input" in
     escape|keyboard)
       echo "Sending macOS overlay Escape close probe"

@@ -2110,6 +2110,7 @@ export type ElectronSteamOverlayOptions = NonNullable<Parameters<typeof electron
 export interface ElectronSteamOverlay extends CallbackHandle {
   readonly presenter: NativeOverlayPresenter;
   open(target: SteamOverlayTarget): NativeOverlayPresenter;
+  openShortcutTarget(): NativeOverlayPresenter | null;
   openAndWait(
     target: SteamOverlayTarget,
     options?: ElectronSteamOverlayOpenAndWaitOptions
@@ -8586,6 +8587,7 @@ export function createElectronSteamOverlay(
   let removeShortcutListener: (() => void) | undefined;
   let removeWindowSyncListeners: (() => void) | undefined;
   let notificationPresenterHandle: CallbackHandle | undefined;
+  const shortcutOpenState: ElectronSteamOverlayShortcutOpenState = { opening: false };
   let closed = false;
   const assertOpen = (): void => {
     if (closed || (presenterMode === "persistent" && !presenter.isOpen())) {
@@ -8613,6 +8615,30 @@ export function createElectronSteamOverlay(
       } catch (error) {
         activationHandle?.disconnect();
         throw error;
+      }
+    },
+    openShortcutTarget(): NativeOverlayPresenter | null {
+      assertOpen();
+      if (!shortcut.enabled) {
+        return null;
+      }
+
+      const snapshot = controller.snapshot();
+      if (snapshot.overlayActive || shortcutOpenState.opening || isElectronSteamOverlayShortcutOpening(snapshot)) {
+        return null;
+      }
+
+      shortcutOpenState.opening = true;
+      try {
+        const target = resolveElectronSteamOverlayShortcutTarget(shortcut.target);
+        const openedPresenter = controller.open(target);
+        notifyElectronSteamOverlayShortcutOpened(shortcut, target);
+        return openedPresenter;
+      } catch (error) {
+        notifyElectronSteamOverlayShortcutError(shortcut, error);
+        throw error;
+      } finally {
+        shortcutOpenState.opening = false;
       }
     },
     async openAndWait(
@@ -8807,7 +8833,7 @@ export function createElectronSteamOverlay(
   };
 
   removeWindowSyncListeners = installElectronSteamOverlayWindowSync(window, controller, presenterMode);
-  removeShortcutListener = installElectronSteamOverlayShortcut(window, controller, shortcut);
+  removeShortcutListener = installElectronSteamOverlayShortcut(window, controller, shortcut, shortcutOpenState);
   if (autoPrepareForNotifications) {
     notificationPresenterHandle = registerElectronNotificationPresenter(presenter);
   }
@@ -9077,14 +9103,14 @@ function removeElectronSteamOverlayWindowListener(
 function installElectronSteamOverlayShortcut(
   window: ElectronOverlayWindow,
   controller: ElectronSteamOverlay,
-  shortcut: NormalizedElectronSteamOverlayShortcutOptions
+  shortcut: NormalizedElectronSteamOverlayShortcutOptions,
+  shortcutOpenState: ElectronSteamOverlayShortcutOpenState
 ): () => void {
   const webContents = window.webContents;
   if (!shortcut.enabled || typeof webContents.on !== "function") {
     return () => {};
   }
 
-  let opening = false;
   const handleShortcut = (event?: ElectronOverlayInputEvent): ElectronSteamOverlayShortcutHandleResult => {
     try {
       const snapshot = controller.snapshot();
@@ -9092,7 +9118,7 @@ function installElectronSteamOverlayShortcut(
         return "ignored";
       }
 
-      if (opening || isElectronSteamOverlayShortcutOpening(snapshot)) {
+      if (shortcutOpenState.opening || isElectronSteamOverlayShortcutOpening(snapshot)) {
         if (shortcut.preventDefault) {
           event?.preventDefault?.();
         }
@@ -9103,20 +9129,16 @@ function installElectronSteamOverlayShortcut(
         event?.preventDefault?.();
       }
 
-      opening = true;
+      shortcutOpenState.opening = true;
       const target = resolveElectronSteamOverlayShortcutTarget(shortcut.target);
       controller.open(target);
       notifyElectronSteamOverlayShortcutOpened(shortcut, target);
       return "opened";
     } catch (error) {
-      if (shortcut.onError) {
-        shortcut.onError(error);
-      } else {
-        emitElectronSteamOverlayShortcutWarning(error);
-      }
+      notifyElectronSteamOverlayShortcutError(shortcut, error);
       return "handled";
     } finally {
-      opening = false;
+      shortcutOpenState.opening = false;
     }
   };
 
@@ -9345,6 +9367,22 @@ function notifyElectronSteamOverlayShortcutOpened(
         type: "SteamBridgeOverlayShortcutWarning"
       });
     }
+  }
+}
+
+function notifyElectronSteamOverlayShortcutError(
+  shortcut: NormalizedElectronSteamOverlayShortcutOptions,
+  error: unknown
+): void {
+  if (!shortcut.onError) {
+    emitElectronSteamOverlayShortcutWarning(error);
+    return;
+  }
+
+  try {
+    shortcut.onError(error);
+  } catch (onErrorError) {
+    emitElectronSteamOverlayShortcutWarning(onErrorError);
   }
 }
 
@@ -9910,6 +9948,10 @@ type NormalizedElectronSteamOverlayShortcutOptions = Required<
   Omit<ElectronSteamOverlayShortcutOptions, "enabled" | "preventDefault">;
 
 type ElectronSteamOverlayShortcutHandleResult = "ignored" | "handled" | "opened";
+
+interface ElectronSteamOverlayShortcutOpenState {
+  opening: boolean;
+}
 
 interface ElectronGlobalShortcutApi {
   register(accelerator: string, callback: () => void): boolean;
