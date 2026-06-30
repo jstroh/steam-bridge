@@ -548,6 +548,14 @@ achievements, user chat, and dialog-equivalent. The 24-case run verified
 Shift+Tab open/close, active/inactive callbacks, app focus return, idle parking
 at `currentFps=0`, zero managed overlay timing, one `gameoverlayui` target, no
 post-close pumping, and no crash diagnostics.
+A later 2026-06-29 full macOS matrix at
+`/tmp/steam-bridge-macos-overlay-matrix-full-close-wait-20260629-214233`
+passed all 31 Steam-launched cases after the managed close-wait checks were
+hardened. It covers the core routes plus user SteamID and every known
+dialog-equivalent route through managed `openAndWait(...)`, with
+`managedWaits=true`, `zeroTiming=true`, one `gameoverlayui` target under App ID
+`480`, clean crash diagnostics, app focus return, and parked presenters for
+every active managed overlay case.
 The repository also provides `npm run macos:overlay-matrix`, which installs or
 updates one stable macOS Steam shortcut pointing at the in-bundle native
 launcher and a launcher env file. Each case rewrites only that env file, so

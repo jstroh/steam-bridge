@@ -277,6 +277,16 @@ Verified:
   `overlay:presenter-parked`, with wait-closed snapshots still attached/open
   but passive, non-focusable, `overlayActive=false`, and `idleFps=0`; final
   parked samples returned to `currentFps=0` with no post-close pumping.
+- A later 2026-06-29 full macOS overlay matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-full-close-wait-20260629-214233`
+  repeated the broader 31-case Steam-launched suite under those close-wait
+  checks. It passed all core routes plus user SteamID and every known
+  dialog-equivalent route (`Friends`, `Players`, `Community`,
+  `OfficialGameGroup`, `Stats`, and `Achievements`) through managed
+  `openAndWait(...)`. The summary auditor reported `managedWaits=true`,
+  `zeroTiming=true`, `macInteractive=true`, one `gameoverlayui` target under
+  App ID `480`, clean crash diagnostics, and parked presenters for every active
+  managed overlay case.
 - A 2026-06-29 minimal macOS overlay matrix at
   `/tmp/steam-bridge-macos-overlay-matrix-minimal-helper-current-20260629-170723`
   re-ran the packaged helper after the source-level presenter-shape checks were
