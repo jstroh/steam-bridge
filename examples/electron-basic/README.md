@@ -220,10 +220,11 @@ For shipped apps, apply the same entitlements through your normal Apple signing
 and notarization pipeline to the app process Steam launches and the executable
 that process `exec`s.
 The macOS matrix preflights those requirements with
-`scripts/verify-macos-steam-signing.cjs`: both the native launcher and renamed
-Electron executable must be arm64-only, validly signed, allow dyld environment
-variables, disable library validation, and omit App Sandbox before Steam is
-launched.
+`scripts/verify-macos-steam-signing.cjs`: the bundle `Info.plist` must name the
+native launcher as `CFBundleExecutable`, and both the native launcher and
+renamed Electron executable must be arm64-only, validly signed, allow dyld
+environment variables, disable library validation, and omit App Sandbox before
+Steam is launched.
 The same verifier is published with the package as
 `steam-bridge-verify-macos-signing`, so app projects can run
 `npx steam-bridge-verify-macos-signing --app-exe <YourApp.app/Contents/MacOS/YourApp>`

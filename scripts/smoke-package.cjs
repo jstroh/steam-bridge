@@ -74,6 +74,7 @@ function runMacosPackageSigningStaticChecks() {
   const packageJson = JSON.parse(fs.readFileSync(path.join(packageRoot, "package.json"), "utf8"));
   const packagerScript = fs.readFileSync(path.join(repoRoot, "scripts", "package-electron-example.cjs"), "utf8");
   const matrixScript = fs.readFileSync(path.join(repoRoot, "scripts", "macos-overlay-matrix.sh"), "utf8");
+  const verifierScript = fs.readFileSync(path.join(packageRoot, "bin", "verify-macos-signing.cjs"), "utf8");
   assert.equal(
     packageJson.bin?.["steam-bridge-verify-macos-signing"],
     "bin/verify-macos-signing.cjs",
@@ -93,6 +94,14 @@ function runMacosPackageSigningStaticChecks() {
     matrixScript.includes("verify-macos-steam-signing.cjs"),
     "macOS overlay matrix must verify package signing before live cases"
   );
+  for (const expected of [
+    "verifyMacAppBundleLauncher(appExe",
+    "CFBundleExecutable",
+    "Contents\", \"Info.plist",
+    "/usr/bin/plutil"
+  ]) {
+    assert.ok(verifierScript.includes(expected), `macOS signing verifier missing ${expected}`);
+  }
   assert.ok(
     packagerScript.indexOf("signMacSteamExecutable(electronPath)") <
       packagerScript.indexOf("signMacSteamExecutable(launcherPath)"),

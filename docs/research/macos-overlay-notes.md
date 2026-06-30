@@ -345,8 +345,9 @@ Verified:
 - The live macOS matrix now runs `scripts/verify-macos-steam-signing.cjs`
   before touching Steam. It checks the native launcher and renamed Electron
   executable for arm64-only slices, valid executable signatures, the dyld
-  environment and disabled-library-validation entitlements, and absence of App
-  Sandbox. A focused minimal matrix at
+  environment and disabled-library-validation entitlements, absence of App
+  Sandbox, and a bundle `Info.plist` whose `CFBundleExecutable` names the native
+  launcher rather than the renamed Electron executable. A focused minimal matrix at
   `/tmp/steam-bridge-macos-overlay-matrix-minimal-signing-preflight-20260630-000117`
   rebuilt, signed, verified, and then passed web/store/Friends/dialog wait
   routes plus the passive progress toast. The same verifier is now published in

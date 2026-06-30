@@ -223,8 +223,9 @@ shortcut targets, passive notifications, checkout approval routing,
 all high-level dialog-equivalent routes, close/back-to-app proof, and crash
 diagnostics. Before launching Steam, that matrix verifies both macOS smoke
 executables are arm64-only, validly signed, carry the Steam overlay
-entitlements, and omit App Sandbox. The package also publishes the same check as
-`steam-bridge-verify-macos-signing`; run
+entitlements, omit App Sandbox, and that the bundle `Info.plist` names the
+native launcher as `CFBundleExecutable`. The package also publishes the same
+check as `steam-bridge-verify-macos-signing`; run
 `npx steam-bridge-verify-macos-signing --app-exe <YourApp.app/Contents/MacOS/YourApp>`
 against the final signed app shape before Steam overlay testing.
 
@@ -629,7 +630,8 @@ launcher and renamed Electron executable with Steam-compatible entitlements like
 `com.apple.security.cs.disable-library-validation`, and do not enable the App
 Sandbox. Keep the in-bundle native launcher as the app's main executable so the
 process Steam launches is also the process that aligns the Steam app and overlay
-game IDs before Electron starts.
+game IDs before Electron starts. The app bundle `Info.plist` should name that
+launcher in `CFBundleExecutable`, not the renamed Electron executable.
 For shipped apps, use your normal Apple signing and notarization pipeline with
 those same entitlements on the launched app process and the executable it
 `exec`s.

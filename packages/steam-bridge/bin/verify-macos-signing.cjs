@@ -2,6 +2,7 @@
 
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
+const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 
 const REQUIRED_TRUE_ENTITLEMENTS = [
@@ -56,6 +57,7 @@ function runCli(args, io = console) {
   }
 
   try {
+    verifyMacAppBundleLauncher(appExe, "native launcher");
     verifySignedExecutable(appExe, "native launcher");
     verifySignedExecutable(`${appExe}.electron`, "renamed Electron executable");
   } catch (error) {
@@ -105,8 +107,100 @@ function printUsage(io = console) {
   steam-bridge-verify-macos-signing --self-test
 
 Verifies the packaged macOS launcher and renamed Electron executable are
-arm64-only, codesigned, and signed with Steam-overlay-compatible entitlements.
+installed as the app bundle executable, arm64-only, codesigned, and signed with
+Steam-overlay-compatible entitlements.
 `);
+}
+
+function verifyMacAppBundleLauncher(filePath, label) {
+  const bundle = resolveMacAppBundleExecutable(filePath);
+  if (!bundle) {
+    return;
+  }
+
+  assertNonEmptyFile(bundle.infoPlist, "app bundle Info.plist");
+  const bundleExecutable = readCfBundleExecutable(bundle.infoPlist);
+  assertBundleExecutableMatches(bundle, bundleExecutable, label);
+}
+
+function resolveMacAppBundleExecutable(filePath) {
+  const resolved = path.resolve(filePath);
+  const marker = `${path.sep}Contents${path.sep}MacOS${path.sep}`;
+  const markerIndex = resolved.lastIndexOf(marker);
+  if (markerIndex < 0) {
+    return undefined;
+  }
+
+  const appRoot = resolved.slice(0, markerIndex);
+  if (!appRoot.endsWith(".app")) {
+    return undefined;
+  }
+
+  const macosRelativePath = resolved.slice(markerIndex + marker.length);
+  return {
+    appRoot,
+    executableName: path.basename(resolved),
+    infoPlist: path.join(appRoot, "Contents", "Info.plist"),
+    macosRelativePath
+  };
+}
+
+function readCfBundleExecutable(infoPlistPath) {
+  let plutilError;
+  try {
+    const result = run(
+      "/usr/bin/plutil",
+      ["-extract", "CFBundleExecutable", "raw", "-o", "-", infoPlistPath],
+      `failed to read CFBundleExecutable from ${infoPlistPath}`,
+      { allowStdout: true }
+    );
+    const value = result.stdout.trim();
+    if (value) {
+      return value;
+    }
+  } catch (error) {
+    plutilError = error;
+  }
+
+  try {
+    return parseCfBundleExecutable(fs.readFileSync(infoPlistPath, "utf8"));
+  } catch (error) {
+    if (plutilError) {
+      throw new Error(`${plutilError.message}\n${error.message}`);
+    }
+    throw error;
+  }
+}
+
+function parseCfBundleExecutable(plist) {
+  const match = /<key>\s*CFBundleExecutable\s*<\/key>\s*<string>([^<]+)<\/string>/.exec(plist);
+  if (!match) {
+    throw new Error("Info.plist missing CFBundleExecutable");
+  }
+  return decodeXmlText(match[1].trim());
+}
+
+function decodeXmlText(text) {
+  return text
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&");
+}
+
+function assertBundleExecutableMatches(bundle, bundleExecutable, label) {
+  if (bundle.macosRelativePath !== bundle.executableName) {
+    throw new Error(
+      `${label} must be directly under Contents/MacOS: ${bundle.macosRelativePath}`
+    );
+  }
+  if (bundleExecutable !== bundle.executableName) {
+    throw new Error(
+      `${label} is not the app bundle executable: ${bundle.infoPlist} CFBundleExecutable is ` +
+        `"${bundleExecutable}", expected "${bundle.executableName}"`
+    );
+  }
 }
 
 function verifySignedExecutable(filePath, label) {
@@ -122,6 +216,17 @@ function verifySignedExecutable(filePath, label) {
 }
 
 function assertExecutable(filePath, label) {
+  const stats = statNonEmptyFile(filePath, label);
+  if ((stats.mode & 0o111) === 0) {
+    throw new Error(`${label} is not executable: ${filePath}`);
+  }
+}
+
+function assertNonEmptyFile(filePath, label) {
+  statNonEmptyFile(filePath, label);
+}
+
+function statNonEmptyFile(filePath, label) {
   let stats;
   try {
     stats = fs.statSync(filePath);
@@ -135,9 +240,7 @@ function assertExecutable(filePath, label) {
   if (stats.size <= 0) {
     throw new Error(`${label} is empty: ${filePath}`);
   }
-  if ((stats.mode & 0o111) === 0) {
-    throw new Error(`${label} is not executable: ${filePath}`);
-  }
+  return stats;
 }
 
 function verifyArm64Only(filePath, label) {
@@ -196,6 +299,64 @@ function run(command, args, errorPrefix, options = {}) {
 }
 
 function runSelfTest() {
+  const bundle = resolveMacAppBundleExecutable("/tmp/Steam Bridge.app/Contents/MacOS/Steam Bridge");
+  assert.deepEqual(bundle, {
+    appRoot: "/tmp/Steam Bridge.app",
+    executableName: "Steam Bridge",
+    infoPlist: "/tmp/Steam Bridge.app/Contents/Info.plist",
+    macosRelativePath: "Steam Bridge"
+  });
+  assert.equal(resolveMacAppBundleExecutable("/tmp/Steam Bridge"), undefined);
+
+  assert.equal(
+    parseCfBundleExecutable(`<plist><dict>
+  <key>CFBundleExecutable</key>
+  <string>SteamBridgeSmoke</string>
+</dict></plist>`),
+    "SteamBridgeSmoke"
+  );
+  assert.equal(
+    parseCfBundleExecutable(`<dict><key>CFBundleExecutable</key><string>Steam &amp; Bridge</string></dict>`),
+    "Steam & Bridge"
+  );
+  assert.throws(() => parseCfBundleExecutable("<dict></dict>"), /CFBundleExecutable/);
+
+  assertBundleExecutableMatches(
+    {
+      executableName: "SteamBridgeSmoke",
+      infoPlist: "/tmp/SteamBridgeSmoke.app/Contents/Info.plist",
+      macosRelativePath: "SteamBridgeSmoke"
+    },
+    "SteamBridgeSmoke",
+    "self-test launcher"
+  );
+  assert.throws(
+    () =>
+      assertBundleExecutableMatches(
+        {
+          executableName: "SteamBridgeSmoke",
+          infoPlist: "/tmp/SteamBridgeSmoke.app/Contents/Info.plist",
+          macosRelativePath: "SteamBridgeSmoke"
+        },
+        "SteamBridgeSmoke.electron",
+        "self-test launcher"
+      ),
+    /CFBundleExecutable/
+  );
+  assert.throws(
+    () =>
+      assertBundleExecutableMatches(
+        {
+          executableName: "SteamBridgeSmoke",
+          infoPlist: "/tmp/SteamBridgeSmoke.app/Contents/Info.plist",
+          macosRelativePath: "Nested/SteamBridgeSmoke"
+        },
+        "SteamBridgeSmoke",
+        "self-test launcher"
+      ),
+    /directly under Contents\/MacOS/
+  );
+
   const goodEntitlements = parseEntitlementBooleans(`<?xml version="1.0" encoding="UTF-8"?>
 <plist version="1.0">
 <dict>
@@ -252,10 +413,15 @@ module.exports = {
   FORBIDDEN_ENTITLEMENTS,
   REQUIRED_TRUE_ENTITLEMENTS,
   main,
+  assertBundleExecutableMatches,
   parseArgs,
+  parseCfBundleExecutable,
   parseEntitlementBooleans,
+  readCfBundleExecutable,
+  resolveMacAppBundleExecutable,
   runCli,
   runSelfTest,
   verifyEntitlements,
+  verifyMacAppBundleLauncher,
   verifySignedExecutable
 };

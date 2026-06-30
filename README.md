@@ -374,10 +374,12 @@ Native presenter design notes are tracked in
   Apple signing/notarization pipeline: allow dyld environment variables,
   disable library validation, and keep App Sandbox disabled so Steam can inject
   the overlay into the launched process. The signed smoke package is part of
-  the live macOS overlay matrix, and the matrix verifies both smoke executables
-  are arm64-only and signed with those entitlements before it launches Steam, so
-  these packaging requirements are covered by the same Steam-launched proof as
-  the public overlay helpers. Published package consumers can run
+  the live macOS overlay matrix, and the matrix verifies the bundle
+  `Info.plist` names the native launcher as `CFBundleExecutable`, then checks
+  both smoke executables are arm64-only and signed with those entitlements
+  before it launches Steam. These packaging requirements are covered by the
+  same Steam-launched proof as the public overlay helpers. Published package
+  consumers can run
   `npx steam-bridge-verify-macos-signing --app-exe <YourApp.app/Contents/MacOS/YourApp>`
   against their shipped launcher shape.
 - Steam Bridge does not vendor the Steamworks SDK or Valve redistributables.
