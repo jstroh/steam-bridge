@@ -370,18 +370,25 @@ opens the verified Steam Community chat/Friends surface. Prompt-style names such
 as `jointrade` and friend request actions are native-only diagnostics and should
 be tested explicitly with `route: "native"` in app code.
 Use `presenter-checkout` to verify checkout readiness. Without
-`STEAM_BRIDGE_SMOKE_CHECKOUT_URL` or
+`STEAM_BRIDGE_SMOKE_CHECKOUT_JSON_FILE`,
+`STEAM_BRIDGE_SMOKE_CHECKOUT_URL`, or
 `STEAM_BRIDGE_SMOKE_CHECKOUT_TRANSACTION_ID`, it calls
 `steamOverlay.withCheckoutPrepared(...)` and records
 `overlay:presenter-checkout-ready`; this is safe for the public SpaceWar smoke
 app and proves the public checkout wrapper without opening purchase UI or
 depending on a fixed presenter-preparation duration. The helper holds the
 presenter active only for the wrapped operation and then parks it. When testing
-a real app with a configured product, set
-`STEAM_BRIDGE_SMOKE_CHECKOUT_URL` to the Steam URL returned by `InitTxn`, or set
+a real app with a configured product, prefer writing the backend `InitTxn` or
+checkout response JSON to a private temp file and setting
+`STEAM_BRIDGE_SMOKE_CHECKOUT_JSON_FILE` to that path. The smoke app feeds the
+parsed object directly into `steamOverlay.openCheckoutAndWait(...)`, so common
+envelopes such as `response.params.transid` are exercised without committing
+private products or putting transaction values in launch arguments. For smaller
+manual checks, set `STEAM_BRIDGE_SMOKE_CHECKOUT_URL` to the Steam URL returned
+by `InitTxn`, or set
 `STEAM_BRIDGE_SMOKE_CHECKOUT_TRANSACTION_ID` to build and open the Steam
 transaction approval page through `steamOverlay.openCheckoutAndWait(...)`.
-The smoke app wraps those inputs in an `InitTxn`-style
+The smoke app wraps direct URL or transaction ID inputs in an `InitTxn`-style
 `response.params` envelope before calling the helper, so generic overlay
 matrices exercise the same unwrapping path a real backend response uses.
 Abort signals passed to `openCheckoutAndWait(...)` also cover the pending
@@ -390,9 +397,11 @@ hold and parks it back at zero FPS. Pass that same signal to your backend
 request when the network request itself should be canceled too. Closing the
 overlay manager while that operation is pending also releases the hold and
 prevents a late checkout surface from opening.
-The Linux and Steam Deck helpers expose the same inputs as `--checkout-url`,
-`--checkout-transaction-id`, and `--checkout-return-url`. Without a checkout URL
-or transaction ID the helpers only require `overlay:presenter-checkout-ready`;
+The macOS helper exposes the private-file path as `--checkout-json-file`; the
+Linux and Steam Deck helpers expose direct inputs as `--checkout-url`,
+`--checkout-transaction-id`, and `--checkout-return-url`. Without a checkout
+file, URL, or transaction ID the helpers only require
+`overlay:presenter-checkout-ready`;
 with one, they require `overlay:presenter-open`, a Steam overlay activation
 callback, and lifecycle logs show `overlay:presenter-checkout-open-and-wait-complete`
 after Steam closes and the presenter parks. Those lifecycle logs preserve
@@ -944,12 +953,15 @@ app-specific proof outside the committed examples:
 3. Trigger the backend `InitTxn` call through
    `steamOverlay.openCheckoutAndWait(() => startTxn())`; do not tune local
    overlay-preparation timers around that call.
-4. Let Steam Bridge open the returned checkout URL or transaction approval path.
-5. Verify the Steam modal appears in both Deck Game Mode and Desktop Mode.
-6. Confirm backing out or closing the Steam surface returns focus to the app.
-7. Confirm any `callback:microtxn` artifact keeps the presenter snapshot while
+4. For smoke proof, save the returned JSON to a private temp file and pass it
+   with `STEAM_BRIDGE_SMOKE_CHECKOUT_JSON_FILE` or the macOS helper's
+   `--checkout-json-file`.
+5. Let Steam Bridge open the returned checkout URL or transaction approval path.
+6. Verify the Steam modal appears in both Deck Game Mode and Desktop Mode.
+7. Confirm backing out or closing the Steam surface returns focus to the app.
+8. Confirm any `callback:microtxn` artifact keeps the presenter snapshot while
    redacting order IDs, transaction IDs, Steam IDs, and checkout URLs.
-8. Keep private app IDs, item definitions, transaction IDs, publisher keys, and
+9. Keep private app IDs, item definitions, transaction IDs, publisher keys, and
    private URLs out of committed docs and examples.
 
 The managed Electron overlay defaults to scoped activation holds instead of

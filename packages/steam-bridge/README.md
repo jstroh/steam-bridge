@@ -326,7 +326,12 @@ split-step hold is intentional.
 The Electron smoke app redacts real checkout URLs, transaction IDs, return URLs,
 Steam IDs, auth-ticket bytes, and private CLI arguments from result and lifecycle
 artifacts while preserving machine-checkable presence flags and presenter
-snapshots.
+snapshots. For real product smoke proof, write the backend `InitTxn` or
+checkout response JSON to a private temp file and pass its path with
+`STEAM_BRIDGE_SMOKE_CHECKOUT_JSON_FILE` or the macOS helper's
+`--checkout-json-file`; the smoke app feeds that object through
+`openCheckoutAndWait(...)` without committing private data or putting transaction
+values in launch arguments.
 Passive Steam notifications such as achievement progress
 or achievement unlock toasts are automatically primed by the managed Electron
 overlay before the relevant achievement/stats calls. If macOS reports the
@@ -604,7 +609,9 @@ A 2026-06-30 core macOS matrix at
 passed 24 Steam-launched cases after the smoke checkout path began wrapping
 synthetic inputs in an `InitTxn`-style `response.params` envelope, proving the
 generic checkout unwrapping path while still leaving real purchase-content proof
-to apps with configured Steam products.
+to apps with configured Steam products. The same smoke path can now consume a
+private checkout JSON file for real-product verification without changing the
+committed generic examples.
 The repository also provides `npm run macos:overlay-matrix`, which installs or
 updates one stable macOS Steam shortcut pointing at the in-bundle native
 launcher and a launcher env file. Each case rewrites only that env file, so

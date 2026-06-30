@@ -799,6 +799,7 @@ write_case_launcher_env() {
   local env_checkout_url=""
   local env_checkout_transaction_id=""
   local env_checkout_return_url=""
+  local env_checkout_json_file=""
   local env_overlay_dialog=""
   local env_user_dialog=""
   local env_shortcut_target=""
@@ -847,6 +848,10 @@ write_case_launcher_env() {
         ;;
       --checkout-return-url)
         env_checkout_return_url="${2:?missing --checkout-return-url value}"
+        shift 2
+        ;;
+      --checkout-json-file)
+        env_checkout_json_file="${2:?missing --checkout-json-file value}"
         shift 2
         ;;
       --dialog)
@@ -934,6 +939,9 @@ write_case_launcher_env() {
   fi
   if [ -n "$env_checkout_return_url" ]; then
     write_env_line "STEAM_BRIDGE_SMOKE_CHECKOUT_RETURN_URL" "$env_checkout_return_url"
+  fi
+  if [ -n "$env_checkout_json_file" ]; then
+    write_env_line "STEAM_BRIDGE_SMOKE_CHECKOUT_JSON_FILE" "$env_checkout_json_file"
   fi
   if [ -n "$env_overlay_dialog" ]; then
     write_env_line "STEAM_BRIDGE_SMOKE_OVERLAY_DIALOG" "$env_overlay_dialog"

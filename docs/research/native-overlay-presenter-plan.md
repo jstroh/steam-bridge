@@ -580,7 +580,16 @@ Current evidence:
   emitted overlay inactive. The Deck and macOS matrix summarizers now fail any
   `callback:microtxn` lifecycle event that lacks a presenter snapshot, so real
   purchase artifacts are machine-checkable when a configured app/product is
-  available. A 2026-06-28 Deck Desktop prepare-only run verified
+  available. The smoke app can also read a private `InitTxn`/checkout response
+  JSON file from `STEAM_BRIDGE_SMOKE_CHECKOUT_JSON_FILE` and feed it directly
+  through `openCheckoutAndWait(...)`, giving real-product proof a generic
+  runtime hook without committing app IDs, product data, transaction IDs, or
+  checkout URLs. A focused 2026-06-30 macOS run at
+  `/tmp/steam-bridge-macos-checkout-json-20260630-030514` proved that JSON-file
+  handoff through the packaged Electron `42.5.1` app and stable Steam shortcut:
+  checkout opened, emitted active/inactive callbacks, returned the app
+  frontmost, completed only after presenter parking, and kept raw transaction
+  data out of result/lifecycle artifacts. A 2026-06-28 Deck Desktop prepare-only run verified
   checkout readiness returns to passive idle, and a synthetic
   transaction approval URL run verified checkout-style open, close, app focus,
   no crash evidence, and no post-close pumping without committing private app
@@ -825,7 +834,9 @@ Current evidence:
 Next work:
 
 1. Run real purchase-content and `InitTxn` proof from a real configured Steam
-   app ID; App ID `480` only proves generic checkout routing.
+   app ID; App ID `480` only proves generic checkout routing. Use the smoke
+   app's private checkout JSON file input for artifact capture so transaction
+   responses stay outside the repository and launch arguments.
 2. Keep code signing requirements explicit in docs and examples. The generic
    example now includes `entitlements.steam.macos.plist` with
    `com.apple.security.cs.allow-dyld-environment-variables` and

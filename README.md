@@ -316,6 +316,9 @@ because no native host should be created.
 overlay-close signal. Keep the managed presenter alive until Steam reports the
 overlay inactive. Real purchase UI and `InitTxn` proof require your own Steam
 app ID with configured products; App ID `480` is only for generic smoke tests.
+For smoke proof with a real product, keep private responses outside the repo and
+pass a local `InitTxn` JSON file through `STEAM_BRIDGE_SMOKE_CHECKOUT_JSON_FILE`
+or the macOS helper's `--checkout-json-file`.
 
 ## Diagnostics
 

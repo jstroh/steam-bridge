@@ -14,6 +14,7 @@ web_modal=""
 checkout_url=""
 checkout_transaction_id=""
 checkout_return_url=""
+checkout_json_file=""
 overlay_dialog=""
 user_dialog=""
 shortcut_target=""
@@ -82,6 +83,7 @@ Options:
   --checkout-url URL             Full Steam checkout URL for presenter-checkout.
   --checkout-transaction-id ID   Steam checkout transaction ID for presenter-checkout.
   --checkout-return-url URL      Optional return URL for transaction checkout.
+  --checkout-json-file PATH      JSON file containing an InitTxn/checkout response.
   --dialog NAME                  Dialog name for dialog/native-dialog/presenter-dialog actions.
   --user-dialog NAME             User dialog name for presenter-user.
   --shortcut-target NAME         Managed presenter shortcut target.
@@ -192,6 +194,10 @@ while [ "$#" -gt 0 ]; do
       ;;
     --checkout-return-url)
       checkout_return_url="${2:?missing --checkout-return-url value}"
+      shift 2
+      ;;
+    --checkout-json-file)
+      checkout_json_file="${2:?missing --checkout-json-file value}"
       shift 2
       ;;
     --dialog)
@@ -439,6 +445,9 @@ smoke_args() {
   fi
   if [ -n "$checkout_return_url" ]; then
     printf '%s\n' "--steam-bridge-smoke-checkout-return-url=$checkout_return_url"
+  fi
+  if [ -n "$checkout_json_file" ]; then
+    printf '%s\n' "--steam-bridge-smoke-checkout-json-file=$checkout_json_file"
   fi
   if [ -n "$overlay_dialog" ]; then
     printf '%s\n' "--steam-bridge-smoke-overlay-dialog=$overlay_dialog"
@@ -1782,6 +1791,7 @@ NODE
   user_dialog="steamid"
   presenter_mode="session"
   native_host_backend="opengl"
+  checkout_json_file="/tmp/private-init-txn-response.json"
   action_delay_ms="2500"
   macos_native_launcher="1"
   launch_options="$(smoke_args | paste -sd' ' -)"
@@ -1823,6 +1833,10 @@ NODE
   fi
   if [[ "$launch_options" != *"--steam-bridge-smoke-native-host-backend=opengl"* ]]; then
     echo "Self-test failed: launch options must pass the requested native host backend." >&2
+    exit 1
+  fi
+  if [[ "$launch_options" != *"--steam-bridge-smoke-checkout-json-file=/tmp/private-init-txn-response.json"* ]]; then
+    echo "Self-test failed: launch options must pass the requested checkout JSON file." >&2
     exit 1
   fi
   close_probe="1"

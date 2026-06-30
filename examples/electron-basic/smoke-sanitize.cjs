@@ -4,6 +4,7 @@ const SENSITIVE_KEY_NAMES = new Set([
   "apitoken",
   "authkey",
   "authticket",
+  "checkoutjsonfile",
   "checkouturl",
   "cookie",
   "key",
@@ -43,7 +44,8 @@ const SENSITIVE_KEY_PARTS = [
 const SENSITIVE_ARG_PREFIXES = [
   "--steam-bridge-smoke-checkout-url",
   "--steam-bridge-smoke-checkout-return-url",
-  "--steam-bridge-smoke-checkout-transaction-id"
+  "--steam-bridge-smoke-checkout-transaction-id",
+  "--steam-bridge-smoke-checkout-json-file"
 ];
 
 const CHECKOUT_URL_PATTERN = /https?:\/\/checkout\.steampowered\.com\/checkout\/approvetxn\/[^/\s"'<>]+/i;

@@ -32,6 +32,8 @@ const CHECKOUT_TRANSACTION_ID =
   CLI_OPTIONS.checkoutTransactionId || process.env.STEAM_BRIDGE_SMOKE_CHECKOUT_TRANSACTION_ID || "";
 const CHECKOUT_RETURN_URL =
   CLI_OPTIONS.checkoutReturnUrl || process.env.STEAM_BRIDGE_SMOKE_CHECKOUT_RETURN_URL || "";
+const CHECKOUT_JSON_FILE =
+  CLI_OPTIONS.checkoutJsonFile || process.env.STEAM_BRIDGE_SMOKE_CHECKOUT_JSON_FILE || "";
 const OVERLAY_DIALOG = CLI_OPTIONS.overlayDialog || process.env.STEAM_BRIDGE_SMOKE_OVERLAY_DIALOG || "Friends";
 const USER_DIALOG = CLI_OPTIONS.userDialog || process.env.STEAM_BRIDGE_SMOKE_USER_DIALOG || "steamid";
 const SHORTCUT_TARGET =
@@ -963,24 +965,16 @@ function openPresenterUserOpenAndWaitOverlay() {
 
 async function openPresenterCheckoutOverlay() {
   const overlay = ensureElectronSteamOverlay();
-  if (CHECKOUT_URL || CHECKOUT_TRANSACTION_ID) {
-    const transactionParams = {
-      steamurl: CHECKOUT_URL || undefined,
-      transid: CHECKOUT_URL ? undefined : CHECKOUT_TRANSACTION_ID,
-      returnurl: CHECKOUT_RETURN_URL || undefined
-    };
-    const transaction = {
-      response: {
-        result: "OK",
-        params: transactionParams
-      }
-    };
+  const checkoutOperation = readCheckoutOperationInput();
+  if (checkoutOperation) {
+    const { transaction, source } = checkoutOperation;
     const context = {
       target: "checkout",
       route: "web",
       modal: true,
       api: "openCheckoutAndWait",
-      checkout: checkoutDiagnostic(transactionParams)
+      checkoutSource: source,
+      checkout: checkoutDiagnostic(transaction)
     };
     const openAndWait = overlay.openCheckoutAndWait(() => transaction, {
       showTimeoutMs: MANAGED_OVERLAY_WAIT_TIMEOUT_MS,
@@ -1024,13 +1018,77 @@ async function openPresenterCheckoutOverlay() {
   return snapshot();
 }
 
-function checkoutDiagnostic(target) {
-  return {
-    hasCheckoutUrl: Boolean(target && (target.steamUrl || target.steamurl || target.url)),
-    hasTransactionId: Boolean(target && (target.transactionId || target.transactionID || target.transid)),
-    hasReturnUrl: Boolean(target && (target.returnUrl || target.returnurl)),
-    modal: target && typeof target.modal === "boolean" ? target.modal : true
+function readCheckoutOperationInput() {
+  if (CHECKOUT_JSON_FILE) {
+    const transaction = JSON.parse(fs.readFileSync(CHECKOUT_JSON_FILE, "utf8"));
+    return {
+      source: "json-file",
+      transaction
+    };
+  }
+
+  if (!CHECKOUT_URL && !CHECKOUT_TRANSACTION_ID) {
+    return null;
+  }
+
+  const transactionParams = {
+    steamurl: CHECKOUT_URL || undefined,
+    transid: CHECKOUT_URL ? undefined : CHECKOUT_TRANSACTION_ID,
+    returnurl: CHECKOUT_RETURN_URL || undefined
   };
+  return {
+    source: CHECKOUT_URL ? "checkout-url" : "transaction-id",
+    transaction: {
+      response: {
+        result: "OK",
+        params: transactionParams
+      }
+    }
+  };
+}
+
+function checkoutDiagnostic(target) {
+  const source = findCheckoutDiagnosticSource(target);
+  return {
+    hasCheckoutUrl: Boolean(source && (source.steamUrl || source.steamurl || source.url)),
+    hasTransactionId: Boolean(source && (source.transactionId || source.transactionID || source.transid)),
+    hasReturnUrl: Boolean(source && (source.returnUrl || source.returnurl)),
+    modal: source && typeof source.modal === "boolean" ? source.modal : true
+  };
+}
+
+function findCheckoutDiagnosticSource(value, seen = new Set(), depth = 0) {
+  if (!value || typeof value !== "object" || Array.isArray(value) || seen.has(value) || depth > 8) {
+    return undefined;
+  }
+
+  seen.add(value);
+  if (hasCheckoutDiagnosticFields(value)) {
+    return value;
+  }
+
+  for (const key of ["data", "response", "params"]) {
+    const source = findCheckoutDiagnosticSource(value[key], seen, depth + 1);
+    if (source) {
+      return source;
+    }
+  }
+
+  return undefined;
+}
+
+function hasCheckoutDiagnosticFields(value) {
+  return [
+    "url",
+    "steamUrl",
+    "steamurl",
+    "transactionId",
+    "transactionID",
+    "transid",
+    "returnUrl",
+    "returnurl",
+    "modal"
+  ].some((key) => Object.prototype.hasOwnProperty.call(value, key));
 }
 
 function openPresenterAchievementProgress() {
@@ -2202,6 +2260,7 @@ function parseSmokeArgs(args) {
     checkoutUrl: undefined,
     checkoutTransactionId: undefined,
     checkoutReturnUrl: undefined,
+    checkoutJsonFile: undefined,
     managedOverlayWaitTimeoutMs: undefined,
     managedOverlayParkTimeoutMs: undefined,
     achievementName: undefined,
@@ -2251,6 +2310,9 @@ function parseSmokeArgs(args) {
         break;
       case "--steam-bridge-smoke-checkout-return-url":
         options.checkoutReturnUrl = value;
+        break;
+      case "--steam-bridge-smoke-checkout-json-file":
+        options.checkoutJsonFile = value;
         break;
       case "--steam-bridge-smoke-managed-overlay-wait-timeout-ms":
         options.managedOverlayWaitTimeoutMs = value;
