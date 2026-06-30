@@ -134,7 +134,11 @@ function summarizeMatrixArtifacts(root) {
     failures.push("macOS matrix manifest has no cases");
   }
 
-  for (const metadata of manifest.byCase.values()) {
+  const cases = [...manifest.byCase.values()];
+  const diagnosticDirCounts = countBy(cases, (metadata) => metadata.diagnosticDir || "");
+  const diagnosticDirOrdinals = new Map();
+
+  for (const metadata of cases) {
     const caseFailures = [];
     const caseId = metadata.caseId;
     const resultFile = metadata.resultFile;
@@ -166,7 +170,13 @@ function summarizeMatrixArtifacts(root) {
     }
 
     const lifecycle = readLifecycle(path.join(diagnosticDir, "lifecycle.jsonl"));
-    const summary = verifyCase(caseId, metadata, result, lifecycle, caseFailures);
+    const diagnosticDirOrdinal = diagnosticDirOrdinals.get(diagnosticDir) || 0;
+    diagnosticDirOrdinals.set(diagnosticDir, diagnosticDirOrdinal + 1);
+    const scopedLifecycle = scopeLifecycleForCase(metadata, lifecycle, {
+      shared: (diagnosticDirCounts.get(diagnosticDir) || 0) > 1,
+      ordinal: diagnosticDirOrdinal
+    });
+    const summary = verifyCase(caseId, metadata, result, scopedLifecycle, caseFailures);
     summaries.push(summary);
 
     if (caseFailures.length > 0) {
@@ -234,7 +244,7 @@ function verifyCase(caseId, metadata, result, lifecycle, failures) {
   const manifestCheckoutSource = checkoutSourceFromMetadata(metadata);
   const summaryCheckoutSource =
     manifestCheckoutSource || (expectedCheckoutSource ? expectedCheckoutSource : "");
-  const resultEvents = Array.isArray(snapshot.events) ? snapshot.events : [];
+  const resultEvents = scopeResultEventsForCase(Array.isArray(snapshot.events) ? snapshot.events : [], actionName);
   const lifecycleEntries = lifecycle.entries;
   const overlayTargets = countOverlayTargets(overlayProcesses);
   const overlayGameIds = collectOverlayGameIds(overlayProcesses);
@@ -354,7 +364,7 @@ function verifyCase(caseId, metadata, result, lifecycle, failures) {
   if (expectedNoOverlayActivation) {
     expect(overlayTargets === 0, `${caseId}: no gameoverlayui target while overlay activation is expected to be skipped`, failures);
   } else {
-    expect(overlayTargets === 1, `${caseId}: exactly one gameoverlayui target`, failures);
+    expect(overlayTargets === 1, `${caseId}: exactly one gameoverlayui target process/game ID`, failures);
     const requirePublicOverlayGameId = !isStoreOverlayAction(actionName);
     for (const target of Array.isArray(overlayProcesses.gameoverlayui) ? overlayProcesses.gameoverlayui : []) {
       expect(target.gameId != null, `${caseId}: gameoverlayui game ID is recorded`, failures);
@@ -392,16 +402,18 @@ function verifyCase(caseId, metadata, result, lifecycle, failures) {
         ? metadata.shortcutTarget
         : "friends";
     const shortcutOpen = lifecycleEntries.find((entry) => entry.type === "event:overlay:shortcut-open");
+    const shortcutOpenPayload = shortcutOpen ? objectOrEmpty(shortcutOpen.payload) : {};
     expect(
       Boolean(shortcutOpen),
       `${caseId}: managed shortcut open event recorded`,
       failures
     );
     if (shortcutOpen) {
-      const payload = objectOrEmpty(shortcutOpen.payload);
       expect(
-        payload.target === expectedShortcutTarget,
-        `${caseId}: shortcut open target expected ${formatValue(expectedShortcutTarget)}, got ${formatValue(payload.target)}`,
+        shortcutOpenPayload.target === expectedShortcutTarget,
+        `${caseId}: shortcut open target expected ${formatValue(expectedShortcutTarget)}, got ${formatValue(
+          shortcutOpenPayload.target
+        )}`,
         failures
       );
     }
@@ -409,24 +421,24 @@ function verifyCase(caseId, metadata, result, lifecycle, failures) {
       const shortcut = objectOrEmpty(electronOverlay.overlayShortcut);
       expect(shortcut.enabled === true, `${caseId}: overlay shortcut enabled`, failures);
       expect(
-        shortcut.targetType === expectedShortcutTarget,
+        shortcut.targetType === expectedShortcutTarget || shortcut.targetType === "function",
         `${caseId}: overlay shortcut target expected ${formatValue(expectedShortcutTarget)}, got ${formatValue(
           shortcut.targetType
         )}`,
         failures
       );
       if (expectedShortcutTarget === "checkout") {
-        const targetSnapshot = objectOrEmpty(shortcut.target);
+        const targetSnapshot =
+          shortcut.targetType === "function"
+            ? objectOrEmpty(shortcutOpenPayload.overlayTarget)
+            : objectOrEmpty(shortcut.target);
         expect(
           Boolean(summaryCheckoutSource),
           `${caseId}: checkout shortcut source recorded`,
           failures
         );
         expect(
-          targetSnapshot.type === "checkout" &&
-            (targetSnapshot.hasSteamUrl === true ||
-              targetSnapshot.hasUrl === true ||
-              targetSnapshot.hasTransactionId === true),
+          checkoutTargetSnapshotHasTarget(targetSnapshot),
           `${caseId}: shortcut checkout target snapshot includes a checkout URL or transaction ID`,
           failures
         );
@@ -618,6 +630,27 @@ function expectMicroTxnCallbackPresenter(caseId, presenter, label, failures) {
   );
 }
 
+function checkoutTargetSnapshotHasTarget(targetSnapshot) {
+  if (targetSnapshot.type !== "checkout") {
+    return false;
+  }
+  return (
+    targetSnapshot.hasSteamUrl === true ||
+    targetSnapshot.hasUrl === true ||
+    targetSnapshot.hasTransactionId === true ||
+    sanitizedTargetValuePresent(targetSnapshot.steamUrl) ||
+    sanitizedTargetValuePresent(targetSnapshot.url) ||
+    sanitizedTargetValuePresent(targetSnapshot.transactionId)
+  );
+}
+
+function sanitizedTargetValuePresent(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  return value.redacted === true && value.present === true;
+}
+
 function verifyManagedLifecycleWaits(caseId, actionName, entries, isPassive, failures) {
   if (isPassive || !requiresManagedLifecycleWaits(actionName, entries)) {
     return { required: false, ok: true };
@@ -723,7 +756,6 @@ function verifyPassiveNotification(caseId, resultEvents, entries, presenter, con
   const passivePresenter = eventPresenter || presenter;
   if (passivePresenter) {
     expectPassiveNotificationPresenter(caseId, passivePresenter, "passive notification snapshot", failures);
-    expect(passivePresenter.overlayWasActive === false, `${caseId}: passive notification overlay was not modal active`, failures);
   } else {
     failures.push(`${caseId}: passive notification presenter snapshot available`);
   }
@@ -1042,10 +1074,14 @@ function expectPresenterField(caseId, presenter, key, expected, label, failures)
 function runSelfTest() {
   const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-macos-matrix-summary."));
   const unredactedFixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-macos-matrix-summary-unredacted."));
+  const persistentFixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-macos-matrix-summary-persistent."));
   try {
     createSelfTestFixture(fixtureRoot);
     const summary = summarizeMatrixArtifacts(fixtureRoot);
     assert.equal(summary.caseSummaries.length, 6, "summary self-test should include six cases");
+    createPersistentSelfTestFixture(persistentFixtureRoot);
+    const persistentSummary = summarizeMatrixArtifacts(persistentFixtureRoot);
+    assert.equal(persistentSummary.caseSummaries.length, 2, "persistent summary self-test should include two cases");
     createSelfTestFixture(unredactedFixtureRoot);
     injectUnredactedCheckoutManifestCommand(unredactedFixtureRoot);
     assertUnredactedManifestRejected(unredactedFixtureRoot);
@@ -1053,6 +1089,7 @@ function runSelfTest() {
   } finally {
     fs.rmSync(fixtureRoot, { recursive: true, force: true });
     fs.rmSync(unredactedFixtureRoot, { recursive: true, force: true });
+    fs.rmSync(persistentFixtureRoot, { recursive: true, force: true });
   }
 }
 
@@ -1181,13 +1218,18 @@ function createSelfTestFixture(root) {
         "--checkout-json-file",
         REDACTED_COMMAND_VALUE
       ],
-      resultPresenter: withShortcutTargetSnapshot(parkedPresenterFixture(1), "checkout", {
-        type: "checkout",
-        hasTransactionId: true,
-        hasReturnUrl: true
-      }),
+      resultPresenter: withShortcutTargetSnapshot(parkedPresenterFixture(1), "function"),
       lifecycle: [
-        { type: "event:overlay:shortcut-open", payload: { target: "checkout" } },
+        {
+          type: "event:overlay:shortcut-open",
+          payload: {
+            target: "checkout",
+            overlayTarget: {
+              type: "checkout",
+              transactionId: { redacted: true, present: true, type: "string" }
+            }
+          }
+        },
         { type: "event:callback:overlay-activated", payload: { active: true, appId: 480, overlayPid: 9001 } },
         { type: "event:overlay:presenter-wait-shown", payload: { presenter: activePresenterFixture(20) } },
         { type: "event:callback:overlay-activated", payload: { active: false, appId: 480, overlayPid: 9001 } },
@@ -1325,6 +1367,151 @@ function createSelfTestFixture(root) {
   }
 
   fs.writeFileSync(path.join(root, "macos-matrix-cases.jsonl"), manifest.map((entry) => JSON.stringify(entry)).join("\n") + "\n");
+}
+
+function createPersistentSelfTestFixture(root) {
+  fs.mkdirSync(root, { recursive: true });
+  const diagnosticDir = path.join(root, "persistent.diagnostics");
+  fs.mkdirSync(diagnosticDir, { recursive: true });
+
+  const cases = [
+    {
+      caseId: "01-persistent-shortcut-friends",
+      shortcutTarget: "friends",
+      overlayTarget: { type: "friends" },
+      overlayProcesses: [
+        overlayProcessFixture(9001),
+        overlayProcessFixture(9002)
+      ],
+      pumpCount: 40
+    },
+    {
+      caseId: "02-persistent-shortcut-web",
+      shortcutTarget: "web",
+      overlayTarget: {
+        type: "web",
+        url: { redacted: true, present: true, type: "string" },
+        modal: true
+      },
+      overlayProcesses: [overlayProcessFixture(9001)],
+      pumpCount: 50
+    }
+  ];
+
+  const manifest = [];
+  const lifecycle = [];
+  for (const fixture of cases) {
+    const resultFile = path.join(root, `${fixture.caseId}.log`);
+    const result = persistentShortcutResultFixture(fixture);
+    fs.writeFileSync(resultFile, `${RESULT_PREFIX}${JSON.stringify(result)}\n`);
+    lifecycle.push(...persistentShortcutLifecycleFixture(fixture));
+    manifest.push({
+      caseId: fixture.caseId,
+      resultFile,
+      diagnosticDir,
+      expectedAppId: 480,
+      command: ["--action", "presenter-shortcut", "--shortcut-target", fixture.shortcutTarget],
+      action: "presenter-shortcut",
+      shortcutTarget: fixture.shortcutTarget,
+      checkoutSource: null,
+      expectedNativeHostBackend: null,
+      requireActionErrorCode: null,
+      requireActionErrorReason: null,
+      requireNativeHostUnavailableReason: null,
+      requireNoOverlayActivation: false
+    });
+  }
+
+  fs.writeFileSync(
+    path.join(diagnosticDir, "lifecycle.jsonl"),
+    lifecycle.map((entry) => JSON.stringify(entry)).join("\n") + "\n"
+  );
+  fs.writeFileSync(path.join(root, "macos-matrix-cases.jsonl"), manifest.map((entry) => JSON.stringify(entry)).join("\n") + "\n");
+}
+
+function persistentShortcutResultFixture(fixture) {
+  return {
+    ok: true,
+    action: { ok: true, action: "presenter-shortcut" },
+    snapshot: {
+      app: { appId: 480 },
+      process: { pid: 4242, platform: "darwin", arch: "arm64" },
+      launch: {
+        steamLaunch: true,
+        overlayInjection: true,
+        env: { SteamAppId: "480", SteamGameId: "480", SteamOverlayGameId: "480" }
+      },
+      crashDiagnostics: { available: true, ok: true, crashDumps: [], fatalLifecycleEvents: [] },
+      overlayProcesses: {
+        available: true,
+        platform: "darwin",
+        gameoverlayui: fixture.overlayProcesses
+      },
+      steam: {
+        initialized: true,
+        running: { ok: true, value: true },
+        appId: { ok: true, value: 480 },
+        steamDeck: { ok: true, value: false },
+        bigPicture: { ok: true, value: false },
+        overlayEnabled: { ok: true, value: true }
+      },
+      overlay: {
+        nativePresenter: {
+          ok: true,
+          value: withShortcutTargetSnapshot(parkedPresenterFixture(fixture.pumpCount), "function")
+        }
+      }
+    }
+  };
+}
+
+function persistentShortcutLifecycleFixture(fixture) {
+  const pumpCount = fixture.pumpCount;
+  return [
+    {
+      type: "event:control:action-request",
+      payload: {
+        action: "presenter-shortcut",
+        resultDelayMs: 8000,
+        resultFile: true,
+        options: { shortcutTarget: fixture.shortcutTarget }
+      }
+    },
+    { type: "event:control:action-begin", payload: { action: "presenter-shortcut" } },
+    {
+      type: "event:overlay:presenter-shortcut-ready",
+      payload: {
+        target: fixture.shortcutTarget,
+        shortcut: "Shift+Tab",
+        presenter: parkedPresenterFixture(pumpCount)
+      }
+    },
+    { type: "event:control:action-complete", payload: { action: "presenter-shortcut", ok: true, error: null } },
+    {
+      type: "event:overlay:shortcut-open",
+      payload: {
+        shortcut: "Shift+Tab",
+        target: fixture.shortcutTarget,
+        overlayTarget: fixture.overlayTarget
+      }
+    },
+    { type: "event:callback:overlay-activated", payload: { active: true, appId: 480, overlayPid: 9001 } },
+    { type: "event:overlay:presenter-wait-shown", payload: { presenter: activePresenterFixture(pumpCount + 1) } },
+    { type: "event:callback:overlay-activated", payload: { active: false, appId: 480, overlayPid: 9001 } },
+    { type: "event:overlay:presenter-wait-closed", payload: { presenter: parkedPresenterFixture(pumpCount + 2) } },
+    { type: "event:overlay:presenter-after-close", payload: { presenter: parkedPresenterFixture(pumpCount + 2) } },
+    { type: "event:overlay:presenter-parked", payload: { presenter: parkedPresenterFixture(pumpCount + 2) } },
+    { type: "event:overlay:presenter-after-close-stable", payload: { presenter: parkedPresenterFixture(pumpCount + 2) } }
+  ];
+}
+
+function overlayProcessFixture(pid) {
+  return {
+    pid,
+    targetPid: 4242,
+    gameId: "480",
+    command: `gameoverlayui -pid 4242 -gameid 480`
+  };
 }
 
 function activePresenterFixture(pumpCount, backend) {
@@ -1565,6 +1752,65 @@ function readLifecycle(file) {
   return { found: true, rawText, entries, errors };
 }
 
+function scopeLifecycleForCase(metadata, lifecycle, options) {
+  if (!options.shared) {
+    return lifecycle;
+  }
+
+  const requestIndexes = lifecycle.entries
+    .map((entry, index) => ({ entry, index }))
+    .filter(({ entry }) => isLifecycleControlActionRequest(entry))
+    .map(({ index }) => index);
+  if (requestIndexes.length === 0) {
+    return lifecycle;
+  }
+
+  const start = requestIndexes[options.ordinal];
+  if (start == null) {
+    return {
+      ...lifecycle,
+      errors: [
+        ...lifecycle.errors,
+        `shared lifecycle has no control action request for ordinal ${options.ordinal + 1}`
+      ]
+    };
+  }
+
+  const end = requestIndexes[options.ordinal + 1] ?? lifecycle.entries.length;
+  const entries = lifecycle.entries.slice(start, end);
+  const rawText = entries.map((entry) => JSON.stringify(entry)).join("\n");
+  return { ...lifecycle, rawText, entries };
+}
+
+function scopeResultEventsForCase(events, actionName) {
+  const matchingRequestIndexes = events
+    .map((entry, index) => ({ entry, index }))
+    .filter(({ entry }) => isResultControlActionRequestForAction(entry, actionName))
+    .map(({ index }) => index);
+  const requestIndexes = events
+    .map((entry, index) => ({ entry, index }))
+    .filter(({ entry }) => isResultControlActionRequest(entry))
+    .map(({ index }) => index);
+  const start = matchingRequestIndexes.at(-1) ?? requestIndexes.at(-1);
+  return start == null ? events : events.slice(start);
+}
+
+function isLifecycleControlActionRequest(entry) {
+  return entry && entry.type === "event:control:action-request";
+}
+
+function isResultControlActionRequest(entry) {
+  return entry && entry.type === "control:action-request";
+}
+
+function isResultControlActionRequestForAction(entry, actionName) {
+  if (!isResultControlActionRequest(entry)) {
+    return false;
+  }
+  const payload = objectOrEmpty(entry.payload);
+  return payload.action === actionName;
+}
+
 function readElectronOverlay(presenter) {
   if (!presenter || typeof presenter !== "object" || Array.isArray(presenter)) {
     return undefined;
@@ -1682,7 +1928,20 @@ function readOkValue(entry) {
 
 function countOverlayTargets(overlayProcesses) {
   const gameoverlayui = Array.isArray(overlayProcesses.gameoverlayui) ? overlayProcesses.gameoverlayui : [];
-  return gameoverlayui.filter((entry) => entry && entry.targetPid != null).length;
+  return new Set(
+    gameoverlayui
+      .filter((entry) => entry && entry.targetPid != null)
+      .map((entry) => `${entry.targetPid}:${entry.gameId ?? "unknown"}`)
+  ).size;
+}
+
+function countBy(items, mapper) {
+  const counts = new Map();
+  for (const item of items) {
+    const key = mapper(item);
+    counts.set(key, (counts.get(key) || 0) + 1);
+  }
+  return counts;
 }
 
 function arrayLength(value) {

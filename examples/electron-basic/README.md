@@ -179,11 +179,16 @@ Use `--suite full` to add user SteamID plus every known high-level
 dialog-equivalent route through the same managed `openAndWait(...)` close/park
 proof.
 Use `--suite persistent` to launch the smoke app once through Steam, start the
-token-protected localhost control server, drive web/store/Friends/dialog
-`openAndWait(...)` plus passive achievement-progress checks through that one
-running process, and then quit it through the control server. This suite is for
-proving repeated overlay routes inside one app lifecycle without fixed
-cooldowns, repeated app launches, or Steam restarts.
+token-protected localhost control server, drive the full web/store/Friends,
+dialog-equivalent, passive notification, checkout, managed Shift+Tab shortcut,
+profile, players, community, stats, achievements, and user overlay inventory
+through that one running process, and then quit it through the control server.
+This suite is for proving repeated overlay routes inside one app lifecycle
+without fixed cooldowns, repeated app launches, or Steam restarts.
+If Steam launches and injects the smoke app but reports `overlayEnabled=false`
+until the managed readiness wait times out, the persistent runner preserves that
+attempt under an `.attemptN` artifact directory, quits/cleans up through Steam
+tracking evidence, and retries once.
 Use `--suite unavailable` only when macOS genuinely reports the screen locked or
 the display asleep. That suite captures expected managed web and checkout
 fail-fast artifacts with
@@ -204,7 +209,10 @@ one-process overlay proof work. Launch it through the same Steam shortcut with
 the helper returns once the running app writes the control JSON instead of
 waiting for an autorun result. The server is bound to `127.0.0.1`, requires the
 token on every request, and reuses the same internal smoke actions and
-`STEAM_BRIDGE_SMOKE_RESULT` payload shape as autorun. Use
+`STEAM_BRIDGE_SMOKE_RESULT` payload shape as autorun. Control actions accept the
+same per-action options as autorun, so a persistent matrix can change checkout
+inputs, dialog names, user dialog routes, web modal settings, achievements, and
+managed Shift+Tab shortcut targets without restarting the app. Use
 `macos-electron-smoke.sh --mode control-action --control-file <path> --control-token <token>`
 to run and verify one action against the live process, and
 `macos-electron-smoke.sh --mode control-quit --control-file <path> --control-token <token>`

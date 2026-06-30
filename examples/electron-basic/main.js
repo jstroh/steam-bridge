@@ -27,18 +27,18 @@ const MAC_NATIVE_HOST_BACKEND = normalizeMacNativeHostBackend(
 );
 configureMacNativeHostBackend(MAC_NATIVE_HOST_BACKEND);
 const STORE_URL = `https://store.steampowered.com/app/${APP_ID}/`;
-const WEB_URL = CLI_OPTIONS.webUrl || process.env.STEAM_BRIDGE_SMOKE_WEB_URL || STORE_URL;
-const WEB_MODAL = readBoolean(CLI_OPTIONS.webModal || process.env.STEAM_BRIDGE_SMOKE_WEB_MODAL, false);
-const CHECKOUT_URL = CLI_OPTIONS.checkoutUrl || process.env.STEAM_BRIDGE_SMOKE_CHECKOUT_URL || "";
-const CHECKOUT_TRANSACTION_ID =
+let WEB_URL = CLI_OPTIONS.webUrl || process.env.STEAM_BRIDGE_SMOKE_WEB_URL || STORE_URL;
+let WEB_MODAL = readBoolean(CLI_OPTIONS.webModal || process.env.STEAM_BRIDGE_SMOKE_WEB_MODAL, false);
+let CHECKOUT_URL = CLI_OPTIONS.checkoutUrl || process.env.STEAM_BRIDGE_SMOKE_CHECKOUT_URL || "";
+let CHECKOUT_TRANSACTION_ID =
   CLI_OPTIONS.checkoutTransactionId || process.env.STEAM_BRIDGE_SMOKE_CHECKOUT_TRANSACTION_ID || "";
-const CHECKOUT_RETURN_URL =
+let CHECKOUT_RETURN_URL =
   CLI_OPTIONS.checkoutReturnUrl || process.env.STEAM_BRIDGE_SMOKE_CHECKOUT_RETURN_URL || "";
-const CHECKOUT_JSON_FILE =
+let CHECKOUT_JSON_FILE =
   CLI_OPTIONS.checkoutJsonFile || process.env.STEAM_BRIDGE_SMOKE_CHECKOUT_JSON_FILE || "";
-const OVERLAY_DIALOG = CLI_OPTIONS.overlayDialog || process.env.STEAM_BRIDGE_SMOKE_OVERLAY_DIALOG || "Friends";
-const USER_DIALOG = CLI_OPTIONS.userDialog || process.env.STEAM_BRIDGE_SMOKE_USER_DIALOG || "steamid";
-const SHORTCUT_TARGET =
+let OVERLAY_DIALOG = CLI_OPTIONS.overlayDialog || process.env.STEAM_BRIDGE_SMOKE_OVERLAY_DIALOG || "Friends";
+let USER_DIALOG = CLI_OPTIONS.userDialog || process.env.STEAM_BRIDGE_SMOKE_USER_DIALOG || "steamid";
+let SHORTCUT_TARGET =
   CLI_OPTIONS.shortcutTarget || process.env.STEAM_BRIDGE_SMOKE_SHORTCUT_TARGET || "friends";
 const PRESENTER_MODE =
   CLI_OPTIONS.presenterMode ||
@@ -51,11 +51,11 @@ const DISABLE_ELECTRON_OVERLAY_PRESENTER = readBoolean(
 );
 const EFFECTIVE_PRESENTER_MODE =
   PRESENTER_MODE || (DISABLE_ELECTRON_OVERLAY_PRESENTER ? "session" : "persistent");
-const ACHIEVEMENT_NAME = CLI_OPTIONS.achievementName || process.env.STEAM_BRIDGE_SMOKE_ACHIEVEMENT_NAME || "";
-const ACHIEVEMENT_CURRENT = Number(
+let ACHIEVEMENT_NAME = CLI_OPTIONS.achievementName || process.env.STEAM_BRIDGE_SMOKE_ACHIEVEMENT_NAME || "";
+let ACHIEVEMENT_CURRENT = Number(
   CLI_OPTIONS.achievementCurrent || process.env.STEAM_BRIDGE_SMOKE_ACHIEVEMENT_CURRENT || "1"
 );
-const ACHIEVEMENT_MAX = Number(CLI_OPTIONS.achievementMax || process.env.STEAM_BRIDGE_SMOKE_ACHIEVEMENT_MAX || "2");
+let ACHIEVEMENT_MAX = Number(CLI_OPTIONS.achievementMax || process.env.STEAM_BRIDGE_SMOKE_ACHIEVEMENT_MAX || "2");
 const AUTORUN = CLI_OPTIONS.autorun || process.env.STEAM_BRIDGE_SMOKE_AUTORUN === "1";
 const AUTORUN_ACTION = CLI_OPTIONS.autorunAction || process.env.STEAM_BRIDGE_SMOKE_AUTORUN_ACTION || "dialog";
 const AUTORUN_ACTION_DELAY_MS = Number(
@@ -378,6 +378,7 @@ async function runSmokeActionAndWait(action, options = {}) {
   const requireOverlayActive =
     typeof options.requireOverlayActive === "boolean" ? options.requireOverlayActive : AUTORUN_REQUIRE_OVERLAY_ACTIVE;
   const overlayActiveCount = countOverlayActiveEvents();
+  applySmokeActionOptions(options.actionOptions);
   recordEvent(`${source}:action-begin`, { action });
   pendingManagedOverlayShownWait = undefined;
   const actionResult = await runAutorunAction(action);
@@ -492,10 +493,12 @@ async function handleSmokeControlRequest(request, response) {
       recordEvent("control:action-request", {
         action,
         resultDelayMs: body.resultDelayMs || null,
-        resultFile: typeof body.resultFile === "string" && body.resultFile ? true : false
+        resultFile: typeof body.resultFile === "string" && body.resultFile ? true : false,
+        options: summarizeSmokeActionOptions(body.options)
       });
       const result = await runSmokeActionAndWait(action, {
         source: "control",
+        actionOptions: body.options,
         resultDelayMs: body.resultDelayMs,
         requireOverlayActive:
           typeof body.requireOverlayActive === "boolean" ? body.requireOverlayActive : undefined
@@ -563,6 +566,95 @@ function sendJsonResponse(response, statusCode, body) {
     "content-length": Buffer.byteLength(text)
   });
   response.end(text);
+}
+
+function applySmokeActionOptions(options) {
+  if (!options || typeof options !== "object" || Array.isArray(options)) {
+    return;
+  }
+
+  if (typeof options.webUrl === "string" && options.webUrl) {
+    WEB_URL = options.webUrl;
+  }
+  if (Object.prototype.hasOwnProperty.call(options, "webModal")) {
+    WEB_MODAL = readBoolean(options.webModal, WEB_MODAL);
+  }
+  if (typeof options.checkoutUrl === "string") {
+    CHECKOUT_URL = options.checkoutUrl;
+  }
+  if (typeof options.checkoutTransactionId === "string") {
+    CHECKOUT_TRANSACTION_ID = options.checkoutTransactionId;
+  }
+  if (typeof options.checkoutReturnUrl === "string") {
+    CHECKOUT_RETURN_URL = options.checkoutReturnUrl;
+  }
+  if (typeof options.checkoutJsonFile === "string") {
+    CHECKOUT_JSON_FILE = options.checkoutJsonFile;
+  }
+  if (typeof options.overlayDialog === "string" && options.overlayDialog) {
+    OVERLAY_DIALOG = options.overlayDialog;
+  }
+  if (typeof options.userDialog === "string" && options.userDialog) {
+    USER_DIALOG = options.userDialog;
+  }
+  if (typeof options.shortcutTarget === "string" && options.shortcutTarget) {
+    SHORTCUT_TARGET = options.shortcutTarget;
+  }
+  if (typeof options.achievementName === "string") {
+    ACHIEVEMENT_NAME = options.achievementName;
+  }
+  if (Object.prototype.hasOwnProperty.call(options, "achievementCurrent")) {
+    ACHIEVEMENT_CURRENT = Number(options.achievementCurrent);
+  }
+  if (Object.prototype.hasOwnProperty.call(options, "achievementMax")) {
+    ACHIEVEMENT_MAX = Number(options.achievementMax);
+  }
+}
+
+function summarizeSmokeActionOptions(options) {
+  if (!options || typeof options !== "object" || Array.isArray(options)) {
+    return null;
+  }
+
+  const summary = {};
+  if (typeof options.webUrl === "string" && options.webUrl) {
+    summary.hasWebUrl = true;
+  }
+  if (Object.prototype.hasOwnProperty.call(options, "webModal")) {
+    summary.webModal = readBoolean(options.webModal, false);
+  }
+  if (typeof options.checkoutUrl === "string" && options.checkoutUrl) {
+    summary.hasCheckoutUrl = true;
+  }
+  if (typeof options.checkoutTransactionId === "string" && options.checkoutTransactionId) {
+    summary.hasCheckoutTransactionId = true;
+  }
+  if (typeof options.checkoutReturnUrl === "string" && options.checkoutReturnUrl) {
+    summary.hasCheckoutReturnUrl = true;
+  }
+  if (typeof options.checkoutJsonFile === "string" && options.checkoutJsonFile) {
+    summary.hasCheckoutJsonFile = true;
+  }
+  if (options.overlayDialog) {
+    summary.overlayDialog = options.overlayDialog;
+  }
+  if (options.userDialog) {
+    summary.userDialog = options.userDialog;
+  }
+  if (options.shortcutTarget) {
+    summary.shortcutTarget = options.shortcutTarget;
+  }
+  if (options.achievementName) {
+    summary.achievementName = options.achievementName;
+  }
+  if (options.achievementCurrent != null) {
+    summary.achievementCurrent = options.achievementCurrent;
+  }
+  if (options.achievementMax != null) {
+    summary.achievementMax = options.achievementMax;
+  }
+
+  return Object.keys(summary).length > 0 ? sanitize(summary) : null;
 }
 
 async function waitForAutorunResult(action, durationMs, overlayActiveCount, options = {}) {
@@ -1438,6 +1530,10 @@ function ensureElectronSteamOverlay(activeClient = requireClient()) {
 }
 
 function resolveInitialShortcutOverlayTarget() {
+  if (CONTROL_SERVER_ENABLED) {
+    return () => resolveShortcutOverlayTarget();
+  }
+
   try {
     return resolveShortcutOverlayTarget();
   } catch {

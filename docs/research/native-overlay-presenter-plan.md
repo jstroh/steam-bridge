@@ -430,14 +430,23 @@ Current evidence:
   mode. App code can pass timeouts or abort signals, but not polling intervals.
 - The macOS smoke harness now has a persistent one-process proof mode. A
   2026-06-30 live run at
-  `/tmp/steam-bridge-macos-overlay-matrix-20260630-061247` launched the signed
+  `/tmp/steam-bridge-macos-overlay-matrix-20260630-063754` launched the signed
   Electron `42.5.1` App ID `480` smoke app once through Steam, started the
-  token-protected localhost control server, drove modal web, store, Friends, and
-  dialog-equivalent `openAndWait(...)` routes plus a passive achievement-progress
-  toast through that running process, verified close/back-to-app and parked
-  presenter state for every active overlay, and quit cleanly through the control
-  server. This validates repeated presenter reuse without fixed cooldowns,
-  rapid relaunches, or Steam restarts.
+  token-protected localhost control server, and drove the full 31-case overlay
+  inventory through that running process: modal web, store, Friends,
+  dialog-equivalent `openAndWait(...)`, passive progress/unlock notifications,
+  synthetic checkout approval-route plumbing, every managed Shift+Tab shortcut
+  target, profile, players, community, stats, achievements, user chat/SteamID,
+  and all known dialog-equivalent routes. It verified close/back-to-app and
+  parked presenter state for every active overlay, Shift+Tab open/close for
+  every shortcut target, clean quit through the control server, no Steam restart
+  or retry, no leftover smoke/gameoverlay processes, and no fresh smoke crash
+  reports. This validates repeated presenter reuse without fixed cooldowns,
+  rapid relaunches, or Steam restarts. The persistent runner now preserves and
+  retries only the same narrow Steam readiness failure as the process-per-case
+  matrix: Steam launch and overlay injection succeeded, no crash evidence, but
+  Steam reports `overlayEnabled=false` until the managed readiness wait times
+  out.
 - On macOS, `openAndWait(...)` and checkout approval-route helpers also wait for
   Steam's overlay diagnostics to become ready before calling the activation API.
   If a rapid relaunch leaves the process injected but `overlayEnabled=false`,

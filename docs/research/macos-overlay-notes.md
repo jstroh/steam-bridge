@@ -380,15 +380,22 @@ Verified:
   and can write the same `STEAM_BRIDGE_SMOKE_RESULT` payload shape per action.
   This keeps repeated web/store/Friends/checkout/shortcut proof in one real app
   lifecycle without introducing fixed cooldowns, repeated Steam restarts, or
-  user-facing Electron builder complexity. A 2026-06-30 live persistent suite at
-  `/tmp/steam-bridge-macos-overlay-matrix-20260630-061247` launched the signed
-  Electron `42.5.1` App ID `480` smoke app once through Steam, drove modal web,
-  store, Friends, and `OfficialGameGroup` dialog `openAndWait(...)` actions over
-  the control server, verified close/back-to-app and parked presenter state after
-  each active overlay, verified a passive achievement-progress toast in the same
-  process, then quit through the control server. The stable shortcut was already
-  up to date, so the run did not restart Steam, left no smoke/gameoverlay
-  processes behind, and produced no fresh `SteamBridgeSmoke` crash report.
+  user-facing Electron builder complexity. The persistent runner also preserves
+  and retries one narrow Steam readiness failure: Steam-launched/injected,
+  crash-free runs where `overlayEnabled=false` until the managed readiness wait
+  times out. A 2026-06-30 live persistent suite at
+  `/tmp/steam-bridge-macos-overlay-matrix-20260630-063754` launched the signed
+  Electron `42.5.1` App ID `480` smoke app once through Steam and drove the full
+  31-case overlay inventory over the control server: web/store/Friends/dialog
+  `openAndWait(...)`, passive progress and unlock notifications, synthetic
+  checkout approval-route plumbing, every managed Shift+Tab shortcut target,
+  profile, players, community, stats, achievements, user chat/SteamID, and all
+  known dialog-equivalent routes. Every active case verified close/back-to-app
+  and parked presenter state, every shortcut case opened and closed through
+  Shift+Tab, the stable shortcut was already up to date, the run did not restart
+  Steam or require retry, quit through the control server, left no
+  smoke/gameoverlay processes behind, and produced no fresh `SteamBridgeSmoke`
+  crash report.
 - A 2026-06-30 core macOS matrix at
   `/tmp/steam-bridge-macos-overlay-matrix-core-inittxn-envelope-20260630-000000`
   passed 24 Steam-launched App ID `480` cases after the smoke app began wrapping

@@ -93,12 +93,21 @@ for direct and shortcut checkout, managed wait-helper shown/closed/parked
 lifecycle, app focus return, zero managed overlay timing, and clean crash
 diagnostics.
 A persistent one-process macOS suite at
-`/tmp/steam-bridge-macos-overlay-matrix-20260630-061247` launched the same signed
-Electron `42.5.1` App ID `480` smoke app once through Steam, drove web, store,
-Friends, dialog-equivalent, and passive achievement-progress actions through the
-localhost control server, verified close/back-to-app and parked presenter state
-for active overlays, quit cleanly, left no smoke/gameoverlay processes behind,
-and produced no fresh `SteamBridgeSmoke` crash report.
+`/tmp/steam-bridge-macos-overlay-matrix-20260630-063754` launched the same signed
+Electron `42.5.1` App ID `480` smoke app once through Steam, drove all 31
+overlay cases through the localhost control server, and quit cleanly. The run
+covered web/store/Friends/dialog `openAndWait(...)`, passive progress/unlock
+toasts, synthetic checkout approval-route plumbing, every managed Shift+Tab
+shortcut target including checkout, direct profile/players/community/stats/
+achievements/user wait routes, user SteamID, and every high-level
+dialog-equivalent route. Every active case verified close/back-to-app and
+parked presenter state, every shortcut case verified Shift+Tab open/close, the
+stable shortcut was already up to date so Steam was not restarted, no retry was
+needed, no smoke/gameoverlay process was left behind, and no fresh
+`SteamBridgeSmoke` crash report was produced. The persistent runner now
+preserves failed artifacts and retries once only for the known
+Steam-launched/injected, crash-free readiness signature where Steam reports
+`overlayEnabled=false` until the managed readiness wait times out.
 
 ## Steam Deck Shortcut Gate
 

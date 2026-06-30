@@ -721,6 +721,18 @@ post_smoke_control_action() {
     RESULT_FILE="$result_file" \
     RESULT_DELAY_MS="$result_delay_ms" \
     REQUIRE_OVERLAY_ACTIVE="$require_overlay_activated" \
+    WEB_URL="$web_url" \
+    WEB_MODAL="$web_modal" \
+    CHECKOUT_URL="$checkout_url" \
+    CHECKOUT_TRANSACTION_ID="$checkout_transaction_id" \
+    CHECKOUT_RETURN_URL="$checkout_return_url" \
+    CHECKOUT_JSON_FILE="$checkout_json_file" \
+    OVERLAY_DIALOG="$overlay_dialog" \
+    USER_DIALOG="$user_dialog" \
+    SHORTCUT_TARGET="$shortcut_target" \
+    ACHIEVEMENT_NAME="$achievement_name" \
+    ACHIEVEMENT_CURRENT="$achievement_current" \
+    ACHIEVEMENT_MAX="$achievement_max" \
     TIMEOUT_SECONDS="$timeout_seconds" \
     node <<'NODE'
 const fs = require("node:fs");
@@ -733,11 +745,25 @@ const action = process.env.SMOKE_ACTION || "none";
 const resultFile = process.env.RESULT_FILE || "";
 const resultDelayMs = Number(process.env.RESULT_DELAY_MS || "");
 const timeoutSeconds = Number(process.env.TIMEOUT_SECONDS || "90");
+const options = {};
+setStringOption("webUrl", process.env.WEB_URL);
+setBooleanOption("webModal", process.env.WEB_MODAL);
+setStringOption("checkoutUrl", process.env.CHECKOUT_URL);
+setStringOption("checkoutTransactionId", process.env.CHECKOUT_TRANSACTION_ID);
+setStringOption("checkoutReturnUrl", process.env.CHECKOUT_RETURN_URL);
+setStringOption("checkoutJsonFile", process.env.CHECKOUT_JSON_FILE);
+setStringOption("overlayDialog", process.env.OVERLAY_DIALOG);
+setStringOption("userDialog", process.env.USER_DIALOG);
+setStringOption("shortcutTarget", process.env.SHORTCUT_TARGET);
+setStringOption("achievementName", process.env.ACHIEVEMENT_NAME);
+setNumberOption("achievementCurrent", process.env.ACHIEVEMENT_CURRENT);
+setNumberOption("achievementMax", process.env.ACHIEVEMENT_MAX);
 const body = {
   action,
   ...(resultFile ? { resultFile } : {}),
   ...(Number.isFinite(resultDelayMs) && resultDelayMs > 0 ? { resultDelayMs } : {}),
-  ...(process.env.REQUIRE_OVERLAY_ACTIVE === "1" ? { requireOverlayActive: true } : {})
+  ...(process.env.REQUIRE_OVERLAY_ACTIVE === "1" ? { requireOverlayActive: true } : {}),
+  ...(Object.keys(options).length > 0 ? { options } : {})
 };
 const payload = JSON.stringify(body);
 const request = http.request(
@@ -785,6 +811,29 @@ request.setTimeout(Math.max(1, timeoutSeconds + 30) * 1000, () => {
   request.destroy(new Error("Timed out waiting for smoke control action response."));
 });
 request.end(payload);
+
+function setStringOption(name, value) {
+  if (typeof value === "string" && value.length > 0) {
+    options[name] = value;
+  }
+}
+
+function setBooleanOption(name, value) {
+  if (value == null || value === "") {
+    return;
+  }
+  options[name] = ["1", "true", "yes", "on"].includes(String(value).toLowerCase());
+}
+
+function setNumberOption(name, value) {
+  if (value == null || value === "") {
+    return;
+  }
+  const number = Number(value);
+  if (Number.isFinite(number)) {
+    options[name] = number;
+  }
+}
 NODE
 }
 

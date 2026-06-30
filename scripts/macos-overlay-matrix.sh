@@ -80,8 +80,10 @@ Suites:
            achievements, and user chat/profile routes.
   full     core plus all known high-level dialog-equivalent routes.
   persistent
-           one Steam launch, then web/store/Friends/dialog openAndWait plus
-           passive achievement toast through the smoke control server.
+           one Steam launch, then the full web/store/Friends/dialog,
+           passive notification, checkout, shortcut, user/community/stats,
+           achievements, and dialog-equivalent coverage through the smoke
+           control server.
   unavailable
            managed web and checkout fail-fast cases for locked/asleep macOS.
 EOF
@@ -376,7 +378,7 @@ run_self_test() {
     echo "Self-test failed: full matrix case count changed." >&2
     exit 1
   fi
-  if [ "$(printf '%s\n' "$persistent_output" | count_cases)" != "5" ]; then
+  if [ "$(printf '%s\n' "$persistent_output" | count_cases)" != "31" ]; then
     echo "Self-test failed: persistent matrix case count changed." >&2
     exit 1
   fi
@@ -435,6 +437,19 @@ run_self_test() {
   require_contains "$persistent_output" "--action presenter-friends-open-and-wait" "persistent matrix must include Friends openAndWait."
   require_contains "$persistent_output" "--action presenter-dialog-auto-open-and-wait" "persistent matrix must include dialog openAndWait."
   require_contains "$persistent_output" "--action presenter-achievement-progress" "persistent matrix must include passive toast."
+  require_contains "$persistent_output" "--action presenter-achievement-unlock" "persistent matrix must include passive unlock toast."
+  require_contains "$persistent_output" "--action presenter-checkout" "persistent matrix must include checkout."
+  require_contains "$persistent_output" "--action presenter-shortcut" "persistent matrix must include managed shortcut routing."
+  require_contains "$persistent_output" "--shortcut-target checkout" "persistent matrix must include checkout shortcut routing."
+  require_contains "$persistent_output" "--shortcut-target user" "persistent matrix must include user shortcut routing."
+  require_contains "$persistent_output" "--action presenter-profile-open-and-wait" "persistent matrix must include profile openAndWait."
+  require_contains "$persistent_output" "--action presenter-players-open-and-wait" "persistent matrix must include players openAndWait."
+  require_contains "$persistent_output" "--action presenter-community-open-and-wait" "persistent matrix must include community openAndWait."
+  require_contains "$persistent_output" "--action presenter-stats-open-and-wait" "persistent matrix must include stats openAndWait."
+  require_contains "$persistent_output" "--action presenter-achievements-open-and-wait" "persistent matrix must include achievements openAndWait."
+  require_contains "$persistent_output" "--action presenter-user-open-and-wait" "persistent matrix must include user openAndWait."
+  require_contains "$persistent_output" "--dialog Friends" "persistent matrix must include Friends dialog equivalent."
+  require_contains "$persistent_output" "--dialog Achievements" "persistent matrix must include Achievements dialog equivalent."
   require_contains "$full_output" "--dialog Friends" "full matrix must include Friends dialog equivalent."
   require_contains "$full_output" "--dialog Players" "full matrix must include Players dialog equivalent."
   require_contains "$full_output" "--dialog Community" "full matrix must include Community dialog equivalent."
@@ -1420,7 +1435,33 @@ run_persistent_case() {
 
   mkdir -p "$(dirname -- "$result_file")"
   write_case_manifest "$case_id" "$result_file" "$shared_diagnostic_dir" "${case_args[@]}"
-  "${run_cmd[@]}"
+  local case_status=0
+  "${run_cmd[@]}" || case_status=$?
+  if [ "$case_status" -ne 0 ] && should_retry_macos_overlay_readiness_failure "$result_file"; then
+    persistent_retry_result_file="$result_file"
+  fi
+  return "$case_status"
+}
+
+read_persistent_control_pid() {
+  local control_file_path="$1"
+  if [ -z "$control_file_path" ] || [ ! -s "$control_file_path" ]; then
+    return 0
+  fi
+
+  CONTROL_FILE="$control_file_path" node <<'NODE'
+const fs = require("node:fs");
+const controlFile = process.env.CONTROL_FILE;
+let parsed;
+try {
+  parsed = JSON.parse(fs.readFileSync(controlFile, "utf8"));
+} catch {
+  process.exit(0);
+}
+if (Number.isInteger(parsed?.pid) && parsed.pid > 0) {
+  process.stdout.write(String(parsed.pid));
+}
+NODE
 }
 
 run_persistent_matrix() {
@@ -1428,7 +1469,7 @@ run_persistent_matrix() {
   local control_token
   local launch_result_file="$artifact_root/persistent-launch.log"
   local shared_diagnostic_dir="$artifact_root/persistent.diagnostics"
-  local launch_cmd quit_cmd status
+  local launch_cmd quit_cmd status cleanup_status gameprocess_log_offset control_pid
 
   control_token="$(generate_control_token)"
   launch_cmd=(
@@ -1458,70 +1499,165 @@ run_persistent_matrix() {
     rm -f "$control_file" "$launch_result_file"
     rm -rf "$shared_diagnostic_dir"
     write_control_launcher_env "$launch_result_file" "$shared_diagnostic_dir" "$control_file" "$control_token"
-    "${launch_cmd[@]}"
+    gameprocess_log_offset="$(macos_steam_log_size "$(macos_steam_gameprocess_log)")"
+    "${launch_cmd[@]}" || return $?
   fi
 
   status=0
-  if [ "$status" -eq 0 ]; then
-    run_persistent_case "$control_file" "$control_token" "$shared_diagnostic_dir" "01-persistent-web-openwait" \
-      --action presenter-web-open-and-wait \
+
+  persistent_run_case() {
+    if [ "$status" -ne 0 ]; then
+      return 0
+    fi
+    run_persistent_case "$control_file" "$control_token" "$shared_diagnostic_dir" "$@" || status=1
+  }
+
+  persistent_run_active_case() {
+    local case_id="$1"
+    shift
+    persistent_run_case "$case_id" \
       --require-steam-launch \
       --require-overlay-injection \
       --require-overlay-enabled \
       --require-overlay-activated \
       --require-event overlay:presenter-open-and-wait-start \
       --require-no-crashes \
-      --close-probe || status=1
-  fi
+      --close-probe \
+      "$@"
+  }
 
-  if [ "$status" -eq 0 ]; then
-    run_persistent_case "$control_file" "$control_token" "$shared_diagnostic_dir" "02-persistent-store-openwait" \
-      --action presenter-store-open-and-wait \
+  persistent_run_shortcut_case() {
+    local case_id="$1"
+    local target="$2"
+    shift 2
+    persistent_run_case "$case_id" \
+      --action presenter-shortcut \
+      --shortcut-target "$target" \
       --require-steam-launch \
       --require-overlay-injection \
       --require-overlay-enabled \
-      --require-overlay-activated \
-      --require-event overlay:presenter-open-and-wait-start \
+      --require-electron-overlay \
+      --require-overlay-shortcut-target "$target" \
+      --require-event overlay:presenter-shortcut-ready \
       --require-no-crashes \
-      --close-probe || status=1
+      --shortcut-open-probe \
+      --close-probe \
+      --close-input toggle \
+      "$@"
+  }
+
+  persistent_run_active_case "01-persistent-web-openwait" \
+    --action presenter-web-open-and-wait \
+    --web-url "https://store.steampowered.com/app/$app_id/" \
+    --web-modal true
+
+  persistent_run_active_case "02-persistent-store-openwait" \
+    --action presenter-store-open-and-wait
+
+  persistent_run_active_case "03-persistent-friends-openwait" \
+    --action presenter-friends-open-and-wait
+
+  persistent_run_active_case "04-persistent-dialog-official-openwait" \
+    --action presenter-dialog-auto-open-and-wait \
+    --dialog OfficialGameGroup
+
+  persistent_run_case "05-persistent-passive-toast" \
+    --action presenter-achievement-progress \
+    --result-delay-ms 1200 \
+    --require-steam-launch \
+    --require-overlay-injection \
+    --require-overlay-enabled \
+    --require-passive-notification \
+    --require-no-crashes
+
+  persistent_run_case "06-persistent-passive-unlock-toast" \
+    --action presenter-achievement-unlock \
+    --result-delay-ms 1200 \
+    --require-steam-launch \
+    --require-overlay-injection \
+    --require-overlay-enabled \
+    --require-passive-notification \
+    --require-no-crashes
+
+  local checkout_args=()
+  if [ -n "$checkout_json_file" ]; then
+    checkout_args=(--checkout-json-file "$checkout_json_file")
+  else
+    checkout_args=(--checkout-transaction-id 123456789)
   fi
 
-  if [ "$status" -eq 0 ]; then
-    run_persistent_case "$control_file" "$control_token" "$shared_diagnostic_dir" "03-persistent-friends-openwait" \
-      --action presenter-friends-open-and-wait \
-      --require-steam-launch \
-      --require-overlay-injection \
-      --require-overlay-enabled \
-      --require-overlay-activated \
-      --require-event overlay:presenter-open-and-wait-start \
-      --require-no-crashes \
-      --close-probe || status=1
-  fi
+  persistent_run_case "07-persistent-checkout-approval" \
+    --action presenter-checkout \
+    "${checkout_args[@]}" \
+    --require-steam-launch \
+    --require-overlay-injection \
+    --require-overlay-enabled \
+    --require-overlay-activated \
+    --require-event overlay:presenter-open \
+    --require-no-crashes \
+    --close-probe
 
-  if [ "$status" -eq 0 ]; then
-    run_persistent_case "$control_file" "$control_token" "$shared_diagnostic_dir" "04-persistent-dialog-official-openwait" \
+  persistent_run_shortcut_case "08-persistent-shortcut-friends" friends
+
+  persistent_run_shortcut_case "09-persistent-shortcut-web" web \
+    --web-url "https://store.steampowered.com/app/$app_id/" \
+    --web-modal true
+
+  persistent_run_shortcut_case "10-persistent-shortcut-store" store
+
+  persistent_run_shortcut_case "11-persistent-shortcut-checkout" checkout \
+    "${checkout_args[@]}"
+
+  persistent_run_shortcut_case "12-persistent-shortcut-profile" profile
+
+  persistent_run_shortcut_case "13-persistent-shortcut-players" players
+
+  persistent_run_shortcut_case "14-persistent-shortcut-community" community
+
+  persistent_run_shortcut_case "15-persistent-shortcut-stats" stats
+
+  persistent_run_shortcut_case "16-persistent-shortcut-achievements" achievements
+
+  persistent_run_shortcut_case "17-persistent-shortcut-user-chat" user \
+    --user-dialog chat
+
+  persistent_run_shortcut_case "18-persistent-shortcut-dialog" dialog \
+    --dialog OfficialGameGroup
+
+  persistent_run_active_case "19-persistent-profile" \
+    --action presenter-profile-open-and-wait
+
+  persistent_run_active_case "20-persistent-players" \
+    --action presenter-players-open-and-wait
+
+  persistent_run_active_case "21-persistent-community" \
+    --action presenter-community-open-and-wait
+
+  persistent_run_active_case "22-persistent-stats" \
+    --action presenter-stats-open-and-wait
+
+  persistent_run_active_case "23-persistent-achievements" \
+    --action presenter-achievements-open-and-wait
+
+  persistent_run_active_case "24-persistent-user-chat" \
+    --action presenter-user-open-and-wait \
+    --user-dialog chat
+
+  persistent_run_active_case "25-persistent-user-steamid" \
+    --action presenter-user-open-and-wait \
+    --user-dialog steamid
+
+  local dialog_index=26
+  local dialog
+  for dialog in Friends Players Community OfficialGameGroup Stats Achievements; do
+    persistent_run_active_case "$(printf '%02d-persistent-dialog-%s' "$dialog_index" "$dialog")" \
       --action presenter-dialog-auto-open-and-wait \
-      --require-steam-launch \
-      --require-overlay-injection \
-      --require-overlay-enabled \
-      --require-overlay-activated \
-      --require-event overlay:presenter-open-and-wait-start \
-      --require-no-crashes \
-      --close-probe || status=1
-  fi
-
-  if [ "$status" -eq 0 ]; then
-    run_persistent_case "$control_file" "$control_token" "$shared_diagnostic_dir" "05-persistent-passive-toast" \
-      --action presenter-achievement-progress \
-      --result-delay-ms 1200 \
-      --require-steam-launch \
-      --require-overlay-injection \
-      --require-overlay-enabled \
-      --require-passive-notification \
-      --require-no-crashes || status=1
-  fi
+      --dialog "$dialog"
+    dialog_index=$((dialog_index + 1))
+  done
 
   if [ "$dry_run" != "1" ]; then
+    control_pid="$(read_persistent_control_pid "$control_file" || true)"
     quit_cmd=(
       "$helper_path"
       --mode control-quit
@@ -1532,9 +1668,54 @@ run_persistent_matrix() {
     echo "QUIT $(quote_command "${quit_cmd[@]}")"
     "${quit_cmd[@]}" || status=1
     cleanup_macos_smoke_processes
+    cleanup_status=0
+    if ! wait_for_macos_steam_app_pid_untracked "$control_pid" "$gameprocess_log_offset" 30; then
+      cleanup_status=1
+    fi
+    if ! wait_for_macos_steam_app_removed_from_running_list "$gameprocess_log_offset" 30; then
+      cleanup_status=1
+    fi
+    if [ "$status" -eq 0 ] && [ "$cleanup_status" -ne 0 ]; then
+      status=1
+    fi
   fi
 
   return "$status"
+}
+
+preserve_persistent_retry_artifacts() {
+  local attempt="$1"
+  local attempt_root="$artifact_root.attempt$attempt"
+  rm -rf "$attempt_root"
+  if [ -e "$artifact_root" ]; then
+    mv "$artifact_root" "$attempt_root"
+  fi
+  mkdir -p "$artifact_root"
+  : > "$artifact_root/macos-matrix-cases.jsonl"
+}
+
+run_persistent_matrix_with_retries() {
+  local attempt=1
+  local max_attempts=2
+  local status=0
+  local persistent_retry_result_file=""
+
+  while true; do
+    persistent_retry_result_file=""
+    status=0
+    run_persistent_matrix || status=$?
+    if [ "$status" -eq 0 ]; then
+      return 0
+    fi
+    if [ "$attempt" -ge "$max_attempts" ] || [ -z "$persistent_retry_result_file" ]; then
+      return "$status"
+    fi
+
+    echo "RETRY persistent after Steam overlay readiness timeout on attempt $attempt"
+    preserve_persistent_retry_artifacts "$attempt"
+    cleanup_macos_smoke_processes
+    attempt=$((attempt + 1))
+  done
 }
 
 run_matrix() {
@@ -1544,7 +1725,7 @@ run_matrix() {
   fi
 
   if [ "$suite" = "persistent" ]; then
-    run_persistent_matrix
+    run_persistent_matrix_with_retries
     return $?
   fi
 
