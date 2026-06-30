@@ -356,6 +356,11 @@ Verified:
   as well. Linux/Deck still use needs-present polling for overlay presentation.
   After modal overlays close, the stable parked macOS state must return to
   `currentFps=0` without post-close pumping.
+- New macOS matrix manifests require `overlayNeedsPresentPollingEnabled=false`
+  in both the top-level Steam diagnostics and native presenter snapshot. Older
+  artifacts without that manifest flag can still be summarized, but newly
+  generated artifacts fail audit if they cannot prove Steam Bridge avoided the
+  crash-prone `BOverlayNeedsPresent()` call.
 - Managed macOS `openAndWait(...)` now waits for Steam's overlay diagnostics to
   report `overlayEnabled=true` before calling the Steam overlay activation API.
   If Steam has injected the renderer but still reports the app as not overlay

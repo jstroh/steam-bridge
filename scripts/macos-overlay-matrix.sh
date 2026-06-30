@@ -1114,6 +1114,7 @@ fs.appendFileSync(
     requireActionErrorReason: optionValue("--require-action-error-reason"),
     requireNativeHostUnavailableReason: optionValue("--require-native-host-unavailable-reason"),
     requireNoOverlayActivation: command.includes("--require-no-overlay-activation"),
+    requireMacosNeedsPresentPollingDisabled: true,
     requireMicroTxnCallback
   })}\n`
 );

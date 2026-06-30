@@ -264,6 +264,9 @@ function verifyCase(caseId, metadata, result, lifecycle, macosCrashReports, fail
     Boolean(expectedNativeHostUnavailableReason);
   const requireMicroTxnCallback =
     metadata.requireMicroTxnCallback === true || metadata.expectedMicroTxnCallback === true;
+  const requireMacosNeedsPresentPollingDisabled =
+    metadata.requireMacosNeedsPresentPollingDisabled === true ||
+    metadata.expectedMacosNeedsPresentPollingDisabled === true;
   const activated = lifecycleEntries.some(isLifecycleOverlayActiveEvent);
   const closed = hasInactiveAfterActive(lifecycleEntries);
   const parked = hasExpectedActionError ? false : verifyLifecycleParking(caseId, lifecycleEntries, isPassive, failures);
@@ -325,6 +328,9 @@ function verifyCase(caseId, metadata, result, lifecycle, macosCrashReports, fail
   expect(readOkValue(steam.bigPicture) === false, `${caseId}: Big Picture flag is false on macOS`, failures);
   if (!expectedNativeHostUnavailableReason) {
     expect(readOkValue(steam.overlayEnabled) === true, `${caseId}: Steam overlay enabled`, failures);
+  }
+  if (requireMacosNeedsPresentPollingDisabled) {
+    verifyRequiredMacosNeedsPresentPollingDisabled(caseId, steam, nativePresenter, failures);
   }
   expect(crashOk, `${caseId}: crash diagnostics are available and ok`, failures);
   expect(arrayLength(crashDiagnostics.crashDumps) === 0, `${caseId}: no crash dumps reported`, failures);
@@ -1115,6 +1121,56 @@ function expectMacosNeedsPresentPollingDisabled(caseId, presenter, label, failur
   }
 }
 
+function verifyRequiredMacosNeedsPresentPollingDisabled(caseId, steam, nativePresenter, failures) {
+  const steamValue = readOkValue(steam.overlayNeedsPresentPollingEnabled);
+  expect(
+    steamValue === false,
+    `${caseId}: Steam needs-present polling disabled expected false, got ${formatValue(steamValue)}`,
+    failures
+  );
+
+  const presenter = objectOrEmpty(nativePresenter);
+  const presenterDiagnostics = objectOrEmpty(presenter.diagnostics);
+  const presenterHasValue = Object.prototype.hasOwnProperty.call(presenter, "overlayNeedsPresentPollingEnabled");
+  const diagnosticsHasValue = Object.prototype.hasOwnProperty.call(
+    presenterDiagnostics,
+    "overlayNeedsPresentPollingEnabled"
+  );
+  expect(
+    presenterHasValue || diagnosticsHasValue,
+    `${caseId}: native presenter needs-present polling disabled diagnostic present`,
+    failures
+  );
+  if (presenterHasValue) {
+    expect(
+      presenter.overlayNeedsPresentPollingEnabled === false,
+      `${caseId}: native presenter needs-present polling disabled expected false, got ${formatValue(
+        presenter.overlayNeedsPresentPollingEnabled
+      )}`,
+      failures
+    );
+  }
+  if (diagnosticsHasValue) {
+    expect(
+      presenterDiagnostics.overlayNeedsPresentPollingEnabled === false,
+      `${caseId}: native presenter diagnostics needs-present polling disabled expected false, got ${formatValue(
+        presenterDiagnostics.overlayNeedsPresentPollingEnabled
+      )}`,
+      failures
+    );
+  }
+  expect(
+    readOkValue(steam.overlayNeedsPresent) !== true,
+    `${caseId}: Steam overlay needs present stays false while macOS polling is disabled`,
+    failures
+  );
+  expect(
+    presenter.overlayNeedsPresent !== true,
+    `${caseId}: native presenter overlay needs present stays false while macOS polling is disabled`,
+    failures
+  );
+}
+
 function expectPresenterField(caseId, presenter, key, expected, label, failures) {
   if (presenter[key] !== expected) {
     failures.push(`${caseId}: ${label} expected ${formatValue(expected)}, got ${formatValue(presenter[key])}`);
@@ -1127,6 +1183,9 @@ function runSelfTest() {
   const crashFixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-macos-matrix-summary-crash."));
   const missingMicroTxnFixtureRoot = fs.mkdtempSync(
     path.join(os.tmpdir(), "steam-bridge-macos-matrix-summary-missing-microtxn.")
+  );
+  const missingNeedsPresentPollingFixtureRoot = fs.mkdtempSync(
+    path.join(os.tmpdir(), "steam-bridge-macos-matrix-summary-missing-needs-present-polling.")
   );
   const persistentFixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-macos-matrix-summary-persistent."));
   try {
@@ -1145,12 +1204,16 @@ function runSelfTest() {
     createSelfTestFixture(missingMicroTxnFixtureRoot);
     injectMicroTxnCallbackRequirement(missingMicroTxnFixtureRoot, "01-web-openwait");
     assertMissingMicroTxnCallbackRejected(missingMicroTxnFixtureRoot);
+    createSelfTestFixture(missingNeedsPresentPollingFixtureRoot);
+    removeMacosNeedsPresentPollingProof(missingNeedsPresentPollingFixtureRoot, "01-web-openwait");
+    assertMissingNeedsPresentPollingProofRejected(missingNeedsPresentPollingFixtureRoot);
     console.log("macOS overlay matrix summary self-test passed.");
   } finally {
     fs.rmSync(fixtureRoot, { recursive: true, force: true });
     fs.rmSync(unredactedFixtureRoot, { recursive: true, force: true });
     fs.rmSync(crashFixtureRoot, { recursive: true, force: true });
     fs.rmSync(missingMicroTxnFixtureRoot, { recursive: true, force: true });
+    fs.rmSync(missingNeedsPresentPollingFixtureRoot, { recursive: true, force: true });
     fs.rmSync(persistentFixtureRoot, { recursive: true, force: true });
   }
 }
@@ -1245,6 +1308,47 @@ function assertMissingMicroTxnCallbackRejected(root) {
   );
 }
 
+function removeMacosNeedsPresentPollingProof(root, caseId) {
+  const manifestPath = path.join(root, "macos-matrix-cases.jsonl");
+  const rows = fs
+    .readFileSync(manifestPath, "utf8")
+    .trim()
+    .split(/\r?\n/)
+    .map((line) => JSON.parse(line));
+  const row = rows.find((entry) => entry.caseId === caseId);
+  assert.ok(row, `self-test fixture should include ${caseId}`);
+  const resultLine = fs
+    .readFileSync(row.resultFile, "utf8")
+    .split(/\r?\n/)
+    .find((line) => line.startsWith(RESULT_PREFIX));
+  assert.ok(resultLine, `self-test fixture should include a result line for ${caseId}`);
+  const result = JSON.parse(resultLine.slice(RESULT_PREFIX.length));
+  delete result.snapshot.steam.overlayNeedsPresentPollingEnabled;
+  const presenter = result.snapshot.overlay.nativePresenter.value;
+  delete presenter.overlayNeedsPresentPollingEnabled;
+  if (presenter.diagnostics) {
+    delete presenter.diagnostics.overlayNeedsPresentPollingEnabled;
+  }
+  fs.writeFileSync(row.resultFile, `${RESULT_PREFIX}${JSON.stringify(result)}\n`);
+}
+
+function assertMissingNeedsPresentPollingProofRejected(root) {
+  const result = spawnSync(process.execPath, [__filename, "--artifact-root", root], {
+    encoding: "utf8"
+  });
+  assert.notEqual(result.status, 0, "summary should reject missing macOS needs-present polling proof");
+  assert.match(
+    result.stderr,
+    /Steam needs-present polling disabled expected false/,
+    "summary rejection should identify missing Steam needs-present polling proof"
+  );
+  assert.match(
+    result.stderr,
+    /native presenter needs-present polling disabled diagnostic present/,
+    "summary rejection should identify missing presenter needs-present polling proof"
+  );
+}
+
 function createSelfTestFixture(root) {
   fs.mkdirSync(root, { recursive: true });
 
@@ -1271,7 +1375,9 @@ function createSelfTestFixture(root) {
         appId: { ok: true, value: 480 },
         steamDeck: { ok: true, value: false },
         bigPicture: { ok: true, value: false },
-        overlayEnabled: { ok: true, value: true }
+        overlayEnabled: { ok: true, value: true },
+        overlayNeedsPresent: { ok: true, value: false },
+        overlayNeedsPresentPollingEnabled: { ok: true, value: false }
       },
       overlay: {
         nativePresenter: { ok: true, value: activePresenterFixture(10) }
@@ -1488,6 +1594,7 @@ function createSelfTestFixture(root) {
       requireActionErrorReason: fixture.requireActionErrorReason || null,
       requireNativeHostUnavailableReason: fixture.requireNativeHostUnavailableReason || null,
       requireNoOverlayActivation: fixture.requireNoOverlayActivation === true,
+      requireMacosNeedsPresentPollingDisabled: true,
       requireMicroTxnCallback: fixture.requireMicroTxnCallback === true
     });
   }
@@ -1544,7 +1651,8 @@ function createPersistentSelfTestFixture(root) {
       requireActionErrorCode: null,
       requireActionErrorReason: null,
       requireNativeHostUnavailableReason: null,
-      requireNoOverlayActivation: false
+      requireNoOverlayActivation: false,
+      requireMacosNeedsPresentPollingDisabled: true
     });
   }
 
@@ -1579,7 +1687,9 @@ function persistentShortcutResultFixture(fixture) {
         appId: { ok: true, value: 480 },
         steamDeck: { ok: true, value: false },
         bigPicture: { ok: true, value: false },
-        overlayEnabled: { ok: true, value: true }
+        overlayEnabled: { ok: true, value: true },
+        overlayNeedsPresent: { ok: true, value: false },
+        overlayNeedsPresentPollingEnabled: { ok: true, value: false }
       },
       overlay: {
         nativePresenter: {
