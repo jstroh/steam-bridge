@@ -1016,6 +1016,15 @@ Current evidence:
   embedded presenter snapshot with `nativeHostOpen=false`, alongside no overlay
   activation, zero overlay targets, disabled needs-present polling, zero managed
   overlay timing, and no fresh crash reports.
+  A later unavailable matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-20260630-142121` reran current head
+  after the macOS matrix self-test switched its JSON-checkout proof to App ID
+  `480`. It rebuilt and signed Electron `43.0.0`, reused the stable shortcut
+  without restarting Steam, passed all five unavailable cases, and re-verified
+  `available=false`, `STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE`, reason
+  `macos-screen-locked`, `nativeHostOpen=false`, no Steam overlay activation,
+  zero overlay targets, disabled needs-present polling, zero managed overlay
+  timing, and no copied macOS crash reports.
 - BrowserWindow-only overlay support is not proven.
 - Steam launch, app ID, auth, and callbacks are not enough to claim overlay
   support.

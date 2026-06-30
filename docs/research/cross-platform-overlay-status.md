@@ -271,6 +271,18 @@ programmatic shortcut open/wait, and passive achievement-progress all reported
 `nativeHostOpen=false`, no overlay activation, zero overlay targets,
 `overlayNeedsPresent=false`, `overlayNeedsPresentPollingEnabled=false`, zero
 managed overlay timing, and no fresh crash reports.
+A later locked/asleep matrix at
+`/tmp/steam-bridge-macos-overlay-matrix-20260630-142121` reran the current
+head after the matrix self-test was cleaned up to use App ID `480` throughout.
+It rebuilt and signed Electron `43.0.0`, reused the stable shortcut without a
+Steam restart, and passed all five unavailable cases again. The artifact
+summary and direct result inspection verified web open/wait, checkout-open,
+checkout-prepare, programmatic shortcut open/wait, and passive
+achievement-progress all reported `available=false`,
+`STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE`, reason `macos-screen-locked`,
+`nativeHostOpen=false`, no overlay activation, zero overlay targets, disabled
+needs-present polling, zero managed overlay timing, and no copied macOS crash
+reports.
 A 2026-06-30 13:32 PDT crash-report sweep after a later user-visible Ignore
 dialog found no newer `SteamBridgeSmoke`, `gameoverlayui`, `Steam Helper`, or
 attributed `MTLCompilerService` DiagnosticReport than the known
