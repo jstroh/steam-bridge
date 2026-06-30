@@ -246,6 +246,15 @@ Verified:
   idle presenter state at `currentFps=0` after close, no post-close pumping,
   zero managed overlay timing, interactive macOS host state, and clean crash
   diagnostics.
+- A later 2026-06-29 core macOS overlay matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-core-shortcut-checkout-20260629-201942`
+  expanded managed Shift+Tab shortcut coverage to the synthetic checkout
+  approval route. The 17-case Steam-launched run verified Friends, web, store,
+  and checkout shortcut targets with active/inactive callbacks, second-Shift+Tab
+  close, focus return, parked idle presenter state, zero managed overlay timing,
+  one `gameoverlayui` target under App ID `480`, and clean crash diagnostics.
+  The checkout shortcut case uses public transaction-ID approval-route plumbing;
+  real purchase content still requires a real app/product.
 - A 2026-06-29 minimal macOS overlay matrix at
   `/tmp/steam-bridge-macos-overlay-matrix-minimal-helper-current-20260629-170723`
   re-ran the packaged helper after the source-level presenter-shape checks were

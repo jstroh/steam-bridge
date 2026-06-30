@@ -525,6 +525,14 @@ then switched profile, players, community, stats, achievements, and user chat to
 managed `openAndWait(...)` actions. That artifact reports `openAndWait=true` for
 every interactive presenter-backed product route in the core suite and verifies
 completion only after Steam closes and the presenter parks.
+A later 2026-06-29 core macOS matrix at
+`/tmp/steam-bridge-macos-overlay-matrix-core-shortcut-checkout-20260629-201942`
+expanded managed shortcut proof to the synthetic checkout approval route. The
+17-case run verified Friends, web, store, and checkout shortcut targets with
+Shift+Tab open/close, active/inactive callbacks, app focus return, idle parking
+at `currentFps=0`, zero managed overlay timing, and no crash diagnostics. The
+checkout shortcut remains App ID `480` approval-route plumbing; real purchase
+content still needs a real configured product.
 The repository also provides `npm run macos:overlay-matrix`, which installs or
 updates one stable macOS Steam shortcut pointing at the in-bundle native
 launcher and a launcher env file. Each case rewrites only that env file, so

@@ -59,7 +59,8 @@ Options:
 Suites:
   minimal  web/store/Friends/dialog openAndWait plus passive achievement toast.
   core     minimal plus passive unlock, synthetic checkout approval route,
-           profile, community, stats, achievements, and user chat/profile routes.
+           checkout shortcut routing, profile, community, stats, achievements,
+           and user chat/profile routes.
   full     core plus all known high-level dialog-equivalent routes.
 EOF
 }
@@ -263,11 +264,11 @@ run_self_test() {
     echo "Self-test failed: minimal matrix case count changed." >&2
     exit 1
   fi
-  if [ "$(printf '%s\n' "$core_output" | count_cases)" != "16" ]; then
+  if [ "$(printf '%s\n' "$core_output" | count_cases)" != "17" ]; then
     echo "Self-test failed: core matrix case count changed." >&2
     exit 1
   fi
-  if [ "$(printf '%s\n' "$full_output" | count_cases)" != "23" ]; then
+  if [ "$(printf '%s\n' "$full_output" | count_cases)" != "24" ]; then
     echo "Self-test failed: full matrix case count changed." >&2
     exit 1
   fi
@@ -290,6 +291,7 @@ run_self_test() {
   require_contains "$core_output" "--shortcut-target friends" "core matrix must include Friends shortcut routing."
   require_contains "$core_output" "--shortcut-target web" "core matrix must include web shortcut routing."
   require_contains "$core_output" "--shortcut-target store" "core matrix must include store shortcut routing."
+  require_contains "$core_output" "--shortcut-target checkout" "core matrix must include checkout shortcut routing."
   require_contains "$core_output" "--action presenter-profile-open-and-wait" "core matrix must include profile openAndWait."
   require_contains "$core_output" "--action presenter-players-open-and-wait" "core matrix must include players openAndWait."
   require_contains "$core_output" "--action presenter-community-open-and-wait" "core matrix must include community openAndWait."
@@ -944,7 +946,22 @@ run_matrix() {
     --close-probe \
     --close-input toggle
 
-  run_case "11-profile" \
+  run_case "11-shortcut-checkout" \
+    --action presenter-shortcut \
+    --shortcut-target checkout \
+    --checkout-transaction-id 123456789 \
+    --require-steam-launch \
+    --require-overlay-injection \
+    --require-overlay-enabled \
+    --require-electron-overlay \
+    --require-overlay-shortcut-target checkout \
+    --require-event overlay:presenter-shortcut-ready \
+    --require-no-crashes \
+    --shortcut-open-probe \
+    --close-probe \
+    --close-input toggle
+
+  run_case "12-profile" \
     --action presenter-profile-open-and-wait \
     --require-steam-launch \
     --require-overlay-injection \
@@ -954,7 +971,7 @@ run_matrix() {
     --require-no-crashes \
     --close-probe
 
-  run_case "12-players" \
+  run_case "13-players" \
     --action presenter-players-open-and-wait \
     --require-steam-launch \
     --require-overlay-injection \
@@ -964,7 +981,7 @@ run_matrix() {
     --require-no-crashes \
     --close-probe
 
-  run_case "13-community" \
+  run_case "14-community" \
     --action presenter-community-open-and-wait \
     --require-steam-launch \
     --require-overlay-injection \
@@ -974,7 +991,7 @@ run_matrix() {
     --require-no-crashes \
     --close-probe
 
-  run_case "14-stats" \
+  run_case "15-stats" \
     --action presenter-stats-open-and-wait \
     --require-steam-launch \
     --require-overlay-injection \
@@ -984,7 +1001,7 @@ run_matrix() {
     --require-no-crashes \
     --close-probe
 
-  run_case "15-achievements" \
+  run_case "16-achievements" \
     --action presenter-achievements-open-and-wait \
     --require-steam-launch \
     --require-overlay-injection \
@@ -994,7 +1011,7 @@ run_matrix() {
     --require-no-crashes \
     --close-probe
 
-  run_case "16-user-chat" \
+  run_case "17-user-chat" \
     --action presenter-user-open-and-wait \
     --user-dialog chat \
     --require-steam-launch \
@@ -1009,7 +1026,7 @@ run_matrix() {
     return 0
   fi
 
-  run_case "17-user-steamid" \
+  run_case "18-user-steamid" \
     --action presenter-user-open-and-wait \
     --user-dialog steamid \
     --require-steam-launch \
@@ -1020,7 +1037,7 @@ run_matrix() {
     --require-no-crashes \
     --close-probe
 
-  local dialog_index=18
+  local dialog_index=19
   for dialog in Friends Players Community OfficialGameGroup Stats Achievements; do
     run_case "$(printf '%02d-dialog-%s' "$dialog_index" "$dialog")" \
       --action presenter-dialog-auto-open-and-wait \
