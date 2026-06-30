@@ -1,6 +1,6 @@
 # macOS Steam Overlay Notes
 
-Last updated: 2026-06-29
+Last updated: 2026-06-30
 
 These notes summarize public guidance and issue reports that shaped Steam
 Bridge's macOS Electron overlay diagnostics.
@@ -325,6 +325,13 @@ Verified:
   report `overlayNeedsPresent=true` and pump at `needsPresentFps` while Steam is
   rendering the notification; after modal overlays close, the stable parked
   state must return to `currentFps=0` without post-close pumping.
+- A 2026-06-30 core macOS matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-core-inittxn-envelope-20260630-000000`
+  passed 24 Steam-launched App ID `480` cases after the smoke app began wrapping
+  checkout test inputs in an `InitTxn`-style `response.params` envelope. The
+  checkout approval route emitted active/inactive callbacks, completed
+  `openCheckoutAndWait(...)` only after close and parking, returned focus to the
+  app, kept zero managed overlay timing, and reported no crash evidence.
 
 Still not verified:
 
@@ -339,9 +346,9 @@ Still not verified:
 - A shell-wrapper shortcut can set `SteamAppId=480` before app startup, but macOS
   strips the Steam `DYLD_INSERT_LIBRARIES` injection before the Electron child
   process starts, so that path is not useful for overlay verification.
-- Real purchase UI and `InitTxn` proof still require a real Steam app ID with a
-  configured product or transaction. App ID `480` remains suitable only for
-  generic overlay smoke tests.
+- Real purchase UI still requires a real Steam app ID with a configured product
+  or transaction. App ID `480` remains suitable only for generic overlay smoke
+  tests and synthetic checkout approval-route plumbing.
 - Shipped macOS apps should sign the app bundle Steam launches with the generic
   entitlement template in `examples/electron-basic/entitlements.steam.macos.plist`:
   allow dyld environment variables, disable library validation, and keep App
@@ -352,10 +359,10 @@ identity alignment, native presenter startup, modal web overlay activation,
 close, app focus return, builder-facing `openAndWait(...)` parking coverage,
 synthetic checkout `openCheckoutAndWait(...)` approval-route plumbing, managed
 Shift+Tab shortcut routing, known presenter-backed web/dialog targets through
-managed wait helpers, and passive achievement-progress and unlock
-notifications. Real purchase-content and `InitTxn` coverage still need a real
-Steam app ID with a configured product before describing purchase overlay
-support as complete.
+managed wait helpers, generic `InitTxn` response-envelope unwrapping, and
+passive achievement-progress and unlock notifications. Real purchase-content
+coverage still needs a real Steam app ID with a configured product before
+describing purchase overlay support as complete.
 
 ## Primary References
 

@@ -558,6 +558,12 @@ dialog-equivalent route through managed `openAndWait(...)`, with
 `managedWaits=true`, `zeroTiming=true`, one `gameoverlayui` target under App ID
 `480`, clean crash diagnostics, app focus return, and parked presenters for
 every active managed overlay case.
+A 2026-06-30 core macOS matrix at
+`/tmp/steam-bridge-macos-overlay-matrix-core-inittxn-envelope-20260630-000000`
+passed 24 Steam-launched cases after the smoke checkout path began wrapping
+synthetic inputs in an `InitTxn`-style `response.params` envelope, proving the
+generic checkout unwrapping path while still leaving real purchase-content proof
+to apps with configured Steam products.
 The repository also provides `npm run macos:overlay-matrix`, which installs or
 updates one stable macOS Steam shortcut pointing at the in-bundle native
 launcher and a launcher env file. Each case rewrites only that env file, so

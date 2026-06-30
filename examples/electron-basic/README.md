@@ -345,6 +345,9 @@ a real app with a configured product, set
 `STEAM_BRIDGE_SMOKE_CHECKOUT_URL` to the Steam URL returned by `InitTxn`, or set
 `STEAM_BRIDGE_SMOKE_CHECKOUT_TRANSACTION_ID` to build and open the Steam
 transaction approval page through `steamOverlay.openCheckoutAndWait(...)`.
+The smoke app wraps those inputs in an `InitTxn`-style
+`response.params` envelope before calling the helper, so generic overlay
+matrices exercise the same unwrapping path a real backend response uses.
 The Linux and Steam Deck helpers expose the same inputs as `--checkout-url`,
 `--checkout-transaction-id`, and `--checkout-return-url`. Without a checkout URL
 or transaction ID the helpers only require `overlay:presenter-checkout-ready`;

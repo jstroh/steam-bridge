@@ -949,17 +949,23 @@ function openPresenterUserOpenAndWaitOverlay() {
 async function openPresenterCheckoutOverlay() {
   const overlay = ensureElectronSteamOverlay();
   if (CHECKOUT_URL || CHECKOUT_TRANSACTION_ID) {
-    const transaction = {
+    const transactionParams = {
       steamurl: CHECKOUT_URL || undefined,
-      transactionId: CHECKOUT_URL ? undefined : CHECKOUT_TRANSACTION_ID,
+      transid: CHECKOUT_URL ? undefined : CHECKOUT_TRANSACTION_ID,
       returnurl: CHECKOUT_RETURN_URL || undefined
+    };
+    const transaction = {
+      response: {
+        result: "OK",
+        params: transactionParams
+      }
     };
     const context = {
       target: "checkout",
       route: "web",
       modal: true,
       api: "openCheckoutAndWait",
-      checkout: checkoutDiagnostic(transaction)
+      checkout: checkoutDiagnostic(transactionParams)
     };
     const openAndWait = overlay.openCheckoutAndWait(() => transaction, {
       showTimeoutMs: MANAGED_OVERLAY_WAIT_TIMEOUT_MS,
