@@ -300,7 +300,9 @@ targets with target-aware lifecycle and presenter snapshot checks.
 On macOS, the managed helper fails fast before Steam overlay activation if the
 screen is locked or the display is asleep. Use
 `steamworks.isSteamOverlayNativeHostUnavailableError(error)` and check
-`error.reason` instead of waiting for an overlay timeout in that state.
+`error.reason` instead of waiting for an overlay timeout in that state. If the
+host is already unavailable, the managed Shift+Tab bridge treats the same state
+as a quiet no-op unless you provide an `overlayShortcut.onError` handler.
 
 `MicroTxnAuthorizationResponse` is a purchase authorization event, not an
 overlay-close signal. Keep the managed presenter alive until Steam reports the

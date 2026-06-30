@@ -233,9 +233,14 @@ side. On macOS, Steam can consume Shift+Tab before Electron's normal
 `before-input-event` hook sees it, so Steam Bridge registers a focused-window
 global shortcut fallback only while the game window is focused, then unregisters
 it while Steam's overlay is active so the second Shift+Tab still closes
-normally. Deck Desktop and macOS proof now verify a second Shift+Tab closes the
-managed overlay and returns focus to the app. It is the
-recommended builder-facing entry point: web, store, Friends, Profile,
+normally. If macOS already reports the screen locked or display asleep, the
+shortcut fallback follows the same native-host-unavailable path as the overlay
+helpers: it does not start Steam activation or emit a warning unless app code
+provided an `overlayShortcut.onError` handler. If the host becomes unavailable
+while the fallback is waiting for Steam's overlay callback, that wait also stays
+quiet instead of producing warning noise. Deck Desktop and macOS proof now
+verify a second Shift+Tab closes the managed overlay and returns focus to the
+app. It is the recommended builder-facing entry point: web, store, Friends, Profile,
 Community, Stats, Achievements, user-profile, and checkout targets route through the
 presenter-backed paths
 used by the Steam Deck Desktop Mode proofs; `openSteamOverlay(...)` and the

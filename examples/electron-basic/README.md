@@ -906,7 +906,9 @@ On macOS, if the screen is locked or the display is asleep, the managed
 overlay helpers fail before activation with
 `SteamOverlayNativeHostUnavailableError`. Use
 `steamworks.isSteamOverlayNativeHostUnavailableError(error)` and its `reason`
-field for fallback logic; do not wait for overlay timeouts in that state. The
+field for fallback logic; do not wait for overlay timeouts in that state. If the
+host is already unavailable, the managed Shift+Tab fallback treats the same
+state as a quiet no-op unless `overlayShortcut.onError` is provided. The
 packaged macOS helper
 and other platform helpers accept `--require-action-error-code` and
 `--require-action-error-reason`; add `--require-native-host-unavailable-reason`

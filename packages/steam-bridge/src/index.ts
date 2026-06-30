@@ -9084,9 +9084,7 @@ function installElectronSteamOverlayShortcut(
       if (shortcut.onError) {
         shortcut.onError(error);
       } else {
-        process.emitWarning(error instanceof Error ? error : String(error), {
-          type: "SteamBridgeOverlayShortcutWarning"
-        });
+        emitElectronSteamOverlayShortcutWarning(error);
       }
       return "handled";
     } finally {
@@ -9195,9 +9193,7 @@ function installElectronSteamOverlayGlobalShortcut(
         await controller.waitForOverlayClosed({ timeoutMs: 300000 });
       } catch (error) {
         if (!closed) {
-          process.emitWarning(error instanceof Error ? error : String(error), {
-            type: "SteamBridgeOverlayShortcutWarning"
-          });
+          emitElectronSteamOverlayShortcutWarning(error);
         }
       } finally {
         suspended = false;
@@ -9223,6 +9219,16 @@ function installElectronSteamOverlayGlobalShortcut(
     removeElectronSteamOverlayShortcutWindowListener(shortcutWindow, "focus", onFocus);
     removeElectronSteamOverlayShortcutWindowListener(shortcutWindow, "blur", onBlur);
   };
+}
+
+function emitElectronSteamOverlayShortcutWarning(error: unknown): void {
+  if (isSteamOverlayNativeHostUnavailableError(error)) {
+    return;
+  }
+
+  process.emitWarning(error instanceof Error ? error : String(error), {
+    type: "SteamBridgeOverlayShortcutWarning"
+  });
 }
 
 function loadElectronGlobalShortcut(): ElectronGlobalShortcutApi | undefined {

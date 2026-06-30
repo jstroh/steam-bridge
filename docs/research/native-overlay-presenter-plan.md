@@ -740,10 +740,16 @@ Current evidence:
   and fall back without waiting for a guard timeout. The checkout helper also
   re-checks host availability before opening the returned approval route, so if
   the screen locks or display sleeps while `InitTxn` is still pending, the
-  scoped presenter hold releases and no late checkout surface opens.
+  scoped presenter hold releases and no late checkout surface opens. The
+  macOS Shift+Tab fallback treats an already-unavailable host as a quiet no-op
+  unless app code provides `overlayShortcut.onError`, so those sessions do not
+  produce default shortcut warning noise or Steam activation attempts. If the
+  host becomes unavailable while the fallback is already waiting for Steam's
+  overlay callback, that wait also stays quiet.
   Unit coverage verifies locked, display-asleep, post-unlock lazy attach, and
-  managed fail-fast paths, including pending checkout cancellation when macOS
-  becomes unavailable mid-operation. The shared smoke verifier and packaged
+  managed fail-fast paths, including pending checkout cancellation and quiet
+  shortcut behavior when macOS becomes unavailable mid-operation. The shared
+  smoke verifier and packaged
   platform helpers can also require the serialized action `code` and `reason`
   fields, plus the presenter `nativeHostUnavailableReason`, no-host, unattached,
   zero-FPS snapshot state, and absence of Steam overlay activation, so
