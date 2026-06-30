@@ -1043,9 +1043,11 @@ Next work:
 1. Run real purchase-content and `InitTxn` proof from a real configured Steam
    app ID; App ID `480` only proves generic checkout routing. Use the smoke
    app's private checkout JSON file input for artifact capture so transaction
-   responses stay outside the repository and launch arguments. The macOS matrix
-   can run with `--app-id <your-app-id>`, `--checkout-json-file <path>`, and
-   `--require-microtxn-callback`, then audits the expected app ID plus
+   responses stay outside the repository and launch arguments. The focused
+   macOS `--suite checkout` run can pair `--app-id <your-app-id>`,
+   `--checkout-json-file <path>`, and `--require-microtxn-callback`, then audits
+   checkout prepare-only, direct checkout, managed Shift+Tab checkout, and
+   programmatic checkout shortcut/open-and-wait with the expected app ID plus
    `checkoutSource=json-file` without recording the JSON path.
 2. Keep code signing requirements explicit in docs and examples. The package now
    publishes `templates/macos-steam-env-launcher.c` plus

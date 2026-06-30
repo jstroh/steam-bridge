@@ -364,13 +364,15 @@ checkout response JSON to a private temp file and pass its path with
 `STEAM_BRIDGE_SMOKE_CHECKOUT_JSON_FILE` or the macOS helper/matrix
 `--checkout-json-file` option; the smoke app feeds that object through
 `openCheckoutAndWait(...)` without committing private data or putting transaction
-values in launch arguments. Add `--require-microtxn-callback` to the macOS
-matrix when the private direct checkout case is expected to produce a
-`MicroTxnAuthorizationResponse`; the summary will fail if that callback is
-missing or lacks a presenter snapshot. Shortcut checkout cases feed that same
-parsed object through `checkoutTargetFromResult(...)`, so direct and Shortcut
-checkout proof share one accepted envelope parser. The macOS matrix also accepts
-`--app-id <your-app-id>` and summarizes the expected app ID plus
+values in launch arguments. Use the macOS matrix's `--suite checkout` for
+focused private purchase proof; pair it with `--app-id <your-app-id>`,
+`--checkout-json-file <private-init-txn-response.json>`, and
+`--require-microtxn-callback` when the private direct checkout case is expected
+to produce a `MicroTxnAuthorizationResponse`. The summary will fail if that
+callback is missing or lacks a presenter snapshot. Shortcut checkout cases feed
+that same parsed object through `checkoutTargetFromResult(...)`, so direct and
+shortcut checkout proofs share one accepted envelope parser. The macOS matrix
+also accepts `--app-id <your-app-id>` and summarizes the expected app ID plus
 `checkoutSource=json-file` without persisting the JSON path; the matrix
 summarizer rejects new manifests that include unredacted checkout file paths,
 transaction IDs, return URLs, or checkout URLs in command metadata. On macOS,
@@ -710,6 +712,10 @@ The repository also provides `npm run macos:overlay-matrix`, which installs or
 updates one stable macOS Steam shortcut pointing at the in-bundle native
 launcher and a launcher env file. Each case rewrites only that env file, so
 Steam is restarted only when the shortcut itself is added or materially changed.
+Use `--suite checkout` when the immediate question is private purchase behavior:
+it runs checkout prepare-only, direct checkout, managed Shift+Tab checkout, and
+programmatic shortcut checkout/open-and-wait with the same redacted manifest and
+summary gates as the larger suites.
 The current core/full/persistent suites include a checkout prepare-only case
 that calls `withCheckoutPrepared(...)` without transaction input, requires
 `overlay:presenter-checkout-ready`, rejects modal overlay activation, and audits

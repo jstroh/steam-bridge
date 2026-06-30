@@ -51,6 +51,11 @@ and summary audit the expected app ID and `checkoutSource=json-file`, while
 leaving the JSON path, transaction ID, return URL, and product details outside
 committed artifacts. The macOS summary auditor now rejects newly generated
 checkout manifests that carry unredacted sensitive checkout command values.
+Use `--suite checkout` for focused real-product checkout evidence: it runs
+checkout prepare-only, direct checkout, managed Shift+Tab checkout, and
+programmatic checkout shortcut/open-and-wait with the same redaction,
+microtransaction-callback, close/back-to-app, and presenter-parking gates as the
+larger suites.
 
 ## Latest macOS Evidence
 

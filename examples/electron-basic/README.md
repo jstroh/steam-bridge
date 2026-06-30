@@ -183,6 +183,12 @@ target, profile, community, stats, achievements, and user chat/profile routes.
 Use `--suite full` to add user SteamID plus every known high-level
 dialog-equivalent route through the same managed `openAndWait(...)` close/park
 proof.
+Use `--suite checkout` for focused private purchase proof: it runs checkout
+prepare-only, direct checkout, managed Shift+Tab checkout, and programmatic
+shortcut checkout/open-and-wait cases. Pair it with `--app-id <your-app-id>`,
+`--checkout-json-file <private-init-txn-response.json>`, and
+`--require-microtxn-callback` when the direct checkout case should receive
+Steam's authorization callback.
 Use `--suite persistent` to launch the smoke app once through Steam, start the
 token-protected localhost control server, drive the full web/store/Friends,
 dialog-equivalent, passive notification, checkout, managed Shift+Tab shortcut,
@@ -457,9 +463,12 @@ prevents a late checkout surface from opening.
 The macOS helper and matrix expose the private-file path as
 `--checkout-json-file`; the matrix can pair it with `--app-id <your-app-id>`
 and records only `checkoutSource=json-file` plus the expected app ID in its
-manifest. Add `--require-microtxn-callback` when a real direct checkout proof is
-expected to produce `MicroTxnAuthorizationResponse`; the matrix summary will
-fail if the callback is missing or lacks a presenter snapshot. The Linux and
+manifest. Use `--suite checkout` for the focused macOS purchase path; it covers
+checkout prepare-only, direct checkout, Shift+Tab checkout, and programmatic
+checkout shortcut/open-and-wait without rerunning unrelated overlay surfaces.
+Add `--require-microtxn-callback` when a real direct checkout proof is expected
+to produce `MicroTxnAuthorizationResponse`; the matrix summary will fail if the
+callback is missing or lacks a presenter snapshot. The Linux and
 Steam Deck helpers expose direct inputs as `--checkout-url`,
 `--checkout-transaction-id`, and `--checkout-return-url`. Without a checkout
 file, URL, or transaction ID the helpers only require
@@ -1039,9 +1048,9 @@ app-specific proof outside the committed examples:
    overlay-preparation timers around that call.
 4. For smoke proof, save the returned JSON to a private temp file and pass it
    with `STEAM_BRIDGE_SMOKE_CHECKOUT_JSON_FILE` or the macOS helper's
-   `--checkout-json-file`. For macOS matrix proof, add
-   `--require-microtxn-callback` when the direct checkout case should receive
-   Steam's authorization callback.
+   `--checkout-json-file`. For focused macOS matrix proof, run `--suite
+   checkout` and add `--require-microtxn-callback` when the direct checkout case
+   should receive Steam's authorization callback.
 5. Let Steam Bridge open the returned checkout URL or transaction approval path.
 6. Verify the Steam modal appears in both Deck Game Mode and Desktop Mode.
 7. Confirm backing out or closing the Steam surface returns focus to the app.

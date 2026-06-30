@@ -42,10 +42,12 @@ Options:
   --mode steam-launch|preflight|self-test|summarize
                                   Run live, check macOS interactive readiness,
                                   validate dry-run matrix shape, or summarize artifacts.
-  --suite minimal|core|full|persistent|unavailable
+  --suite minimal|core|full|checkout|persistent|unavailable
                                   Matrix size. Defaults to core. "unavailable"
                                   captures expected macOS lock/asleep fail-fast
                                   artifacts instead of success overlay cases.
+                                  "checkout" runs focused checkout/InitTxn
+                                  proof cases for private app/product checks.
                                   "persistent" launches one Steam-owned smoke
                                   process and drives several actions through
                                   the localhost control server.
@@ -90,6 +92,8 @@ Suites:
            all managed shortcut targets, profile, community, stats,
            achievements, and user chat/profile routes.
   full     core plus all known high-level dialog-equivalent routes.
+  checkout focused checkout prepare, direct approval-route, managed Shift+Tab
+           checkout, and programmatic shortcut checkout/open-and-wait proof.
   persistent
            one Steam launch, then the full web/store/Friends/dialog,
            passive notification, checkout, shortcut, user/community/stats,
@@ -221,7 +225,7 @@ case "$mode" in
 esac
 
 case "$suite" in
-  minimal|core|full|persistent|unavailable)
+  minimal|core|full|checkout|persistent|unavailable)
     ;;
   *)
     echo "Unknown --suite: $suite" >&2
@@ -446,6 +450,20 @@ run_self_test() {
       --checkout-json-file /tmp/private-init-txn-response.json \
       --require-microtxn-callback
   )"
+  checkout_suite_output="$(
+    bash "$self_path" \
+      --mode steam-launch \
+      --suite checkout \
+      --skip-package \
+      --dry-run \
+      --helper-path "$script_dir/macos-electron-smoke.sh" \
+      --app-exe /tmp/SteamBridgeSmoke.app/Contents/MacOS/SteamBridgeSmoke \
+      --shortcuts /tmp/shortcuts.vdf \
+      --artifact-root /tmp/steam-bridge-macos-overlay-matrix-self-test \
+      --app-id 480 \
+      --checkout-json-file /tmp/private-init-txn-response.json \
+      --require-microtxn-callback
+  )"
 
   if [ "$(printf '%s\n' "$minimal_output" | count_cases)" != "5" ]; then
     echo "Self-test failed: minimal matrix case count changed." >&2
@@ -457,6 +475,10 @@ run_self_test() {
   fi
   if [ "$(printf '%s\n' "$full_output" | count_cases)" != "43" ]; then
     echo "Self-test failed: full matrix case count changed." >&2
+    exit 1
+  fi
+  if [ "$(printf '%s\n' "$checkout_suite_output" | count_cases)" != "4" ]; then
+    echo "Self-test failed: checkout matrix case count changed." >&2
     exit 1
   fi
   if [ "$(printf '%s\n' "$persistent_output" | count_cases)" != "43" ]; then
@@ -475,6 +497,7 @@ run_self_test() {
   require_unique_case_ids "$minimal_output" "minimal"
   require_unique_case_ids "$core_output" "core"
   require_unique_case_ids "$full_output" "full"
+  require_unique_case_ids "$checkout_suite_output" "checkout"
   require_unique_case_ids "$persistent_output" "persistent"
   require_unique_case_ids "$unavailable_output" "unavailable"
 
@@ -488,6 +511,12 @@ run_self_test() {
   require_contains "$checkout_json_output" "--app-id 480" "matrix must pass the public test app ID through helper commands."
   require_contains "$checkout_json_output" "--checkout-json-file /tmp/private-init-txn-response.json" "matrix must pass private checkout JSON into checkout cases."
   require_contains "$checkout_callback_output" "REQUIRE_MICROTXN_CALLBACK direct-checkout" "matrix must mark direct checkout when MicroTxn callbacks are required."
+  require_contains "$checkout_suite_output" "CASE 01-checkout-prepare" "checkout matrix must include prepare-only proof."
+  require_contains "$checkout_suite_output" "CASE 02-checkout-approval" "checkout matrix must include direct checkout proof."
+  require_contains "$checkout_suite_output" "CASE 03-shortcut-checkout" "checkout matrix must include Shift+Tab checkout proof."
+  require_contains "$checkout_suite_output" "CASE 04-shortcut-checkout-openwait" "checkout matrix must include programmatic checkout shortcut proof."
+  require_contains "$checkout_suite_output" "--checkout-json-file /tmp/private-init-txn-response.json" "checkout matrix must pass private checkout JSON into checkout cases."
+  require_contains "$checkout_suite_output" "REQUIRE_MICROTXN_CALLBACK direct-checkout" "checkout matrix must mark direct checkout when MicroTxn callbacks are required."
   require_contains "$core_output" "--action presenter-store-open-and-wait" "core matrix must include store openAndWait."
   require_contains "$core_output" "--action presenter-friends-open-and-wait" "core matrix must include Friends openAndWait."
   require_contains "$core_output" "--action presenter-dialog-auto-open-and-wait" "core matrix must include dialog openAndWait."
@@ -593,6 +622,14 @@ run_self_test() {
   checkout_callback_checkout_block="$(case_block "$checkout_callback_output" "07-checkout-approval")"
   checkout_callback_prepare_block="$(case_block "$checkout_callback_output" "07b-checkout-prepare")"
   checkout_callback_web_block="$(case_block "$checkout_callback_output" "01-web-openwait")"
+  checkout_suite_prepare_case="$(case_command "$checkout_suite_output" "01-checkout-prepare")"
+  checkout_suite_checkout_case="$(case_command "$checkout_suite_output" "02-checkout-approval")"
+  checkout_suite_shortcut_case="$(case_command "$checkout_suite_output" "03-shortcut-checkout")"
+  checkout_suite_openwait_case="$(case_command "$checkout_suite_output" "04-shortcut-checkout-openwait")"
+  checkout_suite_prepare_block="$(case_block "$checkout_suite_output" "01-checkout-prepare")"
+  checkout_suite_checkout_block="$(case_block "$checkout_suite_output" "02-checkout-approval")"
+  checkout_suite_shortcut_block="$(case_block "$checkout_suite_output" "03-shortcut-checkout")"
+  checkout_suite_openwait_block="$(case_block "$checkout_suite_output" "04-shortcut-checkout-openwait")"
   shortcut_checkout_json_case="$(case_command "$checkout_json_output" "11-shortcut-checkout")"
   full_shortcut_open_wait_case="$(case_command "$full_output" "33-shortcut-web-openwait")"
   full_shortcut_checkout_open_wait_case="$(case_command "$full_output" "35-shortcut-checkout-openwait")"
@@ -629,6 +666,26 @@ run_self_test() {
   require_contains "$checkout_callback_checkout_block" "REQUIRE_MICROTXN_CALLBACK direct-checkout" "MicroTxn callback requirement should apply to direct checkout cases."
   require_not_contains "$checkout_callback_prepare_block" "REQUIRE_MICROTXN_CALLBACK" "MicroTxn callback requirement should not apply to checkout prepare-only cases."
   require_not_contains "$checkout_callback_web_block" "REQUIRE_MICROTXN_CALLBACK" "MicroTxn callback requirement should not apply to non-checkout cases."
+  require_contains "$checkout_suite_prepare_case" "--require-event overlay:presenter-checkout-ready" "checkout suite prepare proof should require the ready event."
+  require_contains "$checkout_suite_prepare_case" "--require-no-overlay-activation" "checkout suite prepare proof should reject modal overlay activation."
+  require_contains "$checkout_suite_prepare_case" "--require-idle-presenter" "checkout suite prepare proof should require idle presenter release."
+  require_not_contains "$checkout_suite_prepare_case" "--checkout-json-file" "checkout suite prepare proof must not use private checkout input."
+  require_not_contains "$checkout_suite_prepare_case" "--close-probe" "checkout suite prepare proof must not run an overlay close probe."
+  require_contains "$checkout_suite_checkout_case" "--checkout-json-file /tmp/private-init-txn-response.json" "checkout suite direct proof should use JSON-file handoff."
+  require_contains "$checkout_suite_checkout_case" "--close-probe" "checkout suite direct proof should close and verify parked state."
+  require_contains "$checkout_suite_checkout_block" "REQUIRE_MICROTXN_CALLBACK direct-checkout" "checkout suite callback requirement should apply to direct checkout."
+  require_contains "$checkout_suite_shortcut_case" "--shortcut-target checkout" "checkout suite Shift+Tab proof should target checkout."
+  require_contains "$checkout_suite_shortcut_case" "--shortcut-open-probe" "checkout suite Shift+Tab proof should open through the managed shortcut bridge."
+  require_contains "$checkout_suite_shortcut_case" "--close-input toggle" "checkout suite Shift+Tab proof should close with Shift+Tab."
+  require_contains "$checkout_suite_shortcut_case" "--checkout-json-file /tmp/private-init-txn-response.json" "checkout suite shortcut proof should use JSON-file handoff."
+  require_contains "$checkout_suite_openwait_case" "--action presenter-shortcut-open-and-wait" "checkout suite programmatic proof should use openShortcutTargetAndWait."
+  require_contains "$checkout_suite_openwait_case" "--require-event overlay:presenter-open-and-wait-start" "checkout suite programmatic proof should require managed wait start."
+  require_contains "$checkout_suite_openwait_case" "--require-event overlay:shortcut-open" "checkout suite programmatic proof should require shortcut-open event."
+  require_contains "$checkout_suite_openwait_case" "--require-overlay-shortcut-target checkout" "checkout suite programmatic proof should assert checkout target."
+  require_contains "$checkout_suite_openwait_case" "--checkout-json-file /tmp/private-init-txn-response.json" "checkout suite programmatic proof should use JSON-file handoff."
+  require_not_contains "$checkout_suite_shortcut_block" "REQUIRE_MICROTXN_CALLBACK" "checkout suite callback requirement should not apply to shortcut cases."
+  require_not_contains "$checkout_suite_openwait_block" "REQUIRE_MICROTXN_CALLBACK" "checkout suite callback requirement should not apply to shortcut openAndWait cases."
+  require_not_contains "$checkout_suite_prepare_block" "REQUIRE_MICROTXN_CALLBACK" "checkout suite callback requirement should not apply to prepare-only cases."
   require_contains "$shortcut_checkout_json_case" "--checkout-json-file /tmp/private-init-txn-response.json" "checkout shortcut proof should use the JSON-file handoff."
   require_not_contains "$checkout_json_case" "--checkout-transaction-id 123456789" "private checkout proof should not also use the synthetic transaction ID."
   require_not_contains "$shortcut_checkout_json_case" "--checkout-transaction-id 123456789" "checkout shortcut proof should not also use the synthetic transaction ID."
@@ -2064,9 +2121,74 @@ run_persistent_matrix_with_retries() {
   done
 }
 
+run_checkout_matrix() {
+  local checkout_args=()
+  if [ -n "$checkout_json_file" ]; then
+    checkout_args=(--checkout-json-file "$checkout_json_file")
+  else
+    checkout_args=(--checkout-transaction-id 123456789)
+  fi
+
+  run_case "01-checkout-prepare" \
+    --action presenter-checkout \
+    --require-steam-launch \
+    --require-overlay-injection \
+    --require-overlay-enabled \
+    --require-no-overlay-activation \
+    --require-idle-presenter \
+    --require-electron-overlay \
+    --require-event overlay:presenter-checkout-ready \
+    --require-no-crashes
+
+  run_case "02-checkout-approval" \
+    --action presenter-checkout \
+    "${checkout_args[@]}" \
+    --require-steam-launch \
+    --require-overlay-injection \
+    --require-overlay-enabled \
+    --require-overlay-activated \
+    --require-event overlay:presenter-open \
+    --require-no-crashes \
+    --close-probe
+
+  run_case "03-shortcut-checkout" \
+    --action presenter-shortcut \
+    --shortcut-target checkout \
+    "${checkout_args[@]}" \
+    --require-steam-launch \
+    --require-overlay-injection \
+    --require-electron-overlay \
+    --require-overlay-shortcut-target checkout \
+    --require-event overlay:presenter-shortcut-ready \
+    --require-no-crashes \
+    --shortcut-open-probe \
+    --close-probe \
+    --close-input toggle
+
+  run_case "04-shortcut-checkout-openwait" \
+    --action presenter-shortcut-open-and-wait \
+    --shortcut-target checkout \
+    "${checkout_args[@]}" \
+    --require-steam-launch \
+    --require-overlay-injection \
+    --require-overlay-enabled \
+    --require-overlay-activated \
+    --require-electron-overlay \
+    --require-overlay-shortcut-target checkout \
+    --require-event overlay:presenter-open-and-wait-start \
+    --require-event overlay:shortcut-open \
+    --require-no-crashes \
+    --close-probe
+}
+
 run_matrix() {
   if [ "$suite" = "unavailable" ]; then
     run_unavailable_matrix
+    return 0
+  fi
+
+  if [ "$suite" = "checkout" ]; then
+    run_checkout_matrix
     return 0
   fi
 
