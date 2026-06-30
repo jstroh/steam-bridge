@@ -955,19 +955,19 @@ Current evidence:
   locked/asleep fallback artifacts can be checked automatically. The macOS
   `unavailable` matrix suite is the explicit live capture path for those
   states: it auto-detects `macos-screen-locked` or `macos-display-asleep`,
-  exercises managed web and checkout fail-fast behavior, requires no Steam
-  overlay activation, and records the same manifest metadata consumed by the
-  artifact summarizer. Success matrices preflight the same environment and stop
-  before launching case 1 if the Mac is locked or the display is asleep.
-  A live 2026-06-30 unavailable matrix at
-  `/tmp/steam-bridge-macos-overlay-matrix-unavailable-screen-locked-fixed-20260630-024404`
-  passed both managed web and checkout fail-fast cases in a genuine locked
-  session. The artifact proves Steam launch/injection, typed unavailable action
-  errors, no native host attachment, hidden presenter state at `currentFps=0`,
-  no overlay activation, and no crash evidence. Locked sessions can also report
-  `displayAsleep=true`; `macos-screen-locked` takes precedence and the verifier
-  allows either display-asleep value while locked. Because the host is
-  intentionally not created, unavailable matrix summaries do not require
+  exercises managed web, checkout-open, and checkout prepare-only fail-fast
+  behavior, requires no Steam overlay activation, and records the same manifest
+  metadata consumed by the artifact summarizer. Success matrices preflight the
+  same environment and stop before launching case 1 if the Mac is locked or the
+  display is asleep. A live 2026-06-30 unavailable matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-unavailable-checkout-prepare-20260630-115145`
+  passed all three fail-fast cases in a genuine locked/asleep session. The
+  artifact proves Steam launch/injection, typed unavailable action errors, no
+  native host attachment, hidden presenter state at `currentFps=0`, no overlay
+  activation, zero overlay targets, and no crash evidence. Locked sessions can
+  also report `displayAsleep=true`; `macos-screen-locked` takes precedence and
+  the verifier allows either display-asleep value while locked. Because the host
+  is intentionally not created, unavailable matrix summaries do not require
   `overlayEnabled=true`.
 - BrowserWindow-only overlay support is not proven.
 - Steam launch, app ID, auth, and callbacks are not enough to claim overlay

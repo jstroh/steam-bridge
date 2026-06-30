@@ -193,8 +193,8 @@ until the managed readiness wait times out, the persistent runner preserves that
 attempt under an `.attemptN` artifact directory, quits/cleans up through Steam
 tracking evidence, and retries once.
 Use `--suite unavailable` only when macOS genuinely reports the screen locked or
-the display asleep. That suite captures expected managed web and checkout
-fail-fast artifacts with
+the display asleep. That suite captures expected managed web, checkout-open, and
+checkout-prepare fail-fast artifacts with
 `STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE`, the matching
 `nativeHostUnavailableReason`, and no Steam overlay activation. Live
 unavailable runs auto-detect `macos-screen-locked` or

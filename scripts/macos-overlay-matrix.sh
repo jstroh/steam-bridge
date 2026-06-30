@@ -88,7 +88,8 @@ Suites:
            achievements, and dialog-equivalent coverage through the smoke
            control server.
   unavailable
-           managed web and checkout fail-fast cases for locked/asleep macOS.
+           managed web, checkout-open, and checkout-prepare fail-fast cases
+           for locked/asleep macOS.
 EOF
 }
 
@@ -299,7 +300,7 @@ case_block() {
 }
 
 run_self_test() {
-  local self_path minimal_output core_output full_output persistent_output unavailable_output opengl_output checkout_json_output checkout_callback_output passive_case checkout_case checkout_prepare_case checkout_json_case checkout_callback_case checkout_callback_checkout_block checkout_callback_prepare_block checkout_callback_web_block shortcut_checkout_json_case web_case full_shortcut_open_wait_case full_shortcut_checkout_open_wait_case full_shortcut_user_open_wait_case full_shortcut_dialog_open_wait_case persistent_web_case persistent_checkout_prepare_case persistent_shortcut_open_wait_case persistent_shortcut_checkout_open_wait_case persistent_shortcut_user_open_wait_case persistent_shortcut_dialog_open_wait_case unavailable_web_case unavailable_checkout_case
+  local self_path minimal_output core_output full_output persistent_output unavailable_output opengl_output checkout_json_output checkout_callback_output passive_case checkout_case checkout_prepare_case checkout_json_case checkout_callback_case checkout_callback_checkout_block checkout_callback_prepare_block checkout_callback_web_block shortcut_checkout_json_case web_case full_shortcut_open_wait_case full_shortcut_checkout_open_wait_case full_shortcut_user_open_wait_case full_shortcut_dialog_open_wait_case persistent_web_case persistent_checkout_prepare_case persistent_shortcut_open_wait_case persistent_shortcut_checkout_open_wait_case persistent_shortcut_user_open_wait_case persistent_shortcut_dialog_open_wait_case unavailable_web_case unavailable_checkout_case unavailable_checkout_prepare_case
   self_path="${BASH_SOURCE[0]}"
   minimal_output="$(
     bash "$self_path" \
@@ -413,7 +414,7 @@ run_self_test() {
     echo "Self-test failed: persistent matrix case count changed." >&2
     exit 1
   fi
-  if [ "$(printf '%s\n' "$unavailable_output" | count_cases)" != "2" ]; then
+  if [ "$(printf '%s\n' "$unavailable_output" | count_cases)" != "3" ]; then
     echo "Self-test failed: unavailable matrix case count changed." >&2
     exit 1
   fi
@@ -515,6 +516,7 @@ run_self_test() {
   require_contains "$full_output" "CASE 42-shortcut-dialog-openwait" "full matrix must include programmatic dialog shortcut openAndWait routing."
   require_contains "$unavailable_output" "--action presenter-web-open-and-wait" "unavailable matrix must include web openAndWait fail-fast."
   require_contains "$unavailable_output" "--action presenter-checkout" "unavailable matrix must include checkout fail-fast."
+  require_contains "$unavailable_output" "CASE 03-unavailable-checkout-prepare" "unavailable matrix must include checkout prepare-only fail-fast."
   require_contains "$unavailable_output" "--require-action-error-code STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE" "unavailable matrix must require the native-host-unavailable error code."
   require_contains "$unavailable_output" "--require-action-error-reason macos-screen-locked" "unavailable matrix must require the expected unavailable reason."
   require_contains "$unavailable_output" "--require-native-host-unavailable-reason macos-screen-locked" "unavailable matrix must require the presenter unavailable reason."
@@ -542,6 +544,7 @@ run_self_test() {
   persistent_shortcut_dialog_open_wait_case="$(case_command "$persistent_output" "42-persistent-shortcut-dialog-openwait")"
   unavailable_web_case="$(case_command "$unavailable_output" "01-unavailable-web-openwait")"
   unavailable_checkout_case="$(case_command "$unavailable_output" "02-unavailable-checkout")"
+  unavailable_checkout_prepare_case="$(case_command "$unavailable_output" "03-unavailable-checkout-prepare")"
   require_contains "$web_case" "--web-modal true" "web proof should use modal Steam web overlay."
   require_contains "$web_case" "--close-input web" "active web proof should close through the Steam web close control."
   require_contains "$passive_case" "--result-delay-ms 1200" "passive toast should use the short notification capture delay."
@@ -584,8 +587,11 @@ run_self_test() {
   require_contains "$persistent_shortcut_dialog_open_wait_case" "--dialog OfficialGameGroup" "programmatic dialog shortcut openAndWait proof should cover the dialog-equivalent route."
   require_not_contains "$unavailable_web_case" "--close-probe" "unavailable web case must not require close proof."
   require_not_contains "$unavailable_checkout_case" "--close-probe" "unavailable checkout case must not require close proof."
+  require_not_contains "$unavailable_checkout_prepare_case" "--close-probe" "unavailable checkout prepare case must not require close proof."
   require_not_contains "$unavailable_web_case" "--require-overlay-enabled" "unavailable web case must not require overlay readiness while macOS is unavailable."
   require_not_contains "$unavailable_checkout_case" "--require-overlay-enabled" "unavailable checkout case must not require overlay readiness while macOS is unavailable."
+  require_not_contains "$unavailable_checkout_prepare_case" "--require-overlay-enabled" "unavailable checkout prepare case must not require overlay readiness while macOS is unavailable."
+  require_not_contains "$unavailable_checkout_prepare_case" "--checkout-transaction-id" "unavailable checkout prepare case must not use synthetic transaction input."
 
   echo "macOS overlay matrix self-test passed."
 }
@@ -2253,6 +2259,16 @@ run_unavailable_matrix() {
   run_case "02-unavailable-checkout" \
     --action presenter-checkout \
     --checkout-transaction-id 123456789 \
+    --require-steam-launch \
+    --require-overlay-injection \
+    --require-action-error-code STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE \
+    --require-action-error-reason "$reason" \
+    --require-native-host-unavailable-reason "$reason" \
+    --require-no-overlay-activation \
+    --require-no-crashes
+
+  run_case "03-unavailable-checkout-prepare" \
+    --action presenter-checkout \
     --require-steam-launch \
     --require-overlay-injection \
     --require-action-error-code STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE \

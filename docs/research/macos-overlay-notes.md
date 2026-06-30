@@ -321,9 +321,10 @@ Verified:
   the display is asleep. Its self-test validates the matrix shape and the
   artifact summarizer without launching Steam.
 - A live 2026-06-30 unavailable macOS matrix at
-  `/tmp/steam-bridge-macos-overlay-matrix-unavailable-screen-locked-fixed-20260630-024404`
-  captured a genuine locked-session state. The two-case suite verified managed
-  web `openAndWait(...)` and checkout fail fast with
+  `/tmp/steam-bridge-macos-overlay-matrix-unavailable-checkout-prepare-20260630-115145`
+  captured a genuine locked/asleep-session state. The three-case suite verified
+  managed web `openAndWait(...)`, checkout-open, and checkout prepare-only fail
+  fast with
   `STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE`, `reason=macos-screen-locked`,
   matching presenter `nativeHostUnavailableReason`, no native host attachment,
   `currentFps=0`, no Steam overlay activation, no `gameoverlayui` targets, and

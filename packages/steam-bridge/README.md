@@ -693,10 +693,11 @@ that the presenter releases back to idle; real checkout-open cases remain
 separate and require close/back-to-app proof.
 Live success runs preflight `getMacOverlayEnvironment()` and stop before case
 launch while the Mac is locked or the display is asleep; capture those states
-with `--suite unavailable`, which expects the managed web and checkout helpers
-to throw `STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE` before Steam overlay activation
-and records the matching presenter `nativeHostUnavailableReason`. Locked macOS
-sessions can also report the display asleep; `macos-screen-locked` takes
+with `--suite unavailable`, which expects managed web, checkout-open, and
+checkout-prepare helpers to throw `STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE` before
+Steam overlay activation and records the matching presenter
+`nativeHostUnavailableReason`. Locked macOS sessions can also report the display
+asleep; `macos-screen-locked` takes
 precedence, and unavailable captures do not require `overlayEnabled=true`
 because no native host should be created. The matrix
 runs the packaged helper and records
