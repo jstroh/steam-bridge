@@ -484,6 +484,7 @@ run_self_test() {
   require_contains "$core_output" "ENV /tmp/steam-bridge-macos-smoke.env" "matrix must write per-case launcher env."
   require_contains "$core_output" "SIGNING node $script_dir/verify-macos-steam-signing.cjs --app-exe /tmp/SteamBridgeSmoke.app/Contents/MacOS/SteamBridgeSmoke" "matrix must verify macOS package signing before live cases."
   require_contains "$opengl_output" "NATIVE_HOST_BACKEND opengl" "matrix must pass requested native host backend through the launcher env."
+  require_not_contains "$opengl_output" "STEAM_BRIDGE_DISABLE_OVERLAY_NEEDS_PRESENT" "OpenGL backend selection must not reintroduce the legacy macOS needs-present disable env."
   require_contains "$checkout_json_output" "--app-id 480" "matrix must pass the public test app ID through helper commands."
   require_contains "$checkout_json_output" "--checkout-json-file /tmp/private-init-txn-response.json" "matrix must pass private checkout JSON into checkout cases."
   require_contains "$checkout_callback_output" "REQUIRE_MICROTXN_CALLBACK direct-checkout" "matrix must mark direct checkout when MicroTxn callbacks are required."
