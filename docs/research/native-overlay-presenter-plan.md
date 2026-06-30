@@ -955,9 +955,10 @@ Current evidence:
   locked/asleep fallback artifacts can be checked automatically. The macOS
   `unavailable` matrix suite is the explicit live capture path for those
   states: it auto-detects `macos-screen-locked` or `macos-display-asleep`,
-  exercises managed web, checkout-open, checkout prepare-only, and passive
-  achievement-progress no-host behavior, requires no Steam overlay activation,
-  and records the same manifest metadata consumed by the artifact summarizer.
+  exercises managed web, checkout-open, checkout prepare-only, programmatic
+  shortcut open/wait, and passive achievement-progress no-host behavior,
+  requires no Steam overlay activation, and records the same manifest metadata
+  consumed by the artifact summarizer.
   Success matrices preflight the
   same environment and stop before launching case 1 if the Mac is locked or the
   display is asleep. The matrix runner has an optional
@@ -996,6 +997,13 @@ Current evidence:
   `overlayNeedsPresent=false`, `overlayNeedsPresentPollingEnabled=false`, zero
   managed overlay timing, and no fresh `SteamBridgeSmoke` or attributed
   `MTLCompilerService` crash reports.
+  A follow-up unavailable matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-unavailable-shortcut-openwait-20260630-131816`
+  expanded that live proof to five cases by adding
+  `presenter-shortcut-open-and-wait` for the configured web shortcut target. The
+  new case records the managed wait start, confirms the configured target, and
+  fails with the typed native-host-unavailable error before `overlay:shortcut-open`,
+  native host attachment, Steam overlay activation, or crash evidence.
 - BrowserWindow-only overlay support is not proven.
 - Steam launch, app ID, auth, and callbacks are not enough to claim overlay
   support.

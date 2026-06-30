@@ -319,7 +319,7 @@ case_block() {
 }
 
 run_self_test() {
-  local self_path minimal_output core_output full_output persistent_output unavailable_output wait_output preflight_output opengl_output checkout_json_output checkout_callback_output passive_case checkout_case checkout_prepare_case checkout_json_case checkout_callback_case checkout_callback_checkout_block checkout_callback_prepare_block checkout_callback_web_block shortcut_checkout_json_case web_case full_shortcut_open_wait_case full_shortcut_checkout_open_wait_case full_shortcut_user_open_wait_case full_shortcut_dialog_open_wait_case persistent_web_case persistent_checkout_prepare_case persistent_shortcut_open_wait_case persistent_shortcut_checkout_open_wait_case persistent_shortcut_user_open_wait_case persistent_shortcut_dialog_open_wait_case unavailable_web_case unavailable_checkout_case unavailable_checkout_prepare_case unavailable_passive_case
+  local self_path minimal_output core_output full_output persistent_output unavailable_output wait_output preflight_output opengl_output checkout_json_output checkout_callback_output passive_case checkout_case checkout_prepare_case checkout_json_case checkout_callback_case checkout_callback_checkout_block checkout_callback_prepare_block checkout_callback_web_block shortcut_checkout_json_case web_case full_shortcut_open_wait_case full_shortcut_checkout_open_wait_case full_shortcut_user_open_wait_case full_shortcut_dialog_open_wait_case persistent_web_case persistent_checkout_prepare_case persistent_shortcut_open_wait_case persistent_shortcut_checkout_open_wait_case persistent_shortcut_user_open_wait_case persistent_shortcut_dialog_open_wait_case unavailable_web_case unavailable_checkout_case unavailable_checkout_prepare_case unavailable_shortcut_case unavailable_passive_case
   self_path="${BASH_SOURCE[0]}"
   minimal_output="$(
     bash "$self_path" \
@@ -463,7 +463,7 @@ run_self_test() {
     echo "Self-test failed: persistent matrix case count changed." >&2
     exit 1
   fi
-  if [ "$(printf '%s\n' "$unavailable_output" | count_cases)" != "4" ]; then
+  if [ "$(printf '%s\n' "$unavailable_output" | count_cases)" != "5" ]; then
     echo "Self-test failed: unavailable matrix case count changed." >&2
     exit 1
   fi
@@ -571,7 +571,10 @@ run_self_test() {
   require_contains "$unavailable_output" "--action presenter-web-open-and-wait" "unavailable matrix must include web openAndWait fail-fast."
   require_contains "$unavailable_output" "--action presenter-checkout" "unavailable matrix must include checkout fail-fast."
   require_contains "$unavailable_output" "CASE 03-unavailable-checkout-prepare" "unavailable matrix must include checkout prepare-only fail-fast."
-  require_contains "$unavailable_output" "CASE 04-unavailable-passive-toast" "unavailable matrix must include passive notification no-host proof."
+  require_contains "$unavailable_output" "CASE 04-unavailable-shortcut-openwait" "unavailable matrix must include programmatic shortcut openAndWait fail-fast."
+  require_contains "$unavailable_output" "--action presenter-shortcut-open-and-wait" "unavailable matrix must include shortcut openAndWait fail-fast."
+  require_contains "$unavailable_output" "--shortcut-target web" "unavailable matrix must cover a presenter-backed shortcut target."
+  require_contains "$unavailable_output" "CASE 05-unavailable-passive-toast" "unavailable matrix must include passive notification no-host proof."
   require_contains "$unavailable_output" "--action presenter-achievement-progress" "unavailable matrix must include passive achievement-progress proof."
   require_contains "$unavailable_output" "--require-passive-notification" "unavailable passive proof must use the passive notification gate."
   require_contains "$unavailable_output" "--require-action-error-code STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE" "unavailable matrix must require the native-host-unavailable error code."
@@ -602,7 +605,8 @@ run_self_test() {
   unavailable_web_case="$(case_command "$unavailable_output" "01-unavailable-web-openwait")"
   unavailable_checkout_case="$(case_command "$unavailable_output" "02-unavailable-checkout")"
   unavailable_checkout_prepare_case="$(case_command "$unavailable_output" "03-unavailable-checkout-prepare")"
-  unavailable_passive_case="$(case_command "$unavailable_output" "04-unavailable-passive-toast")"
+  unavailable_shortcut_case="$(case_command "$unavailable_output" "04-unavailable-shortcut-openwait")"
+  unavailable_passive_case="$(case_command "$unavailable_output" "05-unavailable-passive-toast")"
   require_contains "$web_case" "--web-modal true" "web proof should use modal Steam web overlay."
   require_contains "$web_case" "--close-input web" "active web proof should close through the Steam web close control."
   require_contains "$passive_case" "--result-delay-ms 1200" "passive toast should use the short notification capture delay."
@@ -646,9 +650,13 @@ run_self_test() {
   require_not_contains "$unavailable_web_case" "--close-probe" "unavailable web case must not require close proof."
   require_not_contains "$unavailable_checkout_case" "--close-probe" "unavailable checkout case must not require close proof."
   require_not_contains "$unavailable_checkout_prepare_case" "--close-probe" "unavailable checkout prepare case must not require close proof."
+  require_not_contains "$unavailable_shortcut_case" "--close-probe" "unavailable shortcut openAndWait case must not require close proof."
   require_not_contains "$unavailable_web_case" "--require-overlay-enabled" "unavailable web case must not require overlay readiness while macOS is unavailable."
   require_not_contains "$unavailable_checkout_case" "--require-overlay-enabled" "unavailable checkout case must not require overlay readiness while macOS is unavailable."
   require_not_contains "$unavailable_checkout_prepare_case" "--require-overlay-enabled" "unavailable checkout prepare case must not require overlay readiness while macOS is unavailable."
+  require_not_contains "$unavailable_shortcut_case" "--require-overlay-enabled" "unavailable shortcut openAndWait case must not require overlay readiness while macOS is unavailable."
+  require_contains "$unavailable_shortcut_case" "--require-event overlay:presenter-open-and-wait-start" "unavailable shortcut openAndWait case must record the managed wait start."
+  require_contains "$unavailable_shortcut_case" "--require-overlay-shortcut-target web" "unavailable shortcut openAndWait case must assert the configured shortcut target."
   require_not_contains "$unavailable_checkout_prepare_case" "--checkout-transaction-id" "unavailable checkout prepare case must not use synthetic transaction input."
   require_not_contains "$unavailable_passive_case" "--require-action-error-code" "unavailable passive toast case must not expect an action error."
   require_not_contains "$unavailable_passive_case" "--close-probe" "unavailable passive toast case must not require close proof."
@@ -2389,7 +2397,22 @@ run_unavailable_matrix() {
     --require-no-overlay-activation \
     --require-no-crashes
 
-  run_case "04-unavailable-passive-toast" \
+  run_case "04-unavailable-shortcut-openwait" \
+    --action presenter-shortcut-open-and-wait \
+    --shortcut-target web \
+    --web-url "https://store.steampowered.com/app/$app_id/" \
+    --web-modal true \
+    --require-steam-launch \
+    --require-overlay-injection \
+    --require-action-error-code STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE \
+    --require-action-error-reason "$reason" \
+    --require-native-host-unavailable-reason "$reason" \
+    --require-overlay-shortcut-target web \
+    --require-event overlay:presenter-open-and-wait-start \
+    --require-no-overlay-activation \
+    --require-no-crashes
+
+  run_case "05-unavailable-passive-toast" \
     --action presenter-achievement-progress \
     --result-delay-ms 1200 \
     --require-steam-launch \

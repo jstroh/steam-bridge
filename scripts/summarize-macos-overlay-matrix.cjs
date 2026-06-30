@@ -258,6 +258,8 @@ function verifyCase(caseId, metadata, result, lifecycle, macosCrashReports, fail
   const isPassive = Boolean(passiveConfig);
   const expectedActionError = expectedActionErrorFromMetadata(metadata);
   const hasExpectedActionError = Boolean(expectedActionError.code || expectedActionError.reason);
+  const expectedNativeHostUnavailableActionError =
+    expectedActionError.code === "STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE";
   const checkoutPrepareOnly = actionName === "presenter-checkout" && !summaryCheckoutSource && !hasExpectedActionError;
   const expectedNativeHostUnavailableReason = nonEmptyString(
     metadata.requireNativeHostUnavailableReason ?? metadata.expectedNativeHostUnavailableReason
@@ -450,11 +452,19 @@ function verifyCase(caseId, metadata, result, lifecycle, macosCrashReports, fail
         : "friends";
     const shortcutOpen = lifecycleEntries.find((entry) => entry.type === "event:overlay:shortcut-open");
     const shortcutOpenPayload = shortcutOpen ? objectOrEmpty(shortcutOpen.payload) : {};
-    expect(
-      Boolean(shortcutOpen),
-      `${caseId}: managed shortcut open event recorded`,
-      failures
-    );
+    if (!hasExpectedActionError) {
+      expect(
+        Boolean(shortcutOpen),
+        `${caseId}: managed shortcut open event recorded`,
+        failures
+      );
+    } else if (expectedNativeHostUnavailableActionError) {
+      expect(
+        !shortcutOpen,
+        `${caseId}: managed shortcut open event was not recorded before native host unavailable failure`,
+        failures
+      );
+    }
     if (shortcutOpen) {
       expect(
         shortcutOpenPayload.target === expectedShortcutTarget,
@@ -1273,7 +1283,7 @@ function runSelfTest() {
   try {
     createSelfTestFixture(fixtureRoot);
     const summary = summarizeMatrixArtifacts(fixtureRoot);
-    assert.equal(summary.caseSummaries.length, 9, "summary self-test should include nine cases");
+    assert.equal(summary.caseSummaries.length, 10, "summary self-test should include ten cases");
     createPersistentSelfTestFixture(persistentFixtureRoot);
     const persistentSummary = summarizeMatrixArtifacts(persistentFixtureRoot);
     assert.equal(persistentSummary.caseSummaries.length, 2, "persistent summary self-test should include two cases");
@@ -1715,7 +1725,68 @@ function createSelfTestFixture(root) {
       lifecycle: []
     },
     {
-      caseId: "08-passive-toast-unavailable",
+      caseId: "08-shortcut-openwait-unavailable",
+      action: "presenter-shortcut-open-and-wait",
+      shortcutTarget: "web",
+      resultOk: false,
+      actionOk: false,
+      actionError: {
+        name: "SteamOverlayNativeHostUnavailableError",
+        message: "Steam overlay native host is unavailable: macOS screen is locked.",
+        code: "STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE",
+        reason: "macos-screen-locked",
+        macOverlayEnvironment: { screenLocked: true, displayAsleep: true }
+      },
+      command: [
+        "--action",
+        "presenter-shortcut-open-and-wait",
+        "--shortcut-target",
+        "web",
+        "--require-overlay-shortcut-target",
+        "web",
+        "--require-event",
+        "overlay:presenter-open-and-wait-start",
+        "--require-action-error-code",
+        "STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE",
+        "--require-action-error-reason",
+        "macos-screen-locked",
+        "--require-native-host-unavailable-reason",
+        "macos-screen-locked",
+        "--require-no-overlay-activation"
+      ],
+      resultPresenter: withShortcutTargetSnapshot(
+        nativeHostUnavailablePresenterFixture("macos-screen-locked", {
+          screenLocked: true,
+          displayAsleep: true
+        }),
+        "web"
+      ),
+      overlayTargets: [],
+      requireActionErrorCode: "STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE",
+      requireActionErrorReason: "macos-screen-locked",
+      requireNativeHostUnavailableReason: "macos-screen-locked",
+      requireNoOverlayActivation: true,
+      lifecycle: [
+        {
+          type: "event:overlay:presenter-open-and-wait-start",
+          payload: {
+            target: "shortcut",
+            shortcut: "openShortcutTargetAndWait",
+            shortcutTarget: "web",
+            api: "openShortcutTargetAndWait",
+            presenter: withShortcutTargetSnapshot(
+              nativeHostUnavailablePresenterFixture("macos-screen-locked", {
+                screenLocked: true,
+                displayAsleep: true
+              }),
+              "web"
+            )
+          }
+        }
+      ]
+    },
+    {
+      caseId: "09-passive-toast-unavailable",
       action: "presenter-achievement-progress",
       command: [
         "--action",

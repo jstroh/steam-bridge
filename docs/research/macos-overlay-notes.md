@@ -654,6 +654,17 @@ Verified:
   `nativeHostUnavailable=macos-screen-locked`, no leftover smoke or overlay
   process, and no fresh `SteamBridgeSmoke` or attributed `MTLCompilerService`
   crash reports.
+- A follow-up locked/asleep unavailable macOS matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-unavailable-shortcut-openwait-20260630-131816`
+  rebuilt and signed the same Electron `43.0.0` package, reused the stable Steam
+  shortcut without restarting Steam, and passed five unavailable cases. The new
+  `presenter-shortcut-open-and-wait` case proves the public programmatic
+  shortcut/toggle helper records its managed wait start and configured web
+  shortcut target, then fails fast with
+  `STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE` while the screen is locked, without
+  emitting `overlay:shortcut-open`, attaching a native host, creating a
+  `gameoverlayui` target, activating Steam overlay UI, or producing a fresh
+  `SteamBridgeSmoke` or attributed `MTLCompilerService` crash report.
 - The live macOS matrix now runs `scripts/verify-macos-steam-signing.cjs`
   before touching Steam. It checks the native launcher and renamed Electron
   executable for arm64-only slices, valid executable signatures, the dyld
