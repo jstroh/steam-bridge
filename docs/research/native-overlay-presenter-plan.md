@@ -594,7 +594,15 @@ Current evidence:
   passed all 24 cases with the same JSON-file input, including
   `11-shortcut-checkout`; the summary audited `checkoutSource=json-file`,
   Shift+Tab open/close, app focus return, parked zero-FPS presenter state, and
-  no crash evidence. A 2026-06-28 Deck Desktop prepare-only run verified
+  no crash evidence. A later full 2026-06-30 macOS matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-full-json-after-reopen-20260630-040037`
+  rebuilt and signed the Electron `42.5.1` smoke package after Steam had been
+  reopened, reused the stable shortcut without restarting Steam, and passed all
+  31 Steam-launched App ID `480` cases with the same JSON-file checkout input.
+  It re-verified direct and shortcut checkout, every supported shortcut target,
+  every high-level dialog-equivalent route, Metal presenter lifecycle,
+  close/back-to-app proof, zero managed overlay timing, and clean crash
+  diagnostics. A 2026-06-28 Deck Desktop prepare-only run verified
   checkout readiness returns to passive idle, and a synthetic
   transaction approval URL run verified checkout-style open, close, app focus,
   no crash evidence, and no post-close pumping without committing private app

@@ -79,6 +79,15 @@ all 24 Steam-launched App ID `480` cases while feeding checkout through a local
 for both direct checkout and `11-shortcut-checkout`, including managed
 Shift+Tab open/close, app focus return, parked zero-FPS presenter state, and
 clean crash diagnostics.
+A fresh full run at
+`/tmp/steam-bridge-macos-overlay-matrix-full-json-after-reopen-20260630-040037`
+then rebuilt and signed the Electron `42.5.1` smoke package after Steam had been
+reopened, reused the stable shortcut without restarting Steam, and passed all
+31 cases with the same private JSON-file checkout input. The summary audited
+the Metal presenter backend, one overlay target per case, `checkoutSource=json-file`
+for direct and shortcut checkout, managed wait-helper shown/closed/parked
+lifecycle, app focus return, zero managed overlay timing, and clean crash
+diagnostics.
 
 ## Steam Deck Shortcut Gate
 

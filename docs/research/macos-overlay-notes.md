@@ -429,6 +429,17 @@ Verified:
   Steam-launched App ID `480` cases without restarting Steam. This confirms the
   PID-focused close/shortcut probes and managed presenter lifecycle are stable
   across a normal Steam client restart.
+- A later 2026-06-30 full macOS matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-full-json-after-reopen-20260630-040037`
+  rebuilt and signed the Electron `42.5.1` smoke package after Steam had been
+  reopened, reused the stable Steam shortcut without restarting Steam, and
+  passed all 31 Steam-launched App ID `480` cases while feeding checkout through
+  a local `InitTxn`-style JSON file. The summary audited
+  `checkoutSource=json-file` for both direct checkout and
+  `11-shortcut-checkout`, verified the Metal presenter backend, one overlay
+  target per case, managed wait-helper shown/closed/parked lifecycle events,
+  Shift+Tab open/close for every supported shortcut target, app focus return,
+  zero managed overlay timing, and clean crash diagnostics.
 - A later 2026-06-30 full macOS Metal matrix at
   `/tmp/steam-bridge-macos-overlay-matrix-full-narrow-needs-present-20260630-023000`
   skipped repackaging, reused the signed Electron `42.5.1` bundle, and passed
