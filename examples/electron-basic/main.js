@@ -2113,11 +2113,57 @@ function collectLinuxOverlayProcesses() {
 }
 
 function collectMacOverlayProcesses() {
+  try {
+    return collectMacOverlayProcessesWithPgrep();
+  } catch (error) {
+    if (error && error.status === 1) {
+      return [];
+    }
+    if (!error || error.code !== "ENOENT") {
+      throw error;
+    }
+  }
+
+  return collectMacOverlayProcessesWithPsScan();
+}
+
+function collectMacOverlayProcessesWithPgrep() {
+  const pidOutput = execFileSync("pgrep", ["-if", "gameoverlayui"], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "ignore"],
+    timeout: 1000
+  });
+  const pids = [
+    ...new Set(
+      pidOutput
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter((line) => /^\d+$/.test(line))
+    )
+  ];
+
+  if (pids.length === 0) {
+    return [];
+  }
+
+  const output = execFileSync("ps", ["-p", pids.join(","), "-o", "pid=,command="], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "ignore"],
+    timeout: 1000
+  });
+  return parseOverlayProcessSnapshotOutput(output);
+}
+
+function collectMacOverlayProcessesWithPsScan() {
   const output = execFileSync("ps", ["-axo", "pid=,command="], {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "ignore"],
     timeout: 1000
   });
+  return parseOverlayProcessSnapshotOutput(output);
+}
+
+function parseOverlayProcessSnapshotOutput(output) {
   return output
     .split(/\r?\n/)
     .map((line) => line.trim())

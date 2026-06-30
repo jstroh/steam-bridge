@@ -698,7 +698,21 @@ Current evidence:
   shortcut target, passive toasts, direct community/user routes, one Metal
   presenter-backed overlay target per case, zero managed timing, close/back-to-app
   proof, and no fresh `SteamBridgeSmoke` crash report beyond the older known
-  `BOverlayNeedsPresent()` reports. A 2026-06-28 Deck Desktop
+  `BOverlayNeedsPresent()` reports. A later 2026-06-30 persistent macOS run at
+  `/tmp/steam-bridge-macos-overlay-matrix-20260630-110920` rebuilt and signed the
+  Electron `43.0.0` package, reused the stable Steam shortcut without restarting
+  Steam, launched one App ID `480` process through Steam, and passed all 42
+  control-server-driven cases. It expands
+  `steamOverlay.openShortcutTargetAndWait()` coverage from the modal web route
+  to Friends, store, checkout approval-route, profile, players, community, stats,
+  achievements, user chat, and dialog-equivalent shortcut targets. Every new
+  programmatic shortcut target verified `overlay:shortcut-open`, active/inactive
+  callbacks, completion after close and presenter parking, zero managed overlay
+  timing, one Metal presenter-backed overlay target, clean control-server quit,
+  no leftover smoke/gameoverlay process, and no fresh macOS crash reports. The
+  smoke app now uses targeted `gameoverlayui` PID diagnostics on macOS rather
+  than a full `ps` table scan, preserving the one-target summary proof while
+  avoiding diagnostic timeouts in long persistent runs. A 2026-06-28 Deck Desktop
   prepare-only run verified
   checkout readiness returns to passive idle, and a synthetic
   transaction approval URL run verified checkout-style open, close, app focus,

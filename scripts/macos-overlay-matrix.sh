@@ -299,7 +299,7 @@ case_block() {
 }
 
 run_self_test() {
-  local self_path minimal_output core_output full_output persistent_output unavailable_output opengl_output checkout_json_output checkout_callback_output passive_case checkout_case checkout_json_case checkout_callback_case checkout_callback_checkout_block checkout_callback_web_block shortcut_checkout_json_case web_case persistent_web_case persistent_shortcut_open_wait_case unavailable_web_case unavailable_checkout_case
+  local self_path minimal_output core_output full_output persistent_output unavailable_output opengl_output checkout_json_output checkout_callback_output passive_case checkout_case checkout_json_case checkout_callback_case checkout_callback_checkout_block checkout_callback_web_block shortcut_checkout_json_case web_case persistent_web_case persistent_shortcut_open_wait_case persistent_shortcut_checkout_open_wait_case persistent_shortcut_user_open_wait_case persistent_shortcut_dialog_open_wait_case unavailable_web_case unavailable_checkout_case
   self_path="${BASH_SOURCE[0]}"
   minimal_output="$(
     bash "$self_path" \
@@ -409,7 +409,7 @@ run_self_test() {
     echo "Self-test failed: full matrix case count changed." >&2
     exit 1
   fi
-  if [ "$(printf '%s\n' "$persistent_output" | count_cases)" != "32" ]; then
+  if [ "$(printf '%s\n' "$persistent_output" | count_cases)" != "42" ]; then
     echo "Self-test failed: persistent matrix case count changed." >&2
     exit 1
   fi
@@ -473,6 +473,16 @@ run_self_test() {
   require_contains "$persistent_output" "--action presenter-checkout" "persistent matrix must include checkout."
   require_contains "$persistent_output" "--action presenter-shortcut" "persistent matrix must include managed shortcut routing."
   require_contains "$persistent_output" "--action presenter-shortcut-open-and-wait" "persistent matrix must include programmatic shortcut openAndWait routing."
+  require_contains "$persistent_output" "CASE 33-persistent-shortcut-friends-openwait" "persistent matrix must include programmatic Friends shortcut openAndWait routing."
+  require_contains "$persistent_output" "CASE 34-persistent-shortcut-store-openwait" "persistent matrix must include programmatic store shortcut openAndWait routing."
+  require_contains "$persistent_output" "CASE 35-persistent-shortcut-checkout-openwait" "persistent matrix must include programmatic checkout shortcut openAndWait routing."
+  require_contains "$persistent_output" "CASE 36-persistent-shortcut-profile-openwait" "persistent matrix must include programmatic profile shortcut openAndWait routing."
+  require_contains "$persistent_output" "CASE 37-persistent-shortcut-players-openwait" "persistent matrix must include programmatic players shortcut openAndWait routing."
+  require_contains "$persistent_output" "CASE 38-persistent-shortcut-community-openwait" "persistent matrix must include programmatic community shortcut openAndWait routing."
+  require_contains "$persistent_output" "CASE 39-persistent-shortcut-stats-openwait" "persistent matrix must include programmatic stats shortcut openAndWait routing."
+  require_contains "$persistent_output" "CASE 40-persistent-shortcut-achievements-openwait" "persistent matrix must include programmatic achievements shortcut openAndWait routing."
+  require_contains "$persistent_output" "CASE 41-persistent-shortcut-user-chat-openwait" "persistent matrix must include programmatic user shortcut openAndWait routing."
+  require_contains "$persistent_output" "CASE 42-persistent-shortcut-dialog-openwait" "persistent matrix must include programmatic dialog shortcut openAndWait routing."
   require_contains "$persistent_output" "--shortcut-target checkout" "persistent matrix must include checkout shortcut routing."
   require_contains "$persistent_output" "--shortcut-target user" "persistent matrix must include user shortcut routing."
   require_contains "$persistent_output" "--action presenter-profile-open-and-wait" "persistent matrix must include profile openAndWait."
@@ -506,6 +516,9 @@ run_self_test() {
   shortcut_checkout_json_case="$(case_command "$checkout_json_output" "11-shortcut-checkout")"
   persistent_web_case="$(case_command "$persistent_output" "01-persistent-web-openwait")"
   persistent_shortcut_open_wait_case="$(case_command "$persistent_output" "19-persistent-shortcut-web-openwait")"
+  persistent_shortcut_checkout_open_wait_case="$(case_command "$persistent_output" "35-persistent-shortcut-checkout-openwait")"
+  persistent_shortcut_user_open_wait_case="$(case_command "$persistent_output" "41-persistent-shortcut-user-chat-openwait")"
+  persistent_shortcut_dialog_open_wait_case="$(case_command "$persistent_output" "42-persistent-shortcut-dialog-openwait")"
   unavailable_web_case="$(case_command "$unavailable_output" "01-unavailable-web-openwait")"
   unavailable_checkout_case="$(case_command "$unavailable_output" "02-unavailable-checkout")"
   require_contains "$web_case" "--web-modal true" "web proof should use modal Steam web overlay."
@@ -526,6 +539,9 @@ run_self_test() {
   require_contains "$persistent_shortcut_open_wait_case" "--require-event overlay:presenter-open-and-wait-start" "programmatic shortcut openAndWait proof should require the managed wait start event."
   require_contains "$persistent_shortcut_open_wait_case" "--require-overlay-shortcut-target web" "programmatic shortcut openAndWait proof should assert the configured shortcut target."
   require_contains "$persistent_shortcut_open_wait_case" "--close-input web" "programmatic shortcut openAndWait proof should close through visible Steam web content."
+  require_contains "$persistent_shortcut_checkout_open_wait_case" "--checkout-transaction-id 123456789" "programmatic checkout shortcut openAndWait proof should use checkout approval-route plumbing."
+  require_contains "$persistent_shortcut_user_open_wait_case" "--user-dialog chat" "programmatic user shortcut openAndWait proof should cover the chat route."
+  require_contains "$persistent_shortcut_dialog_open_wait_case" "--dialog OfficialGameGroup" "programmatic dialog shortcut openAndWait proof should cover the dialog-equivalent route."
   require_not_contains "$unavailable_web_case" "--close-probe" "unavailable web case must not require close proof."
   require_not_contains "$unavailable_checkout_case" "--close-probe" "unavailable checkout case must not require close proof."
   require_not_contains "$unavailable_web_case" "--require-overlay-enabled" "unavailable web case must not require overlay readiness while macOS is unavailable."
@@ -1774,6 +1790,29 @@ run_persistent_matrix() {
       --dialog "$dialog"
     dialog_index=$((dialog_index + 1))
   done
+
+  persistent_run_shortcut_open_wait_case "33-persistent-shortcut-friends-openwait" friends
+
+  persistent_run_shortcut_open_wait_case "34-persistent-shortcut-store-openwait" store
+
+  persistent_run_shortcut_open_wait_case "35-persistent-shortcut-checkout-openwait" checkout \
+    "${checkout_args[@]}"
+
+  persistent_run_shortcut_open_wait_case "36-persistent-shortcut-profile-openwait" profile
+
+  persistent_run_shortcut_open_wait_case "37-persistent-shortcut-players-openwait" players
+
+  persistent_run_shortcut_open_wait_case "38-persistent-shortcut-community-openwait" community
+
+  persistent_run_shortcut_open_wait_case "39-persistent-shortcut-stats-openwait" stats
+
+  persistent_run_shortcut_open_wait_case "40-persistent-shortcut-achievements-openwait" achievements
+
+  persistent_run_shortcut_open_wait_case "41-persistent-shortcut-user-chat-openwait" user \
+    --user-dialog chat
+
+  persistent_run_shortcut_open_wait_case "42-persistent-shortcut-dialog-openwait" dialog \
+    --dialog OfficialGameGroup
 
   if [ "$dry_run" != "1" ]; then
     control_pid="$(read_persistent_control_pid "$control_file" || true)"

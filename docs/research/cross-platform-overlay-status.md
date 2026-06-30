@@ -183,6 +183,21 @@ community/stats/achievements/user wait routes, one Metal presenter-backed
 overlay target per case, zero managed overlay timing, clean close/back-to-app
 proof, and no fresh `SteamBridgeSmoke` crash report beyond the older known
 `BOverlayNeedsPresent()` reports.
+A later persistent matrix at
+`/tmp/steam-bridge-macos-overlay-matrix-20260630-110920` rebuilt and signed the
+Electron `43.0.0` package, reused the stable Steam shortcut without restarting
+Steam, launched one App ID `480` process through Steam, and passed all 42
+control-server-driven cases. It expands
+`steamOverlay.openShortcutTargetAndWait()` from the modal web proof to every
+supported shortcut target: Friends, store, checkout approval-route, profile,
+players, community, stats, achievements, user chat, and dialog-equivalent. The
+run re-verified active/inactive callbacks, completion after overlay close and
+presenter parking, zero managed overlay timing, one Metal presenter-backed
+`gameoverlayui` target per case, clean quit behavior, no leftover smoke or
+overlay process, and no fresh macOS crash reports. The smoke app now collects
+macOS overlay process diagnostics by querying `gameoverlayui` PIDs directly
+instead of scanning the full process table, avoiding the previous diagnostic
+`ps` timeout without weakening the summary gate.
 
 ## Steam Deck Shortcut Gate
 

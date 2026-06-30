@@ -655,6 +655,20 @@ generic checkout unwrapping path while still leaving real purchase-content proof
 to apps with configured Steam products. The same smoke path can now consume a
 private checkout JSON file for real-product verification without changing the
 committed generic examples.
+A 2026-06-30 persistent macOS matrix at
+`/tmp/steam-bridge-macos-overlay-matrix-20260630-110920` rebuilt and signed the
+Electron `43.0.0` smoke package, reused the stable Steam shortcut without
+restarting Steam, launched one App ID `480` process through Steam, and passed all
+42 control-server-driven cases. The suite now proves
+`steamOverlay.openShortcutTargetAndWait()` for Friends, store, checkout
+approval-route, profile, players, community, stats, achievements, user chat, and
+dialog-equivalent shortcut targets, with active/inactive callbacks, completion
+after close and presenter parking, zero managed overlay timing, one Metal
+presenter-backed overlay target per case, clean quit behavior, no leftover smoke
+or overlay process, and no fresh macOS crash reports. The smoke app collects
+macOS `gameoverlayui` diagnostics by querying matching PIDs directly instead of
+scanning the whole process table, keeping the one-target summary proof reliable
+through long persistent runs.
 The repository also provides `npm run macos:overlay-matrix`, which installs or
 updates one stable macOS Steam shortcut pointing at the in-bundle native
 launcher and a launcher env file. Each case rewrites only that env file, so
