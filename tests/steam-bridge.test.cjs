@@ -167,6 +167,8 @@ test("native host unavailable guard accepts class and error-like shapes", (t) =>
   });
 
   assert.equal(steam.isSteamOverlayNativeHostUnavailableError(error), true);
+  assert.equal(steam.default.isSteamOverlayNativeHostUnavailableError(error), true);
+  assert.equal(error instanceof steam.default.SteamOverlayNativeHostUnavailableError, true);
   assert.equal(
     steam.isSteamOverlayNativeHostUnavailableError({
       code: "STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE",

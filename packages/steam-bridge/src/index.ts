@@ -21630,6 +21630,8 @@ const defaultExport = {
   activateDialogWithNativeSession,
   activateToWebPageWithNativeSession,
   activateToStoreWithNativeSession,
+  SteamOverlayNativeHostUnavailableError,
+  isSteamOverlayNativeHostUnavailableError,
   openNativeOverlayProbeWindow,
   attachNativeOverlayHostView,
   pumpNativeOverlayProbeWindow,
