@@ -76,7 +76,7 @@ Options:
                                  presenter-store, presenter-store-open-and-wait, presenter-web, presenter-web-open-and-wait,
                                  presenter-friends, presenter-friends-open-and-wait,
                                  presenter-profile, presenter-players, presenter-community, presenter-stats, presenter-achievements, presenter-user, presenter-checkout,
-                                 presenter-shortcut, presenter-achievement-progress, presenter-achievement-unlock.
+                                 presenter-shortcut, presenter-shortcut-open-and-wait, presenter-achievement-progress, presenter-achievement-unlock.
   --overlay-profile NAME         Electron overlay profile. Defaults to diagnostic.
   --overlay-scrub-child-env true|false
                                  Whether to scrub Steam overlay preload entries from Electron child env.

@@ -1622,7 +1622,7 @@ persistent_presenter_parking_required() {
 
 is_presenter_product_action() {
   case "$action" in
-    presenter-store|presenter-store-open-and-wait|presenter-web|presenter-web-open-and-wait|presenter-friends|presenter-friends-open-and-wait|presenter-profile|presenter-players|presenter-dialog-auto|presenter-dialog-auto-open-and-wait|presenter-community|presenter-stats|presenter-achievements|presenter-user|presenter-checkout|presenter-shortcut|presenter-achievement-progress|presenter-achievement-unlock)
+    presenter-store|presenter-store-open-and-wait|presenter-web|presenter-web-open-and-wait|presenter-friends|presenter-friends-open-and-wait|presenter-profile|presenter-players|presenter-dialog-auto|presenter-dialog-auto-open-and-wait|presenter-community|presenter-stats|presenter-achievements|presenter-user|presenter-checkout|presenter-shortcut|presenter-shortcut-open-and-wait|presenter-achievement-progress|presenter-achievement-unlock)
       return 0
       ;;
     *)
@@ -1955,7 +1955,7 @@ build_steam_launch_args() {
     else
       helper_args+=("--require-event" "overlay:presenter-checkout-ready")
     fi
-  elif [ "$action" = "presenter-web-open-and-wait" ] || [ "$action" = "presenter-store-open-and-wait" ] || [ "$action" = "presenter-dialog-auto-open-and-wait" ] || [ "$action" = "presenter-friends-open-and-wait" ]; then
+  elif [ "$action" = "presenter-web-open-and-wait" ] || [ "$action" = "presenter-store-open-and-wait" ] || [ "$action" = "presenter-dialog-auto-open-and-wait" ] || [ "$action" = "presenter-friends-open-and-wait" ] || [ "$action" = "presenter-shortcut-open-and-wait" ]; then
     helper_args+=("--require-event" "overlay:presenter-open-and-wait-start")
     helper_args+=("--require-overlay-activated")
   elif [ "$action" = "presenter-dialog" ] || [ "$action" = "presenter-dialog-auto" ] || [ "$action" = "presenter-store" ] || [ "$action" = "presenter-web" ] || [ "$action" = "presenter-friends" ] || [ "$action" = "presenter-profile" ] || [ "$action" = "presenter-players" ] || [ "$action" = "presenter-community" ] || [ "$action" = "presenter-stats" ] || [ "$action" = "presenter-achievements" ] || [ "$action" = "presenter-user" ]; then
@@ -1992,7 +1992,7 @@ build_steam_launch_args() {
       helper_args+=("--require-zero-managed-overlay-timing")
     fi
   fi
-  if [ "$action" = "presenter-shortcut" ] && [ -z "$require_overlay_shortcut_target" ]; then
+  if { [ "$action" = "presenter-shortcut" ] || [ "$action" = "presenter-shortcut-open-and-wait" ]; } && [ -z "$require_overlay_shortcut_target" ]; then
     helper_args+=("--require-overlay-shortcut-target" "$(resolved_shortcut_target)")
   fi
   if uses_persistent_presenter; then

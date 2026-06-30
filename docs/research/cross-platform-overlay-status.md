@@ -153,6 +153,26 @@ content; the product API remains callback-driven, while the live harness waits
 for visible pixels before sending the close probe. The post-run check found no
 smoke/gameoverlay process left behind and no fresh `SteamBridgeSmoke` crash
 report beyond the older known `BOverlayNeedsPresent()` reports.
+A newer persistent suite at
+`/tmp/steam-bridge-macos-overlay-matrix-persistent-shortcut-openwait-20260630-101406`
+rebuilt and signed the Electron `43.0.0` smoke package, reused the stable Steam
+shortcut without restarting Steam, launched once through Steam, and passed 32
+control-server-driven overlay cases. The new case
+`19-persistent-shortcut-web-openwait` calls
+`steamOverlay.openShortcutTargetAndWait()` against the configured modal web
+shortcut target instead of sending Shift+Tab, then verifies visible Steam web
+content, active/inactive callbacks, `overlay:shortcut-open`, completion after
+close and parking, app-frontmost return, zero managed overlay timing, one Metal
+presenter-backed overlay target, clean control-server quit behavior, no leftover
+smoke/gameoverlay process, and no fresh macOS crash reports.
+After tightening the programmatic shortcut diagnostics, a focused Steam-launched
+proof at
+`/tmp/steam-bridge-macos-shortcut-openwait-focused-20260630-102739`
+re-verified the same public helper on the final code path. Its lifecycle records
+`overlay:shortcut-open` with `shortcut: "openShortcutTargetAndWait"` and
+`target: "web"`, observes active/inactive overlay callbacks, completes after
+the harness closes the web overlay, parks the persistent Metal presenter at
+zero FPS, and leaves no fresh crash report.
 
 ## Steam Deck Shortcut Gate
 

@@ -141,6 +141,7 @@ let smokeControlActionInFlight = false;
 let postClosePresenterSnapshotHandle;
 let managedOverlayWaitSequence = 0;
 let pendingManagedOverlayShownWait;
+let managedShortcutOpenSource = "Shift+Tab";
 const managedOverlayWaitControllers = new Set();
 const callbackHandles = [];
 const eventLog = [];
@@ -826,6 +827,9 @@ async function runAutorunAction(action) {
       case "presenter-shortcut":
         openPresenterShortcutBridge();
         return { ok: true, action };
+      case "presenter-shortcut-open-and-wait":
+        openPresenterShortcutOpenAndWaitBridge();
+        return { ok: true, action };
       case "presenter-achievement-progress":
         openPresenterAchievementProgress();
         return { ok: true, action };
@@ -1486,6 +1490,68 @@ function openPresenterShortcutBridge() {
   return snapshot();
 }
 
+function openPresenterShortcutOpenAndWaitBridge() {
+  const overlay = ensureElectronSteamOverlay();
+  const context = {
+    target: "shortcut",
+    shortcut: "openShortcutTargetAndWait",
+    shortcutTarget: SHORTCUT_TARGET,
+    api: "openShortcutTargetAndWait"
+  };
+  const lifecycle = observeManagedOverlayLifecycle(overlay, context);
+  pendingManagedOverlayShownWait = lifecycle.shown;
+  const openAndWait = withManagedShortcutOpenSource("openShortcutTargetAndWait", () =>
+    overlay.openShortcutTargetAndWait({
+      showTimeoutMs: MANAGED_OVERLAY_WAIT_TIMEOUT_MS,
+      closeTimeoutMs: MANAGED_OVERLAY_PARK_TIMEOUT_MS
+    })
+  );
+  const initialSnapshot = overlay.snapshot();
+  recordEvent("overlay:presenter-open-and-wait-start", {
+    ...context,
+    presenter: initialSnapshot
+  });
+
+  openAndWait
+    .then((result) => {
+      if (!result) {
+        recordEvent("overlay:presenter-open-and-wait-skipped", {
+          ...context,
+          presenter: safeOverlaySnapshot(overlay)
+        });
+        return;
+      }
+      recordEvent("overlay:presenter-open-and-wait-complete", {
+        ...context,
+        shown: result.shown,
+        parked: result.parked,
+        presenter: safeOverlaySnapshot(overlay)
+      });
+    })
+    .catch((error) => {
+      if (!shutdownComplete) {
+        recordEvent("overlay:presenter-open-and-wait:error", {
+          ...context,
+          error: serializeError(error),
+          presenter: safeOverlaySnapshot(overlay)
+        });
+      }
+    });
+
+  throwIfNativeHostUnavailable(initialSnapshot);
+  return snapshot();
+}
+
+function withManagedShortcutOpenSource(source, callback) {
+  const previous = managedShortcutOpenSource;
+  managedShortcutOpenSource = source;
+  try {
+    return callback();
+  } finally {
+    managedShortcutOpenSource = previous;
+  }
+}
+
 function ensureElectronSteamOverlay(activeClient = requireClient()) {
   if (electronSteamOverlay && electronSteamOverlay.isOpen()) {
     return electronSteamOverlay;
@@ -1503,14 +1569,14 @@ function ensureElectronSteamOverlay(activeClient = requireClient()) {
       target: shortcutTarget,
       onOpen: (target) => {
         recordEvent("overlay:shortcut-open", {
-          shortcut: "Shift+Tab",
+          shortcut: managedShortcutOpenSource,
           target: SHORTCUT_TARGET,
           overlayTarget: target
         });
         if (electronSteamOverlay && electronSteamOverlay.isOpen()) {
           observeManagedOverlayLifecycle(electronSteamOverlay, {
             target: "shortcut",
-            shortcut: "Shift+Tab",
+            shortcut: managedShortcutOpenSource,
             shortcutTarget: SHORTCUT_TARGET,
             overlayTarget: target
           });
@@ -2487,6 +2553,7 @@ function isNativeSessionAction(action) {
     action === "presenter-user-open-and-wait" ||
     action === "presenter-checkout" ||
     action === "presenter-shortcut" ||
+    action === "presenter-shortcut-open-and-wait" ||
     action === "presenter-achievement-progress" ||
     action === "presenter-achievement-unlock"
   );
@@ -2503,7 +2570,8 @@ function isManagedOverlayShownWaitAction(action) {
     action === "presenter-community-open-and-wait" ||
     action === "presenter-stats-open-and-wait" ||
     action === "presenter-achievements-open-and-wait" ||
-    action === "presenter-user-open-and-wait"
+    action === "presenter-user-open-and-wait" ||
+    action === "presenter-shortcut-open-and-wait"
   );
 }
 

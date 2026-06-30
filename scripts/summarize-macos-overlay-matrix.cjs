@@ -17,7 +17,8 @@ const OPEN_AND_WAIT_ACTIONS = new Set([
   "presenter-community-open-and-wait",
   "presenter-stats-open-and-wait",
   "presenter-achievements-open-and-wait",
-  "presenter-user-open-and-wait"
+  "presenter-user-open-and-wait",
+  "presenter-shortcut-open-and-wait"
 ]);
 const PASSIVE_NOTIFICATION_ACTIONS = new Map([
   [
@@ -418,7 +419,7 @@ function verifyCase(caseId, metadata, result, lifecycle, macosCrashReports, fail
     expect(parked, `${caseId}: presenter parked after overlay close`, failures);
   }
 
-  if (actionName === "presenter-shortcut") {
+  if (isShortcutAction(actionName)) {
     const expectedShortcutTarget =
       typeof metadata.shortcutTarget === "string" && metadata.shortcutTarget.length > 0
         ? metadata.shortcutTarget
@@ -754,6 +755,10 @@ function requiresManagedLifecycleWaits(actionName, entries) {
     return entries.some((entry) => entry.type === "event:overlay:presenter-open");
   }
   return false;
+}
+
+function isShortcutAction(actionName) {
+  return actionName === "presenter-shortcut" || actionName === "presenter-shortcut-open-and-wait";
 }
 
 function verifyPassiveNotification(caseId, resultEvents, entries, presenter, config, failures) {
@@ -1191,7 +1196,7 @@ function runSelfTest() {
   try {
     createSelfTestFixture(fixtureRoot);
     const summary = summarizeMatrixArtifacts(fixtureRoot);
-    assert.equal(summary.caseSummaries.length, 6, "summary self-test should include six cases");
+    assert.equal(summary.caseSummaries.length, 7, "summary self-test should include seven cases");
     createPersistentSelfTestFixture(persistentFixtureRoot);
     const persistentSummary = summarizeMatrixArtifacts(persistentFixtureRoot);
     assert.equal(persistentSummary.caseSummaries.length, 2, "persistent summary self-test should include two cases");
@@ -1226,7 +1231,7 @@ function injectUnredactedCheckoutManifestCommand(root) {
     .split(/\r?\n/)
     .map((line) => JSON.parse(line));
   for (const row of rows) {
-    if (row.caseId === "05-checkout") {
+    if (row.caseId === "06-checkout") {
       row.command = ["--action", "presenter-checkout", "--checkout-json-file", "/tmp/private-init-txn-response.json"];
       row.checkoutSource = "json-file";
     }
@@ -1470,7 +1475,45 @@ function createSelfTestFixture(root) {
       ]
     },
     {
-      caseId: "05-checkout",
+      caseId: "05-shortcut-web-openwait",
+      action: "presenter-shortcut-open-and-wait",
+      shortcutTarget: "web",
+      command: [
+        "--action",
+        "presenter-shortcut-open-and-wait",
+        "--shortcut-target",
+        "web"
+      ],
+      resultPresenter: withShortcutTargetSnapshot(activePresenterFixture(40), "function"),
+      lifecycle: [
+        { type: "event:overlay:presenter-open-and-wait-start", payload: { presenter: parkedPresenterFixture(40) } },
+        {
+          type: "event:overlay:shortcut-open",
+          payload: {
+            shortcut: "openShortcutTargetAndWait",
+            target: "web",
+            overlayTarget: {
+              type: "web",
+              url: { redacted: true, present: true, type: "string" },
+              modal: true
+            }
+          }
+        },
+        { type: "event:callback:overlay-activated", payload: { active: true, appId: 480, overlayPid: 9001 } },
+        { type: "event:overlay:presenter-wait-shown", payload: { presenter: activePresenterFixture(41) } },
+        { type: "event:callback:overlay-activated", payload: { active: false, appId: 480, overlayPid: 9001 } },
+        { type: "event:overlay:presenter-wait-closed", payload: { presenter: parkedPresenterFixture(42) } },
+        { type: "event:overlay:presenter-after-close", payload: { presenter: parkedPresenterFixture(42) } },
+        { type: "event:overlay:presenter-parked", payload: { presenter: parkedPresenterFixture(42) } },
+        {
+          type: "event:overlay:presenter-open-and-wait-complete",
+          payload: { shown: activePresenterFixture(41), parked: parkedPresenterFixture(42) }
+        },
+        { type: "event:overlay:presenter-after-close-stable", payload: { presenter: parkedPresenterFixture(42) } }
+      ]
+    },
+    {
+      caseId: "06-checkout",
       action: "presenter-checkout",
       expectedAppId: 9000,
       checkoutSource: "json-file",
@@ -1515,7 +1558,7 @@ function createSelfTestFixture(root) {
       ]
     },
     {
-      caseId: "06-native-host-unavailable",
+      caseId: "07-native-host-unavailable",
       action: "presenter-web-open-and-wait",
       resultOk: false,
       actionOk: false,

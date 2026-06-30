@@ -56,7 +56,8 @@ helper accepts the same generic smoke action names as the Deck/macOS helpers,
 including `presenter-web-open-and-wait`,
 `presenter-store-open-and-wait`, `presenter-friends-open-and-wait`,
 `presenter-dialog-auto-open-and-wait`, `presenter-checkout`,
-`presenter-shortcut`, and the passive achievement notification actions.
+`presenter-shortcut`, `presenter-shortcut-open-and-wait`, and the passive
+achievement notification actions.
 
 Outputs are written under `dist/electron-smoke/<target>/`.
 The macOS package includes `macos-electron-smoke.sh` beside
@@ -298,8 +299,9 @@ Supported autorun actions are `none`, `dialog`, `friends`, `store`, `web`,
 `presenter-community-open-and-wait`, `presenter-stats`,
 `presenter-stats-open-and-wait`, `presenter-achievements`,
 `presenter-achievements-open-and-wait`, `presenter-user`,
-`presenter-user-open-and-wait`, `presenter-checkout`, `presenter-shortcut`, and
-`presenter-achievement-progress`, and `presenter-achievement-unlock`.
+`presenter-user-open-and-wait`, `presenter-checkout`, `presenter-shortcut`,
+`presenter-shortcut-open-and-wait`, `presenter-achievement-progress`, and
+`presenter-achievement-unlock`.
 `native-probe` is a compatibility alias for `native-dialog`. On Linux, the
 `native-*` actions open a bridge-owned X11/GLX native presenter, keep it
 presenting frames, and activate the requested Steam overlay target through the
@@ -380,7 +382,8 @@ resolver-backed shortcut targets, the verifier checks this smoke app's
 configured shortcut target while preserving
 `electronOverlay.overlayShortcut.targetType: "function"`. The Deck runner adds
 the presenter-mode assertion automatically for presenter-backed product actions
-and adds the shortcut-target assertion for `presenter-shortcut`.
+and adds the shortcut-target assertion for `presenter-shortcut` and
+`presenter-shortcut-open-and-wait`.
 Use `presenter-friends` to verify the recommended Friends List path:
 `client.overlay.openFriendsOverlay({ presenter })` opens Steam Community chat
 through the same native web presenter used by checkout/store overlays, keeping a
@@ -530,6 +533,8 @@ controller or in-game menu button to reuse that same configured target, or
 `steamOverlay.openShortcutTargetAndWait()` when the button flow should resolve
 only after Steam closes and the presenter parks. Both helpers avoid duplicating
 shortcut resolver logic in app code.
+Use `presenter-shortcut-open-and-wait` with `--shortcut-target <name>` to smoke
+test that programmatic button/menu path without sending Shift+Tab.
 The `dialog` target uses the high-level auto router; unsupported dialog names
 throw instead of silently falling back to raw Steam overlay behavior. Use the
 raw `presenter-dialog` action only for explicit diagnostics.

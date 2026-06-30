@@ -675,7 +675,21 @@ Current evidence:
   active web close probe because `GameOverlayActivated(true)` can precede the
   first web paint; this is test evidence plumbing, not a product runtime timer.
   The run left no smoke/gameoverlay process and produced no fresh crash report
-  beyond the older known `BOverlayNeedsPresent()` reports. A 2026-06-28 Deck Desktop
+  beyond the older known `BOverlayNeedsPresent()` reports. A later 2026-06-30
+  persistent macOS run at
+  `/tmp/steam-bridge-macos-overlay-matrix-persistent-shortcut-openwait-20260630-101406`
+  passed 32 control-server-driven cases after adding a programmatic shortcut
+  wait proof. The new `19-persistent-shortcut-web-openwait` case calls
+  `steamOverlay.openShortcutTargetAndWait()` for the configured modal web target
+  rather than sending Shift+Tab, then verifies `overlay:shortcut-open`, visible
+  Steam web content, active/inactive callbacks, completion after overlay close
+  and presenter parking, app focus return, zero managed timing, one Metal
+  presenter-backed overlay target, clean quit behavior, and no fresh crash
+  reports. A focused follow-up proof at
+  `/tmp/steam-bridge-macos-shortcut-openwait-focused-20260630-102739`
+  re-ran the helper after correcting the diagnostic source label and confirmed
+  `shortcut: "openShortcutTargetAndWait"`, `target: "web"`, close-driven
+  completion, zero-FPS parking, and no fresh crash report. A 2026-06-28 Deck Desktop
   prepare-only run verified
   checkout readiness returns to passive idle, and a synthetic
   transaction approval URL run verified checkout-style open, close, app focus,

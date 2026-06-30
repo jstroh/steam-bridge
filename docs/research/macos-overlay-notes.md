@@ -594,6 +594,26 @@ Verified:
   `overlayNeedsPresentPollingEnabled=false`, clean control-server quit, no
   leftover smoke/gameoverlay process, and no fresh crash report beyond the older
   known `BOverlayNeedsPresent()` reports.
+- A later 2026-06-30 persistent macOS matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-persistent-shortcut-openwait-20260630-101406`
+  reused the stable Steam shortcut without restarting Steam and passed 32
+  control-server-driven cases. The added
+  `19-persistent-shortcut-web-openwait` case calls the public
+  `steamOverlay.openShortcutTargetAndWait()` helper against the configured modal
+  web shortcut target instead of using Shift+Tab. It verified
+  `overlay:shortcut-open`, visible Steam web content before close input,
+  active/inactive callbacks, `openAndWait` completion after close and presenter
+  parking, app-frontmost return, zero managed timing, one Metal presenter-backed
+  overlay target, clean control-server quit, no leftover smoke/gameoverlay
+  process, and no fresh macOS crash report.
+- A focused follow-up proof at
+  `/tmp/steam-bridge-macos-shortcut-openwait-focused-20260630-102739`
+  re-ran the public helper after correcting the diagnostic source label. The
+  lifecycle now records `overlay:shortcut-open` with
+  `shortcut: "openShortcutTargetAndWait"` and `target: "web"`, then records
+  active/inactive callbacks, `overlay:presenter-open-and-wait-complete` after
+  the harness closes the web overlay, a persistent Metal presenter parked at
+  zero FPS, and no fresh crash report.
 - The live macOS matrix now runs `scripts/verify-macos-steam-signing.cjs`
   before touching Steam. It checks the native launcher and renamed Electron
   executable for arm64-only slices, valid executable signatures, the dyld

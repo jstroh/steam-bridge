@@ -35,6 +35,7 @@ param(
     "presenter-user",
     "presenter-checkout",
     "presenter-shortcut",
+    "presenter-shortcut-open-and-wait",
     "presenter-achievement-progress",
     "presenter-achievement-unlock"
   )]

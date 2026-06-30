@@ -26,13 +26,15 @@ const MANAGED_LIFECYCLE_ACTIONS = new Set([
   "presenter-stats",
   "presenter-achievements",
   "presenter-user",
-  "presenter-shortcut"
+  "presenter-shortcut",
+  "presenter-shortcut-open-and-wait"
 ]);
 const OPEN_AND_WAIT_ACTIONS = new Set([
   "presenter-web-open-and-wait",
   "presenter-store-open-and-wait",
   "presenter-dialog-auto-open-and-wait",
-  "presenter-friends-open-and-wait"
+  "presenter-friends-open-and-wait",
+  "presenter-shortcut-open-and-wait"
 ]);
 const PASSIVE_NOTIFICATION_ACTIONS = new Map([
   [

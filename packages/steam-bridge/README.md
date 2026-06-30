@@ -447,7 +447,8 @@ For dynamic resolver-backed shortcut targets, the verifier checks the smoke app'
 configured target while preserving
 `electronOverlay.overlayShortcut.targetType: "function"`. The Deck runner adds
 the presenter-mode requirement automatically for presenter-backed product
-actions and adds the shortcut-target requirement for `presenter-shortcut`. Use
+actions and adds the shortcut-target requirement for `presenter-shortcut` and
+`presenter-shortcut-open-and-wait`. Use
 `presenterMode: "session"` or
 `STEAM_BRIDGE_DISABLE_ELECTRON_OVERLAY_PRESENTER=1` only as an emergency
 compatibility switch: it disables the reusable presenter, uses the older
@@ -525,8 +526,8 @@ with `steamOverlay.open(...)`, or the lower-level `client.overlay.attachPresente
 `presenter-friends-open-and-wait` / `presenter-profile` /
 `presenter-players` / `presenter-community` / `presenter-stats` /
 `presenter-achievements` / `presenter-user` / `presenter-dialog-auto` /
-`presenter-dialog-auto-open-and-wait` / `presenter-shortcut` actions for
-the generic proof. Deck testing has verified a
+`presenter-dialog-auto-open-and-wait` / `presenter-shortcut` /
+`presenter-shortcut-open-and-wait` actions for the generic proof. Deck testing has verified a
 single Steam overlay target,
 `active=true` overlay callbacks, overlay close input, and clean return to the
 running app for the Friends List web surface; the web checkout/store proof also

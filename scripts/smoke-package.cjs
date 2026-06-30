@@ -166,6 +166,7 @@ function runWindowsSmokeHelperStaticChecks() {
     "presenter-dialog-auto-open-and-wait",
     "presenter-checkout",
     "presenter-shortcut",
+    "presenter-shortcut-open-and-wait",
     "presenter-achievement-progress",
     "presenter-achievement-unlock",
     "--steam-bridge-smoke-diagnostic-dir=$DiagnosticDir",

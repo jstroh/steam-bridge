@@ -1824,7 +1824,8 @@ const requireOpenAndWaitCompletion = new Set([
   "presenter-community-open-and-wait",
   "presenter-stats-open-and-wait",
   "presenter-achievements-open-and-wait",
-  "presenter-user-open-and-wait"
+  "presenter-user-open-and-wait",
+  "presenter-shortcut-open-and-wait"
 ]).has(action);
 const requireCheckoutCompletion = action === "presenter-checkout";
 const fatalTypes = new Set([
