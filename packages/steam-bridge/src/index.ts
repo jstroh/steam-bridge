@@ -8469,8 +8469,8 @@ export function createElectronSteamOverlay(
     presenter,
     open(target: SteamOverlayTarget): NativeOverlayPresenter {
       assertOpen();
-      assertElectronSteamOverlayNativeHostAvailable(controller.snapshot());
       assertElectronSteamOverlayTargetCanOpen(target);
+      assertElectronSteamOverlayNativeHostAvailable(controller.snapshot());
       const presenterInternal = presenter as NativeOverlayPresenterInternal;
       const activationHandle = presenterInternal.beginOverlayActivation?.(overlayActivationModeForTarget(target));
       try {
@@ -8493,9 +8493,9 @@ export function createElectronSteamOverlay(
       options: ElectronSteamOverlayOpenAndWaitOptions = {}
     ): Promise<ElectronSteamOverlayOpenAndWaitResult> {
       assertOpen();
-      assertElectronSteamOverlayNativeHostAvailable(controller.snapshot());
       assertElectronSteamOverlayTargetCanOpen(target);
       assertElectronSteamOverlayTargetCanWait(target);
+      assertElectronSteamOverlayNativeHostAvailable(controller.snapshot());
       const presenterInternal = presenter as NativeOverlayPresenterInternal;
       const activationHandle = presenterInternal.beginOverlayActivation?.(overlayActivationModeForTarget(target));
       let activationReleased = false;

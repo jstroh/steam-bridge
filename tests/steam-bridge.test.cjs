@@ -8143,6 +8143,28 @@ test("electron steam overlay manager fails fast while the macOS native host is u
     return true;
   };
 
+  assert.throws(
+    () => overlay.open({ type: "dialog", dialog: steam.Dialog.Settings }),
+    /does not have a verified presenter-backed route/
+  );
+  assert.throws(
+    () => overlay.open({ type: "checkout" }),
+    /requires a url, steamUrl, or transactionId/
+  );
+  await assert.rejects(
+    overlay.openAndWait(
+      { type: "dialog", dialog: steam.Dialog.Settings },
+      { showTimeoutMs: 200, closeTimeoutMs: 200 }
+    ),
+    /does not have a verified presenter-backed route/
+  );
+  await assert.rejects(
+    overlay.openAndWait(
+      { type: "dialog", dialog: steam.Dialog.Friends, route: "native" },
+      { showTimeoutMs: 200, closeTimeoutMs: 200 }
+    ),
+    /openAndWait\(\) requires a presenter-backed target/
+  );
   assert.throws(() => overlay.open({ type: "friends" }), assertUnavailableError);
   assert.throws(() => overlay.prepareForCheckout(), assertUnavailableError);
 
