@@ -299,7 +299,7 @@ case_block() {
 }
 
 run_self_test() {
-  local self_path minimal_output core_output full_output persistent_output unavailable_output opengl_output checkout_json_output checkout_callback_output passive_case checkout_case checkout_json_case checkout_callback_case checkout_callback_checkout_block checkout_callback_web_block shortcut_checkout_json_case web_case full_shortcut_open_wait_case full_shortcut_checkout_open_wait_case full_shortcut_user_open_wait_case full_shortcut_dialog_open_wait_case persistent_web_case persistent_shortcut_open_wait_case persistent_shortcut_checkout_open_wait_case persistent_shortcut_user_open_wait_case persistent_shortcut_dialog_open_wait_case unavailable_web_case unavailable_checkout_case
+  local self_path minimal_output core_output full_output persistent_output unavailable_output opengl_output checkout_json_output checkout_callback_output passive_case checkout_case checkout_prepare_case checkout_json_case checkout_callback_case checkout_callback_checkout_block checkout_callback_prepare_block checkout_callback_web_block shortcut_checkout_json_case web_case full_shortcut_open_wait_case full_shortcut_checkout_open_wait_case full_shortcut_user_open_wait_case full_shortcut_dialog_open_wait_case persistent_web_case persistent_checkout_prepare_case persistent_shortcut_open_wait_case persistent_shortcut_checkout_open_wait_case persistent_shortcut_user_open_wait_case persistent_shortcut_dialog_open_wait_case unavailable_web_case unavailable_checkout_case
   self_path="${BASH_SOURCE[0]}"
   minimal_output="$(
     bash "$self_path" \
@@ -401,15 +401,15 @@ run_self_test() {
     echo "Self-test failed: minimal matrix case count changed." >&2
     exit 1
   fi
-  if [ "$(printf '%s\n' "$core_output" | count_cases)" != "24" ]; then
+  if [ "$(printf '%s\n' "$core_output" | count_cases)" != "25" ]; then
     echo "Self-test failed: core matrix case count changed." >&2
     exit 1
   fi
-  if [ "$(printf '%s\n' "$full_output" | count_cases)" != "42" ]; then
+  if [ "$(printf '%s\n' "$full_output" | count_cases)" != "43" ]; then
     echo "Self-test failed: full matrix case count changed." >&2
     exit 1
   fi
-  if [ "$(printf '%s\n' "$persistent_output" | count_cases)" != "42" ]; then
+  if [ "$(printf '%s\n' "$persistent_output" | count_cases)" != "43" ]; then
     echo "Self-test failed: persistent matrix case count changed." >&2
     exit 1
   fi
@@ -439,6 +439,7 @@ run_self_test() {
   require_contains "$core_output" "--action presenter-achievement-unlock" "core matrix must include passive unlock toast."
   require_contains "$core_output" "--action presenter-checkout" "core matrix must include synthetic checkout."
   require_contains "$core_output" "--checkout-transaction-id 123456789" "core matrix must include checkout approval-route plumbing."
+  require_contains "$core_output" "CASE 07b-checkout-prepare" "core matrix must include checkout prepare-only proof."
   require_contains "$core_output" "--action presenter-shortcut" "core matrix must include managed shortcut routing."
   require_contains "$core_output" "--shortcut-target friends" "core matrix must include Friends shortcut routing."
   require_contains "$core_output" "--shortcut-target web" "core matrix must include web shortcut routing."
@@ -471,6 +472,7 @@ run_self_test() {
   require_contains "$persistent_output" "--action presenter-achievement-progress" "persistent matrix must include passive toast."
   require_contains "$persistent_output" "--action presenter-achievement-unlock" "persistent matrix must include passive unlock toast."
   require_contains "$persistent_output" "--action presenter-checkout" "persistent matrix must include checkout."
+  require_contains "$persistent_output" "CASE 07b-persistent-checkout-prepare" "persistent matrix must include checkout prepare-only proof."
   require_contains "$persistent_output" "--action presenter-shortcut" "persistent matrix must include managed shortcut routing."
   require_contains "$persistent_output" "--action presenter-shortcut-open-and-wait" "persistent matrix must include programmatic shortcut openAndWait routing."
   require_contains "$persistent_output" "CASE 33-persistent-shortcut-friends-openwait" "persistent matrix must include programmatic Friends shortcut openAndWait routing."
@@ -521,9 +523,11 @@ run_self_test() {
   web_case="$(case_command "$core_output" "01-web-openwait")"
   passive_case="$(case_command "$core_output" "05-passive-toast")"
   checkout_case="$(case_command "$core_output" "07-checkout-approval")"
+  checkout_prepare_case="$(case_command "$core_output" "07b-checkout-prepare")"
   checkout_json_case="$(case_command "$checkout_json_output" "07-checkout-approval")"
   checkout_callback_case="$(case_command "$checkout_callback_output" "07-checkout-approval")"
   checkout_callback_checkout_block="$(case_block "$checkout_callback_output" "07-checkout-approval")"
+  checkout_callback_prepare_block="$(case_block "$checkout_callback_output" "07b-checkout-prepare")"
   checkout_callback_web_block="$(case_block "$checkout_callback_output" "01-web-openwait")"
   shortcut_checkout_json_case="$(case_command "$checkout_json_output" "11-shortcut-checkout")"
   full_shortcut_open_wait_case="$(case_command "$full_output" "33-shortcut-web-openwait")"
@@ -531,6 +535,7 @@ run_self_test() {
   full_shortcut_user_open_wait_case="$(case_command "$full_output" "41-shortcut-user-chat-openwait")"
   full_shortcut_dialog_open_wait_case="$(case_command "$full_output" "42-shortcut-dialog-openwait")"
   persistent_web_case="$(case_command "$persistent_output" "01-persistent-web-openwait")"
+  persistent_checkout_prepare_case="$(case_command "$persistent_output" "07b-persistent-checkout-prepare")"
   persistent_shortcut_open_wait_case="$(case_command "$persistent_output" "19-persistent-shortcut-web-openwait")"
   persistent_shortcut_checkout_open_wait_case="$(case_command "$persistent_output" "35-persistent-shortcut-checkout-openwait")"
   persistent_shortcut_user_open_wait_case="$(case_command "$persistent_output" "41-persistent-shortcut-user-chat-openwait")"
@@ -542,9 +547,17 @@ run_self_test() {
   require_contains "$passive_case" "--result-delay-ms 1200" "passive toast should use the short notification capture delay."
   require_not_contains "$passive_case" "--close-probe" "passive toast should not require modal close proof."
   require_contains "$checkout_case" "--close-probe" "checkout proof should close and verify parked state."
+  require_contains "$checkout_prepare_case" "--require-event overlay:presenter-checkout-ready" "checkout prepare proof should require the ready event."
+  require_contains "$checkout_prepare_case" "--require-no-overlay-activation" "checkout prepare proof should reject modal overlay activation."
+  require_contains "$checkout_prepare_case" "--require-idle-presenter" "checkout prepare proof should require the presenter to release back to idle."
+  require_contains "$checkout_prepare_case" "--require-electron-overlay" "checkout prepare proof should require managed Electron overlay diagnostics."
+  require_not_contains "$checkout_prepare_case" "--checkout-transaction-id" "checkout prepare proof must not use synthetic transaction input."
+  require_not_contains "$checkout_prepare_case" "--checkout-json-file" "checkout prepare proof must not use private checkout input."
+  require_not_contains "$checkout_prepare_case" "--close-probe" "checkout prepare proof must not run an overlay close probe."
   require_contains "$checkout_json_case" "--checkout-json-file /tmp/private-init-txn-response.json" "private checkout proof should use the JSON-file handoff."
   require_contains "$checkout_callback_case" "--checkout-json-file /tmp/private-init-txn-response.json" "private callback proof should still use the JSON-file handoff."
   require_contains "$checkout_callback_checkout_block" "REQUIRE_MICROTXN_CALLBACK direct-checkout" "MicroTxn callback requirement should apply to direct checkout cases."
+  require_not_contains "$checkout_callback_prepare_block" "REQUIRE_MICROTXN_CALLBACK" "MicroTxn callback requirement should not apply to checkout prepare-only cases."
   require_not_contains "$checkout_callback_web_block" "REQUIRE_MICROTXN_CALLBACK" "MicroTxn callback requirement should not apply to non-checkout cases."
   require_contains "$shortcut_checkout_json_case" "--checkout-json-file /tmp/private-init-txn-response.json" "checkout shortcut proof should use the JSON-file handoff."
   require_not_contains "$checkout_json_case" "--checkout-transaction-id 123456789" "private checkout proof should not also use the synthetic transaction ID."
@@ -558,6 +571,11 @@ run_self_test() {
   require_contains "$persistent_web_case" "--close-probe" "persistent web proof should close and verify parked state."
   require_contains "$persistent_web_case" "--close-input web" "persistent web proof should close through the Steam web close control."
   require_contains "$persistent_web_case" "--require-zero-managed-overlay-timing" "persistent web proof should require zero managed overlay timing."
+  require_contains "$persistent_checkout_prepare_case" "--require-event overlay:presenter-checkout-ready" "persistent checkout prepare proof should require the ready event."
+  require_contains "$persistent_checkout_prepare_case" "--require-no-overlay-activation" "persistent checkout prepare proof should reject modal overlay activation."
+  require_contains "$persistent_checkout_prepare_case" "--require-idle-presenter" "persistent checkout prepare proof should require the presenter to release back to idle."
+  require_not_contains "$persistent_checkout_prepare_case" "--checkout-transaction-id" "persistent checkout prepare proof must not use synthetic transaction input."
+  require_not_contains "$persistent_checkout_prepare_case" "--close-probe" "persistent checkout prepare proof must not run an overlay close probe."
   require_contains "$persistent_shortcut_open_wait_case" "--require-event overlay:presenter-open-and-wait-start" "programmatic shortcut openAndWait proof should require the managed wait start event."
   require_contains "$persistent_shortcut_open_wait_case" "--require-overlay-shortcut-target web" "programmatic shortcut openAndWait proof should assert the configured shortcut target."
   require_contains "$persistent_shortcut_open_wait_case" "--close-input web" "programmatic shortcut openAndWait proof should close through visible Steam web content."
@@ -1096,7 +1114,7 @@ const expectedNativeHostBackend = requestedNativeHostBackend ? `macos-${requeste
 const expectedAppId = Number(process.env.EXPECTED_APP_ID || "480");
 const action = optionValue("--action");
 const requireMicroTxnCallback =
-  process.env.REQUIRE_MICROTXN_CALLBACK === "1" && action === "presenter-checkout";
+  process.env.REQUIRE_MICROTXN_CALLBACK === "1" && action === "presenter-checkout" && hasCheckoutTargetInput();
 
 function optionValue(name) {
   const index = command.indexOf(name);
@@ -1104,6 +1122,10 @@ function optionValue(name) {
     return null;
   }
   return command[index + 1] ?? "";
+}
+
+function hasCheckoutTargetInput() {
+  return command.includes("--checkout-json-file") || command.includes("--checkout-url") || command.includes("--checkout-transaction-id");
 }
 
 function redactCommand(args) {
@@ -1513,16 +1535,25 @@ case_needs_default_web_close() {
 }
 
 case_is_direct_checkout_action() {
-  local previous=""
-  local arg
+  local previous="" is_checkout="0" has_checkout_input="0"
+  local arg option_name
   for arg in "$@"; do
     if [ "$previous" = "--action" ]; then
-      [ "$arg" = "presenter-checkout" ]
-      return
+      if [ "$arg" = "presenter-checkout" ]; then
+        is_checkout="1"
+      fi
+      previous="$arg"
+      continue
     fi
+    option_name="${arg%%=*}"
+    case "$option_name" in
+      --checkout-json-file|--checkout-transaction-id|--checkout-url)
+        has_checkout_input="1"
+        ;;
+    esac
     previous="$arg"
   done
-  return 1
+  [ "$is_checkout" = "1" ] && [ "$has_checkout_input" = "1" ]
 }
 
 run_persistent_case() {
@@ -1748,6 +1779,17 @@ run_persistent_matrix() {
     --require-event overlay:presenter-open \
     --require-no-crashes \
     --close-probe
+
+  persistent_run_case "07b-persistent-checkout-prepare" \
+    --action presenter-checkout \
+    --require-steam-launch \
+    --require-overlay-injection \
+    --require-overlay-enabled \
+    --require-no-overlay-activation \
+    --require-idle-presenter \
+    --require-electron-overlay \
+    --require-event overlay:presenter-checkout-ready \
+    --require-no-crashes
 
   persistent_run_shortcut_case "08-persistent-shortcut-friends" friends
 
@@ -1993,6 +2035,17 @@ run_matrix() {
     --require-event overlay:presenter-open \
     --require-no-crashes \
     --close-probe
+
+  run_case "07b-checkout-prepare" \
+    --action presenter-checkout \
+    --require-steam-launch \
+    --require-overlay-injection \
+    --require-overlay-enabled \
+    --require-no-overlay-activation \
+    --require-idle-presenter \
+    --require-electron-overlay \
+    --require-event overlay:presenter-checkout-ready \
+    --require-no-crashes
 
   run_shortcut_case() {
     local case_id="$1"

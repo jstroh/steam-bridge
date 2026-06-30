@@ -910,12 +910,15 @@ Current evidence:
   callbacks where expected, active shown presenter snapshots, one
   `gameoverlayui` target, app focus return, clean crash diagnostics, an
   interactive macOS host state, and idle presenter parking at `currentFps=0`.
-  The current full and persistent macOS artifacts cover 42 cases, including
+  The latest live full and persistent macOS artifacts cover 42 cases, including
   programmatic `openShortcutTargetAndWait()` proof for every supported
-  presenter-backed shortcut target. Product routes and all known high-level
-  dialog-equivalent routes now use managed `openAndWait(...)` proof where
-  applicable, including profile, players, community, stats, achievements, user
-  chat, and user SteamID.
+  presenter-backed shortcut target. The current matrix suite has 43 cases after
+  adding checkout prepare-only coverage: it calls `withCheckoutPrepared(...)`
+  without transaction input, requires the checkout-ready lifecycle event,
+  rejects modal overlay activation, and audits that the presenter releases back
+  to idle. Product routes and all known high-level dialog-equivalent routes now
+  use managed `openAndWait(...)` proof where applicable, including profile,
+  players, community, stats, achievements, user chat, and user SteamID.
   Non-store targets attach under game ID `480`; the Steam store surface can
   report the generated shortcut game ID while still emitting app ID `480`
   callbacks and passing the same close-and-park proof.

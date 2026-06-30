@@ -372,8 +372,9 @@ checkout proof share one accepted envelope parser. The macOS matrix also accepts
 summarizer rejects new manifests that include unredacted checkout file paths,
 transaction IDs, return URLs, or checkout URLs in command metadata. On macOS,
 the helper also copies fresh `SteamBridgeSmoke*.ips` reports from
-`~/Library/Logs/DiagnosticReports` into `macos-crash-reports/`, and the matrix
-summarizer rejects those copied reports during artifact audit.
+`~/Library/Logs/DiagnosticReports`, plus `MTLCompilerService*.ips` reports whose
+content attributes the crash to `SteamBridgeSmoke`, into `macos-crash-reports/`,
+and the matrix summarizer rejects those copied reports during artifact audit.
 Passive Steam notifications such as achievement progress
 or achievement unlock toasts are automatically primed by the managed Electron
 overlay before the relevant achievement/stats calls. If macOS reports the
@@ -685,6 +686,11 @@ The repository also provides `npm run macos:overlay-matrix`, which installs or
 updates one stable macOS Steam shortcut pointing at the in-bundle native
 launcher and a launcher env file. Each case rewrites only that env file, so
 Steam is restarted only when the shortcut itself is added or materially changed.
+The current core/full/persistent suites include a checkout prepare-only case
+that calls `withCheckoutPrepared(...)` without transaction input, requires
+`overlay:presenter-checkout-ready`, rejects modal overlay activation, and audits
+that the presenter releases back to idle; real checkout-open cases remain
+separate and require close/back-to-app proof.
 Live success runs preflight `getMacOverlayEnvironment()` and stop before case
 launch while the Mac is locked or the display is asleep; capture those states
 with `--suite unavailable`, which expects the managed web and checkout helpers

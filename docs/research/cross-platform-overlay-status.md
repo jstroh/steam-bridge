@@ -211,6 +211,18 @@ across fresh Steam-launched Electron processes, with active/inactive callbacks,
 completion after close and presenter parking, one Metal presenter-backed overlay
 target, zero managed overlay timing, clean back-to-app proof, no leftover
 smoke/gameoverlay process, and no fresh macOS crash reports.
+The current macOS matrix definitions add a 43rd case for checkout preparation
+without transaction input. That case requires `overlay:presenter-checkout-ready`,
+requires no modal overlay activation, and audits that the presenter parks back
+at idle; the local matrix self-test and package smoke cover the new summary
+field as `checkoutPrepared=true`. The macOS no-crash gate also now copies and
+fails attributed `MTLCompilerService*.ips` reports when the report content names
+`SteamBridgeSmoke` as the responsible process, which catches first-party Metal
+compiler crashes that do not use a `SteamBridgeSmoke*.ips` filename. A live
+interactive macOS success rerun is pending because the 2026-06-30 attempt at
+`/tmp/steam-bridge-macos-overlay-matrix-core-checkout-prepare-metal-crash-20260630-114417`
+stopped at the preflight with `screenLocked=true` and `displayAsleep=true`
+before launching any cases.
 
 ## Steam Deck Shortcut Gate
 

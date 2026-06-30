@@ -553,6 +553,9 @@ const windowMs = Number(process.env.CRASH_REPORT_WINDOW_MS || 1800000);
 const explicitCutoff = Number(process.env.CRASH_REPORT_CUTOFF_MS || 0);
 const sourceDir = path.join(os.homedir(), "Library", "Logs", "DiagnosticReports");
 const targetDir = path.join(diagnosticDir, "macos-crash-reports");
+const directCrashReportName = /^SteamBridgeSmoke(?:\.electron| Helper(?: \(Renderer\))?)?-.*\.ips$/;
+const attributedCrashReportName = /^MTLCompilerService-.*\.ips$/;
+const steamBridgeResponsibleCrashReport = /SteamBridgeSmoke(?:\.electron| Helper(?: \(Renderer\))?)?/;
 const cutoff =
   Number.isFinite(explicitCutoff) && explicitCutoff > 0
     ? explicitCutoff
@@ -567,7 +570,7 @@ try {
 }
 
 for (const entry of entries) {
-  if (!entry.isFile() || !/^SteamBridgeSmoke(?:\.electron| Helper(?: \(Renderer\))?)?-.*\.ips$/.test(entry.name)) {
+  if (!entry.isFile() || !/\.ips$/.test(entry.name)) {
     continue;
   }
   const sourcePath = path.join(sourceDir, entry.name);
@@ -580,6 +583,9 @@ for (const entry of entries) {
   if (stats.mtimeMs < cutoff) {
     continue;
   }
+  if (!isRelevantCrashReport(entry.name, sourcePath)) {
+    continue;
+  }
   fs.mkdirSync(targetDir, { recursive: true });
   const targetPath = path.join(targetDir, entry.name);
   fs.copyFileSync(sourcePath, targetPath);
@@ -588,6 +594,22 @@ for (const entry of entries) {
 
 for (const crashReport of copied.sort()) {
   console.error(`Copied recent macOS crash report: ${crashReport}`);
+}
+
+function isRelevantCrashReport(name, file) {
+  if (directCrashReportName.test(name)) {
+    return true;
+  }
+  if (!attributedCrashReportName.test(name)) {
+    return false;
+  }
+  let text = "";
+  try {
+    text = fs.readFileSync(file, "utf8");
+  } catch {
+    return true;
+  }
+  return steamBridgeResponsibleCrashReport.test(text);
 }
 NODE
 }
@@ -604,7 +626,9 @@ const path = require("node:path");
 
 const diagnosticDir = process.env.DIAGNOSTIC_DIR;
 const crashReportDir = path.join(diagnosticDir, "macos-crash-reports");
-const crashReportName = /^SteamBridgeSmoke(?:\.electron| Helper(?: \(Renderer\))?)?-.*\.ips$/;
+const directCrashReportName = /^SteamBridgeSmoke(?:\.electron| Helper(?: \(Renderer\))?)?-.*\.ips$/;
+const attributedCrashReportName = /^MTLCompilerService-.*\.ips$/;
+const steamBridgeResponsibleCrashReport = /SteamBridgeSmoke(?:\.electron| Helper(?: \(Renderer\))?)?/;
 
 let entries;
 try {
@@ -618,7 +642,7 @@ try {
 }
 
 const reports = entries
-  .filter((entry) => entry.isFile() && crashReportName.test(entry.name))
+  .filter((entry) => entry.isFile() && isRelevantCrashReport(entry.name, path.join(crashReportDir, entry.name)))
   .map((entry) => path.join(crashReportDir, entry.name))
   .sort();
 
@@ -657,6 +681,10 @@ function summarizeCrashReport(report) {
   if (procName) {
     details.push(`process=${JSON.stringify(procName)}`);
   }
+  const responsibleProc = match(text, /"responsibleProc"\s*:\s*"([^"]+)"/);
+  if (responsibleProc) {
+    details.push(`responsible=${JSON.stringify(responsibleProc)}`);
+  }
   const exceptionType = match(text, /"exception"\s*:\s*\{[^}]*"type"\s*:\s*"([^"]+)"/s);
   const exceptionSignal = match(text, /"exception"\s*:\s*\{[^}]*"signal"\s*:\s*"([^"]+)"/s);
   if (exceptionType || exceptionSignal) {
@@ -677,6 +705,22 @@ function summarizeCrashReport(report) {
 function match(text, pattern) {
   const found = text.match(pattern);
   return found ? found[1] : "";
+}
+
+function isRelevantCrashReport(name, file) {
+  if (directCrashReportName.test(name)) {
+    return true;
+  }
+  if (!attributedCrashReportName.test(name)) {
+    return false;
+  }
+  let text = "";
+  try {
+    text = fs.readFileSync(file, "utf8");
+  } catch {
+    return true;
+  }
+  return steamBridgeResponsibleCrashReport.test(text);
 }
 NODE
 }
@@ -2390,6 +2434,22 @@ EOF
   macos_crash_report_cutoff_ms="$(node -e 'process.stdout.write(String(Date.now() + 60000))')"
   if verify_no_fresh_macos_crash_reports >/dev/null 2>&1; then
     echo "Self-test failed: fresh macOS crash reports must fail the no-crash verifier." >&2
+    exit 1
+  fi
+  diagnostic_dir="$old_diagnostic_dir"
+  macos_crash_report_cutoff_ms="$old_crash_report_cutoff_ms"
+  rm -rf "$dirty_diagnostic_dir"
+
+  dirty_diagnostic_dir="$(mktemp -d "${TMPDIR:-/tmp}/steam-bridge-macos-helper-metal-crash.XXXXXX")"
+  mkdir -p "$dirty_diagnostic_dir/macos-crash-reports"
+  cat >"$dirty_diagnostic_dir/macos-crash-reports/MTLCompilerService-2099-01-01-000000.ips" <<'EOF'
+{"app_name":"MTLCompilerService","timestamp":"2099-01-01 00:00:00.00 -0700","name":"MTLCompilerService"}
+{"procName":"MTLCompilerService","responsibleProc":"SteamBridgeSmoke.electron","exception":{"type":"EXC_CRASH","signal":"SIGABRT"},"threads":[{"frames":[{"symbol":"__abort_with_payload"}]}]}
+EOF
+  diagnostic_dir="$dirty_diagnostic_dir"
+  macos_crash_report_cutoff_ms="$(node -e 'process.stdout.write(String(Date.now() + 60000))')"
+  if verify_no_fresh_macos_crash_reports >/dev/null 2>&1; then
+    echo "Self-test failed: attributed Metal compiler crash reports must fail the no-crash verifier." >&2
     exit 1
   fi
   diagnostic_dir="$old_diagnostic_dir"

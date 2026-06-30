@@ -37,7 +37,9 @@ const PASSIVE_NOTIFICATION_ACTIONS = new Map([
   ]
 ]);
 const REDACTED_COMMAND_VALUE = "<redacted>";
-const MACOS_CRASH_REPORT_NAME = /^SteamBridgeSmoke(?:\.electron| Helper(?: \(Renderer\))?)?-.*\.ips$/;
+const DIRECT_MACOS_CRASH_REPORT_NAME = /^SteamBridgeSmoke(?:\.electron| Helper(?: \(Renderer\))?)?-.*\.ips$/;
+const ATTRIBUTED_MACOS_CRASH_REPORT_NAME = /^MTLCompilerService-.*\.ips$/;
+const STEAM_BRIDGE_RESPONSIBLE_CRASH_REPORT = /SteamBridgeSmoke(?:\.electron| Helper(?: \(Renderer\))?)?/;
 const SENSITIVE_MANIFEST_OPTIONS = new Set([
   "--checkout-json-file",
   "--checkout-return-url",
@@ -207,6 +209,7 @@ function summarizeMatrixArtifacts(root) {
         `managedWaits=${summary.managedWaits}`,
         `openAndWait=${summary.openAndWait}`,
         `checkoutWait=${summary.checkoutWait}`,
+        `checkoutPrepared=${summary.checkoutPrepared}`,
         `checkoutSource=${summary.checkoutSource}`,
         `microTxnCallback=${summary.microTxnCallback}`,
         `nativeHostUnavailable=${summary.nativeHostUnavailable}`,
@@ -255,6 +258,7 @@ function verifyCase(caseId, metadata, result, lifecycle, macosCrashReports, fail
   const isPassive = Boolean(passiveConfig);
   const expectedActionError = expectedActionErrorFromMetadata(metadata);
   const hasExpectedActionError = Boolean(expectedActionError.code || expectedActionError.reason);
+  const checkoutPrepareOnly = actionName === "presenter-checkout" && !summaryCheckoutSource && !hasExpectedActionError;
   const expectedNativeHostUnavailableReason = nonEmptyString(
     metadata.requireNativeHostUnavailableReason ?? metadata.expectedNativeHostUnavailableReason
   );
@@ -270,7 +274,9 @@ function verifyCase(caseId, metadata, result, lifecycle, macosCrashReports, fail
     metadata.expectedMacosNeedsPresentPollingDisabled === true;
   const activated = lifecycleEntries.some(isLifecycleOverlayActiveEvent);
   const closed = hasInactiveAfterActive(lifecycleEntries);
-  const parked = hasExpectedActionError ? false : verifyLifecycleParking(caseId, lifecycleEntries, isPassive, failures);
+  const parked = hasExpectedActionError || checkoutPrepareOnly
+    ? false
+    : verifyLifecycleParking(caseId, lifecycleEntries, isPassive, failures);
   const zeroTiming = Boolean(
     electronOverlay &&
       electronOverlay.restoreFocusDelayMs === 0 &&
@@ -288,6 +294,12 @@ function verifyCase(caseId, metadata, result, lifecycle, macosCrashReports, fail
   const checkoutWait = hasExpectedActionError
     ? { required: false, ok: true }
     : verifyCheckoutOpenAndWait(caseId, actionName, lifecycleEntries, expectedCheckoutSource, failures);
+  const checkoutPrepared = hasExpectedActionError
+    ? { required: false, ok: true, parked: false }
+    : verifyCheckoutPrepared(caseId, actionName, lifecycleEntries, nativePresenter, {
+        required: checkoutPrepareOnly,
+        failures
+      });
   const microTxnCallback = hasExpectedActionError
     ? { required: false, ok: true }
     : verifyMicroTxnCallbackPresenterSnapshots(caseId, lifecycleEntries, failures, {
@@ -384,8 +396,15 @@ function verifyCase(caseId, metadata, result, lifecycle, macosCrashReports, fail
 
   expect(overlayProcesses.available === true, `${caseId}: overlay process diagnostics available`, failures);
   expect(overlayProcesses.platform === "darwin", `${caseId}: overlay process platform is darwin`, failures);
-  if (expectedNoOverlayActivation) {
+  if (expectedNoOverlayActivation && !checkoutPrepareOnly) {
     expect(overlayTargets === 0, `${caseId}: no gameoverlayui target while overlay activation is expected to be skipped`, failures);
+  } else if (checkoutPrepareOnly) {
+    expect(overlayTargets <= 1, `${caseId}: zero or one gameoverlayui target while checkout is only prepared`, failures);
+    for (const target of Array.isArray(overlayProcesses.gameoverlayui) ? overlayProcesses.gameoverlayui : []) {
+      expect(target.gameId != null, `${caseId}: gameoverlayui game ID is recorded`, failures);
+      expect(String(target.gameId) === expectedAppIdText, `${caseId}: gameoverlayui game ID is ${expectedAppId}`, failures);
+      expect(Number(target.targetPid) === Number(processInfo.pid), `${caseId}: gameoverlayui targets the smoke process`, failures);
+    }
   } else {
     expect(overlayTargets === 1, `${caseId}: exactly one gameoverlayui target process/game ID`, failures);
     const requirePublicOverlayGameId = !isStoreOverlayAction(actionName);
@@ -411,6 +430,9 @@ function verifyCase(caseId, metadata, result, lifecycle, macosCrashReports, fail
     }
   } else if (isPassive) {
     verifyPassiveNotification(caseId, resultEvents, lifecycleEntries, nativePresenter, passiveConfig, failures);
+  } else if (checkoutPrepareOnly) {
+    verifyNoOverlayActivation(caseId, resultEvents, lifecycleEntries, failures);
+    expect(checkoutPrepared.ok, `${caseId}: checkout presenter prepared and released without opening overlay`, failures);
   } else {
     expect(activated, `${caseId}: overlay active callback observed`, failures);
     expect(closed, `${caseId}: overlay inactive callback observed after active`, failures);
@@ -475,7 +497,7 @@ function verifyCase(caseId, metadata, result, lifecycle, macosCrashReports, fail
     action: actionName,
     activated,
     closed,
-    parked,
+    parked: checkoutPrepareOnly ? checkoutPrepared.parked === true : parked,
     passive: isPassive,
     overlayTargets,
     overlayGameIds,
@@ -486,6 +508,7 @@ function verifyCase(caseId, metadata, result, lifecycle, macosCrashReports, fail
     managedWaits: managedWaits.required ? managedWaits.ok : "n/a",
     openAndWait: openAndWait.required ? openAndWait.ok : "n/a",
     checkoutWait: checkoutWait.required ? checkoutWait.ok : "n/a",
+    checkoutPrepared: checkoutPrepared.required ? checkoutPrepared.ok : "n/a",
     checkoutSource: checkoutWait.required
       ? checkoutWait.source || summaryCheckoutSource || "unknown"
       : summaryCheckoutSource || "n/a",
@@ -550,7 +573,7 @@ function verifyOpenAndWaitCompletion(caseId, actionName, entries, failures) {
 }
 
 function verifyCheckoutOpenAndWait(caseId, actionName, entries, expectedCheckoutSource, failures) {
-  if (actionName !== "presenter-checkout") {
+  if (actionName !== "presenter-checkout" || !expectedCheckoutSource) {
     return { required: false, ok: true };
   }
 
@@ -608,6 +631,43 @@ function verifyCheckoutOpenAndWait(caseId, actionName, entries, expectedCheckout
   }
 
   return { required: true, ok: failures.length === failuresBefore, source: openPayload.checkoutSource || "" };
+}
+
+function verifyCheckoutPrepared(caseId, actionName, entries, finalPresenter, options = {}) {
+  const failures = Array.isArray(options.failures) ? options.failures : [];
+  if (actionName !== "presenter-checkout" || options.required !== true) {
+    return { required: false, ok: true, parked: false };
+  }
+
+  const failuresBefore = failures.length;
+  const ready = entries.find((entry) => entry && entry.type === "event:overlay:presenter-checkout-ready");
+  if (!ready) {
+    failures.push(`${caseId}: missing overlay:presenter-checkout-ready event`);
+  } else {
+    const presenter = presenterPayload(ready);
+    if (!presenter) {
+      failures.push(`${caseId}: overlay:presenter-checkout-ready did not include a presenter snapshot`);
+    } else {
+      expectActivePresenter(caseId, presenter, "checkout preparation", failures);
+    }
+  }
+
+  const opened = entries.some((entry) => {
+    const payload = objectOrEmpty(entry && entry.payload);
+    return entry && entry.type === "event:overlay:presenter-open" && payload.target === "checkout";
+  });
+  expect(!opened, `${caseId}: checkout preparation did not open a checkout overlay`, failures);
+
+  let parked = false;
+  if (!finalPresenter) {
+    failures.push(`${caseId}: checkout preparation final presenter snapshot available`);
+  } else {
+    const beforeParkedFailures = failures.length;
+    expectParkedPresenter(caseId, finalPresenter, "checkout preparation release", failures);
+    parked = failures.length === beforeParkedFailures;
+  }
+
+  return { required: true, ok: failures.length === failuresBefore, parked };
 }
 
 function verifyMicroTxnCallbackPresenterSnapshots(caseId, entries, failures, options = {}) {
@@ -1186,6 +1246,7 @@ function runSelfTest() {
   const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-macos-matrix-summary."));
   const unredactedFixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-macos-matrix-summary-unredacted."));
   const crashFixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-macos-matrix-summary-crash."));
+  const metalCrashFixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-macos-matrix-summary-metal-crash."));
   const missingMicroTxnFixtureRoot = fs.mkdtempSync(
     path.join(os.tmpdir(), "steam-bridge-macos-matrix-summary-missing-microtxn.")
   );
@@ -1196,7 +1257,7 @@ function runSelfTest() {
   try {
     createSelfTestFixture(fixtureRoot);
     const summary = summarizeMatrixArtifacts(fixtureRoot);
-    assert.equal(summary.caseSummaries.length, 7, "summary self-test should include seven cases");
+    assert.equal(summary.caseSummaries.length, 8, "summary self-test should include eight cases");
     createPersistentSelfTestFixture(persistentFixtureRoot);
     const persistentSummary = summarizeMatrixArtifacts(persistentFixtureRoot);
     assert.equal(persistentSummary.caseSummaries.length, 2, "persistent summary self-test should include two cases");
@@ -1206,6 +1267,9 @@ function runSelfTest() {
     createSelfTestFixture(crashFixtureRoot);
     injectMacosCrashReport(crashFixtureRoot, "01-web-openwait");
     assertMacosCrashReportRejected(crashFixtureRoot);
+    createSelfTestFixture(metalCrashFixtureRoot);
+    injectMacosMetalCompilerCrashReport(metalCrashFixtureRoot, "01-web-openwait");
+    assertMacosMetalCompilerCrashReportRejected(metalCrashFixtureRoot);
     createSelfTestFixture(missingMicroTxnFixtureRoot);
     injectMicroTxnCallbackRequirement(missingMicroTxnFixtureRoot, "01-web-openwait");
     assertMissingMicroTxnCallbackRejected(missingMicroTxnFixtureRoot);
@@ -1217,6 +1281,7 @@ function runSelfTest() {
     fs.rmSync(fixtureRoot, { recursive: true, force: true });
     fs.rmSync(unredactedFixtureRoot, { recursive: true, force: true });
     fs.rmSync(crashFixtureRoot, { recursive: true, force: true });
+    fs.rmSync(metalCrashFixtureRoot, { recursive: true, force: true });
     fs.rmSync(missingMicroTxnFixtureRoot, { recursive: true, force: true });
     fs.rmSync(missingNeedsPresentPollingFixtureRoot, { recursive: true, force: true });
     fs.rmSync(persistentFixtureRoot, { recursive: true, force: true });
@@ -1285,6 +1350,43 @@ function assertMacosCrashReportRejected(root) {
     result.stderr,
     /BOverlayNeedsPresent/,
     "summary rejection should include the crash top symbol"
+  );
+}
+
+function injectMacosMetalCompilerCrashReport(root, caseId) {
+  const manifestPath = path.join(root, "macos-matrix-cases.jsonl");
+  const rows = fs
+    .readFileSync(manifestPath, "utf8")
+    .trim()
+    .split(/\r?\n/)
+    .map((line) => JSON.parse(line));
+  const row = rows.find((entry) => entry.caseId === caseId);
+  assert.ok(row, `self-test fixture should include ${caseId}`);
+  const crashReportDir = path.join(row.diagnosticDir, "macos-crash-reports");
+  fs.mkdirSync(crashReportDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(crashReportDir, "MTLCompilerService-2099-01-01-000000.ips"),
+    [
+      '{"app_name":"MTLCompilerService","timestamp":"2099-01-01 00:00:00.00 -0700","name":"MTLCompilerService"}',
+      '{"procName":"MTLCompilerService","responsibleProc":"SteamBridgeSmoke.electron","exception":{"type":"EXC_CRASH","signal":"SIGABRT"},"threads":[{"frames":[{"symbol":"__abort_with_payload"}]}]}'
+    ].join("\n")
+  );
+}
+
+function assertMacosMetalCompilerCrashReportRejected(root) {
+  const result = spawnSync(process.execPath, [__filename, "--artifact-root", root], {
+    encoding: "utf8"
+  });
+  assert.notEqual(result.status, 0, "summary should reject attributed macOS Metal compiler crash reports");
+  assert.match(
+    result.stderr,
+    /macOS crash report found: macos-crash-reports\/MTLCompilerService-2099-01-01-000000\.ips/,
+    "summary rejection should identify the copied Metal compiler crash report"
+  );
+  assert.match(
+    result.stderr,
+    /responsible="SteamBridgeSmoke\.electron"/,
+    "summary rejection should include the responsible smoke process"
   );
 }
 
@@ -1555,6 +1657,22 @@ function createSelfTestFixture(root) {
           }
         },
         { type: "event:overlay:presenter-after-close-stable", payload: { presenter: parkedPresenterFixture(32) } }
+      ]
+    },
+    {
+      caseId: "06b-checkout-prepare",
+      action: "presenter-checkout",
+      command: ["--action", "presenter-checkout", "--require-no-overlay-activation"],
+      resultPresenter: parkedPresenterFixture(34),
+      requireNoOverlayActivation: true,
+      lifecycle: [
+        {
+          type: "event:overlay:presenter-checkout-ready",
+          payload: {
+            target: "checkout",
+            presenter: activePresenterFixture(33)
+          }
+        }
       ]
     },
     {
@@ -2032,7 +2150,7 @@ function readMacosCrashReports(diagnosticDir) {
         walk(entryPath);
         continue;
       }
-      if (!entry.isFile() || !MACOS_CRASH_REPORT_NAME.test(entry.name)) {
+      if (!entry.isFile() || !isRelevantMacosCrashReport(entryPath, entry.name)) {
         continue;
       }
       reports.push({
@@ -2042,6 +2160,22 @@ function readMacosCrashReports(diagnosticDir) {
       });
     }
   }
+}
+
+function isRelevantMacosCrashReport(file, name) {
+  if (DIRECT_MACOS_CRASH_REPORT_NAME.test(name)) {
+    return true;
+  }
+  if (!ATTRIBUTED_MACOS_CRASH_REPORT_NAME.test(name)) {
+    return false;
+  }
+  let text = "";
+  try {
+    text = fs.readFileSync(file, "utf8");
+  } catch {
+    return true;
+  }
+  return STEAM_BRIDGE_RESPONSIBLE_CRASH_REPORT.test(text);
 }
 
 function summarizeMacosCrashReport(file) {
@@ -2068,6 +2202,10 @@ function summarizeMacosCrashReport(file) {
   const procName = header.app_name || header.name || matchText(text, /"procName"\s*:\s*"([^"]+)"/);
   if (procName) {
     details.push(`process=${formatValue(procName)}`);
+  }
+  const responsibleProc = matchText(text, /"responsibleProc"\s*:\s*"([^"]+)"/);
+  if (responsibleProc) {
+    details.push(`responsible=${formatValue(responsibleProc)}`);
   }
   const exceptionType = matchText(text, /"exception"\s*:\s*\{[^}]*"type"\s*:\s*"([^"]+)"/s);
   const exceptionSignal = matchText(text, /"exception"\s*:\s*\{[^}]*"signal"\s*:\s*"([^"]+)"/s);
