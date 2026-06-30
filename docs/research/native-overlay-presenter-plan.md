@@ -918,18 +918,23 @@ Current evidence:
   callbacks where expected, active shown presenter snapshots, one
   `gameoverlayui` target, app focus return, clean crash diagnostics, an
   interactive macOS host state, and idle presenter parking at `currentFps=0`.
-  The latest live full and persistent macOS artifacts cover 42 cases, including
+  The latest live full and persistent macOS artifacts cover 43 cases, including
   programmatic `openShortcutTargetAndWait()` proof for every supported
-  presenter-backed shortcut target. The current matrix suite has 43 cases after
-  adding checkout prepare-only coverage: it calls `withCheckoutPrepared(...)`
-  without transaction input, requires the checkout-ready lifecycle event,
-  rejects modal overlay activation, and audits that the presenter releases back
-  to idle. Product routes and all known high-level dialog-equivalent routes now
-  use managed `openAndWait(...)` proof where applicable, including profile,
-  players, community, stats, achievements, user chat, and user SteamID.
-  Non-store targets attach under game ID `480`; the Steam store surface can
-  report the generated shortcut game ID while still emitting app ID `480`
-  callbacks and passing the same close-and-park proof.
+  presenter-backed shortcut target. The checkout prepare-only case calls
+  `withCheckoutPrepared(...)` without transaction input, requires the
+  checkout-ready lifecycle event, rejects modal overlay activation, and audits
+  that the presenter releases back to idle. A focused live checkout suite at
+  `/tmp/steam-bridge-macos-overlay-matrix-checkout-live-20260630-160833` also
+  passed all four App ID `480` checkout cases: prepare-only, direct checkout
+  approval-route, managed Shift+Tab checkout, and programmatic checkout
+  shortcut/open-and-wait, all with one Metal presenter-backed overlay target
+  where expected, close/back-to-app proof, zero managed overlay timing, parked
+  presenter state, and no crash evidence. Product routes and all known
+  high-level dialog-equivalent routes now use managed `openAndWait(...)` proof
+  where applicable, including profile, players, community, stats, achievements,
+  user chat, and user SteamID. Non-store targets attach under game ID `480`; the
+  Steam store surface can report the generated shortcut game ID while still
+  emitting app ID `480` callbacks and passing the same close-and-park proof.
 - The macOS native presenter now reads CoreGraphics session/display state before
   creating the host. If the screen is locked or the main display is asleep, the
   presenter skips native host creation, reports
@@ -1171,9 +1176,12 @@ Deck/Linux/macOS artifacts can verify presenter alignment without scraping logs.
 9. Keep macOS checkout plumbing green. The current matrix verifies synthetic
    checkout approval-route open, close, focus return, parked presenter state,
    checkout prepare-only readiness without modal activation, and
-   `openCheckoutAndWait(...)` completion after close/parking. Real
-   purchase-content and `InitTxn` proof remain app-specific and require a real
-   configured Steam product.
+   `openCheckoutAndWait(...)` completion after close/parking. The focused
+   macOS checkout suite now passes the same generic App ID `480` plumbing path
+   for prepare-only, direct checkout, managed Shift+Tab checkout, and
+   programmatic checkout shortcut/open-and-wait. Real purchase-content and
+   `InitTxn` proof remain app-specific and require a real configured Steam
+   product.
 10. Keep the presenter API as the recommended app-facing path for Electron.
     Continue treating raw social dialogs, raw overlay hotkey interception,
     real purchase content, and live lock/display-sleep captures as separate

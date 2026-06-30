@@ -323,6 +323,19 @@ preflight boundary for unlock/wake; the default remains immediate failure so
 locked/asleep state is still captured explicitly with `--suite unavailable`.
 `npm run macos:overlay-matrix:preflight` performs only this readiness check,
 without package rebuild, shortcut mutation, Steam restart, or case launch.
+A focused checkout suite at
+`/tmp/steam-bridge-macos-overlay-matrix-checkout-live-20260630-160833` reused the
+signed Electron `43.0.0` package, verified the signing shape, reused the stable
+Steam shortcut without restarting Steam, and passed all four App ID `480`
+checkout cases. The run covered checkout prepare-only with
+`checkoutPrepared=true` and no modal activation, direct checkout approval-route
+open/close via `openCheckoutAndWait(...)`, managed Shift+Tab checkout open/close,
+and programmatic checkout shortcut/open-and-wait. Every activation case used one
+Metal presenter-backed `gameoverlayui` target under game ID `480`, recorded
+active/inactive callbacks, returned focus to the app, parked at zero managed
+overlay timing, and reported no fresh crash evidence. This is generic checkout
+plumbing evidence; real purchase content still requires a real configured Steam
+app/product and private `InitTxn` response.
 
 ## Steam Deck Shortcut Gate
 
