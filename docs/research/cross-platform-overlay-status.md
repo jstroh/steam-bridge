@@ -225,6 +225,19 @@ passed three Steam-launched cases for managed web open/wait, checkout-open, and
 checkout prepare-only fail-fast behavior with no overlay activation, zero
 overlay targets, hidden zero-FPS presenter state, typed
 `STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE` errors, and clean crash diagnostics. A
+later user-visible crash dialog mapped to
+`MTLCompilerService-2026-06-30-084244.ips` with
+`SteamBridgeSmoke.electron` as the responsible process, so the public
+JavaScript wrapper now mirrors the native macOS policy before reaching native
+code: `overlayNeedsPresent()` returns `false`, diagnostics are assembled without
+the native combined diagnostics poll, and
+`overlayNeedsPresentPollingEnabled=false` remains the proof that Steam Bridge
+avoided `BOverlayNeedsPresent()`. After rebuilding the native addon and signed
+Electron `43.0.0` package, a fresh locked/asleep unavailable matrix at
+`/tmp/steam-bridge-macos-overlay-matrix-unavailable-needs-present-20260630-120650`
+re-ran web open/wait, checkout-open, and checkout prepare-only with the same
+fail-fast/no-activation/zero-target evidence and no fresh `SteamBridgeSmoke` or
+attributed `MTLCompilerService` crash reports. A
 live interactive macOS success rerun is still pending because the 2026-06-30
 attempt at
 `/tmp/steam-bridge-macos-overlay-matrix-core-checkout-prepare-metal-crash-20260630-114417`

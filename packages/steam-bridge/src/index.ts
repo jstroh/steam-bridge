@@ -7114,10 +7114,16 @@ export function isOverlayEnabled(): boolean {
 }
 
 export function overlayNeedsPresent(): boolean {
+  if (!isOverlayNeedsPresentPollingEnabledForProcess()) {
+    return false;
+  }
   return native().overlayNeedsPresent();
 }
 
 export function isOverlayNeedsPresentPollingEnabled(): boolean {
+  if (!isOverlayNeedsPresentPollingEnabledForProcess()) {
+    return false;
+  }
   return native().isOverlayNeedsPresentPollingEnabled();
 }
 
@@ -7170,6 +7176,21 @@ export function steamCheckoutTransactionUrl(
 }
 
 export function getOverlayDiagnostics(): OverlayDiagnostics {
+  if (!isOverlayNeedsPresentPollingEnabledForProcess()) {
+    return {
+      steamRunning: isSteamRunning(),
+      steamInstallPath: getSteamInstallPath(),
+      appId: getAppId(),
+      overlayEnabled: isOverlayEnabled(),
+      overlayNeedsPresent: false,
+      overlayNeedsPresentPollingEnabled: false,
+      steamDeck: isSteamDeck(),
+      bigPicture: isSteamInBigPictureMode(),
+      platform: process.platform,
+      arch: process.arch,
+      pid: process.pid
+    };
+  }
   return normalizeOverlayDiagnostics(native().getOverlayDiagnostics());
 }
 
@@ -8958,6 +8979,16 @@ function parseBooleanEnvironment(value: string | undefined): boolean | undefined
     return false;
   }
   return undefined;
+}
+
+function isOverlayNeedsPresentPollingEnabledForProcess(): boolean {
+  if (parseBooleanEnvironment(process.env.STEAM_BRIDGE_DISABLE_OVERLAY_NEEDS_PRESENT) === true) {
+    return false;
+  }
+  if (process.platform === "darwin") {
+    return parseBooleanEnvironment(process.env.STEAM_BRIDGE_ENABLE_OVERLAY_NEEDS_PRESENT) === true;
+  }
+  return true;
 }
 
 function createNativeOverlaySessionPresenter(options: NativeOverlaySessionOptions = {}): NativeOverlayPresenter {

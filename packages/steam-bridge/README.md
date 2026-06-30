@@ -248,17 +248,20 @@ being opened/active. On macOS, Steam Bridge disables the
 `BOverlayNeedsPresent()` poll by default because Steam's injected renderer can
 crash inside that call even on the Metal presenter path; macOS presentation is
 driven by explicit overlay opens and Steam overlay activation callbacks instead.
+`client.utils.overlayNeedsPresent()` returns `false` on that default path
+without calling the crash-prone native poll, and
 `client.utils.getOverlayDiagnostics()` reports
-`overlayNeedsPresentPollingEnabled=false` on that default path so logs can
-distinguish a disabled poll from a safe poll that simply returned false.
+`overlayNeedsPresent=false` and `overlayNeedsPresentPollingEnabled=false` so
+logs can distinguish a disabled poll from a safe poll that simply returned
+false.
 Set `STEAM_BRIDGE_ENABLE_OVERLAY_NEEDS_PRESENT=1` only for macOS diagnostics
 where that crash risk is acceptable. Set
 `STEAM_BRIDGE_DISABLE_OVERLAY_NEEDS_PRESENT=1` for the same escape hatch on
 other platforms. Automatic passive notification priming performs one wake-up/poll
-on platforms with safe needs-present polling and otherwise stays parked unless an
-overlay is being opened/active, so quiet achievement/stat calls do not start a
-fixed high-FPS boost. It also
-installs a default Electron `Shift+Tab` shortcut bridge that opens the verified
+on platforms with safe needs-present polling and otherwise stays parked unless
+an overlay is being opened/active, so quiet achievement/stat calls do not start
+a fixed high-FPS boost. The managed Electron overlay also installs a default
+`Shift+Tab` shortcut bridge that opens the verified
 Friends/chat presenter route without asking Steam to hook Chromium child
 processes; pass `overlayShortcut: false` to disable it, or provide
 `overlayShortcut: { target: { type: "community", appId } }` to choose another

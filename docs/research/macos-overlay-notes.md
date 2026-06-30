@@ -355,6 +355,14 @@ Verified:
   artifact's `macos-crash-reports/` directory with a short signature summary;
   the matrix summarizer now rejects those copied reports during artifact audit
   as well. Linux/Deck still use needs-present polling for overlay presentation.
+  A later user-visible macOS crash dialog corresponded to
+  `MTLCompilerService-2026-06-30-084244.ips`, whose report named
+  `SteamBridgeSmoke.electron` as the responsible process. The public JavaScript
+  wrappers now mirror the native macOS default before reaching native code:
+  `overlayNeedsPresent()` returns `false`, `isOverlayNeedsPresentPollingEnabled()`
+  returns `false`, and `getOverlayDiagnostics()` assembles safe diagnostics
+  without calling the native combined diagnostics path unless
+  `STEAM_BRIDGE_ENABLE_OVERLAY_NEEDS_PRESENT=1` is explicitly set.
   After modal overlays close, the stable parked macOS state must return to
   `currentFps=0` without post-close pumping.
 - New macOS matrix manifests require `overlayNeedsPresentPollingEnabled=false`
@@ -615,6 +623,16 @@ Verified:
   active/inactive callbacks, `overlay:presenter-open-and-wait-complete` after
   the harness closes the web overlay, a persistent Metal presenter parked at
   zero FPS, and no fresh crash report.
+- A later locked/asleep unavailable macOS matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-unavailable-needs-present-20260630-120650`
+  rebuilt the native addon and signed Electron `43.0.0` smoke package after the
+  JavaScript needs-present guard landed, reused the stable Steam shortcut
+  without restarting Steam, and passed the three fail-fast unavailable cases:
+  web open/wait, checkout open, and checkout prepare-only. Each case reported
+  `overlayNeedsPresent=false`, `overlayNeedsPresentPollingEnabled=false`,
+  `nativeHostUnavailable=macos-screen-locked`, no Steam overlay activation, zero
+  `gameoverlayui` targets, zero managed overlay timing, and no fresh
+  `SteamBridgeSmoke` or attributed `MTLCompilerService` crash reports.
 - The live macOS matrix now runs `scripts/verify-macos-steam-signing.cjs`
   before touching Steam. It checks the native launcher and renamed Electron
   executable for arm64-only slices, valid executable signatures, the dyld

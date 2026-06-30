@@ -968,7 +968,13 @@ Current evidence:
   also report `displayAsleep=true`; `macos-screen-locked` takes precedence and
   the verifier allows either display-asleep value while locked. Because the host
   is intentionally not created, unavailable matrix summaries do not require
-  `overlayEnabled=true`.
+  `overlayEnabled=true`. A later unavailable matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-unavailable-needs-present-20260630-120650`
+  re-ran the same three cases after rebuilding the native addon and signed
+  Electron `43.0.0` package with the JavaScript needs-present guard. It proved
+  the locked/asleep path reports `overlayNeedsPresent=false` and
+  `overlayNeedsPresentPollingEnabled=false` without fresh `SteamBridgeSmoke` or
+  attributed `MTLCompilerService` crash reports.
 - BrowserWindow-only overlay support is not proven.
 - Steam launch, app ID, auth, and callbacks are not enough to claim overlay
   support.
@@ -1069,8 +1075,12 @@ use without scraping logs. On macOS, snapshots and
 `getOverlayDiagnostics()` should report
 `overlayNeedsPresentPollingEnabled=false` by default so artifacts prove Steam
 Bridge avoided the crash-prone `BOverlayNeedsPresent()` SDK call instead of
-merely observing `overlayNeedsPresent=false`. Snapshots also include `bounds`
-when Electron's
+merely observing `overlayNeedsPresent=false`. The public JavaScript wrappers
+also short-circuit this macOS default before native code: `overlayNeedsPresent()`
+returns `false`, and `getOverlayDiagnostics()` assembles safe diagnostics
+without calling the native combined diagnostics path unless
+`STEAM_BRIDGE_ENABLE_OVERLAY_NEEDS_PRESENT=1` is explicitly set. Snapshots also
+include `bounds` when Electron's
 `BrowserWindow.getBounds()` or a lower-level bounds provider is available, so
 Deck/Linux/macOS artifacts can verify presenter alignment without scraping logs.
 

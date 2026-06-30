@@ -10,6 +10,11 @@ const repoRoot = path.resolve(__dirname, "..");
 const distRoot = path.join(repoRoot, "packages", "steam-bridge", "dist");
 const steamEnvKeys = ["SteamAppId", "SteamAppID", "STEAM_APP_ID"];
 
+// Existing presenter tests simulate needs-present transitions; production macOS defaults remain disabled.
+if (process.platform === "darwin" && process.env.STEAM_BRIDGE_ENABLE_OVERLAY_NEEDS_PRESENT === undefined) {
+  process.env.STEAM_BRIDGE_ENABLE_OVERLAY_NEEDS_PRESENT = "1";
+}
+
 function distFile(fileName) {
   return path.join(distRoot, fileName);
 }
@@ -2497,6 +2502,103 @@ test("Steam IDs and diagnostics are normalized for JavaScript callers", (t) => {
     pid: process.pid
   });
   assert.equal(steam.utils.isOverlayNeedsPresentPollingEnabled(), true);
+});
+
+test("macOS disables needs-present polling before native Steam calls by default", (t) => {
+  setProcessPlatformForTest(t, "darwin");
+  const previousDisable = process.env.STEAM_BRIDGE_DISABLE_OVERLAY_NEEDS_PRESENT;
+  const previousEnable = process.env.STEAM_BRIDGE_ENABLE_OVERLAY_NEEDS_PRESENT;
+  delete process.env.STEAM_BRIDGE_DISABLE_OVERLAY_NEEDS_PRESENT;
+  delete process.env.STEAM_BRIDGE_ENABLE_OVERLAY_NEEDS_PRESENT;
+  t.after(() => {
+    if (previousDisable === undefined) {
+      delete process.env.STEAM_BRIDGE_DISABLE_OVERLAY_NEEDS_PRESENT;
+    } else {
+      process.env.STEAM_BRIDGE_DISABLE_OVERLAY_NEEDS_PRESENT = previousDisable;
+    }
+    if (previousEnable === undefined) {
+      delete process.env.STEAM_BRIDGE_ENABLE_OVERLAY_NEEDS_PRESENT;
+    } else {
+      process.env.STEAM_BRIDGE_ENABLE_OVERLAY_NEEDS_PRESENT = previousEnable;
+    }
+  });
+
+  const fake = createFakeNative({
+    overlayNeedsPresent() {
+      throw new Error("BOverlayNeedsPresent should not be polled on macOS by default");
+    },
+    isOverlayNeedsPresentPollingEnabled() {
+      throw new Error("native polling flag should not be read on macOS by default");
+    },
+    getOverlayDiagnostics() {
+      throw new Error("native overlay diagnostics should not poll needs-present on macOS by default");
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  assert.equal(steam.utils.overlayNeedsPresent(), false);
+  assert.equal(steam.utils.isOverlayNeedsPresentPollingEnabled(), false);
+  assert.deepEqual(steam.utils.getOverlayDiagnostics(), {
+    steamRunning: true,
+    steamInstallPath: "/tmp/steam",
+    appId: 480,
+    overlayEnabled: true,
+    overlayNeedsPresent: false,
+    overlayNeedsPresentPollingEnabled: false,
+    steamDeck: false,
+    bigPicture: false,
+    platform: "darwin",
+    arch: process.arch,
+    pid: process.pid
+  });
+});
+
+test("macOS needs-present polling can be explicitly enabled for diagnostics", (t) => {
+  setProcessPlatformForTest(t, "darwin");
+  const previousDisable = process.env.STEAM_BRIDGE_DISABLE_OVERLAY_NEEDS_PRESENT;
+  const previousEnable = process.env.STEAM_BRIDGE_ENABLE_OVERLAY_NEEDS_PRESENT;
+  delete process.env.STEAM_BRIDGE_DISABLE_OVERLAY_NEEDS_PRESENT;
+  process.env.STEAM_BRIDGE_ENABLE_OVERLAY_NEEDS_PRESENT = "1";
+  t.after(() => {
+    if (previousDisable === undefined) {
+      delete process.env.STEAM_BRIDGE_DISABLE_OVERLAY_NEEDS_PRESENT;
+    } else {
+      process.env.STEAM_BRIDGE_DISABLE_OVERLAY_NEEDS_PRESENT = previousDisable;
+    }
+    if (previousEnable === undefined) {
+      delete process.env.STEAM_BRIDGE_ENABLE_OVERLAY_NEEDS_PRESENT;
+    } else {
+      process.env.STEAM_BRIDGE_ENABLE_OVERLAY_NEEDS_PRESENT = previousEnable;
+    }
+  });
+
+  const fake = createFakeNative({
+    overlayNeedsPresent() {
+      this.calls.push({ method: "overlayNeedsPresent", args: [] });
+      return true;
+    },
+    isOverlayNeedsPresentPollingEnabled() {
+      this.calls.push({ method: "isOverlayNeedsPresentPollingEnabled", args: [] });
+      return true;
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  assert.equal(steam.utils.overlayNeedsPresent(), true);
+  assert.equal(steam.utils.isOverlayNeedsPresentPollingEnabled(), true);
+  assert.deepEqual(
+    fake.calls.filter((call) =>
+      call.method === "overlayNeedsPresent" || call.method === "isOverlayNeedsPresentPollingEnabled"
+    ),
+    [
+      { method: "overlayNeedsPresent", args: [] },
+      { method: "isOverlayNeedsPresentPollingEnabled", args: [] }
+    ]
+  );
 });
 
 test("localplayer facade covers profile and rich presence helpers", (t) => {
