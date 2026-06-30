@@ -345,7 +345,7 @@ function verifyCase(caseId, metadata, result, lifecycle, failures) {
       verifyNoOverlayActivation(caseId, resultEvents, lifecycleEntries, failures);
     }
   } else if (isPassive) {
-    verifyPassiveNotification(caseId, lifecycleEntries, nativePresenter, passiveConfig, failures);
+    verifyPassiveNotification(caseId, resultEvents, lifecycleEntries, nativePresenter, passiveConfig, failures);
   } else {
     expect(activated, `${caseId}: overlay active callback observed`, failures);
     expect(closed, `${caseId}: overlay inactive callback observed after active`, failures);
@@ -529,24 +529,43 @@ function verifyShownPresenter(caseId, entries, isPassive, failures) {
   return { required: true, ok: failures.length === failuresBefore };
 }
 
-function verifyPassiveNotification(caseId, entries, presenter, config, failures) {
-  expect(!entries.some(isLifecycleOverlayActiveEvent), `${caseId}: passive notification did not activate modal overlay`, failures);
+function verifyPassiveNotification(caseId, resultEvents, entries, presenter, config, failures) {
   expect(
-    entries.some((entry) => entry.type === `event:${config.event}`),
+    ![...resultEvents, ...entries].some(isOverlayActiveEvent),
+    `${caseId}: passive notification did not activate modal overlay`,
+    failures
+  );
+  expect(
+    hasResultOrLifecycleEvent(resultEvents, entries, config.event),
     `${caseId}: passive notification event ${config.event} recorded`,
     failures
   );
   for (const callback of config.callbacks) {
     expect(
-      entries.some((entry) => entry.type === `event:${callback}`),
+      hasResultOrLifecycleEvent(resultEvents, entries, callback),
       `${caseId}: passive notification callback ${callback} recorded`,
       failures
     );
   }
-  if (presenter) {
-    expectParkedPresenter(caseId, presenter, "passive notification snapshot", failures);
-    expect(presenter.overlayWasActive === false, `${caseId}: passive notification overlay was not modal active`, failures);
+
+  const eventPresenter = [...resultEvents, ...entries]
+    .filter((entry) => entry && (entry.type === config.event || entry.type === `event:${config.event}`))
+    .map(presenterPayload)
+    .find(Boolean);
+  const passivePresenter = eventPresenter || presenter;
+  if (passivePresenter) {
+    expectPassiveNotificationPresenter(caseId, passivePresenter, "passive notification snapshot", failures);
+    expect(passivePresenter.overlayWasActive === false, `${caseId}: passive notification overlay was not modal active`, failures);
+  } else {
+    failures.push(`${caseId}: passive notification presenter snapshot available`);
   }
+}
+
+function hasResultOrLifecycleEvent(resultEvents, lifecycleEntries, eventType) {
+  return (
+    resultEvents.some((entry) => entry && entry.type === eventType) ||
+    lifecycleEntries.some((entry) => entry && entry.type === `event:${eventType}`)
+  );
 }
 
 function verifyOverlayCallbackAppIds(caseId, entries, expectedAppId, failures) {
@@ -658,6 +677,32 @@ function expectActivePresenter(caseId, presenter, label, failures) {
   expectPresenterField(caseId, presenter, "idleFps", 0, `native presenter idle FPS ${label}`, failures);
   expectPresenterField(caseId, presenter, "activeOverlayFps", 30, `native presenter active overlay FPS ${label}`, failures);
   expectPresenterField(caseId, presenter, "currentFps", 30, `native presenter current FPS ${label}`, failures);
+}
+
+function expectPassiveNotificationPresenter(caseId, presenter, label, failures) {
+  expectMacOverlayEnvironmentAvailable(caseId, presenter, label, failures);
+  expectPresenterField(caseId, presenter, "closed", false, `native presenter closed ${label}`, failures);
+  expectPresenterField(caseId, presenter, "attached", true, `native presenter attached ${label}`, failures);
+  expectPresenterField(caseId, presenter, "nativeHostOpen", true, `native presenter host open ${label}`, failures);
+  expectPresenterField(caseId, presenter, "mode", "passive", `native presenter mode ${label}`, failures);
+  expectPresenterField(caseId, presenter, "clickThrough", true, `native presenter click-through ${label}`, failures);
+  expectPresenterField(caseId, presenter, "focusable", false, `native presenter focusable ${label}`, failures);
+  expectPresenterField(caseId, presenter, "overlayActive", false, `native presenter overlay active ${label}`, failures);
+  expectPresenterField(caseId, presenter, "idleFps", 0, `native presenter idle FPS ${label}`, failures);
+
+  if (presenter.overlayNeedsPresent === true) {
+    const expectedFps = Number(presenter.needsPresentFps);
+    expect(
+      Number(presenter.currentFps) === expectedFps && expectedFps > 0,
+      `${caseId}: native presenter current FPS follows needs-present FPS ${label}`,
+      failures
+    );
+    return;
+  }
+
+  expectPresenterField(caseId, presenter, "transparent", true, `native presenter transparent ${label}`, failures);
+  expectPresenterField(caseId, presenter, "currentFps", 0, `native presenter current FPS ${label}`, failures);
+  expectPresenterField(caseId, presenter, "overlayNeedsPresent", false, `native presenter overlay needs present ${label}`, failures);
 }
 
 function verifyExpectedActionError(caseId, action, expected, failures) {
@@ -844,9 +889,9 @@ function createSelfTestFixture(root) {
     {
       caseId: "02-passive-toast",
       action: "presenter-achievement-progress",
-      resultPresenter: parkedPresenterFixture(2),
+      resultPresenter: passiveNotificationNeedsPresentPresenterFixture(3),
       lifecycle: [
-        { type: "event:achievement:progress", payload: { indicated: true } },
+        { type: "event:achievement:progress", payload: { indicated: true, presenter: parkedPresenterFixture(2) } },
         { type: "event:callback:achievement-stored", payload: { achievement: "ACH_TEST" } }
       ]
     },
@@ -979,6 +1024,15 @@ function activePresenterFixture(pumpCount) {
     currentFps: 30,
     overlayActive: true,
     overlayWasActive: true
+  };
+}
+
+function passiveNotificationNeedsPresentPresenterFixture(pumpCount) {
+  return {
+    ...parkedPresenterFixture(pumpCount),
+    transparent: false,
+    currentFps: 30,
+    overlayNeedsPresent: true
   };
 }
 

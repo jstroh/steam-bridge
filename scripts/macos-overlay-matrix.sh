@@ -446,6 +446,46 @@ macos_steam_logged_on_since() {
   ' "$log_file"
 }
 
+require_interactive_macos_overlay_environment() {
+  if [ "$dry_run" = "1" ]; then
+    return 0
+  fi
+  if [ "$(uname -s)" != "Darwin" ]; then
+    echo "macOS overlay matrix must run on macOS." >&2
+    exit 1
+  fi
+
+  node - "$repo_root" <<'NODE'
+const path = require("node:path");
+const repoRoot = process.argv[2];
+
+let environment;
+try {
+  const steamBridge = require(path.join(repoRoot, "packages", "steam-bridge"));
+  environment = steamBridge.getMacOverlayEnvironment?.();
+} catch (error) {
+  console.error(`Failed to read macOS overlay environment: ${error && error.message ? error.message : error}`);
+  process.exit(1);
+}
+
+console.log(`MACOS_OVERLAY_ENVIRONMENT ${JSON.stringify(environment ?? null)}`);
+
+if (!environment || typeof environment !== "object") {
+  console.error("macOS overlay environment is unavailable; cannot run a success overlay matrix.");
+  process.exit(1);
+}
+
+if (environment.screenLocked || environment.displayAsleep) {
+  const reason = environment.screenLocked ? "macos-screen-locked" : "macos-display-asleep";
+  console.error(
+    `macOS overlay success matrix requires an interactive display; current environment is ${reason}. ` +
+      "Unlock/wake the Mac before running the success matrix, or capture this state with the expected native-host-unavailable verifier flags."
+  );
+  process.exit(1);
+}
+NODE
+}
+
 restart_macos_steam() {
   if [ "$restart_steam" != "1" ]; then
     return 0
@@ -979,6 +1019,7 @@ run_matrix() {
 
 ensure_ready
 trap 'if [ "$close_steam_after" = "1" ] && [ "$dry_run" != "1" ]; then stop_macos_steam; fi' EXIT
+require_interactive_macos_overlay_environment
 run_matrix
 
 echo "macOS overlay matrix complete. Artifacts: $artifact_root"

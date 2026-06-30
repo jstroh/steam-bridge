@@ -176,6 +176,22 @@ timing hacks.
   reports `openAndWait=true` for every interactive presenter-backed product
   route in the core suite, proving completion after Steam emits `active=false`
   and after the presenter parks, not merely initial activation.
+- A 2026-06-29 full macOS matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-full-openwait-20260629-193357`
+  passed 23 Steam-launched App ID `480` cases after adding the interactive
+  macOS environment preflight. The run verified web/store/Friends/dialog,
+  profile, players, community, stats, achievements, user chat, and user
+  SteamID through managed `openAndWait(...)`; passive progress/unlock toasts;
+  synthetic checkout approval-route plumbing; Shift+Tab shortcut open/close for
+  Friends, web, and store targets; and all known high-level dialog-equivalent
+  routes. The artifact summary passed with active/inactive callbacks where
+  expected, active shown presenter snapshots, one `gameoverlayui` target, app
+  focus return, parked idle state at `currentFps=0` after close, no post-close
+  pumping, zero managed overlay timing, interactive macOS host state, and clean
+  crash diagnostics. The same run exposed and then covered the runner behavior
+  for locked/asleep Macs: success matrices now preflight
+  `getMacOverlayEnvironment()` and stop before case launch if the session is not
+  interactive.
 - A 2026-06-29 full Deck Desktop overlay matrix passed 26 cases with 52
   screenshots under App ID `480`, covering managed web, store, Friends, profile,
   players, community, stats, achievements, user chat, known dialog-equivalent
@@ -675,8 +691,9 @@ Current evidence:
   callbacks where expected, active shown presenter snapshots, one
   `gameoverlayui` target, app focus return, clean crash diagnostics, an
   interactive macOS host state, and idle presenter parking at `currentFps=0`.
-  Core product routes now use managed `openAndWait(...)` proof where applicable,
-  including profile, players, community, stats, achievements, and user chat.
+  The current full macOS artifact covers 23 cases; product routes now use
+  managed `openAndWait(...)` proof where applicable, including profile, players,
+  community, stats, achievements, user chat, and user SteamID.
   Non-store targets attach under game ID `480`; the Steam store surface can
   report the generated shortcut game ID while still emitting app ID `480`
   callbacks and passing the same close-and-park proof.
@@ -699,7 +716,9 @@ Current evidence:
   matrix manifest and artifact summarizer understand the same expected
   fail-fast metadata, so a future live lock or display-sleep capture can be
   summarized beside normal overlay cases without treating the intentional
-  pre-activation failure as a matrix failure.
+  pre-activation failure as a matrix failure. Success matrices also preflight
+  the same environment and stop before launching case 1 if the Mac is locked or
+  the display is asleep.
 - BrowserWindow-only overlay support is not proven.
 - Steam launch, app ID, auth, and callbacks are not enough to claim overlay
   support.

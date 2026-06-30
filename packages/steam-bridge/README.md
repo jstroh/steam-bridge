@@ -491,19 +491,18 @@ can run `--close-probe`; it focuses the smoke app, sends the close input, and
 verifies active/inactive callbacks, app focus return, `openAndWait(...)`
 completion after parking, no post-close presenter pumping, and no crash
 diagnostics. A 2026-06-29 full macOS matrix at
-`/tmp/steam-bridge-macos-overlay-matrix-full-helper-current-20260629-171348`
-covers modal web, store, Friends/chat, profile, community, stats, achievements,
-user chat/profile, known dialog equivalents, synthetic checkout approval-route
-plumbing, passive notification toasts, and managed Shift+Tab shortcut open/close
-through the presenter. The summary gate now requires active shown presenter
-snapshots and an interactive macOS host environment for successful overlay cases.
-The helper also checks the same presenter shape directly during close,
-shortcut-open, and passive-notification verification. The full helper-current
-run passed those stricter packaged-helper gates without restarting Steam. It
-verifies macOS passive notification proof through `--require-passive-notification`;
-that gate requires the smoke result and lifecycle log to show the accepted
-achievement event, the matching Steam callback, no modal overlay activation, and
-a passive managed-presenter snapshot.
+`/tmp/steam-bridge-macos-overlay-matrix-full-openwait-20260629-193357`
+covers modal web, store, Friends/chat, dialog equivalents, profile, players,
+community, stats, achievements, user chat, and user SteamID through managed
+`openAndWait(...)`; synthetic checkout approval-route plumbing; passive
+notification toasts; and managed Shift+Tab shortcut open/close for Friends, web,
+and store targets. The summary gate requires active shown presenter snapshots,
+an interactive macOS host environment for successful overlay cases, focus
+return, idle parking at `currentFps=0` after close, no post-close pumping, and
+clean crash diagnostics. It verifies macOS passive notification proof through
+`--require-passive-notification`; that gate requires the smoke result and
+lifecycle log to show the accepted achievement event, the matching Steam
+callback, no modal overlay activation, and a passive managed-presenter snapshot.
 A later 2026-06-29 core macOS matrix at
 `/tmp/steam-bridge-macos-overlay-matrix-core-shortcut-targets-20260629-184303`
 expanded the managed Shift+Tab proof from Friends/chat to Friends/chat, modal
@@ -528,7 +527,11 @@ The repository also provides `npm run macos:overlay-matrix`, which installs or
 updates one stable macOS Steam shortcut pointing at the in-bundle native
 launcher and a launcher env file. Each case rewrites only that env file, so
 Steam is restarted only when the shortcut itself is added or materially changed.
-The matrix runs the packaged helper and records per-case diagnostics. Its
+Live success runs preflight `getMacOverlayEnvironment()` and stop before case
+launch while the Mac is locked or the display is asleep; capture those states
+with the expected native-host-unavailable verifier flags instead of treating
+them as success-matrix failures. The matrix runs the packaged helper and records
+per-case diagnostics. Its
 self-test is part of package smoke coverage and includes the macOS artifact
 summary self-test. After a live run it summarizes every macOS result and
 lifecycle log, failing if a case loses Steam launch/injection identity, uses
@@ -537,8 +540,9 @@ nonzero managed overlay timing, reports crash diagnostics, duplicates
 overlay target under a game ID other than `480`, misses passive
 notification callbacks, misses checkout `openCheckoutAndWait(...)` completion
 after close/parking, misses active shown presenter snapshots in an interactive
-macOS host environment, or misses active/inactive close-and-park evidence for
-interactive overlays. To audit an
+macOS host environment, misses expected native-host-unavailable fail-fast
+metadata, or misses active/inactive close-and-park evidence for interactive
+overlays. To audit an
 existing macOS artifact root, run
 `npm run macos:overlay-matrix:summarize -- --artifact-root <path>`. Live runs
 still require clearing Steam game processes on other machines first.

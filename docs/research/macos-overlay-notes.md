@@ -230,6 +230,21 @@ Verified:
   active shown presenter evidence, close/deactivation, completion after
   `active=false`, parked presenter evidence, focus return, zero managed overlay
   timing, and clean crash diagnostics.
+- A 2026-06-29 full macOS overlay matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-full-openwait-20260629-193357`
+  passed 23 Steam-launched App ID `480` cases with the current full
+  product-route shape. It covers web/store/Friends/dialog, profile, players,
+  community, stats, achievements, user chat, and user SteamID through managed
+  `openAndWait(...)`; passive progress/unlock toasts; synthetic checkout
+  approval-route plumbing; Shift+Tab shortcut open/close for Friends, web, and
+  store targets; and all known high-level dialog-equivalent routes. The run
+  started with `MACOS_OVERLAY_ENVIRONMENT {"screenLocked":false,"displayAsleep":false}`
+  from the new success-matrix preflight, did not update the stable shortcut, and
+  passed artifact summary checks for active/inactive callbacks where expected,
+  active shown presenter snapshots, one `gameoverlayui` target, focus return,
+  parked idle presenter state at `currentFps=0` after close, no post-close
+  pumping, zero managed overlay timing, interactive macOS host state, and clean
+  crash diagnostics.
 - A 2026-06-29 minimal macOS overlay matrix at
   `/tmp/steam-bridge-macos-overlay-matrix-minimal-helper-current-20260629-170723`
   re-ran the packaged helper after the source-level presenter-shape checks were
@@ -253,13 +268,18 @@ Verified:
   summary auditor also support expected native-host-unavailable fail-fast cases:
   an artifact can require the serialized action error code/reason, matching
   `nativeHostUnavailableReason`, unattached/no-host/zero-FPS presenter state,
-  and no overlay activation. Its self-test validates the matrix shape and the
+  and no overlay activation. Live success runs now preflight the same macOS
+  environment and stop before launching case 1 while the session is locked or
+  the display is asleep. Its self-test validates the matrix shape and the
   artifact summarizer without launching Steam.
 - The packaged macOS helper now performs the same presenter-shape checks at the
   source for close, shortcut-open, and passive-notification verification: active
   shown presenter snapshots must be active/opaque/input-capable with an
   interactive macOS host environment, and parked/passive snapshots must remain
-  transparent, click-through, overlay-inactive, idle, and interactive.
+  click-through, overlay-inactive, and interactive. Passive toasts may briefly
+  report `overlayNeedsPresent=true` and pump at `needsPresentFps` while Steam is
+  rendering the notification; after modal overlays close, the stable parked
+  state must return to `currentFps=0` without post-close pumping.
 
 Still not verified:
 
