@@ -1194,6 +1194,11 @@ if (firstActiveIndex == null) {
     failures.push("no overlay:presenter-wait-closed event after active=false in lifecycle log");
   } else if (!waitClosedPresenters.some(({ presenter }) => presenter)) {
     failures.push("overlay:presenter-wait-closed did not include a presenter snapshot");
+  } else {
+    const closedPresenter = lastPresenter(waitClosedPresenters);
+    if (closedPresenter) {
+      expectClosedWaitPresenter(closedPresenter, "closed wait sample");
+    }
   }
   if (waitParkedPresenters.length === 0) {
     failures.push("no overlay:presenter-parked event after active=false in lifecycle log");
@@ -1423,6 +1428,17 @@ function expectActivePresenter(presenter, label) {
   expectPresenterField(presenter, "currentFps", 30, `native presenter current FPS ${label}`);
 }
 
+function expectClosedWaitPresenter(presenter, label) {
+  expectMacOverlayEnvironmentAvailable(presenter, label);
+  expectPresenterField(presenter, "closed", false, `native presenter closed ${label}`);
+  expectPresenterField(presenter, "attached", true, `native presenter attached ${label}`);
+  expectPresenterField(presenter, "nativeHostOpen", true, `native presenter host open ${label}`);
+  expectPresenterField(presenter, "mode", "passive", `native presenter mode ${label}`);
+  expectPresenterField(presenter, "focusable", false, `native presenter focusable ${label}`);
+  expectPresenterField(presenter, "overlayActive", false, `native presenter overlay active ${label}`);
+  expectPresenterField(presenter, "idleFps", 0, `native presenter idle FPS ${label}`);
+}
+
 function expectMacOverlayEnvironmentAvailable(presenter, label) {
   const environment = presenter && typeof presenter === "object" ? presenter.macOverlayEnvironment : undefined;
   if (!environment || typeof environment !== "object") {
@@ -1532,7 +1548,7 @@ EOF
 {"type":"event:callback:overlay-activated","payload":{"active":true}}
 {"type":"event:overlay:presenter-wait-shown","payload":{"presenter":{"closed":false,"attached":true,"nativeHostOpen":true,"macOverlayEnvironment":{"screenLocked":false,"displayAsleep":false},"mode":"active","clickThrough":false,"focusable":false,"transparent":false,"overlayActive":true,"idleFps":0,"currentFps":30,"overlayNeedsPresent":false,"pumpCount":5}}}
 {"type":"event:callback:overlay-activated","payload":{"active":false}}
-{"type":"event:overlay:presenter-wait-closed","payload":{"presenter":{"closed":false,"attached":true,"nativeHostOpen":true,"macOverlayEnvironment":{"screenLocked":false,"displayAsleep":false},"mode":"passive","clickThrough":true,"focusable":false,"transparent":true,"overlayActive":false,"idleFps":0,"currentFps":0,"overlayNeedsPresent":false,"pumpCount":10}}}
+{"type":"event:overlay:presenter-wait-closed","payload":{"presenter":{"closed":false,"attached":true,"nativeHostOpen":true,"macOverlayEnvironment":{"screenLocked":false,"displayAsleep":false},"mode":"passive","clickThrough":false,"focusable":false,"transparent":false,"overlayActive":false,"idleFps":0,"currentFps":30,"overlayNeedsPresent":false,"pumpCount":10}}}
 {"type":"event:overlay:presenter-after-close","payload":{"presenter":{"closed":false,"attached":true,"nativeHostOpen":true,"macOverlayEnvironment":{"screenLocked":false,"displayAsleep":false},"mode":"passive","clickThrough":true,"focusable":false,"transparent":true,"overlayActive":false,"idleFps":0,"currentFps":0,"overlayNeedsPresent":false,"pumpCount":10}}}
 {"type":"event:overlay:presenter-parked","payload":{"presenter":{"closed":false,"attached":true,"nativeHostOpen":true,"macOverlayEnvironment":{"screenLocked":false,"displayAsleep":false},"mode":"passive","clickThrough":true,"focusable":false,"transparent":true,"overlayActive":false,"idleFps":0,"currentFps":0,"overlayNeedsPresent":false,"pumpCount":10}}}
 {"type":"event:overlay:presenter-open-and-wait-complete","payload":{"shown":{"closed":false,"attached":true,"nativeHostOpen":true,"macOverlayEnvironment":{"screenLocked":false,"displayAsleep":false},"mode":"active","clickThrough":false,"focusable":false,"transparent":false,"overlayActive":true,"idleFps":0,"currentFps":30,"overlayNeedsPresent":false,"pumpCount":5},"parked":{"closed":false,"attached":true,"nativeHostOpen":true,"macOverlayEnvironment":{"screenLocked":false,"displayAsleep":false},"mode":"passive","clickThrough":true,"focusable":false,"transparent":true,"overlayActive":false,"idleFps":0,"currentFps":0,"overlayNeedsPresent":false,"pumpCount":10}}}
