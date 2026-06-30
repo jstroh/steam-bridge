@@ -351,9 +351,10 @@ Verified:
   `steam_bridge_native::overlay_needs_present_c_callback`. The macOS helper's
   `--require-no-crashes` gate now treats fresh `SteamBridgeSmoke*.ips` reports
   from `~/Library/Logs/DiagnosticReports` as failures and copies them into the
-  artifact's `macos-crash-reports/` directory with a short signature summary.
-  Linux/Deck still use needs-present polling for overlay presentation. After
-  modal overlays close, the stable parked macOS state must return to
+  artifact's `macos-crash-reports/` directory with a short signature summary;
+  the matrix summarizer now rejects those copied reports during artifact audit
+  as well. Linux/Deck still use needs-present polling for overlay presentation.
+  After modal overlays close, the stable parked macOS state must return to
   `currentFps=0` without post-close pumping.
 - Managed macOS `openAndWait(...)` now waits for Steam's overlay diagnostics to
   report `overlayEnabled=true` before calling the Steam overlay activation API.

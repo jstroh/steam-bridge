@@ -351,7 +351,9 @@ and crash diagnostics.
 On macOS, `--require-no-crashes` also copies fresh
 `SteamBridgeSmoke*.ips` reports from `~/Library/Logs/DiagnosticReports` into
 the artifact's `macos-crash-reports/` directory and fails the run with a short
-crash signature, so ignored macOS crash dialogs count as test failures.
+crash signature, so ignored macOS crash dialogs count as test failures. The
+macOS matrix summarizer also rejects any copied smoke `.ips` report it finds in
+an artifact.
 
 Run platform matrix checks:
 

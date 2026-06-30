@@ -36,6 +36,7 @@ const PASSIVE_NOTIFICATION_ACTIONS = new Map([
   ]
 ]);
 const REDACTED_COMMAND_VALUE = "<redacted>";
+const MACOS_CRASH_REPORT_NAME = /^SteamBridgeSmoke(?:\.electron| Helper(?: \(Renderer\))?)?-.*\.ips$/;
 const SENSITIVE_MANIFEST_OPTIONS = new Set([
   "--checkout-json-file",
   "--checkout-return-url",
@@ -170,13 +171,14 @@ function summarizeMatrixArtifacts(root) {
     }
 
     const lifecycle = readLifecycle(path.join(diagnosticDir, "lifecycle.jsonl"));
+    const macosCrashReports = readMacosCrashReports(diagnosticDir);
     const diagnosticDirOrdinal = diagnosticDirOrdinals.get(diagnosticDir) || 0;
     diagnosticDirOrdinals.set(diagnosticDir, diagnosticDirOrdinal + 1);
     const scopedLifecycle = scopeLifecycleForCase(metadata, lifecycle, {
       shared: (diagnosticDirCounts.get(diagnosticDir) || 0) > 1,
       ordinal: diagnosticDirOrdinal
     });
-    const summary = verifyCase(caseId, metadata, result, scopedLifecycle, caseFailures);
+    const summary = verifyCase(caseId, metadata, result, scopedLifecycle, macosCrashReports, caseFailures);
     summaries.push(summary);
 
     if (caseFailures.length > 0) {
@@ -225,7 +227,7 @@ function summarizeMatrixArtifacts(root) {
   return { caseSummaries: summaries };
 }
 
-function verifyCase(caseId, metadata, result, lifecycle, failures) {
+function verifyCase(caseId, metadata, result, lifecycle, macosCrashReports, failures) {
   const snapshot = objectOrEmpty(result.snapshot);
   const app = objectOrEmpty(snapshot.app);
   const processInfo = objectOrEmpty(snapshot.process);
@@ -269,7 +271,11 @@ function verifyCase(caseId, metadata, result, lifecycle, failures) {
       electronOverlay.activationBoostMs === 0 &&
       electronOverlay.activeGraceMs === 0
   );
-  const crashOk = crashDiagnostics.available === true && crashDiagnostics.ok === true;
+  const crashOk =
+    crashDiagnostics.available === true &&
+    crashDiagnostics.ok === true &&
+    macosCrashReports.errors.length === 0 &&
+    macosCrashReports.reports.length === 0;
   const openAndWait = hasExpectedActionError
     ? { required: false, ok: true }
     : verifyOpenAndWaitCompletion(caseId, actionName, lifecycleEntries, failures);
@@ -323,6 +329,12 @@ function verifyCase(caseId, metadata, result, lifecycle, failures) {
     `${caseId}: no fatal lifecycle events reported`,
     failures
   );
+  for (const error of macosCrashReports.errors) {
+    failures.push(`${caseId}: ${error}`);
+  }
+  for (const report of macosCrashReports.reports) {
+    failures.push(`${caseId}: macOS crash report found: ${report.relativePath}${report.summary ? ` ${report.summary}` : ""}`);
+  }
   expect(lifecycle.found === true, `${caseId}: lifecycle log present`, failures);
   for (const error of lifecycle.errors) {
     failures.push(`${caseId}: ${error}`);
@@ -1074,6 +1086,7 @@ function expectPresenterField(caseId, presenter, key, expected, label, failures)
 function runSelfTest() {
   const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-macos-matrix-summary."));
   const unredactedFixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-macos-matrix-summary-unredacted."));
+  const crashFixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-macos-matrix-summary-crash."));
   const persistentFixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-macos-matrix-summary-persistent."));
   try {
     createSelfTestFixture(fixtureRoot);
@@ -1085,10 +1098,14 @@ function runSelfTest() {
     createSelfTestFixture(unredactedFixtureRoot);
     injectUnredactedCheckoutManifestCommand(unredactedFixtureRoot);
     assertUnredactedManifestRejected(unredactedFixtureRoot);
+    createSelfTestFixture(crashFixtureRoot);
+    injectMacosCrashReport(crashFixtureRoot, "01-web-openwait");
+    assertMacosCrashReportRejected(crashFixtureRoot);
     console.log("macOS overlay matrix summary self-test passed.");
   } finally {
     fs.rmSync(fixtureRoot, { recursive: true, force: true });
     fs.rmSync(unredactedFixtureRoot, { recursive: true, force: true });
+    fs.rmSync(crashFixtureRoot, { recursive: true, force: true });
     fs.rmSync(persistentFixtureRoot, { recursive: true, force: true });
   }
 }
@@ -1118,6 +1135,43 @@ function assertUnredactedManifestRejected(root) {
     result.stderr,
     /unredacted sensitive manifest option --checkout-json-file/,
     "summary rejection should identify the unredacted checkout JSON option"
+  );
+}
+
+function injectMacosCrashReport(root, caseId) {
+  const manifestPath = path.join(root, "macos-matrix-cases.jsonl");
+  const rows = fs
+    .readFileSync(manifestPath, "utf8")
+    .trim()
+    .split(/\r?\n/)
+    .map((line) => JSON.parse(line));
+  const row = rows.find((entry) => entry.caseId === caseId);
+  assert.ok(row, `self-test fixture should include ${caseId}`);
+  const crashReportDir = path.join(row.diagnosticDir, "macos-crash-reports");
+  fs.mkdirSync(crashReportDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(crashReportDir, "SteamBridgeSmoke.electron-2099-01-01-000000.ips"),
+    [
+      '{"app_name":"SteamBridgeSmoke.electron","timestamp":"2099-01-01 00:00:00.00 -0700","name":"SteamBridgeSmoke.electron"}',
+      '{"exception":{"type":"EXC_BAD_ACCESS","signal":"SIGSEGV"},"threads":[{"frames":[{"symbol":"BOverlayNeedsPresent"},{"symbol":"steam_bridge_native::overlay_needs_present_c_callback"}]}]}'
+    ].join("\n")
+  );
+}
+
+function assertMacosCrashReportRejected(root) {
+  const result = spawnSync(process.execPath, [__filename, "--artifact-root", root], {
+    encoding: "utf8"
+  });
+  assert.notEqual(result.status, 0, "summary should reject copied macOS crash reports");
+  assert.match(
+    result.stderr,
+    /macOS crash report found: macos-crash-reports\/SteamBridgeSmoke\.electron-2099-01-01-000000\.ips/,
+    "summary rejection should identify the copied macOS crash report"
+  );
+  assert.match(
+    result.stderr,
+    /BOverlayNeedsPresent/,
+    "summary rejection should include the crash top symbol"
   );
 }
 
@@ -1728,6 +1782,91 @@ function verifyManifestCommandRedaction(file, lineNumber, metadata, failures) {
       index += 1;
     }
   }
+}
+
+function readMacosCrashReports(diagnosticDir) {
+  const root = path.join(diagnosticDir, "macos-crash-reports");
+  const reports = [];
+  const errors = [];
+
+  walk(root);
+  return { reports, errors };
+
+  function walk(currentPath) {
+    let entries;
+    try {
+      entries = fs.readdirSync(currentPath, { withFileTypes: true });
+    } catch (error) {
+      if (error && error.code === "ENOENT") {
+        return;
+      }
+      errors.push(`could not read macOS crash report directory ${currentPath}: ${error.message}`);
+      return;
+    }
+
+    for (const entry of entries) {
+      const entryPath = path.join(currentPath, entry.name);
+      if (entry.isDirectory()) {
+        walk(entryPath);
+        continue;
+      }
+      if (!entry.isFile() || !MACOS_CRASH_REPORT_NAME.test(entry.name)) {
+        continue;
+      }
+      reports.push({
+        path: entryPath,
+        relativePath: path.relative(diagnosticDir, entryPath),
+        summary: summarizeMacosCrashReport(entryPath)
+      });
+    }
+  }
+}
+
+function summarizeMacosCrashReport(file) {
+  let text = "";
+  try {
+    text = fs.readFileSync(file, "utf8");
+  } catch (error) {
+    return `(unreadable: ${error.message})`;
+  }
+
+  const firstLine = text.split(/\r?\n/, 1)[0] || "";
+  let header = {};
+  try {
+    header = JSON.parse(firstLine);
+  } catch {
+    header = {};
+  }
+
+  const details = [];
+  const timestamp = header.timestamp || matchText(text, /"captureTime"\s*:\s*"([^"]+)"/);
+  if (timestamp) {
+    details.push(`timestamp=${formatValue(timestamp)}`);
+  }
+  const procName = header.app_name || header.name || matchText(text, /"procName"\s*:\s*"([^"]+)"/);
+  if (procName) {
+    details.push(`process=${formatValue(procName)}`);
+  }
+  const exceptionType = matchText(text, /"exception"\s*:\s*\{[^}]*"type"\s*:\s*"([^"]+)"/s);
+  const exceptionSignal = matchText(text, /"exception"\s*:\s*\{[^}]*"signal"\s*:\s*"([^"]+)"/s);
+  if (exceptionType || exceptionSignal) {
+    details.push(`exception=${formatValue([exceptionType, exceptionSignal].filter(Boolean).join("/"))}`);
+  }
+  const topSymbol = matchText(text, /"frames"\s*:\s*\[\{[^\]]*?"symbol"\s*:\s*"([^"]+)"/s);
+  if (topSymbol) {
+    details.push(`top=${formatValue(topSymbol)}`);
+  }
+  const bridgeSymbol = matchText(text, /"symbol"\s*:\s*"([^"]*steam_bridge[^"]*)"/);
+  if (bridgeSymbol) {
+    details.push(`bridge=${formatValue(bridgeSymbol)}`);
+  }
+
+  return details.join(" ");
+}
+
+function matchText(text, pattern) {
+  const match = text.match(pattern);
+  return match ? match[1] : "";
 }
 
 function readLifecycle(file) {

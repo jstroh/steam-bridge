@@ -351,7 +351,10 @@ share one accepted envelope parser. The macOS matrix also accepts
 `--app-id <your-app-id>` and summarizes the expected app ID plus
 `checkoutSource=json-file` without persisting the JSON path; the matrix
 summarizer rejects new manifests that include unredacted checkout file paths,
-transaction IDs, return URLs, or checkout URLs in command metadata.
+transaction IDs, return URLs, or checkout URLs in command metadata. On macOS,
+the helper also copies fresh `SteamBridgeSmoke*.ips` reports from
+`~/Library/Logs/DiagnosticReports` into `macos-crash-reports/`, and the matrix
+summarizer rejects those copied reports during artifact audit.
 Passive Steam notifications such as achievement progress
 or achievement unlock toasts are automatically primed by the managed Electron
 overlay before the relevant achievement/stats calls. If macOS reports the
