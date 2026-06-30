@@ -399,6 +399,17 @@ Verified:
   returned the smoke app frontmost, kept zero managed overlay timing, and
   reported no crash evidence. The bridge keeps this as a callback/state-driven
   handoff; it does not add a fixed restore-focus delay.
+- A later 2026-06-30 core macOS matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-core-json-shortcut-20260630-034839`
+  rebuilt and signed the smoke app, reused the stable Steam shortcut without
+  restarting Steam, and passed all 24 Steam-launched App ID `480` cases while
+  feeding checkout through a local `InitTxn`-style JSON file. Both
+  `07-checkout-approval` and `11-shortcut-checkout` reported
+  `checkoutSource=json-file`; the shortcut case opened from the managed
+  Shift+Tab bridge, emitted active/inactive callbacks, closed with the second
+  Shift+Tab, returned the app frontmost, parked the Metal presenter at
+  `currentFps=0`, kept zero managed overlay timing, and reported no crash
+  evidence.
 - A later 2026-06-30 full macOS matrix at
   `/tmp/steam-bridge-macos-overlay-matrix-full-electron42-pidfocus-20260630-011628`
   rebuilt and signed the Electron `42.5.1` smoke package, reused the stable

@@ -589,7 +589,12 @@ Current evidence:
   handoff through the packaged Electron `42.5.1` app and stable Steam shortcut:
   checkout opened, emitted active/inactive callbacks, returned the app
   frontmost, completed only after presenter parking, and kept raw transaction
-  data out of result/lifecycle artifacts. A 2026-06-28 Deck Desktop prepare-only run verified
+  data out of result/lifecycle artifacts. A later 2026-06-30 macOS core matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-core-json-shortcut-20260630-034839`
+  passed all 24 cases with the same JSON-file input, including
+  `11-shortcut-checkout`; the summary audited `checkoutSource=json-file`,
+  Shift+Tab open/close, app focus return, parked zero-FPS presenter state, and
+  no crash evidence. A 2026-06-28 Deck Desktop prepare-only run verified
   checkout readiness returns to passive idle, and a synthetic
   transaction approval URL run verified checkout-style open, close, app focus,
   no crash evidence, and no post-close pumping without committing private app

@@ -71,6 +71,14 @@ A follow-up full run at
 then reused the freshly reopened Steam client, skipped repackaging, verified the
 existing signed Electron `42.5.1` bundle, and passed the same 31-case summary
 audit without a Steam restart.
+A later core run at
+`/tmp/steam-bridge-macos-overlay-matrix-core-json-shortcut-20260630-034839`
+rebuilt and signed the smoke app, reused the stable Steam shortcut, and passed
+all 24 Steam-launched App ID `480` cases while feeding checkout through a local
+`InitTxn`-style JSON file. The matrix summary audited `checkoutSource=json-file`
+for both direct checkout and `11-shortcut-checkout`, including managed
+Shift+Tab open/close, app focus return, parked zero-FPS presenter state, and
+clean crash diagnostics.
 
 ## Steam Deck Shortcut Gate
 
