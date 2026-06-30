@@ -665,6 +665,10 @@ Verified:
   emitting `overlay:shortcut-open`, attaching a native host, creating a
   `gameoverlayui` target, activating Steam overlay UI, or producing a fresh
   `SteamBridgeSmoke` or attributed `MTLCompilerService` crash report.
+- A 2026-06-30 13:32 PDT crash-report sweep after another user-visible Ignore
+  dialog found no newer `SteamBridgeSmoke`, `gameoverlayui`, `Steam Helper`, or
+  attributed `MTLCompilerService` DiagnosticReport than the known
+  `MTLCompilerService-2026-06-30-084244.ips` report.
 - The live macOS matrix now runs `scripts/verify-macos-steam-signing.cjs`
   before touching Steam. It checks the native launcher and renamed Electron
   executable for arm64-only slices, valid executable signatures, the dyld

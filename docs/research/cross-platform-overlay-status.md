@@ -259,6 +259,10 @@ new case records the managed wait start, asserts the configured shortcut target,
 then fails fast with `STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE` before emitting
 `overlay:shortcut-open`, before attaching a native host, and before any Steam
 overlay activation.
+A 2026-06-30 13:32 PDT crash-report sweep after a later user-visible Ignore
+dialog found no newer `SteamBridgeSmoke`, `gameoverlayui`, `Steam Helper`, or
+attributed `MTLCompilerService` DiagnosticReport than the known
+`MTLCompilerService-2026-06-30-084244.ips` report.
 A live interactive macOS success rerun is still pending because the 2026-06-30
 attempt at
 `/tmp/steam-bridge-macos-overlay-matrix-core-checkout-prepare-metal-crash-20260630-114417`

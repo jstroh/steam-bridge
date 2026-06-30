@@ -697,10 +697,14 @@ separate and require close/back-to-app proof.
 Live success runs preflight `getMacOverlayEnvironment()` and stop before case
 launch while the Mac is locked or the display is asleep; capture those states
 with `--suite unavailable`, which expects managed web, checkout-open, and
-checkout-prepare helpers to throw `STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE` before
-Steam overlay activation. The unavailable suite also exercises passive
-achievement-progress notifications, requiring the presenter to stay registered
-for automatic notification priming without attaching or opening the native host.
+checkout-prepare helpers, plus `openShortcutTargetAndWait()` against the
+configured shortcut target, to throw `STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE`
+before Steam overlay activation. The shortcut case records the managed wait
+start and target diagnostics, but must not emit `overlay:shortcut-open` because
+Steam Bridge never calls Steam's overlay activation API while the native host is
+unavailable. The unavailable suite also exercises passive achievement-progress
+notifications, requiring the presenter to stay registered for automatic
+notification priming without attaching or opening the native host.
 Use `npm run macos:overlay-matrix:preflight` for a cheap readiness check that
 reads the macOS overlay environment without rebuilding the package, touching the
 Steam shortcut, or launching smoke cases.

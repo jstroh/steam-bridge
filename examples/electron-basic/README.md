@@ -193,10 +193,13 @@ until the managed readiness wait times out, the persistent runner preserves that
 attempt under an `.attemptN` artifact directory, quits/cleans up through Steam
 tracking evidence, and retries once.
 Use `--suite unavailable` only when macOS genuinely reports the screen locked or
-the display asleep. That suite captures expected managed web, checkout-open, and
-checkout-prepare fail-fast artifacts with
-`STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE`, the matching
-`nativeHostUnavailableReason`, and no Steam overlay activation. Live
+the display asleep. That suite captures expected managed web, checkout-open,
+checkout-prepare, and `presenter-shortcut-open-and-wait` fail-fast artifacts
+with `STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE`, the matching
+`nativeHostUnavailableReason`, and no Steam overlay activation. The shortcut
+case records the managed wait start and configured target, but it must not emit
+`overlay:shortcut-open` because the public helper never reaches Steam overlay
+activation while the native host is unavailable. Live
 unavailable runs auto-detect `macos-screen-locked` or
 `macos-display-asleep`; pass `--expected-native-host-unavailable-reason` when
 you need the capture to fail unless the specific state matches. Locked macOS
