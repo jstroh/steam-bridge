@@ -244,6 +244,13 @@ expanded that suite to four cases by adding passive achievement-progress proof:
 the presenter stayed registered for automatic passive notification priming but
 remained hidden, unattached, host-closed, zero-FPS, `macos-screen-locked`,
 overlay-inactive, and produced no `gameoverlayui` target or fresh crash report.
+After adding the cheap preflight mode, a fresh locked/asleep matrix at
+`/tmp/steam-bridge-macos-overlay-matrix-unavailable-preflight-current-20260630-130448`
+rebuilt and signed the Electron `43.0.0` package, reused the stable shortcut
+without restarting Steam, and passed the same four unavailable cases with no
+overlay activation, zero overlay targets, `overlayNeedsPresent=false`,
+`overlayNeedsPresentPollingEnabled=false`, zero managed overlay timing, and no
+fresh `SteamBridgeSmoke` or attributed `MTLCompilerService` crash reports.
 A live interactive macOS success rerun is still pending because the 2026-06-30
 attempt at
 `/tmp/steam-bridge-macos-overlay-matrix-core-checkout-prepare-metal-crash-20260630-114417`

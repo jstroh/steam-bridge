@@ -987,7 +987,15 @@ Current evidence:
   `/tmp/steam-bridge-macos-overlay-matrix-unavailable-passive-toast-final-20260630-123114`
   passed all four cases, adding passive achievement-progress proof that
   automatic passive notification priming keeps the presenter registered but
-  does not attach or open the macOS native host while the screen is locked.
+  does not attach or open the macOS native host while the screen is locked. A
+  fresh unavailable matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-unavailable-preflight-current-20260630-130448`
+  reran those four cases after adding the cheap preflight mode and rebuilding
+  the signed Electron `43.0.0` package; it reused the stable shortcut without a
+  Steam restart, reported no overlay activation, zero overlay targets,
+  `overlayNeedsPresent=false`, `overlayNeedsPresentPollingEnabled=false`, zero
+  managed overlay timing, and no fresh `SteamBridgeSmoke` or attributed
+  `MTLCompilerService` crash reports.
 - BrowserWindow-only overlay support is not proven.
 - Steam launch, app ID, auth, and callbacks are not enough to claim overlay
   support.
