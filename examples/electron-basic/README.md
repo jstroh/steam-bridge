@@ -219,6 +219,11 @@ zero managed overlay timing, and crash diagnostics.
 For shipped apps, apply the same entitlements through your normal Apple signing
 and notarization pipeline to the app process Steam launches and the executable
 that process `exec`s.
+The macOS matrix preflights those requirements with
+`scripts/verify-macos-steam-signing.cjs`: both the native launcher and renamed
+Electron executable must be arm64-only, validly signed, allow dyld environment
+variables, disable library validation, and omit App Sandbox before Steam is
+launched.
 
 The same controls are also available as launch options, which is usually easier
 for Steam non-Steam shortcuts:

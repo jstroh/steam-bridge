@@ -31,6 +31,9 @@ try {
   run("bash", [path.join(repoRoot, "scripts", "macos-overlay-matrix.sh"), "--mode", "self-test"], {
     cwd: repoRoot
   });
+  run("node", [path.join(repoRoot, "scripts", "verify-macos-steam-signing.cjs"), "--self-test"], {
+    cwd: repoRoot
+  });
   runMacosEntitlementsStaticChecks();
   runMacosPackageSigningStaticChecks();
   runWindowsSmokeHelperStaticChecks();
@@ -69,6 +72,7 @@ function runMacosEntitlementsStaticChecks() {
 
 function runMacosPackageSigningStaticChecks() {
   const packagerScript = fs.readFileSync(path.join(repoRoot, "scripts", "package-electron-example.cjs"), "utf8");
+  const matrixScript = fs.readFileSync(path.join(repoRoot, "scripts", "macos-overlay-matrix.sh"), "utf8");
   for (const expected of [
     "signMacSteamExecutable(launcherPath)",
     "signMacSteamExecutable(electronPath)",
@@ -78,6 +82,10 @@ function runMacosPackageSigningStaticChecks() {
   ]) {
     assert.ok(packagerScript.includes(expected), `macOS package script missing ${expected}`);
   }
+  assert.ok(
+    matrixScript.includes("verify-macos-steam-signing.cjs"),
+    "macOS overlay matrix must verify package signing before live cases"
+  );
   assert.ok(
     packagerScript.indexOf("signMacSteamExecutable(electronPath)") <
       packagerScript.indexOf("signMacSteamExecutable(launcherPath)"),

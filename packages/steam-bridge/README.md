@@ -221,7 +221,9 @@ signed with Steam-compatible entitlements. The live macOS matrix then exercises
 the signed package through App ID `480` overlay cases, including managed waits,
 shortcut targets, passive notifications, checkout approval routing,
 all high-level dialog-equivalent routes, close/back-to-app proof, and crash
-diagnostics.
+diagnostics. Before launching Steam, that matrix verifies both macOS smoke
+executables are arm64-only, validly signed, carry the Steam overlay
+entitlements, and omit App Sandbox.
 
 The manager owns a reusable native presenter, keeps it passive and click-through
 while idle, polls Steam overlay state cheaply, and only pumps frames when Steam

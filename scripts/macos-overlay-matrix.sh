@@ -16,6 +16,7 @@ artifact_root="${STEAM_BRIDGE_MACOS_MATRIX_ARTIFACT_ROOT:-/tmp/steam-bridge-maco
 launcher_env_file="${STEAM_BRIDGE_MACOS_LAUNCHER_ENV_FILE:-/tmp/steam-bridge-macos-smoke.env}"
 helper_path="$repo_root/dist/electron-smoke/aarch64-apple-darwin/SteamBridgeSmoke-darwin-arm64/macos-electron-smoke.sh"
 app_exe="$repo_root/dist/electron-smoke/aarch64-apple-darwin/SteamBridgeSmoke-darwin-arm64/SteamBridgeSmoke.app/Contents/MacOS/SteamBridgeSmoke"
+signing_verifier="$script_dir/verify-macos-steam-signing.cjs"
 overlay_profile="compatibility"
 native_host_backend=""
 timeout_seconds="120"
@@ -50,6 +51,7 @@ Options:
   --launcher-env-file PATH       Stable native launcher env file.
   --helper-path PATH             Packaged macos-electron-smoke.sh path.
   --app-exe PATH                 Steam shortcut executable path.
+  --signing-verifier PATH        macOS package signing verifier.
   --overlay-profile NAME         Electron overlay profile. Defaults to compatibility.
   --native-host-backend NAME     macOS native presenter backend: metal or opengl.
   --timeout-seconds SECONDS      Per-case result timeout. Defaults to 120.
@@ -123,6 +125,10 @@ while [ "$#" -gt 0 ]; do
       ;;
     --app-exe)
       app_exe="${2:?missing --app-exe value}"
+      shift 2
+      ;;
+    --signing-verifier)
+      signing_verifier="${2:?missing --signing-verifier value}"
       shift 2
       ;;
     --overlay-profile)
@@ -320,6 +326,7 @@ run_self_test() {
   require_contains "$core_output" "--require-zero-managed-overlay-timing" "core matrix must require zero managed overlay timing."
   require_contains "$core_output" "--steam-bridge-launch-env-file=/tmp/steam-bridge-macos-smoke.env" "matrix shortcut must use the stable launcher env file."
   require_contains "$core_output" "ENV /tmp/steam-bridge-macos-smoke.env" "matrix must write per-case launcher env."
+  require_contains "$core_output" "SIGNING node $script_dir/verify-macos-steam-signing.cjs --app-exe /tmp/SteamBridgeSmoke.app/Contents/MacOS/SteamBridgeSmoke" "matrix must verify macOS package signing before live cases."
   require_contains "$core_output" "--action presenter-store-open-and-wait" "core matrix must include store openAndWait."
   require_contains "$core_output" "--action presenter-friends-open-and-wait" "core matrix must include Friends openAndWait."
   require_contains "$core_output" "--action presenter-dialog-auto-open-and-wait" "core matrix must include dialog openAndWait."
@@ -435,11 +442,22 @@ ensure_ready() {
     echo "Missing app executable: $app_exe" >&2
     exit 1
   fi
+  verify_macos_package_signing
   shortcuts_path="$(resolve_shortcuts_path)"
   mkdir -p "$artifact_root"
   : > "$artifact_root/macos-matrix-cases.jsonl"
   require_macos_overlay_environment_for_suite
   ensure_stable_shortcut
+}
+
+verify_macos_package_signing() {
+  local verify_cmd
+  verify_cmd=(node "$signing_verifier" --app-exe "$app_exe")
+  echo "SIGNING $(quote_command "${verify_cmd[@]}")"
+  if [ "$dry_run" = "1" ]; then
+    return 0
+  fi
+  "${verify_cmd[@]}"
 }
 
 cleanup_macos_smoke_processes() {

@@ -342,6 +342,14 @@ Verified:
   direct profile/players/community/stats/achievements/user wait routes, user
   SteamID, every high-level dialog-equivalent route, close/back-to-app proof,
   zero managed overlay timing, one overlay target, and clean crash diagnostics.
+- The live macOS matrix now runs `scripts/verify-macos-steam-signing.cjs`
+  before touching Steam. It checks the native launcher and renamed Electron
+  executable for arm64-only slices, valid executable signatures, the dyld
+  environment and disabled-library-validation entitlements, and absence of App
+  Sandbox. A focused minimal matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-minimal-signing-preflight-20260630-000117`
+  rebuilt, signed, verified, and then passed web/store/Friends/dialog wait
+  routes plus the passive progress toast.
 - The macOS helper and matrix summary now fail any `callback:microtxn`
   authorization event that lacks a presenter snapshot. Public App ID `480`
   checkout plumbing normally reports this as `microTxnCallback=n/a`, while real
@@ -374,10 +382,10 @@ close, app focus return, builder-facing `openAndWait(...)` parking coverage,
 synthetic checkout `openCheckoutAndWait(...)` approval-route plumbing, managed
 Shift+Tab shortcut routing, known presenter-backed web/dialog targets through
 managed wait helpers, generic `InitTxn` response-envelope unwrapping, signed
-macOS package compatibility, and passive achievement-progress and unlock
-notifications. Real purchase-content coverage still needs a real Steam app ID
-with a configured product before describing purchase overlay support as
-complete.
+macOS package compatibility with executable signing preflight, and passive
+achievement-progress and unlock notifications. Real purchase-content coverage
+still needs a real Steam app ID with a configured product before describing
+purchase overlay support as complete.
 
 ## Primary References
 
