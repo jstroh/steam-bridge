@@ -8514,6 +8514,114 @@ test("electron steam overlay manager fails fast while the macOS native host is u
   overlay.close();
 });
 
+test("electron steam overlay checkout helper stops if macOS host becomes unavailable while pending", async (t) => {
+  setProcessPlatformForTest(t, "darwin");
+
+  const hostHandle = Buffer.from([4, 8, 15, 16, 23, 42, 0, 0]);
+  let hostOpen = false;
+  let macEnvironment = { screenLocked: false, displayAsleep: false };
+  const fake = createFakeNative({
+    getMacOverlayEnvironment() {
+      this.calls.push({ method: "getMacOverlayEnvironment", args: [] });
+      return macEnvironment;
+    },
+    attachNativeOverlayHostView(nativeWindowHandle) {
+      hostOpen = true;
+      this.calls.push({ method: "attachNativeOverlayHostView", args: [nativeWindowHandle] });
+    },
+    pumpNativeOverlayProbeWindow() {
+      if (!hostOpen) {
+        throw new Error("native overlay presenter is closed");
+      }
+      this.calls.push({ method: "pumpNativeOverlayProbeWindow", args: [] });
+    },
+    showNativeOverlayHostView() {
+      this.calls.push({ method: "showNativeOverlayHostView", args: [] });
+    },
+    setNativeOverlayHostInputPassthrough(passThrough) {
+      this.calls.push({ method: "setNativeOverlayHostInputPassthrough", args: [passThrough] });
+    },
+    setNativeOverlayHostOpacity(opaque) {
+      this.calls.push({ method: "setNativeOverlayHostOpacity", args: [opaque] });
+    },
+    detachNativeOverlayHostView() {
+      hostOpen = false;
+      this.calls.push({ method: "detachNativeOverlayHostView", args: [] });
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return false;
+    },
+    isNativeOverlayHostViewOpen() {
+      return hostOpen;
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  const window = {
+    isDestroyed() {
+      return false;
+    },
+    getNativeWindowHandle() {
+      return hostHandle;
+    },
+    once() {},
+    webContents: {
+      once() {},
+      invalidate() {},
+      send() {}
+    }
+  };
+
+  const overlay = steam.overlay.createElectronSteamOverlay(window, {
+    title: "Electron Checkout macOS Availability Overlay",
+    pollIntervalMs: 10000
+  });
+
+  let resolveCheckoutOperation;
+  const activationCallsBeforeUnavailable = fake.calls.filter((call) => call.method === "activateOverlayToWebPage").length;
+  const checkout = overlay.openCheckoutAndWait(
+    () =>
+      new Promise((resolve) => {
+        resolveCheckoutOperation = resolve;
+      }),
+    { showTimeoutMs: 200, closeTimeoutMs: 200 }
+  );
+
+  await Promise.resolve();
+  assert.equal(typeof resolveCheckoutOperation, "function");
+  const duringCheckout = overlay.snapshot();
+  assert.equal(duringCheckout.nativeHostUnavailableReason, undefined);
+  assert.equal(duringCheckout.mode, "active");
+  assert.equal(duringCheckout.currentFps, 30);
+
+  macEnvironment = { screenLocked: true, displayAsleep: false };
+  overlay.pump();
+
+  await assert.rejects(checkout, (error) => {
+    assert.equal(error instanceof steam.SteamOverlayNativeHostUnavailableError, true);
+    assert.equal(error.name, "SteamOverlayNativeHostUnavailableError");
+    assert.equal(error.code, "STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE");
+    assert.equal(error.reason, "macos-screen-locked");
+    assert.deepEqual(error.macOverlayEnvironment, { screenLocked: true, displayAsleep: false });
+    return true;
+  });
+
+  const unavailable = overlay.snapshot();
+  assert.equal(unavailable.nativeHostUnavailableReason, "macos-screen-locked");
+  assert.equal(unavailable.mode, "hidden");
+  assert.equal(unavailable.currentFps, 0);
+
+  resolveCheckoutOperation({
+    steamurl: "https://checkout.steampowered.com/checkout/approvetxn/333/"
+  });
+  await Promise.resolve();
+  assert.equal(fake.calls.filter((call) => call.method === "activateOverlayToWebPage").length, activationCallsBeforeUnavailable);
+
+  overlay.close();
+});
+
 test("native overlay presenter does not pump frames while idle by default", async (t) => {
   let hostOpen = false;
   const hostHandle = Buffer.from([9, 0, 0, 0, 0, 0, 0, 0]);

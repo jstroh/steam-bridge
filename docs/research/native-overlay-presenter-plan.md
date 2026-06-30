@@ -737,11 +737,15 @@ Current evidence:
   `prepareForCheckout()` flows, fail before Steam overlay activation with
   `SteamOverlayNativeHostUnavailableError` while that unavailable reason is
   present, so callers can check `code`, `reason`, and `macOverlayEnvironment`
-  and fall back without waiting for a guard timeout.
+  and fall back without waiting for a guard timeout. The checkout helper also
+  re-checks host availability before opening the returned approval route, so if
+  the screen locks or display sleeps while `InitTxn` is still pending, the
+  scoped presenter hold releases and no late checkout surface opens.
   Unit coverage verifies locked, display-asleep, post-unlock lazy attach, and
-  managed fail-fast paths. The shared smoke verifier and packaged platform
-  helpers can also require the serialized action `code` and `reason` fields,
-  plus the presenter `nativeHostUnavailableReason`, no-host, unattached,
+  managed fail-fast paths, including pending checkout cancellation when macOS
+  becomes unavailable mid-operation. The shared smoke verifier and packaged
+  platform helpers can also require the serialized action `code` and `reason`
+  fields, plus the presenter `nativeHostUnavailableReason`, no-host, unattached,
   zero-FPS snapshot state, and absence of Steam overlay activation, so
   locked/asleep fallback artifacts can be checked automatically. The macOS
   matrix manifest and artifact summarizer understand the same expected
