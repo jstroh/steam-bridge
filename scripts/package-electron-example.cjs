@@ -77,6 +77,7 @@ async function main() {
     installStageDependencies(stageDir);
     copyStagePackageArtifacts(stageDir, packageArtifactSources);
     pruneStagePackageArtifacts(stageDir, config.requiredFiles);
+    validateStagePackageArtifacts(stageDir, config.requiredFiles);
     await packageStage(stageDir);
   } finally {
     if (tempRoot && keepStage) {
@@ -141,6 +142,51 @@ function pruneStagePackageArtifacts(stageDir, requiredFiles) {
       fs.rmSync(path.join(bridgeDir, entry), { force: true });
     }
   }
+}
+
+function validateStagePackageArtifacts(stageDir, requiredFiles) {
+  const bridgeDir = path.join(stageDir, "node_modules", "steam-bridge");
+  const requiredNativeExports = ["isOverlayNeedsPresentPollingEnabled"];
+
+  for (const fileName of requiredFiles) {
+    const filePath = path.join(bridgeDir, fileName);
+    if (!isNonEmptyFile(filePath)) {
+      throw new Error(`Staged steam-bridge package is missing required artifact ${fileName}.`);
+    }
+
+    if (fileName.endsWith(".node")) {
+      validateNativeArtifactExports(filePath, requiredNativeExports);
+    }
+  }
+
+  if (isCurrentHostTarget(target)) {
+    validateStageNativeBindingLoads(stageDir, requiredNativeExports);
+  }
+}
+
+function validateNativeArtifactExports(filePath, exportNames) {
+  const binary = fs.readFileSync(filePath);
+  for (const exportName of exportNames) {
+    if (binary.indexOf(Buffer.from(exportName, "utf8")) < 0) {
+      throw new Error(
+        `Native artifact ${filePath} does not contain required N-API export ${exportName}. Rebuild the native addon.`
+      );
+    }
+  }
+}
+
+function validateStageNativeBindingLoads(stageDir, exportNames) {
+  const script = `
+const { loadNativeBinding } = require("./node_modules/steam-bridge/dist/native.js");
+const binding = loadNativeBinding();
+const exportNames = ${JSON.stringify(exportNames)};
+for (const exportName of exportNames) {
+  if (typeof binding[exportName] !== "function") {
+    throw new Error(\`Native binding missing required export \${exportName}\`);
+  }
+}
+`;
+  run(process.execPath, ["-e", script], stageDir);
 }
 
 async function packageStage(stageDir) {

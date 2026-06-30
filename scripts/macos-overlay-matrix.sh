@@ -2049,10 +2049,7 @@ run_matrix
 
 echo "macOS overlay matrix complete. Artifacts: $artifact_root"
 
-if [ "$dry_run" != "1" ] && [ "$skip_summary" != "1" ] && [ "$suite" != "persistent" ]; then
+if [ "$dry_run" != "1" ] && [ "$skip_summary" != "1" ]; then
   echo
   node "$summary_runner" --artifact-root "$artifact_root"
-elif [ "$dry_run" != "1" ] && [ "$skip_summary" != "1" ] && [ "$suite" = "persistent" ]; then
-  echo
-  echo "Skipping aggregate summary for persistent suite; per-action helper verification already ran against the shared lifecycle log."
 fi

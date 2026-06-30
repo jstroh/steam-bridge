@@ -405,6 +405,26 @@ Verified:
   Steam or require retry, quit through the control server, left no
   smoke/gameoverlay processes behind, and produced no fresh `SteamBridgeSmoke`
   crash report.
+- Persistent macOS matrix runs now execute the same aggregate summary auditor as
+  the per-process suites. The one-process 31-case proof is rejected if any case
+  lacks Steam launch/injection identity, close/park lifecycle evidence, expected
+  shortcut target evidence, crash diagnostics, or the manifest-required
+  `overlayNeedsPresentPollingEnabled=false` proof.
+- A 2026-06-30 persistent macOS suite at
+  `/tmp/steam-bridge-macos-overlay-matrix-persistent-summary-after-steam-reset-20260630-082731`
+  passed all 31 one-process App ID `480` cases after rebuilding the stale native
+  addon and resetting a wedged Steam client overlay state. The summary audited
+  web/store/Friends/dialog wait routes, passive progress/unlock toasts,
+  synthetic checkout approval routing, every supported Shift+Tab shortcut
+  target, profile/players/community/stats/achievements/user wait routes, user
+  SteamID, every high-level dialog-equivalent route, close/back-to-app proof,
+  one overlay target, zero managed timing, clean crash diagnostics, and
+  `overlayNeedsPresentPollingEnabled=false` in both Steam diagnostics and native
+  presenter snapshots. The pre-reset failure at
+  `/tmp/steam-bridge-macos-overlay-matrix-persistent-summary-fixed-20260630-082416`
+  was crash-free and already had the disabled-polling proof, but Steam reported
+  `overlayEnabled=false` while its log spawned multiple `gameoverlayui`
+  processes for one smoke PID; restarting Steam cleared that client-side state.
 - A 2026-06-30 core macOS matrix at
   `/tmp/steam-bridge-macos-overlay-matrix-core-inittxn-envelope-20260630-000000`
   passed 24 Steam-launched App ID `480` cases after the smoke app began wrapping

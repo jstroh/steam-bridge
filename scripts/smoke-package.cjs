@@ -84,6 +84,9 @@ function runMacosPackageSigningStaticChecks() {
   for (const expected of [
     "signMacSteamExecutable(launcherPath)",
     "signMacSteamExecutable(electronPath)",
+    "validateStagePackageArtifacts(stageDir, config.requiredFiles)",
+    "isOverlayNeedsPresentPollingEnabled",
+    "loadNativeBinding",
     "entitlements.steam.macos.plist",
     "\"codesign\"",
     "\"--entitlements\""
@@ -187,6 +190,7 @@ assert.equal(typeof steam.default.openDialogEquivalentOverlay, "function");
 assert.equal(typeof steam.default.openSteamOverlay, "function");
 assert.equal(typeof steam.default.createElectronSteamOverlay, "function");
 assert.equal(typeof steam.createSteamWebApiClient, "function");
+assert.equal(typeof steam.isOverlayNeedsPresentPollingEnabled, "function");
 assert.equal(typeof steam.overlay.openNativeOverlayProbeWindow, "function");
 assert.equal(typeof steam.overlay.activateDialogWithNativeSession, "function");
 assert.equal(typeof steam.overlay.activateToWebPageWithNativeSession, "function");
@@ -203,6 +207,7 @@ assert.equal(typeof steam.overlay.openSteamOverlay, "function");
 assert.equal(typeof steam.overlay.createElectronSteamOverlay, "function");
 assert.equal(typeof steam.overlay.setNativeOverlayHostInputPassthrough, "function");
 assert.equal(typeof steam.overlay.setNativeOverlayHostOpacity, "function");
+assert.equal(typeof steam.utils.isOverlayNeedsPresentPollingEnabled, "function");
 assert.equal(steam.STEAM_FRIENDS_OVERLAY_URL, "https://steamcommunity.com/chat/");
 assert.equal(typeof steam.electronNativeOverlaySessionOptions, "function");
 assert.equal(typeof steam.electronOverlayPresenterOptions, "function");
@@ -220,7 +225,13 @@ assert.equal(electron.electronConfigureSteamOverlay({ profile: "off" }).profile,
     path.join(consumerDir, "check-esm.mjs"),
     `
 import assert from "node:assert/strict";
-import steam, { createSteamWebApiClient, openDialogEquivalentOverlay, overlay, SteamworksEnums } from "steam-bridge";
+import steam, {
+  createSteamWebApiClient,
+  isOverlayNeedsPresentPollingEnabled,
+  openDialogEquivalentOverlay,
+  overlay,
+  SteamworksEnums
+} from "steam-bridge";
 import * as electron from "steam-bridge/electron";
 
 assert.equal(typeof steam.init, "function");
@@ -230,6 +241,7 @@ assert.equal(typeof steam.openAchievementsOverlay, "function");
 assert.equal(typeof steam.openDialogEquivalentOverlay, "function");
 assert.equal(typeof steam.openSteamOverlay, "function");
 assert.equal(typeof openDialogEquivalentOverlay, "function");
+assert.equal(typeof isOverlayNeedsPresentPollingEnabled, "function");
 assert.equal(typeof steam.createElectronSteamOverlay, "function");
 assert.equal(typeof createSteamWebApiClient, "function");
 assert.equal(typeof overlay.openNativeOverlayProbeWindow, "function");
@@ -247,6 +259,7 @@ assert.equal(typeof overlay.openSteamOverlay, "function");
 assert.equal(typeof overlay.createElectronSteamOverlay, "function");
 assert.equal(typeof overlay.setNativeOverlayHostInputPassthrough, "function");
 assert.equal(typeof overlay.setNativeOverlayHostOpacity, "function");
+assert.equal(typeof steam.utils.isOverlayNeedsPresentPollingEnabled, "function");
 assert.equal(typeof steam.electronNativeOverlaySessionOptions, "function");
 assert.equal(typeof steam.electronOverlayPresenterOptions, "function");
 assert.equal(typeof steam.electronScrubSteamOverlayChildProcessEnv, "function");
@@ -285,6 +298,7 @@ assert.equal(electron.electronConfigureSteamOverlay({ profile: "off" }).profile,
     `
 import steam, {
   createSteamWebApiClient,
+  isOverlayNeedsPresentPollingEnabled,
   overlay,
   STEAM_FRIENDS_OVERLAY_URL,
   SteamworksEnums,
@@ -303,6 +317,8 @@ import { electronScrubSteamOverlayChildProcessEnv } from "steam-bridge/electron"
 const client = steam.init(480);
 const web = createSteamWebApiClient({ apiKey: "test" });
 const enumValue: number = SteamworksEnums.EResult.k_EResultOK;
+const needsPresentPollingFn: () => boolean = isOverlayNeedsPresentPollingEnabled;
+const needsPresentPollingUtilsFn: () => boolean = steam.utils.isOverlayNeedsPresentPollingEnabled;
 const overlayFn: (title?: string) => void = overlay.openNativeOverlayProbeWindow;
 const sessionFn = overlay.activateDialogWithNativeSession;
 const webSessionFn = overlay.activateToWebPageWithNativeSession;
@@ -370,6 +386,8 @@ const steamId: SteamId | undefined = undefined;
 void client;
 void web;
 void enumValue;
+void needsPresentPollingFn;
+void needsPresentPollingUtilsFn;
 void overlayFn;
 void sessionFn;
 void webSessionFn;

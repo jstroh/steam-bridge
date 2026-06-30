@@ -108,6 +108,18 @@ needed, no smoke/gameoverlay process was left behind, and no fresh
 preserves failed artifacts and retries once only for the known
 Steam-launched/injected, crash-free readiness signature where Steam reports
 `overlayEnabled=false` until the managed readiness wait times out.
+A later persistent suite at
+`/tmp/steam-bridge-macos-overlay-matrix-persistent-summary-after-steam-reset-20260630-082731`
+passed all 31 cases after refreshing the native addon and resetting a wedged
+Steam overlay client state. The aggregate summary now proves
+`overlayNeedsPresentPollingEnabled=false` in both the top-level Steam diagnostics
+and native presenter diagnostics for every case, while still auditing one
+overlay target, close/back-to-app, zero managed timing, passive toasts, checkout
+approval routing, every managed Shift+Tab target, and clean crash diagnostics.
+The immediately preceding failed artifact was crash-free and already had the
+disabled-polling proof, but Steam reported `overlayEnabled=false` and spawned
+multiple `gameoverlayui` processes for the same smoke PID, so that one Steam
+client reset was a client-state recovery rather than a shortcut/package change.
 
 ## Steam Deck Shortcut Gate
 

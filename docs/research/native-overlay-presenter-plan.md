@@ -447,6 +447,18 @@ Current evidence:
   matrix: Steam launch and overlay injection succeeded, no crash evidence, but
   Steam reports `overlayEnabled=false` until the managed readiness wait times
   out.
+- A later 2026-06-30 persistent macOS run at
+  `/tmp/steam-bridge-macos-overlay-matrix-persistent-summary-after-steam-reset-20260630-082731`
+  passed the same 31-case one-process inventory after rebuilding a stale native
+  addon. Its aggregate summary now audits
+  `overlayNeedsPresentPollingEnabled=false` in both top-level Steam diagnostics
+  and native presenter snapshots, so macOS artifacts prove Steam Bridge avoided
+  the crash-prone `BOverlayNeedsPresent()` SDK call while still covering modal
+  routes, passive toasts, checkout approval routing, Shift+Tab targets,
+  close/back-to-app, zero managed timing, one overlay target, and clean crash
+  diagnostics. A pre-reset failure with the same rebuilt addon showed
+  `overlayEnabled=false` and multiple `gameoverlayui` launches for one smoke
+  PID in Steam's own log; a single Steam client reset cleared that client state.
 - On macOS, `openAndWait(...)` and checkout approval-route helpers also wait for
   Steam's overlay diagnostics to become ready before calling the activation API.
   If a rapid relaunch leaves the process injected but `overlayEnabled=false`,
