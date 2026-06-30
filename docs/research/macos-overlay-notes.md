@@ -265,6 +265,18 @@ Verified:
   zero managed overlay timing, one `gameoverlayui` target under App ID `480`,
   an interactive macOS host environment, no post-close pumping, and clean crash
   diagnostics.
+- A later 2026-06-29 core macOS overlay matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-core-close-wait-20260629-212141`
+  repeated the 24-case Steam-launched suite after hardening helper and summary
+  checks around managed close-wait state. It passed web/store/Friends/dialog,
+  profile, players, community, stats, achievements, and user-chat
+  `openAndWait(...)` routes; passive progress/unlock toasts; synthetic checkout
+  approval-route plumbing; and every supported presenter-backed Shift+Tab
+  shortcut target. Every active managed case recorded
+  `overlay:presenter-wait-shown`, `overlay:presenter-wait-closed`, and
+  `overlay:presenter-parked`, with wait-closed snapshots still attached/open
+  but passive, non-focusable, `overlayActive=false`, and `idleFps=0`; final
+  parked samples returned to `currentFps=0` with no post-close pumping.
 - A 2026-06-29 minimal macOS overlay matrix at
   `/tmp/steam-bridge-macos-overlay-matrix-minimal-helper-current-20260629-170723`
   re-ran the packaged helper after the source-level presenter-shape checks were
