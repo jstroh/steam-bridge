@@ -7728,6 +7728,7 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
     }
 
     activationHoldCount += 1;
+    focusSourceWindowForActivation(activationMode);
     ensureNativeOverlaySurfaceReady();
     if (!visible) {
       show();
@@ -7768,6 +7769,7 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
       return;
     }
 
+    focusSourceWindowForActivation(activationMode);
     ensureNativeOverlaySurfaceReady();
     if (!visible) {
       show();
@@ -8086,6 +8088,18 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
 
     restoreFocusTimer = setTimeout(restoreFocus, restoreFocusDelayMs);
     restoreFocusTimer.unref?.();
+  }
+
+  function focusSourceWindowForActivation(activationMode: NativeOverlayPresenterActivationMode): void {
+    if (activationMode === "passive" || !options.restoreFocus) {
+      return;
+    }
+
+    try {
+      options.restoreFocus();
+    } catch (error) {
+      lastError = error;
+    }
   }
 
   function subscribeStateChange(listener: () => void): CallbackHandle {

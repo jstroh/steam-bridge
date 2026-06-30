@@ -6040,6 +6040,9 @@ test("electron steam overlay manager owns one presenter and routes opens", async
   let windowBounds = { x: 10, y: 20, width: 1280, height: 720 };
   let hostOpen = false;
   let closedHandler;
+  let windowShowCount = 0;
+  let windowFocusCount = 0;
+  let windowInvalidateCount = 0;
   const fake = createFakeNative({
     attachNativeOverlayHostView(nativeWindowHandle) {
       hostOpen = true;
@@ -6087,9 +6090,17 @@ test("electron steam overlay manager owns one presenter and routes opens", async
         closedHandler = handler;
       }
     },
+    show() {
+      windowShowCount += 1;
+    },
+    focus() {
+      windowFocusCount += 1;
+    },
     webContents: {
       once() {},
-      invalidate() {},
+      invalidate() {
+        windowInvalidateCount += 1;
+      },
       send() {}
     }
   };
@@ -6127,7 +6138,13 @@ test("electron steam overlay manager owns one presenter and routes opens", async
   assert.deepEqual(overlay.snapshot().bounds, windowBounds);
 
   overlay.open({ type: "friends" });
+  assert.equal(windowShowCount, 1);
+  assert.equal(windowFocusCount, 1);
+  assert.equal(windowInvalidateCount, 1);
   overlay.open({ type: "web", url: "https://store.steampowered.com/app/480/", modal: true });
+  assert.equal(windowShowCount, 2);
+  assert.equal(windowFocusCount, 2);
+  assert.equal(windowInvalidateCount, 2);
   overlay.prepareForCheckout();
   const checkoutPreparedLastCall = [];
   const checkoutResult = await overlay.withCheckoutPrepared(() => {
@@ -6479,6 +6496,9 @@ test("electron steam overlay open holds the presenter until Steam reports shown"
   assert.equal(overlay.snapshot().electronOverlay.activeGraceMs, 0);
 
   overlay.open({ type: "friends" });
+  assert.equal(showCount, 1);
+  assert.equal(focusCount, 1);
+  assert.equal(invalidateCount, 1);
 
   const waitingForSteam = overlay.snapshot();
   assert.equal(waitingForSteam.mode, "active");
@@ -6502,9 +6522,9 @@ test("electron steam overlay open holds the presenter until Steam reports shown"
   assert.equal(parked.clickThrough, true);
   assert.equal(parked.transparent, true);
   assert.equal(parked.currentFps, 0);
-  assert.equal(showCount, 1);
-  assert.equal(focusCount, 1);
-  assert.equal(invalidateCount, 1);
+  assert.equal(showCount, 2);
+  assert.equal(focusCount, 2);
+  assert.equal(invalidateCount, 2);
 
   overlay.close();
 });
@@ -9391,6 +9411,7 @@ test("native overlay presenter reuses a passive host for overlay activation", as
     modal: true,
     presenter
   });
+  assert.equal(restoreFocusCount, 1);
   assert.equal(presenter.snapshot().mode, "active");
   assert.equal(presenter.snapshot().clickThrough, false);
   assert.equal(presenter.snapshot().transparent, false);
@@ -9408,7 +9429,7 @@ test("native overlay presenter reuses a passive host for overlay activation", as
   assert.equal(presenter.snapshot().overlayActive, false);
   assert.equal(presenter.snapshot().clickThrough, true);
   assert.equal(presenter.snapshot().transparent, true);
-  assert.equal(restoreFocusCount, 1);
+  assert.equal(restoreFocusCount, 2);
 
   presenter.close();
   assert.equal(presenter.isOpen(), false);
@@ -9861,6 +9882,7 @@ test("native overlay presenter primes passive notifications without a blind fram
   setProcessPlatformForTest(t, "linux");
   let hostOpen = false;
   let overlayNeedsPresent = false;
+  let restoreFocusCount = 0;
   const hostHandle = Buffer.from([9, 0, 1, 0, 0, 0, 0, 0]);
   const fake = createFakeNative({
     attachNativeOverlayHostView(nativeWindowHandle) {
@@ -9913,10 +9935,14 @@ test("native overlay presenter primes passive notifications without a blind fram
     title: "Passive Notification Presenter",
     nativeWindowHandle: hostHandle,
     idleFps: 0,
-    pollIntervalMs: 10
+    pollIntervalMs: 10,
+    restoreFocus() {
+      restoreFocusCount += 1;
+    }
   });
 
   presenter.prepareForPassiveOverlay();
+  assert.equal(restoreFocusCount, 0);
   const prepared = presenter.snapshot();
   assert.equal(prepared.mode, "passive");
   assert.equal(prepared.clickThrough, true);

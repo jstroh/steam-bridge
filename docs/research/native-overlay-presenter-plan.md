@@ -723,7 +723,15 @@ Current evidence:
   with active/inactive callbacks, close-driven completion, presenter parking, one
   Metal presenter-backed overlay target, zero managed overlay timing, clean
   back-to-app proof, no leftover smoke/gameoverlay process, and no fresh macOS
-  crash reports. A 2026-06-28 Deck Desktop
+  crash reports. A later 2026-06-30 full macOS matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-20260630-152820` and persistent
+  one-process matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-20260630-153959` both passed 43 App ID
+  `480` cases on the Electron `43.0.0` package. Those runs add explicit
+  checkout prepare-only proof, all programmatic shortcut wait targets, app focus
+  before activation/close probes, and per-control-action smoke option reset so a
+  previous checkout transaction cannot leak into a later prepare-only action. A
+  2026-06-28 Deck Desktop
   prepare-only run verified
   checkout readiness returns to passive idle, and a synthetic
   transaction approval URL run verified checkout-style open, close, app focus,
@@ -1152,15 +1160,16 @@ Deck/Linux/macOS artifacts can verify presenter alignment without scraping logs.
    persistent presenter.
 7. Keep macOS Apple Silicon Metal modal overlay mode green for web, store,
    Friends, profile, community, stats, achievements, user, and
-   dialog-equivalent wait routes. The current full macOS matrix passes these
-   routes with paired active/inactive callbacks, focus return, parked presenter
-   state, and no crash diagnostics.
+   dialog-equivalent wait routes. The current full and persistent macOS matrices
+   pass these routes with paired active/inactive callbacks, focus return, parked
+   presenter state, and no crash diagnostics.
 8. Keep macOS passive notification/toast behavior green. The current matrix
    verifies managed achievement progress and unlock toasts for App ID `480`
    without modal overlay activation.
 9. Keep macOS checkout plumbing green. The current matrix verifies synthetic
    checkout approval-route open, close, focus return, parked presenter state,
-   and `openCheckoutAndWait(...)` completion after close/parking. Real
+   checkout prepare-only readiness without modal activation, and
+   `openCheckoutAndWait(...)` completion after close/parking. Real
    purchase-content and `InitTxn` proof remain app-specific and require a real
    configured Steam product.
 10. Keep the presenter API as the recommended app-facing path for Electron.

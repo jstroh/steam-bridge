@@ -56,6 +56,20 @@ let ACHIEVEMENT_CURRENT = Number(
   CLI_OPTIONS.achievementCurrent || process.env.STEAM_BRIDGE_SMOKE_ACHIEVEMENT_CURRENT || "1"
 );
 let ACHIEVEMENT_MAX = Number(CLI_OPTIONS.achievementMax || process.env.STEAM_BRIDGE_SMOKE_ACHIEVEMENT_MAX || "2");
+const INITIAL_SMOKE_ACTION_OPTIONS = {
+  webUrl: WEB_URL,
+  webModal: WEB_MODAL,
+  checkoutUrl: CHECKOUT_URL,
+  checkoutTransactionId: CHECKOUT_TRANSACTION_ID,
+  checkoutReturnUrl: CHECKOUT_RETURN_URL,
+  checkoutJsonFile: CHECKOUT_JSON_FILE,
+  overlayDialog: OVERLAY_DIALOG,
+  userDialog: USER_DIALOG,
+  shortcutTarget: SHORTCUT_TARGET,
+  achievementName: ACHIEVEMENT_NAME,
+  achievementCurrent: ACHIEVEMENT_CURRENT,
+  achievementMax: ACHIEVEMENT_MAX
+};
 const AUTORUN = CLI_OPTIONS.autorun || process.env.STEAM_BRIDGE_SMOKE_AUTORUN === "1";
 const AUTORUN_ACTION = CLI_OPTIONS.autorunAction || process.env.STEAM_BRIDGE_SMOKE_AUTORUN_ACTION || "dialog";
 const AUTORUN_ACTION_DELAY_MS = Number(
@@ -379,7 +393,7 @@ async function runSmokeActionAndWait(action, options = {}) {
   const requireOverlayActive =
     typeof options.requireOverlayActive === "boolean" ? options.requireOverlayActive : AUTORUN_REQUIRE_OVERLAY_ACTIVE;
   const overlayActiveCount = countOverlayActiveEvents();
-  applySmokeActionOptions(options.actionOptions);
+  applySmokeActionOptions(options.actionOptions, { reset: source === "control" });
   recordEvent(`${source}:action-begin`, { action });
   pendingManagedOverlayShownWait = undefined;
   const actionResult = await runAutorunAction(action);
@@ -569,7 +583,11 @@ function sendJsonResponse(response, statusCode, body) {
   response.end(text);
 }
 
-function applySmokeActionOptions(options) {
+function applySmokeActionOptions(options, { reset = false } = {}) {
+  if (reset) {
+    resetSmokeActionOptions();
+  }
+
   if (!options || typeof options !== "object" || Array.isArray(options)) {
     return;
   }
@@ -610,6 +628,21 @@ function applySmokeActionOptions(options) {
   if (Object.prototype.hasOwnProperty.call(options, "achievementMax")) {
     ACHIEVEMENT_MAX = Number(options.achievementMax);
   }
+}
+
+function resetSmokeActionOptions() {
+  WEB_URL = INITIAL_SMOKE_ACTION_OPTIONS.webUrl;
+  WEB_MODAL = INITIAL_SMOKE_ACTION_OPTIONS.webModal;
+  CHECKOUT_URL = INITIAL_SMOKE_ACTION_OPTIONS.checkoutUrl;
+  CHECKOUT_TRANSACTION_ID = INITIAL_SMOKE_ACTION_OPTIONS.checkoutTransactionId;
+  CHECKOUT_RETURN_URL = INITIAL_SMOKE_ACTION_OPTIONS.checkoutReturnUrl;
+  CHECKOUT_JSON_FILE = INITIAL_SMOKE_ACTION_OPTIONS.checkoutJsonFile;
+  OVERLAY_DIALOG = INITIAL_SMOKE_ACTION_OPTIONS.overlayDialog;
+  USER_DIALOG = INITIAL_SMOKE_ACTION_OPTIONS.userDialog;
+  SHORTCUT_TARGET = INITIAL_SMOKE_ACTION_OPTIONS.shortcutTarget;
+  ACHIEVEMENT_NAME = INITIAL_SMOKE_ACTION_OPTIONS.achievementName;
+  ACHIEVEMENT_CURRENT = INITIAL_SMOKE_ACTION_OPTIONS.achievementCurrent;
+  ACHIEVEMENT_MAX = INITIAL_SMOKE_ACTION_OPTIONS.achievementMax;
 }
 
 function summarizeSmokeActionOptions(options) {

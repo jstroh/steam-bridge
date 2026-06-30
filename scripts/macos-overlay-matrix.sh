@@ -584,6 +584,7 @@ run_self_test() {
   require_contains "$unavailable_output" "--require-no-overlay-activation" "unavailable matrix must reject Steam overlay activation."
 
   web_case="$(case_command "$core_output" "01-web-openwait")"
+  shortcut_friends_case="$(case_command "$core_output" "08-shortcut-friends")"
   passive_case="$(case_command "$core_output" "05-passive-toast")"
   checkout_case="$(case_command "$core_output" "07-checkout-approval")"
   checkout_prepare_case="$(case_command "$core_output" "07b-checkout-prepare")"
@@ -598,6 +599,7 @@ run_self_test() {
   full_shortcut_user_open_wait_case="$(case_command "$full_output" "41-shortcut-user-chat-openwait")"
   full_shortcut_dialog_open_wait_case="$(case_command "$full_output" "42-shortcut-dialog-openwait")"
   persistent_web_case="$(case_command "$persistent_output" "01-persistent-web-openwait")"
+  persistent_shortcut_friends_case="$(case_command "$persistent_output" "08-persistent-shortcut-friends")"
   persistent_checkout_prepare_case="$(case_command "$persistent_output" "07b-persistent-checkout-prepare")"
   persistent_shortcut_open_wait_case="$(case_command "$persistent_output" "19-persistent-shortcut-web-openwait")"
   persistent_shortcut_checkout_open_wait_case="$(case_command "$persistent_output" "35-persistent-shortcut-checkout-openwait")"
@@ -610,6 +612,8 @@ run_self_test() {
   unavailable_passive_case="$(case_command "$unavailable_output" "05-unavailable-passive-toast")"
   require_contains "$web_case" "--web-modal true" "web proof should use modal Steam web overlay."
   require_contains "$web_case" "--close-input web" "active web proof should close through the Steam web close control."
+  require_not_contains "$shortcut_friends_case" "--require-overlay-enabled" "pre-open shortcut proof must not require overlayEnabled before the shortcut opens the overlay."
+  require_not_contains "$persistent_shortcut_friends_case" "--require-overlay-enabled" "persistent pre-open shortcut proof must not require overlayEnabled before the shortcut opens the overlay."
   require_contains "$passive_case" "--result-delay-ms 1200" "passive toast should use the short notification capture delay."
   require_not_contains "$passive_case" "--close-probe" "passive toast should not require modal close proof."
   require_contains "$checkout_case" "--close-probe" "checkout proof should close and verify parked state."
@@ -1819,7 +1823,6 @@ run_persistent_matrix() {
       --shortcut-target "$target" \
       --require-steam-launch \
       --require-overlay-injection \
-      --require-overlay-enabled \
       --require-electron-overlay \
       --require-overlay-shortcut-target "$target" \
       --require-event overlay:presenter-shortcut-ready \
@@ -2177,7 +2180,6 @@ run_matrix() {
       --shortcut-target "$target" \
       --require-steam-launch \
       --require-overlay-injection \
-      --require-overlay-enabled \
       --require-electron-overlay \
       --require-overlay-shortcut-target "$target" \
       --require-event overlay:presenter-shortcut-ready \

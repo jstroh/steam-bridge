@@ -287,13 +287,33 @@ A 2026-06-30 13:32 PDT crash-report sweep after a later user-visible Ignore
 dialog found no newer `SteamBridgeSmoke`, `gameoverlayui`, `Steam Helper`, or
 attributed `MTLCompilerService` DiagnosticReport than the known
 `MTLCompilerService-2026-06-30-084244.ips` report.
-A live interactive macOS success rerun is still pending because the 2026-06-30
-attempt at
-`/tmp/steam-bridge-macos-overlay-matrix-core-checkout-prepare-metal-crash-20260630-114417`
-stopped at the preflight with `screenLocked=true` and `displayAsleep=true`
-before launching any cases. Success suites can now be launched with
+A fresh interactive full macOS matrix at
+`/tmp/steam-bridge-macos-overlay-matrix-20260630-152820` reused the signed
+Electron `43.0.0` package, verified the signing shape, reused the stable Steam
+shortcut without changing it, and passed all 43 process-per-case App ID `480`
+cases after re-summarizing the completed artifact. The run covers web, store,
+Friends, dialog-equivalent, profile, players, community, stats, achievements,
+user, checkout approval-route, checkout prepare-only, passive notifications,
+all managed Shift+Tab shortcut targets, and all
+`steamOverlay.openShortcutTargetAndWait()` targets, with active/inactive
+callbacks where expected, app-frontmost return, one Metal presenter-backed
+overlay target, zero managed overlay timing, no fresh crash reports, and
+checkout preparation audited as `checkoutPrepared=true` without modal overlay
+activation. The macOS helper now focuses the smoke app before activation/close
+probes, treats screenshot/pixel visibility as diagnostic while keeping
+callback-driven close/park proof as the hard gate, and allows pre-open shortcut
+cases to prove overlay readiness only after the shortcut opens the overlay.
+A follow-up persistent suite at
+`/tmp/steam-bridge-macos-overlay-matrix-20260630-153959` rebuilt the packaged
+smoke app with the latest source, launched one App ID `480` process through
+Steam, drove all 43 cases through the localhost control server, and passed the
+summary audit. That run specifically proved per-control-action smoke options no
+longer leak: checkout approval can run, checkout prepare-only can then prepare
+without reusing the old transaction input or opening a modal overlay, and a
+later checkout shortcut/open-and-wait action can still supply a fresh explicit
+transaction input. Success suites can be launched with
 `--wait-for-interactive-seconds <seconds>` or
-`STEAM_BRIDGE_MACOS_MATRIX_WAIT_FOR_INTERACTIVE_SECONDS` to wait at that
+`STEAM_BRIDGE_MACOS_MATRIX_WAIT_FOR_INTERACTIVE_SECONDS` to wait at the
 preflight boundary for unlock/wake; the default remains immediate failure so
 locked/asleep state is still captured explicitly with `--suite unavailable`.
 `npm run macos:overlay-matrix:preflight` performs only this readiness check,

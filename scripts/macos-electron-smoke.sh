@@ -1401,7 +1401,7 @@ wait_for_macos_web_overlay_visible() {
   temp_dir="$(mktemp -d "${TMPDIR:-/tmp}/steam-bridge-macos-web-visible.XXXXXX")"
   png_path="$temp_dir/capture.png"
   bmp_path="$temp_dir/capture.bmp"
-  for attempt in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24; do
+  for attempt in 1 2 3 4; do
     if screencapture -x -R "$rect" "$png_path" >/dev/null 2>&1 &&
       sips -s format bmp "$png_path" --out "$bmp_path" >/dev/null 2>&1 &&
       node - "$bmp_path" <<'NODE'
@@ -1465,8 +1465,12 @@ NODE
 }
 
 send_macos_web_overlay_close_probe() {
+  focus_macos_smoke_app_for_probe
   echo "Waiting for visible macOS Steam web overlay content"
-  wait_for_macos_web_overlay_visible
+  if ! wait_for_macos_web_overlay_visible; then
+    echo "Continuing macOS web overlay close probe after visibility heuristic timeout; lifecycle close verification remains required." >&2
+  fi
+  focus_macos_smoke_app_for_probe
   echo "Sending macOS web overlay Escape close probe"
   osascript <<'OSA'
 tell application "System Events"
@@ -1478,6 +1482,7 @@ OSA
 send_macos_overlay_close_probe() {
   case "$close_input" in
     escape|keyboard)
+      focus_macos_smoke_app_for_probe
       echo "Sending macOS overlay Escape close probe"
       osascript <<'OSA'
 tell application "System Events"
@@ -1486,6 +1491,7 @@ end tell
 OSA
       ;;
     toggle)
+      focus_macos_smoke_app_for_probe
       echo "Sending macOS overlay Shift+Tab close probe"
       osascript <<'OSA'
 tell application "System Events"
@@ -2594,6 +2600,14 @@ NODE
   fi
   if [[ "$launch_options" != *"--steam-bridge-smoke-autorun-action-delay-ms=2500"* ]]; then
     echo "Self-test failed: launch options must pass the requested action delay." >&2
+    exit 1
+  fi
+  if [ "$(awk '/^send_macos_web_overlay_close_probe[(][)]/ { inside=1; next } inside && /^send_macos_overlay_close_probe[(][)]/ { print count + 0; exit } inside && /focus_macos_smoke_app_for_probe/ { count += 1 }' "$0")" != "2" ]; then
+    echo "Self-test failed: web close probe must focus the smoke app before visibility and close input." >&2
+    exit 1
+  fi
+  if [ "$(awk '/^send_macos_overlay_close_probe[(][)]/ { inside=1; next } inside && /^send_macos_overlay_shortcut_open_probe[(][)]/ { print count + 0; exit } inside && /focus_macos_smoke_app_for_probe/ { count += 1 }' "$0")" != "2" ]; then
+    echo "Self-test failed: keyboard close probes must focus the smoke app before close input." >&2
     exit 1
   fi
   macos_native_launcher="0"

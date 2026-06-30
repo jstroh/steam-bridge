@@ -342,7 +342,8 @@ function verifyCase(caseId, metadata, result, lifecycle, macosCrashReports, fail
   expect(Number(readOkValue(steam.appId)) === expectedAppId, `${caseId}: Steam app ID is ${expectedAppId}`, failures);
   expect(readOkValue(steam.steamDeck) === false, `${caseId}: Steam Deck flag is false on macOS`, failures);
   expect(readOkValue(steam.bigPicture) === false, `${caseId}: Big Picture flag is false on macOS`, failures);
-  if (!expectedNativeHostUnavailableReason) {
+  const preOpenShortcutAction = actionName === "presenter-shortcut";
+  if (!expectedNativeHostUnavailableReason && !preOpenShortcutAction) {
     expect(readOkValue(steam.overlayEnabled) === true, `${caseId}: Steam overlay enabled`, failures);
   }
   if (requireMacosNeedsPresentPollingDisabled) {
@@ -667,7 +668,7 @@ function verifyCheckoutPrepared(caseId, actionName, entries, finalPresenter, opt
     if (!presenter) {
       failures.push(`${caseId}: overlay:presenter-checkout-ready did not include a presenter snapshot`);
     } else {
-      expectActivePresenter(caseId, presenter, "checkout preparation", failures);
+      expectPreparedPresenter(caseId, presenter, "checkout preparation", failures);
     }
   }
 
@@ -1000,6 +1001,23 @@ function expectActivePresenter(caseId, presenter, label, failures) {
   expectPresenterField(caseId, presenter, "idleFps", 0, `native presenter idle FPS ${label}`, failures);
   expectPresenterField(caseId, presenter, "activeOverlayFps", 30, `native presenter active overlay FPS ${label}`, failures);
   expectPresenterField(caseId, presenter, "currentFps", 30, `native presenter current FPS ${label}`, failures);
+}
+
+function expectPreparedPresenter(caseId, presenter, label, failures) {
+  expectMacOverlayEnvironmentAvailable(caseId, presenter, label, failures);
+  expectMacosNeedsPresentPollingDisabled(caseId, presenter, label, failures);
+  expectPresenterField(caseId, presenter, "closed", false, `native presenter closed ${label}`, failures);
+  expectPresenterField(caseId, presenter, "attached", true, `native presenter attached ${label}`, failures);
+  expectPresenterField(caseId, presenter, "nativeHostOpen", true, `native presenter host open ${label}`, failures);
+  expectPresenterField(caseId, presenter, "mode", "active", `native presenter mode ${label}`, failures);
+  expectPresenterField(caseId, presenter, "clickThrough", false, `native presenter click-through ${label}`, failures);
+  expectPresenterField(caseId, presenter, "focusable", false, `native presenter focusable ${label}`, failures);
+  expectPresenterField(caseId, presenter, "transparent", false, `native presenter transparent ${label}`, failures);
+  expectPresenterField(caseId, presenter, "overlayActive", false, `native presenter overlay active ${label}`, failures);
+  expectPresenterField(caseId, presenter, "idleFps", 0, `native presenter idle FPS ${label}`, failures);
+  expectPresenterField(caseId, presenter, "activeOverlayFps", 30, `native presenter active overlay FPS ${label}`, failures);
+  expectPresenterField(caseId, presenter, "currentFps", 30, `native presenter current FPS ${label}`, failures);
+  expectPresenterField(caseId, presenter, "overlayNeedsPresent", false, `native presenter overlay needs present ${label}`, failures);
 }
 
 function expectClosedWaitPresenter(caseId, presenter, label, failures) {
@@ -1747,7 +1765,7 @@ function createSelfTestFixture(root) {
           type: "event:overlay:presenter-checkout-ready",
           payload: {
             target: "checkout",
-            presenter: activePresenterFixture(33)
+            presenter: preparedPresenterFixture(33)
           }
         }
       ]
@@ -1885,6 +1903,9 @@ function createSelfTestFixture(root) {
     result.snapshot.launch.env.SteamGameId = expectedAppIdText;
     result.snapshot.launch.env.SteamOverlayGameId = expectedAppIdText;
     result.snapshot.steam.appId.value = expectedAppId;
+    if (fixture.action === "presenter-shortcut") {
+      result.snapshot.steam.overlayEnabled.value = false;
+    }
     if (fixture.actionError) {
       result.action.error = fixture.actionError;
     } else {
@@ -2022,7 +2043,7 @@ function persistentShortcutResultFixture(fixture) {
         appId: { ok: true, value: 480 },
         steamDeck: { ok: true, value: false },
         bigPicture: { ok: true, value: false },
-        overlayEnabled: { ok: true, value: true },
+        overlayEnabled: { ok: true, value: false },
         overlayNeedsPresent: { ok: true, value: false },
         overlayNeedsPresentPollingEnabled: { ok: true, value: false }
       },
@@ -2094,6 +2115,14 @@ function activePresenterFixture(pumpCount, backend) {
     currentFps: 30,
     overlayActive: true,
     overlayWasActive: true
+  };
+}
+
+function preparedPresenterFixture(pumpCount, backend) {
+  return {
+    ...activePresenterFixture(pumpCount, backend),
+    overlayActive: false,
+    overlayWasActive: false
   };
 }
 
