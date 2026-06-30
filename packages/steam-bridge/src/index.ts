@@ -1975,6 +1975,60 @@ export function isSteamOverlayWaitTimeoutError(error: unknown): error is SteamOv
   );
 }
 
+export class SteamOverlayWaitAbortedError extends Error {
+  readonly code = "STEAM_OVERLAY_WAIT_ABORTED";
+  readonly state: string;
+  readonly snapshot?: ElectronSteamOverlaySnapshot;
+
+  constructor(state: string, snapshot?: ElectronSteamOverlaySnapshot) {
+    super(formatSteamOverlayWaitAbortedMessage(state, snapshot));
+    this.name = "SteamOverlayWaitAbortedError";
+    Object.setPrototypeOf(this, new.target.prototype);
+    this.state = state;
+    this.snapshot = snapshot;
+  }
+}
+
+export function isSteamOverlayWaitAbortedError(error: unknown): error is SteamOverlayWaitAbortedError {
+  if (error instanceof SteamOverlayWaitAbortedError) {
+    return true;
+  }
+
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const candidate = error as { code?: unknown; state?: unknown };
+  return candidate.code === "STEAM_OVERLAY_WAIT_ABORTED" && typeof candidate.state === "string";
+}
+
+export class SteamOverlayWaitClosedError extends Error {
+  readonly code = "STEAM_OVERLAY_WAIT_CLOSED";
+  readonly state: string;
+  readonly snapshot?: ElectronSteamOverlaySnapshot;
+
+  constructor(state: string, snapshot?: ElectronSteamOverlaySnapshot) {
+    super(formatSteamOverlayWaitClosedMessage(state, snapshot));
+    this.name = "SteamOverlayWaitClosedError";
+    Object.setPrototypeOf(this, new.target.prototype);
+    this.state = state;
+    this.snapshot = snapshot;
+  }
+}
+
+export function isSteamOverlayWaitClosedError(error: unknown): error is SteamOverlayWaitClosedError {
+  if (error instanceof SteamOverlayWaitClosedError) {
+    return true;
+  }
+
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const candidate = error as { code?: unknown; state?: unknown };
+  return candidate.code === "STEAM_OVERLAY_WAIT_CLOSED" && typeof candidate.state === "string";
+}
+
 function isNativeOverlayHostUnavailableReason(value: unknown): value is NativeOverlayHostUnavailableReason {
   return value === "macos-screen-locked" || value === "macos-display-asleep";
 }
@@ -9272,21 +9326,21 @@ function waitForElectronSteamOverlayState(
     };
 
     abortHandler = (): void => {
-      settleReject(new Error(`Aborted waiting for Steam overlay to ${stateLabel}.`));
+      settleReject(new SteamOverlayWaitAbortedError(stateLabel, lastSnapshot));
     };
 
     const check = (): boolean => {
-      if (signal?.aborted) {
-        abortHandler?.();
-        return true;
-      }
-
       let snapshot: ElectronSteamOverlaySnapshot;
       try {
         snapshot = controller.snapshot();
         lastSnapshot = snapshot;
       } catch (error) {
         settleReject(error);
+        return true;
+      }
+
+      if (signal?.aborted) {
+        abortHandler?.();
         return true;
       }
 
@@ -9302,7 +9356,7 @@ function waitForElectronSteamOverlayState(
       }
 
       if (!controller.isOpen()) {
-        settleReject(new Error(`Electron Steam overlay closed while waiting for Steam overlay to ${stateLabel}.`));
+        settleReject(new SteamOverlayWaitClosedError(stateLabel, snapshot));
         return true;
       }
 
@@ -9384,7 +9438,30 @@ function formatSteamOverlayWaitTimeoutMessage(
   timeoutMs: number,
   snapshot?: ElectronSteamOverlaySnapshot
 ): string {
-  const message = `Timed out waiting for Steam overlay to ${state} after ${timeoutMs}ms.`;
+  return appendSteamOverlayWaitSnapshotState(
+    `Timed out waiting for Steam overlay to ${state} after ${timeoutMs}ms.`,
+    snapshot
+  );
+}
+
+function formatSteamOverlayWaitAbortedMessage(
+  state: string,
+  snapshot?: ElectronSteamOverlaySnapshot
+): string {
+  return appendSteamOverlayWaitSnapshotState(`Aborted waiting for Steam overlay to ${state}.`, snapshot);
+}
+
+function formatSteamOverlayWaitClosedMessage(
+  state: string,
+  snapshot?: ElectronSteamOverlaySnapshot
+): string {
+  return appendSteamOverlayWaitSnapshotState(
+    `Electron Steam overlay closed while waiting for Steam overlay to ${state}.`,
+    snapshot
+  );
+}
+
+function appendSteamOverlayWaitSnapshotState(message: string, snapshot?: ElectronSteamOverlaySnapshot): string {
   if (!snapshot) {
     return message;
   }
@@ -21754,6 +21831,10 @@ const defaultExport = {
   isSteamOverlayNativeHostUnavailableError,
   SteamOverlayWaitTimeoutError,
   isSteamOverlayWaitTimeoutError,
+  SteamOverlayWaitAbortedError,
+  isSteamOverlayWaitAbortedError,
+  SteamOverlayWaitClosedError,
+  isSteamOverlayWaitClosedError,
   openNativeOverlayProbeWindow,
   attachNativeOverlayHostView,
   pumpNativeOverlayProbeWindow,

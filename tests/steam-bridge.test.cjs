@@ -238,6 +238,42 @@ test("overlay wait timeout guard accepts class and error-like shapes", (t) => {
   );
   assert.equal(steam.isSteamOverlayWaitTimeoutError(new Error("nope")), false);
   assert.equal(steam.isSteamOverlayWaitTimeoutError(null), false);
+
+  const aborted = new steam.SteamOverlayWaitAbortedError("close", snapshot);
+  assert.equal(steam.isSteamOverlayWaitAbortedError(aborted), true);
+  assert.equal(steam.default.isSteamOverlayWaitAbortedError(aborted), true);
+  assert.equal(aborted instanceof steam.default.SteamOverlayWaitAbortedError, true);
+  assert.equal(aborted.code, "STEAM_OVERLAY_WAIT_ABORTED");
+  assert.equal(aborted.state, "close");
+  assert.equal(aborted.snapshot, snapshot);
+  assert.match(aborted.message, /Aborted waiting for Steam overlay to close/);
+  assert.match(aborted.message, /Last presenter state: mode=passive/);
+  assert.equal(
+    steam.isSteamOverlayWaitAbortedError({
+      code: "STEAM_OVERLAY_WAIT_ABORTED",
+      state: "close"
+    }),
+    true
+  );
+  assert.equal(steam.isSteamOverlayWaitAbortedError({ code: "STEAM_OVERLAY_WAIT_ABORTED" }), false);
+
+  const closed = new steam.SteamOverlayWaitClosedError("close and park", snapshot);
+  assert.equal(steam.isSteamOverlayWaitClosedError(closed), true);
+  assert.equal(steam.default.isSteamOverlayWaitClosedError(closed), true);
+  assert.equal(closed instanceof steam.default.SteamOverlayWaitClosedError, true);
+  assert.equal(closed.code, "STEAM_OVERLAY_WAIT_CLOSED");
+  assert.equal(closed.state, "close and park");
+  assert.equal(closed.snapshot, snapshot);
+  assert.match(closed.message, /closed while waiting for Steam overlay to close and park/);
+  assert.match(closed.message, /Last presenter state: mode=passive/);
+  assert.equal(
+    steam.isSteamOverlayWaitClosedError({
+      code: "STEAM_OVERLAY_WAIT_CLOSED",
+      state: "close and park"
+    }),
+    true
+  );
+  assert.equal(steam.isSteamOverlayWaitClosedError({ code: "STEAM_OVERLAY_WAIT_CLOSED" }), false);
 });
 
 function fakeTicket(label, calls) {
@@ -7313,7 +7349,17 @@ test("electron steam overlay manager exposes lifecycle wait helpers", async (t) 
     signal: abortController.signal
   });
   abortController.abort();
-  await assert.rejects(aborted, /Aborted waiting for Steam overlay to become active/);
+  await assert.rejects(aborted, (error) => {
+    assert.equal(error instanceof steam.SteamOverlayWaitAbortedError, true);
+    assert.equal(error.name, "SteamOverlayWaitAbortedError");
+    assert.equal(error.code, "STEAM_OVERLAY_WAIT_ABORTED");
+    assert.equal(error.state, "become active");
+    assert.equal(error.snapshot.overlayActive, false);
+    assert.equal(error.snapshot.mode, "passive");
+    assert.match(error.message, /Aborted waiting for Steam overlay to become active/);
+    assert.match(error.message, /Last presenter state: mode=passive/);
+    return true;
+  });
 
   const pumpsBeforeManagedOpen = fake.calls.filter((call) => call.method === "pumpNativeOverlayProbeWindow").length;
   const managedOpen = overlay.openAndWait(
@@ -7387,7 +7433,19 @@ test("electron steam overlay manager exposes lifecycle wait helpers", async (t) 
     { method: "activateOverlayToWebPage", args: [steam.steamCommunityAppUrl(480), true] }
   );
 
+  const closedDuringWait = overlay.waitForOverlayShown({ timeoutMs: 200 });
   overlay.close();
+  await assert.rejects(closedDuringWait, (error) => {
+    assert.equal(error instanceof steam.SteamOverlayWaitClosedError, true);
+    assert.equal(error.name, "SteamOverlayWaitClosedError");
+    assert.equal(error.code, "STEAM_OVERLAY_WAIT_CLOSED");
+    assert.equal(error.state, "become active");
+    assert.equal(error.snapshot.closed, true);
+    assert.equal(error.snapshot.mode, "closed");
+    assert.match(error.message, /closed while waiting for Steam overlay to become active/);
+    assert.match(error.message, /Last presenter state: mode=closed/);
+    return true;
+  });
   assert.throws(() => overlay.waitForOverlayShown(), /Electron Steam overlay is closed/);
   await assert.rejects(overlay.openAndWait({ type: "friends" }), /Electron Steam overlay is closed/);
 });
