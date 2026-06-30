@@ -24,6 +24,7 @@ dry_run="0"
 restart_steam="1"
 close_steam_after="0"
 skip_summary="0"
+expected_native_host_unavailable_reason=""
 
 usage() {
   cat <<'EOF'
@@ -36,7 +37,10 @@ packaged Electron smoke app and SpaceWar App ID 480 by default.
 Options:
   --mode steam-launch|self-test|summarize
                                   Run live, validate dry-run matrix shape, or summarize artifacts.
-  --suite minimal|core|full      Matrix size. Defaults to core.
+  --suite minimal|core|full|unavailable
+                                  Matrix size. Defaults to core. "unavailable"
+                                  captures expected macOS lock/asleep fail-fast
+                                  artifacts instead of success overlay cases.
   --app-id ID                    Steam App ID inside the smoke app. Defaults to 480.
   --app-name NAME                Steam non-Steam shortcut name.
   --steam-user-id ID             Steam userdata ID containing shortcuts.vdf.
@@ -53,6 +57,10 @@ Options:
   --no-restart-steam             Do not restart Steam after changing shortcut options.
   --close-steam-after            Close Steam after the matrix finishes.
   --skip-summary                 Do not summarize collected artifacts after the matrix.
+  --expected-native-host-unavailable-reason REASON
+                                  Expected unavailable reason for --suite unavailable:
+                                  macos-screen-locked or macos-display-asleep.
+                                  Live runs auto-detect when omitted.
   --dry-run                      Print commands without running them.
   --help                         Show this help.
 
@@ -62,6 +70,8 @@ Suites:
            all managed shortcut targets, profile, community, stats,
            achievements, and user chat/profile routes.
   full     core plus all known high-level dialog-equivalent routes.
+  unavailable
+           managed web and checkout fail-fast cases for locked/asleep macOS.
 EOF
 }
 
@@ -143,6 +153,10 @@ while [ "$#" -gt 0 ]; do
       skip_summary="1"
       shift
       ;;
+    --expected-native-host-unavailable-reason)
+      expected_native_host_unavailable_reason="${2:?missing --expected-native-host-unavailable-reason value}"
+      shift 2
+      ;;
     --dry-run)
       dry_run="1"
       shift
@@ -165,10 +179,19 @@ case "$mode" in
 esac
 
 case "$suite" in
-  minimal|core|full)
+  minimal|core|full|unavailable)
     ;;
   *)
     echo "Unknown --suite: $suite" >&2
+    exit 2
+    ;;
+esac
+
+case "$expected_native_host_unavailable_reason" in
+  ""|macos-screen-locked|macos-display-asleep)
+    ;;
+  *)
+    echo "Unknown --expected-native-host-unavailable-reason: $expected_native_host_unavailable_reason" >&2
     exit 2
     ;;
 esac
@@ -224,7 +247,7 @@ case_command() {
 }
 
 run_self_test() {
-  local self_path minimal_output core_output full_output passive_case checkout_case web_case
+  local self_path minimal_output core_output full_output unavailable_output passive_case checkout_case web_case unavailable_web_case unavailable_checkout_case
   self_path="${BASH_SOURCE[0]}"
   minimal_output="$(
     bash "$self_path" \
@@ -259,6 +282,18 @@ run_self_test() {
       --shortcuts /tmp/shortcuts.vdf \
       --artifact-root /tmp/steam-bridge-macos-overlay-matrix-self-test
   )"
+  unavailable_output="$(
+    bash "$self_path" \
+      --mode steam-launch \
+      --suite unavailable \
+      --skip-package \
+      --dry-run \
+      --helper-path "$script_dir/macos-electron-smoke.sh" \
+      --app-exe /tmp/SteamBridgeSmoke.app/Contents/MacOS/SteamBridgeSmoke \
+      --shortcuts /tmp/shortcuts.vdf \
+      --artifact-root /tmp/steam-bridge-macos-overlay-matrix-self-test \
+      --expected-native-host-unavailable-reason macos-screen-locked
+  )"
 
   if [ "$(printf '%s\n' "$minimal_output" | count_cases)" != "5" ]; then
     echo "Self-test failed: minimal matrix case count changed." >&2
@@ -272,9 +307,14 @@ run_self_test() {
     echo "Self-test failed: full matrix case count changed." >&2
     exit 1
   fi
+  if [ "$(printf '%s\n' "$unavailable_output" | count_cases)" != "2" ]; then
+    echo "Self-test failed: unavailable matrix case count changed." >&2
+    exit 1
+  fi
   require_unique_case_ids "$minimal_output" "minimal"
   require_unique_case_ids "$core_output" "core"
   require_unique_case_ids "$full_output" "full"
+  require_unique_case_ids "$unavailable_output" "unavailable"
 
   require_contains "$core_output" "--action presenter-web-open-and-wait" "core matrix must include web openAndWait."
   require_contains "$core_output" "--require-zero-managed-overlay-timing" "core matrix must require zero managed overlay timing."
@@ -315,14 +355,24 @@ run_self_test() {
   require_contains "$full_output" "--dialog Stats" "full matrix must include Stats dialog equivalent."
   require_contains "$full_output" "--dialog Achievements" "full matrix must include Achievements dialog equivalent."
   require_contains "$full_output" "--action presenter-dialog-auto-open-and-wait" "full matrix dialog equivalents must use openAndWait."
+  require_contains "$unavailable_output" "--action presenter-web-open-and-wait" "unavailable matrix must include web openAndWait fail-fast."
+  require_contains "$unavailable_output" "--action presenter-checkout" "unavailable matrix must include checkout fail-fast."
+  require_contains "$unavailable_output" "--require-action-error-code STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE" "unavailable matrix must require the native-host-unavailable error code."
+  require_contains "$unavailable_output" "--require-action-error-reason macos-screen-locked" "unavailable matrix must require the expected unavailable reason."
+  require_contains "$unavailable_output" "--require-native-host-unavailable-reason macos-screen-locked" "unavailable matrix must require the presenter unavailable reason."
+  require_contains "$unavailable_output" "--require-no-overlay-activation" "unavailable matrix must reject Steam overlay activation."
 
   web_case="$(case_command "$core_output" "01-web-openwait")"
   passive_case="$(case_command "$core_output" "05-passive-toast")"
   checkout_case="$(case_command "$core_output" "07-checkout-approval")"
+  unavailable_web_case="$(case_command "$unavailable_output" "01-unavailable-web-openwait")"
+  unavailable_checkout_case="$(case_command "$unavailable_output" "02-unavailable-checkout")"
   require_contains "$web_case" "--web-modal true" "web proof should use modal Steam web overlay."
   require_contains "$passive_case" "--result-delay-ms 1200" "passive toast should use the short notification capture delay."
   require_not_contains "$passive_case" "--close-probe" "passive toast should not require modal close proof."
   require_contains "$checkout_case" "--close-probe" "checkout proof should close and verify parked state."
+  require_not_contains "$unavailable_web_case" "--close-probe" "unavailable web case must not require close proof."
+  require_not_contains "$unavailable_checkout_case" "--close-probe" "unavailable checkout case must not require close proof."
 
   echo "macOS overlay matrix self-test passed."
 }
@@ -388,6 +438,7 @@ ensure_ready() {
   shortcuts_path="$(resolve_shortcuts_path)"
   mkdir -p "$artifact_root"
   : > "$artifact_root/macos-matrix-cases.jsonl"
+  require_macos_overlay_environment_for_suite
   ensure_stable_shortcut
 }
 
@@ -509,6 +560,74 @@ if (environment.screenLocked || environment.displayAsleep) {
   process.exit(1);
 }
 NODE
+}
+
+read_macos_overlay_unavailable_reason() {
+  if [ "$dry_run" = "1" ]; then
+    if [ -z "$expected_native_host_unavailable_reason" ]; then
+      expected_native_host_unavailable_reason="macos-screen-locked"
+    fi
+    return 0
+  fi
+  if [ "$(uname -s)" != "Darwin" ]; then
+    echo "macOS unavailable overlay matrix must run on macOS." >&2
+    exit 1
+  fi
+
+  expected_native_host_unavailable_reason="$(
+    node - "$repo_root" "$expected_native_host_unavailable_reason" <<'NODE'
+const path = require("node:path");
+const repoRoot = process.argv[2];
+const expected = process.argv[3] || "";
+
+let environment;
+try {
+  const steamBridge = require(path.join(repoRoot, "packages", "steam-bridge"));
+  environment = steamBridge.getMacOverlayEnvironment?.();
+} catch (error) {
+  console.error(`Failed to read macOS overlay environment: ${error && error.message ? error.message : error}`);
+  process.exit(1);
+}
+
+console.error(`MACOS_OVERLAY_ENVIRONMENT ${JSON.stringify(environment ?? null)}`);
+
+if (!environment || typeof environment !== "object") {
+  console.error("macOS overlay environment is unavailable; cannot run an expected native-host-unavailable matrix.");
+  process.exit(1);
+}
+
+let reason = "";
+if (environment.screenLocked) {
+  reason = "macos-screen-locked";
+} else if (environment.displayAsleep) {
+  reason = "macos-display-asleep";
+}
+
+if (!reason) {
+  console.error(
+    "macOS unavailable matrix requires the screen to be locked or the display to be asleep. " +
+      "Run a success matrix while interactive."
+  );
+  process.exit(1);
+}
+
+if (expected && expected !== reason) {
+  console.error(`macOS unavailable matrix expected ${expected}, but current environment is ${reason}.`);
+  process.exit(1);
+}
+
+console.log(reason);
+NODE
+  )"
+}
+
+require_macos_overlay_environment_for_suite() {
+  if [ "$suite" = "unavailable" ]; then
+    read_macos_overlay_unavailable_reason
+    return 0
+  fi
+
+  require_interactive_macos_overlay_environment
 }
 
 restart_macos_steam() {
@@ -831,6 +950,11 @@ case_has_managed_timing_requirement() {
 }
 
 run_matrix() {
+  if [ "$suite" = "unavailable" ]; then
+    run_unavailable_matrix
+    return 0
+  fi
+
   run_case "01-web-openwait" \
     --action presenter-web-open-and-wait \
     --web-url "https://store.steampowered.com/app/$app_id/" \
@@ -1048,9 +1172,38 @@ run_matrix() {
   done
 }
 
+run_unavailable_matrix() {
+  local reason
+  reason="${expected_native_host_unavailable_reason:?missing expected native host unavailable reason}"
+
+  run_case "01-unavailable-web-openwait" \
+    --action presenter-web-open-and-wait \
+    --web-url "https://store.steampowered.com/app/$app_id/" \
+    --web-modal true \
+    --require-steam-launch \
+    --require-overlay-injection \
+    --require-overlay-enabled \
+    --require-action-error-code STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE \
+    --require-action-error-reason "$reason" \
+    --require-native-host-unavailable-reason "$reason" \
+    --require-no-overlay-activation \
+    --require-no-crashes
+
+  run_case "02-unavailable-checkout" \
+    --action presenter-checkout \
+    --checkout-transaction-id 123456789 \
+    --require-steam-launch \
+    --require-overlay-injection \
+    --require-overlay-enabled \
+    --require-action-error-code STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE \
+    --require-action-error-reason "$reason" \
+    --require-native-host-unavailable-reason "$reason" \
+    --require-no-overlay-activation \
+    --require-no-crashes
+}
+
 ensure_ready
 trap 'if [ "$close_steam_after" = "1" ] && [ "$dry_run" != "1" ]; then stop_macos_steam; fi' EXIT
-require_interactive_macos_overlay_environment
 run_matrix
 
 echo "macOS overlay matrix complete. Artifacts: $artifact_root"

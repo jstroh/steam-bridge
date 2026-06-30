@@ -178,6 +178,14 @@ target, profile, community, stats, achievements, and user chat/profile routes.
 Use `--suite full` to add user SteamID plus every known high-level
 dialog-equivalent route through the same managed `openAndWait(...)` close/park
 proof.
+Use `--suite unavailable` only when macOS genuinely reports the screen locked or
+the display asleep. That suite captures expected managed web and checkout
+fail-fast artifacts with
+`STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE`, the matching
+`nativeHostUnavailableReason`, and no Steam overlay activation. Live
+unavailable runs auto-detect `macos-screen-locked` or
+`macos-display-asleep`; pass `--expected-native-host-unavailable-reason` when
+you need the capture to fail unless the specific state matches.
 Use `--dry-run` to inspect the stable shortcut setup, env-file path, and helper commands
 without launching Steam.
 
@@ -479,6 +487,17 @@ npm run example:verify-result -- \
   --require-native-host-unavailable-reason macos-screen-locked \
   --require-no-overlay-activation
 ```
+
+For repeatable macOS matrix artifacts, prefer:
+
+```sh
+npm run macos:overlay-matrix -- \
+  --steam-user-id <steam-userdata-id> \
+  --suite unavailable
+```
+
+The unavailable suite refuses to run while macOS is interactive, so it does not
+fake lock/display-sleep behavior.
 
 ## Steam Deck Checks
 

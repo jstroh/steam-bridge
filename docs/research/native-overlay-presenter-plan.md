@@ -758,12 +758,12 @@ Current evidence:
   fields, plus the presenter `nativeHostUnavailableReason`, no-host, unattached,
   zero-FPS snapshot state, and absence of Steam overlay activation, so
   locked/asleep fallback artifacts can be checked automatically. The macOS
-  matrix manifest and artifact summarizer understand the same expected
-  fail-fast metadata, so a future live lock or display-sleep capture can be
-  summarized beside normal overlay cases without treating the intentional
-  pre-activation failure as a matrix failure. Success matrices also preflight
-  the same environment and stop before launching case 1 if the Mac is locked or
-  the display is asleep.
+  `unavailable` matrix suite is the explicit live capture path for those
+  states: it auto-detects `macos-screen-locked` or `macos-display-asleep`,
+  exercises managed web and checkout fail-fast behavior, requires no Steam
+  overlay activation, and records the same manifest metadata consumed by the
+  artifact summarizer. Success matrices preflight the same environment and stop
+  before launching case 1 if the Mac is locked or the display is asleep.
 - BrowserWindow-only overlay support is not proven.
 - Steam launch, app ID, auth, and callbacks are not enough to claim overlay
   support.
@@ -772,10 +772,10 @@ Next work:
 
 1. Run real purchase-content and `InitTxn` proof from a real configured Steam
    app ID; App ID `480` only proves generic checkout routing.
-2. Add a live lock/display-sleep regression capture if it can be automated
-   without destabilizing the user's macOS session; the runtime guard, unit
-   proof, smoke-result verifier, and matrix artifact summary path are
-   implemented.
+2. Capture a live `--suite unavailable` artifact during a genuine macOS locked
+   or display-asleep session when it can be done without destabilizing the
+   user's machine; the runner, runtime guard, unit proof, smoke-result verifier,
+   and matrix artifact summary path are implemented.
 3. Keep code signing requirements explicit in docs and examples. The generic
    example now includes `entitlements.steam.macos.plist` with
    `com.apple.security.cs.allow-dyld-environment-variables` and

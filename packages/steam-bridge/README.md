@@ -586,8 +586,10 @@ launcher and a launcher env file. Each case rewrites only that env file, so
 Steam is restarted only when the shortcut itself is added or materially changed.
 Live success runs preflight `getMacOverlayEnvironment()` and stop before case
 launch while the Mac is locked or the display is asleep; capture those states
-with the expected native-host-unavailable verifier flags instead of treating
-them as success-matrix failures. The matrix runs the packaged helper and records
+with `--suite unavailable`, which expects the managed web and checkout helpers
+to throw `STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE` before Steam overlay activation
+and records the matching presenter `nativeHostUnavailableReason`. The matrix
+runs the packaged helper and records
 per-case diagnostics. Its
 self-test is part of package smoke coverage and includes the macOS artifact
 summary self-test. After a live run it summarizes every macOS result and
