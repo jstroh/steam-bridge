@@ -347,6 +347,9 @@ The Electron smoke app lives in
 [`examples/electron-basic`](examples/electron-basic). Its platform helpers emit
 `STEAM_BRIDGE_SMOKE_RESULT` JSON, lifecycle logs, screenshots where available,
 and crash diagnostics.
+Use the smoke action `presenter-ready` for a cheap managed-overlay preflight:
+it attaches the Electron overlay manager, records native host availability, and
+does not activate Steam overlay UI.
 On macOS, `--require-no-crashes` also copies fresh
 `SteamBridgeSmoke*.ips` reports from `~/Library/Logs/DiagnosticReports` into
 the artifact's `macos-crash-reports/` directory and fails the run with a short

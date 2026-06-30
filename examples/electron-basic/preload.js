@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld("steamSmoke", {
   openOverlayStore: () => ipcRenderer.invoke("steam-smoke:overlay-store"),
   openOverlayWeb: () => ipcRenderer.invoke("steam-smoke:overlay-web"),
   openOverlayDialog: () => ipcRenderer.invoke("steam-smoke:overlay-dialog"),
+  checkPresenterReady: () => ipcRenderer.invoke("steam-smoke:presenter-ready"),
   openPresenterWeb: () => ipcRenderer.invoke("steam-smoke:presenter-web"),
   openPresenterWebOpenAndWait: () => ipcRenderer.invoke("steam-smoke:presenter-web-open-and-wait"),
   openPresenterStoreOpenAndWait: () => ipcRenderer.invoke("steam-smoke:presenter-store-open-and-wait"),

@@ -458,6 +458,10 @@ can require those managed diagnostics with `--require-electron-overlay`,
 `--require-zero-managed-overlay-timing` to prove a smoke artifact is not relying
 on delayed restore-focus, activation boost, or active grace timing; use
 `--require-restore-focus-delay-ms 0` only for targeted restore-focus checks.
+The smoke app's `presenter-ready` action is the cheapest managed-overlay
+preflight: it creates the Electron overlay manager, records
+`overlay:presenter-ready`, and captures native host availability without
+activating Steam overlay UI.
 They can also verify expected
 managed overlay fail-fast artifacts with `--require-action-error-code` and
 `--require-action-error-reason`; add
@@ -550,8 +554,8 @@ with `steamOverlay.open(...)`, or the lower-level `client.overlay.attachPresente
 `client.overlay.openStatsOverlay(...)`, and
 `client.overlay.openAchievementsOverlay(...)`, `client.overlay.openUserOverlay(...)`, and
 `client.overlay.openDialogEquivalentOverlay(...)` helpers, or the Electron smoke app's
-`presenter-web` / `presenter-web-open-and-wait` / `presenter-store` /
-`presenter-store-open-and-wait` / `presenter-friends` /
+`presenter-ready` / `presenter-web` / `presenter-web-open-and-wait` /
+`presenter-store` / `presenter-store-open-and-wait` / `presenter-friends` /
 `presenter-friends-open-and-wait` / `presenter-profile` /
 `presenter-players` / `presenter-community` / `presenter-stats` /
 `presenter-achievements` / `presenter-user` / `presenter-dialog-auto` /

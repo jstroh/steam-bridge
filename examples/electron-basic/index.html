@@ -226,6 +226,7 @@
           <button id="ticket">Auth Ticket</button>
           <button id="store">Store Overlay</button>
           <button id="web">Web Overlay</button>
+          <button id="presenter-ready">Presenter Ready</button>
           <button id="presenter-web">Presenter Web Overlay</button>
           <button id="presenter-web-wait">Presenter Web Wait</button>
           <button id="presenter-store-wait">Presenter Store Wait</button>
@@ -461,6 +462,8 @@
       document.getElementById("ticket").onclick = () => run("Auth Ticket", () => window.steamSmoke.requestAuthTicket());
       document.getElementById("store").onclick = () => run("Store Overlay", () => window.steamSmoke.openOverlayStore());
       document.getElementById("web").onclick = () => run("Web Overlay", () => window.steamSmoke.openOverlayWeb());
+      document.getElementById("presenter-ready").onclick = () =>
+        run("Presenter Ready", () => window.steamSmoke.checkPresenterReady());
       document.getElementById("presenter-web").onclick = () =>
         run("Presenter Web Overlay", () => window.steamSmoke.openPresenterWeb());
       document.getElementById("presenter-web-wait").onclick = () =>

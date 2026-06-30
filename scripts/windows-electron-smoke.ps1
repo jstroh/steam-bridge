@@ -18,6 +18,7 @@ param(
     "native-dialog",
     "native-store",
     "native-web",
+    "presenter-ready",
     "presenter-dialog",
     "presenter-dialog-auto",
     "presenter-dialog-auto-open-and-wait",
@@ -171,6 +172,10 @@ function Add-DefaultRequireEvents {
   switch ($Action) {
     "dialog" {
       $script:RequireEvent = @("overlay:dialog")
+      break
+    }
+    "presenter-ready" {
+      $script:RequireEvent = @("overlay:presenter-ready")
       break
     }
     "presenter-shortcut" {

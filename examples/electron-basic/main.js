@@ -221,6 +221,7 @@ ipcMain.handle("steam-smoke:auth-ticket", async () => {
 ipcMain.handle("steam-smoke:overlay-store", () => openStoreOverlay());
 ipcMain.handle("steam-smoke:overlay-web", () => openWebOverlay());
 ipcMain.handle("steam-smoke:overlay-dialog", () => openDialogOverlay());
+ipcMain.handle("steam-smoke:presenter-ready", () => checkPresenterReady());
 ipcMain.handle("steam-smoke:presenter-web", () => openPresenterWebOverlay());
 ipcMain.handle("steam-smoke:presenter-web-open-and-wait", () => openPresenterWebOpenAndWaitOverlay());
 ipcMain.handle("steam-smoke:presenter-store-open-and-wait", () => openPresenterStoreOpenAndWaitOverlay());
@@ -696,6 +697,10 @@ async function waitForAutorunResult(action, durationMs, overlayActiveCount, opti
     return waitForManagedOverlayShownResult(action);
   }
 
+  if (isImmediateSmokeAction(action)) {
+    return { ok: true, action, durationMs: 0 };
+  }
+
   const requireOverlayActive =
     typeof options.requireOverlayActive === "boolean" ? options.requireOverlayActive : AUTORUN_REQUIRE_OVERLAY_ACTIVE;
   if (!isNativeSessionAction(action)) {
@@ -790,6 +795,9 @@ async function runAutorunAction(action) {
         return { ok: true, action };
       case "native-web":
         openNativeWebOverlay();
+        return { ok: true, action };
+      case "presenter-ready":
+        checkPresenterReady();
         return { ok: true, action };
       case "presenter-dialog":
         openPresenterDialogOverlay();
@@ -952,6 +960,16 @@ function openNativeWebOverlay() {
     url: WEB_URL,
     modal: WEB_MODAL,
     session: nativeOverlaySession.snapshot()
+  });
+  return snapshot();
+}
+
+function checkPresenterReady() {
+  const overlay = ensureElectronSteamOverlay();
+  const nativeHostAvailability = overlay.getNativeHostAvailability();
+  recordEvent("overlay:presenter-ready", {
+    presenter: overlay.snapshot(),
+    nativeHostAvailability
   });
   return snapshot();
 }
@@ -2604,6 +2622,10 @@ function readOverlayActiveValue(payload) {
 
 function isOverlayAction(action) {
   return action === "dialog" || action === "friends" || action === "store" || action === "web";
+}
+
+function isImmediateSmokeAction(action) {
+  return action === "presenter-ready";
 }
 
 function isNativeSessionAction(action) {

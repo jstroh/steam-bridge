@@ -72,7 +72,7 @@ Options:
   --diagnostic-dir PATH          Diagnostic log/crash dump directory.
   --app-id ID                    Steam App ID to use. Defaults to 480.
   --action NAME                  none, dialog, friends, store, web, native-probe, native-dialog, native-store, native-web,
-                                 presenter-dialog, presenter-dialog-auto, presenter-dialog-auto-open-and-wait,
+                                 presenter-ready, presenter-dialog, presenter-dialog-auto, presenter-dialog-auto-open-and-wait,
                                  presenter-store, presenter-store-open-and-wait, presenter-web, presenter-web-open-and-wait,
                                  presenter-friends, presenter-friends-open-and-wait,
                                  presenter-profile, presenter-players, presenter-community, presenter-stats, presenter-achievements, presenter-user, presenter-checkout,
@@ -1039,6 +1039,11 @@ case "$mode" in
     if [ "${#require_events[@]}" -eq 0 ]; then
       if [ "$action" = "dialog" ]; then
         require_events+=("overlay:dialog")
+      elif [ "$action" = "presenter-ready" ]; then
+        require_events+=("overlay:presenter-ready")
+        require_no_overlay_activation="1"
+        require_idle_presenter="1"
+        require_passive_presenter="1"
       elif [ "$action" = "presenter-checkout" ]; then
         if [ -n "$checkout_url" ] || [ -n "$checkout_transaction_id" ]; then
           require_events+=("overlay:presenter-open")

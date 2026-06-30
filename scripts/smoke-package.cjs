@@ -36,6 +36,7 @@ try {
   });
   runMacosEntitlementsStaticChecks();
   runMacosPackageSigningStaticChecks();
+  runElectronSmokeActionStaticChecks();
   runWindowsSmokeHelperStaticChecks();
 
   console.log("Packed steam-bridge package smoke test passed.");
@@ -158,6 +159,7 @@ function runMacosPackageSigningStaticChecks() {
 function runWindowsSmokeHelperStaticChecks() {
   const helper = fs.readFileSync(path.join(repoRoot, "scripts", "windows-electron-smoke.ps1"), "utf8");
   for (const expected of [
+    "presenter-ready",
     "presenter-web-open-and-wait",
     "presenter-store-open-and-wait",
     "presenter-friends-open-and-wait",
@@ -175,6 +177,26 @@ function runWindowsSmokeHelperStaticChecks() {
     "function Add-DefaultRequireEvents"
   ]) {
     assert.ok(helper.includes(expected), `Windows smoke helper missing ${expected}`);
+  }
+}
+
+function runElectronSmokeActionStaticChecks() {
+  const main = fs.readFileSync(path.join(repoRoot, "examples", "electron-basic", "main.js"), "utf8");
+  const preload = fs.readFileSync(path.join(repoRoot, "examples", "electron-basic", "preload.js"), "utf8");
+  const html = fs.readFileSync(path.join(repoRoot, "examples", "electron-basic", "index.html"), "utf8");
+  const linuxHelper = fs.readFileSync(path.join(repoRoot, "scripts", "linux-electron-smoke.sh"), "utf8");
+  const deckHelper = fs.readFileSync(path.join(repoRoot, "scripts", "steam-deck-smoke.sh"), "utf8");
+
+  for (const [label, source, expected] of [
+    ["Electron smoke main", main, "case \"presenter-ready\""],
+    ["Electron smoke main", main, "overlay:presenter-ready"],
+    ["Electron smoke main", main, "getNativeHostAvailability"],
+    ["Electron smoke preload", preload, "checkPresenterReady"],
+    ["Electron smoke UI", html, "presenter-ready"],
+    ["Linux smoke helper", linuxHelper, "overlay:presenter-ready"],
+    ["Steam Deck smoke helper", deckHelper, "overlay:presenter-ready"]
+  ]) {
+    assert.ok(source.includes(expected), `${label} missing ${expected}`);
   }
 }
 

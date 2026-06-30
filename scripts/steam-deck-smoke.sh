@@ -88,7 +88,7 @@ Options:
                                 game ID; inherit leaves SteamOverlayGameId untouched.
   --action NAME                 Autorun action. Defaults to dialog. Supports raw dialog/store/web,
                                 managed native-* variants, and presenter-* variants,
-                                including presenter-web-open-and-wait,
+                                including presenter-ready, presenter-web-open-and-wait,
                                 presenter-store-open-and-wait,
                                 presenter-dialog-auto-open-and-wait,
                                 presenter-friends-open-and-wait, presenter-user, and presenter-checkout.
@@ -1946,6 +1946,9 @@ build_steam_launch_args() {
     helper_args+=("--require-overlay-activated")
   elif [ "$action" = "native-probe" ] || [ "$action" = "native-dialog" ] || [ "$action" = "native-store" ] || [ "$action" = "native-web" ]; then
     helper_args+=("--require-event" "overlay:native-session-open")
+  elif [ "$action" = "presenter-ready" ]; then
+    helper_args+=("--require-event" "overlay:presenter-ready")
+    helper_args+=("--require-no-overlay-activation")
   elif [ "$action" = "presenter-shortcut" ]; then
     helper_args+=("--require-event" "overlay:presenter-shortcut-ready")
   elif [ "$action" = "presenter-checkout" ]; then
@@ -1972,6 +1975,7 @@ build_steam_launch_args() {
   fi
 
   if [ "$action" != "none" ] &&
+    [ "$action" != "presenter-ready" ] &&
     [ "$action" != "presenter-achievement-progress" ] &&
     [ "$action" != "presenter-achievement-unlock" ] &&
     [ "$action" != "presenter-dialog" ] &&
@@ -1985,6 +1989,16 @@ build_steam_launch_args() {
   fi
   if is_presenter_product_action; then
     helper_args+=("--require-no-crashes")
+    if [ -z "$require_presenter_mode" ]; then
+      helper_args+=("--require-presenter-mode" "$(effective_presenter_mode)")
+    fi
+    if [ "$require_zero_managed_overlay_timing" != "1" ] && [ -z "$require_restore_focus_delay_ms" ]; then
+      helper_args+=("--require-zero-managed-overlay-timing")
+    fi
+  fi
+  if [ "$action" = "presenter-ready" ]; then
+    helper_args+=("--require-no-crashes")
+    helper_args+=("--require-idle-presenter")
     if [ -z "$require_presenter_mode" ]; then
       helper_args+=("--require-presenter-mode" "$(effective_presenter_mode)")
     fi

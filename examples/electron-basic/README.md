@@ -53,7 +53,7 @@ The Windows package includes `windows-electron-smoke.ps1`. Use
 `-Mode print-launch-options` to generate non-Steam shortcut arguments, or
 `-Mode steam-launch` with `-ShortcutGameId` to verify the shortcut result. The
 helper accepts the same generic smoke action names as the Deck/macOS helpers,
-including `presenter-web-open-and-wait`,
+including `presenter-ready`, `presenter-web-open-and-wait`,
 `presenter-store-open-and-wait`, `presenter-friends-open-and-wait`,
 `presenter-dialog-auto-open-and-wait`, `presenter-checkout`,
 `presenter-shortcut`, `presenter-shortcut-open-and-wait`, and the passive
@@ -139,6 +139,27 @@ dist/electron-smoke/aarch64-apple-darwin/SteamBridgeSmoke-darwin-arm64/macos-ele
 For macOS presenter diagnostics, `--native-host-backend metal` and
 `--native-host-backend opengl` select the native host backend used by the smoke
 app. This is a diagnostic comparison control, not an app-builder API.
+
+Use `presenter-ready` when you want a cheap managed-overlay preflight before
+opening any Steam UI. It creates the same `createElectronSteamOverlay(...)`
+manager used by the product actions, records `overlay:presenter-ready`,
+captures `snapshot.overlay.nativePresenter`, and captures
+`snapshot.overlay.nativeHostAvailability` without calling a Steam overlay
+activation API:
+
+```sh
+dist/electron-smoke/aarch64-apple-darwin/SteamBridgeSmoke-darwin-arm64/macos-electron-smoke.sh \
+  --mode steam-launch \
+  --action presenter-ready \
+  --require-steam-launch \
+  --require-overlay-injection \
+  --require-overlay-enabled \
+  --require-electron-overlay \
+  --require-presenter-mode persistent \
+  --require-idle-presenter \
+  --require-no-overlay-activation \
+  --require-no-crashes
+```
 
 `--close-probe` is a helper-runner check, not an app launch option. It keeps the
 smoke app open after the initial result, leaves the active Steam overlay focused
@@ -301,7 +322,7 @@ for Steam non-Steam shortcuts:
 
 Supported autorun actions are `none`, `dialog`, `friends`, `store`, `web`,
 `native-dialog`, `native-store`, `native-web`, `native-probe`,
-`presenter-dialog`, `presenter-store`, `presenter-web`,
+`presenter-ready`, `presenter-dialog`, `presenter-store`, `presenter-web`,
 `presenter-web-open-and-wait`, `presenter-store-open-and-wait`,
 `presenter-dialog-auto-open-and-wait`, `presenter-friends`,
 `presenter-friends-open-and-wait`, `presenter-profile`,
@@ -688,10 +709,10 @@ npm run steam-deck:overlay-matrix -- \
 ```
 
 This packages the Linux x64 smoke app, runs preflight, then drives the managed
-presenter routes for modal web, store, Friends, profile, community, stats, achievements, user,
-dialog equivalents, checkout readiness, synthetic checkout approval-route
-plumbing, Shift+Tab shortcut routing, and passive achievement progress/unlock
-toasts.
+presenter routes for managed readiness, modal web, store, Friends, profile,
+community, stats, achievements, user, dialog equivalents, checkout readiness,
+synthetic checkout approval-route plumbing, Shift+Tab shortcut routing, and
+passive achievement progress/unlock toasts.
 It also summarizes every collected result and lifecycle log, failing if a case
 reports crash dumps, fatal Electron lifecycle events, duplicate overlay targets,
 missing presenter diagnostics, post-close presenter parking regressions, or
