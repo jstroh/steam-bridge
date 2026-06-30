@@ -321,10 +321,14 @@ Verified:
   source for close, shortcut-open, and passive-notification verification: active
   shown presenter snapshots must be active/opaque/input-capable with an
   interactive macOS host environment, and parked/passive snapshots must remain
-  click-through, overlay-inactive, and interactive. Passive toasts may briefly
-  report `overlayNeedsPresent=true` and pump at `needsPresentFps` while Steam is
-  rendering the notification; after modal overlays close, the stable parked
-  state must return to `currentFps=0` without post-close pumping.
+  click-through, overlay-inactive, and interactive. A 2026-06-30 OpenGL rerun
+  exposed a macOS Steam renderer crash inside `BOverlayNeedsPresent()` before
+  the helper could write a result, so Steam Bridge now disables that SDK call
+  for the macOS OpenGL diagnostic backend and reports
+  `overlayNeedsPresent=false` there. The macOS Metal product path and Linux/Deck
+  still use needs-present polling for overlay presentation. After modal overlays
+  close, the stable parked macOS state must return to `currentFps=0` without
+  post-close pumping.
 - A 2026-06-30 core macOS matrix at
   `/tmp/steam-bridge-macos-overlay-matrix-core-inittxn-envelope-20260630-000000`
   passed 24 Steam-launched App ID `480` cases after the smoke app began wrapping
@@ -342,6 +346,15 @@ Verified:
   direct profile/players/community/stats/achievements/user wait routes, user
   SteamID, every high-level dialog-equivalent route, close/back-to-app proof,
   zero managed overlay timing, one overlay target, and clean crash diagnostics.
+- A 2026-06-30 minimal macOS Metal matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-minimal-metal-after-steam-reset-20260630-022500`
+  passed after narrowing the needs-present safety guard to the OpenGL diagnostic
+  path. The five-case Steam-launched App ID `480` run verified web, store,
+  Friends, and dialog-equivalent `openAndWait(...)` routes plus passive
+  achievement-progress notification proof with the signed Electron `42.5.1`
+  smoke bundle. Interactive cases emitted active/inactive callbacks, returned
+  focus to the smoke app after close, parked the Metal presenter at
+  `currentFps=0` without post-close pumping, and reported no crash evidence.
 - A 2026-06-30 core macOS matrix at
   `/tmp/steam-bridge-macos-overlay-matrix-core-shortcut-focus-electron42-20260630-010009`
   rebuilt the smoke app with Electron `42.5.1`, verified the signed launcher

@@ -202,6 +202,15 @@ case "$expected_native_host_unavailable_reason" in
     ;;
 esac
 
+case "$native_host_backend" in
+  ""|metal|opengl)
+    ;;
+  *)
+    echo "Unknown --native-host-backend: $native_host_backend" >&2
+    exit 2
+    ;;
+esac
+
 quote_command() {
   printf '%q ' "$@"
   printf '\n'
@@ -253,7 +262,7 @@ case_command() {
 }
 
 run_self_test() {
-  local self_path minimal_output core_output full_output unavailable_output passive_case checkout_case web_case unavailable_web_case unavailable_checkout_case
+  local self_path minimal_output core_output full_output unavailable_output opengl_output passive_case checkout_case web_case unavailable_web_case unavailable_checkout_case
   self_path="${BASH_SOURCE[0]}"
   minimal_output="$(
     bash "$self_path" \
@@ -300,6 +309,18 @@ run_self_test() {
       --artifact-root /tmp/steam-bridge-macos-overlay-matrix-self-test \
       --expected-native-host-unavailable-reason macos-screen-locked
   )"
+  opengl_output="$(
+    bash "$self_path" \
+      --mode steam-launch \
+      --suite minimal \
+      --skip-package \
+      --dry-run \
+      --helper-path "$script_dir/macos-electron-smoke.sh" \
+      --app-exe /tmp/SteamBridgeSmoke.app/Contents/MacOS/SteamBridgeSmoke \
+      --shortcuts /tmp/shortcuts.vdf \
+      --artifact-root /tmp/steam-bridge-macos-overlay-matrix-self-test \
+      --native-host-backend opengl
+  )"
 
   if [ "$(printf '%s\n' "$minimal_output" | count_cases)" != "5" ]; then
     echo "Self-test failed: minimal matrix case count changed." >&2
@@ -327,6 +348,7 @@ run_self_test() {
   require_contains "$core_output" "--steam-bridge-launch-env-file=/tmp/steam-bridge-macos-smoke.env" "matrix shortcut must use the stable launcher env file."
   require_contains "$core_output" "ENV /tmp/steam-bridge-macos-smoke.env" "matrix must write per-case launcher env."
   require_contains "$core_output" "SIGNING node $script_dir/verify-macos-steam-signing.cjs --app-exe /tmp/SteamBridgeSmoke.app/Contents/MacOS/SteamBridgeSmoke" "matrix must verify macOS package signing before live cases."
+  require_contains "$opengl_output" "NATIVE_HOST_BACKEND opengl" "matrix must pass requested native host backend through the launcher env."
   require_contains "$core_output" "--action presenter-store-open-and-wait" "core matrix must include store openAndWait."
   require_contains "$core_output" "--action presenter-friends-open-and-wait" "core matrix must include Friends openAndWait."
   require_contains "$core_output" "--action presenter-dialog-auto-open-and-wait" "core matrix must include dialog openAndWait."
@@ -719,9 +741,11 @@ write_case_manifest() {
   local result_file="$2"
   local diagnostic_dir="$3"
   shift 3
-  node - "$artifact_root/macos-matrix-cases.jsonl" "$case_id" "$result_file" "$diagnostic_dir" "$@" <<'NODE'
+  EXPECTED_NATIVE_HOST_BACKEND="$native_host_backend" node - "$artifact_root/macos-matrix-cases.jsonl" "$case_id" "$result_file" "$diagnostic_dir" "$@" <<'NODE'
 const fs = require("node:fs");
 const [manifestPath, caseId, resultFile, diagnosticDir, ...command] = process.argv.slice(2);
+const requestedNativeHostBackend = process.env.EXPECTED_NATIVE_HOST_BACKEND || "";
+const expectedNativeHostBackend = requestedNativeHostBackend ? `macos-${requestedNativeHostBackend}` : null;
 
 function optionValue(name) {
   const index = command.indexOf(name);
@@ -742,6 +766,7 @@ fs.appendFileSync(
     closeProbe: command.includes("--close-probe"),
     shortcutOpenProbe: command.includes("--shortcut-open-probe"),
     shortcutTarget: optionValue("--shortcut-target"),
+    expectedNativeHostBackend,
     requireActionErrorCode: optionValue("--require-action-error-code"),
     requireActionErrorReason: optionValue("--require-action-error-reason"),
     requireNativeHostUnavailableReason: optionValue("--require-native-host-unavailable-reason"),
@@ -886,6 +911,9 @@ write_case_launcher_env() {
   write_env_line "STEAM_BRIDGE_SMOKE_DIAGNOSTIC_DIR" "$diagnostic_dir"
   if [ -n "$native_host_backend" ]; then
     write_env_line "STEAM_BRIDGE_SMOKE_NATIVE_HOST_BACKEND" "$native_host_backend"
+    if [ "$native_host_backend" = "opengl" ]; then
+      write_env_line "STEAM_BRIDGE_DISABLE_OVERLAY_NEEDS_PRESENT" "1"
+    fi
   fi
   if [ -n "$env_window_mode" ]; then
     write_env_line "STEAM_BRIDGE_SMOKE_WINDOW_MODE" "$env_window_mode"
@@ -935,6 +963,7 @@ run_case() {
   local result_file="$artifact_root/$case_id.log"
   local diagnostic_dir="$result_file.diagnostics"
   local run_cmd
+  local status=0
   local case_args=("$@")
   if case_uses_presenter_action "${case_args[@]}" && ! case_has_managed_timing_requirement "${case_args[@]}"; then
     case_args+=(--require-zero-managed-overlay-timing)
@@ -956,6 +985,9 @@ run_case() {
 
   echo "CASE $case_id"
   echo "ENV $launcher_env_file"
+  if [ -n "$native_host_backend" ]; then
+    echo "NATIVE_HOST_BACKEND $native_host_backend"
+  fi
   echo "RUN $(quote_command "${run_cmd[@]}")"
 
   if [ "$dry_run" = "1" ]; then
@@ -965,8 +997,9 @@ run_case() {
   mkdir -p "$(dirname -- "$result_file")"
   write_case_manifest "$case_id" "$result_file" "$diagnostic_dir" "${case_args[@]}"
   write_case_launcher_env "$result_file" "$diagnostic_dir" "${case_args[@]}"
-  "${run_cmd[@]}"
+  "${run_cmd[@]}" || status=$?
   cleanup_macos_smoke_processes
+  return "$status"
 }
 
 case_uses_presenter_action() {

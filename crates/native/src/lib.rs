@@ -333,7 +333,7 @@ pub fn is_overlay_enabled() -> Result<bool, Error> {
 #[napi(js_name = "overlayNeedsPresent")]
 pub fn overlay_needs_present() -> Result<bool, Error> {
     let utils = steam_utils()?;
-    Ok(unsafe { sys::SteamAPI_ISteamUtils_BOverlayNeedsPresent(utils) })
+    Ok(overlay_needs_present_value(utils))
 }
 
 #[napi(js_name = "getOverlayDiagnostics")]
@@ -345,10 +345,27 @@ pub fn get_overlay_diagnostics() -> Result<OverlayDiagnostics, Error> {
         steam_install_path: steam_install_path(),
         app_id: unsafe { sys::SteamAPI_ISteamUtils_GetAppID(utils) },
         overlay_enabled: unsafe { sys::SteamAPI_ISteamUtils_IsOverlayEnabled(utils) },
-        overlay_needs_present: unsafe { sys::SteamAPI_ISteamUtils_BOverlayNeedsPresent(utils) },
+        overlay_needs_present: overlay_needs_present_value(utils),
         steam_deck: unsafe { sys::SteamAPI_ISteamUtils_IsSteamRunningOnSteamDeck(utils) },
         big_picture: unsafe { sys::SteamAPI_ISteamUtils_IsSteamInBigPictureMode(utils) },
     })
+}
+
+fn overlay_needs_present_value(utils: *mut sys::ISteamUtils) -> bool {
+    if overlay_needs_present_disabled() {
+        return false;
+    }
+    unsafe { sys::SteamAPI_ISteamUtils_BOverlayNeedsPresent(utils) }
+}
+
+fn overlay_needs_present_disabled() -> bool {
+    let Ok(value) = std::env::var("STEAM_BRIDGE_DISABLE_OVERLAY_NEEDS_PRESENT") else {
+        return false;
+    };
+    matches!(
+        value.to_ascii_lowercase().as_str(),
+        "1" | "true" | "yes" | "on"
+    )
 }
 
 #[napi(js_name = "activateOverlay")]

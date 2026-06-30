@@ -178,6 +178,7 @@ function summarizeMatrixArtifacts(root) {
         `passive=${summary.passive}`,
         `overlayTargets=${summary.overlayTargets}`,
         `overlayGameIds=${summary.overlayGameIds.join(",") || "none"}`,
+        `backend=${summary.nativeHostBackend}`,
         `macInteractive=${summary.macInteractive}`,
         `zeroTiming=${summary.zeroTiming}`,
         `shown=${summary.shown}`,
@@ -228,6 +229,7 @@ function verifyCase(caseId, metadata, result, lifecycle, failures) {
   const expectedNativeHostUnavailableReason = nonEmptyString(
     metadata.requireNativeHostUnavailableReason ?? metadata.expectedNativeHostUnavailableReason
   );
+  const expectedNativeHostBackend = expectedNativeHostBackendFromMetadata(metadata);
   const expectedNoOverlayActivation =
     metadata.requireNoOverlayActivation === true ||
     metadata.expectedNoOverlayActivation === true ||
@@ -304,6 +306,13 @@ function verifyCase(caseId, metadata, result, lifecycle, failures) {
   expect(Boolean(nativePresenter), `${caseId}: native presenter snapshot available`, failures);
   if (nativePresenter) {
     expect(nativePresenter.backend === "macos-metal" || nativePresenter.backend === "macos-opengl", `${caseId}: macOS native presenter backend`, failures);
+    if (expectedNativeHostBackend) {
+      expect(
+        nativePresenter.backend === expectedNativeHostBackend,
+        `${caseId}: native presenter backend expected ${formatValue(expectedNativeHostBackend)}, got ${formatValue(nativePresenter.backend)}`,
+        failures
+      );
+    }
     expect(nativePresenter.idleFps === 0, `${caseId}: native presenter idle FPS is zero`, failures);
     if (expectedNativeHostUnavailableReason) {
       verifyNativeHostUnavailablePresenter(caseId, nativePresenter, expectedNativeHostUnavailableReason, failures);
@@ -400,6 +409,7 @@ function verifyCase(caseId, metadata, result, lifecycle, failures) {
     passive: isPassive,
     overlayTargets,
     overlayGameIds,
+    nativeHostBackend: nativePresenter?.backend ?? "none",
     macInteractive,
     zeroTiming,
     shown: managedWaits.required ? managedWaits.shownOk : "n/a",
@@ -895,6 +905,17 @@ function expectedActionErrorFromMetadata(metadata) {
   };
 }
 
+function expectedNativeHostBackendFromMetadata(metadata) {
+  const value = nonEmptyString(metadata.expectedNativeHostBackend ?? metadata.nativeHostBackend);
+  if (!value) {
+    return "";
+  }
+  if (value === "metal" || value === "opengl") {
+    return `macos-${value}`;
+  }
+  return value;
+}
+
 function expectedMacOverlayEnvironment(reason) {
   switch (reason) {
     case "macos-screen-locked":
@@ -1021,20 +1042,21 @@ function createSelfTestFixture(root) {
       caseId: "03-store-openwait",
       action: "presenter-store-open-and-wait",
       overlayGameId: "15338446133907161088",
-      resultPresenter: activePresenterFixture(14),
+      expectedNativeHostBackend: "macos-opengl",
+      resultPresenter: activePresenterFixture(14, "macos-opengl"),
       lifecycle: [
-        { type: "event:overlay:presenter-open-and-wait-start", payload: { presenter: activePresenterFixture(14) } },
+        { type: "event:overlay:presenter-open-and-wait-start", payload: { presenter: activePresenterFixture(14, "macos-opengl") } },
         { type: "event:callback:overlay-activated", payload: { active: true, appId: 480, overlayPid: 9001 } },
-        { type: "event:overlay:presenter-wait-shown", payload: { presenter: activePresenterFixture(15) } },
+        { type: "event:overlay:presenter-wait-shown", payload: { presenter: activePresenterFixture(15, "macos-opengl") } },
         { type: "event:callback:overlay-activated", payload: { active: false, appId: 480, overlayPid: 9001 } },
-        { type: "event:overlay:presenter-wait-closed", payload: { presenter: parkedPresenterFixture(16) } },
-        { type: "event:overlay:presenter-after-close", payload: { presenter: parkedPresenterFixture(16) } },
-        { type: "event:overlay:presenter-parked", payload: { presenter: parkedPresenterFixture(16) } },
+        { type: "event:overlay:presenter-wait-closed", payload: { presenter: parkedPresenterFixture(16, "macos-opengl") } },
+        { type: "event:overlay:presenter-after-close", payload: { presenter: parkedPresenterFixture(16, "macos-opengl") } },
+        { type: "event:overlay:presenter-parked", payload: { presenter: parkedPresenterFixture(16, "macos-opengl") } },
         {
           type: "event:overlay:presenter-open-and-wait-complete",
-          payload: { shown: activePresenterFixture(15), parked: parkedPresenterFixture(16) }
+          payload: { shown: activePresenterFixture(15, "macos-opengl"), parked: parkedPresenterFixture(16, "macos-opengl") }
         },
-        { type: "event:overlay:presenter-after-close-stable", payload: { presenter: parkedPresenterFixture(16) } }
+        { type: "event:overlay:presenter-after-close-stable", payload: { presenter: parkedPresenterFixture(16, "macos-opengl") } }
       ]
     },
     {
@@ -1131,6 +1153,7 @@ function createSelfTestFixture(root) {
       diagnosticDir,
       action: fixture.action,
       shortcutTarget: fixture.shortcutTarget || null,
+      expectedNativeHostBackend: fixture.expectedNativeHostBackend || null,
       requireActionErrorCode: fixture.requireActionErrorCode || null,
       requireActionErrorReason: fixture.requireActionErrorReason || null,
       requireNativeHostUnavailableReason: fixture.requireNativeHostUnavailableReason || null,
@@ -1141,9 +1164,9 @@ function createSelfTestFixture(root) {
   fs.writeFileSync(path.join(root, "macos-matrix-cases.jsonl"), manifest.map((entry) => JSON.stringify(entry)).join("\n") + "\n");
 }
 
-function activePresenterFixture(pumpCount) {
+function activePresenterFixture(pumpCount, backend) {
   return {
-    ...parkedPresenterFixture(pumpCount),
+    ...parkedPresenterFixture(pumpCount, backend),
     mode: "active",
     clickThrough: false,
     transparent: false,
@@ -1162,10 +1185,10 @@ function passiveNotificationNeedsPresentPresenterFixture(pumpCount) {
   };
 }
 
-function parkedPresenterFixture(pumpCount) {
+function parkedPresenterFixture(pumpCount, backend = "macos-metal") {
   return {
     title: "Steam Bridge Overlay Presenter",
-    backend: "macos-metal",
+    backend,
     closed: false,
     mode: "passive",
     attached: true,

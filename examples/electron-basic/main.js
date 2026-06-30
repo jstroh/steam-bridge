@@ -341,7 +341,13 @@ async function runAutorunSmoke() {
 
   await delay(AUTORUN_ACTION_DELAY_MS);
   const overlayActiveCount = countOverlayActiveEvents();
+  recordEvent("autorun:action-begin", { action: AUTORUN_ACTION });
   const actionResult = await runAutorunAction(AUTORUN_ACTION);
+  recordEvent("autorun:action-complete", {
+    action: AUTORUN_ACTION,
+    ok: actionResult.ok,
+    error: actionResult.error || null
+  });
   const waitResult = await waitForAutorunResult(AUTORUN_ACTION, AUTORUN_RESULT_DELAY_MS, overlayActiveCount);
 
   const result = sanitize({
@@ -2135,6 +2141,8 @@ function configureMacNativeHostBackend(backend) {
 
   if (backend === "opengl") {
     process.env.STEAM_BRIDGE_MAC_NATIVE_OPENGL_HOST = "1";
+    process.env.STEAM_BRIDGE_DISABLE_OVERLAY_NEEDS_PRESENT =
+      process.env.STEAM_BRIDGE_DISABLE_OVERLAY_NEEDS_PRESENT || "1";
     delete process.env.STEAM_BRIDGE_MAC_NATIVE_METAL_HOST;
   } else if (backend === "metal") {
     process.env.STEAM_BRIDGE_MAC_NATIVE_METAL_HOST = "1";

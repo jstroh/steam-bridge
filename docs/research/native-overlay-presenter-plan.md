@@ -334,8 +334,8 @@ The presenter should:
 - be transparent, non-focusable, and click-through during passive mode;
 - follow Electron window moves, resizes, fullscreen changes, and visibility;
 - present no frames or very few frames while idle;
-- increase presentation only when `overlayNeedsPresent` is true or a Steam
-  overlay is active;
+- increase presentation only when `overlayNeedsPresent` is true where that
+  Steam SDK call is safe, or when a Steam overlay is active;
 - reuse the same surface for checkout, store, web, and passive Steam
   notifications;
 - route overlay targets by behavior: interactive native host for web, store, and
@@ -400,11 +400,15 @@ Current evidence:
   `electronConfigureSteamOverlay()` child-process isolation so there is only one
   `gameoverlayui` target attached to the main/native process.
 - The reusable presenter defaults to `idleFps: 0`, so an attached idle host polls
-  overlay state without continuously presenting frames. It starts pumping only
-  for operation-scoped activation holds, active overlays, lower-level explicit
-  preparation, or `overlayNeedsPresent`. Passive notification priming now
-  performs one presenter wake-up/poll and then waits for `overlayNeedsPresent`
-  instead of entering a fixed high-FPS boost window.
+  overlay state where the Steam SDK polling call is safe without continuously
+  presenting frames. It starts pumping only for operation-scoped activation
+  holds, active overlays, lower-level explicit preparation, or
+  `overlayNeedsPresent` on platforms that support safe needs-present polling.
+  Passive notification priming now performs one presenter wake-up/poll and then
+  waits for `overlayNeedsPresent` on those platforms instead of entering a fixed
+  high-FPS boost window. On macOS, the Metal product path keeps this signal; the
+  OpenGL diagnostic backend disables `BOverlayNeedsPresent()` because Steam's
+  injected renderer can crash inside that call on the OpenGL path.
 - The managed Electron lifecycle waits are app-facing state waits, not tuning
   loops. `open(...)` and `openAndWait(...)` keep the presenter active until Steam
   reports the overlay shown; `openAndWait(...)`, `waitForOverlayShown()`,
@@ -421,7 +425,8 @@ Current evidence:
   also with a single overlay target. The smoke app's toast routes now rely on
   the managed overlay's automatic passive notification priming instead of
   calling `prepareForNotification()` directly; that priming repolls immediately
-  and pumps frames only after Steam reports `overlayNeedsPresent`. A
+  and pumps frames only after Steam reports `overlayNeedsPresent` on Linux/Deck.
+  A
   2026-06-28 fullscreen unlock
   run selected `ACH_TRAVEL_FAR_ACCUM` (`Interstellar`), cleared and re-unlocked
   it, emitted `achievement:unlock`, `callback:user-stats-stored`, and
@@ -624,7 +629,8 @@ duplicate child overlay targets.
      over the app.
 3. Add an adaptive pump scheduler:
    - idle: no fixed 30 FPS loop;
-   - `overlayNeedsPresent=true`: pump around 30 FPS;
+   - `overlayNeedsPresent=true`: pump around 30 FPS on platforms where that
+     Steam SDK call is safe;
    - `GameOverlayActivated(true)`: pump around 30 FPS;
    - `GameOverlayActivated(false)`: return to passive from the callback/state
      transition, with no default grace timer in the managed Electron path.

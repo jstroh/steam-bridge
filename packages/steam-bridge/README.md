@@ -230,11 +230,16 @@ check as `steam-bridge-verify-macos-signing`; run
 against the final signed app shape before Steam overlay testing.
 
 The manager owns a reusable native presenter, keeps it passive and click-through
-while idle, polls Steam overlay state cheaply, and only pumps frames when Steam
-reports `overlayNeedsPresent` or an overlay is being opened/active. Automatic
-passive notification priming performs one wake-up/poll and then waits for
-Steam's `overlayNeedsPresent` signal before entering the notification frame
-pump loop, so quiet achievement/stat calls do not start a fixed high-FPS boost. It also
+while idle, polls Steam overlay state cheaply where the Steam SDK call is safe,
+and only pumps frames when Steam reports `overlayNeedsPresent` or an overlay is
+being opened/active. The macOS Metal presenter path keeps that needs-present
+signal available; the diagnostic macOS OpenGL path disables the
+`BOverlayNeedsPresent()` poll because Steam's injected renderer can crash inside
+that call there. Set `STEAM_BRIDGE_DISABLE_OVERLAY_NEEDS_PRESENT=1` for the same
+escape hatch in custom diagnostics. Automatic passive notification priming
+performs one wake-up/poll on platforms with safe needs-present polling and
+otherwise stays parked unless an overlay is being opened/active, so quiet
+achievement/stat calls do not start a fixed high-FPS boost. It also
 installs a default Electron `Shift+Tab` shortcut bridge that opens the verified
 Friends/chat presenter route without asking Steam to hook Chromium child
 processes; pass `overlayShortcut: false` to disable it, or provide
@@ -328,9 +333,12 @@ overlay before the relevant achievement/stats calls. If macOS reports the
 native host unavailable because the screen is locked or display is asleep,
 automatic notification priming skips native host work but keeps the presenter
 registered, so the next notification-producing call after unlock/wake can prime
-normally. The helpers pump only when Steam reports `overlayNeedsPresent`; use
+normally. On platforms with safe needs-present polling, the helpers pump only
+when Steam reports `overlayNeedsPresent`; use
 `steamOverlay.prepareForNotification()` only for lower-level or custom Steam API
-calls. On
+calls. On macOS OpenGL diagnostics, presenter snapshots keep
+`overlayNeedsPresent=false` because Steam Bridge avoids the crash-prone Steam
+polling call there. On
 Linux/X11, fully idle mode makes the host transparent and click-through;
 `overlayNeedsPresent` can make it visible while leaving input click-through for
 passive notifications; opening or active overlay mode restores both opacity and

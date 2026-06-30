@@ -492,6 +492,56 @@ ensure_app() {
   fi
 }
 
+collect_recent_macos_crash_reports() {
+  if [ -z "${diagnostic_dir:-}" ]; then
+    return 0
+  fi
+
+  DIAGNOSTIC_DIR="$diagnostic_dir" CRASH_REPORT_WINDOW_MS="$(( (timeout_seconds + 120) * 1000 ))" node <<'NODE'
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+
+const diagnosticDir = process.env.DIAGNOSTIC_DIR;
+const windowMs = Number(process.env.CRASH_REPORT_WINDOW_MS || 1800000);
+const sourceDir = path.join(os.homedir(), "Library", "Logs", "DiagnosticReports");
+const targetDir = path.join(diagnosticDir, "macos-crash-reports");
+const cutoff = Date.now() - Math.max(1, windowMs);
+const copied = [];
+
+let entries = [];
+try {
+  entries = fs.readdirSync(sourceDir, { withFileTypes: true });
+} catch {
+  process.exit(0);
+}
+
+for (const entry of entries) {
+  if (!entry.isFile() || !/^SteamBridgeSmoke(?:\.electron| Helper(?: \(Renderer\))?)?-.*\.ips$/.test(entry.name)) {
+    continue;
+  }
+  const sourcePath = path.join(sourceDir, entry.name);
+  let stats;
+  try {
+    stats = fs.statSync(sourcePath);
+  } catch {
+    continue;
+  }
+  if (stats.mtimeMs < cutoff) {
+    continue;
+  }
+  fs.mkdirSync(targetDir, { recursive: true });
+  const targetPath = path.join(targetDir, entry.name);
+  fs.copyFileSync(sourcePath, targetPath);
+  copied.push(targetPath);
+}
+
+for (const crashReport of copied.sort()) {
+  console.error(`Copied recent macOS crash report: ${crashReport}`);
+}
+NODE
+}
+
 wait_for_result_file() {
   local deadline no_steam_deadline steam_seen
   deadline=$((SECONDS + timeout_seconds))
@@ -506,9 +556,11 @@ wait_for_result_file() {
         steam_seen="1"
       elif [ "$steam_seen" = "1" ]; then
         echo "Steam exited while waiting for smoke result file $result_file" >&2
+        collect_recent_macos_crash_reports
         return 1
       elif [ "$SECONDS" -ge "$no_steam_deadline" ]; then
         echo "Steam did not start while waiting for smoke result file $result_file" >&2
+        collect_recent_macos_crash_reports
         return 1
       fi
     fi
@@ -516,6 +568,7 @@ wait_for_result_file() {
   done
 
   echo "Timed out waiting for smoke result file $result_file" >&2
+  collect_recent_macos_crash_reports
   return 1
 }
 
