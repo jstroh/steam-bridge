@@ -223,6 +223,15 @@ timing hacks.
   every high-level dialog-equivalent route, close/back-to-app proof, zero
   managed overlay timing, one `gameoverlayui` target, interactive macOS host
   state, and clean crash diagnostics.
+- A 2026-06-30 core macOS matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-core-shortcut-focus-electron42-20260630-010009`
+  reran the 24-case core suite on Electron `42.5.1` after hardening the macOS
+  Shift+Tab shortcut fallback. The fallback now reasserts Electron window focus
+  only after `waitForOverlayClosed()` observes Steam overlay deactivation, so a
+  shortcut close can return to the game even if the presenter's first
+  callback-driven focus restore does not stick. The run passed every shortcut
+  target including checkout, kept zero managed overlay timing, and verified
+  app-frontmost close/back-to-app proof without adding a timer-based lifecycle.
 - A 2026-06-29 full Deck Desktop overlay matrix passed 26 cases with 52
   screenshots under App ID `480`, covering managed web, store, Friends, profile,
   players, community, stats, achievements, user chat, known dialog-equivalent

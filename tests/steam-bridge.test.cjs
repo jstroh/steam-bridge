@@ -6995,12 +6995,25 @@ test("electron steam overlay manager uses a focused macOS global shortcut fallba
   t.after(clearSteamBridgeCache);
 
   const windowHandlers = new Map();
+  let windowFocused = true;
+  let showCount = 0;
+  let focusCount = 0;
+  let invalidateCount = 0;
   const window = {
     isDestroyed() {
       return false;
     },
     isFocused() {
-      return true;
+      return windowFocused;
+    },
+    show() {
+      showCount += 1;
+    },
+    focus() {
+      focusCount += 1;
+      if (focusCount >= 2) {
+        windowFocused = true;
+      }
     },
     getNativeWindowHandle() {
       return hostHandle;
@@ -7016,7 +7029,9 @@ test("electron steam overlay manager uses a focused macOS global shortcut fallba
     },
     webContents: {
       once() {},
-      invalidate() {},
+      invalidate() {
+        invalidateCount += 1;
+      },
       send() {},
       on() {},
       off() {}
@@ -7048,9 +7063,14 @@ test("electron steam overlay manager uses a focused macOS global shortcut fallba
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(registerCount, 1);
 
+  windowFocused = false;
   fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: false });
   await new Promise((resolve) => setImmediate(resolve));
 
+  assert.equal(showCount, 2);
+  assert.equal(focusCount, 2);
+  assert.equal(invalidateCount, 2);
+  assert.equal(windowFocused, true);
   assert.equal(registerCount, 2);
   assert.equal(typeof registeredHandler, "function");
 

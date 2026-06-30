@@ -9209,14 +9209,19 @@ function installElectronSteamOverlayGlobalShortcut(
     suspended = true;
     unregister();
     void (async () => {
+      let overlayClosed = false;
       try {
         await controller.waitForOverlayShown({ timeoutMs: ELECTRON_STEAM_OVERLAY_OPEN_GUARD_TIMEOUT_MS });
         await controller.waitForOverlayClosed({ timeoutMs: 300000 });
+        overlayClosed = true;
       } catch (error) {
         if (!closed) {
           emitElectronSteamOverlayShortcutWarning(error);
         }
       } finally {
+        if (overlayClosed && !closed) {
+          restoreElectronSteamOverlayShortcutWindowFocus(window);
+        }
         suspended = false;
         registerIfFocused();
       }
@@ -9240,6 +9245,29 @@ function installElectronSteamOverlayGlobalShortcut(
     removeElectronSteamOverlayShortcutWindowListener(shortcutWindow, "focus", onFocus);
     removeElectronSteamOverlayShortcutWindowListener(shortcutWindow, "blur", onBlur);
   };
+}
+
+function restoreElectronSteamOverlayShortcutWindowFocus(window: ElectronOverlayWindow): void {
+  if (isElectronWindowDestroyed(window) || window.isFocused?.() === true) {
+    return;
+  }
+
+  try {
+    if (window.isMinimized?.()) {
+      window.restore?.();
+    }
+    window.show?.();
+    window.focus?.();
+    if (!isElectronWebContentsDestroyed(window.webContents)) {
+      window.webContents.invalidate();
+    }
+  } catch (error) {
+    if (!isElectronWindowDestroyed(window)) {
+      process.emitWarning(error instanceof Error ? error : String(error), {
+        type: "SteamBridgeOverlayShortcutWarning"
+      });
+    }
+  }
 }
 
 function emitElectronSteamOverlayShortcutWarning(error: unknown): void {

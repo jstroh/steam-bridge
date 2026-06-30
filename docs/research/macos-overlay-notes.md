@@ -342,6 +342,17 @@ Verified:
   direct profile/players/community/stats/achievements/user wait routes, user
   SteamID, every high-level dialog-equivalent route, close/back-to-app proof,
   zero managed overlay timing, one overlay target, and clean crash diagnostics.
+- A 2026-06-30 core macOS matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-core-shortcut-focus-electron42-20260630-010009`
+  rebuilt the smoke app with Electron `42.5.1`, verified the signed launcher
+  bundle shape, did not update the stable shortcut or restart Steam, and passed
+  all 24 Steam-launched App ID `480` cases. This run specifically covered the
+  checkout shortcut focus-return path after close: `11-shortcut-checkout`
+  opened through the macOS Shift+Tab shortcut bridge, closed through the second
+  Shift+Tab after `GameOverlayActivated(false)`, parked the presenter at idle,
+  returned the smoke app frontmost, kept zero managed overlay timing, and
+  reported no crash evidence. The bridge keeps this as a callback/state-driven
+  handoff; it does not add a fixed restore-focus delay.
 - The live macOS matrix now runs `scripts/verify-macos-steam-signing.cjs`
   before touching Steam. It checks the native launcher and renamed Electron
   executable for arm64-only slices, valid executable signatures, the dyld

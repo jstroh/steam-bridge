@@ -45,6 +45,19 @@ App ID `480`.
 | Desktop web-page overlay | Verified through the reusable presenter | With the Desktop overlay profile and reusable presenter, `openWebOverlay(..., { modal: true })` to the public SpaceWar store page produced visible Steam web overlay UI, `active=true`, `active=false` after the overlay close control, and a clean return to the smoke app. |
 | Web checkout overlay | Verified for presenter readiness and synthetic approval-route plumbing; real purchase proof still requires a real app/product | A non-Steam shortcut is not enough to prove real purchase content. It can prove the generic Deck Desktop route: a 2026-06-28 `presenter-checkout` prepare-only run parked the reusable presenter back at idle without requiring overlay activation, and a `presenter-checkout --checkout-transaction-id 123456789` run opened `https://checkout.steampowered.com/checkout/approvetxn/123456789/` through the native web presenter, emitted paired `active=true` and `active=false` callbacks, returned focus to the smoke app after the web close probe, and showed no post-close pumping or crash evidence. Use a real Steam-launched app ID with a configured product or transaction for purchase-content proof. |
 
+## Latest macOS Evidence
+
+A 2026-06-30 core macOS matrix at
+`/tmp/steam-bridge-macos-overlay-matrix-core-shortcut-focus-electron42-20260630-010009`
+rebuilt the smoke app with Electron `42.5.1`, verified the signed native
+launcher bundle shape, reused the existing Steam shortcut without restarting
+Steam, and passed all 24 Steam-launched App ID `480` cases. The run specifically
+re-proved the managed Shift+Tab checkout shortcut close path: `11-shortcut-checkout`
+opened through the shortcut bridge, emitted overlay activation and deactivation,
+parked the presenter at idle, returned the smoke app frontmost, kept zero
+managed overlay timing, used one `gameoverlayui` target under App ID `480`, and
+reported clean crash diagnostics.
+
 ## Steam Deck Shortcut Gate
 
 Steam Deck smoke testing uses the packaged Linux x64 app with SpaceWar App ID
