@@ -2113,6 +2113,9 @@ export interface ElectronSteamOverlay extends CallbackHandle {
   readonly presenter: NativeOverlayPresenter;
   open(target: SteamOverlayTarget): NativeOverlayPresenter;
   openShortcutTarget(): NativeOverlayPresenter | null;
+  openShortcutTargetAndWait(
+    options?: ElectronSteamOverlayOpenAndWaitOptions
+  ): Promise<ElectronSteamOverlayOpenAndWaitResult | null>;
   waitForOverlayReady(options?: ElectronSteamOverlayWaitOptions): Promise<ElectronSteamOverlaySnapshot>;
   openAndWait(
     target: SteamOverlayTarget,
@@ -8643,6 +8646,35 @@ export function createElectronSteamOverlay(
         const openedPresenter = controller.open(target);
         notifyElectronSteamOverlayShortcutOpened(shortcut, target);
         return openedPresenter;
+      } catch (error) {
+        notifyElectronSteamOverlayShortcutError(shortcut, error);
+        throw error;
+      } finally {
+        shortcutOpenState.opening = false;
+      }
+    },
+    async openShortcutTargetAndWait(
+      options: ElectronSteamOverlayOpenAndWaitOptions = {}
+    ): Promise<ElectronSteamOverlayOpenAndWaitResult | null> {
+      assertOpen();
+      if (!shortcut.enabled) {
+        return null;
+      }
+
+      const snapshot = controller.snapshot();
+      if (snapshot.overlayActive || shortcutOpenState.opening || isElectronSteamOverlayShortcutOpening(snapshot)) {
+        return null;
+      }
+
+      shortcutOpenState.opening = true;
+      try {
+        const target = resolveElectronSteamOverlayShortcutTarget(shortcut.target);
+        assertElectronSteamOverlayTargetCanOpen(target);
+        assertElectronSteamOverlayTargetCanWait(target);
+        assertElectronSteamOverlayNativeHostAvailable(controller.snapshot());
+        const opened = controller.openAndWait(target, options);
+        notifyElectronSteamOverlayShortcutOpened(shortcut, target);
+        return await opened;
       } catch (error) {
         notifyElectronSteamOverlayShortcutError(shortcut, error);
         throw error;

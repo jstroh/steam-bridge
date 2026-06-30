@@ -526,8 +526,10 @@ second Shift+Tab closes the overlay and returns focus to the app. Add
 same focused Shift+Tab path; supported smoke targets are `friends`, `profile`,
 `players`, `web`, `store`, `community`, `stats`, `achievements`, `user`, `dialog`, and
 `checkout`. App code can also call `steamOverlay.openShortcutTarget()` from a
-controller or in-game menu button to reuse that same configured target without
-duplicating shortcut resolver logic.
+controller or in-game menu button to reuse that same configured target, or
+`steamOverlay.openShortcutTargetAndWait()` when the button flow should resolve
+only after Steam closes and the presenter parks. Both helpers avoid duplicating
+shortcut resolver logic in app code.
 The `dialog` target uses the high-level auto router; unsupported dialog names
 throw instead of silently falling back to raw Steam overlay behavior. Use the
 raw `presenter-dialog` action only for explicit diagnostics.

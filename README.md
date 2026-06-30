@@ -284,6 +284,7 @@ await steamOverlay.openCheckoutAndWait(() =>
 
 // Optional: reuse the configured Shift+Tab target from a controller/menu button.
 steamOverlay.openShortcutTarget();
+await steamOverlay.openShortcutTargetAndWait();
 
 steamOverlay.close();
 ```
@@ -306,10 +307,11 @@ presenter-backed shortcut target, including Friends/chat, modal web, store,
 checkout approval routing, profile, players, community, stats, achievements,
 user, and dialog-equivalent routes, with target-aware lifecycle and presenter
 snapshot checks. Controller or in-game menu buttons can call
-`steamOverlay.openShortcutTarget()` to open that same configured managed target;
-it returns `null` while the Steam overlay is already active/opening or when the
-shortcut bridge is disabled, so apps do not need to duplicate target resolver
-logic.
+`steamOverlay.openShortcutTarget()` to open that same configured managed target.
+Use `steamOverlay.openShortcutTargetAndWait()` when the button flow should
+resolve only after Steam closes and the presenter parks. Both helpers return
+`null` while the Steam overlay is already active/opening or when the shortcut
+bridge is disabled, so apps do not need to duplicate target resolver logic.
 
 On macOS, the managed helper fails fast before Steam overlay activation if the
 screen is locked or the display is asleep. Use

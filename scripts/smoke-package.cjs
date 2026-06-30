@@ -428,6 +428,10 @@ const openAndWaitPromise = typedElectronSteamOverlay.openAndWait(steamOverlayTar
   showTimeoutMs: 15000,
   closeTimeoutMs: 300000
 });
+const shortcutOpenAndWaitPromise = typedElectronSteamOverlay.openShortcutTargetAndWait({
+  showTimeoutMs: 15000,
+  closeTimeoutMs: 300000
+});
 const checkoutPreparePromise = typedElectronSteamOverlay.withCheckoutPrepared(() => ({
   steamUrl: "https://checkout.steampowered.com/checkout/approvetxn/123/"
 }));
@@ -459,6 +463,7 @@ void steamOverlayTarget;
 void profileOverlayTarget;
 void typedElectronSteamOverlay;
 void openAndWaitPromise;
+void shortcutOpenAndWaitPromise;
 void checkoutPreparePromise;
 void waitDiagnostics;
 void waitNativeHostUnavailable;
