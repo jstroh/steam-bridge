@@ -712,7 +712,18 @@ Current evidence:
   no leftover smoke/gameoverlay process, and no fresh macOS crash reports. The
   smoke app now uses targeted `gameoverlayui` PID diagnostics on macOS rather
   than a full `ps` table scan, preserving the one-target summary proof while
-  avoiding diagnostic timeouts in long persistent runs. A 2026-06-28 Deck Desktop
+  avoiding diagnostic timeouts in long persistent runs. A later 2026-06-30 full
+  cold-launch macOS run at
+  `/tmp/steam-bridge-macos-overlay-matrix-20260630-112048` reused the signed
+  Electron `43.0.0` package and stable Steam shortcut without restarting Steam
+  and passed all 42 process-per-case cases. The full suite now proves the same
+  public `steamOverlay.openShortcutTargetAndWait()` targets as the persistent
+  suite, including Friends, web, store, checkout approval-route, profile,
+  players, community, stats, achievements, user chat, and dialog-equivalent,
+  with active/inactive callbacks, close-driven completion, presenter parking, one
+  Metal presenter-backed overlay target, zero managed overlay timing, clean
+  back-to-app proof, no leftover smoke/gameoverlay process, and no fresh macOS
+  crash reports. A 2026-06-28 Deck Desktop
   prepare-only run verified
   checkout readiness returns to passive idle, and a synthetic
   transaction approval URL run verified checkout-style open, close, app focus,
@@ -899,10 +910,12 @@ Current evidence:
   callbacks where expected, active shown presenter snapshots, one
   `gameoverlayui` target, app focus return, clean crash diagnostics, an
   interactive macOS host state, and idle presenter parking at `currentFps=0`.
-  The current full macOS artifact covers 31 cases; product routes and all known
-  high-level dialog-equivalent routes now use managed `openAndWait(...)` proof
-  where applicable, including profile, players, community, stats, achievements,
-  user chat, and user SteamID.
+  The current full and persistent macOS artifacts cover 42 cases, including
+  programmatic `openShortcutTargetAndWait()` proof for every supported
+  presenter-backed shortcut target. Product routes and all known high-level
+  dialog-equivalent routes now use managed `openAndWait(...)` proof where
+  applicable, including profile, players, community, stats, achievements, user
+  chat, and user SteamID.
   Non-store targets attach under game ID `480`; the Steam store surface can
   report the generated shortcut game ID while still emitting app ID `480`
   callbacks and passing the same close-and-park proof.

@@ -299,7 +299,7 @@ case_block() {
 }
 
 run_self_test() {
-  local self_path minimal_output core_output full_output persistent_output unavailable_output opengl_output checkout_json_output checkout_callback_output passive_case checkout_case checkout_json_case checkout_callback_case checkout_callback_checkout_block checkout_callback_web_block shortcut_checkout_json_case web_case persistent_web_case persistent_shortcut_open_wait_case persistent_shortcut_checkout_open_wait_case persistent_shortcut_user_open_wait_case persistent_shortcut_dialog_open_wait_case unavailable_web_case unavailable_checkout_case
+  local self_path minimal_output core_output full_output persistent_output unavailable_output opengl_output checkout_json_output checkout_callback_output passive_case checkout_case checkout_json_case checkout_callback_case checkout_callback_checkout_block checkout_callback_web_block shortcut_checkout_json_case web_case full_shortcut_open_wait_case full_shortcut_checkout_open_wait_case full_shortcut_user_open_wait_case full_shortcut_dialog_open_wait_case persistent_web_case persistent_shortcut_open_wait_case persistent_shortcut_checkout_open_wait_case persistent_shortcut_user_open_wait_case persistent_shortcut_dialog_open_wait_case unavailable_web_case unavailable_checkout_case
   self_path="${BASH_SOURCE[0]}"
   minimal_output="$(
     bash "$self_path" \
@@ -405,7 +405,7 @@ run_self_test() {
     echo "Self-test failed: core matrix case count changed." >&2
     exit 1
   fi
-  if [ "$(printf '%s\n' "$full_output" | count_cases)" != "31" ]; then
+  if [ "$(printf '%s\n' "$full_output" | count_cases)" != "42" ]; then
     echo "Self-test failed: full matrix case count changed." >&2
     exit 1
   fi
@@ -499,6 +499,18 @@ run_self_test() {
   require_contains "$full_output" "--dialog Stats" "full matrix must include Stats dialog equivalent."
   require_contains "$full_output" "--dialog Achievements" "full matrix must include Achievements dialog equivalent."
   require_contains "$full_output" "--action presenter-dialog-auto-open-and-wait" "full matrix dialog equivalents must use openAndWait."
+  require_contains "$full_output" "--action presenter-shortcut-open-and-wait" "full matrix must include programmatic shortcut openAndWait routing."
+  require_contains "$full_output" "CASE 32-shortcut-friends-openwait" "full matrix must include programmatic Friends shortcut openAndWait routing."
+  require_contains "$full_output" "CASE 33-shortcut-web-openwait" "full matrix must include programmatic web shortcut openAndWait routing."
+  require_contains "$full_output" "CASE 34-shortcut-store-openwait" "full matrix must include programmatic store shortcut openAndWait routing."
+  require_contains "$full_output" "CASE 35-shortcut-checkout-openwait" "full matrix must include programmatic checkout shortcut openAndWait routing."
+  require_contains "$full_output" "CASE 36-shortcut-profile-openwait" "full matrix must include programmatic profile shortcut openAndWait routing."
+  require_contains "$full_output" "CASE 37-shortcut-players-openwait" "full matrix must include programmatic players shortcut openAndWait routing."
+  require_contains "$full_output" "CASE 38-shortcut-community-openwait" "full matrix must include programmatic community shortcut openAndWait routing."
+  require_contains "$full_output" "CASE 39-shortcut-stats-openwait" "full matrix must include programmatic stats shortcut openAndWait routing."
+  require_contains "$full_output" "CASE 40-shortcut-achievements-openwait" "full matrix must include programmatic achievements shortcut openAndWait routing."
+  require_contains "$full_output" "CASE 41-shortcut-user-chat-openwait" "full matrix must include programmatic user shortcut openAndWait routing."
+  require_contains "$full_output" "CASE 42-shortcut-dialog-openwait" "full matrix must include programmatic dialog shortcut openAndWait routing."
   require_contains "$unavailable_output" "--action presenter-web-open-and-wait" "unavailable matrix must include web openAndWait fail-fast."
   require_contains "$unavailable_output" "--action presenter-checkout" "unavailable matrix must include checkout fail-fast."
   require_contains "$unavailable_output" "--require-action-error-code STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE" "unavailable matrix must require the native-host-unavailable error code."
@@ -514,6 +526,10 @@ run_self_test() {
   checkout_callback_checkout_block="$(case_block "$checkout_callback_output" "07-checkout-approval")"
   checkout_callback_web_block="$(case_block "$checkout_callback_output" "01-web-openwait")"
   shortcut_checkout_json_case="$(case_command "$checkout_json_output" "11-shortcut-checkout")"
+  full_shortcut_open_wait_case="$(case_command "$full_output" "33-shortcut-web-openwait")"
+  full_shortcut_checkout_open_wait_case="$(case_command "$full_output" "35-shortcut-checkout-openwait")"
+  full_shortcut_user_open_wait_case="$(case_command "$full_output" "41-shortcut-user-chat-openwait")"
+  full_shortcut_dialog_open_wait_case="$(case_command "$full_output" "42-shortcut-dialog-openwait")"
   persistent_web_case="$(case_command "$persistent_output" "01-persistent-web-openwait")"
   persistent_shortcut_open_wait_case="$(case_command "$persistent_output" "19-persistent-shortcut-web-openwait")"
   persistent_shortcut_checkout_open_wait_case="$(case_command "$persistent_output" "35-persistent-shortcut-checkout-openwait")"
@@ -533,6 +549,12 @@ run_self_test() {
   require_contains "$shortcut_checkout_json_case" "--checkout-json-file /tmp/private-init-txn-response.json" "checkout shortcut proof should use the JSON-file handoff."
   require_not_contains "$checkout_json_case" "--checkout-transaction-id 123456789" "private checkout proof should not also use the synthetic transaction ID."
   require_not_contains "$shortcut_checkout_json_case" "--checkout-transaction-id 123456789" "checkout shortcut proof should not also use the synthetic transaction ID."
+  require_contains "$full_shortcut_open_wait_case" "--require-event overlay:presenter-open-and-wait-start" "full programmatic shortcut openAndWait proof should require the managed wait start event."
+  require_contains "$full_shortcut_open_wait_case" "--require-overlay-shortcut-target web" "full programmatic shortcut openAndWait proof should assert the configured shortcut target."
+  require_contains "$full_shortcut_open_wait_case" "--close-input web" "full programmatic shortcut openAndWait proof should close through visible Steam web content."
+  require_contains "$full_shortcut_checkout_open_wait_case" "--checkout-transaction-id 123456789" "full programmatic checkout shortcut openAndWait proof should use checkout approval-route plumbing."
+  require_contains "$full_shortcut_user_open_wait_case" "--user-dialog chat" "full programmatic user shortcut openAndWait proof should cover the chat route."
+  require_contains "$full_shortcut_dialog_open_wait_case" "--dialog OfficialGameGroup" "full programmatic dialog shortcut openAndWait proof should cover the dialog-equivalent route."
   require_contains "$persistent_web_case" "--close-probe" "persistent web proof should close and verify parked state."
   require_contains "$persistent_web_case" "--close-input web" "persistent web proof should close through the Steam web close control."
   require_contains "$persistent_web_case" "--require-zero-managed-overlay-timing" "persistent web proof should require zero managed overlay timing."
@@ -1992,6 +2014,26 @@ run_matrix() {
       "$@"
   }
 
+  run_shortcut_open_wait_case() {
+    local case_id="$1"
+    local target="$2"
+    shift 2
+    run_case "$case_id" \
+      --action presenter-shortcut-open-and-wait \
+      --shortcut-target "$target" \
+      --require-steam-launch \
+      --require-overlay-injection \
+      --require-overlay-enabled \
+      --require-overlay-activated \
+      --require-electron-overlay \
+      --require-overlay-shortcut-target "$target" \
+      --require-event overlay:presenter-open-and-wait-start \
+      --require-event overlay:shortcut-open \
+      --require-no-crashes \
+      --close-probe \
+      "$@"
+  }
+
   run_shortcut_case "08-shortcut-friends" friends
 
   run_shortcut_case "09-shortcut-web" web \
@@ -2109,6 +2151,34 @@ run_matrix() {
       --close-probe
     dialog_index=$((dialog_index + 1))
   done
+
+  run_shortcut_open_wait_case "32-shortcut-friends-openwait" friends
+
+  run_shortcut_open_wait_case "33-shortcut-web-openwait" web \
+    --web-url "https://store.steampowered.com/app/$app_id/" \
+    --web-modal true \
+    --close-input web
+
+  run_shortcut_open_wait_case "34-shortcut-store-openwait" store
+
+  run_shortcut_open_wait_case "35-shortcut-checkout-openwait" checkout \
+    "${checkout_args[@]}"
+
+  run_shortcut_open_wait_case "36-shortcut-profile-openwait" profile
+
+  run_shortcut_open_wait_case "37-shortcut-players-openwait" players
+
+  run_shortcut_open_wait_case "38-shortcut-community-openwait" community
+
+  run_shortcut_open_wait_case "39-shortcut-stats-openwait" stats
+
+  run_shortcut_open_wait_case "40-shortcut-achievements-openwait" achievements
+
+  run_shortcut_open_wait_case "41-shortcut-user-chat-openwait" user \
+    --user-dialog chat
+
+  run_shortcut_open_wait_case "42-shortcut-dialog-openwait" dialog \
+    --dialog OfficialGameGroup
 }
 
 run_unavailable_matrix() {

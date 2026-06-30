@@ -669,6 +669,18 @@ or overlay process, and no fresh macOS crash reports. The smoke app collects
 macOS `gameoverlayui` diagnostics by querying matching PIDs directly instead of
 scanning the whole process table, keeping the one-target summary proof reliable
 through long persistent runs.
+A later 2026-06-30 full cold-launch macOS matrix at
+`/tmp/steam-bridge-macos-overlay-matrix-20260630-112048` reused the signed
+Electron `43.0.0` package, verified the signing shape, reused the stable Steam
+shortcut without restarting Steam, and passed all 42 process-per-case App ID
+`480` cases. The full suite now proves the same
+`steamOverlay.openShortcutTargetAndWait()` target set as the persistent suite,
+including Friends, web, store, checkout approval-route, profile, players,
+community, stats, achievements, user chat, and dialog-equivalent. Every new
+cold-launch programmatic shortcut case verifies active/inactive callbacks,
+completion after overlay close and presenter parking, one Metal presenter-backed
+overlay target, zero managed overlay timing, clean back-to-app proof, no
+leftover smoke/gameoverlay process, and no fresh macOS crash reports.
 The repository also provides `npm run macos:overlay-matrix`, which installs or
 updates one stable macOS Steam shortcut pointing at the in-bundle native
 launcher and a launcher env file. Each case rewrites only that env file, so
