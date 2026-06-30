@@ -6084,6 +6084,12 @@ test("electron steam overlay manager owns one presenter and routes opens", async
   const initialSnapshot = overlay.snapshot();
   assert.equal(initialSnapshot.nativeHostOpen, true);
   assert.deepEqual(initialSnapshot.bounds, windowBounds);
+  const initialAvailability = overlay.getNativeHostAvailability();
+  assert.equal(initialAvailability.available, true);
+  assert.equal(initialAvailability.code, undefined);
+  assert.equal(initialAvailability.reason, undefined);
+  assert.equal(initialAvailability.nativeHostUnavailableReason, undefined);
+  assert.equal(initialAvailability.snapshot.nativeHostOpen, true);
   assert.deepEqual(initialSnapshot.electronOverlay, {
     presenterMode: "persistent",
     closeWithWindow: true,
@@ -9588,6 +9594,14 @@ test("electron steam overlay manager fails fast while the macOS native host is u
   });
 
   assert.equal(overlay.snapshot().nativeHostUnavailableReason, "macos-screen-locked");
+  const availability = overlay.getNativeHostAvailability();
+  assert.equal(availability.available, false);
+  assert.equal(availability.code, "STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE");
+  assert.equal(availability.reason, "macos-screen-locked");
+  assert.equal(availability.nativeHostUnavailableReason, "macos-screen-locked");
+  assert.deepEqual(availability.macOverlayEnvironment, { screenLocked: true, displayAsleep: false });
+  assert.equal(availability.snapshot.nativeHostUnavailableReason, "macos-screen-locked");
+  assert.equal(availability.snapshot.nativeHostOpen, false);
   const assertUnavailableError = (error) => {
     assert.equal(error instanceof steam.SteamOverlayNativeHostUnavailableError, true);
     assert.equal(error.name, "SteamOverlayNativeHostUnavailableError");

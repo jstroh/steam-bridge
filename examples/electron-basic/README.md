@@ -1062,9 +1062,12 @@ display-asleep sessions skip native host work and retry on the next
 notification-producing call after the host becomes available.
 On macOS, if the screen is locked or the display is asleep, the managed
 overlay helpers fail before activation with
-`SteamOverlayNativeHostUnavailableError`. Use
-`steamworks.isSteamOverlayNativeHostUnavailableError(error)` and its `reason`
-field for fallback logic; do not wait for overlay timeouts in that state. If the
+`SteamOverlayNativeHostUnavailableError`. Call
+`steamOverlay.getNativeHostAvailability()` when you want a cheap preflight before
+opening an overlay, and still use
+`steamworks.isSteamOverlayNativeHostUnavailableError(error)` plus its `reason`
+field around the operation for lock or sleep transitions that happen after the
+preflight; do not wait for overlay timeouts in that state. If the
 host is already unavailable, the managed Shift+Tab fallback treats the same
 state as a quiet no-op unless `overlayShortcut.onError` is provided. The
 packaged macOS helper

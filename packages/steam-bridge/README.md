@@ -406,7 +406,23 @@ macOS, snapshots also report `macOverlayEnvironment` and
 `nativeHostUnavailableReason` when a locked screen or sleeping display prevents
 safe native host creation. Managed overlay open/wait and checkout helpers throw
 `SteamOverlayNativeHostUnavailableError` in that state, including lower-level
-`prepareForCheckout()` split-step flows; use
+`prepareForCheckout()` split-step flows. If you want to branch before starting
+an overlay operation, call `steamOverlay.getNativeHostAvailability()` and check
+its structured `available`, `reason`, `macOverlayEnvironment`, and `snapshot`
+fields:
+
+```ts
+const availability = steamOverlay.getNativeHostAvailability();
+if (!availability.available) {
+  console.warn("Steam overlay host unavailable:", availability.reason);
+  return;
+}
+
+await steamOverlay.openAndWait({ type: "friends" });
+```
+
+Still keep an error guard around the actual operation because a Mac can lock or
+sleep between a preflight check and Steam activation. Use
 `isSteamOverlayNativeHostUnavailableError(error)` and then check `error.reason`
 instead of parsing the message when falling back to another purchase or browser
 flow:

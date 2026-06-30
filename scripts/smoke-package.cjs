@@ -356,6 +356,7 @@ import steam, {
   STEAM_FRIENDS_OVERLAY_URL,
   SteamworksEnums,
   type ElectronSteamOverlay,
+  type ElectronSteamOverlayNativeHostAvailability,
   type MacOverlayEnvironment,
   type NativeOverlayHostUnavailableReason,
   type OverlayDiagnostics,
@@ -423,6 +424,12 @@ const electronSteamOverlay = overlay.createElectronSteamOverlay({
   autoPrepareForNotifications: true
 });
 const typedElectronSteamOverlay: ElectronSteamOverlay = electronSteamOverlay;
+const nativeHostAvailability: ElectronSteamOverlayNativeHostAvailability =
+  typedElectronSteamOverlay.getNativeHostAvailability();
+const nativeHostAvailable: boolean = nativeHostAvailability.available;
+const nativeHostAvailabilitySnapshot = nativeHostAvailability.snapshot;
+const nativeHostAvailabilityReason: NativeOverlayHostUnavailableReason | undefined =
+  nativeHostAvailability.reason;
 const openAndWaitPromise = typedElectronSteamOverlay.openAndWait(steamOverlayTarget, {
   showTimeoutMs: 15000,
   closeTimeoutMs: 300000
@@ -461,6 +468,10 @@ void electronSteamOverlayFn;
 void steamOverlayTarget;
 void profileOverlayTarget;
 void typedElectronSteamOverlay;
+void nativeHostAvailability;
+void nativeHostAvailable;
+void nativeHostAvailabilitySnapshot;
+void nativeHostAvailabilityReason;
 void openAndWaitPromise;
 void shortcutOpenAndWaitPromise;
 void checkoutPreparePromise;

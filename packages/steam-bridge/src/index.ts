@@ -1889,6 +1889,16 @@ export interface ElectronSteamOverlaySnapshot extends NativeOverlayPresenterSnap
   };
 }
 
+export interface ElectronSteamOverlayNativeHostAvailability {
+  available: boolean;
+  snapshot: ElectronSteamOverlaySnapshot;
+  diagnostics?: OverlayDiagnostics;
+  code?: "STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE";
+  reason?: NativeOverlayHostUnavailableReason;
+  nativeHostUnavailableReason?: NativeOverlayHostUnavailableReason;
+  macOverlayEnvironment?: MacOverlayEnvironment;
+}
+
 export interface ElectronSteamOverlayOpenAndWaitResult {
   shown: ElectronSteamOverlaySnapshot;
   parked: ElectronSteamOverlaySnapshot;
@@ -2111,6 +2121,7 @@ export type ElectronSteamOverlayOptions = NonNullable<Parameters<typeof electron
 
 export interface ElectronSteamOverlay extends CallbackHandle {
   readonly presenter: NativeOverlayPresenter;
+  getNativeHostAvailability(): ElectronSteamOverlayNativeHostAvailability;
   open(target: SteamOverlayTarget): NativeOverlayPresenter;
   openShortcutTarget(): NativeOverlayPresenter | null;
   openShortcutTargetAndWait(
@@ -8634,6 +8645,9 @@ export function createElectronSteamOverlay(
   };
   const controller: ElectronSteamOverlay = {
     presenter,
+    getNativeHostAvailability(): ElectronSteamOverlayNativeHostAvailability {
+      return electronSteamOverlayNativeHostAvailability(controller.snapshot());
+    },
     open(target: SteamOverlayTarget): NativeOverlayPresenter {
       assertOpen();
       assertElectronSteamOverlayTargetCanOpen(target);
@@ -9661,6 +9675,30 @@ function electronSteamOverlayNativeHostUnavailableError(
   }
 
   return new SteamOverlayNativeHostUnavailableError(snapshot);
+}
+
+function electronSteamOverlayNativeHostAvailability(
+  snapshot: ElectronSteamOverlaySnapshot
+): ElectronSteamOverlayNativeHostAvailability {
+  const unavailableError = electronSteamOverlayNativeHostUnavailableError(snapshot);
+  if (!unavailableError) {
+    return {
+      available: true,
+      snapshot,
+      diagnostics: snapshot.diagnostics,
+      macOverlayEnvironment: snapshot.macOverlayEnvironment
+    };
+  }
+
+  return {
+    available: false,
+    snapshot,
+    diagnostics: snapshot.diagnostics,
+    code: unavailableError.code,
+    reason: unavailableError.reason,
+    nativeHostUnavailableReason: unavailableError.reason,
+    macOverlayEnvironment: unavailableError.macOverlayEnvironment
+  };
 }
 
 function formatNativeOverlayHostUnavailableReason(reason: NativeOverlayHostUnavailableReason): string {
