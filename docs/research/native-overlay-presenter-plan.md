@@ -240,6 +240,15 @@ timing hacks.
   processes to exit before starting the next case. That keeps the proof aligned
   with the active overlay process instead of relying on ambiguous app-name focus
   when multiple smoke instances briefly coexist.
+- A later 2026-06-30 full macOS Metal matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-full-narrow-needs-present-20260630-023000`
+  skipped repackaging, reused the signed Electron `42.5.1` bundle, and passed
+  all 31 Steam-launched App ID `480` cases after the needs-present guard was
+  narrowed to the OpenGL diagnostic backend. The artifact re-verified all
+  managed modal routes, passive toasts, checkout approval-route plumbing,
+  presenter-backed shortcut targets, close/back-to-app proof, zero managed
+  overlay timing, one overlay target, and clean crash diagnostics on the Metal
+  product path.
 - A 2026-06-29 full Deck Desktop overlay matrix passed 26 cases with 52
   screenshots under App ID `480`, covering managed web, store, Friends, profile,
   players, community, stats, achievements, user chat, known dialog-equivalent
@@ -755,7 +764,7 @@ Current evidence:
   callbacks where expected, active shown presenter snapshots, one
   `gameoverlayui` target, app focus return, clean crash diagnostics, an
   interactive macOS host state, and idle presenter parking at `currentFps=0`.
-  The current full macOS artifact covers 23 cases; product routes and all known
+  The current full macOS artifact covers 31 cases; product routes and all known
   high-level dialog-equivalent routes now use managed `openAndWait(...)` proof
   where applicable, including profile, players, community, stats, achievements,
   user chat, and user SteamID.

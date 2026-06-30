@@ -385,6 +385,20 @@ Verified:
   Steam-launched App ID `480` cases without restarting Steam. This confirms the
   PID-focused close/shortcut probes and managed presenter lifecycle are stable
   across a normal Steam client restart.
+- A later 2026-06-30 full macOS Metal matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-full-narrow-needs-present-20260630-023000`
+  skipped repackaging, reused the signed Electron `42.5.1` bundle, and passed
+  all 31 Steam-launched App ID `480` cases. The run re-verified web/store,
+  Friends/chat, dialog-equivalent routes, passive progress/unlock toasts,
+  checkout approval-route plumbing, every supported presenter-backed Shift+Tab
+  shortcut target, direct profile/players/community/stats/achievements/user
+  wait routes, user SteamID, close/back-to-app proof, zero managed overlay
+  timing, one overlay target, and clean crash diagnostics. The macOS crash
+  report at `~/Library/Logs/DiagnosticReports/SteamBridgeSmoke.electron-2026-06-30-015110.ips`
+  maps to the earlier OpenGL diagnostic rerun
+  `/tmp/steam-bridge-macos-overlay-matrix-minimal-opengl-rerun-20260630-015020/04-dialog-official-openwait`,
+  where Steam's renderer crashed inside `BOverlayNeedsPresent()` before the
+  OpenGL guard; it is not a failure from this Metal product-path matrix.
 - The live macOS matrix now runs `scripts/verify-macos-steam-signing.cjs`
   before touching Steam. It checks the native launcher and renamed Electron
   executable for arm64-only slices, valid executable signatures, the dyld
