@@ -88,8 +88,8 @@ Suites:
            achievements, and dialog-equivalent coverage through the smoke
            control server.
   unavailable
-           managed web, checkout-open, and checkout-prepare fail-fast cases
-           for locked/asleep macOS.
+           managed web, checkout-open, checkout-prepare, and passive
+           achievement-progress no-host cases for locked/asleep macOS.
 EOF
 }
 
@@ -997,7 +997,7 @@ if (environment.screenLocked || environment.displayAsleep) {
   const reason = environment.screenLocked ? "macos-screen-locked" : "macos-display-asleep";
   console.error(
     `macOS overlay success matrix requires an interactive display; current environment is ${reason}. ` +
-      "Unlock/wake the Mac before running the success matrix, or capture this state with the expected native-host-unavailable verifier flags."
+      "Unlock/wake the Mac before running the success matrix, or run --suite unavailable to capture this state."
   );
   process.exit(1);
 }
