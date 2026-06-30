@@ -169,6 +169,13 @@ timing hacks.
   active/inactive callback, active shown presenter, focus return, zero managed
   timing, parked idle presenter, and crash-diagnostic gates as the other
   presenter-backed community surfaces.
+- A 2026-06-29 core macOS matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-core-openwait-expanded-20260629-190754`
+  upgraded the regular profile, players, community, stats, achievements, and
+  user chat cases to managed `openAndWait(...)` actions. The 16-case artifact
+  reports `openAndWait=true` for every interactive presenter-backed product
+  route in the core suite, proving completion after Steam emits `active=false`
+  and after the presenter parks, not merely initial activation.
 - A 2026-06-29 full Deck Desktop overlay matrix passed 26 cases with 52
   screenshots under App ID `480`, covering managed web, store, Friends, profile,
   players, community, stats, achievements, user chat, known dialog-equivalent
@@ -668,6 +675,8 @@ Current evidence:
   callbacks where expected, active shown presenter snapshots, one
   `gameoverlayui` target, app focus return, clean crash diagnostics, an
   interactive macOS host state, and idle presenter parking at `currentFps=0`.
+  Core product routes now use managed `openAndWait(...)` proof where applicable,
+  including profile, players, community, stats, achievements, and user chat.
   Non-store targets attach under game ID `480`; the Steam store surface can
   report the generated shortcut game ID while still emitting app ID `480`
   callbacks and passing the same close-and-park proof.

@@ -220,6 +220,16 @@ Verified:
   `openAndWait(...)` routes, passive progress/unlock notifications, synthetic
   checkout approval-route plumbing, managed Shift+Tab Friends/web/store targets,
   profile, community, stats, achievements, and user chat.
+- A 2026-06-29 core macOS overlay matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-core-openwait-expanded-20260629-190754`
+  passed after switching profile, players, community, stats, achievements, and
+  user chat from open-only smoke actions to managed `openAndWait(...)` actions.
+  The 16-case artifact verifies `openAndWait=true` for web, store, Friends,
+  dialog-equivalent, profile, players, community, stats, achievements, and user
+  chat routes. Each wait-helper case records `overlay:presenter-open-and-wait-start`,
+  active shown presenter evidence, close/deactivation, completion after
+  `active=false`, parked presenter evidence, focus return, zero managed overlay
+  timing, and clean crash diagnostics.
 - A 2026-06-29 minimal macOS overlay matrix at
   `/tmp/steam-bridge-macos-overlay-matrix-minimal-helper-current-20260629-170723`
   re-ran the packaged helper after the source-level presenter-shape checks were

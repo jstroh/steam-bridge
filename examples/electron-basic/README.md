@@ -219,9 +219,12 @@ Supported autorun actions are `none`, `dialog`, `friends`, `store`, `web`,
 `presenter-web-open-and-wait`, `presenter-store-open-and-wait`,
 `presenter-dialog-auto-open-and-wait`, `presenter-friends`,
 `presenter-friends-open-and-wait`, `presenter-profile`,
-`presenter-players`, `presenter-community`, `presenter-stats`,
-`presenter-achievements`,
-`presenter-user`, `presenter-checkout`, `presenter-shortcut`, and
+`presenter-profile-open-and-wait`, `presenter-players`,
+`presenter-players-open-and-wait`, `presenter-community`,
+`presenter-community-open-and-wait`, `presenter-stats`,
+`presenter-stats-open-and-wait`, `presenter-achievements`,
+`presenter-achievements-open-and-wait`, `presenter-user`,
+`presenter-user-open-and-wait`, `presenter-checkout`, `presenter-shortcut`, and
 `presenter-achievement-progress`, and `presenter-achievement-unlock`.
 `native-probe` is a compatibility alias for `native-dialog`. On Linux, the
 `native-*` actions open a bridge-owned X11/GLX native presenter, keep it
@@ -253,7 +256,9 @@ close probes verify that close/park lifecycle from outside the app. Use
 `presenter-friends-open-and-wait` for the same one-call open/close/park proof
 against the Steam store and Friends List surfaces. Use
 `presenter-dialog-auto-open-and-wait --dialog OfficialGameGroup` for the same
-proof through the verified high-level dialog-equivalent router. On Linux/X11, the
+proof through the verified high-level dialog-equivalent router. The profile,
+players, community, stats, achievements, and user routes also have
+`*-open-and-wait` actions for the same managed wait-helper proof. On Linux/X11, the
 presenter is transparent and click-through
 while fully idle, polls without pumping frames by default, can become visible while remaining
 click-through for `overlayNeedsPresent`, restores both opacity and input while
@@ -297,28 +302,28 @@ Use `presenter-friends` to verify the recommended Friends List path:
 `client.overlay.openFriendsOverlay({ presenter })` opens Steam Community chat
 through the same native web presenter used by checkout/store overlays, keeping a
 single `gameoverlayui` target attached to the main/native process.
-Use `presenter-profile` to verify
+Use `presenter-profile` or `presenter-profile-open-and-wait` to verify
 `client.overlay.openProfileOverlay({ steamId64, presenter })`, which opens the
 current user's Steam Community profile through the same presenter-backed Steam
 web overlay route instead of the raw `ActivateGameOverlayToUser` profile path.
-Use `presenter-players` to verify
+Use `presenter-players` or `presenter-players-open-and-wait` to verify
 `client.overlay.openPlayersOverlay({ steamId64, presenter })`, which opens the
 current user's Steam Community players page through the same presenter-backed
 Steam web overlay route instead of the raw Desktop Players dialog.
-Use `presenter-community` and `presenter-stats` to verify the product-shaped
-Steam Community app hub and current-user app stats routes:
+Use `presenter-community-open-and-wait` and `presenter-stats-open-and-wait` to
+verify the product-shaped Steam Community app hub and current-user app stats routes:
 `client.overlay.openCommunityOverlay({ appId, presenter })` and
 `client.overlay.openStatsOverlay({ appId, presenter })`. Deck Desktop testing
 verified both with visible Steam web content, overlay activation, and return to
 the smoke app through `--visual-close-input web`.
-Use `presenter-achievements` to verify
+Use `presenter-achievements-open-and-wait` to verify
 `client.overlay.openAchievementsOverlay({ appId, presenter })`, which opens the
 current user's app achievements page through the same presenter-backed Steam web
 overlay route instead of the raw Desktop achievements dialog. SpaceWar App ID
 `480` can redirect that web achievements URL to the user's profile because Steam
 Community does not expose a public web stats page for it; a real app with
 web-visible stats is needed for achievements content proof.
-Use `presenter-user --user-dialog steamid` to verify the high-level
+Use `presenter-user-open-and-wait --user-dialog steamid` to verify the high-level
 `client.overlay.openUserOverlay(...)` route for the common
 `ActivateGameOverlayToUser("steamid", user)` profile case. The same router maps
 `chat`, `stats`, and `achievements` to presenter-backed web surfaces; `chat`

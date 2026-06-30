@@ -200,10 +200,16 @@ ipcMain.handle("steam-smoke:presenter-dialog-auto-open-and-wait", () =>
 ipcMain.handle("steam-smoke:presenter-friends", () => openPresenterFriendsOverlay());
 ipcMain.handle("steam-smoke:presenter-friends-open-and-wait", () => openPresenterFriendsOpenAndWaitOverlay());
 ipcMain.handle("steam-smoke:presenter-profile", () => openPresenterProfileOverlay());
+ipcMain.handle("steam-smoke:presenter-profile-open-and-wait", () => openPresenterProfileOpenAndWaitOverlay());
 ipcMain.handle("steam-smoke:presenter-players", () => openPresenterPlayersOverlay());
+ipcMain.handle("steam-smoke:presenter-players-open-and-wait", () => openPresenterPlayersOpenAndWaitOverlay());
 ipcMain.handle("steam-smoke:presenter-community", () => openPresenterCommunityOverlay());
+ipcMain.handle("steam-smoke:presenter-community-open-and-wait", () => openPresenterCommunityOpenAndWaitOverlay());
 ipcMain.handle("steam-smoke:presenter-stats", () => openPresenterStatsOverlay());
+ipcMain.handle("steam-smoke:presenter-stats-open-and-wait", () => openPresenterStatsOpenAndWaitOverlay());
 ipcMain.handle("steam-smoke:presenter-achievements", () => openPresenterAchievementsOverlay());
+ipcMain.handle("steam-smoke:presenter-achievements-open-and-wait", () => openPresenterAchievementsOpenAndWaitOverlay());
+ipcMain.handle("steam-smoke:presenter-user-open-and-wait", () => openPresenterUserOpenAndWaitOverlay());
 ipcMain.handle("steam-smoke:presenter-checkout", () => openPresenterCheckoutOverlay());
 ipcMain.handle("steam-smoke:presenter-achievement-progress", () => openPresenterAchievementProgress());
 ipcMain.handle("steam-smoke:presenter-achievement-unlock", () => openPresenterAchievementUnlock());
@@ -457,20 +463,38 @@ async function runAutorunAction(action) {
       case "presenter-profile":
         openPresenterProfileOverlay();
         return { ok: true, action };
+      case "presenter-profile-open-and-wait":
+        openPresenterProfileOpenAndWaitOverlay();
+        return { ok: true, action };
       case "presenter-players":
         openPresenterPlayersOverlay();
+        return { ok: true, action };
+      case "presenter-players-open-and-wait":
+        openPresenterPlayersOpenAndWaitOverlay();
         return { ok: true, action };
       case "presenter-community":
         openPresenterCommunityOverlay();
         return { ok: true, action };
+      case "presenter-community-open-and-wait":
+        openPresenterCommunityOpenAndWaitOverlay();
+        return { ok: true, action };
       case "presenter-stats":
         openPresenterStatsOverlay();
+        return { ok: true, action };
+      case "presenter-stats-open-and-wait":
+        openPresenterStatsOpenAndWaitOverlay();
         return { ok: true, action };
       case "presenter-achievements":
         openPresenterAchievementsOverlay();
         return { ok: true, action };
+      case "presenter-achievements-open-and-wait":
+        openPresenterAchievementsOpenAndWaitOverlay();
+        return { ok: true, action };
       case "presenter-user":
         openPresenterUserOverlay();
+        return { ok: true, action };
+      case "presenter-user-open-and-wait":
+        openPresenterUserOpenAndWaitOverlay();
         return { ok: true, action };
       case "presenter-checkout":
         await openPresenterCheckoutOverlay();
@@ -750,118 +774,176 @@ function openPresenterProfileOverlay() {
   const activeClient = requireClient();
   const overlay = ensureElectronSteamOverlay(activeClient);
   const steamId64 = activeClient.localplayer.getSteamId().steamId64;
-  overlay.open({ type: "profile", steamId64 });
-  recordEvent("overlay:presenter-open", {
-    target: "profile",
-    steamId64,
-    url: steamworks.steamCommunityProfileUrl(steamId64),
-    modal: true,
-    presenter: overlay.snapshot()
-  });
-  observeManagedOverlayLifecycle(overlay, {
+  const target = { type: "profile", steamId64 };
+  const context = {
     target: "profile",
     steamId64,
     url: steamworks.steamCommunityProfileUrl(steamId64),
     modal: true
-  });
+  };
+  overlay.open(target);
+  recordEvent("overlay:presenter-open", { ...context, presenter: overlay.snapshot() });
+  observeManagedOverlayLifecycle(overlay, context);
   return snapshot();
+}
+
+function openPresenterProfileOpenAndWaitOverlay() {
+  const activeClient = requireClient();
+  const overlay = ensureElectronSteamOverlay(activeClient);
+  const steamId64 = activeClient.localplayer.getSteamId().steamId64;
+  const target = { type: "profile", steamId64 };
+  const context = {
+    target: "profile",
+    steamId64,
+    url: steamworks.steamCommunityProfileUrl(steamId64),
+    modal: true,
+    api: "openAndWait"
+  };
+  return openPresenterTargetAndWaitOverlay(overlay, target, context);
 }
 
 function openPresenterPlayersOverlay() {
   const activeClient = requireClient();
   const overlay = ensureElectronSteamOverlay(activeClient);
   const steamId64 = activeClient.localplayer.getSteamId().steamId64;
-  overlay.open({ type: "players", steamId64 });
-  recordEvent("overlay:presenter-open", {
-    target: "players",
-    steamId64,
-    url: steamworks.steamCommunityPlayersUrl(steamId64),
-    modal: true,
-    presenter: overlay.snapshot()
-  });
-  observeManagedOverlayLifecycle(overlay, {
+  const target = { type: "players", steamId64 };
+  const context = {
     target: "players",
     steamId64,
     url: steamworks.steamCommunityPlayersUrl(steamId64),
     modal: true
-  });
+  };
+  overlay.open(target);
+  recordEvent("overlay:presenter-open", { ...context, presenter: overlay.snapshot() });
+  observeManagedOverlayLifecycle(overlay, context);
   return snapshot();
+}
+
+function openPresenterPlayersOpenAndWaitOverlay() {
+  const activeClient = requireClient();
+  const overlay = ensureElectronSteamOverlay(activeClient);
+  const steamId64 = activeClient.localplayer.getSteamId().steamId64;
+  const target = { type: "players", steamId64 };
+  const context = {
+    target: "players",
+    steamId64,
+    url: steamworks.steamCommunityPlayersUrl(steamId64),
+    modal: true,
+    api: "openAndWait"
+  };
+  return openPresenterTargetAndWaitOverlay(overlay, target, context);
 }
 
 function openPresenterCommunityOverlay() {
   const overlay = ensureElectronSteamOverlay();
-  overlay.open({ type: "community", appId: APP_ID });
-  recordEvent("overlay:presenter-open", {
-    target: "community",
-    appId: APP_ID,
-    url: steamworks.steamCommunityAppUrl(APP_ID),
-    modal: true,
-    presenter: overlay.snapshot()
-  });
-  observeManagedOverlayLifecycle(overlay, {
+  const target = { type: "community", appId: APP_ID };
+  const context = {
     target: "community",
     appId: APP_ID,
     url: steamworks.steamCommunityAppUrl(APP_ID),
     modal: true
-  });
+  };
+  overlay.open(target);
+  recordEvent("overlay:presenter-open", { ...context, presenter: overlay.snapshot() });
+  observeManagedOverlayLifecycle(overlay, context);
   return snapshot();
+}
+
+function openPresenterCommunityOpenAndWaitOverlay() {
+  const overlay = ensureElectronSteamOverlay();
+  const target = { type: "community", appId: APP_ID };
+  const context = {
+    target: "community",
+    appId: APP_ID,
+    url: steamworks.steamCommunityAppUrl(APP_ID),
+    modal: true,
+    api: "openAndWait"
+  };
+  return openPresenterTargetAndWaitOverlay(overlay, target, context);
 }
 
 function openPresenterStatsOverlay() {
   const overlay = ensureElectronSteamOverlay();
-  overlay.open({ type: "stats", appId: APP_ID });
-  recordEvent("overlay:presenter-open", {
-    target: "stats",
-    appId: APP_ID,
-    url: steamworks.steamCommunityUserStatsUrl(APP_ID),
-    modal: true,
-    presenter: overlay.snapshot()
-  });
-  observeManagedOverlayLifecycle(overlay, {
+  const target = { type: "stats", appId: APP_ID };
+  const context = {
     target: "stats",
     appId: APP_ID,
     url: steamworks.steamCommunityUserStatsUrl(APP_ID),
     modal: true
-  });
+  };
+  overlay.open(target);
+  recordEvent("overlay:presenter-open", { ...context, presenter: overlay.snapshot() });
+  observeManagedOverlayLifecycle(overlay, context);
   return snapshot();
+}
+
+function openPresenterStatsOpenAndWaitOverlay() {
+  const overlay = ensureElectronSteamOverlay();
+  const target = { type: "stats", appId: APP_ID };
+  const context = {
+    target: "stats",
+    appId: APP_ID,
+    url: steamworks.steamCommunityUserStatsUrl(APP_ID),
+    modal: true,
+    api: "openAndWait"
+  };
+  return openPresenterTargetAndWaitOverlay(overlay, target, context);
 }
 
 function openPresenterAchievementsOverlay() {
   const overlay = ensureElectronSteamOverlay();
-  overlay.open({ type: "achievements", appId: APP_ID });
-  recordEvent("overlay:presenter-open", {
-    target: "achievements",
-    appId: APP_ID,
-    url: steamworks.steamCommunityAchievementsUrl(APP_ID),
-    modal: true,
-    presenter: overlay.snapshot()
-  });
-  observeManagedOverlayLifecycle(overlay, {
+  const target = { type: "achievements", appId: APP_ID };
+  const context = {
     target: "achievements",
     appId: APP_ID,
     url: steamworks.steamCommunityAchievementsUrl(APP_ID),
     modal: true
-  });
+  };
+  overlay.open(target);
+  recordEvent("overlay:presenter-open", { ...context, presenter: overlay.snapshot() });
+  observeManagedOverlayLifecycle(overlay, context);
   return snapshot();
+}
+
+function openPresenterAchievementsOpenAndWaitOverlay() {
+  const overlay = ensureElectronSteamOverlay();
+  const target = { type: "achievements", appId: APP_ID };
+  const context = {
+    target: "achievements",
+    appId: APP_ID,
+    url: steamworks.steamCommunityAchievementsUrl(APP_ID),
+    modal: true,
+    api: "openAndWait"
+  };
+  return openPresenterTargetAndWaitOverlay(overlay, target, context);
 }
 
 function openPresenterUserOverlay() {
   const overlay = ensureElectronSteamOverlay();
-  overlay.open({ type: "user", dialog: USER_DIALOG, appId: APP_ID });
-  recordEvent("overlay:presenter-open", {
-    target: "user",
-    dialog: USER_DIALOG,
-    route: "auto",
-    appId: APP_ID,
-    presenter: overlay.snapshot()
-  });
-  observeManagedOverlayLifecycle(overlay, {
+  const target = { type: "user", dialog: USER_DIALOG, appId: APP_ID };
+  const context = {
     target: "user",
     dialog: USER_DIALOG,
     route: "auto",
     appId: APP_ID
-  });
+  };
+  overlay.open(target);
+  recordEvent("overlay:presenter-open", { ...context, presenter: overlay.snapshot() });
+  observeManagedOverlayLifecycle(overlay, context);
   return snapshot();
+}
+
+function openPresenterUserOpenAndWaitOverlay() {
+  const overlay = ensureElectronSteamOverlay();
+  const target = { type: "user", dialog: USER_DIALOG, appId: APP_ID };
+  const context = {
+    target: "user",
+    dialog: USER_DIALOG,
+    route: "auto",
+    appId: APP_ID,
+    api: "openAndWait"
+  };
+  return openPresenterTargetAndWaitOverlay(overlay, target, context);
 }
 
 async function openPresenterCheckoutOverlay() {
@@ -1990,11 +2072,17 @@ function isNativeSessionAction(action) {
     action === "presenter-friends" ||
     action === "presenter-friends-open-and-wait" ||
     action === "presenter-profile" ||
+    action === "presenter-profile-open-and-wait" ||
     action === "presenter-players" ||
+    action === "presenter-players-open-and-wait" ||
     action === "presenter-community" ||
+    action === "presenter-community-open-and-wait" ||
     action === "presenter-stats" ||
+    action === "presenter-stats-open-and-wait" ||
     action === "presenter-achievements" ||
+    action === "presenter-achievements-open-and-wait" ||
     action === "presenter-user" ||
+    action === "presenter-user-open-and-wait" ||
     action === "presenter-checkout" ||
     action === "presenter-shortcut" ||
     action === "presenter-achievement-progress" ||

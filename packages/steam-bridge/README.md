@@ -516,6 +516,12 @@ added direct `presenter-players` coverage to the regular macOS suite. The
 callback, active shown presenter, focus return, zero managed timing, parked idle
 presenter, and crash-diagnostic gates as the other presenter-backed community
 surfaces.
+A 2026-06-29 core macOS matrix at
+`/tmp/steam-bridge-macos-overlay-matrix-core-openwait-expanded-20260629-190754`
+then switched profile, players, community, stats, achievements, and user chat to
+managed `openAndWait(...)` actions. That artifact reports `openAndWait=true` for
+every interactive presenter-backed product route in the core suite and verifies
+completion only after Steam closes and the presenter parks.
 The repository also provides `npm run macos:overlay-matrix`, which installs or
 updates one stable macOS Steam shortcut pointing at the in-bundle native
 launcher and a launcher env file. Each case rewrites only that env file, so

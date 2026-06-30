@@ -275,7 +275,12 @@ run_self_test() {
   require_contains "$core_output" "--shortcut-target friends" "core matrix must include Friends shortcut routing."
   require_contains "$core_output" "--shortcut-target web" "core matrix must include web shortcut routing."
   require_contains "$core_output" "--shortcut-target store" "core matrix must include store shortcut routing."
-  require_contains "$core_output" "--action presenter-players" "core matrix must include players."
+  require_contains "$core_output" "--action presenter-profile-open-and-wait" "core matrix must include profile openAndWait."
+  require_contains "$core_output" "--action presenter-players-open-and-wait" "core matrix must include players openAndWait."
+  require_contains "$core_output" "--action presenter-community-open-and-wait" "core matrix must include community openAndWait."
+  require_contains "$core_output" "--action presenter-stats-open-and-wait" "core matrix must include stats openAndWait."
+  require_contains "$core_output" "--action presenter-achievements-open-and-wait" "core matrix must include achievements openAndWait."
+  require_contains "$core_output" "--action presenter-user-open-and-wait" "core matrix must include user openAndWait."
   require_contains "$core_output" "--shortcut-open-probe" "shortcut proof must open through the managed Shift+Tab bridge."
   require_contains "$core_output" "--close-input toggle" "shortcut proof must close with Shift+Tab."
   require_contains "$core_output" "--require-passive-notification" "passive toast cases must use the passive notification gate."
@@ -880,57 +885,63 @@ run_matrix() {
     --close-input toggle
 
   run_case "11-profile" \
-    --action presenter-profile \
+    --action presenter-profile-open-and-wait \
     --require-steam-launch \
     --require-overlay-injection \
     --require-overlay-enabled \
     --require-overlay-activated \
+    --require-event overlay:presenter-open-and-wait-start \
     --require-no-crashes \
     --close-probe
 
   run_case "12-players" \
-    --action presenter-players \
+    --action presenter-players-open-and-wait \
     --require-steam-launch \
     --require-overlay-injection \
     --require-overlay-enabled \
     --require-overlay-activated \
+    --require-event overlay:presenter-open-and-wait-start \
     --require-no-crashes \
     --close-probe
 
   run_case "13-community" \
-    --action presenter-community \
+    --action presenter-community-open-and-wait \
     --require-steam-launch \
     --require-overlay-injection \
     --require-overlay-enabled \
     --require-overlay-activated \
+    --require-event overlay:presenter-open-and-wait-start \
     --require-no-crashes \
     --close-probe
 
   run_case "14-stats" \
-    --action presenter-stats \
+    --action presenter-stats-open-and-wait \
     --require-steam-launch \
     --require-overlay-injection \
     --require-overlay-enabled \
     --require-overlay-activated \
+    --require-event overlay:presenter-open-and-wait-start \
     --require-no-crashes \
     --close-probe
 
   run_case "15-achievements" \
-    --action presenter-achievements \
+    --action presenter-achievements-open-and-wait \
     --require-steam-launch \
     --require-overlay-injection \
     --require-overlay-enabled \
     --require-overlay-activated \
+    --require-event overlay:presenter-open-and-wait-start \
     --require-no-crashes \
     --close-probe
 
   run_case "16-user-chat" \
-    --action presenter-user \
+    --action presenter-user-open-and-wait \
     --user-dialog chat \
     --require-steam-launch \
     --require-overlay-injection \
     --require-overlay-enabled \
     --require-overlay-activated \
+    --require-event overlay:presenter-open-and-wait-start \
     --require-no-crashes \
     --close-probe
 
@@ -939,12 +950,13 @@ run_matrix() {
   fi
 
   run_case "14-user-steamid" \
-    --action presenter-user \
+    --action presenter-user-open-and-wait \
     --user-dialog steamid \
     --require-steam-launch \
     --require-overlay-injection \
     --require-overlay-enabled \
     --require-overlay-activated \
+    --require-event overlay:presenter-open-and-wait-start \
     --require-no-crashes \
     --close-probe
 
