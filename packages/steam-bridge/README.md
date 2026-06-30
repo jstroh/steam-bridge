@@ -262,8 +262,11 @@ Use `waitForOverlayShown()`, `waitForOverlayClosed()`, and
 await points; in the default persistent presenter mode these resolve from Steam
 Bridge's overlay callback and presenter state changes. App code supplies
 deadlines or abort signals, not polling intervals; timeout handling is a
-guardrail rather than app-facing timing glue. The Electron smoke app
-records those await points as `overlay:presenter-wait-shown`,
+guardrail rather than app-facing timing glue. If one of those waits times out,
+Steam Bridge throws `SteamOverlayWaitTimeoutError` with `code`,
+`state`, `timeoutMs`, and the last managed presenter `snapshot`; use
+`isSteamOverlayWaitTimeoutError(error)` to branch without parsing messages.
+The Electron smoke app records those await points as `overlay:presenter-wait-shown`,
 `overlay:presenter-wait-closed`, and `overlay:presenter-parked` lifecycle
 events so Deck/Linux artifact review proves the same public API app builders
 call.

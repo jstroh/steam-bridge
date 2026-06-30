@@ -25,12 +25,20 @@ function serializeErrorObject(error) {
   }
   copyStringField(serialized, source, "code");
   copyStringField(serialized, source, "reason");
+  copyStringField(serialized, source, "state");
+  copyNumberField(serialized, source, "timeoutMs");
   copyMacOverlayEnvironment(serialized, source);
   return serialized;
 }
 
 function copyStringField(target, source, field) {
   if (typeof source[field] === "string" && source[field]) {
+    target[field] = source[field];
+  }
+}
+
+function copyNumberField(target, source, field) {
+  if (typeof source[field] === "number" && Number.isFinite(source[field])) {
     target[field] = source[field];
   }
 }

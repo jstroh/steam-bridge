@@ -1942,6 +1942,39 @@ export function isSteamOverlayNativeHostUnavailableError(
   );
 }
 
+export class SteamOverlayWaitTimeoutError extends Error {
+  readonly code = "STEAM_OVERLAY_WAIT_TIMEOUT";
+  readonly state: string;
+  readonly timeoutMs: number;
+  readonly snapshot?: ElectronSteamOverlaySnapshot;
+
+  constructor(state: string, timeoutMs: number, snapshot?: ElectronSteamOverlaySnapshot) {
+    super(formatSteamOverlayWaitTimeoutMessage(state, timeoutMs, snapshot));
+    this.name = "SteamOverlayWaitTimeoutError";
+    Object.setPrototypeOf(this, new.target.prototype);
+    this.state = state;
+    this.timeoutMs = timeoutMs;
+    this.snapshot = snapshot;
+  }
+}
+
+export function isSteamOverlayWaitTimeoutError(error: unknown): error is SteamOverlayWaitTimeoutError {
+  if (error instanceof SteamOverlayWaitTimeoutError) {
+    return true;
+  }
+
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const candidate = error as { code?: unknown; state?: unknown; timeoutMs?: unknown };
+  return (
+    candidate.code === "STEAM_OVERLAY_WAIT_TIMEOUT" &&
+    typeof candidate.state === "string" &&
+    typeof candidate.timeoutMs === "number"
+  );
+}
+
 function isNativeOverlayHostUnavailableReason(value: unknown): value is NativeOverlayHostUnavailableReason {
   return value === "macos-screen-locked" || value === "macos-display-asleep";
 }
@@ -9201,6 +9234,7 @@ function waitForElectronSteamOverlayState(
     let abortHandler: (() => void) | undefined;
     let stateChangeHandle: CallbackHandle | undefined;
     let settled = false;
+    let lastSnapshot: ElectronSteamOverlaySnapshot | undefined;
 
     const cleanup = (): void => {
       if (timeoutTimer) {
@@ -9250,6 +9284,7 @@ function waitForElectronSteamOverlayState(
       let snapshot: ElectronSteamOverlaySnapshot;
       try {
         snapshot = controller.snapshot();
+        lastSnapshot = snapshot;
       } catch (error) {
         settleReject(error);
         return true;
@@ -9300,13 +9335,13 @@ function waitForElectronSteamOverlayState(
     }
 
     if (timeoutMs <= 0) {
-      settleReject(new Error(`Timed out waiting for Steam overlay to ${stateLabel} after ${timeoutMs}ms.`));
+      settleReject(new SteamOverlayWaitTimeoutError(stateLabel, timeoutMs, lastSnapshot));
       return;
     }
 
     timeoutTimer = setTimeout(() => {
       if (!check()) {
-        settleReject(new Error(`Timed out waiting for Steam overlay to ${stateLabel} after ${timeoutMs}ms.`));
+        settleReject(new SteamOverlayWaitTimeoutError(stateLabel, timeoutMs, lastSnapshot));
       }
     }, timeoutMs);
     scheduleFallbackPoll();
@@ -9342,6 +9377,22 @@ function formatNativeOverlayHostUnavailableReason(reason: NativeOverlayHostUnava
     default:
       return reason;
   }
+}
+
+function formatSteamOverlayWaitTimeoutMessage(
+  state: string,
+  timeoutMs: number,
+  snapshot?: ElectronSteamOverlaySnapshot
+): string {
+  const message = `Timed out waiting for Steam overlay to ${state} after ${timeoutMs}ms.`;
+  if (!snapshot) {
+    return message;
+  }
+
+  return `${message} Last presenter state: mode=${snapshot.mode}, attached=${snapshot.attached}, ` +
+    `overlayActive=${snapshot.overlayActive}, overlayWasActive=${snapshot.overlayWasActive}, ` +
+    `overlayNeedsPresent=${snapshot.overlayNeedsPresent}, currentFps=${snapshot.currentFps}, ` +
+    `nativeHostUnavailable=${snapshot.nativeHostUnavailableReason ?? "none"}.`;
 }
 
 function releaseElectronSteamOverlayActivationWhenShown(
@@ -21701,6 +21752,8 @@ const defaultExport = {
   activateToStoreWithNativeSession,
   SteamOverlayNativeHostUnavailableError,
   isSteamOverlayNativeHostUnavailableError,
+  SteamOverlayWaitTimeoutError,
+  isSteamOverlayWaitTimeoutError,
   openNativeOverlayProbeWindow,
   attachNativeOverlayHostView,
   pumpNativeOverlayProbeWindow,

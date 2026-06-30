@@ -371,6 +371,10 @@ signals, not polling intervals. The smoke lifecycle log records those public
 wait helpers as `overlay:presenter-wait-shown`,
 `overlay:presenter-wait-closed`, and `overlay:presenter-parked` during managed
 presenter proofs.
+If a wait guard expires, app code receives `SteamOverlayWaitTimeoutError` with
+`code`, `state`, `timeoutMs`, and the last managed presenter `snapshot`; use
+`isSteamOverlayWaitTimeoutError(error)` for fallback or diagnostics instead of
+parsing the message.
 The managed overlay automatically primes its passive presenter before
 achievement progress, achievement unlock, and stats-store calls that can produce
 Steam notification toasts; `prepareForNotification()` remains available for

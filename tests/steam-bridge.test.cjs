@@ -99,6 +99,11 @@ test("electron smoke sanitizer redacts private overlay proof fields", () => {
   overlayError.reason = "macos-screen-locked";
   overlayError.macOverlayEnvironment = { screenLocked: true, displayAsleep: false };
   overlayError.privateTransactionId = 123456789n;
+  const waitError = new Error("Timed out waiting for Steam overlay to become active after 500ms.");
+  waitError.name = "SteamOverlayWaitTimeoutError";
+  waitError.code = "STEAM_OVERLAY_WAIT_TIMEOUT";
+  waitError.state = "become active";
+  waitError.timeoutMs = 500;
 
   const sanitized = sanitizeSmokeValue({
     appId: 480,
@@ -121,6 +126,7 @@ test("electron smoke sanitizer redacts private overlay proof fields", () => {
       owner: 76561198000000001n
     },
     error: serializeSmokeError(overlayError),
+    waitError: serializeSmokeError(waitError),
     launch: {
       argv: [
         "SteamBridgeSmoke",
@@ -142,6 +148,10 @@ test("electron smoke sanitizer redacts private overlay proof fields", () => {
   assert.equal(sanitized.error.code, "STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE");
   assert.equal(sanitized.error.reason, "macos-screen-locked");
   assert.deepEqual(sanitized.error.macOverlayEnvironment, { screenLocked: true, displayAsleep: false });
+  assert.equal(sanitized.waitError.name, "SteamOverlayWaitTimeoutError");
+  assert.equal(sanitized.waitError.code, "STEAM_OVERLAY_WAIT_TIMEOUT");
+  assert.equal(sanitized.waitError.state, "become active");
+  assert.equal(sanitized.waitError.timeoutMs, 500);
   assert.equal(sanitized.steamId64.redacted, true);
   assert.equal(sanitized.transactionId.redacted, true);
   assert.equal(sanitized.steamUrl.redacted, true);
@@ -185,6 +195,49 @@ test("native host unavailable guard accepts class and error-like shapes", (t) =>
   );
   assert.equal(steam.isSteamOverlayNativeHostUnavailableError(new Error("nope")), false);
   assert.equal(steam.isSteamOverlayNativeHostUnavailableError(null), false);
+});
+
+test("overlay wait timeout guard accepts class and error-like shapes", (t) => {
+  const steam = require(distFile("index.js"));
+  t.after(clearSteamBridgeCache);
+
+  const snapshot = {
+    mode: "passive",
+    attached: true,
+    overlayActive: false,
+    overlayWasActive: false,
+    overlayNeedsPresent: false,
+    currentFps: 0
+  };
+  const error = new steam.SteamOverlayWaitTimeoutError("become active", 123, snapshot);
+
+  assert.equal(steam.isSteamOverlayWaitTimeoutError(error), true);
+  assert.equal(steam.default.isSteamOverlayWaitTimeoutError(error), true);
+  assert.equal(error instanceof steam.default.SteamOverlayWaitTimeoutError, true);
+  assert.equal(error.name, "SteamOverlayWaitTimeoutError");
+  assert.equal(error.code, "STEAM_OVERLAY_WAIT_TIMEOUT");
+  assert.equal(error.state, "become active");
+  assert.equal(error.timeoutMs, 123);
+  assert.equal(error.snapshot, snapshot);
+  assert.match(error.message, /Timed out waiting for Steam overlay to become active after 123ms/);
+  assert.match(error.message, /Last presenter state: mode=passive/);
+  assert.equal(
+    steam.isSteamOverlayWaitTimeoutError({
+      code: "STEAM_OVERLAY_WAIT_TIMEOUT",
+      state: "close and park",
+      timeoutMs: 300000
+    }),
+    true
+  );
+  assert.equal(
+    steam.isSteamOverlayWaitTimeoutError({
+      code: "STEAM_OVERLAY_WAIT_TIMEOUT",
+      state: "close"
+    }),
+    false
+  );
+  assert.equal(steam.isSteamOverlayWaitTimeoutError(new Error("nope")), false);
+  assert.equal(steam.isSteamOverlayWaitTimeoutError(null), false);
 });
 
 function fakeTicket(label, calls) {
@@ -7240,10 +7293,19 @@ test("electron steam overlay manager exposes lifecycle wait helpers", async (t) 
   assert.equal(parkedSnapshot.transparent, true);
   assert.equal(parkedSnapshot.currentFps, 0);
 
-  await assert.rejects(
-    overlay.waitForOverlayShown({ timeoutMs: 5 }),
-    /Timed out waiting for Steam overlay to become active after 5ms/
-  );
+  await assert.rejects(overlay.waitForOverlayShown({ timeoutMs: 5 }), (error) => {
+    assert.equal(error instanceof steam.SteamOverlayWaitTimeoutError, true);
+    assert.equal(error.name, "SteamOverlayWaitTimeoutError");
+    assert.equal(error.code, "STEAM_OVERLAY_WAIT_TIMEOUT");
+    assert.equal(error.state, "become active");
+    assert.equal(error.timeoutMs, 5);
+    assert.equal(error.snapshot.overlayActive, false);
+    assert.equal(error.snapshot.overlayWasActive, true);
+    assert.equal(error.snapshot.mode, "passive");
+    assert.match(error.message, /Timed out waiting for Steam overlay to become active after 5ms/);
+    assert.match(error.message, /Last presenter state: mode=passive/);
+    return true;
+  });
 
   const abortController = new AbortController();
   const aborted = overlay.waitForOverlayShown({
