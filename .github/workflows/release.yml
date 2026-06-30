@@ -22,8 +22,8 @@ jobs:
             target: x86_64-unknown-linux-gnu
 
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: npm
@@ -38,7 +38,7 @@ jobs:
       - run: npx napi build --release --target ${{ matrix.target }} --platform --no-js --manifest-path crates/native/Cargo.toml --package-json-path packages/steam-bridge/package.json --output-dir packages/steam-bridge
       - run: node packages/steam-bridge/scripts/link-native.cjs --runtime-only --target ${{ matrix.target }}
       - run: node scripts/verify-release-artifacts.cjs --target ${{ matrix.target }}
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: steam-bridge-${{ matrix.target }}
           path: |
