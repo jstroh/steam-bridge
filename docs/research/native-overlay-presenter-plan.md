@@ -808,6 +808,16 @@ Current evidence:
   overlay activation, and records the same manifest metadata consumed by the
   artifact summarizer. Success matrices preflight the same environment and stop
   before launching case 1 if the Mac is locked or the display is asleep.
+  A live 2026-06-30 unavailable matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-unavailable-screen-locked-fixed-20260630-024404`
+  passed both managed web and checkout fail-fast cases in a genuine locked
+  session. The artifact proves Steam launch/injection, typed unavailable action
+  errors, no native host attachment, hidden presenter state at `currentFps=0`,
+  no overlay activation, and no crash evidence. Locked sessions can also report
+  `displayAsleep=true`; `macos-screen-locked` takes precedence and the verifier
+  allows either display-asleep value while locked. Because the host is
+  intentionally not created, unavailable matrix summaries do not require
+  `overlayEnabled=true`.
 - BrowserWindow-only overlay support is not proven.
 - Steam launch, app ID, auth, and callbacks are not enough to claim overlay
   support.
@@ -816,11 +826,7 @@ Next work:
 
 1. Run real purchase-content and `InitTxn` proof from a real configured Steam
    app ID; App ID `480` only proves generic checkout routing.
-2. Capture a live `--suite unavailable` artifact during a genuine macOS locked
-   or display-asleep session when it can be done without destabilizing the
-   user's machine; the runner, runtime guard, unit proof, smoke-result verifier,
-   and matrix artifact summary path are implemented.
-3. Keep code signing requirements explicit in docs and examples. The generic
+2. Keep code signing requirements explicit in docs and examples. The generic
    example now includes `entitlements.steam.macos.plist` with
    `com.apple.security.cs.allow-dyld-environment-variables` and
    `com.apple.security.cs.disable-library-validation` enabled, and no App

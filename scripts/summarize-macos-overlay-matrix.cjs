@@ -287,7 +287,9 @@ function verifyCase(caseId, metadata, result, lifecycle, failures) {
   expect(readOkValue(steam.appId) === 480, `${caseId}: Steam app ID is 480`, failures);
   expect(readOkValue(steam.steamDeck) === false, `${caseId}: Steam Deck flag is false on macOS`, failures);
   expect(readOkValue(steam.bigPicture) === false, `${caseId}: Big Picture flag is false on macOS`, failures);
-  expect(readOkValue(steam.overlayEnabled) === true, `${caseId}: Steam overlay enabled`, failures);
+  if (!expectedNativeHostUnavailableReason) {
+    expect(readOkValue(steam.overlayEnabled) === true, `${caseId}: Steam overlay enabled`, failures);
+  }
   expect(crashOk, `${caseId}: crash diagnostics are available and ok`, failures);
   expect(arrayLength(crashDiagnostics.crashDumps) === 0, `${caseId}: no crash dumps reported`, failures);
   expect(
@@ -880,17 +882,12 @@ function verifyNativeHostUnavailablePresenter(caseId, presenter, expectedReason,
     failures
   );
 
-  const expectedEnvironment = expectedMacOverlayEnvironment(expectedReason);
   const actualEnvironment = objectField(presenter, "macOverlayEnvironment");
-  if (expectedEnvironment) {
-    expect(
-      actualEnvironment &&
-        actualEnvironment.screenLocked === expectedEnvironment.screenLocked &&
-        actualEnvironment.displayAsleep === expectedEnvironment.displayAsleep,
-      `${caseId}: mac overlay environment matches ${expectedReason}`,
-      failures
-    );
-  }
+  expect(
+    macOverlayEnvironmentMatchesReason(actualEnvironment, expectedReason),
+    `${caseId}: mac overlay environment matches ${expectedReason}`,
+    failures
+  );
 }
 
 function verifyNoOverlayActivation(caseId, resultEvents, lifecycleEntries, failures) {
@@ -916,14 +913,17 @@ function expectedNativeHostBackendFromMetadata(metadata) {
   return value;
 }
 
-function expectedMacOverlayEnvironment(reason) {
+function macOverlayEnvironmentMatchesReason(environment, reason) {
+  if (!environment || typeof environment !== "object") {
+    return false;
+  }
   switch (reason) {
     case "macos-screen-locked":
-      return { screenLocked: true, displayAsleep: false };
+      return environment.screenLocked === true;
     case "macos-display-asleep":
-      return { screenLocked: false, displayAsleep: true };
+      return environment.screenLocked === false && environment.displayAsleep === true;
     default:
-      return undefined;
+      return true;
   }
 }
 
@@ -1108,9 +1108,12 @@ function createSelfTestFixture(root) {
         message: "Steam overlay native host is unavailable: macOS screen is locked.",
         code: "STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE",
         reason: "macos-screen-locked",
-        macOverlayEnvironment: { screenLocked: true, displayAsleep: false }
+        macOverlayEnvironment: { screenLocked: true, displayAsleep: true }
       },
-      resultPresenter: nativeHostUnavailablePresenterFixture("macos-screen-locked"),
+      resultPresenter: nativeHostUnavailablePresenterFixture("macos-screen-locked", {
+        screenLocked: true,
+        displayAsleep: true
+      }),
       overlayTargets: [],
       requireActionErrorCode: "STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE",
       requireActionErrorReason: "macos-screen-locked",
@@ -1226,8 +1229,8 @@ function parkedPresenterFixture(pumpCount, backend = "macos-metal") {
   };
 }
 
-function nativeHostUnavailablePresenterFixture(reason) {
-  const macOverlayEnvironment = expectedMacOverlayEnvironment(reason) || {
+function nativeHostUnavailablePresenterFixture(reason, macOverlayEnvironmentOverride) {
+  const macOverlayEnvironment = macOverlayEnvironmentOverride || defaultMacOverlayEnvironment(reason) || {
     screenLocked: false,
     displayAsleep: false
   };
@@ -1267,6 +1270,17 @@ function nativeHostUnavailablePresenterFixture(reason) {
       }
     }
   };
+}
+
+function defaultMacOverlayEnvironment(reason) {
+  switch (reason) {
+    case "macos-screen-locked":
+      return { screenLocked: true, displayAsleep: false };
+    case "macos-display-asleep":
+      return { screenLocked: false, displayAsleep: true };
+    default:
+      return undefined;
+  }
 }
 
 function readSmokeResult(file) {

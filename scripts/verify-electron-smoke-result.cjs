@@ -351,26 +351,24 @@ function verifyNativeHostUnavailableReason() {
   expect(nativePresenter.attached === false, "native presenter is not attached while host is unavailable");
   expect(nativePresenter.nativeHostOpen === false, "native presenter host is closed while unavailable");
   expect(nativePresenter.currentFps === 0, "native presenter current FPS is zero while unavailable");
-  const expectedEnvironment = expectedMacOverlayEnvironment(options.requireNativeHostUnavailableReason);
-  if (expectedEnvironment) {
-    const actualEnvironment = nativePresenter.macOverlayEnvironment;
-    expect(
-      actualEnvironment &&
-        actualEnvironment.screenLocked === expectedEnvironment.screenLocked &&
-        actualEnvironment.displayAsleep === expectedEnvironment.displayAsleep,
-      `mac overlay environment matches ${options.requireNativeHostUnavailableReason}`
-    );
-  }
+  const actualEnvironment = nativePresenter.macOverlayEnvironment;
+  expect(
+    macOverlayEnvironmentMatchesReason(actualEnvironment, options.requireNativeHostUnavailableReason),
+    `mac overlay environment matches ${options.requireNativeHostUnavailableReason}`
+  );
 }
 
-function expectedMacOverlayEnvironment(reason) {
+function macOverlayEnvironmentMatchesReason(environment, reason) {
+  if (!environment || typeof environment !== "object") {
+    return false;
+  }
   switch (reason) {
     case "macos-screen-locked":
-      return { screenLocked: true, displayAsleep: false };
+      return environment.screenLocked === true;
     case "macos-display-asleep":
-      return { screenLocked: false, displayAsleep: true };
+      return environment.screenLocked === false && environment.displayAsleep === true;
     default:
-      return undefined;
+      return true;
   }
 }
 

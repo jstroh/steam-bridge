@@ -317,6 +317,20 @@ Verified:
   environment and stop before launching case 1 while the session is locked or
   the display is asleep. Its self-test validates the matrix shape and the
   artifact summarizer without launching Steam.
+- A live 2026-06-30 unavailable macOS matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-unavailable-screen-locked-fixed-20260630-024404`
+  captured a genuine locked-session state. The two-case suite verified managed
+  web `openAndWait(...)` and checkout fail fast with
+  `STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE`, `reason=macos-screen-locked`,
+  matching presenter `nativeHostUnavailableReason`, no native host attachment,
+  `currentFps=0`, no Steam overlay activation, no `gameoverlayui` targets, and
+  clean crash diagnostics. In this state Steam launch and overlay injection were
+  still present, while `overlayEnabled=false`; unavailable artifacts therefore
+  assert the typed fail-fast/no-host/no-activation contract instead of requiring
+  overlay readiness. A display-sleep attempt can also report both
+  `screenLocked=true` and `displayAsleep=true`; the verifiers treat
+  `macos-screen-locked` as the higher-priority unavailable reason and allow the
+  display-asleep flag to be either true or false when the session is locked.
 - The packaged macOS helper now performs the same presenter-shape checks at the
   source for close, shortcut-open, and passive-notification verification: active
   shown presenter snapshots must be active/opaque/input-capable with an

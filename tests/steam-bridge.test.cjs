@@ -407,11 +407,12 @@ function passiveNotificationResult(presenter) {
   };
 }
 
-function nativeHostUnavailablePresenterFixture(reason = "macos-screen-locked") {
+function nativeHostUnavailablePresenterFixture(reason = "macos-screen-locked", macOverlayEnvironmentOverride) {
   const macOverlayEnvironment =
-    reason === "macos-display-asleep"
+    macOverlayEnvironmentOverride ??
+    (reason === "macos-display-asleep"
       ? { screenLocked: false, displayAsleep: true }
-      : { screenLocked: true, displayAsleep: false };
+      : { screenLocked: true, displayAsleep: false });
 
   return {
     backend: "macos-metal",
@@ -1855,6 +1856,54 @@ test("smoke result verifier accepts native host unavailable presenter evidence",
           macOverlayEnvironment: { screenLocked: true, displayAsleep: false }
         },
         nativeHostUnavailablePresenterFixture("macos-screen-locked")
+      )
+    )}\n`
+  );
+
+  const verifier = childProcess.spawnSync(
+    process.execPath,
+    [
+      path.join(repoRoot, "scripts", "verify-electron-smoke-result.cjs"),
+      "--file",
+      resultFile,
+      "--app-id",
+      "480",
+      "--platform",
+      "darwin/arm64",
+      "--action",
+      "presenter-web-open-and-wait",
+      "--require-action-error-code",
+      "STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE",
+      "--require-action-error-reason",
+      "macos-screen-locked",
+      "--require-native-host-unavailable-reason",
+      "macos-screen-locked"
+    ],
+    { encoding: "utf8" }
+  );
+
+  assert.equal(verifier.status, 0, verifier.stderr);
+  assert.match(verifier.stdout, /Electron smoke result verified/);
+});
+
+test("smoke result verifier accepts locked macOS sessions with sleeping display", (t) => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-host-unavailable-locked-asleep-"));
+  t.after(() => fs.rmSync(tempDir, { recursive: true, force: true }));
+
+  const resultFile = path.join(tempDir, "smoke.log");
+  const lockedAsleepEnvironment = { screenLocked: true, displayAsleep: true };
+  fs.writeFileSync(
+    resultFile,
+    `STEAM_BRIDGE_SMOKE_RESULT ${JSON.stringify(
+      actionErrorSmokeResult(
+        {
+          name: "SteamOverlayNativeHostUnavailableError",
+          message: "Steam overlay native host is unavailable: macOS screen is locked.",
+          code: "STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE",
+          reason: "macos-screen-locked",
+          macOverlayEnvironment: lockedAsleepEnvironment
+        },
+        nativeHostUnavailablePresenterFixture("macos-screen-locked", lockedAsleepEnvironment)
       )
     )}\n`
   );
@@ -6260,7 +6309,7 @@ test("electron steam overlay notification priming retries after macOS host becom
 
   const hostHandle = Buffer.from([2, 4, 6, 8]);
   let hostOpen = false;
-  let macEnvironment = { screenLocked: true, displayAsleep: false };
+  let macEnvironment = { screenLocked: true, displayAsleep: true };
   const fake = createFakeNative({
     getMacOverlayEnvironment() {
       this.calls.push({ method: "getMacOverlayEnvironment", args: [] });

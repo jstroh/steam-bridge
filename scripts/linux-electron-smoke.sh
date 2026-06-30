@@ -688,15 +688,21 @@ if expected_native_host_unavailable_reason:
         expect(native_presenter.get("attached") is False, "native presenter is not attached while host is unavailable")
         expect(native_presenter.get("nativeHostOpen") is False, "native presenter host is closed while unavailable")
         expect(native_presenter.get("currentFps") == 0, "native presenter current FPS is zero while unavailable")
-        expected_environment = {
-            "macos-screen-locked": {"screenLocked": True, "displayAsleep": False},
-            "macos-display-asleep": {"screenLocked": False, "displayAsleep": True},
-        }.get(expected_native_host_unavailable_reason)
-        if expected_environment is not None:
-            expect(
-                native_presenter.get("macOverlayEnvironment") == expected_environment,
-                f"mac overlay environment matches {expected_native_host_unavailable_reason}",
+        actual_environment = native_presenter.get("macOverlayEnvironment")
+        if expected_native_host_unavailable_reason == "macos-screen-locked":
+            environment_matches = isinstance(actual_environment, dict) and actual_environment.get("screenLocked") is True
+        elif expected_native_host_unavailable_reason == "macos-display-asleep":
+            environment_matches = (
+                isinstance(actual_environment, dict)
+                and actual_environment.get("screenLocked") is False
+                and actual_environment.get("displayAsleep") is True
             )
+        else:
+            environment_matches = True
+        expect(
+            environment_matches,
+            f"mac overlay environment matches {expected_native_host_unavailable_reason}",
+        )
 if os.environ["REQUIRE_STEAM_LAUNCH"] == "1":
     expect(launch.get("steamLaunch") is True, "Steam launch marker detected")
 if os.environ["REQUIRE_OVERLAY_READY"] == "1":

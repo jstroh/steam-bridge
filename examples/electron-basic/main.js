@@ -731,9 +731,10 @@ function openPresenterTargetAndWaitOverlay(overlay, target, context) {
     closeTimeoutMs: MANAGED_OVERLAY_PARK_TIMEOUT_MS
   });
 
+  const initialSnapshot = overlay.snapshot();
   recordEvent("overlay:presenter-open-and-wait-start", {
     ...context,
-    presenter: overlay.snapshot()
+    presenter: initialSnapshot
   });
   observeManagedOverlayLifecycle(overlay, context);
 
@@ -756,7 +757,15 @@ function openPresenterTargetAndWaitOverlay(overlay, target, context) {
       }
     });
 
+  throwIfNativeHostUnavailable(initialSnapshot);
   return snapshot();
+}
+
+function throwIfNativeHostUnavailable(snapshot) {
+  if (!snapshot?.nativeHostUnavailableReason) {
+    return;
+  }
+  throw new steamworks.SteamOverlayNativeHostUnavailableError(snapshot);
 }
 
 function openPresenterFriendsOverlay() {
@@ -977,9 +986,10 @@ async function openPresenterCheckoutOverlay() {
       showTimeoutMs: MANAGED_OVERLAY_WAIT_TIMEOUT_MS,
       closeTimeoutMs: MANAGED_OVERLAY_PARK_TIMEOUT_MS
     });
+    const initialSnapshot = overlay.snapshot();
     recordEvent("overlay:presenter-open", {
       ...context,
-      presenter: overlay.snapshot()
+      presenter: initialSnapshot
     });
     observeManagedOverlayLifecycle(overlay, context);
     openAndWait
@@ -1001,6 +1011,7 @@ async function openPresenterCheckoutOverlay() {
           });
         }
       });
+    throwIfNativeHostUnavailable(initialSnapshot);
   } else {
     await overlay.withCheckoutPrepared(() => {
       recordEvent("overlay:presenter-checkout-ready", {

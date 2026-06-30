@@ -307,7 +307,10 @@ screen is locked or the display is asleep. Use
 `steamworks.isSteamOverlayNativeHostUnavailableError(error)` and check
 `error.reason` instead of waiting for an overlay timeout in that state. If the
 host is already unavailable, the managed Shift+Tab bridge treats the same state
-as a quiet no-op unless you provide an `overlayShortcut.onError` handler.
+as a quiet no-op unless you provide an `overlayShortcut.onError` handler. Locked
+sessions can also report the display asleep; `macos-screen-locked` takes
+precedence, and the unavailable proof does not require `overlayEnabled=true`
+because no native host should be created.
 
 `MicroTxnAuthorizationResponse` is a purchase authorization event, not an
 overlay-close signal. Keep the managed presenter alive until Steam reports the

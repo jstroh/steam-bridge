@@ -185,7 +185,10 @@ fail-fast artifacts with
 `nativeHostUnavailableReason`, and no Steam overlay activation. Live
 unavailable runs auto-detect `macos-screen-locked` or
 `macos-display-asleep`; pass `--expected-native-host-unavailable-reason` when
-you need the capture to fail unless the specific state matches.
+you need the capture to fail unless the specific state matches. Locked macOS
+sessions can also report the display asleep; `macos-screen-locked` takes
+precedence in that case. Unavailable captures do not require
+`overlayEnabled=true`, because the native host is intentionally never created.
 Use `--dry-run` to inspect the stable shortcut setup, env-file path, and helper commands
 without launching Steam.
 
@@ -527,7 +530,9 @@ npm run macos:overlay-matrix -- \
 ```
 
 The unavailable suite refuses to run while macOS is interactive, so it does not
-fake lock/display-sleep behavior.
+fake lock/display-sleep behavior. A locked/asleep artifact should show the
+typed unavailable action error, no native host attachment, no overlay
+activation, and zero current FPS.
 
 ## Steam Deck Checks
 

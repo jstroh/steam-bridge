@@ -402,6 +402,8 @@ run_self_test() {
   require_contains "$checkout_case" "--close-probe" "checkout proof should close and verify parked state."
   require_not_contains "$unavailable_web_case" "--close-probe" "unavailable web case must not require close proof."
   require_not_contains "$unavailable_checkout_case" "--close-probe" "unavailable checkout case must not require close proof."
+  require_not_contains "$unavailable_web_case" "--require-overlay-enabled" "unavailable web case must not require overlay readiness while macOS is unavailable."
+  require_not_contains "$unavailable_checkout_case" "--require-overlay-enabled" "unavailable checkout case must not require overlay readiness while macOS is unavailable."
 
   echo "macOS overlay matrix self-test passed."
 }
@@ -1257,7 +1259,6 @@ run_unavailable_matrix() {
     --web-modal true \
     --require-steam-launch \
     --require-overlay-injection \
-    --require-overlay-enabled \
     --require-action-error-code STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE \
     --require-action-error-reason "$reason" \
     --require-native-host-unavailable-reason "$reason" \
@@ -1269,7 +1270,6 @@ run_unavailable_matrix() {
     --checkout-transaction-id 123456789 \
     --require-steam-launch \
     --require-overlay-injection \
-    --require-overlay-enabled \
     --require-action-error-code STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE \
     --require-action-error-reason "$reason" \
     --require-native-host-unavailable-reason "$reason" \

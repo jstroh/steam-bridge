@@ -348,19 +348,17 @@ function Assert-SmokeResult {
       if ($nativePresenter.currentFps -ne 0) {
         $failures.Add("native presenter current FPS is zero while unavailable")
       }
-      $expectedMacEnvironment = $null
+      $environmentMatches = $true
       if ($RequireNativeHostUnavailableReason -eq "macos-screen-locked") {
-        $expectedMacEnvironment = [pscustomobject]@{ screenLocked = $true; displayAsleep = $false }
+        $environmentMatches = $nativePresenter.macOverlayEnvironment.screenLocked -eq $true
       } elseif ($RequireNativeHostUnavailableReason -eq "macos-display-asleep") {
-        $expectedMacEnvironment = [pscustomobject]@{ screenLocked = $false; displayAsleep = $true }
+        $environmentMatches = (
+          $nativePresenter.macOverlayEnvironment.screenLocked -eq $false -and
+          $nativePresenter.macOverlayEnvironment.displayAsleep -eq $true
+        )
       }
-      if ($expectedMacEnvironment) {
-        if (
-          $nativePresenter.macOverlayEnvironment.screenLocked -ne $expectedMacEnvironment.screenLocked -or
-          $nativePresenter.macOverlayEnvironment.displayAsleep -ne $expectedMacEnvironment.displayAsleep
-        ) {
-          $failures.Add("mac overlay environment matches $RequireNativeHostUnavailableReason")
-        }
+      if (-not $environmentMatches) {
+        $failures.Add("mac overlay environment matches $RequireNativeHostUnavailableReason")
       }
     }
   }
