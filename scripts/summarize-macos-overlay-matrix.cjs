@@ -1694,7 +1694,7 @@ function createSelfTestFixture(root) {
     {
       caseId: "06-checkout",
       action: "presenter-checkout",
-      expectedAppId: 9000,
+      expectedAppId: 480,
       checkoutSource: "json-file",
       requireMicroTxnCallback: true,
       command: [
