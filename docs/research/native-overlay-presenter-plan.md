@@ -780,9 +780,11 @@ Next work:
    example now includes `entitlements.steam.macos.plist` with
    `com.apple.security.cs.allow-dyld-environment-variables` and
    `com.apple.security.cs.disable-library-validation` enabled, and no App
-   Sandbox entitlement. Local smoke signing is still not enough to claim shipped
-   macOS overlay support; real shipped apps must apply those entitlements to the
-   signed app bundle that Steam launches.
+   Sandbox entitlement. The macOS smoke package ad-hoc signs the native launcher
+   and renamed Electron executable with that plist for local proof. Ad-hoc
+   signing is still not enough to claim shipped macOS overlay support; real
+   shipped apps must apply equivalent entitlements through the normal Apple
+   signing and notarization pipeline.
 
 Pass criteria:
 

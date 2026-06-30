@@ -366,8 +366,10 @@ Native presenter design notes are tracked in
 - Use App ID `480` only for local Steamworks smoke tests.
 - Use your own App ID before shipping or testing app-specific achievements,
   stats, inventory, UGC, economy, checkout, or transaction flows.
-- For shipped macOS builds, sign the app bundle Steam launches with
-  `examples/electron-basic/entitlements.steam.macos.plist`-style entitlements:
-  allow dyld environment variables, disable library validation, and keep App
-  Sandbox disabled so Steam can inject the overlay into the launched process.
+- The macOS smoke package ad-hoc signs the native launcher and renamed Electron
+  executable with `examples/electron-basic/entitlements.steam.macos.plist`.
+  For shipped macOS builds, apply equivalent entitlements through your normal
+  Apple signing/notarization pipeline: allow dyld environment variables,
+  disable library validation, and keep App Sandbox disabled so Steam can inject
+  the overlay into the launched process.
 - Steam Bridge does not vendor the Steamworks SDK or Valve redistributables.

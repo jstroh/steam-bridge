@@ -196,8 +196,8 @@ cases can update the env file without restarting Steam.
 `--action-delay-ms` can move the autorun action later when comparing Steam
 launch/readiness behavior; keep normal product paths callback-driven.
 
-For shipped macOS builds, sign the app bundle's main executable path with the
-Steam-compatible entitlements in
+For packaged macOS smoke builds, Steam Bridge ad-hoc signs the native launcher
+and renamed Electron executable with the Steam-compatible entitlements in
 `examples/electron-basic/entitlements.steam.macos.plist`. That template enables
 `com.apple.security.cs.allow-dyld-environment-variables` and
 `com.apple.security.cs.disable-library-validation`, and intentionally does not
@@ -207,6 +207,9 @@ sets `SteamAppId`, `SteamGameId`, and `SteamOverlayGameId` before executing
 Electron. Do not rely on Steam overlay injection into Electron helper
 processes; Steam Bridge scrubs those child-process overlay environment entries
 so the bridge-owned native presenter stays the single overlay target.
+For shipped apps, apply the same entitlements through your normal Apple signing
+and notarization pipeline to the app process Steam launches and the executable
+that process `exec`s.
 
 The same controls are also available as launch options, which is usually easier
 for Steam non-Steam shortcuts:

@@ -201,6 +201,21 @@ function compileMacSteamEnvLauncher(appPath) {
   fs.renameSync(launcherPath, electronPath);
   run("clang", ["-Wall", "-Wextra", "-O2", "-arch", "arm64", "-o", launcherPath, launcherSource], repoRoot);
   fs.chmodSync(launcherPath, 0o755);
+  signMacSteamExecutable(electronPath);
+  signMacSteamExecutable(launcherPath);
+}
+
+function signMacSteamExecutable(filePath) {
+  if (process.platform !== "darwin") {
+    return;
+  }
+
+  const entitlementsPath = path.join(exampleRoot, "entitlements.steam.macos.plist");
+  run(
+    "codesign",
+    ["--force", "--sign", "-", "--entitlements", entitlementsPath, filePath],
+    repoRoot
+  );
 }
 
 function resolvePackageArtifactSources(target, fileNames) {

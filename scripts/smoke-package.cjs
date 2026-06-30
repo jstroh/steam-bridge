@@ -32,6 +32,7 @@ try {
     cwd: repoRoot
   });
   runMacosEntitlementsStaticChecks();
+  runMacosPackageSigningStaticChecks();
   runWindowsSmokeHelperStaticChecks();
 
   console.log("Packed steam-bridge package smoke test passed.");
@@ -63,6 +64,24 @@ function runMacosEntitlementsStaticChecks() {
   assert.ok(
     !entitlements.includes("com.apple.security.app-sandbox"),
     "macOS Steam entitlements must not enable the App Sandbox"
+  );
+}
+
+function runMacosPackageSigningStaticChecks() {
+  const packagerScript = fs.readFileSync(path.join(repoRoot, "scripts", "package-electron-example.cjs"), "utf8");
+  for (const expected of [
+    "signMacSteamExecutable(launcherPath)",
+    "signMacSteamExecutable(electronPath)",
+    "entitlements.steam.macos.plist",
+    "\"codesign\"",
+    "\"--entitlements\""
+  ]) {
+    assert.ok(packagerScript.includes(expected), `macOS package script missing ${expected}`);
+  }
+  assert.ok(
+    packagerScript.indexOf("signMacSteamExecutable(electronPath)") <
+      packagerScript.indexOf("signMacSteamExecutable(launcherPath)"),
+    "macOS package script must sign the nested Electron executable before the launcher"
   );
 }
 
