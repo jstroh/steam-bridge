@@ -254,8 +254,8 @@ without calling the crash-prone native poll, and
 `overlayNeedsPresent=false` and `overlayNeedsPresentPollingEnabled=false` so
 logs can distinguish a disabled poll from a safe poll that simply returned
 false.
-Set `STEAM_BRIDGE_ENABLE_OVERLAY_NEEDS_PRESENT=1` only for macOS diagnostics
-where that crash risk is acceptable. Set
+There is no macOS opt-in for this poll because the failure mode is a process
+crash rather than a recoverable diagnostic error. Set
 `STEAM_BRIDGE_DISABLE_OVERLAY_NEEDS_PRESENT=1` for the same escape hatch on
 other platforms. Automatic passive notification priming performs one wake-up/poll
 on platforms with safe needs-present polling and otherwise stays parked unless
@@ -743,9 +743,10 @@ All unavailable cases record the matching presenter
 Locked macOS sessions can also report the display asleep; `macos-screen-locked` takes
 precedence, and unavailable captures do not require `overlayEnabled=true`
 because no native host should be created. A current-head locked/asleep run at
-`/tmp/steam-bridge-macos-overlay-matrix-20260630-142121` rebuilt and signed
-Electron `43.0.0`, reused the stable shortcut without restarting Steam, and
-passed all five unavailable cases with `available=false`,
+`/tmp/steam-bridge-macos-overlay-matrix-20260630-143830` rebuilt and signed
+Electron `43.0.0` after hardening macOS to never call
+`BOverlayNeedsPresent()`, reused the stable shortcut without restarting Steam,
+and passed all five unavailable cases with `available=false`,
 `STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE`, reason `macos-screen-locked`,
 `nativeHostOpen=false`, no overlay activation, zero overlay targets, disabled
 needs-present polling, zero managed overlay timing, and no copied macOS crash

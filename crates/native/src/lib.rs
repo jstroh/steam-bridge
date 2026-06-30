@@ -376,7 +376,7 @@ fn overlay_needs_present_disabled() -> bool {
 
     #[cfg(target_os = "macos")]
     {
-        !steam_bridge_env_flag("STEAM_BRIDGE_ENABLE_OVERLAY_NEEDS_PRESENT")
+        true
     }
 
     #[cfg(not(target_os = "macos"))]

@@ -10,11 +10,6 @@ const repoRoot = path.resolve(__dirname, "..");
 const distRoot = path.join(repoRoot, "packages", "steam-bridge", "dist");
 const steamEnvKeys = ["SteamAppId", "SteamAppID", "STEAM_APP_ID"];
 
-// Existing presenter tests simulate needs-present transitions; production macOS defaults remain disabled.
-if (process.platform === "darwin" && process.env.STEAM_BRIDGE_ENABLE_OVERLAY_NEEDS_PRESENT === undefined) {
-  process.env.STEAM_BRIDGE_ENABLE_OVERLAY_NEEDS_PRESENT = "1";
-}
-
 function distFile(fileName) {
   return path.join(distRoot, fileName);
 }
@@ -2604,6 +2599,7 @@ test("client facade covers low-level Steam client helpers", (t) => {
 });
 
 test("Steam IDs and diagnostics are normalized for JavaScript callers", (t) => {
+  setProcessPlatformForTest(t, "linux");
   const fake = createFakeNative();
   const steam = loadSteamWithFakeNative(fake);
 
@@ -2681,7 +2677,7 @@ test("macOS disables needs-present polling before native Steam calls by default"
   });
 });
 
-test("macOS needs-present polling can be explicitly enabled for diagnostics", (t) => {
+test("macOS ignores needs-present polling opt-in", (t) => {
   setProcessPlatformForTest(t, "darwin");
   const previousDisable = process.env.STEAM_BRIDGE_DISABLE_OVERLAY_NEEDS_PRESENT;
   const previousEnable = process.env.STEAM_BRIDGE_ENABLE_OVERLAY_NEEDS_PRESENT;
@@ -2702,28 +2698,26 @@ test("macOS needs-present polling can be explicitly enabled for diagnostics", (t
 
   const fake = createFakeNative({
     overlayNeedsPresent() {
-      this.calls.push({ method: "overlayNeedsPresent", args: [] });
-      return true;
+      throw new Error("BOverlayNeedsPresent should never be polled on macOS");
     },
     isOverlayNeedsPresentPollingEnabled() {
-      this.calls.push({ method: "isOverlayNeedsPresentPollingEnabled", args: [] });
-      return true;
+      throw new Error("native polling flag should not be read on macOS");
+    },
+    getOverlayDiagnostics() {
+      throw new Error("native overlay diagnostics should not be called on macOS");
     }
   });
   const steam = loadSteamWithFakeNative(fake);
 
   t.after(clearSteamBridgeCache);
 
-  assert.equal(steam.utils.overlayNeedsPresent(), true);
-  assert.equal(steam.utils.isOverlayNeedsPresentPollingEnabled(), true);
+  assert.equal(steam.utils.overlayNeedsPresent(), false);
+  assert.equal(steam.utils.isOverlayNeedsPresentPollingEnabled(), false);
   assert.deepEqual(
     fake.calls.filter((call) =>
       call.method === "overlayNeedsPresent" || call.method === "isOverlayNeedsPresentPollingEnabled"
     ),
-    [
-      { method: "overlayNeedsPresent", args: [] },
-      { method: "isOverlayNeedsPresentPollingEnabled", args: [] }
-    ]
+    []
   );
 });
 
@@ -7508,6 +7502,7 @@ test("electron steam overlay manager opens the configured shortcut target with m
 });
 
 test("electron steam overlay shortcut wait does not report opened before overlay readiness", async (t) => {
+  setProcessPlatformForTest(t, "linux");
   const hostHandle = Buffer.from([4, 8, 15, 19]);
   let hostOpen = false;
   const fake = createFakeNative({
@@ -8160,6 +8155,7 @@ test("electron steam overlay shortcut snapshots static targets without leaking p
 });
 
 test("electron steam overlay shortcut still opens during passive notification presentation", async (t) => {
+  setProcessPlatformForTest(t, "linux");
   const hostHandle = Buffer.from([9, 2, 6, 5]);
   let hostOpen = false;
   let overlayNeedsPresent = false;
@@ -8475,6 +8471,7 @@ test("electron steam overlay manager exposes lifecycle wait helpers", async (t) 
 });
 
 test("electron steam overlay openAndWait waits for overlay readiness before activating Steam", async (t) => {
+  setProcessPlatformForTest(t, "linux");
   const hostHandle = Buffer.from([4, 8, 1, 6]);
   let hostOpen = false;
   let overlayEnabled = false;
@@ -8960,6 +8957,7 @@ test("electron steam overlay checkout helper prepares, opens, and waits with bac
 });
 
 test("electron steam overlay checkout wait does not activate before overlay readiness", async (t) => {
+  setProcessPlatformForTest(t, "linux");
   const hostHandle = Buffer.from([31, 41, 59, 27]);
   let hostOpen = false;
   const fake = createFakeNative({
@@ -9860,6 +9858,7 @@ test("native overlay presenter does not pump frames while idle by default", asyn
 });
 
 test("native overlay presenter primes passive notifications without a blind frame loop", async (t) => {
+  setProcessPlatformForTest(t, "linux");
   let hostOpen = false;
   let overlayNeedsPresent = false;
   const hostHandle = Buffer.from([9, 0, 1, 0, 0, 0, 0, 0]);
@@ -9947,6 +9946,7 @@ test("native overlay presenter primes passive notifications without a blind fram
 });
 
 test("native overlay presenter keeps passive input while overlay needs present", async (t) => {
+  setProcessPlatformForTest(t, "linux");
   let hostOpen = false;
   let overlayNeedsPresent = false;
   const hostHandle = Buffer.from([4, 8, 0, 0, 0, 0, 0, 0]);
@@ -10020,6 +10020,7 @@ test("native overlay presenter keeps passive input while overlay needs present",
 });
 
 test("native overlay presenter parks modal overlays after inactive callbacks", async (t) => {
+  setProcessPlatformForTest(t, "linux");
   let hostOpen = false;
   let overlayNeedsPresent = false;
   const hostHandle = Buffer.from([4, 8, 0, 2, 0, 0, 0, 0]);

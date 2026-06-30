@@ -9000,7 +9000,7 @@ function isOverlayNeedsPresentPollingEnabledForProcess(): boolean {
     return false;
   }
   if (process.platform === "darwin") {
-    return parseBooleanEnvironment(process.env.STEAM_BRIDGE_ENABLE_OVERLAY_NEEDS_PRESENT) === true;
+    return false;
   }
   return true;
 }

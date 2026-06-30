@@ -361,8 +361,8 @@ Verified:
   wrappers now mirror the native macOS default before reaching native code:
   `overlayNeedsPresent()` returns `false`, `isOverlayNeedsPresentPollingEnabled()`
   returns `false`, and `getOverlayDiagnostics()` assembles safe diagnostics
-  without calling the native combined diagnostics path unless
-  `STEAM_BRIDGE_ENABLE_OVERLAY_NEEDS_PRESENT=1` is explicitly set.
+  without calling the native combined diagnostics path. There is no macOS opt-in
+  for the crash-prone SDK poll.
   After modal overlays close, the stable parked macOS state must return to
   `currentFps=0` without post-close pumping.
 - New macOS matrix manifests require `overlayNeedsPresentPollingEnabled=false`
@@ -561,7 +561,8 @@ Verified:
   Metal-path crash in
   `/tmp/steam-bridge-macos-overlay-matrix-minimal-shown-gated-20260630-043833`
   supersedes the old Metal-safe assumption, so current macOS defaults avoid
-  `BOverlayNeedsPresent()` entirely unless explicitly opted in for diagnostics.
+  `BOverlayNeedsPresent()` entirely. There is no macOS opt-in because the known
+  failure mode is a process crash.
 - A later 2026-06-30 persistent macOS matrix at
   `/tmp/steam-bridge-macos-overlay-matrix-persistent-electron43-20260630-084237`
   rebuilt and signed the smoke app with Electron `43.0.0`, reused the stable

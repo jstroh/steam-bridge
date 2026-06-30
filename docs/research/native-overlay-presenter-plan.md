@@ -1017,14 +1017,15 @@ Current evidence:
   activation, zero overlay targets, disabled needs-present polling, zero managed
   overlay timing, and no fresh crash reports.
   A later unavailable matrix at
-  `/tmp/steam-bridge-macos-overlay-matrix-20260630-142121` reran current head
-  after the macOS matrix self-test switched its JSON-checkout proof to App ID
-  `480`. It rebuilt and signed Electron `43.0.0`, reused the stable shortcut
-  without restarting Steam, passed all five unavailable cases, and re-verified
-  `available=false`, `STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE`, reason
-  `macos-screen-locked`, `nativeHostOpen=false`, no Steam overlay activation,
-  zero overlay targets, disabled needs-present polling, zero managed overlay
-  timing, and no copied macOS crash reports.
+  `/tmp/steam-bridge-macos-overlay-matrix-20260630-143830` reran current head
+  after hardening both the JavaScript and native macOS paths to never call
+  `BOverlayNeedsPresent()`. It rebuilt and signed Electron `43.0.0`, reused the
+  stable shortcut without restarting Steam, passed all five unavailable cases,
+  and re-verified `available=false`,
+  `STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE`, reason `macos-screen-locked`,
+  `nativeHostOpen=false`, no Steam overlay activation, zero overlay targets,
+  disabled needs-present polling, zero managed overlay timing, and no copied
+  macOS crash reports.
 - BrowserWindow-only overlay support is not proven.
 - Steam launch, app ID, auth, and callbacks are not enough to claim overlay
   support.
@@ -1128,8 +1129,9 @@ Bridge avoided the crash-prone `BOverlayNeedsPresent()` SDK call instead of
 merely observing `overlayNeedsPresent=false`. The public JavaScript wrappers
 also short-circuit this macOS default before native code: `overlayNeedsPresent()`
 returns `false`, and `getOverlayDiagnostics()` assembles safe diagnostics
-without calling the native combined diagnostics path unless
-`STEAM_BRIDGE_ENABLE_OVERLAY_NEEDS_PRESENT=1` is explicitly set. Snapshots also
+without calling the native combined diagnostics path. There is no macOS opt-in
+because the known failure mode is a process crash, not a recoverable diagnostic
+error. Snapshots also
 include `bounds` when Electron's
 `BrowserWindow.getBounds()` or a lower-level bounds provider is available, so
 Deck/Linux/macOS artifacts can verify presenter alignment without scraping logs.
