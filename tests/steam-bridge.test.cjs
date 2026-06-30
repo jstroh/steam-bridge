@@ -6777,6 +6777,109 @@ test("electron steam overlay manager uses a focused macOS global shortcut fallba
   assert.equal(windowHandlers.has("blur"), false);
 });
 
+test("electron steam overlay manager tolerates destroyed macOS shortcut window during close", (t) => {
+  setProcessPlatformForTest(t, "darwin");
+
+  const hostHandle = Buffer.from([11, 22, 33, 44]);
+  let hostOpen = false;
+  let windowDestroyed = false;
+  let unregisterCount = 0;
+  let removeWindowListenerAttempts = 0;
+  mockElectronModule(t, {
+    globalShortcut: {
+      register(accelerator) {
+        assert.equal(accelerator, "Shift+Tab");
+        return true;
+      },
+      unregister(accelerator) {
+        assert.equal(accelerator, "Shift+Tab");
+        unregisterCount += 1;
+      }
+    }
+  });
+
+  const fake = createFakeNative({
+    attachNativeOverlayHostView(nativeWindowHandle) {
+      hostOpen = true;
+      this.calls.push({ method: "attachNativeOverlayHostView", args: [nativeWindowHandle] });
+    },
+    pumpNativeOverlayProbeWindow() {
+      this.calls.push({ method: "pumpNativeOverlayProbeWindow", args: [] });
+    },
+    showNativeOverlayHostView() {
+      this.calls.push({ method: "showNativeOverlayHostView", args: [] });
+    },
+    setNativeOverlayHostInputPassthrough(passThrough) {
+      this.calls.push({ method: "setNativeOverlayHostInputPassthrough", args: [passThrough] });
+    },
+    setNativeOverlayHostOpacity(opaque) {
+      this.calls.push({ method: "setNativeOverlayHostOpacity", args: [opaque] });
+    },
+    detachNativeOverlayHostView() {
+      hostOpen = false;
+      this.calls.push({ method: "detachNativeOverlayHostView", args: [] });
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return false;
+    },
+    isNativeOverlayHostViewOpen() {
+      return hostOpen;
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  const window = {
+    isDestroyed() {
+      return windowDestroyed;
+    },
+    isFocused() {
+      return true;
+    },
+    getNativeWindowHandle() {
+      return hostHandle;
+    },
+    once() {},
+    on() {},
+    off() {
+      removeWindowListenerAttempts += 1;
+      if (windowDestroyed) {
+        throw new TypeError("Object has been destroyed");
+      }
+    },
+    webContents: {
+      isDestroyed() {
+        return windowDestroyed;
+      },
+      once() {},
+      invalidate() {},
+      send() {},
+      on() {},
+      off() {
+        if (windowDestroyed) {
+          throw new TypeError("Object has been destroyed");
+        }
+      }
+    }
+  };
+
+  const overlay = steam.overlay.createElectronSteamOverlay(window, {
+    title: "Electron Destroyed macOS Shortcut Overlay",
+    pollIntervalMs: 10000
+  });
+
+  windowDestroyed = true;
+  assert.doesNotThrow(() => overlay.close());
+  assert.equal(overlay.isOpen(), false);
+  assert.equal(unregisterCount, 1);
+  assert.equal(removeWindowListenerAttempts > 0, true);
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "detachNativeOverlayHostView"),
+    [{ method: "detachNativeOverlayHostView", args: [] }]
+  );
+});
+
 test("electron steam overlay shortcut snapshots static targets without leaking private values", async (t) => {
   const hostHandle = Buffer.from([7, 7, 1, 4]);
   let hostOpen = false;

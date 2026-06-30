@@ -8855,10 +8855,16 @@ function removeElectronSteamOverlayWindowListener(
   event: ElectronOverlayWindowGeometryEvent,
   handler: () => void
 ): void {
-  if (typeof window.off === "function") {
-    window.off(event, handler);
-  } else if (typeof window.removeListener === "function") {
-    window.removeListener(event, handler);
+  try {
+    if (typeof window.off === "function") {
+      window.off(event, handler);
+    } else if (typeof window.removeListener === "function") {
+      window.removeListener(event, handler);
+    }
+  } catch (error) {
+    if (!isElectronWindowDestroyed(window)) {
+      throw error;
+    }
   }
 }
 
@@ -9055,10 +9061,24 @@ function removeElectronSteamOverlayShortcutWindowListener(
   event: ElectronOverlayWindowShortcutEvent,
   handler: () => void
 ): void {
-  if (typeof window.off === "function") {
-    window.off(event, handler);
-  } else if (typeof window.removeListener === "function") {
-    window.removeListener(event, handler);
+  try {
+    if (typeof window.off === "function") {
+      window.off(event, handler);
+    } else if (typeof window.removeListener === "function") {
+      window.removeListener(event, handler);
+    }
+  } catch (error) {
+    if (!isElectronWindowDestroyed(window)) {
+      throw error;
+    }
+  }
+}
+
+function isElectronWindowDestroyed(window: { isDestroyed?(): boolean }): boolean {
+  try {
+    return typeof window.isDestroyed === "function" && window.isDestroyed();
+  } catch {
+    return true;
   }
 }
 
@@ -9424,6 +9444,7 @@ interface ElectronShortcutApi {
 type ElectronOverlayWindowShortcutEvent = "focus" | "blur";
 
 interface ElectronOverlayWindowShortcutEvents {
+  isDestroyed?(): boolean;
   isFocused?(): boolean;
   on?(event: ElectronOverlayWindowShortcutEvent, handler: () => void): void;
   off?(event: ElectronOverlayWindowShortcutEvent, handler: () => void): void;
