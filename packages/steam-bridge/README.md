@@ -249,6 +249,10 @@ web, store, checkout, and dialog-equivalent overlays when app code should also
 wait until Steam closes and the presenter parks. `openAndWait(...)` uses the
 same show hold, then parks from overlay callbacks and presenter state changes
 instead of depending on a fixed activation window.
+It also validates managed targets before preparing the native host and rejects
+raw native prompt routes such as `route: "native"` dialog/user targets because
+those routes are diagnostic-only and do not have reliable activation/close
+semantics.
 Managed Electron presenters default activation-boost and close-grace durations
 to zero; the public helpers use scoped activation handles and Steam
 callback/state waits. Use explicit duration-based preparation only for

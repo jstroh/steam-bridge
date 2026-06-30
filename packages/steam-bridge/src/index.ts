@@ -8210,17 +8210,32 @@ export function openUserEquivalentOverlay(
   dialog: string = UserDialog.SteamId,
   options: NativeOverlayAppPagePresenterOptions = {}
 ): NativeOverlayPresenter {
-  const name = userDialogName(dialog);
-  switch (name) {
-    case "steamid":
+  switch (userEquivalentOverlayRoute(dialog)) {
     case "profile":
       return openProfileOverlay(options);
-    case "chat":
+    case "friends":
       return openFriendsOverlay(options);
     case "stats":
       return openStatsOverlay(options);
     case "achievements":
       return openAchievementsOverlay(options);
+  }
+}
+
+function userEquivalentOverlayRoute(
+  dialog: string = UserDialog.SteamId
+): "profile" | "friends" | "stats" | "achievements" {
+  const name = userDialogName(dialog);
+  switch (name) {
+    case "steamid":
+    case "profile":
+      return "profile";
+    case "chat":
+      return "friends";
+    case "stats":
+      return "stats";
+    case "achievements":
+      return "achievements";
     default:
       throw new Error(
         `Steam overlay user dialog "${name}" does not have a verified presenter-backed route. ` +
@@ -8248,8 +8263,7 @@ export function openDialogEquivalentOverlay(
   dialog: number | string = "Friends",
   options: NativeOverlayAppPagePresenterOptions = {}
 ): NativeOverlayPresenter {
-  const name = dialogName(dialog).toLowerCase();
-  switch (name) {
+  switch (dialogEquivalentOverlayRoute(dialog)) {
     case "friends":
       return openFriendsOverlay(options);
     case "players": {
@@ -8257,12 +8271,30 @@ export function openDialogEquivalentOverlay(
       return openPlayersOverlay(playersOptions);
     }
     case "community":
-    case "officialgamegroup":
       return openCommunityOverlay(options);
     case "stats":
       return openStatsOverlay(options);
     case "achievements":
       return openAchievementsOverlay(options);
+  }
+}
+
+function dialogEquivalentOverlayRoute(
+  dialog: number | string = "Friends"
+): "friends" | "players" | "community" | "stats" | "achievements" {
+  const name = dialogName(dialog).toLowerCase();
+  switch (name) {
+    case "friends":
+      return "friends";
+    case "players":
+      return "players";
+    case "community":
+    case "officialgamegroup":
+      return "community";
+    case "stats":
+      return "stats";
+    case "achievements":
+      return "achievements";
     default:
       throw new Error(
         `Steam overlay dialog "${dialogName(dialog)}" does not have a verified presenter-backed route. ` +
@@ -8362,6 +8394,39 @@ function overlayActivationModeForTarget(target: SteamOverlayTarget): NativeOverl
   return "interactive";
 }
 
+function assertElectronSteamOverlayTargetCanOpen(target: SteamOverlayTarget): void {
+  switch (target.type) {
+    case "dialog":
+      if (target.route !== "native") {
+        dialogEquivalentOverlayRoute(target.dialog ?? "Friends");
+      }
+      return;
+    case "user":
+      if (target.route !== "native") {
+        userEquivalentOverlayRoute(target.dialog ?? UserDialog.SteamId);
+      }
+      return;
+    case "checkout": {
+      const { type: _type, ...options } = target;
+      resolveSteamCheckoutOverlayUrl(options);
+      return;
+    }
+    default:
+      return;
+  }
+}
+
+function assertElectronSteamOverlayTargetCanWait(target: SteamOverlayTarget): void {
+  if (overlayActivationModeForTarget(target) !== "transparent-input") {
+    return;
+  }
+
+  throw new Error(
+    "Electron Steam overlay openAndWait() requires a presenter-backed target with reliable overlay activation " +
+      'and close callbacks. Use a verified auto route, or call open({ ..., route: "native" }) only for raw diagnostics.'
+  );
+}
+
 export function createElectronSteamOverlay(
   window: ElectronOverlayWindow,
   options: ElectronSteamOverlayOptions = {}
@@ -8405,6 +8470,7 @@ export function createElectronSteamOverlay(
     open(target: SteamOverlayTarget): NativeOverlayPresenter {
       assertOpen();
       assertElectronSteamOverlayNativeHostAvailable(controller.snapshot());
+      assertElectronSteamOverlayTargetCanOpen(target);
       const presenterInternal = presenter as NativeOverlayPresenterInternal;
       const activationHandle = presenterInternal.beginOverlayActivation?.(overlayActivationModeForTarget(target));
       try {
@@ -8428,6 +8494,8 @@ export function createElectronSteamOverlay(
     ): Promise<ElectronSteamOverlayOpenAndWaitResult> {
       assertOpen();
       assertElectronSteamOverlayNativeHostAvailable(controller.snapshot());
+      assertElectronSteamOverlayTargetCanOpen(target);
+      assertElectronSteamOverlayTargetCanWait(target);
       const presenterInternal = presenter as NativeOverlayPresenterInternal;
       const activationHandle = presenterInternal.beginOverlayActivation?.(overlayActivationModeForTarget(target));
       let activationReleased = false;

@@ -7330,6 +7330,119 @@ test("electron steam overlay manager exposes lifecycle wait helpers", async (t) 
   await assert.rejects(overlay.openAndWait({ type: "friends" }), /Electron Steam overlay is closed/);
 });
 
+test("electron steam overlay manager validates managed targets before presenter activation", async (t) => {
+  const hostHandle = Buffer.from([3, 1, 4, 1]);
+  let hostOpen = false;
+  const fake = createFakeNative({
+    attachNativeOverlayHostView(nativeWindowHandle) {
+      hostOpen = true;
+      this.calls.push({ method: "attachNativeOverlayHostView", args: [nativeWindowHandle] });
+    },
+    pumpNativeOverlayProbeWindow() {
+      if (!hostOpen) {
+        throw new Error("native overlay presenter is closed");
+      }
+      this.calls.push({ method: "pumpNativeOverlayProbeWindow", args: [] });
+    },
+    showNativeOverlayHostView() {
+      this.calls.push({ method: "showNativeOverlayHostView", args: [] });
+    },
+    setNativeOverlayHostInputPassthrough(passThrough) {
+      this.calls.push({ method: "setNativeOverlayHostInputPassthrough", args: [passThrough] });
+    },
+    setNativeOverlayHostOpacity(opaque) {
+      this.calls.push({ method: "setNativeOverlayHostOpacity", args: [opaque] });
+    },
+    detachNativeOverlayHostView() {
+      hostOpen = false;
+      this.calls.push({ method: "detachNativeOverlayHostView", args: [] });
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return false;
+    },
+    isNativeOverlayHostViewOpen() {
+      return hostOpen;
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  const window = {
+    isDestroyed() {
+      return false;
+    },
+    getNativeWindowHandle() {
+      return hostHandle;
+    },
+    once() {},
+    webContents: {
+      once() {},
+      invalidate() {},
+      send() {}
+    }
+  };
+
+  const overlay = steam.overlay.createElectronSteamOverlay(window, {
+    title: "Electron Target Validation Overlay",
+    pollIntervalMs: 10000
+  });
+
+  assert.throws(
+    () => overlay.open({ type: "dialog", dialog: steam.Dialog.Settings }),
+    /does not have a verified presenter-backed route/
+  );
+  assert.throws(
+    () => overlay.open({ type: "checkout" }),
+    /requires a url, steamUrl, or transactionId/
+  );
+  await assert.rejects(
+    overlay.openAndWait(
+      { type: "dialog", dialog: steam.Dialog.Settings },
+      { showTimeoutMs: 200, closeTimeoutMs: 200 }
+    ),
+    /does not have a verified presenter-backed route/
+  );
+  await assert.rejects(
+    overlay.openAndWait(
+      { type: "dialog", dialog: steam.Dialog.Friends, route: "native" },
+      { showTimeoutMs: 200, closeTimeoutMs: 200 }
+    ),
+    /openAndWait\(\) requires a presenter-backed target/
+  );
+  await assert.rejects(
+    overlay.openAndWait(
+      {
+        type: "user",
+        dialog: steam.UserDialog.FriendAdd,
+        steamId64: 76561198000000000n,
+        route: "native"
+      },
+      { showTimeoutMs: 200, closeTimeoutMs: 200 }
+    ),
+    /openAndWait\(\) requires a presenter-backed target/
+  );
+
+  assert.deepEqual(
+    fake.calls.filter((call) =>
+      [
+        "activateOverlay",
+        "activateOverlayToWebPage",
+        "overlayActivateDialogToUser",
+        "overlayActivateToStore",
+        "setNativeOverlayHostInputPassthrough",
+        "setNativeOverlayHostOpacity"
+      ].includes(call.method)
+    ),
+    []
+  );
+  assert.equal(overlay.snapshot().mode, "passive");
+  assert.equal(overlay.snapshot().clickThrough, true);
+  assert.equal(overlay.snapshot().transparent, true);
+
+  overlay.close();
+});
+
 test("electron steam overlay checkout helper prepares, opens, and waits with backend result shapes", async (t) => {
   const hostHandle = Buffer.from([31, 41, 59, 26]);
   let hostOpen = false;

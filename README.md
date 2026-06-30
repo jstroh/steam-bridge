@@ -286,6 +286,9 @@ steamOverlay.close();
 Supported high-level targets include web pages, store pages, checkout,
 Friends/chat, profiles, players, community hubs, stats, achievements, and known
 dialog equivalents.
+`openAndWait(...)` validates those managed targets before preparing the native
+host and rejects raw native prompt routes; use `open({ ..., route: "native" })`
+only for explicit diagnostics.
 
 While inactive, the presenter stays transparent, click-through, non-focusable,
 and idle at `0` FPS. Passive Steam notifications use the same presenter without

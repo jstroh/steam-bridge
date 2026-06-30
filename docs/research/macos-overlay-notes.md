@@ -191,6 +191,13 @@ Verified:
   timing, and no crash evidence; passive cases remained parked/passive without
   modal overlay activation.
 - A 2026-06-29 minimal macOS overlay matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-minimal-target-validation-20260629-183316`
+  passed after adding managed-target preflight validation before presenter
+  activation. The five-case suite re-verified web, store, Friends, and
+  dialog-equivalent `openAndWait(...)` routes plus passive achievement-progress
+  notification proof with zero managed overlay timing, close/focus/park checks
+  for interactive overlays, and no crash evidence.
+- A 2026-06-29 minimal macOS overlay matrix at
   `/tmp/steam-bridge-macos-overlay-matrix-minimal-helper-current-20260629-170723`
   re-ran the packaged helper after the source-level presenter-shape checks were
   added. It passed web, store, Friends, dialog, and passive achievement-progress
