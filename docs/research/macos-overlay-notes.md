@@ -332,6 +332,10 @@ Verified:
   checkout approval route emitted active/inactive callbacks, completed
   `openCheckoutAndWait(...)` only after close and parking, returned focus to the
   app, kept zero managed overlay timing, and reported no crash evidence.
+- The macOS helper and matrix summary now fail any `callback:microtxn`
+  authorization event that lacks a presenter snapshot. Public App ID `480`
+  checkout plumbing normally reports this as `microTxnCallback=n/a`, while real
+  configured product runs must show presenter diagnostics at authorization time.
 
 Still not verified:
 

@@ -125,6 +125,12 @@ test("electron smoke sanitizer redacts private overlay proof fields", () => {
       authorized: true,
       owner: 76561198000000001n
     },
+    response: {
+      params: {
+        transid: "246813579",
+        orderid: "order-private-002"
+      }
+    },
     error: serializeSmokeError(overlayError),
     waitError: serializeSmokeError(waitError),
     launch: {
@@ -144,6 +150,8 @@ test("electron smoke sanitizer redacts private overlay proof fields", () => {
   assert.equal(sanitized.presenter.currentFps, 0);
   assert.equal(sanitized.callback.authorized, true);
   assert.equal(sanitized.callback.owner, "[redacted-steam-id]");
+  assert.equal(sanitized.response.params.transid.redacted, true);
+  assert.equal(sanitized.response.params.orderid.redacted, true);
   assert.equal(sanitized.error.name, "SteamOverlayNativeHostUnavailableError");
   assert.equal(sanitized.error.code, "STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE");
   assert.equal(sanitized.error.reason, "macos-screen-locked");
@@ -163,6 +171,8 @@ test("electron smoke sanitizer redacts private overlay proof fields", () => {
   assert.equal(serialized.includes("76561198000000000"), false);
   assert.equal(serialized.includes("76561198000000001"), false);
   assert.equal(serialized.includes("123456789"), false);
+  assert.equal(serialized.includes("246813579"), false);
+  assert.equal(serialized.includes("order-private-002"), false);
   assert.equal(serialized.includes("order-private-001"), false);
   assert.equal(serialized.includes("steam://return/private-token"), false);
 });

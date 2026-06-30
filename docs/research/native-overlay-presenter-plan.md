@@ -528,7 +528,10 @@ Current evidence:
   event, not an overlay-close signal; the smoke app records the presenter
   snapshot on `callback:microtxn` so real-app purchase proof can show the native
   presenter remained available through authorization and parked only after Steam
-  emitted overlay inactive. A 2026-06-28 Deck Desktop prepare-only run verified
+  emitted overlay inactive. The Deck and macOS matrix summarizers now fail any
+  `callback:microtxn` lifecycle event that lacks a presenter snapshot, so real
+  purchase artifacts are machine-checkable when a configured app/product is
+  available. A 2026-06-28 Deck Desktop prepare-only run verified
   checkout readiness returns to passive idle, and a synthetic
   transaction approval URL run verified checkout-style open, close, app focus,
   no crash evidence, and no post-close pumping without committing private app
@@ -618,7 +621,8 @@ duplicate child overlay targets.
    - generic App ID `480` for public plumbing where possible;
    - a real app/product only for private purchase proof;
    - require `callback:microtxn` diagnostics to include presenter state during
-     real purchase authorization;
+     real purchase authorization; current Deck/macOS summary auditors fail if
+     that callback lacks a presenter snapshot;
    - keep private app IDs, item definitions, transaction IDs, and URLs out of
      committed files.
 8. Treat Wayland as a later backend unless Steam/Electron are running through

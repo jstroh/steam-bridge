@@ -1261,6 +1261,8 @@ if (firstActiveIndex == null) {
   }
 }
 
+verifyMicroTxnCallbackPresenterSnapshots(entries);
+
 const fatalEntries = entries.filter((entry) => fatalTypes.has(entry.type));
 if (fatalEntries.length > 0) {
   failures.push(`fatal lifecycle events recorded after close probe: ${fatalEntries.map((entry) => entry.type).join(", ")}`);
@@ -1388,6 +1390,36 @@ function presenterPayload(entry) {
     return undefined;
   }
   return payload.presenter && typeof payload.presenter === "object" ? payload.presenter : undefined;
+}
+
+function verifyMicroTxnCallbackPresenterSnapshots(loadedEntries) {
+  const callbacks = loadedEntries.filter((entry) => entry && entry.type === "event:callback:microtxn");
+  callbacks.forEach((entry, index) => {
+    const presenter = presenterPayload(entry);
+    const label = `microtxn callback ${index + 1}`;
+    if (!presenter) {
+      failures.push(`${label} did not include a presenter snapshot`);
+      return;
+    }
+    expectMicroTxnCallbackPresenter(presenter, label);
+  });
+}
+
+function expectMicroTxnCallbackPresenter(presenter, label) {
+  expectMacOverlayEnvironmentAvailable(presenter, label);
+  expectPresenterField(presenter, "closed", false, `native presenter closed ${label}`);
+  expectPresenterField(presenter, "attached", true, `native presenter attached ${label}`);
+  expectPresenterField(presenter, "nativeHostOpen", true, `native presenter host open ${label}`);
+  if (presenter.backend !== "macos-metal" && presenter.backend !== "macos-opengl") {
+    failures.push(`native presenter backend available ${label} expected macOS backend, got ${format(presenter.backend)}`);
+  }
+  if (presenter.mode !== "active" && presenter.mode !== "passive") {
+    failures.push(`native presenter mode active or passive ${label}, got ${format(presenter.mode)}`);
+  }
+  expectPresenterField(presenter, "idleFps", 0, `native presenter idle FPS ${label}`);
+  if (!Number.isFinite(Number(presenter.currentFps))) {
+    failures.push(`native presenter current FPS not recorded ${label}`);
+  }
 }
 
 function lastPresenter(items) {

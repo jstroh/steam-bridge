@@ -582,9 +582,9 @@ overlay target under a game ID other than `480`, misses passive
 notification callbacks, misses checkout `openCheckoutAndWait(...)` completion
 after close/parking, misses managed wait-helper shown/closed/parked lifecycle
 events, misses active shown presenter snapshots in an interactive macOS host
-environment, misses expected native-host-unavailable fail-fast
-metadata, or misses active/inactive close-and-park evidence for interactive
-overlays. To audit an
+environment, records a `callback:microtxn` without a presenter snapshot, misses
+expected native-host-unavailable fail-fast metadata, or misses active/inactive
+close-and-park evidence for interactive overlays. To audit an
 existing macOS artifact root, run
 `npm run macos:overlay-matrix:summarize -- --artifact-root <path>`. Live runs
 still require clearing Steam game processes on other machines first.

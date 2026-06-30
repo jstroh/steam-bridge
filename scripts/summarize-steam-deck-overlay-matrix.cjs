@@ -272,6 +272,7 @@ function summarizeMatrixArtifacts(root) {
     const managedWaits = verifyManagedLifecycleWaits(caseName, action.action, lifecycle.entries, resultFailures);
     const openAndWait = verifyOpenAndWaitCompletion(caseName, action.action, lifecycle.entries, resultFailures);
     const checkoutWait = verifyCheckoutOpenAndWait(caseName, action.action, lifecycle.entries, resultFailures);
+    const microTxnCallback = verifyMicroTxnCallbackPresenterSnapshots(caseName, lifecycle.entries, resultFailures);
 
     failures.push(...resultFailures);
     caseSummaries.push({
@@ -295,6 +296,7 @@ function summarizeMatrixArtifacts(root) {
       managedWaits: managedWaits.required ? managedWaits.ok : "n/a",
       openAndWait: openAndWait.required ? openAndWait.ok : "n/a",
       checkoutWait: checkoutWait.required ? checkoutWait.ok : "n/a",
+      microTxnCallback: microTxnCallback.required ? microTxnCallback.ok : "n/a",
       crashOk: crashDiagnostics.ok === true,
       overlayTargets: overlayTargetCount,
       screenshots: countScreenshots(path.join(screenshotsRoot, caseName))
@@ -319,6 +321,7 @@ function summarizeMatrixArtifacts(root) {
         `managedWaits=${item.managedWaits}`,
         `openAndWait=${item.openAndWait}`,
         `checkoutWait=${item.checkoutWait}`,
+        `microTxnCallback=${item.microTxnCallback}`,
         `overlayTargets=${item.overlayTargets}`,
         `crashOk=${item.crashOk}`,
         `screenshots=${item.screenshots}`
@@ -547,6 +550,7 @@ function createSelfTestFixture(root) {
       },
       { type: "event:callback:overlay-activated", payload: { active: true } },
       { type: "event:overlay:presenter-wait-shown", payload: { presenter: activePresenterFixture(16) } },
+      { type: "event:callback:microtxn", payload: { authorized: true, presenter: activePresenterFixture(16) } },
       { type: "event:callback:overlay-activated", payload: { active: false } },
       { type: "event:overlay:presenter-wait-closed", payload: { presenter: parkedPresenterFixture(15) } },
       { type: "event:overlay:presenter-parked", payload: { presenter: parkedPresenterFixture(15) } },
@@ -783,6 +787,7 @@ function createSelfTestFixture(root) {
 
 function activePresenterFixture(pumpCount) {
   return {
+    backend: "x11-glx",
     closed: false,
     attached: true,
     nativeHostOpen: true,
@@ -801,6 +806,7 @@ function activePresenterFixture(pumpCount) {
 
 function parkedPresenterFixture(pumpCount) {
   return {
+    backend: "x11-glx",
     closed: false,
     attached: true,
     nativeHostOpen: true,
@@ -1085,6 +1091,40 @@ function verifyCheckoutOpenAndWait(caseName, action, entries, failures) {
   }
 
   return { required: true, ok: failures.length === failuresBefore };
+}
+
+function verifyMicroTxnCallbackPresenterSnapshots(caseName, entries, failures) {
+  const callbacks = entries.filter((entry) => entry && entry.type === "event:callback:microtxn");
+  if (callbacks.length === 0) {
+    return { required: false, ok: true };
+  }
+
+  const failuresBefore = failures.length;
+  callbacks.forEach((entry, index) => {
+    const presenter = presenterPayload(entry);
+    const label = `microtxn callback ${index + 1}`;
+    if (!presenter) {
+      failures.push(`${caseName}: ${label} did not include a presenter snapshot`);
+      return;
+    }
+    expectMicroTxnCallbackPresenter(caseName, presenter, label, failures);
+  });
+
+  return { required: true, ok: failures.length === failuresBefore };
+}
+
+function expectMicroTxnCallbackPresenter(caseName, presenter, label, failures) {
+  expectPresenterField(caseName, presenter, "closed", false, `native presenter closed ${label}`, failures);
+  expectPresenterField(caseName, presenter, "attached", true, `native presenter attached ${label}`, failures);
+  expectPresenterField(caseName, presenter, "nativeHostOpen", true, `native presenter host open ${label}`, failures);
+  expectPresenterField(caseName, presenter, "backend", "x11-glx", `native presenter backend ${label}`, failures);
+  if (presenter.mode !== "active" && presenter.mode !== "passive") {
+    failures.push(`${caseName}: native presenter mode active or passive ${label}, got ${formatValue(presenter.mode)}`);
+  }
+  expectPresenterField(caseName, presenter, "idleFps", 0, `native presenter idle FPS ${label}`, failures);
+  if (!Number.isFinite(Number(presenter.currentFps))) {
+    failures.push(`${caseName}: native presenter current FPS not recorded ${label}`);
+  }
 }
 
 function readPresenterMode(presenter) {

@@ -355,8 +355,9 @@ with one, they require `overlay:presenter-open`, a Steam overlay activation
 callback, and lifecycle logs show `overlay:presenter-checkout-open-and-wait-complete`
 after Steam closes and the presenter parks. Those lifecycle logs preserve
 presence flags such as `hasTransactionId` and the shown/parked presenter
-snapshots, but redact the actual checkout URL, transaction ID, return URL, and
-Steam ID values.
+snapshots, and real purchase runs must include a presenter snapshot on any
+`callback:microtxn` authorization event. The smoke sanitizers redact the actual
+checkout URL, transaction ID, return URL, order ID, and Steam ID values.
 For normal app code, `steamOverlay.open(...)` opens a presenter-backed target and
 keeps the presenter active until Steam reports the overlay shown. Its timeout is
 only a failure guard if Steam never activates the overlay. Use

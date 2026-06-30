@@ -184,6 +184,7 @@ function summarizeMatrixArtifacts(root) {
         `managedWaits=${summary.managedWaits}`,
         `openAndWait=${summary.openAndWait}`,
         `checkoutWait=${summary.checkoutWait}`,
+        `microTxnCallback=${summary.microTxnCallback}`,
         `nativeHostUnavailable=${summary.nativeHostUnavailable}`,
         `noOverlayActivation=${summary.noOverlayActivation}`,
         `crashOk=${summary.crashOk}`
@@ -247,6 +248,9 @@ function verifyCase(caseId, metadata, result, lifecycle, failures) {
   const checkoutWait = hasExpectedActionError
     ? { required: false, ok: true }
     : verifyCheckoutOpenAndWait(caseId, actionName, lifecycleEntries, failures);
+  const microTxnCallback = hasExpectedActionError
+    ? { required: false, ok: true }
+    : verifyMicroTxnCallbackPresenterSnapshots(caseId, lifecycleEntries, failures);
   const managedWaits = hasExpectedActionError
     ? { required: false, ok: true }
     : verifyManagedLifecycleWaits(caseId, actionName, lifecycleEntries, isPassive, failures);
@@ -402,6 +406,7 @@ function verifyCase(caseId, metadata, result, lifecycle, failures) {
     managedWaits: managedWaits.required ? managedWaits.ok : "n/a",
     openAndWait: openAndWait.required ? openAndWait.ok : "n/a",
     checkoutWait: checkoutWait.required ? checkoutWait.ok : "n/a",
+    microTxnCallback: microTxnCallback.required ? microTxnCallback.ok : "n/a",
     nativeHostUnavailable: expectedNativeHostUnavailableReason || "none",
     noOverlayActivation: expectedNoOverlayActivation,
     crashOk
@@ -510,6 +515,49 @@ function verifyCheckoutOpenAndWait(caseId, actionName, entries, failures) {
   }
 
   return { required: true, ok: failures.length === failuresBefore };
+}
+
+function verifyMicroTxnCallbackPresenterSnapshots(caseId, entries, failures) {
+  const callbacks = entries.filter((entry) => entry && entry.type === "event:callback:microtxn");
+  if (callbacks.length === 0) {
+    return { required: false, ok: true };
+  }
+
+  const failuresBefore = failures.length;
+  callbacks.forEach((entry, index) => {
+    const presenter = presenterPayload(entry);
+    const label = `microtxn callback ${index + 1}`;
+    if (!presenter) {
+      failures.push(`${caseId}: ${label} did not include a presenter snapshot`);
+      return;
+    }
+    expectMicroTxnCallbackPresenter(caseId, presenter, label, failures);
+  });
+
+  return { required: true, ok: failures.length === failuresBefore };
+}
+
+function expectMicroTxnCallbackPresenter(caseId, presenter, label, failures) {
+  expectMacOverlayEnvironmentAvailable(caseId, presenter, label, failures);
+  expectPresenterField(caseId, presenter, "closed", false, `native presenter closed ${label}`, failures);
+  expectPresenterField(caseId, presenter, "attached", true, `native presenter attached ${label}`, failures);
+  expectPresenterField(caseId, presenter, "nativeHostOpen", true, `native presenter host open ${label}`, failures);
+  expect(
+    presenter.backend === "macos-metal" || presenter.backend === "macos-opengl",
+    `${caseId}: native presenter backend available ${label}`,
+    failures
+  );
+  expect(
+    presenter.mode === "active" || presenter.mode === "passive",
+    `${caseId}: native presenter mode active or passive ${label}, got ${formatValue(presenter.mode)}`,
+    failures
+  );
+  expectPresenterField(caseId, presenter, "idleFps", 0, `native presenter idle FPS ${label}`, failures);
+  expect(
+    Number.isFinite(Number(presenter.currentFps)),
+    `${caseId}: native presenter current FPS recorded ${label}`,
+    failures
+  );
 }
 
 function verifyManagedLifecycleWaits(caseId, actionName, entries, isPassive, failures) {
@@ -1016,6 +1064,7 @@ function createSelfTestFixture(root) {
         },
         { type: "event:callback:overlay-activated", payload: { active: true, appId: 480, overlayPid: 9001 } },
         { type: "event:overlay:presenter-wait-shown", payload: { presenter: activePresenterFixture(31) } },
+        { type: "event:callback:microtxn", payload: { authorized: true, presenter: activePresenterFixture(31) } },
         { type: "event:callback:overlay-activated", payload: { active: false, appId: 480, overlayPid: 9001 } },
         { type: "event:overlay:presenter-wait-closed", payload: { presenter: parkedPresenterFixture(32) } },
         { type: "event:overlay:presenter-after-close", payload: { presenter: parkedPresenterFixture(32) } },
