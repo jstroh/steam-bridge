@@ -9384,7 +9384,10 @@ test("native overlay presenter primes passive notifications without a blind fram
   assert.equal(stillIdle.pumpCount, 2);
 
   overlayNeedsPresent = true;
-  await new Promise((resolve) => setTimeout(resolve, 45));
+  assert.equal(
+    await waitForCondition(() => presenter.snapshot().overlayNeedsPresent === true, 500, 5),
+    true
+  );
   const presenting = presenter.snapshot();
   assert.equal(presenting.overlayNeedsPresent, true);
   assert.equal(presenting.mode, "passive");
@@ -9537,7 +9540,10 @@ test("native overlay presenter parks modal overlays after inactive callbacks", a
 
   fake.callbacks.get(331)({ active: true, app_id: 480 });
   overlayNeedsPresent = true;
-  await new Promise((resolve) => setTimeout(resolve, 80));
+  assert.equal(
+    await waitForCondition(() => presenter.snapshot().overlayNeedsPresent === true, 500, 5),
+    true
+  );
   assert.equal(presenter.snapshot().overlayNeedsPresent, true);
   assert.equal(presenter.snapshot().transparent, false);
 
