@@ -241,7 +241,7 @@ function copyTargetHelpers(appPath) {
 }
 
 function compileMacSteamEnvLauncher(appPath) {
-  const launcherSource = path.join(repoRoot, "scripts", "macos-steam-env-launcher.c");
+  const launcherSource = path.join(packageRoot, "templates", "macos-steam-env-launcher.c");
   const launcherPath = path.join(appPath, "SteamBridgeSmoke.app", "Contents", "MacOS", "SteamBridgeSmoke");
   const electronPath = `${launcherPath}.electron`;
   fs.renameSync(launcherPath, electronPath);
@@ -256,7 +256,7 @@ function signMacSteamExecutable(filePath) {
     return;
   }
 
-  const entitlementsPath = path.join(exampleRoot, "entitlements.steam.macos.plist");
+  const entitlementsPath = path.join(packageRoot, "templates", "entitlements.steam.macos.plist");
   run(
     "codesign",
     ["--force", "--sign", "-", "--entitlements", entitlementsPath, filePath],

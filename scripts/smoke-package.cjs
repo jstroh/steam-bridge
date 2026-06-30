@@ -48,8 +48,15 @@ try {
 }
 
 function runMacosEntitlementsStaticChecks() {
-  const entitlementsPath = path.join(repoRoot, "examples", "electron-basic", "entitlements.steam.macos.plist");
+  const entitlementsPath = path.join(packageRoot, "templates", "entitlements.steam.macos.plist");
+  const exampleEntitlementsPath = path.join(repoRoot, "examples", "electron-basic", "entitlements.steam.macos.plist");
   const entitlements = fs.readFileSync(entitlementsPath, "utf8");
+  const exampleEntitlements = fs.readFileSync(exampleEntitlementsPath, "utf8");
+  assert.equal(
+    exampleEntitlements,
+    entitlements,
+    "Electron example entitlements must match the published steam-bridge macOS template"
+  );
   for (const expected of [
     "com.apple.security.cs.allow-dyld-environment-variables",
     "com.apple.security.cs.disable-library-validation"
@@ -75,24 +82,41 @@ function runMacosPackageSigningStaticChecks() {
   const packagerScript = fs.readFileSync(path.join(repoRoot, "scripts", "package-electron-example.cjs"), "utf8");
   const matrixScript = fs.readFileSync(path.join(repoRoot, "scripts", "macos-overlay-matrix.sh"), "utf8");
   const verifierScript = fs.readFileSync(path.join(packageRoot, "bin", "verify-macos-signing.cjs"), "utf8");
+  const launcherTemplate = fs.readFileSync(path.join(packageRoot, "templates", "macos-steam-env-launcher.c"), "utf8");
   assert.equal(
     packageJson.bin?.["steam-bridge-verify-macos-signing"],
     "bin/verify-macos-signing.cjs",
     "steam-bridge package must expose the macOS signing verifier CLI"
   );
   assert.ok(packageJson.files.includes("bin"), "steam-bridge package must publish verifier CLI files");
+  assert.ok(packageJson.files.includes("templates"), "steam-bridge package must publish macOS launcher templates");
   for (const expected of [
     "signMacSteamExecutable(launcherPath)",
     "signMacSteamExecutable(electronPath)",
     "validateStagePackageArtifacts(stageDir, config.requiredFiles)",
     "isOverlayNeedsPresentPollingEnabled",
     "loadNativeBinding",
-    "entitlements.steam.macos.plist",
+    "templates\", \"macos-steam-env-launcher.c",
+    "templates\", \"entitlements.steam.macos.plist",
     "\"codesign\"",
     "\"--entitlements\""
   ]) {
     assert.ok(packagerScript.includes(expected), `macOS package script missing ${expected}`);
   }
+  for (const expected of [
+    "--steam-bridge-launch-target",
+    "--steam-bridge-launch-app-id",
+    "--steam-bridge-launch-overlay-game-id",
+    "--steam-bridge-launch-env-file",
+    "STEAM_BRIDGE_MACOS_NATIVE_LAUNCHER_TARGET",
+    "%s/%s.electron"
+  ]) {
+    assert.ok(launcherTemplate.includes(expected), `macOS launcher template missing ${expected}`);
+  }
+  assert.ok(
+    !launcherTemplate.includes("SteamBridgeSmoke"),
+    "macOS launcher template must stay app-name generic"
+  );
   assert.ok(
     matrixScript.includes("verify-macos-steam-signing.cjs"),
     "macOS overlay matrix must verify package signing before live cases"
@@ -170,7 +194,11 @@ function installConsumer(tarball) {
 function runConsumerChecks() {
   const installedPackageRoot = path.join(consumerDir, "node_modules", "steam-bridge");
   const macosSigningVerifier = path.join(installedPackageRoot, "bin", "verify-macos-signing.cjs");
+  const macosLauncherTemplate = path.join(installedPackageRoot, "templates", "macos-steam-env-launcher.c");
+  const macosEntitlementsTemplate = path.join(installedPackageRoot, "templates", "entitlements.steam.macos.plist");
   assertNonEmptyFile(macosSigningVerifier);
+  assertNonEmptyFile(macosLauncherTemplate);
+  assertNonEmptyFile(macosEntitlementsTemplate);
   run("node", [macosSigningVerifier, "--self-test"], { cwd: consumerDir });
 
   fs.writeFileSync(

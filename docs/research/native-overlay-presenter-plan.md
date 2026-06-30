@@ -658,7 +658,14 @@ Current evidence:
   managed overlay surface set plus one Metal presenter-backed overlay target per
   case, close/back-to-app proof, zero managed overlay timing,
   `overlayNeedsPresentPollingEnabled=false`, clean crash diagnostics, and clean
-  quit behavior on the current Electron package. A 2026-06-28 Deck Desktop
+  quit behavior on the current Electron package. A later 2026-06-30 persistent
+  macOS run at
+  `/tmp/steam-bridge-macos-overlay-matrix-persistent-generic-launcher-20260630-085852`
+  rebuilt that Electron `43.0.0` package from the published generic macOS
+  launcher and entitlement templates, reused the stable Steam shortcut without a
+  Steam restart, and passed the same 31-case inventory. That run proves the
+  builder-facing package templates are now the path being exercised by live
+  macOS overlay evidence, not a smoke-only launcher source. A 2026-06-28 Deck Desktop
   prepare-only run verified
   checkout readiness returns to passive idle, and a synthetic
   transaction approval URL run verified checkout-style open, close, app focus,
@@ -912,14 +919,18 @@ Next work:
    can run with `--app-id <your-app-id>`, `--checkout-json-file <path>`, and
    `--require-microtxn-callback`, then audits the expected app ID plus
    `checkoutSource=json-file` without recording the JSON path.
-2. Keep code signing requirements explicit in docs and examples. The generic
-   example now includes `entitlements.steam.macos.plist` with
+2. Keep code signing requirements explicit in docs and examples. The package now
+   publishes `templates/macos-steam-env-launcher.c` plus
+   `templates/entitlements.steam.macos.plist`, and the generic Electron example
+   compiles/signs from those package templates instead of carrying a private
+   launcher source. The entitlement template enables
    `com.apple.security.cs.allow-dyld-environment-variables` and
-   `com.apple.security.cs.disable-library-validation` enabled, and no App
-   Sandbox entitlement. The macOS smoke package ad-hoc signs the native launcher
-   and renamed Electron executable with that plist for local proof. Ad-hoc
-   signing is still not enough to claim shipped macOS overlay support; real
-   shipped apps must apply equivalent entitlements through the normal Apple
+   `com.apple.security.cs.disable-library-validation`, and omits App Sandbox.
+   The launcher template is app-name generic: package tooling renames Electron to
+   `<AppExecutable>.electron`, compiles the launcher back to `<AppExecutable>`,
+   keeps that launcher as `CFBundleExecutable`, and signs both executables.
+   Ad-hoc signing is still not enough to claim shipped macOS overlay support;
+   real shipped apps must apply equivalent entitlements through the normal Apple
    signing and notarization pipeline.
 3. Keep the smoke app on the current stable Electron release, and rerun at least
    the persistent macOS matrix after Electron major-version bumps so overlay

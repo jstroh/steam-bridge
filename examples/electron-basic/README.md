@@ -64,7 +64,9 @@ The macOS package includes `macos-electron-smoke.sh` beside
 On macOS, the packaged app installs a small native launcher as the bundle's main
 executable and moves Electron to `SteamBridgeSmoke.electron`. Steam still
 launches the normal `.app` executable path, while the launcher sets the Steam app
-and overlay game IDs before `exec`ing Electron.
+and overlay game IDs before `exec`ing Electron. The launcher and entitlement
+files come from the published `steam-bridge` package templates, so real apps can
+reuse the same shape without copying smoke-app-specific files.
 
 ## Autorun Logs
 
@@ -227,9 +229,11 @@ cases can update the env file without restarting Steam.
 `--action-delay-ms` can move the autorun action later when comparing Steam
 launch/readiness behavior; keep normal product paths callback-driven.
 
-For packaged macOS smoke builds, Steam Bridge ad-hoc signs the native launcher
-and renamed Electron executable with the Steam-compatible entitlements in
-`examples/electron-basic/entitlements.steam.macos.plist`. That template enables
+For packaged macOS smoke builds, Steam Bridge compiles the published
+`templates/macos-steam-env-launcher.c` launcher, renames Electron to
+`<AppExecutable>.electron`, keeps the launcher as `CFBundleExecutable`, and
+ad-hoc signs both executables with the Steam-compatible entitlements in
+`templates/entitlements.steam.macos.plist`. That template enables
 `com.apple.security.cs.allow-dyld-environment-variables` and
 `com.apple.security.cs.disable-library-validation`, and intentionally does not
 enable `com.apple.security.app-sandbox`. The native launcher remains the main

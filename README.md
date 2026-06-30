@@ -178,7 +178,8 @@ const txn = await web.microTxnSandbox.initTxn({
 ## Layout
 
 - `crates/native`: Rust N-API module.
-- `packages/steam-bridge`: TypeScript public package and compatibility adapter.
+- `packages/steam-bridge`: TypeScript public package, compatibility adapter,
+  and reusable macOS launcher/signing templates for Electron overlay packaging.
 - `examples/electron-basic`: overlay-focused Electron smoke app using App ID
   `480`, with packaged smoke builds for every supported platform.
 - `docs/steam-api-coverage.md`: current Steamworks coverage and known gaps.

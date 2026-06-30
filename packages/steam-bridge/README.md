@@ -220,15 +220,20 @@ await steamOverlay.openAndWait({
 The macOS smoke package verifies this managed overlay path from the same shape
 apps should ship: Steam launches the bundle's native launcher, the launcher sets
 the Steam App ID environment before `exec`ing Electron, and both executables are
-signed with Steam-compatible entitlements. The live macOS matrix then exercises
-the signed package through App ID `480` overlay cases, including managed waits,
-shortcut targets, passive notifications, checkout approval routing,
-all high-level dialog-equivalent routes, close/back-to-app proof, and crash
-diagnostics. Before launching Steam, that matrix verifies both macOS smoke
-executables are arm64-only, validly signed, carry the Steam overlay
-entitlements, omit App Sandbox, and that the bundle `Info.plist` names the
-native launcher as `CFBundleExecutable`. The package also publishes the same
-check as `steam-bridge-verify-macos-signing`; run
+signed with Steam-compatible entitlements. Steam Bridge publishes the reusable
+launcher source at `templates/macos-steam-env-launcher.c` and the matching
+entitlement template at `templates/entitlements.steam.macos.plist`. For a real
+app, rename the Electron executable to `<AppExecutable>.electron`, compile the
+launcher template back to `<AppExecutable>`, keep that launcher as
+`CFBundleExecutable`, and sign both executables with equivalent entitlements.
+The live macOS matrix then exercises the signed package through App ID `480`
+overlay cases, including managed waits, shortcut targets, passive notifications,
+checkout approval routing, all high-level dialog-equivalent routes,
+close/back-to-app proof, and crash diagnostics. Before launching Steam, that
+matrix verifies both macOS smoke executables are arm64-only, validly signed,
+carry the Steam overlay entitlements, omit App Sandbox, and that the bundle
+`Info.plist` names the native launcher as `CFBundleExecutable`. The package also
+publishes the same check as `steam-bridge-verify-macos-signing`; run
 `npx steam-bridge-verify-macos-signing --app-exe <YourApp.app/Contents/MacOS/YourApp>`
 against the final signed app shape before Steam overlay testing.
 
@@ -670,9 +675,12 @@ close-and-park evidence for interactive overlays. To audit an
 existing macOS artifact root, run
 `npm run macos:overlay-matrix:summarize -- --artifact-root <path>`. Live runs
 still require clearing Steam game processes on other machines first.
-For packaged macOS smoke builds, the example packager ad-hoc signs the native
-launcher and renamed Electron executable with Steam-compatible entitlements like
-`examples/electron-basic/entitlements.steam.macos.plist`: enable
+For packaged macOS smoke builds, the example packager compiles
+`templates/macos-steam-env-launcher.c`, renames the Electron executable to
+`<AppExecutable>.electron`, keeps the launcher as `CFBundleExecutable`, and
+ad-hoc signs the native launcher plus renamed Electron executable with
+Steam-compatible entitlements from
+`templates/entitlements.steam.macos.plist`: enable
 `com.apple.security.cs.allow-dyld-environment-variables` and
 `com.apple.security.cs.disable-library-validation`, and do not enable the App
 Sandbox. Keep the in-bundle native launcher as the app's main executable so the

@@ -42,6 +42,7 @@
   "files": [
     "bin",
     "dist",
+    "templates",
     "*.node",
     "!steam_bridge_native.local.node",
     "libsteam_api.*",

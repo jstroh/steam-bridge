@@ -566,6 +566,20 @@ Verified:
   close/back-to-app proof, zero managed overlay timing,
   `overlayNeedsPresentPollingEnabled=false`, clean crash diagnostics, and clean
   control-server quit behavior on the current Electron package.
+- A later 2026-06-30 persistent macOS matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-persistent-generic-launcher-20260630-085852`
+  rebuilt and signed the Electron `43.0.0` smoke app after moving the macOS env
+  launcher and Steam overlay entitlements into published `steam-bridge`
+  templates. The generic launcher template infers `<AppExecutable>.electron`
+  beside the launcher and no longer contains smoke-app-specific target names.
+  The rebuilt bundle passed all 31 Steam-launched control-server cases without
+  restarting Steam, re-verifying web/store/Friends/dialog wait routes, passive
+  progress/unlock toasts, checkout approval routing, every supported Shift+Tab
+  target, direct profile/players/community/stats/achievements/user wait routes,
+  every high-level dialog-equivalent route, one Metal presenter-backed overlay
+  target per case, close/back-to-app proof, zero managed overlay timing,
+  `overlayNeedsPresentPollingEnabled=false`, clean quit behavior, and no fresh
+  crash reports.
 - The live macOS matrix now runs `scripts/verify-macos-steam-signing.cjs`
   before touching Steam. It checks the native launcher and renamed Electron
   executable for arm64-only slices, valid executable signatures, the dyld
@@ -606,7 +620,7 @@ Still not verified:
   or transaction. App ID `480` remains suitable only for generic overlay smoke
   tests and synthetic checkout approval-route plumbing.
 - Shipped macOS apps should sign the app bundle Steam launches with the generic
-  entitlement template in `examples/electron-basic/entitlements.steam.macos.plist`:
+  entitlement template in `packages/steam-bridge/templates/entitlements.steam.macos.plist`:
   allow dyld environment variables, disable library validation, and keep App
   Sandbox disabled.
 

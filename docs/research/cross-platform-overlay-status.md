@@ -132,6 +132,16 @@ user wait routes, user SteamID, every high-level dialog-equivalent route, one
 overlay target per case, Metal presenter lifecycle, close/back-to-app proof,
 zero managed overlay timing, `overlayNeedsPresentPollingEnabled=false`, and
 clean crash diagnostics on the current Electron package.
+A later persistent suite at
+`/tmp/steam-bridge-macos-overlay-matrix-persistent-generic-launcher-20260630-085852`
+rebuilt the same Electron `43.0.0` package after moving the macOS env launcher
+and Steam overlay entitlements into published `steam-bridge` templates. It
+compiled and signed the smoke bundle from those generic package templates,
+reused the stable Steam shortcut without restarting Steam, passed all 31
+control-server-driven overlay cases, and re-verified one Metal presenter-backed
+overlay target per case, close/back-to-app proof, zero managed timing,
+`overlayNeedsPresentPollingEnabled=false`, clean quit behavior, and no fresh
+crash reports.
 
 ## Steam Deck Shortcut Gate
 
