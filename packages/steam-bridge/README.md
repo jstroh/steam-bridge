@@ -564,8 +564,9 @@ nonzero managed overlay timing, reports crash diagnostics, duplicates
 `gameoverlayui` targets attached to the smoke process, attaches a non-store
 overlay target under a game ID other than `480`, misses passive
 notification callbacks, misses checkout `openCheckoutAndWait(...)` completion
-after close/parking, misses active shown presenter snapshots in an interactive
-macOS host environment, misses expected native-host-unavailable fail-fast
+after close/parking, misses managed wait-helper shown/closed/parked lifecycle
+events, misses active shown presenter snapshots in an interactive macOS host
+environment, misses expected native-host-unavailable fail-fast
 metadata, or misses active/inactive close-and-park evidence for interactive
 overlays. To audit an
 existing macOS artifact root, run

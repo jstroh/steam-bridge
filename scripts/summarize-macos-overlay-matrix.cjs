@@ -181,6 +181,7 @@ function summarizeMatrixArtifacts(root) {
         `macInteractive=${summary.macInteractive}`,
         `zeroTiming=${summary.zeroTiming}`,
         `shown=${summary.shown}`,
+        `managedWaits=${summary.managedWaits}`,
         `openAndWait=${summary.openAndWait}`,
         `checkoutWait=${summary.checkoutWait}`,
         `nativeHostUnavailable=${summary.nativeHostUnavailable}`,
@@ -246,9 +247,9 @@ function verifyCase(caseId, metadata, result, lifecycle, failures) {
   const checkoutWait = hasExpectedActionError
     ? { required: false, ok: true }
     : verifyCheckoutOpenAndWait(caseId, actionName, lifecycleEntries, failures);
-  const shown = hasExpectedActionError
+  const managedWaits = hasExpectedActionError
     ? { required: false, ok: true }
-    : verifyShownPresenter(caseId, lifecycleEntries, isPassive, failures);
+    : verifyManagedLifecycleWaits(caseId, actionName, lifecycleEntries, isPassive, failures);
   let macInteractive = false;
 
   if (hasExpectedActionError) {
@@ -397,7 +398,8 @@ function verifyCase(caseId, metadata, result, lifecycle, failures) {
     overlayGameIds,
     macInteractive,
     zeroTiming,
-    shown: shown.required ? shown.ok : "n/a",
+    shown: managedWaits.required ? managedWaits.shownOk : "n/a",
+    managedWaits: managedWaits.required ? managedWaits.ok : "n/a",
     openAndWait: openAndWait.required ? openAndWait.ok : "n/a",
     checkoutWait: checkoutWait.required ? checkoutWait.ok : "n/a",
     nativeHostUnavailable: expectedNativeHostUnavailableReason || "none",
@@ -510,23 +512,83 @@ function verifyCheckoutOpenAndWait(caseId, actionName, entries, failures) {
   return { required: true, ok: failures.length === failuresBefore };
 }
 
-function verifyShownPresenter(caseId, entries, isPassive, failures) {
-  if (isPassive) {
+function verifyManagedLifecycleWaits(caseId, actionName, entries, isPassive, failures) {
+  if (isPassive || !requiresManagedLifecycleWaits(actionName, entries)) {
     return { required: false, ok: true };
   }
 
   const failuresBefore = failures.length;
-  const shown = entries
-    .filter((entry) => entry.type === "event:overlay:presenter-wait-shown")
-    .map((entry) => presenterPayload(entry))
-    .filter(Boolean);
-
-  expect(shown.length > 0, `${caseId}: active shown presenter event recorded`, failures);
-  for (const presenter of shown) {
-    expectActivePresenter(caseId, presenter, "shown sample", failures);
+  let shownOk = false;
+  const firstActiveIndex = entries.findIndex(isLifecycleOverlayActiveEvent);
+  if (firstActiveIndex === -1) {
+    failures.push(`${caseId}: no active=true callback before managed wait lifecycle`);
+    return { required: true, ok: false, shownOk };
   }
 
-  return { required: true, ok: failures.length === failuresBefore };
+  const inactiveAfterActiveIndex = entries.findIndex(
+    (entry, index) => index > firstActiveIndex && isLifecycleOverlayInactiveEvent(entry)
+  );
+  if (inactiveAfterActiveIndex === -1) {
+    failures.push(`${caseId}: no active=false callback before managed wait close lifecycle`);
+    return { required: true, ok: false, shownOk };
+  }
+
+  const shown = entries.find(
+    (entry, index) => index > firstActiveIndex && entry.type === "event:overlay:presenter-wait-shown"
+  );
+  const closed = entries.find(
+    (entry, index) => index > inactiveAfterActiveIndex && entry.type === "event:overlay:presenter-wait-closed"
+  );
+  const parked = entries.find(
+    (entry, index) => index > inactiveAfterActiveIndex && entry.type === "event:overlay:presenter-parked"
+  );
+
+  if (!shown) {
+    failures.push(`${caseId}: no overlay:presenter-wait-shown event after active=true`);
+  } else {
+    const shownPresenter = presenterPayload(shown);
+    if (!shownPresenter) {
+      failures.push(`${caseId}: overlay:presenter-wait-shown did not include a presenter snapshot`);
+    } else {
+      const beforeShownFailures = failures.length;
+      expectActivePresenter(caseId, shownPresenter, "managed shown wait", failures);
+      shownOk = failures.length === beforeShownFailures;
+    }
+  }
+
+  if (!closed) {
+    failures.push(`${caseId}: no overlay:presenter-wait-closed event after active=false`);
+  } else {
+    const closedPresenter = presenterPayload(closed);
+    if (!closedPresenter) {
+      failures.push(`${caseId}: overlay:presenter-wait-closed did not include a presenter snapshot`);
+    } else {
+      expectClosedWaitPresenter(caseId, closedPresenter, "managed close wait", failures);
+    }
+  }
+
+  if (!parked) {
+    failures.push(`${caseId}: no overlay:presenter-parked event after active=false`);
+  } else {
+    const parkedPresenter = presenterPayload(parked);
+    if (!parkedPresenter) {
+      failures.push(`${caseId}: overlay:presenter-parked did not include a presenter snapshot`);
+    } else {
+      expectParkedPresenter(caseId, parkedPresenter, "managed park wait", failures);
+    }
+  }
+
+  return { required: true, ok: failures.length === failuresBefore, shownOk };
+}
+
+function requiresManagedLifecycleWaits(actionName, entries) {
+  if (OPEN_AND_WAIT_ACTIONS.has(actionName) || actionName === "presenter-shortcut") {
+    return entries.some((entry) => entry.type === "event:callback:overlay-activated");
+  }
+  if (actionName === "presenter-checkout") {
+    return entries.some((entry) => entry.type === "event:overlay:presenter-open");
+  }
+  return false;
 }
 
 function verifyPassiveNotification(caseId, resultEvents, entries, presenter, config, failures) {
@@ -677,6 +739,17 @@ function expectActivePresenter(caseId, presenter, label, failures) {
   expectPresenterField(caseId, presenter, "idleFps", 0, `native presenter idle FPS ${label}`, failures);
   expectPresenterField(caseId, presenter, "activeOverlayFps", 30, `native presenter active overlay FPS ${label}`, failures);
   expectPresenterField(caseId, presenter, "currentFps", 30, `native presenter current FPS ${label}`, failures);
+}
+
+function expectClosedWaitPresenter(caseId, presenter, label, failures) {
+  expectMacOverlayEnvironmentAvailable(caseId, presenter, label, failures);
+  expectPresenterField(caseId, presenter, "closed", false, `native presenter closed ${label}`, failures);
+  expectPresenterField(caseId, presenter, "attached", true, `native presenter attached ${label}`, failures);
+  expectPresenterField(caseId, presenter, "nativeHostOpen", true, `native presenter host open ${label}`, failures);
+  expectPresenterField(caseId, presenter, "mode", "passive", `native presenter mode ${label}`, failures);
+  expectPresenterField(caseId, presenter, "focusable", false, `native presenter focusable ${label}`, failures);
+  expectPresenterField(caseId, presenter, "overlayActive", false, `native presenter overlay active ${label}`, failures);
+  expectPresenterField(caseId, presenter, "idleFps", 0, `native presenter idle FPS ${label}`, failures);
 }
 
 function expectPassiveNotificationPresenter(caseId, presenter, label, failures) {
@@ -877,6 +950,7 @@ function createSelfTestFixture(root) {
         { type: "event:callback:overlay-activated", payload: { active: true, appId: 480, overlayPid: 9001 } },
         { type: "event:overlay:presenter-wait-shown", payload: { presenter: activePresenterFixture(11) } },
         { type: "event:callback:overlay-activated", payload: { active: false, appId: 480, overlayPid: 9001 } },
+        { type: "event:overlay:presenter-wait-closed", payload: { presenter: parkedPresenterFixture(12) } },
         { type: "event:overlay:presenter-after-close", payload: { presenter: parkedPresenterFixture(12) } },
         { type: "event:overlay:presenter-parked", payload: { presenter: parkedPresenterFixture(12) } },
         {
@@ -905,6 +979,7 @@ function createSelfTestFixture(root) {
         { type: "event:callback:overlay-activated", payload: { active: true, appId: 480, overlayPid: 9001 } },
         { type: "event:overlay:presenter-wait-shown", payload: { presenter: activePresenterFixture(15) } },
         { type: "event:callback:overlay-activated", payload: { active: false, appId: 480, overlayPid: 9001 } },
+        { type: "event:overlay:presenter-wait-closed", payload: { presenter: parkedPresenterFixture(16) } },
         { type: "event:overlay:presenter-after-close", payload: { presenter: parkedPresenterFixture(16) } },
         { type: "event:overlay:presenter-parked", payload: { presenter: parkedPresenterFixture(16) } },
         {
@@ -924,6 +999,7 @@ function createSelfTestFixture(root) {
         { type: "event:callback:overlay-activated", payload: { active: true, appId: 480, overlayPid: 9001 } },
         { type: "event:overlay:presenter-wait-shown", payload: { presenter: activePresenterFixture(20) } },
         { type: "event:callback:overlay-activated", payload: { active: false, appId: 480, overlayPid: 9001 } },
+        { type: "event:overlay:presenter-wait-closed", payload: { presenter: parkedPresenterFixture(21) } },
         { type: "event:overlay:presenter-after-close", payload: { presenter: parkedPresenterFixture(21) } },
         { type: "event:overlay:presenter-parked", payload: { presenter: parkedPresenterFixture(21) } },
         { type: "event:overlay:presenter-after-close-stable", payload: { presenter: parkedPresenterFixture(21) } }
@@ -941,6 +1017,7 @@ function createSelfTestFixture(root) {
         { type: "event:callback:overlay-activated", payload: { active: true, appId: 480, overlayPid: 9001 } },
         { type: "event:overlay:presenter-wait-shown", payload: { presenter: activePresenterFixture(31) } },
         { type: "event:callback:overlay-activated", payload: { active: false, appId: 480, overlayPid: 9001 } },
+        { type: "event:overlay:presenter-wait-closed", payload: { presenter: parkedPresenterFixture(32) } },
         { type: "event:overlay:presenter-after-close", payload: { presenter: parkedPresenterFixture(32) } },
         { type: "event:overlay:presenter-parked", payload: { presenter: parkedPresenterFixture(32) } },
         {

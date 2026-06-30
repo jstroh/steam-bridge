@@ -283,8 +283,9 @@ Verified:
   launch/injection identity, one `gameoverlayui` target attached to the smoke
   process, zero managed overlay timing, passive notification callbacks,
   active shown presenter snapshots in an interactive macOS host environment,
-  close-and-park lifecycle evidence, checkout `openCheckoutAndWait(...)`
-  completion after close/parking, and crash diagnostics. The manifest and
+  managed wait-helper shown/closed/parked lifecycle events, close-and-park
+  lifecycle evidence, checkout `openCheckoutAndWait(...)` completion after
+  close/parking, and crash diagnostics. The manifest and
   summary auditor also support expected native-host-unavailable fail-fast cases:
   an artifact can require the serialized action error code/reason, matching
   `nativeHostUnavailableReason`, unattached/no-host/zero-FPS presenter state,
