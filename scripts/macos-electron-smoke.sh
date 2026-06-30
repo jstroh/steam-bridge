@@ -142,7 +142,7 @@ Options:
                                  Require the autorun action to fail with this serialized error reason.
   --require-native-host-unavailable-reason REASON
                                  Require managed presenter diagnostics to report this native host unavailable reason.
-  --require-no-crashes           Require no crash dumps or fatal Electron lifecycle events.
+  --require-no-crashes           Require no crash dumps, macOS crash reports, or fatal Electron lifecycle events.
   --require-event TYPE           Require an emitted event. May be repeated.
 EOF
 }
@@ -423,6 +423,7 @@ fi
 if [ -z "$diagnostic_dir" ]; then
   diagnostic_dir="$result_file.diagnostics"
 fi
+macos_crash_report_cutoff_ms="$(node -e 'process.stdout.write(String(Date.now() - 2000))')"
 
 smoke_args() {
   if [ "$macos_native_launcher" = "1" ]; then
@@ -540,16 +541,20 @@ collect_recent_macos_crash_reports() {
     return 0
   fi
 
-  DIAGNOSTIC_DIR="$diagnostic_dir" CRASH_REPORT_WINDOW_MS="$(( (timeout_seconds + 120) * 1000 ))" node <<'NODE'
+  DIAGNOSTIC_DIR="$diagnostic_dir" CRASH_REPORT_CUTOFF_MS="$macos_crash_report_cutoff_ms" CRASH_REPORT_WINDOW_MS="$(( (timeout_seconds + 120) * 1000 ))" node <<'NODE'
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 
 const diagnosticDir = process.env.DIAGNOSTIC_DIR;
 const windowMs = Number(process.env.CRASH_REPORT_WINDOW_MS || 1800000);
+const explicitCutoff = Number(process.env.CRASH_REPORT_CUTOFF_MS || 0);
 const sourceDir = path.join(os.homedir(), "Library", "Logs", "DiagnosticReports");
 const targetDir = path.join(diagnosticDir, "macos-crash-reports");
-const cutoff = Date.now() - Math.max(1, windowMs);
+const cutoff =
+  Number.isFinite(explicitCutoff) && explicitCutoff > 0
+    ? explicitCutoff
+    : Date.now() - Math.max(1, windowMs);
 const copied = [];
 
 let entries = [];
@@ -581,6 +586,95 @@ for (const entry of entries) {
 
 for (const crashReport of copied.sort()) {
   console.error(`Copied recent macOS crash report: ${crashReport}`);
+}
+NODE
+}
+
+verify_no_fresh_macos_crash_reports() {
+  if [ "$require_no_crashes" != "1" ]; then
+    return 0
+  fi
+
+  collect_recent_macos_crash_reports
+  DIAGNOSTIC_DIR="$diagnostic_dir" node <<'NODE'
+const fs = require("node:fs");
+const path = require("node:path");
+
+const diagnosticDir = process.env.DIAGNOSTIC_DIR;
+const crashReportDir = path.join(diagnosticDir, "macos-crash-reports");
+const crashReportName = /^SteamBridgeSmoke(?:\.electron| Helper(?: \(Renderer\))?)?-.*\.ips$/;
+
+let entries;
+try {
+  entries = fs.readdirSync(crashReportDir, { withFileTypes: true });
+} catch (error) {
+  if (error && error.code === "ENOENT") {
+    process.exit(0);
+  }
+  console.error(`Could not read macOS crash report directory: ${error.message}`);
+  process.exit(1);
+}
+
+const reports = entries
+  .filter((entry) => entry.isFile() && crashReportName.test(entry.name))
+  .map((entry) => path.join(crashReportDir, entry.name))
+  .sort();
+
+if (reports.length === 0) {
+  process.exit(0);
+}
+
+for (const report of reports) {
+  const summary = summarizeCrashReport(report);
+  console.error(`Fresh macOS crash report found: ${path.basename(report)} ${summary}`);
+}
+process.exit(1);
+
+function summarizeCrashReport(report) {
+  let text = "";
+  try {
+    text = fs.readFileSync(report, "utf8");
+  } catch (error) {
+    return `(unreadable: ${error.message})`;
+  }
+
+  const firstLine = text.split(/\r?\n/, 1)[0] || "";
+  let header = {};
+  try {
+    header = JSON.parse(firstLine);
+  } catch {
+    header = {};
+  }
+
+  const details = [];
+  const timestamp = header.timestamp || match(text, /"captureTime"\s*:\s*"([^"]+)"/);
+  if (timestamp) {
+    details.push(`timestamp=${JSON.stringify(timestamp)}`);
+  }
+  const procName = header.app_name || header.name || match(text, /"procName"\s*:\s*"([^"]+)"/);
+  if (procName) {
+    details.push(`process=${JSON.stringify(procName)}`);
+  }
+  const exceptionType = match(text, /"exception"\s*:\s*\{[^}]*"type"\s*:\s*"([^"]+)"/s);
+  const exceptionSignal = match(text, /"exception"\s*:\s*\{[^}]*"signal"\s*:\s*"([^"]+)"/s);
+  if (exceptionType || exceptionSignal) {
+    details.push(`exception=${JSON.stringify([exceptionType, exceptionSignal].filter(Boolean).join("/"))}`);
+  }
+  const topSymbol = match(text, /"frames"\s*:\s*\[\{[^\]]*?"symbol"\s*:\s*"([^"]+)"/s);
+  if (topSymbol) {
+    details.push(`top=${JSON.stringify(topSymbol)}`);
+  }
+  const bridgeSymbol = match(text, /"symbol"\s*:\s*"([^"]*steam_bridge[^"]*)"/);
+  if (bridgeSymbol) {
+    details.push(`bridge=${JSON.stringify(bridgeSymbol)}`);
+  }
+
+  return details.length > 0 ? details.join(" ") : "";
+}
+
+function match(text, pattern) {
+  const found = text.match(pattern);
+  return found ? found[1] : "";
 }
 NODE
 }
@@ -1178,6 +1272,7 @@ verify_result() {
   fi
 
   node "${args[@]}"
+  verify_no_fresh_macos_crash_reports
 }
 
 send_macos_overlay_close_probe() {
@@ -1520,6 +1615,7 @@ function format(value) {
   return JSON.stringify(value);
 }
 NODE
+  verify_no_fresh_macos_crash_reports
 }
 
 verify_macos_overlay_closed_after_probe() {
@@ -2035,10 +2131,11 @@ function format(value) {
   return JSON.stringify(value);
 }
 NODE
+  verify_no_fresh_macos_crash_reports
 }
 
 run_self_test() {
-  local temp_result launch_options temp_home old_home shortcut_file expected_game_id matches resolved
+  local temp_result launch_options temp_home old_home shortcut_file expected_game_id matches resolved old_diagnostic_dir old_crash_report_cutoff_ms dirty_diagnostic_dir
   temp_result="$(mktemp "${TMPDIR:-/tmp}/steam-bridge-macos-helper.XXXXXX")"
   result_file="$temp_result"
   diagnostic_dir="$result_file.diagnostics"
@@ -2075,6 +2172,24 @@ EOF
   verify_result
   action="presenter-web-open-and-wait"
   verify_macos_overlay_closed_after_probe "0" "0"
+
+  old_diagnostic_dir="$diagnostic_dir"
+  old_crash_report_cutoff_ms="$macos_crash_report_cutoff_ms"
+  dirty_diagnostic_dir="$(mktemp -d "${TMPDIR:-/tmp}/steam-bridge-macos-helper-crash.XXXXXX")"
+  mkdir -p "$dirty_diagnostic_dir/macos-crash-reports"
+  cat >"$dirty_diagnostic_dir/macos-crash-reports/SteamBridgeSmoke.electron-2099-01-01-000000.ips" <<'EOF'
+{"app_name":"SteamBridgeSmoke.electron","timestamp":"2099-01-01 00:00:00.00 -0700","name":"SteamBridgeSmoke.electron"}
+{"exception":{"type":"EXC_BAD_ACCESS","signal":"SIGSEGV"},"threads":[{"frames":[{"symbol":"BOverlayNeedsPresent"},{"symbol":"steam_bridge_native::overlay_needs_present_c_callback"}]}]}
+EOF
+  diagnostic_dir="$dirty_diagnostic_dir"
+  macos_crash_report_cutoff_ms="$(node -e 'process.stdout.write(String(Date.now() + 60000))')"
+  if verify_no_fresh_macos_crash_reports >/dev/null 2>&1; then
+    echo "Self-test failed: fresh macOS crash reports must fail the no-crash verifier." >&2
+    exit 1
+  fi
+  diagnostic_dir="$old_diagnostic_dir"
+  macos_crash_report_cutoff_ms="$old_crash_report_cutoff_ms"
+  rm -rf "$dirty_diagnostic_dir"
 
   temp_home="$(mktemp -d "${TMPDIR:-/tmp}/steam-bridge-macos-helper-home.XXXXXX")"
   old_home="$HOME"

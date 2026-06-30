@@ -538,6 +538,10 @@ Each autorun also writes local diagnostics. Pass
 or set `STEAM_BRIDGE_SMOKE_DIAGNOSTIC_DIR` to choose the directory. The app
 starts Electron's crash reporter with uploads disabled, stores Crashpad files
 under `crash-dumps/`, and writes lifecycle JSON lines to `lifecycle.jsonl`.
+On macOS, the helper's `--require-no-crashes` gate also copies fresh
+`SteamBridgeSmoke*.ips` reports from `~/Library/Logs/DiagnosticReports` into
+`macos-crash-reports/` and fails with the report timestamp, exception, and top
+symbols.
 The smoke snapshot includes `snapshot.app.diagnosticDir`,
 `snapshot.app.lifecycleLogFile`, and `snapshot.app.crashDumpDir`.
 For visual debugging, pass `--steam-bridge-smoke-keep-open-after-result` or set
