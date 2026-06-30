@@ -11,7 +11,7 @@
     "package:win": "node ../../scripts/package-electron-example.cjs --target x86_64-pc-windows-msvc"
   },
   "dependencies": {
-    "electron": "34.0.0",
+    "electron": "42.5.1",
     "steam-bridge": "file:../../packages/steam-bridge"
   }
 }
