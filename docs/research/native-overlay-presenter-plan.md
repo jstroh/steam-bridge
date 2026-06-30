@@ -731,6 +731,18 @@ Current evidence:
   checkout prepare-only proof, all programmatic shortcut wait targets, app focus
   before activation/close probes, and per-control-action smoke option reset so a
   previous checkout transaction cannot leak into a later prepare-only action. A
+  later 2026-06-30 full macOS matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-full-ready-current-20260630-164539`
+  passed 44 process-per-case App ID `480` cases after adding the managed
+  `presenter-ready` preflight to full live coverage. It reused the signed
+  Electron `43.0.0` package and stable shortcut without restarting Steam or
+  repackaging, then re-proved web/store/Friends/dialog waits, passive
+  progress/unlock toasts, checkout approval and prepare-only readiness, every
+  managed Shift+Tab shortcut target, every direct presenter-backed
+  community/user/dialog route, every programmatic shortcut open-and-wait target,
+  one Metal presenter-backed overlay target per case, close/back-to-app proof,
+  zero managed overlay timing, parked zero-FPS presenter state, no leftover
+  smoke/gameoverlay process, and no copied macOS crash reports. A
   2026-06-28 Deck Desktop
   prepare-only run verified
   checkout readiness returns to passive idle, and a synthetic

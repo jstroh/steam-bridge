@@ -96,6 +96,18 @@ zero managed overlay timing, and no overlay-active callback before the visible
 web/store/Friends/dialog/passive cases. The readiness case intentionally does
 not require `overlayEnabled=true`; on macOS Steam can keep one dormant
 `gameoverlayui` target attached before visible overlay activation.
+A later full run at
+`/tmp/steam-bridge-macos-overlay-matrix-full-ready-current-20260630-164539`
+reused the signed Electron `43.0.0` package and stable Steam shortcut without
+restarting Steam, skipped repackaging, and passed all 44 Steam-launched App ID
+`480` cases. This re-proved the readiness preflight, web/store/Friends/dialog
+wait routes, passive progress/unlock toasts, checkout approval and prepare-only
+paths, every managed Shift+Tab shortcut target, every direct presenter-backed
+profile/community/stats/achievements/user/dialog route, and every programmatic
+shortcut open-and-wait target, with one Metal presenter-backed overlay target,
+active/inactive callbacks where expected, close/back-to-app proof, zero managed
+overlay timing, clean parked state, no leftover smoke/gameoverlay processes, and
+no copied macOS crash reports.
 A fresh full run at
 `/tmp/steam-bridge-macos-overlay-matrix-full-json-after-reopen-20260630-040037`
 then rebuilt and signed the Electron `42.5.1` smoke package after Steam had been

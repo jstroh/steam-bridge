@@ -734,6 +734,17 @@ running the web, store, Friends, dialog-equivalent, and passive-toast cases.
 That preflight can report `overlayEnabled=false` while Steam still has one
 dormant `gameoverlayui` target attached to the smoke process; the activation
 callback stream remains the proof of whether visible Steam overlay UI opened.
+A follow-up 2026-06-30 full macOS matrix at
+`/tmp/steam-bridge-macos-overlay-matrix-full-ready-current-20260630-164539`
+passed all 44 Steam-launched App ID `480` cases with the readiness preflight in
+the same run as web/store/Friends/dialog wait routes, passive progress/unlock
+toasts, synthetic checkout approval, checkout prepare-only readiness, every
+managed Shift+Tab shortcut target, every direct presenter-backed community/user
+route, and every programmatic shortcut open-and-wait target. The run reused the
+signed Electron `43.0.0` package and stable shortcut without repackaging or
+restarting Steam, audited one Metal presenter-backed overlay target per case,
+zero managed overlay timing, close/back-to-app proof, parked zero-FPS presenter
+state, no leftover smoke/gameoverlay process, and no copied macOS crash reports.
 
 ## Primary References
 
