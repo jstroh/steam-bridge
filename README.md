@@ -321,6 +321,9 @@ pass a local `InitTxn` JSON file through `STEAM_BRIDGE_SMOKE_CHECKOUT_JSON_FILE`
 or the macOS helper/matrix `--checkout-json-file` option. The macOS matrix can
 also run with `--app-id <your-app-id>`; its manifest records the expected app ID
 and `checkoutSource=json-file`, not the JSON path or transaction values.
+Shortcut checkout smoke cases use the same `checkoutTargetFromResult(...)`
+unwrapper, so JSON-file and direct checkout proof exercise one backend envelope
+parser.
 
 ## Diagnostics
 

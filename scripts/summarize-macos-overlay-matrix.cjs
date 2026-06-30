@@ -232,6 +232,8 @@ function verifyCase(caseId, metadata, result, lifecycle, failures) {
   const expectedAppIdText = String(expectedAppId);
   const expectedCheckoutSource = nonEmptyString(metadata.checkoutSource);
   const manifestCheckoutSource = checkoutSourceFromMetadata(metadata);
+  const summaryCheckoutSource =
+    manifestCheckoutSource || (expectedCheckoutSource ? expectedCheckoutSource : "");
   const resultEvents = Array.isArray(snapshot.events) ? snapshot.events : [];
   const lifecycleEntries = lifecycle.entries;
   const overlayTargets = countOverlayTargets(overlayProcesses);
@@ -413,6 +415,22 @@ function verifyCase(caseId, metadata, result, lifecycle, failures) {
         )}`,
         failures
       );
+      if (expectedShortcutTarget === "checkout") {
+        const targetSnapshot = objectOrEmpty(shortcut.target);
+        expect(
+          Boolean(summaryCheckoutSource),
+          `${caseId}: checkout shortcut source recorded`,
+          failures
+        );
+        expect(
+          targetSnapshot.type === "checkout" &&
+            (targetSnapshot.hasSteamUrl === true ||
+              targetSnapshot.hasUrl === true ||
+              targetSnapshot.hasTransactionId === true),
+          `${caseId}: shortcut checkout target snapshot includes a checkout URL or transaction ID`,
+          failures
+        );
+      }
     }
   }
 
@@ -433,7 +451,9 @@ function verifyCase(caseId, metadata, result, lifecycle, failures) {
     managedWaits: managedWaits.required ? managedWaits.ok : "n/a",
     openAndWait: openAndWait.required ? openAndWait.ok : "n/a",
     checkoutWait: checkoutWait.required ? checkoutWait.ok : "n/a",
-    checkoutSource: checkoutWait.required ? checkoutWait.source || manifestCheckoutSource || "unknown" : "n/a",
+    checkoutSource: checkoutWait.required
+      ? checkoutWait.source || summaryCheckoutSource || "unknown"
+      : summaryCheckoutSource || "n/a",
     microTxnCallback: microTxnCallback.required ? microTxnCallback.ok : "n/a",
     nativeHostUnavailable: expectedNativeHostUnavailableReason || "none",
     noOverlayActivation: expectedNoOverlayActivation,
@@ -953,16 +973,20 @@ function checkoutSourceFromMetadata(metadata) {
     return value;
   }
   const command = Array.isArray(metadata.command) ? metadata.command : [];
-  if (command.includes("--checkout-json-file")) {
+  if (commandHasOption(command, "--checkout-json-file")) {
     return "json-file";
   }
-  if (command.includes("--checkout-url")) {
+  if (commandHasOption(command, "--checkout-url")) {
     return "checkout-url";
   }
-  if (command.includes("--checkout-transaction-id")) {
+  if (commandHasOption(command, "--checkout-transaction-id")) {
     return "transaction-id";
   }
   return "";
+}
+
+function commandHasOption(command, option) {
+  return command.some((value) => value === option || (typeof value === "string" && value.startsWith(`${option}=`)));
 }
 
 function macOverlayEnvironmentMatchesReason(environment, reason) {
@@ -1145,12 +1169,25 @@ function createSelfTestFixture(root) {
       ]
     },
     {
-      caseId: "04-shortcut-friends",
+      caseId: "04-shortcut-checkout",
       action: "presenter-shortcut",
-      shortcutTarget: "friends",
-      resultPresenter: parkedPresenterFixture(1),
+      shortcutTarget: "checkout",
+      checkoutSource: "json-file",
+      command: [
+        "--action",
+        "presenter-shortcut",
+        "--shortcut-target",
+        "checkout",
+        "--checkout-json-file",
+        REDACTED_COMMAND_VALUE
+      ],
+      resultPresenter: withShortcutTargetSnapshot(parkedPresenterFixture(1), "checkout", {
+        type: "checkout",
+        hasTransactionId: true,
+        hasReturnUrl: true
+      }),
       lifecycle: [
-        { type: "event:overlay:shortcut-open", payload: { target: "friends" } },
+        { type: "event:overlay:shortcut-open", payload: { target: "checkout" } },
         { type: "event:callback:overlay-activated", payload: { active: true, appId: 480, overlayPid: 9001 } },
         { type: "event:overlay:presenter-wait-shown", payload: { presenter: activePresenterFixture(20) } },
         { type: "event:callback:overlay-activated", payload: { active: false, appId: 480, overlayPid: 9001 } },
@@ -1347,6 +1384,20 @@ function parkedPresenterFixture(pumpCount, backend = "macos-metal") {
         preventDefault: true,
         targetType: "friends",
         target: { type: "friends" }
+      }
+    }
+  };
+}
+
+function withShortcutTargetSnapshot(presenter, targetType, target) {
+  return {
+    ...presenter,
+    electronOverlay: {
+      ...presenter.electronOverlay,
+      overlayShortcut: {
+        ...presenter.electronOverlay.overlayShortcut,
+        targetType,
+        target
       }
     }
   };

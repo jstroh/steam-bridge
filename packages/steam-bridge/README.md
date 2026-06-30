@@ -323,6 +323,9 @@ need to separate presenter priming from transaction creation or overlay opening;
 `withCheckoutPrepared(...)` accepts the same operation-phase abort behavior, and
 an explicit preparation duration should only be used when a standalone
 split-step hold is intentional.
+When you need a checkout target object for a managed shortcut or split-step
+flow, use `client.overlay.checkoutTargetFromResult(initTxnResponse)` instead of
+re-parsing `InitTxn` envelopes in app code.
 The Electron smoke app redacts real checkout URLs, transaction IDs, return URLs,
 Steam IDs, auth-ticket bytes, and private CLI arguments from result and lifecycle
 artifacts while preserving machine-checkable presence flags and presenter
@@ -331,7 +334,9 @@ checkout response JSON to a private temp file and pass its path with
 `STEAM_BRIDGE_SMOKE_CHECKOUT_JSON_FILE` or the macOS helper/matrix
 `--checkout-json-file` option; the smoke app feeds that object through
 `openCheckoutAndWait(...)` without committing private data or putting transaction
-values in launch arguments. The macOS matrix also accepts
+values in launch arguments. Shortcut checkout cases feed that same parsed object
+through `checkoutTargetFromResult(...)`, so direct and Shortcut checkout proof
+share one accepted envelope parser. The macOS matrix also accepts
 `--app-id <your-app-id>` and summarizes the expected app ID plus
 `checkoutSource=json-file` without persisting the JSON path; the matrix
 summarizer rejects new manifests that include unredacted checkout file paths,

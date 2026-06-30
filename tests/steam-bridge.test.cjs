@@ -323,6 +323,55 @@ test("overlay wait timeout guard accepts class and error-like shapes", (t) => {
   assert.equal(steam.isSteamOverlayWaitClosedError({ code: "STEAM_OVERLAY_WAIT_CLOSED" }), false);
 });
 
+test("checkout target helper unwraps InitTxn-style response envelopes", (t) => {
+  const steam = require(distFile("index.js"));
+  t.after(clearSteamBridgeCache);
+
+  assert.deepEqual(
+    steam.overlay.checkoutTargetFromResult(
+      {
+        response: {
+          result: "OK",
+          params: {
+            transid: "246813579",
+            steamurl: "https://checkout.steampowered.com/checkout/approvetxn/246813579/",
+            returnurl: "steam://return-from-init-txn"
+          }
+        }
+      },
+      { modal: false }
+    ),
+    {
+      type: "checkout",
+      modal: false,
+      steamUrl: "https://checkout.steampowered.com/checkout/approvetxn/246813579/",
+      transactionId: "246813579",
+      returnUrl: "steam://return-from-init-txn"
+    }
+  );
+
+  assert.deepEqual(
+    steam.checkoutTargetFromResult(
+      {
+        ok: true,
+        data: {
+          response: {
+            params: {
+              transid: "97531"
+            }
+          }
+        }
+      },
+      { returnUrl: "steam://return-from-options" }
+    ),
+    {
+      type: "checkout",
+      returnUrl: "steam://return-from-options",
+      transactionId: "97531"
+    }
+  );
+});
+
 function fakeTicket(label, calls) {
   return {
     cancel() {

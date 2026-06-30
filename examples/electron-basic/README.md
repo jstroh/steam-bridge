@@ -391,6 +391,10 @@ transaction approval page through `steamOverlay.openCheckoutAndWait(...)`.
 The smoke app wraps direct URL or transaction ID inputs in an `InitTxn`-style
 `response.params` envelope before calling the helper, so generic overlay
 matrices exercise the same unwrapping path a real backend response uses.
+The shortcut checkout target uses
+`steamworks.overlay.checkoutTargetFromResult(...)` against the same parsed
+object, so `presenter-shortcut --shortcut-target checkout` accepts the private
+JSON-file proof path too.
 Abort signals passed to `openCheckoutAndWait(...)` also cover the pending
 checkout operation: aborting before the backend returns releases the presenter
 hold and parks it back at zero FPS. Pass that same signal to your backend

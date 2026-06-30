@@ -1243,15 +1243,13 @@ function resolveShortcutOverlayTarget() {
     case "dialog":
       return { type: "dialog", dialog: OVERLAY_DIALOG, appId: APP_ID };
     case "checkout":
-      if (!CHECKOUT_URL && !CHECKOUT_TRANSACTION_ID) {
-        throw new Error("Shortcut checkout target requires a checkout URL or transaction ID.");
+      {
+        const checkoutOperation = readCheckoutOperationInput();
+        if (!checkoutOperation) {
+          throw new Error("Shortcut checkout target requires a checkout URL, transaction ID, or JSON file.");
+        }
+        return steamworks.overlay.checkoutTargetFromResult(checkoutOperation.transaction);
       }
-      return {
-        type: "checkout",
-        steamUrl: CHECKOUT_URL || undefined,
-        transactionId: CHECKOUT_TRANSACTION_ID || undefined,
-        returnUrl: CHECKOUT_RETURN_URL || undefined
-      };
     default:
       throw new Error(`Unsupported shortcut target: ${SHORTCUT_TARGET}`);
   }

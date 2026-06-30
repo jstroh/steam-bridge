@@ -8379,6 +8379,13 @@ export function openCheckoutOverlay(options: Omit<SteamOverlayCheckoutTarget, "t
   });
 }
 
+export function checkoutTargetFromResult(
+  result: ElectronSteamOverlayCheckoutOperationResult,
+  defaults: Pick<ElectronSteamOverlayCheckoutAndWaitOptions, "modal" | "returnUrl"> = {}
+): SteamOverlayCheckoutTarget {
+  return electronSteamOverlayCheckoutTargetFromResult(result, defaults);
+}
+
 export function openDialogEquivalentOverlay(
   dialog: number | string = "Friends",
   options: NativeOverlayAppPagePresenterOptions = {}
@@ -14298,6 +14305,7 @@ export const overlay = {
   openUserOverlay,
   openUserEquivalentOverlay,
   openCheckoutOverlay,
+  checkoutTargetFromResult,
   openDialogEquivalentOverlay,
   openNativeStoreOverlay,
   openStoreOverlay,
@@ -22093,6 +22101,7 @@ const defaultExport = {
   openUserOverlay,
   openUserEquivalentOverlay,
   openCheckoutOverlay,
+  checkoutTargetFromResult,
   openDialogEquivalentOverlay,
   openNativeStoreOverlay,
   openStoreOverlay,
