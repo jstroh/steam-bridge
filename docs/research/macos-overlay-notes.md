@@ -249,8 +249,12 @@ Verified:
   process, zero managed overlay timing, passive notification callbacks,
   active shown presenter snapshots in an interactive macOS host environment,
   close-and-park lifecycle evidence, checkout `openCheckoutAndWait(...)`
-  completion after close/parking, and crash diagnostics. Its self-test validates
-  the matrix shape and the artifact summarizer without launching Steam.
+  completion after close/parking, and crash diagnostics. The manifest and
+  summary auditor also support expected native-host-unavailable fail-fast cases:
+  an artifact can require the serialized action error code/reason, matching
+  `nativeHostUnavailableReason`, unattached/no-host/zero-FPS presenter state,
+  and no overlay activation. Its self-test validates the matrix shape and the
+  artifact summarizer without launching Steam.
 - The packaged macOS helper now performs the same presenter-shape checks at the
   source for close, shortcut-open, and passive-notification verification: active
   shown presenter snapshots must be active/opaque/input-capable with an

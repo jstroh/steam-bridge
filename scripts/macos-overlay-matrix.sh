@@ -515,7 +515,11 @@ fs.appendFileSync(
     action: optionValue("--action"),
     closeProbe: command.includes("--close-probe"),
     shortcutOpenProbe: command.includes("--shortcut-open-probe"),
-    shortcutTarget: optionValue("--shortcut-target")
+    shortcutTarget: optionValue("--shortcut-target"),
+    requireActionErrorCode: optionValue("--require-action-error-code"),
+    requireActionErrorReason: optionValue("--require-action-error-reason"),
+    requireNativeHostUnavailableReason: optionValue("--require-native-host-unavailable-reason"),
+    requireNoOverlayActivation: command.includes("--require-no-overlay-activation")
   })}\n`
 );
 NODE

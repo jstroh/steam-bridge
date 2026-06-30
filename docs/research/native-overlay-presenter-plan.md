@@ -695,7 +695,11 @@ Current evidence:
   helpers can also require the serialized action `code` and `reason` fields,
   plus the presenter `nativeHostUnavailableReason`, no-host, unattached,
   zero-FPS snapshot state, and absence of Steam overlay activation, so
-  locked/asleep fallback artifacts can be checked automatically.
+  locked/asleep fallback artifacts can be checked automatically. The macOS
+  matrix manifest and artifact summarizer understand the same expected
+  fail-fast metadata, so a future live lock or display-sleep capture can be
+  summarized beside normal overlay cases without treating the intentional
+  pre-activation failure as a matrix failure.
 - BrowserWindow-only overlay support is not proven.
 - Steam launch, app ID, auth, and callbacks are not enough to claim overlay
   support.
@@ -705,8 +709,9 @@ Next work:
 1. Run real purchase-content and `InitTxn` proof from a real configured Steam
    app ID; App ID `480` only proves generic checkout routing.
 2. Add a live lock/display-sleep regression capture if it can be automated
-   without destabilizing the user's macOS session; the runtime guard and unit
-   proof are implemented.
+   without destabilizing the user's macOS session; the runtime guard, unit
+   proof, smoke-result verifier, and matrix artifact summary path are
+   implemented.
 3. Keep code signing requirements explicit in docs and examples. The generic
    example now includes `entitlements.steam.macos.plist` with
    `com.apple.security.cs.allow-dyld-environment-variables` and

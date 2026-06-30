@@ -183,6 +183,8 @@ function summarizeMatrixArtifacts(root) {
         `shown=${summary.shown}`,
         `openAndWait=${summary.openAndWait}`,
         `checkoutWait=${summary.checkoutWait}`,
+        `nativeHostUnavailable=${summary.nativeHostUnavailable}`,
+        `noOverlayActivation=${summary.noOverlayActivation}`,
         `crashOk=${summary.crashOk}`
       ].join(" ")
     );
@@ -213,14 +215,24 @@ function verifyCase(caseId, metadata, result, lifecycle, failures) {
   const actionName = String(action.action || "unknown");
   const nativePresenter = readOkValue(overlay.nativePresenter);
   const electronOverlay = readElectronOverlay(nativePresenter);
+  const resultEvents = Array.isArray(snapshot.events) ? snapshot.events : [];
   const lifecycleEntries = lifecycle.entries;
   const overlayTargets = countOverlayTargets(overlayProcesses);
   const overlayGameIds = collectOverlayGameIds(overlayProcesses);
   const passiveConfig = PASSIVE_NOTIFICATION_ACTIONS.get(actionName);
   const isPassive = Boolean(passiveConfig);
+  const expectedActionError = expectedActionErrorFromMetadata(metadata);
+  const hasExpectedActionError = Boolean(expectedActionError.code || expectedActionError.reason);
+  const expectedNativeHostUnavailableReason = nonEmptyString(
+    metadata.requireNativeHostUnavailableReason ?? metadata.expectedNativeHostUnavailableReason
+  );
+  const expectedNoOverlayActivation =
+    metadata.requireNoOverlayActivation === true ||
+    metadata.expectedNoOverlayActivation === true ||
+    Boolean(expectedNativeHostUnavailableReason);
   const activated = lifecycleEntries.some(isLifecycleOverlayActiveEvent);
   const closed = hasInactiveAfterActive(lifecycleEntries);
-  const parked = verifyLifecycleParking(caseId, lifecycleEntries, isPassive, failures);
+  const parked = hasExpectedActionError ? false : verifyLifecycleParking(caseId, lifecycleEntries, isPassive, failures);
   const zeroTiming = Boolean(
     electronOverlay &&
       electronOverlay.restoreFocusDelayMs === 0 &&
@@ -228,13 +240,25 @@ function verifyCase(caseId, metadata, result, lifecycle, failures) {
       electronOverlay.activeGraceMs === 0
   );
   const crashOk = crashDiagnostics.available === true && crashDiagnostics.ok === true;
-  const openAndWait = verifyOpenAndWaitCompletion(caseId, actionName, lifecycleEntries, failures);
-  const checkoutWait = verifyCheckoutOpenAndWait(caseId, actionName, lifecycleEntries, failures);
-  const shown = verifyShownPresenter(caseId, lifecycleEntries, isPassive, failures);
+  const openAndWait = hasExpectedActionError
+    ? { required: false, ok: true }
+    : verifyOpenAndWaitCompletion(caseId, actionName, lifecycleEntries, failures);
+  const checkoutWait = hasExpectedActionError
+    ? { required: false, ok: true }
+    : verifyCheckoutOpenAndWait(caseId, actionName, lifecycleEntries, failures);
+  const shown = hasExpectedActionError
+    ? { required: false, ok: true }
+    : verifyShownPresenter(caseId, lifecycleEntries, isPassive, failures);
   let macInteractive = false;
 
-  expect(result.ok === true, `${caseId}: smoke result ok`, failures);
-  expect(action.ok === true, `${caseId}: autorun action succeeded`, failures);
+  if (hasExpectedActionError) {
+    expect(result.ok === false, `${caseId}: smoke result failed with expected action error`, failures);
+    expect(action.ok === false, `${caseId}: autorun action failed with expected error`, failures);
+    verifyExpectedActionError(caseId, action, expectedActionError, failures);
+  } else {
+    expect(result.ok === true, `${caseId}: smoke result ok`, failures);
+    expect(action.ok === true, `${caseId}: autorun action succeeded`, failures);
+  }
   if (metadata.action) {
     expect(
       metadata.action === actionName,
@@ -275,10 +299,14 @@ function verifyCase(caseId, metadata, result, lifecycle, failures) {
   expect(Boolean(nativePresenter), `${caseId}: native presenter snapshot available`, failures);
   if (nativePresenter) {
     expect(nativePresenter.backend === "macos-metal" || nativePresenter.backend === "macos-opengl", `${caseId}: macOS native presenter backend`, failures);
-    expect(nativePresenter.attached === true, `${caseId}: native presenter attached`, failures);
-    expect(nativePresenter.nativeHostOpen === true, `${caseId}: native presenter host open`, failures);
     expect(nativePresenter.idleFps === 0, `${caseId}: native presenter idle FPS is zero`, failures);
-    macInteractive = expectMacOverlayEnvironmentAvailable(caseId, nativePresenter, "native presenter snapshot", failures);
+    if (expectedNativeHostUnavailableReason) {
+      verifyNativeHostUnavailablePresenter(caseId, nativePresenter, expectedNativeHostUnavailableReason, failures);
+    } else {
+      expect(nativePresenter.attached === true, `${caseId}: native presenter attached`, failures);
+      expect(nativePresenter.nativeHostOpen === true, `${caseId}: native presenter host open`, failures);
+      macInteractive = expectMacOverlayEnvironmentAvailable(caseId, nativePresenter, "native presenter snapshot", failures);
+    }
     expect(Boolean(electronOverlay), `${caseId}: managed Electron overlay diagnostics available`, failures);
   }
   if (electronOverlay) {
@@ -291,24 +319,32 @@ function verifyCase(caseId, metadata, result, lifecycle, failures) {
 
   expect(overlayProcesses.available === true, `${caseId}: overlay process diagnostics available`, failures);
   expect(overlayProcesses.platform === "darwin", `${caseId}: overlay process platform is darwin`, failures);
-  expect(overlayTargets === 1, `${caseId}: exactly one gameoverlayui target`, failures);
-  const requirePublicOverlayGameId = !isStoreOverlayAction(actionName);
-  for (const target of Array.isArray(overlayProcesses.gameoverlayui) ? overlayProcesses.gameoverlayui : []) {
-    expect(target.gameId != null, `${caseId}: gameoverlayui game ID is recorded`, failures);
-    if (requirePublicOverlayGameId) {
-      expect(String(target.gameId) === "480", `${caseId}: gameoverlayui game ID is public test App ID 480`, failures);
-    }
-    expect(Number(target.targetPid) === Number(processInfo.pid), `${caseId}: gameoverlayui targets the smoke process`, failures);
-    if (requirePublicOverlayGameId && typeof target.command === "string" && target.command.length > 0) {
-      expect(
-        /\s-gameid\s+480(?:\s|$)/.test(target.command),
-        `${caseId}: gameoverlayui command line uses -gameid 480`,
-        failures
-      );
+  if (expectedNoOverlayActivation) {
+    expect(overlayTargets === 0, `${caseId}: no gameoverlayui target while overlay activation is expected to be skipped`, failures);
+  } else {
+    expect(overlayTargets === 1, `${caseId}: exactly one gameoverlayui target`, failures);
+    const requirePublicOverlayGameId = !isStoreOverlayAction(actionName);
+    for (const target of Array.isArray(overlayProcesses.gameoverlayui) ? overlayProcesses.gameoverlayui : []) {
+      expect(target.gameId != null, `${caseId}: gameoverlayui game ID is recorded`, failures);
+      if (requirePublicOverlayGameId) {
+        expect(String(target.gameId) === "480", `${caseId}: gameoverlayui game ID is public test App ID 480`, failures);
+      }
+      expect(Number(target.targetPid) === Number(processInfo.pid), `${caseId}: gameoverlayui targets the smoke process`, failures);
+      if (requirePublicOverlayGameId && typeof target.command === "string" && target.command.length > 0) {
+        expect(
+          /\s-gameid\s+480(?:\s|$)/.test(target.command),
+          `${caseId}: gameoverlayui command line uses -gameid 480`,
+          failures
+        );
+      }
     }
   }
 
-  if (isPassive) {
+  if (hasExpectedActionError) {
+    if (expectedNoOverlayActivation) {
+      verifyNoOverlayActivation(caseId, resultEvents, lifecycleEntries, failures);
+    }
+  } else if (isPassive) {
     verifyPassiveNotification(caseId, lifecycleEntries, nativePresenter, passiveConfig, failures);
   } else {
     expect(activated, `${caseId}: overlay active callback observed`, failures);
@@ -364,6 +400,8 @@ function verifyCase(caseId, metadata, result, lifecycle, failures) {
     shown: shown.required ? shown.ok : "n/a",
     openAndWait: openAndWait.required ? openAndWait.ok : "n/a",
     checkoutWait: checkoutWait.required ? checkoutWait.ok : "n/a",
+    nativeHostUnavailable: expectedNativeHostUnavailableReason || "none",
+    noOverlayActivation: expectedNoOverlayActivation,
     crashOk
   };
 }
@@ -622,6 +660,86 @@ function expectActivePresenter(caseId, presenter, label, failures) {
   expectPresenterField(caseId, presenter, "currentFps", 30, `native presenter current FPS ${label}`, failures);
 }
 
+function verifyExpectedActionError(caseId, action, expected, failures) {
+  const error = objectOrEmpty(action.error);
+  expect(Boolean(action.error && typeof action.error === "object"), `${caseId}: autorun action error is serialized`, failures);
+  if (expected.code) {
+    expect(
+      error.code === expected.code,
+      `${caseId}: autorun action error code expected ${formatValue(expected.code)}, got ${formatValue(error.code)}`,
+      failures
+    );
+  }
+  if (expected.reason) {
+    expect(
+      error.reason === expected.reason,
+      `${caseId}: autorun action error reason expected ${formatValue(expected.reason)}, got ${formatValue(error.reason)}`,
+      failures
+    );
+  }
+}
+
+function verifyNativeHostUnavailablePresenter(caseId, presenter, expectedReason, failures) {
+  expectPresenterField(
+    caseId,
+    presenter,
+    "nativeHostUnavailableReason",
+    expectedReason,
+    "native host unavailable reason",
+    failures
+  );
+  expectPresenterField(caseId, presenter, "attached", false, "native presenter attached while host unavailable", failures);
+  expectPresenterField(caseId, presenter, "nativeHostOpen", false, "native presenter host open while unavailable", failures);
+  expectPresenterField(caseId, presenter, "mode", "hidden", "native presenter mode while unavailable", failures);
+  expectPresenterField(caseId, presenter, "clickThrough", true, "native presenter click-through while unavailable", failures);
+  expectPresenterField(caseId, presenter, "transparent", true, "native presenter transparent while unavailable", failures);
+  expectPresenterField(caseId, presenter, "overlayActive", false, "native presenter overlay active while unavailable", failures);
+  expectPresenterField(caseId, presenter, "currentFps", 0, "native presenter current FPS while unavailable", failures);
+  expectPresenterField(
+    caseId,
+    presenter,
+    "overlayNeedsPresent",
+    false,
+    "native presenter overlay needs present while unavailable",
+    failures
+  );
+
+  const expectedEnvironment = expectedMacOverlayEnvironment(expectedReason);
+  const actualEnvironment = objectField(presenter, "macOverlayEnvironment");
+  if (expectedEnvironment) {
+    expect(
+      actualEnvironment &&
+        actualEnvironment.screenLocked === expectedEnvironment.screenLocked &&
+        actualEnvironment.displayAsleep === expectedEnvironment.displayAsleep,
+      `${caseId}: mac overlay environment matches ${expectedReason}`,
+      failures
+    );
+  }
+}
+
+function verifyNoOverlayActivation(caseId, resultEvents, lifecycleEntries, failures) {
+  const activeEvents = [...resultEvents, ...lifecycleEntries].filter(isOverlayActiveEvent);
+  expect(activeEvents.length === 0, `${caseId}: overlay activation callback active=true was not emitted`, failures);
+}
+
+function expectedActionErrorFromMetadata(metadata) {
+  return {
+    code: nonEmptyString(metadata.requireActionErrorCode ?? metadata.expectedActionErrorCode),
+    reason: nonEmptyString(metadata.requireActionErrorReason ?? metadata.expectedActionErrorReason)
+  };
+}
+
+function expectedMacOverlayEnvironment(reason) {
+  switch (reason) {
+    case "macos-screen-locked":
+      return { screenLocked: true, displayAsleep: false };
+    case "macos-display-asleep":
+      return { screenLocked: false, displayAsleep: true };
+    default:
+      return undefined;
+  }
+}
+
 function expectMacOverlayEnvironmentAvailable(caseId, presenter, label, failures) {
   const environment = objectField(presenter, "macOverlayEnvironment");
   if (!environment) {
@@ -663,7 +781,7 @@ function runSelfTest() {
   try {
     createSelfTestFixture(fixtureRoot);
     const summary = summarizeMatrixArtifacts(fixtureRoot);
-    assert.equal(summary.caseSummaries.length, 5, "summary self-test should include five cases");
+    assert.equal(summary.caseSummaries.length, 6, "summary self-test should include six cases");
     console.log("macOS overlay matrix summary self-test passed.");
   } finally {
     fs.rmSync(fixtureRoot, { recursive: true, force: true });
@@ -786,6 +904,26 @@ function createSelfTestFixture(root) {
         },
         { type: "event:overlay:presenter-after-close-stable", payload: { presenter: parkedPresenterFixture(32) } }
       ]
+    },
+    {
+      caseId: "06-native-host-unavailable",
+      action: "presenter-web-open-and-wait",
+      resultOk: false,
+      actionOk: false,
+      actionError: {
+        name: "SteamOverlayNativeHostUnavailableError",
+        message: "Steam overlay native host is unavailable: macOS screen is locked.",
+        code: "STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE",
+        reason: "macos-screen-locked",
+        macOverlayEnvironment: { screenLocked: true, displayAsleep: false }
+      },
+      resultPresenter: nativeHostUnavailablePresenterFixture("macos-screen-locked"),
+      overlayTargets: [],
+      requireActionErrorCode: "STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE",
+      requireActionErrorReason: "macos-screen-locked",
+      requireNativeHostUnavailableReason: "macos-screen-locked",
+      requireNoOverlayActivation: true,
+      lifecycle: []
     }
   ];
 
@@ -794,11 +932,22 @@ function createSelfTestFixture(root) {
     const resultFile = path.join(root, `${fixture.caseId}.log`);
     const diagnosticDir = path.join(root, `${fixture.caseId}.log.diagnostics`);
     const result = JSON.parse(JSON.stringify(baseResult));
+    result.ok = fixture.resultOk ?? true;
     result.action.action = fixture.action;
+    result.action.ok = fixture.actionOk ?? true;
+    if (fixture.actionError) {
+      result.action.error = fixture.actionError;
+    } else {
+      delete result.action.error;
+    }
     result.snapshot.overlay.nativePresenter.value = fixture.resultPresenter;
     const overlayGameId = fixture.overlayGameId || "480";
-    result.snapshot.overlayProcesses.gameoverlayui[0].gameId = overlayGameId;
-    result.snapshot.overlayProcesses.gameoverlayui[0].command = `gameoverlayui -pid 4242 -gameid ${overlayGameId}`;
+    if (Array.isArray(fixture.overlayTargets)) {
+      result.snapshot.overlayProcesses.gameoverlayui = fixture.overlayTargets;
+    } else {
+      result.snapshot.overlayProcesses.gameoverlayui[0].gameId = overlayGameId;
+      result.snapshot.overlayProcesses.gameoverlayui[0].command = `gameoverlayui -pid 4242 -gameid ${overlayGameId}`;
+    }
     fs.mkdirSync(diagnosticDir, { recursive: true });
     fs.writeFileSync(resultFile, `${RESULT_PREFIX}${JSON.stringify(result)}\n`);
     fs.writeFileSync(
@@ -810,7 +959,11 @@ function createSelfTestFixture(root) {
       resultFile,
       diagnosticDir,
       action: fixture.action,
-      shortcutTarget: fixture.shortcutTarget || null
+      shortcutTarget: fixture.shortcutTarget || null,
+      requireActionErrorCode: fixture.requireActionErrorCode || null,
+      requireActionErrorReason: fixture.requireActionErrorReason || null,
+      requireNativeHostUnavailableReason: fixture.requireNativeHostUnavailableReason || null,
+      requireNoOverlayActivation: fixture.requireNoOverlayActivation === true
     });
   }
 
@@ -850,6 +1003,49 @@ function parkedPresenterFixture(pumpCount) {
     activeOverlayFps: 30,
     currentFps: 0,
     pumpCount,
+    overlayActive: false,
+    overlayWasActive: false,
+    overlayNeedsPresent: false,
+    electronOverlay: {
+      presenterMode: "persistent",
+      closeWithWindow: true,
+      autoPrepareForNotifications: true,
+      restoreFocusDelayMs: 0,
+      activationBoostMs: 0,
+      activeGraceMs: 0,
+      overlayShortcut: {
+        enabled: true,
+        preventDefault: true,
+        targetType: "friends",
+        target: { type: "friends" }
+      }
+    }
+  };
+}
+
+function nativeHostUnavailablePresenterFixture(reason) {
+  const macOverlayEnvironment = expectedMacOverlayEnvironment(reason) || {
+    screenLocked: false,
+    displayAsleep: false
+  };
+  return {
+    title: "Steam Bridge Overlay Presenter",
+    backend: "macos-metal",
+    closed: false,
+    mode: "hidden",
+    attached: false,
+    nativeProbeOpen: false,
+    nativeHostOpen: false,
+    nativeHostUnavailableReason: reason,
+    macOverlayEnvironment,
+    clickThrough: true,
+    focusable: false,
+    transparent: true,
+    idleFps: 0,
+    needsPresentFps: 30,
+    activeOverlayFps: 30,
+    currentFps: 0,
+    pumpCount: 0,
     overlayActive: false,
     overlayWasActive: false,
     overlayNeedsPresent: false,
@@ -972,6 +1168,14 @@ function isLifecycleOverlayInactiveEvent(event) {
   return event && event.type === "event:callback:overlay-activated" && overlayEventState(event) === false;
 }
 
+function isOverlayActiveEvent(event) {
+  return (
+    event &&
+    (event.type === "callback:overlay-activated" || event.type === "event:callback:overlay-activated") &&
+    overlayEventState(event) === true
+  );
+}
+
 function overlayEventState(event) {
   if (!event) {
     return undefined;
@@ -1054,6 +1258,10 @@ function countOverlayTargets(overlayProcesses) {
 
 function arrayLength(value) {
   return Array.isArray(value) ? value.length : 0;
+}
+
+function nonEmptyString(value) {
+  return typeof value === "string" && value.length > 0 ? value : "";
 }
 
 function expect(condition, message, failures) {
