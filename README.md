@@ -296,8 +296,10 @@ forcing a permanent Electron repaint loop. If macOS is locked or asleep,
 automatic notification priming skips native host work and retries on the next
 notification-producing call after the host becomes available. The default
 Shift+Tab bridge opens the Friends/chat route; set `overlayShortcut.target` to
-choose another verified target. The macOS matrix verifies Friends/chat, modal
-web, and store shortcut targets with target-aware lifecycle and presenter
+choose another verified target. The macOS matrix verifies every supported
+presenter-backed shortcut target, including Friends/chat, modal web, store,
+checkout approval routing, profile, players, community, stats, achievements,
+user, and dialog-equivalent routes, with target-aware lifecycle and presenter
 snapshot checks.
 
 On macOS, the managed helper fails fast before Steam overlay activation if the
@@ -371,5 +373,7 @@ Native presenter design notes are tracked in
   For shipped macOS builds, apply equivalent entitlements through your normal
   Apple signing/notarization pipeline: allow dyld environment variables,
   disable library validation, and keep App Sandbox disabled so Steam can inject
-  the overlay into the launched process.
+  the overlay into the launched process. The signed smoke package is part of
+  the live macOS overlay matrix, so these packaging requirements are covered by
+  the same Steam-launched proof as the public overlay helpers.
 - Steam Bridge does not vendor the Steamworks SDK or Valve redistributables.

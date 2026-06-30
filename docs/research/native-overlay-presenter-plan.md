@@ -1,6 +1,6 @@
 # Native Overlay Presenter Plan
 
-Last updated: 2026-06-29
+Last updated: 2026-06-30
 
 This is the forward plan for reliable Steam overlay behavior in Electron apps on
 Linux/Steam Deck and macOS. Windows overlay behavior appears lower risk, so the
@@ -211,6 +211,17 @@ timing hacks.
   `gameoverlayui` target under App ID `480`, app focus return, parked idle
   presenter state at `currentFps=0`, no post-close pumping, zero managed overlay
   timing, an interactive macOS host environment, and clean crash diagnostics.
+- A signed-package macOS core matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-core-signed-package-20260629-232809`
+  passed 24 Steam-launched App ID `480` cases after the smoke package was
+  built with its native launcher as the bundle executable and both the launcher
+  and renamed Electron executable were ad-hoc signed with the Steam overlay
+  entitlements. The run re-verified managed web/store/Friends/dialog wait
+  routes, passive achievement progress/unlock toasts, checkout approval-route
+  plumbing, every supported presenter-backed Shift+Tab target, direct
+  profile/players/community/stats/achievements/user wait routes,
+  close/back-to-app proof, zero managed overlay timing, one `gameoverlayui`
+  target, interactive macOS host state, and clean crash diagnostics.
 - A 2026-06-29 full Deck Desktop overlay matrix passed 26 cases with 52
   screenshots under App ID `480`, covering managed web, store, Friends, profile,
   players, community, stats, achievements, user chat, known dialog-equivalent
