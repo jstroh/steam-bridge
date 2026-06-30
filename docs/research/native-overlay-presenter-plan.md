@@ -1004,6 +1004,18 @@ Current evidence:
   new case records the managed wait start, confirms the configured target, and
   fails with the typed native-host-unavailable error before `overlay:shortcut-open`,
   native host attachment, Steam overlay activation, or crash evidence.
+  A fresh unavailable matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-20260630-140541` rebuilt and signed
+  the Electron `43.0.0` smoke package after the smoke snapshot began carrying
+  `snapshot.overlay.nativeHostAvailability`, reused the stable shortcut without
+  a Steam restart, and passed all five unavailable cases again. The summary and
+  direct artifact inspection verified that managed web open/wait, checkout-open,
+  checkout prepare-only, programmatic shortcut open/wait, and passive
+  achievement-progress all carried `available=false`,
+  `STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE`, reason `macos-screen-locked`, and an
+  embedded presenter snapshot with `nativeHostOpen=false`, alongside no overlay
+  activation, zero overlay targets, disabled needs-present polling, zero managed
+  overlay timing, and no fresh crash reports.
 - BrowserWindow-only overlay support is not proven.
 - Steam launch, app ID, auth, and callbacks are not enough to claim overlay
   support.

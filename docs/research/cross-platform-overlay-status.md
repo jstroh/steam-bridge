@@ -259,6 +259,18 @@ new case records the managed wait start, asserts the configured shortcut target,
 then fails fast with `STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE` before emitting
 `overlay:shortcut-open`, before attaching a native host, and before any Steam
 overlay activation.
+A fresh locked/asleep matrix at
+`/tmp/steam-bridge-macos-overlay-matrix-20260630-140541` rebuilt and signed the
+Electron `43.0.0` smoke package after the smoke payload began recording
+`snapshot.overlay.nativeHostAvailability`, reused the stable shortcut without a
+Steam restart, and passed all five unavailable cases. The summary and direct
+artifact inspection verified web open/wait, checkout-open, checkout-prepare,
+programmatic shortcut open/wait, and passive achievement-progress all reported
+`available=false`, `STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE`, reason
+`macos-screen-locked`, an embedded presenter snapshot with
+`nativeHostOpen=false`, no overlay activation, zero overlay targets,
+`overlayNeedsPresent=false`, `overlayNeedsPresentPollingEnabled=false`, zero
+managed overlay timing, and no fresh crash reports.
 A 2026-06-30 13:32 PDT crash-report sweep after a later user-visible Ignore
 dialog found no newer `SteamBridgeSmoke`, `gameoverlayui`, `Steam Helper`, or
 attributed `MTLCompilerService` DiagnosticReport than the known
