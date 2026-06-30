@@ -353,6 +353,18 @@ Verified:
   returned the smoke app frontmost, kept zero managed overlay timing, and
   reported no crash evidence. The bridge keeps this as a callback/state-driven
   handoff; it does not add a fixed restore-focus delay.
+- A later 2026-06-30 full macOS matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-full-electron42-pidfocus-20260630-011628`
+  rebuilt and signed the Electron `42.5.1` smoke package, reused the stable
+  Steam shortcut without restarting Steam, and passed all 31 Steam-launched App
+  ID `480` cases. An earlier full attempt exposed a verifier harness issue:
+  stale smoke app instances could remain alive briefly after a successful case,
+  and the name-based macOS focus probe could send Escape to the wrong process.
+  The helper now focuses the exact result PID before close/shortcut probes, and
+  the matrix waits for previous smoke/gameoverlayui processes to exit between
+  cases. The passing artifact re-verified every shortcut target, user SteamID,
+  all known high-level dialog-equivalent routes, close/back-to-app proof, zero
+  managed overlay timing, and clean crash diagnostics.
 - The live macOS matrix now runs `scripts/verify-macos-steam-signing.cjs`
   before touching Steam. It checks the native launcher and renamed Electron
   executable for arm64-only slices, valid executable signatures, the dyld

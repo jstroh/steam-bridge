@@ -448,6 +448,9 @@ ensure_ready() {
   : > "$artifact_root/macos-matrix-cases.jsonl"
   require_macos_overlay_environment_for_suite
   ensure_stable_shortcut
+  if [ "$dry_run" != "1" ]; then
+    cleanup_macos_smoke_processes
+  fi
 }
 
 verify_macos_package_signing() {
@@ -461,8 +464,29 @@ verify_macos_package_signing() {
 }
 
 cleanup_macos_smoke_processes() {
-  pkill -f '/SteamBridgeSmoke\.app/' 2>/dev/null || true
-  pkill -x 'gameoverlayui' 2>/dev/null || true
+  pkill -TERM -f '/SteamBridgeSmoke\.app/' 2>/dev/null || true
+  pkill -TERM -x 'gameoverlayui' 2>/dev/null || true
+  if ! wait_for_macos_smoke_processes_exit 8; then
+    pkill -KILL -f '/SteamBridgeSmoke\.app/' 2>/dev/null || true
+    pkill -KILL -x 'gameoverlayui' 2>/dev/null || true
+    wait_for_macos_smoke_processes_exit 3 || true
+  fi
+}
+
+macos_smoke_processes_running() {
+  pgrep -f '/SteamBridgeSmoke\.app/' >/dev/null 2>&1 || pgrep -x 'gameoverlayui' >/dev/null 2>&1
+}
+
+wait_for_macos_smoke_processes_exit() {
+  local timeout_seconds="$1"
+  local deadline=$((SECONDS + timeout_seconds))
+  while macos_smoke_processes_running; do
+    if [ "$SECONDS" -ge "$deadline" ]; then
+      return 1
+    fi
+    sleep 0.25
+  done
+  return 0
 }
 
 macos_steam_running() {

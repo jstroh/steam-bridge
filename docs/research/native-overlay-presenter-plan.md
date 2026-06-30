@@ -232,6 +232,14 @@ timing hacks.
   callback-driven focus restore does not stick. The run passed every shortcut
   target including checkout, kept zero managed overlay timing, and verified
   app-frontmost close/back-to-app proof without adding a timer-based lifecycle.
+- A later 2026-06-30 full macOS matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-full-electron42-pidfocus-20260630-011628`
+  passed all 31 Steam-launched App ID `480` cases on Electron `42.5.1`. The
+  matrix helper now targets close and shortcut probes at the exact smoke process
+  PID recorded in the result payload and waits for previous smoke/gameoverlayui
+  processes to exit before starting the next case. That keeps the proof aligned
+  with the active overlay process instead of relying on ambiguous app-name focus
+  when multiple smoke instances briefly coexist.
 - A 2026-06-29 full Deck Desktop overlay matrix passed 26 cases with 52
   screenshots under App ID `480`, covering managed web, store, Friends, profile,
   players, community, stats, achievements, user chat, known dialog-equivalent

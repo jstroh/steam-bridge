@@ -47,16 +47,18 @@ App ID `480`.
 
 ## Latest macOS Evidence
 
-A 2026-06-30 core macOS matrix at
-`/tmp/steam-bridge-macos-overlay-matrix-core-shortcut-focus-electron42-20260630-010009`
+A 2026-06-30 full macOS matrix at
+`/tmp/steam-bridge-macos-overlay-matrix-full-electron42-pidfocus-20260630-011628`
 rebuilt the smoke app with Electron `42.5.1`, verified the signed native
 launcher bundle shape, reused the existing Steam shortcut without restarting
-Steam, and passed all 24 Steam-launched App ID `480` cases. The run specifically
-re-proved the managed Shift+Tab checkout shortcut close path: `11-shortcut-checkout`
-opened through the shortcut bridge, emitted overlay activation and deactivation,
-parked the presenter at idle, returned the smoke app frontmost, kept zero
-managed overlay timing, used one `gameoverlayui` target under App ID `480`, and
-reported clean crash diagnostics.
+Steam, and passed all 31 Steam-launched App ID `480` cases. This re-proved
+web/store/Friends/dialog wait routes, passive progress/unlock toasts, synthetic
+checkout approval routing, every supported Shift+Tab shortcut target including
+checkout, direct profile/players/community/stats/achievements/user wait routes,
+user SteamID, and every high-level dialog-equivalent route. The helper now
+focuses the exact smoke process PID from each result log before sending close or
+shortcut probes and waits for old smoke/gameoverlayui processes to exit between
+cases, preventing stale app instances from receiving overlay input.
 
 ## Steam Deck Shortcut Gate
 

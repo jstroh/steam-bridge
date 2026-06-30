@@ -819,8 +819,21 @@ OSA
 }
 
 focus_macos_smoke_app_for_probe() {
-  osascript <<'OSA'
+  local smoke_pid
+  smoke_pid="$(read_macos_smoke_result_pid || true)"
+  SMOKE_PID="$smoke_pid" osascript <<'OSA'
 tell application "System Events"
+  set smokePidText to system attribute "SMOKE_PID"
+  if smokePidText is not "" then
+    try
+      set smokePid to smokePidText as integer
+      set smokeProcesses to every application process whose unix id is smokePid
+      if (count of smokeProcesses) > 0 then
+        set frontmost of item 1 of smokeProcesses to true
+        return
+      end if
+    end try
+  end if
   set smokeProcesses to every application process whose name is "SteamBridgeSmoke.electron"
   if (count of smokeProcesses) is 0 then
     set smokeProcesses to every application process whose name is "SteamBridgeSmoke"
@@ -833,6 +846,35 @@ tell application "System Events"
   end if
 end tell
 OSA
+}
+
+read_macos_smoke_result_pid() {
+  RESULT_FILE="$result_file" node <<'NODE'
+const fs = require("node:fs");
+
+const resultFile = process.env.RESULT_FILE;
+if (!resultFile || !fs.existsSync(resultFile)) {
+  process.exit(0);
+}
+
+const prefix = "STEAM_BRIDGE_SMOKE_RESULT ";
+const lines = fs.readFileSync(resultFile, "utf8").split(/\r?\n/).reverse();
+for (const line of lines) {
+  if (!line.startsWith(prefix)) {
+    continue;
+  }
+  try {
+    const result = JSON.parse(line.slice(prefix.length));
+    const pid = result?.snapshot?.process?.pid;
+    if (Number.isInteger(pid) && pid > 0) {
+      process.stdout.write(String(pid));
+    }
+  } catch {
+    // Ignore malformed partial lines while the smoke app is still writing.
+  }
+  break;
+}
+NODE
 }
 
 verify_macos_shortcut_open_after_probe() {
@@ -1576,6 +1618,10 @@ run_self_test() {
 STEAM_BRIDGE_SMOKE_RESULT {"ok":true,"action":{"ok":true,"action":"presenter-web"},"snapshot":{"app":{"appId":480,"shortcutTarget":"friends"},"process":{"pid":4242,"platform":"darwin","arch":"arm64"},"launch":{"steamLaunch":true,"overlayInjection":true},"crashDiagnostics":{"available":true,"ok":true,"crashDumps":[],"fatalLifecycleEvents":[]},"overlay":{"nativePresenter":{"ok":true,"value":{"backend":"macos-metal","attached":true,"nativeHostOpen":true,"macOverlayEnvironment":{"screenLocked":false,"displayAsleep":false},"mode":"passive","clickThrough":true,"focusable":false,"transparent":true,"overlayActive":false,"overlayNeedsPresent":false,"idleFps":0,"currentFps":0,"electronOverlay":{"presenterMode":"persistent","closeWithWindow":true,"autoPrepareForNotifications":true,"restoreFocusDelayMs":0,"activationBoostMs":0,"activeGraceMs":0,"overlayShortcut":{"enabled":true,"preventDefault":true,"targetType":"friends","target":{"type":"friends"}}}}}},"steam":{"initialized":true,"running":{"ok":true,"value":true},"appId":{"ok":true,"value":480},"steamDeck":{"ok":true,"value":false},"bigPicture":{"ok":true,"value":false},"overlayEnabled":{"ok":true,"value":true},"overlayNeedsPresent":{"ok":true,"value":false}},"events":[{"type":"overlay:presenter-open"},{"type":"callback:overlay-activated","payload":{"active":true}}]}}
 EOF
   mkdir -p "$diagnostic_dir/crash-dumps"
+  if [ "$(read_macos_smoke_result_pid)" != "4242" ]; then
+    echo "Self-test failed: macOS probe focus PID reader did not read the smoke result PID." >&2
+    exit 1
+  fi
   cat >"$diagnostic_dir/lifecycle.jsonl" <<'EOF'
 {"type":"event:callback:overlay-activated","payload":{"active":true}}
 {"type":"event:overlay:presenter-wait-shown","payload":{"presenter":{"closed":false,"attached":true,"nativeHostOpen":true,"macOverlayEnvironment":{"screenLocked":false,"displayAsleep":false},"mode":"active","clickThrough":false,"focusable":false,"transparent":false,"overlayActive":true,"idleFps":0,"currentFps":30,"overlayNeedsPresent":false,"pumpCount":5}}}
