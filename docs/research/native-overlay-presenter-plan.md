@@ -435,6 +435,12 @@ Current evidence:
   no-op. Focused standalone Store/Friends proofs pass with this guard; the
   remaining failure is the live matrix's rapid multi-process relaunch shape, not
   the product-facing overlay primitive.
+- The macOS proof harness is moving toward one Steam-launched Electron process
+  with an opt-in localhost smoke control server. The server is token-protected,
+  test-only, and reuses the same app-facing overlay calls and result payloads as
+  autorun. It lets the harness open, externally close, and verify many overlay
+  routes inside one normal app lifecycle instead of relying on rapid
+  process-per-route launches.
 - Native hosts realign to their parent window on each pump. The managed
   Electron overlay also listens to BrowserWindow move, resize, fullscreen,
   maximize, restore, and show events and triggers one native presenter pump per

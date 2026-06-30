@@ -1,5 +1,7 @@
 const fs = require("node:fs");
+const crypto = require("node:crypto");
 const { execFileSync } = require("node:child_process");
+const http = require("node:http");
 const os = require("node:os");
 const path = require("node:path");
 const { app, BrowserWindow, crashReporter, ipcMain } = require("electron");
@@ -67,6 +69,13 @@ const AUTORUN_KEEP_OPEN_AFTER_RESULT = readBoolean(
   CLI_OPTIONS.keepOpenAfterResult || process.env.STEAM_BRIDGE_SMOKE_KEEP_OPEN_AFTER_RESULT,
   false
 );
+const CONTROL_SERVER_ENABLED = readBoolean(
+  CLI_OPTIONS.controlServer || process.env.STEAM_BRIDGE_SMOKE_CONTROL_SERVER,
+  false
+);
+const CONTROL_FILE = CLI_OPTIONS.controlFile || process.env.STEAM_BRIDGE_SMOKE_CONTROL_FILE || "";
+const CONTROL_TOKEN =
+  CLI_OPTIONS.controlToken || process.env.STEAM_BRIDGE_SMOKE_CONTROL_TOKEN || crypto.randomBytes(24).toString("hex");
 const DIAGNOSTIC_DIR =
   CLI_OPTIONS.diagnosticDir ||
   process.env.STEAM_BRIDGE_SMOKE_DIAGNOSTIC_DIR ||
@@ -127,6 +136,8 @@ let shutdownComplete = false;
 let mainWindow;
 let nativeOverlaySession;
 let electronSteamOverlay;
+let smokeControlServer;
+let smokeControlActionInFlight = false;
 let postClosePresenterSnapshotHandle;
 let managedOverlayWaitSequence = 0;
 let pendingManagedOverlayShownWait;
@@ -175,6 +186,7 @@ app.whenReady().then(() => {
   }
 
   createWindow();
+  startSmokeControlServer();
   if (AUTORUN) {
     runAutorunSmoke();
   }
@@ -275,6 +287,7 @@ function shutdownSteam() {
     return;
   }
   shutdownComplete = true;
+  closeSmokeControlServer();
   clearPostClosePresenterSnapshotObserver();
   abortManagedOverlayWaits();
   closeNativeOverlayPresenter();
@@ -343,22 +356,10 @@ async function runAutorunSmoke() {
   });
 
   await delay(AUTORUN_ACTION_DELAY_MS);
-  const overlayActiveCount = countOverlayActiveEvents();
-  recordEvent("autorun:action-begin", { action: AUTORUN_ACTION });
-  pendingManagedOverlayShownWait = undefined;
-  const actionResult = await runAutorunAction(AUTORUN_ACTION);
-  recordEvent("autorun:action-complete", {
-    action: AUTORUN_ACTION,
-    ok: actionResult.ok,
-    error: actionResult.error || null
-  });
-  const waitResult = await waitForAutorunResult(AUTORUN_ACTION, AUTORUN_RESULT_DELAY_MS, overlayActiveCount);
-
-  const result = sanitize({
-    ok: Boolean(client) && !actionResult.error && waitResult.ok,
-    action: actionResult,
-    wait: waitResult,
-    snapshot: snapshot()
+  const result = await runSmokeActionAndWait(AUTORUN_ACTION, {
+    source: "autorun",
+    resultDelayMs: AUTORUN_RESULT_DELAY_MS,
+    requireOverlayActive: AUTORUN_REQUIRE_OVERLAY_ACTIVE
   });
   const line = `STEAM_BRIDGE_SMOKE_RESULT ${JSON.stringify(result)}\n`;
   writeSmokeResultLine(line);
@@ -371,13 +372,208 @@ async function runAutorunSmoke() {
   process.stdout.write(line, () => process.exit(0));
 }
 
-async function waitForAutorunResult(action, durationMs, overlayActiveCount) {
+async function runSmokeActionAndWait(action, options = {}) {
+  const source = options.source || "control";
+  const resultDelayMs = normalizePositiveInteger(Number(options.resultDelayMs), AUTORUN_RESULT_DELAY_MS);
+  const requireOverlayActive =
+    typeof options.requireOverlayActive === "boolean" ? options.requireOverlayActive : AUTORUN_REQUIRE_OVERLAY_ACTIVE;
+  const overlayActiveCount = countOverlayActiveEvents();
+  recordEvent(`${source}:action-begin`, { action });
+  pendingManagedOverlayShownWait = undefined;
+  const actionResult = await runAutorunAction(action);
+  recordEvent(`${source}:action-complete`, {
+    action,
+    ok: actionResult.ok,
+    error: actionResult.error || null
+  });
+  const waitResult = await waitForAutorunResult(action, resultDelayMs, overlayActiveCount, {
+    requireOverlayActive
+  });
+
+  return sanitize({
+    ok: Boolean(client) && !actionResult.error && waitResult.ok,
+    action: actionResult,
+    wait: waitResult,
+    snapshot: snapshot()
+  });
+}
+
+function startSmokeControlServer() {
+  if (!CONTROL_SERVER_ENABLED || smokeControlServer) {
+    return;
+  }
+
+  smokeControlServer = http.createServer((request, response) => {
+    handleSmokeControlRequest(request, response).catch((error) => {
+      recordEvent("control:request:error", serializeError(error));
+      sendJsonResponse(response, 500, { ok: false, error: serializeError(error) });
+    });
+  });
+  smokeControlServer.on("error", (error) => {
+    recordLifecycle("control:error", serializeError(error));
+  });
+  smokeControlServer.listen(0, "127.0.0.1", () => {
+    const address = smokeControlServer.address();
+    const port = address && typeof address === "object" ? address.port : undefined;
+    const ready = {
+      host: "127.0.0.1",
+      port,
+      token: CONTROL_TOKEN,
+      pid: process.pid,
+      diagnosticDir: DIAGNOSTIC_DIR,
+      lifecycleLogFile: LIFECYCLE_LOG_FILE
+    };
+    writeSmokeControlFile(ready);
+    recordEvent("control:ready", {
+      host: ready.host,
+      port: ready.port,
+      pid: ready.pid,
+      controlFile: CONTROL_FILE || null,
+      tokenPresent: Boolean(CONTROL_TOKEN)
+    });
+  });
+}
+
+function closeSmokeControlServer() {
+  if (!smokeControlServer) {
+    return;
+  }
+  const server = smokeControlServer;
+  smokeControlServer = undefined;
+  try {
+    server.close();
+  } catch {
+    // Best-effort shutdown for the smoke control server.
+  }
+}
+
+function writeSmokeControlFile(ready) {
+  if (!CONTROL_FILE) {
+    process.stdout.write(`STEAM_BRIDGE_SMOKE_CONTROL ${JSON.stringify(ready)}\n`);
+    return;
+  }
+
+  try {
+    fs.mkdirSync(path.dirname(CONTROL_FILE), { recursive: true });
+    fs.writeFileSync(CONTROL_FILE, `${JSON.stringify(ready)}\n`, { mode: 0o600 });
+    fs.chmodSync(CONTROL_FILE, 0o600);
+  } catch (error) {
+    recordLifecycle("control:file-error", serializeError(error));
+  }
+}
+
+async function handleSmokeControlRequest(request, response) {
+  const requestUrl = new URL(request.url || "/", "http://127.0.0.1");
+  if (!isSmokeControlAuthorized(request)) {
+    sendJsonResponse(response, 401, { ok: false, error: { message: "Unauthorized smoke control request." } });
+    return;
+  }
+
+  if (request.method === "GET" && requestUrl.pathname === "/snapshot") {
+    sendJsonResponse(response, 200, { ok: true, snapshot: snapshot() });
+    return;
+  }
+
+  if (request.method === "POST" && requestUrl.pathname === "/action") {
+    if (smokeControlActionInFlight) {
+      sendJsonResponse(response, 409, { ok: false, error: { message: "A smoke control action is already running." } });
+      return;
+    }
+
+    const body = await readSmokeControlJson(request);
+    const action = typeof body.action === "string" ? body.action.trim() : "";
+    if (!action) {
+      sendJsonResponse(response, 400, { ok: false, error: { message: "Missing smoke control action." } });
+      return;
+    }
+
+    smokeControlActionInFlight = true;
+    try {
+      recordEvent("control:action-request", {
+        action,
+        resultDelayMs: body.resultDelayMs || null,
+        resultFile: typeof body.resultFile === "string" && body.resultFile ? true : false
+      });
+      const result = await runSmokeActionAndWait(action, {
+        source: "control",
+        resultDelayMs: body.resultDelayMs,
+        requireOverlayActive:
+          typeof body.requireOverlayActive === "boolean" ? body.requireOverlayActive : undefined
+      });
+      if (typeof body.resultFile === "string" && body.resultFile) {
+        writeSmokeResultLine(`STEAM_BRIDGE_SMOKE_RESULT ${JSON.stringify(result)}\n`, body.resultFile);
+      }
+      sendJsonResponse(response, 200, { ok: result.ok === true, result });
+    } finally {
+      smokeControlActionInFlight = false;
+    }
+    return;
+  }
+
+  if (request.method === "POST" && requestUrl.pathname === "/quit") {
+    sendJsonResponse(response, 200, { ok: true });
+    setImmediate(() => app.quit());
+    return;
+  }
+
+  sendJsonResponse(response, 404, { ok: false, error: { message: `Unknown smoke control route: ${requestUrl.pathname}` } });
+}
+
+function isSmokeControlAuthorized(request) {
+  const headerToken = request.headers["x-steam-bridge-smoke-token"];
+  const authorization = request.headers.authorization || "";
+  const bearerPrefix = "Bearer ";
+  const bearerToken = authorization.startsWith(bearerPrefix) ? authorization.slice(bearerPrefix.length) : "";
+  return headerToken === CONTROL_TOKEN || bearerToken === CONTROL_TOKEN;
+}
+
+function readSmokeControlJson(request) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let size = 0;
+    request.on("data", (chunk) => {
+      size += chunk.length;
+      if (size > 1024 * 1024) {
+        reject(new Error("Smoke control request body is too large."));
+        request.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    request.on("error", reject);
+    request.on("end", () => {
+      const text = Buffer.concat(chunks).toString("utf8").trim();
+      if (!text) {
+        resolve({});
+        return;
+      }
+      try {
+        resolve(JSON.parse(text));
+      } catch (error) {
+        reject(error);
+      }
+    });
+  });
+}
+
+function sendJsonResponse(response, statusCode, body) {
+  const text = JSON.stringify(sanitize(body));
+  response.writeHead(statusCode, {
+    "content-type": "application/json; charset=utf-8",
+    "content-length": Buffer.byteLength(text)
+  });
+  response.end(text);
+}
+
+async function waitForAutorunResult(action, durationMs, overlayActiveCount, options = {}) {
   if (pendingManagedOverlayShownWait || isManagedOverlayShownWaitAction(action)) {
     return waitForManagedOverlayShownResult(action);
   }
 
+  const requireOverlayActive =
+    typeof options.requireOverlayActive === "boolean" ? options.requireOverlayActive : AUTORUN_REQUIRE_OVERLAY_ACTIVE;
   if (!isNativeSessionAction(action)) {
-    if (!AUTORUN_REQUIRE_OVERLAY_ACTIVE || !isOverlayAction(action)) {
+    if (!requireOverlayActive || !isOverlayAction(action)) {
       await delay(durationMs);
       return { ok: true, action, durationMs };
     }
@@ -1869,16 +2065,16 @@ function delay(ms) {
   });
 }
 
-function writeSmokeResultLine(line) {
-  if (!AUTORUN_RESULT_FILE) {
+function writeSmokeResultLine(line, resultFile = AUTORUN_RESULT_FILE) {
+  if (!resultFile) {
     return;
   }
 
   try {
-    fs.mkdirSync(path.dirname(AUTORUN_RESULT_FILE), { recursive: true });
-    fs.appendFileSync(AUTORUN_RESULT_FILE, line);
+    fs.mkdirSync(path.dirname(resultFile), { recursive: true });
+    fs.appendFileSync(resultFile, line);
   } catch (error) {
-    console.error(`Failed to write smoke result file ${AUTORUN_RESULT_FILE}:`, error);
+    console.error(`Failed to write smoke result file ${resultFile}:`, error);
   }
 }
 
@@ -2316,7 +2512,10 @@ function parseSmokeArgs(args) {
     achievementMax: undefined,
     resultFile: undefined,
     diagnosticDir: undefined,
-    keepOpenAfterResult: undefined
+    keepOpenAfterResult: undefined,
+    controlServer: undefined,
+    controlFile: undefined,
+    controlToken: undefined
   };
 
   for (let index = 0; index < args.length; index += 1) {
@@ -2412,6 +2611,15 @@ function parseSmokeArgs(args) {
         break;
       case "--steam-bridge-smoke-keep-open-after-result":
         options.keepOpenAfterResult = value == null || value === "" ? "1" : value;
+        break;
+      case "--steam-bridge-smoke-control-server":
+        options.controlServer = value == null || value === "" ? "1" : value;
+        break;
+      case "--steam-bridge-smoke-control-file":
+        options.controlFile = value;
+        break;
+      case "--steam-bridge-smoke-control-token":
+        options.controlToken = value;
         break;
       default:
         break;

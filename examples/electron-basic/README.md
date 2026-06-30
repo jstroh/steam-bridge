@@ -192,6 +192,16 @@ precedence in that case. Unavailable captures do not require
 Use `--dry-run` to inspect the stable shortcut setup, env-file path, and helper commands
 without launching Steam.
 
+The packaged smoke app also has an opt-in localhost control server for
+one-process overlay proof work. Launch it through the same Steam shortcut with
+`macos-electron-smoke.sh --control-server --control-file <path> --control-token <token>`;
+the helper returns once the running app writes the control JSON instead of
+waiting for an autorun result. The server is bound to `127.0.0.1`, requires the
+token on every request, and reuses the same internal smoke actions and
+`STEAM_BRIDGE_SMOKE_RESULT` payload shape as autorun. This is test harness
+plumbing for persistent app-lifecycle matrices; it is not part of the app-facing
+Steam Bridge API and Electron builders do not need to use it.
+
 For launcher-aware macOS checks, generate shortcut launch options with
 `--macos-native-launcher --launcher-env-file <path>` and fully restart Steam
 after editing `shortcuts.vdf`. Once that stable shortcut is loaded, repeat

@@ -139,6 +139,7 @@ test("electron smoke sanitizer redacts private overlay proof fields", () => {
         "SteamBridgeSmoke",
         "--steam-bridge-smoke-checkout-transaction-id=123456789",
         "--steam-bridge-smoke-checkout-json-file=/tmp/private-init-txn-response.json",
+        "--steam-bridge-smoke-control-token=super-secret-control-token",
         "--steam-bridge-smoke-web-url=https://store.steampowered.com/app/480/"
       ]
     },
@@ -169,6 +170,7 @@ test("electron smoke sanitizer redacts private overlay proof fields", () => {
   assert.equal(sanitized.checkoutJsonFile.redacted, true);
   assert.equal(sanitized.launch.argv[1].redacted, true);
   assert.equal(sanitized.launch.argv[2].redacted, true);
+  assert.equal(sanitized.launch.argv[3].redacted, true);
   assert.equal(sanitized.message.redacted, true);
 
   const serialized = JSON.stringify(sanitized);
@@ -180,6 +182,7 @@ test("electron smoke sanitizer redacts private overlay proof fields", () => {
   assert.equal(serialized.includes("order-private-001"), false);
   assert.equal(serialized.includes("steam://return/private-token"), false);
   assert.equal(serialized.includes("private-init-txn-response"), false);
+  assert.equal(serialized.includes("super-secret-control-token"), false);
 });
 
 test("native host unavailable guard accepts class and error-like shapes", (t) => {

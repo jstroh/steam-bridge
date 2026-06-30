@@ -45,7 +45,8 @@ const SENSITIVE_ARG_PREFIXES = [
   "--steam-bridge-smoke-checkout-url",
   "--steam-bridge-smoke-checkout-return-url",
   "--steam-bridge-smoke-checkout-transaction-id",
-  "--steam-bridge-smoke-checkout-json-file"
+  "--steam-bridge-smoke-checkout-json-file",
+  "--steam-bridge-smoke-control-token"
 ];
 
 const CHECKOUT_URL_PATTERN = /https?:\/\/checkout\.steampowered\.com\/checkout\/approvetxn\/[^/\s"'<>]+/i;

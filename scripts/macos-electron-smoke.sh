@@ -24,6 +24,9 @@ achievement_name=""
 achievement_current=""
 achievement_max=""
 action_delay_ms=""
+control_server="0"
+control_file=""
+control_token=""
 macos_native_launcher="0"
 launcher_env_file=""
 result_delay_ms="8000"
@@ -93,6 +96,9 @@ Options:
   --achievement-current VALUE    Progress current value.
   --achievement-max VALUE        Progress max value.
   --action-delay-ms MS           Autorun delay before the action. Defaults to app default.
+  --control-server               Start the localhost smoke control server instead of autorun.
+  --control-file PATH            File where the smoke app writes control connection JSON.
+  --control-token TOKEN          Token required by the smoke control server.
   --macos-native-launcher        Prefix launch options for the packaged native env launcher.
   --launcher-env-file PATH       Native launcher env file for stable Steam shortcuts.
   --result-delay-ms MS           Autorun result delay. Defaults to 8000.
@@ -234,6 +240,18 @@ while [ "$#" -gt 0 ]; do
       ;;
     --action-delay-ms)
       action_delay_ms="${2:?missing --action-delay-ms value}"
+      shift 2
+      ;;
+    --control-server)
+      control_server="1"
+      shift
+      ;;
+    --control-file)
+      control_file="${2:?missing --control-file value}"
+      shift 2
+      ;;
+    --control-token)
+      control_token="${2:?missing --control-token value}"
       shift 2
       ;;
     --macos-native-launcher)
@@ -416,11 +434,23 @@ smoke_args() {
   printf '%s\n' \
     "--steam-bridge-app-id=$app_id" \
     "--steam-bridge-electron-overlay-profile=$overlay_profile" \
-    "--steam-bridge-smoke-autorun" \
-    "--steam-bridge-smoke-autorun-action=$action" \
-    "--steam-bridge-smoke-autorun-result-delay-ms=$result_delay_ms" \
     "--steam-bridge-smoke-result-file=$result_file" \
     "--steam-bridge-smoke-diagnostic-dir=$diagnostic_dir"
+
+  if [ "$control_server" = "1" ]; then
+    printf '%s\n' "--steam-bridge-smoke-control-server"
+    if [ -n "$control_file" ]; then
+      printf '%s\n' "--steam-bridge-smoke-control-file=$control_file"
+    fi
+    if [ -n "$control_token" ]; then
+      printf '%s\n' "--steam-bridge-smoke-control-token=$control_token"
+    fi
+  else
+    printf '%s\n' \
+      "--steam-bridge-smoke-autorun" \
+      "--steam-bridge-smoke-autorun-action=$action" \
+      "--steam-bridge-smoke-autorun-result-delay-ms=$result_delay_ms"
+  fi
 
   if [ "$require_overlay_activated" = "1" ]; then
     printf '%s\n' "--steam-bridge-smoke-require-overlay-active"
@@ -473,7 +503,7 @@ smoke_args() {
   if [ -n "$achievement_max" ]; then
     printf '%s\n' "--steam-bridge-smoke-achievement-max=$achievement_max"
   fi
-  if [ -n "$action_delay_ms" ]; then
+  if [ "$control_server" != "1" ] && [ -n "$action_delay_ms" ]; then
     printf '%s\n' "--steam-bridge-smoke-autorun-action-delay-ms=$action_delay_ms"
   fi
 }
@@ -577,6 +607,61 @@ wait_for_result_file() {
   done
 
   echo "Timed out waiting for smoke result file $result_file" >&2
+  collect_recent_macos_crash_reports
+  return 1
+}
+
+wait_for_control_file() {
+  local deadline no_steam_deadline steam_seen
+  if [ -z "$control_file" ]; then
+    echo "--control-file is required with --control-server for helper-managed launches." >&2
+    return 1
+  fi
+
+  deadline=$((SECONDS + timeout_seconds))
+  no_steam_deadline=$((SECONDS + 15))
+  steam_seen="0"
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    if [ -s "$control_file" ]; then
+      CONTROL_FILE="$control_file" CONTROL_TOKEN="$control_token" node <<'NODE'
+const fs = require("node:fs");
+const controlFile = process.env.CONTROL_FILE;
+const expectedToken = process.env.CONTROL_TOKEN || "";
+let parsed;
+try {
+  parsed = JSON.parse(fs.readFileSync(controlFile, "utf8"));
+} catch (error) {
+  console.error(`Invalid smoke control file ${controlFile}: ${error.message}`);
+  process.exit(1);
+}
+if (parsed.host !== "127.0.0.1" || !Number.isInteger(parsed.port) || parsed.port <= 0) {
+  console.error(`Smoke control file ${controlFile} does not contain a localhost port.`);
+  process.exit(1);
+}
+if (expectedToken && parsed.token !== expectedToken) {
+  console.error(`Smoke control file ${controlFile} token did not match the expected token.`);
+  process.exit(1);
+}
+NODE
+      return 0
+    fi
+    if [ "$mode" = "steam-launch" ]; then
+      if pgrep -f 'steam_osx' >/dev/null 2>&1; then
+        steam_seen="1"
+      elif [ "$steam_seen" = "1" ]; then
+        echo "Steam exited while waiting for smoke control file $control_file" >&2
+        collect_recent_macos_crash_reports
+        return 1
+      elif [ "$SECONDS" -ge "$no_steam_deadline" ]; then
+        echo "Steam did not start while waiting for smoke control file $control_file" >&2
+        collect_recent_macos_crash_reports
+        return 1
+      fi
+    fi
+    sleep 0.5
+  done
+
+  echo "Timed out waiting for smoke control file $control_file" >&2
   collect_recent_macos_crash_reports
   return 1
 }
@@ -739,10 +824,18 @@ launch_steam_shortcut() {
 
   mkdir -p "$(dirname -- "$result_file")"
   rm -f "$result_file"
+  if [ -n "$control_file" ]; then
+    mkdir -p "$(dirname -- "$control_file")"
+    rm -f "$control_file"
+  fi
   rm -rf "$diagnostic_dir"
 
   echo "Launching steam://rungameid/$game_id"
   open "steam://rungameid/$game_id"
+  if [ "$control_server" = "1" ]; then
+    wait_for_control_file
+    return 0
+  fi
   wait_for_result_file
   verify_result
   if [ "$shortcut_open_probe" = "1" ]; then
@@ -1849,6 +1942,29 @@ NODE
     echo "Self-test failed: launch options must pass the requested action delay." >&2
     exit 1
   fi
+  macos_native_launcher="0"
+  close_probe="0"
+  keep_open_after_result="0"
+  control_server="1"
+  control_file="/tmp/steam-bridge-smoke-control.json"
+  control_token="control-token-self-test"
+  launch_options="$(smoke_args | paste -sd' ' -)"
+  if [[ "$launch_options" == *"--steam-bridge-smoke-autorun"* ]]; then
+    echo "Self-test failed: control-server launch options must not enable autorun." >&2
+    exit 1
+  fi
+  if [[ "$launch_options" != *"--steam-bridge-smoke-control-server"* ]]; then
+    echo "Self-test failed: control-server launch options must enable the smoke control server." >&2
+    exit 1
+  fi
+  if [[ "$launch_options" != *"--steam-bridge-smoke-control-file=/tmp/steam-bridge-smoke-control.json"* ]]; then
+    echo "Self-test failed: control-server launch options must pass the control file." >&2
+    exit 1
+  fi
+  if [[ "$launch_options" != *"--steam-bridge-smoke-control-token=control-token-self-test"* ]]; then
+    echo "Self-test failed: control-server launch options must pass the control token." >&2
+    exit 1
+  fi
 
   rm -f "$temp_result"
   rm -rf "$diagnostic_dir"
@@ -1882,9 +1998,18 @@ case "$mode" in
     while IFS= read -r arg; do
       args+=("$arg")
     done < <(smoke_args)
-    (cd "$app_dir" && "$smoke_exe" "${args[@]}")
-    wait_for_result_file
-    verify_result
+    if [ "$control_server" = "1" ]; then
+      if [ -n "$control_file" ]; then
+        mkdir -p "$(dirname -- "$control_file")"
+        rm -f "$control_file"
+      fi
+      (cd "$app_dir" && "$smoke_exe" "${args[@]}") &
+      wait_for_control_file
+    else
+      (cd "$app_dir" && "$smoke_exe" "${args[@]}")
+      wait_for_result_file
+      verify_result
+    fi
     ;;
   steam-launch)
     require_steam_launch="1"
