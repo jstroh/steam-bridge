@@ -355,8 +355,10 @@ Verified:
   `InitTxn`/checkout response object directly to `openCheckoutAndWait(...)`.
   This gives real-product macOS proof a generic runtime handoff while keeping
   app IDs, item definitions, transaction IDs, checkout URLs, and publisher data
-  out of committed files and launch arguments. The macOS helper exposes the
-  same path as `--checkout-json-file`.
+  out of committed files and launch arguments. The macOS helper and matrix
+  expose the same path as `--checkout-json-file`; the matrix can pair it with
+  `--app-id <your-app-id>` and audits `checkoutSource=json-file` without
+  recording the JSON path.
 - A focused 2026-06-30 macOS checkout JSON-file proof at
   `/tmp/steam-bridge-macos-checkout-json-20260630-030514` launched the packaged
   Electron `42.5.1` smoke app through the stable Steam shortcut and native

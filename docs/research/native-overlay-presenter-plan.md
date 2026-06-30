@@ -836,7 +836,10 @@ Next work:
 1. Run real purchase-content and `InitTxn` proof from a real configured Steam
    app ID; App ID `480` only proves generic checkout routing. Use the smoke
    app's private checkout JSON file input for artifact capture so transaction
-   responses stay outside the repository and launch arguments.
+   responses stay outside the repository and launch arguments. The macOS matrix
+   can run with `--app-id <your-app-id> --checkout-json-file <path>` and audits
+   the expected app ID plus `checkoutSource=json-file` without recording the
+   JSON path.
 2. Keep code signing requirements explicit in docs and examples. The generic
    example now includes `entitlements.steam.macos.plist` with
    `com.apple.security.cs.allow-dyld-environment-variables` and

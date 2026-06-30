@@ -328,10 +328,12 @@ Steam IDs, auth-ticket bytes, and private CLI arguments from result and lifecycl
 artifacts while preserving machine-checkable presence flags and presenter
 snapshots. For real product smoke proof, write the backend `InitTxn` or
 checkout response JSON to a private temp file and pass its path with
-`STEAM_BRIDGE_SMOKE_CHECKOUT_JSON_FILE` or the macOS helper's
-`--checkout-json-file`; the smoke app feeds that object through
+`STEAM_BRIDGE_SMOKE_CHECKOUT_JSON_FILE` or the macOS helper/matrix
+`--checkout-json-file` option; the smoke app feeds that object through
 `openCheckoutAndWait(...)` without committing private data or putting transaction
-values in launch arguments.
+values in launch arguments. The macOS matrix also accepts
+`--app-id <your-app-id>` and summarizes the expected app ID plus
+`checkoutSource=json-file` without persisting the JSON path.
 Passive Steam notifications such as achievement progress
 or achievement unlock toasts are automatically primed by the managed Electron
 overlay before the relevant achievement/stats calls. If macOS reports the
@@ -631,7 +633,7 @@ summary self-test. After a live run it summarizes every macOS result and
 lifecycle log, failing if a case loses Steam launch/injection identity, uses
 nonzero managed overlay timing, reports crash diagnostics, duplicates
 `gameoverlayui` targets attached to the smoke process, attaches a non-store
-overlay target under a game ID other than `480`, misses passive
+overlay target under a game ID other than the expected app ID, misses passive
 notification callbacks, misses checkout `openCheckoutAndWait(...)` completion
 after close/parking, misses managed wait-helper shown/closed/parked lifecycle
 events, misses active shown presenter snapshots in an interactive macOS host

@@ -397,8 +397,10 @@ hold and parks it back at zero FPS. Pass that same signal to your backend
 request when the network request itself should be canceled too. Closing the
 overlay manager while that operation is pending also releases the hold and
 prevents a late checkout surface from opening.
-The macOS helper exposes the private-file path as `--checkout-json-file`; the
-Linux and Steam Deck helpers expose direct inputs as `--checkout-url`,
+The macOS helper and matrix expose the private-file path as
+`--checkout-json-file`; the matrix can pair it with `--app-id <your-app-id>`
+and records only `checkoutSource=json-file` plus the expected app ID in its
+manifest. The Linux and Steam Deck helpers expose direct inputs as `--checkout-url`,
 `--checkout-transaction-id`, and `--checkout-return-url`. Without a checkout
 file, URL, or transaction ID the helpers only require
 `overlay:presenter-checkout-ready`;

@@ -171,6 +171,7 @@ function summarizeMatrixArtifacts(root) {
       [
         "MACOS_CASE",
         summary.caseId,
+        `appId=${summary.expectedAppId}`,
         `action=${summary.action}`,
         `activated=${summary.activated}`,
         `closed=${summary.closed}`,
@@ -185,6 +186,7 @@ function summarizeMatrixArtifacts(root) {
         `managedWaits=${summary.managedWaits}`,
         `openAndWait=${summary.openAndWait}`,
         `checkoutWait=${summary.checkoutWait}`,
+        `checkoutSource=${summary.checkoutSource}`,
         `microTxnCallback=${summary.microTxnCallback}`,
         `nativeHostUnavailable=${summary.nativeHostUnavailable}`,
         `noOverlayActivation=${summary.noOverlayActivation}`,
@@ -218,6 +220,10 @@ function verifyCase(caseId, metadata, result, lifecycle, failures) {
   const actionName = String(action.action || "unknown");
   const nativePresenter = readOkValue(overlay.nativePresenter);
   const electronOverlay = readElectronOverlay(nativePresenter);
+  const expectedAppId = expectedAppIdFromMetadata(metadata);
+  const expectedAppIdText = String(expectedAppId);
+  const expectedCheckoutSource = nonEmptyString(metadata.checkoutSource);
+  const manifestCheckoutSource = checkoutSourceFromMetadata(metadata);
   const resultEvents = Array.isArray(snapshot.events) ? snapshot.events : [];
   const lifecycleEntries = lifecycle.entries;
   const overlayTargets = countOverlayTargets(overlayProcesses);
@@ -249,7 +255,7 @@ function verifyCase(caseId, metadata, result, lifecycle, failures) {
     : verifyOpenAndWaitCompletion(caseId, actionName, lifecycleEntries, failures);
   const checkoutWait = hasExpectedActionError
     ? { required: false, ok: true }
-    : verifyCheckoutOpenAndWait(caseId, actionName, lifecycleEntries, failures);
+    : verifyCheckoutOpenAndWait(caseId, actionName, lifecycleEntries, expectedCheckoutSource, failures);
   const microTxnCallback = hasExpectedActionError
     ? { required: false, ok: true }
     : verifyMicroTxnCallbackPresenterSnapshots(caseId, lifecycleEntries, failures);
@@ -273,18 +279,18 @@ function verifyCase(caseId, metadata, result, lifecycle, failures) {
       failures
     );
   }
-  expect(app.appId === 480, `${caseId}: app ID is public test App ID 480`, failures);
+  expect(app.appId === expectedAppId, `${caseId}: app ID is ${expectedAppId}`, failures);
   expect(processInfo.platform === "darwin", `${caseId}: platform is darwin`, failures);
   expect(processInfo.arch === "arm64", `${caseId}: arch is arm64`, failures);
   expect(launch.steamLaunch === true, `${caseId}: Steam launch detected`, failures);
   expect(launch.overlayInjection === true, `${caseId}: Steam overlay injection detected`, failures);
   const env = objectOrEmpty(launch.env);
-  expect(env.SteamAppId === "480", `${caseId}: SteamAppId env is 480`, failures);
-  expect(env.SteamGameId === "480", `${caseId}: SteamGameId env is 480`, failures);
-  expect(env.SteamOverlayGameId === "480", `${caseId}: SteamOverlayGameId env is 480`, failures);
+  expect(env.SteamAppId === expectedAppIdText, `${caseId}: SteamAppId env is ${expectedAppId}`, failures);
+  expect(env.SteamGameId === expectedAppIdText, `${caseId}: SteamGameId env is ${expectedAppId}`, failures);
+  expect(env.SteamOverlayGameId === expectedAppIdText, `${caseId}: SteamOverlayGameId env is ${expectedAppId}`, failures);
   expect(steam.initialized === true, `${caseId}: Steam initialized`, failures);
   expect(readOkValue(steam.running) === true, `${caseId}: Steam running`, failures);
-  expect(readOkValue(steam.appId) === 480, `${caseId}: Steam app ID is 480`, failures);
+  expect(Number(readOkValue(steam.appId)) === expectedAppId, `${caseId}: Steam app ID is ${expectedAppId}`, failures);
   expect(readOkValue(steam.steamDeck) === false, `${caseId}: Steam Deck flag is false on macOS`, failures);
   expect(readOkValue(steam.bigPicture) === false, `${caseId}: Big Picture flag is false on macOS`, failures);
   if (!expectedNativeHostUnavailableReason) {
@@ -343,13 +349,13 @@ function verifyCase(caseId, metadata, result, lifecycle, failures) {
     for (const target of Array.isArray(overlayProcesses.gameoverlayui) ? overlayProcesses.gameoverlayui : []) {
       expect(target.gameId != null, `${caseId}: gameoverlayui game ID is recorded`, failures);
       if (requirePublicOverlayGameId) {
-        expect(String(target.gameId) === "480", `${caseId}: gameoverlayui game ID is public test App ID 480`, failures);
+        expect(String(target.gameId) === expectedAppIdText, `${caseId}: gameoverlayui game ID is ${expectedAppId}`, failures);
       }
       expect(Number(target.targetPid) === Number(processInfo.pid), `${caseId}: gameoverlayui targets the smoke process`, failures);
       if (requirePublicOverlayGameId && typeof target.command === "string" && target.command.length > 0) {
         expect(
-          /\s-gameid\s+480(?:\s|$)/.test(target.command),
-          `${caseId}: gameoverlayui command line uses -gameid 480`,
+          new RegExp(`\\s-gameid\\s+${escapeRegExp(expectedAppIdText)}(?:\\s|$)`).test(target.command),
+          `${caseId}: gameoverlayui command line uses -gameid ${expectedAppId}`,
           failures
         );
       }
@@ -365,7 +371,7 @@ function verifyCase(caseId, metadata, result, lifecycle, failures) {
   } else {
     expect(activated, `${caseId}: overlay active callback observed`, failures);
     expect(closed, `${caseId}: overlay inactive callback observed after active`, failures);
-    verifyOverlayCallbackAppIds(caseId, lifecycleEntries, 480, failures);
+    verifyOverlayCallbackAppIds(caseId, lifecycleEntries, expectedAppId, failures);
     verifyOverlayCallbackPids(caseId, lifecycleEntries, overlayProcesses, failures);
     expect(parked, `${caseId}: presenter parked after overlay close`, failures);
   }
@@ -404,6 +410,7 @@ function verifyCase(caseId, metadata, result, lifecycle, failures) {
 
   return {
     caseId,
+    expectedAppId,
     action: actionName,
     activated,
     closed,
@@ -418,6 +425,7 @@ function verifyCase(caseId, metadata, result, lifecycle, failures) {
     managedWaits: managedWaits.required ? managedWaits.ok : "n/a",
     openAndWait: openAndWait.required ? openAndWait.ok : "n/a",
     checkoutWait: checkoutWait.required ? checkoutWait.ok : "n/a",
+    checkoutSource: checkoutWait.required ? checkoutWait.source || manifestCheckoutSource || "unknown" : "n/a",
     microTxnCallback: microTxnCallback.required ? microTxnCallback.ok : "n/a",
     nativeHostUnavailable: expectedNativeHostUnavailableReason || "none",
     noOverlayActivation: expectedNoOverlayActivation,
@@ -478,7 +486,7 @@ function verifyOpenAndWaitCompletion(caseId, actionName, entries, failures) {
   return { required: true, ok: failures.length === failuresBefore };
 }
 
-function verifyCheckoutOpenAndWait(caseId, actionName, entries, failures) {
+function verifyCheckoutOpenAndWait(caseId, actionName, entries, expectedCheckoutSource, failures) {
   if (actionName !== "presenter-checkout") {
     return { required: false, ok: true };
   }
@@ -497,6 +505,11 @@ function verifyCheckoutOpenAndWait(caseId, actionName, entries, failures) {
   if (openPayload.api !== "openCheckoutAndWait") {
     failures.push(`${caseId}: checkout presenter-open did not use openCheckoutAndWait`);
   }
+  if (expectedCheckoutSource && openPayload.checkoutSource !== expectedCheckoutSource) {
+    failures.push(
+      `${caseId}: checkout source expected ${formatValue(expectedCheckoutSource)}, got ${formatValue(openPayload.checkoutSource)}`
+    );
+  }
 
   const inactiveIndex = entries.findIndex(isLifecycleOverlayInactiveEvent);
   if (inactiveIndex === -1) {
@@ -513,6 +526,11 @@ function verifyCheckoutOpenAndWait(caseId, actionName, entries, failures) {
   }
 
   const payload = objectOrEmpty(complete.payload);
+  if (expectedCheckoutSource && payload.checkoutSource !== expectedCheckoutSource) {
+    failures.push(
+      `${caseId}: checkout completion source expected ${formatValue(expectedCheckoutSource)}, got ${formatValue(payload.checkoutSource)}`
+    );
+  }
   const shown = objectField(payload, "shown");
   const parked = objectField(payload, "parked");
   if (!shown) {
@@ -526,7 +544,7 @@ function verifyCheckoutOpenAndWait(caseId, actionName, entries, failures) {
     expectParkedPresenter(caseId, parked, "checkout openAndWait completion", failures);
   }
 
-  return { required: true, ok: failures.length === failuresBefore };
+  return { required: true, ok: failures.length === failuresBefore, source: openPayload.checkoutSource || "" };
 }
 
 function verifyMicroTxnCallbackPresenterSnapshots(caseId, entries, failures) {
@@ -913,6 +931,32 @@ function expectedNativeHostBackendFromMetadata(metadata) {
   return value;
 }
 
+function expectedAppIdFromMetadata(metadata) {
+  const value = Number(metadata.expectedAppId ?? metadata.appId ?? 480);
+  if (Number.isFinite(value) && value > 0) {
+    return value;
+  }
+  return 480;
+}
+
+function checkoutSourceFromMetadata(metadata) {
+  const value = nonEmptyString(metadata.checkoutSource);
+  if (value) {
+    return value;
+  }
+  const command = Array.isArray(metadata.command) ? metadata.command : [];
+  if (command.includes("--checkout-json-file")) {
+    return "json-file";
+  }
+  if (command.includes("--checkout-url")) {
+    return "checkout-url";
+  }
+  if (command.includes("--checkout-transaction-id")) {
+    return "transaction-id";
+  }
+  return "";
+}
+
 function macOverlayEnvironmentMatchesReason(environment, reason) {
   if (!environment || typeof environment !== "object") {
     return false;
@@ -1078,11 +1122,19 @@ function createSelfTestFixture(root) {
     {
       caseId: "05-checkout",
       action: "presenter-checkout",
+      expectedAppId: 9000,
+      checkoutSource: "json-file",
       resultPresenter: activePresenterFixture(30),
       lifecycle: [
         {
           type: "event:overlay:presenter-open",
-          payload: { target: "checkout", api: "openCheckoutAndWait", presenter: activePresenterFixture(30) }
+          payload: {
+            target: "checkout",
+            api: "openCheckoutAndWait",
+            checkoutSource: "json-file",
+            checkout: { hasCheckoutUrl: false, hasTransactionId: true, hasReturnUrl: true },
+            presenter: activePresenterFixture(30)
+          }
         },
         { type: "event:callback:overlay-activated", payload: { active: true, appId: 480, overlayPid: 9001 } },
         { type: "event:overlay:presenter-wait-shown", payload: { presenter: activePresenterFixture(31) } },
@@ -1093,7 +1145,12 @@ function createSelfTestFixture(root) {
         { type: "event:overlay:presenter-parked", payload: { presenter: parkedPresenterFixture(32) } },
         {
           type: "event:overlay:presenter-checkout-open-and-wait-complete",
-          payload: { shown: activePresenterFixture(31), parked: parkedPresenterFixture(32) }
+          payload: {
+            checkoutSource: "json-file",
+            resolvedTarget: { hasCheckoutUrl: true, hasTransactionId: true, hasReturnUrl: true },
+            shown: activePresenterFixture(31),
+            parked: parkedPresenterFixture(32)
+          }
         },
         { type: "event:overlay:presenter-after-close-stable", payload: { presenter: parkedPresenterFixture(32) } }
       ]
@@ -1128,34 +1185,50 @@ function createSelfTestFixture(root) {
     const resultFile = path.join(root, `${fixture.caseId}.log`);
     const diagnosticDir = path.join(root, `${fixture.caseId}.log.diagnostics`);
     const result = JSON.parse(JSON.stringify(baseResult));
+    const expectedAppId = fixture.expectedAppId || 480;
+    const expectedAppIdText = String(expectedAppId);
     result.ok = fixture.resultOk ?? true;
     result.action.action = fixture.action;
     result.action.ok = fixture.actionOk ?? true;
+    result.snapshot.app.appId = expectedAppId;
+    result.snapshot.launch.env.SteamAppId = expectedAppIdText;
+    result.snapshot.launch.env.SteamGameId = expectedAppIdText;
+    result.snapshot.launch.env.SteamOverlayGameId = expectedAppIdText;
+    result.snapshot.steam.appId.value = expectedAppId;
     if (fixture.actionError) {
       result.action.error = fixture.actionError;
     } else {
       delete result.action.error;
     }
     result.snapshot.overlay.nativePresenter.value = fixture.resultPresenter;
-    const overlayGameId = fixture.overlayGameId || "480";
+    const overlayGameId = fixture.overlayGameId || expectedAppIdText;
     if (Array.isArray(fixture.overlayTargets)) {
       result.snapshot.overlayProcesses.gameoverlayui = fixture.overlayTargets;
     } else {
       result.snapshot.overlayProcesses.gameoverlayui[0].gameId = overlayGameId;
       result.snapshot.overlayProcesses.gameoverlayui[0].command = `gameoverlayui -pid 4242 -gameid ${overlayGameId}`;
     }
+    const lifecycle = fixture.lifecycle.map((entry) => {
+      const copy = JSON.parse(JSON.stringify(entry));
+      if (copy.type === "event:callback:overlay-activated" && copy.payload && copy.payload.appId != null) {
+        copy.payload.appId = expectedAppId;
+      }
+      return copy;
+    });
     fs.mkdirSync(diagnosticDir, { recursive: true });
     fs.writeFileSync(resultFile, `${RESULT_PREFIX}${JSON.stringify(result)}\n`);
     fs.writeFileSync(
       path.join(diagnosticDir, "lifecycle.jsonl"),
-      fixture.lifecycle.map((entry) => JSON.stringify(entry)).join("\n") + "\n"
+      lifecycle.map((entry) => JSON.stringify(entry)).join("\n") + "\n"
     );
     manifest.push({
       caseId: fixture.caseId,
       resultFile,
       diagnosticDir,
+      expectedAppId,
       action: fixture.action,
       shortcutTarget: fixture.shortcutTarget || null,
+      checkoutSource: fixture.checkoutSource || null,
       expectedNativeHostBackend: fixture.expectedNativeHostBackend || null,
       requireActionErrorCode: fixture.requireActionErrorCode || null,
       requireActionErrorReason: fixture.requireActionErrorReason || null,
@@ -1489,4 +1562,8 @@ function expect(condition, message, failures) {
 
 function formatValue(value) {
   return JSON.stringify(value);
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

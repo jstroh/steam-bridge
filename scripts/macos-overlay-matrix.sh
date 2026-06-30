@@ -19,6 +19,7 @@ app_exe="$repo_root/dist/electron-smoke/aarch64-apple-darwin/SteamBridgeSmoke-da
 signing_verifier="$script_dir/verify-macos-steam-signing.cjs"
 overlay_profile="compatibility"
 native_host_backend=""
+checkout_json_file=""
 timeout_seconds="120"
 skip_package="0"
 dry_run="0"
@@ -54,6 +55,9 @@ Options:
   --signing-verifier PATH        macOS package signing verifier.
   --overlay-profile NAME         Electron overlay profile. Defaults to compatibility.
   --native-host-backend NAME     macOS native presenter backend: metal or opengl.
+  --checkout-json-file PATH      Private InitTxn/checkout response JSON for checkout cases.
+                                  The Steam shortcut only receives the stable launcher env-file flag;
+                                  matrix manifests record this as source=json-file without the path.
   --timeout-seconds SECONDS      Per-case result timeout. Defaults to 120.
   --skip-package                 Do not run npm run example:package:mac first.
   --no-restart-steam             Do not restart Steam after changing shortcut options.
@@ -137,6 +141,10 @@ while [ "$#" -gt 0 ]; do
       ;;
     --native-host-backend)
       native_host_backend="${2:?missing --native-host-backend value}"
+      shift 2
+      ;;
+    --checkout-json-file)
+      checkout_json_file="${2:?missing --checkout-json-file value}"
       shift 2
       ;;
     --timeout-seconds)
@@ -262,7 +270,7 @@ case_command() {
 }
 
 run_self_test() {
-  local self_path minimal_output core_output full_output unavailable_output opengl_output passive_case checkout_case web_case unavailable_web_case unavailable_checkout_case
+  local self_path minimal_output core_output full_output unavailable_output opengl_output checkout_json_output passive_case checkout_case checkout_json_case shortcut_checkout_json_case web_case unavailable_web_case unavailable_checkout_case
   self_path="${BASH_SOURCE[0]}"
   minimal_output="$(
     bash "$self_path" \
@@ -321,6 +329,19 @@ run_self_test() {
       --artifact-root /tmp/steam-bridge-macos-overlay-matrix-self-test \
       --native-host-backend opengl
   )"
+  checkout_json_output="$(
+    bash "$self_path" \
+      --mode steam-launch \
+      --suite core \
+      --skip-package \
+      --dry-run \
+      --helper-path "$script_dir/macos-electron-smoke.sh" \
+      --app-exe /tmp/SteamBridgeSmoke.app/Contents/MacOS/SteamBridgeSmoke \
+      --shortcuts /tmp/shortcuts.vdf \
+      --artifact-root /tmp/steam-bridge-macos-overlay-matrix-self-test \
+      --app-id 9000 \
+      --checkout-json-file /tmp/private-init-txn-response.json
+  )"
 
   if [ "$(printf '%s\n' "$minimal_output" | count_cases)" != "5" ]; then
     echo "Self-test failed: minimal matrix case count changed." >&2
@@ -349,6 +370,8 @@ run_self_test() {
   require_contains "$core_output" "ENV /tmp/steam-bridge-macos-smoke.env" "matrix must write per-case launcher env."
   require_contains "$core_output" "SIGNING node $script_dir/verify-macos-steam-signing.cjs --app-exe /tmp/SteamBridgeSmoke.app/Contents/MacOS/SteamBridgeSmoke" "matrix must verify macOS package signing before live cases."
   require_contains "$opengl_output" "NATIVE_HOST_BACKEND opengl" "matrix must pass requested native host backend through the launcher env."
+  require_contains "$checkout_json_output" "--app-id 9000" "matrix must pass the requested private proof app ID through helper commands."
+  require_contains "$checkout_json_output" "--checkout-json-file /tmp/private-init-txn-response.json" "matrix must pass private checkout JSON into checkout cases."
   require_contains "$core_output" "--action presenter-store-open-and-wait" "core matrix must include store openAndWait."
   require_contains "$core_output" "--action presenter-friends-open-and-wait" "core matrix must include Friends openAndWait."
   require_contains "$core_output" "--action presenter-dialog-auto-open-and-wait" "core matrix must include dialog openAndWait."
@@ -394,12 +417,18 @@ run_self_test() {
   web_case="$(case_command "$core_output" "01-web-openwait")"
   passive_case="$(case_command "$core_output" "05-passive-toast")"
   checkout_case="$(case_command "$core_output" "07-checkout-approval")"
+  checkout_json_case="$(case_command "$checkout_json_output" "07-checkout-approval")"
+  shortcut_checkout_json_case="$(case_command "$checkout_json_output" "11-shortcut-checkout")"
   unavailable_web_case="$(case_command "$unavailable_output" "01-unavailable-web-openwait")"
   unavailable_checkout_case="$(case_command "$unavailable_output" "02-unavailable-checkout")"
   require_contains "$web_case" "--web-modal true" "web proof should use modal Steam web overlay."
   require_contains "$passive_case" "--result-delay-ms 1200" "passive toast should use the short notification capture delay."
   require_not_contains "$passive_case" "--close-probe" "passive toast should not require modal close proof."
   require_contains "$checkout_case" "--close-probe" "checkout proof should close and verify parked state."
+  require_contains "$checkout_json_case" "--checkout-json-file /tmp/private-init-txn-response.json" "private checkout proof should use the JSON-file handoff."
+  require_contains "$shortcut_checkout_json_case" "--checkout-json-file /tmp/private-init-txn-response.json" "checkout shortcut proof should use the JSON-file handoff."
+  require_not_contains "$checkout_json_case" "--checkout-transaction-id 123456789" "private checkout proof should not also use the synthetic transaction ID."
+  require_not_contains "$shortcut_checkout_json_case" "--checkout-transaction-id 123456789" "checkout shortcut proof should not also use the synthetic transaction ID."
   require_not_contains "$unavailable_web_case" "--close-probe" "unavailable web case must not require close proof."
   require_not_contains "$unavailable_checkout_case" "--close-probe" "unavailable checkout case must not require close proof."
   require_not_contains "$unavailable_web_case" "--require-overlay-enabled" "unavailable web case must not require overlay readiness while macOS is unavailable."
@@ -743,11 +772,12 @@ write_case_manifest() {
   local result_file="$2"
   local diagnostic_dir="$3"
   shift 3
-  EXPECTED_NATIVE_HOST_BACKEND="$native_host_backend" node - "$artifact_root/macos-matrix-cases.jsonl" "$case_id" "$result_file" "$diagnostic_dir" "$@" <<'NODE'
+  EXPECTED_NATIVE_HOST_BACKEND="$native_host_backend" EXPECTED_APP_ID="$app_id" node - "$artifact_root/macos-matrix-cases.jsonl" "$case_id" "$result_file" "$diagnostic_dir" "$@" <<'NODE'
 const fs = require("node:fs");
 const [manifestPath, caseId, resultFile, diagnosticDir, ...command] = process.argv.slice(2);
 const requestedNativeHostBackend = process.env.EXPECTED_NATIVE_HOST_BACKEND || "";
 const expectedNativeHostBackend = requestedNativeHostBackend ? `macos-${requestedNativeHostBackend}` : null;
+const expectedAppId = Number(process.env.EXPECTED_APP_ID || "480");
 
 function optionValue(name) {
   const index = command.indexOf(name);
@@ -757,17 +787,54 @@ function optionValue(name) {
   return command[index + 1] ?? "";
 }
 
+function redactCommand(args) {
+  const sensitiveOptions = new Set([
+    "--checkout-json-file",
+    "--checkout-return-url",
+    "--checkout-transaction-id",
+    "--checkout-url"
+  ]);
+  const redacted = [];
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    const equalsIndex = typeof arg === "string" ? arg.indexOf("=") : -1;
+    const optionName = equalsIndex === -1 ? arg : arg.slice(0, equalsIndex);
+    if (sensitiveOptions.has(optionName)) {
+      if (equalsIndex === -1) {
+        redacted.push(arg);
+        if (index + 1 < args.length) {
+          redacted.push("<redacted>");
+          index += 1;
+        }
+      } else {
+        redacted.push(`${optionName}=<redacted>`);
+      }
+    } else {
+      redacted.push(arg);
+    }
+  }
+  return redacted;
+}
+
 fs.appendFileSync(
   manifestPath,
   `${JSON.stringify({
     caseId,
     resultFile,
     diagnosticDir,
-    command,
+    command: redactCommand(command),
+    expectedAppId,
     action: optionValue("--action"),
     closeProbe: command.includes("--close-probe"),
     shortcutOpenProbe: command.includes("--shortcut-open-probe"),
     shortcutTarget: optionValue("--shortcut-target"),
+    checkoutSource: command.includes("--checkout-json-file")
+      ? "json-file"
+      : command.includes("--checkout-url")
+        ? "checkout-url"
+        : command.includes("--checkout-transaction-id")
+          ? "transaction-id"
+          : null,
     expectedNativeHostBackend,
     requireActionErrorCode: optionValue("--require-action-error-code"),
     requireActionErrorReason: optionValue("--require-action-error-reason"),
@@ -1107,9 +1174,16 @@ run_matrix() {
     --require-passive-notification \
     --require-no-crashes
 
+  local checkout_args=()
+  if [ -n "$checkout_json_file" ]; then
+    checkout_args=(--checkout-json-file "$checkout_json_file")
+  else
+    checkout_args=(--checkout-transaction-id 123456789)
+  fi
+
   run_case "07-checkout-approval" \
     --action presenter-checkout \
-    --checkout-transaction-id 123456789 \
+    "${checkout_args[@]}" \
     --require-steam-launch \
     --require-overlay-injection \
     --require-overlay-enabled \
@@ -1147,7 +1221,7 @@ run_matrix() {
   run_shortcut_case "10-shortcut-store" store
 
   run_shortcut_case "11-shortcut-checkout" checkout \
-    --checkout-transaction-id 123456789
+    "${checkout_args[@]}"
 
   run_shortcut_case "12-shortcut-profile" profile
 

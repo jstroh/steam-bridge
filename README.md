@@ -318,7 +318,9 @@ overlay inactive. Real purchase UI and `InitTxn` proof require your own Steam
 app ID with configured products; App ID `480` is only for generic smoke tests.
 For smoke proof with a real product, keep private responses outside the repo and
 pass a local `InitTxn` JSON file through `STEAM_BRIDGE_SMOKE_CHECKOUT_JSON_FILE`
-or the macOS helper's `--checkout-json-file`.
+or the macOS helper/matrix `--checkout-json-file` option. The macOS matrix can
+also run with `--app-id <your-app-id>`; its manifest records the expected app ID
+and `checkoutSource=json-file`, not the JSON path or transaction values.
 
 ## Diagnostics
 
