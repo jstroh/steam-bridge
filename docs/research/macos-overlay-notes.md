@@ -332,6 +332,16 @@ Verified:
   checkout approval route emitted active/inactive callbacks, completed
   `openCheckoutAndWait(...)` only after close and parking, returned focus to the
   app, kept zero managed overlay timing, and reported no crash evidence.
+- A signed-package full macOS matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-full-signed-package-20260629-234357`
+  rebuilt the packaged smoke app, ad-hoc signed the native launcher and renamed
+  Electron executable, reused the stable Steam shortcut without restarting
+  Steam, and passed all 31 Steam-launched App ID `480` cases. The artifact
+  covers web/store/Friends/dialog wait routes, passive progress/unlock toasts,
+  checkout approval-route plumbing, every supported Shift+Tab shortcut target,
+  direct profile/players/community/stats/achievements/user wait routes, user
+  SteamID, every high-level dialog-equivalent route, close/back-to-app proof,
+  zero managed overlay timing, one overlay target, and clean crash diagnostics.
 - The macOS helper and matrix summary now fail any `callback:microtxn`
   authorization event that lacks a presenter snapshot. Public App ID `480`
   checkout plumbing normally reports this as `microTxnCallback=n/a`, while real
@@ -363,10 +373,11 @@ identity alignment, native presenter startup, modal web overlay activation,
 close, app focus return, builder-facing `openAndWait(...)` parking coverage,
 synthetic checkout `openCheckoutAndWait(...)` approval-route plumbing, managed
 Shift+Tab shortcut routing, known presenter-backed web/dialog targets through
-managed wait helpers, generic `InitTxn` response-envelope unwrapping, and
-passive achievement-progress and unlock notifications. Real purchase-content
-coverage still needs a real Steam app ID with a configured product before
-describing purchase overlay support as complete.
+managed wait helpers, generic `InitTxn` response-envelope unwrapping, signed
+macOS package compatibility, and passive achievement-progress and unlock
+notifications. Real purchase-content coverage still needs a real Steam app ID
+with a configured product before describing purchase overlay support as
+complete.
 
 ## Primary References
 

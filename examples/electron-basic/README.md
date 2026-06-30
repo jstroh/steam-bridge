@@ -208,13 +208,13 @@ Electron. Do not rely on Steam overlay injection into Electron helper
 processes; Steam Bridge scrubs those child-process overlay environment entries
 so the bridge-owned native presenter stays the single overlay target.
 
-The macOS core overlay matrix is run against this signed package shape; a
+The macOS full overlay matrix is run against this signed package shape; a
 signed-package artifact at
-`/tmp/steam-bridge-macos-overlay-matrix-core-signed-package-20260629-232809`
-passed 24 Steam-launched App ID `480` cases across managed wait routes,
+`/tmp/steam-bridge-macos-overlay-matrix-full-signed-package-20260629-234357`
+passed 31 Steam-launched App ID `480` cases across managed wait routes,
 passive notifications, checkout approval routing, all supported shortcut
-targets, close/back-to-app proof, zero managed overlay timing, and crash
-diagnostics.
+targets, all high-level dialog-equivalent routes, close/back-to-app proof,
+zero managed overlay timing, and crash diagnostics.
 
 For shipped apps, apply the same entitlements through your normal Apple signing
 and notarization pipeline to the app process Steam launches and the executable
