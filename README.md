@@ -261,83 +261,71 @@ next to the executable or in the working directory used by your app.
 ## Electron Overlay
 
 Electron apps should create one managed Steam overlay for each game window. The
-managed overlay owns the native presenter, routes common Steam surfaces, waits
-for Steam overlay callbacks, and parks itself when Steam reports that the
-overlay has closed.
+managed overlay owns the native presenter, routes supported Steam surfaces
+through presenter-backed paths, waits for Steam overlay callbacks, and parks the
+presenter after Steam reports that the overlay has closed. App code should not
+need platform-specific overlay host, capture, focus, or timer plumbing.
 
 ```ts
-const steamOverlay = client.overlay.createElectronSteamOverlay(mainWindow, {
-  title: "Steam Overlay"
+import { app, BrowserWindow } from "electron";
+import steamworks from "steam-bridge";
+
+steamworks.electronConfigureSteamOverlay();
+
+app.whenReady().then(async () => {
+  const mainWindow = new BrowserWindow({
+    width: 1280,
+    height: 720
+  });
+
+  const client = steamworks.init(480);
+  const steamOverlay = client.overlay.createElectronSteamOverlay(mainWindow);
+
+  await steamOverlay.openAndWait({ type: "store", appId: 480 });
+  await steamOverlay.openAndWait({ type: "friends" });
+  await steamOverlay.openAndWait({
+    type: "web",
+    url: "https://store.steampowered.com/app/480/",
+    modal: true
+  });
+
+  // Optional: reuse the configured Shift+Tab target from a controller/menu button.
+  steamOverlay.openShortcutTarget();
+  await steamOverlay.openShortcutTargetAndWait();
 });
-
-await steamOverlay.openAndWait({ type: "store", appId: 480 });
-await steamOverlay.openAndWait({ type: "friends" });
-await steamOverlay.openAndWait({
-  type: "web",
-  url: "https://store.steampowered.com/app/480/",
-  modal: true
-});
-
-await steamOverlay.openCheckoutAndWait(() =>
-  backend.createSteamTransaction({ itemId: 100 })
-);
-
-// Optional: reuse the configured Shift+Tab target from a controller/menu button.
-steamOverlay.openShortcutTarget();
-await steamOverlay.openShortcutTargetAndWait();
-
-steamOverlay.close();
 ```
 
-Supported high-level targets include web pages, store pages, checkout,
-Friends/chat, profiles, players, community hubs, stats, achievements, and known
-dialog equivalents.
-`openAndWait(...)` validates those managed targets before preparing the native
-host and rejects raw native prompt routes; use `open({ ..., route: "native" })`
-only for explicit diagnostics.
+Supported managed targets include web pages, store pages, checkout, Friends/chat,
+profiles, players, community hubs, stats, achievements, user routes, and known
+dialog equivalents. `openAndWait(...)` validates those routes before preparing
+the native host and rejects raw native prompt routes. Use
+`open({ ..., route: "native" })` only when you are explicitly collecting
+diagnostic evidence for raw Steamworks overlay behavior.
 
 While inactive, the presenter stays transparent, click-through, non-focusable,
 and idle at `0` FPS. Passive Steam notifications use the same presenter without
-forcing a permanent Electron repaint loop. If macOS is locked or asleep,
-automatic notification priming skips native host work and retries on the next
-notification-producing call after the host becomes available. The default
-Shift+Tab bridge opens the Friends/chat route; set `overlayShortcut.target` to
-choose another verified target. The macOS matrix verifies every supported
-presenter-backed shortcut target, including Friends/chat, modal web, store,
-checkout approval routing, profile, players, community, stats, achievements,
-user, and dialog-equivalent routes, with target-aware lifecycle and presenter
-snapshot checks. Controller or in-game menu buttons can call
-`steamOverlay.openShortcutTarget()` to open that same configured managed target.
-Use `steamOverlay.openShortcutTargetAndWait()` when the button flow should
-resolve only after Steam closes and the presenter parks. Both helpers return
-`null` while the Steam overlay is already active/opening or when the shortcut
-bridge is disabled, so apps do not need to duplicate target resolver logic.
+forcing a permanent Electron repaint loop. The default Shift+Tab bridge opens a
+verified Friends/chat target; set `overlayShortcut.target` to choose another
+presenter-backed target. Controller or in-game menu buttons can call
+`steamOverlay.openShortcutTarget()` or `steamOverlay.openShortcutTargetAndWait()`
+to reuse that same target without duplicating resolver logic.
 
 On macOS, the managed helper fails fast before Steam overlay activation if the
 screen is locked or the display is asleep. Use
 `steamworks.isSteamOverlayNativeHostUnavailableError(error)` and check
-`error.reason` instead of waiting for an overlay timeout in that state. If the
-host is already unavailable, the managed Shift+Tab bridge treats the same state
-as a quiet no-op unless you provide an `overlayShortcut.onError` handler. Locked
-sessions can also report the display asleep; `macos-screen-locked` takes
-precedence, and the unavailable proof does not require `overlayEnabled=true`
-because no native host should be created.
+`error.reason` when you need to fall back to another purchase or browser flow.
 
+For checkout, use `steamOverlay.openCheckoutAndWait(() => startTxn())`.
 `MicroTxnAuthorizationResponse` is a purchase authorization event, not an
-overlay-close signal. Keep the managed presenter alive until Steam reports the
-overlay inactive. Real purchase UI and `InitTxn` proof require your own Steam
-app ID with configured products; App ID `480` is only for generic smoke tests.
-For smoke proof with a real product, keep private responses outside the repo and
-pass a local `InitTxn` JSON file through `STEAM_BRIDGE_SMOKE_CHECKOUT_JSON_FILE`
-or the macOS helper/matrix `--checkout-json-file` option. The macOS matrix can
-also run with `--app-id <your-app-id>`; its manifest records the expected app ID
-and `checkoutSource=json-file`, not the JSON path or transaction values.
-When the private product is expected to complete an approval prompt, add
-`--require-microtxn-callback` so the direct checkout case must record a
-`MicroTxnAuthorizationResponse` callback with a presenter snapshot.
-Shortcut checkout smoke cases use the same `checkoutTargetFromResult(...)`
-unwrapper, so JSON-file and direct checkout proof exercise one backend envelope
-parser.
+overlay-close signal, so keep the managed presenter alive until Steam reports
+the overlay inactive. App ID `480` proves generic checkout routing only; real
+purchase UI and `InitTxn` proof require your own Steam app ID with configured
+products.
+
+The full Electron overlay API and platform notes are in
+[`packages/steam-bridge/README.md`](packages/steam-bridge/README.md). Current
+Deck, Linux, macOS, Windows-helper, and real-purchase evidence is tracked in
+[`docs/research/cross-platform-overlay-status.md`](docs/research/cross-platform-overlay-status.md).
 
 ## Diagnostics
 
