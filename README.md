@@ -293,6 +293,11 @@ forcing a permanent Electron repaint loop. The default Shift+Tab bridge opens
 the Friends/chat route; set `overlayShortcut.target` to choose another verified
 target.
 
+On macOS, the managed helper fails fast before Steam overlay activation if the
+screen is locked or the display is asleep. Use
+`steamworks.isSteamOverlayNativeHostUnavailableError(error)` and check
+`error.reason` instead of waiting for an overlay timeout in that state.
+
 `MicroTxnAuthorizationResponse` is a purchase authorization event, not an
 overlay-close signal. Keep the managed presenter alive until Steam reports the
 overlay inactive. Real purchase UI and `InitTxn` proof require your own Steam
