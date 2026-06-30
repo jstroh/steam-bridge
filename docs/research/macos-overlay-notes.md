@@ -231,20 +231,21 @@ Verified:
   `active=false`, parked presenter evidence, focus return, zero managed overlay
   timing, and clean crash diagnostics.
 - A 2026-06-29 full macOS overlay matrix at
-  `/tmp/steam-bridge-macos-overlay-matrix-full-openwait-20260629-193357`
+  `/tmp/steam-bridge-macos-overlay-matrix-full-dialog-openwait-20260629-195732`
   passed 23 Steam-launched App ID `480` cases with the current full
   product-route shape. It covers web/store/Friends/dialog, profile, players,
-  community, stats, achievements, user chat, and user SteamID through managed
-  `openAndWait(...)`; passive progress/unlock toasts; synthetic checkout
-  approval-route plumbing; Shift+Tab shortcut open/close for Friends, web, and
-  store targets; and all known high-level dialog-equivalent routes. The run
-  started with `MACOS_OVERLAY_ENVIRONMENT {"screenLocked":false,"displayAsleep":false}`
-  from the new success-matrix preflight, did not update the stable shortcut, and
-  passed artifact summary checks for active/inactive callbacks where expected,
-  active shown presenter snapshots, one `gameoverlayui` target, focus return,
-  parked idle presenter state at `currentFps=0` after close, no post-close
-  pumping, zero managed overlay timing, interactive macOS host state, and clean
-  crash diagnostics.
+  community, stats, achievements, user chat, user SteamID, and all known
+  high-level dialog-equivalent routes through managed `openAndWait(...)`;
+  passive progress/unlock toasts; synthetic checkout approval-route plumbing;
+  and Shift+Tab shortcut open/close for Friends, web, and store targets. The
+  run started with
+  `MACOS_OVERLAY_ENVIRONMENT {"screenLocked":false,"displayAsleep":false}` from
+  the success-matrix preflight, did not update the stable shortcut, and passed
+  artifact summary checks for active/inactive callbacks where expected, active
+  shown presenter snapshots, one `gameoverlayui` target, focus return, parked
+  idle presenter state at `currentFps=0` after close, no post-close pumping,
+  zero managed overlay timing, interactive macOS host state, and clean crash
+  diagnostics.
 - A 2026-06-29 minimal macOS overlay matrix at
   `/tmp/steam-bridge-macos-overlay-matrix-minimal-helper-current-20260629-170723`
   re-ran the packaged helper after the source-level presenter-shape checks were
@@ -308,10 +309,11 @@ The current macOS result should therefore be treated as Steam launch, injection,
 identity alignment, native presenter startup, modal web overlay activation,
 close, app focus return, builder-facing `openAndWait(...)` parking coverage,
 synthetic checkout `openCheckoutAndWait(...)` approval-route plumbing, managed
-Shift+Tab shortcut routing, known presenter-backed web/dialog targets, and
-passive achievement-progress and unlock notifications. Real purchase-content
-and `InitTxn` coverage still need a real Steam app ID with a configured product
-before describing purchase overlay support as complete.
+Shift+Tab shortcut routing, known presenter-backed web/dialog targets through
+managed wait helpers, and passive achievement-progress and unlock
+notifications. Real purchase-content and `InitTxn` coverage still need a real
+Steam app ID with a configured product before describing purchase overlay
+support as complete.
 
 ## Primary References
 

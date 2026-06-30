@@ -177,21 +177,20 @@ timing hacks.
   route in the core suite, proving completion after Steam emits `active=false`
   and after the presenter parks, not merely initial activation.
 - A 2026-06-29 full macOS matrix at
-  `/tmp/steam-bridge-macos-overlay-matrix-full-openwait-20260629-193357`
-  passed 23 Steam-launched App ID `480` cases after adding the interactive
-  macOS environment preflight. The run verified web/store/Friends/dialog,
-  profile, players, community, stats, achievements, user chat, and user
-  SteamID through managed `openAndWait(...)`; passive progress/unlock toasts;
-  synthetic checkout approval-route plumbing; Shift+Tab shortcut open/close for
-  Friends, web, and store targets; and all known high-level dialog-equivalent
-  routes. The artifact summary passed with active/inactive callbacks where
-  expected, active shown presenter snapshots, one `gameoverlayui` target, app
-  focus return, parked idle state at `currentFps=0` after close, no post-close
-  pumping, zero managed overlay timing, interactive macOS host state, and clean
-  crash diagnostics. The same run exposed and then covered the runner behavior
-  for locked/asleep Macs: success matrices now preflight
-  `getMacOverlayEnvironment()` and stop before case launch if the session is not
-  interactive.
+  `/tmp/steam-bridge-macos-overlay-matrix-full-dialog-openwait-20260629-195732`
+  passed 23 Steam-launched App ID `480` cases after upgrading the full dialog
+  equivalent loop to managed `openAndWait(...)`. The run verified
+  web/store/Friends/dialog, profile, players, community, stats, achievements,
+  user chat, user SteamID, and every known high-level dialog-equivalent route
+  through managed wait helpers; passive progress/unlock toasts; synthetic
+  checkout approval-route plumbing; and Shift+Tab shortcut open/close for
+  Friends, web, and store targets. The artifact summary passed with
+  active/inactive callbacks where expected, active shown presenter snapshots,
+  one `gameoverlayui` target, app focus return, parked idle state at
+  `currentFps=0` after close, no post-close pumping, zero managed overlay
+  timing, interactive macOS host state, and clean crash diagnostics.
+  Success matrices also preflight `getMacOverlayEnvironment()` and stop before
+  case launch if the session is not interactive.
 - A 2026-06-29 full Deck Desktop overlay matrix passed 26 cases with 52
   screenshots under App ID `480`, covering managed web, store, Friends, profile,
   players, community, stats, achievements, user chat, known dialog-equivalent
@@ -691,9 +690,10 @@ Current evidence:
   callbacks where expected, active shown presenter snapshots, one
   `gameoverlayui` target, app focus return, clean crash diagnostics, an
   interactive macOS host state, and idle presenter parking at `currentFps=0`.
-  The current full macOS artifact covers 23 cases; product routes now use
-  managed `openAndWait(...)` proof where applicable, including profile, players,
-  community, stats, achievements, user chat, and user SteamID.
+  The current full macOS artifact covers 23 cases; product routes and all known
+  high-level dialog-equivalent routes now use managed `openAndWait(...)` proof
+  where applicable, including profile, players, community, stats, achievements,
+  user chat, and user SteamID.
   Non-store targets attach under game ID `480`; the Steam store surface can
   report the generated shortcut game ID while still emitting app ID `480`
   callbacks and passing the same close-and-park proof.

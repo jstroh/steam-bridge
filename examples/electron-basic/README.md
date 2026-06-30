@@ -175,6 +175,9 @@ web/store/Friends/dialog `openAndWait(...)` paths plus passive achievement
 toast verification; `core` adds passive unlock, synthetic checkout approval
 route, managed Shift+Tab shortcut routing, profile, community, stats,
 achievements, and user chat/profile routes.
+Use `--suite full` to add user SteamID plus every known high-level
+dialog-equivalent route through the same managed `openAndWait(...)` close/park
+proof.
 Use `--dry-run` to inspect the stable shortcut setup, env-file path, and helper commands
 without launching Steam.
 

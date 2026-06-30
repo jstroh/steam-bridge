@@ -492,12 +492,13 @@ can run `--close-probe`; it focuses the smoke app, sends the close input, and
 verifies active/inactive callbacks, app focus return, `openAndWait(...)`
 completion after parking, no post-close presenter pumping, and no crash
 diagnostics. A 2026-06-29 full macOS matrix at
-`/tmp/steam-bridge-macos-overlay-matrix-full-openwait-20260629-193357`
+`/tmp/steam-bridge-macos-overlay-matrix-full-dialog-openwait-20260629-195732`
 covers modal web, store, Friends/chat, dialog equivalents, profile, players,
-community, stats, achievements, user chat, and user SteamID through managed
-`openAndWait(...)`; synthetic checkout approval-route plumbing; passive
-notification toasts; and managed Shift+Tab shortcut open/close for Friends, web,
-and store targets. The summary gate requires active shown presenter snapshots,
+community, stats, achievements, user chat, user SteamID, and every known
+high-level dialog-equivalent route through managed `openAndWait(...)`;
+synthetic checkout approval-route plumbing; passive notification toasts; and
+managed Shift+Tab shortcut open/close for Friends, web, and store targets. The
+summary gate requires active shown presenter snapshots,
 an interactive macOS host environment for successful overlay cases, focus
 return, idle parking at `currentFps=0` after close, no post-close pumping, and
 clean crash diagnostics. It verifies macOS passive notification proof through

@@ -201,6 +201,18 @@ count_cases() {
   grep -c '^CASE ' || true
 }
 
+require_unique_case_ids() {
+  local output="$1"
+  local suite_name="$2"
+  local total unique
+  total="$(printf '%s\n' "$output" | awk '/^CASE / { print $2 }' | wc -l | tr -d ' ')"
+  unique="$(printf '%s\n' "$output" | awk '/^CASE / { print $2 }' | sort -u | wc -l | tr -d ' ')"
+  if [ "$total" != "$unique" ]; then
+    echo "Self-test failed: $suite_name matrix has duplicate case IDs." >&2
+    exit 1
+  fi
+}
+
 case_command() {
   local output="$1"
   local case_id="$2"
@@ -259,6 +271,9 @@ run_self_test() {
     echo "Self-test failed: full matrix case count changed." >&2
     exit 1
   fi
+  require_unique_case_ids "$minimal_output" "minimal"
+  require_unique_case_ids "$core_output" "core"
+  require_unique_case_ids "$full_output" "full"
 
   require_contains "$core_output" "--action presenter-web-open-and-wait" "core matrix must include web openAndWait."
   require_contains "$core_output" "--require-zero-managed-overlay-timing" "core matrix must require zero managed overlay timing."
@@ -290,6 +305,7 @@ run_self_test() {
   require_contains "$full_output" "--dialog Community" "full matrix must include Community dialog equivalent."
   require_contains "$full_output" "--dialog Stats" "full matrix must include Stats dialog equivalent."
   require_contains "$full_output" "--dialog Achievements" "full matrix must include Achievements dialog equivalent."
+  require_contains "$full_output" "--action presenter-dialog-auto-open-and-wait" "full matrix dialog equivalents must use openAndWait."
 
   web_case="$(case_command "$core_output" "01-web-openwait")"
   passive_case="$(case_command "$core_output" "05-passive-toast")"
@@ -993,7 +1009,7 @@ run_matrix() {
     return 0
   fi
 
-  run_case "14-user-steamid" \
+  run_case "17-user-steamid" \
     --action presenter-user-open-and-wait \
     --user-dialog steamid \
     --require-steam-launch \
@@ -1004,16 +1020,19 @@ run_matrix() {
     --require-no-crashes \
     --close-probe
 
+  local dialog_index=18
   for dialog in Friends Players Community OfficialGameGroup Stats Achievements; do
-    run_case "dialog-$dialog" \
-      --action presenter-dialog-auto \
+    run_case "$(printf '%02d-dialog-%s' "$dialog_index" "$dialog")" \
+      --action presenter-dialog-auto-open-and-wait \
       --dialog "$dialog" \
       --require-steam-launch \
       --require-overlay-injection \
       --require-overlay-enabled \
       --require-overlay-activated \
+      --require-event overlay:presenter-open-and-wait-start \
       --require-no-crashes \
       --close-probe
+    dialog_index=$((dialog_index + 1))
   done
 }
 
