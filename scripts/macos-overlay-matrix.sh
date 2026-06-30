@@ -1454,9 +1454,6 @@ write_case_launcher_env() {
   write_env_line "STEAM_BRIDGE_SMOKE_DIAGNOSTIC_DIR" "$diagnostic_dir"
   if [ -n "$native_host_backend" ]; then
     write_env_line "STEAM_BRIDGE_SMOKE_NATIVE_HOST_BACKEND" "$native_host_backend"
-    if [ "$native_host_backend" = "opengl" ]; then
-      write_env_line "STEAM_BRIDGE_DISABLE_OVERLAY_NEEDS_PRESENT" "1"
-    fi
   fi
   if [ -n "$env_window_mode" ]; then
     write_env_line "STEAM_BRIDGE_SMOKE_WINDOW_MODE" "$env_window_mode"
@@ -1530,9 +1527,6 @@ write_control_launcher_env() {
   write_env_line "STEAM_BRIDGE_SMOKE_OVERLAY_DIALOG" "OfficialGameGroup"
   if [ -n "$native_host_backend" ]; then
     write_env_line "STEAM_BRIDGE_SMOKE_NATIVE_HOST_BACKEND" "$native_host_backend"
-    if [ "$native_host_backend" = "opengl" ]; then
-      write_env_line "STEAM_BRIDGE_DISABLE_OVERLAY_NEEDS_PRESENT" "1"
-    fi
   fi
 }
 

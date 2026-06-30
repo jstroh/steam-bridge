@@ -272,13 +272,13 @@ programmatic shortcut open/wait, and passive achievement-progress all reported
 `overlayNeedsPresent=false`, `overlayNeedsPresentPollingEnabled=false`, zero
 managed overlay timing, and no fresh crash reports.
 A later locked/asleep matrix at
-`/tmp/steam-bridge-macos-overlay-matrix-20260630-143830` reran the current
-head after macOS was hardened to never call Steam's crash-prone
-`BOverlayNeedsPresent()` SDK path. It rebuilt and signed Electron `43.0.0`,
-reused the stable shortcut without a Steam restart, and passed all five
-unavailable cases again. The artifact summary and direct result inspection
-verified web open/wait, checkout-open, checkout-prepare, programmatic shortcut
-open/wait, and passive achievement-progress all reported `available=false`,
+`/tmp/steam-bridge-macos-overlay-matrix-20260630-144631` reran the current
+head after removing the smoke harness's legacy OpenGL-only needs-present
+disable env injection. It rebuilt and signed Electron `43.0.0`, reused the
+stable shortcut without a Steam restart, and passed all five unavailable cases
+again. The artifact summary and direct result inspection verified web
+open/wait, checkout-open, checkout-prepare, programmatic shortcut open/wait,
+and passive achievement-progress all reported `available=false`,
 `STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE`, reason `macos-screen-locked`,
 `nativeHostOpen=false`, no overlay activation, zero overlay targets, disabled
 needs-present polling, zero managed overlay timing, and no copied macOS crash

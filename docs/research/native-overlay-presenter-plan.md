@@ -1017,11 +1017,11 @@ Current evidence:
   activation, zero overlay targets, disabled needs-present polling, zero managed
   overlay timing, and no fresh crash reports.
   A later unavailable matrix at
-  `/tmp/steam-bridge-macos-overlay-matrix-20260630-143830` reran current head
-  after hardening both the JavaScript and native macOS paths to never call
-  `BOverlayNeedsPresent()`. It rebuilt and signed Electron `43.0.0`, reused the
-  stable shortcut without restarting Steam, passed all five unavailable cases,
-  and re-verified `available=false`,
+  `/tmp/steam-bridge-macos-overlay-matrix-20260630-144631` reran current head
+  after removing the smoke harness's legacy OpenGL-only
+  `STEAM_BRIDGE_DISABLE_OVERLAY_NEEDS_PRESENT=1` injection. It rebuilt and
+  signed Electron `43.0.0`, reused the stable shortcut without restarting
+  Steam, passed all five unavailable cases, and re-verified `available=false`,
   `STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE`, reason `macos-screen-locked`,
   `nativeHostOpen=false`, no Steam overlay activation, zero overlay targets,
   disabled needs-present polling, zero managed overlay timing, and no copied

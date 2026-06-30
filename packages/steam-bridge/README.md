@@ -743,10 +743,10 @@ All unavailable cases record the matching presenter
 Locked macOS sessions can also report the display asleep; `macos-screen-locked` takes
 precedence, and unavailable captures do not require `overlayEnabled=true`
 because no native host should be created. A current-head locked/asleep run at
-`/tmp/steam-bridge-macos-overlay-matrix-20260630-143830` rebuilt and signed
-Electron `43.0.0` after hardening macOS to never call
-`BOverlayNeedsPresent()`, reused the stable shortcut without restarting Steam,
-and passed all five unavailable cases with `available=false`,
+`/tmp/steam-bridge-macos-overlay-matrix-20260630-144631` rebuilt and signed
+Electron `43.0.0` after removing the legacy OpenGL-only needs-present disable
+env injection from the smoke harness, reused the stable shortcut without
+restarting Steam, and passed all five unavailable cases with `available=false`,
 `STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE`, reason `macos-screen-locked`,
 `nativeHostOpen=false`, no overlay activation, zero overlay targets, disabled
 needs-present polling, zero managed overlay timing, and no copied macOS crash
