@@ -350,6 +350,9 @@ and crash diagnostics.
 Use the smoke action `presenter-ready` for a cheap managed-overlay preflight:
 it attaches the Electron overlay manager, records native host availability, and
 does not activate Steam overlay UI.
+On macOS, that preflight intentionally does not require
+`overlayEnabled=true`; Steam can attach an inert `gameoverlayui` target before
+any `GameOverlayActivated(true)` callback.
 On macOS, `--require-no-crashes` also copies fresh
 `SteamBridgeSmoke*.ips` reports from `~/Library/Logs/DiagnosticReports` into
 the artifact's `macos-crash-reports/` directory and fails the run with a short

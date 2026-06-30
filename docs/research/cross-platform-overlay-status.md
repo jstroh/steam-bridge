@@ -88,6 +88,14 @@ all 24 Steam-launched App ID `480` cases while feeding checkout through a local
 for both direct checkout and `11-shortcut-checkout`, including managed
 Shift+Tab open/close, app focus return, parked zero-FPS presenter state, and
 clean crash diagnostics.
+A focused minimal run at
+`/tmp/steam-bridge-macos-overlay-matrix-ready-minimal-20260630-163718`
+then added `presenter-ready` as a live managed-overlay preflight. It proved
+Steam launch, overlay injection, native host availability, idle presenter state,
+zero managed overlay timing, and no overlay-active callback before the visible
+web/store/Friends/dialog/passive cases. The readiness case intentionally does
+not require `overlayEnabled=true`; on macOS Steam can keep one dormant
+`gameoverlayui` target attached before visible overlay activation.
 A fresh full run at
 `/tmp/steam-bridge-macos-overlay-matrix-full-json-after-reopen-20260630-040037`
 then rebuilt and signed the Electron `42.5.1` smoke package after Steam had been

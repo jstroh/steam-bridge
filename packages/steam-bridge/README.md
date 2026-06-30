@@ -462,6 +462,9 @@ The smoke app's `presenter-ready` action is the cheapest managed-overlay
 preflight: it creates the Electron overlay manager, records
 `overlay:presenter-ready`, and captures native host availability without
 activating Steam overlay UI.
+On macOS this is a pre-activation proof, so it should require Steam launch,
+overlay injection, native host availability, idle presenter state, and no
+overlay-active callback, but not `overlayEnabled=true`.
 They can also verify expected
 managed overlay fail-fast artifacts with `--require-action-error-code` and
 `--require-action-error-reason`; add

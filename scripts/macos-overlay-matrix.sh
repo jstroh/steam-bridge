@@ -87,7 +87,8 @@ Options:
   --help                         Show this help.
 
 Suites:
-  minimal  web/store/Friends/dialog openAndWait plus passive achievement toast.
+  minimal  readiness preflight, web/store/Friends/dialog openAndWait,
+           plus passive achievement toast.
   core     minimal plus passive unlock, synthetic checkout approval route,
            all managed shortcut targets, profile, community, stats,
            achievements, and user chat/profile routes.
@@ -465,15 +466,15 @@ run_self_test() {
       --require-microtxn-callback
   )"
 
-  if [ "$(printf '%s\n' "$minimal_output" | count_cases)" != "5" ]; then
+  if [ "$(printf '%s\n' "$minimal_output" | count_cases)" != "6" ]; then
     echo "Self-test failed: minimal matrix case count changed." >&2
     exit 1
   fi
-  if [ "$(printf '%s\n' "$core_output" | count_cases)" != "25" ]; then
+  if [ "$(printf '%s\n' "$core_output" | count_cases)" != "26" ]; then
     echo "Self-test failed: core matrix case count changed." >&2
     exit 1
   fi
-  if [ "$(printf '%s\n' "$full_output" | count_cases)" != "43" ]; then
+  if [ "$(printf '%s\n' "$full_output" | count_cases)" != "44" ]; then
     echo "Self-test failed: full matrix case count changed." >&2
     exit 1
   fi
@@ -481,15 +482,15 @@ run_self_test() {
     echo "Self-test failed: checkout matrix case count changed." >&2
     exit 1
   fi
-  if [ "$(printf '%s\n' "$persistent_output" | count_cases)" != "43" ]; then
+  if [ "$(printf '%s\n' "$persistent_output" | count_cases)" != "44" ]; then
     echo "Self-test failed: persistent matrix case count changed." >&2
     exit 1
   fi
-  if [ "$(printf '%s\n' "$unavailable_output" | count_cases)" != "5" ]; then
+  if [ "$(printf '%s\n' "$unavailable_output" | count_cases)" != "6" ]; then
     echo "Self-test failed: unavailable matrix case count changed." >&2
     exit 1
   fi
-  if [ "$(printf '%s\n' "$wait_output" | count_cases)" != "5" ]; then
+  if [ "$(printf '%s\n' "$wait_output" | count_cases)" != "6" ]; then
     echo "Self-test failed: wait-for-interactive dry-run matrix case count changed." >&2
     exit 1
   fi
@@ -501,6 +502,8 @@ run_self_test() {
   require_unique_case_ids "$persistent_output" "persistent"
   require_unique_case_ids "$unavailable_output" "unavailable"
 
+  require_contains "$core_output" "CASE 00-presenter-ready" "core matrix must include the managed presenter readiness preflight."
+  require_contains "$core_output" "--action presenter-ready" "core matrix must run the readiness smoke action."
   require_contains "$core_output" "--action presenter-web-open-and-wait" "core matrix must include web openAndWait."
   require_contains "$core_output" "--require-zero-managed-overlay-timing" "core matrix must require zero managed overlay timing."
   require_contains "$core_output" "--steam-bridge-launch-env-file=/tmp/steam-bridge-macos-smoke.env" "matrix shortcut must use the stable launcher env file."
@@ -550,6 +553,8 @@ run_self_test() {
   require_contains "$persistent_output" "--control-server" "persistent matrix must launch the smoke control server."
   require_contains "$persistent_output" "--mode control-action" "persistent matrix must drive actions through the control client."
   require_contains "$persistent_output" "CONTROL /tmp/steam-bridge-macos-overlay-matrix-self-test/persistent-control.json" "persistent matrix must use an artifact-scoped control file."
+  require_contains "$persistent_output" "CASE 00-persistent-presenter-ready" "persistent matrix must include managed presenter readiness preflight."
+  require_contains "$persistent_output" "--action presenter-ready" "persistent matrix must run the readiness smoke action."
   require_contains "$persistent_output" "--action presenter-web-open-and-wait" "persistent matrix must include web openAndWait."
   require_contains "$persistent_output" "--action presenter-store-open-and-wait" "persistent matrix must include store openAndWait."
   require_contains "$persistent_output" "--action presenter-friends-open-and-wait" "persistent matrix must include Friends openAndWait."
@@ -598,6 +603,8 @@ run_self_test() {
   require_contains "$full_output" "CASE 40-shortcut-achievements-openwait" "full matrix must include programmatic achievements shortcut openAndWait routing."
   require_contains "$full_output" "CASE 41-shortcut-user-chat-openwait" "full matrix must include programmatic user shortcut openAndWait routing."
   require_contains "$full_output" "CASE 42-shortcut-dialog-openwait" "full matrix must include programmatic dialog shortcut openAndWait routing."
+  require_contains "$unavailable_output" "CASE 00-unavailable-presenter-ready" "unavailable matrix must include readiness no-host proof."
+  require_contains "$unavailable_output" "--action presenter-ready" "unavailable matrix must run the readiness smoke action."
   require_contains "$unavailable_output" "--action presenter-web-open-and-wait" "unavailable matrix must include web openAndWait fail-fast."
   require_contains "$unavailable_output" "--action presenter-checkout" "unavailable matrix must include checkout fail-fast."
   require_contains "$unavailable_output" "CASE 03-unavailable-checkout-prepare" "unavailable matrix must include checkout prepare-only fail-fast."
@@ -612,6 +619,7 @@ run_self_test() {
   require_contains "$unavailable_output" "--require-native-host-unavailable-reason macos-screen-locked" "unavailable matrix must require the presenter unavailable reason."
   require_contains "$unavailable_output" "--require-no-overlay-activation" "unavailable matrix must reject Steam overlay activation."
 
+  ready_case="$(case_command "$core_output" "00-presenter-ready")"
   web_case="$(case_command "$core_output" "01-web-openwait")"
   shortcut_friends_case="$(case_command "$core_output" "08-shortcut-friends")"
   passive_case="$(case_command "$core_output" "05-passive-toast")"
@@ -635,6 +643,7 @@ run_self_test() {
   full_shortcut_checkout_open_wait_case="$(case_command "$full_output" "35-shortcut-checkout-openwait")"
   full_shortcut_user_open_wait_case="$(case_command "$full_output" "41-shortcut-user-chat-openwait")"
   full_shortcut_dialog_open_wait_case="$(case_command "$full_output" "42-shortcut-dialog-openwait")"
+  persistent_ready_case="$(case_command "$persistent_output" "00-persistent-presenter-ready")"
   persistent_web_case="$(case_command "$persistent_output" "01-persistent-web-openwait")"
   persistent_shortcut_friends_case="$(case_command "$persistent_output" "08-persistent-shortcut-friends")"
   persistent_checkout_prepare_case="$(case_command "$persistent_output" "07b-persistent-checkout-prepare")"
@@ -642,11 +651,18 @@ run_self_test() {
   persistent_shortcut_checkout_open_wait_case="$(case_command "$persistent_output" "35-persistent-shortcut-checkout-openwait")"
   persistent_shortcut_user_open_wait_case="$(case_command "$persistent_output" "41-persistent-shortcut-user-chat-openwait")"
   persistent_shortcut_dialog_open_wait_case="$(case_command "$persistent_output" "42-persistent-shortcut-dialog-openwait")"
+  unavailable_ready_case="$(case_command "$unavailable_output" "00-unavailable-presenter-ready")"
   unavailable_web_case="$(case_command "$unavailable_output" "01-unavailable-web-openwait")"
   unavailable_checkout_case="$(case_command "$unavailable_output" "02-unavailable-checkout")"
   unavailable_checkout_prepare_case="$(case_command "$unavailable_output" "03-unavailable-checkout-prepare")"
   unavailable_shortcut_case="$(case_command "$unavailable_output" "04-unavailable-shortcut-openwait")"
   unavailable_passive_case="$(case_command "$unavailable_output" "05-unavailable-passive-toast")"
+  require_contains "$ready_case" "--require-event overlay:presenter-ready" "readiness preflight should require the readiness event."
+  require_contains "$ready_case" "--require-no-overlay-activation" "readiness preflight should reject modal overlay activation."
+  require_contains "$ready_case" "--require-idle-presenter" "readiness preflight should require idle presenter state."
+  require_contains "$ready_case" "--require-electron-overlay" "readiness preflight should require managed Electron overlay diagnostics."
+  require_not_contains "$ready_case" "--require-overlay-enabled" "readiness preflight must not require overlayEnabled before activating Steam UI."
+  require_not_contains "$ready_case" "--close-probe" "readiness preflight must not run an overlay close probe."
   require_contains "$web_case" "--web-modal true" "web proof should use modal Steam web overlay."
   require_contains "$web_case" "--close-input web" "active web proof should close through the Steam web close control."
   require_not_contains "$shortcut_friends_case" "--require-overlay-enabled" "pre-open shortcut proof must not require overlayEnabled before the shortcut opens the overlay."
@@ -695,6 +711,12 @@ run_self_test() {
   require_contains "$full_shortcut_checkout_open_wait_case" "--checkout-transaction-id 123456789" "full programmatic checkout shortcut openAndWait proof should use checkout approval-route plumbing."
   require_contains "$full_shortcut_user_open_wait_case" "--user-dialog chat" "full programmatic user shortcut openAndWait proof should cover the chat route."
   require_contains "$full_shortcut_dialog_open_wait_case" "--dialog OfficialGameGroup" "full programmatic dialog shortcut openAndWait proof should cover the dialog-equivalent route."
+  require_contains "$persistent_ready_case" "--require-event overlay:presenter-ready" "persistent readiness preflight should require the readiness event."
+  require_contains "$persistent_ready_case" "--require-no-overlay-activation" "persistent readiness preflight should reject modal overlay activation."
+  require_contains "$persistent_ready_case" "--require-idle-presenter" "persistent readiness preflight should require idle presenter state."
+  require_contains "$persistent_ready_case" "--require-electron-overlay" "persistent readiness preflight should require managed Electron overlay diagnostics."
+  require_not_contains "$persistent_ready_case" "--require-overlay-enabled" "persistent readiness preflight must not require overlayEnabled before activating Steam UI."
+  require_not_contains "$persistent_ready_case" "--close-probe" "persistent readiness preflight must not run an overlay close probe."
   require_contains "$persistent_web_case" "--close-probe" "persistent web proof should close and verify parked state."
   require_contains "$persistent_web_case" "--close-input web" "persistent web proof should close through the Steam web close control."
   require_contains "$persistent_web_case" "--require-zero-managed-overlay-timing" "persistent web proof should require zero managed overlay timing."
@@ -709,6 +731,12 @@ run_self_test() {
   require_contains "$persistent_shortcut_checkout_open_wait_case" "--checkout-transaction-id 123456789" "programmatic checkout shortcut openAndWait proof should use checkout approval-route plumbing."
   require_contains "$persistent_shortcut_user_open_wait_case" "--user-dialog chat" "programmatic user shortcut openAndWait proof should cover the chat route."
   require_contains "$persistent_shortcut_dialog_open_wait_case" "--dialog OfficialGameGroup" "programmatic dialog shortcut openAndWait proof should cover the dialog-equivalent route."
+  require_not_contains "$unavailable_ready_case" "--close-probe" "unavailable readiness case must not require close proof."
+  require_not_contains "$unavailable_ready_case" "--require-overlay-enabled" "unavailable readiness case must not require overlay readiness while macOS is unavailable."
+  require_not_contains "$unavailable_ready_case" "--require-action-error-code" "unavailable readiness case should report availability, not fail the action."
+  require_contains "$unavailable_ready_case" "--require-event overlay:presenter-ready" "unavailable readiness case must require the readiness event."
+  require_contains "$unavailable_ready_case" "--require-native-host-unavailable-reason macos-screen-locked" "unavailable readiness case must assert the presenter unavailable reason."
+  require_contains "$unavailable_ready_case" "--require-no-overlay-activation" "unavailable readiness case must reject Steam overlay activation."
   require_not_contains "$unavailable_web_case" "--close-probe" "unavailable web case must not require close proof."
   require_not_contains "$unavailable_checkout_case" "--close-probe" "unavailable checkout case must not require close proof."
   require_not_contains "$unavailable_checkout_prepare_case" "--close-probe" "unavailable checkout prepare case must not require close proof."
@@ -1910,6 +1938,16 @@ run_persistent_matrix() {
       "$@"
   }
 
+  persistent_run_case "00-persistent-presenter-ready" \
+    --action presenter-ready \
+    --require-steam-launch \
+    --require-overlay-injection \
+    --require-no-overlay-activation \
+    --require-idle-presenter \
+    --require-electron-overlay \
+    --require-event overlay:presenter-ready \
+    --require-no-crashes
+
   persistent_run_active_case "01-persistent-web-openwait" \
     --action presenter-web-open-and-wait \
     --web-url "https://store.steampowered.com/app/$app_id/" \
@@ -2197,6 +2235,16 @@ run_matrix() {
     return $?
   fi
 
+  run_case "00-presenter-ready" \
+    --action presenter-ready \
+    --require-steam-launch \
+    --require-overlay-injection \
+    --require-no-overlay-activation \
+    --require-idle-presenter \
+    --require-electron-overlay \
+    --require-event overlay:presenter-ready \
+    --require-no-crashes
+
   run_case "01-web-openwait" \
     --action presenter-web-open-and-wait \
     --web-url "https://store.steampowered.com/app/$app_id/" \
@@ -2482,6 +2530,15 @@ run_matrix() {
 run_unavailable_matrix() {
   local reason
   reason="${expected_native_host_unavailable_reason:?missing expected native host unavailable reason}"
+
+  run_case "00-unavailable-presenter-ready" \
+    --action presenter-ready \
+    --require-steam-launch \
+    --require-overlay-injection \
+    --require-native-host-unavailable-reason "$reason" \
+    --require-no-overlay-activation \
+    --require-event overlay:presenter-ready \
+    --require-no-crashes
 
   run_case "01-unavailable-web-openwait" \
     --action presenter-web-open-and-wait \

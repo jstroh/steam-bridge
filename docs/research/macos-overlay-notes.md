@@ -725,6 +725,16 @@ achievement-progress and unlock notifications. Real purchase-content coverage
 still needs a real Steam app ID with a configured product before describing
 purchase overlay support as complete.
 
+A 2026-06-30 focused minimal macOS run at
+`/tmp/steam-bridge-macos-overlay-matrix-ready-minimal-20260630-163718`
+added the managed `presenter-ready` preflight to the live matrix. It verified
+Steam launch, overlay injection, native host availability, zero managed overlay
+timing, idle transparent presenter state, and no overlay-active callback before
+running the web, store, Friends, dialog-equivalent, and passive-toast cases.
+That preflight can report `overlayEnabled=false` while Steam still has one
+dormant `gameoverlayui` target attached to the smoke process; the activation
+callback stream remains the proof of whether visible Steam overlay UI opened.
+
 ## Primary References
 
 - Steam Microtransactions Implementation Guide:

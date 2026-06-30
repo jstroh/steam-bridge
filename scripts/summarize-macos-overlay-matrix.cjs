@@ -20,6 +20,7 @@ const OPEN_AND_WAIT_ACTIONS = new Set([
   "presenter-user-open-and-wait",
   "presenter-shortcut-open-and-wait"
 ]);
+const READINESS_ACTIONS = new Set(["presenter-ready"]);
 const PASSIVE_NOTIFICATION_ACTIONS = new Map([
   [
     "presenter-achievement-progress",
@@ -257,6 +258,7 @@ function verifyCase(caseId, metadata, result, lifecycle, macosCrashReports, fail
   const overlayGameIds = collectOverlayGameIds(overlayProcesses);
   const passiveConfig = PASSIVE_NOTIFICATION_ACTIONS.get(actionName);
   const isPassive = Boolean(passiveConfig);
+  const isReadinessPreflight = READINESS_ACTIONS.has(actionName);
   const expectedActionError = expectedActionErrorFromMetadata(metadata);
   const hasExpectedActionError = Boolean(expectedActionError.code || expectedActionError.reason);
   const expectedNativeHostUnavailableActionError =
@@ -277,7 +279,13 @@ function verifyCase(caseId, metadata, result, lifecycle, macosCrashReports, fail
     metadata.expectedMacosNeedsPresentPollingDisabled === true;
   const activated = lifecycleEntries.some(isLifecycleOverlayActiveEvent);
   const closed = hasInactiveAfterActive(lifecycleEntries);
-  const parked = hasExpectedActionError || checkoutPrepareOnly
+  const readiness = hasExpectedActionError
+    ? { required: false, ok: true, parked: false }
+    : verifyPresenterReadiness(caseId, actionName, resultEvents, lifecycleEntries, nativePresenter, nativeHostAvailability, {
+        expectedNativeHostUnavailableReason,
+        failures
+      });
+  const parked = hasExpectedActionError || checkoutPrepareOnly || isReadinessPreflight
     ? false
     : verifyLifecycleParking(caseId, lifecycleEntries, isPassive, failures);
   const zeroTiming = Boolean(
@@ -343,7 +351,8 @@ function verifyCase(caseId, metadata, result, lifecycle, macosCrashReports, fail
   expect(readOkValue(steam.steamDeck) === false, `${caseId}: Steam Deck flag is false on macOS`, failures);
   expect(readOkValue(steam.bigPicture) === false, `${caseId}: Big Picture flag is false on macOS`, failures);
   const preOpenShortcutAction = actionName === "presenter-shortcut";
-  if (!expectedNativeHostUnavailableReason && !preOpenShortcutAction) {
+  const preActivationAction = preOpenShortcutAction || isReadinessPreflight;
+  if (!expectedNativeHostUnavailableReason && !preActivationAction) {
     expect(readOkValue(steam.overlayEnabled) === true, `${caseId}: Steam overlay enabled`, failures);
   }
   if (requireMacosNeedsPresentPollingDisabled) {
@@ -406,7 +415,14 @@ function verifyCase(caseId, metadata, result, lifecycle, macosCrashReports, fail
 
   expect(overlayProcesses.available === true, `${caseId}: overlay process diagnostics available`, failures);
   expect(overlayProcesses.platform === "darwin", `${caseId}: overlay process platform is darwin`, failures);
-  if (expectedNoOverlayActivation && !checkoutPrepareOnly) {
+  if (isReadinessPreflight && !expectedNativeHostUnavailableReason) {
+    expect(overlayTargets <= 1, `${caseId}: zero or one dormant gameoverlayui target during readiness preflight`, failures);
+    for (const target of Array.isArray(overlayProcesses.gameoverlayui) ? overlayProcesses.gameoverlayui : []) {
+      expect(target.gameId != null, `${caseId}: gameoverlayui game ID is recorded`, failures);
+      expect(String(target.gameId) === expectedAppIdText, `${caseId}: gameoverlayui game ID is ${expectedAppId}`, failures);
+      expect(Number(target.targetPid) === Number(processInfo.pid), `${caseId}: gameoverlayui targets the smoke process`, failures);
+    }
+  } else if (expectedNoOverlayActivation && !checkoutPrepareOnly) {
     expect(overlayTargets === 0, `${caseId}: no gameoverlayui target while overlay activation is expected to be skipped`, failures);
   } else if (checkoutPrepareOnly) {
     expect(overlayTargets <= 1, `${caseId}: zero or one gameoverlayui target while checkout is only prepared`, failures);
@@ -445,6 +461,9 @@ function verifyCase(caseId, metadata, result, lifecycle, macosCrashReports, fail
   } else if (checkoutPrepareOnly) {
     verifyNoOverlayActivation(caseId, resultEvents, lifecycleEntries, failures);
     expect(checkoutPrepared.ok, `${caseId}: checkout presenter prepared and released without opening overlay`, failures);
+  } else if (isReadinessPreflight) {
+    verifyNoOverlayActivation(caseId, resultEvents, lifecycleEntries, failures);
+    expect(readiness.ok, `${caseId}: presenter readiness preflight passed`, failures);
   } else {
     expect(activated, `${caseId}: overlay active callback observed`, failures);
     expect(closed, `${caseId}: overlay inactive callback observed after active`, failures);
@@ -517,7 +536,7 @@ function verifyCase(caseId, metadata, result, lifecycle, macosCrashReports, fail
     action: actionName,
     activated,
     closed,
-    parked: checkoutPrepareOnly ? checkoutPrepared.parked === true : parked,
+    parked: isReadinessPreflight ? readiness.parked === true : checkoutPrepareOnly ? checkoutPrepared.parked === true : parked,
     passive: isPassive,
     overlayTargets,
     overlayGameIds,
@@ -541,6 +560,98 @@ function verifyCase(caseId, metadata, result, lifecycle, macosCrashReports, fail
 
 function isStoreOverlayAction(actionName) {
   return actionName === "presenter-store" || actionName === "presenter-store-open-and-wait";
+}
+
+function verifyPresenterReadiness(caseId, actionName, resultEvents, entries, finalPresenter, finalAvailability, options = {}) {
+  const failures = Array.isArray(options.failures) ? options.failures : [];
+  if (!READINESS_ACTIONS.has(actionName)) {
+    return { required: false, ok: true, parked: false };
+  }
+
+  const failuresBefore = failures.length;
+  const event = [...resultEvents, ...entries].find(
+    (entry) => entry && (entry.type === "overlay:presenter-ready" || entry.type === "event:overlay:presenter-ready")
+  );
+  if (!event) {
+    failures.push(`${caseId}: missing overlay:presenter-ready event`);
+  }
+
+  const payload = objectOrEmpty(event && event.payload);
+  const eventPresenter = objectField(payload, "presenter");
+  const eventAvailability = objectField(payload, "nativeHostAvailability");
+  const presenter = eventPresenter || finalPresenter;
+  const availability = eventAvailability || finalAvailability;
+  let parked = false;
+
+  if (!presenter) {
+    failures.push(`${caseId}: presenter readiness snapshot available`);
+  } else if (options.expectedNativeHostUnavailableReason) {
+    verifyNativeHostUnavailablePresenter(caseId, presenter, options.expectedNativeHostUnavailableReason, failures);
+  } else {
+    const beforeParkedFailures = failures.length;
+    expectParkedPresenter(caseId, presenter, "presenter readiness", failures);
+    parked = failures.length === beforeParkedFailures;
+  }
+
+  if (options.expectedNativeHostUnavailableReason) {
+    verifyNativeHostUnavailableAvailability(
+      caseId,
+      availability,
+      options.expectedNativeHostUnavailableReason,
+      failures
+    );
+  } else {
+    verifyNativeHostAvailableAvailability(caseId, availability, failures);
+  }
+
+  return { required: true, ok: failures.length === failuresBefore, parked };
+}
+
+function verifyNativeHostAvailableAvailability(caseId, availability, failures) {
+  expect(Boolean(availability), `${caseId}: native host availability snapshot available`, failures);
+  if (!availability) {
+    return;
+  }
+
+  expect(availability.available === true, `${caseId}: native host availability reports available`, failures);
+  expect(
+    availability.code == null,
+    `${caseId}: native host availability code expected none, got ${formatValue(availability.code)}`,
+    failures
+  );
+  expect(
+    availability.reason == null,
+    `${caseId}: native host availability reason expected none, got ${formatValue(availability.reason)}`,
+    failures
+  );
+  expect(
+    availability.nativeHostUnavailableReason == null,
+    `${caseId}: native host availability unavailable reason expected none, got ${formatValue(
+      availability.nativeHostUnavailableReason
+    )}`,
+    failures
+  );
+
+  const availabilitySnapshot = objectField(availability, "snapshot");
+  expect(Boolean(availabilitySnapshot), `${caseId}: native host availability presenter snapshot available`, failures);
+  if (availabilitySnapshot) {
+    expectParkedPresenter(caseId, availabilitySnapshot, "native host availability", failures);
+  }
+
+  const environment = objectField(availability, "macOverlayEnvironment");
+  expect(Boolean(environment), `${caseId}: native host availability macOS environment available`, failures);
+  if (environment) {
+    expect(
+      environment.screenLocked === false,
+      `${caseId}: native host availability screen locked expected false, got ${formatValue(environment.screenLocked)}`,
+      failures
+    );
+    expect(
+      environment.displayAsleep === false,
+      `${caseId}: native host availability display asleep expected false, got ${formatValue(environment.displayAsleep)}`,
+      failures
+    );
+  }
 }
 
 function collectOverlayGameIds(overlayProcesses) {
@@ -1350,7 +1461,7 @@ function runSelfTest() {
   try {
     createSelfTestFixture(fixtureRoot);
     const summary = summarizeMatrixArtifacts(fixtureRoot);
-    assert.equal(summary.caseSummaries.length, 10, "summary self-test should include ten cases");
+    assert.equal(summary.caseSummaries.length, 12, "summary self-test should include twelve cases");
     createPersistentSelfTestFixture(persistentFixtureRoot);
     const persistentSummary = summarizeMatrixArtifacts(persistentFixtureRoot);
     assert.equal(persistentSummary.caseSummaries.length, 2, "persistent summary self-test should include two cases");
@@ -1589,6 +1700,29 @@ function createSelfTestFixture(root) {
 
   const cases = [
     {
+      caseId: "00-presenter-ready",
+      action: "presenter-ready",
+      resultPresenter: parkedPresenterFixture(4),
+      overlayTargets: [overlayProcessFixture(9001)],
+      requireNoOverlayActivation: true,
+      command: [
+        "--action",
+        "presenter-ready",
+        "--require-event",
+        "overlay:presenter-ready",
+        "--require-no-overlay-activation"
+      ],
+      lifecycle: [
+        {
+          type: "event:overlay:presenter-ready",
+          payload: {
+            presenter: parkedPresenterFixture(4),
+            nativeHostAvailability: nativeHostAvailabilityFixture(parkedPresenterFixture(4))
+          }
+        }
+      ]
+    },
+    {
       caseId: "01-web-openwait",
       action: "presenter-web-open-and-wait",
       resultPresenter: activePresenterFixture(10),
@@ -1794,6 +1928,43 @@ function createSelfTestFixture(root) {
       lifecycle: []
     },
     {
+      caseId: "07b-presenter-ready-unavailable",
+      action: "presenter-ready",
+      command: [
+        "--action",
+        "presenter-ready",
+        "--require-event",
+        "overlay:presenter-ready",
+        "--require-native-host-unavailable-reason",
+        "macos-screen-locked",
+        "--require-no-overlay-activation"
+      ],
+      resultPresenter: nativeHostUnavailablePresenterFixture("macos-screen-locked", {
+        screenLocked: true,
+        displayAsleep: true
+      }),
+      overlayTargets: [],
+      requireNativeHostUnavailableReason: "macos-screen-locked",
+      requireNoOverlayActivation: true,
+      lifecycle: [
+        {
+          type: "event:overlay:presenter-ready",
+          payload: {
+            presenter: nativeHostUnavailablePresenterFixture("macos-screen-locked", {
+              screenLocked: true,
+              displayAsleep: true
+            }),
+            nativeHostAvailability: nativeHostAvailabilityFixture(
+              nativeHostUnavailablePresenterFixture("macos-screen-locked", {
+                screenLocked: true,
+                displayAsleep: true
+              })
+            )
+          }
+        }
+      ]
+    },
+    {
       caseId: "08-shortcut-openwait-unavailable",
       action: "presenter-shortcut-open-and-wait",
       shortcutTarget: "web",
@@ -1903,7 +2074,7 @@ function createSelfTestFixture(root) {
     result.snapshot.launch.env.SteamGameId = expectedAppIdText;
     result.snapshot.launch.env.SteamOverlayGameId = expectedAppIdText;
     result.snapshot.steam.appId.value = expectedAppId;
-    if (fixture.action === "presenter-shortcut") {
+    if (fixture.action === "presenter-shortcut" || fixture.action === "presenter-ready") {
       result.snapshot.steam.overlayEnabled.value = false;
     }
     if (fixture.actionError) {

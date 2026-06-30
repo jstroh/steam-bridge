@@ -153,13 +153,15 @@ dist/electron-smoke/aarch64-apple-darwin/SteamBridgeSmoke-darwin-arm64/macos-ele
   --action presenter-ready \
   --require-steam-launch \
   --require-overlay-injection \
-  --require-overlay-enabled \
   --require-electron-overlay \
   --require-presenter-mode persistent \
   --require-idle-presenter \
   --require-no-overlay-activation \
   --require-no-crashes
 ```
+
+On macOS, this preflight does not require `overlayEnabled=true`: Steam may
+attach a dormant `gameoverlayui` target before any visible overlay activation.
 
 `--close-probe` is a helper-runner check, not an app launch option. It keeps the
 smoke app open after the initial result, leaves the active Steam overlay focused
