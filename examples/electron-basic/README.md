@@ -67,7 +67,9 @@ executable and moves Electron to `SteamBridgeSmoke.electron`. Steam still
 launches the normal `.app` executable path, while the launcher sets the Steam app
 and overlay game IDs before `exec`ing Electron. The launcher and entitlement
 files come from the published `steam-bridge` package templates, so real apps can
-reuse the same shape without copying smoke-app-specific files.
+reuse the same shape without copying smoke-app-specific files. The example does
+not keep a local macOS entitlement plist; the package CLI supplies the template
+that real apps should reference from their own build pipeline.
 
 ## Autorun Logs
 

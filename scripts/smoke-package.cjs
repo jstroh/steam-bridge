@@ -51,11 +51,9 @@ function runMacosEntitlementsStaticChecks() {
   const entitlementsPath = path.join(packageRoot, "templates", "entitlements.steam.macos.plist");
   const exampleEntitlementsPath = path.join(repoRoot, "examples", "electron-basic", "entitlements.steam.macos.plist");
   const entitlements = fs.readFileSync(entitlementsPath, "utf8");
-  const exampleEntitlements = fs.readFileSync(exampleEntitlementsPath, "utf8");
-  assert.equal(
-    exampleEntitlements,
-    entitlements,
-    "Electron example entitlements must match the published steam-bridge macOS template"
+  assert.ok(
+    !fs.existsSync(exampleEntitlementsPath),
+    "Electron example must use the published steam-bridge macOS entitlement template instead of carrying a local copy"
   );
   for (const expected of [
     "com.apple.security.cs.allow-dyld-environment-variables",
