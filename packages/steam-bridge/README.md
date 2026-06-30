@@ -223,14 +223,17 @@ shortcut targets, passive notifications, checkout approval routing,
 all high-level dialog-equivalent routes, close/back-to-app proof, and crash
 diagnostics. Before launching Steam, that matrix verifies both macOS smoke
 executables are arm64-only, validly signed, carry the Steam overlay
-entitlements, and omit App Sandbox.
+entitlements, and omit App Sandbox. The package also publishes the same check as
+`steam-bridge-verify-macos-signing`; run
+`npx steam-bridge-verify-macos-signing --app-exe <YourApp.app/Contents/MacOS/YourApp>`
+against the final signed app shape before Steam overlay testing.
 
 The manager owns a reusable native presenter, keeps it passive and click-through
 while idle, polls Steam overlay state cheaply, and only pumps frames when Steam
 reports `overlayNeedsPresent` or an overlay is being opened/active. Automatic
 passive notification priming performs one wake-up/poll and then waits for
 Steam's `overlayNeedsPresent` signal before entering the notification frame
-loop, so quiet achievement/stat calls do not start a fixed high-FPS boost. It also
+pump loop, so quiet achievement/stat calls do not start a fixed high-FPS boost. It also
 installs a default Electron `Shift+Tab` shortcut bridge that opens the verified
 Friends/chat presenter route without asking Steam to hook Chromium child
 processes; pass `overlayShortcut: false` to disable it, or provide
@@ -628,6 +631,11 @@ game IDs before Electron starts.
 For shipped apps, use your normal Apple signing and notarization pipeline with
 those same entitlements on the launched app process and the executable it
 `exec`s.
+The package verifier can check that final shape:
+
+```sh
+npx steam-bridge-verify-macos-signing --app-exe <YourApp.app/Contents/MacOS/YourApp>
+```
 
 Use the repository-level matrix runner when you need to repeat the full Deck
 Desktop product proof instead of hand-running each case:

@@ -377,5 +377,7 @@ Native presenter design notes are tracked in
   the live macOS overlay matrix, and the matrix verifies both smoke executables
   are arm64-only and signed with those entitlements before it launches Steam, so
   these packaging requirements are covered by the same Steam-launched proof as
-  the public overlay helpers.
+  the public overlay helpers. Published package consumers can run
+  `npx steam-bridge-verify-macos-signing --app-exe <YourApp.app/Contents/MacOS/YourApp>`
+  against their shipped launcher shape.
 - Steam Bridge does not vendor the Steamworks SDK or Valve redistributables.

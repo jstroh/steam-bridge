@@ -71,8 +71,15 @@ function runMacosEntitlementsStaticChecks() {
 }
 
 function runMacosPackageSigningStaticChecks() {
+  const packageJson = JSON.parse(fs.readFileSync(path.join(packageRoot, "package.json"), "utf8"));
   const packagerScript = fs.readFileSync(path.join(repoRoot, "scripts", "package-electron-example.cjs"), "utf8");
   const matrixScript = fs.readFileSync(path.join(repoRoot, "scripts", "macos-overlay-matrix.sh"), "utf8");
+  assert.equal(
+    packageJson.bin?.["steam-bridge-verify-macos-signing"],
+    "bin/verify-macos-signing.cjs",
+    "steam-bridge package must expose the macOS signing verifier CLI"
+  );
+  assert.ok(packageJson.files.includes("bin"), "steam-bridge package must publish verifier CLI files");
   for (const expected of [
     "signMacSteamExecutable(launcherPath)",
     "signMacSteamExecutable(electronPath)",
@@ -149,6 +156,11 @@ function installConsumer(tarball) {
 }
 
 function runConsumerChecks() {
+  const installedPackageRoot = path.join(consumerDir, "node_modules", "steam-bridge");
+  const macosSigningVerifier = path.join(installedPackageRoot, "bin", "verify-macos-signing.cjs");
+  assertNonEmptyFile(macosSigningVerifier);
+  run("node", [macosSigningVerifier, "--self-test"], { cwd: consumerDir });
+
   fs.writeFileSync(
     path.join(consumerDir, "check-cjs.cjs"),
     `

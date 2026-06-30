@@ -20,6 +20,7 @@
     "macos:overlay-matrix:check": "bash scripts/macos-overlay-matrix.sh --mode self-test",
     "macos:overlay-matrix:summarize": "bash scripts/macos-overlay-matrix.sh --mode summarize",
     "macos:overlay-matrix": "bash scripts/macos-overlay-matrix.sh",
+    "macos:verify-signing": "node scripts/verify-macos-steam-signing.cjs",
     "release:assemble": "node scripts/assemble-release-artifacts.cjs",
     "release:verify": "node scripts/verify-release-artifacts.cjs",
     "steam-deck:overlay-matrix:check": "bash scripts/steam-deck-overlay-matrix.sh --mode self-test",

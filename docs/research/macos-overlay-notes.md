@@ -349,7 +349,10 @@ Verified:
   Sandbox. A focused minimal matrix at
   `/tmp/steam-bridge-macos-overlay-matrix-minimal-signing-preflight-20260630-000117`
   rebuilt, signed, verified, and then passed web/store/Friends/dialog wait
-  routes plus the passive progress toast.
+  routes plus the passive progress toast. The same verifier is now published in
+  the package as `steam-bridge-verify-macos-signing` so app projects can run it
+  against their final signed launcher/Electron executable pair before Steam
+  overlay testing.
 - The macOS helper and matrix summary now fail any `callback:microtxn`
   authorization event that lacks a presenter snapshot. Public App ID `480`
   checkout plumbing normally reports this as `microTxnCallback=n/a`, while real

@@ -26,6 +26,9 @@
   ],
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "bin": {
+    "steam-bridge-verify-macos-signing": "bin/verify-macos-signing.cjs"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -37,6 +40,7 @@
     }
   },
   "files": [
+    "bin",
     "dist",
     "*.node",
     "!steam_bridge_native.local.node",

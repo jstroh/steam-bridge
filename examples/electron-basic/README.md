@@ -224,6 +224,10 @@ The macOS matrix preflights those requirements with
 Electron executable must be arm64-only, validly signed, allow dyld environment
 variables, disable library validation, and omit App Sandbox before Steam is
 launched.
+The same verifier is published with the package as
+`steam-bridge-verify-macos-signing`, so app projects can run
+`npx steam-bridge-verify-macos-signing --app-exe <YourApp.app/Contents/MacOS/YourApp>`
+against their own signed release bundle.
 
 The same controls are also available as launch options, which is usually easier
 for Steam non-Steam shortcuts:
