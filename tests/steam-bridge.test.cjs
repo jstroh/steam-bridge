@@ -450,7 +450,8 @@ function passiveNotificationResult(presenter) {
         pid: 1234
       },
       overlay: {
-        nativePresenter: { ok: true, value: presenter }
+        nativePresenter: { ok: true, value: presenter },
+        nativeHostAvailability: { ok: true, value: nativeHostAvailabilityFixture(presenter) }
       },
       events: [
         {
@@ -509,6 +510,29 @@ function nativeHostUnavailablePresenterFixture(reason = "macos-screen-locked", m
   };
 }
 
+function nativeHostAvailabilityFixture(presenter) {
+  if (!presenter) {
+    return null;
+  }
+  if (!presenter.nativeHostUnavailableReason) {
+    return {
+      available: true,
+      snapshot: presenter,
+      diagnostics: presenter.diagnostics,
+      macOverlayEnvironment: presenter.macOverlayEnvironment
+    };
+  }
+  return {
+    available: false,
+    snapshot: presenter,
+    diagnostics: presenter.diagnostics,
+    code: "STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE",
+    reason: presenter.nativeHostUnavailableReason,
+    nativeHostUnavailableReason: presenter.nativeHostUnavailableReason,
+    macOverlayEnvironment: presenter.macOverlayEnvironment
+  };
+}
+
 function actionErrorSmokeResult(error, presenter = undefined, events = []) {
   return {
     ok: false,
@@ -539,7 +563,8 @@ function actionErrorSmokeResult(error, presenter = undefined, events = []) {
       },
       overlay: presenter
         ? {
-            nativePresenter: { ok: true, value: presenter }
+            nativePresenter: { ok: true, value: presenter },
+            nativeHostAvailability: { ok: true, value: nativeHostAvailabilityFixture(presenter) }
           }
         : undefined,
       events

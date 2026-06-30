@@ -30,6 +30,7 @@ const overlayProcesses = snapshot.overlayProcesses || {};
 const crashDiagnostics = snapshot.crashDiagnostics || {};
 const processInfo = snapshot.process || {};
 const nativePresenter = readOkValue(overlay.nativePresenter);
+const nativeHostAvailability = readOkValue(overlay.nativeHostAvailability);
 const electronOverlay = nativePresenter && typeof nativePresenter === "object" ? nativePresenter.electronOverlay : undefined;
 const expectedActionName = options.action || (result.action && result.action.action) || "";
 const events = sliceEntriesForCurrentAction(Array.isArray(snapshot.events) ? snapshot.events : [], expectedActionName);
@@ -361,6 +362,42 @@ function verifyNativeHostUnavailableReason() {
     macOverlayEnvironmentMatchesReason(actualEnvironment, options.requireNativeHostUnavailableReason),
     `mac overlay environment matches ${options.requireNativeHostUnavailableReason}`
   );
+  expect(Boolean(nativeHostAvailability), "native host availability snapshot available");
+  if (!nativeHostAvailability || typeof nativeHostAvailability !== "object") {
+    return;
+  }
+  expect(nativeHostAvailability.available === false, "native host availability reports unavailable");
+  expect(
+    nativeHostAvailability.code === "STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE",
+    "native host availability error code is STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE"
+  );
+  expect(
+    nativeHostAvailability.reason === options.requireNativeHostUnavailableReason,
+    `native host availability reason is ${options.requireNativeHostUnavailableReason}`
+  );
+  expect(
+    nativeHostAvailability.nativeHostUnavailableReason === options.requireNativeHostUnavailableReason,
+    `native host availability nativeHostUnavailableReason is ${options.requireNativeHostUnavailableReason}`
+  );
+  expect(
+    macOverlayEnvironmentMatchesReason(
+      nativeHostAvailability.macOverlayEnvironment,
+      options.requireNativeHostUnavailableReason
+    ),
+    `native host availability mac overlay environment matches ${options.requireNativeHostUnavailableReason}`
+  );
+  const availabilitySnapshot =
+    nativeHostAvailability.snapshot && typeof nativeHostAvailability.snapshot === "object"
+      ? nativeHostAvailability.snapshot
+      : undefined;
+  expect(Boolean(availabilitySnapshot), "native host availability presenter snapshot available");
+  if (availabilitySnapshot) {
+    expect(
+      availabilitySnapshot.nativeHostUnavailableReason === options.requireNativeHostUnavailableReason,
+      `native host availability presenter reason is ${options.requireNativeHostUnavailableReason}`
+    );
+    expect(availabilitySnapshot.nativeHostOpen === false, "native host availability presenter host is closed");
+  }
 }
 
 function macOverlayEnvironmentMatchesReason(environment, reason) {

@@ -421,6 +421,11 @@ if (!availability.available) {
 await steamOverlay.openAndWait({ type: "friends" });
 ```
 
+The Electron smoke snapshot also records that same helper result at
+`snapshot.overlay.nativeHostAvailability`, and the macOS unavailable matrix
+requires it to agree with the presenter snapshot and expected unavailable
+reason.
+
 Still keep an error guard around the actual operation because a Mac can lock or
 sleep between a preflight check and Steam activation. Use
 `isSteamOverlayNativeHostUnavailableError(error)` and then check `error.reason`
@@ -730,8 +735,8 @@ For unattended proof runs, pass
 preflight boundary only; the default is `0`, and product overlay lifecycle code
 does not depend on this wait.
 All unavailable cases record the matching presenter
-`nativeHostUnavailableReason`. Locked macOS sessions can also report the display
-asleep; `macos-screen-locked` takes
+`nativeHostUnavailableReason` and `nativeHostAvailability` helper result.
+Locked macOS sessions can also report the display asleep; `macos-screen-locked` takes
 precedence, and unavailable captures do not require `overlayEnabled=true`
 because no native host should be created. The matrix
 runs the packaged helper and records

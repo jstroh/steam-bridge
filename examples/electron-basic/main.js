@@ -1898,7 +1898,10 @@ function snapshot() {
       nativeProbeOpen: readValue(() => client.overlay.isNativeOverlayProbeWindowOpen()),
       nativeHostOpen: readValue(() => client.overlay.isNativeOverlayHostViewOpen()),
       nativeSession: readValue(() => (nativeOverlaySession ? nativeOverlaySession.snapshot() : null)),
-      nativePresenter: readValue(() => (electronSteamOverlay ? electronSteamOverlay.snapshot() : null))
+      nativePresenter: readValue(() => (electronSteamOverlay ? electronSteamOverlay.snapshot() : null)),
+      nativeHostAvailability: readValue(() =>
+        electronSteamOverlay ? electronSteamOverlay.getNativeHostAvailability() : null
+      )
     },
     input: readValue(() => {
       if (!inputInitialized) {

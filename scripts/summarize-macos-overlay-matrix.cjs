@@ -243,6 +243,7 @@ function verifyCase(caseId, metadata, result, lifecycle, macosCrashReports, fail
   const action = objectOrEmpty(result.action);
   const actionName = String(action.action || "unknown");
   const nativePresenter = readOkValue(overlay.nativePresenter);
+  const nativeHostAvailability = readOkValue(overlay.nativeHostAvailability);
   const electronOverlay = readElectronOverlay(nativePresenter);
   const expectedAppId = expectedAppIdFromMetadata(metadata);
   const expectedAppIdText = String(expectedAppId);
@@ -381,6 +382,12 @@ function verifyCase(caseId, metadata, result, lifecycle, macosCrashReports, fail
     expect(nativePresenter.idleFps === 0, `${caseId}: native presenter idle FPS is zero`, failures);
     if (expectedNativeHostUnavailableReason) {
       verifyNativeHostUnavailablePresenter(caseId, nativePresenter, expectedNativeHostUnavailableReason, failures);
+      verifyNativeHostUnavailableAvailability(
+        caseId,
+        nativeHostAvailability,
+        expectedNativeHostUnavailableReason,
+        failures
+      );
     } else {
       expect(nativePresenter.attached === true, `${caseId}: native presenter attached`, failures);
       expect(nativePresenter.nativeHostOpen === true, `${caseId}: native presenter host open`, failures);
@@ -1090,6 +1097,48 @@ function verifyNativeHostUnavailablePresenter(caseId, presenter, expectedReason,
   );
 }
 
+function verifyNativeHostUnavailableAvailability(caseId, availability, expectedReason, failures) {
+  expect(Boolean(availability), `${caseId}: native host availability snapshot available`, failures);
+  if (!availability || typeof availability !== "object") {
+    return;
+  }
+  expect(availability.available === false, `${caseId}: native host availability reports unavailable`, failures);
+  expect(
+    availability.code === "STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE",
+    `${caseId}: native host availability error code is STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE`,
+    failures
+  );
+  expect(
+    availability.reason === expectedReason,
+    `${caseId}: native host availability reason expected ${formatValue(expectedReason)}, got ${formatValue(availability.reason)}`,
+    failures
+  );
+  expect(
+    availability.nativeHostUnavailableReason === expectedReason,
+    `${caseId}: native host availability nativeHostUnavailableReason expected ${formatValue(expectedReason)}, got ${formatValue(availability.nativeHostUnavailableReason)}`,
+    failures
+  );
+  expect(
+    macOverlayEnvironmentMatchesReason(availability.macOverlayEnvironment, expectedReason),
+    `${caseId}: native host availability mac overlay environment matches ${expectedReason}`,
+    failures
+  );
+  const availabilitySnapshot = objectField(availability, "snapshot");
+  expect(Boolean(availabilitySnapshot), `${caseId}: native host availability presenter snapshot available`, failures);
+  if (availabilitySnapshot) {
+    expect(
+      availabilitySnapshot.nativeHostUnavailableReason === expectedReason,
+      `${caseId}: native host availability presenter reason expected ${formatValue(expectedReason)}, got ${formatValue(availabilitySnapshot.nativeHostUnavailableReason)}`,
+      failures
+    );
+    expect(
+      availabilitySnapshot.nativeHostOpen === false,
+      `${caseId}: native host availability presenter host is closed`,
+      failures
+    );
+  }
+}
+
 function verifyNoOverlayActivation(caseId, resultEvents, lifecycleEntries, failures) {
   const activeEvents = [...resultEvents, ...lifecycleEntries].filter(isOverlayActiveEvent);
   expect(activeEvents.length === 0, `${caseId}: overlay activation callback active=true was not emitted`, failures);
@@ -1485,6 +1534,7 @@ function assertMissingNeedsPresentPollingProofRejected(root) {
 function createSelfTestFixture(root) {
   fs.mkdirSync(root, { recursive: true });
 
+  const basePresenter = activePresenterFixture(10);
   const baseResult = {
     ok: true,
     action: { ok: true, action: "presenter-web-open-and-wait" },
@@ -1513,7 +1563,8 @@ function createSelfTestFixture(root) {
         overlayNeedsPresentPollingEnabled: { ok: true, value: false }
       },
       overlay: {
-        nativePresenter: { ok: true, value: activePresenterFixture(10) }
+        nativePresenter: { ok: true, value: basePresenter },
+        nativeHostAvailability: { ok: true, value: nativeHostAvailabilityFixture(basePresenter) }
       }
     }
   };
@@ -1840,6 +1891,10 @@ function createSelfTestFixture(root) {
       delete result.action.error;
     }
     result.snapshot.overlay.nativePresenter.value = fixture.resultPresenter;
+    result.snapshot.overlay.nativeHostAvailability = {
+      ok: true,
+      value: nativeHostAvailabilityFixture(fixture.resultPresenter)
+    };
     const overlayGameId = fixture.overlayGameId || expectedAppIdText;
     if (Array.isArray(fixture.overlayTargets)) {
       result.snapshot.overlayProcesses.gameoverlayui = fixture.overlayTargets;
@@ -2099,6 +2154,26 @@ function withShortcutTargetSnapshot(presenter, targetType, target) {
         target
       }
     }
+  };
+}
+
+function nativeHostAvailabilityFixture(presenter) {
+  if (!presenter.nativeHostUnavailableReason) {
+    return {
+      available: true,
+      snapshot: presenter,
+      diagnostics: presenter.diagnostics,
+      macOverlayEnvironment: presenter.macOverlayEnvironment
+    };
+  }
+  return {
+    available: false,
+    snapshot: presenter,
+    diagnostics: presenter.diagnostics,
+    code: "STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE",
+    reason: presenter.nativeHostUnavailableReason,
+    nativeHostUnavailableReason: presenter.nativeHostUnavailableReason,
+    macOverlayEnvironment: presenter.macOverlayEnvironment
   };
 }
 

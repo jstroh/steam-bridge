@@ -1073,7 +1073,9 @@ state as a quiet no-op unless `overlayShortcut.onError` is provided. The
 packaged macOS helper
 and other platform helpers accept `--require-action-error-code` and
 `--require-action-error-reason`; add `--require-native-host-unavailable-reason`
-to verify the presenter snapshot also stayed unattached, host-closed, and at
+to verify the presenter snapshot and
+`snapshot.overlay.nativeHostAvailability` helper result both report the same
+unavailable reason while the presenter stayed unattached, host-closed, and at
 zero current FPS. Add `--require-no-overlay-activation` to prove the fail-fast
 path did not start Steam overlay activation.
 
