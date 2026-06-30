@@ -172,7 +172,17 @@ re-verified the same public helper on the final code path. Its lifecycle records
 `overlay:shortcut-open` with `shortcut: "openShortcutTargetAndWait"` and
 `target: "web"`, observes active/inactive overlay callbacks, completes after
 the harness closes the web overlay, parks the persistent Metal presenter at
-zero FPS, and leaves no fresh crash report.
+zero FPS, and leaves no fresh crash report. A later core matrix at
+`/tmp/steam-bridge-macos-overlay-matrix-20260630-104809` rebuilt and signed the
+Electron `43.0.0` package after checkout began sharing the managed
+ready/open/shown/park helper. It reused the stable Steam shortcut without
+restarting Steam and passed all 24 core cases, including direct checkout
+approval, checkout shortcut, web/store/Friends/dialog wait routes, passive
+progress/unlock toasts, every managed shortcut target, direct profile/players/
+community/stats/achievements/user wait routes, one Metal presenter-backed
+overlay target per case, zero managed overlay timing, clean close/back-to-app
+proof, and no fresh `SteamBridgeSmoke` crash report beyond the older known
+`BOverlayNeedsPresent()` reports.
 
 ## Steam Deck Shortcut Gate
 

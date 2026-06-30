@@ -2148,6 +2148,11 @@ type NativeOverlayPresenterInternal = NativeOverlayPresenter & {
   onStateChange?: (listener: () => void) => CallbackHandle;
 };
 
+interface ElectronSteamOverlayTargetWaitLifecycle {
+  activationHandle?: CallbackHandle;
+  onOpened?: () => void;
+}
+
 const SKIP_NATIVE_OVERLAY_PRESENTER_PREPARE = Symbol("skipNativeOverlayPresenterPrepare");
 
 type InternalNativeOverlayPresenterOverlayOptions = NativeOverlayPresenterOverlayOptions & {
@@ -8669,8 +8674,10 @@ export function createElectronSteamOverlay(
       shortcutOpenState.opening = true;
       try {
         const target = resolveElectronSteamOverlayShortcutTarget(shortcut.target);
-        return await openElectronSteamOverlayTargetAndWait(target, options, () => {
-          notifyElectronSteamOverlayShortcutOpened(shortcut, target);
+        return await openElectronSteamOverlayTargetAndWait(target, options, {
+          onOpened() {
+            notifyElectronSteamOverlayShortcutOpened(shortcut, target);
+          }
         });
       } catch (error) {
         notifyElectronSteamOverlayShortcutError(shortcut, error);
@@ -8711,29 +8718,14 @@ export function createElectronSteamOverlay(
           waitOptions.signal
         );
         const target = electronSteamOverlayCheckoutTargetFromResult(transaction, { modal, returnUrl });
-        await controller.waitForOverlayReady({
-          timeoutMs: finiteNumber(waitOptions.showTimeoutMs, 15000),
-          signal: waitOptions.signal
-        });
-        openSteamOverlay({
-          ...target,
-          presenter,
-          ...(activationHandle ? { [SKIP_NATIVE_OVERLAY_PRESENTER_PREPARE]: true } : {})
-        } as SteamOverlayTarget);
-        const shown = await controller.waitForOverlayShown({
-          timeoutMs: finiteNumber(waitOptions.showTimeoutMs, 15000),
-          signal: waitOptions.signal
-        });
-        releaseActivation();
-        const parked = await controller.parkWhenSteamOverlayCloses({
-          timeoutMs: finiteNumber(waitOptions.closeTimeoutMs, 300000),
-          signal: waitOptions.signal
+        const opened = await openElectronSteamOverlayTargetAndWait(target, waitOptions, {
+          activationHandle
         });
         return {
           transaction,
           target,
-          shown,
-          parked
+          shown: opened.shown,
+          parked: opened.parked
         };
       } catch (error) {
         releaseActivation();
@@ -8871,14 +8863,9 @@ export function createElectronSteamOverlay(
   async function openElectronSteamOverlayTargetAndWait(
     target: SteamOverlayTarget,
     options: ElectronSteamOverlayOpenAndWaitOptions = {},
-    onOpened?: () => void
+    lifecycle: ElectronSteamOverlayTargetWaitLifecycle = {}
   ): Promise<ElectronSteamOverlayOpenAndWaitResult> {
-    assertOpen();
-    assertElectronSteamOverlayTargetCanOpen(target);
-    assertElectronSteamOverlayTargetCanWait(target);
-    assertElectronSteamOverlayNativeHostAvailable(controller.snapshot());
-    const presenterInternal = presenter as NativeOverlayPresenterInternal;
-    const activationHandle = presenterInternal.beginOverlayActivation?.(overlayActivationModeForTarget(target));
+    let activationHandle = lifecycle.activationHandle;
     let activationReleased = false;
     const releaseActivation = (): void => {
       if (activationReleased) {
@@ -8888,6 +8875,14 @@ export function createElectronSteamOverlay(
       activationHandle?.disconnect();
     };
     try {
+      assertOpen();
+      assertElectronSteamOverlayTargetCanOpen(target);
+      assertElectronSteamOverlayTargetCanWait(target);
+      assertElectronSteamOverlayNativeHostAvailable(controller.snapshot());
+      if (!activationHandle) {
+        const presenterInternal = presenter as NativeOverlayPresenterInternal;
+        activationHandle = presenterInternal.beginOverlayActivation?.(overlayActivationModeForTarget(target));
+      }
       await controller.waitForOverlayReady({
         timeoutMs: finiteNumber(options.showTimeoutMs, 15000),
         signal: options.signal
@@ -8897,7 +8892,7 @@ export function createElectronSteamOverlay(
         presenter,
         ...(activationHandle ? { [SKIP_NATIVE_OVERLAY_PRESENTER_PREPARE]: true } : {})
       } as SteamOverlayTarget);
-      onOpened?.();
+      lifecycle.onOpened?.();
       const shown = await controller.waitForOverlayShown({
         timeoutMs: finiteNumber(options.showTimeoutMs, 15000),
         signal: options.signal

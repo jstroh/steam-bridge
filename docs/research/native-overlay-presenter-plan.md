@@ -689,7 +689,16 @@ Current evidence:
   `/tmp/steam-bridge-macos-shortcut-openwait-focused-20260630-102739`
   re-ran the helper after correcting the diagnostic source label and confirmed
   `shortcut: "openShortcutTargetAndWait"`, `target: "web"`, close-driven
-  completion, zero-FPS parking, and no fresh crash report. A 2026-06-28 Deck Desktop
+  completion, zero-FPS parking, and no fresh crash report. A later 2026-06-30 core
+  macOS run at `/tmp/steam-bridge-macos-overlay-matrix-20260630-104809` rebuilt and
+  signed the Electron `43.0.0` package after checkout was moved onto the same
+  managed ready/open/shown/park wait helper as the other presenter-backed targets.
+  It reused the stable Steam shortcut without restarting Steam and passed all 24
+  core cases, including direct checkout approval, checkout shortcut, every managed
+  shortcut target, passive toasts, direct community/user routes, one Metal
+  presenter-backed overlay target per case, zero managed timing, close/back-to-app
+  proof, and no fresh `SteamBridgeSmoke` crash report beyond the older known
+  `BOverlayNeedsPresent()` reports. A 2026-06-28 Deck Desktop
   prepare-only run verified
   checkout readiness returns to passive idle, and a synthetic
   transaction approval URL run verified checkout-style open, close, app focus,

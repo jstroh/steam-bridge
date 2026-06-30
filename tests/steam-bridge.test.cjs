@@ -8725,6 +8725,107 @@ test("electron steam overlay checkout helper prepares, opens, and waits with bac
   await assert.rejects(overlay.openCheckoutAndWait(() => "123"), /Electron Steam overlay is closed/);
 });
 
+test("electron steam overlay checkout wait does not activate before overlay readiness", async (t) => {
+  const hostHandle = Buffer.from([31, 41, 59, 27]);
+  let hostOpen = false;
+  const fake = createFakeNative({
+    attachNativeOverlayHostView(nativeWindowHandle) {
+      hostOpen = true;
+      this.calls.push({ method: "attachNativeOverlayHostView", args: [nativeWindowHandle] });
+    },
+    pumpNativeOverlayProbeWindow() {
+      this.calls.push({ method: "pumpNativeOverlayProbeWindow", args: [] });
+    },
+    showNativeOverlayHostView() {
+      this.calls.push({ method: "showNativeOverlayHostView", args: [] });
+    },
+    setNativeOverlayHostInputPassthrough(passThrough) {
+      this.calls.push({ method: "setNativeOverlayHostInputPassthrough", args: [passThrough] });
+    },
+    setNativeOverlayHostOpacity(opaque) {
+      this.calls.push({ method: "setNativeOverlayHostOpacity", args: [opaque] });
+    },
+    detachNativeOverlayHostView() {
+      hostOpen = false;
+      this.calls.push({ method: "detachNativeOverlayHostView", args: [] });
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return false;
+    },
+    isNativeOverlayHostViewOpen() {
+      return hostOpen;
+    },
+    getOverlayDiagnostics() {
+      return {
+        steamRunning: true,
+        steamInstallPath: "/tmp/steam",
+        appId: 480,
+        overlayEnabled: false,
+        overlayNeedsPresent: false,
+        overlayNeedsPresentPollingEnabled: true,
+        steamDeck: false,
+        bigPicture: false
+      };
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  const window = {
+    isDestroyed() {
+      return false;
+    },
+    getNativeWindowHandle() {
+      return hostHandle;
+    },
+    once() {},
+    webContents: {
+      once() {},
+      invalidate() {},
+      send() {}
+    }
+  };
+
+  const overlay = steam.overlay.createElectronSteamOverlay(window, {
+    title: "Electron Checkout Readiness Overlay",
+    pollIntervalMs: 50
+  });
+
+  let operationSnapshot;
+  await assert.rejects(
+    overlay.openCheckoutAndWait(
+      () => {
+        operationSnapshot = overlay.snapshot();
+        return {
+          steamurl: "https://checkout.steampowered.com/checkout/approvetxn/333/"
+        };
+      },
+      { showTimeoutMs: 5, closeTimeoutMs: 5 }
+    ),
+    (error) => {
+      assert.equal(error instanceof steam.SteamOverlayWaitTimeoutError, true);
+      assert.equal(error.code, "STEAM_OVERLAY_WAIT_TIMEOUT");
+      assert.equal(error.state, "be ready");
+      assert.equal(error.snapshot.diagnostics.overlayEnabled, false);
+      return true;
+    }
+  );
+
+  assert.equal(operationSnapshot.mode, "active");
+  assert.equal(operationSnapshot.clickThrough, false);
+  assert.equal(operationSnapshot.transparent, false);
+  assert.deepEqual(steamWebOverlayCalls(fake), []);
+
+  const afterTimeout = overlay.snapshot();
+  assert.equal(afterTimeout.mode, "passive");
+  assert.equal(afterTimeout.clickThrough, true);
+  assert.equal(afterTimeout.transparent, true);
+  assert.equal(afterTimeout.currentFps, 0);
+
+  overlay.close();
+});
+
 test("electron steam overlay manager tolerates destroyed webContents during window close", (t) => {
   const hostHandle = Buffer.from([23, 42, 108, 15]);
   let hostOpen = false;
