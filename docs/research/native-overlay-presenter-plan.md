@@ -511,7 +511,10 @@ Current evidence:
   before an in-game `InitTxn`, accepts common backend result shapes such as
   `steamurl`, `steamUrl`, `transactionId`, or `transid`, opens the checkout
   surface under the same scoped activation hold, then resolves after Steam
-  closes and the presenter parks. App code can still use
+  closes and the presenter parks. Abort signals now apply while the backend
+  checkout operation is still pending as well as during the Steam overlay wait:
+  aborting before `InitTxn` returns releases the scoped presenter hold and parks
+  back to zero FPS without opening a checkout surface. App code can still use
   `withCheckoutPrepared(...)`, `open({ type: "checkout", ... })`,
   `openAndWait(...)`, or the lower-level wait helpers when it needs split-step
   control, instead of carrying local callback/timer plumbing. In default

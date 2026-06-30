@@ -5962,15 +5962,51 @@ test("electron steam overlay checkout preparation holds only for the wrapped ope
   assert.equal(afterOperation.clickThrough, true);
   assert.equal(afterOperation.transparent, true);
   assert.equal(afterOperation.currentFps, 0);
+
+  const abortController = new AbortController();
+  let resolvePreparedOperation;
+  const abortedPrepared = overlay.withCheckoutPrepared(
+    () =>
+      new Promise((resolve) => {
+        resolvePreparedOperation = resolve;
+      }),
+    { signal: abortController.signal }
+  );
+
+  await Promise.resolve();
+  assert.equal(typeof resolvePreparedOperation, "function");
+  const duringAbortedOperation = overlay.snapshot();
+  assert.equal(duringAbortedOperation.mode, "active");
+  assert.equal(duringAbortedOperation.currentFps, 30);
+
+  abortController.abort();
+  await assert.rejects(abortedPrepared, (error) => {
+    assert.equal(error instanceof steam.SteamOverlayWaitAbortedError, true);
+    assert.equal(error.name, "SteamOverlayWaitAbortedError");
+    assert.equal(error.code, "STEAM_OVERLAY_WAIT_ABORTED");
+    assert.equal(error.state, "finish checkout preparation operation");
+    assert.equal(error.snapshot.mode, "active");
+    assert.equal(error.snapshot.currentFps, 30);
+    assert.match(error.message, /Aborted waiting for Steam overlay to finish checkout preparation operation/);
+    return true;
+  });
+  resolvePreparedOperation("late");
+
+  const afterAbortedOperation = overlay.snapshot();
+  assert.equal(afterAbortedOperation.mode, "passive");
+  assert.equal(afterAbortedOperation.clickThrough, true);
+  assert.equal(afterAbortedOperation.transparent, true);
+  assert.equal(afterAbortedOperation.currentFps, 0);
+
   assert.deepEqual(
     fake.calls
       .filter((call) => call.method === "setNativeOverlayHostInputPassthrough")
       .map((call) => call.args[0]),
-    [false, true]
+    [false, true, false, true]
   );
   assert.deepEqual(
     fake.calls.filter((call) => call.method === "setNativeOverlayHostOpacity").map((call) => call.args[0]),
-    [true, false]
+    [true, false, true, false]
   );
 
   overlay.close();
@@ -7773,6 +7809,47 @@ test("electron steam overlay checkout helper prepares, opens, and waits with bac
     transactionId: "97531"
   });
   assert.equal(webApiEnvelopeResult.transaction.data.response.params.transid, "97531");
+
+  const activationCallsBeforeAbort = fake.calls.filter((call) => call.method === "activateOverlayToWebPage").length;
+  const abortController = new AbortController();
+  let resolveCheckoutOperation;
+  const abortedCheckout = overlay.openCheckoutAndWait(
+    () =>
+      new Promise((resolve) => {
+        resolveCheckoutOperation = resolve;
+      }),
+    { signal: abortController.signal, showTimeoutMs: 200, closeTimeoutMs: 200 }
+  );
+
+  await Promise.resolve();
+  assert.equal(typeof resolveCheckoutOperation, "function");
+  const duringAbortedCheckout = overlay.snapshot();
+  assert.equal(duringAbortedCheckout.mode, "active");
+  assert.equal(duringAbortedCheckout.clickThrough, false);
+  assert.equal(duringAbortedCheckout.transparent, false);
+  assert.equal(duringAbortedCheckout.currentFps, 30);
+
+  abortController.abort();
+  await assert.rejects(abortedCheckout, (error) => {
+    assert.equal(error instanceof steam.SteamOverlayWaitAbortedError, true);
+    assert.equal(error.name, "SteamOverlayWaitAbortedError");
+    assert.equal(error.code, "STEAM_OVERLAY_WAIT_ABORTED");
+    assert.equal(error.state, "finish checkout operation");
+    assert.equal(error.snapshot.mode, "active");
+    assert.equal(error.snapshot.currentFps, 30);
+    assert.match(error.message, /Aborted waiting for Steam overlay to finish checkout operation/);
+    return true;
+  });
+  resolveCheckoutOperation({
+    steamurl: "https://checkout.steampowered.com/checkout/approvetxn/111/"
+  });
+
+  const afterAbortedCheckout = overlay.snapshot();
+  assert.equal(afterAbortedCheckout.mode, "passive");
+  assert.equal(afterAbortedCheckout.clickThrough, true);
+  assert.equal(afterAbortedCheckout.transparent, true);
+  assert.equal(afterAbortedCheckout.currentFps, 0);
+  assert.equal(fake.calls.filter((call) => call.method === "activateOverlayToWebPage").length, activationCallsBeforeAbort);
 
   await assert.rejects(
     overlay.openCheckoutAndWait(() => ({ type: "checkout" }), { showTimeoutMs: 200, closeTimeoutMs: 200 }),

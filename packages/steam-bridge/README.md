@@ -281,13 +281,18 @@ backend result shapes such as `steamurl`, `steamUrl`, `transactionId`, or
 `transid`, and also unwraps documented `InitTxn` envelopes such as
 `response.params.transid` and Steam Bridge Web API responses at
 `data.response.params`. It opens the checkout surface, then resolves after
-Steam closes and the presenter parks. The preparation is operation-scoped
-rather than an app-tuned timer. `steamOverlay.withCheckoutPrepared(...)`,
+Steam closes and the presenter parks. If you pass an abort signal, Steam Bridge
+also honors it while the transaction operation is still pending, releases the
+presenter hold, and throws `SteamOverlayWaitAbortedError`; pass the same signal
+to your backend request if you also want to cancel the network I/O. The
+preparation is operation-scoped rather than an app-tuned timer.
+`steamOverlay.withCheckoutPrepared(...)`,
 `steamOverlay.open({ type: "checkout", ... })`, and
 `steamOverlay.prepareForCheckout()` remain available for lower-level flows that
 need to separate presenter priming from transaction creation or overlay opening;
-pass an explicit preparation duration there only when a standalone split-step
-hold is intentional.
+`withCheckoutPrepared(...)` accepts the same operation-phase abort behavior, and
+an explicit preparation duration should only be used when a standalone
+split-step hold is intentional.
 The Electron smoke app redacts real checkout URLs, transaction IDs, return URLs,
 Steam IDs, auth-ticket bytes, and private CLI arguments from result and lifecycle
 artifacts while preserving machine-checkable presence flags and presenter

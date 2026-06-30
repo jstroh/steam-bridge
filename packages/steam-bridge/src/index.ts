@@ -1905,6 +1905,12 @@ export interface ElectronSteamOverlayCheckoutPrepareOptions {
    * custom presenter does not support operation-scoped activation holds.
    */
   durationMs?: number;
+  /**
+   * Aborts the wrapped operation wait and releases the scoped presenter hold.
+   * Pass the same signal to your backend request if the request itself should
+   * be canceled.
+   */
+  signal?: AbortSignal;
 }
 
 export class SteamOverlayNativeHostUnavailableError extends Error {
@@ -8639,7 +8645,12 @@ export function createElectronSteamOverlay(
       };
 
       try {
-        const transaction = await operation();
+        const transaction = await runElectronSteamOverlayAbortableOperation(
+          controller,
+          "finish checkout operation",
+          operation,
+          waitOptions.signal
+        );
         const target = electronSteamOverlayCheckoutTargetFromResult(transaction, { modal, returnUrl });
         openSteamOverlay({
           ...target,
@@ -8678,7 +8689,12 @@ export function createElectronSteamOverlay(
         presenter.prepareForOverlay(options.durationMs);
       }
       try {
-        return await operation();
+        return await runElectronSteamOverlayAbortableOperation(
+          controller,
+          "finish checkout preparation operation",
+          operation,
+          options.signal
+        );
       } finally {
         activationHandle?.disconnect();
       }
@@ -9508,6 +9524,75 @@ function releaseElectronSteamOverlayActivationWhenShown(
   }
 
   void waitForShown.then(release, release);
+}
+
+function runElectronSteamOverlayAbortableOperation<T>(
+  controller: ElectronSteamOverlay,
+  stateLabel: string,
+  operation: () => T | Promise<T>,
+  signal?: AbortSignal
+): Promise<T> {
+  if (!signal) {
+    try {
+      return Promise.resolve(operation());
+    } catch (error) {
+      return Promise.reject(error);
+    }
+  }
+
+  return new Promise<T>((resolve, reject) => {
+    let abortHandler: (() => void) | undefined;
+    let settled = false;
+
+    const cleanup = (): void => {
+      if (abortHandler) {
+        signal.removeEventListener("abort", abortHandler);
+        abortHandler = undefined;
+      }
+    };
+
+    const currentSnapshot = (): ElectronSteamOverlaySnapshot | undefined => {
+      try {
+        return controller.snapshot();
+      } catch {
+        return undefined;
+      }
+    };
+
+    const settleReject = (error: unknown): void => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      cleanup();
+      reject(error);
+    };
+
+    const settleResolve = (value: T): void => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      cleanup();
+      resolve(value);
+    };
+
+    abortHandler = (): void => {
+      settleReject(new SteamOverlayWaitAbortedError(stateLabel, currentSnapshot()));
+    };
+
+    signal.addEventListener("abort", abortHandler, { once: true });
+    if (signal.aborted) {
+      abortHandler();
+      return;
+    }
+
+    try {
+      Promise.resolve(operation()).then(settleResolve, settleReject);
+    } catch (error) {
+      settleReject(error);
+    }
+  });
 }
 
 function shouldUseElectronSteamOverlayFallbackPolling(
