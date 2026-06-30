@@ -263,8 +263,10 @@ Friends/chat presenter route without asking Steam to hook Chromium child
 processes; pass `overlayShortcut: false` to disable it, or provide
 `overlayShortcut: { target: { type: "community", appId } }` to choose another
 presenter-backed target. Use `overlayShortcut.onOpen` for app logging or state
-updates after the managed shortcut opens; static targets should not need a
-resolver function just for side effects. Controller or in-game menu buttons can
+updates after the managed shortcut has passed readiness and called Steam's
+overlay activation API; readiness failures call `overlayShortcut.onError`
+without emitting a false open event. Static targets should not need a resolver
+function just for side effects. Controller or in-game menu buttons can
 call `steamOverlay.openShortcutTarget()` to open that same configured managed
 target, or `steamOverlay.openShortcutTargetAndWait()` when the button flow
 should resolve only after Steam closes and the presenter parks. Both helpers

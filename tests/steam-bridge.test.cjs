@@ -7273,6 +7273,111 @@ test("electron steam overlay manager opens the configured shortcut target with m
   disabledOverlay.close();
 });
 
+test("electron steam overlay shortcut wait does not report opened before overlay readiness", async (t) => {
+  const hostHandle = Buffer.from([4, 8, 15, 19]);
+  let hostOpen = false;
+  const fake = createFakeNative({
+    attachNativeOverlayHostView(nativeWindowHandle) {
+      hostOpen = true;
+      this.calls.push({ method: "attachNativeOverlayHostView", args: [nativeWindowHandle] });
+    },
+    pumpNativeOverlayProbeWindow() {
+      this.calls.push({ method: "pumpNativeOverlayProbeWindow", args: [] });
+    },
+    showNativeOverlayHostView() {
+      this.calls.push({ method: "showNativeOverlayHostView", args: [] });
+    },
+    setNativeOverlayHostInputPassthrough(passThrough) {
+      this.calls.push({ method: "setNativeOverlayHostInputPassthrough", args: [passThrough] });
+    },
+    setNativeOverlayHostOpacity(opaque) {
+      this.calls.push({ method: "setNativeOverlayHostOpacity", args: [opaque] });
+    },
+    detachNativeOverlayHostView() {
+      hostOpen = false;
+      this.calls.push({ method: "detachNativeOverlayHostView", args: [] });
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return false;
+    },
+    isNativeOverlayHostViewOpen() {
+      return hostOpen;
+    },
+    getOverlayDiagnostics() {
+      return {
+        steamRunning: true,
+        steamInstallPath: "/tmp/steam",
+        appId: 480,
+        overlayEnabled: false,
+        overlayNeedsPresent: false,
+        overlayNeedsPresentPollingEnabled: true,
+        steamDeck: false,
+        bigPicture: false
+      };
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  const window = {
+    isDestroyed() {
+      return false;
+    },
+    getNativeWindowHandle() {
+      return hostHandle;
+    },
+    once() {},
+    webContents: {
+      once() {},
+      invalidate() {},
+      send() {},
+      on() {},
+      off() {}
+    }
+  };
+
+  const openedTargets = [];
+  const shortcutErrors = [];
+  const shortcutTarget = {
+    type: "web",
+    url: "https://example.invalid/overlay-menu",
+    modal: true
+  };
+  const overlay = steam.overlay.createElectronSteamOverlay(window, {
+    title: "Electron Shortcut Wait Readiness Overlay",
+    pollIntervalMs: 50,
+    overlayShortcut: {
+      target: shortcutTarget,
+      onOpen(target) {
+        openedTargets.push(target);
+      },
+      onError(error) {
+        shortcutErrors.push(error);
+      }
+    }
+  });
+
+  await assert.rejects(
+    overlay.openShortcutTargetAndWait({ showTimeoutMs: 5, closeTimeoutMs: 5 }),
+    (error) => {
+      assert.equal(error instanceof steam.SteamOverlayWaitTimeoutError, true);
+      assert.equal(error.code, "STEAM_OVERLAY_WAIT_TIMEOUT");
+      assert.equal(error.state, "be ready");
+      assert.equal(error.snapshot.diagnostics.overlayEnabled, false);
+      return true;
+    }
+  );
+
+  assert.deepEqual(openedTargets, []);
+  assert.equal(shortcutErrors.length, 1);
+  assert.equal(shortcutErrors[0] instanceof steam.SteamOverlayWaitTimeoutError, true);
+  assert.equal(shortcutErrors[0].state, "be ready");
+  assert.deepEqual(steamWebOverlayCalls(fake), []);
+
+  overlay.close();
+});
+
 test("electron steam overlay manager uses a focused macOS global shortcut fallback", async (t) => {
   setProcessPlatformForTest(t, "darwin");
 

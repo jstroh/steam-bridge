@@ -532,7 +532,10 @@ same focused Shift+Tab path; supported smoke targets are `friends`, `profile`,
 controller or in-game menu button to reuse that same configured target, or
 `steamOverlay.openShortcutTargetAndWait()` when the button flow should resolve
 only after Steam closes and the presenter parks. Both helpers avoid duplicating
-shortcut resolver logic in app code.
+shortcut resolver logic in app code. The shortcut `onOpen` callback fires only
+after the managed path has passed readiness and called Steam's overlay
+activation API; readiness failures are reported through `onError` without a
+false open callback.
 Use `presenter-shortcut-open-and-wait` with `--shortcut-target <name>` to smoke
 test that programmatic button/menu path without sending Shift+Tab.
 The `dialog` target uses the high-level auto router; unsupported dialog names
