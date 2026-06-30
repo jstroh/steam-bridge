@@ -300,10 +300,24 @@ including the selected `backend` (`x11-glx`, `macos-metal`, `macos-opengl`, or
 macOS, snapshots also report `macOverlayEnvironment` and
 `nativeHostUnavailableReason` when a locked screen or sleeping display prevents
 safe native host creation. Managed overlay open/wait and checkout helpers throw
-`SteamOverlayNativeHostUnavailableError` in that state; check
-`error.code === "STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE"` and `error.reason`
+`SteamOverlayNativeHostUnavailableError` in that state; use
+`isSteamOverlayNativeHostUnavailableError(error)` and then check `error.reason`
 instead of parsing the message when falling back to another purchase or browser
-flow. The app-facing managed helper defaults its restore-focus delay,
+flow:
+
+```ts
+try {
+  await steamOverlay.openAndWait({ type: "friends" });
+} catch (error) {
+  if (steamworks.isSteamOverlayNativeHostUnavailableError(error)) {
+    console.warn("Steam overlay host unavailable:", error.reason);
+    return;
+  }
+  throw error;
+}
+```
+
+The app-facing managed helper defaults its restore-focus delay,
 activation boost, and active grace window to `0` unless explicitly configured.
 The snapshot also includes an `electronOverlay` block with the active presenter
 mode, notification-priming policy, restore-focus delay, activation timing,

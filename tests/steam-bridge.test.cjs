@@ -157,6 +157,34 @@ test("electron smoke sanitizer redacts private overlay proof fields", () => {
   assert.equal(serialized.includes("steam://return/private-token"), false);
 });
 
+test("native host unavailable guard accepts class and error-like shapes", (t) => {
+  const steam = require(distFile("index.js"));
+  t.after(clearSteamBridgeCache);
+
+  const error = new steam.SteamOverlayNativeHostUnavailableError({
+    nativeHostUnavailableReason: "macos-screen-locked",
+    macOverlayEnvironment: { screenLocked: true, displayAsleep: false }
+  });
+
+  assert.equal(steam.isSteamOverlayNativeHostUnavailableError(error), true);
+  assert.equal(
+    steam.isSteamOverlayNativeHostUnavailableError({
+      code: "STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE",
+      reason: "macos-display-asleep"
+    }),
+    true
+  );
+  assert.equal(
+    steam.isSteamOverlayNativeHostUnavailableError({
+      code: "STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE",
+      reason: "other"
+    }),
+    false
+  );
+  assert.equal(steam.isSteamOverlayNativeHostUnavailableError(new Error("nope")), false);
+  assert.equal(steam.isSteamOverlayNativeHostUnavailableError(null), false);
+});
+
 function fakeTicket(label, calls) {
   return {
     cancel() {

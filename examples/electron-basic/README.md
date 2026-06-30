@@ -878,9 +878,10 @@ grace timing; platform helper verification can require that with
 `--require-zero-managed-overlay-timing`.
 On macOS, if the screen is locked or the display is asleep, the managed
 overlay helpers fail before activation with
-`SteamOverlayNativeHostUnavailableError`. Use its
-`STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE` code and `reason` field for fallback
-logic; do not wait for overlay timeouts in that state. The packaged macOS helper
+`SteamOverlayNativeHostUnavailableError`. Use
+`steamworks.isSteamOverlayNativeHostUnavailableError(error)` and its `reason`
+field for fallback logic; do not wait for overlay timeouts in that state. The
+packaged macOS helper
 and other platform helpers accept `--require-action-error-code` and
 `--require-action-error-reason`; add `--require-native-host-unavailable-reason`
 to verify the presenter snapshot also stayed unattached, host-closed, and at

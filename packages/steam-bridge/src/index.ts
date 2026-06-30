@@ -1924,6 +1924,28 @@ export class SteamOverlayNativeHostUnavailableError extends Error {
   }
 }
 
+export function isSteamOverlayNativeHostUnavailableError(
+  error: unknown
+): error is SteamOverlayNativeHostUnavailableError {
+  if (error instanceof SteamOverlayNativeHostUnavailableError) {
+    return true;
+  }
+
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const candidate = error as { code?: unknown; reason?: unknown };
+  return (
+    candidate.code === "STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE" &&
+    isNativeOverlayHostUnavailableReason(candidate.reason)
+  );
+}
+
+function isNativeOverlayHostUnavailableReason(value: unknown): value is NativeOverlayHostUnavailableReason {
+  return value === "macos-screen-locked" || value === "macos-display-asleep";
+}
+
 export type ElectronOverlayWindow = Parameters<typeof electronOverlayPresenterOptionsImpl>[0] & {
   isFocused?(): boolean;
   on?(event: ElectronOverlayWindowGeometryEvent, handler: () => void): void;
