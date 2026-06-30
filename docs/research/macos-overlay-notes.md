@@ -160,10 +160,11 @@ Verified:
   close/focus/park checks for interactive overlays, passive toast diagnostics,
   and no crash evidence.
 - A 2026-06-29 full macOS overlay matrix at
-  `/tmp/steam-bridge-macos-overlay-matrix-full-current-20260629-160125`
-  passed all 20 Steam-launched App ID `480` cases after that immediate-focus
-  change, with zero managed overlay timing enforced and no Steam restart needed
-  because the stable shortcut was already up to date. Coverage included
+  `/tmp/steam-bridge-macos-overlay-matrix-full-helper-current-20260629-171348`
+  passed all 20 Steam-launched App ID `480` cases with the current packaged
+  helper-level presenter checks, zero managed overlay timing enforced, and no
+  Steam restart needed because the stable shortcut was already up to date.
+  Coverage included
   web/store/Friends/dialog `openAndWait(...)`, passive progress and unlock
   notifications, synthetic checkout approval-route plumbing, managed Shift+Tab
   shortcut open/close, profile, community, stats, achievements, user chat and

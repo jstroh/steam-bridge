@@ -471,16 +471,15 @@ can run `--close-probe`; it focuses the smoke app, sends the close input, and
 verifies active/inactive callbacks, app focus return, `openAndWait(...)`
 completion after parking, no post-close presenter pumping, and no crash
 diagnostics. A 2026-06-29 full macOS matrix at
-`/tmp/steam-bridge-macos-overlay-matrix-full-current-20260629-160125` covers modal web,
-store, Friends/chat, profile, community, stats, achievements, user chat/profile,
-known dialog equivalents, synthetic checkout approval-route plumbing, passive
-notification toasts, and managed Shift+Tab shortcut open/close through the
-presenter. The summary gate now requires active shown presenter snapshots and
-an interactive macOS host environment for successful overlay cases. The helper
-also checks the same presenter shape directly during close, shortcut-open, and
-passive-notification verification. A 2026-06-29 minimal helper-current run at
-`/tmp/steam-bridge-macos-overlay-matrix-minimal-helper-current-20260629-170723`
-passed those stricter packaged-helper gates without restarting Steam. It
+`/tmp/steam-bridge-macos-overlay-matrix-full-helper-current-20260629-171348`
+covers modal web, store, Friends/chat, profile, community, stats, achievements,
+user chat/profile, known dialog equivalents, synthetic checkout approval-route
+plumbing, passive notification toasts, and managed Shift+Tab shortcut open/close
+through the presenter. The summary gate now requires active shown presenter
+snapshots and an interactive macOS host environment for successful overlay cases.
+The helper also checks the same presenter shape directly during close,
+shortcut-open, and passive-notification verification. The full helper-current
+run passed those stricter packaged-helper gates without restarting Steam. It
 verifies macOS passive notification proof through `--require-passive-notification`;
 that gate requires the smoke result and lifecycle log to show the accepted
 achievement event, the matching Steam callback, no modal overlay activation, and

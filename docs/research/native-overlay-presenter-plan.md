@@ -115,8 +115,9 @@ timing hacks.
 - macOS Apple Silicon now has the same builder-facing wait proof for modal web,
   store, Friends/chat, and dialog-equivalent routes. A 2026-06-29 full
   Steam-launched matrix at
-  `/tmp/steam-bridge-macos-overlay-matrix-full-current-20260629-160125` passed
-  20 cases through the in-bundle native launcher: web/store/Friends/dialog
+  `/tmp/steam-bridge-macos-overlay-matrix-full-helper-current-20260629-171348`
+  passed 20 cases through the in-bundle native launcher with the current
+  packaged helper-level presenter checks: web/store/Friends/dialog
   `openAndWait(...)`, passive achievement progress/unlock toasts, synthetic
   checkout approval-route plumbing, managed Shift+Tab shortcut open/close,
   profile, community, stats, achievements, user chat/profile, and known dialog
