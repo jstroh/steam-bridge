@@ -714,7 +714,11 @@ The current core/full/persistent suites include a checkout prepare-only case
 that calls `withCheckoutPrepared(...)` without transaction input, requires
 `overlay:presenter-checkout-ready`, rejects modal overlay activation, and audits
 that the presenter releases back to idle; real checkout-open cases remain
-separate and require close/back-to-app proof.
+separate and require close/back-to-app proof. The full and persistent suite
+definitions are now 43 cases with that prepare-only route; the latest
+interactive full/persistent artifacts above are the preceding 42-case runs, so
+rerun the full or persistent suite on an unlocked Mac when updating live
+success evidence for the current suite shape.
 Live success runs preflight `getMacOverlayEnvironment()` and stop before case
 launch while the Mac is locked or the display is asleep; capture those states
 with `--suite unavailable`, which expects managed web, checkout-open, and
@@ -738,10 +742,15 @@ All unavailable cases record the matching presenter
 `nativeHostUnavailableReason` and `nativeHostAvailability` helper result.
 Locked macOS sessions can also report the display asleep; `macos-screen-locked` takes
 precedence, and unavailable captures do not require `overlayEnabled=true`
-because no native host should be created. The matrix
-runs the packaged helper and records
-per-case diagnostics. Its
-self-test is part of package smoke coverage and includes the macOS artifact
+because no native host should be created. A current-head locked/asleep run at
+`/tmp/steam-bridge-macos-overlay-matrix-20260630-142121` rebuilt and signed
+Electron `43.0.0`, reused the stable shortcut without restarting Steam, and
+passed all five unavailable cases with `available=false`,
+`STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE`, reason `macos-screen-locked`,
+`nativeHostOpen=false`, no overlay activation, zero overlay targets, disabled
+needs-present polling, zero managed overlay timing, and no copied macOS crash
+reports. The matrix runs the packaged helper and records per-case diagnostics.
+Its self-test is part of package smoke coverage and includes the macOS artifact
 summary self-test. After a live run it summarizes every macOS result and
 lifecycle log, failing if a case loses Steam launch/injection identity, uses
 nonzero managed overlay timing, reports crash diagnostics, duplicates
