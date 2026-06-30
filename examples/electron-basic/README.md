@@ -2,9 +2,10 @@
 
 This is a tiny Electron app for proving that Steam Bridge can initialize Steam,
 read basic Steamworks state, and exercise overlay paths on supported Steam
-desktop platforms. The deepest automated coverage currently targets Linux x64
-and Steam Deck; macOS Apple Silicon packaging and helper verification are ready
-for live overlay proof.
+desktop platforms. The deepest automated coverage currently targets Steam Deck
+Desktop Mode and macOS Apple Silicon; Linux x64 helper coverage is verified
+through the Deck, and Windows x64 helper coverage is implemented pending a live
+Windows Steam run.
 
 It uses Valve's SpaceWar sample App ID `480` by default. Override it with
 `STEAM_BRIDGE_APP_ID` when testing your own app.
