@@ -280,6 +280,9 @@ import steam, {
   STEAM_FRIENDS_OVERLAY_URL,
   SteamworksEnums,
   type ElectronSteamOverlay,
+  type MacOverlayEnvironment,
+  type NativeOverlayHostUnavailableReason,
+  type OverlayDiagnostics,
   type SteamId,
   type SteamOverlayTarget
 } from "steam-bridge";
@@ -349,6 +352,10 @@ const openAndWaitPromise = typedElectronSteamOverlay.openAndWait(steamOverlayTar
 const checkoutPreparePromise = typedElectronSteamOverlay.withCheckoutPrepared(() => ({
   steamUrl: "https://checkout.steampowered.com/checkout/approvetxn/123/"
 }));
+const waitError = new steam.SteamOverlayWaitTimeoutError("become active", 1);
+const waitDiagnostics: OverlayDiagnostics | undefined = waitError.diagnostics;
+const waitNativeHostUnavailable: NativeOverlayHostUnavailableReason | undefined = waitError.nativeHostUnavailableReason;
+const waitMacEnvironment: MacOverlayEnvironment | undefined = waitError.macOverlayEnvironment;
 const steamId: SteamId | undefined = undefined;
 
 void client;
@@ -372,6 +379,9 @@ void profileOverlayTarget;
 void typedElectronSteamOverlay;
 void openAndWaitPromise;
 void checkoutPreparePromise;
+void waitDiagnostics;
+void waitNativeHostUnavailable;
+void waitMacEnvironment;
 void inputPassthroughFn;
 void opacityFn;
 void friendsOverlayUrl;

@@ -413,8 +413,10 @@ presenter proofs.
 If a wait guard expires, is aborted, or the overlay manager closes while the
 wait is pending, app code receives `SteamOverlayWaitTimeoutError`,
 `SteamOverlayWaitAbortedError`, or `SteamOverlayWaitClosedError` with a stable
-`code`, `state`, and the last managed presenter `snapshot`; timeout errors also
-include `timeoutMs`. Use the matching `isSteamOverlayWaitTimeoutError(error)`,
+`code`, `state`, the last managed presenter `snapshot`, and direct
+`diagnostics`, `nativeHostUnavailableReason`, and `macOverlayEnvironment`
+properties copied from that snapshot when available; timeout errors also include
+`timeoutMs`. Use the matching `isSteamOverlayWaitTimeoutError(error)`,
 `isSteamOverlayWaitAbortedError(error)`, or
 `isSteamOverlayWaitClosedError(error)` guard for fallback or diagnostics instead
 of parsing the message.

@@ -213,11 +213,29 @@ test("overlay wait timeout guard accepts class and error-like shapes", (t) => {
 
   const snapshot = {
     mode: "passive",
+    backend: "macos-metal",
     attached: true,
+    nativeHostOpen: true,
     overlayActive: false,
     overlayWasActive: false,
     overlayNeedsPresent: false,
-    currentFps: 0
+    currentFps: 0,
+    nativeHostUnavailableReason: "macos-screen-locked",
+    macOverlayEnvironment: {
+      screenLocked: true,
+      displayAsleep: false
+    },
+    diagnostics: {
+      steamRunning: true,
+      appId: 480,
+      overlayEnabled: false,
+      overlayNeedsPresent: false,
+      steamDeck: false,
+      bigPicture: false,
+      platform: "darwin",
+      arch: "arm64",
+      pid: 1234
+    }
   };
   const error = new steam.SteamOverlayWaitTimeoutError("become active", 123, snapshot);
 
@@ -229,8 +247,16 @@ test("overlay wait timeout guard accepts class and error-like shapes", (t) => {
   assert.equal(error.state, "become active");
   assert.equal(error.timeoutMs, 123);
   assert.equal(error.snapshot, snapshot);
+  assert.equal(error.diagnostics, snapshot.diagnostics);
+  assert.equal(error.nativeHostUnavailableReason, "macos-screen-locked");
+  assert.equal(error.macOverlayEnvironment, snapshot.macOverlayEnvironment);
   assert.match(error.message, /Timed out waiting for Steam overlay to become active after 123ms/);
-  assert.match(error.message, /Last presenter state: mode=passive/);
+  assert.match(error.message, /Last presenter state: mode=passive, backend=macos-metal/);
+  assert.match(error.message, /nativeHostOpen=true/);
+  assert.match(error.message, /nativeHostUnavailable=macos-screen-locked/);
+  assert.match(error.message, /Steam overlay diagnostics: steamRunning=true, appId=480, overlayEnabled=false/);
+  assert.match(error.message, /process=darwin\/arm64\/1234/);
+  assert.match(error.message, /macOverlayEnvironment: screenLocked=true, displayAsleep=false/);
   assert.equal(
     steam.isSteamOverlayWaitTimeoutError({
       code: "STEAM_OVERLAY_WAIT_TIMEOUT",
@@ -256,6 +282,9 @@ test("overlay wait timeout guard accepts class and error-like shapes", (t) => {
   assert.equal(aborted.code, "STEAM_OVERLAY_WAIT_ABORTED");
   assert.equal(aborted.state, "close");
   assert.equal(aborted.snapshot, snapshot);
+  assert.equal(aborted.diagnostics, snapshot.diagnostics);
+  assert.equal(aborted.nativeHostUnavailableReason, "macos-screen-locked");
+  assert.equal(aborted.macOverlayEnvironment, snapshot.macOverlayEnvironment);
   assert.match(aborted.message, /Aborted waiting for Steam overlay to close/);
   assert.match(aborted.message, /Last presenter state: mode=passive/);
   assert.equal(
@@ -274,6 +303,9 @@ test("overlay wait timeout guard accepts class and error-like shapes", (t) => {
   assert.equal(closed.code, "STEAM_OVERLAY_WAIT_CLOSED");
   assert.equal(closed.state, "close and park");
   assert.equal(closed.snapshot, snapshot);
+  assert.equal(closed.diagnostics, snapshot.diagnostics);
+  assert.equal(closed.nativeHostUnavailableReason, "macos-screen-locked");
+  assert.equal(closed.macOverlayEnvironment, snapshot.macOverlayEnvironment);
   assert.match(closed.message, /closed while waiting for Steam overlay to close and park/);
   assert.match(closed.message, /Last presenter state: mode=passive/);
   assert.equal(

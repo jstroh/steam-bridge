@@ -357,6 +357,12 @@ Verified:
   authorization event that lacks a presenter snapshot. Public App ID `480`
   checkout plumbing normally reports this as `microTxnCallback=n/a`, while real
   configured product runs must show presenter diagnostics at authorization time.
+- Managed overlay wait errors now copy the last presenter snapshot's Steam
+  overlay diagnostics, macOS host-unavailable reason, and macOS environment onto
+  stable error properties and include them in the error message. A bad macOS
+  launch or signing shape therefore reports fields such as `overlayEnabled`,
+  `appId`, `steamRunning`, `nativeHostUnavailableReason`, `screenLocked`, and
+  `displayAsleep` without requiring app code to parse lifecycle logs.
 
 Still not verified:
 

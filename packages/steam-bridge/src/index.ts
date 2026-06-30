@@ -1959,6 +1959,9 @@ export class SteamOverlayWaitTimeoutError extends Error {
   readonly state: string;
   readonly timeoutMs: number;
   readonly snapshot?: ElectronSteamOverlaySnapshot;
+  readonly diagnostics?: OverlayDiagnostics;
+  readonly nativeHostUnavailableReason?: NativeOverlayHostUnavailableReason;
+  readonly macOverlayEnvironment?: MacOverlayEnvironment;
 
   constructor(state: string, timeoutMs: number, snapshot?: ElectronSteamOverlaySnapshot) {
     super(formatSteamOverlayWaitTimeoutMessage(state, timeoutMs, snapshot));
@@ -1967,6 +1970,9 @@ export class SteamOverlayWaitTimeoutError extends Error {
     this.state = state;
     this.timeoutMs = timeoutMs;
     this.snapshot = snapshot;
+    this.diagnostics = snapshot?.diagnostics;
+    this.nativeHostUnavailableReason = snapshot?.nativeHostUnavailableReason;
+    this.macOverlayEnvironment = snapshot?.macOverlayEnvironment;
   }
 }
 
@@ -1991,6 +1997,9 @@ export class SteamOverlayWaitAbortedError extends Error {
   readonly code = "STEAM_OVERLAY_WAIT_ABORTED";
   readonly state: string;
   readonly snapshot?: ElectronSteamOverlaySnapshot;
+  readonly diagnostics?: OverlayDiagnostics;
+  readonly nativeHostUnavailableReason?: NativeOverlayHostUnavailableReason;
+  readonly macOverlayEnvironment?: MacOverlayEnvironment;
 
   constructor(state: string, snapshot?: ElectronSteamOverlaySnapshot) {
     super(formatSteamOverlayWaitAbortedMessage(state, snapshot));
@@ -1998,6 +2007,9 @@ export class SteamOverlayWaitAbortedError extends Error {
     Object.setPrototypeOf(this, new.target.prototype);
     this.state = state;
     this.snapshot = snapshot;
+    this.diagnostics = snapshot?.diagnostics;
+    this.nativeHostUnavailableReason = snapshot?.nativeHostUnavailableReason;
+    this.macOverlayEnvironment = snapshot?.macOverlayEnvironment;
   }
 }
 
@@ -2018,6 +2030,9 @@ export class SteamOverlayWaitClosedError extends Error {
   readonly code = "STEAM_OVERLAY_WAIT_CLOSED";
   readonly state: string;
   readonly snapshot?: ElectronSteamOverlaySnapshot;
+  readonly diagnostics?: OverlayDiagnostics;
+  readonly nativeHostUnavailableReason?: NativeOverlayHostUnavailableReason;
+  readonly macOverlayEnvironment?: MacOverlayEnvironment;
 
   constructor(state: string, snapshot?: ElectronSteamOverlaySnapshot) {
     super(formatSteamOverlayWaitClosedMessage(state, snapshot));
@@ -2025,6 +2040,9 @@ export class SteamOverlayWaitClosedError extends Error {
     Object.setPrototypeOf(this, new.target.prototype);
     this.state = state;
     this.snapshot = snapshot;
+    this.diagnostics = snapshot?.diagnostics;
+    this.nativeHostUnavailableReason = snapshot?.nativeHostUnavailableReason;
+    this.macOverlayEnvironment = snapshot?.macOverlayEnvironment;
   }
 }
 
@@ -9497,10 +9515,30 @@ function appendSteamOverlayWaitSnapshotState(message: string, snapshot?: Electro
     return message;
   }
 
-  return `${message} Last presenter state: mode=${snapshot.mode}, attached=${snapshot.attached}, ` +
+  let details =
+    `${message} Last presenter state: mode=${snapshot.mode}, backend=${snapshot.backend ?? "unknown"}, ` +
+    `attached=${snapshot.attached}, nativeHostOpen=${snapshot.nativeHostOpen ?? "unknown"}, ` +
     `overlayActive=${snapshot.overlayActive}, overlayWasActive=${snapshot.overlayWasActive}, ` +
     `overlayNeedsPresent=${snapshot.overlayNeedsPresent}, currentFps=${snapshot.currentFps}, ` +
     `nativeHostUnavailable=${snapshot.nativeHostUnavailableReason ?? "none"}.`;
+
+  if (snapshot.diagnostics) {
+    const diagnostics = snapshot.diagnostics;
+    details +=
+      ` Steam overlay diagnostics: steamRunning=${diagnostics.steamRunning}, appId=${diagnostics.appId}, ` +
+      `overlayEnabled=${diagnostics.overlayEnabled}, overlayNeedsPresent=${diagnostics.overlayNeedsPresent}, ` +
+      `steamDeck=${diagnostics.steamDeck}, bigPicture=${diagnostics.bigPicture}, ` +
+      `process=${diagnostics.platform}/${diagnostics.arch}/${diagnostics.pid}.`;
+  }
+
+  if (snapshot.macOverlayEnvironment) {
+    const environment = snapshot.macOverlayEnvironment;
+    details +=
+      ` macOverlayEnvironment: screenLocked=${environment.screenLocked}, ` +
+      `displayAsleep=${environment.displayAsleep}.`;
+  }
+
+  return details;
 }
 
 function releaseElectronSteamOverlayActivationWhenShown(
