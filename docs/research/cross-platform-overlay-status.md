@@ -891,6 +891,21 @@ screenshots after hardening the Deck close probe to use one lifecycle-aware web
 close click, clear transient KWin overview/window-switcher state before close,
 and reject post-close overlay reactivation.
 
+## Current macOS Client Blocker
+
+The macOS overlay implementation still has broad passing evidence, but the
+current local Mac cannot run fresh live proof until Steam recovers from a client
+bootstrap/IPC failure. `npm run macos:steam-client-health` now captures this
+before any smoke app launch. A 2026-06-30 artifact at
+`/tmp/steam-bridge-macos-steam-health-resource-snapshot-20260630-195055`
+reported Steam running with a `-steamid=0` bootstrap helper and fresh
+`SteamChrome_MasterStream_*` `errno: 28` failures, while the resource snapshot
+showed zero remaining stale SteamChrome temp entries, 214 Steam open files, 84
+Steam POSIX semaphore handles, 15 Steam POSIX shared-memory handles, and
+`launchctl maxfiles` with a 256 soft limit. Treat this as local Steam client
+state, not overlay presenter evidence; rerun macOS overlay proof after Steam
+logs in and the health gate passes.
+
 ## Purchase Overlay Checklist
 
 Use this checklist for app-specific purchase validation without committing

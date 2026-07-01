@@ -807,8 +807,20 @@ failure. The same detector is now exposed through
 `npm run macos:steam-client-health`, which checks the currently running Steam
 client without launching the smoke app or touching the shortcut; unhealthy
 bootstrap states write `steam-client-health-diagnostics.txt` under the selected
-artifact root. Further live macOS overlay proof should wait for Steam to finish
-updating, log on, and handle shortcut launch URLs again.
+artifact root. The health artifact now includes a local resource snapshot so
+Steam client failures can be separated from overlay regressions without a
+manual `lsof`/`df` pass. A 2026-06-30 health run at
+`/tmp/steam-bridge-macos-steam-health-resource-snapshot-20260630-195055`
+showed the current local blocker: Steam was still launching its bootstrap
+helper with `-steamid=0` and emitting fresh `SteamChrome_MasterStream_*`
+`errno: 28` failures every 10 seconds, with zero stale SteamChrome temp entries
+left in `/private/tmp`, the Steam process at 214 open files, 84 POSIX
+semaphore handles, 15 POSIX shared-memory handles, and `launchctl maxfiles`
+reporting a soft limit of 256. This is still a local Steam client/bootstrap
+state, not an Electron presenter result. Further live macOS overlay proof
+should wait for Steam to recover, log on, and handle shortcut launch URLs again;
+if the same health failure persists after fully quitting Steam, log out or
+reboot macOS to clear the user-session IPC state.
 
 ## Primary References
 

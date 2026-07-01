@@ -371,6 +371,14 @@ npm run macos:steam-client-health
 npm run macos:overlay-matrix -- --suite core
 ```
 
+`npm run macos:steam-client-health` does not launch the smoke app or touch the
+Steam shortcut. Its artifact records the running Steam PID/helper state, current
+SteamChrome IPC log evidence, stale SteamChrome temp entry counts, POSIX
+semaphore/shared-memory handle counts, `launchctl maxfiles`, kernel file
+counters, and `/private/tmp` disk state. Run this first when macOS Steam appears
+wedged so overlay tests fail at the client boundary instead of producing a
+misleading app-level failure.
+
 Validate matrix commands without platform hardware:
 
 ```sh

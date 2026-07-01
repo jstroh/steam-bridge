@@ -21,10 +21,12 @@ function main() {
   }
 
   if (args.clientHealth) {
+    const processListText = args.processListFile ? readOptionalText(args.processListFile) : readProcessList();
     const result = detectSteamClientHealth({
-      processListText: args.processListFile ? readOptionalText(args.processListFile) : readProcessList(),
+      processListText,
       consoleLog: args.consoleLog || defaultSteamLog("console_log.txt"),
-      webhelperLog: args.webhelperLog || defaultSteamLog("webhelper.txt")
+      webhelperLog: args.webhelperLog || defaultSteamLog("webhelper.txt"),
+      resourceSnapshot: collectClientHealthResourceSnapshot({ processListText })
     });
 
     if (args.writeArtifact && args.diagnosticDir) {
@@ -265,7 +267,7 @@ function detectSteamClientLaunchFailure({
   return { detected: true, message: `${messageLines.join("\n")}\n` };
 }
 
-function detectSteamClientHealth({ processListText, consoleLog, webhelperLog }) {
+function detectSteamClientHealth({ processListText, consoleLog, webhelperLog, resourceSnapshot = null }) {
   const processLines = String(processListText || "")
     .split(/\r?\n/)
     .map((line) => line.trim())
@@ -307,6 +309,8 @@ function detectSteamClientHealth({ processListText, consoleLog, webhelperLog }) 
     failures.push("Current Steam client logs contain SteamChrome IPC/bootstrap failures.");
   }
 
+  const resourceLines = formatClientHealthResourceSnapshot(resourceSnapshot);
+
   if (failures.length === 0) {
     return {
       ok: true,
@@ -314,6 +318,7 @@ function detectSteamClientHealth({ processListText, consoleLog, webhelperLog }) 
         "macOS Steam client health check passed.",
         ...observations,
         "No running steamid=0 bootstrap helper or current SteamChrome IPC failure was detected.",
+        ...resourceLines,
         ""
       ].join("\n")
     };
@@ -325,12 +330,160 @@ function detectSteamClientHealth({ processListText, consoleLog, webhelperLog }) 
     "",
     ...observations,
     "Recover the local Steam client before running live overlay proof: fully quit Steam, wait for helper processes to exit, and if the SteamChrome IPC errors continue, log out/reboot macOS.",
+    ...resourceLines,
     "",
     "Relevant current Steam log lines:",
     ...(logMatches.length > 0 ? logMatches.map((line) => `  ${line}`) : ["  (none captured)"])
   ];
 
   return { ok: false, message: `${messageLines.join("\n")}\n` };
+}
+
+function collectClientHealthResourceSnapshot({ processListText }) {
+  const processLines = String(processListText || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const steamProcess = findSteamProcess(processLines);
+  const snapshot = {
+    staleSteamChromeTempEntries: countSteamChromeTempEntries(),
+    privateTmpDisk: readCommandLines("df", ["-k", "/private/tmp"], { timeoutMs: 3000, maxBuffer: 64 * 1024 }),
+    launchctlMaxfiles: readCommandLines("launchctl", ["limit", "maxfiles"], { timeoutMs: 3000, maxBuffer: 64 * 1024 }),
+    sysctlFiles: readCommandLines("sysctl", ["kern.num_files", "kern.maxfiles", "kern.maxfilesperproc"], {
+      timeoutMs: 3000,
+      maxBuffer: 64 * 1024
+    }),
+    allPosixIpc: countPosixIpcForCommand(["-nP"], { timeoutMs: 5000, maxBuffer: 4 * 1024 * 1024 }),
+    steamProcess: null
+  };
+
+  if (steamProcess) {
+    const steamLsof = readCommandLines("lsof", ["-nP", "-p", steamProcess.pid], {
+      timeoutMs: 5000,
+      maxBuffer: 4 * 1024 * 1024
+    });
+    snapshot.steamProcess = {
+      pid: steamProcess.pid,
+      openFileCount: steamLsof.ok ? Math.max(0, steamLsof.lines.length - 1) : null,
+      posixIpc: countPosixIpcFromLines(steamLsof.ok ? steamLsof.lines : []),
+      lsofError: steamLsof.ok ? "" : steamLsof.error
+    };
+  }
+
+  return snapshot;
+}
+
+function formatClientHealthResourceSnapshot(snapshot) {
+  if (!snapshot || typeof snapshot !== "object") {
+    return [];
+  }
+
+  const lines = ["", "Local resource snapshot:"];
+  if (Number.isInteger(snapshot.staleSteamChromeTempEntries)) {
+    lines.push(`  stale SteamChrome temp entries in /private/tmp: ${snapshot.staleSteamChromeTempEntries}`);
+  }
+  if (snapshot.steamProcess) {
+    const steam = snapshot.steamProcess;
+    lines.push(`  Steam process open file count: ${formatNullableNumber(steam.openFileCount)}`);
+    if (steam.posixIpc) {
+      lines.push(
+        `  Steam process POSIX IPC handles: semaphores=${formatNullableNumber(steam.posixIpc.semaphores)}, sharedMemory=${formatNullableNumber(steam.posixIpc.sharedMemory)}`
+      );
+    }
+    if (steam.lsofError) {
+      lines.push(`  Steam process lsof error: ${steam.lsofError}`);
+    }
+  }
+  if (snapshot.allPosixIpc) {
+    lines.push(
+      `  all-process POSIX IPC handles visible to lsof: semaphores=${formatNullableNumber(snapshot.allPosixIpc.semaphores)}, sharedMemory=${formatNullableNumber(snapshot.allPosixIpc.sharedMemory)}`
+    );
+    if (snapshot.allPosixIpc.error) {
+      lines.push(`  all-process lsof error: ${snapshot.allPosixIpc.error}`);
+    }
+  }
+  appendCommandSummary(lines, "launchctl maxfiles", snapshot.launchctlMaxfiles);
+  appendCommandSummary(lines, "kernel file counters", snapshot.sysctlFiles);
+  appendCommandSummary(lines, "/private/tmp disk", snapshot.privateTmpDisk);
+  return lines;
+}
+
+function appendCommandSummary(lines, label, result) {
+  if (!result || typeof result !== "object") {
+    return;
+  }
+  if (!result.ok) {
+    if (result.error) {
+      lines.push(`  ${label}: ${result.error}`);
+    }
+    return;
+  }
+  const summary = result.lines.map((line) => line.trim()).filter(Boolean).join(" | ");
+  if (summary) {
+    lines.push(`  ${label}: ${summary}`);
+  }
+}
+
+function countSteamChromeTempEntries() {
+  const tmpRoot = "/private/tmp";
+  let count = 0;
+  try {
+    for (const name of fs.readdirSync(tmpRoot)) {
+      if (/^steam_chrome_(?:overlay|shmem)_uid\d+_spid\d+$/.test(name)) {
+        count += 1;
+      }
+    }
+  } catch {
+    return null;
+  }
+  return count;
+}
+
+function countPosixIpcForCommand(args, { timeoutMs, maxBuffer }) {
+  const result = readCommandLines("lsof", args, { timeoutMs, maxBuffer });
+  if (!result.ok) {
+    return { semaphores: null, sharedMemory: null, error: result.error };
+  }
+  return countPosixIpcFromLines(result.lines);
+}
+
+function countPosixIpcFromLines(lines) {
+  let semaphores = 0;
+  let sharedMemory = 0;
+  for (const line of lines) {
+    if (/\bPSXSEM\b/.test(line)) {
+      semaphores += 1;
+    }
+    if (/\bPSXSHM\b/.test(line)) {
+      sharedMemory += 1;
+    }
+  }
+  return { semaphores, sharedMemory };
+}
+
+function readCommandLines(command, args, { timeoutMs, maxBuffer }) {
+  try {
+    const output = childProcess.execFileSync(command, args, {
+      encoding: "utf8",
+      timeout: timeoutMs,
+      maxBuffer
+    });
+    return {
+      ok: true,
+      lines: output.split(/\r?\n/).filter((line) => line.length > 0),
+      error: ""
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      lines: [],
+      error: error && error.message ? error.message : String(error)
+    };
+  }
+}
+
+function formatNullableNumber(value) {
+  return Number.isFinite(value) ? String(value) : "unknown";
 }
 
 function findSteamProcess(processLines) {
@@ -676,11 +829,27 @@ function runSelfTest() {
         " 9913 /Users/example/Library/Application Support/Steam/Steam.AppBundle/Steam/Contents/Frameworks/Steam Helper.app/Contents/MacOS/Steam Helper -nocrashdialog -steamid=0 -steampid=9706"
       ].join("\n"),
       consoleLog,
-      webhelperLog
+      webhelperLog,
+      resourceSnapshot: {
+        staleSteamChromeTempEntries: 12,
+        privateTmpDisk: { ok: true, lines: ["Filesystem 1024-blocks Used Available Capacity Mounted on", "/dev/disk3s5 100 80 20 80% /System/Volumes/Data"] },
+        launchctlMaxfiles: { ok: true, lines: ["maxfiles    256            unlimited"] },
+        sysctlFiles: { ok: true, lines: ["kern.num_files: 100", "kern.maxfiles: 1000", "kern.maxfilesperproc: 512"] },
+        allPosixIpc: { semaphores: 122, sharedMemory: 22 },
+        steamProcess: {
+          pid: "9706",
+          openFileCount: 213,
+          posixIpc: { semaphores: 100, sharedMemory: 10 },
+          lsofError: ""
+        }
+      }
     });
     assert(!result.ok, "detects running steamid=0 helper health failure");
     assert(result.message.includes("steamid=0"), "health failure names steamid=0");
     assert(result.message.includes("SteamChrome_MasterStream"), "health failure includes current IPC evidence");
+    assert(result.message.includes("Local resource snapshot"), "health failure includes resource snapshot");
+    assert(result.message.includes("stale SteamChrome temp entries"), "health failure includes stale SteamChrome temp count");
+    assert(result.message.includes("launchctl maxfiles"), "health failure includes launchctl maxfiles");
 
     result = detectSteamClientHealth({
       processListText: "",
