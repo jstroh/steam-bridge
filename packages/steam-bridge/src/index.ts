@@ -9315,6 +9315,9 @@ function installElectronSteamOverlayShortcut(
       }
 
       shortcutOpenState.opening = true;
+      if (typeof shortcut.target === "function") {
+        assertElectronSteamOverlayNativeHostAvailable(snapshot);
+      }
       const target = resolveElectronSteamOverlayShortcutTarget(shortcut.target);
       controller.open(target);
       notifyElectronSteamOverlayShortcutOpened(shortcut, target);

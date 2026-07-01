@@ -305,12 +305,11 @@ resolver. Dynamic shortcut targets intentionally report
 `reason: "dynamic-target"` from `getShortcutOpenStatus()` because the
 side-effect-free check does not call app code. On macOS, if the native overlay
 host is already unavailable because the screen is locked or the display is
-asleep, the shortcut open helpers fail before resolving a dynamic target
-callback. The bridge consumes Shift+Tab
-only when it is opening a managed
-presenter-backed target; once Steam reports an active overlay, it lets Shift+Tab
-pass through so Steam can handle the close/toggle side. On macOS, Steam can
-consume Shift+Tab before Electron's normal
+asleep, keyboard-triggered and programmatic shortcut opens fail before resolving
+a dynamic target callback. The bridge consumes Shift+Tab only when it is opening
+a managed presenter-backed target; once Steam reports an active overlay, it lets
+Shift+Tab pass through so Steam can handle the close/toggle side. On macOS,
+Steam can consume Shift+Tab before Electron's normal
 `before-input-event` hook sees it, so Steam Bridge registers a focused-window
 global shortcut fallback only while the game window is focused, then unregisters
 it while Steam's overlay is active so the second Shift+Tab still closes

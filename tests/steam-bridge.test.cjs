@@ -8111,6 +8111,7 @@ test("electron steam overlay does not resolve dynamic shortcut targets while mac
   const steam = loadSteamWithFakeNative(fake);
   t.after(clearSteamBridgeCache);
 
+  let beforeInputHandler;
   const window = {
     isDestroyed() {
       return false;
@@ -8128,7 +8129,11 @@ test("electron steam overlay does not resolve dynamic shortcut targets while mac
       once() {},
       invalidate() {},
       send() {},
-      on() {},
+      on(event, handler) {
+        if (event === "before-input-event") {
+          beforeInputHandler = handler;
+        }
+      },
       off() {}
     }
   };
@@ -8162,18 +8167,37 @@ test("electron steam overlay does not resolve dynamic shortcut targets while mac
     return true;
   };
 
-  assert.throws(() => overlay.openShortcutTarget(), assertUnavailableError);
+  assert.equal(typeof beforeInputHandler, "function");
+  let shortcutPrevented = false;
+  beforeInputHandler(
+    {
+      preventDefault() {
+        shortcutPrevented = true;
+      }
+    },
+    {
+      type: "keyDown",
+      key: "Tab",
+      shift: true
+    }
+  );
+  assert.equal(shortcutPrevented, true);
   assert.equal(resolveCount, 0);
   assert.equal(shortcutErrors.length, 1);
   assertUnavailableError(shortcutErrors[0]);
+
+  assert.throws(() => overlay.openShortcutTarget(), assertUnavailableError);
+  assert.equal(resolveCount, 0);
+  assert.equal(shortcutErrors.length, 2);
+  assertUnavailableError(shortcutErrors[1]);
 
   await assert.rejects(
     overlay.openShortcutTargetAndWait({ showTimeoutMs: 5, closeTimeoutMs: 5 }),
     assertUnavailableError
   );
   assert.equal(resolveCount, 0);
-  assert.equal(shortcutErrors.length, 2);
-  assertUnavailableError(shortcutErrors[1]);
+  assert.equal(shortcutErrors.length, 3);
+  assertUnavailableError(shortcutErrors[2]);
   assert.deepEqual(fake.calls.filter((call) => call.method === "activateOverlayToWebPage"), []);
 
   overlay.close();
