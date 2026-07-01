@@ -1466,6 +1466,15 @@ Current evidence:
   leak wrong-app transaction IDs into overlay calls. The public
   `checkoutTargetFromResult(initTxnResponse, { expectedAppId })` helper gives
   split-step and shortcut flows the same wrong-app guard.
+  A follow-up focused current-head checkout matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-20260701-124434` rebuilt and signed
+  the arm64 Electron `43.0.0` smoke package after the smoke app's split-step
+  shortcut checkout target began passing `{ expectedAppId: APP_ID }` into that
+  helper. It passed prepare-only checkout, direct checkout approval, managed
+  Shift+Tab checkout, and programmatic shortcut checkout `openAndWait(...)`
+  with close/back-to-app proof, parked zero-FPS state, zero managed timing,
+  managed isolation, one Metal presenter-backed overlay target under game ID
+  `480`, and clean crash diagnostics.
 - BrowserWindow-only overlay support is not proven.
 - Steam launch, app ID, auth, and callbacks are not enough to claim overlay
   support.

@@ -430,6 +430,7 @@ test("overlay wait timeout guard accepts class and error-like shapes", (t) => {
 test("checkout target helper unwraps InitTxn-style response envelopes", (t) => {
   const steam = require(distFile("index.js"));
   t.after(clearSteamBridgeCache);
+  const exampleMain = fs.readFileSync(path.join(repoRoot, "examples", "electron-basic", "main.js"), "utf8");
 
   const target = steam.overlay.checkoutTargetFromResult(
     {
@@ -478,6 +479,11 @@ test("checkout target helper unwraps InitTxn-style response envelopes", (t) => {
   const targetSnapshotJson = JSON.stringify(steam.overlay.snapshotSteamOverlayTarget(target));
   assert.equal(targetSnapshotJson.includes("246813579"), false);
   assert.equal(targetSnapshotJson.includes("return-from-init-txn"), false);
+  assert.match(
+    exampleMain,
+    /checkoutTargetFromResult\(checkoutOperation\.transaction,\s*\{\s*expectedAppId:\s*APP_ID\s*\}\s*\)/,
+    "Electron smoke shortcut checkout target must reject InitTxn responses for the wrong app ID"
+  );
 
   assert.throws(
     () =>

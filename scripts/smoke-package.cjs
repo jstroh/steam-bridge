@@ -326,6 +326,7 @@ function runElectronSmokeActionStaticChecks() {
     ["Electron smoke main", main, "directPresenterOpenReadinessStatus"],
     ["Electron smoke main", main, "waitForDirectPresenterOpenReadiness"],
     ["Electron smoke main", main, "waitForCheckoutOperationReadiness"],
+    ["Electron smoke main", main, "checkoutTargetFromResult(checkoutOperation.transaction, { expectedAppId: APP_ID })"],
     ["Electron smoke main", main, "waitForOverlayReady"],
     ["Electron smoke main", main, "await openPresenterWebOverlay();"],
     ["Electron smoke main", main, "await openPresenterStoreOverlay();"],

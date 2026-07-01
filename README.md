@@ -749,6 +749,17 @@ re-proved prepare-only checkout, direct synthetic approval checkout, managed
 Shift+Tab checkout, and programmatic checkout `openAndWait(...)`, including
 close/back-to-app proof, parked zero-FPS presenter state, zero managed timing,
 managed isolation, and clean crash diagnostics.
+A focused Apple Silicon checkout run at
+`/tmp/steam-bridge-macos-overlay-matrix-20260701-124434` rebuilt and signed the
+arm64-only Electron `43.0.0` package and passed the same four checkout cases
+after the smoke app's split-step shortcut checkout target began passing the
+expected app ID into `checkoutTargetFromResult(...)`. The run re-proved
+prepare-only checkout, direct checkout approval, managed Shift+Tab checkout,
+and programmatic shortcut checkout `openAndWait(...)`, including
+close/back-to-app proof, parked zero-FPS presenter state, zero managed timing,
+managed isolation, one Metal presenter-backed overlay target under game ID
+`480`, visible checkout web content for waited close probes, and clean crash
+diagnostics.
 A focused Apple Silicon minimal run at
 `/tmp/steam-bridge-macos-overlay-matrix-20260701-111335` then reused the same
 signed arm64-only Electron `43.0.0` package, verified the native launcher

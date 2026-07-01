@@ -2036,7 +2036,7 @@ function resolveShortcutOverlayTarget() {
         if (!checkoutOperation) {
           throw new Error("Shortcut checkout target requires a checkout URL, transaction ID, or JSON file.");
         }
-        return steamworks.overlay.checkoutTargetFromResult(checkoutOperation.transaction);
+        return steamworks.overlay.checkoutTargetFromResult(checkoutOperation.transaction, { expectedAppId: APP_ID });
       }
     default:
       throw new Error(`Unsupported shortcut target: ${SHORTCUT_TARGET}`);

@@ -262,6 +262,18 @@ split-step routes can call
 `checkoutTargetFromResult(initTxnResponse, { expectedAppId })` for the same
 guard.
 
+A follow-up focused current-head 2026-07-01 checkout macOS Apple Silicon matrix
+at `/tmp/steam-bridge-macos-overlay-matrix-20260701-124434` rebuilt and signed
+the arm64 Electron `43.0.0` smoke package, reused the stable App ID `480`
+shortcut without restarting Steam, and passed the same four checkout routes
+after the smoke app's split-step shortcut checkout target began passing
+`{ expectedAppId: APP_ID }` into `checkoutTargetFromResult(...)`. This re-proved
+prepare-only checkout, direct checkout approval, managed Shift+Tab checkout,
+and programmatic shortcut checkout `openAndWait(...)` with close/back-to-app
+proof, parked zero-FPS state, zero managed timing, managed isolation, one Metal
+presenter-backed overlay target under game ID `480`, visible checkout web
+content for waited close probes, and clean crash diagnostics.
+
 A 2026-07-01 full macOS Apple Silicon matrix at
 `/tmp/steam-bridge-macos-overlay-matrix-full-isolation-proof-20260701-045604`
 rebuilt and signed the arm64 Electron `43.0.0` smoke package, verified the
