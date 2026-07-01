@@ -158,6 +158,20 @@ suppression, and passive notification priming while preserving the same
 close/back-to-app, zero-FPS parking, zero managed timing, isolation, and crash
 checks.
 
+A current-head 2026-07-01 persistent macOS Apple Silicon matrix at
+`/tmp/steam-bridge-macos-overlay-matrix-persistent-open-statuses-20260701-080755`
+reused the signed arm64-only Electron `43.0.0` package and stable App ID `480`
+shortcut without repackaging or restarting Steam, launched one Steam-owned smoke
+process/control-server lifecycle, and passed all 45 persistent cases with
+`openStatuses=true` on every summary row. It re-proved readiness,
+web/store/Friends/dialog `openAndWait(...)`, duplicate-open suppression,
+passive progress/unlock toasts, checkout approval and prepare-only, every
+managed Shift+Tab shortcut target, direct profile/players/community/stats/
+achievements/user/dialog-equivalent routes, and every programmatic shortcut
+`openAndWait(...)` target with close/back-to-app proof, parked zero-FPS state,
+zero managed timing, managed isolation, clean crash diagnostics, and no
+leftover smoke or overlay processes.
+
 A 2026-07-01 full macOS Apple Silicon matrix at
 `/tmp/steam-bridge-macos-overlay-matrix-full-isolation-proof-20260701-045604`
 rebuilt and signed the arm64 Electron `43.0.0` smoke package, verified the

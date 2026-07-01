@@ -1163,6 +1163,20 @@ Current evidence:
   return, parked zero-FPS state, disabled needs-present polling, zero managed
   overlay timing, clean control-server quit behavior, no leftover
   smoke/gameoverlay process, and clean crash diagnostics.
+  A current-head 2026-07-01 persistent Apple Silicon matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-persistent-open-statuses-20260701-080755`
+  then reused the same signed arm64-only Electron `43.0.0` package and stable
+  shortcut without repackaging or restarting Steam, launched one Steam-owned App
+  ID `480` smoke process, drove all 45 persistent cases through the control
+  server, and passed the summary audit with `openStatuses=true` on every row.
+  It re-proved readiness, web/store/Friends/dialog `openAndWait(...)`,
+  duplicate-open suppression, passive progress/unlock toasts, checkout approval
+  and prepare-only, every managed Shift+Tab shortcut target, direct
+  profile/players/community/stats/achievements/user/dialog-equivalent routes,
+  every programmatic shortcut open-and-wait target, close/back-to-app proof,
+  parked zero-FPS state, zero managed timing, managed isolation, clean
+  control-server quit behavior, no leftover smoke/gameoverlay process, and clean
+  crash diagnostics.
   A focused current-head macOS checkout suite at
   `/tmp/steam-bridge-macos-overlay-matrix-checkout-target-snapshot-20260630-232458`
   rebuilt and signed the Apple Silicon Electron `43.0.0` package, reused the
