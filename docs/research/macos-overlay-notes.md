@@ -1,6 +1,6 @@
 # macOS Steam Overlay Notes
 
-Last updated: 2026-06-30
+Last updated: 2026-07-01
 
 These notes summarize public guidance and issue reports that shaped Steam
 Bridge's macOS Electron overlay diagnostics.
@@ -794,8 +794,17 @@ Steam restart entered a client update state and stopped dispatching
 `steam://rungameid/<shortcut>` before any smoke process was tracked; the matrix
 now skips the running-list removal wait when no smoke gameprocess log entry was
 created, so Steam URL-dispatch failures report as launch failures instead of
-cleanup timeouts. Further live macOS overlay proof should wait for Steam to
-finish updating, log on, and handle shortcut launch URLs again.
+cleanup timeouts. A later 2026-06-30 rerun at
+`/tmp/steam-bridge-macos-overlay-matrix-rerun-diagnostics-20260630-192307`
+confirmed the launch boundary more clearly: Steam refused repeated
+`steam://rungameid/<shortcut>` dispatches with `rungameid : not allowed yet`
+while `webhelper.txt` simultaneously reported
+`SteamChrome_MasterStream_*` `errno: 28` failures. The matrix now writes
+`steam-client-launch-diagnostics.txt` from fresh log offsets when this happens
+before any smoke result or gameprocess entry exists, so the artifact labels it
+as a local Steam client/bootstrap failure rather than an Electron presenter
+failure. Further live macOS overlay proof should wait for Steam to finish
+updating, log on, and handle shortcut launch URLs again.
 
 ## Primary References
 

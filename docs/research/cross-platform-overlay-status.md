@@ -1,6 +1,6 @@
 # Cross-Platform Overlay Status
 
-Last updated: 2026-06-30
+Last updated: 2026-07-01
 
 This tracks the current runtime evidence for the Electron smoke app on Linux x64,
 Steam Deck, and macOS Apple Silicon. The public smoke target is Valve's SpaceWar
@@ -401,9 +401,15 @@ macOS helper now rejects stale stable-shortcut launcher env files before launch,
 and the matrix no longer waits for Steam running-list removal if the Steam URL
 handler never starts a smoke game process. A subsequent local Steam restart
 entered a client update state and stopped dispatching `steam://rungameid`
-shortcuts, so further live macOS proof should resume only after Steam has
-finished updating, logged on, and can launch the App ID `480` smoke shortcut
-again.
+shortcuts. A later rerun at
+`/tmp/steam-bridge-macos-overlay-matrix-rerun-diagnostics-20260630-192307`
+captured that pre-smoke boundary into
+`steam-client-launch-diagnostics.txt`: Steam logged a
+`rungameid : not allowed yet` failure while the webhelper logged
+`SteamChrome_MasterStream_*` `errno: 28` failures, and no gameprocess tracking
+entry was written for the App ID `480` smoke shortcut. Further live macOS proof
+should resume only after Steam has finished updating, logged on, and can launch
+the App ID `480` smoke shortcut again.
 
 ## Steam Deck Shortcut Gate
 

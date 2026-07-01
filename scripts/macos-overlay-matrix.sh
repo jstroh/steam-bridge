@@ -911,6 +911,14 @@ macos_steam_gameprocess_log() {
   printf '%s\n' "$HOME/Library/Application Support/Steam/logs/gameprocess_log.txt"
 }
 
+macos_steam_console_log() {
+  printf '%s\n' "$HOME/Library/Application Support/Steam/logs/console_log.txt"
+}
+
+macos_steam_webhelper_log() {
+  printf '%s\n' "$HOME/Library/Application Support/Steam/logs/webhelper.txt"
+}
+
 macos_steam_log_size() {
   local log_file="$1"
   if [ ! -f "$log_file" ]; then
@@ -1026,6 +1034,27 @@ macos_smoke_gameprocess_started_since() {
   fi
 
   tail -c +"$tail_start" "$log_file" 2>/dev/null | grep -Fq 'SteamBridgeSmoke'
+}
+
+diagnose_macos_steam_client_launch_failure() {
+  local diagnostic_dir="$1"
+  local console_log_offset="$2"
+  local webhelper_log_offset="$3"
+  local gameprocess_log_offset="$4"
+
+  mkdir -p "$diagnostic_dir"
+  node "$script_dir/detect-macos-steam-overlay-ipc.cjs" \
+    --client-launch \
+    --diagnostic-dir "$diagnostic_dir" \
+    --console-log "$(macos_steam_console_log)" \
+    --webhelper-log "$(macos_steam_webhelper_log)" \
+    --gameprocess-log "$(macos_steam_gameprocess_log)" \
+    --console-start-offset "$console_log_offset" \
+    --webhelper-start-offset "$webhelper_log_offset" \
+    --gameprocess-start-offset "$gameprocess_log_offset" \
+    --game-id "$shortcut_game_id" \
+    --app-name "$app_name" \
+    --write-artifact || true
 }
 
 should_retry_macos_overlay_readiness_failure() {
@@ -1399,7 +1428,7 @@ restart_macos_steam() {
 }
 
 ensure_stable_shortcut() {
-  local launch_options start_dir upsert_cmd upsert_output
+  local launch_options start_dir upsert_cmd upsert_output resolved_shortcut_game_id
 
   launch_options="$(
     "$helper_path" \
@@ -1427,6 +1456,10 @@ ensure_stable_shortcut() {
 
   upsert_output="$("${upsert_cmd[@]}")"
   printf '%s\n' "$upsert_output"
+  resolved_shortcut_game_id="$(printf '%s\n' "$upsert_output" | sed -n 's/^Steam shortcut game ID (use with steam:\/\/rungameid): //p' | tail -n 1)"
+  if [ "$shortcut_game_id" = "auto" ] && [ -n "$resolved_shortcut_game_id" ]; then
+    shortcut_game_id="$resolved_shortcut_game_id"
+  fi
   if [[ "$upsert_output" != *"already up to date"* ]]; then
     restart_macos_steam
   fi
@@ -1743,7 +1776,7 @@ run_case() {
   local run_cmd
   local status=0
   local case_args=("$@")
-  local cleanup_status gameprocess_log_offset smoke_pid gameprocess_started
+  local cleanup_status gameprocess_log_offset console_log_offset webhelper_log_offset smoke_pid gameprocess_started
   if case_needs_default_web_close "${case_args[@]}"; then
     case_args+=(--close-input web)
   fi
@@ -1790,9 +1823,14 @@ run_case() {
     gameprocess_started="0"
     write_case_launcher_env "$result_file" "$diagnostic_dir" "${case_args[@]}"
     gameprocess_log_offset="$(macos_steam_log_size "$(macos_steam_gameprocess_log)")"
+    console_log_offset="$(macos_steam_log_size "$(macos_steam_console_log)")"
+    webhelper_log_offset="$(macos_steam_log_size "$(macos_steam_webhelper_log)")"
     "${run_cmd[@]}" || status=$?
     if macos_smoke_gameprocess_started_since "$gameprocess_log_offset"; then
       gameprocess_started="1"
+    fi
+    if [ "$status" -ne 0 ] && [ ! -s "$result_file" ] && [ "$gameprocess_started" != "1" ]; then
+      diagnose_macos_steam_client_launch_failure "$diagnostic_dir" "$console_log_offset" "$webhelper_log_offset" "$gameprocess_log_offset"
     fi
     smoke_pid="$(read_smoke_result_pid "$result_file" || true)"
     cleanup_macos_smoke_processes
@@ -1961,7 +1999,7 @@ run_persistent_matrix() {
   local control_token
   local launch_result_file="$artifact_root/persistent-launch.log"
   local shared_diagnostic_dir="$artifact_root/persistent.diagnostics"
-  local launch_cmd quit_cmd status cleanup_status gameprocess_log_offset control_pid
+  local launch_cmd quit_cmd status cleanup_status gameprocess_log_offset console_log_offset webhelper_log_offset control_pid
 
   control_token="$(generate_control_token)"
   launch_cmd=(
@@ -1992,7 +2030,15 @@ run_persistent_matrix() {
     rm -rf "$shared_diagnostic_dir"
     write_control_launcher_env "$launch_result_file" "$shared_diagnostic_dir" "$control_file" "$control_token"
     gameprocess_log_offset="$(macos_steam_log_size "$(macos_steam_gameprocess_log)")"
-    "${launch_cmd[@]}" || return $?
+    console_log_offset="$(macos_steam_log_size "$(macos_steam_console_log)")"
+    webhelper_log_offset="$(macos_steam_log_size "$(macos_steam_webhelper_log)")"
+    "${launch_cmd[@]}" || {
+      status=$?
+      if ! macos_smoke_gameprocess_started_since "$gameprocess_log_offset"; then
+        diagnose_macos_steam_client_launch_failure "$shared_diagnostic_dir" "$console_log_offset" "$webhelper_log_offset" "$gameprocess_log_offset"
+      fi
+      return "$status"
+    }
   fi
 
   status=0
