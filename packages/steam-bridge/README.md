@@ -957,6 +957,11 @@ The repository also provides `npm run macos:overlay-matrix`, which installs or
 updates one stable macOS Steam shortcut pointing at the in-bundle native
 launcher and a launcher env file. Each case rewrites only that env file, so
 Steam is restarted only when the shortcut itself is added or materially changed.
+When the matrix owns a Steam startup or shutdown, it cleans stale Steam IPC
+state only after Steam is fully stopped, including orphan `ipcserver`, stale
+`/private/tmp/steam.pipe`, and stale
+`/private/tmp/steam_chrome_{overlay,shmem}_uid*_spid*` entries for the current
+user.
 Use `--suite checkout` when the immediate question is private purchase behavior:
 it runs checkout prepare-only, direct checkout, managed Shift+Tab checkout, and
 programmatic shortcut checkout/open-and-wait with the same redacted manifest and

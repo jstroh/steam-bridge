@@ -99,7 +99,12 @@ stale `/private/tmp/steam_chrome_overlay_uid501_spid*` socket/pipe entries,
 `npm run macos:steam-client-health` reported only two stale temp entries but
 the client remained `Logged Off [U:1:0]`. Further live macOS overlay proof is
 blocked on recovering the local Steam client login/bootstrap state, not on a
-native presenter or Electron app failure.
+native presenter or Electron app failure. The matrix-owned startup/shutdown
+cleanup now removes stale
+`/private/tmp/steam_chrome_{overlay,shmem}_uid*_spid*` entries after Steam is
+fully stopped, alongside the existing orphan `ipcserver` and `steam.pipe`
+cleanup, so future matrix-owned restarts clear the same IPC residue captured in
+that failure without touching a live Steam client.
 
 A focused current-head 2026-07-01 minimal macOS Apple Silicon matrix at
 `/tmp/steam-bridge-macos-overlay-matrix-dynamic-shortcut-20260701-140139`

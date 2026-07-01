@@ -1437,7 +1437,7 @@ stop_macos_steam() {
 }
 
 cleanup_macos_stale_steam_ipc() {
-  local context="${1:-before matrix-owned Steam startup}"
+  local context="${1:-before matrix-owned Steam startup}" uid stale_chrome_count stale_chrome_label
   if [ "$dry_run" = "1" ]; then
     echo "DRY-RUN macOS stale Steam IPC cleanup skipped."
     return 0
@@ -1466,6 +1466,23 @@ cleanup_macos_stale_steam_ipc() {
   if [ -e /private/tmp/steam.pipe ]; then
     echo "Removing stale /private/tmp/steam.pipe $context..."
     rm -f /private/tmp/steam.pipe
+  fi
+
+  uid="$(id -u)"
+  stale_chrome_count="$(
+    find /private/tmp -maxdepth 1 \
+      \( -name "steam_chrome_overlay_uid${uid}_spid*" -o -name "steam_chrome_shmem_uid${uid}_spid*" \) \
+      -print 2>/dev/null | wc -l | tr -d '[:space:]'
+  )"
+  if [ "${stale_chrome_count:-0}" != "0" ]; then
+    stale_chrome_label="entries"
+    if [ "$stale_chrome_count" = "1" ]; then
+      stale_chrome_label="entry"
+    fi
+    echo "Removing $stale_chrome_count stale SteamChrome temp IPC $stale_chrome_label $context..."
+    find /private/tmp -maxdepth 1 \
+      \( -name "steam_chrome_overlay_uid${uid}_spid*" -o -name "steam_chrome_shmem_uid${uid}_spid*" \) \
+      -exec rm -f {} +
   fi
 }
 

@@ -1047,7 +1047,10 @@ Steam, log out or reboot macOS to clear the user-session IPC state.
   `overlayEnabled=false`. After deleting 611 stale Steam overlay socket/pipe
   entries from `/private/tmp`, Steam health showed only two stale entries but
   the client stayed logged off, so further live proof needs local Steam client
-  login/bootstrap recovery.
+  login/bootstrap recovery. Matrix-owned Steam startup/shutdown cleanup now
+  removes stale `/private/tmp/steam_chrome_{overlay,shmem}_uid*_spid*` entries
+  after Steam is fully stopped, alongside orphan `ipcserver` and `steam.pipe`
+  cleanup.
 
 ## Primary References
 

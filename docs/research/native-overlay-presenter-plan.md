@@ -1520,7 +1520,10 @@ Current evidence:
   launches, `overlayEnabled=false`). Clearing 611 stale
   `/private/tmp/steam_chrome_overlay_uid501_spid*` entries reduced the stale
   temp count, but Steam remained logged off, so further live proof is blocked
-  on local Steam client recovery rather than presenter code.
+  on local Steam client recovery rather than presenter code. The matrix-owned
+  Steam startup/shutdown cleanup now removes stale
+  `/private/tmp/steam_chrome_{overlay,shmem}_uid*_spid*` entries after Steam is
+  fully stopped, alongside orphan `ipcserver` and `steam.pipe` cleanup.
 - BrowserWindow-only overlay support is not proven.
 - Steam launch, app ID, auth, and callbacks are not enough to claim overlay
   support.
