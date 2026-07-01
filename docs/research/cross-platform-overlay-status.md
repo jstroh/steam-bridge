@@ -905,9 +905,13 @@ reported Steam running with a `-steamid=0` bootstrap helper and fresh
 showed zero remaining stale SteamChrome temp entries, 214 Steam open files, 84
 Steam POSIX semaphore handles, 15 Steam POSIX shared-memory handles, and
 `launchctl maxfiles` with a 256 soft limit. The detector now derives explicit
-resource warnings from those values. Treat this as local Steam client state,
-not overlay presenter evidence; rerun macOS overlay proof after Steam logs in
-and the health gate passes.
+resource warnings from those values. The live matrix now also starts/waits for
+Steam login before smoke cases when the stable shortcut is already current; a
+2026-06-30 startup-gate artifact stopped before `CASE 00` and captured the same
+`steamid=0`, `SteamChrome_MasterStream_*` `errno: 28`, `/private/tmp/steam.pipe`,
+orphan `ipcserver`, and System V semaphore evidence. Treat this as local Steam
+client state, not overlay presenter evidence; rerun macOS overlay proof after
+Steam logs in and the health gate passes.
 
 ## Purchase Overlay Checklist
 

@@ -347,6 +347,9 @@ function collectClientHealthResourceSnapshot({ processListText }) {
   const steamProcess = findSteamProcess(processLines);
   const snapshot = {
     staleSteamChromeTempEntries: countSteamChromeTempEntries(),
+    staleSteamPipe: fileExists("/private/tmp/steam.pipe"),
+    steamIpcServerProcesses: findSteamIpcServerProcesses(processLines),
+    sysvIpc: collectSysvIpcSnapshot(),
     privateTmpDisk: readCommandLines("df", ["-k", "/private/tmp"], { timeoutMs: 3000, maxBuffer: 64 * 1024 }),
     launchctlMaxfiles: readCommandLines("launchctl", ["limit", "maxfiles"], { timeoutMs: 3000, maxBuffer: 64 * 1024 }),
     sysctlFiles: readCommandLines("sysctl", ["kern.num_files", "kern.maxfiles", "kern.maxfilesperproc"], {
@@ -381,6 +384,23 @@ function formatClientHealthResourceSnapshot(snapshot) {
   const lines = ["", "Local resource snapshot:"];
   if (Number.isInteger(snapshot.staleSteamChromeTempEntries)) {
     lines.push(`  stale SteamChrome temp entries in /private/tmp: ${snapshot.staleSteamChromeTempEntries}`);
+  }
+  if (typeof snapshot.staleSteamPipe === "boolean") {
+    lines.push(`  stale /private/tmp/steam.pipe present: ${snapshot.staleSteamPipe ? "yes" : "no"}`);
+  }
+  if (Array.isArray(snapshot.steamIpcServerProcesses)) {
+    lines.push(`  Steam ipcserver processes: ${snapshot.steamIpcServerProcesses.length}`);
+    for (const process of snapshot.steamIpcServerProcesses.slice(0, 3)) {
+      lines.push(`    ${process}`);
+    }
+  }
+  if (snapshot.sysvIpc) {
+    lines.push(
+      `  System V IPC: semaphores=${formatNullableNumber(snapshot.sysvIpc.semaphores)}, userSemaphores=${formatNullableNumber(snapshot.sysvIpc.userSemaphores)}`
+    );
+    if (snapshot.sysvIpc.error) {
+      lines.push(`  System V IPC error: ${snapshot.sysvIpc.error}`);
+    }
   }
   if (snapshot.steamProcess) {
     const steam = snapshot.steamProcess;
@@ -441,6 +461,22 @@ function buildClientHealthResourceWarnings(snapshot) {
       `${snapshot.staleSteamChromeTempEntries} stale SteamChrome temp entries remain in /private/tmp.`
     );
   }
+  if (snapshot.staleSteamPipe && !snapshot.steamProcess) {
+    warnings.push("stale /private/tmp/steam.pipe remains after Steam shutdown.");
+  }
+  if (!snapshot.steamProcess && Array.isArray(snapshot.steamIpcServerProcesses) && snapshot.steamIpcServerProcesses.length > 0) {
+    warnings.push("Steam ipcserver is still running while steam_osx is not.");
+  }
+  if (
+    snapshot.sysvIpc &&
+    Number.isInteger(snapshot.sysvIpc.userSemaphores) &&
+    snapshot.sysvIpc.userSemaphores > 0 &&
+    !snapshot.steamProcess
+  ) {
+    warnings.push(
+      `${snapshot.sysvIpc.userSemaphores} user-owned System V semaphores remain while Steam is not running.`
+    );
+  }
   if (privateTmpCapacity !== null && privateTmpCapacity >= 95) {
     warnings.push(`/private/tmp volume is ${privateTmpCapacity}% full.`);
   }
@@ -477,6 +513,49 @@ function countSteamChromeTempEntries() {
     return null;
   }
   return count;
+}
+
+function fileExists(file) {
+  try {
+    return fs.existsSync(file);
+  } catch {
+    return false;
+  }
+}
+
+function findSteamIpcServerProcesses(processLines) {
+  return processLines.filter((line) =>
+    /Steam\.AppBundle\/Steam\/Contents\/MacOS\/ipcserver\b/.test(line)
+  );
+}
+
+function collectSysvIpcSnapshot() {
+  const result = readCommandLines("ipcs", ["-a"], { timeoutMs: 3000, maxBuffer: 1024 * 1024 });
+  if (!result.ok) {
+    return { semaphores: null, userSemaphores: null, error: result.error };
+  }
+  const user = readCurrentUsername();
+  let semaphores = 0;
+  let userSemaphores = 0;
+  for (const line of result.lines) {
+    const columns = line.trim().split(/\s+/);
+    if (columns[0] !== "s") {
+      continue;
+    }
+    semaphores += 1;
+    if (user && columns[4] === user) {
+      userSemaphores += 1;
+    }
+  }
+  return { semaphores, userSemaphores, error: "" };
+}
+
+function readCurrentUsername() {
+  try {
+    return os.userInfo().username || "";
+  } catch {
+    return "";
+  }
 }
 
 function countPosixIpcForCommand(args, { timeoutMs, maxBuffer }) {
@@ -900,6 +979,11 @@ function runSelfTest() {
       webhelperLog,
       resourceSnapshot: {
         staleSteamChromeTempEntries: 12,
+        staleSteamPipe: true,
+        steamIpcServerProcesses: [
+          " 9800 /Users/example/Library/Application Support/Steam/Steam.AppBundle/Steam/Contents/MacOS/ipcserver"
+        ],
+        sysvIpc: { semaphores: 6, userSemaphores: 3, error: "" },
         privateTmpDisk: { ok: true, lines: ["Filesystem 1024-blocks Used Available Capacity Mounted on", "/dev/disk3s5 100 80 20 80% /System/Volumes/Data"] },
         launchctlMaxfiles: { ok: true, lines: ["maxfiles    256            unlimited"] },
         sysctlFiles: { ok: true, lines: ["kern.num_files: 100", "kern.maxfiles: 1000", "kern.maxfilesperproc: 512"] },
@@ -917,6 +1001,9 @@ function runSelfTest() {
     assert(result.message.includes("SteamChrome_MasterStream"), "health failure includes current IPC evidence");
     assert(result.message.includes("Local resource snapshot"), "health failure includes resource snapshot");
     assert(result.message.includes("stale SteamChrome temp entries"), "health failure includes stale SteamChrome temp count");
+    assert(result.message.includes("stale /private/tmp/steam.pipe present: yes"), "health failure includes stale Steam pipe state");
+    assert(result.message.includes("Steam ipcserver processes: 1"), "health failure includes Steam ipcserver process count");
+    assert(result.message.includes("System V IPC: semaphores=6, userSemaphores=3"), "health failure includes System V IPC counts");
     assert(result.message.includes("launchctl maxfiles"), "health failure includes launchctl maxfiles");
     assert(result.message.includes("Resource warnings"), "health failure includes derived resource warnings");
     assert(result.message.includes("213/256 open files"), "health failure warns on near-soft-limit file usage");

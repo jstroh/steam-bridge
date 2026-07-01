@@ -824,6 +824,16 @@ client/bootstrap state, not an Electron presenter result. Further live macOS
 overlay proof should wait for Steam to recover, log on, and handle shortcut
 launch URLs again; if the same health failure persists after fully quitting
 Steam, log out or reboot macOS to clear the user-session IPC state.
+- The macOS live matrix now ensures Steam itself is started and logged in before
+  launching any smoke case when the stable shortcut is already up to date. A
+  2026-06-30 rerun at
+  `/tmp/steam-bridge-macos-overlay-matrix-startup-gate-fixed-20260630-204149`
+  stopped before `CASE 00` because Steam timed out before logging in. The health
+  artifact captured the running `steamid=0` helper, fresh
+  `SteamChrome_MasterStream_*` `errno: 28` lines, the visible
+  `/private/tmp/steam.pipe`, the orphan `ipcserver`, and fresh user-owned
+  System V semaphore counts. This prevents the first smoke case from being used
+  as the Steam bootstrap probe when the local client is already unhealthy.
 
 ## Primary References
 

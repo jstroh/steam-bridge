@@ -563,6 +563,7 @@ run_self_test() {
   fi
   require_contains "$preflight_output" "DRY-RUN macOS overlay preflight skipped." "preflight mode should support dry-run without package or Steam work."
   require_contains "$steam_health_output" "DRY-RUN macOS Steam client health skipped." "Steam health mode should support dry-run without package or shortcut work."
+  require_contains "$core_output" "DRY-RUN macOS Steam startup readiness skipped." "live matrix should gate cases on Steam startup readiness before launch."
   require_contains "$core_output" "DRY-RUN macOS Steam client health skipped." "live matrix should gate cases on Steam client health before launch."
   require_unique_case_ids "$minimal_output" "minimal"
   require_unique_case_ids "$core_output" "core"
@@ -890,6 +891,7 @@ ensure_ready() {
   : > "$artifact_root/macos-matrix-cases.jsonl"
   require_macos_overlay_environment_for_suite
   ensure_stable_shortcut
+  ensure_macos_steam_ready_for_suite
   check_macos_steam_client_health
   if [ "$dry_run" != "1" ]; then
     cleanup_macos_smoke_processes
@@ -1200,6 +1202,10 @@ macos_steam_running() {
   pgrep -f 'steam_osx|Steam Helper|Steam\.AppBundle|gameoverlayui' >/dev/null 2>&1
 }
 
+macos_steam_client_running() {
+  pgrep -f 'Steam\.AppBundle/Steam/Contents/MacOS/steam_osx\b' >/dev/null 2>&1
+}
+
 wait_for_macos_steam_exit() {
   local deadline
   deadline=$((SECONDS + ${1:?missing wait seconds}))
@@ -1438,6 +1444,31 @@ check_macos_steam_client_health() {
     return $?
   fi
   run_macos_steam_client_health
+}
+
+ensure_macos_steam_ready_for_suite() {
+  if [ "$suite" = "unavailable" ]; then
+    return 0
+  fi
+  if [ "$dry_run" = "1" ]; then
+    echo "DRY-RUN macOS Steam startup readiness skipped."
+    return 0
+  fi
+  if [ "$(uname -s)" != "Darwin" ]; then
+    echo "macOS Steam startup readiness check must run on macOS." >&2
+    exit 1
+  fi
+  if macos_steam_client_running; then
+    return 0
+  fi
+
+  echo "Starting macOS Steam before live overlay matrix..."
+  if ! start_macos_steam; then
+    echo "macOS Steam did not reach a logged-in state before launching smoke cases." >&2
+    run_macos_steam_client_health >&2 || true
+    return 1
+  fi
+  steam_restarted_for_shortcut="1"
 }
 
 run_macos_steam_client_health() {
