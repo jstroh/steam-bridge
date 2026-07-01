@@ -2587,7 +2587,7 @@ NODE
 }
 
 run_self_test() {
-  local temp_result launch_options temp_home old_home shortcut_file selftest_env_file expected_game_id matches resolved old_diagnostic_dir old_crash_report_cutoff_ms dirty_diagnostic_dir
+  local temp_result launch_options temp_home old_home shortcut_file selftest_env_file expected_game_id matches resolved old_diagnostic_dir old_crash_report_cutoff_ms dirty_diagnostic_dir control_temp_dir control_capture_file control_pid
   temp_result="$(mktemp "${TMPDIR:-/tmp}/steam-bridge-macos-helper.XXXXXX")"
   result_file="$temp_result"
   diagnostic_dir="$result_file.diagnostics"
@@ -2854,6 +2854,156 @@ NODE
     echo "Self-test failed: control-server launch options must pass the control token." >&2
     exit 1
   fi
+
+  control_temp_dir="$(mktemp -d "${TMPDIR:-/tmp}/steam-bridge-macos-control.XXXXXX")"
+  control_file="$control_temp_dir/control.json"
+  control_capture_file="$control_temp_dir/request.json"
+  diagnostic_dir="$control_temp_dir/diagnostics"
+  result_file="$control_temp_dir/result.log"
+  CONTROL_FILE="$control_file" \
+    CONTROL_CAPTURE_FILE="$control_capture_file" \
+    CONTROL_TOKEN="$control_token" \
+    CONTROL_DIAGNOSTIC_DIR="$diagnostic_dir" \
+    node <<'NODE' &
+const fs = require("node:fs");
+const http = require("node:http");
+const path = require("node:path");
+
+const controlFile = process.env.CONTROL_FILE;
+const captureFile = process.env.CONTROL_CAPTURE_FILE;
+const token = process.env.CONTROL_TOKEN;
+const diagnosticDir = process.env.CONTROL_DIAGNOSTIC_DIR;
+
+const server = http.createServer((request, response) => {
+  let text = "";
+  request.setEncoding("utf8");
+  request.on("data", (chunk) => {
+    text += chunk;
+  });
+  request.on("end", () => {
+    let body;
+    try {
+      body = text ? JSON.parse(text) : {};
+    } catch (error) {
+      response.writeHead(400, { "content-type": "application/json" });
+      response.end(JSON.stringify({ ok: false, error: error.message }));
+      return;
+    }
+    fs.writeFileSync(
+      captureFile,
+      `${JSON.stringify({
+        method: request.method,
+        path: request.url,
+        token: request.headers["x-steam-bridge-smoke-token"] || "",
+        contentType: request.headers["content-type"] || "",
+        contentLength: Number(request.headers["content-length"] || "0"),
+        rawLength: Buffer.byteLength(text),
+        body
+      })}\n`
+    );
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({ ok: true, result: { ok: true } }));
+    server.close(() => process.exit(0));
+  });
+});
+
+server.listen(0, "127.0.0.1", () => {
+  const address = server.address();
+  fs.mkdirSync(path.dirname(controlFile), { recursive: true });
+  fs.writeFileSync(
+    controlFile,
+    `${JSON.stringify({
+      host: "127.0.0.1",
+      port: address.port,
+      token,
+      pid: process.pid,
+      diagnosticDir
+    })}\n`
+  );
+});
+
+setTimeout(() => {
+  console.error("Timed out waiting for smoke control self-test request.");
+  process.exit(1);
+}, 10000).unref();
+NODE
+  control_pid="$!"
+  for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+    if [ -s "$control_file" ]; then
+      break
+    fi
+    sleep 0.1
+  done
+  if [ ! -s "$control_file" ]; then
+    kill "$control_pid" >/dev/null 2>&1 || true
+    wait "$control_pid" >/dev/null 2>&1 || true
+    rm -rf "$control_temp_dir"
+    echo "Self-test failed: fake smoke control server did not write its control file." >&2
+    exit 1
+  fi
+
+  action="presenter-shortcut-open-and-wait"
+  result_delay_ms="1234"
+  require_overlay_activated="1"
+  web_url="https://store.steampowered.com/app/480/"
+  web_modal="true"
+  checkout_url="https://checkout.steampowered.com/checkout/test"
+  checkout_transaction_id="123456789"
+  checkout_return_url="steam://steam-bridge-return"
+  checkout_json_file="/tmp/private-init-txn-response.json"
+  overlay_dialog="Achievements"
+  user_dialog="steamid"
+  shortcut_target="checkout"
+  achievement_name="ACH_TRAVEL_FAR_SINGLE"
+  achievement_current="1"
+  achievement_max="10"
+  timeout_seconds="1"
+  if ! post_smoke_control_action; then
+    kill "$control_pid" >/dev/null 2>&1 || true
+    wait "$control_pid" >/dev/null 2>&1 || true
+    rm -rf "$control_temp_dir"
+    exit 1
+  fi
+  if ! wait "$control_pid"; then
+    rm -rf "$control_temp_dir"
+    exit 1
+  fi
+  if ! node - "$control_capture_file" "$control_token" "$result_file" <<'NODE'
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const [captureFile, expectedToken, expectedResultFile] = process.argv.slice(2);
+const capture = JSON.parse(fs.readFileSync(captureFile, "utf8"));
+const body = capture.body;
+
+assert.equal(capture.method, "POST");
+assert.equal(capture.path, "/action");
+assert.equal(capture.token, expectedToken);
+assert.equal(capture.contentType, "application/json; charset=utf-8");
+assert.equal(capture.contentLength, capture.rawLength);
+assert.equal(body.action, "presenter-shortcut-open-and-wait");
+assert.equal(body.resultFile, expectedResultFile);
+assert.equal(body.resultDelayMs, 1234);
+assert.equal(body.requireOverlayActive, true);
+assert.deepEqual(body.options, {
+  webUrl: "https://store.steampowered.com/app/480/",
+  webModal: true,
+  checkoutUrl: "https://checkout.steampowered.com/checkout/test",
+  checkoutTransactionId: "123456789",
+  checkoutReturnUrl: "steam://steam-bridge-return",
+  checkoutJsonFile: "/tmp/private-init-txn-response.json",
+  overlayDialog: "Achievements",
+  userDialog: "steamid",
+  shortcutTarget: "checkout",
+  achievementName: "ACH_TRAVEL_FAR_SINGLE",
+  achievementCurrent: 1,
+  achievementMax: 10
+});
+NODE
+  then
+    rm -rf "$control_temp_dir"
+    exit 1
+  fi
+  rm -rf "$control_temp_dir"
 
   rm -f "$temp_result"
   rm -rf "$diagnostic_dir"
