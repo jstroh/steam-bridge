@@ -460,9 +460,10 @@ Use the smoke action `presenter-ready` for a cheap managed-overlay preflight:
 it attaches the Electron overlay manager, records native host availability, and
 does not activate Steam overlay UI.
 Use `presenter-duplicate-open-guard` to prove the public `IfAvailable` overlay
-helpers, including shortcut/controller and checkout target helpers, return
-`null` instead of starting a second overlay while a managed overlay is already
-opening.
+helpers for every named managed target, plus shortcut/controller and checkout
+target helpers, return `null` instead of starting a second overlay while a
+managed overlay is already opening. The same proof also verifies that checkout
+`IfAvailable` wait helpers do not start the transaction operation while busy.
 The macOS minimal/core/full/persistent matrix suites require that proof, so
 regressions in duplicate menu/button suppression fail before release.
 On macOS, that preflight intentionally does not require
@@ -663,6 +664,15 @@ snapshot and `canStartOperation` boolean, while preserving the same web/store/
 Friends/dialog, shortcut/toggle, passive progress/unlock toast, checkout
 approval/prepare, close/back-to-app, parked zero-FPS, managed isolation, and
 clean crash diagnostics.
+A focused Apple Silicon minimal run at
+`/tmp/steam-bridge-macos-overlay-matrix-minimal-full-ifavailable-fixed-20260701-090347`
+then rebuilt and signed the same arm64-only Electron `43.0.0` package and
+passed all 11 Steam-launched cases after the duplicate-open guard began proving
+every named managed target's direct and wait-style `IfAvailable` helpers. That
+live run also caught and re-proved the checkout-operation status ordering:
+while another overlay is already opening, `getCheckoutOperationStatus()` now
+reports `reason: "opening"` before any transient `overlay-not-ready` state, so
+purchase buttons do not start `InitTxn` during a managed overlay open.
 
 ## Shipping Notes
 

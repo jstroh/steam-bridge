@@ -10684,16 +10684,16 @@ function electronSteamOverlayCheckoutOperationStatus(
     return unavailable("steam-unavailable", "steam-unavailable", "Steam is not running.");
   }
 
-  if (snapshot.diagnostics?.overlayEnabled === false) {
-    return unavailable("overlay-not-ready", "overlay-not-ready", "Steam overlay is not ready yet.");
-  }
-
   if (snapshot.overlayActive) {
     return unavailable("overlay-active", "overlay-active", "Steam overlay is already active.");
   }
 
   if (isElectronSteamOverlayOpening(snapshot)) {
     return unavailable("opening", "opening", "Electron Steam overlay is already opening.");
+  }
+
+  if (snapshot.diagnostics?.overlayEnabled === false) {
+    return unavailable("overlay-not-ready", "overlay-not-ready", "Steam overlay is not ready yet.");
   }
 
   return {

@@ -1340,6 +1340,16 @@ Current evidence:
   shortcut/toggle, passive progress/unlock toast, checkout approval/prepare,
   close/back-to-app, parked zero-FPS, managed isolation, and clean crash
   diagnostics.
+  A focused Apple Silicon minimal matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-minimal-full-ifavailable-fixed-20260701-090347`
+  then rebuilt and signed the same arm64-only Electron `43.0.0` package and
+  passed all 11 Steam-launched cases after the duplicate-open guard began
+  proving every named managed target's direct and wait-style `IfAvailable`
+  helpers. That live run caught and re-proved the checkout-operation status
+  ordering: while another overlay is already opening,
+  `getCheckoutOperationStatus()` reports `reason: "opening"` before any
+  transient `overlay-not-ready` diagnostics, so purchase buttons do not start
+  `InitTxn` during a managed overlay open.
 - BrowserWindow-only overlay support is not proven.
 - Steam launch, app ID, auth, and callbacks are not enough to claim overlay
   support.

@@ -202,6 +202,8 @@ const NAMED_OPEN_STATUS_TARGET_TYPES = new Map([
   ["dialog", "dialog"],
   ["checkout", "checkout"]
 ]);
+const DUPLICATE_OPEN_NAMED_TARGET_NAMES = [...NAMED_OPEN_STATUS_TARGET_TYPES.keys()];
+const DUPLICATE_OPEN_NAMED_STATUS_NAMES = [...DUPLICATE_OPEN_NAMED_TARGET_NAMES, "checkoutOperation"];
 const REQUIRED_SUITE_CASE_IDS = new Map([
   ["minimal", MINIMAL_SUITE_REQUIRED_CASE_IDS],
   ["core", CORE_SUITE_REQUIRED_CASE_IDS],
@@ -819,11 +821,25 @@ function verifyDuplicateOpenGuard(caseId, actionName, resultEvents, lifecycleEnt
   verifyDuplicateOpenBusyStatus(caseId, "shortcut status", shortcutStatus, failures);
 
   const namedStatuses = objectOrEmpty(payload.namedStatuses);
-  for (const name of ["web", "store", "friends", "checkout", "checkoutOperation"]) {
+  for (const name of DUPLICATE_OPEN_NAMED_STATUS_NAMES) {
     verifyDuplicateOpenBusyStatus(
       caseId,
       `named ${name} status`,
       objectOrEmpty(namedStatuses[name]),
+      failures
+    );
+  }
+  const namedIfAvailableNulls = objectOrEmpty(payload.namedIfAvailableNulls);
+  const namedAndWaitIfAvailableNulls = objectOrEmpty(payload.namedAndWaitIfAvailableNulls);
+  for (const name of DUPLICATE_OPEN_NAMED_TARGET_NAMES) {
+    expect(
+      namedIfAvailableNulls[name] === true,
+      `${caseId}: open${formatNamedOverlayHelperName(name)}IfAvailable returned null while busy`,
+      failures
+    );
+    expect(
+      namedAndWaitIfAvailableNulls[name] === true,
+      `${caseId}: open${formatNamedOverlayHelperName(name)}AndWaitIfAvailable returned null while busy`,
       failures
     );
   }
@@ -974,6 +990,13 @@ function verifyDuplicateOpenBusyStatus(caseId, label, status, failures) {
     )}`,
     failures
   );
+}
+
+function formatNamedOverlayHelperName(name) {
+  return name
+    .split(/[-_]/)
+    .map((part) => `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`)
+    .join("");
 }
 
 function verifyWebOverlayVisibleBeforeClose(caseId, entries, failures) {
@@ -2001,6 +2024,12 @@ function runSelfTest() {
   const missingNamedStatusFixtureRoot = fs.mkdtempSync(
     path.join(os.tmpdir(), "steam-bridge-macos-matrix-summary-missing-named-status.")
   );
+  const missingNamedIfAvailableFixtureRoot = fs.mkdtempSync(
+    path.join(os.tmpdir(), "steam-bridge-macos-matrix-summary-missing-named-if-available.")
+  );
+  const missingNamedAndWaitIfAvailableFixtureRoot = fs.mkdtempSync(
+    path.join(os.tmpdir(), "steam-bridge-macos-matrix-summary-missing-named-and-wait-if-available.")
+  );
   const missingOpenStatusSnapshotFixtureRoot = fs.mkdtempSync(
     path.join(os.tmpdir(), "steam-bridge-macos-matrix-summary-missing-open-status-snapshot.")
   );
@@ -2061,6 +2090,23 @@ function runSelfTest() {
     createSelfTestFixture(missingNamedStatusFixtureRoot);
     removeDuplicateOpenNamedStatusProof(missingNamedStatusFixtureRoot, "01b-duplicate-open-guard");
     assertMissingDuplicateOpenNamedStatusRejected(missingNamedStatusFixtureRoot);
+    createSelfTestFixture(missingNamedIfAvailableFixtureRoot);
+    removeDuplicateOpenNamedIfAvailableProof(
+      missingNamedIfAvailableFixtureRoot,
+      "01b-duplicate-open-guard",
+      "namedIfAvailableNulls"
+    );
+    assertMissingDuplicateOpenNamedIfAvailableRejected(missingNamedIfAvailableFixtureRoot, "openWebIfAvailable");
+    createSelfTestFixture(missingNamedAndWaitIfAvailableFixtureRoot);
+    removeDuplicateOpenNamedIfAvailableProof(
+      missingNamedAndWaitIfAvailableFixtureRoot,
+      "01b-duplicate-open-guard",
+      "namedAndWaitIfAvailableNulls"
+    );
+    assertMissingDuplicateOpenNamedIfAvailableRejected(
+      missingNamedAndWaitIfAvailableFixtureRoot,
+      "openWebAndWaitIfAvailable"
+    );
     createSelfTestFixture(missingOpenStatusSnapshotFixtureRoot);
     removeOpenStatusSnapshotProof(missingOpenStatusSnapshotFixtureRoot, "01-web-openwait");
     assertMissingOpenStatusSnapshotRejected(missingOpenStatusSnapshotFixtureRoot);
@@ -2461,6 +2507,35 @@ function assertMissingDuplicateOpenNamedStatusRejected(root) {
   );
 }
 
+function removeDuplicateOpenNamedIfAvailableProof(root, caseId, field) {
+  const row = readManifestRows(root).find((entry) => entry.caseId === caseId);
+  assert.ok(row, `self-test fixture missing manifest row ${caseId}`);
+  const lifecyclePath = path.join(row.diagnosticDir, "lifecycle.jsonl");
+  const lines = fs
+    .readFileSync(lifecyclePath, "utf8")
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .map((line) => JSON.parse(line));
+  for (const entry of lines) {
+    if (entry.type === "event:overlay:presenter-duplicate-open-guard") {
+      delete entry.payload[field];
+    }
+  }
+  fs.writeFileSync(lifecyclePath, `${lines.map((entry) => JSON.stringify(entry)).join("\n")}\n`);
+}
+
+function assertMissingDuplicateOpenNamedIfAvailableRejected(root, helperName) {
+  const result = spawnSync(process.execPath, [__filename, "--artifact-root", root], {
+    encoding: "utf8"
+  });
+  assert.notEqual(result.status, 0, "summary should reject missing duplicate-open named IfAvailable proof");
+  assert.match(
+    result.stderr,
+    new RegExp(`${helperName} returned null while busy`),
+    "summary rejection should identify missing named IfAvailable proof"
+  );
+}
+
 function removeOpenStatusSnapshotProof(root, caseId) {
   const row = readManifestRows(root).find((entry) => entry.caseId === caseId);
   assert.ok(row, `self-test fixture missing manifest row ${caseId}`);
@@ -2621,39 +2696,9 @@ function createSelfTestFixture(root) {
               reason: "opening",
               waitReason: "opening"
             },
-            namedStatuses: {
-              web: {
-                canOpen: false,
-                canWait: false,
-                reason: "opening",
-                waitReason: "opening"
-              },
-              store: {
-                canOpen: false,
-                canWait: false,
-                reason: "opening",
-                waitReason: "opening"
-              },
-              friends: {
-                canOpen: false,
-                canWait: false,
-                reason: "opening",
-                waitReason: "opening"
-              },
-              checkout: {
-                canOpen: false,
-                canWait: false,
-                reason: "opening",
-                waitReason: "opening"
-              },
-              checkoutOperation: {
-                canStartOperation: false,
-                canOpen: false,
-                canWait: false,
-                reason: "opening",
-                waitReason: "opening"
-              }
-            },
+            namedStatuses: duplicateOpenNamedBusyStatusesFixture(),
+            namedIfAvailableNulls: duplicateOpenNamedNullsFixture(),
+            namedAndWaitIfAvailableNulls: duplicateOpenNamedNullsFixture(),
             shortcutStatus: {
               canOpen: false,
               canWait: false,
@@ -3306,6 +3351,33 @@ function namedOpenStatusesFixture() {
     };
   }
   return { ok: true, value };
+}
+
+function duplicateOpenBusyStatusFixture(extra = {}) {
+  return {
+    canOpen: false,
+    canWait: false,
+    reason: "opening",
+    waitReason: "opening",
+    ...extra
+  };
+}
+
+function duplicateOpenNamedBusyStatusesFixture() {
+  const value = {};
+  for (const name of DUPLICATE_OPEN_NAMED_TARGET_NAMES) {
+    value[name] = duplicateOpenBusyStatusFixture();
+  }
+  value.checkoutOperation = duplicateOpenBusyStatusFixture({ canStartOperation: false });
+  return value;
+}
+
+function duplicateOpenNamedNullsFixture() {
+  const value = {};
+  for (const name of DUPLICATE_OPEN_NAMED_TARGET_NAMES) {
+    value[name] = true;
+  }
+  return value;
 }
 
 function persistentShortcutLifecycleFixture(fixture) {

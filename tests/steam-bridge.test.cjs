@@ -6681,6 +6681,16 @@ test("electron steam overlay manager owns one presenter and routes opens", async
   assert.equal(windowShowCount, 1);
   assert.equal(windowFocusCount, 1);
   assert.equal(windowInvalidateCount, 1);
+  const originalIsOverlayEnabled = fake.isOverlayEnabled;
+  fake.isOverlayEnabled = () => false;
+  const openingBeforeReadyCheckoutOperationStatus = overlay.getCheckoutOperationStatus();
+  assert.equal(openingBeforeReadyCheckoutOperationStatus.canStartOperation, false);
+  assert.equal(openingBeforeReadyCheckoutOperationStatus.canOpen, false);
+  assert.equal(openingBeforeReadyCheckoutOperationStatus.canWait, false);
+  assert.equal(openingBeforeReadyCheckoutOperationStatus.reason, "opening");
+  assert.equal(openingBeforeReadyCheckoutOperationStatus.waitReason, "opening");
+  assert.equal(openingBeforeReadyCheckoutOperationStatus.snapshot.diagnostics.overlayEnabled, false);
+  fake.isOverlayEnabled = originalIsOverlayEnabled;
   const webTarget = { type: "web", url: "https://store.steampowered.com/app/480/", modal: true };
   const openingOpenStatus = overlay.getOpenStatus(webTarget);
   assert.equal(openingOpenStatus.canOpen, false);

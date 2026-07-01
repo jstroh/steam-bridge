@@ -635,11 +635,11 @@ On macOS this is a pre-activation proof, so it should require Steam launch,
 overlay injection, native host availability, idle presenter state, and no
 overlay-active callback, but not `overlayEnabled=true`.
 The `presenter-duplicate-open-guard` action opens a managed web overlay and
-immediately proves `openIfAvailable(...)`, `openAndWaitIfAvailable(...)`, and
-both `openCheckoutIfAvailable(...)` and
-`openCheckoutAndWaitIfAvailable(...)`, plus the shortcut/controller helpers
-`openShortcutTargetIfAvailable()` and
-`openShortcutTargetAndWaitIfAvailable()`, return `null` while that overlay is
+immediately proves every named managed target's direct and wait-style
+`IfAvailable` helpers, generic `openIfAvailable(...)` /
+`openAndWaitIfAvailable(...)`, both checkout helpers, and the
+shortcut/controller helpers `openShortcutTargetIfAvailable()` and
+`openShortcutTargetAndWaitIfAvailable()` return `null` while that overlay is
 opening, without running the checkout operation callback.
 Unit coverage also verifies the checkout `IfAvailable` helpers skip or suppress
 work when fresh Steam diagnostics already report Steam stopped or the overlay
@@ -1073,6 +1073,15 @@ snapshot and `canStartOperation` boolean, while preserving the same web/store/
 Friends/dialog, shortcut/toggle, passive progress/unlock toast, checkout
 approval/prepare, close/back-to-app, parked zero-FPS, managed isolation, and
 clean crash diagnostics.
+A focused 2026-07-01 minimal Apple Silicon artifact at
+`/tmp/steam-bridge-macos-overlay-matrix-minimal-full-ifavailable-fixed-20260701-090347`
+then rebuilt and signed the same arm64-only Electron `43.0.0` package and
+passed all 11 Steam-launched cases after the duplicate-open guard began proving
+every named managed target's direct and wait-style `IfAvailable` helpers. That
+live run also caught and re-proved the checkout-operation status ordering:
+while another overlay is already opening, `getCheckoutOperationStatus()` now
+reports `reason: "opening"` before any transient `overlay-not-ready` state, so
+purchase buttons do not start `InitTxn` during a managed overlay open.
 A later recovered-client full artifact at
 `/tmp/steam-bridge-macos-overlay-matrix-20260630-220434` also passed all 44
 process-per-case App ID `480` cases after recreating the stable shortcut and

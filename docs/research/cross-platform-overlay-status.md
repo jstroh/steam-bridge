@@ -1216,6 +1216,17 @@ presenter-backed dialog equivalent and every programmatic shortcut
 target, visible web content before close, close/back-to-app proof, parked
 zero-FPS state, zero managed overlay timing, and clean crash diagnostics.
 
+A focused 2026-07-01 minimal Apple Silicon matrix at
+`/tmp/steam-bridge-macos-overlay-matrix-minimal-full-ifavailable-fixed-20260701-090347`
+rebuilt and signed the arm64 Electron `43.0.0` package and passed all 11
+Steam-launched cases after the duplicate-open guard began proving every named
+managed target's direct and wait-style `IfAvailable` helpers. The first attempt
+at this broader proof caught a checkout-operation preflight ordering bug:
+`getCheckoutOperationStatus()` could report `overlay-not-ready` while a managed
+overlay was already opening. The fixed run proves the status now reports
+`opening` first, keeping purchase buttons from starting `InitTxn` during another
+managed overlay open.
+
 `npm run macos:steam-client-health` now uses `connection_log.txt` as the
 authoritative login signal. Current Steam builds can keep webhelper processes
 running with `-steamid=0` even after the client is logged in, so `steamid=0`

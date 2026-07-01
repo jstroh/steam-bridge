@@ -1097,42 +1097,54 @@ async function openPresenterDuplicateOpenGuardOverlay() {
       }
     });
 
+  const namedTargets = duplicateOpenGuardTargets();
   const openingStatus = overlay.getOpenStatus(target);
-  const namedStatuses = {
-    web: overlay.getWebOpenStatus(WEB_URL, { modal: WEB_MODAL }),
-    store: overlay.getStoreOpenStatus({ appId: APP_ID }),
-    friends: overlay.getFriendsOpenStatus(),
-    checkout: overlay.getCheckoutOpenStatus({ transactionId: "123456789" }),
-    checkoutOperation: overlay.getCheckoutOperationStatus()
-  };
+  const namedStatuses = {};
+  const namedIfAvailableResults = {};
+  const namedIfAvailableNulls = {};
+  const namedAndWaitIfAvailableResults = {};
+  const namedAndWaitIfAvailableNulls = {};
+  const checkoutOperationState = { ran: false };
+  for (const [name, namedTarget] of Object.entries(namedTargets)) {
+    namedStatuses[name] = getNamedPresenterTargetOpenStatus(overlay, namedTarget);
+  }
+  namedStatuses.checkoutOperation = overlay.getCheckoutOperationStatus();
   const shortcutStatus = overlay.getShortcutOpenStatus();
   const openIfAvailableResult = overlay.openIfAvailable(target);
   const openAndWaitIfAvailableResult = await overlay.openWebAndWaitIfAvailable(WEB_URL, { modal: WEB_MODAL }, {
     showTimeoutMs: 5,
     closeTimeoutMs: 5
   });
+  for (const [name, namedTarget] of Object.entries(namedTargets)) {
+    namedIfAvailableResults[name] = openNamedPresenterTargetIfAvailable(overlay, namedTarget);
+    namedIfAvailableNulls[name] = namedIfAvailableResults[name] === null;
+  }
+  for (const [name, namedTarget] of Object.entries(namedTargets)) {
+    namedAndWaitIfAvailableResults[name] = await openNamedPresenterTargetAndWaitIfAvailable(
+      overlay,
+      namedTarget,
+      {
+        showTimeoutMs: 5,
+        closeTimeoutMs: 5
+      },
+      name === "checkout" ? checkoutOperationState : undefined
+    );
+    namedAndWaitIfAvailableNulls[name] = namedAndWaitIfAvailableResults[name] === null;
+  }
   const shortcutIfAvailableResult = overlay.openShortcutTargetIfAvailable();
   const shortcutAndWaitIfAvailableResult = await overlay.openShortcutTargetAndWaitIfAvailable({
     showTimeoutMs: 5,
     closeTimeoutMs: 5
   });
-  const checkoutOpenIfAvailableResult = overlay.openCheckoutIfAvailable({ transactionId: "123456789" });
-  let checkoutOperationRan = false;
-  const checkoutIfAvailableResult = await overlay.openCheckoutAndWaitIfAvailable(
-    () => {
-      checkoutOperationRan = true;
-      return "123456789";
-    },
-    {
-      showTimeoutMs: 5,
-      closeTimeoutMs: 5
-    }
-  );
+  const checkoutOpenIfAvailableResult = namedIfAvailableResults.checkout;
+  const checkoutIfAvailableResult = namedAndWaitIfAvailableResults.checkout;
 
   recordEvent("overlay:presenter-duplicate-open-guard", {
     ...context,
     status: openingStatus,
     namedStatuses,
+    namedIfAvailableNulls,
+    namedAndWaitIfAvailableNulls,
     shortcutStatus,
     openIfAvailableNull: openIfAvailableResult === null,
     openAndWaitIfAvailableNull: openAndWaitIfAvailableResult === null,
@@ -1140,7 +1152,7 @@ async function openPresenterDuplicateOpenGuardOverlay() {
     shortcutAndWaitIfAvailableNull: shortcutAndWaitIfAvailableResult === null,
     checkoutOpenIfAvailableNull: checkoutOpenIfAvailableResult === null,
     checkoutIfAvailableNull: checkoutIfAvailableResult === null,
-    checkoutOperationRan,
+    checkoutOperationRan: checkoutOperationState.ran,
     presenter: safeOverlaySnapshot(overlay)
   });
 
@@ -1278,6 +1290,124 @@ function openNamedPresenterTargetAndWait(overlay, target, waitOptions) {
     default:
       return overlay.openAndWait(target, waitOptions);
   }
+}
+
+function getNamedPresenterTargetOpenStatus(overlay, target) {
+  switch (target.type) {
+    case "web":
+      return overlay.getWebOpenStatus(target.url, overlayTargetOptions(target, "url"));
+    case "store":
+      return overlay.getStoreOpenStatus(overlayTargetOptions(target));
+    case "friends":
+      return overlay.getFriendsOpenStatus(overlayTargetOptions(target));
+    case "profile":
+      return overlay.getProfileOpenStatus(overlayTargetOptions(target));
+    case "players":
+      return overlay.getPlayersOpenStatus(overlayTargetOptions(target));
+    case "community":
+      return overlay.getCommunityOpenStatus(overlayTargetOptions(target));
+    case "stats":
+      return overlay.getStatsOpenStatus(overlayTargetOptions(target));
+    case "achievements":
+      return overlay.getAchievementsOpenStatus(overlayTargetOptions(target));
+    case "user":
+      return overlay.getUserOpenStatus(overlayTargetOptions(target));
+    case "checkout":
+      return overlay.getCheckoutOpenStatus(overlayTargetOptions(target));
+    case "dialog":
+      return overlay.getDialogOpenStatus(overlayTargetOptions(target));
+    default:
+      return overlay.getOpenStatus(target);
+  }
+}
+
+function openNamedPresenterTargetIfAvailable(overlay, target) {
+  switch (target.type) {
+    case "web":
+      return overlay.openWebIfAvailable(target.url, overlayTargetOptions(target, "url"));
+    case "store":
+      return overlay.openStoreIfAvailable(overlayTargetOptions(target));
+    case "friends":
+      return overlay.openFriendsIfAvailable(overlayTargetOptions(target));
+    case "profile":
+      return overlay.openProfileIfAvailable(overlayTargetOptions(target));
+    case "players":
+      return overlay.openPlayersIfAvailable(overlayTargetOptions(target));
+    case "community":
+      return overlay.openCommunityIfAvailable(overlayTargetOptions(target));
+    case "stats":
+      return overlay.openStatsIfAvailable(overlayTargetOptions(target));
+    case "achievements":
+      return overlay.openAchievementsIfAvailable(overlayTargetOptions(target));
+    case "user":
+      return overlay.openUserIfAvailable(overlayTargetOptions(target));
+    case "checkout":
+      return overlay.openCheckoutIfAvailable(overlayTargetOptions(target));
+    case "dialog":
+      return overlay.openDialogIfAvailable(overlayTargetOptions(target));
+    default:
+      return overlay.openIfAvailable(target);
+  }
+}
+
+function openNamedPresenterTargetAndWaitIfAvailable(
+  overlay,
+  target,
+  waitOptions,
+  checkoutOperationState = undefined
+) {
+  switch (target.type) {
+    case "web":
+      return overlay.openWebAndWaitIfAvailable(target.url, overlayTargetOptions(target, "url"), waitOptions);
+    case "store":
+      return overlay.openStoreAndWaitIfAvailable(overlayTargetOptions(target), waitOptions);
+    case "friends":
+      return overlay.openFriendsAndWaitIfAvailable(overlayTargetOptions(target), waitOptions);
+    case "profile":
+      return overlay.openProfileAndWaitIfAvailable(overlayTargetOptions(target), waitOptions);
+    case "players":
+      return overlay.openPlayersAndWaitIfAvailable(overlayTargetOptions(target), waitOptions);
+    case "community":
+      return overlay.openCommunityAndWaitIfAvailable(overlayTargetOptions(target), waitOptions);
+    case "stats":
+      return overlay.openStatsAndWaitIfAvailable(overlayTargetOptions(target), waitOptions);
+    case "achievements":
+      return overlay.openAchievementsAndWaitIfAvailable(overlayTargetOptions(target), waitOptions);
+    case "user":
+      return overlay.openUserAndWaitIfAvailable(overlayTargetOptions(target), waitOptions);
+    case "checkout": {
+      const options = {
+        ...waitOptions,
+        ...overlayTargetOptions(target, "transactionId", "steamUrl", "url")
+      };
+      return overlay.openCheckoutAndWaitIfAvailable(() => {
+        if (checkoutOperationState) {
+          checkoutOperationState.ran = true;
+        }
+        return target.transactionId ?? target.steamUrl ?? target.url ?? "123456789";
+      }, options);
+    }
+    case "dialog":
+      return overlay.openDialogAndWaitIfAvailable(overlayTargetOptions(target), waitOptions);
+    default:
+      return overlay.openAndWaitIfAvailable(target, waitOptions);
+  }
+}
+
+function duplicateOpenGuardTargets() {
+  return {
+    web: { type: "web", url: WEB_URL, modal: WEB_MODAL },
+    store: { type: "store", appId: APP_ID },
+    friends: { type: "friends" },
+    profile: { type: "profile" },
+    players: { type: "players" },
+    community: { type: "community", appId: APP_ID },
+    stats: { type: "stats", appId: APP_ID },
+    achievements: { type: "achievements", appId: APP_ID },
+    user: { type: "user", dialog: USER_DIALOG, appId: APP_ID },
+    dialog: { type: "dialog", dialog: OVERLAY_DIALOG, appId: APP_ID },
+    checkout: { type: "checkout", transactionId: "123456789" }
+  };
 }
 
 function overlayTargetOptions(target, ...extraOmittedFields) {

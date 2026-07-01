@@ -191,10 +191,13 @@ attach a dormant `gameoverlayui` target before any visible overlay activation.
 
 Use `presenter-duplicate-open-guard` to prove duplicate menu/button presses are
 quietly suppressed while a managed overlay is opening. The action opens a modal
-web overlay, immediately checks the public direct, shortcut/controller, direct
-checkout, and checkout wait `IfAvailable` helpers, records
+web overlay, immediately checks the public direct and wait-style `IfAvailable`
+helpers for every named managed target plus shortcut/controller, direct
+checkout, and checkout wait helpers, records
 `overlay:presenter-duplicate-open-guard`, and then follows the same
-close/back-to-app proof as the normal web `openAndWait(...)` case.
+close/back-to-app proof as the normal web `openAndWait(...)` case. Checkout
+wait proof also verifies the transaction operation callback does not run while
+another overlay is already opening.
 
 `--close-probe` is a helper-runner check, not an app launch option. It keeps the
 smoke app open after the initial result, leaves the active Steam overlay focused
