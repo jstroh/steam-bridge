@@ -1191,6 +1191,20 @@ Current evidence:
   IDs, return URLs, or Steam IDs. The macOS matrix summary self-test now covers
   checkout open and checkout prepare fail-fast artifacts and rejects missing
   checkout error snapshots.
+  A 2026-07-01 full Apple Silicon matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-full-isolation-proof-20260701-045604`
+  rebuilt and signed the Electron `43.0.0` smoke package, reused the stable App
+  ID `480` Steam shortcut without restarting Steam, and passed all 45
+  process-per-case presenter-backed cases after managed overlay isolation became
+  a required product proof. Each presenter case required the child-process
+  preload scrub diagnostics, and the summary re-proved modal web/store/Friends/
+  dialog routes, passive progress/unlock toasts, checkout approval and
+  prepare-only paths, every managed Shift+Tab shortcut target, direct
+  profile/players/community/stats/achievements/user/dialog-equivalent routes,
+  and every programmatic shortcut `openAndWait(...)` target with one Metal
+  presenter-backed overlay target, visible web content where applicable,
+  close/back-to-app proof, parked zero-FPS state, disabled needs-present
+  polling, zero managed overlay timing, and clean crash diagnostics.
 - BrowserWindow-only overlay support is not proven.
 - Steam launch, app ID, auth, and callbacks are not enough to claim overlay
   support.

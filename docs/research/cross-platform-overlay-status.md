@@ -66,6 +66,28 @@ larger suites.
 
 ## Latest macOS Evidence
 
+A 2026-07-01 full macOS Apple Silicon matrix at
+`/tmp/steam-bridge-macos-overlay-matrix-full-isolation-proof-20260701-045604`
+rebuilt and signed the arm64 Electron `43.0.0` smoke package, verified the
+native launcher/signing shape, reused the stable App ID `480` Steam shortcut
+without restarting Steam, and passed all 45 Steam-launched process-per-case
+presenter-backed overlay cases. This is the first live full artifact after the
+managed overlay isolation verifier became a required product proof: every
+presenter case carried `--require-managed-overlay-isolation`, and the summary
+audited `scrubSteamOverlayChildProcessEnv=true` plus scrubbed-env-key
+diagnostics in the managed Electron overlay snapshot. The run re-proved
+readiness, web/store/Friends/dialog `openAndWait(...)`, passive progress/unlock
+toasts, checkout approval and prepare-only routes, every managed Shift+Tab
+shortcut target including checkout, direct profile/players/community/stats/
+achievements/user routes, every dialog-equivalent route, and every
+programmatic shortcut `openAndWait(...)` target. Active cases reported one Metal
+presenter-backed overlay target, visible Steam web content before close where
+applicable, active/inactive callbacks, close/back-to-app proof, parked
+zero-FPS presenter state, disabled needs-present polling, zero managed overlay
+timing, and clean crash diagnostics. This remains public App ID `480` plumbing
+evidence; real purchase-content proof still requires a configured product in a
+real Steam app.
+
 A 2026-06-30 full macOS matrix at
 `/tmp/steam-bridge-macos-overlay-matrix-full-electron42-pidfocus-20260630-011628`
 rebuilt the smoke app with Electron `42.5.1`, verified the signed native

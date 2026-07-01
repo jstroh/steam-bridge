@@ -483,16 +483,17 @@ Current overlay evidence is tracked in
 Native presenter design notes are tracked in
 [`docs/research/native-overlay-presenter-plan.md`](docs/research/native-overlay-presenter-plan.md).
 The latest local macOS Apple Silicon full cold-launch proof is
-`/tmp/steam-bridge-macos-overlay-matrix-full-web-visible-fixed-20260701-015118`:
+`/tmp/steam-bridge-macos-overlay-matrix-full-isolation-proof-20260701-045604`:
 it rebuilt and signed the arm64 Electron `43.0.0` smoke package, reused the
-stable Steam shortcut without restarting Steam, and passed all 44 App ID `480`
-presenter-backed overlay cases. The summary reported `webVisible=true` for all
-29 web-close cases, proving visible Steam web content before close input as well
-as close/back-to-app, parked zero-FPS presenter state, disabled needs-present
-polling, zero managed overlay timing, and clean crash diagnostics. New macOS
-matrix manifests record their suite name, and the summary auditor rejects
-named-suite artifacts that are missing required overlay surface cases. A focused
-Apple Silicon minimal run at
+stable Steam shortcut without restarting Steam, and passed all 45 App ID `480`
+presenter-backed overlay cases. The matrix required managed overlay isolation
+for every presenter case and the summary audited the child-process preload scrub
+diagnostics, visible Steam web content before close input, close/back-to-app,
+one Metal presenter-backed overlay target for active/passive cases, parked
+zero-FPS presenter state, disabled needs-present polling, zero managed overlay
+timing, and clean crash diagnostics. New macOS matrix manifests record their
+suite name, and the summary auditor rejects named-suite artifacts that are
+missing required overlay surface cases. A focused Apple Silicon minimal run at
 `/tmp/steam-bridge-macos-overlay-matrix-20260701-032532` also passed all 7
 minimal cases after expanding the duplicate-open guard to direct,
 shortcut/controller, and checkout `IfAvailable` helpers while keeping the

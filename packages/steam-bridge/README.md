@@ -899,6 +899,16 @@ checkout routing, every managed shortcut target, every programmatic shortcut
 proof, parked zero-FPS state, zero managed overlay timing, and clean crash
 diagnostics.
 A fresh 2026-07-01 full cold-launch artifact at
+`/tmp/steam-bridge-macos-overlay-matrix-full-isolation-proof-20260701-045604`
+rebuilt and signed the arm64 Electron `43.0.0` package, reused the stable
+shortcut without restarting Steam, and passed all 45 process-per-case App ID
+`480` cases. Every presenter case required managed overlay isolation, and the
+summary audited the child-process preload scrub diagnostics in addition to one
+Metal presenter-backed overlay target, visible Steam web content before close
+input where applicable, close/back-to-app proof, parked zero-FPS presenter
+state, disabled needs-present polling, zero managed overlay timing, and clean
+crash diagnostics.
+A fresh 2026-07-01 full cold-launch artifact at
 `/tmp/steam-bridge-macos-overlay-matrix-full-web-visible-fixed-20260701-015118`
 rebuilt and signed the arm64 Electron `43.0.0` package, reused the stable
 shortcut without restarting Steam, and passed all 44 process-per-case App ID
