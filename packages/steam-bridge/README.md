@@ -194,7 +194,7 @@ const transaction = {
   items: [{ itemId: 100, quantity: 1, amount: 199, description: "Example item" }]
 };
 
-await steamOverlay.openCheckoutAndWait(() =>
+const checkoutResult = await steamOverlay.openCheckoutAndWaitIfAvailable(() =>
   steamworks.webApi.microTxn.initClientTxn({
     appId: realAppId,
     orderId: transaction.orderId,
@@ -204,6 +204,9 @@ await steamOverlay.openCheckoutAndWait(() =>
     items: transaction.items
   })
 );
+if (!checkoutResult) {
+  console.warn("Steam checkout overlay is not available right now.");
+}
 
 // Optional: reuse the configured Shift+Tab target from a controller/menu button.
 // Use the wait form when the app should resume only after Steam closes.
@@ -372,9 +375,12 @@ The Electron smoke app records those await points as `overlay:presenter-wait-sho
 events so Deck/Linux artifact review proves the same public API app builders
 call.
 For `InitTxn` flows, call
-`steamOverlay.openCheckoutAndWait(() => startTxn())`. Steam Bridge primes the
-native presenter before the backend starts the transaction, accepts common
-backend result shapes such as `steamurl`, `steamUrl`, `transactionId`, or
+`steamOverlay.openCheckoutAndWait(() => startTxn())`. Use
+`steamOverlay.openCheckoutAndWaitIfAvailable(() => startTxn())` for purchase
+buttons that should return `null` instead of starting the transaction while the
+managed overlay is closed or the macOS native host is unavailable. Steam Bridge
+primes the native presenter before the backend starts the transaction, accepts
+common backend result shapes such as `steamurl`, `steamUrl`, `transactionId`, or
 `transid`, and also unwraps documented `InitTxn` envelopes such as
 `response.params.transid` and Steam Bridge Web API responses at
 `data.response.params`. It opens the checkout surface, then resolves after

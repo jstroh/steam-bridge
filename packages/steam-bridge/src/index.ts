@@ -2322,6 +2322,10 @@ export interface ElectronSteamOverlay extends CallbackHandle {
     operation: () => T | Promise<T>,
     options?: ElectronSteamOverlayCheckoutAndWaitOptions
   ): Promise<ElectronSteamOverlayCheckoutAndWaitResult<T>>;
+  openCheckoutAndWaitIfAvailable<T extends ElectronSteamOverlayCheckoutOperationResult>(
+    operation: () => T | Promise<T>,
+    options?: ElectronSteamOverlayCheckoutAndWaitOptions
+  ): Promise<ElectronSteamOverlayCheckoutAndWaitResult<T> | null>;
   withCheckoutPrepared<T>(
     operation: () => T | Promise<T>,
     options?: ElectronSteamOverlayCheckoutPrepareOptions
@@ -9056,6 +9060,20 @@ export function createElectronSteamOverlay(
         releaseActivation();
         throw error;
       }
+    },
+    async openCheckoutAndWaitIfAvailable<T extends ElectronSteamOverlayCheckoutOperationResult>(
+      operation: () => T | Promise<T>,
+      options: ElectronSteamOverlayCheckoutAndWaitOptions = {}
+    ): Promise<ElectronSteamOverlayCheckoutAndWaitResult<T> | null> {
+      if (!controller.isOpen()) {
+        return null;
+      }
+
+      if (!controller.getNativeHostAvailability().available) {
+        return null;
+      }
+
+      return controller.openCheckoutAndWait(operation, options);
     },
     async withCheckoutPrepared<T>(
       operation: () => T | Promise<T>,

@@ -353,6 +353,9 @@ screen is locked or the display is asleep. Use
 `error.reason` when you need to fall back to another purchase or browser flow.
 
 For checkout, use `steamOverlay.openCheckoutAndWait(() => startTxn())`.
+Use `steamOverlay.openCheckoutAndWaitIfAvailable(() => startTxn())` when a
+purchase button should return `null` instead of starting `InitTxn` while the
+managed overlay is closed or the macOS native host is unavailable.
 `MicroTxnAuthorizationResponse` is a purchase authorization event, not an
 overlay-close signal, so keep the managed presenter alive until Steam reports
 the overlay inactive. The returned checkout wait result includes

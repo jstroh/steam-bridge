@@ -583,6 +583,9 @@ const checkoutPreparePromise = typedElectronSteamOverlay.withCheckoutPrepared(()
 const checkoutAndWaitPromise = typedElectronSteamOverlay.openCheckoutAndWait(() => ({
   steamUrl: "https://checkout.steampowered.com/checkout/approvetxn/123/"
 }));
+const checkoutAndWaitIfAvailablePromise = typedElectronSteamOverlay.openCheckoutAndWaitIfAvailable(() => ({
+  steamUrl: "https://checkout.steampowered.com/checkout/approvetxn/123/"
+}));
 const checkoutTargetSnapshot = overlay.snapshotSteamOverlayTarget({
   type: "checkout",
   steamUrl: "https://checkout.steampowered.com/checkout/approvetxn/123/"
@@ -630,6 +633,7 @@ void shortcutOpenAndWaitPromise;
 void shortcutOpenAndWaitIfAvailablePromise;
 void checkoutPreparePromise;
 void checkoutAndWaitPromise;
+void checkoutAndWaitIfAvailablePromise;
 void checkoutTargetSnapshot;
 void waitDiagnostics;
 void waitNativeHostUnavailable;

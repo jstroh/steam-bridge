@@ -9479,7 +9479,7 @@ test("electron steam overlay checkout helper prepares, opens, and waits with bac
 
   let operationSnapshot;
   const checkoutCallsBefore = steamWebOverlayCalls(fake).length;
-  const checkout = overlay.openCheckoutAndWait(
+  const checkout = overlay.openCheckoutAndWaitIfAvailable(
     () => {
       operationSnapshot = overlay.snapshot();
       return {
@@ -9505,6 +9505,7 @@ test("electron steam overlay checkout helper prepares, opens, and waits with bac
   fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: false });
   const checkoutResult = await checkout;
 
+  assert.notEqual(checkoutResult, null);
   assert.equal(checkoutResult.transaction.steamurl, "https://checkout.steampowered.com/checkout/approvetxn/987/");
   assert.deepEqual(checkoutResult.target, {
     type: "checkout",
@@ -10496,6 +10497,17 @@ test("electron steam overlay manager fails fast while the macOS native host is u
   await assert.rejects(overlay.waitForOverlayShown({ timeoutMs: 200 }), assertUnavailableError);
 
   let checkoutOperationRan = false;
+  assert.equal(
+    await overlay.openCheckoutAndWaitIfAvailable(
+      () => {
+        checkoutOperationRan = true;
+        return { transactionId: 456n };
+      },
+      { showTimeoutMs: 200, closeTimeoutMs: 200 }
+    ),
+    null
+  );
+  assert.equal(checkoutOperationRan, false);
   await assert.rejects(
     overlay.openCheckoutAndWait(
       () => {
