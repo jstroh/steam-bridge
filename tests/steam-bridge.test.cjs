@@ -6120,6 +6120,32 @@ test("electron steam overlay manager owns one presenter and routes opens", async
   assert.equal(initialAvailability.reason, undefined);
   assert.equal(initialAvailability.nativeHostUnavailableReason, undefined);
   assert.equal(initialAvailability.snapshot.nativeHostOpen, true);
+  const friendsOpenStatus = overlay.getOpenStatus({ type: "friends" });
+  assert.equal(friendsOpenStatus.canOpen, true);
+  assert.equal(friendsOpenStatus.canWait, true);
+  assert.equal(friendsOpenStatus.reason, undefined);
+  assert.equal(friendsOpenStatus.waitReason, undefined);
+  assert.equal(friendsOpenStatus.nativeHostAvailability.available, true);
+  assert.equal(friendsOpenStatus.snapshot.nativeHostOpen, true);
+  const rawDialogStatus = overlay.getOpenStatus({
+    type: "dialog",
+    dialog: steam.Dialog.Friends,
+    route: "native"
+  });
+  assert.equal(rawDialogStatus.canOpen, true);
+  assert.equal(rawDialogStatus.canWait, false);
+  assert.equal(rawDialogStatus.reason, undefined);
+  assert.equal(rawDialogStatus.waitReason, "not-waitable");
+  assert.match(rawDialogStatus.message, /openAndWait\(\) requires a presenter-backed target/);
+  const unsupportedDialogStatus = overlay.getOpenStatus({
+    type: "dialog",
+    dialog: steam.Dialog.Settings
+  });
+  assert.equal(unsupportedDialogStatus.canOpen, false);
+  assert.equal(unsupportedDialogStatus.canWait, false);
+  assert.equal(unsupportedDialogStatus.reason, "unsupported-target");
+  assert.equal(unsupportedDialogStatus.waitReason, "unsupported-target");
+  assert.match(unsupportedDialogStatus.message, /does not have a verified presenter-backed route/);
   assert.deepEqual(initialSnapshot.electronOverlay, {
     presenterMode: "persistent",
     closeWithWindow: true,
@@ -6161,6 +6187,11 @@ test("electron steam overlay manager owns one presenter and routes opens", async
   assert.equal(typeof closedHandler, "function");
   closedHandler();
   assert.equal(overlay.isOpen(), false);
+  const closedOpenStatus = overlay.getOpenStatus({ type: "friends" });
+  assert.equal(closedOpenStatus.canOpen, false);
+  assert.equal(closedOpenStatus.canWait, false);
+  assert.equal(closedOpenStatus.reason, "closed");
+  assert.equal(closedOpenStatus.waitReason, "closed");
   assert.throws(() => overlay.open({ type: "friends" }), /Electron Steam overlay is closed/);
   assert.throws(() => overlay.prepareForCheckout(), /Electron Steam overlay is closed/);
   await assert.rejects(overlay.withCheckoutPrepared(() => "closed"), /Electron Steam overlay is closed/);
@@ -9825,6 +9856,14 @@ test("electron steam overlay manager fails fast while the macOS native host is u
   assert.deepEqual(availability.macOverlayEnvironment, { screenLocked: true, displayAsleep: false });
   assert.equal(availability.snapshot.nativeHostUnavailableReason, "macos-screen-locked");
   assert.equal(availability.snapshot.nativeHostOpen, false);
+  const unavailableOpenStatus = overlay.getOpenStatus({ type: "friends" });
+  assert.equal(unavailableOpenStatus.canOpen, false);
+  assert.equal(unavailableOpenStatus.canWait, false);
+  assert.equal(unavailableOpenStatus.reason, "native-host-unavailable");
+  assert.equal(unavailableOpenStatus.waitReason, "native-host-unavailable");
+  assert.equal(unavailableOpenStatus.nativeHostAvailability.available, false);
+  assert.equal(unavailableOpenStatus.nativeHostAvailability.reason, "macos-screen-locked");
+  assert.match(unavailableOpenStatus.message, /macOS screen is locked/);
   const assertUnavailableError = (error) => {
     assert.equal(error instanceof steam.SteamOverlayNativeHostUnavailableError, true);
     assert.equal(error.name, "SteamOverlayNativeHostUnavailableError");

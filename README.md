@@ -281,7 +281,13 @@ app.whenReady().then(async () => {
   const client = steamworks.init(480);
   const steamOverlay = client.overlay.createElectronSteamOverlay(mainWindow);
 
-  await steamOverlay.openAndWait({ type: "store", appId: 480 });
+  const storeStatus = steamOverlay.getOpenStatus({ type: "store", appId: 480 });
+  if (storeStatus.canWait) {
+    await steamOverlay.openAndWait({ type: "store", appId: 480 });
+  } else {
+    console.warn("Steam store overlay is not waitable right now", storeStatus.reason ?? storeStatus.waitReason);
+  }
+
   await steamOverlay.openAndWait({ type: "friends" });
   await steamOverlay.openAndWait({
     type: "web",
@@ -303,6 +309,10 @@ the native host and rejects raw native prompt routes. Use
 diagnostic evidence for raw Steamworks overlay behavior. If overlay readiness
 times out before Steam activation, the scoped native-host hold is released and
 the presenter returns to its idle state.
+Use `getOpenStatus(target)` before wiring menus, controller buttons, or checkout
+fallbacks when the app needs a side-effect-free target/native-host preflight.
+It validates the managed route and reports whether the target can be opened and
+waited on without touching Steam overlay UI.
 
 While inactive, the presenter stays transparent, click-through, non-focusable,
 and idle at `0` FPS. Passive Steam notifications use the same presenter without

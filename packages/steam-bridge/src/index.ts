@@ -1910,6 +1910,26 @@ export interface ElectronSteamOverlayCheckoutAndWaitResult<T = ElectronSteamOver
   target: SteamOverlayCheckoutTarget;
 }
 
+export type ElectronSteamOverlayOpenStatusReason =
+  | "closed"
+  | "native-host-unavailable"
+  | "unsupported-target";
+
+export type ElectronSteamOverlayWaitStatusReason =
+  | ElectronSteamOverlayOpenStatusReason
+  | "not-waitable";
+
+export interface ElectronSteamOverlayOpenStatus {
+  canOpen: boolean;
+  canWait: boolean;
+  target: SteamOverlayTarget;
+  snapshot: ElectronSteamOverlaySnapshot;
+  nativeHostAvailability: ElectronSteamOverlayNativeHostAvailability;
+  reason?: ElectronSteamOverlayOpenStatusReason;
+  waitReason?: ElectronSteamOverlayWaitStatusReason;
+  message?: string;
+}
+
 export interface ElectronSteamOverlayCheckoutPrepareOptions {
   /**
    * @deprecated `withCheckoutPrepared()` now keeps the presenter ready for the
@@ -2122,6 +2142,7 @@ export type ElectronSteamOverlayOptions = NonNullable<Parameters<typeof electron
 export interface ElectronSteamOverlay extends CallbackHandle {
   readonly presenter: NativeOverlayPresenter;
   getNativeHostAvailability(): ElectronSteamOverlayNativeHostAvailability;
+  getOpenStatus(target: SteamOverlayTarget): ElectronSteamOverlayOpenStatus;
   open(target: SteamOverlayTarget): NativeOverlayPresenter;
   openShortcutTarget(): NativeOverlayPresenter | null;
   openShortcutTargetAndWait(
@@ -8667,6 +8688,9 @@ export function createElectronSteamOverlay(
     getNativeHostAvailability(): ElectronSteamOverlayNativeHostAvailability {
       return electronSteamOverlayNativeHostAvailability(controller.snapshot());
     },
+    getOpenStatus(target: SteamOverlayTarget): ElectronSteamOverlayOpenStatus {
+      return electronSteamOverlayOpenStatus(controller, target);
+    },
     open(target: SteamOverlayTarget): NativeOverlayPresenter {
       assertOpen();
       assertElectronSteamOverlayTargetCanOpen(target);
@@ -9718,6 +9742,77 @@ function electronSteamOverlayNativeHostAvailability(
     nativeHostUnavailableReason: unavailableError.reason,
     macOverlayEnvironment: unavailableError.macOverlayEnvironment
   };
+}
+
+function electronSteamOverlayOpenStatus(
+  controller: ElectronSteamOverlay,
+  target: SteamOverlayTarget
+): ElectronSteamOverlayOpenStatus {
+  const snapshot = controller.snapshot();
+  const nativeHostAvailability = electronSteamOverlayNativeHostAvailability(snapshot);
+  const unavailableError = electronSteamOverlayNativeHostUnavailableError(snapshot);
+
+  if (!controller.isOpen()) {
+    return {
+      canOpen: false,
+      canWait: false,
+      target,
+      snapshot,
+      nativeHostAvailability,
+      reason: "closed",
+      waitReason: "closed",
+      message: "Electron Steam overlay is closed."
+    };
+  }
+
+  try {
+    assertElectronSteamOverlayTargetCanOpen(target);
+  } catch (error) {
+    return {
+      canOpen: false,
+      canWait: false,
+      target,
+      snapshot,
+      nativeHostAvailability,
+      reason: "unsupported-target",
+      waitReason: "unsupported-target",
+      message: error instanceof Error ? error.message : String(error)
+    };
+  }
+
+  if (unavailableError) {
+    return {
+      canOpen: false,
+      canWait: false,
+      target,
+      snapshot,
+      nativeHostAvailability,
+      reason: "native-host-unavailable",
+      waitReason: "native-host-unavailable",
+      message: unavailableError.message
+    };
+  }
+
+  try {
+    assertElectronSteamOverlayTargetCanWait(target);
+    return {
+      canOpen: true,
+      canWait: true,
+      target,
+      snapshot,
+      nativeHostAvailability
+    };
+  } catch (error) {
+    return {
+      canOpen: true,
+      canWait: false,
+      target,
+      snapshot,
+      nativeHostAvailability,
+      waitReason: "not-waitable",
+      message: error instanceof Error ? error.message : String(error)
+    };
+  }
 }
 
 function formatNativeOverlayHostUnavailableReason(reason: NativeOverlayHostUnavailableReason): string {

@@ -170,11 +170,17 @@ const steamOverlay = client.overlay.createElectronSteamOverlay(mainWindow, {
   // presenterMode: "session"
 });
 
-await steamOverlay.openAndWait({
+const webTarget = {
   type: "web",
   url: checkoutUrl,
   modal: true
-});
+} as const;
+const webStatus = steamOverlay.getOpenStatus(webTarget);
+if (webStatus.canWait) {
+  await steamOverlay.openAndWait(webTarget);
+} else {
+  console.warn("Steam overlay target is not waitable right now", webStatus.reason ?? webStatus.waitReason);
+}
 
 const realAppId = Number(process.env.STEAM_APP_ID);
 const transaction = {
