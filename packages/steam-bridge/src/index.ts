@@ -9080,8 +9080,12 @@ export function createElectronSteamOverlay(
         return null;
       }
 
-      const snapshot = controller.snapshot();
+      const snapshot = refreshElectronSteamOverlaySnapshotDiagnostics(controller.snapshot());
       if (!electronSteamOverlayNativeHostAvailability(snapshot).available) {
+        return null;
+      }
+
+      if (isElectronSteamOverlayKnownUnavailable(snapshot)) {
         return null;
       }
 
@@ -10000,6 +10004,11 @@ function refreshElectronSteamOverlaySnapshotDiagnostics(
   } catch {
     return snapshot;
   }
+}
+
+function isElectronSteamOverlayKnownUnavailable(snapshot: ElectronSteamOverlaySnapshot): boolean {
+  const diagnostics = snapshot.diagnostics;
+  return diagnostics?.steamRunning === false || diagnostics?.overlayEnabled === false;
 }
 
 function assertElectronSteamOverlayNativeHostAvailable(snapshot: ElectronSteamOverlaySnapshot): void {

@@ -439,8 +439,9 @@ For `InitTxn` flows, call
 `steamOverlay.openCheckoutAndWait(() => startTxn())`. Use
 `steamOverlay.openCheckoutAndWaitIfAvailable(() => startTxn())` for purchase
 buttons that should return `null` instead of starting the transaction while the
-managed overlay is closed, the macOS native host is unavailable, or another
-managed overlay action is already active/opening. Steam Bridge
+managed overlay is closed, Steam is not running, Steam already reports the
+overlay disabled, the macOS native host is unavailable, or another managed
+overlay action is already active/opening. Steam Bridge
 primes the native presenter before the backend starts the transaction, accepts
 common backend result shapes such as `steamurl`, `steamUrl`, `transactionId`, or
 `transid`, and also unwraps documented `InitTxn` envelopes such as
@@ -608,6 +609,9 @@ immediately proves `openIfAvailable(...)`, `openAndWaitIfAvailable(...)`, and
 `openShortcutTargetIfAvailable()` and
 `openShortcutTargetAndWaitIfAvailable()`, return `null` while that overlay is
 opening, without running the checkout operation callback.
+Unit coverage also verifies `openCheckoutAndWaitIfAvailable(...)` skips that
+callback when fresh Steam diagnostics already report Steam stopped or the
+overlay disabled.
 They can also verify expected
 managed overlay fail-fast artifacts with `--require-action-error-code` and
 `--require-action-error-reason`; add

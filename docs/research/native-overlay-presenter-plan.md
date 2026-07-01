@@ -1191,6 +1191,14 @@ Current evidence:
   IDs, return URLs, or Steam IDs. The macOS matrix summary self-test now covers
   checkout open and checkout prepare fail-fast artifacts and rejects missing
   checkout error snapshots.
+  The safe app-facing purchase helper is deliberately side-effect-free when the
+  overlay is known unavailable: `openCheckoutAndWaitIfAvailable(...)` refreshes
+  Steam diagnostics before invoking the transaction operation and returns
+  `null` without starting `InitTxn` when Steam is not running or Steam already
+  reports the overlay disabled. Apps that want a thrown readiness error can
+  still call `openCheckoutAndWait(...)`, which keeps the presenter prepared,
+  waits for overlay readiness before activation, and preserves sanitized
+  checkout error snapshots if readiness fails.
   A 2026-07-01 full Apple Silicon matrix at
   `/tmp/steam-bridge-macos-overlay-matrix-full-isolation-proof-20260701-045604`
   rebuilt and signed the Electron `43.0.0` smoke package, reused the stable App
