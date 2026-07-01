@@ -60,6 +60,7 @@ function runCli(args, io = console) {
 function parseArgs(args) {
   const options = {
     file: "",
+    expectedAppId: undefined,
     modal: undefined,
     returnUrl: "",
     quiet: false,
@@ -80,6 +81,11 @@ function parseArgs(args) {
       case "--file":
         index = readValueArg(args, index, arg, (value) => {
           options.file = value;
+        });
+        break;
+      case "--expected-app-id":
+        index = readValueArg(args, index, arg, (value) => {
+          options.expectedAppId = parseAppIdOption(value, arg);
         });
         break;
       case "--modal":
@@ -129,6 +135,17 @@ function parseBooleanOption(value, name) {
   throw new Error(`invalid ${name} value`);
 }
 
+function parseAppIdOption(value, name) {
+  if (!/^\d+$/.test(value)) {
+    throw new Error(`invalid ${name} value`);
+  }
+  const appId = Number(value);
+  if (!Number.isSafeInteger(appId) || appId <= 0) {
+    throw new Error(`invalid ${name} value`);
+  }
+  return appId;
+}
+
 function printUsage(io = console) {
   io.error(`Usage:
   steam-bridge-validate-checkout-target --file PATH [options]
@@ -141,6 +158,9 @@ values.
 Options:
   --file PATH       JSON file containing an InitTxn response, checkout URL,
                     transaction ID, or checkout target object.
+  --expected-app-id ID
+                    If the JSON contains an app ID, require it to match this
+                    Steam app ID without printing either value.
   --modal VALUE     Default modal flag for the resolved checkout target:
                     true, false, 1, or 0.
   --return-url URL  Default return URL used only for target resolution.
@@ -184,8 +204,63 @@ function validateCheckoutTargetFile(options) {
 
   return {
     ok: true,
-    targetSnapshot: snapshot
+    targetSnapshot: snapshot,
+    ...(options.expectedAppId !== undefined
+      ? { appId: validateExpectedAppId(parsed, options.expectedAppId) }
+      : {})
   };
+}
+
+function validateExpectedAppId(parsed, expectedAppId) {
+  const appIds = [...new Set(collectAppIds(parsed))];
+  const present = appIds.length > 0;
+  const matchesExpected = !present || appIds.every((appId) => appId === expectedAppId);
+
+  if (!matchesExpected) {
+    throw new Error("checkout JSON app ID does not match --expected-app-id");
+  }
+
+  return {
+    checked: true,
+    present,
+    matchesExpected
+  };
+}
+
+function collectAppIds(value, seen = new Set(), depth = 0) {
+  if (!value || typeof value !== "object" || Array.isArray(value) || seen.has(value) || depth > 16) {
+    return [];
+  }
+
+  seen.add(value);
+  const found = [];
+  for (const key of ["appid", "app_id", "appId"]) {
+    if (Object.prototype.hasOwnProperty.call(value, key)) {
+      const appId = normalizeAppIdValue(value[key]);
+      if (appId !== undefined) {
+        found.push(appId);
+      }
+    }
+  }
+
+  for (const nested of Object.values(value)) {
+    found.push(...collectAppIds(nested, seen, depth + 1));
+  }
+
+  return found;
+}
+
+function normalizeAppIdValue(value) {
+  if (typeof value === "number" && Number.isSafeInteger(value) && value > 0) {
+    return value;
+  }
+  if (typeof value === "string" && /^\d+$/.test(value)) {
+    const appId = Number(value);
+    if (Number.isSafeInteger(appId) && appId > 0) {
+      return appId;
+    }
+  }
+  return undefined;
 }
 
 function readCheckoutTargetJson(filePath) {
@@ -233,6 +308,7 @@ function runSelfTest() {
         response: {
           result: "OK",
           params: {
+            appid: 480,
             transid: rawTransactionId,
             steamurl: `https://checkout.steampowered.com/checkout/approvetxn/${rawTransactionId}/`,
             returnurl: rawReturnUrl
@@ -267,6 +343,29 @@ function runSelfTest() {
         hasReturnUrl: true
       }
     });
+
+    const validAppId = captureRun(["--file", validFile, "--expected-app-id", "480"]);
+    assert.equal(validAppId.status, 0);
+    assert.deepEqual(JSON.parse(validAppId.output.join("\n")), {
+      ok: true,
+      targetSnapshot: {
+        type: "checkout",
+        hasSteamUrl: true,
+        hasTransactionId: true,
+        hasReturnUrl: true
+      },
+      appId: {
+        checked: true,
+        present: true,
+        matchesExpected: true
+      }
+    });
+
+    const wrongAppId = captureRun(["--file", validFile, "--expected-app-id", "481"]);
+    assert.equal(wrongAppId.status, 2);
+    assert.equal(wrongAppId.errorOutput.join("\n").includes("480"), false);
+    assert.equal(wrongAppId.errorOutput.join("\n").includes("481"), false);
+    assert.match(wrongAppId.errorOutput.join("\n"), /app ID does not match/);
 
     const validQuiet = captureRun(["--file", validFile, "--quiet"]);
     assert.equal(validQuiet.status, 0);

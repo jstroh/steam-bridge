@@ -236,9 +236,11 @@ shortcut checkout/open-and-wait cases. Pair it with `--app-id <your-app-id>`,
 Steam's authorization callback; that callback requirement is rejected unless the
 private checkout JSON handoff is configured. Before live launch, the matrix
 also validates that the JSON resolves to a usable checkout URL or transaction ID
-through Steam Bridge's checkout target helper and prints only sanitized
-presence-flag diagnostics. To check the same file before running the matrix, use
-`npx steam-bridge-validate-checkout-target --file <private-init-txn-response.json>`.
+through Steam Bridge's checkout target helper. If the JSON contains an app ID,
+the matrix checks it against `--app-id`; validation output still prints only
+sanitized presence-flag diagnostics. To check the same file before running the
+matrix, use
+`npx steam-bridge-validate-checkout-target --file <private-init-txn-response.json> --expected-app-id <your-app-id>`.
 Use `--suite persistent` to launch the smoke app once through Steam, start the
 token-protected localhost control server, drive the full web/store/Friends,
 dialog-equivalent, passive notification, checkout, managed Shift+Tab shortcut,
@@ -515,9 +517,11 @@ The macOS helper and matrix expose the private-file path as
 `--checkout-json-file`; the matrix can pair it with `--app-id <your-app-id>`
 and records only `checkoutSource=json-file` plus the expected app ID in its
 manifest. Before live launch, the matrix validates that this JSON resolves to a
-checkout URL, Steam checkout URL, transaction ID, or `InitTxn` envelope and
-prints only sanitized presence flags; the standalone
-`steam-bridge-validate-checkout-target` CLI performs the same preflight. Use
+checkout URL, Steam checkout URL, transaction ID, or `InitTxn` envelope; if the
+capture contains an app ID, validation checks it against the matrix `--app-id`
+without printing either value. The standalone
+`steam-bridge-validate-checkout-target --expected-app-id <your-app-id>` CLI
+performs the same preflight. Use
 `--suite checkout` for the focused macOS purchase path; it covers checkout
 prepare-only, direct checkout, Shift+Tab checkout, and programmatic checkout
 shortcut/open-and-wait without rerunning unrelated overlay surfaces.
@@ -1118,8 +1122,9 @@ app-specific proof outside the committed examples:
 4. For smoke proof, save the returned JSON to a private temp file and pass it
    with `STEAM_BRIDGE_SMOKE_CHECKOUT_JSON_FILE` or the macOS helper's
    `--checkout-json-file`. For focused macOS matrix proof, run `--suite
-   checkout` and add `--require-microtxn-callback` when the direct checkout case
-   should receive Steam's authorization callback.
+   checkout`; the matrix validates any embedded app ID against `--app-id`.
+   Add `--require-microtxn-callback` when the direct checkout case should
+   receive Steam's authorization callback.
 5. Let Steam Bridge open the returned checkout URL or transaction approval path.
 6. Verify the Steam modal appears in both Deck Game Mode and Desktop Mode.
 7. Confirm backing out or closing the Steam surface returns focus to the app.

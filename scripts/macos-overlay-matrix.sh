@@ -296,7 +296,11 @@ validate_checkout_json_file() {
 
   local validation_output
   npm run build -w steam-bridge >/dev/null
-  if ! validation_output="$(node "$repo_root/packages/steam-bridge/bin/validate-checkout-target.cjs" --file "$checkout_json_file" 2>&1)"; then
+  if ! validation_output="$(
+    node "$repo_root/packages/steam-bridge/bin/validate-checkout-target.cjs" \
+      --file "$checkout_json_file" \
+      --expected-app-id "$app_id" 2>&1
+  )"; then
     echo "Invalid --checkout-json-file ($validation_output)" >&2
     exit 2
   fi
@@ -503,6 +507,26 @@ run_self_test() {
   require_contains "$invalid_checkout_json_output" "checkout JSON must contain a checkout URL" "checkout JSON validation should reject objects that cannot resolve to a checkout target."
   require_not_contains "$invalid_checkout_json_output" "$invalid_checkout_json_file" "checkout JSON validation must not print the private file path."
   require_not_contains "$invalid_checkout_json_output" "steam://return-from-private-proof" "checkout JSON validation must not print private return URLs."
+  mismatched_checkout_json_file="$(mktemp "${TMPDIR:-/tmp}/steam-bridge-mismatched-checkout-json.XXXXXX.json")"
+  printf '{"response":{"params":{"appid":481,"transid":"123456789"}}}\n' > "$mismatched_checkout_json_file"
+  if mismatched_checkout_json_output="$(bash "$self_path" \
+    --mode steam-launch \
+    --suite checkout \
+    --skip-package \
+    --helper-path "$script_dir/macos-electron-smoke.sh" \
+    --app-exe /tmp/SteamBridgeSmoke.app/Contents/MacOS/SteamBridgeSmoke \
+    --shortcuts /tmp/shortcuts.vdf \
+    --artifact-root /tmp/steam-bridge-macos-overlay-matrix-self-test \
+    --app-id 480 \
+    --checkout-json-file "$mismatched_checkout_json_file" 2>&1)"; then
+    rm -f "$mismatched_checkout_json_file"
+    echo "Self-test failed: mismatched checkout JSON app ID should fail before live launch." >&2
+    exit 1
+  fi
+  rm -f "$mismatched_checkout_json_file"
+  require_contains "$mismatched_checkout_json_output" "app ID does not match" "checkout JSON validation should reject app ID mismatches."
+  require_not_contains "$mismatched_checkout_json_output" "$mismatched_checkout_json_file" "checkout JSON app ID validation must not print the private file path."
+  require_not_contains "$mismatched_checkout_json_output" "481" "checkout JSON app ID validation must not print the private app ID from the file."
   opengl_output="$(
     bash "$self_path" \
       --mode steam-launch \
