@@ -81,6 +81,7 @@ function runMacosPackageSigningStaticChecks() {
   const examplePackageJson = JSON.parse(
     fs.readFileSync(path.join(repoRoot, "examples", "electron-basic", "package.json"), "utf8")
   );
+  const exampleReadme = fs.readFileSync(path.join(repoRoot, "examples", "electron-basic", "README.md"), "utf8");
   const packagerScript = fs.readFileSync(path.join(repoRoot, "scripts", "package-electron-example.cjs"), "utf8");
   const matrixScript = fs.readFileSync(path.join(repoRoot, "scripts", "macos-overlay-matrix.sh"), "utf8");
   const ciWorkflow = fs.readFileSync(path.join(repoRoot, ".github", "workflows", "ci.yml"), "utf8");
@@ -149,6 +150,16 @@ function runMacosPackageSigningStaticChecks() {
     readme,
     /never silently become\s+Intel cross-compilation checks/,
     "README must document the macOS arm64 runner guard"
+  );
+  assert.match(
+    readme,
+    /The macOS smoke package command is intentionally `npm run example:package:mac`/,
+    "README must document the Apple Silicon-only macOS package command"
+  );
+  assert.match(
+    exampleReadme,
+    /The only supported macOS smoke package command is\s+`npm run example:package:mac`/,
+    "Electron example README must document the Apple Silicon-only macOS package command"
   );
   for (const [label, workflow] of [
     ["CI workflow", ciWorkflow],

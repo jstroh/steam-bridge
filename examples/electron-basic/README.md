@@ -56,6 +56,9 @@ Bridge does not build, run, or verify Intel or universal macOS test apps.
 Do not copy this example into a `darwin-x64` or universal Electron build; the
 macOS Steam overlay evidence for this project is arm64-only by design. Do not
 launch these macOS smoke apps through Rosetta.
+The only supported macOS smoke package command is
+`npm run example:package:mac`, and it must continue to produce the
+`SteamBridgeSmoke-darwin-arm64` output directory.
 
 The Windows package includes `windows-electron-smoke.ps1`. Use
 `-Mode print-launch-options` to generate non-Steam shortcut arguments, or

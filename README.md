@@ -34,6 +34,10 @@ macOS apps. Do not package, launch, or verify macOS smoke apps through Rosetta
 or any `darwin-x64`/universal Electron build. The macOS CI and release jobs
 also assert an `arm64` runner so Apple Silicon checks never silently become
 Intel cross-compilation checks.
+The macOS smoke package command is intentionally `npm run example:package:mac`;
+it always resolves to the `aarch64-apple-darwin` / `darwin-arm64` app shape.
+Do not add `darwin-x64`, `x86_64-apple-darwin`, or universal macOS test-app
+targets to this project.
 
 ## Quick Start
 
@@ -245,7 +249,9 @@ npm run example:package:win -- --artifacts-dir /tmp/steam-bridge-release
 For the current supported host platform, a local native build is enough for a
 local smoke package. On macOS, that means Apple Silicon only: the local package
 path builds and tests the `aarch64-apple-darwin` / arm64 `.app` shape, never an
-Intel or universal macOS target. The example packager stages
+Intel or universal macOS target. The only supported macOS smoke package command
+is `npm run example:package:mac`; it must continue to produce
+`SteamBridgeSmoke-darwin-arm64`. The example packager stages
 `steam_bridge_native.local.node` under the target prebuild name when a release
 prebuild is not present:
 

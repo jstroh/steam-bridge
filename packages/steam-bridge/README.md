@@ -30,6 +30,9 @@ loading, native linking, and macOS smoke-app packaging enforce Apple Silicon
 arm64 as the only macOS target; Steam Bridge does not build, run, or verify
 Intel or universal macOS apps. Do not package, launch, or verify macOS smoke
 apps through Rosetta or any `darwin-x64`/universal Electron build.
+The repository's macOS smoke package command intentionally maps to
+`aarch64-apple-darwin` / `darwin-arm64` only. Do not add `darwin-x64`,
+`x86_64-apple-darwin`, or universal macOS test-app targets.
 
 The packaged Windows smoke helper accepts the same generic smoke actions as the
 Deck/macOS helpers for web, store, Friends, dialog-equivalent, checkout,
