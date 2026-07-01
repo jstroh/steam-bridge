@@ -15,6 +15,7 @@ try {
   fs.mkdirSync(packDir);
   fs.mkdirSync(consumerDir);
 
+  run("node", [path.join(repoRoot, "scripts", "assert-electron-smoke-version.cjs")], { cwd: repoRoot });
   run("npm", ["run", "build", "-w", "steam-bridge"], { cwd: repoRoot });
   const tarball = packPackage();
   installConsumer(tarball);

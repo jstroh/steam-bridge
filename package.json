@@ -25,6 +25,8 @@
     "macos:verify-signing": "node scripts/verify-macos-steam-signing.cjs",
     "release:assemble": "node scripts/assemble-release-artifacts.cjs",
     "release:verify": "node scripts/verify-release-artifacts.cjs",
+    "check:electron": "node scripts/assert-electron-smoke-version.cjs",
+    "check:electron:latest": "node scripts/assert-electron-smoke-version.cjs --latest",
     "steam-deck:overlay-matrix:check": "bash scripts/steam-deck-overlay-matrix.sh --mode self-test",
     "steam-deck:overlay-matrix:summarize": "bash scripts/steam-deck-overlay-matrix.sh --mode summarize",
     "steam-deck:overlay-matrix": "bash scripts/steam-deck-overlay-matrix.sh",
@@ -37,7 +39,7 @@
     "native:check": "node scripts/check-native.cjs",
     "native:fmt": "cargo fmt --all --check",
     "native:link": "npm run native:link -w steam-bridge",
-    "test": "npm run typecheck && npm run steam-shortcut:check && npm run test:unit",
+    "test": "npm run check:electron && npm run typecheck && npm run steam-shortcut:check && npm run test:unit",
     "test:unit": "npm run build && node --test tests/steam-bridge.test.cjs"
   },
   "devDependencies": {

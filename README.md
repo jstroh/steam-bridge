@@ -577,11 +577,19 @@ npm run macos:overlay-matrix:check
 Run the same core checks as CI:
 
 ```sh
+npm run check:electron
 npm run check:platform
 npm test
 npm run native:fmt
 npm run native:check
 npm run api:check
+```
+
+Before refreshing live Electron overlay evidence after an Electron release,
+check the smoke runtime against npm's current Electron version:
+
+```sh
+npm run check:electron:latest
 ```
 
 Current overlay evidence is tracked in
