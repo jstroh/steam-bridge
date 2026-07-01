@@ -509,8 +509,11 @@ and shortcut checkout proofs share one accepted envelope parser. The macOS
 matrix also accepts `--app-id <your-app-id>` and summarizes the expected app ID
 plus `checkoutSource=json-file` without persisting the JSON path; the matrix
 summarizer rejects new manifests that include unredacted checkout file paths,
-transaction IDs, return URLs, or checkout URLs in command metadata. On macOS,
-the helper also copies fresh `SteamBridgeSmoke*.ips` reports from
+transaction IDs, return URLs, or checkout URLs in command metadata. It also
+scans smoke result JSON and lifecycle logs for raw checkout approval URLs,
+transaction/order IDs, return URLs, Steam IDs, and private checkout CLI
+arguments, so private purchase artifacts fail closed if redaction regresses.
+On macOS, the helper also copies fresh `SteamBridgeSmoke*.ips` reports from
 `~/Library/Logs/DiagnosticReports`, plus `MTLCompilerService*.ips` reports whose
 content attributes the crash to `SteamBridgeSmoke`, into `macos-crash-reports/`,
 and the matrix summarizer rejects those copied reports during artifact audit.

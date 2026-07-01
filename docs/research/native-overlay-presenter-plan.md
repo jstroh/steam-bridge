@@ -1372,7 +1372,11 @@ Current real-product checkout guardrail:
   `steam-bridge-validate-checkout-target --expected-app-id <app-id>` for
   standalone fixture checks. Malformed, incomplete, or app-ID-mismatched
   private captures fail early without echoing the file path, app ID,
-  transaction ID, checkout URL, or return URL.
+  transaction ID, checkout URL, or return URL. The macOS summary auditor also
+  scans smoke result JSON and lifecycle logs for raw checkout approval URLs,
+  transaction/order IDs, return URLs, Steam IDs, and private checkout CLI
+  arguments, so private purchase artifacts fail closed if runtime redaction
+  regresses after validation.
 
 ## Non-Goals
 

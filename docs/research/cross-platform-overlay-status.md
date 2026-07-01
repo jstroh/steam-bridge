@@ -57,7 +57,9 @@ sanitized presence flags. The same resolver is published as
 `steam-bridge-validate-checkout-target --expected-app-id <app-id>` for
 standalone private fixture checks before a live matrix run. The macOS summary
 auditor now rejects newly generated checkout manifests that carry unredacted
-sensitive checkout command values.
+sensitive checkout command values, and it scans smoke result JSON plus
+lifecycle logs for raw checkout approval URLs, transaction/order IDs, return
+URLs, Steam IDs, and private checkout CLI arguments.
 Use `--suite checkout` for focused real-product checkout evidence: it runs
 checkout prepare-only, direct checkout, managed Shift+Tab checkout, and
 programmatic checkout shortcut/open-and-wait with the same redaction,

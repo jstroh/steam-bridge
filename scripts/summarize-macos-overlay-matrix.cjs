@@ -48,6 +48,32 @@ const SENSITIVE_MANIFEST_OPTIONS = new Set([
   "--checkout-transaction-id",
   "--checkout-url"
 ]);
+const SENSITIVE_ARTIFACT_KEY_NAMES = new Set([
+  "accountid",
+  "authticket",
+  "checkoutjsonfile",
+  "checkouturl",
+  "orderid",
+  "returnurl",
+  "steamid",
+  "steamid32",
+  "steamid64",
+  "steamurl",
+  "transactionid",
+  "transid",
+  "txnid",
+  "url",
+  "userid"
+]);
+const SENSITIVE_ARTIFACT_KEY_PARTS = ["authticket", "checkouturl", "returnurl", "steamurl", "ticketbase64"];
+const SENSITIVE_ARTIFACT_ARG_PREFIXES = [
+  "--steam-bridge-smoke-checkout-url",
+  "--steam-bridge-smoke-checkout-return-url",
+  "--steam-bridge-smoke-checkout-transaction-id",
+  "--steam-bridge-smoke-checkout-json-file"
+];
+const CHECKOUT_APPROVAL_URL_PATTERN = /https?:\/\/checkout\.steampowered\.com\/checkout\/approvetxn\/[^/\s"'<>]+/i;
+const STEAM_ID64_PATTERN = /\b7656119\d{10}\b/;
 const EXPECTED_STEAM_OVERLAY_SCRUBBED_ENV_KEYS = new Set(["LD_PRELOAD", "DYLD_INSERT_LIBRARIES"]);
 const MINIMAL_SUITE_REQUIRED_CASE_IDS = [
   "00-presenter-ready",
@@ -306,6 +332,8 @@ function summarizeMatrixArtifacts(root) {
       shared: (diagnosticDirCounts.get(diagnosticDir) || 0) > 1,
       ordinal: diagnosticDirOrdinal
     });
+    auditCaseArtifactRedaction(caseId, "result", result, caseFailures);
+    auditCaseArtifactRedaction(caseId, "lifecycle", scopedLifecycle.entries, caseFailures);
     const summary = verifyCase(caseId, metadata, result, scopedLifecycle, macosCrashReports, caseFailures);
     summaries.push(summary);
 
@@ -1820,6 +1848,9 @@ function expectPresenterField(caseId, presenter, key, expected, label, failures)
 function runSelfTest() {
   const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-macos-matrix-summary."));
   const unredactedFixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-macos-matrix-summary-unredacted."));
+  const leakedArtifactFixtureRoot = fs.mkdtempSync(
+    path.join(os.tmpdir(), "steam-bridge-macos-matrix-summary-leaked-artifact.")
+  );
   const crashFixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-macos-matrix-summary-crash."));
   const metalCrashFixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-macos-matrix-summary-metal-crash."));
   const missingMicroTxnFixtureRoot = fs.mkdtempSync(
@@ -1856,6 +1887,9 @@ function runSelfTest() {
     createSelfTestFixture(unredactedFixtureRoot);
     injectUnredactedCheckoutManifestCommand(unredactedFixtureRoot);
     assertUnredactedManifestRejected(unredactedFixtureRoot);
+    createSelfTestFixture(leakedArtifactFixtureRoot);
+    injectUnredactedCheckoutLifecycleValue(leakedArtifactFixtureRoot, "06-checkout");
+    assertUnredactedArtifactRejected(leakedArtifactFixtureRoot);
     createSelfTestFixture(crashFixtureRoot);
     injectMacosCrashReport(crashFixtureRoot, "01-web-openwait");
     assertMacosCrashReportRejected(crashFixtureRoot);
@@ -1878,6 +1912,7 @@ function runSelfTest() {
   } finally {
     fs.rmSync(fixtureRoot, { recursive: true, force: true });
     fs.rmSync(unredactedFixtureRoot, { recursive: true, force: true });
+    fs.rmSync(leakedArtifactFixtureRoot, { recursive: true, force: true });
     fs.rmSync(crashFixtureRoot, { recursive: true, force: true });
     fs.rmSync(metalCrashFixtureRoot, { recursive: true, force: true });
     fs.rmSync(missingMicroTxnFixtureRoot, { recursive: true, force: true });
@@ -1996,6 +2031,38 @@ function assertUnredactedManifestRejected(root) {
     result.stderr,
     /unredacted sensitive manifest option --checkout-json-file/,
     "summary rejection should identify the unredacted checkout JSON option"
+  );
+}
+
+function injectUnredactedCheckoutLifecycleValue(root, caseId) {
+  const row = readManifestRows(root).find((entry) => entry.caseId === caseId);
+  assert.ok(row, `self-test fixture should include ${caseId}`);
+  const lifecyclePath = path.join(row.diagnosticDir, "lifecycle.jsonl");
+  const leakedEntry = {
+    type: "event:callback:microtxn",
+    payload: {
+      transactionId: "123456789",
+      checkoutUrl: "https://checkout.steampowered.com/checkout/approvetxn/123456789/",
+      presenter: activePresenterFixture(31)
+    }
+  };
+  fs.appendFileSync(lifecyclePath, `${JSON.stringify(leakedEntry)}\n`);
+}
+
+function assertUnredactedArtifactRejected(root) {
+  const result = spawnSync(process.execPath, [__filename, "--artifact-root", root], {
+    encoding: "utf8"
+  });
+  assert.notEqual(result.status, 0, "summary should reject unredacted sensitive result or lifecycle values");
+  assert.match(
+    result.stderr,
+    /lifecycle contains raw sensitive field lifecycle\[\d+\]\.payload\.transactionId/,
+    "summary rejection should identify the raw transaction ID field path"
+  );
+  assert.doesNotMatch(
+    result.stderr,
+    /123456789|approvetxn/,
+    "summary rejection must not echo leaked checkout values"
   );
 }
 
@@ -3224,6 +3291,116 @@ function verifyManifestCommandRedaction(file, lineNumber, metadata, failures) {
       index += 1;
     }
   }
+}
+
+function auditCaseArtifactRedaction(caseId, artifactLabel, value, failures) {
+  const seen = new WeakSet();
+  auditArtifactValue(caseId, artifactLabel, value, {
+    path: artifactLabel,
+    key: "",
+    failures,
+    seen
+  });
+}
+
+function auditArtifactValue(caseId, artifactLabel, value, context) {
+  if (value == null) {
+    return;
+  }
+
+  const keySensitive = isSensitiveArtifactKey(context.key);
+
+  if (typeof value === "string") {
+    if (keySensitive && value !== "") {
+      context.failures.push(`${caseId}: ${artifactLabel} contains raw sensitive field ${context.path}`);
+      return;
+    }
+    if (containsSensitiveArtifactString(value)) {
+      context.failures.push(`${caseId}: ${artifactLabel} contains unredacted checkout value at ${context.path}`);
+    }
+    return;
+  }
+
+  if (typeof value === "number" || typeof value === "bigint") {
+    if (keySensitive) {
+      context.failures.push(`${caseId}: ${artifactLabel} contains raw sensitive field ${context.path}`);
+    }
+    return;
+  }
+
+  if (typeof value === "boolean") {
+    return;
+  }
+
+  if (Array.isArray(value)) {
+    value.forEach((entry, index) => {
+      auditArtifactValue(caseId, artifactLabel, entry, {
+        ...context,
+        path: `${context.path}[${index}]`,
+        key: context.key
+      });
+    });
+    return;
+  }
+
+  if (typeof value !== "object") {
+    return;
+  }
+
+  if (context.seen.has(value)) {
+    return;
+  }
+  context.seen.add(value);
+
+  if (isRedactedArtifactValue(value)) {
+    return;
+  }
+
+  if (keySensitive) {
+    context.failures.push(`${caseId}: ${artifactLabel} contains non-redacted sensitive object ${context.path}`);
+    return;
+  }
+
+  for (const [entryKey, entryValue] of Object.entries(value)) {
+    auditArtifactValue(caseId, artifactLabel, entryValue, {
+      ...context,
+      path: `${context.path}.${entryKey}`,
+      key: entryKey
+    });
+  }
+}
+
+function isSensitiveArtifactKey(key) {
+  if (!key) {
+    return false;
+  }
+  const normalized = String(key).replace(/[^a-z0-9]/gi, "").toLowerCase();
+  if (!normalized || normalized.startsWith("has")) {
+    return false;
+  }
+  return (
+    SENSITIVE_ARTIFACT_KEY_NAMES.has(normalized) ||
+    SENSITIVE_ARTIFACT_KEY_PARTS.some((part) => normalized.includes(part))
+  );
+}
+
+function containsSensitiveArtifactString(value) {
+  const trimmed = value.trim().toLowerCase();
+  return (
+    CHECKOUT_APPROVAL_URL_PATTERN.test(value) ||
+    STEAM_ID64_PATTERN.test(value) ||
+    SENSITIVE_ARTIFACT_ARG_PREFIXES.some((prefix) => trimmed === prefix || trimmed.startsWith(`${prefix}=`))
+  );
+}
+
+function isRedactedArtifactValue(value) {
+  return (
+    value &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    value.redacted === true &&
+    typeof value.present === "boolean"
+  );
 }
 
 function readMacosCrashReports(diagnosticDir) {

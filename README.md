@@ -500,8 +500,12 @@ The same summary reports `idleStable=true` for active overlay close paths,
 proving the parked presenter stayed at `currentFps=0` without post-close
 `pumpCount` growth.
 New macOS matrix manifests record their suite name, and the summary auditor
-rejects named-suite artifacts that are missing required overlay surface cases. A
-focused Apple Silicon minimal run at
+rejects named-suite artifacts that are missing required overlay surface cases.
+The same auditor also scans smoke result JSON and lifecycle logs for raw
+checkout approval URLs, transaction/order IDs, return URLs, Steam IDs, and
+private checkout CLI arguments, so private purchase artifacts fail closed if
+redaction regresses.
+A focused Apple Silicon minimal run at
 `/tmp/steam-bridge-macos-overlay-matrix-20260701-032532` also passed all 7
 minimal cases after expanding the duplicate-open guard to direct,
 shortcut/controller, and checkout `IfAvailable` helpers while keeping the
