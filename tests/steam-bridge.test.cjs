@@ -8696,6 +8696,164 @@ test("electron steam overlay manager uses a focused macOS global shortcut fallba
   assert.equal(windowHandlers.has("blur"), false);
 });
 
+test("electron steam overlay macOS global shortcut waits for overlay readiness before opening", async (t) => {
+  setProcessPlatformForTest(t, "darwin");
+
+  const hostHandle = Buffer.from([4, 8, 15, 22]);
+  let hostOpen = false;
+  let overlayEnabled = false;
+  let registeredHandler;
+  let registerCount = 0;
+  let unregisterCount = 0;
+  mockElectronModule(t, {
+    globalShortcut: {
+      register(accelerator, handler) {
+        assert.equal(accelerator, "Shift+Tab");
+        registeredHandler = handler;
+        registerCount += 1;
+        return true;
+      },
+      unregister(accelerator) {
+        assert.equal(accelerator, "Shift+Tab");
+        registeredHandler = undefined;
+        unregisterCount += 1;
+      }
+    }
+  });
+
+  const fake = createFakeNative({
+    attachNativeOverlayHostView(nativeWindowHandle) {
+      hostOpen = true;
+      this.calls.push({ method: "attachNativeOverlayHostView", args: [nativeWindowHandle] });
+    },
+    pumpNativeOverlayProbeWindow() {
+      this.calls.push({ method: "pumpNativeOverlayProbeWindow", args: [] });
+    },
+    showNativeOverlayHostView() {
+      this.calls.push({ method: "showNativeOverlayHostView", args: [] });
+    },
+    setNativeOverlayHostInputPassthrough(passThrough) {
+      this.calls.push({ method: "setNativeOverlayHostInputPassthrough", args: [passThrough] });
+    },
+    setNativeOverlayHostOpacity(opaque) {
+      this.calls.push({ method: "setNativeOverlayHostOpacity", args: [opaque] });
+    },
+    detachNativeOverlayHostView() {
+      hostOpen = false;
+      this.calls.push({ method: "detachNativeOverlayHostView", args: [] });
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return false;
+    },
+    isNativeOverlayHostViewOpen() {
+      return hostOpen;
+    },
+    isOverlayEnabled() {
+      return overlayEnabled;
+    },
+    isOverlayNeedsPresentPollingEnabled() {
+      return false;
+    },
+    getOverlayDiagnostics() {
+      return {
+        steamRunning: true,
+        steamInstallPath: "/tmp/steam",
+        appId: 480,
+        overlayEnabled,
+        overlayNeedsPresent: false,
+        overlayNeedsPresentPollingEnabled: false,
+        steamDeck: false,
+        bigPicture: false
+      };
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+  t.after(clearSteamBridgeCache);
+
+  const windowHandlers = new Map();
+  let windowFocused = true;
+  let showCount = 0;
+  let focusCount = 0;
+  let invalidateCount = 0;
+  const window = {
+    isDestroyed() {
+      return false;
+    },
+    isFocused() {
+      return windowFocused;
+    },
+    show() {
+      showCount += 1;
+    },
+    focus() {
+      focusCount += 1;
+      windowFocused = true;
+    },
+    getNativeWindowHandle() {
+      return hostHandle;
+    },
+    once() {},
+    on(event, handler) {
+      windowHandlers.set(event, handler);
+    },
+    off(event, handler) {
+      if (windowHandlers.get(event) === handler) {
+        windowHandlers.delete(event);
+      }
+    },
+    webContents: {
+      once() {},
+      invalidate() {
+        invalidateCount += 1;
+      },
+      send() {},
+      on() {},
+      off() {}
+    }
+  };
+
+  const overlay = steam.overlay.createElectronSteamOverlay(window, {
+    title: "Electron macOS Shortcut Readiness Overlay",
+    pollIntervalMs: 50
+  });
+
+  assert.equal(registerCount, 1);
+  assert.equal(typeof registeredHandler, "function");
+  assert.equal(overlay.getShortcutOpenStatus().reason, "overlay-not-ready");
+
+  registeredHandler();
+  assert.equal(unregisterCount, 1);
+  assert.equal(registeredHandler, undefined);
+  assert.deepEqual(steamWebOverlayCalls(fake), []);
+
+  await new Promise((resolve) => setTimeout(resolve, 80));
+  assert.deepEqual(steamWebOverlayCalls(fake), []);
+  assert.equal(registerCount, 1);
+
+  overlayEnabled = true;
+  overlay.pump();
+  await waitForNextSteamWebOverlayCall(fake, 0, [steam.STEAM_FRIENDS_OVERLAY_URL, true]);
+
+  fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: true });
+  windowFocused = false;
+  fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: false });
+  await waitForCondition(() => registerCount === 2, 500);
+
+  assert.equal(typeof registeredHandler, "function");
+  assert.equal(showCount >= 1, true);
+  assert.equal(focusCount >= 1, true);
+  assert.equal(invalidateCount >= 1, true);
+  assert.equal(windowFocused, true);
+  assert.deepEqual(steamWebOverlayCalls(fake), [
+    { method: "activateOverlayToWebPage", args: [steam.STEAM_FRIENDS_OVERLAY_URL, true] }
+  ]);
+
+  overlay.close();
+  assert.equal(unregisterCount, 2);
+  assert.equal(windowHandlers.has("focus"), false);
+  assert.equal(windowHandlers.has("blur"), false);
+});
+
 test("electron steam overlay macOS shortcut stays quiet while the native host is unavailable", async (t) => {
   setProcessPlatformForTest(t, "darwin");
 

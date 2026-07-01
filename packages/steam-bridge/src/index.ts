@@ -9569,12 +9569,12 @@ function installElectronSteamOverlayShortcut(
 
   const handleShortcut = (event?: ElectronOverlayInputEvent): ElectronSteamOverlayShortcutHandleResult => {
     try {
-      const snapshot = controller.snapshot();
-      if (snapshot.overlayActive) {
+      const status = controller.getShortcutOpenStatus();
+      if (status.reason === "overlay-active") {
         return "ignored";
       }
 
-      if (shortcutOpenState.opening || isElectronSteamOverlayShortcutOpening(snapshot)) {
+      if (status.reason === "opening") {
         if (shortcut.preventDefault) {
           event?.preventDefault?.();
         }
@@ -9585,7 +9585,26 @@ function installElectronSteamOverlayShortcut(
         event?.preventDefault?.();
       }
 
+      if (!status.canOpen && !status.canWait && status.reason !== "dynamic-target") {
+        const error = electronSteamOverlayShortcutStatusError(status);
+        if (error) {
+          notifyElectronSteamOverlayShortcutError(shortcut, error);
+        }
+        return "handled";
+      }
+
+      if (!status.canOpen && status.canWait) {
+        void controller.openShortcutTargetAndWait({
+          showTimeoutMs: ELECTRON_STEAM_OVERLAY_OPEN_GUARD_TIMEOUT_MS,
+          closeTimeoutMs: 300000
+        }).catch((error) => {
+          notifyElectronSteamOverlayShortcutError(shortcut, error);
+        });
+        return "opened";
+      }
+
       shortcutOpenState.opening = true;
+      const snapshot = status.snapshot;
       if (typeof shortcut.target === "function") {
         assertElectronSteamOverlayNativeHostAvailable(snapshot);
       }
@@ -9766,6 +9785,16 @@ function emitElectronSteamOverlayShortcutWarning(error: unknown): void {
   process.emitWarning(error instanceof Error ? error : String(error), {
     type: "SteamBridgeOverlayShortcutWarning"
   });
+}
+
+function electronSteamOverlayShortcutStatusError(status: ElectronSteamOverlayShortcutStatus): Error | undefined {
+  if (status.reason === "native-host-unavailable") {
+    return electronSteamOverlayNativeHostUnavailableError(status.snapshot);
+  }
+  if (status.reason === "steam-unavailable" || status.reason === "closed" || status.reason === "unsupported-target") {
+    return new Error(status.message ?? `Electron Steam overlay shortcut cannot open: ${status.reason}.`);
+  }
+  return undefined;
 }
 
 function loadElectronGlobalShortcut(): ElectronGlobalShortcutApi | undefined {

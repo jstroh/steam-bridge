@@ -392,7 +392,11 @@ Steam can consume Shift+Tab before Electron's normal
 `before-input-event` hook sees it, so Steam Bridge registers a focused-window
 global shortcut fallback only while the game window is focused, then unregisters
 it while Steam's overlay is active so the second Shift+Tab still closes
-normally. If macOS already reports the screen locked or display asleep, the
+normally. If the shortcut fires before Steam reports the overlay hook ready,
+Steam Bridge keeps that open in the managed wait path, waits for readiness
+before activation, and leaves the macOS global shortcut unregistered while the
+wait is pending so Steam can receive the close/toggle input after the overlay
+appears. If macOS already reports the screen locked or display asleep, the
 shortcut fallback follows the same native-host-unavailable path as the overlay
 helpers: it does not start Steam activation or emit a warning unless app code
 provided an `overlayShortcut.onError` handler. If the host becomes unavailable

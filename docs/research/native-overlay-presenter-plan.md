@@ -428,6 +428,11 @@ Current evidence:
   `waitForOverlayClosed()`, and `parkWhenSteamOverlayCloses()` resolve from Steam
   overlay callbacks and native presenter state changes in persistent presenter
   mode. App code can pass timeouts or abort signals, but not polling intervals.
+- Shortcut opens share the same readiness contract. Side-effect-free shortcut
+  status checks never resolve dynamic app callbacks, and if the macOS
+  focused-window shortcut fires before Steam reports the overlay hook ready, the
+  bridge waits for readiness before activation while leaving the global shortcut
+  unregistered so Steam can receive the later close/toggle input.
 - The macOS smoke harness now has a persistent one-process proof mode. A
   2026-06-30 live run at
   `/tmp/steam-bridge-macos-overlay-matrix-20260630-063754` launched the signed

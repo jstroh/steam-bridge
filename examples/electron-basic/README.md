@@ -581,9 +581,13 @@ out of artifacts.
 Dynamic shortcut targets are resolved only when the shortcut actually opens.
 `getShortcutOpenStatus()` does not call app code; it reports a dynamic target as
 dynamic unless a stronger side-effect-free blocker is already known, such as a
+stopped Steam client, an overlay hook that is not ready yet, or a
 locked/asleep macOS native host. On macOS, keyboard-triggered and programmatic
 shortcut opens also fail before invoking a dynamic target callback while the
-native host is unavailable.
+native host is unavailable. If the shortcut fires before Steam reports the
+overlay hook ready, the bridge waits for readiness before activation and keeps
+the macOS global shortcut unregistered while that wait is pending so Steam can
+receive the close/toggle input after the overlay appears.
 The managed overlay automatically primes its passive presenter before
 achievement progress, achievement unlock, and stats-store calls that can produce
 Steam notification toasts; `prepareForNotification()` remains available for
