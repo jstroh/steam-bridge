@@ -1939,6 +1939,10 @@ test("project support policy covers Steam desktop targets except Intel macOS", (
     path.join(repoRoot, "packages", "steam-bridge", "bin", "verify-macos-signing.cjs"),
     "utf8"
   );
+  const validateCheckoutScript = fs.readFileSync(
+    path.join(repoRoot, "packages", "steam-bridge", "bin", "validate-checkout-target.cjs"),
+    "utf8"
+  );
   const launcherTemplate = fs.readFileSync(
     path.join(repoRoot, "packages", "steam-bridge", "templates", "macos-steam-env-launcher.c"),
     "utf8"
@@ -1996,6 +2000,12 @@ test("project support policy covers Steam desktop targets except Intel macOS", (
   assert.match(verifyMacosScript, /must contain only an arm64 macOS slice/);
   assert.match(verifyMacosScript, /STEAM_BRIDGE_MACOS_ENV_LAUNCHER_V1/);
   assert.match(verifyMacosScript, /verifyRenamedElectronIsNotLauncher/);
+  assert.match(
+    validateCheckoutScript,
+    /defaults\.expectedAppId\s*=\s*options\.expectedAppId/,
+    "checkout target validator must pass expected app ID into the public checkout target resolver"
+  );
+  assert.match(validateCheckoutScript, /checkout JSON app ID does not match --expected-app-id/);
   assert.match(launcherTemplate, /STEAM_BRIDGE_MACOS_ENV_LAUNCHER_V1/);
   assert.doesNotMatch(launcherTemplate, /SteamBridgeSmoke/);
 });

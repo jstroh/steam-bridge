@@ -52,8 +52,9 @@ and summary audit the expected app ID and `checkoutSource=json-file`, while
 leaving the JSON path, transaction ID, return URL, and product details outside
 committed artifacts. Before live launch, the matrix validates that the private
 JSON resolves through `checkoutTargetFromResult(...)` to a checkout URL or
-transaction ID, checks any embedded app ID against `--app-id`, and prints only
-sanitized presence flags. The same resolver is published as
+transaction ID, passes `--app-id` into that resolver so embedded app IDs use the
+runtime wrong-app guard, and prints only sanitized presence flags. The same
+resolver is published as
 `steam-bridge-validate-checkout-target --expected-app-id <app-id>` for
 standalone private fixture checks before a live matrix run. The macOS summary
 auditor now rejects newly generated checkout manifests that carry unredacted

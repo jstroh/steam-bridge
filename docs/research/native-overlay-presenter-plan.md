@@ -1635,9 +1635,9 @@ Current real-product checkout guardrail:
 - The macOS matrix validates any private `--checkout-json-file` before package
   signing, shortcut work, Steam startup, or overlay launch. Validation resolves
   the file through `checkoutTargetFromResult(...)`, requires a checkout URL,
-  Steam checkout URL, transaction ID, or `InitTxn` envelope, checks any embedded
-  app ID against the matrix `--app-id`, and prints only sanitized presence
-  flags. The same resolver is exposed as
+  Steam checkout URL, transaction ID, or `InitTxn` envelope, passes the matrix
+  `--app-id` into that resolver so embedded app IDs use the runtime wrong-app
+  guard, and prints only sanitized presence flags. The same resolver is exposed as
   `steam-bridge-validate-checkout-target --expected-app-id <app-id>` for
   standalone fixture checks. Malformed, incomplete, or app-ID-mismatched
   private captures fail early without echoing the file path, app ID,

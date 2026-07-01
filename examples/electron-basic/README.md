@@ -559,9 +559,9 @@ The macOS helper and matrix expose the private-file path as
 `--checkout-json-file`; the matrix can pair it with `--app-id <your-app-id>`
 and records only `checkoutSource=json-file` plus the expected app ID in its
 manifest. Before live launch, the matrix validates that this JSON resolves to a
-checkout URL, Steam checkout URL, transaction ID, or `InitTxn` envelope; if the
-capture contains an app ID, validation checks it against the matrix `--app-id`
-without printing either value. The standalone
+checkout URL, Steam checkout URL, transaction ID, or `InitTxn` envelope, and it
+passes the matrix `--app-id` into the same resolver so embedded app IDs use the
+runtime wrong-app guard without printing either value. The standalone
 `steam-bridge-validate-checkout-target --expected-app-id <your-app-id>` CLI
 performs the same preflight. Use
 `--suite checkout` for the focused macOS purchase path; it covers checkout

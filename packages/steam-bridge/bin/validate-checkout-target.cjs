@@ -178,12 +178,18 @@ function validateCheckoutTargetFile(options) {
   if (typeof options.returnUrl === "string" && options.returnUrl.length > 0) {
     defaults.returnUrl = options.returnUrl;
   }
+  if (options.expectedAppId !== undefined) {
+    defaults.expectedAppId = options.expectedAppId;
+  }
 
   let snapshot;
   try {
     const target = steamBridge.overlay.checkoutTargetFromResult(parsed, defaults);
     snapshot = steamBridge.overlay.snapshotSteamOverlayTarget(target);
-  } catch {
+  } catch (error) {
+    if (isCheckoutAppIdMismatchError(error)) {
+      throw new Error("checkout JSON app ID does not match --expected-app-id");
+    }
     throw new Error(
       "checkout JSON must contain a checkout URL, Steam checkout URL, transaction ID, or InitTxn response envelope"
     );
@@ -225,6 +231,15 @@ function validateExpectedAppId(parsed, expectedAppId) {
     present,
     matchesExpected
   };
+}
+
+function isCheckoutAppIdMismatchError(error) {
+  return (
+    error &&
+    typeof error === "object" &&
+    typeof error.message === "string" &&
+    error.message.includes("app ID that does not match")
+  );
 }
 
 function collectAppIds(value, seen = new Set(), depth = 0) {

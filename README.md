@@ -454,10 +454,10 @@ transaction IDs, return URLs, and Steam IDs. App ID `480` proves generic
 checkout routing only; real purchase UI and `InitTxn` proof require your own
 Steam app ID with configured products. The macOS checkout matrix preflights a
 private `--checkout-json-file` through the same checkout target resolver before
-launching Steam, and it checks any embedded app ID against the matrix `--app-id`
-without printing either value. Bad `InitTxn` captures fail before any live
-overlay work and only sanitized presence flags are printed. You can run the same
-check directly with
+launching Steam, passing the matrix `--app-id` into that resolver so embedded
+app IDs use the same wrong-app guard as runtime checkout opens without printing
+either value. Bad `InitTxn` captures fail before any live overlay work and only
+sanitized presence flags are printed. You can run the same check directly with
 `npx steam-bridge-validate-checkout-target --file <private-init-txn-response.json> --expected-app-id <your-app-id>`.
 For split-step checkout targets outside the managed wait helper, call
 `steamworks.overlay.checkoutTargetFromResult(initTxnResponse, { expectedAppId })`

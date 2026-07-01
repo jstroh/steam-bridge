@@ -89,6 +89,7 @@ function runMacosPackageSigningStaticChecks() {
   const readme = fs.readFileSync(path.join(repoRoot, "README.md"), "utf8");
   const packageReadme = fs.readFileSync(path.join(packageRoot, "README.md"), "utf8");
   const prepareScript = fs.readFileSync(path.join(packageRoot, "bin", "prepare-macos-app.cjs"), "utf8");
+  const checkoutValidatorScript = fs.readFileSync(path.join(packageRoot, "bin", "validate-checkout-target.cjs"), "utf8");
   const verifierScript = fs.readFileSync(path.join(packageRoot, "bin", "verify-macos-signing.cjs"), "utf8");
   const launcherTemplate = fs.readFileSync(path.join(packageRoot, "templates", "macos-steam-env-launcher.c"), "utf8");
   assert.equal(
@@ -114,6 +115,14 @@ function runMacosPackageSigningStaticChecks() {
   assertExecutableFile(path.join(packageRoot, "bin", "prepare-macos-app.cjs"));
   assertExecutableFile(path.join(packageRoot, "bin", "validate-checkout-target.cjs"));
   assertExecutableFile(path.join(packageRoot, "bin", "verify-macos-signing.cjs"));
+  assert.ok(
+    checkoutValidatorScript.includes("defaults.expectedAppId = options.expectedAppId"),
+    "checkout target validator must pass expected app ID into checkoutTargetFromResult"
+  );
+  assert.ok(
+    checkoutValidatorScript.includes("checkout JSON app ID does not match --expected-app-id"),
+    "checkout target validator must preserve a redacted app ID mismatch error"
+  );
   assert.ok(packageJson.files.includes("bin"), "steam-bridge package must publish verifier CLI files");
   assert.ok(packageJson.files.includes("templates"), "steam-bridge package must publish macOS launcher templates");
   assert.equal(

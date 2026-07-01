@@ -559,11 +559,11 @@ checkout response JSON to a private temp file and pass its path with
 `--checkout-json-file` option; the smoke app feeds that object through
 `openCheckoutAndWait(...)` without committing private data or putting transaction
 values in launch arguments. The macOS matrix preflights that JSON through
-`checkoutTargetFromResult(...)` and prints only sanitized presence flags before
-any live Steam launch; if the capture includes an app ID, the matrix checks it
-against the `--app-id` under test without printing either value. A malformed,
-incomplete, or mismatched private `InitTxn` capture fails early. Run the same
-validation without the matrix using
+`checkoutTargetFromResult(...)` and passes the matrix `--app-id` into that
+resolver before any live Steam launch. If the capture includes an app ID, the
+same wrong-app guard used by runtime checkout opens rejects mismatches without
+printing either value. A malformed, incomplete, or mismatched private `InitTxn`
+capture fails early. Run the same validation without the matrix using
 `npx steam-bridge-validate-checkout-target --file <private-init-txn-response.json> --expected-app-id <your-app-id>`.
 Use the macOS matrix's `--suite checkout` for focused private purchase proof;
 pair it with `--app-id <your-app-id>`,
