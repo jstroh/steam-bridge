@@ -20,11 +20,15 @@ Steam SDK redistributables are not committed. For local/native builds, provide
 the Steamworks SDK in the normal location expected by `steamworks-sys`, or set
 `STEAMWORKS_SDK_PATH` according to your SDK setup.
 
+## Platform Targets
+
 Steam Bridge targets Steam desktop platforms for Electron and Node:
 
 - macOS Apple Silicon: `aarch64-apple-darwin`
 - Windows x64: `x86_64-pc-windows-msvc`
 - Linux x64: `x86_64-unknown-linux-gnu`
+
+### macOS Apple Silicon Only
 
 Intel macOS is intentionally not supported. CI, release prebuilds, runtime
 loading, native linking, and macOS smoke-app packaging enforce the supported

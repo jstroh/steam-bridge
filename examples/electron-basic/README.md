@@ -49,6 +49,8 @@ npm run native:build
 npm run example:package:mac
 ```
 
+### macOS Apple Silicon Only
+
 macOS smoke packaging and macOS overlay matrix runs are Apple Silicon only.
 Run them on `darwin/arm64` and produce the
 `aarch64-apple-darwin` / `SteamBridgeSmoke-darwin-arm64` app shape. Steam

@@ -149,6 +149,11 @@ function runMacosPackageSigningStaticChecks() {
   );
   assert.match(
     readme,
+    /## Platform Targets[\s\S]*### macOS Apple Silicon Only/,
+    "README must make the Apple Silicon-only macOS target policy prominent"
+  );
+  assert.match(
+    readme,
     /All macOS test apps are built and run as Apple Silicon arm64\s+targets only/,
     "README must document that macOS test apps are Apple Silicon only"
   );
@@ -164,6 +169,11 @@ function runMacosPackageSigningStaticChecks() {
   );
   assert.match(
     packageReadme,
+    /## Platform Targets[\s\S]*### macOS Apple Silicon Only/,
+    "package README must make the Apple Silicon-only macOS target policy prominent"
+  );
+  assert.match(
+    packageReadme,
     /Build and\s+run macOS test apps only on native `darwin\/arm64` Apple Silicon hosts/,
     "package README must document native Apple Silicon-only macOS test apps"
   );
@@ -171,6 +181,11 @@ function runMacosPackageSigningStaticChecks() {
     packageReadme,
     /prepareMacosSteamAppAfterPack[\s\S]*afterPack/,
     "package README must document the electron-builder afterPack helper"
+  );
+  assert.match(
+    exampleReadme,
+    /### macOS Apple Silicon Only/,
+    "Electron example README must make Apple Silicon-only macOS smoke packaging prominent"
   );
   assert.match(
     exampleReadme,
