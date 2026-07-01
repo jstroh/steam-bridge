@@ -2324,6 +2324,31 @@ export interface ElectronSteamOverlay extends CallbackHandle {
   getShortcutOpenStatus(): ElectronSteamOverlayShortcutStatus;
   openIfAvailable(target: SteamOverlayTarget): NativeOverlayPresenter | null;
   open(target: SteamOverlayTarget): NativeOverlayPresenter;
+  openWeb(url: string, targetOptions?: ElectronSteamOverlayWebTargetOptions): NativeOverlayPresenter;
+  openWebIfAvailable(
+    url: string,
+    targetOptions?: ElectronSteamOverlayWebTargetOptions
+  ): NativeOverlayPresenter | null;
+  openStore(targetOptions?: ElectronSteamOverlayStoreTargetOptions): NativeOverlayPresenter;
+  openStoreIfAvailable(targetOptions?: ElectronSteamOverlayStoreTargetOptions): NativeOverlayPresenter | null;
+  openFriends(targetOptions?: ElectronSteamOverlayFriendsTargetOptions): NativeOverlayPresenter;
+  openFriendsIfAvailable(targetOptions?: ElectronSteamOverlayFriendsTargetOptions): NativeOverlayPresenter | null;
+  openProfile(targetOptions?: ElectronSteamOverlayProfileTargetOptions): NativeOverlayPresenter;
+  openProfileIfAvailable(targetOptions?: ElectronSteamOverlayProfileTargetOptions): NativeOverlayPresenter | null;
+  openPlayers(targetOptions?: ElectronSteamOverlayPlayersTargetOptions): NativeOverlayPresenter;
+  openPlayersIfAvailable(targetOptions?: ElectronSteamOverlayPlayersTargetOptions): NativeOverlayPresenter | null;
+  openCommunity(targetOptions?: ElectronSteamOverlayCommunityTargetOptions): NativeOverlayPresenter;
+  openCommunityIfAvailable(targetOptions?: ElectronSteamOverlayCommunityTargetOptions): NativeOverlayPresenter | null;
+  openStats(targetOptions?: ElectronSteamOverlayStatsTargetOptions): NativeOverlayPresenter;
+  openStatsIfAvailable(targetOptions?: ElectronSteamOverlayStatsTargetOptions): NativeOverlayPresenter | null;
+  openAchievements(targetOptions?: ElectronSteamOverlayAchievementsTargetOptions): NativeOverlayPresenter;
+  openAchievementsIfAvailable(
+    targetOptions?: ElectronSteamOverlayAchievementsTargetOptions
+  ): NativeOverlayPresenter | null;
+  openUser(targetOptions?: ElectronSteamOverlayUserTargetOptions): NativeOverlayPresenter;
+  openUserIfAvailable(targetOptions?: ElectronSteamOverlayUserTargetOptions): NativeOverlayPresenter | null;
+  openDialog(targetOptions?: ElectronSteamOverlayDialogTargetOptions): NativeOverlayPresenter;
+  openDialogIfAvailable(targetOptions?: ElectronSteamOverlayDialogTargetOptions): NativeOverlayPresenter | null;
   openShortcutTargetIfAvailable(): NativeOverlayPresenter | null;
   openShortcutTarget(): NativeOverlayPresenter | null;
   openShortcutTargetAndWaitIfAvailable(
@@ -9036,6 +9061,79 @@ export function createElectronSteamOverlay(
         activationHandle?.disconnect();
         throw error;
       }
+    },
+    openWeb(url: string, targetOptions: ElectronSteamOverlayWebTargetOptions = {}): NativeOverlayPresenter {
+      return controller.open({ ...targetOptions, type: "web", url });
+    },
+    openWebIfAvailable(
+      url: string,
+      targetOptions: ElectronSteamOverlayWebTargetOptions = {}
+    ): NativeOverlayPresenter | null {
+      return controller.openIfAvailable({ ...targetOptions, type: "web", url });
+    },
+    openStore(targetOptions: ElectronSteamOverlayStoreTargetOptions = {}): NativeOverlayPresenter {
+      return controller.open({ ...targetOptions, type: "store" });
+    },
+    openStoreIfAvailable(targetOptions: ElectronSteamOverlayStoreTargetOptions = {}): NativeOverlayPresenter | null {
+      return controller.openIfAvailable({ ...targetOptions, type: "store" });
+    },
+    openFriends(targetOptions: ElectronSteamOverlayFriendsTargetOptions = {}): NativeOverlayPresenter {
+      return controller.open({ ...targetOptions, type: "friends" });
+    },
+    openFriendsIfAvailable(
+      targetOptions: ElectronSteamOverlayFriendsTargetOptions = {}
+    ): NativeOverlayPresenter | null {
+      return controller.openIfAvailable({ ...targetOptions, type: "friends" });
+    },
+    openProfile(targetOptions: ElectronSteamOverlayProfileTargetOptions = {}): NativeOverlayPresenter {
+      return controller.open({ ...targetOptions, type: "profile" });
+    },
+    openProfileIfAvailable(
+      targetOptions: ElectronSteamOverlayProfileTargetOptions = {}
+    ): NativeOverlayPresenter | null {
+      return controller.openIfAvailable({ ...targetOptions, type: "profile" });
+    },
+    openPlayers(targetOptions: ElectronSteamOverlayPlayersTargetOptions = {}): NativeOverlayPresenter {
+      return controller.open({ ...targetOptions, type: "players" });
+    },
+    openPlayersIfAvailable(
+      targetOptions: ElectronSteamOverlayPlayersTargetOptions = {}
+    ): NativeOverlayPresenter | null {
+      return controller.openIfAvailable({ ...targetOptions, type: "players" });
+    },
+    openCommunity(targetOptions: ElectronSteamOverlayCommunityTargetOptions = {}): NativeOverlayPresenter {
+      return controller.open({ ...targetOptions, type: "community" });
+    },
+    openCommunityIfAvailable(
+      targetOptions: ElectronSteamOverlayCommunityTargetOptions = {}
+    ): NativeOverlayPresenter | null {
+      return controller.openIfAvailable({ ...targetOptions, type: "community" });
+    },
+    openStats(targetOptions: ElectronSteamOverlayStatsTargetOptions = {}): NativeOverlayPresenter {
+      return controller.open({ ...targetOptions, type: "stats" });
+    },
+    openStatsIfAvailable(targetOptions: ElectronSteamOverlayStatsTargetOptions = {}): NativeOverlayPresenter | null {
+      return controller.openIfAvailable({ ...targetOptions, type: "stats" });
+    },
+    openAchievements(targetOptions: ElectronSteamOverlayAchievementsTargetOptions = {}): NativeOverlayPresenter {
+      return controller.open({ ...targetOptions, type: "achievements" });
+    },
+    openAchievementsIfAvailable(
+      targetOptions: ElectronSteamOverlayAchievementsTargetOptions = {}
+    ): NativeOverlayPresenter | null {
+      return controller.openIfAvailable({ ...targetOptions, type: "achievements" });
+    },
+    openUser(targetOptions: ElectronSteamOverlayUserTargetOptions = {}): NativeOverlayPresenter {
+      return controller.open({ ...targetOptions, type: "user" });
+    },
+    openUserIfAvailable(targetOptions: ElectronSteamOverlayUserTargetOptions = {}): NativeOverlayPresenter | null {
+      return controller.openIfAvailable({ ...targetOptions, type: "user" });
+    },
+    openDialog(targetOptions: ElectronSteamOverlayDialogTargetOptions = {}): NativeOverlayPresenter {
+      return controller.open({ ...targetOptions, type: "dialog" });
+    },
+    openDialogIfAvailable(targetOptions: ElectronSteamOverlayDialogTargetOptions = {}): NativeOverlayPresenter | null {
+      return controller.openIfAvailable({ ...targetOptions, type: "dialog" });
     },
     openShortcutTargetIfAvailable(): NativeOverlayPresenter | null {
       const status = controller.getShortcutOpenStatus();

@@ -367,7 +367,7 @@ case_block() {
 }
 
 run_self_test() {
-  local self_path minimal_output core_output full_output persistent_output unavailable_output wait_output preflight_output steam_health_output opengl_output checkout_json_output checkout_callback_output callback_missing_json_output checkout_missing_file_output invalid_checkout_json_file invalid_checkout_json_output passive_case checkout_case checkout_prepare_case checkout_json_case checkout_callback_case checkout_callback_checkout_block checkout_callback_prepare_block checkout_callback_web_block shortcut_checkout_json_case web_case duplicate_guard_case full_shortcut_open_wait_case full_shortcut_checkout_open_wait_case full_shortcut_user_open_wait_case full_shortcut_dialog_open_wait_case persistent_web_case persistent_duplicate_guard_case persistent_checkout_prepare_case persistent_shortcut_open_wait_case persistent_shortcut_checkout_open_wait_case persistent_shortcut_user_open_wait_case persistent_shortcut_dialog_open_wait_case unavailable_web_case unavailable_checkout_case unavailable_checkout_prepare_case unavailable_shortcut_case unavailable_passive_case
+  local self_path minimal_output core_output full_output persistent_output unavailable_output wait_output preflight_output steam_health_output opengl_output checkout_json_output checkout_callback_output callback_missing_json_output checkout_missing_file_output invalid_checkout_json_file invalid_checkout_json_output passive_case checkout_case checkout_prepare_case checkout_json_case checkout_callback_case checkout_callback_checkout_block checkout_callback_prepare_block checkout_callback_web_block shortcut_checkout_json_case direct_web_case direct_store_case direct_friends_case direct_dialog_case web_case duplicate_guard_case full_shortcut_open_wait_case full_shortcut_checkout_open_wait_case full_shortcut_user_open_wait_case full_shortcut_dialog_open_wait_case persistent_web_case persistent_duplicate_guard_case persistent_checkout_prepare_case persistent_shortcut_open_wait_case persistent_shortcut_checkout_open_wait_case persistent_shortcut_user_open_wait_case persistent_shortcut_dialog_open_wait_case unavailable_web_case unavailable_checkout_case unavailable_checkout_prepare_case unavailable_shortcut_case unavailable_passive_case
   self_path="${BASH_SOURCE[0]}"
   minimal_output="$(
     bash "$self_path" \
@@ -581,15 +581,15 @@ run_self_test() {
       --require-microtxn-callback
   )"
 
-  if [ "$(printf '%s\n' "$minimal_output" | count_cases)" != "7" ]; then
+  if [ "$(printf '%s\n' "$minimal_output" | count_cases)" != "11" ]; then
     echo "Self-test failed: minimal matrix case count changed." >&2
     exit 1
   fi
-  if [ "$(printf '%s\n' "$core_output" | count_cases)" != "27" ]; then
+  if [ "$(printf '%s\n' "$core_output" | count_cases)" != "31" ]; then
     echo "Self-test failed: core matrix case count changed." >&2
     exit 1
   fi
-  if [ "$(printf '%s\n' "$full_output" | count_cases)" != "45" ]; then
+  if [ "$(printf '%s\n' "$full_output" | count_cases)" != "49" ]; then
     echo "Self-test failed: full matrix case count changed." >&2
     exit 1
   fi
@@ -605,7 +605,7 @@ run_self_test() {
     echo "Self-test failed: unavailable matrix case count changed." >&2
     exit 1
   fi
-  if [ "$(printf '%s\n' "$wait_output" | count_cases)" != "7" ]; then
+  if [ "$(printf '%s\n' "$wait_output" | count_cases)" != "11" ]; then
     echo "Self-test failed: wait-for-interactive dry-run matrix case count changed." >&2
     exit 1
   fi
@@ -623,6 +623,10 @@ run_self_test() {
 
   require_contains "$core_output" "CASE 00-presenter-ready" "core matrix must include the managed presenter readiness preflight."
   require_contains "$core_output" "--action presenter-ready" "core matrix must run the readiness smoke action."
+  require_contains "$core_output" "--action presenter-web" "core matrix must include direct web helper proof."
+  require_contains "$core_output" "--action presenter-store" "core matrix must include direct store helper proof."
+  require_contains "$core_output" "--action presenter-friends" "core matrix must include direct Friends helper proof."
+  require_contains "$core_output" "--action presenter-dialog-auto" "core matrix must include direct dialog helper proof."
   require_contains "$core_output" "--action presenter-web-open-and-wait" "core matrix must include web openAndWait."
   require_contains "$core_output" "--action presenter-duplicate-open-guard" "core matrix must include duplicate-open suppression proof."
   require_contains "$core_output" "--require-zero-managed-overlay-timing" "core matrix must require zero managed overlay timing."
@@ -742,6 +746,10 @@ run_self_test() {
   require_contains "$unavailable_output" "--require-no-overlay-activation" "unavailable matrix must reject Steam overlay activation."
 
   ready_case="$(case_command "$core_output" "00-presenter-ready")"
+  direct_web_case="$(case_command "$core_output" "01a-web-direct")"
+  direct_store_case="$(case_command "$core_output" "02a-store-direct")"
+  direct_friends_case="$(case_command "$core_output" "03a-friends-direct")"
+  direct_dialog_case="$(case_command "$core_output" "04a-dialog-direct")"
   web_case="$(case_command "$core_output" "01-web-openwait")"
   duplicate_guard_case="$(case_command "$core_output" "01b-duplicate-open-guard")"
   shortcut_friends_case="$(case_command "$core_output" "08-shortcut-friends")"
@@ -787,6 +795,15 @@ run_self_test() {
   require_contains "$ready_case" "--require-electron-overlay" "readiness preflight should require managed Electron overlay diagnostics."
   require_not_contains "$ready_case" "--require-overlay-enabled" "readiness preflight must not require overlayEnabled before activating Steam UI."
   require_not_contains "$ready_case" "--close-probe" "readiness preflight must not run an overlay close probe."
+  require_contains "$direct_web_case" "--require-event overlay:presenter-open" "direct web proof should require presenter-open."
+  require_contains "$direct_web_case" "--result-delay-ms 1200" "direct web proof should use a short active capture delay."
+  require_contains "$direct_web_case" "--close-input web" "direct web proof should close through visible Steam web content."
+  require_contains "$direct_store_case" "--require-event overlay:presenter-open" "direct store proof should require presenter-open."
+  require_contains "$direct_store_case" "--close-probe" "direct store proof should close and verify parked state."
+  require_contains "$direct_friends_case" "--require-event overlay:presenter-open" "direct Friends proof should require presenter-open."
+  require_contains "$direct_friends_case" "--close-probe" "direct Friends proof should close and verify parked state."
+  require_contains "$direct_dialog_case" "--action presenter-dialog-auto" "direct dialog proof should use the verified auto route."
+  require_contains "$direct_dialog_case" "--require-event overlay:presenter-open" "direct dialog proof should require presenter-open."
   require_contains "$web_case" "--web-modal true" "web proof should use modal Steam web overlay."
   require_contains "$web_case" "--close-input web" "active web proof should close through the Steam web close control."
   require_contains "$duplicate_guard_case" "--require-event overlay:presenter-duplicate-open-guard" "duplicate-open proof should require the guard event."
@@ -2653,6 +2670,53 @@ run_matrix() {
     --require-electron-overlay \
     --require-event overlay:presenter-ready \
     --require-no-crashes
+
+  run_case "01a-web-direct" \
+    --action presenter-web \
+    --web-url "https://store.steampowered.com/app/$app_id/" \
+    --web-modal true \
+    --result-delay-ms 1200 \
+    --require-steam-launch \
+    --require-overlay-injection \
+    --require-overlay-enabled \
+    --require-overlay-activated \
+    --require-event overlay:presenter-open \
+    --require-no-crashes \
+    --close-probe
+
+  run_case "02a-store-direct" \
+    --action presenter-store \
+    --result-delay-ms 1200 \
+    --require-steam-launch \
+    --require-overlay-injection \
+    --require-overlay-enabled \
+    --require-overlay-activated \
+    --require-event overlay:presenter-open \
+    --require-no-crashes \
+    --close-probe
+
+  run_case "03a-friends-direct" \
+    --action presenter-friends \
+    --result-delay-ms 1200 \
+    --require-steam-launch \
+    --require-overlay-injection \
+    --require-overlay-enabled \
+    --require-overlay-activated \
+    --require-event overlay:presenter-open \
+    --require-no-crashes \
+    --close-probe
+
+  run_case "04a-dialog-direct" \
+    --action presenter-dialog-auto \
+    --dialog OfficialGameGroup \
+    --result-delay-ms 1200 \
+    --require-steam-launch \
+    --require-overlay-injection \
+    --require-overlay-enabled \
+    --require-overlay-activated \
+    --require-event overlay:presenter-open \
+    --require-no-crashes \
+    --close-probe
 
   run_case "01-web-openwait" \
     --action presenter-web-open-and-wait \

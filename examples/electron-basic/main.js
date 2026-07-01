@@ -997,20 +997,17 @@ function openPresenterDialogOverlay() {
 
 function openPresenterDialogAutoOverlay() {
   const overlay = ensureElectronSteamOverlay();
-  overlay.open({ type: "dialog", dialog: OVERLAY_DIALOG, appId: APP_ID });
-  recordEvent("overlay:presenter-open", {
+  const target = { type: "dialog", dialog: OVERLAY_DIALOG, appId: APP_ID };
+  const context = {
     target: "dialog",
     dialog: OVERLAY_DIALOG,
     route: "auto",
     appId: APP_ID,
-    presenter: overlay.snapshot()
-  });
-  observeManagedOverlayLifecycle(overlay, {
-    target: "dialog",
-    dialog: OVERLAY_DIALOG,
-    route: "auto",
-    appId: APP_ID
-  });
+    api: "openDialog"
+  };
+  openNamedPresenterTarget(overlay, target);
+  recordEvent("overlay:presenter-open", { ...context, presenter: overlay.snapshot() });
+  observeManagedOverlayLifecycle(overlay, context);
   return snapshot();
 }
 
@@ -1018,38 +1015,33 @@ function openPresenterStoreOverlay() {
   const activeClient = requireClient();
   const overlay = ensureElectronSteamOverlay(activeClient);
   const url = typeof steamworks.steamStoreAppUrl === "function" ? steamworks.steamStoreAppUrl(APP_ID) : STORE_URL;
-  overlay.open({ type: "store", appId: APP_ID, flag: activeClient.overlay.StoreFlag.None });
-  recordEvent("overlay:presenter-open", {
+  const target = { type: "store", appId: APP_ID, flag: activeClient.overlay.StoreFlag.None };
+  const context = {
     target: "store",
     appId: APP_ID,
     flag: activeClient.overlay.StoreFlag.None,
     route: "web",
     url,
-    presenter: overlay.snapshot()
-  });
-  observeManagedOverlayLifecycle(overlay, {
-    target: "store",
-    appId: APP_ID,
-    route: "web",
-    url
-  });
+    api: "openStore"
+  };
+  openNamedPresenterTarget(overlay, target);
+  recordEvent("overlay:presenter-open", { ...context, presenter: overlay.snapshot() });
+  observeManagedOverlayLifecycle(overlay, context);
   return snapshot();
 }
 
 function openPresenterWebOverlay() {
   const overlay = ensureElectronSteamOverlay();
-  overlay.open({ type: "web", url: WEB_URL, modal: WEB_MODAL });
-  recordEvent("overlay:presenter-open", {
+  const target = { type: "web", url: WEB_URL, modal: WEB_MODAL };
+  const context = {
     target: "web",
     url: WEB_URL,
     modal: WEB_MODAL,
-    presenter: overlay.snapshot()
-  });
-  observeManagedOverlayLifecycle(overlay, {
-    target: "web",
-    url: WEB_URL,
-    modal: WEB_MODAL
-  });
+    api: "openWeb"
+  };
+  openNamedPresenterTarget(overlay, target);
+  recordEvent("overlay:presenter-open", { ...context, presenter: overlay.snapshot() });
+  observeManagedOverlayLifecycle(overlay, context);
   return snapshot();
 }
 
@@ -1224,6 +1216,33 @@ function openPresenterTargetAndWaitOverlay(overlay, target, context) {
   return snapshot();
 }
 
+function openNamedPresenterTarget(overlay, target) {
+  switch (target.type) {
+    case "web":
+      return overlay.openWeb(target.url, overlayTargetOptions(target, "url"));
+    case "store":
+      return overlay.openStore(overlayTargetOptions(target));
+    case "friends":
+      return overlay.openFriends(overlayTargetOptions(target));
+    case "profile":
+      return overlay.openProfile(overlayTargetOptions(target));
+    case "players":
+      return overlay.openPlayers(overlayTargetOptions(target));
+    case "community":
+      return overlay.openCommunity(overlayTargetOptions(target));
+    case "stats":
+      return overlay.openStats(overlayTargetOptions(target));
+    case "achievements":
+      return overlay.openAchievements(overlayTargetOptions(target));
+    case "user":
+      return overlay.openUser(overlayTargetOptions(target));
+    case "dialog":
+      return overlay.openDialog(overlayTargetOptions(target));
+    default:
+      return overlay.open(target);
+  }
+}
+
 function openNamedPresenterTargetAndWait(overlay, target, waitOptions) {
   switch (target.type) {
     case "web":
@@ -1269,18 +1288,16 @@ function throwIfNativeHostUnavailable(snapshot) {
 
 function openPresenterFriendsOverlay() {
   const overlay = ensureElectronSteamOverlay();
-  overlay.open({ type: "friends" });
-  recordEvent("overlay:presenter-open", {
+  const target = { type: "friends" };
+  const context = {
     target: "friends",
     url: steamworks.STEAM_FRIENDS_OVERLAY_URL,
     modal: true,
-    presenter: overlay.snapshot()
-  });
-  observeManagedOverlayLifecycle(overlay, {
-    target: "friends",
-    url: steamworks.STEAM_FRIENDS_OVERLAY_URL,
-    modal: true
-  });
+    api: "openFriends"
+  };
+  openNamedPresenterTarget(overlay, target);
+  recordEvent("overlay:presenter-open", { ...context, presenter: overlay.snapshot() });
+  observeManagedOverlayLifecycle(overlay, context);
   return snapshot();
 }
 
@@ -1293,9 +1310,10 @@ function openPresenterProfileOverlay() {
     target: "profile",
     steamId64,
     url: steamworks.steamCommunityProfileUrl(steamId64),
-    modal: true
+    modal: true,
+    api: "openProfile"
   };
-  overlay.open(target);
+  openNamedPresenterTarget(overlay, target);
   recordEvent("overlay:presenter-open", { ...context, presenter: overlay.snapshot() });
   observeManagedOverlayLifecycle(overlay, context);
   return snapshot();
@@ -1325,9 +1343,10 @@ function openPresenterPlayersOverlay() {
     target: "players",
     steamId64,
     url: steamworks.steamCommunityPlayersUrl(steamId64),
-    modal: true
+    modal: true,
+    api: "openPlayers"
   };
-  overlay.open(target);
+  openNamedPresenterTarget(overlay, target);
   recordEvent("overlay:presenter-open", { ...context, presenter: overlay.snapshot() });
   observeManagedOverlayLifecycle(overlay, context);
   return snapshot();
@@ -1355,9 +1374,10 @@ function openPresenterCommunityOverlay() {
     target: "community",
     appId: APP_ID,
     url: steamworks.steamCommunityAppUrl(APP_ID),
-    modal: true
+    modal: true,
+    api: "openCommunity"
   };
-  overlay.open(target);
+  openNamedPresenterTarget(overlay, target);
   recordEvent("overlay:presenter-open", { ...context, presenter: overlay.snapshot() });
   observeManagedOverlayLifecycle(overlay, context);
   return snapshot();
@@ -1383,9 +1403,10 @@ function openPresenterStatsOverlay() {
     target: "stats",
     appId: APP_ID,
     url: steamworks.steamCommunityUserStatsUrl(APP_ID),
-    modal: true
+    modal: true,
+    api: "openStats"
   };
-  overlay.open(target);
+  openNamedPresenterTarget(overlay, target);
   recordEvent("overlay:presenter-open", { ...context, presenter: overlay.snapshot() });
   observeManagedOverlayLifecycle(overlay, context);
   return snapshot();
@@ -1411,9 +1432,10 @@ function openPresenterAchievementsOverlay() {
     target: "achievements",
     appId: APP_ID,
     url: steamworks.steamCommunityAchievementsUrl(APP_ID),
-    modal: true
+    modal: true,
+    api: "openAchievements"
   };
-  overlay.open(target);
+  openNamedPresenterTarget(overlay, target);
   recordEvent("overlay:presenter-open", { ...context, presenter: overlay.snapshot() });
   observeManagedOverlayLifecycle(overlay, context);
   return snapshot();
@@ -1439,9 +1461,10 @@ function openPresenterUserOverlay() {
     target: "user",
     dialog: USER_DIALOG,
     route: "auto",
-    appId: APP_ID
+    appId: APP_ID,
+    api: "openUser"
   };
-  overlay.open(target);
+  openNamedPresenterTarget(overlay, target);
   recordEvent("overlay:presenter-open", { ...context, presenter: overlay.snapshot() });
   observeManagedOverlayLifecycle(overlay, context);
   return snapshot();

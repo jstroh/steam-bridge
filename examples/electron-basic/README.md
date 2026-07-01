@@ -391,10 +391,13 @@ generic comparison values include `Achievements`, `Community`, `Players`,
 The `presenter-*` actions use `client.overlay.createElectronSteamOverlay(...)`
 and reuse the same passive, click-through presenter for the requested overlay
 target. Use
-`presenter-web --web-modal true` to verify the app-facing persistent presenter
-path. Use `presenter-web-open-and-wait --web-modal true` to exercise the
-builder-facing `steamOverlay.openWebAndWait(...)` helper, which delegates to the
-same managed `openAndWait(...)` path; the smoke app records
+`presenter-web --web-modal true` to verify the app-facing
+`steamOverlay.openWeb(...)` helper and persistent presenter path. The direct
+`presenter-*` actions use the named helpers such as `openStore(...)`,
+`openFriends(...)`, and `openProfile(...)` for common surfaces. Use
+`presenter-web-open-and-wait --web-modal true` to exercise the builder-facing
+`steamOverlay.openWebAndWait(...)` helper, which delegates to the same managed
+`openAndWait(...)` path; the smoke app records
 `overlay:presenter-open-and-wait-start` before writing its result, then records
 `overlay:presenter-open-and-wait-complete` only after Steam closes and the
 presenter parks. The macOS helper's `--close-probe` and Deck runner's visual

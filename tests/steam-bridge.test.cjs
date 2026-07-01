@@ -9927,6 +9927,133 @@ test("electron steam overlay manager exposes named openAndWait helpers", async (
   ]);
 });
 
+test("electron steam overlay manager exposes named direct open helpers", async (t) => {
+  const hostHandle = Buffer.from([8, 6, 7, 5]);
+  let hostOpen = false;
+  const fake = createFakeNative({
+    attachNativeOverlayHostView(nativeWindowHandle) {
+      hostOpen = true;
+      this.calls.push({ method: "attachNativeOverlayHostView", args: [nativeWindowHandle] });
+    },
+    pumpNativeOverlayProbeWindow() {
+      this.calls.push({ method: "pumpNativeOverlayProbeWindow", args: [] });
+    },
+    showNativeOverlayHostView() {
+      this.calls.push({ method: "showNativeOverlayHostView", args: [] });
+    },
+    detachNativeOverlayHostView() {
+      hostOpen = false;
+      this.calls.push({ method: "detachNativeOverlayHostView", args: [] });
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return false;
+    },
+    isNativeOverlayHostViewOpen() {
+      return hostOpen;
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+  t.after(clearSteamBridgeCache);
+
+  const window = {
+    isDestroyed() {
+      return false;
+    },
+    getNativeWindowHandle() {
+      return hostHandle;
+    },
+    once() {},
+    webContents: {
+      once() {},
+      invalidate() {},
+      send() {}
+    }
+  };
+  const overlay = steam.overlay.createElectronSteamOverlay(window, {
+    title: "Named Direct Overlay Helpers"
+  });
+  t.after(() => overlay.close());
+
+  const directResult = { ok: true };
+  const calls = [];
+  overlay.open = (target) => {
+    calls.push({ method: "open", target });
+    return directResult;
+  };
+  overlay.openIfAvailable = (target) => {
+    calls.push({ method: "openIfAvailable", target });
+    return null;
+  };
+
+  assert.equal(overlay.openWeb("https://example.test/", { modal: true }), directResult);
+  assert.equal(overlay.openStore({ appId: 480, flag: steam.StoreFlag.AddToCart }), directResult);
+  assert.equal(overlay.openFriends({ modal: false }), directResult);
+  assert.equal(overlay.openProfile({ steamId64: "76561198000000000" }), directResult);
+  assert.equal(overlay.openPlayers({ steamId64: "76561198000000000" }), directResult);
+  assert.equal(overlay.openCommunity({ appId: 480 }), directResult);
+  assert.equal(overlay.openStats({ appId: 480, steamId64: "76561198000000000" }), directResult);
+  assert.equal(overlay.openAchievements({ appId: 480 }), directResult);
+  assert.equal(overlay.openUser({ dialog: steam.UserDialog.Chat, steamId64: "76561198000000000" }), directResult);
+  assert.equal(overlay.openDialog({ dialog: steam.Dialog.OfficialGameGroup, appId: 480 }), directResult);
+  assert.equal(overlay.openWebIfAvailable("https://example.test/available"), null);
+  assert.equal(overlay.openStoreIfAvailable({ appId: 480 }), null);
+  assert.equal(overlay.openFriendsIfAvailable(), null);
+  assert.equal(overlay.openProfileIfAvailable(), null);
+  assert.equal(overlay.openPlayersIfAvailable(), null);
+  assert.equal(overlay.openCommunityIfAvailable(), null);
+  assert.equal(overlay.openStatsIfAvailable(), null);
+  assert.equal(overlay.openAchievementsIfAvailable(), null);
+  assert.equal(overlay.openUserIfAvailable(), null);
+  assert.equal(overlay.openDialogIfAvailable(), null);
+
+  assert.deepEqual(calls, [
+    {
+      method: "open",
+      target: { modal: true, type: "web", url: "https://example.test/" }
+    },
+    {
+      method: "open",
+      target: { appId: 480, flag: steam.StoreFlag.AddToCart, type: "store" }
+    },
+    { method: "open", target: { modal: false, type: "friends" } },
+    {
+      method: "open",
+      target: { steamId64: "76561198000000000", type: "profile" }
+    },
+    {
+      method: "open",
+      target: { steamId64: "76561198000000000", type: "players" }
+    },
+    { method: "open", target: { appId: 480, type: "community" } },
+    {
+      method: "open",
+      target: { appId: 480, steamId64: "76561198000000000", type: "stats" }
+    },
+    { method: "open", target: { appId: 480, type: "achievements" } },
+    {
+      method: "open",
+      target: { dialog: steam.UserDialog.Chat, steamId64: "76561198000000000", type: "user" }
+    },
+    {
+      method: "open",
+      target: { dialog: steam.Dialog.OfficialGameGroup, appId: 480, type: "dialog" }
+    },
+    {
+      method: "openIfAvailable",
+      target: { type: "web", url: "https://example.test/available" }
+    },
+    { method: "openIfAvailable", target: { appId: 480, type: "store" } },
+    { method: "openIfAvailable", target: { type: "friends" } },
+    { method: "openIfAvailable", target: { type: "profile" } },
+    { method: "openIfAvailable", target: { type: "players" } },
+    { method: "openIfAvailable", target: { type: "community" } },
+    { method: "openIfAvailable", target: { type: "stats" } },
+    { method: "openIfAvailable", target: { type: "achievements" } },
+    { method: "openIfAvailable", target: { type: "user" } },
+    { method: "openIfAvailable", target: { type: "dialog" } }
+  ]);
+});
+
 test("electron steam overlay openAndWait waits for overlay readiness before activating Steam", async (t) => {
   setProcessPlatformForTest(t, "linux");
   const hostHandle = Buffer.from([4, 8, 1, 6]);

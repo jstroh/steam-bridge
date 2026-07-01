@@ -229,6 +229,9 @@ await steamOverlay.openShortcutTargetAndWaitIfAvailable();
 // Achievement progress/store notifications are automatically primed while the
 // managed overlay is open. Use prepareForNotification() only for custom cases.
 
+steamOverlay.openFriendsIfAvailable();
+steamOverlay.openStore({ appId: 480 });
+
 await steamOverlay.openFriendsAndWait();
 
 await steamOverlay.openProfileAndWait();
@@ -644,15 +647,14 @@ compatibility switch: it disables the reusable presenter, uses the older
 one-shot native-session lifecycle for the same `steamOverlay.open(...)` calls,
 and may pump more aggressively while a session is open. The Linux and Steam Deck
 smoke helpers expose this as `--presenter-mode session` for repeatable
-diagnostic comparisons. Use
-`steamOverlay.open({ type: "friends" })` for a generic Friends List surface; it
-opens Steam Community chat through the same native web presenter path, keeping
-Electron child-process isolation intact. Use
-`steamOverlay.open({ type: "profile", steamId64 })` for a Steam profile page;
-omit `steamId64` to open the current user's profile. This covers the common
-profile case for raw `ActivateGameOverlayToUser` through the same
-presenter-backed Steam web surface. Use
-`steamOverlay.open({ type: "user", dialog: client.overlay.UserDialog.SteamId, steamId64 })`
+diagnostic comparisons. Use `steamOverlay.openFriends()` for a generic Friends
+List surface; it opens Steam Community chat through the same native web
+presenter path, keeping Electron child-process isolation intact. Use
+`steamOverlay.openProfile({ steamId64 })` for a Steam profile page; omit
+`steamId64` to open the current user's profile. This covers the common profile
+case for raw `ActivateGameOverlayToUser` through the same presenter-backed
+Steam web surface. Use
+`steamOverlay.openUser({ dialog: client.overlay.UserDialog.SteamId, steamId64 })`
 for the same profile route through the high-level user-dialog router. The
 `user` target routes verified web-backed user dialog names through the presenter
 by default: `steamid`/`profile`, `chat`, `stats`, and `achievements`. The
@@ -661,12 +663,11 @@ prompt dialogs such as `jointrade` and friend request actions remain raw
 Steamworks diagnostics; pass `route: "native"` or call
 `openNativeUserOverlay(...)` only when explicitly testing
 `ActivateGameOverlayToUser(...)` behavior. Use
-`steamOverlay.open({ type: "players", steamId64 })` for the current user's or a
-specified user's Steam Community players page through the same presenter-backed
-web surface. Use
-`steamOverlay.open({ type: "community", appId })` for the app's Steam Community hub,
-`steamOverlay.open({ type: "stats", appId })` for the current user's app stats
-page, and `steamOverlay.open({ type: "achievements", appId })` for the current
+`steamOverlay.openPlayers({ steamId64 })` for the current user's or a specified
+user's Steam Community players page through the same presenter-backed web
+surface. Use `steamOverlay.openCommunity({ appId })` for the app's Steam
+Community hub, `steamOverlay.openStats({ appId })` for the current user's app
+stats page, and `steamOverlay.openAchievements({ appId })` for the current
 user's app achievements page through that same presenter-backed Steam web
 overlay route. Steam Community may redirect apps without public web stats to the
 user's profile, so use your real app for achievements content proof.
@@ -972,6 +973,16 @@ passive notification priming with visible web content where applicable,
 active/inactive callbacks, close/back-to-app proof, parked zero-FPS state,
 disabled needs-present polling, zero managed overlay timing, managed
 child-overlay isolation, and clean crash diagnostics.
+A focused 2026-07-01 minimal Apple Silicon artifact at
+`/tmp/steam-bridge-macos-overlay-matrix-minimal-direct-helpers-20260701-070531`
+rebuilt and signed the same arm64-only Electron `43.0.0` package and passed all
+11 Steam-launched cases after adding named direct helpers. It exercised direct
+`openWeb(...)`, `openStore(...)`, `openFriends(...)`, and `openDialog(...)`
+calls plus the existing wait-helper, duplicate-open, and passive notification
+cases, with visible Steam web content where applicable, active/inactive
+callbacks, close/back-to-app proof, parked zero-FPS state, disabled
+needs-present polling, zero managed overlay timing, managed child-overlay
+isolation, and clean crash diagnostics.
 A later recovered-client full artifact at
 `/tmp/steam-bridge-macos-overlay-matrix-20260630-220434` also passed all 44
 process-per-case App ID `480` cases after recreating the stable shortcut and

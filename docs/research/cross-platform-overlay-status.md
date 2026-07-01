@@ -98,6 +98,18 @@ active/inactive callbacks, close/back-to-app proof, parked zero-FPS presenter
 state, disabled needs-present polling, zero managed overlay timing, managed
 child-overlay isolation, and clean crash diagnostics.
 
+A focused current-head 2026-07-01 minimal macOS Apple Silicon matrix at
+`/tmp/steam-bridge-macos-overlay-matrix-minimal-direct-helpers-20260701-070531`
+rebuilt and signed the arm64-only Electron `43.0.0` smoke package, reused the
+stable App ID `480` Steam shortcut without restarting Steam, and passed all 11
+Steam-launched minimal cases after adding named direct helpers. It exercised
+direct `openWeb(...)`, `openStore(...)`, `openFriends(...)`, and
+`openDialog(...)` calls plus the existing wait-helper, duplicate-open, and
+passive notification cases, with visible Steam web content where applicable,
+active/inactive callbacks, close/back-to-app proof, parked zero-FPS presenter
+state, disabled needs-present polling, zero managed overlay timing, managed
+child-overlay isolation, and clean crash diagnostics.
+
 A 2026-07-01 full macOS Apple Silicon matrix at
 `/tmp/steam-bridge-macos-overlay-matrix-full-isolation-proof-20260701-045604`
 rebuilt and signed the arm64 Electron `43.0.0` smoke package, verified the

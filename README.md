@@ -326,11 +326,14 @@ app.whenReady().then(async () => {
 
 Supported managed targets include web pages, store pages, checkout, Friends/chat,
 profiles, players, community hubs, stats, achievements, user routes, and known
-dialog equivalents. Use the named helpers such as `openFriendsAndWait()`,
+dialog equivalents. Use the named helpers such as `openFriends()`,
+`openStoreIfAvailable(...)`, `openFriendsAndWait()`,
 `openStoreAndWaitIfAvailable(...)`, and `openWebAndWait(...)` for common
-surfaces; use `openAndWait(target)` when you need to construct a target object
-dynamically. `openAndWait(...)` validates those routes before preparing the
-native host and rejects raw native prompt routes. Use
+surfaces. Direct helpers return after Steam activation starts; wait helpers
+resolve after Steam closes and the presenter parks. Use `open(target)` or
+`openAndWait(target)` when you need to construct a target object dynamically.
+`openAndWait(...)` validates those routes before preparing the native host and
+rejects raw native prompt routes. Use
 `open({ ..., route: "native" })` only when you are explicitly collecting
 diagnostic evidence for raw Steamworks overlay behavior. If overlay readiness
 times out before Steam activation, the scoped native-host hold is released and
@@ -339,12 +342,12 @@ Use `getOpenStatus(target)` before wiring menus, controller buttons, or checkout
 fallbacks when the app needs a side-effect-free target/native-host preflight.
 It validates the managed route and reports whether the target can be opened and
 waited on without touching Steam overlay UI.
-Use `openIfAvailable(target)` or `openAndWaitIfAvailable(target)` when a button
-or controller binding should quietly do nothing for known unavailable states and
-still surface real errors after an overlay open begins. These helpers also
-return `null` while Steam's overlay is already active or the managed presenter
-is still opening a previous overlay, so duplicate menu/button presses do not
-start a second overlay action.
+Use named `*IfAvailable(...)` helpers, `openIfAvailable(target)`, or
+`openAndWaitIfAvailable(target)` when a button or controller binding should
+quietly do nothing for known unavailable states and still surface real errors
+after an overlay open begins. These helpers also return `null` while Steam's
+overlay is already active or the managed presenter is still opening a previous
+overlay, so duplicate menu/button presses do not start a second overlay action.
 If fresh diagnostics report Steam is not running, both helpers return `null`
 with `reason: "steam-unavailable"`. If diagnostics report the Steam overlay is
 not ready yet, direct `openIfAvailable(target)` returns `null` with
@@ -558,6 +561,16 @@ managed actions to the named builder helpers. The run exercised
 `openDialogAndWait(...)`, duplicate-open suppression through
 `openWebAndWaitIfAvailable(...)`, and passive notification priming with visible
 web content where applicable, close/back-to-app proof, parked zero-FPS state,
+disabled needs-present polling, zero managed overlay timing, managed
+child-overlay isolation, and clean crash diagnostics.
+A focused Apple Silicon minimal run at
+`/tmp/steam-bridge-macos-overlay-matrix-minimal-direct-helpers-20260701-070531`
+then rebuilt and signed the same arm64-only Electron `43.0.0` package and
+passed all 11 Steam-launched cases after adding named direct helpers. The run
+exercised direct `openWeb(...)`, `openStore(...)`, `openFriends(...)`, and
+`openDialog(...)` calls plus the existing wait-helper, duplicate-open, and
+passive notification cases, with visible Steam web content where applicable,
+active/inactive callbacks, close/back-to-app proof, parked zero-FPS state,
 disabled needs-present polling, zero managed overlay timing, managed
 child-overlay isolation, and clean crash diagnostics.
 
