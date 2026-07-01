@@ -973,3 +973,8 @@ Steam, log out or reboot macOS to clear the user-session IPC state.
    approval path. If `usersession=client` does not surface UI, use
    `usersession=web`, open the returned Steam URL, poll `QueryTxn`, and finalize
    only after approval.
+7. When a managed overlay wait fails, log the sanitized target snapshot from
+   `getSteamOverlayErrorTargetSnapshot(error)` or
+   `getSteamOverlayCheckoutErrorTargetSnapshot(error)` rather than raw checkout
+   targets. Checkout failure context records only presence flags for URLs,
+   transaction IDs, return URLs, and Steam IDs.

@@ -27,6 +27,8 @@ function serializeErrorObject(error) {
   copyStringField(serialized, source, "reason");
   copyStringField(serialized, source, "state");
   copyNumberField(serialized, source, "timeoutMs");
+  copyOverlayTargetSnapshot(serialized, source, "targetSnapshot");
+  copyOverlayTargetSnapshot(serialized, source, "checkoutTargetSnapshot");
   copyMacOverlayEnvironment(serialized, source);
   return serialized;
 }
@@ -39,6 +41,42 @@ function copyStringField(target, source, field) {
 
 function copyNumberField(target, source, field) {
   if (typeof source[field] === "number" && Number.isFinite(source[field])) {
+    target[field] = source[field];
+  }
+}
+
+function copyOverlayTargetSnapshot(target, source, field) {
+  const snapshot = source[field];
+  if (!snapshot || typeof snapshot !== "object") {
+    return;
+  }
+
+  const serialized = {};
+  copyStringField(serialized, snapshot, "type");
+  copyNumberField(serialized, snapshot, "appId");
+  copyNumberField(serialized, snapshot, "flag");
+  copyStringOrNumberField(serialized, snapshot, "dialog");
+  copyStringField(serialized, snapshot, "route");
+  copyBooleanField(serialized, snapshot, "modal");
+  copyBooleanField(serialized, snapshot, "hasUrl");
+  copyBooleanField(serialized, snapshot, "hasSteamUrl");
+  copyBooleanField(serialized, snapshot, "hasTransactionId");
+  copyBooleanField(serialized, snapshot, "hasReturnUrl");
+  copyBooleanField(serialized, snapshot, "hasSteamId64");
+
+  if (typeof serialized.type === "string") {
+    target[field] = serialized;
+  }
+}
+
+function copyStringOrNumberField(target, source, field) {
+  if (typeof source[field] === "string" || typeof source[field] === "number") {
+    target[field] = source[field];
+  }
+}
+
+function copyBooleanField(target, source, field) {
+  if (typeof source[field] === "boolean") {
     target[field] = source[field];
   }
 }

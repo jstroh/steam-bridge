@@ -401,6 +401,12 @@ result's `targetSnapshot` or call
 record only presence flags for checkout URLs, transaction IDs, return URLs, and
 Steam IDs, so real purchase artifacts can stay useful without leaking private
 values.
+Managed overlay wait failures keep their original error class and also carry a
+sanitized `targetSnapshot`. Checkout wait failures additionally carry
+`checkoutTargetSnapshot`; use
+`client.overlay.getSteamOverlayErrorTargetSnapshot(error)` or
+`client.overlay.getSteamOverlayCheckoutErrorTargetSnapshot(error)` when logging
+failures instead of logging the raw checkout target.
 The Electron smoke app redacts real checkout URLs, transaction IDs, return URLs,
 Steam IDs, auth-ticket bytes, and private CLI arguments from result and lifecycle
 artifacts while preserving machine-checkable presence flags and presenter

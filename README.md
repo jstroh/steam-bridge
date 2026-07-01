@@ -353,6 +353,11 @@ of raw checkout targets because they keep only presence flags for checkout URLs,
 transaction IDs, return URLs, and Steam IDs. App ID `480` proves generic
 checkout routing only; real purchase UI and `InitTxn` proof require your own
 Steam app ID with configured products.
+If a managed overlay wait fails, catch the original wait error and call
+`steamworks.getSteamOverlayErrorTargetSnapshot(error)` or
+`steamworks.getSteamOverlayCheckoutErrorTargetSnapshot(error)` before logging;
+those helpers expose the same sanitized target context without raw checkout
+values.
 
 The full Electron overlay API and platform notes are in
 [`packages/steam-bridge/README.md`](packages/steam-bridge/README.md). Current

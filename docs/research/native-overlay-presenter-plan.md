@@ -1109,6 +1109,11 @@ Current evidence:
   target, zero managed overlay timing, no leftover smoke/gameoverlay process,
   and no raw synthetic transaction ID or checkout approval URL in the matrix
   metadata or lifecycle logs.
+  Current source also annotates managed wait failures with sanitized
+  `targetSnapshot` context, plus `checkoutTargetSnapshot` for checkout targets,
+  while preserving the original wait error class. This keeps real-product
+  checkout failure logs useful without requiring apps or smoke artifacts to
+  serialize raw checkout URLs, transaction IDs, return URLs, or Steam IDs.
 - BrowserWindow-only overlay support is not proven.
 - Steam launch, app ID, auth, and callbacks are not enough to claim overlay
   support.

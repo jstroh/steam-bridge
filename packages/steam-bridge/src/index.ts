@@ -1979,10 +1979,17 @@ export interface ElectronSteamOverlayCheckoutPrepareOptions {
   signal?: AbortSignal;
 }
 
+export interface SteamOverlayErrorTargetSnapshotContext {
+  readonly targetSnapshot?: SteamOverlayTargetSnapshot;
+  readonly checkoutTargetSnapshot?: SteamOverlayCheckoutTargetSnapshot;
+}
+
 export class SteamOverlayNativeHostUnavailableError extends Error {
   readonly code = "STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE";
   readonly reason: NativeOverlayHostUnavailableReason;
   readonly macOverlayEnvironment?: MacOverlayEnvironment;
+  readonly targetSnapshot?: SteamOverlayTargetSnapshot;
+  readonly checkoutTargetSnapshot?: SteamOverlayCheckoutTargetSnapshot;
 
   constructor(snapshot: Pick<ElectronSteamOverlaySnapshot, "nativeHostUnavailableReason" | "macOverlayEnvironment">) {
     const reason = snapshot.nativeHostUnavailableReason;
@@ -2028,6 +2035,8 @@ export class SteamOverlayWaitTimeoutError extends Error {
   readonly diagnostics?: OverlayDiagnostics;
   readonly nativeHostUnavailableReason?: NativeOverlayHostUnavailableReason;
   readonly macOverlayEnvironment?: MacOverlayEnvironment;
+  readonly targetSnapshot?: SteamOverlayTargetSnapshot;
+  readonly checkoutTargetSnapshot?: SteamOverlayCheckoutTargetSnapshot;
 
   constructor(state: string, timeoutMs: number, snapshot?: ElectronSteamOverlaySnapshot) {
     super(formatSteamOverlayWaitTimeoutMessage(state, timeoutMs, snapshot));
@@ -2066,6 +2075,8 @@ export class SteamOverlayWaitAbortedError extends Error {
   readonly diagnostics?: OverlayDiagnostics;
   readonly nativeHostUnavailableReason?: NativeOverlayHostUnavailableReason;
   readonly macOverlayEnvironment?: MacOverlayEnvironment;
+  readonly targetSnapshot?: SteamOverlayTargetSnapshot;
+  readonly checkoutTargetSnapshot?: SteamOverlayCheckoutTargetSnapshot;
 
   constructor(state: string, snapshot?: ElectronSteamOverlaySnapshot) {
     super(formatSteamOverlayWaitAbortedMessage(state, snapshot));
@@ -2099,6 +2110,8 @@ export class SteamOverlayWaitClosedError extends Error {
   readonly diagnostics?: OverlayDiagnostics;
   readonly nativeHostUnavailableReason?: NativeOverlayHostUnavailableReason;
   readonly macOverlayEnvironment?: MacOverlayEnvironment;
+  readonly targetSnapshot?: SteamOverlayTargetSnapshot;
+  readonly checkoutTargetSnapshot?: SteamOverlayCheckoutTargetSnapshot;
 
   constructor(state: string, snapshot?: ElectronSteamOverlaySnapshot) {
     super(formatSteamOverlayWaitClosedMessage(state, snapshot));
@@ -2123,6 +2136,114 @@ export function isSteamOverlayWaitClosedError(error: unknown): error is SteamOve
 
   const candidate = error as { code?: unknown; state?: unknown };
   return candidate.code === "STEAM_OVERLAY_WAIT_CLOSED" && typeof candidate.state === "string";
+}
+
+export function getSteamOverlayErrorTargetSnapshot(error: unknown): SteamOverlayTargetSnapshot | undefined {
+  if (!error || typeof error !== "object") {
+    return undefined;
+  }
+
+  const snapshot = (error as SteamOverlayErrorTargetSnapshotContext).targetSnapshot;
+  return isSteamOverlayTargetSnapshot(snapshot) ? sanitizeSteamOverlayTargetSnapshot(snapshot) : undefined;
+}
+
+export function getSteamOverlayCheckoutErrorTargetSnapshot(
+  error: unknown
+): SteamOverlayCheckoutTargetSnapshot | undefined {
+  if (!error || typeof error !== "object") {
+    return undefined;
+  }
+
+  const checkoutSnapshot = (error as SteamOverlayErrorTargetSnapshotContext).checkoutTargetSnapshot;
+  if (isSteamOverlayCheckoutTargetSnapshot(checkoutSnapshot)) {
+    return sanitizeSteamOverlayTargetSnapshot(checkoutSnapshot) as SteamOverlayCheckoutTargetSnapshot;
+  }
+
+  const snapshot = getSteamOverlayErrorTargetSnapshot(error);
+  return isSteamOverlayCheckoutTargetSnapshot(snapshot) ? snapshot : undefined;
+}
+
+const STEAM_OVERLAY_TARGET_SNAPSHOT_TYPES = new Set<SteamOverlayTarget["type"]>([
+  "web",
+  "store",
+  "friends",
+  "profile",
+  "players",
+  "community",
+  "stats",
+  "achievements",
+  "user",
+  "checkout",
+  "dialog"
+]);
+
+function isSteamOverlayTargetSnapshot(value: unknown): value is SteamOverlayTargetSnapshot {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const type = (value as { type?: unknown }).type;
+  return typeof type === "string" && STEAM_OVERLAY_TARGET_SNAPSHOT_TYPES.has(type as SteamOverlayTarget["type"]);
+}
+
+function isSteamOverlayCheckoutTargetSnapshot(value: unknown): value is SteamOverlayCheckoutTargetSnapshot {
+  return isSteamOverlayTargetSnapshot(value) && value.type === "checkout";
+}
+
+function sanitizeSteamOverlayTargetSnapshot(snapshot: SteamOverlayTargetSnapshot): SteamOverlayTargetSnapshot {
+  const source = snapshot as Record<string, unknown>;
+  const sanitized: SteamOverlayTargetSnapshot = { type: snapshot.type };
+  const mutable = sanitized as Record<string, unknown>;
+  copyNumberSnapshotField(mutable, source, "appId");
+  copyNumberSnapshotField(mutable, source, "flag");
+  copyStringOrNumberSnapshotField(mutable, source, "dialog");
+  copyStringSnapshotField(mutable, source, "route");
+  copyBooleanSnapshotField(mutable, source, "modal");
+  copyBooleanSnapshotField(mutable, source, "hasUrl");
+  copyBooleanSnapshotField(mutable, source, "hasSteamUrl");
+  copyBooleanSnapshotField(mutable, source, "hasTransactionId");
+  copyBooleanSnapshotField(mutable, source, "hasReturnUrl");
+  copyBooleanSnapshotField(mutable, source, "hasSteamId64");
+  return sanitized;
+}
+
+function copyNumberSnapshotField(
+  target: Record<string, unknown>,
+  source: Record<string, unknown>,
+  field: keyof SteamOverlayTargetSnapshot
+): void {
+  if (typeof source[field] === "number" && Number.isFinite(source[field])) {
+    target[field] = source[field];
+  }
+}
+
+function copyStringSnapshotField(
+  target: Record<string, unknown>,
+  source: Record<string, unknown>,
+  field: keyof SteamOverlayTargetSnapshot
+): void {
+  if (typeof source[field] === "string" && source[field]) {
+    target[field] = source[field];
+  }
+}
+
+function copyStringOrNumberSnapshotField(
+  target: Record<string, unknown>,
+  source: Record<string, unknown>,
+  field: keyof SteamOverlayTargetSnapshot
+): void {
+  if (typeof source[field] === "string" || typeof source[field] === "number") {
+    target[field] = source[field];
+  }
+}
+
+function copyBooleanSnapshotField(
+  target: Record<string, unknown>,
+  source: Record<string, unknown>,
+  field: keyof SteamOverlayTargetSnapshot
+): void {
+  if (typeof source[field] === "boolean") {
+    target[field] = source[field];
+  }
 }
 
 function isNativeOverlayHostUnavailableReason(value: unknown): value is NativeOverlayHostUnavailableReason {
@@ -9025,6 +9146,7 @@ export function createElectronSteamOverlay(
     options: ElectronSteamOverlayOpenAndWaitOptions = {},
     lifecycle: ElectronSteamOverlayTargetWaitLifecycle = {}
   ): Promise<ElectronSteamOverlayOpenAndWaitResult> {
+    const targetSnapshot = snapshotSteamOverlayTarget(target);
     let activationHandle = lifecycle.activationHandle;
     let activationReleased = false;
     const releaseActivation = (): void => {
@@ -9065,7 +9187,7 @@ export function createElectronSteamOverlay(
       return { shown, parked };
     } catch (error) {
       releaseActivation();
-      throw error;
+      throw annotateSteamOverlayTargetSnapshotError(error, targetSnapshot);
     }
   }
 }
@@ -10104,6 +10226,43 @@ function releaseElectronSteamOverlayActivationWhenShown(
   }
 
   void waitForShown.then(release, release);
+}
+
+function annotateSteamOverlayTargetSnapshotError<T>(error: T, targetSnapshot: SteamOverlayTargetSnapshot): T {
+  if (!error || typeof error !== "object") {
+    return error;
+  }
+
+  defineSteamOverlayErrorSnapshotProperty(error, "targetSnapshot", targetSnapshot);
+  if (targetSnapshot.type === "checkout") {
+    defineSteamOverlayErrorSnapshotProperty(error, "checkoutTargetSnapshot", targetSnapshot);
+  }
+  return error;
+}
+
+function defineSteamOverlayErrorSnapshotProperty(
+  error: object,
+  property: "targetSnapshot" | "checkoutTargetSnapshot",
+  targetSnapshot: SteamOverlayTargetSnapshot
+): void {
+  if (property in error) {
+    return;
+  }
+
+  try {
+    Object.defineProperty(error, property, {
+      configurable: true,
+      enumerable: true,
+      value: targetSnapshot
+    });
+  } catch {
+    try {
+      (error as Record<string, unknown>)[property] = targetSnapshot;
+    } catch {
+      // Some error-like objects are sealed. Best-effort context must never
+      // replace the original overlay failure.
+    }
+  }
 }
 
 function runElectronSteamOverlayAbortableOperation<T>(
@@ -14778,6 +14937,8 @@ export const overlay = {
   openCheckoutOverlay,
   checkoutTargetFromResult,
   snapshotSteamOverlayTarget,
+  getSteamOverlayErrorTargetSnapshot,
+  getSteamOverlayCheckoutErrorTargetSnapshot,
   openDialogEquivalentOverlay,
   openNativeStoreOverlay,
   openStoreOverlay,
@@ -22587,6 +22748,8 @@ const defaultExport = {
   openCheckoutOverlay,
   checkoutTargetFromResult,
   snapshotSteamOverlayTarget,
+  getSteamOverlayErrorTargetSnapshot,
+  getSteamOverlayCheckoutErrorTargetSnapshot,
   openDialogEquivalentOverlay,
   openNativeStoreOverlay,
   openStoreOverlay,

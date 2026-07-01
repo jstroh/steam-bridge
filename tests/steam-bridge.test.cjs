@@ -104,6 +104,17 @@ test("electron smoke sanitizer redacts private overlay proof fields", () => {
   waitError.code = "STEAM_OVERLAY_WAIT_TIMEOUT";
   waitError.state = "become active";
   waitError.timeoutMs = 500;
+  waitError.targetSnapshot = {
+    type: "checkout",
+    steamUrl: "https://checkout.steampowered.com/checkout/approvetxn/123456789/",
+    hasSteamUrl: true,
+    hasTransactionId: true
+  };
+  waitError.checkoutTargetSnapshot = {
+    type: "checkout",
+    transactionId: 123456789n,
+    hasTransactionId: true
+  };
 
   const sanitized = sanitizeSmokeValue({
     appId: 480,
@@ -163,6 +174,15 @@ test("electron smoke sanitizer redacts private overlay proof fields", () => {
   assert.equal(sanitized.waitError.code, "STEAM_OVERLAY_WAIT_TIMEOUT");
   assert.equal(sanitized.waitError.state, "become active");
   assert.equal(sanitized.waitError.timeoutMs, 500);
+  assert.deepEqual(sanitized.waitError.targetSnapshot, {
+    type: "checkout",
+    hasSteamUrl: true,
+    hasTransactionId: true
+  });
+  assert.deepEqual(sanitized.waitError.checkoutTargetSnapshot, {
+    type: "checkout",
+    hasTransactionId: true
+  });
   assert.equal(sanitized.steamId64.redacted, true);
   assert.equal(sanitized.transactionId.redacted, true);
   assert.equal(sanitized.steamUrl.redacted, true);
@@ -282,6 +302,43 @@ test("overlay wait timeout guard accepts class and error-like shapes", (t) => {
   );
   assert.equal(steam.isSteamOverlayWaitTimeoutError(new Error("nope")), false);
   assert.equal(steam.isSteamOverlayWaitTimeoutError(null), false);
+  const rawTargetContext = {
+    targetSnapshot: {
+      type: "checkout",
+      steamUrl: "https://checkout.steampowered.com/checkout/approvetxn/123456789/",
+      transactionId: "123456789",
+      returnUrl: "steam://return/private-token",
+      hasSteamUrl: true,
+      hasTransactionId: true,
+      hasReturnUrl: true
+    },
+    checkoutTargetSnapshot: {
+      type: "checkout",
+      steamUrl: "https://checkout.steampowered.com/checkout/approvetxn/987654321/",
+      transactionId: "987654321",
+      returnUrl: "steam://return/other-private-token",
+      hasSteamUrl: true,
+      hasTransactionId: true,
+      hasReturnUrl: true
+    }
+  };
+  assert.deepEqual(steam.getSteamOverlayErrorTargetSnapshot(rawTargetContext), {
+    type: "checkout",
+    hasSteamUrl: true,
+    hasTransactionId: true,
+    hasReturnUrl: true
+  });
+  assert.deepEqual(steam.getSteamOverlayCheckoutErrorTargetSnapshot(rawTargetContext), {
+    type: "checkout",
+    hasSteamUrl: true,
+    hasTransactionId: true,
+    hasReturnUrl: true
+  });
+  assert.equal(JSON.stringify(steam.getSteamOverlayErrorTargetSnapshot(rawTargetContext)).includes("123456789"), false);
+  assert.equal(
+    JSON.stringify(steam.getSteamOverlayCheckoutErrorTargetSnapshot(rawTargetContext)).includes("987654321"),
+    false
+  );
 
   const aborted = new steam.SteamOverlayWaitAbortedError("close", snapshot);
   assert.equal(steam.isSteamOverlayWaitAbortedError(aborted), true);
@@ -7730,6 +7787,23 @@ test("electron steam overlay shortcut wait does not report opened before overlay
       assert.equal(error.code, "STEAM_OVERLAY_WAIT_TIMEOUT");
       assert.equal(error.state, "be ready");
       assert.equal(error.snapshot.diagnostics.overlayEnabled, false);
+      assert.deepEqual(error.targetSnapshot, {
+        type: "web",
+        modal: true,
+        hasUrl: true
+      });
+      assert.deepEqual(steam.getSteamOverlayErrorTargetSnapshot(error), {
+        type: "web",
+        modal: true,
+        hasUrl: true
+      });
+      assert.equal(steam.getSteamOverlayCheckoutErrorTargetSnapshot(error), undefined);
+      assert.deepEqual(steam.overlay.getSteamOverlayErrorTargetSnapshot(error), {
+        type: "web",
+        modal: true,
+        hasUrl: true
+      });
+      assert.equal(JSON.stringify(error.targetSnapshot).includes("overlay-menu"), false);
       return true;
     }
   );
@@ -9561,6 +9635,27 @@ test("electron steam overlay checkout wait does not activate before overlay read
       assert.equal(error.code, "STEAM_OVERLAY_WAIT_TIMEOUT");
       assert.equal(error.state, "be ready");
       assert.equal(error.snapshot.diagnostics.overlayEnabled, false);
+      assert.deepEqual(error.targetSnapshot, {
+        type: "checkout",
+        hasSteamUrl: true
+      });
+      assert.deepEqual(error.checkoutTargetSnapshot, {
+        type: "checkout",
+        hasSteamUrl: true
+      });
+      assert.deepEqual(steam.getSteamOverlayErrorTargetSnapshot(error), {
+        type: "checkout",
+        hasSteamUrl: true
+      });
+      assert.deepEqual(steam.getSteamOverlayCheckoutErrorTargetSnapshot(error), {
+        type: "checkout",
+        hasSteamUrl: true
+      });
+      assert.deepEqual(steam.overlay.getSteamOverlayErrorTargetSnapshot(error), {
+        type: "checkout",
+        hasSteamUrl: true
+      });
+      assert.equal(JSON.stringify(error.targetSnapshot).includes("333"), false);
       return true;
     }
   );
