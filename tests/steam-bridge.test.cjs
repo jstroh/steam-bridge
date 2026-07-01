@@ -179,6 +179,8 @@ test("electron smoke sanitizer redacts private overlay proof fields", () => {
     },
     callback: {
       authorized: true,
+      m_ulOrderID: "order-private-sdk-001",
+      m_ulTransID: "135792468",
       owner: 76561198000000001n
     },
     response: {
@@ -207,6 +209,8 @@ test("electron smoke sanitizer redacts private overlay proof fields", () => {
   assert.equal(sanitized.checkout.hasReturnUrl, true);
   assert.equal(sanitized.presenter.currentFps, 0);
   assert.equal(sanitized.callback.authorized, true);
+  assert.equal(sanitized.callback.m_ulOrderID.redacted, true);
+  assert.equal(sanitized.callback.m_ulTransID.redacted, true);
   assert.equal(sanitized.callback.owner, "[redacted-steam-id]");
   assert.equal(sanitized.response.params.transid.redacted, true);
   assert.equal(sanitized.response.params.orderid.redacted, true);
@@ -242,6 +246,8 @@ test("electron smoke sanitizer redacts private overlay proof fields", () => {
   assert.equal(serialized.includes("76561198000000001"), false);
   assert.equal(serialized.includes("123456789"), false);
   assert.equal(serialized.includes("246813579"), false);
+  assert.equal(serialized.includes("135792468"), false);
+  assert.equal(serialized.includes("order-private-sdk-001"), false);
   assert.equal(serialized.includes("order-private-002"), false);
   assert.equal(serialized.includes("order-private-001"), false);
   assert.equal(serialized.includes("steam://return/private-token"), false);

@@ -33,12 +33,16 @@ const SENSITIVE_KEY_PARTS = [
   "apikey",
   "authticket",
   "checkouturl",
+  "orderid",
   "publisherkey",
   "returnurl",
   "secret",
   "sessionid",
   "steamurl",
-  "ticketbase64"
+  "transactionid",
+  "transid",
+  "ticketbase64",
+  "txnid"
 ];
 
 const SENSITIVE_ARG_PREFIXES = [
