@@ -287,9 +287,9 @@ Verified:
   dialog-equivalent route (`Friends`, `Players`, `Community`,
   `OfficialGameGroup`, `Stats`, and `Achievements`) through managed
   `openAndWait(...)`. The summary auditor reported `managedWaits=true`,
-  `zeroTiming=true`, `macInteractive=true`, one `gameoverlayui` target under
-  App ID `480`, clean crash diagnostics, and parked presenters for every active
-  managed overlay case.
+  `managedIsolation=true`, `zeroTiming=true`, `macInteractive=true`, one
+  `gameoverlayui` target under App ID `480`, clean crash diagnostics, and
+  parked presenters for every active managed overlay case.
 - A 2026-06-29 minimal macOS overlay matrix at
   `/tmp/steam-bridge-macos-overlay-matrix-minimal-helper-current-20260629-170723`
   re-ran the packaged helper after the source-level presenter-shape checks were

@@ -52,6 +52,7 @@ const PASSIVE_NOTIFICATION_ACTIONS = new Map([
     }
   ]
 ]);
+const EXPECTED_STEAM_OVERLAY_SCRUBBED_ENV_KEYS = new Set(["LD_PRELOAD", "DYLD_INSERT_LIBRARIES"]);
 
 main();
 
@@ -180,6 +181,7 @@ function summarizeMatrixArtifacts(root) {
     const action = objectOrEmpty(result.action);
     const caseMetadata = caseManifest.byCase.get(caseName);
     const nativePresenter = readOkValue(overlay.nativePresenter);
+    const electronOverlay = readElectronOverlay(nativePresenter);
     const overlayTargetCount = countOverlayTargets(overlayProcesses);
     const overlayActivated = events.some(isOverlayActiveEvent);
     const resultFailures = [];
@@ -213,7 +215,6 @@ function summarizeMatrixArtifacts(root) {
       expect(nativePresenter.nativeHostOpen === true, `${caseName}: native presenter host open`, resultFailures);
     }
     if (String(action.action || "").startsWith("presenter-")) {
-      const electronOverlay = readElectronOverlay(nativePresenter);
       expect(Boolean(electronOverlay), `${caseName}: managed Electron overlay diagnostics available`, resultFailures);
       if (electronOverlay) {
         expect(
@@ -231,6 +232,15 @@ function summarizeMatrixArtifacts(root) {
           `${caseName}: managed Electron overlay scrubbed environment key diagnostics are available`,
           resultFailures
         );
+        if (Array.isArray(electronOverlay.scrubbedEnvKeys)) {
+          for (const key of electronOverlay.scrubbedEnvKeys) {
+            expect(
+              EXPECTED_STEAM_OVERLAY_SCRUBBED_ENV_KEYS.has(key),
+              `${caseName}: managed Electron overlay scrubbed environment key is expected: ${formatValue(key)}`,
+              resultFailures
+            );
+          }
+        }
         expect(
           electronOverlay.restoreFocusDelayMs === 0,
           `${caseName}: managed Electron overlay restore focus delay is zero`,
@@ -301,6 +311,8 @@ function summarizeMatrixArtifacts(root) {
         nativePresenter && typeof nativePresenter === "object" && nativePresenter.currentFps != null
           ? nativePresenter.currentFps
           : "n/a",
+      managedIsolation:
+        String(action.action || "").startsWith("presenter-") ? managedOverlayIsolationOk(electronOverlay) : "n/a",
       closeInput: caseMetadata?.visualCloseInput || "n/a",
       toggleInput: caseMetadata?.visualToggleInput || "n/a",
       passiveToast: passiveNotification.required ? passiveNotification.ok : "n/a",
@@ -326,6 +338,7 @@ function summarizeMatrixArtifacts(root) {
         `overlayInactive=${item.lifecycleInactive}`,
         `presenter=${item.presenterMode}`,
         `fps=${item.presenterFps}`,
+        `managedIsolation=${item.managedIsolation}`,
         `closeInput=${item.closeInput}`,
         `toggleInput=${item.toggleInput}`,
         `passiveToast=${item.passiveToast}`,
@@ -362,6 +375,10 @@ function runSelfTest() {
     const summary = summarizeMatrixArtifacts(fixtureRoot);
     assert(summary.caseSummaries.length === 8, "summary self-test should include eight cases");
     assert(summary.totalScreenshots === 11, "summary self-test should count eleven screenshots");
+    assert(
+      summary.caseSummaries.every((item) => !String(item.action).startsWith("presenter-") || item.managedIsolation === true),
+      "summary self-test should report managed overlay isolation for presenter cases"
+    );
     console.log("Steam Deck overlay matrix summary self-test passed.");
   } finally {
     fs.rmSync(fixtureRoot, { recursive: true, force: true });
@@ -1150,6 +1167,16 @@ function readElectronOverlay(presenter) {
   return presenter && typeof presenter.electronOverlay === "object" && !Array.isArray(presenter.electronOverlay)
     ? presenter.electronOverlay
     : undefined;
+}
+
+function managedOverlayIsolationOk(electronOverlay) {
+  if (!electronOverlay || electronOverlay.scrubSteamOverlayChildProcessEnv !== true) {
+    return false;
+  }
+  if (!Array.isArray(electronOverlay.scrubbedEnvKeys)) {
+    return false;
+  }
+  return electronOverlay.scrubbedEnvKeys.every((key) => EXPECTED_STEAM_OVERLAY_SCRUBBED_ENV_KEYS.has(key));
 }
 
 function findResultLog(caseDir, failures) {

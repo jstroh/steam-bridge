@@ -1197,8 +1197,10 @@ Current evidence:
   ID `480` Steam shortcut without restarting Steam, and passed all 45
   process-per-case presenter-backed cases after managed overlay isolation became
   a required product proof. Each presenter case required the child-process
-  preload scrub diagnostics, and the summary re-proved modal web/store/Friends/
-  dialog routes, passive progress/unlock toasts, checkout approval and
+  preload scrub diagnostics, the summary now reports `managedIsolation=true`,
+  and the same audit rejects unexpected scrubbed env keys. It re-proved modal
+  web/store/Friends/dialog routes, passive progress/unlock toasts, checkout
+  approval and
   prepare-only paths, every managed Shift+Tab shortcut target, direct
   profile/players/community/stats/achievements/user/dialog-equivalent routes,
   and every programmatic shortcut `openAndWait(...)` target with one Metal

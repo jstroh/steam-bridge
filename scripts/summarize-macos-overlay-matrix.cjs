@@ -48,6 +48,7 @@ const SENSITIVE_MANIFEST_OPTIONS = new Set([
   "--checkout-transaction-id",
   "--checkout-url"
 ]);
+const EXPECTED_STEAM_OVERLAY_SCRUBBED_ENV_KEYS = new Set(["LD_PRELOAD", "DYLD_INSERT_LIBRARIES"]);
 const MINIMAL_SUITE_REQUIRED_CASE_IDS = [
   "00-presenter-ready",
   "01-web-openwait",
@@ -329,6 +330,7 @@ function summarizeMatrixArtifacts(root) {
         `overlayGameIds=${summary.overlayGameIds.join(",") || "none"}`,
         `backend=${summary.nativeHostBackend}`,
         `macInteractive=${summary.macInteractive}`,
+        `managedIsolation=${summary.managedIsolation}`,
         `zeroTiming=${summary.zeroTiming}`,
         `shown=${summary.shown}`,
         `webVisible=${summary.webVisible}`,
@@ -452,6 +454,7 @@ function verifyCase(caseId, metadata, result, lifecycle, macosCrashReports, fail
       electronOverlay.activationBoostMs === 0 &&
       electronOverlay.activeGraceMs === 0
   );
+  const managedIsolation = managedOverlayIsolationOk(electronOverlay);
   const crashOk =
     crashDiagnostics.available === true &&
     crashDiagnostics.ok === true &&
@@ -582,6 +585,15 @@ function verifyCase(caseId, metadata, result, lifecycle, macosCrashReports, fail
       `${caseId}: managed Electron scrubbed env key diagnostics available`,
       failures
     );
+    if (Array.isArray(electronOverlay.scrubbedEnvKeys)) {
+      for (const key of electronOverlay.scrubbedEnvKeys) {
+        expect(
+          EXPECTED_STEAM_OVERLAY_SCRUBBED_ENV_KEYS.has(key),
+          `${caseId}: managed Electron scrubbed env key is expected: ${formatValue(key)}`,
+          failures
+        );
+      }
+    }
     expect(electronOverlay.restoreFocusDelayMs === 0, `${caseId}: restore focus delay is zero`, failures);
     expect(electronOverlay.activationBoostMs === 0, `${caseId}: activation boost is zero`, failures);
     expect(electronOverlay.activeGraceMs === 0, `${caseId}: active grace is zero`, failures);
@@ -716,6 +728,7 @@ function verifyCase(caseId, metadata, result, lifecycle, macosCrashReports, fail
     overlayGameIds,
     nativeHostBackend: nativePresenter?.backend ?? "none",
     macInteractive,
+    managedIsolation,
     zeroTiming,
     shown: managedWaits.required ? managedWaits.shownOk : "n/a",
     webVisible: webVisible.required ? webVisible.ok : "n/a",
@@ -3392,6 +3405,16 @@ function readElectronOverlay(presenter) {
   return presenter.electronOverlay && typeof presenter.electronOverlay === "object" && !Array.isArray(presenter.electronOverlay)
     ? presenter.electronOverlay
     : undefined;
+}
+
+function managedOverlayIsolationOk(electronOverlay) {
+  if (!electronOverlay || electronOverlay.scrubSteamOverlayChildProcessEnv !== true) {
+    return false;
+  }
+  if (!Array.isArray(electronOverlay.scrubbedEnvKeys)) {
+    return false;
+  }
+  return electronOverlay.scrubbedEnvKeys.every((key) => EXPECTED_STEAM_OVERLAY_SCRUBBED_ENV_KEYS.has(key));
 }
 
 function presenterPayload(entry) {

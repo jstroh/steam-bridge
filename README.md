@@ -491,13 +491,14 @@ The latest local macOS Apple Silicon full cold-launch proof is
 it rebuilt and signed the arm64 Electron `43.0.0` smoke package, reused the
 stable Steam shortcut without restarting Steam, and passed all 45 App ID `480`
 presenter-backed overlay cases. The matrix required managed overlay isolation
-for every presenter case and the summary audited the child-process preload scrub
-diagnostics, visible Steam web content before close input, close/back-to-app,
-one Metal presenter-backed overlay target for active/passive cases, parked
-zero-FPS presenter state, disabled needs-present polling, zero managed overlay
-timing, and clean crash diagnostics. New macOS matrix manifests record their
-suite name, and the summary auditor rejects named-suite artifacts that are
-missing required overlay surface cases. A focused Apple Silicon minimal run at
+for every presenter case and the summary now reports `managedIsolation=true`
+from the child-process preload scrub diagnostics, visible Steam web content
+before close input, close/back-to-app, one Metal presenter-backed overlay target
+for active/passive cases, parked zero-FPS presenter state, disabled
+needs-present polling, zero managed overlay timing, and clean crash diagnostics.
+New macOS matrix manifests record their suite name, and the summary auditor
+rejects named-suite artifacts that are missing required overlay surface cases. A
+focused Apple Silicon minimal run at
 `/tmp/steam-bridge-macos-overlay-matrix-20260701-032532` also passed all 7
 minimal cases after expanding the duplicate-open guard to direct,
 shortcut/controller, and checkout `IfAvailable` helpers while keeping the

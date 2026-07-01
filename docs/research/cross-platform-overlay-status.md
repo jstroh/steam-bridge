@@ -74,8 +74,9 @@ without restarting Steam, and passed all 45 Steam-launched process-per-case
 presenter-backed overlay cases. This is the first live full artifact after the
 managed overlay isolation verifier became a required product proof: every
 presenter case carried `--require-managed-overlay-isolation`, and the summary
-audited `scrubSteamOverlayChildProcessEnv=true` plus scrubbed-env-key
-diagnostics in the managed Electron overlay snapshot. The run re-proved
+now reports `managedIsolation=true` from `scrubSteamOverlayChildProcessEnv=true`
+plus scrubbed-env-key diagnostics in the managed Electron overlay snapshot. The
+run re-proved
 readiness, web/store/Friends/dialog `openAndWait(...)`, passive progress/unlock
 toasts, checkout approval and prepare-only routes, every managed Shift+Tab
 shortcut target including checkout, direct profile/players/community/stats/
