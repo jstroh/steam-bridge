@@ -334,8 +334,9 @@ guardrail rather than app-facing timing glue. If a wait times out, is aborted,
 or the overlay manager closes while the wait is pending, Steam Bridge throws
 `SteamOverlayWaitTimeoutError`, `SteamOverlayWaitAbortedError`, or
 `SteamOverlayWaitClosedError` with a stable `code`, `state`, and the last
-managed presenter `snapshot`. When available, the errors also expose direct
-`diagnostics`, `nativeHostUnavailableReason`, and `macOverlayEnvironment`
+managed presenter `snapshot`. Scoped active presenter holds are released so the
+host can park back at idle after the failure. When available, the errors also
+expose direct `diagnostics`, `nativeHostUnavailableReason`, and `macOverlayEnvironment`
 properties copied from that snapshot; timeout errors also include `timeoutMs`.
 Use the matching `isSteamOverlayWaitTimeoutError(error)`,
 `isSteamOverlayWaitAbortedError(error)`, or

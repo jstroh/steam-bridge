@@ -8676,6 +8676,100 @@ test("electron steam overlay openAndWait waits for overlay readiness before acti
   overlay.close();
 });
 
+test("electron steam overlay openAndWait releases presenter hold when readiness times out", async (t) => {
+  setProcessPlatformForTest(t, "linux");
+  const hostHandle = Buffer.from([4, 8, 1, 7]);
+  let hostOpen = false;
+  const fake = createFakeNative({
+    attachNativeOverlayHostView(nativeWindowHandle) {
+      hostOpen = true;
+      this.calls.push({ method: "attachNativeOverlayHostView", args: [nativeWindowHandle] });
+    },
+    pumpNativeOverlayProbeWindow() {
+      this.calls.push({ method: "pumpNativeOverlayProbeWindow", args: [] });
+    },
+    showNativeOverlayHostView() {
+      this.calls.push({ method: "showNativeOverlayHostView", args: [] });
+    },
+    setNativeOverlayHostInputPassthrough(passThrough) {
+      this.calls.push({ method: "setNativeOverlayHostInputPassthrough", args: [passThrough] });
+    },
+    setNativeOverlayHostOpacity(opaque) {
+      this.calls.push({ method: "setNativeOverlayHostOpacity", args: [opaque] });
+    },
+    detachNativeOverlayHostView() {
+      hostOpen = false;
+      this.calls.push({ method: "detachNativeOverlayHostView", args: [] });
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return false;
+    },
+    isNativeOverlayHostViewOpen() {
+      return hostOpen;
+    },
+    getOverlayDiagnostics() {
+      return {
+        steamRunning: true,
+        steamInstallPath: "/tmp/steam",
+        appId: 480,
+        overlayEnabled: false,
+        overlayNeedsPresent: false,
+        overlayNeedsPresentPollingEnabled: true,
+        steamDeck: false,
+        bigPicture: false
+      };
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  const window = {
+    isDestroyed() {
+      return false;
+    },
+    getNativeWindowHandle() {
+      return hostHandle;
+    },
+    once() {},
+    webContents: {
+      once() {},
+      invalidate() {},
+      send() {}
+    }
+  };
+
+  const overlay = steam.overlay.createElectronSteamOverlay(window, {
+    title: "Electron Readiness Timeout Overlay",
+    pollIntervalMs: 50
+  });
+
+  await assert.rejects(
+    overlay.openAndWait(
+      { type: "web", url: "https://store.steampowered.com/app/480/", modal: true },
+      { showTimeoutMs: 5, closeTimeoutMs: 5 }
+    ),
+    (error) => {
+      assert.equal(error instanceof steam.SteamOverlayWaitTimeoutError, true);
+      assert.equal(error.code, "STEAM_OVERLAY_WAIT_TIMEOUT");
+      assert.equal(error.state, "be ready");
+      assert.equal(error.snapshot.diagnostics.overlayEnabled, false);
+      assert.equal(error.snapshot.mode, "active");
+      assert.equal(error.snapshot.currentFps, 30);
+      return true;
+    }
+  );
+
+  assert.deepEqual(steamWebOverlayCalls(fake), []);
+  const afterTimeout = overlay.snapshot();
+  assert.equal(afterTimeout.mode, "passive");
+  assert.equal(afterTimeout.clickThrough, true);
+  assert.equal(afterTimeout.transparent, true);
+  assert.equal(afterTimeout.currentFps, 0);
+
+  overlay.close();
+});
+
 test("electron steam overlay manager validates managed targets before presenter activation", async (t) => {
   const hostHandle = Buffer.from([3, 1, 4, 1]);
   let hostOpen = false;

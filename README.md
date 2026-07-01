@@ -300,7 +300,9 @@ profiles, players, community hubs, stats, achievements, user routes, and known
 dialog equivalents. `openAndWait(...)` validates those routes before preparing
 the native host and rejects raw native prompt routes. Use
 `open({ ..., route: "native" })` only when you are explicitly collecting
-diagnostic evidence for raw Steamworks overlay behavior.
+diagnostic evidence for raw Steamworks overlay behavior. If overlay readiness
+times out before Steam activation, the scoped native-host hold is released and
+the presenter returns to its idle state.
 
 While inactive, the presenter stays transparent, click-through, non-focusable,
 and idle at `0` FPS. Passive Steam notifications use the same presenter without
