@@ -1536,6 +1536,9 @@ function runSelfTest() {
   const missingMicroTxnFixtureRoot = fs.mkdtempSync(
     path.join(os.tmpdir(), "steam-bridge-macos-matrix-summary-missing-microtxn.")
   );
+  const missingCheckoutErrorSnapshotFixtureRoot = fs.mkdtempSync(
+    path.join(os.tmpdir(), "steam-bridge-macos-matrix-summary-missing-checkout-error-snapshot.")
+  );
   const missingNeedsPresentPollingFixtureRoot = fs.mkdtempSync(
     path.join(os.tmpdir(), "steam-bridge-macos-matrix-summary-missing-needs-present-polling.")
   );
@@ -1543,7 +1546,7 @@ function runSelfTest() {
   try {
     createSelfTestFixture(fixtureRoot);
     const summary = summarizeMatrixArtifacts(fixtureRoot);
-    assert.equal(summary.caseSummaries.length, 12, "summary self-test should include twelve cases");
+    assert.equal(summary.caseSummaries.length, 14, "summary self-test should include fourteen cases");
     createPersistentSelfTestFixture(persistentFixtureRoot);
     const persistentSummary = summarizeMatrixArtifacts(persistentFixtureRoot);
     assert.equal(persistentSummary.caseSummaries.length, 2, "persistent summary self-test should include two cases");
@@ -1559,6 +1562,9 @@ function runSelfTest() {
     createSelfTestFixture(missingMicroTxnFixtureRoot);
     injectMicroTxnCallbackRequirement(missingMicroTxnFixtureRoot, "01-web-openwait");
     assertMissingMicroTxnCallbackRejected(missingMicroTxnFixtureRoot);
+    createSelfTestFixture(missingCheckoutErrorSnapshotFixtureRoot);
+    removeCheckoutActionErrorSnapshot(missingCheckoutErrorSnapshotFixtureRoot, "07c-checkout-unavailable");
+    assertMissingCheckoutActionErrorSnapshotRejected(missingCheckoutErrorSnapshotFixtureRoot);
     createSelfTestFixture(missingNeedsPresentPollingFixtureRoot);
     removeMacosNeedsPresentPollingProof(missingNeedsPresentPollingFixtureRoot, "01-web-openwait");
     assertMissingNeedsPresentPollingProofRejected(missingNeedsPresentPollingFixtureRoot);
@@ -1569,6 +1575,7 @@ function runSelfTest() {
     fs.rmSync(crashFixtureRoot, { recursive: true, force: true });
     fs.rmSync(metalCrashFixtureRoot, { recursive: true, force: true });
     fs.rmSync(missingMicroTxnFixtureRoot, { recursive: true, force: true });
+    fs.rmSync(missingCheckoutErrorSnapshotFixtureRoot, { recursive: true, force: true });
     fs.rmSync(missingNeedsPresentPollingFixtureRoot, { recursive: true, force: true });
     fs.rmSync(persistentFixtureRoot, { recursive: true, force: true });
   }
@@ -1698,6 +1705,37 @@ function assertMissingMicroTxnCallbackRejected(root) {
     result.stderr,
     /required MicroTxnAuthorizationResponse callback was not recorded/,
     "summary rejection should identify the missing MicroTxn callback"
+  );
+}
+
+function removeCheckoutActionErrorSnapshot(root, caseId) {
+  const manifestPath = path.join(root, "macos-matrix-cases.jsonl");
+  const rows = fs
+    .readFileSync(manifestPath, "utf8")
+    .trim()
+    .split(/\r?\n/)
+    .map((line) => JSON.parse(line));
+  const row = rows.find((entry) => entry.caseId === caseId);
+  assert.ok(row, `self-test fixture should include ${caseId}`);
+  const resultLine = fs
+    .readFileSync(row.resultFile, "utf8")
+    .split(/\r?\n/)
+    .find((line) => line.startsWith(RESULT_PREFIX));
+  assert.ok(resultLine, `self-test fixture should include a result line for ${caseId}`);
+  const result = JSON.parse(resultLine.slice(RESULT_PREFIX.length));
+  delete result.action.error.checkoutTargetSnapshot;
+  fs.writeFileSync(row.resultFile, `${RESULT_PREFIX}${JSON.stringify(result)}\n`);
+}
+
+function assertMissingCheckoutActionErrorSnapshotRejected(root) {
+  const result = spawnSync(process.execPath, [__filename, "--artifact-root", root], {
+    encoding: "utf8"
+  });
+  assert.notEqual(result.status, 0, "summary should reject missing checkout action error snapshots");
+  assert.match(
+    result.stderr,
+    /autorun checkout action error includes sanitized checkoutTargetSnapshot/,
+    "summary rejection should identify the missing checkout action error snapshot"
   );
 }
 
@@ -2047,6 +2085,81 @@ function createSelfTestFixture(root) {
           }
         }
       ]
+    },
+    {
+      caseId: "07c-checkout-unavailable",
+      action: "presenter-checkout",
+      resultOk: false,
+      actionOk: false,
+      actionError: {
+        name: "SteamOverlayNativeHostUnavailableError",
+        message: "Steam overlay native host is unavailable: macOS screen is locked.",
+        code: "STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE",
+        reason: "macos-screen-locked",
+        targetSnapshot: { type: "checkout", hasTransactionId: true },
+        checkoutTargetSnapshot: { type: "checkout", hasTransactionId: true },
+        macOverlayEnvironment: { screenLocked: true, displayAsleep: true }
+      },
+      command: [
+        "--action",
+        "presenter-checkout",
+        "--checkout-transaction-id",
+        REDACTED_COMMAND_VALUE,
+        "--require-action-error-code",
+        "STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE",
+        "--require-action-error-reason",
+        "macos-screen-locked",
+        "--require-native-host-unavailable-reason",
+        "macos-screen-locked",
+        "--require-no-overlay-activation"
+      ],
+      resultPresenter: nativeHostUnavailablePresenterFixture("macos-screen-locked", {
+        screenLocked: true,
+        displayAsleep: true
+      }),
+      overlayTargets: [],
+      checkoutSource: "transaction-id",
+      requireActionErrorCode: "STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE",
+      requireActionErrorReason: "macos-screen-locked",
+      requireNativeHostUnavailableReason: "macos-screen-locked",
+      requireNoOverlayActivation: true,
+      lifecycle: []
+    },
+    {
+      caseId: "07d-checkout-prepare-unavailable",
+      action: "presenter-checkout",
+      resultOk: false,
+      actionOk: false,
+      actionError: {
+        name: "SteamOverlayNativeHostUnavailableError",
+        message: "Steam overlay native host is unavailable: macOS screen is locked.",
+        code: "STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE",
+        reason: "macos-screen-locked",
+        targetSnapshot: { type: "checkout" },
+        checkoutTargetSnapshot: { type: "checkout" },
+        macOverlayEnvironment: { screenLocked: true, displayAsleep: true }
+      },
+      command: [
+        "--action",
+        "presenter-checkout",
+        "--require-action-error-code",
+        "STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE",
+        "--require-action-error-reason",
+        "macos-screen-locked",
+        "--require-native-host-unavailable-reason",
+        "macos-screen-locked",
+        "--require-no-overlay-activation"
+      ],
+      resultPresenter: nativeHostUnavailablePresenterFixture("macos-screen-locked", {
+        screenLocked: true,
+        displayAsleep: true
+      }),
+      overlayTargets: [],
+      requireActionErrorCode: "STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE",
+      requireActionErrorReason: "macos-screen-locked",
+      requireNativeHostUnavailableReason: "macos-screen-locked",
+      requireNoOverlayActivation: true,
+      lifecycle: []
     },
     {
       caseId: "08-shortcut-openwait-unavailable",
