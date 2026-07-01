@@ -324,6 +324,17 @@ and passive achievement-progress all reported `available=false`,
 `nativeHostOpen=false`, no overlay activation, zero overlay targets, disabled
 needs-present polling, zero managed overlay timing, and no copied macOS crash
 reports.
+A current-head locked/asleep matrix at
+`/tmp/steam-bridge-macos-overlay-matrix-20260630-223644` rebuilt and signed the
+Apple Silicon Electron `43.0.0` package, reused the stable shortcut without a
+Steam restart, and passed all six unavailable cases. It adds locked/asleep
+readiness preflight proof to the managed web open/wait, checkout-open,
+checkout-prepare, programmatic shortcut open/wait, and passive
+achievement-progress no-host cases. The summary verified
+`available=false`, `STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE`, reason
+`macos-screen-locked`, `screenLocked=true`, `displayAsleep=true`,
+`nativeHostOpen=false`, no overlay activation, zero overlay targets, disabled
+needs-present polling, zero managed overlay timing, and clean crash diagnostics.
 A 2026-06-30 13:32 PDT crash-report sweep after a later user-visible Ignore
 dialog found no newer `SteamBridgeSmoke`, `gameoverlayui`, `Steam Helper`, or
 attributed `MTLCompilerService` DiagnosticReport than the known

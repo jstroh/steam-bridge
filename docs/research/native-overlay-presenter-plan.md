@@ -1060,6 +1060,18 @@ Current evidence:
   `nativeHostOpen=false`, no Steam overlay activation, zero overlay targets,
   disabled needs-present polling, zero managed overlay timing, and no copied
   macOS crash reports.
+  A current-head locked/asleep unavailable matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-20260630-223644` rebuilt and signed
+  the Apple Silicon Electron `43.0.0` package, reused the stable shortcut
+  without a Steam restart, and passed all six unavailable cases. It added the
+  readiness preflight to the locked/asleep suite and re-verified managed
+  web open/wait, checkout-open, checkout prepare-only, programmatic shortcut
+  open/wait, and passive achievement-progress no-host behavior with
+  `available=false`, `STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE`, reason
+  `macos-screen-locked`, `screenLocked=true`, `displayAsleep=true`,
+  `nativeHostOpen=false`, no Steam overlay activation, zero overlay targets,
+  disabled needs-present polling, zero managed overlay timing, and clean crash
+  diagnostics.
 - BrowserWindow-only overlay support is not proven.
 - Steam launch, app ID, auth, and callbacks are not enough to claim overlay
   support.

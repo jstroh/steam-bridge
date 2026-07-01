@@ -667,6 +667,17 @@ Verified:
   emitting `overlay:shortcut-open`, attaching a native host, creating a
   `gameoverlayui` target, activating Steam overlay UI, or producing a fresh
   `SteamBridgeSmoke` or attributed `MTLCompilerService` crash report.
+- A current-head locked/asleep unavailable macOS matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-20260630-223644` rebuilt and signed
+  the Apple Silicon Electron `43.0.0` smoke package, reused the stable Steam
+  shortcut without restarting Steam, and passed six unavailable cases. The
+  suite now includes readiness preflight plus managed web open/wait,
+  checkout-open, checkout prepare-only, programmatic shortcut open/wait, and
+  passive achievement-progress. The summary verified `available=false`,
+  `STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE`, reason `macos-screen-locked`,
+  `screenLocked=true`, `displayAsleep=true`, `nativeHostOpen=false`, no modal
+  activation, zero `gameoverlayui` targets, disabled needs-present polling,
+  zero managed overlay timing, and clean crash diagnostics.
 - A 2026-06-30 13:32 PDT crash-report sweep after another user-visible Ignore
   dialog found no newer `SteamBridgeSmoke`, `gameoverlayui`, `Steam Helper`, or
   attributed `MTLCompilerService` DiagnosticReport than the known
