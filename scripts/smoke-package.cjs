@@ -87,6 +87,7 @@ function runMacosPackageSigningStaticChecks() {
   const ciWorkflow = fs.readFileSync(path.join(repoRoot, ".github", "workflows", "ci.yml"), "utf8");
   const releaseWorkflow = fs.readFileSync(path.join(repoRoot, ".github", "workflows", "release.yml"), "utf8");
   const readme = fs.readFileSync(path.join(repoRoot, "README.md"), "utf8");
+  const packageReadme = fs.readFileSync(path.join(packageRoot, "README.md"), "utf8");
   const prepareScript = fs.readFileSync(path.join(packageRoot, "bin", "prepare-macos-app.cjs"), "utf8");
   const verifierScript = fs.readFileSync(path.join(packageRoot, "bin", "verify-macos-signing.cjs"), "utf8");
   const launcherTemplate = fs.readFileSync(path.join(packageRoot, "templates", "macos-steam-env-launcher.c"), "utf8");
@@ -155,6 +156,11 @@ function runMacosPackageSigningStaticChecks() {
     readme,
     /The macOS smoke package command is intentionally `npm run example:package:mac`/,
     "README must document the Apple Silicon-only macOS package command"
+  );
+  assert.match(
+    packageReadme,
+    /Build and\s+run macOS test apps only on native `darwin\/arm64` Apple Silicon hosts/,
+    "package README must document native Apple Silicon-only macOS test apps"
   );
   assert.match(
     exampleReadme,

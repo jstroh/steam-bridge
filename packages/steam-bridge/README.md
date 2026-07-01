@@ -29,7 +29,8 @@ Intel macOS is intentionally not supported. CI, release prebuilds, runtime
 loading, native linking, and macOS smoke-app packaging enforce Apple Silicon
 arm64 as the only macOS target; Steam Bridge does not build, run, or verify
 Intel or universal macOS apps. Do not package, launch, or verify macOS smoke
-apps through Rosetta or any `darwin-x64`/universal Electron build.
+apps through Rosetta or any `darwin-x64`/universal Electron build. Build and
+run macOS test apps only on native `darwin/arm64` Apple Silicon hosts.
 The repository's macOS smoke package command intentionally maps to
 `aarch64-apple-darwin` / `darwin-arm64` only. Do not add `darwin-x64`,
 `x86_64-apple-darwin`, or universal macOS test-app targets.
