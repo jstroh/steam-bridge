@@ -1002,6 +1002,20 @@ wait-helper open/close, passive notification priming, visible Steam web content
 where applicable, close/back-to-app proof, parked zero-FPS state, disabled
 needs-present polling, zero managed overlay timing, managed child-overlay
 isolation, and clean crash diagnostics.
+A focused 2026-07-01 minimal Apple Silicon artifact at
+`/tmp/steam-bridge-macos-overlay-matrix-20260701-073909`
+rebuilt and signed the same arm64-only Electron `43.0.0` package, reused the
+stable App ID `480` shortcut without restarting Steam, and passed all 11
+Steam-launched cases after the smoke app moved managed open-status snapshots
+and duplicate-open proof onto the named status helpers. Its duplicate-open guard
+now requires `getWebOpenStatus(...)`, `getStoreOpenStatus(...)`,
+`getFriendsOpenStatus()`, and `getCheckoutOpenStatus(...)` to report
+`canOpen=false`, `canWait=false`, `reason=opening`, and `waitReason=opening`
+while a managed overlay is already opening. The same run re-proved direct
+web/store/Friends/dialog helpers, wait-helper open/close, passive notification
+priming, visible Steam web content where applicable, close/back-to-app proof,
+parked zero-FPS state, disabled needs-present polling, zero managed overlay
+timing, managed child-overlay isolation, and clean crash diagnostics.
 A later recovered-client full artifact at
 `/tmp/steam-bridge-macos-overlay-matrix-20260630-220434` also passed all 44
 process-per-case App ID `480` cases after recreating the stable shortcut and

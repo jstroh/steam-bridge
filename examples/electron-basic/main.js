@@ -1098,6 +1098,12 @@ async function openPresenterDuplicateOpenGuardOverlay() {
     });
 
   const openingStatus = overlay.getOpenStatus(target);
+  const namedStatuses = {
+    web: overlay.getWebOpenStatus(WEB_URL, { modal: WEB_MODAL }),
+    store: overlay.getStoreOpenStatus({ appId: APP_ID }),
+    friends: overlay.getFriendsOpenStatus(),
+    checkout: overlay.getCheckoutOpenStatus({ transactionId: "123456789" })
+  };
   const shortcutStatus = overlay.getShortcutOpenStatus();
   const openIfAvailableResult = overlay.openIfAvailable(target);
   const openAndWaitIfAvailableResult = await overlay.openWebAndWaitIfAvailable(WEB_URL, { modal: WEB_MODAL }, {
@@ -1125,6 +1131,7 @@ async function openPresenterDuplicateOpenGuardOverlay() {
   recordEvent("overlay:presenter-duplicate-open-guard", {
     ...context,
     status: openingStatus,
+    namedStatuses,
     shortcutStatus,
     openIfAvailableNull: openIfAvailableResult === null,
     openAndWaitIfAvailableNull: openAndWaitIfAvailableResult === null,
@@ -2166,32 +2173,24 @@ function snapshot() {
 }
 
 function collectManagedOverlayOpenStatuses(overlay) {
-  return Object.fromEntries(
-    Object.entries(managedOverlayStatusTargets()).map(([name, target]) => [
-      name,
-      readValue(() => overlay.getOpenStatus(target))
-    ])
-  );
-}
-
-function managedOverlayStatusTargets() {
   return {
-    web: { type: "web", url: WEB_URL, modal: WEB_MODAL },
-    store: { type: "store", appId: APP_ID },
-    friends: { type: "friends" },
-    profile: { type: "profile" },
-    players: { type: "players" },
-    community: { type: "community", appId: APP_ID },
-    stats: { type: "stats", appId: APP_ID },
-    achievements: { type: "achievements", appId: APP_ID },
-    user: { type: "user", dialog: USER_DIALOG, appId: APP_ID },
-    dialog: { type: "dialog", dialog: OVERLAY_DIALOG, appId: APP_ID },
-    checkout: {
-      type: "checkout",
-      ...(CHECKOUT_URL ? { url: CHECKOUT_URL } : {}),
-      ...(CHECKOUT_TRANSACTION_ID ? { transactionId: CHECKOUT_TRANSACTION_ID } : {}),
-      ...(CHECKOUT_RETURN_URL ? { returnUrl: CHECKOUT_RETURN_URL } : {})
-    }
+    web: readValue(() => overlay.getWebOpenStatus(WEB_URL, { modal: WEB_MODAL })),
+    store: readValue(() => overlay.getStoreOpenStatus({ appId: APP_ID })),
+    friends: readValue(() => overlay.getFriendsOpenStatus()),
+    profile: readValue(() => overlay.getProfileOpenStatus()),
+    players: readValue(() => overlay.getPlayersOpenStatus()),
+    community: readValue(() => overlay.getCommunityOpenStatus({ appId: APP_ID })),
+    stats: readValue(() => overlay.getStatsOpenStatus({ appId: APP_ID })),
+    achievements: readValue(() => overlay.getAchievementsOpenStatus({ appId: APP_ID })),
+    user: readValue(() => overlay.getUserOpenStatus({ dialog: USER_DIALOG, appId: APP_ID })),
+    dialog: readValue(() => overlay.getDialogOpenStatus({ dialog: OVERLAY_DIALOG, appId: APP_ID })),
+    checkout: readValue(() =>
+      overlay.getCheckoutOpenStatus({
+        ...(CHECKOUT_URL ? { url: CHECKOUT_URL } : {}),
+        ...(CHECKOUT_TRANSACTION_ID ? { transactionId: CHECKOUT_TRANSACTION_ID } : {}),
+        ...(CHECKOUT_RETURN_URL ? { returnUrl: CHECKOUT_RETURN_URL } : {})
+      })
+    )
   };
 }
 

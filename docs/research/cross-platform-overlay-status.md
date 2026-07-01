@@ -125,6 +125,21 @@ where applicable, close/back-to-app proof, parked zero-FPS presenter state,
 disabled needs-present polling, zero managed overlay timing, managed
 child-overlay isolation, and clean crash diagnostics.
 
+A focused current-head 2026-07-01 minimal macOS Apple Silicon matrix at
+`/tmp/steam-bridge-macos-overlay-matrix-20260701-073909` rebuilt and signed the
+arm64-only Electron `43.0.0` smoke package, reused the stable App ID `480`
+Steam shortcut without restarting Steam, and passed all 11 Steam-launched
+minimal cases after the smoke app moved managed open-status snapshots and
+duplicate-open proof onto the named status helpers. Its duplicate-open guard
+now requires named `getWebOpenStatus(...)`, `getStoreOpenStatus(...)`,
+`getFriendsOpenStatus()`, and `getCheckoutOpenStatus(...)` evidence to report
+`canOpen=false`, `canWait=false`, `reason=opening`, and `waitReason=opening`
+while a managed overlay is already opening. The same run re-proved direct
+web/store/Friends/dialog helpers, wait-helper open/close, passive notification
+priming, visible Steam web content where applicable, close/back-to-app proof,
+parked zero-FPS presenter state, disabled needs-present polling, zero managed
+overlay timing, managed child-overlay isolation, and clean crash diagnostics.
+
 A 2026-07-01 full macOS Apple Silicon matrix at
 `/tmp/steam-bridge-macos-overlay-matrix-full-isolation-proof-20260701-045604`
 rebuilt and signed the arm64 Electron `43.0.0` smoke package, verified the

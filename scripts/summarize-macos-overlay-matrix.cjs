@@ -797,22 +797,19 @@ function verifyDuplicateOpenGuard(caseId, actionName, resultEvents, lifecycleEnt
   const payload = objectOrEmpty(event.payload);
   const status = objectOrEmpty(payload.status);
   const shortcutStatus = objectOrEmpty(payload.shortcutStatus);
-  expect(status.canOpen === false, `${caseId}: duplicate guard status rejects open`, failures);
-  expect(status.canWait === false, `${caseId}: duplicate guard status rejects wait`, failures);
-  expect(
-    status.reason === "opening" || status.reason === "overlay-active",
-    `${caseId}: duplicate guard status is opening or overlay-active, got ${formatValue(status.reason)}`,
-    failures
-  );
-  expect(shortcutStatus.canOpen === false, `${caseId}: duplicate guard shortcut status rejects open`, failures);
-  expect(shortcutStatus.canWait === false, `${caseId}: duplicate guard shortcut status rejects wait`, failures);
-  expect(
-    shortcutStatus.reason === "opening" || shortcutStatus.reason === "overlay-active",
-    `${caseId}: duplicate guard shortcut status is opening or overlay-active, got ${formatValue(
-      shortcutStatus.reason
-    )}`,
-    failures
-  );
+  verifyDuplicateOpenBusyStatus(caseId, "status", status, failures);
+  verifyDuplicateOpenBusyStatus(caseId, "shortcut status", shortcutStatus, failures);
+
+  const namedStatuses = objectOrEmpty(payload.namedStatuses);
+  for (const name of ["web", "store", "friends", "checkout"]) {
+    verifyDuplicateOpenBusyStatus(
+      caseId,
+      `named ${name} status`,
+      objectOrEmpty(namedStatuses[name]),
+      failures
+    );
+  }
+
   expect(payload.openIfAvailableNull === true, `${caseId}: openIfAvailable returned null while busy`, failures);
   expect(
     payload.openAndWaitIfAvailableNull === true,
@@ -846,6 +843,23 @@ function verifyDuplicateOpenGuard(caseId, actionName, resultEvents, lifecycleEnt
   );
 
   return { required: true, ok: failures.length === failuresBefore };
+}
+
+function verifyDuplicateOpenBusyStatus(caseId, label, status, failures) {
+  expect(status.canOpen === false, `${caseId}: duplicate guard ${label} rejects open`, failures);
+  expect(status.canWait === false, `${caseId}: duplicate guard ${label} rejects wait`, failures);
+  expect(
+    status.reason === "opening" || status.reason === "overlay-active",
+    `${caseId}: duplicate guard ${label} is opening or overlay-active, got ${formatValue(status.reason)}`,
+    failures
+  );
+  expect(
+    status.waitReason === "opening" || status.waitReason === "overlay-active",
+    `${caseId}: duplicate guard ${label} wait reason is opening or overlay-active, got ${formatValue(
+      status.waitReason
+    )}`,
+    failures
+  );
 }
 
 function verifyWebOverlayVisibleBeforeClose(caseId, entries, failures) {
@@ -1870,6 +1884,9 @@ function runSelfTest() {
   const missingNeedsPresentPollingFixtureRoot = fs.mkdtempSync(
     path.join(os.tmpdir(), "steam-bridge-macos-matrix-summary-missing-needs-present-polling.")
   );
+  const missingNamedStatusFixtureRoot = fs.mkdtempSync(
+    path.join(os.tmpdir(), "steam-bridge-macos-matrix-summary-missing-named-status.")
+  );
   const persistentFixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-macos-matrix-summary-persistent."));
   try {
     createSelfTestFixture(fixtureRoot);
@@ -1913,6 +1930,9 @@ function runSelfTest() {
     createSelfTestFixture(missingNeedsPresentPollingFixtureRoot);
     removeMacosNeedsPresentPollingProof(missingNeedsPresentPollingFixtureRoot, "01-web-openwait");
     assertMissingNeedsPresentPollingProofRejected(missingNeedsPresentPollingFixtureRoot);
+    createSelfTestFixture(missingNamedStatusFixtureRoot);
+    removeDuplicateOpenNamedStatusProof(missingNamedStatusFixtureRoot, "01b-duplicate-open-guard");
+    assertMissingDuplicateOpenNamedStatusRejected(missingNamedStatusFixtureRoot);
     console.log("macOS overlay matrix summary self-test passed.");
   } finally {
     fs.rmSync(fixtureRoot, { recursive: true, force: true });
@@ -1924,6 +1944,7 @@ function runSelfTest() {
     fs.rmSync(missingCheckoutErrorSnapshotFixtureRoot, { recursive: true, force: true });
     fs.rmSync(missingWebVisibilityFixtureRoot, { recursive: true, force: true });
     fs.rmSync(missingNeedsPresentPollingFixtureRoot, { recursive: true, force: true });
+    fs.rmSync(missingNamedStatusFixtureRoot, { recursive: true, force: true });
     fs.rmSync(persistentFixtureRoot, { recursive: true, force: true });
   }
 }
@@ -2275,6 +2296,35 @@ function assertMissingNeedsPresentPollingProofRejected(root) {
   );
 }
 
+function removeDuplicateOpenNamedStatusProof(root, caseId) {
+  const row = readManifestRows(root).find((entry) => entry.caseId === caseId);
+  assert.ok(row, `self-test fixture missing manifest row ${caseId}`);
+  const lifecyclePath = path.join(row.diagnosticDir, "lifecycle.jsonl");
+  const lines = fs
+    .readFileSync(lifecyclePath, "utf8")
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .map((line) => JSON.parse(line));
+  for (const entry of lines) {
+    if (entry.type === "event:overlay:presenter-duplicate-open-guard") {
+      delete entry.payload.namedStatuses;
+    }
+  }
+  fs.writeFileSync(lifecyclePath, `${lines.map((entry) => JSON.stringify(entry)).join("\n")}\n`);
+}
+
+function assertMissingDuplicateOpenNamedStatusRejected(root) {
+  const result = spawnSync(process.execPath, [__filename, "--artifact-root", root], {
+    encoding: "utf8"
+  });
+  assert.notEqual(result.status, 0, "summary should reject missing duplicate-open named status proof");
+  assert.match(
+    result.stderr,
+    /duplicate guard named web status rejects open/,
+    "summary rejection should identify missing named status proof"
+  );
+}
+
 function createSelfTestFixture(root) {
   fs.mkdirSync(root, { recursive: true });
 
@@ -2383,6 +2433,32 @@ function createSelfTestFixture(root) {
               canWait: false,
               reason: "opening",
               waitReason: "opening"
+            },
+            namedStatuses: {
+              web: {
+                canOpen: false,
+                canWait: false,
+                reason: "opening",
+                waitReason: "opening"
+              },
+              store: {
+                canOpen: false,
+                canWait: false,
+                reason: "opening",
+                waitReason: "opening"
+              },
+              friends: {
+                canOpen: false,
+                canWait: false,
+                reason: "opening",
+                waitReason: "opening"
+              },
+              checkout: {
+                canOpen: false,
+                canWait: false,
+                reason: "opening",
+                waitReason: "opening"
+              }
             },
             shortcutStatus: {
               canOpen: false,
