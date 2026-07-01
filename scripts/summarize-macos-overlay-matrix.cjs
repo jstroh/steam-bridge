@@ -533,6 +533,7 @@ function verifyCase(caseId, metadata, result, lifecycle, macosCrashReports, fail
     : verifyMicroTxnCallbackPresenterSnapshots(caseId, lifecycleEntries, failures, {
         actionName,
         checkoutSource: summaryCheckoutSource,
+        expectedAppId,
         required: requireMicroTxnCallback
       });
   const managedWaits = hasExpectedActionError
@@ -1311,6 +1312,16 @@ function verifyMicroTxnCallbackPresenterSnapshots(caseId, entries, failures, opt
       return;
     }
     expectMicroTxnCallbackPresenter(caseId, presenter, label, failures);
+    const appId = microTxnEventAppId(entry);
+    if (appId === undefined) {
+      if (options.required === true) {
+        failures.push(`${caseId}: ${label} did not include an app ID`);
+      }
+    } else if (appId !== options.expectedAppId) {
+      failures.push(
+        `${caseId}: ${label} app ID expected ${formatValue(options.expectedAppId)}, got ${formatValue(appId)}`
+      );
+    }
   });
 
   if (options.required === true && options.actionName === "presenter-checkout" && options.checkoutSource) {
@@ -1367,6 +1378,23 @@ function expectMicroTxnCallbackPresenter(caseId, presenter, label, failures) {
     `${caseId}: native presenter current FPS recorded ${label}`,
     failures
   );
+}
+
+function microTxnEventAppId(event) {
+  if (!event) {
+    return undefined;
+  }
+  const payload = event.payload;
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return undefined;
+  }
+  const activePayload = payload["0"] && typeof payload["0"] === "object" ? payload["0"] : payload;
+  for (const key of ["appId", "app_id", "m_unAppID", "m_nAppID"]) {
+    if (activePayload[key] != null) {
+      return Number(activePayload[key]);
+    }
+  }
+  return undefined;
 }
 
 function checkoutTargetSnapshotHasTarget(targetSnapshot) {
@@ -2062,6 +2090,12 @@ function runSelfTest() {
   const lateMicroTxnFixtureRoot = fs.mkdtempSync(
     path.join(os.tmpdir(), "steam-bridge-macos-matrix-summary-late-microtxn.")
   );
+  const wrongAppMicroTxnFixtureRoot = fs.mkdtempSync(
+    path.join(os.tmpdir(), "steam-bridge-macos-matrix-summary-wrong-app-microtxn.")
+  );
+  const missingAppMicroTxnFixtureRoot = fs.mkdtempSync(
+    path.join(os.tmpdir(), "steam-bridge-macos-matrix-summary-missing-app-microtxn.")
+  );
   const missingCheckoutErrorSnapshotFixtureRoot = fs.mkdtempSync(
     path.join(os.tmpdir(), "steam-bridge-macos-matrix-summary-missing-checkout-error-snapshot.")
   );
@@ -2134,6 +2168,12 @@ function runSelfTest() {
     createSelfTestFixture(lateMicroTxnFixtureRoot);
     moveMicroTxnCallbackAfterCheckoutCompletion(lateMicroTxnFixtureRoot, "06-checkout");
     assertLateMicroTxnCallbackRejected(lateMicroTxnFixtureRoot);
+    createSelfTestFixture(wrongAppMicroTxnFixtureRoot);
+    setMicroTxnCallbackAppId(wrongAppMicroTxnFixtureRoot, "06-checkout", 481);
+    assertWrongAppMicroTxnCallbackRejected(wrongAppMicroTxnFixtureRoot);
+    createSelfTestFixture(missingAppMicroTxnFixtureRoot);
+    removeMicroTxnCallbackAppId(missingAppMicroTxnFixtureRoot, "06-checkout");
+    assertMissingAppMicroTxnCallbackRejected(missingAppMicroTxnFixtureRoot);
     createSelfTestFixture(missingCheckoutErrorSnapshotFixtureRoot);
     removeCheckoutActionErrorSnapshot(missingCheckoutErrorSnapshotFixtureRoot, "07c-checkout-unavailable");
     assertMissingCheckoutActionErrorSnapshotRejected(missingCheckoutErrorSnapshotFixtureRoot);
@@ -2179,6 +2219,8 @@ function runSelfTest() {
     fs.rmSync(metalCrashFixtureRoot, { recursive: true, force: true });
     fs.rmSync(missingMicroTxnFixtureRoot, { recursive: true, force: true });
     fs.rmSync(lateMicroTxnFixtureRoot, { recursive: true, force: true });
+    fs.rmSync(wrongAppMicroTxnFixtureRoot, { recursive: true, force: true });
+    fs.rmSync(missingAppMicroTxnFixtureRoot, { recursive: true, force: true });
     fs.rmSync(missingCheckoutErrorSnapshotFixtureRoot, { recursive: true, force: true });
     fs.rmSync(missingWebVisibilityFixtureRoot, { recursive: true, force: true });
     fs.rmSync(missingNeedsPresentPollingFixtureRoot, { recursive: true, force: true });
@@ -2505,6 +2547,62 @@ function assertLateMicroTxnCallbackRejected(root) {
     result.stderr,
     /required MicroTxnAuthorizationResponse callback was not recorded during the checkout wait lifecycle/,
     "summary rejection should identify MicroTxn callbacks outside the checkout wait lifecycle"
+  );
+}
+
+function setMicroTxnCallbackAppId(root, caseId, appId) {
+  updateMicroTxnCallbackPayload(root, caseId, (payload) => {
+    payload.appId = appId;
+  });
+}
+
+function removeMicroTxnCallbackAppId(root, caseId) {
+  updateMicroTxnCallbackPayload(root, caseId, (payload) => {
+    delete payload.appId;
+    delete payload.app_id;
+    delete payload.m_unAppID;
+    delete payload.m_nAppID;
+  });
+}
+
+function updateMicroTxnCallbackPayload(root, caseId, update) {
+  const row = readManifestRows(root).find((entry) => entry.caseId === caseId);
+  assert.ok(row, `self-test fixture should include ${caseId}`);
+  const lifecyclePath = path.join(row.diagnosticDir, "lifecycle.jsonl");
+  const entries = fs
+    .readFileSync(lifecyclePath, "utf8")
+    .trim()
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .map((line) => JSON.parse(line));
+  const callback = entries.find((entry) => entry && entry.type === "event:callback:microtxn");
+  assert.ok(callback, `self-test fixture ${caseId} should include a MicroTxn callback`);
+  callback.payload = objectOrEmpty(callback.payload);
+  update(callback.payload);
+  fs.writeFileSync(lifecyclePath, entries.map((entry) => JSON.stringify(entry)).join("\n") + "\n");
+}
+
+function assertWrongAppMicroTxnCallbackRejected(root) {
+  const result = spawnSync(process.execPath, [__filename, "--artifact-root", root], {
+    encoding: "utf8"
+  });
+  assert.notEqual(result.status, 0, "summary should reject MicroTxn callbacks for the wrong app ID");
+  assert.match(
+    result.stderr,
+    /microtxn callback 1 app ID expected 480, got 481/,
+    "summary rejection should identify the mismatched MicroTxn app ID"
+  );
+}
+
+function assertMissingAppMicroTxnCallbackRejected(root) {
+  const result = spawnSync(process.execPath, [__filename, "--artifact-root", root], {
+    encoding: "utf8"
+  });
+  assert.notEqual(result.status, 0, "summary should reject required MicroTxn callbacks without app IDs");
+  assert.match(
+    result.stderr,
+    /microtxn callback 1 did not include an app ID/,
+    "summary rejection should identify the missing MicroTxn app ID"
   );
 }
 
@@ -3007,7 +3105,7 @@ function createSelfTestFixture(root) {
         { type: "event:callback:overlay-activated", payload: { active: true, appId: 480, overlayPid: 9001 } },
         { type: "event:overlay:presenter-wait-shown", payload: { presenter: activePresenterFixture(31) } },
         { type: "event:overlay:web-visible", payload: { ok: true, attempt: 1, rect: "0,0,1280,720" } },
-        { type: "event:callback:microtxn", payload: { authorized: true, presenter: activePresenterFixture(31) } },
+        { type: "event:callback:microtxn", payload: { authorized: true, appId: 480, presenter: activePresenterFixture(31) } },
         { type: "event:callback:overlay-activated", payload: { active: false, appId: 480, overlayPid: 9001 } },
         { type: "event:overlay:presenter-wait-closed", payload: { presenter: parkedPresenterFixture(32) } },
         { type: "event:overlay:presenter-after-close", payload: { presenter: parkedPresenterFixture(32) } },
