@@ -392,6 +392,12 @@ split-step hold is intentional.
 When you need a checkout target object for a managed shortcut or split-step
 flow, use `client.overlay.checkoutTargetFromResult(initTxnResponse)` instead of
 re-parsing `InitTxn` envelopes in app code.
+When you need to log or attach checkout diagnostics, use the checkout wait
+result's `targetSnapshot` or call
+`client.overlay.snapshotSteamOverlayTarget(target)`. Those sanitized snapshots
+record only presence flags for checkout URLs, transaction IDs, return URLs, and
+Steam IDs, so real purchase artifacts can stay useful without leaking private
+values.
 The Electron smoke app redacts real checkout URLs, transaction IDs, return URLs,
 Steam IDs, auth-ticket bytes, and private CLI arguments from result and lifecycle
 artifacts while preserving machine-checkable presence flags and presenter

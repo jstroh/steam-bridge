@@ -1364,6 +1364,7 @@ async function openPresenterCheckoutOverlay() {
         recordEvent("overlay:presenter-checkout-open-and-wait-complete", {
           ...context,
           resolvedTarget: checkoutDiagnostic(result.target),
+          targetSnapshot: result.targetSnapshot,
           shown: result.shown,
           parked: result.parked,
           presenter: safeOverlaySnapshot(overlay)

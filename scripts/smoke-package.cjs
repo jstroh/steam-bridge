@@ -477,6 +477,17 @@ const shortcutOpenAndWaitPromise = typedElectronSteamOverlay.openShortcutTargetA
 const checkoutPreparePromise = typedElectronSteamOverlay.withCheckoutPrepared(() => ({
   steamUrl: "https://checkout.steampowered.com/checkout/approvetxn/123/"
 }));
+const checkoutAndWaitPromise = typedElectronSteamOverlay.openCheckoutAndWait(() => ({
+  steamUrl: "https://checkout.steampowered.com/checkout/approvetxn/123/"
+}));
+const checkoutTargetSnapshot = overlay.snapshotSteamOverlayTarget({
+  type: "checkout",
+  steamUrl: "https://checkout.steampowered.com/checkout/approvetxn/123/"
+});
+checkoutAndWaitPromise.then((result) => {
+  const targetSnapshotType: "checkout" = result.targetSnapshot.type;
+  void targetSnapshotType;
+});
 const waitError = new steam.SteamOverlayWaitTimeoutError("become active", 1);
 const waitDiagnostics: OverlayDiagnostics | undefined = waitError.diagnostics;
 const waitNativeHostUnavailable: NativeOverlayHostUnavailableReason | undefined = waitError.nativeHostUnavailableReason;
@@ -511,6 +522,8 @@ void nativeHostAvailabilityReason;
 void openAndWaitPromise;
 void shortcutOpenAndWaitPromise;
 void checkoutPreparePromise;
+void checkoutAndWaitPromise;
+void checkoutTargetSnapshot;
 void waitDiagnostics;
 void waitNativeHostUnavailable;
 void waitMacEnvironment;

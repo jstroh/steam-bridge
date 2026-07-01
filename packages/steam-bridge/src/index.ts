@@ -1822,8 +1822,8 @@ export type ElectronSteamOverlayPresenterMode = "persistent" | "session";
 
 export type ElectronSteamOverlayShortcutTargetType = SteamOverlayTarget["type"] | "function" | null;
 
-export type ElectronSteamOverlayShortcutTargetSnapshot = {
-  type: Exclude<ElectronSteamOverlayShortcutTargetType, null>;
+export type SteamOverlayTargetSnapshot = {
+  type: SteamOverlayTarget["type"];
   appId?: number;
   dialog?: number | string;
   flag?: number;
@@ -1835,6 +1835,16 @@ export type ElectronSteamOverlayShortcutTargetSnapshot = {
   hasReturnUrl?: boolean;
   hasSteamId64?: boolean;
 };
+
+export type SteamOverlayCheckoutTargetSnapshot = SteamOverlayTargetSnapshot & {
+  type: "checkout";
+};
+
+export type ElectronSteamOverlayShortcutTargetSnapshot =
+  | SteamOverlayTargetSnapshot
+  | {
+      type: "function";
+    };
 
 export interface ElectronSteamOverlayShortcutSnapshot {
   enabled: boolean;
@@ -1908,6 +1918,7 @@ export interface ElectronSteamOverlayCheckoutAndWaitResult<T = ElectronSteamOver
   extends ElectronSteamOverlayOpenAndWaitResult {
   transaction: T;
   target: SteamOverlayCheckoutTarget;
+  targetSnapshot: SteamOverlayCheckoutTargetSnapshot;
 }
 
 export type ElectronSteamOverlayOpenStatusReason =
@@ -1930,6 +1941,7 @@ export interface ElectronSteamOverlayOpenStatus {
   canOpen: boolean;
   canWait: boolean;
   target: SteamOverlayTarget;
+  targetSnapshot: SteamOverlayTargetSnapshot;
   snapshot: ElectronSteamOverlaySnapshot;
   nativeHostAvailability: ElectronSteamOverlayNativeHostAvailability;
   reason?: ElectronSteamOverlayOpenStatusReason;
@@ -1944,6 +1956,7 @@ export interface ElectronSteamOverlayShortcutStatus {
   snapshot: ElectronSteamOverlaySnapshot;
   shortcut: ElectronSteamOverlayShortcutSnapshot;
   target?: SteamOverlayTarget;
+  targetSnapshot?: SteamOverlayTargetSnapshot;
   targetStatus?: ElectronSteamOverlayOpenStatus;
   nativeHostAvailability?: ElectronSteamOverlayNativeHostAvailability;
   reason?: ElectronSteamOverlayShortcutStatusReason;
@@ -8498,6 +8511,43 @@ export function checkoutTargetFromResult(
   return electronSteamOverlayCheckoutTargetFromResult(result, defaults);
 }
 
+export function snapshotSteamOverlayTarget(target: SteamOverlayCheckoutTarget): SteamOverlayCheckoutTargetSnapshot;
+export function snapshotSteamOverlayTarget(target: SteamOverlayTarget): SteamOverlayTargetSnapshot;
+export function snapshotSteamOverlayTarget(target: SteamOverlayTarget): SteamOverlayTargetSnapshot {
+  const snapshot: SteamOverlayTargetSnapshot = { type: target.type };
+  if ("appId" in target && typeof target.appId === "number" && Number.isFinite(target.appId)) {
+    snapshot.appId = target.appId;
+  }
+  if ("dialog" in target && target.dialog !== undefined) {
+    snapshot.dialog = target.dialog;
+  }
+  if ("flag" in target && typeof target.flag === "number" && Number.isFinite(target.flag)) {
+    snapshot.flag = target.flag;
+  }
+  if ("route" in target && typeof target.route === "string") {
+    snapshot.route = target.route;
+  }
+  if ("modal" in target && typeof target.modal === "boolean") {
+    snapshot.modal = target.modal;
+  }
+  if ("url" in target) {
+    snapshot.hasUrl = typeof target.url === "string" && target.url.length > 0;
+  }
+  if ("steamUrl" in target) {
+    snapshot.hasSteamUrl = typeof target.steamUrl === "string" && target.steamUrl.length > 0;
+  }
+  if ("transactionId" in target) {
+    snapshot.hasTransactionId = target.transactionId !== undefined && target.transactionId !== null;
+  }
+  if ("returnUrl" in target) {
+    snapshot.hasReturnUrl = typeof target.returnUrl === "string" && target.returnUrl.length > 0;
+  }
+  if ("steamId64" in target) {
+    snapshot.hasSteamId64 = target.steamId64 !== undefined && target.steamId64 !== null;
+  }
+  return snapshot;
+}
+
 export function openDialogEquivalentOverlay(
   dialog: number | string = "Friends",
   options: NativeOverlayAppPagePresenterOptions = {}
@@ -8833,6 +8883,7 @@ export function createElectronSteamOverlay(
         return {
           transaction,
           target,
+          targetSnapshot: snapshotSteamOverlayTarget(target),
           shown: opened.shown,
           parked: opened.parked
         };
@@ -9783,6 +9834,7 @@ function electronSteamOverlayOpenStatus(
   target: SteamOverlayTarget
 ): ElectronSteamOverlayOpenStatus {
   const snapshot = controller.snapshot();
+  const targetSnapshot = snapshotSteamOverlayTarget(target);
   const nativeHostAvailability = electronSteamOverlayNativeHostAvailability(snapshot);
   const unavailableError = electronSteamOverlayNativeHostUnavailableError(snapshot);
 
@@ -9791,6 +9843,7 @@ function electronSteamOverlayOpenStatus(
       canOpen: false,
       canWait: false,
       target,
+      targetSnapshot,
       snapshot,
       nativeHostAvailability,
       reason: "closed",
@@ -9806,6 +9859,7 @@ function electronSteamOverlayOpenStatus(
       canOpen: false,
       canWait: false,
       target,
+      targetSnapshot,
       snapshot,
       nativeHostAvailability,
       reason: "unsupported-target",
@@ -9819,6 +9873,7 @@ function electronSteamOverlayOpenStatus(
       canOpen: false,
       canWait: false,
       target,
+      targetSnapshot,
       snapshot,
       nativeHostAvailability,
       reason: "native-host-unavailable",
@@ -9833,6 +9888,7 @@ function electronSteamOverlayOpenStatus(
       canOpen: true,
       canWait: true,
       target,
+      targetSnapshot,
       snapshot,
       nativeHostAvailability
     };
@@ -9841,6 +9897,7 @@ function electronSteamOverlayOpenStatus(
       canOpen: true,
       canWait: false,
       target,
+      targetSnapshot,
       snapshot,
       nativeHostAvailability,
       waitReason: "not-waitable",
@@ -9939,6 +9996,7 @@ function electronSteamOverlayShortcutStatus(
     canOpen: targetStatus.canOpen,
     canWait: targetStatus.canWait,
     target,
+    targetSnapshot: targetStatus.targetSnapshot,
     targetStatus,
     reason: targetStatus.reason,
     waitReason: targetStatus.waitReason,
@@ -10410,38 +10468,7 @@ function snapshotElectronSteamOverlayShortcutTarget(
     return { type: "function" };
   }
   const overlayTarget: SteamOverlayTarget = target ?? { type: "friends" };
-  const snapshot: ElectronSteamOverlayShortcutTargetSnapshot = { type: overlayTarget.type };
-  if ("appId" in overlayTarget && typeof overlayTarget.appId === "number" && Number.isFinite(overlayTarget.appId)) {
-    snapshot.appId = overlayTarget.appId;
-  }
-  if ("dialog" in overlayTarget && overlayTarget.dialog !== undefined) {
-    snapshot.dialog = overlayTarget.dialog;
-  }
-  if ("flag" in overlayTarget && typeof overlayTarget.flag === "number" && Number.isFinite(overlayTarget.flag)) {
-    snapshot.flag = overlayTarget.flag;
-  }
-  if ("route" in overlayTarget && typeof overlayTarget.route === "string") {
-    snapshot.route = overlayTarget.route;
-  }
-  if ("modal" in overlayTarget && typeof overlayTarget.modal === "boolean") {
-    snapshot.modal = overlayTarget.modal;
-  }
-  if ("url" in overlayTarget) {
-    snapshot.hasUrl = typeof overlayTarget.url === "string" && overlayTarget.url.length > 0;
-  }
-  if ("steamUrl" in overlayTarget) {
-    snapshot.hasSteamUrl = typeof overlayTarget.steamUrl === "string" && overlayTarget.steamUrl.length > 0;
-  }
-  if ("transactionId" in overlayTarget) {
-    snapshot.hasTransactionId = overlayTarget.transactionId !== undefined && overlayTarget.transactionId !== null;
-  }
-  if ("returnUrl" in overlayTarget) {
-    snapshot.hasReturnUrl = typeof overlayTarget.returnUrl === "string" && overlayTarget.returnUrl.length > 0;
-  }
-  if ("steamId64" in overlayTarget) {
-    snapshot.hasSteamId64 = overlayTarget.steamId64 !== undefined && overlayTarget.steamId64 !== null;
-  }
-  return snapshot;
+  return snapshotSteamOverlayTarget(overlayTarget);
 }
 
 function isElectronSteamOverlayShortcutOpening(snapshot: ElectronSteamOverlaySnapshot): boolean {
@@ -14750,6 +14777,7 @@ export const overlay = {
   openUserEquivalentOverlay,
   openCheckoutOverlay,
   checkoutTargetFromResult,
+  snapshotSteamOverlayTarget,
   openDialogEquivalentOverlay,
   openNativeStoreOverlay,
   openStoreOverlay,
@@ -22558,6 +22586,7 @@ const defaultExport = {
   openUserEquivalentOverlay,
   openCheckoutOverlay,
   checkoutTargetFromResult,
+  snapshotSteamOverlayTarget,
   openDialogEquivalentOverlay,
   openNativeStoreOverlay,
   openStoreOverlay,

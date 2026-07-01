@@ -1093,7 +1093,10 @@ app-specific proof outside the committed examples:
 6. Verify the Steam modal appears in both Deck Game Mode and Desktop Mode.
 7. Confirm backing out or closing the Steam surface returns focus to the app.
 8. Confirm any `callback:microtxn` artifact keeps the presenter snapshot while
-   redacting order IDs, transaction IDs, Steam IDs, and checkout URLs.
+   redacting order IDs, transaction IDs, Steam IDs, and checkout URLs. For app
+   logs, prefer the checkout wait result's `targetSnapshot` or
+   `steamworks.overlay.snapshotSteamOverlayTarget(target)` over raw checkout
+   target objects.
 9. Keep private app IDs, item definitions, transaction IDs, publisher keys, and
    private URLs out of committed docs and examples.
 

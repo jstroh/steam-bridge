@@ -343,9 +343,13 @@ screen is locked or the display is asleep. Use
 For checkout, use `steamOverlay.openCheckoutAndWait(() => startTxn())`.
 `MicroTxnAuthorizationResponse` is a purchase authorization event, not an
 overlay-close signal, so keep the managed presenter alive until Steam reports
-the overlay inactive. App ID `480` proves generic checkout routing only; real
-purchase UI and `InitTxn` proof require your own Steam app ID with configured
-products.
+the overlay inactive. The returned checkout wait result includes
+`targetSnapshot`, and `steamworks.snapshotSteamOverlayTarget(target)` is
+available for other diagnostics; use those sanitized snapshots in logs instead
+of raw checkout targets because they keep only presence flags for checkout URLs,
+transaction IDs, return URLs, and Steam IDs. App ID `480` proves generic
+checkout routing only; real purchase UI and `InitTxn` proof require your own
+Steam app ID with configured products.
 
 The full Electron overlay API and platform notes are in
 [`packages/steam-bridge/README.md`](packages/steam-bridge/README.md). Current

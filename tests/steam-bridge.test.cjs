@@ -330,20 +330,22 @@ test("checkout target helper unwraps InitTxn-style response envelopes", (t) => {
   const steam = require(distFile("index.js"));
   t.after(clearSteamBridgeCache);
 
-  assert.deepEqual(
-    steam.overlay.checkoutTargetFromResult(
-      {
-        response: {
-          result: "OK",
-          params: {
-            transid: "246813579",
-            steamurl: "https://checkout.steampowered.com/checkout/approvetxn/246813579/",
-            returnurl: "steam://return-from-init-txn"
-          }
+  const target = steam.overlay.checkoutTargetFromResult(
+    {
+      response: {
+        result: "OK",
+        params: {
+          transid: "246813579",
+          steamurl: "https://checkout.steampowered.com/checkout/approvetxn/246813579/",
+          returnurl: "steam://return-from-init-txn"
         }
-      },
-      { modal: false }
-    ),
+      }
+    },
+    { modal: false }
+  );
+
+  assert.deepEqual(
+    target,
     {
       type: "checkout",
       modal: false,
@@ -352,6 +354,28 @@ test("checkout target helper unwraps InitTxn-style response envelopes", (t) => {
       returnUrl: "steam://return-from-init-txn"
     }
   );
+  assert.deepEqual(steam.overlay.snapshotSteamOverlayTarget(target), {
+    type: "checkout",
+    modal: false,
+    hasSteamUrl: true,
+    hasTransactionId: true,
+    hasReturnUrl: true
+  });
+  assert.deepEqual(
+    steam.snapshotSteamOverlayTarget({
+      type: "user",
+      dialog: steam.UserDialog.Chat,
+      steamId64: 76561198000000000n
+    }),
+    {
+      type: "user",
+      dialog: "chat",
+      hasSteamId64: true
+    }
+  );
+  const targetSnapshotJson = JSON.stringify(steam.overlay.snapshotSteamOverlayTarget(target));
+  assert.equal(targetSnapshotJson.includes("246813579"), false);
+  assert.equal(targetSnapshotJson.includes("return-from-init-txn"), false);
 
   assert.deepEqual(
     steam.checkoutTargetFromResult(
@@ -6144,6 +6168,7 @@ test("electron steam overlay manager owns one presenter and routes opens", async
   const friendsOpenStatus = overlay.getOpenStatus({ type: "friends" });
   assert.equal(friendsOpenStatus.canOpen, true);
   assert.equal(friendsOpenStatus.canWait, true);
+  assert.deepEqual(friendsOpenStatus.targetSnapshot, { type: "friends" });
   assert.equal(friendsOpenStatus.reason, undefined);
   assert.equal(friendsOpenStatus.waitReason, undefined);
   assert.equal(friendsOpenStatus.nativeHostAvailability.available, true);
@@ -6164,6 +6189,10 @@ test("electron steam overlay manager owns one presenter and routes opens", async
   });
   assert.equal(unsupportedDialogStatus.canOpen, false);
   assert.equal(unsupportedDialogStatus.canWait, false);
+  assert.deepEqual(unsupportedDialogStatus.targetSnapshot, {
+    type: "dialog",
+    dialog: steam.Dialog.Settings
+  });
   assert.equal(unsupportedDialogStatus.reason, "unsupported-target");
   assert.equal(unsupportedDialogStatus.waitReason, "unsupported-target");
   assert.match(unsupportedDialogStatus.message, /does not have a verified presenter-backed route/);
@@ -8411,6 +8440,11 @@ test("electron steam overlay shortcut snapshots static targets without leaking p
     url: "https://example.invalid/private-checkout-token",
     modal: true
   });
+  assert.deepEqual(staticStatus.targetSnapshot, {
+    type: "web",
+    modal: true,
+    hasUrl: true
+  });
   assert.equal(JSON.stringify(overlay.snapshot()).includes("private-checkout-token"), false);
   beforeInputHandler(
     {
@@ -8463,6 +8497,12 @@ test("electron steam overlay shortcut snapshots static targets without leaking p
   const checkoutSnapshotJson = JSON.stringify(checkoutOverlay.snapshot());
   assert.equal(checkoutSnapshotJson.includes("123456789"), false);
   assert.equal(checkoutSnapshotJson.includes("steam://return"), false);
+  assert.deepEqual(checkoutOverlay.getShortcutOpenStatus().targetSnapshot, {
+    type: "checkout",
+    hasSteamUrl: true,
+    hasTransactionId: true,
+    hasReturnUrl: true
+  });
   checkoutOverlay.close();
 
   const dynamicOverlay = steam.overlay.createElectronSteamOverlay(window, {
@@ -9231,6 +9271,14 @@ test("electron steam overlay checkout helper prepares, opens, and waits with bac
     steamUrl: "https://checkout.steampowered.com/checkout/approvetxn/987/",
     returnUrl: "steam://return-from-backend"
   });
+  assert.deepEqual(checkoutResult.targetSnapshot, {
+    type: "checkout",
+    modal: false,
+    hasSteamUrl: true,
+    hasReturnUrl: true
+  });
+  assert.equal(JSON.stringify(checkoutResult.targetSnapshot).includes("987"), false);
+  assert.equal(JSON.stringify(checkoutResult.targetSnapshot).includes("return-from-backend"), false);
   assert.equal(checkoutResult.shown.overlayActive, true);
   assert.equal(checkoutResult.parked.mode, "passive");
   assert.equal(checkoutResult.parked.currentFps, 0);
@@ -9256,6 +9304,11 @@ test("electron steam overlay checkout helper prepares, opens, and waits with bac
     type: "checkout",
     returnUrl: "steam://return-from-options",
     transactionId: "123456789"
+  });
+  assert.deepEqual(transactionResult.targetSnapshot, {
+    type: "checkout",
+    hasTransactionId: true,
+    hasReturnUrl: true
   });
   assert.equal(transactionResult.parked.clickThrough, true);
 
@@ -9290,6 +9343,12 @@ test("electron steam overlay checkout helper prepares, opens, and waits with bac
     steamUrl: "https://checkout.steampowered.com/checkout/approvetxn/246813579/",
     transactionId: "246813579",
     returnUrl: "steam://return-from-init-txn"
+  });
+  assert.deepEqual(initTxnResult.targetSnapshot, {
+    type: "checkout",
+    hasSteamUrl: true,
+    hasTransactionId: true,
+    hasReturnUrl: true
   });
   assert.equal(initTxnResult.parked.currentFps, 0);
 
@@ -9328,6 +9387,11 @@ test("electron steam overlay checkout helper prepares, opens, and waits with bac
     type: "checkout",
     returnUrl: "steam://return-from-web-api",
     transactionId: "97531"
+  });
+  assert.deepEqual(webApiEnvelopeResult.targetSnapshot, {
+    type: "checkout",
+    hasTransactionId: true,
+    hasReturnUrl: true
   });
   assert.equal(webApiEnvelopeResult.transaction.data.response.params.transid, "97531");
 
