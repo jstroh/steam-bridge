@@ -26,6 +26,7 @@ function main() {
       processListText,
       consoleLog: args.consoleLog || defaultSteamLog("console_log.txt"),
       webhelperLog: args.webhelperLog || defaultSteamLog("webhelper.txt"),
+      expectRunningSteam: args.expectRunningSteam === true,
       resourceSnapshot: collectClientHealthResourceSnapshot({ processListText })
     });
 
@@ -267,7 +268,7 @@ function detectSteamClientLaunchFailure({
   return { detected: true, message: `${messageLines.join("\n")}\n` };
 }
 
-function detectSteamClientHealth({ processListText, consoleLog, webhelperLog, resourceSnapshot = null }) {
+function detectSteamClientHealth({ processListText, consoleLog, webhelperLog, expectRunningSteam = false, resourceSnapshot = null }) {
   const processLines = String(processListText || "")
     .split(/\r?\n/)
     .map((line) => line.trim())
@@ -293,6 +294,10 @@ function detectSteamClientHealth({ processListText, consoleLog, webhelperLog, re
     observations.push("Steam is not currently running; no unhealthy client process was detected.");
   } else {
     observations.push(`Steam process PID ${steamProcess.pid} is running.`);
+  }
+
+  if (expectRunningSteam && !steamProcess) {
+    failures.push("Steam did not stay running after the startup attempt.");
   }
 
   if (helperSteamIds.length > 0) {
@@ -465,7 +470,9 @@ function buildClientHealthResourceWarnings(snapshot) {
     warnings.push("stale /private/tmp/steam.pipe remains after Steam shutdown.");
   }
   if (!snapshot.steamProcess && Array.isArray(snapshot.steamIpcServerProcesses) && snapshot.steamIpcServerProcesses.length > 0) {
-    warnings.push("Steam ipcserver is still running while steam_osx is not.");
+    warnings.push(
+      "Steam ipcserver is still running while steam_osx is not; this can preserve Steam's global IPC service after a failed launch."
+    );
   }
   if (
     snapshot.sysvIpc &&
@@ -753,6 +760,9 @@ function parseArgs(argv) {
       case "--client-health":
         args.clientHealth = true;
         break;
+      case "--expect-running-steam":
+        args.expectRunningSteam = true;
+        break;
       case "--self-test":
         args.selfTest = true;
         break;
@@ -1007,6 +1017,29 @@ function runSelfTest() {
     assert(result.message.includes("launchctl maxfiles"), "health failure includes launchctl maxfiles");
     assert(result.message.includes("Resource warnings"), "health failure includes derived resource warnings");
     assert(result.message.includes("213/256 open files"), "health failure warns on near-soft-limit file usage");
+
+    result = detectSteamClientHealth({
+      processListText: "",
+      consoleLog,
+      webhelperLog,
+      expectRunningSteam: true,
+      resourceSnapshot: {
+        staleSteamChromeTempEntries: 0,
+        staleSteamPipe: false,
+        steamIpcServerProcesses: [
+          " 9800 /Users/example/Library/Application Support/Steam/Steam.AppBundle/Steam/Contents/MacOS/ipcserver"
+        ],
+        sysvIpc: { semaphores: 1, userSemaphores: 1, error: "" },
+        privateTmpDisk: { ok: true, lines: ["Filesystem 1024-blocks Used Available Capacity Mounted on", "/dev/disk3s5 100 80 20 80% /System/Volumes/Data"] },
+        launchctlMaxfiles: { ok: true, lines: ["maxfiles    256            unlimited"] },
+        sysctlFiles: { ok: true, lines: ["kern.num_files: 100", "kern.maxfiles: 1000", "kern.maxfilesperproc: 512"] },
+        allPosixIpc: { semaphores: 0, sharedMemory: 0 },
+        steamProcess: null
+      }
+    });
+    assert(!result.ok, "startup health fails when Steam was expected to keep running");
+    assert(result.message.includes("did not stay running"), "startup health names exited Steam");
+    assert(result.message.includes("global IPC service"), "startup health explains orphan ipcserver risk");
 
     result = detectSteamClientHealth({
       processListText: "",

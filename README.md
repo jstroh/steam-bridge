@@ -381,8 +381,11 @@ counters, `/private/tmp` disk state, and derived resource warnings such as
 near-soft-limit Steam file usage. The macOS overlay matrix also runs this health
 gate before launching smoke cases; if the matrix had to restart Steam after a
 shortcut update, it waits for this detector to pass before launching the smoke
-app. This keeps overlay tests failing at the client boundary instead of
-producing a misleading app-level failure.
+app. If the matrix itself attempted to start Steam and Steam exits or remains
+stuck before login, the startup health artifact treats the missing `steam_osx`
+client as a failure and records orphan `ipcserver`/IPC resource state. This
+keeps overlay tests failing at the client boundary instead of producing a
+misleading app-level failure.
 
 Validate matrix commands without platform hardware:
 

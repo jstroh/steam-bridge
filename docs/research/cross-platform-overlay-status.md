@@ -911,7 +911,15 @@ Steam login before smoke cases when the stable shortcut is already current; a
 `steamid=0`, `SteamChrome_MasterStream_*` `errno: 28`, `/private/tmp/steam.pipe`,
 orphan `ipcserver`, and System V semaphore evidence. Treat this as local Steam
 client state, not overlay presenter evidence; rerun macOS overlay proof after
-Steam logs in and the health gate passes.
+Steam logs in and the health gate passes. A clean retry at
+`/tmp/steam-bridge-macos-overlay-matrix-rerun-clean-20260630-204752`
+failed at the same pre-case startup boundary after stale semaphores and
+`/private/tmp/steam.pipe` had been cleared, with Steam again running as
+`steamid=0`, logging fresh `SteamChrome_MasterStream_*` `errno: 28` failures,
+and reaching 213 open files under the local `launchctl maxfiles` soft limit of
+256. The matrix startup health path now fails when Steam was expected to stay
+running but `steam_osx` exits or never reaches login, while the standalone
+health command still treats intentionally closed Steam as non-failing.
 
 ## Purchase Overlay Checklist
 

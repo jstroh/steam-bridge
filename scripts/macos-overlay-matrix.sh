@@ -1465,7 +1465,7 @@ ensure_macos_steam_ready_for_suite() {
   echo "Starting macOS Steam before live overlay matrix..."
   if ! start_macos_steam; then
     echo "macOS Steam did not reach a logged-in state before launching smoke cases." >&2
-    run_macos_steam_client_health >&2 || true
+    run_macos_steam_startup_health >&2 || true
     return 1
   fi
   steam_restarted_for_shortcut="1"
@@ -1474,6 +1474,16 @@ ensure_macos_steam_ready_for_suite() {
 run_macos_steam_client_health() {
   node "$script_dir/detect-macos-steam-overlay-ipc.cjs" \
     --client-health \
+    --diagnostic-dir "$artifact_root" \
+    --console-log "$(macos_steam_console_log)" \
+    --webhelper-log "$(macos_steam_webhelper_log)" \
+    --write-artifact
+}
+
+run_macos_steam_startup_health() {
+  node "$script_dir/detect-macos-steam-overlay-ipc.cjs" \
+    --client-health \
+    --expect-running-steam \
     --diagnostic-dir "$artifact_root" \
     --console-log "$(macos_steam_console_log)" \
     --webhelper-log "$(macos_steam_webhelper_log)" \

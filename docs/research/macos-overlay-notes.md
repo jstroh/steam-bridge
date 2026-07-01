@@ -834,6 +834,16 @@ Steam, log out or reboot macOS to clear the user-session IPC state.
   `/private/tmp/steam.pipe`, the orphan `ipcserver`, and fresh user-owned
   System V semaphore counts. This prevents the first smoke case from being used
   as the Steam bootstrap probe when the local client is already unhealthy.
+  A follow-up clean retry at
+  `/tmp/steam-bridge-macos-overlay-matrix-rerun-clean-20260630-204752`
+  reproduced the same pre-case failure after clearing stale semaphores and
+  `/private/tmp/steam.pipe`: Steam started as `steamid=0`, logged fresh
+  `SteamChrome_MasterStream_*` `errno: 28` failures, and reached 213 open files
+  under the local `launchctl maxfiles` soft limit of 256. The startup health
+  path now distinguishes a normal standalone "Steam is closed" health pass from
+  a failed matrix-owned startup where `steam_osx` was expected to stay running;
+  those artifacts also call out orphan `ipcserver` state as Steam global IPC
+  state that may require a user-session reset.
 
 ## Primary References
 
