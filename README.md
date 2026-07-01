@@ -33,10 +33,12 @@ Steam Bridge targets Steam desktop platforms for Electron and Node:
 Intel macOS is intentionally not supported. CI, release prebuilds, runtime
 loading, native linking, and macOS smoke-app packaging enforce the supported
 target list. All macOS test apps are built and run as Apple Silicon arm64
-targets only; Steam Bridge does not build, run, or verify Intel or universal
-macOS apps. Do not package, launch, or verify macOS smoke apps through Rosetta
-or any `darwin-x64`/universal Electron build. The macOS CI and release jobs
-also assert an `arm64` runner so Apple Silicon checks never silently become
+targets only. Examples, smoke packages, and overlay matrices use the same
+Apple Silicon-only shape; Steam Bridge does not build, run, or verify Intel or
+universal macOS apps. Do not package, launch, or verify macOS smoke apps through Rosetta.
+Do not package, launch, or verify macOS test or smoke apps through any
+`darwin-x64`/universal Electron build. The macOS CI and release jobs also
+assert an `arm64` runner so Apple Silicon checks never silently become
 Intel cross-compilation checks.
 The macOS smoke package command is intentionally `npm run example:package:mac`;
 it always resolves to the `aarch64-apple-darwin` / `darwin-arm64` app shape.
@@ -282,7 +284,8 @@ The macOS overlay matrix checks that it is running in a native Apple Silicon
 macOS overlay proof from Intel macOS, Rosetta, or a universal Electron app.
 Any future macOS test app, example app, or smoke runner added to this
 repository must use the same Apple Silicon-only target shape; Intel macOS is
-not a secondary test target.
+not a secondary test target. When you need to build or run a local macOS test
+app, use the `darwin-arm64` smoke package path only.
 
 ```sh
 npm run native:build
@@ -412,6 +415,11 @@ before Steam reports the overlay hook ready, Steam Bridge keeps the shortcut in
 the managed wait path, waits for readiness before activation, and leaves the
 macOS global shortcut unregistered while that wait is pending so Steam can
 receive the close/toggle input after the overlay appears.
+If a macOS shortcut-open attempt fails before Steam reports a shown overlay,
+Steam Bridge restores the Electron window and re-registers the fallback
+shortcut only when the final state is no longer an active Steam overlay. A
+native-host-unavailable transition during that wait stays warning-free and
+returns focus to the app without using a timer.
 
 On macOS, the managed helper fails fast before Steam overlay activation if the
 screen is locked or the display is asleep. Use
@@ -821,9 +829,9 @@ and clean crash-diagnostic checks.
 - Use App ID `480` only for local Steamworks smoke tests.
 - Use your own App ID before shipping or testing app-specific achievements,
   stats, inventory, UGC, economy, checkout, or transaction flows.
-- macOS support means Apple Silicon only. Build, package, sign, and test arm64
-  `.app` bundles; Steam Bridge does not ship or verify Intel macOS or universal
-  macOS targets.
+- macOS support means Apple Silicon only. Build, package, sign, run, and test
+  arm64 `.app` bundles; Steam Bridge does not ship or verify Intel macOS or
+  universal macOS targets.
 - The macOS smoke package uses
   `npx steam-bridge-prepare-macos-app --app-exe <YourApp.app/Contents/MacOS/YourApp>`
   to install the published native launcher as the bundle executable, rename

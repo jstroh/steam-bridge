@@ -291,6 +291,24 @@ and clean crash diagnostics. This remains public App ID `480` routing evidence;
 real purchase-content proof still requires a configured product in a real Steam
 app.
 
+A current-head 2026-07-01 core macOS Apple Silicon matrix at
+`/tmp/steam-bridge-macos-overlay-matrix-shortcut-recovery-20260701-133627`
+rebuilt and signed the arm64-only Electron `43.0.0` smoke package, verified the
+native launcher/signing shape, reused the stable App ID `480` shortcut without
+restarting Steam, and passed all 37 Steam-launched core cases after macOS
+shortcut suspension recovery hardening. It re-proved readiness, direct
+web/store/Friends/dialog/checkout/profile/players/community/stats/achievements/
+user-chat routes, web/store/Friends/dialog `openAndWait(...)`, duplicate-open
+suppression, passive progress/unlock toasts, checkout approval and
+prepare-only, every managed Shift+Tab target, close/back-to-app proof, parked
+zero-FPS state, zero managed timing, managed child-overlay isolation, one Metal
+presenter-backed overlay target, disabled needs-present polling, redacted
+checkout command logging, and clean crash diagnostics from the Apple
+Silicon-only package path. Unit coverage now also proves a
+native-host-unavailable transition while a macOS shortcut wait is suspended
+restores app focus and re-registers the fallback shortcut without warning
+noise.
+
 A 2026-07-01 full macOS Apple Silicon matrix at
 `/tmp/steam-bridge-macos-overlay-matrix-full-isolation-proof-20260701-045604`
 rebuilt and signed the arm64 Electron `43.0.0` smoke package, verified the

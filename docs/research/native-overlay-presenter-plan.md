@@ -1488,6 +1488,17 @@ Current evidence:
   with close/back-to-app proof, parked zero-FPS state, zero managed timing,
   managed isolation, one Metal presenter-backed overlay target under game ID
   `480`, and clean crash diagnostics.
+  A current-head 2026-07-01 core Apple Silicon matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-shortcut-recovery-20260701-133627`
+  rebuilt and signed the arm64 Electron `43.0.0` package, reused the stable App
+  ID `480` shortcut without restarting Steam, and passed all 37 core cases
+  after macOS shortcut suspension recovery hardening. The run re-proved every
+  managed Shift+Tab target, direct and waited overlay routes, passive toasts,
+  checkout approval and prepare-only, close/back-to-app proof, zero-FPS
+  parking, zero managed timing, managed isolation, and clean crash diagnostics.
+  Unit coverage now proves a native-host-unavailable transition while the macOS
+  shortcut fallback is suspended restores focus and re-registers the fallback
+  shortcut only after confirming the overlay is not still active.
 - BrowserWindow-only overlay support is not proven.
 - Steam launch, app ID, auth, and callbacks are not enough to claim overlay
   support.

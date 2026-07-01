@@ -10184,17 +10184,18 @@ function installElectronSteamOverlayGlobalShortcut(
     suspended = true;
     unregister();
     void (async () => {
-      let overlayClosed = false;
+      let shouldRestoreFocus = false;
       try {
         await controller.waitForOverlayShown({ timeoutMs: ELECTRON_STEAM_OVERLAY_OPEN_GUARD_TIMEOUT_MS });
         await controller.waitForOverlayClosed({ timeoutMs: 300000 });
-        overlayClosed = true;
+        shouldRestoreFocus = true;
       } catch (error) {
+        shouldRestoreFocus = shouldRestoreElectronSteamOverlayShortcutFocusAfterError(error);
         if (!closed) {
           emitElectronSteamOverlayShortcutWarning(error);
         }
       } finally {
-        if (overlayClosed && !closed) {
+        if (shouldRestoreFocus && !closed) {
           restoreElectronSteamOverlayShortcutWindowFocus(window);
         }
         suspended = false;
@@ -10220,6 +10221,24 @@ function installElectronSteamOverlayGlobalShortcut(
     removeElectronSteamOverlayShortcutWindowListener(shortcutWindow, "focus", onFocus);
     removeElectronSteamOverlayShortcutWindowListener(shortcutWindow, "blur", onBlur);
   };
+}
+
+function shouldRestoreElectronSteamOverlayShortcutFocusAfterError(error: unknown): boolean {
+  if (isSteamOverlayNativeHostUnavailableError(error)) {
+    return true;
+  }
+
+  const snapshot = electronSteamOverlayWaitErrorSnapshot(error);
+  return snapshot !== undefined && snapshot.overlayActive !== true;
+}
+
+function electronSteamOverlayWaitErrorSnapshot(error: unknown): ElectronSteamOverlaySnapshot | undefined {
+  if (!error || typeof error !== "object") {
+    return undefined;
+  }
+
+  const snapshot = (error as { snapshot?: unknown }).snapshot;
+  return snapshot && typeof snapshot === "object" ? (snapshot as ElectronSteamOverlaySnapshot) : undefined;
 }
 
 function restoreElectronSteamOverlayShortcutWindowFocus(window: ElectronOverlayWindow): void {

@@ -9443,12 +9443,23 @@ test("electron steam overlay macOS shortcut stays quiet while the native host is
   const steam = loadSteamWithFakeNative(fake);
   t.after(clearSteamBridgeCache);
 
+  let windowFocused = true;
+  let showCount = 0;
+  let focusCount = 0;
+  let invalidateCount = 0;
   const window = {
     isDestroyed() {
       return false;
     },
     isFocused() {
-      return true;
+      return windowFocused;
+    },
+    show() {
+      showCount += 1;
+    },
+    focus() {
+      focusCount += 1;
+      windowFocused = true;
     },
     getNativeWindowHandle() {
       return hostHandle;
@@ -9458,7 +9469,9 @@ test("electron steam overlay macOS shortcut stays quiet while the native host is
     off() {},
     webContents: {
       once() {},
-      invalidate() {},
+      invalidate() {
+        invalidateCount += 1;
+      },
       send() {},
       on() {},
       off() {}
@@ -9493,9 +9506,17 @@ test("electron steam overlay macOS shortcut stays quiet while the native host is
   assert.equal(unregisterCount, 1);
   assert.equal(registeredHandler, undefined);
 
+  const showCountAfterOpen = showCount;
+  const focusCountAfterOpen = focusCount;
+  const invalidateCountAfterOpen = invalidateCount;
+  windowFocused = false;
   macEnvironment = { screenLocked: true, displayAsleep: false };
   overlay.pump();
   await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(showCount, showCountAfterOpen + 1);
+  assert.equal(focusCount, focusCountAfterOpen + 1);
+  assert.equal(invalidateCount, invalidateCountAfterOpen + 1);
+  assert.equal(windowFocused, true);
   assert.equal(registerCount, 2);
   assert.equal(typeof registeredHandler, "function");
   assert.equal(warnings.filter((warning) => warning.options?.type === "SteamBridgeOverlayShortcutWarning").length, 0);

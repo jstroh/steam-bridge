@@ -1013,6 +1013,20 @@ Steam, log out or reboot macOS to clear the user-session IPC state.
   checkout-operation diagnostics, and clean crash diagnostics. This remains
   public App ID `480` routing evidence; real purchase-content proof still
   requires a configured product in a real Steam app.
+- A current-head 2026-07-01 core Apple Silicon matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-shortcut-recovery-20260701-133627`
+  rebuilt and signed the arm64 Electron `43.0.0` smoke package, reused the
+  stable App ID `480` shortcut without restarting Steam, and passed all 37 core
+  cases after macOS shortcut suspension recovery hardening. The code path stays
+  state-driven: if a Shift+Tab shortcut wait fails before Steam reports a shown
+  overlay, focus is restored and the fallback shortcut is registered again only
+  when the final error state is not an active Steam overlay;
+  native-host-unavailable transitions during that wait remain quiet and return
+  focus to the Electron app without a timer. The live run re-proved direct and
+  waited overlay routes, every managed Shift+Tab target, passive toasts, checkout
+  approval and prepare-only, close/back-to-app proof, zero-FPS parking, zero
+  managed timing, managed isolation, and clean crash diagnostics from the Apple
+  Silicon-only package path.
 
 ## Primary References
 

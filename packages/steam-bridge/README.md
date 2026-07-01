@@ -33,8 +33,8 @@ Intel macOS is intentionally not supported. CI, release prebuilds, runtime
 loading, native linking, and macOS smoke-app packaging enforce Apple Silicon
 arm64 as the only macOS target; Steam Bridge does not build, run, or verify
 Intel or universal macOS apps. Do not package, launch, or verify macOS smoke
-apps through Rosetta or any `darwin-x64`/universal Electron build. Build and
-run macOS test apps only on native `darwin/arm64` Apple Silicon hosts.
+apps through Rosetta. Do not package, launch, or verify macOS test or smoke
+apps through any `darwin-x64`/universal Electron build. Build and run macOS test apps only on native `darwin/arm64` Apple Silicon hosts.
 The repository's macOS smoke package command intentionally maps to
 `aarch64-apple-darwin` / `darwin-arm64` only. Do not add `darwin-x64`,
 `x86_64-apple-darwin`, or universal macOS test-app targets.
@@ -479,6 +479,11 @@ properties copied from that snapshot; timeout errors also include `timeoutMs`.
 Use the matching `isSteamOverlayWaitTimeoutError(error)`,
 `isSteamOverlayWaitAbortedError(error)`, or
 `isSteamOverlayWaitClosedError(error)` guard to branch without parsing messages.
+On macOS, if a managed Shift+Tab shortcut-open attempt fails before Steam
+reports a shown overlay, Steam Bridge restores the Electron window and
+re-registers the fallback shortcut only when the final error snapshot says the
+Steam overlay is no longer active. Native-host-unavailable transitions during
+that wait stay quiet and return focus to the app without a timer.
 The Electron smoke app records those await points as `overlay:presenter-wait-shown`,
 `overlay:presenter-wait-closed`, and `overlay:presenter-parked` lifecycle
 events so Deck/Linux artifact review proves the same public API app builders
