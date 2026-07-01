@@ -328,6 +328,7 @@ function summarizeMatrixArtifacts(root) {
         `macInteractive=${summary.macInteractive}`,
         `zeroTiming=${summary.zeroTiming}`,
         `shown=${summary.shown}`,
+        `webVisible=${summary.webVisible}`,
         `managedWaits=${summary.managedWaits}`,
         `openAndWait=${summary.openAndWait}`,
         `checkoutWait=${summary.checkoutWait}`,
@@ -419,6 +420,8 @@ function verifyCase(caseId, metadata, result, lifecycle, macosCrashReports, fail
   const expectedNativeHostUnavailableReason = nonEmptyString(
     metadata.requireNativeHostUnavailableReason ?? metadata.expectedNativeHostUnavailableReason
   );
+  const requireVisibleWebOverlay =
+    metadata.closeInput === "web" && !hasExpectedActionError && !expectedNativeHostUnavailableReason;
   const expectedNativeHostBackend = expectedNativeHostBackendFromMetadata(metadata);
   const expectedNoOverlayActivation =
     metadata.requireNoOverlayActivation === true ||
@@ -471,6 +474,9 @@ function verifyCase(caseId, metadata, result, lifecycle, macosCrashReports, fail
   const managedWaits = hasExpectedActionError
     ? { required: false, ok: true }
     : verifyManagedLifecycleWaits(caseId, actionName, lifecycleEntries, isPassive, failures);
+  const webVisible = requireVisibleWebOverlay
+    ? verifyWebOverlayVisibleBeforeClose(caseId, lifecycleEntries, failures)
+    : { required: false, ok: true };
   let macInteractive = false;
 
   if (hasExpectedActionError) {
@@ -696,6 +702,7 @@ function verifyCase(caseId, metadata, result, lifecycle, macosCrashReports, fail
     macInteractive,
     zeroTiming,
     shown: managedWaits.required ? managedWaits.shownOk : "n/a",
+    webVisible: webVisible.required ? webVisible.ok : "n/a",
     managedWaits: managedWaits.required ? managedWaits.ok : "n/a",
     openAndWait: openAndWait.required ? openAndWait.ok : "n/a",
     checkoutWait: checkoutWait.required ? checkoutWait.ok : "n/a",
@@ -708,6 +715,36 @@ function verifyCase(caseId, metadata, result, lifecycle, macosCrashReports, fail
     noOverlayActivation: expectedNoOverlayActivation,
     crashOk
   };
+}
+
+function verifyWebOverlayVisibleBeforeClose(caseId, entries, failures) {
+  const failuresBefore = failures.length;
+  const firstActiveIndex = entries.findIndex(isLifecycleOverlayActiveEvent);
+  const inactiveAfterActiveIndex = entries.findIndex(
+    (entry, index) => index > firstActiveIndex && isLifecycleOverlayInactiveEvent(entry)
+  );
+  const visibilityEvents = entries
+    .map((entry, index) => ({ entry, index, payload: objectOrEmpty(entry.payload) }))
+    .filter(({ entry }) => entry && entry.type === "event:overlay:web-visible");
+
+  if (visibilityEvents.length === 0) {
+    failures.push(`${caseId}: no macOS web overlay visibility event before web close probe`);
+    return { required: true, ok: false };
+  }
+
+  const visibleBeforeClose = visibilityEvents.find(({ index, payload }) => {
+    return (
+      payload.ok === true &&
+      (firstActiveIndex === -1 || index > firstActiveIndex) &&
+      (inactiveAfterActiveIndex === -1 || index < inactiveAfterActiveIndex)
+    );
+  });
+
+  if (!visibleBeforeClose) {
+    failures.push(`${caseId}: macOS web overlay visibility was not confirmed before close probe`);
+  }
+
+  return { required: true, ok: failures.length === failuresBefore };
 }
 
 function isStoreOverlayAction(actionName) {
@@ -1691,6 +1728,9 @@ function runSelfTest() {
   const missingCheckoutErrorSnapshotFixtureRoot = fs.mkdtempSync(
     path.join(os.tmpdir(), "steam-bridge-macos-matrix-summary-missing-checkout-error-snapshot.")
   );
+  const missingWebVisibilityFixtureRoot = fs.mkdtempSync(
+    path.join(os.tmpdir(), "steam-bridge-macos-matrix-summary-missing-web-visible.")
+  );
   const missingNeedsPresentPollingFixtureRoot = fs.mkdtempSync(
     path.join(os.tmpdir(), "steam-bridge-macos-matrix-summary-missing-needs-present-polling.")
   );
@@ -1718,6 +1758,9 @@ function runSelfTest() {
     createSelfTestFixture(missingCheckoutErrorSnapshotFixtureRoot);
     removeCheckoutActionErrorSnapshot(missingCheckoutErrorSnapshotFixtureRoot, "07c-checkout-unavailable");
     assertMissingCheckoutActionErrorSnapshotRejected(missingCheckoutErrorSnapshotFixtureRoot);
+    createSelfTestFixture(missingWebVisibilityFixtureRoot);
+    removeWebVisibilityProof(missingWebVisibilityFixtureRoot, "01-web-openwait");
+    assertMissingWebVisibilityProofRejected(missingWebVisibilityFixtureRoot);
     createSelfTestFixture(missingNeedsPresentPollingFixtureRoot);
     removeMacosNeedsPresentPollingProof(missingNeedsPresentPollingFixtureRoot, "01-web-openwait");
     assertMissingNeedsPresentPollingProofRejected(missingNeedsPresentPollingFixtureRoot);
@@ -1729,6 +1772,7 @@ function runSelfTest() {
     fs.rmSync(metalCrashFixtureRoot, { recursive: true, force: true });
     fs.rmSync(missingMicroTxnFixtureRoot, { recursive: true, force: true });
     fs.rmSync(missingCheckoutErrorSnapshotFixtureRoot, { recursive: true, force: true });
+    fs.rmSync(missingWebVisibilityFixtureRoot, { recursive: true, force: true });
     fs.rmSync(missingNeedsPresentPollingFixtureRoot, { recursive: true, force: true });
     fs.rmSync(persistentFixtureRoot, { recursive: true, force: true });
   }
@@ -1975,6 +2019,39 @@ function assertMissingCheckoutActionErrorSnapshotRejected(root) {
   );
 }
 
+function readManifestRows(root) {
+  const manifestPath = path.join(root, "macos-matrix-cases.jsonl");
+  return fs
+    .readFileSync(manifestPath, "utf8")
+    .trim()
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .map((line) => JSON.parse(line));
+}
+
+function removeWebVisibilityProof(root, caseId) {
+  const row = readManifestRows(root).find((entry) => entry.caseId === caseId);
+  assert.ok(row, `self-test fixture missing manifest row ${caseId}`);
+  const lifecyclePath = path.join(row.diagnosticDir, "lifecycle.jsonl");
+  const filtered = fs
+    .readFileSync(lifecyclePath, "utf8")
+    .split(/\r?\n/)
+    .filter((line) => line.trim() && !line.includes('"type":"event:overlay:web-visible"'));
+  fs.writeFileSync(lifecyclePath, `${filtered.join("\n")}\n`);
+}
+
+function assertMissingWebVisibilityProofRejected(root) {
+  const result = spawnSync(process.execPath, [__filename, "--artifact-root", root], {
+    encoding: "utf8"
+  });
+  assert.notEqual(result.status, 0, "summary should reject missing macOS web visibility proof");
+  assert.match(
+    result.stderr,
+    /no macOS web overlay visibility event before web close probe/,
+    "summary rejection should identify missing web visibility proof"
+  );
+}
+
 function removeMacosNeedsPresentPollingProof(root, caseId) {
   const manifestPath = path.join(root, "macos-matrix-cases.jsonl");
   const rows = fs
@@ -2081,11 +2158,14 @@ function createSelfTestFixture(root) {
     {
       caseId: "01-web-openwait",
       action: "presenter-web-open-and-wait",
+      closeInput: "web",
+      command: ["--action", "presenter-web-open-and-wait", "--close-probe", "--close-input", "web"],
       resultPresenter: activePresenterFixture(10),
       lifecycle: [
         { type: "event:overlay:presenter-open-and-wait-start", payload: { presenter: activePresenterFixture(10) } },
         { type: "event:callback:overlay-activated", payload: { active: true, appId: 480, overlayPid: 9001 } },
         { type: "event:overlay:presenter-wait-shown", payload: { presenter: activePresenterFixture(11) } },
+        { type: "event:overlay:web-visible", payload: { ok: true, attempt: 1, rect: "0,0,1280,720" } },
         { type: "event:callback:overlay-activated", payload: { active: false, appId: 480, overlayPid: 9001 } },
         { type: "event:overlay:presenter-wait-closed", payload: { presenter: parkedPresenterFixture(12) } },
         { type: "event:overlay:presenter-after-close", payload: { presenter: parkedPresenterFixture(12) } },
@@ -2109,6 +2189,8 @@ function createSelfTestFixture(root) {
     {
       caseId: "03-store-openwait",
       action: "presenter-store-open-and-wait",
+      closeInput: "web",
+      command: ["--action", "presenter-store-open-and-wait", "--close-probe", "--close-input", "web"],
       overlayGameId: "15338446133907161088",
       expectedNativeHostBackend: "macos-opengl",
       resultPresenter: activePresenterFixture(14, "macos-opengl"),
@@ -2116,6 +2198,7 @@ function createSelfTestFixture(root) {
         { type: "event:overlay:presenter-open-and-wait-start", payload: { presenter: activePresenterFixture(14, "macos-opengl") } },
         { type: "event:callback:overlay-activated", payload: { active: true, appId: 480, overlayPid: 9001 } },
         { type: "event:overlay:presenter-wait-shown", payload: { presenter: activePresenterFixture(15, "macos-opengl") } },
+        { type: "event:overlay:web-visible", payload: { ok: true, attempt: 1, rect: "0,0,1280,720" } },
         { type: "event:callback:overlay-activated", payload: { active: false, appId: 480, overlayPid: 9001 } },
         { type: "event:overlay:presenter-wait-closed", payload: { presenter: parkedPresenterFixture(16, "macos-opengl") } },
         { type: "event:overlay:presenter-after-close", payload: { presenter: parkedPresenterFixture(16, "macos-opengl") } },
@@ -2165,10 +2248,14 @@ function createSelfTestFixture(root) {
       caseId: "05-shortcut-web-openwait",
       action: "presenter-shortcut-open-and-wait",
       shortcutTarget: "web",
+      closeInput: "web",
       command: [
         "--action",
         "presenter-shortcut-open-and-wait",
         "--shortcut-target",
+        "web",
+        "--close-probe",
+        "--close-input",
         "web"
       ],
       resultPresenter: withShortcutTargetSnapshot(activePresenterFixture(40), "function"),
@@ -2188,6 +2275,7 @@ function createSelfTestFixture(root) {
         },
         { type: "event:callback:overlay-activated", payload: { active: true, appId: 480, overlayPid: 9001 } },
         { type: "event:overlay:presenter-wait-shown", payload: { presenter: activePresenterFixture(41) } },
+        { type: "event:overlay:web-visible", payload: { ok: true, attempt: 1, rect: "0,0,1280,720" } },
         { type: "event:callback:overlay-activated", payload: { active: false, appId: 480, overlayPid: 9001 } },
         { type: "event:overlay:presenter-wait-closed", payload: { presenter: parkedPresenterFixture(42) } },
         { type: "event:overlay:presenter-after-close", payload: { presenter: parkedPresenterFixture(42) } },
@@ -2205,13 +2293,17 @@ function createSelfTestFixture(root) {
       expectedAppId: 480,
       checkoutSource: "json-file",
       requireMicroTxnCallback: true,
+      closeInput: "web",
       command: [
         "--action",
         "presenter-checkout",
         "--checkout-json-file",
         REDACTED_COMMAND_VALUE,
         "--checkout-return-url",
-        REDACTED_COMMAND_VALUE
+        REDACTED_COMMAND_VALUE,
+        "--close-probe",
+        "--close-input",
+        "web"
       ],
       resultPresenter: activePresenterFixture(30),
       lifecycle: [
@@ -2227,6 +2319,7 @@ function createSelfTestFixture(root) {
         },
         { type: "event:callback:overlay-activated", payload: { active: true, appId: 480, overlayPid: 9001 } },
         { type: "event:overlay:presenter-wait-shown", payload: { presenter: activePresenterFixture(31) } },
+        { type: "event:overlay:web-visible", payload: { ok: true, attempt: 1, rect: "0,0,1280,720" } },
         { type: "event:callback:microtxn", payload: { authorized: true, presenter: activePresenterFixture(31) } },
         { type: "event:callback:overlay-activated", payload: { active: false, appId: 480, overlayPid: 9001 } },
         { type: "event:overlay:presenter-wait-closed", payload: { presenter: parkedPresenterFixture(32) } },
@@ -2548,6 +2641,7 @@ function createSelfTestFixture(root) {
       expectedAppId,
       command: fixture.command || [],
       action: fixture.action,
+      closeInput: fixture.closeInput || null,
       shortcutTarget: fixture.shortcutTarget || null,
       checkoutSource: fixture.checkoutSource || null,
       expectedNativeHostBackend: fixture.expectedNativeHostBackend || null,
@@ -2582,6 +2676,7 @@ function createPersistentSelfTestFixture(root) {
     {
       caseId: "02-persistent-shortcut-web",
       shortcutTarget: "web",
+      closeInput: "web",
       overlayTarget: {
         type: "web",
         url: { redacted: true, present: true, type: "string" },
@@ -2604,8 +2699,15 @@ function createPersistentSelfTestFixture(root) {
       resultFile,
       diagnosticDir,
       expectedAppId: 480,
-      command: ["--action", "presenter-shortcut", "--shortcut-target", fixture.shortcutTarget],
+      command: [
+        "--action",
+        "presenter-shortcut",
+        "--shortcut-target",
+        fixture.shortcutTarget,
+        ...(fixture.closeInput ? ["--close-probe", "--close-input", fixture.closeInput] : [])
+      ],
       action: "presenter-shortcut",
+      closeInput: fixture.closeInput || null,
       shortcutTarget: fixture.shortcutTarget,
       checkoutSource: null,
       expectedNativeHostBackend: null,
@@ -2664,7 +2766,7 @@ function persistentShortcutResultFixture(fixture) {
 
 function persistentShortcutLifecycleFixture(fixture) {
   const pumpCount = fixture.pumpCount;
-  return [
+  const entries = [
     {
       type: "event:control:action-request",
       payload: {
@@ -2694,12 +2796,16 @@ function persistentShortcutLifecycleFixture(fixture) {
     },
     { type: "event:callback:overlay-activated", payload: { active: true, appId: 480, overlayPid: 9001 } },
     { type: "event:overlay:presenter-wait-shown", payload: { presenter: activePresenterFixture(pumpCount + 1) } },
+    ...(fixture.closeInput === "web"
+      ? [{ type: "event:overlay:web-visible", payload: { ok: true, attempt: 1, rect: "0,0,1280,720" } }]
+      : []),
     { type: "event:callback:overlay-activated", payload: { active: false, appId: 480, overlayPid: 9001 } },
     { type: "event:overlay:presenter-wait-closed", payload: { presenter: parkedPresenterFixture(pumpCount + 2) } },
     { type: "event:overlay:presenter-after-close", payload: { presenter: parkedPresenterFixture(pumpCount + 2) } },
     { type: "event:overlay:presenter-parked", payload: { presenter: parkedPresenterFixture(pumpCount + 2) } },
     { type: "event:overlay:presenter-after-close-stable", payload: { presenter: parkedPresenterFixture(pumpCount + 2) } }
   ];
+  return entries;
 }
 
 function overlayProcessFixture(pid) {

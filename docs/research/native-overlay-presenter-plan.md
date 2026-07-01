@@ -673,7 +673,9 @@ Current evidence:
   restarting Steam, and passed all 31 cases again. The macOS harness now waits
   for visible Steam web content inside the presenter host before sending the
   active web close probe because `GameOverlayActivated(true)` can precede the
-  first web paint; this is test evidence plumbing, not a product runtime timer.
+  first web paint. Current source records that proof as
+  `overlay:web-visible`, and web-close macOS matrix cases fail if it is missing;
+  this is test evidence plumbing, not a product runtime timer.
   The run left no smoke/gameoverlay process and produced no fresh crash report
   beyond the older known `BOverlayNeedsPresent()` reports. A later 2026-06-30
   persistent macOS run at

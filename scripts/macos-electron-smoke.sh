@@ -427,6 +427,43 @@ if [ -z "$diagnostic_dir" ]; then
 fi
 macos_crash_report_cutoff_ms="$(node -e 'process.stdout.write(String(Date.now() - 2000))')"
 
+record_macos_helper_event() {
+  local type="$1"
+  local payload="${2:-{}}"
+  if [ -z "${diagnostic_dir:-}" ]; then
+    return 0
+  fi
+
+  DIAGNOSTIC_DIR="$diagnostic_dir" LIFECYCLE_TYPE="$type" LIFECYCLE_PAYLOAD="$payload" node <<'NODE'
+const fs = require("node:fs");
+const path = require("node:path");
+
+const diagnosticDir = process.env.DIAGNOSTIC_DIR;
+const type = process.env.LIFECYCLE_TYPE;
+let payload = {};
+
+try {
+  payload = JSON.parse(process.env.LIFECYCLE_PAYLOAD || "{}");
+} catch {
+  payload = { parseError: true };
+}
+
+if (!diagnosticDir || !type) {
+  process.exit(0);
+}
+
+const entry = {
+  type: `event:${type}`,
+  at: new Date().toISOString(),
+  pid: process.pid,
+  payload
+};
+
+fs.mkdirSync(diagnosticDir, { recursive: true });
+fs.appendFileSync(path.join(diagnosticDir, "lifecycle.jsonl"), `${JSON.stringify(entry)}\n`);
+NODE
+}
+
 smoke_args() {
   if [ "$macos_native_launcher" = "1" ]; then
     printf '%s\n' \
@@ -1650,6 +1687,7 @@ for (let y = top; y < bottom; y += stepY) {
 process.exit(sampled > 0 && visible / sampled > 0.02 ? 0 : 1);
 NODE
     then
+      record_macos_helper_event "overlay:web-visible" "{\"ok\":true,\"attempt\":$attempt,\"rect\":\"$rect\"}"
       rm -rf "$temp_dir"
       return 0
     fi
@@ -1658,14 +1696,18 @@ NODE
 
   rm -rf "$temp_dir"
   echo "Timed out waiting for visible macOS Steam web overlay content." >&2
+  record_macos_helper_event "overlay:web-visible" "{\"ok\":false,\"attempts\":4,\"rect\":\"$rect\"}"
   return 1
 }
 
 send_macos_web_overlay_close_probe() {
+  local visible="0"
   focus_macos_smoke_app_for_probe
   echo "Waiting for visible macOS Steam web overlay content"
-  if ! wait_for_macos_web_overlay_visible; then
-    echo "Continuing macOS web overlay close probe after visibility heuristic timeout; lifecycle close verification remains required." >&2
+  if wait_for_macos_web_overlay_visible; then
+    visible="1"
+  else
+    echo "macOS web overlay close probe did not observe visible Steam web content before close." >&2
   fi
   focus_macos_smoke_app_for_probe
   echo "Sending macOS web overlay Escape close probe"
@@ -1674,6 +1716,9 @@ tell application "System Events"
   key code 53
 end tell
 OSA
+  if [ "$visible" != "1" ]; then
+    return 1
+  fi
 }
 
 send_macos_overlay_close_probe() {

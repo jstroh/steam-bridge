@@ -175,7 +175,9 @@ attach a dormant `gameoverlayui` target before any visible overlay activation.
 smoke app open after the initial result, leaves the active Steam overlay focused
 for the macOS close input, and verifies `active=false`, app focus return,
 `openAndWait(...)` completion after close, idle presenter parking, and no crash
-evidence.
+evidence. When `--close-input web` is used, the helper must observe visible
+Steam web content in the native presenter before sending the close input; a
+visibility miss fails the helper case instead of being counted as close proof.
 
 For macOS passive-toast proof, use the same packaged helper with the passive
 notification gate:

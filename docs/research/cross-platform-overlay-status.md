@@ -155,7 +155,9 @@ presenter-backed overlay target, active/inactive callbacks where expected,
 visible Steam web content before close probes, app focus return, parked
 zero-FPS presenter state, disabled needs-present polling, zero managed overlay
 timing, clean control-server quit behavior, no leftover smoke/gameoverlay
-process, and clean crash diagnostics.
+process, and clean crash diagnostics. Current macOS web-close helper runs also
+record `overlay:web-visible`, and the matrix summary rejects web-close cases
+whose lifecycle never proves visible Steam web content before the close input.
 A focused current-head checkout run at
 `/tmp/steam-bridge-macos-overlay-matrix-checkout-target-snapshot-20260630-232458`
 rebuilt and signed the Apple Silicon Electron `43.0.0` package, reused the

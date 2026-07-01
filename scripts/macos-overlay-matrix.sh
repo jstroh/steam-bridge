@@ -1678,10 +1678,12 @@ const requireMicroTxnCallback =
 
 function optionValue(name) {
   const index = command.indexOf(name);
-  if (index === -1) {
-    return null;
+  if (index !== -1) {
+    return command[index + 1] ?? "";
   }
-  return command[index + 1] ?? "";
+  const prefix = `${name}=`;
+  const inline = command.find((value) => typeof value === "string" && value.startsWith(prefix));
+  return inline ? inline.slice(prefix.length) : null;
 }
 
 function hasCheckoutTargetInput() {
@@ -1728,6 +1730,7 @@ fs.appendFileSync(
     expectedAppId,
     action,
     closeProbe: command.includes("--close-probe"),
+    closeInput: optionValue("--close-input"),
     shortcutOpenProbe: command.includes("--shortcut-open-probe"),
     shortcutTarget: optionValue("--shortcut-target"),
     checkoutSource: command.includes("--checkout-json-file")
