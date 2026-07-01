@@ -183,8 +183,8 @@ attach a dormant `gameoverlayui` target before any visible overlay activation.
 
 Use `presenter-duplicate-open-guard` to prove duplicate menu/button presses are
 quietly suppressed while a managed overlay is opening. The action opens a modal
-web overlay, immediately checks the public direct, shortcut/controller, and
-checkout `IfAvailable` helpers, records
+web overlay, immediately checks the public direct, shortcut/controller, direct
+checkout, and checkout wait `IfAvailable` helpers, records
 `overlay:presenter-duplicate-open-guard`, and then follows the same
 close/back-to-app proof as the normal web `openAndWait(...)` case.
 
@@ -394,7 +394,8 @@ target. Use
 `presenter-web --web-modal true` to verify the app-facing
 `steamOverlay.openWeb(...)` helper and persistent presenter path. The direct
 `presenter-*` actions use the named helpers such as `openStore(...)`,
-`openFriends(...)`, and `openProfile(...)` for common surfaces. Use
+`openFriends(...)`, `openProfile(...)`, and the checkout target helper for
+common surfaces. Use
 `presenter-web-open-and-wait --web-modal true` to exercise the builder-facing
 `steamOverlay.openWebAndWait(...)` helper, which delegates to the same managed
 `openAndWait(...)` path; the smoke app records

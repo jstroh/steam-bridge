@@ -464,6 +464,12 @@ overlay manager closes while that operation is pending, the scoped hold is
 released and `SteamOverlayWaitClosedError` is thrown without opening a late
 checkout surface. The preparation is operation-scoped rather than an app-tuned
 timer.
+`steamOverlay.openCheckout(...)` and
+`steamOverlay.openCheckoutIfAvailable(...)` are available for lower-level cases
+where the app already has a resolved checkout target and intentionally does not
+need to await overlay close. Real purchase flows should normally prefer
+`openCheckoutAndWait(...)` so the presenter stays alive until Steam reports the
+checkout overlay inactive.
 When using the built-in Web API client, prefer
 `microTxn.initClientTxn(...)` for overlay approval (`usersession=client`) and
 `microTxn.initWebTxn(...)` for your browser fallback (`usersession=web`) instead
@@ -614,13 +620,14 @@ overlay injection, native host availability, idle presenter state, and no
 overlay-active callback, but not `overlayEnabled=true`.
 The `presenter-duplicate-open-guard` action opens a managed web overlay and
 immediately proves `openIfAvailable(...)`, `openAndWaitIfAvailable(...)`, and
+both `openCheckoutIfAvailable(...)` and
 `openCheckoutAndWaitIfAvailable(...)`, plus the shortcut/controller helpers
 `openShortcutTargetIfAvailable()` and
 `openShortcutTargetAndWaitIfAvailable()`, return `null` while that overlay is
 opening, without running the checkout operation callback.
-Unit coverage also verifies `openCheckoutAndWaitIfAvailable(...)` skips that
-callback when fresh Steam diagnostics already report Steam stopped or the
-overlay disabled.
+Unit coverage also verifies the checkout `IfAvailable` helpers skip or suppress
+work when fresh Steam diagnostics already report Steam stopped or the overlay
+disabled.
 They can also verify expected
 managed overlay fail-fast artifacts with `--require-action-error-code` and
 `--require-action-error-reason`; add
@@ -981,6 +988,19 @@ rebuilt and signed the same arm64-only Electron `43.0.0` package and passed all
 calls plus the existing wait-helper, duplicate-open, and passive notification
 cases, with visible Steam web content where applicable, active/inactive
 callbacks, close/back-to-app proof, parked zero-FPS state, disabled
+needs-present polling, zero managed overlay timing, managed child-overlay
+isolation, and clean crash diagnostics.
+A focused 2026-07-01 minimal Apple Silicon artifact at
+`/tmp/steam-bridge-macos-overlay-matrix-minimal-direct-checkout-20260701-071929`
+rebuilt and signed the same arm64-only Electron `43.0.0` package and passed all
+11 Steam-launched cases after adding named direct checkout target helpers. Its
+duplicate-open guard now proves direct target, shortcut/controller,
+`openCheckoutIfAvailable(...)`, and `openCheckoutAndWaitIfAvailable(...)`
+helpers all return `null` while a managed overlay is already opening, and that
+the checkout wait helper does not start its transaction operation in that busy
+state. The same run re-proved direct web/store/Friends/dialog helpers,
+wait-helper open/close, passive notification priming, visible Steam web content
+where applicable, close/back-to-app proof, parked zero-FPS state, disabled
 needs-present polling, zero managed overlay timing, managed child-overlay
 isolation, and clean crash diagnostics.
 A later recovered-client full artifact at

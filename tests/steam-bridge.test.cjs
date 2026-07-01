@@ -9994,6 +9994,10 @@ test("electron steam overlay manager exposes named direct open helpers", async (
   assert.equal(overlay.openStats({ appId: 480, steamId64: "76561198000000000" }), directResult);
   assert.equal(overlay.openAchievements({ appId: 480 }), directResult);
   assert.equal(overlay.openUser({ dialog: steam.UserDialog.Chat, steamId64: "76561198000000000" }), directResult);
+  assert.equal(
+    overlay.openCheckout({ transactionId: "123456789", returnUrl: "steam://run/480", modal: true }),
+    directResult
+  );
   assert.equal(overlay.openDialog({ dialog: steam.Dialog.OfficialGameGroup, appId: 480 }), directResult);
   assert.equal(overlay.openWebIfAvailable("https://example.test/available"), null);
   assert.equal(overlay.openStoreIfAvailable({ appId: 480 }), null);
@@ -10004,6 +10008,7 @@ test("electron steam overlay manager exposes named direct open helpers", async (
   assert.equal(overlay.openStatsIfAvailable(), null);
   assert.equal(overlay.openAchievementsIfAvailable(), null);
   assert.equal(overlay.openUserIfAvailable(), null);
+  assert.equal(overlay.openCheckoutIfAvailable({ transactionId: "987654321" }), null);
   assert.equal(overlay.openDialogIfAvailable(), null);
 
   assert.deepEqual(calls, [
@@ -10036,6 +10041,10 @@ test("electron steam overlay manager exposes named direct open helpers", async (
     },
     {
       method: "open",
+      target: { transactionId: "123456789", returnUrl: "steam://run/480", modal: true, type: "checkout" }
+    },
+    {
+      method: "open",
       target: { dialog: steam.Dialog.OfficialGameGroup, appId: 480, type: "dialog" }
     },
     {
@@ -10050,6 +10059,7 @@ test("electron steam overlay manager exposes named direct open helpers", async (
     { method: "openIfAvailable", target: { type: "stats" } },
     { method: "openIfAvailable", target: { type: "achievements" } },
     { method: "openIfAvailable", target: { type: "user" } },
+    { method: "openIfAvailable", target: { transactionId: "987654321", type: "checkout" } },
     { method: "openIfAvailable", target: { type: "dialog" } }
   ]);
 });

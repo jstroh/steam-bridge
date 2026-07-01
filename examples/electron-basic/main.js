@@ -1109,6 +1109,7 @@ async function openPresenterDuplicateOpenGuardOverlay() {
     showTimeoutMs: 5,
     closeTimeoutMs: 5
   });
+  const checkoutOpenIfAvailableResult = overlay.openCheckoutIfAvailable({ transactionId: "123456789" });
   let checkoutOperationRan = false;
   const checkoutIfAvailableResult = await overlay.openCheckoutAndWaitIfAvailable(
     () => {
@@ -1129,6 +1130,7 @@ async function openPresenterDuplicateOpenGuardOverlay() {
     openAndWaitIfAvailableNull: openAndWaitIfAvailableResult === null,
     shortcutIfAvailableNull: shortcutIfAvailableResult === null,
     shortcutAndWaitIfAvailableNull: shortcutAndWaitIfAvailableResult === null,
+    checkoutOpenIfAvailableNull: checkoutOpenIfAvailableResult === null,
     checkoutIfAvailableNull: checkoutIfAvailableResult === null,
     checkoutOperationRan,
     presenter: safeOverlaySnapshot(overlay)

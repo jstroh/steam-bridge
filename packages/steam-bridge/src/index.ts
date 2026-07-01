@@ -1805,6 +1805,7 @@ export type ElectronSteamOverlayStatsTargetOptions = ElectronSteamOverlayTargetO
 export type ElectronSteamOverlayAchievementsTargetOptions =
   ElectronSteamOverlayTargetOptions<SteamOverlayAchievementsTarget>;
 export type ElectronSteamOverlayUserTargetOptions = ElectronSteamOverlayTargetOptions<SteamOverlayUserTarget>;
+export type ElectronSteamOverlayCheckoutTargetOptions = ElectronSteamOverlayTargetOptions<SteamOverlayCheckoutTarget>;
 export type ElectronSteamOverlayDialogTargetOptions = ElectronSteamOverlayTargetOptions<SteamOverlayDialogTarget>;
 
 export interface ElectronOverlayKeyboardInput {
@@ -2347,6 +2348,8 @@ export interface ElectronSteamOverlay extends CallbackHandle {
   ): NativeOverlayPresenter | null;
   openUser(targetOptions?: ElectronSteamOverlayUserTargetOptions): NativeOverlayPresenter;
   openUserIfAvailable(targetOptions?: ElectronSteamOverlayUserTargetOptions): NativeOverlayPresenter | null;
+  openCheckout(targetOptions?: ElectronSteamOverlayCheckoutTargetOptions): NativeOverlayPresenter;
+  openCheckoutIfAvailable(targetOptions?: ElectronSteamOverlayCheckoutTargetOptions): NativeOverlayPresenter | null;
   openDialog(targetOptions?: ElectronSteamOverlayDialogTargetOptions): NativeOverlayPresenter;
   openDialogIfAvailable(targetOptions?: ElectronSteamOverlayDialogTargetOptions): NativeOverlayPresenter | null;
   openShortcutTargetIfAvailable(): NativeOverlayPresenter | null;
@@ -9128,6 +9131,14 @@ export function createElectronSteamOverlay(
     },
     openUserIfAvailable(targetOptions: ElectronSteamOverlayUserTargetOptions = {}): NativeOverlayPresenter | null {
       return controller.openIfAvailable({ ...targetOptions, type: "user" });
+    },
+    openCheckout(targetOptions: ElectronSteamOverlayCheckoutTargetOptions = {}): NativeOverlayPresenter {
+      return controller.open({ ...targetOptions, type: "checkout" });
+    },
+    openCheckoutIfAvailable(
+      targetOptions: ElectronSteamOverlayCheckoutTargetOptions = {}
+    ): NativeOverlayPresenter | null {
+      return controller.openIfAvailable({ ...targetOptions, type: "checkout" });
     },
     openDialog(targetOptions: ElectronSteamOverlayDialogTargetOptions = {}): NativeOverlayPresenter {
       return controller.open({ ...targetOptions, type: "dialog" });

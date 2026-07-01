@@ -986,6 +986,20 @@ Steam, log out or reboot macOS to clear the user-session IPC state.
   active/inactive callbacks, close/back-to-app proof, parked zero-FPS state,
   disabled needs-present polling, zero managed overlay timing, managed
   child-overlay isolation, and clean crash diagnostics.
+- A focused current-head 2026-07-01 minimal Apple Silicon matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-minimal-direct-checkout-20260701-071929`
+  rebuilt and signed the same arm64-only Electron `43.0.0` package, reused the
+  stable App ID `480` shortcut without restarting Steam, and passed all 11
+  minimal cases after adding named direct checkout target helpers. The
+  duplicate-open guard now proves direct target, shortcut/controller,
+  `openCheckoutIfAvailable(...)`, and `openCheckoutAndWaitIfAvailable(...)`
+  helpers all return `null` while a managed overlay is already opening, and that
+  the checkout wait helper does not start its transaction operation in that busy
+  state. The same run re-proved direct web/store/Friends/dialog helpers,
+  wait-helper open/close, passive notification priming, visible Steam web
+  content where applicable, close/back-to-app proof, parked zero-FPS state,
+  disabled needs-present polling, zero managed overlay timing, managed
+  child-overlay isolation, and clean crash diagnostics.
 
 ## Primary References
 

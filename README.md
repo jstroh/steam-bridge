@@ -327,8 +327,9 @@ app.whenReady().then(async () => {
 Supported managed targets include web pages, store pages, checkout, Friends/chat,
 profiles, players, community hubs, stats, achievements, user routes, and known
 dialog equivalents. Use the named helpers such as `openFriends()`,
-`openStoreIfAvailable(...)`, `openFriendsAndWait()`,
-`openStoreAndWaitIfAvailable(...)`, and `openWebAndWait(...)` for common
+`openStoreIfAvailable(...)`, `openCheckoutIfAvailable(...)`,
+`openFriendsAndWait()`, `openStoreAndWaitIfAvailable(...)`, and
+`openWebAndWait(...)` for common
 surfaces. Direct helpers return after Steam activation starts; wait helpers
 resolve after Steam closes and the presenter parks. Use `open(target)` or
 `openAndWait(target)` when you need to construct a target object dynamically.
@@ -387,6 +388,10 @@ purchase button should return `null` instead of starting `InitTxn` while the
 managed overlay is closed, Steam is not running, Steam already reports the
 overlay disabled, the macOS native host is unavailable, or another managed
 overlay action is already active/opening.
+`steamOverlay.openCheckout(...)` and
+`steamOverlay.openCheckoutIfAvailable(...)` are also available when you already
+have a resolved checkout target and intentionally do not need to await overlay
+close; real purchase flows should normally prefer the wait helper.
 `MicroTxnAuthorizationResponse` is a purchase authorization event, not an
 overlay-close signal, so keep the managed presenter alive until Steam reports
 the overlay inactive. The returned checkout wait result includes
@@ -440,8 +445,9 @@ Use the smoke action `presenter-ready` for a cheap managed-overlay preflight:
 it attaches the Electron overlay manager, records native host availability, and
 does not activate Steam overlay UI.
 Use `presenter-duplicate-open-guard` to prove the public `IfAvailable` overlay
-helpers, including shortcut/controller target helpers, return `null` instead of
-starting a second overlay while a managed overlay is already opening.
+helpers, including shortcut/controller and checkout target helpers, return
+`null` instead of starting a second overlay while a managed overlay is already
+opening.
 The macOS minimal/core/full/persistent matrix suites require that proof, so
 regressions in duplicate menu/button suppression fail before release.
 On macOS, that preflight intentionally does not require
@@ -573,6 +579,19 @@ passive notification cases, with visible Steam web content where applicable,
 active/inactive callbacks, close/back-to-app proof, parked zero-FPS state,
 disabled needs-present polling, zero managed overlay timing, managed
 child-overlay isolation, and clean crash diagnostics.
+A focused Apple Silicon minimal run at
+`/tmp/steam-bridge-macos-overlay-matrix-minimal-direct-checkout-20260701-071929`
+rebuilt and signed the same arm64-only Electron `43.0.0` package and passed all
+11 Steam-launched cases after adding named direct checkout target helpers. The
+duplicate-open guard now proves direct target, shortcut/controller,
+`openCheckoutIfAvailable(...)`, and `openCheckoutAndWaitIfAvailable(...)`
+helpers all return `null` while a managed overlay is already opening, and that
+the checkout wait helper does not start its transaction operation in that busy
+state. The same run re-proved direct web/store/Friends/dialog helpers,
+wait-helper open/close, passive notification priming, visible Steam web content
+where applicable, close/back-to-app proof, parked zero-FPS state, disabled
+needs-present polling, zero managed overlay timing, managed child-overlay
+isolation, and clean crash diagnostics.
 
 ## Shipping Notes
 

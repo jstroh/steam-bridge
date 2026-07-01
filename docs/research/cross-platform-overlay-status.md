@@ -110,6 +110,21 @@ active/inactive callbacks, close/back-to-app proof, parked zero-FPS presenter
 state, disabled needs-present polling, zero managed overlay timing, managed
 child-overlay isolation, and clean crash diagnostics.
 
+A focused current-head 2026-07-01 minimal macOS Apple Silicon matrix at
+`/tmp/steam-bridge-macos-overlay-matrix-minimal-direct-checkout-20260701-071929`
+rebuilt and signed the arm64-only Electron `43.0.0` smoke package, reused the
+stable App ID `480` Steam shortcut without restarting Steam, and passed all 11
+Steam-launched minimal cases after adding named direct checkout target helpers.
+Its duplicate-open guard now proves direct target, shortcut/controller,
+`openCheckoutIfAvailable(...)`, and `openCheckoutAndWaitIfAvailable(...)`
+helpers all return `null` while a managed overlay is already opening, and that
+the checkout wait helper does not start its transaction operation in that busy
+state. The same run re-proved direct web/store/Friends/dialog helpers,
+wait-helper open/close, passive notification priming, visible Steam web content
+where applicable, close/back-to-app proof, parked zero-FPS presenter state,
+disabled needs-present polling, zero managed overlay timing, managed
+child-overlay isolation, and clean crash diagnostics.
+
 A 2026-07-01 full macOS Apple Silicon matrix at
 `/tmp/steam-bridge-macos-overlay-matrix-full-isolation-proof-20260701-045604`
 rebuilt and signed the arm64 Electron `43.0.0` smoke package, verified the
@@ -238,6 +253,7 @@ one-process matrix: both `getOpenStatus(...)` and `getShortcutOpenStatus()`
 reported `reason: "opening"`, `openIfAvailable(...)`,
 `openAndWaitIfAvailable(...)`, `openShortcutTargetIfAvailable()`,
 `openShortcutTargetAndWaitIfAvailable()`, and
+both `openCheckoutIfAvailable(...)` and
 `openCheckoutAndWaitIfAvailable(...)` all returned `null`, and the checkout
 operation callback was not run. The same run re-proved readiness,
 web/store/Friends/dialog `openAndWait(...)`, passive progress/unlock toasts,
@@ -272,6 +288,7 @@ while both `getOpenStatus(...)` and `getShortcutOpenStatus()` reported
 `reason: "opening"`, proved `openIfAvailable(...)`,
 `openAndWaitIfAvailable(...)`, `openShortcutTargetIfAvailable()`,
 `openShortcutTargetAndWaitIfAvailable()`, and
+both `openCheckoutIfAvailable(...)` and
 `openCheckoutAndWaitIfAvailable(...)` all returned `null`, proved the checkout
 operation callback was not run, then completed the normal visible-web close,
 active=false callback, app-frontmost return, zero-FPS parked presenter, zero

@@ -830,6 +830,11 @@ function verifyDuplicateOpenGuard(caseId, actionName, resultEvents, lifecycleEnt
     failures
   );
   expect(
+    payload.checkoutOpenIfAvailableNull === true,
+    `${caseId}: openCheckoutIfAvailable returned null while busy`,
+    failures
+  );
+  expect(
     payload.checkoutIfAvailableNull === true,
     `${caseId}: openCheckoutAndWaitIfAvailable returned null while busy`,
     failures
@@ -2389,6 +2394,7 @@ function createSelfTestFixture(root) {
             openAndWaitIfAvailableNull: true,
             shortcutIfAvailableNull: true,
             shortcutAndWaitIfAvailableNull: true,
+            checkoutOpenIfAvailableNull: true,
             checkoutIfAvailableNull: true,
             checkoutOperationRan: false,
             presenter: activePresenterFixture(17)
