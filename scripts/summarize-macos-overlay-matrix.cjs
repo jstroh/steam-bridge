@@ -1322,6 +1322,9 @@ function verifyMicroTxnCallbackPresenterSnapshots(caseId, entries, failures, opt
         `${caseId}: ${label} app ID expected ${formatValue(options.expectedAppId)}, got ${formatValue(appId)}`
       );
     }
+    if (options.required === true && microTxnEventAuthorization(entry) === undefined) {
+      failures.push(`${caseId}: ${label} did not include an authorization result`);
+    }
   });
 
   if (options.required === true && options.actionName === "presenter-checkout" && options.checkoutSource) {
@@ -1392,6 +1395,33 @@ function microTxnEventAppId(event) {
   for (const key of ["appId", "app_id", "m_unAppID", "m_nAppID"]) {
     if (activePayload[key] != null) {
       return Number(activePayload[key]);
+    }
+  }
+  return undefined;
+}
+
+function microTxnEventAuthorization(event) {
+  if (!event) {
+    return undefined;
+  }
+  const payload = event.payload;
+  if (payload === true || payload === 1 || payload === "1" || payload === "true") {
+    return true;
+  }
+  if (payload === false || payload === 0 || payload === "0" || payload === "false") {
+    return false;
+  }
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return undefined;
+  }
+  const activePayload = payload["0"] && typeof payload["0"] === "object" ? payload["0"] : payload;
+  for (const key of ["authorized", "m_bAuthorized"]) {
+    const value = activePayload[key];
+    if (value === true || value === 1 || value === "1" || value === "true") {
+      return true;
+    }
+    if (value === false || value === 0 || value === "0" || value === "false") {
+      return false;
     }
   }
   return undefined;
@@ -2096,6 +2126,9 @@ function runSelfTest() {
   const missingAppMicroTxnFixtureRoot = fs.mkdtempSync(
     path.join(os.tmpdir(), "steam-bridge-macos-matrix-summary-missing-app-microtxn.")
   );
+  const missingAuthorizationMicroTxnFixtureRoot = fs.mkdtempSync(
+    path.join(os.tmpdir(), "steam-bridge-macos-matrix-summary-missing-authorization-microtxn.")
+  );
   const missingCheckoutErrorSnapshotFixtureRoot = fs.mkdtempSync(
     path.join(os.tmpdir(), "steam-bridge-macos-matrix-summary-missing-checkout-error-snapshot.")
   );
@@ -2174,6 +2207,9 @@ function runSelfTest() {
     createSelfTestFixture(missingAppMicroTxnFixtureRoot);
     removeMicroTxnCallbackAppId(missingAppMicroTxnFixtureRoot, "06-checkout");
     assertMissingAppMicroTxnCallbackRejected(missingAppMicroTxnFixtureRoot);
+    createSelfTestFixture(missingAuthorizationMicroTxnFixtureRoot);
+    removeMicroTxnCallbackAuthorization(missingAuthorizationMicroTxnFixtureRoot, "06-checkout");
+    assertMissingAuthorizationMicroTxnCallbackRejected(missingAuthorizationMicroTxnFixtureRoot);
     createSelfTestFixture(missingCheckoutErrorSnapshotFixtureRoot);
     removeCheckoutActionErrorSnapshot(missingCheckoutErrorSnapshotFixtureRoot, "07c-checkout-unavailable");
     assertMissingCheckoutActionErrorSnapshotRejected(missingCheckoutErrorSnapshotFixtureRoot);
@@ -2221,6 +2257,7 @@ function runSelfTest() {
     fs.rmSync(lateMicroTxnFixtureRoot, { recursive: true, force: true });
     fs.rmSync(wrongAppMicroTxnFixtureRoot, { recursive: true, force: true });
     fs.rmSync(missingAppMicroTxnFixtureRoot, { recursive: true, force: true });
+    fs.rmSync(missingAuthorizationMicroTxnFixtureRoot, { recursive: true, force: true });
     fs.rmSync(missingCheckoutErrorSnapshotFixtureRoot, { recursive: true, force: true });
     fs.rmSync(missingWebVisibilityFixtureRoot, { recursive: true, force: true });
     fs.rmSync(missingNeedsPresentPollingFixtureRoot, { recursive: true, force: true });
@@ -2565,6 +2602,13 @@ function removeMicroTxnCallbackAppId(root, caseId) {
   });
 }
 
+function removeMicroTxnCallbackAuthorization(root, caseId) {
+  updateMicroTxnCallbackPayload(root, caseId, (payload) => {
+    delete payload.authorized;
+    delete payload.m_bAuthorized;
+  });
+}
+
 function updateMicroTxnCallbackPayload(root, caseId, update) {
   const row = readManifestRows(root).find((entry) => entry.caseId === caseId);
   assert.ok(row, `self-test fixture should include ${caseId}`);
@@ -2603,6 +2647,18 @@ function assertMissingAppMicroTxnCallbackRejected(root) {
     result.stderr,
     /microtxn callback 1 did not include an app ID/,
     "summary rejection should identify the missing MicroTxn app ID"
+  );
+}
+
+function assertMissingAuthorizationMicroTxnCallbackRejected(root) {
+  const result = spawnSync(process.execPath, [__filename, "--artifact-root", root], {
+    encoding: "utf8"
+  });
+  assert.notEqual(result.status, 0, "summary should reject required MicroTxn callbacks without authorization results");
+  assert.match(
+    result.stderr,
+    /microtxn callback 1 did not include an authorization result/,
+    "summary rejection should identify the missing MicroTxn authorization result"
   );
 }
 

@@ -480,7 +480,8 @@ When `--require-microtxn-callback` is used for real checkout proof, the macOS
 summary requires a `MicroTxnAuthorizationResponse` callback with an attached
 native presenter snapshot during the `openCheckoutAndWait(...)` lifecycle,
 before the checkout wait is allowed to complete. Required real-checkout proof
-also verifies the callback app ID matches the launched Steam app.
+also verifies the callback app ID matches the launched Steam app and that the
+callback includes Steam's authorization result.
 For split-step checkout targets outside the managed wait helper, call
 `steamworks.overlay.checkoutTargetFromResult(initTxnResponse, { expectedAppId })`
 to get the same wrong-app guard before handing the target to a shortcut or other
