@@ -953,12 +953,12 @@ Current evidence:
   callbacks where expected, active shown presenter snapshots, one
   `gameoverlayui` target, app focus return, clean crash diagnostics, an
   interactive macOS host state, and idle presenter parking at `currentFps=0`.
-  The latest signed full macOS artifact covers 45 process-per-case routes. The
-  current core Apple Silicon artifact covers 37 routes after adding direct
-  readiness-status proof for profile, players, community, stats, achievements,
-  and user chat helpers, and the current persistent artifact covers 51
-  one-process routes, including programmatic `openShortcutTargetAndWait()`
-  proof for every supported presenter-backed shortcut target. A focused
+  The current full Apple Silicon artifact covers 55 process-per-case routes
+  after adding direct readiness-status proof for profile, players, community,
+  stats, achievements, and user chat helpers, and the current persistent
+  artifact covers 51 one-process routes, including programmatic
+  `openShortcutTargetAndWait()` proof for every supported presenter-backed
+  shortcut target. A focused
   2026-07-01 minimal Apple Silicon
   run at `/tmp/steam-bridge-macos-overlay-matrix-20260701-032532` passed all 7
   minimal cases after expanding `presenter-duplicate-open-guard`; it proved
@@ -1444,6 +1444,13 @@ Current evidence:
   cases with the same direct helper evidence plus the existing open/wait,
   shortcut, checkout, passive notification, close/back-to-app, parked zero-FPS,
   zero managed timing, managed isolation, and clean crash-diagnostic checks.
+  A current-head 2026-07-01 full Apple Silicon matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-20260701-120932` reused that same
+  signed package and stable shortcut without repackaging or restarting Steam,
+  then passed all 55 process-per-case routes with the same direct helper
+  evidence plus the broader waited route, passive toast, checkout, shortcut,
+  dialog-equivalent, close/back-to-app, parked zero-FPS, zero managed timing,
+  managed isolation, and clean crash-diagnostic checks.
 - BrowserWindow-only overlay support is not proven.
 - Steam launch, app ID, auth, and callbacks are not enough to claim overlay
   support.

@@ -934,8 +934,10 @@ that the presenter releases back to idle; real checkout-open cases remain
 separate and require close/back-to-app proof. The current core suite is
 live-proven at 37 Apple Silicon cases after adding direct readiness-status
 proof for profile, players, community, stats, achievements, and user chat
-helpers. The current persistent suite is live-proven at 51 Apple Silicon
-one-process cases in
+helpers. The current full suite is live-proven at 55 Apple Silicon
+process-per-case routes in
+`/tmp/steam-bridge-macos-overlay-matrix-20260701-120932`, and the current
+persistent suite is live-proven at 51 Apple Silicon one-process cases in
 `/tmp/steam-bridge-macos-overlay-matrix-20260701-115219`, covering the managed
 `presenter-ready` preflight, direct and waited web/store/Friends/dialog/
 profile/players/community/stats/achievements/user routes, checkout approval

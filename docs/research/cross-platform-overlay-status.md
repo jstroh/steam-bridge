@@ -229,6 +229,22 @@ target, visible Steam web content where applicable, close/back-to-app proof,
 parked zero-FPS state, zero managed timing, managed isolation, clean
 control-server quit behavior, and clean crash diagnostics.
 
+A current-head 2026-07-01 full macOS Apple Silicon matrix at
+`/tmp/steam-bridge-macos-overlay-matrix-20260701-120932` reused the same signed
+arm64-only Electron `43.0.0` package and stable App ID `480` shortcut without
+repackaging or restarting Steam, and passed all 55 Steam-launched
+process-per-case routes. It brings the new direct
+profile/players/community/stats/achievements/user-chat readiness-status proof
+into the broad cold-launch suite while re-proving readiness, direct
+web/store/Friends/dialog/checkout routes, web/store/Friends/dialog
+`openAndWait(...)`, duplicate-open suppression, passive progress/unlock toasts,
+checkout approval and prepare-only, every managed Shift+Tab shortcut target,
+every dialog-equivalent route, every programmatic shortcut
+`openAndWait(...)` target, visible Steam web content where applicable,
+close/back-to-app proof, parked zero-FPS state, zero managed timing, managed
+isolation, one Metal presenter-backed overlay target, disabled needs-present
+polling, and clean crash diagnostics.
+
 A 2026-07-01 full macOS Apple Silicon matrix at
 `/tmp/steam-bridge-macos-overlay-matrix-full-isolation-proof-20260701-045604`
 rebuilt and signed the arm64 Electron `43.0.0` smoke package, verified the
