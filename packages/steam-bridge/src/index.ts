@@ -9247,7 +9247,24 @@ export function createElectronSteamOverlay(
       if (!status.canOpen && status.reason !== "dynamic-target") {
         return null;
       }
-      return controller.openShortcutTarget();
+
+      try {
+        const target = status.target ?? resolveElectronSteamOverlayShortcutTarget(shortcut.target);
+        const targetStatus = controller.getOpenStatus(target);
+        if (!targetStatus.canOpen) {
+          return null;
+        }
+
+        shortcutOpenState.opening = true;
+        const openedPresenter = controller.open(target);
+        notifyElectronSteamOverlayShortcutOpened(shortcut, target);
+        return openedPresenter;
+      } catch (error) {
+        notifyElectronSteamOverlayShortcutError(shortcut, error);
+        throw error;
+      } finally {
+        shortcutOpenState.opening = false;
+      }
     },
     openShortcutTarget(): NativeOverlayPresenter | null {
       assertOpen();
@@ -9289,7 +9306,26 @@ export function createElectronSteamOverlay(
       if (!status.canWait && status.reason !== "dynamic-target") {
         return null;
       }
-      return controller.openShortcutTargetAndWait(options);
+
+      try {
+        const target = status.target ?? resolveElectronSteamOverlayShortcutTarget(shortcut.target);
+        const targetStatus = controller.getOpenStatus(target);
+        if (!targetStatus.canWait) {
+          return null;
+        }
+
+        shortcutOpenState.opening = true;
+        return await openElectronSteamOverlayTargetAndWait(target, options, {
+          onOpened() {
+            notifyElectronSteamOverlayShortcutOpened(shortcut, target);
+          }
+        });
+      } catch (error) {
+        notifyElectronSteamOverlayShortcutError(shortcut, error);
+        throw error;
+      } finally {
+        shortcutOpenState.opening = false;
+      }
     },
     async openShortcutTargetAndWait(
       options: ElectronSteamOverlayOpenAndWaitOptions = {}

@@ -1027,6 +1027,15 @@ Steam, log out or reboot macOS to clear the user-session IPC state.
   approval and prepare-only, close/back-to-app proof, zero-FPS parking, zero
   managed timing, managed isolation, and clean crash diagnostics from the Apple
   Silicon-only package path.
+- A focused current-head 2026-07-01 minimal Apple Silicon matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-dynamic-shortcut-20260701-140139`
+  rebuilt and signed the arm64-only Electron `43.0.0` package, reused the
+  stable App ID `480` shortcut without restarting Steam, and passed all 11
+  minimal cases after dynamic shortcut `IfAvailable` hardening. Unit coverage
+  now proves dynamic shortcut availability helpers resolve the target before
+  re-checking target open/wait status, return `null` for unavailable or
+  unwaitable resolved targets without activating Steam overlay UI, and leave
+  explicit shortcut helpers responsible for surfacing unsupported-target errors.
 
 ## Primary References
 

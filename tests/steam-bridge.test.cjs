@@ -8988,6 +8988,115 @@ test("electron steam overlay dynamic shortcut IfAvailable waits for overlay read
   overlay.close();
 });
 
+test("electron steam overlay dynamic shortcut IfAvailable suppresses unavailable resolved targets", async (t) => {
+  const hostHandle = Buffer.from([4, 8, 15, 22]);
+  let hostOpen = false;
+  const fake = createFakeNative({
+    attachNativeOverlayHostView(nativeWindowHandle) {
+      hostOpen = true;
+      this.calls.push({ method: "attachNativeOverlayHostView", args: [nativeWindowHandle] });
+    },
+    pumpNativeOverlayProbeWindow() {
+      this.calls.push({ method: "pumpNativeOverlayProbeWindow", args: [] });
+    },
+    showNativeOverlayHostView() {
+      this.calls.push({ method: "showNativeOverlayHostView", args: [] });
+    },
+    setNativeOverlayHostInputPassthrough(passThrough) {
+      this.calls.push({ method: "setNativeOverlayHostInputPassthrough", args: [passThrough] });
+    },
+    setNativeOverlayHostOpacity(opaque) {
+      this.calls.push({ method: "setNativeOverlayHostOpacity", args: [opaque] });
+    },
+    detachNativeOverlayHostView() {
+      hostOpen = false;
+      this.calls.push({ method: "detachNativeOverlayHostView", args: [] });
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return false;
+    },
+    isNativeOverlayHostViewOpen() {
+      return hostOpen;
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  const window = {
+    isDestroyed() {
+      return false;
+    },
+    getNativeWindowHandle() {
+      return hostHandle;
+    },
+    once() {},
+    webContents: {
+      once() {},
+      invalidate() {},
+      send() {},
+      on() {},
+      off() {}
+    }
+  };
+
+  let resolveCount = 0;
+  const shortcutErrors = [];
+  const overlay = steam.overlay.createElectronSteamOverlay(window, {
+    title: "Electron Dynamic Shortcut Unavailable Target Overlay",
+    pollIntervalMs: 10000,
+    overlayShortcut: {
+      target() {
+        resolveCount += 1;
+        return {
+          type: "dialog",
+          dialog: steam.Dialog.Settings
+        };
+      },
+      onError(error) {
+        shortcutErrors.push(error);
+      }
+    }
+  });
+
+  const status = overlay.getShortcutOpenStatus();
+  assert.equal(status.reason, "dynamic-target");
+  assert.equal(status.canOpen, false);
+  assert.equal(status.canWait, false);
+  assert.equal(resolveCount, 0);
+
+  assert.equal(overlay.openShortcutTargetIfAvailable(), null);
+  assert.equal(await overlay.openShortcutTargetAndWaitIfAvailable({ showTimeoutMs: 5, closeTimeoutMs: 5 }), null);
+  assert.equal(resolveCount, 2);
+  assert.equal(shortcutErrors.length, 0);
+  assert.deepEqual(
+    fake.calls.filter((call) =>
+      ["activateOverlay", "activateOverlayToWebPage", "overlayActivateToStore"].includes(call.method)
+    ),
+    []
+  );
+
+  assert.throws(() => overlay.openShortcutTarget(), /does not have a verified presenter-backed route/);
+  assert.equal(shortcutErrors.length, 1);
+  assert.match(shortcutErrors[0].message, /does not have a verified presenter-backed route/);
+
+  await assert.rejects(
+    overlay.openShortcutTargetAndWait({ showTimeoutMs: 5, closeTimeoutMs: 5 }),
+    /does not have a verified presenter-backed route/
+  );
+  assert.equal(shortcutErrors.length, 2);
+  assert.match(shortcutErrors[1].message, /does not have a verified presenter-backed route/);
+  assert.equal(resolveCount, 4);
+  assert.deepEqual(
+    fake.calls.filter((call) =>
+      ["activateOverlay", "activateOverlayToWebPage", "overlayActivateToStore"].includes(call.method)
+    ),
+    []
+  );
+
+  overlay.close();
+});
+
 test("electron steam overlay shortcut wait rejects raw native diagnostic targets", async (t) => {
   const hostHandle = Buffer.from([4, 8, 15, 20]);
   let hostOpen = false;

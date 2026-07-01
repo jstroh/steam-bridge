@@ -1499,6 +1499,15 @@ Current evidence:
   Unit coverage now proves a native-host-unavailable transition while the macOS
   shortcut fallback is suspended restores focus and re-registers the fallback
   shortcut only after confirming the overlay is not still active.
+  A focused current-head minimal Apple Silicon matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-dynamic-shortcut-20260701-140139`
+  rebuilt and signed the arm64-only Electron `43.0.0` package, reused the stable
+  App ID `480` shortcut without restarting Steam, and passed all 11 minimal
+  cases after dynamic shortcut `IfAvailable` hardening. Unit coverage now proves
+  dynamic shortcut availability helpers resolve the target, re-check target
+  open/wait status, return `null` for unavailable or unwaitable resolved
+  targets without activating Steam overlay UI, and preserve explicit throwing
+  behavior for unsupported targets.
 - BrowserWindow-only overlay support is not proven.
 - Steam launch, app ID, auth, and callbacks are not enough to claim overlay
   support.

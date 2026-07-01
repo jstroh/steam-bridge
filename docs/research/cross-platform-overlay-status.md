@@ -78,6 +78,24 @@ larger suites.
 
 ## Latest macOS Evidence
 
+A focused current-head 2026-07-01 minimal macOS Apple Silicon matrix at
+`/tmp/steam-bridge-macos-overlay-matrix-dynamic-shortcut-20260701-140139`
+rebuilt and signed the arm64-only Electron `43.0.0` smoke package, verified the
+native launcher/signing shape, reused the stable App ID `480` Steam shortcut
+without restarting Steam, and passed all 11 Steam-launched minimal cases after
+dynamic shortcut `IfAvailable` hardening. Unit coverage now proves dynamic
+shortcut targets are resolved before availability helpers re-check target open
+and wait status: unavailable or unwaitable resolved targets return `null`
+without activating Steam overlay UI or reporting `overlayShortcut.onError`,
+while explicit throwing shortcut helpers still surface unsupported target
+errors. The live run re-proved direct web/store/Friends/dialog helpers,
+web/store/Friends/dialog `openAndWait(...)`, duplicate-open suppression, passive
+notification priming, visible Steam web content where applicable,
+active/inactive callbacks, close/back-to-app proof, parked zero-FPS presenter
+state, disabled needs-present polling, zero managed overlay timing, managed
+child-overlay isolation, and clean crash diagnostics from the Apple
+Silicon-only package path.
+
 A current-head 2026-07-01 core macOS Apple Silicon matrix at
 `/tmp/steam-bridge-macos-overlay-matrix-core-shortcut-readiness-20260701-062656`
 rebuilt and signed the arm64-only Electron `43.0.0` smoke package, verified the
