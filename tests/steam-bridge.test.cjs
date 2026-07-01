@@ -2814,6 +2814,68 @@ test("smoke result verifier rejects nonzero managed overlay timing", (t) => {
   assert.match(verifier.stderr, /managed Electron overlay activation boost is zero/);
 });
 
+test("smoke result verifier accepts managed overlay isolation diagnostics", (t) => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-managed-isolation-verify-"));
+  t.after(() => fs.rmSync(tempDir, { recursive: true, force: true }));
+
+  const resultFile = path.join(tempDir, "smoke.log");
+  fs.writeFileSync(
+    resultFile,
+    `STEAM_BRIDGE_SMOKE_RESULT ${JSON.stringify(passiveNotificationResult(passiveNotificationPresenterFixture()))}\n`
+  );
+
+  const verifier = childProcess.spawnSync(
+    process.execPath,
+    [
+      path.join(repoRoot, "scripts", "verify-electron-smoke-result.cjs"),
+      "--file",
+      resultFile,
+      "--app-id",
+      "480",
+      "--platform",
+      "darwin/arm64",
+      "--action",
+      "presenter-achievement-progress",
+      "--require-managed-overlay-isolation"
+    ],
+    { encoding: "utf8" }
+  );
+
+  assert.equal(verifier.status, 0, verifier.stderr);
+  assert.match(verifier.stdout, /Electron smoke result verified/);
+});
+
+test("smoke result verifier rejects missing managed overlay isolation diagnostics", (t) => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-managed-isolation-reject-"));
+  t.after(() => fs.rmSync(tempDir, { recursive: true, force: true }));
+
+  const presenter = passiveNotificationPresenterFixture();
+  delete presenter.electronOverlay.scrubSteamOverlayChildProcessEnv;
+  delete presenter.electronOverlay.scrubbedEnvKeys;
+  const resultFile = path.join(tempDir, "smoke.log");
+  fs.writeFileSync(resultFile, `STEAM_BRIDGE_SMOKE_RESULT ${JSON.stringify(passiveNotificationResult(presenter))}\n`);
+
+  const verifier = childProcess.spawnSync(
+    process.execPath,
+    [
+      path.join(repoRoot, "scripts", "verify-electron-smoke-result.cjs"),
+      "--file",
+      resultFile,
+      "--app-id",
+      "480",
+      "--platform",
+      "darwin/arm64",
+      "--action",
+      "presenter-achievement-progress",
+      "--require-managed-overlay-isolation"
+    ],
+    { encoding: "utf8" }
+  );
+
+  assert.notEqual(verifier.status, 0);
+  assert.match(verifier.stderr, /managed Electron overlay child process preload scrub is enabled/);
+});
+
 test("generated Steamworks enums expose SDK constants and lookup helpers", (t) => {
   const fake = createFakeNative();
   const steam = loadSteamWithFakeNative(fake);

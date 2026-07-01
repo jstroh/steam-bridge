@@ -40,6 +40,7 @@ require_idle_presenter="0"
 require_electron_overlay="0"
 require_presenter_mode=""
 require_overlay_shortcut_target=""
+require_managed_overlay_isolation="0"
 require_restore_focus_delay_ms=""
 require_zero_managed_overlay_timing="0"
 require_action_error_code=""
@@ -119,6 +120,8 @@ Options:
   --require-presenter-mode MODE  Require managed Electron overlay presenter mode: persistent or session.
   --require-overlay-shortcut-target NAME
                                  Require managed Electron Shift+Tab target type.
+  --require-managed-overlay-isolation
+                                 Require managed Electron child-process overlay isolation diagnostics.
   --require-restore-focus-delay-ms MS
                                  Require managed Electron overlay restore focus delay in milliseconds.
   --require-zero-managed-overlay-timing
@@ -300,6 +303,11 @@ while [ "$#" -gt 0 ]; do
       require_overlay_shortcut_target="${2:?missing --require-overlay-shortcut-target value}"
       require_electron_overlay="1"
       shift 2
+      ;;
+    --require-managed-overlay-isolation)
+      require_managed_overlay_isolation="1"
+      require_electron_overlay="1"
+      shift
       ;;
     --require-restore-focus-delay-ms)
       require_restore_focus_delay_ms="${2:?missing --require-restore-focus-delay-ms value}"
@@ -576,6 +584,7 @@ verify_result() {
   REQUIRE_ELECTRON_OVERLAY="$require_electron_overlay" \
   REQUIRE_PRESENTER_MODE="$require_presenter_mode" \
   REQUIRE_OVERLAY_SHORTCUT_TARGET="$require_overlay_shortcut_target" \
+  REQUIRE_MANAGED_OVERLAY_ISOLATION="$require_managed_overlay_isolation" \
   REQUIRE_RESTORE_FOCUS_DELAY_MS="$require_restore_focus_delay_ms" \
   REQUIRE_ZERO_MANAGED_OVERLAY_TIMING="$require_zero_managed_overlay_timing" \
   REQUIRE_ACTION_ERROR_CODE="$require_action_error_code" \
@@ -746,6 +755,7 @@ if (
     os.environ["REQUIRE_ELECTRON_OVERLAY"] == "1"
     or os.environ["REQUIRE_PRESENTER_MODE"]
     or os.environ["REQUIRE_OVERLAY_SHORTCUT_TARGET"]
+    or os.environ["REQUIRE_MANAGED_OVERLAY_ISOLATION"] == "1"
     or os.environ["REQUIRE_RESTORE_FOCUS_DELAY_MS"]
     or os.environ["REQUIRE_ZERO_MANAGED_OVERLAY_TIMING"] == "1"
 ):
@@ -755,6 +765,22 @@ if (
             electron_overlay.get("autoPrepareForNotifications") is True,
             "managed Electron overlay automatic notification priming is enabled",
         )
+if os.environ["REQUIRE_MANAGED_OVERLAY_ISOLATION"] == "1" and isinstance(electron_overlay, dict):
+    expect(
+        electron_overlay.get("scrubSteamOverlayChildProcessEnv") is True,
+        "managed Electron overlay child process preload scrub is enabled",
+    )
+    scrubbed_env_keys = electron_overlay.get("scrubbedEnvKeys")
+    expect(
+        isinstance(scrubbed_env_keys, list),
+        "managed Electron overlay scrubbed environment key diagnostics are available",
+    )
+    if isinstance(scrubbed_env_keys, list):
+        for key in scrubbed_env_keys:
+            expect(
+                key in ("LD_PRELOAD", "DYLD_INSERT_LIBRARIES"),
+                f"managed Electron overlay scrubbed environment key is expected: {key}",
+            )
 if os.environ["REQUIRE_PRESENTER_MODE"] and isinstance(electron_overlay, dict):
     expect(
         electron_overlay.get("presenterMode") == os.environ["REQUIRE_PRESENTER_MODE"],
@@ -956,7 +982,7 @@ EOF
 
   result_file="$self_test_temp_home/steam-bridge-smoke-single-target.log"
   cat >"$result_file" <<'EOF'
-STEAM_BRIDGE_SMOKE_RESULT {"ok":true,"action":{"ok":true,"action":"presenter-web"},"snapshot":{"app":{"appId":480,"shortcutTarget":"friends"},"process":{"pid":4242,"platform":"linux","arch":"x64"},"launch":{"steamLaunch":true,"overlayInjection":true},"crashDiagnostics":{"available":true,"ok":true,"crashDumps":[],"fatalLifecycleEvents":[]},"overlayProcesses":{"available":true,"gameoverlayui":[{"pid":9001,"targetPid":4242,"gameId":"480","command":"gameoverlayui -pid 4242 -gameid 480"}]},"overlay":{"nativePresenter":{"ok":true,"value":{"attached":true,"nativeHostOpen":true,"mode":"passive","clickThrough":true,"focusable":false,"transparent":true,"overlayActive":false,"overlayNeedsPresent":false,"idleFps":0,"currentFps":0,"electronOverlay":{"presenterMode":"persistent","closeWithWindow":true,"autoPrepareForNotifications":true,"restoreFocusDelayMs":0,"activationBoostMs":0,"activeGraceMs":0,"overlayShortcut":{"enabled":true,"preventDefault":true,"targetType":"function"}}}}},"steam":{"initialized":true,"running":{"ok":true,"value":true},"appId":{"ok":true,"value":480},"steamDeck":{"ok":true,"value":true},"bigPicture":{"ok":true,"value":false},"overlayEnabled":{"ok":true,"value":true},"overlayNeedsPresent":{"ok":true,"value":false}},"events":[{"type":"overlay:presenter-open"},{"type":"callback:overlay-activated"}]}}
+STEAM_BRIDGE_SMOKE_RESULT {"ok":true,"action":{"ok":true,"action":"presenter-web"},"snapshot":{"app":{"appId":480,"shortcutTarget":"friends"},"process":{"pid":4242,"platform":"linux","arch":"x64"},"launch":{"steamLaunch":true,"overlayInjection":true},"crashDiagnostics":{"available":true,"ok":true,"crashDumps":[],"fatalLifecycleEvents":[]},"overlayProcesses":{"available":true,"gameoverlayui":[{"pid":9001,"targetPid":4242,"gameId":"480","command":"gameoverlayui -pid 4242 -gameid 480"}]},"overlay":{"nativePresenter":{"ok":true,"value":{"attached":true,"nativeHostOpen":true,"mode":"passive","clickThrough":true,"focusable":false,"transparent":true,"overlayActive":false,"overlayNeedsPresent":false,"idleFps":0,"currentFps":0,"electronOverlay":{"presenterMode":"persistent","closeWithWindow":true,"autoPrepareForNotifications":true,"scrubSteamOverlayChildProcessEnv":true,"scrubbedEnvKeys":[],"restoreFocusDelayMs":0,"activationBoostMs":0,"activeGraceMs":0,"overlayShortcut":{"enabled":true,"preventDefault":true,"targetType":"function"}}}}},"steam":{"initialized":true,"running":{"ok":true,"value":true},"appId":{"ok":true,"value":480},"steamDeck":{"ok":true,"value":true},"bigPicture":{"ok":true,"value":false},"overlayEnabled":{"ok":true,"value":true},"overlayNeedsPresent":{"ok":true,"value":false}},"events":[{"type":"overlay:presenter-open"},{"type":"callback:overlay-activated"}]}}
 EOF
 
   action="presenter-web"
@@ -966,6 +992,7 @@ EOF
   require_passive_presenter="1"
   require_presenter_mode="persistent"
   require_overlay_shortcut_target="friends"
+  require_managed_overlay_isolation="1"
   require_zero_managed_overlay_timing="1"
   require_no_crashes="1"
   require_events=("overlay:presenter-open" "callback:overlay-activated")
@@ -975,6 +1002,7 @@ EOF
   require_passive_presenter="0"
   require_presenter_mode=""
   require_overlay_shortcut_target=""
+  require_managed_overlay_isolation="0"
   require_zero_managed_overlay_timing="0"
   require_no_crashes="0"
 

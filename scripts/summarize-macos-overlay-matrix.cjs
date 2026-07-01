@@ -572,6 +572,16 @@ function verifyCase(caseId, metadata, result, lifecycle, macosCrashReports, fail
   if (electronOverlay) {
     expect(electronOverlay.presenterMode === "persistent", `${caseId}: presenter mode is persistent`, failures);
     expect(electronOverlay.autoPrepareForNotifications === true, `${caseId}: automatic notification priming enabled`, failures);
+    expect(
+      electronOverlay.scrubSteamOverlayChildProcessEnv === true,
+      `${caseId}: managed Electron child process preload scrub enabled`,
+      failures
+    );
+    expect(
+      Array.isArray(electronOverlay.scrubbedEnvKeys),
+      `${caseId}: managed Electron scrubbed env key diagnostics available`,
+      failures
+    );
     expect(electronOverlay.restoreFocusDelayMs === 0, `${caseId}: restore focus delay is zero`, failures);
     expect(electronOverlay.activationBoostMs === 0, `${caseId}: activation boost is zero`, failures);
     expect(electronOverlay.activeGraceMs === 0, `${caseId}: active grace is zero`, failures);
@@ -2997,6 +3007,8 @@ function parkedPresenterFixture(pumpCount, backend = "macos-metal") {
       presenterMode: "persistent",
       closeWithWindow: true,
       autoPrepareForNotifications: true,
+      scrubSteamOverlayChildProcessEnv: true,
+      scrubbedEnvKeys: [],
       restoreFocusDelayMs: 0,
       activationBoostMs: 0,
       activeGraceMs: 0,
@@ -3075,6 +3087,8 @@ function nativeHostUnavailablePresenterFixture(reason, macOverlayEnvironmentOver
       presenterMode: "persistent",
       closeWithWindow: true,
       autoPrepareForNotifications: true,
+      scrubSteamOverlayChildProcessEnv: true,
+      scrubbedEnvKeys: [],
       restoreFocusDelayMs: 0,
       activationBoostMs: 0,
       activeGraceMs: 0,

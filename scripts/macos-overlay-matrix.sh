@@ -626,6 +626,7 @@ run_self_test() {
   require_contains "$core_output" "--action presenter-web-open-and-wait" "core matrix must include web openAndWait."
   require_contains "$core_output" "--action presenter-duplicate-open-guard" "core matrix must include duplicate-open suppression proof."
   require_contains "$core_output" "--require-zero-managed-overlay-timing" "core matrix must require zero managed overlay timing."
+  require_contains "$core_output" "--require-managed-overlay-isolation" "core matrix must require managed overlay isolation."
   require_contains "$core_output" "--steam-bridge-launch-env-file=/tmp/steam-bridge-macos-smoke.env" "matrix shortcut must use the stable launcher env file."
   require_contains "$core_output" "ENV /tmp/steam-bridge-macos-smoke.env" "matrix must write per-case launcher env."
   require_contains "$core_output" "SIGNING node $script_dir/verify-macos-steam-signing.cjs --app-exe /tmp/SteamBridgeSmoke.app/Contents/MacOS/SteamBridgeSmoke" "matrix must verify macOS package signing before live cases."
@@ -2016,6 +2017,9 @@ run_case() {
   fi
   if case_uses_presenter_action "${case_args[@]}" && ! case_has_managed_timing_requirement "${case_args[@]}"; then
     case_args+=(--require-zero-managed-overlay-timing)
+  fi
+  if case_uses_presenter_action "${case_args[@]}" && ! case_has_arg "--require-managed-overlay-isolation" "${case_args[@]}"; then
+    case_args+=(--require-managed-overlay-isolation)
   fi
   run_cmd=(
     "$helper_path"

@@ -250,6 +250,9 @@ run_deck_case() {
   if case_uses_presenter_action "${case_args[@]}" && ! case_has_managed_timing_requirement "${case_args[@]}"; then
     case_args+=(--require-zero-managed-overlay-timing)
   fi
+  if case_uses_presenter_action "${case_args[@]}" && ! case_has_managed_overlay_isolation_requirement "${case_args[@]}"; then
+    case_args+=(--require-managed-overlay-isolation)
+  fi
 
   case_index=$((case_index + 1))
   local case_id
@@ -313,6 +316,16 @@ case_has_managed_timing_requirement() {
   local arg
   for arg in "$@"; do
     if [ "$arg" = "--require-restore-focus-delay-ms" ] || [ "$arg" = "--require-zero-managed-overlay-timing" ]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+case_has_managed_overlay_isolation_requirement() {
+  local arg
+  for arg in "$@"; do
+    if [ "$arg" = "--require-managed-overlay-isolation" ]; then
       return 0
     fi
   done
@@ -442,6 +455,7 @@ run_self_test() {
 
   require_contains "$core_output" "--action presenter-web" "core matrix must include presenter web."
   require_contains "$core_output" "--require-zero-managed-overlay-timing" "core matrix must require zero managed overlay timing."
+  require_contains "$core_output" "--require-managed-overlay-isolation" "core matrix must require managed overlay isolation."
   require_contains "$core_output" "--action presenter-web-open-and-wait" "core matrix must include presenter openAndWait web."
   require_contains "$core_output" "--action presenter-store-open-and-wait" "core matrix must include presenter openAndWait store."
   require_contains "$core_output" "--action presenter-dialog-auto-open-and-wait" "core matrix must include dialog-equivalent openAndWait."

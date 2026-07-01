@@ -124,6 +124,7 @@ if (
   options.requireElectronOverlay ||
   options.requirePresenterMode ||
   options.requireOverlayShortcutTarget ||
+  options.requireManagedOverlayIsolation ||
   options.requireZeroManagedOverlayTiming ||
   options.requireRestoreFocusDelayMs != null
 ) {
@@ -133,6 +134,24 @@ if (
       electronOverlay.autoPrepareForNotifications === true,
       "managed Electron overlay automatic notification priming is enabled"
     );
+  }
+}
+if (options.requireManagedOverlayIsolation && electronOverlay) {
+  expect(
+    electronOverlay.scrubSteamOverlayChildProcessEnv === true,
+    "managed Electron overlay child process preload scrub is enabled"
+  );
+  expect(
+    Array.isArray(electronOverlay.scrubbedEnvKeys),
+    "managed Electron overlay scrubbed environment key diagnostics are available"
+  );
+  if (Array.isArray(electronOverlay.scrubbedEnvKeys)) {
+    for (const key of electronOverlay.scrubbedEnvKeys) {
+      expect(
+        key === "LD_PRELOAD" || key === "DYLD_INSERT_LIBRARIES",
+        `managed Electron overlay scrubbed environment key is expected: ${key}`
+      );
+    }
   }
 }
 if (options.requirePresenterMode && electronOverlay) {
@@ -667,6 +686,7 @@ function parseArgs(args) {
     requireElectronOverlay: false,
     requirePresenterMode: undefined,
     requireOverlayShortcutTarget: undefined,
+    requireManagedOverlayIsolation: false,
     requireActionErrorCode: undefined,
     requireActionErrorReason: undefined,
     requireNativeHostUnavailableReason: undefined,
@@ -745,6 +765,10 @@ function parseArgs(args) {
         break;
       case "--require-overlay-shortcut-target":
         parsed.requireOverlayShortcutTarget = args[++index];
+        parsed.requireElectronOverlay = true;
+        break;
+      case "--require-managed-overlay-isolation":
+        parsed.requireManagedOverlayIsolation = true;
         parsed.requireElectronOverlay = true;
         break;
       case "--require-action-error-code":

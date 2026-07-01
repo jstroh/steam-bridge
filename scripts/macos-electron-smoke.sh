@@ -53,6 +53,7 @@ require_idle_presenter="0"
 require_electron_overlay="0"
 require_presenter_mode=""
 require_overlay_shortcut_target=""
+require_managed_overlay_isolation="0"
 require_restore_focus_delay_ms=""
 require_zero_managed_overlay_timing="0"
 require_action_error_code=""
@@ -134,6 +135,8 @@ Options:
   --require-presenter-mode MODE  Require managed Electron overlay presenter mode.
   --require-overlay-shortcut-target NAME
                                  Require managed Electron Shift+Tab target type.
+  --require-managed-overlay-isolation
+                                 Require managed Electron child-process overlay isolation diagnostics.
   --require-restore-focus-delay-ms MS
                                  Require managed Electron overlay restore focus delay in milliseconds.
   --require-zero-managed-overlay-timing
@@ -366,6 +369,11 @@ while [ "$#" -gt 0 ]; do
       require_overlay_shortcut_target="${2:?missing --require-overlay-shortcut-target value}"
       require_electron_overlay="1"
       shift 2
+      ;;
+    --require-managed-overlay-isolation)
+      require_managed_overlay_isolation="1"
+      require_electron_overlay="1"
+      shift
       ;;
     --require-restore-focus-delay-ms)
       require_restore_focus_delay_ms="${2:?missing --require-restore-focus-delay-ms value}"
@@ -1556,6 +1564,9 @@ verify_result() {
   if [ -n "$require_overlay_shortcut_target" ]; then
     args+=("--require-overlay-shortcut-target" "$require_overlay_shortcut_target")
   fi
+  if [ "$require_managed_overlay_isolation" = "1" ]; then
+    args+=("--require-managed-overlay-isolation")
+  fi
   if [ -n "$require_restore_focus_delay_ms" ]; then
     args+=("--require-restore-focus-delay-ms" "$require_restore_focus_delay_ms")
   fi
@@ -2669,7 +2680,7 @@ run_self_test() {
   result_file="$temp_result"
   diagnostic_dir="$result_file.diagnostics"
   cat >"$result_file" <<'EOF'
-STEAM_BRIDGE_SMOKE_RESULT {"ok":true,"action":{"ok":true,"action":"presenter-web"},"snapshot":{"app":{"appId":480,"shortcutTarget":"friends"},"process":{"pid":4242,"platform":"darwin","arch":"arm64"},"launch":{"steamLaunch":true,"overlayInjection":true},"crashDiagnostics":{"available":true,"ok":true,"crashDumps":[],"fatalLifecycleEvents":[]},"overlay":{"nativePresenter":{"ok":true,"value":{"backend":"macos-metal","attached":true,"nativeHostOpen":true,"macOverlayEnvironment":{"screenLocked":false,"displayAsleep":false},"mode":"passive","clickThrough":true,"focusable":false,"transparent":true,"overlayActive":false,"overlayNeedsPresent":false,"overlayNeedsPresentPollingEnabled":false,"idleFps":0,"currentFps":0,"electronOverlay":{"presenterMode":"persistent","closeWithWindow":true,"autoPrepareForNotifications":true,"restoreFocusDelayMs":0,"activationBoostMs":0,"activeGraceMs":0,"overlayShortcut":{"enabled":true,"preventDefault":true,"targetType":"friends","target":{"type":"friends"}}}}}},"steam":{"initialized":true,"running":{"ok":true,"value":true},"appId":{"ok":true,"value":480},"steamDeck":{"ok":true,"value":false},"bigPicture":{"ok":true,"value":false},"overlayEnabled":{"ok":true,"value":true},"overlayNeedsPresent":{"ok":true,"value":false},"overlayNeedsPresentPollingEnabled":{"ok":true,"value":false}},"events":[{"type":"overlay:presenter-open"},{"type":"callback:overlay-activated","payload":{"active":true}}]}}
+STEAM_BRIDGE_SMOKE_RESULT {"ok":true,"action":{"ok":true,"action":"presenter-web"},"snapshot":{"app":{"appId":480,"shortcutTarget":"friends"},"process":{"pid":4242,"platform":"darwin","arch":"arm64"},"launch":{"steamLaunch":true,"overlayInjection":true},"crashDiagnostics":{"available":true,"ok":true,"crashDumps":[],"fatalLifecycleEvents":[]},"overlay":{"nativePresenter":{"ok":true,"value":{"backend":"macos-metal","attached":true,"nativeHostOpen":true,"macOverlayEnvironment":{"screenLocked":false,"displayAsleep":false},"mode":"passive","clickThrough":true,"focusable":false,"transparent":true,"overlayActive":false,"overlayNeedsPresent":false,"overlayNeedsPresentPollingEnabled":false,"idleFps":0,"currentFps":0,"electronOverlay":{"presenterMode":"persistent","closeWithWindow":true,"autoPrepareForNotifications":true,"scrubSteamOverlayChildProcessEnv":true,"scrubbedEnvKeys":[],"restoreFocusDelayMs":0,"activationBoostMs":0,"activeGraceMs":0,"overlayShortcut":{"enabled":true,"preventDefault":true,"targetType":"friends","target":{"type":"friends"}}}}}},"steam":{"initialized":true,"running":{"ok":true,"value":true},"appId":{"ok":true,"value":480},"steamDeck":{"ok":true,"value":false},"bigPicture":{"ok":true,"value":false},"overlayEnabled":{"ok":true,"value":true},"overlayNeedsPresent":{"ok":true,"value":false},"overlayNeedsPresentPollingEnabled":{"ok":true,"value":false}},"events":[{"type":"overlay:presenter-open"},{"type":"callback:overlay-activated","payload":{"active":true}}]}}
 EOF
   mkdir -p "$diagnostic_dir/crash-dumps"
   if [ "$(read_macos_smoke_result_pid)" != "4242" ]; then
@@ -2695,6 +2706,7 @@ EOF
   require_electron_overlay="1"
   require_presenter_mode="persistent"
   require_overlay_shortcut_target="friends"
+  require_managed_overlay_isolation="1"
   require_zero_managed_overlay_timing="1"
   require_no_crashes="1"
   require_events=("overlay:presenter-open" "callback:overlay-activated")

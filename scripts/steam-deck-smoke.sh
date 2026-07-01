@@ -56,6 +56,7 @@ require_idle_presenter="0"
 require_electron_overlay="0"
 require_presenter_mode=""
 require_overlay_shortcut_target=""
+require_managed_overlay_isolation="0"
 require_restore_focus_delay_ms=""
 require_zero_managed_overlay_timing="0"
 require_no_crashes="0"
@@ -152,6 +153,8 @@ Options:
   --require-presenter-mode MODE Require managed Electron overlay presenter mode: persistent or session.
   --require-overlay-shortcut-target NAME
                                 Require managed Electron Shift+Tab target type.
+  --require-managed-overlay-isolation
+                                Require managed Electron child-process overlay isolation diagnostics.
   --require-restore-focus-delay-ms MS
                                 Require managed Electron overlay restore focus delay in milliseconds.
   --require-zero-managed-overlay-timing
@@ -375,6 +378,11 @@ while [ "$#" -gt 0 ]; do
       require_overlay_shortcut_target="${2:?missing --require-overlay-shortcut-target value}"
       require_electron_overlay="1"
       shift 2
+      ;;
+    --require-managed-overlay-isolation)
+      require_managed_overlay_isolation="1"
+      require_electron_overlay="1"
+      shift
       ;;
     --require-restore-focus-delay-ms)
       require_restore_focus_delay_ms="${2:?missing --require-restore-focus-delay-ms value}"
@@ -1919,6 +1927,9 @@ append_common_helper_args() {
   if [ -n "$require_overlay_shortcut_target" ]; then
     helper_args+=("--require-overlay-shortcut-target" "$require_overlay_shortcut_target")
   fi
+  if [ "$require_managed_overlay_isolation" = "1" ]; then
+    helper_args+=("--require-managed-overlay-isolation")
+  fi
   if [ -n "$require_restore_focus_delay_ms" ]; then
     helper_args+=("--require-restore-focus-delay-ms" "$require_restore_focus_delay_ms")
   fi
@@ -1998,6 +2009,9 @@ build_steam_launch_args() {
     if [ "$require_zero_managed_overlay_timing" != "1" ] && [ -z "$require_restore_focus_delay_ms" ]; then
       helper_args+=("--require-zero-managed-overlay-timing")
     fi
+    if [ "$require_managed_overlay_isolation" != "1" ]; then
+      helper_args+=("--require-managed-overlay-isolation")
+    fi
   fi
   if [ "$action" = "presenter-ready" ]; then
     helper_args+=("--require-no-crashes")
@@ -2007,6 +2021,9 @@ build_steam_launch_args() {
     fi
     if [ "$require_zero_managed_overlay_timing" != "1" ] && [ -z "$require_restore_focus_delay_ms" ]; then
       helper_args+=("--require-zero-managed-overlay-timing")
+    fi
+    if [ "$require_managed_overlay_isolation" != "1" ]; then
+      helper_args+=("--require-managed-overlay-isolation")
     fi
   fi
   if { [ "$action" = "presenter-shortcut" ] || [ "$action" = "presenter-shortcut-open-and-wait" ]; } && [ -z "$require_overlay_shortcut_target" ]; then
@@ -2360,6 +2377,10 @@ run_self_test() {
     echo "Self-test failed: Presenter product args must require zero managed overlay timing by default." >&2
     exit 1
   fi
+  if [[ "$friends_args" != *"--require-managed-overlay-isolation"* ]]; then
+    echo "Self-test failed: Presenter product args must require managed overlay isolation by default." >&2
+    exit 1
+  fi
 
   action="presenter-web-open-and-wait"
   build_steam_launch_args
@@ -2386,6 +2407,10 @@ run_self_test() {
   fi
   if [[ "$open_wait_args" != *"--require-zero-managed-overlay-timing"* ]]; then
     echo "Self-test failed: Presenter openAndWait args must require zero managed overlay timing diagnostics." >&2
+    exit 1
+  fi
+  if [[ "$open_wait_args" != *"--require-managed-overlay-isolation"* ]]; then
+    echo "Self-test failed: Presenter openAndWait args must require managed overlay isolation diagnostics." >&2
     exit 1
   fi
 
@@ -2546,6 +2571,10 @@ run_self_test() {
     echo "Self-test failed: Session presenter shortcut args must require zero managed overlay timing diagnostics." >&2
     exit 1
   fi
+  if [[ "$shortcut_args" != *"--require-managed-overlay-isolation"* ]]; then
+    echo "Self-test failed: Session presenter shortcut args must require managed overlay isolation diagnostics." >&2
+    exit 1
+  fi
   if [[ "$shortcut_args" != *"--require-overlay-shortcut-target web"* ]]; then
     echo "Self-test failed: Presenter shortcut args must require the requested shortcut target diagnostics." >&2
     exit 1
@@ -2673,6 +2702,10 @@ run_self_test() {
   fi
   if [[ "$toast_args" != *"--require-zero-managed-overlay-timing"* ]]; then
     echo "Self-test failed: Toast args must require zero managed overlay timing diagnostics." >&2
+    exit 1
+  fi
+  if [[ "$toast_args" != *"--require-managed-overlay-isolation"* ]]; then
+    echo "Self-test failed: Toast args must require managed overlay isolation diagnostics." >&2
     exit 1
   fi
 

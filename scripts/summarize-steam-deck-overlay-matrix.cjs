@@ -222,6 +222,16 @@ function summarizeMatrixArtifacts(root) {
           resultFailures
         );
         expect(
+          electronOverlay.scrubSteamOverlayChildProcessEnv === true,
+          `${caseName}: managed Electron overlay child process preload scrub is enabled`,
+          resultFailures
+        );
+        expect(
+          Array.isArray(electronOverlay.scrubbedEnvKeys),
+          `${caseName}: managed Electron overlay scrubbed environment key diagnostics are available`,
+          resultFailures
+        );
+        expect(
           electronOverlay.restoreFocusDelayMs === 0,
           `${caseName}: managed Electron overlay restore focus delay is zero`,
           resultFailures
@@ -848,6 +858,8 @@ function electronOverlayFixture() {
     presenterMode: "persistent",
     closeWithWindow: true,
     autoPrepareForNotifications: true,
+    scrubSteamOverlayChildProcessEnv: true,
+    scrubbedEnvKeys: [],
     restoreFocusDelayMs: 0,
     activationBoostMs: 0,
     activeGraceMs: 0,
