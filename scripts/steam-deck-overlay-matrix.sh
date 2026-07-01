@@ -383,7 +383,7 @@ require_contains() {
   local output="$1"
   local pattern="$2"
   local message="$3"
-  if ! printf '%s\n' "$output" | grep -Fq -- "$pattern"; then
+  if [[ "$output" != *"$pattern"* ]]; then
     echo "Self-test failed: $message" >&2
     exit 1
   fi
@@ -393,7 +393,7 @@ require_not_contains() {
   local output="$1"
   local pattern="$2"
   local message="$3"
-  if printf '%s\n' "$output" | grep -Fq -- "$pattern"; then
+  if [[ "$output" == *"$pattern"* ]]; then
     echo "Self-test failed: $message" >&2
     exit 1
   fi

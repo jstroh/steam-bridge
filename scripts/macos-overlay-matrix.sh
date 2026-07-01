@@ -686,7 +686,7 @@ run_self_test() {
   require_not_contains "$full_output" "123456789" "full matrix dry-run output must not print checkout transaction IDs."
   require_not_contains "$persistent_output" "123456789" "persistent matrix dry-run output must not print checkout transaction IDs."
   require_contains "$persistent_output" "--control-token REDACTED" "persistent matrix dry-run output should prove control-token wiring without printing the token."
-  if printf '%s\n' "$persistent_output" | grep -Eq -- '--control-token [[:xdigit:]]{48}'; then
+  if [[ "$persistent_output" =~ --control-token[[:space:]][[:xdigit:]]{48} ]]; then
     echo "Self-test failed: persistent matrix dry-run output must not print raw control tokens." >&2
     exit 1
   fi
