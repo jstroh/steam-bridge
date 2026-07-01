@@ -769,6 +769,20 @@ close/back-to-app proof, parked zero-FPS presenter state, zero managed timing,
 managed isolation, one Metal presenter-backed overlay target under game ID
 `480`, visible checkout web content for waited close probes, and clean crash
 diagnostics.
+A focused Apple Silicon checkout run at
+`/tmp/steam-bridge-macos-overlay-matrix-checkout-redacted-20260701-132412`
+then reused the same signed arm64-only Electron `43.0.0` package and stable App
+ID `480` shortcut without restarting Steam and passed the same four checkout
+cases with live command logs redacting checkout transaction inputs as
+`REDACTED`. The run re-proved prepare-only checkout, direct checkout approval,
+managed Shift+Tab checkout, and programmatic shortcut checkout
+`openAndWait(...)`, including named open-status and checkout-operation
+diagnostics, visible checkout web content for waited close probes,
+close/back-to-app proof, parked zero-FPS presenter state, zero managed timing,
+managed isolation, one Metal presenter-backed overlay target under game ID
+`480`, and clean crash diagnostics. This remains public App ID `480` routing
+evidence; real purchase-content proof still requires a configured product in a
+real Steam app.
 A focused Apple Silicon minimal run at
 `/tmp/steam-bridge-macos-overlay-matrix-20260701-111335` then reused the same
 signed arm64-only Electron `43.0.0` package, verified the native launcher

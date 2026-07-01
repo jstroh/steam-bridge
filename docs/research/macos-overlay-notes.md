@@ -1000,6 +1000,19 @@ Steam, log out or reboot macOS to clear the user-session IPC state.
   content where applicable, close/back-to-app proof, parked zero-FPS state,
   disabled needs-present polling, zero managed overlay timing, managed
   child-overlay isolation, and clean crash diagnostics.
+- A focused current-head 2026-07-01 checkout Apple Silicon matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-checkout-redacted-20260701-132412`
+  reused the signed arm64-only Electron `43.0.0` package and stable App ID
+  `480` shortcut without restarting Steam and passed checkout prepare-only,
+  direct checkout approval, managed Shift+Tab checkout, and programmatic
+  shortcut checkout `openAndWait(...)`. The live command logs redacted checkout
+  transaction inputs as `REDACTED`, and the summary re-proved visible checkout
+  web content for waited close probes, close/back-to-app proof, parked zero-FPS
+  state, zero managed timing, managed child-overlay isolation, one Metal
+  presenter-backed overlay target under game ID `480`, named open-status and
+  checkout-operation diagnostics, and clean crash diagnostics. This remains
+  public App ID `480` routing evidence; real purchase-content proof still
+  requires a configured product in a real Steam app.
 
 ## Primary References
 
