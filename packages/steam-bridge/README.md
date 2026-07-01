@@ -428,10 +428,13 @@ Community, Stats, Achievements, user-profile, and checkout targets route through
 presenter-backed paths
 used by the Steam Deck Desktop Mode proofs; `openSteamOverlay(...)` and the
 lower-level named helpers remain available for apps that prefer explicit
-lifecycle control. Direct helpers fail before activation when fresh diagnostics
-already prove a known blocker such as Steam not running, the overlay hook not
-being ready, a busy managed overlay, or an unavailable macOS native host. Use
-the wait or `IfAvailable` forms for normal UI buttons and controller bindings.
+lifecycle control. Non-wait helpers fail before activation when fresh
+diagnostics already prove a known blocker such as Steam not running, the
+overlay hook not being ready, a busy managed overlay, or an unavailable macOS
+native host. Wait helpers share the same preflight: hard blockers fail before
+native-host activation, while a temporary `overlay-not-ready` state can wait for
+Steam readiness before activating Steam. Use the wait or `IfAvailable` forms
+for normal UI buttons and controller bindings.
 The public smoke app can verify checkout readiness, but real
 purchase-content proof still requires a real Steam app and configured product.
 `open(...)` keeps the presenter active with an operation-scoped hold until Steam
@@ -439,9 +442,9 @@ reports the overlay shown; its internal timeout is only a failure guard for the
 case where Steam never activates the overlay. Use `openAndWait(...)` for modal
 web, store, checkout, and dialog-equivalent overlays when app code should also
 wait until Steam closes and the presenter parks. `openAndWait(...)` uses the
-same show hold, waits for Steam's overlay diagnostics to report the app ready
-before activating Steam, then parks from overlay callbacks and presenter state
-changes instead of depending on a fixed activation window.
+same side-effect-free status gate, waits for Steam's overlay diagnostics to
+report the app ready before activating Steam, then parks from overlay callbacks
+and presenter state changes instead of depending on a fixed activation window.
 It also validates managed targets before preparing the native host and rejects
 raw native prompt routes such as `route: "native"` dialog/user targets because
 those routes are diagnostic-only and do not have reliable activation/close

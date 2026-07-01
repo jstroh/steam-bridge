@@ -346,10 +346,13 @@ dialog equivalents. Use the named helpers such as `openFriends()`,
 surfaces. Direct helpers return after Steam activation starts; wait helpers
 resolve after Steam closes and the presenter parks. Use `open(target)` or
 `openAndWait(target)` when you need to construct a target object dynamically.
-Direct helpers fail before activation when fresh diagnostics already prove a
+Non-wait helpers fail before activation when fresh diagnostics already prove a
 known blocker such as Steam not running, the overlay hook not being ready, a
-busy managed overlay, or an unavailable macOS native host. Prefer the wait or
-`IfAvailable` forms for normal UI buttons and controller bindings.
+busy managed overlay, or an unavailable macOS native host. Wait helpers share
+the same preflight: hard blockers fail before native-host activation, while a
+temporary `overlay-not-ready` state can wait for Steam readiness before
+activating Steam. Prefer the wait or `IfAvailable` forms for normal UI buttons
+and controller bindings.
 `openAndWait(...)` validates those routes before preparing the native host and
 rejects raw native prompt routes. Use
 `open({ ..., route: "native" })` only when you are explicitly collecting

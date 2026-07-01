@@ -9677,8 +9677,8 @@ export function createElectronSteamOverlay(
     options: ElectronSteamOverlayOpenAndWaitOptions = {},
     lifecycle: ElectronSteamOverlayTargetWaitLifecycle = {}
   ): Promise<ElectronSteamOverlayOpenAndWaitResult> {
-    const targetSnapshot = snapshotSteamOverlayTarget(target);
     let activationHandle = lifecycle.activationHandle;
+    let targetSnapshot = snapshotSteamOverlayTarget(target);
     let activationReleased = false;
     const releaseActivation = (): void => {
       if (activationReleased) {
@@ -9689,9 +9689,17 @@ export function createElectronSteamOverlay(
     };
     try {
       assertOpen();
+      const status = controller.getOpenStatus(target);
+      const isUsingExistingActivation = Boolean(activationHandle);
+      const isExistingActivationOpening =
+        isUsingExistingActivation && status.reason === "opening" && status.waitReason === "opening";
+      targetSnapshot = status.targetSnapshot;
+      if (!status.canWait && !isExistingActivationOpening) {
+        throw electronSteamOverlayOpenStatusError(status);
+      }
       assertElectronSteamOverlayTargetCanOpen(target);
       assertElectronSteamOverlayTargetCanWait(target);
-      const snapshot = controller.snapshot();
+      const snapshot = status.snapshot;
       assertElectronSteamOverlayNativeHostAvailable(snapshot);
       if (activationHandle) {
         assertElectronSteamOverlayNotActive(snapshot);

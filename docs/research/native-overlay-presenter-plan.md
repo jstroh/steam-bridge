@@ -1385,6 +1385,12 @@ Current evidence:
   checkout `openAndWait(...)`, visible Steam web content for web-close paths,
   close/back-to-app proof, parked zero-FPS presenter state, zero managed
   timing, managed isolation, and clean crash diagnostics.
+  A later unit-hardening slice moved generic direct `openAndWait(...)` through
+  the same fresh status gate as named status and `IfAvailable` helpers. Direct
+  wait helpers now fail hard blockers such as `steam-unavailable` before native
+  presenter activation, still wait through temporary `overlay-not-ready`
+  readiness for verified managed targets, and preserve the checkout path's
+  existing operation-scoped activation hold while it opens the approval route.
 - BrowserWindow-only overlay support is not proven.
 - Steam launch, app ID, auth, and callbacks are not enough to claim overlay
   support.
