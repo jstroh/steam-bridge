@@ -53,6 +53,8 @@ macOS smoke packaging and macOS overlay matrix runs are Apple Silicon only.
 Run them on `darwin/arm64` and produce the
 `aarch64-apple-darwin` / `SteamBridgeSmoke-darwin-arm64` app shape. Steam
 Bridge does not build, run, or verify Intel or universal macOS test apps.
+Do not copy this example into a `darwin-x64` or universal Electron build; the
+macOS Steam overlay evidence for this project is arm64-only by design.
 
 The Windows package includes `windows-electron-smoke.ps1`. Use
 `-Mode print-launch-options` to generate non-Steam shortcut arguments, or
@@ -1126,8 +1128,12 @@ and other platform helpers accept `--require-action-error-code` and
 to verify the presenter snapshot and
 `snapshot.overlay.nativeHostAvailability` helper result both report the same
 unavailable reason while the presenter stayed unattached, host-closed, and at
-zero current FPS. Add `--require-no-overlay-activation` to prove the fail-fast
-path did not start Steam overlay activation.
+zero current FPS. Expected overlay action errors must also include a sanitized
+`action.error.targetSnapshot`, and checkout errors include
+`action.error.checkoutTargetSnapshot`; raw checkout URLs, transaction IDs, and
+Steam IDs should not appear in smoke artifacts. Add
+`--require-no-overlay-activation` to prove the fail-fast path did not start
+Steam overlay activation.
 
 For a Steam Deck Desktop Mode shortcut launch, omit the Big Picture assertion
 but keep the Steam launch and overlay injection assertions:

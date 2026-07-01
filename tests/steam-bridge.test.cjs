@@ -610,12 +610,16 @@ function nativeHostAvailabilityFixture(presenter) {
 }
 
 function actionErrorSmokeResult(error, presenter = undefined, events = []) {
+  const serializedError = {
+    targetSnapshot: { type: "web", hasUrl: true, modal: true },
+    ...error
+  };
   return {
     ok: false,
     action: {
       ok: false,
       action: "presenter-web-open-and-wait",
-      error
+      error: serializedError
     },
     snapshot: {
       steam: {
@@ -2108,6 +2112,129 @@ test("smoke result verifier accepts expected overlay action errors", (t) => {
 
   assert.equal(verifier.status, 0, verifier.stderr);
   assert.match(verifier.stdout, /Electron smoke result verified/);
+});
+
+test("smoke result verifier accepts checkout action error target snapshots", (t) => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-checkout-action-error-verify-"));
+  t.after(() => fs.rmSync(tempDir, { recursive: true, force: true }));
+
+  const resultFile = path.join(tempDir, "smoke.log");
+  const result = actionErrorSmokeResult({
+    name: "SteamOverlayNativeHostUnavailableError",
+    message: "Steam overlay native host is unavailable: macOS screen is locked.",
+    code: "STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE",
+    reason: "macos-screen-locked",
+    targetSnapshot: { type: "checkout", hasTransactionId: true },
+    checkoutTargetSnapshot: { type: "checkout", hasTransactionId: true },
+    macOverlayEnvironment: { screenLocked: true, displayAsleep: false }
+  });
+  result.action.action = "presenter-checkout";
+  fs.writeFileSync(resultFile, `STEAM_BRIDGE_SMOKE_RESULT ${JSON.stringify(result)}\n`);
+
+  const verifier = childProcess.spawnSync(
+    process.execPath,
+    [
+      path.join(repoRoot, "scripts", "verify-electron-smoke-result.cjs"),
+      "--file",
+      resultFile,
+      "--app-id",
+      "480",
+      "--platform",
+      "darwin/arm64",
+      "--action",
+      "presenter-checkout",
+      "--require-action-error-code",
+      "STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE",
+      "--require-action-error-reason",
+      "macos-screen-locked"
+    ],
+    { encoding: "utf8" }
+  );
+
+  assert.equal(verifier.status, 0, verifier.stderr);
+  assert.match(verifier.stdout, /Electron smoke result verified/);
+});
+
+test("smoke result verifier rejects expected overlay action errors without target snapshots", (t) => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-action-error-target-missing-"));
+  t.after(() => fs.rmSync(tempDir, { recursive: true, force: true }));
+
+  const resultFile = path.join(tempDir, "smoke.log");
+  const result = actionErrorSmokeResult({
+    name: "SteamOverlayNativeHostUnavailableError",
+    message: "Steam overlay native host is unavailable: macOS screen is locked.",
+    code: "STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE",
+    reason: "macos-screen-locked",
+    macOverlayEnvironment: { screenLocked: true, displayAsleep: false }
+  });
+  delete result.action.error.targetSnapshot;
+  fs.writeFileSync(resultFile, `STEAM_BRIDGE_SMOKE_RESULT ${JSON.stringify(result)}\n`);
+
+  const verifier = childProcess.spawnSync(
+    process.execPath,
+    [
+      path.join(repoRoot, "scripts", "verify-electron-smoke-result.cjs"),
+      "--file",
+      resultFile,
+      "--app-id",
+      "480",
+      "--platform",
+      "darwin/arm64",
+      "--action",
+      "presenter-web-open-and-wait",
+      "--require-action-error-code",
+      "STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE",
+      "--require-action-error-reason",
+      "macos-screen-locked"
+    ],
+    { encoding: "utf8" }
+  );
+
+  assert.notEqual(verifier.status, 0);
+  assert.match(verifier.stderr, /autorun action error includes sanitized targetSnapshot/);
+});
+
+test("smoke result verifier rejects raw action error target fields", (t) => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-action-error-target-raw-"));
+  t.after(() => fs.rmSync(tempDir, { recursive: true, force: true }));
+
+  const resultFile = path.join(tempDir, "smoke.log");
+  fs.writeFileSync(
+    resultFile,
+    `STEAM_BRIDGE_SMOKE_RESULT ${JSON.stringify(
+      actionErrorSmokeResult({
+        name: "SteamOverlayNativeHostUnavailableError",
+        message: "Steam overlay native host is unavailable: macOS screen is locked.",
+        code: "STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE",
+        reason: "macos-screen-locked",
+        targetSnapshot: { type: "web", url: "https://store.steampowered.com/private-checkout" },
+        macOverlayEnvironment: { screenLocked: true, displayAsleep: false }
+      })
+    )}\n`
+  );
+
+  const verifier = childProcess.spawnSync(
+    process.execPath,
+    [
+      path.join(repoRoot, "scripts", "verify-electron-smoke-result.cjs"),
+      "--file",
+      resultFile,
+      "--app-id",
+      "480",
+      "--platform",
+      "darwin/arm64",
+      "--action",
+      "presenter-web-open-and-wait",
+      "--require-action-error-code",
+      "STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE",
+      "--require-action-error-reason",
+      "macos-screen-locked"
+    ],
+    { encoding: "utf8" }
+  );
+
+  assert.notEqual(verifier.status, 0);
+  assert.match(verifier.stderr, /autorun action error targetSnapshot omits raw url/);
 });
 
 test("smoke result verifier rejects unexpected overlay action error reasons", (t) => {

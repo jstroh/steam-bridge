@@ -892,6 +892,25 @@ function expectCheckoutTargetSnapshot(caseId, targetSnapshot, failures) {
   }
 }
 
+function expectSanitizedOverlayTargetSnapshot(caseId, label, targetSnapshot, failures) {
+  expect(
+    typeof targetSnapshot.type === "string" && targetSnapshot.type.length > 0,
+    `${caseId}: ${label} has a target type`,
+    failures
+  );
+
+  for (const key of ["steamUrl", "url", "transactionId", "returnUrl", "steamId64"]) {
+    if (!Object.prototype.hasOwnProperty.call(targetSnapshot, key)) {
+      continue;
+    }
+    expect(
+      sanitizedTargetValuePresent(targetSnapshot[key]),
+      `${caseId}: ${label} ${key} is redacted instead of raw`,
+      failures
+    );
+  }
+}
+
 function sanitizedTargetValuePresent(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return false;
@@ -1216,6 +1235,39 @@ function verifyExpectedActionError(caseId, action, expected, failures) {
       `${caseId}: autorun action error reason expected ${formatValue(expected.reason)}, got ${formatValue(error.reason)}`,
       failures
     );
+  }
+  verifyExpectedActionErrorTargetSnapshot(caseId, action, error, failures);
+}
+
+function verifyExpectedActionErrorTargetSnapshot(caseId, action, error, failures) {
+  const targetSnapshot = objectField(error, "targetSnapshot");
+  expect(Boolean(targetSnapshot), `${caseId}: autorun action error includes sanitized targetSnapshot`, failures);
+  if (!targetSnapshot) {
+    return;
+  }
+
+  expectSanitizedOverlayTargetSnapshot(caseId, "autorun action error targetSnapshot", targetSnapshot, failures);
+
+  if (targetSnapshot.type === "checkout" || action.action === "presenter-checkout") {
+    const checkoutTargetSnapshot = objectField(error, "checkoutTargetSnapshot");
+    expect(
+      Boolean(checkoutTargetSnapshot),
+      `${caseId}: autorun checkout action error includes sanitized checkoutTargetSnapshot`,
+      failures
+    );
+    if (checkoutTargetSnapshot) {
+      expect(
+        checkoutTargetSnapshot.type === "checkout",
+        `${caseId}: autorun checkout action error checkoutTargetSnapshot type is checkout, got ${formatValue(checkoutTargetSnapshot.type)}`,
+        failures
+      );
+      expectSanitizedOverlayTargetSnapshot(
+        caseId,
+        "autorun checkout action error checkoutTargetSnapshot",
+        checkoutTargetSnapshot,
+        failures
+      );
+    }
   }
 }
 
@@ -1945,6 +1997,7 @@ function createSelfTestFixture(root) {
         message: "Steam overlay native host is unavailable: macOS screen is locked.",
         code: "STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE",
         reason: "macos-screen-locked",
+        targetSnapshot: { type: "web", hasUrl: true, modal: true },
         macOverlayEnvironment: { screenLocked: true, displayAsleep: true }
       },
       resultPresenter: nativeHostUnavailablePresenterFixture("macos-screen-locked", {
@@ -2006,6 +2059,7 @@ function createSelfTestFixture(root) {
         message: "Steam overlay native host is unavailable: macOS screen is locked.",
         code: "STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE",
         reason: "macos-screen-locked",
+        targetSnapshot: { type: "web", hasUrl: true, modal: true },
         macOverlayEnvironment: { screenLocked: true, displayAsleep: true }
       },
       command: [

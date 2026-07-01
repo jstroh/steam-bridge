@@ -78,6 +78,9 @@ function runMacosEntitlementsStaticChecks() {
 
 function runMacosPackageSigningStaticChecks() {
   const packageJson = JSON.parse(fs.readFileSync(path.join(packageRoot, "package.json"), "utf8"));
+  const examplePackageJson = JSON.parse(
+    fs.readFileSync(path.join(repoRoot, "examples", "electron-basic", "package.json"), "utf8")
+  );
   const packagerScript = fs.readFileSync(path.join(repoRoot, "scripts", "package-electron-example.cjs"), "utf8");
   const matrixScript = fs.readFileSync(path.join(repoRoot, "scripts", "macos-overlay-matrix.sh"), "utf8");
   const prepareScript = fs.readFileSync(path.join(packageRoot, "bin", "prepare-macos-app.cjs"), "utf8");
@@ -97,6 +100,17 @@ function runMacosPackageSigningStaticChecks() {
   assertExecutableFile(path.join(packageRoot, "bin", "verify-macos-signing.cjs"));
   assert.ok(packageJson.files.includes("bin"), "steam-bridge package must publish verifier CLI files");
   assert.ok(packageJson.files.includes("templates"), "steam-bridge package must publish macOS launcher templates");
+  assert.equal(
+    examplePackageJson.scripts?.["package:mac"],
+    "node ../../scripts/package-electron-example.cjs --target aarch64-apple-darwin",
+    "Electron example package:mac script must build only the Apple Silicon macOS target"
+  );
+  assert.ok(
+    !JSON.stringify(examplePackageJson).includes("x86_64-apple-darwin") &&
+      !JSON.stringify(examplePackageJson).includes("darwin-x64") &&
+      !JSON.stringify(examplePackageJson).includes("universal"),
+    "Electron example must not expose Intel or universal macOS package scripts"
+  );
   for (const expected of [
     "assertSupportedPackageHost(target)",
     "Steam Bridge does not build, run, or verify Intel or multi-arch macOS test apps",

@@ -241,6 +241,21 @@ function readOkValue(entry) {
   return entry && entry.ok === true ? entry.value : undefined;
 }
 
+function objectField(value, key) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+
+  const field = value[key];
+  return field && typeof field === "object" && !Array.isArray(field) ? field : undefined;
+}
+
+function expectNoRawTargetValues(targetSnapshot, label) {
+  for (const key of ["url", "steamUrl", "transactionId", "returnUrl", "steamId64"]) {
+    expect(!Object.prototype.hasOwnProperty.call(targetSnapshot, key), `${label} omits raw ${key}`);
+  }
+}
+
 function expect(condition, message) {
   if (!condition) {
     failures.push(message);
@@ -341,6 +356,30 @@ function verifyExpectedActionError() {
       actionError.reason === options.requireActionErrorReason,
       `autorun action error reason is ${options.requireActionErrorReason}`
     );
+  }
+  verifyExpectedActionErrorTargetSnapshot(actionError);
+}
+
+function verifyExpectedActionErrorTargetSnapshot(actionError) {
+  const targetSnapshot = objectField(actionError, "targetSnapshot");
+  expect(Boolean(targetSnapshot), "autorun action error includes sanitized targetSnapshot");
+  if (!targetSnapshot) {
+    return;
+  }
+
+  expect(typeof targetSnapshot.type === "string" && targetSnapshot.type.length > 0, "autorun action error targetSnapshot has a target type");
+  expectNoRawTargetValues(targetSnapshot, "autorun action error targetSnapshot");
+
+  if (targetSnapshot.type === "checkout" || expectedActionName === "presenter-checkout") {
+    const checkoutTargetSnapshot = objectField(actionError, "checkoutTargetSnapshot");
+    expect(Boolean(checkoutTargetSnapshot), "autorun checkout action error includes sanitized checkoutTargetSnapshot");
+    if (checkoutTargetSnapshot) {
+      expect(
+        checkoutTargetSnapshot.type === "checkout",
+        "autorun checkout action error checkoutTargetSnapshot type is checkout"
+      );
+      expectNoRawTargetValues(checkoutTargetSnapshot, "autorun checkout action error checkoutTargetSnapshot");
+    }
   }
 }
 
