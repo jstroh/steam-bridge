@@ -1197,9 +1197,56 @@ resolve_shortcut_game_id() {
   printf '%s\n' "$resolved"
 }
 
+macos_steam_gameprocess_log() {
+  printf '%s\n' "$HOME/Library/Application Support/Steam/logs/gameprocess_log.txt"
+}
+
+macos_steam_log_size() {
+  local log_file="$1"
+  if [ ! -f "$log_file" ]; then
+    printf '0\n'
+    return 0
+  fi
+  stat -f '%z' "$log_file"
+}
+
+wait_for_steam_shortcut_launch_started() {
+  local start_offset="$1"
+  local timeout_seconds="$2"
+  local game_id="$3"
+  local log_file current_size tail_start deadline
+
+  log_file="$(macos_steam_gameprocess_log)"
+  deadline=$((SECONDS + timeout_seconds))
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    if [ -f "$result_file" ]; then
+      return 0
+    fi
+    if [ "$control_server" = "1" ] && [ -n "$control_file" ] && [ -f "$control_file" ]; then
+      return 0
+    fi
+    if [ -f "$log_file" ]; then
+      current_size="$(macos_steam_log_size "$log_file")"
+      tail_start=$((start_offset + 1))
+      if [ "$current_size" -lt "$start_offset" ]; then
+        tail_start=1
+      fi
+      if tail -c +"$tail_start" "$log_file" 2>/dev/null |
+        grep -Eq "AppID ($game_id|$app_id) adding PID"; then
+        return 0
+      fi
+    fi
+    sleep 0.25
+  done
+
+  return 1
+}
+
 launch_steam_shortcut() {
-  local game_id
+  local game_id launch_attempt launch_attempts launch_log_offset launch_started
   game_id="$(resolve_shortcut_game_id)"
+  launch_attempts=3
+  launch_started="0"
 
   mkdir -p "$(dirname -- "$result_file")"
   rm -f "$result_file"
@@ -1209,8 +1256,25 @@ launch_steam_shortcut() {
   fi
   rm -rf "$diagnostic_dir"
 
-  echo "Launching steam://rungameid/$game_id"
-  open "steam://rungameid/$game_id"
+  for launch_attempt in $(seq 1 "$launch_attempts"); do
+    launch_log_offset="$(macos_steam_log_size "$(macos_steam_gameprocess_log)")"
+    if [ "$launch_attempt" -eq 1 ]; then
+      echo "Launching steam://rungameid/$game_id"
+    else
+      echo "Retrying steam://rungameid/$game_id after Steam did not start a tracked process (attempt $launch_attempt/$launch_attempts)"
+    fi
+    open "steam://rungameid/$game_id"
+    if wait_for_steam_shortcut_launch_started "$launch_log_offset" 8 "$game_id"; then
+      launch_started="1"
+      break
+    fi
+  done
+
+  if [ "$launch_started" != "1" ]; then
+    echo "Steam did not start shortcut $game_id after $launch_attempts launch attempts." >&2
+    return 1
+  fi
+
   if [ "$control_server" = "1" ]; then
     wait_for_control_file
     return 0
@@ -1233,6 +1297,23 @@ verifier_path() {
   else
     printf '%s\n' "$script_dir/verify-electron-smoke-result.cjs"
   fi
+}
+
+macos_steam_console_log() {
+  printf '%s\n' "$HOME/Library/Application Support/Steam/logs/console_log.txt"
+}
+
+diagnose_macos_steam_overlay_failure() {
+  if [ ! -s "$result_file" ]; then
+    return 0
+  fi
+
+  node "$script_dir/detect-macos-steam-overlay-ipc.cjs" \
+    --result-file "$result_file" \
+    --diagnostic-dir "$diagnostic_dir" \
+    --console-log "$(macos_steam_console_log)" \
+    --app-id "$app_id" \
+    --write-artifact || true
 }
 
 verify_result() {
@@ -1317,7 +1398,10 @@ verify_result() {
     done
   fi
 
-  node "${args[@]}"
+  if ! node "${args[@]}"; then
+    diagnose_macos_steam_overlay_failure || true
+    return 1
+  fi
   verify_no_fresh_macos_crash_reports
 }
 

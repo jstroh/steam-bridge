@@ -816,6 +816,7 @@ run_self_test() {
 
 if [ "$mode" = "self-test" ]; then
   run_self_test
+  node "$script_dir/detect-macos-steam-overlay-ipc.cjs" --self-test
   node "$summary_runner" --self-test
   exit 0
 fi
@@ -1008,6 +1009,13 @@ wait_for_macos_steam_app_removed_from_running_list() {
 
 should_retry_macos_overlay_readiness_failure() {
   local result_file="$1"
+  if node "$script_dir/detect-macos-steam-overlay-ipc.cjs" \
+    --quiet \
+    --result-file "$result_file" \
+    --app-id "$app_id" >/dev/null 2>&1; then
+    return 1
+  fi
+
   RESULT_FILE="$result_file" node <<'NODE'
 const fs = require("node:fs");
 const resultFile = process.env.RESULT_FILE;

@@ -772,6 +772,16 @@ return for modal routes, parked zero-FPS state, zero managed overlay timing,
 `overlayNeedsPresentPollingEnabled=false`, and no fresh `SteamBridgeSmoke`,
 `gameoverlayui`, `Steam Helper`, or attributed `MTLCompilerService` crash
 report beyond the older known `MTLCompilerService-2026-06-30-084244.ips`.
+An attempted 2026-06-30 persistent run at
+`/tmp/steam-bridge-macos-overlay-matrix-20260630-180652` then failed before
+visible overlay activation because the local Steam client could no longer
+create overlay IPC resources. Steam tracked the smoke app and attempted six
+`gameoverlayui` launches for the same smoke PID, but `console_log.txt` reported
+`Failed to create PosixMutex: SteamGameStream_<pid>_mutex`; the smoke snapshot
+still had `overlayEnabled=false` and zero live `gameoverlayui` targets. The
+macOS helper now diagnoses that state into
+`steam-overlay-ipc-diagnostics.txt`, and the matrix retry classifier treats it
+as non-retryable so IPC exhaustion is not mistaken for a presenter timing bug.
 
 ## Primary References
 
@@ -811,7 +821,11 @@ report beyond the older known `MTLCompilerService-2026-06-30-084244.ips`.
    app-specific achievements, stats, workshop, inventory, or economy flows.
 4. For Electron overlay debugging, test both the BrowserWindow path and the
    native overlay probe surface.
-5. For purchase flows, treat the overlay as preferred UX rather than the only
+5. If a macOS artifact contains `steam-overlay-ipc-diagnostics.txt`, recover
+   the local Steam client/IPC state before rerunning live overlay proof. This is
+   a Steam helper/resource state failure, not a useful signal about the native
+   presenter path.
+6. For purchase flows, treat the overlay as preferred UX rather than the only
    approval path. If `usersession=client` does not surface UI, use
    `usersession=web`, open the returned Steam URL, poll `QueryTxn`, and finalize
    only after approval.

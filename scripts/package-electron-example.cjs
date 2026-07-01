@@ -226,6 +226,10 @@ function copyTargetHelpers(appPath) {
       path.join(repoRoot, "scripts", "verify-electron-smoke-result.cjs"),
       path.join(appPath, "verify-electron-smoke-result.cjs")
     );
+    fs.copyFileSync(
+      path.join(repoRoot, "scripts", "detect-macos-steam-overlay-ipc.cjs"),
+      path.join(appPath, "detect-macos-steam-overlay-ipc.cjs")
+    );
   }
   if (target === "x86_64-pc-windows-msvc") {
     fs.copyFileSync(

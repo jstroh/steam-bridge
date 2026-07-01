@@ -383,6 +383,16 @@ visible Steam web content before close probes, active/inactive callbacks for
 modal routes, app-frontmost return, zero managed overlay timing,
 `overlayNeedsPresentPollingEnabled=false`, and no newer crash report than the
 known earlier `MTLCompilerService` report.
+An attempted 2026-06-30 persistent run at
+`/tmp/steam-bridge-macos-overlay-matrix-20260630-180652` then failed before
+visible overlay activation because the local Steam client could no longer
+create overlay IPC resources. Steam tracked the smoke app and attempted six
+`gameoverlayui` launches for the same smoke PID, but `console_log.txt` reported
+`Failed to create PosixMutex: SteamGameStream_<pid>_mutex`; the smoke snapshot
+still had `overlayEnabled=false` and zero live `gameoverlayui` targets. The
+macOS helper now diagnoses that state into
+`steam-overlay-ipc-diagnostics.txt`, and the matrix retry classifier treats it
+as non-retryable so IPC exhaustion is not mistaken for a presenter timing bug.
 
 ## Steam Deck Shortcut Gate
 
