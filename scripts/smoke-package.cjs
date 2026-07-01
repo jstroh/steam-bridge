@@ -106,6 +106,11 @@ function runMacosPackageSigningStaticChecks() {
     "bin/verify-macos-signing.cjs",
     "steam-bridge package must expose the macOS signing verifier CLI"
   );
+  assert.equal(
+    packageJson.exports?.["./electron-builder"]?.default,
+    "./dist/electron-builder.js",
+    "steam-bridge package must expose the electron-builder helper subpath"
+  );
   assertExecutableFile(path.join(packageRoot, "bin", "prepare-macos-app.cjs"));
   assertExecutableFile(path.join(packageRoot, "bin", "validate-checkout-target.cjs"));
   assertExecutableFile(path.join(packageRoot, "bin", "verify-macos-signing.cjs"));
@@ -161,6 +166,11 @@ function runMacosPackageSigningStaticChecks() {
     packageReadme,
     /Build and\s+run macOS test apps only on native `darwin\/arm64` Apple Silicon hosts/,
     "package README must document native Apple Silicon-only macOS test apps"
+  );
+  assert.match(
+    packageReadme,
+    /prepareMacosSteamAppAfterPack[\s\S]*afterPack/,
+    "package README must document the electron-builder afterPack helper"
   );
   assert.match(
     exampleReadme,
@@ -374,6 +384,7 @@ function runConsumerChecks() {
 const assert = require("node:assert/strict");
 const steam = require("steam-bridge");
 const electron = require("steam-bridge/electron");
+const electronBuilder = require("steam-bridge/electron-builder");
 
 assert.equal(typeof steam.init, "function");
 assert.equal(typeof steam.default.init, "function");
@@ -413,6 +424,26 @@ assert.equal(typeof electron.electronNativeOverlaySessionOptions, "function");
 assert.equal(typeof electron.electronOverlayPresenterOptions, "function");
 assert.equal(typeof electron.electronScrubSteamOverlayChildProcessEnv, "function");
 assert.equal(electron.electronConfigureSteamOverlay({ profile: "off" }).profile, "off");
+assert.equal(typeof electronBuilder.prepareMacosSteamAppAfterPack, "function");
+assert.equal(typeof electronBuilder.verifyMacosSteamAppAfterSign, "function");
+const skipped = electronBuilder.prepareMacosSteamAppAfterPack({
+  appOutDir: "/tmp/steam-bridge-package-smoke",
+  electronPlatformName: "linux",
+  arch: "x64"
+});
+assert.equal(skipped.skipped, true);
+assert.match(skipped.reason, /^non-macos-target:/);
+assert.equal(electronBuilder.verifyMacosSteamAppAfterSign({
+  appOutDir: "/tmp/steam-bridge-package-smoke",
+  electronPlatformName: "win32",
+  arch: "x64"
+}).skipped, true);
+assert.throws(() => electronBuilder.prepareMacosSteamAppAfterPack({
+  appOutDir: "/tmp/steam-bridge-package-smoke",
+  electronPlatformName: "darwin",
+  arch: "x64",
+  packager: { appInfo: { productFilename: "SteamBridgeSmoke" } }
+}), /Apple Silicon arm64/);
 `
   );
 
@@ -428,6 +459,7 @@ import steam, {
   SteamworksEnums
 } from "steam-bridge";
 import * as electron from "steam-bridge/electron";
+import * as electronBuilder from "steam-bridge/electron-builder";
 
 assert.equal(typeof steam.init, "function");
 assert.equal(typeof steam.openCommunityOverlay, "function");
@@ -464,6 +496,8 @@ assert.equal(typeof electron.electronNativeOverlaySessionOptions, "function");
 assert.equal(typeof electron.electronOverlayPresenterOptions, "function");
 assert.equal(typeof electron.electronScrubSteamOverlayChildProcessEnv, "function");
 assert.equal(electron.electronConfigureSteamOverlay({ profile: "off" }).profile, "off");
+assert.equal(typeof electronBuilder.prepareMacosSteamAppAfterPack, "function");
+assert.equal(typeof electronBuilder.verifyMacosSteamAppAfterSign, "function");
 `
   );
 
@@ -509,6 +543,12 @@ import { electronConfigureSteamOverlay } from "steam-bridge/electron";
 import { electronNativeOverlaySessionOptions } from "steam-bridge/electron";
 import { electronOverlayPresenterOptions } from "steam-bridge/electron";
 import { electronScrubSteamOverlayChildProcessEnv } from "steam-bridge/electron";
+import {
+  prepareMacosSteamAppAfterPack,
+  verifyMacosSteamAppAfterSign,
+  type ElectronBuilderAfterPackContext,
+  type PrepareMacosSteamAppAfterPackResult
+} from "steam-bridge/electron-builder";
 
 const client = steam.init(480);
 const web = createSteamWebApiClient({ apiKey: "test" });
@@ -535,6 +575,17 @@ const opacityFn: (opaque: boolean) => void = overlay.setNativeOverlayHostOpacity
 const friendsOverlayUrl: string = STEAM_FRIENDS_OVERLAY_URL;
 const config = electronConfigureSteamOverlay({ profile: "off" });
 const scrubbedKeys: string[] = electronScrubSteamOverlayChildProcessEnv({});
+const afterPackContext: ElectronBuilderAfterPackContext = {
+  appOutDir: "/tmp/steam-bridge-package-smoke",
+  electronPlatformName: "linux",
+  arch: "x64"
+};
+const afterPackResult: PrepareMacosSteamAppAfterPackResult =
+  prepareMacosSteamAppAfterPack(afterPackContext);
+const afterSignResult: PrepareMacosSteamAppAfterPackResult =
+  verifyMacosSteamAppAfterSign(afterPackContext);
+const afterPackSkipped: boolean = afterPackResult.skipped;
+const afterSignSkipped: boolean = afterSignResult.skipped;
 const electronOptions = electronNativeOverlaySessionOptions({
   isDestroyed: () => false,
   getNativeWindowHandle: () => Buffer.from([1, 0, 0, 0, 0, 0, 0, 0]),
@@ -655,6 +706,11 @@ void inputPassthroughFn;
 void opacityFn;
 void friendsOverlayUrl;
 void config;
+void afterPackContext;
+void afterPackResult;
+void afterSignResult;
+void afterPackSkipped;
+void afterSignSkipped;
 void electronOptions;
 void presenterOptions;
 void steamId;

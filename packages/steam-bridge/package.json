@@ -39,6 +39,10 @@
     "./electron": {
       "types": "./dist/electron.d.ts",
       "default": "./dist/electron.js"
+    },
+    "./electron-builder": {
+      "types": "./dist/electron-builder.d.ts",
+      "default": "./dist/electron-builder.js"
     }
   },
   "files": [

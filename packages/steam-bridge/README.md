@@ -261,6 +261,47 @@ Steam Bridge also publishes the reusable launcher source at
 `templates/macos-steam-env-launcher.c` and the matching entitlement template at
 `templates/entitlements.steam.macos.plist` for build systems that need to call
 the lower-level pieces directly.
+
+For `electron-builder`, run the package helper from `afterPack` so the staged
+Apple Silicon `.app` is rewritten before signing, then run the verifier from
+`afterSign` so the final signed bundle is checked:
+
+```js
+// scripts/steam-bridge-macos-afterpack.cjs
+const { prepareMacosSteamAppAfterPack } = require("steam-bridge/electron-builder");
+
+exports.default = async (context) => {
+  prepareMacosSteamAppAfterPack(context, { skipSign: true });
+};
+```
+
+```js
+// scripts/steam-bridge-macos-aftersign.cjs
+const { verifyMacosSteamAppAfterSign } = require("steam-bridge/electron-builder");
+
+exports.default = async (context) => {
+  verifyMacosSteamAppAfterSign(context);
+};
+```
+
+```json
+{
+  "build": {
+    "afterPack": "scripts/steam-bridge-macos-afterpack.cjs",
+    "afterSign": "scripts/steam-bridge-macos-aftersign.cjs",
+    "mac": {
+      "target": [{ "target": "dir", "arch": ["arm64"] }],
+      "entitlements": "node_modules/steam-bridge/templates/entitlements.steam.macos.plist",
+      "entitlementsInherit": "node_modules/steam-bridge/templates/entitlements.steam.macos.plist",
+      "hardenedRuntime": true
+    }
+  }
+}
+```
+
+The helper skips non-mac targets and rejects Intel or universal macOS targets,
+so a real app can keep the Steam overlay packaging step hidden in the normal
+builder lifecycle.
 The live macOS matrix then exercises the signed package through App ID `480`
 overlay cases, including managed waits, shortcut targets, passive notifications,
 checkout approval routing, all high-level dialog-equivalent routes,

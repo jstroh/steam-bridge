@@ -1208,9 +1208,14 @@ Next work:
    `templates/entitlements.steam.macos.plist`, plus the
    `steam-bridge-prepare-macos-app` CLI that renames Electron, installs the
    launcher as `CFBundleExecutable`, signs both executables, and runs the
-   verifier. The generic Electron example uses that package CLI instead of
-   carrying private launcher/signing glue. The entitlement template enables
-   `com.apple.security.cs.allow-dyld-environment-variables` and
+   verifier. The package also exposes `steam-bridge/electron-builder` with
+   `prepareMacosSteamAppAfterPack(context, { skipSign: true })` and
+   `verifyMacosSteamAppAfterSign(context)`, so `electron-builder` apps can put
+   the native launcher rewrite in `afterPack`, let their normal Apple signing
+   pipeline sign with the Steam Bridge entitlement template, and verify the
+   final signed shape from `afterSign`. The generic Electron example uses that
+   package CLI instead of carrying private launcher/signing glue. The entitlement
+   template enables `com.apple.security.cs.allow-dyld-environment-variables` and
    `com.apple.security.cs.disable-library-validation`, and omits App Sandbox.
    The launcher template is app-name generic: package tooling renames Electron to
    `<AppExecutable>.electron`, compiles the launcher back to `<AppExecutable>`,

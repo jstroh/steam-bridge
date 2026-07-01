@@ -529,4 +529,9 @@ content still requires your own configured Steam app/product.
   overlay helpers. Published package consumers can also run
   `npx steam-bridge-verify-macos-signing --app-exe <YourApp.app/Contents/MacOS/YourApp>`
   against their shipped launcher shape.
+- `electron-builder` apps can hide that packaging step in normal lifecycle
+  hooks: call `prepareMacosSteamAppAfterPack(context, { skipSign: true })` from
+  `afterPack`, sign with the published macOS entitlement template, then call
+  `verifyMacosSteamAppAfterSign(context)` from `afterSign`. The helper skips
+  non-mac targets and rejects Intel or universal macOS targets.
 - Steam Bridge does not vendor the Steamworks SDK or Valve redistributables.
