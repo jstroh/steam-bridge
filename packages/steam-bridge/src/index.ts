@@ -9515,7 +9515,7 @@ export function createElectronSteamOverlay(
       options: ElectronSteamOverlayCheckoutAndWaitOptions = {}
     ): Promise<ElectronSteamOverlayCheckoutAndWaitResult<T> | null> {
       const status = electronSteamOverlayCheckoutOperationStatus(controller);
-      if (!status.canStartOperation) {
+      if (!status.canStartOperation && !status.canWait) {
         return null;
       }
 
@@ -10753,16 +10753,17 @@ function electronSteamOverlayCheckoutOperationStatus(
   const unavailable = (
     reason: ElectronSteamOverlayOpenStatusReason,
     waitReason: ElectronSteamOverlayWaitStatusReason,
-    message: string
+    message: string,
+    options: { canWait?: boolean } = {}
   ): ElectronSteamOverlayCheckoutOperationStatus => ({
     canStartOperation: false,
     canOpen: false,
-    canWait: false,
+    canWait: options.canWait === true,
     targetSnapshot,
     snapshot,
     nativeHostAvailability,
     reason,
-    waitReason,
+    ...(options.canWait === true ? {} : { waitReason }),
     message
   });
 
@@ -10787,7 +10788,9 @@ function electronSteamOverlayCheckoutOperationStatus(
   }
 
   if (snapshot.diagnostics?.overlayEnabled === false) {
-    return unavailable("overlay-not-ready", "overlay-not-ready", "Steam overlay is not ready yet.");
+    return unavailable("overlay-not-ready", "overlay-not-ready", "Steam overlay is not ready yet.", {
+      canWait: true
+    });
   }
 
   return {

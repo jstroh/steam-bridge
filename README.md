@@ -415,9 +415,11 @@ Use `steamOverlay.getCheckoutOperationStatus()` to decide whether the app should
 enable or start a purchase operation before `InitTxn` runs.
 Use `steamOverlay.openCheckoutAndWaitIfAvailable(() => startTxn())` when a
 purchase button should return `null` instead of starting `InitTxn` while the
-managed overlay is closed, Steam is not running, Steam already reports the
-overlay disabled, the macOS native host is unavailable, or another managed
-overlay action is already active/opening.
+managed overlay is closed, Steam is not running, the macOS native host is
+unavailable, or another managed overlay action is already active/opening. If
+Steam is merely still reporting `overlay-not-ready`, this safe helper waits for
+readiness first and still does not call `startTxn()` until the checkout UI can
+be shown.
 The throwing `openCheckoutAndWait(...)` path also waits for Steam overlay
 readiness before it calls `startTxn()`, so a temporary Steam bootstrap delay
 does not create a real transaction before Steam can show the checkout UI.

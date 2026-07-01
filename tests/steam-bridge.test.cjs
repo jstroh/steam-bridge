@@ -11183,7 +11183,7 @@ test("electron steam overlay checkout wait does not activate before overlay read
   overlay.close();
 });
 
-test("electron steam overlay checkout IfAvailable skips transactions when overlay diagnostics are unavailable", async (t) => {
+test("electron steam overlay checkout IfAvailable waits through readiness and skips hard blockers", async (t) => {
   setProcessPlatformForTest(t, "linux");
   const hostHandle = Buffer.from([26, 43, 38, 32]);
   let hostOpen = false;
@@ -11256,25 +11256,11 @@ test("electron steam overlay checkout IfAvailable skips transactions when overla
   const disabledCheckoutOperationStatus = overlay.getCheckoutOperationStatus();
   assert.equal(disabledCheckoutOperationStatus.canStartOperation, false);
   assert.equal(disabledCheckoutOperationStatus.canOpen, false);
-  assert.equal(disabledCheckoutOperationStatus.canWait, false);
+  assert.equal(disabledCheckoutOperationStatus.canWait, true);
   assert.equal(disabledCheckoutOperationStatus.reason, "overlay-not-ready");
-  assert.equal(disabledCheckoutOperationStatus.waitReason, "overlay-not-ready");
+  assert.equal(disabledCheckoutOperationStatus.waitReason, undefined);
   assert.deepEqual(disabledCheckoutOperationStatus.targetSnapshot, { type: "checkout" });
   assert.equal(disabledCheckoutOperationStatus.snapshot.diagnostics.overlayEnabled, false);
-
-  let disabledOperationRan = false;
-  assert.equal(
-    await overlay.openCheckoutAndWaitIfAvailable(
-      () => {
-        disabledOperationRan = true;
-        return "123456789";
-      },
-      { showTimeoutMs: 5, closeTimeoutMs: 5 }
-    ),
-    null
-  );
-  assert.equal(disabledOperationRan, false);
-  assert.deepEqual(steamWebOverlayCalls(fake), []);
 
   const disabledPrepareCallCount = fake.calls.length;
   assert.throws(
@@ -11305,6 +11291,34 @@ test("electron steam overlay checkout IfAvailable skips transactions when overla
   );
   assert.equal(disabledPreparedOperationRan, false);
   assert.deepEqual(steamWebOverlayCalls(fake), []);
+
+  let readinessOperationRan = false;
+  const readinessCheckout = overlay.openCheckoutAndWaitIfAvailable(
+    () => {
+      readinessOperationRan = true;
+      return "123456789";
+    },
+    { showTimeoutMs: 500, closeTimeoutMs: 500 }
+  );
+  await new Promise((resolve) => setTimeout(resolve, 80));
+  assert.equal(readinessOperationRan, false);
+  assert.deepEqual(steamWebOverlayCalls(fake), []);
+
+  overlayEnabled = true;
+  await waitForNextSteamWebOverlayCall(fake, 0, [
+    "https://checkout.steampowered.com/checkout/approvetxn/123456789/",
+    true
+  ]);
+  fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: true });
+  fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: false });
+  const readinessCheckoutResult = await readinessCheckout;
+  assert.notEqual(readinessCheckoutResult, null);
+  assert.equal(readinessOperationRan, true);
+  assert.deepEqual(readinessCheckoutResult.targetSnapshot, {
+    type: "checkout",
+    hasTransactionId: true
+  });
+  const checkoutCallsAfterReadiness = steamWebOverlayCalls(fake).length;
 
   steamRunning = false;
   overlayEnabled = true;
@@ -11362,7 +11376,7 @@ test("electron steam overlay checkout IfAvailable skips transactions when overla
   assert.equal(shortcutSteamStoppedStatus.targetStatus?.reason, "steam-unavailable");
   assert.equal(overlay.openShortcutTargetIfAvailable(), null);
   assert.equal(await overlay.openShortcutTargetAndWaitIfAvailable({ showTimeoutMs: 5, closeTimeoutMs: 5 }), null);
-  assert.deepEqual(steamWebOverlayCalls(fake), []);
+  assert.equal(steamWebOverlayCalls(fake).length, checkoutCallsAfterReadiness);
 
   let dynamicShortcutResolveCount = 0;
   const dynamicShortcutErrors = [];
@@ -11406,7 +11420,7 @@ test("electron steam overlay checkout IfAvailable skips transactions when overla
   assert.equal(dynamicShortcutErrors.length, 2);
   assert.match(dynamicShortcutErrors[1].message, /Steam is not running/);
   dynamicShortcutOverlay.close();
-  assert.deepEqual(steamWebOverlayCalls(fake), []);
+  assert.equal(steamWebOverlayCalls(fake).length, checkoutCallsAfterReadiness);
 
   let steamStoppedOperationRan = false;
   assert.equal(
@@ -11420,7 +11434,7 @@ test("electron steam overlay checkout IfAvailable skips transactions when overla
     null
   );
   assert.equal(steamStoppedOperationRan, false);
-  assert.deepEqual(steamWebOverlayCalls(fake), []);
+  assert.equal(steamWebOverlayCalls(fake).length, checkoutCallsAfterReadiness);
 
   const steamStoppedPrepareCallCount = fake.calls.length;
   assert.throws(
@@ -11450,7 +11464,7 @@ test("electron steam overlay checkout IfAvailable skips transactions when overla
     }
   );
   assert.equal(steamStoppedPreparedOperationRan, false);
-  assert.deepEqual(steamWebOverlayCalls(fake), []);
+  assert.equal(steamWebOverlayCalls(fake).length, checkoutCallsAfterReadiness);
 
   overlay.close();
 });

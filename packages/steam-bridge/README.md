@@ -211,22 +211,20 @@ const transaction = {
 };
 
 const checkoutStatus = steamOverlay.getCheckoutOperationStatus();
-if (!checkoutStatus.canStartOperation) {
+if (!checkoutStatus.canStartOperation && !checkoutStatus.canWait) {
   console.warn("Steam checkout is not ready yet", checkoutStatus.reason ?? checkoutStatus.waitReason);
 }
 
-const checkoutResult = checkoutStatus.canStartOperation
-  ? await steamOverlay.openCheckoutAndWaitIfAvailable(() =>
-      steamworks.webApi.microTxn.initClientTxn({
-        appId: realAppId,
-        orderId: transaction.orderId,
-        steamId64: steamId,
-        language: "en",
-        currency: "USD",
-        items: transaction.items
-      })
-    )
-  : null;
+const checkoutResult = await steamOverlay.openCheckoutAndWaitIfAvailable(() =>
+  steamworks.webApi.microTxn.initClientTxn({
+    appId: realAppId,
+    orderId: transaction.orderId,
+    steamId64: steamId,
+    language: "en",
+    currency: "USD",
+    items: transaction.items
+  })
+);
 if (!checkoutResult) {
   console.warn("Steam checkout overlay is not available right now.");
 }
@@ -479,11 +477,12 @@ For `InitTxn` flows, call
 disable, or explain a purchase button before calling the backend. Use
 `steamOverlay.openCheckoutAndWaitIfAvailable(() => startTxn())` for purchase
 buttons that should return `null` instead of starting the transaction while the
-managed overlay is closed, Steam is not running, Steam already reports the
-overlay disabled, the macOS native host is unavailable, or another managed
-overlay action is already active/opening. Steam Bridge
-primes the native presenter and waits for Steam overlay readiness before the
-backend starts the transaction, accepts
+managed overlay is closed, Steam is not running, the macOS native host is
+unavailable, or another managed overlay action is already active/opening. If
+Steam is merely still reporting `overlay-not-ready`, the safe helper waits for
+readiness first and still does not call `startTxn()` until the checkout UI can
+be shown. Steam Bridge primes the native presenter and waits for Steam overlay
+readiness before the backend starts the transaction, accepts
 common backend result shapes such as `steamurl`, `steamUrl`, `transactionId`, or
 `transid`, and also unwraps documented `InitTxn` envelopes such as
 `response.params.transid` and Steam Bridge Web API responses at

@@ -1218,13 +1218,16 @@ Current evidence:
   The safe app-facing purchase helper is deliberately side-effect-free when the
   overlay is known unavailable: `openCheckoutAndWaitIfAvailable(...)` refreshes
   Steam diagnostics before invoking the transaction operation and returns
-  `null` without starting `InitTxn` when Steam is not running or Steam already
-  reports the overlay disabled. `getCheckoutOperationStatus()` exposes the same
-  no-side-effect preflight before a backend transaction exists, so apps can
-  disable or explain a purchase button without touching `InitTxn`. Apps that
-  want a thrown readiness error can still call `openCheckoutAndWait(...)`, which
-  keeps the presenter prepared, waits for overlay readiness before activation,
-  and preserves sanitized checkout error snapshots if readiness fails.
+  `null` without starting `InitTxn` when Steam is not running, the native host
+  is unavailable, or another managed overlay action is busy. If the only blocker
+  is a temporary `overlay-not-ready` state, the safe helper waits for readiness
+  before calling `InitTxn`, matching the direct managed checkout wait path.
+  `getCheckoutOperationStatus()` exposes the same no-side-effect preflight
+  before a backend transaction exists, so apps can disable, explain, or keep a
+  purchase button waiting without touching `InitTxn`. Apps that want a thrown
+  readiness error can still call `openCheckoutAndWait(...)`, which keeps the
+  presenter prepared, waits for overlay readiness before activation, and
+  preserves sanitized checkout error snapshots if readiness fails.
   Current source applies the same fresh diagnostics to generic side-effect-free
   overlay status checks. `openIfAvailable(...)` and shortcut direct-open helpers
   return `null` with `reason: "overlay-not-ready"` while the hook is not ready,
