@@ -35,28 +35,20 @@ arm64 as the only macOS target; Steam Bridge does not build, run, or verify
 Intel or universal macOS apps. Do not package, launch, or verify macOS smoke
 apps through Rosetta. Do not package, launch, or verify macOS test or smoke
 apps through any `darwin-x64`/universal Electron build. Build and run macOS test apps only on native `darwin/arm64` Apple Silicon hosts.
+
 The repository's macOS smoke package command intentionally maps to
 `aarch64-apple-darwin` / `darwin-arm64` only. Do not add `darwin-x64`,
-`x86_64-apple-darwin`, or universal macOS test-app targets.
-Every local macOS test app build, launch, package, and overlay run for this
-package must use that Apple Silicon target. A macOS command path that builds or
-runs an Intel, Rosetta, or universal Electron app is a package bug, not an
-alternate validation path.
+`x86_64-apple-darwin`, or universal macOS test-app targets. Every local macOS
+test app build, launch, package, and overlay run for this package must use that
+Apple Silicon target. A macOS command path that builds or runs an Intel,
+Rosetta, or universal Electron app is a package bug, not an alternate
+validation path.
+
 `npm run check:platform` validates both the published native target list and
 the example app's Apple Silicon-only macOS package path.
-Contributor policy: every macOS test build and every live macOS overlay run for
-this package must use a native Apple Silicon `darwin/arm64` shell and an arm64
-Electron app. Intel macOS, Rosetta, and universal macOS packages are unsupported
-configurations, not fallback test paths.
-This applies to every macOS example, test app, smoke app, and overlay proof in
-this package.
 Any future macOS test app or smoke runner added here must keep that same
 Apple Silicon-only shape; Intel macOS is not a secondary package or verification
 target.
-There are no Intel macOS smoke artifacts, example app targets, or live overlay
-test paths in this package; do not add them.
-References to Intel macOS, Rosetta, or universal macOS are guardrails for
-rejecting those configurations, not supported build or test paths.
 
 The packaged Windows smoke helper accepts the same generic smoke actions as the
 Deck/macOS helpers for web, store, Friends, dialog-equivalent, checkout,

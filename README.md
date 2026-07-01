@@ -33,34 +33,24 @@ Steam Bridge targets Steam desktop platforms for Electron and Node:
 Intel macOS is intentionally not supported. CI, release prebuilds, runtime
 loading, native linking, and macOS smoke-app packaging enforce the supported
 target list. All macOS test apps are built and run as Apple Silicon arm64
-targets only. Examples, smoke packages, and overlay matrices use the same
-Apple Silicon-only shape; Steam Bridge does not build, run, or verify Intel or
-universal macOS apps. Do not package, launch, or verify macOS smoke apps through Rosetta.
-Do not package, launch, or verify macOS test or smoke apps through any
-`darwin-x64`/universal Electron build. The macOS CI and release jobs also
-assert an `arm64` runner so Apple Silicon checks never silently become
-Intel cross-compilation checks.
+targets only. Examples, smoke packages, overlay matrices, and live overlay
+proofs all use native Apple Silicon `darwin/arm64` shells and arm64 Electron
+apps. Steam Bridge does not build, run, or verify Intel or universal macOS apps.
+Do not package, launch, or verify macOS smoke apps through Rosetta. Do not
+package, launch, or verify macOS test or smoke apps through any
+`darwin-x64`/universal Electron build.
+
+The macOS CI and release jobs assert an `arm64` runner so Apple Silicon checks
+never silently become Intel cross-compilation checks.
 The macOS smoke package command is intentionally `npm run example:package:mac`;
 it always resolves to the `aarch64-apple-darwin` / `darwin-arm64` app shape.
 Do not add `darwin-x64`, `x86_64-apple-darwin`, or universal macOS test-app
-targets to this project.
-Every local macOS test app build, launch, package, and overlay run for this
-repository must use that Apple Silicon target. A macOS command path that builds
-or runs an Intel, Rosetta, or universal Electron app is a project bug, not an
-alternate validation path.
+targets to this project. A macOS command path that builds or runs an Intel,
+Rosetta, or universal Electron app is a project bug, not an alternate
+validation path.
+
 `npm run check:platform` validates both the published native target list and
 the example app's Apple Silicon-only macOS package path.
-Contributor policy: every macOS test build and every live macOS overlay run for
-this repository must use a native Apple Silicon `darwin/arm64` shell and an
-arm64 Electron app. Treat Intel macOS, Rosetta, and universal macOS packages as
-unsupported configurations, not as fallback test paths.
-This applies to every macOS example, test app, smoke app, and overlay proof in
-this repository.
-There are no Intel macOS smoke artifacts, example app targets, or live overlay
-test paths in this project; do not add them.
-References to Intel macOS, Rosetta, or universal macOS in this repository are
-guardrails for rejecting those configurations, not supported build or test
-paths.
 
 ## Quick Start
 

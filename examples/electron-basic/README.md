@@ -60,24 +60,17 @@ Bridge does not build, run, or verify Intel or universal macOS test apps.
 Do not copy this example into a `darwin-x64` or universal Electron build; the
 macOS Steam overlay evidence for this project is arm64-only by design. Do not
 launch these macOS smoke apps through Rosetta.
+
 The only supported macOS smoke package command is
 `npm run example:package:mac`, and it must continue to produce the
 `SteamBridgeSmoke-darwin-arm64` output directory.
 The macOS overlay matrix checks for a native Apple Silicon `darwin/arm64` shell
 before it packages or launches this smoke app, so local live proof never starts
 from an Intel macOS or Rosetta environment.
-Contributor policy: every macOS smoke run for this example must use a native
-Apple Silicon `darwin/arm64` shell and the arm64 app output. Intel macOS,
-Rosetta, and universal macOS packages are unsupported configurations, not
-fallback test paths.
+
 Any new macOS smoke variant should copy this Apple Silicon-only target shape;
-do not add a separate Intel macOS test app.
-There are no Intel macOS smoke artifacts or live overlay test paths for this
-example; do not add `darwin-x64`, `x86_64-apple-darwin`, or universal macOS
-targets.
-References to Intel macOS, Rosetta, or universal macOS in this example are
-guardrails for rejecting those configurations, not supported build or test
-paths.
+do not add a separate Intel macOS test app, `darwin-x64`,
+`x86_64-apple-darwin`, or universal macOS target.
 `npm run check:platform` validates both the published native target list and
 this example's Apple Silicon-only macOS package path.
 
