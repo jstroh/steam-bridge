@@ -123,6 +123,20 @@ smoke/gameoverlay processes, and no copied macOS crash reports. The persistent
 matrix retry classifier now treats a crash-free `STEAM_OVERLAY_WAIT_TIMEOUT` at
 `become active` after a successful action as retryable for one whole-suite
 relaunch; repeated activation misses still fail the matrix.
+A current-head persistent run at
+`/tmp/steam-bridge-macos-overlay-matrix-20260630-224828` reused the signed Apple
+Silicon Electron `43.0.0` package and stable shortcut without repackaging or
+restarting Steam, launched one Steam-owned App ID `480` smoke process, drove all
+44 cases through the localhost control server, and passed the summary audit. It
+re-proved readiness, web/store/Friends/dialog `openAndWait(...)`, passive
+progress/unlock toasts, checkout approval and prepare-only, every managed
+Shift+Tab shortcut target, direct profile/players/community/stats/achievements/
+user/dialog routes, every programmatic shortcut open-and-wait target, one Metal
+presenter-backed overlay target, active/inactive callbacks where expected,
+visible Steam web content before close probes, app focus return, parked
+zero-FPS presenter state, disabled needs-present polling, zero managed overlay
+timing, clean control-server quit behavior, no leftover smoke/gameoverlay
+process, and clean crash diagnostics.
 A fresh full run at
 `/tmp/steam-bridge-macos-overlay-matrix-full-json-after-reopen-20260630-040037`
 then rebuilt and signed the Electron `42.5.1` smoke package after Steam had been
@@ -345,6 +359,20 @@ target for active/passive overlay cases, visible Steam web content before close
 probes, active/inactive callbacks for modal routes, app focus return, parked
 zero-FPS presenter state, disabled needs-present polling, zero managed overlay
 timing, and clean crash diagnostics.
+A current-head persistent macOS matrix at
+`/tmp/steam-bridge-macos-overlay-matrix-20260630-224828` reused the signed Apple
+Silicon Electron `43.0.0` package and stable shortcut without repackaging or
+restarting Steam, launched one Steam-owned App ID `480` smoke process, drove all
+44 cases through the control server, and passed the summary audit. It re-proved
+readiness, web/store/Friends/dialog `openAndWait(...)`, passive progress/unlock
+toasts, checkout approval and prepare-only, every managed Shift+Tab shortcut
+target, direct profile/players/community/stats/achievements/user/dialog routes,
+every programmatic shortcut open-and-wait target, one Metal presenter-backed
+overlay target, active/inactive callbacks where expected, visible Steam web
+content before close probes, app focus return, parked zero-FPS presenter state,
+disabled needs-present polling, zero managed overlay timing, clean
+control-server quit behavior, no leftover smoke/gameoverlay process, and clean
+crash diagnostics.
 A 2026-06-30 13:32 PDT crash-report sweep after a later user-visible Ignore
 dialog found no newer `SteamBridgeSmoke`, `gameoverlayui`, `Steam Helper`, or
 attributed `MTLCompilerService` DiagnosticReport than the known

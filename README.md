@@ -371,6 +371,8 @@ The Electron smoke app lives in
 [`examples/electron-basic`](examples/electron-basic). Its platform helpers emit
 `STEAM_BRIDGE_SMOKE_RESULT` JSON, lifecycle logs, screenshots where available,
 and crash diagnostics.
+All macOS smoke packaging and matrix runs build and execute Apple Silicon arm64
+apps only; they do not build, run, or verify Intel or universal macOS bundles.
 Use the smoke action `presenter-ready` for a cheap managed-overlay preflight:
 it attaches the Electron overlay manager, records native host availability, and
 does not activate Steam overlay UI.
