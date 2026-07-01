@@ -896,15 +896,18 @@ and reject post-close overlay reactivation.
 The macOS overlay implementation still has broad passing evidence, but the
 current local Mac cannot run fresh live proof until Steam recovers from a client
 bootstrap/IPC failure. `npm run macos:steam-client-health` now captures this
-before any smoke app launch. A 2026-06-30 artifact at
+before any smoke app launch, and the live macOS matrix runs the same health
+gate before cases, including a detector-driven wait after matrix-owned Steam
+restarts for shortcut updates. A 2026-06-30 artifact at
 `/tmp/steam-bridge-macos-steam-health-resource-snapshot-20260630-195055`
 reported Steam running with a `-steamid=0` bootstrap helper and fresh
 `SteamChrome_MasterStream_*` `errno: 28` failures, while the resource snapshot
 showed zero remaining stale SteamChrome temp entries, 214 Steam open files, 84
 Steam POSIX semaphore handles, 15 Steam POSIX shared-memory handles, and
-`launchctl maxfiles` with a 256 soft limit. Treat this as local Steam client
-state, not overlay presenter evidence; rerun macOS overlay proof after Steam
-logs in and the health gate passes.
+`launchctl maxfiles` with a 256 soft limit. The detector now derives explicit
+resource warnings from those values. Treat this as local Steam client state,
+not overlay presenter evidence; rerun macOS overlay proof after Steam logs in
+and the health gate passes.
 
 ## Purchase Overlay Checklist
 

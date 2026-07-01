@@ -29,6 +29,7 @@ restart_steam="1"
 close_steam_after="0"
 skip_summary="0"
 expected_native_host_unavailable_reason=""
+steam_restarted_for_shortcut="0"
 
 usage() {
   cat <<'EOF'
@@ -562,6 +563,7 @@ run_self_test() {
   fi
   require_contains "$preflight_output" "DRY-RUN macOS overlay preflight skipped." "preflight mode should support dry-run without package or Steam work."
   require_contains "$steam_health_output" "DRY-RUN macOS Steam client health skipped." "Steam health mode should support dry-run without package or shortcut work."
+  require_contains "$core_output" "DRY-RUN macOS Steam client health skipped." "live matrix should gate cases on Steam client health before launch."
   require_unique_case_ids "$minimal_output" "minimal"
   require_unique_case_ids "$core_output" "core"
   require_unique_case_ids "$full_output" "full"
@@ -888,6 +890,7 @@ ensure_ready() {
   : > "$artifact_root/macos-matrix-cases.jsonl"
   require_macos_overlay_environment_for_suite
   ensure_stable_shortcut
+  check_macos_steam_client_health
   if [ "$dry_run" != "1" ]; then
     cleanup_macos_smoke_processes
   fi
@@ -1430,12 +1433,37 @@ check_macos_steam_client_health() {
   fi
 
   mkdir -p "$artifact_root"
+  if [ "$steam_restarted_for_shortcut" = "1" ]; then
+    wait_for_macos_steam_client_health 60
+    return $?
+  fi
+  run_macos_steam_client_health
+}
+
+run_macos_steam_client_health() {
   node "$script_dir/detect-macos-steam-overlay-ipc.cjs" \
     --client-health \
     --diagnostic-dir "$artifact_root" \
     --console-log "$(macos_steam_console_log)" \
     --webhelper-log "$(macos_steam_webhelper_log)" \
     --write-artifact
+}
+
+wait_for_macos_steam_client_health() {
+  local deadline health_output
+  deadline=$((SECONDS + ${1:?missing wait seconds}))
+  while true; do
+    if health_output="$(run_macos_steam_client_health 2>&1)"; then
+      printf '%s\n' "$health_output"
+      return 0
+    fi
+    if [ "$SECONDS" -ge "$deadline" ]; then
+      printf '%s\n' "$health_output"
+      return 1
+    fi
+    echo "Waiting for macOS Steam client health after matrix-owned Steam restart..."
+    sleep 2
+  done
 }
 
 if [ "$mode" = "preflight" ]; then
@@ -1457,6 +1485,7 @@ restart_macos_steam() {
   fi
   stop_macos_steam
   start_macos_steam
+  steam_restarted_for_shortcut="1"
 }
 
 ensure_stable_shortcut() {

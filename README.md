@@ -375,9 +375,12 @@ npm run macos:overlay-matrix -- --suite core
 Steam shortcut. Its artifact records the running Steam PID/helper state, current
 SteamChrome IPC log evidence, stale SteamChrome temp entry counts, POSIX
 semaphore/shared-memory handle counts, `launchctl maxfiles`, kernel file
-counters, and `/private/tmp` disk state. Run this first when macOS Steam appears
-wedged so overlay tests fail at the client boundary instead of producing a
-misleading app-level failure.
+counters, `/private/tmp` disk state, and derived resource warnings such as
+near-soft-limit Steam file usage. The macOS overlay matrix also runs this health
+gate before launching smoke cases; if the matrix had to restart Steam after a
+shortcut update, it waits for this detector to pass before launching the smoke
+app. This keeps overlay tests failing at the client boundary instead of
+producing a misleading app-level failure.
 
 Validate matrix commands without platform hardware:
 

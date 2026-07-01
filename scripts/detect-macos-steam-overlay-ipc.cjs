@@ -405,7 +405,47 @@ function formatClientHealthResourceSnapshot(snapshot) {
   appendCommandSummary(lines, "launchctl maxfiles", snapshot.launchctlMaxfiles);
   appendCommandSummary(lines, "kernel file counters", snapshot.sysctlFiles);
   appendCommandSummary(lines, "/private/tmp disk", snapshot.privateTmpDisk);
+
+  const warnings = buildClientHealthResourceWarnings(snapshot);
+  if (warnings.length > 0) {
+    lines.push("", "Resource warnings:", ...warnings.map((warning) => `  - ${warning}`));
+  }
   return lines;
+}
+
+function buildClientHealthResourceWarnings(snapshot) {
+  const warnings = [];
+  const maxfilesSoft = parseLaunchctlMaxfilesSoft(snapshot.launchctlMaxfiles);
+  const steamOpenFiles =
+    snapshot.steamProcess && Number.isFinite(snapshot.steamProcess.openFileCount)
+      ? snapshot.steamProcess.openFileCount
+      : null;
+  const steamOpenFileRatio =
+    steamOpenFiles !== null && maxfilesSoft !== null && maxfilesSoft !== Infinity
+      ? steamOpenFiles / maxfilesSoft
+      : null;
+  const privateTmpCapacity = parseDfCapacityPercent(snapshot.privateTmpDisk);
+
+  if (maxfilesSoft !== null && maxfilesSoft !== Infinity && maxfilesSoft <= 512) {
+    warnings.push(
+      `launchctl maxfiles soft limit is low (${maxfilesSoft}); Steam GUI helpers inherit this limit.`
+    );
+  }
+  if (steamOpenFileRatio !== null && steamOpenFileRatio >= 0.8) {
+    warnings.push(
+      `Steam process is using ${steamOpenFiles}/${maxfilesSoft} open files (${Math.round(steamOpenFileRatio * 100)}% of the soft maxfiles limit).`
+    );
+  }
+  if (Number.isInteger(snapshot.staleSteamChromeTempEntries) && snapshot.staleSteamChromeTempEntries >= 100) {
+    warnings.push(
+      `${snapshot.staleSteamChromeTempEntries} stale SteamChrome temp entries remain in /private/tmp.`
+    );
+  }
+  if (privateTmpCapacity !== null && privateTmpCapacity >= 95) {
+    warnings.push(`/private/tmp volume is ${privateTmpCapacity}% full.`);
+  }
+
+  return warnings;
 }
 
 function appendCommandSummary(lines, label, result) {
@@ -484,6 +524,34 @@ function readCommandLines(command, args, { timeoutMs, maxBuffer }) {
 
 function formatNullableNumber(value) {
   return Number.isFinite(value) ? String(value) : "unknown";
+}
+
+function parseLaunchctlMaxfilesSoft(result) {
+  if (!result || !result.ok || !Array.isArray(result.lines)) {
+    return null;
+  }
+  const line = result.lines.find((entry) => /\bmaxfiles\b/.test(entry));
+  if (!line) {
+    return null;
+  }
+  const match = line.match(/\bmaxfiles\s+(\d+|unlimited)\b/);
+  if (!match) {
+    return null;
+  }
+  return match[1] === "unlimited" ? Infinity : Number(match[1]);
+}
+
+function parseDfCapacityPercent(result) {
+  if (!result || !result.ok || !Array.isArray(result.lines)) {
+    return null;
+  }
+  for (const line of [...result.lines].reverse()) {
+    const match = line.match(/\b(\d+)%\b/);
+    if (match) {
+      return Number(match[1]);
+    }
+  }
+  return null;
 }
 
 function findSteamProcess(processLines) {
@@ -850,6 +918,8 @@ function runSelfTest() {
     assert(result.message.includes("Local resource snapshot"), "health failure includes resource snapshot");
     assert(result.message.includes("stale SteamChrome temp entries"), "health failure includes stale SteamChrome temp count");
     assert(result.message.includes("launchctl maxfiles"), "health failure includes launchctl maxfiles");
+    assert(result.message.includes("Resource warnings"), "health failure includes derived resource warnings");
+    assert(result.message.includes("213/256 open files"), "health failure warns on near-soft-limit file usage");
 
     result = detectSteamClientHealth({
       processListText: "",
