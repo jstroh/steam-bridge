@@ -182,10 +182,9 @@ const webTarget = {
   url: checkoutUrl,
   modal: true
 } as const;
-const webStatus = steamOverlay.getOpenStatus(webTarget);
-if (webStatus.canWait) {
-  await steamOverlay.openAndWait(webTarget);
-} else {
+const webResult = await steamOverlay.openAndWaitIfAvailable(webTarget);
+if (!webResult) {
+  const webStatus = steamOverlay.getOpenStatus(webTarget);
   console.warn("Steam overlay target is not waitable right now", webStatus.reason ?? webStatus.waitReason);
 }
 
@@ -208,10 +207,7 @@ await steamOverlay.openCheckoutAndWait(() =>
 
 // Optional: reuse the configured Shift+Tab target from a controller/menu button.
 // Use the wait form when the app should resume only after Steam closes.
-const shortcutStatus = steamOverlay.getShortcutOpenStatus();
-if (shortcutStatus.canWait) {
-  await steamOverlay.openShortcutTargetAndWait();
-}
+await steamOverlay.openShortcutTargetAndWaitIfAvailable();
 
 // Achievement progress/store notifications are automatically primed while the
 // managed overlay is open. Use prepareForNotification() only for custom cases.
@@ -303,15 +299,20 @@ without emitting a false open event. Static targets should not need a resolver
 function just for side effects. Controller or in-game menu buttons can
 call `steamOverlay.getShortcutOpenStatus()` to inspect the configured target
 without invoking Steam or resolving dynamic app callbacks, then call
-`steamOverlay.openShortcutTarget()` to open that same configured managed target,
-or `steamOverlay.openShortcutTargetAndWait()` when the button flow should
-resolve only after Steam closes and the presenter parks. Both open helpers
-return `null` while the Steam overlay is already active/opening or when the
-shortcut bridge is disabled, so apps do not need to duplicate the target
-resolver. `getShortcutOpenStatus()` never resolves dynamic app callbacks; it
-reports `reason: "dynamic-target"` unless a stronger side-effect-free blocker is
-already known, such as `reason: "native-host-unavailable"` while macOS is locked
-or display-asleep. Keyboard-triggered and programmatic shortcut opens also fail
+`steamOverlay.openShortcutTargetIfAvailable()` to open that same configured
+managed target, or `steamOverlay.openShortcutTargetAndWaitIfAvailable()` when
+the button flow should resolve only after Steam closes and the presenter parks.
+The shortcut `IfAvailable` helpers return `null` while the Steam overlay is
+already active/opening, while the shortcut bridge is disabled, or while a
+side-effect-free status check already knows the host or route is unavailable,
+so apps do not need to duplicate the target resolver. For direct targets,
+`steamOverlay.openIfAvailable(target)` and
+`steamOverlay.openAndWaitIfAvailable(target)` return `null` for known target or
+host availability blockers. `getShortcutOpenStatus()` never resolves dynamic
+app callbacks; it reports `reason: "dynamic-target"` unless a stronger
+side-effect-free blocker is already known, such as
+`reason: "native-host-unavailable"` while macOS is locked or display-asleep.
+Keyboard-triggered and programmatic shortcut opens also fail
 before resolving a dynamic target callback while the native host is unavailable.
 The bridge consumes Shift+Tab only when it is opening
 a managed presenter-backed target; once Steam reports an active overlay, it lets

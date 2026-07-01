@@ -296,10 +296,9 @@ app.whenReady().then(async () => {
   const client = steamworks.init(480);
   const steamOverlay = client.overlay.createElectronSteamOverlay(mainWindow);
 
-  const storeStatus = steamOverlay.getOpenStatus({ type: "store", appId: 480 });
-  if (storeStatus.canWait) {
-    await steamOverlay.openAndWait({ type: "store", appId: 480 });
-  } else {
+  const storeResult = await steamOverlay.openAndWaitIfAvailable({ type: "store", appId: 480 });
+  if (!storeResult) {
+    const storeStatus = steamOverlay.getOpenStatus({ type: "store", appId: 480 });
     console.warn("Steam store overlay is not waitable right now", storeStatus.reason ?? storeStatus.waitReason);
   }
 
@@ -312,10 +311,7 @@ app.whenReady().then(async () => {
 
   // Optional: reuse the configured Shift+Tab target from a controller/menu button.
   // Use the wait form when the app should resume only after Steam closes.
-  const shortcutStatus = steamOverlay.getShortcutOpenStatus();
-  if (shortcutStatus.canWait) {
-    await steamOverlay.openShortcutTargetAndWait();
-  }
+  await steamOverlay.openShortcutTargetAndWaitIfAvailable();
 });
 ```
 
@@ -331,6 +327,9 @@ Use `getOpenStatus(target)` before wiring menus, controller buttons, or checkout
 fallbacks when the app needs a side-effect-free target/native-host preflight.
 It validates the managed route and reports whether the target can be opened and
 waited on without touching Steam overlay UI.
+Use `openIfAvailable(target)` or `openAndWaitIfAvailable(target)` when a button
+or controller binding should quietly do nothing for known unavailable states and
+still surface real errors after an overlay open begins.
 Use `getShortcutOpenStatus()` for the same side-effect-free check against the
 configured Shift+Tab/controller target.
 
@@ -339,9 +338,10 @@ and idle at `0` FPS. Passive Steam notifications use the same presenter without
 forcing a permanent Electron repaint loop. The default Shift+Tab bridge opens a
 verified Friends/chat target; set `overlayShortcut.target` to choose another
 presenter-backed target. Controller or in-game menu buttons can call
-`steamOverlay.openShortcutTarget()` or `steamOverlay.openShortcutTargetAndWait()`
-to reuse that same target without duplicating resolver logic. Dynamic shortcut
-targets are resolved only when the shortcut actually opens. `getShortcutOpenStatus()`
+`steamOverlay.openShortcutTargetIfAvailable()` or
+`steamOverlay.openShortcutTargetAndWaitIfAvailable()` to reuse that same target
+without duplicating resolver logic. Dynamic shortcut targets are resolved only
+when the shortcut actually opens. `getShortcutOpenStatus()`
 does not call app code; it reports a dynamic target as dynamic unless a stronger
 side-effect-free blocker is already known, such as a locked/asleep macOS native
 host. On macOS, keyboard-triggered and programmatic shortcut opens also fail

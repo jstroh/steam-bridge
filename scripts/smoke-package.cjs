@@ -559,11 +559,21 @@ const nativeHostAvailable: boolean = nativeHostAvailability.available;
 const nativeHostAvailabilitySnapshot = nativeHostAvailability.snapshot;
 const nativeHostAvailabilityReason: NativeOverlayHostUnavailableReason | undefined =
   nativeHostAvailability.reason;
+const openIfAvailableResult = typedElectronSteamOverlay.openIfAvailable(steamOverlayTarget);
 const openAndWaitPromise = typedElectronSteamOverlay.openAndWait(steamOverlayTarget, {
   showTimeoutMs: 15000,
   closeTimeoutMs: 300000
 });
+const openAndWaitIfAvailablePromise = typedElectronSteamOverlay.openAndWaitIfAvailable(steamOverlayTarget, {
+  showTimeoutMs: 15000,
+  closeTimeoutMs: 300000
+});
+const shortcutOpenResult = typedElectronSteamOverlay.openShortcutTargetIfAvailable();
 const shortcutOpenAndWaitPromise = typedElectronSteamOverlay.openShortcutTargetAndWait({
+  showTimeoutMs: 15000,
+  closeTimeoutMs: 300000
+});
+const shortcutOpenAndWaitIfAvailablePromise = typedElectronSteamOverlay.openShortcutTargetAndWaitIfAvailable({
   showTimeoutMs: 15000,
   closeTimeoutMs: 300000
 });
@@ -612,8 +622,12 @@ void nativeHostAvailability;
 void nativeHostAvailable;
 void nativeHostAvailabilitySnapshot;
 void nativeHostAvailabilityReason;
+void openIfAvailableResult;
 void openAndWaitPromise;
+void openAndWaitIfAvailablePromise;
+void shortcutOpenResult;
 void shortcutOpenAndWaitPromise;
+void shortcutOpenAndWaitIfAvailablePromise;
 void checkoutPreparePromise;
 void checkoutAndWaitPromise;
 void checkoutTargetSnapshot;
