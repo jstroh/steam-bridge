@@ -588,278 +588,39 @@ Current overlay evidence is tracked in
 [`docs/research/cross-platform-overlay-status.md`](docs/research/cross-platform-overlay-status.md).
 Native presenter design notes are tracked in
 [`docs/research/native-overlay-presenter-plan.md`](docs/research/native-overlay-presenter-plan.md).
-The latest local macOS Apple Silicon full cold-launch proof is
-`/tmp/steam-bridge-macos-overlay-matrix-full-post-reboot-20260701`: it reused
-the signed arm64 Electron `43.0.0` smoke package and stable Steam shortcut after
-a macOS reboot without repackaging or restarting Steam, then passed all 55 App
-ID `480` presenter-backed overlay cases. The matrix required managed overlay
-isolation for every presenter case and the summary reports
-`managedIsolation=true`, `openStatuses=true`, and `checkoutOperation=true` from
-the builder-facing diagnostics. It covers readiness, direct
-web/store/Friends/dialog/checkout/profile/players/community/stats/achievements/
-user routes, waited routes, passive progress/unlock toasts, checkout approval
-and prepare-only, every managed Shift+Tab shortcut target, every programmatic
-shortcut `openAndWait(...)` target, visible Steam web content before close
-input where applicable, close/back-to-app proof, one Metal presenter-backed
-overlay target, parked zero-FPS presenter state, disabled needs-present
-polling, zero managed overlay timing, redacted checkout command values, and
-clean crash diagnostics. The same summary reports
-`idleStable=true` for active overlay close paths, proving the parked presenter
-stayed at `currentFps=0` without post-close `pumpCount` growth.
-A post-reboot persistent Apple Silicon proof at
-`/tmp/steam-bridge-macos-overlay-matrix-persistent-post-reboot-20260701`
-reused that same signed arm64 package and stable App ID `480` shortcut without
-repackaging or restarting Steam, then passed all 51 one-process/control-server
-cases. The first attempt hit Steam's transient overlay-readiness timeout at the
-profile `openAndWait(...)` case and the matrix relaunched through its bounded
-retry path; the retry passed, so the final artifact proves the successful
-long-lived-process route while preserving that Steam-client readiness signal as
-something to watch. The run covers readiness, managed web/store/Friends/dialog
-wait helpers, duplicate-open suppression, passive progress/unlock toasts,
-checkout approval and prepare-only, every managed Shift+Tab shortcut target,
-every direct profile/players/community/stats/achievements/user route, every
-dialog-equivalent route, every programmatic shortcut `openAndWait(...)` target,
-one Metal presenter-backed overlay target, close/back-to-app proof, zero-FPS
-parking, zero managed overlay timing, named open-status/checkout diagnostics,
-redacted checkout command values, and clean crash diagnostics.
-A post-reboot core Apple Silicon proof at
-`/tmp/steam-bridge-macos-overlay-matrix-core-post-reboot-20260701` reused the
-same signed arm64 package and stable App ID `480` shortcut without repackaging
-or restarting Steam, then passed all 37 core cases with direct and waited
-managed overlay helpers, checkout approval and prepare-only flows, passive
-progress/unlock toasts, every managed Shift+Tab shortcut target,
-close/back-to-app proof, one Metal presenter target, zero-FPS parking, zero
-managed timing, managed child-overlay isolation, redacted checkout command
-values, named open-status/checkout diagnostics, and clean crash diagnostics.
-New macOS matrix manifests record their suite name, and the summary auditor
-rejects named-suite artifacts that are missing required overlay surface cases.
-New manifests also require the smoke result snapshot to include named
-builder-facing open-status diagnostics for web, store, Friends, profile,
-players, community, stats, achievements, user, dialog, and checkout targets,
-plus the checkout-operation preflight used before starting `InitTxn`; summary
-rows report this as `openStatuses=true` and `checkoutOperation=true` when the
-proof is present.
-The same auditor also scans smoke result JSON and lifecycle logs for raw
-checkout approval URLs, transaction/order IDs, return URLs, Steam IDs,
-configured-product item metadata, price/currency details, and private checkout
-CLI arguments, so private purchase artifacts fail closed if redaction regresses.
-The matrix's human-readable `RUN` and `QUIT` command logs use the same privacy
-posture for checkout inputs and control tokens: option names remain visible, but
-values are printed as `REDACTED`.
-A focused Apple Silicon minimal run at
-`/tmp/steam-bridge-macos-overlay-matrix-20260701-032532` also passed all 7
-minimal cases after expanding the duplicate-open guard to direct,
-shortcut/controller, and checkout `IfAvailable` helpers while keeping the
-arm64-only signed package path.
-A current-head persistent Apple Silicon run at
-`/tmp/steam-bridge-macos-overlay-matrix-20260701-033432` then rebuilt and signed
-the same arm64-only Electron `43.0.0` package, launched one Steam-owned App ID
-`480` process, and passed all 45 persistent cases, including that expanded
-duplicate-open proof, passive toasts, checkout routing, every managed shortcut
-target, every programmatic shortcut `openAndWait(...)` target, all
-dialog-equivalent routes, close/back-to-app proof, parked zero-FPS state, zero
-managed overlay timing, and clean crash diagnostics.
-A focused checkout run at
-`/tmp/steam-bridge-macos-overlay-matrix-20260701-034916` rebuilt and signed the
-same Apple Silicon package and passed all four public App ID `480` checkout
-cases again: prepare-only, direct synthetic approval-route checkout, managed
-Shift+Tab checkout, and programmatic checkout shortcut `openAndWait(...)`, with
-visible web content where applicable, close/back-to-app proof, parked zero-FPS
-state, zero managed overlay timing, and clean crash diagnostics. Real purchase
-content still requires your own configured Steam app/product.
-A current-head core Apple Silicon run at
-`/tmp/steam-bridge-macos-overlay-matrix-core-shortcut-readiness-20260701-062656`
-rebuilt and signed the arm64-only Electron `43.0.0` package, verified the
-native launcher/signing shape, reused the stable App ID `480` Steam shortcut
-without restarting Steam, and passed all 27 core cases after shortcut readiness
-hardening. That run re-proved readiness, web/store/Friends/dialog
-`openAndWait(...)`, duplicate-open suppression, passive toasts, checkout
-approval and prepare-only, every managed Shift+Tab shortcut target, and direct
-profile/players/community/stats/achievements/user routes with one Metal
-presenter-backed overlay target, close/back-to-app proof, parked zero-FPS
-state, disabled needs-present polling, zero managed overlay timing, managed
-child-overlay isolation, and clean crash diagnostics.
-A focused Apple Silicon minimal run at
-`/tmp/steam-bridge-macos-overlay-matrix-minimal-named-helpers-20260701-064718`
-then rebuilt and signed the same arm64-only Electron `43.0.0` package and
-passed all 7 Steam-launched cases after the smoke app switched its common
-managed actions to the named builder helpers. The run exercised
-`openWebAndWait(...)`, `openStoreAndWait(...)`, `openFriendsAndWait(...)`,
-`openDialogAndWait(...)`, duplicate-open suppression through
-`openWebAndWaitIfAvailable(...)`, and passive notification priming with visible
-web content where applicable, close/back-to-app proof, parked zero-FPS state,
-disabled needs-present polling, zero managed overlay timing, managed
-child-overlay isolation, and clean crash diagnostics.
-A focused Apple Silicon minimal run at
-`/tmp/steam-bridge-macos-overlay-matrix-minimal-direct-helpers-20260701-070531`
-then rebuilt and signed the same arm64-only Electron `43.0.0` package and
-passed all 11 Steam-launched cases after adding named direct helpers. The run
-exercised direct `openWeb(...)`, `openStore(...)`, `openFriends(...)`, and
-`openDialog(...)` calls plus the existing wait-helper, duplicate-open, and
-passive notification cases, with visible Steam web content where applicable,
-active/inactive callbacks, close/back-to-app proof, parked zero-FPS state,
-disabled needs-present polling, zero managed overlay timing, managed
-child-overlay isolation, and clean crash diagnostics.
-A focused Apple Silicon minimal run at
-`/tmp/steam-bridge-macos-overlay-matrix-minimal-direct-checkout-20260701-071929`
-rebuilt and signed the same arm64-only Electron `43.0.0` package and passed all
-11 Steam-launched cases after adding named direct checkout target helpers. The
-duplicate-open guard now proves direct target, shortcut/controller,
-`openCheckoutIfAvailable(...)`, and `openCheckoutAndWaitIfAvailable(...)`
-helpers all return `null` while a managed overlay is already opening, and that
-the checkout wait helper does not start its transaction operation in that busy
-state. The same run re-proved direct web/store/Friends/dialog helpers,
-wait-helper open/close, passive notification priming, visible Steam web content
-where applicable, close/back-to-app proof, parked zero-FPS state, disabled
-needs-present polling, zero managed overlay timing, managed child-overlay
-isolation, and clean crash diagnostics.
-A focused Apple Silicon minimal run at
-`/tmp/steam-bridge-macos-overlay-matrix-20260701-073909` rebuilt and signed the
-same arm64-only Electron `43.0.0` package, reused the stable App ID `480`
-shortcut without restarting Steam, and passed all 11 Steam-launched cases after
-the smoke app moved managed open-status snapshots and duplicate-open proof onto
-the named status helpers. The duplicate-open guard now requires
-`getWebOpenStatus(...)`, `getStoreOpenStatus(...)`,
-`getFriendsOpenStatus()`, and `getCheckoutOpenStatus(...)` to report
-`canOpen=false`, `canWait=false`, `reason=opening`, and `waitReason=opening`
-while a managed overlay is already opening. The same run re-proved direct
-web/store/Friends/dialog helpers, wait-helper open/close, passive notification
-priming, visible Steam web content where applicable, close/back-to-app proof,
-parked zero-FPS state, disabled needs-present polling, zero managed overlay
-timing, managed child-overlay isolation, and clean crash diagnostics.
-A focused Apple Silicon minimal run at
-`/tmp/steam-bridge-macos-overlay-matrix-open-statuses-20260701-080050` reused
-the signed arm64-only Electron `43.0.0` package and the stable App ID `480`
-shortcut without restarting Steam, then passed all 11 Steam-launched cases after
-the summary auditor began requiring named open-status snapshots from every
-smoke result. Every summary row reported `openStatuses=true`, proving the
-builder-facing `get*OpenStatus(...)` diagnostics stayed wired for direct
-web/store/Friends/dialog opens, `openAndWait(...)` routes, duplicate-open
-suppression, and passive notification priming while preserving the same
-close/back-to-app, zero-FPS parking, zero managed timing, isolation, and crash
-checks.
-A current-head persistent Apple Silicon run at
-`/tmp/steam-bridge-macos-overlay-matrix-persistent-open-statuses-20260701-080755`
-then reused the same signed arm64-only Electron `43.0.0` package and stable App
-ID `480` shortcut without repackaging or restarting Steam, launched one
-Steam-owned smoke process/control-server lifecycle, and passed all 45
-persistent cases with `openStatuses=true` on every summary row. It re-proved
-readiness, web/store/Friends/dialog `openAndWait(...)`, duplicate-open
-suppression, passive progress/unlock toasts, checkout approval and prepare-only,
-every managed Shift+Tab shortcut target, direct profile/players/community/
-stats/achievements/user/dialog-equivalent routes, and every programmatic
-shortcut `openAndWait(...)` target with close/back-to-app proof, parked
-zero-FPS state, zero managed timing, managed isolation, clean crash diagnostics,
-and no leftover smoke or overlay processes.
-A current-head persistent Apple Silicon run at
-`/tmp/steam-bridge-macos-overlay-matrix-persistent-checkout-operation-20260701-083629`
-rebuilt and signed the same arm64-only Electron `43.0.0` package, reused the
-stable App ID `480` shortcut without restarting Steam, launched one Steam-owned
-smoke process/control-server lifecycle, and passed all 45 persistent cases
-after the macOS summary auditor began printing `checkoutOperation=true` beside
-`openStatuses=true`. The live artifact proves every smoke snapshot included
-`snapshot.overlay.openStatuses.checkoutOperation` with a checkout target
-snapshot and `canStartOperation` boolean, while preserving the same web/store/
-Friends/dialog, shortcut/toggle, passive progress/unlock toast, checkout
-approval/prepare, close/back-to-app, parked zero-FPS, managed isolation, and
-clean crash diagnostics.
-A focused Apple Silicon minimal run at
-`/tmp/steam-bridge-macos-overlay-matrix-minimal-full-ifavailable-fixed-20260701-090347`
-then rebuilt and signed the same arm64-only Electron `43.0.0` package and
-passed all 11 Steam-launched cases after the duplicate-open guard began proving
-every named managed target's direct and wait-style `IfAvailable` helpers. That
-live run also caught and re-proved the checkout-operation status ordering:
-while another overlay is already opening, `getCheckoutOperationStatus()` now
-reports `reason: "opening"` before any transient `overlay-not-ready` state, so
-purchase buttons do not start `InitTxn` during a managed overlay open.
-A focused Apple Silicon minimal run at
-`/tmp/steam-bridge-macos-overlay-matrix-minimal-direct-open-status-20260701-091919`
-then reused the signed arm64-only Electron `43.0.0` package and stable App ID
-`480` shortcut without restarting Steam, and passed all 11 Steam-launched cases
-after direct managed opens began failing known unavailable statuses before
-Steam activation. It re-proved direct web/store/Friends/dialog opens,
-web/store/Friends/dialog `openAndWait(...)`, duplicate-open suppression,
-passive toast priming, visible Steam web content, close/back-to-app proof,
-parked zero-FPS presenter state, zero managed timing, managed isolation, and
-clean crash diagnostics.
-A focused Apple Silicon checkout run at
-`/tmp/steam-bridge-macos-overlay-matrix-checkout-readiness-before-inittxn-20260701-093251`
-then rebuilt and signed the same arm64-only Electron `43.0.0` package and
-passed all four Steam-launched checkout cases after `openCheckoutAndWait(...)`
-began waiting for Steam overlay readiness before invoking the transaction
-operation. Unit coverage proves a not-yet-ready overlay leaves the transaction
-operation untouched and reports only a sanitized pending checkout snapshot on
-readiness timeout; the live run re-proved prepare-only checkout, direct
-synthetic approval checkout, managed Shift+Tab checkout, programmatic checkout
-`openAndWait(...)`, visible Steam web content for web-close paths,
-close/back-to-app proof, parked zero-FPS presenter state, zero managed timing,
-managed isolation, and clean crash diagnostics.
-A later focused Apple Silicon checkout run at
-`/tmp/steam-bridge-macos-overlay-matrix-20260701-102924` rebuilt and signed the
-same arm64-only Electron `43.0.0` package and passed the four checkout cases
-after `withCheckoutPrepared(...)` began waiting through launch-time
-`overlay-not-ready` before running the wrapped split-step callback. The run
-re-proved prepare-only checkout, direct synthetic approval checkout, managed
-Shift+Tab checkout, and programmatic checkout `openAndWait(...)`, including
-close/back-to-app proof, parked zero-FPS presenter state, zero managed timing,
-managed isolation, and clean crash diagnostics.
-A focused Apple Silicon checkout run at
-`/tmp/steam-bridge-macos-overlay-matrix-20260701-124434` rebuilt and signed the
-arm64-only Electron `43.0.0` package and passed the same four checkout cases
-after the smoke app's split-step shortcut checkout target began passing the
-expected app ID into `checkoutTargetFromResult(...)`. The run re-proved
-prepare-only checkout, direct checkout approval, managed Shift+Tab checkout,
-and programmatic shortcut checkout `openAndWait(...)`, including
-close/back-to-app proof, parked zero-FPS presenter state, zero managed timing,
-managed isolation, one Metal presenter-backed overlay target under game ID
-`480`, visible checkout web content for waited close probes, and clean crash
-diagnostics.
-A focused Apple Silicon checkout run at
-`/tmp/steam-bridge-macos-overlay-matrix-checkout-redacted-20260701-132412`
-then reused the same signed arm64-only Electron `43.0.0` package and stable App
-ID `480` shortcut without restarting Steam and passed the same four checkout
-cases with live command logs redacting checkout transaction inputs as
-`REDACTED`. The run re-proved prepare-only checkout, direct checkout approval,
-managed Shift+Tab checkout, and programmatic shortcut checkout
-`openAndWait(...)`, including named open-status and checkout-operation
-diagnostics, visible checkout web content for waited close probes,
-close/back-to-app proof, parked zero-FPS presenter state, zero managed timing,
-managed isolation, one Metal presenter-backed overlay target under game ID
-`480`, and clean crash diagnostics. This remains public App ID `480` routing
-evidence; real purchase-content proof still requires a configured product in a
-real Steam app.
-A focused Apple Silicon minimal run at
-`/tmp/steam-bridge-macos-overlay-matrix-20260701-111335` then reused the same
-signed arm64-only Electron `43.0.0` package, verified the native launcher
-identity marker, verified that the renamed `.electron` executable is not a
-second launcher copy, and passed all 11 Steam-launched minimal cases with the
-matrix requiring direct-open readiness-status evidence for direct
-web/store/Friends/dialog actions. The smoke app records sanitized
-readiness-status evidence and waits through launch-time `overlay-not-ready`
-with `waitForOverlayReady()` before invoking named direct helpers. The run
-re-proved direct web/store/Friends/dialog opens, wait-style
-web/store/Friends/dialog routes, duplicate-open suppression, passive toast
-priming, visible Steam web content, close/back-to-app proof, parked zero-FPS
-presenter state, zero managed timing, managed isolation, and clean crash
-diagnostics from the Apple Silicon package path.
-A current-head Apple Silicon core run at
-`/tmp/steam-bridge-macos-overlay-matrix-20260701-114530` then passed all 37
-Steam-launched cases after adding direct readiness-status proof for profile,
-players, community, stats, achievements, and user chat helpers. A follow-up
-persistent Apple Silicon run at
-`/tmp/steam-bridge-macos-overlay-matrix-20260701-115219` reused the same signed
-arm64-only package and stable App ID `480` shortcut without repackaging or
-restarting Steam, launched one Steam-owned process/control server, and passed
-all 51 one-process cases with the same direct helper proof, close/back-to-app
-checks, zero-FPS parking, zero managed timing, managed isolation, and clean
-crash diagnostics.
-A current-head Apple Silicon full run at
-`/tmp/steam-bridge-macos-overlay-matrix-20260701-120932` reused the same signed
-arm64-only package and stable App ID `480` shortcut without repackaging or
-restarting Steam, and passed all 55 process-per-case routes with the same
-direct helper, waited route, passive toast, checkout, shortcut, dialog,
-close/back-to-app, zero-FPS parking, zero managed timing, managed isolation,
-and clean crash-diagnostic checks.
+
+Current macOS Apple Silicon overlay proof is intentionally summarized here and
+kept in detail in the research docs:
+
+- Full process-per-case proof:
+  `/tmp/steam-bridge-macos-overlay-matrix-full-post-reboot-20260701` reused the
+  signed arm64 Electron `43.0.0` smoke package and stable App ID `480` Steam
+  shortcut after a macOS reboot without repackaging or restarting Steam, then
+  passed all 55 presenter-backed overlay routes.
+- Persistent one-process proof:
+  `/tmp/steam-bridge-macos-overlay-matrix-persistent-post-reboot-20260701`
+  reused the same package and shortcut, then passed all 51
+  one-process/control-server routes. The first attempt hit Steam's transient
+  overlay-readiness timeout at profile `openAndWait(...)`; the bounded retry
+  passed, and the final artifact proves the successful long-lived-process
+  route.
+- Core proof:
+  `/tmp/steam-bridge-macos-overlay-matrix-core-post-reboot-20260701` passed all
+  37 core routes against the same signed arm64 package and shortcut.
+
+Those artifacts cover managed web, store, Friends/chat, checkout, passive
+progress/unlock toasts, every supported managed Shift+Tab target, direct
+profile/players/community/stats/achievements/user routes, dialog-equivalent
+routes, and programmatic shortcut `openAndWait(...)` targets. The summary
+auditor requires one Metal presenter-backed overlay target, active/inactive
+callback evidence where expected, visible web content where applicable,
+close/back-to-app proof, parked `currentFps=0` state, no post-close pumping,
+disabled macOS `BOverlayNeedsPresent()` polling, zero managed overlay timing,
+managed Electron child-overlay isolation, named open-status and checkout
+operation diagnostics, redacted checkout command values, and clean crash
+diagnostics. Public App ID `480` proves generic checkout routing only; real
+purchase-content proof still requires a real configured Steam app/product and
+the private `--checkout-json-file` checkout suite.
 
 ## Shipping Notes
 
