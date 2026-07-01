@@ -137,6 +137,18 @@ visible Steam web content before close probes, app focus return, parked
 zero-FPS presenter state, disabled needs-present polling, zero managed overlay
 timing, clean control-server quit behavior, no leftover smoke/gameoverlay
 process, and clean crash diagnostics.
+A focused current-head checkout run at
+`/tmp/steam-bridge-macos-overlay-matrix-checkout-target-snapshot-20260630-232458`
+rebuilt and signed the Apple Silicon Electron `43.0.0` package, reused the
+stable shortcut without restarting Steam, and passed the four-case App ID `480`
+checkout suite. It covered checkout prepare-only, direct synthetic
+approval-route checkout, managed Shift+Tab checkout, and programmatic checkout
+shortcut `openAndWait(...)`; the summary now audits sanitized checkout
+`targetSnapshot` presence flags on checkout completion. Direct artifact checks
+found no raw synthetic transaction ID or checkout approval URL in matrix
+metadata or lifecycle logs, no leftover smoke/gameoverlay process, and the same
+one Metal presenter-backed overlay target, close/back-to-app, parked zero-FPS,
+zero managed timing, and clean crash-diagnostic proof as the broader matrix.
 A fresh full run at
 `/tmp/steam-bridge-macos-overlay-matrix-full-json-after-reopen-20260630-040037`
 then rebuilt and signed the Electron `42.5.1` smoke package after Steam had been

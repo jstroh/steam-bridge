@@ -762,6 +762,21 @@ achievement-progress and unlock notifications. Real purchase-content coverage
 still needs a real Steam app ID with a configured product before describing
 purchase overlay support as complete.
 
+A 2026-06-30 focused checkout run at
+`/tmp/steam-bridge-macos-overlay-matrix-checkout-target-snapshot-20260630-232458`
+rebuilt and signed the Apple Silicon Electron `43.0.0` smoke package, reused
+the stable Steam shortcut without restarting Steam, and passed checkout
+prepare-only, direct synthetic approval-route checkout, managed Shift+Tab
+checkout, and programmatic checkout shortcut `openAndWait(...)`. The macOS
+summary auditor now requires checkout completion to include the sanitized
+`targetSnapshot` diagnostic, and the live artifact kept transaction evidence to
+presence flags without raw synthetic transaction IDs or checkout approval URLs
+in matrix metadata or lifecycle logs. It also verified one Metal
+presenter-backed overlay target, visible Steam web content before close,
+active/inactive callbacks for checkout UI, app focus return, parked zero-FPS
+state, zero managed overlay timing, clean crash diagnostics, and no leftover
+smoke or `gameoverlayui` process.
+
 A 2026-06-30 focused minimal macOS run at
 `/tmp/steam-bridge-macos-overlay-matrix-ready-minimal-20260630-163718`
 added the managed `presenter-ready` preflight to the live matrix. It verified

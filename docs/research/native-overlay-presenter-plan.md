@@ -1097,6 +1097,18 @@ Current evidence:
   state, disabled needs-present polling, zero managed overlay timing, clean
   control-server quit behavior, no leftover smoke/gameoverlay process, and
   clean crash diagnostics.
+  A focused current-head macOS checkout suite at
+  `/tmp/steam-bridge-macos-overlay-matrix-checkout-target-snapshot-20260630-232458`
+  rebuilt and signed the Apple Silicon Electron `43.0.0` package, reused the
+  stable shortcut without restarting Steam, and passed all four App ID `480`
+  checkout cases: prepare-only, direct synthetic approval-route checkout,
+  managed Shift+Tab checkout, and programmatic checkout shortcut
+  `openAndWait(...)`. The summary now requires checkout completion artifacts to
+  include the sanitized `targetSnapshot` presence-flag diagnostic, and the live
+  artifact verified close/back-to-app proof, one Metal presenter-backed overlay
+  target, zero managed overlay timing, no leftover smoke/gameoverlay process,
+  and no raw synthetic transaction ID or checkout approval URL in the matrix
+  metadata or lifecycle logs.
 - BrowserWindow-only overlay support is not proven.
 - Steam launch, app ID, auth, and callbacks are not enough to claim overlay
   support.

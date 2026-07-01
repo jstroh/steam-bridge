@@ -748,6 +748,12 @@ function verifyCheckoutOpenAndWait(caseId, actionName, entries, expectedCheckout
       `${caseId}: checkout completion source expected ${formatValue(expectedCheckoutSource)}, got ${formatValue(payload.checkoutSource)}`
     );
   }
+  const targetSnapshot = objectField(payload, "targetSnapshot");
+  if (!targetSnapshot) {
+    failures.push(`${caseId}: checkout completion did not include sanitized targetSnapshot`);
+  } else {
+    expectCheckoutTargetSnapshot(caseId, targetSnapshot, failures);
+  }
   const shown = objectField(payload, "shown");
   const parked = objectField(payload, "parked");
   if (!shown) {
@@ -860,6 +866,30 @@ function checkoutTargetSnapshotHasTarget(targetSnapshot) {
     sanitizedTargetValuePresent(targetSnapshot.url) ||
     sanitizedTargetValuePresent(targetSnapshot.transactionId)
   );
+}
+
+function expectCheckoutTargetSnapshot(caseId, targetSnapshot, failures) {
+  expect(
+    targetSnapshot.type === "checkout",
+    `${caseId}: checkout targetSnapshot type is checkout, got ${formatValue(targetSnapshot.type)}`,
+    failures
+  );
+  expect(
+    checkoutTargetSnapshotHasTarget(targetSnapshot),
+    `${caseId}: checkout targetSnapshot includes a checkout URL or transaction ID presence marker`,
+    failures
+  );
+
+  for (const key of ["steamUrl", "url", "transactionId", "returnUrl", "steamId64"]) {
+    if (!Object.prototype.hasOwnProperty.call(targetSnapshot, key)) {
+      continue;
+    }
+    expect(
+      sanitizedTargetValuePresent(targetSnapshot[key]),
+      `${caseId}: checkout targetSnapshot ${key} is redacted instead of raw`,
+      failures
+    );
+  }
 }
 
 function sanitizedTargetValuePresent(value) {
@@ -1881,6 +1911,7 @@ function createSelfTestFixture(root) {
           payload: {
             checkoutSource: "json-file",
             resolvedTarget: { hasCheckoutUrl: true, hasTransactionId: true, hasReturnUrl: true },
+            targetSnapshot: { type: "checkout", hasSteamUrl: true, hasTransactionId: true, hasReturnUrl: true },
             shown: activePresenterFixture(31),
             parked: parkedPresenterFixture(32)
           }
