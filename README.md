@@ -538,6 +538,18 @@ Shift+Tab checkout, and programmatic checkout shortcut `openAndWait(...)`, with
 visible web content where applicable, close/back-to-app proof, parked zero-FPS
 state, zero managed overlay timing, and clean crash diagnostics. Real purchase
 content still requires your own configured Steam app/product.
+A current-head core Apple Silicon run at
+`/tmp/steam-bridge-macos-overlay-matrix-core-shortcut-readiness-20260701-062656`
+rebuilt and signed the arm64-only Electron `43.0.0` package, verified the
+native launcher/signing shape, reused the stable App ID `480` Steam shortcut
+without restarting Steam, and passed all 27 core cases after shortcut readiness
+hardening. That run re-proved readiness, web/store/Friends/dialog
+`openAndWait(...)`, duplicate-open suppression, passive toasts, checkout
+approval and prepare-only, every managed Shift+Tab shortcut target, and direct
+profile/players/community/stats/achievements/user routes with one Metal
+presenter-backed overlay target, close/back-to-app proof, parked zero-FPS
+state, disabled needs-present polling, zero managed overlay timing, managed
+child-overlay isolation, and clean crash diagnostics.
 
 ## Shipping Notes
 

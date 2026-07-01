@@ -953,6 +953,19 @@ web content for the direct and programmatic web-close paths, close/back-to-app
 proof, parked zero-FPS state, disabled needs-present polling, zero managed
 overlay timing, and clean crash diagnostics. Real purchase-content evidence
 still requires a configured product in a real Steam app.
+A current-head 2026-07-01 core Apple Silicon artifact at
+`/tmp/steam-bridge-macos-overlay-matrix-core-shortcut-readiness-20260701-062656`
+rebuilt and signed the arm64-only Electron `43.0.0` package, verified the
+native launcher/signing shape, reused the stable App ID `480` Steam shortcut
+without restarting Steam, and passed all 27 core cases after shortcut readiness
+hardening. It re-proved readiness, managed web/store/Friends/dialog
+`openAndWait(...)`, duplicate-open suppression, passive progress/unlock toasts,
+checkout approval and prepare-only, every managed Shift+Tab shortcut target,
+and direct profile/players/community/stats/achievements/user routes with one
+Metal presenter-backed overlay target, visible Steam web content where
+applicable, active/inactive callbacks, close/back-to-app proof, parked zero-FPS
+state, disabled needs-present polling, zero managed overlay timing, managed
+child-overlay isolation, and clean crash diagnostics.
 A later recovered-client full artifact at
 `/tmp/steam-bridge-macos-overlay-matrix-20260630-220434` also passed all 44
 process-per-case App ID `480` cases after recreating the stable shortcut and

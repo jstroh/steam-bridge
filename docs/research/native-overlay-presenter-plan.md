@@ -1232,6 +1232,19 @@ Current evidence:
   close/back-to-app proof, parked zero-FPS state, `idleStable=true` for active
   close paths, disabled needs-present polling, zero managed overlay timing, and
   clean crash diagnostics.
+  A current-head 2026-07-01 core Apple Silicon matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-core-shortcut-readiness-20260701-062656`
+  rebuilt and signed the arm64-only Electron `43.0.0` package, reused the
+  stable App ID `480` shortcut without restarting Steam, and passed all 27 core
+  cases after shortcut readiness hardening. It re-proved readiness,
+  web/store/Friends/dialog `openAndWait(...)`, duplicate-open suppression,
+  passive progress/unlock toasts, checkout approval and prepare-only, every
+  managed Shift+Tab shortcut target, and direct profile/players/community/stats/
+  achievements/user routes with one Metal presenter-backed overlay target,
+  visible Steam web content where applicable, active/inactive callbacks,
+  close/back-to-app proof, parked zero-FPS state, disabled needs-present
+  polling, zero managed overlay timing, managed child-overlay isolation, and
+  clean crash diagnostics.
 - BrowserWindow-only overlay support is not proven.
 - Steam launch, app ID, auth, and callbacks are not enough to claim overlay
   support.
