@@ -953,10 +953,13 @@ Current evidence:
   callbacks where expected, active shown presenter snapshots, one
   `gameoverlayui` target, app focus return, clean crash diagnostics, an
   interactive macOS host state, and idle presenter parking at `currentFps=0`.
-  The latest live full macOS artifact covers 44 process-per-case routes, and
-  the latest persistent artifact covers 45 one-process routes, including
-  programmatic `openShortcutTargetAndWait()` proof for every supported
-  presenter-backed shortcut target. A focused 2026-07-01 minimal Apple Silicon
+  The latest signed full macOS artifact covers 45 process-per-case routes. The
+  current core Apple Silicon artifact covers 37 routes after adding direct
+  readiness-status proof for profile, players, community, stats, achievements,
+  and user chat helpers, and the current persistent artifact covers 51
+  one-process routes, including programmatic `openShortcutTargetAndWait()`
+  proof for every supported presenter-backed shortcut target. A focused
+  2026-07-01 minimal Apple Silicon
   run at `/tmp/steam-bridge-macos-overlay-matrix-20260701-032532` passed all 7
   minimal cases after expanding `presenter-duplicate-open-guard`; it proved
   direct target, shortcut/controller, direct checkout, and checkout wait
@@ -1429,6 +1432,18 @@ Current evidence:
   presenter activation, still wait through temporary `overlay-not-ready`
   readiness for verified managed targets, and preserve the checkout path's
   existing operation-scoped activation hold while it opens the approval route.
+  A current-head 2026-07-01 core Apple Silicon matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-20260701-114530` reused the signed
+  arm64-only Electron `43.0.0` package and stable App ID `480` shortcut without
+  restarting Steam, then passed all 37 core cases after adding direct
+  readiness-status proof for profile, players, community, stats, achievements,
+  and user chat helpers. A follow-up current-head persistent Apple Silicon
+  matrix at `/tmp/steam-bridge-macos-overlay-matrix-20260701-115219` reused the
+  same package and shortcut without repackaging or restarting Steam, launched
+  one Steam-owned smoke process/control server, and passed all 51 persistent
+  cases with the same direct helper evidence plus the existing open/wait,
+  shortcut, checkout, passive notification, close/back-to-app, parked zero-FPS,
+  zero managed timing, managed isolation, and clean crash-diagnostic checks.
 - BrowserWindow-only overlay support is not proven.
 - Steam launch, app ID, auth, and callbacks are not enough to claim overlay
   support.

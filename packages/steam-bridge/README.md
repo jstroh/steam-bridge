@@ -931,13 +931,18 @@ The current core/full/persistent suites include a checkout prepare-only case
 that calls `withCheckoutPrepared(...)` without transaction input, requires
 `overlay:presenter-checkout-ready`, rejects modal overlay activation, and audits
 that the presenter releases back to idle; real checkout-open cases remain
-separate and require close/back-to-app proof. The current full suite remains 44
-process-per-case routes, while the persistent suite is 45 one-process routes
-after adding `presenter-duplicate-open-guard`; both cover the managed
-`presenter-ready` preflight, the checkout prepare-only route, active
-web/store/Friends/dialog/user/community/stats/achievements routes, passive
-progress/unlock toasts, every managed Shift+Tab shortcut target, and every
-programmatic shortcut open-and-wait target.
+separate and require close/back-to-app proof. The current core suite is
+live-proven at 37 Apple Silicon cases after adding direct readiness-status
+proof for profile, players, community, stats, achievements, and user chat
+helpers. The current persistent suite is live-proven at 51 Apple Silicon
+one-process cases in
+`/tmp/steam-bridge-macos-overlay-matrix-20260701-115219`, covering the managed
+`presenter-ready` preflight, direct and waited web/store/Friends/dialog/
+profile/players/community/stats/achievements/user routes, checkout approval
+and prepare-only, passive progress/unlock toasts, every managed Shift+Tab
+shortcut target, and every programmatic shortcut open-and-wait target with
+close/back-to-app proof, zero-FPS parking, zero managed timing, managed
+isolation, and clean crash diagnostics.
 A 2026-06-30 full macOS artifact at
 `/tmp/steam-bridge-macos-overlay-matrix-full-ready-current-20260630-164539`
 passed all 44 process-per-case App ID `480` cases, and a persistent one-process

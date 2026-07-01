@@ -367,7 +367,7 @@ case_block() {
 }
 
 run_self_test() {
-  local self_path minimal_output core_output full_output persistent_output unavailable_output wait_output preflight_output steam_health_output opengl_output checkout_json_output checkout_callback_output callback_missing_json_output checkout_missing_file_output invalid_checkout_json_file invalid_checkout_json_output passive_case checkout_case checkout_prepare_case checkout_json_case checkout_callback_case checkout_callback_checkout_block checkout_callback_prepare_block checkout_callback_web_block shortcut_checkout_json_case direct_web_case direct_store_case direct_friends_case direct_dialog_case web_case duplicate_guard_case full_shortcut_open_wait_case full_shortcut_checkout_open_wait_case full_shortcut_user_open_wait_case full_shortcut_dialog_open_wait_case persistent_web_case persistent_duplicate_guard_case persistent_checkout_prepare_case persistent_shortcut_open_wait_case persistent_shortcut_checkout_open_wait_case persistent_shortcut_user_open_wait_case persistent_shortcut_dialog_open_wait_case unavailable_web_case unavailable_checkout_case unavailable_checkout_prepare_case unavailable_shortcut_case unavailable_passive_case
+  local self_path minimal_output core_output full_output persistent_output unavailable_output wait_output preflight_output steam_health_output opengl_output checkout_json_output checkout_callback_output callback_missing_json_output checkout_missing_file_output invalid_checkout_json_file invalid_checkout_json_output passive_case checkout_case checkout_prepare_case checkout_json_case checkout_callback_case checkout_callback_checkout_block checkout_callback_prepare_block checkout_callback_web_block shortcut_checkout_json_case direct_web_case direct_store_case direct_friends_case direct_dialog_case direct_profile_case direct_players_case direct_community_case direct_stats_case direct_achievements_case direct_user_case web_case duplicate_guard_case full_shortcut_open_wait_case full_shortcut_checkout_open_wait_case full_shortcut_user_open_wait_case full_shortcut_dialog_open_wait_case persistent_web_case persistent_duplicate_guard_case persistent_checkout_prepare_case persistent_direct_profile_case persistent_direct_players_case persistent_direct_community_case persistent_direct_stats_case persistent_direct_achievements_case persistent_direct_user_case persistent_shortcut_open_wait_case persistent_shortcut_checkout_open_wait_case persistent_shortcut_user_open_wait_case persistent_shortcut_dialog_open_wait_case unavailable_web_case unavailable_checkout_case unavailable_checkout_prepare_case unavailable_shortcut_case unavailable_passive_case
   self_path="${BASH_SOURCE[0]}"
   minimal_output="$(
     bash "$self_path" \
@@ -585,11 +585,11 @@ run_self_test() {
     echo "Self-test failed: minimal matrix case count changed." >&2
     exit 1
   fi
-  if [ "$(printf '%s\n' "$core_output" | count_cases)" != "31" ]; then
+  if [ "$(printf '%s\n' "$core_output" | count_cases)" != "37" ]; then
     echo "Self-test failed: core matrix case count changed." >&2
     exit 1
   fi
-  if [ "$(printf '%s\n' "$full_output" | count_cases)" != "49" ]; then
+  if [ "$(printf '%s\n' "$full_output" | count_cases)" != "55" ]; then
     echo "Self-test failed: full matrix case count changed." >&2
     exit 1
   fi
@@ -597,7 +597,7 @@ run_self_test() {
     echo "Self-test failed: checkout matrix case count changed." >&2
     exit 1
   fi
-  if [ "$(printf '%s\n' "$persistent_output" | count_cases)" != "45" ]; then
+  if [ "$(printf '%s\n' "$persistent_output" | count_cases)" != "51" ]; then
     echo "Self-test failed: persistent matrix case count changed." >&2
     exit 1
   fi
@@ -665,6 +665,12 @@ run_self_test() {
   require_contains "$core_output" "--shortcut-target achievements" "core matrix must include achievements shortcut routing."
   require_contains "$core_output" "--shortcut-target user" "core matrix must include user shortcut routing."
   require_contains "$core_output" "--shortcut-target dialog" "core matrix must include dialog shortcut routing."
+  require_contains "$core_output" "--action presenter-profile" "core matrix must include direct profile open."
+  require_contains "$core_output" "--action presenter-players" "core matrix must include direct players open."
+  require_contains "$core_output" "--action presenter-community" "core matrix must include direct community open."
+  require_contains "$core_output" "--action presenter-stats" "core matrix must include direct stats open."
+  require_contains "$core_output" "--action presenter-achievements" "core matrix must include direct achievements open."
+  require_contains "$core_output" "--action presenter-user" "core matrix must include direct user open."
   require_contains "$core_output" "--action presenter-profile-open-and-wait" "core matrix must include profile openAndWait."
   require_contains "$core_output" "--action presenter-players-open-and-wait" "core matrix must include players openAndWait."
   require_contains "$core_output" "--action presenter-community-open-and-wait" "core matrix must include community openAndWait."
@@ -703,6 +709,12 @@ run_self_test() {
   require_contains "$persistent_output" "CASE 42-persistent-shortcut-dialog-openwait" "persistent matrix must include programmatic dialog shortcut openAndWait routing."
   require_contains "$persistent_output" "--shortcut-target checkout" "persistent matrix must include checkout shortcut routing."
   require_contains "$persistent_output" "--shortcut-target user" "persistent matrix must include user shortcut routing."
+  require_contains "$persistent_output" "CASE 19a-persistent-profile-direct" "persistent matrix must include direct profile open."
+  require_contains "$persistent_output" "CASE 20a-persistent-players-direct" "persistent matrix must include direct players open."
+  require_contains "$persistent_output" "CASE 21a-persistent-community-direct" "persistent matrix must include direct community open."
+  require_contains "$persistent_output" "CASE 22a-persistent-stats-direct" "persistent matrix must include direct stats open."
+  require_contains "$persistent_output" "CASE 23a-persistent-achievements-direct" "persistent matrix must include direct achievements open."
+  require_contains "$persistent_output" "CASE 24a-persistent-user-chat-direct" "persistent matrix must include direct user open."
   require_contains "$persistent_output" "--action presenter-profile-open-and-wait" "persistent matrix must include profile openAndWait."
   require_contains "$persistent_output" "--action presenter-players-open-and-wait" "persistent matrix must include players openAndWait."
   require_contains "$persistent_output" "--action presenter-community-open-and-wait" "persistent matrix must include community openAndWait."
@@ -750,6 +762,12 @@ run_self_test() {
   direct_store_case="$(case_command "$core_output" "02a-store-direct")"
   direct_friends_case="$(case_command "$core_output" "03a-friends-direct")"
   direct_dialog_case="$(case_command "$core_output" "04a-dialog-direct")"
+  direct_profile_case="$(case_command "$core_output" "19a-profile-direct")"
+  direct_players_case="$(case_command "$core_output" "20a-players-direct")"
+  direct_community_case="$(case_command "$core_output" "21a-community-direct")"
+  direct_stats_case="$(case_command "$core_output" "22a-stats-direct")"
+  direct_achievements_case="$(case_command "$core_output" "23a-achievements-direct")"
+  direct_user_case="$(case_command "$core_output" "24a-user-chat-direct")"
   web_case="$(case_command "$core_output" "01-web-openwait")"
   duplicate_guard_case="$(case_command "$core_output" "01b-duplicate-open-guard")"
   shortcut_friends_case="$(case_command "$core_output" "08-shortcut-friends")"
@@ -779,6 +797,12 @@ run_self_test() {
   persistent_duplicate_guard_case="$(case_command "$persistent_output" "01b-persistent-duplicate-open-guard")"
   persistent_shortcut_friends_case="$(case_command "$persistent_output" "08-persistent-shortcut-friends")"
   persistent_checkout_prepare_case="$(case_command "$persistent_output" "07b-persistent-checkout-prepare")"
+  persistent_direct_profile_case="$(case_command "$persistent_output" "19a-persistent-profile-direct")"
+  persistent_direct_players_case="$(case_command "$persistent_output" "20a-persistent-players-direct")"
+  persistent_direct_community_case="$(case_command "$persistent_output" "21a-persistent-community-direct")"
+  persistent_direct_stats_case="$(case_command "$persistent_output" "22a-persistent-stats-direct")"
+  persistent_direct_achievements_case="$(case_command "$persistent_output" "23a-persistent-achievements-direct")"
+  persistent_direct_user_case="$(case_command "$persistent_output" "24a-persistent-user-chat-direct")"
   persistent_shortcut_open_wait_case="$(case_command "$persistent_output" "19-persistent-shortcut-web-openwait")"
   persistent_shortcut_checkout_open_wait_case="$(case_command "$persistent_output" "35-persistent-shortcut-checkout-openwait")"
   persistent_shortcut_user_open_wait_case="$(case_command "$persistent_output" "41-persistent-shortcut-user-chat-openwait")"
@@ -808,6 +832,25 @@ run_self_test() {
   require_contains "$direct_dialog_case" "--action presenter-dialog-auto" "direct dialog proof should use the verified auto route."
   require_contains "$direct_dialog_case" "--require-event overlay:presenter-open" "direct dialog proof should require presenter-open."
   require_contains "$direct_dialog_case" "--require-direct-open-readiness-status" "direct dialog proof should require readiness status evidence."
+  require_contains "$direct_profile_case" "--action presenter-profile" "direct profile proof should use the named direct helper."
+  require_contains "$direct_profile_case" "--require-event overlay:presenter-open" "direct profile proof should require presenter-open."
+  require_contains "$direct_profile_case" "--require-direct-open-readiness-status" "direct profile proof should require readiness status evidence."
+  require_contains "$direct_players_case" "--action presenter-players" "direct players proof should use the named direct helper."
+  require_contains "$direct_players_case" "--require-event overlay:presenter-open" "direct players proof should require presenter-open."
+  require_contains "$direct_players_case" "--require-direct-open-readiness-status" "direct players proof should require readiness status evidence."
+  require_contains "$direct_community_case" "--action presenter-community" "direct community proof should use the named direct helper."
+  require_contains "$direct_community_case" "--require-event overlay:presenter-open" "direct community proof should require presenter-open."
+  require_contains "$direct_community_case" "--require-direct-open-readiness-status" "direct community proof should require readiness status evidence."
+  require_contains "$direct_stats_case" "--action presenter-stats" "direct stats proof should use the named direct helper."
+  require_contains "$direct_stats_case" "--require-event overlay:presenter-open" "direct stats proof should require presenter-open."
+  require_contains "$direct_stats_case" "--require-direct-open-readiness-status" "direct stats proof should require readiness status evidence."
+  require_contains "$direct_achievements_case" "--action presenter-achievements" "direct achievements proof should use the named direct helper."
+  require_contains "$direct_achievements_case" "--require-event overlay:presenter-open" "direct achievements proof should require presenter-open."
+  require_contains "$direct_achievements_case" "--require-direct-open-readiness-status" "direct achievements proof should require readiness status evidence."
+  require_contains "$direct_user_case" "--action presenter-user" "direct user proof should use the named direct helper."
+  require_contains "$direct_user_case" "--user-dialog chat" "direct user proof should target the chat/profile-equivalent route."
+  require_contains "$direct_user_case" "--require-event overlay:presenter-open" "direct user proof should require presenter-open."
+  require_contains "$direct_user_case" "--require-direct-open-readiness-status" "direct user proof should require readiness status evidence."
   require_contains "$web_case" "--web-modal true" "web proof should use modal Steam web overlay."
   require_contains "$web_case" "--close-input web" "active web proof should close through the Steam web close control."
   require_contains "$duplicate_guard_case" "--require-event overlay:presenter-duplicate-open-guard" "duplicate-open proof should require the guard event."
@@ -854,6 +897,25 @@ run_self_test() {
   require_contains "$shortcut_checkout_json_case" "--checkout-json-file /tmp/private-init-txn-response.json" "checkout shortcut proof should use the JSON-file handoff."
   require_not_contains "$checkout_json_case" "--checkout-transaction-id 123456789" "private checkout proof should not also use the synthetic transaction ID."
   require_not_contains "$shortcut_checkout_json_case" "--checkout-transaction-id 123456789" "checkout shortcut proof should not also use the synthetic transaction ID."
+  require_contains "$persistent_direct_profile_case" "--action presenter-profile" "persistent direct profile proof should use the named direct helper."
+  require_contains "$persistent_direct_profile_case" "--require-event overlay:presenter-open" "persistent direct profile proof should require presenter-open."
+  require_contains "$persistent_direct_profile_case" "--require-direct-open-readiness-status" "persistent direct profile proof should require readiness status evidence."
+  require_contains "$persistent_direct_players_case" "--action presenter-players" "persistent direct players proof should use the named direct helper."
+  require_contains "$persistent_direct_players_case" "--require-event overlay:presenter-open" "persistent direct players proof should require presenter-open."
+  require_contains "$persistent_direct_players_case" "--require-direct-open-readiness-status" "persistent direct players proof should require readiness status evidence."
+  require_contains "$persistent_direct_community_case" "--action presenter-community" "persistent direct community proof should use the named direct helper."
+  require_contains "$persistent_direct_community_case" "--require-event overlay:presenter-open" "persistent direct community proof should require presenter-open."
+  require_contains "$persistent_direct_community_case" "--require-direct-open-readiness-status" "persistent direct community proof should require readiness status evidence."
+  require_contains "$persistent_direct_stats_case" "--action presenter-stats" "persistent direct stats proof should use the named direct helper."
+  require_contains "$persistent_direct_stats_case" "--require-event overlay:presenter-open" "persistent direct stats proof should require presenter-open."
+  require_contains "$persistent_direct_stats_case" "--require-direct-open-readiness-status" "persistent direct stats proof should require readiness status evidence."
+  require_contains "$persistent_direct_achievements_case" "--action presenter-achievements" "persistent direct achievements proof should use the named direct helper."
+  require_contains "$persistent_direct_achievements_case" "--require-event overlay:presenter-open" "persistent direct achievements proof should require presenter-open."
+  require_contains "$persistent_direct_achievements_case" "--require-direct-open-readiness-status" "persistent direct achievements proof should require readiness status evidence."
+  require_contains "$persistent_direct_user_case" "--action presenter-user" "persistent direct user proof should use the named direct helper."
+  require_contains "$persistent_direct_user_case" "--user-dialog chat" "persistent direct user proof should target the chat/profile-equivalent route."
+  require_contains "$persistent_direct_user_case" "--require-event overlay:presenter-open" "persistent direct user proof should require presenter-open."
+  require_contains "$persistent_direct_user_case" "--require-direct-open-readiness-status" "persistent direct user proof should require readiness status evidence."
   require_contains "$full_shortcut_open_wait_case" "--require-event overlay:presenter-open-and-wait-start" "full programmatic shortcut openAndWait proof should require the managed wait start event."
   require_contains "$full_shortcut_open_wait_case" "--require-overlay-shortcut-target web" "full programmatic shortcut openAndWait proof should assert the configured shortcut target."
   require_contains "$full_shortcut_open_wait_case" "--close-input web" "full programmatic shortcut openAndWait proof should close through visible Steam web content."
@@ -2365,6 +2427,24 @@ run_persistent_matrix() {
       "$@"
   }
 
+  persistent_run_direct_case() {
+    local case_id="$1"
+    local action="$2"
+    shift 2
+    persistent_run_case "$case_id" \
+      --action "$action" \
+      --result-delay-ms 1200 \
+      --require-steam-launch \
+      --require-overlay-injection \
+      --require-overlay-enabled \
+      --require-overlay-activated \
+      --require-direct-open-readiness-status \
+      --require-event overlay:presenter-open \
+      --require-no-crashes \
+      --close-probe \
+      "$@"
+  }
+
   persistent_run_case "00-persistent-presenter-ready" \
     --action presenter-ready \
     --require-steam-launch \
@@ -2470,6 +2550,19 @@ run_persistent_matrix() {
 
   persistent_run_shortcut_case "18-persistent-shortcut-dialog" dialog \
     --dialog OfficialGameGroup
+
+  persistent_run_direct_case "19a-persistent-profile-direct" presenter-profile
+
+  persistent_run_direct_case "20a-persistent-players-direct" presenter-players
+
+  persistent_run_direct_case "21a-persistent-community-direct" presenter-community
+
+  persistent_run_direct_case "22a-persistent-stats-direct" presenter-stats
+
+  persistent_run_direct_case "23a-persistent-achievements-direct" presenter-achievements
+
+  persistent_run_direct_case "24a-persistent-user-chat-direct" presenter-user \
+    --user-dialog chat
 
   persistent_run_shortcut_open_wait_case "19-persistent-shortcut-web-openwait" web \
     --web-url "https://store.steampowered.com/app/$app_id/" \
@@ -2906,6 +2999,37 @@ run_matrix() {
 
   run_shortcut_case "18-shortcut-dialog" dialog \
     --dialog OfficialGameGroup
+
+  run_direct_case() {
+    local case_id="$1"
+    local action="$2"
+    shift 2
+    run_case "$case_id" \
+      --action "$action" \
+      --result-delay-ms 1200 \
+      --require-steam-launch \
+      --require-overlay-injection \
+      --require-overlay-enabled \
+      --require-overlay-activated \
+      --require-direct-open-readiness-status \
+      --require-event overlay:presenter-open \
+      --require-no-crashes \
+      --close-probe \
+      "$@"
+  }
+
+  run_direct_case "19a-profile-direct" presenter-profile
+
+  run_direct_case "20a-players-direct" presenter-players
+
+  run_direct_case "21a-community-direct" presenter-community
+
+  run_direct_case "22a-stats-direct" presenter-stats
+
+  run_direct_case "23a-achievements-direct" presenter-achievements
+
+  run_direct_case "24a-user-chat-direct" presenter-user \
+    --user-dialog chat
 
   run_case "19-profile" \
     --action presenter-profile-open-and-wait \

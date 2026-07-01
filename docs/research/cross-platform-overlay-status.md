@@ -202,6 +202,33 @@ parked zero-FPS, zero managed timing, managed isolation, open-status,
 checkout-operation, and clean crash-diagnostic checks as the rest of the core
 Apple Silicon package path.
 
+A current-head 2026-07-01 core macOS Apple Silicon matrix at
+`/tmp/steam-bridge-macos-overlay-matrix-20260701-114530` reused the same
+signed arm64-only Electron `43.0.0` package and stable App ID `480` shortcut
+without restarting Steam, then passed all 37 Steam-launched core cases after
+adding direct helper readiness-status proof for profile, players, community,
+stats, achievements, and user chat routes. The core suite now proves named
+direct helpers for web, store, Friends, dialog, checkout approval, profile,
+players, community, stats, achievements, and user chat all wait through
+launch-time `overlay-not-ready`, record sanitized readiness evidence before
+activation, open visible Steam web content where applicable, close back to the
+app, park the presenter at zero FPS, preserve managed child-overlay isolation,
+and report clean crash diagnostics from the Apple Silicon package path.
+
+A current-head 2026-07-01 persistent macOS Apple Silicon matrix at
+`/tmp/steam-bridge-macos-overlay-matrix-20260701-115219` reused the same
+signed arm64-only Electron `43.0.0` package and stable App ID `480` shortcut
+without repackaging or restarting Steam, launched one Steam-owned smoke process
+and control server, and passed all 51 persistent cases. It folds the new direct
+profile/players/community/stats/achievements/user-chat readiness-status proof
+into the one-process durability suite while re-proving readiness, web/store/
+Friends/dialog `openAndWait(...)`, duplicate-open suppression, passive
+progress/unlock toasts, checkout approval and prepare-only, every managed
+Shift+Tab shortcut target, every programmatic shortcut `openAndWait(...)`
+target, visible Steam web content where applicable, close/back-to-app proof,
+parked zero-FPS state, zero managed timing, managed isolation, clean
+control-server quit behavior, and clean crash diagnostics.
+
 A 2026-07-01 full macOS Apple Silicon matrix at
 `/tmp/steam-bridge-macos-overlay-matrix-full-isolation-proof-20260701-045604`
 rebuilt and signed the arm64 Electron `43.0.0` smoke package, verified the

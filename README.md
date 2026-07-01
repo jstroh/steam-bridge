@@ -747,6 +747,17 @@ web/store/Friends/dialog routes, duplicate-open suppression, passive toast
 priming, visible Steam web content, close/back-to-app proof, parked zero-FPS
 presenter state, zero managed timing, managed isolation, and clean crash
 diagnostics from the Apple Silicon package path.
+A current-head Apple Silicon core run at
+`/tmp/steam-bridge-macos-overlay-matrix-20260701-114530` then passed all 37
+Steam-launched cases after adding direct readiness-status proof for profile,
+players, community, stats, achievements, and user chat helpers. A follow-up
+persistent Apple Silicon run at
+`/tmp/steam-bridge-macos-overlay-matrix-20260701-115219` reused the same signed
+arm64-only package and stable App ID `480` shortcut without repackaging or
+restarting Steam, launched one Steam-owned process/control server, and passed
+all 51 one-process cases with the same direct helper proof, close/back-to-app
+checks, zero-FPS parking, zero managed timing, managed isolation, and clean
+crash diagnostics.
 
 ## Shipping Notes
 
