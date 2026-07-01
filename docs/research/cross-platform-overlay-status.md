@@ -1475,10 +1475,12 @@ client whose latest connection state is `Logged Off`, `Connecting`,
 health artifact still records stale SteamChrome temp entries, `/private/tmp`
 Steam pipe state, orphan `ipcserver` state, System V IPC counts, POSIX
 semaphore/shared-memory handles, `launchctl maxfiles`, and resource warnings.
-The local Mac still reports a low `launchctl maxfiles` soft limit of 256, so
-near-limit warnings remain diagnostic noise to watch during long Steam sessions,
-but the latest core matrix proves the overlay presenter path is working again
-under the recovered client.
+Low `launchctl maxfiles` remains a warning by itself, but a running Steam client
+already at roughly the whole soft limit is now a health failure so live matrices
+stop before SteamChrome or overlay IPC creation can fail underneath the smoke
+app. The local Mac still reports a low soft limit of 256, and the latest core
+matrix proves the overlay presenter path is working again under the recovered
+client when Steam is logged in and below that resource ceiling.
 
 ## Purchase Overlay Checklist
 

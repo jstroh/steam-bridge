@@ -556,11 +556,14 @@ npm run macos:overlay-matrix -- --suite core
 Steam shortcut. Its artifact records the running Steam PID/helper state, current
 SteamChrome IPC log evidence, stale SteamChrome temp entry counts, POSIX
 semaphore/shared-memory handle counts, `launchctl maxfiles`, kernel file
-counters, `/private/tmp` disk state, and derived resource warnings such as
-near-soft-limit Steam file usage. The macOS overlay matrix also runs this health
-gate before launching smoke cases; if the matrix had to restart Steam after a
-shortcut update, it waits for this detector to pass before launching the smoke
-app. When the matrix owns a Steam startup or shutdown, it also removes stale
+counters, `/private/tmp` disk state, and derived resource warnings. A running
+Steam client that is already at roughly the whole `launchctl maxfiles` soft
+limit is treated as unhealthy, because that state can prevent SteamChrome and
+overlay IPC resources from being created. The macOS overlay matrix also runs
+this health gate before launching smoke cases; if the matrix had to restart
+Steam after a shortcut update, it waits for this detector to pass before
+launching the smoke app. When the matrix owns a Steam startup or shutdown, it
+also removes stale
 Steam IPC state only after Steam is fully stopped: orphan `ipcserver`, stale
 `/private/tmp/steam.pipe`, and stale
 `/private/tmp/steam_chrome_{overlay,shmem}_uid*_spid*` entries for the current

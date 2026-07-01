@@ -337,6 +337,7 @@ function detectSteamClientHealth({
   if (logMatches.length > 0) {
     failures.push("Current Steam client logs contain SteamChrome IPC/bootstrap failures.");
   }
+  failures.push(...buildClientHealthResourceFailures(resourceSnapshot));
 
   const resourceLines = formatClientHealthResourceSnapshot(resourceSnapshot);
 
@@ -480,7 +481,7 @@ function buildClientHealthResourceWarnings(snapshot) {
       `launchctl maxfiles soft limit is low (${maxfilesSoft}); Steam GUI helpers inherit this limit.`
     );
   }
-  if (steamOpenFileRatio !== null && steamOpenFileRatio >= 0.8) {
+  if (steamOpenFileRatio !== null && steamOpenFileRatio >= 0.8 && steamOpenFileRatio < 0.95) {
     warnings.push(
       `Steam process is using ${steamOpenFiles}/${maxfilesSoft} open files (${Math.round(steamOpenFileRatio * 100)}% of the soft maxfiles limit).`
     );
@@ -513,6 +514,30 @@ function buildClientHealthResourceWarnings(snapshot) {
   }
 
   return warnings;
+}
+
+function buildClientHealthResourceFailures(snapshot) {
+  const failures = [];
+  if (!snapshot || typeof snapshot !== "object" || !snapshot.steamProcess) {
+    return failures;
+  }
+
+  const maxfilesSoft = parseLaunchctlMaxfilesSoft(snapshot.launchctlMaxfiles);
+  const steamOpenFiles = Number.isFinite(snapshot.steamProcess.openFileCount)
+    ? snapshot.steamProcess.openFileCount
+    : null;
+  if (steamOpenFiles === null || maxfilesSoft === null || maxfilesSoft === Infinity) {
+    return failures;
+  }
+
+  const ratio = steamOpenFiles / maxfilesSoft;
+  if (ratio >= 0.95) {
+    failures.push(
+      `Steam process is using ${steamOpenFiles}/${maxfilesSoft} open files (${Math.round(ratio * 100)}% of the soft maxfiles limit).`
+    );
+  }
+
+  return failures;
 }
 
 function appendCommandSummary(lines, label, result) {
@@ -1097,6 +1122,34 @@ function runSelfTest() {
     assert(result.ok, "logged-in Steam client with steamid=0 webhelpers is healthy");
     assert(result.message.includes("Logged On as [U:1:1686541554]"), "healthy steamid=0 helper reports connection-log login proof");
     assert(result.message.includes("webhelper processes still use steamid=0"), "healthy steamid=0 helper is downgraded to an observation");
+
+    result = detectSteamClientHealth({
+      processListText: [
+        " 9706 /Users/example/Library/Application Support/Steam/Steam.AppBundle/Steam/Contents/MacOS/steam_osx",
+        " 9913 /Users/example/Library/Application Support/Steam/Steam.AppBundle/Steam/Contents/Frameworks/Steam Helper.app/Contents/MacOS/Steam Helper -nocrashdialog -steamid=0 -steampid=9706"
+      ].join("\n"),
+      consoleLog: path.join(tempRoot, "missing-console-for-file-limit.txt"),
+      webhelperLog: path.join(tempRoot, "missing-webhelper-for-file-limit.txt"),
+      connectionLog,
+      resourceSnapshot: {
+        staleSteamChromeTempEntries: 0,
+        staleSteamPipe: false,
+        steamIpcServerProcesses: [],
+        sysvIpc: { semaphores: 1, userSemaphores: 1, error: "" },
+        privateTmpDisk: { ok: true, lines: ["Filesystem 1024-blocks Used Available Capacity Mounted on", "/dev/disk3s5 100 80 20 80% /System/Volumes/Data"] },
+        launchctlMaxfiles: { ok: true, lines: ["maxfiles    256            unlimited"] },
+        sysctlFiles: { ok: true, lines: ["kern.num_files: 100", "kern.maxfiles: 1000", "kern.maxfilesperproc: 512"] },
+        allPosixIpc: { semaphores: 20, sharedMemory: 4 },
+        steamProcess: {
+          pid: "9706",
+          openFileCount: 250,
+          posixIpc: { semaphores: 12, sharedMemory: 3 },
+          lsofError: ""
+        }
+      }
+    });
+    assert(!result.ok, "near-soft-limit Steam file usage is unhealthy even after login");
+    assert(result.message.includes("250/256 open files"), "file-limit health failure names Steam file usage");
 
     fs.writeFileSync(
       connectionLog,

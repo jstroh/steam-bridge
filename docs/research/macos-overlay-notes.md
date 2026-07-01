@@ -862,9 +862,11 @@ client without launching the smoke app or touching the shortcut; unhealthy
 bootstrap states write `steam-client-health-diagnostics.txt` under the selected
 artifact root. The live macOS matrix now runs that health gate before launching
 smoke cases, waiting for it to pass after a matrix-owned Steam restart caused by
-a shortcut update. The health artifact includes a local resource snapshot and
-derived resource warnings so Steam client failures can be separated from overlay
-regressions without a manual `lsof`/`df` pass. A 2026-06-30 health run at
+a shortcut update. The health artifact includes a local resource snapshot,
+derived resource warnings, and a fail-fast check for a running Steam process
+that is already at roughly the whole `launchctl maxfiles` soft limit. This keeps
+Steam client resource exhaustion separated from overlay regressions without a
+manual `lsof`/`df` pass. A 2026-06-30 health run at
 `/tmp/steam-bridge-macos-steam-health-resource-snapshot-20260630-195055`
 showed the current local blocker: Steam was still launching its bootstrap
 helper with `-steamid=0` and emitting fresh `SteamChrome_MasterStream_*`
@@ -872,7 +874,9 @@ helper with `-steamid=0` and emitting fresh `SteamChrome_MasterStream_*`
 left in `/private/tmp`, the Steam process at 214 open files, 84 POSIX
 semaphore handles, 15 POSIX shared-memory handles, and `launchctl maxfiles`
 reporting a soft limit of 256. Follow-up health checks now call out that
-near-soft-limit file usage explicitly. This is still a local Steam
+near-soft-limit file usage explicitly, and live matrices now fail the health
+gate before launching smoke cases if Steam is already too close to that soft
+limit. This is still a local Steam
 client/bootstrap state, not an Electron presenter result. Further live macOS
 overlay proof should wait for Steam to recover, log on, and handle shortcut
 launch URLs again; if the same health failure persists after fully quitting
