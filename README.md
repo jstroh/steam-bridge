@@ -263,6 +263,10 @@ is `npm run example:package:mac`; it must continue to produce
 `steam_bridge_native.local.node` under the target prebuild name when a release
 prebuild is not present:
 
+The macOS overlay matrix checks that it is running in a native Apple Silicon
+`darwin/arm64` shell before it packages or launches the smoke app. Do not run
+macOS overlay proof from Intel macOS, Rosetta, or a universal Electron app.
+
 ```sh
 npm run native:build
 npm run example:package:mac

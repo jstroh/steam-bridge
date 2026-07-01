@@ -61,6 +61,9 @@ launch these macOS smoke apps through Rosetta.
 The only supported macOS smoke package command is
 `npm run example:package:mac`, and it must continue to produce the
 `SteamBridgeSmoke-darwin-arm64` output directory.
+The macOS overlay matrix checks for a native Apple Silicon `darwin/arm64` shell
+before it packages or launches this smoke app, so local live proof never starts
+from an Intel macOS or Rosetta environment.
 Contributor policy: every macOS smoke run for this example must use a native
 Apple Silicon `darwin/arm64` shell and the arm64 app output. Intel macOS,
 Rosetta, and universal macOS packages are unsupported configurations, not

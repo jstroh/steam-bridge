@@ -168,6 +168,11 @@ function runMacosPackageSigningStaticChecks() {
     "README must document the Apple Silicon-only macOS package command"
   );
   assert.match(
+    readme,
+    /macOS overlay matrix checks that it is running in a native Apple Silicon\s+`darwin\/arm64` shell before it packages or launches/,
+    "README must document that the macOS overlay matrix checks Apple Silicon before packaging or launch"
+  );
+  assert.match(
     packageReadme,
     /## Platform Targets[\s\S]*### macOS Apple Silicon Only/,
     "package README must make the Apple Silicon-only macOS target policy prominent"
@@ -191,6 +196,11 @@ function runMacosPackageSigningStaticChecks() {
     exampleReadme,
     /The only supported macOS smoke package command is\s+`npm run example:package:mac`/,
     "Electron example README must document the Apple Silicon-only macOS package command"
+  );
+  assert.match(
+    exampleReadme,
+    /macOS overlay matrix checks for a native Apple Silicon `darwin\/arm64` shell\s+before it packages or launches this smoke app/,
+    "Electron example README must document that the macOS overlay matrix checks Apple Silicon before packaging or launch"
   );
   for (const [label, workflow] of [
     ["CI workflow", ciWorkflow],
@@ -242,6 +252,11 @@ function runMacosPackageSigningStaticChecks() {
   assert.ok(
     matrixScript.includes("verify-macos-steam-signing.cjs"),
     "macOS overlay matrix must verify package signing before live cases"
+  );
+  assert.match(
+    matrixScript,
+    /ensure_ready\(\) \{\s+validate_checkout_json_file\s+require_macos_arm64_host\s+if \[ "\$skip_package" != "1" \]; then\s+npm run example:package:mac/,
+    "macOS overlay matrix must check for native Apple Silicon before packaging or launching the smoke app"
   );
   for (const expected of [
     "require_macos_arm64_host",
