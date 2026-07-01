@@ -158,6 +158,21 @@ timing, clean control-server quit behavior, no leftover smoke/gameoverlay
 process, and clean crash diagnostics. Current macOS web-close helper runs also
 record `overlay:web-visible`, and the matrix summary rejects web-close cases
 whose lifecycle never proves visible Steam web content before the close input.
+A fresh 2026-07-01 full cold-launch macOS matrix at
+`/tmp/steam-bridge-macos-overlay-matrix-full-web-visible-fixed-20260701-015118`
+rebuilt and signed the Apple Silicon Electron `43.0.0` package, reused the
+stable shortcut without restarting Steam, and passed all 44 process-per-case App
+ID `480` cases. The summary reported `webVisible=true` for all 29 web-close
+cases after the helper event writer stopped appending a stray `}` to JSON
+payloads and started base64-transporting lifecycle payloads across the
+shell/Node boundary. This re-proved readiness, web/store/Friends/dialog
+`openAndWait(...)`, passive progress/unlock toasts, checkout approval and
+prepare-only, every managed Shift+Tab shortcut target, direct profile/players/
+community/stats/achievements/user/dialog routes, every programmatic shortcut
+open-and-wait target, one Metal presenter-backed overlay target,
+active/inactive callbacks where expected, visible Steam web content before
+web-close input, app focus return, parked zero-FPS presenter state, disabled
+needs-present polling, zero managed overlay timing, and clean crash diagnostics.
 A focused current-head checkout run at
 `/tmp/steam-bridge-macos-overlay-matrix-checkout-target-snapshot-20260630-232458`
 rebuilt and signed the Apple Silicon Electron `43.0.0` package, reused the

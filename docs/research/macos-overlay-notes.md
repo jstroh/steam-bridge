@@ -926,6 +926,18 @@ Steam, log out or reboot macOS to clear the user-session IPC state.
   presenter-backed overlay target, visible web content before close, close/back
   to the app, parked zero-FPS presenter state, zero managed overlay timing, and
   clean crash diagnostics.
+- A fresh 2026-07-01 full Apple Silicon matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-full-web-visible-fixed-20260701-015118`
+  rebuilt and signed the arm64 Electron `43.0.0` package, reused the stable
+  shortcut without restarting Steam, and passed all 44 process-per-case App ID
+  `480` cases. This run followed a helper instrumentation fix: the macOS helper
+  now writes `overlay:web-visible` payloads through a base64-backed lifecycle
+  event path instead of hand-built shell JSON, and the helper self-test verifies
+  both successful and failed visibility payloads do not degrade to
+  `parseError`. The summary reported `webVisible=true` for all 29 web-close
+  cases, alongside the same one Metal presenter-backed overlay target,
+  active/inactive callbacks, close/back-to-app proof, parked zero-FPS state,
+  zero managed overlay timing, and clean crash diagnostics.
 
 ## Primary References
 

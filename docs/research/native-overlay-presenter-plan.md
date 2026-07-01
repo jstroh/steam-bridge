@@ -1114,6 +1114,15 @@ Current evidence:
   state, disabled needs-present polling, zero managed overlay timing, clean
   control-server quit behavior, no leftover smoke/gameoverlay process, and
   clean crash diagnostics.
+  A fresh 2026-07-01 full cold-launch macOS matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-full-web-visible-fixed-20260701-015118`
+  rebuilt and signed the Apple Silicon Electron `43.0.0` package, reused the
+  stable shortcut without restarting Steam, and passed all 44 process-per-case
+  App ID `480` cases. The summary reported `webVisible=true` for all 29
+  web-close cases after the helper event writer stopped using a brace-sensitive
+  shell default and started base64-transporting JSON payloads into lifecycle
+  events. This keeps visible-content close proof in the machine-audited artifact
+  instead of relying on helper console text.
   A focused current-head macOS checkout suite at
   `/tmp/steam-bridge-macos-overlay-matrix-checkout-target-snapshot-20260630-232458`
   rebuilt and signed the Apple Silicon Electron `43.0.0` package, reused the

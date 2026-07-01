@@ -429,21 +429,27 @@ macos_crash_report_cutoff_ms="$(node -e 'process.stdout.write(String(Date.now() 
 
 record_macos_helper_event() {
   local type="$1"
-  local payload="${2:-{}}"
+  local payload="${2-}"
+  local payload_base64
+  if [ -z "$payload" ]; then
+    payload="{}"
+  fi
   if [ -z "${diagnostic_dir:-}" ]; then
     return 0
   fi
 
-  DIAGNOSTIC_DIR="$diagnostic_dir" LIFECYCLE_TYPE="$type" LIFECYCLE_PAYLOAD="$payload" node <<'NODE'
+  payload_base64="$(printf '%s' "$payload" | base64 | tr -d '\n')"
+  DIAGNOSTIC_DIR="$diagnostic_dir" LIFECYCLE_TYPE="$type" LIFECYCLE_PAYLOAD_BASE64="$payload_base64" node <<'NODE'
 const fs = require("node:fs");
 const path = require("node:path");
 
 const diagnosticDir = process.env.DIAGNOSTIC_DIR;
 const type = process.env.LIFECYCLE_TYPE;
+const payloadText = Buffer.from(process.env.LIFECYCLE_PAYLOAD_BASE64 || "", "base64").toString("utf8") || "{}";
 let payload = {};
 
 try {
-  payload = JSON.parse(process.env.LIFECYCLE_PAYLOAD || "{}");
+  payload = JSON.parse(payloadText);
 } catch {
   payload = { parseError: true };
 }
@@ -462,6 +468,32 @@ const entry = {
 fs.mkdirSync(diagnosticDir, { recursive: true });
 fs.appendFileSync(path.join(diagnosticDir, "lifecycle.jsonl"), `${JSON.stringify(entry)}\n`);
 NODE
+}
+
+record_macos_web_visible_event() {
+  local ok="$1"
+  local count_field="$2"
+  local count_value="$3"
+  local rect="$4"
+  local payload
+  payload="$(
+    WEB_VISIBLE_OK="$ok" \
+      WEB_VISIBLE_COUNT_FIELD="$count_field" \
+      WEB_VISIBLE_COUNT_VALUE="$count_value" \
+      WEB_VISIBLE_RECT="$rect" \
+      node <<'NODE'
+const countField = process.env.WEB_VISIBLE_COUNT_FIELD || "attempt";
+const countValue = Number(process.env.WEB_VISIBLE_COUNT_VALUE || "0");
+const payload = {
+  ok: process.env.WEB_VISIBLE_OK === "true",
+  rect: process.env.WEB_VISIBLE_RECT || ""
+};
+
+payload[countField] = Number.isFinite(countValue) ? countValue : 0;
+process.stdout.write(JSON.stringify(payload));
+NODE
+  )"
+  record_macos_helper_event "overlay:web-visible" "$payload"
 }
 
 smoke_args() {
@@ -1687,7 +1719,7 @@ for (let y = top; y < bottom; y += stepY) {
 process.exit(sampled > 0 && visible / sampled > 0.02 ? 0 : 1);
 NODE
     then
-      record_macos_helper_event "overlay:web-visible" "{\"ok\":true,\"attempt\":$attempt,\"rect\":\"$rect\"}"
+      record_macos_web_visible_event "true" "attempt" "$attempt" "$rect"
       rm -rf "$temp_dir"
       return 0
     fi
@@ -1696,7 +1728,7 @@ NODE
 
   rm -rf "$temp_dir"
   echo "Timed out waiting for visible macOS Steam web overlay content." >&2
-  record_macos_helper_event "overlay:web-visible" "{\"ok\":false,\"attempts\":4,\"rect\":\"$rect\"}"
+  record_macos_web_visible_event "false" "attempts" "4" "$rect"
   return 1
 }
 
@@ -2632,7 +2664,7 @@ NODE
 }
 
 run_self_test() {
-  local temp_result launch_options temp_home old_home shortcut_file selftest_env_file expected_game_id matches resolved old_diagnostic_dir old_crash_report_cutoff_ms dirty_diagnostic_dir control_temp_dir control_capture_file control_pid
+  local temp_result launch_options temp_home old_home shortcut_file selftest_env_file expected_game_id matches resolved old_diagnostic_dir old_crash_report_cutoff_ms dirty_diagnostic_dir control_temp_dir control_capture_file control_pid web_visible_diagnostic_dir
   temp_result="$(mktemp "${TMPDIR:-/tmp}/steam-bridge-macos-helper.XXXXXX")"
   result_file="$temp_result"
   diagnostic_dir="$result_file.diagnostics"
@@ -2669,6 +2701,37 @@ EOF
   verify_result
   action="presenter-web-open-and-wait"
   verify_macos_overlay_closed_after_probe "0" "0"
+
+  old_diagnostic_dir="$diagnostic_dir"
+  web_visible_diagnostic_dir="$(mktemp -d "${TMPDIR:-/tmp}/steam-bridge-macos-web-visible-event.XXXXXX")"
+  diagnostic_dir="$web_visible_diagnostic_dir"
+  record_macos_web_visible_event "true" "attempt" "3" "1,2,3,4"
+  record_macos_web_visible_event "false" "attempts" "4" "5,6,7,8"
+  node - "$diagnostic_dir/lifecycle.jsonl" <<'NODE'
+const fs = require("node:fs");
+const lifecyclePath = process.argv[2];
+const entries = fs
+  .readFileSync(lifecyclePath, "utf8")
+  .trim()
+  .split(/\r?\n/)
+  .map((line) => JSON.parse(line));
+const events = entries.filter((entry) => entry.type === "event:overlay:web-visible");
+
+if (events.length !== 2) {
+  throw new Error(`expected 2 web-visible events, got ${events.length}`);
+}
+
+const [success, failure] = events;
+if (success.payload.parseError || success.payload.ok !== true || success.payload.attempt !== 3 || success.payload.rect !== "1,2,3,4") {
+  throw new Error(`bad successful web-visible payload: ${JSON.stringify(success.payload)}`);
+}
+
+if (failure.payload.parseError || failure.payload.ok !== false || failure.payload.attempts !== 4 || failure.payload.rect !== "5,6,7,8") {
+  throw new Error(`bad failed web-visible payload: ${JSON.stringify(failure.payload)}`);
+}
+NODE
+  diagnostic_dir="$old_diagnostic_dir"
+  rm -rf "$web_visible_diagnostic_dir"
 
   old_diagnostic_dir="$diagnostic_dir"
   old_crash_report_cutoff_ms="$macos_crash_report_cutoff_ms"

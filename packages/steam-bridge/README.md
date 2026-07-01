@@ -812,6 +812,15 @@ A fresh 2026-07-01 persistent artifact at
 `/tmp/steam-bridge-macos-overlay-matrix-20260701-003835` repeated that
 one-process Apple Silicon suite without repackaging or restarting Steam and
 passed all 44 cases through the same Metal presenter path.
+A fresh 2026-07-01 full cold-launch artifact at
+`/tmp/steam-bridge-macos-overlay-matrix-full-web-visible-fixed-20260701-015118`
+rebuilt and signed the arm64 Electron `43.0.0` package, reused the stable
+shortcut without restarting Steam, and passed all 44 process-per-case App ID
+`480` cases. The summary reported `webVisible=true` for all 29 web-close cases,
+proving visible Steam web content before close input in addition to active/
+inactive callbacks, close/back-to-app proof, parked zero-FPS presenter state,
+disabled needs-present polling, zero managed overlay timing, and clean crash
+diagnostics.
 New matrix manifests record their suite name, so the summary auditor rejects
 named-suite artifacts that drop required overlay surface cases.
 A later recovered-client full artifact at
