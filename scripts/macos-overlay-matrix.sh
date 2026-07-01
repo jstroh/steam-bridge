@@ -933,6 +933,10 @@ macos_steam_webhelper_log() {
   printf '%s\n' "$HOME/Library/Application Support/Steam/logs/webhelper.txt"
 }
 
+macos_steam_connection_log() {
+  printf '%s\n' "$HOME/Library/Application Support/Steam/logs/connection_log.txt"
+}
+
 macos_steam_log_size() {
   local log_file="$1"
   if [ ! -f "$log_file" ]; then
@@ -1537,6 +1541,7 @@ run_macos_steam_client_health() {
     --diagnostic-dir "$artifact_root" \
     --console-log "$(macos_steam_console_log)" \
     --webhelper-log "$(macos_steam_webhelper_log)" \
+    --connection-log "$(macos_steam_connection_log)" \
     --write-artifact
 }
 
@@ -1547,6 +1552,7 @@ run_macos_steam_startup_health() {
     --diagnostic-dir "$artifact_root" \
     --console-log "$(macos_steam_console_log)" \
     --webhelper-log "$(macos_steam_webhelper_log)" \
+    --connection-log "$(macos_steam_connection_log)" \
     --write-artifact
 }
 

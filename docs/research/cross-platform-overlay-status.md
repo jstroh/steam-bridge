@@ -891,44 +891,36 @@ screenshots after hardening the Deck close probe to use one lifecycle-aware web
 close click, clear transient KWin overview/window-switcher state before close,
 and reject post-close overlay reactivation.
 
-## Current macOS Client Blocker
+## Latest macOS Recovery Evidence
 
-The macOS overlay implementation still has broad passing evidence, but the
-current local Mac cannot run fresh live proof until Steam recovers from a client
-bootstrap/IPC failure. `npm run macos:steam-client-health` now captures this
-before any smoke app launch, and the live macOS matrix runs the same health
-gate before cases, including a detector-driven wait after matrix-owned Steam
-restarts for shortcut updates. The live matrix also performs conservative stale
-IPC cleanup before a matrix-owned Steam startup when no `steam_osx` client is
-running: orphan Steam `ipcserver` processes are stopped and
-`/private/tmp/steam.pipe` is removed. `--close-steam-after` also runs that
-bounded cleanup after failed startup attempts and normal matrix shutdown.
-Steam's launch services may still recreate `steam_osx` or `ipcserver` later
-after the command returns; health artifacts still report those processes if
-they are present. User-owned System V semaphores stay diagnostic-only because
-they are not provably Steam-specific. A 2026-06-30
-artifact at
-`/tmp/steam-bridge-macos-steam-health-resource-snapshot-20260630-195055`
-reported Steam running with a `-steamid=0` bootstrap helper and fresh
-`SteamChrome_MasterStream_*` `errno: 28` failures, while the resource snapshot
-showed zero remaining stale SteamChrome temp entries, 214 Steam open files, 84
-Steam POSIX semaphore handles, 15 Steam POSIX shared-memory handles, and
-`launchctl maxfiles` with a 256 soft limit. The detector now derives explicit
-resource warnings from those values. The live matrix now also starts/waits for
-Steam login before smoke cases when the stable shortcut is already current; a
-2026-06-30 startup-gate artifact stopped before `CASE 00` and captured the same
-`steamid=0`, `SteamChrome_MasterStream_*` `errno: 28`, `/private/tmp/steam.pipe`,
-orphan `ipcserver`, and System V semaphore evidence. Treat this as local Steam
-client state, not overlay presenter evidence; rerun macOS overlay proof after
-Steam logs in and the health gate passes. A clean retry at
-`/tmp/steam-bridge-macos-overlay-matrix-rerun-clean-20260630-204752`
-failed at the same pre-case startup boundary after stale semaphores and
-`/private/tmp/steam.pipe` had been cleared, with Steam again running as
-`steamid=0`, logging fresh `SteamChrome_MasterStream_*` `errno: 28` failures,
-and reaching 213 open files under the local `launchctl maxfiles` soft limit of
-256. The matrix startup health path now fails when Steam was expected to stay
-running but `steam_osx` exits or never reaches login, while the standalone
-health command still treats intentionally closed Steam as non-failing.
+The local macOS Steam client recovered after a Steam update and shortcut reset.
+The stable generic App ID `480` shortcut had to be recreated under userdata
+`1686541554`, after which a fresh core Apple Silicon matrix at
+`/tmp/steam-bridge-macos-overlay-matrix-20260630-215349` passed all 26
+Steam-launched cases. That run reused the signed arm64 Electron package,
+verified the native launcher/signing shape, and covered readiness, web, store,
+Friends, dialog-equivalent routes, passive achievement progress/unlock toasts,
+synthetic checkout approval and prepare-only routes, every managed Shift+Tab
+shortcut target, and direct profile, players, community, stats, achievements,
+and user-chat `openAndWait(...)` routes. Each active case verified
+active/inactive callbacks, visible Steam web content before close, close/back to
+the app, one Metal presenter-backed overlay target, parked zero-FPS presenter
+state, zero managed overlay timing, and clean crash diagnostics.
+
+`npm run macos:steam-client-health` now uses `connection_log.txt` as the
+authoritative login signal. Current Steam builds can keep webhelper processes
+running with `-steamid=0` even after the client is logged in, so `steamid=0`
+alone is no longer treated as fatal when the latest connection state is
+`Logged On` and there are no current SteamChrome IPC failures. A running Steam
+client whose latest connection state is `Logged Off`, `Connecting`,
+`Connected`, or `Logging On` remains unhealthy for live overlay proof. The
+health artifact still records stale SteamChrome temp entries, `/private/tmp`
+Steam pipe state, orphan `ipcserver` state, System V IPC counts, POSIX
+semaphore/shared-memory handles, `launchctl maxfiles`, and resource warnings.
+The local Mac still reports a low `launchctl maxfiles` soft limit of 256, so
+near-limit warnings remain diagnostic noise to watch during long Steam sessions,
+but the latest core matrix proves the overlay presenter path is working again
+under the recovered client.
 
 ## Purchase Overlay Checklist
 

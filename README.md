@@ -431,6 +431,9 @@ Native presenter design notes are tracked in
 - Use App ID `480` only for local Steamworks smoke tests.
 - Use your own App ID before shipping or testing app-specific achievements,
   stats, inventory, UGC, economy, checkout, or transaction flows.
+- macOS support means Apple Silicon only. Build, package, sign, and test arm64
+  `.app` bundles; Steam Bridge does not ship or verify Intel macOS or universal
+  macOS targets.
 - The macOS smoke package uses
   `npx steam-bridge-prepare-macos-app --app-exe <YourApp.app/Contents/MacOS/YourApp>`
   to install the published native launcher as the bundle executable, rename

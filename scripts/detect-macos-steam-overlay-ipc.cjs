@@ -26,6 +26,7 @@ function main() {
       processListText,
       consoleLog: args.consoleLog || defaultSteamLog("console_log.txt"),
       webhelperLog: args.webhelperLog || defaultSteamLog("webhelper.txt"),
+      connectionLog: args.connectionLog || defaultSteamLog("connection_log.txt"),
       expectRunningSteam: args.expectRunningSteam === true,
       resourceSnapshot: collectClientHealthResourceSnapshot({ processListText })
     });
@@ -268,7 +269,14 @@ function detectSteamClientLaunchFailure({
   return { detected: true, message: `${messageLines.join("\n")}\n` };
 }
 
-function detectSteamClientHealth({ processListText, consoleLog, webhelperLog, expectRunningSteam = false, resourceSnapshot = null }) {
+function detectSteamClientHealth({
+  processListText,
+  consoleLog,
+  webhelperLog,
+  connectionLog,
+  expectRunningSteam = false,
+  resourceSnapshot = null
+}) {
   const processLines = String(processListText || "")
     .split(/\r?\n/)
     .map((line) => line.trim())
@@ -282,6 +290,7 @@ function detectSteamClientHealth({ processListText, consoleLog, webhelperLog, ex
     })
     .filter(Boolean);
   const currentSteamPid = steamProcess ? steamProcess.pid : "";
+  const connectionState = readSteamConnectionState(connectionLog);
   const logMatches = findCurrentSteamClientLogFailures({
     consoleLog,
     webhelperLog,
@@ -306,8 +315,23 @@ function detectSteamClientHealth({ processListText, consoleLog, webhelperLog, ex
     observations.push("No running Steam bootstrap helper with a steamid was found.");
   }
 
+  if (steamProcess && connectionState.loggedOnSteamId) {
+    observations.push(`Steam connection log reports Logged On as ${connectionState.loggedOnSteamId}.`);
+  } else if (steamProcess && connectionState.lastState) {
+    observations.push(
+      `Steam connection log latest state: ${connectionState.lastState.status} ${connectionState.lastState.steamId || "[unknown steamid]"}.`
+    );
+    failures.push(`Steam connection log latest state is ${connectionState.lastState.status}, not Logged On.`);
+  }
+
   if (steamProcess && helperSteamIds.length > 0 && helperSteamIds.every((steamId) => steamId === "0")) {
-    failures.push("Steam bootstrap helper is running with steamid=0.");
+    if (connectionState.loggedOnSteamId) {
+      observations.push(
+        "Steam webhelper processes still use steamid=0; treating this as healthy because the connection log is logged in."
+      );
+    } else {
+      failures.push("Steam bootstrap helper is running with steamid=0.");
+    }
   }
 
   if (logMatches.length > 0) {
@@ -686,6 +710,36 @@ function findCurrentSteamClientLogFailures({ consoleLog, webhelperLog, currentSt
   return [...new Set(matches)].slice(-24);
 }
 
+function readSteamConnectionState(connectionLog) {
+  const lines = readLastLines(connectionLog, 400);
+  let lastState = null;
+  for (const line of lines) {
+    const match = line.match(
+      /^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\]\s+\[(Logged On|Logged Off|Connecting|Connected|Logging On|Disconnected)[^\]]*\]\s+(\[U:1:(\d+)\])?/
+    );
+    if (!match) {
+      continue;
+    }
+    lastState = {
+      timestamp: match[1],
+      status: match[2],
+      steamId: match[3] || "",
+      accountId: match[4] || "",
+      line
+    };
+  }
+
+  const loggedOnSteamId =
+    lastState &&
+    lastState.status === "Logged On" &&
+    lastState.accountId &&
+    lastState.accountId !== "0"
+      ? lastState.steamId
+      : "";
+
+  return { loggedOnSteamId, lastState };
+}
+
 function readSmokeResult(file) {
   let text = "";
   try {
@@ -723,6 +777,9 @@ function parseArgs(argv) {
         break;
       case "--webhelper-log":
         args.webhelperLog = argv[++index];
+        break;
+      case "--connection-log":
+        args.connectionLog = argv[++index];
         break;
       case "--gameprocess-log":
         args.gameprocessLog = argv[++index];
@@ -987,6 +1044,7 @@ function runSelfTest() {
       ].join("\n"),
       consoleLog,
       webhelperLog,
+      connectionLog: path.join(tempRoot, "missing-connection-log.txt"),
       resourceSnapshot: {
         staleSteamChromeTempEntries: 12,
         staleSteamPipe: true,
@@ -1018,6 +1076,46 @@ function runSelfTest() {
     assert(result.message.includes("Resource warnings"), "health failure includes derived resource warnings");
     assert(result.message.includes("213/256 open files"), "health failure warns on near-soft-limit file usage");
 
+    const connectionLog = path.join(tempRoot, "connection_log.txt");
+    fs.writeFileSync(
+      connectionLog,
+      [
+        "[2026-06-30 21:45:15] [Logged Off, 0, 0] [U:1:0] CCMInterface::SetSteamID( [U:1:0] )",
+        "[2026-06-30 21:45:37] [Logged On, 4, 7] [U:1:1686541554] RecvMsgClientLogOnResponse() : processing complete"
+      ].join("\n")
+    );
+    fs.writeFileSync(webhelperLog, "[2026-06-30 21:45:13] Startup - webhelper launched pid: 9913 commandline: Steam Helper -steamid=0 -steampid=9706\n");
+    result = detectSteamClientHealth({
+      processListText: [
+        " 9706 /Users/example/Library/Application Support/Steam/Steam.AppBundle/Steam/Contents/MacOS/steam_osx",
+        " 9913 /Users/example/Library/Application Support/Steam/Steam.AppBundle/Steam/Contents/Frameworks/Steam Helper.app/Contents/MacOS/Steam Helper -nocrashdialog -steamid=0 -steampid=9706"
+      ].join("\n"),
+      consoleLog,
+      webhelperLog,
+      connectionLog
+    });
+    assert(result.ok, "logged-in Steam client with steamid=0 webhelpers is healthy");
+    assert(result.message.includes("Logged On as [U:1:1686541554]"), "healthy steamid=0 helper reports connection-log login proof");
+    assert(result.message.includes("webhelper processes still use steamid=0"), "healthy steamid=0 helper is downgraded to an observation");
+
+    fs.writeFileSync(
+      connectionLog,
+      [
+        "[2026-06-30 21:45:37] [Logged On, 4, 7] [U:1:1686541554] RecvMsgClientLogOnResponse() : processing complete",
+        "[2026-06-30 21:50:45] [Logged Off, 0, 0] [U:1:1686541554] ConnectionDisconnected('Disconnected By Remote Host') : 'OK'"
+      ].join("\n")
+    );
+    result = detectSteamClientHealth({
+      processListText: [
+        " 9706 /Users/example/Library/Application Support/Steam/Steam.AppBundle/Steam/Contents/MacOS/steam_osx"
+      ].join("\n"),
+      consoleLog,
+      webhelperLog: path.join(tempRoot, "missing-webhelper-log.txt"),
+      connectionLog
+    });
+    assert(!result.ok, "running Steam with latest Logged Off state is unhealthy");
+    assert(result.message.includes("latest state is Logged Off"), "logged-off health failure names latest connection state");
+
     result = detectSteamClientHealth({
       processListText: "",
       consoleLog,
@@ -1044,7 +1142,8 @@ function runSelfTest() {
     result = detectSteamClientHealth({
       processListText: "",
       consoleLog,
-      webhelperLog
+      webhelperLog,
+      connectionLog
     });
     assert(result.ok, "closed Steam is not an unhealthy running client state");
 
@@ -1054,7 +1153,8 @@ function runSelfTest() {
         " 9913 /Users/example/Library/Application Support/Steam/Steam.AppBundle/Steam/Contents/Frameworks/Steam Helper.app/Contents/MacOS/Steam Helper -nocrashdialog -steamid=123456 -steampid=9706"
       ].join("\n"),
       consoleLog: path.join(tempRoot, "missing-console-log.txt"),
-      webhelperLog: path.join(tempRoot, "missing-webhelper-log.txt")
+      webhelperLog: path.join(tempRoot, "missing-webhelper-log.txt"),
+      connectionLog: path.join(tempRoot, "missing-connection-log.txt")
     });
     assert(result.ok, "logged-in helper without current IPC logs is healthy");
 

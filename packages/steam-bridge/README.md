@@ -243,7 +243,9 @@ await steamOverlay.openAndWait({
 The macOS smoke package verifies this managed overlay path from the same shape
 apps should ship: Steam launches the bundle's native launcher, the launcher sets
 the Steam App ID environment before `exec`ing Electron, and both executables are
-signed with Steam-compatible entitlements. Use
+signed with Steam-compatible entitlements. macOS support is Apple Silicon only:
+build, package, sign, and test arm64 `.app` bundles, not Intel or universal
+macOS targets. Use
 `npx steam-bridge-prepare-macos-app --app-exe <YourApp.app/Contents/MacOS/YourApp>`
 after packaging an arm64 macOS Electron app to install the published native
 launcher, rename Electron to `<AppExecutable>.electron`, keep that launcher as

@@ -854,6 +854,19 @@ Steam, log out or reboot macOS to clear the user-session IPC state.
   those processes if they are present. The matrix does not remove all user-owned
   System V semaphores automatically, because those handles are not provably
   Steam-only; the health artifact keeps reporting them as diagnostic evidence.
+- After the local Steam client finished updating and logged back in, a fresh
+  2026-06-30 core Apple Silicon matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-20260630-215349` passed all 26
+  Steam-launched App ID `480` cases. The run recreated the missing stable
+  shortcut under userdata `1686541554`, reused the signed arm64 smoke package,
+  and re-verified readiness, modal web/store/Friends/dialog routes, passive
+  progress/unlock toasts, checkout approval and prepare-only routes, every
+  managed Shift+Tab shortcut target, and direct profile/players/community/stats/
+  achievements/user chat `openAndWait(...)` routes. The health detector now
+  treats `-steamid=0` webhelpers as healthy only when `connection_log.txt`
+  proves the latest state is `Logged On` and no current SteamChrome IPC failure
+  is present; running Steam with a latest `Logged Off` or connecting state fails
+  the live matrix health gate before smoke launch.
 
 ## Primary References
 
