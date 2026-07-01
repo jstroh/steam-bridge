@@ -862,8 +862,6 @@ if [ "$mode" = "summarize" ]; then
   exit 0
 fi
 
-require_macos_arm64_host
-
 resolve_shortcuts_path() {
   if [ -n "$shortcuts_path" ]; then
     printf '%s\n' "$shortcuts_path"
@@ -901,6 +899,7 @@ if (ids.size === 1) {
 
 ensure_ready() {
   validate_checkout_json_file
+  require_macos_arm64_host
   if [ "$skip_package" != "1" ]; then
     npm run example:package:mac
   fi
@@ -1600,6 +1599,7 @@ wait_for_macos_steam_client_health() {
 }
 
 if [ "$mode" = "preflight" ]; then
+  require_macos_arm64_host
   require_interactive_macos_overlay_environment
   if [ "$dry_run" != "1" ]; then
     echo "macOS overlay preflight passed: interactive display available."
@@ -1608,6 +1608,7 @@ if [ "$mode" = "preflight" ]; then
 fi
 
 if [ "$mode" = "steam-health" ]; then
+  require_macos_arm64_host
   check_macos_steam_client_health
   exit 0
 fi
