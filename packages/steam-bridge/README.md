@@ -809,6 +809,9 @@ A fresh 2026-07-01 persistent artifact at
 `/tmp/steam-bridge-macos-overlay-matrix-20260701-003835` repeated that
 one-process Apple Silicon suite without repackaging or restarting Steam and
 passed all 44 cases through the same Metal presenter path.
+New matrix manifests record their suite name, so the summary auditor rejects
+`full`, `persistent`, and `checkout` artifacts that drop required overlay
+surface cases.
 A later recovered-client full artifact at
 `/tmp/steam-bridge-macos-overlay-matrix-20260630-220434` also passed all 44
 process-per-case App ID `480` cases after recreating the stable shortcut and

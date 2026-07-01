@@ -1647,9 +1647,10 @@ write_case_manifest() {
   local result_file="$2"
   local diagnostic_dir="$3"
   shift 3
-  EXPECTED_NATIVE_HOST_BACKEND="$native_host_backend" EXPECTED_APP_ID="$app_id" REQUIRE_MICROTXN_CALLBACK="$require_microtxn_callback" node - "$artifact_root/macos-matrix-cases.jsonl" "$case_id" "$result_file" "$diagnostic_dir" "$@" <<'NODE'
+  MATRIX_SUITE="$suite" EXPECTED_NATIVE_HOST_BACKEND="$native_host_backend" EXPECTED_APP_ID="$app_id" REQUIRE_MICROTXN_CALLBACK="$require_microtxn_callback" node - "$artifact_root/macos-matrix-cases.jsonl" "$case_id" "$result_file" "$diagnostic_dir" "$@" <<'NODE'
 const fs = require("node:fs");
 const [manifestPath, caseId, resultFile, diagnosticDir, ...command] = process.argv.slice(2);
+const matrixSuite = process.env.MATRIX_SUITE || null;
 const requestedNativeHostBackend = process.env.EXPECTED_NATIVE_HOST_BACKEND || "";
 const expectedNativeHostBackend = requestedNativeHostBackend ? `macos-${requestedNativeHostBackend}` : null;
 const expectedAppId = Number(process.env.EXPECTED_APP_ID || "480");
@@ -1701,6 +1702,7 @@ function redactCommand(args) {
 fs.appendFileSync(
   manifestPath,
   `${JSON.stringify({
+    suite: matrixSuite,
     caseId,
     resultFile,
     diagnosticDir,

@@ -47,6 +47,109 @@ const SENSITIVE_MANIFEST_OPTIONS = new Set([
   "--checkout-transaction-id",
   "--checkout-url"
 ]);
+const FULL_SUITE_REQUIRED_CASE_IDS = [
+  "00-presenter-ready",
+  "01-web-openwait",
+  "02-store-openwait",
+  "03-friends-openwait",
+  "04-dialog-official-openwait",
+  "05-passive-toast",
+  "06-passive-unlock-toast",
+  "07-checkout-approval",
+  "07b-checkout-prepare",
+  "08-shortcut-friends",
+  "09-shortcut-web",
+  "10-shortcut-store",
+  "11-shortcut-checkout",
+  "12-shortcut-profile",
+  "13-shortcut-players",
+  "14-shortcut-community",
+  "15-shortcut-stats",
+  "16-shortcut-achievements",
+  "17-shortcut-user-chat",
+  "18-shortcut-dialog",
+  "19-profile",
+  "20-players",
+  "21-community",
+  "22-stats",
+  "23-achievements",
+  "24-user-chat",
+  "25-user-steamid",
+  "26-dialog-Friends",
+  "27-dialog-Players",
+  "28-dialog-Community",
+  "29-dialog-OfficialGameGroup",
+  "30-dialog-Stats",
+  "31-dialog-Achievements",
+  "32-shortcut-friends-openwait",
+  "33-shortcut-web-openwait",
+  "34-shortcut-store-openwait",
+  "35-shortcut-checkout-openwait",
+  "36-shortcut-profile-openwait",
+  "37-shortcut-players-openwait",
+  "38-shortcut-community-openwait",
+  "39-shortcut-stats-openwait",
+  "40-shortcut-achievements-openwait",
+  "41-shortcut-user-chat-openwait",
+  "42-shortcut-dialog-openwait"
+];
+const PERSISTENT_SUITE_REQUIRED_CASE_IDS = [
+  "00-persistent-presenter-ready",
+  "01-persistent-web-openwait",
+  "02-persistent-store-openwait",
+  "03-persistent-friends-openwait",
+  "04-persistent-dialog-official-openwait",
+  "05-persistent-passive-toast",
+  "06-persistent-passive-unlock-toast",
+  "07-persistent-checkout-approval",
+  "07b-persistent-checkout-prepare",
+  "08-persistent-shortcut-friends",
+  "09-persistent-shortcut-web",
+  "10-persistent-shortcut-store",
+  "11-persistent-shortcut-checkout",
+  "12-persistent-shortcut-profile",
+  "13-persistent-shortcut-players",
+  "14-persistent-shortcut-community",
+  "15-persistent-shortcut-stats",
+  "16-persistent-shortcut-achievements",
+  "17-persistent-shortcut-user-chat",
+  "18-persistent-shortcut-dialog",
+  "19-persistent-shortcut-web-openwait",
+  "20-persistent-profile",
+  "21-persistent-players",
+  "22-persistent-community",
+  "23-persistent-stats",
+  "24-persistent-achievements",
+  "25-persistent-user-chat",
+  "26-persistent-user-steamid",
+  "27-persistent-dialog-Friends",
+  "28-persistent-dialog-Players",
+  "29-persistent-dialog-Community",
+  "30-persistent-dialog-OfficialGameGroup",
+  "31-persistent-dialog-Stats",
+  "32-persistent-dialog-Achievements",
+  "33-persistent-shortcut-friends-openwait",
+  "34-persistent-shortcut-store-openwait",
+  "35-persistent-shortcut-checkout-openwait",
+  "36-persistent-shortcut-profile-openwait",
+  "37-persistent-shortcut-players-openwait",
+  "38-persistent-shortcut-community-openwait",
+  "39-persistent-shortcut-stats-openwait",
+  "40-persistent-shortcut-achievements-openwait",
+  "41-persistent-shortcut-user-chat-openwait",
+  "42-persistent-shortcut-dialog-openwait"
+];
+const CHECKOUT_SUITE_REQUIRED_CASE_IDS = [
+  "01-checkout-prepare",
+  "02-checkout-approval",
+  "03-shortcut-checkout",
+  "04-shortcut-checkout-openwait"
+];
+const REQUIRED_SUITE_CASE_IDS = new Map([
+  ["full", FULL_SUITE_REQUIRED_CASE_IDS],
+  ["persistent", PERSISTENT_SUITE_REQUIRED_CASE_IDS],
+  ["checkout", CHECKOUT_SUITE_REQUIRED_CASE_IDS]
+]);
 
 main();
 
@@ -189,6 +292,7 @@ function summarizeMatrixArtifacts(root) {
       failures.push(...caseFailures);
     }
   }
+  verifySuiteCoverage(cases, failures);
 
   for (const summary of summaries) {
     console.log(
@@ -230,6 +334,37 @@ function summarizeMatrixArtifacts(root) {
 
   console.log(`macOS overlay matrix summary passed: cases=${summaries.length}`);
   return { caseSummaries: summaries };
+}
+
+function verifySuiteCoverage(cases, failures) {
+  const suiteValues = cases.map((metadata) => nonEmptyString(metadata.suite));
+  const taggedSuiteValues = suiteValues.filter(Boolean);
+  if (taggedSuiteValues.length > 0 && taggedSuiteValues.length !== cases.length) {
+    failures.push("macOS matrix manifest has partial suite metadata");
+    return;
+  }
+
+  const suites = new Set(taggedSuiteValues);
+  if (suites.size === 0) {
+    return;
+  }
+  if (suites.size > 1) {
+    failures.push(`macOS matrix manifest mixes suite metadata: ${[...suites].sort().join(", ")}`);
+    return;
+  }
+
+  const suite = [...suites][0];
+  const requiredCaseIds = REQUIRED_SUITE_CASE_IDS.get(suite);
+  if (!requiredCaseIds) {
+    return;
+  }
+
+  const presentCaseIds = new Set(cases.map((metadata) => metadata.caseId));
+  for (const caseId of requiredCaseIds) {
+    if (!presentCaseIds.has(caseId)) {
+      failures.push(`${suite} macOS matrix missing required case ${caseId}`);
+    }
+  }
 }
 
 function verifyCase(caseId, metadata, result, lifecycle, macosCrashReports, failures) {
@@ -1550,6 +1685,7 @@ function runSelfTest() {
     createPersistentSelfTestFixture(persistentFixtureRoot);
     const persistentSummary = summarizeMatrixArtifacts(persistentFixtureRoot);
     assert.equal(persistentSummary.caseSummaries.length, 2, "persistent summary self-test should include two cases");
+    assertSuiteCoverageSelfTest();
     createSelfTestFixture(unredactedFixtureRoot);
     injectUnredactedCheckoutManifestCommand(unredactedFixtureRoot);
     assertUnredactedManifestRejected(unredactedFixtureRoot);
@@ -1579,6 +1715,61 @@ function runSelfTest() {
     fs.rmSync(missingNeedsPresentPollingFixtureRoot, { recursive: true, force: true });
     fs.rmSync(persistentFixtureRoot, { recursive: true, force: true });
   }
+}
+
+function assertSuiteCoverageSelfTest() {
+  const completeCheckoutFailures = [];
+  verifySuiteCoverage(
+    CHECKOUT_SUITE_REQUIRED_CASE_IDS.map((caseId) => ({ suite: "checkout", caseId })),
+    completeCheckoutFailures
+  );
+  assert.deepEqual(completeCheckoutFailures, [], "complete checkout suite coverage should pass");
+
+  const missingCheckoutFailures = [];
+  verifySuiteCoverage(
+    CHECKOUT_SUITE_REQUIRED_CASE_IDS.slice(0, -1).map((caseId) => ({ suite: "checkout", caseId })),
+    missingCheckoutFailures
+  );
+  assert.match(
+    missingCheckoutFailures.join("\n"),
+    /checkout macOS matrix missing required case 04-shortcut-checkout-openwait/,
+    "checkout suite coverage should reject missing programmatic checkout proof"
+  );
+
+  const persistentFailures = [];
+  verifySuiteCoverage(
+    PERSISTENT_SUITE_REQUIRED_CASE_IDS.map((caseId) => ({ suite: "persistent", caseId })),
+    persistentFailures
+  );
+  assert.deepEqual(persistentFailures, [], "complete persistent suite coverage should pass");
+
+  const mixedSuiteFailures = [];
+  verifySuiteCoverage(
+    [
+      { suite: "full", caseId: "00-presenter-ready" },
+      { suite: "persistent", caseId: "00-persistent-presenter-ready" }
+    ],
+    mixedSuiteFailures
+  );
+  assert.match(
+    mixedSuiteFailures.join("\n"),
+    /macOS matrix manifest mixes suite metadata: full, persistent/,
+    "suite coverage should reject mixed suite metadata"
+  );
+
+  const partialSuiteFailures = [];
+  verifySuiteCoverage(
+    [
+      { suite: "checkout", caseId: "01-checkout-prepare" },
+      { caseId: "02-checkout-approval" }
+    ],
+    partialSuiteFailures
+  );
+  assert.match(
+    partialSuiteFailures.join("\n"),
+    /macOS matrix manifest has partial suite metadata/,
+    "suite coverage should reject partial suite metadata"
+  );
 }
 
 function injectUnredactedCheckoutManifestCommand(root) {
