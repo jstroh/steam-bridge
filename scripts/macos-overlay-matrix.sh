@@ -974,11 +974,24 @@ try {
 }
 
 const events = Array.isArray(result?.snapshot?.events) ? result.snapshot.events : [];
-const readyTimeout = events.some((event) =>
-  event?.type === "overlay:presenter-open-and-wait:error" &&
-  event?.payload?.error?.code === "STEAM_OVERLAY_WAIT_TIMEOUT" &&
-  event?.payload?.error?.state === "be ready"
-);
+const hasOverlayWaitTimeout = (state) => {
+  if (
+    result?.wait?.error?.code === "STEAM_OVERLAY_WAIT_TIMEOUT" &&
+    result.wait.error.state === state
+  ) {
+    return true;
+  }
+  return events.some((event) =>
+    (
+      event?.type === "overlay:presenter-open-and-wait:error" ||
+      event?.type === "overlay:presenter-wait-shown:error"
+    ) &&
+    event?.payload?.error?.code === "STEAM_OVERLAY_WAIT_TIMEOUT" &&
+    event.payload.error.state === state
+  );
+};
+const readyTimeout = hasOverlayWaitTimeout("be ready");
+const activeTimeout = hasOverlayWaitTimeout("become active");
 const overlayEnabled = result?.snapshot?.steam?.overlayEnabled?.value;
 const steamLaunch = result?.snapshot?.launch?.steamLaunch === true;
 const overlayInjection = result?.snapshot?.launch?.overlayInjection === true;
@@ -991,6 +1004,19 @@ if (
   result?.action?.ok === true &&
   readyTimeout &&
   overlayEnabled === false &&
+  steamLaunch &&
+  overlayInjection &&
+  crashOk &&
+  macInteractive
+) {
+  process.exit(0);
+}
+
+if (
+  result?.ok === false &&
+  result?.action?.ok === true &&
+  activeTimeout &&
+  overlayEnabled === true &&
   steamLaunch &&
   overlayInjection &&
   crashOk &&

@@ -742,7 +742,16 @@ Current evidence:
   community/user/dialog route, every programmatic shortcut open-and-wait target,
   one Metal presenter-backed overlay target per case, close/back-to-app proof,
   zero managed overlay timing, parked zero-FPS presenter state, no leftover
-  smoke/gameoverlay process, and no copied macOS crash reports. A
+  smoke/gameoverlay process, and no copied macOS crash reports. A follow-up
+  persistent one-process macOS matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-persistent-ready-retry-current-20260630-170648`
+  reused the same package and shortcut without restarting Steam or repackaging,
+  launched one Steam-owned App ID `480` smoke process, drove all 44 cases through
+  the localhost control server, and passed the same readiness, active overlay,
+  passive notification, checkout, shortcut, close/back-to-app, zero-timing,
+  cleanup, and no-crash gates. The persistent matrix now retries one crash-free
+  post-action `become active` timeout by relaunching the suite; repeated misses
+  remain failures. A
   2026-06-28 Deck Desktop
   prepare-only run verified
   checkout readiness returns to passive idle, and a synthetic
@@ -930,7 +939,7 @@ Current evidence:
   callbacks where expected, active shown presenter snapshots, one
   `gameoverlayui` target, app focus return, clean crash diagnostics, an
   interactive macOS host state, and idle presenter parking at `currentFps=0`.
-  The latest live full and persistent macOS artifacts cover 43 cases, including
+  The latest live full and persistent macOS artifacts cover 44 cases, including
   programmatic `openShortcutTargetAndWait()` proof for every supported
   presenter-backed shortcut target. The checkout prepare-only case calls
   `withCheckoutPrepared(...)` without transaction input, requires the

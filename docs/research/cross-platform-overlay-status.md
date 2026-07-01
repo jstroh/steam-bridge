@@ -108,6 +108,21 @@ shortcut open-and-wait target, with one Metal presenter-backed overlay target,
 active/inactive callbacks where expected, close/back-to-app proof, zero managed
 overlay timing, clean parked state, no leftover smoke/gameoverlay processes, and
 no copied macOS crash reports.
+A follow-up persistent one-process run at
+`/tmp/steam-bridge-macos-overlay-matrix-persistent-ready-retry-current-20260630-170648`
+reused the same signed Electron `43.0.0` package and stable Steam shortcut
+without restarting Steam or repackaging, launched one Steam-owned App ID `480`
+smoke process, drove all 44 cases through the localhost control server, and
+passed the summary audit. It re-proved readiness, active web/store/Friends,
+dialog-equivalent, user, community, stats, achievements, checkout approval,
+checkout prepare-only, every managed Shift+Tab shortcut target, and every
+programmatic shortcut open-and-wait target with one Metal presenter-backed
+overlay target, active/inactive callbacks where expected, close/back-to-app
+proof, zero managed overlay timing, clean parked state, no leftover
+smoke/gameoverlay processes, and no copied macOS crash reports. The persistent
+matrix retry classifier now treats a crash-free `STEAM_OVERLAY_WAIT_TIMEOUT` at
+`become active` after a successful action as retryable for one whole-suite
+relaunch; repeated activation misses still fail the matrix.
 A fresh full run at
 `/tmp/steam-bridge-macos-overlay-matrix-full-json-after-reopen-20260630-040037`
 then rebuilt and signed the Electron `42.5.1` smoke package after Steam had been

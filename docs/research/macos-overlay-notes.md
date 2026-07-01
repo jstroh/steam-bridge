@@ -745,6 +745,20 @@ signed Electron `43.0.0` package and stable shortcut without repackaging or
 restarting Steam, audited one Metal presenter-backed overlay target per case,
 zero managed overlay timing, close/back-to-app proof, parked zero-FPS presenter
 state, no leftover smoke/gameoverlay process, and no copied macOS crash reports.
+A follow-up persistent one-process macOS matrix at
+`/tmp/steam-bridge-macos-overlay-matrix-persistent-ready-retry-current-20260630-170648`
+reused the same signed Electron `43.0.0` package and stable shortcut without
+repackaging or restarting Steam, launched one Steam-owned App ID `480` smoke
+process, drove all 44 cases through the localhost control server, and passed the
+summary audit. The run covers the readiness preflight, active web/store/Friends,
+dialog-equivalent, user, community, stats, achievements, checkout approval,
+checkout prepare-only, every managed Shift+Tab shortcut target, and every
+programmatic shortcut open-and-wait target with one Metal presenter-backed
+overlay target, callback-driven close/back-to-app proof, zero managed overlay
+timing, parked zero-FPS presenter state, no leftover smoke/gameoverlay process,
+and no copied macOS crash reports. The persistent matrix can now retry one
+crash-free post-action overlay activation timeout by relaunching the whole
+one-process suite; a repeated miss still fails.
 
 ## Primary References
 
