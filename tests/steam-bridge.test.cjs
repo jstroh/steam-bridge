@@ -440,7 +440,7 @@ test("checkout target helper unwraps InitTxn-style response envelopes", (t) => {
           transid: "246813579",
           steamurl: "https://checkout.steampowered.com/checkout/approvetxn/246813579/",
           returnurl: "steam://return-from-init-txn",
-          appid: 480
+          m_unAppID: 480
         }
       }
     },
@@ -492,7 +492,7 @@ test("checkout target helper unwraps InitTxn-style response envelopes", (t) => {
           response: {
             params: {
               transid: "13579",
-              appid: 481
+              m_nAppID: 481
             }
           }
         },
@@ -5150,9 +5150,9 @@ test("specific and generic callbacks normalize Steamworks payloads", (t) => {
   });
 
   fake.callbacks.get(steam.SteamCallback.MicroTxnAuthorizationResponseSteamworks)({
-    app_id: 480,
-    order_id: "9223372036854775807",
-    authorized: true
+    m_unAppID: 480,
+    m_ulOrderID: "9223372036854775807",
+    m_bAuthorized: 1
   });
 
   assert.equal(txnEvent.appId, 480);
@@ -5164,9 +5164,9 @@ test("specific and generic callbacks normalize Steamworks payloads", (t) => {
     legacyTxnEvent = event;
   });
   fake.callbacks.get(steam.SteamCallback.MicroTxnAuthorizationResponse)({
-    app_id: 480,
-    order_id: "9223372036854775806",
-    authorized: true
+    m_nAppID: 480,
+    m_ulOrderID: "9223372036854775806",
+    m_bAuthorized: true
   });
   assert.equal(legacyTxnEvent.appId, 480);
   assert.equal(legacyTxnEvent.orderId, 9223372036854775806n);

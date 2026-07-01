@@ -457,7 +457,10 @@ have a resolved checkout target and intentionally do not need to await overlay
 close; real purchase flows should normally prefer the wait helper.
 `MicroTxnAuthorizationResponse` is a purchase authorization event, not an
 overlay-close signal, so keep the managed presenter alive until Steam reports
-the overlay inactive. The returned checkout wait result includes
+the overlay inactive. Steam Bridge normalizes the callback's Steam app ID,
+order ID, and authorization flag to `appId`, `orderId`, and `authorized` even
+when the native payload uses SDK-style field names. The returned checkout wait
+result includes
 `targetSnapshot`, and `steamworks.snapshotSteamOverlayTarget(target)` is
 available for other diagnostics; use those sanitized snapshots in logs instead
 of raw checkout targets because they keep only presence flags for checkout URLs,

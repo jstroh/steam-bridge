@@ -461,9 +461,13 @@ export interface SteamClientInterfaceOptions {
 export interface MicroTxnAuthorizationResponse {
   appId?: number;
   app_id?: number;
+  m_unAppID?: number;
+  m_nAppID?: number;
   orderId?: bigint | string | number;
   order_id?: bigint | string | number;
+  m_ulOrderID?: bigint | string | number;
   authorized?: boolean;
+  m_bAuthorized?: boolean | number;
   [key: string]: unknown;
 }
 
@@ -11463,7 +11467,7 @@ function collectSteamCheckoutAppIds(value: unknown, seen = new Set<unknown>(), d
   const found: number[] = [];
   if (!Array.isArray(value)) {
     const record = value as Record<string, unknown>;
-    for (const key of ["appid", "app_id", "appId"]) {
+    for (const key of ["appid", "app_id", "appId", "m_unAppID", "m_nAppID"]) {
       if (Object.prototype.hasOwnProperty.call(record, key)) {
         const appId = normalizeSteamCheckoutAppIdValue(record[key]);
         if (appId !== undefined) {
@@ -22497,13 +22501,19 @@ function normalizeMicroTxnEvent(event: unknown): MicroTxnAuthorizationResponse {
 
   const source = event as Record<string, unknown>;
   const normalized: MicroTxnAuthorizationResponse = { ...source };
+  const appId = normalizeSteamCheckoutAppIdValue(source.app_id ?? source.m_unAppID ?? source.m_nAppID);
 
-  if (typeof source.app_id === "number" && normalized.appId === undefined) {
-    normalized.appId = source.app_id;
+  if (appId !== undefined && normalized.appId === undefined) {
+    normalized.appId = appId;
   }
 
-  if (source.order_id !== undefined && normalized.orderId === undefined) {
-    normalized.orderId = normalizeOrderId(source.order_id);
+  const orderId = source.order_id ?? source.m_ulOrderID;
+  if (orderId !== undefined && normalized.orderId === undefined) {
+    normalized.orderId = normalizeOrderId(orderId);
+  }
+
+  if (source.m_bAuthorized !== undefined && normalized.authorized === undefined) {
+    normalized.authorized = Boolean(source.m_bAuthorized);
   }
 
   return normalized;

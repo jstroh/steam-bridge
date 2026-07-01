@@ -583,7 +583,10 @@ pair it with `--app-id <your-app-id>`,
 to produce a `MicroTxnAuthorizationResponse`. That callback flag requires
 `--checkout-json-file`, so a real-callback proof cannot accidentally fall back
 to the public synthetic App ID `480` transaction route. The summary will fail if
-that callback is missing or lacks a presenter snapshot. Shortcut checkout cases
+that callback is missing, lacks a presenter snapshot, or does not report the
+launched Steam app ID. Steam Bridge normalizes the callback's Steam app ID,
+order ID, and authorization flag to `appId`, `orderId`, and `authorized` even
+when the native payload uses SDK-style field names. Shortcut checkout cases
 feed that same parsed object through `checkoutTargetFromResult(...)`, so direct
 and shortcut checkout proofs share one accepted envelope parser. The macOS
 matrix also accepts `--app-id <your-app-id>` and summarizes the expected app ID
