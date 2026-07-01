@@ -40,8 +40,10 @@ npm run example:package:linux -- --artifacts-dir /tmp/steam-bridge-release
 npm run example:package:win -- --artifacts-dir /tmp/steam-bridge-release
 ```
 
-For the current host platform, `npm run native:build` is enough for a local
-package check. The packager will stage `steam_bridge_native.local.node` under
+For the current supported host platform, `npm run native:build` is enough for a
+local package check. On macOS, that means Apple Silicon only; the smoke app must
+be built and run as `SteamBridgeSmoke-darwin-arm64`, never as an Intel or
+universal app. The packager will stage `steam_bridge_native.local.node` under
 the target prebuild name when a release prebuild is not present:
 
 ```sh
@@ -71,6 +73,9 @@ fallback test paths.
 There are no Intel macOS smoke artifacts or live overlay test paths for this
 example; do not add `darwin-x64`, `x86_64-apple-darwin`, or universal macOS
 targets.
+References to Intel macOS, Rosetta, or universal macOS in this example are
+guardrails for rejecting those configurations, not supported build or test
+paths.
 `npm run check:platform` validates both the published native target list and
 this example's Apple Silicon-only macOS package path.
 

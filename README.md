@@ -52,6 +52,9 @@ This applies to every macOS example, test app, smoke app, and overlay proof in
 this repository.
 There are no Intel macOS smoke artifacts, example app targets, or live overlay
 test paths in this project; do not add them.
+References to Intel macOS, Rosetta, or universal macOS in this repository are
+guardrails for rejecting those configurations, not supported build or test
+paths.
 
 ## Quick Start
 

@@ -48,6 +48,8 @@ This applies to every macOS example, test app, smoke app, and overlay proof in
 this package.
 There are no Intel macOS smoke artifacts, example app targets, or live overlay
 test paths in this package; do not add them.
+References to Intel macOS, Rosetta, or universal macOS are guardrails for
+rejecting those configurations, not supported build or test paths.
 
 The packaged Windows smoke helper accepts the same generic smoke actions as the
 Deck/macOS helpers for web, store, Friends, dialog-equivalent, checkout,
@@ -322,6 +324,8 @@ exports.default = async (context) => {
 The helper skips non-mac targets and rejects Intel or universal macOS targets,
 so a real app can keep the Steam overlay packaging step hidden in the normal
 builder lifecycle.
+Do not define secondary macOS x64 or universal targets beside the arm64 target;
+Steam Bridge's macOS app-builder path is Apple Silicon only.
 The live macOS matrix then exercises the signed package through App ID `480`
 overlay cases, including managed waits, shortcut targets, passive notifications,
 checkout approval routing, all high-level dialog-equivalent routes,
