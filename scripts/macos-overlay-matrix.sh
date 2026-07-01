@@ -284,16 +284,74 @@ const fs = require("node:fs");
 const checkoutJsonFile = process.argv[2];
 
 try {
-  const stat = fs.statSync(checkoutJsonFile);
+  let stat;
+  try {
+    stat = fs.statSync(checkoutJsonFile);
+  } catch {
+    throw new Error("file is missing or unreadable");
+  }
   if (!stat.isFile()) {
     throw new Error("not a regular file");
   }
-  const parsed = JSON.parse(fs.readFileSync(checkoutJsonFile, "utf8"));
+  let contents;
+  try {
+    contents = fs.readFileSync(checkoutJsonFile, "utf8");
+  } catch {
+    throw new Error("file is unreadable");
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(contents);
+  } catch {
+    throw new Error("file must contain valid JSON");
+  }
   if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
     throw new Error("JSON root must be an object");
   }
 } catch (error) {
-  console.error(`Invalid --checkout-json-file: ${checkoutJsonFile} (${error.message})`);
+  console.error(`Invalid --checkout-json-file (${error.message})`);
+  process.exit(2);
+}
+NODE
+
+  npm run build -w steam-bridge >/dev/null
+
+  node - "$checkout_json_file" "$repo_root" <<'NODE'
+const fs = require("node:fs");
+const path = require("node:path");
+
+const checkoutJsonFile = process.argv[2];
+const repoRoot = process.argv[3];
+const steamBridge = require(path.join(repoRoot, "packages", "steam-bridge", "dist", "index.js"));
+
+try {
+  const parsed = JSON.parse(fs.readFileSync(checkoutJsonFile, "utf8"));
+  const target = steamBridge.overlay.checkoutTargetFromResult(parsed, { modal: true });
+  const snapshot = steamBridge.overlay.snapshotSteamOverlayTarget(target);
+  if (
+    snapshot.type !== "checkout" ||
+    !(
+      snapshot.hasSteamUrl === true ||
+      snapshot.hasUrl === true ||
+      snapshot.hasTransactionId === true
+    )
+  ) {
+    throw new Error("checkout JSON did not resolve to a usable checkout target");
+  }
+
+  console.error(
+    `Validated --checkout-json-file target: ${JSON.stringify({
+      type: snapshot.type,
+      hasSteamUrl: snapshot.hasSteamUrl === true,
+      hasUrl: snapshot.hasUrl === true,
+      hasTransactionId: snapshot.hasTransactionId === true,
+      hasReturnUrl: snapshot.hasReturnUrl === true
+    })}`
+  );
+} catch {
+  console.error(
+    "Invalid --checkout-json-file (checkout JSON must contain a checkout URL, Steam checkout URL, transaction ID, or InitTxn response envelope)"
+  );
   process.exit(2);
 }
 NODE
@@ -359,7 +417,7 @@ case_block() {
 }
 
 run_self_test() {
-  local self_path minimal_output core_output full_output persistent_output unavailable_output wait_output preflight_output steam_health_output opengl_output checkout_json_output checkout_callback_output callback_missing_json_output checkout_missing_file_output passive_case checkout_case checkout_prepare_case checkout_json_case checkout_callback_case checkout_callback_checkout_block checkout_callback_prepare_block checkout_callback_web_block shortcut_checkout_json_case web_case full_shortcut_open_wait_case full_shortcut_checkout_open_wait_case full_shortcut_user_open_wait_case full_shortcut_dialog_open_wait_case persistent_web_case persistent_checkout_prepare_case persistent_shortcut_open_wait_case persistent_shortcut_checkout_open_wait_case persistent_shortcut_user_open_wait_case persistent_shortcut_dialog_open_wait_case unavailable_web_case unavailable_checkout_case unavailable_checkout_prepare_case unavailable_shortcut_case unavailable_passive_case
+  local self_path minimal_output core_output full_output persistent_output unavailable_output wait_output preflight_output steam_health_output opengl_output checkout_json_output checkout_callback_output callback_missing_json_output checkout_missing_file_output invalid_checkout_json_file invalid_checkout_json_output passive_case checkout_case checkout_prepare_case checkout_json_case checkout_callback_case checkout_callback_checkout_block checkout_callback_prepare_block checkout_callback_web_block shortcut_checkout_json_case web_case full_shortcut_open_wait_case full_shortcut_checkout_open_wait_case full_shortcut_user_open_wait_case full_shortcut_dialog_open_wait_case persistent_web_case persistent_checkout_prepare_case persistent_shortcut_open_wait_case persistent_shortcut_checkout_open_wait_case persistent_shortcut_user_open_wait_case persistent_shortcut_dialog_open_wait_case unavailable_web_case unavailable_checkout_case unavailable_checkout_prepare_case unavailable_shortcut_case unavailable_passive_case
   self_path="${BASH_SOURCE[0]}"
   minimal_output="$(
     bash "$self_path" \
@@ -479,6 +537,26 @@ run_self_test() {
     exit 1
   fi
   require_contains "$checkout_missing_file_output" "Invalid --checkout-json-file" "missing checkout JSON should fail before live launch."
+  require_not_contains "$checkout_missing_file_output" "/tmp/steam-bridge-missing-init-txn-response.json" "missing checkout JSON validation must not print the private file path."
+  invalid_checkout_json_file="$(mktemp "${TMPDIR:-/tmp}/steam-bridge-invalid-checkout-json.XXXXXX.json")"
+  printf '{"response":{"params":{"returnurl":"steam://return-from-private-proof"}}}\n' > "$invalid_checkout_json_file"
+  if invalid_checkout_json_output="$(bash "$self_path" \
+    --mode steam-launch \
+    --suite checkout \
+    --skip-package \
+    --helper-path "$script_dir/macos-electron-smoke.sh" \
+    --app-exe /tmp/SteamBridgeSmoke.app/Contents/MacOS/SteamBridgeSmoke \
+    --shortcuts /tmp/shortcuts.vdf \
+    --artifact-root /tmp/steam-bridge-macos-overlay-matrix-self-test \
+    --checkout-json-file "$invalid_checkout_json_file" 2>&1)"; then
+    rm -f "$invalid_checkout_json_file"
+    echo "Self-test failed: unusable checkout JSON should fail before live launch." >&2
+    exit 1
+  fi
+  rm -f "$invalid_checkout_json_file"
+  require_contains "$invalid_checkout_json_output" "checkout JSON must contain a checkout URL" "checkout JSON validation should reject objects that cannot resolve to a checkout target."
+  require_not_contains "$invalid_checkout_json_output" "$invalid_checkout_json_file" "checkout JSON validation must not print the private file path."
+  require_not_contains "$invalid_checkout_json_output" "steam://return-from-private-proof" "checkout JSON validation must not print private return URLs."
   opengl_output="$(
     bash "$self_path" \
       --mode steam-launch \

@@ -1267,6 +1267,15 @@ Deck/Linux/macOS artifacts can verify presenter alignment without scraping logs.
     real purchase content, and live lock/display-sleep captures as separate
     evidence tracks.
 
+Current real-product checkout guardrail:
+
+- The macOS matrix validates any private `--checkout-json-file` before package
+  signing, shortcut work, Steam startup, or overlay launch. Validation resolves
+  the file through `checkoutTargetFromResult(...)`, requires a checkout URL,
+  Steam checkout URL, transaction ID, or `InitTxn` envelope, and prints only
+  sanitized presence flags. Malformed or incomplete private captures fail early
+  without echoing the file path, transaction ID, checkout URL, or return URL.
+
 ## Non-Goals
 
 - Do not commit private app IDs, item definitions, publisher keys, transaction

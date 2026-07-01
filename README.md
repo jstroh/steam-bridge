@@ -353,7 +353,10 @@ available for other diagnostics; use those sanitized snapshots in logs instead
 of raw checkout targets because they keep only presence flags for checkout URLs,
 transaction IDs, return URLs, and Steam IDs. App ID `480` proves generic
 checkout routing only; real purchase UI and `InitTxn` proof require your own
-Steam app ID with configured products.
+Steam app ID with configured products. The macOS checkout matrix preflights a
+private `--checkout-json-file` through the same checkout target resolver before
+launching Steam, so bad `InitTxn` captures fail before any live overlay work and
+only sanitized presence flags are printed.
 If a managed overlay wait, checkout preparation, or checkout native-host guard
 fails, catch the original error and call
 `steamworks.getSteamOverlayErrorTargetSnapshot(error)` or
