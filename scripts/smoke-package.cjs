@@ -83,6 +83,9 @@ function runMacosPackageSigningStaticChecks() {
   );
   const packagerScript = fs.readFileSync(path.join(repoRoot, "scripts", "package-electron-example.cjs"), "utf8");
   const matrixScript = fs.readFileSync(path.join(repoRoot, "scripts", "macos-overlay-matrix.sh"), "utf8");
+  const ciWorkflow = fs.readFileSync(path.join(repoRoot, ".github", "workflows", "ci.yml"), "utf8");
+  const releaseWorkflow = fs.readFileSync(path.join(repoRoot, ".github", "workflows", "release.yml"), "utf8");
+  const readme = fs.readFileSync(path.join(repoRoot, "README.md"), "utf8");
   const prepareScript = fs.readFileSync(path.join(packageRoot, "bin", "prepare-macos-app.cjs"), "utf8");
   const verifierScript = fs.readFileSync(path.join(packageRoot, "bin", "verify-macos-signing.cjs"), "utf8");
   const launcherTemplate = fs.readFileSync(path.join(packageRoot, "templates", "macos-steam-env-launcher.c"), "utf8");
@@ -137,6 +140,29 @@ function runMacosPackageSigningStaticChecks() {
     /x86_64-apple-darwin|darwin-x64|universal2?|platform:\s*"darwin"[\s\S]{0,160}arch:\s*"x64"/,
     "example packager must not expose Intel or universal macOS targets"
   );
+  assert.match(
+    readme,
+    /All macOS test apps are built and run as Apple Silicon arm64\s+targets only/,
+    "README must document that macOS test apps are Apple Silicon only"
+  );
+  assert.match(
+    readme,
+    /never silently become\s+Intel cross-compilation checks/,
+    "README must document the macOS arm64 runner guard"
+  );
+  for (const [label, workflow] of [
+    ["CI workflow", ciWorkflow],
+    ["Release workflow", releaseWorkflow]
+  ]) {
+    assert.ok(
+      workflow.includes("matrix.target == 'aarch64-apple-darwin'"),
+      `${label} must gate macOS runner checks to the Apple Silicon target`
+    );
+    assert.ok(
+      workflow.includes('test "$(uname -m)" = arm64'),
+      `${label} must verify the macOS runner is arm64`
+    );
+  }
   assert.ok(
     !packagerScript.includes("signMacSteamExecutable"),
     "macOS package script must use the published Steam Bridge preparation CLI"

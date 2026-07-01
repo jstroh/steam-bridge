@@ -31,7 +31,9 @@ loading, native linking, and macOS smoke-app packaging enforce the supported
 target list. All macOS test apps are built and run as Apple Silicon arm64
 targets only; Steam Bridge does not build, run, or verify Intel or universal
 macOS apps. Do not package, launch, or verify macOS smoke apps through Rosetta
-or any `darwin-x64`/universal Electron build.
+or any `darwin-x64`/universal Electron build. The macOS CI and release jobs
+also assert an `arm64` runner so Apple Silicon checks never silently become
+Intel cross-compilation checks.
 
 ## Quick Start
 
