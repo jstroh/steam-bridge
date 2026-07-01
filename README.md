@@ -290,7 +290,7 @@ app.whenReady().then(async () => {
   });
 
   // Optional: reuse the configured Shift+Tab target from a controller/menu button.
-  steamOverlay.openShortcutTarget();
+  // Use the wait form when the app should resume only after Steam closes.
   await steamOverlay.openShortcutTargetAndWait();
 });
 ```
