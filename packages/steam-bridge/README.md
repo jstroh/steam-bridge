@@ -176,8 +176,21 @@ await steamOverlay.openAndWait({
   modal: true
 });
 
+const realAppId = Number(process.env.STEAM_APP_ID);
+const transaction = {
+  orderId: Date.now(),
+  items: [{ itemId: 100, quantity: 1, amount: 199, description: "Example item" }]
+};
+
 await steamOverlay.openCheckoutAndWait(() =>
-  backend.createSteamTransaction({ itemId: 100 })
+  steamworks.webApi.microTxn.initClientTxn({
+    appId: realAppId,
+    orderId: transaction.orderId,
+    steamId64: steamId,
+    language: "en",
+    currency: "USD",
+    items: transaction.items
+  })
 );
 
 // Optional: reuse the configured Shift+Tab target from a controller/menu button.
@@ -346,6 +359,10 @@ overlay manager closes while that operation is pending, the scoped hold is
 released and `SteamOverlayWaitClosedError` is thrown without opening a late
 checkout surface. The preparation is operation-scoped rather than an app-tuned
 timer.
+When using the built-in Web API client, prefer
+`microTxn.initClientTxn(...)` for overlay approval (`usersession=client`) and
+`microTxn.initWebTxn(...)` for your browser fallback (`usersession=web`) instead
+of passing raw session strings through app code.
 `steamOverlay.withCheckoutPrepared(...)`,
 `steamOverlay.open({ type: "checkout", ... })`, and
 `steamOverlay.prepareForCheckout()` remain available for lower-level flows that

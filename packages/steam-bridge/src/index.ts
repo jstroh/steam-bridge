@@ -5204,7 +5204,9 @@ export interface SteamWebApiMicroTxnFacade {
     options: SteamWebApiUserAgreementInfoOptions
   ): Promise<SteamWebApiResponse<T>>;
   getUserInfo<T = unknown>(options: SteamWebApiMicroTxnUserInfoOptions): Promise<SteamWebApiResponse<T>>;
+  initClientTxn<T = unknown>(options: SteamWebApiInitTxnWithPresetSessionOptions): Promise<SteamWebApiResponse<T>>;
   initTxn<T = unknown>(options: SteamWebApiInitTxnOptions): Promise<SteamWebApiResponse<T>>;
+  initWebTxn<T = unknown>(options: SteamWebApiInitTxnWithPresetSessionOptions): Promise<SteamWebApiResponse<T>>;
   processAgreement<T = unknown>(
     options: SteamWebApiProcessAgreementOptions
   ): Promise<SteamWebApiResponse<T>>;
@@ -5245,12 +5247,15 @@ export interface SteamWebApiMicroTxnUserInfoOptions extends SteamWebApiMicroTxnB
   ipAddress?: string;
 }
 
+export type SteamWebApiMicroTxnUserSession = "client" | "web" | (string & {});
+export type SteamWebApiInitTxnWithPresetSessionOptions = Omit<SteamWebApiInitTxnOptions, "userSession">;
+
 export interface SteamWebApiInitTxnOptions extends SteamWebApiMicroTxnBaseOptions {
   orderId: bigint | number | string;
   steamId64: bigint | number | string;
   language: string;
   currency: string;
-  userSession?: string;
+  userSession?: SteamWebApiMicroTxnUserSession;
   ipAddress?: string;
   items: SteamWebApiMicroTxnItem[];
   bundles?: SteamWebApiMicroTxnBundle[];
@@ -18782,6 +18787,16 @@ function createSteamWebApiMicroTxnFacade(
   interfaceName: "ISteamMicroTxn" | "ISteamMicroTxnSandbox",
   clientOptions: SteamWebApiClientOptions
 ): SteamWebApiMicroTxnFacade {
+  const initTxn = <T = unknown>(options: SteamWebApiInitTxnOptions): Promise<SteamWebApiResponse<T>> =>
+    steamWebApiPost<T>(
+      clientOptions,
+      interfaceName,
+      "InitTxn",
+      3,
+      steamWebApiInitTxnBody(options),
+      options
+    );
+
   return {
     adjustAgreement<T = unknown>(options: SteamWebApiAdjustAgreementOptions): Promise<SteamWebApiResponse<T>> {
       return steamWebApiPost<T>(
@@ -18851,15 +18866,14 @@ function createSteamWebApiMicroTxnFacade(
         options
       );
     },
-    initTxn<T = unknown>(options: SteamWebApiInitTxnOptions): Promise<SteamWebApiResponse<T>> {
-      return steamWebApiPost<T>(
-        clientOptions,
-        interfaceName,
-        "InitTxn",
-        3,
-        steamWebApiInitTxnBody(options),
-        options
-      );
+    initClientTxn<T = unknown>(
+      options: SteamWebApiInitTxnWithPresetSessionOptions
+    ): Promise<SteamWebApiResponse<T>> {
+      return initTxn<T>({ ...options, userSession: "client" });
+    },
+    initTxn,
+    initWebTxn<T = unknown>(options: SteamWebApiInitTxnWithPresetSessionOptions): Promise<SteamWebApiResponse<T>> {
+      return initTxn<T>({ ...options, userSession: "web" });
     },
     processAgreement<T = unknown>(options: SteamWebApiProcessAgreementOptions): Promise<SteamWebApiResponse<T>> {
       return steamWebApiPost<T>(

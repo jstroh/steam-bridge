@@ -1069,7 +1069,9 @@ app-specific proof outside the committed examples:
 1. Launch your real installed Steam app through Steam.
 2. Confirm the running process reports your real app ID.
 3. Trigger the backend `InitTxn` call through
-   `steamOverlay.openCheckoutAndWait(() => startTxn())`; do not tune local
+   `steamOverlay.openCheckoutAndWait(() => startTxn())`; with the built-in Web
+   API client, use `microTxn.initClientTxn(...)` for `usersession=client` and
+   keep `microTxn.initWebTxn(...)` for your browser fallback. Do not tune local
    overlay-preparation timers around that call.
 4. For smoke proof, save the returned JSON to a private temp file and pass it
    with `STEAM_BRIDGE_SMOKE_CHECKOUT_JSON_FILE` or the macOS helper's

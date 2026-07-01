@@ -19305,6 +19305,60 @@ test("web API microtransaction facades map economy fields and sandbox endpoints"
   assert.equal(typeof steam.webApi.microTxn.cancelAgreement, "function");
 });
 
+test("web API microtransaction InitTxn session helpers set client and web modes", async (t) => {
+  const steam = loadSteamWithFakeNative(createFakeNative());
+  const fetchCalls = [];
+  const fetchImpl = async (url, init = {}) => {
+    fetchCalls.push({ url, init });
+    return {
+      ok: true,
+      status: 200,
+      headers: {
+        forEach(callback) {
+          callback("application/json", "content-type");
+        }
+      },
+      async text() {
+        return JSON.stringify({ response: { result: "OK" } });
+      }
+    };
+  };
+  const client = steam.createSteamWebApiClient({ apiKey: "publisher-secret", fetch: fetchImpl });
+  const initTxnOptions = {
+    appId: 480,
+    orderId: 9002n,
+    steamId64: 76561198000000000n,
+    language: "en",
+    currency: "USD",
+    items: [
+      {
+        itemId: 100,
+        quantity: 1,
+        amount: 199,
+        description: "Space credits"
+      }
+    ]
+  };
+
+  t.after(clearSteamBridgeCache);
+
+  await client.microTxnSandbox.initClientTxn(initTxnOptions);
+  await client.microTxnSandbox.initWebTxn({ ...initTxnOptions, orderId: 9003n });
+
+  assert.equal(
+    fetchCalls[0].url,
+    "https://partner.steam-api.com/ISteamMicroTxnSandbox/InitTxn/v0003/?key=publisher-secret&format=json"
+  );
+  assert.match(fetchCalls[0].init.body, /orderid=9002/);
+  assert.match(fetchCalls[0].init.body, /usersession=client/);
+  assert.equal(
+    fetchCalls[1].url,
+    "https://partner.steam-api.com/ISteamMicroTxnSandbox/InitTxn/v0003/?key=publisher-secret&format=json"
+  );
+  assert.match(fetchCalls[1].init.body, /orderid=9003/);
+  assert.match(fetchCalls[1].init.body, /usersession=web/);
+});
+
 test("web API app and news facades map public and partner endpoints", async (t) => {
   const steam = loadSteamWithFakeNative(createFakeNative());
   const fetchCalls = [];
