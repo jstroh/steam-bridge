@@ -867,6 +867,14 @@ Steam, log out or reboot macOS to clear the user-session IPC state.
   proves the latest state is `Logged On` and no current SteamChrome IPC failure
   is present; running Steam with a latest `Logged Off` or connecting state fails
   the live matrix health gate before smoke launch.
+- A follow-up 2026-06-30 full Apple Silicon matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-20260630-220434` passed all 44
+  process-per-case App ID `480` cases on the recovered Steam client. This
+  extended the recovery proof to every high-level dialog-equivalent route and
+  every programmatic shortcut `openAndWait(...)` target, with one Metal
+  presenter-backed overlay target, visible web content before close, close/back
+  to the app, parked zero-FPS presenter state, zero managed overlay timing, and
+  clean crash diagnostics.
 
 ## Primary References
 

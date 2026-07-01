@@ -907,6 +907,15 @@ active/inactive callbacks, visible Steam web content before close, close/back to
 the app, one Metal presenter-backed overlay target, parked zero-FPS presenter
 state, zero managed overlay timing, and clean crash diagnostics.
 
+A follow-up full Apple Silicon matrix at
+`/tmp/steam-bridge-macos-overlay-matrix-20260630-220434` passed all 44
+process-per-case App ID `480` cases on the same recovered Steam client. It
+expanded the post-recovery proof from the 26-case core suite to every
+presenter-backed dialog equivalent and every programmatic shortcut
+`openAndWait(...)` target, while preserving one Metal presenter-backed overlay
+target, visible web content before close, close/back-to-app proof, parked
+zero-FPS state, zero managed overlay timing, and clean crash diagnostics.
+
 `npm run macos:steam-client-health` now uses `connection_log.txt` as the
 authoritative login signal. Current Steam builds can keep webhelper processes
 running with `-steamid=0` even after the client is logged in, so `steamid=0`

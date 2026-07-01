@@ -774,6 +774,10 @@ passed all 44 process-per-case App ID `480` cases, and a persistent one-process
 artifact at
 `/tmp/steam-bridge-macos-overlay-matrix-persistent-ready-retry-current-20260630-170648`
 passed all 44 cases through one Steam-owned process/control-server lifecycle.
+A later recovered-client full artifact at
+`/tmp/steam-bridge-macos-overlay-matrix-20260630-220434` also passed all 44
+process-per-case App ID `480` cases after recreating the stable shortcut and
+verifying the current Steam login health gate.
 Rerun the full or persistent suite on an unlocked Mac after overlay, packaging,
 or Electron-major changes.
 Live success runs preflight `getMacOverlayEnvironment()` and stop before case
