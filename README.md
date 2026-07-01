@@ -38,6 +38,10 @@ The macOS smoke package command is intentionally `npm run example:package:mac`;
 it always resolves to the `aarch64-apple-darwin` / `darwin-arm64` app shape.
 Do not add `darwin-x64`, `x86_64-apple-darwin`, or universal macOS test-app
 targets to this project.
+Contributor policy: every macOS test build and every live macOS overlay run for
+this repository must use a native Apple Silicon `darwin/arm64` shell and an
+arm64 Electron app. Treat Intel macOS, Rosetta, and universal macOS packages as
+unsupported configurations, not as fallback test paths.
 
 ## Quick Start
 

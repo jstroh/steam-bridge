@@ -59,6 +59,10 @@ launch these macOS smoke apps through Rosetta.
 The only supported macOS smoke package command is
 `npm run example:package:mac`, and it must continue to produce the
 `SteamBridgeSmoke-darwin-arm64` output directory.
+Contributor policy: every macOS smoke run for this example must use a native
+Apple Silicon `darwin/arm64` shell and the arm64 app output. Intel macOS,
+Rosetta, and universal macOS packages are unsupported configurations, not
+fallback test paths.
 
 The Windows package includes `windows-electron-smoke.ps1`. Use
 `-Mode print-launch-options` to generate non-Steam shortcut arguments, or

@@ -34,6 +34,10 @@ run macOS test apps only on native `darwin/arm64` Apple Silicon hosts.
 The repository's macOS smoke package command intentionally maps to
 `aarch64-apple-darwin` / `darwin-arm64` only. Do not add `darwin-x64`,
 `x86_64-apple-darwin`, or universal macOS test-app targets.
+Contributor policy: every macOS test build and every live macOS overlay run for
+this package must use a native Apple Silicon `darwin/arm64` shell and an arm64
+Electron app. Intel macOS, Rosetta, and universal macOS packages are unsupported
+configurations, not fallback test paths.
 
 The packaged Windows smoke helper accepts the same generic smoke actions as the
 Deck/macOS helpers for web, store, Friends, dialog-equivalent, checkout,
