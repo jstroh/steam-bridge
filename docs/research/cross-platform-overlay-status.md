@@ -78,6 +78,29 @@ larger suites.
 
 ## Latest macOS Evidence
 
+A current-head 2026-07-01 Apple Silicon readiness-race slice tightened
+`IfAvailable` helpers around Steam disappearing before overlay activation.
+Unit coverage now proves direct `openIfAvailable(...)`,
+`openAndWaitIfAvailable(...)`, dynamic
+`openShortcutTargetAndWaitIfAvailable()`, and
+`openCheckoutAndWaitIfAvailable(...)` return `null` for pre-activation
+Steam-stopped races without opening Steam overlay UI; the checkout-safe helper
+also leaves the transaction callback uncalled. The throwing
+`openAndWait(...)` path still rejects before activation. A live minimal matrix
+attempt at
+`/tmp/steam-bridge-macos-overlay-matrix-ifavailable-readiness-clean-20260701-142457`
+used the signed arm64-only Electron `43.0.0` package and stable App ID `480`
+shortcut, passed `00-presenter-ready`, then failed `01a-web-direct` before any
+observable overlay target because the local Steam client hit the known named
+IPC/resource failure (`Failed to create BinarySemaphore` /
+`PosixAutoResetEvent`, `errno: 28`, six `gameoverlayui` launches for the same
+smoke PID, `overlayEnabled=false`). After fully quitting Steam and deleting 611
+stale `/private/tmp/steam_chrome_overlay_uid501_spid*` socket/pipe entries,
+`npm run macos:steam-client-health` reported only two stale temp entries but
+the client remained `Logged Off [U:1:0]`. Further live macOS overlay proof is
+blocked on recovering the local Steam client login/bootstrap state, not on a
+native presenter or Electron app failure.
+
 A focused current-head 2026-07-01 minimal macOS Apple Silicon matrix at
 `/tmp/steam-bridge-macos-overlay-matrix-dynamic-shortcut-20260701-140139`
 rebuilt and signed the arm64-only Electron `43.0.0` smoke package, verified the

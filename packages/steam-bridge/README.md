@@ -406,7 +406,11 @@ with `reason: "steam-unavailable"`. If diagnostics report the Steam overlay is
 not ready yet, direct `openIfAvailable(target)` returns `null` with
 `reason: "overlay-not-ready"`; `openAndWaitIfAvailable(target)` can still wait
 for overlay readiness before activation when the target has a verified managed
-wait route.
+wait route. If Steam stops while an `IfAvailable` wait is still in that
+pre-activation readiness phase, the safe helper returns `null` without opening
+Steam overlay UI; the throwing `openAndWait(target)` path rejects before
+activation instead. Once Steam overlay activation has actually begun, failures
+still surface as errors.
 `getShortcutOpenStatus()` never resolves dynamic app callbacks; it reports
 `reason: "dynamic-target"` unless a stronger side-effect-free blocker is
 already known, such as `reason: "steam-unavailable"`,
@@ -502,10 +506,13 @@ managed overlay is closed, Steam is not running, the macOS native host is
 unavailable, or another managed overlay action is already active/opening. If
 Steam is merely still reporting `overlay-not-ready`, the safe helper waits for
 readiness first and still does not call `startTxn()` until the checkout UI can
-be shown. Steam Bridge primes the native presenter and waits for Steam overlay
-readiness before the backend starts the transaction, accepts
-common backend result shapes such as `steamurl`, `steamUrl`, `transactionId`, or
-`transid`, and also unwraps documented `InitTxn` envelopes such as
+be shown. If Steam stops during that readiness wait, the safe helper returns
+`null` and leaves `startTxn()` uncalled; the throwing checkout wait rejects
+before starting the backend transaction. Steam Bridge primes the native
+presenter and waits for Steam overlay readiness before the backend starts the
+transaction, accepts common backend result shapes such as `steamurl`,
+`steamUrl`, `transactionId`, or `transid`, and also unwraps documented
+`InitTxn` envelopes such as
 `response.params.transid` and Steam Bridge Web API responses at
 `data.response.params`. It opens the checkout surface, then resolves after
 Steam closes and the presenter parks. If you pass an abort signal, Steam Bridge

@@ -1036,6 +1036,18 @@ Steam, log out or reboot macOS to clear the user-session IPC state.
   re-checking target open/wait status, return `null` for unavailable or
   unwaitable resolved targets without activating Steam overlay UI, and leave
   explicit shortcut helpers responsible for surfacing unsupported-target errors.
+- A follow-up current-head 2026-07-01 readiness-race slice now proves in unit
+  coverage that direct, waited, dynamic shortcut, and checkout `IfAvailable`
+  helpers return `null` when Steam stops before overlay activation. Checkout
+  waits leave the transaction callback uncalled, while the throwing waited route
+  still rejects before activation. The live Apple Silicon minimal rerun at
+  `/tmp/steam-bridge-macos-overlay-matrix-ifavailable-readiness-clean-20260701-142457`
+  passed `00-presenter-ready`, then failed `01a-web-direct` in Steam's named
+  IPC layer with `errno: 28`, repeated `gameoverlayui` launches, and
+  `overlayEnabled=false`. After deleting 611 stale Steam overlay socket/pipe
+  entries from `/private/tmp`, Steam health showed only two stale entries but
+  the client stayed logged off, so further live proof needs local Steam client
+  login/bootstrap recovery.
 
 ## Primary References
 

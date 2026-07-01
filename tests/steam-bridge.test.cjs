@@ -8756,6 +8756,7 @@ test("electron steam overlay direct wait waits for overlay readiness before acti
   setProcessPlatformForTest(t, "linux");
   const hostHandle = Buffer.from([4, 8, 15, 24]);
   let hostOpen = false;
+  let steamRunning = true;
   let overlayEnabled = false;
   const fake = createFakeNative({
     attachNativeOverlayHostView(nativeWindowHandle) {
@@ -8786,8 +8787,8 @@ test("electron steam overlay direct wait waits for overlay readiness before acti
     },
     getOverlayDiagnostics() {
       return {
-        steamRunning: true,
-        steamInstallPath: "/tmp/steam",
+        steamRunning,
+        steamInstallPath: steamRunning ? "/tmp/steam" : null,
         appId: 480,
         overlayEnabled,
         overlayNeedsPresent: false,
@@ -8848,6 +8849,50 @@ test("electron steam overlay direct wait waits for overlay readiness before acti
   assert.equal(result.parked.overlayActive, false);
   assert.equal(result.parked.currentFps, 0);
 
+  overlayEnabled = true;
+  steamRunning = true;
+  const raceTarget = { type: "web", url: "https://store.steampowered.com/app/480/", modal: true };
+  const originalGetOpenStatus = overlay.getOpenStatus.bind(overlay);
+  let statusReadCount = 0;
+  overlay.getOpenStatus = (target) => {
+    statusReadCount += 1;
+    if (statusReadCount === 2) {
+      steamRunning = false;
+    }
+    return originalGetOpenStatus(target);
+  };
+  const callsBeforeRace = steamWebOverlayCalls(fake).length;
+  assert.equal(overlay.openIfAvailable(raceTarget), null);
+  assert.equal(statusReadCount >= 3, true);
+  assert.equal(steamWebOverlayCalls(fake).length, callsBeforeRace);
+  assert.equal(overlay.snapshot().mode, "passive");
+
+  overlay.getOpenStatus = originalGetOpenStatus;
+  overlayEnabled = false;
+  steamRunning = true;
+  const unavailableBeforeOpen = overlay.openAndWaitIfAvailable(raceTarget, {
+    showTimeoutMs: 500,
+    closeTimeoutMs: 500
+  });
+  assert.notEqual(unavailableBeforeOpen, null);
+  await Promise.resolve();
+  steamRunning = false;
+  assert.equal(await unavailableBeforeOpen, null);
+  assert.equal(steamWebOverlayCalls(fake).length, callsBeforeRace);
+  assert.equal(overlay.snapshot().mode, "passive");
+  assert.equal(overlay.snapshot().currentFps, 0);
+
+  steamRunning = true;
+  const throwingBeforeOpen = overlay.openAndWait(raceTarget, {
+    showTimeoutMs: 500,
+    closeTimeoutMs: 500
+  });
+  await Promise.resolve();
+  steamRunning = false;
+  await assert.rejects(throwingBeforeOpen, /Steam is not running/);
+  assert.equal(steamWebOverlayCalls(fake).length, callsBeforeRace);
+  assert.equal(overlay.snapshot().mode, "passive");
+
   overlay.close();
 });
 
@@ -8855,6 +8900,7 @@ test("electron steam overlay dynamic shortcut IfAvailable waits for overlay read
   setProcessPlatformForTest(t, "linux");
   const hostHandle = Buffer.from([4, 8, 15, 21]);
   let hostOpen = false;
+  let steamRunning = true;
   let overlayEnabled = false;
   const fake = createFakeNative({
     attachNativeOverlayHostView(nativeWindowHandle) {
@@ -8885,8 +8931,8 @@ test("electron steam overlay dynamic shortcut IfAvailable waits for overlay read
     },
     getOverlayDiagnostics() {
       return {
-        steamRunning: true,
-        steamInstallPath: "/tmp/steam",
+        steamRunning,
+        steamInstallPath: steamRunning ? "/tmp/steam" : null,
         appId: 480,
         overlayEnabled,
         overlayNeedsPresent: false,
@@ -8984,6 +9030,23 @@ test("electron steam overlay dynamic shortcut IfAvailable waits for overlay read
   assert.equal(result.parked.overlayActive, false);
   assert.equal(result.parked.currentFps, 0);
   assert.equal(resolveCount, 1);
+
+  overlayEnabled = false;
+  steamRunning = true;
+  const shortcutCallsAfterSuccess = steamWebOverlayCalls(fake).length;
+  const shortcutErrorsAfterSuccess = shortcutErrors.length;
+  const unavailableShortcut = overlay.openShortcutTargetAndWaitIfAvailable({
+    showTimeoutMs: 500,
+    closeTimeoutMs: 500
+  });
+  assert.notEqual(unavailableShortcut, null);
+  assert.equal(resolveCount, 2);
+  await Promise.resolve();
+  steamRunning = false;
+  assert.equal(await unavailableShortcut, null);
+  assert.equal(shortcutErrors.length, shortcutErrorsAfterSuccess);
+  assert.equal(steamWebOverlayCalls(fake).length, shortcutCallsAfterSuccess);
+  assert.equal(overlay.snapshot().mode, "passive");
 
   overlay.close();
 });
@@ -11773,6 +11836,24 @@ test("electron steam overlay checkout IfAvailable waits through readiness and sk
   );
   assert.equal(timedOutPreparedOperationRan, false);
   assert.equal(steamWebOverlayCalls(fake).length, checkoutCallsAfterReadiness);
+
+  steamRunning = true;
+  overlayEnabled = false;
+  let stoppedDuringReadinessOperationRan = false;
+  const stoppedDuringReadinessCheckout = overlay.openCheckoutAndWaitIfAvailable(
+    () => {
+      stoppedDuringReadinessOperationRan = true;
+      return "222333444";
+    },
+    { showTimeoutMs: 500, closeTimeoutMs: 500 }
+  );
+  await Promise.resolve();
+  steamRunning = false;
+  assert.equal(await stoppedDuringReadinessCheckout, null);
+  assert.equal(stoppedDuringReadinessOperationRan, false);
+  assert.equal(steamWebOverlayCalls(fake).length, checkoutCallsAfterReadiness);
+  assert.equal(overlay.snapshot().mode, "passive");
+  assert.equal(overlay.snapshot().currentFps, 0);
 
   steamRunning = false;
   overlayEnabled = true;

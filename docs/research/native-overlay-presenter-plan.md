@@ -1508,6 +1508,19 @@ Current evidence:
   open/wait status, return `null` for unavailable or unwaitable resolved
   targets without activating Steam overlay UI, and preserve explicit throwing
   behavior for unsupported targets.
+  A follow-up current-head readiness-race slice now proves in unit coverage
+  that direct `openIfAvailable(...)`, waited `openAndWaitIfAvailable(...)`,
+  dynamic shortcut waits, and checkout waits return `null` if Steam stops
+  before overlay activation; the checkout helper leaves the transaction callback
+  uncalled, while the throwing waited route still rejects before activation. A
+  live Apple Silicon minimal rerun at
+  `/tmp/steam-bridge-macos-overlay-matrix-ifavailable-readiness-clean-20260701-142457`
+  passed the passive presenter-ready case, then failed the first active web
+  case in Steam's named IPC layer (`errno: 28`, repeated `gameoverlayui`
+  launches, `overlayEnabled=false`). Clearing 611 stale
+  `/private/tmp/steam_chrome_overlay_uid501_spid*` entries reduced the stale
+  temp count, but Steam remained logged off, so further live proof is blocked
+  on local Steam client recovery rather than presenter code.
 - BrowserWindow-only overlay support is not proven.
 - Steam launch, app ID, auth, and callbacks are not enough to claim overlay
   support.

@@ -394,7 +394,11 @@ with `reason: "steam-unavailable"`. If diagnostics report the Steam overlay is
 not ready yet, direct `openIfAvailable(target)` returns `null` with
 `reason: "overlay-not-ready"`; `openAndWaitIfAvailable(target)` can still wait
 for overlay readiness before activation when the target has a verified managed
-wait route.
+wait route. If Steam stops while an `IfAvailable` wait is still in that
+pre-activation readiness phase, the safe helper returns `null` without opening
+Steam overlay UI; the throwing `openAndWait(target)` path rejects before
+activation instead. Once Steam overlay activation has actually begun, failures
+still surface as errors.
 Use `getShortcutOpenStatus()` for the same side-effect-free check against the
 configured Shift+Tab/controller target.
 
@@ -439,7 +443,9 @@ managed overlay is closed, Steam is not running, the macOS native host is
 unavailable, or another managed overlay action is already active/opening. If
 Steam is merely still reporting `overlay-not-ready`, this safe helper waits for
 readiness first and still does not call `startTxn()` until the checkout UI can
-be shown.
+be shown. If Steam stops during that readiness wait, the safe helper returns
+`null` and leaves `startTxn()` uncalled; the throwing checkout wait rejects
+before starting the backend transaction.
 The throwing `openCheckoutAndWait(...)` path also waits for Steam overlay
 readiness before it calls `startTxn()`, so a temporary Steam bootstrap delay
 does not create a real transaction before Steam can show the checkout UI.

@@ -2523,7 +2523,11 @@ type NativeOverlayPresenterInternal = NativeOverlayPresenter & {
   onStateChange?: (listener: () => void) => CallbackHandle;
 };
 
-interface ElectronSteamOverlayTargetWaitLifecycle {
+interface ElectronSteamOverlayTargetOpenLifecycle {
+  onOpening?: () => void;
+}
+
+interface ElectronSteamOverlayTargetWaitLifecycle extends ElectronSteamOverlayTargetOpenLifecycle {
   activationHandle?: CallbackHandle;
   onOpened?: () => void;
 }
@@ -9132,34 +9136,22 @@ export function createElectronSteamOverlay(
       if (!status.canOpen) {
         return null;
       }
-      return controller.open(target);
-    },
-    open(target: SteamOverlayTarget): NativeOverlayPresenter {
-      assertOpen();
-      const status = controller.getOpenStatus(target);
-      if (!status.canOpen) {
-        throw electronSteamOverlayOpenStatusError(status);
-      }
-      const snapshot = status.snapshot;
-      assertElectronSteamOverlayTargetCanOpen(target);
-      assertElectronSteamOverlayNativeHostAvailable(snapshot);
-      assertElectronSteamOverlayNotBusy(snapshot);
-      const presenterInternal = presenter as NativeOverlayPresenterInternal;
-      const activationHandle = presenterInternal.beginOverlayActivation?.(overlayActivationModeForTarget(target));
+      let opening = false;
       try {
-        const openedPresenter = openSteamOverlay({
-          ...target,
-          presenter,
-          ...(activationHandle ? { [SKIP_NATIVE_OVERLAY_PRESENTER_PREPARE]: true } : {})
-        } as SteamOverlayTarget);
-        if (activationHandle) {
-          releaseElectronSteamOverlayActivationWhenShown(controller, activationHandle);
-        }
-        return openedPresenter;
+        return openElectronSteamOverlayTarget(target, {
+          onOpening() {
+            opening = true;
+          }
+        });
       } catch (error) {
-        activationHandle?.disconnect();
+        if (!opening && !controller.getOpenStatus(target).canOpen) {
+          return null;
+        }
         throw error;
       }
+    },
+    open(target: SteamOverlayTarget): NativeOverlayPresenter {
+      return openElectronSteamOverlayTarget(target);
     },
     openWeb(url: string, targetOptions: ElectronSteamOverlayWebTargetOptions = {}): NativeOverlayPresenter {
       return controller.open({ ...targetOptions, type: "web", url });
@@ -9248,18 +9240,37 @@ export function createElectronSteamOverlay(
         return null;
       }
 
+      let target: SteamOverlayTarget | undefined;
+      let opening = false;
       try {
-        const target = status.target ?? resolveElectronSteamOverlayShortcutTarget(shortcut.target);
+        target = status.target ?? resolveElectronSteamOverlayShortcutTarget(shortcut.target);
         const targetStatus = controller.getOpenStatus(target);
         if (!targetStatus.canOpen) {
           return null;
         }
 
         shortcutOpenState.opening = true;
-        const openedPresenter = controller.open(target);
+        const openedPresenter = openElectronSteamOverlayTarget(target, {
+          onOpening() {
+            opening = true;
+          }
+        });
         notifyElectronSteamOverlayShortcutOpened(shortcut, target);
         return openedPresenter;
       } catch (error) {
+        if (!opening) {
+          if (target) {
+            const targetStatus = controller.getOpenStatus(target);
+            if (!targetStatus.canOpen) {
+              return null;
+            }
+          } else {
+            const currentStatus = controller.getShortcutOpenStatus();
+            if (currentStatus.reason !== "dynamic-target" && !currentStatus.canOpen) {
+              return null;
+            }
+          }
+        }
         notifyElectronSteamOverlayShortcutError(shortcut, error);
         throw error;
       } finally {
@@ -9307,20 +9318,37 @@ export function createElectronSteamOverlay(
         return null;
       }
 
+      let target: SteamOverlayTarget | undefined;
+      let opened = false;
       try {
-        const target = status.target ?? resolveElectronSteamOverlayShortcutTarget(shortcut.target);
+        target = status.target ?? resolveElectronSteamOverlayShortcutTarget(shortcut.target);
         const targetStatus = controller.getOpenStatus(target);
         if (!targetStatus.canWait) {
           return null;
         }
 
+        const resolvedTarget = target;
         shortcutOpenState.opening = true;
-        return await openElectronSteamOverlayTargetAndWait(target, options, {
+        return await openElectronSteamOverlayTargetAndWait(resolvedTarget, options, {
           onOpened() {
-            notifyElectronSteamOverlayShortcutOpened(shortcut, target);
+            opened = true;
+            notifyElectronSteamOverlayShortcutOpened(shortcut, resolvedTarget);
           }
         });
       } catch (error) {
+        if (!opened) {
+          if (target) {
+            const targetStatus = controller.getOpenStatus(target);
+            if (!targetStatus.canWait) {
+              return null;
+            }
+          } else {
+            const currentStatus = controller.getShortcutOpenStatus();
+            if (currentStatus.reason !== "dynamic-target" && !currentStatus.canWait) {
+              return null;
+            }
+          }
+        }
         notifyElectronSteamOverlayShortcutError(shortcut, error);
         throw error;
       } finally {
@@ -9378,7 +9406,19 @@ export function createElectronSteamOverlay(
       if (!status.canWait) {
         return null;
       }
-      return openElectronSteamOverlayTargetAndWait(target, options);
+      let opened = false;
+      try {
+        return await openElectronSteamOverlayTargetAndWait(target, options, {
+          onOpened() {
+            opened = true;
+          }
+        });
+      } catch (error) {
+        if (!opened && !controller.getOpenStatus(target).canWait) {
+          return null;
+        }
+        throw error;
+      }
     },
     openWebAndWait(
       url: string,
@@ -9570,7 +9610,19 @@ export function createElectronSteamOverlay(
         return null;
       }
 
-      return controller.openCheckoutAndWait(operation, options);
+      let operationStarted = false;
+      try {
+        return await controller.openCheckoutAndWait(() => {
+          operationStarted = true;
+          return operation();
+        }, options);
+      } catch (error) {
+        const currentStatus = electronSteamOverlayCheckoutOperationStatus(controller);
+        if (!operationStarted && !currentStatus.canStartOperation && !currentStatus.canWait) {
+          return null;
+        }
+        throw error;
+      }
     },
     async withCheckoutPrepared<T>(
       operation: () => T | Promise<T>,
@@ -9641,7 +9693,8 @@ export function createElectronSteamOverlay(
         options,
         {
           forcePolling: true,
-          refreshDiagnostics: true
+          refreshDiagnostics: true,
+          failOnKnownUnavailable: true
         }
       );
     },
@@ -9728,6 +9781,38 @@ export function createElectronSteamOverlay(
   }
 
   return controller;
+
+  function openElectronSteamOverlayTarget(
+    target: SteamOverlayTarget,
+    lifecycle: ElectronSteamOverlayTargetOpenLifecycle = {}
+  ): NativeOverlayPresenter {
+    assertOpen();
+    const status = controller.getOpenStatus(target);
+    if (!status.canOpen) {
+      throw electronSteamOverlayOpenStatusError(status);
+    }
+    const snapshot = status.snapshot;
+    assertElectronSteamOverlayTargetCanOpen(target);
+    assertElectronSteamOverlayNativeHostAvailable(snapshot);
+    assertElectronSteamOverlayNotBusy(snapshot);
+    const presenterInternal = presenter as NativeOverlayPresenterInternal;
+    const activationHandle = presenterInternal.beginOverlayActivation?.(overlayActivationModeForTarget(target));
+    try {
+      lifecycle.onOpening?.();
+      const openedPresenter = openSteamOverlay({
+        ...target,
+        presenter,
+        ...(activationHandle ? { [SKIP_NATIVE_OVERLAY_PRESENTER_PREPARE]: true } : {})
+      } as SteamOverlayTarget);
+      if (activationHandle) {
+        releaseElectronSteamOverlayActivationWhenShown(controller, activationHandle);
+      }
+      return openedPresenter;
+    } catch (error) {
+      activationHandle?.disconnect();
+      throw error;
+    }
+  }
 
   async function openElectronSteamOverlayTargetAndWait(
     target: SteamOverlayTarget,
@@ -10531,6 +10616,11 @@ function waitForElectronSteamOverlayState(
         return true;
       }
 
+      if (internalOptions.failOnKnownUnavailable && isElectronSteamOverlayKnownUnavailable(snapshot)) {
+        settleReject(new Error("Steam is not running."));
+        return true;
+      }
+
       if (predicate(snapshot)) {
         settleResolve(snapshot);
         return true;
@@ -10592,6 +10682,7 @@ const ELECTRON_STEAM_OVERLAY_OPEN_GUARD_TIMEOUT_MS = 15000;
 interface ElectronSteamOverlayStateWaitInternalOptions {
   forcePolling?: boolean;
   refreshDiagnostics?: boolean;
+  failOnKnownUnavailable?: boolean;
 }
 
 function refreshElectronSteamOverlaySnapshotDiagnostics(
@@ -10606,7 +10697,7 @@ function refreshElectronSteamOverlaySnapshotDiagnostics(
 
 function isElectronSteamOverlayKnownUnavailable(snapshot: ElectronSteamOverlaySnapshot): boolean {
   const diagnostics = snapshot.diagnostics;
-  return diagnostics?.steamRunning === false || diagnostics?.overlayEnabled === false;
+  return diagnostics?.steamRunning === false;
 }
 
 function assertElectronSteamOverlayNativeHostAvailable(snapshot: ElectronSteamOverlaySnapshot): void {
