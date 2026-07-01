@@ -938,6 +938,15 @@ Current evidence:
 - Steam Bridge can create a macOS native presenter/probe.
 - Metal is the default macOS host path when an Electron native window handle is
   available; OpenGL remains a diagnostic fallback.
+- A post-reboot current-head 2026-07-01 Apple Silicon minimal matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-post-reboot-descriptor-health-20260701`
+  passed all 11 Steam-launched App ID `480` cases without repackaging or
+  restarting Steam after the Steam health gate was corrected to count numbered
+  file descriptors instead of all `lsof` mapped-resource rows. The run proved
+  readiness, direct and waited web/store/Friends/dialog routes, duplicate-open
+  suppression, passive toast behavior, close/back-to-app proof, one Metal
+  presenter-backed overlay target, parked zero-FPS state, zero managed overlay
+  timing, managed child-overlay isolation, and clean crash diagnostics.
 - The Metal host is borderless, transparent/click-through while idle, cannot
   become key or main, attaches above the Electron parent window, and is kept
   aligned by the managed Electron window sync hooks.

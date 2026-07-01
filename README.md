@@ -545,14 +545,18 @@ npm run macos:overlay-matrix -- --suite core
 `npm run macos:steam-client-health` does not launch the smoke app or touch the
 Steam shortcut. Its artifact records the running Steam PID/helper state, current
 SteamChrome IPC log evidence, stale SteamChrome temp entry counts, POSIX
-semaphore/shared-memory handle counts, `launchctl maxfiles`, kernel file
+semaphore/shared-memory handle counts, Steam process file-descriptor counts,
+`launchctl maxfiles`, kernel file
 counters, `/private/tmp` disk state, and derived resource warnings. A running
 Steam client that is already at roughly the whole `launchctl maxfiles` soft
 limit is treated as unhealthy, because that state can prevent SteamChrome and
-overlay IPC resources from being created. The macOS overlay matrix also runs
-this health gate before launching smoke cases; if the matrix had to restart
-Steam after a shortcut update, it waits for this detector to pass before
-launching the smoke app. When the matrix owns a Steam startup or shutdown, it
+overlay IPC resources from being created. Failed health artifacts include a
+recommended recovery block; for file-limit failures that means restarting Steam
+from a macOS session with a higher `launchctl maxfiles` soft limit before live
+overlay proof. The macOS overlay matrix also runs this health gate before
+launching smoke cases; if the matrix had to restart Steam after a shortcut
+update, it waits for this detector to pass before launching the smoke app. When
+the matrix owns a Steam startup or shutdown, it
 also removes stale
 Steam IPC state only after Steam is fully stopped: orphan `ipcserver`, stale
 `/private/tmp/steam.pipe`, and stale

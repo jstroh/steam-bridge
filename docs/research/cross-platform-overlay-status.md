@@ -78,6 +78,22 @@ larger suites.
 
 ## Latest macOS Evidence
 
+A post-reboot current-head 2026-07-01 Apple Silicon minimal matrix at
+`/tmp/steam-bridge-macos-overlay-matrix-post-reboot-descriptor-health-20260701`
+passed all 11 Steam-launched App ID `480` cases without repackaging or
+restarting Steam. The run first proved that the Steam health gate should count
+numbered file descriptors rather than every `lsof` mapped-resource row:
+post-reboot Steam was logged on and had no current SteamChrome IPC failure, but
+the old row-count check would have false-blocked it at `274/256`; the corrected
+descriptor count reported `205/256`, leaving a warning rather than a hard
+failure. The live matrix then re-proved managed readiness, direct web/store/
+Friends/dialog routes, web/store/Friends/dialog `openAndWait(...)`,
+duplicate-open suppression, passive achievement-progress toast behavior,
+visible Steam web content where expected, active/inactive callbacks,
+close/back-to-app proof, one Metal presenter-backed overlay target, parked
+zero-FPS state, disabled needs-present polling, zero managed overlay timing,
+managed child-overlay isolation, and clean crash diagnostics.
+
 A current-head 2026-07-01 Apple Silicon readiness-race slice tightened
 `IfAvailable` helpers around Steam disappearing before overlay activation.
 Unit coverage now proves direct `openIfAvailable(...)`,
@@ -888,7 +904,10 @@ running Steam client without launching the smoke app and writes
 `steam-client-health-diagnostics.txt` under the selected artifact root when it
 finds a bad bootstrap state. Further live macOS proof should resume only after
 Steam has finished updating, logged on, and can launch the App ID `480` smoke
-shortcut again.
+shortcut again. Current health artifacts also include recommended recovery
+actions: file-ceiling failures tell the runner to restart Steam from a macOS
+session with a higher `launchctl maxfiles` soft limit before live overlay
+proof, so repeated IPC exhaustion is not confused with a presenter regression.
 
 ## Steam Deck Shortcut Gate
 

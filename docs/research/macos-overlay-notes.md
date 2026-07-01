@@ -23,6 +23,20 @@ Bridge's macOS Electron overlay diagnostics.
 
 ## Local Smoke Evidence
 
+A post-reboot 2026-07-01 Apple Silicon minimal matrix at
+`/tmp/steam-bridge-macos-overlay-matrix-post-reboot-descriptor-health-20260701`
+passed all 11 Steam-launched App ID `480` cases without updating the stable
+shortcut or restarting Steam. The run also corrected the Steam health gate:
+`lsof` mapped-resource rows such as `cwd`, `txt`, and `mem` are no longer counted
+against the process `maxfiles` soft limit. With numbered file descriptors only,
+post-reboot Steam health passed as logged on with no current SteamChrome IPC
+failure, reporting `205/256` descriptors as a warning. The matrix re-verified
+managed readiness, direct and waited web/store/Friends/dialog routes,
+duplicate-open suppression, passive achievement-progress toast behavior,
+active/inactive callbacks, close/back-to-app proof, one Metal presenter target,
+parked zero-FPS state, zero managed overlay timing, managed child-overlay
+isolation, and clean crash diagnostics.
+
 As of 2026-06-29, the Apple Silicon local developer path can build and package
 the Electron smoke app without downloaded release artifacts:
 
@@ -871,12 +885,15 @@ manual `lsof`/`df` pass. A 2026-06-30 health run at
 showed the current local blocker: Steam was still launching its bootstrap
 helper with `-steamid=0` and emitting fresh `SteamChrome_MasterStream_*`
 `errno: 28` failures every 10 seconds, with zero stale SteamChrome temp entries
-left in `/private/tmp`, the Steam process at 214 open files, 84 POSIX
+left in `/private/tmp`, the Steam process at 214 file descriptors, 84 POSIX
 semaphore handles, 15 POSIX shared-memory handles, and `launchctl maxfiles`
 reporting a soft limit of 256. Follow-up health checks now call out that
 near-soft-limit file usage explicitly, and live matrices now fail the health
 gate before launching smoke cases if Steam is already too close to that soft
-limit. This is still a local Steam
+limit. Current health artifacts also print recommended recovery actions; if the
+Steam process is at that inherited file ceiling, the artifact tells the runner
+to restart Steam from a macOS session with a higher `launchctl maxfiles` soft
+limit before running live overlay proof. This is still a local Steam
 client/bootstrap state, not an Electron presenter result. Further live macOS
 overlay proof should wait for Steam to recover, log on, and handle shortcut
 launch URLs again; if the same health failure persists after fully quitting

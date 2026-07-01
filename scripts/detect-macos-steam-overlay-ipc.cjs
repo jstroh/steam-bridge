@@ -360,6 +360,7 @@ function detectSteamClientHealth({
     "",
     ...observations,
     "Recover the local Steam client before running live overlay proof: fully quit Steam, wait for helper processes to exit, and if the SteamChrome IPC errors continue, log out/reboot macOS.",
+    ...formatClientHealthRecoveryActions(resourceSnapshot),
     ...resourceLines,
     "",
     "Relevant current Steam log lines:",
@@ -397,7 +398,7 @@ function collectClientHealthResourceSnapshot({ processListText }) {
     });
     snapshot.steamProcess = {
       pid: steamProcess.pid,
-      openFileCount: steamLsof.ok ? Math.max(0, steamLsof.lines.length - 1) : null,
+      openFileCount: steamLsof.ok ? countOpenFileDescriptors(steamLsof.lines) : null,
       posixIpc: countPosixIpcFromLines(steamLsof.ok ? steamLsof.lines : []),
       lsofError: steamLsof.ok ? "" : steamLsof.error
     };
@@ -434,7 +435,7 @@ function formatClientHealthResourceSnapshot(snapshot) {
   }
   if (snapshot.steamProcess) {
     const steam = snapshot.steamProcess;
-    lines.push(`  Steam process open file count: ${formatNullableNumber(steam.openFileCount)}`);
+    lines.push(`  Steam process open file descriptors: ${formatNullableNumber(steam.openFileCount)}`);
     if (steam.posixIpc) {
       lines.push(
         `  Steam process POSIX IPC handles: semaphores=${formatNullableNumber(steam.posixIpc.semaphores)}, sharedMemory=${formatNullableNumber(steam.posixIpc.sharedMemory)}`
@@ -483,7 +484,7 @@ function buildClientHealthResourceWarnings(snapshot) {
   }
   if (steamOpenFileRatio !== null && steamOpenFileRatio >= 0.8 && steamOpenFileRatio < 0.95) {
     warnings.push(
-      `Steam process is using ${steamOpenFiles}/${maxfilesSoft} open files (${Math.round(steamOpenFileRatio * 100)}% of the soft maxfiles limit).`
+      `Steam process is using ${steamOpenFiles}/${maxfilesSoft} open file descriptors (${Math.round(steamOpenFileRatio * 100)}% of the soft maxfiles limit).`
     );
   }
   if (Number.isInteger(snapshot.staleSteamChromeTempEntries) && snapshot.staleSteamChromeTempEntries >= 100) {
@@ -516,6 +517,56 @@ function buildClientHealthResourceWarnings(snapshot) {
   return warnings;
 }
 
+function formatClientHealthRecoveryActions(snapshot) {
+  const actions = buildClientHealthRecoveryActions(snapshot);
+  if (actions.length === 0) {
+    return [];
+  }
+  return ["", "Recommended recovery actions:", ...actions.map((action) => `  - ${action}`)];
+}
+
+function buildClientHealthRecoveryActions(snapshot) {
+  const actions = [];
+  if (!snapshot || typeof snapshot !== "object") {
+    return actions;
+  }
+
+  const maxfilesSoft = parseLaunchctlMaxfilesSoft(snapshot.launchctlMaxfiles);
+  const steamOpenFiles =
+    snapshot.steamProcess && Number.isFinite(snapshot.steamProcess.openFileCount)
+      ? snapshot.steamProcess.openFileCount
+      : null;
+  const steamOpenFileRatio =
+    steamOpenFiles !== null && maxfilesSoft !== null && maxfilesSoft !== Infinity
+      ? steamOpenFiles / maxfilesSoft
+      : null;
+
+  if (steamOpenFileRatio !== null && steamOpenFileRatio >= 0.95) {
+    const limitText = `${steamOpenFiles}/${maxfilesSoft}`;
+    actions.push(
+      `Steam is at the inherited launchctl maxfiles soft limit (${limitText} open file descriptors); restart Steam from a macOS session with a higher maxfiles soft limit before live overlay proof, or SteamChrome/gameoverlayui IPC creation can fail again.`
+    );
+  } else if (maxfilesSoft !== null && maxfilesSoft !== Infinity && maxfilesSoft <= 512) {
+    actions.push(
+      `The current launchctl maxfiles soft limit is ${maxfilesSoft}; if SteamChrome IPC errors recur, raise that limit before starting Steam.`
+    );
+  }
+
+  if (Number.isInteger(snapshot.staleSteamChromeTempEntries) && snapshot.staleSteamChromeTempEntries >= 100) {
+    actions.push(
+      "Fully quit Steam before clearing stale /private/tmp SteamChrome overlay/shmem entries; do not delete those IPC files while Steam is running."
+    );
+  }
+  if (snapshot.staleSteamPipe && !snapshot.steamProcess) {
+    actions.push("Remove stale /private/tmp/steam.pipe only after Steam and its helpers are fully stopped.");
+  }
+  if (!snapshot.steamProcess && Array.isArray(snapshot.steamIpcServerProcesses) && snapshot.steamIpcServerProcesses.length > 0) {
+    actions.push("Stop the orphan Steam ipcserver before trying another matrix-owned Steam launch.");
+  }
+
+  return actions;
+}
+
 function buildClientHealthResourceFailures(snapshot) {
   const failures = [];
   if (!snapshot || typeof snapshot !== "object" || !snapshot.steamProcess) {
@@ -533,7 +584,7 @@ function buildClientHealthResourceFailures(snapshot) {
   const ratio = steamOpenFiles / maxfilesSoft;
   if (ratio >= 0.95) {
     failures.push(
-      `Steam process is using ${steamOpenFiles}/${maxfilesSoft} open files (${Math.round(ratio * 100)}% of the soft maxfiles limit).`
+      `Steam process is using ${steamOpenFiles}/${maxfilesSoft} open file descriptors (${Math.round(ratio * 100)}% of the soft maxfiles limit).`
     );
   }
 
@@ -634,6 +685,18 @@ function countPosixIpcFromLines(lines) {
     }
   }
   return { semaphores, sharedMemory };
+}
+
+function countOpenFileDescriptors(lines) {
+  let count = 0;
+  for (const line of lines) {
+    const columns = String(line || "").trim().split(/\s+/);
+    const fd = columns[3] || "";
+    if (/^\d+[a-zA-Z]*$/.test(fd)) {
+      count += 1;
+    }
+  }
+  return count;
 }
 
 function readCommandLines(command, args, { timeoutMs, maxBuffer }) {
@@ -1099,7 +1162,9 @@ function runSelfTest() {
     assert(result.message.includes("System V IPC: semaphores=6, userSemaphores=3"), "health failure includes System V IPC counts");
     assert(result.message.includes("launchctl maxfiles"), "health failure includes launchctl maxfiles");
     assert(result.message.includes("Resource warnings"), "health failure includes derived resource warnings");
-    assert(result.message.includes("213/256 open files"), "health failure warns on near-soft-limit file usage");
+    assert(result.message.includes("213/256 open file descriptors"), "health failure warns on near-soft-limit file descriptor usage");
+    assert(result.message.includes("Recommended recovery actions"), "health failure includes recovery actions");
+    assert(result.message.includes("raise that limit before starting Steam"), "health failure suggests maxfiles recovery");
 
     const connectionLog = path.join(tempRoot, "connection_log.txt");
     fs.writeFileSync(
@@ -1148,8 +1213,12 @@ function runSelfTest() {
         }
       }
     });
-    assert(!result.ok, "near-soft-limit Steam file usage is unhealthy even after login");
-    assert(result.message.includes("250/256 open files"), "file-limit health failure names Steam file usage");
+    assert(!result.ok, "near-soft-limit Steam file descriptor usage is unhealthy even after login");
+    assert(result.message.includes("250/256 open file descriptors"), "file-limit health failure names Steam file descriptor usage");
+    assert(
+      result.message.includes("Steam is at the inherited launchctl maxfiles soft limit"),
+      "file-limit health failure explains inherited launchctl maxfiles"
+    );
 
     fs.writeFileSync(
       connectionLog,
@@ -1210,6 +1279,20 @@ function runSelfTest() {
       connectionLog: path.join(tempRoot, "missing-connection-log.txt")
     });
     assert(result.ok, "logged-in helper without current IPC logs is healthy");
+
+    const descriptorCount = countOpenFileDescriptors([
+      "COMMAND PID USER FD TYPE DEVICE SIZE/OFF NODE NAME",
+      "steam_osx 9706 user cwd DIR 1,18 2720 1 /tmp",
+      "steam_osx 9706 user txt REG 1,18 100 2 /tmp/steam_osx",
+      "steam_osx 9706 user mem REG 1,18 100 3 /tmp/lib.dylib",
+      "steam_osx 9706 user 0r CHR 3,2 0t0 336 /dev/null",
+      "steam_osx 9706 user 1u CHR 3,2 0t0 336 /dev/null",
+      "steam_osx 9706 user 42u REG 1,18 100 4 /tmp/log.txt"
+    ]);
+    assert(
+      descriptorCount === 3,
+      "counts numbered lsof file descriptors without counting cwd/txt/mem rows"
+    );
 
     console.log("macOS Steam overlay IPC detector self-test passed.");
   } finally {
