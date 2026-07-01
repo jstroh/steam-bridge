@@ -280,6 +280,9 @@ prebuild is not present:
 The macOS overlay matrix checks that it is running in a native Apple Silicon
 `darwin/arm64` shell before it packages or launches the smoke app. Do not run
 macOS overlay proof from Intel macOS, Rosetta, or a universal Electron app.
+Any future macOS test app, example app, or smoke runner added to this
+repository must use the same Apple Silicon-only target shape; Intel macOS is
+not a secondary test target.
 
 ```sh
 npm run native:build

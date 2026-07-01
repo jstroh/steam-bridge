@@ -46,6 +46,9 @@ Electron app. Intel macOS, Rosetta, and universal macOS packages are unsupported
 configurations, not fallback test paths.
 This applies to every macOS example, test app, smoke app, and overlay proof in
 this package.
+Any future macOS test app or smoke runner added here must keep that same
+Apple Silicon-only shape; Intel macOS is not a secondary package or verification
+target.
 There are no Intel macOS smoke artifacts, example app targets, or live overlay
 test paths in this package; do not add them.
 References to Intel macOS, Rosetta, or universal macOS are guardrails for

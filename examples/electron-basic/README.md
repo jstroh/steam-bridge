@@ -70,6 +70,8 @@ Contributor policy: every macOS smoke run for this example must use a native
 Apple Silicon `darwin/arm64` shell and the arm64 app output. Intel macOS,
 Rosetta, and universal macOS packages are unsupported configurations, not
 fallback test paths.
+Any new macOS smoke variant should copy this Apple Silicon-only target shape;
+do not add a separate Intel macOS test app.
 There are no Intel macOS smoke artifacts or live overlay test paths for this
 example; do not add `darwin-x64`, `x86_64-apple-darwin`, or universal macOS
 targets.
