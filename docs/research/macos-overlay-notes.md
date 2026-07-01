@@ -63,6 +63,23 @@ zero-FPS state, disabled needs-present polling, zero managed overlay timing,
 managed child-overlay isolation, named open-status and checkout-operation
 diagnostics, redacted checkout command values, and clean crash diagnostics.
 
+A post-reboot current-head 2026-07-01 Apple Silicon persistent matrix at
+`/tmp/steam-bridge-macos-overlay-matrix-persistent-post-reboot-20260701` reused
+the same signed arm64-only Electron `43.0.0` package and stable App ID `480`
+shortcut without repackaging or restarting Steam, then passed all 51
+one-process/control-server cases. The first attempt hit Steam's transient
+overlay-readiness timeout at the profile `openAndWait(...)` case and the matrix
+relaunched the persistent suite through its bounded retry path; the retry
+passed. The final artifact proves the successful long-lived-process route, with
+managed web/store/Friends/dialog waits, direct profile/players/community/stats/
+achievements/user routes, every dialog-equivalent route, every programmatic
+shortcut `openAndWait(...)` target, checkout approval and prepare-only, passive
+progress/unlock toasts, duplicate-open suppression, active/inactive callbacks,
+one Metal presenter-backed overlay target under App ID `480`, close/back-to-app
+proof, parked zero-FPS state, zero managed overlay timing, managed
+child-overlay isolation, named open-status and checkout-operation diagnostics,
+redacted checkout command values, and clean crash diagnostics.
+
 As of 2026-06-29, the Apple Silicon local developer path can build and package
 the Electron smoke app without downloaded release artifacts:
 

@@ -606,6 +606,22 @@ polling, zero managed overlay timing, redacted checkout command values, and
 clean crash diagnostics. The same summary reports
 `idleStable=true` for active overlay close paths, proving the parked presenter
 stayed at `currentFps=0` without post-close `pumpCount` growth.
+A post-reboot persistent Apple Silicon proof at
+`/tmp/steam-bridge-macos-overlay-matrix-persistent-post-reboot-20260701`
+reused that same signed arm64 package and stable App ID `480` shortcut without
+repackaging or restarting Steam, then passed all 51 one-process/control-server
+cases. The first attempt hit Steam's transient overlay-readiness timeout at the
+profile `openAndWait(...)` case and the matrix relaunched through its bounded
+retry path; the retry passed, so the final artifact proves the successful
+long-lived-process route while preserving that Steam-client readiness signal as
+something to watch. The run covers readiness, managed web/store/Friends/dialog
+wait helpers, duplicate-open suppression, passive progress/unlock toasts,
+checkout approval and prepare-only, every managed Shift+Tab shortcut target,
+every direct profile/players/community/stats/achievements/user route, every
+dialog-equivalent route, every programmatic shortcut `openAndWait(...)` target,
+one Metal presenter-backed overlay target, close/back-to-app proof, zero-FPS
+parking, zero managed overlay timing, named open-status/checkout diagnostics,
+redacted checkout command values, and clean crash diagnostics.
 A post-reboot core Apple Silicon proof at
 `/tmp/steam-bridge-macos-overlay-matrix-core-post-reboot-20260701` reused the
 same signed arm64 package and stable App ID `480` shortcut without repackaging

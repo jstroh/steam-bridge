@@ -970,6 +970,22 @@ Current evidence:
   zero managed timing, managed child-overlay isolation, named open-status and
   checkout-operation diagnostics, redacted checkout inputs, and clean crash
   diagnostics.
+- A post-reboot current-head 2026-07-01 Apple Silicon persistent matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-persistent-post-reboot-20260701`
+  reused the same signed arm64-only Electron `43.0.0` package and stable App ID
+  `480` shortcut without repackaging or restarting Steam, then passed all 51
+  one-process/control-server cases. The first attempt hit Steam's transient
+  overlay-readiness timeout at the profile `openAndWait(...)` case and the
+  matrix relaunched through its bounded retry path; the retry passed. The final
+  artifact proves the successful long-lived-process route across readiness,
+  managed web/store/Friends/dialog waits, checkout approval and prepare-only,
+  passive progress/unlock toasts, every managed Shift+Tab shortcut target,
+  every direct profile/players/community/stats/achievements/user route, every
+  dialog-equivalent route, every programmatic shortcut `openAndWait(...)`
+  target, one Metal presenter-backed overlay target, close/back-to-app proof,
+  zero-FPS parking, zero managed timing, managed child-overlay isolation, named
+  open-status/checkout-operation diagnostics, redacted checkout inputs, and
+  clean crash diagnostics.
 - The Metal host is borderless, transparent/click-through while idle, cannot
   become key or main, attaches above the Electron parent window, and is kept
   aligned by the managed Electron window sync hooks.

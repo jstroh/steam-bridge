@@ -128,6 +128,27 @@ needs-present polling, zero managed overlay timing, managed child-overlay
 isolation, named open-status/checkout-operation diagnostics, redacted checkout
 inputs, and clean crash diagnostics.
 
+A post-reboot current-head 2026-07-01 Apple Silicon persistent matrix at
+`/tmp/steam-bridge-macos-overlay-matrix-persistent-post-reboot-20260701`
+reused the same signed arm64-only Electron `43.0.0` package and stable App ID
+`480` shortcut without repackaging or restarting Steam, then passed all 51
+one-process/control-server cases. The first attempt reached the profile
+`openAndWait(...)` case and hit Steam's transient overlay-readiness timeout; the
+matrix relaunched the persistent suite through its bounded retry path and the
+retry passed. Treat the retry as a Steam-client readiness signal to watch, while
+the final artifact proves the successful long-lived-process route. The passing
+run covers readiness, web/store/Friends/dialog wait helpers, duplicate-open
+suppression, passive progress/unlock toasts, checkout approval and
+prepare-only, every managed Shift+Tab shortcut target, every direct
+profile/players/community/stats/achievements/user route, every
+dialog-equivalent route, and every programmatic shortcut `openAndWait(...)`
+target. Every active case reported one Metal presenter-backed overlay target
+under App ID `480`, interactive macOS host state, active/inactive callbacks,
+visible Steam web content where applicable, close/back-to-app proof, parked
+zero-FPS state, disabled needs-present polling, zero managed overlay timing,
+managed child-overlay isolation, named open-status/checkout-operation
+diagnostics, redacted checkout inputs, and clean crash diagnostics.
+
 A current-head 2026-07-01 Apple Silicon readiness-race slice tightened
 `IfAvailable` helpers around Steam disappearing before overlay activation.
 Unit coverage now proves direct `openIfAvailable(...)`,
