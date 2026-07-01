@@ -6669,6 +6669,14 @@ test("electron steam overlay manager owns one presenter and routes opens", async
   assert.equal(friendsOpenStatus.waitReason, undefined);
   assert.equal(friendsOpenStatus.nativeHostAvailability.available, true);
   assert.equal(friendsOpenStatus.snapshot.nativeHostOpen, true);
+  const initialCheckoutOperationStatus = overlay.getCheckoutOperationStatus();
+  assert.equal(initialCheckoutOperationStatus.canStartOperation, true);
+  assert.equal(initialCheckoutOperationStatus.canOpen, true);
+  assert.equal(initialCheckoutOperationStatus.canWait, true);
+  assert.deepEqual(initialCheckoutOperationStatus.targetSnapshot, { type: "checkout" });
+  assert.equal(initialCheckoutOperationStatus.reason, undefined);
+  assert.equal(initialCheckoutOperationStatus.waitReason, undefined);
+  assert.equal(initialCheckoutOperationStatus.nativeHostAvailability.available, true);
   assert.equal(overlay.openIfAvailable(friendsTarget), overlay.presenter);
   assert.equal(windowShowCount, 1);
   assert.equal(windowFocusCount, 1);
@@ -6685,6 +6693,13 @@ test("electron steam overlay manager owns one presenter and routes opens", async
   assert.equal(openingShortcutStatus.canWait, false);
   assert.equal(openingShortcutStatus.reason, "opening");
   assert.equal(openingShortcutStatus.waitReason, "opening");
+  const openingCheckoutOperationStatus = overlay.getCheckoutOperationStatus();
+  assert.equal(openingCheckoutOperationStatus.canStartOperation, false);
+  assert.equal(openingCheckoutOperationStatus.canOpen, false);
+  assert.equal(openingCheckoutOperationStatus.canWait, false);
+  assert.equal(openingCheckoutOperationStatus.reason, "opening");
+  assert.equal(openingCheckoutOperationStatus.waitReason, "opening");
+  assert.deepEqual(openingCheckoutOperationStatus.targetSnapshot, { type: "checkout" });
   assert.equal(overlay.openIfAvailable(webTarget), null);
   assert.equal(await overlay.openAndWaitIfAvailable(webTarget, { showTimeoutMs: 5, closeTimeoutMs: 5 }), null);
   assert.equal(overlay.openShortcutTargetIfAvailable(), null);
@@ -6716,6 +6731,12 @@ test("electron steam overlay manager owns one presenter and routes opens", async
   assert.equal(activeShortcutStatus.canWait, false);
   assert.equal(activeShortcutStatus.reason, "overlay-active");
   assert.equal(activeShortcutStatus.waitReason, "overlay-active");
+  const activeCheckoutOperationStatus = overlay.getCheckoutOperationStatus();
+  assert.equal(activeCheckoutOperationStatus.canStartOperation, false);
+  assert.equal(activeCheckoutOperationStatus.canOpen, false);
+  assert.equal(activeCheckoutOperationStatus.canWait, false);
+  assert.equal(activeCheckoutOperationStatus.reason, "overlay-active");
+  assert.equal(activeCheckoutOperationStatus.waitReason, "overlay-active");
   assert.equal(overlay.openShortcutTargetIfAvailable(), null);
   assert.equal(await overlay.openShortcutTargetAndWaitIfAvailable({ showTimeoutMs: 5, closeTimeoutMs: 5 }), null);
   let checkoutOperationRanWhileActive = false;
@@ -6736,6 +6757,11 @@ test("electron steam overlay manager owns one presenter and routes opens", async
   assert.equal(reopenedOpenStatus.canWait, true);
   assert.equal(reopenedOpenStatus.reason, undefined);
   assert.equal(reopenedOpenStatus.waitReason, undefined);
+  const reopenedCheckoutOperationStatus = overlay.getCheckoutOperationStatus();
+  assert.equal(reopenedCheckoutOperationStatus.canStartOperation, true);
+  assert.equal(reopenedCheckoutOperationStatus.canOpen, true);
+  assert.equal(reopenedCheckoutOperationStatus.canWait, true);
+  assert.equal(reopenedCheckoutOperationStatus.reason, undefined);
   const rawDialogStatus = overlay.getOpenStatus({
     type: "dialog",
     dialog: steam.Dialog.Friends,
@@ -6807,6 +6833,12 @@ test("electron steam overlay manager owns one presenter and routes opens", async
   assert.equal(closedOpenStatus.canWait, false);
   assert.equal(closedOpenStatus.reason, "closed");
   assert.equal(closedOpenStatus.waitReason, "closed");
+  const closedCheckoutOperationStatus = overlay.getCheckoutOperationStatus();
+  assert.equal(closedCheckoutOperationStatus.canStartOperation, false);
+  assert.equal(closedCheckoutOperationStatus.canOpen, false);
+  assert.equal(closedCheckoutOperationStatus.canWait, false);
+  assert.equal(closedCheckoutOperationStatus.reason, "closed");
+  assert.equal(closedCheckoutOperationStatus.waitReason, "closed");
   assert.equal(overlay.openIfAvailable(friendsTarget), null);
   assert.throws(() => overlay.open({ type: "friends" }), /Electron Steam overlay is closed/);
   assert.throws(() => overlay.prepareForCheckout(), /Electron Steam overlay is closed/);
@@ -10970,6 +11002,15 @@ test("electron steam overlay checkout IfAvailable skips transactions when overla
     pollIntervalMs: 10000
   });
 
+  const disabledCheckoutOperationStatus = overlay.getCheckoutOperationStatus();
+  assert.equal(disabledCheckoutOperationStatus.canStartOperation, false);
+  assert.equal(disabledCheckoutOperationStatus.canOpen, false);
+  assert.equal(disabledCheckoutOperationStatus.canWait, false);
+  assert.equal(disabledCheckoutOperationStatus.reason, "overlay-not-ready");
+  assert.equal(disabledCheckoutOperationStatus.waitReason, "overlay-not-ready");
+  assert.deepEqual(disabledCheckoutOperationStatus.targetSnapshot, { type: "checkout" });
+  assert.equal(disabledCheckoutOperationStatus.snapshot.diagnostics.overlayEnabled, false);
+
   let disabledOperationRan = false;
   assert.equal(
     await overlay.openCheckoutAndWaitIfAvailable(
@@ -10986,6 +11027,13 @@ test("electron steam overlay checkout IfAvailable skips transactions when overla
 
   steamRunning = false;
   overlayEnabled = true;
+  const steamStoppedCheckoutOperationStatus = overlay.getCheckoutOperationStatus();
+  assert.equal(steamStoppedCheckoutOperationStatus.canStartOperation, false);
+  assert.equal(steamStoppedCheckoutOperationStatus.canOpen, false);
+  assert.equal(steamStoppedCheckoutOperationStatus.canWait, false);
+  assert.equal(steamStoppedCheckoutOperationStatus.reason, "steam-unavailable");
+  assert.equal(steamStoppedCheckoutOperationStatus.waitReason, "steam-unavailable");
+  assert.equal(steamStoppedCheckoutOperationStatus.snapshot.diagnostics.steamRunning, false);
   const steamStoppedStatus = overlay.getOpenStatus({
     type: "web",
     url: "https://store.steampowered.com/app/480/",
@@ -11619,6 +11667,16 @@ test("electron steam overlay manager fails fast while the macOS native host is u
   assert.equal(unavailableOpenStatus.nativeHostAvailability.available, false);
   assert.equal(unavailableOpenStatus.nativeHostAvailability.reason, "macos-screen-locked");
   assert.match(unavailableOpenStatus.message, /macOS screen is locked/);
+  const unavailableCheckoutOperationStatus = overlay.getCheckoutOperationStatus();
+  assert.equal(unavailableCheckoutOperationStatus.canStartOperation, false);
+  assert.equal(unavailableCheckoutOperationStatus.canOpen, false);
+  assert.equal(unavailableCheckoutOperationStatus.canWait, false);
+  assert.equal(unavailableCheckoutOperationStatus.reason, "native-host-unavailable");
+  assert.equal(unavailableCheckoutOperationStatus.waitReason, "native-host-unavailable");
+  assert.deepEqual(unavailableCheckoutOperationStatus.targetSnapshot, { type: "checkout" });
+  assert.equal(unavailableCheckoutOperationStatus.nativeHostAvailability.available, false);
+  assert.equal(unavailableCheckoutOperationStatus.nativeHostAvailability.reason, "macos-screen-locked");
+  assert.match(unavailableCheckoutOperationStatus.message, /macOS screen is locked/);
   const unavailableShortcutStatus = overlay.getShortcutOpenStatus();
   assert.equal(unavailableShortcutStatus.canOpen, false);
   assert.equal(unavailableShortcutStatus.canWait, false);

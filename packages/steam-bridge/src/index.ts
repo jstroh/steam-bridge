@@ -1972,6 +1972,18 @@ export interface ElectronSteamOverlayOpenStatus {
   message?: string;
 }
 
+export interface ElectronSteamOverlayCheckoutOperationStatus {
+  canStartOperation: boolean;
+  canOpen: boolean;
+  canWait: boolean;
+  targetSnapshot: SteamOverlayCheckoutTargetSnapshot;
+  snapshot: ElectronSteamOverlaySnapshot;
+  nativeHostAvailability: ElectronSteamOverlayNativeHostAvailability;
+  reason?: ElectronSteamOverlayOpenStatusReason;
+  waitReason?: ElectronSteamOverlayWaitStatusReason;
+  message?: string;
+}
+
 export interface ElectronSteamOverlayShortcutStatus {
   canOpen: boolean;
   canWait: boolean;
@@ -2337,6 +2349,7 @@ export interface ElectronSteamOverlay extends CallbackHandle {
   ): ElectronSteamOverlayOpenStatus;
   getUserOpenStatus(targetOptions?: ElectronSteamOverlayUserTargetOptions): ElectronSteamOverlayOpenStatus;
   getCheckoutOpenStatus(targetOptions?: ElectronSteamOverlayCheckoutTargetOptions): ElectronSteamOverlayOpenStatus;
+  getCheckoutOperationStatus(): ElectronSteamOverlayCheckoutOperationStatus;
   getDialogOpenStatus(targetOptions?: ElectronSteamOverlayDialogTargetOptions): ElectronSteamOverlayOpenStatus;
   getShortcutOpenStatus(): ElectronSteamOverlayShortcutStatus;
   openIfAvailable(target: SteamOverlayTarget): NativeOverlayPresenter | null;
@@ -9093,6 +9106,9 @@ export function createElectronSteamOverlay(
     ): ElectronSteamOverlayOpenStatus {
       return controller.getOpenStatus({ ...targetOptions, type: "checkout" });
     },
+    getCheckoutOperationStatus(): ElectronSteamOverlayCheckoutOperationStatus {
+      return electronSteamOverlayCheckoutOperationStatus(controller);
+    },
     getDialogOpenStatus(targetOptions: ElectronSteamOverlayDialogTargetOptions = {}): ElectronSteamOverlayOpenStatus {
       return controller.getOpenStatus({ ...targetOptions, type: "dialog" });
     },
@@ -9471,20 +9487,8 @@ export function createElectronSteamOverlay(
       operation: () => T | Promise<T>,
       options: ElectronSteamOverlayCheckoutAndWaitOptions = {}
     ): Promise<ElectronSteamOverlayCheckoutAndWaitResult<T> | null> {
-      if (!controller.isOpen()) {
-        return null;
-      }
-
-      const snapshot = refreshElectronSteamOverlaySnapshotDiagnostics(controller.snapshot());
-      if (!electronSteamOverlayNativeHostAvailability(snapshot).available) {
-        return null;
-      }
-
-      if (isElectronSteamOverlayKnownUnavailable(snapshot)) {
-        return null;
-      }
-
-      if (snapshot.overlayActive || isElectronSteamOverlayOpening(snapshot)) {
+      const status = electronSteamOverlayCheckoutOperationStatus(controller);
+      if (!status.canStartOperation) {
         return null;
       }
 
@@ -10643,6 +10647,63 @@ function electronSteamOverlayOpenStatus(
       message: error instanceof Error ? error.message : String(error)
     };
   }
+}
+
+function electronSteamOverlayCheckoutOperationStatus(
+  controller: ElectronSteamOverlay
+): ElectronSteamOverlayCheckoutOperationStatus {
+  const snapshot = refreshElectronSteamOverlaySnapshotDiagnostics(controller.snapshot());
+  const targetSnapshot = snapshotSteamOverlayTarget({ type: "checkout" });
+  const nativeHostAvailability = electronSteamOverlayNativeHostAvailability(snapshot);
+  const unavailableError = electronSteamOverlayNativeHostUnavailableError(snapshot);
+  const unavailable = (
+    reason: ElectronSteamOverlayOpenStatusReason,
+    waitReason: ElectronSteamOverlayWaitStatusReason,
+    message: string
+  ): ElectronSteamOverlayCheckoutOperationStatus => ({
+    canStartOperation: false,
+    canOpen: false,
+    canWait: false,
+    targetSnapshot,
+    snapshot,
+    nativeHostAvailability,
+    reason,
+    waitReason,
+    message
+  });
+
+  if (!controller.isOpen()) {
+    return unavailable("closed", "closed", "Electron Steam overlay is closed.");
+  }
+
+  if (unavailableError) {
+    return unavailable("native-host-unavailable", "native-host-unavailable", unavailableError.message);
+  }
+
+  if (snapshot.diagnostics?.steamRunning === false) {
+    return unavailable("steam-unavailable", "steam-unavailable", "Steam is not running.");
+  }
+
+  if (snapshot.diagnostics?.overlayEnabled === false) {
+    return unavailable("overlay-not-ready", "overlay-not-ready", "Steam overlay is not ready yet.");
+  }
+
+  if (snapshot.overlayActive) {
+    return unavailable("overlay-active", "overlay-active", "Steam overlay is already active.");
+  }
+
+  if (isElectronSteamOverlayOpening(snapshot)) {
+    return unavailable("opening", "opening", "Electron Steam overlay is already opening.");
+  }
+
+  return {
+    canStartOperation: true,
+    canOpen: true,
+    canWait: true,
+    targetSnapshot,
+    snapshot,
+    nativeHostAvailability
+  };
 }
 
 function electronSteamOverlayShortcutStatus(

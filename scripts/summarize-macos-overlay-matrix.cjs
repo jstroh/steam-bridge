@@ -817,7 +817,7 @@ function verifyDuplicateOpenGuard(caseId, actionName, resultEvents, lifecycleEnt
   verifyDuplicateOpenBusyStatus(caseId, "shortcut status", shortcutStatus, failures);
 
   const namedStatuses = objectOrEmpty(payload.namedStatuses);
-  for (const name of ["web", "store", "friends", "checkout"]) {
+  for (const name of ["web", "store", "friends", "checkout", "checkoutOperation"]) {
     verifyDuplicateOpenBusyStatus(
       caseId,
       `named ${name} status`,
@@ -862,7 +862,9 @@ function verifyDuplicateOpenGuard(caseId, actionName, resultEvents, lifecycleEnt
 }
 
 function verifyNamedOpenStatusSnapshots(caseId, metadata, overlay, failures) {
-  if (metadata.requireNamedOpenStatusSnapshots !== true) {
+  const requireNamedOpenStatusSnapshots = metadata.requireNamedOpenStatusSnapshots === true;
+  const requireCheckoutOperationStatusSnapshot = metadata.requireCheckoutOperationStatusSnapshot === true;
+  if (!requireNamedOpenStatusSnapshots && !requireCheckoutOperationStatusSnapshot) {
     return { required: false, ok: true };
   }
 
@@ -879,27 +881,44 @@ function verifyNamedOpenStatusSnapshots(caseId, metadata, overlay, failures) {
     return { required: true, ok: false };
   }
 
-  for (const [name, targetType] of NAMED_OPEN_STATUS_TARGET_TYPES) {
-    const entry = statuses[name];
-    expect(entry && entry.ok === true, `${caseId}: named ${name} open status read ok`, failures);
-    const status = readOkValue(entry);
-    expect(
-      Boolean(status && typeof status === "object" && !Array.isArray(status)),
-      `${caseId}: named ${name} open status snapshot available`,
-      failures
-    );
-    if (!status || typeof status !== "object" || Array.isArray(status)) {
-      continue;
+  if (requireNamedOpenStatusSnapshots) {
+    for (const [name, targetType] of NAMED_OPEN_STATUS_TARGET_TYPES) {
+      verifyNamedOpenStatusSnapshot(caseId, statuses, name, targetType, failures);
     }
-    verifyNamedOpenStatus(caseId, name, targetType, status, failures);
+  }
+
+  if (requireCheckoutOperationStatusSnapshot) {
+    verifyNamedOpenStatusSnapshot(caseId, statuses, "checkoutOperation", "checkout", failures);
   }
 
   return { required: true, ok: failures.length === failuresBefore };
 }
 
+function verifyNamedOpenStatusSnapshot(caseId, statuses, name, targetType, failures) {
+  const entry = statuses[name];
+  expect(entry && entry.ok === true, `${caseId}: named ${name} open status read ok`, failures);
+  const status = readOkValue(entry);
+  expect(
+    Boolean(status && typeof status === "object" && !Array.isArray(status)),
+    `${caseId}: named ${name} open status snapshot available`,
+    failures
+  );
+  if (!status || typeof status !== "object" || Array.isArray(status)) {
+    return;
+  }
+  verifyNamedOpenStatus(caseId, name, targetType, status, failures);
+}
+
 function verifyNamedOpenStatus(caseId, name, targetType, status, failures) {
   expect(typeof status.canOpen === "boolean", `${caseId}: named ${name} open status has canOpen boolean`, failures);
   expect(typeof status.canWait === "boolean", `${caseId}: named ${name} open status has canWait boolean`, failures);
+  if (name === "checkoutOperation") {
+    expect(
+      typeof status.canStartOperation === "boolean",
+      `${caseId}: named checkoutOperation status has canStartOperation boolean`,
+      failures
+    );
+  }
   if (Object.prototype.hasOwnProperty.call(status, "reason")) {
     expect(
       typeof status.reason === "string" && status.reason.length > 0,
@@ -931,6 +950,13 @@ function verifyNamedOpenStatus(caseId, name, targetType, status, failures) {
 function verifyDuplicateOpenBusyStatus(caseId, label, status, failures) {
   expect(status.canOpen === false, `${caseId}: duplicate guard ${label} rejects open`, failures);
   expect(status.canWait === false, `${caseId}: duplicate guard ${label} rejects wait`, failures);
+  if (Object.prototype.hasOwnProperty.call(status, "canStartOperation")) {
+    expect(
+      status.canStartOperation === false,
+      `${caseId}: duplicate guard ${label} rejects checkout operation start`,
+      failures
+    );
+  }
   expect(
     status.reason === "opening" || status.reason === "overlay-active",
     `${caseId}: duplicate guard ${label} is opening or overlay-active, got ${formatValue(status.reason)}`,
@@ -1973,6 +1999,9 @@ function runSelfTest() {
   const missingOpenStatusSnapshotFixtureRoot = fs.mkdtempSync(
     path.join(os.tmpdir(), "steam-bridge-macos-matrix-summary-missing-open-status-snapshot.")
   );
+  const missingCheckoutOperationStatusSnapshotFixtureRoot = fs.mkdtempSync(
+    path.join(os.tmpdir(), "steam-bridge-macos-matrix-summary-missing-checkout-operation-status-snapshot.")
+  );
   const persistentFixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-macos-matrix-summary-persistent."));
   try {
     createSelfTestFixture(fixtureRoot);
@@ -2022,6 +2051,9 @@ function runSelfTest() {
     createSelfTestFixture(missingOpenStatusSnapshotFixtureRoot);
     removeOpenStatusSnapshotProof(missingOpenStatusSnapshotFixtureRoot, "01-web-openwait");
     assertMissingOpenStatusSnapshotRejected(missingOpenStatusSnapshotFixtureRoot);
+    createSelfTestFixture(missingCheckoutOperationStatusSnapshotFixtureRoot);
+    removeCheckoutOperationStatusSnapshotProof(missingCheckoutOperationStatusSnapshotFixtureRoot, "01-web-openwait");
+    assertMissingCheckoutOperationStatusSnapshotRejected(missingCheckoutOperationStatusSnapshotFixtureRoot);
     console.log("macOS overlay matrix summary self-test passed.");
   } finally {
     fs.rmSync(fixtureRoot, { recursive: true, force: true });
@@ -2035,6 +2067,7 @@ function runSelfTest() {
     fs.rmSync(missingNeedsPresentPollingFixtureRoot, { recursive: true, force: true });
     fs.rmSync(missingNamedStatusFixtureRoot, { recursive: true, force: true });
     fs.rmSync(missingOpenStatusSnapshotFixtureRoot, { recursive: true, force: true });
+    fs.rmSync(missingCheckoutOperationStatusSnapshotFixtureRoot, { recursive: true, force: true });
     fs.rmSync(persistentFixtureRoot, { recursive: true, force: true });
   }
 }
@@ -2440,6 +2473,31 @@ function assertMissingOpenStatusSnapshotRejected(root) {
   );
 }
 
+function removeCheckoutOperationStatusSnapshotProof(root, caseId) {
+  const row = readManifestRows(root).find((entry) => entry.caseId === caseId);
+  assert.ok(row, `self-test fixture missing manifest row ${caseId}`);
+  const resultLine = fs
+    .readFileSync(row.resultFile, "utf8")
+    .split(/\r?\n/)
+    .find((line) => line.startsWith(RESULT_PREFIX));
+  assert.ok(resultLine, `self-test fixture should include a result line for ${caseId}`);
+  const result = JSON.parse(resultLine.slice(RESULT_PREFIX.length));
+  delete result.snapshot.overlay.openStatuses.value.checkoutOperation;
+  fs.writeFileSync(row.resultFile, `${RESULT_PREFIX}${JSON.stringify(result)}\n`);
+}
+
+function assertMissingCheckoutOperationStatusSnapshotRejected(root) {
+  const result = spawnSync(process.execPath, [__filename, "--artifact-root", root], {
+    encoding: "utf8"
+  });
+  assert.notEqual(result.status, 0, "summary should reject missing checkout operation status snapshot");
+  assert.match(
+    result.stderr,
+    /named checkoutOperation open status read ok/,
+    "summary rejection should identify missing checkout operation status proof"
+  );
+}
+
 function createSelfTestFixture(root) {
   fs.mkdirSync(root, { recursive: true });
 
@@ -2570,6 +2628,13 @@ function createSelfTestFixture(root) {
                 waitReason: "opening"
               },
               checkout: {
+                canOpen: false,
+                canWait: false,
+                reason: "opening",
+                waitReason: "opening"
+              },
+              checkoutOperation: {
+                canStartOperation: false,
                 canOpen: false,
                 canWait: false,
                 reason: "opening",
@@ -3080,6 +3145,7 @@ function createSelfTestFixture(root) {
       requireNoOverlayActivation: fixture.requireNoOverlayActivation === true,
       requireMacosNeedsPresentPollingDisabled: true,
       requireNamedOpenStatusSnapshots: true,
+      requireCheckoutOperationStatusSnapshot: true,
       requireMicroTxnCallback: fixture.requireMicroTxnCallback === true
     });
   }
@@ -3146,7 +3212,8 @@ function createPersistentSelfTestFixture(root) {
       requireNativeHostUnavailableReason: null,
       requireNoOverlayActivation: false,
       requireMacosNeedsPresentPollingDisabled: true,
-      requireNamedOpenStatusSnapshots: true
+      requireNamedOpenStatusSnapshots: true,
+      requireCheckoutOperationStatusSnapshot: true
     });
   }
 
@@ -3208,7 +3275,8 @@ function namedOpenStatusesFixture() {
     achievements: { type: "achievements", appId: 480 },
     user: { type: "user", appId: 480, dialog: "chat" },
     dialog: { type: "dialog", appId: 480, dialog: "OfficialGameGroup" },
-    checkout: { type: "checkout" }
+    checkout: { type: "checkout" },
+    checkoutOperation: { type: "checkout" }
   };
   const value = {};
   for (const [name, targetSnapshot] of Object.entries(snapshots)) {
@@ -3218,6 +3286,7 @@ function namedOpenStatusesFixture() {
       value: {
         canOpen: supported,
         canWait: supported,
+        ...(name === "checkoutOperation" ? { canStartOperation: true } : {}),
         ...(supported ? {} : { reason: "unsupported-target", waitReason: "unsupported-target" }),
         targetSnapshot
       }

@@ -1102,7 +1102,8 @@ async function openPresenterDuplicateOpenGuardOverlay() {
     web: overlay.getWebOpenStatus(WEB_URL, { modal: WEB_MODAL }),
     store: overlay.getStoreOpenStatus({ appId: APP_ID }),
     friends: overlay.getFriendsOpenStatus(),
-    checkout: overlay.getCheckoutOpenStatus({ transactionId: "123456789" })
+    checkout: overlay.getCheckoutOpenStatus({ transactionId: "123456789" }),
+    checkoutOperation: overlay.getCheckoutOperationStatus()
   };
   const shortcutStatus = overlay.getShortcutOpenStatus();
   const openIfAvailableResult = overlay.openIfAvailable(target);
@@ -2190,7 +2191,8 @@ function collectManagedOverlayOpenStatuses(overlay) {
         ...(CHECKOUT_TRANSACTION_ID ? { transactionId: CHECKOUT_TRANSACTION_ID } : {}),
         ...(CHECKOUT_RETURN_URL ? { returnUrl: CHECKOUT_RETURN_URL } : {})
       })
-    )
+    ),
+    checkoutOperation: readValue(() => overlay.getCheckoutOperationStatus())
   };
 }
 

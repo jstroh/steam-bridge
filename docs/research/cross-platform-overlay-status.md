@@ -63,9 +63,10 @@ URLs, Steam IDs, and private checkout CLI arguments.
 Newly generated macOS matrix manifests also require each smoke result snapshot
 to include the named builder-facing `get*OpenStatus(...)` diagnostics for web,
 store, Friends, profile, players, community, stats, achievements, user, dialog,
-and checkout targets. The summary prints this proof as `openStatuses=true` for
-each required case, so future artifacts prove the side-effect-free preflight
-status surface stayed wired while overlay routes are exercised.
+checkout targets, and the checkout-operation preflight used before starting
+`InitTxn`. The summary prints this proof as `openStatuses=true` for each
+required case, so future artifacts prove the side-effect-free preflight status
+surface stayed wired while overlay routes are exercised.
 Use `--suite checkout` for focused real-product checkout evidence: it runs
 checkout prepare-only, direct checkout, managed Shift+Tab checkout, and
 programmatic checkout shortcut/open-and-wait with the same redaction,

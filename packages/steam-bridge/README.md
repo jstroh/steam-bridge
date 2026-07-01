@@ -205,16 +205,23 @@ const transaction = {
   items: [{ itemId: 100, quantity: 1, amount: 199, description: "Example item" }]
 };
 
-const checkoutResult = await steamOverlay.openCheckoutAndWaitIfAvailable(() =>
-  steamworks.webApi.microTxn.initClientTxn({
-    appId: realAppId,
-    orderId: transaction.orderId,
-    steamId64: steamId,
-    language: "en",
-    currency: "USD",
-    items: transaction.items
-  })
-);
+const checkoutStatus = steamOverlay.getCheckoutOperationStatus();
+if (!checkoutStatus.canStartOperation) {
+  console.warn("Steam checkout is not ready yet", checkoutStatus.reason ?? checkoutStatus.waitReason);
+}
+
+const checkoutResult = checkoutStatus.canStartOperation
+  ? await steamOverlay.openCheckoutAndWaitIfAvailable(() =>
+      steamworks.webApi.microTxn.initClientTxn({
+        appId: realAppId,
+        orderId: transaction.orderId,
+        steamId64: steamId,
+        language: "en",
+        currency: "USD",
+        items: transaction.items
+      })
+    )
+  : null;
 if (!checkoutResult) {
   console.warn("Steam checkout overlay is not available right now.");
 }
@@ -366,7 +373,11 @@ status helpers such as `steamOverlay.getWebOpenStatus(...)`,
 `steamOverlay.getStoreOpenStatus(...)`, and
 `steamOverlay.getCheckoutOpenStatus(...)` provide the same side-effect-free
 preflight as `steamOverlay.getOpenStatus(target)` without requiring apps to
-construct target objects by hand. `steamOverlay.openIfAvailable(target)` and
+construct target objects by hand. For purchase buttons that have not called
+`InitTxn` yet, `steamOverlay.getCheckoutOperationStatus()` reports whether it
+is safe to start the checkout operation at all; `canStartOperation=false` means
+app code should not call the backend transaction endpoint yet.
+`steamOverlay.openIfAvailable(target)` and
 `steamOverlay.openAndWaitIfAvailable(target)` return `null` for known target or
 host availability blockers. They also return `null` while Steam's overlay is
 already active or the managed presenter is still opening a previous overlay, so
@@ -447,6 +458,8 @@ events so Deck/Linux artifact review proves the same public API app builders
 call.
 For `InitTxn` flows, call
 `steamOverlay.openCheckoutAndWait(() => startTxn())`. Use
+`steamOverlay.getCheckoutOperationStatus()` when the app wants to enable,
+disable, or explain a purchase button before calling the backend. Use
 `steamOverlay.openCheckoutAndWaitIfAvailable(() => startTxn())` for purchase
 buttons that should return `null` instead of starting the transaction while the
 managed overlay is closed, Steam is not running, Steam already reports the

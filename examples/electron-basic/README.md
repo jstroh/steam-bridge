@@ -517,6 +517,10 @@ manual checks, set `STEAM_BRIDGE_SMOKE_CHECKOUT_URL` to the Steam URL returned
 by `InitTxn`, or set
 `STEAM_BRIDGE_SMOKE_CHECKOUT_TRANSACTION_ID` to build and open the Steam
 transaction approval page through `steamOverlay.openCheckoutAndWait(...)`.
+Smoke snapshots include `getCheckoutOperationStatus()` inside
+`snapshot.overlay.openStatuses.checkoutOperation`, so matrix artifacts also
+prove the app-facing checkout preflight can decide whether starting `InitTxn` is
+safe without calling the backend.
 The smoke app wraps direct URL or transaction ID inputs in an `InitTxn`-style
 `response.params` envelope before calling the helper, so generic overlay
 matrices exercise the same unwrapping path a real backend response uses.
@@ -1135,26 +1139,28 @@ app-specific proof outside the committed examples:
 
 1. Launch your real installed Steam app through Steam.
 2. Confirm the running process reports your real app ID.
-3. Trigger the backend `InitTxn` call through
+3. Check `steamOverlay.getCheckoutOperationStatus()` before enabling or starting
+   the purchase. If `canStartOperation=false`, do not call `InitTxn` yet.
+4. Trigger the backend `InitTxn` call through
    `steamOverlay.openCheckoutAndWait(() => startTxn())`; with the built-in Web
    API client, use `microTxn.initClientTxn(...)` for `usersession=client` and
    keep `microTxn.initWebTxn(...)` for your browser fallback. Do not tune local
    overlay-preparation timers around that call.
-4. For smoke proof, save the returned JSON to a private temp file and pass it
+5. For smoke proof, save the returned JSON to a private temp file and pass it
    with `STEAM_BRIDGE_SMOKE_CHECKOUT_JSON_FILE` or the macOS helper's
    `--checkout-json-file`. For focused macOS matrix proof, run `--suite
    checkout`; the matrix validates any embedded app ID against `--app-id`.
    Add `--require-microtxn-callback` when the direct checkout case should
    receive Steam's authorization callback.
-5. Let Steam Bridge open the returned checkout URL or transaction approval path.
-6. Verify the Steam modal appears in both Deck Game Mode and Desktop Mode.
-7. Confirm backing out or closing the Steam surface returns focus to the app.
-8. Confirm any `callback:microtxn` artifact keeps the presenter snapshot while
+6. Let Steam Bridge open the returned checkout URL or transaction approval path.
+7. Verify the Steam modal appears in both Deck Game Mode and Desktop Mode.
+8. Confirm backing out or closing the Steam surface returns focus to the app.
+9. Confirm any `callback:microtxn` artifact keeps the presenter snapshot while
    redacting order IDs, transaction IDs, Steam IDs, and checkout URLs. For app
    logs, prefer the checkout wait result's `targetSnapshot` or
    `steamworks.overlay.snapshotSteamOverlayTarget(target)` over raw checkout
    target objects.
-9. Keep private app IDs, item definitions, transaction IDs, publisher keys, and
+10. Keep private app IDs, item definitions, transaction IDs, publisher keys, and
    private URLs out of committed docs and examples.
 
 The managed Electron overlay defaults to scoped activation holds instead of

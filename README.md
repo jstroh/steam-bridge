@@ -351,6 +351,9 @@ Use named status helpers such as `getStoreOpenStatus(...)`,
 fallbacks when the app needs a side-effect-free target/native-host preflight.
 They validate the managed route and report whether the target can be opened and
 waited on without touching Steam overlay UI.
+For real purchase buttons that do not have a checkout target until `InitTxn`
+returns, use `getCheckoutOperationStatus()` first; `canStartOperation=false`
+means the app should not start its backend transaction yet.
 Use named `*IfAvailable(...)` helpers, `openIfAvailable(target)`, or
 `openAndWaitIfAvailable(target)` when a button or controller binding should
 quietly do nothing for known unavailable states and still surface real errors
@@ -391,6 +394,8 @@ screen is locked or the display is asleep. Use
 `error.reason` when you need to fall back to another purchase or browser flow.
 
 For checkout, use `steamOverlay.openCheckoutAndWait(() => startTxn())`.
+Use `steamOverlay.getCheckoutOperationStatus()` to decide whether the app should
+enable or start a purchase operation before `InitTxn` runs.
 Use `steamOverlay.openCheckoutAndWaitIfAvailable(() => startTxn())` when a
 purchase button should return `null` instead of starting `InitTxn` while the
 managed overlay is closed, Steam is not running, Steam already reports the

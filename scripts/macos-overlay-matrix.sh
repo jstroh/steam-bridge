@@ -1799,6 +1799,7 @@ fs.appendFileSync(
     requireNoOverlayActivation: command.includes("--require-no-overlay-activation"),
     requireMacosNeedsPresentPollingDisabled: true,
     requireNamedOpenStatusSnapshots: true,
+    requireCheckoutOperationStatusSnapshot: true,
     requireMicroTxnCallback
   })}\n`
 );
