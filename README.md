@@ -527,6 +527,10 @@ proving the parked presenter stayed at `currentFps=0` without post-close
 `pumpCount` growth.
 New macOS matrix manifests record their suite name, and the summary auditor
 rejects named-suite artifacts that are missing required overlay surface cases.
+New manifests also require the smoke result snapshot to include named
+builder-facing open-status diagnostics for web, store, Friends, profile,
+players, community, stats, achievements, user, dialog, and checkout targets;
+summary rows report this as `openStatuses=true` when the proof is present.
 The same auditor also scans smoke result JSON and lifecycle logs for raw
 checkout approval URLs, transaction/order IDs, return URLs, Steam IDs, and
 private checkout CLI arguments, so private purchase artifacts fail closed if
@@ -612,6 +616,17 @@ web/store/Friends/dialog helpers, wait-helper open/close, passive notification
 priming, visible Steam web content where applicable, close/back-to-app proof,
 parked zero-FPS state, disabled needs-present polling, zero managed overlay
 timing, managed child-overlay isolation, and clean crash diagnostics.
+A focused Apple Silicon minimal run at
+`/tmp/steam-bridge-macos-overlay-matrix-open-statuses-20260701-080050` reused
+the signed arm64-only Electron `43.0.0` package and the stable App ID `480`
+shortcut without restarting Steam, then passed all 11 Steam-launched cases after
+the summary auditor began requiring named open-status snapshots from every
+smoke result. Every summary row reported `openStatuses=true`, proving the
+builder-facing `get*OpenStatus(...)` diagnostics stayed wired for direct
+web/store/Friends/dialog opens, `openAndWait(...)` routes, duplicate-open
+suppression, and passive notification priming while preserving the same
+close/back-to-app, zero-FPS parking, zero managed timing, isolation, and crash
+checks.
 
 ## Shipping Notes
 

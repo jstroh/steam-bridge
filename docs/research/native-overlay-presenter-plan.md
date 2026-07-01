@@ -1298,6 +1298,17 @@ Current evidence:
   close/back-to-app proof, parked zero-FPS state, disabled needs-present
   polling, zero managed overlay timing, managed child-overlay isolation, and
   clean crash diagnostics.
+  A focused current-head 2026-07-01 minimal Apple Silicon matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-open-statuses-20260701-080050`
+  reused the signed arm64-only Electron `43.0.0` package and stable App ID
+  `480` shortcut without restarting Steam, then passed all 11 minimal cases
+  after the summary auditor began requiring named open-status snapshots from
+  every smoke result. Every summary row reported `openStatuses=true`, proving
+  the builder-facing `get*OpenStatus(...)` diagnostics stayed wired for direct
+  web/store/Friends/dialog opens, `openAndWait(...)` routes, duplicate-open
+  suppression, and passive notification priming while preserving the same
+  close/back-to-app, zero-FPS parking, zero managed timing, isolation, and
+  crash checks.
 - BrowserWindow-only overlay support is not proven.
 - Steam launch, app ID, auth, and callbacks are not enough to claim overlay
   support.

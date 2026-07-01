@@ -944,6 +944,10 @@ disabled needs-present polling, zero managed overlay timing, and clean crash
 diagnostics.
 New matrix manifests record their suite name, so the summary auditor rejects
 named-suite artifacts that drop required overlay surface cases.
+New manifests also require the smoke result snapshot to include named
+builder-facing open-status diagnostics for web, store, Friends, profile,
+players, community, stats, achievements, user, dialog, and checkout targets;
+summary rows report this as `openStatuses=true` when the proof is present.
 A focused 2026-07-01 checkout artifact at
 `/tmp/steam-bridge-macos-overlay-matrix-20260701-034916` rebuilt and signed the
 Apple Silicon Electron `43.0.0` package, reused the stable shortcut without
@@ -1016,6 +1020,17 @@ web/store/Friends/dialog helpers, wait-helper open/close, passive notification
 priming, visible Steam web content where applicable, close/back-to-app proof,
 parked zero-FPS state, disabled needs-present polling, zero managed overlay
 timing, managed child-overlay isolation, and clean crash diagnostics.
+A focused 2026-07-01 minimal Apple Silicon artifact at
+`/tmp/steam-bridge-macos-overlay-matrix-open-statuses-20260701-080050` reused
+the signed arm64-only Electron `43.0.0` package and the stable App ID `480`
+shortcut without restarting Steam, then passed all 11 Steam-launched cases after
+the summary auditor began requiring named open-status snapshots from every
+smoke result. Every summary row reported `openStatuses=true`, proving the
+builder-facing `get*OpenStatus(...)` diagnostics stayed wired for direct
+web/store/Friends/dialog opens, `openAndWait(...)` routes, duplicate-open
+suppression, and passive notification priming while preserving the same
+close/back-to-app, zero-FPS parking, zero managed timing, isolation, and crash
+checks.
 A later recovered-client full artifact at
 `/tmp/steam-bridge-macos-overlay-matrix-20260630-220434` also passed all 44
 process-per-case App ID `480` cases after recreating the stable shortcut and

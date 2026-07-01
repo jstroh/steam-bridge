@@ -60,6 +60,12 @@ auditor now rejects newly generated checkout manifests that carry unredacted
 sensitive checkout command values, and it scans smoke result JSON plus
 lifecycle logs for raw checkout approval URLs, transaction/order IDs, return
 URLs, Steam IDs, and private checkout CLI arguments.
+Newly generated macOS matrix manifests also require each smoke result snapshot
+to include the named builder-facing `get*OpenStatus(...)` diagnostics for web,
+store, Friends, profile, players, community, stats, achievements, user, dialog,
+and checkout targets. The summary prints this proof as `openStatuses=true` for
+each required case, so future artifacts prove the side-effect-free preflight
+status surface stayed wired while overlay routes are exercised.
 Use `--suite checkout` for focused real-product checkout evidence: it runs
 checkout prepare-only, direct checkout, managed Shift+Tab checkout, and
 programmatic checkout shortcut/open-and-wait with the same redaction,
@@ -139,6 +145,18 @@ web/store/Friends/dialog helpers, wait-helper open/close, passive notification
 priming, visible Steam web content where applicable, close/back-to-app proof,
 parked zero-FPS presenter state, disabled needs-present polling, zero managed
 overlay timing, managed child-overlay isolation, and clean crash diagnostics.
+
+A focused current-head 2026-07-01 minimal macOS Apple Silicon matrix at
+`/tmp/steam-bridge-macos-overlay-matrix-open-statuses-20260701-080050` reused
+the signed arm64-only Electron `43.0.0` package and stable App ID `480` shortcut
+without restarting Steam, then passed all 11 Steam-launched minimal cases after
+the summary auditor began requiring named open-status snapshots from every
+smoke result. Every summary row reported `openStatuses=true`, proving the
+builder-facing `get*OpenStatus(...)` diagnostics stayed wired for direct
+web/store/Friends/dialog opens, `openAndWait(...)` routes, duplicate-open
+suppression, and passive notification priming while preserving the same
+close/back-to-app, zero-FPS parking, zero managed timing, isolation, and crash
+checks.
 
 A 2026-07-01 full macOS Apple Silicon matrix at
 `/tmp/steam-bridge-macos-overlay-matrix-full-isolation-proof-20260701-045604`

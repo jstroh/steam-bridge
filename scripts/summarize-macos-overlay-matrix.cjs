@@ -189,6 +189,19 @@ const UNAVAILABLE_SUITE_REQUIRED_CASE_IDS = [
   "04-unavailable-shortcut-openwait",
   "05-unavailable-passive-toast"
 ];
+const NAMED_OPEN_STATUS_TARGET_TYPES = new Map([
+  ["web", "web"],
+  ["store", "store"],
+  ["friends", "friends"],
+  ["profile", "profile"],
+  ["players", "players"],
+  ["community", "community"],
+  ["stats", "stats"],
+  ["achievements", "achievements"],
+  ["user", "user"],
+  ["dialog", "dialog"],
+  ["checkout", "checkout"]
+]);
 const REQUIRED_SUITE_CASE_IDS = new Map([
   ["minimal", MINIMAL_SUITE_REQUIRED_CASE_IDS],
   ["core", CORE_SUITE_REQUIRED_CASE_IDS],
@@ -363,6 +376,7 @@ function summarizeMatrixArtifacts(root) {
         `zeroTiming=${summary.zeroTiming}`,
         `shown=${summary.shown}`,
         `webVisible=${summary.webVisible}`,
+        `openStatuses=${summary.openStatuses}`,
         `managedWaits=${summary.managedWaits}`,
         `openAndWait=${summary.openAndWait}`,
         `checkoutWait=${summary.checkoutWait}`,
@@ -512,6 +526,7 @@ function verifyCase(caseId, metadata, result, lifecycle, macosCrashReports, fail
   const duplicateOpenGuard = hasExpectedActionError
     ? { required: false, ok: true }
     : verifyDuplicateOpenGuard(caseId, actionName, resultEvents, lifecycleEntries, failures);
+  const openStatuses = verifyNamedOpenStatusSnapshots(caseId, metadata, overlay, failures);
   const webVisible = requireVisibleWebOverlay
     ? verifyWebOverlayVisibleBeforeClose(caseId, lifecycleEntries, failures)
     : { required: false, ok: true };
@@ -762,6 +777,7 @@ function verifyCase(caseId, metadata, result, lifecycle, macosCrashReports, fail
     zeroTiming,
     shown: managedWaits.required ? managedWaits.shownOk : "n/a",
     webVisible: webVisible.required ? webVisible.ok : "n/a",
+    openStatuses: openStatuses.required ? openStatuses.ok : "n/a",
     managedWaits: managedWaits.required ? managedWaits.ok : "n/a",
     openAndWait: openAndWait.required ? openAndWait.ok : "n/a",
     checkoutWait: checkoutWait.required ? checkoutWait.ok : "n/a",
@@ -843,6 +859,73 @@ function verifyDuplicateOpenGuard(caseId, actionName, resultEvents, lifecycleEnt
   );
 
   return { required: true, ok: failures.length === failuresBefore };
+}
+
+function verifyNamedOpenStatusSnapshots(caseId, metadata, overlay, failures) {
+  if (metadata.requireNamedOpenStatusSnapshots !== true) {
+    return { required: false, ok: true };
+  }
+
+  const failuresBefore = failures.length;
+  const openStatusesEntry = overlay.openStatuses;
+  expect(openStatusesEntry && openStatusesEntry.ok === true, `${caseId}: named open status snapshot read ok`, failures);
+  const statuses = readOkValue(openStatusesEntry);
+  expect(
+    Boolean(statuses && typeof statuses === "object" && !Array.isArray(statuses)),
+    `${caseId}: named open status snapshot available`,
+    failures
+  );
+  if (!statuses || typeof statuses !== "object" || Array.isArray(statuses)) {
+    return { required: true, ok: false };
+  }
+
+  for (const [name, targetType] of NAMED_OPEN_STATUS_TARGET_TYPES) {
+    const entry = statuses[name];
+    expect(entry && entry.ok === true, `${caseId}: named ${name} open status read ok`, failures);
+    const status = readOkValue(entry);
+    expect(
+      Boolean(status && typeof status === "object" && !Array.isArray(status)),
+      `${caseId}: named ${name} open status snapshot available`,
+      failures
+    );
+    if (!status || typeof status !== "object" || Array.isArray(status)) {
+      continue;
+    }
+    verifyNamedOpenStatus(caseId, name, targetType, status, failures);
+  }
+
+  return { required: true, ok: failures.length === failuresBefore };
+}
+
+function verifyNamedOpenStatus(caseId, name, targetType, status, failures) {
+  expect(typeof status.canOpen === "boolean", `${caseId}: named ${name} open status has canOpen boolean`, failures);
+  expect(typeof status.canWait === "boolean", `${caseId}: named ${name} open status has canWait boolean`, failures);
+  if (Object.prototype.hasOwnProperty.call(status, "reason")) {
+    expect(
+      typeof status.reason === "string" && status.reason.length > 0,
+      `${caseId}: named ${name} open status reason is a non-empty string`,
+      failures
+    );
+  }
+  if (Object.prototype.hasOwnProperty.call(status, "waitReason")) {
+    expect(
+      typeof status.waitReason === "string" && status.waitReason.length > 0,
+      `${caseId}: named ${name} open status waitReason is a non-empty string`,
+      failures
+    );
+  }
+
+  const targetSnapshot = objectField(status, "targetSnapshot");
+  expect(Boolean(targetSnapshot), `${caseId}: named ${name} open status includes targetSnapshot`, failures);
+  if (!targetSnapshot) {
+    return;
+  }
+  expect(
+    targetSnapshot.type === targetType,
+    `${caseId}: named ${name} open status target type expected ${formatValue(targetType)}, got ${formatValue(targetSnapshot.type)}`,
+    failures
+  );
+  expectSanitizedOverlayTargetSnapshot(caseId, `named ${name} open status targetSnapshot`, targetSnapshot, failures);
 }
 
 function verifyDuplicateOpenBusyStatus(caseId, label, status, failures) {
@@ -1887,6 +1970,9 @@ function runSelfTest() {
   const missingNamedStatusFixtureRoot = fs.mkdtempSync(
     path.join(os.tmpdir(), "steam-bridge-macos-matrix-summary-missing-named-status.")
   );
+  const missingOpenStatusSnapshotFixtureRoot = fs.mkdtempSync(
+    path.join(os.tmpdir(), "steam-bridge-macos-matrix-summary-missing-open-status-snapshot.")
+  );
   const persistentFixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-macos-matrix-summary-persistent."));
   try {
     createSelfTestFixture(fixtureRoot);
@@ -1933,6 +2019,9 @@ function runSelfTest() {
     createSelfTestFixture(missingNamedStatusFixtureRoot);
     removeDuplicateOpenNamedStatusProof(missingNamedStatusFixtureRoot, "01b-duplicate-open-guard");
     assertMissingDuplicateOpenNamedStatusRejected(missingNamedStatusFixtureRoot);
+    createSelfTestFixture(missingOpenStatusSnapshotFixtureRoot);
+    removeOpenStatusSnapshotProof(missingOpenStatusSnapshotFixtureRoot, "01-web-openwait");
+    assertMissingOpenStatusSnapshotRejected(missingOpenStatusSnapshotFixtureRoot);
     console.log("macOS overlay matrix summary self-test passed.");
   } finally {
     fs.rmSync(fixtureRoot, { recursive: true, force: true });
@@ -1945,6 +2034,7 @@ function runSelfTest() {
     fs.rmSync(missingWebVisibilityFixtureRoot, { recursive: true, force: true });
     fs.rmSync(missingNeedsPresentPollingFixtureRoot, { recursive: true, force: true });
     fs.rmSync(missingNamedStatusFixtureRoot, { recursive: true, force: true });
+    fs.rmSync(missingOpenStatusSnapshotFixtureRoot, { recursive: true, force: true });
     fs.rmSync(persistentFixtureRoot, { recursive: true, force: true });
   }
 }
@@ -2325,6 +2415,31 @@ function assertMissingDuplicateOpenNamedStatusRejected(root) {
   );
 }
 
+function removeOpenStatusSnapshotProof(root, caseId) {
+  const row = readManifestRows(root).find((entry) => entry.caseId === caseId);
+  assert.ok(row, `self-test fixture missing manifest row ${caseId}`);
+  const resultLine = fs
+    .readFileSync(row.resultFile, "utf8")
+    .split(/\r?\n/)
+    .find((line) => line.startsWith(RESULT_PREFIX));
+  assert.ok(resultLine, `self-test fixture should include a result line for ${caseId}`);
+  const result = JSON.parse(resultLine.slice(RESULT_PREFIX.length));
+  delete result.snapshot.overlay.openStatuses;
+  fs.writeFileSync(row.resultFile, `${RESULT_PREFIX}${JSON.stringify(result)}\n`);
+}
+
+function assertMissingOpenStatusSnapshotRejected(root) {
+  const result = spawnSync(process.execPath, [__filename, "--artifact-root", root], {
+    encoding: "utf8"
+  });
+  assert.notEqual(result.status, 0, "summary should reject missing named open status snapshots");
+  assert.match(
+    result.stderr,
+    /named open status snapshot read ok/,
+    "summary rejection should identify missing named open status snapshot proof"
+  );
+}
+
 function createSelfTestFixture(root) {
   fs.mkdirSync(root, { recursive: true });
 
@@ -2358,7 +2473,8 @@ function createSelfTestFixture(root) {
       },
       overlay: {
         nativePresenter: { ok: true, value: basePresenter },
-        nativeHostAvailability: { ok: true, value: nativeHostAvailabilityFixture(basePresenter) }
+        nativeHostAvailability: { ok: true, value: nativeHostAvailabilityFixture(basePresenter) },
+        openStatuses: namedOpenStatusesFixture()
       }
     }
   };
@@ -2963,6 +3079,7 @@ function createSelfTestFixture(root) {
       requireNativeHostUnavailableReason: fixture.requireNativeHostUnavailableReason || null,
       requireNoOverlayActivation: fixture.requireNoOverlayActivation === true,
       requireMacosNeedsPresentPollingDisabled: true,
+      requireNamedOpenStatusSnapshots: true,
       requireMicroTxnCallback: fixture.requireMicroTxnCallback === true
     });
   }
@@ -3028,7 +3145,8 @@ function createPersistentSelfTestFixture(root) {
       requireActionErrorReason: null,
       requireNativeHostUnavailableReason: null,
       requireNoOverlayActivation: false,
-      requireMacosNeedsPresentPollingDisabled: true
+      requireMacosNeedsPresentPollingDisabled: true,
+      requireNamedOpenStatusSnapshots: true
     });
   }
 
@@ -3071,10 +3189,41 @@ function persistentShortcutResultFixture(fixture) {
         nativePresenter: {
           ok: true,
           value: withShortcutTargetSnapshot(parkedPresenterFixture(fixture.pumpCount), "function")
-        }
+        },
+        openStatuses: namedOpenStatusesFixture()
       }
     }
   };
+}
+
+function namedOpenStatusesFixture() {
+  const snapshots = {
+    web: { type: "web", modal: true, hasUrl: true },
+    store: { type: "store", appId: 480 },
+    friends: { type: "friends" },
+    profile: { type: "profile" },
+    players: { type: "players" },
+    community: { type: "community", appId: 480 },
+    stats: { type: "stats", appId: 480 },
+    achievements: { type: "achievements", appId: 480 },
+    user: { type: "user", appId: 480, dialog: "chat" },
+    dialog: { type: "dialog", appId: 480, dialog: "OfficialGameGroup" },
+    checkout: { type: "checkout" }
+  };
+  const value = {};
+  for (const [name, targetSnapshot] of Object.entries(snapshots)) {
+    const supported = name !== "checkout";
+    value[name] = {
+      ok: true,
+      value: {
+        canOpen: supported,
+        canWait: supported,
+        ...(supported ? {} : { reason: "unsupported-target", waitReason: "unsupported-target" }),
+        targetSnapshot
+      }
+    };
+  }
+  return { ok: true, value };
 }
 
 function persistentShortcutLifecycleFixture(fixture) {
