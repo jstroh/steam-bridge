@@ -1199,6 +1199,13 @@ Current evidence:
   still call `openCheckoutAndWait(...)`, which keeps the presenter prepared,
   waits for overlay readiness before activation, and preserves sanitized
   checkout error snapshots if readiness fails.
+  Current source applies the same fresh diagnostics to generic side-effect-free
+  overlay status checks. `openIfAvailable(...)` and shortcut direct-open helpers
+  return `null` with `reason: "overlay-not-ready"` while the hook is not ready,
+  but the matching wait helpers can still wait for readiness before activation.
+  If Steam is not running, generic direct and waited `IfAvailable` helpers both
+  return `null` with `reason: "steam-unavailable"` instead of attempting any
+  Steam overlay activation.
   A 2026-07-01 full Apple Silicon matrix at
   `/tmp/steam-bridge-macos-overlay-matrix-full-isolation-proof-20260701-045604`
   rebuilt and signed the Electron `43.0.0` smoke package, reused the stable App

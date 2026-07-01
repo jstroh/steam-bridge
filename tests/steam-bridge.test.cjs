@@ -9565,10 +9565,27 @@ test("electron steam overlay openAndWait waits for overlay readiness before acti
     pollIntervalMs: 50
   });
 
-  const managedOpen = overlay.openAndWait(
-    { type: "web", url: "https://store.steampowered.com/app/480/", modal: true },
-    { showTimeoutMs: 500, closeTimeoutMs: 500 }
-  );
+  const webTarget = { type: "web", url: "https://store.steampowered.com/app/480/", modal: true };
+  const notReadyStatus = overlay.getOpenStatus(webTarget);
+  assert.equal(notReadyStatus.canOpen, false);
+  assert.equal(notReadyStatus.canWait, true);
+  assert.equal(notReadyStatus.reason, "overlay-not-ready");
+  assert.equal(notReadyStatus.waitReason, undefined);
+  assert.equal(notReadyStatus.snapshot.diagnostics.overlayEnabled, false);
+  assert.equal(notReadyStatus.nativeHostAvailability.available, true);
+  assert.match(notReadyStatus.message, /not ready yet/);
+  assert.equal(overlay.openIfAvailable(webTarget), null);
+  assert.deepEqual(steamWebOverlayCalls(fake), []);
+
+  const shortcutNotReadyStatus = overlay.getShortcutOpenStatus();
+  assert.equal(shortcutNotReadyStatus.canOpen, false);
+  assert.equal(shortcutNotReadyStatus.canWait, true);
+  assert.equal(shortcutNotReadyStatus.reason, "overlay-not-ready");
+  assert.equal(shortcutNotReadyStatus.waitReason, undefined);
+  assert.equal(shortcutNotReadyStatus.targetStatus?.reason, "overlay-not-ready");
+
+  const managedOpen = overlay.openAndWaitIfAvailable(webTarget, { showTimeoutMs: 500, closeTimeoutMs: 500 });
+  assert.notEqual(managedOpen, null);
 
   await new Promise((resolve) => setTimeout(resolve, 80));
   assert.deepEqual(
@@ -10314,6 +10331,46 @@ test("electron steam overlay checkout IfAvailable skips transactions when overla
 
   steamRunning = false;
   overlayEnabled = true;
+  const steamStoppedStatus = overlay.getOpenStatus({
+    type: "web",
+    url: "https://store.steampowered.com/app/480/",
+    modal: true
+  });
+  assert.equal(steamStoppedStatus.canOpen, false);
+  assert.equal(steamStoppedStatus.canWait, false);
+  assert.equal(steamStoppedStatus.reason, "steam-unavailable");
+  assert.equal(steamStoppedStatus.waitReason, "steam-unavailable");
+  assert.equal(steamStoppedStatus.snapshot.diagnostics.steamRunning, false);
+  assert.match(steamStoppedStatus.message, /Steam is not running/);
+  assert.equal(
+    overlay.openIfAvailable({
+      type: "web",
+      url: "https://store.steampowered.com/app/480/",
+      modal: true
+    }),
+    null
+  );
+  assert.equal(
+    await overlay.openAndWaitIfAvailable(
+      {
+        type: "web",
+        url: "https://store.steampowered.com/app/480/",
+        modal: true
+      },
+      { showTimeoutMs: 5, closeTimeoutMs: 5 }
+    ),
+    null
+  );
+  const shortcutSteamStoppedStatus = overlay.getShortcutOpenStatus();
+  assert.equal(shortcutSteamStoppedStatus.canOpen, false);
+  assert.equal(shortcutSteamStoppedStatus.canWait, false);
+  assert.equal(shortcutSteamStoppedStatus.reason, "steam-unavailable");
+  assert.equal(shortcutSteamStoppedStatus.waitReason, "steam-unavailable");
+  assert.equal(shortcutSteamStoppedStatus.targetStatus?.reason, "steam-unavailable");
+  assert.equal(overlay.openShortcutTargetIfAvailable(), null);
+  assert.equal(await overlay.openShortcutTargetAndWaitIfAvailable({ showTimeoutMs: 5, closeTimeoutMs: 5 }), null);
+  assert.deepEqual(steamWebOverlayCalls(fake), []);
+
   let steamStoppedOperationRan = false;
   assert.equal(
     await overlay.openCheckoutAndWaitIfAvailable(

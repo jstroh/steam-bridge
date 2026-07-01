@@ -346,6 +346,12 @@ still surface real errors after an overlay open begins. These helpers also
 return `null` while Steam's overlay is already active or the managed presenter
 is still opening a previous overlay, so duplicate menu/button presses do not
 start a second overlay action.
+If fresh diagnostics report Steam is not running, both helpers return `null`
+with `reason: "steam-unavailable"`. If diagnostics report the Steam overlay is
+not ready yet, direct `openIfAvailable(target)` returns `null` with
+`reason: "overlay-not-ready"`; `openAndWaitIfAvailable(target)` can still wait
+for overlay readiness before activation when the target has a verified managed
+wait route.
 Use `getShortcutOpenStatus()` for the same side-effect-free check against the
 configured Shift+Tab/controller target.
 

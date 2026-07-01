@@ -1925,6 +1925,8 @@ export interface ElectronSteamOverlayCheckoutAndWaitResult<T = ElectronSteamOver
 
 export type ElectronSteamOverlayOpenStatusReason =
   | "closed"
+  | "steam-unavailable"
+  | "overlay-not-ready"
   | "native-host-unavailable"
   | "unsupported-target"
   | "overlay-active"
@@ -10078,7 +10080,7 @@ function electronSteamOverlayOpenStatus(
   controller: ElectronSteamOverlay,
   target: SteamOverlayTarget
 ): ElectronSteamOverlayOpenStatus {
-  const snapshot = controller.snapshot();
+  const snapshot = refreshElectronSteamOverlaySnapshotDiagnostics(controller.snapshot());
   const targetSnapshot = snapshotSteamOverlayTarget(target);
   const nativeHostAvailability = electronSteamOverlayNativeHostAvailability(snapshot);
   const unavailableError = electronSteamOverlayNativeHostUnavailableError(snapshot);
@@ -10127,6 +10129,20 @@ function electronSteamOverlayOpenStatus(
     };
   }
 
+  if (snapshot.diagnostics?.steamRunning === false) {
+    return {
+      canOpen: false,
+      canWait: false,
+      target,
+      targetSnapshot,
+      snapshot,
+      nativeHostAvailability,
+      reason: "steam-unavailable",
+      waitReason: "steam-unavailable",
+      message: "Steam is not running."
+    };
+  }
+
   if (snapshot.overlayActive) {
     return {
       canOpen: false,
@@ -10153,6 +10169,34 @@ function electronSteamOverlayOpenStatus(
       waitReason: "opening",
       message: "Electron Steam overlay is already opening."
     };
+  }
+
+  if (snapshot.diagnostics?.overlayEnabled === false) {
+    try {
+      assertElectronSteamOverlayTargetCanWait(target);
+      return {
+        canOpen: false,
+        canWait: true,
+        target,
+        targetSnapshot,
+        snapshot,
+        nativeHostAvailability,
+        reason: "overlay-not-ready",
+        message: "Steam overlay is not ready yet."
+      };
+    } catch (error) {
+      return {
+        canOpen: false,
+        canWait: false,
+        target,
+        targetSnapshot,
+        snapshot,
+        nativeHostAvailability,
+        reason: "overlay-not-ready",
+        waitReason: "not-waitable",
+        message: error instanceof Error ? error.message : String(error)
+      };
+    }
   }
 
   try {
