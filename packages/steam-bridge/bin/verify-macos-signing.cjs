@@ -2,9 +2,11 @@
 
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 
+const STEAM_BRIDGE_MACOS_LAUNCHER_ID = "STEAM_BRIDGE_MACOS_ENV_LAUNCHER_V1";
 const REQUIRED_TRUE_ENTITLEMENTS = [
   "com.apple.security.cs.allow-dyld-environment-variables",
   "com.apple.security.cs.disable-library-validation"
@@ -58,6 +60,8 @@ function runCli(args, io = console) {
 
   try {
     verifyMacAppBundleLauncher(appExe, "native launcher");
+    verifySteamLauncherIdentity(appExe, "native launcher");
+    verifyRenamedElectronIsNotLauncher(`${appExe}.electron`, "renamed Electron executable");
     verifySignedExecutable(appExe, "native launcher");
     verifySignedExecutable(`${appExe}.electron`, "renamed Electron executable");
   } catch (error) {
@@ -107,7 +111,8 @@ function printUsage(io = console) {
   steam-bridge-verify-macos-signing --self-test
 
 Verifies the packaged macOS launcher and renamed Electron executable are
-installed as the app bundle executable, arm64-only, codesigned, and signed with
+installed as the app bundle executable pair, carry the expected launcher
+identity, are arm64-only, codesigned, and signed with
 Steam-overlay-compatible entitlements.
 `);
 }
@@ -213,6 +218,28 @@ function verifySignedExecutable(filePath, label) {
   );
   const entitlements = readEntitlements(filePath, label);
   verifyEntitlements(entitlements, label);
+}
+
+function verifySteamLauncherIdentity(filePath, label) {
+  assertBinaryMarker(filePath, label, true);
+}
+
+function verifyRenamedElectronIsNotLauncher(filePath, label) {
+  assertBinaryMarker(filePath, label, false);
+}
+
+function assertBinaryMarker(filePath, label, expectedPresent) {
+  assertNonEmptyFile(filePath, label);
+  const marker = Buffer.from(STEAM_BRIDGE_MACOS_LAUNCHER_ID, "utf8");
+  const hasMarker = fs.readFileSync(filePath).includes(marker);
+  if (expectedPresent && !hasMarker) {
+    throw new Error(`${label} is not the Steam Bridge macOS launcher: missing ${STEAM_BRIDGE_MACOS_LAUNCHER_ID}`);
+  }
+  if (!expectedPresent && hasMarker) {
+    throw new Error(
+      `${label} must be the renamed Electron executable, not the Steam Bridge macOS launcher: ${filePath}`
+    );
+  }
 }
 
 function assertExecutable(filePath, label) {
@@ -357,6 +384,26 @@ function runSelfTest() {
     /directly under Contents\/MacOS/
   );
 
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-macos-signing-self-test-"));
+  try {
+    const launcherPath = path.join(tempDir, "Launcher");
+    const electronPath = path.join(tempDir, "Launcher.electron");
+    fs.writeFileSync(launcherPath, `prefix ${STEAM_BRIDGE_MACOS_LAUNCHER_ID} suffix`);
+    fs.writeFileSync(electronPath, "ordinary electron executable bytes");
+    verifySteamLauncherIdentity(launcherPath, "self-test launcher");
+    verifyRenamedElectronIsNotLauncher(electronPath, "self-test electron");
+    assert.throws(
+      () => verifySteamLauncherIdentity(electronPath, "self-test missing launcher marker"),
+      /not the Steam Bridge macOS launcher/
+    );
+    assert.throws(
+      () => verifyRenamedElectronIsNotLauncher(launcherPath, "self-test electron launcher copy"),
+      /must be the renamed Electron executable/
+    );
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+
   const goodEntitlements = parseEntitlementBooleans(`<?xml version="1.0" encoding="UTF-8"?>
 <plist version="1.0">
 <dict>
@@ -412,6 +459,7 @@ if (require.main === module) {
 module.exports = {
   FORBIDDEN_ENTITLEMENTS,
   REQUIRED_TRUE_ENTITLEMENTS,
+  STEAM_BRIDGE_MACOS_LAUNCHER_ID,
   main,
   assertBundleExecutableMatches,
   parseArgs,
@@ -423,5 +471,7 @@ module.exports = {
   runSelfTest,
   verifyEntitlements,
   verifyMacAppBundleLauncher,
-  verifySignedExecutable
+  verifyRenamedElectronIsNotLauncher,
+  verifySignedExecutable,
+  verifySteamLauncherIdentity
 };

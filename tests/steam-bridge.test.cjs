@@ -1843,6 +1843,10 @@ test("project support policy covers Steam desktop targets except Intel macOS", (
     path.join(repoRoot, "packages", "steam-bridge", "bin", "verify-macos-signing.cjs"),
     "utf8"
   );
+  const launcherTemplate = fs.readFileSync(
+    path.join(repoRoot, "packages", "steam-bridge", "templates", "macos-steam-env-launcher.c"),
+    "utf8"
+  );
   const loader = fs.readFileSync(path.join(repoRoot, "packages", "steam-bridge", "src", "native.ts"), "utf8");
   const linkScript = fs.readFileSync(
     path.join(repoRoot, "packages", "steam-bridge", "scripts", "link-native.cjs"),
@@ -1894,6 +1898,32 @@ test("project support policy covers Steam desktop targets except Intel macOS", (
   assert.doesNotMatch(packagerScript, /platform:\s*"darwin"[\s\S]{0,160}arch:\s*"x64"|universal2?/);
   assert.match(prepareMacosScript, /"-arch",\s*"arm64"/);
   assert.match(verifyMacosScript, /must contain only an arm64 macOS slice/);
+  assert.match(verifyMacosScript, /STEAM_BRIDGE_MACOS_ENV_LAUNCHER_V1/);
+  assert.match(verifyMacosScript, /verifyRenamedElectronIsNotLauncher/);
+  assert.match(launcherTemplate, /STEAM_BRIDGE_MACOS_ENV_LAUNCHER_V1/);
+  assert.doesNotMatch(launcherTemplate, /SteamBridgeSmoke/);
+});
+
+test("macOS signing verifier checks launcher identity marker", (t) => {
+  const verifier = require(path.join(repoRoot, "packages", "steam-bridge", "bin", "verify-macos-signing.cjs"));
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-signing-identity-"));
+  t.after(() => fs.rmSync(tempDir, { recursive: true, force: true }));
+
+  const launcherPath = path.join(tempDir, "Example");
+  const electronPath = path.join(tempDir, "Example.electron");
+  fs.writeFileSync(launcherPath, `compiled bytes ${verifier.STEAM_BRIDGE_MACOS_LAUNCHER_ID}`);
+  fs.writeFileSync(electronPath, "ordinary electron executable bytes");
+
+  verifier.verifySteamLauncherIdentity(launcherPath, "native launcher");
+  verifier.verifyRenamedElectronIsNotLauncher(electronPath, "renamed Electron executable");
+  assert.throws(
+    () => verifier.verifySteamLauncherIdentity(electronPath, "native launcher"),
+    /not the Steam Bridge macOS launcher/
+  );
+  assert.throws(
+    () => verifier.verifyRenamedElectronIsNotLauncher(launcherPath, "renamed Electron executable"),
+    /must be the renamed Electron executable/
+  );
 });
 
 test("electron-builder helper skips non-mac targets without spawning", (t) => {

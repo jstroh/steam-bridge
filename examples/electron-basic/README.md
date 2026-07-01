@@ -340,10 +340,11 @@ and notarization pipeline to the app process Steam launches and the executable
 that process `exec`s.
 The macOS matrix preflights those requirements with
 `scripts/verify-macos-steam-signing.cjs`: the bundle `Info.plist` must name the
-native launcher as `CFBundleExecutable`, and both the native launcher and
-renamed Electron executable must be arm64-only, validly signed, allow dyld
-environment variables, disable library validation, and omit App Sandbox before
-Steam is launched.
+native launcher as `CFBundleExecutable`, the native launcher must carry Steam
+Bridge's launcher identity marker, the renamed Electron executable must not be
+another launcher copy, and both executables must be arm64-only, validly signed,
+allow dyld environment variables, disable library validation, and omit App
+Sandbox before Steam is launched.
 The preparation CLI is published with the package as
 `steam-bridge-prepare-macos-app`, so app projects can run
 `npx steam-bridge-prepare-macos-app --app-exe <YourApp.app/Contents/MacOS/YourApp>`
@@ -406,7 +407,10 @@ target. Use
 `steamOverlay.openWeb(...)` helper and persistent presenter path. The direct
 `presenter-*` actions use the named helpers such as `openStore(...)`,
 `openFriends(...)`, `openProfile(...)`, and the checkout target helper for
-common surfaces. Use
+common surfaces. For those direct-helper smoke actions, the harness first waits
+for Steam's overlay hook to report ready through `waitForOverlayReady()` when
+launch-time diagnostics are still `overlay-not-ready`; it does not use a fixed
+startup delay. Use
 `presenter-web-open-and-wait --web-modal true` to exercise the builder-facing
 `steamOverlay.openWebAndWait(...)` helper, which delegates to the same managed
 `openAndWait(...)` path; the smoke app records

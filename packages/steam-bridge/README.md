@@ -326,7 +326,10 @@ checkout approval routing, all high-level dialog-equivalent routes,
 close/back-to-app proof, and crash diagnostics. Before launching Steam, that
 matrix verifies both macOS smoke executables are arm64-only, validly signed,
 carry the Steam overlay entitlements, omit App Sandbox, and that the bundle
-`Info.plist` names the native launcher as `CFBundleExecutable`. The package also
+`Info.plist` names the native launcher as `CFBundleExecutable`. It also verifies
+that executable carries Steam Bridge's native launcher identity and that the
+renamed `<AppExecutable>.electron` executable does not, so a signing pipeline
+cannot silently leave Electron as the bundle entrypoint. The package also
 publishes the same check as `steam-bridge-verify-macos-signing`; run
 `npx steam-bridge-verify-macos-signing --app-exe <YourApp.app/Contents/MacOS/YourApp>`
 against the final signed app shape before Steam overlay testing.
@@ -1135,6 +1138,18 @@ re-proved prepare-only checkout, direct synthetic approval checkout, managed
 Shift+Tab checkout, and programmatic checkout `openAndWait(...)`, including
 close/back-to-app proof, parked zero-FPS presenter state, zero managed timing,
 managed isolation, and clean crash diagnostics.
+A focused 2026-07-01 minimal Apple Silicon artifact at
+`/tmp/steam-bridge-macos-overlay-matrix-20260701-105924` then reused the same
+signed arm64-only Electron `43.0.0` package, verified the native launcher
+identity marker, verified that the renamed `.electron` executable is not a
+second launcher copy, and passed all 11 Steam-launched minimal cases after
+direct presenter smoke actions began waiting through launch-time
+`overlay-not-ready` with `waitForOverlayReady()` before invoking named direct
+helpers. It re-proved direct web/store/Friends/dialog opens, wait-style
+web/store/Friends/dialog routes, duplicate-open suppression, passive toast
+priming, visible Steam web content, close/back-to-app proof, parked zero-FPS
+presenter state, zero managed timing, managed isolation, and clean crash
+diagnostics from the Apple Silicon package path.
 A later recovered-client full artifact at
 `/tmp/steam-bridge-macos-overlay-matrix-20260630-220434` also passed all 44
 process-per-case App ID `480` cases after recreating the stable shortcut and
@@ -1203,7 +1218,9 @@ launcher in `CFBundleExecutable`, not the renamed Electron executable.
 For shipped apps, use your normal Apple signing and notarization pipeline with
 those same entitlements on the launched app process and the executable it
 `exec`s.
-The package verifier can check that final shape:
+The package verifier can check that final shape, including the native launcher
+identity marker and the renamed Electron executable not being another launcher
+copy:
 
 ```sh
 npx steam-bridge-verify-macos-signing --app-exe <YourApp.app/Contents/MacOS/YourApp>

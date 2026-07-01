@@ -8,7 +8,9 @@ const {
   readCfBundleExecutable,
   resolveMacAppBundleExecutable,
   verifyMacAppBundleLauncher,
-  verifySignedExecutable
+  verifyRenamedElectronIsNotLauncher,
+  verifySignedExecutable,
+  verifySteamLauncherIdentity
 } = require("./verify-macos-signing.cjs");
 
 const packageRoot = path.resolve(__dirname, "..");
@@ -212,6 +214,8 @@ function prepareMacApp(options, io = console) {
     logStep(io, options, "verify prepared macOS Steam app shape");
     if (!options.dryRun) {
       verifyMacAppBundleLauncher(resolved.appExe, "native launcher");
+      verifySteamLauncherIdentity(resolved.appExe, "native launcher");
+      verifyRenamedElectronIsNotLauncher(resolved.electronExe, "renamed Electron executable");
       verifySignedExecutable(resolved.appExe, "native launcher");
       verifySignedExecutable(resolved.electronExe, "renamed Electron executable");
     }

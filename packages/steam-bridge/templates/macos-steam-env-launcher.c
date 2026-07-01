@@ -5,6 +5,10 @@
 #include <string.h>
 #include <unistd.h>
 
+#define STEAM_BRIDGE_MACOS_LAUNCHER_ID "STEAM_BRIDGE_MACOS_ENV_LAUNCHER_V1"
+
+__attribute__((used)) static const char steam_bridge_macos_launcher_id[] = STEAM_BRIDGE_MACOS_LAUNCHER_ID;
+
 static const char *value_after_equals(const char *arg, const char *name) {
   size_t name_len = strlen(name);
   if (strncmp(arg, name, name_len) != 0 || arg[name_len] != '=') {

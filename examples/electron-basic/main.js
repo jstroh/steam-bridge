@@ -808,16 +808,16 @@ async function runAutorunAction(action) {
         openPresenterDialogOverlay();
         return { ok: true, action };
       case "presenter-dialog-auto":
-        openPresenterDialogAutoOverlay();
+        await openPresenterDialogAutoOverlay();
         return { ok: true, action };
       case "presenter-dialog-auto-open-and-wait":
         openPresenterDialogAutoOpenAndWaitOverlay();
         return { ok: true, action };
       case "presenter-store":
-        openPresenterStoreOverlay();
+        await openPresenterStoreOverlay();
         return { ok: true, action };
       case "presenter-web":
-        openPresenterWebOverlay();
+        await openPresenterWebOverlay();
         return { ok: true, action };
       case "presenter-web-open-and-wait":
         openPresenterWebOpenAndWaitOverlay();
@@ -829,43 +829,43 @@ async function runAutorunAction(action) {
         openPresenterStoreOpenAndWaitOverlay();
         return { ok: true, action };
       case "presenter-friends":
-        openPresenterFriendsOverlay();
+        await openPresenterFriendsOverlay();
         return { ok: true, action };
       case "presenter-friends-open-and-wait":
         openPresenterFriendsOpenAndWaitOverlay();
         return { ok: true, action };
       case "presenter-profile":
-        openPresenterProfileOverlay();
+        await openPresenterProfileOverlay();
         return { ok: true, action };
       case "presenter-profile-open-and-wait":
         openPresenterProfileOpenAndWaitOverlay();
         return { ok: true, action };
       case "presenter-players":
-        openPresenterPlayersOverlay();
+        await openPresenterPlayersOverlay();
         return { ok: true, action };
       case "presenter-players-open-and-wait":
         openPresenterPlayersOpenAndWaitOverlay();
         return { ok: true, action };
       case "presenter-community":
-        openPresenterCommunityOverlay();
+        await openPresenterCommunityOverlay();
         return { ok: true, action };
       case "presenter-community-open-and-wait":
         openPresenterCommunityOpenAndWaitOverlay();
         return { ok: true, action };
       case "presenter-stats":
-        openPresenterStatsOverlay();
+        await openPresenterStatsOverlay();
         return { ok: true, action };
       case "presenter-stats-open-and-wait":
         openPresenterStatsOpenAndWaitOverlay();
         return { ok: true, action };
       case "presenter-achievements":
-        openPresenterAchievementsOverlay();
+        await openPresenterAchievementsOverlay();
         return { ok: true, action };
       case "presenter-achievements-open-and-wait":
         openPresenterAchievementsOpenAndWaitOverlay();
         return { ok: true, action };
       case "presenter-user":
-        openPresenterUserOverlay();
+        await openPresenterUserOverlay();
         return { ok: true, action };
       case "presenter-user-open-and-wait":
         openPresenterUserOpenAndWaitOverlay();
@@ -995,7 +995,7 @@ function openPresenterDialogOverlay() {
   return snapshot();
 }
 
-function openPresenterDialogAutoOverlay() {
+async function openPresenterDialogAutoOverlay() {
   const overlay = ensureElectronSteamOverlay();
   const target = { type: "dialog", dialog: OVERLAY_DIALOG, appId: APP_ID };
   const context = {
@@ -1005,13 +1005,10 @@ function openPresenterDialogAutoOverlay() {
     appId: APP_ID,
     api: "openDialog"
   };
-  openNamedPresenterTarget(overlay, target);
-  recordEvent("overlay:presenter-open", { ...context, presenter: overlay.snapshot() });
-  observeManagedOverlayLifecycle(overlay, context);
-  return snapshot();
+  return openPresenterTargetOverlay(overlay, target, context);
 }
 
-function openPresenterStoreOverlay() {
+async function openPresenterStoreOverlay() {
   const activeClient = requireClient();
   const overlay = ensureElectronSteamOverlay(activeClient);
   const url = typeof steamworks.steamStoreAppUrl === "function" ? steamworks.steamStoreAppUrl(APP_ID) : STORE_URL;
@@ -1024,13 +1021,10 @@ function openPresenterStoreOverlay() {
     url,
     api: "openStore"
   };
-  openNamedPresenterTarget(overlay, target);
-  recordEvent("overlay:presenter-open", { ...context, presenter: overlay.snapshot() });
-  observeManagedOverlayLifecycle(overlay, context);
-  return snapshot();
+  return openPresenterTargetOverlay(overlay, target, context);
 }
 
-function openPresenterWebOverlay() {
+async function openPresenterWebOverlay() {
   const overlay = ensureElectronSteamOverlay();
   const target = { type: "web", url: WEB_URL, modal: WEB_MODAL };
   const context = {
@@ -1039,10 +1033,7 @@ function openPresenterWebOverlay() {
     modal: WEB_MODAL,
     api: "openWeb"
   };
-  openNamedPresenterTarget(overlay, target);
-  recordEvent("overlay:presenter-open", { ...context, presenter: overlay.snapshot() });
-  observeManagedOverlayLifecycle(overlay, context);
-  return snapshot();
+  return openPresenterTargetOverlay(overlay, target, context);
 }
 
 function openPresenterWebOpenAndWaitOverlay() {
@@ -1238,6 +1229,34 @@ function openPresenterTargetAndWaitOverlay(overlay, target, context) {
   return snapshot();
 }
 
+async function openPresenterTargetOverlay(overlay, target, context) {
+  await waitForDirectPresenterOpenReadiness(overlay, target, context);
+  openNamedPresenterTarget(overlay, target);
+  recordEvent("overlay:presenter-open", { ...context, presenter: overlay.snapshot() });
+  observeManagedOverlayLifecycle(overlay, context);
+  return snapshot();
+}
+
+async function waitForDirectPresenterOpenReadiness(overlay, target, context) {
+  const status = getNamedPresenterTargetOpenStatus(overlay, target);
+  if (status?.canOpen || status?.reason !== "overlay-not-ready") {
+    return;
+  }
+  recordEvent("overlay:presenter-direct-open-wait-start", {
+    ...context,
+    status,
+    presenter: safeOverlaySnapshot(overlay)
+  });
+  const ready = await overlay.waitForOverlayReady({
+    timeoutMs: MANAGED_OVERLAY_WAIT_TIMEOUT_MS
+  });
+  recordEvent("overlay:presenter-direct-open-wait-complete", {
+    ...context,
+    ready,
+    presenter: safeOverlaySnapshot(overlay)
+  });
+}
+
 function openNamedPresenterTarget(overlay, target) {
   switch (target.type) {
     case "web":
@@ -1426,7 +1445,7 @@ function throwIfNativeHostUnavailable(snapshot) {
   throw new steamworks.SteamOverlayNativeHostUnavailableError(snapshot);
 }
 
-function openPresenterFriendsOverlay() {
+async function openPresenterFriendsOverlay() {
   const overlay = ensureElectronSteamOverlay();
   const target = { type: "friends" };
   const context = {
@@ -1435,13 +1454,10 @@ function openPresenterFriendsOverlay() {
     modal: true,
     api: "openFriends"
   };
-  openNamedPresenterTarget(overlay, target);
-  recordEvent("overlay:presenter-open", { ...context, presenter: overlay.snapshot() });
-  observeManagedOverlayLifecycle(overlay, context);
-  return snapshot();
+  return openPresenterTargetOverlay(overlay, target, context);
 }
 
-function openPresenterProfileOverlay() {
+async function openPresenterProfileOverlay() {
   const activeClient = requireClient();
   const overlay = ensureElectronSteamOverlay(activeClient);
   const steamId64 = activeClient.localplayer.getSteamId().steamId64;
@@ -1453,10 +1469,7 @@ function openPresenterProfileOverlay() {
     modal: true,
     api: "openProfile"
   };
-  openNamedPresenterTarget(overlay, target);
-  recordEvent("overlay:presenter-open", { ...context, presenter: overlay.snapshot() });
-  observeManagedOverlayLifecycle(overlay, context);
-  return snapshot();
+  return openPresenterTargetOverlay(overlay, target, context);
 }
 
 function openPresenterProfileOpenAndWaitOverlay() {
@@ -1474,7 +1487,7 @@ function openPresenterProfileOpenAndWaitOverlay() {
   return openPresenterTargetAndWaitOverlay(overlay, target, context);
 }
 
-function openPresenterPlayersOverlay() {
+async function openPresenterPlayersOverlay() {
   const activeClient = requireClient();
   const overlay = ensureElectronSteamOverlay(activeClient);
   const steamId64 = activeClient.localplayer.getSteamId().steamId64;
@@ -1486,10 +1499,7 @@ function openPresenterPlayersOverlay() {
     modal: true,
     api: "openPlayers"
   };
-  openNamedPresenterTarget(overlay, target);
-  recordEvent("overlay:presenter-open", { ...context, presenter: overlay.snapshot() });
-  observeManagedOverlayLifecycle(overlay, context);
-  return snapshot();
+  return openPresenterTargetOverlay(overlay, target, context);
 }
 
 function openPresenterPlayersOpenAndWaitOverlay() {
@@ -1507,7 +1517,7 @@ function openPresenterPlayersOpenAndWaitOverlay() {
   return openPresenterTargetAndWaitOverlay(overlay, target, context);
 }
 
-function openPresenterCommunityOverlay() {
+async function openPresenterCommunityOverlay() {
   const overlay = ensureElectronSteamOverlay();
   const target = { type: "community", appId: APP_ID };
   const context = {
@@ -1517,10 +1527,7 @@ function openPresenterCommunityOverlay() {
     modal: true,
     api: "openCommunity"
   };
-  openNamedPresenterTarget(overlay, target);
-  recordEvent("overlay:presenter-open", { ...context, presenter: overlay.snapshot() });
-  observeManagedOverlayLifecycle(overlay, context);
-  return snapshot();
+  return openPresenterTargetOverlay(overlay, target, context);
 }
 
 function openPresenterCommunityOpenAndWaitOverlay() {
@@ -1536,7 +1543,7 @@ function openPresenterCommunityOpenAndWaitOverlay() {
   return openPresenterTargetAndWaitOverlay(overlay, target, context);
 }
 
-function openPresenterStatsOverlay() {
+async function openPresenterStatsOverlay() {
   const overlay = ensureElectronSteamOverlay();
   const target = { type: "stats", appId: APP_ID };
   const context = {
@@ -1546,10 +1553,7 @@ function openPresenterStatsOverlay() {
     modal: true,
     api: "openStats"
   };
-  openNamedPresenterTarget(overlay, target);
-  recordEvent("overlay:presenter-open", { ...context, presenter: overlay.snapshot() });
-  observeManagedOverlayLifecycle(overlay, context);
-  return snapshot();
+  return openPresenterTargetOverlay(overlay, target, context);
 }
 
 function openPresenterStatsOpenAndWaitOverlay() {
@@ -1565,7 +1569,7 @@ function openPresenterStatsOpenAndWaitOverlay() {
   return openPresenterTargetAndWaitOverlay(overlay, target, context);
 }
 
-function openPresenterAchievementsOverlay() {
+async function openPresenterAchievementsOverlay() {
   const overlay = ensureElectronSteamOverlay();
   const target = { type: "achievements", appId: APP_ID };
   const context = {
@@ -1575,10 +1579,7 @@ function openPresenterAchievementsOverlay() {
     modal: true,
     api: "openAchievements"
   };
-  openNamedPresenterTarget(overlay, target);
-  recordEvent("overlay:presenter-open", { ...context, presenter: overlay.snapshot() });
-  observeManagedOverlayLifecycle(overlay, context);
-  return snapshot();
+  return openPresenterTargetOverlay(overlay, target, context);
 }
 
 function openPresenterAchievementsOpenAndWaitOverlay() {
@@ -1594,7 +1595,7 @@ function openPresenterAchievementsOpenAndWaitOverlay() {
   return openPresenterTargetAndWaitOverlay(overlay, target, context);
 }
 
-function openPresenterUserOverlay() {
+async function openPresenterUserOverlay() {
   const overlay = ensureElectronSteamOverlay();
   const target = { type: "user", dialog: USER_DIALOG, appId: APP_ID };
   const context = {
@@ -1604,10 +1605,7 @@ function openPresenterUserOverlay() {
     appId: APP_ID,
     api: "openUser"
   };
-  openNamedPresenterTarget(overlay, target);
-  recordEvent("overlay:presenter-open", { ...context, presenter: overlay.snapshot() });
-  observeManagedOverlayLifecycle(overlay, context);
-  return snapshot();
+  return openPresenterTargetOverlay(overlay, target, context);
 }
 
 function openPresenterUserOpenAndWaitOverlay() {

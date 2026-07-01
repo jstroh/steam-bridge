@@ -731,6 +731,18 @@ re-proved prepare-only checkout, direct synthetic approval checkout, managed
 Shift+Tab checkout, and programmatic checkout `openAndWait(...)`, including
 close/back-to-app proof, parked zero-FPS presenter state, zero managed timing,
 managed isolation, and clean crash diagnostics.
+A focused Apple Silicon minimal run at
+`/tmp/steam-bridge-macos-overlay-matrix-20260701-105924` then reused the same
+signed arm64-only Electron `43.0.0` package, verified the native launcher
+identity marker, verified that the renamed `.electron` executable is not a
+second launcher copy, and passed all 11 Steam-launched minimal cases after
+direct presenter smoke actions began waiting through launch-time
+`overlay-not-ready` with `waitForOverlayReady()` before invoking named direct
+helpers. It re-proved direct web/store/Friends/dialog opens, wait-style
+web/store/Friends/dialog routes, duplicate-open suppression, passive toast
+priming, visible Steam web content, close/back-to-app proof, parked zero-FPS
+presenter state, zero managed timing, managed isolation, and clean crash
+diagnostics from the Apple Silicon package path.
 
 ## Shipping Notes
 
@@ -750,10 +762,12 @@ managed isolation, and clean crash diagnostics.
   disabled so Steam can inject the overlay into the launched process. The signed
   smoke package is part of the live macOS overlay matrix, and the matrix
   verifies the bundle `Info.plist` names the native launcher as
-  `CFBundleExecutable`, then checks both smoke executables are arm64-only and
-  signed with those entitlements before it launches Steam. These packaging
-  requirements are covered by the same Steam-launched proof as the public
-  overlay helpers. Published package consumers can also run
+  `CFBundleExecutable`, verifies that executable carries Steam Bridge's native
+  launcher identity while `<AppExecutable>.electron` does not, then checks both
+  smoke executables are arm64-only and signed with those entitlements before it
+  launches Steam. These packaging requirements are covered by the same
+  Steam-launched proof as the public overlay helpers. Published package
+  consumers can also run
   `npx steam-bridge-verify-macos-signing --app-exe <YourApp.app/Contents/MacOS/YourApp>`
   against their shipped launcher shape.
 - `electron-builder` apps can hide that packaging step in normal lifecycle

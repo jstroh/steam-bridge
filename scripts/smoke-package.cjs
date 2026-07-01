@@ -236,6 +236,7 @@ function runMacosPackageSigningStaticChecks() {
     assert.ok(prepareScript.includes(expected), `macOS preparation CLI missing ${expected}`);
   }
   for (const expected of [
+    "STEAM_BRIDGE_MACOS_ENV_LAUNCHER_V1",
     "--steam-bridge-launch-target",
     "--steam-bridge-launch-app-id",
     "--steam-bridge-launch-overlay-game-id",
@@ -267,6 +268,9 @@ function runMacosPackageSigningStaticChecks() {
   }
   for (const expected of [
     "verifyMacAppBundleLauncher(appExe",
+    "verifySteamLauncherIdentity(appExe",
+    "verifyRenamedElectronIsNotLauncher(`${appExe}.electron`",
+    "STEAM_BRIDGE_MACOS_ENV_LAUNCHER_V1",
     "CFBundleExecutable",
     "Contents\", \"Info.plist",
     "/usr/bin/plutil"
@@ -317,6 +321,12 @@ function runElectronSmokeActionStaticChecks() {
     ["Electron smoke main", main, "case \"presenter-duplicate-open-guard\""],
     ["Electron smoke main", main, "overlay:presenter-ready"],
     ["Electron smoke main", main, "overlay:presenter-duplicate-open-guard"],
+    ["Electron smoke main", main, "overlay:presenter-direct-open-wait-start"],
+    ["Electron smoke main", main, "waitForDirectPresenterOpenReadiness"],
+    ["Electron smoke main", main, "waitForOverlayReady"],
+    ["Electron smoke main", main, "await openPresenterWebOverlay();"],
+    ["Electron smoke main", main, "await openPresenterStoreOverlay();"],
+    ["Electron smoke main", main, "await openPresenterFriendsOverlay();"],
     ["Electron smoke main", main, "getNativeHostAvailability"],
     ["Electron smoke main", main, "steam-smoke:presenter-shortcut-status"],
     ["Electron smoke main", main, "openShortcutTarget()"],
