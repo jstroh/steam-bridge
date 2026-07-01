@@ -902,11 +902,11 @@ restarts for shortcut updates. The live matrix also performs conservative stale
 IPC cleanup before a matrix-owned Steam startup when no `steam_osx` client is
 running: orphan Steam `ipcserver` processes are stopped and
 `/private/tmp/steam.pipe` is removed. `--close-steam-after` also runs that
-cleanup after failed startup attempts and normal matrix shutdown, waiting
-through delayed Steam client respawns from launch services before returning.
-Steam's launch service may recreate `ipcserver` after cleanup; health artifacts
-still report that helper if it is present. User-owned System V semaphores stay
-diagnostic-only because they are not provably Steam-specific. A 2026-06-30
+bounded cleanup after failed startup attempts and normal matrix shutdown.
+Steam's launch services may still recreate `steam_osx` or `ipcserver` later
+after the command returns; health artifacts still report those processes if
+they are present. User-owned System V semaphores stay diagnostic-only because
+they are not provably Steam-specific. A 2026-06-30
 artifact at
 `/tmp/steam-bridge-macos-steam-health-resource-snapshot-20260630-195055`
 reported Steam running with a `-steamid=0` bootstrap helper and fresh

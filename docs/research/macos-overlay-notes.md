@@ -848,13 +848,12 @@ Steam, log out or reboot macOS to clear the user-session IPC state.
   matrix-owned Steam startup when no `steam_osx` client is running. It stops an
   orphan Steam `ipcserver` and removes `/private/tmp/steam.pipe` so stale global
   endpoints are not carried into the next launch. `--close-steam-after` arms
-  the same cleanup for failed startup attempts and normal matrix shutdown, and
-  waits through delayed Steam client respawns from launch services before it
-  returns. Steam's launch service may recreate `ipcserver` after cleanup; health
-  artifacts still report that helper if it is present. The matrix does not
-  remove all user-owned System V semaphores automatically, because those handles
-  are not provably Steam-only; the health artifact keeps reporting them as
-  diagnostic evidence.
+  the same bounded cleanup for failed startup attempts and normal matrix
+  shutdown. Steam's launch services may still recreate `steam_osx` or
+  `ipcserver` later after the command returns; health artifacts still report
+  those processes if they are present. The matrix does not remove all user-owned
+  System V semaphores automatically, because those handles are not provably
+  Steam-only; the health artifact keeps reporting them as diagnostic evidence.
 
 ## Primary References
 
