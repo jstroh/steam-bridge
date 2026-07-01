@@ -570,6 +570,9 @@ performs the same preflight. Use
 `--suite checkout` for the focused macOS purchase path; it covers checkout
 prepare-only, direct checkout, Shift+Tab checkout, and programmatic checkout
 shortcut/open-and-wait without rerunning unrelated overlay surfaces.
+Matrix dry-run and live command logs redact checkout file paths, checkout URLs,
+return URLs, transaction IDs, and control tokens as `REDACTED`, so command logs
+can be shared for review without exposing private purchase data.
 Add `--require-microtxn-callback` when a real direct checkout proof is expected
 to produce `MicroTxnAuthorizationResponse`; the matrix summary will fail if the
 callback is missing or lacks a presenter snapshot. The Linux and

@@ -586,6 +586,10 @@ scans smoke result JSON and lifecycle logs for raw checkout approval URLs,
 transaction/order IDs, return URLs, Steam IDs, configured-product item
 metadata, price/currency details, and private checkout CLI arguments, so
 private purchase artifacts fail closed if redaction regresses.
+The matrix's dry-run and live command logs also redact checkout file paths,
+checkout URLs, return URLs, transaction IDs, and control tokens. Those logs show
+the option name plus `REDACTED`, which keeps command-shape review useful without
+printing private purchase data.
 On macOS, the helper also copies fresh `SteamBridgeSmoke*.ips` reports from
 `~/Library/Logs/DiagnosticReports`, plus `MTLCompilerService*.ips` reports whose
 content attributes the crash to `SteamBridgeSmoke`, into `macos-crash-reports/`,

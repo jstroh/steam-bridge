@@ -462,6 +462,9 @@ app IDs use the same wrong-app guard as runtime checkout opens without printing
 either value. Bad `InitTxn` captures fail before any live overlay work and only
 sanitized presence flags are printed. You can run the same check directly with
 `npx steam-bridge-validate-checkout-target --file <private-init-txn-response.json> --expected-app-id <your-app-id>`.
+Matrix dry-run and live command logs also redact checkout file paths, checkout
+URLs, return URLs, transaction IDs, and control tokens; they prove those inputs
+were wired by showing the option name with `REDACTED`, not the private value.
 For split-step checkout targets outside the managed wait helper, call
 `steamworks.overlay.checkoutTargetFromResult(initTxnResponse, { expectedAppId })`
 to get the same wrong-app guard before handing the target to a shortcut or other
@@ -595,6 +598,9 @@ The same auditor also scans smoke result JSON and lifecycle logs for raw
 checkout approval URLs, transaction/order IDs, return URLs, Steam IDs,
 configured-product item metadata, price/currency details, and private checkout
 CLI arguments, so private purchase artifacts fail closed if redaction regresses.
+The matrix's human-readable `RUN` and `QUIT` command logs use the same privacy
+posture for checkout inputs and control tokens: option names remain visible, but
+values are printed as `REDACTED`.
 A focused Apple Silicon minimal run at
 `/tmp/steam-bridge-macos-overlay-matrix-20260701-032532` also passed all 7
 minimal cases after expanding the duplicate-open guard to direct,
