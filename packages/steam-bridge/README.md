@@ -957,7 +957,10 @@ user.
 Use `--suite checkout` when the immediate question is private purchase behavior:
 it runs checkout prepare-only, direct checkout, managed Shift+Tab checkout, and
 programmatic shortcut checkout/open-and-wait with the same redacted manifest and
-summary gates as the larger suites.
+summary gates as the larger suites. Add `--require-microtxn-callback` with a
+private checkout JSON file when the artifact should prove real authorization;
+the summary then requires the MicroTxn callback to appear during the
+`openCheckoutAndWait(...)` lifecycle with the native presenter still attached.
 The current core/full/persistent suites include a checkout prepare-only case
 that calls `withCheckoutPrepared(...)` without transaction input, requires
 `overlay:presenter-checkout-ready`, rejects modal overlay activation, and audits

@@ -531,6 +531,8 @@ function verifyCase(caseId, metadata, result, lifecycle, macosCrashReports, fail
   const microTxnCallback = hasExpectedActionError
     ? { required: false, ok: true }
     : verifyMicroTxnCallbackPresenterSnapshots(caseId, lifecycleEntries, failures, {
+        actionName,
+        checkoutSource: summaryCheckoutSource,
         required: requireMicroTxnCallback
       });
   const managedWaits = hasExpectedActionError
@@ -1289,7 +1291,9 @@ function verifyCheckoutPrepared(caseId, actionName, entries, finalPresenter, opt
 }
 
 function verifyMicroTxnCallbackPresenterSnapshots(caseId, entries, failures, options = {}) {
-  const callbacks = entries.filter((entry) => entry && entry.type === "event:callback:microtxn");
+  const callbacks = entries
+    .map((entry, index) => ({ entry, index }))
+    .filter(({ entry }) => entry && entry.type === "event:callback:microtxn");
   if (callbacks.length === 0) {
     if (options.required === true) {
       failures.push(`${caseId}: required MicroTxnAuthorizationResponse callback was not recorded`);
@@ -1299,7 +1303,7 @@ function verifyMicroTxnCallbackPresenterSnapshots(caseId, entries, failures, opt
   }
 
   const failuresBefore = failures.length;
-  callbacks.forEach((entry, index) => {
+  callbacks.forEach(({ entry }, index) => {
     const presenter = presenterPayload(entry);
     const label = `microtxn callback ${index + 1}`;
     if (!presenter) {
@@ -1308,6 +1312,36 @@ function verifyMicroTxnCallbackPresenterSnapshots(caseId, entries, failures, opt
     }
     expectMicroTxnCallbackPresenter(caseId, presenter, label, failures);
   });
+
+  if (options.required === true && options.actionName === "presenter-checkout" && options.checkoutSource) {
+    const checkoutOpenIndex = entries.findIndex((entry) => {
+      const payload = objectOrEmpty(entry && entry.payload);
+      return (
+        entry &&
+        entry.type === "event:overlay:presenter-open" &&
+        payload.target === "checkout" &&
+        payload.api === "openCheckoutAndWait" &&
+        payload.checkoutSource === options.checkoutSource
+      );
+    });
+    const checkoutCompleteIndex = entries.findIndex(
+      (entry, index) =>
+        index > checkoutOpenIndex && entry && entry.type === "event:overlay:presenter-checkout-open-and-wait-complete"
+    );
+    const callbackDuringCheckout = callbacks.some(
+      ({ index }) => index > checkoutOpenIndex && index < checkoutCompleteIndex
+    );
+
+    if (checkoutOpenIndex === -1) {
+      failures.push(`${caseId}: required MicroTxn callback proof has no matching checkout open event`);
+    } else if (checkoutCompleteIndex === -1) {
+      failures.push(`${caseId}: required MicroTxn callback proof has no checkout wait completion event`);
+    } else if (!callbackDuringCheckout) {
+      failures.push(
+        `${caseId}: required MicroTxnAuthorizationResponse callback was not recorded during the checkout wait lifecycle`
+      );
+    }
+  }
 
   return { required: true, ok: failures.length === failuresBefore };
 }
@@ -2025,6 +2059,9 @@ function runSelfTest() {
   const missingMicroTxnFixtureRoot = fs.mkdtempSync(
     path.join(os.tmpdir(), "steam-bridge-macos-matrix-summary-missing-microtxn.")
   );
+  const lateMicroTxnFixtureRoot = fs.mkdtempSync(
+    path.join(os.tmpdir(), "steam-bridge-macos-matrix-summary-late-microtxn.")
+  );
   const missingCheckoutErrorSnapshotFixtureRoot = fs.mkdtempSync(
     path.join(os.tmpdir(), "steam-bridge-macos-matrix-summary-missing-checkout-error-snapshot.")
   );
@@ -2094,6 +2131,9 @@ function runSelfTest() {
     createSelfTestFixture(missingMicroTxnFixtureRoot);
     injectMicroTxnCallbackRequirement(missingMicroTxnFixtureRoot, "01-web-openwait");
     assertMissingMicroTxnCallbackRejected(missingMicroTxnFixtureRoot);
+    createSelfTestFixture(lateMicroTxnFixtureRoot);
+    moveMicroTxnCallbackAfterCheckoutCompletion(lateMicroTxnFixtureRoot, "06-checkout");
+    assertLateMicroTxnCallbackRejected(lateMicroTxnFixtureRoot);
     createSelfTestFixture(missingCheckoutErrorSnapshotFixtureRoot);
     removeCheckoutActionErrorSnapshot(missingCheckoutErrorSnapshotFixtureRoot, "07c-checkout-unavailable");
     assertMissingCheckoutActionErrorSnapshotRejected(missingCheckoutErrorSnapshotFixtureRoot);
@@ -2138,6 +2178,7 @@ function runSelfTest() {
     fs.rmSync(crashFixtureRoot, { recursive: true, force: true });
     fs.rmSync(metalCrashFixtureRoot, { recursive: true, force: true });
     fs.rmSync(missingMicroTxnFixtureRoot, { recursive: true, force: true });
+    fs.rmSync(lateMicroTxnFixtureRoot, { recursive: true, force: true });
     fs.rmSync(missingCheckoutErrorSnapshotFixtureRoot, { recursive: true, force: true });
     fs.rmSync(missingWebVisibilityFixtureRoot, { recursive: true, force: true });
     fs.rmSync(missingNeedsPresentPollingFixtureRoot, { recursive: true, force: true });
@@ -2428,6 +2469,42 @@ function assertMissingMicroTxnCallbackRejected(root) {
     result.stderr,
     /required MicroTxnAuthorizationResponse callback was not recorded/,
     "summary rejection should identify the missing MicroTxn callback"
+  );
+}
+
+function moveMicroTxnCallbackAfterCheckoutCompletion(root, caseId) {
+  const row = readManifestRows(root).find((entry) => entry.caseId === caseId);
+  assert.ok(row, `self-test fixture should include ${caseId}`);
+  const lifecyclePath = path.join(row.diagnosticDir, "lifecycle.jsonl");
+  const entries = fs
+    .readFileSync(lifecyclePath, "utf8")
+    .trim()
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .map((line) => JSON.parse(line));
+  const callbackIndex = entries.findIndex((entry) => entry && entry.type === "event:callback:microtxn");
+  const completeIndex = entries.findIndex(
+    (entry) => entry && entry.type === "event:overlay:presenter-checkout-open-and-wait-complete"
+  );
+  assert.notEqual(callbackIndex, -1, `self-test fixture ${caseId} should include a MicroTxn callback`);
+  assert.notEqual(completeIndex, -1, `self-test fixture ${caseId} should include checkout wait completion`);
+  const [callback] = entries.splice(callbackIndex, 1);
+  const adjustedCompleteIndex = entries.findIndex(
+    (entry) => entry && entry.type === "event:overlay:presenter-checkout-open-and-wait-complete"
+  );
+  entries.splice(adjustedCompleteIndex + 1, 0, callback);
+  fs.writeFileSync(lifecyclePath, entries.map((entry) => JSON.stringify(entry)).join("\n") + "\n");
+}
+
+function assertLateMicroTxnCallbackRejected(root) {
+  const result = spawnSync(process.execPath, [__filename, "--artifact-root", root], {
+    encoding: "utf8"
+  });
+  assert.notEqual(result.status, 0, "summary should reject MicroTxn callbacks recorded after checkout completion");
+  assert.match(
+    result.stderr,
+    /required MicroTxnAuthorizationResponse callback was not recorded during the checkout wait lifecycle/,
+    "summary rejection should identify MicroTxn callbacks outside the checkout wait lifecycle"
   );
 }
 

@@ -473,6 +473,10 @@ sanitized presence flags are printed. You can run the same check directly with
 Matrix dry-run and live command logs also redact checkout file paths, checkout
 URLs, return URLs, transaction IDs, and control tokens; they prove those inputs
 were wired by showing the option name with `REDACTED`, not the private value.
+When `--require-microtxn-callback` is used for real checkout proof, the macOS
+summary requires a `MicroTxnAuthorizationResponse` callback with an attached
+native presenter snapshot during the `openCheckoutAndWait(...)` lifecycle,
+before the checkout wait is allowed to complete.
 For split-step checkout targets outside the managed wait helper, call
 `steamworks.overlay.checkoutTargetFromResult(initTxnResponse, { expectedAppId })`
 to get the same wrong-app guard before handing the target to a shortcut or other
