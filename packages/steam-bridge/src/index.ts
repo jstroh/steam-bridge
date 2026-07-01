@@ -9239,21 +9239,27 @@ export function createElectronSteamOverlay(
     },
     openShortcutTarget(): NativeOverlayPresenter | null {
       assertOpen();
-      if (!shortcut.enabled) {
+      const status = controller.getShortcutOpenStatus();
+      if (!status.enabled || status.reason === "disabled") {
         return null;
       }
 
-      const snapshot = controller.snapshot();
-      if (snapshot.overlayActive || shortcutOpenState.opening || isElectronSteamOverlayShortcutOpening(snapshot)) {
+      if (status.reason === "overlay-active" || status.reason === "opening") {
         return null;
+      }
+
+      if (!status.canOpen && status.reason !== "dynamic-target") {
+        const error = electronSteamOverlayShortcutOpenStatusError(status);
+        notifyElectronSteamOverlayShortcutError(shortcut, error);
+        throw error;
       }
 
       shortcutOpenState.opening = true;
       try {
         if (typeof shortcut.target === "function") {
-          assertElectronSteamOverlayNativeHostAvailable(snapshot);
+          assertElectronSteamOverlayNativeHostAvailable(status.snapshot);
         }
-        const target = resolveElectronSteamOverlayShortcutTarget(shortcut.target);
+        const target = status.target ?? resolveElectronSteamOverlayShortcutTarget(shortcut.target);
         const openedPresenter = controller.open(target);
         notifyElectronSteamOverlayShortcutOpened(shortcut, target);
         return openedPresenter;
@@ -9277,21 +9283,27 @@ export function createElectronSteamOverlay(
       options: ElectronSteamOverlayOpenAndWaitOptions = {}
     ): Promise<ElectronSteamOverlayOpenAndWaitResult | null> {
       assertOpen();
-      if (!shortcut.enabled) {
+      const status = controller.getShortcutOpenStatus();
+      if (!status.enabled || status.reason === "disabled") {
         return null;
       }
 
-      const snapshot = controller.snapshot();
-      if (snapshot.overlayActive || shortcutOpenState.opening || isElectronSteamOverlayShortcutOpening(snapshot)) {
+      if (status.reason === "overlay-active" || status.reason === "opening") {
         return null;
+      }
+
+      if (!status.canWait && status.reason !== "dynamic-target") {
+        const error = electronSteamOverlayShortcutWaitStatusError(status);
+        notifyElectronSteamOverlayShortcutError(shortcut, error);
+        throw error;
       }
 
       shortcutOpenState.opening = true;
       try {
         if (typeof shortcut.target === "function") {
-          assertElectronSteamOverlayNativeHostAvailable(snapshot);
+          assertElectronSteamOverlayNativeHostAvailable(status.snapshot);
         }
-        const target = resolveElectronSteamOverlayShortcutTarget(shortcut.target);
+        const target = status.target ?? resolveElectronSteamOverlayShortcutTarget(shortcut.target);
         return await openElectronSteamOverlayTargetAndWait(target, options, {
           onOpened() {
             notifyElectronSteamOverlayShortcutOpened(shortcut, target);
@@ -10222,6 +10234,28 @@ function electronSteamOverlayShortcutStatusError(status: ElectronSteamOverlaySho
     return new Error(status.message ?? `Electron Steam overlay shortcut cannot open: ${status.reason}.`);
   }
   return undefined;
+}
+
+function electronSteamOverlayShortcutOpenStatusError(status: ElectronSteamOverlayShortcutStatus): Error {
+  const error = electronSteamOverlayShortcutStatusError(status);
+  if (error) {
+    return error;
+  }
+  if (status.targetStatus && !status.targetStatus.canOpen) {
+    return electronSteamOverlayOpenStatusError(status.targetStatus);
+  }
+  return new Error(status.message ?? `Electron Steam overlay shortcut cannot open: ${status.reason ?? "unavailable"}.`);
+}
+
+function electronSteamOverlayShortcutWaitStatusError(status: ElectronSteamOverlayShortcutStatus): Error {
+  const error = electronSteamOverlayShortcutStatusError(status);
+  if (error) {
+    return error;
+  }
+  return new Error(
+    status.message ??
+      `Electron Steam overlay shortcut cannot wait: ${status.waitReason ?? status.reason ?? "unavailable"}.`
+  );
 }
 
 function electronSteamOverlayOpenStatusError(status: ElectronSteamOverlayOpenStatus): Error {

@@ -398,8 +398,13 @@ wait route.
 already known, such as `reason: "steam-unavailable"`,
 `reason: "overlay-not-ready"`, or `reason: "native-host-unavailable"` while
 macOS is locked or display-asleep.
-Keyboard-triggered and programmatic shortcut opens also fail
-before resolving a dynamic target callback while the native host is unavailable.
+Keyboard-triggered and programmatic shortcut opens also fail before resolving a
+dynamic target callback while a hard blocker such as `steam-unavailable` or
+`native-host-unavailable` is already known. The non-waiting
+`openShortcutTarget()` helper also fails before resolving dynamic target
+callbacks while `overlay-not-ready` is already known; the wait-capable shortcut
+helpers can still resolve the target and wait through that temporary readiness
+state.
 The bridge consumes Shift+Tab only when it is opening
 a managed presenter-backed target; once Steam reports an active overlay, it lets
 Shift+Tab pass through so Steam can handle the close/toggle side. On macOS,

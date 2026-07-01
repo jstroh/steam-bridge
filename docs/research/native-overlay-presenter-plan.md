@@ -1361,7 +1361,10 @@ Current evidence:
   cases after direct managed opens began using the same status gate as
   `openIfAvailable(...)`. Unit coverage proves direct opens now throw before
   activation when fresh diagnostics already show `overlay-not-ready` or
-  `steam-unavailable`; the live run re-proved the happy path for direct
+  `steam-unavailable`; follow-up shortcut coverage proves programmatic shortcut
+  opens use the same fresh status gate before resolving dynamic target callbacks
+  for Steam-stopped, native-host-unavailable, and non-waiting overlay-not-ready
+  paths. The live run re-proved the happy path for direct
   web/store/Friends/dialog opens, wait-style web/store/Friends/dialog routes,
   duplicate-open suppression, passive toast priming, visible Steam web content,
   close/back-to-app proof, parked zero-FPS presenter state, zero managed

@@ -8457,6 +8457,7 @@ test("electron steam overlay dynamic shortcut IfAvailable waits for overlay read
   };
 
   let resolveCount = 0;
+  const shortcutErrors = [];
   const shortcutTarget = {
     type: "web",
     url: "https://store.steampowered.com/app/480/",
@@ -8469,6 +8470,9 @@ test("electron steam overlay dynamic shortcut IfAvailable waits for overlay read
       target() {
         resolveCount += 1;
         return shortcutTarget;
+      },
+      onError(error) {
+        shortcutErrors.push(error);
       }
     }
   });
@@ -8484,6 +8488,11 @@ test("electron steam overlay dynamic shortcut IfAvailable waits for overlay read
   assert.equal(resolveCount, 0);
   assert.equal(overlay.openShortcutTargetIfAvailable(), null);
   assert.equal(resolveCount, 0);
+  assert.deepEqual(steamWebOverlayCalls(fake), []);
+  assert.throws(() => overlay.openShortcutTarget(), /Steam overlay is not ready yet/);
+  assert.equal(resolveCount, 0);
+  assert.equal(shortcutErrors.length, 1);
+  assert.match(shortcutErrors[0].message, /Steam overlay is not ready yet/);
   assert.deepEqual(steamWebOverlayCalls(fake), []);
 
   const shortcutOpen = overlay.openShortcutTargetAndWaitIfAvailable({
@@ -11160,6 +11169,50 @@ test("electron steam overlay checkout IfAvailable skips transactions when overla
   assert.equal(shortcutSteamStoppedStatus.targetStatus?.reason, "steam-unavailable");
   assert.equal(overlay.openShortcutTargetIfAvailable(), null);
   assert.equal(await overlay.openShortcutTargetAndWaitIfAvailable({ showTimeoutMs: 5, closeTimeoutMs: 5 }), null);
+  assert.deepEqual(steamWebOverlayCalls(fake), []);
+
+  let dynamicShortcutResolveCount = 0;
+  const dynamicShortcutErrors = [];
+  const dynamicShortcutOverlay = steam.overlay.createElectronSteamOverlay(window, {
+    title: "Electron Dynamic Shortcut Steam Stopped Overlay",
+    pollIntervalMs: 10000,
+    overlayShortcut: {
+      target() {
+        dynamicShortcutResolveCount += 1;
+        return {
+          type: "web",
+          url: "https://store.steampowered.com/app/480/",
+          modal: true
+        };
+      },
+      onError(error) {
+        dynamicShortcutErrors.push(error);
+      }
+    }
+  });
+  const dynamicSteamStoppedShortcutStatus = dynamicShortcutOverlay.getShortcutOpenStatus();
+  assert.equal(dynamicSteamStoppedShortcutStatus.canOpen, false);
+  assert.equal(dynamicSteamStoppedShortcutStatus.canWait, false);
+  assert.equal(dynamicSteamStoppedShortcutStatus.reason, "steam-unavailable");
+  assert.equal(dynamicSteamStoppedShortcutStatus.waitReason, "steam-unavailable");
+  assert.equal(dynamicSteamStoppedShortcutStatus.target, undefined);
+  assert.equal(dynamicSteamStoppedShortcutStatus.targetStatus, undefined);
+  assert.equal(dynamicShortcutResolveCount, 0);
+  assert.equal(dynamicShortcutOverlay.openShortcutTargetIfAvailable(), null);
+  assert.equal(await dynamicShortcutOverlay.openShortcutTargetAndWaitIfAvailable({ showTimeoutMs: 5, closeTimeoutMs: 5 }), null);
+  assert.equal(dynamicShortcutResolveCount, 0);
+  assert.throws(() => dynamicShortcutOverlay.openShortcutTarget(), /Steam is not running/);
+  assert.equal(dynamicShortcutResolveCount, 0);
+  assert.equal(dynamicShortcutErrors.length, 1);
+  assert.match(dynamicShortcutErrors[0].message, /Steam is not running/);
+  await assert.rejects(
+    dynamicShortcutOverlay.openShortcutTargetAndWait({ showTimeoutMs: 5, closeTimeoutMs: 5 }),
+    /Steam is not running/
+  );
+  assert.equal(dynamicShortcutResolveCount, 0);
+  assert.equal(dynamicShortcutErrors.length, 2);
+  assert.match(dynamicShortcutErrors[1].message, /Steam is not running/);
+  dynamicShortcutOverlay.close();
   assert.deepEqual(steamWebOverlayCalls(fake), []);
 
   let steamStoppedOperationRan = false;
