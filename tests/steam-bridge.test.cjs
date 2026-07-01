@@ -1780,6 +1780,9 @@ async function waitForNextSteamWebOverlayCall(fake, afterCount, expectedArgs, ti
 test("project support policy covers Steam desktop targets except Intel macOS", () => {
   const packageJson = require(path.join(repoRoot, "packages", "steam-bridge", "package.json"));
   const rootPackageJson = require(path.join(repoRoot, "package.json"));
+  const rootReadme = fs.readFileSync(path.join(repoRoot, "README.md"), "utf8");
+  const packageReadme = fs.readFileSync(path.join(repoRoot, "packages", "steam-bridge", "README.md"), "utf8");
+  const exampleReadme = fs.readFileSync(path.join(repoRoot, "examples", "electron-basic", "README.md"), "utf8");
   const ciWorkflow = fs.readFileSync(path.join(repoRoot, ".github", "workflows", "ci.yml"), "utf8");
   const releaseWorkflow = fs.readFileSync(path.join(repoRoot, ".github", "workflows", "release.yml"), "utf8");
   const targetScript = fs.readFileSync(path.join(repoRoot, "scripts", "assert-supported-targets.cjs"), "utf8");
@@ -1828,6 +1831,9 @@ test("project support policy covers Steam desktop targets except Intel macOS", (
   }
   assert.match(targetScript, /x86_64-apple-darwin/);
   assert.match(loader, /Intel macOS is not supported/);
+  assert.match(rootReadme, /Do not package, launch, or verify macOS smoke apps through Rosetta/);
+  assert.match(packageReadme, /Do not package, launch, or verify macOS smoke\s+apps through Rosetta/);
+  assert.match(exampleReadme, /Do not\s+launch these macOS smoke apps through Rosetta/);
   assert.match(
     packagerScript,
     /"aarch64-apple-darwin":\s*\{[\s\S]*?platform:\s*"darwin"[\s\S]*?arch:\s*"arm64"/
@@ -6665,6 +6671,8 @@ test("electron steam overlay checkout preparation holds only for the wrapped ope
     assert.equal(error.state, "finish checkout preparation operation");
     assert.equal(error.snapshot.mode, "active");
     assert.equal(error.snapshot.currentFps, 30);
+    assert.deepEqual(error.targetSnapshot, { type: "checkout" });
+    assert.deepEqual(error.checkoutTargetSnapshot, { type: "checkout" });
     assert.match(error.message, /Aborted waiting for Steam overlay to finish checkout preparation operation/);
     return true;
   });
@@ -9623,6 +9631,8 @@ test("electron steam overlay checkout helper prepares, opens, and waits with bac
     assert.equal(error.state, "finish checkout operation");
     assert.equal(error.snapshot.mode, "active");
     assert.equal(error.snapshot.currentFps, 30);
+    assert.deepEqual(error.targetSnapshot, { type: "checkout" });
+    assert.deepEqual(error.checkoutTargetSnapshot, { type: "checkout" });
     assert.match(error.message, /Aborted waiting for Steam overlay to finish checkout operation/);
     return true;
   });
@@ -9666,6 +9676,8 @@ test("electron steam overlay checkout helper prepares, opens, and waits with bac
     assert.equal(error.state, "finish checkout operation");
     assert.equal(error.snapshot.closed, true);
     assert.equal(error.snapshot.mode, "closed");
+    assert.deepEqual(error.targetSnapshot, { type: "checkout" });
+    assert.deepEqual(error.checkoutTargetSnapshot, { type: "checkout" });
     assert.match(error.message, /closed while waiting for Steam overlay to finish checkout operation/);
     return true;
   });
@@ -10396,6 +10408,16 @@ test("electron steam overlay manager fails fast while the macOS native host is u
     assert.match(error.message, /macOS screen is locked/);
     return true;
   };
+  const assertCheckoutUnavailableError = (error) => {
+    assertUnavailableError(error);
+    assert.deepEqual(error.targetSnapshot, { type: "checkout" });
+    assert.deepEqual(error.checkoutTargetSnapshot, { type: "checkout" });
+    assert.deepEqual(steam.getSteamOverlayErrorTargetSnapshot(error), { type: "checkout" });
+    assert.deepEqual(steam.getSteamOverlayCheckoutErrorTargetSnapshot(error), { type: "checkout" });
+    assert.deepEqual(steam.overlay.getSteamOverlayErrorTargetSnapshot(error), { type: "checkout" });
+    assert.deepEqual(steam.overlay.getSteamOverlayCheckoutErrorTargetSnapshot(error), { type: "checkout" });
+    return true;
+  };
 
   assert.throws(
     () => overlay.open({ type: "dialog", dialog: steam.Dialog.Settings }),
@@ -10420,7 +10442,7 @@ test("electron steam overlay manager fails fast while the macOS native host is u
     /openAndWait\(\) requires a presenter-backed target/
   );
   assert.throws(() => overlay.open({ type: "friends" }), assertUnavailableError);
-  assert.throws(() => overlay.prepareForCheckout(), assertUnavailableError);
+  assert.throws(() => overlay.prepareForCheckout(), assertCheckoutUnavailableError);
 
   await assert.rejects(
     overlay.openAndWait(
@@ -10440,7 +10462,14 @@ test("electron steam overlay manager fails fast while the macOS native host is u
       },
       { showTimeoutMs: 200, closeTimeoutMs: 200 }
     ),
-    assertUnavailableError
+    assertCheckoutUnavailableError
+  );
+  await assert.rejects(
+    overlay.withCheckoutPrepared(() => {
+      checkoutOperationRan = true;
+      return "prepared";
+    }),
+    assertCheckoutUnavailableError
   );
   assert.equal(checkoutOperationRan, false);
 
@@ -10541,6 +10570,8 @@ test("electron steam overlay checkout helper stops if macOS host becomes unavail
     assert.equal(error.code, "STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE");
     assert.equal(error.reason, "macos-screen-locked");
     assert.deepEqual(error.macOverlayEnvironment, { screenLocked: true, displayAsleep: false });
+    assert.deepEqual(error.targetSnapshot, { type: "checkout" });
+    assert.deepEqual(error.checkoutTargetSnapshot, { type: "checkout" });
     return true;
   });
 

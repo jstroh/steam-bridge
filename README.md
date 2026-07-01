@@ -30,7 +30,8 @@ Intel macOS is intentionally not supported. CI, release prebuilds, runtime
 loading, native linking, and macOS smoke-app packaging enforce the supported
 target list. All macOS test apps are built and run as Apple Silicon arm64
 targets only; Steam Bridge does not build, run, or verify Intel or universal
-macOS apps.
+macOS apps. Do not package, launch, or verify macOS smoke apps through Rosetta
+or any `darwin-x64`/universal Electron build.
 
 ## Quick Start
 
@@ -353,10 +354,11 @@ of raw checkout targets because they keep only presence flags for checkout URLs,
 transaction IDs, return URLs, and Steam IDs. App ID `480` proves generic
 checkout routing only; real purchase UI and `InitTxn` proof require your own
 Steam app ID with configured products.
-If a managed overlay wait fails, catch the original wait error and call
+If a managed overlay wait, checkout preparation, or checkout native-host guard
+fails, catch the original error and call
 `steamworks.getSteamOverlayErrorTargetSnapshot(error)` or
-`steamworks.getSteamOverlayCheckoutErrorTargetSnapshot(error)` before logging;
-those helpers expose the same sanitized target context without raw checkout
+`steamworks.getSteamOverlayCheckoutErrorTargetSnapshot(error)` before logging.
+Those helpers expose the same sanitized target context without raw checkout
 values.
 
 The full Electron overlay API and platform notes are in

@@ -28,7 +28,8 @@ Steam Bridge targets Steam desktop platforms for Electron and Node:
 Intel macOS is intentionally not supported. CI, release prebuilds, runtime
 loading, native linking, and macOS smoke-app packaging enforce Apple Silicon
 arm64 as the only macOS target; Steam Bridge does not build, run, or verify
-Intel or universal macOS apps.
+Intel or universal macOS apps. Do not package, launch, or verify macOS smoke
+apps through Rosetta or any `darwin-x64`/universal Electron build.
 
 The packaged Windows smoke helper accepts the same generic smoke actions as the
 Deck/macOS helpers for web, store, Friends, dialog-equivalent, checkout,
@@ -402,8 +403,9 @@ record only presence flags for checkout URLs, transaction IDs, return URLs, and
 Steam IDs, so real purchase artifacts can stay useful without leaking private
 values.
 Managed overlay wait failures keep their original error class and also carry a
-sanitized `targetSnapshot`. Checkout wait failures additionally carry
-`checkoutTargetSnapshot`; use
+sanitized `targetSnapshot`. Checkout wait, checkout preparation, pending
+checkout-operation abort/close, and checkout native-host-unavailable failures
+additionally carry `checkoutTargetSnapshot`; use
 `client.overlay.getSteamOverlayErrorTargetSnapshot(error)` or
 `client.overlay.getSteamOverlayCheckoutErrorTargetSnapshot(error)` when logging
 failures instead of logging the raw checkout target.

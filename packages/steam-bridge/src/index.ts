@@ -8978,7 +8978,8 @@ export function createElectronSteamOverlay(
     ): Promise<ElectronSteamOverlayCheckoutAndWaitResult<T>> {
       assertOpen();
       const { modal, returnUrl, ...waitOptions } = options;
-      assertElectronSteamOverlayNativeHostAvailable(controller.snapshot());
+      const pendingCheckoutTargetSnapshot = snapshotSteamOverlayTarget({ type: "checkout" });
+      assertElectronSteamOverlayCheckoutNativeHostAvailable(controller.snapshot());
       const presenterInternal = presenter as NativeOverlayPresenterInternal;
       const activationHandle = presenterInternal.beginOverlayActivation?.("interactive");
       let activationReleased = false;
@@ -8995,7 +8996,8 @@ export function createElectronSteamOverlay(
           controller,
           "finish checkout operation",
           operation,
-          waitOptions.signal
+          waitOptions.signal,
+          pendingCheckoutTargetSnapshot
         );
         const target = electronSteamOverlayCheckoutTargetFromResult(transaction, { modal, returnUrl });
         const opened = await openElectronSteamOverlayTargetAndWait(target, waitOptions, {
@@ -9018,7 +9020,8 @@ export function createElectronSteamOverlay(
       options: ElectronSteamOverlayCheckoutPrepareOptions = {}
     ): Promise<T> {
       assertOpen();
-      assertElectronSteamOverlayNativeHostAvailable(controller.snapshot());
+      const pendingCheckoutTargetSnapshot = snapshotSteamOverlayTarget({ type: "checkout" });
+      assertElectronSteamOverlayCheckoutNativeHostAvailable(controller.snapshot());
       const presenterInternal = presenter as NativeOverlayPresenterInternal;
       const activationHandle = presenterInternal.beginOverlayActivation?.("interactive");
       if (!activationHandle) {
@@ -9029,7 +9032,8 @@ export function createElectronSteamOverlay(
           controller,
           "finish checkout preparation operation",
           operation,
-          options.signal
+          options.signal,
+          pendingCheckoutTargetSnapshot
         );
       } finally {
         activationHandle?.disconnect();
@@ -9037,7 +9041,7 @@ export function createElectronSteamOverlay(
     },
     prepareForCheckout(durationMs?: number): NativeOverlayPresenter {
       assertOpen();
-      assertElectronSteamOverlayNativeHostAvailable(controller.snapshot());
+      assertElectronSteamOverlayCheckoutNativeHostAvailable(controller.snapshot());
       presenter.prepareForOverlay(durationMs);
       return presenter;
     },
@@ -9917,6 +9921,14 @@ function assertElectronSteamOverlayNativeHostAvailable(snapshot: ElectronSteamOv
   }
 }
 
+function assertElectronSteamOverlayCheckoutNativeHostAvailable(snapshot: ElectronSteamOverlaySnapshot): void {
+  try {
+    assertElectronSteamOverlayNativeHostAvailable(snapshot);
+  } catch (error) {
+    throw annotateSteamOverlayTargetSnapshotError(error, snapshotSteamOverlayTarget({ type: "checkout" }));
+  }
+}
+
 function electronSteamOverlayNativeHostUnavailableError(
   snapshot: ElectronSteamOverlaySnapshot
 ): SteamOverlayNativeHostUnavailableError | undefined {
@@ -10269,7 +10281,8 @@ function runElectronSteamOverlayAbortableOperation<T>(
   controller: ElectronSteamOverlay,
   stateLabel: string,
   operation: () => T | Promise<T>,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  errorTargetSnapshot?: SteamOverlayTargetSnapshot
 ): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     let abortHandler: (() => void) | undefined;
@@ -10302,6 +10315,12 @@ function runElectronSteamOverlayAbortableOperation<T>(
       reject(error);
     };
 
+    const settleRejectOverlayError = (error: unknown): void => {
+      settleReject(
+        errorTargetSnapshot ? annotateSteamOverlayTargetSnapshotError(error, errorTargetSnapshot) : error
+      );
+    };
+
     const settleResolve = (value: T): void => {
       if (settled) {
         return;
@@ -10312,7 +10331,7 @@ function runElectronSteamOverlayAbortableOperation<T>(
     };
 
     abortHandler = (): void => {
-      settleReject(new SteamOverlayWaitAbortedError(stateLabel, currentSnapshot()));
+      settleRejectOverlayError(new SteamOverlayWaitAbortedError(stateLabel, currentSnapshot()));
     };
 
     const checkOpen = (): boolean => {
@@ -10326,12 +10345,12 @@ function runElectronSteamOverlayAbortableOperation<T>(
 
       const unavailableError = electronSteamOverlayNativeHostUnavailableError(snapshot);
       if (unavailableError) {
-        settleReject(unavailableError);
+        settleRejectOverlayError(unavailableError);
         return true;
       }
 
       if (snapshot.closed || !controller.isOpen()) {
-        settleReject(new SteamOverlayWaitClosedError(stateLabel, snapshot));
+        settleRejectOverlayError(new SteamOverlayWaitClosedError(stateLabel, snapshot));
         return true;
       }
 

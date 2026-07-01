@@ -54,7 +54,8 @@ Run them on `darwin/arm64` and produce the
 `aarch64-apple-darwin` / `SteamBridgeSmoke-darwin-arm64` app shape. Steam
 Bridge does not build, run, or verify Intel or universal macOS test apps.
 Do not copy this example into a `darwin-x64` or universal Electron build; the
-macOS Steam overlay evidence for this project is arm64-only by design.
+macOS Steam overlay evidence for this project is arm64-only by design. Do not
+launch these macOS smoke apps through Rosetta.
 
 The Windows package includes `windows-electron-smoke.ps1`. Use
 `-Mode print-launch-options` to generate non-Steam shortcut arguments, or
@@ -539,6 +540,12 @@ properties copied from that snapshot when available; timeout errors also include
 `isSteamOverlayWaitAbortedError(error)`, or
 `isSteamOverlayWaitClosedError(error)` guard for fallback or diagnostics instead
 of parsing the message.
+Managed checkout wait, checkout preparation, pending checkout-operation
+abort/close, and checkout native-host-unavailable failures also carry sanitized
+`targetSnapshot` and `checkoutTargetSnapshot` diagnostics. Use
+`getSteamOverlayCheckoutErrorTargetSnapshot(error)` when logging real purchase
+failures so raw checkout URLs, transaction IDs, return URLs, and Steam IDs stay
+out of artifacts.
 Dynamic shortcut targets are resolved only when the shortcut actually opens.
 `getShortcutOpenStatus()` does not call app code; it reports a dynamic target as
 dynamic unless a stronger side-effect-free blocker is already known, such as a

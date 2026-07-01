@@ -1111,11 +1111,14 @@ Current evidence:
   metadata or lifecycle logs.
   Current source also annotates managed wait failures with sanitized
   `targetSnapshot` context, plus `checkoutTargetSnapshot` for checkout targets,
-  while preserving the original wait error class. This keeps real-product
-  checkout failure logs useful without requiring apps or smoke artifacts to
-  serialize raw checkout URLs, transaction IDs, return URLs, or Steam IDs. The
-  macOS matrix summary self-test now covers checkout open and checkout prepare
-  fail-fast artifacts and rejects missing checkout error snapshots.
+  while preserving the original wait error class. Checkout preparation,
+  pending checkout-operation abort/close, and checkout native-host-unavailable
+  failures also carry a sanitized checkout snapshot even before a transaction
+  target exists. This keeps real-product checkout failure logs useful without
+  requiring apps or smoke artifacts to serialize raw checkout URLs, transaction
+  IDs, return URLs, or Steam IDs. The macOS matrix summary self-test now covers
+  checkout open and checkout prepare fail-fast artifacts and rejects missing
+  checkout error snapshots.
 - BrowserWindow-only overlay support is not proven.
 - Steam launch, app ID, auth, and callbacks are not enough to claim overlay
   support.
