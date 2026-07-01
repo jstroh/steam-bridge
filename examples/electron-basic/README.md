@@ -532,6 +532,10 @@ properties copied from that snapshot when available; timeout errors also include
 `isSteamOverlayWaitAbortedError(error)`, or
 `isSteamOverlayWaitClosedError(error)` guard for fallback or diagnostics instead
 of parsing the message.
+Dynamic shortcut targets are resolved only by the shortcut open helpers. On
+macOS, if the native overlay host is already unavailable because the screen is
+locked or the display is asleep, those helpers fail before invoking a dynamic
+target callback.
 The managed overlay automatically primes its passive presenter before
 achievement progress, achievement unlock, and stats-store calls that can produce
 Steam notification toasts; `prepareForNotification()` remains available for

@@ -8750,6 +8750,9 @@ export function createElectronSteamOverlay(
 
       shortcutOpenState.opening = true;
       try {
+        if (typeof shortcut.target === "function") {
+          assertElectronSteamOverlayNativeHostAvailable(snapshot);
+        }
         const target = resolveElectronSteamOverlayShortcutTarget(shortcut.target);
         const openedPresenter = controller.open(target);
         notifyElectronSteamOverlayShortcutOpened(shortcut, target);
@@ -8776,6 +8779,9 @@ export function createElectronSteamOverlay(
 
       shortcutOpenState.opening = true;
       try {
+        if (typeof shortcut.target === "function") {
+          assertElectronSteamOverlayNativeHostAvailable(snapshot);
+        }
         const target = resolveElectronSteamOverlayShortcutTarget(shortcut.target);
         return await openElectronSteamOverlayTargetAndWait(target, options, {
           onOpened() {

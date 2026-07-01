@@ -303,7 +303,10 @@ return `null` while the Steam overlay is already active/opening or when the
 shortcut bridge is disabled, so apps do not need to duplicate the target
 resolver. Dynamic shortcut targets intentionally report
 `reason: "dynamic-target"` from `getShortcutOpenStatus()` because the
-side-effect-free check does not call app code. The bridge consumes Shift+Tab
+side-effect-free check does not call app code. On macOS, if the native overlay
+host is already unavailable because the screen is locked or the display is
+asleep, the shortcut open helpers fail before resolving a dynamic target
+callback. The bridge consumes Shift+Tab
 only when it is opening a managed
 presenter-backed target; once Steam reports an active overlay, it lets Shift+Tab
 pass through so Steam can handle the close/toggle side. On macOS, Steam can
