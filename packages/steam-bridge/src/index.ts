@@ -9857,6 +9857,7 @@ function electronSteamOverlayShortcutStatus(
   const snapshot = controller.snapshot();
   const shortcutSnapshot = snapshot.electronOverlay.overlayShortcut;
   const nativeHostAvailability = electronSteamOverlayNativeHostAvailability(snapshot);
+  const unavailableError = electronSteamOverlayNativeHostUnavailableError(snapshot);
   const base = {
     enabled: shortcut.enabled,
     snapshot,
@@ -9909,6 +9910,17 @@ function electronSteamOverlayShortcutStatus(
   }
 
   if (typeof shortcut.target === "function") {
+    if (unavailableError) {
+      return {
+        ...base,
+        canOpen: false,
+        canWait: false,
+        reason: "native-host-unavailable",
+        waitReason: "native-host-unavailable",
+        message: unavailableError.message
+      };
+    }
+
     return {
       ...base,
       canOpen: false,

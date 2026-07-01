@@ -8156,7 +8156,15 @@ test("electron steam overlay does not resolve dynamic shortcut targets while mac
 
   assert.equal(overlay.snapshot().nativeHostUnavailableReason, "macos-screen-locked");
   const dynamicStatus = overlay.getShortcutOpenStatus();
-  assert.equal(dynamicStatus.reason, "dynamic-target");
+  assert.equal(dynamicStatus.canOpen, false);
+  assert.equal(dynamicStatus.canWait, false);
+  assert.equal(dynamicStatus.reason, "native-host-unavailable");
+  assert.equal(dynamicStatus.waitReason, "native-host-unavailable");
+  assert.equal(dynamicStatus.target, undefined);
+  assert.equal(dynamicStatus.targetStatus, undefined);
+  assert.equal(dynamicStatus.nativeHostAvailability?.available, false);
+  assert.equal(dynamicStatus.nativeHostAvailability?.reason, "macos-screen-locked");
+  assert.match(dynamicStatus.message, /macOS screen is locked/);
   assert.equal(resolveCount, 0);
 
   const assertUnavailableError = (error) => {

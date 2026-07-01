@@ -329,11 +329,11 @@ verified Friends/chat target; set `overlayShortcut.target` to choose another
 presenter-backed target. Controller or in-game menu buttons can call
 `steamOverlay.openShortcutTarget()` or `steamOverlay.openShortcutTargetAndWait()`
 to reuse that same target without duplicating resolver logic. Dynamic shortcut
-targets are resolved only when the shortcut actually opens; `getShortcutOpenStatus()`
-reports them as dynamic without calling app code. On macOS, if the native
-overlay host is already unavailable because the screen is locked or the display
-is asleep, keyboard-triggered and programmatic shortcut opens fail before
-resolving a dynamic target callback.
+targets are resolved only when the shortcut actually opens. `getShortcutOpenStatus()`
+does not call app code; it reports a dynamic target as dynamic unless a stronger
+side-effect-free blocker is already known, such as a locked/asleep macOS native
+host. On macOS, keyboard-triggered and programmatic shortcut opens also fail
+before resolving a dynamic target callback while the native host is unavailable.
 
 On macOS, the managed helper fails fast before Steam overlay activation if the
 screen is locked or the display is asleep. Use
