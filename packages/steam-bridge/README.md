@@ -807,11 +807,13 @@ The current core/full/persistent suites include a checkout prepare-only case
 that calls `withCheckoutPrepared(...)` without transaction input, requires
 `overlay:presenter-checkout-ready`, rejects modal overlay activation, and audits
 that the presenter releases back to idle; real checkout-open cases remain
-separate and require close/back-to-app proof. The current full and persistent
-suite definitions are 44 cases: the managed `presenter-ready` preflight, the
-checkout prepare-only route, active web/store/Friends/dialog/user/community/
-stats/achievements routes, passive progress/unlock toasts, every managed
-Shift+Tab shortcut target, and every programmatic shortcut open-and-wait target.
+separate and require close/back-to-app proof. The current full suite remains 44
+process-per-case routes, while the persistent suite is 45 one-process routes
+after adding `presenter-duplicate-open-guard`; both cover the managed
+`presenter-ready` preflight, the checkout prepare-only route, active
+web/store/Friends/dialog/user/community/stats/achievements routes, passive
+progress/unlock toasts, every managed Shift+Tab shortcut target, and every
+programmatic shortcut open-and-wait target.
 A 2026-06-30 full macOS artifact at
 `/tmp/steam-bridge-macos-overlay-matrix-full-ready-current-20260630-164539`
 passed all 44 process-per-case App ID `480` cases, and a persistent one-process
@@ -829,6 +831,17 @@ A fresh 2026-07-01 persistent artifact at
 `/tmp/steam-bridge-macos-overlay-matrix-20260701-003835` repeated that
 one-process Apple Silicon suite without repackaging or restarting Steam and
 passed all 44 cases through the same Metal presenter path.
+A current-head persistent artifact at
+`/tmp/steam-bridge-macos-overlay-matrix-20260701-033432` rebuilt and signed the
+same arm64-only Electron `43.0.0` package, launched one Steam-owned App ID
+`480` process, and passed all 45 persistent cases. This run adds the expanded
+duplicate-open guard proof to the broad one-process suite: direct,
+shortcut/controller, and checkout `IfAvailable` helpers returned `null` while a
+managed overlay was opening, and the same run re-proved passive toasts,
+checkout routing, every managed shortcut target, every programmatic shortcut
+`openAndWait(...)` target, all dialog-equivalent routes, close/back-to-app
+proof, parked zero-FPS state, zero managed overlay timing, and clean crash
+diagnostics.
 A fresh 2026-07-01 full cold-launch artifact at
 `/tmp/steam-bridge-macos-overlay-matrix-full-web-visible-fixed-20260701-015118`
 rebuilt and signed the arm64 Electron `43.0.0` package, reused the stable

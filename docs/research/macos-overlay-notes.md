@@ -938,6 +938,16 @@ Steam, log out or reboot macOS to clear the user-session IPC state.
   cases, alongside the same one Metal presenter-backed overlay target,
   active/inactive callbacks, close/back-to-app proof, parked zero-FPS state,
   zero managed overlay timing, and clean crash diagnostics.
+- A current-head 2026-07-01 persistent Apple Silicon matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-20260701-033432` rebuilt and signed
+  the arm64-only Electron `43.0.0` package, launched one Steam-owned App ID
+  `480` smoke process, drove all 45 persistent cases through the control server,
+  and passed the summary audit. This run adds the expanded duplicate-open guard
+  to the broad one-process proof while re-verifying passive progress/unlock
+  toasts, checkout approval and prepare-only, every managed Shift+Tab shortcut
+  target, all direct and programmatic shortcut `openAndWait(...)` routes,
+  visible web content before close, close/back-to-app proof, parked zero-FPS
+  state, zero managed overlay timing, clean quit, and clean crash diagnostics.
 
 ## Primary References
 

@@ -158,6 +158,26 @@ timing, clean control-server quit behavior, no leftover smoke/gameoverlay
 process, and clean crash diagnostics. Current macOS web-close helper runs also
 record `overlay:web-visible`, and the matrix summary rejects web-close cases
 whose lifecycle never proves visible Steam web content before the close input.
+A current-head 2026-07-01 persistent macOS matrix at
+`/tmp/steam-bridge-macos-overlay-matrix-20260701-033432` rebuilt and signed the
+arm64-only Electron `43.0.0` package, reused the stable shortcut without
+restarting Steam, launched one Steam-owned App ID `480` smoke process, drove
+all 45 persistent cases through the control server, and passed the summary
+audit. It adds the expanded `presenter-duplicate-open-guard` proof to the broad
+one-process matrix: both `getOpenStatus(...)` and `getShortcutOpenStatus()`
+reported `reason: "opening"`, `openIfAvailable(...)`,
+`openAndWaitIfAvailable(...)`, `openShortcutTargetIfAvailable()`,
+`openShortcutTargetAndWaitIfAvailable()`, and
+`openCheckoutAndWaitIfAvailable(...)` all returned `null`, and the checkout
+operation callback was not run. The same run re-proved readiness,
+web/store/Friends/dialog `openAndWait(...)`, passive progress/unlock toasts,
+checkout approval and prepare-only, every managed Shift+Tab shortcut target,
+every direct profile/players/community/stats/achievements/user/dialog route,
+every programmatic shortcut open-and-wait target, one Metal presenter-backed
+overlay target, visible Steam web content before close probes, app focus
+return, parked zero-FPS state, disabled needs-present polling, zero managed
+overlay timing, clean control-server quit behavior, no leftover
+smoke/gameoverlay process, and clean crash diagnostics.
 A fresh 2026-07-01 full cold-launch macOS matrix at
 `/tmp/steam-bridge-macos-overlay-matrix-full-web-visible-fixed-20260701-015118`
 rebuilt and signed the Apple Silicon Electron `43.0.0` package, reused the

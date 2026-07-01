@@ -941,7 +941,8 @@ Current evidence:
   callbacks where expected, active shown presenter snapshots, one
   `gameoverlayui` target, app focus return, clean crash diagnostics, an
   interactive macOS host state, and idle presenter parking at `currentFps=0`.
-  The latest live full and persistent macOS artifacts cover 44 cases, including
+  The latest live full macOS artifact covers 44 process-per-case routes, and
+  the latest persistent artifact covers 45 one-process routes, including
   programmatic `openShortcutTargetAndWait()` proof for every supported
   presenter-backed shortcut target. A focused 2026-07-01 minimal Apple Silicon
   run at `/tmp/steam-bridge-macos-overlay-matrix-20260701-032532` passed all 7
@@ -1139,6 +1140,20 @@ Current evidence:
   opening, with the checkout operation callback untouched and the normal
   close/back-to-app, parked zero-FPS, zero managed overlay timing, and crash
   diagnostics still green.
+  A current-head 2026-07-01 persistent Apple Silicon matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-20260701-033432` rebuilt and signed
+  the arm64-only Electron `43.0.0` package, reused the stable shortcut without
+  restarting Steam, launched one Steam-owned App ID `480` smoke process, drove
+  all 45 persistent cases through the control server, and passed the summary
+  audit. It folds the expanded duplicate-open proof into the broad one-process
+  suite and re-proves passive progress/unlock toasts, checkout approval and
+  prepare-only, every managed Shift+Tab shortcut target, direct
+  profile/players/community/stats/achievements/user/dialog routes, every
+  programmatic shortcut open-and-wait target, one Metal presenter-backed
+  overlay target, visible Steam web content before close probes, app focus
+  return, parked zero-FPS state, disabled needs-present polling, zero managed
+  overlay timing, clean control-server quit behavior, no leftover
+  smoke/gameoverlay process, and clean crash diagnostics.
   A focused current-head macOS checkout suite at
   `/tmp/steam-bridge-macos-overlay-matrix-checkout-target-snapshot-20260630-232458`
   rebuilt and signed the Apple Silicon Electron `43.0.0` package, reused the

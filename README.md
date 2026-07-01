@@ -486,6 +486,14 @@ Apple Silicon minimal run at
 minimal cases after expanding the duplicate-open guard to direct,
 shortcut/controller, and checkout `IfAvailable` helpers while keeping the
 arm64-only signed package path.
+A current-head persistent Apple Silicon run at
+`/tmp/steam-bridge-macos-overlay-matrix-20260701-033432` then rebuilt and signed
+the same arm64-only Electron `43.0.0` package, launched one Steam-owned App ID
+`480` process, and passed all 45 persistent cases, including that expanded
+duplicate-open proof, passive toasts, checkout routing, every managed shortcut
+target, every programmatic shortcut `openAndWait(...)` target, all
+dialog-equivalent routes, close/back-to-app proof, parked zero-FPS state, zero
+managed overlay timing, and clean crash diagnostics.
 
 ## Shipping Notes
 
