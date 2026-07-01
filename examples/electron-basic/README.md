@@ -65,10 +65,11 @@ The Windows package includes `windows-electron-smoke.ps1`. Use
 `-Mode steam-launch` with `-ShortcutGameId` to verify the shortcut result. The
 helper accepts the same generic smoke action names as the Deck/macOS helpers,
 including `presenter-ready`, `presenter-web-open-and-wait`,
-`presenter-store-open-and-wait`, `presenter-friends-open-and-wait`,
-`presenter-dialog-auto-open-and-wait`, `presenter-checkout`,
-`presenter-shortcut`, `presenter-shortcut-open-and-wait`, and the passive
-achievement notification actions.
+`presenter-duplicate-open-guard`, `presenter-store-open-and-wait`,
+`presenter-friends-open-and-wait`, `presenter-dialog-auto-open-and-wait`,
+`presenter-checkout`, `presenter-shortcut`,
+`presenter-shortcut-open-and-wait`, and the passive achievement notification
+actions.
 
 Outputs are written under `dist/electron-smoke/<target>/`.
 The macOS package includes `macos-electron-smoke.sh` beside
@@ -174,6 +175,12 @@ dist/electron-smoke/aarch64-apple-darwin/SteamBridgeSmoke-darwin-arm64/macos-ele
 On macOS, this preflight does not require `overlayEnabled=true`: Steam may
 attach a dormant `gameoverlayui` target before any visible overlay activation.
 
+Use `presenter-duplicate-open-guard` to prove duplicate menu/button presses are
+quietly suppressed while a managed overlay is opening. The action opens a modal
+web overlay, immediately checks the public `IfAvailable` helpers, records
+`overlay:presenter-duplicate-open-guard`, and then follows the same
+close/back-to-app proof as the normal web `openAndWait(...)` case.
+
 `--close-probe` is a helper-runner check, not an app launch option. It keeps the
 smoke app open after the initial result, leaves the active Steam overlay focused
 for the macOS close input, and verifies `active=false`, app focus return,
@@ -212,10 +219,11 @@ in-bundle native launcher and a launcher env file. Each case rewrites only that
 env file before launching the shortcut, so Steam is restarted only when the
 shortcut itself was added or materially changed. It runs the packaged helper and
 collects result and diagnostic logs under `/tmp`. Its `minimal` suite covers the
-web/store/Friends/dialog `openAndWait(...)` paths plus passive achievement
-toast verification; `core` adds passive unlock, synthetic checkout approval
-route, managed Shift+Tab shortcut routing for every supported presenter-backed
-target, profile, community, stats, achievements, and user chat/profile routes.
+web/store/Friends/dialog `openAndWait(...)` paths, duplicate-open suppression,
+and passive achievement toast verification; `core` adds passive unlock,
+synthetic checkout approval route, managed Shift+Tab shortcut routing for every
+supported presenter-backed target, profile, community, stats, achievements, and
+user chat/profile routes.
 Use `--suite full` to add user SteamID plus every known high-level
 dialog-equivalent route through the same managed `openAndWait(...)` close/park
 proof.

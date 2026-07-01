@@ -74,6 +74,7 @@ Options:
   --action NAME                  none, dialog, friends, store, web, native-probe, native-dialog, native-store, native-web,
                                  presenter-ready, presenter-dialog, presenter-dialog-auto, presenter-dialog-auto-open-and-wait,
                                  presenter-store, presenter-store-open-and-wait, presenter-web, presenter-web-open-and-wait,
+                                 presenter-duplicate-open-guard,
                                  presenter-friends, presenter-friends-open-and-wait,
                                  presenter-profile, presenter-players, presenter-community, presenter-stats, presenter-achievements, presenter-user, presenter-checkout,
                                  presenter-shortcut, presenter-shortcut-open-and-wait, presenter-achievement-progress, presenter-achievement-unlock.

@@ -229,6 +229,7 @@
           <button id="presenter-ready">Presenter Ready</button>
           <button id="presenter-web">Presenter Web Overlay</button>
           <button id="presenter-web-wait">Presenter Web Wait</button>
+          <button id="presenter-duplicate-guard">Duplicate Guard</button>
           <button id="presenter-store-wait">Presenter Store Wait</button>
           <button id="presenter-dialog-auto-wait">Presenter Dialog Wait</button>
           <button id="presenter-friends">Presenter Friends</button>
@@ -478,6 +479,8 @@
         run("Presenter Web Overlay", () => window.steamSmoke.openPresenterWeb());
       document.getElementById("presenter-web-wait").onclick = () =>
         run("Presenter Web Wait", () => window.steamSmoke.openPresenterWebOpenAndWait());
+      document.getElementById("presenter-duplicate-guard").onclick = () =>
+        run("Duplicate Guard", () => window.steamSmoke.openPresenterDuplicateOpenGuard());
       document.getElementById("presenter-store-wait").onclick = () =>
         run("Presenter Store Wait", () => window.steamSmoke.openPresenterStoreOpenAndWait());
       document.getElementById("presenter-dialog-auto-wait").onclick = () =>

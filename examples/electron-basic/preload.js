@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld("steamSmoke", {
   checkPresenterReady: () => ipcRenderer.invoke("steam-smoke:presenter-ready"),
   openPresenterWeb: () => ipcRenderer.invoke("steam-smoke:presenter-web"),
   openPresenterWebOpenAndWait: () => ipcRenderer.invoke("steam-smoke:presenter-web-open-and-wait"),
+  openPresenterDuplicateOpenGuard: () => ipcRenderer.invoke("steam-smoke:presenter-duplicate-open-guard"),
   openPresenterStoreOpenAndWait: () => ipcRenderer.invoke("steam-smoke:presenter-store-open-and-wait"),
   openPresenterDialogAutoOpenAndWait: () =>
     ipcRenderer.invoke("steam-smoke:presenter-dialog-auto-open-and-wait"),

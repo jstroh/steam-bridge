@@ -539,6 +539,10 @@ activating Steam overlay UI.
 On macOS this is a pre-activation proof, so it should require Steam launch,
 overlay injection, native host availability, idle presenter state, and no
 overlay-active callback, but not `overlayEnabled=true`.
+The `presenter-duplicate-open-guard` action opens a managed web overlay and
+immediately proves `openIfAvailable(...)`, `openAndWaitIfAvailable(...)`, and
+`openCheckoutAndWaitIfAvailable(...)` return `null` while that overlay is
+opening, without running the checkout operation callback.
 They can also verify expected
 managed overlay fail-fast artifacts with `--require-action-error-code` and
 `--require-action-error-reason`; add

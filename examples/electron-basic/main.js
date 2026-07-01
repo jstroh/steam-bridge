@@ -224,6 +224,7 @@ ipcMain.handle("steam-smoke:overlay-dialog", () => openDialogOverlay());
 ipcMain.handle("steam-smoke:presenter-ready", () => checkPresenterReady());
 ipcMain.handle("steam-smoke:presenter-web", () => openPresenterWebOverlay());
 ipcMain.handle("steam-smoke:presenter-web-open-and-wait", () => openPresenterWebOpenAndWaitOverlay());
+ipcMain.handle("steam-smoke:presenter-duplicate-open-guard", () => openPresenterDuplicateOpenGuardOverlay());
 ipcMain.handle("steam-smoke:presenter-store-open-and-wait", () => openPresenterStoreOpenAndWaitOverlay());
 ipcMain.handle("steam-smoke:presenter-dialog-auto-open-and-wait", () =>
   openPresenterDialogAutoOpenAndWaitOverlay()
@@ -821,6 +822,9 @@ async function runAutorunAction(action) {
       case "presenter-web-open-and-wait":
         openPresenterWebOpenAndWaitOverlay();
         return { ok: true, action };
+      case "presenter-duplicate-open-guard":
+        await openPresenterDuplicateOpenGuardOverlay();
+        return { ok: true, action };
       case "presenter-store-open-and-wait":
         openPresenterStoreOpenAndWaitOverlay();
         return { ok: true, action };
@@ -1059,6 +1063,78 @@ function openPresenterWebOpenAndWaitOverlay() {
     api: "openAndWait"
   };
   return openPresenterTargetAndWaitOverlay(overlay, target, context);
+}
+
+async function openPresenterDuplicateOpenGuardOverlay() {
+  const overlay = ensureElectronSteamOverlay();
+  const target = { type: "web", url: WEB_URL, modal: WEB_MODAL };
+  const context = {
+    target: "web",
+    url: WEB_URL,
+    modal: WEB_MODAL,
+    api: "duplicateOpenGuard"
+  };
+  const openAndWait = overlay.openAndWait(target, {
+    showTimeoutMs: MANAGED_OVERLAY_WAIT_TIMEOUT_MS,
+    closeTimeoutMs: MANAGED_OVERLAY_PARK_TIMEOUT_MS
+  });
+  const initialSnapshot = overlay.snapshot();
+  recordEvent("overlay:presenter-open-and-wait-start", {
+    ...context,
+    presenter: initialSnapshot
+  });
+  const lifecycle = observeManagedOverlayLifecycle(overlay, context);
+  pendingManagedOverlayShownWait = lifecycle.shown;
+
+  openAndWait
+    .then((result) => {
+      recordEvent("overlay:presenter-open-and-wait-complete", {
+        ...context,
+        shown: result.shown,
+        parked: result.parked,
+        presenter: safeOverlaySnapshot(overlay)
+      });
+    })
+    .catch((error) => {
+      if (!shutdownComplete) {
+        recordEvent("overlay:presenter-open-and-wait:error", {
+          ...context,
+          error: serializeError(error),
+          presenter: safeOverlaySnapshot(overlay)
+        });
+      }
+    });
+
+  const openingStatus = overlay.getOpenStatus(target);
+  const openIfAvailableResult = overlay.openIfAvailable(target);
+  const openAndWaitIfAvailableResult = await overlay.openAndWaitIfAvailable(target, {
+    showTimeoutMs: 5,
+    closeTimeoutMs: 5
+  });
+  let checkoutOperationRan = false;
+  const checkoutIfAvailableResult = await overlay.openCheckoutAndWaitIfAvailable(
+    () => {
+      checkoutOperationRan = true;
+      return "123456789";
+    },
+    {
+      showTimeoutMs: 5,
+      closeTimeoutMs: 5
+    }
+  );
+
+  recordEvent("overlay:presenter-duplicate-open-guard", {
+    ...context,
+    status: openingStatus,
+    openIfAvailableNull: openIfAvailableResult === null,
+    openAndWaitIfAvailableNull: openAndWaitIfAvailableResult === null,
+    checkoutIfAvailableNull: checkoutIfAvailableResult === null,
+    checkoutOperationRan,
+    presenter: safeOverlaySnapshot(overlay)
+  });
+
+  throwIfNativeHostUnavailable(initialSnapshot);
+  return snapshot();
 }
 
 function openPresenterStoreOpenAndWaitOverlay() {
@@ -2711,6 +2787,7 @@ function isNativeSessionAction(action) {
     action === "presenter-store-open-and-wait" ||
     action === "presenter-web" ||
     action === "presenter-web-open-and-wait" ||
+    action === "presenter-duplicate-open-guard" ||
     action === "presenter-friends" ||
     action === "presenter-friends-open-and-wait" ||
     action === "presenter-profile" ||
@@ -2738,6 +2815,7 @@ function isManagedOverlayShownWaitAction(action) {
     action === "presenter-dialog-auto-open-and-wait" ||
     action === "presenter-store-open-and-wait" ||
     action === "presenter-web-open-and-wait" ||
+    action === "presenter-duplicate-open-guard" ||
     action === "presenter-friends-open-and-wait" ||
     action === "presenter-profile-open-and-wait" ||
     action === "presenter-players-open-and-wait" ||

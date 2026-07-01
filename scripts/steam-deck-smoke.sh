@@ -89,7 +89,7 @@ Options:
   --action NAME                 Autorun action. Defaults to dialog. Supports raw dialog/store/web,
                                 managed native-* variants, and presenter-* variants,
                                 including presenter-ready, presenter-web-open-and-wait,
-                                presenter-store-open-and-wait,
+                                presenter-duplicate-open-guard, presenter-store-open-and-wait,
                                 presenter-dialog-auto-open-and-wait,
                                 presenter-friends-open-and-wait, presenter-user, and presenter-checkout.
   --overlay-profile NAME        Electron overlay profile. Desktop defaults to repaint.
@@ -1622,7 +1622,7 @@ persistent_presenter_parking_required() {
 
 is_presenter_product_action() {
   case "$action" in
-    presenter-store|presenter-store-open-and-wait|presenter-web|presenter-web-open-and-wait|presenter-friends|presenter-friends-open-and-wait|presenter-profile|presenter-players|presenter-dialog-auto|presenter-dialog-auto-open-and-wait|presenter-community|presenter-stats|presenter-achievements|presenter-user|presenter-checkout|presenter-shortcut|presenter-shortcut-open-and-wait|presenter-achievement-progress|presenter-achievement-unlock)
+    presenter-store|presenter-store-open-and-wait|presenter-web|presenter-web-open-and-wait|presenter-duplicate-open-guard|presenter-friends|presenter-friends-open-and-wait|presenter-profile|presenter-players|presenter-dialog-auto|presenter-dialog-auto-open-and-wait|presenter-community|presenter-stats|presenter-achievements|presenter-user|presenter-checkout|presenter-shortcut|presenter-shortcut-open-and-wait|presenter-achievement-progress|presenter-achievement-unlock)
       return 0
       ;;
     *)
@@ -1633,7 +1633,7 @@ is_presenter_product_action() {
 
 supports_close_deactivation_check() {
   case "$action" in
-    presenter-store|presenter-store-open-and-wait|presenter-web|presenter-web-open-and-wait|presenter-friends|presenter-friends-open-and-wait|presenter-profile|presenter-players|presenter-dialog-auto|presenter-dialog-auto-open-and-wait|presenter-community|presenter-stats|presenter-achievements|presenter-user)
+    presenter-store|presenter-store-open-and-wait|presenter-web|presenter-web-open-and-wait|presenter-duplicate-open-guard|presenter-friends|presenter-friends-open-and-wait|presenter-profile|presenter-players|presenter-dialog-auto|presenter-dialog-auto-open-and-wait|presenter-community|presenter-stats|presenter-achievements|presenter-user)
       return 0
       ;;
     presenter-checkout)
@@ -1651,7 +1651,7 @@ prepare_remote_wrapper() {
   local app_id_q overlay_game_id_q action_q profile_q scrub_child_env_q isolate_child_processes_q window_mode_q result_file_q diagnostic_dir_q action_delay_q result_delay_q keep_open_q require_active_q web_url_q web_modal_q checkout_url_q checkout_transaction_id_q checkout_return_url_q overlay_dialog_q user_dialog_q shortcut_target_q presenter_mode_q achievement_name_q achievement_current_q achievement_max_q
   local require_overlay_active="0"
 
-  if [ "$action" = "store" ] || [ "$action" = "web" ] || [ "$action" = "presenter-store" ] || [ "$action" = "presenter-store-open-and-wait" ] || [ "$action" = "presenter-web" ] || [ "$action" = "presenter-web-open-and-wait" ] || [ "$action" = "presenter-friends" ] || [ "$action" = "presenter-friends-open-and-wait" ] || [ "$action" = "presenter-profile" ] || [ "$action" = "presenter-players" ] || [ "$action" = "presenter-dialog-auto" ] || [ "$action" = "presenter-dialog-auto-open-and-wait" ] || [ "$action" = "presenter-community" ] || [ "$action" = "presenter-stats" ] || [ "$action" = "presenter-achievements" ] || [ "$action" = "presenter-user" ]; then
+  if [ "$action" = "store" ] || [ "$action" = "web" ] || [ "$action" = "presenter-store" ] || [ "$action" = "presenter-store-open-and-wait" ] || [ "$action" = "presenter-web" ] || [ "$action" = "presenter-web-open-and-wait" ] || [ "$action" = "presenter-duplicate-open-guard" ] || [ "$action" = "presenter-friends" ] || [ "$action" = "presenter-friends-open-and-wait" ] || [ "$action" = "presenter-profile" ] || [ "$action" = "presenter-players" ] || [ "$action" = "presenter-dialog-auto" ] || [ "$action" = "presenter-dialog-auto-open-and-wait" ] || [ "$action" = "presenter-community" ] || [ "$action" = "presenter-stats" ] || [ "$action" = "presenter-achievements" ] || [ "$action" = "presenter-user" ]; then
     require_overlay_active="1"
   fi
   if [ "$action" = "presenter-checkout" ] && checkout_opens_overlay; then
@@ -1958,8 +1958,11 @@ build_steam_launch_args() {
     else
       helper_args+=("--require-event" "overlay:presenter-checkout-ready")
     fi
-  elif [ "$action" = "presenter-web-open-and-wait" ] || [ "$action" = "presenter-store-open-and-wait" ] || [ "$action" = "presenter-dialog-auto-open-and-wait" ] || [ "$action" = "presenter-friends-open-and-wait" ] || [ "$action" = "presenter-shortcut-open-and-wait" ]; then
+  elif [ "$action" = "presenter-web-open-and-wait" ] || [ "$action" = "presenter-duplicate-open-guard" ] || [ "$action" = "presenter-store-open-and-wait" ] || [ "$action" = "presenter-dialog-auto-open-and-wait" ] || [ "$action" = "presenter-friends-open-and-wait" ] || [ "$action" = "presenter-shortcut-open-and-wait" ]; then
     helper_args+=("--require-event" "overlay:presenter-open-and-wait-start")
+    if [ "$action" = "presenter-duplicate-open-guard" ]; then
+      helper_args+=("--require-event" "overlay:presenter-duplicate-open-guard")
+    fi
     helper_args+=("--require-overlay-activated")
   elif [ "$action" = "presenter-dialog" ] || [ "$action" = "presenter-dialog-auto" ] || [ "$action" = "presenter-store" ] || [ "$action" = "presenter-web" ] || [ "$action" = "presenter-friends" ] || [ "$action" = "presenter-profile" ] || [ "$action" = "presenter-players" ] || [ "$action" = "presenter-community" ] || [ "$action" = "presenter-stats" ] || [ "$action" = "presenter-achievements" ] || [ "$action" = "presenter-user" ]; then
     helper_args+=("--require-event" "overlay:presenter-open")

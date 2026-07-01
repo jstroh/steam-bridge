@@ -410,6 +410,11 @@ apps only; they do not build, run, or verify Intel or universal macOS bundles.
 Use the smoke action `presenter-ready` for a cheap managed-overlay preflight:
 it attaches the Electron overlay manager, records native host availability, and
 does not activate Steam overlay UI.
+Use `presenter-duplicate-open-guard` to prove the public `IfAvailable` overlay
+helpers return `null` instead of starting a second overlay while a managed
+overlay is already opening.
+The macOS minimal/core/full/persistent matrix suites require that proof, so
+regressions in duplicate menu/button suppression fail before release.
 On macOS, that preflight intentionally does not require
 `overlayEnabled=true`; Steam can attach an inert `gameoverlayui` target before
 any `GameOverlayActivated(true)` callback.

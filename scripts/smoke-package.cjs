@@ -239,6 +239,7 @@ function runWindowsSmokeHelperStaticChecks() {
   for (const expected of [
     "presenter-ready",
     "presenter-web-open-and-wait",
+    "presenter-duplicate-open-guard",
     "presenter-store-open-and-wait",
     "presenter-friends-open-and-wait",
     "presenter-dialog-auto-open-and-wait",
@@ -267,7 +268,9 @@ function runElectronSmokeActionStaticChecks() {
 
   for (const [label, source, expected] of [
     ["Electron smoke main", main, "case \"presenter-ready\""],
+    ["Electron smoke main", main, "case \"presenter-duplicate-open-guard\""],
     ["Electron smoke main", main, "overlay:presenter-ready"],
+    ["Electron smoke main", main, "overlay:presenter-duplicate-open-guard"],
     ["Electron smoke main", main, "getNativeHostAvailability"],
     ["Electron smoke main", main, "steam-smoke:presenter-shortcut-status"],
     ["Electron smoke main", main, "openShortcutTarget()"],
@@ -277,6 +280,7 @@ function runElectronSmokeActionStaticChecks() {
     ["Electron smoke main", main, "openStatuses"],
     ["Electron smoke main", main, "shortcutStatus"],
     ["Electron smoke preload", preload, "checkPresenterReady"],
+    ["Electron smoke preload", preload, "openPresenterDuplicateOpenGuard"],
     ["Electron smoke preload", preload, "openPresenterProfileOpenAndWait"],
     ["Electron smoke preload", preload, "openPresenterPlayersOpenAndWait"],
     ["Electron smoke preload", preload, "openPresenterCommunityOpenAndWait"],
@@ -287,6 +291,7 @@ function runElectronSmokeActionStaticChecks() {
     ["Electron smoke preload", preload, "openPresenterShortcutTarget"],
     ["Electron smoke preload", preload, "openPresenterShortcutTargetOpenAndWait"],
     ["Electron smoke UI", html, "presenter-ready"],
+    ["Electron smoke UI", html, "presenter-duplicate-guard"],
     ["Electron smoke UI", html, "presenter-profile-wait"],
     ["Electron smoke UI", html, "presenter-players-wait"],
     ["Electron smoke UI", html, "presenter-community-wait"],
@@ -297,7 +302,9 @@ function runElectronSmokeActionStaticChecks() {
     ["Electron smoke UI", html, "shortcut-open"],
     ["Electron smoke UI", html, "shortcut-wait"],
     ["Linux smoke helper", linuxHelper, "overlay:presenter-ready"],
-    ["Steam Deck smoke helper", deckHelper, "overlay:presenter-ready"]
+    ["Linux smoke helper", linuxHelper, "presenter-duplicate-open-guard"],
+    ["Steam Deck smoke helper", deckHelper, "overlay:presenter-ready"],
+    ["Steam Deck smoke helper", deckHelper, "presenter-duplicate-open-guard"]
   ]) {
     assert.ok(source.includes(expected), `${label} missing ${expected}`);
   }

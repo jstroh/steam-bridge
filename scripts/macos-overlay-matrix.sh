@@ -363,7 +363,7 @@ case_block() {
 }
 
 run_self_test() {
-  local self_path minimal_output core_output full_output persistent_output unavailable_output wait_output preflight_output steam_health_output opengl_output checkout_json_output checkout_callback_output callback_missing_json_output checkout_missing_file_output invalid_checkout_json_file invalid_checkout_json_output passive_case checkout_case checkout_prepare_case checkout_json_case checkout_callback_case checkout_callback_checkout_block checkout_callback_prepare_block checkout_callback_web_block shortcut_checkout_json_case web_case full_shortcut_open_wait_case full_shortcut_checkout_open_wait_case full_shortcut_user_open_wait_case full_shortcut_dialog_open_wait_case persistent_web_case persistent_checkout_prepare_case persistent_shortcut_open_wait_case persistent_shortcut_checkout_open_wait_case persistent_shortcut_user_open_wait_case persistent_shortcut_dialog_open_wait_case unavailable_web_case unavailable_checkout_case unavailable_checkout_prepare_case unavailable_shortcut_case unavailable_passive_case
+  local self_path minimal_output core_output full_output persistent_output unavailable_output wait_output preflight_output steam_health_output opengl_output checkout_json_output checkout_callback_output callback_missing_json_output checkout_missing_file_output invalid_checkout_json_file invalid_checkout_json_output passive_case checkout_case checkout_prepare_case checkout_json_case checkout_callback_case checkout_callback_checkout_block checkout_callback_prepare_block checkout_callback_web_block shortcut_checkout_json_case web_case duplicate_guard_case full_shortcut_open_wait_case full_shortcut_checkout_open_wait_case full_shortcut_user_open_wait_case full_shortcut_dialog_open_wait_case persistent_web_case persistent_duplicate_guard_case persistent_checkout_prepare_case persistent_shortcut_open_wait_case persistent_shortcut_checkout_open_wait_case persistent_shortcut_user_open_wait_case persistent_shortcut_dialog_open_wait_case unavailable_web_case unavailable_checkout_case unavailable_checkout_prepare_case unavailable_shortcut_case unavailable_passive_case
   self_path="${BASH_SOURCE[0]}"
   minimal_output="$(
     bash "$self_path" \
@@ -557,15 +557,15 @@ run_self_test() {
       --require-microtxn-callback
   )"
 
-  if [ "$(printf '%s\n' "$minimal_output" | count_cases)" != "6" ]; then
+  if [ "$(printf '%s\n' "$minimal_output" | count_cases)" != "7" ]; then
     echo "Self-test failed: minimal matrix case count changed." >&2
     exit 1
   fi
-  if [ "$(printf '%s\n' "$core_output" | count_cases)" != "26" ]; then
+  if [ "$(printf '%s\n' "$core_output" | count_cases)" != "27" ]; then
     echo "Self-test failed: core matrix case count changed." >&2
     exit 1
   fi
-  if [ "$(printf '%s\n' "$full_output" | count_cases)" != "44" ]; then
+  if [ "$(printf '%s\n' "$full_output" | count_cases)" != "45" ]; then
     echo "Self-test failed: full matrix case count changed." >&2
     exit 1
   fi
@@ -573,7 +573,7 @@ run_self_test() {
     echo "Self-test failed: checkout matrix case count changed." >&2
     exit 1
   fi
-  if [ "$(printf '%s\n' "$persistent_output" | count_cases)" != "44" ]; then
+  if [ "$(printf '%s\n' "$persistent_output" | count_cases)" != "45" ]; then
     echo "Self-test failed: persistent matrix case count changed." >&2
     exit 1
   fi
@@ -581,7 +581,7 @@ run_self_test() {
     echo "Self-test failed: unavailable matrix case count changed." >&2
     exit 1
   fi
-  if [ "$(printf '%s\n' "$wait_output" | count_cases)" != "6" ]; then
+  if [ "$(printf '%s\n' "$wait_output" | count_cases)" != "7" ]; then
     echo "Self-test failed: wait-for-interactive dry-run matrix case count changed." >&2
     exit 1
   fi
@@ -600,6 +600,7 @@ run_self_test() {
   require_contains "$core_output" "CASE 00-presenter-ready" "core matrix must include the managed presenter readiness preflight."
   require_contains "$core_output" "--action presenter-ready" "core matrix must run the readiness smoke action."
   require_contains "$core_output" "--action presenter-web-open-and-wait" "core matrix must include web openAndWait."
+  require_contains "$core_output" "--action presenter-duplicate-open-guard" "core matrix must include duplicate-open suppression proof."
   require_contains "$core_output" "--require-zero-managed-overlay-timing" "core matrix must require zero managed overlay timing."
   require_contains "$core_output" "--steam-bridge-launch-env-file=/tmp/steam-bridge-macos-smoke.env" "matrix shortcut must use the stable launcher env file."
   require_contains "$core_output" "ENV /tmp/steam-bridge-macos-smoke.env" "matrix must write per-case launcher env."
@@ -651,6 +652,7 @@ run_self_test() {
   require_contains "$persistent_output" "CASE 00-persistent-presenter-ready" "persistent matrix must include managed presenter readiness preflight."
   require_contains "$persistent_output" "--action presenter-ready" "persistent matrix must run the readiness smoke action."
   require_contains "$persistent_output" "--action presenter-web-open-and-wait" "persistent matrix must include web openAndWait."
+  require_contains "$persistent_output" "--action presenter-duplicate-open-guard" "persistent matrix must include duplicate-open suppression proof."
   require_contains "$persistent_output" "--action presenter-store-open-and-wait" "persistent matrix must include store openAndWait."
   require_contains "$persistent_output" "--action presenter-friends-open-and-wait" "persistent matrix must include Friends openAndWait."
   require_contains "$persistent_output" "--action presenter-dialog-auto-open-and-wait" "persistent matrix must include dialog openAndWait."
@@ -716,6 +718,7 @@ run_self_test() {
 
   ready_case="$(case_command "$core_output" "00-presenter-ready")"
   web_case="$(case_command "$core_output" "01-web-openwait")"
+  duplicate_guard_case="$(case_command "$core_output" "01b-duplicate-open-guard")"
   shortcut_friends_case="$(case_command "$core_output" "08-shortcut-friends")"
   passive_case="$(case_command "$core_output" "05-passive-toast")"
   checkout_case="$(case_command "$core_output" "07-checkout-approval")"
@@ -740,6 +743,7 @@ run_self_test() {
   full_shortcut_dialog_open_wait_case="$(case_command "$full_output" "42-shortcut-dialog-openwait")"
   persistent_ready_case="$(case_command "$persistent_output" "00-persistent-presenter-ready")"
   persistent_web_case="$(case_command "$persistent_output" "01-persistent-web-openwait")"
+  persistent_duplicate_guard_case="$(case_command "$persistent_output" "01b-persistent-duplicate-open-guard")"
   persistent_shortcut_friends_case="$(case_command "$persistent_output" "08-persistent-shortcut-friends")"
   persistent_checkout_prepare_case="$(case_command "$persistent_output" "07b-persistent-checkout-prepare")"
   persistent_shortcut_open_wait_case="$(case_command "$persistent_output" "19-persistent-shortcut-web-openwait")"
@@ -760,6 +764,9 @@ run_self_test() {
   require_not_contains "$ready_case" "--close-probe" "readiness preflight must not run an overlay close probe."
   require_contains "$web_case" "--web-modal true" "web proof should use modal Steam web overlay."
   require_contains "$web_case" "--close-input web" "active web proof should close through the Steam web close control."
+  require_contains "$duplicate_guard_case" "--require-event overlay:presenter-duplicate-open-guard" "duplicate-open proof should require the guard event."
+  require_contains "$duplicate_guard_case" "--close-probe" "duplicate-open proof should still close and verify parked state."
+  require_contains "$duplicate_guard_case" "--close-input web" "duplicate-open proof should close through visible Steam web content."
   require_not_contains "$shortcut_friends_case" "--require-overlay-enabled" "pre-open shortcut proof must not require overlayEnabled before the shortcut opens the overlay."
   require_not_contains "$persistent_shortcut_friends_case" "--require-overlay-enabled" "persistent pre-open shortcut proof must not require overlayEnabled before the shortcut opens the overlay."
   require_contains "$passive_case" "--result-delay-ms 1200" "passive toast should use the short notification capture delay."
@@ -815,6 +822,9 @@ run_self_test() {
   require_contains "$persistent_web_case" "--close-probe" "persistent web proof should close and verify parked state."
   require_contains "$persistent_web_case" "--close-input web" "persistent web proof should close through the Steam web close control."
   require_contains "$persistent_web_case" "--require-zero-managed-overlay-timing" "persistent web proof should require zero managed overlay timing."
+  require_contains "$persistent_duplicate_guard_case" "--require-event overlay:presenter-duplicate-open-guard" "persistent duplicate-open proof should require the guard event."
+  require_contains "$persistent_duplicate_guard_case" "--close-probe" "persistent duplicate-open proof should close and verify parked state."
+  require_contains "$persistent_duplicate_guard_case" "--close-input web" "persistent duplicate-open proof should close through visible Steam web content."
   require_contains "$persistent_checkout_prepare_case" "--require-event overlay:presenter-checkout-ready" "persistent checkout prepare proof should require the ready event."
   require_contains "$persistent_checkout_prepare_case" "--require-no-overlay-activation" "persistent checkout prepare proof should reject modal overlay activation."
   require_contains "$persistent_checkout_prepare_case" "--require-idle-presenter" "persistent checkout prepare proof should require the presenter to release back to idle."
@@ -2318,6 +2328,12 @@ run_persistent_matrix() {
     --web-url "https://store.steampowered.com/app/$app_id/" \
     --web-modal true
 
+  persistent_run_active_case "01b-persistent-duplicate-open-guard" \
+    --action presenter-duplicate-open-guard \
+    --web-url "https://store.steampowered.com/app/$app_id/" \
+    --web-modal true \
+    --require-event overlay:presenter-duplicate-open-guard
+
   persistent_run_active_case "02-persistent-store-openwait" \
     --action presenter-store-open-and-wait
 
@@ -2619,6 +2635,19 @@ run_matrix() {
     --require-overlay-enabled \
     --require-overlay-activated \
     --require-event overlay:presenter-open-and-wait-start \
+    --require-no-crashes \
+    --close-probe
+
+  run_case "01b-duplicate-open-guard" \
+    --action presenter-duplicate-open-guard \
+    --web-url "https://store.steampowered.com/app/$app_id/" \
+    --web-modal true \
+    --require-steam-launch \
+    --require-overlay-injection \
+    --require-overlay-enabled \
+    --require-overlay-activated \
+    --require-event overlay:presenter-open-and-wait-start \
+    --require-event overlay:presenter-duplicate-open-guard \
     --require-no-crashes \
     --close-probe
 

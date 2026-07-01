@@ -9,6 +9,7 @@ const path = require("node:path");
 const RESULT_PREFIX = "STEAM_BRIDGE_SMOKE_RESULT ";
 const OPEN_AND_WAIT_ACTIONS = new Set([
   "presenter-web-open-and-wait",
+  "presenter-duplicate-open-guard",
   "presenter-store-open-and-wait",
   "presenter-dialog-auto-open-and-wait",
   "presenter-friends-open-and-wait",
@@ -50,6 +51,7 @@ const SENSITIVE_MANIFEST_OPTIONS = new Set([
 const MINIMAL_SUITE_REQUIRED_CASE_IDS = [
   "00-presenter-ready",
   "01-web-openwait",
+  "01b-duplicate-open-guard",
   "02-store-openwait",
   "03-friends-openwait",
   "04-dialog-official-openwait",
@@ -102,6 +104,7 @@ const FULL_SUITE_REQUIRED_CASE_IDS = [
 const PERSISTENT_SUITE_REQUIRED_CASE_IDS = [
   "00-persistent-presenter-ready",
   "01-persistent-web-openwait",
+  "01b-persistent-duplicate-open-guard",
   "02-persistent-store-openwait",
   "03-persistent-friends-openwait",
   "04-persistent-dialog-official-openwait",
@@ -474,6 +477,9 @@ function verifyCase(caseId, metadata, result, lifecycle, macosCrashReports, fail
   const managedWaits = hasExpectedActionError
     ? { required: false, ok: true }
     : verifyManagedLifecycleWaits(caseId, actionName, lifecycleEntries, isPassive, failures);
+  const duplicateOpenGuard = hasExpectedActionError
+    ? { required: false, ok: true }
+    : verifyDuplicateOpenGuard(caseId, actionName, resultEvents, lifecycleEntries, failures);
   const webVisible = requireVisibleWebOverlay
     ? verifyWebOverlayVisibleBeforeClose(caseId, lifecycleEntries, failures)
     : { required: false, ok: true };
@@ -707,6 +713,7 @@ function verifyCase(caseId, metadata, result, lifecycle, macosCrashReports, fail
     openAndWait: openAndWait.required ? openAndWait.ok : "n/a",
     checkoutWait: checkoutWait.required ? checkoutWait.ok : "n/a",
     checkoutPrepared: checkoutPrepared.required ? checkoutPrepared.ok : "n/a",
+    duplicateOpenGuard: duplicateOpenGuard.required ? duplicateOpenGuard.ok : "n/a",
     checkoutSource: checkoutWait.required
       ? checkoutWait.source || summaryCheckoutSource || "unknown"
       : summaryCheckoutSource || "n/a",
@@ -715,6 +722,52 @@ function verifyCase(caseId, metadata, result, lifecycle, macosCrashReports, fail
     noOverlayActivation: expectedNoOverlayActivation,
     crashOk
   };
+}
+
+function verifyDuplicateOpenGuard(caseId, actionName, resultEvents, lifecycleEntries, failures) {
+  if (actionName !== "presenter-duplicate-open-guard") {
+    return { required: false, ok: true };
+  }
+
+  const failuresBefore = failures.length;
+  const event = [...resultEvents, ...lifecycleEntries].find(
+    (entry) =>
+      entry &&
+      (entry.type === "overlay:presenter-duplicate-open-guard" ||
+        entry.type === "event:overlay:presenter-duplicate-open-guard")
+  );
+  if (!event) {
+    failures.push(`${caseId}: missing overlay:presenter-duplicate-open-guard event`);
+    return { required: true, ok: false };
+  }
+
+  const payload = objectOrEmpty(event.payload);
+  const status = objectOrEmpty(payload.status);
+  expect(status.canOpen === false, `${caseId}: duplicate guard status rejects open`, failures);
+  expect(status.canWait === false, `${caseId}: duplicate guard status rejects wait`, failures);
+  expect(
+    status.reason === "opening" || status.reason === "overlay-active",
+    `${caseId}: duplicate guard status is opening or overlay-active, got ${formatValue(status.reason)}`,
+    failures
+  );
+  expect(payload.openIfAvailableNull === true, `${caseId}: openIfAvailable returned null while busy`, failures);
+  expect(
+    payload.openAndWaitIfAvailableNull === true,
+    `${caseId}: openAndWaitIfAvailable returned null while busy`,
+    failures
+  );
+  expect(
+    payload.checkoutIfAvailableNull === true,
+    `${caseId}: openCheckoutAndWaitIfAvailable returned null while busy`,
+    failures
+  );
+  expect(
+    payload.checkoutOperationRan === false,
+    `${caseId}: checkout IfAvailable did not run the transaction operation while busy`,
+    failures
+  );
+
+  return { required: true, ok: failures.length === failuresBefore };
 }
 
 function verifyWebOverlayVisibleBeforeClose(caseId, entries, failures) {
@@ -1738,7 +1791,7 @@ function runSelfTest() {
   try {
     createSelfTestFixture(fixtureRoot);
     const summary = summarizeMatrixArtifacts(fixtureRoot);
-    assert.equal(summary.caseSummaries.length, 14, "summary self-test should include fourteen cases");
+    assert.equal(summary.caseSummaries.length, 15, "summary self-test should include fifteen cases");
     createPersistentSelfTestFixture(persistentFixtureRoot);
     const persistentSummary = summarizeMatrixArtifacts(persistentFixtureRoot);
     assert.equal(persistentSummary.caseSummaries.length, 2, "persistent summary self-test should include two cases");
@@ -2175,6 +2228,52 @@ function createSelfTestFixture(root) {
           payload: { shown: activePresenterFixture(11), parked: parkedPresenterFixture(12) }
         },
         { type: "event:overlay:presenter-after-close-stable", payload: { presenter: parkedPresenterFixture(12) } }
+      ]
+    },
+    {
+      caseId: "01b-duplicate-open-guard",
+      action: "presenter-duplicate-open-guard",
+      closeInput: "web",
+      command: [
+        "--action",
+        "presenter-duplicate-open-guard",
+        "--require-event",
+        "overlay:presenter-duplicate-open-guard",
+        "--close-probe",
+        "--close-input",
+        "web"
+      ],
+      resultPresenter: activePresenterFixture(17),
+      lifecycle: [
+        { type: "event:overlay:presenter-open-and-wait-start", payload: { presenter: activePresenterFixture(17) } },
+        {
+          type: "event:overlay:presenter-duplicate-open-guard",
+          payload: {
+            status: {
+              canOpen: false,
+              canWait: false,
+              reason: "opening",
+              waitReason: "opening"
+            },
+            openIfAvailableNull: true,
+            openAndWaitIfAvailableNull: true,
+            checkoutIfAvailableNull: true,
+            checkoutOperationRan: false,
+            presenter: activePresenterFixture(17)
+          }
+        },
+        { type: "event:callback:overlay-activated", payload: { active: true, appId: 480, overlayPid: 9001 } },
+        { type: "event:overlay:presenter-wait-shown", payload: { presenter: activePresenterFixture(18) } },
+        { type: "event:overlay:web-visible", payload: { ok: true, attempt: 1, rect: "0,0,1280,720" } },
+        { type: "event:callback:overlay-activated", payload: { active: false, appId: 480, overlayPid: 9001 } },
+        { type: "event:overlay:presenter-wait-closed", payload: { presenter: parkedPresenterFixture(19) } },
+        { type: "event:overlay:presenter-after-close", payload: { presenter: parkedPresenterFixture(19) } },
+        { type: "event:overlay:presenter-parked", payload: { presenter: parkedPresenterFixture(19) } },
+        {
+          type: "event:overlay:presenter-open-and-wait-complete",
+          payload: { shown: activePresenterFixture(18), parked: parkedPresenterFixture(19) }
+        },
+        { type: "event:overlay:presenter-after-close-stable", payload: { presenter: parkedPresenterFixture(19) } }
       ]
     },
     {

@@ -173,6 +173,19 @@ open-and-wait target, one Metal presenter-backed overlay target,
 active/inactive callbacks where expected, visible Steam web content before
 web-close input, app focus return, parked zero-FPS presenter state, disabled
 needs-present polling, zero managed overlay timing, and clean crash diagnostics.
+A focused 2026-07-01 minimal macOS Apple Silicon run at
+`/tmp/steam-bridge-macos-overlay-matrix-20260701-031528` then rebuilt and
+signed the same arm64-only Electron `43.0.0` package and passed all 7 minimal
+cases after adding `presenter-duplicate-open-guard`. The new case opened a
+managed modal web overlay, recorded `overlay:presenter-duplicate-open-guard`
+while `getOpenStatus(...)` reported `reason: "opening"`, proved
+`openIfAvailable(...)`, `openAndWaitIfAvailable(...)`, and
+`openCheckoutAndWaitIfAvailable(...)` all returned `null`, proved the checkout
+operation callback was not run, then completed the normal visible-web close,
+active=false callback, app-frontmost return, zero-FPS parked presenter, zero
+managed overlay timing, and clean crash-diagnostic checks. The macOS matrix
+summary now treats this duplicate-open suppression proof as a required named
+minimal/core/full/persistent suite case.
 A focused current-head checkout run at
 `/tmp/steam-bridge-macos-overlay-matrix-checkout-target-snapshot-20260630-232458`
 rebuilt and signed the Apple Silicon Electron `43.0.0` package, reused the

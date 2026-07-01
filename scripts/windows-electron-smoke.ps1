@@ -26,6 +26,7 @@ param(
     "presenter-store-open-and-wait",
     "presenter-web",
     "presenter-web-open-and-wait",
+    "presenter-duplicate-open-guard",
     "presenter-friends",
     "presenter-friends-open-and-wait",
     "presenter-profile",
@@ -176,6 +177,10 @@ function Add-DefaultRequireEvents {
     }
     "presenter-ready" {
       $script:RequireEvent = @("overlay:presenter-ready")
+      break
+    }
+    "presenter-duplicate-open-guard" {
+      $script:RequireEvent = @("overlay:presenter-open-and-wait-start", "overlay:presenter-duplicate-open-guard")
       break
     }
     "presenter-shortcut" {
