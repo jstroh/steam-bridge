@@ -103,6 +103,11 @@ client.overlay.activateToWebPage("https://store.steampowered.com/app/480/");
 client.achievement.isActivated("ACH_WIN_ONE_GAME");
 ```
 
+The raw activation helpers above are useful for Node/native smoke checks and
+diagnostics. Electron apps should use the managed overlay in the
+[Electron Overlay](#electron-overlay) section for product overlay work,
+especially on macOS and Steam Deck Desktop Mode.
+
 Steam Web API calls can use endpoint helpers or the generic helper. Set
 `STEAM_WEB_API_KEY` in the environment, pass `apiKey`, or pass `key` per
 request:
@@ -341,6 +346,10 @@ dialog equivalents. Use the named helpers such as `openFriends()`,
 surfaces. Direct helpers return after Steam activation starts; wait helpers
 resolve after Steam closes and the presenter parks. Use `open(target)` or
 `openAndWait(target)` when you need to construct a target object dynamically.
+Direct helpers fail before activation when fresh diagnostics already prove a
+known blocker such as Steam not running, the overlay hook not being ready, a
+busy managed overlay, or an unavailable macOS native host. Prefer the wait or
+`IfAvailable` forms for normal UI buttons and controller bindings.
 `openAndWait(...)` validates those routes before preparing the native host and
 rejects raw native prompt routes. Use
 `open({ ..., route: "native" })` only when you are explicitly collecting
@@ -673,6 +682,16 @@ live run also caught and re-proved the checkout-operation status ordering:
 while another overlay is already opening, `getCheckoutOperationStatus()` now
 reports `reason: "opening"` before any transient `overlay-not-ready` state, so
 purchase buttons do not start `InitTxn` during a managed overlay open.
+A focused Apple Silicon minimal run at
+`/tmp/steam-bridge-macos-overlay-matrix-minimal-direct-open-status-20260701-091919`
+then reused the signed arm64-only Electron `43.0.0` package and stable App ID
+`480` shortcut without restarting Steam, and passed all 11 Steam-launched cases
+after direct managed opens began failing known unavailable statuses before
+Steam activation. It re-proved direct web/store/Friends/dialog opens,
+web/store/Friends/dialog `openAndWait(...)`, duplicate-open suppression,
+passive toast priming, visible Steam web content, close/back-to-app proof,
+parked zero-FPS presenter state, zero managed timing, managed isolation, and
+clean crash diagnostics.
 
 ## Shipping Notes
 

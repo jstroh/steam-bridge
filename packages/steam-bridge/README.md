@@ -178,6 +178,9 @@ preload scrub by default for future Electron children, so the managed overlay
 path still protects apps that create the overlay manager before later windows or
 workers are spawned. Pass `scrubSteamOverlayChildProcessEnv: false` only when
 collecting raw Electron-child overlay diagnostics.
+Raw activation helpers such as `activateToWebPage(...)` remain available for
+Node/native smoke checks and diagnostics, but Electron product overlay work
+should go through the managed `createElectronSteamOverlay(...)` path.
 
 For Electron apps, create one managed overlay for the game window and reuse it
 for overlay work:
@@ -420,7 +423,11 @@ Community, Stats, Achievements, user-profile, and checkout targets route through
 presenter-backed paths
 used by the Steam Deck Desktop Mode proofs; `openSteamOverlay(...)` and the
 lower-level named helpers remain available for apps that prefer explicit
-lifecycle control. The public smoke app can verify checkout readiness, but real
+lifecycle control. Direct helpers fail before activation when fresh diagnostics
+already prove a known blocker such as Steam not running, the overlay hook not
+being ready, a busy managed overlay, or an unavailable macOS native host. Use
+the wait or `IfAvailable` forms for normal UI buttons and controller bindings.
+The public smoke app can verify checkout readiness, but real
 purchase-content proof still requires a real Steam app and configured product.
 `open(...)` keeps the presenter active with an operation-scoped hold until Steam
 reports the overlay shown; its internal timeout is only a failure guard for the
@@ -1082,6 +1089,16 @@ live run also caught and re-proved the checkout-operation status ordering:
 while another overlay is already opening, `getCheckoutOperationStatus()` now
 reports `reason: "opening"` before any transient `overlay-not-ready` state, so
 purchase buttons do not start `InitTxn` during a managed overlay open.
+A focused 2026-07-01 minimal Apple Silicon artifact at
+`/tmp/steam-bridge-macos-overlay-matrix-minimal-direct-open-status-20260701-091919`
+then reused the signed arm64-only Electron `43.0.0` package and stable App ID
+`480` shortcut without restarting Steam, and passed all 11 Steam-launched cases
+after direct managed opens began failing known unavailable statuses before
+Steam activation. It re-proved direct web/store/Friends/dialog opens,
+web/store/Friends/dialog `openAndWait(...)`, duplicate-open suppression,
+passive toast priming, visible Steam web content, close/back-to-app proof,
+parked zero-FPS presenter state, zero managed timing, managed isolation, and
+clean crash diagnostics.
 A later recovered-client full artifact at
 `/tmp/steam-bridge-macos-overlay-matrix-20260630-220434` also passed all 44
 process-per-case App ID `480` cases after recreating the stable shortcut and

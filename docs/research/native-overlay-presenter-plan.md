@@ -1350,6 +1350,18 @@ Current evidence:
   `getCheckoutOperationStatus()` reports `reason: "opening"` before any
   transient `overlay-not-ready` diagnostics, so purchase buttons do not start
   `InitTxn` during a managed overlay open.
+  A focused current-head 2026-07-01 minimal Apple Silicon matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-minimal-direct-open-status-20260701-091919`
+  then reused the signed arm64-only Electron `43.0.0` package and stable App ID
+  `480` shortcut without restarting Steam, and passed all 11 Steam-launched
+  cases after direct managed opens began using the same status gate as
+  `openIfAvailable(...)`. Unit coverage proves direct opens now throw before
+  activation when fresh diagnostics already show `overlay-not-ready` or
+  `steam-unavailable`; the live run re-proved the happy path for direct
+  web/store/Friends/dialog opens, wait-style web/store/Friends/dialog routes,
+  duplicate-open suppression, passive toast priming, visible Steam web content,
+  close/back-to-app proof, parked zero-FPS presenter state, zero managed
+  timing, managed isolation, and clean crash diagnostics.
 - BrowserWindow-only overlay support is not proven.
 - Steam launch, app ID, auth, and callbacks are not enough to claim overlay
   support.

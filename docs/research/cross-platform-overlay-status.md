@@ -1227,6 +1227,19 @@ overlay was already opening. The fixed run proves the status now reports
 `opening` first, keeping purchase buttons from starting `InitTxn` during another
 managed overlay open.
 
+A focused 2026-07-01 minimal Apple Silicon matrix at
+`/tmp/steam-bridge-macos-overlay-matrix-minimal-direct-open-status-20260701-091919`
+reused the signed arm64 Electron `43.0.0` package and stable App ID `480`
+shortcut without restarting Steam, and passed all 11 Steam-launched cases after
+direct managed opens began failing known unavailable statuses before Steam
+activation. Unit coverage proves direct opens now throw before activation when
+fresh diagnostics already show `overlay-not-ready` or `steam-unavailable`; the
+live run re-proved the happy path for direct web/store/Friends/dialog opens,
+web/store/Friends/dialog `openAndWait(...)`, duplicate-open suppression,
+passive toast priming, visible Steam web content, close/back-to-app proof,
+parked zero-FPS presenter state, zero managed timing, managed isolation, and
+clean crash diagnostics.
+
 `npm run macos:steam-client-health` now uses `connection_log.txt` as the
 authoritative login signal. Current Steam builds can keep webhelper processes
 running with `-steamid=0` even after the client is logged in, so `steamid=0`

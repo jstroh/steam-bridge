@@ -9124,8 +9124,12 @@ export function createElectronSteamOverlay(
     },
     open(target: SteamOverlayTarget): NativeOverlayPresenter {
       assertOpen();
+      const status = controller.getOpenStatus(target);
+      if (!status.canOpen) {
+        throw electronSteamOverlayOpenStatusError(status);
+      }
+      const snapshot = status.snapshot;
       assertElectronSteamOverlayTargetCanOpen(target);
-      const snapshot = controller.snapshot();
       assertElectronSteamOverlayNativeHostAvailable(snapshot);
       assertElectronSteamOverlayNotBusy(snapshot);
       const presenterInternal = presenter as NativeOverlayPresenterInternal;
@@ -10192,6 +10196,17 @@ function electronSteamOverlayShortcutStatusError(status: ElectronSteamOverlaySho
     return new Error(status.message ?? `Electron Steam overlay shortcut cannot open: ${status.reason}.`);
   }
   return undefined;
+}
+
+function electronSteamOverlayOpenStatusError(status: ElectronSteamOverlayOpenStatus): Error {
+  if (status.reason === "native-host-unavailable") {
+    return (
+      electronSteamOverlayNativeHostUnavailableError(status.snapshot) ??
+      new Error(status.message ?? "Electron Steam overlay native host is unavailable.")
+    );
+  }
+
+  return new Error(status.message ?? `Electron Steam overlay cannot open: ${status.reason ?? "unavailable"}.`);
 }
 
 function loadElectronGlobalShortcut(): ElectronGlobalShortcutApi | undefined {

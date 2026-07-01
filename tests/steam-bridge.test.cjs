@@ -10278,6 +10278,7 @@ test("electron steam overlay openAndWait waits for overlay readiness before acti
   assert.equal(notReadyStatus.nativeHostAvailability.available, true);
   assert.match(notReadyStatus.message, /not ready yet/);
   assert.equal(overlay.openIfAvailable(webTarget), null);
+  assert.throws(() => overlay.open(webTarget), /Steam overlay is not ready yet/);
   assert.deepEqual(steamWebOverlayCalls(fake), []);
 
   const shortcutNotReadyStatus = overlay.getShortcutOpenStatus();
@@ -11068,6 +11069,15 @@ test("electron steam overlay checkout IfAvailable skips transactions when overla
       modal: true
     }),
     null
+  );
+  assert.throws(
+    () =>
+      overlay.open({
+        type: "web",
+        url: "https://store.steampowered.com/app/480/",
+        modal: true
+      }),
+    /Steam is not running/
   );
   assert.equal(
     await overlay.openAndWaitIfAvailable(
