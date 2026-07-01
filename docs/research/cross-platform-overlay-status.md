@@ -1240,6 +1240,19 @@ passive toast priming, visible Steam web content, close/back-to-app proof,
 parked zero-FPS presenter state, zero managed timing, managed isolation, and
 clean crash diagnostics.
 
+A focused 2026-07-01 checkout Apple Silicon matrix at
+`/tmp/steam-bridge-macos-overlay-matrix-checkout-readiness-before-inittxn-20260701-093251`
+rebuilt and signed the arm64 Electron `43.0.0` package and stable App ID `480`
+shortcut, and passed all four Steam-launched checkout cases after
+`openCheckoutAndWait(...)` began waiting for Steam overlay readiness before
+invoking the transaction operation. Unit coverage proves a not-yet-ready
+overlay leaves the transaction operation untouched and reports only a sanitized
+pending checkout snapshot on readiness timeout; the live run re-proved
+prepare-only checkout, direct synthetic approval checkout, managed Shift+Tab
+checkout, programmatic checkout `openAndWait(...)`, visible Steam web content
+for web-close paths, close/back-to-app proof, parked zero-FPS presenter state,
+zero managed timing, managed isolation, and clean crash diagnostics.
+
 `npm run macos:steam-client-health` now uses `connection_log.txt` as the
 authoritative login signal. Current Steam builds can keep webhelper processes
 running with `-steamid=0` even after the client is logged in, so `steamid=0`

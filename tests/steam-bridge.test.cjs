@@ -10830,6 +10830,7 @@ test("electron steam overlay checkout wait does not activate before overlay read
   setProcessPlatformForTest(t, "linux");
   const hostHandle = Buffer.from([31, 41, 59, 27]);
   let hostOpen = false;
+  let overlayEnabled = false;
   const fake = createFakeNative({
     attachNativeOverlayHostView(nativeWindowHandle) {
       hostOpen = true;
@@ -10862,7 +10863,7 @@ test("electron steam overlay checkout wait does not activate before overlay read
         steamRunning: true,
         steamInstallPath: "/tmp/steam",
         appId: 480,
-        overlayEnabled: false,
+        overlayEnabled,
         overlayNeedsPresent: false,
         overlayNeedsPresentPollingEnabled: true,
         steamDeck: false,
@@ -10895,12 +10896,50 @@ test("electron steam overlay checkout wait does not activate before overlay read
   });
 
   let operationSnapshot;
+  const checkoutCallsBefore = steamWebOverlayCalls(fake).length;
+  const checkout = overlay.openCheckoutAndWait(
+    () => {
+      operationSnapshot = overlay.snapshot();
+      return {
+        steamurl: "https://checkout.steampowered.com/checkout/approvetxn/333/"
+      };
+    },
+    { showTimeoutMs: 500, closeTimeoutMs: 500 }
+  );
+
+  await new Promise((resolve) => setTimeout(resolve, 80));
+  assert.equal(operationSnapshot, undefined);
+  assert.deepEqual(steamWebOverlayCalls(fake), []);
+
+  overlayEnabled = true;
+  await waitForNextSteamWebOverlayCall(fake, checkoutCallsBefore, [
+    "https://checkout.steampowered.com/checkout/approvetxn/333/",
+    true
+  ]);
+
+  assert.equal(operationSnapshot.mode, "active");
+  assert.equal(operationSnapshot.clickThrough, false);
+  assert.equal(operationSnapshot.transparent, false);
+
+  fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: true });
+  fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: false });
+  const checkoutResult = await checkout;
+
+  assert.deepEqual(checkoutResult.targetSnapshot, {
+    type: "checkout",
+    hasSteamUrl: true
+  });
+  assert.equal(checkoutResult.shown.overlayActive, true);
+  assert.equal(checkoutResult.parked.currentFps, 0);
+
+  overlayEnabled = false;
+  let timedOutOperationRan = false;
   await assert.rejects(
     overlay.openCheckoutAndWait(
       () => {
-        operationSnapshot = overlay.snapshot();
+        timedOutOperationRan = true;
         return {
-          steamurl: "https://checkout.steampowered.com/checkout/approvetxn/333/"
+          steamurl: "https://checkout.steampowered.com/checkout/approvetxn/444/"
         };
       },
       { showTimeoutMs: 5, closeTimeoutMs: 5 }
@@ -10911,34 +10950,27 @@ test("electron steam overlay checkout wait does not activate before overlay read
       assert.equal(error.state, "be ready");
       assert.equal(error.snapshot.diagnostics.overlayEnabled, false);
       assert.deepEqual(error.targetSnapshot, {
-        type: "checkout",
-        hasSteamUrl: true
+        type: "checkout"
       });
       assert.deepEqual(error.checkoutTargetSnapshot, {
-        type: "checkout",
-        hasSteamUrl: true
+        type: "checkout"
       });
       assert.deepEqual(steam.getSteamOverlayErrorTargetSnapshot(error), {
-        type: "checkout",
-        hasSteamUrl: true
+        type: "checkout"
       });
       assert.deepEqual(steam.getSteamOverlayCheckoutErrorTargetSnapshot(error), {
-        type: "checkout",
-        hasSteamUrl: true
+        type: "checkout"
       });
       assert.deepEqual(steam.overlay.getSteamOverlayErrorTargetSnapshot(error), {
-        type: "checkout",
-        hasSteamUrl: true
+        type: "checkout"
       });
-      assert.equal(JSON.stringify(error.targetSnapshot).includes("333"), false);
+      assert.equal(JSON.stringify(error.targetSnapshot).includes("444"), false);
       return true;
     }
   );
 
-  assert.equal(operationSnapshot.mode, "active");
-  assert.equal(operationSnapshot.clickThrough, false);
-  assert.equal(operationSnapshot.transparent, false);
-  assert.deepEqual(steamWebOverlayCalls(fake), []);
+  assert.equal(timedOutOperationRan, false);
+  assert.equal(JSON.stringify(steamWebOverlayCalls(fake)).includes("444"), false);
 
   const afterTimeout = overlay.snapshot();
   assert.equal(afterTimeout.mode, "passive");

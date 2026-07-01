@@ -412,6 +412,9 @@ purchase button should return `null` instead of starting `InitTxn` while the
 managed overlay is closed, Steam is not running, Steam already reports the
 overlay disabled, the macOS native host is unavailable, or another managed
 overlay action is already active/opening.
+The throwing `openCheckoutAndWait(...)` path also waits for Steam overlay
+readiness before it calls `startTxn()`, so a temporary Steam bootstrap delay
+does not create a real transaction before Steam can show the checkout UI.
 `steamOverlay.openCheckout(...)` and
 `steamOverlay.openCheckoutIfAvailable(...)` are also available when you already
 have a resolved checkout target and intentionally do not need to await overlay
@@ -692,6 +695,18 @@ web/store/Friends/dialog `openAndWait(...)`, duplicate-open suppression,
 passive toast priming, visible Steam web content, close/back-to-app proof,
 parked zero-FPS presenter state, zero managed timing, managed isolation, and
 clean crash diagnostics.
+A focused Apple Silicon checkout run at
+`/tmp/steam-bridge-macos-overlay-matrix-checkout-readiness-before-inittxn-20260701-093251`
+then rebuilt and signed the same arm64-only Electron `43.0.0` package and
+passed all four Steam-launched checkout cases after `openCheckoutAndWait(...)`
+began waiting for Steam overlay readiness before invoking the transaction
+operation. Unit coverage proves a not-yet-ready overlay leaves the transaction
+operation untouched and reports only a sanitized pending checkout snapshot on
+readiness timeout; the live run re-proved prepare-only checkout, direct
+synthetic approval checkout, managed Shift+Tab checkout, programmatic checkout
+`openAndWait(...)`, visible Steam web content for web-close paths,
+close/back-to-app proof, parked zero-FPS presenter state, zero managed timing, managed
+isolation, and clean crash diagnostics.
 
 ## Shipping Notes
 

@@ -9449,7 +9449,14 @@ export function createElectronSteamOverlay(
       assertOpen();
       const { modal, returnUrl, ...waitOptions } = options;
       const pendingCheckoutTargetSnapshot = snapshotSteamOverlayTarget({ type: "checkout" });
-      const snapshot = controller.snapshot();
+      const status = electronSteamOverlayCheckoutOperationStatus(controller);
+      if (!status.canStartOperation && status.reason !== "overlay-not-ready") {
+        throw annotateSteamOverlayTargetSnapshotError(
+          electronSteamOverlayCheckoutOperationStatusError(status),
+          pendingCheckoutTargetSnapshot
+        );
+      }
+      const snapshot = status.snapshot;
       assertElectronSteamOverlayCheckoutNativeHostAvailable(snapshot);
       assertElectronSteamOverlayNotBusy(snapshot);
       const presenterInternal = presenter as NativeOverlayPresenterInternal;
@@ -9464,6 +9471,10 @@ export function createElectronSteamOverlay(
       };
 
       try {
+        await controller.waitForOverlayReady({
+          timeoutMs: finiteNumber(waitOptions.showTimeoutMs, 15000),
+          signal: waitOptions.signal
+        });
         const transaction = await runElectronSteamOverlayAbortableOperation(
           controller,
           "finish checkout operation",
@@ -9484,7 +9495,7 @@ export function createElectronSteamOverlay(
         };
       } catch (error) {
         releaseActivation();
-        throw error;
+        throw annotateSteamOverlayTargetSnapshotError(error, pendingCheckoutTargetSnapshot);
       }
     },
     async openCheckoutAndWaitIfAvailable<T extends ElectronSteamOverlayCheckoutOperationResult>(
@@ -10207,6 +10218,17 @@ function electronSteamOverlayOpenStatusError(status: ElectronSteamOverlayOpenSta
   }
 
   return new Error(status.message ?? `Electron Steam overlay cannot open: ${status.reason ?? "unavailable"}.`);
+}
+
+function electronSteamOverlayCheckoutOperationStatusError(status: ElectronSteamOverlayCheckoutOperationStatus): Error {
+  if (status.reason === "native-host-unavailable") {
+    return (
+      electronSteamOverlayNativeHostUnavailableError(status.snapshot) ??
+      new Error(status.message ?? "Electron Steam checkout native host is unavailable.")
+    );
+  }
+
+  return new Error(status.message ?? `Electron Steam checkout cannot start: ${status.reason ?? "unavailable"}.`);
 }
 
 function loadElectronGlobalShortcut(): ElectronGlobalShortcutApi | undefined {

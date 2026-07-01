@@ -853,6 +853,10 @@ duplicate child overlay targets.
 7. Re-run checkout proof:
    - generic App ID `480` for public plumbing where possible;
    - a real app/product only for private purchase proof;
+   - `openCheckoutAndWait(...)` must keep the native presenter prepared and
+     wait for Steam overlay readiness before invoking the app's `InitTxn`
+     operation, so real transactions are not created while the overlay hook is
+     still unavailable;
    - require `callback:microtxn` diagnostics to include presenter state during
      real purchase authorization; current Deck/macOS summary auditors fail if
      that callback lacks a presenter snapshot, and the macOS matrix can add
@@ -1360,6 +1364,18 @@ Current evidence:
   `steam-unavailable`; the live run re-proved the happy path for direct
   web/store/Friends/dialog opens, wait-style web/store/Friends/dialog routes,
   duplicate-open suppression, passive toast priming, visible Steam web content,
+  close/back-to-app proof, parked zero-FPS presenter state, zero managed
+  timing, managed isolation, and clean crash diagnostics.
+  A focused current-head 2026-07-01 checkout Apple Silicon matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-checkout-readiness-before-inittxn-20260701-093251`
+  rebuilt and signed the same arm64-only Electron `43.0.0` package and passed
+  all four Steam-launched checkout cases after `openCheckoutAndWait(...)` began
+  waiting for Steam overlay readiness before invoking the transaction
+  operation. Unit coverage proves a not-yet-ready overlay leaves the
+  transaction operation untouched and reports only a sanitized pending checkout
+  snapshot on readiness timeout; the live run re-proved prepare-only checkout,
+  direct synthetic approval checkout, managed Shift+Tab checkout, programmatic
+  checkout `openAndWait(...)`, visible Steam web content for web-close paths,
   close/back-to-app proof, parked zero-FPS presenter state, zero managed
   timing, managed isolation, and clean crash diagnostics.
 - BrowserWindow-only overlay support is not proven.
