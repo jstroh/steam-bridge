@@ -457,8 +457,7 @@ Electron `43.0.0` package and stable Steam shortcut without restarting Steam,
 then passed all 44 App ID `480` presenter-backed overlay cases through one
 Steam-owned process.
 New macOS matrix manifests record their suite name, and the summary auditor
-rejects `full`, `persistent`, and `checkout` artifacts that are missing required
-overlay surface cases.
+rejects named-suite artifacts that are missing required overlay surface cases.
 
 ## Shipping Notes
 

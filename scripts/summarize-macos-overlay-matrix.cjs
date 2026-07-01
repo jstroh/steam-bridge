@@ -47,13 +47,16 @@ const SENSITIVE_MANIFEST_OPTIONS = new Set([
   "--checkout-transaction-id",
   "--checkout-url"
 ]);
-const FULL_SUITE_REQUIRED_CASE_IDS = [
+const MINIMAL_SUITE_REQUIRED_CASE_IDS = [
   "00-presenter-ready",
   "01-web-openwait",
   "02-store-openwait",
   "03-friends-openwait",
   "04-dialog-official-openwait",
-  "05-passive-toast",
+  "05-passive-toast"
+];
+const CORE_SUITE_REQUIRED_CASE_IDS = [
+  ...MINIMAL_SUITE_REQUIRED_CASE_IDS,
   "06-passive-unlock-toast",
   "07-checkout-approval",
   "07b-checkout-prepare",
@@ -73,7 +76,10 @@ const FULL_SUITE_REQUIRED_CASE_IDS = [
   "21-community",
   "22-stats",
   "23-achievements",
-  "24-user-chat",
+  "24-user-chat"
+];
+const FULL_SUITE_REQUIRED_CASE_IDS = [
+  ...CORE_SUITE_REQUIRED_CASE_IDS,
   "25-user-steamid",
   "26-dialog-Friends",
   "27-dialog-Players",
@@ -145,10 +151,21 @@ const CHECKOUT_SUITE_REQUIRED_CASE_IDS = [
   "03-shortcut-checkout",
   "04-shortcut-checkout-openwait"
 ];
+const UNAVAILABLE_SUITE_REQUIRED_CASE_IDS = [
+  "00-unavailable-presenter-ready",
+  "01-unavailable-web-openwait",
+  "02-unavailable-checkout",
+  "03-unavailable-checkout-prepare",
+  "04-unavailable-shortcut-openwait",
+  "05-unavailable-passive-toast"
+];
 const REQUIRED_SUITE_CASE_IDS = new Map([
+  ["minimal", MINIMAL_SUITE_REQUIRED_CASE_IDS],
+  ["core", CORE_SUITE_REQUIRED_CASE_IDS],
   ["full", FULL_SUITE_REQUIRED_CASE_IDS],
   ["persistent", PERSISTENT_SUITE_REQUIRED_CASE_IDS],
-  ["checkout", CHECKOUT_SUITE_REQUIRED_CASE_IDS]
+  ["checkout", CHECKOUT_SUITE_REQUIRED_CASE_IDS],
+  ["unavailable", UNAVAILABLE_SUITE_REQUIRED_CASE_IDS]
 ]);
 
 main();
@@ -1736,12 +1753,40 @@ function assertSuiteCoverageSelfTest() {
     "checkout suite coverage should reject missing programmatic checkout proof"
   );
 
+  const coreFailures = [];
+  verifySuiteCoverage(
+    CORE_SUITE_REQUIRED_CASE_IDS.map((caseId) => ({ suite: "core", caseId })),
+    coreFailures
+  );
+  assert.deepEqual(coreFailures, [], "complete core suite coverage should pass");
+
+  const missingCoreFailures = [];
+  verifySuiteCoverage(
+    CORE_SUITE_REQUIRED_CASE_IDS.filter((caseId) => caseId !== "11-shortcut-checkout").map((caseId) => ({
+      suite: "core",
+      caseId
+    })),
+    missingCoreFailures
+  );
+  assert.match(
+    missingCoreFailures.join("\n"),
+    /core macOS matrix missing required case 11-shortcut-checkout/,
+    "core suite coverage should reject missing checkout shortcut proof"
+  );
+
   const persistentFailures = [];
   verifySuiteCoverage(
     PERSISTENT_SUITE_REQUIRED_CASE_IDS.map((caseId) => ({ suite: "persistent", caseId })),
     persistentFailures
   );
   assert.deepEqual(persistentFailures, [], "complete persistent suite coverage should pass");
+
+  const unavailableFailures = [];
+  verifySuiteCoverage(
+    UNAVAILABLE_SUITE_REQUIRED_CASE_IDS.map((caseId) => ({ suite: "unavailable", caseId })),
+    unavailableFailures
+  );
+  assert.deepEqual(unavailableFailures, [], "complete unavailable suite coverage should pass");
 
   const mixedSuiteFailures = [];
   verifySuiteCoverage(
