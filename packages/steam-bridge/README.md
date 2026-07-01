@@ -201,7 +201,10 @@ await steamOverlay.openCheckoutAndWait(() =>
 
 // Optional: reuse the configured Shift+Tab target from a controller/menu button.
 // Use the wait form when the app should resume only after Steam closes.
-await steamOverlay.openShortcutTargetAndWait();
+const shortcutStatus = steamOverlay.getShortcutOpenStatus();
+if (shortcutStatus.canWait) {
+  await steamOverlay.openShortcutTargetAndWait();
+}
 
 // Achievement progress/store notifications are automatically primed while the
 // managed overlay is open. Use prepareForNotification() only for custom cases.
@@ -289,12 +292,17 @@ updates after the managed shortcut has passed readiness and called Steam's
 overlay activation API; readiness failures call `overlayShortcut.onError`
 without emitting a false open event. Static targets should not need a resolver
 function just for side effects. Controller or in-game menu buttons can
-call `steamOverlay.openShortcutTarget()` to open that same configured managed
-target, or `steamOverlay.openShortcutTargetAndWait()` when the button flow
-should resolve only after Steam closes and the presenter parks. Both helpers
+call `steamOverlay.getShortcutOpenStatus()` to inspect the configured target
+without invoking Steam or resolving dynamic app callbacks, then call
+`steamOverlay.openShortcutTarget()` to open that same configured managed target,
+or `steamOverlay.openShortcutTargetAndWait()` when the button flow should
+resolve only after Steam closes and the presenter parks. Both open helpers
 return `null` while the Steam overlay is already active/opening or when the
 shortcut bridge is disabled, so apps do not need to duplicate the target
-resolver. The bridge consumes Shift+Tab only when it is opening a managed
+resolver. Dynamic shortcut targets intentionally report
+`reason: "dynamic-target"` from `getShortcutOpenStatus()` because the
+side-effect-free check does not call app code. The bridge consumes Shift+Tab
+only when it is opening a managed
 presenter-backed target; once Steam reports an active overlay, it lets Shift+Tab
 pass through so Steam can handle the close/toggle side. On macOS, Steam can
 consume Shift+Tab before Electron's normal

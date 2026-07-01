@@ -7422,6 +7422,30 @@ test("electron steam overlay manager opens the configured shortcut target progra
     }
   });
 
+  const shortcutStatus = overlay.getShortcutOpenStatus();
+  assert.equal(shortcutStatus.enabled, true);
+  assert.equal(shortcutStatus.canOpen, true);
+  assert.equal(shortcutStatus.canWait, true);
+  assert.equal(shortcutStatus.reason, undefined);
+  assert.equal(shortcutStatus.waitReason, undefined);
+  assert.deepEqual(shortcutStatus.target, {
+    type: "web",
+    url: "https://example.invalid/overlay-menu",
+    modal: true
+  });
+  assert.deepEqual(shortcutStatus.shortcut, {
+    enabled: true,
+    preventDefault: true,
+    targetType: "web",
+    target: {
+      type: "web",
+      modal: true,
+      hasUrl: true
+    }
+  });
+  assert.equal(shortcutStatus.targetStatus.canOpen, true);
+  assert.equal(shortcutStatus.targetStatus.canWait, true);
+
   assert.equal(overlay.openShortcutTarget() !== null, true);
   assert.deepEqual(
     fake.calls.filter((call) => call.method === "activateOverlayToWebPage"),
@@ -7437,6 +7461,11 @@ test("electron steam overlay manager opens the configured shortcut target progra
 
   assert.equal(overlay.openShortcutTarget(), null);
   fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: true });
+  const activeShortcutStatus = overlay.getShortcutOpenStatus();
+  assert.equal(activeShortcutStatus.canOpen, false);
+  assert.equal(activeShortcutStatus.canWait, false);
+  assert.equal(activeShortcutStatus.reason, "overlay-active");
+  assert.equal(activeShortcutStatus.waitReason, "overlay-active");
   assert.equal(overlay.openShortcutTarget(), null);
   assert.deepEqual(
     fake.calls.filter((call) => call.method === "activateOverlayToWebPage"),
@@ -7449,6 +7478,12 @@ test("electron steam overlay manager opens the configured shortcut target progra
     pollIntervalMs: 10000,
     overlayShortcut: false
   });
+  const disabledStatus = disabledOverlay.getShortcutOpenStatus();
+  assert.equal(disabledStatus.enabled, false);
+  assert.equal(disabledStatus.canOpen, false);
+  assert.equal(disabledStatus.canWait, false);
+  assert.equal(disabledStatus.reason, "disabled");
+  assert.equal(disabledStatus.waitReason, "disabled");
   assert.equal(disabledOverlay.openShortcutTarget(), null);
   disabledOverlay.close();
 });
@@ -8205,6 +8240,16 @@ test("electron steam overlay shortcut snapshots static targets without leaking p
       hasUrl: true
     }
   });
+  const staticStatus = overlay.getShortcutOpenStatus();
+  assert.equal(staticStatus.canOpen, true);
+  assert.equal(staticStatus.canWait, true);
+  assert.equal(staticStatus.shortcut.targetType, "web");
+  assert.equal(JSON.stringify(staticStatus.shortcut).includes("private-checkout-token"), false);
+  assert.deepEqual(staticStatus.target, {
+    type: "web",
+    url: "https://example.invalid/private-checkout-token",
+    modal: true
+  });
   assert.equal(JSON.stringify(overlay.snapshot()).includes("private-checkout-token"), false);
   beforeInputHandler(
     {
@@ -8258,6 +8303,27 @@ test("electron steam overlay shortcut snapshots static targets without leaking p
   assert.equal(checkoutSnapshotJson.includes("123456789"), false);
   assert.equal(checkoutSnapshotJson.includes("steam://return"), false);
   checkoutOverlay.close();
+
+  const dynamicOverlay = steam.overlay.createElectronSteamOverlay(window, {
+    title: "Electron Dynamic Shortcut Overlay",
+    pollIntervalMs: 10000,
+    overlayShortcut: {
+      target: () => ({ type: "friends" })
+    }
+  });
+  const dynamicStatus = dynamicOverlay.getShortcutOpenStatus();
+  assert.equal(dynamicStatus.canOpen, false);
+  assert.equal(dynamicStatus.canWait, false);
+  assert.equal(dynamicStatus.reason, "dynamic-target");
+  assert.equal(dynamicStatus.waitReason, "dynamic-target");
+  assert.equal(dynamicStatus.target, undefined);
+  assert.equal(dynamicStatus.targetStatus, undefined);
+  assert.equal(dynamicStatus.shortcut.targetType, "function");
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "activateOverlayToWebPage"),
+    [{ method: "activateOverlayToWebPage", args: ["https://example.invalid/private-checkout-token", true] }]
+  );
+  dynamicOverlay.close();
 
   let observedShortcutError;
   const errorOverlay = steam.overlay.createElectronSteamOverlay(window, {
@@ -9864,6 +9930,16 @@ test("electron steam overlay manager fails fast while the macOS native host is u
   assert.equal(unavailableOpenStatus.nativeHostAvailability.available, false);
   assert.equal(unavailableOpenStatus.nativeHostAvailability.reason, "macos-screen-locked");
   assert.match(unavailableOpenStatus.message, /macOS screen is locked/);
+  const unavailableShortcutStatus = overlay.getShortcutOpenStatus();
+  assert.equal(unavailableShortcutStatus.canOpen, false);
+  assert.equal(unavailableShortcutStatus.canWait, false);
+  assert.equal(unavailableShortcutStatus.reason, "native-host-unavailable");
+  assert.equal(unavailableShortcutStatus.waitReason, "native-host-unavailable");
+  assert.equal(unavailableShortcutStatus.target?.type, "friends");
+  assert.equal(unavailableShortcutStatus.targetStatus?.reason, "native-host-unavailable");
+  assert.equal(unavailableShortcutStatus.nativeHostAvailability?.available, false);
+  assert.equal(unavailableShortcutStatus.nativeHostAvailability?.reason, "macos-screen-locked");
+  assert.match(unavailableShortcutStatus.message, /macOS screen is locked/);
   const assertUnavailableError = (error) => {
     assert.equal(error instanceof steam.SteamOverlayNativeHostUnavailableError, true);
     assert.equal(error.name, "SteamOverlayNativeHostUnavailableError");

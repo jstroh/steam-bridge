@@ -297,7 +297,10 @@ app.whenReady().then(async () => {
 
   // Optional: reuse the configured Shift+Tab target from a controller/menu button.
   // Use the wait form when the app should resume only after Steam closes.
-  await steamOverlay.openShortcutTargetAndWait();
+  const shortcutStatus = steamOverlay.getShortcutOpenStatus();
+  if (shortcutStatus.canWait) {
+    await steamOverlay.openShortcutTargetAndWait();
+  }
 });
 ```
 
@@ -313,6 +316,8 @@ Use `getOpenStatus(target)` before wiring menus, controller buttons, or checkout
 fallbacks when the app needs a side-effect-free target/native-host preflight.
 It validates the managed route and reports whether the target can be opened and
 waited on without touching Steam overlay UI.
+Use `getShortcutOpenStatus()` for the same side-effect-free check against the
+configured Shift+Tab/controller target.
 
 While inactive, the presenter stays transparent, click-through, non-focusable,
 and idle at `0` FPS. Passive Steam notifications use the same presenter without
@@ -320,7 +325,9 @@ forcing a permanent Electron repaint loop. The default Shift+Tab bridge opens a
 verified Friends/chat target; set `overlayShortcut.target` to choose another
 presenter-backed target. Controller or in-game menu buttons can call
 `steamOverlay.openShortcutTarget()` or `steamOverlay.openShortcutTargetAndWait()`
-to reuse that same target without duplicating resolver logic.
+to reuse that same target without duplicating resolver logic. Dynamic shortcut
+targets are resolved only by the open helpers; `getShortcutOpenStatus()` reports
+them as dynamic without calling app code.
 
 On macOS, the managed helper fails fast before Steam overlay activation if the
 screen is locked or the display is asleep. Use

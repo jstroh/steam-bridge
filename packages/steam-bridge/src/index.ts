@@ -1919,6 +1919,13 @@ export type ElectronSteamOverlayWaitStatusReason =
   | ElectronSteamOverlayOpenStatusReason
   | "not-waitable";
 
+export type ElectronSteamOverlayShortcutStatusReason =
+  | ElectronSteamOverlayWaitStatusReason
+  | "disabled"
+  | "overlay-active"
+  | "opening"
+  | "dynamic-target";
+
 export interface ElectronSteamOverlayOpenStatus {
   canOpen: boolean;
   canWait: boolean;
@@ -1927,6 +1934,20 @@ export interface ElectronSteamOverlayOpenStatus {
   nativeHostAvailability: ElectronSteamOverlayNativeHostAvailability;
   reason?: ElectronSteamOverlayOpenStatusReason;
   waitReason?: ElectronSteamOverlayWaitStatusReason;
+  message?: string;
+}
+
+export interface ElectronSteamOverlayShortcutStatus {
+  canOpen: boolean;
+  canWait: boolean;
+  enabled: boolean;
+  snapshot: ElectronSteamOverlaySnapshot;
+  shortcut: ElectronSteamOverlayShortcutSnapshot;
+  target?: SteamOverlayTarget;
+  targetStatus?: ElectronSteamOverlayOpenStatus;
+  nativeHostAvailability?: ElectronSteamOverlayNativeHostAvailability;
+  reason?: ElectronSteamOverlayShortcutStatusReason;
+  waitReason?: ElectronSteamOverlayShortcutStatusReason;
   message?: string;
 }
 
@@ -2143,6 +2164,7 @@ export interface ElectronSteamOverlay extends CallbackHandle {
   readonly presenter: NativeOverlayPresenter;
   getNativeHostAvailability(): ElectronSteamOverlayNativeHostAvailability;
   getOpenStatus(target: SteamOverlayTarget): ElectronSteamOverlayOpenStatus;
+  getShortcutOpenStatus(): ElectronSteamOverlayShortcutStatus;
   open(target: SteamOverlayTarget): NativeOverlayPresenter;
   openShortcutTarget(): NativeOverlayPresenter | null;
   openShortcutTargetAndWait(
@@ -8691,6 +8713,9 @@ export function createElectronSteamOverlay(
     getOpenStatus(target: SteamOverlayTarget): ElectronSteamOverlayOpenStatus {
       return electronSteamOverlayOpenStatus(controller, target);
     },
+    getShortcutOpenStatus(): ElectronSteamOverlayShortcutStatus {
+      return electronSteamOverlayShortcutStatus(controller, shortcut, shortcutOpenState);
+    },
     open(target: SteamOverlayTarget): NativeOverlayPresenter {
       assertOpen();
       assertElectronSteamOverlayTargetCanOpen(target);
@@ -9813,6 +9838,91 @@ function electronSteamOverlayOpenStatus(
       message: error instanceof Error ? error.message : String(error)
     };
   }
+}
+
+function electronSteamOverlayShortcutStatus(
+  controller: ElectronSteamOverlay,
+  shortcut: NormalizedElectronSteamOverlayShortcutOptions,
+  shortcutOpenState: ElectronSteamOverlayShortcutOpenState
+): ElectronSteamOverlayShortcutStatus {
+  const snapshot = controller.snapshot();
+  const shortcutSnapshot = snapshot.electronOverlay.overlayShortcut;
+  const nativeHostAvailability = electronSteamOverlayNativeHostAvailability(snapshot);
+  const base = {
+    enabled: shortcut.enabled,
+    snapshot,
+    shortcut: shortcutSnapshot,
+    nativeHostAvailability
+  };
+
+  if (!controller.isOpen()) {
+    return {
+      ...base,
+      canOpen: false,
+      canWait: false,
+      reason: "closed",
+      waitReason: "closed",
+      message: "Electron Steam overlay is closed."
+    };
+  }
+
+  if (!shortcut.enabled) {
+    return {
+      ...base,
+      canOpen: false,
+      canWait: false,
+      reason: "disabled",
+      waitReason: "disabled",
+      message: "Electron Steam overlay shortcut is disabled."
+    };
+  }
+
+  if (snapshot.overlayActive) {
+    return {
+      ...base,
+      canOpen: false,
+      canWait: false,
+      reason: "overlay-active",
+      waitReason: "overlay-active",
+      message: "Steam overlay is already active."
+    };
+  }
+
+  if (shortcutOpenState.opening || isElectronSteamOverlayShortcutOpening(snapshot)) {
+    return {
+      ...base,
+      canOpen: false,
+      canWait: false,
+      reason: "opening",
+      waitReason: "opening",
+      message: "Electron Steam overlay shortcut is already opening."
+    };
+  }
+
+  if (typeof shortcut.target === "function") {
+    return {
+      ...base,
+      canOpen: false,
+      canWait: false,
+      reason: "dynamic-target",
+      waitReason: "dynamic-target",
+      message:
+        "Electron Steam overlay shortcut target is dynamic; call openShortcutTarget() or openShortcutTargetAndWait() to resolve it."
+    };
+  }
+
+  const target = resolveElectronSteamOverlayShortcutTarget(shortcut.target);
+  const targetStatus = electronSteamOverlayOpenStatus(controller, target);
+  return {
+    ...base,
+    canOpen: targetStatus.canOpen,
+    canWait: targetStatus.canWait,
+    target,
+    targetStatus,
+    reason: targetStatus.reason,
+    waitReason: targetStatus.waitReason,
+    message: targetStatus.message
+  };
 }
 
 function formatNativeOverlayHostUnavailableReason(reason: NativeOverlayHostUnavailableReason): string {
