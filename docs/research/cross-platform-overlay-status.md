@@ -60,7 +60,8 @@ standalone private fixture checks before a live matrix run. The macOS summary
 auditor now rejects newly generated checkout manifests that carry unredacted
 sensitive checkout command values, and it scans smoke result JSON plus
 lifecycle logs for raw checkout approval URLs, transaction/order IDs, return
-URLs, Steam IDs, and private checkout CLI arguments.
+URLs, Steam IDs, configured-product item metadata, price/currency details, and
+private checkout CLI arguments.
 Newly generated macOS matrix manifests also require each smoke result snapshot
 to include the named builder-facing `get*OpenStatus(...)` diagnostics for web,
 store, Friends, profile, players, community, stats, achievements, user, dialog,

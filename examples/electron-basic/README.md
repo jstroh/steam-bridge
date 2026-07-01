@@ -472,9 +472,10 @@ shortcut targets report a
 sanitized `electronOverlay.overlayShortcut.target` snapshot with target type and
 non-sensitive flags; checkout URLs, transaction IDs, return URLs, and Steam IDs
 are not serialized. Lifecycle and result artifacts also redact real checkout
-URLs, transaction IDs, return URLs, Steam IDs, auth-ticket bytes, and private
-CLI arguments while preserving verifier-safe presence flags and presenter
-snapshots. The smoke app uses `overlayShortcut.onOpen` for shortcut lifecycle
+URLs, transaction IDs, return URLs, Steam IDs, configured-product item metadata,
+price/currency details, auth-ticket bytes, and private CLI arguments while
+preserving verifier-safe presence flags and presenter snapshots. The smoke app
+uses `overlayShortcut.onOpen` for shortcut lifecycle
 logging so normal shortcut targets can stay static; dynamic resolver targets are
 only used when a target cannot be validated until keypress time. For
 resolver-backed shortcut targets, the verifier checks this smoke app's
@@ -1177,8 +1178,9 @@ app-specific proof outside the committed examples:
 7. Verify the Steam modal appears in both Deck Game Mode and Desktop Mode.
 8. Confirm backing out or closing the Steam surface returns focus to the app.
 9. Confirm any `callback:microtxn` artifact keeps the presenter snapshot while
-   redacting order IDs, transaction IDs, Steam IDs, and checkout URLs. For app
-   logs, prefer the checkout wait result's `targetSnapshot` or
+   redacting order IDs, transaction IDs, Steam IDs, checkout URLs, item
+   metadata, and price/currency details. For app logs, prefer the checkout wait
+   result's `targetSnapshot` or
    `steamworks.overlay.snapshotSteamOverlayTarget(target)` over raw checkout
    target objects.
 10. Keep private app IDs, item definitions, transaction IDs, publisher keys, and

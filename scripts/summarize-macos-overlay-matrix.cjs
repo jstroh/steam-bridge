@@ -50,10 +50,20 @@ const SENSITIVE_MANIFEST_OPTIONS = new Set([
 ]);
 const SENSITIVE_ARTIFACT_KEY_NAMES = new Set([
   "accountid",
+  "amount",
   "authticket",
+  "category",
   "checkoutjsonfile",
   "checkouturl",
+  "currency",
+  "description",
+  "itemdefid",
+  "itemdefids",
+  "itemid",
+  "itemids",
+  "itempropsjson",
   "orderid",
+  "price",
   "returnurl",
   "steamid",
   "steamid32",
@@ -2007,6 +2017,9 @@ function runSelfTest() {
   const leakedArtifactFixtureRoot = fs.mkdtempSync(
     path.join(os.tmpdir(), "steam-bridge-macos-matrix-summary-leaked-artifact.")
   );
+  const leakedProductFixtureRoot = fs.mkdtempSync(
+    path.join(os.tmpdir(), "steam-bridge-macos-matrix-summary-leaked-product.")
+  );
   const crashFixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-macos-matrix-summary-crash."));
   const metalCrashFixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-macos-matrix-summary-metal-crash."));
   const missingMicroTxnFixtureRoot = fs.mkdtempSync(
@@ -2069,6 +2082,9 @@ function runSelfTest() {
     createSelfTestFixture(leakedArtifactFixtureRoot);
     injectUnredactedCheckoutLifecycleValue(leakedArtifactFixtureRoot, "06-checkout");
     assertUnredactedArtifactRejected(leakedArtifactFixtureRoot);
+    createSelfTestFixture(leakedProductFixtureRoot);
+    injectUnredactedCheckoutProductDetails(leakedProductFixtureRoot, "06-checkout");
+    assertUnredactedProductArtifactRejected(leakedProductFixtureRoot);
     createSelfTestFixture(crashFixtureRoot);
     injectMacosCrashReport(crashFixtureRoot, "01-web-openwait");
     assertMacosCrashReportRejected(crashFixtureRoot);
@@ -2118,6 +2134,7 @@ function runSelfTest() {
     fs.rmSync(fixtureRoot, { recursive: true, force: true });
     fs.rmSync(unredactedFixtureRoot, { recursive: true, force: true });
     fs.rmSync(leakedArtifactFixtureRoot, { recursive: true, force: true });
+    fs.rmSync(leakedProductFixtureRoot, { recursive: true, force: true });
     fs.rmSync(crashFixtureRoot, { recursive: true, force: true });
     fs.rmSync(metalCrashFixtureRoot, { recursive: true, force: true });
     fs.rmSync(missingMicroTxnFixtureRoot, { recursive: true, force: true });
@@ -2271,6 +2288,47 @@ function assertUnredactedArtifactRejected(root) {
     result.stderr,
     /123456789|approvetxn/,
     "summary rejection must not echo leaked checkout values"
+  );
+}
+
+function injectUnredactedCheckoutProductDetails(root, caseId) {
+  const row = readManifestRows(root).find((entry) => entry.caseId === caseId);
+  assert.ok(row, `self-test fixture should include ${caseId}`);
+  const lifecyclePath = path.join(row.diagnosticDir, "lifecycle.jsonl");
+  const leakedEntry = {
+    type: "event:callback:microtxn",
+    payload: {
+      itemId: "private-item-100",
+      itemDefId: 100,
+      amount: 199,
+      currency: "USD",
+      description: "Private Gem Pack",
+      category: "currency",
+      presenter: activePresenterFixture(31)
+    }
+  };
+  fs.appendFileSync(lifecyclePath, `${JSON.stringify(leakedEntry)}\n`);
+}
+
+function assertUnredactedProductArtifactRejected(root) {
+  const result = spawnSync(process.execPath, [__filename, "--artifact-root", root], {
+    encoding: "utf8"
+  });
+  assert.notEqual(result.status, 0, "summary should reject unredacted checkout product details");
+  assert.match(
+    result.stderr,
+    /lifecycle contains raw sensitive field lifecycle\[\d+\]\.payload\.itemId/,
+    "summary rejection should identify the raw item ID field path"
+  );
+  assert.match(
+    result.stderr,
+    /lifecycle contains raw sensitive field lifecycle\[\d+\]\.payload\.description/,
+    "summary rejection should identify the raw item description field path"
+  );
+  assert.doesNotMatch(
+    result.stderr,
+    /private-item-100|Private Gem Pack|USD/,
+    "summary rejection must not echo leaked checkout product details"
   );
 }
 

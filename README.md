@@ -589,9 +589,9 @@ plus the checkout-operation preflight used before starting `InitTxn`; summary
 rows report this as `openStatuses=true` and `checkoutOperation=true` when the
 proof is present.
 The same auditor also scans smoke result JSON and lifecycle logs for raw
-checkout approval URLs, transaction/order IDs, return URLs, Steam IDs, and
-private checkout CLI arguments, so private purchase artifacts fail closed if
-redaction regresses.
+checkout approval URLs, transaction/order IDs, return URLs, Steam IDs,
+configured-product item metadata, price/currency details, and private checkout
+CLI arguments, so private purchase artifacts fail closed if redaction regresses.
 A focused Apple Silicon minimal run at
 `/tmp/steam-bridge-macos-overlay-matrix-20260701-032532` also passed all 7
 minimal cases after expanding the duplicate-open guard to direct,
