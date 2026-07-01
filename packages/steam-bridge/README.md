@@ -196,7 +196,7 @@ const webTarget = {
   url: checkoutUrl,
   modal: true
 } as const;
-const webResult = await steamOverlay.openAndWaitIfAvailable(webTarget);
+const webResult = await steamOverlay.openWebAndWaitIfAvailable(checkoutUrl, { modal: true });
 if (!webResult) {
   const webStatus = steamOverlay.getOpenStatus(webTarget);
   console.warn("Steam overlay target is not waitable right now", webStatus.reason ?? webStatus.waitReason);
@@ -229,33 +229,28 @@ await steamOverlay.openShortcutTargetAndWaitIfAvailable();
 // Achievement progress/store notifications are automatically primed while the
 // managed overlay is open. Use prepareForNotification() only for custom cases.
 
-await steamOverlay.openAndWait({ type: "friends" });
+await steamOverlay.openFriendsAndWait();
 
-await steamOverlay.openAndWait({ type: "profile" });
+await steamOverlay.openProfileAndWait();
 
-await steamOverlay.openAndWait({
-  type: "dialog",
+await steamOverlay.openDialogAndWait({
   dialog: "Achievements",
   appId: 480
 });
 
-await steamOverlay.openAndWait({
-  type: "community",
+await steamOverlay.openCommunityAndWait({
   appId: 480
 });
 
-await steamOverlay.openAndWait({
-  type: "stats",
+await steamOverlay.openStatsAndWait({
   appId: 480
 });
 
-await steamOverlay.openAndWait({
-  type: "achievements",
+await steamOverlay.openAchievementsAndWait({
   appId: 480
 });
 
-await steamOverlay.openAndWait({
-  type: "user",
+await steamOverlay.openUserAndWait({
   dialog: client.overlay.UserDialog.SteamId
 });
 ```
@@ -569,7 +564,7 @@ if (!availability.available) {
   return;
 }
 
-await steamOverlay.openAndWait({ type: "friends" });
+await steamOverlay.openFriendsAndWait();
 ```
 
 The Electron smoke snapshot also records that same helper result at
@@ -585,7 +580,7 @@ flow:
 
 ```ts
 try {
-  await steamOverlay.openAndWait({ type: "friends" });
+  await steamOverlay.openFriendsAndWait();
 } catch (error) {
   if (steamworks.isSteamOverlayNativeHostUnavailableError(error)) {
     console.warn("Steam overlay host unavailable:", error.reason);
@@ -965,6 +960,17 @@ and direct profile/players/community/stats/achievements/user routes with one
 Metal presenter-backed overlay target, visible Steam web content where
 applicable, active/inactive callbacks, close/back-to-app proof, parked zero-FPS
 state, disabled needs-present polling, zero managed overlay timing, managed
+child-overlay isolation, and clean crash diagnostics.
+A focused 2026-07-01 minimal Apple Silicon artifact at
+`/tmp/steam-bridge-macos-overlay-matrix-minimal-named-helpers-20260701-064718`
+rebuilt and signed the same arm64-only Electron `43.0.0` package and passed all
+7 Steam-launched cases after the smoke app moved the common managed actions to
+the named builder helpers. It exercised `openWebAndWait(...)`,
+`openStoreAndWait(...)`, `openFriendsAndWait(...)`, `openDialogAndWait(...)`,
+duplicate-open suppression through `openWebAndWaitIfAvailable(...)`, and
+passive notification priming with visible web content where applicable,
+active/inactive callbacks, close/back-to-app proof, parked zero-FPS state,
+disabled needs-present polling, zero managed overlay timing, managed
 child-overlay isolation, and clean crash diagnostics.
 A later recovered-client full artifact at
 `/tmp/steam-bridge-macos-overlay-matrix-20260630-220434` also passed all 44

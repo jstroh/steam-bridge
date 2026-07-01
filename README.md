@@ -309,18 +309,14 @@ app.whenReady().then(async () => {
   const client = steamworks.init(480);
   const steamOverlay = client.overlay.createElectronSteamOverlay(mainWindow);
 
-  const storeResult = await steamOverlay.openAndWaitIfAvailable({ type: "store", appId: 480 });
+  const storeResult = await steamOverlay.openStoreAndWaitIfAvailable({ appId: 480 });
   if (!storeResult) {
     const storeStatus = steamOverlay.getOpenStatus({ type: "store", appId: 480 });
     console.warn("Steam store overlay is not waitable right now", storeStatus.reason ?? storeStatus.waitReason);
   }
 
-  await steamOverlay.openAndWait({ type: "friends" });
-  await steamOverlay.openAndWait({
-    type: "web",
-    url: "https://store.steampowered.com/app/480/",
-    modal: true
-  });
+  await steamOverlay.openFriendsAndWait();
+  await steamOverlay.openWebAndWait("https://store.steampowered.com/app/480/", { modal: true });
 
   // Optional: reuse the configured Shift+Tab target from a controller/menu button.
   // Use the wait form when the app should resume only after Steam closes.
@@ -330,8 +326,11 @@ app.whenReady().then(async () => {
 
 Supported managed targets include web pages, store pages, checkout, Friends/chat,
 profiles, players, community hubs, stats, achievements, user routes, and known
-dialog equivalents. `openAndWait(...)` validates those routes before preparing
-the native host and rejects raw native prompt routes. Use
+dialog equivalents. Use the named helpers such as `openFriendsAndWait()`,
+`openStoreAndWaitIfAvailable(...)`, and `openWebAndWait(...)` for common
+surfaces; use `openAndWait(target)` when you need to construct a target object
+dynamically. `openAndWait(...)` validates those routes before preparing the
+native host and rejects raw native prompt routes. Use
 `open({ ..., route: "native" })` only when you are explicitly collecting
 diagnostic evidence for raw Steamworks overlay behavior. If overlay readiness
 times out before Steam activation, the scoped native-host hold is released and
@@ -549,6 +548,17 @@ approval and prepare-only, every managed Shift+Tab shortcut target, and direct
 profile/players/community/stats/achievements/user routes with one Metal
 presenter-backed overlay target, close/back-to-app proof, parked zero-FPS
 state, disabled needs-present polling, zero managed overlay timing, managed
+child-overlay isolation, and clean crash diagnostics.
+A focused Apple Silicon minimal run at
+`/tmp/steam-bridge-macos-overlay-matrix-minimal-named-helpers-20260701-064718`
+then rebuilt and signed the same arm64-only Electron `43.0.0` package and
+passed all 7 Steam-launched cases after the smoke app switched its common
+managed actions to the named builder helpers. The run exercised
+`openWebAndWait(...)`, `openStoreAndWait(...)`, `openFriendsAndWait(...)`,
+`openDialogAndWait(...)`, duplicate-open suppression through
+`openWebAndWaitIfAvailable(...)`, and passive notification priming with visible
+web content where applicable, close/back-to-app proof, parked zero-FPS state,
+disabled needs-present polling, zero managed overlay timing, managed
 child-overlay isolation, and clean crash diagnostics.
 
 ## Shipping Notes

@@ -963,6 +963,18 @@ Steam, log out or reboot macOS to clear the user-session IPC state.
   active/inactive callbacks, close/back-to-app proof, parked zero-FPS state,
   disabled needs-present polling, zero managed overlay timing, managed
   child-overlay isolation, and clean crash diagnostics.
+- A focused current-head 2026-07-01 minimal Apple Silicon matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-minimal-named-helpers-20260701-064718`
+  rebuilt and signed the arm64-only Electron `43.0.0` package, reused the
+  stable App ID `480` shortcut without restarting Steam, and passed all 7
+  minimal cases after the smoke app switched common managed actions to the
+  named builder helpers. The run exercised `openWebAndWait(...)`,
+  `openStoreAndWait(...)`, `openFriendsAndWait(...)`, `openDialogAndWait(...)`,
+  duplicate-open suppression through `openWebAndWaitIfAvailable(...)`, and
+  passive notification priming with visible web content where applicable,
+  active/inactive callbacks, close/back-to-app proof, parked zero-FPS state,
+  disabled needs-present polling, zero managed overlay timing, managed
+  child-overlay isolation, and clean crash diagnostics.
 
 ## Primary References
 

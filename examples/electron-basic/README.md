@@ -392,17 +392,18 @@ The `presenter-*` actions use `client.overlay.createElectronSteamOverlay(...)`
 and reuse the same passive, click-through presenter for the requested overlay
 target. Use
 `presenter-web --web-modal true` to verify the app-facing persistent presenter
-path. Use `presenter-web-open-and-wait --web-modal true` to exercise the exact
-builder-facing `steamOverlay.openAndWait(...)` path; the smoke app records
+path. Use `presenter-web-open-and-wait --web-modal true` to exercise the
+builder-facing `steamOverlay.openWebAndWait(...)` helper, which delegates to the
+same managed `openAndWait(...)` path; the smoke app records
 `overlay:presenter-open-and-wait-start` before writing its result, then records
 `overlay:presenter-open-and-wait-complete` only after Steam closes and the
 presenter parks. The macOS helper's `--close-probe` and Deck runner's visual
 close probes verify that close/park lifecycle from outside the app. Use
 `presenter-store-open-and-wait` and
-`presenter-friends-open-and-wait` for the same one-call open/close/park proof
-against the Steam store and Friends List surfaces. Use
-`presenter-dialog-auto-open-and-wait --dialog OfficialGameGroup` for the same
-proof through the verified high-level dialog-equivalent router. The profile,
+`presenter-friends-open-and-wait` for the same named-helper open/close/park
+proof against the Steam store and Friends List surfaces. Use
+`presenter-dialog-auto-open-and-wait --dialog OfficialGameGroup` for proof
+through the verified high-level dialog-equivalent helper. The profile,
 players, community, stats, achievements, and user routes also have
 `*-open-and-wait` actions for the same managed wait-helper proof. Managed
 `*-open-and-wait` actions wait for Steam's overlay diagnostics to report the app

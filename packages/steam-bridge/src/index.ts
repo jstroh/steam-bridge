@@ -1791,6 +1791,22 @@ export type SteamOverlayTarget =
   | SteamOverlayCheckoutTarget
   | SteamOverlayDialogTarget;
 
+export type ElectronSteamOverlayTargetOptions<Target extends SteamOverlayTarget> = Omit<Target, "type" | "presenter">;
+export type ElectronSteamOverlayWebTargetOptions = Omit<
+  ElectronSteamOverlayTargetOptions<SteamOverlayWebTarget>,
+  "url"
+>;
+export type ElectronSteamOverlayStoreTargetOptions = ElectronSteamOverlayTargetOptions<SteamOverlayStoreTarget>;
+export type ElectronSteamOverlayFriendsTargetOptions = ElectronSteamOverlayTargetOptions<SteamOverlayFriendsTarget>;
+export type ElectronSteamOverlayProfileTargetOptions = ElectronSteamOverlayTargetOptions<SteamOverlayProfileTarget>;
+export type ElectronSteamOverlayPlayersTargetOptions = ElectronSteamOverlayTargetOptions<SteamOverlayPlayersTarget>;
+export type ElectronSteamOverlayCommunityTargetOptions = ElectronSteamOverlayTargetOptions<SteamOverlayCommunityTarget>;
+export type ElectronSteamOverlayStatsTargetOptions = ElectronSteamOverlayTargetOptions<SteamOverlayStatsTarget>;
+export type ElectronSteamOverlayAchievementsTargetOptions =
+  ElectronSteamOverlayTargetOptions<SteamOverlayAchievementsTarget>;
+export type ElectronSteamOverlayUserTargetOptions = ElectronSteamOverlayTargetOptions<SteamOverlayUserTarget>;
+export type ElectronSteamOverlayDialogTargetOptions = ElectronSteamOverlayTargetOptions<SteamOverlayDialogTarget>;
+
 export interface ElectronOverlayKeyboardInput {
   type?: string;
   key?: string;
@@ -2319,6 +2335,88 @@ export interface ElectronSteamOverlay extends CallbackHandle {
   openAndWaitIfAvailable(
     target: SteamOverlayTarget,
     options?: ElectronSteamOverlayOpenAndWaitOptions
+  ): Promise<ElectronSteamOverlayOpenAndWaitResult | null>;
+  openWebAndWait(
+    url: string,
+    targetOptions?: ElectronSteamOverlayWebTargetOptions,
+    waitOptions?: ElectronSteamOverlayOpenAndWaitOptions
+  ): Promise<ElectronSteamOverlayOpenAndWaitResult>;
+  openWebAndWaitIfAvailable(
+    url: string,
+    targetOptions?: ElectronSteamOverlayWebTargetOptions,
+    waitOptions?: ElectronSteamOverlayOpenAndWaitOptions
+  ): Promise<ElectronSteamOverlayOpenAndWaitResult | null>;
+  openStoreAndWait(
+    targetOptions?: ElectronSteamOverlayStoreTargetOptions,
+    waitOptions?: ElectronSteamOverlayOpenAndWaitOptions
+  ): Promise<ElectronSteamOverlayOpenAndWaitResult>;
+  openStoreAndWaitIfAvailable(
+    targetOptions?: ElectronSteamOverlayStoreTargetOptions,
+    waitOptions?: ElectronSteamOverlayOpenAndWaitOptions
+  ): Promise<ElectronSteamOverlayOpenAndWaitResult | null>;
+  openFriendsAndWait(
+    targetOptions?: ElectronSteamOverlayFriendsTargetOptions,
+    waitOptions?: ElectronSteamOverlayOpenAndWaitOptions
+  ): Promise<ElectronSteamOverlayOpenAndWaitResult>;
+  openFriendsAndWaitIfAvailable(
+    targetOptions?: ElectronSteamOverlayFriendsTargetOptions,
+    waitOptions?: ElectronSteamOverlayOpenAndWaitOptions
+  ): Promise<ElectronSteamOverlayOpenAndWaitResult | null>;
+  openProfileAndWait(
+    targetOptions?: ElectronSteamOverlayProfileTargetOptions,
+    waitOptions?: ElectronSteamOverlayOpenAndWaitOptions
+  ): Promise<ElectronSteamOverlayOpenAndWaitResult>;
+  openProfileAndWaitIfAvailable(
+    targetOptions?: ElectronSteamOverlayProfileTargetOptions,
+    waitOptions?: ElectronSteamOverlayOpenAndWaitOptions
+  ): Promise<ElectronSteamOverlayOpenAndWaitResult | null>;
+  openPlayersAndWait(
+    targetOptions?: ElectronSteamOverlayPlayersTargetOptions,
+    waitOptions?: ElectronSteamOverlayOpenAndWaitOptions
+  ): Promise<ElectronSteamOverlayOpenAndWaitResult>;
+  openPlayersAndWaitIfAvailable(
+    targetOptions?: ElectronSteamOverlayPlayersTargetOptions,
+    waitOptions?: ElectronSteamOverlayOpenAndWaitOptions
+  ): Promise<ElectronSteamOverlayOpenAndWaitResult | null>;
+  openCommunityAndWait(
+    targetOptions?: ElectronSteamOverlayCommunityTargetOptions,
+    waitOptions?: ElectronSteamOverlayOpenAndWaitOptions
+  ): Promise<ElectronSteamOverlayOpenAndWaitResult>;
+  openCommunityAndWaitIfAvailable(
+    targetOptions?: ElectronSteamOverlayCommunityTargetOptions,
+    waitOptions?: ElectronSteamOverlayOpenAndWaitOptions
+  ): Promise<ElectronSteamOverlayOpenAndWaitResult | null>;
+  openStatsAndWait(
+    targetOptions?: ElectronSteamOverlayStatsTargetOptions,
+    waitOptions?: ElectronSteamOverlayOpenAndWaitOptions
+  ): Promise<ElectronSteamOverlayOpenAndWaitResult>;
+  openStatsAndWaitIfAvailable(
+    targetOptions?: ElectronSteamOverlayStatsTargetOptions,
+    waitOptions?: ElectronSteamOverlayOpenAndWaitOptions
+  ): Promise<ElectronSteamOverlayOpenAndWaitResult | null>;
+  openAchievementsAndWait(
+    targetOptions?: ElectronSteamOverlayAchievementsTargetOptions,
+    waitOptions?: ElectronSteamOverlayOpenAndWaitOptions
+  ): Promise<ElectronSteamOverlayOpenAndWaitResult>;
+  openAchievementsAndWaitIfAvailable(
+    targetOptions?: ElectronSteamOverlayAchievementsTargetOptions,
+    waitOptions?: ElectronSteamOverlayOpenAndWaitOptions
+  ): Promise<ElectronSteamOverlayOpenAndWaitResult | null>;
+  openUserAndWait(
+    targetOptions?: ElectronSteamOverlayUserTargetOptions,
+    waitOptions?: ElectronSteamOverlayOpenAndWaitOptions
+  ): Promise<ElectronSteamOverlayOpenAndWaitResult>;
+  openUserAndWaitIfAvailable(
+    targetOptions?: ElectronSteamOverlayUserTargetOptions,
+    waitOptions?: ElectronSteamOverlayOpenAndWaitOptions
+  ): Promise<ElectronSteamOverlayOpenAndWaitResult | null>;
+  openDialogAndWait(
+    targetOptions?: ElectronSteamOverlayDialogTargetOptions,
+    waitOptions?: ElectronSteamOverlayOpenAndWaitOptions
+  ): Promise<ElectronSteamOverlayOpenAndWaitResult>;
+  openDialogAndWaitIfAvailable(
+    targetOptions?: ElectronSteamOverlayDialogTargetOptions,
+    waitOptions?: ElectronSteamOverlayOpenAndWaitOptions
   ): Promise<ElectronSteamOverlayOpenAndWaitResult | null>;
   waitForOverlayReady(options?: ElectronSteamOverlayWaitOptions): Promise<ElectronSteamOverlaySnapshot>;
   openAndWait(
@@ -9028,6 +9126,128 @@ export function createElectronSteamOverlay(
         return null;
       }
       return openElectronSteamOverlayTargetAndWait(target, options);
+    },
+    openWebAndWait(
+      url: string,
+      targetOptions: ElectronSteamOverlayWebTargetOptions = {},
+      waitOptions: ElectronSteamOverlayOpenAndWaitOptions = {}
+    ): Promise<ElectronSteamOverlayOpenAndWaitResult> {
+      return controller.openAndWait({ ...targetOptions, type: "web", url }, waitOptions);
+    },
+    openWebAndWaitIfAvailable(
+      url: string,
+      targetOptions: ElectronSteamOverlayWebTargetOptions = {},
+      waitOptions: ElectronSteamOverlayOpenAndWaitOptions = {}
+    ): Promise<ElectronSteamOverlayOpenAndWaitResult | null> {
+      return controller.openAndWaitIfAvailable({ ...targetOptions, type: "web", url }, waitOptions);
+    },
+    openStoreAndWait(
+      targetOptions: ElectronSteamOverlayStoreTargetOptions = {},
+      waitOptions: ElectronSteamOverlayOpenAndWaitOptions = {}
+    ): Promise<ElectronSteamOverlayOpenAndWaitResult> {
+      return controller.openAndWait({ ...targetOptions, type: "store" }, waitOptions);
+    },
+    openStoreAndWaitIfAvailable(
+      targetOptions: ElectronSteamOverlayStoreTargetOptions = {},
+      waitOptions: ElectronSteamOverlayOpenAndWaitOptions = {}
+    ): Promise<ElectronSteamOverlayOpenAndWaitResult | null> {
+      return controller.openAndWaitIfAvailable({ ...targetOptions, type: "store" }, waitOptions);
+    },
+    openFriendsAndWait(
+      targetOptions: ElectronSteamOverlayFriendsTargetOptions = {},
+      waitOptions: ElectronSteamOverlayOpenAndWaitOptions = {}
+    ): Promise<ElectronSteamOverlayOpenAndWaitResult> {
+      return controller.openAndWait({ ...targetOptions, type: "friends" }, waitOptions);
+    },
+    openFriendsAndWaitIfAvailable(
+      targetOptions: ElectronSteamOverlayFriendsTargetOptions = {},
+      waitOptions: ElectronSteamOverlayOpenAndWaitOptions = {}
+    ): Promise<ElectronSteamOverlayOpenAndWaitResult | null> {
+      return controller.openAndWaitIfAvailable({ ...targetOptions, type: "friends" }, waitOptions);
+    },
+    openProfileAndWait(
+      targetOptions: ElectronSteamOverlayProfileTargetOptions = {},
+      waitOptions: ElectronSteamOverlayOpenAndWaitOptions = {}
+    ): Promise<ElectronSteamOverlayOpenAndWaitResult> {
+      return controller.openAndWait({ ...targetOptions, type: "profile" }, waitOptions);
+    },
+    openProfileAndWaitIfAvailable(
+      targetOptions: ElectronSteamOverlayProfileTargetOptions = {},
+      waitOptions: ElectronSteamOverlayOpenAndWaitOptions = {}
+    ): Promise<ElectronSteamOverlayOpenAndWaitResult | null> {
+      return controller.openAndWaitIfAvailable({ ...targetOptions, type: "profile" }, waitOptions);
+    },
+    openPlayersAndWait(
+      targetOptions: ElectronSteamOverlayPlayersTargetOptions = {},
+      waitOptions: ElectronSteamOverlayOpenAndWaitOptions = {}
+    ): Promise<ElectronSteamOverlayOpenAndWaitResult> {
+      return controller.openAndWait({ ...targetOptions, type: "players" }, waitOptions);
+    },
+    openPlayersAndWaitIfAvailable(
+      targetOptions: ElectronSteamOverlayPlayersTargetOptions = {},
+      waitOptions: ElectronSteamOverlayOpenAndWaitOptions = {}
+    ): Promise<ElectronSteamOverlayOpenAndWaitResult | null> {
+      return controller.openAndWaitIfAvailable({ ...targetOptions, type: "players" }, waitOptions);
+    },
+    openCommunityAndWait(
+      targetOptions: ElectronSteamOverlayCommunityTargetOptions = {},
+      waitOptions: ElectronSteamOverlayOpenAndWaitOptions = {}
+    ): Promise<ElectronSteamOverlayOpenAndWaitResult> {
+      return controller.openAndWait({ ...targetOptions, type: "community" }, waitOptions);
+    },
+    openCommunityAndWaitIfAvailable(
+      targetOptions: ElectronSteamOverlayCommunityTargetOptions = {},
+      waitOptions: ElectronSteamOverlayOpenAndWaitOptions = {}
+    ): Promise<ElectronSteamOverlayOpenAndWaitResult | null> {
+      return controller.openAndWaitIfAvailable({ ...targetOptions, type: "community" }, waitOptions);
+    },
+    openStatsAndWait(
+      targetOptions: ElectronSteamOverlayStatsTargetOptions = {},
+      waitOptions: ElectronSteamOverlayOpenAndWaitOptions = {}
+    ): Promise<ElectronSteamOverlayOpenAndWaitResult> {
+      return controller.openAndWait({ ...targetOptions, type: "stats" }, waitOptions);
+    },
+    openStatsAndWaitIfAvailable(
+      targetOptions: ElectronSteamOverlayStatsTargetOptions = {},
+      waitOptions: ElectronSteamOverlayOpenAndWaitOptions = {}
+    ): Promise<ElectronSteamOverlayOpenAndWaitResult | null> {
+      return controller.openAndWaitIfAvailable({ ...targetOptions, type: "stats" }, waitOptions);
+    },
+    openAchievementsAndWait(
+      targetOptions: ElectronSteamOverlayAchievementsTargetOptions = {},
+      waitOptions: ElectronSteamOverlayOpenAndWaitOptions = {}
+    ): Promise<ElectronSteamOverlayOpenAndWaitResult> {
+      return controller.openAndWait({ ...targetOptions, type: "achievements" }, waitOptions);
+    },
+    openAchievementsAndWaitIfAvailable(
+      targetOptions: ElectronSteamOverlayAchievementsTargetOptions = {},
+      waitOptions: ElectronSteamOverlayOpenAndWaitOptions = {}
+    ): Promise<ElectronSteamOverlayOpenAndWaitResult | null> {
+      return controller.openAndWaitIfAvailable({ ...targetOptions, type: "achievements" }, waitOptions);
+    },
+    openUserAndWait(
+      targetOptions: ElectronSteamOverlayUserTargetOptions = {},
+      waitOptions: ElectronSteamOverlayOpenAndWaitOptions = {}
+    ): Promise<ElectronSteamOverlayOpenAndWaitResult> {
+      return controller.openAndWait({ ...targetOptions, type: "user" }, waitOptions);
+    },
+    openUserAndWaitIfAvailable(
+      targetOptions: ElectronSteamOverlayUserTargetOptions = {},
+      waitOptions: ElectronSteamOverlayOpenAndWaitOptions = {}
+    ): Promise<ElectronSteamOverlayOpenAndWaitResult | null> {
+      return controller.openAndWaitIfAvailable({ ...targetOptions, type: "user" }, waitOptions);
+    },
+    openDialogAndWait(
+      targetOptions: ElectronSteamOverlayDialogTargetOptions = {},
+      waitOptions: ElectronSteamOverlayOpenAndWaitOptions = {}
+    ): Promise<ElectronSteamOverlayOpenAndWaitResult> {
+      return controller.openAndWait({ ...targetOptions, type: "dialog" }, waitOptions);
+    },
+    openDialogAndWaitIfAvailable(
+      targetOptions: ElectronSteamOverlayDialogTargetOptions = {},
+      waitOptions: ElectronSteamOverlayOpenAndWaitOptions = {}
+    ): Promise<ElectronSteamOverlayOpenAndWaitResult | null> {
+      return controller.openAndWaitIfAvailable({ ...targetOptions, type: "dialog" }, waitOptions);
     },
     async openCheckoutAndWait<T extends ElectronSteamOverlayCheckoutOperationResult>(
       operation: () => T | Promise<T>,

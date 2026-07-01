@@ -1060,7 +1060,7 @@ function openPresenterWebOpenAndWaitOverlay() {
     target: "web",
     url: WEB_URL,
     modal: WEB_MODAL,
-    api: "openAndWait"
+    api: "openWebAndWait"
   };
   return openPresenterTargetAndWaitOverlay(overlay, target, context);
 }
@@ -1074,7 +1074,7 @@ async function openPresenterDuplicateOpenGuardOverlay() {
     modal: WEB_MODAL,
     api: "duplicateOpenGuard"
   };
-  const openAndWait = overlay.openAndWait(target, {
+  const openAndWait = overlay.openWebAndWait(WEB_URL, { modal: WEB_MODAL }, {
     showTimeoutMs: MANAGED_OVERLAY_WAIT_TIMEOUT_MS,
     closeTimeoutMs: MANAGED_OVERLAY_PARK_TIMEOUT_MS
   });
@@ -1108,7 +1108,7 @@ async function openPresenterDuplicateOpenGuardOverlay() {
   const openingStatus = overlay.getOpenStatus(target);
   const shortcutStatus = overlay.getShortcutOpenStatus();
   const openIfAvailableResult = overlay.openIfAvailable(target);
-  const openAndWaitIfAvailableResult = await overlay.openAndWaitIfAvailable(target, {
+  const openAndWaitIfAvailableResult = await overlay.openWebAndWaitIfAvailable(WEB_URL, { modal: WEB_MODAL }, {
     showTimeoutMs: 5,
     closeTimeoutMs: 5
   });
@@ -1157,7 +1157,7 @@ function openPresenterStoreOpenAndWaitOverlay() {
     flag: activeClient.overlay.StoreFlag.None,
     route: "web",
     url,
-    api: "openAndWait"
+    api: "openStoreAndWait"
   };
   return openPresenterTargetAndWaitOverlay(overlay, target, context);
 }
@@ -1169,7 +1169,7 @@ function openPresenterFriendsOpenAndWaitOverlay() {
     target: "friends",
     url: steamworks.STEAM_FRIENDS_OVERLAY_URL,
     modal: true,
-    api: "openAndWait"
+    api: "openFriendsAndWait"
   };
   return openPresenterTargetAndWaitOverlay(overlay, target, context);
 }
@@ -1182,13 +1182,13 @@ function openPresenterDialogAutoOpenAndWaitOverlay() {
     dialog: OVERLAY_DIALOG,
     route: "auto",
     appId: APP_ID,
-    api: "openAndWait"
+    api: "openDialogAndWait"
   };
   return openPresenterTargetAndWaitOverlay(overlay, target, context);
 }
 
 function openPresenterTargetAndWaitOverlay(overlay, target, context) {
-  const openAndWait = overlay.openAndWait(target, {
+  const openAndWait = openNamedPresenterTargetAndWait(overlay, target, {
     showTimeoutMs: MANAGED_OVERLAY_WAIT_TIMEOUT_MS,
     closeTimeoutMs: MANAGED_OVERLAY_PARK_TIMEOUT_MS
   });
@@ -1222,6 +1222,42 @@ function openPresenterTargetAndWaitOverlay(overlay, target, context) {
 
   throwIfNativeHostUnavailable(initialSnapshot);
   return snapshot();
+}
+
+function openNamedPresenterTargetAndWait(overlay, target, waitOptions) {
+  switch (target.type) {
+    case "web":
+      return overlay.openWebAndWait(target.url, overlayTargetOptions(target, "url"), waitOptions);
+    case "store":
+      return overlay.openStoreAndWait(overlayTargetOptions(target), waitOptions);
+    case "friends":
+      return overlay.openFriendsAndWait(overlayTargetOptions(target), waitOptions);
+    case "profile":
+      return overlay.openProfileAndWait(overlayTargetOptions(target), waitOptions);
+    case "players":
+      return overlay.openPlayersAndWait(overlayTargetOptions(target), waitOptions);
+    case "community":
+      return overlay.openCommunityAndWait(overlayTargetOptions(target), waitOptions);
+    case "stats":
+      return overlay.openStatsAndWait(overlayTargetOptions(target), waitOptions);
+    case "achievements":
+      return overlay.openAchievementsAndWait(overlayTargetOptions(target), waitOptions);
+    case "user":
+      return overlay.openUserAndWait(overlayTargetOptions(target), waitOptions);
+    case "dialog":
+      return overlay.openDialogAndWait(overlayTargetOptions(target), waitOptions);
+    default:
+      return overlay.openAndWait(target, waitOptions);
+  }
+}
+
+function overlayTargetOptions(target, ...extraOmittedFields) {
+  const options = { ...target };
+  delete options.type;
+  for (const field of extraOmittedFields) {
+    delete options[field];
+  }
+  return options;
 }
 
 function throwIfNativeHostUnavailable(snapshot) {
@@ -1275,7 +1311,7 @@ function openPresenterProfileOpenAndWaitOverlay() {
     steamId64,
     url: steamworks.steamCommunityProfileUrl(steamId64),
     modal: true,
-    api: "openAndWait"
+    api: "openProfileAndWait"
   };
   return openPresenterTargetAndWaitOverlay(overlay, target, context);
 }
@@ -1307,7 +1343,7 @@ function openPresenterPlayersOpenAndWaitOverlay() {
     steamId64,
     url: steamworks.steamCommunityPlayersUrl(steamId64),
     modal: true,
-    api: "openAndWait"
+    api: "openPlayersAndWait"
   };
   return openPresenterTargetAndWaitOverlay(overlay, target, context);
 }
@@ -1335,7 +1371,7 @@ function openPresenterCommunityOpenAndWaitOverlay() {
     appId: APP_ID,
     url: steamworks.steamCommunityAppUrl(APP_ID),
     modal: true,
-    api: "openAndWait"
+    api: "openCommunityAndWait"
   };
   return openPresenterTargetAndWaitOverlay(overlay, target, context);
 }
@@ -1363,7 +1399,7 @@ function openPresenterStatsOpenAndWaitOverlay() {
     appId: APP_ID,
     url: steamworks.steamCommunityUserStatsUrl(APP_ID),
     modal: true,
-    api: "openAndWait"
+    api: "openStatsAndWait"
   };
   return openPresenterTargetAndWaitOverlay(overlay, target, context);
 }
@@ -1391,7 +1427,7 @@ function openPresenterAchievementsOpenAndWaitOverlay() {
     appId: APP_ID,
     url: steamworks.steamCommunityAchievementsUrl(APP_ID),
     modal: true,
-    api: "openAndWait"
+    api: "openAchievementsAndWait"
   };
   return openPresenterTargetAndWaitOverlay(overlay, target, context);
 }
@@ -1419,7 +1455,7 @@ function openPresenterUserOpenAndWaitOverlay() {
     dialog: USER_DIALOG,
     route: "auto",
     appId: APP_ID,
-    api: "openAndWait"
+    api: "openUserAndWait"
   };
   return openPresenterTargetAndWaitOverlay(overlay, target, context);
 }

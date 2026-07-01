@@ -85,6 +85,19 @@ zero managed overlay timing, managed child-overlay isolation, and clean crash
 diagnostics. This remains public App ID `480` plumbing evidence; real
 purchase-content proof still requires a configured product in a real Steam app.
 
+A focused current-head 2026-07-01 minimal macOS Apple Silicon matrix at
+`/tmp/steam-bridge-macos-overlay-matrix-minimal-named-helpers-20260701-064718`
+rebuilt and signed the arm64-only Electron `43.0.0` smoke package, reused the
+stable App ID `480` Steam shortcut without restarting Steam, and passed all 7
+Steam-launched minimal cases after the smoke app moved common managed actions
+to the named Electron builder helpers. It exercised `openWebAndWait(...)`,
+`openStoreAndWait(...)`, `openFriendsAndWait(...)`, `openDialogAndWait(...)`,
+duplicate-open suppression through `openWebAndWaitIfAvailable(...)`, and
+passive notification priming with visible Steam web content where applicable,
+active/inactive callbacks, close/back-to-app proof, parked zero-FPS presenter
+state, disabled needs-present polling, zero managed overlay timing, managed
+child-overlay isolation, and clean crash diagnostics.
+
 A 2026-07-01 full macOS Apple Silicon matrix at
 `/tmp/steam-bridge-macos-overlay-matrix-full-isolation-proof-20260701-045604`
 rebuilt and signed the arm64 Electron `43.0.0` smoke package, verified the

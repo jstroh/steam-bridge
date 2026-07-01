@@ -9782,6 +9782,151 @@ test("electron steam overlay manager exposes lifecycle wait helpers", async (t) 
   await assert.rejects(overlay.openAndWait({ type: "friends" }), /Electron Steam overlay is closed/);
 });
 
+test("electron steam overlay manager exposes named openAndWait helpers", async (t) => {
+  const hostHandle = Buffer.from([1, 3, 3, 7]);
+  let hostOpen = false;
+  const fake = createFakeNative({
+    attachNativeOverlayHostView(nativeWindowHandle) {
+      hostOpen = true;
+      this.calls.push({ method: "attachNativeOverlayHostView", args: [nativeWindowHandle] });
+    },
+    pumpNativeOverlayProbeWindow() {
+      this.calls.push({ method: "pumpNativeOverlayProbeWindow", args: [] });
+    },
+    showNativeOverlayHostView() {
+      this.calls.push({ method: "showNativeOverlayHostView", args: [] });
+    },
+    detachNativeOverlayHostView() {
+      hostOpen = false;
+      this.calls.push({ method: "detachNativeOverlayHostView", args: [] });
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return false;
+    },
+    isNativeOverlayHostViewOpen() {
+      return hostOpen;
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+  t.after(clearSteamBridgeCache);
+
+  const window = {
+    isDestroyed() {
+      return false;
+    },
+    getNativeWindowHandle() {
+      return hostHandle;
+    },
+    once() {},
+    webContents: {
+      once() {},
+      invalidate() {},
+      send() {}
+    }
+  };
+  const overlay = steam.overlay.createElectronSteamOverlay(window, {
+    title: "Named Overlay Helpers"
+  });
+  t.after(() => overlay.close());
+
+  const waitOptions = { showTimeoutMs: 123, closeTimeoutMs: 456 };
+  const waitResult = { shown: { overlayActive: true }, parked: { currentFps: 0 } };
+  const calls = [];
+  overlay.openAndWait = async (target, options) => {
+    calls.push({ method: "openAndWait", target, options });
+    return waitResult;
+  };
+  overlay.openAndWaitIfAvailable = async (target, options) => {
+    calls.push({ method: "openAndWaitIfAvailable", target, options });
+    return null;
+  };
+
+  assert.equal(await overlay.openWebAndWait("https://example.test/", { modal: true }, waitOptions), waitResult);
+  assert.equal(await overlay.openStoreAndWait({ appId: 480, flag: steam.StoreFlag.AddToCart }, waitOptions), waitResult);
+  assert.equal(await overlay.openFriendsAndWait({ modal: false }, waitOptions), waitResult);
+  assert.equal(await overlay.openProfileAndWait({ steamId64: "76561198000000000" }, waitOptions), waitResult);
+  assert.equal(await overlay.openPlayersAndWait({ steamId64: "76561198000000000" }, waitOptions), waitResult);
+  assert.equal(await overlay.openCommunityAndWait({ appId: 480 }, waitOptions), waitResult);
+  assert.equal(
+    await overlay.openStatsAndWait({ appId: 480, steamId64: "76561198000000000" }, waitOptions),
+    waitResult
+  );
+  assert.equal(await overlay.openAchievementsAndWait({ appId: 480 }, waitOptions), waitResult);
+  assert.equal(
+    await overlay.openUserAndWait({ dialog: steam.UserDialog.Chat, steamId64: "76561198000000000" }, waitOptions),
+    waitResult
+  );
+  assert.equal(
+    await overlay.openDialogAndWait({ dialog: steam.Dialog.OfficialGameGroup, appId: 480 }, waitOptions),
+    waitResult
+  );
+  assert.equal(await overlay.openWebAndWaitIfAvailable("https://example.test/available", {}, waitOptions), null);
+  assert.equal(await overlay.openStoreAndWaitIfAvailable({ appId: 480 }, waitOptions), null);
+  assert.equal(await overlay.openFriendsAndWaitIfAvailable({}, waitOptions), null);
+  assert.equal(await overlay.openProfileAndWaitIfAvailable({}, waitOptions), null);
+  assert.equal(await overlay.openPlayersAndWaitIfAvailable({}, waitOptions), null);
+  assert.equal(await overlay.openCommunityAndWaitIfAvailable({}, waitOptions), null);
+  assert.equal(await overlay.openStatsAndWaitIfAvailable({}, waitOptions), null);
+  assert.equal(await overlay.openAchievementsAndWaitIfAvailable({}, waitOptions), null);
+  assert.equal(await overlay.openUserAndWaitIfAvailable({}, waitOptions), null);
+  assert.equal(await overlay.openDialogAndWaitIfAvailable({}, waitOptions), null);
+
+  assert.deepEqual(calls, [
+    {
+      method: "openAndWait",
+      target: { modal: true, type: "web", url: "https://example.test/" },
+      options: waitOptions
+    },
+    {
+      method: "openAndWait",
+      target: { appId: 480, flag: steam.StoreFlag.AddToCart, type: "store" },
+      options: waitOptions
+    },
+    { method: "openAndWait", target: { modal: false, type: "friends" }, options: waitOptions },
+    {
+      method: "openAndWait",
+      target: { steamId64: "76561198000000000", type: "profile" },
+      options: waitOptions
+    },
+    {
+      method: "openAndWait",
+      target: { steamId64: "76561198000000000", type: "players" },
+      options: waitOptions
+    },
+    { method: "openAndWait", target: { appId: 480, type: "community" }, options: waitOptions },
+    {
+      method: "openAndWait",
+      target: { appId: 480, steamId64: "76561198000000000", type: "stats" },
+      options: waitOptions
+    },
+    { method: "openAndWait", target: { appId: 480, type: "achievements" }, options: waitOptions },
+    {
+      method: "openAndWait",
+      target: { dialog: steam.UserDialog.Chat, steamId64: "76561198000000000", type: "user" },
+      options: waitOptions
+    },
+    {
+      method: "openAndWait",
+      target: { dialog: steam.Dialog.OfficialGameGroup, appId: 480, type: "dialog" },
+      options: waitOptions
+    },
+    {
+      method: "openAndWaitIfAvailable",
+      target: { type: "web", url: "https://example.test/available" },
+      options: waitOptions
+    },
+    { method: "openAndWaitIfAvailable", target: { appId: 480, type: "store" }, options: waitOptions },
+    { method: "openAndWaitIfAvailable", target: { type: "friends" }, options: waitOptions },
+    { method: "openAndWaitIfAvailable", target: { type: "profile" }, options: waitOptions },
+    { method: "openAndWaitIfAvailable", target: { type: "players" }, options: waitOptions },
+    { method: "openAndWaitIfAvailable", target: { type: "community" }, options: waitOptions },
+    { method: "openAndWaitIfAvailable", target: { type: "stats" }, options: waitOptions },
+    { method: "openAndWaitIfAvailable", target: { type: "achievements" }, options: waitOptions },
+    { method: "openAndWaitIfAvailable", target: { type: "user" }, options: waitOptions },
+    { method: "openAndWaitIfAvailable", target: { type: "dialog" }, options: waitOptions }
+  ]);
+});
+
 test("electron steam overlay openAndWait waits for overlay readiness before activating Steam", async (t) => {
   setProcessPlatformForTest(t, "linux");
   const hostHandle = Buffer.from([4, 8, 1, 6]);
