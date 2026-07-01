@@ -189,6 +189,19 @@ close/back-to-app proof, parked zero-FPS presenter state, zero managed timing,
 managed isolation, and clean crash diagnostics from the Apple Silicon package
 path.
 
+A current-head 2026-07-01 core macOS Apple Silicon matrix at
+`/tmp/steam-bridge-macos-overlay-matrix-20260701-112850` reused the signed
+arm64-only Electron `43.0.0` package and stable App ID `480` shortcut without
+restarting Steam, then passed all 31 Steam-launched core cases after extending
+the direct readiness-status evidence gate to the checkout approval path. The
+regular `presenter-checkout` proof now records sanitized checkout-operation
+readiness, waits through launch-time `overlay-not-ready` with
+`waitForOverlayReady()` before starting `openCheckoutAndWait(...)`, and keeps
+the same active/inactive callback, visible web content, close/back-to-app,
+parked zero-FPS, zero managed timing, managed isolation, open-status,
+checkout-operation, and clean crash-diagnostic checks as the rest of the core
+Apple Silicon package path.
+
 A 2026-07-01 full macOS Apple Silicon matrix at
 `/tmp/steam-bridge-macos-overlay-matrix-full-isolation-proof-20260701-045604`
 rebuilt and signed the arm64 Electron `43.0.0` smoke package, verified the

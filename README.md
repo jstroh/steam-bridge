@@ -48,6 +48,8 @@ Contributor policy: every macOS test build and every live macOS overlay run for
 this repository must use a native Apple Silicon `darwin/arm64` shell and an
 arm64 Electron app. Treat Intel macOS, Rosetta, and universal macOS packages as
 unsupported configurations, not as fallback test paths.
+This applies to every macOS example, test app, smoke app, and overlay proof in
+this repository.
 There are no Intel macOS smoke artifacts, example app targets, or live overlay
 test paths in this project; do not add them.
 

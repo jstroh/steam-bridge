@@ -44,6 +44,8 @@ Contributor policy: every macOS test build and every live macOS overlay run for
 this package must use a native Apple Silicon `darwin/arm64` shell and an arm64
 Electron app. Intel macOS, Rosetta, and universal macOS packages are unsupported
 configurations, not fallback test paths.
+This applies to every macOS example, test app, smoke app, and overlay proof in
+this package.
 There are no Intel macOS smoke artifacts, example app targets, or live overlay
 test paths in this package; do not add them.
 
@@ -1152,6 +1154,17 @@ web/store/Friends/dialog routes, duplicate-open suppression, passive toast
 priming, visible Steam web content, close/back-to-app proof, parked zero-FPS
 presenter state, zero managed timing, managed isolation, and clean crash
 diagnostics from the Apple Silicon package path.
+A current-head 2026-07-01 core Apple Silicon artifact at
+`/tmp/steam-bridge-macos-overlay-matrix-20260701-112850` reused the same signed
+arm64-only Electron `43.0.0` package and stable App ID `480` shortcut without
+restarting Steam, then passed all 31 core cases after the checkout approval
+path began requiring direct readiness-status evidence. The smoke app now
+records sanitized checkout-operation readiness and waits through launch-time
+`overlay-not-ready` with `waitForOverlayReady()` before starting
+`openCheckoutAndWait(...)`, preserving active/inactive callbacks, visible web
+content, close/back-to-app proof, parked zero-FPS presenter state, zero managed
+timing, managed isolation, and clean crash diagnostics from the Apple Silicon
+package path.
 A later recovered-client full artifact at
 `/tmp/steam-bridge-macos-overlay-matrix-20260630-220434` also passed all 44
 process-per-case App ID `480` cases after recreating the stable shortcut and

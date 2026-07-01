@@ -818,6 +818,7 @@ run_self_test() {
   require_contains "$passive_case" "--result-delay-ms 1200" "passive toast should use the short notification capture delay."
   require_not_contains "$passive_case" "--close-probe" "passive toast should not require modal close proof."
   require_contains "$checkout_case" "--close-probe" "checkout proof should close and verify parked state."
+  require_contains "$checkout_case" "--require-direct-open-readiness-status" "checkout proof should require direct readiness status evidence."
   require_contains "$checkout_prepare_case" "--require-event overlay:presenter-checkout-ready" "checkout prepare proof should require the ready event."
   require_contains "$checkout_prepare_case" "--require-no-overlay-activation" "checkout prepare proof should reject modal overlay activation."
   require_contains "$checkout_prepare_case" "--require-idle-presenter" "checkout prepare proof should require the presenter to release back to idle."
@@ -2824,6 +2825,7 @@ run_matrix() {
     --require-overlay-injection \
     --require-overlay-enabled \
     --require-overlay-activated \
+    --require-direct-open-readiness-status \
     --require-event overlay:presenter-open \
     --require-no-crashes \
     --close-probe

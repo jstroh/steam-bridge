@@ -1414,6 +1414,15 @@ Current evidence:
   passive toast priming, visible Steam web content, close/back-to-app proof,
   parked zero-FPS presenter state, zero managed timing, managed isolation, and
   clean crash diagnostics from the Apple Silicon package path.
+  A current-head 2026-07-01 core Apple Silicon matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-20260701-112850` reused the same
+  signed arm64-only Electron `43.0.0` package and stable App ID `480` shortcut
+  without restarting Steam, then passed all 31 core cases after the checkout
+  approval path joined the direct readiness-status proof. The smoke app now
+  records sanitized checkout-operation readiness and waits through launch-time
+  `overlay-not-ready` with `waitForOverlayReady()` before starting
+  `openCheckoutAndWait(...)`, keeping purchase-route plumbing aligned with the
+  same side-effect-free readiness policy already used by direct target opens.
   A later unit-hardening slice moved generic direct `openAndWait(...)` through
   the same fresh status gate as named status and `IfAvailable` helpers. Direct
   wait helpers now fail hard blockers such as `steam-unavailable` before native
