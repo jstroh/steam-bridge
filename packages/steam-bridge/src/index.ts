@@ -9515,7 +9515,14 @@ export function createElectronSteamOverlay(
     ): Promise<T> {
       assertOpen();
       const pendingCheckoutTargetSnapshot = snapshotSteamOverlayTarget({ type: "checkout" });
-      const snapshot = controller.snapshot();
+      const status = electronSteamOverlayCheckoutOperationStatus(controller);
+      if (!status.canStartOperation) {
+        throw annotateSteamOverlayTargetSnapshotError(
+          electronSteamOverlayCheckoutOperationStatusError(status),
+          pendingCheckoutTargetSnapshot
+        );
+      }
+      const snapshot = status.snapshot;
       assertElectronSteamOverlayCheckoutNativeHostAvailable(snapshot);
       assertElectronSteamOverlayNotBusy(snapshot);
       const presenterInternal = presenter as NativeOverlayPresenterInternal;

@@ -415,6 +415,11 @@ overlay action is already active/opening.
 The throwing `openCheckoutAndWait(...)` path also waits for Steam overlay
 readiness before it calls `startTxn()`, so a temporary Steam bootstrap delay
 does not create a real transaction before Steam can show the checkout UI.
+Lower-level `withCheckoutPrepared(...)` uses the same pre-operation availability
+gate and throws before calling the wrapped transaction/preparation callback when
+Steam is not running, the overlay is known unavailable, the native host is
+unavailable, or another managed overlay action is active. Use
+`openCheckoutAndWait(...)` for the managed wait-through-readiness purchase path.
 `steamOverlay.openCheckout(...)` and
 `steamOverlay.openCheckoutIfAvailable(...)` are also available when you already
 have a resolved checkout target and intentionally do not need to await overlay

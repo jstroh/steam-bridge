@@ -1373,7 +1373,10 @@ Current evidence:
   waiting for Steam overlay readiness before invoking the transaction
   operation. Unit coverage proves a not-yet-ready overlay leaves the
   transaction operation untouched and reports only a sanitized pending checkout
-  snapshot on readiness timeout; the live run re-proved prepare-only checkout,
+  snapshot on readiness timeout. Follow-up unit coverage also proves
+  `withCheckoutPrepared(...)` refuses to call lower-level transaction/preparation
+  callbacks while Steam is stopped or the overlay is known unavailable; the live
+  run re-proved prepare-only checkout,
   direct synthetic approval checkout, managed Shift+Tab checkout, programmatic
   checkout `openAndWait(...)`, visible Steam web content for web-close paths,
   close/back-to-app proof, parked zero-FPS presenter state, zero managed
