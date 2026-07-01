@@ -678,6 +678,16 @@ Verified:
   `screenLocked=true`, `displayAsleep=true`, `nativeHostOpen=false`, no modal
   activation, zero `gameoverlayui` targets, disabled needs-present polling,
   zero managed overlay timing, and clean crash diagnostics.
+- A follow-up interactive minimal macOS matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-20260630-224312` reused that signed
+  package and stable shortcut without repackaging or restarting Steam after the
+  Mac became interactive again. It passed readiness, web/store/Friends/dialog
+  `openAndWait(...)`, and passive achievement-progress cases with
+  `screenLocked=false`, `displayAsleep=false`, one Metal presenter-backed
+  overlay target for active/passive overlay cases, visible Steam web content
+  before close probes, active/inactive callbacks for modal routes, app focus
+  return, parked zero-FPS presenter state, disabled needs-present polling, zero
+  managed overlay timing, and clean crash diagnostics.
 - A 2026-06-30 13:32 PDT crash-report sweep after another user-visible Ignore
   dialog found no newer `SteamBridgeSmoke`, `gameoverlayui`, `Steam Helper`, or
   attributed `MTLCompilerService` DiagnosticReport than the known

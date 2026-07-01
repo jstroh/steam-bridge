@@ -1072,6 +1072,16 @@ Current evidence:
   `nativeHostOpen=false`, no Steam overlay activation, zero overlay targets,
   disabled needs-present polling, zero managed overlay timing, and clean crash
   diagnostics.
+  A follow-up interactive minimal matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-20260630-224312` reused that signed
+  package and stable shortcut without repackaging or restarting Steam after the
+  Mac became interactive again. It passed readiness, web/store/Friends/dialog
+  `openAndWait(...)`, and passive achievement-progress cases with
+  `screenLocked=false`, `displayAsleep=false`, one Metal presenter-backed
+  overlay target for active/passive overlay cases, visible Steam web content
+  before close probes, active/inactive callbacks for modal routes, app focus
+  return, parked zero-FPS presenter state, disabled needs-present polling, zero
+  managed overlay timing, and clean crash diagnostics.
 - BrowserWindow-only overlay support is not proven.
 - Steam launch, app ID, auth, and callbacks are not enough to claim overlay
   support.
