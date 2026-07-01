@@ -21,6 +21,7 @@
     "macos:overlay-matrix:preflight": "bash scripts/macos-overlay-matrix.sh --mode preflight",
     "macos:overlay-matrix:summarize": "bash scripts/macos-overlay-matrix.sh --mode summarize",
     "macos:overlay-matrix": "bash scripts/macos-overlay-matrix.sh",
+    "macos:steam-client-health": "bash scripts/macos-overlay-matrix.sh --mode steam-health",
     "macos:verify-signing": "node scripts/verify-macos-steam-signing.cjs",
     "release:assemble": "node scripts/assemble-release-artifacts.cjs",
     "release:verify": "node scripts/verify-release-artifacts.cjs",

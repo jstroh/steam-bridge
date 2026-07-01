@@ -367,6 +367,7 @@ npm run steam-deck:overlay-matrix -- \
   --host deck@<deck-host-or-ip> \
   --suite core
 
+npm run macos:steam-client-health
 npm run macos:overlay-matrix -- --suite core
 ```
 

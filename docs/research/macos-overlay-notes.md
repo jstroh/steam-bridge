@@ -803,7 +803,11 @@ while `webhelper.txt` simultaneously reported
 `steam-client-launch-diagnostics.txt` from fresh log offsets when this happens
 before any smoke result or gameprocess entry exists, so the artifact labels it
 as a local Steam client/bootstrap failure rather than an Electron presenter
-failure. Further live macOS overlay proof should wait for Steam to finish
+failure. The same detector is now exposed through
+`npm run macos:steam-client-health`, which checks the currently running Steam
+client without launching the smoke app or touching the shortcut; unhealthy
+bootstrap states write `steam-client-health-diagnostics.txt` under the selected
+artifact root. Further live macOS overlay proof should wait for Steam to finish
 updating, log on, and handle shortcut launch URLs again.
 
 ## Primary References

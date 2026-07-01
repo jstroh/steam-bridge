@@ -407,9 +407,13 @@ captured that pre-smoke boundary into
 `steam-client-launch-diagnostics.txt`: Steam logged a
 `rungameid : not allowed yet` failure while the webhelper logged
 `SteamChrome_MasterStream_*` `errno: 28` failures, and no gameprocess tracking
-entry was written for the App ID `480` smoke shortcut. Further live macOS proof
-should resume only after Steam has finished updating, logged on, and can launch
-the App ID `480` smoke shortcut again.
+entry was written for the App ID `480` smoke shortcut. The same detector is now
+available as `npm run macos:steam-client-health`, which checks the currently
+running Steam client without launching the smoke app and writes
+`steam-client-health-diagnostics.txt` under the selected artifact root when it
+finds a bad bootstrap state. Further live macOS proof should resume only after
+Steam has finished updating, logged on, and can launch the App ID `480` smoke
+shortcut again.
 
 ## Steam Deck Shortcut Gate
 

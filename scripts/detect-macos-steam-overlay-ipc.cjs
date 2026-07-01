@@ -4,8 +4,10 @@
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
+const childProcess = require("node:child_process");
 
 const resultPrefix = "STEAM_BRIDGE_SMOKE_RESULT ";
+const clientHealthArtifactName = "steam-client-health-diagnostics.txt";
 const clientLaunchArtifactName = "steam-client-launch-diagnostics.txt";
 const overlayIpcArtifactName = "steam-overlay-ipc-diagnostics.txt";
 
@@ -16,6 +18,26 @@ function main() {
   if (args.selfTest) {
     runSelfTest();
     return;
+  }
+
+  if (args.clientHealth) {
+    const result = detectSteamClientHealth({
+      processListText: args.processListFile ? readOptionalText(args.processListFile) : readProcessList(),
+      consoleLog: args.consoleLog || defaultSteamLog("console_log.txt"),
+      webhelperLog: args.webhelperLog || defaultSteamLog("webhelper.txt")
+    });
+
+    if (args.writeArtifact && args.diagnosticDir) {
+      fs.mkdirSync(args.diagnosticDir, { recursive: true });
+      fs.writeFileSync(path.join(args.diagnosticDir, clientHealthArtifactName), result.message);
+    }
+
+    if (!args.quiet) {
+      const stream = result.ok ? process.stdout : process.stderr;
+      stream.write(result.message);
+    }
+
+    process.exit(result.ok ? 0 : 1);
   }
 
   const result = args.clientLaunch
@@ -243,6 +265,120 @@ function detectSteamClientLaunchFailure({
   return { detected: true, message: `${messageLines.join("\n")}\n` };
 }
 
+function detectSteamClientHealth({ processListText, consoleLog, webhelperLog }) {
+  const processLines = String(processListText || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const steamProcess = findSteamProcess(processLines);
+  const bootstrapHelpers = processLines.filter((line) => line.includes("Steam Helper") && line.includes("-nocrashdialog"));
+  const helperSteamIds = bootstrapHelpers
+    .map((line) => {
+      const match = line.match(/-steamid=(\d+)\b/);
+      return match ? match[1] : "";
+    })
+    .filter(Boolean);
+  const currentSteamPid = steamProcess ? steamProcess.pid : "";
+  const logMatches = findCurrentSteamClientLogFailures({
+    consoleLog,
+    webhelperLog,
+    currentSteamPid
+  });
+  const failures = [];
+  const observations = [];
+
+  if (!steamProcess) {
+    observations.push("Steam is not currently running; no unhealthy client process was detected.");
+  } else {
+    observations.push(`Steam process PID ${steamProcess.pid} is running.`);
+  }
+
+  if (helperSteamIds.length > 0) {
+    observations.push(`Steam bootstrap helper steamid values: ${helperSteamIds.join(", ")}.`);
+  } else if (steamProcess) {
+    observations.push("No running Steam bootstrap helper with a steamid was found.");
+  }
+
+  if (steamProcess && helperSteamIds.length > 0 && helperSteamIds.every((steamId) => steamId === "0")) {
+    failures.push("Steam bootstrap helper is running with steamid=0.");
+  }
+
+  if (logMatches.length > 0) {
+    failures.push("Current Steam client logs contain SteamChrome IPC/bootstrap failures.");
+  }
+
+  if (failures.length === 0) {
+    return {
+      ok: true,
+      message: [
+        "macOS Steam client health check passed.",
+        ...observations,
+        "No running steamid=0 bootstrap helper or current SteamChrome IPC failure was detected.",
+        ""
+      ].join("\n")
+    };
+  }
+
+  const messageLines = [
+    "macOS Steam client health check failed.",
+    ...failures.map((failure) => `- ${failure}`),
+    "",
+    ...observations,
+    "Recover the local Steam client before running live overlay proof: fully quit Steam, wait for helper processes to exit, and if the SteamChrome IPC errors continue, log out/reboot macOS.",
+    "",
+    "Relevant current Steam log lines:",
+    ...(logMatches.length > 0 ? logMatches.map((line) => `  ${line}`) : ["  (none captured)"])
+  ];
+
+  return { ok: false, message: `${messageLines.join("\n")}\n` };
+}
+
+function findSteamProcess(processLines) {
+  for (const line of processLines) {
+    if (!/Steam\.AppBundle\/Steam\/Contents\/MacOS\/steam_osx\b/.test(line)) {
+      continue;
+    }
+    const pid = readProcessLinePid(line);
+    if (pid) {
+      return { pid, line };
+    }
+  }
+  return null;
+}
+
+function findCurrentSteamClientLogFailures({ consoleLog, webhelperLog, currentSteamPid }) {
+  if (!currentSteamPid) {
+    return [];
+  }
+  const pidPattern = new RegExp(`spid${escapeRegExp(currentSteamPid)}(?:\\b|_)`);
+  const logs = [
+    { name: "console_log.txt", lines: readLastLines(consoleLog, 400) },
+    { name: "webhelper.txt", lines: readLastLines(webhelperLog, 400) }
+  ];
+  const matches = [];
+
+  for (const log of logs) {
+    for (let index = 0; index < log.lines.length; index += 1) {
+      const line = log.lines[index];
+      if (
+        pidPattern.test(line) &&
+        (
+          /SteamChrome_(?:MasterStream|ClientStream)/.test(line) ||
+          /m_pMasterMemStream->BCreatedStream/.test(line)
+        )
+      ) {
+        matches.push(`${log.name}: ${line}`);
+        const nextLine = log.lines[index + 1] || "";
+        if (/errno:\s*28\b/.test(nextLine)) {
+          matches.push(`${log.name}: ${nextLine}`);
+        }
+      }
+    }
+  }
+
+  return [...new Set(matches)].slice(-24);
+}
+
 function readSmokeResult(file) {
   let text = "";
   try {
@@ -284,6 +420,9 @@ function parseArgs(argv) {
       case "--gameprocess-log":
         args.gameprocessLog = argv[++index];
         break;
+      case "--process-list-file":
+        args.processListFile = argv[++index];
+        break;
       case "--console-start-offset":
         args.consoleStartOffset = Number(argv[++index] || "0");
         break;
@@ -311,6 +450,9 @@ function parseArgs(argv) {
       case "--client-launch":
         args.clientLaunch = true;
         break;
+      case "--client-health":
+        args.clientHealth = true;
+        break;
       case "--self-test":
         args.selfTest = true;
         break;
@@ -333,6 +475,25 @@ function defaultSteamLog(name) {
   return path.join(os.homedir(), "Library", "Application Support", "Steam", "logs", name);
 }
 
+function readOptionalText(file) {
+  try {
+    return fs.readFileSync(file, "utf8");
+  } catch {
+    return "";
+  }
+}
+
+function readProcessList() {
+  try {
+    return childProcess.execFileSync("ps", ["ax", "-o", "pid=,args="], {
+      encoding: "utf8",
+      maxBuffer: 1024 * 1024
+    });
+  } catch {
+    return "";
+  }
+}
+
 function readLinesFromOffset(file, startOffset) {
   let buffer;
   try {
@@ -347,6 +508,23 @@ function readLinesFromOffset(file, startOffset) {
     .toString("utf8")
     .split(/\r?\n/)
     .filter((line) => line.length > 0);
+}
+
+function readLastLines(file, limit) {
+  try {
+    return fs.readFileSync(file, "utf8").split(/\r?\n/).slice(-limit);
+  } catch {
+    return [];
+  }
+}
+
+function readProcessLinePid(line) {
+  const match = String(line || "").match(/^(\d+)\s+/);
+  return match ? match[1] : "";
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function format(value) {
@@ -484,6 +662,42 @@ function runSelfTest() {
       appName: "Steam Bridge Smoke"
     });
     assert(result.detected, "detects rungameid launch-gate failures");
+
+    fs.writeFileSync(
+      webhelperLog,
+      [
+        "[2026-06-30 19:23:09] Failed to create PosixAutoResetEvent: SteamChrome_MasterStream_uid501_spid9706_avail - /Evt/5c7dd281",
+        "[2026-06-30 19:23:09] \terrno: 28, bCreator: true"
+      ].join("\n")
+    );
+    result = detectSteamClientHealth({
+      processListText: [
+        " 9706 /Users/example/Library/Application Support/Steam/Steam.AppBundle/Steam/Contents/MacOS/steam_osx",
+        " 9913 /Users/example/Library/Application Support/Steam/Steam.AppBundle/Steam/Contents/Frameworks/Steam Helper.app/Contents/MacOS/Steam Helper -nocrashdialog -steamid=0 -steampid=9706"
+      ].join("\n"),
+      consoleLog,
+      webhelperLog
+    });
+    assert(!result.ok, "detects running steamid=0 helper health failure");
+    assert(result.message.includes("steamid=0"), "health failure names steamid=0");
+    assert(result.message.includes("SteamChrome_MasterStream"), "health failure includes current IPC evidence");
+
+    result = detectSteamClientHealth({
+      processListText: "",
+      consoleLog,
+      webhelperLog
+    });
+    assert(result.ok, "closed Steam is not an unhealthy running client state");
+
+    result = detectSteamClientHealth({
+      processListText: [
+        " 9706 /Users/example/Library/Application Support/Steam/Steam.AppBundle/Steam/Contents/MacOS/steam_osx",
+        " 9913 /Users/example/Library/Application Support/Steam/Steam.AppBundle/Steam/Contents/Frameworks/Steam Helper.app/Contents/MacOS/Steam Helper -nocrashdialog -steamid=123456 -steampid=9706"
+      ].join("\n"),
+      consoleLog: path.join(tempRoot, "missing-console-log.txt"),
+      webhelperLog: path.join(tempRoot, "missing-webhelper-log.txt")
+    });
+    assert(result.ok, "logged-in helper without current IPC logs is healthy");
 
     console.log("macOS Steam overlay IPC detector self-test passed.");
   } finally {
