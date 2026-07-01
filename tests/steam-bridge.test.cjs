@@ -6375,8 +6375,15 @@ test("electron steam overlay manager owns one presenter and routes opens", async
   assert.equal(openingOpenStatus.reason, "opening");
   assert.equal(openingOpenStatus.waitReason, "opening");
   assert.match(openingOpenStatus.message, /already opening/);
+  const openingShortcutStatus = overlay.getShortcutOpenStatus();
+  assert.equal(openingShortcutStatus.canOpen, false);
+  assert.equal(openingShortcutStatus.canWait, false);
+  assert.equal(openingShortcutStatus.reason, "opening");
+  assert.equal(openingShortcutStatus.waitReason, "opening");
   assert.equal(overlay.openIfAvailable(webTarget), null);
   assert.equal(await overlay.openAndWaitIfAvailable(webTarget, { showTimeoutMs: 5, closeTimeoutMs: 5 }), null);
+  assert.equal(overlay.openShortcutTargetIfAvailable(), null);
+  assert.equal(await overlay.openShortcutTargetAndWaitIfAvailable({ showTimeoutMs: 5, closeTimeoutMs: 5 }), null);
   let checkoutOperationRanWhileOpening = false;
   assert.equal(
     await overlay.openCheckoutAndWaitIfAvailable(
@@ -6399,6 +6406,13 @@ test("electron steam overlay manager owns one presenter and routes opens", async
   assert.equal(activeOpenStatus.reason, "overlay-active");
   assert.equal(activeOpenStatus.waitReason, "overlay-active");
   assert.match(activeOpenStatus.message, /already active/);
+  const activeShortcutStatus = overlay.getShortcutOpenStatus();
+  assert.equal(activeShortcutStatus.canOpen, false);
+  assert.equal(activeShortcutStatus.canWait, false);
+  assert.equal(activeShortcutStatus.reason, "overlay-active");
+  assert.equal(activeShortcutStatus.waitReason, "overlay-active");
+  assert.equal(overlay.openShortcutTargetIfAvailable(), null);
+  assert.equal(await overlay.openShortcutTargetAndWaitIfAvailable({ showTimeoutMs: 5, closeTimeoutMs: 5 }), null);
   let checkoutOperationRanWhileActive = false;
   assert.equal(
     await overlay.openCheckoutAndWaitIfAvailable(

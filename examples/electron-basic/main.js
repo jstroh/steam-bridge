@@ -1106,8 +1106,14 @@ async function openPresenterDuplicateOpenGuardOverlay() {
     });
 
   const openingStatus = overlay.getOpenStatus(target);
+  const shortcutStatus = overlay.getShortcutOpenStatus();
   const openIfAvailableResult = overlay.openIfAvailable(target);
   const openAndWaitIfAvailableResult = await overlay.openAndWaitIfAvailable(target, {
+    showTimeoutMs: 5,
+    closeTimeoutMs: 5
+  });
+  const shortcutIfAvailableResult = overlay.openShortcutTargetIfAvailable();
+  const shortcutAndWaitIfAvailableResult = await overlay.openShortcutTargetAndWaitIfAvailable({
     showTimeoutMs: 5,
     closeTimeoutMs: 5
   });
@@ -1126,8 +1132,11 @@ async function openPresenterDuplicateOpenGuardOverlay() {
   recordEvent("overlay:presenter-duplicate-open-guard", {
     ...context,
     status: openingStatus,
+    shortcutStatus,
     openIfAvailableNull: openIfAvailableResult === null,
     openAndWaitIfAvailableNull: openAndWaitIfAvailableResult === null,
+    shortcutIfAvailableNull: shortcutIfAvailableResult === null,
+    shortcutAndWaitIfAvailableNull: shortcutAndWaitIfAvailableResult === null,
     checkoutIfAvailableNull: checkoutIfAvailableResult === null,
     checkoutOperationRan,
     presenter: safeOverlaySnapshot(overlay)

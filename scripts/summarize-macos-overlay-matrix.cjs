@@ -743,6 +743,7 @@ function verifyDuplicateOpenGuard(caseId, actionName, resultEvents, lifecycleEnt
 
   const payload = objectOrEmpty(event.payload);
   const status = objectOrEmpty(payload.status);
+  const shortcutStatus = objectOrEmpty(payload.shortcutStatus);
   expect(status.canOpen === false, `${caseId}: duplicate guard status rejects open`, failures);
   expect(status.canWait === false, `${caseId}: duplicate guard status rejects wait`, failures);
   expect(
@@ -750,10 +751,29 @@ function verifyDuplicateOpenGuard(caseId, actionName, resultEvents, lifecycleEnt
     `${caseId}: duplicate guard status is opening or overlay-active, got ${formatValue(status.reason)}`,
     failures
   );
+  expect(shortcutStatus.canOpen === false, `${caseId}: duplicate guard shortcut status rejects open`, failures);
+  expect(shortcutStatus.canWait === false, `${caseId}: duplicate guard shortcut status rejects wait`, failures);
+  expect(
+    shortcutStatus.reason === "opening" || shortcutStatus.reason === "overlay-active",
+    `${caseId}: duplicate guard shortcut status is opening or overlay-active, got ${formatValue(
+      shortcutStatus.reason
+    )}`,
+    failures
+  );
   expect(payload.openIfAvailableNull === true, `${caseId}: openIfAvailable returned null while busy`, failures);
   expect(
     payload.openAndWaitIfAvailableNull === true,
     `${caseId}: openAndWaitIfAvailable returned null while busy`,
+    failures
+  );
+  expect(
+    payload.shortcutIfAvailableNull === true,
+    `${caseId}: openShortcutTargetIfAvailable returned null while busy`,
+    failures
+  );
+  expect(
+    payload.shortcutAndWaitIfAvailableNull === true,
+    `${caseId}: openShortcutTargetAndWaitIfAvailable returned null while busy`,
     failures
   );
   expect(
@@ -2255,8 +2275,16 @@ function createSelfTestFixture(root) {
               reason: "opening",
               waitReason: "opening"
             },
+            shortcutStatus: {
+              canOpen: false,
+              canWait: false,
+              reason: "opening",
+              waitReason: "opening"
+            },
             openIfAvailableNull: true,
             openAndWaitIfAvailableNull: true,
+            shortcutIfAvailableNull: true,
+            shortcutAndWaitIfAvailableNull: true,
             checkoutIfAvailableNull: true,
             checkoutOperationRan: false,
             presenter: activePresenterFixture(17)

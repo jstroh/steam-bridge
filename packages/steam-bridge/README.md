@@ -541,7 +541,9 @@ overlay injection, native host availability, idle presenter state, and no
 overlay-active callback, but not `overlayEnabled=true`.
 The `presenter-duplicate-open-guard` action opens a managed web overlay and
 immediately proves `openIfAvailable(...)`, `openAndWaitIfAvailable(...)`, and
-`openCheckoutAndWaitIfAvailable(...)` return `null` while that overlay is
+`openCheckoutAndWaitIfAvailable(...)`, plus the shortcut/controller helpers
+`openShortcutTargetIfAvailable()` and
+`openShortcutTargetAndWaitIfAvailable()`, return `null` while that overlay is
 opening, without running the checkout operation callback.
 They can also verify expected
 managed overlay fail-fast artifacts with `--require-action-error-code` and

@@ -411,8 +411,8 @@ Use the smoke action `presenter-ready` for a cheap managed-overlay preflight:
 it attaches the Electron overlay manager, records native host availability, and
 does not activate Steam overlay UI.
 Use `presenter-duplicate-open-guard` to prove the public `IfAvailable` overlay
-helpers return `null` instead of starting a second overlay while a managed
-overlay is already opening.
+helpers, including shortcut/controller target helpers, return `null` instead of
+starting a second overlay while a managed overlay is already opening.
 The macOS minimal/core/full/persistent matrix suites require that proof, so
 regressions in duplicate menu/button suppression fail before release.
 On macOS, that preflight intentionally does not require
@@ -480,7 +480,12 @@ presenter-backed overlay cases. The summary reported `webVisible=true` for all
 as close/back-to-app, parked zero-FPS presenter state, disabled needs-present
 polling, zero managed overlay timing, and clean crash diagnostics. New macOS
 matrix manifests record their suite name, and the summary auditor rejects
-named-suite artifacts that are missing required overlay surface cases.
+named-suite artifacts that are missing required overlay surface cases. A focused
+Apple Silicon minimal run at
+`/tmp/steam-bridge-macos-overlay-matrix-20260701-032532` also passed all 7
+minimal cases after expanding the duplicate-open guard to direct,
+shortcut/controller, and checkout `IfAvailable` helpers while keeping the
+arm64-only signed package path.
 
 ## Shipping Notes
 

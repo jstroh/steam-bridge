@@ -177,7 +177,8 @@ attach a dormant `gameoverlayui` target before any visible overlay activation.
 
 Use `presenter-duplicate-open-guard` to prove duplicate menu/button presses are
 quietly suppressed while a managed overlay is opening. The action opens a modal
-web overlay, immediately checks the public `IfAvailable` helpers, records
+web overlay, immediately checks the public direct, shortcut/controller, and
+checkout `IfAvailable` helpers, records
 `overlay:presenter-duplicate-open-guard`, and then follows the same
 close/back-to-app proof as the normal web `openAndWait(...)` case.
 

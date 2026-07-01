@@ -943,10 +943,18 @@ Current evidence:
   interactive macOS host state, and idle presenter parking at `currentFps=0`.
   The latest live full and persistent macOS artifacts cover 44 cases, including
   programmatic `openShortcutTargetAndWait()` proof for every supported
-  presenter-backed shortcut target. The checkout prepare-only case calls
-  `withCheckoutPrepared(...)` without transaction input, requires the
-  checkout-ready lifecycle event, rejects modal overlay activation, and audits
-  that the presenter releases back to idle. A focused live checkout suite at
+  presenter-backed shortcut target. A focused 2026-07-01 minimal Apple Silicon
+  run at `/tmp/steam-bridge-macos-overlay-matrix-20260701-032532` passed all 7
+  minimal cases after expanding `presenter-duplicate-open-guard`; it proved
+  direct target, shortcut/controller, and checkout `IfAvailable` helpers return
+  `null` while the presenter is already opening a managed overlay, with both
+  `getOpenStatus(...)` and `getShortcutOpenStatus()` reporting
+  `reason: "opening"`, no checkout operation run, close/back-to-app proof,
+  parked zero-FPS state, zero managed overlay timing, and clean crash
+  diagnostics. The checkout prepare-only case calls `withCheckoutPrepared(...)`
+  without transaction input, requires the checkout-ready lifecycle event,
+  rejects modal overlay activation, and audits that the presenter releases back
+  to idle. A focused live checkout suite at
   `/tmp/steam-bridge-macos-overlay-matrix-checkout-live-20260630-160833` also
   passed all four App ID `480` checkout cases: prepare-only, direct checkout
   approval-route, managed Shift+Tab checkout, and programmatic checkout
@@ -1123,6 +1131,14 @@ Current evidence:
   shell default and started base64-transporting JSON payloads into lifecycle
   events. This keeps visible-content close proof in the machine-audited artifact
   instead of relying on helper console text.
+  A focused 2026-07-01 minimal Apple Silicon matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-20260701-032532` passed all 7 minimal
+  App ID `480` cases after expanding `presenter-duplicate-open-guard`; the live
+  artifact proves direct target, shortcut/controller, and checkout
+  `IfAvailable` helpers return `null` while a managed overlay is already
+  opening, with the checkout operation callback untouched and the normal
+  close/back-to-app, parked zero-FPS, zero managed overlay timing, and crash
+  diagnostics still green.
   A focused current-head macOS checkout suite at
   `/tmp/steam-bridge-macos-overlay-matrix-checkout-target-snapshot-20260630-232458`
   rebuilt and signed the Apple Silicon Electron `43.0.0` package, reused the
