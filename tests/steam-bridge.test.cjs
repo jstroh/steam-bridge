@@ -1698,6 +1698,15 @@ test("project support policy covers Steam desktop targets except Intel macOS", (
   const ciWorkflow = fs.readFileSync(path.join(repoRoot, ".github", "workflows", "ci.yml"), "utf8");
   const releaseWorkflow = fs.readFileSync(path.join(repoRoot, ".github", "workflows", "release.yml"), "utf8");
   const targetScript = fs.readFileSync(path.join(repoRoot, "scripts", "assert-supported-targets.cjs"), "utf8");
+  const packagerScript = fs.readFileSync(path.join(repoRoot, "scripts", "package-electron-example.cjs"), "utf8");
+  const prepareMacosScript = fs.readFileSync(
+    path.join(repoRoot, "packages", "steam-bridge", "bin", "prepare-macos-app.cjs"),
+    "utf8"
+  );
+  const verifyMacosScript = fs.readFileSync(
+    path.join(repoRoot, "packages", "steam-bridge", "bin", "verify-macos-signing.cjs"),
+    "utf8"
+  );
   const loader = fs.readFileSync(path.join(repoRoot, "packages", "steam-bridge", "src", "native.ts"), "utf8");
   const linkScript = fs.readFileSync(
     path.join(repoRoot, "packages", "steam-bridge", "scripts", "link-native.cjs"),
@@ -1729,11 +1738,18 @@ test("project support policy covers Steam desktop targets except Intel macOS", (
   }
   assert.match(ciWorkflow, /npm run api:check/);
 
-  for (const source of [ciWorkflow, releaseWorkflow, loader, linkScript]) {
+  for (const source of [ciWorkflow, releaseWorkflow, loader, linkScript, packagerScript, prepareMacosScript]) {
     assert.doesNotMatch(source, /x86_64-apple-darwin|darwin-x64|macos-13/);
   }
   assert.match(targetScript, /x86_64-apple-darwin/);
   assert.match(loader, /Intel macOS is not supported/);
+  assert.match(
+    packagerScript,
+    /"aarch64-apple-darwin":\s*\{[\s\S]*?platform:\s*"darwin"[\s\S]*?arch:\s*"arm64"/
+  );
+  assert.doesNotMatch(packagerScript, /platform:\s*"darwin"[\s\S]{0,160}arch:\s*"x64"|universal2?/);
+  assert.match(prepareMacosScript, /"-arch",\s*"arm64"/);
+  assert.match(verifyMacosScript, /must contain only an arm64 macOS slice/);
 });
 
 test("smoke result verifier accepts passive notification evidence with lifecycle callbacks", (t) => {

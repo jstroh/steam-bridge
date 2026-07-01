@@ -105,6 +105,16 @@ function runMacosPackageSigningStaticChecks() {
   ]) {
     assert.ok(packagerScript.includes(expected), `macOS package script missing ${expected}`);
   }
+  assert.match(
+    packagerScript,
+    /"aarch64-apple-darwin":\s*\{[\s\S]*?platform:\s*"darwin"[\s\S]*?arch:\s*"arm64"/,
+    "example packager must package macOS as Apple Silicon arm64"
+  );
+  assert.doesNotMatch(
+    packagerScript,
+    /x86_64-apple-darwin|darwin-x64|universal2?|platform:\s*"darwin"[\s\S]{0,160}arch:\s*"x64"/,
+    "example packager must not expose Intel or universal macOS targets"
+  );
   assert.ok(
     !packagerScript.includes("signMacSteamExecutable"),
     "macOS package script must use the published Steam Bridge preparation CLI"
@@ -115,6 +125,8 @@ function runMacosPackageSigningStaticChecks() {
     "readCfBundleExecutable",
     "verifyMacAppBundleLauncher",
     "verifySignedExecutable",
+    "\"-arch\"",
+    "\"arm64\"",
     "--skip-sign",
     "--dry-run",
     "\"clang\"",

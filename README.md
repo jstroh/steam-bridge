@@ -236,9 +236,12 @@ npm run example:package:linux -- --artifacts-dir /tmp/steam-bridge-release
 npm run example:package:win -- --artifacts-dir /tmp/steam-bridge-release
 ```
 
-For the current host platform, a local native build is enough for a local smoke
-package. The example packager stages `steam_bridge_native.local.node` under the
-target prebuild name when a release prebuild is not present:
+For the current supported host platform, a local native build is enough for a
+local smoke package. On macOS, that means Apple Silicon only: the local package
+path builds and tests the `aarch64-apple-darwin` / arm64 `.app` shape, never an
+Intel or universal macOS target. The example packager stages
+`steam_bridge_native.local.node` under the target prebuild name when a release
+prebuild is not present:
 
 ```sh
 npm run native:build
