@@ -1205,8 +1205,9 @@ Current evidence:
   profile/players/community/stats/achievements/user/dialog-equivalent routes,
   and every programmatic shortcut `openAndWait(...)` target with one Metal
   presenter-backed overlay target, visible web content where applicable,
-  close/back-to-app proof, parked zero-FPS state, disabled needs-present
-  polling, zero managed overlay timing, and clean crash diagnostics.
+  close/back-to-app proof, parked zero-FPS state, `idleStable=true` for active
+  close paths, disabled needs-present polling, zero managed overlay timing, and
+  clean crash diagnostics.
 - BrowserWindow-only overlay support is not proven.
 - Steam launch, app ID, auth, and callbacks are not enough to claim overlay
   support.

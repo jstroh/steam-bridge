@@ -325,6 +325,7 @@ function summarizeMatrixArtifacts(root) {
         `activated=${summary.activated}`,
         `closed=${summary.closed}`,
         `parked=${summary.parked}`,
+        `idleStable=${summary.idleStable}`,
         `passive=${summary.passive}`,
         `overlayTargets=${summary.overlayTargets}`,
         `overlayGameIds=${summary.overlayGameIds.join(",") || "none"}`,
@@ -445,8 +446,8 @@ function verifyCase(caseId, metadata, result, lifecycle, macosCrashReports, fail
         expectedNativeHostUnavailableReason,
         failures
       });
-  const parked = hasExpectedActionError || checkoutPrepareOnly || isReadinessPreflight
-    ? false
+  const parking = hasExpectedActionError || checkoutPrepareOnly || isReadinessPreflight
+    ? { required: false, ok: false, idleStable: "n/a" }
     : verifyLifecycleParking(caseId, lifecycleEntries, isPassive, failures);
   const zeroTiming = Boolean(
     electronOverlay &&
@@ -655,7 +656,7 @@ function verifyCase(caseId, metadata, result, lifecycle, macosCrashReports, fail
     expect(closed, `${caseId}: overlay inactive callback observed after active`, failures);
     verifyOverlayCallbackAppIds(caseId, lifecycleEntries, expectedAppId, failures);
     verifyOverlayCallbackPids(caseId, lifecycleEntries, overlayProcesses, failures);
-    expect(parked, `${caseId}: presenter parked after overlay close`, failures);
+    expect(parking.ok, `${caseId}: presenter parked after overlay close`, failures);
   }
 
   if (isShortcutAction(actionName)) {
@@ -722,7 +723,8 @@ function verifyCase(caseId, metadata, result, lifecycle, macosCrashReports, fail
     action: actionName,
     activated,
     closed,
-    parked: isReadinessPreflight ? readiness.parked === true : checkoutPrepareOnly ? checkoutPrepared.parked === true : parked,
+    parked: isReadinessPreflight ? readiness.parked === true : checkoutPrepareOnly ? checkoutPrepared.parked === true : parking.ok,
+    idleStable: parking.required ? parking.idleStable : "n/a",
     passive: isPassive,
     overlayTargets,
     overlayGameIds,
@@ -1366,18 +1368,18 @@ function verifyOverlayCallbackPids(caseId, entries, overlayProcesses, failures) 
 
 function verifyLifecycleParking(caseId, entries, isPassive, failures) {
   if (isPassive) {
-    return true;
+    return { required: false, ok: true, idleStable: "n/a" };
   }
 
   const firstActiveIndex = entries.findIndex(isLifecycleOverlayActiveEvent);
   if (firstActiveIndex === -1) {
-    return false;
+    return { required: false, ok: false, idleStable: "n/a" };
   }
   const inactiveAfterActiveIndex = entries.findIndex(
     (entry, index) => index > firstActiveIndex && isLifecycleOverlayInactiveEvent(entry)
   );
   if (inactiveAfterActiveIndex === -1) {
-    return false;
+    return { required: true, ok: false, idleStable: false };
   }
 
   const afterClose = entries
@@ -1400,20 +1402,22 @@ function verifyLifecycleParking(caseId, entries, isPassive, failures) {
   expect(stable.length > 0, `${caseId}: stable after-close presenter event recorded`, failures);
   expect(parked.length > 0, `${caseId}: presenter parked event recorded`, failures);
   if (!firstPresenter || !stablePresenter || !parkedPresenter) {
-    return false;
+    return { required: true, ok: false, idleStable: false };
   }
 
+  const parkingFailuresBefore = failures.length;
   expectParkedPresenter(caseId, firstPresenter, "first close sample", failures);
   expectParkedPresenter(caseId, stablePresenter, "stable close sample", failures);
   expectParkedPresenter(caseId, parkedPresenter, "parked sample", failures);
 
-  if (firstPresenter.pumpCount !== stablePresenter.pumpCount) {
+  const pumpStable = firstPresenter.pumpCount === stablePresenter.pumpCount;
+  if (!pumpStable) {
     failures.push(
       `${caseId}: native presenter pump count changed after close: first=${formatValue(firstPresenter.pumpCount)} stable=${formatValue(stablePresenter.pumpCount)}`
     );
   }
 
-  return true;
+  return { required: true, ok: failures.length === parkingFailuresBefore, idleStable: pumpStable };
 }
 
 function expectParkedPresenter(caseId, presenter, label, failures) {
@@ -1835,9 +1839,19 @@ function runSelfTest() {
     createSelfTestFixture(fixtureRoot);
     const summary = summarizeMatrixArtifacts(fixtureRoot);
     assert.equal(summary.caseSummaries.length, 15, "summary self-test should include fifteen cases");
+    assert(
+      summary.caseSummaries.every((item) => item.closed !== true || item.parked !== true || item.idleStable === true),
+      "summary self-test should report stable idle presenters for closed active-overlay cases"
+    );
     createPersistentSelfTestFixture(persistentFixtureRoot);
     const persistentSummary = summarizeMatrixArtifacts(persistentFixtureRoot);
     assert.equal(persistentSummary.caseSummaries.length, 2, "persistent summary self-test should include two cases");
+    assert(
+      persistentSummary.caseSummaries.every(
+        (item) => item.closed !== true || item.parked !== true || item.idleStable === true
+      ),
+      "persistent summary self-test should report stable idle presenters for closed active-overlay cases"
+    );
     assertSuiteCoverageSelfTest();
     createSelfTestFixture(unredactedFixtureRoot);
     injectUnredactedCheckoutManifestCommand(unredactedFixtureRoot);

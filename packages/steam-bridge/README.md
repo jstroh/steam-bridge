@@ -911,7 +911,8 @@ summary now reports `managedIsolation=true` from the child-process preload scrub
 diagnostics in addition to one Metal presenter-backed overlay target, visible
 Steam web content before close input where applicable, close/back-to-app proof,
 parked zero-FPS presenter state, disabled needs-present polling, zero managed
-overlay timing, and clean crash diagnostics.
+overlay timing, `idleStable=true` for active close paths, and clean crash
+diagnostics.
 A fresh 2026-07-01 full cold-launch artifact at
 `/tmp/steam-bridge-macos-overlay-matrix-full-web-visible-fixed-20260701-015118`
 rebuilt and signed the arm64 Electron `43.0.0` package, reused the stable

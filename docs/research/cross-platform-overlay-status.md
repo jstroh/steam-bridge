@@ -84,8 +84,9 @@ achievements/user routes, every dialog-equivalent route, and every
 programmatic shortcut `openAndWait(...)` target. Active cases reported one Metal
 presenter-backed overlay target, visible Steam web content before close where
 applicable, active/inactive callbacks, close/back-to-app proof, parked
-zero-FPS presenter state, disabled needs-present polling, zero managed overlay
-timing, and clean crash diagnostics. This remains public App ID `480` plumbing
+zero-FPS presenter state, `idleStable=true` for active close paths, disabled
+needs-present polling, zero managed overlay timing, and clean crash diagnostics.
+This remains public App ID `480` plumbing
 evidence; real purchase-content proof still requires a configured product in a
 real Steam app.
 

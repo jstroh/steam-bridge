@@ -317,6 +317,7 @@ function summarizeMatrixArtifacts(root) {
       toggleInput: caseMetadata?.visualToggleInput || "n/a",
       passiveToast: passiveNotification.required ? passiveNotification.ok : "n/a",
       parked: parking.required ? parking.ok : "n/a",
+      idleStable: parking.required ? parking.idleStable : "n/a",
       managedWaits: managedWaits.required ? managedWaits.ok : "n/a",
       openAndWait: openAndWait.required ? openAndWait.ok : "n/a",
       checkoutWait: checkoutWait.required ? checkoutWait.ok : "n/a",
@@ -343,6 +344,7 @@ function summarizeMatrixArtifacts(root) {
         `toggleInput=${item.toggleInput}`,
         `passiveToast=${item.passiveToast}`,
         `parked=${item.parked}`,
+        `idleStable=${item.idleStable}`,
         `managedWaits=${item.managedWaits}`,
         `openAndWait=${item.openAndWait}`,
         `checkoutWait=${item.checkoutWait}`,
@@ -378,6 +380,12 @@ function runSelfTest() {
     assert(
       summary.caseSummaries.every((item) => !String(item.action).startsWith("presenter-") || item.managedIsolation === true),
       "summary self-test should report managed overlay isolation for presenter cases"
+    );
+    assert(
+      summary.caseSummaries.every(
+        (item) => item.lifecycleInactive !== true || item.parked !== true || item.idleStable === true
+      ),
+      "summary self-test should report stable idle presenters for closed active-overlay cases"
     );
     console.log("Steam Deck overlay matrix summary self-test passed.");
   } finally {
@@ -1307,7 +1315,7 @@ function readLifecycle(caseDir) {
 function verifyLifecycleParking(caseName, entries, failures) {
   const firstActiveIndex = entries.findIndex(isLifecycleOverlayActiveEvent);
   if (firstActiveIndex === -1) {
-    return { required: false, ok: true };
+    return { required: false, ok: true, idleStable: "n/a" };
   }
 
   const inactiveAfterActiveIndex = entries.findIndex(
@@ -1315,11 +1323,11 @@ function verifyLifecycleParking(caseName, entries, failures) {
   );
   if (inactiveAfterActiveIndex === -1) {
     failures.push(`${caseName}: no active=false overlay callback after active=true`);
-    return { required: true, ok: false };
+    return { required: true, ok: false, idleStable: false };
   }
 
   if (entries.some((entry) => readPresenterMode(presenterPayload(entry)) === "session")) {
-    return { required: false, ok: true };
+    return { required: false, ok: true, idleStable: "n/a" };
   }
 
   const firstAfterClosePresenters = entries
@@ -1348,7 +1356,7 @@ function verifyLifecycleParking(caseName, entries, failures) {
   }
 
   if (!firstPresenter || !stablePresenter) {
-    return { required: true, ok: false };
+    return { required: true, ok: false, idleStable: false };
   }
 
   const parkingFailuresBefore = failures.length;
@@ -1357,13 +1365,14 @@ function verifyLifecycleParking(caseName, entries, failures) {
 
   const firstPumpCount = firstPresenter.pumpCount;
   const stablePumpCount = stablePresenter.pumpCount;
-  if (firstPumpCount !== stablePumpCount) {
+  const pumpStable = firstPumpCount === stablePumpCount;
+  if (!pumpStable) {
     failures.push(
       `${caseName}: native presenter pump count changed after close: first=${formatValue(firstPumpCount)} stable=${formatValue(stablePumpCount)}`
     );
   }
 
-  return { required: true, ok: failures.length === parkingFailuresBefore };
+  return { required: true, ok: failures.length === parkingFailuresBefore, idleStable: pumpStable };
 }
 
 function presenterPayload(entry) {
