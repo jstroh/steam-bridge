@@ -782,6 +782,20 @@ still had `overlayEnabled=false` and zero live `gameoverlayui` targets. The
 macOS helper now diagnoses that state into
 `steam-overlay-ipc-diagnostics.txt`, and the matrix retry classifier treats it
 as non-retryable so IPC exhaustion is not mistaken for a presenter timing bug.
+A follow-up 2026-06-30 minimal run at
+`/tmp/steam-bridge-macos-overlay-matrix-minimal-guard-20260630-183541`
+proved the stable launcher env handoff still works for readiness after
+repackaging Electron `43.0.0`, then failed the first active web overlay on the
+same fresh Steam IPC/resource errors. The helper now fails fast if the stable
+Steam shortcut points at a stale launcher env file instead of the result/control
+paths for the current invocation, which prevents direct one-off helper runs
+from silently launching an old persistent-suite configuration. A later local
+Steam restart entered a client update state and stopped dispatching
+`steam://rungameid/<shortcut>` before any smoke process was tracked; the matrix
+now skips the running-list removal wait when no smoke gameprocess log entry was
+created, so Steam URL-dispatch failures report as launch failures instead of
+cleanup timeouts. Further live macOS overlay proof should wait for Steam to
+finish updating, log on, and handle shortcut launch URLs again.
 
 ## Primary References
 

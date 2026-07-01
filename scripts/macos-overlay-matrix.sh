@@ -1007,6 +1007,27 @@ wait_for_macos_steam_app_removed_from_running_list() {
   return 1
 }
 
+macos_smoke_gameprocess_started_since() {
+  local start_offset="$1"
+  local log_file current_size tail_start
+  if [ "$dry_run" = "1" ]; then
+    return 1
+  fi
+
+  log_file="$(macos_steam_gameprocess_log)"
+  if [ ! -f "$log_file" ]; then
+    return 1
+  fi
+
+  current_size="$(macos_steam_log_size "$log_file")"
+  tail_start=$((start_offset + 1))
+  if [ "$current_size" -lt "$start_offset" ]; then
+    tail_start=1
+  fi
+
+  tail -c +"$tail_start" "$log_file" 2>/dev/null | grep -Fq 'SteamBridgeSmoke'
+}
+
 should_retry_macos_overlay_readiness_failure() {
   local result_file="$1"
   if node "$script_dir/detect-macos-steam-overlay-ipc.cjs" \
@@ -1722,7 +1743,7 @@ run_case() {
   local run_cmd
   local status=0
   local case_args=("$@")
-  local cleanup_status gameprocess_log_offset smoke_pid
+  local cleanup_status gameprocess_log_offset smoke_pid gameprocess_started
   if case_needs_default_web_close "${case_args[@]}"; then
     case_args+=(--close-input web)
   fi
@@ -1766,15 +1787,19 @@ run_case() {
   while true; do
     status=0
     cleanup_status=0
+    gameprocess_started="0"
     write_case_launcher_env "$result_file" "$diagnostic_dir" "${case_args[@]}"
     gameprocess_log_offset="$(macos_steam_log_size "$(macos_steam_gameprocess_log)")"
     "${run_cmd[@]}" || status=$?
+    if macos_smoke_gameprocess_started_since "$gameprocess_log_offset"; then
+      gameprocess_started="1"
+    fi
     smoke_pid="$(read_smoke_result_pid "$result_file" || true)"
     cleanup_macos_smoke_processes
     if ! wait_for_macos_steam_app_pid_untracked "$smoke_pid" "$gameprocess_log_offset" 30; then
       cleanup_status=1
     fi
-    if ! wait_for_macos_steam_app_removed_from_running_list "$gameprocess_log_offset" 30; then
+    if [ "$gameprocess_started" = "1" ] && ! wait_for_macos_steam_app_removed_from_running_list "$gameprocess_log_offset" 30; then
       cleanup_status=1
     fi
     if [ "$status" -eq 0 ] && [ "$cleanup_status" -ne 0 ]; then

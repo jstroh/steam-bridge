@@ -1197,6 +1197,117 @@ resolve_shortcut_game_id() {
   printf '%s\n' "$resolved"
 }
 
+shortcut_launch_options_for_game_id() {
+  local game_id="$1"
+  STEAM_BRIDGE_SHORTCUT_GAME_ID="$game_id" STEAM_BRIDGE_SHORTCUTS_JSONL="$(discover_shortcuts)" node <<'NODE'
+const gameId = process.env.STEAM_BRIDGE_SHORTCUT_GAME_ID || "";
+const shortcutsJsonl = process.env.STEAM_BRIDGE_SHORTCUTS_JSONL || "";
+const matches = [];
+for (const line of shortcutsJsonl.split(/\r?\n/)) {
+  if (!line.trim()) {
+    continue;
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(line);
+  } catch {
+    continue;
+  }
+  if (String(parsed.gameId) === gameId) {
+    matches.push(String(parsed.launchOptions || ""));
+  }
+}
+
+const unique = [...new Set(matches)];
+if (unique.length === 1) {
+  process.stdout.write(unique[0]);
+}
+NODE
+}
+
+launcher_env_file_from_launch_options() {
+  node - "$1" <<'NODE'
+const launchOptions = process.argv[2] || "";
+const match = launchOptions.match(/(?:^|\s)--steam-bridge-launch-env-file=(?:"([^"]+)"|'([^']+)'|(\S+))/);
+if (match) {
+  process.stdout.write(match[1] || match[2] || match[3] || "");
+}
+NODE
+}
+
+launcher_env_value() {
+  local env_file="$1"
+  local key="$2"
+  if [ ! -f "$env_file" ]; then
+    return 0
+  fi
+  awk -F= -v key="$key" '$1 == key { sub(/^[^=]*=/, ""); print; exit }' "$env_file"
+}
+
+validate_shortcut_launcher_env() {
+  local game_id="$1"
+  local launch_options shortcut_env_file env_result_file env_control_file env_control_server env_autorun env_action
+
+  launch_options="$(shortcut_launch_options_for_game_id "$game_id")"
+  shortcut_env_file="$(launcher_env_file_from_launch_options "$launch_options")"
+  if [ -z "$shortcut_env_file" ]; then
+    return 0
+  fi
+
+  if [ -n "$launcher_env_file" ] && [ "$launcher_env_file" != "$shortcut_env_file" ]; then
+    echo "Steam shortcut \"$app_name\" uses launcher env file $shortcut_env_file, but this helper was given $launcher_env_file." >&2
+    echo "Update the Steam shortcut or pass the matching --launcher-env-file." >&2
+    return 1
+  fi
+
+  if [ ! -s "$shortcut_env_file" ]; then
+    echo "Steam shortcut \"$app_name\" uses launcher env file $shortcut_env_file, but that file is missing or empty." >&2
+    echo "Run scripts/macos-overlay-matrix.sh so it writes the launcher env for this case before launch." >&2
+    return 1
+  fi
+
+  env_result_file="$(launcher_env_value "$shortcut_env_file" "STEAM_BRIDGE_SMOKE_RESULT_FILE")"
+  env_control_file="$(launcher_env_value "$shortcut_env_file" "STEAM_BRIDGE_SMOKE_CONTROL_FILE")"
+  env_control_server="$(launcher_env_value "$shortcut_env_file" "STEAM_BRIDGE_SMOKE_CONTROL_SERVER")"
+  env_autorun="$(launcher_env_value "$shortcut_env_file" "STEAM_BRIDGE_SMOKE_AUTORUN")"
+  env_action="$(launcher_env_value "$shortcut_env_file" "STEAM_BRIDGE_SMOKE_AUTORUN_ACTION")"
+
+  if [ "$env_result_file" != "$result_file" ]; then
+    echo "Steam shortcut \"$app_name\" launcher env file $shortcut_env_file targets result file:" >&2
+    echo "  $env_result_file" >&2
+    echo "but this helper invocation is waiting for:" >&2
+    echo "  $result_file" >&2
+    echo "Refresh the launcher env through scripts/macos-overlay-matrix.sh before launching the shortcut." >&2
+    return 1
+  fi
+
+  if [ "$control_server" = "1" ]; then
+    if [ "$env_control_server" != "1" ] || [ "$env_control_file" != "$control_file" ]; then
+      echo "Steam shortcut \"$app_name\" launcher env file $shortcut_env_file does not match this control-server launch." >&2
+      echo "Expected control file: $control_file" >&2
+      echo "Actual control file: ${env_control_file:-<none>}" >&2
+      return 1
+    fi
+    return 0
+  fi
+
+  if [ "$env_control_server" = "1" ]; then
+    echo "Steam shortcut \"$app_name\" launcher env file $shortcut_env_file is still configured for a control-server launch." >&2
+    echo "Refresh the launcher env through scripts/macos-overlay-matrix.sh before launching a one-shot action." >&2
+    return 1
+  fi
+
+  if [ "$env_autorun" != "1" ]; then
+    echo "Steam shortcut \"$app_name\" launcher env file $shortcut_env_file is not configured for a one-shot autorun action." >&2
+    return 1
+  fi
+
+  if [ -n "$action" ] && [ "$env_action" != "$action" ]; then
+    echo "Steam shortcut \"$app_name\" launcher env file $shortcut_env_file targets action ${env_action:-<none>}, but this helper expects $action." >&2
+    return 1
+  fi
+}
+
 macos_steam_gameprocess_log() {
   printf '%s\n' "$HOME/Library/Application Support/Steam/logs/gameprocess_log.txt"
 }
@@ -1247,6 +1358,8 @@ launch_steam_shortcut() {
   game_id="$(resolve_shortcut_game_id)"
   launch_attempts=3
   launch_started="0"
+
+  validate_shortcut_launcher_env "$game_id"
 
   mkdir -p "$(dirname -- "$result_file")"
   rm -f "$result_file"
@@ -2474,7 +2587,7 @@ NODE
 }
 
 run_self_test() {
-  local temp_result launch_options temp_home old_home shortcut_file expected_game_id matches resolved old_diagnostic_dir old_crash_report_cutoff_ms dirty_diagnostic_dir
+  local temp_result launch_options temp_home old_home shortcut_file selftest_env_file expected_game_id matches resolved old_diagnostic_dir old_crash_report_cutoff_ms dirty_diagnostic_dir
   temp_result="$(mktemp "${TMPDIR:-/tmp}/steam-bridge-macos-helper.XXXXXX")"
   result_file="$temp_result"
   diagnostic_dir="$result_file.diagnostics"
@@ -2549,6 +2662,7 @@ EOF
   temp_home="$(mktemp -d "${TMPDIR:-/tmp}/steam-bridge-macos-helper-home.XXXXXX")"
   old_home="$HOME"
   shortcut_file="$temp_home/Library/Application Support/Steam/userdata/1686541554/config/shortcuts.vdf"
+  selftest_env_file="$temp_home/steam-bridge-macos-smoke.env"
   expected_game_id="$(node - <<'NODE'
 const appid = 3855287460;
 console.log(((BigInt(appid) << 32n) | 0x02000000n).toString());
@@ -2556,13 +2670,14 @@ NODE
 )"
 
   mkdir -p "$(dirname -- "$shortcut_file")"
-  node - "$shortcut_file" <<'NODE'
+  node - "$shortcut_file" "$selftest_env_file" <<'NODE'
 const fs = require("node:fs");
 
 const TYPE_OBJECT = 0;
 const TYPE_STRING = 1;
 const TYPE_UINT32 = 2;
 const TYPE_END = 8;
+const [, , shortcutFile, launcherEnvFile] = process.argv;
 const chunks = [];
 
 byte(TYPE_OBJECT);
@@ -2573,13 +2688,13 @@ uint32("appid", 3855287460);
 string("appname", "Steam Bridge Smoke");
 string("Exe", '"/tmp/SteamBridgeSmoke.app/Contents/MacOS/SteamBridgeSmoke"');
 string("StartDir", "/tmp/SteamBridgeSmoke.app/Contents/MacOS/");
-string("LaunchOptions", "--steam-bridge-app-id=480");
+string("LaunchOptions", `--steam-bridge-launch-app-id=480 --steam-bridge-launch-env-file=${launcherEnvFile}`);
 uint32("AllowOverlay", 1);
 byte(TYPE_END);
 byte(TYPE_END);
 byte(TYPE_END);
 
-fs.writeFileSync(process.argv[2], Buffer.concat(chunks));
+fs.writeFileSync(shortcutFile, Buffer.concat(chunks));
 
 function byte(value) {
   chunks.push(Buffer.from([value]));
@@ -2616,6 +2731,28 @@ NODE
   resolved="$(resolve_shortcut_game_id)"
   if [ "$resolved" != "$expected_game_id" ]; then
     echo "Self-test resolved $resolved, expected $expected_game_id." >&2
+    exit 1
+  fi
+
+  result_file="$temp_home/result.log"
+  diagnostic_dir="$result_file.diagnostics"
+  control_server="0"
+  control_file=""
+  action="presenter-ready"
+  {
+    printf 'STEAM_BRIDGE_SMOKE_RESULT_FILE=%s\n' "$result_file"
+    printf 'STEAM_BRIDGE_SMOKE_AUTORUN=1\n'
+    printf 'STEAM_BRIDGE_SMOKE_AUTORUN_ACTION=%s\n' "$action"
+  } > "$selftest_env_file"
+  validate_shortcut_launcher_env "$expected_game_id"
+
+  {
+    printf 'STEAM_BRIDGE_SMOKE_RESULT_FILE=%s\n' "$temp_home/stale-result.log"
+    printf 'STEAM_BRIDGE_SMOKE_AUTORUN=1\n'
+    printf 'STEAM_BRIDGE_SMOKE_AUTORUN_ACTION=%s\n' "$action"
+  } > "$selftest_env_file"
+  if validate_shortcut_launcher_env "$expected_game_id" >/dev/null 2>&1; then
+    echo "Self-test failed: stale macOS launcher env file should fail before Steam launch." >&2
     exit 1
   fi
 
