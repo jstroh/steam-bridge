@@ -958,6 +958,18 @@ Current evidence:
   managed timing, managed child-overlay isolation, named open-status and
   checkout-operation diagnostics, redacted checkout inputs, and clean crash
   diagnostics.
+- A post-reboot current-head 2026-07-01 Apple Silicon full matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-full-post-reboot-20260701` reused the
+  same signed arm64-only Electron `43.0.0` package and stable App ID `480`
+  shortcut without repackaging or restarting Steam, and passed all 55
+  process-per-case routes. It extends the post-reboot proof across every
+  dialog-equivalent route and every programmatic shortcut `openAndWait(...)`
+  target while preserving one Metal presenter-backed overlay target,
+  interactive macOS host state, visible Steam web content where applicable,
+  close/back-to-app proof, zero-FPS parking, disabled needs-present polling,
+  zero managed timing, managed child-overlay isolation, named open-status and
+  checkout-operation diagnostics, redacted checkout inputs, and clean crash
+  diagnostics.
 - The Metal host is borderless, transparent/click-through while idle, cannot
   become key or main, attaches above the Electron parent window, and is kept
   aligned by the managed Electron window sync hooks.

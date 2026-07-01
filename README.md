@@ -589,20 +589,21 @@ Current overlay evidence is tracked in
 Native presenter design notes are tracked in
 [`docs/research/native-overlay-presenter-plan.md`](docs/research/native-overlay-presenter-plan.md).
 The latest local macOS Apple Silicon full cold-launch proof is
-`/tmp/steam-bridge-macos-overlay-matrix-20260701-120932`: it reused the signed
-arm64 Electron `43.0.0` smoke package and stable Steam shortcut without
-repackaging or restarting Steam, then passed all 55 App ID `480`
-presenter-backed overlay cases. The matrix required managed overlay isolation
-for every presenter case and the summary reports `managedIsolation=true`,
-`openStatuses=true`, and `checkoutOperation=true` from the builder-facing
-diagnostics. It covers readiness, direct web/store/Friends/dialog/checkout/
-profile/players/community/stats/achievements/user routes, waited routes,
-passive progress/unlock toasts, checkout approval and prepare-only, every
-managed Shift+Tab shortcut target, every programmatic shortcut
-`openAndWait(...)` target, visible Steam web content before close input where
-applicable, close/back-to-app proof, one Metal presenter-backed overlay target,
-parked zero-FPS presenter state, disabled needs-present polling, zero managed
-overlay timing, and clean crash diagnostics. The same summary reports
+`/tmp/steam-bridge-macos-overlay-matrix-full-post-reboot-20260701`: it reused
+the signed arm64 Electron `43.0.0` smoke package and stable Steam shortcut after
+a macOS reboot without repackaging or restarting Steam, then passed all 55 App
+ID `480` presenter-backed overlay cases. The matrix required managed overlay
+isolation for every presenter case and the summary reports
+`managedIsolation=true`, `openStatuses=true`, and `checkoutOperation=true` from
+the builder-facing diagnostics. It covers readiness, direct
+web/store/Friends/dialog/checkout/profile/players/community/stats/achievements/
+user routes, waited routes, passive progress/unlock toasts, checkout approval
+and prepare-only, every managed Shift+Tab shortcut target, every programmatic
+shortcut `openAndWait(...)` target, visible Steam web content before close
+input where applicable, close/back-to-app proof, one Metal presenter-backed
+overlay target, parked zero-FPS presenter state, disabled needs-present
+polling, zero managed overlay timing, redacted checkout command values, and
+clean crash diagnostics. The same summary reports
 `idleStable=true` for active overlay close paths, proving the parked presenter
 stayed at `currentFps=0` without post-close `pumpCount` growth.
 A post-reboot core Apple Silicon proof at
