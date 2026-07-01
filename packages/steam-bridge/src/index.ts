@@ -2007,6 +2007,11 @@ export interface ElectronSteamOverlayCheckoutPrepareOptions {
    */
   durationMs?: number;
   /**
+   * Maximum time to wait for Steam's overlay hook to become ready before
+   * running the wrapped operation.
+   */
+  timeoutMs?: number;
+  /**
    * Aborts the wrapped operation wait and releases the scoped presenter hold.
    * Pass the same signal to your backend request if the request itself should
    * be canceled.
@@ -9528,7 +9533,7 @@ export function createElectronSteamOverlay(
       assertOpen();
       const pendingCheckoutTargetSnapshot = snapshotSteamOverlayTarget({ type: "checkout" });
       const status = electronSteamOverlayCheckoutOperationStatus(controller);
-      if (!status.canStartOperation) {
+      if (!status.canStartOperation && status.reason !== "overlay-not-ready") {
         throw annotateSteamOverlayTargetSnapshotError(
           electronSteamOverlayCheckoutOperationStatusError(status),
           pendingCheckoutTargetSnapshot
@@ -9543,6 +9548,10 @@ export function createElectronSteamOverlay(
         presenter.prepareForOverlay(options.durationMs);
       }
       try {
+        await controller.waitForOverlayReady({
+          timeoutMs: finiteNumber(options.timeoutMs, 15000),
+          signal: options.signal
+        });
         return await runElectronSteamOverlayAbortableOperation(
           controller,
           "finish checkout preparation operation",
@@ -9550,6 +9559,8 @@ export function createElectronSteamOverlay(
           options.signal,
           pendingCheckoutTargetSnapshot
         );
+      } catch (error) {
+        throw annotateSteamOverlayTargetSnapshotError(error, pendingCheckoutTargetSnapshot);
       } finally {
         activationHandle?.disconnect();
       }

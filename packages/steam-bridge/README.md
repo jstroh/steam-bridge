@@ -509,15 +509,16 @@ of passing raw session strings through app code.
 `steamOverlay.open({ type: "checkout", ... })`, and
 `steamOverlay.prepareForCheckout()` remain available for lower-level flows that
 need to separate presenter priming from transaction creation or overlay opening;
-`withCheckoutPrepared(...)` and `prepareForCheckout()` use the checkout
-operation availability gate before doing work, so split-step flows do not start
-lower-level transaction work or prime the native surface while Steam is stopped,
-the overlay is known unavailable, the native host is unavailable, or another
-managed overlay action is busy. `withCheckoutPrepared(...)` also accepts the
-same operation-phase abort behavior, and an explicit preparation duration should
-only be used when a standalone split-step hold is intentional. Use
-`openCheckoutAndWait(...)` when you want Steam Bridge to wait through a temporary
-overlay-readiness delay before starting the transaction.
+`withCheckoutPrepared(...)` uses the checkout operation availability gate for
+hard blockers and waits through a temporary `overlay-not-ready` state before it
+runs the wrapped callback. Standalone `prepareForCheckout()` is synchronous, so
+it remains an immediate preflight and does not prime the native surface while
+Steam is stopped, the overlay is not ready, the native host is unavailable, or
+another managed overlay action is busy. `withCheckoutPrepared(...)` also accepts
+the same operation-phase abort behavior plus an optional readiness `timeoutMs`,
+and an explicit preparation duration should only be used when a standalone
+split-step hold is intentional. Use `openCheckoutAndWait(...)` for the normal
+managed purchase path.
 When you need a checkout target object for a managed shortcut or split-step
 flow, use `client.overlay.checkoutTargetFromResult(initTxnResponse)` instead of
 re-parsing `InitTxn` envelopes in app code.
@@ -1123,8 +1124,17 @@ operation untouched and reports only a sanitized pending checkout snapshot on
 readiness timeout; the live run re-proved prepare-only checkout, direct
 synthetic approval checkout, managed Shift+Tab checkout, programmatic checkout
 `openAndWait(...)`, visible Steam web content for web-close paths,
-close/back-to-app proof, parked zero-FPS presenter state, zero managed timing, managed
-isolation, and clean crash diagnostics.
+close/back-to-app proof, parked zero-FPS presenter state, zero managed timing,
+managed isolation, and clean crash diagnostics.
+A later focused 2026-07-01 checkout Apple Silicon artifact at
+`/tmp/steam-bridge-macos-overlay-matrix-20260701-102924` rebuilt and signed the
+same arm64-only Electron `43.0.0` package and passed the four checkout cases
+after `withCheckoutPrepared(...)` began waiting through launch-time
+`overlay-not-ready` before running the wrapped split-step callback. The run
+re-proved prepare-only checkout, direct synthetic approval checkout, managed
+Shift+Tab checkout, and programmatic checkout `openAndWait(...)`, including
+close/back-to-app proof, parked zero-FPS presenter state, zero managed timing,
+managed isolation, and clean crash diagnostics.
 A later recovered-client full artifact at
 `/tmp/steam-bridge-macos-overlay-matrix-20260630-220434` also passed all 44
 process-per-case App ID `480` cases after recreating the stable shortcut and

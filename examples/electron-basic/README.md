@@ -1170,8 +1170,11 @@ app-specific proof outside the committed examples:
 
 The managed Electron overlay defaults to scoped activation holds instead of
 duration-based preparation. Lower-level split-step helpers such as
-`prepareForCheckout(durationMs)` are for diagnostics or unusual custom flows
-where a standalone hold is intentional.
+`withCheckoutPrepared(...)` and `prepareForCheckout(durationMs)` are for
+diagnostics or unusual custom flows where a standalone hold is intentional.
+`withCheckoutPrepared(...)` is async and waits through temporary Steam overlay
+readiness before running its wrapped callback; `prepareForCheckout(...)` is
+synchronous and remains an immediate preflight.
 The managed smoke path also uses zero restore-focus, activation boost, and active
 grace timing; platform helper verification can require that with
 `--require-zero-managed-overlay-timing`.

@@ -1380,14 +1380,27 @@ Current evidence:
   operation. Unit coverage proves a not-yet-ready overlay leaves the
   transaction operation untouched and reports only a sanitized pending checkout
   snapshot on readiness timeout. Follow-up unit coverage also proves
-  `withCheckoutPrepared(...)` refuses to call lower-level transaction/preparation
-  callbacks and standalone `prepareForCheckout()` refuses to prime the native
-  surface while Steam is stopped or the overlay is known unavailable; the live
-  run re-proved prepare-only checkout,
+  `withCheckoutPrepared(...)` waits through temporary `overlay-not-ready`
+  before calling lower-level transaction/preparation callbacks, while
+  standalone `prepareForCheckout()` refuses to prime the native surface while
+  Steam is stopped or the overlay is not ready; the live run re-proved
+  prepare-only checkout,
   direct synthetic approval checkout, managed Shift+Tab checkout, programmatic
   checkout `openAndWait(...)`, visible Steam web content for web-close paths,
   close/back-to-app proof, parked zero-FPS presenter state, zero managed
   timing, managed isolation, and clean crash diagnostics.
+  A later focused current-head 2026-07-01 checkout Apple Silicon matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-20260701-102924` rebuilt and signed
+  the same arm64-only Electron `43.0.0` package, reused the stable App ID `480`
+  shortcut without restarting Steam, and passed all four checkout cases after a
+  first attempt caught that `withCheckoutPrepared(...)` could still run during
+  launch-time `overlay-not-ready`. The fixed helper now waits for readiness
+  before invoking the wrapped split-step callback, so prepare-only checkout no
+  longer needs a startup timer. The run re-proved prepare-only checkout, direct
+  synthetic approval checkout, managed Shift+Tab checkout, programmatic checkout
+  `openAndWait(...)`, visible Steam web content for web-close paths,
+  close/back-to-app proof, parked zero-FPS presenter state, zero managed timing,
+  managed isolation, and clean crash diagnostics.
   A later unit-hardening slice moved generic direct `openAndWait(...)` through
   the same fresh status gate as named status and `IfAvailable` helpers. Direct
   wait helpers now fail hard blockers such as `steam-unavailable` before native

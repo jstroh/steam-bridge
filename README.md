@@ -423,12 +423,13 @@ be shown.
 The throwing `openCheckoutAndWait(...)` path also waits for Steam overlay
 readiness before it calls `startTxn()`, so a temporary Steam bootstrap delay
 does not create a real transaction before Steam can show the checkout UI.
-Lower-level `withCheckoutPrepared(...)` and standalone
-`prepareForCheckout()` use the same pre-operation availability gate and throw
-before calling the wrapped transaction/preparation callback or priming the
-native surface when Steam is not running, the overlay is known unavailable, the
-native host is unavailable, or another managed overlay action is active. Use
-`openCheckoutAndWait(...)` for the managed wait-through-readiness purchase path.
+Lower-level async `withCheckoutPrepared(...)` uses the same hard-blocker
+availability gate and also waits through a temporary `overlay-not-ready` state
+before calling the wrapped transaction/preparation callback. Standalone
+`prepareForCheckout()` is synchronous, so it remains an immediate preflight and
+throws instead of priming the native surface while Steam is stopped, the overlay
+is not ready, the native host is unavailable, or another managed overlay action
+is active. Use `openCheckoutAndWait(...)` for the normal managed purchase path.
 `steamOverlay.openCheckout(...)` and
 `steamOverlay.openCheckoutIfAvailable(...)` are also available when you already
 have a resolved checkout target and intentionally do not need to await overlay
@@ -719,8 +720,17 @@ operation untouched and reports only a sanitized pending checkout snapshot on
 readiness timeout; the live run re-proved prepare-only checkout, direct
 synthetic approval checkout, managed Shift+Tab checkout, programmatic checkout
 `openAndWait(...)`, visible Steam web content for web-close paths,
-close/back-to-app proof, parked zero-FPS presenter state, zero managed timing, managed
-isolation, and clean crash diagnostics.
+close/back-to-app proof, parked zero-FPS presenter state, zero managed timing,
+managed isolation, and clean crash diagnostics.
+A later focused Apple Silicon checkout run at
+`/tmp/steam-bridge-macos-overlay-matrix-20260701-102924` rebuilt and signed the
+same arm64-only Electron `43.0.0` package and passed the four checkout cases
+after `withCheckoutPrepared(...)` began waiting through launch-time
+`overlay-not-ready` before running the wrapped split-step callback. The run
+re-proved prepare-only checkout, direct synthetic approval checkout, managed
+Shift+Tab checkout, and programmatic checkout `openAndWait(...)`, including
+close/back-to-app proof, parked zero-FPS presenter state, zero managed timing,
+managed isolation, and clean crash diagnostics.
 
 ## Shipping Notes
 

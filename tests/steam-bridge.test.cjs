@@ -6828,12 +6828,12 @@ test("electron steam overlay manager owns one presenter and routes opens", async
   assert.equal(windowInvalidateCount, 3);
   fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: true });
   fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: false });
-  const checkoutPreparedLastCall = [];
+  let checkoutPreparedRan = false;
   const checkoutResult = await overlay.withCheckoutPrepared(() => {
-    checkoutPreparedLastCall.push(fake.calls.at(-1)?.method);
+    checkoutPreparedRan = true;
     return { steamUrl: "https://checkout.steampowered.com/checkout/approvetxn/123/" };
   }, { durationMs: 2500 });
-  assert.deepEqual(checkoutPreparedLastCall, ["pumpNativeOverlayProbeWindow"]);
+  assert.equal(checkoutPreparedRan, true);
   assert.deepEqual(checkoutResult, {
     steamUrl: "https://checkout.steampowered.com/checkout/approvetxn/123/"
   });
@@ -11276,22 +11276,23 @@ test("electron steam overlay checkout IfAvailable waits through readiness and sk
   assert.equal(fake.calls.length, disabledPrepareCallCount);
 
   let disabledPreparedOperationRan = false;
-  await assert.rejects(
-    overlay.withCheckoutPrepared(() => {
+  const preparedCheckout = overlay.withCheckoutPrepared(
+    () => {
       disabledPreparedOperationRan = true;
       return "prepared";
-    }),
-    (error) => {
-      assert.match(error.message, /Steam overlay is not ready yet/);
-      assert.deepEqual(error.targetSnapshot, { type: "checkout" });
-      assert.deepEqual(error.checkoutTargetSnapshot, { type: "checkout" });
-      assert.deepEqual(steam.getSteamOverlayCheckoutErrorTargetSnapshot(error), { type: "checkout" });
-      return true;
-    }
+    },
+    { timeoutMs: 500 }
   );
+  await new Promise((resolve) => setTimeout(resolve, 80));
   assert.equal(disabledPreparedOperationRan, false);
   assert.deepEqual(steamWebOverlayCalls(fake), []);
 
+  overlayEnabled = true;
+  assert.equal(await preparedCheckout, "prepared");
+  assert.equal(disabledPreparedOperationRan, true);
+  assert.deepEqual(steamWebOverlayCalls(fake), []);
+
+  overlayEnabled = false;
   let readinessOperationRan = false;
   const readinessCheckout = overlay.openCheckoutAndWaitIfAvailable(
     () => {
@@ -11319,6 +11320,29 @@ test("electron steam overlay checkout IfAvailable waits through readiness and sk
     hasTransactionId: true
   });
   const checkoutCallsAfterReadiness = steamWebOverlayCalls(fake).length;
+
+  overlayEnabled = false;
+  let timedOutPreparedOperationRan = false;
+  await assert.rejects(
+    overlay.withCheckoutPrepared(
+      () => {
+        timedOutPreparedOperationRan = true;
+        return "prepared";
+      },
+      { timeoutMs: 5 }
+    ),
+    (error) => {
+      assert.equal(error instanceof steam.SteamOverlayWaitTimeoutError, true);
+      assert.equal(error.code, "STEAM_OVERLAY_WAIT_TIMEOUT");
+      assert.equal(error.state, "be ready");
+      assert.deepEqual(error.targetSnapshot, { type: "checkout" });
+      assert.deepEqual(error.checkoutTargetSnapshot, { type: "checkout" });
+      assert.deepEqual(steam.getSteamOverlayCheckoutErrorTargetSnapshot(error), { type: "checkout" });
+      return true;
+    }
+  );
+  assert.equal(timedOutPreparedOperationRan, false);
+  assert.equal(steamWebOverlayCalls(fake).length, checkoutCallsAfterReadiness);
 
   steamRunning = false;
   overlayEnabled = true;
