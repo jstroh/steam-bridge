@@ -176,6 +176,13 @@ function runMacosPackageSigningStaticChecks() {
     "macOS overlay matrix must verify package signing before live cases"
   );
   for (const expected of [
+    "require_macos_arm64_host",
+    "Apple Silicon macOS (darwin/arm64)",
+    "Intel macOS and Rosetta shells are unsupported"
+  ]) {
+    assert.ok(matrixScript.includes(expected), `macOS overlay matrix missing ${expected}`);
+  }
+  for (const expected of [
     "verifyMacAppBundleLauncher(appExe",
     "CFBundleExecutable",
     "Contents\", \"Info.plist",

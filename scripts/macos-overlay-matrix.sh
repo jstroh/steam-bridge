@@ -269,6 +269,21 @@ if [ "$require_microtxn_callback" = "1" ] && [ -z "$checkout_json_file" ]; then
   exit 2
 fi
 
+require_macos_arm64_host() {
+  if [ "$dry_run" = "1" ]; then
+    return 0
+  fi
+
+  local system machine
+  system="$(uname -s)"
+  machine="$(uname -m)"
+
+  if [ "$system" != "Darwin" ] || [ "$machine" != "arm64" ]; then
+    echo "macOS overlay matrix must run on Apple Silicon macOS (darwin/arm64). Intel macOS and Rosetta shells are unsupported." >&2
+    exit 1
+  fi
+}
+
 quote_command() {
   printf '%q ' "$@"
   printf '\n'
@@ -846,6 +861,8 @@ if [ "$mode" = "summarize" ]; then
   node "$summary_runner" --artifact-root "$artifact_root"
   exit 0
 fi
+
+require_macos_arm64_host
 
 resolve_shortcuts_path() {
   if [ -n "$shortcuts_path" ]; then
