@@ -191,14 +191,9 @@ const steamOverlay = client.overlay.createElectronSteamOverlay(mainWindow, {
   // presenterMode: "session"
 });
 
-const webTarget = {
-  type: "web",
-  url: checkoutUrl,
-  modal: true
-} as const;
 const webResult = await steamOverlay.openWebAndWaitIfAvailable(checkoutUrl, { modal: true });
 if (!webResult) {
-  const webStatus = steamOverlay.getOpenStatus(webTarget);
+  const webStatus = steamOverlay.getWebOpenStatus(checkoutUrl, { modal: true });
   console.warn("Steam overlay target is not waitable right now", webStatus.reason ?? webStatus.waitReason);
 }
 
@@ -364,8 +359,12 @@ the button flow should resolve only after Steam closes and the presenter parks.
 The shortcut `IfAvailable` helpers return `null` while the Steam overlay is
 already active/opening, while the shortcut bridge is disabled, or while a
 side-effect-free status check already knows the host or route is unavailable,
-so apps do not need to duplicate the target resolver. For direct targets,
-`steamOverlay.openIfAvailable(target)` and
+so apps do not need to duplicate the target resolver. For direct targets, named
+status helpers such as `steamOverlay.getWebOpenStatus(...)`,
+`steamOverlay.getStoreOpenStatus(...)`, and
+`steamOverlay.getCheckoutOpenStatus(...)` provide the same side-effect-free
+preflight as `steamOverlay.getOpenStatus(target)` without requiring apps to
+construct target objects by hand. `steamOverlay.openIfAvailable(target)` and
 `steamOverlay.openAndWaitIfAvailable(target)` return `null` for known target or
 host availability blockers. They also return `null` while Steam's overlay is
 already active or the managed presenter is still opening a previous overlay, so

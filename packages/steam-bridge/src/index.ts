@@ -2322,6 +2322,22 @@ export interface ElectronSteamOverlay extends CallbackHandle {
   readonly presenter: NativeOverlayPresenter;
   getNativeHostAvailability(): ElectronSteamOverlayNativeHostAvailability;
   getOpenStatus(target: SteamOverlayTarget): ElectronSteamOverlayOpenStatus;
+  getWebOpenStatus(
+    url: string,
+    targetOptions?: ElectronSteamOverlayWebTargetOptions
+  ): ElectronSteamOverlayOpenStatus;
+  getStoreOpenStatus(targetOptions?: ElectronSteamOverlayStoreTargetOptions): ElectronSteamOverlayOpenStatus;
+  getFriendsOpenStatus(targetOptions?: ElectronSteamOverlayFriendsTargetOptions): ElectronSteamOverlayOpenStatus;
+  getProfileOpenStatus(targetOptions?: ElectronSteamOverlayProfileTargetOptions): ElectronSteamOverlayOpenStatus;
+  getPlayersOpenStatus(targetOptions?: ElectronSteamOverlayPlayersTargetOptions): ElectronSteamOverlayOpenStatus;
+  getCommunityOpenStatus(targetOptions?: ElectronSteamOverlayCommunityTargetOptions): ElectronSteamOverlayOpenStatus;
+  getStatsOpenStatus(targetOptions?: ElectronSteamOverlayStatsTargetOptions): ElectronSteamOverlayOpenStatus;
+  getAchievementsOpenStatus(
+    targetOptions?: ElectronSteamOverlayAchievementsTargetOptions
+  ): ElectronSteamOverlayOpenStatus;
+  getUserOpenStatus(targetOptions?: ElectronSteamOverlayUserTargetOptions): ElectronSteamOverlayOpenStatus;
+  getCheckoutOpenStatus(targetOptions?: ElectronSteamOverlayCheckoutTargetOptions): ElectronSteamOverlayOpenStatus;
+  getDialogOpenStatus(targetOptions?: ElectronSteamOverlayDialogTargetOptions): ElectronSteamOverlayOpenStatus;
   getShortcutOpenStatus(): ElectronSteamOverlayShortcutStatus;
   openIfAvailable(target: SteamOverlayTarget): NativeOverlayPresenter | null;
   open(target: SteamOverlayTarget): NativeOverlayPresenter;
@@ -9031,6 +9047,54 @@ export function createElectronSteamOverlay(
     },
     getOpenStatus(target: SteamOverlayTarget): ElectronSteamOverlayOpenStatus {
       return electronSteamOverlayOpenStatus(controller, target);
+    },
+    getWebOpenStatus(
+      url: string,
+      targetOptions: ElectronSteamOverlayWebTargetOptions = {}
+    ): ElectronSteamOverlayOpenStatus {
+      return controller.getOpenStatus({ ...targetOptions, type: "web", url });
+    },
+    getStoreOpenStatus(targetOptions: ElectronSteamOverlayStoreTargetOptions = {}): ElectronSteamOverlayOpenStatus {
+      return controller.getOpenStatus({ ...targetOptions, type: "store" });
+    },
+    getFriendsOpenStatus(
+      targetOptions: ElectronSteamOverlayFriendsTargetOptions = {}
+    ): ElectronSteamOverlayOpenStatus {
+      return controller.getOpenStatus({ ...targetOptions, type: "friends" });
+    },
+    getProfileOpenStatus(
+      targetOptions: ElectronSteamOverlayProfileTargetOptions = {}
+    ): ElectronSteamOverlayOpenStatus {
+      return controller.getOpenStatus({ ...targetOptions, type: "profile" });
+    },
+    getPlayersOpenStatus(
+      targetOptions: ElectronSteamOverlayPlayersTargetOptions = {}
+    ): ElectronSteamOverlayOpenStatus {
+      return controller.getOpenStatus({ ...targetOptions, type: "players" });
+    },
+    getCommunityOpenStatus(
+      targetOptions: ElectronSteamOverlayCommunityTargetOptions = {}
+    ): ElectronSteamOverlayOpenStatus {
+      return controller.getOpenStatus({ ...targetOptions, type: "community" });
+    },
+    getStatsOpenStatus(targetOptions: ElectronSteamOverlayStatsTargetOptions = {}): ElectronSteamOverlayOpenStatus {
+      return controller.getOpenStatus({ ...targetOptions, type: "stats" });
+    },
+    getAchievementsOpenStatus(
+      targetOptions: ElectronSteamOverlayAchievementsTargetOptions = {}
+    ): ElectronSteamOverlayOpenStatus {
+      return controller.getOpenStatus({ ...targetOptions, type: "achievements" });
+    },
+    getUserOpenStatus(targetOptions: ElectronSteamOverlayUserTargetOptions = {}): ElectronSteamOverlayOpenStatus {
+      return controller.getOpenStatus({ ...targetOptions, type: "user" });
+    },
+    getCheckoutOpenStatus(
+      targetOptions: ElectronSteamOverlayCheckoutTargetOptions = {}
+    ): ElectronSteamOverlayOpenStatus {
+      return controller.getOpenStatus({ ...targetOptions, type: "checkout" });
+    },
+    getDialogOpenStatus(targetOptions: ElectronSteamOverlayDialogTargetOptions = {}): ElectronSteamOverlayOpenStatus {
+      return controller.getOpenStatus({ ...targetOptions, type: "dialog" });
     },
     getShortcutOpenStatus(): ElectronSteamOverlayShortcutStatus {
       return electronSteamOverlayShortcutStatus(controller, shortcut, shortcutOpenState);

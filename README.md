@@ -311,7 +311,7 @@ app.whenReady().then(async () => {
 
   const storeResult = await steamOverlay.openStoreAndWaitIfAvailable({ appId: 480 });
   if (!storeResult) {
-    const storeStatus = steamOverlay.getOpenStatus({ type: "store", appId: 480 });
+    const storeStatus = steamOverlay.getStoreOpenStatus({ appId: 480 });
     console.warn("Steam store overlay is not waitable right now", storeStatus.reason ?? storeStatus.waitReason);
   }
 
@@ -339,9 +339,11 @@ rejects raw native prompt routes. Use
 diagnostic evidence for raw Steamworks overlay behavior. If overlay readiness
 times out before Steam activation, the scoped native-host hold is released and
 the presenter returns to its idle state.
-Use `getOpenStatus(target)` before wiring menus, controller buttons, or checkout
+Use named status helpers such as `getStoreOpenStatus(...)`,
+`getCheckoutOpenStatus(...)`, `getShortcutOpenStatus()`, or the generic
+`getOpenStatus(target)` before wiring menus, controller buttons, or checkout
 fallbacks when the app needs a side-effect-free target/native-host preflight.
-It validates the managed route and reports whether the target can be opened and
+They validate the managed route and report whether the target can be opened and
 waited on without touching Steam overlay UI.
 Use named `*IfAvailable(...)` helpers, `openIfAvailable(target)`, or
 `openAndWaitIfAvailable(target)` when a button or controller binding should
