@@ -1747,6 +1747,11 @@ test("project support policy covers Steam desktop targets except Intel macOS", (
     packagerScript,
     /"aarch64-apple-darwin":\s*\{[\s\S]*?platform:\s*"darwin"[\s\S]*?arch:\s*"arm64"/
   );
+  assert.match(packagerScript, /assertSupportedPackageHost\(target\)/);
+  assert.match(
+    packagerScript,
+    /Steam Bridge does not build, run, or verify Intel or multi-arch macOS test apps/
+  );
   assert.doesNotMatch(packagerScript, /platform:\s*"darwin"[\s\S]{0,160}arch:\s*"x64"|universal2?/);
   assert.match(prepareMacosScript, /"-arch",\s*"arm64"/);
   assert.match(verifyMacosScript, /must contain only an arm64 macOS slice/);

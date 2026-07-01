@@ -49,11 +49,27 @@ const config = targetConfig[target];
 if (!config) {
   throw new Error(`Unsupported example target ${target}. Supported targets: ${Object.keys(targetConfig).join(", ")}`);
 }
+assertSupportedPackageHost(target);
 
 main().catch((error) => {
   console.error(error);
   process.exit(1);
 });
+
+function assertSupportedPackageHost(target) {
+  if (target !== "aarch64-apple-darwin") {
+    return;
+  }
+
+  if (process.platform === "darwin" && process.arch === "arm64") {
+    return;
+  }
+
+  throw new Error(
+    "The macOS Electron smoke app must be packaged on Apple Silicon macOS. " +
+      "Steam Bridge does not build, run, or verify Intel or multi-arch macOS test apps."
+  );
+}
 
 async function main() {
   let tempRoot;

@@ -98,6 +98,8 @@ function runMacosPackageSigningStaticChecks() {
   assert.ok(packageJson.files.includes("bin"), "steam-bridge package must publish verifier CLI files");
   assert.ok(packageJson.files.includes("templates"), "steam-bridge package must publish macOS launcher templates");
   for (const expected of [
+    "assertSupportedPackageHost(target)",
+    "Steam Bridge does not build, run, or verify Intel or multi-arch macOS test apps",
     "prepare-macos-app.cjs",
     "validateStagePackageArtifacts(stageDir, config.requiredFiles)",
     "isOverlayNeedsPresentPollingEnabled",
