@@ -451,6 +451,11 @@ Current overlay evidence is tracked in
 [`docs/research/cross-platform-overlay-status.md`](docs/research/cross-platform-overlay-status.md).
 Native presenter design notes are tracked in
 [`docs/research/native-overlay-presenter-plan.md`](docs/research/native-overlay-presenter-plan.md).
+The latest local macOS Apple Silicon persistent proof is
+`/tmp/steam-bridge-macos-overlay-matrix-20260701-003835`: it reused the signed
+Electron `43.0.0` package and stable Steam shortcut without restarting Steam,
+then passed all 44 App ID `480` presenter-backed overlay cases through one
+Steam-owned process.
 
 ## Shipping Notes
 

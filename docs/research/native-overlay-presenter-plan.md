@@ -1097,6 +1097,21 @@ Current evidence:
   state, disabled needs-present polling, zero managed overlay timing, clean
   control-server quit behavior, no leftover smoke/gameoverlay process, and
   clean crash diagnostics.
+  A fresh 2026-07-01 persistent macOS matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-20260701-003835` reused the same
+  signed Apple Silicon Electron `43.0.0` package and stable shortcut without
+  repackaging or restarting Steam, launched one Steam-owned App ID `480` smoke
+  process, drove all 44 cases through the control server, and passed the
+  summary audit. It re-proved readiness, web/store/Friends/dialog
+  `openAndWait(...)`, passive progress/unlock toasts, checkout approval and
+  prepare-only, every managed Shift+Tab shortcut target, direct
+  profile/players/community/stats/achievements/user/dialog routes, every
+  programmatic shortcut open-and-wait target, one Metal presenter-backed
+  overlay target, active/inactive callbacks where expected, visible Steam web
+  content before close probes, app focus return, parked zero-FPS presenter
+  state, disabled needs-present polling, zero managed overlay timing, clean
+  control-server quit behavior, no leftover smoke/gameoverlay process, and
+  clean crash diagnostics.
   A focused current-head macOS checkout suite at
   `/tmp/steam-bridge-macos-overlay-matrix-checkout-target-snapshot-20260630-232458`
   rebuilt and signed the Apple Silicon Electron `43.0.0` package, reused the
