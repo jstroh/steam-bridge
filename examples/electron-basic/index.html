@@ -234,11 +234,21 @@
           <button id="presenter-friends">Presenter Friends</button>
           <button id="presenter-friends-wait">Presenter Friends Wait</button>
           <button id="presenter-profile">Presenter Profile</button>
+          <button id="presenter-profile-wait">Profile Wait</button>
           <button id="presenter-players">Presenter Players</button>
+          <button id="presenter-players-wait">Players Wait</button>
           <button id="presenter-community">Presenter Community</button>
+          <button id="presenter-community-wait">Community Wait</button>
           <button id="presenter-stats">Presenter Stats</button>
+          <button id="presenter-stats-wait">Stats Wait</button>
           <button id="presenter-achievements">Presenter Achievements</button>
+          <button id="presenter-achievements-wait">Achievements Wait</button>
+          <button id="presenter-user">Presenter User</button>
+          <button id="presenter-user-wait">User Wait</button>
           <button id="presenter-checkout">Presenter Checkout</button>
+          <button id="shortcut-status">Shortcut Status</button>
+          <button id="shortcut-open">Shortcut Open</button>
+          <button id="shortcut-wait">Shortcut Wait</button>
           <button id="toast">Presenter Toast</button>
           <button id="unlock-toast">Presenter Unlock Toast</button>
           <button id="dialog" class="secondary">Friends Overlay</button>
@@ -478,16 +488,36 @@
         run("Presenter Friends Wait", () => window.steamSmoke.openPresenterFriendsOpenAndWait());
       document.getElementById("presenter-profile").onclick = () =>
         run("Presenter Profile", () => window.steamSmoke.openPresenterProfile());
+      document.getElementById("presenter-profile-wait").onclick = () =>
+        run("Profile Wait", () => window.steamSmoke.openPresenterProfileOpenAndWait());
       document.getElementById("presenter-players").onclick = () =>
         run("Presenter Players", () => window.steamSmoke.openPresenterPlayers());
+      document.getElementById("presenter-players-wait").onclick = () =>
+        run("Players Wait", () => window.steamSmoke.openPresenterPlayersOpenAndWait());
       document.getElementById("presenter-community").onclick = () =>
         run("Presenter Community", () => window.steamSmoke.openPresenterCommunity());
+      document.getElementById("presenter-community-wait").onclick = () =>
+        run("Community Wait", () => window.steamSmoke.openPresenterCommunityOpenAndWait());
       document.getElementById("presenter-stats").onclick = () =>
         run("Presenter Stats", () => window.steamSmoke.openPresenterStats());
+      document.getElementById("presenter-stats-wait").onclick = () =>
+        run("Stats Wait", () => window.steamSmoke.openPresenterStatsOpenAndWait());
       document.getElementById("presenter-achievements").onclick = () =>
         run("Presenter Achievements", () => window.steamSmoke.openPresenterAchievements());
+      document.getElementById("presenter-achievements-wait").onclick = () =>
+        run("Achievements Wait", () => window.steamSmoke.openPresenterAchievementsOpenAndWait());
+      document.getElementById("presenter-user").onclick = () =>
+        run("Presenter User", () => window.steamSmoke.openPresenterUser());
+      document.getElementById("presenter-user-wait").onclick = () =>
+        run("User Wait", () => window.steamSmoke.openPresenterUserOpenAndWait());
       document.getElementById("presenter-checkout").onclick = () =>
         run("Presenter Checkout", () => window.steamSmoke.openPresenterCheckout());
+      document.getElementById("shortcut-status").onclick = () =>
+        run("Shortcut Status", () => window.steamSmoke.getPresenterShortcutOpenStatus());
+      document.getElementById("shortcut-open").onclick = () =>
+        run("Shortcut Open", () => window.steamSmoke.openPresenterShortcutTarget());
+      document.getElementById("shortcut-wait").onclick = () =>
+        run("Shortcut Wait", () => window.steamSmoke.openPresenterShortcutTargetOpenAndWait());
       document.getElementById("toast").onclick = () =>
         run("Presenter Toast", () => window.steamSmoke.openPresenterAchievementProgress());
       document.getElementById("unlock-toast").onclick = () =>

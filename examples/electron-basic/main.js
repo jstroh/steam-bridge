@@ -240,8 +240,12 @@ ipcMain.handle("steam-smoke:presenter-stats", () => openPresenterStatsOverlay())
 ipcMain.handle("steam-smoke:presenter-stats-open-and-wait", () => openPresenterStatsOpenAndWaitOverlay());
 ipcMain.handle("steam-smoke:presenter-achievements", () => openPresenterAchievementsOverlay());
 ipcMain.handle("steam-smoke:presenter-achievements-open-and-wait", () => openPresenterAchievementsOpenAndWaitOverlay());
+ipcMain.handle("steam-smoke:presenter-user", () => openPresenterUserOverlay());
 ipcMain.handle("steam-smoke:presenter-user-open-and-wait", () => openPresenterUserOpenAndWaitOverlay());
 ipcMain.handle("steam-smoke:presenter-checkout", () => openPresenterCheckoutOverlay());
+ipcMain.handle("steam-smoke:presenter-shortcut-status", () => getPresenterShortcutOpenStatus());
+ipcMain.handle("steam-smoke:presenter-shortcut-open", () => openPresenterShortcutTargetBridge());
+ipcMain.handle("steam-smoke:presenter-shortcut-open-and-wait", () => openPresenterShortcutOpenAndWaitBridge());
 ipcMain.handle("steam-smoke:presenter-achievement-progress", () => openPresenterAchievementProgress());
 ipcMain.handle("steam-smoke:presenter-achievement-unlock", () => openPresenterAchievementUnlock());
 ipcMain.handle("steam-smoke:native-probe-open", () => openNativeProbe());
@@ -1538,6 +1542,35 @@ function openPresenterShortcutBridge() {
     target: SHORTCUT_TARGET,
     shortcut: "Shift+Tab",
     presenter: overlay.snapshot()
+  });
+  return snapshot();
+}
+
+function getPresenterShortcutOpenStatus() {
+  const overlay = ensureElectronSteamOverlay();
+  const status = overlay.getShortcutOpenStatus();
+  recordEvent("overlay:presenter-shortcut-status", {
+    target: SHORTCUT_TARGET,
+    status,
+    presenter: overlay.snapshot()
+  });
+  return sanitize({
+    status,
+    snapshot: snapshot()
+  });
+}
+
+function openPresenterShortcutTargetBridge() {
+  const overlay = ensureElectronSteamOverlay();
+  const status = overlay.getShortcutOpenStatus();
+  const presenter = withManagedShortcutOpenSource("openShortcutTarget", () => overlay.openShortcutTarget());
+  recordEvent("overlay:presenter-shortcut-open", {
+    target: "shortcut",
+    shortcut: "openShortcutTarget",
+    shortcutTarget: SHORTCUT_TARGET,
+    opened: Boolean(presenter),
+    status,
+    presenter: safeOverlaySnapshot(overlay)
   });
   return snapshot();
 }
