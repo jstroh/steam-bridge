@@ -410,7 +410,10 @@ target. Use
 common surfaces. For those direct-helper smoke actions, the harness first waits
 for Steam's overlay hook to report ready through `waitForOverlayReady()` when
 launch-time diagnostics are still `overlay-not-ready`; it does not use a fixed
-startup delay. Use
+startup delay. Each direct-helper action also records a sanitized
+`overlay:presenter-direct-open-status` event before activation, and the macOS
+matrix can require that evidence so readiness waits stay auditable without
+logging raw overlay target values. Use
 `presenter-web-open-and-wait --web-modal true` to exercise the builder-facing
 `steamOverlay.openWebAndWait(...)` helper, which delegates to the same managed
 `openAndWait(...)` path; the smoke app records

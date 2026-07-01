@@ -796,14 +796,18 @@ run_self_test() {
   require_not_contains "$ready_case" "--require-overlay-enabled" "readiness preflight must not require overlayEnabled before activating Steam UI."
   require_not_contains "$ready_case" "--close-probe" "readiness preflight must not run an overlay close probe."
   require_contains "$direct_web_case" "--require-event overlay:presenter-open" "direct web proof should require presenter-open."
+  require_contains "$direct_web_case" "--require-direct-open-readiness-status" "direct web proof should require readiness status evidence."
   require_contains "$direct_web_case" "--result-delay-ms 1200" "direct web proof should use a short active capture delay."
   require_contains "$direct_web_case" "--close-input web" "direct web proof should close through visible Steam web content."
   require_contains "$direct_store_case" "--require-event overlay:presenter-open" "direct store proof should require presenter-open."
+  require_contains "$direct_store_case" "--require-direct-open-readiness-status" "direct store proof should require readiness status evidence."
   require_contains "$direct_store_case" "--close-probe" "direct store proof should close and verify parked state."
   require_contains "$direct_friends_case" "--require-event overlay:presenter-open" "direct Friends proof should require presenter-open."
+  require_contains "$direct_friends_case" "--require-direct-open-readiness-status" "direct Friends proof should require readiness status evidence."
   require_contains "$direct_friends_case" "--close-probe" "direct Friends proof should close and verify parked state."
   require_contains "$direct_dialog_case" "--action presenter-dialog-auto" "direct dialog proof should use the verified auto route."
   require_contains "$direct_dialog_case" "--require-event overlay:presenter-open" "direct dialog proof should require presenter-open."
+  require_contains "$direct_dialog_case" "--require-direct-open-readiness-status" "direct dialog proof should require readiness status evidence."
   require_contains "$web_case" "--web-modal true" "web proof should use modal Steam web overlay."
   require_contains "$web_case" "--close-input web" "active web proof should close through the Steam web close control."
   require_contains "$duplicate_guard_case" "--require-event overlay:presenter-duplicate-open-guard" "duplicate-open proof should require the guard event."
@@ -2423,6 +2427,7 @@ run_persistent_matrix() {
     --require-overlay-injection \
     --require-overlay-enabled \
     --require-overlay-activated \
+    --require-direct-open-readiness-status \
     --require-event overlay:presenter-open \
     --require-no-crashes \
     --close-probe
@@ -2613,6 +2618,7 @@ run_checkout_matrix() {
     --require-overlay-injection \
     --require-overlay-enabled \
     --require-overlay-activated \
+    --require-direct-open-readiness-status \
     --require-event overlay:presenter-open \
     --require-no-crashes \
     --close-probe
@@ -2682,6 +2688,7 @@ run_matrix() {
     --require-overlay-injection \
     --require-overlay-enabled \
     --require-overlay-activated \
+    --require-direct-open-readiness-status \
     --require-event overlay:presenter-open \
     --require-no-crashes \
     --close-probe
@@ -2693,6 +2700,7 @@ run_matrix() {
     --require-overlay-injection \
     --require-overlay-enabled \
     --require-overlay-activated \
+    --require-direct-open-readiness-status \
     --require-event overlay:presenter-open \
     --require-no-crashes \
     --close-probe
@@ -2704,6 +2712,7 @@ run_matrix() {
     --require-overlay-injection \
     --require-overlay-enabled \
     --require-overlay-activated \
+    --require-direct-open-readiness-status \
     --require-event overlay:presenter-open \
     --require-no-crashes \
     --close-probe
@@ -2716,6 +2725,7 @@ run_matrix() {
     --require-overlay-injection \
     --require-overlay-enabled \
     --require-overlay-activated \
+    --require-direct-open-readiness-status \
     --require-event overlay:presenter-open \
     --require-no-crashes \
     --close-probe

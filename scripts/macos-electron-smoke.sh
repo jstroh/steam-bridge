@@ -59,6 +59,7 @@ require_zero_managed_overlay_timing="0"
 require_action_error_code=""
 require_action_error_reason=""
 require_native_host_unavailable_reason=""
+require_direct_open_readiness_status="0"
 require_no_crashes="0"
 require_events=()
 
@@ -147,6 +148,8 @@ Options:
                                  Require the autorun action to fail with this serialized error reason.
   --require-native-host-unavailable-reason REASON
                                  Require managed presenter diagnostics to report this native host unavailable reason.
+  --require-direct-open-readiness-status
+                                 Require named direct presenter opens to record their readiness status.
   --require-no-crashes           Require no crash dumps, macOS crash reports, or fatal Electron lifecycle events.
   --require-event TYPE           Require an emitted event. May be repeated.
 EOF
@@ -396,6 +399,10 @@ while [ "$#" -gt 0 ]; do
     --require-native-host-unavailable-reason)
       require_native_host_unavailable_reason="${2:?missing --require-native-host-unavailable-reason value}"
       shift 2
+      ;;
+    --require-direct-open-readiness-status)
+      require_direct_open_readiness_status="1"
+      shift
       ;;
     --require-no-crashes)
       require_no_crashes="1"
@@ -1581,6 +1588,9 @@ verify_result() {
   fi
   if [ -n "$require_native_host_unavailable_reason" ]; then
     args+=("--require-native-host-unavailable-reason" "$require_native_host_unavailable_reason")
+  fi
+  if [ "$require_direct_open_readiness_status" = "1" ]; then
+    args+=("--require-direct-open-readiness-status")
   fi
   if [ "$require_no_crashes" = "1" ]; then
     args+=("--require-no-crashes")

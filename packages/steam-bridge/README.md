@@ -1139,13 +1139,15 @@ Shift+Tab checkout, and programmatic checkout `openAndWait(...)`, including
 close/back-to-app proof, parked zero-FPS presenter state, zero managed timing,
 managed isolation, and clean crash diagnostics.
 A focused 2026-07-01 minimal Apple Silicon artifact at
-`/tmp/steam-bridge-macos-overlay-matrix-20260701-105924` then reused the same
+`/tmp/steam-bridge-macos-overlay-matrix-20260701-111335` then reused the same
 signed arm64-only Electron `43.0.0` package, verified the native launcher
 identity marker, verified that the renamed `.electron` executable is not a
-second launcher copy, and passed all 11 Steam-launched minimal cases after
-direct presenter smoke actions began waiting through launch-time
-`overlay-not-ready` with `waitForOverlayReady()` before invoking named direct
-helpers. It re-proved direct web/store/Friends/dialog opens, wait-style
+second launcher copy, and passed all 11 Steam-launched minimal cases with the
+matrix requiring direct-open readiness-status evidence for direct
+web/store/Friends/dialog actions. The smoke app records sanitized
+readiness-status evidence and waits through launch-time `overlay-not-ready`
+with `waitForOverlayReady()` before invoking named direct helpers. The run
+re-proved direct web/store/Friends/dialog opens, wait-style
 web/store/Friends/dialog routes, duplicate-open suppression, passive toast
 priming, visible Steam web content, close/back-to-app proof, parked zero-FPS
 presenter state, zero managed timing, managed isolation, and clean crash

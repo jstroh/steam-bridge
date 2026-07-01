@@ -322,6 +322,8 @@ function runElectronSmokeActionStaticChecks() {
     ["Electron smoke main", main, "overlay:presenter-ready"],
     ["Electron smoke main", main, "overlay:presenter-duplicate-open-guard"],
     ["Electron smoke main", main, "overlay:presenter-direct-open-wait-start"],
+    ["Electron smoke main", main, "overlay:presenter-direct-open-status"],
+    ["Electron smoke main", main, "directPresenterOpenReadinessStatus"],
     ["Electron smoke main", main, "waitForDirectPresenterOpenReadiness"],
     ["Electron smoke main", main, "waitForOverlayReady"],
     ["Electron smoke main", main, "await openPresenterWebOverlay();"],

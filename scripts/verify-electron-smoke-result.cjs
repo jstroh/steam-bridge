@@ -219,6 +219,9 @@ for (const type of options.requiredEvents) {
 if (options.requirePassiveNotification) {
   verifyPassiveNotification();
 }
+if (options.requireDirectOpenReadinessStatus) {
+  verifyDirectOpenReadinessStatus();
+}
 
 if (failures.length > 0) {
   for (const failure of failures) {
@@ -377,6 +380,63 @@ function verifyExpectedActionError() {
     );
   }
   verifyExpectedActionErrorTargetSnapshot(actionError);
+}
+
+function verifyDirectOpenReadinessStatus() {
+  const lifecycleEntries = readLifecycleEntries();
+  const directStatusEvent =
+    findEvent(events, "overlay:presenter-direct-open-status") ||
+    findEvent(lifecycleEntries, lifecycleEventType("overlay:presenter-direct-open-status"));
+  expect(Boolean(directStatusEvent), "direct presenter open readiness status event emitted");
+  if (!directStatusEvent) {
+    return;
+  }
+
+  const payload = directStatusEvent.payload && typeof directStatusEvent.payload === "object" ? directStatusEvent.payload : {};
+  const status = payload.status && typeof payload.status === "object" ? payload.status : undefined;
+  expect(Boolean(status), "direct presenter open readiness status payload present");
+  if (!status) {
+    return;
+  }
+
+  expect(typeof status.canOpen === "boolean", "direct presenter open readiness status canOpen is boolean");
+  expect(typeof status.canWait === "boolean", "direct presenter open readiness status canWait is boolean");
+  expectNoRawTargetValues(status, "direct presenter open readiness status");
+  const targetSnapshot = objectField(status, "targetSnapshot");
+  expect(Boolean(targetSnapshot), "direct presenter open readiness status includes sanitized targetSnapshot");
+  if (targetSnapshot) {
+    expect(typeof targetSnapshot.type === "string" && targetSnapshot.type.length > 0, "direct presenter open readiness targetSnapshot has a target type");
+    expectNoRawTargetValues(targetSnapshot, "direct presenter open readiness targetSnapshot");
+  }
+
+  if (status.canOpen === true) {
+    return;
+  }
+  expect(
+    status.reason === "overlay-not-ready",
+    "direct presenter open readiness status is either ready or waiting for overlay-not-ready"
+  );
+  if (status.reason !== "overlay-not-ready") {
+    return;
+  }
+
+  const waitStart =
+    findEvent(events, "overlay:presenter-direct-open-wait-start") ||
+    findEvent(lifecycleEntries, lifecycleEventType("overlay:presenter-direct-open-wait-start"));
+  const waitComplete =
+    findEvent(events, "overlay:presenter-direct-open-wait-complete") ||
+    findEvent(lifecycleEntries, lifecycleEventType("overlay:presenter-direct-open-wait-complete"));
+  expect(Boolean(waitStart), "direct presenter open wait-start event emitted for overlay-not-ready");
+  expect(Boolean(waitComplete), "direct presenter open wait-complete event emitted for overlay-not-ready");
+  if (!waitComplete || !waitComplete.payload || typeof waitComplete.payload !== "object") {
+    return;
+  }
+  const ready = waitComplete.payload.ready && typeof waitComplete.payload.ready === "object" ? waitComplete.payload.ready : undefined;
+  expect(Boolean(ready), "direct presenter open wait-complete includes ready snapshot");
+  const readyDiagnostics = ready && ready.diagnostics && typeof ready.diagnostics === "object" ? ready.diagnostics : {};
+  if (ready && Object.prototype.hasOwnProperty.call(readyDiagnostics, "overlayEnabled")) {
+    expect(readyDiagnostics.overlayEnabled === true, "direct presenter open wait completed with overlayEnabled=true");
+  }
 }
 
 function verifyExpectedActionErrorTargetSnapshot(actionError) {
@@ -695,6 +755,7 @@ function parseArgs(args) {
     requireNoOverlayActivation: false,
     requireNoCrashes: false,
     requirePassiveNotification: false,
+    requireDirectOpenReadinessStatus: false,
     requireSteamLaunch: false,
     requireSteamDeck: false,
     requiredEvents: []
@@ -751,6 +812,9 @@ function parseArgs(args) {
       case "--require-passive-notification":
         parsed.requirePassiveNotification = true;
         parsed.requireElectronOverlay = true;
+        break;
+      case "--require-direct-open-readiness-status":
+        parsed.requireDirectOpenReadinessStatus = true;
         break;
       case "--require-idle-presenter":
         parsed.requireIdlePresenter = true;

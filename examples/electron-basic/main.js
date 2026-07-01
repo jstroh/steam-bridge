@@ -1239,12 +1239,18 @@ async function openPresenterTargetOverlay(overlay, target, context) {
 
 async function waitForDirectPresenterOpenReadiness(overlay, target, context) {
   const status = getNamedPresenterTargetOpenStatus(overlay, target);
+  const readiness = directPresenterOpenReadinessStatus(status);
+  recordEvent("overlay:presenter-direct-open-status", {
+    ...context,
+    status: readiness,
+    presenter: safeOverlaySnapshot(overlay)
+  });
   if (status?.canOpen || status?.reason !== "overlay-not-ready") {
     return;
   }
   recordEvent("overlay:presenter-direct-open-wait-start", {
     ...context,
-    status,
+    status: readiness,
     presenter: safeOverlaySnapshot(overlay)
   });
   const ready = await overlay.waitForOverlayReady({
@@ -1255,6 +1261,22 @@ async function waitForDirectPresenterOpenReadiness(overlay, target, context) {
     ready,
     presenter: safeOverlaySnapshot(overlay)
   });
+}
+
+function directPresenterOpenReadinessStatus(status) {
+  if (!status || typeof status !== "object") {
+    return { canOpen: false, canWait: false, reason: "unknown" };
+  }
+  return {
+    canOpen: status.canOpen === true,
+    canWait: status.canWait === true,
+    ...(typeof status.reason === "string" ? { reason: status.reason } : {}),
+    ...(typeof status.waitReason === "string" ? { waitReason: status.waitReason } : {}),
+    ...(typeof status.message === "string" ? { message: status.message } : {}),
+    ...(status.targetSnapshot && typeof status.targetSnapshot === "object"
+      ? { targetSnapshot: status.targetSnapshot }
+      : {})
+  };
 }
 
 function openNamedPresenterTarget(overlay, target) {

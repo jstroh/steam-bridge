@@ -593,6 +593,74 @@ function passiveNotificationResult(presenter) {
   };
 }
 
+function directPresenterOpenReadinessResult(status, extraEvents = []) {
+  const presenter = passiveNotificationPresenterFixture();
+  return {
+    ok: true,
+    action: { ok: true, action: "presenter-web" },
+    snapshot: {
+      steam: {
+        initialized: true,
+        running: { ok: true, value: true },
+        appId: { ok: true, value: 480 },
+        steamDeck: { ok: true, value: false },
+        bigPicture: { ok: true, value: false },
+        overlayEnabled: { ok: true, value: true },
+        overlayNeedsPresent: { ok: true, value: false }
+      },
+      app: { appId: 480 },
+      launch: {
+        steamLaunch: true,
+        overlayInjection: true
+      },
+      process: {
+        platform: "darwin",
+        arch: "arm64",
+        pid: 1234
+      },
+      overlay: {
+        nativePresenter: { ok: true, value: presenter },
+        nativeHostAvailability: { ok: true, value: nativeHostAvailabilityFixture(presenter) }
+      },
+      events: [
+        {
+          type: "overlay:presenter-direct-open-status",
+          payload: {
+            target: "web",
+            api: "openWeb",
+            status,
+            presenter
+          }
+        },
+        ...extraEvents,
+        {
+          type: "overlay:presenter-open",
+          payload: {
+            target: "web",
+            api: "openWeb",
+            presenter
+          }
+        }
+      ]
+    }
+  };
+}
+
+function writeDirectReadinessVerifierFixture(root, name, status, lifecycleEntries) {
+  const resultFile = path.join(root, `${name}.log`);
+  const diagnosticDir = path.join(root, `${name}.diagnostics`);
+  fs.mkdirSync(diagnosticDir, { recursive: true });
+  fs.writeFileSync(
+    resultFile,
+    `STEAM_BRIDGE_SMOKE_RESULT ${JSON.stringify(directPresenterOpenReadinessResult(status))}\n`
+  );
+  fs.writeFileSync(
+    path.join(diagnosticDir, "lifecycle.jsonl"),
+    `${lifecycleEntries.map((entry) => JSON.stringify(entry)).join("\n")}\n`
+  );
+  return { resultFile, diagnosticDir };
+}
+
 function nativeHostUnavailablePresenterFixture(reason = "macos-screen-locked", macOverlayEnvironmentOverride) {
   const macOverlayEnvironment =
     macOverlayEnvironmentOverride ??
@@ -2087,6 +2155,138 @@ test("smoke result verifier accepts passive notification evidence with lifecycle
 
   assert.equal(verifier.status, 0, verifier.stderr);
   assert.match(verifier.stdout, /Electron smoke result verified/);
+});
+
+test("smoke result verifier checks direct presenter readiness status evidence", (t) => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-direct-readiness-verify-"));
+  t.after(() => fs.rmSync(tempDir, { recursive: true, force: true }));
+
+  const verifierPath = path.join(repoRoot, "scripts", "verify-electron-smoke-result.cjs");
+  const readyStatus = {
+    canOpen: true,
+    canWait: true,
+    targetSnapshot: { type: "web", hasUrl: true, modal: true }
+  };
+  const waitingStatus = {
+    canOpen: false,
+    canWait: true,
+    reason: "overlay-not-ready",
+    targetSnapshot: { type: "web", hasUrl: true, modal: true }
+  };
+
+  const readyRun = writeDirectReadinessVerifierFixture(tempDir, "ready", readyStatus, [
+    { type: "event:overlay:presenter-direct-open-status", payload: { status: readyStatus } }
+  ]);
+  const readyVerifier = childProcess.spawnSync(
+    process.execPath,
+    [
+      verifierPath,
+      "--file",
+      readyRun.resultFile,
+      "--diagnostic-dir",
+      readyRun.diagnosticDir,
+      "--app-id",
+      "480",
+      "--platform",
+      "darwin/arm64",
+      "--action",
+      "presenter-web",
+      "--require-direct-open-readiness-status"
+    ],
+    { encoding: "utf8" }
+  );
+  assert.equal(readyVerifier.status, 0, readyVerifier.stderr);
+
+  const waitingRun = writeDirectReadinessVerifierFixture(tempDir, "waiting", waitingStatus, [
+    { type: "event:overlay:presenter-direct-open-status", payload: { status: waitingStatus } },
+    { type: "event:overlay:presenter-direct-open-wait-start", payload: { status: waitingStatus } },
+    {
+      type: "event:overlay:presenter-direct-open-wait-complete",
+      payload: {
+        ready: {
+          diagnostics: {
+            overlayEnabled: true
+          }
+        }
+      }
+    }
+  ]);
+  const waitingVerifier = childProcess.spawnSync(
+    process.execPath,
+    [
+      verifierPath,
+      "--file",
+      waitingRun.resultFile,
+      "--diagnostic-dir",
+      waitingRun.diagnosticDir,
+      "--app-id",
+      "480",
+      "--platform",
+      "darwin/arm64",
+      "--action",
+      "presenter-web",
+      "--require-direct-open-readiness-status"
+    ],
+    { encoding: "utf8" }
+  );
+  assert.equal(waitingVerifier.status, 0, waitingVerifier.stderr);
+
+  const missingCompleteRun = writeDirectReadinessVerifierFixture(tempDir, "missing-complete", waitingStatus, [
+    { type: "event:overlay:presenter-direct-open-status", payload: { status: waitingStatus } },
+    { type: "event:overlay:presenter-direct-open-wait-start", payload: { status: waitingStatus } }
+  ]);
+  const missingCompleteVerifier = childProcess.spawnSync(
+    process.execPath,
+    [
+      verifierPath,
+      "--file",
+      missingCompleteRun.resultFile,
+      "--diagnostic-dir",
+      missingCompleteRun.diagnosticDir,
+      "--app-id",
+      "480",
+      "--platform",
+      "darwin/arm64",
+      "--action",
+      "presenter-web",
+      "--require-direct-open-readiness-status"
+    ],
+    { encoding: "utf8" }
+  );
+  assert.notEqual(missingCompleteVerifier.status, 0);
+  assert.match(missingCompleteVerifier.stderr, /direct presenter open wait-complete event emitted/);
+
+  const rawStatusRun = writeDirectReadinessVerifierFixture(
+    tempDir,
+    "raw-status",
+    { ...readyStatus, url: "https://store.steampowered.com/app/480/" },
+    [
+      {
+        type: "event:overlay:presenter-direct-open-status",
+        payload: { status: { ...readyStatus, url: "https://store.steampowered.com/app/480/" } }
+      }
+    ]
+  );
+  const rawStatusVerifier = childProcess.spawnSync(
+    process.execPath,
+    [
+      verifierPath,
+      "--file",
+      rawStatusRun.resultFile,
+      "--diagnostic-dir",
+      rawStatusRun.diagnosticDir,
+      "--app-id",
+      "480",
+      "--platform",
+      "darwin/arm64",
+      "--action",
+      "presenter-web",
+      "--require-direct-open-readiness-status"
+    ],
+    { encoding: "utf8" }
+  );
+  assert.notEqual(rawStatusVerifier.status, 0);
+  assert.match(rawStatusVerifier.stderr, /direct presenter open readiness status omits raw url/);
 });
 
 test("smoke result verifier accepts unavailable macOS passive notification evidence", (t) => {

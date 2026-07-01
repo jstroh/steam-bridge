@@ -175,17 +175,19 @@ zero managed timing, managed isolation, clean crash diagnostics, and no
 leftover smoke or overlay processes.
 
 A focused current-head 2026-07-01 minimal macOS Apple Silicon matrix at
-`/tmp/steam-bridge-macos-overlay-matrix-20260701-105924` reused the signed
+`/tmp/steam-bridge-macos-overlay-matrix-20260701-111335` reused the signed
 arm64-only Electron `43.0.0` package and stable App ID `480` shortcut without
 restarting Steam, ran the strengthened signing verifier before launch, and
-passed all 11 Steam-launched minimal cases after direct presenter smoke actions
-began waiting through launch-time `overlay-not-ready` with
-`waitForOverlayReady()` before invoking named direct helpers. It re-proved
-direct web/store/Friends/dialog opens, web/store/Friends/dialog
-`openAndWait(...)` routes, duplicate-open suppression, passive toast priming,
-visible Steam web content, close/back-to-app proof, parked zero-FPS presenter
-state, zero managed timing, managed isolation, and clean crash diagnostics from
-the Apple Silicon package path.
+passed all 11 Steam-launched minimal cases with the matrix requiring
+direct-open readiness-status evidence for direct web/store/Friends/dialog
+actions. The smoke app records sanitized readiness-status evidence and waits
+through launch-time `overlay-not-ready` with `waitForOverlayReady()` before
+invoking named direct helpers. It re-proved direct web/store/Friends/dialog
+opens, web/store/Friends/dialog `openAndWait(...)` routes, duplicate-open
+suppression, passive toast priming, visible Steam web content,
+close/back-to-app proof, parked zero-FPS presenter state, zero managed timing,
+managed isolation, and clean crash diagnostics from the Apple Silicon package
+path.
 
 A 2026-07-01 full macOS Apple Silicon matrix at
 `/tmp/steam-bridge-macos-overlay-matrix-full-isolation-proof-20260701-045604`
@@ -1284,13 +1286,15 @@ close/back-to-app proof, parked zero-FPS presenter state, zero managed timing,
 managed isolation, and clean crash diagnostics.
 
 A focused current-head 2026-07-01 minimal Apple Silicon matrix at
-`/tmp/steam-bridge-macos-overlay-matrix-20260701-105924` reused the signed
+`/tmp/steam-bridge-macos-overlay-matrix-20260701-111335` reused the signed
 arm64-only Electron `43.0.0` package and stable App ID `480` shortcut without
 restarting Steam, ran the strengthened signing verifier before launch, and
-passed all 11 minimal cases after direct presenter smoke actions began waiting
-through launch-time `overlay-not-ready` with `waitForOverlayReady()` before
-invoking named direct helpers. It re-proved direct web/store/Friends/dialog
-opens, wait-style web/store/Friends/dialog routes, duplicate-open suppression,
+passed all 11 minimal cases with the matrix requiring direct-open
+readiness-status evidence for direct web/store/Friends/dialog actions. The
+smoke app records sanitized readiness-status evidence and waits through
+launch-time `overlay-not-ready` with `waitForOverlayReady()` before invoking
+named direct helpers. It re-proved direct web/store/Friends/dialog opens,
+wait-style web/store/Friends/dialog routes, duplicate-open suppression,
 passive toast priming, visible Steam web content, close/back-to-app proof,
 parked zero-FPS presenter state, zero managed timing, managed isolation, and
 clean crash diagnostics from the Apple Silicon package path.
