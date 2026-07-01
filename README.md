@@ -284,6 +284,11 @@ managed overlay owns the native presenter, routes supported Steam surfaces
 through presenter-backed paths, waits for Steam overlay callbacks, and parks the
 presenter after Steam reports that the overlay has closed. App code should not
 need platform-specific overlay host, capture, focus, or timer plumbing.
+When the managed overlay is created, Steam Bridge also scrubs Steam's overlay
+renderer entries from future Electron child-process preload environment
+variables by default, keeping the bridge-owned native presenter as the overlay
+target. Set `scrubSteamOverlayChildProcessEnv: false` only for raw diagnostic
+comparisons.
 
 ```ts
 import { app, BrowserWindow } from "electron";

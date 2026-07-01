@@ -1892,6 +1892,8 @@ export interface ElectronSteamOverlaySnapshot extends NativeOverlayPresenterSnap
     presenterMode: ElectronSteamOverlayPresenterMode;
     closeWithWindow: boolean;
     autoPrepareForNotifications: boolean;
+    scrubSteamOverlayChildProcessEnv: boolean;
+    scrubbedEnvKeys: string[];
     restoreFocusDelayMs: number;
     activationBoostMs: number;
     activeGraceMs: number;
@@ -2294,6 +2296,7 @@ export type ElectronSteamOverlayOptions = NonNullable<Parameters<typeof electron
   overlayShortcut?: ElectronSteamOverlayShortcutConfig;
   presenterMode?: ElectronSteamOverlayPresenterMode;
   autoPrepareForNotifications?: boolean;
+  scrubSteamOverlayChildProcessEnv?: boolean;
 };
 
 export interface ElectronSteamOverlay extends CallbackHandle {
@@ -8861,10 +8864,12 @@ export function createElectronSteamOverlay(
     overlayShortcut = true,
     presenterMode: modeOption,
     autoPrepareForNotifications = true,
+    scrubSteamOverlayChildProcessEnv = true,
     ...presenterOptions
   } = options;
   const presenterMode = resolveElectronSteamOverlayPresenterMode(modeOption);
   const shortcut = normalizeElectronSteamOverlayShortcut(overlayShortcut);
+  const scrubbedEnvKeys = scrubSteamOverlayChildProcessEnv ? electronScrubSteamOverlayChildProcessEnv() : [];
   const restoreFocusDelayMs = Math.max(0, finiteNumber(presenterOptions.restoreFocusDelayMs, 0));
   const activationBoostMs = Math.max(0, finiteNumber(presenterOptions.activationBoostMs, 0));
   const activeGraceMs = Math.max(0, finiteNumber(presenterOptions.activeGraceMs, 0));
@@ -9197,6 +9202,8 @@ export function createElectronSteamOverlay(
           presenterMode,
           closeWithWindow,
           autoPrepareForNotifications,
+          scrubSteamOverlayChildProcessEnv,
+          scrubbedEnvKeys: [...scrubbedEnvKeys],
           restoreFocusDelayMs,
           activationBoostMs,
           activeGraceMs,

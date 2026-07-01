@@ -839,6 +839,9 @@ duplicate child overlay targets.
 6. Keep Electron child overlay targets isolated for product proofs:
    - scrub Steam overlay renderer entries from `LD_PRELOAD` /
      `DYLD_INSERT_LIBRARIES` before Electron spawns children;
+   - `createElectronSteamOverlay(...)` now repeats that preload scrub by
+     default for future Electron children and records the scrub state in
+     managed overlay snapshots;
    - on Linux, use Electron's `no-zygote` switch so Chromium children exec
      clean instead of forking the already-loaded Steam overlay library;
    - assert Deck proofs have one `gameoverlayui` process for the app.

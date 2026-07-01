@@ -165,6 +165,11 @@ variables and adds Electron's Linux `no-zygote` switch by default, leaving the
 bridge-owned native presenter as the single Steam overlay target. Core Steam API
 success should not be treated as proof that the Steam overlay has hooked the
 right surface.
+`client.overlay.createElectronSteamOverlay()` applies the same child-process
+preload scrub by default for future Electron children, so the managed overlay
+path still protects apps that create the overlay manager before later windows or
+workers are spawned. Pass `scrubSteamOverlayChildProcessEnv: false` only when
+collecting raw Electron-child overlay diagnostics.
 
 For Electron apps, create one managed overlay for the game window and reuse it
 for overlay work:
@@ -339,7 +344,10 @@ an overlay is being opened/active, so quiet achievement/stat calls do not start
 a fixed high-FPS boost. The managed Electron overlay also installs a default
 `Shift+Tab` shortcut bridge that opens the verified
 Friends/chat presenter route without asking Steam to hook Chromium child
-processes; pass `overlayShortcut: false` to disable it, or provide
+processes. It also scrubs Steam's overlay renderer from future Electron
+child-process preload env by default; pass
+`scrubSteamOverlayChildProcessEnv: false` only for raw diagnostics. Pass
+`overlayShortcut: false` to disable the shortcut bridge, or provide
 `overlayShortcut: { target: { type: "community", appId } }` to choose another
 presenter-backed target. Use `overlayShortcut.onOpen` for app logging or state
 updates after the managed shortcut has passed readiness and called Steam's

@@ -114,6 +114,26 @@ function setSteamEnv(values = {}) {
   };
 }
 
+function setProcessEnvForTest(t, values = {}) {
+  const previous = new Map(Object.keys(values).map((key) => [key, process.env[key]]));
+  for (const [key, value] of Object.entries(values)) {
+    if (value === undefined) {
+      delete process.env[key];
+    } else {
+      process.env[key] = value;
+    }
+  }
+  t.after(() => {
+    for (const [key, value] of previous) {
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+  });
+}
+
 test("electron smoke sanitizer redacts private overlay proof fields", () => {
   const { sanitizeSmokeValue } = require(path.join(repoRoot, "examples", "electron-basic", "smoke-sanitize.cjs"));
   const { serializeSmokeError } = require(path.join(repoRoot, "examples", "electron-basic", "smoke-error.cjs"));
@@ -513,6 +533,8 @@ function passiveNotificationPresenterFixture() {
       presenterMode: "persistent",
       closeWithWindow: true,
       autoPrepareForNotifications: true,
+      scrubSteamOverlayChildProcessEnv: true,
+      scrubbedEnvKeys: [],
       restoreFocusDelayMs: 0,
       activationBoostMs: 0,
       activeGraceMs: 0,
@@ -598,6 +620,8 @@ function nativeHostUnavailablePresenterFixture(reason = "macos-screen-locked", m
       presenterMode: "persistent",
       closeWithWindow: true,
       autoPrepareForNotifications: true,
+      scrubSteamOverlayChildProcessEnv: true,
+      scrubbedEnvKeys: [],
       restoreFocusDelayMs: 0,
       activationBoostMs: 0,
       activeGraceMs: 0,
@@ -6412,6 +6436,83 @@ test("electron overlay helper scrubs Steam overlay preload from child process en
   assert.deepEqual(electron.electronScrubSteamOverlayChildProcessEnv(env), []);
 });
 
+test("electron steam overlay manager scrubs Steam overlay preload from child process env by default", (t) => {
+  setProcessEnvForTest(t, {
+    LD_PRELOAD:
+      "/tmp/keep.so:/home/deck/.local/share/Steam/ubuntu12_64/gameoverlayrenderer.so /home/deck/.local/share/Steam/ubuntu12_32/gameoverlayrenderer.so",
+    DYLD_INSERT_LIBRARIES:
+      "/Users/me/Library/Application Support/Steam/Steam.AppBundle/Steam/Contents/MacOS/steamloader.dylib:/Users/me/Library/Application Support/Steam/Steam.AppBundle/Steam/Contents/MacOS/gameoverlayrenderer.dylib"
+  });
+
+  const hostHandle = Buffer.from([3, 2, 1, 0]);
+  let hostOpen = false;
+  const fake = createFakeNative({
+    attachNativeOverlayHostView() {
+      hostOpen = true;
+    },
+    pumpNativeOverlayProbeWindow() {},
+    showNativeOverlayHostView() {},
+    hideNativeOverlayHostView() {},
+    setNativeOverlayHostInputPassthrough() {},
+    setNativeOverlayHostOpacity() {},
+    detachNativeOverlayHostView() {
+      hostOpen = false;
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return false;
+    },
+    isNativeOverlayHostViewOpen() {
+      return hostOpen;
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  const window = {
+    isDestroyed() {
+      return false;
+    },
+    getNativeWindowHandle() {
+      return hostHandle;
+    },
+    once() {},
+    webContents: {
+      once() {},
+      invalidate() {},
+      send() {}
+    }
+  };
+
+  const overlay = steam.overlay.createElectronSteamOverlay(window, {
+    title: "Managed Overlay"
+  });
+
+  assert.equal(process.env.LD_PRELOAD, "/tmp/keep.so");
+  assert.equal(
+    process.env.DYLD_INSERT_LIBRARIES,
+    "/Users/me/Library/Application Support/Steam/Steam.AppBundle/Steam/Contents/MacOS/steamloader.dylib"
+  );
+  assert.equal(overlay.snapshot().electronOverlay.scrubSteamOverlayChildProcessEnv, true);
+  assert.deepEqual(overlay.snapshot().electronOverlay.scrubbedEnvKeys, ["LD_PRELOAD", "DYLD_INSERT_LIBRARIES"]);
+  overlay.close();
+
+  process.env.LD_PRELOAD = "/home/deck/.local/share/Steam/ubuntu12_64/gameoverlayrenderer.so";
+  process.env.DYLD_INSERT_LIBRARIES =
+    "/Users/me/Library/Application Support/Steam/Steam.AppBundle/Steam/Contents/MacOS/gameoverlayrenderer.dylib";
+
+  const diagnosticOverlay = steam.overlay.createElectronSteamOverlay(window, {
+    title: "Diagnostic Overlay",
+    scrubSteamOverlayChildProcessEnv: false
+  });
+
+  assert.match(process.env.LD_PRELOAD, /gameoverlayrenderer/);
+  assert.match(process.env.DYLD_INSERT_LIBRARIES, /gameoverlayrenderer/);
+  assert.equal(diagnosticOverlay.snapshot().electronOverlay.scrubSteamOverlayChildProcessEnv, false);
+  assert.deepEqual(diagnosticOverlay.snapshot().electronOverlay.scrubbedEnvKeys, []);
+  diagnosticOverlay.close();
+});
+
 test("electron steam overlay manager owns one presenter and routes opens", async (t) => {
   const hostHandle = Buffer.from([8, 7, 6, 5]);
   let windowBounds = { x: 10, y: 20, width: 1280, height: 720 };
@@ -6602,6 +6703,8 @@ test("electron steam overlay manager owns one presenter and routes opens", async
     presenterMode: "persistent",
     closeWithWindow: true,
     autoPrepareForNotifications: true,
+    scrubSteamOverlayChildProcessEnv: true,
+    scrubbedEnvKeys: [],
     restoreFocusDelayMs: 0,
     activationBoostMs: 0,
     activeGraceMs: 0,
@@ -7384,6 +7487,8 @@ test("electron steam overlay manager can fall back to native overlay sessions", 
     presenterMode: "session",
     closeWithWindow: true,
     autoPrepareForNotifications: true,
+    scrubSteamOverlayChildProcessEnv: true,
+    scrubbedEnvKeys: [],
     restoreFocusDelayMs: 0,
     activationBoostMs: 0,
     activeGraceMs: 0,
