@@ -494,6 +494,14 @@ duplicate-open proof, passive toasts, checkout routing, every managed shortcut
 target, every programmatic shortcut `openAndWait(...)` target, all
 dialog-equivalent routes, close/back-to-app proof, parked zero-FPS state, zero
 managed overlay timing, and clean crash diagnostics.
+A focused checkout run at
+`/tmp/steam-bridge-macos-overlay-matrix-20260701-034916` rebuilt and signed the
+same Apple Silicon package and passed all four public App ID `480` checkout
+cases again: prepare-only, direct synthetic approval-route checkout, managed
+Shift+Tab checkout, and programmatic checkout shortcut `openAndWait(...)`, with
+visible web content where applicable, close/back-to-app proof, parked zero-FPS
+state, zero managed overlay timing, and clean crash diagnostics. Real purchase
+content still requires your own configured Steam app/product.
 
 ## Shipping Notes
 

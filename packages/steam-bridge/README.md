@@ -853,6 +853,17 @@ disabled needs-present polling, zero managed overlay timing, and clean crash
 diagnostics.
 New matrix manifests record their suite name, so the summary auditor rejects
 named-suite artifacts that drop required overlay surface cases.
+A focused 2026-07-01 checkout artifact at
+`/tmp/steam-bridge-macos-overlay-matrix-20260701-034916` rebuilt and signed the
+Apple Silicon Electron `43.0.0` package, reused the stable shortcut without
+restarting Steam, and passed all four public App ID `480` checkout cases:
+prepare-only, direct synthetic approval-route checkout, managed Shift+Tab
+checkout, and programmatic checkout shortcut `openAndWait(...)`. The summary
+verified one Metal presenter-backed overlay target in every case, visible Steam
+web content for the direct and programmatic web-close paths, close/back-to-app
+proof, parked zero-FPS state, disabled needs-present polling, zero managed
+overlay timing, and clean crash diagnostics. Real purchase-content evidence
+still requires a configured product in a real Steam app.
 A later recovered-client full artifact at
 `/tmp/steam-bridge-macos-overlay-matrix-20260630-220434` also passed all 44
 process-per-case App ID `480` cases after recreating the stable shortcut and

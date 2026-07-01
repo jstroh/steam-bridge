@@ -1166,6 +1166,18 @@ Current evidence:
   target, zero managed overlay timing, no leftover smoke/gameoverlay process,
   and no raw synthetic transaction ID or checkout approval URL in the matrix
   metadata or lifecycle logs.
+  A fresh 2026-07-01 focused checkout suite at
+  `/tmp/steam-bridge-macos-overlay-matrix-20260701-034916` rebuilt and signed
+  the Apple Silicon Electron `43.0.0` package, reused the stable shortcut
+  without restarting Steam, and passed those same four App ID `480` checkout
+  cases again: prepare-only, direct synthetic approval-route checkout, managed
+  Shift+Tab checkout, and programmatic checkout shortcut `openAndWait(...)`.
+  The summary verified one Metal presenter-backed overlay target in every case,
+  visible Steam web content for the direct and programmatic web-close paths,
+  close/back-to-app proof, parked zero-FPS state, disabled needs-present
+  polling, zero managed overlay timing, and clean crash diagnostics. This is
+  still public checkout plumbing proof, not a substitute for real configured
+  product purchase-content evidence.
   Current source also annotates managed wait failures with sanitized
   `targetSnapshot` context, plus `checkoutTargetSnapshot` for checkout targets,
   while preserving the original wait error class. Checkout preparation,

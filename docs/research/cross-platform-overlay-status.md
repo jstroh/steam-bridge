@@ -220,6 +220,18 @@ found no raw synthetic transaction ID or checkout approval URL in matrix
 metadata or lifecycle logs, no leftover smoke/gameoverlay process, and the same
 one Metal presenter-backed overlay target, close/back-to-app, parked zero-FPS,
 zero managed timing, and clean crash-diagnostic proof as the broader matrix.
+A fresh 2026-07-01 focused checkout run at
+`/tmp/steam-bridge-macos-overlay-matrix-20260701-034916` rebuilt and signed the
+Apple Silicon Electron `43.0.0` package, reused the stable shortcut without
+restarting Steam, and passed all four App ID `480` checkout cases again:
+prepare-only, direct synthetic approval-route checkout, managed Shift+Tab
+checkout, and programmatic checkout shortcut `openAndWait(...)`. The summary
+reported one Metal presenter-backed overlay target for every case,
+`webVisible=true` for the direct and programmatic web-close paths,
+close/back-to-app proof, parked zero-FPS state, disabled needs-present polling,
+zero managed overlay timing, and clean crash diagnostics. This remains public
+checkout plumbing proof; real purchase content still requires a real Steam app
+ID with a configured product.
 A fresh full run at
 `/tmp/steam-bridge-macos-overlay-matrix-full-json-after-reopen-20260630-040037`
 then rebuilt and signed the Electron `42.5.1` smoke package after Steam had been
