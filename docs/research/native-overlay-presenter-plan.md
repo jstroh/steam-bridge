@@ -442,11 +442,11 @@ Current evidence:
   every shortcut target, clean quit through the control server, no Steam restart
   or retry, no leftover smoke/gameoverlay processes, and no fresh smoke crash
   reports. This validates repeated presenter reuse without fixed cooldowns,
-  rapid relaunches, or Steam restarts. The persistent runner now preserves and
-  retries only the same narrow Steam readiness failure as the process-per-case
-  matrix: Steam launch and overlay injection succeeded, no crash evidence, but
-  Steam reports `overlayEnabled=false` until the managed readiness wait times
-  out.
+  rapid relaunches, or Steam restarts. At current head, the persistent runner
+  preserves failed artifacts and retries once for known crash-free managed wait
+  timeouts after Steam launch/injection: readiness stuck before
+  `overlayEnabled=true`, or post-action `become active` timeout after the action
+  succeeded.
 - A later 2026-06-30 persistent macOS run at
   `/tmp/steam-bridge-macos-overlay-matrix-persistent-summary-after-steam-reset-20260630-082731`
   passed the same 31-case one-process inventory after rebuilding a stale native

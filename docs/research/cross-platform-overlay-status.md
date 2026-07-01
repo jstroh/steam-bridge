@@ -144,10 +144,11 @@ dialog-equivalent route. Every active case verified close/back-to-app and
 parked presenter state, every shortcut case verified Shift+Tab open/close, the
 stable shortcut was already up to date so Steam was not restarted, no retry was
 needed, no smoke/gameoverlay process was left behind, and no fresh
-`SteamBridgeSmoke` crash report was produced. The persistent runner now
-preserves failed artifacts and retries once only for the known
-Steam-launched/injected, crash-free readiness signature where Steam reports
-`overlayEnabled=false` until the managed readiness wait times out.
+`SteamBridgeSmoke` crash report was produced. At current head, the persistent
+runner preserves failed artifacts and retries once for known crash-free managed
+wait timeouts after Steam launch/injection: readiness stuck before
+`overlayEnabled=true`, or post-action `become active` timeout after the action
+succeeded.
 A later persistent suite at
 `/tmp/steam-bridge-macos-overlay-matrix-persistent-summary-after-steam-reset-20260630-082731`
 passed all 31 cases after refreshing the native addon and resetting a wedged

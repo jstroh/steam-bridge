@@ -398,10 +398,11 @@ Verified:
   and can write the same `STEAM_BRIDGE_SMOKE_RESULT` payload shape per action.
   This keeps repeated web/store/Friends/checkout/shortcut proof in one real app
   lifecycle without introducing fixed cooldowns, repeated Steam restarts, or
-  user-facing Electron builder complexity. The persistent runner also preserves
-  and retries one narrow Steam readiness failure: Steam-launched/injected,
-  crash-free runs where `overlayEnabled=false` until the managed readiness wait
-  times out. A 2026-06-30 live persistent suite at
+  user-facing Electron builder complexity. At current head, the persistent
+  runner also preserves and retries known crash-free managed wait timeouts after
+  Steam launch/injection: readiness stuck before `overlayEnabled=true`, or
+  post-action `become active` timeout after the action succeeded. A 2026-06-30
+  live persistent suite at
   `/tmp/steam-bridge-macos-overlay-matrix-20260630-063754` launched the signed
   Electron `42.5.1` App ID `480` smoke app once through Steam and drove the full
   31-case overlay inventory over the control server: web/store/Friends/dialog

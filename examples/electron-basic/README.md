@@ -219,10 +219,11 @@ profile, players, community, stats, achievements, and user overlay inventory
 through that one running process, and then quit it through the control server.
 This suite is for proving repeated overlay routes inside one app lifecycle
 without fixed cooldowns, repeated app launches, or Steam restarts.
-If Steam launches and injects the smoke app but reports `overlayEnabled=false`
-until the managed readiness wait times out, the persistent runner preserves that
-attempt under an `.attemptN` artifact directory, quits/cleans up through Steam
-tracking evidence, and retries once.
+If Steam launches and injects the smoke app but a managed wait times out while
+the run is still crash-free (`be ready` before `overlayEnabled=true`, or
+`become active` after the action succeeded), the persistent runner preserves
+that attempt under an `.attemptN` artifact directory, quits/cleans up through
+Steam tracking evidence, and retries once.
 Use `--suite unavailable` only when macOS genuinely reports the screen locked or
 the display asleep. That suite captures expected managed web, checkout-open,
 checkout-prepare, and `presenter-shortcut-open-and-wait` fail-fast artifacts

@@ -727,11 +727,19 @@ The current core/full/persistent suites include a checkout prepare-only case
 that calls `withCheckoutPrepared(...)` without transaction input, requires
 `overlay:presenter-checkout-ready`, rejects modal overlay activation, and audits
 that the presenter releases back to idle; real checkout-open cases remain
-separate and require close/back-to-app proof. The full and persistent suite
-definitions are now 43 cases with that prepare-only route; the latest
-interactive full/persistent artifacts above are the preceding 42-case runs, so
-rerun the full or persistent suite on an unlocked Mac when updating live
-success evidence for the current suite shape.
+separate and require close/back-to-app proof. The current full and persistent
+suite definitions are 44 cases: the managed `presenter-ready` preflight, the
+checkout prepare-only route, active web/store/Friends/dialog/user/community/
+stats/achievements routes, passive progress/unlock toasts, every managed
+Shift+Tab shortcut target, and every programmatic shortcut open-and-wait target.
+A 2026-06-30 full macOS artifact at
+`/tmp/steam-bridge-macos-overlay-matrix-full-ready-current-20260630-164539`
+passed all 44 process-per-case App ID `480` cases, and a persistent one-process
+artifact at
+`/tmp/steam-bridge-macos-overlay-matrix-persistent-ready-retry-current-20260630-170648`
+passed all 44 cases through one Steam-owned process/control-server lifecycle.
+Rerun the full or persistent suite on an unlocked Mac after overlay, packaging,
+or Electron-major changes.
 Live success runs preflight `getMacOverlayEnvironment()` and stop before case
 launch while the Mac is locked or the display is asleep; capture those states
 with `--suite unavailable`, which expects managed web, checkout-open, and
