@@ -92,11 +92,17 @@ function runMacosPackageSigningStaticChecks() {
     "steam-bridge package must expose the macOS app preparation CLI"
   );
   assert.equal(
+    packageJson.bin?.["steam-bridge-validate-checkout-target"],
+    "bin/validate-checkout-target.cjs",
+    "steam-bridge package must expose the checkout target validator CLI"
+  );
+  assert.equal(
     packageJson.bin?.["steam-bridge-verify-macos-signing"],
     "bin/verify-macos-signing.cjs",
     "steam-bridge package must expose the macOS signing verifier CLI"
   );
   assertExecutableFile(path.join(packageRoot, "bin", "prepare-macos-app.cjs"));
+  assertExecutableFile(path.join(packageRoot, "bin", "validate-checkout-target.cjs"));
   assertExecutableFile(path.join(packageRoot, "bin", "verify-macos-signing.cjs"));
   assert.ok(packageJson.files.includes("bin"), "steam-bridge package must publish verifier CLI files");
   assert.ok(packageJson.files.includes("templates"), "steam-bridge package must publish macOS launcher templates");
@@ -265,16 +271,20 @@ function runConsumerChecks() {
   const installedPackageRoot = path.join(consumerDir, "node_modules", "steam-bridge");
   const macosPrepareApp = path.join(installedPackageRoot, "bin", "prepare-macos-app.cjs");
   const macosSigningVerifier = path.join(installedPackageRoot, "bin", "verify-macos-signing.cjs");
+  const checkoutTargetValidator = path.join(installedPackageRoot, "bin", "validate-checkout-target.cjs");
   const macosLauncherTemplate = path.join(installedPackageRoot, "templates", "macos-steam-env-launcher.c");
   const macosEntitlementsTemplate = path.join(installedPackageRoot, "templates", "entitlements.steam.macos.plist");
   assertNonEmptyFile(macosPrepareApp);
   assertNonEmptyFile(macosSigningVerifier);
+  assertNonEmptyFile(checkoutTargetValidator);
   assertNonEmptyFile(macosLauncherTemplate);
   assertNonEmptyFile(macosEntitlementsTemplate);
   assertExecutableFile(macosPrepareApp);
   assertExecutableFile(macosSigningVerifier);
+  assertExecutableFile(checkoutTargetValidator);
   run("node", [macosPrepareApp, "--self-test"], { cwd: consumerDir });
   run("node", [macosSigningVerifier, "--self-test"], { cwd: consumerDir });
+  run("node", [checkoutTargetValidator, "--self-test"], { cwd: consumerDir });
 
   fs.writeFileSync(
     path.join(consumerDir, "check-cjs.cjs"),

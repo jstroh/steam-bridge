@@ -223,7 +223,8 @@ Steam's authorization callback; that callback requirement is rejected unless the
 private checkout JSON handoff is configured. Before live launch, the matrix
 also validates that the JSON resolves to a usable checkout URL or transaction ID
 through Steam Bridge's checkout target helper and prints only sanitized
-presence-flag diagnostics.
+presence-flag diagnostics. To check the same file before running the matrix, use
+`npx steam-bridge-validate-checkout-target --file <private-init-txn-response.json>`.
 Use `--suite persistent` to launch the smoke app once through Steam, start the
 token-protected localhost control server, drive the full web/store/Friends,
 dialog-equivalent, passive notification, checkout, managed Shift+Tab shortcut,
@@ -501,10 +502,11 @@ The macOS helper and matrix expose the private-file path as
 and records only `checkoutSource=json-file` plus the expected app ID in its
 manifest. Before live launch, the matrix validates that this JSON resolves to a
 checkout URL, Steam checkout URL, transaction ID, or `InitTxn` envelope and
-prints only sanitized presence flags. Use `--suite checkout` for the focused
-macOS purchase path; it covers checkout prepare-only, direct checkout, Shift+Tab
-checkout, and programmatic checkout shortcut/open-and-wait without rerunning
-unrelated overlay surfaces.
+prints only sanitized presence flags; the standalone
+`steam-bridge-validate-checkout-target` CLI performs the same preflight. Use
+`--suite checkout` for the focused macOS purchase path; it covers checkout
+prepare-only, direct checkout, Shift+Tab checkout, and programmatic checkout
+shortcut/open-and-wait without rerunning unrelated overlay surfaces.
 Add `--require-microtxn-callback` when a real direct checkout proof is expected
 to produce `MicroTxnAuthorizationResponse`; the matrix summary will fail if the
 callback is missing or lacks a presenter snapshot. The Linux and

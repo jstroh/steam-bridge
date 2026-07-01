@@ -1273,8 +1273,10 @@ Current real-product checkout guardrail:
   signing, shortcut work, Steam startup, or overlay launch. Validation resolves
   the file through `checkoutTargetFromResult(...)`, requires a checkout URL,
   Steam checkout URL, transaction ID, or `InitTxn` envelope, and prints only
-  sanitized presence flags. Malformed or incomplete private captures fail early
-  without echoing the file path, transaction ID, checkout URL, or return URL.
+  sanitized presence flags. The same resolver is exposed as
+  `steam-bridge-validate-checkout-target` for standalone fixture checks.
+  Malformed or incomplete private captures fail early without echoing the file
+  path, transaction ID, checkout URL, or return URL.
 
 ## Non-Goals
 

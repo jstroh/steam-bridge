@@ -279,82 +279,13 @@ validate_checkout_json_file() {
     return 0
   fi
 
-  node - "$checkout_json_file" <<'NODE'
-const fs = require("node:fs");
-const checkoutJsonFile = process.argv[2];
-
-try {
-  let stat;
-  try {
-    stat = fs.statSync(checkoutJsonFile);
-  } catch {
-    throw new Error("file is missing or unreadable");
-  }
-  if (!stat.isFile()) {
-    throw new Error("not a regular file");
-  }
-  let contents;
-  try {
-    contents = fs.readFileSync(checkoutJsonFile, "utf8");
-  } catch {
-    throw new Error("file is unreadable");
-  }
-  let parsed;
-  try {
-    parsed = JSON.parse(contents);
-  } catch {
-    throw new Error("file must contain valid JSON");
-  }
-  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new Error("JSON root must be an object");
-  }
-} catch (error) {
-  console.error(`Invalid --checkout-json-file (${error.message})`);
-  process.exit(2);
-}
-NODE
-
+  local validation_output
   npm run build -w steam-bridge >/dev/null
-
-  node - "$checkout_json_file" "$repo_root" <<'NODE'
-const fs = require("node:fs");
-const path = require("node:path");
-
-const checkoutJsonFile = process.argv[2];
-const repoRoot = process.argv[3];
-const steamBridge = require(path.join(repoRoot, "packages", "steam-bridge", "dist", "index.js"));
-
-try {
-  const parsed = JSON.parse(fs.readFileSync(checkoutJsonFile, "utf8"));
-  const target = steamBridge.overlay.checkoutTargetFromResult(parsed, { modal: true });
-  const snapshot = steamBridge.overlay.snapshotSteamOverlayTarget(target);
-  if (
-    snapshot.type !== "checkout" ||
-    !(
-      snapshot.hasSteamUrl === true ||
-      snapshot.hasUrl === true ||
-      snapshot.hasTransactionId === true
-    )
-  ) {
-    throw new Error("checkout JSON did not resolve to a usable checkout target");
-  }
-
-  console.error(
-    `Validated --checkout-json-file target: ${JSON.stringify({
-      type: snapshot.type,
-      hasSteamUrl: snapshot.hasSteamUrl === true,
-      hasUrl: snapshot.hasUrl === true,
-      hasTransactionId: snapshot.hasTransactionId === true,
-      hasReturnUrl: snapshot.hasReturnUrl === true
-    })}`
-  );
-} catch {
-  console.error(
-    "Invalid --checkout-json-file (checkout JSON must contain a checkout URL, Steam checkout URL, transaction ID, or InitTxn response envelope)"
-  );
-  process.exit(2);
-}
-NODE
+  if ! validation_output="$(node "$repo_root/packages/steam-bridge/bin/validate-checkout-target.cjs" --file "$checkout_json_file" 2>&1)"; then
+    echo "Invalid --checkout-json-file ($validation_output)" >&2
+    exit 2
+  fi
+  echo "Validated --checkout-json-file target: $validation_output" >&2
 }
 
 generate_control_token() {

@@ -356,7 +356,8 @@ checkout routing only; real purchase UI and `InitTxn` proof require your own
 Steam app ID with configured products. The macOS checkout matrix preflights a
 private `--checkout-json-file` through the same checkout target resolver before
 launching Steam, so bad `InitTxn` captures fail before any live overlay work and
-only sanitized presence flags are printed.
+only sanitized presence flags are printed. You can run the same check directly
+with `npx steam-bridge-validate-checkout-target --file <private-init-txn-response.json>`.
 If a managed overlay wait, checkout preparation, or checkout native-host guard
 fails, catch the original error and call
 `steamworks.getSteamOverlayErrorTargetSnapshot(error)` or

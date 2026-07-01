@@ -420,8 +420,10 @@ checkout response JSON to a private temp file and pass its path with
 values in launch arguments. The macOS matrix preflights that JSON through
 `checkoutTargetFromResult(...)` and prints only sanitized presence flags before
 any live Steam launch, so a malformed or incomplete private `InitTxn` capture
-fails early. Use the macOS matrix's `--suite checkout` for focused private
-purchase proof; pair it with `--app-id <your-app-id>`,
+fails early. Run the same validation without the matrix using
+`npx steam-bridge-validate-checkout-target --file <private-init-txn-response.json>`.
+Use the macOS matrix's `--suite checkout` for focused private purchase proof;
+pair it with `--app-id <your-app-id>`,
 `--checkout-json-file <private-init-txn-response.json>`, and
 `--require-microtxn-callback` when the private direct checkout case is expected
 to produce a `MicroTxnAuthorizationResponse`. That callback flag requires
