@@ -15,7 +15,7 @@ function distFile(fileName) {
 }
 
 function clearSteamBridgeCache() {
-  for (const fileName of ["index.js", "native.js", "electron.js"]) {
+  for (const fileName of ["index.js", "native.js", "electron.js", "electron-builder.js"]) {
     try {
       delete require.cache[require.resolve(distFile(fileName))];
     } catch {
@@ -35,18 +35,26 @@ function loadSteamWithFakeNative(fakeNative, options = {}) {
   return require(distFile("index.js"));
 }
 
-function setProcessPlatformForTest(t, platform) {
-  const previous = Object.getOwnPropertyDescriptor(process, "platform");
-  Object.defineProperty(process, "platform", {
-    value: platform,
+function setProcessPropertyForTest(t, name, value) {
+  const previous = Object.getOwnPropertyDescriptor(process, name);
+  Object.defineProperty(process, name, {
+    value,
     configurable: true,
     enumerable: previous?.enumerable ?? true
   });
   t.after(() => {
     if (previous) {
-      Object.defineProperty(process, "platform", previous);
+      Object.defineProperty(process, name, previous);
     }
   });
+}
+
+function setProcessPlatformForTest(t, platform) {
+  setProcessPropertyForTest(t, "platform", platform);
+}
+
+function setProcessArchForTest(t, arch) {
+  setProcessPropertyForTest(t, "arch", arch);
 }
 
 function mockElectronModule(t, electron) {
@@ -60,6 +68,22 @@ function mockElectronModule(t, electron) {
   t.after(() => {
     Module._load = previousLoad;
   });
+}
+
+function mockSpawnSyncForTest(t, implementation = () => ({ status: 0, stdout: "", stderr: "" })) {
+  const calls = [];
+  const previous = childProcess.spawnSync;
+  childProcess.spawnSync = (command, args, options) => {
+    const call = { command, args: [...args], options };
+    calls.push(call);
+    return implementation(command, args, options, call);
+  };
+  t.after(() => {
+    childProcess.spawnSync = previous;
+    clearSteamBridgeCache();
+  });
+  clearSteamBridgeCache();
+  return calls;
 }
 
 function expectedNativeOverlayBackend(nativeWindowHandle = false) {
@@ -1846,6 +1870,124 @@ test("project support policy covers Steam desktop targets except Intel macOS", (
   assert.doesNotMatch(packagerScript, /platform:\s*"darwin"[\s\S]{0,160}arch:\s*"x64"|universal2?/);
   assert.match(prepareMacosScript, /"-arch",\s*"arm64"/);
   assert.match(verifyMacosScript, /must contain only an arm64 macOS slice/);
+});
+
+test("electron-builder helper skips non-mac targets without spawning", (t) => {
+  const calls = mockSpawnSyncForTest(t);
+  const builder = require(distFile("electron-builder.js"));
+
+  assert.deepEqual(
+    builder.prepareMacosSteamAppAfterPack({
+      appOutDir: "/tmp/steam-bridge-package-smoke",
+      electronPlatformName: "linux",
+      arch: "x64"
+    }),
+    {
+      skipped: true,
+      reason: "non-macos-target:linux"
+    }
+  );
+  assert.deepEqual(
+    builder.verifyMacosSteamAppAfterSign({
+      appOutDir: "/tmp/steam-bridge-package-smoke",
+      packager: { platform: { name: "win32" } },
+      arch: 1
+    }),
+    {
+      skipped: true,
+      reason: "non-macos-target:win32"
+    }
+  );
+  assert.equal(calls.length, 0);
+});
+
+test("electron-builder helper rejects Intel and universal macOS targets before spawning", (t) => {
+  const calls = mockSpawnSyncForTest(t);
+  const builder = require(distFile("electron-builder.js"));
+  const context = {
+    appOutDir: "/tmp/steam-bridge-package-smoke",
+    electronPlatformName: "darwin",
+    packager: { appInfo: { productFilename: "SteamBridgeSmoke" } }
+  };
+
+  for (const arch of ["x64", 1, "universal", 4, "ia32"]) {
+    assert.throws(
+      () => builder.prepareMacosSteamAppAfterPack({ ...context, arch }),
+      /Apple Silicon arm64 apps only/
+    );
+  }
+  assert.equal(calls.length, 0);
+});
+
+test("electron-builder helper resolves macOS arm64 afterPack and afterSign commands", (t) => {
+  setProcessPlatformForTest(t, "darwin");
+  setProcessArchForTest(t, "arm64");
+  const calls = mockSpawnSyncForTest(t);
+  const builder = require(distFile("electron-builder.js"));
+  const appOutDir = path.join(os.tmpdir(), "steam bridge builder out");
+  const context = {
+    appOutDir,
+    electronPlatformName: "darwin",
+    arch: 3,
+    packager: {
+      appInfo: { productFilename: "My Game" },
+      config: { mac: { executableName: "MyGameLauncher" } }
+    }
+  };
+  const expectedAppExe = path.join(appOutDir, "My Game.app", "Contents", "MacOS", "MyGameLauncher");
+
+  const prepared = builder.prepareMacosSteamAppAfterPack(context, {
+    skipSign: true,
+    dryRun: true,
+    quiet: true
+  });
+  const verified = builder.verifyMacosSteamAppAfterSign({ ...context, arch: "arm64" }, { quiet: true });
+
+  assert.equal(prepared.skipped, false);
+  assert.equal(prepared.appExe, expectedAppExe);
+  assert.equal(verified.skipped, false);
+  assert.equal(verified.appExe, expectedAppExe);
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0].command, process.execPath);
+  assert.match(calls[0].args[0], /bin[/\\]prepare-macos-app\.cjs$/);
+  assert.deepEqual(calls[0].args.slice(1), ["--app-exe", expectedAppExe, "--skip-sign", "--dry-run"]);
+  assert.deepEqual(calls[0].options.stdio, ["ignore", "pipe", "pipe"]);
+  assert.equal(calls[1].command, process.execPath);
+  assert.match(calls[1].args[0], /bin[/\\]verify-macos-signing\.cjs$/);
+  assert.deepEqual(calls[1].args.slice(1), ["--app-exe", expectedAppExe]);
+  assert.deepEqual(calls[1].options.stdio, ["ignore", "pipe", "pipe"]);
+});
+
+test("electron-builder helper supports explicit app paths and reports CLI failures", (t) => {
+  setProcessPlatformForTest(t, "darwin");
+  setProcessArchForTest(t, "arm64");
+  const calls = mockSpawnSyncForTest(t, () => ({
+    status: 7,
+    stdout: "planned stdout",
+    stderr: "codesign failed"
+  }));
+  const builder = require(distFile("electron-builder.js"));
+  const appPath = path.join(os.tmpdir(), "Explicit Game.app");
+  const expectedAppExe = path.join(appPath, "Contents", "MacOS", "ExplicitLauncher");
+
+  assert.throws(
+    () =>
+      builder.prepareMacosSteamAppAfterPack(
+        {
+          appOutDir: "/unused",
+          electronPlatformName: "darwin",
+          arch: "arm64"
+        },
+        {
+          appPath,
+          executableName: "ExplicitLauncher",
+          quiet: true
+        }
+      ),
+    /macOS app preparation failed with status 7[\s\S]*codesign failed[\s\S]*planned stdout/
+  );
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0].args.slice(1), ["--app-exe", expectedAppExe]);
 });
 
 test("smoke result verifier accepts passive notification evidence with lifecycle callbacks", (t) => {
