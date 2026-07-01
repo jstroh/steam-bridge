@@ -368,12 +368,14 @@ values in launch arguments. Use the macOS matrix's `--suite checkout` for
 focused private purchase proof; pair it with `--app-id <your-app-id>`,
 `--checkout-json-file <private-init-txn-response.json>`, and
 `--require-microtxn-callback` when the private direct checkout case is expected
-to produce a `MicroTxnAuthorizationResponse`. The summary will fail if that
-callback is missing or lacks a presenter snapshot. Shortcut checkout cases feed
-that same parsed object through `checkoutTargetFromResult(...)`, so direct and
-shortcut checkout proofs share one accepted envelope parser. The macOS matrix
-also accepts `--app-id <your-app-id>` and summarizes the expected app ID plus
-`checkoutSource=json-file` without persisting the JSON path; the matrix
+to produce a `MicroTxnAuthorizationResponse`. That callback flag requires
+`--checkout-json-file`, so a real-callback proof cannot accidentally fall back
+to the public synthetic App ID `480` transaction route. The summary will fail if
+that callback is missing or lacks a presenter snapshot. Shortcut checkout cases
+feed that same parsed object through `checkoutTargetFromResult(...)`, so direct
+and shortcut checkout proofs share one accepted envelope parser. The macOS
+matrix also accepts `--app-id <your-app-id>` and summarizes the expected app ID
+plus `checkoutSource=json-file` without persisting the JSON path; the matrix
 summarizer rejects new manifests that include unredacted checkout file paths,
 transaction IDs, return URLs, or checkout URLs in command metadata. On macOS,
 the helper also copies fresh `SteamBridgeSmoke*.ips` reports from

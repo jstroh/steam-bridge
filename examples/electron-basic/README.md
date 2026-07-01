@@ -211,7 +211,8 @@ prepare-only, direct checkout, managed Shift+Tab checkout, and programmatic
 shortcut checkout/open-and-wait cases. Pair it with `--app-id <your-app-id>`,
 `--checkout-json-file <private-init-txn-response.json>`, and
 `--require-microtxn-callback` when the direct checkout case should receive
-Steam's authorization callback.
+Steam's authorization callback; that callback requirement is rejected unless the
+private checkout JSON handoff is configured.
 Use `--suite persistent` to launch the smoke app once through Steam, start the
 token-protected localhost control server, drive the full web/store/Friends,
 dialog-equivalent, passive notification, checkout, managed Shift+Tab shortcut,

@@ -68,6 +68,8 @@ Options:
                                   matrix manifests record this as source=json-file without the path.
   --require-microtxn-callback    Require direct checkout cases to record a
                                   MicroTxnAuthorizationResponse callback.
+                                  Requires --checkout-json-file so this is only
+                                  used with real InitTxn/checkout proof.
   --timeout-seconds SECONDS      Per-case result timeout. Defaults to 120.
   --wait-for-interactive-seconds SECONDS
                                   Success suites wait up to SECONDS for macOS
@@ -259,9 +261,39 @@ case "$wait_for_interactive_seconds" in
     ;;
 esac
 
+if [ "$require_microtxn_callback" = "1" ] && [ -z "$checkout_json_file" ]; then
+  echo "--require-microtxn-callback requires --checkout-json-file with a real InitTxn/checkout response." >&2
+  exit 2
+fi
+
 quote_command() {
   printf '%q ' "$@"
   printf '\n'
+}
+
+validate_checkout_json_file() {
+  if [ -z "$checkout_json_file" ] || [ "$dry_run" = "1" ]; then
+    return 0
+  fi
+
+  node - "$checkout_json_file" <<'NODE'
+const fs = require("node:fs");
+const checkoutJsonFile = process.argv[2];
+
+try {
+  const stat = fs.statSync(checkoutJsonFile);
+  if (!stat.isFile()) {
+    throw new Error("not a regular file");
+  }
+  const parsed = JSON.parse(fs.readFileSync(checkoutJsonFile, "utf8"));
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("JSON root must be an object");
+  }
+} catch (error) {
+  console.error(`Invalid --checkout-json-file: ${checkoutJsonFile} (${error.message})`);
+  process.exit(2);
+}
+NODE
 }
 
 generate_control_token() {
@@ -324,7 +356,7 @@ case_block() {
 }
 
 run_self_test() {
-  local self_path minimal_output core_output full_output persistent_output unavailable_output wait_output preflight_output opengl_output checkout_json_output checkout_callback_output passive_case checkout_case checkout_prepare_case checkout_json_case checkout_callback_case checkout_callback_checkout_block checkout_callback_prepare_block checkout_callback_web_block shortcut_checkout_json_case web_case full_shortcut_open_wait_case full_shortcut_checkout_open_wait_case full_shortcut_user_open_wait_case full_shortcut_dialog_open_wait_case persistent_web_case persistent_checkout_prepare_case persistent_shortcut_open_wait_case persistent_shortcut_checkout_open_wait_case persistent_shortcut_user_open_wait_case persistent_shortcut_dialog_open_wait_case unavailable_web_case unavailable_checkout_case unavailable_checkout_prepare_case unavailable_shortcut_case unavailable_passive_case
+  local self_path minimal_output core_output full_output persistent_output unavailable_output wait_output preflight_output opengl_output checkout_json_output checkout_callback_output callback_missing_json_output checkout_missing_file_output passive_case checkout_case checkout_prepare_case checkout_json_case checkout_callback_case checkout_callback_checkout_block checkout_callback_prepare_block checkout_callback_web_block shortcut_checkout_json_case web_case full_shortcut_open_wait_case full_shortcut_checkout_open_wait_case full_shortcut_user_open_wait_case full_shortcut_dialog_open_wait_case persistent_web_case persistent_checkout_prepare_case persistent_shortcut_open_wait_case persistent_shortcut_checkout_open_wait_case persistent_shortcut_user_open_wait_case persistent_shortcut_dialog_open_wait_case unavailable_web_case unavailable_checkout_case unavailable_checkout_prepare_case unavailable_shortcut_case unavailable_passive_case
   self_path="${BASH_SOURCE[0]}"
   minimal_output="$(
     bash "$self_path" \
@@ -412,6 +444,33 @@ run_self_test() {
     echo "Self-test failed: invalid wait seconds must be rejected." >&2
     exit 1
   fi
+  if callback_missing_json_output="$(bash "$self_path" \
+    --mode steam-launch \
+    --suite checkout \
+    --skip-package \
+    --dry-run \
+    --helper-path "$script_dir/macos-electron-smoke.sh" \
+    --app-exe /tmp/SteamBridgeSmoke.app/Contents/MacOS/SteamBridgeSmoke \
+    --shortcuts /tmp/shortcuts.vdf \
+    --artifact-root /tmp/steam-bridge-macos-overlay-matrix-self-test \
+    --require-microtxn-callback 2>&1)"; then
+    echo "Self-test failed: MicroTxn callback proof must require checkout JSON input." >&2
+    exit 1
+  fi
+  require_contains "$callback_missing_json_output" "--require-microtxn-callback requires --checkout-json-file" "MicroTxn callback proof should fail clearly without checkout JSON input."
+  if checkout_missing_file_output="$(bash "$self_path" \
+    --mode steam-launch \
+    --suite checkout \
+    --skip-package \
+    --helper-path "$script_dir/macos-electron-smoke.sh" \
+    --app-exe /tmp/SteamBridgeSmoke.app/Contents/MacOS/SteamBridgeSmoke \
+    --shortcuts /tmp/shortcuts.vdf \
+    --artifact-root /tmp/steam-bridge-macos-overlay-matrix-self-test \
+    --checkout-json-file /tmp/steam-bridge-missing-init-txn-response.json 2>&1)"; then
+    echo "Self-test failed: live checkout JSON input should be validated before launch." >&2
+    exit 1
+  fi
+  require_contains "$checkout_missing_file_output" "Invalid --checkout-json-file" "missing checkout JSON should fail before live launch."
   opengl_output="$(
     bash "$self_path" \
       --mode steam-launch \
@@ -802,6 +861,7 @@ if (ids.size === 1) {
 }
 
 ensure_ready() {
+  validate_checkout_json_file
   if [ "$skip_package" != "1" ]; then
     npm run example:package:mac
   fi
