@@ -1375,7 +1375,8 @@ Current evidence:
   transaction operation untouched and reports only a sanitized pending checkout
   snapshot on readiness timeout. Follow-up unit coverage also proves
   `withCheckoutPrepared(...)` refuses to call lower-level transaction/preparation
-  callbacks while Steam is stopped or the overlay is known unavailable; the live
+  callbacks and standalone `prepareForCheckout()` refuses to prime the native
+  surface while Steam is stopped or the overlay is known unavailable; the live
   run re-proved prepare-only checkout,
   direct synthetic approval checkout, managed Shift+Tab checkout, programmatic
   checkout `openAndWait(...)`, visible Steam web content for web-close paths,

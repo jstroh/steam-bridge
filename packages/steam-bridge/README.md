@@ -502,12 +502,13 @@ of passing raw session strings through app code.
 `steamOverlay.open({ type: "checkout", ... })`, and
 `steamOverlay.prepareForCheckout()` remain available for lower-level flows that
 need to separate presenter priming from transaction creation or overlay opening;
-`withCheckoutPrepared(...)` uses the checkout operation availability gate before
-calling the wrapped callback, so it does not start lower-level transaction work
-while Steam is stopped, the overlay is known unavailable, the native host is
-unavailable, or another managed overlay action is busy. It also accepts the same
-operation-phase abort behavior, and an explicit preparation duration should only
-be used when a standalone split-step hold is intentional. Use
+`withCheckoutPrepared(...)` and `prepareForCheckout()` use the checkout
+operation availability gate before doing work, so split-step flows do not start
+lower-level transaction work or prime the native surface while Steam is stopped,
+the overlay is known unavailable, the native host is unavailable, or another
+managed overlay action is busy. `withCheckoutPrepared(...)` also accepts the
+same operation-phase abort behavior, and an explicit preparation duration should
+only be used when a standalone split-step hold is intentional. Use
 `openCheckoutAndWait(...)` when you want Steam Bridge to wait through a temporary
 overlay-readiness delay before starting the transaction.
 When you need a checkout target object for a managed shortcut or split-step

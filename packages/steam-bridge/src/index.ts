@@ -9544,7 +9544,15 @@ export function createElectronSteamOverlay(
     },
     prepareForCheckout(durationMs?: number): NativeOverlayPresenter {
       assertOpen();
-      const snapshot = controller.snapshot();
+      const pendingCheckoutTargetSnapshot = snapshotSteamOverlayTarget({ type: "checkout" });
+      const status = electronSteamOverlayCheckoutOperationStatus(controller);
+      if (!status.canStartOperation) {
+        throw annotateSteamOverlayTargetSnapshotError(
+          electronSteamOverlayCheckoutOperationStatusError(status),
+          pendingCheckoutTargetSnapshot
+        );
+      }
+      const snapshot = status.snapshot;
       assertElectronSteamOverlayCheckoutNativeHostAvailable(snapshot);
       assertElectronSteamOverlayNotBusy(snapshot);
       presenter.prepareForOverlay(durationMs);
