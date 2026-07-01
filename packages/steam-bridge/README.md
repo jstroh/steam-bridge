@@ -498,8 +498,12 @@ presenter hold, and throws `SteamOverlayWaitAbortedError`; pass the same signal
 to your backend request if you also want to cancel the network I/O. If the
 overlay manager closes while that operation is pending, the scoped hold is
 released and `SteamOverlayWaitClosedError` is thrown without opening a late
-checkout surface. The preparation is operation-scoped rather than an app-tuned
-timer.
+checkout surface. If the returned `InitTxn`/checkout envelope contains an app
+ID, `openCheckoutAndWait(...)` verifies it against the initialized Steam app ID
+before opening checkout. Mismatch errors do not print either app ID, so private
+purchase artifacts stay redacted while stale or wrong-app transactions fail
+before Steam UI opens. The preparation is operation-scoped rather than an
+app-tuned timer.
 `steamOverlay.openCheckout(...)` and
 `steamOverlay.openCheckoutIfAvailable(...)` are available for lower-level cases
 where the app already has a resolved checkout target and intentionally does not
@@ -525,8 +529,10 @@ and an explicit preparation duration should only be used when a standalone
 split-step hold is intentional. Use `openCheckoutAndWait(...)` for the normal
 managed purchase path.
 When you need a checkout target object for a managed shortcut or split-step
-flow, use `client.overlay.checkoutTargetFromResult(initTxnResponse)` instead of
-re-parsing `InitTxn` envelopes in app code.
+flow, use
+`client.overlay.checkoutTargetFromResult(initTxnResponse, { expectedAppId })`
+instead of re-parsing `InitTxn` envelopes in app code. That gives custom
+checkout routing the same wrong-app guard as `openCheckoutAndWait(...)`.
 When you need to log or attach checkout diagnostics, use the checkout wait
 result's `targetSnapshot` or call
 `client.overlay.snapshotSteamOverlayTarget(target)`. Those sanitized snapshots

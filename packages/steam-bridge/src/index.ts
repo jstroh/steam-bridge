@@ -1902,6 +1902,13 @@ export type ElectronSteamOverlayCheckoutOperationResult =
 export interface ElectronSteamOverlayCheckoutAndWaitOptions extends ElectronSteamOverlayOpenAndWaitOptions {
   modal?: boolean;
   returnUrl?: string;
+  /**
+   * If the checkout operation result contains an app ID, require it to match
+   * this Steam app ID before opening the checkout overlay. When omitted,
+   * `openCheckoutAndWait()` uses the initialized Steam app ID from overlay
+   * diagnostics.
+   */
+  expectedAppId?: number;
 }
 
 export interface ElectronSteamOverlaySnapshot extends NativeOverlayPresenterSnapshot {
@@ -8807,7 +8814,7 @@ export function openCheckoutOverlay(options: Omit<SteamOverlayCheckoutTarget, "t
 
 export function checkoutTargetFromResult(
   result: ElectronSteamOverlayCheckoutOperationResult,
-  defaults: Pick<ElectronSteamOverlayCheckoutAndWaitOptions, "modal" | "returnUrl"> = {}
+  defaults: Pick<ElectronSteamOverlayCheckoutAndWaitOptions, "modal" | "returnUrl" | "expectedAppId"> = {}
 ): SteamOverlayCheckoutTarget {
   return electronSteamOverlayCheckoutTargetFromResult(result, defaults);
 }
@@ -9464,7 +9471,7 @@ export function createElectronSteamOverlay(
       options: ElectronSteamOverlayCheckoutAndWaitOptions = {}
     ): Promise<ElectronSteamOverlayCheckoutAndWaitResult<T>> {
       assertOpen();
-      const { modal, returnUrl, ...waitOptions } = options;
+      const { modal, returnUrl, expectedAppId: expectedAppIdOption, ...waitOptions } = options;
       const pendingCheckoutTargetSnapshot = snapshotSteamOverlayTarget({ type: "checkout" });
       const status = electronSteamOverlayCheckoutOperationStatus(controller);
       if (!status.canStartOperation && status.reason !== "overlay-not-ready") {
@@ -9474,6 +9481,9 @@ export function createElectronSteamOverlay(
         );
       }
       const snapshot = status.snapshot;
+      const expectedAppId =
+        normalizeExpectedSteamCheckoutAppId(expectedAppIdOption, true) ??
+        normalizeExpectedSteamCheckoutAppId(snapshot.diagnostics?.appId, false);
       assertElectronSteamOverlayCheckoutNativeHostAvailable(snapshot);
       assertElectronSteamOverlayNotBusy(snapshot);
       const presenterInternal = presenter as NativeOverlayPresenterInternal;
@@ -9499,7 +9509,7 @@ export function createElectronSteamOverlay(
           waitOptions.signal,
           pendingCheckoutTargetSnapshot
         );
-        const target = electronSteamOverlayCheckoutTargetFromResult(transaction, { modal, returnUrl });
+        const target = electronSteamOverlayCheckoutTargetFromResult(transaction, { modal, returnUrl, expectedAppId });
         const opened = await openElectronSteamOverlayTargetAndWait(target, waitOptions, {
           activationHandle
         });
@@ -11224,9 +11234,10 @@ function isElectronSteamOverlayParked(snapshot: ElectronSteamOverlaySnapshot): b
 
 function electronSteamOverlayCheckoutTargetFromResult(
   result: ElectronSteamOverlayCheckoutOperationResult,
-  defaults: Pick<ElectronSteamOverlayCheckoutAndWaitOptions, "modal" | "returnUrl"> = {}
+  defaults: Pick<ElectronSteamOverlayCheckoutAndWaitOptions, "modal" | "returnUrl" | "expectedAppId"> = {}
 ): SteamOverlayCheckoutTarget {
   const target: SteamOverlayCheckoutTarget = { type: "checkout" };
+  const expectedAppId = normalizeExpectedSteamCheckoutAppId(defaults.expectedAppId, true);
 
   if (typeof defaults.modal === "boolean") {
     target.modal = defaults.modal;
@@ -11251,6 +11262,7 @@ function electronSteamOverlayCheckoutTargetFromResult(
     throw new Error("A Steam checkout operation must return a checkout URL, transaction ID, or checkout object.");
   }
 
+  assertSteamCheckoutResultAppIdMatches(result, expectedAppId);
   const source = electronSteamOverlayCheckoutSourceFromObject(result);
 
   if (source.type !== undefined && source.type !== "checkout") {
@@ -11283,6 +11295,76 @@ function electronSteamOverlayCheckoutTargetFromResult(
 
   resolveSteamCheckoutOverlayUrl(target);
   return target;
+}
+
+function assertSteamCheckoutResultAppIdMatches(result: unknown, expectedAppId: number | undefined): void {
+  if (expectedAppId === undefined) {
+    return;
+  }
+
+  const appIds = [...new Set(collectSteamCheckoutAppIds(result))];
+  if (appIds.length > 0 && appIds.some((appId) => appId !== expectedAppId)) {
+    throw new Error("A Steam checkout operation returned an app ID that does not match the expected Steam app ID.");
+  }
+}
+
+function collectSteamCheckoutAppIds(value: unknown, seen = new Set<unknown>(), depth = 0): number[] {
+  if (!value || typeof value !== "object" || seen.has(value) || depth > 16) {
+    return [];
+  }
+
+  seen.add(value);
+  const found: number[] = [];
+  if (!Array.isArray(value)) {
+    const record = value as Record<string, unknown>;
+    for (const key of ["appid", "app_id", "appId"]) {
+      if (Object.prototype.hasOwnProperty.call(record, key)) {
+        const appId = normalizeSteamCheckoutAppIdValue(record[key]);
+        if (appId !== undefined) {
+          found.push(appId);
+        }
+      }
+    }
+  }
+
+  for (const nested of Object.values(value)) {
+    found.push(...collectSteamCheckoutAppIds(nested, seen, depth + 1));
+  }
+
+  return found;
+}
+
+function normalizeExpectedSteamCheckoutAppId(value: unknown, throwOnInvalid: boolean): number | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+
+  const appId = normalizeSteamCheckoutAppIdValue(value);
+  if (appId !== undefined) {
+    return appId;
+  }
+
+  if (throwOnInvalid) {
+    throw new Error("expectedAppId must be a positive safe integer Steam app ID.");
+  }
+
+  return undefined;
+}
+
+function normalizeSteamCheckoutAppIdValue(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isSafeInteger(value) && value > 0) {
+    return value;
+  }
+  if (typeof value === "bigint" && value > 0n && value <= BigInt(Number.MAX_SAFE_INTEGER)) {
+    return Number(value);
+  }
+  if (typeof value === "string" && /^\d+$/.test(value)) {
+    const appId = Number(value);
+    if (Number.isSafeInteger(appId) && appId > 0) {
+      return appId;
+    }
+  }
+  return undefined;
 }
 
 function electronSteamOverlayCheckoutSourceFromObject(

@@ -245,6 +245,23 @@ close/back-to-app proof, parked zero-FPS state, zero managed timing, managed
 isolation, one Metal presenter-backed overlay target, disabled needs-present
 polling, and clean crash diagnostics.
 
+A focused current-head 2026-07-01 checkout macOS Apple Silicon matrix at
+`/tmp/steam-bridge-macos-overlay-matrix-20260701-123019` reused the existing
+signed arm64 package and stable App ID `480` shortcut and passed all four
+checkout routes: prepare-only, direct approval, managed Shift+Tab checkout, and
+programmatic shortcut checkout `openAndWait(...)`. The run re-proved
+active/inactive callbacks where expected, visible checkout web content before
+waited close probes, close/back-to-app proof, parked zero-FPS state, zero
+managed timing, managed isolation, one Metal presenter-backed overlay target,
+and clean crash diagnostics after adding the app-facing checkout app-ID guard.
+Unit coverage now proves `openCheckoutAndWait(...)` checks any app ID embedded
+in an `InitTxn`/checkout envelope against the initialized Steam app ID before
+opening Steam UI, keeps mismatch errors redacted, releases the scoped presenter
+hold, and does not leak wrong-app transaction IDs into overlay calls. Custom
+split-step routes can call
+`checkoutTargetFromResult(initTxnResponse, { expectedAppId })` for the same
+guard.
+
 A 2026-07-01 full macOS Apple Silicon matrix at
 `/tmp/steam-bridge-macos-overlay-matrix-full-isolation-proof-20260701-045604`
 rebuilt and signed the arm64 Electron `43.0.0` smoke package, verified the

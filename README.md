@@ -425,6 +425,11 @@ be shown.
 The throwing `openCheckoutAndWait(...)` path also waits for Steam overlay
 readiness before it calls `startTxn()`, so a temporary Steam bootstrap delay
 does not create a real transaction before Steam can show the checkout UI.
+If the returned `InitTxn`/checkout envelope contains an app ID,
+`openCheckoutAndWait(...)` checks it against the initialized Steam app ID before
+opening checkout, and mismatch errors keep the raw app IDs out of logs. Pass
+`expectedAppId` only when you need to override that default in a controlled
+test harness.
 Lower-level async `withCheckoutPrepared(...)` uses the same hard-blocker
 availability gate and also waits through a temporary `overlay-not-ready` state
 before calling the wrapped transaction/preparation callback. Standalone
@@ -451,6 +456,10 @@ without printing either value. Bad `InitTxn` captures fail before any live
 overlay work and only sanitized presence flags are printed. You can run the same
 check directly with
 `npx steam-bridge-validate-checkout-target --file <private-init-txn-response.json> --expected-app-id <your-app-id>`.
+For split-step checkout targets outside the managed wait helper, call
+`steamworks.overlay.checkoutTargetFromResult(initTxnResponse, { expectedAppId })`
+to get the same wrong-app guard before handing the target to a shortcut or other
+managed overlay route.
 If a managed overlay wait, checkout preparation, or checkout native-host guard
 fails, catch the original error and call
 `steamworks.getSteamOverlayErrorTargetSnapshot(error)` or

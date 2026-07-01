@@ -1451,6 +1451,21 @@ Current evidence:
   evidence plus the broader waited route, passive toast, checkout, shortcut,
   dialog-equivalent, close/back-to-app, parked zero-FPS, zero managed timing,
   managed isolation, and clean crash-diagnostic checks.
+  A focused current-head checkout matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-20260701-123019` reused the same
+  signed Apple Silicon package and stable App ID `480` shortcut after adding an
+  app-facing checkout app-ID guard. It passed prepare-only checkout, direct
+  checkout approval, managed Shift+Tab checkout, and programmatic shortcut
+  checkout `openAndWait(...)` with one Metal presenter-backed overlay target,
+  active/inactive callbacks where expected, visible checkout web content for
+  waited close probes, parked zero-FPS state, zero managed timing, managed
+  isolation, and clean crash diagnostics. Unit coverage now proves
+  `openCheckoutAndWait(...)` checks any app ID embedded in an `InitTxn`/checkout
+  envelope against the initialized Steam app ID before opening Steam UI, keeps
+  mismatch errors redacted, releases the scoped presenter hold, and does not
+  leak wrong-app transaction IDs into overlay calls. The public
+  `checkoutTargetFromResult(initTxnResponse, { expectedAppId })` helper gives
+  split-step and shortcut flows the same wrong-app guard.
 - BrowserWindow-only overlay support is not proven.
 - Steam launch, app ID, auth, and callbacks are not enough to claim overlay
   support.

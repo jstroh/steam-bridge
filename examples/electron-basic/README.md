@@ -539,7 +539,11 @@ matrices exercise the same unwrapping path a real backend response uses.
 The shortcut checkout target uses
 `steamworks.overlay.checkoutTargetFromResult(...)` against the same parsed
 object, so `presenter-shortcut --shortcut-target checkout` accepts the private
-JSON-file proof path too.
+JSON-file proof path too. When an `InitTxn`/checkout envelope contains an app
+ID, `openCheckoutAndWait(...)` checks it against the initialized Steam app ID
+before opening checkout; split-step shortcut flows can pass
+`{ expectedAppId }` to `checkoutTargetFromResult(...)` for the same guard
+without printing either app ID.
 Abort signals passed to `openCheckoutAndWait(...)` also cover the pending
 checkout operation: aborting before the backend returns releases the presenter
 hold and parks it back at zero FPS. Pass that same signal to your backend

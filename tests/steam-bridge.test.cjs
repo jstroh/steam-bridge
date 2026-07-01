@@ -438,11 +438,12 @@ test("checkout target helper unwraps InitTxn-style response envelopes", (t) => {
         params: {
           transid: "246813579",
           steamurl: "https://checkout.steampowered.com/checkout/approvetxn/246813579/",
-          returnurl: "steam://return-from-init-txn"
+          returnurl: "steam://return-from-init-txn",
+          appid: 480
         }
       }
     },
-    { modal: false }
+    { modal: false, expectedAppId: 480 }
   );
 
   assert.deepEqual(
@@ -477,6 +478,27 @@ test("checkout target helper unwraps InitTxn-style response envelopes", (t) => {
   const targetSnapshotJson = JSON.stringify(steam.overlay.snapshotSteamOverlayTarget(target));
   assert.equal(targetSnapshotJson.includes("246813579"), false);
   assert.equal(targetSnapshotJson.includes("return-from-init-txn"), false);
+
+  assert.throws(
+    () =>
+      steam.checkoutTargetFromResult(
+        {
+          response: {
+            params: {
+              transid: "13579",
+              appid: 481
+            }
+          }
+        },
+        { expectedAppId: 480 }
+      ),
+    (error) => {
+      assert.match(error.message, /app ID that does not match/);
+      assert.equal(error.message.includes("480"), false);
+      assert.equal(error.message.includes("481"), false);
+      return true;
+    }
+  );
 
   assert.deepEqual(
     steam.checkoutTargetFromResult(
@@ -11171,6 +11193,38 @@ test("electron steam overlay checkout helper prepares, opens, and waits with bac
     hasReturnUrl: true
   });
   assert.equal(webApiEnvelopeResult.transaction.data.response.params.transid, "97531");
+
+  const activationCallsBeforeWrongAppId = fake.calls.filter((call) => call.method === "activateOverlayToWebPage").length;
+  await assert.rejects(
+    overlay.openCheckoutAndWait(
+      () => ({
+        response: {
+          params: {
+            appid: 481,
+            transid: "112233"
+          }
+        }
+      }),
+      { showTimeoutMs: 200, closeTimeoutMs: 200 }
+    ),
+    (error) => {
+      assert.match(error.message, /app ID that does not match/);
+      assert.equal(error.message.includes("480"), false);
+      assert.equal(error.message.includes("481"), false);
+      assert.deepEqual(error.targetSnapshot, { type: "checkout" });
+      assert.deepEqual(error.checkoutTargetSnapshot, { type: "checkout" });
+      assert.deepEqual(steam.getSteamOverlayCheckoutErrorTargetSnapshot(error), { type: "checkout" });
+      return true;
+    }
+  );
+  assert.equal(
+    fake.calls.filter((call) => call.method === "activateOverlayToWebPage").length,
+    activationCallsBeforeWrongAppId
+  );
+  assert.equal(JSON.stringify(steamWebOverlayCalls(fake)).includes("112233"), false);
+  const afterWrongAppIdCheckout = overlay.snapshot();
+  assert.equal(afterWrongAppIdCheckout.mode, "passive");
+  assert.equal(afterWrongAppIdCheckout.currentFps, 0);
 
   const activationCallsBeforeAbort = fake.calls.filter((call) => call.method === "activateOverlayToWebPage").length;
   const abortController = new AbortController();
