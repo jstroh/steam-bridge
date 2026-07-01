@@ -94,6 +94,23 @@ close/back-to-app proof, one Metal presenter-backed overlay target, parked
 zero-FPS state, disabled needs-present polling, zero managed overlay timing,
 managed child-overlay isolation, and clean crash diagnostics.
 
+A post-reboot current-head 2026-07-01 Apple Silicon core matrix at
+`/tmp/steam-bridge-macos-overlay-matrix-core-post-reboot-20260701` reused the
+same signed arm64-only Electron `43.0.0` package and stable App ID `480`
+shortcut without repackaging or restarting Steam, then passed all 37
+Steam-launched core cases. The run re-proved managed readiness, direct
+web/store/Friends/dialog/checkout/profile/players/community/stats/achievements/
+user-chat routes, web/store/Friends/dialog and profile/players/community/stats/
+achievements/user-chat `openAndWait(...)` routes, duplicate-open suppression,
+passive progress/unlock toasts, checkout approval and prepare-only flows, and
+every managed Shift+Tab shortcut target. Every active case reported one Metal
+presenter-backed overlay target under App ID `480`, interactive macOS host
+state, active/inactive callbacks, visible Steam web content where applicable,
+close/back-to-app proof, parked zero-FPS state, disabled needs-present polling,
+zero managed overlay timing, managed child-overlay isolation, named
+open-status/checkout-operation diagnostics, redacted checkout inputs, and clean
+crash diagnostics.
+
 A current-head 2026-07-01 Apple Silicon readiness-race slice tightened
 `IfAvailable` helpers around Steam disappearing before overlay activation.
 Unit coverage now proves direct `openIfAvailable(...)`,

@@ -605,6 +605,15 @@ parked zero-FPS presenter state, disabled needs-present polling, zero managed
 overlay timing, and clean crash diagnostics. The same summary reports
 `idleStable=true` for active overlay close paths, proving the parked presenter
 stayed at `currentFps=0` without post-close `pumpCount` growth.
+A post-reboot core Apple Silicon proof at
+`/tmp/steam-bridge-macos-overlay-matrix-core-post-reboot-20260701` reused the
+same signed arm64 package and stable App ID `480` shortcut without repackaging
+or restarting Steam, then passed all 37 core cases with direct and waited
+managed overlay helpers, checkout approval and prepare-only flows, passive
+progress/unlock toasts, every managed Shift+Tab shortcut target,
+close/back-to-app proof, one Metal presenter target, zero-FPS parking, zero
+managed timing, managed child-overlay isolation, redacted checkout command
+values, named open-status/checkout diagnostics, and clean crash diagnostics.
 New macOS matrix manifests record their suite name, and the summary auditor
 rejects named-suite artifacts that are missing required overlay surface cases.
 New manifests also require the smoke result snapshot to include named

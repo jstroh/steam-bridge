@@ -37,6 +37,19 @@ active/inactive callbacks, close/back-to-app proof, one Metal presenter target,
 parked zero-FPS state, zero managed overlay timing, managed child-overlay
 isolation, and clean crash diagnostics.
 
+A post-reboot current-head 2026-07-01 Apple Silicon core matrix at
+`/tmp/steam-bridge-macos-overlay-matrix-core-post-reboot-20260701` then reused
+the signed arm64-only Electron `43.0.0` package and stable App ID `480`
+shortcut without repackaging or restarting Steam, and passed all 37
+Steam-launched core cases. It re-verified direct and waited web/store/Friends/
+dialog/profile/players/community/stats/achievements/user-chat routes, checkout
+approval and prepare-only flows, passive progress/unlock toasts, duplicate-open
+suppression, every managed Shift+Tab shortcut target, close/back-to-app proof,
+one Metal presenter-backed overlay target under App ID `480`, interactive
+macOS host state, parked zero-FPS presenter state, zero managed overlay timing,
+managed child-overlay isolation, named open-status and checkout-operation
+diagnostics, redacted checkout command values, and clean crash diagnostics.
+
 As of 2026-06-29, the Apple Silicon local developer path can build and package
 the Electron smoke app without downloaded release artifacts:
 

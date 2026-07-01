@@ -947,6 +947,17 @@ Current evidence:
   suppression, passive toast behavior, close/back-to-app proof, one Metal
   presenter-backed overlay target, parked zero-FPS state, zero managed overlay
   timing, managed child-overlay isolation, and clean crash diagnostics.
+- A post-reboot current-head 2026-07-01 Apple Silicon core matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-core-post-reboot-20260701` reused the
+  signed arm64-only Electron `43.0.0` package and stable App ID `480` shortcut
+  without repackaging or restarting Steam, and passed all 37 Steam-launched
+  core cases. It re-proved direct and waited managed overlay helpers, checkout
+  approval and prepare-only flows, passive progress/unlock toasts, every managed
+  Shift+Tab shortcut target, one Metal presenter-backed overlay target,
+  interactive macOS host state, close/back-to-app proof, zero-FPS parking, zero
+  managed timing, managed child-overlay isolation, named open-status and
+  checkout-operation diagnostics, redacted checkout inputs, and clean crash
+  diagnostics.
 - The Metal host is borderless, transparent/click-through while idle, cannot
   become key or main, attaches above the Electron parent window, and is kept
   aligned by the managed Electron window sync hooks.
