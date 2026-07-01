@@ -1986,6 +1986,12 @@ function snapshot() {
       nativePresenter: readValue(() => (electronSteamOverlay ? electronSteamOverlay.snapshot() : null)),
       nativeHostAvailability: readValue(() =>
         electronSteamOverlay ? electronSteamOverlay.getNativeHostAvailability() : null
+      ),
+      openStatuses: readValue(() =>
+        electronSteamOverlay && electronSteamOverlay.isOpen() ? collectManagedOverlayOpenStatuses(electronSteamOverlay) : null
+      ),
+      shortcutStatus: readValue(() =>
+        electronSteamOverlay && electronSteamOverlay.isOpen() ? electronSteamOverlay.getShortcutOpenStatus() : null
       )
     },
     input: readValue(() => {
@@ -2011,6 +2017,36 @@ function snapshot() {
       overlayUserDialogSteamId: client.overlay.UserDialog.SteamId
     }
   });
+}
+
+function collectManagedOverlayOpenStatuses(overlay) {
+  return Object.fromEntries(
+    Object.entries(managedOverlayStatusTargets()).map(([name, target]) => [
+      name,
+      readValue(() => overlay.getOpenStatus(target))
+    ])
+  );
+}
+
+function managedOverlayStatusTargets() {
+  return {
+    web: { type: "web", url: WEB_URL, modal: WEB_MODAL },
+    store: { type: "store", appId: APP_ID },
+    friends: { type: "friends" },
+    profile: { type: "profile" },
+    players: { type: "players" },
+    community: { type: "community", appId: APP_ID },
+    stats: { type: "stats", appId: APP_ID },
+    achievements: { type: "achievements", appId: APP_ID },
+    user: { type: "user", dialog: USER_DIALOG, appId: APP_ID },
+    dialog: { type: "dialog", dialog: OVERLAY_DIALOG, appId: APP_ID },
+    checkout: {
+      type: "checkout",
+      ...(CHECKOUT_URL ? { url: CHECKOUT_URL } : {}),
+      ...(CHECKOUT_TRANSACTION_ID ? { transactionId: CHECKOUT_TRANSACTION_ID } : {}),
+      ...(CHECKOUT_RETURN_URL ? { returnUrl: CHECKOUT_RETURN_URL } : {})
+    }
+  };
 }
 
 function collectCrashDiagnostics() {
