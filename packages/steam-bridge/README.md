@@ -311,9 +311,12 @@ side-effect-free status check already knows the host or route is unavailable,
 so apps do not need to duplicate the target resolver. For direct targets,
 `steamOverlay.openIfAvailable(target)` and
 `steamOverlay.openAndWaitIfAvailable(target)` return `null` for known target or
-host availability blockers. `getShortcutOpenStatus()` never resolves dynamic
-app callbacks; it reports `reason: "dynamic-target"` unless a stronger
-side-effect-free blocker is already known, such as
+host availability blockers. They also return `null` while Steam's overlay is
+already active or the managed presenter is still opening a previous overlay, so
+duplicate menu/button presses do not start a second overlay action.
+`getShortcutOpenStatus()` never resolves dynamic app callbacks; it reports
+`reason: "dynamic-target"` unless a stronger side-effect-free blocker is
+already known, such as
 `reason: "native-host-unavailable"` while macOS is locked or display-asleep.
 Keyboard-triggered and programmatic shortcut opens also fail
 before resolving a dynamic target callback while the native host is unavailable.
@@ -378,7 +381,8 @@ For `InitTxn` flows, call
 `steamOverlay.openCheckoutAndWait(() => startTxn())`. Use
 `steamOverlay.openCheckoutAndWaitIfAvailable(() => startTxn())` for purchase
 buttons that should return `null` instead of starting the transaction while the
-managed overlay is closed or the macOS native host is unavailable. Steam Bridge
+managed overlay is closed, the macOS native host is unavailable, or another
+managed overlay action is already active/opening. Steam Bridge
 primes the native presenter before the backend starts the transaction, accepts
 common backend result shapes such as `steamurl`, `steamUrl`, `transactionId`, or
 `transid`, and also unwraps documented `InitTxn` envelopes such as

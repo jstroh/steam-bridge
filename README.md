@@ -329,7 +329,10 @@ It validates the managed route and reports whether the target can be opened and
 waited on without touching Steam overlay UI.
 Use `openIfAvailable(target)` or `openAndWaitIfAvailable(target)` when a button
 or controller binding should quietly do nothing for known unavailable states and
-still surface real errors after an overlay open begins.
+still surface real errors after an overlay open begins. These helpers also
+return `null` while Steam's overlay is already active or the managed presenter
+is still opening a previous overlay, so duplicate menu/button presses do not
+start a second overlay action.
 Use `getShortcutOpenStatus()` for the same side-effect-free check against the
 configured Shift+Tab/controller target.
 
@@ -355,7 +358,8 @@ screen is locked or the display is asleep. Use
 For checkout, use `steamOverlay.openCheckoutAndWait(() => startTxn())`.
 Use `steamOverlay.openCheckoutAndWaitIfAvailable(() => startTxn())` when a
 purchase button should return `null` instead of starting `InitTxn` while the
-managed overlay is closed or the macOS native host is unavailable.
+managed overlay is closed, the macOS native host is unavailable, or another
+managed overlay action is already active/opening.
 `MicroTxnAuthorizationResponse` is a purchase authorization event, not an
 overlay-close signal, so keep the managed presenter alive until Steam reports
 the overlay inactive. The returned checkout wait result includes

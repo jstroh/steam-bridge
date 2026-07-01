@@ -602,6 +602,12 @@ parks from overlay callbacks and presenter state changes. Timeout options and
 internal guards remain failure guardrails rather than activation timing controls.
 Managed Electron presenters default activation-boost and close-grace durations
 to zero; duration-based prep is an explicit lower-level escape hatch.
+At current head, direct target status and `IfAvailable` helpers also report
+or return `null` while Steam's overlay is already active or the managed
+presenter is still opening a previous overlay. Checkout `IfAvailable` checks the
+same busy state before invoking the transaction operation, so duplicate purchase
+presses do not start a second `InitTxn` while the first overlay action is still
+in flight.
 
 Important Deck finding: a non-Steam shortcut can initialize Steamworks with
 App ID `480` and can prove the store overlay, but it should not be used to

@@ -6368,6 +6368,55 @@ test("electron steam overlay manager owns one presenter and routes opens", async
   assert.equal(windowShowCount, 1);
   assert.equal(windowFocusCount, 1);
   assert.equal(windowInvalidateCount, 1);
+  const webTarget = { type: "web", url: "https://store.steampowered.com/app/480/", modal: true };
+  const openingOpenStatus = overlay.getOpenStatus(webTarget);
+  assert.equal(openingOpenStatus.canOpen, false);
+  assert.equal(openingOpenStatus.canWait, false);
+  assert.equal(openingOpenStatus.reason, "opening");
+  assert.equal(openingOpenStatus.waitReason, "opening");
+  assert.match(openingOpenStatus.message, /already opening/);
+  assert.equal(overlay.openIfAvailable(webTarget), null);
+  assert.equal(await overlay.openAndWaitIfAvailable(webTarget, { showTimeoutMs: 5, closeTimeoutMs: 5 }), null);
+  let checkoutOperationRanWhileOpening = false;
+  assert.equal(
+    await overlay.openCheckoutAndWaitIfAvailable(
+      () => {
+        checkoutOperationRanWhileOpening = true;
+        return "123";
+      },
+      { showTimeoutMs: 5, closeTimeoutMs: 5 }
+    ),
+    null
+  );
+  assert.equal(checkoutOperationRanWhileOpening, false);
+  assert.throws(() => overlay.open(webTarget), /already opening/);
+  assert.throws(() => overlay.prepareForCheckout(), /already opening/);
+
+  fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: true });
+  const activeOpenStatus = overlay.getOpenStatus(webTarget);
+  assert.equal(activeOpenStatus.canOpen, false);
+  assert.equal(activeOpenStatus.canWait, false);
+  assert.equal(activeOpenStatus.reason, "overlay-active");
+  assert.equal(activeOpenStatus.waitReason, "overlay-active");
+  assert.match(activeOpenStatus.message, /already active/);
+  let checkoutOperationRanWhileActive = false;
+  assert.equal(
+    await overlay.openCheckoutAndWaitIfAvailable(
+      () => {
+        checkoutOperationRanWhileActive = true;
+        return "456";
+      },
+      { showTimeoutMs: 5, closeTimeoutMs: 5 }
+    ),
+    null
+  );
+  assert.equal(checkoutOperationRanWhileActive, false);
+  fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: false });
+  const reopenedOpenStatus = overlay.getOpenStatus(webTarget);
+  assert.equal(reopenedOpenStatus.canOpen, true);
+  assert.equal(reopenedOpenStatus.canWait, true);
+  assert.equal(reopenedOpenStatus.reason, undefined);
+  assert.equal(reopenedOpenStatus.waitReason, undefined);
   const rawDialogStatus = overlay.getOpenStatus({
     type: "dialog",
     dialog: steam.Dialog.Friends,
@@ -6410,11 +6459,12 @@ test("electron steam overlay manager owns one presenter and routes opens", async
   windowBounds = { x: 24, y: 32, width: 1920, height: 1080 };
   assert.deepEqual(overlay.snapshot().bounds, windowBounds);
 
-  overlay.open({ type: "web", url: "https://store.steampowered.com/app/480/", modal: true });
-  assert.equal(windowShowCount, 2);
-  assert.equal(windowFocusCount, 2);
-  assert.equal(windowInvalidateCount, 2);
-  overlay.prepareForCheckout();
+  overlay.open(webTarget);
+  assert.equal(windowShowCount, 3);
+  assert.equal(windowFocusCount, 3);
+  assert.equal(windowInvalidateCount, 3);
+  fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: true });
+  fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: false });
   const checkoutPreparedLastCall = [];
   const checkoutResult = await overlay.withCheckoutPrepared(() => {
     checkoutPreparedLastCall.push(fake.calls.at(-1)?.method);
@@ -6424,6 +6474,7 @@ test("electron steam overlay manager owns one presenter and routes opens", async
   assert.deepEqual(checkoutResult, {
     steamUrl: "https://checkout.steampowered.com/checkout/approvetxn/123/"
   });
+  overlay.prepareForCheckout();
   overlay.prepareForNotification();
   overlay.pump();
 
@@ -6461,12 +6512,20 @@ test("electron steam overlay manager owns one presenter and routes opens", async
       { method: "setNativeOverlayHostOpacity", args: [true] },
       { method: "pumpNativeOverlayProbeWindow", args: [] },
       { method: "activateOverlayToWebPage", args: [steam.STEAM_FRIENDS_OVERLAY_URL, true] },
+      { method: "setNativeOverlayHostInputPassthrough", args: [true] },
+      { method: "setNativeOverlayHostOpacity", args: [false] },
+      { method: "setNativeOverlayHostInputPassthrough", args: [false] },
+      { method: "setNativeOverlayHostOpacity", args: [true] },
       { method: "pumpNativeOverlayProbeWindow", args: [] },
       { method: "activateOverlayToWebPage", args: ["https://store.steampowered.com/app/480/", true] },
-      { method: "pumpNativeOverlayProbeWindow", args: [] },
+      { method: "setNativeOverlayHostInputPassthrough", args: [true] },
+      { method: "setNativeOverlayHostOpacity", args: [false] },
+      { method: "setNativeOverlayHostInputPassthrough", args: [false] },
+      { method: "setNativeOverlayHostOpacity", args: [true] },
       { method: "pumpNativeOverlayProbeWindow", args: [] },
       { method: "setNativeOverlayHostInputPassthrough", args: [true] },
       { method: "setNativeOverlayHostOpacity", args: [false] },
+      { method: "pumpNativeOverlayProbeWindow", args: [] },
       { method: "pumpNativeOverlayProbeWindow", args: [] },
       { method: "pumpNativeOverlayProbeWindow", args: [] },
       { method: "disconnectGameOverlayActivated", args: [] },
