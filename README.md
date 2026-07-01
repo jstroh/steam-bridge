@@ -365,9 +365,10 @@ presenter-backed target. Controller or in-game menu buttons can call
 without duplicating resolver logic. Dynamic shortcut targets are resolved only
 when the shortcut actually opens. `getShortcutOpenStatus()`
 does not call app code; it reports a dynamic target as dynamic unless a stronger
-side-effect-free blocker is already known, such as a locked/asleep macOS native
-host. On macOS, keyboard-triggered and programmatic shortcut opens also fail
-before resolving a dynamic target callback while the native host is unavailable.
+side-effect-free blocker is already known, such as Steam not running, an
+overlay hook that is not ready yet, or a locked/asleep macOS native host. On
+macOS, keyboard-triggered and programmatic shortcut opens also fail before
+resolving a dynamic target callback while the native host is unavailable.
 
 On macOS, the managed helper fails fast before Steam overlay activation if the
 screen is locked or the display is asleep. Use

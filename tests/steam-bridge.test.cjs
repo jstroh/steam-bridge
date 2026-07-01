@@ -8342,6 +8342,134 @@ test("electron steam overlay shortcut wait does not report opened before overlay
   overlay.close();
 });
 
+test("electron steam overlay dynamic shortcut IfAvailable waits for overlay readiness before resolving", async (t) => {
+  setProcessPlatformForTest(t, "linux");
+  const hostHandle = Buffer.from([4, 8, 15, 21]);
+  let hostOpen = false;
+  let overlayEnabled = false;
+  const fake = createFakeNative({
+    attachNativeOverlayHostView(nativeWindowHandle) {
+      hostOpen = true;
+      this.calls.push({ method: "attachNativeOverlayHostView", args: [nativeWindowHandle] });
+    },
+    pumpNativeOverlayProbeWindow() {
+      this.calls.push({ method: "pumpNativeOverlayProbeWindow", args: [] });
+    },
+    showNativeOverlayHostView() {
+      this.calls.push({ method: "showNativeOverlayHostView", args: [] });
+    },
+    setNativeOverlayHostInputPassthrough(passThrough) {
+      this.calls.push({ method: "setNativeOverlayHostInputPassthrough", args: [passThrough] });
+    },
+    setNativeOverlayHostOpacity(opaque) {
+      this.calls.push({ method: "setNativeOverlayHostOpacity", args: [opaque] });
+    },
+    detachNativeOverlayHostView() {
+      hostOpen = false;
+      this.calls.push({ method: "detachNativeOverlayHostView", args: [] });
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return false;
+    },
+    isNativeOverlayHostViewOpen() {
+      return hostOpen;
+    },
+    getOverlayDiagnostics() {
+      return {
+        steamRunning: true,
+        steamInstallPath: "/tmp/steam",
+        appId: 480,
+        overlayEnabled,
+        overlayNeedsPresent: false,
+        overlayNeedsPresentPollingEnabled: true,
+        steamDeck: false,
+        bigPicture: false
+      };
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  const window = {
+    isDestroyed() {
+      return false;
+    },
+    getNativeWindowHandle() {
+      return hostHandle;
+    },
+    once() {},
+    webContents: {
+      once() {},
+      invalidate() {},
+      send() {},
+      on() {},
+      off() {}
+    }
+  };
+
+  let resolveCount = 0;
+  const shortcutTarget = {
+    type: "web",
+    url: "https://store.steampowered.com/app/480/",
+    modal: true
+  };
+  const overlay = steam.overlay.createElectronSteamOverlay(window, {
+    title: "Electron Dynamic Shortcut Readiness Overlay",
+    pollIntervalMs: 50,
+    overlayShortcut: {
+      target() {
+        resolveCount += 1;
+        return shortcutTarget;
+      }
+    }
+  });
+
+  const notReadyStatus = overlay.getShortcutOpenStatus();
+  assert.equal(notReadyStatus.canOpen, false);
+  assert.equal(notReadyStatus.canWait, true);
+  assert.equal(notReadyStatus.reason, "overlay-not-ready");
+  assert.equal(notReadyStatus.waitReason, undefined);
+  assert.equal(notReadyStatus.target, undefined);
+  assert.equal(notReadyStatus.targetStatus, undefined);
+  assert.equal(notReadyStatus.snapshot.diagnostics.overlayEnabled, false);
+  assert.equal(resolveCount, 0);
+  assert.equal(overlay.openShortcutTargetIfAvailable(), null);
+  assert.equal(resolveCount, 0);
+  assert.deepEqual(steamWebOverlayCalls(fake), []);
+
+  const shortcutOpen = overlay.openShortcutTargetAndWaitIfAvailable({
+    showTimeoutMs: 500,
+    closeTimeoutMs: 500
+  });
+  assert.notEqual(shortcutOpen, null);
+  assert.equal(resolveCount, 1);
+
+  await new Promise((resolve) => setTimeout(resolve, 80));
+  assert.deepEqual(steamWebOverlayCalls(fake), []);
+
+  overlayEnabled = true;
+  const activated = await waitForCondition(
+    () => fake.calls.some((call) => call.method === "activateOverlayToWebPage"),
+    500
+  );
+  assert.equal(activated, true);
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "activateOverlayToWebPage").at(-1),
+    { method: "activateOverlayToWebPage", args: ["https://store.steampowered.com/app/480/", true] }
+  );
+
+  fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: true });
+  fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: false });
+  const result = await shortcutOpen;
+  assert.equal(result.shown.overlayActive, true);
+  assert.equal(result.parked.overlayActive, false);
+  assert.equal(result.parked.currentFps, 0);
+  assert.equal(resolveCount, 1);
+
+  overlay.close();
+});
+
 test("electron steam overlay shortcut wait rejects raw native diagnostic targets", async (t) => {
   const hostHandle = Buffer.from([4, 8, 15, 20]);
   let hostOpen = false;

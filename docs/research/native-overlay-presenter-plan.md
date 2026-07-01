@@ -1206,6 +1206,10 @@ Current evidence:
   If Steam is not running, generic direct and waited `IfAvailable` helpers both
   return `null` with `reason: "steam-unavailable"` instead of attempting any
   Steam overlay activation.
+  Dynamic shortcut status keeps app callbacks side-effect-free by reporting
+  these diagnostics before resolving the target callback; direct shortcut
+  `IfAvailable` stays quiet while not ready, while the waited helper can resolve
+  the target as part of an explicit wait-and-open operation.
   A 2026-07-01 full Apple Silicon matrix at
   `/tmp/steam-bridge-macos-overlay-matrix-full-isolation-proof-20260701-045604`
   rebuilt and signed the Electron `43.0.0` smoke package, reused the stable App

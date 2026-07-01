@@ -10228,7 +10228,7 @@ function electronSteamOverlayShortcutStatus(
   shortcut: NormalizedElectronSteamOverlayShortcutOptions,
   shortcutOpenState: ElectronSteamOverlayShortcutOpenState
 ): ElectronSteamOverlayShortcutStatus {
-  const snapshot = controller.snapshot();
+  const snapshot = refreshElectronSteamOverlaySnapshotDiagnostics(controller.snapshot());
   const shortcutSnapshot = snapshot.electronOverlay.overlayShortcut;
   const nativeHostAvailability = electronSteamOverlayNativeHostAvailability(snapshot);
   const unavailableError = electronSteamOverlayNativeHostUnavailableError(snapshot);
@@ -10292,6 +10292,27 @@ function electronSteamOverlayShortcutStatus(
         reason: "native-host-unavailable",
         waitReason: "native-host-unavailable",
         message: unavailableError.message
+      };
+    }
+
+    if (snapshot.diagnostics?.steamRunning === false) {
+      return {
+        ...base,
+        canOpen: false,
+        canWait: false,
+        reason: "steam-unavailable",
+        waitReason: "steam-unavailable",
+        message: "Steam is not running."
+      };
+    }
+
+    if (snapshot.diagnostics?.overlayEnabled === false) {
+      return {
+        ...base,
+        canOpen: false,
+        canWait: true,
+        reason: "overlay-not-ready",
+        message: "Steam overlay is not ready yet."
       };
     }
 

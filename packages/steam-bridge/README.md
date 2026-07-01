@@ -380,8 +380,9 @@ for overlay readiness before activation when the target has a verified managed
 wait route.
 `getShortcutOpenStatus()` never resolves dynamic app callbacks; it reports
 `reason: "dynamic-target"` unless a stronger side-effect-free blocker is
-already known, such as
-`reason: "native-host-unavailable"` while macOS is locked or display-asleep.
+already known, such as `reason: "steam-unavailable"`,
+`reason: "overlay-not-ready"`, or `reason: "native-host-unavailable"` while
+macOS is locked or display-asleep.
 Keyboard-triggered and programmatic shortcut opens also fail
 before resolving a dynamic target callback while the native host is unavailable.
 The bridge consumes Shift+Tab only when it is opening
