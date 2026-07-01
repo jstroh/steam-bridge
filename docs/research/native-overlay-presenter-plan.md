@@ -1147,6 +1147,20 @@ Current evidence:
   `nativeHostOpen=false`, no Steam overlay activation, zero overlay targets,
   disabled needs-present polling, zero managed overlay timing, and clean crash
   diagnostics.
+  A current-head 2026-07-01 locked/asleep unavailable matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-unavailable-target-snapshots-20260701-165605`
+  reused the rebuilt and signed Apple Silicon Electron `43.0.0` package and
+  stable App ID `480` shortcut without restarting Steam, then passed all six
+  unavailable cases again after the smoke app began attaching sanitized
+  `targetSnapshot` diagnostics to native-host-unavailable fail-fast errors.
+  Checkout fail-fast errors also carry `checkoutTargetSnapshot`, so real
+  failure artifacts keep builder-actionable target context without leaking raw
+  checkout URLs, transaction IDs, or private fixture paths. The run re-proved
+  readiness, managed web open/wait, checkout-open, checkout prepare-only,
+  programmatic shortcut open/wait, and passive achievement-progress no-host
+  behavior with no Steam overlay activation, zero overlay targets, disabled
+  needs-present polling, zero managed overlay timing, and clean crash
+  diagnostics.
   A follow-up interactive minimal matrix at
   `/tmp/steam-bridge-macos-overlay-matrix-20260630-224312` reused that signed
   package and stable shortcut without repackaging or restarting Steam after the

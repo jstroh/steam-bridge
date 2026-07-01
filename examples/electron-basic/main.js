@@ -1147,7 +1147,7 @@ async function openPresenterDuplicateOpenGuardOverlay() {
     presenter: safeOverlaySnapshot(overlay)
   });
 
-  throwIfNativeHostUnavailable(initialSnapshot);
+  throwIfNativeHostUnavailable(initialSnapshot, target);
   return snapshot();
 }
 
@@ -1225,7 +1225,7 @@ function openPresenterTargetAndWaitOverlay(overlay, target, context) {
       }
     });
 
-  throwIfNativeHostUnavailable(initialSnapshot);
+  throwIfNativeHostUnavailable(initialSnapshot, target);
   return snapshot();
 }
 
@@ -1470,11 +1470,66 @@ function overlayTargetOptions(target, ...extraOmittedFields) {
   return options;
 }
 
-function throwIfNativeHostUnavailable(snapshot) {
+function throwIfNativeHostUnavailable(snapshot, targetContext = undefined) {
   if (!snapshot?.nativeHostUnavailableReason) {
     return;
   }
-  throw new steamworks.SteamOverlayNativeHostUnavailableError(snapshot);
+  const error = new steamworks.SteamOverlayNativeHostUnavailableError(snapshot);
+  annotateSmokeOverlayTargetSnapshot(error, targetContext);
+  throw error;
+}
+
+function annotateSmokeOverlayTargetSnapshot(error, targetContext) {
+  const targetSnapshot = smokeOverlayTargetSnapshot(targetContext);
+  if (!targetSnapshot) {
+    return error;
+  }
+  defineSmokeErrorSnapshot(error, "targetSnapshot", targetSnapshot);
+  if (targetSnapshot.type === "checkout") {
+    defineSmokeErrorSnapshot(error, "checkoutTargetSnapshot", targetSnapshot);
+  }
+  return error;
+}
+
+function smokeOverlayTargetSnapshot(targetContext) {
+  if (!targetContext || typeof targetContext !== "object") {
+    return undefined;
+  }
+  if (targetContext.targetSnapshot && typeof targetContext.targetSnapshot === "object") {
+    return targetContext.targetSnapshot;
+  }
+  try {
+    return steamworks.overlay.snapshotSteamOverlayTarget(targetContext);
+  } catch {
+    return typeof targetContext.type === "string" ? { type: targetContext.type } : undefined;
+  }
+}
+
+function defineSmokeErrorSnapshot(error, property, targetSnapshot) {
+  if (!error || typeof error !== "object" || property in error) {
+    return;
+  }
+  try {
+    Object.defineProperty(error, property, {
+      configurable: true,
+      enumerable: true,
+      value: targetSnapshot
+    });
+  } catch {
+    try {
+      error[property] = targetSnapshot;
+    } catch {
+      // Sealed error-like objects should still preserve the original failure.
+    }
+  }
+}
+
+function checkoutTargetFromOperation(transaction) {
+  try {
+    return steamworks.overlay.checkoutTargetFromResult(transaction, { expectedAppId: APP_ID });
+  } catch {
+    return { type: "checkout" };
+  }
 }
 
 async function openPresenterFriendsOverlay() {
@@ -1698,7 +1753,7 @@ async function openPresenterCheckoutOverlay() {
           });
         }
       });
-    throwIfNativeHostUnavailable(initialSnapshot);
+    throwIfNativeHostUnavailable(initialSnapshot, checkoutTargetFromOperation(transaction));
   } else {
     await overlay.withCheckoutPrepared(() => {
       recordEvent("overlay:presenter-checkout-ready", {
@@ -1938,7 +1993,7 @@ function openPresenterShortcutOpenAndWaitBridge() {
       }
     });
 
-  throwIfNativeHostUnavailable(initialSnapshot);
+  throwIfNativeHostUnavailable(initialSnapshot, overlay.getShortcutOpenStatus());
   return snapshot();
 }
 

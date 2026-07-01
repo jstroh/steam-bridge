@@ -626,6 +626,12 @@ kept in detail in the research docs:
 - Core proof:
   `/tmp/steam-bridge-macos-overlay-matrix-core-post-reboot-20260701` passed all
   37 core routes against the same signed arm64 package and shortcut.
+- Locked/asleep unavailable proof:
+  `/tmp/steam-bridge-macos-overlay-matrix-unavailable-target-snapshots-20260701-165605`
+  reused the signed arm64 Electron `43.0.0` smoke package and stable App ID
+  `480` shortcut without restarting Steam, then passed all six unavailable-host
+  routes with typed native-host-unavailable errors, sanitized target snapshots,
+  no Steam overlay activation, and zero native overlay targets.
 
 Those artifacts cover managed web, store, Friends/chat, checkout, passive
 progress/unlock toasts, every supported managed Shift+Tab target, direct

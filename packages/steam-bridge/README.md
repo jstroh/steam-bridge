@@ -1256,14 +1256,15 @@ All unavailable cases record the matching presenter
 Locked macOS sessions can also report the display asleep; `macos-screen-locked` takes
 precedence, and unavailable captures do not require `overlayEnabled=true`
 because no native host should be created. A current-head locked/asleep run at
-`/tmp/steam-bridge-macos-overlay-matrix-20260630-144631` rebuilt and signed
-Electron `43.0.0` after removing the legacy OpenGL-only needs-present disable
-env injection from the smoke harness, reused the stable shortcut without
-restarting Steam, and passed all five unavailable cases with `available=false`,
-`STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE`, reason `macos-screen-locked`,
-`nativeHostOpen=false`, no overlay activation, zero overlay targets, disabled
-needs-present polling, zero managed overlay timing, and no copied macOS crash
-reports. The matrix runs the packaged helper and records per-case diagnostics.
+`/tmp/steam-bridge-macos-overlay-matrix-unavailable-target-snapshots-20260701-165605`
+reused the signed arm64 Electron `43.0.0` package and stable App ID `480`
+shortcut without restarting Steam, and passed all six unavailable cases with
+`available=false`, `STEAM_OVERLAY_NATIVE_HOST_UNAVAILABLE`, reason
+`macos-screen-locked`, sanitized action-error target snapshots, checkout
+target snapshots for checkout errors, `nativeHostOpen=false`, no overlay
+activation, zero overlay targets, disabled needs-present polling, zero managed
+overlay timing, and no copied macOS crash reports. The matrix runs the packaged
+helper and records per-case diagnostics.
 Its self-test is part of package smoke coverage and includes the macOS artifact
 summary self-test. After a live run it summarizes every macOS result and
 lifecycle log, failing if a case loses Steam launch/injection identity, uses

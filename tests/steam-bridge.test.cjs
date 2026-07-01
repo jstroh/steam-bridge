@@ -534,6 +534,31 @@ test("checkout target helper unwraps InitTxn-style response envelopes", (t) => {
   );
 });
 
+test("electron smoke native-host-unavailable action errors keep sanitized target context", () => {
+  const exampleMain = fs.readFileSync(path.join(repoRoot, "examples", "electron-basic", "main.js"), "utf8");
+
+  assert.equal(
+    [...exampleMain.matchAll(/throwIfNativeHostUnavailable\(initialSnapshot,\s*target\)/g)].length,
+    2,
+    "generic open-and-wait smoke paths should attach the managed target snapshot"
+  );
+  assert.match(
+    exampleMain,
+    /throwIfNativeHostUnavailable\(initialSnapshot,\s*checkoutTargetFromOperation\(transaction\)\)/,
+    "checkout smoke fail-fast errors should attach a sanitized checkout snapshot"
+  );
+  assert.match(
+    exampleMain,
+    /throwIfNativeHostUnavailable\(initialSnapshot,\s*overlay\.getShortcutOpenStatus\(\)\)/,
+    "shortcut open-and-wait smoke fail-fast errors should attach the configured shortcut target snapshot"
+  );
+  assert.match(
+    exampleMain,
+    /snapshotSteamOverlayTarget\(targetContext\)/,
+    "smoke app should use Steam Bridge target snapshotting instead of serializing raw target values"
+  );
+});
+
 function fakeTicket(label, calls) {
   return {
     cancel() {
