@@ -27,7 +27,10 @@ Steam Bridge targets Steam desktop platforms for Electron and Node:
 - Linux x64: `x86_64-unknown-linux-gnu`
 
 Intel macOS is intentionally not supported. CI, release prebuilds, runtime
-loading, and native linking enforce the supported target list.
+loading, native linking, and macOS smoke-app packaging enforce the supported
+target list. All macOS test apps are built and run as Apple Silicon arm64
+targets only; Steam Bridge does not build, run, or verify Intel or universal
+macOS apps.
 
 ## Quick Start
 

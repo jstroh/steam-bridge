@@ -25,7 +25,10 @@ Steam Bridge targets Steam desktop platforms for Electron and Node:
 - Windows x64: `x86_64-pc-windows-msvc`
 - Linux x64: `x86_64-unknown-linux-gnu`
 
-Intel macOS is intentionally not supported.
+Intel macOS is intentionally not supported. CI, release prebuilds, runtime
+loading, native linking, and macOS smoke-app packaging enforce Apple Silicon
+arm64 as the only macOS target; Steam Bridge does not build, run, or verify
+Intel or universal macOS apps.
 
 The packaged Windows smoke helper accepts the same generic smoke actions as the
 Deck/macOS helpers for web, store, Friends, dialog-equivalent, checkout,
