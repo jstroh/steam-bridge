@@ -898,7 +898,16 @@ current local Mac cannot run fresh live proof until Steam recovers from a client
 bootstrap/IPC failure. `npm run macos:steam-client-health` now captures this
 before any smoke app launch, and the live macOS matrix runs the same health
 gate before cases, including a detector-driven wait after matrix-owned Steam
-restarts for shortcut updates. A 2026-06-30 artifact at
+restarts for shortcut updates. The live matrix also performs conservative stale
+IPC cleanup before a matrix-owned Steam startup when no `steam_osx` client is
+running: orphan Steam `ipcserver` processes are stopped and
+`/private/tmp/steam.pipe` is removed. `--close-steam-after` also runs that
+cleanup after failed startup attempts and normal matrix shutdown, waiting
+through delayed Steam client respawns from launch services before returning.
+Steam's launch service may recreate `ipcserver` after cleanup; health artifacts
+still report that helper if it is present. User-owned System V semaphores stay
+diagnostic-only because they are not provably Steam-specific. A 2026-06-30
+artifact at
 `/tmp/steam-bridge-macos-steam-health-resource-snapshot-20260630-195055`
 reported Steam running with a `-steamid=0` bootstrap helper and fresh
 `SteamChrome_MasterStream_*` `errno: 28` failures, while the resource snapshot

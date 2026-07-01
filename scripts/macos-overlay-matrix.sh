@@ -563,6 +563,7 @@ run_self_test() {
   fi
   require_contains "$preflight_output" "DRY-RUN macOS overlay preflight skipped." "preflight mode should support dry-run without package or Steam work."
   require_contains "$steam_health_output" "DRY-RUN macOS Steam client health skipped." "Steam health mode should support dry-run without package or shortcut work."
+  require_contains "$core_output" "DRY-RUN macOS stale Steam IPC cleanup skipped." "live matrix should clean stale Steam IPC before a matrix-owned Steam startup."
   require_contains "$core_output" "DRY-RUN macOS Steam startup readiness skipped." "live matrix should gate cases on Steam startup readiness before launch."
   require_contains "$core_output" "DRY-RUN macOS Steam client health skipped." "live matrix should gate cases on Steam client health before launch."
   require_unique_case_ids "$minimal_output" "minimal"
@@ -1203,7 +1204,11 @@ macos_steam_running() {
 }
 
 macos_steam_client_running() {
-  pgrep -f 'Steam\.AppBundle/Steam/Contents/MacOS/steam_osx\b' >/dev/null 2>&1
+  pgrep -f 'Steam\.AppBundle/Steam/Contents/MacOS/steam_osx' >/dev/null 2>&1
+}
+
+macos_steam_ipcserver_running() {
+  pgrep -f 'Steam\.AppBundle/Steam/Contents/MacOS/ipcserver' >/dev/null 2>&1
 }
 
 wait_for_macos_steam_exit() {
@@ -1243,6 +1248,59 @@ stop_macos_steam() {
     echo "Failed to stop macOS Steam processes." >&2
     return 1
   fi
+}
+
+cleanup_macos_stale_steam_ipc() {
+  local context="${1:-before matrix-owned Steam startup}"
+  if [ "$dry_run" = "1" ]; then
+    echo "DRY-RUN macOS stale Steam IPC cleanup skipped."
+    return 0
+  fi
+  if [ "$(uname -s)" != "Darwin" ]; then
+    return 0
+  fi
+  if macos_steam_client_running; then
+    return 0
+  fi
+
+  if macos_steam_ipcserver_running; then
+    echo "Stopping orphan macOS Steam ipcserver $context..."
+    pkill -TERM -f 'Steam\.AppBundle/Steam/Contents/MacOS/ipcserver' 2>/dev/null || true
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
+      if ! macos_steam_ipcserver_running; then
+        break
+      fi
+      sleep 0.2
+    done
+    if macos_steam_ipcserver_running; then
+      pkill -KILL -f 'Steam\.AppBundle/Steam/Contents/MacOS/ipcserver' 2>/dev/null || true
+    fi
+  fi
+
+  if [ -e /private/tmp/steam.pipe ]; then
+    echo "Removing stale /private/tmp/steam.pipe $context..."
+    rm -f /private/tmp/steam.pipe
+  fi
+}
+
+cleanup_macos_steam_on_exit() {
+  local attempt
+  if [ "$close_steam_after" != "1" ] || [ "$dry_run" = "1" ]; then
+    return 0
+  fi
+
+  for attempt in 1 2 3 4 5 6 7 8 9 10; do
+    stop_macos_steam || true
+    cleanup_macos_stale_steam_ipc "after matrix-owned Steam shutdown" || true
+    if ! macos_steam_client_running; then
+      sleep 0.5
+      if ! macos_steam_client_running; then
+        return 0
+      fi
+    fi
+    echo "Waiting for delayed macOS Steam shutdown after matrix-owned launch..."
+    sleep 1
+  done
 }
 
 start_macos_steam() {
@@ -1451,6 +1509,7 @@ ensure_macos_steam_ready_for_suite() {
     return 0
   fi
   if [ "$dry_run" = "1" ]; then
+    echo "DRY-RUN macOS stale Steam IPC cleanup skipped."
     echo "DRY-RUN macOS Steam startup readiness skipped."
     return 0
   fi
@@ -1462,6 +1521,7 @@ ensure_macos_steam_ready_for_suite() {
     return 0
   fi
 
+  cleanup_macos_stale_steam_ipc "before matrix-owned Steam startup"
   echo "Starting macOS Steam before live overlay matrix..."
   if ! start_macos_steam; then
     echo "macOS Steam did not reach a logged-in state before launching smoke cases." >&2
@@ -2866,8 +2926,8 @@ run_unavailable_matrix() {
     --require-no-crashes
 }
 
+trap cleanup_macos_steam_on_exit EXIT
 ensure_ready
-trap 'if [ "$close_steam_after" = "1" ] && [ "$dry_run" != "1" ]; then stop_macos_steam; fi' EXIT
 run_matrix
 
 echo "macOS overlay matrix complete. Artifacts: $artifact_root"
