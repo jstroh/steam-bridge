@@ -64,9 +64,10 @@ Newly generated macOS matrix manifests also require each smoke result snapshot
 to include the named builder-facing `get*OpenStatus(...)` diagnostics for web,
 store, Friends, profile, players, community, stats, achievements, user, dialog,
 checkout targets, and the checkout-operation preflight used before starting
-`InitTxn`. The summary prints this proof as `openStatuses=true` for each
-required case, so future artifacts prove the side-effect-free preflight status
-surface stayed wired while overlay routes are exercised.
+`InitTxn`. The summary prints this proof as `openStatuses=true` and
+`checkoutOperation=true` for each required case, so future artifacts prove the
+side-effect-free preflight status surface stayed wired while overlay routes are
+exercised.
 Use `--suite checkout` for focused real-product checkout evidence: it runs
 checkout prepare-only, direct checkout, managed Shift+Tab checkout, and
 programmatic checkout shortcut/open-and-wait with the same redaction,
@@ -603,6 +604,20 @@ content before close probes, app focus return, parked zero-FPS presenter state,
 disabled needs-present polling, zero managed overlay timing, clean
 control-server quit behavior, no leftover smoke/gameoverlay process, and clean
 crash diagnostics.
+A current-head persistent Apple Silicon matrix at
+`/tmp/steam-bridge-macos-overlay-matrix-persistent-checkout-operation-20260701-083629`
+rebuilt and signed the same arm64-only Electron `43.0.0` package, reused the
+stable App ID `480` shortcut without restarting Steam, launched one Steam-owned
+smoke process/control-server lifecycle, and passed all 45 persistent cases
+after the macOS summary auditor began printing `checkoutOperation=true` beside
+`openStatuses=true`. A direct artifact probe verified all 45 smoke snapshots
+contained `snapshot.overlay.openStatuses.checkoutOperation` with a checkout
+target snapshot and `canStartOperation` boolean; 14 were ready, 30 correctly
+reported `overlay-active`, and one readiness preflight correctly reported
+`overlay-not-ready`. The run preserved the same web/store/Friends/dialog,
+shortcut/toggle, passive progress/unlock toast, checkout approval/prepare,
+close/back-to-app, parked zero-FPS, managed isolation, and clean crash
+diagnostics.
 A 2026-06-30 13:32 PDT crash-report sweep after a later user-visible Ignore
 dialog found no newer `SteamBridgeSmoke`, `gameoverlayui`, `Steam Helper`, or
 attributed `MTLCompilerService` DiagnosticReport than the known

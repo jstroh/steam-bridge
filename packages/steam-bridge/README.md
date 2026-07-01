@@ -1059,6 +1059,18 @@ stats/achievements/user/dialog-equivalent routes, and every programmatic
 shortcut `openAndWait(...)` target with close/back-to-app proof, parked
 zero-FPS state, zero managed timing, managed isolation, clean crash diagnostics,
 and no leftover smoke or overlay processes.
+A current-head 2026-07-01 persistent Apple Silicon artifact at
+`/tmp/steam-bridge-macos-overlay-matrix-persistent-checkout-operation-20260701-083629`
+rebuilt and signed the same arm64-only Electron `43.0.0` package, reused the
+stable App ID `480` shortcut without restarting Steam, launched one Steam-owned
+smoke process/control-server lifecycle, and passed all 45 persistent cases
+after the macOS summary auditor began printing `checkoutOperation=true` beside
+`openStatuses=true`. The live artifact proves every smoke snapshot included
+`snapshot.overlay.openStatuses.checkoutOperation` with a checkout target
+snapshot and `canStartOperation` boolean, while preserving the same web/store/
+Friends/dialog, shortcut/toggle, passive progress/unlock toast, checkout
+approval/prepare, close/back-to-app, parked zero-FPS, managed isolation, and
+clean crash diagnostics.
 A later recovered-client full artifact at
 `/tmp/steam-bridge-macos-overlay-matrix-20260630-220434` also passed all 44
 process-per-case App ID `480` cases after recreating the stable shortcut and

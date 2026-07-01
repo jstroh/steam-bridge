@@ -377,6 +377,7 @@ function summarizeMatrixArtifacts(root) {
         `shown=${summary.shown}`,
         `webVisible=${summary.webVisible}`,
         `openStatuses=${summary.openStatuses}`,
+        `checkoutOperation=${summary.checkoutOperation}`,
         `managedWaits=${summary.managedWaits}`,
         `openAndWait=${summary.openAndWait}`,
         `checkoutWait=${summary.checkoutWait}`,
@@ -778,6 +779,7 @@ function verifyCase(caseId, metadata, result, lifecycle, macosCrashReports, fail
     shown: managedWaits.required ? managedWaits.shownOk : "n/a",
     webVisible: webVisible.required ? webVisible.ok : "n/a",
     openStatuses: openStatuses.required ? openStatuses.ok : "n/a",
+    checkoutOperation: openStatuses.checkoutOperation,
     managedWaits: managedWaits.required ? managedWaits.ok : "n/a",
     openAndWait: openAndWait.required ? openAndWait.ok : "n/a",
     checkoutWait: checkoutWait.required ? checkoutWait.ok : "n/a",
@@ -865,10 +867,11 @@ function verifyNamedOpenStatusSnapshots(caseId, metadata, overlay, failures) {
   const requireNamedOpenStatusSnapshots = metadata.requireNamedOpenStatusSnapshots === true;
   const requireCheckoutOperationStatusSnapshot = metadata.requireCheckoutOperationStatusSnapshot === true;
   if (!requireNamedOpenStatusSnapshots && !requireCheckoutOperationStatusSnapshot) {
-    return { required: false, ok: true };
+    return { required: false, ok: true, checkoutOperation: "n/a" };
   }
 
   const failuresBefore = failures.length;
+  let checkoutOperationOk = requireCheckoutOperationStatusSnapshot ? false : "n/a";
   const openStatusesEntry = overlay.openStatuses;
   expect(openStatusesEntry && openStatusesEntry.ok === true, `${caseId}: named open status snapshot read ok`, failures);
   const statuses = readOkValue(openStatusesEntry);
@@ -878,7 +881,7 @@ function verifyNamedOpenStatusSnapshots(caseId, metadata, overlay, failures) {
     failures
   );
   if (!statuses || typeof statuses !== "object" || Array.isArray(statuses)) {
-    return { required: true, ok: false };
+    return { required: true, ok: false, checkoutOperation: checkoutOperationOk };
   }
 
   if (requireNamedOpenStatusSnapshots) {
@@ -888,10 +891,12 @@ function verifyNamedOpenStatusSnapshots(caseId, metadata, overlay, failures) {
   }
 
   if (requireCheckoutOperationStatusSnapshot) {
+    const checkoutOperationFailuresBefore = failures.length;
     verifyNamedOpenStatusSnapshot(caseId, statuses, "checkoutOperation", "checkout", failures);
+    checkoutOperationOk = failures.length === checkoutOperationFailuresBefore;
   }
 
-  return { required: true, ok: failures.length === failuresBefore };
+  return { required: true, ok: failures.length === failuresBefore, checkoutOperation: checkoutOperationOk };
 }
 
 function verifyNamedOpenStatusSnapshot(caseId, statuses, name, targetType, failures) {
@@ -2011,6 +2016,10 @@ function runSelfTest() {
       summary.caseSummaries.every((item) => item.closed !== true || item.parked !== true || item.idleStable === true),
       "summary self-test should report stable idle presenters for closed active-overlay cases"
     );
+    assert(
+      summary.caseSummaries.every((item) => item.checkoutOperation === true),
+      "summary self-test should report checkout operation preflight proof"
+    );
     createPersistentSelfTestFixture(persistentFixtureRoot);
     const persistentSummary = summarizeMatrixArtifacts(persistentFixtureRoot);
     assert.equal(persistentSummary.caseSummaries.length, 2, "persistent summary self-test should include two cases");
@@ -2019,6 +2028,10 @@ function runSelfTest() {
         (item) => item.closed !== true || item.parked !== true || item.idleStable === true
       ),
       "persistent summary self-test should report stable idle presenters for closed active-overlay cases"
+    );
+    assert(
+      persistentSummary.caseSummaries.every((item) => item.checkoutOperation === true),
+      "persistent summary self-test should report checkout operation preflight proof"
     );
     assertSuiteCoverageSelfTest();
     createSelfTestFixture(unredactedFixtureRoot);

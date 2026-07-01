@@ -536,8 +536,10 @@ New macOS matrix manifests record their suite name, and the summary auditor
 rejects named-suite artifacts that are missing required overlay surface cases.
 New manifests also require the smoke result snapshot to include named
 builder-facing open-status diagnostics for web, store, Friends, profile,
-players, community, stats, achievements, user, dialog, and checkout targets;
-summary rows report this as `openStatuses=true` when the proof is present.
+players, community, stats, achievements, user, dialog, and checkout targets,
+plus the checkout-operation preflight used before starting `InitTxn`; summary
+rows report this as `openStatuses=true` and `checkoutOperation=true` when the
+proof is present.
 The same auditor also scans smoke result JSON and lifecycle logs for raw
 checkout approval URLs, transaction/order IDs, return URLs, Steam IDs, and
 private checkout CLI arguments, so private purchase artifacts fail closed if
@@ -647,6 +649,18 @@ stats/achievements/user/dialog-equivalent routes, and every programmatic
 shortcut `openAndWait(...)` target with close/back-to-app proof, parked
 zero-FPS state, zero managed timing, managed isolation, clean crash diagnostics,
 and no leftover smoke or overlay processes.
+A current-head persistent Apple Silicon run at
+`/tmp/steam-bridge-macos-overlay-matrix-persistent-checkout-operation-20260701-083629`
+rebuilt and signed the same arm64-only Electron `43.0.0` package, reused the
+stable App ID `480` shortcut without restarting Steam, launched one Steam-owned
+smoke process/control-server lifecycle, and passed all 45 persistent cases
+after the macOS summary auditor began printing `checkoutOperation=true` beside
+`openStatuses=true`. The live artifact proves every smoke snapshot included
+`snapshot.overlay.openStatuses.checkoutOperation` with a checkout target
+snapshot and `canStartOperation` boolean, while preserving the same web/store/
+Friends/dialog, shortcut/toggle, passive progress/unlock toast, checkout
+approval/prepare, close/back-to-app, parked zero-FPS, managed isolation, and
+clean crash diagnostics.
 
 ## Shipping Notes
 

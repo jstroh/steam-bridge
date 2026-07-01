@@ -1325,6 +1325,21 @@ Current evidence:
   suppression, and passive notification priming while preserving the same
   close/back-to-app, zero-FPS parking, zero managed timing, isolation, and
   crash checks.
+  A current-head persistent Apple Silicon matrix at
+  `/tmp/steam-bridge-macos-overlay-matrix-persistent-checkout-operation-20260701-083629`
+  rebuilt and signed the same arm64-only Electron `43.0.0` package, reused the
+  stable App ID `480` shortcut without restarting Steam, launched one
+  Steam-owned smoke process/control-server lifecycle, and passed all 45
+  persistent cases after the macOS summary auditor began printing
+  `checkoutOperation=true` beside `openStatuses=true`. A direct artifact probe
+  verified all 45 smoke snapshots contained
+  `snapshot.overlay.openStatuses.checkoutOperation` with a checkout target
+  snapshot and `canStartOperation` boolean; 14 were ready, 30 correctly reported
+  `overlay-active`, and one readiness preflight correctly reported
+  `overlay-not-ready`. The run preserved the same web/store/Friends/dialog,
+  shortcut/toggle, passive progress/unlock toast, checkout approval/prepare,
+  close/back-to-app, parked zero-FPS, managed isolation, and clean crash
+  diagnostics.
 - BrowserWindow-only overlay support is not proven.
 - Steam launch, app ID, auth, and callbacks are not enough to claim overlay
   support.
