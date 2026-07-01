@@ -760,6 +760,18 @@ timing, parked zero-FPS presenter state, no leftover smoke/gameoverlay process,
 and no copied macOS crash reports. The persistent matrix can now retry one
 crash-free post-action overlay activation timeout by relaunching the whole
 one-process suite; a repeated miss still fails.
+A fresh 2026-06-30 minimal macOS matrix at
+`/tmp/steam-bridge-macos-overlay-matrix-20260630-174351` rebuilt and signed the
+Electron `43.0.0` package after the public `InitTxn` session helpers landed,
+verified the signing shape, reused the stable Steam shortcut without restarting
+Steam, and passed the readiness, web, store, Friends, dialog-equivalent, and
+passive achievement-progress cases. The run again proved one Metal
+presenter-backed overlay target for active/passive overlay cases, visible Steam
+web content before close probes, active/inactive callbacks and app-frontmost
+return for modal routes, parked zero-FPS state, zero managed overlay timing,
+`overlayNeedsPresentPollingEnabled=false`, and no fresh `SteamBridgeSmoke`,
+`gameoverlayui`, `Steam Helper`, or attributed `MTLCompilerService` crash
+report beyond the older known `MTLCompilerService-2026-06-30-084244.ips`.
 
 ## Primary References
 

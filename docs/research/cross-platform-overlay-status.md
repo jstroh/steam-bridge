@@ -372,6 +372,17 @@ active/inactive callbacks, returned focus to the app, parked at zero managed
 overlay timing, and reported no fresh crash evidence. This is generic checkout
 plumbing evidence; real purchase content still requires a real configured Steam
 app/product and private `InitTxn` response.
+A fresh minimal macOS suite at
+`/tmp/steam-bridge-macos-overlay-matrix-20260630-174351` rebuilt and signed the
+Electron `43.0.0` smoke package after the public `InitTxn` session helpers
+landed, reused the existing stable Steam shortcut without restarting Steam, and
+passed all six App ID `480` cases. The run re-verified readiness, web, store,
+Friends, dialog-equivalent, and passive achievement-progress coverage with one
+Metal presenter-backed overlay target for active and passive overlay cases,
+visible Steam web content before close probes, active/inactive callbacks for
+modal routes, app-frontmost return, zero managed overlay timing,
+`overlayNeedsPresentPollingEnabled=false`, and no newer crash report than the
+known earlier `MTLCompilerService` report.
 
 ## Steam Deck Shortcut Gate
 
