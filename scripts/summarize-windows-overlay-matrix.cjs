@@ -444,15 +444,15 @@ function validateNativeLoadBlocker(blocker, appControlGate, failures) {
     expect(Boolean(blocker.appControl), "App Control native-load blocker includes appControl summary", failures);
     if (blocker.appControl) {
       expect(
-        blocker.appControl.verifiedAndReputableEnforced === true,
-        "App Control native-load blocker records verifiedAndReputableEnforced=true",
+        hasVerifiedAndReputableEvidence(blocker.appControl),
+        "App Control native-load blocker records VerifiedAndReputable policy evidence",
         failures
       );
     }
     if (appControlGate) {
       expect(
-        appControlGate.verifiedAndReputableEnforced === true,
-        "native-load gate App Control summary records verifiedAndReputableEnforced=true",
+        hasVerifiedAndReputableEvidence(appControlGate),
+        "native-load gate App Control summary records VerifiedAndReputable policy evidence",
         failures
       );
     }
@@ -462,6 +462,15 @@ function validateNativeLoadBlocker(blocker, appControlGate, failures) {
       failures
     );
   }
+}
+
+function hasVerifiedAndReputableEvidence(appControl) {
+  return (
+    appControl &&
+    (appControl.verifiedAndReputableEnforced === true ||
+      appControl.verifiedAndReputablePolicyState === 1 ||
+      appControl.verifiedAndReputablePolicyState === "1")
+  );
 }
 
 function validateSteamLaunchBlocker(blocker, failures) {

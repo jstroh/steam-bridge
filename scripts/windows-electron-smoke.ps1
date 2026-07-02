@@ -1166,14 +1166,26 @@ function Invoke-DirectSmoke {
   Remove-Item -LiteralPath $DiagnosticDir -Recurse -Force -ErrorAction SilentlyContinue
 
   Set-SmokeProcessEnv (Get-SmokeEnv -LogFile $ResultFile -SmokeAction $Action)
-  $process = Start-Process -FilePath $exe -WorkingDirectory $AppDir -PassThru
-  if (-not $process.WaitForExit($TimeoutSeconds * 1000)) {
-    Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
-    throw "Timed out waiting for SteamBridgeSmoke.exe to exit."
+  $process = $null
+  try {
+    $process = Start-Process -FilePath $exe -WorkingDirectory $AppDir -PassThru
+    Wait-ForResultFile -LogFile $ResultFile
+    $result = Read-SmokeResult -LogFile $ResultFile
+    Assert-SmokeResult $result
+    Wait-ForSmokeProcessExit -Result $result
+  } catch {
+    if ($process -and -not $KeepOpenAfterResult) {
+      try {
+        $process.Refresh()
+        if (-not $process.HasExited) {
+          Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+        }
+      } catch {
+        Write-Host ("Direct smoke cleanup warning: {0}" -f $_.Exception.Message)
+      }
+    }
+    throw
   }
-
-  Wait-ForResultFile -LogFile $ResultFile
-  Assert-SmokeResult (Read-SmokeResult -LogFile $ResultFile)
 }
 
 function Invoke-SteamLaunchSmoke {

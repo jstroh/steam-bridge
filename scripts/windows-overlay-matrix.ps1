@@ -151,20 +151,24 @@ function Convert-MatrixEventTime {
   }
 
   if ($Value -is [datetime]) {
-    return [datetime]$Value
+    return ([datetime]$Value).ToUniversalTime()
   }
 
   $text = [string]$Value
   if ($text -match '^/Date\((-?\d+)\)/$') {
     try {
-      return [System.DateTimeOffset]::FromUnixTimeMilliseconds([int64]$Matches[1]).LocalDateTime
+      return [System.DateTimeOffset]::FromUnixTimeMilliseconds([int64]$Matches[1]).UtcDateTime
     } catch {
       return $null
     }
   }
 
   try {
-    return [datetime]::Parse($text, [System.Globalization.CultureInfo]::InvariantCulture)
+    return ([datetime]::Parse(
+      $text,
+      [System.Globalization.CultureInfo]::InvariantCulture,
+      [System.Globalization.DateTimeStyles]::AssumeUniversal -bor [System.Globalization.DateTimeStyles]::AdjustToUniversal
+    )).ToUniversalTime()
   } catch {
     return $null
   }
@@ -177,7 +181,7 @@ function Select-CodeIntegrityEventsSince {
     return @($Events)
   }
 
-  $threshold = $Since.AddSeconds(-2)
+  $threshold = $Since.ToUniversalTime().AddSeconds(-2)
   return @(
     $Events |
       Where-Object {
@@ -1011,7 +1015,10 @@ function New-NativeLoadGateBlocker {
           $_ -match "Application Control policy has blocked"
       }
   ).Count -gt 0
-  $verifiedAndReputableBlock = [bool]$AppControlSummary.verifiedAndReputableEnforced
+  $verifiedAndReputableBlock = (
+    [bool]$AppControlSummary.verifiedAndReputableEnforced -or
+    $AppControlSummary.verifiedAndReputablePolicyState -eq 1
+  )
   $blockerCode = if ($verifiedAndReputableBlock -or $codeIntegrityPolicyBlock) {
     "windows-app-control-native-load-block"
   } else {

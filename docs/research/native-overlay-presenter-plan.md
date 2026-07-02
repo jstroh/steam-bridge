@@ -1,10 +1,13 @@
 # Native Overlay Presenter Plan
 
-Last updated: 2026-07-01
+Last updated: 2026-07-02
 
 This is the forward plan for reliable Steam overlay behavior in Electron apps on
-Linux/Steam Deck and macOS. Windows overlay behavior appears lower risk, so the
-plan treats Windows as a regression baseline rather than the design driver.
+Linux/Steam Deck, macOS, and Windows. Windows direct-hook behavior is still
+useful as a regression baseline, but current Electron 43 testing on the Windows
+laptop shows it is not safe to treat that baseline as product-ready until it can
+prove visible overlay UI, close/back-to-app behavior, and clean crash
+diagnostics.
 
 The goal is to make Steam Bridge own the hard platform work. Electron app
 builders should initialize Steam, attach one presenter to their main window, and
@@ -29,6 +32,19 @@ timing hacks.
   the same failure mode: the web runtime often renders in a GPU child process or
   a surface Steam does not reliably hook. Steamworks calls can succeed while the
   visible overlay never appears.
+- Windows wrapper history points to the same tradeoff from another angle:
+  `--in-process-gpu` can make Steam hook Chromium's main process, but modern
+  Chromium/Electron/NW.js builds can turn that path into a blank window; disabling
+  DirectComposition can make the app visible on some machines, but it carries
+  ghost-window and close/focus regression risk and must remain diagnostic until
+  the matrix proves otherwise.
+- A July 2, 2026 Windows laptop pass captured the split directly: the default
+  in-process-GPU path produced a blank smoke window, while a DirectComposition-off
+  comparison rendered the app but showed only Steam overlay activation/dim-toast
+  evidence without visible Friends/web UI or close/back-to-app completion. That
+  moves a bridge-owned Windows native presenter from fallback research to the
+  next serious implementation candidate, while keeping the app-facing
+  `createElectronSteamOverlay(...)` API unchanged.
 - Steam Bridge's Deck Desktop testing confirmed a second Electron-specific
   failure mode: if Steam's overlay renderer is inherited by Chromium child
   processes, Steam can create competing `gameoverlayui` targets for both the

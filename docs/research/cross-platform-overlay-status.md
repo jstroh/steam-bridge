@@ -123,14 +123,15 @@ That turns managed cases into real close/back-to-app proof when an operator or
 verified UI probe closes the overlay, rather than accepting show-only callback
 evidence.
 
-A follow-up Windows source sweep checked Valve's overlay requirements, Electron
-command-line-switch behavior, Electron in-process-GPU issue reports,
-steamworks.js overlay issue history, Steamworks.NET launch/injection guidance,
-WebView2 overlay reports, Construct's browser-overlay writeup, and newer native
-surface wrapper research. The sources agree on the core tradeoff: Steam needs a
-hookable graphics surface, browser runtimes often push GPU work out of the main
-process, and Chromium's in-process GPU path is the common Electron workaround
-but has real white-window and composition regressions. A local ad-hoc
+A follow-up Windows source sweep checked Valve's overlay requirements,
+`ISteamFriends` overlay routes, Electron command-line-switch and offscreen
+rendering behavior, Electron in-process-GPU issue reports, steamworks.js overlay
+issue history, Steamworks.NET launch/injection guidance, WebView2 overlay
+reports, Construct's browser-overlay writeups, NW.js/Greenworks regressions, and
+newer native surface wrapper research. The sources agree on the core tradeoff:
+Steam needs a hookable graphics surface, browser runtimes often push GPU work out
+of the main process, and Chromium's in-process GPU path is the common Electron
+workaround but has real white-window and composition regressions. A local ad-hoc
 interactive render probe on the Windows laptop first captured this split under
 `C:\Users\admin\steam-bridge-artifacts\windows-render-flag-probe-20260702-001`:
 the default `in-process-gpu-on` case loaded Steam and emitted
@@ -385,23 +386,26 @@ OpenGL/D3D device is initialized in development, and only supports real graphics
 APIs such as DirectX, OpenGL, Metal, and Vulkan; Valve's own browser-game note
 says web/browser games need a native D3D host that renders Chromium offscreen and
 forwards input, and that this is not easy. Electron's documented command-line
-path requires switches to be appended before `app.ready`, but the Chromium
-switches that wrapper projects historically use are not stable product
-contracts. The public Electron/NW.js/steamworks.js/WebView2 reports line up with
-the local Windows evidence: `--in-process-gpu` can make Steam hook Chromium by
-moving GPU work into the main process, but it is also associated with blank or
-white windows on newer Chromium/NW.js/Electron combinations; `--disable-direct-composition`
-can help a white overlay in some reports but has ghost-window risk
-in steamworks.js reports, and a steamworks.js issue found `--in-process-gpu`
-without `--disable-direct-composition` worked better for Alt+Tab behavior. This
-keeps the Windows default conservative: use the ordinary Electron hook with
-`in-process-gpu`, treat `disable-direct-composition` as an explicit diagnostic
-comparison, collect Steam CEF/GPU/render-health evidence before restarting
-Steam, and only promote a native presenter/host for Windows if repeated
-interactive evidence proves a Steam route cannot be made visible through
-Electron. Sources:
+path requires switches to be appended before `app.ready`, and Electron's
+offscreen rendering docs identify a supported path for obtaining BrowserWindow
+frames when a native graphics host needs to render them itself. The public
+Electron/NW.js/steamworks.js/WebView2 reports line up with the local Windows
+evidence: `--in-process-gpu` can make Steam hook Chromium by moving GPU work into
+the main process, but it is also associated with blank or white windows on newer
+Chromium/NW.js/Electron combinations; `--disable-direct-composition` can help a
+white overlay in some reports but has ghost-window risk in steamworks.js reports,
+and a steamworks.js issue found `--in-process-gpu` without
+`--disable-direct-composition` worked better for Alt+Tab behavior. This demotes
+the ordinary Windows Electron hook to a measured baseline: keep collecting Steam
+CEF/GPU/render-health evidence before restarting Steam, keep
+`disable-direct-composition` diagnostic-only, and implement/promote a
+bridge-owned Windows presenter only after it passes the same visible UI,
+close/back-to-app, FPS, focus, and clean-crash matrix required on Linux and
+macOS. Sources:
 https://partner.steamgames.com/doc/features/overlay,
+https://partner.steamgames.com/doc/api/ISteamFriends,
 https://www.electronjs.org/docs/latest/api/command-line-switches,
+https://www.electronjs.org/docs/latest/tutorial/offscreen-rendering,
 https://github.com/electron/electron/issues/3340,
 https://github.com/electron/electron/issues/18048,
 https://github.com/ceifa/steamworks.js/issues/95,
@@ -412,8 +416,32 @@ https://www.construct.net/en/blogs/ashleys-blog-2/trying-show-steam-overlay-1861
 https://liana.one/integrate-electron-steam-api-steamworks,
 https://github.com/nwjs/nw.js/issues/4982,
 https://github.com/greenheartgames/greenworks/issues/349,
+https://github.com/ArtyProf/steamworks-ffi-node/blob/main/docs/STEAM_OVERLAY_INTEGRATION.md,
 https://steamcommunity.com/discussions/forum/10/591756872987476379/,
 https://community.monogame.net/t/steam-overlay-not-showing-with-windows-assembly-of-monogame-3-6/8926.
+
+A later current-package Windows proof pass on 2026-07-02 contradicted the older
+direct-hook optimism. The render-health artifact
+`C:\Users\admin\steam-bridge-artifacts\windows-render-health-current-20260702165045`
+showed the default `in-process-gpu-on` path as blank/pale even though the smoke
+app emitted a first-render result; `in-process-gpu-off` and
+`in-process-gpu-on-disable-direct-composition` rendered the app. Focused live
+DirectComposition-off runs then proved Steam launch, `IsOverlayEnabled`, and
+`GameOverlayActivated(true)` for managed web and Friends paths, but the
+screenshots showed only dim/toast or spinner states, `SendInput` close probes
+were delivered while the foreground window stayed `SteamBridgeSmoke`, and the
+managed wait timed out before `GameOverlayActivated(false)`,
+`overlay:presenter-wait-closed`, `overlay:presenter-parked`, or
+`overlay:presenter-open-and-wait-complete`. The focused artifacts were
+`windows-managed-web-dcomp-current-20260702172500`,
+`windows-managed-web-dcomp-escape-20260702173500`, and
+`windows-managed-friends-toggle-20260702174500`. A default raw dialog observe
+artifact, `windows-raw-dialog-default-20260702175500`, passed callback-level
+observe checks but captured the same blank default app window. Treat this as
+evidence that Windows direct Electron hooking is not product-ready on the current
+machine; the next implementation should either produce visible overlay UI with
+close/back-to-app through the direct hook or move Windows to a hidden
+bridge-owned native presenter behind the same managed Electron API.
 
 A native Windows control comparison now lives beside the smoke package as
 `windows-native-overlay-control.ps1` plus a small C# OpenGL source file. It is

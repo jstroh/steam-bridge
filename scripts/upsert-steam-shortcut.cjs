@@ -289,6 +289,12 @@ function shortcutLaunchFieldsMatch(existing, expected) {
     if (key === "LastPlayTime" || key === "tags") {
       continue;
     }
+    if (key === "StartDir") {
+      if (normalizeShortcutDirectory(existing[key]) !== normalizeShortcutDirectory(expected[key])) {
+        return false;
+      }
+      continue;
+    }
     if (UINT32_FIELDS.includes(key)) {
       if ((Number(existing[key] || 0) >>> 0) !== (Number(expected[key] || 0) >>> 0)) {
         return false;
@@ -366,6 +372,11 @@ function quotePath(value) {
 function unquotePath(value) {
   const text = String(value || "").trim();
   return text.startsWith("\"") && text.endsWith("\"") ? text.slice(1, -1) : text;
+}
+
+function normalizeShortcutDirectory(value) {
+  const normalized = unquotePath(value).replace(/\\/g, "/");
+  return normalized ? ensureTrailingSlash(normalized) : "";
 }
 
 function ensureTrailingSlash(value) {
@@ -492,6 +503,10 @@ function runSelfTest() {
     LastPlayTime: 999999,
     tags: { local: "ignored" }
   });
+  const normalizedStartDirMatch = shortcutLaunchFieldsMatch(shortcut, {
+    ...shortcut,
+    StartDir: "\\tmp\\"
+  });
   const summary = summarizeShortcutEntry(shortcut);
   if (
     !shortcut ||
@@ -500,6 +515,7 @@ function runSelfTest() {
     terminator[0] !== TYPE_END ||
     terminator[1] !== TYPE_END ||
     !materialMatch ||
+    !normalizedStartDirMatch ||
     summary.gameId !== computeShortcutGameId(123) ||
     summary.exePath !== "/tmp/example"
   ) {

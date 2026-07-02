@@ -286,17 +286,21 @@ is also available for explicit diagnostics. `electronConfigureSteamOverlay()`
 scrubs Steam's overlay renderer from Electron child-process preload environment
 variables and adds Electron's Linux `no-zygote` switch by default. On Linux and
 macOS, that keeps the bridge-owned native presenter as the single Steam overlay
-target. On Windows, Steam Bridge keeps the ordinary direct Steam overlay hook.
-Core Steam API success should not be treated as proof that the Steam overlay has
-hooked the right surface.
+target. On Windows, Steam Bridge currently keeps the ordinary direct Steam
+overlay hook as the first diagnostic baseline, but that path is not considered
+product-ready until the Windows matrix proves visible overlay UI,
+close/back-to-app behavior, and clean crash diagnostics. Core Steam API success
+should not be treated as proof that the Steam overlay has hooked the right
+surface.
 `client.overlay.createElectronSteamOverlay()` applies the same child-process
 preload scrub by default for future Electron children, so the managed overlay
 path still protects apps that create the overlay manager before later windows or
-workers are spawned. On Windows, this managed overlay uses Steam's ordinary
-overlay hook directly and does not create a bridge-owned native host; Linux and
-macOS use the native presenter where Electron needs a more reliable Steam
-overlay target. Pass `scrubSteamOverlayChildProcessEnv: false` only when
-collecting raw Electron-child overlay diagnostics.
+workers are spawned. Linux and macOS use the native presenter where Electron
+needs a more reliable Steam overlay target. Windows may move to the same
+bridge-owned presenter shape under the hood if the direct Electron hook cannot
+pass the visible-overlay and close/back-to-app matrix. Pass
+`scrubSteamOverlayChildProcessEnv: false` only when collecting raw
+Electron-child overlay diagnostics.
 Raw activation helpers such as `activateToWebPage(...)` remain available for
 Node/native smoke checks and diagnostics, but Electron product overlay work
 should go through the managed `createElectronSteamOverlay(...)` path.

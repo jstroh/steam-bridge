@@ -310,19 +310,22 @@ plumbing.
 When the managed overlay is created, Steam Bridge also scrubs Steam's overlay
 renderer entries from future Electron child-process preload environment
 variables by default. On Linux and macOS, that keeps the bridge-owned native
-presenter as the overlay target; on Windows, Steam Bridge keeps the ordinary
-direct Steam overlay hook. Set `scrubSteamOverlayChildProcessEnv: false` only
-for raw diagnostic comparisons.
-On Windows, the managed overlay uses the ordinary Steam overlay hook directly
-instead of creating a bridge-owned native host. The default Electron
-configuration enables Chromium's in-process GPU path without starting a repaint
-loop. The Windows smoke helper mirrors that with `-OverlayInProcessGpu 1`; pass
-`-OverlayInProcessGpu 0` only for a baseline comparison. If a Windows smoke run
-still shows a white or stale overlay, use
+presenter as the overlay target. On Windows, the current implementation still
+keeps Steam's ordinary direct Electron hook as the first measured baseline, but
+that baseline must prove visible overlay UI, close/back-to-app behavior, and
+clean crash diagnostics before it is treated as product-ready. Set
+`scrubSteamOverlayChildProcessEnv: false` only for raw diagnostic comparisons.
+The default Windows Electron configuration enables Chromium's in-process GPU
+path without starting a repaint loop. The Windows smoke helper mirrors that with
+`-OverlayInProcessGpu 1`; pass `-OverlayInProcessGpu 0` only for a renderer
+baseline comparison. If a Windows smoke run shows a blank game window, dim-only
+overlay, stale overlay, or missing close/back-to-app evidence, use
 `electronConfigureSteamOverlay({ disableDirectComposition: true })` or the
-helper's `-OverlayDisableDirectComposition 1` flag for an explicit comparison
+helper's `-OverlayDisableDirectComposition 1` flag only as an explicit diagnostic
 run; keep Alt+Tab/close regression checks in that pass because this Chromium
 switch has known ghost-window risk in upstream Electron Steam wrapper reports.
+Steam Bridge's app-facing API should stay the same if Windows needs a
+bridge-owned native presenter under the hood.
 If the Steam client window itself is blank or white, treat that as a Steam
 client rendering-health blocker first. The Windows matrix captures CEF,
 webhelper, and overlay log tails plus matching error lines under
