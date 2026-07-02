@@ -5,6 +5,8 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 
+const CHECKOUT_APP_ID_KEYS = ["appid", "app_id", "appId", "m_unAppID", "m_nAppID"];
+
 function main(args = process.argv.slice(2)) {
   const status = runCli(args);
   if (status !== 0) {
@@ -249,7 +251,7 @@ function collectAppIds(value, seen = new Set(), depth = 0) {
 
   seen.add(value);
   const found = [];
-  for (const key of ["appid", "app_id", "appId"]) {
+  for (const key of CHECKOUT_APP_ID_KEYS) {
     if (Object.prototype.hasOwnProperty.call(value, key)) {
       const appId = normalizeAppIdValue(value[key]);
       if (appId !== undefined) {
@@ -314,6 +316,7 @@ function runSelfTest() {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-checkout-target-validator-"));
   try {
     const validFile = path.join(tempDir, "valid.json");
+    const validSdkAppIdFile = path.join(tempDir, "valid-sdk-app-id.json");
     const invalidFile = path.join(tempDir, "invalid.json");
     const rawTransactionId = "246813579";
     const rawReturnUrl = "steam://return-from-private-proof";
@@ -337,6 +340,18 @@ function runSelfTest() {
         response: {
           params: {
             returnurl: rawReturnUrl
+          }
+        }
+      })
+    );
+    fs.writeFileSync(
+      validSdkAppIdFile,
+      JSON.stringify({
+        response: {
+          result: "OK",
+          params: {
+            m_unAppID: 480,
+            transid: rawTransactionId
           }
         }
       })
@@ -381,6 +396,16 @@ function runSelfTest() {
     assert.equal(wrongAppId.errorOutput.join("\n").includes("480"), false);
     assert.equal(wrongAppId.errorOutput.join("\n").includes("481"), false);
     assert.match(wrongAppId.errorOutput.join("\n"), /app ID does not match/);
+
+    const validSdkAppId = captureRun(["--file", validSdkAppIdFile, "--expected-app-id", "480"]);
+    assert.equal(validSdkAppId.status, 0);
+    assert.deepEqual(JSON.parse(validSdkAppId.output.join("\n")).appId, {
+      checked: true,
+      present: true,
+      matchesExpected: true
+    });
+    assert.equal(validSdkAppId.output.join("\n").includes(rawTransactionId), false);
+    assert.equal(validSdkAppId.output.join("\n").includes(validSdkAppIdFile), false);
 
     const validQuiet = captureRun(["--file", validFile, "--quiet"]);
     assert.equal(validQuiet.status, 0);

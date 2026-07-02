@@ -576,6 +576,9 @@ same wrong-app guard used by runtime checkout opens rejects mismatches without
 printing either value. A malformed, incomplete, or mismatched private `InitTxn`
 capture fails early. Run the same validation without the matrix using
 `npx steam-bridge-validate-checkout-target --file <private-init-txn-response.json> --expected-app-id <your-app-id>`.
+That validator treats Steam SDK-style app ID fields such as `m_unAppID` and
+`m_nAppID` as embedded app IDs too, so private captures report
+`appId.present=true` without printing the value.
 Use the macOS matrix's `--suite checkout` for focused private purchase proof;
 pair it with `--app-id <your-app-id>`,
 `--checkout-json-file <private-init-txn-response.json>`, and

@@ -2037,6 +2037,11 @@ test("project support policy covers Steam desktop targets except Intel macOS", (
     "checkout target validator must pass expected app ID into the public checkout target resolver"
   );
   assert.match(validateCheckoutScript, /checkout JSON app ID does not match --expected-app-id/);
+  assert.match(
+    validateCheckoutScript,
+    /"appid",\s*"app_id",\s*"appId",\s*"m_unAppID",\s*"m_nAppID"/,
+    "checkout target validator must report SDK-style checkout app IDs as present"
+  );
   assert.match(launcherTemplate, /STEAM_BRIDGE_MACOS_ENV_LAUNCHER_V1/);
   assert.doesNotMatch(launcherTemplate, /SteamBridgeSmoke/);
 });

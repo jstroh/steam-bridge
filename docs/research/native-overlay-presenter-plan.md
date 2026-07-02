@@ -1750,10 +1750,13 @@ Current real-product checkout guardrail:
   `--app-id` into that resolver so embedded app IDs use the runtime wrong-app
   guard, and prints only sanitized presence flags. The same resolver is exposed as
   `steam-bridge-validate-checkout-target --expected-app-id <app-id>` for
-  standalone fixture checks. Malformed, incomplete, or app-ID-mismatched
-  private captures fail early without echoing the file path, app ID,
-  transaction ID, checkout URL, or return URL. The macOS summary auditor also
-  scans smoke result JSON and lifecycle logs for raw checkout approval URLs,
+  standalone fixture checks. The standalone validator reports SDK-style
+  `m_unAppID`/`m_nAppID` fields as present app IDs without printing their
+  values, matching the runtime checkout target parser. Malformed, incomplete,
+  or app-ID-mismatched private captures fail early without echoing the file
+  path, app ID, transaction ID, checkout URL, or return URL. The macOS summary
+  auditor also scans smoke result JSON and lifecycle logs for raw checkout
+  approval URLs,
   transaction/order IDs, return URLs, Steam IDs, configured-product item
   metadata, price/currency details, and private checkout CLI arguments, so
   private purchase artifacts fail closed if runtime redaction regresses after
