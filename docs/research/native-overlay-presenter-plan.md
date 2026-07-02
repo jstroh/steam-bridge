@@ -1705,6 +1705,26 @@ errors. That rules out "switch profile to the native user API" as a complete
 Windows fix. Keep investigating Steam Community overlay rendering and Steam
 client webhelper health separately from Electron hook readiness.
 
+A second July 2, 2026 native Windows control comparison used a tiny Steam
+Bridge-owned diagnostic executable, not Electron. The control initializes Steam
+as App ID `480`, creates a native OpenGL window, calls the flat Steam overlay
+APIs, captures screenshots, and exits after an observation window. The first
+Steam-launched `ActivateGameOverlayToUser("steamid", currentUser)` run at
+`C:\Users\admin\AppData\Local\Temp\steam-bridge-windows-native-overlay-control-20260702-081410`
+initialized Steam successfully, observed overlay readiness, started
+`gameoverlayui64`, rendered continuously, and showed Steam Community profile
+content visible on the desktop with a Back to Game overlay shell. That narrows
+the Windows profile/community problem: the Steam client can render the profile
+surface during a native OpenGL control run, while the Electron smoke route can
+remain active/callback-only with no visible Community surface. This is still
+only diagnostic evidence. Do not turn Windows into the macOS-style native
+presenter path unless a later matrix proves that the ordinary Electron path
+cannot be made reliable for the required routes. The env-file version of this
+native control also exposed a local Smart App Control/App Control reputation
+block for the freshly rebuilt generated executable, so repeat native-control
+proof needs either the previously accepted binary, a reputable publisher-signed
+binary, or an explicit policy-disabled development machine.
+
 Windows gates:
 
 - packaged helper preflight reports App Control/SAC state, parsed

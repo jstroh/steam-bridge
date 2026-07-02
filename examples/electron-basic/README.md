@@ -158,6 +158,39 @@ App ID `480`, captures desktop and client-area screenshots, and writes
 `-OverlayDisableDirectComposition 1` as an explicit diagnostic until that mode
 also survives crash, close/back-to-app, and Alt+Tab checks.
 
+The Windows package also includes `windows-native-overlay-control.ps1` and the
+source for a tiny C# OpenGL control app. This is a route diagnostic, not an
+Electron-builder API. It compares Steam's native overlay behavior against the
+Electron smoke app by launching a native OpenGL window through Steam, initializing
+Steam as App ID `480`, and calling raw web/store/dialog/user overlay APIs while
+capturing screenshots and result JSON. Build it, sign the exact package, then
+install its stable shortcut:
+
+```powershell
+.\windows-native-overlay-control.ps1 -Mode build
+.\sign-windows-package.ps1 -CertificateSubject "Steam Bridge Local Test Code Signing"
+.\windows-native-overlay-control.ps1 -Mode shortcut -InstallShortcut
+```
+
+If the shortcut changes while Steam is running, restart Steam once before live
+runs. After that, the shortcut points at a stable env file under
+`%LOCALAPPDATA%\SteamBridgeNativeOverlayControl`, so each case can rewrite only
+that env file:
+
+```powershell
+.\windows-native-overlay-control.ps1 `
+  -Mode steam-launch `
+  -AssumeShortcutConfigured `
+  -ShortcutGameId <shortcut-game-id> `
+  -Action user `
+  -UserDialog steamid
+```
+
+On Smart App Control/App Control machines, a freshly rebuilt generated control
+exe can still be blocked even when Authenticode reports `Valid`. In that case
+the runner writes `steam-launch-blocker.json` with matching Code Integrity
+events. Treat that as local policy/reputation evidence, not as overlay behavior.
+
 Focused managed runs can choose a single case, close probe, and dialog target:
 
 ```powershell

@@ -68,6 +68,13 @@ If `disableDirectComposition` makes the app visible, keep treating it as an
 opt-in diagnostic until it also passes close, Alt+Tab, and crash checks; upstream
 Electron/Steam wrapper reports tie that switch to ghost-window regressions, and
 local diagnostics have also shown visible-but-crashy behavior.
+The Windows package also includes `windows-native-overlay-control.ps1`, which
+builds a tiny native OpenGL diagnostic executable for comparing raw Steam
+overlay routes against Electron. Use it only as a diagnostic control; it is not
+the app-builder API and does not replace the ordinary Windows Electron overlay
+path. On Smart App Control/App Control machines, freshly rebuilt generated
+diagnostic executables can still need a reputable signature or policy-disabled
+test machine even when Authenticode reports `Valid`.
 Run `windows-electron-smoke.ps1 -Mode preflight` on a Windows test package before
 long live overlay runs. It reports Smart App Control/App Control policy state,
 the parsed `CiTool.exe -lp` policy inventory, enforced policy names, whether a

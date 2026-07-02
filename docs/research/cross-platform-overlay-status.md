@@ -350,6 +350,32 @@ callback-only Windows evidence until a visible Steam Community surface is
 proven. This also means the current blocker is not simply choosing the native
 profile API instead of the Steam Community profile URL.
 
+A native Windows control comparison now lives beside the smoke package as
+`windows-native-overlay-control.ps1` plus a small C# OpenGL source file. It is
+diagnostic-only and not an app-facing API. The control initializes Steam before
+creating a native OpenGL window, runs from a Steam non-game shortcut under App
+ID `480`, calls the same flat Steam overlay APIs, and captures desktop/client
+screenshots plus result JSON. A focused run at
+`C:\Users\admin\AppData\Local\Temp\steam-bridge-windows-native-overlay-control-20260702-081410`
+launched through Steam, initialized successfully as App ID `480`, observed
+`IsOverlayEnabled=true` at 1.2s, called
+`ActivateGameOverlayToUser("steamid", currentUser)`, rendered 21,331 frames,
+and exited without an exception. Its screenshots show Steam Community profile
+content visible on the desktop and a `gameoverlayui64` Back to Game shell over
+the native window. That proves the Windows Steam client can render that profile
+surface during a native OpenGL control run, but it is still comparison evidence:
+it does not prove Electron close/back-to-app behavior and does not justify a
+Windows native presenter by itself. A follow-up env-file version of the same
+control updates the shortcut only once, then rewrites
+`%LOCALAPPDATA%\SteamBridgeNativeOverlayControl\native-overlay-control.env` for
+each case. On the current Windows laptop, the rebuilt generated executable was
+then blocked by Smart App Control / App Control despite a valid local test
+Authenticode signature; the artifact
+`C:\Users\admin\steam-bridge-artifacts\windows-native-control-user-steamid-20260702-002`
+records Code Integrity events 3033/3077 for
+`SteamBridgeNativeOverlayControl.exe`. Treat that as a local policy/reputation
+blocker for the native control binary, not as overlay behavior.
+
 The macOS matrix can now pair `--app-id <your-app-id>` with
 `--checkout-json-file <path>` for private configured-product proof. Its manifest
 and summary audit the expected app ID and `checkoutSource=json-file`, while

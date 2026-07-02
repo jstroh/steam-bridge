@@ -328,6 +328,13 @@ client rendering-health blocker first. The Windows matrix captures CEF,
 webhelper, and overlay log tails plus matching error lines under
 `steam-client/` for each preflight/case artifact so the next step can be chosen
 from Steam's own evidence instead of by repeatedly restarting the client.
+The Windows package also includes `windows-native-overlay-control.ps1`, which
+builds a tiny native OpenGL diagnostic executable for comparing raw Steam
+overlay routes against Electron. Use it only as a diagnostic control; it is not
+the app-builder API and does not replace the ordinary Windows Electron overlay
+path. On Smart App Control/App Control machines, freshly rebuilt generated
+diagnostic executables can still need a reputable signature or policy-disabled
+test machine even when Authenticode reports `Valid`.
 Standalone `windows-electron-smoke.ps1 -Mode steam-launch` also refuses to
 start Steam by default; pass `-AllowStartSteamClient` only for a deliberate
 manual launch.

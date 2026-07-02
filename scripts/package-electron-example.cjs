@@ -265,6 +265,15 @@ function copyTargetHelpers(appPath) {
       path.join(appPath, "windows-render-health-probe.ps1")
     );
     fs.copyFileSync(
+      path.join(repoRoot, "scripts", "windows-native-overlay-control.ps1"),
+      path.join(appPath, "windows-native-overlay-control.ps1")
+    );
+    fs.cpSync(
+      path.join(repoRoot, "scripts", "windows-native-overlay-control"),
+      path.join(appPath, "windows-native-overlay-control"),
+      { recursive: true }
+    );
+    fs.copyFileSync(
       path.join(repoRoot, "scripts", "summarize-windows-overlay-matrix.cjs"),
       path.join(appPath, "summarize-windows-overlay-matrix.cjs")
     );
