@@ -45,6 +45,12 @@ timing hacks.
   moves a bridge-owned Windows native presenter from fallback research to the
   next serious implementation candidate, while keeping the app-facing
   `createElectronSteamOverlay(...)` API unchanged.
+- Steam Bridge now has a first opt-in Windows native presenter candidate:
+  `backend: "windows-opengl"` creates a Win32/WGL surface behind the existing
+  native surface API. It is intentionally not the default Windows path yet; the
+  ordinary direct Electron hook remains the baseline until live Windows matrix
+  proof shows the native presenter is better across visible UI, close/back-to-app,
+  passive notifications, FPS/focus behavior, and crash diagnostics.
 - Steam Bridge's Deck Desktop testing confirmed a second Electron-specific
   failure mode: if Steam's overlay renderer is inherited by Chromium child
   processes, Steam can create competing `gameoverlayui` targets for both the
@@ -1740,6 +1746,17 @@ native control also exposed a local Smart App Control/App Control reputation
 block for the freshly rebuilt generated executable, so repeat native-control
 proof needs either the previously accepted binary, a reputable publisher-signed
 binary, or an explicit policy-disabled development machine.
+
+A current-head Windows native presenter slice on July 2, 2026 added the first
+opt-in `windows-opengl` host under the shared native surface API and made active
+mode behave more like a real game surface: foregrounded, non-click-through, and
+not layered/tool-window styled while active. Focused Session 1 artifacts showed
+the host rendering Steam overlay UI and receiving OS foreground plus SendInput
+keyboard/mouse delivery, but Shift+Tab, Ctrl+W, Escape, and a click on the
+visible Steam web close control all timed out before `GameOverlayActivated(false)`
+or presenter parking. Keep the Windows native presenter as rendering/focus
+evidence only. The next Windows design problem is Steam input consumption for
+that host, not another Electron flag or Steam restart loop.
 
 Windows gates:
 

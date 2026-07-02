@@ -34,10 +34,11 @@ param(
   [switch]$AllowUnhealthySteamClientLogs,
   [int]$SteamClientHealthRecentMinutes = 30,
   [switch]$CloseProbe,
-  [ValidateSet("toggle", "escape", "close-tab", "toggle-sendinput", "escape-sendinput", "close-tab-sendinput")]
+  [ValidateSet("toggle", "escape", "close-tab", "toggle-sendinput", "escape-sendinput", "close-tab-sendinput", "web-close-click-sendinput")]
   [string]$CloseProbeInput = "toggle",
   [int]$CloseProbeSettleMs = 750,
   [int]$CloseProbeTimeoutSeconds = 110,
+  [string]$PresenterMode = "",
   [string]$OverlayInProcessGpu = "1",
   [string]$OverlayScrubChildEnv = "",
   [string]$OverlayIsolateChildProcesses = ""
@@ -1197,6 +1198,9 @@ function Test-NativeLoadGate {
   if ($OverlayDisableDirectComposition) {
     $gateArgs += @("-OverlayDisableDirectComposition", $OverlayDisableDirectComposition)
   }
+  if ($PresenterMode) {
+    $gateArgs += @("-PresenterMode", $PresenterMode)
+  }
   if ($OverlayScrubChildEnv) {
     $gateArgs += @("-OverlayScrubChildEnv", $OverlayScrubChildEnv)
   }
@@ -1268,6 +1272,7 @@ function Invoke-RenderHealthGate {
       reason = "non-default-render-comparison"
       overlayInProcessGpu = $OverlayInProcessGpu
       overlayDisableDirectComposition = $OverlayDisableDirectComposition
+      presenterMode = $PresenterMode
     }) -Depth 6
     Write-Host "Windows render-health gate skipped for an explicit non-default render comparison."
     return
@@ -1597,6 +1602,7 @@ function Write-MatrixManifest {
     expectedCaseCount = $manifestCases.Count
     shortcutName = $ShortcutName
     overlayProfile = $OverlayProfile
+    presenterMode = $PresenterMode
     overlayInProcessGpu = $OverlayInProcessGpu
     overlayDisableDirectComposition = $OverlayDisableDirectComposition
     overlayScrubChildEnv = $OverlayScrubChildEnv
@@ -1689,8 +1695,18 @@ using System.Runtime.InteropServices;
 using System.Text;
 
 public static class SteamBridgeWindowsProbe {
+  const uint INPUT_MOUSE = 0;
   const uint INPUT_KEYBOARD = 1;
   const uint KEYEVENTF_KEYUP = 0x0002;
+  const uint MOUSEEVENTF_MOVE = 0x0001;
+  const uint MOUSEEVENTF_LEFTDOWN = 0x0002;
+  const uint MOUSEEVENTF_LEFTUP = 0x0004;
+  const uint MOUSEEVENTF_ABSOLUTE = 0x8000;
+  const uint MOUSEEVENTF_VIRTUALDESK = 0x4000;
+  const int SM_XVIRTUALSCREEN = 76;
+  const int SM_YVIRTUALSCREEN = 77;
+  const int SM_CXVIRTUALSCREEN = 78;
+  const int SM_CYVIRTUALSCREEN = 79;
 
   [StructLayout(LayoutKind.Sequential)]
   public struct INPUT {
@@ -1755,6 +1771,9 @@ public static class SteamBridgeWindowsProbe {
   [DllImport("user32.dll")]
   public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
 
+  [DllImport("user32.dll")]
+  public static extern int GetSystemMetrics(int nIndex);
+
   [DllImport("user32.dll", SetLastError = true)]
   public static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
 
@@ -1769,6 +1788,25 @@ public static class SteamBridgeWindowsProbe {
     return input;
   }
 
+  static INPUT MouseInput(int x, int y, uint flags) {
+    int left = GetSystemMetrics(SM_XVIRTUALSCREEN);
+    int top = GetSystemMetrics(SM_YVIRTUALSCREEN);
+    int width = Math.Max(1, GetSystemMetrics(SM_CXVIRTUALSCREEN));
+    int height = Math.Max(1, GetSystemMetrics(SM_CYVIRTUALSCREEN));
+    int dx = (int)Math.Round(((double)(x - left) * 65535.0) / Math.Max(1, width - 1));
+    int dy = (int)Math.Round(((double)(y - top) * 65535.0) / Math.Max(1, height - 1));
+
+    INPUT input = new INPUT();
+    input.type = INPUT_MOUSE;
+    input.u.mi.dx = Math.Max(0, Math.Min(65535, dx));
+    input.u.mi.dy = Math.Max(0, Math.Min(65535, dy));
+    input.u.mi.mouseData = 0;
+    input.u.mi.dwFlags = flags | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK;
+    input.u.mi.time = 0;
+    input.u.mi.dwExtraInfo = IntPtr.Zero;
+    return input;
+  }
+
   public static uint SendKeyChord(ushort[] virtualKeys, out int lastError) {
     INPUT[] inputs = new INPUT[virtualKeys.Length * 2];
     int index = 0;
@@ -1778,6 +1816,18 @@ public static class SteamBridgeWindowsProbe {
     for (int i = virtualKeys.Length - 1; i >= 0; i--) {
       inputs[index++] = KeyInput(virtualKeys[i], KEYEVENTF_KEYUP);
     }
+
+    uint sent = SendInput((uint)inputs.Length, inputs, Marshal.SizeOf(typeof(INPUT)));
+    lastError = sent == inputs.Length ? 0 : Marshal.GetLastWin32Error();
+    return sent;
+  }
+
+  public static uint SendMouseClick(int x, int y, out int lastError) {
+    INPUT[] inputs = new INPUT[] {
+      MouseInput(x, y, MOUSEEVENTF_MOVE),
+      MouseInput(x, y, MOUSEEVENTF_LEFTDOWN),
+      MouseInput(x, y, MOUSEEVENTF_LEFTUP)
+    };
 
     uint sent = SendInput((uint)inputs.Length, inputs, Marshal.SizeOf(typeof(INPUT)));
     lastError = sent == inputs.Length ? 0 : Marshal.GetLastWin32Error();
@@ -1804,6 +1854,20 @@ function Send-NativeKeyChord {
     sent = `$sent
     expected = (`$keys.Length * 2)
     lastError = `$lastError
+  }
+}
+
+function Send-NativeMouseClick {
+  param([int]`$X, [int]`$Y)
+
+  `$lastError = 0
+  `$sent = [SteamBridgeWindowsProbe]::SendMouseClick(`$X, `$Y, [ref]`$lastError)
+  [PSCustomObject]@{
+    sent = `$sent
+    expected = 3
+    lastError = `$lastError
+    x = `$X
+    y = `$Y
   }
 }
 
@@ -1936,6 +2000,7 @@ while ((Get-Date) -lt `$deadline -and -not `$sent) {
         processes = Get-ProbeProcessSnapshot
       })
       `$nativeInputSent = `$null
+      `$nativePointerSent = `$null
       if ('$input' -eq 'escape') {
         `$shell = New-Object -ComObject WScript.Shell
         `$shell.SendKeys('{ESC}')
@@ -1948,6 +2013,20 @@ while ((Get-Date) -lt `$deadline -and -not `$sent) {
         `$nativeInputSent = Send-NativeKeyChord @(0x11, 0x57)
       } elseif ('$input' -eq 'toggle-sendinput') {
         `$nativeInputSent = Send-NativeKeyChord @(0x10, 0x09)
+      } elseif ('$input' -eq 'web-close-click-sendinput') {
+        `$foreground = Get-ForegroundProbeSnapshot
+        if (`$foreground -and `$foreground.rect -and `$foreground.rect.width -gt 0 -and `$foreground.rect.height -gt 0) {
+          `$x = [int]([Math]::Round(`$foreground.rect.left + (`$foreground.rect.width * 0.86)))
+          `$y = [int]([Math]::Round(`$foreground.rect.top + (`$foreground.rect.height * 0.15)))
+          `$nativePointerSent = Send-NativeMouseClick `$x `$y
+        } else {
+          `$nativePointerSent = [PSCustomObject]@{
+            sent = 0
+            expected = 3
+            lastError = -1
+            error = "foreground-window-rect-unavailable"
+          }
+        }
       } else {
         `$shell = New-Object -ComObject WScript.Shell
         `$shell.SendKeys('+{TAB}')
@@ -1955,6 +2034,7 @@ while ((Get-Date) -lt `$deadline -and -not `$sent) {
       Write-ProbeEvent "probe:sent" ([PSCustomObject]@{
         input = '$input'
         nativeInputSent = `$nativeInputSent
+        nativePointerSent = `$nativePointerSent
         foreground = Get-ForegroundProbeSnapshot
         processes = Get-ProbeProcessSnapshot
       })
@@ -2055,6 +2135,9 @@ function Write-CaseLaunchEnv {
   if ($OverlayDisableDirectComposition) {
     $args += @("-OverlayDisableDirectComposition", $OverlayDisableDirectComposition)
   }
+  if ($PresenterMode) {
+    $args += @("-PresenterMode", $PresenterMode)
+  }
   if ($OverlayScrubChildEnv) {
     $args += @("-OverlayScrubChildEnv", $OverlayScrubChildEnv)
   }
@@ -2114,6 +2197,9 @@ function Invoke-MatrixCase {
   )
   if ($OverlayInProcessGpu) {
     $args += @("-OverlayInProcessGpu", $OverlayInProcessGpu)
+  }
+  if ($PresenterMode) {
+    $args += @("-PresenterMode", $PresenterMode)
   }
   if ($OverlayScrubChildEnv) {
     $args += @("-OverlayScrubChildEnv", $OverlayScrubChildEnv)
@@ -2225,6 +2311,7 @@ Write-Host ("  appDir: {0}" -f $AppDir)
 Write-Host ("  artifactRoot: {0}" -f $ArtifactRoot)
 Write-Host ("  appId: {0}" -f $AppId)
 Write-Host ("  overlayProfile: {0}" -f $OverlayProfile)
+Write-Host ("  presenterMode: {0}" -f $PresenterMode)
 Write-Host ("  inProcessGpu: {0}" -f $OverlayInProcessGpu)
 Write-Host ("  disableDirectComposition: {0}" -f $OverlayDisableDirectComposition)
 Write-Host ("  scrubChildEnv: {0}" -f $OverlayScrubChildEnv)

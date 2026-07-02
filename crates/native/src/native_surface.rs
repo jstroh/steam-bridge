@@ -1094,7 +1094,7 @@ mod macos {
     }
 }
 
-#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+#[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
 mod fallback {
     use super::Error;
 
@@ -1161,10 +1161,560 @@ mod fallback {
     }
 }
 
-#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+#[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
 pub use fallback::*;
 #[cfg(target_os = "macos")]
 pub use macos::*;
+
+#[cfg(target_os = "windows")]
+mod windows {
+    use super::{Buffer, Error};
+    use once_cell::sync::Lazy;
+    use std::mem;
+    use std::ptr;
+    use std::sync::{Mutex, OnceLock};
+    use std::time::{SystemTime, UNIX_EPOCH};
+    use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM};
+    use windows_sys::Win32::Graphics::Gdi::{GetDC, ReleaseDC, HDC};
+    use windows_sys::Win32::Graphics::OpenGL::{
+        ChoosePixelFormat, SetPixelFormat, SwapBuffers, PFD_DOUBLEBUFFER, PFD_DRAW_TO_WINDOW,
+        PFD_MAIN_PLANE, PFD_SUPPORT_OPENGL, PFD_TYPE_RGBA, PIXELFORMATDESCRIPTOR,
+    };
+    use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
+    use windows_sys::Win32::UI::Input::KeyboardAndMouse::{SetActiveWindow, SetFocus};
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetClientRect,
+        GetWindowLongPtrW, GetWindowRect, PeekMessageW, RegisterClassW, SetForegroundWindow,
+        SetLayeredWindowAttributes, SetWindowLongPtrW, SetWindowPos, ShowWindow, TranslateMessage,
+        CS_OWNDC, GWL_EXSTYLE, LWA_ALPHA, MSG, PM_REMOVE, SWP_FRAMECHANGED, SWP_NOACTIVATE,
+        SWP_NOMOVE, SWP_NOOWNERZORDER, SWP_NOSIZE, SWP_NOZORDER, SWP_SHOWWINDOW, SW_HIDE, SW_SHOW,
+        WM_CLOSE, WNDCLASSW, WS_CLIPCHILDREN, WS_CLIPSIBLINGS, WS_EX_LAYERED, WS_EX_NOACTIVATE,
+        WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_OVERLAPPEDWINDOW, WS_POPUP,
+    };
+
+    type Hglrc = isize;
+
+    const GL_COLOR_BUFFER_BIT: u32 = 0x0000_4000;
+
+    #[link(name = "opengl32")]
+    extern "system" {
+        fn glClear(mask: u32);
+        fn glClearColor(red: f32, green: f32, blue: f32, alpha: f32);
+        fn glViewport(x: i32, y: i32, width: i32, height: i32);
+        fn wglCreateContext(hdc: HDC) -> Hglrc;
+        fn wglDeleteContext(context: Hglrc) -> i32;
+        fn wglMakeCurrent(hdc: HDC, context: Hglrc) -> i32;
+    }
+
+    struct NativeSurface {
+        hwnd: HWND,
+        parent_hwnd: Option<HWND>,
+        hdc: HDC,
+        hglrc: Hglrc,
+        frame: u64,
+        input_passthrough: bool,
+        opaque: bool,
+        visible: bool,
+    }
+
+    unsafe impl Send for NativeSurface {}
+
+    static SURFACE: Lazy<Mutex<Option<NativeSurface>>> = Lazy::new(|| Mutex::new(None));
+    static WINDOW_CLASS_RESULT: OnceLock<Result<(), String>> = OnceLock::new();
+
+    pub fn open(title: Option<String>) -> Result<(), Error> {
+        close();
+        let title = title.unwrap_or_else(|| "Steam Bridge Native Overlay Probe".to_owned());
+        let surface = unsafe { create_surface(&title, None)? };
+        *SURFACE
+            .lock()
+            .expect("Steam overlay native surface lock poisoned") = Some(surface);
+        pump()?;
+        Ok(())
+    }
+
+    pub fn attach_to_parent(parent_handle: usize) -> Result<(), Error> {
+        close();
+
+        if parent_handle == 0 {
+            return Err(Error::from_reason(
+                "Electron native window handle was empty",
+            ));
+        }
+
+        let surface = unsafe {
+            create_surface(
+                "Steam Bridge Native Overlay Host",
+                Some(parent_handle as HWND),
+            )?
+        };
+        *SURFACE
+            .lock()
+            .expect("Steam overlay native surface lock poisoned") = Some(surface);
+        pump()?;
+        Ok(())
+    }
+
+    pub fn show() -> Result<(), Error> {
+        with_surface(|surface| unsafe {
+            ShowWindow(surface.hwnd, SW_SHOW);
+            surface.visible = true;
+            update_window_frame(surface);
+            if !surface.input_passthrough {
+                activate_window(surface);
+            }
+        })
+    }
+
+    pub fn hide() -> Result<(), Error> {
+        with_surface(|surface| unsafe {
+            ShowWindow(surface.hwnd, SW_HIDE);
+            surface.visible = false;
+        })
+    }
+
+    pub fn set_input_passthrough(pass_through: bool) -> Result<(), Error> {
+        with_surface(|surface| unsafe {
+            if surface.input_passthrough == pass_through {
+                return;
+            }
+            surface.input_passthrough = pass_through;
+            sync_window_style(surface);
+            if !pass_through {
+                activate_window(surface);
+            }
+        })
+    }
+
+    pub fn set_opaque(opaque: bool) -> Result<(), Error> {
+        with_surface(|surface| unsafe {
+            if surface.opaque == opaque {
+                return;
+            }
+            surface.opaque = opaque;
+            sync_window_style(surface);
+        })
+    }
+
+    pub fn pump() -> Result<(), Error> {
+        let mut guard = SURFACE
+            .lock()
+            .expect("Steam overlay native surface lock poisoned");
+        let Some(surface) = guard.as_mut() else {
+            return Ok(());
+        };
+
+        unsafe {
+            pump_messages();
+            update_window_frame(surface);
+            if surface.visible {
+                render_surface(surface)?;
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn update_frame(_buffer: Buffer, _width: u32, _height: u32) -> Result<(), Error> {
+        Ok(())
+    }
+
+    pub fn close() {
+        let surface = SURFACE
+            .lock()
+            .expect("Steam overlay native surface lock poisoned")
+            .take();
+        if let Some(surface) = surface {
+            unsafe {
+                destroy_surface(surface);
+            }
+        }
+    }
+
+    pub fn close_probe() {
+        close_matching(|surface| surface.parent_hwnd.is_none());
+    }
+
+    pub fn detach_host() {
+        close_matching(|surface| surface.parent_hwnd.is_some());
+    }
+
+    pub fn is_probe_open() -> bool {
+        SURFACE
+            .lock()
+            .expect("Steam overlay native surface lock poisoned")
+            .as_ref()
+            .is_some_and(|surface| surface.parent_hwnd.is_none())
+    }
+
+    pub fn is_embedded() -> bool {
+        SURFACE
+            .lock()
+            .expect("Steam overlay native surface lock poisoned")
+            .as_ref()
+            .is_some_and(|surface| surface.parent_hwnd.is_some())
+    }
+
+    pub fn mac_window_snapshot_json(_app_id: u32) -> Option<String> {
+        None
+    }
+
+    pub fn mac_screen_locked() -> bool {
+        false
+    }
+
+    pub fn mac_display_asleep() -> bool {
+        false
+    }
+
+    fn with_surface(run: impl FnOnce(&mut NativeSurface)) -> Result<(), Error> {
+        let mut guard = SURFACE
+            .lock()
+            .expect("Steam overlay native surface lock poisoned");
+        if let Some(surface) = guard.as_mut() {
+            run(surface);
+        }
+        Ok(())
+    }
+
+    fn close_matching(matches: impl FnOnce(&NativeSurface) -> bool) {
+        let surface = {
+            let mut guard = SURFACE
+                .lock()
+                .expect("Steam overlay native surface lock poisoned");
+            if guard.as_ref().map(matches).unwrap_or(false) {
+                guard.take()
+            } else {
+                None
+            }
+        };
+
+        if let Some(surface) = surface {
+            unsafe {
+                destroy_surface(surface);
+            }
+        }
+    }
+
+    unsafe fn create_surface(
+        title: &str,
+        parent_hwnd: Option<HWND>,
+    ) -> Result<NativeSurface, Error> {
+        ensure_window_class()?;
+        let title = wide_string(title);
+        let class_name = window_class_name();
+        let parent_rect = parent_hwnd.and_then(read_window_rect);
+        let (x, y, width, height) = parent_rect
+            .map(|rect| {
+                (
+                    rect.left,
+                    rect.top,
+                    (rect.right - rect.left).max(1),
+                    (rect.bottom - rect.top).max(1),
+                )
+            })
+            .unwrap_or((100, 100, 960, 540));
+        let ex_style = base_ex_style(parent_hwnd.is_some(), true);
+        let style = if parent_hwnd.is_some() {
+            WS_POPUP | WS_CLIPSIBLINGS | WS_CLIPCHILDREN
+        } else {
+            WS_OVERLAPPEDWINDOW | WS_CLIPSIBLINGS | WS_CLIPCHILDREN
+        };
+        let owner = parent_hwnd.unwrap_or(ptr::null_mut());
+        let hwnd = CreateWindowExW(
+            ex_style,
+            class_name.as_ptr(),
+            title.as_ptr(),
+            style,
+            x,
+            y,
+            width,
+            height,
+            owner,
+            ptr::null_mut(),
+            GetModuleHandleW(ptr::null()),
+            ptr::null_mut(),
+        );
+        if hwnd.is_null() {
+            return Err(Error::from_reason(
+                "Failed to create Windows native overlay host window",
+            ));
+        }
+
+        let hdc = GetDC(hwnd);
+        if hdc.is_null() {
+            DestroyWindow(hwnd);
+            return Err(Error::from_reason(
+                "Failed to acquire Windows native overlay device context",
+            ));
+        }
+
+        let descriptor = pixel_format_descriptor();
+        let pixel_format = ChoosePixelFormat(hdc, &descriptor);
+        if pixel_format == 0 {
+            ReleaseDC(hwnd, hdc);
+            DestroyWindow(hwnd);
+            return Err(Error::from_reason(
+                "Failed to choose Windows native overlay pixel format",
+            ));
+        }
+        if SetPixelFormat(hdc, pixel_format, &descriptor) == 0 {
+            ReleaseDC(hwnd, hdc);
+            DestroyWindow(hwnd);
+            return Err(Error::from_reason(
+                "Failed to set Windows native overlay pixel format",
+            ));
+        }
+
+        let hglrc = wglCreateContext(hdc);
+        if hglrc == 0 {
+            ReleaseDC(hwnd, hdc);
+            DestroyWindow(hwnd);
+            return Err(Error::from_reason(
+                "Failed to create Windows native overlay OpenGL context",
+            ));
+        }
+        if wglMakeCurrent(hdc, hglrc) == 0 {
+            wglDeleteContext(hglrc);
+            ReleaseDC(hwnd, hdc);
+            DestroyWindow(hwnd);
+            return Err(Error::from_reason(
+                "Failed to make Windows native overlay OpenGL context current",
+            ));
+        }
+
+        let mut surface = NativeSurface {
+            hwnd,
+            parent_hwnd,
+            hdc,
+            hglrc,
+            frame: 0,
+            input_passthrough: parent_hwnd.is_some(),
+            opaque: parent_hwnd.is_none(),
+            visible: true,
+        };
+        sync_window_style(&mut surface);
+        ShowWindow(hwnd, SW_SHOW);
+        update_window_frame(&surface);
+        Ok(surface)
+    }
+
+    unsafe fn render_surface(surface: &mut NativeSurface) -> Result<(), Error> {
+        if wglMakeCurrent(surface.hdc, surface.hglrc) == 0 {
+            return Err(Error::from_reason(
+                "Failed to make Windows native overlay OpenGL context current",
+            ));
+        }
+
+        let mut rect: RECT = mem::zeroed();
+        if GetClientRect(surface.hwnd, &mut rect) == 0 {
+            return Ok(());
+        }
+        let width = (rect.right - rect.left).max(1);
+        let height = (rect.bottom - rect.top).max(1);
+        glViewport(0, 0, width, height);
+
+        if surface.opaque {
+            let seconds = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|duration| duration.as_millis() as f32 / 1000.0)
+                .unwrap_or(0.0);
+            let wave = (seconds * 1.7).sin() * 0.5 + 0.5;
+            glClearColor(0.05 + wave * 0.10, 0.08, 0.14 + wave * 0.08, 1.0);
+        } else {
+            glClearColor(0.0, 0.0, 0.0, 0.0);
+        }
+        glClear(GL_COLOR_BUFFER_BIT);
+        SwapBuffers(surface.hdc);
+        surface.frame = surface.frame.wrapping_add(1);
+        Ok(())
+    }
+
+    unsafe fn update_window_frame(surface: &NativeSurface) {
+        let Some(parent_hwnd) = surface.parent_hwnd else {
+            return;
+        };
+        let Some(rect) = read_window_rect(parent_hwnd) else {
+            return;
+        };
+        let width = (rect.right - rect.left).max(1);
+        let height = (rect.bottom - rect.top).max(1);
+        let mut flags = SWP_NOOWNERZORDER | SWP_NOZORDER | SWP_SHOWWINDOW;
+        if surface.input_passthrough {
+            flags |= SWP_NOACTIVATE;
+        }
+        SetWindowPos(
+            surface.hwnd,
+            ptr::null_mut(),
+            rect.left,
+            rect.top,
+            width,
+            height,
+            flags,
+        );
+    }
+
+    unsafe fn sync_window_style(surface: &mut NativeSurface) {
+        let mut ex_style = GetWindowLongPtrW(surface.hwnd, GWL_EXSTYLE) as u32;
+        if surface.parent_hwnd.is_some() {
+            ex_style |= WS_EX_TOPMOST;
+            if surface.input_passthrough {
+                ex_style |= WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE;
+            } else {
+                ex_style &= !(WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE);
+            }
+        } else {
+            ex_style |= WS_EX_LAYERED | WS_EX_TOOLWINDOW;
+        }
+        if surface.input_passthrough {
+            ex_style |= WS_EX_TRANSPARENT;
+        } else {
+            ex_style &= !WS_EX_TRANSPARENT;
+        }
+        SetWindowLongPtrW(surface.hwnd, GWL_EXSTYLE, ex_style as isize);
+        let mut flags =
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOOWNERZORDER | SWP_NOZORDER | SWP_FRAMECHANGED;
+        if surface.input_passthrough {
+            flags |= SWP_NOACTIVATE;
+        }
+        SetWindowPos(surface.hwnd, ptr::null_mut(), 0, 0, 0, 0, flags);
+        if ex_style & WS_EX_LAYERED != 0 {
+            let alpha = if surface.opaque { 255 } else { 1 };
+            SetLayeredWindowAttributes(surface.hwnd, 0, alpha, LWA_ALPHA);
+        }
+    }
+
+    unsafe fn activate_window(surface: &NativeSurface) {
+        SetForegroundWindow(surface.hwnd);
+        SetActiveWindow(surface.hwnd);
+        SetFocus(surface.hwnd);
+    }
+
+    unsafe fn destroy_surface(surface: NativeSurface) {
+        wglMakeCurrent(ptr::null_mut(), 0);
+        if surface.hglrc != 0 {
+            wglDeleteContext(surface.hglrc);
+        }
+        if !surface.hdc.is_null() {
+            ReleaseDC(surface.hwnd, surface.hdc);
+        }
+        if !surface.hwnd.is_null() {
+            DestroyWindow(surface.hwnd);
+        }
+    }
+
+    unsafe fn pump_messages() {
+        let mut message: MSG = mem::zeroed();
+        while PeekMessageW(&mut message, ptr::null_mut(), 0, 0, PM_REMOVE) != 0 {
+            TranslateMessage(&message);
+            DispatchMessageW(&message);
+        }
+    }
+
+    unsafe extern "system" fn window_proc(
+        hwnd: HWND,
+        message: u32,
+        wparam: WPARAM,
+        lparam: LPARAM,
+    ) -> LRESULT {
+        if message == WM_CLOSE {
+            ShowWindow(hwnd, SW_HIDE);
+            return 0;
+        }
+        DefWindowProcW(hwnd, message, wparam, lparam)
+    }
+
+    unsafe fn ensure_window_class() -> Result<(), Error> {
+        WINDOW_CLASS_RESULT
+            .get_or_init(|| register_window_class().map_err(|error| error.to_owned()))
+            .clone()
+            .map_err(Error::from_reason)
+    }
+
+    unsafe fn register_window_class() -> Result<(), &'static str> {
+        let class_name = window_class_name();
+        let window_class = WNDCLASSW {
+            style: CS_OWNDC,
+            lpfnWndProc: Some(window_proc),
+            cbClsExtra: 0,
+            cbWndExtra: 0,
+            hInstance: GetModuleHandleW(ptr::null()),
+            hIcon: ptr::null_mut(),
+            hCursor: ptr::null_mut(),
+            hbrBackground: ptr::null_mut(),
+            lpszMenuName: ptr::null(),
+            lpszClassName: class_name.as_ptr(),
+        };
+
+        if RegisterClassW(&window_class) == 0 {
+            return Err("Failed to register Windows native overlay window class");
+        }
+        Ok(())
+    }
+
+    fn pixel_format_descriptor() -> PIXELFORMATDESCRIPTOR {
+        PIXELFORMATDESCRIPTOR {
+            nSize: mem::size_of::<PIXELFORMATDESCRIPTOR>() as u16,
+            nVersion: 1,
+            dwFlags: PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER,
+            iPixelType: PFD_TYPE_RGBA,
+            cColorBits: 32,
+            cRedBits: 0,
+            cRedShift: 0,
+            cGreenBits: 0,
+            cGreenShift: 0,
+            cBlueBits: 0,
+            cBlueShift: 0,
+            cAlphaBits: 8,
+            cAlphaShift: 0,
+            cAccumBits: 0,
+            cAccumRedBits: 0,
+            cAccumGreenBits: 0,
+            cAccumBlueBits: 0,
+            cAccumAlphaBits: 0,
+            cDepthBits: 24,
+            cStencilBits: 8,
+            cAuxBuffers: 0,
+            iLayerType: PFD_MAIN_PLANE as u8,
+            bReserved: 0,
+            dwLayerMask: 0,
+            dwVisibleMask: 0,
+            dwDamageMask: 0,
+        }
+    }
+
+    fn read_window_rect(hwnd: HWND) -> Option<RECT> {
+        unsafe {
+            let mut rect: RECT = mem::zeroed();
+            if GetWindowRect(hwnd, &mut rect) == 0 {
+                return None;
+            }
+            Some(rect)
+        }
+    }
+
+    fn base_ex_style(attached: bool, pass_through: bool) -> u32 {
+        let mut style = WS_EX_LAYERED | WS_EX_TOOLWINDOW;
+        if attached {
+            style |= WS_EX_TOPMOST | WS_EX_NOACTIVATE;
+        }
+        if pass_through {
+            style |= WS_EX_TRANSPARENT;
+        }
+        style
+    }
+
+    fn window_class_name() -> Vec<u16> {
+        wide_string("SteamBridgeNativeOverlayWindow")
+    }
+
+    fn wide_string(value: &str) -> Vec<u16> {
+        value.encode_utf16().chain(std::iter::once(0)).collect()
+    }
+}
+
+#[cfg(target_os = "windows")]
+pub use windows::*;
 
 #[cfg(target_os = "linux")]
 mod linux {

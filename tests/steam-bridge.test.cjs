@@ -93,6 +93,9 @@ function expectedNativeOverlayBackend(nativeWindowHandle = false) {
   if (process.platform === "darwin") {
     return nativeWindowHandle ? "macos-metal" : "macos-opengl";
   }
+  if (process.platform === "win32") {
+    return "windows-opengl";
+  }
   return "none";
 }
 
@@ -7501,6 +7504,141 @@ test("electron steam overlay manager uses direct Steam activation on Windows", a
   assert.equal(parkedSnapshot.overlayActive, false);
   assert.equal(parkedSnapshot.currentFps, 0);
   assert.deepEqual(nativeHostCalls, []);
+});
+
+test("electron steam overlay manager can opt into Windows native presenter", async (t) => {
+  setProcessPlatformForTest(t, "win32");
+
+  const hostHandle = Buffer.from([6, 4, 2, 0]);
+  const windowBounds = { x: 12, y: 18, width: 1366, height: 768 };
+  let hostOpen = false;
+  const fake = createFakeNative({
+    attachNativeOverlayHostView(nativeWindowHandle) {
+      hostOpen = true;
+      this.calls.push({ method: "attachNativeOverlayHostView", args: [nativeWindowHandle] });
+    },
+    pumpNativeOverlayProbeWindow() {
+      this.calls.push({ method: "pumpNativeOverlayProbeWindow", args: [] });
+    },
+    showNativeOverlayHostView() {
+      this.calls.push({ method: "showNativeOverlayHostView", args: [] });
+    },
+    setNativeOverlayHostInputPassthrough(passThrough) {
+      this.calls.push({ method: "setNativeOverlayHostInputPassthrough", args: [passThrough] });
+    },
+    setNativeOverlayHostOpacity(opaque) {
+      this.calls.push({ method: "setNativeOverlayHostOpacity", args: [opaque] });
+    },
+    detachNativeOverlayHostView() {
+      hostOpen = false;
+      this.calls.push({ method: "detachNativeOverlayHostView", args: [] });
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return false;
+    },
+    isNativeOverlayHostViewOpen() {
+      return hostOpen;
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+  t.after(clearSteamBridgeCache);
+
+  let focusCount = 0;
+  const window = {
+    isDestroyed() {
+      return false;
+    },
+    getNativeWindowHandle() {
+      return hostHandle;
+    },
+    getBounds() {
+      return windowBounds;
+    },
+    focus() {
+      focusCount += 1;
+    },
+    once() {},
+    webContents: {
+      once() {},
+      invalidate() {},
+      send() {}
+    }
+  };
+
+  const overlay = steam.overlay.createElectronSteamOverlay(window, {
+    title: "Windows Native Presenter Overlay",
+    presenterMode: "persistent",
+    pollIntervalMs: 10000
+  });
+  t.after(() => overlay.close());
+
+  const initialSnapshot = overlay.snapshot();
+  assert.equal(initialSnapshot.backend, "windows-opengl");
+  assert.equal(initialSnapshot.attached, true);
+  assert.equal(initialSnapshot.nativeHostOpen, true);
+  assert.equal(initialSnapshot.mode, "passive");
+  assert.equal(initialSnapshot.clickThrough, true);
+  assert.equal(initialSnapshot.transparent, true);
+  assert.equal(initialSnapshot.currentFps, 0);
+  assert.deepEqual(initialSnapshot.bounds, windowBounds);
+  assert.equal(initialSnapshot.electronOverlay.presenterMode, "persistent");
+
+  const opened = overlay.open({ type: "web", url: "https://store.steampowered.com/app/480/", modal: true });
+  assert.equal(opened, overlay.presenter);
+  assert.equal(focusCount, 1);
+  assert.deepEqual(steamWebOverlayCalls(fake).at(-1), {
+    method: "activateOverlayToWebPage",
+    args: ["https://store.steampowered.com/app/480/", true]
+  });
+
+  const openingSnapshot = overlay.snapshot();
+  assert.equal(openingSnapshot.mode, "active");
+  assert.equal(openingSnapshot.clickThrough, false);
+  assert.equal(openingSnapshot.transparent, false);
+  assert.equal(openingSnapshot.currentFps, 30);
+
+  fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: true });
+  await Promise.resolve();
+
+  const shownSnapshot = overlay.snapshot();
+  assert.equal(shownSnapshot.overlayActive, true);
+  assert.equal(shownSnapshot.overlayWasActive, true);
+  assert.equal(shownSnapshot.backend, "windows-opengl");
+
+  const parkedWait = overlay.parkWhenSteamOverlayCloses({ timeoutMs: 500 });
+  fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: false });
+  const parkedSnapshot = await parkedWait;
+  assert.equal(parkedSnapshot.mode, "passive");
+  assert.equal(parkedSnapshot.clickThrough, true);
+  assert.equal(parkedSnapshot.transparent, true);
+  assert.equal(parkedSnapshot.currentFps, 0);
+
+  overlay.close();
+  assert.equal(overlay.snapshot().backend, "none");
+  assert.equal(overlay.snapshot().nativeHostOpen, false);
+
+  assert.deepEqual(
+    fake.calls
+      .filter((call) =>
+        [
+          "attachNativeOverlayHostView",
+          "showNativeOverlayHostView",
+          "setNativeOverlayHostInputPassthrough",
+          "setNativeOverlayHostOpacity",
+          "detachNativeOverlayHostView"
+        ].includes(call.method)
+      )
+      .map((call) => call.method),
+    [
+      "attachNativeOverlayHostView",
+      "showNativeOverlayHostView",
+      "setNativeOverlayHostInputPassthrough",
+      "setNativeOverlayHostOpacity",
+      "setNativeOverlayHostInputPassthrough",
+      "setNativeOverlayHostOpacity",
+      "detachNativeOverlayHostView"
+    ]
+  );
 });
 
 test("electron steam overlay openAndWait uses the direct readiness path on Windows", async (t) => {

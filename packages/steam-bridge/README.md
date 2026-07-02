@@ -298,9 +298,12 @@ path still protects apps that create the overlay manager before later windows or
 workers are spawned. Linux and macOS use the native presenter where Electron
 needs a more reliable Steam overlay target. Windows may move to the same
 bridge-owned presenter shape under the hood if the direct Electron hook cannot
-pass the visible-overlay and close/back-to-app matrix. Pass
-`scrubSteamOverlayChildProcessEnv: false` only when collecting raw
-Electron-child overlay diagnostics.
+pass the visible-overlay and close/back-to-app matrix. An opt-in Windows
+`windows-opengl` presenter now exists for proof runs through the same
+`createElectronSteamOverlay(...)` API; pass `presenterMode: "persistent"`
+explicitly or set `STEAM_BRIDGE_ELECTRON_OVERLAY_PRESENTER=native` in smoke
+environments to test it. Pass `scrubSteamOverlayChildProcessEnv: false` only
+when collecting raw Electron-child overlay diagnostics.
 Raw activation helpers such as `activateToWebPage(...)` remain available for
 Node/native smoke checks and diagnostics, but Electron product overlay work
 should go through the managed `createElectronSteamOverlay(...)` path.

@@ -458,6 +458,8 @@ function runWindowsSmokeHelperStaticChecks() {
     "-RequireZeroManagedOverlayTiming",
     "-RequireManagedOverlayComplete",
     "ManagedOverlayResultMode \"complete\"",
+    "PresenterMode",
+    "presenterMode = $PresenterMode",
     "$requiredEvents = @($Case.requireEvent)",
     "$args += $requiredEvents",
     "-RequireNoCrashes",

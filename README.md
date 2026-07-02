@@ -326,6 +326,13 @@ run; keep Alt+Tab/close regression checks in that pass because this Chromium
 switch has known ghost-window risk in upstream Electron Steam wrapper reports.
 Steam Bridge's app-facing API should stay the same if Windows needs a
 bridge-owned native presenter under the hood.
+An experimental Windows native presenter is available for proof runs through the
+same managed API: pass `presenterMode: "persistent"` explicitly or set
+`STEAM_BRIDGE_ELECTRON_OVERLAY_PRESENTER=native` in the smoke environment. That
+path creates a Win32/OpenGL host surface behind `createElectronSteamOverlay(...)`
+and reports `backend: "windows-opengl"` in snapshots. It remains opt-in until it
+proves visible overlay UI, close/back-to-app behavior, passive toast behavior,
+FPS/focus stability, and clean crash diagnostics on the Windows matrix.
 If the Steam client window itself is blank or white, treat that as a Steam
 client rendering-health blocker first. The Windows matrix captures CEF,
 webhelper, and overlay log tails plus matching error lines under

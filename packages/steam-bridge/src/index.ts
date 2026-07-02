@@ -1593,7 +1593,7 @@ export interface NativeOverlaySessionOptions {
 
 export type NativeOverlayWebPageSessionOptions = NativeOverlaySessionOptions & OverlayWebPageOptions;
 
-export type NativeOverlayBackend = "x11-glx" | "macos-metal" | "macos-opengl" | "none";
+export type NativeOverlayBackend = "x11-glx" | "macos-metal" | "macos-opengl" | "windows-opengl" | "none";
 
 export interface NativeOverlayBounds {
   x: number;
@@ -8547,6 +8547,10 @@ function resolveNativeOverlayBackend(options: { nativeWindowHandle?: Buffer } = 
     return "macos-opengl";
   }
 
+  if (process.platform === "win32") {
+    return "windows-opengl";
+  }
+
   return "none";
 }
 
@@ -9056,7 +9060,8 @@ export function createElectronSteamOverlay(
     activationBoostMs,
     activeGraceMs
   };
-  const shouldUseDirectPresenter = process.platform === "win32";
+  const shouldUseDirectPresenter =
+    process.platform === "win32" && !shouldUseNativeWindowsElectronPresenter(modeOption);
   const presenter =
     shouldUseDirectPresenter
       ? createDirectSteamOverlayPresenter(electronOverlayPresenterOptions(window, managedPresenterOptions))
@@ -9919,6 +9924,23 @@ function resolveElectronSteamOverlayPresenterMode(
     { type: "SteamBridgeOverlayPresenterWarning" }
   );
   return "persistent";
+}
+
+function shouldUseNativeWindowsElectronPresenter(modeOption?: ElectronSteamOverlayPresenterMode): boolean {
+  if (process.platform !== "win32") {
+    return false;
+  }
+  if (modeOption === "persistent") {
+    return true;
+  }
+
+  const envMode = process.env.STEAM_BRIDGE_ELECTRON_OVERLAY_PRESENTER;
+  if (!envMode) {
+    return false;
+  }
+
+  const normalized = envMode.trim().toLowerCase();
+  return ["persistent", "presenter", "native", "auto", "on", "true", "1"].includes(normalized);
 }
 
 function createDirectSteamOverlayPresenter(options: NativeOverlayPresenterOptions = {}): NativeOverlayPresenter {

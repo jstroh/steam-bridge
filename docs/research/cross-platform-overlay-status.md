@@ -420,6 +420,29 @@ https://github.com/ArtyProf/steamworks-ffi-node/blob/main/docs/STEAM_OVERLAY_INT
 https://steamcommunity.com/discussions/forum/10/591756872987476379/,
 https://community.monogame.net/t/steam-overlay-not-showing-with-windows-assembly-of-monogame-3-6/8926.
 
+Current-head Windows native presenter evidence, 2026-07-02: Steam Bridge now has
+an opt-in `windows-opengl` presenter for focused proof runs, and the Windows
+matrix accepts `-PresenterMode persistent` plus
+`-CloseProbeInput web-close-click-sendinput`. A first focused artifact,
+`C:\Users\admin\steam-bridge-artifacts\native-presenter-focus-web-20260702-1110`,
+proved the native host can become the foreground window and render Steam overlay
+UI: the close probe foreground was `Steam Bridge Native Overlay Host`, Steam
+emitted `GameOverlayActivated(true)` for App ID `480`, `gameoverlayui64` ran in
+interactive Session 1, screenshots showed the Steam overlay shell/web window,
+and crash diagnostics were clean. However Shift+Tab did not close the overlay.
+Follow-up artifacts with Ctrl+W, Escape, and a maintained SendInput mouse click
+against the visible Steam web close control also timed out before
+`GameOverlayActivated(false)`, `overlay:presenter-wait-closed`,
+`overlay:presenter-parked`, or `overlay:presenter-open-and-wait-complete`:
+`native-presenter-focus-web-closetab-20260702-1114`,
+`native-presenter-focus-web-escape-20260702-1117`,
+`native-presenter-focus-web-clickclose-20260702-1119`, and
+`native-presenter-stylefix-clickclose-20260702-1123`. The last run also removed
+layered/tool-window styles while active so the host behaved more like a normal
+native OpenGL game surface, but Steam still did not consume input through that
+host. Treat the Windows native presenter as useful rendering/focus evidence, not
+product proof, until it can close and return to the app from the same matrix.
+
 A later current-package Windows proof pass on 2026-07-02 contradicted the older
 direct-hook optimism. The render-health artifact
 `C:\Users\admin\steam-bridge-artifacts\windows-render-health-current-20260702165045`
