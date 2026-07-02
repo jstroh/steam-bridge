@@ -95,7 +95,13 @@ under each artifact's `steam-client/` directory so future failures preserve this
 evidence without repeatedly restarting Steam. The same matrix supports
 `-OnlyCase <id-or-action>` so a suspect or recovering Windows Steam client can
 be checked with one targeted Steam-launched probe before any broader suite is
-attempted.
+attempted. Follow-up diagnostics showed the white-client state left only
+orphaned `gameoverlayui64.exe` helpers with dead target and Steam parent PIDs,
+plus Windows resource pressure and `CreateProcess failed. Error: 1455` in Steam
+logs. Current matrix artifacts therefore include overlay-helper orphan state and
+Windows memory/pagefile/top-process snapshots, and the matrix exposes an
+explicit `-CleanStaleOverlayHelpers` switch for stopping only those orphaned
+helpers before a new proof run.
 
 An experimental one-process Windows control-server run is not accepted as
 product proof. It launched and painted correctly, but the first web action ran

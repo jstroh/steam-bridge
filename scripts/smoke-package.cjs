@@ -396,6 +396,11 @@ function runWindowsSmokeHelperStaticChecks() {
     "Get-RedactedSteamConfigLabel",
     "LocalizedTagNames",
     " ...[truncated]",
+    "CleanStaleOverlayHelpers",
+    "Stop-StaleSteamOverlayHelpers",
+    "Get-OverlayHelperDiagnostics",
+    "staleOverlayHelperCount",
+    "resourceSnapshot",
     "steam-launch",
     "ArtifactRoot"
   ]) {

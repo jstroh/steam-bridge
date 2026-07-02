@@ -766,11 +766,15 @@ the private `--checkout-json-file` checkout suite.
   crash-diagnostic snapshot.
   Each preflight and case artifact also includes a `steam-client/` directory
   with Steam process state, recent log inventory, CEF/webhelper/overlay log
-  tails, matching error lines, and rendering-related config hints. Check those
-  files first when Steam's own UI is blank/white or when the overlay renderer
-  attaches but `gameoverlay_ui` never starts. Use `-Suite preflight` for a
-  client-health-only capture, or add `-OnlyCase 01-web` / another case ID when
-  you need one focused Steam-launched probe instead of a full suite.
+  tails, matching error lines, rendering-related config hints, orphaned
+  `gameoverlayui` helper state, and Windows resource-pressure snapshots. Check
+  those files first when Steam's own UI is blank/white or when the overlay
+  renderer attaches but `gameoverlay_ui` never starts. Use `-Suite preflight`
+  for a client-health-only capture, or add `-OnlyCase 01-web` / another case ID
+  when you need one focused Steam-launched probe instead of a full suite. Pass
+  `-CleanStaleOverlayHelpers` only when you intentionally want the matrix to
+  stop orphaned Steam overlay helper processes whose target game process and
+  recorded Steam parent process are both gone.
   The Windows matrix is intentionally process-per-case right now. A
   one-process control-server harness is useful future research, but it is not
   the Windows proof path until it can wait on overlay readiness and run without

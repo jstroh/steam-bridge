@@ -27,6 +27,7 @@ param(
   [string]$OnlyCase = "",
   [int]$TimeoutSeconds = 120,
   [switch]$SkipNativeLoadGate,
+  [switch]$CleanStaleOverlayHelpers,
   [string]$OverlayInProcessGpu = "1"
 )
 
@@ -154,6 +155,153 @@ function Get-RedactedSteamConfigLabel {
   return (Split-Path -Leaf $ConfigPath)
 }
 
+function Get-CommandLineArgumentValue {
+  param([string]$CommandLine, [string]$Name)
+
+  if (-not $CommandLine) {
+    return $null
+  }
+  $pattern = '(?i)(?:^|\s)-' + [regex]::Escape($Name) + '\s+([^\s]+)'
+  $match = [regex]::Match($CommandLine, $pattern)
+  if (-not $match.Success) {
+    return $null
+  }
+  return $match.Groups[1].Value
+}
+
+function ConvertTo-NullableInt {
+  param([string]$Value)
+
+  $parsed = 0
+  if ([int]::TryParse([string]$Value, [ref]$parsed)) {
+    return $parsed
+  }
+  return $null
+}
+
+function Get-OverlayHelperDiagnostics {
+  $helpers = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+    Where-Object { $_.Name -match '(?i)^gameoverlayui(64)?\.exe$' })
+
+  foreach ($helper in $helpers) {
+    $targetPid = ConvertTo-NullableInt -Value (Get-CommandLineArgumentValue -CommandLine $helper.CommandLine -Name "pid")
+    $steamPid = ConvertTo-NullableInt -Value (Get-CommandLineArgumentValue -CommandLine $helper.CommandLine -Name "steampid")
+    $targetProcess = if ($targetPid) { Get-Process -Id $targetPid -ErrorAction SilentlyContinue } else { $null }
+    $steamProcess = if ($steamPid) { Get-Process -Id $steamPid -ErrorAction SilentlyContinue } else { $null }
+    $isOrphaned = [bool]($targetPid -and -not $targetProcess -and ((-not $steamPid) -or -not $steamProcess))
+
+    [PSCustomObject]@{
+      processName = $helper.Name
+      processId = $helper.ProcessId
+      parentProcessId = $helper.ParentProcessId
+      createdAt = if ($helper.CreationDate) { $helper.CreationDate.ToUniversalTime().ToString("o") } else { $null }
+      targetPid = $targetPid
+      targetExists = [bool]$targetProcess
+      targetName = if ($targetProcess) { $targetProcess.ProcessName } else { $null }
+      steamPid = $steamPid
+      steamParentExists = [bool]$steamProcess
+      orphaned = $isOrphaned
+    }
+  }
+}
+
+function Convert-BytesToMegabytes {
+  param($Bytes)
+
+  if ($null -eq $Bytes) {
+    return $null
+  }
+  return [math]::Round(([double]$Bytes / 1MB), 1)
+}
+
+function Convert-KilobytesToMegabytes {
+  param($Kilobytes)
+
+  if ($null -eq $Kilobytes) {
+    return $null
+  }
+  return [math]::Round(([double]$Kilobytes / 1024), 1)
+}
+
+function Get-WindowsResourceSnapshot {
+  $os = Get-CimInstance Win32_OperatingSystem -ErrorAction SilentlyContinue
+  $pageFiles = @(Get-CimInstance Win32_PageFileUsage -ErrorAction SilentlyContinue |
+    Select-Object Name,AllocatedBaseSize,CurrentUsage,PeakUsage)
+  $disks = @(Get-CimInstance Win32_LogicalDisk -Filter "DriveType=3" -ErrorAction SilentlyContinue |
+    Select-Object DeviceID,
+      @{Name = "sizeGB"; Expression = { [math]::Round(([double]$_.Size / 1GB), 1) } },
+      @{Name = "freeGB"; Expression = { [math]::Round(([double]$_.FreeSpace / 1GB), 1) } })
+  $topProcesses = @(Get-Process -ErrorAction SilentlyContinue |
+    Sort-Object PrivateMemorySize64 -Descending |
+    Select-Object -First 15 ProcessName,Id,
+      @{Name = "privateMB"; Expression = { Convert-BytesToMegabytes $_.PrivateMemorySize64 } },
+      @{Name = "workingSetMB"; Expression = { Convert-BytesToMegabytes $_.WorkingSet64 } })
+  $topServiceProcessIds = @($topProcesses |
+    Where-Object { $_.ProcessName -eq "svchost" } |
+    ForEach-Object { $_.Id })
+  $topServices = @()
+  if ($topServiceProcessIds.Count -gt 0) {
+    $topServices = @(Get-CimInstance Win32_Service -ErrorAction SilentlyContinue |
+      Where-Object { $topServiceProcessIds -contains $_.ProcessId } |
+      Select-Object Name,DisplayName,ProcessId,State)
+  }
+
+  return [PSCustomObject]@{
+    operatingSystem = if ($os) {
+      [PSCustomObject]@{
+        totalPhysicalMB = Convert-KilobytesToMegabytes $os.TotalVisibleMemorySize
+        freePhysicalMB = Convert-KilobytesToMegabytes $os.FreePhysicalMemory
+        totalVirtualMB = Convert-KilobytesToMegabytes $os.TotalVirtualMemorySize
+        freeVirtualMB = Convert-KilobytesToMegabytes $os.FreeVirtualMemory
+        pagefileTotalMB = Convert-KilobytesToMegabytes $os.SizeStoredInPagingFiles
+        pagefileFreeMB = Convert-KilobytesToMegabytes $os.FreeSpaceInPagingFiles
+      }
+    } else {
+      $null
+    }
+    pageFiles = @($pageFiles)
+    disks = @($disks)
+    topProcessesByPrivateMemory = @($topProcesses)
+    servicesForTopSvchostProcesses = @($topServices)
+  }
+}
+
+function Stop-StaleSteamOverlayHelpers {
+  param([string]$DestinationFile)
+
+  $helpers = @(Get-OverlayHelperDiagnostics)
+  $staleHelpers = @($helpers | Where-Object { $_.orphaned })
+  $results = @()
+  foreach ($helper in $staleHelpers) {
+    try {
+      Stop-Process -Id $helper.processId -Force -ErrorAction Stop
+      $results += [PSCustomObject]@{
+        processId = $helper.processId
+        targetPid = $helper.targetPid
+        steamPid = $helper.steamPid
+        status = "stopped"
+      }
+    } catch {
+      $results += [PSCustomObject]@{
+        processId = $helper.processId
+        targetPid = $helper.targetPid
+        steamPid = $helper.steamPid
+        status = "failed"
+        error = $_.Exception.Message
+      }
+    }
+  }
+
+  Write-MatrixJsonFile -Path $DestinationFile -Value ([PSCustomObject]@{
+    kind = "steam-bridge-windows-stale-overlay-helper-cleanup"
+    generatedAt = (Get-Date).ToUniversalTime().ToString("o")
+    staleOverlayHelpersBeforeCleanup = @($staleHelpers)
+    cleanupResults = @($results)
+    overlayHelpersAfterCleanup = @(Get-OverlayHelperDiagnostics)
+  }) -Depth 8
+  Write-Host ("Stale Steam overlay helper cleanup checked {0} helper(s), stopped {1}. Details: {2}" -f $helpers.Count, ($results | Where-Object { $_.status -eq "stopped" }).Count, $DestinationFile)
+}
+
 function Collect-SteamClientDiagnostics {
   param([string]$DestinationDir, [string]$Phase)
 
@@ -162,8 +310,10 @@ function Collect-SteamClientDiagnostics {
     $steamPath = Resolve-SteamInstallPath
     $logs = Join-Path $steamPath "logs"
     $generatedAt = (Get-Date).ToUniversalTime().ToString("o")
-    $processes = @(Get-Process steam,steamwebhelper,gameoverlayui,SteamBridgeSmoke -ErrorAction SilentlyContinue |
+    $processes = @(Get-Process steam,steamwebhelper,gameoverlayui,gameoverlayui64,SteamBridgeSmoke -ErrorAction SilentlyContinue |
       Select-Object ProcessName,Id,StartTime,Responding,MainWindowTitle,Path)
+    $overlayHelpers = @(Get-OverlayHelperDiagnostics)
+    $resourceSnapshot = Get-WindowsResourceSnapshot
     $logFiles = @()
     if (Test-Path -LiteralPath $logs) {
       $logFiles = @(Get-ChildItem -LiteralPath $logs -File -ErrorAction SilentlyContinue |
@@ -178,6 +328,9 @@ function Collect-SteamClientDiagnostics {
       steamPath = $steamPath
       logDirectory = $logs
       processes = @($processes)
+      overlayHelpers = @($overlayHelpers)
+      staleOverlayHelperCount = @($overlayHelpers | Where-Object { $_.orphaned }).Count
+      resourceSnapshot = $resourceSnapshot
       logFiles = @($logFiles | Select-Object -First 40)
     }) -Depth 8
 
@@ -770,12 +923,17 @@ Write-Host ("  appId: {0}" -f $AppId)
 Write-Host ("  overlayProfile: {0}" -f $OverlayProfile)
 Write-Host ("  inProcessGpu: {0}" -f $OverlayInProcessGpu)
 Write-Host ("  disableDirectComposition: {0}" -f $OverlayDisableDirectComposition)
+Write-Host ("  cleanStaleOverlayHelpers: {0}" -f $CleanStaleOverlayHelpers)
 if ($OnlyCase) {
   Write-Host ("  onlyCase: {0}" -f $OnlyCase)
 }
 if ($LaunchMode -eq "steam-launch") {
   Write-Host ("  launchEnvFile: {0}" -f $LaunchEnvFile)
   Write-Host ("  installShortcut: {0}" -f $InstallShortcut)
+}
+
+if ($CleanStaleOverlayHelpers) {
+  Stop-StaleSteamOverlayHelpers -DestinationFile (Join-Path $ArtifactRoot "stale-overlay-helper-cleanup.json")
 }
 
 Invoke-Preflight

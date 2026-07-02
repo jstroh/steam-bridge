@@ -103,7 +103,9 @@ in Node mode to run its shortcut updater. Use `-Suite shortcut` to verify or
 refresh only that shortcut before live overlay cases. Use `-Suite preflight` for
 Steam-client health capture only, and pass `-OnlyCase 01-web` or another case
 ID/action when a shaky client needs one focused live probe instead of a whole
-suite.
+suite. Pass `-CleanStaleOverlayHelpers` only when you intentionally want the
+matrix to stop orphaned Steam overlay helper processes whose target game process
+and recorded Steam parent process are both gone.
 
 ## Quick Start
 
