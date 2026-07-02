@@ -684,3 +684,12 @@ the private `--checkout-json-file` checkout suite.
   `verifyMacosSteamAppAfterSign(context)` from `afterSign`. The helper skips
   non-mac targets and rejects Intel or universal macOS targets.
 - Steam Bridge does not vendor the Steamworks SDK or Valve redistributables.
+- Windows release and smoke packages must Authenticode-sign the Electron
+  executable and native `.node` addon with a trusted publisher certificate
+  before testing on machines with Windows Smart App Control or App Control for
+  Business enabled. A local Windows 11 live test on July 1, 2026 proved that an
+  unsigned `steam_bridge_native.win32-x64-msvc.node` is blocked before Steam can
+  initialize, even though the package was built on macOS from the GitHub
+  Windows x64 prebuild. Mac-built Windows packages remain supported, but the
+  final Windows app must go through a normal Windows code-signing/reputation
+  path before overlay proof on SAC-enabled machines.

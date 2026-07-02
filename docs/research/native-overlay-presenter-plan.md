@@ -1661,6 +1661,14 @@ Windows gates:
   regress;
 - checkout approval-route plumbing and passive notification smoke actions can
   be launched through the packaged Windows helper for baseline coverage.
+- Windows packages used for live overlay proof are Authenticode-signed with a
+  trusted/reputable publisher certificate. A July 1, 2026 Windows 11 test
+  proved that Smart App Control can block the unsigned
+  `steam_bridge_native.win32-x64-msvc.node` before `SteamAPI_Init`, even when the
+  Windows package was built on macOS from the correct GitHub x64 prebuild.
+  Local self-signed trust is not enough for that SAC policy, so generic Windows
+  smoke proof needs either a real signed package or an explicitly SAC-disabled
+  development machine.
 
 ## Presenter Diagnostics
 

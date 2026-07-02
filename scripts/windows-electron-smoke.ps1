@@ -243,7 +243,7 @@ function Read-SmokeResult {
     throw "Missing $($ResultPrefix.Trim()) line in $LogFile"
   }
 
-  return ($line.Substring($ResultPrefix.Length) | ConvertFrom-Json -Depth 100)
+  return ($line.Substring($ResultPrefix.Length) | ConvertFrom-Json)
 }
 
 function Read-OkValue {
@@ -419,6 +419,14 @@ function Assert-SmokeResult {
   }
 
   if ($failures.Count -gt 0) {
+    if ($steam.initError -and $steam.initError.message) {
+      Write-Host "Steam init error:"
+      Write-Host $steam.initError.message
+    }
+    if ($Result.action -and $Result.action.error -and $Result.action.error.message) {
+      Write-Host "Autorun action error:"
+      Write-Host $Result.action.error.message
+    }
     foreach ($failure in $failures) {
       Write-Host "Smoke result failed: $failure"
     }
