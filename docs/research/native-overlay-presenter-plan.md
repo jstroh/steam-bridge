@@ -1864,9 +1864,16 @@ expansion. A follow-up artifact,
 then passed `presenter-friends-open-and-wait` through the same managed
 Steam-launched path with visible Friends/chat UI, close/back-to-app proof,
 active/inactive callbacks, presenter parking, `openAndWait` completion, and
-clean crash diagnostics. Keep D3D11 non-default until checkout, passive
-notifications, shortcut behavior, and Community/profile-style routes clear the
-same gates.
+clean crash diagnostics. A later checkout approval-route artifact,
+`C:\Users\admin\steam-bridge-artifacts\windows-d3d11-checkout-20260702-143311`,
+passed `presenter-checkout` with the public synthetic transaction ID path:
+direct open-status gating, visible Steam checkout approval web UI, active and
+inactive overlay callbacks, presenter parking,
+`overlay:presenter-checkout-open-and-wait-complete`, focus return, and clean
+crash diagnostics. This is approval-route plumbing proof, not real configured
+product purchase proof. Keep D3D11 non-default until passive notifications,
+shortcut behavior, Community/profile-style routes, and real configured-product
+checkout clear the same gates.
 
 The Windows smoke harness now exposes the store route explicitly:
 `STEAM_BRIDGE_SMOKE_STORE_ROUTE`, `--steam-bridge-smoke-store-route`, and the

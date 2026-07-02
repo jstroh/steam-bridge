@@ -170,9 +170,10 @@ For focused Windows native-presenter comparison runs, pass
 `STEAM_BRIDGE_WINDOWS_NATIVE_HOST_BACKEND=d3d11` in the smoke environment. This
 selects the opt-in D3D11/DXGI presenter instead of the older WGL diagnostic
 presenter. Current focused Windows evidence covers managed web, store-web, and
-Friends/chat open/close/back-to-app proof with clean crash diagnostics, but
-this path is not a default until checkout, passive notifications, shortcut
-behavior, and Community/profile-style routes pass the same gates.
+Friends/chat open/close/back-to-app proof plus synthetic checkout approval-route
+plumbing with clean crash diagnostics. This path is not a default until passive
+notifications, shortcut behavior, Community/profile-style routes, and real
+configured-product checkout pass the same gates.
 
 The Windows package also includes `windows-native-overlay-control.ps1` and the
 source for a tiny C# OpenGL control app. This is a route diagnostic, not an

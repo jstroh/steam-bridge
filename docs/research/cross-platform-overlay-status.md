@@ -555,9 +555,21 @@ foreground-window web close click, returned focus to the Electron smoke window,
 and recorded the full shown/active/closed/inactive/parked/open-and-wait-complete
 lifecycle with clean crash diagnostics and no leftover smoke or overlay helper
 processes. D3D11 now has focused Windows proof for web, store-web, and
-Friends/chat, while checkout, passive toasts, shortcut behavior, and
-Community/profile-style surfaces still need the same route-specific evidence
-before the backend can be considered for default use.
+Friends/chat, while real checkout content, passive toasts, shortcut behavior,
+and Community/profile-style surfaces still need the same route-specific
+evidence before the backend can be considered for default use.
+A follow-up D3D11 checkout approval-route run at
+`C:\Users\admin\steam-bridge-artifacts\windows-d3d11-checkout-20260702-143311`
+passed `presenter-checkout` with the public synthetic transaction ID path
+through the same managed Steam-launched setup. The route opened the Steam
+checkout approval web surface on the D3D11 host, waited through the direct
+open-status gate, emitted `GameOverlayActivated(true)` and
+`GameOverlayActivated(false)`, parked the presenter, completed
+`overlay:presenter-checkout-open-and-wait-complete`, returned focus to the
+Electron smoke window, and exited with clean crash diagnostics and no leftover
+smoke or overlay helper processes. This is checkout approval-route plumbing
+proof with App ID `480`; real purchase content still requires a real configured
+Steam app/product and an actual `InitTxn` response.
 The next focused artifact,
 `C:\Users\admin\steam-bridge-artifacts\native-presenter-wndproc-web-20260702-002`,
 rebuilt the Windows native addon with WndProc host diagnostics and passed the
