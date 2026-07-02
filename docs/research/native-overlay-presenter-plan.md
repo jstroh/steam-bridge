@@ -1875,6 +1875,25 @@ product purchase proof. Keep D3D11 non-default until passive notifications,
 shortcut behavior, Community/profile-style routes, and real configured-product
 checkout clear the same gates.
 
+A focused D3D11 shortcut-keyboard probe then found a passive-host focus bug:
+artifact
+`C:\Users\admin\steam-bridge-artifacts\windows-d3d11-shortcut-keyboard-20260702-145900`
+sent a real `Shift+Tab` chord after `overlay:presenter-shortcut-ready`, but the
+foreground window was the transparent native host and its WndProc received the
+key messages. No `overlay:shortcut-open` event or Steam activation followed
+because Electron never saw the shortcut. The Windows host primitive now treats
+passive attached hosts as truly non-activating by showing them with
+`SW_SHOWNOACTIVATE` and returning `MA_NOACTIVATE` for `WM_MOUSEACTIVATE` while
+`WS_EX_NOACTIVATE` is present. `cargo-xwin check -p steam-bridge-native
+--target x86_64-pc-windows-msvc` validates the Windows target, but live proof of
+the fix is paused by local Smart App Control/App Control reputation:
+`windows-d3d11-shortcut-keyboard-20260702-1508` blocked the fresh rebuilt
+`.node`, and `windows-direct-shortcut-keyboard-20260702-1511` blocked the local
+Steam runtime DLL before any overlay case launched. Do not spend more time on
+Steam restarts for this state; the next live Windows shortcut pass needs a
+trusted/reputable publisher-signed package or an explicitly policy-disabled test
+machine.
+
 The Windows smoke harness now exposes the store route explicitly:
 `STEAM_BRIDGE_SMOKE_STORE_ROUTE`, `--steam-bridge-smoke-store-route`, and the
 matrix `-StoreRoute web|native` switch all flow into

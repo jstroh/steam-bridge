@@ -570,7 +570,27 @@ Electron smoke window, and exited with clean crash diagnostics and no leftover
 smoke or overlay helper processes. This is checkout approval-route plumbing
 proof with App ID `480`; real purchase content still requires a real configured
 Steam app/product and an actual `InitTxn` response.
-The next focused artifact,
+A focused real-keyboard D3D11 shortcut probe,
+`C:\Users\admin\steam-bridge-artifacts\windows-d3d11-shortcut-keyboard-20260702-145900`,
+did not pass, but it identified a concrete host-window bug instead of another
+Steam client problem. The probe sent a real `Shift+Tab` `SendInput` chord after
+`overlay:presenter-shortcut-ready`; Windows reported the foreground window as
+`Steam Bridge Native Overlay Host`, the host WndProc recorded the key down/up
+messages, and the Electron shortcut bridge never emitted `overlay:shortcut-open`
+or Steam overlay activation. The Windows native host now shows passive,
+click-through host windows with `SW_SHOWNOACTIVATE` and answers
+`WM_MOUSEACTIVATE` with `MA_NOACTIVATE` while `WS_EX_NOACTIVATE` is set, so the
+passive presenter should stop stealing keyboard focus from Electron. The patch
+cross-checks with `cargo-xwin check -p steam-bridge-native --target
+x86_64-pc-windows-msvc`, but live retest is currently blocked by the Windows
+laptop's Smart App Control/App Control policy rather than overlay behavior:
+`windows-d3d11-shortcut-keyboard-20260702-1508` stopped at the native-load gate
+because the freshly rebuilt `.node` was blocked by `VerifiedAndReputableDesktop`,
+and `windows-direct-shortcut-keyboard-20260702-1511` stopped at the same gate
+after the restored bundle hit a Code Integrity block for the local Steam runtime
+DLL. Continue live Windows shortcut proof only on a policy-disabled development
+machine or with a trusted/reputable publisher-signed package.
+An earlier focused artifact,
 `C:\Users\admin\steam-bridge-artifacts\native-presenter-wndproc-web-20260702-002`,
 rebuilt the Windows native addon with WndProc host diagnostics and passed the
 managed web `openAndWait` route through the interactive Session 1 Steam shortcut

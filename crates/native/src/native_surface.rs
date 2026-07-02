@@ -1198,13 +1198,13 @@ mod windows {
         CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetClientRect,
         GetForegroundWindow, GetWindowLongPtrW, GetWindowRect, PeekMessageW, RegisterClassW,
         SetForegroundWindow, SetLayeredWindowAttributes, SetWindowLongPtrW, SetWindowPos,
-        ShowWindow, TranslateMessage, CS_OWNDC, GWL_EXSTYLE, GWL_STYLE, LWA_ALPHA, MSG, PM_REMOVE,
-        SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOOWNERZORDER, SWP_NOSIZE, SWP_NOZORDER,
-        SWP_SHOWWINDOW, SW_HIDE, SW_SHOW, WM_ACTIVATE, WM_ACTIVATEAPP, WM_CLOSE, WM_KEYDOWN,
-        WM_KEYUP, WM_KILLFOCUS, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEACTIVATE, WM_MOUSEMOVE,
-        WM_SETFOCUS, WM_SYSKEYDOWN, WM_SYSKEYUP, WNDCLASSW, WS_CLIPCHILDREN, WS_CLIPSIBLINGS,
-        WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_EX_TRANSPARENT,
-        WS_OVERLAPPEDWINDOW, WS_POPUP,
+        ShowWindow, TranslateMessage, CS_OWNDC, GWL_EXSTYLE, GWL_STYLE, LWA_ALPHA, MA_NOACTIVATE,
+        MSG, PM_REMOVE, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOOWNERZORDER,
+        SWP_NOSIZE, SWP_NOZORDER, SWP_SHOWWINDOW, SW_HIDE, SW_SHOW, SW_SHOWNOACTIVATE, WM_ACTIVATE,
+        WM_ACTIVATEAPP, WM_CLOSE, WM_KEYDOWN, WM_KEYUP, WM_KILLFOCUS, WM_LBUTTONDOWN, WM_LBUTTONUP,
+        WM_MOUSEACTIVATE, WM_MOUSEMOVE, WM_SETFOCUS, WM_SYSKEYDOWN, WM_SYSKEYUP, WNDCLASSW,
+        WS_CLIPCHILDREN, WS_CLIPSIBLINGS, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
+        WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_OVERLAPPEDWINDOW, WS_POPUP,
     };
 
     type Hglrc = isize;
@@ -1568,7 +1568,7 @@ mod windows {
 
     pub fn show() -> Result<(), Error> {
         with_surface(|surface| unsafe {
-            ShowWindow(surface.hwnd, SW_SHOW);
+            show_surface(surface);
             surface.visible = true;
             update_window_frame(surface);
             sync_window_style(surface);
@@ -1825,7 +1825,7 @@ mod windows {
             visible: true,
         };
         sync_window_style(&mut surface);
-        ShowWindow(hwnd, SW_SHOW);
+        show_surface(&surface);
         update_window_frame(&surface);
         if surface.host_style == WindowsHostStyle::Control {
             activate_window(&surface);
@@ -2283,6 +2283,15 @@ mod windows {
         SetFocus(surface.hwnd);
     }
 
+    unsafe fn show_surface(surface: &NativeSurface) {
+        let show_command = if surface.input_passthrough {
+            SW_SHOWNOACTIVATE
+        } else {
+            SW_SHOW
+        };
+        ShowWindow(surface.hwnd, show_command);
+    }
+
     unsafe fn destroy_surface(surface: NativeSurface) {
         release_renderer(surface.renderer, surface.hwnd);
         if !surface.hwnd.is_null() {
@@ -2308,6 +2317,11 @@ mod windows {
         if message == WM_CLOSE {
             ShowWindow(hwnd, SW_HIDE);
             return 0;
+        }
+        if message == WM_MOUSEACTIVATE
+            && GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32 & WS_EX_NOACTIVATE != 0
+        {
+            return MA_NOACTIVATE as LRESULT;
         }
         DefWindowProcW(hwnd, message, wparam, lparam)
     }

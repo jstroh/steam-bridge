@@ -1475,6 +1475,7 @@ function New-Case {
     [switch]$AllowOverlayNotReady,
     [switch]$RequireManagedOverlayComplete,
     [switch]$CloseProbeOnActivation,
+    [switch]$ShortcutToggleProbe,
     [string]$ManagedOverlayResultMode = "",
     [string]$WebModal = "",
     [string]$StoreRouteOverride = "",
@@ -1494,6 +1495,7 @@ function New-Case {
     allowOverlayNotReady = [bool]$AllowOverlayNotReady
     requireManagedOverlayComplete = [bool]$RequireManagedOverlayComplete
     closeProbeOnActivation = [bool]$CloseProbeOnActivation
+    shortcutToggleProbe = [bool]$ShortcutToggleProbe
     managedOverlayResultMode = $ManagedOverlayResultMode
     webModal = $WebModal
     storeRoute = $StoreRouteOverride
@@ -1547,6 +1549,15 @@ function Get-MatrixCases {
     New-ManagedOpenAndWaitCase -Id "13-managed-friends-open-and-wait" -Action "presenter-friends-open-and-wait"
     New-ManagedOpenAndWaitCase -Id "14-managed-dialog-open-and-wait" -Action "presenter-dialog-auto-open-and-wait" -DialogOverride $Dialog
     New-ManagedOpenAndWaitCase -Id "15-managed-shortcut" -Action "presenter-shortcut-open-and-wait" -ShortcutTargetOverride $ShortcutTarget
+    New-Case `
+      -Id "15-managed-shortcut-keyboard" `
+      -Action "presenter-shortcut" `
+      -RequireEvent @("overlay:presenter-shortcut-ready", "overlay:shortcut-open", "overlay:presenter-wait-shown", "overlay:presenter-wait-closed", "overlay:presenter-parked") `
+      -RequireOverlayActivated `
+      -CloseProbeOnActivation `
+      -ShortcutToggleProbe `
+      -ShortcutTargetOverride $ShortcutTarget `
+      -ResultDelayMs 30000
     New-Case -Id "16-managed-checkout-route" -Action "presenter-checkout" -RequireEvent @("overlay:presenter-open", "overlay:presenter-wait-closed", "overlay:presenter-parked", "overlay:presenter-checkout-open-and-wait-complete") -RequireOverlayActivated -RequireManagedOverlayComplete -ManagedOverlayResultMode "complete" -CheckoutTransactionIdOverride $CheckoutTransactionId
     New-ManagedOpenAndWaitCase -Id "17-managed-profile-open-and-wait" -Action "presenter-profile-open-and-wait"
     New-ManagedOpenAndWaitCase -Id "18-managed-players-open-and-wait" -Action "presenter-players-open-and-wait"
@@ -1604,6 +1615,7 @@ function Write-MatrixManifest {
           allowOverlayNotReady = [bool]$_.allowOverlayNotReady
           requireManagedOverlayComplete = [bool]$_.requireManagedOverlayComplete
           closeProbeOnActivation = [bool]$_.closeProbeOnActivation
+          shortcutToggleProbe = [bool]$_.shortcutToggleProbe
           managedOverlayResultMode = $_.managedOverlayResultMode
           webModal = $_.webModal
           storeRoute = $_.storeRoute
@@ -1703,7 +1715,8 @@ function Test-SmokeResultPayload {
 function Start-WindowsOverlayCloseProbe {
   param($Case, [string]$CaseDir, [string]$DiagnosticDir)
 
-  if (-not $CloseProbe -or (-not $Case.requireManagedOverlayComplete -and -not $Case.closeProbeOnActivation)) {
+  $shortcutToggleProbe = [bool]$Case.shortcutToggleProbe
+  if (-not $CloseProbe -or (-not $Case.requireManagedOverlayComplete -and -not $Case.closeProbeOnActivation -and -not $shortcutToggleProbe)) {
     return $null
   }
 
@@ -2030,15 +2043,40 @@ function Get-LifecyclePresenterBounds {
 Write-ProbeEvent "probe:start" ([PSCustomObject]@{
   lifecycleLog = '$lifecycleLog'
   input = '$input'
+  shortcutToggleProbe = [bool]::Parse('$shortcutToggleProbe')
   settleMs = $settleMs
   timeoutSeconds = $timeoutSeconds
 })
 
+`$shortcutToggleProbe = [bool]::Parse('$shortcutToggleProbe')
 `$deadline = (Get-Date).AddSeconds($timeoutSeconds)
+`$openSent = `$false
 `$sent = `$false
 while ((Get-Date) -lt `$deadline -and -not `$sent) {
   if (Test-Path -LiteralPath '$lifecycleLog') {
     `$text = Get-Content -Raw -LiteralPath '$lifecycleLog' -ErrorAction SilentlyContinue
+    if (`$shortcutToggleProbe -and -not `$openSent -and `$text -match 'overlay:presenter-shortcut-ready') {
+      Write-ProbeEvent "probe:shortcut-ready" ([PSCustomObject]@{
+        foreground = Get-ForegroundProbeSnapshot
+        screenshot = Capture-ProbeScreen "shortcut-ready"
+        processes = Get-ProbeProcessSnapshot
+      })
+      `$nativeOpenInputSent = Send-NativeKeyChord @(0x10, 0x09)
+      `$openSent = `$true
+      Write-ProbeEvent "probe:shortcut-open-sent" ([PSCustomObject]@{
+        input = "toggle-sendinput"
+        nativeInputSent = `$nativeOpenInputSent
+        foreground = Get-ForegroundProbeSnapshot
+        processes = Get-ProbeProcessSnapshot
+      })
+      Start-Sleep -Milliseconds 250
+      Write-ProbeEvent "probe:shortcut-open-after-send" ([PSCustomObject]@{
+        input = "toggle-sendinput"
+        foreground = Get-ForegroundProbeSnapshot
+        screenshot = Capture-ProbeScreen "shortcut-open-after-send"
+        processes = Get-ProbeProcessSnapshot
+      })
+    }
     if (`$text -match 'overlay:presenter-wait-shown' -or (`$text -match 'callback:overlay-activated' -and `$text -match '"active":true')) {
       Write-ProbeEvent "probe:detected" ([PSCustomObject]@{
         foreground = Get-ForegroundProbeSnapshot
@@ -2117,7 +2155,10 @@ while ((Get-Date) -lt `$deadline -and -not `$sent) {
 }
 
 if (-not `$sent) {
-  Write-ProbeEvent "probe:timeout" ([PSCustomObject]@{})
+  Write-ProbeEvent "probe:timeout" ([PSCustomObject]@{
+    shortcutToggleProbe = `$shortcutToggleProbe
+    openSent = `$openSent
+  })
 }
 "@
 
