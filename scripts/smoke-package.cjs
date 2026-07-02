@@ -325,6 +325,7 @@ function runElectronSmokeActionStaticChecks() {
   const html = fs.readFileSync(path.join(repoRoot, "examples", "electron-basic", "index.html"), "utf8");
   const linuxHelper = fs.readFileSync(path.join(repoRoot, "scripts", "linux-electron-smoke.sh"), "utf8");
   const deckHelper = fs.readFileSync(path.join(repoRoot, "scripts", "steam-deck-smoke.sh"), "utf8");
+  const windowsHelper = fs.readFileSync(path.join(repoRoot, "scripts", "windows-electron-smoke.ps1"), "utf8");
 
   for (const [label, source, expected] of [
     ["Electron smoke main", main, "case \"presenter-ready\""],
@@ -381,7 +382,10 @@ function runElectronSmokeActionStaticChecks() {
     ["Linux smoke helper", linuxHelper, "overlay:presenter-ready"],
     ["Linux smoke helper", linuxHelper, "presenter-duplicate-open-guard"],
     ["Steam Deck smoke helper", deckHelper, "overlay:presenter-ready"],
-    ["Steam Deck smoke helper", deckHelper, "presenter-duplicate-open-guard"]
+    ["Steam Deck smoke helper", deckHelper, "presenter-duplicate-open-guard"],
+    ["Windows smoke helper", windowsHelper, '"preflight"'],
+    ["Windows smoke helper", windowsHelper, "Get-AuthenticodeSignature"],
+    ["Windows smoke helper", windowsHelper, "Microsoft-Windows-CodeIntegrity/Operational"]
   ]) {
     assert.ok(source.includes(expected), `${label} missing ${expected}`);
   }

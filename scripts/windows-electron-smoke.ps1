@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-  [ValidateSet("direct", "steam-launch", "verify", "print-launch-options")]
+  [ValidateSet("direct", "steam-launch", "verify", "preflight", "print-launch-options")]
   [string]$Mode = "direct",
 
   [string]$AppDir = "",
@@ -102,6 +102,10 @@ function Resolve-SmokeExe {
   return $exe
 }
 
+function Resolve-NativeAddon {
+  return (Join-Path $AppDir "resources\app\node_modules\steam-bridge\steam_bridge_native.win32-x64-msvc.node")
+}
+
 function Get-SmokeArgs {
   param([string]$LogFile, [string]$SmokeAction)
 
@@ -167,6 +171,116 @@ function Get-SmokeArgs {
 function Get-LaunchOptionsLine {
   param([string]$LogFile, [string]$SmokeAction)
   return (Get-SmokeArgs -LogFile $LogFile -SmokeAction $SmokeAction) -join " "
+}
+
+function Format-FileSignatureSummary {
+  param([string]$Path)
+
+  if (-not (Test-Path -LiteralPath $Path)) {
+    return [PSCustomObject]@{
+      path = $Path
+      exists = $false
+      length = $null
+      authenticodeStatus = "Missing"
+      signerSubject = $null
+      signerThumbprint = $null
+      zoneIdentifier = $false
+    }
+  }
+
+  $item = Get-Item -LiteralPath $Path
+  $signature = Get-AuthenticodeSignature -LiteralPath $Path
+  $zone = Get-Item -LiteralPath $Path -Stream Zone.Identifier -ErrorAction SilentlyContinue
+  $signer = $signature.SignerCertificate
+
+  return [PSCustomObject]@{
+    path = $Path
+    exists = $true
+    length = $item.Length
+    authenticodeStatus = [string]$signature.Status
+    signerSubject = if ($signer) { $signer.Subject } else { $null }
+    signerThumbprint = if ($signer) { $signer.Thumbprint } else { $null }
+    zoneIdentifier = [bool]$zone
+  }
+}
+
+function Get-AppControlPolicySummary {
+  $policy = Get-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\CI\Policy" -ErrorAction SilentlyContinue
+  return [PSCustomObject]@{
+    verifiedAndReputablePolicyState = if ($policy) { $policy.VerifiedAndReputablePolicyState } else { $null }
+  }
+}
+
+function Get-RecentCodeIntegrityEvents {
+  param([string[]]$Needles)
+
+  $events = Get-WinEvent -FilterHashtable @{
+    LogName = "Microsoft-Windows-CodeIntegrity/Operational"
+    StartTime = (Get-Date).AddHours(-24)
+  } -MaxEvents 80 -ErrorAction SilentlyContinue
+
+  if (-not $events) {
+    return @()
+  }
+
+  $matches = @()
+  foreach ($event in $events) {
+    foreach ($needle in $Needles) {
+      if ($needle -and $event.Message -like "*$needle*") {
+        $matches += [PSCustomObject]@{
+          timeCreated = $event.TimeCreated
+          id = $event.Id
+          message = (($event.Message -replace "\r?\n", " ") -replace "\s+", " ").Trim()
+        }
+        break
+      }
+    }
+  }
+
+  return @($matches | Select-Object -First 8)
+}
+
+function Invoke-Preflight {
+  $exe = Resolve-SmokeExe
+  $nativeAddon = Resolve-NativeAddon
+  $policy = Get-AppControlPolicySummary
+  $exeSummary = Format-FileSignatureSummary -Path $exe
+  $nativeSummary = Format-FileSignatureSummary -Path $nativeAddon
+  $events = Get-RecentCodeIntegrityEvents -Needles @(
+    "SteamBridgeSmoke",
+    "steam_bridge_native",
+    [System.IO.Path]::GetFileName($nativeAddon)
+  )
+
+  Write-Host "Windows smoke preflight:"
+  Write-Host ("  appDir: {0}" -f $AppDir)
+  Write-Host ("  powershell: {0}" -f $PSVersionTable.PSVersion)
+  Write-Host ("  verifiedAndReputablePolicyState: {0}" -f $policy.verifiedAndReputablePolicyState)
+  foreach ($summary in @($exeSummary, $nativeSummary)) {
+    Write-Host ("  file: {0}" -f $summary.path)
+    Write-Host ("    exists: {0}" -f $summary.exists)
+    Write-Host ("    length: {0}" -f $summary.length)
+    Write-Host ("    authenticodeStatus: {0}" -f $summary.authenticodeStatus)
+    Write-Host ("    signerSubject: {0}" -f $summary.signerSubject)
+    Write-Host ("    signerThumbprint: {0}" -f $summary.signerThumbprint)
+    Write-Host ("    zoneIdentifier: {0}" -f $summary.zoneIdentifier)
+  }
+
+  if ($policy.verifiedAndReputablePolicyState -eq 1 -and $nativeSummary.authenticodeStatus -ne "Valid") {
+    Write-Host "  warning: Windows Smart App Control/App Control is enabled and the native addon is not Authenticode-valid."
+    Write-Host "  warning: SteamAPI_Init smoke runs are expected to fail before overlay testing on this machine."
+  } elseif ($policy.verifiedAndReputablePolicyState -eq 1) {
+    Write-Host "  warning: Windows Smart App Control/App Control is enabled; local or unreputable signatures can still be blocked."
+  }
+
+  if ($events.Count -gt 0) {
+    Write-Host "  recentCodeIntegrityEvents:"
+    foreach ($event in $events) {
+      Write-Host ("    [{0}] id={1} {2}" -f $event.timeCreated, $event.id, $event.message)
+    }
+  } else {
+    Write-Host "  recentCodeIntegrityEvents: none"
+  }
 }
 
 function Add-DefaultRequireEvents {
@@ -485,6 +599,9 @@ switch ($Mode) {
     if ($ShortcutGameId) {
       Write-Host "Launch URL: steam://rungameid/$ShortcutGameId"
     }
+  }
+  "preflight" {
+    Invoke-Preflight
   }
   "direct" {
     Invoke-DirectSmoke

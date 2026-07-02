@@ -1669,6 +1669,9 @@ Windows implementation path unless ordinary Electron proves insufficient.
 
 Windows gates:
 
+- packaged helper preflight reports App Control/SAC state, executable and native
+  addon Authenticode status, Zone.Identifier streams, and recent Code Integrity
+  block events before long live overlay runs;
 - existing Electron overlay path still passes;
 - `disableDirectComposition` remains opt-in and is covered by smoke helper
   launch-option diagnostics when used;

@@ -59,6 +59,13 @@ Windows run shows a white or stale overlay, pass
 `-OverlayDisableDirectComposition 1` for an explicit comparison run. This switch
 is not enabled by default because upstream Electron/Steam wrapper reports tie it
 to Alt+Tab ghost-window regressions on some Windows systems.
+Run `windows-electron-smoke.ps1 -Mode preflight` on a Windows test package before
+long live overlay runs. It reports Smart App Control/App Control policy state,
+Authenticode status for the Electron executable and native `.node` addon,
+Zone.Identifier streams, and recent Code Integrity block events that mention the
+smoke app. If the native addon is blocked there, Steam cannot initialize and
+overlay proof must wait for a trusted/reputable signed package or an explicitly
+SAC-disabled development machine.
 
 ## Quick Start
 

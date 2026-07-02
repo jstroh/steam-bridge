@@ -318,6 +318,12 @@ Windows smoke helper's `-OverlayDisableDirectComposition 1` flag for an explicit
 comparison run; keep Alt+Tab/close regression checks in that pass because this
 Chromium switch has known ghost-window risk in upstream Electron Steam wrapper
 reports.
+Before a long Windows run, launch
+`windows-electron-smoke.ps1 -Mode preflight` against the packaged app. The
+preflight reports Smart App Control/App Control policy state, Authenticode
+status for `SteamBridgeSmoke.exe` and the native `.node` addon, Zone.Identifier
+streams, and recent Code Integrity events so native-load blockers are visible
+before Steam overlay testing starts.
 
 ```ts
 import { app, BrowserWindow } from "electron";
