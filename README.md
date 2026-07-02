@@ -795,6 +795,20 @@ the private `--checkout-json-file` checkout suite.
     -InstallShortcut
   ```
 
+  For development-only App Control diagnostics, the matrix can install the
+  Steam shortcut with `-ShortcutExe`, `-ShortcutStartDir`, and
+  `-ShortcutLaunchPrefix` while still using the packaged `resources/app`
+  payload and smoke env file. If the packaged Electron executable is also
+  blocked as the JavaScript shortcut updater, pass `-JavaScriptRunnerExe` to run
+  `upsert-steam-shortcut.cjs` through the same diagnostic Electron runtime in
+  Node mode. This is useful for comparing a reputable Electron runtime against a
+  locally blocked packaged executable, but it is not product package proof; the
+  native-load gate still belongs to the exact final package. If that diagnostic
+  launch writes a smoke result but App Control blocks a native dependency from
+  `resources/app`, the case writes `case-app-control-blocker.json` with
+  `windows-app-control-native-dependency-block`, fresh Code Integrity events,
+  and the same trusted/reputable-signing next actions.
+
   From the repo, summarize a completed, readiness-only, incomplete, or
   native-load-blocked artifact with:
 

@@ -137,7 +137,24 @@ shortcut resolution only, without the native-load gate or a `steam://rungameid`
 launch. On App Control machines without standalone Node.js, that
 Electron-in-Node-mode fallback can itself be blocked unless the package has a
 trusted/reputable signature; install Node.js or run the shortcut updater from a
-repo checkout in that case. Use `-Suite preflight` for
+repo checkout in that case.
+
+For development-only App Control diagnostics, the matrix can install the Steam
+shortcut with `-ShortcutExe`, `-ShortcutStartDir`, and
+`-ShortcutLaunchPrefix` while still using the packaged `resources/app` payload
+and smoke env file. If the packaged Electron executable is also blocked as the
+JavaScript shortcut updater, pass `-JavaScriptRunnerExe` to run
+`upsert-steam-shortcut.cjs` through the same diagnostic Electron runtime in
+Node mode. Use this to compare a reputable Electron runtime against the blocked
+packaged executable, and keep those artifacts separate from product package
+proof because the native-load gate still belongs to the exact final package. If
+that diagnostic launch writes a smoke result but App Control blocks a native
+dependency from `resources/app`, the case writes
+`case-app-control-blocker.json` with
+`windows-app-control-native-dependency-block`, fresh Code Integrity events, and
+trusted/reputable-signing next actions.
+
+Use `-Suite preflight` for
 report-only Steam-client health capture, or `-Suite readiness` when a shaky
 client needs the live-run readiness gate written without native-load,
 shortcut-edit, or `steam://rungameid` work. Pass `-OnlyCase 01-web` or another

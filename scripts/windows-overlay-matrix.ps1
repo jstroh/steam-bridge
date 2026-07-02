@@ -15,6 +15,10 @@ param(
   [string]$SteamUserId = "",
   [string]$ShortcutsPath = "",
   [string]$ShortcutName = "Steam Bridge Smoke",
+  [string]$ShortcutExe = "",
+  [string]$ShortcutStartDir = "",
+  [string]$ShortcutLaunchPrefix = "",
+  [string]$JavaScriptRunnerExe = "",
   [string]$LaunchEnvFile = "",
   [switch]$AllowShortcutUpdateWhileSteamRunning,
   [string]$OverlayProfile = "diagnostic",
@@ -111,6 +115,32 @@ function Resolve-SmokeExe {
   return $exe
 }
 
+function Resolve-ShortcutExe {
+  if ($ShortcutExe) {
+    if (-not (Test-Path -LiteralPath $ShortcutExe)) {
+      throw "Missing Windows shortcut executable at $ShortcutExe"
+    }
+    return $ShortcutExe
+  }
+
+  return (Resolve-SmokeExe)
+}
+
+function Resolve-ShortcutStartDir {
+  if ($ShortcutStartDir) {
+    if (-not (Test-Path -LiteralPath $ShortcutStartDir)) {
+      throw "Missing Windows shortcut start directory at $ShortcutStartDir"
+    }
+    return $ShortcutStartDir
+  }
+
+  if ($ShortcutExe) {
+    return (Split-Path -Parent (Resolve-ShortcutExe))
+  }
+
+  return $AppDir
+}
+
 function Resolve-NativeAddon {
   return Join-Path $AppDir "resources\app\node_modules\steam-bridge\steam_bridge_native.win32-x64-msvc.node"
 }
@@ -148,6 +178,19 @@ function Read-MatrixJsonFile {
     return $null
   }
   return (Get-Content -Raw -LiteralPath $Path | ConvertFrom-Json)
+}
+
+function Join-MatrixLaunchOptions {
+  param([string[]]$Arguments)
+
+  return (($Arguments | ForEach-Object {
+    $value = [string]$_
+    if ($value -match '[\s"]') {
+      '"' + ($value -replace '"', '\"') + '"'
+    } else {
+      $value
+    }
+  }) -join " ")
 }
 
 function Convert-MatrixEventTime {
@@ -851,6 +894,16 @@ function Resolve-UpsertShortcutPath {
 }
 
 function Resolve-JavaScriptRunner {
+  if ($JavaScriptRunnerExe) {
+    if (-not (Test-Path -LiteralPath $JavaScriptRunnerExe)) {
+      throw "Missing JavaScript runner executable at $JavaScriptRunnerExe"
+    }
+    return [PSCustomObject]@{
+      Command = $JavaScriptRunnerExe
+      UseElectronRunAsNode = $true
+    }
+  }
+
   $node = Get-Command node -ErrorAction SilentlyContinue
   if ($node) {
     return [PSCustomObject]@{
@@ -1151,6 +1204,91 @@ function New-SteamLaunchBlocker {
   }
 }
 
+function Test-AppControlBlockText {
+  param([string]$Text)
+
+  if (-not $Text) {
+    return $false
+  }
+
+  return (
+    $Text -match "(?i)Application Control policy has blocked" -or
+    $Text -match "(?i)Enterprise signing level requirements" -or
+    $Text -match "(?i)violated code integrity policy" -or
+    $Text -match "(?i)Device Guard policy"
+  )
+}
+
+function New-CaseAppControlBlocker {
+  param(
+    $Case,
+    [string]$ResultFile,
+    [string]$HelperLog,
+    [string]$PostCasePreflightLog,
+    [string]$PostCasePreflightJson,
+    [datetime]$CaseStartedAt,
+    [string]$OriginalError
+  )
+
+  $postCasePreflight = Read-MatrixJsonFile -Path $PostCasePreflightJson
+  $appControlSummary = Get-PreflightAppControlSummary -PreflightJson $PostCasePreflightJson
+  $codeIntegrityEvents = @()
+  if ($postCasePreflight -and $postCasePreflight.recentCodeIntegrityEvents) {
+    $codeIntegrityEvents = @($postCasePreflight.recentCodeIntegrityEvents)
+  }
+  $allCodeIntegrityEventCount = @($codeIntegrityEvents).Count
+  $codeIntegrityEvents = Select-CodeIntegrityEventsSince -Events $codeIntegrityEvents -Since $CaseStartedAt
+  $ignoredOlderCodeIntegrityEventCount = $allCodeIntegrityEventCount - @($codeIntegrityEvents).Count
+
+  $codeIntegrityMessages = @(
+    $codeIntegrityEvents |
+      ForEach-Object {
+        if ($_.message) {
+          $_.message
+        }
+      }
+  )
+  $codeIntegrityPolicyBlock = @(
+    $codeIntegrityMessages |
+      Where-Object { Test-AppControlBlockText -Text $_ }
+  ).Count -gt 0
+
+  $resultText = ""
+  if ($ResultFile -and (Test-Path -LiteralPath $ResultFile)) {
+    $resultText = Get-Content -Raw -LiteralPath $ResultFile
+  }
+
+  return [PSCustomObject]@{
+    kind = "steam-bridge-windows-case-app-control-blocker"
+    generatedAt = (Get-Date).ToUniversalTime().ToString("o")
+    caseStartedAt = if ($CaseStartedAt) { $CaseStartedAt.ToUniversalTime().ToString("o") } else { $null }
+    blockerCode = "windows-app-control-native-dependency-block"
+    caseId = $Case.id
+    action = $Case.action
+    resultPolicyBlock = Test-AppControlBlockText -Text $resultText
+    codeIntegrityPolicyBlock = $codeIntegrityPolicyBlock
+    verifiedAndReputableBlock = (
+      [bool]$appControlSummary.verifiedAndReputableEnforced -or
+      $appControlSummary.verifiedAndReputablePolicyState -eq 1
+    )
+    originalError = $OriginalError
+    paths = [PSCustomObject]@{
+      resultFile = $ResultFile
+      helperLog = $HelperLog
+      postCasePreflightLog = $PostCasePreflightLog
+      postCasePreflightJson = $PostCasePreflightJson
+    }
+    appControl = $appControlSummary
+    postCaseCodeIntegrityEvents = @($codeIntegrityEvents)
+    ignoredOlderCodeIntegrityEventCount = $ignoredOlderCodeIntegrityEventCount
+    nextActions = @(
+      "Use a trusted and reputable publisher-signed package.",
+      "Or explicitly move this development machine's Smart App Control/App Control policy out of enforcement before live overlay proof.",
+      "Then rerun the focused Steam-launched matrix case."
+    )
+  }
+}
+
 function Test-NativeLoadGate {
   param([string]$PreflightDir, [string]$PreflightJson)
 
@@ -1380,6 +1518,11 @@ function Read-PrefixedJson {
 }
 
 function Get-StableShortcutLaunchOptions {
+  if ($ShortcutLaunchPrefix) {
+    $envOption = Join-MatrixLaunchOptions @("--steam-bridge-smoke-env-file=$LaunchEnvFile")
+    return (($ShortcutLaunchPrefix.Trim(), $envOption) -join " ").Trim()
+  }
+
   $helper = Resolve-HelperPath
   $output = & powershell -NoProfile -ExecutionPolicy Bypass -File $helper `
     -Mode print-launch-options `
@@ -1397,7 +1540,8 @@ function Ensure-SteamShortcut {
   $shortcuts = Resolve-ShortcutsPath
   $upsert = Resolve-UpsertShortcutPath
   $runner = Resolve-JavaScriptRunner
-  $exe = Resolve-SmokeExe
+  $exe = Resolve-ShortcutExe
+  $startDir = Resolve-ShortcutStartDir
   $launchOptions = Get-StableShortcutLaunchOptions
   $backup = Join-Path $ArtifactRoot "windows-shortcuts.vdf.bak"
   $baseArgs = @(
@@ -1406,7 +1550,7 @@ function Ensure-SteamShortcut {
     "--backup", $backup,
     "--app-name", $ShortcutName,
     "--exe", $exe,
-    "--start-dir", $AppDir,
+    "--start-dir", $startDir,
     "--launch-options", $launchOptions,
     "--json"
   )
@@ -1637,6 +1781,10 @@ function Write-MatrixManifest {
     onlyCase = $OnlyCase
     expectedCaseCount = $manifestCases.Count
     shortcutName = $ShortcutName
+    shortcutExe = $ShortcutExe
+    shortcutStartDir = $ShortcutStartDir
+    shortcutLaunchPrefix = $ShortcutLaunchPrefix
+    javaScriptRunnerExe = $JavaScriptRunnerExe
     overlayProfile = $OverlayProfile
     presenterMode = $PresenterMode
     nativeHostBackend = $NativeHostBackend
@@ -2413,7 +2561,22 @@ function Invoke-MatrixCase {
         Write-Host ("Post-case preflight failed; preserving original case failure. Output path: {0}" -f $postCasePreflightLog)
       }
       if ($resultHasSmokePayload) {
-        Write-Host "Smoke result payload exists; preserving the verifier failure without writing a Steam launch blocker."
+        $resultText = Get-Content -Raw -LiteralPath $resultFile
+        if (Test-AppControlBlockText -Text $resultText) {
+          $blocker = New-CaseAppControlBlocker `
+            -Case $Case `
+            -ResultFile $resultFile `
+            -HelperLog $helperLog `
+            -PostCasePreflightLog $postCasePreflightLog `
+            -PostCasePreflightJson $postCasePreflightJson `
+            -CaseStartedAt $caseStartedAt `
+            -OriginalError $_.Exception.Message
+          $blockerPath = Join-Path $caseDir "case-app-control-blocker.json"
+          Write-MatrixJsonFile -Path $blockerPath -Value $blocker -Depth 10
+          Write-Host ("Smoke result contains a Windows App Control block; wrote {0}." -f $blockerPath)
+        } else {
+          Write-Host "Smoke result payload exists; preserving the verifier failure without writing a Steam launch blocker."
+        }
       } else {
         $blocker = New-SteamLaunchBlocker `
           -Case $Case `
@@ -2459,6 +2622,18 @@ if ($OnlyCase) {
 if ($LaunchMode -eq "steam-launch") {
   Write-Host ("  launchEnvFile: {0}" -f $LaunchEnvFile)
   Write-Host ("  installShortcut: {0}" -f $InstallShortcut)
+  if ($ShortcutExe) {
+    Write-Host ("  shortcutExe: {0}" -f $ShortcutExe)
+  }
+  if ($ShortcutStartDir) {
+    Write-Host ("  shortcutStartDir: {0}" -f $ShortcutStartDir)
+  }
+  if ($ShortcutLaunchPrefix) {
+    Write-Host ("  shortcutLaunchPrefix: {0}" -f $ShortcutLaunchPrefix)
+  }
+  if ($JavaScriptRunnerExe) {
+    Write-Host ("  javaScriptRunnerExe: {0}" -f $JavaScriptRunnerExe)
+  }
 }
 
 Write-MatrixManifest -Cases $selectedMatrixCases

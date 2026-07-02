@@ -95,6 +95,7 @@ function summarizeWindowsOverlayMatrixArtifacts(root) {
   const failures = [];
   const warnings = [];
   const caseSummaries = [];
+  const caseAppControlBlockers = [];
   const steamLaunchBlockers = [];
 
   if (!fs.existsSync(root)) {
@@ -157,8 +158,17 @@ function summarizeWindowsOverlayMatrixArtifacts(root) {
 
   for (const caseName of findCaseDirectories(root)) {
     const caseDir = path.join(root, caseName);
+    const caseAppControlBlocker = readJsonIfPresent(path.join(caseDir, "case-app-control-blocker.json"), failures);
     const steamLaunchBlocker = readJsonIfPresent(path.join(caseDir, "steam-launch-blocker.json"), failures);
     const resultLog = findResultLog(caseDir);
+    if (caseAppControlBlocker) {
+      validateCaseAppControlBlocker(caseAppControlBlocker, failures);
+      caseAppControlBlockers.push(summarizeCaseAppControlBlocker(caseName, caseAppControlBlocker));
+      if (!resultLog || !hasSmokeResultPayload(resultLog)) {
+        failures.push(`${caseName}: case-app-control-blocker.json requires a smoke result payload`);
+      }
+      continue;
+    }
     if (steamLaunchBlocker) {
       validateSteamLaunchBlocker(steamLaunchBlocker, failures);
       if (resultLog && hasSmokeResultPayload(resultLog)) {
@@ -191,10 +201,17 @@ function summarizeWindowsOverlayMatrixArtifacts(root) {
   }
 
   if (manifest && !nativeLoadBlocker) {
-    validateManifestCoverage(manifest, caseSummaries, failures, warnings);
+    validateManifestCoverage(manifest, caseSummaries, caseAppControlBlockers, steamLaunchBlockers, failures, warnings);
   }
 
-  if (!nativeLoadBlocker && caseSummaries.length === 0 && !preflight && !liveRunReadiness) {
+  if (
+    !nativeLoadBlocker &&
+    caseSummaries.length === 0 &&
+    caseAppControlBlockers.length === 0 &&
+    steamLaunchBlockers.length === 0 &&
+    !preflight &&
+    !liveRunReadiness
+  ) {
     failures.push("artifact root does not contain preflight, blocker, readiness, or case result artifacts");
   }
 
@@ -209,6 +226,7 @@ function summarizeWindowsOverlayMatrixArtifacts(root) {
     nativeLoadBlocker: nativeLoadBlocker ? summarizeNativeLoadBlocker(nativeLoadBlocker) : null,
     manifest: manifest ? summarizeManifest(manifest) : null,
     caseSummaries,
+    caseAppControlBlockers,
     steamLaunchBlockers,
     totals: buildTotals(caseSummaries)
   };
@@ -250,12 +268,19 @@ function validateManifest(manifest, failures) {
   }
 }
 
-function validateManifestCoverage(manifest, caseSummaries, failures, warnings) {
+function validateManifestCoverage(manifest, caseSummaries, caseAppControlBlockers, steamLaunchBlockers, failures, warnings) {
   const expectedCases = Array.isArray(manifest.cases) ? manifest.cases : [];
   const summariesByCase = new Map(caseSummaries.map((row) => [row.caseName, row]));
+  const coveredBlockedCases = new Set([
+    ...caseAppControlBlockers.map((row) => row.caseName),
+    ...steamLaunchBlockers.map((row) => row.caseName)
+  ]);
   for (const expected of expectedCases) {
     const row = summariesByCase.get(expected.id);
     if (!row) {
+      if (coveredBlockedCases.has(expected.id)) {
+        continue;
+      }
       failures.push(`matrix manifest case missing result: ${expected.id} (${expected.action})`);
       continue;
     }
@@ -297,6 +322,11 @@ function validateManifestCoverage(manifest, caseSummaries, failures, warnings) {
   for (const row of caseSummaries) {
     if (!expectedCases.some((expected) => expected.id === row.caseName)) {
       warnings.push(`case result was not listed in matrix manifest: ${row.caseName}`);
+    }
+  }
+  for (const row of caseAppControlBlockers) {
+    if (!expectedCases.some((expected) => expected.id === row.caseName)) {
+      warnings.push(`case App Control blocker was not listed in matrix manifest: ${row.caseName}`);
     }
   }
 }
@@ -497,6 +527,37 @@ function validateSteamLaunchBlocker(blocker, failures) {
   expect(Array.isArray(blocker.nextActions) && blocker.nextActions.length > 0, "Steam-launch blocker next actions are present", failures);
 }
 
+function validateCaseAppControlBlocker(blocker, failures) {
+  expect(
+    blocker.kind === "steam-bridge-windows-case-app-control-blocker",
+    "case App Control blocker kind is steam-bridge-windows-case-app-control-blocker",
+    failures
+  );
+  expect(Boolean(blocker.generatedAt), "case App Control blocker generatedAt is present", failures);
+  expect(
+    blocker.blockerCode === "windows-app-control-native-dependency-block",
+    `case App Control blocker code is known: ${blocker.blockerCode}`,
+    failures
+  );
+  expect(Boolean(blocker.caseId), "case App Control blocker caseId is present", failures);
+  expect(Boolean(blocker.action), "case App Control blocker action is present", failures);
+  expect(typeof blocker.resultPolicyBlock === "boolean", "case App Control blocker resultPolicyBlock is boolean", failures);
+  expect(typeof blocker.codeIntegrityPolicyBlock === "boolean", "case App Control blocker codeIntegrityPolicyBlock is boolean", failures);
+  expect(typeof blocker.verifiedAndReputableBlock === "boolean", "case App Control blocker verifiedAndReputableBlock is boolean", failures);
+  expect(
+    blocker.resultPolicyBlock === true || blocker.codeIntegrityPolicyBlock === true,
+    "case App Control blocker has result or Code Integrity policy evidence",
+    failures
+  );
+  expect(Boolean(blocker.paths && blocker.paths.resultFile), "case App Control blocker result path is present", failures);
+  expect(
+    Array.isArray(blocker.postCaseCodeIntegrityEvents),
+    "case App Control blocker postCaseCodeIntegrityEvents is an array",
+    failures
+  );
+  expect(Array.isArray(blocker.nextActions) && blocker.nextActions.length > 0, "case App Control blocker next actions are present", failures);
+}
+
 function hasSteamOverlayLaunchMarker(launch) {
   if (launch.overlayInjection === true) {
     return true;
@@ -642,6 +703,18 @@ function printSummary(summary) {
       );
     }
   }
+  if (summary.caseAppControlBlockers.length > 0) {
+    console.log(`case App Control blockers: total=${summary.caseAppControlBlockers.length}`);
+    for (const blocker of summary.caseAppControlBlockers) {
+      console.log(
+        `  ${blocker.caseName}: code=${blocker.blockerCode} ` +
+          `resultPolicy=${blocker.resultPolicyBlock} ` +
+          `codeIntegrityPolicy=${blocker.codeIntegrityPolicyBlock} ` +
+          `verifiedAndReputable=${blocker.verifiedAndReputableBlock} ` +
+          `events=${blocker.postCaseCodeIntegrityEventCount}`
+      );
+    }
+  }
   if (summary.caseSummaries.length > 0) {
     console.log(
       `cases: total=${summary.totals.totalCases} steamLaunch=${summary.totals.steamLaunchCases} ` +
@@ -765,6 +838,19 @@ function summarizeSteamLaunchBlocker(caseName, blocker) {
     blockerCode: blocker.blockerCode || "",
     codeIntegrityPolicyBlock: blocker.codeIntegrityPolicyBlock === true,
     steamProcessPolicyBlock: blocker.steamProcessPolicyBlock === true,
+    postCaseCodeIntegrityEventCount: Array.isArray(blocker.postCaseCodeIntegrityEvents)
+      ? blocker.postCaseCodeIntegrityEvents.length
+      : 0
+  };
+}
+
+function summarizeCaseAppControlBlocker(caseName, blocker) {
+  return {
+    caseName,
+    blockerCode: blocker.blockerCode || "",
+    resultPolicyBlock: blocker.resultPolicyBlock === true,
+    codeIntegrityPolicyBlock: blocker.codeIntegrityPolicyBlock === true,
+    verifiedAndReputableBlock: blocker.verifiedAndReputableBlock === true,
     postCaseCodeIntegrityEventCount: Array.isArray(blocker.postCaseCodeIntegrityEvents)
       ? blocker.postCaseCodeIntegrityEvents.length
       : 0
@@ -1087,6 +1173,17 @@ function runSelfTest() {
       steamLaunchBlockedSummary.failures.some((failure) => failure.includes("99-none: missing result.log")),
       "summary self-test should still fail when a Steam-launched case has no smoke result"
     );
+
+    const caseAppControlBlockedRoot = path.join(tempRoot, "case-app-control-blocked");
+    writeCaseAppControlBlockedFixture(caseAppControlBlockedRoot);
+    const caseAppControlBlockedSummary = summarizeWindowsOverlayMatrixArtifacts(caseAppControlBlockedRoot);
+    assert.deepEqual(caseAppControlBlockedSummary.failures, []);
+    assert.equal(caseAppControlBlockedSummary.caseAppControlBlockers.length, 1);
+    assert.equal(
+      caseAppControlBlockedSummary.caseAppControlBlockers[0].blockerCode,
+      "windows-app-control-native-dependency-block"
+    );
+    assert.equal(caseAppControlBlockedSummary.caseSummaries.length, 0);
 
     const assumedShortcutDriftRoot = path.join(tempRoot, "assumed-shortcut-drift");
     writeAssumedShortcutDriftFixture(assumedShortcutDriftRoot);
@@ -1441,6 +1538,120 @@ function writeSteamLaunchBlockedFixture(root) {
       {
         message:
           "Code Integrity determined that a process (\\Device\\HarddiskVolume3\\Program Files (x86)\\Steam\\steam.exe) attempted to load SteamBridgeSmoke.exe that did not meet the Enterprise signing level requirements."
+      }
+    ],
+    nextActions: ["Use a trusted and reputable publisher-signed package."]
+  });
+}
+
+function writeCaseAppControlBlockedFixture(root) {
+  writeJson(path.join(root, "matrix-manifest.json"), {
+    kind: "steam-bridge-windows-overlay-matrix-manifest",
+    generatedAt: "2026-07-02T00:00:00.000Z",
+    suite: "managed",
+    launchMode: "steam-launch",
+    appId: 480,
+    onlyCase: "10-presenter-ready",
+    expectedCaseCount: 1,
+    cases: [
+      {
+        id: "10-presenter-ready",
+        action: "presenter-ready",
+        requireEvent: ["overlay:presenter-ready"],
+        requireOverlayActivated: false,
+        requireNoOverlayActivation: true,
+        allowOverlayNotReady: true,
+        requireManagedOverlayComplete: false,
+        managedOverlayResultMode: "",
+        hasCheckoutTransactionId: false
+      }
+    ]
+  });
+  writeJson(path.join(root, "00-preflight", "preflight.json"), {
+    kind: "steam-bridge-windows-preflight",
+    generatedAt: "2026-07-02T00:00:00.000Z",
+    app: {
+      exe: { exists: true },
+      nativeAddon: { exists: true }
+    },
+    appControl: {
+      verifiedAndReputableEnforced: true,
+      verifiedAndReputablePolicyState: 1
+    },
+    recentCodeIntegrityEvents: [],
+    windowsSession: {
+      currentSessionId: 1,
+      interactiveSessionIds: [1],
+      currentSessionInteractive: true
+    }
+  });
+  writeJson(path.join(root, "00-preflight", "live-run-readiness.json"), {
+    kind: "steam-bridge-windows-live-run-readiness",
+    generatedAt: "2026-07-02T00:00:00.000Z",
+    ready: true,
+    windowsSession: {
+      currentSessionId: 1,
+      interactiveSessionIds: [1],
+      currentSessionInteractive: true
+    },
+    errors: [],
+    warnings: []
+  });
+  writeResult(path.join(root, "10-presenter-ready", "result.log"), {
+    ok: false,
+    action: {
+      ok: false,
+      action: "presenter-ready",
+      error: {
+        message:
+          "Unable to load Steam Bridge native module. steam_bridge_native.win32-x64-msvc.node: An Application Control policy has blocked this file."
+      }
+    },
+    snapshot: buildWindowsSnapshot({
+      pid: 4244,
+      events: [
+        {
+          type: "steam:init:error",
+          payload: {
+            message:
+              "steam_bridge_native.win32-x64-msvc.node: An Application Control policy has blocked this file."
+          }
+        }
+      ],
+      steam: {
+        initialized: false,
+        initError: {
+          message:
+            "steam_bridge_native.win32-x64-msvc.node: An Application Control policy has blocked this file."
+        }
+      }
+    })
+  });
+  writeJson(path.join(root, "10-presenter-ready", "case-app-control-blocker.json"), {
+    kind: "steam-bridge-windows-case-app-control-blocker",
+    generatedAt: "2026-07-02T00:00:01.000Z",
+    caseStartedAt: "2026-07-02T00:00:00.000Z",
+    blockerCode: "windows-app-control-native-dependency-block",
+    caseId: "10-presenter-ready",
+    action: "presenter-ready",
+    resultPolicyBlock: true,
+    codeIntegrityPolicyBlock: true,
+    verifiedAndReputableBlock: true,
+    originalError: "windows-electron-smoke.ps1 exited with code 1",
+    paths: {
+      resultFile: "10-presenter-ready/result.log",
+      helperLog: "10-presenter-ready/helper.log",
+      postCasePreflightLog: "10-presenter-ready/post-case-preflight.log",
+      postCasePreflightJson: "10-presenter-ready/post-case-preflight.json"
+    },
+    appControl: {
+      verifiedAndReputableEnforced: true,
+      verifiedAndReputablePolicyState: 1
+    },
+    postCaseCodeIntegrityEvents: [
+      {
+        message:
+          "Code Integrity determined that a process attempted to load steam_bridge_native.win32-x64-msvc.node that did not meet the Enterprise signing level requirements."
       }
     ],
     nextActions: ["Use a trusted and reputable publisher-signed package."]

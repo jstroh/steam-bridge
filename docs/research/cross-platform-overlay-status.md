@@ -238,6 +238,20 @@ The Windows summary auditor now surfaces each case's
 failure reports as a Steam renderer/swap-chain blocker rather than a generic
 missing activation.
 
+A later Electron-runtime shortcut diagnostic refreshed the shortcut to point at
+the unpacked Electron `43.0.0` runtime while loading the packaged
+`resources/app` payload through the smoke env file. The focused Session 1
+`10-presenter-ready` run passed live Steam readiness and shortcut verification,
+but Windows App Control blocked the nested native dependency load from
+`resources/app` even after all signable package files were locally
+Authenticode-valid. The artifact
+`C:\Users\admin\steam-bridge-artifacts\windows-electron-runtime-presenter-ready-20260702-003`
+now writes `10-presenter-ready\case-app-control-blocker.json` with
+`windows-app-control-native-dependency-block`, the smoke-result policy evidence,
+and fresh Code Integrity events for the blocked native dependency load. This
+keeps the current Windows laptop blocker classified as trusted/reputable
+signing or local App Control policy state, not an overlay route failure.
+
 A follow-up on July 2, 2026 isolated that same `0x887A0022` failure to Windows
 Session 0 launches. Microsoft documents `DXGI_ERROR_NOT_CURRENTLY_AVAILABLE` for
 DXGI swap-chain creation from Session 0, and SSH-launched Steam/smoke probes
