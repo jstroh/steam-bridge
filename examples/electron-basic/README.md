@@ -174,6 +174,11 @@ Friends/chat open/close/back-to-app proof plus synthetic checkout approval-route
 plumbing with clean crash diagnostics. This path is not a default until passive
 notifications, shortcut behavior, Community/profile-style routes, and real
 configured-product checkout pass the same gates.
+If a local Smart App Control/App Control policy blocks a freshly rebuilt native
+addon, pass `-NativePath <path-to-accepted-.node>` only for diagnostic
+comparisons. The matrix records `nativePathOverride=true`; keep those artifacts
+out of packaged-native product proof because they prove the selected route, not
+that the final bundled `.node` has enough trust/reputation to load.
 
 The Windows package also includes `windows-native-overlay-control.ps1` and the
 source for a tiny C# OpenGL control app. This is a route diagnostic, not an

@@ -9,6 +9,7 @@ param(
   [string]$PreflightJsonFile = "",
   [string]$SmokeEnvFile = "",
   [int]$AppId = 480,
+  [string]$NativePath = "",
 
   [ValidateSet(
     "none",
@@ -255,6 +256,9 @@ function Get-SmokeEnv {
 
   if ($KeepOpenAfterResult) {
     $envMap.STEAM_BRIDGE_SMOKE_KEEP_OPEN_AFTER_RESULT = "1"
+  }
+  if ($NativePath) {
+    $envMap.STEAM_BRIDGE_NATIVE_PATH = $NativePath
   }
   if ($OverlayDisableDirectComposition) {
     $envMap.STEAM_BRIDGE_ELECTRON_OVERLAY_DISABLE_DIRECT_COMPOSITION = $OverlayDisableDirectComposition
@@ -757,6 +761,7 @@ function Get-RecentCodeIntegrityEvents {
 function Invoke-Preflight {
   $exe = Resolve-SmokeExe
   $nativeAddon = Resolve-NativeAddon
+  $nativeOverride = if ($NativePath) { $NativePath } else { "" }
   $sessionSummary = Get-WindowsSessionSummary
   $steamProcess = @($sessionSummary.steamProcesses | Select-Object -First 1)
   $steamProcessId = $null
@@ -766,11 +771,20 @@ function Invoke-Preflight {
   $policy = Get-AppControlPolicySummary
   $exeSummary = Format-FileSignatureSummary -Path $exe
   $nativeSummary = Format-FileSignatureSummary -Path $nativeAddon
-  $events = Get-RecentCodeIntegrityEvents -Needles @(
+  $nativeOverrideSummary = if ($nativeOverride) {
+    Format-FileSignatureSummary -Path $nativeOverride
+  } else {
+    $null
+  }
+  $codeIntegrityNeedles = @(
     "SteamBridgeSmoke",
     "steam_bridge_native",
     [System.IO.Path]::GetFileName($nativeAddon)
   )
+  if ($nativeOverride) {
+    $codeIntegrityNeedles += [System.IO.Path]::GetFileName($nativeOverride)
+  }
+  $events = Get-RecentCodeIntegrityEvents -Needles $codeIntegrityNeedles
   $warnings = @()
 
   Write-Host "Windows smoke preflight:"
@@ -787,7 +801,10 @@ function Invoke-Preflight {
       Write-Host ("    {0} ({1})" -f $enforcedPolicy.friendlyName, $enforcedPolicy.policyId)
     }
   }
-  foreach ($summary in @($exeSummary, $nativeSummary)) {
+  foreach ($summary in @($exeSummary, $nativeSummary, $nativeOverrideSummary)) {
+    if (-not $summary) {
+      continue
+    }
     Write-Host ("  file: {0}" -f $summary.path)
     Write-Host ("    exists: {0}" -f $summary.exists)
     Write-Host ("    length: {0}" -f $summary.length)
@@ -804,6 +821,9 @@ function Invoke-Preflight {
     $warnings += "Windows Smart App Control/App Control VerifiedAndReputable policy is enforced; local or unreputable signatures can still be blocked."
   } elseif ($policy.verifiedAndReputablePolicyState -eq 1) {
     $warnings += "Windows Smart App Control/App Control appears enabled; local or unreputable signatures can still be blocked."
+  }
+  if ($nativeOverrideSummary) {
+    $warnings += "STEAM_BRIDGE_NATIVE_PATH override is set for this diagnostic run; do not treat it as packaged native-addon proof."
   }
 
   foreach ($warning in $warnings) {
@@ -835,7 +855,9 @@ function Invoke-Preflight {
     files = [PSCustomObject]@{
       executable = $exeSummary
       nativeAddon = $nativeSummary
+      nativeOverride = $nativeOverrideSummary
     }
+    nativePathOverride = [bool]$nativeOverride
     warnings = @($warnings)
     recentCodeIntegrityEvents = @($events)
   })

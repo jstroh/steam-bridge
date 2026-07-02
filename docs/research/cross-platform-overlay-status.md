@@ -260,6 +260,19 @@ use a trusted/reputable publisher-signing path for product proof, or make a
 separate user-approved local App Control test-policy change before continuing
 local smoke proof on this laptop.
 
+A focused Community-route diagnostic then used `-NativePath` to point the
+updated package at an older native addon that this machine had already accepted.
+That run is route evidence only, not packaged-native or D3D11-presenter proof:
+the matrix recorded `nativePathOverride=true`, passed live readiness and the
+native-load gate, emitted `GameOverlayActivated(true)` for
+`presenter-community-open-and-wait`, but lifecycle snapshots reported
+`backend=none` and no native host because the override did not contain the
+current D3D11 presenter. Close-probe screenshots showed a white smoke window
+without visible Community overlay content, no inactive callback arrived, and no
+case result was written before the stuck task was stopped and cleaned up.
+Continue Windows route expansion only with a current trusted/reputable package
+or an explicitly policy-disabled Windows test machine.
+
 A follow-up on July 2, 2026 isolated that same `0x887A0022` failure to Windows
 Session 0 launches. Microsoft documents `DXGI_ERROR_NOT_CURRENTLY_AVAILABLE` for
 DXGI swap-chain creation from Session 0, and SSH-launched Steam/smoke probes

@@ -9,6 +9,7 @@ param(
   [string]$AppDir = "",
   [string]$ArtifactRoot = "",
   [int]$AppId = 480,
+  [string]$NativePath = "",
   [string]$ShortcutGameId = "",
   [switch]$InstallShortcut,
   [switch]$AssumeShortcutConfigured,
@@ -1296,7 +1297,7 @@ function Test-NativeLoadGate {
     return
   }
 
-  $nativeAddon = Resolve-NativeAddon
+  $nativeAddon = if ($NativePath) { $NativePath } else { Resolve-NativeAddon }
   if (-not (Test-Path -LiteralPath $nativeAddon)) {
     throw "Missing native addon at $nativeAddon"
   }
@@ -1317,6 +1318,10 @@ function Test-NativeLoadGate {
   } elseif ($policyState -eq 1) {
     Write-Host "Windows Smart App Control/App Control appears enabled; running a native-load gate because Authenticode status alone is not enough proof."
     Write-Host ("  native addon Authenticode status: {0}" -f $signature.Status)
+  }
+  if ($NativePath) {
+    Write-Host "Windows native-load gate is using STEAM_BRIDGE_NATIVE_PATH override for diagnostics."
+    Write-Host ("  native override path: {0}" -f $NativePath)
   }
 
   $gateDir = Join-Path $PreflightDir "native-load-gate"
@@ -1362,6 +1367,9 @@ function Test-NativeLoadGate {
   if ($OverlayIsolateChildProcesses) {
     $gateArgs += @("-OverlayIsolateChildProcesses", $OverlayIsolateChildProcesses)
   }
+  if ($NativePath) {
+    $gateArgs += @("-NativePath", $NativePath)
+  }
 
   $gateStartedAt = Get-Date
   try {
@@ -1369,13 +1377,17 @@ function Test-NativeLoadGate {
   } catch {
     $postGatePreflightLog = Join-Path $gateDir "post-gate-preflight.log"
     $postGatePreflightJson = Join-Path $gateDir "post-gate-preflight.json"
+    $postGatePreflightArgs = @(
+      "-Mode", "preflight",
+      "-AppDir", $AppDir,
+      "-AppId", "$AppId",
+      "-PreflightJsonFile", $postGatePreflightJson
+    )
+    if ($NativePath) {
+      $postGatePreflightArgs += @("-NativePath", $NativePath)
+    }
     try {
-      Invoke-Helper -Arguments @(
-        "-Mode", "preflight",
-        "-AppDir", $AppDir,
-        "-AppId", "$AppId",
-        "-PreflightJsonFile", $postGatePreflightJson
-      ) -LogFile $postGatePreflightLog
+      Invoke-Helper -Arguments $postGatePreflightArgs -LogFile $postGatePreflightLog
     } catch {
       Write-Host ("Post-gate preflight failed; continuing with original native-load gate failure. Output path: {0}" -f $postGatePreflightLog)
     }
@@ -1789,6 +1801,7 @@ function Write-MatrixManifest {
     presenterMode = $PresenterMode
     nativeHostBackend = $NativeHostBackend
     nativeHostStyle = $NativeHostStyle
+    nativePathOverride = [bool]$NativePath
     overlayInProcessGpu = $OverlayInProcessGpu
     overlayDisableDirectComposition = $OverlayDisableDirectComposition
     overlayScrubChildEnv = $OverlayScrubChildEnv
@@ -2351,14 +2364,18 @@ function Invoke-Preflight {
   New-Item -ItemType Directory -Force -Path $preflightDir | Out-Null
   $preflightLog = Join-Path $preflightDir "preflight.log"
   $preflightJson = Join-Path $preflightDir "preflight.json"
+  $preflightArgs = @(
+    "-Mode", "preflight",
+    "-AppDir", $AppDir,
+    "-AppId", "$AppId",
+    "-PreflightJsonFile", $preflightJson
+  )
+  if ($NativePath) {
+    $preflightArgs += @("-NativePath", $NativePath)
+  }
 
   try {
-    Invoke-Helper -Arguments @(
-      "-Mode", "preflight",
-      "-AppDir", $AppDir,
-      "-AppId", "$AppId",
-      "-PreflightJsonFile", $preflightJson
-    ) -LogFile $preflightLog
+    Invoke-Helper -Arguments $preflightArgs -LogFile $preflightLog
   } finally {
     Collect-SteamClientDiagnostics -DestinationDir (Join-Path $preflightDir "steam-client") -Phase "preflight"
   }
@@ -2410,6 +2427,9 @@ function Write-CaseLaunchEnv {
   }
   if ($OverlayIsolateChildProcesses) {
     $args += @("-OverlayIsolateChildProcesses", $OverlayIsolateChildProcesses)
+  }
+  if ($NativePath) {
+    $args += @("-NativePath", $NativePath)
   }
   if ($Case.webModal) {
     $args += @("-WebModal", $Case.webModal)
@@ -2483,6 +2503,9 @@ function Invoke-MatrixCase {
   if ($OverlayIsolateChildProcesses) {
     $args += @("-OverlayIsolateChildProcesses", $OverlayIsolateChildProcesses)
   }
+  if ($NativePath) {
+    $args += @("-NativePath", $NativePath)
+  }
   if ($Case.allowOverlayNotReady) {
     $args += "-AllowOverlayNotReady"
   }
@@ -2550,13 +2573,17 @@ function Invoke-MatrixCase {
       $resultHasSmokePayload = Test-SmokeResultPayload -Path $resultFile
       $postCasePreflightLog = Join-Path $caseDir "post-case-preflight.log"
       $postCasePreflightJson = Join-Path $caseDir "post-case-preflight.json"
+      $postCasePreflightArgs = @(
+        "-Mode", "preflight",
+        "-AppDir", $AppDir,
+        "-AppId", "$AppId",
+        "-PreflightJsonFile", $postCasePreflightJson
+      )
+      if ($NativePath) {
+        $postCasePreflightArgs += @("-NativePath", $NativePath)
+      }
       try {
-        Invoke-Helper -Arguments @(
-          "-Mode", "preflight",
-          "-AppDir", $AppDir,
-          "-AppId", "$AppId",
-          "-PreflightJsonFile", $postCasePreflightJson
-        ) -LogFile $postCasePreflightLog
+        Invoke-Helper -Arguments $postCasePreflightArgs -LogFile $postCasePreflightLog
       } catch {
         Write-Host ("Post-case preflight failed; preserving original case failure. Output path: {0}" -f $postCasePreflightLog)
       }

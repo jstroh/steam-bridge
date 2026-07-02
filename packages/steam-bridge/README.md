@@ -122,6 +122,13 @@ blocks the shortcut process, that case writes `steam-launch-blocker.json` with
 post-case Code Integrity evidence and the stable
 `windows-app-control-steam-launch-block` code when Steam itself was blocked from
 loading the smoke executable.
+For development-only App Control diagnostics, `windows-electron-smoke.ps1` and
+`windows-overlay-matrix.ps1` accept `-NativePath <path-to-.node>`, which sets
+`STEAM_BRIDGE_NATIVE_PATH` for the launched smoke process. Matrix manifests
+record this as `nativePathOverride=true`. Keep those artifacts separate from
+product package proof: they can help compare overlay routes while a freshly
+rebuilt bundled native addon is blocked by reputation policy, but they do not
+prove the final package's own native addon can load.
 Every run writes `matrix-manifest.json` before preflight with the sanitized suite
 and case list, so summary audits can prove a completed artifact contains every
 intended case result and satisfies the recorded event, activation, no-activation,

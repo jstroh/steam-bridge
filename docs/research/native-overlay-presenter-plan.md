@@ -1763,6 +1763,22 @@ keeps `disableDirectComposition` opt-in, and requires any native-presenter
 fallback to prove FPS, shutdown, Alt+Tab, close, and back-to-app behavior in
 the local Windows matrix before becoming a default.
 
+A broader July 2, 2026 Windows source refresh checked Valve's overlay docs,
+Valve's browser-game overlay FAQ, the Steam microtransaction implementation
+guide, `ISteamFriends` route docs, Electron process/command-line/offscreen
+rendering docs, the current Electron stable release index, `steamworks.js`
+source and issue history, Electron/Greenworks overlay issues, Construct's
+WebView2 overlay writeup, Smart App Control docs, DXGI error docs, and Raw Input
+docs. The source-backed design direction is now narrower: the default Windows
+path must not rely on legacy Chromium flags; the real product-quality fallback
+is a Steam Bridge-owned D3D11 surface that behaves like a normal game render
+target, with route-specific proof for web/store/Friends/checkout, passive
+notification proof, shortcut/focus proof, and clean app shutdown. Valve's own
+FAQ explicitly recommends an embedded Chromium rendered offscreen into a native
+D3D window for browser-based games, but calls it difficult. That lines up with
+the local D3D11 presenter evidence and argues against more Steam restart loops,
+DirectComposition alpha experiments, or blind Electron flag changes.
+
 A focused July 2, 2026 Windows route split also compared Steam Community URL
 activation with Valve's native `ActivateGameOverlayToUser("steamid", ...)`
 profile route. The native route emitted overlay activation and started
@@ -1893,6 +1909,23 @@ Steam runtime DLL before any overlay case launched. Do not spend more time on
 Steam restarts for this state; the next live Windows shortcut pass needs a
 trusted/reputable publisher-signed package or an explicitly policy-disabled test
 machine.
+
+A later Windows Community-route diagnostic at
+`C:\Users\admin\steam-bridge-artifacts\windows-d3d11-community-nativepath-20260702-001`
+used the new `-NativePath` override to get past local App Control and launched
+only `19-managed-community-open-and-wait` through the interactive Steam
+shortcut. Preflight recorded `nativePathOverride=true`, live readiness passed,
+and the native-load gate initialized Steam as App ID `480` through the accepted
+override. Treat the route result as a negative diagnostic, not D3D11 proof:
+because the override pointed at an older accepted native addon, lifecycle
+snapshots reported `backend=none` and no native host. Steam emitted
+`GameOverlayActivated(true)` for the Community route, but close-probe
+screenshots showed a white smoke window with no visible Community overlay, the
+foreground stayed on the smoke app, no `GameOverlayActivated(false)` arrived,
+and no smoke result was written before the stuck task was stopped and cleaned
+up. The next useful Windows route expansion requires a current trusted native
+addon or a policy-disabled Windows test machine; repeating this route with the
+older override cannot validate the current D3D11 presenter.
 
 The Windows smoke harness now exposes the store route explicitly:
 `STEAM_BRIDGE_SMOKE_STORE_ROUTE`, `--steam-bridge-smoke-store-route`, and the

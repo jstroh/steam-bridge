@@ -243,6 +243,9 @@ function validateManifest(manifest, failures) {
   expect(["baseline", "managed", "full", "preflight", "readiness", "shortcut"].includes(manifest.suite), `matrix manifest suite is known: ${manifest.suite}`, failures);
   expect(["steam-launch", "direct"].includes(manifest.launchMode), `matrix manifest launchMode is known: ${manifest.launchMode}`, failures);
   expect(Number.isInteger(manifest.appId), "matrix manifest appId is an integer", failures);
+  if (manifest.nativePathOverride !== undefined) {
+    expect(typeof manifest.nativePathOverride === "boolean", "matrix manifest nativePathOverride is boolean", failures);
+  }
   expect(Array.isArray(manifest.cases), "matrix manifest cases is an array", failures);
   if (Array.isArray(manifest.cases)) {
     expect(
@@ -646,7 +649,8 @@ function printSummary(summary) {
         `inProcessGpu=${formatValue(summary.manifest.overlayInProcessGpu)} ` +
         `disableDirectComposition=${formatValue(summary.manifest.overlayDisableDirectComposition)} ` +
         `scrubChildEnv=${formatValue(summary.manifest.overlayScrubChildEnv)} ` +
-        `isolateChildProcesses=${formatValue(summary.manifest.overlayIsolateChildProcesses)}`
+        `isolateChildProcesses=${formatValue(summary.manifest.overlayIsolateChildProcesses)} ` +
+        `nativePathOverride=${formatValue(summary.manifest.nativePathOverride)}`
     );
   }
   if (summary.preflight) {
@@ -764,6 +768,7 @@ function summarizeManifest(manifest) {
     overlayDisableDirectComposition: manifest.overlayDisableDirectComposition || "",
     overlayScrubChildEnv: manifest.overlayScrubChildEnv || "",
     overlayIsolateChildProcesses: manifest.overlayIsolateChildProcesses || "",
+    nativePathOverride: Boolean(manifest.nativePathOverride),
     expectedCaseCount: Array.isArray(manifest.cases) ? manifest.cases.length : 0
   };
 }
