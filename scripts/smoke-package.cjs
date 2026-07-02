@@ -359,7 +359,11 @@ function runWindowsSmokeHelperStaticChecks() {
     "RequireManagedOverlayComplete",
     "STEAM_BRIDGE_SMOKE_MANAGED_OVERLAY_RESULT_MODE",
     "AllowStartSteamClient",
-    "function Add-DefaultRequireEvents"
+    "function Add-DefaultRequireEvents",
+    "Get-WindowsSessionSummary",
+    "Assert-InteractiveWindowsSessionForSteamLaunch",
+    "currentSessionId",
+    "SSH Session 0 can produce"
   ]) {
     assert.ok(helper.includes(expected), `Windows smoke helper missing ${expected}`);
   }
@@ -446,7 +450,11 @@ function runWindowsSmokeHelperStaticChecks() {
     "Windows overlay matrix readiness passed.",
     "The matrix will not silently start Steam for live overlay proof.",
     "steam-launch",
-    "ArtifactRoot"
+    "ArtifactRoot",
+    "Get-WindowsSessionSummary",
+    "currentSessionInteractive",
+    "interactive explorer SessionId",
+    "DXGI_ERROR_NOT_CURRENTLY_AVAILABLE"
   ]) {
     assert.ok(matrixHelper.includes(expected), `Windows overlay matrix missing ${expected}`);
   }
@@ -470,6 +478,8 @@ function runWindowsSmokeHelperStaticChecks() {
     "steam-overlay-swapchain-failure",
     "recentSignals=",
     "steam-bridge-windows-live-run-readiness",
+    "windowsSession",
+    "currentSessionInteractive",
     "STEAM_BRIDGE_SMOKE_RESULT ",
     "platform is win32",
     "arch is x64",

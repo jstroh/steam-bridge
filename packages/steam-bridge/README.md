@@ -133,10 +133,15 @@ intentionally want to stop orphaned Steam overlay helper processes whose target
 game process and recorded Steam parent process are both gone. Live Steam-launched
 suites require Steam to already be open in the interactive Windows desktop
 session; the matrix stops before live launch if
-`00-preflight/live-run-readiness.json` records a closed Steam client, remaining
-orphan overlay helpers, or recent severe CEF/GPU/overlay-renderer signals that
-mean Steam's own UI is not healthy enough for overlay proof. Stale rendering
-signals are preserved in `steam-client-rendering-health.json` as warnings.
+`00-preflight/live-run-readiness.json` records a closed Steam client, a helper
+running outside the interactive desktop session, remaining orphan overlay
+helpers, or recent severe CEF/GPU/overlay-renderer signals that mean Steam's own
+UI is not healthy enough for overlay proof. SSH runs in Windows Session 0; use
+the Parsec/local desktop session or an `/IT` scheduled task for live overlay
+proof. Session 0 can produce `DXGI_ERROR_NOT_CURRENTLY_AVAILABLE` / `0x887A0022`
+swap-chain failures that are not Steam Bridge overlay regressions. Stale
+rendering signals are preserved in `steam-client-rendering-health.json` as
+warnings.
 From the repo, run
 `npm run windows:overlay-matrix:summarize -- --artifact-root <artifact-root>` to
 audit full runs, readiness captures, native-load blocker artifacts, Steam-launch

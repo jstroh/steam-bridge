@@ -275,6 +275,18 @@ function validateManifestCoverage(manifest, caseSummaries, failures, warnings) {
 function validatePreflight(preflight, failures) {
   expect(preflight.kind === "steam-bridge-windows-preflight", "preflight kind is steam-bridge-windows-preflight", failures);
   expect(Boolean(preflight.generatedAt), "preflight generatedAt is present", failures);
+  if (preflight.windowsSession) {
+    expect(
+      typeof preflight.windowsSession.currentSessionId === "number",
+      "preflight windowsSession.currentSessionId is numeric",
+      failures
+    );
+    expect(
+      Array.isArray(preflight.windowsSession.interactiveSessionIds),
+      "preflight windowsSession.interactiveSessionIds is an array",
+      failures
+    );
+  }
   if (preflight.app) {
     expect(Boolean(preflight.app.exe && preflight.app.exe.exists), "preflight app executable exists", failures);
     expect(Boolean(preflight.app.nativeAddon && preflight.app.nativeAddon.exists), "preflight native addon exists", failures);
@@ -297,6 +309,23 @@ function validateLiveRunReadiness(readiness, failures) {
   expect(typeof readiness.ready === "boolean", "live-run readiness ready is boolean", failures);
   expect(Array.isArray(readiness.errors), "live-run readiness errors is an array", failures);
   expect(Array.isArray(readiness.warnings), "live-run readiness warnings is an array", failures);
+  if (readiness.windowsSession) {
+    expect(
+      typeof readiness.windowsSession.currentSessionId === "number",
+      "live-run readiness windowsSession.currentSessionId is numeric",
+      failures
+    );
+    expect(
+      Array.isArray(readiness.windowsSession.interactiveSessionIds),
+      "live-run readiness windowsSession.interactiveSessionIds is an array",
+      failures
+    );
+    expect(
+      typeof readiness.windowsSession.currentSessionInteractive === "boolean",
+      "live-run readiness windowsSession.currentSessionInteractive is boolean",
+      failures
+    );
+  }
 }
 
 function validateNativeLoadBlocker(blocker, appControlGate, failures) {
@@ -436,13 +465,16 @@ function printSummary(summary) {
   if (summary.preflight) {
     console.log(
       `preflight: generated=${summary.preflight.generatedAt || "unknown"} ` +
-        `appControlVerifiedAndReputable=${formatValue(summary.preflight.verifiedAndReputableEnforced)}`
+        `appControlVerifiedAndReputable=${formatValue(summary.preflight.verifiedAndReputableEnforced)} ` +
+        `session=${formatValue(summary.preflight.currentSessionId)}`
     );
   }
   if (summary.liveRunReadiness) {
     console.log(
       `readiness: ready=${summary.liveRunReadiness.ready} ` +
-        `errors=${summary.liveRunReadiness.errorCount} warnings=${summary.liveRunReadiness.warningCount}`
+        `errors=${summary.liveRunReadiness.errorCount} warnings=${summary.liveRunReadiness.warningCount} ` +
+        `session=${formatValue(summary.liveRunReadiness.currentSessionId)} ` +
+        `interactive=${formatValue(summary.liveRunReadiness.currentSessionInteractive)}`
     );
   }
   if (summary.nativeLoadBlocker) {
@@ -488,9 +520,11 @@ function printSummary(summary) {
 
 function summarizePreflight(preflight) {
   const appControl = preflight.appControl || preflight.appControlPolicy || {};
+  const windowsSession = preflight.windowsSession || {};
   return {
     generatedAt: preflight.generatedAt || "",
     verifiedAndReputableEnforced: Boolean(appControl.verifiedAndReputableEnforced),
+    currentSessionId: windowsSession.currentSessionId,
     recentCodeIntegrityEventCount: Array.isArray(preflight.recentCodeIntegrityEvents)
       ? preflight.recentCodeIntegrityEvents.length
       : 0
@@ -508,10 +542,13 @@ function summarizeManifest(manifest) {
 }
 
 function summarizeReadiness(readiness) {
+  const windowsSession = readiness.windowsSession || {};
   return {
     ready: readiness.ready === true,
     errorCount: Array.isArray(readiness.errors) ? readiness.errors.length : 0,
-    warningCount: Array.isArray(readiness.warnings) ? readiness.warnings.length : 0
+    warningCount: Array.isArray(readiness.warnings) ? readiness.warnings.length : 0,
+    currentSessionId: windowsSession.currentSessionId,
+    currentSessionInteractive: windowsSession.currentSessionInteractive
   };
 }
 
@@ -831,7 +868,12 @@ function writeBlockedFixture(root) {
     appControlPolicy: {
       verifiedAndReputableEnforced: true
     },
-    recentCodeIntegrityEvents: []
+    recentCodeIntegrityEvents: [],
+    windowsSession: {
+      currentSessionId: 1,
+      interactiveSessionIds: [1],
+      currentSessionInteractive: true
+    }
   });
   const appControl = {
     verifiedAndReputableEnforced: true,
@@ -901,12 +943,22 @@ function writeCaseFixture(root) {
     appControlPolicy: {
       verifiedAndReputableEnforced: false
     },
-    recentCodeIntegrityEvents: []
+    recentCodeIntegrityEvents: [],
+    windowsSession: {
+      currentSessionId: 1,
+      interactiveSessionIds: [1],
+      currentSessionInteractive: true
+    }
   });
   writeJson(path.join(root, "00-preflight", "live-run-readiness.json"), {
     kind: "steam-bridge-windows-live-run-readiness",
     generatedAt: "2026-07-02T00:00:00.000Z",
     ready: true,
+    windowsSession: {
+      currentSessionId: 1,
+      interactiveSessionIds: [1],
+      currentSessionInteractive: true
+    },
     errors: [],
     warnings: []
   });
@@ -988,12 +1040,22 @@ function writeSteamLaunchBlockedFixture(root) {
     appControl: {
       verifiedAndReputableEnforced: true
     },
-    recentCodeIntegrityEvents: []
+    recentCodeIntegrityEvents: [],
+    windowsSession: {
+      currentSessionId: 1,
+      interactiveSessionIds: [1],
+      currentSessionInteractive: true
+    }
   });
   writeJson(path.join(root, "00-preflight", "live-run-readiness.json"), {
     kind: "steam-bridge-windows-live-run-readiness",
     generatedAt: "2026-07-02T00:00:00.000Z",
     ready: true,
+    windowsSession: {
+      currentSessionId: 1,
+      interactiveSessionIds: [1],
+      currentSessionInteractive: true
+    },
     errors: [],
     warnings: []
   });
@@ -1062,7 +1124,12 @@ function writeManagedCaseFixture(root, options = {}) {
     appControlPolicy: {
       verifiedAndReputableEnforced: false
     },
-    recentCodeIntegrityEvents: []
+    recentCodeIntegrityEvents: [],
+    windowsSession: {
+      currentSessionId: 1,
+      interactiveSessionIds: [1],
+      currentSessionInteractive: true
+    }
   });
   const result = {
     ok: true,

@@ -207,6 +207,20 @@ The Windows summary auditor now surfaces each case's
 failure reports as a Steam renderer/swap-chain blocker rather than a generic
 missing activation.
 
+A follow-up on July 2, 2026 isolated that same `0x887A0022` failure to Windows
+Session 0 launches. Microsoft documents `DXGI_ERROR_NOT_CURRENTLY_AVAILABLE` for
+DXGI swap-chain creation from Session 0, and SSH-launched Steam/smoke probes
+reproduced the failure even with the packaged `SteamBridgeSmoke.exe` shape. The
+same `.prev` packaged smoke shortcut launched through an `/IT` scheduled task in
+the logged-in desktop Session 1 passed the store overlay path: artifact
+`C:\Users\admin\steam-bridge-artifacts\prev-package-interactive-store-20260702-001`
+recorded `task-session=1`, `overlayEnabled=true`, `overlayNeedsPresent=true`,
+`callback:overlay-activated active=true`, `gameoverlayui64.exe` in Session 1,
+and a clean crash snapshot. The Windows helpers now record current and
+interactive session IDs and refuse live Steam-launched overlay proof from SSH
+Session 0 so future artifacts classify this as a launcher/session error rather
+than a Steam Bridge overlay regression.
+
 The macOS matrix can now pair `--app-id <your-app-id>` with
 `--checkout-json-file <path>` for private configured-product proof. Its manifest
 and summary audit the expected app ID and `checkoutSource=json-file`, while

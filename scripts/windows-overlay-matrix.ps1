@@ -490,11 +490,45 @@ function Test-IsLiveSteamLaunchSuite {
   return ($needsReadiness -and $Suite -ne "readiness")
 }
 
+function Get-CurrentWindowsSessionId {
+  return [System.Diagnostics.Process]::GetCurrentProcess().SessionId
+}
+
+function Get-InteractiveWindowsSessionIds {
+  return @(
+    Get-Process explorer -ErrorAction SilentlyContinue |
+      Where-Object { $_.SessionId -gt 0 } |
+      Select-Object -ExpandProperty SessionId -Unique |
+      Sort-Object
+  )
+}
+
+function Get-WindowsSessionSummary {
+  $currentSessionId = Get-CurrentWindowsSessionId
+  $interactiveSessionIds = @(Get-InteractiveWindowsSessionIds)
+
+  return [PSCustomObject]@{
+    currentSessionId = $currentSessionId
+    interactiveSessionIds = @($interactiveSessionIds)
+    currentSessionInteractive = ($interactiveSessionIds -contains $currentSessionId)
+  }
+}
+
+function Format-SessionIdList {
+  param([object[]]$SessionIds)
+
+  if (-not $SessionIds -or $SessionIds.Count -eq 0) {
+    return "none"
+  }
+  return ((@($SessionIds) | ForEach-Object { [string]$_ }) -join ", ")
+}
+
 function Test-WindowsLiveRunReadiness {
   param([string]$DestinationFile)
 
+  $sessionSummary = Get-WindowsSessionSummary
   $steamProcesses = @(Get-Process steam -ErrorAction SilentlyContinue |
-    Select-Object ProcessName,Id,StartTime,Responding,MainWindowTitle,Path)
+    Select-Object ProcessName,Id,SessionId,StartTime,Responding,MainWindowTitle,Path)
   $overlayHelpers = @(Get-OverlayHelperDiagnostics)
   $staleOverlayHelpers = @($overlayHelpers | Where-Object { $_.orphaned })
   $resourceSnapshot = Get-WindowsResourceSnapshot
@@ -506,6 +540,24 @@ function Test-WindowsLiveRunReadiness {
     $errors += (
       "Steam is not running. Start Steam once in the interactive Windows desktop session, " +
       "wait for the client UI to render normally, then rerun the matrix. The matrix will not silently start Steam for live overlay proof."
+    )
+  }
+  if (-not $sessionSummary.currentSessionInteractive) {
+    $errors += (
+      "Windows live Steam-launched overlay proof must run from the interactive desktop session. " +
+      "Current PowerShell SessionId=$($sessionSummary.currentSessionId); " +
+      "interactive explorer SessionId(s)=$(Format-SessionIdList $sessionSummary.interactiveSessionIds). " +
+      "Run the matrix from the Parsec/local desktop session or an /IT scheduled task. SSH Session 0 can produce " +
+      "DXGI_ERROR_NOT_CURRENTLY_AVAILABLE / 0x887A0022 swap-chain failures that are not Steam Bridge overlay bugs."
+    )
+  }
+  $foreignSteam = @($steamProcesses | Where-Object { $_.SessionId -ne $sessionSummary.currentSessionId })
+  if ($foreignSteam.Count -gt 0) {
+    $steamSessionIds = @($steamProcesses | Select-Object -ExpandProperty SessionId -Unique | Sort-Object)
+    $errors += (
+      "Steam is running in a different Windows session. " +
+      "Current PowerShell SessionId=$($sessionSummary.currentSessionId); Steam SessionId(s)=$(Format-SessionIdList $steamSessionIds). " +
+      "Fully quit Steam in the other session, then start Steam from the same interactive session as the matrix."
     )
   }
   if ($staleOverlayHelpers.Count -gt 0) {
@@ -549,6 +601,7 @@ function Test-WindowsLiveRunReadiness {
     kind = "steam-bridge-windows-live-run-readiness"
     generatedAt = (Get-Date).ToUniversalTime().ToString("o")
     ready = ($errors.Count -eq 0)
+    windowsSession = $sessionSummary
     steamProcesses = @($steamProcesses)
     overlayHelpers = @($overlayHelpers)
     staleOverlayHelperCount = $staleOverlayHelpers.Count
@@ -578,8 +631,9 @@ function Collect-SteamClientDiagnostics {
     $steamPath = Resolve-SteamInstallPath
     $logs = Join-Path $steamPath "logs"
     $generatedAt = (Get-Date).ToUniversalTime().ToString("o")
+    $sessionSummary = Get-WindowsSessionSummary
     $processes = @(Get-Process steam,steamwebhelper,gameoverlayui,gameoverlayui64,SteamBridgeSmoke -ErrorAction SilentlyContinue |
-      Select-Object ProcessName,Id,StartTime,Responding,MainWindowTitle,Path)
+      Select-Object ProcessName,Id,SessionId,StartTime,Responding,MainWindowTitle,Path)
     $overlayHelpers = @(Get-OverlayHelperDiagnostics)
     $resourceSnapshot = Get-WindowsResourceSnapshot
     $renderingHealth = Get-SteamClientRenderingHealth
@@ -596,6 +650,7 @@ function Collect-SteamClientDiagnostics {
       generatedAt = $generatedAt
       steamPath = $steamPath
       logDirectory = $logs
+      windowsSession = $sessionSummary
       processes = @($processes)
       overlayHelpers = @($overlayHelpers)
       staleOverlayHelperCount = @($overlayHelpers | Where-Object { $_.orphaned }).Count

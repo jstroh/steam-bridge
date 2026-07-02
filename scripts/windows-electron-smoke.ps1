@@ -317,6 +317,67 @@ function Set-SmokeProcessEnv {
   }
 }
 
+function Get-CurrentWindowsSessionId {
+  return [System.Diagnostics.Process]::GetCurrentProcess().SessionId
+}
+
+function Get-InteractiveWindowsSessionIds {
+  return @(
+    Get-Process explorer -ErrorAction SilentlyContinue |
+      Where-Object { $_.SessionId -gt 0 } |
+      Select-Object -ExpandProperty SessionId -Unique |
+      Sort-Object
+  )
+}
+
+function Get-WindowsSessionSummary {
+  $currentSessionId = Get-CurrentWindowsSessionId
+  $interactiveSessionIds = @(Get-InteractiveWindowsSessionIds)
+  $steamProcesses = @(Get-Process steam -ErrorAction SilentlyContinue |
+    Select-Object ProcessName,Id,SessionId,StartTime,Responding,MainWindowTitle,Path)
+
+  return [PSCustomObject]@{
+    currentSessionId = $currentSessionId
+    interactiveSessionIds = @($interactiveSessionIds)
+    currentSessionInteractive = ($interactiveSessionIds -contains $currentSessionId)
+    steamProcesses = @($steamProcesses)
+  }
+}
+
+function Format-SessionIdList {
+  param([object[]]$SessionIds)
+
+  if (-not $SessionIds -or $SessionIds.Count -eq 0) {
+    return "none"
+  }
+  return ((@($SessionIds) | ForEach-Object { [string]$_ }) -join ", ")
+}
+
+function Assert-InteractiveWindowsSessionForSteamLaunch {
+  $summary = Get-WindowsSessionSummary
+  if (-not $summary.currentSessionInteractive) {
+    throw (
+      "Windows steam-launch smoke must run from the interactive desktop session. " +
+      "Current PowerShell SessionId=$($summary.currentSessionId); " +
+      "interactive explorer SessionId(s)=$(Format-SessionIdList $summary.interactiveSessionIds). " +
+      "Run from the Parsec/local desktop session or an /IT scheduled task. SSH Session 0 can produce " +
+      "DXGI_ERROR_NOT_CURRENTLY_AVAILABLE / 0x887A0022 swap-chain failures that are not Steam Bridge overlay bugs."
+    )
+  }
+
+  $foreignSteam = @($summary.steamProcesses | Where-Object { $_.SessionId -ne $summary.currentSessionId })
+  if ($foreignSteam.Count -gt 0) {
+    $steamSessionIds = @($summary.steamProcesses | Select-Object -ExpandProperty SessionId -Unique | Sort-Object)
+    throw (
+      "Steam is running in a different Windows session. " +
+      "Current PowerShell SessionId=$($summary.currentSessionId); Steam SessionId(s)=$(Format-SessionIdList $steamSessionIds). " +
+      "Fully quit Steam in the other session, then start Steam from the interactive desktop session before live overlay proof."
+    )
+  }
+
+  return $summary
+}
+
 function Write-JsonFile {
   param([string]$Path, $Value)
 
@@ -532,7 +593,8 @@ function Get-RecentCodeIntegrityEvents {
 function Invoke-Preflight {
   $exe = Resolve-SmokeExe
   $nativeAddon = Resolve-NativeAddon
-  $steamProcess = Get-Process steam -ErrorAction SilentlyContinue | Select-Object -First 1
+  $sessionSummary = Get-WindowsSessionSummary
+  $steamProcess = @($sessionSummary.steamProcesses | Select-Object -First 1)
   $steamProcessId = $null
   if ($steamProcess) {
     $steamProcessId = $steamProcess.Id
@@ -550,6 +612,8 @@ function Invoke-Preflight {
   Write-Host "Windows smoke preflight:"
   Write-Host ("  appDir: {0}" -f $AppDir)
   Write-Host ("  powershell: {0}" -f $PSVersionTable.PSVersion)
+  Write-Host ("  currentSessionId: {0}" -f $sessionSummary.currentSessionId)
+  Write-Host ("  interactiveSessionIds: {0}" -f (Format-SessionIdList $sessionSummary.interactiveSessionIds))
   Write-Host ("  verifiedAndReputablePolicyState: {0}" -f $policy.verifiedAndReputablePolicyState)
   Write-Host ("  ciTool: {0}" -f $policy.ciToolPath)
   Write-Host ("  verifiedAndReputableEnforced: {0}" -f $policy.verifiedAndReputableEnforced)
@@ -600,7 +664,9 @@ function Invoke-Preflight {
     steam = [PSCustomObject]@{
       running = [bool]$steamProcess
       pid = $steamProcessId
+      sessionId = if ($steamProcess) { $steamProcess.SessionId } else { $null }
     }
+    windowsSession = $sessionSummary
     appControl = $policy
     files = [PSCustomObject]@{
       executable = $exeSummary
@@ -1027,6 +1093,7 @@ function Invoke-SteamLaunchSmoke {
   if (-not $ShortcutGameId) {
     throw "Missing -ShortcutGameId for steam-launch mode."
   }
+  Assert-InteractiveWindowsSessionForSteamLaunch | Out-Null
   if (-not $AllowStartSteamClient -and -not (Get-Process steam -ErrorAction SilentlyContinue)) {
     throw (
       "Steam is not running. Start Steam once in the interactive Windows desktop session, " +

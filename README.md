@@ -810,13 +810,18 @@ the private `--checkout-json-file` checkout suite.
   recorded Steam parent process are both gone. Live Steam-launched suites require
   Steam to already be open in the interactive Windows desktop session; the matrix
   records `00-preflight/live-run-readiness.json` and stops before the native-load
-  gate or `steam://rungameid` launch if Steam is closed, orphan overlay helpers
-  remain, or recent CEF/GPU/overlay-renderer log signals show the Steam client
-  itself is in an unhealthy blank/white rendering state. Stale severe rendering
+  gate or `steam://rungameid` launch if Steam is closed, the helper is not
+  running in the interactive desktop session, orphan overlay helpers remain, or
+  recent CEF/GPU/overlay-renderer log signals show the Steam client itself is in
+  an unhealthy blank/white rendering state. On Windows, SSH runs in Session 0;
+  live overlay proof must run from the Parsec/local desktop session or an `/IT`
+  scheduled task in the same session as `explorer.exe` and Steam. Session 0 can
+  produce `DXGI_ERROR_NOT_CURRENTLY_AVAILABLE` / `0x887A0022` swap-chain
+  failures that are not Steam Bridge overlay regressions. Stale severe rendering
   log entries stay in `steam-client-rendering-health.json` as warnings instead
   of failing fresh runs. The standalone helper follows the same bias: `-Mode
   steam-launch` refuses to start Steam unless `-AllowStartSteamClient` is passed
-  intentionally.
+  intentionally, and also refuses live launch from Session 0.
   The Windows matrix is intentionally process-per-case right now. A
   one-process control-server harness is useful future research, but it is not
   the Windows proof path until it can wait on overlay readiness and run without

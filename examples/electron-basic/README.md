@@ -125,9 +125,13 @@ you need one focused Steam-launched probe while the client is recovering. Pass
 `-CleanStaleOverlayHelpers` only when you intentionally want to stop orphaned
 overlay helpers whose target game process and recorded Steam parent process are
 both gone. Live Steam-launched suites require Steam to already be open in the
-interactive Windows desktop session; if Steam is closed or orphan overlay helpers
-remain, the matrix writes `00-preflight/live-run-readiness.json` and stops
-before any live launch. The same readiness JSON also includes
+interactive Windows desktop session; if Steam is closed, the helper is running
+outside that interactive session, or orphan overlay helpers remain, the matrix
+writes `00-preflight/live-run-readiness.json` and stops before any live launch.
+SSH runs in Windows Session 0; use the Parsec/local desktop session or an `/IT`
+scheduled task for live overlay proof. Session 0 can produce
+`DXGI_ERROR_NOT_CURRENTLY_AVAILABLE` / `0x887A0022` swap-chain failures that are
+not Steam Bridge overlay regressions. The same readiness JSON also includes
 `steam-client-rendering-health.json` data and blocks live launch when recent
 CEF/GPU/overlay-renderer log signals show Steam's own UI is in an unhealthy
 blank/white rendering state.
