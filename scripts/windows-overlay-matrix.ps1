@@ -41,6 +41,8 @@ param(
   [int]$CloseProbeSettleMs = 750,
   [int]$CloseProbeTimeoutSeconds = 110,
   [string]$PresenterMode = "",
+  [ValidateSet("", "default", "popup", "popup-layered", "control", "overlapped", "plain")]
+  [string]$NativeHostStyle = "",
   [string]$OverlayInProcessGpu = "",
   [string]$OverlayScrubChildEnv = "",
   [string]$OverlayIsolateChildProcesses = ""
@@ -579,7 +581,11 @@ function Convert-OverlayFlagToBoolean {
 }
 
 function Test-UsesDefaultWindowsRenderPath {
-  return (-not $OverlayInProcessGpu -and -not (Convert-OverlayFlagToBoolean -Value $OverlayDisableDirectComposition))
+  return (
+    -not $OverlayInProcessGpu -and
+    -not (Convert-OverlayFlagToBoolean -Value $OverlayDisableDirectComposition) -and
+    -not $NativeHostStyle
+  )
 }
 
 function Get-CurrentWindowsSessionId {
@@ -1203,6 +1209,9 @@ function Test-NativeLoadGate {
   if ($PresenterMode) {
     $gateArgs += @("-PresenterMode", $PresenterMode)
   }
+  if ($NativeHostStyle) {
+    $gateArgs += @("-NativeHostStyle", $NativeHostStyle)
+  }
   if ($OverlayScrubChildEnv) {
     $gateArgs += @("-OverlayScrubChildEnv", $OverlayScrubChildEnv)
   }
@@ -1275,6 +1284,7 @@ function Invoke-RenderHealthGate {
       overlayInProcessGpu = $OverlayInProcessGpu
       overlayDisableDirectComposition = $OverlayDisableDirectComposition
       presenterMode = $PresenterMode
+      nativeHostStyle = $NativeHostStyle
     }) -Depth 6
     Write-Host "Windows render-health gate skipped for an explicit non-default render comparison."
     return
@@ -1610,6 +1620,7 @@ function Write-MatrixManifest {
     shortcutName = $ShortcutName
     overlayProfile = $OverlayProfile
     presenterMode = $PresenterMode
+    nativeHostStyle = $NativeHostStyle
     overlayInProcessGpu = $OverlayInProcessGpu
     overlayDisableDirectComposition = $OverlayDisableDirectComposition
     overlayScrubChildEnv = $OverlayScrubChildEnv
@@ -2191,6 +2202,9 @@ function Write-CaseLaunchEnv {
   if ($PresenterMode) {
     $args += @("-PresenterMode", $PresenterMode)
   }
+  if ($NativeHostStyle) {
+    $args += @("-NativeHostStyle", $NativeHostStyle)
+  }
   if ($OverlayScrubChildEnv) {
     $args += @("-OverlayScrubChildEnv", $OverlayScrubChildEnv)
   }
@@ -2256,6 +2270,9 @@ function Invoke-MatrixCase {
   }
   if ($PresenterMode) {
     $args += @("-PresenterMode", $PresenterMode)
+  }
+  if ($NativeHostStyle) {
+    $args += @("-NativeHostStyle", $NativeHostStyle)
   }
   if ($OverlayScrubChildEnv) {
     $args += @("-OverlayScrubChildEnv", $OverlayScrubChildEnv)
@@ -2371,6 +2388,7 @@ Write-Host ("  artifactRoot: {0}" -f $ArtifactRoot)
 Write-Host ("  appId: {0}" -f $AppId)
 Write-Host ("  overlayProfile: {0}" -f $OverlayProfile)
 Write-Host ("  presenterMode: {0}" -f $PresenterMode)
+Write-Host ("  nativeHostStyle: {0}" -f $NativeHostStyle)
 Write-Host ("  inProcessGpu: {0}" -f $OverlayInProcessGpu)
 Write-Host ("  disableDirectComposition: {0}" -f $OverlayDisableDirectComposition)
 Write-Host ("  scrubChildEnv: {0}" -f $OverlayScrubChildEnv)

@@ -34,6 +34,10 @@ const MAC_NATIVE_HOST_BACKEND = normalizeMacNativeHostBackend(
   CLI_OPTIONS.nativeHostBackend || process.env.STEAM_BRIDGE_SMOKE_NATIVE_HOST_BACKEND || ""
 );
 configureMacNativeHostBackend(MAC_NATIVE_HOST_BACKEND);
+const WINDOWS_NATIVE_HOST_STYLE = normalizeWindowsNativeHostStyle(
+  CLI_OPTIONS.windowsNativeHostStyle || process.env.STEAM_BRIDGE_WINDOWS_NATIVE_HOST_STYLE || ""
+);
+configureWindowsNativeHostStyle(WINDOWS_NATIVE_HOST_STYLE);
 const STORE_URL = `https://store.steampowered.com/app/${APP_ID}/`;
 let STORE_ROUTE = normalizeStoreRoute(CLI_OPTIONS.storeRoute || process.env.STEAM_BRIDGE_SMOKE_STORE_ROUTE, "web");
 let WEB_URL = CLI_OPTIONS.webUrl || process.env.STEAM_BRIDGE_SMOKE_WEB_URL || STORE_URL;
@@ -141,6 +145,7 @@ const LAUNCH_ENV_KEYS = [
   "DYLD_INSERT_LIBRARIES",
   "STEAM_BRIDGE_MACOS_NATIVE_LAUNCHER",
   "STEAM_BRIDGE_MACOS_NATIVE_LAUNCHER_TARGET",
+  "STEAM_BRIDGE_WINDOWS_NATIVE_HOST_STYLE",
   "__COMPAT_LAYER"
 ];
 const STARTUP_LAUNCH_CONTEXT = getLaunchContext();
@@ -3354,6 +3359,25 @@ function configureMacNativeHostBackend(backend) {
   }
 }
 
+function normalizeWindowsNativeHostStyle(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (["control", "overlapped", "plain"].includes(normalized)) {
+    return "control";
+  }
+  if (["default", "popup", "popup-layered", "layered"].includes(normalized)) {
+    return "popup-layered";
+  }
+  return "";
+}
+
+function configureWindowsNativeHostStyle(style) {
+  if (process.platform !== "win32" || !style) {
+    return;
+  }
+
+  process.env.STEAM_BRIDGE_WINDOWS_NATIVE_HOST_STYLE = style;
+}
+
 function writeSteamAppIdFiles(appId) {
   const directories = new Set([process.cwd(), __dirname]);
   if (app.isPackaged) {
@@ -3391,6 +3415,7 @@ function parseSmokeArgs(args) {
     overlayDisableDirectComposition: undefined,
     windowMode: undefined,
     nativeHostBackend: undefined,
+    windowsNativeHostStyle: undefined,
     autorunRequireOverlayActive: undefined,
     webModal: undefined,
     storeRoute: undefined,
@@ -3510,6 +3535,10 @@ function parseSmokeArgs(args) {
         break;
       case "--steam-bridge-smoke-native-host-backend":
         options.nativeHostBackend = value;
+        break;
+      case "--steam-bridge-windows-native-host-style":
+      case "--steam-bridge-smoke-windows-native-host-style":
+        options.windowsNativeHostStyle = value;
         break;
       case "--steam-bridge-smoke-result-file":
         options.resultFile = value;

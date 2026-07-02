@@ -65,13 +65,17 @@ Reviewed on 2026-07-02 while investigating Windows Electron overlay failures:
 | [NW.js overlay issue #4982](https://github.com/nwjs/nw.js/issues/4982) | The same Chromium-family GPU-process split has affected Steam overlay injection outside Electron for years. |
 | [NW.js `--in-process-gpu` instancing issue #6059](https://github.com/nwjs/nw.js/issues/6059) | `--in-process-gpu` can create process-lifetime and launch failures when started through Steam or other launchers, so Steam Bridge should avoid building its Windows product path around it. |
 | [NW.js video issue #7550](https://github.com/nwjs/nw.js/issues/7550) | The flag needed by some apps for Steam overlay can break normal media behavior, another reason to keep Chromium flag profiles behind explicit diagnostics. |
+| [Greenworks / NW.js v0.103.1 overlay issue #349](https://github.com/greenheartgames/greenworks/issues/349) | A maintained Chromium-wrapper issue reports the same current-era failure: `--in-process-gpu` was historically required for Steam overlay but newer NW.js blanks the app, so version-specific smoke proof matters more than cargo-culting old launch flags. |
 | [Electron 35 overlay regression #47662](https://github.com/electron/electron/issues/47662) | Newer Electron releases can regress Steam overlay behavior even after a previously working version, so the Windows lane needs package-versioned smoke artifacts rather than version assumptions. |
+| [Tauri/WebView2 overlay issue #6196](https://github.com/tauri-apps/tauri/issues/6196) | The WebView2/Tauri route shows the same process-model problem outside Electron: a Steamworks call can be valid while the rendered web surface is not the hook target Steam needs. |
 | [Steam Community browser-overlay request](https://steamcommunity.com/discussions/forum/10/591756872987476379/) | Public browser-runtime reports group Electron, NW.js, CEF, WebView2, and WKWebView together as unsupported or unreliable Steam overlay targets, reinforcing the bridge-owned native-surface direction. |
 | [Steamworks `ISteamFriends` overlay docs](https://partner.steamgames.com/doc/api/isteamfriends) | The raw Steam overlay APIs can open store, web, friends, and user/dialog routes, but Steam Bridge must still prove each route's visible UI, input, close, and focus-return behavior on each platform. |
 | [Steam microtransaction implementation guide](https://partner.steamgames.com/doc/features/microtransactions/implementation) | Real checkout is Steam overlay-driven after `InitTxn`, so the presenter must remain alive through the authorization flow and cannot equate a microtransaction callback with overlay close. |
 | [Chromium DirectComposition change](https://groups.google.com/a/chromium.org/g/ozone-reviews/c/iihF5rPWLJ8) | `--disable-direct-composition` is a real Chromium switch for disabling DirectComposition, but it changes a core Windows composition path and must be treated as a compatibility experiment. |
+| [Microsoft DirectComposition concepts](https://learn.microsoft.com/en-us/windows/win32/directcomp/basic-concepts) | DirectComposition is bitmap/DXGI-content composition, not a magic overlay route; it can be a diagnostic layer, but a product presenter still has to prove Steam's injected renderer, alpha behavior, input, close, and focus return. |
 | [Microsoft DXGI Session 0 note](https://learn.microsoft.com/en-us/windows/win32/api/dxgi/nf-dxgi-idxgifactory-createswapchain) | `DXGI_ERROR_NOT_CURRENTLY_AVAILABLE` from Session 0 is expected for swap-chain creation; Windows live overlay tests must launch in the interactive desktop session. |
 | [Microsoft Raw Input registration docs](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-registerrawinputdevices) | Raw input delivery is opt-in, and only one window per raw-input device class can be registered in a process; any Windows presenter input mitigation must not steal ownership from the app window. |
+| [Steamworks.NET overlay FAQ](https://steamworks.github.io/faq/) | The injection-order rule is not Electron-specific: the overlay must be injected before the renderer initializes, and running through Steam is the reliable development shape. |
 | [steamworks-ffi-node native overlay guide](https://github.com/ArtyProf/steamworks-ffi-node/blob/main/docs/STEAM_OVERLAY_INTEGRATION.md) | Independent wrapper research points at native Metal/OpenGL host surfaces, but Steam Bridge still requires its own FPS, shutdown, focus, close, and crash matrix before making a Windows native presenter default. |
 
 - Steam Bridge now has a first opt-in Windows native presenter candidate:
@@ -80,6 +84,13 @@ Reviewed on 2026-07-02 while investigating Windows Electron overlay failures:
   ordinary direct Electron hook remains the baseline until live Windows matrix
   proof shows the native presenter is better across visible UI, close/back-to-app,
   passive notifications, FPS/focus behavior, and crash diagnostics.
+- The broader Windows source sweep points past window-style tweaks. Valve's
+  browser-game FAQ specifically names a native D3D window with offscreen
+  Chromium and input forwarding, while the WebView2/DirectComposition research
+  shows why a composited transparent layer can render Steam overlay content but
+  still fail on alpha/input details. The next serious Windows implementation
+  comparison should therefore be a D3D11/DXGI presenter candidate beside the
+  existing WGL diagnostic, not another default Chromium flag profile.
 - Steam Bridge's Deck Desktop testing confirmed a second Electron-specific
   failure mode: if Steam's overlay renderer is inherited by Chromium child
   processes, Steam can create competing `gameoverlayui` targets for both the

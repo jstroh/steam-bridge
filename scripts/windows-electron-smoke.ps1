@@ -71,6 +71,8 @@ param(
   [string]$UserDialog = "",
   [string]$ShortcutTarget = "",
   [string]$PresenterMode = "",
+  [ValidateSet("", "default", "popup", "popup-layered", "control", "overlapped", "plain")]
+  [string]$NativeHostStyle = "",
   [ValidateSet("shown", "complete")]
   [string]$ManagedOverlayResultMode = "shown",
   [string]$AchievementName = "",
@@ -190,6 +192,9 @@ function Get-SmokeArgs {
   if ($PresenterMode) {
     $args += "--steam-bridge-smoke-presenter-mode=$PresenterMode"
   }
+  if ($NativeHostStyle) {
+    $args += "--steam-bridge-windows-native-host-style=$NativeHostStyle"
+  }
   if ($ManagedOverlayResultMode) {
     $args += "--steam-bridge-smoke-managed-overlay-result-mode=$ManagedOverlayResultMode"
   }
@@ -290,6 +295,9 @@ function Get-SmokeEnv {
   }
   if ($PresenterMode) {
     $envMap.STEAM_BRIDGE_SMOKE_PRESENTER_MODE = $PresenterMode
+  }
+  if ($NativeHostStyle) {
+    $envMap.STEAM_BRIDGE_WINDOWS_NATIVE_HOST_STYLE = $NativeHostStyle
   }
   if ($ManagedOverlayResultMode) {
     $envMap.STEAM_BRIDGE_SMOKE_MANAGED_OVERLAY_RESULT_MODE = $ManagedOverlayResultMode

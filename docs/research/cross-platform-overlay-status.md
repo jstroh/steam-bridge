@@ -410,6 +410,29 @@ remained active until the managed close wait timed out. This keeps the current
 Windows blocker on native-presenter content/input behavior, not package signing,
 Session 0, Steam client white-window health, or Electron default rendering.
 
+The next Windows comparison made that window-shape result explicit instead of
+guessing. A fresh current-package build was cross-built with `cargo-xwin`,
+copied into `steam_bridge_native.win32-x64-msvc.node`, packaged, deployed to the
+Windows laptop, and signed with the local test certificate. The focused
+interactive Session 1 artifact
+`C:\Users\admin\steam-bridge-artifacts\windows-native-control-web-20260702-001`
+ran `11-managed-web-open-and-wait` through the Steam shortcut with
+`-PresenterMode persistent -NativeHostStyle control`. The direct native-load
+gate passed against App ID `480`, the default render-health gate was correctly
+skipped because this was an explicit non-default native-host comparison, and
+Steam emitted `GameOverlayActivated(true)` with `gameoverlayui64` running in
+Session 1. Presenter diagnostics recorded `backend=windows-opengl`,
+`hostStyle=control`, a normal foreground host window, `overlayEnabled=true`, and
+clean crash diagnostics. Screenshots still showed a black/dark Steam overlay
+shell rather than visible web content, and the maintained close click at the
+presenter-bounds close coordinate `(1445,244)` sent successfully
+(`sent=3`, `lastError=0`) but did not produce `GameOverlayActivated(false)`,
+presenter parking, or `openAndWait` completion before the 90-second wait
+timed out. Treat `STEAM_BRIDGE_WINDOWS_NATIVE_HOST_STYLE=control` as a
+diagnostic switch only. It narrowed the failure away from popup/layered/
+no-activate window styles and toward the graphics surface/present path that
+Steam is actually compositing over.
+
 Online source survey, 2026-07-02: Valve's overlay documentation says the overlay
 hooks games launched through Steam, must see `SteamAPI_Init` before the
 OpenGL/D3D device is initialized in development, and only supports real graphics
@@ -425,13 +448,15 @@ the main process, but it is also associated with blank or white windows on newer
 Chromium/NW.js/Electron combinations; `--disable-direct-composition` can help a
 white overlay in some reports but has ghost-window risk in steamworks.js reports,
 and a steamworks.js issue found `--in-process-gpu` without
-`--disable-direct-composition` worked better for Alt+Tab behavior. This demotes
-the ordinary Windows Electron hook to a measured baseline: keep collecting Steam
-CEF/GPU/render-health evidence before restarting Steam, keep
-`disable-direct-composition` diagnostic-only, and implement/promote a
-bridge-owned Windows presenter only after it passes the same visible UI,
-close/back-to-app, FPS, focus, and clean-crash matrix required on Linux and
-macOS. Sources:
+`--disable-direct-composition` worked better for Alt+Tab behavior. Additional
+sources from NW.js/Greenworks, Tauri/WebView2, Steamworks.NET, Chromium
+DirectComposition notes, Microsoft DirectComposition/DXGI docs, and the native
+overlay wrapper ecosystem reinforce the same direction: keep collecting Steam
+CEF/GPU/render-health evidence before restarting Steam, keep Chromium flags
+diagnostic-only, and compare a D3D11/DXGI native presenter candidate before
+promoting any Windows bridge-owned presenter. Promotion still requires the same
+visible UI, close/back-to-app, FPS, focus, and clean-crash matrix required on
+Linux and macOS. Sources:
 https://partner.steamgames.com/doc/features/overlay,
 https://partner.steamgames.com/doc/api/ISteamFriends,
 https://www.electronjs.org/docs/latest/api/command-line-switches,
@@ -441,16 +466,19 @@ https://github.com/electron/electron/issues/18048,
 https://github.com/ceifa/steamworks.js/issues/95,
 https://github.com/ceifa/steamworks.js/issues/116,
 https://github.com/ceifa/steamworks.js/issues/195,
+https://github.com/greenheartgames/greenworks/issues/349,
+https://github.com/tauri-apps/tauri/issues/6196,
 https://github.com/MicrosoftEdge/WebView2Feedback/issues/3200,
 https://www.construct.net/en/blogs/ashleys-blog-2/trying-show-steam-overlay-1861,
 https://liana.one/integrate-electron-steam-api-steamworks,
 https://github.com/nwjs/nw.js/issues/4982,
-https://github.com/greenheartgames/greenworks/issues/349,
 https://github.com/ArtyProf/steamworks-ffi-node/blob/main/docs/STEAM_OVERLAY_INTEGRATION.md,
 https://steamcommunity.com/discussions/forum/10/591756872987476379/,
 https://github.com/electron/electron/issues/47662,
+https://learn.microsoft.com/en-us/windows/win32/directcomp/basic-concepts,
 https://learn.microsoft.com/en-us/windows/win32/api/dxgi/nf-dxgi-idxgifactory-createswapchain,
 https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-registerrawinputdevices,
+https://steamworks.github.io/faq/,
 https://partner.steamgames.com/doc/api/isteamfriends,
 https://partner.steamgames.com/doc/features/microtransactions/implementation,
 https://partner.steamgames.com/doc/api/ISteamUtils#BOverlayNeedsPresent,

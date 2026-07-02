@@ -1180,6 +1180,7 @@ mod windows {
     use once_cell::sync::Lazy;
     use serde::Serialize;
     use serde_json::json;
+    use std::env;
     use std::mem;
     use std::ptr;
     use std::sync::{Mutex, OnceLock};
@@ -1222,12 +1223,42 @@ mod windows {
     struct NativeSurface {
         hwnd: HWND,
         parent_hwnd: Option<HWND>,
+        host_style: WindowsHostStyle,
         hdc: HDC,
         hglrc: Hglrc,
         frame: u64,
         input_passthrough: bool,
         opaque: bool,
         visible: bool,
+    }
+
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    enum WindowsHostStyle {
+        PopupLayered,
+        Control,
+    }
+
+    impl WindowsHostStyle {
+        fn from_env(attached: bool) -> Self {
+            if !attached {
+                return Self::PopupLayered;
+            }
+
+            match env::var("STEAM_BRIDGE_WINDOWS_NATIVE_HOST_STYLE") {
+                Ok(value) => match value.trim().to_ascii_lowercase().as_str() {
+                    "control" | "overlapped" | "plain" => Self::Control,
+                    _ => Self::PopupLayered,
+                },
+                Err(_) => Self::PopupLayered,
+            }
+        }
+
+        fn as_str(self) -> &'static str {
+            match self {
+                Self::PopupLayered => "popup-layered",
+                Self::Control => "control",
+            }
+        }
     }
 
     unsafe impl Send for NativeSurface {}
@@ -1309,6 +1340,7 @@ mod windows {
             ShowWindow(surface.hwnd, SW_SHOW);
             surface.visible = true;
             update_window_frame(surface);
+            sync_window_style(surface);
             if !surface.input_passthrough {
                 activate_window(surface);
             }
@@ -1439,6 +1471,7 @@ mod windows {
                 json!({
                     "platform": "win32",
                     "backend": "windows-opengl",
+                    "hostStyle": surface.host_style.as_str(),
                     "hwnd": hwnd_hex(surface.hwnd),
                     "parentHwnd": surface.parent_hwnd.map(hwnd_hex),
                     "foregroundHwnd": hwnd_hex(foreground),
@@ -1506,13 +1539,18 @@ mod windows {
                 )
             })
             .unwrap_or((100, 100, 960, 540));
-        let ex_style = base_ex_style(parent_hwnd.is_some(), true);
-        let style = if parent_hwnd.is_some() {
+        let host_style = WindowsHostStyle::from_env(parent_hwnd.is_some());
+        let ex_style = base_ex_style(parent_hwnd.is_some(), true, host_style);
+        let style = if parent_hwnd.is_some() && host_style == WindowsHostStyle::PopupLayered {
             WS_POPUP | WS_CLIPSIBLINGS | WS_CLIPCHILDREN
         } else {
             WS_OVERLAPPEDWINDOW | WS_CLIPSIBLINGS | WS_CLIPCHILDREN
         };
-        let owner = parent_hwnd.unwrap_or(ptr::null_mut());
+        let owner = if parent_hwnd.is_some() && host_style == WindowsHostStyle::PopupLayered {
+            parent_hwnd.unwrap_or(ptr::null_mut())
+        } else {
+            ptr::null_mut()
+        };
         let hwnd = CreateWindowExW(
             ex_style,
             class_name.as_ptr(),
@@ -1578,16 +1616,20 @@ mod windows {
         let mut surface = NativeSurface {
             hwnd,
             parent_hwnd,
+            host_style,
             hdc,
             hglrc,
             frame: 0,
-            input_passthrough: parent_hwnd.is_some(),
-            opaque: parent_hwnd.is_none(),
+            input_passthrough: parent_hwnd.is_some() && host_style != WindowsHostStyle::Control,
+            opaque: parent_hwnd.is_none() || host_style == WindowsHostStyle::Control,
             visible: true,
         };
         sync_window_style(&mut surface);
         ShowWindow(hwnd, SW_SHOW);
         update_window_frame(&surface);
+        if surface.host_style == WindowsHostStyle::Control {
+            activate_window(&surface);
+        }
         Ok(surface)
     }
 
@@ -1648,6 +1690,33 @@ mod windows {
 
     unsafe fn sync_window_style(surface: &mut NativeSurface) {
         let mut ex_style = GetWindowLongPtrW(surface.hwnd, GWL_EXSTYLE) as u32;
+        if surface.host_style == WindowsHostStyle::Control {
+            ex_style &= !(WS_EX_LAYERED
+                | WS_EX_TOOLWINDOW
+                | WS_EX_NOACTIVATE
+                | WS_EX_TRANSPARENT
+                | WS_EX_TOPMOST);
+            SetWindowLongPtrW(surface.hwnd, GWL_EXSTYLE, ex_style as isize);
+            SetWindowPos(
+                surface.hwnd,
+                ptr::null_mut(),
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOOWNERZORDER | SWP_NOZORDER | SWP_FRAMECHANGED,
+            );
+            if surface.input_passthrough || !surface.opaque {
+                ShowWindow(surface.hwnd, SW_HIDE);
+                surface.visible = false;
+            } else {
+                ShowWindow(surface.hwnd, SW_SHOW);
+                surface.visible = true;
+                activate_window(surface);
+            }
+            return;
+        }
+
         if surface.parent_hwnd.is_some() {
             ex_style |= WS_EX_TOPMOST;
             if surface.input_passthrough {
@@ -1786,7 +1855,11 @@ mod windows {
         }
     }
 
-    fn base_ex_style(attached: bool, pass_through: bool) -> u32 {
+    fn base_ex_style(attached: bool, pass_through: bool, host_style: WindowsHostStyle) -> u32 {
+        if host_style == WindowsHostStyle::Control {
+            return 0;
+        }
+
         let mut style = WS_EX_LAYERED | WS_EX_TOOLWINDOW;
         if attached {
             style |= WS_EX_TOPMOST | WS_EX_NOACTIVATE;
