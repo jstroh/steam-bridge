@@ -189,7 +189,7 @@ function runMacosPackageSigningStaticChecks() {
   );
   assert.match(
     packageReadme,
-    /Build and\s+run macOS test apps only on native `darwin\/arm64` Apple Silicon hosts/,
+    /Build and\s+run macOS test\s+apps only on native `darwin\/arm64` Apple Silicon hosts/,
     "package README must document native Apple Silicon-only macOS test apps"
   );
   assert.match(
@@ -330,6 +330,9 @@ function runWindowsSmokeHelperStaticChecks() {
     "--steam-bridge-smoke-env-file=$SmokeEnvFile",
     "write-launch-env",
     "Get-SmokeEnv",
+    "PreflightJsonFile",
+    "Write-JsonFile",
+    "steam-bridge-windows-preflight",
     "function Test-OverlayActiveEvent",
     "RequireOverlayActivated",
     "RequireNoCrashes",
@@ -355,7 +358,9 @@ function runWindowsSmokeHelperStaticChecks() {
     "Windows Smart App Control/App Control is enabled",
     "Running Windows native-load gate with the packaged app.",
     "native-load-gate",
+    "preflight.json",
     "post-gate-preflight.log",
+    "post-gate-preflight.json",
     "-Action\", \"none\"",
     "-RequireNoOverlayActivation",
     "achievement-progress",

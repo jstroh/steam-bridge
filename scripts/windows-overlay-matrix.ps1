@@ -231,14 +231,15 @@ function Test-NativeLoadGate {
       Invoke-Helper -Arguments @(
         "-Mode", "preflight",
         "-AppDir", $AppDir,
-        "-AppId", "$AppId"
+        "-AppId", "$AppId",
+        "-PreflightJsonFile", (Join-Path $gateDir "post-gate-preflight.json")
       ) -LogFile $postGatePreflightLog
     } catch {
       Write-Host ("Post-gate preflight failed; continuing with original native-load gate failure. Output path: {0}" -f $postGatePreflightLog)
     }
     throw (
       "Windows native-load gate failed before live overlay cases. " +
-      "The exact packaged app could not initialize Steam cleanly; see $gateLog, $postGatePreflightLog, and $diagnosticDir. " +
+      "The exact packaged app could not initialize Steam cleanly; see $gateLog, $postGatePreflightLog, post-gate-preflight.json, and $diagnosticDir. " +
       "On Smart App Control/App Control machines, a local self-signed Authenticode result can still fail this gate. " +
       "Use a trusted/reputable publisher-signed package or explicitly disable SAC on this development machine before live overlay proof. " +
       "Original error: $($_.Exception.Message)"
@@ -391,11 +392,13 @@ function Invoke-Preflight {
   $preflightDir = Join-Path $ArtifactRoot "00-preflight"
   New-Item -ItemType Directory -Force -Path $preflightDir | Out-Null
   $preflightLog = Join-Path $preflightDir "preflight.log"
+  $preflightJson = Join-Path $preflightDir "preflight.json"
 
   Invoke-Helper -Arguments @(
     "-Mode", "preflight",
     "-AppDir", $AppDir,
-    "-AppId", "$AppId"
+    "-AppId", "$AppId",
+    "-PreflightJsonFile", $preflightJson
   ) -LogFile $preflightLog
 
   Test-NativeLoadGate -PreflightDir $preflightDir

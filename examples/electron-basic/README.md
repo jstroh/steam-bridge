@@ -121,7 +121,10 @@ matrix stops after preflight before live overlay cases. The matrix verifies this
 with an actual direct `none` smoke run from the packaged app, so local
 self-signed packages that appear Authenticode-valid but still cannot load the
 native addon under SAC/App Control fail with artifacts under
-`00-preflight/native-load-gate`.
+`00-preflight/native-load-gate`. Preflight writes structured
+`00-preflight/preflight.json`, and native-load failures also write
+`00-preflight/native-load-gate/post-gate-preflight.json` after the failed load
+attempt.
 
 Outputs are written under `dist/electron-smoke/<target>/`.
 The macOS package includes `macos-electron-smoke.sh` beside

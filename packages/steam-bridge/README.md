@@ -34,7 +34,8 @@ loading, native linking, and macOS smoke-app packaging enforce Apple Silicon
 arm64 as the only macOS target; Steam Bridge does not build, run, or verify
 Intel or universal macOS apps. Do not package, launch, or verify macOS smoke
 apps through Rosetta. Do not package, launch, or verify macOS test or smoke
-apps through any `darwin-x64`/universal Electron build. Build and run macOS test apps only on native `darwin/arm64` Apple Silicon hosts.
+apps through any `darwin-x64`/universal Electron build. Build and run macOS test
+apps only on native `darwin/arm64` Apple Silicon hosts.
 
 The repository's macOS smoke package command intentionally maps to
 `aarch64-apple-darwin` / `darwin-arm64` only. Do not add `darwin-x64`,
@@ -63,9 +64,10 @@ Run `windows-electron-smoke.ps1 -Mode preflight` on a Windows test package befor
 long live overlay runs. It reports Smart App Control/App Control policy state,
 Authenticode status for the Electron executable and native `.node` addon,
 Zone.Identifier streams, and recent Code Integrity block events that mention the
-smoke app. If the native addon is blocked there, Steam cannot initialize and
-overlay proof must wait for a trusted/reputable signed package or an explicitly
-SAC-disabled development machine.
+smoke app. Pass `-PreflightJsonFile <path>` to write the same report as
+structured JSON. If the native addon is blocked there, Steam cannot initialize
+and overlay proof must wait for a trusted/reputable signed package or an
+explicitly SAC-disabled development machine.
 The packaged smoke app also includes `sign-windows-package.ps1` so Windows test
 machines can sign the exact bundle that Steam launches. Use
 `.\sign-windows-package.ps1 -CertificateThumbprint "<thumbprint>"` with an
@@ -83,7 +85,10 @@ direct `none` smoke action from the exact packaged app and requires Steam
 initialization plus clean crash diagnostics before any live Steam-launched
 overlay case. That native-load gate catches local self-signed packages that look
 `Valid` to Authenticode but still fail SAC reputation or enterprise signing
-policy. Use `-InstallShortcut` to let the matrix install or reuse one stable
+policy. Matrix preflight writes `00-preflight/preflight.json`; native-load
+failures also write `00-preflight/native-load-gate/post-gate-preflight.json`
+after the failed load attempt so Code Integrity events are captured from the
+same run. Use `-InstallShortcut` to let the matrix install or reuse one stable
 non-Steam shortcut. The shortcut points at a local smoke env file, and each
 matrix case rewrites only that env file before launching through Steam. When
 standalone Node.js is absent, the matrix uses the packaged Electron executable

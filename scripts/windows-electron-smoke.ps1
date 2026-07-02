@@ -6,6 +6,7 @@ param(
   [string]$AppDir = "",
   [string]$ResultFile = "",
   [string]$DiagnosticDir = "",
+  [string]$PreflightJsonFile = "",
   [string]$SmokeEnvFile = "",
   [int]$AppId = 480,
 
@@ -287,6 +288,24 @@ function Write-SmokeEnvFile {
   )
 }
 
+function Write-JsonFile {
+  param([string]$Path, $Value)
+
+  if (-not $Path) {
+    return
+  }
+  $parent = Split-Path -Parent $Path
+  if ($parent) {
+    New-Item -ItemType Directory -Force -Path $parent | Out-Null
+  }
+  $utf8NoBom = New-Object System.Text.UTF8Encoding $false
+  [System.IO.File]::WriteAllText(
+    $Path,
+    (($Value | ConvertTo-Json -Depth 8) + [System.Environment]::NewLine),
+    $utf8NoBom
+  )
+}
+
 function Format-FileSignatureSummary {
   param([string]$Path)
 
@@ -357,6 +376,11 @@ function Get-RecentCodeIntegrityEvents {
 function Invoke-Preflight {
   $exe = Resolve-SmokeExe
   $nativeAddon = Resolve-NativeAddon
+  $steamProcess = Get-Process steam -ErrorAction SilentlyContinue | Select-Object -First 1
+  $steamProcessId = $null
+  if ($steamProcess) {
+    $steamProcessId = $steamProcess.Id
+  }
   $policy = Get-AppControlPolicySummary
   $exeSummary = Format-FileSignatureSummary -Path $exe
   $nativeSummary = Format-FileSignatureSummary -Path $nativeAddon
@@ -365,6 +389,7 @@ function Invoke-Preflight {
     "steam_bridge_native",
     [System.IO.Path]::GetFileName($nativeAddon)
   )
+  $warnings = @()
 
   Write-Host "Windows smoke preflight:"
   Write-Host ("  appDir: {0}" -f $AppDir)
@@ -381,10 +406,14 @@ function Invoke-Preflight {
   }
 
   if ($policy.verifiedAndReputablePolicyState -eq 1 -and $nativeSummary.authenticodeStatus -ne "Valid") {
-    Write-Host "  warning: Windows Smart App Control/App Control is enabled and the native addon is not Authenticode-valid."
-    Write-Host "  warning: SteamAPI_Init smoke runs are expected to fail before overlay testing on this machine."
+    $warnings += "Windows Smart App Control/App Control is enabled and the native addon is not Authenticode-valid."
+    $warnings += "SteamAPI_Init smoke runs are expected to fail before overlay testing on this machine."
   } elseif ($policy.verifiedAndReputablePolicyState -eq 1) {
-    Write-Host "  warning: Windows Smart App Control/App Control is enabled; local or unreputable signatures can still be blocked."
+    $warnings += "Windows Smart App Control/App Control is enabled; local or unreputable signatures can still be blocked."
+  }
+
+  foreach ($warning in $warnings) {
+    Write-Host ("  warning: {0}" -f $warning)
   }
 
   if ($events.Count -gt 0) {
@@ -395,6 +424,25 @@ function Invoke-Preflight {
   } else {
     Write-Host "  recentCodeIntegrityEvents: none"
   }
+
+  Write-JsonFile -Path $PreflightJsonFile -Value ([PSCustomObject]@{
+    kind = "steam-bridge-windows-preflight"
+    generatedAt = (Get-Date).ToUniversalTime().ToString("o")
+    appDir = $AppDir
+    appId = $AppId
+    powershell = [string]$PSVersionTable.PSVersion
+    steam = [PSCustomObject]@{
+      running = [bool]$steamProcess
+      pid = $steamProcessId
+    }
+    appControl = $policy
+    files = [PSCustomObject]@{
+      executable = $exeSummary
+      nativeAddon = $nativeSummary
+    }
+    warnings = @($warnings)
+    recentCodeIntegrityEvents = @($events)
+  })
 }
 
 function Add-DefaultRequireEvents {
