@@ -41,6 +41,8 @@ param(
   [int]$CloseProbeSettleMs = 750,
   [int]$CloseProbeTimeoutSeconds = 110,
   [string]$PresenterMode = "",
+  [ValidateSet("", "default", "opengl", "gl", "wgl", "windows-opengl", "d3d", "d3d11", "direct3d", "direct3d11", "dxgi")]
+  [string]$NativeHostBackend = "",
   [ValidateSet("", "default", "popup", "popup-layered", "control", "overlapped", "plain")]
   [string]$NativeHostStyle = "",
   [string]$OverlayInProcessGpu = "",
@@ -584,6 +586,7 @@ function Test-UsesDefaultWindowsRenderPath {
   return (
     -not $OverlayInProcessGpu -and
     -not (Convert-OverlayFlagToBoolean -Value $OverlayDisableDirectComposition) -and
+    -not $NativeHostBackend -and
     -not $NativeHostStyle
   )
 }
@@ -1209,6 +1212,9 @@ function Test-NativeLoadGate {
   if ($PresenterMode) {
     $gateArgs += @("-PresenterMode", $PresenterMode)
   }
+  if ($NativeHostBackend) {
+    $gateArgs += @("-NativeHostBackend", $NativeHostBackend)
+  }
   if ($NativeHostStyle) {
     $gateArgs += @("-NativeHostStyle", $NativeHostStyle)
   }
@@ -1284,6 +1290,7 @@ function Invoke-RenderHealthGate {
       overlayInProcessGpu = $OverlayInProcessGpu
       overlayDisableDirectComposition = $OverlayDisableDirectComposition
       presenterMode = $PresenterMode
+      nativeHostBackend = $NativeHostBackend
       nativeHostStyle = $NativeHostStyle
     }) -Depth 6
     Write-Host "Windows render-health gate skipped for an explicit non-default render comparison."
@@ -1620,6 +1627,7 @@ function Write-MatrixManifest {
     shortcutName = $ShortcutName
     overlayProfile = $OverlayProfile
     presenterMode = $PresenterMode
+    nativeHostBackend = $NativeHostBackend
     nativeHostStyle = $NativeHostStyle
     overlayInProcessGpu = $OverlayInProcessGpu
     overlayDisableDirectComposition = $OverlayDisableDirectComposition
@@ -2060,19 +2068,19 @@ while ((Get-Date) -lt `$deadline -and -not `$sent) {
       } elseif ('$input' -eq 'toggle-sendinput') {
         `$nativeInputSent = Send-NativeKeyChord @(0x10, 0x09)
       } elseif ('$input' -eq 'web-close-click-sendinput') {
-        `$presenterBounds = Get-LifecyclePresenterBounds
-        if (`$presenterBounds) {
-          `$x = [int]([Math]::Round(`$presenterBounds.x + `$presenterBounds.width - 45))
-          `$y = [int]([Math]::Round(`$presenterBounds.y + 48))
+        `$foreground = Get-ForegroundProbeSnapshot
+        if (`$foreground -and `$foreground.rect -and `$foreground.rect.width -gt 0 -and `$foreground.rect.height -gt 0) {
+          `$x = [int]([Math]::Round(`$foreground.rect.left + (`$foreground.rect.width * 0.86)))
+          `$y = [int]([Math]::Round(`$foreground.rect.top + (`$foreground.rect.height * 0.15)))
           `$nativePointerSent = Send-NativeMouseClick `$x `$y
-          `$nativePointerSent | Add-Member -NotePropertyName coordinateSource -NotePropertyValue "presenter-bounds" -Force
+          `$nativePointerSent | Add-Member -NotePropertyName coordinateSource -NotePropertyValue "foreground-window-steam-web-panel" -Force
         } else {
-          `$foreground = Get-ForegroundProbeSnapshot
-          if (`$foreground -and `$foreground.rect -and `$foreground.rect.width -gt 0 -and `$foreground.rect.height -gt 0) {
-            `$x = [int]([Math]::Round(`$foreground.rect.left + (`$foreground.rect.width * 0.86)))
-            `$y = [int]([Math]::Round(`$foreground.rect.top + (`$foreground.rect.height * 0.15)))
+          `$presenterBounds = Get-LifecyclePresenterBounds
+          if (`$presenterBounds) {
+            `$x = [int]([Math]::Round(`$presenterBounds.x + `$presenterBounds.width - 45))
+            `$y = [int]([Math]::Round(`$presenterBounds.y + 48))
             `$nativePointerSent = Send-NativeMouseClick `$x `$y
-            `$nativePointerSent | Add-Member -NotePropertyName coordinateSource -NotePropertyValue "foreground-window" -Force
+            `$nativePointerSent | Add-Member -NotePropertyName coordinateSource -NotePropertyValue "presenter-bounds" -Force
           } else {
             `$nativePointerSent = [PSCustomObject]@{
               sent = 0
@@ -2202,6 +2210,9 @@ function Write-CaseLaunchEnv {
   if ($PresenterMode) {
     $args += @("-PresenterMode", $PresenterMode)
   }
+  if ($NativeHostBackend) {
+    $args += @("-NativeHostBackend", $NativeHostBackend)
+  }
   if ($NativeHostStyle) {
     $args += @("-NativeHostStyle", $NativeHostStyle)
   }
@@ -2270,6 +2281,9 @@ function Invoke-MatrixCase {
   }
   if ($PresenterMode) {
     $args += @("-PresenterMode", $PresenterMode)
+  }
+  if ($NativeHostBackend) {
+    $args += @("-NativeHostBackend", $NativeHostBackend)
   }
   if ($NativeHostStyle) {
     $args += @("-NativeHostStyle", $NativeHostStyle)
@@ -2388,6 +2402,7 @@ Write-Host ("  artifactRoot: {0}" -f $ArtifactRoot)
 Write-Host ("  appId: {0}" -f $AppId)
 Write-Host ("  overlayProfile: {0}" -f $OverlayProfile)
 Write-Host ("  presenterMode: {0}" -f $PresenterMode)
+Write-Host ("  nativeHostBackend: {0}" -f $NativeHostBackend)
 Write-Host ("  nativeHostStyle: {0}" -f $NativeHostStyle)
 Write-Host ("  inProcessGpu: {0}" -f $OverlayInProcessGpu)
 Write-Host ("  disableDirectComposition: {0}" -f $OverlayDisableDirectComposition)

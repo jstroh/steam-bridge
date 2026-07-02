@@ -1185,6 +1185,7 @@ mod windows {
     use std::ptr;
     use std::sync::{Mutex, OnceLock};
     use std::time::{SystemTime, UNIX_EPOCH};
+    use windows_sys::core::{GUID, HRESULT};
     use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM};
     use windows_sys::Win32::Graphics::Gdi::{GetDC, ReleaseDC, HDC};
     use windows_sys::Win32::Graphics::OpenGL::{
@@ -1207,8 +1208,28 @@ mod windows {
     };
 
     type Hglrc = isize;
+    type IUnknownPtr = *mut std::ffi::c_void;
+    type ID3D11DevicePtr = *mut std::ffi::c_void;
+    type ID3D11DeviceContextPtr = *mut std::ffi::c_void;
+    type ID3D11RenderTargetViewPtr = *mut std::ffi::c_void;
+    type IDXGISwapChainPtr = *mut std::ffi::c_void;
 
     const GL_COLOR_BUFFER_BIT: u32 = 0x0000_4000;
+    const D3D_DRIVER_TYPE_HARDWARE: u32 = 1;
+    const D3D_FEATURE_LEVEL_11_0: u32 = 0x0000_B000;
+    const D3D_FEATURE_LEVEL_10_1: u32 = 0x0000_A100;
+    const D3D_FEATURE_LEVEL_10_0: u32 = 0x0000_A000;
+    const D3D11_SDK_VERSION: u32 = 7;
+    const DXGI_FORMAT_R8G8B8A8_UNORM: u32 = 28;
+    const DXGI_USAGE_RENDER_TARGET_OUTPUT: u32 = 0x0000_0020;
+    const DXGI_SWAP_EFFECT_DISCARD: u32 = 0;
+    const S_OK: HRESULT = 0;
+    const IID_ID3D11_TEXTURE_2D: GUID = GUID {
+        data1: 0x6f15_aaf2,
+        data2: 0xd208,
+        data3: 0x4e89,
+        data4: [0x9a, 0xb4, 0x48, 0x95, 0x35, 0xd3, 0x4f, 0x9c],
+    };
 
     #[link(name = "opengl32")]
     extern "system" {
@@ -1220,16 +1241,226 @@ mod windows {
         fn wglMakeCurrent(hdc: HDC, context: Hglrc) -> i32;
     }
 
+    #[link(name = "d3d11")]
+    extern "system" {
+        fn D3D11CreateDeviceAndSwapChain(
+            adapter: IUnknownPtr,
+            driver_type: u32,
+            software: isize,
+            flags: u32,
+            feature_levels: *const u32,
+            feature_levels_count: u32,
+            sdk_version: u32,
+            swap_chain_desc: *const DxgiSwapChainDesc,
+            swap_chain: *mut IDXGISwapChainPtr,
+            device: *mut ID3D11DevicePtr,
+            feature_level: *mut u32,
+            immediate_context: *mut ID3D11DeviceContextPtr,
+        ) -> HRESULT;
+    }
+
+    #[repr(C)]
+    struct DxgiRational {
+        numerator: u32,
+        denominator: u32,
+    }
+
+    #[repr(C)]
+    struct DxgiModeDesc {
+        width: u32,
+        height: u32,
+        refresh_rate: DxgiRational,
+        format: u32,
+        scanline_ordering: u32,
+        scaling: u32,
+    }
+
+    #[repr(C)]
+    struct DxgiSampleDesc {
+        count: u32,
+        quality: u32,
+    }
+
+    #[repr(C)]
+    struct DxgiSwapChainDesc {
+        buffer_desc: DxgiModeDesc,
+        sample_desc: DxgiSampleDesc,
+        buffer_usage: u32,
+        buffer_count: u32,
+        output_window: HWND,
+        windowed: i32,
+        swap_effect: u32,
+        flags: u32,
+    }
+
+    #[repr(C)]
+    struct UnknownVtbl {
+        query_interface:
+            unsafe extern "system" fn(IUnknownPtr, *const GUID, *mut IUnknownPtr) -> HRESULT,
+        add_ref: unsafe extern "system" fn(IUnknownPtr) -> u32,
+        release: unsafe extern "system" fn(IUnknownPtr) -> u32,
+    }
+
+    #[repr(C)]
+    struct DxgiSwapChainVtbl {
+        query_interface:
+            unsafe extern "system" fn(IDXGISwapChainPtr, *const GUID, *mut IUnknownPtr) -> HRESULT,
+        add_ref: unsafe extern "system" fn(IDXGISwapChainPtr) -> u32,
+        release: unsafe extern "system" fn(IDXGISwapChainPtr) -> u32,
+        set_private_data: usize,
+        set_private_data_interface: usize,
+        get_private_data: usize,
+        get_parent: usize,
+        get_device: usize,
+        present: unsafe extern "system" fn(IDXGISwapChainPtr, u32, u32) -> HRESULT,
+        get_buffer: unsafe extern "system" fn(
+            IDXGISwapChainPtr,
+            u32,
+            *const GUID,
+            *mut IUnknownPtr,
+        ) -> HRESULT,
+        set_fullscreen_state: usize,
+        get_fullscreen_state: usize,
+        get_desc: usize,
+        resize_buffers:
+            unsafe extern "system" fn(IDXGISwapChainPtr, u32, u32, u32, u32, u32) -> HRESULT,
+    }
+
+    #[repr(C)]
+    struct D3d11DeviceVtbl {
+        query_interface:
+            unsafe extern "system" fn(ID3D11DevicePtr, *const GUID, *mut IUnknownPtr) -> HRESULT,
+        add_ref: unsafe extern "system" fn(ID3D11DevicePtr) -> u32,
+        release: unsafe extern "system" fn(ID3D11DevicePtr) -> u32,
+        create_buffer: usize,
+        create_texture_1d: usize,
+        create_texture_2d: usize,
+        create_texture_3d: usize,
+        create_shader_resource_view: usize,
+        create_unordered_access_view: usize,
+        create_render_target_view: unsafe extern "system" fn(
+            ID3D11DevicePtr,
+            IUnknownPtr,
+            *const std::ffi::c_void,
+            *mut ID3D11RenderTargetViewPtr,
+        ) -> HRESULT,
+    }
+
+    #[repr(C)]
+    struct D3d11DeviceContextVtbl {
+        query_interface: unsafe extern "system" fn(
+            ID3D11DeviceContextPtr,
+            *const GUID,
+            *mut IUnknownPtr,
+        ) -> HRESULT,
+        add_ref: unsafe extern "system" fn(ID3D11DeviceContextPtr) -> u32,
+        release: unsafe extern "system" fn(ID3D11DeviceContextPtr) -> u32,
+        get_device: usize,
+        get_private_data: usize,
+        set_private_data: usize,
+        set_private_data_interface: usize,
+        vs_set_constant_buffers: usize,
+        ps_set_shader_resources: usize,
+        ps_set_shader: usize,
+        ps_set_samplers: usize,
+        vs_set_shader: usize,
+        draw_indexed: usize,
+        draw: usize,
+        map: usize,
+        unmap: usize,
+        ps_set_constant_buffers: usize,
+        ia_set_input_layout: usize,
+        ia_set_vertex_buffers: usize,
+        ia_set_index_buffer: usize,
+        draw_indexed_instanced: usize,
+        draw_instanced: usize,
+        gs_set_constant_buffers: usize,
+        gs_set_shader: usize,
+        ia_set_primitive_topology: usize,
+        vs_set_shader_resources: usize,
+        vs_set_samplers: usize,
+        begin: usize,
+        end: usize,
+        get_data: usize,
+        set_predication: usize,
+        gs_set_shader_resources: usize,
+        gs_set_samplers: usize,
+        om_set_render_targets: usize,
+        om_set_render_targets_and_unordered_access_views: usize,
+        om_set_blend_state: usize,
+        om_set_depth_stencil_state: usize,
+        so_set_targets: usize,
+        draw_auto: usize,
+        draw_indexed_instanced_indirect: usize,
+        draw_instanced_indirect: usize,
+        dispatch: usize,
+        dispatch_indirect: usize,
+        rs_set_state: usize,
+        rs_set_viewports: usize,
+        rs_set_scissor_rects: usize,
+        copy_subresource_region: usize,
+        copy_resource: usize,
+        update_subresource: usize,
+        copy_structure_count: usize,
+        clear_render_target_view: unsafe extern "system" fn(
+            ID3D11DeviceContextPtr,
+            ID3D11RenderTargetViewPtr,
+            *const f32,
+        ),
+    }
+
     struct NativeSurface {
         hwnd: HWND,
         parent_hwnd: Option<HWND>,
+        backend: WindowsNativeBackend,
         host_style: WindowsHostStyle,
-        hdc: HDC,
-        hglrc: Hglrc,
+        renderer: WindowsSurfaceRenderer,
         frame: u64,
         input_passthrough: bool,
         opaque: bool,
         visible: bool,
+    }
+
+    enum WindowsSurfaceRenderer {
+        OpenGl {
+            hdc: HDC,
+            hglrc: Hglrc,
+        },
+        D3d11 {
+            device: ID3D11DevicePtr,
+            context: ID3D11DeviceContextPtr,
+            swap_chain: IDXGISwapChainPtr,
+            render_target: ID3D11RenderTargetViewPtr,
+            width: i32,
+            height: i32,
+            feature_level: u32,
+            last_present: HRESULT,
+        },
+    }
+
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    enum WindowsNativeBackend {
+        OpenGl,
+        D3d11,
+    }
+
+    impl WindowsNativeBackend {
+        fn from_env() -> Self {
+            match env::var("STEAM_BRIDGE_WINDOWS_NATIVE_HOST_BACKEND") {
+                Ok(value) => match value.trim().to_ascii_lowercase().as_str() {
+                    "d3d" | "d3d11" | "direct3d" | "direct3d11" | "dxgi" => Self::D3d11,
+                    _ => Self::OpenGl,
+                },
+                Err(_) => Self::OpenGl,
+            }
+        }
+
+        fn as_str(self) -> &'static str {
+            match self {
+                Self::OpenGl => "windows-opengl",
+                Self::D3d11 => "windows-d3d11",
+            }
+        }
     }
 
     #[derive(Clone, Copy, PartialEq, Eq)]
@@ -1467,11 +1698,13 @@ mod windows {
                 .map(window_rect_json);
             let style = GetWindowLongPtrW(surface.hwnd, GWL_STYLE) as u32;
             let ex_style = GetWindowLongPtrW(surface.hwnd, GWL_EXSTYLE) as u32;
+            let renderer = renderer_diagnostics_json(&surface.renderer);
             Some(
                 json!({
                     "platform": "win32",
-                    "backend": "windows-opengl",
+                    "backend": surface.backend.as_str(),
                     "hostStyle": surface.host_style.as_str(),
+                    "renderer": renderer,
                     "hwnd": hwnd_hex(surface.hwnd),
                     "parentHwnd": surface.parent_hwnd.map(hwnd_hex),
                     "foregroundHwnd": hwnd_hex(foreground),
@@ -1539,6 +1772,7 @@ mod windows {
                 )
             })
             .unwrap_or((100, 100, 960, 540));
+        let backend = WindowsNativeBackend::from_env();
         let host_style = WindowsHostStyle::from_env(parent_hwnd.is_some());
         let ex_style = base_ex_style(parent_hwnd.is_some(), true, host_style);
         let style = if parent_hwnd.is_some() && host_style == WindowsHostStyle::PopupLayered {
@@ -1571,54 +1805,20 @@ mod windows {
             ));
         }
 
-        let hdc = GetDC(hwnd);
-        if hdc.is_null() {
-            DestroyWindow(hwnd);
-            return Err(Error::from_reason(
-                "Failed to acquire Windows native overlay device context",
-            ));
-        }
-
-        let descriptor = pixel_format_descriptor();
-        let pixel_format = ChoosePixelFormat(hdc, &descriptor);
-        if pixel_format == 0 {
-            ReleaseDC(hwnd, hdc);
-            DestroyWindow(hwnd);
-            return Err(Error::from_reason(
-                "Failed to choose Windows native overlay pixel format",
-            ));
-        }
-        if SetPixelFormat(hdc, pixel_format, &descriptor) == 0 {
-            ReleaseDC(hwnd, hdc);
-            DestroyWindow(hwnd);
-            return Err(Error::from_reason(
-                "Failed to set Windows native overlay pixel format",
-            ));
-        }
-
-        let hglrc = wglCreateContext(hdc);
-        if hglrc == 0 {
-            ReleaseDC(hwnd, hdc);
-            DestroyWindow(hwnd);
-            return Err(Error::from_reason(
-                "Failed to create Windows native overlay OpenGL context",
-            ));
-        }
-        if wglMakeCurrent(hdc, hglrc) == 0 {
-            wglDeleteContext(hglrc);
-            ReleaseDC(hwnd, hdc);
-            DestroyWindow(hwnd);
-            return Err(Error::from_reason(
-                "Failed to make Windows native overlay OpenGL context current",
-            ));
-        }
+        let renderer = match create_renderer(hwnd, backend, width, height) {
+            Ok(renderer) => renderer,
+            Err(error) => {
+                DestroyWindow(hwnd);
+                return Err(error);
+            }
+        };
 
         let mut surface = NativeSurface {
             hwnd,
             parent_hwnd,
+            backend,
             host_style,
-            hdc,
-            hglrc,
+            renderer,
             frame: 0,
             input_passthrough: parent_hwnd.is_some() && host_style != WindowsHostStyle::Control,
             opaque: parent_hwnd.is_none() || host_style == WindowsHostStyle::Control,
@@ -1634,34 +1834,366 @@ mod windows {
     }
 
     unsafe fn render_surface(surface: &mut NativeSurface) -> Result<(), Error> {
-        if wglMakeCurrent(surface.hdc, surface.hglrc) == 0 {
-            return Err(Error::from_reason(
-                "Failed to make Windows native overlay OpenGL context current",
-            ));
-        }
-
         let mut rect: RECT = mem::zeroed();
         if GetClientRect(surface.hwnd, &mut rect) == 0 {
             return Ok(());
         }
         let width = (rect.right - rect.left).max(1);
         let height = (rect.bottom - rect.top).max(1);
-        glViewport(0, 0, width, height);
-
-        if surface.opaque {
-            let seconds = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .map(|duration| duration.as_millis() as f32 / 1000.0)
-                .unwrap_or(0.0);
-            let wave = (seconds * 1.7).sin() * 0.5 + 0.5;
-            glClearColor(0.05 + wave * 0.10, 0.08, 0.14 + wave * 0.08, 1.0);
+        let seconds = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|duration| duration.as_millis() as f32 / 1000.0)
+            .unwrap_or(0.0);
+        let wave = (seconds * 1.7).sin() * 0.5 + 0.5;
+        let color = if surface.opaque {
+            [0.05 + wave * 0.10, 0.08, 0.14 + wave * 0.08, 1.0]
         } else {
-            glClearColor(0.0, 0.0, 0.0, 0.0);
+            [0.0, 0.0, 0.0, 0.0]
+        };
+
+        match &mut surface.renderer {
+            WindowsSurfaceRenderer::OpenGl { hdc, hglrc } => {
+                render_opengl(*hdc, *hglrc, width, height, color)?
+            }
+            WindowsSurfaceRenderer::D3d11 {
+                device,
+                context,
+                swap_chain,
+                render_target,
+                width: render_width,
+                height: render_height,
+                last_present,
+                ..
+            } => {
+                if *render_width != width || *render_height != height {
+                    resize_d3d11_render_target(*device, *swap_chain, render_target, width, height)?;
+                    *render_width = width;
+                    *render_height = height;
+                }
+                *last_present = render_d3d11(*context, *swap_chain, *render_target, color)?;
+            }
         }
-        glClear(GL_COLOR_BUFFER_BIT);
-        SwapBuffers(surface.hdc);
+
         surface.frame = surface.frame.wrapping_add(1);
         Ok(())
+    }
+
+    unsafe fn create_renderer(
+        hwnd: HWND,
+        backend: WindowsNativeBackend,
+        width: i32,
+        height: i32,
+    ) -> Result<WindowsSurfaceRenderer, Error> {
+        match backend {
+            WindowsNativeBackend::OpenGl => create_opengl_renderer(hwnd),
+            WindowsNativeBackend::D3d11 => create_d3d11_renderer(hwnd, width, height),
+        }
+    }
+
+    unsafe fn create_opengl_renderer(hwnd: HWND) -> Result<WindowsSurfaceRenderer, Error> {
+        let hdc = GetDC(hwnd);
+        if hdc.is_null() {
+            return Err(Error::from_reason(
+                "Failed to acquire Windows native overlay device context",
+            ));
+        }
+
+        let descriptor = pixel_format_descriptor();
+        let pixel_format = ChoosePixelFormat(hdc, &descriptor);
+        if pixel_format == 0 {
+            ReleaseDC(hwnd, hdc);
+            return Err(Error::from_reason(
+                "Failed to choose Windows native overlay pixel format",
+            ));
+        }
+        if SetPixelFormat(hdc, pixel_format, &descriptor) == 0 {
+            ReleaseDC(hwnd, hdc);
+            return Err(Error::from_reason(
+                "Failed to set Windows native overlay pixel format",
+            ));
+        }
+
+        let hglrc = wglCreateContext(hdc);
+        if hglrc == 0 {
+            ReleaseDC(hwnd, hdc);
+            return Err(Error::from_reason(
+                "Failed to create Windows native overlay OpenGL context",
+            ));
+        }
+        if wglMakeCurrent(hdc, hglrc) == 0 {
+            wglDeleteContext(hglrc);
+            ReleaseDC(hwnd, hdc);
+            return Err(Error::from_reason(
+                "Failed to make Windows native overlay OpenGL context current",
+            ));
+        }
+
+        Ok(WindowsSurfaceRenderer::OpenGl { hdc, hglrc })
+    }
+
+    unsafe fn create_d3d11_renderer(
+        hwnd: HWND,
+        width: i32,
+        height: i32,
+    ) -> Result<WindowsSurfaceRenderer, Error> {
+        let swap_chain_desc = DxgiSwapChainDesc {
+            buffer_desc: DxgiModeDesc {
+                width: width.max(1) as u32,
+                height: height.max(1) as u32,
+                refresh_rate: DxgiRational {
+                    numerator: 0,
+                    denominator: 1,
+                },
+                format: DXGI_FORMAT_R8G8B8A8_UNORM,
+                scanline_ordering: 0,
+                scaling: 0,
+            },
+            sample_desc: DxgiSampleDesc {
+                count: 1,
+                quality: 0,
+            },
+            buffer_usage: DXGI_USAGE_RENDER_TARGET_OUTPUT,
+            buffer_count: 1,
+            output_window: hwnd,
+            windowed: 1,
+            swap_effect: DXGI_SWAP_EFFECT_DISCARD,
+            flags: 0,
+        };
+        let feature_levels = [
+            D3D_FEATURE_LEVEL_11_0,
+            D3D_FEATURE_LEVEL_10_1,
+            D3D_FEATURE_LEVEL_10_0,
+        ];
+        let mut swap_chain: IDXGISwapChainPtr = ptr::null_mut();
+        let mut device: ID3D11DevicePtr = ptr::null_mut();
+        let mut feature_level = 0;
+        let mut context: ID3D11DeviceContextPtr = ptr::null_mut();
+        let hr = D3D11CreateDeviceAndSwapChain(
+            ptr::null_mut(),
+            D3D_DRIVER_TYPE_HARDWARE,
+            0,
+            0,
+            feature_levels.as_ptr(),
+            feature_levels.len() as u32,
+            D3D11_SDK_VERSION,
+            &swap_chain_desc,
+            &mut swap_chain,
+            &mut device,
+            &mut feature_level,
+            &mut context,
+        );
+        if failed(hr) || swap_chain.is_null() || device.is_null() || context.is_null() {
+            release_unknown(context);
+            release_unknown(device);
+            release_unknown(swap_chain);
+            return Err(Error::from_reason(format!(
+                "Failed to create Windows native overlay D3D11 swapchain: {}",
+                hresult_hex(hr)
+            )));
+        }
+
+        let mut render_target = ptr::null_mut();
+        if let Err(error) = create_d3d11_render_target(device, swap_chain, &mut render_target) {
+            release_unknown(context);
+            release_unknown(device);
+            release_unknown(swap_chain);
+            return Err(error);
+        }
+
+        Ok(WindowsSurfaceRenderer::D3d11 {
+            device,
+            context,
+            swap_chain,
+            render_target,
+            width: width.max(1),
+            height: height.max(1),
+            feature_level,
+            last_present: S_OK,
+        })
+    }
+
+    unsafe fn render_opengl(
+        hdc: HDC,
+        hglrc: Hglrc,
+        width: i32,
+        height: i32,
+        color: [f32; 4],
+    ) -> Result<(), Error> {
+        if wglMakeCurrent(hdc, hglrc) == 0 {
+            return Err(Error::from_reason(
+                "Failed to make Windows native overlay OpenGL context current",
+            ));
+        }
+
+        glViewport(0, 0, width, height);
+        glClearColor(color[0], color[1], color[2], color[3]);
+        glClear(GL_COLOR_BUFFER_BIT);
+        SwapBuffers(hdc);
+        Ok(())
+    }
+
+    unsafe fn render_d3d11(
+        context: ID3D11DeviceContextPtr,
+        swap_chain: IDXGISwapChainPtr,
+        render_target: ID3D11RenderTargetViewPtr,
+        color: [f32; 4],
+    ) -> Result<HRESULT, Error> {
+        if context.is_null() || swap_chain.is_null() || render_target.is_null() {
+            return Err(Error::from_reason(
+                "Windows native overlay D3D11 renderer was not initialized",
+            ));
+        }
+        ((*d3d11_context_vtbl(context)).clear_render_target_view)(
+            context,
+            render_target,
+            color.as_ptr(),
+        );
+        let hr = ((*dxgi_swap_chain_vtbl(swap_chain)).present)(swap_chain, 1, 0);
+        if failed(hr) {
+            return Err(Error::from_reason(format!(
+                "Windows native overlay D3D11 Present failed: {}",
+                hresult_hex(hr)
+            )));
+        }
+        Ok(hr)
+    }
+
+    unsafe fn resize_d3d11_render_target(
+        device: ID3D11DevicePtr,
+        swap_chain: IDXGISwapChainPtr,
+        render_target: &mut ID3D11RenderTargetViewPtr,
+        width: i32,
+        height: i32,
+    ) -> Result<(), Error> {
+        release_unknown(*render_target);
+        *render_target = ptr::null_mut();
+        let hr = ((*dxgi_swap_chain_vtbl(swap_chain)).resize_buffers)(
+            swap_chain,
+            0,
+            width.max(1) as u32,
+            height.max(1) as u32,
+            DXGI_FORMAT_R8G8B8A8_UNORM,
+            0,
+        );
+        if failed(hr) {
+            return Err(Error::from_reason(format!(
+                "Windows native overlay D3D11 ResizeBuffers failed: {}",
+                hresult_hex(hr)
+            )));
+        }
+        create_d3d11_render_target(device, swap_chain, render_target)
+    }
+
+    unsafe fn create_d3d11_render_target(
+        device: ID3D11DevicePtr,
+        swap_chain: IDXGISwapChainPtr,
+        render_target: &mut ID3D11RenderTargetViewPtr,
+    ) -> Result<(), Error> {
+        let mut back_buffer: IUnknownPtr = ptr::null_mut();
+        let hr = ((*dxgi_swap_chain_vtbl(swap_chain)).get_buffer)(
+            swap_chain,
+            0,
+            &IID_ID3D11_TEXTURE_2D,
+            &mut back_buffer,
+        );
+        if failed(hr) || back_buffer.is_null() {
+            return Err(Error::from_reason(format!(
+                "Windows native overlay D3D11 GetBuffer failed: {}",
+                hresult_hex(hr)
+            )));
+        }
+
+        let hr = ((*d3d11_device_vtbl(device)).create_render_target_view)(
+            device,
+            back_buffer,
+            ptr::null(),
+            render_target,
+        );
+        release_unknown(back_buffer);
+        if failed(hr) || render_target.is_null() {
+            release_unknown(*render_target);
+            *render_target = ptr::null_mut();
+            return Err(Error::from_reason(format!(
+                "Windows native overlay D3D11 CreateRenderTargetView failed: {}",
+                hresult_hex(hr)
+            )));
+        }
+        Ok(())
+    }
+
+    unsafe fn release_renderer(renderer: WindowsSurfaceRenderer, hwnd: HWND) {
+        match renderer {
+            WindowsSurfaceRenderer::OpenGl { hdc, hglrc } => {
+                wglMakeCurrent(ptr::null_mut(), 0);
+                if hglrc != 0 {
+                    wglDeleteContext(hglrc);
+                }
+                if !hdc.is_null() {
+                    ReleaseDC(hwnd, hdc);
+                }
+            }
+            WindowsSurfaceRenderer::D3d11 {
+                render_target,
+                context,
+                device,
+                swap_chain,
+                ..
+            } => {
+                release_unknown(render_target);
+                release_unknown(context);
+                release_unknown(device);
+                release_unknown(swap_chain);
+            }
+        }
+    }
+
+    unsafe fn renderer_diagnostics_json(renderer: &WindowsSurfaceRenderer) -> serde_json::Value {
+        match renderer {
+            WindowsSurfaceRenderer::OpenGl { .. } => json!({
+                "backend": "windows-opengl",
+            }),
+            WindowsSurfaceRenderer::D3d11 {
+                width,
+                height,
+                feature_level,
+                last_present,
+                ..
+            } => json!({
+                "backend": "windows-d3d11",
+                "width": width,
+                "height": height,
+                "featureLevel": format!("0x{feature_level:04X}"),
+                "lastPresent": hresult_hex(*last_present),
+            }),
+        }
+    }
+
+    unsafe fn dxgi_swap_chain_vtbl(swap_chain: IDXGISwapChainPtr) -> *const DxgiSwapChainVtbl {
+        *(swap_chain as *const *const DxgiSwapChainVtbl)
+    }
+
+    unsafe fn d3d11_device_vtbl(device: ID3D11DevicePtr) -> *const D3d11DeviceVtbl {
+        *(device as *const *const D3d11DeviceVtbl)
+    }
+
+    unsafe fn d3d11_context_vtbl(context: ID3D11DeviceContextPtr) -> *const D3d11DeviceContextVtbl {
+        *(context as *const *const D3d11DeviceContextVtbl)
+    }
+
+    unsafe fn release_unknown(pointer: IUnknownPtr) {
+        if pointer.is_null() {
+            return;
+        }
+        let vtbl = *(pointer as *const *const UnknownVtbl);
+        ((*vtbl).release)(pointer);
+    }
+
+    fn failed(hr: HRESULT) -> bool {
+        hr < 0
+    }
+
+    fn hresult_hex(hr: HRESULT) -> String {
+        format!("0x{:08X}", hr as u32)
     }
 
     unsafe fn update_window_frame(surface: &NativeSurface) {
@@ -1752,13 +2284,7 @@ mod windows {
     }
 
     unsafe fn destroy_surface(surface: NativeSurface) {
-        wglMakeCurrent(ptr::null_mut(), 0);
-        if surface.hglrc != 0 {
-            wglDeleteContext(surface.hglrc);
-        }
-        if !surface.hdc.is_null() {
-            ReleaseDC(surface.hwnd, surface.hdc);
-        }
+        release_renderer(surface.renderer, surface.hwnd);
         if !surface.hwnd.is_null() {
             DestroyWindow(surface.hwnd);
         }

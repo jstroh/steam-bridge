@@ -71,6 +71,8 @@ param(
   [string]$UserDialog = "",
   [string]$ShortcutTarget = "",
   [string]$PresenterMode = "",
+  [ValidateSet("", "default", "opengl", "gl", "wgl", "windows-opengl", "d3d", "d3d11", "direct3d", "direct3d11", "dxgi")]
+  [string]$NativeHostBackend = "",
   [ValidateSet("", "default", "popup", "popup-layered", "control", "overlapped", "plain")]
   [string]$NativeHostStyle = "",
   [ValidateSet("shown", "complete")]
@@ -192,6 +194,9 @@ function Get-SmokeArgs {
   if ($PresenterMode) {
     $args += "--steam-bridge-smoke-presenter-mode=$PresenterMode"
   }
+  if ($NativeHostBackend) {
+    $args += "--steam-bridge-windows-native-host-backend=$NativeHostBackend"
+  }
   if ($NativeHostStyle) {
     $args += "--steam-bridge-windows-native-host-style=$NativeHostStyle"
   }
@@ -295,6 +300,9 @@ function Get-SmokeEnv {
   }
   if ($PresenterMode) {
     $envMap.STEAM_BRIDGE_SMOKE_PRESENTER_MODE = $PresenterMode
+  }
+  if ($NativeHostBackend) {
+    $envMap.STEAM_BRIDGE_WINDOWS_NATIVE_HOST_BACKEND = $NativeHostBackend
   }
   if ($NativeHostStyle) {
     $envMap.STEAM_BRIDGE_WINDOWS_NATIVE_HOST_STYLE = $NativeHostStyle

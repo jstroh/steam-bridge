@@ -300,11 +300,13 @@ workers are spawned. Linux and macOS use the native presenter where Electron
 needs a more reliable Steam overlay target. Windows may move to the same
 bridge-owned presenter shape under the hood if the direct Electron hook cannot
 pass the visible-overlay and close/back-to-app matrix. An opt-in Windows
-`windows-opengl` presenter now exists for proof runs through the same
-`createElectronSteamOverlay(...)` API; pass `presenterMode: "persistent"`
-explicitly or set `STEAM_BRIDGE_ELECTRON_OVERLAY_PRESENTER=native` in smoke
-environments to test it. Pass `scrubSteamOverlayChildProcessEnv: false` only
-when collecting raw Electron-child overlay diagnostics.
+`windows-opengl` presenter and a D3D11/DXGI `windows-d3d11` presenter now exist
+for proof runs through the same `createElectronSteamOverlay(...)` API; pass
+`presenterMode: "persistent"` explicitly or set
+`STEAM_BRIDGE_ELECTRON_OVERLAY_PRESENTER=native` in smoke environments to test
+that path, and set `STEAM_BRIDGE_WINDOWS_NATIVE_HOST_BACKEND=d3d11` only for
+the focused D3D11 comparison. Pass `scrubSteamOverlayChildProcessEnv: false`
+only when collecting raw Electron-child overlay diagnostics.
 Raw activation helpers such as `activateToWebPage(...)` remain available for
 Node/native smoke checks and diagnostics, but Electron product overlay work
 should go through the managed `createElectronSteamOverlay(...)` path.

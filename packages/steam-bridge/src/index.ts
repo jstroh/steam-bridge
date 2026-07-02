@@ -1593,7 +1593,13 @@ export interface NativeOverlaySessionOptions {
 
 export type NativeOverlayWebPageSessionOptions = NativeOverlaySessionOptions & OverlayWebPageOptions;
 
-export type NativeOverlayBackend = "x11-glx" | "macos-metal" | "macos-opengl" | "windows-opengl" | "none";
+export type NativeOverlayBackend =
+  | "x11-glx"
+  | "macos-metal"
+  | "macos-opengl"
+  | "windows-opengl"
+  | "windows-d3d11"
+  | "none";
 
 export interface NativeOverlayBounds {
   x: number;
@@ -8579,10 +8585,20 @@ function resolveNativeOverlayBackend(options: { nativeWindowHandle?: Buffer } = 
   }
 
   if (process.platform === "win32") {
-    return "windows-opengl";
+    return resolveWindowsNativeOverlayBackend();
   }
 
   return "none";
+}
+
+function resolveWindowsNativeOverlayBackend(): NativeOverlayBackend {
+  const requested = String(process.env.STEAM_BRIDGE_WINDOWS_NATIVE_HOST_BACKEND || "")
+    .trim()
+    .toLowerCase();
+  if (["d3d", "d3d11", "direct3d", "direct3d11", "dxgi", "windows-d3d11"].includes(requested)) {
+    return "windows-d3d11";
+  }
+  return "windows-opengl";
 }
 
 function readNativeOverlayBounds(

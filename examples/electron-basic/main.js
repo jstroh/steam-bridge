@@ -38,6 +38,10 @@ const WINDOWS_NATIVE_HOST_STYLE = normalizeWindowsNativeHostStyle(
   CLI_OPTIONS.windowsNativeHostStyle || process.env.STEAM_BRIDGE_WINDOWS_NATIVE_HOST_STYLE || ""
 );
 configureWindowsNativeHostStyle(WINDOWS_NATIVE_HOST_STYLE);
+const WINDOWS_NATIVE_HOST_BACKEND = normalizeWindowsNativeHostBackend(
+  CLI_OPTIONS.windowsNativeHostBackend || process.env.STEAM_BRIDGE_WINDOWS_NATIVE_HOST_BACKEND || ""
+);
+configureWindowsNativeHostBackend(WINDOWS_NATIVE_HOST_BACKEND);
 const STORE_URL = `https://store.steampowered.com/app/${APP_ID}/`;
 let STORE_ROUTE = normalizeStoreRoute(CLI_OPTIONS.storeRoute || process.env.STEAM_BRIDGE_SMOKE_STORE_ROUTE, "web");
 let WEB_URL = CLI_OPTIONS.webUrl || process.env.STEAM_BRIDGE_SMOKE_WEB_URL || STORE_URL;
@@ -145,6 +149,7 @@ const LAUNCH_ENV_KEYS = [
   "DYLD_INSERT_LIBRARIES",
   "STEAM_BRIDGE_MACOS_NATIVE_LAUNCHER",
   "STEAM_BRIDGE_MACOS_NATIVE_LAUNCHER_TARGET",
+  "STEAM_BRIDGE_WINDOWS_NATIVE_HOST_BACKEND",
   "STEAM_BRIDGE_WINDOWS_NATIVE_HOST_STYLE",
   "__COMPAT_LAYER"
 ];
@@ -2454,7 +2459,7 @@ function snapshot() {
       overlayInProcessGpu: OVERLAY_CONFIG.switches.includes("in-process-gpu"),
       overlayDisableDirectComposition: OVERLAY_CONFIG.disableDirectComposition,
       overlayConfig: OVERLAY_CONFIG,
-      nativeHostBackend: MAC_NATIVE_HOST_BACKEND || null,
+      nativeHostBackend: MAC_NATIVE_HOST_BACKEND || WINDOWS_NATIVE_HOST_BACKEND || null,
       windowMode: WINDOW_MODE,
       autorun: AUTORUN,
       autorunAction: AUTORUN_ACTION,
@@ -3378,6 +3383,25 @@ function configureWindowsNativeHostStyle(style) {
   process.env.STEAM_BRIDGE_WINDOWS_NATIVE_HOST_STYLE = style;
 }
 
+function normalizeWindowsNativeHostBackend(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (["d3d", "d3d11", "direct3d", "direct3d11", "dxgi"].includes(normalized)) {
+    return "d3d11";
+  }
+  if (["default", "opengl", "gl", "wgl", "windows-opengl"].includes(normalized)) {
+    return "opengl";
+  }
+  return "";
+}
+
+function configureWindowsNativeHostBackend(backend) {
+  if (process.platform !== "win32" || !backend) {
+    return;
+  }
+
+  process.env.STEAM_BRIDGE_WINDOWS_NATIVE_HOST_BACKEND = backend;
+}
+
 function writeSteamAppIdFiles(appId) {
   const directories = new Set([process.cwd(), __dirname]);
   if (app.isPackaged) {
@@ -3415,6 +3439,7 @@ function parseSmokeArgs(args) {
     overlayDisableDirectComposition: undefined,
     windowMode: undefined,
     nativeHostBackend: undefined,
+    windowsNativeHostBackend: undefined,
     windowsNativeHostStyle: undefined,
     autorunRequireOverlayActive: undefined,
     webModal: undefined,
@@ -3535,6 +3560,10 @@ function parseSmokeArgs(args) {
         break;
       case "--steam-bridge-smoke-native-host-backend":
         options.nativeHostBackend = value;
+        break;
+      case "--steam-bridge-windows-native-host-backend":
+      case "--steam-bridge-smoke-windows-native-host-backend":
+        options.windowsNativeHostBackend = value;
         break;
       case "--steam-bridge-windows-native-host-style":
       case "--steam-bridge-smoke-windows-native-host-style":

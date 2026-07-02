@@ -78,19 +78,21 @@ Reviewed on 2026-07-02 while investigating Windows Electron overlay failures:
 | [Steamworks.NET overlay FAQ](https://steamworks.github.io/faq/) | The injection-order rule is not Electron-specific: the overlay must be injected before the renderer initializes, and running through Steam is the reliable development shape. |
 | [steamworks-ffi-node native overlay guide](https://github.com/ArtyProf/steamworks-ffi-node/blob/main/docs/STEAM_OVERLAY_INTEGRATION.md) | Independent wrapper research points at native Metal/OpenGL host surfaces, but Steam Bridge still requires its own FPS, shutdown, focus, close, and crash matrix before making a Windows native presenter default. |
 
-- Steam Bridge now has a first opt-in Windows native presenter candidate:
-  `backend: "windows-opengl"` creates a Win32/WGL surface behind the existing
-  native surface API. It is intentionally not the default Windows path yet; the
-  ordinary direct Electron hook remains the baseline until live Windows matrix
-  proof shows the native presenter is better across visible UI, close/back-to-app,
-  passive notifications, FPS/focus behavior, and crash diagnostics.
+- Steam Bridge now has opt-in Windows native presenter candidates behind the
+  existing native surface API: `backend: "windows-opengl"` creates the Win32/WGL
+  diagnostic surface, and `backend: "windows-d3d11"` creates a D3D11/DXGI
+  swap-chain surface for the next live comparison. Neither is the default
+  Windows path yet; the ordinary direct Electron hook remains the baseline until
+  live Windows matrix proof shows a native presenter is better across visible
+  UI, close/back-to-app, passive notifications, FPS/focus behavior, and crash
+  diagnostics.
 - The broader Windows source sweep points past window-style tweaks. Valve's
   browser-game FAQ specifically names a native D3D window with offscreen
   Chromium and input forwarding, while the WebView2/DirectComposition research
   shows why a composited transparent layer can render Steam overlay content but
   still fail on alpha/input details. The next serious Windows implementation
-  comparison should therefore be a D3D11/DXGI presenter candidate beside the
-  existing WGL diagnostic, not another default Chromium flag profile.
+  comparison is therefore the opt-in D3D11/DXGI presenter beside the existing
+  WGL diagnostic, not another default Chromium flag profile.
 - Steam Bridge's Deck Desktop testing confirmed a second Electron-specific
   failure mode: if Steam's overlay renderer is inherited by Chromium child
   processes, Steam can create competing `gameoverlayui` targets for both the
@@ -1831,6 +1833,22 @@ prove modal web close/back-to-app, but the store web surface is not yet a
 reliable interactive Windows product route. The next implementation slice should
 focus on Windows native-host input/focus/window-shape comparisons and store
 route alternatives, not more Steam restarts or Electron Chromium flags.
+
+A D3D11/DXGI Windows presenter comparison was added on July 2, 2026 behind
+`STEAM_BRIDGE_WINDOWS_NATIVE_HOST_BACKEND=d3d11` and the Windows helper
+`-NativeHostBackend d3d11` option. The first artifact
+`C:\Users\admin\steam-bridge-artifacts\windows-d3d11-web-20260702-001` proved
+the D3D11 host could show Steam overlay UI, but preserved a close-probe miss
+because the old web close click targeted the host corner instead of Steam's
+centered web panel. After the close probe switched to the foreground Steam web
+panel coordinate, artifact
+`C:\Users\admin\steam-bridge-artifacts\windows-d3d11-web-20260702-002` passed
+the managed modal web `openAndWait` route from the interactive Session 1 Steam
+shortcut with App ID `480`: visible overlay UI, `GameOverlayActivated(true)`,
+SendInput click on the Steam web close control, `GameOverlayActivated(false)`,
+presenter parking, app focus return, `openAndWait` completion, clean crash
+diagnostics, and no leftover smoke or `gameoverlayui64` processes. Keep D3D11
+opt-in until route expansion proves it at least as broadly as the WGL presenter.
 
 The Windows smoke harness now exposes the store route explicitly:
 `STEAM_BRIDGE_SMOKE_STORE_ROUTE`, `--steam-bridge-smoke-store-route`, and the

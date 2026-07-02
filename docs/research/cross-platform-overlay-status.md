@@ -453,14 +453,16 @@ sources from NW.js/Greenworks, Tauri/WebView2, Steamworks.NET, Chromium
 DirectComposition notes, Microsoft DirectComposition/DXGI docs, and the native
 overlay wrapper ecosystem reinforce the same direction: keep collecting Steam
 CEF/GPU/render-health evidence before restarting Steam, keep Chromium flags
-diagnostic-only, and compare a D3D11/DXGI native presenter candidate before
-promoting any Windows bridge-owned presenter. Promotion still requires the same
-visible UI, close/back-to-app, FPS, focus, and clean-crash matrix required on
-Linux and macOS. Sources:
+diagnostic-only, and compare the opt-in D3D11/DXGI native presenter beside the
+existing WGL presenter before promoting any Windows bridge-owned presenter.
+Promotion still requires the same visible UI, close/back-to-app, FPS, focus, and
+clean-crash matrix required on Linux and macOS. Sources:
 https://partner.steamgames.com/doc/features/overlay,
 https://partner.steamgames.com/doc/api/ISteamFriends,
 https://www.electronjs.org/docs/latest/api/command-line-switches,
 https://www.electronjs.org/docs/latest/tutorial/offscreen-rendering,
+https://learn.microsoft.com/en-us/windows/win32/api/d3d11/nf-d3d11-d3d11createdeviceandswapchain,
+https://learn.microsoft.com/en-us/windows/win32/api/dxgi/nf-dxgi-idxgifactory-createswapchain,
 https://github.com/electron/electron/issues/3340,
 https://github.com/electron/electron/issues/18048,
 https://github.com/ceifa/steamworks.js/issues/95,
@@ -506,6 +508,29 @@ layered/tool-window styles while active so the host behaved more like a normal
 native OpenGL game surface, but Steam still did not consume input through that
 host. Treat the Windows native presenter as useful rendering/focus evidence, not
 product proof, until it can close and return to the app from the same matrix.
+
+Follow-up Windows implementation work now exposes an opt-in D3D11/DXGI native
+presenter candidate through `STEAM_BRIDGE_WINDOWS_NATIVE_HOST_BACKEND=d3d11`,
+`--steam-bridge-windows-native-host-backend=d3d11`, and the Windows helper
+`-NativeHostBackend d3d11` parameter. The D3D11 path is intentionally a focused
+comparison beside `windows-opengl`, not a default. It must still pass the same
+live Windows requirements: Steam-launched interactive Session 1 run, visible
+overlay UI, input/close proof, return to the Electron app, no duplicate stale
+overlay helpers, and clean Electron/GPU/native crash diagnostics.
+
+A second focused D3D11 run at
+`C:\Users\admin\steam-bridge-artifacts\windows-d3d11-web-20260702-002` passed
+the managed web `openAndWait` route from the interactive Windows desktop. The
+matrix used the stable Steam shortcut with App ID `480`, skipped the default
+render-health gate as an explicit non-default comparison, selected
+`nativeHostBackend=d3d11`, opened visible Steam overlay UI on the native host,
+clicked the Steam web panel close control through `SendInput`, returned focus to
+the Electron smoke window, verified `overlayEnabled=true`, and completed with
+clean Electron/GPU/native crash diagnostics and no leftover smoke or
+`gameoverlayui64` process. The first D3D11 artifact
+`windows-d3d11-web-20260702-001` is preserved as the useful miss: it showed the
+same visible Steam overlay UI, but the older close probe clicked the host
+corner instead of the centered Steam web panel close control.
 The next focused artifact,
 `C:\Users\admin\steam-bridge-artifacts\native-presenter-wndproc-web-20260702-002`,
 rebuilt the Windows native addon with WndProc host diagnostics and passed the
