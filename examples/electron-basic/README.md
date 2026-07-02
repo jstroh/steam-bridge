@@ -11,12 +11,12 @@ It uses Valve's SpaceWar sample App ID `480` by default. Override it with
 `STEAM_BRIDGE_APP_ID` when testing your own app.
 
 The default Electron overlay profile is `diagnostic`, which applies conservative
-Electron switches. On Windows, Steam Bridge also enables Chromium's in-process
-GPU path by default because that is the verified ordinary Steam-launched overlay
-path. Set `STEAM_BRIDGE_ELECTRON_OVERLAY_PROFILE=repaint` when an event-driven
+Electron switches without forcing Chromium's in-process GPU path on Windows.
+Set `STEAM_BRIDGE_ELECTRON_OVERLAY_PROFILE=repaint` when an event-driven
 Electron renderer needs fresh frames for Steam's overlay. Set
 `STEAM_BRIDGE_ELECTRON_OVERLAY_PROFILE=compatibility` only when you specifically
-want the more aggressive Linux/Desktop workaround.
+want the more aggressive comparison profile, including the legacy in-process GPU
+switch.
 
 ## Development
 
@@ -92,12 +92,13 @@ actions such as `presenter-ready`, `presenter-web-open-and-wait`,
 `presenter-user-native`, `presenter-checkout`, `presenter-shortcut`, and
 `presenter-shortcut-open-and-wait`.
 
-The helper defaults `-OverlayInProcessGpu 1` on Windows, matching
-`electronConfigureSteamOverlay()` and the verified Steam-launched store overlay
-proof. The current Windows proof lane is the process-per-case baseline matrix:
-web, store, and Friends must emit overlay activation, while passive achievement
-cases prove their callbacks without requiring the overlay to open. Pass
-`-OverlayInProcessGpu 0` only when collecting a failing baseline comparison.
+The helper leaves `-OverlayInProcessGpu` unset on Windows by default, matching
+the current `electronConfigureSteamOverlay()` diagnostic profile. The current
+Windows proof lane is the process-per-case baseline matrix: web, store, and
+Friends must emit overlay activation, while passive achievement cases prove
+their callbacks without requiring the overlay to open. Pass
+`-OverlayInProcessGpu 1` only when collecting a focused legacy compatibility
+comparison.
 For focused Steam Community or social-route investigation, pass
 `-OverlayScrubChildEnv 0` and `-OverlayIsolateChildProcesses 0` to compare
 Windows behavior when Steam's overlay preload is allowed to reach Chromium child
@@ -130,8 +131,8 @@ stats, achievements, and user cases. Current focused artifacts show the
 Community target, a generic web overlay pointed at
 `https://steamcommunity.com/app/480`, and the current user's Steam Community
 profile target all fire active callbacks without visible overlay screenshots,
-so keep Steam Community-style Windows routes separate from the known-good
-store/web/Friends lane until that Steam surface is proven. The
+so keep Steam Community-style Windows routes separate from the basic
+store/web/Friends activation lane until that Steam surface is proven. The
 `presenter-user-native` action is a raw diagnostic for Valve's documented
 `ActivateGameOverlayToUser("steamid", ...)` route; it is callback/screenshot
 evidence only, not a managed `openAndWait(...)` product route.
@@ -158,11 +159,10 @@ If the packaged app window itself renders blank or white, run the packaged
 `windows-render-health-probe.ps1` from the interactive Windows desktop before
 more Steam-launched overlay cases. It starts three direct `none` probes with
 App ID `480`, captures desktop and client-area screenshots, and writes
-`render-health-summary.json` comparing the default in-process GPU path,
-`-OverlayInProcessGpu 0`, and `-OverlayDisableDirectComposition 1`. Treat
-`-OverlayInProcessGpu 0` as a renderer baseline only, not overlay proof. Treat
-`-OverlayDisableDirectComposition 1` as an explicit diagnostic until that mode
-also survives crash, close/back-to-app, and Alt+Tab checks.
+`render-health-summary.json` comparing the default path with
+`-OverlayInProcessGpu` unset, explicit `-OverlayInProcessGpu 1`, and explicit
+`-OverlayDisableDirectComposition 1`. Treat the explicit flag profiles as
+diagnostics until they survive crash, close/back-to-app, and Alt+Tab checks.
 
 The Windows package also includes `windows-native-overlay-control.ps1` and the
 source for a tiny C# OpenGL control app. This is a route diagnostic, not an

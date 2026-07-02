@@ -328,6 +328,15 @@ function runWindowsSmokeHelperStaticChecks() {
   );
   const matrixSummary = fs.readFileSync(path.join(repoRoot, "scripts", "summarize-windows-overlay-matrix.cjs"), "utf8");
   const electronHelper = fs.readFileSync(path.join(repoRoot, "packages", "steam-bridge", "src", "electron.ts"), "utf8");
+  const exampleReadme = fs.readFileSync(path.join(repoRoot, "examples", "electron-basic", "README.md"), "utf8");
+  assert.ok(
+    exampleReadme.includes("The helper leaves `-OverlayInProcessGpu` unset on Windows by default"),
+    "Electron example README must document that Windows leaves in-process GPU unset by default"
+  );
+  assert.ok(
+    !exampleReadme.includes("The helper defaults `-OverlayInProcessGpu 1` on Windows"),
+    "Electron example README must not describe in-process GPU as the Windows default"
+  );
   for (const expected of [
     "achievement-progress",
     "achievement-unlock",
@@ -443,6 +452,7 @@ function runWindowsSmokeHelperStaticChecks() {
     "render-health-summary.json",
     "Windows render-health gate",
     "Windows default render health is not ready",
+    'return (-not $OverlayInProcessGpu -and -not (Convert-OverlayFlagToBoolean -Value $OverlayDisableDirectComposition))',
     "shortcut",
     "readiness",
     "Resolve-JavaScriptRunner",

@@ -579,7 +579,7 @@ function Convert-OverlayFlagToBoolean {
 }
 
 function Test-UsesDefaultWindowsRenderPath {
-  return ($OverlayInProcessGpu -ne "0" -and -not (Convert-OverlayFlagToBoolean -Value $OverlayDisableDirectComposition))
+  return (-not $OverlayInProcessGpu -and -not (Convert-OverlayFlagToBoolean -Value $OverlayDisableDirectComposition))
 }
 
 function Get-CurrentWindowsSessionId {

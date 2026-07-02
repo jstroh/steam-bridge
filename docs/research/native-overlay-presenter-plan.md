@@ -71,6 +71,7 @@ Reviewed on 2026-07-02 while investigating Windows Electron overlay failures:
 | [Steam microtransaction implementation guide](https://partner.steamgames.com/doc/features/microtransactions/implementation) | Real checkout is Steam overlay-driven after `InitTxn`, so the presenter must remain alive through the authorization flow and cannot equate a microtransaction callback with overlay close. |
 | [Chromium DirectComposition change](https://groups.google.com/a/chromium.org/g/ozone-reviews/c/iihF5rPWLJ8) | `--disable-direct-composition` is a real Chromium switch for disabling DirectComposition, but it changes a core Windows composition path and must be treated as a compatibility experiment. |
 | [Microsoft DXGI Session 0 note](https://learn.microsoft.com/en-us/windows/win32/api/dxgi/nf-dxgi-idxgifactory-createswapchain) | `DXGI_ERROR_NOT_CURRENTLY_AVAILABLE` from Session 0 is expected for swap-chain creation; Windows live overlay tests must launch in the interactive desktop session. |
+| [Microsoft Raw Input registration docs](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-registerrawinputdevices) | Raw input delivery is opt-in, and only one window per raw-input device class can be registered in a process; any Windows presenter input mitigation must not steal ownership from the app window. |
 | [steamworks-ffi-node native overlay guide](https://github.com/ArtyProf/steamworks-ffi-node/blob/main/docs/STEAM_OVERLAY_INTEGRATION.md) | Independent wrapper research points at native Metal/OpenGL host surfaces, but Steam Bridge still requires its own FPS, shutdown, focus, close, and crash matrix before making a Windows native presenter default. |
 
 - Steam Bridge now has a first opt-in Windows native presenter candidate:
@@ -1716,19 +1717,22 @@ Steam webhelper GPU-process restarts, and overlay renderer
 mode must be separated from Steam Bridge native-load or API initialization
 failures before changing the product overlay architecture.
 
-Wrapper research points to two Windows modes worth testing before adding native
-presenter complexity. The baseline is Electron with Chromium GPU work in-process,
-matching the long-standing `steamworks.js` and Greenworks guidance. The fallback
-is Electron plus Chromium's `disable-direct-composition` switch: reports show it
-can address white/stale overlay rendering, but `steamworks.js` issue #95 also
-ties that switch to Alt+Tab ghost-window regressions. Steam Bridge therefore
-exposes `disableDirectComposition` as an explicit opt-in and the packaged
-Windows helper exposes `-OverlayDisableDirectComposition 1`; a passing Windows
-proof must compare that mode only when the baseline fails and must include
-Alt+Tab, close, and back-to-app checks. Newer wrapper work such as
-`steamworks-ffi-node` uses native OpenGL/Metal overlay host surfaces across
-platforms, which remains useful contingency evidence, but it is not the first
-Windows implementation path unless ordinary Electron proves insufficient.
+Wrapper research points to two risky Chromium-flag comparisons worth keeping,
+but neither should be the Windows default. The old Electron workaround is
+Chromium's `in-process-gpu` switch, matching long-standing `steamworks.js` and
+Greenworks guidance; local and public evidence now tie that switch to blank or
+white windows on modern Chromium/Electron. The other comparison is Electron plus
+Chromium's `disable-direct-composition` switch: reports show it can address
+white/stale overlay rendering, but `steamworks.js` issue #95 also ties that
+switch to Alt+Tab ghost-window regressions. Steam Bridge therefore leaves the
+Windows diagnostic profile on the plain render path by default, exposes
+`-OverlayInProcessGpu 1` and `-OverlayDisableDirectComposition 1` as focused
+diagnostics only, and requires any passing mode to include Alt+Tab, close,
+back-to-app, and crash checks before it can become product guidance. Newer
+wrapper work such as `steamworks-ffi-node` uses native OpenGL/Metal overlay host
+surfaces across platforms, which remains useful contingency evidence, but it is
+not the first Windows implementation path unless ordinary Electron proves
+insufficient.
 
 A July 2, 2026 wrapper scan compared Steam's own overlay requirements,
 `steamworks.js`, Greenworks, `steamworks-ffi-node`, and Steamworks.NET guidance
@@ -1836,6 +1840,32 @@ presenter's recorded bounds instead of the foreground webhelper's misleading
 button in the screenshots, but Steam remained active until the managed
 90-second close wait timed out. This confirms the native store route opens and
 renders, but it is still not close/back-to-app proof on Windows.
+
+A current-package Windows run at
+`C:\Users\admin\steam-bridge-artifacts\windows-render-health-current-20260702-130004`
+re-verified the new default render policy from the interactive Session 1
+desktop: the plain default path with `-OverlayInProcessGpu` unset rendered
+visible smoke UI and reported `default-render-health-ok`; explicit
+`-OverlayInProcessGpu 1` still produced a blank client area; and explicit
+`-OverlayDisableDirectComposition 1` rendered visibly but remains diagnostic.
+The follow-up focused native-presenter web run under
+`C:\Users\admin\AppData\Local\Temp\steam-bridge-windows-overlay-matrix-20260702-130128`
+launched through Steam as App ID `480`, passed Steam client rendering health,
+attached `gameoverlayui64`, emitted `GameOverlayActivated(true)`, and focused
+the `windows-opengl` host. Its screenshots showed a black native Steam overlay
+surface rather than visible web chrome, the maintained SendInput click landed at
+the expected presenter-bounds close coordinate with `lastError=0`, and Steam
+never emitted `GameOverlayActivated(false)` before the 90-second close wait
+timed out. The renderer log showed OpenGL hook setup and
+`Failed getting currently registered raw input devices`, but no fresh Steam
+CEF/GPU/swap-chain health blocker. Treat this as a Windows native-presenter
+content/input blocker, not a return of the old blank Steam client or Electron
+render-health problem. Microsoft's Raw Input docs also matter for this symptom:
+raw input is opt-in, and only one window per raw-input device class can be
+registered in a process. If Steam Bridge adds any Windows raw-input mitigation
+for the presenter, it must be an explicit app-window ownership decision rather
+than a library-level registration that could steal keyboard or mouse delivery
+from the app.
 
 Windows gates:
 
