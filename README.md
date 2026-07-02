@@ -796,7 +796,11 @@ the private `--checkout-json-file` checkout suite.
   tails, matching error lines, rendering-related config hints, orphaned
   `gameoverlayui` helper state, and Windows resource-pressure snapshots. Check
   those files first when Steam's own UI is blank/white or when the overlay
-  renderer attaches but `gameoverlay_ui` never starts. Use `-Suite preflight`
+  renderer attaches but `gameoverlay_ui` never starts. The Windows summary
+  auditor also reports per-case Steam rendering-health status and signal codes,
+  such as `steam-overlay-swapchain-failure` or
+  `steam-cef-dxgi-not-currently-available`, when those diagnostics are present.
+  Use `-Suite preflight`
   for report-only client-health capture, `-Suite readiness` for the same
   capture plus the live Steam-run readiness gate without native-load,
   shortcut-edit, or `steam://rungameid` work, or add `-OnlyCase 01-web` /

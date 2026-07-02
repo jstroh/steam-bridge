@@ -189,6 +189,13 @@ npm run windows:overlay-matrix:summarize -- \
   --artifact-root "C:\\path\\to\\windows-matrix-artifacts"
 ```
 
+For live overlay failures, the summary also prints each case's Steam
+rendering-health status and signal codes when the artifact includes
+`steam-client/steam-client-rendering-health.json`. Codes such as
+`steam-overlay-swapchain-failure` and
+`steam-cef-dxgi-not-currently-available` mean Steam injected its renderer but
+could not create the Windows swap chain for that run.
+
 Direct Windows smoke runs pass smoke state through the child process environment
 instead of Electron command-line switches so interactive Task Scheduler launches
 and private checkout values do not depend on fragile process arguments.

@@ -183,6 +183,30 @@ Steam client/webhelper churn during live testing. Keep Windows proof on the
 ordinary process-per-case baseline matrix until a readiness-gated one-process
 harness is designed and proven calmly.
 
+A follow-up Windows App Control diagnostic used a separate non-Steam shortcut
+pointing at an unpacked Electron `43.0.0` runtime and the same packaged
+`resources/app` payload. This is a development diagnostic only, not product
+packaging proof. It bypassed the local `SteamBridgeSmoke.exe` App Control block
+for native-load purposes: the `none` action initialized Steam as App ID `480`,
+loaded the native addon, wrote a clean result, and exited without crash
+diagnostics. Store overlay probes then proved Steam injected
+`gameoverlayrenderer64.dll` into `electron.exe` with `GameID = 480` and
+`OverlayGameID = 480`, but Steam's renderer failed
+`g_IDXGIFactory2_CreateSwapChainForHWND` with `hres=887a0022`, no
+`gameoverlayui64.exe` process was started, `IsOverlayEnabled` stayed false, and
+no `GameOverlayActivated(true)` callback arrived. The same result held for the
+diagnostic in-process GPU path, explicit `--disable-direct-composition`, and
+the opt-in compatibility/repaint profile. Current artifacts include
+`C:\Users\admin\steam-bridge-artifacts\electron-runtime-steam-none-corrected-20260702-001`,
+`C:\Users\admin\steam-bridge-artifacts\electron-runtime-steam-store-corrected-20260702-002`,
+`C:\Users\admin\steam-bridge-artifacts\electron-runtime-steam-store-disable-dcomp-20260702-002`,
+and
+`C:\Users\admin\steam-bridge-artifacts\electron-runtime-steam-store-compat-dcomp-20260702-001`.
+The Windows summary auditor now surfaces each case's
+`steam-client-rendering-health.json` status and signal codes so this class of
+failure reports as a Steam renderer/swap-chain blocker rather than a generic
+missing activation.
+
 The macOS matrix can now pair `--app-id <your-app-id>` with
 `--checkout-json-file <path>` for private configured-product proof. Its manifest
 and summary audit the expected app ID and `checkoutSource=json-file`, while

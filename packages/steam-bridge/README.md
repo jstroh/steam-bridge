@@ -139,8 +139,9 @@ mean Steam's own UI is not healthy enough for overlay proof. Stale rendering
 signals are preserved in `steam-client-rendering-health.json` as warnings.
 From the repo, run
 `npm run windows:overlay-matrix:summarize -- --artifact-root <artifact-root>` to
-audit full runs, readiness captures, and native-load blocker artifacts without
-scraping helper logs by hand. The packaged bundle also includes
+audit full runs, readiness captures, native-load blocker artifacts, Steam-launch
+blockers, and per-case Steam rendering-health signal codes without scraping
+helper logs by hand. The packaged bundle also includes
 `summarize-windows-overlay-matrix.cjs` for machines with a local Node.js runtime.
 The managed suite's active cases opt into complete-result mode and require Steam's
 inactive callback plus managed close, park, and open-and-wait completion events,

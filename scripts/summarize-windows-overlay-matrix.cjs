@@ -161,7 +161,11 @@ function summarizeWindowsOverlayMatrixArtifacts(root) {
       continue;
     }
 
-    const caseSummary = summarizeCaseResult(caseName, result, resultLog);
+    const renderingHealth = readJsonIfPresent(
+      path.join(caseDir, "steam-client", "steam-client-rendering-health.json"),
+      failures
+    );
+    const caseSummary = summarizeCaseResult(caseName, result, resultLog, renderingHealth);
     caseSummaries.push(caseSummary);
     failures.push(...caseSummary.failures);
   }
@@ -366,7 +370,7 @@ function validateSteamLaunchBlocker(blocker, failures) {
   expect(Array.isArray(blocker.nextActions) && blocker.nextActions.length > 0, "Steam-launch blocker next actions are present", failures);
 }
 
-function summarizeCaseResult(caseName, result, resultLog) {
+function summarizeCaseResult(caseName, result, resultLog, renderingHealth = null) {
   const failures = [];
   const snapshot = objectOrEmpty(result.snapshot);
   const app = objectOrEmpty(snapshot.app);
@@ -397,6 +401,8 @@ function summarizeCaseResult(caseName, result, resultLog) {
   expect(crashDumps.length === 0, `${caseName}: no crash dumps found`, failures);
   expect(fatalLifecycleEvents.length === 0, `${caseName}: no fatal lifecycle events found`, failures);
 
+  const steamRenderingHealth = summarizeCaseRenderingHealth(renderingHealth);
+
   return {
     caseName,
     action: String(action.action || ""),
@@ -414,6 +420,7 @@ function summarizeCaseResult(caseName, result, resultLog) {
     wait: result.wait && typeof result.wait === "object" && !Array.isArray(result.wait) ? result.wait : null,
     crashDumpCount: crashDumps.length,
     fatalLifecycleEventCount: fatalLifecycleEvents.length,
+    steamRenderingHealth,
     failures
   };
 }
@@ -467,7 +474,8 @@ function printSummary(summary) {
       console.log(
         `  ${row.caseName}: ${ok} action=${row.action || "unknown"} ` +
           `steamLaunch=${row.steamLaunch} overlayActiveEvents=${row.overlayActiveEvents} ` +
-          `overlayEnabled=${formatValue(row.overlayEnabled)} crashes=${row.crashDumpCount + row.fatalLifecycleEventCount}`
+          `overlayEnabled=${formatValue(row.overlayEnabled)} crashes=${row.crashDumpCount + row.fatalLifecycleEventCount}` +
+          formatCaseRenderingHealth(row.steamRenderingHealth)
       );
     }
   } else {
@@ -530,12 +538,40 @@ function summarizeSteamLaunchBlocker(caseName, blocker) {
   };
 }
 
+function summarizeCaseRenderingHealth(renderingHealth) {
+  if (!renderingHealth || typeof renderingHealth !== "object" || Array.isArray(renderingHealth)) {
+    return null;
+  }
+
+  const recentSignals = Array.isArray(renderingHealth.recentSevereSignals)
+    ? renderingHealth.recentSevereSignals
+    : [];
+  const staleSignals = Array.isArray(renderingHealth.staleSevereSignals)
+    ? renderingHealth.staleSevereSignals
+    : [];
+  const signalCodes = uniqueStrings(
+    [...recentSignals, ...staleSignals]
+      .map((signal) => signal && signal.code)
+      .filter(Boolean)
+  );
+
+  return {
+    status: renderingHealth.status || "unknown",
+    recentSevereSignalCount: Number(renderingHealth.recentSevereSignalCount || 0),
+    staleSevereSignalCount: Number(renderingHealth.staleSevereSignalCount || 0),
+    signalCodes
+  };
+}
+
 function buildTotals(caseSummaries) {
   return {
     totalCases: caseSummaries.length,
     steamLaunchCases: caseSummaries.filter((row) => row.steamLaunch).length,
     overlayActiveCases: caseSummaries.filter((row) => row.overlayActiveEvents > 0).length,
-    cleanCases: caseSummaries.filter((row) => row.failures.length === 0).length
+    cleanCases: caseSummaries.filter((row) => row.failures.length === 0).length,
+    renderingUnhealthyCases: caseSummaries.filter(
+      (row) => row.steamRenderingHealth && row.steamRenderingHealth.status === "unhealthy"
+    ).length
   };
 }
 
@@ -649,6 +685,26 @@ function formatValue(value) {
   return value === undefined ? "unknown" : String(value);
 }
 
+function formatCaseRenderingHealth(renderingHealth) {
+  if (!renderingHealth || renderingHealth.status === "healthy") {
+    return "";
+  }
+
+  const codes = renderingHealth.signalCodes.length > 0
+    ? renderingHealth.signalCodes.join(",")
+    : "none";
+  return (
+    ` rendering=${renderingHealth.status}` +
+    ` recentSignals=${renderingHealth.recentSevereSignalCount}` +
+    ` staleSignals=${renderingHealth.staleSevereSignalCount}` +
+    ` codes=${codes}`
+  );
+}
+
+function uniqueStrings(values) {
+  return Array.from(new Set(values.map((value) => String(value)))).sort();
+}
+
 function runSelfTest() {
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-windows-summary-"));
   try {
@@ -667,6 +723,11 @@ function runSelfTest() {
     assert.equal(casesSummary.totals.steamLaunchCases, 2);
     assert.equal(casesSummary.totals.overlayActiveCases, 1);
     assert.equal(casesSummary.totals.cleanCases, 2);
+    assert.equal(casesSummary.totals.renderingUnhealthyCases, 1);
+    assert.deepEqual(casesSummary.caseSummaries[0].steamRenderingHealth.signalCodes, [
+      "steam-cef-dxgi-not-currently-available",
+      "steam-overlay-swapchain-failure"
+    ]);
     assert.equal(casesSummary.liveRunReadiness.ready, true);
     assert.equal(casesSummary.manifest.expectedCaseCount, 2);
 
@@ -856,6 +917,36 @@ function writeCaseFixture(root) {
       pid: 4242,
       events: [{ type: "overlay:web" }, { type: "callback:overlay-activated", payload: { active: true } }]
     })
+  });
+  writeJson(path.join(root, "01-web", "steam-client", "steam-client-rendering-health.json"), {
+    kind: "steam-bridge-windows-steam-client-rendering-health",
+    generatedAt: "2026-07-02T00:00:03.000Z",
+    status: "unhealthy",
+    healthy: false,
+    recentWindowMinutes: 30,
+    logDirectory: "C:\\Program Files (x86)\\Steam\\logs",
+    recentSevereSignalCount: 2,
+    staleSevereSignalCount: 0,
+    recentSevereSignals: [
+      {
+        code: "steam-cef-dxgi-not-currently-available",
+        logFile: "gameoverlay_renderer.txt",
+        tailLine: 42,
+        timestampUtc: "2026-07-02T00:00:02.000Z",
+        recent: true,
+        line: "g_IDXGIFactory2_CreateSwapChainForHWND failed, hres=887a0022"
+      },
+      {
+        code: "steam-overlay-swapchain-failure",
+        logFile: "gameoverlay_renderer.txt",
+        tailLine: 43,
+        timestampUtc: "2026-07-02T00:00:02.000Z",
+        recent: true,
+        line: "CreateSwapChainForHWND failed"
+      }
+    ],
+    staleSevereSignals: [],
+    warnings: []
   });
   writeResult(path.join(root, "99-none", "result.log"), {
     ok: true,
