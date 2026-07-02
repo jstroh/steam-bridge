@@ -108,7 +108,11 @@ Windows desktop session, preventing accidental Steam client startup while the
 test machine is unhealthy. The dedicated `-Suite readiness` path collects the
 same report-only preflight and live-readiness JSON, then stops before
 native-load, shortcut, or launch work so blank/white Steam-client states can be
-captured without more Steam churn.
+captured without more Steam churn. The Windows readiness gate also classifies
+recent severe CEF/GPU/overlay-renderer log signals such as `0x887A0022`,
+context loss, GPU-process restarts, overlay swap-chain failures, and Win32
+resource failures, blocking live launch only when those signals are fresh while
+Steam is running and preserving stale signals as diagnostic warnings.
 
 An experimental one-process Windows control-server run is not accepted as
 product proof. It launched and painted correctly, but the first web action ran

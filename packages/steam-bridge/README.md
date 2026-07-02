@@ -110,8 +110,10 @@ intentionally want to stop orphaned Steam overlay helper processes whose target
 game process and recorded Steam parent process are both gone. Live Steam-launched
 suites require Steam to already be open in the interactive Windows desktop
 session; the matrix stops before live launch if
-`00-preflight/live-run-readiness.json` records a closed Steam client or remaining
-orphan overlay helpers.
+`00-preflight/live-run-readiness.json` records a closed Steam client, remaining
+orphan overlay helpers, or recent severe CEF/GPU/overlay-renderer signals that
+mean Steam's own UI is not healthy enough for overlay proof. Stale rendering
+signals are preserved in `steam-client-rendering-health.json` as warnings.
 
 ## Quick Start
 

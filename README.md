@@ -779,8 +779,11 @@ the private `--checkout-json-file` checkout suite.
   recorded Steam parent process are both gone. Live Steam-launched suites require
   Steam to already be open in the interactive Windows desktop session; the matrix
   records `00-preflight/live-run-readiness.json` and stops before the native-load
-  gate or `steam://rungameid` launch if Steam is closed or orphan overlay helpers
-  remain.
+  gate or `steam://rungameid` launch if Steam is closed, orphan overlay helpers
+  remain, or recent CEF/GPU/overlay-renderer log signals show the Steam client
+  itself is in an unhealthy blank/white rendering state. Stale severe rendering
+  log entries stay in `steam-client-rendering-health.json` as warnings instead
+  of failing fresh runs.
   The Windows matrix is intentionally process-per-case right now. A
   one-process control-server harness is useful future research, but it is not
   the Windows proof path until it can wait on overlay readiness and run without

@@ -119,7 +119,10 @@ overlay helpers whose target game process and recorded Steam parent process are
 both gone. Live Steam-launched suites require Steam to already be open in the
 interactive Windows desktop session; if Steam is closed or orphan overlay helpers
 remain, the matrix writes `00-preflight/live-run-readiness.json` and stops
-before any live launch.
+before any live launch. The same readiness JSON also includes
+`steam-client-rendering-health.json` data and blocks live launch when recent
+CEF/GPU/overlay-renderer log signals show Steam's own UI is in an unhealthy
+blank/white rendering state.
 
 The matrix installs or reuses one stable non-Steam shortcut named
 `Steam Bridge Smoke`. That shortcut points at a local smoke env file, and each

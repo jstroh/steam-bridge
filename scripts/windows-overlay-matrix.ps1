@@ -28,6 +28,8 @@ param(
   [int]$TimeoutSeconds = 120,
   [switch]$SkipNativeLoadGate,
   [switch]$CleanStaleOverlayHelpers,
+  [switch]$AllowUnhealthySteamClientLogs,
+  [int]$SteamClientHealthRecentMinutes = 30,
   [string]$OverlayInProcessGpu = "1"
 )
 
@@ -142,6 +144,170 @@ function Limit-DiagnosticLine {
     return $trimmed
   }
   return ($trimmed.Substring(0, $MaxLength) + " ...[truncated]")
+}
+
+function Get-SteamClientDiagnosticLogNames {
+  return @(
+    "cef_log.txt",
+    "webhelper.txt",
+    "steamwebhelper.log",
+    "webhelper_js.txt",
+    "console_log.txt",
+    "gameoverlay_renderer.txt",
+    "gameoverlay_ui.txt",
+    "steamui_system.txt"
+  )
+}
+
+function ConvertTo-SteamLogTimestampUtc {
+  param([string]$Line)
+
+  $culture = [System.Globalization.CultureInfo]::InvariantCulture
+  if ($Line -match '^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\]') {
+    try {
+      $parsed = [datetime]::ParseExact($Matches[1], "yyyy-MM-dd HH:mm:ss", $culture)
+      return [datetime]::SpecifyKind($parsed, [System.DateTimeKind]::Local).ToUniversalTime()
+    } catch {
+      return $null
+    }
+  }
+
+  if ($Line -match '^\[[^:\]]+:[^:\]]+:(\d{2})(\d{2})/(\d{2})(\d{2})(\d{2})(?:\.(\d+))?:') {
+    try {
+      $millisecondText = if ($Matches[6]) { ([string]$Matches[6]).Substring(0, [math]::Min(3, ([string]$Matches[6]).Length)).PadRight(3, '0') } else { "000" }
+      $timestampText = "{0:0000}-{1:00}-{2:00} {3:00}:{4:00}:{5:00}.{6}" -f `
+        (Get-Date).Year,
+        ([int]$Matches[1]),
+        ([int]$Matches[2]),
+        ([int]$Matches[3]),
+        ([int]$Matches[4]),
+        ([int]$Matches[5]),
+        $millisecondText
+      $parsed = [datetime]::ParseExact($timestampText, "yyyy-MM-dd HH:mm:ss.fff", $culture)
+      return [datetime]::SpecifyKind($parsed, [System.DateTimeKind]::Local).ToUniversalTime()
+    } catch {
+      return $null
+    }
+  }
+
+  if ($Line -match '^[A-Za-z]{3} ([A-Za-z]{3})\s+(\d{1,2}) (\d{2}):(\d{2}):(\d{2}) (\d{4}) UTC -') {
+    try {
+      $months = @{
+        Jan = 1; Feb = 2; Mar = 3; Apr = 4; May = 5; Jun = 6;
+        Jul = 7; Aug = 8; Sep = 9; Oct = 10; Nov = 11; Dec = 12
+      }
+      if (-not $months.ContainsKey($Matches[1])) {
+        return $null
+      }
+      $timestampText = "{0:0000}-{1:00}-{2:00} {3:00}:{4:00}:{5:00}" -f `
+        ([int]$Matches[6]),
+        ([int]$months[$Matches[1]]),
+        ([int]$Matches[2]),
+        ([int]$Matches[3]),
+        ([int]$Matches[4]),
+        ([int]$Matches[5])
+      $parsed = [datetime]::ParseExact($timestampText, "yyyy-MM-dd HH:mm:ss", $culture)
+      return [datetime]::SpecifyKind($parsed, [System.DateTimeKind]::Utc)
+    } catch {
+      return $null
+    }
+  }
+
+  return $null
+}
+
+function Get-SteamClientRenderingHealth {
+  $steamPath = Resolve-SteamInstallPath
+  $logs = Join-Path $steamPath "logs"
+  $generatedAt = (Get-Date).ToUniversalTime()
+  $cutoff = $generatedAt.AddMinutes(-1 * [math]::Max(1, $SteamClientHealthRecentMinutes))
+  $signals = @()
+  $warnings = @()
+
+  $patterns = @(
+    @{ code = "steam-cef-dxgi-not-currently-available"; pattern = "(?i)(0x887A0022|887a0022|DXGI_ERROR_NOT_CURRENTLY_AVAILABLE)" },
+    @{ code = "steam-cef-angle-context-lost"; pattern = "(?i)(context lost|EGL_CONTEXT_LOST|display had a context loss|Could not create additional swap chains|Device lost in SwapChain11)" },
+    @{ code = "steam-cef-gpu-process-crash"; pattern = "(?i)(Exiting GPU process because|GPU process exited unexpectedly|GPU process has crashed)" },
+    @{ code = "steam-overlay-swapchain-failure"; pattern = "(?i)(CreateSwapChainForHWND failed|g_IDXGIFactory2_CreateSwapChainForHWND failed)" },
+    @{ code = "steam-overlay-resource-failure"; pattern = "(?i)(CreateProcess failed\. Error: 1455|Failed creating file mapping|Failed creating CEF paint event)" }
+  )
+
+  if (-not (Test-Path -LiteralPath $logs)) {
+    return [PSCustomObject]@{
+      kind = "steam-bridge-windows-steam-client-rendering-health"
+      generatedAt = $generatedAt.ToString("o")
+      status = "unknown"
+      healthy = $false
+      recentWindowMinutes = $SteamClientHealthRecentMinutes
+      logDirectory = $logs
+      recentSevereSignalCount = 0
+      staleSevereSignalCount = 0
+      recentSevereSignals = @()
+      staleSevereSignals = @()
+      warnings = @("Steam log directory was not found.")
+    }
+  }
+
+  foreach ($name in Get-SteamClientDiagnosticLogNames) {
+    $source = Join-Path $logs $name
+    if (-not (Test-Path -LiteralPath $source)) {
+      continue
+    }
+
+    try {
+      $file = Get-Item -LiteralPath $source
+      $tailLines = @(Get-Content -LiteralPath $source -Tail 1000 -ErrorAction SilentlyContinue)
+      for ($index = 0; $index -lt $tailLines.Count; $index += 1) {
+        $line = [string]$tailLines[$index]
+        foreach ($pattern in $patterns) {
+          if ($line -notmatch $pattern.pattern) {
+            continue
+          }
+
+          $timestampUtc = ConvertTo-SteamLogTimestampUtc -Line $line
+          $isRecent = if ($timestampUtc) {
+            $timestampUtc -ge $cutoff
+          } else {
+            $file.LastWriteTimeUtc -ge $cutoff
+          }
+          $signals += [PSCustomObject]@{
+            code = $pattern.code
+            logFile = $name
+            tailLine = ($index + 1)
+            timestampUtc = if ($timestampUtc) { $timestampUtc.ToString("o") } else { $null }
+            recent = [bool]$isRecent
+            line = Limit-DiagnosticLine -Line $line
+          }
+          break
+        }
+      }
+    } catch {
+      $warnings += ("{0}: failed to scan rendering health: {1}" -f $name, $_.Exception.Message)
+    }
+  }
+
+  $recentSignals = @($signals | Where-Object { $_.recent })
+  $staleSignals = @($signals | Where-Object { -not $_.recent })
+  $status = "healthy"
+  if ($recentSignals.Count -gt 0) {
+    $status = "unhealthy"
+  } elseif ($staleSignals.Count -gt 0) {
+    $status = "stale-signals"
+  }
+
+  return [PSCustomObject]@{
+    kind = "steam-bridge-windows-steam-client-rendering-health"
+    generatedAt = $generatedAt.ToString("o")
+    status = $status
+    healthy = ($status -ne "unhealthy")
+    recentWindowMinutes = $SteamClientHealthRecentMinutes
+    logDirectory = $logs
+    recentSevereSignalCount = $recentSignals.Count
+    staleSevereSignalCount = $staleSignals.Count
+    recentSevereSignals = @($recentSignals | Select-Object -Last 30)
+    staleSevereSignals = @($staleSignals | Select-Object -Last 30)
+    warnings = @($warnings)
+  }
 }
 
 function Get-RedactedSteamConfigLabel {
@@ -322,6 +488,7 @@ function Test-WindowsLiveRunReadiness {
   $overlayHelpers = @(Get-OverlayHelperDiagnostics)
   $staleOverlayHelpers = @($overlayHelpers | Where-Object { $_.orphaned })
   $resourceSnapshot = Get-WindowsResourceSnapshot
+  $renderingHealth = Get-SteamClientRenderingHealth
   $warnings = @()
   $errors = @()
 
@@ -345,14 +512,38 @@ function Test-WindowsLiveRunReadiness {
   if ($freeVirtualMB -ne $null -and $freeVirtualMB -lt 2048) {
     $warnings += "Windows free virtual memory is low ($freeVirtualMB MB); Steam overlay helper creation can fail under resource pressure."
   }
+  if ($renderingHealth.status -eq "stale-signals") {
+    $warnings += (
+      "Steam client logs contain $($renderingHealth.staleSevereSignalCount) stale severe rendering signal(s). " +
+      "Confirm the Steam client UI renders normally before live overlay proof."
+    )
+  }
+  foreach ($warning in @($renderingHealth.warnings)) {
+    $warnings += $warning
+  }
+  if ($steamProcesses.Count -gt 0 -and $renderingHealth.status -eq "unhealthy") {
+    $message = (
+      "Steam client rendering health is unhealthy: " +
+      "$($renderingHealth.recentSevereSignalCount) severe CEF/GPU/overlay rendering signal(s) " +
+      "within the last $($renderingHealth.recentWindowMinutes) minute(s). " +
+      "Recover the Steam client UI before live overlay proof."
+    )
+    if ($AllowUnhealthySteamClientLogs) {
+      $warnings += ($message + " Continuing because -AllowUnhealthySteamClientLogs was provided.")
+    } else {
+      $errors += $message
+    }
+  }
 
   Write-MatrixJsonFile -Path $DestinationFile -Value ([PSCustomObject]@{
     kind = "steam-bridge-windows-live-run-readiness"
     generatedAt = (Get-Date).ToUniversalTime().ToString("o")
+    ready = ($errors.Count -eq 0)
     steamProcesses = @($steamProcesses)
     overlayHelpers = @($overlayHelpers)
     staleOverlayHelperCount = $staleOverlayHelpers.Count
     resourceSnapshot = $resourceSnapshot
+    renderingHealth = $renderingHealth
     warnings = @($warnings)
     errors = @($errors)
   }) -Depth 8
@@ -381,6 +572,7 @@ function Collect-SteamClientDiagnostics {
       Select-Object ProcessName,Id,StartTime,Responding,MainWindowTitle,Path)
     $overlayHelpers = @(Get-OverlayHelperDiagnostics)
     $resourceSnapshot = Get-WindowsResourceSnapshot
+    $renderingHealth = Get-SteamClientRenderingHealth
     $logFiles = @()
     if (Test-Path -LiteralPath $logs) {
       $logFiles = @(Get-ChildItem -LiteralPath $logs -File -ErrorAction SilentlyContinue |
@@ -398,19 +590,12 @@ function Collect-SteamClientDiagnostics {
       overlayHelpers = @($overlayHelpers)
       staleOverlayHelperCount = @($overlayHelpers | Where-Object { $_.orphaned }).Count
       resourceSnapshot = $resourceSnapshot
+      renderingHealth = $renderingHealth
       logFiles = @($logFiles | Select-Object -First 40)
     }) -Depth 8
+    Write-MatrixJsonFile -Path (Join-Path $DestinationDir "steam-client-rendering-health.json") -Value $renderingHealth -Depth 8
 
-    $knownLogs = @(
-      "cef_log.txt",
-      "webhelper.txt",
-      "steamwebhelper.log",
-      "webhelper_js.txt",
-      "console_log.txt",
-      "gameoverlay_renderer.txt",
-      "gameoverlay_ui.txt",
-      "steamui_system.txt"
-    )
+    $knownLogs = @(Get-SteamClientDiagnosticLogNames)
     foreach ($name in $knownLogs) {
       $source = Join-Path $logs $name
       $safeName = $name -replace '[^A-Za-z0-9_.-]', '_'
