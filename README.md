@@ -847,6 +847,19 @@ the private `--checkout-json-file` checkout suite.
   one-process control-server harness is useful future research, but it is not
   the Windows proof path until it can wait on overlay readiness and run without
   destabilizing Steam's webhelper/client UI.
+  Live Steam-launched suites also run a render-health gate after native-load
+  passes and before `steam://rungameid`. The gate launches the packaged smoke
+  app directly in a tiny comparison matrix and writes
+  `00-preflight/render-health-gate.json` plus
+  `00-preflight/render-health/render-health-summary.json`. If the default
+  Windows overlay profile is already blank, white, or crashy, the matrix stops
+  before launching through Steam; that is a render baseline failure, not useful
+  overlay evidence. Explicit non-default comparison runs, such as
+  `-OverlayInProcessGpu 0` or `-OverlayDisableDirectComposition 1`, skip this
+  default gate and are treated as diagnostics. Use
+  `-AllowUnhealthyDefaultRender` only when intentionally collecting those
+  artifacts, and `-SkipRenderHealthGate` only when the render-health helper
+  itself is unavailable.
   The Windows matrix stores one stable non-Steam shortcut whose launch options
   point at a local smoke env file, then rewrites only that env file for each
   case. If the shortcut must be added or materially updated while Steam is
@@ -856,10 +869,14 @@ the private `--checkout-json-file` checkout suite.
   run the shortcut updater. Use `-Suite shortcut` when you only want to verify
   or refresh the stable Steam shortcut before live overlay cases; that setup
   suite runs preflight and shortcut resolution only, without the native-load
-  gate or a `steam://rungameid` launch. Do not reuse older wrapper-script
-  shortcuts for Windows overlay proof; the current package does not ship a
-  launcher `.cmd`, so a stale shortcut can time out before the smoke app ever
-  starts. On App Control machines without standalone Node.js, that
-  Electron-in-Node-mode fallback can itself be blocked unless the package has a
-  trusted/reputable signature; install Node.js or run the shortcut updater from
-  a repo checkout in that case.
+  gate or a `steam://rungameid` launch. When `-AssumeShortcutConfigured` is
+  used, the matrix still dry-validates the shortcut against the current
+  executable, start directory, and launch options, writes
+  `00-preflight/assumed-shortcut.json`, and stops before live launch if the
+  shortcut is stale or the supplied `-ShortcutGameId` points at a different
+  entry. Do not reuse older wrapper-script shortcuts for Windows overlay proof;
+  the current package does not ship a launcher `.cmd`, so a stale shortcut can
+  time out before the smoke app ever starts. On App Control machines without
+  standalone Node.js, that Electron-in-Node-mode fallback can itself be blocked
+  unless the package has a trusted/reputable signature; install Node.js or run
+  the shortcut updater from a repo checkout in that case.

@@ -363,7 +363,21 @@ older wrapper-script Steam shortcut whose launch options pointed at a missing
 launcher `.cmd`, so the smoke app never started, no `result.log` was written,
 and the close probe timed out waiting for lifecycle evidence. Current Windows
 proof should use the stable executable shortcut plus smoke env file; refresh it
-with the shortcut suite while Steam is closed before running live cases.
+with the shortcut suite while Steam is closed before running live cases. The
+matrix now dry-validates assumed shortcuts before live launch and writes
+`00-preflight/assumed-shortcut.json`, so this failure mode is reported as
+shortcut drift instead of surfacing later as a missing smoke result.
+
+The Windows matrix now also gates live Steam-launched cases on default render
+health. After native-load passes, it runs `windows-render-health-probe.ps1`
+against the packaged app and writes `00-preflight/render-health-gate.json` plus
+`00-preflight/render-health/render-health-summary.json`. A default blank/white
+window or crash stops the matrix before `steam://rungameid`, because the next
+step would otherwise confuse an Electron render failure with a Steam overlay
+failure. Explicit non-default comparisons such as `-OverlayInProcessGpu 0` or
+`-OverlayDisableDirectComposition 1` skip the default gate and remain diagnostic
+runs; they are evidence for choosing the next implementation path, not a
+promoted app-builder default.
 
 Online source survey, 2026-07-02: Valve's overlay documentation says the overlay
 hooks games launched through Steam, must see `SteamAPI_Init` before the
@@ -388,14 +402,18 @@ interactive evidence proves a Steam route cannot be made visible through
 Electron. Sources:
 https://partner.steamgames.com/doc/features/overlay,
 https://www.electronjs.org/docs/latest/api/command-line-switches,
+https://github.com/electron/electron/issues/3340,
 https://github.com/electron/electron/issues/18048,
 https://github.com/ceifa/steamworks.js/issues/95,
 https://github.com/ceifa/steamworks.js/issues/116,
+https://github.com/ceifa/steamworks.js/issues/195,
 https://github.com/MicrosoftEdge/WebView2Feedback/issues/3200,
 https://www.construct.net/en/blogs/ashleys-blog-2/trying-show-steam-overlay-1861,
 https://liana.one/integrate-electron-steam-api-steamworks,
 https://github.com/nwjs/nw.js/issues/4982,
-https://github.com/greenheartgames/greenworks/issues/349.
+https://github.com/greenheartgames/greenworks/issues/349,
+https://steamcommunity.com/discussions/forum/10/591756872987476379/,
+https://community.monogame.net/t/steam-overlay-not-showing-with-windows-assembly-of-monogame-3-6/8926.
 
 A native Windows control comparison now lives beside the smoke package as
 `windows-native-overlay-control.ps1` plus a small C# OpenGL source file. It is

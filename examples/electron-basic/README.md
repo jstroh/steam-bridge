@@ -244,6 +244,15 @@ post-case Code Integrity evidence and the stable
 `windows-app-control-steam-launch-block` code when Steam itself was blocked from
 loading the smoke executable.
 
+Before live Steam-launched cases, the Windows matrix also runs a render-health
+gate with the packaged smoke app. It writes `00-preflight/render-health-gate.json`
+and `00-preflight/render-health/render-health-summary.json`. If the default
+Windows overlay profile is already blank, white, or crashy before Steam launch,
+the matrix stops there because overlay evidence would be misleading. Explicit
+render comparisons, such as `-OverlayInProcessGpu 0` or
+`-OverlayDisableDirectComposition 1`, skip the default gate and should be read as
+diagnostics, not product guidance.
+
 The matrix installs or reuses one stable non-Steam shortcut named
 `Steam Bridge Smoke`. That shortcut points at a local smoke env file, and each
 case rewrites only the env file before launching through Steam. If the shortcut
@@ -254,10 +263,13 @@ cannot be inferred from the local `userdata` folder. The shortcut updater uses
 the packaged Electron executable as its JavaScript runner when standalone
 Node.js is not installed. The shortcut suite runs preflight plus shortcut
 resolution only; it does not run the native-load gate or launch
-`steam://rungameid`. On App Control machines without standalone Node.js, the
-Electron-in-Node-mode fallback can itself be blocked unless the package has a
-trusted/reputable signature; install Node.js or run the shortcut updater from a
-repo checkout in that case.
+`steam://rungameid`. `-AssumeShortcutConfigured` still verifies the existing
+shortcut against the current package and writes
+`00-preflight/assumed-shortcut.json`; if the shortcut is stale or
+`-ShortcutGameId` does not match, the matrix stops before live launch. On App
+Control machines without standalone Node.js, the Electron-in-Node-mode fallback
+can itself be blocked unless the package has a trusted/reputable signature;
+install Node.js or run the shortcut updater from a repo checkout in that case.
 Do not reuse older wrapper-script shortcuts for Windows overlay proof. The
 current package does not ship a launcher `.cmd`; a stale shortcut that points at
 one can time out before the Electron smoke app ever starts. Refresh the stable

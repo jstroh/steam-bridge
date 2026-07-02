@@ -105,6 +105,8 @@ function summarizeWindowsOverlayMatrixArtifacts(root) {
       warnings,
       preflight: null,
       liveRunReadiness: null,
+      assumedShortcut: null,
+      renderHealth: null,
       nativeLoadBlocker: null,
       manifest: null,
       caseSummaries,
@@ -131,6 +133,20 @@ function summarizeWindowsOverlayMatrixArtifacts(root) {
   const liveRunReadiness = readJsonIfPresent(path.join(preflightDir, "live-run-readiness.json"), failures);
   if (liveRunReadiness) {
     validateLiveRunReadiness(liveRunReadiness, failures);
+  }
+
+  const assumedShortcut = readJsonIfPresent(path.join(preflightDir, "assumed-shortcut.json"), failures);
+  if (assumedShortcut) {
+    validateAssumedShortcut(assumedShortcut, failures);
+  }
+
+  const renderHealthGate = readJsonIfPresent(path.join(preflightDir, "render-health-gate.json"), failures);
+  const renderHealth = readJsonIfPresent(
+    path.join(preflightDir, "render-health", "render-health-summary.json"),
+    failures
+  );
+  if (renderHealthGate || renderHealth) {
+    validateRenderHealth(renderHealth, renderHealthGate, failures);
   }
 
   const appControlGate = readJsonIfPresent(path.join(preflightDir, "native-load-gate-app-control.json"), failures);
@@ -188,6 +204,8 @@ function summarizeWindowsOverlayMatrixArtifacts(root) {
     warnings,
     preflight: preflight ? summarizePreflight(preflight) : null,
     liveRunReadiness: liveRunReadiness ? summarizeReadiness(liveRunReadiness) : null,
+    assumedShortcut: assumedShortcut ? summarizeAssumedShortcut(assumedShortcut) : null,
+    renderHealth: renderHealth || renderHealthGate ? summarizeRenderHealth(renderHealth, renderHealthGate) : null,
     nativeLoadBlocker: nativeLoadBlocker ? summarizeNativeLoadBlocker(nativeLoadBlocker) : null,
     manifest: manifest ? summarizeManifest(manifest) : null,
     caseSummaries,
@@ -335,6 +353,66 @@ function validateLiveRunReadiness(readiness, failures) {
       typeof readiness.windowsSession.currentSessionInteractive === "boolean",
       "live-run readiness windowsSession.currentSessionInteractive is boolean",
       failures
+    );
+  }
+}
+
+function validateAssumedShortcut(shortcut, failures) {
+  expect(typeof shortcut.ok === "boolean", "assumed shortcut ok is boolean", failures);
+  expect(Boolean(shortcut.generatedAt), "assumed shortcut generatedAt is present", failures);
+  expect(Boolean(shortcut.shortcutName), "assumed shortcut name is present", failures);
+  expect(typeof shortcut.changed === "boolean", "assumed shortcut changed is boolean", failures);
+  expect(typeof shortcut.existingMatches === "boolean", "assumed shortcut existingMatches is boolean", failures);
+  if (shortcut.ok !== true) {
+    failures.push(
+      `assumed Steam shortcut invalid for ${shortcut.shortcutName || "unknown"}: ` +
+        `action=${shortcut.action || "unknown"} changed=${formatValue(shortcut.changed)}`
+    );
+  }
+}
+
+function validateRenderHealth(renderHealth, gate, failures) {
+  if (gate) {
+    expect(
+      gate.kind === "steam-bridge-windows-render-health-gate",
+      "render-health gate kind is steam-bridge-windows-render-health-gate",
+      failures
+    );
+    expect(Boolean(gate.generatedAt), "render-health gate generatedAt is present", failures);
+    expect(typeof gate.required === "boolean", "render-health gate required is boolean", failures);
+    expect(typeof gate.skipped === "boolean", "render-health gate skipped is boolean", failures);
+  }
+
+  if (gate && gate.skipped === true) {
+    expect(Boolean(gate.reason), "skipped render-health gate reason is present", failures);
+    return;
+  }
+
+  if (!renderHealth) {
+    failures.push("missing render-health summary for a non-skipped render-health gate");
+    return;
+  }
+
+  expect(
+    renderHealth.kind === "steam-bridge-windows-render-health-probe",
+    "render-health summary kind is steam-bridge-windows-render-health-probe",
+    failures
+  );
+  expect(Boolean(renderHealth.generatedAt), "render-health summary generatedAt is present", failures);
+  expect(Array.isArray(renderHealth.cases), "render-health summary cases is an array", failures);
+  const recommendation = renderHealth.recommendation || {};
+  expect(Boolean(recommendation.status), "render-health recommendation status is present", failures);
+  expect(
+    typeof recommendation.readyForSteamOverlayMatrix === "boolean",
+    "render-health readyForSteamOverlayMatrix is boolean",
+    failures
+  );
+
+  const required = !gate || gate.required !== false;
+  if (required && recommendation.readyForSteamOverlayMatrix !== true) {
+    failures.push(
+      `Windows default render health is not ready for Steam-launched overlay proof: ` +
+        `${recommendation.status || "unknown"}; ${recommendation.nextAction || "inspect render-health artifacts"}`
     );
   }
 }
@@ -515,6 +593,27 @@ function printSummary(summary) {
         `interactive=${formatValue(summary.liveRunReadiness.currentSessionInteractive)}`
     );
   }
+  if (summary.assumedShortcut) {
+    console.log(
+      `assumedShortcut: ok=${summary.assumedShortcut.ok} ` +
+        `name=${summary.assumedShortcut.shortcutName || "unknown"} ` +
+        `changed=${summary.assumedShortcut.changed} action=${summary.assumedShortcut.action || "unknown"} ` +
+        `expectedGameId=${summary.assumedShortcut.expectedShortcutGameId || "unknown"} ` +
+        `existingGameId=${summary.assumedShortcut.existingGameId || "unknown"} ` +
+        `existingExeExists=${formatValue(summary.assumedShortcut.existingExeExists)}`
+    );
+  }
+  if (summary.renderHealth) {
+    console.log(
+      `renderHealth: status=${summary.renderHealth.status || "unknown"} ` +
+        `ready=${formatValue(summary.renderHealth.readyForSteamOverlayMatrix)} ` +
+        `required=${formatValue(summary.renderHealth.required)} ` +
+        `skipped=${formatValue(summary.renderHealth.skipped)} ` +
+        `defaultVisible=${formatValue(summary.renderHealth.defaultVisible)} ` +
+        `dcompVisible=${formatValue(summary.renderHealth.disableDirectCompositionVisible)} ` +
+        `dcompFatal=${formatValue(summary.renderHealth.disableDirectCompositionFatal)}`
+    );
+  }
   if (summary.nativeLoadBlocker) {
     console.log(
       `native-load blocker: code=${summary.nativeLoadBlocker.blockerCode} ` +
@@ -594,6 +693,46 @@ function summarizeReadiness(readiness) {
     warningCount: Array.isArray(readiness.warnings) ? readiness.warnings.length : 0,
     currentSessionId: windowsSession.currentSessionId,
     currentSessionInteractive: windowsSession.currentSessionInteractive
+  };
+}
+
+function summarizeAssumedShortcut(shortcut) {
+  const result = objectOrEmpty(shortcut.result);
+  const expected = objectOrEmpty(result.expected);
+  const existing = objectOrEmpty(result.existing);
+  return {
+    ok: shortcut.ok === true,
+    shortcutName: shortcut.shortcutName || "",
+    requestedShortcutGameId: shortcut.requestedShortcutGameId || "",
+    expectedShortcutGameId: shortcut.expectedShortcutGameId || "",
+    changed: shortcut.changed === true,
+    action: shortcut.action || "",
+    existingMatches: shortcut.existingMatches === true,
+    expectedExeExists: expected.exeExists,
+    existingExeExists: existing.exeExists,
+    existingGameId: existing.gameId || ""
+  };
+}
+
+function summarizeRenderHealth(renderHealth, gate) {
+  const recommendation = objectOrEmpty(renderHealth && renderHealth.recommendation);
+  const cases = Array.isArray(renderHealth && renderHealth.cases) ? renderHealth.cases : [];
+  const defaultCase = cases.find((entry) => entry && entry.name === "in-process-gpu-on") || {};
+  return {
+    status: gate && gate.status ? gate.status : recommendation.status || "",
+    readyForSteamOverlayMatrix: Boolean(
+      gate && "readyForSteamOverlayMatrix" in gate
+        ? gate.readyForSteamOverlayMatrix
+        : recommendation.readyForSteamOverlayMatrix
+    ),
+    required: gate ? gate.required !== false : true,
+    skipped: Boolean(gate && gate.skipped === true),
+    reason: (gate && gate.reason) || "",
+    defaultVisible: defaultCase.contentVisible,
+    defaultBlankLike: defaultCase.blankLike,
+    disableDirectCompositionVisible: recommendation.disableDirectCompositionVisible,
+    disableDirectCompositionFatal: recommendation.disableDirectCompositionFatal,
+    nextAction: (gate && gate.nextAction) || recommendation.nextAction || ""
   };
 }
 
@@ -937,6 +1076,29 @@ function runSelfTest() {
       "summary self-test should still fail when a Steam-launched case has no smoke result"
     );
 
+    const assumedShortcutDriftRoot = path.join(tempRoot, "assumed-shortcut-drift");
+    writeAssumedShortcutDriftFixture(assumedShortcutDriftRoot);
+    const assumedShortcutDriftSummary = summarizeWindowsOverlayMatrixArtifacts(assumedShortcutDriftRoot);
+    assert.equal(assumedShortcutDriftSummary.assumedShortcut.changed, true);
+    assert.equal(assumedShortcutDriftSummary.assumedShortcut.existingExeExists, false);
+    assert(
+      assumedShortcutDriftSummary.failures.some((failure) =>
+        failure.includes("assumed Steam shortcut invalid")
+      ),
+      "summary self-test should fail when an assumed shortcut points at stale launch fields"
+    );
+
+    const renderHealthBlockedRoot = path.join(tempRoot, "render-health-blocked");
+    writeRenderHealthBlockedFixture(renderHealthBlockedRoot);
+    const renderHealthBlockedSummary = summarizeWindowsOverlayMatrixArtifacts(renderHealthBlockedRoot);
+    assert.equal(renderHealthBlockedSummary.renderHealth.status, "default-blank-baseline-visible");
+    assert(
+      renderHealthBlockedSummary.failures.some((failure) =>
+        failure.includes("Windows default render health is not ready")
+      ),
+      "summary self-test should fail when default render health is not ready"
+    );
+
     const steamLaunchBlockerWithResultRoot = path.join(tempRoot, "steam-launch-blocker-with-result");
     writeSteamLaunchBlockedFixture(steamLaunchBlockerWithResultRoot);
     writeResult(path.join(steamLaunchBlockerWithResultRoot, "99-none", "result.log"), {
@@ -1270,6 +1432,146 @@ function writeSteamLaunchBlockedFixture(root) {
       }
     ],
     nextActions: ["Use a trusted and reputable publisher-signed package."]
+  });
+}
+
+function writeAssumedShortcutDriftFixture(root) {
+  writeJson(path.join(root, "matrix-manifest.json"), {
+    kind: "steam-bridge-windows-overlay-matrix-manifest",
+    generatedAt: "2026-07-02T00:00:00.000Z",
+    suite: "shortcut",
+    launchMode: "steam-launch",
+    appId: 480,
+    onlyCase: "",
+    expectedCaseCount: 0,
+    cases: []
+  });
+  writeJson(path.join(root, "00-preflight", "preflight.json"), {
+    kind: "steam-bridge-windows-preflight",
+    generatedAt: "2026-07-02T00:00:00.000Z",
+    app: {
+      exe: { exists: true },
+      nativeAddon: { exists: true }
+    },
+    appControlPolicy: {
+      verifiedAndReputableEnforced: false
+    },
+    recentCodeIntegrityEvents: [],
+    windowsSession: {
+      currentSessionId: 1,
+      interactiveSessionIds: [1],
+      currentSessionInteractive: true
+    }
+  });
+  writeJson(path.join(root, "00-preflight", "assumed-shortcut.json"), {
+    ok: false,
+    generatedAt: "2026-07-02T00:00:01.000Z",
+    shortcutName: "Steam Bridge Smoke",
+    requestedShortcutGameId: "111",
+    expectedShortcutGameId: "222",
+    changed: true,
+    action: "updated",
+    existingMatches: false,
+    result: {
+      appName: "Steam Bridge Smoke",
+      changed: true,
+      action: "updated",
+      gameId: "222",
+      expected: {
+        gameId: "222",
+        exeExists: true
+      },
+      existing: {
+        gameId: "111",
+        exeExists: false
+      },
+      existingMatches: false
+    }
+  });
+}
+
+function writeRenderHealthBlockedFixture(root) {
+  const nextAction =
+    "The app renders when in-process GPU is disabled, but that mode is not overlay proof; continue with a safer graphics/presenter investigation.";
+  writeJson(path.join(root, "matrix-manifest.json"), {
+    kind: "steam-bridge-windows-overlay-matrix-manifest",
+    generatedAt: "2026-07-02T00:00:00.000Z",
+    suite: "preflight",
+    launchMode: "steam-launch",
+    appId: 480,
+    onlyCase: "",
+    expectedCaseCount: 0,
+    cases: []
+  });
+  writeJson(path.join(root, "00-preflight", "preflight.json"), {
+    kind: "steam-bridge-windows-preflight",
+    generatedAt: "2026-07-02T00:00:00.000Z",
+    app: {
+      exe: { exists: true },
+      nativeAddon: { exists: true }
+    },
+    appControlPolicy: {
+      verifiedAndReputableEnforced: false
+    },
+    recentCodeIntegrityEvents: [],
+    windowsSession: {
+      currentSessionId: 1,
+      interactiveSessionIds: [1],
+      currentSessionInteractive: true
+    }
+  });
+  writeJson(path.join(root, "00-preflight", "render-health-gate.json"), {
+    kind: "steam-bridge-windows-render-health-gate",
+    generatedAt: "2026-07-02T00:00:02.000Z",
+    required: true,
+    skipped: false,
+    passed: false,
+    status: "default-blank-baseline-visible",
+    readyForSteamOverlayMatrix: false,
+    nextAction,
+    summaryPath: "00-preflight/render-health/render-health-summary.json",
+    logPath: "00-preflight/render-health.log",
+    error: "windows-render-health-probe.ps1 exited with code 1"
+  });
+  writeJson(path.join(root, "00-preflight", "render-health", "render-health-summary.json"), {
+    kind: "steam-bridge-windows-render-health-probe",
+    generatedAt: "2026-07-02T00:00:02.000Z",
+    appDir: "C:\\Smoke",
+    appId: 480,
+    artifactRoot: "C:\\Artifacts\\render-health",
+    overlayProfile: "diagnostic",
+    windowMode: "windowed",
+    resultDelayMs: 3000,
+    postResultCrashWindowMs: 3000,
+    recommendation: {
+      status: "default-blank-baseline-visible",
+      readyForSteamOverlayMatrix: false,
+      defaultCaseHealthy: false,
+      inProcessGpuOffVisible: true,
+      disableDirectCompositionVisible: false,
+      disableDirectCompositionFatal: false,
+      nextAction
+    },
+    cases: [
+      {
+        name: "in-process-gpu-on",
+        contentVisible: false,
+        blankLike: true,
+        fatalLifecycleEventCount: 0
+      },
+      {
+        name: "in-process-gpu-off",
+        contentVisible: true,
+        blankLike: false,
+        fatalLifecycleEventCount: 0
+      },
+      {
+        name: "in-process-gpu-on-disable-direct-composition",
+        contentVisible: false,
+        blankLike: true,
+        fatalLifecycleEventCount: 0
+      }
+    ]
   });
 }
 

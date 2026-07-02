@@ -28,6 +28,8 @@ param(
   [string]$OnlyCase = "",
   [int]$TimeoutSeconds = 120,
   [switch]$SkipNativeLoadGate,
+  [switch]$SkipRenderHealthGate,
+  [switch]$AllowUnhealthyDefaultRender,
   [switch]$CleanStaleOverlayHelpers,
   [switch]$AllowUnhealthySteamClientLogs,
   [int]$SteamClientHealthRecentMinutes = 30,
@@ -75,6 +77,23 @@ function Resolve-HelperPath {
     throw "Missing windows-electron-smoke.ps1 at $helper"
   }
   return $helper
+}
+
+function Resolve-RenderHealthProbePath {
+  $probe = Join-Path $AppDir "windows-render-health-probe.ps1"
+  if (Test-Path -LiteralPath $probe) {
+    return $probe
+  }
+
+  $scriptDir = Split-Path -Parent $PSCommandPath
+  if ($scriptDir) {
+    $repoProbe = Join-Path $scriptDir "windows-render-health-probe.ps1"
+    if (Test-Path -LiteralPath $repoProbe) {
+      return $repoProbe
+    }
+  }
+
+  throw "Missing windows-render-health-probe.ps1 beside the package or matrix script."
 }
 
 function Resolve-SmokeExe {
@@ -540,6 +559,20 @@ function Test-NeedsWindowsLiveRunReadiness {
 function Test-IsLiveSteamLaunchSuite {
   $needsReadiness = Test-NeedsWindowsLiveRunReadiness
   return ($needsReadiness -and $Suite -ne "readiness")
+}
+
+function Convert-OverlayFlagToBoolean {
+  param([string]$Value)
+
+  if (-not $Value) {
+    return $false
+  }
+  $normalized = $Value.Trim().ToLowerInvariant()
+  return @("1", "true", "yes", "on") -contains $normalized
+}
+
+function Test-UsesDefaultWindowsRenderPath {
+  return ($OverlayInProcessGpu -ne "0" -and -not (Convert-OverlayFlagToBoolean -Value $OverlayDisableDirectComposition))
 }
 
 function Get-CurrentWindowsSessionId {
@@ -1199,6 +1232,112 @@ function Test-NativeLoadGate {
   }
 }
 
+function Invoke-RenderHealthGate {
+  param([string]$PreflightDir)
+
+  if (-not (Test-IsLiveSteamLaunchSuite)) {
+    return
+  }
+
+  $gatePath = Join-Path $PreflightDir "render-health-gate.json"
+  if ($SkipRenderHealthGate) {
+    Write-MatrixJsonFile -Path $gatePath -Value ([PSCustomObject]@{
+      kind = "steam-bridge-windows-render-health-gate"
+      generatedAt = (Get-Date).ToUniversalTime().ToString("o")
+      required = $false
+      skipped = $true
+      reason = "skip-render-health-gate"
+    }) -Depth 6
+    Write-Host "Windows render-health gate skipped because -SkipRenderHealthGate was provided."
+    return
+  }
+
+  if (-not (Test-UsesDefaultWindowsRenderPath)) {
+    Write-MatrixJsonFile -Path $gatePath -Value ([PSCustomObject]@{
+      kind = "steam-bridge-windows-render-health-gate"
+      generatedAt = (Get-Date).ToUniversalTime().ToString("o")
+      required = $false
+      skipped = $true
+      reason = "non-default-render-comparison"
+      overlayInProcessGpu = $OverlayInProcessGpu
+      overlayDisableDirectComposition = $OverlayDisableDirectComposition
+    }) -Depth 6
+    Write-Host "Windows render-health gate skipped for an explicit non-default render comparison."
+    return
+  }
+
+  $probe = Resolve-RenderHealthProbePath
+  $renderHealthDir = Join-Path $PreflightDir "render-health"
+  $renderHealthLog = Join-Path $PreflightDir "render-health.log"
+  $summaryPath = Join-Path $renderHealthDir "render-health-summary.json"
+  $required = -not [bool]$AllowUnhealthyDefaultRender
+  $probeArgs = @(
+    "-AppDir", $AppDir,
+    "-ArtifactRoot", $renderHealthDir,
+    "-AppId", "$AppId",
+    "-OverlayProfile", $OverlayProfile,
+    "-WindowMode", $WindowMode
+  )
+  if ($required) {
+    $probeArgs += @("-FailOnUnhealthyDefault")
+  }
+
+  Write-Host "Running Windows render-health gate before live Steam overlay cases."
+  $output = @()
+  $exitCode = 1
+  $probeError = $null
+  try {
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+      $ErrorActionPreference = "Continue"
+      $output = & powershell -NoProfile -ExecutionPolicy Bypass -File $probe @probeArgs *>&1
+      $exitCode = $LASTEXITCODE
+    } finally {
+      $ErrorActionPreference = $previousErrorActionPreference
+    }
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $renderHealthLog) | Out-Null
+    $output | Tee-Object -FilePath $renderHealthLog
+    if ($exitCode -ne 0) {
+      throw "windows-render-health-probe.ps1 exited with code $exitCode"
+    }
+  } catch {
+    $probeError = $_.Exception.Message
+  }
+
+  $summary = Read-MatrixJsonFile -Path $summaryPath
+  $recommendation = if ($summary) { $summary.recommendation } else { $null }
+  $ready = if ($recommendation) { [bool]$recommendation.readyForSteamOverlayMatrix } else { $false }
+  Write-MatrixJsonFile -Path $gatePath -Value ([PSCustomObject]@{
+    kind = "steam-bridge-windows-render-health-gate"
+    generatedAt = (Get-Date).ToUniversalTime().ToString("o")
+    required = $required
+    skipped = $false
+    passed = ($probeError -eq $null -and ($ready -or -not $required))
+    status = if ($recommendation) { $recommendation.status } else { $null }
+    readyForSteamOverlayMatrix = $ready
+    nextAction = if ($recommendation) { $recommendation.nextAction } else { $null }
+    summaryPath = $summaryPath
+    logPath = $renderHealthLog
+    error = $probeError
+  }) -Depth 8
+
+  if ($probeError) {
+    throw (
+      "Windows render-health gate failed before live overlay cases. " +
+      "See $renderHealthLog, $summaryPath, and $gatePath. $probeError"
+    )
+  }
+
+  if ($required -and -not $ready) {
+    throw (
+      "Windows default render health is not ready for Steam-launched overlay matrix proof. " +
+      "See $summaryPath and $gatePath."
+    )
+  }
+
+  Write-Host ("Windows render-health gate passed. Details: {0}" -f $summaryPath)
+}
+
 function Read-PrefixedJson {
   param([string]$Text, [string]$Prefix)
 
@@ -1224,13 +1363,6 @@ function Get-StableShortcutLaunchOptions {
 }
 
 function Ensure-SteamShortcut {
-  if (-not $InstallShortcut) {
-    if ($AssumeShortcutConfigured) {
-      return
-    }
-    throw "Steam-launched Windows matrix runs require -InstallShortcut or -AssumeShortcutConfigured so the shortcut uses -LaunchEnvFile."
-  }
-
   $shortcuts = Resolve-ShortcutsPath
   $upsert = Resolve-UpsertShortcutPath
   $runner = Resolve-JavaScriptRunner
@@ -1250,6 +1382,43 @@ function Ensure-SteamShortcut {
 
   $dryOutput = Invoke-JavaScriptRunner -Runner $runner -Arguments @($baseArgs + "--dry-run")
   $dryResult = Read-PrefixedJson -Text ($dryOutput -join "`n") -Prefix "STEAM_SHORTCUT_RESULT "
+
+  if (-not $InstallShortcut) {
+    if ($AssumeShortcutConfigured) {
+      $assumedShortcutPath = Join-Path (Join-Path $ArtifactRoot "00-preflight") "assumed-shortcut.json"
+      $assumedShortcut = [PSCustomObject]@{
+        ok = -not [bool]$dryResult.changed
+        generatedAt = (Get-Date).ToUniversalTime().ToString("o")
+        shortcutName = $ShortcutName
+        requestedShortcutGameId = $ShortcutGameId
+        expectedShortcutGameId = [string]$dryResult.gameId
+        changed = [bool]$dryResult.changed
+        action = $dryResult.action
+        existingMatches = [bool]$dryResult.existingMatches
+        result = $dryResult
+      }
+      Write-MatrixJsonFile -Path $assumedShortcutPath -Value $assumedShortcut -Depth 12
+
+      if ($dryResult.changed) {
+        throw (
+          "The assumed Steam shortcut `"$ShortcutName`" does not match the current package. " +
+          "Refresh it with -Suite shortcut -InstallShortcut while Steam is closed before live overlay cases. " +
+          "Details: $assumedShortcutPath"
+        )
+      }
+      if ($ShortcutGameId -and ([string]$ShortcutGameId -ne [string]$dryResult.gameId)) {
+        throw (
+          "The provided -ShortcutGameId $ShortcutGameId does not match the stable shortcut game ID $($dryResult.gameId) " +
+          "for `"$ShortcutName`". Details: $assumedShortcutPath"
+        )
+      }
+      $script:ShortcutGameId = [string]$dryResult.gameId
+      Write-Host ("Windows assumed Steam shortcut verified. Launch URL: steam://rungameid/{0}" -f $script:ShortcutGameId)
+      return
+    }
+    throw "Steam-launched Windows matrix runs require -InstallShortcut or -AssumeShortcutConfigured so the shortcut uses -LaunchEnvFile."
+  }
+
   if ($dryResult.changed -and (Get-Process steam -ErrorAction SilentlyContinue) -and -not $AllowShortcutUpdateWhileSteamRunning) {
     throw (
       "The Steam shortcut `"$ShortcutName`" needs to be $($dryResult.action), but Steam is running. " +
@@ -1429,6 +1598,8 @@ function Write-MatrixManifest {
     closeProbe = [bool]$CloseProbe
     closeProbeInput = $CloseProbeInput
     skipNativeLoadGate = [bool]$SkipNativeLoadGate
+    skipRenderHealthGate = [bool]$SkipRenderHealthGate
+    allowUnhealthyDefaultRender = [bool]$AllowUnhealthyDefaultRender
     installShortcut = [bool]$InstallShortcut
     assumeShortcutConfigured = [bool]$AssumeShortcutConfigured
     targetHints = [PSCustomObject]@{
@@ -1850,6 +2021,7 @@ function Invoke-Preflight {
 
   if ($Suite -ne "preflight" -and $Suite -ne "readiness" -and $Suite -ne "shortcut") {
     Test-NativeLoadGate -PreflightDir $preflightDir -PreflightJson $preflightJson
+    Invoke-RenderHealthGate -PreflightDir $preflightDir
   }
 }
 
@@ -2050,6 +2222,8 @@ Write-Host ("  inProcessGpu: {0}" -f $OverlayInProcessGpu)
 Write-Host ("  disableDirectComposition: {0}" -f $OverlayDisableDirectComposition)
 Write-Host ("  scrubChildEnv: {0}" -f $OverlayScrubChildEnv)
 Write-Host ("  isolateChildProcesses: {0}" -f $OverlayIsolateChildProcesses)
+Write-Host ("  skipRenderHealthGate: {0}" -f $SkipRenderHealthGate)
+Write-Host ("  allowUnhealthyDefaultRender: {0}" -f $AllowUnhealthyDefaultRender)
 Write-Host ("  userDialog: {0}" -f $UserDialog)
 Write-Host ("  cleanStaleOverlayHelpers: {0}" -f $CleanStaleOverlayHelpers)
 if ($OnlyCase) {

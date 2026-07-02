@@ -71,8 +71,8 @@ function main() {
   const existingKey = findShortcutKey(shortcuts, options.appName);
   const key = existingKey ?? nextShortcutKey(shortcuts);
   const existingEntry = existingKey == null ? null : shortcuts[existingKey];
-  const unchanged =
-    existingEntry != null && outputPath === shortcutsPath && shortcutLaunchFieldsMatch(existingEntry, entry);
+  const existingMatches = existingEntry != null && shortcutLaunchFieldsMatch(existingEntry, entry);
+  const unchanged = existingMatches && outputPath === shortcutsPath;
   const action = unchanged ? "unchanged" : existingKey == null ? "added" : "updated";
 
   if (!unchanged && !options.dryRun) {
@@ -115,7 +115,10 @@ function main() {
         outputPath,
         appid: entry.appid,
         gameId,
-        launchUrl: `steam://rungameid/${gameId}`
+        launchUrl: `steam://rungameid/${gameId}`,
+        expected: summarizeShortcutEntry(entry),
+        existing: existingEntry ? summarizeShortcutEntry(existingEntry) : null,
+        existingMatches
       })}`
     );
   }
@@ -312,6 +315,25 @@ function computeShortcutGameId(appid) {
   return String((BigInt(appid >>> 0) << 32n) | 0x02000000n);
 }
 
+function summarizeShortcutEntry(entry) {
+  const appid = Number(entry.appid || 0) >>> 0;
+  const exePath = unquotePath(entry.Exe || "");
+  const startDirPath = unquotePath(entry.StartDir || "");
+  return {
+    appid,
+    gameId: computeShortcutGameId(appid),
+    appName: String(entry.appname || ""),
+    exe: String(entry.Exe || ""),
+    exePath,
+    exeExists: exePath ? fs.existsSync(exePath) : false,
+    startDir: String(entry.StartDir || ""),
+    startDirPath,
+    startDirExists: startDirPath ? fs.existsSync(startDirPath) : false,
+    launchOptions: String(entry.LaunchOptions || ""),
+    allowOverlay: Number(entry.AllowOverlay || 0) >>> 0
+  };
+}
+
 function crc32(value) {
   const bytes = Buffer.from(value, "utf8");
   let crc = 0xffffffff;
@@ -339,6 +361,11 @@ function crc32Table() {
 function quotePath(value) {
   const text = String(value);
   return text.startsWith("\"") && text.endsWith("\"") ? text : `"${text}"`;
+}
+
+function unquotePath(value) {
+  const text = String(value || "").trim();
+  return text.startsWith("\"") && text.endsWith("\"") ? text.slice(1, -1) : text;
 }
 
 function ensureTrailingSlash(value) {
@@ -465,13 +492,16 @@ function runSelfTest() {
     LastPlayTime: 999999,
     tags: { local: "ignored" }
   });
+  const summary = summarizeShortcutEntry(shortcut);
   if (
     !shortcut ||
     shortcut.appname !== "Example" ||
     shortcut.AllowOverlay !== 1 ||
     terminator[0] !== TYPE_END ||
     terminator[1] !== TYPE_END ||
-    !materialMatch
+    !materialMatch ||
+    summary.gameId !== computeShortcutGameId(123) ||
+    summary.exePath !== "/tmp/example"
   ) {
     throw new Error("Binary VDF self-test failed.");
   }
