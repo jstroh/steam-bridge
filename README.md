@@ -330,6 +330,9 @@ overlay case, because Authenticode status alone does not prove SAC/App Control
 will allow the native addon to load. Windows live cases also require clean
 Electron crash diagnostics, so hidden renderer/GPU/native crashes fail the smoke
 helper instead of becoming a manual post-run surprise.
+Direct Windows smoke runs pass smoke state through the child process environment
+instead of Electron command-line switches, which keeps interactive desktop-session
+runs and private checkout values out of fragile process arguments.
 
 ```ts
 import { app, BrowserWindow } from "electron";

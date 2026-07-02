@@ -330,6 +330,7 @@ function runWindowsSmokeHelperStaticChecks() {
     "--steam-bridge-smoke-env-file=$SmokeEnvFile",
     "write-launch-env",
     "Get-SmokeEnv",
+    "Set-SmokeProcessEnv",
     "PreflightJsonFile",
     "Write-JsonFile",
     "steam-bridge-windows-preflight",

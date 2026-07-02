@@ -68,6 +68,10 @@ smoke app. Pass `-PreflightJsonFile <path>` to write the same report as
 structured JSON. If the native addon is blocked there, Steam cannot initialize
 and overlay proof must wait for a trusted/reputable signed package or an
 explicitly SAC-disabled development machine.
+For direct native-load checks, the Windows helper passes smoke state through the
+child process environment rather than Electron command-line switches, which keeps
+interactive Task Scheduler runs and private checkout values out of fragile
+process arguments.
 The packaged smoke app also includes `sign-windows-package.ps1` so Windows test
 machines can sign the exact bundle that Steam launches. Use
 `.\sign-windows-package.ps1 -CertificateThumbprint "<thumbprint>"` with an

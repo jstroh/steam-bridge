@@ -4,8 +4,8 @@ This is a tiny Electron app for proving that Steam Bridge can initialize Steam,
 read basic Steamworks state, and exercise overlay paths on supported Steam
 desktop platforms. The deepest automated coverage currently targets Steam Deck
 Desktop Mode and macOS Apple Silicon; Linux x64 helper coverage is verified
-through the Deck, and Windows x64 helper coverage is implemented pending a live
-Windows Steam run.
+through the Deck, and Windows x64 helper coverage now includes a live
+interactive native-load gate while Steam-launched overlay proof continues.
 
 It uses Valve's SpaceWar sample App ID `480` by default. Override it with
 `STEAM_BRIDGE_APP_ID` when testing your own app.
@@ -125,6 +125,9 @@ native addon under SAC/App Control fail with artifacts under
 `00-preflight/preflight.json`, and native-load failures also write
 `00-preflight/native-load-gate/post-gate-preflight.json` after the failed load
 attempt.
+Direct Windows smoke runs pass smoke state through the child process environment
+instead of Electron command-line switches so interactive Task Scheduler launches
+and private checkout values do not depend on fragile process arguments.
 
 Outputs are written under `dist/electron-smoke/<target>/`.
 The macOS package includes `macos-electron-smoke.sh` beside

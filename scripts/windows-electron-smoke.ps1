@@ -288,6 +288,14 @@ function Write-SmokeEnvFile {
   )
 }
 
+function Set-SmokeProcessEnv {
+  param($EnvMap)
+
+  foreach ($key in $EnvMap.Keys) {
+    [System.Environment]::SetEnvironmentVariable($key, [string]$EnvMap[$key], "Process")
+  }
+}
+
 function Write-JsonFile {
   param([string]$Path, $Value)
 
@@ -762,8 +770,8 @@ function Invoke-DirectSmoke {
   Remove-Item -LiteralPath $ResultFile -Force -ErrorAction SilentlyContinue
   Remove-Item -LiteralPath $DiagnosticDir -Recurse -Force -ErrorAction SilentlyContinue
 
-  $args = Get-SmokeArgs -LogFile $ResultFile -SmokeAction $Action
-  $process = Start-Process -FilePath $exe -ArgumentList $args -WorkingDirectory $AppDir -PassThru
+  Set-SmokeProcessEnv (Get-SmokeEnv -LogFile $ResultFile -SmokeAction $Action)
+  $process = Start-Process -FilePath $exe -WorkingDirectory $AppDir -PassThru
   if (-not $process.WaitForExit($TimeoutSeconds * 1000)) {
     Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
     throw "Timed out waiting for SteamBridgeSmoke.exe to exit."
