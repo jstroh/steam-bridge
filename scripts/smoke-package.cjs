@@ -401,6 +401,9 @@ function runWindowsSmokeHelperStaticChecks() {
     "Get-OverlayHelperDiagnostics",
     "staleOverlayHelperCount",
     "resourceSnapshot",
+    "Test-WindowsLiveRunReadiness",
+    "live-run-readiness.json",
+    "The matrix will not silently start Steam for live overlay proof.",
     "steam-launch",
     "ArtifactRoot"
   ]) {

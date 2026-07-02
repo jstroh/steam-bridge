@@ -114,7 +114,10 @@ Use `-Suite preflight` to capture client health only, or pass `-OnlyCase 01-web`
 or another case ID/action when you need one focused Steam-launched probe while
 the client is recovering. Pass `-CleanStaleOverlayHelpers` only when you
 intentionally want the matrix to stop orphaned overlay helpers whose target game
-process and recorded Steam parent process are both gone.
+process and recorded Steam parent process are both gone. Live Steam-launched
+suites require Steam to already be open in the interactive Windows desktop
+session; if Steam is closed or orphan overlay helpers remain, the matrix writes
+`00-preflight/live-run-readiness.json` and stops before any live launch.
 
 The matrix installs or reuses one stable non-Steam shortcut named
 `Steam Bridge Smoke`. That shortcut points at a local smoke env file, and each

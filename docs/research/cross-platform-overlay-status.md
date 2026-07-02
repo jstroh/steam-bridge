@@ -101,7 +101,11 @@ plus Windows resource pressure and `CreateProcess failed. Error: 1455` in Steam
 logs. Current matrix artifacts therefore include overlay-helper orphan state and
 Windows memory/pagefile/top-process snapshots, and the matrix exposes an
 explicit `-CleanStaleOverlayHelpers` switch for stopping only those orphaned
-helpers before a new proof run.
+helpers before a new proof run. Live Steam-launched suites now write
+`00-preflight/live-run-readiness.json` and fail before the native-load gate or
+`steam://rungameid` launch if Steam is not already running in the interactive
+Windows desktop session, preventing accidental Steam client startup while the
+test machine is unhealthy.
 
 An experimental one-process Windows control-server run is not accepted as
 product proof. It launched and painted correctly, but the first web action ran

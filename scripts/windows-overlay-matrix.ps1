@@ -302,6 +302,65 @@ function Stop-StaleSteamOverlayHelpers {
   Write-Host ("Stale Steam overlay helper cleanup checked {0} helper(s), stopped {1}. Details: {2}" -f $helpers.Count, ($results | Where-Object { $_.status -eq "stopped" }).Count, $DestinationFile)
 }
 
+function Test-IsLiveSteamLaunchSuite {
+  return ($LaunchMode -eq "steam-launch" -and $Suite -ne "preflight" -and $Suite -ne "shortcut")
+}
+
+function Test-WindowsLiveRunReadiness {
+  param([string]$DestinationFile)
+
+  $steamProcesses = @(Get-Process steam -ErrorAction SilentlyContinue |
+    Select-Object ProcessName,Id,StartTime,Responding,MainWindowTitle,Path)
+  $overlayHelpers = @(Get-OverlayHelperDiagnostics)
+  $staleOverlayHelpers = @($overlayHelpers | Where-Object { $_.orphaned })
+  $resourceSnapshot = Get-WindowsResourceSnapshot
+  $warnings = @()
+  $errors = @()
+
+  if ($steamProcesses.Count -eq 0) {
+    $errors += (
+      "Steam is not running. Start Steam once in the interactive Windows desktop session, " +
+      "wait for the client UI to render normally, then rerun the matrix. The matrix will not silently start Steam for live overlay proof."
+    )
+  }
+  if ($staleOverlayHelpers.Count -gt 0) {
+    $errors += (
+      "Found $($staleOverlayHelpers.Count) orphaned Steam overlay helper process(es). " +
+      "Rerun with -CleanStaleOverlayHelpers before live overlay proof."
+    )
+  }
+
+  $freeVirtualMB = $null
+  if ($resourceSnapshot -and $resourceSnapshot.operatingSystem) {
+    $freeVirtualMB = $resourceSnapshot.operatingSystem.freeVirtualMB
+  }
+  if ($freeVirtualMB -ne $null -and $freeVirtualMB -lt 2048) {
+    $warnings += "Windows free virtual memory is low ($freeVirtualMB MB); Steam overlay helper creation can fail under resource pressure."
+  }
+
+  Write-MatrixJsonFile -Path $DestinationFile -Value ([PSCustomObject]@{
+    kind = "steam-bridge-windows-live-run-readiness"
+    generatedAt = (Get-Date).ToUniversalTime().ToString("o")
+    steamProcesses = @($steamProcesses)
+    overlayHelpers = @($overlayHelpers)
+    staleOverlayHelperCount = $staleOverlayHelpers.Count
+    resourceSnapshot = $resourceSnapshot
+    warnings = @($warnings)
+    errors = @($errors)
+  }) -Depth 8
+
+  foreach ($warning in $warnings) {
+    Write-Host ("  live-readiness warning: {0}" -f $warning)
+  }
+  if ($errors.Count -gt 0) {
+    foreach ($errorMessage in $errors) {
+      Write-Host ("  live-readiness error: {0}" -f $errorMessage)
+    }
+    throw "Windows live Steam-launched overlay readiness failed. See $DestinationFile."
+  }
+  Write-Host ("Windows live Steam-launched overlay readiness passed. Details: {0}" -f $DestinationFile)
+}
+
 function Collect-SteamClientDiagnostics {
   param([string]$DestinationDir, [string]$Phase)
 
@@ -788,6 +847,10 @@ function Invoke-Preflight {
     ) -LogFile $preflightLog
   } finally {
     Collect-SteamClientDiagnostics -DestinationDir (Join-Path $preflightDir "steam-client") -Phase "preflight"
+  }
+
+  if (Test-IsLiveSteamLaunchSuite) {
+    Test-WindowsLiveRunReadiness -DestinationFile (Join-Path $preflightDir "live-run-readiness.json")
   }
 
   Test-NativeLoadGate -PreflightDir $preflightDir

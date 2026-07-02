@@ -105,7 +105,10 @@ Steam-client health capture only, and pass `-OnlyCase 01-web` or another case
 ID/action when a shaky client needs one focused live probe instead of a whole
 suite. Pass `-CleanStaleOverlayHelpers` only when you intentionally want the
 matrix to stop orphaned Steam overlay helper processes whose target game process
-and recorded Steam parent process are both gone.
+and recorded Steam parent process are both gone. Live Steam-launched suites
+require Steam to already be open in the interactive Windows desktop session; the
+matrix stops before live launch if `00-preflight/live-run-readiness.json`
+records a closed Steam client or remaining orphan overlay helpers.
 
 ## Quick Start
 

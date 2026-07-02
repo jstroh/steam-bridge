@@ -774,7 +774,11 @@ the private `--checkout-json-file` checkout suite.
   when you need one focused Steam-launched probe instead of a full suite. Pass
   `-CleanStaleOverlayHelpers` only when you intentionally want the matrix to
   stop orphaned Steam overlay helper processes whose target game process and
-  recorded Steam parent process are both gone.
+  recorded Steam parent process are both gone. Live Steam-launched suites require
+  Steam to already be open in the interactive Windows desktop session; the matrix
+  records `00-preflight/live-run-readiness.json` and stops before the native-load
+  gate or `steam://rungameid` launch if Steam is closed or orphan overlay helpers
+  remain.
   The Windows matrix is intentionally process-per-case right now. A
   one-process control-server harness is useful future research, but it is not
   the Windows proof path until it can wait on overlay readiness and run without
