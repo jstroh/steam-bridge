@@ -260,6 +260,10 @@ function copyTargetHelpers(appPath) {
       path.join(repoRoot, "scripts", "windows-overlay-matrix.ps1"),
       path.join(appPath, "windows-overlay-matrix.ps1")
     );
+    fs.copyFileSync(
+      path.join(repoRoot, "scripts", "upsert-steam-shortcut.cjs"),
+      path.join(appPath, "upsert-steam-shortcut.cjs")
+    );
   }
   if (target === "x86_64-unknown-linux-gnu") {
     const helperPath = path.join(appPath, "linux-electron-smoke.sh");

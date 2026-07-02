@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-  [ValidateSet("baseline", "managed", "full", "preflight")]
+  [ValidateSet("baseline", "managed", "full", "preflight", "shortcut")]
   [string]$Suite = "baseline",
 
   [ValidateSet("steam-launch", "direct")]
@@ -10,6 +10,13 @@ param(
   [string]$ArtifactRoot = "",
   [int]$AppId = 480,
   [string]$ShortcutGameId = "",
+  [switch]$InstallShortcut,
+  [switch]$AssumeShortcutConfigured,
+  [string]$SteamUserId = "",
+  [string]$ShortcutsPath = "",
+  [string]$ShortcutName = "Steam Bridge Smoke",
+  [string]$LaunchEnvFile = "",
+  [switch]$AllowShortcutUpdateWhileSteamRunning,
   [string]$OverlayProfile = "diagnostic",
   [string]$OverlayDisableDirectComposition = "",
   [string]$WindowMode = "windowed",
@@ -37,6 +44,10 @@ if (-not $ArtifactRoot) {
   $ArtifactRoot = Join-Path $env:TEMP "steam-bridge-windows-overlay-matrix-$timestamp"
 }
 
+if (-not $LaunchEnvFile) {
+  $LaunchEnvFile = Join-Path $env:LOCALAPPDATA "SteamBridgeSmoke\steam-bridge-windows-smoke.env"
+}
+
 if (-not $WebUrl) {
   $WebUrl = "https://store.steampowered.com/app/$AppId/"
 }
@@ -59,6 +70,104 @@ function Resolve-SmokeExe {
 
 function Resolve-NativeAddon {
   return Join-Path $AppDir "resources\app\node_modules\steam-bridge\steam_bridge_native.win32-x64-msvc.node"
+}
+
+function Resolve-UpsertShortcutPath {
+  $scriptPath = Join-Path $AppDir "upsert-steam-shortcut.cjs"
+  if (-not (Test-Path -LiteralPath $scriptPath)) {
+    throw "Missing upsert-steam-shortcut.cjs at $scriptPath"
+  }
+  return $scriptPath
+}
+
+function Resolve-JavaScriptRunner {
+  $node = Get-Command node -ErrorAction SilentlyContinue
+  if ($node) {
+    return [PSCustomObject]@{
+      Command = $node.Source
+      UseElectronRunAsNode = $false
+    }
+  }
+
+  return [PSCustomObject]@{
+    Command = Resolve-SmokeExe
+    UseElectronRunAsNode = $true
+  }
+}
+
+function Invoke-JavaScriptRunner {
+  param(
+    [Parameter(Mandatory = $true)]
+    $Runner,
+    [Parameter(Mandatory = $true)]
+    [string[]]$Arguments
+  )
+
+  if ($Runner.UseElectronRunAsNode) {
+    $cmdLine =
+      "set ELECTRON_RUN_AS_NODE=1&& " +
+      (ConvertTo-CmdArgument $Runner.Command) +
+      " " +
+      (($Arguments | ForEach-Object { ConvertTo-CmdArgument $_ }) -join " ")
+    $output = & cmd.exe /d /s /c $cmdLine
+  } else {
+    $output = & $Runner.Command @Arguments
+  }
+  if ($LASTEXITCODE -ne 0) {
+    throw "JavaScript runner failed with exit code $LASTEXITCODE."
+  }
+  return $output
+}
+
+function ConvertTo-CmdArgument {
+  param([string]$Value)
+
+  if ($null -eq $Value) {
+    return '""'
+  }
+  $escaped = $Value -replace '(\\*)"', '$1$1\"'
+  $escaped = $escaped -replace '(\\+)$', '$1$1'
+  return '"' + $escaped + '"'
+}
+
+function Resolve-ShortcutsPath {
+  if ($ShortcutsPath) {
+    return $ShortcutsPath
+  }
+
+  $steamPath = ""
+  $steamRegistry = Get-ItemProperty -Path "HKCU:\Software\Valve\Steam" -ErrorAction SilentlyContinue
+  if ($steamRegistry -and $steamRegistry.SteamPath) {
+    $steamPath = $steamRegistry.SteamPath
+  }
+  if (-not $steamPath) {
+    $steamPath = Join-Path ${env:ProgramFiles(x86)} "Steam"
+  }
+
+  $userdata = Join-Path $steamPath "userdata"
+  if ($SteamUserId) {
+    return Join-Path (Join-Path (Join-Path $userdata $SteamUserId) "config") "shortcuts.vdf"
+  }
+
+  if (-not (Test-Path -LiteralPath $userdata)) {
+    throw "Could not find Steam userdata directory at $userdata. Pass -ShortcutsPath or -SteamUserId."
+  }
+
+  $candidates = @(Get-ChildItem -LiteralPath $userdata -Directory -ErrorAction SilentlyContinue |
+    ForEach-Object { Join-Path (Join-Path $_.FullName "config") "shortcuts.vdf" } |
+    Where-Object { Test-Path -LiteralPath $_ })
+  if ($candidates.Count -eq 1) {
+    return $candidates[0]
+  }
+  if ($candidates.Count -gt 1) {
+    throw "Multiple Steam shortcuts.vdf files found. Pass -ShortcutsPath or -SteamUserId."
+  }
+
+  $userDirs = @(Get-ChildItem -LiteralPath $userdata -Directory -ErrorAction SilentlyContinue)
+  if ($userDirs.Count -eq 1) {
+    return Join-Path (Join-Path $userDirs[0].FullName "config") "shortcuts.vdf"
+  }
+  throw "Could not infer a Steam shortcut file. Pass -ShortcutsPath or -SteamUserId."
 }
 
 function Get-AppControlPolicyState {
@@ -86,6 +195,72 @@ function Test-NativeLoadGate {
       "Windows Smart App Control/App Control is enabled and the native addon is $($signature.Status). " +
       "Sign the package with a trusted/reputable publisher certificate or explicitly disable SAC on this development machine before running live overlay cases."
     )
+  }
+}
+
+function Read-PrefixedJson {
+  param([string]$Text, [string]$Prefix)
+
+  $line = ($Text -split "\r?\n" | Where-Object { $_.StartsWith($Prefix) } | Select-Object -Last 1)
+  if (-not $line) {
+    throw "Missing $Prefix line in helper output."
+  }
+  return ($line.Substring($Prefix.Length) | ConvertFrom-Json)
+}
+
+function Get-StableShortcutLaunchOptions {
+  $helper = Resolve-HelperPath
+  $output = & powershell -NoProfile -ExecutionPolicy Bypass -File $helper `
+    -Mode print-launch-options `
+    -AppDir $AppDir `
+    -AppId $AppId `
+    -SmokeEnvFile $LaunchEnvFile
+  $line = @($output | Where-Object { $_ -and $_ -notlike "Steam shortcut launch options:*" } | Select-Object -First 1)
+  if (-not $line) {
+    throw "Could not compute stable Windows shortcut launch options."
+  }
+  return [string]$line
+}
+
+function Ensure-SteamShortcut {
+  if (-not $InstallShortcut) {
+    if ($AssumeShortcutConfigured) {
+      return
+    }
+    throw "Steam-launched Windows matrix runs require -InstallShortcut or -AssumeShortcutConfigured so the shortcut uses -LaunchEnvFile."
+  }
+
+  $shortcuts = Resolve-ShortcutsPath
+  $upsert = Resolve-UpsertShortcutPath
+  $runner = Resolve-JavaScriptRunner
+  $exe = Resolve-SmokeExe
+  $launchOptions = Get-StableShortcutLaunchOptions
+  $backup = Join-Path $ArtifactRoot "windows-shortcuts.vdf.bak"
+  $baseArgs = @(
+    $upsert,
+    "--shortcuts", $shortcuts,
+    "--backup", $backup,
+    "--app-name", $ShortcutName,
+    "--exe", $exe,
+    "--start-dir", $AppDir,
+    "--launch-options", $launchOptions,
+    "--json"
+  )
+
+  $dryOutput = Invoke-JavaScriptRunner -Runner $runner -Arguments @($baseArgs + "--dry-run")
+  $dryResult = Read-PrefixedJson -Text ($dryOutput -join "`n") -Prefix "STEAM_SHORTCUT_RESULT "
+  if ($dryResult.changed -and (Get-Process steam -ErrorAction SilentlyContinue) -and -not $AllowShortcutUpdateWhileSteamRunning) {
+    throw (
+      "The Steam shortcut `"$ShortcutName`" needs to be $($dryResult.action), but Steam is running. " +
+      "Fully quit Steam and rerun this matrix, or pass -AllowShortcutUpdateWhileSteamRunning if you intentionally want to update shortcuts.vdf while Steam is open."
+    )
+  }
+
+  $output = Invoke-JavaScriptRunner -Runner $runner -Arguments $baseArgs
+  $output | Write-Host
+  $result = Read-PrefixedJson -Text ($output -join "`n") -Prefix "STEAM_SHORTCUT_RESULT "
+  if (-not $ShortcutGameId) {
+    $script:ShortcutGameId = [string]$result.gameId
   }
 }
 
@@ -142,6 +317,7 @@ function Get-MatrixCases {
     "managed" { return $managed }
     "full" { return @($baseline + $managed) }
     "preflight" { return @() }
+    "shortcut" { return @() }
   }
 }
 
@@ -177,6 +353,45 @@ function Invoke-Preflight {
   Test-NativeLoadGate
 }
 
+function Write-CaseLaunchEnv {
+  param($Case, [string]$ResultFile, [string]$DiagnosticDir)
+
+  $args = @(
+    "-Mode", "write-launch-env",
+    "-AppDir", $AppDir,
+    "-AppId", "$AppId",
+    "-Action", $Case.action,
+    "-ResultFile", $ResultFile,
+    "-DiagnosticDir", $DiagnosticDir,
+    "-SmokeEnvFile", $LaunchEnvFile,
+    "-OverlayProfile", $OverlayProfile,
+    "-WindowMode", $WindowMode,
+    "-WebUrl", $WebUrl,
+    "-ResultDelayMs", "$($Case.resultDelayMs)",
+    "-TimeoutSeconds", "$TimeoutSeconds"
+  )
+  if ($OverlayDisableDirectComposition) {
+    $args += @("-OverlayDisableDirectComposition", $OverlayDisableDirectComposition)
+  }
+  if ($Case.webModal) {
+    $args += @("-WebModal", $Case.webModal)
+  }
+  if ($Case.dialog) {
+    $args += @("-Dialog", $Case.dialog)
+  } elseif ($Dialog) {
+    $args += @("-Dialog", $Dialog)
+  }
+  if ($Case.shortcutTarget) {
+    $args += @("-ShortcutTarget", $Case.shortcutTarget)
+  }
+  if ($Case.checkoutTransactionId) {
+    $args += @("-CheckoutTransactionId", $Case.checkoutTransactionId)
+  }
+
+  $launchEnvLog = Join-Path (Split-Path -Parent $ResultFile) "launch-env.log"
+  Invoke-Helper -Arguments $args -LogFile $launchEnvLog
+}
+
 function Invoke-MatrixCase {
   param($Case)
 
@@ -206,6 +421,7 @@ function Invoke-MatrixCase {
     if (-not $ShortcutGameId) {
       throw "Missing -ShortcutGameId for steam-launch matrix mode."
     }
+    Write-CaseLaunchEnv -Case $Case -ResultFile $resultFile -DiagnosticDir $diagnosticDir
     $args += @("-ShortcutGameId", $ShortcutGameId, "-RequireSteamLaunch")
   }
   if ($OverlayDisableDirectComposition) {
@@ -253,8 +469,21 @@ Write-Host ("  artifactRoot: {0}" -f $ArtifactRoot)
 Write-Host ("  appId: {0}" -f $AppId)
 Write-Host ("  overlayProfile: {0}" -f $OverlayProfile)
 Write-Host ("  disableDirectComposition: {0}" -f $OverlayDisableDirectComposition)
+if ($LaunchMode -eq "steam-launch") {
+  Write-Host ("  launchEnvFile: {0}" -f $LaunchEnvFile)
+  Write-Host ("  installShortcut: {0}" -f $InstallShortcut)
+}
 
 Invoke-Preflight
+
+if ($LaunchMode -eq "steam-launch" -and $Suite -ne "preflight") {
+  Ensure-SteamShortcut
+  if ($Suite -eq "shortcut") {
+    Write-Host ("Windows overlay matrix shortcut setup passed. Launch URL: steam://rungameid/{0}" -f $ShortcutGameId)
+    Write-Host ("Artifacts: {0}" -f $ArtifactRoot)
+    exit 0
+  }
+}
 
 foreach ($case in Get-MatrixCases) {
   Invoke-MatrixCase -Case $case

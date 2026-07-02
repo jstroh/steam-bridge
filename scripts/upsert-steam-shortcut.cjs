@@ -73,32 +73,51 @@ function main() {
   const existingEntry = existingKey == null ? null : shortcuts[existingKey];
   const unchanged =
     existingEntry != null && outputPath === shortcutsPath && shortcutLaunchFieldsMatch(existingEntry, entry);
+  const action = unchanged ? "unchanged" : existingKey == null ? "added" : "updated";
 
-  if (!unchanged) {
+  if (!unchanged && !options.dryRun) {
     shortcuts[key] = entry;
   }
 
-  if (!unchanged && options.backup && fs.existsSync(shortcutsPath)) {
+  if (!unchanged && !options.dryRun && options.backup && fs.existsSync(shortcutsPath)) {
     const backupPath =
       typeof options.backup === "string" ? path.resolve(options.backup) : `${shortcutsPath}.bak-${timestamp()}`;
     fs.copyFileSync(shortcutsPath, backupPath);
     console.log(`Backed up ${shortcutsPath} to ${backupPath}`);
   }
 
-  if (!unchanged) {
+  if (!unchanged && !options.dryRun) {
     fs.writeFileSync(outputPath, writeBinaryKeyValues(root));
   }
   const gameId = computeShortcutGameId(entry.appid);
   if (unchanged) {
     console.log(`Steam shortcut "${options.appName}" is already up to date at index ${key}.`);
+  } else if (options.dryRun) {
+    console.log(`Steam shortcut "${options.appName}" would be ${action} at index ${key}.`);
   } else {
     console.log(`${existingKey == null ? "Added" : "Updated"} Steam shortcut "${options.appName}" at index ${key}.`);
   }
   console.log(`Steam shortcut app ID (internal): ${entry.appid}`);
   console.log(`Steam shortcut game ID (use with steam://rungameid): ${gameId}`);
   console.log(`Launch URL: steam://rungameid/${gameId}`);
-  if (!unchanged) {
+  if (!unchanged && !options.dryRun) {
     console.log("Restart or fully reload Steam before launching if Steam was running while this file was updated.");
+  }
+  if (options.json) {
+    console.log(
+      `STEAM_SHORTCUT_RESULT ${JSON.stringify({
+        appName: options.appName,
+        key,
+        action,
+        changed: !unchanged,
+        dryRun: Boolean(options.dryRun),
+        shortcutsPath,
+        outputPath,
+        appid: entry.appid,
+        gameId,
+        launchUrl: `steam://rungameid/${gameId}`
+      })}`
+    );
   }
 }
 
@@ -346,6 +365,12 @@ function parseArgs(args) {
       case "--self-test":
         parsed.selfTest = true;
         break;
+      case "--dry-run":
+        parsed.dryRun = true;
+        break;
+      case "--json":
+        parsed.json = true;
+        break;
       case "--shortcuts":
         parsed.shortcuts = args[++index];
         break;
@@ -475,5 +500,7 @@ Options:
   --appid ID            Optional explicit unsigned 32-bit internal shortcut app ID.
   --hidden              Mark shortcut hidden.
   --no-overlay          Set AllowOverlay to 0.
+  --dry-run             Report whether the shortcut would change without writing.
+  --json                Print a STEAM_SHORTCUT_RESULT JSON line.
   --self-test           Run a binary VDF round-trip check.`);
 }

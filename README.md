@@ -733,7 +733,7 @@ the private `--checkout-json-file` checkout suite.
   .\windows-overlay-matrix.ps1 `
     -Suite baseline `
     -LaunchMode steam-launch `
-    -ShortcutGameId "<steam-shortcut-game-id>"
+    -InstallShortcut
   ```
 
   The baseline suite uses the ordinary Windows Electron/Steam overlay path for
@@ -742,3 +742,11 @@ the private `--checkout-json-file` checkout suite.
   unless evidence from that baseline proves additional machinery is needed. Each
   matrix case passes `-RequireNoCrashes`, so Windows artifacts must prove both
   overlay behavior and a clean Electron crash-diagnostic snapshot.
+  The Windows matrix stores one stable non-Steam shortcut whose launch options
+  point at a local smoke env file, then rewrites only that env file for each
+  case. If the shortcut must be added or materially updated while Steam is
+  already running, the matrix stops and asks for a full Steam restart instead of
+  editing `shortcuts.vdf` under a live client. When standalone Node.js is not
+  installed, the matrix uses the packaged Electron executable in Node mode to
+  run the shortcut updater. Use `-Suite shortcut` when you only want to verify
+  or refresh the stable Steam shortcut before live overlay cases.

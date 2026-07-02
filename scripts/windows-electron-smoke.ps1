@@ -1,11 +1,12 @@
 [CmdletBinding()]
 param(
-  [ValidateSet("direct", "steam-launch", "verify", "preflight", "print-launch-options")]
+  [ValidateSet("direct", "steam-launch", "verify", "preflight", "print-launch-options", "print-launch-env", "write-launch-env")]
   [string]$Mode = "direct",
 
   [string]$AppDir = "",
   [string]$ResultFile = "",
   [string]$DiagnosticDir = "",
+  [string]$SmokeEnvFile = "",
   [int]$AppId = 480,
 
   [ValidateSet(
@@ -173,7 +174,117 @@ function Get-SmokeArgs {
 
 function Get-LaunchOptionsLine {
   param([string]$LogFile, [string]$SmokeAction)
-  return (Get-SmokeArgs -LogFile $LogFile -SmokeAction $SmokeAction) -join " "
+  if ($SmokeEnvFile) {
+    return (Join-LaunchOptions @("--steam-bridge-smoke-env-file=$SmokeEnvFile"))
+  }
+  return (Join-LaunchOptions (Get-SmokeArgs -LogFile $LogFile -SmokeAction $SmokeAction))
+}
+
+function Join-LaunchOptions {
+  param([string[]]$Arguments)
+
+  return (($Arguments | ForEach-Object {
+    $value = [string]$_
+    if ($value -match '[\s"]') {
+      '"' + ($value -replace '"', '\"') + '"'
+    } else {
+      $value
+    }
+  }) -join " ")
+}
+
+function Get-SmokeEnv {
+  param([string]$LogFile, [string]$SmokeAction)
+
+  $envMap = [ordered]@{
+    STEAM_BRIDGE_APP_ID = "$AppId"
+    STEAM_BRIDGE_ELECTRON_OVERLAY_PROFILE = $OverlayProfile
+    STEAM_BRIDGE_SMOKE_AUTORUN = "1"
+    STEAM_BRIDGE_SMOKE_AUTORUN_ACTION = $SmokeAction
+    STEAM_BRIDGE_SMOKE_AUTORUN_RESULT_DELAY_MS = "$ResultDelayMs"
+    STEAM_BRIDGE_SMOKE_RESULT_FILE = $LogFile
+    STEAM_BRIDGE_SMOKE_DIAGNOSTIC_DIR = $DiagnosticDir
+  }
+
+  if ($KeepOpenAfterResult) {
+    $envMap.STEAM_BRIDGE_SMOKE_KEEP_OPEN_AFTER_RESULT = "1"
+  }
+  if ($OverlayDisableDirectComposition) {
+    $envMap.STEAM_BRIDGE_ELECTRON_OVERLAY_DISABLE_DIRECT_COMPOSITION = $OverlayDisableDirectComposition
+  }
+  if ($WindowMode) {
+    $envMap.STEAM_BRIDGE_SMOKE_WINDOW_MODE = $WindowMode
+  }
+  if ($WebUrl) {
+    $envMap.STEAM_BRIDGE_SMOKE_WEB_URL = $WebUrl
+  }
+  if ($WebModal) {
+    $envMap.STEAM_BRIDGE_SMOKE_WEB_MODAL = $WebModal
+  }
+  if ($CheckoutUrl) {
+    $envMap.STEAM_BRIDGE_SMOKE_CHECKOUT_URL = $CheckoutUrl
+  }
+  if ($CheckoutTransactionId) {
+    $envMap.STEAM_BRIDGE_SMOKE_CHECKOUT_TRANSACTION_ID = $CheckoutTransactionId
+  }
+  if ($CheckoutReturnUrl) {
+    $envMap.STEAM_BRIDGE_SMOKE_CHECKOUT_RETURN_URL = $CheckoutReturnUrl
+  }
+  if ($Dialog) {
+    $envMap.STEAM_BRIDGE_SMOKE_OVERLAY_DIALOG = $Dialog
+  }
+  if ($UserDialog) {
+    $envMap.STEAM_BRIDGE_SMOKE_USER_DIALOG = $UserDialog
+  }
+  if ($ShortcutTarget) {
+    $envMap.STEAM_BRIDGE_SMOKE_SHORTCUT_TARGET = $ShortcutTarget
+  }
+  if ($PresenterMode) {
+    $envMap.STEAM_BRIDGE_SMOKE_PRESENTER_MODE = $PresenterMode
+  }
+  if ($AchievementName) {
+    $envMap.STEAM_BRIDGE_SMOKE_ACHIEVEMENT_NAME = $AchievementName
+  }
+  if ($AchievementCurrent) {
+    $envMap.STEAM_BRIDGE_SMOKE_ACHIEVEMENT_CURRENT = $AchievementCurrent
+  }
+  if ($AchievementMax) {
+    $envMap.STEAM_BRIDGE_SMOKE_ACHIEVEMENT_MAX = $AchievementMax
+  }
+
+  return $envMap
+}
+
+function Format-SmokeEnvLines {
+  param($EnvMap)
+
+  $lines = @(
+    "# Steam Bridge Windows smoke launch state",
+    "# Rewritten by windows-electron-smoke.ps1 before Steam launches the shortcut."
+  )
+  foreach ($key in $EnvMap.Keys) {
+    $lines += ("{0}={1}" -f $key, $EnvMap[$key])
+  }
+  return $lines
+}
+
+function Write-SmokeEnvFile {
+  param([string]$LogFile, [string]$SmokeAction)
+
+  if (-not $SmokeEnvFile) {
+    throw "Missing -SmokeEnvFile for $Mode mode."
+  }
+  $parent = Split-Path -Parent $SmokeEnvFile
+  if ($parent) {
+    New-Item -ItemType Directory -Force -Path $parent | Out-Null
+  }
+  $lines = Format-SmokeEnvLines (Get-SmokeEnv -LogFile $LogFile -SmokeAction $SmokeAction)
+  $utf8NoBom = New-Object System.Text.UTF8Encoding $false
+  [System.IO.File]::WriteAllText(
+    $SmokeEnvFile,
+    (($lines -join [System.Environment]::NewLine) + [System.Environment]::NewLine),
+    $utf8NoBom
+  )
 }
 
 function Format-FileSignatureSummary {
@@ -635,6 +746,15 @@ switch ($Mode) {
     if ($ShortcutGameId) {
       Write-Host "Launch URL: steam://rungameid/$ShortcutGameId"
     }
+  }
+  "print-launch-env" {
+    foreach ($line in (Format-SmokeEnvLines (Get-SmokeEnv -LogFile $ResultFile -SmokeAction $Action))) {
+      Write-Host $line
+    }
+  }
+  "write-launch-env" {
+    Write-SmokeEnvFile -LogFile $ResultFile -SmokeAction $Action
+    Write-Host "Wrote Steam Bridge smoke env file: $SmokeEnvFile"
   }
   "preflight" {
     Invoke-Preflight

@@ -269,6 +269,10 @@ function runMacosPackageSigningStaticChecks() {
     "Windows Electron package must include the overlay matrix runner"
   );
   assert.ok(
+    packagerScript.includes("upsert-steam-shortcut.cjs"),
+    "Windows Electron package must include the Steam shortcut updater"
+  );
+  assert.ok(
     matrixScript.includes("verify-macos-steam-signing.cjs"),
     "macOS overlay matrix must verify package signing before live cases"
   );
@@ -323,6 +327,9 @@ function runWindowsSmokeHelperStaticChecks() {
     "--steam-bridge-smoke-diagnostic-dir=$DiagnosticDir",
     "--steam-bridge-smoke-web-url=$WebUrl",
     "--steam-bridge-smoke-checkout-transaction-id=$CheckoutTransactionId",
+    "--steam-bridge-smoke-env-file=$SmokeEnvFile",
+    "write-launch-env",
+    "Get-SmokeEnv",
     "function Test-OverlayActiveEvent",
     "RequireOverlayActivated",
     "RequireNoCrashes",
@@ -343,7 +350,7 @@ function runWindowsSmokeHelperStaticChecks() {
     assert.ok(signingHelper.includes(expected), `Windows signing helper missing ${expected}`);
   }
   for (const expected of [
-    "ValidateSet(\"baseline\", \"managed\", \"full\", \"preflight\")",
+    "ValidateSet(\"baseline\", \"managed\", \"full\", \"preflight\", \"shortcut\")",
     "Test-NativeLoadGate",
     "Windows Smart App Control/App Control is enabled",
     "achievement-progress",
@@ -351,6 +358,15 @@ function runWindowsSmokeHelperStaticChecks() {
     "presenter-web-open-and-wait",
     "presenter-shortcut-open-and-wait",
     "presenter-checkout",
+    "InstallShortcut",
+    "AssumeShortcutConfigured",
+    "shortcut",
+    "Resolve-JavaScriptRunner",
+    "ELECTRON_RUN_AS_NODE",
+    "ConvertTo-CmdArgument",
+    "Write-CaseLaunchEnv",
+    "upsert-steam-shortcut.cjs",
+    "STEAM_SHORTCUT_RESULT",
     "-RequireOverlayActivated",
     "-RequireNoOverlayActivation",
     "-RequireZeroManagedOverlayTiming",

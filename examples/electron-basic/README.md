@@ -94,7 +94,26 @@ case artifacts under `%TEMP%` by default:
 .\windows-overlay-matrix.ps1 `
   -Suite baseline `
   -LaunchMode steam-launch `
-  -ShortcutGameId "<steam-shortcut-game-id>"
+  -InstallShortcut
+```
+
+The matrix installs or reuses one stable non-Steam shortcut named
+`Steam Bridge Smoke`. That shortcut points at a local smoke env file, and each
+case rewrites only the env file before launching through Steam. If the shortcut
+needs to be added or updated while Steam is running, the matrix stops before
+live cases so Steam can be fully restarted once instead of churning shortcuts
+between cases. Pass `-ShortcutsPath` or `-SteamUserId` when the Steam account
+cannot be inferred from the local `userdata` folder. The shortcut updater uses
+the packaged Electron executable as its JavaScript runner when standalone
+Node.js is not installed.
+
+To set up or verify only the stable shortcut, run the shortcut suite:
+
+```powershell
+.\windows-overlay-matrix.ps1 `
+  -Suite shortcut `
+  -LaunchMode steam-launch `
+  -InstallShortcut
 ```
 
 On a Smart App Control/App Control machine, sign the exact package first or the

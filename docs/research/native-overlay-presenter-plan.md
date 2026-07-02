@@ -1672,13 +1672,21 @@ Alt+Tab, close, and back-to-app checks. Newer wrapper work such as
 platforms, which remains useful contingency evidence, but it is not the first
 Windows implementation path unless ordinary Electron proves insufficient.
 
-A July 1, 2026 wrapper scan compared Steam's own overlay requirements,
-`steamworks.js`, Greenworks, and the newer `steamworks-ffi-node` overlay notes
-plus open overlay issues. It did not find a maintained, recent Electron-only
-Windows path beyond the same in-process GPU / DirectComposition switches and
-repaint pressure that this project already treats as baseline or comparison
-inputs. Treat older or lightly maintained wrapper reports as leads only; every
-claim must be re-proved through the local Windows matrix.
+A July 2, 2026 wrapper scan compared Steam's own overlay requirements,
+`steamworks.js`, Greenworks, `steamworks-ffi-node`, and Steamworks.NET guidance
+plus open overlay issues. `steamworks.js` remains the most relevant
+Electron-only comparison: its helper still adds `in-process-gpu` and
+`disable-direct-composition`, while open issue evidence reports white overlay
+surfaces without the composition switch and Alt+Tab ghost-window regressions
+with that switch. Greenworks has recent repository activity but its Electron
+overlay issue history is old enough to treat as background only. The newer
+`steamworks-ffi-node` native-surface approach is active and useful fallback
+evidence, but its 2026 open issues report frame-rate drops and lingering
+Steam-running state after enabling its Electron overlay helper. Steam Bridge
+therefore keeps Windows on the ordinary Steam-launched Electron path first,
+keeps `disableDirectComposition` opt-in, and requires any native-presenter
+fallback to prove FPS, shutdown, Alt+Tab, close, and back-to-app behavior in
+the local Windows matrix before becoming a default.
 
 Windows gates:
 

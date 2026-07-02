@@ -10,6 +10,7 @@ const { sanitizeSmokeValue } = require("./smoke-sanitize.cjs");
 const { serializeSmokeError } = require("./smoke-error.cjs");
 
 const CLI_OPTIONS = parseSmokeArgs(process.argv.slice(1));
+loadSmokeEnvFile(CLI_OPTIONS.smokeEnvFile || process.env.STEAM_BRIDGE_SMOKE_ENV_FILE || "");
 const APP_ID = Number(CLI_OPTIONS.appId || process.env.STEAM_BRIDGE_APP_ID || "480");
 const AUTH_IDENTITY = process.env.STEAM_BRIDGE_AUTH_IDENTITY || "steam-bridge-electron-smoke";
 const OVERLAY_PROFILE =
@@ -2327,6 +2328,7 @@ function snapshot() {
       achievementName: ACHIEVEMENT_NAME || null,
       achievementCurrent: ACHIEVEMENT_CURRENT,
       achievementMax: ACHIEVEMENT_MAX,
+      smokeEnvFile: CLI_OPTIONS.smokeEnvFile || process.env.STEAM_BRIDGE_SMOKE_ENV_FILE || null,
       isPackaged: app.isPackaged
     },
     process: {
@@ -3247,6 +3249,7 @@ function parseSmokeArgs(args) {
     achievementMax: undefined,
     resultFile: undefined,
     diagnosticDir: undefined,
+    smokeEnvFile: undefined,
     keepOpenAfterResult: undefined,
     controlServer: undefined,
     controlFile: undefined,
@@ -3347,6 +3350,9 @@ function parseSmokeArgs(args) {
       case "--steam-bridge-smoke-diagnostic-dir":
         options.diagnosticDir = value;
         break;
+      case "--steam-bridge-smoke-env-file":
+        options.smokeEnvFile = value;
+        break;
       case "--steam-bridge-smoke-keep-open-after-result":
         options.keepOpenAfterResult = value == null || value === "" ? "1" : value;
         break;
@@ -3369,6 +3375,42 @@ function parseSmokeArgs(args) {
   }
 
   return options;
+}
+
+function loadSmokeEnvFile(filePath) {
+  if (!filePath) {
+    return;
+  }
+
+  let text;
+  try {
+    text = fs.readFileSync(filePath, "utf8");
+  } catch (error) {
+    console.error(`Failed to read Steam Bridge smoke env file ${filePath}:`, error);
+    return;
+  }
+
+  process.env.STEAM_BRIDGE_SMOKE_ENV_FILE = filePath;
+  for (const [index, rawLine] of text.split(/\r?\n/).entries()) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) {
+      continue;
+    }
+
+    const separator = line.indexOf("=");
+    if (separator <= 0) {
+      console.error(`Ignoring invalid Steam Bridge smoke env line ${index + 1} in ${filePath}.`);
+      continue;
+    }
+
+    const key = line.slice(0, separator).trim();
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) {
+      console.error(`Ignoring invalid Steam Bridge smoke env key "${key}" in ${filePath}.`);
+      continue;
+    }
+
+    process.env[key] = line.slice(separator + 1);
+  }
 }
 
 function readOption(args, index) {
