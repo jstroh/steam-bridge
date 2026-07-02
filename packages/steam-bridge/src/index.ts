@@ -9056,8 +9056,11 @@ export function createElectronSteamOverlay(
     activationBoostMs,
     activeGraceMs
   };
+  const shouldUseDirectPresenter = process.platform === "win32";
   const presenter =
-    presenterMode === "session"
+    shouldUseDirectPresenter
+      ? createDirectSteamOverlayPresenter(electronOverlayPresenterOptions(window, managedPresenterOptions))
+      : presenterMode === "session"
       ? createNativeOverlaySessionPresenter(electronNativeOverlaySessionOptions(window, {
           title: managedPresenterOptions.title,
           restoreFocusDelayMs: managedPresenterOptions.restoreFocusDelayMs
@@ -9916,6 +9919,230 @@ function resolveElectronSteamOverlayPresenterMode(
     { type: "SteamBridgeOverlayPresenterWarning" }
   );
   return "persistent";
+}
+
+function createDirectSteamOverlayPresenter(options: NativeOverlayPresenterOptions = {}): NativeOverlayPresenter {
+  const title = options.title ?? "Steam Bridge Direct Overlay";
+  const pollIntervalMs = Math.max(50, finiteNumber(options.pollIntervalMs, 250));
+  const startedAt = Date.now();
+
+  let closed = false;
+  let visible = true;
+  let pumpCount = 0;
+  let pollCount = 0;
+  let lastPumpAt: number | undefined;
+  let lastPollAt: number | undefined;
+  let lastError: unknown;
+  let lastDiagnostics: OverlayDiagnostics | undefined;
+  let overlayActive = false;
+  let overlayWasActive = false;
+  let lastOverlayEvent: GameOverlayActivated | undefined;
+  let activationHoldCount = 0;
+  let overlayHandle: CallbackHandle | undefined;
+  const stateListeners = new Set<() => void>();
+
+  const refreshDiagnostics = (): OverlayDiagnostics | undefined => {
+    try {
+      lastDiagnostics = getOverlayDiagnostics();
+      pollCount += 1;
+      lastPollAt = Date.now();
+    } catch (error) {
+      lastError = error;
+    }
+    return lastDiagnostics;
+  };
+
+  const prepareForActivation = (activationMode: NativeOverlayPresenterActivationMode): void => {
+    if (closed) {
+      return;
+    }
+
+    if (activationMode !== "passive") {
+      focusSourceWindow();
+    }
+    visible = true;
+    refreshDiagnostics();
+    emitStateChange();
+  };
+
+  const beginOverlayActivation = (
+    activationMode: NativeOverlayPresenterActivationMode = "interactive"
+  ): CallbackHandle => {
+    if (closed) {
+      return {
+        disconnect() {}
+      };
+    }
+
+    activationHoldCount += 1;
+    prepareForActivation(activationMode);
+    let disconnected = false;
+    return {
+      disconnect() {
+        if (disconnected) {
+          return;
+        }
+        disconnected = true;
+        activationHoldCount = Math.max(0, activationHoldCount - 1);
+        refreshDiagnostics();
+        emitStateChange();
+      }
+    };
+  };
+
+  const close = (): void => {
+    if (closed) {
+      return;
+    }
+    closed = true;
+    visible = false;
+    activationHoldCount = 0;
+    overlayHandle?.disconnect();
+    overlayHandle = undefined;
+    emitStateChange();
+    stateListeners.clear();
+  };
+
+  const presenter: NativeOverlayPresenterInternal = {
+    close,
+    disconnect: close,
+    pump(): void {
+      if (closed) {
+        return;
+      }
+      pumpCount += 1;
+      lastPumpAt = Date.now();
+      refreshDiagnostics();
+      emitStateChange();
+    },
+    prepareForOverlay(): void {
+      prepareForActivation("interactive");
+    },
+    prepareForPassiveOverlay(): void {
+      prepareForActivation("passive");
+    },
+    prepareForTransparentInputOverlay(): void {
+      prepareForActivation("transparent-input");
+    },
+    beginOverlayActivation,
+    show(): void {
+      if (closed) {
+        return;
+      }
+      visible = true;
+      refreshDiagnostics();
+      emitStateChange();
+    },
+    hide(): void {
+      if (closed) {
+        return;
+      }
+      visible = false;
+      refreshDiagnostics();
+      emitStateChange();
+    },
+    isOpen(): boolean {
+      return !closed;
+    },
+    snapshot(): NativeOverlayPresenterSnapshot {
+      const diagnostics = closed ? lastDiagnostics : (refreshDiagnostics() ?? lastDiagnostics);
+      const opening = activationHoldCount > 0 && !overlayActive;
+      const mode: NativeOverlayPresenterMode = closed
+        ? "closed"
+        : !visible
+          ? "hidden"
+          : overlayActive || opening
+            ? "active"
+            : "passive";
+      const bounds = closed
+        ? undefined
+        : readNativeOverlayBounds(options.getBounds, (error) => {
+            lastError = error;
+          });
+      const overlayNeedsPresent =
+        !closed && (overlayActive || opening) ? Boolean(diagnostics?.overlayNeedsPresent) : false;
+      const base = {
+        title,
+        backend: "none" as const,
+        ...(bounds ? { bounds } : {}),
+        closed,
+        startedAt,
+        mode,
+        attached: !closed && visible,
+        nativeProbeOpen: false,
+        nativeHostOpen: false,
+        clickThrough: true,
+        focusable: false,
+        transparent: true,
+        idleFps: 0,
+        needsPresentFps: 0,
+        activeOverlayFps: 0,
+        pollIntervalMs,
+        currentFps: 0,
+        pumpCount,
+        pollCount,
+        overlayActive: closed ? false : overlayActive,
+        overlayWasActive,
+        overlayNeedsPresent,
+        overlayNeedsPresentPollingEnabled:
+          diagnostics?.overlayNeedsPresentPollingEnabled ?? safeBoolean(() => isOverlayNeedsPresentPollingEnabled()),
+        lastOverlayEvent,
+        lastPumpAt,
+        lastPollAt,
+        lastError
+      };
+
+      return diagnostics ? { ...base, diagnostics } : base;
+    },
+    onStateChange: subscribeStateChange
+  };
+
+  overlayHandle = onGameOverlayActivated((event) => {
+    lastOverlayEvent = event;
+    if (typeof event.active === "boolean") {
+      overlayActive = event.active;
+    }
+    if (event.active === true) {
+      overlayWasActive = true;
+    } else if (event.active === false) {
+      activationHoldCount = 0;
+      focusSourceWindow();
+    }
+    refreshDiagnostics();
+    emitStateChange();
+  });
+
+  refreshDiagnostics();
+  return presenter;
+
+  function focusSourceWindow(): void {
+    try {
+      options.restoreFocus?.();
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  function subscribeStateChange(listener: () => void): CallbackHandle {
+    stateListeners.add(listener);
+    return {
+      disconnect() {
+        stateListeners.delete(listener);
+      }
+    };
+  }
+
+  function emitStateChange(): void {
+    for (const listener of Array.from(stateListeners)) {
+      try {
+        listener();
+      } catch (error) {
+        process.emitWarning(error instanceof Error ? error : String(error), {
+          type: "SteamBridgeOverlayStateListenerWarning"
+        });
+      }
+    }
+  }
 }
 
 function parseBooleanEnvironment(value: string | undefined): boolean | undefined {

@@ -258,8 +258,8 @@ const txn = await steamworks.webApi.microTxnSandbox.initTxn({
 ```
 
 The package also includes overlay diagnostics through
-`client.utils.getOverlayDiagnostics()`, bridge-owned native overlay presenter
-helpers such as `client.overlay.attachPresenter()` and
+`client.utils.getOverlayDiagnostics()`, bridge-owned overlay presenter helpers
+such as `client.overlay.attachPresenter()` and
 `client.overlay.createElectronSteamOverlay()`, `client.overlay.openSteamOverlay()`,
 `client.overlay.openWebOverlay()`, `client.overlay.openFriendsOverlay()`, and
 `client.overlay.openUserOverlay()`, and
@@ -271,14 +271,18 @@ compatibility session helpers such as
 `electronNativeOverlaySessionOptions()`; `electronScrubSteamOverlayChildProcessEnv()`
 is also available for explicit diagnostics. `electronConfigureSteamOverlay()`
 scrubs Steam's overlay renderer from Electron child-process preload environment
-variables and adds Electron's Linux `no-zygote` switch by default, leaving the
-bridge-owned native presenter as the single Steam overlay target. Core Steam API
-success should not be treated as proof that the Steam overlay has hooked the
-right surface.
+variables and adds Electron's Linux `no-zygote` switch by default. On Linux and
+macOS, that keeps the bridge-owned native presenter as the single Steam overlay
+target. On Windows, Steam Bridge keeps the ordinary direct Steam overlay hook.
+Core Steam API success should not be treated as proof that the Steam overlay has
+hooked the right surface.
 `client.overlay.createElectronSteamOverlay()` applies the same child-process
 preload scrub by default for future Electron children, so the managed overlay
 path still protects apps that create the overlay manager before later windows or
-workers are spawned. Pass `scrubSteamOverlayChildProcessEnv: false` only when
+workers are spawned. On Windows, this managed overlay uses Steam's ordinary
+overlay hook directly and does not create a bridge-owned native host; Linux and
+macOS use the native presenter where Electron needs a more reliable Steam
+overlay target. Pass `scrubSteamOverlayChildProcessEnv: false` only when
 collecting raw Electron-child overlay diagnostics.
 Raw activation helpers such as `activateToWebPage(...)` remain available for
 Node/native smoke checks and diagnostics, but Electron product overlay work
@@ -438,10 +442,12 @@ publishes the same check as `steam-bridge-verify-macos-signing`; run
 `npx steam-bridge-verify-macos-signing --app-exe <YourApp.app/Contents/MacOS/YourApp>`
 against the final signed app shape before Steam overlay testing.
 
-The manager owns a reusable native presenter, keeps it passive and click-through
-while idle, polls Steam overlay state cheaply where the Steam SDK call is safe,
-and only pumps frames when Steam reports `overlayNeedsPresent` or an overlay is
-being opened/active. On macOS, Steam Bridge disables the
+On Linux and macOS, the manager owns a reusable native presenter, keeps it
+passive and click-through while idle, polls Steam overlay state cheaply where
+the Steam SDK call is safe, and only pumps frames when Steam reports
+`overlayNeedsPresent` or an overlay is being opened/active. On Windows, the
+same manager uses Steam's ordinary direct overlay hook and does not create a
+bridge-owned native host. On macOS, Steam Bridge disables the
 `BOverlayNeedsPresent()` poll by default because Steam's injected renderer can
 crash inside that call even on the Metal presenter path; macOS presentation is
 driven by explicit overlay opens and Steam overlay activation callbacks instead.

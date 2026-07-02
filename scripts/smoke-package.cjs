@@ -363,7 +363,9 @@ function runWindowsSmokeHelperStaticChecks() {
     "Get-WindowsSessionSummary",
     "Assert-InteractiveWindowsSessionForSteamLaunch",
     "currentSessionId",
-    "SSH Session 0 can produce"
+    "SSH Session 0 can produce",
+    "Invoke-CiToolPolicyList",
+    "CiTool.exe -lp timed out"
   ]) {
     assert.ok(helper.includes(expected), `Windows smoke helper missing ${expected}`);
   }
@@ -428,6 +430,8 @@ function runWindowsSmokeHelperStaticChecks() {
     "-RequireZeroManagedOverlayTiming",
     "-RequireManagedOverlayComplete",
     "ManagedOverlayResultMode \"complete\"",
+    "$requiredEvents = @($Case.requireEvent)",
+    "$args += $requiredEvents",
     "-RequireNoCrashes",
     "-OverlayInProcessGpu",
     "OnlyCase",

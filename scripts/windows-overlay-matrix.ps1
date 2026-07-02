@@ -1237,7 +1237,7 @@ function Get-MatrixCases {
   )
 
   $managed = @(
-    New-Case -Id "10-presenter-ready" -Action "presenter-ready" -RequireEvent @("overlay:presenter-ready") -RequireNoOverlayActivation -ResultDelayMs 1200
+    New-Case -Id "10-presenter-ready" -Action "presenter-ready" -RequireEvent @("overlay:presenter-ready") -RequireNoOverlayActivation -AllowOverlayNotReady -ResultDelayMs 1200
     New-Case -Id "11-managed-web-open-and-wait" -Action "presenter-web-open-and-wait" -RequireEvent @("overlay:presenter-open-and-wait-start", "overlay:presenter-wait-closed", "overlay:presenter-parked", "overlay:presenter-open-and-wait-complete") -RequireOverlayActivated -RequireManagedOverlayComplete -ManagedOverlayResultMode "complete" -WebModal "true"
     New-Case -Id "12-managed-store-open-and-wait" -Action "presenter-store-open-and-wait" -RequireEvent @("overlay:presenter-open-and-wait-start", "overlay:presenter-wait-closed", "overlay:presenter-parked", "overlay:presenter-open-and-wait-complete") -RequireOverlayActivated -RequireManagedOverlayComplete -ManagedOverlayResultMode "complete"
     New-Case -Id "13-managed-friends-open-and-wait" -Action "presenter-friends-open-and-wait" -RequireEvent @("overlay:presenter-open-and-wait-start", "overlay:presenter-wait-closed", "overlay:presenter-parked", "overlay:presenter-open-and-wait-complete") -RequireOverlayActivated -RequireManagedOverlayComplete -ManagedOverlayResultMode "complete"
@@ -1502,8 +1502,10 @@ function Invoke-MatrixCase {
   if ($Case.requireManagedOverlayComplete) {
     $args += "-RequireManagedOverlayComplete"
   }
-  foreach ($event in $Case.requireEvent) {
-    $args += @("-RequireEvent", $event)
+  $requiredEvents = @($Case.requireEvent)
+  if ($requiredEvents.Count -gt 0) {
+    $args += "-RequireEvent"
+    $args += $requiredEvents
   }
   if ($Case.action -like "presenter-*") {
     $args += "-RequireZeroManagedOverlayTiming"

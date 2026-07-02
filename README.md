@@ -302,19 +302,23 @@ next to the executable or in the working directory used by your app.
 ## Electron Overlay
 
 Electron apps should create one managed Steam overlay for each game window. The
-managed overlay owns the native presenter, routes supported Steam surfaces
-through presenter-backed paths, waits for Steam overlay callbacks, and parks the
-presenter after Steam reports that the overlay has closed. App code should not
-need platform-specific overlay host, capture, focus, or timer plumbing.
+managed overlay owns the platform-specific overlay preparation, routes supported
+Steam surfaces through verified paths, waits for Steam overlay callbacks, and
+parks any native presenter after Steam reports that the overlay has closed. App
+code should not need platform-specific overlay host, capture, focus, or timer
+plumbing.
 When the managed overlay is created, Steam Bridge also scrubs Steam's overlay
 renderer entries from future Electron child-process preload environment
-variables by default, keeping the bridge-owned native presenter as the overlay
-target. Set `scrubSteamOverlayChildProcessEnv: false` only for raw diagnostic
-comparisons.
-On Windows, the default Electron configuration enables Chromium's in-process GPU
-path without starting a repaint loop. The Windows smoke helper mirrors that with
-`-OverlayInProcessGpu 1`; pass `-OverlayInProcessGpu 0` only for a baseline
-comparison. If a Windows smoke run still shows a white or stale overlay, use
+variables by default. On Linux and macOS, that keeps the bridge-owned native
+presenter as the overlay target; on Windows, Steam Bridge keeps the ordinary
+direct Steam overlay hook. Set `scrubSteamOverlayChildProcessEnv: false` only
+for raw diagnostic comparisons.
+On Windows, the managed overlay uses the ordinary Steam overlay hook directly
+instead of creating a bridge-owned native host. The default Electron
+configuration enables Chromium's in-process GPU path without starting a repaint
+loop. The Windows smoke helper mirrors that with `-OverlayInProcessGpu 1`; pass
+`-OverlayInProcessGpu 0` only for a baseline comparison. If a Windows smoke run
+still shows a white or stale overlay, use
 `electronConfigureSteamOverlay({ disableDirectComposition: true })` or the
 helper's `-OverlayDisableDirectComposition 1` flag for an explicit comparison
 run; keep Alt+Tab/close regression checks in that pass because this Chromium
@@ -783,11 +787,13 @@ the private `--checkout-json-file` checkout suite.
   web, store, Friends, and passive achievement notifications. It enables
   Chromium's in-process GPU path by default, matching the public Electron helper
   default on Windows; pass `-OverlayInProcessGpu 0` only for baseline comparison
-  artifacts. The managed suite is available for comparison only; active managed
-  cases use complete-result mode, so they do not accept a result until Steam
-  emits the inactive callback and the managed close, park, and open-and-wait
-  completion events are recorded. Keep the normal path as the Windows default
-  unless evidence from that baseline proves additional machinery is needed.
+  artifacts. The managed suite uses the direct Windows Steam overlay presenter
+  rather than a native host. Its readiness case is a cheap no-activation
+  preflight, while active managed cases use complete-result mode, so they do not
+  accept a result until Steam emits the inactive callback and the managed close,
+  park, and open-and-wait completion events are recorded. Keep the normal direct
+  Steam hook as the Windows default unless evidence from that baseline proves
+  additional machinery is needed.
   Each matrix case passes `-RequireNoCrashes`,
   so Windows artifacts must prove both overlay behavior and a clean Electron
   crash-diagnostic snapshot.

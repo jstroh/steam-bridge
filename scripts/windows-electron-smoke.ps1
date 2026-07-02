@@ -451,22 +451,17 @@ function Get-CiToolPolicyInventory {
       available = $false
       exitCode = $null
       error = $null
+      timedOut = $false
       policies = @()
       enforcedPolicies = @()
       verifiedAndReputableEnforced = $false
     }
   }
 
-  $output = @()
-  $exitCode = 0
-  $errorMessage = $null
-  try {
-    $output = @(& $ciTool.Source -lp 2>&1 | ForEach-Object { [string]$_ })
-    $exitCode = $LASTEXITCODE
-  } catch {
-    $errorMessage = $_.Exception.Message
-    $exitCode = 1
-  }
+  $result = Invoke-CiToolPolicyList -Path $ciTool.Source -TimeoutSeconds 10
+  $output = @($result.output)
+  $exitCode = $result.exitCode
+  $errorMessage = $result.error
 
   $policies = @(Convert-CiToolPolicies -Lines $output)
   $enforcedPolicies = @(
@@ -484,9 +479,78 @@ function Get-CiToolPolicyInventory {
     available = $true
     exitCode = $exitCode
     error = $errorMessage
+    timedOut = $result.timedOut
     policies = @($policies)
     enforcedPolicies = @($enforcedPolicies)
     verifiedAndReputableEnforced = $verifiedAndReputableEnforced
+  }
+}
+
+function Invoke-CiToolPolicyList {
+  param([string]$Path, [int]$TimeoutSeconds = 10)
+
+  $job = $null
+
+  try {
+    $job = Start-Job -ScriptBlock {
+      param([string]$CiToolPath)
+
+      $output = @()
+      $exitCode = 0
+      $errorMessage = $null
+      try {
+        $output = @(& $CiToolPath -lp 2>&1 | ForEach-Object { [string]$_ })
+        $exitCode = $LASTEXITCODE
+      } catch {
+        $errorMessage = $_.Exception.Message
+        $exitCode = 1
+      }
+
+      [PSCustomObject]@{
+        output = @($output)
+        exitCode = $exitCode
+        error = $errorMessage
+      }
+    } -ArgumentList $Path
+
+    if (-not (Wait-Job -Job $job -Timeout $TimeoutSeconds)) {
+      Stop-Job -Job $job -ErrorAction SilentlyContinue
+      return [PSCustomObject]@{
+        output = @()
+        exitCode = $null
+        error = "CiTool.exe -lp timed out after $TimeoutSeconds seconds."
+        timedOut = $true
+      }
+    }
+
+    $result = Receive-Job -Job $job
+    $firstResult = @($result | Where-Object { $_ -ne $null } | Select-Object -First 1)
+    if ($firstResult.Count -eq 0) {
+      return [PSCustomObject]@{
+        output = @()
+        exitCode = 1
+        error = "CiTool.exe -lp returned no job result."
+        timedOut = $false
+      }
+    }
+
+    return [PSCustomObject]@{
+      output = @($firstResult[0].output)
+      exitCode = $firstResult[0].exitCode
+      error = $firstResult[0].error
+      timedOut = $false
+    }
+  } catch {
+    return [PSCustomObject]@{
+      output = @()
+      exitCode = 1
+      error = $_.Exception.Message
+      timedOut = $false
+    }
+  } finally {
+    if ($job) {
+      Remove-Job -Job $job -Force -ErrorAction SilentlyContinue
+    }
   }
 }
 

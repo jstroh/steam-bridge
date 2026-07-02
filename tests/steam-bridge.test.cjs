@@ -7372,6 +7372,236 @@ test("electron steam overlay manager syncs the presenter on window geometry even
   }
 });
 
+test("electron steam overlay manager uses direct Steam activation on Windows", async (t) => {
+  setProcessPlatformForTest(t, "win32");
+
+  const hostHandle = Buffer.from([9, 7, 5, 3]);
+  const nativeHostCalls = [];
+  const fake = createFakeNative({
+    attachNativeOverlayHostView() {
+      nativeHostCalls.push("attachNativeOverlayHostView");
+      throw new Error("Windows direct overlay must not attach a native host.");
+    },
+    openNativeOverlayProbeWindow() {
+      nativeHostCalls.push("openNativeOverlayProbeWindow");
+      throw new Error("Windows direct overlay must not open a native probe.");
+    },
+    pumpNativeOverlayProbeWindow() {
+      nativeHostCalls.push("pumpNativeOverlayProbeWindow");
+      throw new Error("Windows direct overlay must not pump a native probe.");
+    },
+    showNativeOverlayHostView() {
+      nativeHostCalls.push("showNativeOverlayHostView");
+      throw new Error("Windows direct overlay must not show a native host.");
+    },
+    setNativeOverlayHostInputPassthrough() {
+      nativeHostCalls.push("setNativeOverlayHostInputPassthrough");
+      throw new Error("Windows direct overlay must not configure native host input.");
+    },
+    setNativeOverlayHostOpacity() {
+      nativeHostCalls.push("setNativeOverlayHostOpacity");
+      throw new Error("Windows direct overlay must not configure native host opacity.");
+    },
+    detachNativeOverlayHostView() {
+      nativeHostCalls.push("detachNativeOverlayHostView");
+      throw new Error("Windows direct overlay must not detach a native host.");
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return false;
+    },
+    isNativeOverlayHostViewOpen() {
+      return false;
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+  t.after(clearSteamBridgeCache);
+
+  let showCount = 0;
+  let focusCount = 0;
+  let invalidateCount = 0;
+  const window = {
+    isDestroyed() {
+      return false;
+    },
+    getNativeWindowHandle() {
+      return hostHandle;
+    },
+    getBounds() {
+      return { x: 4, y: 8, width: 1280, height: 720 };
+    },
+    show() {
+      showCount += 1;
+    },
+    focus() {
+      focusCount += 1;
+    },
+    once() {},
+    webContents: {
+      once() {},
+      invalidate() {
+        invalidateCount += 1;
+      },
+      send() {}
+    }
+  };
+
+  const overlay = steam.overlay.createElectronSteamOverlay(window, {
+    title: "Windows Direct Overlay",
+    pollIntervalMs: 10000
+  });
+  t.after(() => overlay.close());
+
+  const initialSnapshot = overlay.snapshot();
+  assert.equal(initialSnapshot.backend, "none");
+  assert.equal(initialSnapshot.attached, true);
+  assert.equal(initialSnapshot.nativeProbeOpen, false);
+  assert.equal(initialSnapshot.nativeHostOpen, false);
+  assert.equal(initialSnapshot.mode, "passive");
+  assert.equal(initialSnapshot.currentFps, 0);
+  assert.equal(initialSnapshot.clickThrough, true);
+  assert.equal(initialSnapshot.transparent, true);
+  assert.deepEqual(initialSnapshot.bounds, { x: 4, y: 8, width: 1280, height: 720 });
+  assert.equal(initialSnapshot.electronOverlay.presenterMode, "persistent");
+  assert.equal(overlay.getNativeHostAvailability().available, true);
+  assert.deepEqual(nativeHostCalls, []);
+
+  assert.equal(overlay.openIfAvailable({ type: "friends" }), overlay.presenter);
+  assert.equal(showCount, 1);
+  assert.equal(focusCount, 1);
+  assert.equal(invalidateCount, 1);
+  assert.deepEqual(steamWebOverlayCalls(fake).at(-1), {
+    method: "activateOverlayToWebPage",
+    args: [steam.STEAM_FRIENDS_OVERLAY_URL, true]
+  });
+  assert.deepEqual(nativeHostCalls, []);
+
+  const openingSnapshot = overlay.snapshot();
+  assert.equal(openingSnapshot.mode, "active");
+  assert.equal(openingSnapshot.overlayActive, false);
+  assert.equal(openingSnapshot.currentFps, 0);
+  assert.equal(overlay.getOpenStatus({ type: "web", url: "https://store.steampowered.com/app/480/" }).reason, "opening");
+
+  fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: true });
+  await Promise.resolve();
+  const shownSnapshot = overlay.snapshot();
+  assert.equal(shownSnapshot.overlayActive, true);
+  assert.equal(shownSnapshot.overlayWasActive, true);
+  assert.equal(shownSnapshot.currentFps, 0);
+
+  const parkedWait = overlay.parkWhenSteamOverlayCloses({ timeoutMs: 500 });
+  fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: false });
+  const parkedSnapshot = await parkedWait;
+  assert.equal(parkedSnapshot.mode, "passive");
+  assert.equal(parkedSnapshot.attached, true);
+  assert.equal(parkedSnapshot.nativeHostOpen, false);
+  assert.equal(parkedSnapshot.overlayActive, false);
+  assert.equal(parkedSnapshot.currentFps, 0);
+  assert.deepEqual(nativeHostCalls, []);
+});
+
+test("electron steam overlay openAndWait uses the direct readiness path on Windows", async (t) => {
+  setProcessPlatformForTest(t, "win32");
+
+  const hostHandle = Buffer.from([2, 0, 2, 6]);
+  let overlayEnabled = false;
+  const nativeHostCalls = [];
+  const fake = createFakeNative({
+    attachNativeOverlayHostView() {
+      nativeHostCalls.push("attachNativeOverlayHostView");
+      throw new Error("Windows direct overlay must not attach a native host.");
+    },
+    openNativeOverlayProbeWindow() {
+      nativeHostCalls.push("openNativeOverlayProbeWindow");
+      throw new Error("Windows direct overlay must not open a native probe.");
+    },
+    pumpNativeOverlayProbeWindow() {
+      nativeHostCalls.push("pumpNativeOverlayProbeWindow");
+      throw new Error("Windows direct overlay must not pump a native probe.");
+    },
+    showNativeOverlayHostView() {
+      nativeHostCalls.push("showNativeOverlayHostView");
+      throw new Error("Windows direct overlay must not show a native host.");
+    },
+    detachNativeOverlayHostView() {
+      nativeHostCalls.push("detachNativeOverlayHostView");
+      throw new Error("Windows direct overlay must not detach a native host.");
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return false;
+    },
+    isNativeOverlayHostViewOpen() {
+      return false;
+    },
+    getOverlayDiagnostics() {
+      return {
+        steamRunning: true,
+        steamInstallPath: "C:\\Program Files (x86)\\Steam",
+        appId: 480,
+        overlayEnabled,
+        overlayNeedsPresent: false,
+        overlayNeedsPresentPollingEnabled: true,
+        steamDeck: false,
+        bigPicture: false
+      };
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+  t.after(clearSteamBridgeCache);
+
+  const window = {
+    isDestroyed() {
+      return false;
+    },
+    getNativeWindowHandle() {
+      return hostHandle;
+    },
+    once() {},
+    webContents: {
+      once() {},
+      invalidate() {},
+      send() {}
+    }
+  };
+
+  const overlay = steam.overlay.createElectronSteamOverlay(window, {
+    title: "Windows Direct Readiness Overlay",
+    pollIntervalMs: 50
+  });
+  t.after(() => overlay.close());
+
+  const webTarget = { type: "web", url: "https://store.steampowered.com/app/480/", modal: true };
+  const notReadyStatus = overlay.getOpenStatus(webTarget);
+  assert.equal(notReadyStatus.canOpen, false);
+  assert.equal(notReadyStatus.canWait, true);
+  assert.equal(notReadyStatus.reason, "overlay-not-ready");
+  assert.equal(notReadyStatus.nativeHostAvailability.available, true);
+  assert.deepEqual(nativeHostCalls, []);
+
+  const openAndWait = overlay.openAndWait(webTarget, { showTimeoutMs: 500, closeTimeoutMs: 500 });
+  await new Promise((resolve) => setTimeout(resolve, 80));
+  assert.deepEqual(steamWebOverlayCalls(fake), []);
+  assert.deepEqual(nativeHostCalls, []);
+
+  overlayEnabled = true;
+  assert.equal(
+    await waitForCondition(() => steamWebOverlayCalls(fake).length === 1, 500),
+    true
+  );
+  assert.deepEqual(steamWebOverlayCalls(fake).at(-1), {
+    method: "activateOverlayToWebPage",
+    args: ["https://store.steampowered.com/app/480/", true]
+  });
+
+  fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: true });
+  fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: false });
+  const result = await openAndWait;
+  assert.equal(result.shown.overlayActive, true);
+  assert.equal(result.parked.overlayActive, false);
+  assert.equal(result.parked.nativeHostOpen, false);
+  assert.equal(result.parked.currentFps, 0);
+  assert.deepEqual(nativeHostCalls, []);
+});
+
 test("electron steam overlay checkout preparation holds only for the wrapped operation", async (t) => {
   const hostHandle = Buffer.from([1, 3, 5, 7]);
   let hostOpen = false;
