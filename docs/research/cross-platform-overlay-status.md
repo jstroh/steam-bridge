@@ -123,6 +123,34 @@ That turns managed cases into real close/back-to-app proof when an operator or
 verified UI probe closes the overlay, rather than accepting show-only callback
 evidence.
 
+A follow-up Windows source sweep checked Valve's overlay requirements, Electron
+command-line-switch behavior, Electron in-process-GPU issue reports,
+steamworks.js overlay issue history, Steamworks.NET launch/injection guidance,
+WebView2 overlay reports, Construct's browser-overlay writeup, and newer native
+surface wrapper research. The sources agree on the core tradeoff: Steam needs a
+hookable graphics surface, browser runtimes often push GPU work out of the main
+process, and Chromium's in-process GPU path is the common Electron workaround
+but has real white-window and composition regressions. A local ad-hoc
+interactive render probe on the Windows laptop first captured this split under
+`C:\Users\admin\steam-bridge-artifacts\windows-render-flag-probe-20260702-001`:
+the default `in-process-gpu-on` case loaded Steam and emitted
+`window:first-render` while the visible BrowserWindow client was blank; the
+`in-process-gpu-off` case rendered the full smoke UI but was only a renderer
+baseline, not overlay proof; and the
+`in-process-gpu-on-disable-direct-composition` case rendered the UI but then
+logged `app:child-process-gone` and `app:render-process-gone` crash events. The
+packaged `windows-render-health-probe.ps1` then reran the same comparison from
+the interactive desktop after the smoke result event and wrote
+`C:\Users\admin\steam-bridge-artifacts\windows-render-health-20260702-003\render-health-summary.json`
+with status `default-blank-composition-visible`: the default case remained
+visually blank, while `-OverlayInProcessGpu 0` and
+`-OverlayDisableDirectComposition 1` rendered visible smoke UI. The packaged
+Windows app now includes that probe so this three-way visual comparison can be
+rerun before any Steam-launched overlay matrix. If the default case is blank,
+stop live overlay launch loops; if the DirectComposition-off case is visible,
+keep it as diagnostic-only until it proves close/back-to-app, Alt+Tab, and
+clean crash behavior.
+
 A current-package Windows refresh on 2026-07-02 rebuilt the Electron `43.0.0`
 smoke bundle, deployed it to the Windows laptop, and signed every `.exe`,
 `.dll`, and `.node` with the installed local test code-signing certificate.

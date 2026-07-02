@@ -145,6 +145,16 @@ case artifacts under `%TEMP%` by default:
   -InstallShortcut
 ```
 
+If the packaged app window itself renders blank or white, run the packaged
+`windows-render-health-probe.ps1` from the interactive Windows desktop before
+more Steam-launched overlay cases. It starts three direct `none` probes with
+App ID `480`, captures desktop and client-area screenshots, and writes
+`render-health-summary.json` comparing the default in-process GPU path,
+`-OverlayInProcessGpu 0`, and `-OverlayDisableDirectComposition 1`. Treat
+`-OverlayInProcessGpu 0` as a renderer baseline only, not overlay proof. Treat
+`-OverlayDisableDirectComposition 1` as an explicit diagnostic until that mode
+also survives crash, close/back-to-app, and Alt+Tab checks.
+
 Focused managed runs can choose a single case, close probe, and dialog target:
 
 ```powershell

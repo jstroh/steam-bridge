@@ -57,12 +57,17 @@ shortcut, and passive notification regression checks. Windows Electron overlay
 testing starts with the normal `electronConfigureSteamOverlay()` path. On
 Windows that default enables Chromium's in-process GPU path without starting a
 repaint loop, and the smoke helper mirrors it with `-OverlayInProcessGpu 1`.
-Pass `-OverlayInProcessGpu 0` only for a baseline comparison. If a Windows run
-still shows a white or stale overlay, pass `disableDirectComposition: true` or
-launch the smoke helper with `-OverlayDisableDirectComposition 1` for an explicit
-comparison run. This switch is not enabled by default because upstream
-Electron/Steam wrapper reports tie it to Alt+Tab ghost-window regressions on
-some Windows systems.
+Pass `-OverlayInProcessGpu 0` only for a renderer baseline comparison; that mode
+can prove the app UI paints, but it is not Steam overlay proof. If the app
+window itself is blank or white, run `windows-render-health-probe.ps1` from the
+interactive Windows desktop before more Steam-launched overlay cases. It
+captures desktop and client-area screenshots for the default in-process GPU
+path, the in-process-GPU-off baseline, and the explicit
+`disableDirectComposition` comparison, then writes `render-health-summary.json`.
+If `disableDirectComposition` makes the app visible, keep treating it as an
+opt-in diagnostic until it also passes close, Alt+Tab, and crash checks; upstream
+Electron/Steam wrapper reports tie that switch to ghost-window regressions, and
+local diagnostics have also shown visible-but-crashy behavior.
 Run `windows-electron-smoke.ps1 -Mode preflight` on a Windows test package before
 long live overlay runs. It reports Smart App Control/App Control policy state,
 the parsed `CiTool.exe -lp` policy inventory, enforced policy names, whether a

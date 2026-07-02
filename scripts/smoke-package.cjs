@@ -272,6 +272,10 @@ function runMacosPackageSigningStaticChecks() {
     "Windows Electron package must include the overlay matrix runner"
   );
   assert.ok(
+    packagerScript.includes("windows-render-health-probe.ps1"),
+    "Windows Electron package must include the render health probe"
+  );
+  assert.ok(
     packagerScript.includes("summarize-windows-overlay-matrix.cjs"),
     "Windows Electron package must include the overlay matrix summarizer"
   );
@@ -317,6 +321,7 @@ function runWindowsSmokeHelperStaticChecks() {
   const helper = fs.readFileSync(path.join(repoRoot, "scripts", "windows-electron-smoke.ps1"), "utf8");
   const signingHelper = fs.readFileSync(path.join(repoRoot, "scripts", "sign-windows-package.ps1"), "utf8");
   const matrixHelper = fs.readFileSync(path.join(repoRoot, "scripts", "windows-overlay-matrix.ps1"), "utf8");
+  const renderHealthHelper = fs.readFileSync(path.join(repoRoot, "scripts", "windows-render-health-probe.ps1"), "utf8");
   const matrixSummary = fs.readFileSync(path.join(repoRoot, "scripts", "summarize-windows-overlay-matrix.cjs"), "utf8");
   const electronHelper = fs.readFileSync(path.join(repoRoot, "packages", "steam-bridge", "src", "electron.ts"), "utf8");
   for (const expected of [
@@ -467,6 +472,20 @@ function runWindowsSmokeHelperStaticChecks() {
     "DXGI_ERROR_NOT_CURRENTLY_AVAILABLE"
   ]) {
     assert.ok(matrixHelper.includes(expected), `Windows overlay matrix missing ${expected}`);
+  }
+  for (const expected of [
+    "steam-bridge-windows-render-health-probe",
+    "in-process-gpu-on",
+    "in-process-gpu-off",
+    "in-process-gpu-on-disable-direct-composition",
+    "readyForSteamOverlayMatrix",
+    "default-blank-composition-visible-but-crashy",
+    "FailOnUnhealthyDefault",
+    "Capture-DesktopScreenshot",
+    "Analyze-ClientScreenshot",
+    "fatalLifecycleEventCount"
+  ]) {
+    assert.ok(renderHealthHelper.includes(expected), `Windows render health helper missing ${expected}`);
   }
   for (const expected of [
     "steam-bridge-windows-native-load-gate-blocker",
