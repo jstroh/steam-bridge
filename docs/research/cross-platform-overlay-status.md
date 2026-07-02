@@ -291,7 +291,14 @@ behavior. A further generic web probe,
 reported `GameOverlayActivated(true)` with no visible overlay screenshot before
 the managed close wait timed out. That isolates the current Windows failure to
 Steam Community-style web content in the overlay rather than the
-dialog-equivalent router.
+dialog-equivalent router. A raw native diagnostic follow-up,
+`windows-raw-native-dialog-community-observe-20260702-001`, now waits for
+`IsOverlayEnabled` before calling `presenter-dialog --dialog Community`, then
+uses the close probe for screenshots. It passed Steam-launched verification,
+emitted `GameOverlayActivated(true)`, and started `gameoverlayui64`, but the
+foreground window stayed `SteamBridgeSmoke` and the detected/before/after
+screenshots showed no visible Steam overlay UI. Treat raw native Community on
+Windows as callback-only evidence, not a user-visible overlay solution.
 
 The macOS matrix can now pair `--app-id <your-app-id>` with
 `--checkout-json-file <path>` for private configured-product proof. Its manifest

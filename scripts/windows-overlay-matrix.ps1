@@ -1207,6 +1207,7 @@ function New-Case {
     [switch]$RequireNoOverlayActivation,
     [switch]$AllowOverlayNotReady,
     [switch]$RequireManagedOverlayComplete,
+    [switch]$CloseProbeOnActivation,
     [string]$ManagedOverlayResultMode = "",
     [string]$WebModal = "",
     [string]$DialogOverride = "",
@@ -1223,6 +1224,7 @@ function New-Case {
     requireNoOverlayActivation = [bool]$RequireNoOverlayActivation
     allowOverlayNotReady = [bool]$AllowOverlayNotReady
     requireManagedOverlayComplete = [bool]$RequireManagedOverlayComplete
+    closeProbeOnActivation = [bool]$CloseProbeOnActivation
     managedOverlayResultMode = $ManagedOverlayResultMode
     webModal = $WebModal
     dialog = $DialogOverride
@@ -1279,6 +1281,7 @@ function Get-MatrixCases {
     New-ManagedOpenAndWaitCase -Id "20-managed-stats-open-and-wait" -Action "presenter-stats-open-and-wait"
     New-ManagedOpenAndWaitCase -Id "21-managed-achievements-open-and-wait" -Action "presenter-achievements-open-and-wait"
     New-ManagedOpenAndWaitCase -Id "22-managed-user-open-and-wait" -Action "presenter-user-open-and-wait"
+    New-Case -Id "23-raw-native-dialog-open-observe" -Action "presenter-dialog" -RequireEvent @("overlay:presenter-open") -RequireOverlayActivated -DialogOverride $Dialog -CloseProbeOnActivation -ResultDelayMs 12000
   )
 
   switch ($Suite) {
@@ -1326,6 +1329,7 @@ function Write-MatrixManifest {
           requireNoOverlayActivation = [bool]$_.requireNoOverlayActivation
           allowOverlayNotReady = [bool]$_.allowOverlayNotReady
           requireManagedOverlayComplete = [bool]$_.requireManagedOverlayComplete
+          closeProbeOnActivation = [bool]$_.closeProbeOnActivation
           managedOverlayResultMode = $_.managedOverlayResultMode
           webModal = $_.webModal
           dialog = $_.dialog
@@ -1414,7 +1418,7 @@ function Test-SmokeResultPayload {
 function Start-WindowsOverlayCloseProbe {
   param($Case, [string]$CaseDir, [string]$DiagnosticDir)
 
-  if (-not $CloseProbe -or -not $Case.requireManagedOverlayComplete) {
+  if (-not $CloseProbe -or (-not $Case.requireManagedOverlayComplete -and -not $Case.closeProbeOnActivation)) {
     return $null
   }
 

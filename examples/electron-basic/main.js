@@ -915,7 +915,7 @@ async function runAutorunAction(action) {
         checkPresenterReady();
         return { ok: true, action };
       case "presenter-dialog":
-        openPresenterDialogOverlay();
+        await openPresenterDialogOverlay();
         return { ok: true, action };
       case "presenter-dialog-auto":
         await openPresenterDialogAutoOverlay();
@@ -1104,9 +1104,12 @@ function checkPresenterReady() {
   return snapshot();
 }
 
-function openPresenterDialogOverlay() {
+async function openPresenterDialogOverlay() {
   const activeClient = requireClient();
   const overlay = ensureElectronSteamOverlay(activeClient);
+  await overlay.waitForOverlayReady({
+    timeoutMs: MANAGED_OVERLAY_WAIT_TIMEOUT_MS
+  });
   overlay.open({ type: "dialog", dialog: OVERLAY_DIALOG, route: "native" });
   recordEvent("overlay:presenter-open", {
     target: "dialog",

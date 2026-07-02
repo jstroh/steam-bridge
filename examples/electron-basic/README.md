@@ -840,7 +840,9 @@ Use `presenter-shortcut-open-and-wait` with `--shortcut-target <name>` to smoke
 test that programmatic button/menu path without sending Shift+Tab.
 The `dialog` target uses the high-level auto router; unsupported dialog names
 throw instead of silently falling back to raw Steam overlay behavior. Use the
-raw `presenter-dialog` action only for explicit diagnostics.
+raw `presenter-dialog` action only for explicit diagnostics. It waits for Steam
+overlay readiness before calling the raw native dialog path, but callback
+activation still does not prove a visible or closable overlay surface.
 For emergency compatibility comparison, set
 `STEAM_BRIDGE_DISABLE_ELECTRON_OVERLAY_PRESENTER=1` before launching the smoke
 app. The same high-level `presenter-*` actions then use the older native-session
