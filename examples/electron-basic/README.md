@@ -86,6 +86,9 @@ including raw Windows baseline actions `web`, `store`, `friends`,
 actions such as `presenter-ready`, `presenter-web-open-and-wait`,
 `presenter-duplicate-open-guard`, `presenter-store-open-and-wait`,
 `presenter-friends-open-and-wait`, `presenter-dialog-auto-open-and-wait`,
+`presenter-profile-open-and-wait`, `presenter-players-open-and-wait`,
+`presenter-community-open-and-wait`, `presenter-stats-open-and-wait`,
+`presenter-achievements-open-and-wait`, `presenter-user-open-and-wait`,
 `presenter-checkout`, `presenter-shortcut`, and
 `presenter-shortcut-open-and-wait`.
 
@@ -112,9 +115,16 @@ while the overlay remains active until the managed close wait times out. The
 native Ctrl+W diagnostic delivered all four key events with `lastError=0`, so
 this is not just a WScript `SendKeys` issue. Keep those routes in focused runs
 until close/back-to-app proof is green. Close-probe artifacts include
-foreground-window and process snapshots around detection and input send time;
-use those to distinguish a Steam overlay close problem from input being
-delivered to the Electron game window.
+foreground-window snapshots, process snapshots, and full-desktop screenshots
+around detection and input send time; use those to distinguish a Steam overlay
+close problem from input being delivered to the Electron game window or from a
+callback firing without visible overlay UI.
+The Windows matrix also has explicit managed profile, players, community,
+stats, achievements, and user cases. Current focused artifacts show the
+Community target and a generic web overlay pointed at
+`https://steamcommunity.com/app/480` both fire active callbacks without visible
+overlay screenshots, so keep Community-style Windows routes separate from the
+known-good store/web/Friends lane until that Steam surface is proven.
 
 Live Steam-launched Windows overlay proof must run from the same interactive
 desktop session as Steam. SSH runs execute in Session 0 and are rejected by the

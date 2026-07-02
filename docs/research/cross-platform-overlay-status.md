@@ -273,9 +273,25 @@ diagnostics now cover `toggle-sendinput`, `escape-sendinput`, and
 `windows-managed-dialog-community-close-tab-sendinput-20260702-001` artifact
 delivered Ctrl+W successfully with `sent=4`, `expected=4`, and `lastError=0`
 while the foreground window remained `SteamBridgeSmoke`, but the overlay stayed
-active until the managed close wait timed out. Treat this as the remaining
-Windows automation/focus problem for dialog/community-style surfaces, not
-evidence that Electron needs a native host on Windows.
+active until the managed close wait timed out. A follow-up focused run,
+`windows-managed-dialog-community-screenshot-20260702-001`, added full-desktop
+screenshots to the same close-probe lifecycle. Those screenshots show the
+foreground smoke window and Steam client desktop, but no visible Steam overlay
+surface, even though `GameOverlayActivated(true)` and
+`overlay:presenter-wait-shown` fired. Treat this as the remaining Windows
+visibility/automation problem for dialog/community-style surfaces, not evidence
+that Electron needs a native host on Windows. The Windows managed matrix now
+also exposes explicit profile, players, community, stats, achievements, and
+user `openAndWait(...)` cases. The focused
+`windows-managed-community-screenshot-20260702-002` artifact proved the explicit
+`presenter-community-open-and-wait` target has the same invisible-active
+behavior. A further generic web probe,
+`windows-managed-web-community-url-screenshot-20260702-001`, sent
+`presenter-web-open-and-wait` to `https://steamcommunity.com/app/480` and also
+reported `GameOverlayActivated(true)` with no visible overlay screenshot before
+the managed close wait timed out. That isolates the current Windows failure to
+Steam Community-style web content in the overlay rather than the
+dialog-equivalent router.
 
 The macOS matrix can now pair `--app-id <your-app-id>` with
 `--checkout-json-file <path>` for private configured-product proof. Its manifest

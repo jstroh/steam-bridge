@@ -1232,6 +1232,29 @@ function New-Case {
   }
 }
 
+function New-ManagedOpenAndWaitCase {
+  param(
+    [string]$Id,
+    [string]$Action,
+    [string]$DialogOverride = "",
+    [string]$ShortcutTargetOverride = "",
+    [string]$CheckoutTransactionIdOverride = "",
+    [string]$WebModal = ""
+  )
+
+  return New-Case `
+    -Id $Id `
+    -Action $Action `
+    -RequireEvent @("overlay:presenter-open-and-wait-start", "overlay:presenter-wait-closed", "overlay:presenter-parked", "overlay:presenter-open-and-wait-complete") `
+    -RequireOverlayActivated `
+    -RequireManagedOverlayComplete `
+    -ManagedOverlayResultMode "complete" `
+    -DialogOverride $DialogOverride `
+    -ShortcutTargetOverride $ShortcutTargetOverride `
+    -CheckoutTransactionIdOverride $CheckoutTransactionIdOverride `
+    -WebModal $WebModal
+}
+
 function Get-MatrixCases {
   $baseline = @(
     New-Case -Id "01-web" -Action "web" -RequireEvent @("overlay:web") -RequireOverlayActivated -WebModal "true"
@@ -1244,12 +1267,18 @@ function Get-MatrixCases {
 
   $managed = @(
     New-Case -Id "10-presenter-ready" -Action "presenter-ready" -RequireEvent @("overlay:presenter-ready") -RequireNoOverlayActivation -AllowOverlayNotReady -ResultDelayMs 1200
-    New-Case -Id "11-managed-web-open-and-wait" -Action "presenter-web-open-and-wait" -RequireEvent @("overlay:presenter-open-and-wait-start", "overlay:presenter-wait-closed", "overlay:presenter-parked", "overlay:presenter-open-and-wait-complete") -RequireOverlayActivated -RequireManagedOverlayComplete -ManagedOverlayResultMode "complete" -WebModal "true"
-    New-Case -Id "12-managed-store-open-and-wait" -Action "presenter-store-open-and-wait" -RequireEvent @("overlay:presenter-open-and-wait-start", "overlay:presenter-wait-closed", "overlay:presenter-parked", "overlay:presenter-open-and-wait-complete") -RequireOverlayActivated -RequireManagedOverlayComplete -ManagedOverlayResultMode "complete"
-    New-Case -Id "13-managed-friends-open-and-wait" -Action "presenter-friends-open-and-wait" -RequireEvent @("overlay:presenter-open-and-wait-start", "overlay:presenter-wait-closed", "overlay:presenter-parked", "overlay:presenter-open-and-wait-complete") -RequireOverlayActivated -RequireManagedOverlayComplete -ManagedOverlayResultMode "complete"
-    New-Case -Id "14-managed-dialog-open-and-wait" -Action "presenter-dialog-auto-open-and-wait" -RequireEvent @("overlay:presenter-open-and-wait-start", "overlay:presenter-wait-closed", "overlay:presenter-parked", "overlay:presenter-open-and-wait-complete") -RequireOverlayActivated -RequireManagedOverlayComplete -ManagedOverlayResultMode "complete" -DialogOverride $Dialog
-    New-Case -Id "15-managed-shortcut" -Action "presenter-shortcut-open-and-wait" -RequireEvent @("overlay:presenter-open-and-wait-start", "overlay:presenter-wait-closed", "overlay:presenter-parked", "overlay:presenter-open-and-wait-complete") -RequireOverlayActivated -RequireManagedOverlayComplete -ManagedOverlayResultMode "complete" -ShortcutTargetOverride $ShortcutTarget
+    New-ManagedOpenAndWaitCase -Id "11-managed-web-open-and-wait" -Action "presenter-web-open-and-wait" -WebModal "true"
+    New-ManagedOpenAndWaitCase -Id "12-managed-store-open-and-wait" -Action "presenter-store-open-and-wait"
+    New-ManagedOpenAndWaitCase -Id "13-managed-friends-open-and-wait" -Action "presenter-friends-open-and-wait"
+    New-ManagedOpenAndWaitCase -Id "14-managed-dialog-open-and-wait" -Action "presenter-dialog-auto-open-and-wait" -DialogOverride $Dialog
+    New-ManagedOpenAndWaitCase -Id "15-managed-shortcut" -Action "presenter-shortcut-open-and-wait" -ShortcutTargetOverride $ShortcutTarget
     New-Case -Id "16-managed-checkout-route" -Action "presenter-checkout" -RequireEvent @("overlay:presenter-open", "overlay:presenter-wait-closed", "overlay:presenter-parked", "overlay:presenter-checkout-open-and-wait-complete") -RequireOverlayActivated -RequireManagedOverlayComplete -ManagedOverlayResultMode "complete" -CheckoutTransactionIdOverride $CheckoutTransactionId
+    New-ManagedOpenAndWaitCase -Id "17-managed-profile-open-and-wait" -Action "presenter-profile-open-and-wait"
+    New-ManagedOpenAndWaitCase -Id "18-managed-players-open-and-wait" -Action "presenter-players-open-and-wait"
+    New-ManagedOpenAndWaitCase -Id "19-managed-community-open-and-wait" -Action "presenter-community-open-and-wait"
+    New-ManagedOpenAndWaitCase -Id "20-managed-stats-open-and-wait" -Action "presenter-stats-open-and-wait"
+    New-ManagedOpenAndWaitCase -Id "21-managed-achievements-open-and-wait" -Action "presenter-achievements-open-and-wait"
+    New-ManagedOpenAndWaitCase -Id "22-managed-user-open-and-wait" -Action "presenter-user-open-and-wait"
   )
 
   switch ($Suite) {
@@ -1451,6 +1480,13 @@ public static class SteamBridgeWindowsProbe {
     public ushort wParamH;
   }
 
+  public struct RECT {
+    public int Left;
+    public int Top;
+    public int Right;
+    public int Bottom;
+  }
+
   [DllImport("user32.dll")]
   public static extern IntPtr GetForegroundWindow();
 
@@ -1459,6 +1495,9 @@ public static class SteamBridgeWindowsProbe {
 
   [DllImport("user32.dll")]
   public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+
+  [DllImport("user32.dll")]
+  public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
 
   [DllImport("user32.dll", SetLastError = true)]
   public static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
@@ -1491,6 +1530,14 @@ public static class SteamBridgeWindowsProbe {
 }
 '@
 
+`$script:ProbeScreenshotAssemblyError = `$null
+try {
+  Add-Type -AssemblyName System.Drawing
+  Add-Type -AssemblyName System.Windows.Forms
+} catch {
+  `$script:ProbeScreenshotAssemblyError = `$_.Exception.Message
+}
+
 function Send-NativeKeyChord {
   param([int[]]`$VirtualKeys)
 
@@ -1514,12 +1561,73 @@ function Get-ForegroundProbeSnapshot {
   if (`$processId -gt 0) {
     `$process = Get-Process -Id ([int]`$processId) -ErrorAction SilentlyContinue
   }
+  `$rect = New-Object -TypeName 'SteamBridgeWindowsProbe+RECT'
+  `$hasRect = [SteamBridgeWindowsProbe]::GetWindowRect(`$handle, [ref]`$rect)
 
   [PSCustomObject]@{
     hwnd = ("0x{0:X}" -f `$handle.ToInt64())
     pid = [int]`$processId
     processName = if (`$process) { `$process.ProcessName } else { "" }
     title = `$titleBuilder.ToString()
+    rect = if (`$hasRect) {
+      [PSCustomObject]@{
+        left = `$rect.Left
+        top = `$rect.Top
+        right = `$rect.Right
+        bottom = `$rect.Bottom
+        width = [Math]::Max(0, `$rect.Right - `$rect.Left)
+        height = [Math]::Max(0, `$rect.Bottom - `$rect.Top)
+      }
+    } else {
+      `$null
+    }
+  }
+}
+
+function Capture-ProbeScreen {
+  param([string]`$Name)
+
+  `$path = Join-Path '$CaseDir' ("close-probe-{0}.png" -f `$Name)
+  if (`$script:ProbeScreenshotAssemblyError) {
+    return [PSCustomObject]@{
+      ok = `$false
+      path = `$path
+      error = `$script:ProbeScreenshotAssemblyError
+    }
+  }
+
+  try {
+    `$bounds = [System.Windows.Forms.SystemInformation]::VirtualScreen
+    if (`$bounds.Width -le 0 -or `$bounds.Height -le 0) {
+      throw "Virtual screen has invalid bounds: `$(`$bounds.Width)x`$(`$bounds.Height)."
+    }
+
+    `$bitmap = New-Object System.Drawing.Bitmap `$bounds.Width, `$bounds.Height
+    `$graphics = [System.Drawing.Graphics]::FromImage(`$bitmap)
+    try {
+      `$graphics.CopyFromScreen(`$bounds.Left, `$bounds.Top, 0, 0, `$bitmap.Size)
+      `$bitmap.Save(`$path, [System.Drawing.Imaging.ImageFormat]::Png)
+    } finally {
+      `$graphics.Dispose()
+      `$bitmap.Dispose()
+    }
+
+    [PSCustomObject]@{
+      ok = `$true
+      path = `$path
+      bounds = [PSCustomObject]@{
+        left = `$bounds.Left
+        top = `$bounds.Top
+        width = `$bounds.Width
+        height = `$bounds.Height
+      }
+    }
+  } catch {
+    [PSCustomObject]@{
+      ok = `$false
+      path = `$path
+      error = `$_.Exception.Message
+    }
   }
 }
 
@@ -1560,6 +1668,7 @@ while ((Get-Date) -lt `$deadline -and -not `$sent) {
     if (`$text -match 'overlay:presenter-wait-shown' -or (`$text -match 'callback:overlay-activated' -and `$text -match '"active":true')) {
       Write-ProbeEvent "probe:detected" ([PSCustomObject]@{
         foreground = Get-ForegroundProbeSnapshot
+        screenshot = Capture-ProbeScreen "detected"
         processes = Get-ProbeProcessSnapshot
       })
       if ($settleMs -gt 0) {
@@ -1567,6 +1676,7 @@ while ((Get-Date) -lt `$deadline -and -not `$sent) {
       }
       Write-ProbeEvent "probe:before-send" ([PSCustomObject]@{
         foreground = Get-ForegroundProbeSnapshot
+        screenshot = Capture-ProbeScreen "before-send"
         processes = Get-ProbeProcessSnapshot
       })
       `$nativeInputSent = `$null
@@ -1596,6 +1706,7 @@ while ((Get-Date) -lt `$deadline -and -not `$sent) {
       Write-ProbeEvent "probe:after-send" ([PSCustomObject]@{
         input = '$input'
         foreground = Get-ForegroundProbeSnapshot
+        screenshot = Capture-ProbeScreen "after-send"
         processes = Get-ProbeProcessSnapshot
       })
       `$sent = `$true
