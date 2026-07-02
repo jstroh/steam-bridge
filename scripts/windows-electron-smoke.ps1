@@ -92,6 +92,7 @@ param(
   [switch]$AllowOverlayNotReady,
   [switch]$RequireOverlayActivated,
   [switch]$RequireNoOverlayActivation,
+  [string]$RequireNativeHostBackend = "",
   [int]$RequireRestoreFocusDelayMs = -1,
   [switch]$RequireZeroManagedOverlayTiming,
   [switch]$RequireManagedOverlayComplete,
@@ -1183,6 +1184,21 @@ function Assert-SmokeResult {
   }
   if ($RequireNoOverlayActivation -and $overlayActivated) {
     $failures.Add("overlay activation callback active=true was not emitted")
+  }
+  if ($RequireNativeHostBackend) {
+    if (-not $nativePresenter) {
+      $failures.Add("native presenter snapshot available")
+    } else {
+      if ($nativePresenter.backend -ne $RequireNativeHostBackend) {
+        $failures.Add("native presenter backend is $RequireNativeHostBackend")
+      }
+      if ($nativePresenter.nativeHostOpen -ne $true) {
+        $failures.Add("native presenter host is open")
+      }
+      if ($nativePresenter.attached -ne $true) {
+        $failures.Add("native presenter is attached")
+      }
+    }
   }
   if ($RequireManagedOverlayComplete) {
     if ($app.managedOverlayResultMode -ne "complete") {

@@ -386,6 +386,7 @@ function runWindowsSmokeHelperStaticChecks() {
     "RequireOverlayActivated",
     "AllowOverlayNotReady",
     "RequireNoCrashes",
+    "RequireNativeHostBackend",
     "ManagedOverlayResultMode",
     "RequireManagedOverlayComplete",
     "STEAM_BRIDGE_SMOKE_MANAGED_OVERLAY_RESULT_MODE",
@@ -442,7 +443,8 @@ function runWindowsSmokeHelperStaticChecks() {
     "preflight.json",
     "post-gate-preflight.log",
     "post-gate-preflight.json",
-    "-Action\", \"none\"",
+    "$gateAction = if ($expectedNativeHostBackend)",
+    "-Action\", $gateAction",
     "-RequireNoOverlayActivation",
     "achievement-progress",
     "achievement-unlock",
@@ -480,6 +482,9 @@ function runWindowsSmokeHelperStaticChecks() {
     "presenterMode = $PresenterMode",
     "NativeHostBackend",
     "nativeHostBackend = $NativeHostBackend",
+    "expectedNativeHostBackend",
+    "Resolve-ExpectedWindowsNativeHostBackend",
+    "-RequireNativeHostBackend",
     "NativeHostStyle",
     "nativeHostStyle = $NativeHostStyle",
     "NativePath",
@@ -577,6 +582,7 @@ function runWindowsSmokeHelperStaticChecks() {
     "closeProbeVisuals=",
     "analyzePngVisuals",
     "decodePng",
+    "expectedNativeHostBackend=",
     "nativePathOverride=",
     "steam-bridge-windows-live-run-readiness",
     "windowsSession",
@@ -595,7 +601,9 @@ function runWindowsSmokeHelperStaticChecks() {
     "STEAM_BRIDGE_ELECTRON_OVERLAY_SCRUB_CHILD_ENV",
     "STEAM_BRIDGE_ELECTRON_OVERLAY_ISOLATE_CHILD_PROCESSES",
     "--steam-bridge-electron-overlay-scrub-child-env",
-    "--steam-bridge-electron-overlay-isolate-child-processes"
+    "--steam-bridge-electron-overlay-isolate-child-processes",
+    "RequireNativeHostBackend",
+    "native presenter backend is $RequireNativeHostBackend"
   ]) {
     assert.ok(helper.includes(expected), `Windows smoke helper missing ${expected}`);
   }

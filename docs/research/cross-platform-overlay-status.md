@@ -273,6 +273,19 @@ case result was written before the stuck task was stopped and cleaned up.
 Continue Windows route expansion only with a current trusted/reputable package
 or an explicitly policy-disabled Windows test machine.
 
+The Windows matrix now turns native-presenter native-load checks into a
+capability gate. When `-PresenterMode persistent` requests a Windows native
+presenter, the preflight gate runs `presenter-ready` instead of `none`, records
+`expectedNativeHostBackend` in `matrix-manifest.json`, and requires the smoke
+result to show the requested native backend plus an attached native host before
+any overlay route case can start. A focused interactive Session 1 diagnostic at
+`C:\Users\admin\steam-bridge-artifacts\codex-native-backend-gate-stale-override-session1-20260702-001`
+replayed the stale accepted `-NativePath` override with
+`-NativeHostBackend d3d11`; the gate rejected it with
+`native presenter backend is windows-d3d11` and `native presenter host is open`
+before launching a route case. That prevents older accepted native artifacts
+from being mistaken for current D3D11 proof.
+
 A follow-up on July 2, 2026 isolated that same `0x887A0022` failure to Windows
 Session 0 launches. Microsoft documents `DXGI_ERROR_NOT_CURRENTLY_AVAILABLE` for
 DXGI swap-chain creation from Session 0, and SSH-launched Steam/smoke probes

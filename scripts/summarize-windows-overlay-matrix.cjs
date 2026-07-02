@@ -246,6 +246,13 @@ function validateManifest(manifest, failures) {
   if (manifest.nativePathOverride !== undefined) {
     expect(typeof manifest.nativePathOverride === "boolean", "matrix manifest nativePathOverride is boolean", failures);
   }
+  if (manifest.expectedNativeHostBackend !== undefined) {
+    expect(
+      typeof manifest.expectedNativeHostBackend === "string",
+      "matrix manifest expectedNativeHostBackend is a string",
+      failures
+    );
+  }
   expect(Array.isArray(manifest.cases), "matrix manifest cases is an array", failures);
   if (Array.isArray(manifest.cases)) {
     expect(
@@ -650,6 +657,7 @@ function printSummary(summary) {
         `disableDirectComposition=${formatValue(summary.manifest.overlayDisableDirectComposition)} ` +
         `scrubChildEnv=${formatValue(summary.manifest.overlayScrubChildEnv)} ` +
         `isolateChildProcesses=${formatValue(summary.manifest.overlayIsolateChildProcesses)} ` +
+        `expectedNativeHostBackend=${formatValue(summary.manifest.expectedNativeHostBackend)} ` +
         `nativePathOverride=${formatValue(summary.manifest.nativePathOverride)}`
     );
   }
@@ -768,6 +776,7 @@ function summarizeManifest(manifest) {
     overlayDisableDirectComposition: manifest.overlayDisableDirectComposition || "",
     overlayScrubChildEnv: manifest.overlayScrubChildEnv || "",
     overlayIsolateChildProcesses: manifest.overlayIsolateChildProcesses || "",
+    expectedNativeHostBackend: manifest.expectedNativeHostBackend || "",
     nativePathOverride: Boolean(manifest.nativePathOverride),
     expectedCaseCount: Array.isArray(manifest.cases) ? manifest.cases.length : 0
   };

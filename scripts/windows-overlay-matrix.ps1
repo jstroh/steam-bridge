@@ -635,6 +635,28 @@ function Test-UsesDefaultWindowsRenderPath {
   )
 }
 
+function Test-UsesNativeWindowsPresenter {
+  if (-not $PresenterMode) {
+    return $false
+  }
+
+  $normalized = $PresenterMode.Trim().ToLowerInvariant()
+  return @("persistent", "presenter", "native", "auto", "on", "true", "1") -contains $normalized
+}
+
+function Resolve-ExpectedWindowsNativeHostBackend {
+  if (-not (Test-UsesNativeWindowsPresenter)) {
+    return ""
+  }
+
+  $requested = $NativeHostBackend.Trim().ToLowerInvariant()
+  if (@("d3d", "d3d11", "direct3d", "direct3d11", "dxgi", "windows-d3d11") -contains $requested) {
+    return "windows-d3d11"
+  }
+
+  return "windows-opengl"
+}
+
 function Get-CurrentWindowsSessionId {
   return [System.Diagnostics.Process]::GetCurrentProcess().SessionId
 }
@@ -1329,13 +1351,15 @@ function Test-NativeLoadGate {
   $resultFile = Join-Path $gateDir "result.log"
   $diagnosticDir = Join-Path $gateDir "diagnostics"
   $gateTimeoutSeconds = if ($TimeoutSeconds -lt 30) { $TimeoutSeconds } else { 30 }
+  $expectedNativeHostBackend = Resolve-ExpectedWindowsNativeHostBackend
+  $gateAction = if ($expectedNativeHostBackend) { "presenter-ready" } else { "none" }
 
   Write-Host "Running Windows native-load gate with the packaged app."
   $gateArgs = @(
     "-Mode", "direct",
     "-AppDir", $AppDir,
     "-AppId", "$AppId",
-    "-Action", "none",
+    "-Action", $gateAction,
     "-ResultFile", $resultFile,
     "-DiagnosticDir", $diagnosticDir,
     "-OverlayProfile", $OverlayProfile,
@@ -1346,6 +1370,13 @@ function Test-NativeLoadGate {
     "-RequireNoOverlayActivation",
     "-RequireNoCrashes"
   )
+  if ($expectedNativeHostBackend) {
+    Write-Host ("Windows native-load gate will require native presenter backend {0}." -f $expectedNativeHostBackend)
+    $gateArgs += @(
+      "-RequireEvent", "overlay:presenter-ready",
+      "-RequireNativeHostBackend", $expectedNativeHostBackend
+    )
+  }
   if ($OverlayInProcessGpu) {
     $gateArgs += @("-OverlayInProcessGpu", $OverlayInProcessGpu)
   }
@@ -1759,6 +1790,7 @@ function Get-SelectedMatrixCases {
 function Write-MatrixManifest {
   param([object[]]$Cases)
 
+  $expectedNativeHostBackend = Resolve-ExpectedWindowsNativeHostBackend
   $manifestCases = @(
     $Cases |
       ForEach-Object {
@@ -1801,6 +1833,7 @@ function Write-MatrixManifest {
     presenterMode = $PresenterMode
     nativeHostBackend = $NativeHostBackend
     nativeHostStyle = $NativeHostStyle
+    expectedNativeHostBackend = $expectedNativeHostBackend
     nativePathOverride = [bool]$NativePath
     overlayInProcessGpu = $OverlayInProcessGpu
     overlayDisableDirectComposition = $OverlayDisableDirectComposition
@@ -2634,6 +2667,7 @@ Write-Host ("  appId: {0}" -f $AppId)
 Write-Host ("  overlayProfile: {0}" -f $OverlayProfile)
 Write-Host ("  presenterMode: {0}" -f $PresenterMode)
 Write-Host ("  nativeHostBackend: {0}" -f $NativeHostBackend)
+Write-Host ("  expectedNativeHostBackend: {0}" -f (Resolve-ExpectedWindowsNativeHostBackend))
 Write-Host ("  nativeHostStyle: {0}" -f $NativeHostStyle)
 Write-Host ("  inProcessGpu: {0}" -f $OverlayInProcessGpu)
 Write-Host ("  disableDirectComposition: {0}" -f $OverlayDisableDirectComposition)

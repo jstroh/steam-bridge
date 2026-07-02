@@ -129,6 +129,11 @@ record this as `nativePathOverride=true`. Keep those artifacts separate from
 product package proof: they can help compare overlay routes while a freshly
 rebuilt bundled native addon is blocked by reputation policy, but they do not
 prove the final package's own native addon can load.
+When a Windows native presenter is requested, the matrix also records
+`expectedNativeHostBackend` and requires the native-load gate to run
+`presenter-ready` with that backend before live route cases start. This prevents
+an older accepted `-NativePath` override from being mistaken for current D3D11
+or WGL presenter proof.
 Every run writes `matrix-manifest.json` before preflight with the sanitized suite
 and case list, so summary audits can prove a completed artifact contains every
 intended case result and satisfies the recorded event, activation, no-activation,

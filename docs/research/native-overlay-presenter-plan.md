@@ -1927,6 +1927,16 @@ up. The next useful Windows route expansion requires a current trusted native
 addon or a policy-disabled Windows test machine; repeating this route with the
 older override cannot validate the current D3D11 presenter.
 
+The Windows matrix now protects that boundary mechanically. Native-presenter
+proof runs record `expectedNativeHostBackend` in `matrix-manifest.json`, and the
+native-load gate switches from the generic `none` smoke action to
+`presenter-ready` whenever the Windows native presenter is requested. The smoke
+verifier then requires the requested backend and an attached native host before
+any route case is allowed to run. A focused Session 1 replay at
+`C:\Users\admin\steam-bridge-artifacts\codex-native-backend-gate-stale-override-session1-20260702-001`
+confirmed the stale accepted `-NativePath` override is rejected up front for not
+proving `windows-d3d11`.
+
 The Windows smoke harness now exposes the store route explicitly:
 `STEAM_BRIDGE_SMOKE_STORE_ROUTE`, `--steam-bridge-smoke-store-route`, and the
 matrix `-StoreRoute web|native` switch all flow into
