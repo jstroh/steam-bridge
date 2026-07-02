@@ -101,14 +101,17 @@ matrix case rewrites only that env file before launching through Steam. When
 standalone Node.js is absent, the matrix uses the packaged Electron executable
 in Node mode to run its shortcut updater. Use `-Suite shortcut` to verify or
 refresh only that shortcut before live overlay cases. Use `-Suite preflight` for
-Steam-client health capture only, and pass `-OnlyCase 01-web` or another case
-ID/action when a shaky client needs one focused live probe instead of a whole
-suite. Pass `-CleanStaleOverlayHelpers` only when you intentionally want the
-matrix to stop orphaned Steam overlay helper processes whose target game process
-and recorded Steam parent process are both gone. Live Steam-launched suites
-require Steam to already be open in the interactive Windows desktop session; the
-matrix stops before live launch if `00-preflight/live-run-readiness.json`
-records a closed Steam client or remaining orphan overlay helpers.
+report-only Steam-client health capture, or `-Suite readiness` when a shaky
+client needs the live-run readiness gate written without native-load,
+shortcut-edit, or `steam://rungameid` work. Pass `-OnlyCase 01-web` or another
+case ID/action when a recovering client is ready for one focused live probe
+instead of a whole suite. Pass `-CleanStaleOverlayHelpers` only when you
+intentionally want to stop orphaned Steam overlay helper processes whose target
+game process and recorded Steam parent process are both gone. Live Steam-launched
+suites require Steam to already be open in the interactive Windows desktop
+session; the matrix stops before live launch if
+`00-preflight/live-run-readiness.json` records a closed Steam client or remaining
+orphan overlay helpers.
 
 ## Quick Start
 

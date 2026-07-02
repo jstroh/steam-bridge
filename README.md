@@ -770,8 +770,10 @@ the private `--checkout-json-file` checkout suite.
   `gameoverlayui` helper state, and Windows resource-pressure snapshots. Check
   those files first when Steam's own UI is blank/white or when the overlay
   renderer attaches but `gameoverlay_ui` never starts. Use `-Suite preflight`
-  for a client-health-only capture, or add `-OnlyCase 01-web` / another case ID
-  when you need one focused Steam-launched probe instead of a full suite. Pass
+  for report-only client-health capture, `-Suite readiness` for the same
+  capture plus the live Steam-run readiness gate without native-load,
+  shortcut-edit, or `steam://rungameid` work, or add `-OnlyCase 01-web` /
+  another case ID when you need one focused Steam-launched probe. Pass
   `-CleanStaleOverlayHelpers` only when you intentionally want the matrix to
   stop orphaned Steam overlay helper processes whose target game process and
   recorded Steam parent process are both gone. Live Steam-launched suites require

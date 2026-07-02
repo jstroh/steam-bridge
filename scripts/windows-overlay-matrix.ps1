@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-  [ValidateSet("baseline", "managed", "full", "preflight", "shortcut")]
+  [ValidateSet("baseline", "managed", "full", "preflight", "readiness", "shortcut")]
   [string]$Suite = "baseline",
 
   [ValidateSet("steam-launch", "direct")]
@@ -53,6 +53,10 @@ if (-not $LaunchEnvFile) {
 
 if (-not $WebUrl) {
   $WebUrl = "https://store.steampowered.com/app/$AppId/"
+}
+
+if ($Suite -eq "readiness" -and $LaunchMode -ne "steam-launch") {
+  throw "-Suite readiness checks live Steam-launched readiness and requires -LaunchMode steam-launch."
 }
 
 function Resolve-HelperPath {
@@ -302,8 +306,12 @@ function Stop-StaleSteamOverlayHelpers {
   Write-Host ("Stale Steam overlay helper cleanup checked {0} helper(s), stopped {1}. Details: {2}" -f $helpers.Count, ($results | Where-Object { $_.status -eq "stopped" }).Count, $DestinationFile)
 }
 
-function Test-IsLiveSteamLaunchSuite {
+function Test-NeedsWindowsLiveRunReadiness {
   return ($LaunchMode -eq "steam-launch" -and $Suite -ne "preflight" -and $Suite -ne "shortcut")
+}
+
+function Test-IsLiveSteamLaunchSuite {
+  return (Test-NeedsWindowsLiveRunReadiness -and $Suite -ne "readiness")
 }
 
 function Test-WindowsLiveRunReadiness {
@@ -774,6 +782,7 @@ function Get-MatrixCases {
     "managed" { return $managed }
     "full" { return @($baseline + $managed) }
     "preflight" { return @() }
+    "readiness" { return @() }
     "shortcut" { return @() }
   }
 }
@@ -849,11 +858,13 @@ function Invoke-Preflight {
     Collect-SteamClientDiagnostics -DestinationDir (Join-Path $preflightDir "steam-client") -Phase "preflight"
   }
 
-  if (Test-IsLiveSteamLaunchSuite) {
+  if (Test-NeedsWindowsLiveRunReadiness) {
     Test-WindowsLiveRunReadiness -DestinationFile (Join-Path $preflightDir "live-run-readiness.json")
   }
 
-  Test-NativeLoadGate -PreflightDir $preflightDir
+  if ($Suite -ne "preflight" -and $Suite -ne "readiness") {
+    Test-NativeLoadGate -PreflightDir $preflightDir
+  }
 }
 
 function Write-CaseLaunchEnv {
@@ -1001,13 +1012,20 @@ if ($CleanStaleOverlayHelpers) {
 
 Invoke-Preflight
 
-if ($LaunchMode -eq "steam-launch" -and $Suite -ne "preflight") {
+if ($LaunchMode -eq "steam-launch" -and $Suite -eq "shortcut") {
   Ensure-SteamShortcut
-  if ($Suite -eq "shortcut") {
-    Write-Host ("Windows overlay matrix shortcut setup passed. Launch URL: steam://rungameid/{0}" -f $ShortcutGameId)
-    Write-Host ("Artifacts: {0}" -f $ArtifactRoot)
-    exit 0
-  }
+  Write-Host ("Windows overlay matrix shortcut setup passed. Launch URL: steam://rungameid/{0}" -f $ShortcutGameId)
+  Write-Host ("Artifacts: {0}" -f $ArtifactRoot)
+  exit 0
+}
+
+if (Test-IsLiveSteamLaunchSuite) {
+  Ensure-SteamShortcut
+}
+
+if ($Suite -eq "readiness") {
+  Write-Host ("Windows overlay matrix readiness passed. Artifacts: {0}" -f $ArtifactRoot)
+  exit 0
 }
 
 foreach ($case in Get-SelectedMatrixCases) {

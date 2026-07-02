@@ -360,8 +360,10 @@ function runWindowsSmokeHelperStaticChecks() {
     assert.ok(signingHelper.includes(expected), `Windows signing helper missing ${expected}`);
   }
   for (const expected of [
-    "ValidateSet(\"baseline\", \"managed\", \"full\", \"preflight\", \"shortcut\")",
+    "ValidateSet(\"baseline\", \"managed\", \"full\", \"preflight\", \"readiness\", \"shortcut\")",
     "Test-NativeLoadGate",
+    "Test-NeedsWindowsLiveRunReadiness",
+    "-Suite readiness checks live Steam-launched readiness",
     "Windows Smart App Control/App Control is enabled",
     "Running Windows native-load gate with the packaged app.",
     "native-load-gate",
@@ -378,6 +380,7 @@ function runWindowsSmokeHelperStaticChecks() {
     "InstallShortcut",
     "AssumeShortcutConfigured",
     "shortcut",
+    "readiness",
     "Resolve-JavaScriptRunner",
     "ELECTRON_RUN_AS_NODE",
     "ConvertTo-CmdArgument",
@@ -403,6 +406,7 @@ function runWindowsSmokeHelperStaticChecks() {
     "resourceSnapshot",
     "Test-WindowsLiveRunReadiness",
     "live-run-readiness.json",
+    "Windows overlay matrix readiness passed.",
     "The matrix will not silently start Steam for live overlay proof.",
     "steam-launch",
     "ArtifactRoot"

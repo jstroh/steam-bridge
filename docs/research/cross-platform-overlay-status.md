@@ -105,7 +105,10 @@ helpers before a new proof run. Live Steam-launched suites now write
 `00-preflight/live-run-readiness.json` and fail before the native-load gate or
 `steam://rungameid` launch if Steam is not already running in the interactive
 Windows desktop session, preventing accidental Steam client startup while the
-test machine is unhealthy.
+test machine is unhealthy. The dedicated `-Suite readiness` path collects the
+same report-only preflight and live-readiness JSON, then stops before
+native-load, shortcut, or launch work so blank/white Steam-client states can be
+captured without more Steam churn.
 
 An experimental one-process Windows control-server run is not accepted as
 product proof. It launched and painted correctly, but the first web action ran
