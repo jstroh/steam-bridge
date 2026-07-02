@@ -754,7 +754,12 @@ the private `--checkout-json-file` checkout suite.
   `00-preflight/native-load-gate-app-control.json` with the enforced policy
   summary, writes `00-preflight/native-load-gate-blocker.json` with a stable
   blocker code and next actions, and captures a post-failure Code Integrity
-  snapshot. Every run writes `matrix-manifest.json` before preflight so the
+  snapshot. If a Steam-launched case is run with the native gate skipped and
+  Windows still blocks the shortcut process, the case artifact writes
+  `steam-launch-blocker.json` with the post-case Code Integrity events and a
+  `windows-app-control-steam-launch-block` code when Steam itself was blocked
+  from loading the smoke executable. Every run writes `matrix-manifest.json`
+  before preflight so the
   summarizer can verify that baseline, managed, full, or focused `-OnlyCase`
   artifacts contain every intended case result and satisfy each case's recorded
   overlay-event and close-completion requirements:
@@ -819,4 +824,9 @@ the private `--checkout-json-file` checkout suite.
   editing `shortcuts.vdf` under a live client. When standalone Node.js is not
   installed, the matrix uses the packaged Electron executable in Node mode to
   run the shortcut updater. Use `-Suite shortcut` when you only want to verify
-  or refresh the stable Steam shortcut before live overlay cases.
+  or refresh the stable Steam shortcut before live overlay cases; that setup
+  suite runs preflight and shortcut resolution only, without the native-load
+  gate or a `steam://rungameid` launch. On App Control machines without
+  standalone Node.js, that Electron-in-Node-mode fallback can itself be blocked
+  unless the package has a trusted/reputable signature; install Node.js or run
+  the shortcut updater from a repo checkout in that case.

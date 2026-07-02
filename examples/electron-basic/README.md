@@ -131,6 +131,11 @@ before any live launch. The same readiness JSON also includes
 `steam-client-rendering-health.json` data and blocks live launch when recent
 CEF/GPU/overlay-renderer log signals show Steam's own UI is in an unhealthy
 blank/white rendering state.
+If a Steam-launched case is run with the native gate skipped and Windows still
+blocks the shortcut process, the case writes `steam-launch-blocker.json` with
+post-case Code Integrity evidence and the stable
+`windows-app-control-steam-launch-block` code when Steam itself was blocked from
+loading the smoke executable.
 
 The matrix installs or reuses one stable non-Steam shortcut named
 `Steam Bridge Smoke`. That shortcut points at a local smoke env file, and each
@@ -140,7 +145,12 @@ live cases so Steam can be fully restarted once instead of churning shortcuts
 between cases. Pass `-ShortcutsPath` or `-SteamUserId` when the Steam account
 cannot be inferred from the local `userdata` folder. The shortcut updater uses
 the packaged Electron executable as its JavaScript runner when standalone
-Node.js is not installed.
+Node.js is not installed. The shortcut suite runs preflight plus shortcut
+resolution only; it does not run the native-load gate or launch
+`steam://rungameid`. On App Control machines without standalone Node.js, the
+Electron-in-Node-mode fallback can itself be blocked unless the package has a
+trusted/reputable signature; install Node.js or run the shortcut updater from a
+repo checkout in that case.
 Do not use the opt-in control server as Windows product proof yet; that path
 needs overlay-readiness gating and should not be used for live Windows runs
 that churn or destabilize the Steam client.

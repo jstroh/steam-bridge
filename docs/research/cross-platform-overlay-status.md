@@ -135,8 +135,18 @@ overlay launch because Smart App Control/App Control blocked
 `SteamBridgeSmoke.exe` itself with Code Integrity events 3033/3077 saying the
 file did not meet Enterprise signing level requirements. This confirms the
 remaining local Windows proof blocker is Windows App Control reputation/policy,
-not Steam launch, Steam client rendering, package freshness, or Authenticode
-syntax. Continue live Windows overlay proof only after using a trusted/reputable
+not package freshness or Authenticode syntax. A follow-up diagnostic launch
+resolved the existing stable non-Steam shortcut to
+`steam://rungameid/13159504457509109760`, then ran one `99-none` case with the
+native-load gate intentionally skipped. That artifact,
+`C:\Users\admin\steam-bridge-artifacts\windows-steam-launch-appcontrol-blocker-20260702-001`,
+timed out without a smoke result and wrote `99-none/steam-launch-blocker.json`
+with `blockerCode=windows-app-control-steam-launch-block`, `steamProcessPolicyBlock=true`,
+and Code Integrity events showing `Steam\steam.exe` attempted to load
+`SteamBridgeSmoke.exe` and was blocked by the same Enterprise signing policy.
+This is not overlay proof; it proves the current laptop cannot launch this local
+test-signed package even through Steam. Continue live Windows overlay proof only
+after using a trusted/reputable
 publisher certificate or explicitly moving this development machine's Smart App
 Control/App Control policy out of enforcement.
 Follow-up policy inventory with `CiTool.exe -lp` confirmed that the laptop has
@@ -152,10 +162,13 @@ native-load gate. If that gate fails, the matrix writes
 `00-preflight/native-load-gate-blocker.json` with a stable blocker code,
 post-gate Code Integrity events, related log paths, and next actions for
 trusted/reputable signing or explicitly moving the development machine out of
-policy enforcement. `scripts/summarize-windows-overlay-matrix.cjs` now audits
-full Windows matrix roots, readiness/preflight captures, and these native-load
-blocker artifacts so the next live pass can distinguish an expected App Control
-gate from an overlay regression without hand-reading helper logs. The Windows
+policy enforcement. If a Steam-launched case fails before writing a smoke result,
+the matrix also captures post-case preflight evidence and writes
+`steam-launch-blocker.json`, which the summarizer reports separately from
+native-load blockers. `scripts/summarize-windows-overlay-matrix.cjs` now audits
+full Windows matrix roots, readiness/preflight captures, native-load blockers,
+and Steam-launch blockers so the next live pass can distinguish an expected App
+Control gate from an overlay regression without hand-reading helper logs. The Windows
 matrix now writes a sanitized `matrix-manifest.json` before preflight, and the
 summary auditor uses it to fail completed artifacts that are missing intended
 baseline, managed, full, or focused `-OnlyCase` results, required events,

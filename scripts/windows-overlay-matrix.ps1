@@ -723,11 +723,22 @@ function Invoke-JavaScriptRunner {
       (ConvertTo-CmdArgument $Runner.Command) +
       " " +
       (($Arguments | ForEach-Object { ConvertTo-CmdArgument $_ }) -join " ")
-    $output = & cmd.exe /d /s /c $cmdLine
+    $output = @(& cmd.exe /d /s /c $cmdLine 2>&1 | ForEach-Object { [string]$_ })
   } else {
-    $output = & $Runner.Command @Arguments
+    $output = @(& $Runner.Command @Arguments 2>&1 | ForEach-Object { [string]$_ })
   }
   if ($LASTEXITCODE -ne 0) {
+    $outputText = (@($output) -join [System.Environment]::NewLine)
+    if (
+      $Runner.UseElectronRunAsNode -and
+      $outputText -match "(?i)(Application Control|Device Guard|blocked this file|organization's Device Guard policy)"
+    ) {
+      throw (
+        "The packaged Electron JavaScript runner was blocked by Windows App Control while resolving the Steam shortcut. " +
+        "Install standalone Node.js on this Windows machine, use a trusted/reputable signed package, or update shortcuts.vdf from a repo checkout with Node before live overlay proof. " +
+        "Original runner output: $outputText"
+      )
+    }
     throw "JavaScript runner failed with exit code $LASTEXITCODE."
   }
   return $output
@@ -890,6 +901,81 @@ function New-NativeLoadGateBlocker {
     }
     appControl = $AppControlSummary
     postGateCodeIntegrityEvents = @($codeIntegrityEvents)
+    nextActions = @($nextActions)
+  }
+}
+
+function New-SteamLaunchBlocker {
+  param(
+    $Case,
+    [string]$PostCasePreflightLog,
+    [string]$PostCasePreflightJson,
+    [string]$OriginalError
+  )
+
+  $postCasePreflight = Read-MatrixJsonFile -Path $PostCasePreflightJson
+  $appControlSummary = Get-PreflightAppControlSummary -PreflightJson $PostCasePreflightJson
+  $codeIntegrityEvents = @()
+  if ($postCasePreflight -and $postCasePreflight.recentCodeIntegrityEvents) {
+    $codeIntegrityEvents = @($postCasePreflight.recentCodeIntegrityEvents)
+  }
+
+  $codeIntegrityMessages = @(
+    $codeIntegrityEvents |
+      ForEach-Object {
+        if ($_.message) {
+          $_.message
+        }
+      }
+  )
+  $codeIntegrityPolicyBlock = @(
+    $codeIntegrityMessages |
+      Where-Object {
+        $_ -match "Enterprise signing level requirements" -or
+          $_ -match "violated code integrity policy" -or
+          $_ -match "Application Control policy has blocked" -or
+          $_ -match "Device Guard policy"
+      }
+  ).Count -gt 0
+  $steamProcessPolicyBlock = @(
+    $codeIntegrityMessages |
+      Where-Object {
+        $_ -match "\\Steam\\steam[.]exe" -and $_ -match "SteamBridgeSmoke[.]exe"
+      }
+  ).Count -gt 0
+  $blockerCode = if ($appControlSummary.verifiedAndReputableEnforced -and $codeIntegrityPolicyBlock) {
+    "windows-app-control-steam-launch-block"
+  } else {
+    "windows-steam-launch-no-result"
+  }
+  $nextActions = if ($blockerCode -eq "windows-app-control-steam-launch-block") {
+    @(
+      "Use a trusted and reputable publisher-signed package.",
+      "Or explicitly move this development machine's Smart App Control/App Control policy out of enforcement before live overlay proof.",
+      "Then rerun the native-load gate and the Steam-launched matrix case."
+    )
+  } else {
+    @(
+      "Inspect the case helper log, Steam client diagnostics, and post-case preflight.",
+      "Confirm the Steam shortcut game ID and launch env file, then rerun one focused case."
+    )
+  }
+
+  return [PSCustomObject]@{
+    kind = "steam-bridge-windows-steam-launch-blocker"
+    generatedAt = (Get-Date).ToUniversalTime().ToString("o")
+    blockerCode = $blockerCode
+    caseId = $Case.id
+    action = $Case.action
+    codeIntegrityPolicyBlock = $codeIntegrityPolicyBlock
+    steamProcessPolicyBlock = $steamProcessPolicyBlock
+    originalError = $OriginalError
+    paths = [PSCustomObject]@{
+      postCasePreflightLog = $PostCasePreflightLog
+      postCasePreflightJson = $PostCasePreflightJson
+    }
+    appControl = $appControlSummary
+    postCaseCodeIntegrityEvents = @($codeIntegrityEvents)
     nextActions = @($nextActions)
   }
 }
@@ -1244,7 +1330,7 @@ function Invoke-Preflight {
     Test-WindowsLiveRunReadiness -DestinationFile (Join-Path $preflightDir "live-run-readiness.json")
   }
 
-  if ($Suite -ne "preflight" -and $Suite -ne "readiness") {
+  if ($Suite -ne "preflight" -and $Suite -ne "readiness" -and $Suite -ne "shortcut") {
     Test-NativeLoadGate -PreflightDir $preflightDir -PreflightJson $preflightJson
   }
 }
@@ -1371,6 +1457,28 @@ function Invoke-MatrixCase {
   Write-Host ("Running Windows overlay case {0}: {1}" -f $Case.id, $Case.action)
   try {
     Invoke-Helper -Arguments $args -LogFile $helperLog
+  } catch {
+    if ($LaunchMode -eq "steam-launch") {
+      $postCasePreflightLog = Join-Path $caseDir "post-case-preflight.log"
+      $postCasePreflightJson = Join-Path $caseDir "post-case-preflight.json"
+      try {
+        Invoke-Helper -Arguments @(
+          "-Mode", "preflight",
+          "-AppDir", $AppDir,
+          "-AppId", "$AppId",
+          "-PreflightJsonFile", $postCasePreflightJson
+        ) -LogFile $postCasePreflightLog
+      } catch {
+        Write-Host ("Post-case preflight failed; preserving original case failure. Output path: {0}" -f $postCasePreflightLog)
+      }
+      $blocker = New-SteamLaunchBlocker `
+        -Case $Case `
+        -PostCasePreflightLog $postCasePreflightLog `
+        -PostCasePreflightJson $postCasePreflightJson `
+        -OriginalError $_.Exception.Message
+      Write-MatrixJsonFile -Path (Join-Path $caseDir "steam-launch-blocker.json") -Value $blocker -Depth 10
+    }
+    throw
   } finally {
     Collect-SteamClientDiagnostics -DestinationDir (Join-Path $caseDir "steam-client") -Phase ("case-{0}" -f $Case.id)
   }

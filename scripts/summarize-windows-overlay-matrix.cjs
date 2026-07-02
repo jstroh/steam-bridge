@@ -95,6 +95,7 @@ function summarizeWindowsOverlayMatrixArtifacts(root) {
   const failures = [];
   const warnings = [];
   const caseSummaries = [];
+  const steamLaunchBlockers = [];
 
   if (!fs.existsSync(root)) {
     failures.push(`missing artifact root: ${root}`);
@@ -107,6 +108,7 @@ function summarizeWindowsOverlayMatrixArtifacts(root) {
       nativeLoadBlocker: null,
       manifest: null,
       caseSummaries,
+      steamLaunchBlockers,
       totals: buildTotals(caseSummaries)
     };
   }
@@ -139,6 +141,12 @@ function summarizeWindowsOverlayMatrixArtifacts(root) {
 
   for (const caseName of findCaseDirectories(root)) {
     const caseDir = path.join(root, caseName);
+    const steamLaunchBlocker = readJsonIfPresent(path.join(caseDir, "steam-launch-blocker.json"), failures);
+    if (steamLaunchBlocker) {
+      validateSteamLaunchBlocker(steamLaunchBlocker, failures);
+      steamLaunchBlockers.push(summarizeSteamLaunchBlocker(caseName, steamLaunchBlocker));
+    }
+
     const resultLog = findResultLog(caseDir);
     if (!resultLog) {
       failures.push(`${caseName}: missing result.log with ${RESULT_PREFIX.trim()} payload`);
@@ -175,6 +183,7 @@ function summarizeWindowsOverlayMatrixArtifacts(root) {
     nativeLoadBlocker: nativeLoadBlocker ? summarizeNativeLoadBlocker(nativeLoadBlocker) : null,
     manifest: manifest ? summarizeManifest(manifest) : null,
     caseSummaries,
+    steamLaunchBlockers,
     totals: buildTotals(caseSummaries)
   };
 }
@@ -333,6 +342,30 @@ function validateNativeLoadBlocker(blocker, appControlGate, failures) {
   }
 }
 
+function validateSteamLaunchBlocker(blocker, failures) {
+  expect(
+    blocker.kind === "steam-bridge-windows-steam-launch-blocker",
+    "Steam-launch blocker kind is steam-bridge-windows-steam-launch-blocker",
+    failures
+  );
+  expect(Boolean(blocker.generatedAt), "Steam-launch blocker generatedAt is present", failures);
+  expect(
+    ["windows-app-control-steam-launch-block", "windows-steam-launch-no-result"].includes(blocker.blockerCode),
+    `Steam-launch blocker code is known: ${blocker.blockerCode}`,
+    failures
+  );
+  expect(Boolean(blocker.caseId), "Steam-launch blocker caseId is present", failures);
+  expect(Boolean(blocker.action), "Steam-launch blocker action is present", failures);
+  expect(typeof blocker.codeIntegrityPolicyBlock === "boolean", "Steam-launch blocker codeIntegrityPolicyBlock is boolean", failures);
+  expect(typeof blocker.steamProcessPolicyBlock === "boolean", "Steam-launch blocker steamProcessPolicyBlock is boolean", failures);
+  expect(
+    Array.isArray(blocker.postCaseCodeIntegrityEvents),
+    "Steam-launch blocker postCaseCodeIntegrityEvents is an array",
+    failures
+  );
+  expect(Array.isArray(blocker.nextActions) && blocker.nextActions.length > 0, "Steam-launch blocker next actions are present", failures);
+}
+
 function summarizeCaseResult(caseName, result, resultLog) {
   const failures = [];
   const snapshot = objectOrEmpty(result.snapshot);
@@ -413,6 +446,17 @@ function printSummary(summary) {
         `events=${summary.nativeLoadBlocker.postGateCodeIntegrityEventCount}`
     );
   }
+  if (summary.steamLaunchBlockers.length > 0) {
+    console.log(`steam-launch blockers: total=${summary.steamLaunchBlockers.length}`);
+    for (const blocker of summary.steamLaunchBlockers) {
+      console.log(
+        `  ${blocker.caseName}: code=${blocker.blockerCode} ` +
+          `codeIntegrityPolicy=${blocker.codeIntegrityPolicyBlock} ` +
+          `steamProcessPolicy=${blocker.steamProcessPolicyBlock} ` +
+          `events=${blocker.postCaseCodeIntegrityEventCount}`
+      );
+    }
+  }
   if (summary.caseSummaries.length > 0) {
     console.log(
       `cases: total=${summary.totals.totalCases} steamLaunch=${summary.totals.steamLaunchCases} ` +
@@ -435,11 +479,10 @@ function printSummary(summary) {
 }
 
 function summarizePreflight(preflight) {
+  const appControl = preflight.appControl || preflight.appControlPolicy || {};
   return {
     generatedAt: preflight.generatedAt || "",
-    verifiedAndReputableEnforced: Boolean(
-      preflight.appControlPolicy && preflight.appControlPolicy.verifiedAndReputableEnforced
-    ),
+    verifiedAndReputableEnforced: Boolean(appControl.verifiedAndReputableEnforced),
     recentCodeIntegrityEventCount: Array.isArray(preflight.recentCodeIntegrityEvents)
       ? preflight.recentCodeIntegrityEvents.length
       : 0
@@ -471,6 +514,18 @@ function summarizeNativeLoadBlocker(blocker) {
     codeIntegrityPolicyBlock: blocker.codeIntegrityPolicyBlock === true,
     postGateCodeIntegrityEventCount: Array.isArray(blocker.postGateCodeIntegrityEvents)
       ? blocker.postGateCodeIntegrityEvents.length
+      : 0
+  };
+}
+
+function summarizeSteamLaunchBlocker(caseName, blocker) {
+  return {
+    caseName,
+    blockerCode: blocker.blockerCode || "",
+    codeIntegrityPolicyBlock: blocker.codeIntegrityPolicyBlock === true,
+    steamProcessPolicyBlock: blocker.steamProcessPolicyBlock === true,
+    postCaseCodeIntegrityEventCount: Array.isArray(blocker.postCaseCodeIntegrityEvents)
+      ? blocker.postCaseCodeIntegrityEvents.length
       : 0
   };
 }
@@ -621,6 +676,16 @@ function runSelfTest() {
     assert.deepEqual(managedSummary.failures, []);
     assert.equal(managedSummary.caseSummaries.length, 1);
     assert.equal(managedSummary.totals.overlayActiveCases, 1);
+
+    const steamLaunchBlockedRoot = path.join(tempRoot, "steam-launch-blocked");
+    writeSteamLaunchBlockedFixture(steamLaunchBlockedRoot);
+    const steamLaunchBlockedSummary = summarizeWindowsOverlayMatrixArtifacts(steamLaunchBlockedRoot);
+    assert.equal(steamLaunchBlockedSummary.steamLaunchBlockers.length, 1);
+    assert.equal(steamLaunchBlockedSummary.steamLaunchBlockers[0].blockerCode, "windows-app-control-steam-launch-block");
+    assert(
+      steamLaunchBlockedSummary.failures.some((failure) => failure.includes("99-none: missing result.log")),
+      "summary self-test should still fail when a Steam-launched case has no smoke result"
+    );
 
     const incompleteRoot = path.join(tempRoot, "incomplete");
     writeCaseFixture(incompleteRoot);
@@ -796,6 +861,75 @@ function writeCaseFixture(root) {
     ok: true,
     action: { ok: true, action: "none" },
     snapshot: buildWindowsSnapshot({ pid: 4243, events: [] })
+  });
+}
+
+function writeSteamLaunchBlockedFixture(root) {
+  writeJson(path.join(root, "matrix-manifest.json"), {
+    kind: "steam-bridge-windows-overlay-matrix-manifest",
+    generatedAt: "2026-07-02T00:00:00.000Z",
+    suite: "baseline",
+    launchMode: "steam-launch",
+    appId: 480,
+    onlyCase: "99-none",
+    expectedCaseCount: 1,
+    cases: [
+      {
+        id: "99-none",
+        action: "none",
+        requireEvent: [],
+        requireOverlayActivated: false,
+        requireNoOverlayActivation: true,
+        allowOverlayNotReady: true,
+        requireManagedOverlayComplete: false,
+        managedOverlayResultMode: "",
+        hasCheckoutTransactionId: false
+      }
+    ]
+  });
+  writeJson(path.join(root, "00-preflight", "preflight.json"), {
+    kind: "steam-bridge-windows-preflight",
+    generatedAt: "2026-07-02T00:00:00.000Z",
+    app: {
+      exe: { exists: true },
+      nativeAddon: { exists: true }
+    },
+    appControl: {
+      verifiedAndReputableEnforced: true
+    },
+    recentCodeIntegrityEvents: []
+  });
+  writeJson(path.join(root, "00-preflight", "live-run-readiness.json"), {
+    kind: "steam-bridge-windows-live-run-readiness",
+    generatedAt: "2026-07-02T00:00:00.000Z",
+    ready: true,
+    errors: [],
+    warnings: []
+  });
+  writeText(path.join(root, "99-none", "helper.log"), "Timed out waiting for smoke result file\n");
+  writeJson(path.join(root, "99-none", "steam-launch-blocker.json"), {
+    kind: "steam-bridge-windows-steam-launch-blocker",
+    generatedAt: "2026-07-02T00:00:01.000Z",
+    blockerCode: "windows-app-control-steam-launch-block",
+    caseId: "99-none",
+    action: "none",
+    codeIntegrityPolicyBlock: true,
+    steamProcessPolicyBlock: true,
+    originalError: "windows-electron-smoke.ps1 exited with code 1",
+    paths: {
+      postCasePreflightLog: "99-none/post-case-preflight.log",
+      postCasePreflightJson: "99-none/post-case-preflight.json"
+    },
+    appControl: {
+      verifiedAndReputableEnforced: true
+    },
+    postCaseCodeIntegrityEvents: [
+      {
+        message:
+          "Code Integrity determined that a process (\\Device\\HarddiskVolume3\\Program Files (x86)\\Steam\\steam.exe) attempted to load SteamBridgeSmoke.exe that did not meet the Enterprise signing level requirements."
+      }
+    ],
+    nextActions: ["Use a trusted and reputable publisher-signed package."]
   });
 }
 
