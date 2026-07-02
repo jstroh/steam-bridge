@@ -65,6 +65,10 @@ Reviewed on 2026-07-02 while investigating Windows Electron overlay failures:
 | [NW.js overlay issue #4982](https://github.com/nwjs/nw.js/issues/4982) | The same Chromium-family GPU-process split has affected Steam overlay injection outside Electron for years. |
 | [NW.js `--in-process-gpu` instancing issue #6059](https://github.com/nwjs/nw.js/issues/6059) | `--in-process-gpu` can create process-lifetime and launch failures when started through Steam or other launchers, so Steam Bridge should avoid building its Windows product path around it. |
 | [NW.js video issue #7550](https://github.com/nwjs/nw.js/issues/7550) | The flag needed by some apps for Steam overlay can break normal media behavior, another reason to keep Chromium flag profiles behind explicit diagnostics. |
+| [Electron 35 overlay regression #47662](https://github.com/electron/electron/issues/47662) | Newer Electron releases can regress Steam overlay behavior even after a previously working version, so the Windows lane needs package-versioned smoke artifacts rather than version assumptions. |
+| [Steam Community browser-overlay request](https://steamcommunity.com/discussions/forum/10/591756872987476379/) | Public browser-runtime reports group Electron, NW.js, CEF, WebView2, and WKWebView together as unsupported or unreliable Steam overlay targets, reinforcing the bridge-owned native-surface direction. |
+| [Steamworks `ISteamFriends` overlay docs](https://partner.steamgames.com/doc/api/isteamfriends) | The raw Steam overlay APIs can open store, web, friends, and user/dialog routes, but Steam Bridge must still prove each route's visible UI, input, close, and focus-return behavior on each platform. |
+| [Steam microtransaction implementation guide](https://partner.steamgames.com/doc/features/microtransactions/implementation) | Real checkout is Steam overlay-driven after `InitTxn`, so the presenter must remain alive through the authorization flow and cannot equate a microtransaction callback with overlay close. |
 | [Chromium DirectComposition change](https://groups.google.com/a/chromium.org/g/ozone-reviews/c/iihF5rPWLJ8) | `--disable-direct-composition` is a real Chromium switch for disabling DirectComposition, but it changes a core Windows composition path and must be treated as a compatibility experiment. |
 | [Microsoft DXGI Session 0 note](https://learn.microsoft.com/en-us/windows/win32/api/dxgi/nf-dxgi-idxgifactory-createswapchain) | `DXGI_ERROR_NOT_CURRENTLY_AVAILABLE` from Session 0 is expected for swap-chain creation; Windows live overlay tests must launch in the interactive desktop session. |
 | [steamworks-ffi-node native overlay guide](https://github.com/ArtyProf/steamworks-ffi-node/blob/main/docs/STEAM_OVERLAY_INTEGRATION.md) | Independent wrapper research points at native Metal/OpenGL host surfaces, but Steam Bridge still requires its own FPS, shutdown, focus, close, and crash matrix before making a Windows native presenter default. |
@@ -1794,6 +1798,24 @@ diagnostics. The host WndProc counters recorded focus/activation traffic but no
 left-button messages, which strongly suggests Steam consumed the close click
 inside the overlay. The next Windows work is route expansion and regression
 coverage, not another proof that the host can receive focus.
+
+A later focused Windows store route check on July 2, 2026 kept Steam running and
+ran only `presenter-store-open-and-wait` through the same interactive Session 1
+shortcut. Artifacts
+`C:\Users\admin\steam-bridge-artifacts\windows-native-presenter-store-20260702-120143`
+and
+`C:\Users\admin\steam-bridge-artifacts\windows-native-presenter-store-toggle-20260702-001`
+both initialized Steam as App ID `480`, attached the `windows-opengl` host,
+emitted `GameOverlayActivated(true)`, and showed the Steam overlay browser
+spinner plus overlay toast without crash diagnostics or fresh Steam rendering
+health failures. Neither a maintained click on the visible Steam web close
+control nor a maintained Shift+Tab SendInput close produced
+`GameOverlayActivated(false)`, presenter parking, or `openAndWait` completion.
+Treat this as a route-specific Windows blocker: the host can be hooked and can
+prove modal web close/back-to-app, but the store web surface is not yet a
+reliable interactive Windows product route. The next implementation slice should
+focus on Windows native-host input/focus/window-shape comparisons and store
+route alternatives, not more Steam restarts or Electron Chromium flags.
 
 Windows gates:
 

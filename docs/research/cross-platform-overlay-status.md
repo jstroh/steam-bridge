@@ -418,6 +418,10 @@ https://github.com/nwjs/nw.js/issues/4982,
 https://github.com/greenheartgames/greenworks/issues/349,
 https://github.com/ArtyProf/steamworks-ffi-node/blob/main/docs/STEAM_OVERLAY_INTEGRATION.md,
 https://steamcommunity.com/discussions/forum/10/591756872987476379/,
+https://github.com/electron/electron/issues/47662,
+https://partner.steamgames.com/doc/api/isteamfriends,
+https://partner.steamgames.com/doc/features/microtransactions/implementation,
+https://partner.steamgames.com/doc/api/ISteamUtils#BOverlayNeedsPresent,
 https://community.monogame.net/t/steam-overlay-not-showing-with-windows-assembly-of-monogame-3-6/8926.
 
 Current-head Windows native presenter evidence, 2026-07-02: Steam Bridge now has
@@ -457,6 +461,25 @@ that Steam consumed the click before it reached the host WndProc. Treat this as
 the first Windows native-presenter web close/back-to-app proof, not yet as
 coverage for Friends, store, checkout, passive toasts, shortcut toggle, or all
 dialog-equivalent routes.
+
+Focused store route follow-up on the same Windows laptop kept the Steam client
+running and ran only `presenter-store-open-and-wait` through the interactive
+Session 1 shortcut. Artifacts
+`C:\Users\admin\steam-bridge-artifacts\windows-native-presenter-store-20260702-120143`
+and
+`C:\Users\admin\steam-bridge-artifacts\windows-native-presenter-store-toggle-20260702-001`
+both initialized Steam as App ID `480`, attached the `windows-opengl` presenter,
+emitted `GameOverlayActivated(true)`, and showed the Steam overlay browser
+spinner plus overlay toast with Steam client rendering health reported healthy
+and no Electron crash diagnostics. The first run sent a maintained mouse click
+to the visible web close control; the second sent a maintained Shift+Tab
+SendInput close. Both timed out without `GameOverlayActivated(false)`,
+`overlay:presenter-wait-closed`, `overlay:presenter-parked`, or
+`overlay:presenter-open-and-wait-complete`. This rules out a bad close
+coordinate as the only explanation and keeps Windows store as a route-specific
+native-presenter blocker. Next Windows work should compare native-host
+input/focus/window-shape behavior and store-route alternatives before expanding
+coverage, not repeat Steam restarts or Chromium-flag experiments.
 
 A later current-package Windows proof pass on 2026-07-02 contradicted the older
 direct-hook optimism. The render-health artifact
