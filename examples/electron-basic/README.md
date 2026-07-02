@@ -163,7 +163,9 @@ app or native addon under SAC/App Control fail with artifacts under
 `00-preflight/preflight.json` with the parsed `CiTool.exe -lp` policy inventory,
 enforced policy names, and a `verifiedAndReputableEnforced` flag; native-load
 gate setup writes `00-preflight/native-load-gate-app-control.json` with the
-enforced policy summary, and failures also write
+enforced policy summary, failures write
+`00-preflight/native-load-gate-blocker.json` with a stable blocker code and next
+actions, and failures also write
 `00-preflight/native-load-gate/post-gate-preflight.json` after the failed load
 attempt.
 Direct Windows smoke runs pass smoke state through the child process environment

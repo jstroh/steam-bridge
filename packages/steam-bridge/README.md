@@ -100,8 +100,9 @@ overlay case. That native-load gate catches local self-signed packages that look
 policy. Matrix preflight writes `00-preflight/preflight.json`; native-load
 gate setup also writes `00-preflight/native-load-gate-app-control.json` with the
 enforced policy summary that drove the gate. Native-load failures also write
-`00-preflight/native-load-gate/post-gate-preflight.json` after the failed load
-attempt so Code Integrity events are captured from the same run. Use
+`00-preflight/native-load-gate-blocker.json` with a stable blocker code and next
+actions, plus `00-preflight/native-load-gate/post-gate-preflight.json` after the
+failed load attempt so Code Integrity events are captured from the same run. Use
 `-InstallShortcut` to let the matrix install or reuse one stable
 non-Steam shortcut. The shortcut points at a local smoke env file, and each
 matrix case rewrites only that env file before launching through Steam. When

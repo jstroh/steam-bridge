@@ -1707,6 +1707,9 @@ Windows gates:
   `native-load-gate-app-control.json` before the native-load gate, so gate
   failures name the exact enforced policy that made Authenticode-only evidence
   insufficient;
+- native-load gate failures write `native-load-gate-blocker.json` with a stable
+  blocker code, post-gate Code Integrity events, relevant artifact paths, and
+  next actions instead of forcing future automation to scrape helper logs;
 - packaged Windows matrix preflight runs a direct `none` smoke action from the
   exact app bundle and requires real Steam initialization plus clean crash
   diagnostics before any Steam-launched overlay case, because Authenticode

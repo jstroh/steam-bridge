@@ -148,7 +148,11 @@ that parsed policy list, enforced policy names, and a
 directly instead of inferring it only from Code Integrity event text. The matrix
 also copies that enforced-policy summary into
 `00-preflight/native-load-gate-app-control.json` before it runs the direct
-native-load gate.
+native-load gate. If that gate fails, the matrix writes
+`00-preflight/native-load-gate-blocker.json` with a stable blocker code,
+post-gate Code Integrity events, related log paths, and next actions for
+trusted/reputable signing or explicitly moving the development machine out of
+policy enforcement.
 
 An experimental one-process Windows control-server run is not accepted as
 product proof. It launched and painted correctly, but the first web action ran

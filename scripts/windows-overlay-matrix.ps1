@@ -824,6 +824,76 @@ function Get-PreflightAppControlSummary {
   }
 }
 
+function New-NativeLoadGateBlocker {
+  param(
+    $AppControlSummary,
+    [string]$GateLog,
+    [string]$PostGatePreflightLog,
+    [string]$PostGatePreflightJson,
+    [string]$DiagnosticDir,
+    [string]$OriginalError
+  )
+
+  $postGatePreflight = Read-MatrixJsonFile -Path $PostGatePreflightJson
+  $codeIntegrityEvents = @()
+  if ($postGatePreflight -and $postGatePreflight.recentCodeIntegrityEvents) {
+    $codeIntegrityEvents = @($postGatePreflight.recentCodeIntegrityEvents)
+  }
+
+  $codeIntegrityMessages = @(
+    $codeIntegrityEvents |
+      ForEach-Object {
+        if ($_.message) {
+          $_.message
+        }
+      }
+  )
+  $codeIntegrityPolicyBlock = @(
+    $codeIntegrityMessages |
+      Where-Object {
+        $_ -match "Enterprise signing level requirements" -or
+          $_ -match "violated code integrity policy" -or
+          $_ -match "Application Control policy has blocked"
+      }
+  ).Count -gt 0
+  $verifiedAndReputableBlock = [bool]$AppControlSummary.verifiedAndReputableEnforced
+  $blockerCode = if ($verifiedAndReputableBlock -or $codeIntegrityPolicyBlock) {
+    "windows-app-control-native-load-block"
+  } else {
+    "windows-native-load-gate-failure"
+  }
+  $nextActions = if ($blockerCode -eq "windows-app-control-native-load-block") {
+    @(
+      "Use a trusted and reputable publisher-signed package.",
+      "Or explicitly move this development machine's Smart App Control/App Control policy out of enforcement before live overlay proof.",
+      "Then rerun the Windows matrix native-load gate before Steam-launched overlay cases."
+    )
+  } else {
+    @(
+      "Inspect the native-load gate helper log and crash diagnostics.",
+      "Rerun the report-only preflight and direct native-load gate before Steam-launched overlay cases."
+    )
+  }
+
+  return [PSCustomObject]@{
+    kind = "steam-bridge-windows-native-load-gate-blocker"
+    generatedAt = (Get-Date).ToUniversalTime().ToString("o")
+    blockerCode = $blockerCode
+    verifiedAndReputableBlock = $verifiedAndReputableBlock
+    codeIntegrityPolicyBlock = $codeIntegrityPolicyBlock
+    originalError = $OriginalError
+    paths = [PSCustomObject]@{
+      gateLog = $GateLog
+      postGatePreflightLog = $PostGatePreflightLog
+      postGatePreflightJson = $PostGatePreflightJson
+      diagnosticDir = $DiagnosticDir
+    }
+    appControl = $AppControlSummary
+    postGateCodeIntegrityEvents = @($codeIntegrityEvents)
+    nextActions = @($nextActions)
+  }
+}
+
 function Test-NativeLoadGate {
   param([string]$PreflightDir, [string]$PreflightJson)
 
@@ -886,19 +956,28 @@ function Test-NativeLoadGate {
     Invoke-Helper -Arguments $gateArgs -LogFile $gateLog
   } catch {
     $postGatePreflightLog = Join-Path $gateDir "post-gate-preflight.log"
+    $postGatePreflightJson = Join-Path $gateDir "post-gate-preflight.json"
     try {
       Invoke-Helper -Arguments @(
         "-Mode", "preflight",
         "-AppDir", $AppDir,
         "-AppId", "$AppId",
-        "-PreflightJsonFile", (Join-Path $gateDir "post-gate-preflight.json")
+        "-PreflightJsonFile", $postGatePreflightJson
       ) -LogFile $postGatePreflightLog
     } catch {
       Write-Host ("Post-gate preflight failed; continuing with original native-load gate failure. Output path: {0}" -f $postGatePreflightLog)
     }
+    $blocker = New-NativeLoadGateBlocker `
+      -AppControlSummary $appControlSummary `
+      -GateLog $gateLog `
+      -PostGatePreflightLog $postGatePreflightLog `
+      -PostGatePreflightJson $postGatePreflightJson `
+      -DiagnosticDir $diagnosticDir `
+      -OriginalError $_.Exception.Message
+    Write-MatrixJsonFile -Path (Join-Path $PreflightDir "native-load-gate-blocker.json") -Value $blocker -Depth 10
     throw (
       "Windows native-load gate failed before live overlay cases. " +
-      "The exact packaged app could not initialize Steam cleanly; see $gateLog, $postGatePreflightLog, post-gate-preflight.json, and $diagnosticDir. " +
+      "The exact packaged app could not initialize Steam cleanly; see $gateLog, $postGatePreflightLog, post-gate-preflight.json, native-load-gate-blocker.json, and $diagnosticDir. " +
       "On Smart App Control/App Control machines, a local self-signed Authenticode result can still fail this gate, especially when VerifiedAndReputableDesktop policies are enforced. " +
       "Use a trusted/reputable publisher-signed package or explicitly disable SAC on this development machine before live overlay proof. " +
       "Original error: $($_.Exception.Message)"

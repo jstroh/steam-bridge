@@ -752,7 +752,9 @@ the private `--checkout-json-file` checkout suite.
   signing policy. Native-load failures leave human logs and structured JSON
   under `00-preflight/native-load-gate`; the gate also writes
   `00-preflight/native-load-gate-app-control.json` with the enforced policy
-  summary and captures a post-failure Code Integrity snapshot:
+  summary, writes `00-preflight/native-load-gate-blocker.json` with a stable
+  blocker code and next actions, and captures a post-failure Code Integrity
+  snapshot:
 
   ```powershell
   .\windows-overlay-matrix.ps1 `
