@@ -92,7 +92,10 @@ overlay proof, not as a Steam Bridge native-load failure. The Windows matrix now
 captures Steam process state, recent Steam log inventory, focused CEF/webhelper/
 overlay log tails, matching error lines, and rendering-related config hints
 under each artifact's `steam-client/` directory so future failures preserve this
-evidence without repeatedly restarting Steam.
+evidence without repeatedly restarting Steam. The same matrix supports
+`-OnlyCase <id-or-action>` so a suspect or recovering Windows Steam client can
+be checked with one targeted Steam-launched probe before any broader suite is
+attempted.
 
 An experimental one-process Windows control-server run is not accepted as
 product proof. It launched and painted correctly, but the first web action ran

@@ -391,6 +391,11 @@ function runWindowsSmokeHelperStaticChecks() {
     "-RequireZeroManagedOverlayTiming",
     "-RequireNoCrashes",
     "-OverlayInProcessGpu",
+    "OnlyCase",
+    "Get-SelectedMatrixCases",
+    "Get-RedactedSteamConfigLabel",
+    "LocalizedTagNames",
+    " ...[truncated]",
     "steam-launch",
     "ArtifactRoot"
   ]) {

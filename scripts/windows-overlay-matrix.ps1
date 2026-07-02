@@ -24,6 +24,7 @@ param(
   [string]$Dialog = "Friends",
   [string]$ShortcutTarget = "friends",
   [string]$CheckoutTransactionId = "123456789",
+  [string]$OnlyCase = "",
   [int]$TimeoutSeconds = 120,
   [switch]$SkipNativeLoadGate,
   [string]$OverlayInProcessGpu = "1"
@@ -128,6 +129,31 @@ function Copy-LogTail {
   Write-MatrixTextFile -Path $Destination -Lines $lines
 }
 
+function Limit-DiagnosticLine {
+  param([string]$Line, [int]$MaxLength = 500)
+
+  $trimmed = ([string]$Line).Trim()
+  if ($trimmed.Length -le $MaxLength) {
+    return $trimmed
+  }
+  return ($trimmed.Substring(0, $MaxLength) + " ...[truncated]")
+}
+
+function Get-RedactedSteamConfigLabel {
+  param([string]$ConfigPath, [string]$SteamPath)
+
+  $normalizedPath = $ConfigPath -replace '/', '\'
+  $normalizedSteamPath = $SteamPath -replace '/', '\'
+  $steamConfigPath = (Join-Path $normalizedSteamPath "config\config.vdf") -replace '/', '\'
+  if ($normalizedPath -ieq $steamConfigPath) {
+    return "steam/config.vdf"
+  }
+  if ($normalizedPath -match '\\userdata\\[^\\]+\\config\\localconfig\.vdf$') {
+    return "userdata/*/config/localconfig.vdf"
+  }
+  return (Split-Path -Leaf $ConfigPath)
+}
+
 function Collect-SteamClientDiagnostics {
   param([string]$DestinationDir, [string]$Phase)
 
@@ -225,12 +251,16 @@ function Collect-SteamClientDiagnostics {
         continue
       }
       try {
-        $matches = @(Select-String -LiteralPath $configPath -Pattern @("GPU", "Hardware", "accelerat", "webview", "cef") -SimpleMatch -ErrorAction SilentlyContinue)
+        $renderingConfigRegex = '(?i)(cef|webview|gpu[_a-z0-9 -]*(accelerat|web|render)|hardware[_a-z0-9 -]*accelerat|direct[_a-z0-9 -]*composition|direct[_a-z0-9 -]*write|dwrite)'
+        $matches = @(Select-String -LiteralPath $configPath -Pattern $renderingConfigRegex -ErrorAction SilentlyContinue |
+          Where-Object { $_.Line -notmatch 'LocalizedTagNames' } |
+          Select-Object -First 80)
+        $configLabel = Get-RedactedSteamConfigLabel -ConfigPath $configPath -SteamPath $steamPath
         foreach ($match in $matches) {
-          $configHints += ("{0}:{1}: {2}" -f $configPath, $match.LineNumber, $match.Line.Trim())
+          $configHints += ("{0}:{1}: {2}" -f $configLabel, $match.LineNumber, (Limit-DiagnosticLine -Line $match.Line))
         }
       } catch {
-        $configHints += ("{0}: failed to scan: {1}" -f $configPath, $_.Exception.Message)
+        $configHints += ("{0}: failed to scan: {1}" -f (Get-RedactedSteamConfigLabel -ConfigPath $configPath -SteamPath $steamPath), $_.Exception.Message)
       }
     }
     Write-MatrixTextFile -Path (Join-Path $DestinationDir "steam-client-config-rendering-hints.txt") -Lines $configHints
@@ -536,6 +566,27 @@ function Get-MatrixCases {
   }
 }
 
+function Get-SelectedMatrixCases {
+  $cases = @(Get-MatrixCases)
+  if (-not $OnlyCase) {
+    return $cases
+  }
+
+  $selected = @($cases | Where-Object { $_.id -eq $OnlyCase -or $_.action -eq $OnlyCase })
+  if ($selected.Count -eq 0) {
+    $available = (($cases | ForEach-Object { "{0} ({1})" -f $_.id, $_.action }) -join ", ")
+    if (-not $available) {
+      $available = "none for suite $Suite"
+    }
+    throw "No Windows overlay matrix case matched -OnlyCase '$OnlyCase'. Available cases: $available"
+  }
+  if ($selected.Count -gt 1) {
+    $matches = (($selected | ForEach-Object { "{0} ({1})" -f $_.id, $_.action }) -join ", ")
+    throw "-OnlyCase '$OnlyCase' matched multiple cases: $matches"
+  }
+  return $selected
+}
+
 function Invoke-Helper {
   param([string[]]$Arguments, [string]$LogFile)
 
@@ -719,6 +770,9 @@ Write-Host ("  appId: {0}" -f $AppId)
 Write-Host ("  overlayProfile: {0}" -f $OverlayProfile)
 Write-Host ("  inProcessGpu: {0}" -f $OverlayInProcessGpu)
 Write-Host ("  disableDirectComposition: {0}" -f $OverlayDisableDirectComposition)
+if ($OnlyCase) {
+  Write-Host ("  onlyCase: {0}" -f $OnlyCase)
+}
 if ($LaunchMode -eq "steam-launch") {
   Write-Host ("  launchEnvFile: {0}" -f $LaunchEnvFile)
   Write-Host ("  installShortcut: {0}" -f $InstallShortcut)
@@ -735,7 +789,7 @@ if ($LaunchMode -eq "steam-launch" -and $Suite -ne "preflight") {
   }
 }
 
-foreach ($case in Get-MatrixCases) {
+foreach ($case in Get-SelectedMatrixCases) {
   Invoke-MatrixCase -Case $case
 }
 

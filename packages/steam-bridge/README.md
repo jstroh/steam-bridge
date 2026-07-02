@@ -100,7 +100,10 @@ non-Steam shortcut. The shortcut points at a local smoke env file, and each
 matrix case rewrites only that env file before launching through Steam. When
 standalone Node.js is absent, the matrix uses the packaged Electron executable
 in Node mode to run its shortcut updater. Use `-Suite shortcut` to verify or
-refresh only that shortcut before live overlay cases.
+refresh only that shortcut before live overlay cases. Use `-Suite preflight` for
+Steam-client health capture only, and pass `-OnlyCase 01-web` or another case
+ID/action when a shaky client needs one focused live probe instead of a whole
+suite.
 
 ## Quick Start
 

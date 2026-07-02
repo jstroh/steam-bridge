@@ -109,6 +109,9 @@ process snapshots, recent Steam log inventory, CEF/webhelper/overlay log tails,
 matching error lines, and rendering-related config hints are written under each
 artifact's `steam-client/` directory. If the Steam client itself is blank or
 white, inspect those files before running more live cases or restarting Steam.
+Use `-Suite preflight` to capture client health only, or pass `-OnlyCase 01-web`
+or another case ID/action when you need one focused Steam-launched probe while
+the client is recovering.
 
 The matrix installs or reuses one stable non-Steam shortcut named
 `Steam Bridge Smoke`. That shortcut points at a local smoke env file, and each

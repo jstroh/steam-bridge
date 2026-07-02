@@ -768,7 +768,9 @@ the private `--checkout-json-file` checkout suite.
   with Steam process state, recent log inventory, CEF/webhelper/overlay log
   tails, matching error lines, and rendering-related config hints. Check those
   files first when Steam's own UI is blank/white or when the overlay renderer
-  attaches but `gameoverlay_ui` never starts.
+  attaches but `gameoverlay_ui` never starts. Use `-Suite preflight` for a
+  client-health-only capture, or add `-OnlyCase 01-web` / another case ID when
+  you need one focused Steam-launched probe instead of a full suite.
   The Windows matrix is intentionally process-per-case right now. A
   one-process control-server harness is useful future research, but it is not
   the Windows proof path until it can wait on overlay readiness and run without
