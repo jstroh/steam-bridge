@@ -377,20 +377,20 @@ require_unique_case_ids() {
 case_command() {
   local output="$1"
   local case_id="$2"
-  printf '%s\n' "$output" | awk -v id="$case_id" '
+  awk -v id="$case_id" '
     $0 == "CASE " id { found = 1; next }
     found && /^RUN / { sub(/^RUN /, ""); print; exit }
-  '
+  ' <<< "$output"
 }
 
 case_block() {
   local output="$1"
   local case_id="$2"
-  printf '%s\n' "$output" | awk -v id="$case_id" '
+  awk -v id="$case_id" '
     $0 == "CASE " id { found = 1 }
     found && /^CASE / && $0 != "CASE " id { exit }
     found { print }
-  '
+  ' <<< "$output"
 }
 
 run_self_test() {
