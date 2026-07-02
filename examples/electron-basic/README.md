@@ -1223,7 +1223,10 @@ In autorun output, inspect `snapshot.steam.overlayEnabled`,
 the final `snapshot.events` list. `snapshot.launch.steamLaunch` reports whether
 Steam launch environment markers were present. `snapshot.launch.overlayInjection`
 reports whether the process environment includes a Steam overlay hook marker such
-as `gameoverlayrenderer`.
+as `gameoverlayrenderer`. On Windows, Steam-launched Electron can have
+`overlayInjection=false` while still carrying `SteamOverlayGameId`,
+`SteamClientLaunch`, and `SteamEnv`; use overlay callbacks plus those launch
+markers as the stronger proof on that platform.
 
 `overlayNeedsPresent=true` is not a failure by itself. It means Steam is asking
 the app to keep presenting frames for the overlay. The smoke verifier treats an

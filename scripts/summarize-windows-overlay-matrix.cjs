@@ -241,7 +241,11 @@ function validateManifestCoverage(manifest, caseSummaries, failures, warnings) {
     expect(row.appId === manifest.appId, `matrix manifest case ${expected.id} App ID matches manifest`, failures);
     if (manifest.launchMode === "steam-launch") {
       expect(row.steamLaunch === true, `matrix manifest case ${expected.id} was Steam-launched`, failures);
-      expect(row.overlayInjection === true, `matrix manifest case ${expected.id} has Steam overlay injection marker`, failures);
+      expect(
+        row.steamOverlayLaunchMarker === true,
+        `matrix manifest case ${expected.id} has Steam overlay launch marker`,
+        failures
+      );
     }
     if (expected.requireOverlayActivated === true) {
       expect(row.overlayActiveEvents > 0, `matrix manifest case ${expected.id} emitted overlay active callback`, failures);
@@ -399,6 +403,18 @@ function validateSteamLaunchBlocker(blocker, failures) {
   expect(Array.isArray(blocker.nextActions) && blocker.nextActions.length > 0, "Steam-launch blocker next actions are present", failures);
 }
 
+function hasSteamOverlayLaunchMarker(launch) {
+  if (launch.overlayInjection === true) {
+    return true;
+  }
+
+  const env = objectOrEmpty(launch.env);
+  return ["SteamOverlayGameId", "SteamClientLaunch", "SteamEnv"].some((key) => {
+    const value = env[key];
+    return typeof value === "string" && value.length > 0;
+  });
+}
+
 function summarizeCaseResult(caseName, result, resultLog, renderingHealth = null) {
   const failures = [];
   const snapshot = objectOrEmpty(result.snapshot);
@@ -441,6 +457,7 @@ function summarizeCaseResult(caseName, result, resultLog, renderingHealth = null
     processId: processInfo.pid || null,
     steamLaunch: launch.steamLaunch === true,
     overlayInjection: launch.overlayInjection === true,
+    steamOverlayLaunchMarker: hasSteamOverlayLaunchMarker(launch),
     overlayEnabled,
     overlayNeedsPresent,
     overlayActiveEvents,
@@ -505,7 +522,8 @@ function printSummary(summary) {
       const ok = row.failures.length === 0 ? "ok" : "fail";
       console.log(
         `  ${row.caseName}: ${ok} action=${row.action || "unknown"} ` +
-          `steamLaunch=${row.steamLaunch} overlayActiveEvents=${row.overlayActiveEvents} ` +
+          `steamLaunch=${row.steamLaunch} steamOverlayLaunchMarker=${row.steamOverlayLaunchMarker} ` +
+          `overlayActiveEvents=${row.overlayActiveEvents} ` +
           `overlayEnabled=${formatValue(row.overlayEnabled)} crashes=${row.crashDumpCount + row.fatalLifecycleEventCount}` +
           formatCaseRenderingHealth(row.steamRenderingHealth)
       );
@@ -816,6 +834,23 @@ function runSelfTest() {
     assert(
       missingManagedCloseSummary.failures.some((failure) => failure.includes("completed overlay close wait")),
       "summary self-test should fail when managed completion waits are missing"
+    );
+
+    const missingLaunchMarkerRoot = path.join(tempRoot, "missing-launch-marker");
+    writeCaseFixture(missingLaunchMarkerRoot);
+    writeResult(path.join(missingLaunchMarkerRoot, "01-web", "result.log"), {
+      ok: true,
+      action: { ok: true, action: "web" },
+      snapshot: buildWindowsSnapshot({
+        pid: 4246,
+        steamOverlayLaunchMarker: false,
+        events: [{ type: "overlay:web" }, { type: "callback:overlay-activated", payload: { active: true } }]
+      })
+    });
+    const missingLaunchMarkerSummary = summarizeWindowsOverlayMatrixArtifacts(missingLaunchMarkerRoot);
+    assert(
+      missingLaunchMarkerSummary.failures.some((failure) => failure.includes("has Steam overlay launch marker")),
+      "summary self-test should fail when a Steam-launched case has no Windows Steam overlay launch marker"
     );
 
     console.log("Windows overlay matrix summary self-test passed.");
@@ -1157,11 +1192,22 @@ function writeManagedCaseFixture(root, options = {}) {
   writeResult(path.join(root, "11-managed-web-open-and-wait", "result.log"), result);
 }
 
-function buildWindowsSnapshot({ pid, events, managedOverlayResultMode = "" }) {
+function buildWindowsSnapshot({ pid, events, managedOverlayResultMode = "", steamOverlayLaunchMarker = true }) {
+  const launch = { steamLaunch: true, overlayInjection: false };
+  if (steamOverlayLaunchMarker) {
+    launch.env = {
+      SteamAppId: "480",
+      SteamGameId: "480",
+      SteamOverlayGameId: "480",
+      SteamClientLaunch: "1",
+      SteamEnv: "1"
+    };
+  }
+
   return {
     app: { appId: 480, managedOverlayResultMode },
     process: { pid, platform: "win32", arch: "x64" },
-    launch: { steamLaunch: true, overlayInjection: true },
+    launch,
     steam: {
       initialized: true,
       running: { ok: true, value: true },

@@ -239,8 +239,22 @@ proved the direct managed Windows path can show a modal web overlay:
 snapshot stayed `backend=none` with zero FPS and no native host. That artifact
 is not accepted as close/back-to-app proof because the automated Shift+Tab close
 probe did not produce `GameOverlayActivated(false)` before the helper timeout.
-Continue Windows managed proof with a verified UI close probe or an operator
-close before treating active managed Windows cases as complete.
+A focused follow-up artifact at
+`C:\Users\admin\steam-bridge-artifacts\windows-managed-web-close-20260702-002`
+completed that missing close/back-to-app proof from the interactive Session 1
+Steam shortcut. The case recorded `GameOverlayActivated(true)`,
+`overlay:presenter-wait-shown`, `GameOverlayActivated(false)`,
+`overlay:presenter-wait-closed`, `overlay:presenter-parked`, and
+`overlay:presenter-open-and-wait-complete`; the presenter remained
+`backend=none`, `nativeHostOpen=false`, and `currentFps=0`, and crash
+diagnostics were clean. The Windows summary auditor now accepts the Windows
+Steam launch shape by requiring Steam launch plus `SteamOverlayGameId` /
+`SteamClientLaunch` / `SteamEnv` markers instead of requiring a Unix-style
+`gameoverlayrenderer` injection marker. Keep the Windows client-health caveat
+visible: the post-case Steam diagnostics for this run still reported fresh
+Steam CEF GPU-process restart signals while the laptop had low free virtual
+memory, so repeat active Windows cases on a healthier client before calling the
+whole Windows suite clean.
 
 The macOS matrix can now pair `--app-id <your-app-id>` with
 `--checkout-json-file <path>` for private configured-product proof. Its manifest
