@@ -323,9 +323,12 @@ Before a long Windows run, launch
 preflight reports Smart App Control/App Control policy state, Authenticode
 status for `SteamBridgeSmoke.exe` and the native `.node` addon, Zone.Identifier
 streams, and recent Code Integrity events so native-load blockers are visible
-before Steam overlay testing starts. Windows live cases also require clean
-Electron crash diagnostics, so hidden renderer/GPU/native crashes fail the smoke
-helper instead of becoming a manual post-run surprise.
+before Steam overlay testing starts. The full Windows matrix then runs a direct
+native-load gate from the exact packaged app before any Steam-launched overlay
+case, because Authenticode status alone does not prove SAC/App Control will
+allow the native addon to load. Windows live cases also require clean Electron
+crash diagnostics, so hidden renderer/GPU/native crashes fail the smoke helper
+instead of becoming a manual post-run surprise.
 
 ```ts
 import { app, BrowserWindow } from "electron";
@@ -726,8 +729,12 @@ the private `--checkout-json-file` checkout suite.
   but it is not enough evidence for Smart App Control; use a real trusted and
   reputable publisher signing path for live Windows overlay proof.
   The smoke package also includes `windows-overlay-matrix.ps1` for repeatable
-  Steam-launched Windows proof. It runs the same preflight first and stops before
-  live overlay cases when Smart App Control would block the native addon:
+  Steam-launched Windows proof. It runs the same report-only preflight first,
+  then runs a short direct native-load gate from the exact packaged app and
+  requires Steam initialization plus clean crash diagnostics before live overlay
+  cases. This catches packages that report Authenticode `Valid` locally but are
+  still blocked by Smart App Control/App Control reputation or enterprise
+  signing policy:
 
   ```powershell
   .\windows-overlay-matrix.ps1 `

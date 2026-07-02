@@ -179,6 +179,8 @@ function Get-AppControlPolicyState {
 }
 
 function Test-NativeLoadGate {
+  param([string]$PreflightDir)
+
   if ($SkipNativeLoadGate) {
     return
   }
@@ -190,10 +192,46 @@ function Test-NativeLoadGate {
 
   $policyState = Get-AppControlPolicyState
   $signature = Get-AuthenticodeSignature -LiteralPath $nativeAddon
-  if ($policyState -eq 1 -and [string]$signature.Status -ne "Valid") {
+
+  if ($policyState -eq 1) {
+    Write-Host "Windows Smart App Control/App Control is enabled; running a native-load gate because Authenticode status alone is not enough proof."
+    Write-Host ("  native addon Authenticode status: {0}" -f $signature.Status)
+  }
+
+  $gateDir = Join-Path $PreflightDir "native-load-gate"
+  $gateLog = Join-Path $gateDir "helper.log"
+  $resultFile = Join-Path $gateDir "result.log"
+  $diagnosticDir = Join-Path $gateDir "diagnostics"
+  $gateTimeoutSeconds = if ($TimeoutSeconds -lt 30) { $TimeoutSeconds } else { 30 }
+
+  Write-Host "Running Windows native-load gate with the packaged app."
+  $gateArgs = @(
+    "-Mode", "direct",
+    "-AppDir", $AppDir,
+    "-AppId", "$AppId",
+    "-Action", "none",
+    "-ResultFile", $resultFile,
+    "-DiagnosticDir", $diagnosticDir,
+    "-OverlayProfile", $OverlayProfile,
+    "-WindowMode", $WindowMode,
+    "-ResultDelayMs", "1000",
+    "-TimeoutSeconds", "$gateTimeoutSeconds",
+    "-RequireNoOverlayActivation",
+    "-RequireNoCrashes"
+  )
+  if ($OverlayDisableDirectComposition) {
+    $gateArgs += @("-OverlayDisableDirectComposition", $OverlayDisableDirectComposition)
+  }
+
+  try {
+    Invoke-Helper -Arguments $gateArgs -LogFile $gateLog
+  } catch {
     throw (
-      "Windows Smart App Control/App Control is enabled and the native addon is $($signature.Status). " +
-      "Sign the package with a trusted/reputable publisher certificate or explicitly disable SAC on this development machine before running live overlay cases."
+      "Windows native-load gate failed before live overlay cases. " +
+      "The exact packaged app could not initialize Steam cleanly; see $gateLog and $diagnosticDir. " +
+      "On Smart App Control/App Control machines, a local self-signed Authenticode result can still fail this gate. " +
+      "Use a trusted/reputable publisher-signed package or explicitly disable SAC on this development machine before live overlay proof. " +
+      "Original error: $($_.Exception.Message)"
     )
   }
 }
@@ -350,7 +388,7 @@ function Invoke-Preflight {
     "-AppId", "$AppId"
   ) -LogFile $preflightLog
 
-  Test-NativeLoadGate
+  Test-NativeLoadGate -PreflightDir $preflightDir
 }
 
 function Write-CaseLaunchEnv {

@@ -77,13 +77,18 @@ needs a trusted and reputable publisher signing path.
 The Windows smoke bundle also includes `windows-overlay-matrix.ps1`. Run it
 after signing to collect repeatable Steam-launched baseline evidence for the
 ordinary Windows Electron overlay path; its preflight stops before live cases if
-Smart App Control would block the native addon. Use `-InstallShortcut` to let
-the matrix install or reuse one stable non-Steam shortcut. The shortcut points
-at a local smoke env file, and each matrix case rewrites only that env file
-before launching through Steam. When standalone Node.js is absent, the matrix
-uses the packaged Electron executable in Node mode to run its shortcut updater.
-Use `-Suite shortcut` to verify or refresh only that shortcut before live
-overlay cases.
+Smart App Control would block the native addon. The matrix does not trust
+Authenticode status alone: after the report-only preflight it runs a short
+direct `none` smoke action from the exact packaged app and requires Steam
+initialization plus clean crash diagnostics before any live Steam-launched
+overlay case. That native-load gate catches local self-signed packages that look
+`Valid` to Authenticode but still fail SAC reputation or enterprise signing
+policy. Use `-InstallShortcut` to let the matrix install or reuse one stable
+non-Steam shortcut. The shortcut points at a local smoke env file, and each
+matrix case rewrites only that env file before launching through Steam. When
+standalone Node.js is absent, the matrix uses the packaged Electron executable
+in Node mode to run its shortcut updater. Use `-Suite shortcut` to verify or
+refresh only that shortcut before live overlay cases.
 
 ## Quick Start
 

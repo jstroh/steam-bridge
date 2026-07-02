@@ -1693,6 +1693,10 @@ Windows gates:
 - packaged helper preflight reports App Control/SAC state, executable and native
   addon Authenticode status, Zone.Identifier streams, and recent Code Integrity
   block events before long live overlay runs;
+- packaged Windows matrix preflight runs a direct `none` smoke action from the
+  exact app bundle and requires real Steam initialization plus clean crash
+  diagnostics before any Steam-launched overlay case, because Authenticode
+  `Valid` alone does not prove a local build can pass SAC/App Control policy;
 - packaged Windows smoke bundle includes a repeatable overlay matrix runner that
   uses the ordinary Electron/Steam path for web, store, Friends, and passive
   notifications before any managed/presenter comparison cases;

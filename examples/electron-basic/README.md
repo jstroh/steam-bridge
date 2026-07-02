@@ -117,7 +117,11 @@ To set up or verify only the stable shortcut, run the shortcut suite:
 ```
 
 On a Smart App Control/App Control machine, sign the exact package first or the
-matrix stops after preflight before Steam initialization.
+matrix stops after preflight before live overlay cases. The matrix verifies this
+with an actual direct `none` smoke run from the packaged app, so local
+self-signed packages that appear Authenticode-valid but still cannot load the
+native addon under SAC/App Control fail with artifacts under
+`00-preflight/native-load-gate`.
 
 Outputs are written under `dist/electron-smoke/<target>/`.
 The macOS package includes `macos-electron-smoke.sh` beside
