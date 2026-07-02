@@ -386,6 +386,10 @@ function runWindowsSmokeHelperStaticChecks() {
     "Windows Smart App Control/App Control VerifiedAndReputable policy is enforced",
     "native-load-gate-app-control.json",
     "native-load-gate-blocker.json",
+    "matrix-manifest.json",
+    "Write-MatrixManifest",
+    "steam-bridge-windows-overlay-matrix-manifest",
+    "hasCheckoutTransactionId",
     "Running Windows native-load gate with the packaged app.",
     "native-load-gate",
     "preflight.json",
@@ -443,6 +447,9 @@ function runWindowsSmokeHelperStaticChecks() {
   }
   for (const expected of [
     "steam-bridge-windows-native-load-gate-blocker",
+    "steam-bridge-windows-overlay-matrix-manifest",
+    "matrix manifest case missing result",
+    "matrix-manifest.json",
     "windows-app-control-native-load-block",
     "native-load-gate-app-control.json",
     "native-load-gate-blocker.json",

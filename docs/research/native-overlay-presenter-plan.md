@@ -1714,6 +1714,9 @@ Windows gates:
   roots, readiness/preflight-only captures, and native-load blocker artifacts,
   including the App Control blocker shape, case smoke results, overlay callbacks,
   and clean crash diagnostics;
+- packaged Windows matrix runs write a sanitized `matrix-manifest.json` before
+  preflight, and the summary auditor uses it to prove completed artifact roots
+  contain every intended suite or `-OnlyCase` result;
 - packaged Windows matrix preflight runs a direct `none` smoke action from the
   exact app bundle and requires real Steam initialization plus clean crash
   diagnostics before any Steam-launched overlay case, because Authenticode

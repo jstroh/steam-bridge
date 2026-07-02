@@ -1136,6 +1136,60 @@ function Get-SelectedMatrixCases {
   return $selected
 }
 
+function Write-MatrixManifest {
+  param([object[]]$Cases)
+
+  $manifestCases = @(
+    $Cases |
+      ForEach-Object {
+        [PSCustomObject]@{
+          id = $_.id
+          action = $_.action
+          requireEvent = @($_.requireEvent)
+          requireOverlayActivated = [bool]$_.requireOverlayActivated
+          requireNoOverlayActivation = [bool]$_.requireNoOverlayActivation
+          allowOverlayNotReady = [bool]$_.allowOverlayNotReady
+          requireManagedOverlayComplete = [bool]$_.requireManagedOverlayComplete
+          managedOverlayResultMode = $_.managedOverlayResultMode
+          webModal = $_.webModal
+          dialog = $_.dialog
+          shortcutTarget = $_.shortcutTarget
+          hasCheckoutTransactionId = [bool]$_.checkoutTransactionId
+          resultDelayMs = $_.resultDelayMs
+        }
+      }
+  )
+
+  $manifest = [PSCustomObject]@{
+    kind = "steam-bridge-windows-overlay-matrix-manifest"
+    generatedAt = (Get-Date).ToUniversalTime().ToString("o")
+    suite = $Suite
+    launchMode = $LaunchMode
+    appId = $AppId
+    onlyCase = $OnlyCase
+    expectedCaseCount = $manifestCases.Count
+    shortcutName = $ShortcutName
+    overlayProfile = $OverlayProfile
+    overlayInProcessGpu = $OverlayInProcessGpu
+    overlayDisableDirectComposition = $OverlayDisableDirectComposition
+    windowMode = $WindowMode
+    skipNativeLoadGate = [bool]$SkipNativeLoadGate
+    installShortcut = [bool]$InstallShortcut
+    assumeShortcutConfigured = [bool]$AssumeShortcutConfigured
+    targetHints = [PSCustomObject]@{
+      hasWebUrl = [bool]$WebUrl
+      dialog = $Dialog
+      shortcutTarget = $ShortcutTarget
+      hasCheckoutTransactionId = [bool]$CheckoutTransactionId
+    }
+    cases = @($manifestCases)
+  }
+
+  $manifestPath = Join-Path $ArtifactRoot "matrix-manifest.json"
+  Write-MatrixJsonFile -Path $manifestPath -Value $manifest -Depth 8
+  Write-Host ("Windows overlay matrix manifest: {0}" -f $manifestPath)
+}
+
 function Invoke-Helper {
   param([string[]]$Arguments, [string]$LogFile)
 
@@ -1324,6 +1378,7 @@ function Invoke-MatrixCase {
 
 Resolve-SmokeExe | Out-Null
 New-Item -ItemType Directory -Force -Path $ArtifactRoot | Out-Null
+$selectedMatrixCases = @(Get-SelectedMatrixCases)
 
 Write-Host "Windows overlay matrix:"
 Write-Host ("  suite: {0}" -f $Suite)
@@ -1342,6 +1397,8 @@ if ($LaunchMode -eq "steam-launch") {
   Write-Host ("  launchEnvFile: {0}" -f $LaunchEnvFile)
   Write-Host ("  installShortcut: {0}" -f $InstallShortcut)
 }
+
+Write-MatrixManifest -Cases $selectedMatrixCases
 
 if ($CleanStaleOverlayHelpers) {
   Stop-StaleSteamOverlayHelpers -DestinationFile (Join-Path $ArtifactRoot "stale-overlay-helper-cleanup.json")
@@ -1365,7 +1422,7 @@ if ($Suite -eq "readiness") {
   exit 0
 }
 
-foreach ($case in Get-SelectedMatrixCases) {
+foreach ($case in $selectedMatrixCases) {
   Invoke-MatrixCase -Case $case
 }
 

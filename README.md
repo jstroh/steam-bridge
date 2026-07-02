@@ -754,7 +754,9 @@ the private `--checkout-json-file` checkout suite.
   `00-preflight/native-load-gate-app-control.json` with the enforced policy
   summary, writes `00-preflight/native-load-gate-blocker.json` with a stable
   blocker code and next actions, and captures a post-failure Code Integrity
-  snapshot:
+  snapshot. Every run writes `matrix-manifest.json` before preflight so the
+  summarizer can verify that baseline, managed, full, or focused `-OnlyCase`
+  artifacts contain every intended case result:
 
   ```powershell
   .\windows-overlay-matrix.ps1 `
@@ -763,8 +765,8 @@ the private `--checkout-json-file` checkout suite.
     -InstallShortcut
   ```
 
-  From the repo, summarize a completed, readiness-only, or native-load-blocked
-  artifact with:
+  From the repo, summarize a completed, readiness-only, incomplete, or
+  native-load-blocked artifact with:
 
   ```sh
   npm run windows:overlay-matrix:summarize -- \

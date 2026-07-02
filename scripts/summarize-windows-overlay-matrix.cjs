@@ -105,9 +105,17 @@ function summarizeWindowsOverlayMatrixArtifacts(root) {
       preflight: null,
       liveRunReadiness: null,
       nativeLoadBlocker: null,
+      manifest: null,
       caseSummaries,
       totals: buildTotals(caseSummaries)
     };
+  }
+
+  const manifest = readJsonIfPresent(path.join(root, "matrix-manifest.json"), failures);
+  if (manifest) {
+    validateManifest(manifest, failures);
+  } else {
+    warnings.push(`missing matrix manifest: ${path.join(root, "matrix-manifest.json")}`);
   }
 
   const preflightDir = path.join(root, "00-preflight");
@@ -150,6 +158,10 @@ function summarizeWindowsOverlayMatrixArtifacts(root) {
     failures.push(...caseSummary.failures);
   }
 
+  if (manifest && !nativeLoadBlocker) {
+    validateManifestCoverage(manifest, caseSummaries, failures, warnings);
+  }
+
   if (!nativeLoadBlocker && caseSummaries.length === 0 && !preflight && !liveRunReadiness) {
     failures.push("artifact root does not contain preflight, blocker, readiness, or case result artifacts");
   }
@@ -161,9 +173,65 @@ function summarizeWindowsOverlayMatrixArtifacts(root) {
     preflight: preflight ? summarizePreflight(preflight) : null,
     liveRunReadiness: liveRunReadiness ? summarizeReadiness(liveRunReadiness) : null,
     nativeLoadBlocker: nativeLoadBlocker ? summarizeNativeLoadBlocker(nativeLoadBlocker) : null,
+    manifest: manifest ? summarizeManifest(manifest) : null,
     caseSummaries,
     totals: buildTotals(caseSummaries)
   };
+}
+
+function validateManifest(manifest, failures) {
+  expect(
+    manifest.kind === "steam-bridge-windows-overlay-matrix-manifest",
+    "matrix manifest kind is steam-bridge-windows-overlay-matrix-manifest",
+    failures
+  );
+  expect(Boolean(manifest.generatedAt), "matrix manifest generatedAt is present", failures);
+  expect(["baseline", "managed", "full", "preflight", "readiness", "shortcut"].includes(manifest.suite), `matrix manifest suite is known: ${manifest.suite}`, failures);
+  expect(["steam-launch", "direct"].includes(manifest.launchMode), `matrix manifest launchMode is known: ${manifest.launchMode}`, failures);
+  expect(Number.isInteger(manifest.appId), "matrix manifest appId is an integer", failures);
+  expect(Array.isArray(manifest.cases), "matrix manifest cases is an array", failures);
+  if (Array.isArray(manifest.cases)) {
+    expect(
+      manifest.expectedCaseCount === manifest.cases.length,
+      "matrix manifest expectedCaseCount matches cases length",
+      failures
+    );
+    const seen = new Set();
+    for (const entry of manifest.cases) {
+      expect(Boolean(entry && entry.id), "matrix manifest case id is present", failures);
+      expect(Boolean(entry && entry.action), `matrix manifest case ${entry && entry.id} action is present`, failures);
+      if (entry && entry.id) {
+        expect(!seen.has(entry.id), `matrix manifest case id is unique: ${entry.id}`, failures);
+        seen.add(entry.id);
+      }
+      if (entry && entry.action) {
+        expect(
+          typeof entry.hasCheckoutTransactionId === "boolean",
+          `matrix manifest case ${entry.id} records checkout transaction presence without raw value`,
+          failures
+        );
+      }
+    }
+  }
+}
+
+function validateManifestCoverage(manifest, caseSummaries, failures, warnings) {
+  const expectedCases = Array.isArray(manifest.cases) ? manifest.cases : [];
+  const summariesByCase = new Map(caseSummaries.map((row) => [row.caseName, row]));
+  for (const expected of expectedCases) {
+    const row = summariesByCase.get(expected.id);
+    if (!row) {
+      failures.push(`matrix manifest case missing result: ${expected.id} (${expected.action})`);
+      continue;
+    }
+    expect(row.action === expected.action, `matrix manifest case ${expected.id} action matches result`, failures);
+  }
+
+  for (const row of caseSummaries) {
+    if (!expectedCases.some((expected) => expected.id === row.caseName)) {
+      warnings.push(`case result was not listed in matrix manifest: ${row.caseName}`);
+    }
+  }
 }
 
 function validatePreflight(preflight, failures) {
@@ -292,6 +360,12 @@ function summarizeCaseResult(caseName, result, resultLog) {
 
 function printSummary(summary) {
   console.log(`Windows overlay matrix summary: ${summary.root}`);
+  if (summary.manifest) {
+    console.log(
+      `manifest: suite=${summary.manifest.suite} launchMode=${summary.manifest.launchMode} ` +
+        `expectedCases=${summary.manifest.expectedCaseCount} onlyCase=${summary.manifest.onlyCase || "none"}`
+    );
+  }
   if (summary.preflight) {
     console.log(
       `preflight: generated=${summary.preflight.generatedAt || "unknown"} ` +
@@ -342,6 +416,16 @@ function summarizePreflight(preflight) {
     recentCodeIntegrityEventCount: Array.isArray(preflight.recentCodeIntegrityEvents)
       ? preflight.recentCodeIntegrityEvents.length
       : 0
+  };
+}
+
+function summarizeManifest(manifest) {
+  return {
+    suite: manifest.suite || "",
+    launchMode: manifest.launchMode || "",
+    appId: manifest.appId,
+    onlyCase: manifest.onlyCase || "",
+    expectedCaseCount: Array.isArray(manifest.cases) ? manifest.cases.length : 0
   };
 }
 
@@ -502,6 +586,16 @@ function runSelfTest() {
     assert.equal(casesSummary.totals.overlayActiveCases, 1);
     assert.equal(casesSummary.totals.cleanCases, 2);
     assert.equal(casesSummary.liveRunReadiness.ready, true);
+    assert.equal(casesSummary.manifest.expectedCaseCount, 2);
+
+    const incompleteRoot = path.join(tempRoot, "incomplete");
+    writeCaseFixture(incompleteRoot);
+    fs.rmSync(path.join(incompleteRoot, "99-none"), { recursive: true, force: true });
+    const incompleteSummary = summarizeWindowsOverlayMatrixArtifacts(incompleteRoot);
+    assert(
+      incompleteSummary.failures.some((failure) => failure.includes("matrix manifest case missing result: 99-none")),
+      "summary self-test should fail when a manifest-listed case result is missing"
+    );
 
     console.log("Windows overlay matrix summary self-test passed.");
   } finally {
@@ -510,6 +604,39 @@ function runSelfTest() {
 }
 
 function writeBlockedFixture(root) {
+  writeJson(path.join(root, "matrix-manifest.json"), {
+    kind: "steam-bridge-windows-overlay-matrix-manifest",
+    generatedAt: "2026-07-02T00:00:00.000Z",
+    suite: "baseline",
+    launchMode: "steam-launch",
+    appId: 480,
+    onlyCase: "",
+    expectedCaseCount: 2,
+    cases: [
+      {
+        id: "01-web",
+        action: "web",
+        requireEvent: ["overlay:web"],
+        requireOverlayActivated: true,
+        requireNoOverlayActivation: false,
+        allowOverlayNotReady: false,
+        requireManagedOverlayComplete: false,
+        managedOverlayResultMode: "",
+        hasCheckoutTransactionId: false
+      },
+      {
+        id: "99-none",
+        action: "none",
+        requireEvent: [],
+        requireOverlayActivated: false,
+        requireNoOverlayActivation: true,
+        allowOverlayNotReady: true,
+        requireManagedOverlayComplete: false,
+        managedOverlayResultMode: "",
+        hasCheckoutTransactionId: false
+      }
+    ]
+  });
   writeJson(path.join(root, "00-preflight", "preflight.json"), {
     kind: "steam-bridge-windows-preflight",
     generatedAt: "2026-07-02T00:00:00.000Z",
@@ -547,6 +674,39 @@ function writeBlockedFixture(root) {
 }
 
 function writeCaseFixture(root) {
+  writeJson(path.join(root, "matrix-manifest.json"), {
+    kind: "steam-bridge-windows-overlay-matrix-manifest",
+    generatedAt: "2026-07-02T00:00:00.000Z",
+    suite: "baseline",
+    launchMode: "steam-launch",
+    appId: 480,
+    onlyCase: "",
+    expectedCaseCount: 2,
+    cases: [
+      {
+        id: "01-web",
+        action: "web",
+        requireEvent: ["overlay:web"],
+        requireOverlayActivated: true,
+        requireNoOverlayActivation: false,
+        allowOverlayNotReady: false,
+        requireManagedOverlayComplete: false,
+        managedOverlayResultMode: "",
+        hasCheckoutTransactionId: false
+      },
+      {
+        id: "99-none",
+        action: "none",
+        requireEvent: [],
+        requireOverlayActivated: false,
+        requireNoOverlayActivation: true,
+        allowOverlayNotReady: true,
+        requireManagedOverlayComplete: false,
+        managedOverlayResultMode: "",
+        hasCheckoutTransactionId: false
+      }
+    ]
+  });
   writeJson(path.join(root, "00-preflight", "preflight.json"), {
     kind: "steam-bridge-windows-preflight",
     generatedAt: "2026-07-02T00:00:00.000Z",
