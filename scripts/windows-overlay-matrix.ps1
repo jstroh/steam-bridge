@@ -226,9 +226,19 @@ function Test-NativeLoadGate {
   try {
     Invoke-Helper -Arguments $gateArgs -LogFile $gateLog
   } catch {
+    $postGatePreflightLog = Join-Path $gateDir "post-gate-preflight.log"
+    try {
+      Invoke-Helper -Arguments @(
+        "-Mode", "preflight",
+        "-AppDir", $AppDir,
+        "-AppId", "$AppId"
+      ) -LogFile $postGatePreflightLog
+    } catch {
+      Write-Host ("Post-gate preflight failed; continuing with original native-load gate failure. Output path: {0}" -f $postGatePreflightLog)
+    }
     throw (
       "Windows native-load gate failed before live overlay cases. " +
-      "The exact packaged app could not initialize Steam cleanly; see $gateLog and $diagnosticDir. " +
+      "The exact packaged app could not initialize Steam cleanly; see $gateLog, $postGatePreflightLog, and $diagnosticDir. " +
       "On Smart App Control/App Control machines, a local self-signed Authenticode result can still fail this gate. " +
       "Use a trusted/reputable publisher-signed package or explicitly disable SAC on this development machine before live overlay proof. " +
       "Original error: $($_.Exception.Message)"

@@ -355,6 +355,7 @@ function runWindowsSmokeHelperStaticChecks() {
     "Windows Smart App Control/App Control is enabled",
     "Running Windows native-load gate with the packaged app.",
     "native-load-gate",
+    "post-gate-preflight.log",
     "-Action\", \"none\"",
     "-RequireNoOverlayActivation",
     "achievement-progress",
