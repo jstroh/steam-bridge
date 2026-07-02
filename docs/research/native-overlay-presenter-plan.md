@@ -1850,6 +1850,19 @@ presenter parking, app focus return, `openAndWait` completion, clean crash
 diagnostics, and no leftover smoke or `gameoverlayui64` processes. Keep D3D11
 opt-in until route expansion proves it at least as broadly as the WGL presenter.
 
+The first D3D11 route expansion, artifact
+`C:\Users\admin\steam-bridge-artifacts\windows-d3d11-store-20260702-141901`,
+passed `presenter-store-open-and-wait` with `-StoreRoute web` through the same
+interactive Session 1 Steam shortcut and App ID `480`. The D3D11 host rendered
+visible Steam store overlay UI, the foreground-window web close click returned
+focus to the Electron game window, Steam emitted active and inactive overlay
+callbacks, the presenter parked, `openAndWait` completed, and crash diagnostics
+remained clean with no leftover smoke or overlay helper processes. This makes
+D3D11 the current Windows native-presenter candidate for further route
+expansion, while still keeping it non-default until Friends/chat, checkout,
+passive notifications, shortcut behavior, and Community/profile-style routes
+clear the same gates.
+
 The Windows smoke harness now exposes the store route explicitly:
 `STEAM_BRIDGE_SMOKE_STORE_ROUTE`, `--steam-bridge-smoke-store-route`, and the
 matrix `-StoreRoute web|native` switch all flow into

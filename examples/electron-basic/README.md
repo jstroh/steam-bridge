@@ -169,8 +169,10 @@ For focused Windows native-presenter comparison runs, pass
 `windows-overlay-matrix.ps1` or set
 `STEAM_BRIDGE_WINDOWS_NATIVE_HOST_BACKEND=d3d11` in the smoke environment. This
 selects the opt-in D3D11/DXGI presenter instead of the older WGL diagnostic
-presenter. It is not a default and still needs live visible-overlay,
-input/close, return-to-app, and clean-crash proof.
+presenter. Current focused Windows evidence covers managed web and store-web
+open/close/back-to-app proof with clean crash diagnostics, but this path is not
+a default until Friends/chat, checkout, passive notifications, shortcut
+behavior, and Community/profile-style routes pass the same gates.
 
 The Windows package also includes `windows-native-overlay-control.ps1` and the
 source for a tiny C# OpenGL control app. This is a route diagnostic, not an

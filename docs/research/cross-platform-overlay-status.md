@@ -531,6 +531,21 @@ clean Electron/GPU/native crash diagnostics and no leftover smoke or
 `windows-d3d11-web-20260702-001` is preserved as the useful miss: it showed the
 same visible Steam overlay UI, but the older close probe clicked the host
 corner instead of the centered Steam web panel close control.
+A follow-up D3D11 store web-route run at
+`C:\Users\admin\steam-bridge-artifacts\windows-d3d11-store-20260702-141901`
+passed the managed `presenter-store-open-and-wait` route through the same
+interactive Session 1 Steam shortcut with App ID `480`. The packaged matrix
+used `-PresenterMode persistent -NativeHostBackend d3d11 -StoreRoute web`,
+opened visible Steam store overlay UI on the D3D11 host, sent the maintained
+foreground-window web close click, returned focus to the Electron smoke window,
+recorded `overlay:presenter-wait-shown`, `GameOverlayActivated(true)`,
+`overlay:presenter-wait-closed`, `GameOverlayActivated(false)`,
+`overlay:presenter-parked`, and `overlay:presenter-open-and-wait-complete`, and
+exited with clean crash diagnostics and no leftover smoke or `gameoverlayui64`
+processes. This promotes the D3D11 comparison from web-only proof to web plus
+store-web proof, but it remains opt-in until Friends/chat, checkout, passive
+toasts, shortcut behavior, and Community/profile-style surfaces pass the same
+close/back-to-app and crash gates.
 The next focused artifact,
 `C:\Users\admin\steam-bridge-artifacts\native-presenter-wndproc-web-20260702-002`,
 rebuilt the Windows native addon with WndProc host diagnostics and passed the
@@ -561,10 +576,10 @@ to the visible web close control; the second sent a maintained Shift+Tab
 SendInput close. Both timed out without `GameOverlayActivated(false)`,
 `overlay:presenter-wait-closed`, `overlay:presenter-parked`, or
 `overlay:presenter-open-and-wait-complete`. This rules out a bad close
-coordinate as the only explanation and keeps Windows store as a route-specific
-native-presenter blocker. Next Windows work should compare native-host
-input/focus/window-shape behavior and store-route alternatives before expanding
-coverage, not repeat Steam restarts or Chromium-flag experiments.
+coordinate as the only explanation for the WGL presenter and keeps WGL store as
+a route-specific blocker. The later D3D11 store-web pass above makes D3D11 the
+current Windows native-presenter candidate for further route expansion, while
+WGL remains useful as a diagnostic comparison.
 
 A later current-package Windows proof pass on 2026-07-02 contradicted the older
 direct-hook optimism. The render-health artifact
