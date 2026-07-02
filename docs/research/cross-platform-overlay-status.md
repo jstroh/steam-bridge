@@ -349,6 +349,43 @@ Community `application_config`, so treat native user/profile routes as
 callback-only Windows evidence until a visible Steam Community surface is
 proven. This also means the current blocker is not simply choosing the native
 profile API instead of the Steam Community profile URL.
+The Windows summary auditor now surfaces close-probe foreground and screenshot
+evidence directly in each row, for example `closeProbeFg=SteamBridgeSmoke`,
+`closeProbeScreens=3`, and `closeProbeGameFg=true`, so future active-callback
+failures show whether the close probe was still focused on the game window
+without opening image files by hand.
+
+Online source survey, 2026-07-02: Valve's overlay documentation says the overlay
+hooks games launched through Steam, must see `SteamAPI_Init` before the
+OpenGL/D3D device is initialized in development, and only supports real graphics
+APIs such as DirectX, OpenGL, Metal, and Vulkan; Valve's own browser-game note
+says web/browser games need a native D3D host that renders Chromium offscreen and
+forwards input, and that this is not easy. Electron's documented command-line
+path requires switches to be appended before `app.ready`, but the Chromium
+switches that wrapper projects historically use are not stable product
+contracts. The public Electron/NW.js/steamworks.js/WebView2 reports line up with
+the local Windows evidence: `--in-process-gpu` can make Steam hook Chromium by
+moving GPU work into the main process, but it is also associated with blank or
+white windows on newer Chromium/NW.js/Electron combinations; `--disable-direct-composition`
+can help a white overlay in some reports but has ghost-window risk
+in steamworks.js reports, and a steamworks.js issue found `--in-process-gpu`
+without `--disable-direct-composition` worked better for Alt+Tab behavior. This
+keeps the Windows default conservative: use the ordinary Electron hook with
+`in-process-gpu`, treat `disable-direct-composition` as an explicit diagnostic
+comparison, collect Steam CEF/GPU/render-health evidence before restarting
+Steam, and only promote a native presenter/host for Windows if repeated
+interactive evidence proves a Steam route cannot be made visible through
+Electron. Sources:
+https://partner.steamgames.com/doc/features/overlay,
+https://www.electronjs.org/docs/latest/api/command-line-switches,
+https://github.com/electron/electron/issues/18048,
+https://github.com/ceifa/steamworks.js/issues/95,
+https://github.com/ceifa/steamworks.js/issues/116,
+https://github.com/MicrosoftEdge/WebView2Feedback/issues/3200,
+https://www.construct.net/en/blogs/ashleys-blog-2/trying-show-steam-overlay-1861,
+https://liana.one/integrate-electron-steam-api-steamworks,
+https://github.com/nwjs/nw.js/issues/4982,
+https://github.com/greenheartgames/greenworks/issues/349.
 
 A native Windows control comparison now lives beside the smoke package as
 `windows-native-overlay-control.ps1` plus a small C# OpenGL source file. It is
@@ -365,8 +402,10 @@ content visible on the desktop and a `gameoverlayui64` Back to Game shell over
 the native window. That proves the Windows Steam client can render that profile
 surface during a native OpenGL control run, but it is still comparison evidence:
 it does not prove Electron close/back-to-app behavior and does not justify a
-Windows native presenter by itself. A follow-up env-file version of the same
-control updates the shortcut only once, then rewrites
+Windows native presenter by itself. The native control's structured result now
+redacts the current user's Steam ID and records only presence/type metadata
+while still using the ID internally for the overlay call. A follow-up env-file
+version of the same control updates the shortcut only once, then rewrites
 `%LOCALAPPDATA%\SteamBridgeNativeOverlayControl\native-overlay-control.env` for
 each case. On the current Windows laptop, the rebuilt generated executable was
 then blocked by Smart App Control / App Control despite a valid local test

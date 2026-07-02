@@ -322,6 +322,10 @@ function runWindowsSmokeHelperStaticChecks() {
   const signingHelper = fs.readFileSync(path.join(repoRoot, "scripts", "sign-windows-package.ps1"), "utf8");
   const matrixHelper = fs.readFileSync(path.join(repoRoot, "scripts", "windows-overlay-matrix.ps1"), "utf8");
   const renderHealthHelper = fs.readFileSync(path.join(repoRoot, "scripts", "windows-render-health-probe.ps1"), "utf8");
+  const nativeControlSource = fs.readFileSync(
+    path.join(repoRoot, "scripts", "windows-native-overlay-control", "SteamBridgeNativeOverlayControl.cs"),
+    "utf8"
+  );
   const matrixSummary = fs.readFileSync(path.join(repoRoot, "scripts", "summarize-windows-overlay-matrix.cjs"), "utf8");
   const electronHelper = fs.readFileSync(path.join(repoRoot, "packages", "steam-bridge", "src", "electron.ts"), "utf8");
   for (const expected of [
@@ -487,6 +491,26 @@ function runWindowsSmokeHelperStaticChecks() {
   ]) {
     assert.ok(renderHealthHelper.includes(expected), `Windows render health helper missing ${expected}`);
   }
+  for (const expected of [
+    "AddSteamIdentityEvent",
+    "AppendRedactedSteamIdProperty",
+    "RedactedSteamIdJson",
+    "redacted",
+    "present",
+    "uint64"
+  ]) {
+    assert.ok(nativeControlSource.includes(expected), `Windows native overlay control missing ${expected}`);
+  }
+  assert.doesNotMatch(
+    nativeControlSource,
+    /AppendJsonProperty\(builder,\s*"steamId64",\s*SteamId64\.ToString/,
+    "Windows native overlay control result must not write raw Steam IDs"
+  );
+  assert.doesNotMatch(
+    nativeControlSource,
+    /AddEvent\("steam-identity",\s*0,\s*"steamId64",\s*steamId64\.ToString/,
+    "Windows native overlay control events must not write raw Steam IDs"
+  );
   for (const expected of [
     "steam-bridge-windows-native-load-gate-blocker",
     "steam-bridge-windows-overlay-matrix-manifest",

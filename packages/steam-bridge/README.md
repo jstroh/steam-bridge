@@ -74,7 +74,8 @@ overlay routes against Electron. Use it only as a diagnostic control; it is not
 the app-builder API and does not replace the ordinary Windows Electron overlay
 path. On Smart App Control/App Control machines, freshly rebuilt generated
 diagnostic executables can still need a reputable signature or policy-disabled
-test machine even when Authenticode reports `Valid`.
+test machine even when Authenticode reports `Valid`. Its structured result
+redacts the current user's Steam ID and records only presence/type metadata.
 Run `windows-electron-smoke.ps1 -Mode preflight` on a Windows test package before
 long live overlay runs. It reports Smart App Control/App Control policy state,
 the parsed `CiTool.exe -lp` policy inventory, enforced policy names, whether a

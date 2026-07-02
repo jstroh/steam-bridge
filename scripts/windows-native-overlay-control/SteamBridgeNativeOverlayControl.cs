@@ -353,7 +353,7 @@ namespace SteamBridgeNativeOverlayControl
         {
             SteamId64 = steamId64;
             SteamAppId = appId;
-            AddEvent("steam-identity", 0, "steamId64", steamId64.ToString());
+            AddSteamIdentityEvent(steamId64);
         }
 
         public void RecordException(Exception error)
@@ -373,7 +373,7 @@ namespace SteamBridgeNativeOverlayControl
             AppendJsonProperty(builder, "steamInitResult", SteamInitResult, true);
             AppendJsonProperty(builder, "steamInitOk", SteamInitResult == 0, true);
             AppendJsonProperty(builder, "steamInitError", SteamInitError, true);
-            AppendJsonProperty(builder, "steamId64", SteamId64.ToString(), true);
+            AppendRedactedSteamIdProperty(builder, "steamId64", SteamId64, true);
             AppendJsonProperty(builder, "steamAppId", SteamAppId, true);
             AppendJsonProperty(builder, "overlayEnabledAtMs", overlayEnabledAtMs, true);
             AppendJsonProperty(builder, "finalOverlayEnabled", finalOverlayEnabled, true);
@@ -431,6 +431,33 @@ namespace SteamBridgeNativeOverlayControl
         private void AddEvent(string type, long elapsedMs, string key, string value)
         {
             eventsJson.Add("{\"type\":" + JsonString(type) + ",\"elapsedMs\":" + elapsedMs.ToString() + ",\"" + JsonEscape(key) + "\":" + JsonString(value) + "}");
+        }
+
+        private void AddSteamIdentityEvent(ulong steamId64)
+        {
+            eventsJson.Add(
+                "{\"type\":\"steam-identity\",\"elapsedMs\":0,\"steamId64\":"
+                + RedactedSteamIdJson(steamId64)
+                + "}"
+            );
+        }
+
+        private static void AppendRedactedSteamIdProperty(StringBuilder builder, string name, ulong value, bool comma)
+        {
+            builder.Append("  \"");
+            builder.Append(JsonEscape(name));
+            builder.Append("\": ");
+            builder.Append(RedactedSteamIdJson(value));
+            if (comma)
+            {
+                builder.Append(",");
+            }
+            builder.AppendLine();
+        }
+
+        private static string RedactedSteamIdJson(ulong value)
+        {
+            return "{\"redacted\":true,\"present\":" + (value == 0UL ? "false" : "true") + ",\"type\":\"uint64\"}";
         }
 
         private static void AppendJsonProperty(StringBuilder builder, string name, string value, bool comma)

@@ -190,6 +190,9 @@ On Smart App Control/App Control machines, a freshly rebuilt generated control
 exe can still be blocked even when Authenticode reports `Valid`. In that case
 the runner writes `steam-launch-blocker.json` with matching Code Integrity
 events. Treat that as local policy/reputation evidence, not as overlay behavior.
+The native control result JSON redacts the current user's Steam ID and records
+only presence/type metadata while still using the ID internally for the overlay
+route.
 
 Focused managed runs can choose a single case, close probe, and dialog target:
 
@@ -209,6 +212,9 @@ matching error lines, rendering-related config hints, orphaned `gameoverlayui`
 helper state, and Windows resource-pressure snapshots are written under each
 artifact's `steam-client/` directory. If the Steam client itself is blank or
 white, inspect those files before running more live cases or restarting Steam.
+The summary auditor also prints close-probe foreground process names,
+screenshot counts, and whether the probe stayed focused on the smoke game
+window while Steam had reported an active overlay.
 Use `-Suite preflight` to capture client health only, or `-Suite readiness` to
 also write the live-run readiness gate without native-load, shortcut-edit, or
 `steam://rungameid` work. Pass `-OnlyCase 01-web` or another case ID/action when

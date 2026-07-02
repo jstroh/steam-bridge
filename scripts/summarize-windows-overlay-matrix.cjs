@@ -445,7 +445,7 @@ function summarizeCaseResult(caseName, result, resultLog, renderingHealth = null
   const overlayEnabled = readOkValue(steam.overlayEnabled);
   const overlayNeedsPresent = readOkValue(steam.overlayNeedsPresent);
   const wait = result.wait && typeof result.wait === "object" && !Array.isArray(result.wait) ? result.wait : null;
-  const closeProbeSentEvent = closeProbeEvents.find((event) => event && event.type === "probe:sent");
+  const closeProbe = summarizeCloseProbe(closeProbeEvents);
 
   expect(result.ok === true, `${caseName}: smoke result ok`, failures);
   expect(action.ok === true, `${caseName}: autorun action succeeded`, failures);
@@ -476,8 +476,9 @@ function summarizeCaseResult(caseName, result, resultLog, renderingHealth = null
     overlayActiveEvents,
     overlayInactiveEvents,
     managedOverlayCloseProof: hasManagedOverlayCloseProof(wait, overlayInactiveEvents),
-    closeProbeSent: Boolean(closeProbeSentEvent),
-    closeProbeInput: closeProbeSentEvent ? closeProbeSentEvent.payload && closeProbeSentEvent.payload.input : "",
+    closeProbeSent: closeProbe.sent,
+    closeProbeInput: closeProbe.input,
+    closeProbe,
     eventTypes: events.map((event) => event && event.type).filter(Boolean),
     wait,
     crashDumpCount: crashDumps.length,
@@ -541,7 +542,7 @@ function printSummary(summary) {
           `steamLaunch=${row.steamLaunch} steamOverlayLaunchMarker=${row.steamOverlayLaunchMarker} ` +
           `overlayActiveEvents=${row.overlayActiveEvents} ` +
           `overlayEnabled=${formatValue(row.overlayEnabled)} ` +
-          (row.closeProbeSent ? `closeProbe=${formatValue(row.closeProbeInput)} ` : "") +
+          formatCloseProbeSummary(row.closeProbe) +
           `crashes=${row.crashDumpCount + row.fatalLifecycleEventCount}` +
           formatCaseRenderingHealth(row.steamRenderingHealth)
       );
@@ -633,6 +634,47 @@ function summarizeCaseRenderingHealth(renderingHealth) {
     recentSevereSignalCount: Number(renderingHealth.recentSevereSignalCount || 0),
     staleSevereSignalCount: Number(renderingHealth.staleSevereSignalCount || 0),
     signalCodes
+  };
+}
+
+function summarizeCloseProbe(events) {
+  const normalizedEvents = Array.isArray(events) ? events.filter(Boolean) : [];
+  const sentEvent = normalizedEvents.find((event) => event.type === "probe:sent");
+  const foregroundSamples = normalizedEvents
+    .map((event) => {
+      const payload = objectOrEmpty(event.payload);
+      const foreground = objectOrEmpty(payload.foreground);
+      if (!foreground.processName && !foreground.title && !foreground.pid) {
+        return null;
+      }
+      return {
+        type: event.type,
+        processName: String(foreground.processName || ""),
+        title: String(foreground.title || ""),
+        pid: foreground.pid || null
+      };
+    })
+    .filter(Boolean);
+  const screenshotCount = normalizedEvents.filter((event) => {
+    const payload = objectOrEmpty(event.payload);
+    const screenshot = objectOrEmpty(payload.screenshot);
+    return screenshot.ok === true || typeof screenshot.path === "string";
+  }).length;
+  const foregroundProcessNames = uniqueStrings(
+    foregroundSamples.map((sample) => sample.processName).filter(Boolean)
+  );
+  const foregroundStayedOnSmoke =
+    foregroundSamples.length > 0 &&
+    foregroundSamples.every((sample) => /SteamBridgeSmoke/i.test(sample.processName));
+
+  return {
+    sent: Boolean(sentEvent),
+    input: sentEvent ? String(objectOrEmpty(sentEvent.payload).input || "") : "",
+    eventCount: normalizedEvents.length,
+    screenshotCount,
+    foregroundSampleCount: foregroundSamples.length,
+    foregroundProcessNames,
+    foregroundStayedOnSmoke
   };
 }
 
@@ -799,6 +841,21 @@ function formatCaseRenderingHealth(renderingHealth) {
   );
 }
 
+function formatCloseProbeSummary(closeProbe) {
+  if (!closeProbe || closeProbe.eventCount === 0) {
+    return "";
+  }
+  const foreground = closeProbe.foregroundProcessNames.length > 0
+    ? closeProbe.foregroundProcessNames.join(",")
+    : "unknown";
+  return (
+    `closeProbe=${closeProbe.sent ? formatValue(closeProbe.input) : "not-sent"} ` +
+    `closeProbeFg=${foreground} ` +
+    `closeProbeScreens=${closeProbe.screenshotCount} ` +
+    `closeProbeGameFg=${closeProbe.foregroundStayedOnSmoke} `
+  );
+}
+
 function uniqueStrings(values) {
   return Array.from(new Set(values.map((value) => String(value)))).sort();
 }
@@ -848,6 +905,9 @@ function runSelfTest() {
     assert.deepEqual(closeProbeSummary.failures, []);
     assert.equal(closeProbeSummary.caseSummaries[0].closeProbeSent, true);
     assert.equal(closeProbeSummary.caseSummaries[0].closeProbeInput, "toggle");
+    assert.equal(closeProbeSummary.caseSummaries[0].closeProbe.foregroundStayedOnSmoke, true);
+    assert.deepEqual(closeProbeSummary.caseSummaries[0].closeProbe.foregroundProcessNames, ["SteamBridgeSmoke"]);
+    assert.equal(closeProbeSummary.caseSummaries[0].closeProbe.screenshotCount, 1);
 
     const missingCloseProbeRoot = path.join(tempRoot, "managed-close-probe-missing");
     writeManagedCaseFixture(missingCloseProbeRoot, { closeProbe: true });
@@ -1279,9 +1339,28 @@ function writeManagedCaseFixture(root, options = {}) {
   }
   writeResult(path.join(root, "11-managed-web-open-and-wait", "result.log"), result);
   if (options.closeProbeSent) {
+    const foreground = {
+      processName: "SteamBridgeSmoke",
+      title: "Steam Bridge Electron Smoke",
+      pid: 4245
+    };
     writeText(
       path.join(root, "11-managed-web-open-and-wait", "close-probe.log"),
-      `${JSON.stringify({ type: "probe:sent", at: "2026-07-02T00:00:04.000Z", payload: { input: "toggle" } })}\n`
+      [
+        {
+          type: "probe:detected",
+          at: "2026-07-02T00:00:03.000Z",
+          payload: {
+            foreground,
+            screenshot: { ok: true, path: "close-probe-detected.png" }
+          }
+        },
+        {
+          type: "probe:sent",
+          at: "2026-07-02T00:00:04.000Z",
+          payload: { input: "toggle", foreground }
+        }
+      ].map((entry) => JSON.stringify(entry)).join("\n") + "\n"
     );
   }
 }

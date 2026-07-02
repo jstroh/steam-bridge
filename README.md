@@ -813,6 +813,9 @@ the private `--checkout-json-file` checkout suite.
   auditor also reports per-case Steam rendering-health status and signal codes,
   such as `steam-overlay-swapchain-failure` or
   `steam-cef-dxgi-not-currently-available`, when those diagnostics are present.
+  Close-probe artifacts are summarized too: rows can show the foreground
+  process, screenshot count, and whether the probe stayed focused on the smoke
+  game window while Steam had reported an active overlay.
   Use `-Suite preflight`
   for report-only client-health capture, `-Suite readiness` for the same
   capture plus the live Steam-run readiness gate without native-load,
