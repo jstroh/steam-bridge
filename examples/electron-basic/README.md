@@ -5,7 +5,7 @@ read basic Steamworks state, and exercise overlay paths on supported Steam
 desktop platforms. The deepest automated coverage currently targets Steam Deck
 Desktop Mode and macOS Apple Silicon; Linux x64 helper coverage is verified
 through the Deck, and Windows x64 helper coverage now includes live interactive
-native-load and Steam-launched store overlay activation proof.
+native-load and process-per-case Steam-launched baseline overlay proof.
 
 It uses Valve's SpaceWar sample App ID `480` by default. Override it with
 `STEAM_BRIDGE_APP_ID` when testing your own app.
@@ -88,8 +88,10 @@ actions such as `presenter-ready`, `presenter-web-open-and-wait`,
 
 The helper defaults `-OverlayInProcessGpu 1` on Windows, matching
 `electronConfigureSteamOverlay()` and the verified Steam-launched store overlay
-proof. Pass `-OverlayInProcessGpu 0` only when collecting a failing baseline
-comparison.
+proof. The current Windows proof lane is the process-per-case baseline matrix:
+web, store, and Friends must emit overlay activation, while passive achievement
+cases prove their callbacks without requiring the overlay to open. Pass
+`-OverlayInProcessGpu 0` only when collecting a failing baseline comparison.
 
 The Windows package also includes `windows-overlay-matrix.ps1`, which runs
 preflight and then a repeatable baseline, managed, or full suite while writing
@@ -111,6 +113,9 @@ between cases. Pass `-ShortcutsPath` or `-SteamUserId` when the Steam account
 cannot be inferred from the local `userdata` folder. The shortcut updater uses
 the packaged Electron executable as its JavaScript runner when standalone
 Node.js is not installed.
+Do not use the opt-in control server as Windows product proof yet; that path
+needs overlay-readiness gating and should not be used for live Windows runs
+that churn or destabilize the Steam client.
 
 To set up or verify only the stable shortcut, run the shortcut suite:
 

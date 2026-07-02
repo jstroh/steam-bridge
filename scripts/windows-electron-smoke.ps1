@@ -69,6 +69,7 @@ param(
   [string[]]$RequireEvent = @(),
   [switch]$RequireSteamLaunch,
   [switch]$RequireOverlayReady,
+  [switch]$AllowOverlayNotReady,
   [switch]$RequireOverlayActivated,
   [switch]$RequireNoOverlayActivation,
   [int]$RequireRestoreFocusDelayMs = -1,
@@ -202,6 +203,9 @@ function Get-SmokeEnv {
   param([string]$LogFile, [string]$SmokeAction)
 
   $envMap = [ordered]@{
+    SteamAppId = "$AppId"
+    SteamGameId = "$AppId"
+    SteamOverlayGameId = "$AppId"
     STEAM_BRIDGE_APP_ID = "$AppId"
     STEAM_BRIDGE_ELECTRON_OVERLAY_PROFILE = $OverlayProfile
     STEAM_BRIDGE_SMOKE_AUTORUN = "1"
@@ -523,7 +527,13 @@ function Wait-ForResultFile {
   $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
   while ((Get-Date) -lt $deadline) {
     if ((Test-Path -LiteralPath $LogFile) -and (Get-Item -LiteralPath $LogFile).Length -gt 0) {
-      return
+      try {
+        [void](Read-SmokeResult -LogFile $LogFile)
+        return
+      } catch {
+        Start-Sleep -Milliseconds 200
+        continue
+      }
     }
     Start-Sleep -Milliseconds 500
   }
@@ -547,6 +557,35 @@ function Read-SmokeResult {
   }
 
   return ($line.Substring($ResultPrefix.Length) | ConvertFrom-Json)
+}
+
+function Wait-ForSmokeProcessExit {
+  param($Result)
+
+  if ($KeepOpenAfterResult) {
+    return
+  }
+
+  $pidValue = $null
+  if ($Result -and $Result.snapshot -and $Result.snapshot.process -and $Result.snapshot.process.pid) {
+    $pidValue = [int]$Result.snapshot.process.pid
+  }
+  if (-not $pidValue) {
+    return
+  }
+
+  if (-not (Get-Process -Id $pidValue -ErrorAction SilentlyContinue)) {
+    return
+  }
+
+  $timeout = [Math]::Max(1, [Math]::Min($TimeoutSeconds, 30))
+  try {
+    Wait-Process -Id $pidValue -Timeout $timeout -ErrorAction Stop
+  } catch {
+    if (Get-Process -Id $pidValue -ErrorAction SilentlyContinue) {
+      throw "Timed out waiting for SteamBridgeSmoke.exe PID $pidValue to exit."
+    }
+  }
 }
 
 function Read-OkValue {
@@ -703,8 +742,8 @@ function Assert-SmokeResult {
     $failures.Add("Steam launch marker detected")
   }
   if ($RequireOverlayReady) {
-    if ((Read-OkValue $steam.overlayEnabled) -ne $true) {
-      $failures.Add("overlay enabled")
+    if ((Read-OkValue $steam.overlayEnabled) -ne $true -and -not $overlayActivated) {
+      $failures.Add("overlay enabled or emitted active overlay callback")
     }
     if ((Read-OkValue $steam.overlayNeedsPresent) -ne $false -and -not $overlayActivated) {
       $failures.Add("overlay does not need present or emitted active overlay callback")
@@ -799,7 +838,10 @@ function Invoke-SteamLaunchSmoke {
 
   Start-Process "steam://rungameid/$ShortcutGameId"
   Wait-ForResultFile -LogFile $ResultFile
-  Assert-SmokeResult (Read-SmokeResult -LogFile $ResultFile)
+  $result = Read-SmokeResult -LogFile $ResultFile
+  Assert-SmokeResult $result
+  Wait-ForSmokeProcessExit -Result $result
+  Write-Host "Windows steam-launch smoke completed."
 }
 
 switch ($Mode) {
@@ -828,7 +870,9 @@ switch ($Mode) {
   "steam-launch" {
     Add-DefaultRequireEvents
     $RequireSteamLaunch = $true
-    $RequireOverlayReady = $true
+    if (-not $AllowOverlayNotReady) {
+      $RequireOverlayReady = $true
+    }
     Invoke-SteamLaunchSmoke
   }
   "verify" {

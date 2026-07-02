@@ -759,6 +759,10 @@ the private `--checkout-json-file` checkout suite.
   additional machinery is needed. Each matrix case passes `-RequireNoCrashes`,
   so Windows artifacts must prove both overlay behavior and a clean Electron
   crash-diagnostic snapshot.
+  The Windows matrix is intentionally process-per-case right now. A
+  one-process control-server harness is useful future research, but it is not
+  the Windows proof path until it can wait on overlay readiness and run without
+  destabilizing Steam's webhelper/client UI.
   The Windows matrix stores one stable non-Steam shortcut whose launch options
   point at a local smoke env file, then rewrites only that env file for each
   case. If the shortcut must be added or materially updated while Steam is

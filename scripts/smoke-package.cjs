@@ -336,8 +336,12 @@ function runWindowsSmokeHelperStaticChecks() {
     "PreflightJsonFile",
     "Write-JsonFile",
     "steam-bridge-windows-preflight",
+    "SteamOverlayGameId",
     "function Test-OverlayActiveEvent",
+    "function Wait-ForSmokeProcessExit",
+    "Windows steam-launch smoke completed.",
     "RequireOverlayActivated",
+    "AllowOverlayNotReady",
     "RequireNoCrashes",
     "function Add-DefaultRequireEvents"
   ]) {
@@ -380,8 +384,10 @@ function runWindowsSmokeHelperStaticChecks() {
     "Write-CaseLaunchEnv",
     "upsert-steam-shortcut.cjs",
     "STEAM_SHORTCUT_RESULT",
+    "Windows steam-launch smoke completed.",
     "-RequireOverlayActivated",
     "-RequireNoOverlayActivation",
+    "-AllowOverlayNotReady",
     "-RequireZeroManagedOverlayTiming",
     "-RequireNoCrashes",
     "-OverlayInProcessGpu",

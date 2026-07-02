@@ -184,6 +184,7 @@ function createWindow() {
     minHeight: 640,
     fullscreen,
     frame,
+    show: false,
     autoHideMenuBar: true,
     title: "Steam Bridge Electron Smoke",
     backgroundColor: "#f5f7fb",
@@ -194,15 +195,42 @@ function createWindow() {
   });
 
   mainWindow = window;
+  let loadSettled = false;
+  const loaded = new Promise((resolve) => {
+    const completeLoad = (eventName, details = {}) => {
+      if (loadSettled) {
+        return;
+      }
+      loadSettled = true;
+      recordLifecycle("window:first-render", { eventName, ...details });
+      if (!window.isDestroyed() && !window.isVisible()) {
+        window.show();
+        recordLifecycle("window:shown", { eventName });
+      }
+      resolve();
+    };
+
+    window.once("ready-to-show", () => completeLoad("ready-to-show"));
+    window.webContents.once("did-finish-load", () => completeLoad("did-finish-load"));
+    window.webContents.once(
+      "did-fail-load",
+      (_event, errorCode, errorDescription, validatedURL, isMainFrame) =>
+        completeLoad("did-fail-load", { errorCode, errorDescription, validatedURL, isMainFrame })
+    );
+    window.once("closed", () => completeLoad("closed"));
+    window.loadFile(path.join(__dirname, "index.html")).catch((error) => {
+      completeLoad("load-error", { error: serializeError(error) });
+    });
+  });
   window.on("closed", () => {
     if (mainWindow === window) {
       mainWindow = undefined;
     }
   });
-  window.loadFile(path.join(__dirname, "index.html"));
+  return loaded;
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   recordLifecycle("app:ready", { diagnosticDir: DIAGNOSTIC_DIR, crashDumpDir: CRASH_DUMP_DIR });
 
   try {
@@ -214,10 +242,10 @@ app.whenReady().then(() => {
     recordEvent("steam:init:error", initError);
   }
 
-  createWindow();
+  await createWindow();
   startSmokeControlServer();
   if (AUTORUN) {
-    runAutorunSmoke();
+    void runAutorunSmoke();
   }
 });
 
@@ -396,8 +424,10 @@ async function runAutorunSmoke() {
     resultDelayMs: AUTORUN_RESULT_DELAY_MS,
     requireOverlayActive: AUTORUN_REQUIRE_OVERLAY_ACTIVE
   });
+  recordEvent("autorun:result-ready", { action: AUTORUN_ACTION, resultFile: AUTORUN_RESULT_FILE || null });
   const line = `STEAM_BRIDGE_SMOKE_RESULT ${JSON.stringify(result)}\n`;
   writeSmokeResultLine(line);
+  recordEvent("autorun:result-written", { action: AUTORUN_ACTION, resultFile: AUTORUN_RESULT_FILE || null });
   if (AUTORUN_KEEP_OPEN_AFTER_RESULT) {
     recordEvent("autorun:keep-open-after-result", { resultFile: AUTORUN_RESULT_FILE || null });
     process.stdout.write(line);
@@ -422,15 +452,24 @@ async function runSmokeActionAndWait(action, options = {}) {
     ok: actionResult.ok,
     error: actionResult.error || null
   });
+  recordEvent(`${source}:wait-begin`, { action, resultDelayMs });
   const waitResult = await waitForAutorunResult(action, resultDelayMs, overlayActiveCount, {
     requireOverlayActive
   });
+  recordEvent(`${source}:wait-complete`, {
+    action,
+    ok: waitResult.ok,
+    durationMs: waitResult.durationMs
+  });
+  recordEvent(`${source}:snapshot-begin`, { action });
+  const state = snapshot();
+  recordEvent(`${source}:snapshot-complete`, { action });
 
   return sanitize({
     ok: Boolean(client) && !actionResult.error && waitResult.ok,
     action: actionResult,
     wait: waitResult,
-    snapshot: snapshot()
+    snapshot: state
   });
 }
 

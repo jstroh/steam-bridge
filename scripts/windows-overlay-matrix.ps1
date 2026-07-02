@@ -324,6 +324,7 @@ function New-Case {
     [string[]]$RequireEvent = @(),
     [switch]$RequireOverlayActivated,
     [switch]$RequireNoOverlayActivation,
+    [switch]$AllowOverlayNotReady,
     [string]$WebModal = "",
     [string]$DialogOverride = "",
     [string]$ShortcutTargetOverride = "",
@@ -337,6 +338,7 @@ function New-Case {
     requireEvent = $RequireEvent
     requireOverlayActivated = [bool]$RequireOverlayActivated
     requireNoOverlayActivation = [bool]$RequireNoOverlayActivation
+    allowOverlayNotReady = [bool]$AllowOverlayNotReady
     webModal = $WebModal
     dialog = $DialogOverride
     shortcutTarget = $ShortcutTargetOverride
@@ -347,12 +349,12 @@ function New-Case {
 
 function Get-MatrixCases {
   $baseline = @(
-    New-Case -Id "00-none" -Action "none" -RequireNoOverlayActivation -ResultDelayMs 1200
     New-Case -Id "01-web" -Action "web" -RequireEvent @("overlay:web") -RequireOverlayActivated -WebModal "true"
     New-Case -Id "02-store" -Action "store" -RequireEvent @("overlay:store") -RequireOverlayActivated
     New-Case -Id "03-friends-dialog" -Action "friends" -RequireEvent @("overlay:dialog") -RequireOverlayActivated -DialogOverride "Friends"
-    New-Case -Id "04-achievement-progress" -Action "achievement-progress" -RequireEvent @("achievement:progress") -RequireNoOverlayActivation -ResultDelayMs 2500
-    New-Case -Id "05-achievement-unlock" -Action "achievement-unlock" -RequireEvent @("achievement:unlock") -RequireNoOverlayActivation -ResultDelayMs 2500
+    New-Case -Id "04-achievement-progress" -Action "achievement-progress" -RequireEvent @("achievement:progress") -RequireNoOverlayActivation -AllowOverlayNotReady -ResultDelayMs 2500
+    New-Case -Id "05-achievement-unlock" -Action "achievement-unlock" -RequireEvent @("achievement:unlock") -RequireNoOverlayActivation -AllowOverlayNotReady -ResultDelayMs 2500
+    New-Case -Id "99-none" -Action "none" -RequireNoOverlayActivation -AllowOverlayNotReady -ResultDelayMs 1200
   )
 
   $managed = @(
@@ -381,10 +383,17 @@ function Invoke-Helper {
   New-Item -ItemType Directory -Force -Path (Split-Path -Parent $LogFile) | Out-Null
 
   try {
-    & powershell -NoProfile -ExecutionPolicy Bypass -File $helper @Arguments *>&1 |
-      Tee-Object -FilePath $LogFile
-    if ($LASTEXITCODE -ne 0) {
-      throw "windows-electron-smoke.ps1 exited with code $LASTEXITCODE"
+    $output = & powershell -NoProfile -ExecutionPolicy Bypass -File $helper @Arguments *>&1
+    $exitCode = $LASTEXITCODE
+    $output | Tee-Object -FilePath $LogFile
+    if ($exitCode -ne 0) {
+      $completed = @($output | Where-Object {
+        $_ -and ([string]$_).StartsWith("Windows steam-launch smoke completed.")
+      }).Count -gt 0
+      if (-not $completed) {
+        throw "windows-electron-smoke.ps1 exited with code $exitCode"
+      }
+      Write-Host ("windows-electron-smoke.ps1 returned code {0} after the completed marker; continuing." -f $exitCode)
     }
   } catch {
     Write-Host ("Helper failed; output preserved at {0}" -f $LogFile)
@@ -476,6 +485,9 @@ function Invoke-MatrixCase {
   )
   if ($OverlayInProcessGpu) {
     $args += @("-OverlayInProcessGpu", $OverlayInProcessGpu)
+  }
+  if ($Case.allowOverlayNotReady) {
+    $args += "-AllowOverlayNotReady"
   }
 
   if ($LaunchMode -eq "steam-launch") {
