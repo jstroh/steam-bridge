@@ -225,6 +225,31 @@ function validateManifestCoverage(manifest, caseSummaries, failures, warnings) {
       continue;
     }
     expect(row.action === expected.action, `matrix manifest case ${expected.id} action matches result`, failures);
+    expect(row.appId === manifest.appId, `matrix manifest case ${expected.id} App ID matches manifest`, failures);
+    if (manifest.launchMode === "steam-launch") {
+      expect(row.steamLaunch === true, `matrix manifest case ${expected.id} was Steam-launched`, failures);
+      expect(row.overlayInjection === true, `matrix manifest case ${expected.id} has Steam overlay injection marker`, failures);
+    }
+    if (expected.requireOverlayActivated === true) {
+      expect(row.overlayActiveEvents > 0, `matrix manifest case ${expected.id} emitted overlay active callback`, failures);
+    }
+    if (expected.requireNoOverlayActivation === true) {
+      expect(row.overlayActiveEvents === 0, `matrix manifest case ${expected.id} did not emit overlay active callback`, failures);
+    }
+    for (const eventType of Array.isArray(expected.requireEvent) ? expected.requireEvent : []) {
+      expect(row.eventTypes.includes(eventType), `matrix manifest case ${expected.id} emitted required event ${eventType}`, failures);
+    }
+    if (expected.requireManagedOverlayComplete === true) {
+      expect(
+        row.managedOverlayResultMode === "complete",
+        `matrix manifest case ${expected.id} used complete managed overlay result mode`,
+        failures
+      );
+      expect(row.overlayInactiveEvents > 0, `matrix manifest case ${expected.id} emitted overlay inactive callback`, failures);
+      expect(row.wait && row.wait.overlayClosed === true, `matrix manifest case ${expected.id} completed overlay close wait`, failures);
+      expect(row.wait && row.wait.overlayParked === true, `matrix manifest case ${expected.id} completed overlay park wait`, failures);
+      expect(row.wait && row.wait.overlayComplete === true, `matrix manifest case ${expected.id} completed managed overlay wait`, failures);
+    }
   }
 
   for (const row of caseSummaries) {
@@ -344,6 +369,7 @@ function summarizeCaseResult(caseName, result, resultLog) {
     action: String(action.action || ""),
     resultLog,
     appId: app.appId,
+    managedOverlayResultMode: app.managedOverlayResultMode || "",
     processId: processInfo.pid || null,
     steamLaunch: launch.steamLaunch === true,
     overlayInjection: launch.overlayInjection === true,
@@ -352,6 +378,7 @@ function summarizeCaseResult(caseName, result, resultLog) {
     overlayActiveEvents,
     overlayInactiveEvents,
     eventTypes: events.map((event) => event && event.type).filter(Boolean),
+    wait: result.wait && typeof result.wait === "object" && !Array.isArray(result.wait) ? result.wait : null,
     crashDumpCount: crashDumps.length,
     fatalLifecycleEventCount: fatalLifecycleEvents.length,
     failures
@@ -588,6 +615,13 @@ function runSelfTest() {
     assert.equal(casesSummary.liveRunReadiness.ready, true);
     assert.equal(casesSummary.manifest.expectedCaseCount, 2);
 
+    const managedRoot = path.join(tempRoot, "managed");
+    writeManagedCaseFixture(managedRoot);
+    const managedSummary = summarizeWindowsOverlayMatrixArtifacts(managedRoot);
+    assert.deepEqual(managedSummary.failures, []);
+    assert.equal(managedSummary.caseSummaries.length, 1);
+    assert.equal(managedSummary.totals.overlayActiveCases, 1);
+
     const incompleteRoot = path.join(tempRoot, "incomplete");
     writeCaseFixture(incompleteRoot);
     fs.rmSync(path.join(incompleteRoot, "99-none"), { recursive: true, force: true });
@@ -595,6 +629,30 @@ function runSelfTest() {
     assert(
       incompleteSummary.failures.some((failure) => failure.includes("matrix manifest case missing result: 99-none")),
       "summary self-test should fail when a manifest-listed case result is missing"
+    );
+
+    const missingEventRoot = path.join(tempRoot, "missing-event");
+    writeCaseFixture(missingEventRoot);
+    writeResult(path.join(missingEventRoot, "01-web", "result.log"), {
+      ok: true,
+      action: { ok: true, action: "web" },
+      snapshot: buildWindowsSnapshot({
+        pid: 4244,
+        events: [{ type: "callback:overlay-activated", payload: { active: true } }]
+      })
+    });
+    const missingEventSummary = summarizeWindowsOverlayMatrixArtifacts(missingEventRoot);
+    assert(
+      missingEventSummary.failures.some((failure) => failure.includes("emitted required event overlay:web")),
+      "summary self-test should fail when a manifest-required event is missing"
+    );
+
+    const missingManagedCloseRoot = path.join(tempRoot, "missing-managed-close");
+    writeManagedCaseFixture(missingManagedCloseRoot, { omitWait: true });
+    const missingManagedCloseSummary = summarizeWindowsOverlayMatrixArtifacts(missingManagedCloseRoot);
+    assert(
+      missingManagedCloseSummary.failures.some((failure) => failure.includes("completed overlay close wait")),
+      "summary self-test should fail when managed completion waits are missing"
     );
 
     console.log("Windows overlay matrix summary self-test passed.");
@@ -729,39 +787,99 @@ function writeCaseFixture(root) {
   writeResult(path.join(root, "01-web", "result.log"), {
     ok: true,
     action: { ok: true, action: "web" },
-    snapshot: {
-      app: { appId: 480 },
-      process: { pid: 4242, platform: "win32", arch: "x64" },
-      launch: { steamLaunch: true, overlayInjection: true },
-      steam: {
-        initialized: true,
-        running: { ok: true, value: true },
-        appId: { ok: true, value: 480 },
-        overlayEnabled: { ok: true, value: true },
-        overlayNeedsPresent: { ok: true, value: false }
-      },
-      crashDiagnostics: { available: true, ok: true, crashDumps: [], fatalLifecycleEvents: [] },
+    snapshot: buildWindowsSnapshot({
+      pid: 4242,
       events: [{ type: "overlay:web" }, { type: "callback:overlay-activated", payload: { active: true } }]
-    }
+    })
   });
   writeResult(path.join(root, "99-none", "result.log"), {
     ok: true,
     action: { ok: true, action: "none" },
-    snapshot: {
-      app: { appId: 480 },
-      process: { pid: 4243, platform: "win32", arch: "x64" },
-      launch: { steamLaunch: true, overlayInjection: true },
-      steam: {
-        initialized: true,
-        running: { ok: true, value: true },
-        appId: { ok: true, value: 480 },
-        overlayEnabled: { ok: true, value: true },
-        overlayNeedsPresent: { ok: true, value: false }
-      },
-      crashDiagnostics: { available: true, ok: true, crashDumps: [], fatalLifecycleEvents: [] },
-      events: []
-    }
+    snapshot: buildWindowsSnapshot({ pid: 4243, events: [] })
   });
+}
+
+function writeManagedCaseFixture(root, options = {}) {
+  writeJson(path.join(root, "matrix-manifest.json"), {
+    kind: "steam-bridge-windows-overlay-matrix-manifest",
+    generatedAt: "2026-07-02T00:00:00.000Z",
+    suite: "managed",
+    launchMode: "steam-launch",
+    appId: 480,
+    onlyCase: "",
+    expectedCaseCount: 1,
+    cases: [
+      {
+        id: "11-managed-web-open-and-wait",
+        action: "presenter-web-open-and-wait",
+        requireEvent: [
+          "overlay:presenter-open-and-wait-start",
+          "overlay:presenter-wait-closed",
+          "overlay:presenter-parked",
+          "overlay:presenter-open-and-wait-complete"
+        ],
+        requireOverlayActivated: true,
+        requireNoOverlayActivation: false,
+        allowOverlayNotReady: false,
+        requireManagedOverlayComplete: true,
+        managedOverlayResultMode: "complete",
+        hasCheckoutTransactionId: false
+      }
+    ]
+  });
+  writeJson(path.join(root, "00-preflight", "preflight.json"), {
+    kind: "steam-bridge-windows-preflight",
+    generatedAt: "2026-07-02T00:00:00.000Z",
+    app: {
+      exe: { exists: true },
+      nativeAddon: { exists: true }
+    },
+    appControlPolicy: {
+      verifiedAndReputableEnforced: false
+    },
+    recentCodeIntegrityEvents: []
+  });
+  const result = {
+    ok: true,
+    action: { ok: true, action: "presenter-web-open-and-wait" },
+    snapshot: buildWindowsSnapshot({
+      pid: 4245,
+      managedOverlayResultMode: "complete",
+      events: [
+        { type: "overlay:presenter-open-and-wait-start" },
+        { type: "callback:overlay-activated", payload: { active: true } },
+        { type: "callback:overlay-activated", payload: { active: false } },
+        { type: "overlay:presenter-wait-closed" },
+        { type: "overlay:presenter-parked" },
+        { type: "overlay:presenter-open-and-wait-complete" }
+      ]
+    })
+  };
+  if (!options.omitWait) {
+    result.wait = {
+      overlayClosed: true,
+      overlayParked: true,
+      overlayComplete: true
+    };
+  }
+  writeResult(path.join(root, "11-managed-web-open-and-wait", "result.log"), result);
+}
+
+function buildWindowsSnapshot({ pid, events, managedOverlayResultMode = "" }) {
+  return {
+    app: { appId: 480, managedOverlayResultMode },
+    process: { pid, platform: "win32", arch: "x64" },
+    launch: { steamLaunch: true, overlayInjection: true },
+    steam: {
+      initialized: true,
+      running: { ok: true, value: true },
+      appId: { ok: true, value: 480 },
+      overlayEnabled: { ok: true, value: true },
+      overlayNeedsPresent: { ok: true, value: false }
+    },
+    crashDiagnostics: { available: true, ok: true, crashDumps: [], fatalLifecycleEvents: [] },
+    events
+  };
 }
 
 function writeResult(file, result) {

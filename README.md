@@ -756,7 +756,8 @@ the private `--checkout-json-file` checkout suite.
   blocker code and next actions, and captures a post-failure Code Integrity
   snapshot. Every run writes `matrix-manifest.json` before preflight so the
   summarizer can verify that baseline, managed, full, or focused `-OnlyCase`
-  artifacts contain every intended case result:
+  artifacts contain every intended case result and satisfy each case's recorded
+  overlay-event and close-completion requirements:
 
   ```powershell
   .\windows-overlay-matrix.ps1 `

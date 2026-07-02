@@ -158,7 +158,8 @@ blocker artifacts so the next live pass can distinguish an expected App Control
 gate from an overlay regression without hand-reading helper logs. The Windows
 matrix now writes a sanitized `matrix-manifest.json` before preflight, and the
 summary auditor uses it to fail completed artifacts that are missing intended
-baseline, managed, full, or focused `-OnlyCase` results.
+baseline, managed, full, or focused `-OnlyCase` results, required events,
+activation/no-activation callbacks, or managed close/park completion evidence.
 
 An experimental one-process Windows control-server run is not accepted as
 product proof. It launched and painted correctly, but the first web action ran

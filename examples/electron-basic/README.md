@@ -168,8 +168,9 @@ enforced policy summary, failures write
 actions, and failures also write
 `00-preflight/native-load-gate/post-gate-preflight.json` after the failed load
 attempt. The matrix writes `matrix-manifest.json` before preflight; it records
-the sanitized suite and case list so the summarizer can fail incomplete artifacts
-instead of silently accepting a partial run.
+the sanitized suite, case list, and case requirements so the summarizer can fail
+incomplete or requirement-mismatched artifacts instead of silently accepting a
+partial run.
 From the repo, use the summarizer to audit either a full run or this expected
 blocker shape:
 
