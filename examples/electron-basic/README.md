@@ -158,11 +158,12 @@ On a Smart App Control/App Control machine, sign the exact package first or the
 matrix stops after preflight before live overlay cases. The matrix verifies this
 with an actual direct `none` smoke run from the packaged app, so local
 self-signed packages that appear Authenticode-valid but still cannot load the
-native addon under SAC/App Control fail with artifacts under
+app or native addon under SAC/App Control fail with artifacts under
 `00-preflight/native-load-gate`. Preflight writes structured
-`00-preflight/preflight.json`, and native-load failures also write
-`00-preflight/native-load-gate/post-gate-preflight.json` after the failed load
-attempt.
+`00-preflight/preflight.json` with the parsed `CiTool.exe -lp` policy inventory,
+enforced policy names, and a `verifiedAndReputableEnforced` flag; native-load
+failures also write `00-preflight/native-load-gate/post-gate-preflight.json`
+after the failed load attempt.
 Direct Windows smoke runs pass smoke state through the child process environment
 instead of Electron command-line switches so interactive Task Scheduler launches
 and private checkout values do not depend on fragile process arguments.

@@ -65,12 +65,14 @@ Electron/Steam wrapper reports tie it to Alt+Tab ghost-window regressions on
 some Windows systems.
 Run `windows-electron-smoke.ps1 -Mode preflight` on a Windows test package before
 long live overlay runs. It reports Smart App Control/App Control policy state,
-Authenticode status for the Electron executable and native `.node` addon,
-Zone.Identifier streams, and recent Code Integrity block events that mention the
-smoke app. Pass `-PreflightJsonFile <path>` to write the same report as
-structured JSON. If the native addon is blocked there, Steam cannot initialize
-and overlay proof must wait for a trusted/reputable signed package or an
-explicitly SAC-disabled development machine.
+the parsed `CiTool.exe -lp` policy inventory, enforced policy names, whether a
+`VerifiedAndReputableDesktop*` policy is actually enforced, Authenticode status
+for the Electron executable and native `.node` addon, Zone.Identifier streams,
+and recent Code Integrity block events that mention the smoke app. Pass
+`-PreflightJsonFile <path>` to write the same report as structured JSON. If the
+app or native addon is blocked there, Steam cannot initialize and overlay proof
+must wait for a trusted/reputable signed package or an explicitly
+SAC-disabled/evaluation-mode development machine.
 For direct native-load checks, the Windows helper passes smoke state through the
 child process environment rather than Electron command-line switches, which keeps
 interactive Task Scheduler runs and private checkout values out of fragile

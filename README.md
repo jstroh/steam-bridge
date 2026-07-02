@@ -329,14 +329,16 @@ start Steam by default; pass `-AllowStartSteamClient` only for a deliberate
 manual launch.
 Before a long Windows run, launch
 `windows-electron-smoke.ps1 -Mode preflight` against the packaged app. The
-preflight reports Smart App Control/App Control policy state, Authenticode
-status for `SteamBridgeSmoke.exe` and the native `.node` addon, Zone.Identifier
-streams, and recent Code Integrity events so native-load blockers are visible
-before Steam overlay testing starts. The Windows matrix also writes the same
-evidence to `00-preflight/preflight.json`. The full Windows matrix then runs a
-direct native-load gate from the exact packaged app before any Steam-launched
-overlay case, because Authenticode status alone does not prove SAC/App Control
-will allow the native addon to load. Windows live cases also require clean
+preflight reports Smart App Control/App Control policy state, the parsed
+`CiTool.exe -lp` policy inventory, enforced policy names, whether a
+`VerifiedAndReputableDesktop*` policy is actually enforced, Authenticode status
+for `SteamBridgeSmoke.exe` and the native `.node` addon, Zone.Identifier streams,
+and recent Code Integrity events so native-load blockers are visible before
+Steam overlay testing starts. The Windows matrix also writes the same evidence
+to `00-preflight/preflight.json`. The full Windows matrix then runs a direct
+native-load gate from the exact packaged app before any Steam-launched overlay
+case, because Authenticode status alone does not prove SAC/App Control will
+allow the app or native addon to load. Windows live cases also require clean
 Electron crash diagnostics, so hidden renderer/GPU/native crashes fail the smoke
 helper instead of becoming a manual post-run surprise.
 Direct Windows smoke runs pass smoke state through the child process environment

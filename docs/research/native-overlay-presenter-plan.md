@@ -1698,9 +1698,11 @@ the local Windows matrix before becoming a default.
 
 Windows gates:
 
-- packaged helper preflight reports App Control/SAC state, executable and native
-  addon Authenticode status, Zone.Identifier streams, and recent Code Integrity
-  block events before long live overlay runs;
+- packaged helper preflight reports App Control/SAC state, parsed
+  `CiTool.exe -lp` policy inventory, enforced policy names,
+  `VerifiedAndReputableDesktop*` enforcement, executable and native addon
+  Authenticode status, Zone.Identifier streams, and recent Code Integrity block
+  events before long live overlay runs;
 - packaged Windows matrix preflight runs a direct `none` smoke action from the
   exact app bundle and requires real Steam initialization plus clean crash
   diagnostics before any Steam-launched overlay case, because Authenticode

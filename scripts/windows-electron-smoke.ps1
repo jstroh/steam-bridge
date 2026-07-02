@@ -368,9 +368,136 @@ function Format-FileSignatureSummary {
 
 function Get-AppControlPolicySummary {
   $policy = Get-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\CI\Policy" -ErrorAction SilentlyContinue
+  $ciTool = Get-CiToolPolicyInventory
+
   return [PSCustomObject]@{
     verifiedAndReputablePolicyState = if ($policy) { $policy.VerifiedAndReputablePolicyState } else { $null }
+    ciToolPath = $ciTool.ciToolPath
+    ciToolAvailable = $ciTool.available
+    ciToolExitCode = $ciTool.exitCode
+    ciToolError = $ciTool.error
+    policies = @($ciTool.policies)
+    enforcedPolicies = @($ciTool.enforcedPolicies)
+    verifiedAndReputableEnforced = $ciTool.verifiedAndReputableEnforced
   }
+}
+
+function Get-CiToolPolicyInventory {
+  $ciTool = Get-Command CiTool.exe -ErrorAction SilentlyContinue
+  if (-not $ciTool) {
+    return [PSCustomObject]@{
+      ciToolPath = $null
+      available = $false
+      exitCode = $null
+      error = $null
+      policies = @()
+      enforcedPolicies = @()
+      verifiedAndReputableEnforced = $false
+    }
+  }
+
+  $output = @()
+  $exitCode = 0
+  $errorMessage = $null
+  try {
+    $output = @(& $ciTool.Source -lp 2>&1 | ForEach-Object { [string]$_ })
+    $exitCode = $LASTEXITCODE
+  } catch {
+    $errorMessage = $_.Exception.Message
+    $exitCode = 1
+  }
+
+  $policies = @(Convert-CiToolPolicies -Lines $output)
+  $enforcedPolicies = @(
+    $policies |
+      Where-Object { $_.enforced -eq $true } |
+      Select-Object policyId, basePolicyId, friendlyName, version, platformPolicy, policySigned, hasFileOnDisk, authorized, status
+  )
+  $verifiedAndReputableEnforced = @(
+    $enforcedPolicies |
+      Where-Object { $_.friendlyName -like "VerifiedAndReputableDesktop*" }
+  ).Count -gt 0
+
+  return [PSCustomObject]@{
+    ciToolPath = $ciTool.Source
+    available = $true
+    exitCode = $exitCode
+    error = $errorMessage
+    policies = @($policies)
+    enforcedPolicies = @($enforcedPolicies)
+    verifiedAndReputableEnforced = $verifiedAndReputableEnforced
+  }
+}
+
+function Convert-CiToolPolicies {
+  param([string[]]$Lines)
+
+  $policies = New-Object System.Collections.Generic.List[object]
+  $current = $null
+
+  foreach ($rawLine in $Lines) {
+    $line = [string]$rawLine
+    if ($line -match '^\s*Policy:\s*$') {
+      if ($current) {
+        $policies.Add([PSCustomObject]$current) | Out-Null
+      }
+      $current = [ordered]@{}
+      continue
+    }
+
+    if (-not $current) {
+      continue
+    }
+
+    if ($line -match '^\s*([^:]+):\s*(.*)$') {
+      $name = Convert-CiToolPolicyKey -Key $matches[1]
+      if (-not $name) {
+        continue
+      }
+      $current[$name] = Convert-CiToolPolicyValue -Key $name -Value $matches[2]
+    }
+  }
+
+  if ($current) {
+    $policies.Add([PSCustomObject]$current) | Out-Null
+  }
+
+  return $policies.ToArray()
+}
+
+function Convert-CiToolPolicyKey {
+  param([string]$Key)
+
+  switch ($Key.Trim()) {
+    "Policy ID" { return "policyId" }
+    "Base Policy ID" { return "basePolicyId" }
+    "Friendly Name" { return "friendlyName" }
+    "Version" { return "version" }
+    "Platform Policy" { return "platformPolicy" }
+    "Policy is Signed" { return "policySigned" }
+    "Has File on Disk" { return "hasFileOnDisk" }
+    "Is Currently Enforced" { return "enforced" }
+    "Is Authorized" { return "authorized" }
+    "Status" { return "status" }
+  }
+
+  return $null
+}
+
+function Convert-CiToolPolicyValue {
+  param([string]$Key, [string]$Value)
+
+  $trimmed = $Value.Trim()
+  if ($Key -in @("platformPolicy", "policySigned", "hasFileOnDisk", "enforced", "authorized")) {
+    if ($trimmed -eq "true") {
+      return $true
+    }
+    if ($trimmed -eq "false") {
+      return $false
+    }
+  }
+
+  return $trimmed
 }
 
 function Get-RecentCodeIntegrityEvents {
@@ -424,6 +551,14 @@ function Invoke-Preflight {
   Write-Host ("  appDir: {0}" -f $AppDir)
   Write-Host ("  powershell: {0}" -f $PSVersionTable.PSVersion)
   Write-Host ("  verifiedAndReputablePolicyState: {0}" -f $policy.verifiedAndReputablePolicyState)
+  Write-Host ("  ciTool: {0}" -f $policy.ciToolPath)
+  Write-Host ("  verifiedAndReputableEnforced: {0}" -f $policy.verifiedAndReputableEnforced)
+  if (@($policy.enforcedPolicies).Count -gt 0) {
+    Write-Host "  enforcedAppControlPolicies:"
+    foreach ($enforcedPolicy in $policy.enforcedPolicies) {
+      Write-Host ("    {0} ({1})" -f $enforcedPolicy.friendlyName, $enforcedPolicy.policyId)
+    }
+  }
   foreach ($summary in @($exeSummary, $nativeSummary)) {
     Write-Host ("  file: {0}" -f $summary.path)
     Write-Host ("    exists: {0}" -f $summary.exists)
@@ -434,11 +569,13 @@ function Invoke-Preflight {
     Write-Host ("    zoneIdentifier: {0}" -f $summary.zoneIdentifier)
   }
 
-  if ($policy.verifiedAndReputablePolicyState -eq 1 -and $nativeSummary.authenticodeStatus -ne "Valid") {
-    $warnings += "Windows Smart App Control/App Control is enabled and the native addon is not Authenticode-valid."
+  if ($policy.verifiedAndReputableEnforced -and $nativeSummary.authenticodeStatus -ne "Valid") {
+    $warnings += "Windows Smart App Control/App Control VerifiedAndReputable policy is enforced and the native addon is not Authenticode-valid."
     $warnings += "SteamAPI_Init smoke runs are expected to fail before overlay testing on this machine."
+  } elseif ($policy.verifiedAndReputableEnforced) {
+    $warnings += "Windows Smart App Control/App Control VerifiedAndReputable policy is enforced; local or unreputable signatures can still be blocked."
   } elseif ($policy.verifiedAndReputablePolicyState -eq 1) {
-    $warnings += "Windows Smart App Control/App Control is enabled; local or unreputable signatures can still be blocked."
+    $warnings += "Windows Smart App Control/App Control appears enabled; local or unreputable signatures can still be blocked."
   }
 
   foreach ($warning in $warnings) {
