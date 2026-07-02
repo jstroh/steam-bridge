@@ -546,6 +546,18 @@ processes. This promotes the D3D11 comparison from web-only proof to web plus
 store-web proof, but it remains opt-in until Friends/chat, checkout, passive
 toasts, shortcut behavior, and Community/profile-style surfaces pass the same
 close/back-to-app and crash gates.
+A follow-up D3D11 Friends/chat route run at
+`C:\Users\admin\steam-bridge-artifacts\windows-d3d11-friends-20260702-142741`
+passed `presenter-friends-open-and-wait` through the same Steam-launched
+interactive Session 1 path. It reused the stable App ID `480` shortcut, opened
+the managed Friends/chat web surface on the D3D11 host, closed through the same
+foreground-window web close click, returned focus to the Electron smoke window,
+and recorded the full shown/active/closed/inactive/parked/open-and-wait-complete
+lifecycle with clean crash diagnostics and no leftover smoke or overlay helper
+processes. D3D11 now has focused Windows proof for web, store-web, and
+Friends/chat, while checkout, passive toasts, shortcut behavior, and
+Community/profile-style surfaces still need the same route-specific evidence
+before the backend can be considered for default use.
 The next focused artifact,
 `C:\Users\admin\steam-bridge-artifacts\native-presenter-wndproc-web-20260702-002`,
 rebuilt the Windows native addon with WndProc host diagnostics and passed the

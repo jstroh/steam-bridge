@@ -1859,9 +1859,14 @@ focus to the Electron game window, Steam emitted active and inactive overlay
 callbacks, the presenter parked, `openAndWait` completed, and crash diagnostics
 remained clean with no leftover smoke or overlay helper processes. This makes
 D3D11 the current Windows native-presenter candidate for further route
-expansion, while still keeping it non-default until Friends/chat, checkout,
-passive notifications, shortcut behavior, and Community/profile-style routes
-clear the same gates.
+expansion. A follow-up artifact,
+`C:\Users\admin\steam-bridge-artifacts\windows-d3d11-friends-20260702-142741`,
+then passed `presenter-friends-open-and-wait` through the same managed
+Steam-launched path with visible Friends/chat UI, close/back-to-app proof,
+active/inactive callbacks, presenter parking, `openAndWait` completion, and
+clean crash diagnostics. Keep D3D11 non-default until checkout, passive
+notifications, shortcut behavior, and Community/profile-style routes clear the
+same gates.
 
 The Windows smoke harness now exposes the store route explicitly:
 `STEAM_BRIDGE_SMOKE_STORE_ROUTE`, `--steam-bridge-smoke-store-route`, and the
