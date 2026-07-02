@@ -57,6 +57,8 @@ param(
   [string]$OverlayProfile = "diagnostic",
   [string]$OverlayInProcessGpu = "1",
   [string]$OverlayDisableDirectComposition = "",
+  [string]$OverlayScrubChildEnv = "",
+  [string]$OverlayIsolateChildProcesses = "",
   [string]$WindowMode = "",
   [string]$WebUrl = "",
   [string]$WebModal = "",
@@ -146,6 +148,12 @@ function Get-SmokeArgs {
   }
   if ($OverlayInProcessGpu) {
     $args += "--steam-bridge-electron-overlay-in-process-gpu=$OverlayInProcessGpu"
+  }
+  if ($OverlayScrubChildEnv) {
+    $args += "--steam-bridge-electron-overlay-scrub-child-env=$OverlayScrubChildEnv"
+  }
+  if ($OverlayIsolateChildProcesses) {
+    $args += "--steam-bridge-electron-overlay-isolate-child-processes=$OverlayIsolateChildProcesses"
   }
   if ($WindowMode) {
     $args += "--steam-bridge-smoke-window-mode=$WindowMode"
@@ -238,6 +246,12 @@ function Get-SmokeEnv {
   }
   if ($OverlayInProcessGpu) {
     $envMap.STEAM_BRIDGE_ELECTRON_OVERLAY_IN_PROCESS_GPU = $OverlayInProcessGpu
+  }
+  if ($OverlayScrubChildEnv) {
+    $envMap.STEAM_BRIDGE_ELECTRON_OVERLAY_SCRUB_CHILD_ENV = $OverlayScrubChildEnv
+  }
+  if ($OverlayIsolateChildProcesses) {
+    $envMap.STEAM_BRIDGE_ELECTRON_OVERLAY_ISOLATE_CHILD_PROCESSES = $OverlayIsolateChildProcesses
   }
   if ($WindowMode) {
     $envMap.STEAM_BRIDGE_SMOKE_WINDOW_MODE = $WindowMode

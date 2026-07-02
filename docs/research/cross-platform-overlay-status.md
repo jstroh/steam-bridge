@@ -355,6 +355,16 @@ evidence directly in each row, for example `closeProbeFg=SteamBridgeSmoke`,
 failures show whether the close probe was still focused on the game window
 without opening image files by hand.
 
+A no-restart child-process comparison attempt at
+`C:\Users\admin\steam-bridge-artifacts\windows-profile-unisolated-codex-20260702-091200b`
+ran the current matrix with `-OverlayScrubChildEnv 0` and
+`-OverlayIsolateChildProcesses 0`, but it is not overlay evidence. It reused an
+older wrapper-script Steam shortcut whose launch options pointed at a missing
+launcher `.cmd`, so the smoke app never started, no `result.log` was written,
+and the close probe timed out waiting for lifecycle evidence. Current Windows
+proof should use the stable executable shortcut plus smoke env file; refresh it
+with the shortcut suite while Steam is closed before running live cases.
+
 Online source survey, 2026-07-02: Valve's overlay documentation says the overlay
 hooks games launched through Steam, must see `SteamAPI_Init` before the
 OpenGL/D3D device is initialized in development, and only supports real graphics

@@ -98,6 +98,12 @@ proof. The current Windows proof lane is the process-per-case baseline matrix:
 web, store, and Friends must emit overlay activation, while passive achievement
 cases prove their callbacks without requiring the overlay to open. Pass
 `-OverlayInProcessGpu 0` only when collecting a failing baseline comparison.
+For focused Steam Community or social-route investigation, pass
+`-OverlayScrubChildEnv 0` and `-OverlayIsolateChildProcesses 0` to compare
+Windows behavior when Steam's overlay preload is allowed to reach Chromium child
+processes. Treat those flags as diagnostics until the artifact proves visible
+overlay pixels, close/back-to-app behavior, clean crash diagnostics, and no
+duplicate or stale `gameoverlayui` target.
 The managed Windows suite is stricter than the baseline: active managed cases
 write `STEAM_BRIDGE_SMOKE_MANAGED_OVERLAY_RESULT_MODE=complete` and require
 Steam's inactive callback plus the managed close, park, and open-and-wait
@@ -252,6 +258,11 @@ resolution only; it does not run the native-load gate or launch
 Electron-in-Node-mode fallback can itself be blocked unless the package has a
 trusted/reputable signature; install Node.js or run the shortcut updater from a
 repo checkout in that case.
+Do not reuse older wrapper-script shortcuts for Windows overlay proof. The
+current package does not ship a launcher `.cmd`; a stale shortcut that points at
+one can time out before the Electron smoke app ever starts. Refresh the stable
+executable shortcut with `-Suite shortcut` / `-InstallShortcut` while Steam is
+closed, then reuse that shortcut for live cases.
 Do not use the opt-in control server as Windows product proof yet; that path
 needs overlay-readiness gating and should not be used for live Windows runs
 that churn or destabilize the Steam client.

@@ -416,6 +416,10 @@ function runWindowsSmokeHelperStaticChecks() {
     "Write-MatrixManifest",
     "steam-bridge-windows-overlay-matrix-manifest",
     "hasCheckoutTransactionId",
+    "OverlayScrubChildEnv",
+    "OverlayIsolateChildProcesses",
+    "overlayScrubChildEnv",
+    "overlayIsolateChildProcesses",
     "Running Windows native-load gate with the packaged app.",
     "native-load-gate",
     "preflight.json",
@@ -540,6 +544,16 @@ function runWindowsSmokeHelperStaticChecks() {
     "Windows overlay matrix summary self-test passed."
   ]) {
     assert.ok(matrixSummary.includes(expected), `Windows overlay matrix summary missing ${expected}`);
+  }
+  for (const expected of [
+    "OverlayScrubChildEnv",
+    "OverlayIsolateChildProcesses",
+    "STEAM_BRIDGE_ELECTRON_OVERLAY_SCRUB_CHILD_ENV",
+    "STEAM_BRIDGE_ELECTRON_OVERLAY_ISOLATE_CHILD_PROCESSES",
+    "--steam-bridge-electron-overlay-scrub-child-env",
+    "--steam-bridge-electron-overlay-isolate-child-processes"
+  ]) {
+    assert.ok(helper.includes(expected), `Windows smoke helper missing ${expected}`);
   }
   for (const expected of [
     'const windowsMode = process.platform === "win32"',

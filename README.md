@@ -794,13 +794,18 @@ the private `--checkout-json-file` checkout suite.
   web, store, Friends, and passive achievement notifications. It enables
   Chromium's in-process GPU path by default, matching the public Electron helper
   default on Windows; pass `-OverlayInProcessGpu 0` only for baseline comparison
-  artifacts. The managed suite uses the direct Windows Steam overlay presenter
-  rather than a native host. Its readiness case is a cheap no-activation
-  preflight, while active managed cases use complete-result mode, so they do not
-  accept a result until Steam emits the inactive callback and the managed close,
-  park, and open-and-wait completion events are recorded. Keep the normal direct
-  Steam hook as the Windows default unless evidence from that baseline proves
-  additional machinery is needed.
+  artifacts. Pass `-OverlayScrubChildEnv 0` and
+  `-OverlayIsolateChildProcesses 0` only for focused Windows comparisons where
+  you intentionally want Steam's overlay preload to reach Chromium child
+  processes; a passing product artifact still needs visible overlay pixels,
+  close/back-to-app proof, clean crashes, and no duplicate or stale
+  `gameoverlayui` target. The managed suite uses the direct Windows Steam
+  overlay presenter rather than a native host. Its readiness case is a cheap
+  no-activation preflight, while active managed cases use complete-result mode,
+  so they do not accept a result until Steam emits the inactive callback and the
+  managed close, park, and open-and-wait completion events are recorded. Keep
+  the normal direct Steam hook as the Windows default unless evidence from that
+  baseline proves additional machinery is needed.
   Each matrix case passes `-RequireNoCrashes`,
   so Windows artifacts must prove both overlay behavior and a clean Electron
   crash-diagnostic snapshot.
@@ -851,7 +856,10 @@ the private `--checkout-json-file` checkout suite.
   run the shortcut updater. Use `-Suite shortcut` when you only want to verify
   or refresh the stable Steam shortcut before live overlay cases; that setup
   suite runs preflight and shortcut resolution only, without the native-load
-  gate or a `steam://rungameid` launch. On App Control machines without
-  standalone Node.js, that Electron-in-Node-mode fallback can itself be blocked
-  unless the package has a trusted/reputable signature; install Node.js or run
-  the shortcut updater from a repo checkout in that case.
+  gate or a `steam://rungameid` launch. Do not reuse older wrapper-script
+  shortcuts for Windows overlay proof; the current package does not ship a
+  launcher `.cmd`, so a stale shortcut can time out before the smoke app ever
+  starts. On App Control machines without standalone Node.js, that
+  Electron-in-Node-mode fallback can itself be blocked unless the package has a
+  trusted/reputable signature; install Node.js or run the shortcut updater from
+  a repo checkout in that case.

@@ -493,7 +493,11 @@ function printSummary(summary) {
   if (summary.manifest) {
     console.log(
       `manifest: suite=${summary.manifest.suite} launchMode=${summary.manifest.launchMode} ` +
-        `expectedCases=${summary.manifest.expectedCaseCount} onlyCase=${summary.manifest.onlyCase || "none"}`
+        `expectedCases=${summary.manifest.expectedCaseCount} onlyCase=${summary.manifest.onlyCase || "none"} ` +
+        `inProcessGpu=${formatValue(summary.manifest.overlayInProcessGpu)} ` +
+        `disableDirectComposition=${formatValue(summary.manifest.overlayDisableDirectComposition)} ` +
+        `scrubChildEnv=${formatValue(summary.manifest.overlayScrubChildEnv)} ` +
+        `isolateChildProcesses=${formatValue(summary.manifest.overlayIsolateChildProcesses)}`
     );
   }
   if (summary.preflight) {
@@ -574,6 +578,10 @@ function summarizeManifest(manifest) {
     launchMode: manifest.launchMode || "",
     appId: manifest.appId,
     onlyCase: manifest.onlyCase || "",
+    overlayInProcessGpu: manifest.overlayInProcessGpu || "",
+    overlayDisableDirectComposition: manifest.overlayDisableDirectComposition || "",
+    overlayScrubChildEnv: manifest.overlayScrubChildEnv || "",
+    overlayIsolateChildProcesses: manifest.overlayIsolateChildProcesses || "",
     expectedCaseCount: Array.isArray(manifest.cases) ? manifest.cases.length : 0
   };
 }

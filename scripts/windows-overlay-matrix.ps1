@@ -36,7 +36,9 @@ param(
   [string]$CloseProbeInput = "toggle",
   [int]$CloseProbeSettleMs = 750,
   [int]$CloseProbeTimeoutSeconds = 110,
-  [string]$OverlayInProcessGpu = "1"
+  [string]$OverlayInProcessGpu = "1",
+  [string]$OverlayScrubChildEnv = "",
+  [string]$OverlayIsolateChildProcesses = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -1155,6 +1157,12 @@ function Test-NativeLoadGate {
   if ($OverlayDisableDirectComposition) {
     $gateArgs += @("-OverlayDisableDirectComposition", $OverlayDisableDirectComposition)
   }
+  if ($OverlayScrubChildEnv) {
+    $gateArgs += @("-OverlayScrubChildEnv", $OverlayScrubChildEnv)
+  }
+  if ($OverlayIsolateChildProcesses) {
+    $gateArgs += @("-OverlayIsolateChildProcesses", $OverlayIsolateChildProcesses)
+  }
 
   $gateStartedAt = Get-Date
   try {
@@ -1415,6 +1423,8 @@ function Write-MatrixManifest {
     overlayProfile = $OverlayProfile
     overlayInProcessGpu = $OverlayInProcessGpu
     overlayDisableDirectComposition = $OverlayDisableDirectComposition
+    overlayScrubChildEnv = $OverlayScrubChildEnv
+    overlayIsolateChildProcesses = $OverlayIsolateChildProcesses
     windowMode = $WindowMode
     closeProbe = [bool]$CloseProbe
     closeProbeInput = $CloseProbeInput
@@ -1866,6 +1876,12 @@ function Write-CaseLaunchEnv {
   if ($OverlayDisableDirectComposition) {
     $args += @("-OverlayDisableDirectComposition", $OverlayDisableDirectComposition)
   }
+  if ($OverlayScrubChildEnv) {
+    $args += @("-OverlayScrubChildEnv", $OverlayScrubChildEnv)
+  }
+  if ($OverlayIsolateChildProcesses) {
+    $args += @("-OverlayIsolateChildProcesses", $OverlayIsolateChildProcesses)
+  }
   if ($Case.webModal) {
     $args += @("-WebModal", $Case.webModal)
   }
@@ -1919,6 +1935,12 @@ function Invoke-MatrixCase {
   )
   if ($OverlayInProcessGpu) {
     $args += @("-OverlayInProcessGpu", $OverlayInProcessGpu)
+  }
+  if ($OverlayScrubChildEnv) {
+    $args += @("-OverlayScrubChildEnv", $OverlayScrubChildEnv)
+  }
+  if ($OverlayIsolateChildProcesses) {
+    $args += @("-OverlayIsolateChildProcesses", $OverlayIsolateChildProcesses)
   }
   if ($Case.allowOverlayNotReady) {
     $args += "-AllowOverlayNotReady"
@@ -2026,6 +2048,8 @@ Write-Host ("  appId: {0}" -f $AppId)
 Write-Host ("  overlayProfile: {0}" -f $OverlayProfile)
 Write-Host ("  inProcessGpu: {0}" -f $OverlayInProcessGpu)
 Write-Host ("  disableDirectComposition: {0}" -f $OverlayDisableDirectComposition)
+Write-Host ("  scrubChildEnv: {0}" -f $OverlayScrubChildEnv)
+Write-Host ("  isolateChildProcesses: {0}" -f $OverlayIsolateChildProcesses)
 Write-Host ("  userDialog: {0}" -f $UserDialog)
 Write-Host ("  cleanStaleOverlayHelpers: {0}" -f $CleanStaleOverlayHelpers)
 if ($OnlyCase) {
