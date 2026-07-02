@@ -379,6 +379,11 @@ evidence directly in each row, for example `closeProbeFg=SteamBridgeSmoke`,
 `closeProbeScreens=3`, and `closeProbeGameFg=true`, so future active-callback
 failures show whether the close probe was still focused on the game window
 without opening image files by hand.
+It also decodes referenced PNG close-probe screenshots and reports
+`closeProbeVisuals=<available>/<referenced>`, mostly-dark counts, low-variance
+counts, visible-detail counts, and mean-luma ranges. That makes black, blank,
+or visibly detailed overlay screenshots auditable from the matrix summary
+before anyone opens the image artifacts manually.
 
 The Windows store route can now be selected in the smoke app and matrix through
 `STEAM_BRIDGE_SMOKE_STORE_ROUTE`, `--steam-bridge-smoke-store-route`, and

@@ -4,6 +4,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
+const zlib = require("node:zlib");
 
 const RESULT_PREFIX = "STEAM_BRIDGE_SMOKE_RESULT ";
 const KNOWN_NATIVE_LOAD_BLOCKERS = new Set([
@@ -195,7 +196,7 @@ function summarizeWindowsOverlayMatrixArtifacts(root) {
       failures
     );
     const closeProbeEvents = readJsonLinesIfPresent(path.join(caseDir, "close-probe.log"), failures);
-    const caseSummary = summarizeCaseResult(caseName, result, resultLog, renderingHealth, closeProbeEvents);
+    const caseSummary = summarizeCaseResult(caseName, result, resultLog, renderingHealth, closeProbeEvents, caseDir);
     caseSummaries.push(caseSummary);
     failures.push(...caseSummary.failures);
   }
@@ -574,7 +575,7 @@ function hasManagedOverlayCloseProof(wait, overlayInactiveEvents) {
   return overlayInactiveEvents > 0 || Boolean(wait && wait.overlayClosed === true);
 }
 
-function summarizeCaseResult(caseName, result, resultLog, renderingHealth = null, closeProbeEvents = []) {
+function summarizeCaseResult(caseName, result, resultLog, renderingHealth = null, closeProbeEvents = [], caseDir = "") {
   const failures = [];
   const snapshot = objectOrEmpty(result.snapshot);
   const app = objectOrEmpty(snapshot.app);
@@ -593,7 +594,7 @@ function summarizeCaseResult(caseName, result, resultLog, renderingHealth = null
   const overlayEnabled = readOkValue(steam.overlayEnabled);
   const overlayNeedsPresent = readOkValue(steam.overlayNeedsPresent);
   const wait = result.wait && typeof result.wait === "object" && !Array.isArray(result.wait) ? result.wait : null;
-  const closeProbe = summarizeCloseProbe(closeProbeEvents);
+  const closeProbe = summarizeCloseProbe(closeProbeEvents, caseDir || path.dirname(resultLog));
 
   expect(result.ok === true, `${caseName}: smoke result ok`, failures);
   expect(action.ok === true, `${caseName}: autorun action succeeded`, failures);
@@ -882,7 +883,7 @@ function summarizeCaseRenderingHealth(renderingHealth) {
   };
 }
 
-function summarizeCloseProbe(events) {
+function summarizeCloseProbe(events, caseDir = "") {
   const normalizedEvents = Array.isArray(events) ? events.filter(Boolean) : [];
   const sentEvent = normalizedEvents.find((event) => event.type === "probe:sent");
   const foregroundSamples = normalizedEvents
@@ -905,6 +906,7 @@ function summarizeCloseProbe(events) {
     const screenshot = objectOrEmpty(payload.screenshot);
     return screenshot.ok === true || typeof screenshot.path === "string";
   }).length;
+  const screenshotVisuals = summarizeCloseProbeScreenshotVisuals(normalizedEvents, caseDir);
   const foregroundProcessNames = uniqueStrings(
     foregroundSamples.map((sample) => sample.processName).filter(Boolean)
   );
@@ -917,10 +919,237 @@ function summarizeCloseProbe(events) {
     input: sentEvent ? String(objectOrEmpty(sentEvent.payload).input || "") : "",
     eventCount: normalizedEvents.length,
     screenshotCount,
+    screenshotVisuals,
     foregroundSampleCount: foregroundSamples.length,
     foregroundProcessNames,
     foregroundStayedOnSmoke
   };
+}
+
+function summarizeCloseProbeScreenshotVisuals(events, caseDir) {
+  const refs = events
+    .map((event) => {
+      const payload = objectOrEmpty(event.payload);
+      const screenshot = objectOrEmpty(payload.screenshot);
+      if (screenshot.ok !== true && typeof screenshot.path !== "string") {
+        return null;
+      }
+      return {
+        eventType: String(event.type || ""),
+        path: String(screenshot.path || "")
+      };
+    })
+    .filter(Boolean);
+  const samples = [];
+  let missingCount = 0;
+  let unreadableCount = 0;
+
+  for (const ref of refs) {
+    const resolved = resolveCloseProbeScreenshotPath(ref.path, caseDir);
+    if (!resolved) {
+      missingCount += 1;
+      continue;
+    }
+    try {
+      samples.push({
+        eventType: ref.eventType,
+        path: resolved,
+        ...analyzePngVisuals(resolved)
+      });
+    } catch (error) {
+      unreadableCount += 1;
+      samples.push({
+        eventType: ref.eventType,
+        path: resolved,
+        error: error.message
+      });
+    }
+  }
+
+  const readable = samples.filter((sample) => !sample.error);
+  const meanValues = readable.map((sample) => sample.meanLuma);
+  const minMeanLuma = meanValues.length > 0 ? Math.min(...meanValues) : null;
+  const maxMeanLuma = meanValues.length > 0 ? Math.max(...meanValues) : null;
+  return {
+    referencedCount: refs.length,
+    availableCount: readable.length,
+    missingCount,
+    unreadableCount,
+    mostlyDarkCount: readable.filter((sample) => sample.mostlyDark).length,
+    lowVarianceCount: readable.filter((sample) => sample.lowVariance).length,
+    visibleDetailCount: readable.filter((sample) => sample.visibleDetail).length,
+    minMeanLuma: minMeanLuma == null ? null : roundNumber(minMeanLuma, 2),
+    maxMeanLuma: maxMeanLuma == null ? null : roundNumber(maxMeanLuma, 2)
+  };
+}
+
+function resolveCloseProbeScreenshotPath(screenshotPath, caseDir) {
+  const candidates = [];
+  if (screenshotPath) {
+    candidates.push(screenshotPath);
+    candidates.push(path.resolve(caseDir || "", screenshotPath));
+    const normalized = screenshotPath.replace(/\\/g, "/");
+    const basename = normalized.split("/").filter(Boolean).pop();
+    if (basename) {
+      candidates.push(path.join(caseDir || "", basename));
+    }
+  }
+  for (const candidate of candidates) {
+    if (candidate && fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return "";
+}
+
+function analyzePngVisuals(filePath) {
+  const png = decodePng(filePath);
+  let sum = 0;
+  let sumSquares = 0;
+  let darkPixels = 0;
+  let brightPixels = 0;
+  let sampleCount = 0;
+  const step = Math.max(1, Math.floor(Math.sqrt((png.width * png.height) / 120000)));
+
+  for (let y = 0; y < png.height; y += step) {
+    for (let x = 0; x < png.width; x += step) {
+      const pixel = (y * png.width + x) * png.channels;
+      const r = png.data[pixel];
+      const g = png.channels === 1 ? r : png.data[pixel + 1];
+      const b = png.channels === 1 ? r : png.data[pixel + 2];
+      const luma = (0.2126 * r) + (0.7152 * g) + (0.0722 * b);
+      sum += luma;
+      sumSquares += luma * luma;
+      sampleCount += 1;
+      if (luma < 32) {
+        darkPixels += 1;
+      }
+      if (luma > 96) {
+        brightPixels += 1;
+      }
+    }
+  }
+
+  const meanLuma = sampleCount > 0 ? sum / sampleCount : 0;
+  const variance = sampleCount > 0 ? Math.max(0, (sumSquares / sampleCount) - (meanLuma * meanLuma)) : 0;
+  const stddevLuma = Math.sqrt(variance);
+  const darkRatio = sampleCount > 0 ? darkPixels / sampleCount : 0;
+  const brightRatio = sampleCount > 0 ? brightPixels / sampleCount : 0;
+  const mostlyDark = darkRatio >= 0.85 || meanLuma < 35;
+  const lowVariance = stddevLuma < 8;
+  return {
+    width: png.width,
+    height: png.height,
+    meanLuma: roundNumber(meanLuma, 2),
+    stddevLuma: roundNumber(stddevLuma, 2),
+    darkRatio: roundNumber(darkRatio, 4),
+    brightRatio: roundNumber(brightRatio, 4),
+    mostlyDark,
+    lowVariance,
+    visibleDetail: !mostlyDark && !lowVariance && brightRatio > 0.02
+  };
+}
+
+function decodePng(filePath) {
+  const buffer = fs.readFileSync(filePath);
+  const signature = "89504e470d0a1a0a";
+  if (buffer.subarray(0, 8).toString("hex") !== signature) {
+    throw new Error("not a PNG file");
+  }
+
+  let offset = 8;
+  let width = 0;
+  let height = 0;
+  let bitDepth = 0;
+  let colorType = 0;
+  const idat = [];
+  while (offset + 12 <= buffer.length) {
+    const length = buffer.readUInt32BE(offset);
+    const type = buffer.subarray(offset + 4, offset + 8).toString("ascii");
+    const data = buffer.subarray(offset + 8, offset + 8 + length);
+    offset += 12 + length;
+    if (type === "IHDR") {
+      width = data.readUInt32BE(0);
+      height = data.readUInt32BE(4);
+      bitDepth = data[8];
+      colorType = data[9];
+      const interlace = data[12];
+      if (interlace !== 0) {
+        throw new Error("interlaced PNG is not supported");
+      }
+    } else if (type === "IDAT") {
+      idat.push(data);
+    } else if (type === "IEND") {
+      break;
+    }
+  }
+
+  if (!width || !height || bitDepth !== 8) {
+    throw new Error("unsupported PNG dimensions or bit depth");
+  }
+  const channels = pngChannels(colorType);
+  const inflated = zlib.inflateSync(Buffer.concat(idat));
+  const stride = width * channels;
+  const output = Buffer.alloc(width * height * channels);
+  let inputOffset = 0;
+  let outputOffset = 0;
+  let previous = Buffer.alloc(stride);
+  for (let y = 0; y < height; y += 1) {
+    const filter = inflated[inputOffset++];
+    const current = Buffer.alloc(stride);
+    inflated.copy(current, 0, inputOffset, inputOffset + stride);
+    inputOffset += stride;
+    unfilterPngRow(current, previous, channels, filter);
+    current.copy(output, outputOffset);
+    outputOffset += stride;
+    previous = current;
+  }
+  return { width, height, channels, data: output };
+}
+
+function pngChannels(colorType) {
+  switch (colorType) {
+    case 0:
+      return 1;
+    case 2:
+      return 3;
+    case 6:
+      return 4;
+    default:
+      throw new Error(`unsupported PNG color type ${colorType}`);
+  }
+}
+
+function unfilterPngRow(row, previous, bytesPerPixel, filter) {
+  for (let index = 0; index < row.length; index += 1) {
+    const left = index >= bytesPerPixel ? row[index - bytesPerPixel] : 0;
+    const up = previous[index] || 0;
+    const upLeft = index >= bytesPerPixel ? previous[index - bytesPerPixel] || 0 : 0;
+    let value = row[index];
+    if (filter === 1) {
+      value += left;
+    } else if (filter === 2) {
+      value += up;
+    } else if (filter === 3) {
+      value += Math.floor((left + up) / 2);
+    } else if (filter === 4) {
+      value += paethPredictor(left, up, upLeft);
+    } else if (filter !== 0) {
+      throw new Error(`unsupported PNG row filter ${filter}`);
+    }
+    row[index] = value & 0xff;
+  }
+}
+
+function paethPredictor(left, up, upLeft) {
+  const predictor = left + up - upLeft;
+  const leftDistance = Math.abs(predictor - left);
+  const upDistance = Math.abs(predictor - up);
+  const upLeftDistance = Math.abs(predictor - upLeft);
+  if (leftDistance <= upDistance && leftDistance <= upLeftDistance) {
+    return left;
+  }
+  return upDistance <= upLeftDistance ? up : upLeft;
 }
 
 function buildTotals(caseSummaries) {
@@ -1097,8 +1326,26 @@ function formatCloseProbeSummary(closeProbe) {
     `closeProbe=${closeProbe.sent ? formatValue(closeProbe.input) : "not-sent"} ` +
     `closeProbeFg=${foreground} ` +
     `closeProbeScreens=${closeProbe.screenshotCount} ` +
+    formatCloseProbeVisualSummary(closeProbe.screenshotVisuals) +
     `closeProbeGameFg=${closeProbe.foregroundStayedOnSmoke} `
   );
+}
+
+function formatCloseProbeVisualSummary(visuals) {
+  if (!visuals || visuals.referencedCount === 0) {
+    return "";
+  }
+  return (
+    `closeProbeVisuals=${visuals.availableCount}/${visuals.referencedCount} ` +
+    `dark=${visuals.mostlyDarkCount} lowVar=${visuals.lowVarianceCount} ` +
+    `detail=${visuals.visibleDetailCount} ` +
+    `luma=${formatValue(visuals.minMeanLuma)}..${formatValue(visuals.maxMeanLuma)} `
+  );
+}
+
+function roundNumber(value, digits) {
+  const scale = 10 ** digits;
+  return Math.round(value * scale) / scale;
 }
 
 function uniqueStrings(values) {
@@ -1153,6 +1400,8 @@ function runSelfTest() {
     assert.equal(closeProbeSummary.caseSummaries[0].closeProbe.foregroundStayedOnSmoke, true);
     assert.deepEqual(closeProbeSummary.caseSummaries[0].closeProbe.foregroundProcessNames, ["SteamBridgeSmoke"]);
     assert.equal(closeProbeSummary.caseSummaries[0].closeProbe.screenshotCount, 1);
+    assert.equal(closeProbeSummary.caseSummaries[0].closeProbe.screenshotVisuals.availableCount, 1);
+    assert.equal(closeProbeSummary.caseSummaries[0].closeProbe.screenshotVisuals.visibleDetailCount, 1);
 
     const missingCloseProbeRoot = path.join(tempRoot, "managed-close-probe-missing");
     writeManagedCaseFixture(missingCloseProbeRoot, { closeProbe: true });
@@ -1883,6 +2132,16 @@ function writeManagedCaseFixture(root, options = {}) {
       title: "Steam Bridge Electron Smoke",
       pid: 4245
     };
+    writeRgbPng(path.join(root, "11-managed-web-open-and-wait", "close-probe-detected.png"), 4, 2, [
+      [12, 18, 24],
+      [220, 225, 230],
+      [48, 120, 210],
+      [180, 80, 40],
+      [8, 8, 10],
+      [96, 160, 96],
+      [245, 245, 245],
+      [24, 36, 48]
+    ]);
     writeText(
       path.join(root, "11-managed-web-open-and-wait", "close-probe.log"),
       [
@@ -1938,6 +2197,60 @@ function writeResult(file, result) {
 
 function writeJson(file, value) {
   writeText(file, `${JSON.stringify(value, null, 2)}\n`);
+}
+
+function writeRgbPng(file, width, height, pixels) {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const raw = Buffer.alloc((1 + width * 3) * height);
+  let rawOffset = 0;
+  let pixelOffset = 0;
+  for (let y = 0; y < height; y += 1) {
+    raw[rawOffset++] = 0;
+    for (let x = 0; x < width; x += 1) {
+      const pixel = pixels[pixelOffset++] || [0, 0, 0];
+      raw[rawOffset++] = pixel[0] & 0xff;
+      raw[rawOffset++] = pixel[1] & 0xff;
+      raw[rawOffset++] = pixel[2] & 0xff;
+    }
+  }
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(width, 0);
+  ihdr.writeUInt32BE(height, 4);
+  ihdr[8] = 8;
+  ihdr[9] = 2;
+  ihdr[10] = 0;
+  ihdr[11] = 0;
+  ihdr[12] = 0;
+  fs.writeFileSync(
+    file,
+    Buffer.concat([
+      Buffer.from("89504e470d0a1a0a", "hex"),
+      pngChunk("IHDR", ihdr),
+      pngChunk("IDAT", zlib.deflateSync(raw)),
+      pngChunk("IEND", Buffer.alloc(0))
+    ])
+  );
+}
+
+function pngChunk(type, data) {
+  const typeBuffer = Buffer.from(type, "ascii");
+  const chunk = Buffer.alloc(12 + data.length);
+  chunk.writeUInt32BE(data.length, 0);
+  typeBuffer.copy(chunk, 4);
+  data.copy(chunk, 8);
+  chunk.writeUInt32BE(crc32(Buffer.concat([typeBuffer, data])), 8 + data.length);
+  return chunk;
+}
+
+function crc32(buffer) {
+  let crc = 0xffffffff;
+  for (const byte of buffer) {
+    crc ^= byte;
+    for (let index = 0; index < 8; index += 1) {
+      crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1));
+    }
+  }
+  return (crc ^ 0xffffffff) >>> 0;
 }
 
 function writeText(file, text) {
