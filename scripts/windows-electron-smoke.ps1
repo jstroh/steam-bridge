@@ -18,6 +18,8 @@ param(
     "native-dialog",
     "native-store",
     "native-web",
+    "achievement-progress",
+    "achievement-unlock",
     "presenter-ready",
     "presenter-dialog",
     "presenter-dialog-auto",
@@ -319,6 +321,14 @@ function Add-DefaultRequireEvents {
     }
     "presenter-achievement-unlock" {
       $script:RequireEvent = @("overlay:presenter-attach", "achievement:unlock")
+      break
+    }
+    "achievement-progress" {
+      $script:RequireEvent = @("achievement:progress")
+      break
+    }
+    "achievement-unlock" {
+      $script:RequireEvent = @("achievement:unlock")
       break
     }
     { $_ -like "*-open-and-wait" } {

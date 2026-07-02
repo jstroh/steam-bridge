@@ -1672,6 +1672,9 @@ Windows gates:
 - packaged helper preflight reports App Control/SAC state, executable and native
   addon Authenticode status, Zone.Identifier streams, and recent Code Integrity
   block events before long live overlay runs;
+- packaged Windows smoke bundle includes a repeatable overlay matrix runner that
+  uses the ordinary Electron/Steam path for web, store, Friends, and passive
+  notifications before any managed/presenter comparison cases;
 - packaged Windows smoke bundle includes a repeatable Authenticode signing
   helper for `.exe`, `.dll`, and `.node` files so real publisher-cert builds can
   pass the native-load gate before overlay testing;

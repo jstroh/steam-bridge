@@ -78,12 +78,27 @@ The Windows package includes `windows-electron-smoke.ps1`. Use
 `-Mode print-launch-options` to generate non-Steam shortcut arguments, or
 `-Mode steam-launch` with `-ShortcutGameId` to verify the shortcut result. The
 helper accepts the same generic smoke action names as the Deck/macOS helpers,
-including `presenter-ready`, `presenter-web-open-and-wait`,
+including raw Windows baseline actions `web`, `store`, `friends`,
+`achievement-progress`, and `achievement-unlock`, plus managed comparison
+actions such as `presenter-ready`, `presenter-web-open-and-wait`,
 `presenter-duplicate-open-guard`, `presenter-store-open-and-wait`,
 `presenter-friends-open-and-wait`, `presenter-dialog-auto-open-and-wait`,
-`presenter-checkout`, `presenter-shortcut`,
-`presenter-shortcut-open-and-wait`, and the passive achievement notification
-actions.
+`presenter-checkout`, `presenter-shortcut`, and
+`presenter-shortcut-open-and-wait`.
+
+The Windows package also includes `windows-overlay-matrix.ps1`, which runs
+preflight and then a repeatable baseline, managed, or full suite while writing
+case artifacts under `%TEMP%` by default:
+
+```powershell
+.\windows-overlay-matrix.ps1 `
+  -Suite baseline `
+  -LaunchMode steam-launch `
+  -ShortcutGameId "<steam-shortcut-game-id>"
+```
+
+On a Smart App Control/App Control machine, sign the exact package first or the
+matrix stops after preflight before Steam initialization.
 
 Outputs are written under `dist/electron-smoke/<target>/`.
 The macOS package includes `macos-electron-smoke.sh` beside

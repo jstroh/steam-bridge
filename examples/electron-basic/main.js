@@ -808,6 +808,12 @@ async function runAutorunAction(action) {
       case "native-web":
         openNativeWebOverlay();
         return { ok: true, action };
+      case "achievement-progress":
+        openAchievementProgress();
+        return { ok: true, action };
+      case "achievement-unlock":
+        openAchievementUnlock();
+        return { ok: true, action };
       case "presenter-ready":
         checkPresenterReady();
         return { ok: true, action };
@@ -976,6 +982,18 @@ function openNativeWebOverlay() {
     modal: WEB_MODAL,
     session: nativeOverlaySession.snapshot()
   });
+  return snapshot();
+}
+
+function openAchievementProgress() {
+  const activeClient = requireClient();
+  recordEvent("achievement:progress", runAchievementProgressSmoke(activeClient));
+  return snapshot();
+}
+
+function openAchievementUnlock() {
+  const activeClient = requireClient();
+  recordEvent("achievement:unlock", runAchievementUnlockSmoke(activeClient));
   return snapshot();
 }
 
@@ -1851,6 +1869,26 @@ function openPresenterAchievementProgress() {
   const overlay = ensureElectronSteamOverlay(activeClient);
   const presenter = overlay.presenter;
 
+  recordEvent("achievement:progress", {
+    ...runAchievementProgressSmoke(activeClient),
+    presenter: presenter.snapshot()
+  });
+  return snapshot();
+}
+
+function openPresenterAchievementUnlock() {
+  const activeClient = requireClient();
+  const overlay = ensureElectronSteamOverlay(activeClient);
+  const presenter = overlay.presenter;
+
+  recordEvent("achievement:unlock", {
+    ...runAchievementUnlockSmoke(activeClient),
+    presenter: presenter.snapshot()
+  });
+  return snapshot();
+}
+
+function runAchievementProgressSmoke(activeClient) {
   const candidates = resolveAchievementProgressTargets(activeClient);
   const attempts = [];
 
@@ -1871,46 +1909,37 @@ function openPresenterAchievementProgress() {
       continue;
     }
 
-    recordEvent("achievement:progress", {
+    return {
       ...target,
       availableNames: candidates.map((candidate) => candidate.name),
       ...progressSetup,
       indicated,
-      attempts,
-      presenter: presenter.snapshot()
-    });
-    return snapshot();
+      attempts
+    };
   }
 
   recordEvent("achievement:progress", {
     configuredName: ACHIEVEMENT_NAME.trim() || null,
     availableNames: candidates.map((candidate) => candidate.name),
     attempts,
-    indicated: false,
-    presenter: presenter.snapshot()
+    indicated: false
   });
   throw new Error("Steam did not accept achievement progress for any available smoke achievement.");
 }
 
-function openPresenterAchievementUnlock() {
-  const activeClient = requireClient();
-  const overlay = ensureElectronSteamOverlay(activeClient);
-  const presenter = overlay.presenter;
-
+function runAchievementUnlockSmoke(activeClient) {
   const target = resolveAchievementUnlockTarget(activeClient);
   const cleared = activeClient.achievement.clear(target.name);
   const clearStored = activeClient.stats.store();
   const activated = activeClient.achievement.activate(target.name);
   const unlockStored = activeClient.stats.store();
-  recordEvent("achievement:unlock", {
+  return {
     ...target,
     cleared,
     clearStored,
     activated,
-    unlockStored,
-    presenter: presenter.snapshot()
-  });
-  return snapshot();
+    unlockStored
+  };
 }
 
 function openPresenterShortcutBridge() {

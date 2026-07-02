@@ -74,6 +74,10 @@ installed private-key publisher certificate, or set
 `.\sign-windows-package.ps1 -VerifyOnly -AllowUnsigned` for an audit-only report.
 Self-signed certificates are not enough SAC evidence; the live overlay proof
 needs a trusted and reputable publisher signing path.
+The Windows smoke bundle also includes `windows-overlay-matrix.ps1`. Run it
+after signing to collect repeatable Steam-launched baseline evidence for the
+ordinary Windows Electron overlay path; its preflight stops before live cases if
+Smart App Control would block the native addon.
 
 ## Quick Start
 

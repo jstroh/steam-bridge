@@ -723,3 +723,18 @@ the private `--checkout-json-file` checkout suite.
   A self-signed or locally trusted certificate can be useful for syntax checks,
   but it is not enough evidence for Smart App Control; use a real trusted and
   reputable publisher signing path for live Windows overlay proof.
+  The smoke package also includes `windows-overlay-matrix.ps1` for repeatable
+  Steam-launched Windows proof. It runs the same preflight first and stops before
+  live overlay cases when Smart App Control would block the native addon:
+
+  ```powershell
+  .\windows-overlay-matrix.ps1 `
+    -Suite baseline `
+    -LaunchMode steam-launch `
+    -ShortcutGameId "<steam-shortcut-game-id>"
+  ```
+
+  The baseline suite uses the ordinary Windows Electron/Steam overlay path for
+  web, store, Friends, and passive achievement notifications. The managed suite
+  is available for comparison only; keep the normal path as the Windows default
+  unless evidence from that baseline proves additional machinery is needed.

@@ -265,6 +265,10 @@ function runMacosPackageSigningStaticChecks() {
     "Windows Electron package must include the Authenticode signing helper"
   );
   assert.ok(
+    packagerScript.includes("windows-overlay-matrix.ps1"),
+    "Windows Electron package must include the overlay matrix runner"
+  );
+  assert.ok(
     matrixScript.includes("verify-macos-steam-signing.cjs"),
     "macOS overlay matrix must verify package signing before live cases"
   );
@@ -301,7 +305,10 @@ function runMacosPackageSigningStaticChecks() {
 function runWindowsSmokeHelperStaticChecks() {
   const helper = fs.readFileSync(path.join(repoRoot, "scripts", "windows-electron-smoke.ps1"), "utf8");
   const signingHelper = fs.readFileSync(path.join(repoRoot, "scripts", "sign-windows-package.ps1"), "utf8");
+  const matrixHelper = fs.readFileSync(path.join(repoRoot, "scripts", "windows-overlay-matrix.ps1"), "utf8");
   for (const expected of [
+    "achievement-progress",
+    "achievement-unlock",
     "presenter-ready",
     "presenter-web-open-and-wait",
     "presenter-duplicate-open-guard",
@@ -334,6 +341,23 @@ function runWindowsSmokeHelperStaticChecks() {
   ]) {
     assert.ok(signingHelper.includes(expected), `Windows signing helper missing ${expected}`);
   }
+  for (const expected of [
+    "ValidateSet(\"baseline\", \"managed\", \"full\", \"preflight\")",
+    "Test-NativeLoadGate",
+    "Windows Smart App Control/App Control is enabled",
+    "achievement-progress",
+    "achievement-unlock",
+    "presenter-web-open-and-wait",
+    "presenter-shortcut-open-and-wait",
+    "presenter-checkout",
+    "-RequireOverlayActivated",
+    "-RequireNoOverlayActivation",
+    "-RequireZeroManagedOverlayTiming",
+    "steam-launch",
+    "ArtifactRoot"
+  ]) {
+    assert.ok(matrixHelper.includes(expected), `Windows overlay matrix missing ${expected}`);
+  }
 }
 
 function runElectronSmokeActionStaticChecks() {
@@ -346,6 +370,8 @@ function runElectronSmokeActionStaticChecks() {
 
   for (const [label, source, expected] of [
     ["Electron smoke main", main, "case \"presenter-ready\""],
+    ["Electron smoke main", main, "case \"achievement-progress\""],
+    ["Electron smoke main", main, "case \"achievement-unlock\""],
     ["Electron smoke main", main, "case \"presenter-duplicate-open-guard\""],
     ["Electron smoke main", main, "overlay:presenter-ready"],
     ["Electron smoke main", main, "overlay:presenter-duplicate-open-guard"],

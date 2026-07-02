@@ -256,6 +256,10 @@ function copyTargetHelpers(appPath) {
       path.join(repoRoot, "scripts", "sign-windows-package.ps1"),
       path.join(appPath, "sign-windows-package.ps1")
     );
+    fs.copyFileSync(
+      path.join(repoRoot, "scripts", "windows-overlay-matrix.ps1"),
+      path.join(appPath, "windows-overlay-matrix.ps1")
+    );
   }
   if (target === "x86_64-unknown-linux-gnu") {
     const helperPath = path.join(appPath, "linux-electron-smoke.sh");
