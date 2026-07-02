@@ -145,7 +145,10 @@ Follow-up policy inventory with `CiTool.exe -lp` confirmed that the laptop has
 evaluation variants are present but not enforced. Windows preflight now records
 that parsed policy list, enforced policy names, and a
 `verifiedAndReputableEnforced` flag so future artifacts identify this blocker
-directly instead of inferring it only from Code Integrity event text.
+directly instead of inferring it only from Code Integrity event text. The matrix
+also copies that enforced-policy summary into
+`00-preflight/native-load-gate-app-control.json` before it runs the direct
+native-load gate.
 
 An experimental one-process Windows control-server run is not accepted as
 product proof. It launched and painted correctly, but the first web action ran

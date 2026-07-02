@@ -107,6 +107,15 @@ function Write-MatrixJsonFile {
   )
 }
 
+function Read-MatrixJsonFile {
+  param([string]$Path)
+
+  if (-not $Path -or -not (Test-Path -LiteralPath $Path)) {
+    return $null
+  }
+  return (Get-Content -Raw -LiteralPath $Path | ConvertFrom-Json)
+}
+
 function Write-MatrixTextFile {
   param([string]$Path, [string[]]$Lines)
 
@@ -775,8 +784,48 @@ function Get-AppControlPolicyState {
   return $policy.VerifiedAndReputablePolicyState
 }
 
+function Get-PreflightAppControlSummary {
+  param([string]$PreflightJson)
+
+  $preflight = Read-MatrixJsonFile -Path $PreflightJson
+  if (-not $preflight -or -not $preflight.appControl) {
+    return [PSCustomObject]@{
+      available = $false
+      verifiedAndReputablePolicyState = Get-AppControlPolicyState
+      ciToolAvailable = $false
+      ciToolExitCode = $null
+      verifiedAndReputableEnforced = $false
+      enforcedPolicies = @()
+      enforcedPolicyNames = @()
+    }
+  }
+
+  $appControl = $preflight.appControl
+  $enforcedPolicies = @($appControl.enforcedPolicies)
+  $enforcedPolicyNames = @(
+    $enforcedPolicies |
+      ForEach-Object {
+        if ($_.friendlyName) {
+          $_.friendlyName
+        }
+      }
+  )
+
+  return [PSCustomObject]@{
+    available = $true
+    verifiedAndReputablePolicyState = $appControl.verifiedAndReputablePolicyState
+    ciToolAvailable = $appControl.ciToolAvailable
+    ciToolExitCode = $appControl.ciToolExitCode
+    ciToolPath = $appControl.ciToolPath
+    ciToolError = $appControl.ciToolError
+    verifiedAndReputableEnforced = [bool]$appControl.verifiedAndReputableEnforced
+    enforcedPolicies = @($enforcedPolicies)
+    enforcedPolicyNames = @($enforcedPolicyNames)
+  }
+}
+
 function Test-NativeLoadGate {
-  param([string]$PreflightDir)
+  param([string]$PreflightDir, [string]$PreflightJson)
 
   if ($SkipNativeLoadGate) {
     return
@@ -787,11 +836,21 @@ function Test-NativeLoadGate {
     throw "Missing native addon at $nativeAddon"
   }
 
-  $policyState = Get-AppControlPolicyState
+  $appControlSummary = Get-PreflightAppControlSummary -PreflightJson $PreflightJson
+  Write-MatrixJsonFile -Path (Join-Path $PreflightDir "native-load-gate-app-control.json") -Value $appControlSummary -Depth 8
+
+  $policyState = $appControlSummary.verifiedAndReputablePolicyState
   $signature = Get-AuthenticodeSignature -LiteralPath $nativeAddon
 
-  if ($policyState -eq 1) {
-    Write-Host "Windows Smart App Control/App Control is enabled; running a native-load gate because Authenticode status alone is not enough proof."
+  if ($appControlSummary.verifiedAndReputableEnforced) {
+    Write-Host "Windows Smart App Control/App Control VerifiedAndReputable policy is enforced; running a native-load gate because Authenticode status alone is not enough proof."
+    Write-Host ("  ciTool: {0}" -f $appControlSummary.ciToolPath)
+    Write-Host ("  native addon Authenticode status: {0}" -f $signature.Status)
+    foreach ($policyName in @($appControlSummary.enforcedPolicyNames)) {
+      Write-Host ("  enforced policy: {0}" -f $policyName)
+    }
+  } elseif ($policyState -eq 1) {
+    Write-Host "Windows Smart App Control/App Control appears enabled; running a native-load gate because Authenticode status alone is not enough proof."
     Write-Host ("  native addon Authenticode status: {0}" -f $signature.Status)
   }
 
@@ -840,7 +899,7 @@ function Test-NativeLoadGate {
     throw (
       "Windows native-load gate failed before live overlay cases. " +
       "The exact packaged app could not initialize Steam cleanly; see $gateLog, $postGatePreflightLog, post-gate-preflight.json, and $diagnosticDir. " +
-      "On Smart App Control/App Control machines, a local self-signed Authenticode result can still fail this gate. " +
+      "On Smart App Control/App Control machines, a local self-signed Authenticode result can still fail this gate, especially when VerifiedAndReputableDesktop policies are enforced. " +
       "Use a trusted/reputable publisher-signed package or explicitly disable SAC on this development machine before live overlay proof. " +
       "Original error: $($_.Exception.Message)"
     )
@@ -1053,7 +1112,7 @@ function Invoke-Preflight {
   }
 
   if ($Suite -ne "preflight" -and $Suite -ne "readiness") {
-    Test-NativeLoadGate -PreflightDir $preflightDir
+    Test-NativeLoadGate -PreflightDir $preflightDir -PreflightJson $preflightJson
   }
 }
 

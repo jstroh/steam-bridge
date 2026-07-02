@@ -1703,6 +1703,10 @@ Windows gates:
   `VerifiedAndReputableDesktop*` enforcement, executable and native addon
   Authenticode status, Zone.Identifier streams, and recent Code Integrity block
   events before long live overlay runs;
+- packaged Windows matrix copies that preflight App Control summary into
+  `native-load-gate-app-control.json` before the native-load gate, so gate
+  failures name the exact enforced policy that made Authenticode-only evidence
+  insufficient;
 - packaged Windows matrix preflight runs a direct `none` smoke action from the
   exact app bundle and requires real Steam initialization plus clean crash
   diagnostics before any Steam-launched overlay case, because Authenticode

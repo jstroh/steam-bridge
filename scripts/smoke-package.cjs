@@ -370,9 +370,12 @@ function runWindowsSmokeHelperStaticChecks() {
   for (const expected of [
     "ValidateSet(\"baseline\", \"managed\", \"full\", \"preflight\", \"readiness\", \"shortcut\")",
     "Test-NativeLoadGate",
+    "Get-PreflightAppControlSummary",
+    "Read-MatrixJsonFile",
     "Test-NeedsWindowsLiveRunReadiness",
     "-Suite readiness checks live Steam-launched readiness",
-    "Windows Smart App Control/App Control is enabled",
+    "Windows Smart App Control/App Control VerifiedAndReputable policy is enforced",
+    "native-load-gate-app-control.json",
     "Running Windows native-load gate with the packaged app.",
     "native-load-gate",
     "preflight.json",

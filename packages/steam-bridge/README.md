@@ -98,9 +98,11 @@ initialization plus clean crash diagnostics before any live Steam-launched
 overlay case. That native-load gate catches local self-signed packages that look
 `Valid` to Authenticode but still fail SAC reputation or enterprise signing
 policy. Matrix preflight writes `00-preflight/preflight.json`; native-load
-failures also write `00-preflight/native-load-gate/post-gate-preflight.json`
-after the failed load attempt so Code Integrity events are captured from the
-same run. Use `-InstallShortcut` to let the matrix install or reuse one stable
+gate setup also writes `00-preflight/native-load-gate-app-control.json` with the
+enforced policy summary that drove the gate. Native-load failures also write
+`00-preflight/native-load-gate/post-gate-preflight.json` after the failed load
+attempt so Code Integrity events are captured from the same run. Use
+`-InstallShortcut` to let the matrix install or reuse one stable
 non-Steam shortcut. The shortcut points at a local smoke env file, and each
 matrix case rewrites only that env file before launching through Steam. When
 standalone Node.js is absent, the matrix uses the packaged Electron executable

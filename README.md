@@ -750,8 +750,9 @@ the private `--checkout-json-file` checkout suite.
   cases. This catches packages that report Authenticode `Valid` locally but are
   still blocked by Smart App Control/App Control reputation or enterprise
   signing policy. Native-load failures leave human logs and structured JSON
-  under `00-preflight/native-load-gate`, including a post-failure Code
-  Integrity snapshot:
+  under `00-preflight/native-load-gate`; the gate also writes
+  `00-preflight/native-load-gate-app-control.json` with the enforced policy
+  summary and captures a post-failure Code Integrity snapshot:
 
   ```powershell
   .\windows-overlay-matrix.ps1 `
