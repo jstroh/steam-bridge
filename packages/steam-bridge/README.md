@@ -121,8 +121,13 @@ session; the matrix stops before live launch if
 `00-preflight/live-run-readiness.json` records a closed Steam client, remaining
 orphan overlay helpers, or recent severe CEF/GPU/overlay-renderer signals that
 mean Steam's own UI is not healthy enough for overlay proof. Stale rendering
-signals are preserved in `steam-client-rendering-health.json` as warnings. The
-managed suite's active cases opt into complete-result mode and require Steam's
+signals are preserved in `steam-client-rendering-health.json` as warnings.
+From the repo, run
+`npm run windows:overlay-matrix:summarize -- --artifact-root <artifact-root>` to
+audit full runs, readiness captures, and native-load blocker artifacts without
+scraping helper logs by hand. The packaged bundle also includes
+`summarize-windows-overlay-matrix.cjs` for machines with a local Node.js runtime.
+The managed suite's active cases opt into complete-result mode and require Steam's
 inactive callback plus managed close, park, and open-and-wait completion events,
 so they should be run only when the overlay can be closed interactively or by a
 verified UI close probe.

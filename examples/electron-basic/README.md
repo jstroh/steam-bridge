@@ -168,6 +168,14 @@ enforced policy summary, failures write
 actions, and failures also write
 `00-preflight/native-load-gate/post-gate-preflight.json` after the failed load
 attempt.
+From the repo, use the summarizer to audit either a full run or this expected
+blocker shape:
+
+```sh
+npm run windows:overlay-matrix:summarize -- \
+  --artifact-root "C:\\path\\to\\windows-matrix-artifacts"
+```
+
 Direct Windows smoke runs pass smoke state through the child process environment
 instead of Electron command-line switches so interactive Task Scheduler launches
 and private checkout values do not depend on fragile process arguments.

@@ -1710,6 +1710,10 @@ Windows gates:
 - native-load gate failures write `native-load-gate-blocker.json` with a stable
   blocker code, post-gate Code Integrity events, relevant artifact paths, and
   next actions instead of forcing future automation to scrape helper logs;
+- `scripts/summarize-windows-overlay-matrix.cjs` audits full Windows matrix
+  roots, readiness/preflight-only captures, and native-load blocker artifacts,
+  including the App Control blocker shape, case smoke results, overlay callbacks,
+  and clean crash diagnostics;
 - packaged Windows matrix preflight runs a direct `none` smoke action from the
   exact app bundle and requires real Steam initialization plus clean crash
   diagnostics before any Steam-launched overlay case, because Authenticode

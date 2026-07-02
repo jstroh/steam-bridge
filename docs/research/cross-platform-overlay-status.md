@@ -152,7 +152,10 @@ native-load gate. If that gate fails, the matrix writes
 `00-preflight/native-load-gate-blocker.json` with a stable blocker code,
 post-gate Code Integrity events, related log paths, and next actions for
 trusted/reputable signing or explicitly moving the development machine out of
-policy enforcement.
+policy enforcement. `scripts/summarize-windows-overlay-matrix.cjs` now audits
+full Windows matrix roots, readiness/preflight captures, and these native-load
+blocker artifacts so the next live pass can distinguish an expected App Control
+gate from an overlay regression without hand-reading helper logs.
 
 An experimental one-process Windows control-server run is not accepted as
 product proof. It launched and painted correctly, but the first web action ran

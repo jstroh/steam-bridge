@@ -763,6 +763,14 @@ the private `--checkout-json-file` checkout suite.
     -InstallShortcut
   ```
 
+  From the repo, summarize a completed, readiness-only, or native-load-blocked
+  artifact with:
+
+  ```sh
+  npm run windows:overlay-matrix:summarize -- \
+    --artifact-root "C:\\path\\to\\windows-matrix-artifacts"
+  ```
+
   The baseline suite uses the ordinary Windows Electron/Steam overlay path for
   web, store, Friends, and passive achievement notifications. It enables
   Chromium's in-process GPU path by default, matching the public Electron helper

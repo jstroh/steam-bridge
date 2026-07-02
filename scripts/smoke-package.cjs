@@ -32,6 +32,9 @@ try {
   run("bash", [path.join(repoRoot, "scripts", "macos-overlay-matrix.sh"), "--mode", "self-test"], {
     cwd: repoRoot
   });
+  run("node", [path.join(repoRoot, "scripts", "summarize-windows-overlay-matrix.cjs"), "--self-test"], {
+    cwd: repoRoot
+  });
   run("node", [path.join(repoRoot, "scripts", "verify-macos-steam-signing.cjs"), "--self-test"], {
     cwd: repoRoot
   });
@@ -269,6 +272,10 @@ function runMacosPackageSigningStaticChecks() {
     "Windows Electron package must include the overlay matrix runner"
   );
   assert.ok(
+    packagerScript.includes("summarize-windows-overlay-matrix.cjs"),
+    "Windows Electron package must include the overlay matrix summarizer"
+  );
+  assert.ok(
     packagerScript.includes("upsert-steam-shortcut.cjs"),
     "Windows Electron package must include the Steam shortcut updater"
   );
@@ -310,6 +317,7 @@ function runWindowsSmokeHelperStaticChecks() {
   const helper = fs.readFileSync(path.join(repoRoot, "scripts", "windows-electron-smoke.ps1"), "utf8");
   const signingHelper = fs.readFileSync(path.join(repoRoot, "scripts", "sign-windows-package.ps1"), "utf8");
   const matrixHelper = fs.readFileSync(path.join(repoRoot, "scripts", "windows-overlay-matrix.ps1"), "utf8");
+  const matrixSummary = fs.readFileSync(path.join(repoRoot, "scripts", "summarize-windows-overlay-matrix.cjs"), "utf8");
   const electronHelper = fs.readFileSync(path.join(repoRoot, "packages", "steam-bridge", "src", "electron.ts"), "utf8");
   for (const expected of [
     "achievement-progress",
@@ -432,6 +440,20 @@ function runWindowsSmokeHelperStaticChecks() {
     "ArtifactRoot"
   ]) {
     assert.ok(matrixHelper.includes(expected), `Windows overlay matrix missing ${expected}`);
+  }
+  for (const expected of [
+    "steam-bridge-windows-native-load-gate-blocker",
+    "windows-app-control-native-load-block",
+    "native-load-gate-app-control.json",
+    "native-load-gate-blocker.json",
+    "steam-bridge-windows-live-run-readiness",
+    "STEAM_BRIDGE_SMOKE_RESULT ",
+    "platform is win32",
+    "arch is x64",
+    "crash diagnostics available",
+    "Windows overlay matrix summary self-test passed."
+  ]) {
+    assert.ok(matrixSummary.includes(expected), `Windows overlay matrix summary missing ${expected}`);
   }
   for (const expected of [
     'const windowsMode = process.platform === "win32"',

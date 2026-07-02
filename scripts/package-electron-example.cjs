@@ -261,6 +261,10 @@ function copyTargetHelpers(appPath) {
       path.join(appPath, "windows-overlay-matrix.ps1")
     );
     fs.copyFileSync(
+      path.join(repoRoot, "scripts", "summarize-windows-overlay-matrix.cjs"),
+      path.join(appPath, "summarize-windows-overlay-matrix.cjs")
+    );
+    fs.copyFileSync(
       path.join(repoRoot, "scripts", "upsert-steam-shortcut.cjs"),
       path.join(appPath, "upsert-steam-shortcut.cjs")
     );
