@@ -245,17 +245,19 @@ function isCheckoutAppIdMismatchError(error) {
 }
 
 function collectAppIds(value, seen = new Set(), depth = 0) {
-  if (!value || typeof value !== "object" || Array.isArray(value) || seen.has(value) || depth > 16) {
+  if (!value || typeof value !== "object" || seen.has(value) || depth > 16) {
     return [];
   }
 
   seen.add(value);
   const found = [];
-  for (const key of CHECKOUT_APP_ID_KEYS) {
-    if (Object.prototype.hasOwnProperty.call(value, key)) {
-      const appId = normalizeAppIdValue(value[key]);
-      if (appId !== undefined) {
-        found.push(appId);
+  if (!Array.isArray(value)) {
+    for (const key of CHECKOUT_APP_ID_KEYS) {
+      if (Object.prototype.hasOwnProperty.call(value, key)) {
+        const appId = normalizeAppIdValue(value[key]);
+        if (appId !== undefined) {
+          found.push(appId);
+        }
       }
     }
   }
@@ -317,6 +319,8 @@ function runSelfTest() {
   try {
     const validFile = path.join(tempDir, "valid.json");
     const validSdkAppIdFile = path.join(tempDir, "valid-sdk-app-id.json");
+    const validArrayAppIdFile = path.join(tempDir, "valid-array-app-id.json");
+    const wrongArrayAppIdFile = path.join(tempDir, "wrong-array-app-id.json");
     const invalidFile = path.join(tempDir, "invalid.json");
     const rawTransactionId = "246813579";
     const rawReturnUrl = "steam://return-from-private-proof";
@@ -352,6 +356,40 @@ function runSelfTest() {
           params: {
             m_unAppID: 480,
             transid: rawTransactionId
+          }
+        }
+      })
+    );
+    fs.writeFileSync(
+      validArrayAppIdFile,
+      JSON.stringify({
+        response: {
+          result: "OK",
+          params: {
+            transid: rawTransactionId,
+            lineitems: [
+              {
+                itemid: "100",
+                m_nAppID: "480"
+              }
+            ]
+          }
+        }
+      })
+    );
+    fs.writeFileSync(
+      wrongArrayAppIdFile,
+      JSON.stringify({
+        response: {
+          result: "OK",
+          params: {
+            transid: rawTransactionId,
+            lineitems: [
+              {
+                itemid: "100",
+                m_nAppID: "481"
+              }
+            ]
           }
         }
       })
@@ -406,6 +444,23 @@ function runSelfTest() {
     });
     assert.equal(validSdkAppId.output.join("\n").includes(rawTransactionId), false);
     assert.equal(validSdkAppId.output.join("\n").includes(validSdkAppIdFile), false);
+
+    const validArrayAppId = captureRun(["--file", validArrayAppIdFile, "--expected-app-id", "480"]);
+    assert.equal(validArrayAppId.status, 0);
+    assert.deepEqual(JSON.parse(validArrayAppId.output.join("\n")).appId, {
+      checked: true,
+      present: true,
+      matchesExpected: true
+    });
+    assert.equal(validArrayAppId.output.join("\n").includes(rawTransactionId), false);
+    assert.equal(validArrayAppId.output.join("\n").includes(validArrayAppIdFile), false);
+
+    const wrongArrayAppId = captureRun(["--file", wrongArrayAppIdFile, "--expected-app-id", "480"]);
+    assert.equal(wrongArrayAppId.status, 2);
+    assert.equal(wrongArrayAppId.errorOutput.join("\n").includes("480"), false);
+    assert.equal(wrongArrayAppId.errorOutput.join("\n").includes("481"), false);
+    assert.equal(wrongArrayAppId.errorOutput.join("\n").includes(wrongArrayAppIdFile), false);
+    assert.match(wrongArrayAppId.errorOutput.join("\n"), /app ID does not match/);
 
     const validQuiet = captureRun(["--file", validFile, "--quiet"]);
     assert.equal(validQuiet.status, 0);

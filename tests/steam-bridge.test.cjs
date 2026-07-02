@@ -534,6 +534,75 @@ test("checkout target helper unwraps InitTxn-style response envelopes", (t) => {
   );
 });
 
+test("checkout target validator reports array-nested SDK app IDs", (t) => {
+  const validator = require(path.join(repoRoot, "packages", "steam-bridge", "bin", "validate-checkout-target.cjs"));
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-checkout-validator-array-"));
+  t.after(() => {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  const rawTransactionId = "246813579";
+  const fixtureFile = path.join(tempDir, "private-init-txn-response.json");
+  const wrongFixtureFile = path.join(tempDir, "wrong-private-init-txn-response.json");
+  fs.writeFileSync(
+    fixtureFile,
+    JSON.stringify({
+      response: {
+        result: "OK",
+        params: {
+          transid: rawTransactionId,
+          lineitems: [{ m_nAppID: "480" }]
+        }
+      }
+    })
+  );
+  fs.writeFileSync(
+    wrongFixtureFile,
+    JSON.stringify({
+      response: {
+        result: "OK",
+        params: {
+          transid: rawTransactionId,
+          lineitems: [{ m_unAppID: 481 }]
+        }
+      }
+    })
+  );
+
+  const output = [];
+  const status = validator.runCli(["--file", fixtureFile, "--expected-app-id", "480"], {
+    log(message) {
+      output.push(String(message));
+    },
+    error(message) {
+      assert.fail(message);
+    }
+  });
+  assert.equal(status, 0);
+  assert.deepEqual(JSON.parse(output.join("\n")).appId, {
+    checked: true,
+    present: true,
+    matchesExpected: true
+  });
+  assert.equal(output.join("\n").includes(rawTransactionId), false);
+  assert.equal(output.join("\n").includes(fixtureFile), false);
+
+  const errorOutput = [];
+  const wrongStatus = validator.runCli(["--file", wrongFixtureFile, "--expected-app-id", "480"], {
+    log(message) {
+      assert.fail(message);
+    },
+    error(message) {
+      errorOutput.push(String(message));
+    }
+  });
+  assert.equal(wrongStatus, 2);
+  assert.match(errorOutput.join("\n"), /app ID does not match/);
+  assert.equal(errorOutput.join("\n").includes("480"), false);
+  assert.equal(errorOutput.join("\n").includes("481"), false);
+  assert.equal(errorOutput.join("\n").includes(wrongFixtureFile), false);
+});
+
 test("electron smoke native-host-unavailable action errors keep sanitized target context", () => {
   const exampleMain = fs.readFileSync(path.join(repoRoot, "examples", "electron-basic", "main.js"), "utf8");
 

@@ -560,7 +560,8 @@ passes the matrix `--app-id` into the same resolver so embedded app IDs use the
 runtime wrong-app guard without printing either value. The standalone
 `steam-bridge-validate-checkout-target --expected-app-id <your-app-id>` CLI
 performs the same preflight and treats Steam SDK-style app ID fields such as
-`m_unAppID` and `m_nAppID` as embedded app IDs without printing the value. Use
+`m_unAppID` and `m_nAppID` as embedded app IDs, including inside line-item
+arrays, without printing the value. Use
 `--suite checkout` for the focused macOS purchase path; it covers checkout
 prepare-only, direct checkout, Shift+Tab checkout, and programmatic checkout
 shortcut/open-and-wait without rerunning unrelated overlay surfaces.

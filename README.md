@@ -474,7 +474,8 @@ either value. Bad `InitTxn` captures fail before any live overlay work and only
 sanitized presence flags are printed. You can run the same check directly with
 `npx steam-bridge-validate-checkout-target --file <private-init-txn-response.json> --expected-app-id <your-app-id>`.
 The validator treats Steam SDK-style app ID fields such as `m_unAppID` and
-`m_nAppID` as embedded app IDs too, so private captures report
+`m_nAppID` as embedded app IDs too, including when they appear inside line-item
+arrays, so private captures report
 `appId.present=true` without printing the value.
 Matrix dry-run and live command logs also redact checkout file paths, checkout
 URLs, return URLs, transaction IDs, and control tokens; they prove those inputs
