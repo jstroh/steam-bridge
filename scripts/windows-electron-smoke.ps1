@@ -483,6 +483,7 @@ function Get-AppControlPolicySummary {
     ciToolAvailable = $ciTool.available
     ciToolExitCode = $ciTool.exitCode
     ciToolError = $ciTool.error
+    ciToolOutputFormat = $ciTool.format
     policies = @($ciTool.policies)
     enforcedPolicies = @($ciTool.enforcedPolicies)
     verifiedAndReputableEnforced = $ciTool.verifiedAndReputableEnforced
@@ -497,6 +498,7 @@ function Get-CiToolPolicyInventory {
       available = $false
       exitCode = $null
       error = $null
+      format = $null
       timedOut = $false
       policies = @()
       enforcedPolicies = @()
@@ -509,7 +511,11 @@ function Get-CiToolPolicyInventory {
   $exitCode = $result.exitCode
   $errorMessage = $result.error
 
-  $policies = @(Convert-CiToolPolicies -Lines $output)
+  $policies = if ($result.format -eq "json") {
+    @(Convert-CiToolJsonPolicies -Text ($output -join [System.Environment]::NewLine))
+  } else {
+    @(Convert-CiToolPolicies -Lines $output)
+  }
   $enforcedPolicies = @(
     $policies |
       Where-Object { $_.enforced -eq $true } |
@@ -525,6 +531,7 @@ function Get-CiToolPolicyInventory {
     available = $true
     exitCode = $exitCode
     error = $errorMessage
+    format = $result.format
     timedOut = $result.timedOut
     policies = @($policies)
     enforcedPolicies = @($enforcedPolicies)
@@ -544,9 +551,16 @@ function Invoke-CiToolPolicyList {
       $output = @()
       $exitCode = 0
       $errorMessage = $null
+      $format = "text"
       try {
-        $output = @(& $CiToolPath -lp 2>&1 | ForEach-Object { [string]$_ })
+        $output = @(& $CiToolPath -lp -json 2>&1 | ForEach-Object { [string]$_ })
         $exitCode = $LASTEXITCODE
+        if ($exitCode -ne 0 -or $output.Count -eq 0) {
+          $output = @(& $CiToolPath -lp 2>&1 | ForEach-Object { [string]$_ })
+          $exitCode = $LASTEXITCODE
+        } else {
+          $format = "json"
+        }
       } catch {
         $errorMessage = $_.Exception.Message
         $exitCode = 1
@@ -556,6 +570,7 @@ function Invoke-CiToolPolicyList {
         output = @($output)
         exitCode = $exitCode
         error = $errorMessage
+        format = $format
       }
     } -ArgumentList $Path
 
@@ -584,6 +599,7 @@ function Invoke-CiToolPolicyList {
       output = @($firstResult[0].output)
       exitCode = $firstResult[0].exitCode
       error = $firstResult[0].error
+      format = $firstResult[0].format
       timedOut = $false
     }
   } catch {
@@ -598,6 +614,44 @@ function Invoke-CiToolPolicyList {
       Remove-Job -Job $job -Force -ErrorAction SilentlyContinue
     }
   }
+}
+
+function Convert-CiToolJsonPolicies {
+  param([string]$Text)
+
+  if (-not $Text) {
+    return @()
+  }
+
+  try {
+    $parsed = $Text | ConvertFrom-Json
+  } catch {
+    return @()
+  }
+
+  if (-not $parsed -or -not $parsed.Policies) {
+    return @()
+  }
+
+  return @(
+    @($parsed.Policies) |
+      ForEach-Object {
+        [PSCustomObject]@{
+          policyId = $_.PolicyID
+          basePolicyId = $_.BasePolicyID
+          friendlyName = $_.FriendlyName
+          version = $_.Version
+          versionString = $_.VersionString
+          platformPolicy = [bool]$_.IsSystemPolicy
+          policySigned = [bool]$_.IsSignedPolicy
+          hasFileOnDisk = [bool]$_.IsOnDisk
+          enforced = [bool]$_.IsEnforced
+          authorized = [bool]$_.IsAuthorized
+          status = $null
+          policyOptions = @($_.PolicyOptions)
+        }
+      }
+  )
 }
 
 function Convert-CiToolPolicies {

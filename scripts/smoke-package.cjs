@@ -373,7 +373,9 @@ function runWindowsSmokeHelperStaticChecks() {
     "Write-JsonFile",
     "steam-bridge-windows-preflight",
     "Get-CiToolPolicyInventory",
+    "Convert-CiToolJsonPolicies",
     "Convert-CiToolPolicies",
+    "ciToolOutputFormat",
     "verifiedAndReputableEnforced",
     "enforcedAppControlPolicies",
     "SteamOverlayGameId",
@@ -393,6 +395,7 @@ function runWindowsSmokeHelperStaticChecks() {
     "currentSessionId",
     "SSH Session 0 can produce",
     "Invoke-CiToolPolicyList",
+    "CiToolPath -lp -json",
     "CiTool.exe -lp timed out"
   ]) {
     assert.ok(helper.includes(expected), `Windows smoke helper missing ${expected}`);

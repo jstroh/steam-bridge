@@ -251,6 +251,14 @@ now writes `10-presenter-ready\case-app-control-blocker.json` with
 and fresh Code Integrity events for the blocked native dependency load. This
 keeps the current Windows laptop blocker classified as trusted/reputable
 signing or local App Control policy state, not an overlay route failure.
+Follow-up preflight artifact
+`C:\Users\admin\steam-bridge-artifacts\windows-appcontrol-json-preflight-20260702-002`
+uses `CiTool.exe -lp -json` and records `ciToolOutputFormat=json`,
+`verifiedAndReputableEnforced=true`, and six enforced policies, including
+`VerifiedAndReputableDesktop`. That makes the next live-proof choices explicit:
+use a trusted/reputable publisher-signing path for product proof, or make a
+separate user-approved local App Control test-policy change before continuing
+local smoke proof on this laptop.
 
 A follow-up on July 2, 2026 isolated that same `0x887A0022` failure to Windows
 Session 0 launches. Microsoft documents `DXGI_ERROR_NOT_CURRENTLY_AVAILABLE` for
