@@ -105,14 +105,40 @@ helpers before a new proof run. Live Steam-launched suites now write
 `00-preflight/live-run-readiness.json` and fail before the native-load gate or
 `steam://rungameid` launch if Steam is not already running in the interactive
 Windows desktop session, preventing accidental Steam client startup while the
-test machine is unhealthy. The dedicated `-Suite readiness` path collects the
+test machine is unhealthy. The standalone Windows smoke helper now follows the
+same default and refuses `-Mode steam-launch` when Steam is closed unless
+`-AllowStartSteamClient` is passed intentionally. The dedicated `-Suite
+readiness` path collects the
 same report-only preflight and live-readiness JSON, then stops before
 native-load, shortcut, or launch work so blank/white Steam-client states can be
 captured without more Steam churn. The Windows readiness gate also classifies
 recent severe CEF/GPU/overlay-renderer log signals such as `0x887A0022`,
 context loss, GPU-process restarts, overlay swap-chain failures, and Win32
 resource failures, blocking live launch only when those signals are fresh while
-Steam is running and preserving stale signals as diagnostic warnings.
+Steam is running and preserving stale signals as diagnostic warnings. The
+managed Windows matrix cases now use complete-result mode for active overlays:
+the smoke app keeps the result pending until Steam emits `active=false` and the
+managed close wait, park wait, and open-and-wait completion have all resolved.
+That turns managed cases into real close/back-to-app proof when an operator or
+verified UI probe closes the overlay, rather than accepting show-only callback
+evidence.
+
+A current-package Windows refresh on 2026-07-02 rebuilt the Electron `43.0.0`
+smoke bundle, deployed it to the Windows laptop, and signed every `.exe`,
+`.dll`, and `.node` with the installed local test code-signing certificate.
+The package preflight then reported `AuthenticodeStatus=Valid` for both
+`SteamBridgeSmoke.exe` and `steam_bridge_native.win32-x64-msvc.node`, and the
+Steam live-run readiness gate passed after starting Steam in the interactive
+Session 1 desktop: no recent severe CEF/GPU/overlay-renderer signals, only
+stale historical severe signals. The native-load gate still failed before live
+overlay launch because Smart App Control/App Control blocked
+`SteamBridgeSmoke.exe` itself with Code Integrity events 3033/3077 saying the
+file did not meet Enterprise signing level requirements. This confirms the
+remaining local Windows proof blocker is Windows App Control reputation/policy,
+not Steam launch, Steam client rendering, package freshness, or Authenticode
+syntax. Continue live Windows overlay proof only after using a trusted/reputable
+publisher certificate or explicitly moving this development machine's Smart App
+Control/App Control policy out of enforcement.
 
 An experimental one-process Windows control-server run is not accepted as
 product proof. It launched and painted correctly, but the first web action ran

@@ -112,6 +112,9 @@ const MANAGED_OVERLAY_PARK_TIMEOUT_MS = normalizePositiveInteger(
   Number(CLI_OPTIONS.managedOverlayParkTimeoutMs || process.env.STEAM_BRIDGE_SMOKE_MANAGED_OVERLAY_PARK_TIMEOUT_MS),
   90000
 );
+const MANAGED_OVERLAY_RESULT_MODE = normalizeManagedOverlayResultMode(
+  CLI_OPTIONS.managedOverlayResultMode || process.env.STEAM_BRIDGE_SMOKE_MANAGED_OVERLAY_RESULT_MODE
+);
 const FATAL_LIFECYCLE_EVENT_TYPES = new Set([
   "app:render-process-gone",
   "app:child-process-gone",
@@ -169,6 +172,8 @@ let smokeControlActionInFlight = false;
 let postClosePresenterSnapshotHandle;
 let managedOverlayWaitSequence = 0;
 let pendingManagedOverlayShownWait;
+let pendingManagedOverlayLifecycle;
+let pendingManagedOverlayCompletionWait;
 let managedShortcutOpenSource = "Shift+Tab";
 const managedOverlayWaitControllers = new Set();
 const callbackHandles = [];
@@ -447,6 +452,8 @@ async function runSmokeActionAndWait(action, options = {}) {
   applySmokeActionOptions(options.actionOptions, { reset: source === "control" });
   recordEvent(`${source}:action-begin`, { action });
   pendingManagedOverlayShownWait = undefined;
+  pendingManagedOverlayLifecycle = undefined;
+  pendingManagedOverlayCompletionWait = undefined;
   const actionResult = await runAutorunAction(action);
   recordEvent(`${source}:action-complete`, {
     action,
@@ -809,7 +816,11 @@ async function waitForAutorunResult(action, durationMs, overlayActiveCount, opti
 
 async function waitForManagedOverlayShownResult(action) {
   const shownWait = pendingManagedOverlayShownWait;
+  const lifecycle = pendingManagedOverlayLifecycle;
+  const completionWait = pendingManagedOverlayCompletionWait;
   pendingManagedOverlayShownWait = undefined;
+  pendingManagedOverlayLifecycle = undefined;
+  pendingManagedOverlayCompletionWait = undefined;
   const startedAt = Date.now();
 
   if (!shownWait) {
@@ -819,13 +830,52 @@ async function waitForManagedOverlayShownResult(action) {
   }
 
   const result = await shownWait;
+  if (MANAGED_OVERLAY_RESULT_MODE !== "complete" || result.ok !== true) {
+    return {
+      ok: result.ok === true,
+      action,
+      overlayShown: result.ok === true,
+      durationMs: Date.now() - startedAt,
+      ...(result.error ? { error: result.error } : {}),
+      ...(result.presenter ? { presenter: result.presenter } : {})
+    };
+  }
+
+  if (!lifecycle || !lifecycle.closed || !lifecycle.parked) {
+    const error = { message: "No managed overlay close/park lifecycle was registered for autorun action." };
+    recordEvent("autorun:managed-overlay-lifecycle-missing", { action, error });
+    return {
+      ok: false,
+      action,
+      overlayShown: true,
+      overlayClosed: false,
+      overlayParked: false,
+      durationMs: Date.now() - startedAt,
+      error,
+      ...(result.presenter ? { presenter: result.presenter } : {})
+    };
+  }
+
+  const [closedResult, parkedResult, completionResult] = await Promise.all([
+    lifecycle.closed,
+    lifecycle.parked,
+    completionWait || Promise.resolve({ ok: true })
+  ]);
+  const ok = closedResult.ok === true && parkedResult.ok === true && completionResult.ok !== false;
   return {
-    ok: result.ok === true,
+    ok,
     action,
-    overlayShown: result.ok === true,
+    overlayShown: true,
+    overlayClosed: closedResult.ok === true,
+    overlayParked: parkedResult.ok === true,
+    overlayComplete: completionResult.ok !== false,
     durationMs: Date.now() - startedAt,
-    ...(result.error ? { error: result.error } : {}),
-    ...(result.presenter ? { presenter: result.presenter } : {})
+    ...(closedResult.error || parkedResult.error || completionResult.error
+      ? { error: closedResult.error || parkedResult.error || completionResult.error }
+      : {}),
+    ...(parkedResult.presenter || closedResult.presenter || result.presenter
+      ? { presenter: parkedResult.presenter || closedResult.presenter || result.presenter }
+      : {})
   };
 }
 
@@ -1140,8 +1190,9 @@ async function openPresenterDuplicateOpenGuardOverlay() {
   });
   const lifecycle = observeManagedOverlayLifecycle(overlay, context);
   pendingManagedOverlayShownWait = lifecycle.shown;
+  pendingManagedOverlayLifecycle = lifecycle;
 
-  openAndWait
+  pendingManagedOverlayCompletionWait = openAndWait
     .then((result) => {
       recordEvent("overlay:presenter-open-and-wait-complete", {
         ...context,
@@ -1149,15 +1200,18 @@ async function openPresenterDuplicateOpenGuardOverlay() {
         parked: result.parked,
         presenter: safeOverlaySnapshot(overlay)
       });
+      return { ok: true, result };
     })
     .catch((error) => {
+      const serialized = serializeError(error);
       if (!shutdownComplete) {
         recordEvent("overlay:presenter-open-and-wait:error", {
           ...context,
-          error: serializeError(error),
+          error: serialized,
           presenter: safeOverlaySnapshot(overlay)
         });
       }
+      return { ok: false, error: serialized };
     });
 
   const namedTargets = duplicateOpenGuardTargets();
@@ -1277,8 +1331,9 @@ function openPresenterTargetAndWaitOverlay(overlay, target, context) {
   });
   const lifecycle = observeManagedOverlayLifecycle(overlay, context);
   pendingManagedOverlayShownWait = lifecycle.shown;
+  pendingManagedOverlayLifecycle = lifecycle;
 
-  openAndWait
+  pendingManagedOverlayCompletionWait = openAndWait
     .then((result) => {
       recordEvent("overlay:presenter-open-and-wait-complete", {
         ...context,
@@ -1286,15 +1341,18 @@ function openPresenterTargetAndWaitOverlay(overlay, target, context) {
         parked: result.parked,
         presenter: safeOverlaySnapshot(overlay)
       });
+      return { ok: true, result };
     })
     .catch((error) => {
+      const serialized = serializeError(error);
       if (!shutdownComplete) {
         recordEvent("overlay:presenter-open-and-wait:error", {
           ...context,
-          error: serializeError(error),
+          error: serialized,
           presenter: safeOverlaySnapshot(overlay)
         });
       }
+      return { ok: false, error: serialized };
     });
 
   throwIfNativeHostUnavailable(initialSnapshot, target);
@@ -1805,7 +1863,8 @@ async function openPresenterCheckoutOverlay() {
     });
     const lifecycle = observeManagedOverlayLifecycle(overlay, context);
     pendingManagedOverlayShownWait = lifecycle.shown;
-    openAndWait
+    pendingManagedOverlayLifecycle = lifecycle;
+    pendingManagedOverlayCompletionWait = openAndWait
       .then((result) => {
         recordEvent("overlay:presenter-checkout-open-and-wait-complete", {
           ...context,
@@ -1815,15 +1874,18 @@ async function openPresenterCheckoutOverlay() {
           parked: result.parked,
           presenter: safeOverlaySnapshot(overlay)
         });
+        return { ok: true, result };
       })
       .catch((error) => {
+        const serialized = serializeError(error);
         if (!shutdownComplete) {
           recordEvent("overlay:presenter-checkout-open-and-wait:error", {
             ...context,
-            error: serializeError(error),
+            error: serialized,
             presenter: safeOverlaySnapshot(overlay)
           });
         }
+        return { ok: false, error: serialized };
       });
     throwIfNativeHostUnavailable(initialSnapshot, checkoutTargetFromOperation(transaction));
   } else {
@@ -2038,6 +2100,7 @@ function openPresenterShortcutOpenAndWaitBridge() {
   };
   const lifecycle = observeManagedOverlayLifecycle(overlay, context);
   pendingManagedOverlayShownWait = lifecycle.shown;
+  pendingManagedOverlayLifecycle = lifecycle;
   const openAndWait = withManagedShortcutOpenSource("openShortcutTargetAndWait", () =>
     overlay.openShortcutTargetAndWait({
       showTimeoutMs: MANAGED_OVERLAY_WAIT_TIMEOUT_MS,
@@ -2050,14 +2113,14 @@ function openPresenterShortcutOpenAndWaitBridge() {
     presenter: initialSnapshot
   });
 
-  openAndWait
+  pendingManagedOverlayCompletionWait = openAndWait
     .then((result) => {
       if (!result) {
         recordEvent("overlay:presenter-open-and-wait-skipped", {
           ...context,
           presenter: safeOverlaySnapshot(overlay)
         });
-        return;
+        return { ok: false, skipped: true };
       }
       recordEvent("overlay:presenter-open-and-wait-complete", {
         ...context,
@@ -2065,15 +2128,18 @@ function openPresenterShortcutOpenAndWaitBridge() {
         parked: result.parked,
         presenter: safeOverlaySnapshot(overlay)
       });
+      return { ok: true, result };
     })
     .catch((error) => {
+      const serialized = serializeError(error);
       if (!shutdownComplete) {
         recordEvent("overlay:presenter-open-and-wait:error", {
           ...context,
-          error: serializeError(error),
+          error: serialized,
           presenter: safeOverlaySnapshot(overlay)
         });
       }
+      return { ok: false, error: serialized };
     });
 
   throwIfNativeHostUnavailable(initialSnapshot, overlay.getShortcutOpenStatus());
@@ -2358,6 +2424,7 @@ function snapshot() {
       autorunAction: AUTORUN_ACTION,
       autorunRequireOverlayActive: AUTORUN_REQUIRE_OVERLAY_ACTIVE,
       autorunKeepOpenAfterResult: AUTORUN_KEEP_OPEN_AFTER_RESULT,
+      managedOverlayResultMode: MANAGED_OVERLAY_RESULT_MODE,
       autorunResultFile: AUTORUN_RESULT_FILE || null,
       diagnosticDir: DIAGNOSTIC_DIR,
       lifecycleLogFile: LIFECYCLE_LOG_FILE,
@@ -2398,7 +2465,7 @@ function snapshot() {
       initialized: Boolean(client),
       initError
     },
-    events: eventLog.slice(-20)
+    events: eventLog.slice(-80)
   };
 
   if (!client) {
@@ -3224,6 +3291,14 @@ function readOptionalBoolean(value) {
   return undefined;
 }
 
+function normalizeManagedOverlayResultMode(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized === "complete") {
+    return "complete";
+  }
+  return "shown";
+}
+
 function normalizeMacNativeHostBackend(value) {
   const normalized = String(value || "").toLowerCase();
   if (normalized === "metal" || normalized === "opengl") {
@@ -3292,6 +3367,7 @@ function parseSmokeArgs(args) {
     checkoutJsonFile: undefined,
     managedOverlayWaitTimeoutMs: undefined,
     managedOverlayParkTimeoutMs: undefined,
+    managedOverlayResultMode: undefined,
     achievementName: undefined,
     achievementCurrent: undefined,
     achievementMax: undefined,
@@ -3352,6 +3428,9 @@ function parseSmokeArgs(args) {
         break;
       case "--steam-bridge-smoke-managed-overlay-park-timeout-ms":
         options.managedOverlayParkTimeoutMs = value;
+        break;
+      case "--steam-bridge-smoke-managed-overlay-result-mode":
+        options.managedOverlayResultMode = value;
         break;
       case "--steam-bridge-smoke-overlay-dialog":
         options.overlayDialog = value;

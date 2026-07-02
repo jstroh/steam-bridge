@@ -77,6 +77,9 @@ this example's Apple Silicon-only macOS package path.
 The Windows package includes `windows-electron-smoke.ps1`. Use
 `-Mode print-launch-options` to generate non-Steam shortcut arguments, or
 `-Mode steam-launch` with `-ShortcutGameId` to verify the shortcut result. The
+steam-launch helper refuses to start Steam by default; pass
+`-AllowStartSteamClient` only when you intentionally want the helper to open
+`steam://rungameid` from a closed client.
 helper accepts the same generic smoke action names as the Deck/macOS helpers,
 including raw Windows baseline actions `web`, `store`, `friends`,
 `achievement-progress`, and `achievement-unlock`, plus managed comparison
@@ -92,6 +95,11 @@ proof. The current Windows proof lane is the process-per-case baseline matrix:
 web, store, and Friends must emit overlay activation, while passive achievement
 cases prove their callbacks without requiring the overlay to open. Pass
 `-OverlayInProcessGpu 0` only when collecting a failing baseline comparison.
+The managed Windows suite is stricter than the baseline: active managed cases
+write `STEAM_BRIDGE_SMOKE_MANAGED_OVERLAY_RESULT_MODE=complete` and require
+Steam's inactive callback plus the managed close, park, and open-and-wait
+completion events before the smoke result is accepted. Run those cases only when
+the overlay can be closed interactively or by a verified UI close probe.
 
 The Windows package also includes `windows-overlay-matrix.ps1`, which runs
 preflight and then a repeatable baseline, managed, or full suite while writing

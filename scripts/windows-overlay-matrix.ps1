@@ -477,7 +477,8 @@ function Test-NeedsWindowsLiveRunReadiness {
 }
 
 function Test-IsLiveSteamLaunchSuite {
-  return (Test-NeedsWindowsLiveRunReadiness -and $Suite -ne "readiness")
+  $needsReadiness = Test-NeedsWindowsLiveRunReadiness
+  return ($needsReadiness -and $Suite -ne "readiness")
 }
 
 function Test-WindowsLiveRunReadiness {
@@ -920,6 +921,8 @@ function New-Case {
     [switch]$RequireOverlayActivated,
     [switch]$RequireNoOverlayActivation,
     [switch]$AllowOverlayNotReady,
+    [switch]$RequireManagedOverlayComplete,
+    [string]$ManagedOverlayResultMode = "",
     [string]$WebModal = "",
     [string]$DialogOverride = "",
     [string]$ShortcutTargetOverride = "",
@@ -934,6 +937,8 @@ function New-Case {
     requireOverlayActivated = [bool]$RequireOverlayActivated
     requireNoOverlayActivation = [bool]$RequireNoOverlayActivation
     allowOverlayNotReady = [bool]$AllowOverlayNotReady
+    requireManagedOverlayComplete = [bool]$RequireManagedOverlayComplete
+    managedOverlayResultMode = $ManagedOverlayResultMode
     webModal = $WebModal
     dialog = $DialogOverride
     shortcutTarget = $ShortcutTargetOverride
@@ -954,12 +959,12 @@ function Get-MatrixCases {
 
   $managed = @(
     New-Case -Id "10-presenter-ready" -Action "presenter-ready" -RequireEvent @("overlay:presenter-ready") -RequireNoOverlayActivation -ResultDelayMs 1200
-    New-Case -Id "11-managed-web-open-and-wait" -Action "presenter-web-open-and-wait" -RequireEvent @("overlay:presenter-open-and-wait-start") -RequireOverlayActivated -WebModal "true"
-    New-Case -Id "12-managed-store-open-and-wait" -Action "presenter-store-open-and-wait" -RequireEvent @("overlay:presenter-open-and-wait-start") -RequireOverlayActivated
-    New-Case -Id "13-managed-friends-open-and-wait" -Action "presenter-friends-open-and-wait" -RequireEvent @("overlay:presenter-open-and-wait-start") -RequireOverlayActivated
-    New-Case -Id "14-managed-dialog-open-and-wait" -Action "presenter-dialog-auto-open-and-wait" -RequireEvent @("overlay:presenter-open-and-wait-start") -RequireOverlayActivated -DialogOverride "Friends"
-    New-Case -Id "15-managed-shortcut" -Action "presenter-shortcut-open-and-wait" -RequireEvent @("overlay:presenter-open-and-wait-start") -RequireOverlayActivated -ShortcutTargetOverride $ShortcutTarget
-    New-Case -Id "16-managed-checkout-route" -Action "presenter-checkout" -RequireEvent @("overlay:presenter-open") -RequireOverlayActivated -CheckoutTransactionIdOverride $CheckoutTransactionId
+    New-Case -Id "11-managed-web-open-and-wait" -Action "presenter-web-open-and-wait" -RequireEvent @("overlay:presenter-open-and-wait-start", "overlay:presenter-wait-closed", "overlay:presenter-parked", "overlay:presenter-open-and-wait-complete") -RequireOverlayActivated -RequireManagedOverlayComplete -ManagedOverlayResultMode "complete" -WebModal "true"
+    New-Case -Id "12-managed-store-open-and-wait" -Action "presenter-store-open-and-wait" -RequireEvent @("overlay:presenter-open-and-wait-start", "overlay:presenter-wait-closed", "overlay:presenter-parked", "overlay:presenter-open-and-wait-complete") -RequireOverlayActivated -RequireManagedOverlayComplete -ManagedOverlayResultMode "complete"
+    New-Case -Id "13-managed-friends-open-and-wait" -Action "presenter-friends-open-and-wait" -RequireEvent @("overlay:presenter-open-and-wait-start", "overlay:presenter-wait-closed", "overlay:presenter-parked", "overlay:presenter-open-and-wait-complete") -RequireOverlayActivated -RequireManagedOverlayComplete -ManagedOverlayResultMode "complete"
+    New-Case -Id "14-managed-dialog-open-and-wait" -Action "presenter-dialog-auto-open-and-wait" -RequireEvent @("overlay:presenter-open-and-wait-start", "overlay:presenter-wait-closed", "overlay:presenter-parked", "overlay:presenter-open-and-wait-complete") -RequireOverlayActivated -RequireManagedOverlayComplete -ManagedOverlayResultMode "complete" -DialogOverride "Friends"
+    New-Case -Id "15-managed-shortcut" -Action "presenter-shortcut-open-and-wait" -RequireEvent @("overlay:presenter-open-and-wait-start", "overlay:presenter-wait-closed", "overlay:presenter-parked", "overlay:presenter-open-and-wait-complete") -RequireOverlayActivated -RequireManagedOverlayComplete -ManagedOverlayResultMode "complete" -ShortcutTargetOverride $ShortcutTarget
+    New-Case -Id "16-managed-checkout-route" -Action "presenter-checkout" -RequireEvent @("overlay:presenter-open", "overlay:presenter-wait-closed", "overlay:presenter-parked", "overlay:presenter-checkout-open-and-wait-complete") -RequireOverlayActivated -RequireManagedOverlayComplete -ManagedOverlayResultMode "complete" -CheckoutTransactionIdOverride $CheckoutTransactionId
   )
 
   switch ($Suite) {
@@ -1089,6 +1094,9 @@ function Write-CaseLaunchEnv {
   if ($Case.checkoutTransactionId) {
     $args += @("-CheckoutTransactionId", $Case.checkoutTransactionId)
   }
+  if ($Case.managedOverlayResultMode) {
+    $args += @("-ManagedOverlayResultMode", $Case.managedOverlayResultMode)
+  }
 
   $launchEnvLog = Join-Path (Split-Path -Parent $ResultFile) "launch-env.log"
   Invoke-Helper -Arguments $args -LogFile $launchEnvLog
@@ -1149,11 +1157,17 @@ function Invoke-MatrixCase {
   if ($Case.checkoutTransactionId) {
     $args += @("-CheckoutTransactionId", $Case.checkoutTransactionId)
   }
+  if ($Case.managedOverlayResultMode) {
+    $args += @("-ManagedOverlayResultMode", $Case.managedOverlayResultMode)
+  }
   if ($Case.requireOverlayActivated) {
     $args += "-RequireOverlayActivated"
   }
   if ($Case.requireNoOverlayActivation) {
     $args += "-RequireNoOverlayActivation"
+  }
+  if ($Case.requireManagedOverlayComplete) {
+    $args += "-RequireManagedOverlayComplete"
   }
   foreach ($event in $Case.requireEvent) {
     $args += @("-RequireEvent", $event)

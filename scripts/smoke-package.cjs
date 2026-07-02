@@ -343,6 +343,10 @@ function runWindowsSmokeHelperStaticChecks() {
     "RequireOverlayActivated",
     "AllowOverlayNotReady",
     "RequireNoCrashes",
+    "ManagedOverlayResultMode",
+    "RequireManagedOverlayComplete",
+    "STEAM_BRIDGE_SMOKE_MANAGED_OVERLAY_RESULT_MODE",
+    "AllowStartSteamClient",
     "function Add-DefaultRequireEvents"
   ]) {
     assert.ok(helper.includes(expected), `Windows smoke helper missing ${expected}`);
@@ -392,6 +396,8 @@ function runWindowsSmokeHelperStaticChecks() {
     "-RequireNoOverlayActivation",
     "-AllowOverlayNotReady",
     "-RequireZeroManagedOverlayTiming",
+    "-RequireManagedOverlayComplete",
+    "ManagedOverlayResultMode \"complete\"",
     "-RequireNoCrashes",
     "-OverlayInProcessGpu",
     "OnlyCase",

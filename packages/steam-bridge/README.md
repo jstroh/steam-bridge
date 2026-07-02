@@ -75,6 +75,9 @@ For direct native-load checks, the Windows helper passes smoke state through the
 child process environment rather than Electron command-line switches, which keeps
 interactive Task Scheduler runs and private checkout values out of fragile
 process arguments.
+Standalone `windows-electron-smoke.ps1 -Mode steam-launch` refuses to start
+Steam by default; pass `-AllowStartSteamClient` only when you intentionally want
+the helper to open `steam://rungameid`.
 The packaged smoke app also includes `sign-windows-package.ps1` so Windows test
 machines can sign the exact bundle that Steam launches. Use
 `.\sign-windows-package.ps1 -CertificateThumbprint "<thumbprint>"` with an
@@ -113,7 +116,11 @@ session; the matrix stops before live launch if
 `00-preflight/live-run-readiness.json` records a closed Steam client, remaining
 orphan overlay helpers, or recent severe CEF/GPU/overlay-renderer signals that
 mean Steam's own UI is not healthy enough for overlay proof. Stale rendering
-signals are preserved in `steam-client-rendering-health.json` as warnings.
+signals are preserved in `steam-client-rendering-health.json` as warnings. The
+managed suite's active cases opt into complete-result mode and require Steam's
+inactive callback plus managed close, park, and open-and-wait completion events,
+so they should be run only when the overlay can be closed interactively or by a
+verified UI close probe.
 
 ## Quick Start
 

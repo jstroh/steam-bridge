@@ -60,12 +60,15 @@ param(
   [string]$UserDialog = "",
   [string]$ShortcutTarget = "",
   [string]$PresenterMode = "",
+  [ValidateSet("shown", "complete")]
+  [string]$ManagedOverlayResultMode = "shown",
   [string]$AchievementName = "",
   [string]$AchievementCurrent = "",
   [string]$AchievementMax = "",
   [int]$ResultDelayMs = 8000,
   [int]$TimeoutSeconds = 90,
   [string]$ShortcutGameId = "",
+  [switch]$AllowStartSteamClient,
   [string[]]$RequireEvent = @(),
   [switch]$RequireSteamLaunch,
   [switch]$RequireOverlayReady,
@@ -74,6 +77,7 @@ param(
   [switch]$RequireNoOverlayActivation,
   [int]$RequireRestoreFocusDelayMs = -1,
   [switch]$RequireZeroManagedOverlayTiming,
+  [switch]$RequireManagedOverlayComplete,
   [switch]$RequireNoCrashes,
   [string]$RequireActionErrorCode = "",
   [string]$RequireActionErrorReason = "",
@@ -165,6 +169,9 @@ function Get-SmokeArgs {
   if ($PresenterMode) {
     $args += "--steam-bridge-smoke-presenter-mode=$PresenterMode"
   }
+  if ($ManagedOverlayResultMode) {
+    $args += "--steam-bridge-smoke-managed-overlay-result-mode=$ManagedOverlayResultMode"
+  }
   if ($AchievementName) {
     $args += "--steam-bridge-smoke-achievement-name=$AchievementName"
   }
@@ -253,6 +260,9 @@ function Get-SmokeEnv {
   }
   if ($PresenterMode) {
     $envMap.STEAM_BRIDGE_SMOKE_PRESENTER_MODE = $PresenterMode
+  }
+  if ($ManagedOverlayResultMode) {
+    $envMap.STEAM_BRIDGE_SMOKE_MANAGED_OVERLAY_RESULT_MODE = $ManagedOverlayResultMode
   }
   if ($AchievementName) {
     $envMap.STEAM_BRIDGE_SMOKE_ACHIEVEMENT_NAME = $AchievementName
@@ -624,6 +634,34 @@ function Test-OverlayActiveEvent {
   )
 }
 
+function Test-OverlayInactiveEvent {
+  param($Event)
+
+  if (-not $Event -or $Event.type -ne "callback:overlay-activated") {
+    return $false
+  }
+
+  $payload = $Event.payload
+  if ($payload -eq $false -or $payload -eq 0) {
+    return $true
+  }
+  if (-not $payload) {
+    return $false
+  }
+
+  $activePayload = $payload
+  if ($payload.PSObject.Properties.Name -contains "0" -and $payload."0") {
+    $activePayload = $payload."0"
+  }
+
+  return (
+    $activePayload.active -eq $false -or
+    $activePayload.active -eq 0 -or
+    $activePayload.m_bActive -eq $false -or
+    $activePayload.m_bActive -eq 0
+  )
+}
+
 function Assert-SmokeResult {
   param($Result)
 
@@ -639,6 +677,7 @@ function Assert-SmokeResult {
   $electronOverlay = if ($nativePresenter) { $nativePresenter.electronOverlay } else { $null }
   $events = @($snapshot.events)
   $overlayActivated = @($events | Where-Object { Test-OverlayActiveEvent $_ }).Count -gt 0
+  $overlayDeactivated = @($events | Where-Object { Test-OverlayInactiveEvent $_ }).Count -gt 0
   $expectedActionError = ($RequireActionErrorCode -or $RequireActionErrorReason)
 
   if ($expectedActionError) {
@@ -755,6 +794,26 @@ function Assert-SmokeResult {
   if ($RequireNoOverlayActivation -and $overlayActivated) {
     $failures.Add("overlay activation callback active=true was not emitted")
   }
+  if ($RequireManagedOverlayComplete) {
+    if ($app.managedOverlayResultMode -ne "complete") {
+      $failures.Add("managed overlay result mode is complete")
+    }
+    if (-not $overlayActivated) {
+      $failures.Add("managed overlay emitted active=true before completion")
+    }
+    if (-not $overlayDeactivated) {
+      $failures.Add("managed overlay emitted active=false before completion")
+    }
+    if (-not $Result.wait -or $Result.wait.overlayClosed -ne $true) {
+      $failures.Add("managed overlay close wait completed")
+    }
+    if (-not $Result.wait -or $Result.wait.overlayParked -ne $true) {
+      $failures.Add("managed overlay park wait completed")
+    }
+    if (-not $Result.wait -or $Result.wait.overlayComplete -ne $true) {
+      $failures.Add("managed overlay open-and-wait completion resolved")
+    }
+  }
   foreach ($eventType in $RequireEvent) {
     if (-not ($events | Where-Object { $_.type -eq $eventType } | Select-Object -First 1)) {
       $failures.Add("event $eventType emitted")
@@ -830,6 +889,13 @@ function Invoke-DirectSmoke {
 function Invoke-SteamLaunchSmoke {
   if (-not $ShortcutGameId) {
     throw "Missing -ShortcutGameId for steam-launch mode."
+  }
+  if (-not $AllowStartSteamClient -and -not (Get-Process steam -ErrorAction SilentlyContinue)) {
+    throw (
+      "Steam is not running. Start Steam once in the interactive Windows desktop session, " +
+      "wait for the client UI to render normally, then rerun the helper. " +
+      "Pass -AllowStartSteamClient only when you intentionally want this helper to start Steam via steam://rungameid."
+    )
   }
 
   New-Item -ItemType Directory -Force -Path (Split-Path -Parent $ResultFile) | Out-Null

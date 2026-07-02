@@ -324,6 +324,9 @@ client rendering-health blocker first. The Windows matrix captures CEF,
 webhelper, and overlay log tails plus matching error lines under
 `steam-client/` for each preflight/case artifact so the next step can be chosen
 from Steam's own evidence instead of by repeatedly restarting the client.
+Standalone `windows-electron-smoke.ps1 -Mode steam-launch` also refuses to
+start Steam by default; pass `-AllowStartSteamClient` only for a deliberate
+manual launch.
 Before a long Windows run, launch
 `windows-electron-smoke.ps1 -Mode preflight` against the packaged app. The
 preflight reports Smart App Control/App Control policy state, Authenticode
@@ -759,9 +762,12 @@ the private `--checkout-json-file` checkout suite.
   web, store, Friends, and passive achievement notifications. It enables
   Chromium's in-process GPU path by default, matching the public Electron helper
   default on Windows; pass `-OverlayInProcessGpu 0` only for baseline comparison
-  artifacts. The managed suite is available for comparison only; keep the normal
-  path as the Windows default unless evidence from that baseline proves
-  additional machinery is needed. Each matrix case passes `-RequireNoCrashes`,
+  artifacts. The managed suite is available for comparison only; active managed
+  cases use complete-result mode, so they do not accept a result until Steam
+  emits the inactive callback and the managed close, park, and open-and-wait
+  completion events are recorded. Keep the normal path as the Windows default
+  unless evidence from that baseline proves additional machinery is needed.
+  Each matrix case passes `-RequireNoCrashes`,
   so Windows artifacts must prove both overlay behavior and a clean Electron
   crash-diagnostic snapshot.
   Each preflight and case artifact also includes a `steam-client/` directory
@@ -783,7 +789,9 @@ the private `--checkout-json-file` checkout suite.
   remain, or recent CEF/GPU/overlay-renderer log signals show the Steam client
   itself is in an unhealthy blank/white rendering state. Stale severe rendering
   log entries stay in `steam-client-rendering-health.json` as warnings instead
-  of failing fresh runs.
+  of failing fresh runs. The standalone helper follows the same bias: `-Mode
+  steam-launch` refuses to start Steam unless `-AllowStartSteamClient` is passed
+  intentionally.
   The Windows matrix is intentionally process-per-case right now. A
   one-process control-server harness is useful future research, but it is not
   the Windows proof path until it can wait on overlay readiness and run without
