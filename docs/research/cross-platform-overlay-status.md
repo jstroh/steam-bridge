@@ -298,7 +298,16 @@ uses the close probe for screenshots. It passed Steam-launched verification,
 emitted `GameOverlayActivated(true)`, and started `gameoverlayui64`, but the
 foreground window stayed `SteamBridgeSmoke` and the detected/before/after
 screenshots showed no visible Steam overlay UI. Treat raw native Community on
-Windows as callback-only evidence, not a user-visible overlay solution.
+Windows as callback-only evidence, not a user-visible overlay solution. A
+managed profile follow-up,
+`windows-managed-profile-screenshot-20260702-001`, tested
+`presenter-profile-open-and-wait` against the current user's Steam Community
+profile URL. It likewise emitted `GameOverlayActivated(true)` and
+`overlay:presenter-wait-shown`, but the foreground window stayed
+`SteamBridgeSmoke`, the detected/before/after screenshots showed no visible
+Steam overlay UI, and the managed wait timed out before inactive, close, park,
+or `open-and-wait` completion. That broadens the Windows issue from the app
+Community hub to Steam Community web pages in general.
 
 The macOS matrix can now pair `--app-id <your-app-id>` with
 `--checkout-json-file <path>` for private configured-product proof. Its manifest

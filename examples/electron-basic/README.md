@@ -121,10 +121,11 @@ close problem from input being delivered to the Electron game window or from a
 callback firing without visible overlay UI.
 The Windows matrix also has explicit managed profile, players, community,
 stats, achievements, and user cases. Current focused artifacts show the
-Community target and a generic web overlay pointed at
-`https://steamcommunity.com/app/480` both fire active callbacks without visible
-overlay screenshots, so keep Community-style Windows routes separate from the
-known-good store/web/Friends lane until that Steam surface is proven.
+Community target, a generic web overlay pointed at
+`https://steamcommunity.com/app/480`, and the current user's Steam Community
+profile target all fire active callbacks without visible overlay screenshots,
+so keep Steam Community-style Windows routes separate from the known-good
+store/web/Friends lane until that Steam surface is proven.
 
 Live Steam-launched Windows overlay proof must run from the same interactive
 desktop session as Steam. SSH runs execute in Session 0 and are rejected by the
