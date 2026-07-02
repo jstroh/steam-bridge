@@ -705,4 +705,21 @@ the private `--checkout-json-file` checkout suite.
   initialize, even though the package was built on macOS from the GitHub
   Windows x64 prebuild. Mac-built Windows packages remain supported, but the
   final Windows app must go through a normal Windows code-signing/reputation
-  path before overlay proof on SAC-enabled machines.
+  path before overlay proof on SAC-enabled machines. The smoke package includes
+  `sign-windows-package.ps1` for this step:
+
+  ```powershell
+  # Use an installed private-key code-signing certificate.
+  .\sign-windows-package.ps1 -CertificateThumbprint "<thumbprint>"
+
+  # Or import a PFX without putting the password in the command line.
+  $env:STEAM_BRIDGE_WINDOWS_PFX_PASSWORD = "<password>"
+  .\sign-windows-package.ps1 -PfxPath "C:\path\publisher-cert.pfx"
+
+  # Audit the current package without signing.
+  .\sign-windows-package.ps1 -VerifyOnly -AllowUnsigned
+  ```
+
+  A self-signed or locally trusted certificate can be useful for syntax checks,
+  but it is not enough evidence for Smart App Control; use a real trusted and
+  reputable publisher signing path for live Windows overlay proof.

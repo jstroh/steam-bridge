@@ -66,6 +66,14 @@ Zone.Identifier streams, and recent Code Integrity block events that mention the
 smoke app. If the native addon is blocked there, Steam cannot initialize and
 overlay proof must wait for a trusted/reputable signed package or an explicitly
 SAC-disabled development machine.
+The packaged smoke app also includes `sign-windows-package.ps1` so Windows test
+machines can sign the exact bundle that Steam launches. Use
+`.\sign-windows-package.ps1 -CertificateThumbprint "<thumbprint>"` with an
+installed private-key publisher certificate, or set
+`STEAM_BRIDGE_WINDOWS_PFX_PASSWORD` and pass `-PfxPath` to import a PFX. Run
+`.\sign-windows-package.ps1 -VerifyOnly -AllowUnsigned` for an audit-only report.
+Self-signed certificates are not enough SAC evidence; the live overlay proof
+needs a trusted and reputable publisher signing path.
 
 ## Quick Start
 

@@ -261,6 +261,10 @@ function runMacosPackageSigningStaticChecks() {
     "macOS launcher template must stay app-name generic"
   );
   assert.ok(
+    packagerScript.includes("sign-windows-package.ps1"),
+    "Windows Electron package must include the Authenticode signing helper"
+  );
+  assert.ok(
     matrixScript.includes("verify-macos-steam-signing.cjs"),
     "macOS overlay matrix must verify package signing before live cases"
   );
@@ -296,6 +300,7 @@ function runMacosPackageSigningStaticChecks() {
 
 function runWindowsSmokeHelperStaticChecks() {
   const helper = fs.readFileSync(path.join(repoRoot, "scripts", "windows-electron-smoke.ps1"), "utf8");
+  const signingHelper = fs.readFileSync(path.join(repoRoot, "scripts", "sign-windows-package.ps1"), "utf8");
   for (const expected of [
     "presenter-ready",
     "presenter-web-open-and-wait",
@@ -316,6 +321,18 @@ function runWindowsSmokeHelperStaticChecks() {
     "function Add-DefaultRequireEvents"
   ]) {
     assert.ok(helper.includes(expected), `Windows smoke helper missing ${expected}`);
+  }
+  for (const expected of [
+    "Get-AuthenticodeSignature",
+    "Set-AuthenticodeSignature",
+    "Import-PfxCertificate",
+    "STEAM_BRIDGE_WINDOWS_PFX_PASSWORD",
+    ".exe\", \".dll\", \".node",
+    "TimestampServer",
+    "VerifyOnly",
+    "AllowUnsigned"
+  ]) {
+    assert.ok(signingHelper.includes(expected), `Windows signing helper missing ${expected}`);
   }
 }
 
