@@ -25,7 +25,8 @@ param(
   [string]$ShortcutTarget = "friends",
   [string]$CheckoutTransactionId = "123456789",
   [int]$TimeoutSeconds = 120,
-  [switch]$SkipNativeLoadGate
+  [switch]$SkipNativeLoadGate,
+  [string]$OverlayInProcessGpu = "1"
 )
 
 $ErrorActionPreference = "Stop"
@@ -219,6 +220,9 @@ function Test-NativeLoadGate {
     "-RequireNoOverlayActivation",
     "-RequireNoCrashes"
   )
+  if ($OverlayInProcessGpu) {
+    $gateArgs += @("-OverlayInProcessGpu", $OverlayInProcessGpu)
+  }
   if ($OverlayDisableDirectComposition) {
     $gateArgs += @("-OverlayDisableDirectComposition", $OverlayDisableDirectComposition)
   }
@@ -421,6 +425,9 @@ function Write-CaseLaunchEnv {
     "-ResultDelayMs", "$($Case.resultDelayMs)",
     "-TimeoutSeconds", "$TimeoutSeconds"
   )
+  if ($OverlayInProcessGpu) {
+    $args += @("-OverlayInProcessGpu", $OverlayInProcessGpu)
+  }
   if ($OverlayDisableDirectComposition) {
     $args += @("-OverlayDisableDirectComposition", $OverlayDisableDirectComposition)
   }
@@ -467,6 +474,9 @@ function Invoke-MatrixCase {
     "-TimeoutSeconds", "$TimeoutSeconds",
     "-RequireNoCrashes"
   )
+  if ($OverlayInProcessGpu) {
+    $args += @("-OverlayInProcessGpu", $OverlayInProcessGpu)
+  }
 
   if ($LaunchMode -eq "steam-launch") {
     if (-not $ShortcutGameId) {
@@ -519,6 +529,7 @@ Write-Host ("  appDir: {0}" -f $AppDir)
 Write-Host ("  artifactRoot: {0}" -f $ArtifactRoot)
 Write-Host ("  appId: {0}" -f $AppId)
 Write-Host ("  overlayProfile: {0}" -f $OverlayProfile)
+Write-Host ("  inProcessGpu: {0}" -f $OverlayInProcessGpu)
 Write-Host ("  disableDirectComposition: {0}" -f $OverlayDisableDirectComposition)
 if ($LaunchMode -eq "steam-launch") {
   Write-Host ("  launchEnvFile: {0}" -f $LaunchEnvFile)

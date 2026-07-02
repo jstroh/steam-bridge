@@ -311,13 +311,14 @@ renderer entries from future Electron child-process preload environment
 variables by default, keeping the bridge-owned native presenter as the overlay
 target. Set `scrubSteamOverlayChildProcessEnv: false` only for raw diagnostic
 comparisons.
-On Windows, start with this default Electron configuration. If a Windows smoke
-run shows a white or stale overlay, use
+On Windows, the default Electron configuration enables Chromium's in-process GPU
+path without starting a repaint loop. The Windows smoke helper mirrors that with
+`-OverlayInProcessGpu 1`; pass `-OverlayInProcessGpu 0` only for a baseline
+comparison. If a Windows smoke run still shows a white or stale overlay, use
 `electronConfigureSteamOverlay({ disableDirectComposition: true })` or the
-Windows smoke helper's `-OverlayDisableDirectComposition 1` flag for an explicit
-comparison run; keep Alt+Tab/close regression checks in that pass because this
-Chromium switch has known ghost-window risk in upstream Electron Steam wrapper
-reports.
+helper's `-OverlayDisableDirectComposition 1` flag for an explicit comparison
+run; keep Alt+Tab/close regression checks in that pass because this Chromium
+switch has known ghost-window risk in upstream Electron Steam wrapper reports.
 Before a long Windows run, launch
 `windows-electron-smoke.ps1 -Mode preflight` against the packaged app. The
 preflight reports Smart App Control/App Control policy state, Authenticode
@@ -750,11 +751,14 @@ the private `--checkout-json-file` checkout suite.
   ```
 
   The baseline suite uses the ordinary Windows Electron/Steam overlay path for
-  web, store, Friends, and passive achievement notifications. The managed suite
-  is available for comparison only; keep the normal path as the Windows default
-  unless evidence from that baseline proves additional machinery is needed. Each
-  matrix case passes `-RequireNoCrashes`, so Windows artifacts must prove both
-  overlay behavior and a clean Electron crash-diagnostic snapshot.
+  web, store, Friends, and passive achievement notifications. It enables
+  Chromium's in-process GPU path by default, matching the public Electron helper
+  default on Windows; pass `-OverlayInProcessGpu 0` only for baseline comparison
+  artifacts. The managed suite is available for comparison only; keep the normal
+  path as the Windows default unless evidence from that baseline proves
+  additional machinery is needed. Each matrix case passes `-RequireNoCrashes`,
+  so Windows artifacts must prove both overlay behavior and a clean Electron
+  crash-diagnostic snapshot.
   The Windows matrix stores one stable non-Steam shortcut whose launch options
   point at a local smoke env file, then rewrites only that env file for each
   case. If the shortcut must be added or materially updated while Steam is

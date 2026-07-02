@@ -4,19 +4,19 @@ This is a tiny Electron app for proving that Steam Bridge can initialize Steam,
 read basic Steamworks state, and exercise overlay paths on supported Steam
 desktop platforms. The deepest automated coverage currently targets Steam Deck
 Desktop Mode and macOS Apple Silicon; Linux x64 helper coverage is verified
-through the Deck, and Windows x64 helper coverage now includes a live
-interactive native-load gate while Steam-launched overlay proof continues.
+through the Deck, and Windows x64 helper coverage now includes live interactive
+native-load and Steam-launched store overlay activation proof.
 
 It uses Valve's SpaceWar sample App ID `480` by default. Override it with
 `STEAM_BRIDGE_APP_ID` when testing your own app.
 
 The default Electron overlay profile is `diagnostic`, which applies conservative
-Electron switches and avoids forcing Chromium's in-process GPU path. Set
-`STEAM_BRIDGE_ELECTRON_OVERLAY_PROFILE=repaint` when an event-driven Electron
-renderer needs fresh frames for Steam's overlay. Set
+Electron switches. On Windows, Steam Bridge also enables Chromium's in-process
+GPU path by default because that is the verified ordinary Steam-launched overlay
+path. Set `STEAM_BRIDGE_ELECTRON_OVERLAY_PROFILE=repaint` when an event-driven
+Electron renderer needs fresh frames for Steam's overlay. Set
 `STEAM_BRIDGE_ELECTRON_OVERLAY_PROFILE=compatibility` only when you specifically
-want the more aggressive Linux/Desktop workaround that also enables Chromium's
-in-process GPU path.
+want the more aggressive Linux/Desktop workaround.
 
 ## Development
 
@@ -85,6 +85,11 @@ actions such as `presenter-ready`, `presenter-web-open-and-wait`,
 `presenter-friends-open-and-wait`, `presenter-dialog-auto-open-and-wait`,
 `presenter-checkout`, `presenter-shortcut`, and
 `presenter-shortcut-open-and-wait`.
+
+The helper defaults `-OverlayInProcessGpu 1` on Windows, matching
+`electronConfigureSteamOverlay()` and the verified Steam-launched store overlay
+proof. Pass `-OverlayInProcessGpu 0` only when collecting a failing baseline
+comparison.
 
 The Windows package also includes `windows-overlay-matrix.ps1`, which runs
 preflight and then a repeatable baseline, managed, or full suite while writing

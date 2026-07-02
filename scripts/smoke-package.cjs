@@ -310,6 +310,7 @@ function runWindowsSmokeHelperStaticChecks() {
   const helper = fs.readFileSync(path.join(repoRoot, "scripts", "windows-electron-smoke.ps1"), "utf8");
   const signingHelper = fs.readFileSync(path.join(repoRoot, "scripts", "sign-windows-package.ps1"), "utf8");
   const matrixHelper = fs.readFileSync(path.join(repoRoot, "scripts", "windows-overlay-matrix.ps1"), "utf8");
+  const electronHelper = fs.readFileSync(path.join(repoRoot, "packages", "steam-bridge", "src", "electron.ts"), "utf8");
   for (const expected of [
     "achievement-progress",
     "achievement-unlock",
@@ -328,6 +329,7 @@ function runWindowsSmokeHelperStaticChecks() {
     "--steam-bridge-smoke-web-url=$WebUrl",
     "--steam-bridge-smoke-checkout-transaction-id=$CheckoutTransactionId",
     "--steam-bridge-smoke-env-file=$SmokeEnvFile",
+    "--steam-bridge-electron-overlay-in-process-gpu=$OverlayInProcessGpu",
     "write-launch-env",
     "Get-SmokeEnv",
     "Set-SmokeProcessEnv",
@@ -382,10 +384,17 @@ function runWindowsSmokeHelperStaticChecks() {
     "-RequireNoOverlayActivation",
     "-RequireZeroManagedOverlayTiming",
     "-RequireNoCrashes",
+    "-OverlayInProcessGpu",
     "steam-launch",
     "ArtifactRoot"
   ]) {
     assert.ok(matrixHelper.includes(expected), `Windows overlay matrix missing ${expected}`);
+  }
+  for (const expected of [
+    'const windowsMode = process.platform === "win32"',
+    "enableInProcessGpu = windowsMode || compatibilityMode"
+  ]) {
+    assert.ok(electronHelper.includes(expected), `Electron overlay helper missing ${expected}`);
   }
 }
 
@@ -410,6 +419,8 @@ function runElectronSmokeActionStaticChecks() {
     ["Electron smoke main", main, "waitForDirectPresenterOpenReadiness"],
     ["Electron smoke main", main, "waitForCheckoutOperationReadiness"],
     ["Electron smoke main", main, "overlayDisableDirectComposition"],
+    ["Electron smoke main", main, "overlayInProcessGpu"],
+    ["Electron smoke main", main, "--steam-bridge-electron-overlay-in-process-gpu"],
     ["Electron smoke main", main, "--steam-bridge-electron-overlay-disable-direct-composition"],
     ["Electron smoke main", main, "checkoutTargetFromResult(checkoutOperation.transaction, { expectedAppId: APP_ID })"],
     ["Electron smoke main", main, "throwIfNativeHostUnavailable(initialSnapshot, target)"],

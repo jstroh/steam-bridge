@@ -48,6 +48,7 @@ param(
   [string]$Action = "none",
 
   [string]$OverlayProfile = "diagnostic",
+  [string]$OverlayInProcessGpu = "1",
   [string]$OverlayDisableDirectComposition = "",
   [string]$WindowMode = "",
   [string]$WebUrl = "",
@@ -129,6 +130,9 @@ function Get-SmokeArgs {
   }
   if ($OverlayDisableDirectComposition) {
     $args += "--steam-bridge-electron-overlay-disable-direct-composition=$OverlayDisableDirectComposition"
+  }
+  if ($OverlayInProcessGpu) {
+    $args += "--steam-bridge-electron-overlay-in-process-gpu=$OverlayInProcessGpu"
   }
   if ($WindowMode) {
     $args += "--steam-bridge-smoke-window-mode=$WindowMode"
@@ -212,6 +216,9 @@ function Get-SmokeEnv {
   }
   if ($OverlayDisableDirectComposition) {
     $envMap.STEAM_BRIDGE_ELECTRON_OVERLAY_DISABLE_DIRECT_COMPOSITION = $OverlayDisableDirectComposition
+  }
+  if ($OverlayInProcessGpu) {
+    $envMap.STEAM_BRIDGE_ELECTRON_OVERLAY_IN_PROCESS_GPU = $OverlayInProcessGpu
   }
   if ($WindowMode) {
     $envMap.STEAM_BRIDGE_SMOKE_WINDOW_MODE = $WindowMode

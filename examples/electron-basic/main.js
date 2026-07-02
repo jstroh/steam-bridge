@@ -22,6 +22,9 @@ const OVERLAY_ISOLATE_CHILD_PROCESSES = readOptionalBoolean(
   CLI_OPTIONS.overlayIsolateChildProcesses ||
     process.env.STEAM_BRIDGE_ELECTRON_OVERLAY_ISOLATE_CHILD_PROCESSES
 );
+const OVERLAY_IN_PROCESS_GPU = readOptionalBoolean(
+  CLI_OPTIONS.overlayInProcessGpu || process.env.STEAM_BRIDGE_ELECTRON_OVERLAY_IN_PROCESS_GPU
+);
 const OVERLAY_DISABLE_DIRECT_COMPOSITION = readOptionalBoolean(
   CLI_OPTIONS.overlayDisableDirectComposition ||
     process.env.STEAM_BRIDGE_ELECTRON_OVERLAY_DISABLE_DIRECT_COMPOSITION
@@ -142,6 +145,9 @@ if (OVERLAY_SCRUB_CHILD_ENV !== undefined) {
 }
 if (OVERLAY_ISOLATE_CHILD_PROCESSES !== undefined) {
   OVERLAY_CONFIG_OPTIONS.isolateSteamOverlayChildProcesses = OVERLAY_ISOLATE_CHILD_PROCESSES;
+}
+if (OVERLAY_IN_PROCESS_GPU !== undefined) {
+  OVERLAY_CONFIG_OPTIONS.enableInProcessGpu = OVERLAY_IN_PROCESS_GPU;
 }
 if (OVERLAY_DISABLE_DIRECT_COMPOSITION !== undefined) {
   OVERLAY_CONFIG_OPTIONS.disableDirectComposition = OVERLAY_DISABLE_DIRECT_COMPOSITION;
@@ -2303,6 +2309,7 @@ function snapshot() {
       overlayProfile: OVERLAY_PROFILE,
       overlayScrubChildEnv: OVERLAY_CONFIG.scrubSteamOverlayChildProcessEnv,
       overlayIsolateChildProcesses: OVERLAY_CONFIG.isolateSteamOverlayChildProcesses,
+      overlayInProcessGpu: OVERLAY_CONFIG.switches.includes("in-process-gpu"),
       overlayDisableDirectComposition: OVERLAY_CONFIG.disableDirectComposition,
       overlayConfig: OVERLAY_CONFIG,
       nativeHostBackend: MAC_NATIVE_HOST_BACKEND || null,
@@ -3232,6 +3239,7 @@ function parseSmokeArgs(args) {
     presenterMode: undefined,
     overlayScrubChildEnv: undefined,
     overlayIsolateChildProcesses: undefined,
+    overlayInProcessGpu: undefined,
     overlayDisableDirectComposition: undefined,
     windowMode: undefined,
     nativeHostBackend: undefined,
@@ -3334,6 +3342,9 @@ function parseSmokeArgs(args) {
         break;
       case "--steam-bridge-electron-overlay-isolate-child-processes":
         options.overlayIsolateChildProcesses = value == null || value === "" ? "1" : value;
+        break;
+      case "--steam-bridge-electron-overlay-in-process-gpu":
+        options.overlayInProcessGpu = value == null || value === "" ? "1" : value;
         break;
       case "--steam-bridge-electron-overlay-disable-direct-composition":
         options.overlayDisableDirectComposition = value == null || value === "" ? "1" : value;
