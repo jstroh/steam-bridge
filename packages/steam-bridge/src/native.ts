@@ -1662,6 +1662,7 @@ export interface NativeBinding {
   overlayNeedsPresent(): boolean;
   isOverlayNeedsPresentPollingEnabled(): boolean;
   getOverlayDiagnostics(): NativeOverlayDiagnostics;
+  getNativeOverlayHostDiagnosticsJson(): string | null | undefined;
   utilsGetServerRealTime(): number;
   utilsGetSecondsSinceAppActive(): number;
   utilsGetSecondsSinceComputerActive(): number;

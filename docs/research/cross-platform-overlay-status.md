@@ -442,6 +442,21 @@ layered/tool-window styles while active so the host behaved more like a normal
 native OpenGL game surface, but Steam still did not consume input through that
 host. Treat the Windows native presenter as useful rendering/focus evidence, not
 product proof, until it can close and return to the app from the same matrix.
+The next focused artifact,
+`C:\Users\admin\steam-bridge-artifacts\native-presenter-wndproc-web-20260702-002`,
+rebuilt the Windows native addon with WndProc host diagnostics and passed the
+managed web `openAndWait` route through the interactive Session 1 Steam shortcut
+with App ID `480`: `overlayShown=true`, `overlayClosed=true`,
+`overlayParked=true`, `overlayComplete=true`, `backend=windows-opengl`,
+`GameOverlayActivated(true)` followed by `GameOverlayActivated(false)`, clean
+crash diagnostics, and focus returned to the Electron app. The maintained
+SendInput close probe sent a mouse click to the foreground native host with
+`sent=3` and `lastError=0`; the native host diagnostics recorded focus and
+activation messages but no `WM_LBUTTONDOWN` / `WM_LBUTTONUP`, which is evidence
+that Steam consumed the click before it reached the host WndProc. Treat this as
+the first Windows native-presenter web close/back-to-app proof, not yet as
+coverage for Friends, store, checkout, passive toasts, shortcut toggle, or all
+dialog-equivalent routes.
 
 A later current-package Windows proof pass on 2026-07-02 contradicted the older
 direct-hook optimism. The render-health artifact

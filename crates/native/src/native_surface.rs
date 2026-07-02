@@ -638,6 +638,10 @@ mod macos {
         unsafe { steam_bridge_macos_main_display_is_asleep() }
     }
 
+    pub fn host_diagnostics_json() -> Option<String> {
+        None
+    }
+
     unsafe fn create_probe_window(title: &str) -> Result<NativeSurface, Error> {
         let pool: Id = msg_send![class!(NSAutoreleasePool), new];
 
@@ -1159,6 +1163,10 @@ mod fallback {
     pub fn mac_display_asleep() -> bool {
         false
     }
+
+    pub fn host_diagnostics_json() -> Option<String> {
+        None
+    }
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
@@ -1170,6 +1178,8 @@ pub use macos::*;
 mod windows {
     use super::{Buffer, Error};
     use once_cell::sync::Lazy;
+    use serde::Serialize;
+    use serde_json::json;
     use std::mem;
     use std::ptr;
     use std::sync::{Mutex, OnceLock};
@@ -1184,12 +1194,15 @@ mod windows {
     use windows_sys::Win32::UI::Input::KeyboardAndMouse::{SetActiveWindow, SetFocus};
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetClientRect,
-        GetWindowLongPtrW, GetWindowRect, PeekMessageW, RegisterClassW, SetForegroundWindow,
-        SetLayeredWindowAttributes, SetWindowLongPtrW, SetWindowPos, ShowWindow, TranslateMessage,
-        CS_OWNDC, GWL_EXSTYLE, LWA_ALPHA, MSG, PM_REMOVE, SWP_FRAMECHANGED, SWP_NOACTIVATE,
-        SWP_NOMOVE, SWP_NOOWNERZORDER, SWP_NOSIZE, SWP_NOZORDER, SWP_SHOWWINDOW, SW_HIDE, SW_SHOW,
-        WM_CLOSE, WNDCLASSW, WS_CLIPCHILDREN, WS_CLIPSIBLINGS, WS_EX_LAYERED, WS_EX_NOACTIVATE,
-        WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_OVERLAPPEDWINDOW, WS_POPUP,
+        GetForegroundWindow, GetWindowLongPtrW, GetWindowRect, PeekMessageW, RegisterClassW,
+        SetForegroundWindow, SetLayeredWindowAttributes, SetWindowLongPtrW, SetWindowPos,
+        ShowWindow, TranslateMessage, CS_OWNDC, GWL_EXSTYLE, GWL_STYLE, LWA_ALPHA, MSG, PM_REMOVE,
+        SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOOWNERZORDER, SWP_NOSIZE, SWP_NOZORDER,
+        SWP_SHOWWINDOW, SW_HIDE, SW_SHOW, WM_ACTIVATE, WM_ACTIVATEAPP, WM_CLOSE, WM_KEYDOWN,
+        WM_KEYUP, WM_KILLFOCUS, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEACTIVATE, WM_MOUSEMOVE,
+        WM_SETFOCUS, WM_SYSKEYDOWN, WM_SYSKEYUP, WNDCLASSW, WS_CLIPCHILDREN, WS_CLIPSIBLINGS,
+        WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_EX_TRANSPARENT,
+        WS_OVERLAPPEDWINDOW, WS_POPUP,
     };
 
     type Hglrc = isize;
@@ -1221,6 +1234,42 @@ mod windows {
 
     static SURFACE: Lazy<Mutex<Option<NativeSurface>>> = Lazy::new(|| Mutex::new(None));
     static WINDOW_CLASS_RESULT: OnceLock<Result<(), String>> = OnceLock::new();
+    static WINDOW_MESSAGE_DIAGNOSTICS: Lazy<Mutex<WindowMessageDiagnostics>> =
+        Lazy::new(|| Mutex::new(WindowMessageDiagnostics::default()));
+
+    #[derive(Clone, Default, Serialize)]
+    struct WindowMessageCounters {
+        total: u64,
+        key_down: u64,
+        key_up: u64,
+        sys_key_down: u64,
+        sys_key_up: u64,
+        mouse_move: u64,
+        left_button_down: u64,
+        left_button_up: u64,
+        close: u64,
+        set_focus: u64,
+        kill_focus: u64,
+        activate: u64,
+        activate_app: u64,
+        mouse_activate: u64,
+    }
+
+    #[derive(Clone, Serialize)]
+    struct WindowMessageEvent {
+        at_ms: u64,
+        hwnd: String,
+        message: u32,
+        name: &'static str,
+        wparam: u64,
+        lparam: i64,
+    }
+
+    #[derive(Clone, Default, Serialize)]
+    struct WindowMessageDiagnostics {
+        counters: WindowMessageCounters,
+        recent: Vec<WindowMessageEvent>,
+    }
 
     pub fn open(title: Option<String>) -> Result<(), Error> {
         close();
@@ -1367,6 +1416,48 @@ mod windows {
         false
     }
 
+    pub fn host_diagnostics_json() -> Option<String> {
+        let guard = SURFACE
+            .lock()
+            .expect("Steam overlay native surface lock poisoned");
+        let surface = guard.as_ref()?;
+        let message_diagnostics = WINDOW_MESSAGE_DIAGNOSTICS
+            .lock()
+            .expect("Steam overlay window message diagnostics lock poisoned")
+            .clone();
+
+        unsafe {
+            let foreground = GetForegroundWindow();
+            let rect = read_window_rect(surface.hwnd).map(window_rect_json);
+            let parent_rect = surface
+                .parent_hwnd
+                .and_then(read_window_rect)
+                .map(window_rect_json);
+            let style = GetWindowLongPtrW(surface.hwnd, GWL_STYLE) as u32;
+            let ex_style = GetWindowLongPtrW(surface.hwnd, GWL_EXSTYLE) as u32;
+            Some(
+                json!({
+                    "platform": "win32",
+                    "backend": "windows-opengl",
+                    "hwnd": hwnd_hex(surface.hwnd),
+                    "parentHwnd": surface.parent_hwnd.map(hwnd_hex),
+                    "foregroundHwnd": hwnd_hex(foreground),
+                    "isForeground": surface.hwnd == foreground,
+                    "style": format!("0x{style:08X}"),
+                    "exStyle": format!("0x{ex_style:08X}"),
+                    "inputPassthrough": surface.input_passthrough,
+                    "opaque": surface.opaque,
+                    "visible": surface.visible,
+                    "frame": surface.frame,
+                    "rect": rect,
+                    "parentRect": parent_rect,
+                    "messages": message_diagnostics,
+                })
+                .to_string(),
+            )
+        }
+    }
+
     fn with_surface(run: impl FnOnce(&mut NativeSurface)) -> Result<(), Error> {
         let mut guard = SURFACE
             .lock()
@@ -1401,6 +1492,7 @@ mod windows {
         parent_hwnd: Option<HWND>,
     ) -> Result<NativeSurface, Error> {
         ensure_window_class()?;
+        reset_window_message_diagnostics();
         let title = wide_string(title);
         let class_name = window_class_name();
         let parent_rect = parent_hwnd.and_then(read_window_rect);
@@ -1617,6 +1709,7 @@ mod windows {
         wparam: WPARAM,
         lparam: LPARAM,
     ) -> LRESULT {
+        record_window_message(hwnd, message, wparam, lparam);
         if message == WM_CLOSE {
             ShowWindow(hwnd, SW_HIDE);
             return 0;
@@ -1702,6 +1795,137 @@ mod windows {
             style |= WS_EX_TRANSPARENT;
         }
         style
+    }
+
+    fn reset_window_message_diagnostics() {
+        *WINDOW_MESSAGE_DIAGNOSTICS
+            .lock()
+            .expect("Steam overlay window message diagnostics lock poisoned") =
+            WindowMessageDiagnostics::default();
+    }
+
+    fn record_window_message(hwnd: HWND, message: u32, wparam: WPARAM, lparam: LPARAM) {
+        let name = window_message_name(message);
+        let mut diagnostics = WINDOW_MESSAGE_DIAGNOSTICS
+            .lock()
+            .expect("Steam overlay window message diagnostics lock poisoned");
+        diagnostics.counters.total = diagnostics.counters.total.saturating_add(1);
+        match message {
+            WM_KEYDOWN => {
+                diagnostics.counters.key_down = diagnostics.counters.key_down.saturating_add(1)
+            }
+            WM_KEYUP => diagnostics.counters.key_up = diagnostics.counters.key_up.saturating_add(1),
+            WM_SYSKEYDOWN => {
+                diagnostics.counters.sys_key_down =
+                    diagnostics.counters.sys_key_down.saturating_add(1)
+            }
+            WM_SYSKEYUP => {
+                diagnostics.counters.sys_key_up = diagnostics.counters.sys_key_up.saturating_add(1)
+            }
+            WM_MOUSEMOVE => {
+                diagnostics.counters.mouse_move = diagnostics.counters.mouse_move.saturating_add(1)
+            }
+            WM_LBUTTONDOWN => {
+                diagnostics.counters.left_button_down =
+                    diagnostics.counters.left_button_down.saturating_add(1)
+            }
+            WM_LBUTTONUP => {
+                diagnostics.counters.left_button_up =
+                    diagnostics.counters.left_button_up.saturating_add(1)
+            }
+            WM_CLOSE => diagnostics.counters.close = diagnostics.counters.close.saturating_add(1),
+            WM_SETFOCUS => {
+                diagnostics.counters.set_focus = diagnostics.counters.set_focus.saturating_add(1)
+            }
+            WM_KILLFOCUS => {
+                diagnostics.counters.kill_focus = diagnostics.counters.kill_focus.saturating_add(1)
+            }
+            WM_ACTIVATE => {
+                diagnostics.counters.activate = diagnostics.counters.activate.saturating_add(1)
+            }
+            WM_ACTIVATEAPP => {
+                diagnostics.counters.activate_app =
+                    diagnostics.counters.activate_app.saturating_add(1)
+            }
+            WM_MOUSEACTIVATE => {
+                diagnostics.counters.mouse_activate =
+                    diagnostics.counters.mouse_activate.saturating_add(1)
+            }
+            _ => {}
+        }
+
+        if is_diagnostic_window_message(message) {
+            diagnostics.recent.push(WindowMessageEvent {
+                at_ms: now_ms(),
+                hwnd: hwnd_hex(hwnd),
+                message,
+                name,
+                wparam: wparam as u64,
+                lparam: lparam as i64,
+            });
+            if diagnostics.recent.len() > 64 {
+                diagnostics.recent.remove(0);
+            }
+        }
+    }
+
+    fn is_diagnostic_window_message(message: u32) -> bool {
+        matches!(
+            message,
+            WM_KEYDOWN
+                | WM_KEYUP
+                | WM_SYSKEYDOWN
+                | WM_SYSKEYUP
+                | WM_LBUTTONDOWN
+                | WM_LBUTTONUP
+                | WM_CLOSE
+                | WM_SETFOCUS
+                | WM_KILLFOCUS
+                | WM_ACTIVATE
+                | WM_ACTIVATEAPP
+                | WM_MOUSEACTIVATE
+        )
+    }
+
+    fn window_message_name(message: u32) -> &'static str {
+        match message {
+            WM_KEYDOWN => "WM_KEYDOWN",
+            WM_KEYUP => "WM_KEYUP",
+            WM_SYSKEYDOWN => "WM_SYSKEYDOWN",
+            WM_SYSKEYUP => "WM_SYSKEYUP",
+            WM_MOUSEMOVE => "WM_MOUSEMOVE",
+            WM_LBUTTONDOWN => "WM_LBUTTONDOWN",
+            WM_LBUTTONUP => "WM_LBUTTONUP",
+            WM_CLOSE => "WM_CLOSE",
+            WM_SETFOCUS => "WM_SETFOCUS",
+            WM_KILLFOCUS => "WM_KILLFOCUS",
+            WM_ACTIVATE => "WM_ACTIVATE",
+            WM_ACTIVATEAPP => "WM_ACTIVATEAPP",
+            WM_MOUSEACTIVATE => "WM_MOUSEACTIVATE",
+            _ => "other",
+        }
+    }
+
+    fn window_rect_json(rect: RECT) -> serde_json::Value {
+        json!({
+            "left": rect.left,
+            "top": rect.top,
+            "right": rect.right,
+            "bottom": rect.bottom,
+            "width": (rect.right - rect.left).max(0),
+            "height": (rect.bottom - rect.top).max(0),
+        })
+    }
+
+    fn hwnd_hex(hwnd: HWND) -> String {
+        format!("0x{:X}", hwnd as usize)
+    }
+
+    fn now_ms() -> u64 {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|duration| duration.as_millis().min(u128::from(u64::MAX)) as u64)
+            .unwrap_or(0)
     }
 
     fn window_class_name() -> Vec<u16> {
@@ -1930,6 +2154,10 @@ mod linux {
 
     pub fn mac_display_asleep() -> bool {
         false
+    }
+
+    pub fn host_diagnostics_json() -> Option<String> {
+        None
     }
 
     fn with_surface(run: impl FnOnce(&mut NativeSurface)) -> Result<(), Error> {

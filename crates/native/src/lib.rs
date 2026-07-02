@@ -358,6 +358,11 @@ pub fn get_overlay_diagnostics() -> Result<OverlayDiagnostics, Error> {
     })
 }
 
+#[napi(js_name = "getNativeOverlayHostDiagnosticsJson")]
+pub fn get_native_overlay_host_diagnostics_json() -> Option<String> {
+    native_surface::host_diagnostics_json()
+}
+
 fn overlay_needs_present_value(utils: *mut sys::ISteamUtils) -> bool {
     if overlay_needs_present_disabled() {
         return false;

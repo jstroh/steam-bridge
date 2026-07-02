@@ -1616,6 +1616,7 @@ export interface NativeOverlaySessionSnapshot {
   lastOverlayEvent?: GameOverlayActivated;
   nativeProbeOpen: boolean;
   nativeHostOpen: boolean;
+  nativeHostDiagnostics?: NativeOverlayHostDiagnostics;
   nativeHostUnavailableReason?: NativeOverlayHostUnavailableReason;
   macOverlayEnvironment?: MacOverlayEnvironment;
   lastPumpAt?: number;
@@ -1677,7 +1678,10 @@ export interface NativeOverlayPresenterSnapshot {
   lastPollAt?: number;
   lastError?: unknown;
   diagnostics?: OverlayDiagnostics;
+  nativeHostDiagnostics?: NativeOverlayHostDiagnostics;
 }
+
+export type NativeOverlayHostDiagnostics = Record<string, unknown>;
 
 export interface NativeOverlayPresenter extends CallbackHandle {
   close(): void;
@@ -7582,6 +7586,27 @@ export function getOverlayDiagnostics(): OverlayDiagnostics {
   return normalizeOverlayDiagnostics(native().getOverlayDiagnostics());
 }
 
+export function getNativeOverlayHostDiagnostics(): NativeOverlayHostDiagnostics | undefined {
+  const binding = native();
+  const reader = binding.getNativeOverlayHostDiagnosticsJson;
+  if (typeof reader !== "function") {
+    return undefined;
+  }
+
+  try {
+    const value = reader.call(binding);
+    if (!value) {
+      return undefined;
+    }
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as NativeOverlayHostDiagnostics)
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export function onMicroTxnAuthorizationResponse(
   handler: (event: MicroTxnAuthorizationResponse) => void
 ): CallbackHandle {
@@ -7757,6 +7782,9 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       : readNativeOverlayBounds(options.getBounds, (error) => {
           lastError = error;
         });
+    const nativeProbeOpen = safeBoolean(() => native().isNativeOverlayProbeWindowOpen());
+    const nativeHostOpen = safeBoolean(() => native().isNativeOverlayHostViewOpen());
+    const nativeHostDiagnostics = nativeHostOpen ? getNativeOverlayHostDiagnostics() : undefined;
     const base = {
       title,
       backend: closed ? "none" : backend,
@@ -7767,8 +7795,9 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       overlayActive,
       overlayWasActive,
       lastOverlayEvent,
-      nativeProbeOpen: safeBoolean(() => native().isNativeOverlayProbeWindowOpen()),
-      nativeHostOpen: safeBoolean(() => native().isNativeOverlayHostViewOpen()),
+      nativeProbeOpen,
+      nativeHostOpen,
+      ...(nativeHostDiagnostics ? { nativeHostDiagnostics } : {}),
       nativeHostUnavailableReason,
       macOverlayEnvironment,
       lastPumpAt,
@@ -8196,6 +8225,7 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
           : "passive";
     const nativeProbeOpen = safeBoolean(() => native().isNativeOverlayProbeWindowOpen());
     const nativeHostOpen = safeBoolean(() => native().isNativeOverlayHostViewOpen());
+    const nativeHostDiagnostics = nativeHostOpen ? getNativeOverlayHostDiagnostics() : undefined;
     const bounds = closed
       ? undefined
       : readNativeOverlayBounds(options.getBounds, (error) => {
@@ -8211,6 +8241,7 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
       attached: usesNativeHostView ? nativeHostOpen : nativeProbeOpen,
       nativeProbeOpen,
       nativeHostOpen,
+      ...(nativeHostDiagnostics ? { nativeHostDiagnostics } : {}),
       nativeHostUnavailableReason,
       macOverlayEnvironment,
       clickThrough: hostInputPassthrough,
@@ -10267,6 +10298,7 @@ function createNativeOverlaySessionPresenter(options: NativeOverlaySessionOption
       const diagnostics = snapshot?.diagnostics;
       const nativeProbeOpen = closed ? false : (snapshot?.nativeProbeOpen ?? false);
       const nativeHostOpen = closed ? false : (snapshot?.nativeHostOpen ?? false);
+      const nativeHostDiagnostics = closed ? undefined : snapshot?.nativeHostDiagnostics;
       const attached = nativeProbeOpen || nativeHostOpen;
       const overlayActive = closed ? false : (snapshot?.overlayActive ?? false);
       const overlayNeedsPresent = closed ? false : (diagnostics?.overlayNeedsPresent ?? false);
@@ -10285,6 +10317,7 @@ function createNativeOverlaySessionPresenter(options: NativeOverlaySessionOption
         attached,
         nativeProbeOpen,
         nativeHostOpen,
+        ...(nativeHostDiagnostics ? { nativeHostDiagnostics } : {}),
         clickThrough: !active,
         focusable: nativeProbeOpen,
         transparent: !active,
@@ -24085,6 +24118,7 @@ const defaultExport = {
   detachNativeOverlayHostView,
   isNativeOverlayProbeWindowOpen,
   isNativeOverlayHostViewOpen,
+  getNativeOverlayHostDiagnostics,
   getMacWindowSnapshot,
   getMacOverlayEnvironment,
   isAchievementActivated,

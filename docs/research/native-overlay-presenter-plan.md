@@ -1758,6 +1758,19 @@ or presenter parking. Keep the Windows native presenter as rendering/focus
 evidence only. The next Windows design problem is Steam input consumption for
 that host, not another Electron flag or Steam restart loop.
 
+A follow-up focused Windows slice rebuilt the `windows-opengl` host with WndProc
+diagnostics exposed in presenter snapshots and reran the managed modal web route
+through the interactive Session 1 Steam shortcut. Artifact
+`C:\Users\admin\steam-bridge-artifacts\native-presenter-wndproc-web-20260702-002`
+passed `presenter-web-open-and-wait` with App ID `480`: visible overlay
+activation, `GameOverlayActivated(true)`, a maintained SendInput mouse click
+against the foreground native host, `GameOverlayActivated(false)`, presenter
+parking, `openAndWait` completion, app focus return, and clean crash
+diagnostics. The host WndProc counters recorded focus/activation traffic but no
+left-button messages, which strongly suggests Steam consumed the close click
+inside the overlay. The next Windows work is route expansion and regression
+coverage, not another proof that the host can receive focus.
+
 Windows gates:
 
 - packaged helper preflight reports App Control/SAC state, parsed
