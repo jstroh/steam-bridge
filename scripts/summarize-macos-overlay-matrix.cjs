@@ -1340,8 +1340,26 @@ function verifyMicroTxnCallbackPresenterSnapshots(caseId, entries, failures, opt
     }
   });
 
-  if (options.required === true && options.actionName === "presenter-checkout" && options.checkoutSource) {
-    const checkoutOpenIndex = entries.findIndex((entry) => {
+  if (options.required === true && options.checkoutSource) {
+    const checkoutLifecycle = requiredMicroTxnCheckoutLifecycle(caseId, entries, failures, options);
+    if (checkoutLifecycle.ok) {
+      const callbackDuringCheckout = callbacks.some(
+        ({ index }) => index > checkoutLifecycle.openIndex && index < checkoutLifecycle.closeIndex
+      );
+      if (!callbackDuringCheckout) {
+        failures.push(
+          `${caseId}: required MicroTxnAuthorizationResponse callback was not recorded during the checkout wait lifecycle`
+        );
+      }
+    }
+  }
+
+  return { required: true, ok: failures.length === failuresBefore };
+}
+
+function requiredMicroTxnCheckoutLifecycle(caseId, entries, failures, options) {
+  if (options.actionName === "presenter-checkout") {
+    const openIndex = entries.findIndex((entry) => {
       const payload = objectOrEmpty(entry && entry.payload);
       return (
         entry &&
@@ -1351,26 +1369,52 @@ function verifyMicroTxnCallbackPresenterSnapshots(caseId, entries, failures, opt
         payload.checkoutSource === options.checkoutSource
       );
     });
-    const checkoutCompleteIndex = entries.findIndex(
-      (entry, index) =>
-        index > checkoutOpenIndex && entry && entry.type === "event:overlay:presenter-checkout-open-and-wait-complete"
-    );
-    const callbackDuringCheckout = callbacks.some(
-      ({ index }) => index > checkoutOpenIndex && index < checkoutCompleteIndex
-    );
-
-    if (checkoutOpenIndex === -1) {
+    if (openIndex === -1) {
       failures.push(`${caseId}: required MicroTxn callback proof has no matching checkout open event`);
-    } else if (checkoutCompleteIndex === -1) {
-      failures.push(`${caseId}: required MicroTxn callback proof has no checkout wait completion event`);
-    } else if (!callbackDuringCheckout) {
-      failures.push(
-        `${caseId}: required MicroTxnAuthorizationResponse callback was not recorded during the checkout wait lifecycle`
-      );
+      return { ok: false };
     }
+
+    const closeIndex = entries.findIndex(
+      (entry, index) =>
+        index > openIndex && entry && entry.type === "event:overlay:presenter-checkout-open-and-wait-complete"
+    );
+    if (closeIndex === -1) {
+      failures.push(`${caseId}: required MicroTxn callback proof has no checkout wait completion event`);
+      return { ok: false };
+    }
+
+    return { ok: true, openIndex, closeIndex };
   }
 
-  return { required: true, ok: failures.length === failuresBefore };
+  if (isShortcutAction(options.actionName)) {
+    const openIndex = entries.findIndex((entry) => {
+      const payload = objectOrEmpty(entry && entry.payload);
+      return entry && entry.type === "event:overlay:shortcut-open" && payload.target === "checkout";
+    });
+    if (openIndex === -1) {
+      failures.push(`${caseId}: required MicroTxn callback proof has no matching checkout shortcut open event`);
+      return { ok: false };
+    }
+
+    const closeIndex = entries.findIndex((entry, index) => {
+      if (index <= openIndex || !entry) {
+        return false;
+      }
+      if (options.actionName === "presenter-shortcut-open-and-wait") {
+        return entry.type === "event:overlay:presenter-open-and-wait-complete";
+      }
+      return entry.type === "event:overlay:presenter-parked";
+    });
+    if (closeIndex === -1) {
+      failures.push(`${caseId}: required MicroTxn callback proof has no checkout shortcut close event`);
+      return { ok: false };
+    }
+
+    return { ok: true, openIndex, closeIndex };
+  }
+
+  failures.push(`${caseId}: required MicroTxn callback proof has no supported checkout lifecycle`);
+  return { ok: false };
 }
 
 function expectMicroTxnCallbackPresenter(caseId, presenter, label, failures) {
@@ -2168,6 +2212,12 @@ function runSelfTest() {
   const sdkOrderMicroTxnFixtureRoot = fs.mkdtempSync(
     path.join(os.tmpdir(), "steam-bridge-macos-matrix-summary-sdk-order-microtxn.")
   );
+  const shortcutMicroTxnFixtureRoot = fs.mkdtempSync(
+    path.join(os.tmpdir(), "steam-bridge-macos-matrix-summary-shortcut-microtxn.")
+  );
+  const lateShortcutMicroTxnFixtureRoot = fs.mkdtempSync(
+    path.join(os.tmpdir(), "steam-bridge-macos-matrix-summary-late-shortcut-microtxn.")
+  );
   const missingCheckoutErrorSnapshotFixtureRoot = fs.mkdtempSync(
     path.join(os.tmpdir(), "steam-bridge-macos-matrix-summary-missing-checkout-error-snapshot.")
   );
@@ -2258,6 +2308,14 @@ function runSelfTest() {
     createSelfTestFixture(sdkOrderMicroTxnFixtureRoot);
     replaceMicroTxnCallbackOrderIdWithSdkOrderId(sdkOrderMicroTxnFixtureRoot, "06-checkout");
     summarizeMatrixArtifacts(sdkOrderMicroTxnFixtureRoot);
+    createSelfTestFixture(shortcutMicroTxnFixtureRoot);
+    injectMicroTxnCallbackRequirement(shortcutMicroTxnFixtureRoot, "04-shortcut-checkout");
+    insertMicroTxnCallbackBeforeShortcutClose(shortcutMicroTxnFixtureRoot, "04-shortcut-checkout");
+    summarizeMatrixArtifacts(shortcutMicroTxnFixtureRoot);
+    createSelfTestFixture(lateShortcutMicroTxnFixtureRoot);
+    injectMicroTxnCallbackRequirement(lateShortcutMicroTxnFixtureRoot, "04-shortcut-checkout");
+    insertMicroTxnCallbackAfterShortcutClose(lateShortcutMicroTxnFixtureRoot, "04-shortcut-checkout");
+    assertLateMicroTxnCallbackRejected(lateShortcutMicroTxnFixtureRoot);
     createSelfTestFixture(missingCheckoutErrorSnapshotFixtureRoot);
     removeCheckoutActionErrorSnapshot(missingCheckoutErrorSnapshotFixtureRoot, "07c-checkout-unavailable");
     assertMissingCheckoutActionErrorSnapshotRejected(missingCheckoutErrorSnapshotFixtureRoot);
@@ -2309,6 +2367,8 @@ function runSelfTest() {
     fs.rmSync(missingAuthorizationMicroTxnFixtureRoot, { recursive: true, force: true });
     fs.rmSync(missingOrderMicroTxnFixtureRoot, { recursive: true, force: true });
     fs.rmSync(sdkOrderMicroTxnFixtureRoot, { recursive: true, force: true });
+    fs.rmSync(shortcutMicroTxnFixtureRoot, { recursive: true, force: true });
+    fs.rmSync(lateShortcutMicroTxnFixtureRoot, { recursive: true, force: true });
     fs.rmSync(missingCheckoutErrorSnapshotFixtureRoot, { recursive: true, force: true });
     fs.rmSync(missingWebVisibilityFixtureRoot, { recursive: true, force: true });
     fs.rmSync(missingNeedsPresentPollingFixtureRoot, { recursive: true, force: true });
@@ -2658,6 +2718,57 @@ function moveMicroTxnCallbackAfterCheckoutCompletion(root, caseId) {
   );
   entries.splice(adjustedCompleteIndex + 1, 0, callback);
   fs.writeFileSync(lifecyclePath, entries.map((entry) => JSON.stringify(entry)).join("\n") + "\n");
+}
+
+function insertMicroTxnCallbackBeforeShortcutClose(root, caseId) {
+  updateShortcutMicroTxnCallback(root, caseId, ({ entries, openIndex, callback }) => {
+    const shownIndex = entries.findIndex(
+      (entry, index) => index > openIndex && entry && entry.type === "event:overlay:presenter-wait-shown"
+    );
+    assert.notEqual(shownIndex, -1, `self-test fixture ${caseId} should include shortcut shown wait`);
+    entries.splice(shownIndex + 1, 0, callback);
+  });
+}
+
+function insertMicroTxnCallbackAfterShortcutClose(root, caseId) {
+  updateShortcutMicroTxnCallback(root, caseId, ({ entries, openIndex, callback }) => {
+    const parkedIndex = entries.findIndex(
+      (entry, index) => index > openIndex && entry && entry.type === "event:overlay:presenter-parked"
+    );
+    assert.notEqual(parkedIndex, -1, `self-test fixture ${caseId} should include shortcut parked wait`);
+    entries.splice(parkedIndex + 1, 0, callback);
+  });
+}
+
+function updateShortcutMicroTxnCallback(root, caseId, update) {
+  const row = readManifestRows(root).find((entry) => entry.caseId === caseId);
+  assert.ok(row, `self-test fixture should include ${caseId}`);
+  const lifecyclePath = path.join(row.diagnosticDir, "lifecycle.jsonl");
+  const entries = fs
+    .readFileSync(lifecyclePath, "utf8")
+    .trim()
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .map((line) => JSON.parse(line));
+  const openIndex = entries.findIndex((entry) => {
+    const payload = objectOrEmpty(entry && entry.payload);
+    return entry && entry.type === "event:overlay:shortcut-open" && payload.target === "checkout";
+  });
+  assert.notEqual(openIndex, -1, `self-test fixture ${caseId} should include checkout shortcut open`);
+  update({ entries, openIndex, callback: microTxnCallbackFixture(20) });
+  fs.writeFileSync(lifecyclePath, entries.map((entry) => JSON.stringify(entry)).join("\n") + "\n");
+}
+
+function microTxnCallbackFixture(pumpCount) {
+  return {
+    type: "event:callback:microtxn",
+    payload: {
+      authorized: true,
+      appId: 480,
+      orderId: { redacted: true, present: true, type: "bigint" },
+      presenter: activePresenterFixture(pumpCount)
+    }
+  };
 }
 
 function assertLateMicroTxnCallbackRejected(root) {
