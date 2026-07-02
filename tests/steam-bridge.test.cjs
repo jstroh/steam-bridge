@@ -6949,6 +6949,8 @@ test("electron steam overlay manager scrubs Steam overlay preload from child pro
 });
 
 test("electron steam overlay manager owns one presenter and routes opens", async (t) => {
+  setProcessPlatformForTest(t, "linux");
+
   const hostHandle = Buffer.from([8, 7, 6, 5]);
   let windowBounds = { x: 10, y: 20, width: 1280, height: 720 };
   let hostOpen = false;
@@ -7277,6 +7279,8 @@ test("electron steam overlay manager owns one presenter and routes opens", async
 });
 
 test("electron steam overlay manager syncs the presenter on window geometry events", (t) => {
+  setProcessPlatformForTest(t, "linux");
+
   const hostHandle = Buffer.from([6, 7, 8, 9]);
   let hostOpen = false;
   let windowBounds = { x: 12, y: 24, width: 900, height: 600 };
@@ -7603,6 +7607,8 @@ test("electron steam overlay openAndWait uses the direct readiness path on Windo
 });
 
 test("electron steam overlay checkout preparation holds only for the wrapped operation", async (t) => {
+  setProcessPlatformForTest(t, "linux");
+
   const hostHandle = Buffer.from([1, 3, 5, 7]);
   let hostOpen = false;
   const fake = createFakeNative({
@@ -7734,6 +7740,8 @@ test("electron steam overlay checkout preparation holds only for the wrapped ope
 });
 
 test("electron steam overlay open holds the presenter until Steam reports shown", async (t) => {
+  setProcessPlatformForTest(t, "linux");
+
   const hostHandle = Buffer.from([8, 5, 3, 0]);
   let hostOpen = false;
   const fake = createFakeNative({
@@ -7838,6 +7846,8 @@ test("electron steam overlay open holds the presenter until Steam reports shown"
 });
 
 test("electron steam overlay manager primes passive notification toasts automatically", (t) => {
+  setProcessPlatformForTest(t, "linux");
+
   const hostHandle = Buffer.from([3, 1, 4, 1]);
   let hostOpen = false;
   const fake = createFakeNative({
@@ -8062,6 +8072,8 @@ test("electron steam overlay notification priming retries after macOS host becom
 });
 
 test("electron steam overlay manager can disable automatic passive notification priming", (t) => {
+  setProcessPlatformForTest(t, "linux");
+
   const hostHandle = Buffer.from([2, 7, 1, 8]);
   let hostOpen = false;
   const fake = createFakeNative({
@@ -8134,6 +8146,8 @@ test("electron steam overlay manager can disable automatic passive notification 
 });
 
 test("electron steam overlay manager can fall back to native overlay sessions", (t) => {
+  setProcessPlatformForTest(t, "linux");
+
   const hostHandle = Buffer.from([9, 9, 9, 9]);
   const windowBounds = { x: 4, y: 8, width: 1024, height: 768 };
   let hostOpen = false;
@@ -8254,6 +8268,8 @@ test("electron steam overlay manager can fall back to native overlay sessions", 
 });
 
 test("electron steam overlay manager honors the presenter kill switch env flag", (t) => {
+  setProcessPlatformForTest(t, "linux");
+
   const previous = process.env.STEAM_BRIDGE_DISABLE_ELECTRON_OVERLAY_PRESENTER;
   process.env.STEAM_BRIDGE_DISABLE_ELECTRON_OVERLAY_PRESENTER = "1";
 
@@ -10610,6 +10626,8 @@ test("electron steam overlay shortcut still opens during passive notification pr
 });
 
 test("electron steam overlay manager exposes lifecycle wait helpers", async (t) => {
+  setProcessPlatformForTest(t, "linux");
+
   const hostHandle = Buffer.from([2, 4, 6, 8]);
   let hostOpen = false;
   const fake = createFakeNative({
@@ -11524,6 +11542,8 @@ test("electron steam overlay manager validates managed targets before presenter 
 });
 
 test("electron steam overlay checkout helper prepares, opens, and waits with backend result shapes", async (t) => {
+  setProcessPlatformForTest(t, "linux");
+
   const hostHandle = Buffer.from([31, 41, 59, 26]);
   let hostOpen = false;
   const fake = createFakeNative({
@@ -12340,6 +12360,8 @@ test("electron steam overlay checkout IfAvailable waits through readiness and sk
 });
 
 test("electron steam overlay manager tolerates destroyed webContents during window close", (t) => {
+  setProcessPlatformForTest(t, "linux");
+
   const hostHandle = Buffer.from([23, 42, 108, 15]);
   let hostOpen = false;
   let closedHandler;
