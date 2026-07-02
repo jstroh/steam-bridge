@@ -121,6 +121,50 @@ function Read-MatrixJsonFile {
   return (Get-Content -Raw -LiteralPath $Path | ConvertFrom-Json)
 }
 
+function Convert-MatrixEventTime {
+  param($Value)
+
+  if (-not $Value) {
+    return $null
+  }
+
+  if ($Value -is [datetime]) {
+    return [datetime]$Value
+  }
+
+  $text = [string]$Value
+  if ($text -match '^/Date\((-?\d+)\)/$') {
+    try {
+      return [System.DateTimeOffset]::FromUnixTimeMilliseconds([int64]$Matches[1]).LocalDateTime
+    } catch {
+      return $null
+    }
+  }
+
+  try {
+    return [datetime]::Parse($text, [System.Globalization.CultureInfo]::InvariantCulture)
+  } catch {
+    return $null
+  }
+}
+
+function Select-CodeIntegrityEventsSince {
+  param($Events, [datetime]$Since)
+
+  if (-not $Since) {
+    return @($Events)
+  }
+
+  $threshold = $Since.AddSeconds(-2)
+  return @(
+    $Events |
+      Where-Object {
+        $eventTime = Convert-MatrixEventTime -Value $_.timeCreated
+        $eventTime -and $eventTime -ge $threshold
+      }
+  )
+}
+
 function Write-MatrixTextFile {
   param([string]$Path, [string[]]$Lines)
 
@@ -902,6 +946,7 @@ function New-NativeLoadGateBlocker {
     [string]$PostGatePreflightLog,
     [string]$PostGatePreflightJson,
     [string]$DiagnosticDir,
+    [datetime]$GateStartedAt,
     [string]$OriginalError
   )
 
@@ -910,6 +955,9 @@ function New-NativeLoadGateBlocker {
   if ($postGatePreflight -and $postGatePreflight.recentCodeIntegrityEvents) {
     $codeIntegrityEvents = @($postGatePreflight.recentCodeIntegrityEvents)
   }
+  $allCodeIntegrityEventCount = @($codeIntegrityEvents).Count
+  $codeIntegrityEvents = Select-CodeIntegrityEventsSince -Events $codeIntegrityEvents -Since $GateStartedAt
+  $ignoredOlderCodeIntegrityEventCount = $allCodeIntegrityEventCount - @($codeIntegrityEvents).Count
 
   $codeIntegrityMessages = @(
     $codeIntegrityEvents |
@@ -949,6 +997,7 @@ function New-NativeLoadGateBlocker {
   return [PSCustomObject]@{
     kind = "steam-bridge-windows-native-load-gate-blocker"
     generatedAt = (Get-Date).ToUniversalTime().ToString("o")
+    gateStartedAt = if ($GateStartedAt) { $GateStartedAt.ToUniversalTime().ToString("o") } else { $null }
     blockerCode = $blockerCode
     verifiedAndReputableBlock = $verifiedAndReputableBlock
     codeIntegrityPolicyBlock = $codeIntegrityPolicyBlock
@@ -961,6 +1010,7 @@ function New-NativeLoadGateBlocker {
     }
     appControl = $AppControlSummary
     postGateCodeIntegrityEvents = @($codeIntegrityEvents)
+    ignoredOlderCodeIntegrityEventCount = $ignoredOlderCodeIntegrityEventCount
     nextActions = @($nextActions)
   }
 }
@@ -970,6 +1020,7 @@ function New-SteamLaunchBlocker {
     $Case,
     [string]$PostCasePreflightLog,
     [string]$PostCasePreflightJson,
+    [datetime]$CaseStartedAt,
     [string]$OriginalError
   )
 
@@ -979,6 +1030,9 @@ function New-SteamLaunchBlocker {
   if ($postCasePreflight -and $postCasePreflight.recentCodeIntegrityEvents) {
     $codeIntegrityEvents = @($postCasePreflight.recentCodeIntegrityEvents)
   }
+  $allCodeIntegrityEventCount = @($codeIntegrityEvents).Count
+  $codeIntegrityEvents = Select-CodeIntegrityEventsSince -Events $codeIntegrityEvents -Since $CaseStartedAt
+  $ignoredOlderCodeIntegrityEventCount = $allCodeIntegrityEventCount - @($codeIntegrityEvents).Count
 
   $codeIntegrityMessages = @(
     $codeIntegrityEvents |
@@ -1024,6 +1078,7 @@ function New-SteamLaunchBlocker {
   return [PSCustomObject]@{
     kind = "steam-bridge-windows-steam-launch-blocker"
     generatedAt = (Get-Date).ToUniversalTime().ToString("o")
+    caseStartedAt = if ($CaseStartedAt) { $CaseStartedAt.ToUniversalTime().ToString("o") } else { $null }
     blockerCode = $blockerCode
     caseId = $Case.id
     action = $Case.action
@@ -1036,6 +1091,7 @@ function New-SteamLaunchBlocker {
     }
     appControl = $appControlSummary
     postCaseCodeIntegrityEvents = @($codeIntegrityEvents)
+    ignoredOlderCodeIntegrityEventCount = $ignoredOlderCodeIntegrityEventCount
     nextActions = @($nextActions)
   }
 }
@@ -1099,6 +1155,7 @@ function Test-NativeLoadGate {
     $gateArgs += @("-OverlayDisableDirectComposition", $OverlayDisableDirectComposition)
   }
 
+  $gateStartedAt = Get-Date
   try {
     Invoke-Helper -Arguments $gateArgs -LogFile $gateLog
   } catch {
@@ -1120,6 +1177,7 @@ function Test-NativeLoadGate {
       -PostGatePreflightLog $postGatePreflightLog `
       -PostGatePreflightJson $postGatePreflightJson `
       -DiagnosticDir $diagnosticDir `
+      -GateStartedAt $gateStartedAt `
       -OriginalError $_.Exception.Message
     Write-MatrixJsonFile -Path (Join-Path $PreflightDir "native-load-gate-blocker.json") -Value $blocker -Depth 10
     throw (
@@ -1902,6 +1960,7 @@ function Invoke-MatrixCase {
 
   Write-Host ("Running Windows overlay case {0}: {1}" -f $Case.id, $Case.action)
   $closeProbeProcess = Start-WindowsOverlayCloseProbe -Case $Case -CaseDir $caseDir -DiagnosticDir $diagnosticDir
+  $caseStartedAt = Get-Date
   try {
     Invoke-Helper -Arguments $args -LogFile $helperLog
   } catch {
@@ -1926,6 +1985,7 @@ function Invoke-MatrixCase {
           -Case $Case `
           -PostCasePreflightLog $postCasePreflightLog `
           -PostCasePreflightJson $postCasePreflightJson `
+          -CaseStartedAt $caseStartedAt `
           -OriginalError $_.Exception.Message
         Write-MatrixJsonFile -Path (Join-Path $caseDir "steam-launch-blocker.json") -Value $blocker -Depth 10
       }
