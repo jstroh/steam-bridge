@@ -108,7 +108,9 @@ being investigated. Current `OfficialGameGroup` dialog artifacts show both
 `close-tab` and `toggle` probes being sent from the interactive desktop session
 after a shortcut reload, while the overlay remains active until the managed close
 wait times out. Keep those routes in focused runs until close/back-to-app proof
-is green.
+is green. Close-probe artifacts include foreground-window and process snapshots
+around detection and input send time; use those to distinguish a Steam overlay
+close problem from input being delivered to the Electron game window.
 
 Live Steam-launched Windows overlay proof must run from the same interactive
 desktop session as Steam. SSH runs execute in Session 0 and are rejected by the

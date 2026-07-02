@@ -1398,6 +1398,55 @@ function Start-WindowsOverlayCloseProbe {
 
   $probeScript = @"
 `$ErrorActionPreference = "Continue"
+Add-Type @'
+using System;
+using System.Runtime.InteropServices;
+using System.Text;
+
+public static class SteamBridgeWindowsProbe {
+  [DllImport("user32.dll")]
+  public static extern IntPtr GetForegroundWindow();
+
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+  public static extern int GetWindowText(IntPtr hWnd, StringBuilder text, int count);
+
+  [DllImport("user32.dll")]
+  public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+}
+'@
+
+function Get-ForegroundProbeSnapshot {
+  `$handle = [SteamBridgeWindowsProbe]::GetForegroundWindow()
+  `$processId = [uint32]0
+  [void][SteamBridgeWindowsProbe]::GetWindowThreadProcessId(`$handle, [ref]`$processId)
+  `$titleBuilder = New-Object Text.StringBuilder 512
+  [void][SteamBridgeWindowsProbe]::GetWindowText(`$handle, `$titleBuilder, `$titleBuilder.Capacity)
+  `$process = `$null
+  if (`$processId -gt 0) {
+    `$process = Get-Process -Id ([int]`$processId) -ErrorAction SilentlyContinue
+  }
+
+  [PSCustomObject]@{
+    hwnd = ("0x{0:X}" -f `$handle.ToInt64())
+    pid = [int]`$processId
+    processName = if (`$process) { `$process.ProcessName } else { "" }
+    title = `$titleBuilder.ToString()
+  }
+}
+
+function Get-ProbeProcessSnapshot {
+  @(Get-Process steam,SteamBridgeSmoke,gameoverlayui64 -ErrorAction SilentlyContinue |
+    Sort-Object ProcessName,Id |
+    ForEach-Object {
+      [PSCustomObject]@{
+        processName = `$_.ProcessName
+        pid = `$_.Id
+        sessionId = `$_.SessionId
+        mainWindowTitle = `$_.MainWindowTitle
+      }
+    })
+}
+
 function Write-ProbeEvent {
   param([string]`$Type, [object]`$Payload)
   [PSCustomObject]@{
@@ -1420,10 +1469,17 @@ while ((Get-Date) -lt `$deadline -and -not `$sent) {
   if (Test-Path -LiteralPath '$lifecycleLog') {
     `$text = Get-Content -Raw -LiteralPath '$lifecycleLog' -ErrorAction SilentlyContinue
     if (`$text -match 'overlay:presenter-wait-shown' -or (`$text -match 'callback:overlay-activated' -and `$text -match '"active":true')) {
-      Write-ProbeEvent "probe:detected" ([PSCustomObject]@{})
+      Write-ProbeEvent "probe:detected" ([PSCustomObject]@{
+        foreground = Get-ForegroundProbeSnapshot
+        processes = Get-ProbeProcessSnapshot
+      })
       if ($settleMs -gt 0) {
         Start-Sleep -Milliseconds $settleMs
       }
+      Write-ProbeEvent "probe:before-send" ([PSCustomObject]@{
+        foreground = Get-ForegroundProbeSnapshot
+        processes = Get-ProbeProcessSnapshot
+      })
       `$shell = New-Object -ComObject WScript.Shell
       if ('$input' -eq 'escape') {
         `$shell.SendKeys('{ESC}')
@@ -1432,7 +1488,17 @@ while ((Get-Date) -lt `$deadline -and -not `$sent) {
       } else {
         `$shell.SendKeys('+{TAB}')
       }
-      Write-ProbeEvent "probe:sent" ([PSCustomObject]@{ input = '$input' })
+      Write-ProbeEvent "probe:sent" ([PSCustomObject]@{
+        input = '$input'
+        foreground = Get-ForegroundProbeSnapshot
+        processes = Get-ProbeProcessSnapshot
+      })
+      Start-Sleep -Milliseconds 250
+      Write-ProbeEvent "probe:after-send" ([PSCustomObject]@{
+        input = '$input'
+        foreground = Get-ForegroundProbeSnapshot
+        processes = Get-ProbeProcessSnapshot
+      })
       `$sent = `$true
     }
   }

@@ -265,9 +265,12 @@ requested close probe input, and then timed out before
 `GameOverlayActivated(false)`, `overlay:presenter-wait-closed`,
 `overlay:presenter-parked`, or `overlay:presenter-open-and-wait-complete`.
 `windows-managed-shortcut-escapeprobe-20260702-001` is the equivalent negative
-artifact for the managed shortcut target. Treat this as the remaining Windows
-automation focus problem, not evidence that Electron needs a native host on
-Windows.
+artifact for the managed shortcut target. A follow-up foreground diagnostic,
+`windows-managed-dialog-community-foreground-20260702-001`, showed the close
+probe was still sending input while the foreground window belonged to
+`SteamBridgeSmoke`, not a visible Steam overlay window. Treat this as the
+remaining Windows automation/focus problem, not evidence that Electron needs a
+native host on Windows.
 
 The macOS matrix can now pair `--app-id <your-app-id>` with
 `--checkout-json-file <path>` for private configured-product proof. Its manifest
