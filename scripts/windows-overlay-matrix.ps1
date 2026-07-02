@@ -31,7 +31,7 @@ param(
   [switch]$AllowUnhealthySteamClientLogs,
   [int]$SteamClientHealthRecentMinutes = 30,
   [switch]$CloseProbe,
-  [ValidateSet("toggle", "escape", "close-tab")]
+  [ValidateSet("toggle", "escape", "close-tab", "toggle-sendinput", "escape-sendinput", "close-tab-sendinput")]
   [string]$CloseProbeInput = "toggle",
   [int]$CloseProbeSettleMs = 750,
   [int]$CloseProbeTimeoutSeconds = 110,
@@ -1404,6 +1404,53 @@ using System.Runtime.InteropServices;
 using System.Text;
 
 public static class SteamBridgeWindowsProbe {
+  const uint INPUT_KEYBOARD = 1;
+  const uint KEYEVENTF_KEYUP = 0x0002;
+
+  [StructLayout(LayoutKind.Sequential)]
+  public struct INPUT {
+    public uint type;
+    public InputUnion u;
+  }
+
+  [StructLayout(LayoutKind.Explicit)]
+  public struct InputUnion {
+    [FieldOffset(0)]
+    public MOUSEINPUT mi;
+
+    [FieldOffset(0)]
+    public KEYBDINPUT ki;
+
+    [FieldOffset(0)]
+    public HARDWAREINPUT hi;
+  }
+
+  [StructLayout(LayoutKind.Sequential)]
+  public struct MOUSEINPUT {
+    public int dx;
+    public int dy;
+    public uint mouseData;
+    public uint dwFlags;
+    public uint time;
+    public IntPtr dwExtraInfo;
+  }
+
+  [StructLayout(LayoutKind.Sequential)]
+  public struct KEYBDINPUT {
+    public ushort wVk;
+    public ushort wScan;
+    public uint dwFlags;
+    public uint time;
+    public IntPtr dwExtraInfo;
+  }
+
+  [StructLayout(LayoutKind.Sequential)]
+  public struct HARDWAREINPUT {
+    public uint uMsg;
+    public ushort wParamL;
+    public ushort wParamH;
+  }
+
   [DllImport("user32.dll")]
   public static extern IntPtr GetForegroundWindow();
 
@@ -1412,8 +1459,50 @@ public static class SteamBridgeWindowsProbe {
 
   [DllImport("user32.dll")]
   public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+
+  [DllImport("user32.dll", SetLastError = true)]
+  public static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
+
+  static INPUT KeyInput(ushort virtualKey, uint flags) {
+    INPUT input = new INPUT();
+    input.type = INPUT_KEYBOARD;
+    input.u.ki.wVk = virtualKey;
+    input.u.ki.wScan = 0;
+    input.u.ki.dwFlags = flags;
+    input.u.ki.time = 0;
+    input.u.ki.dwExtraInfo = IntPtr.Zero;
+    return input;
+  }
+
+  public static uint SendKeyChord(ushort[] virtualKeys, out int lastError) {
+    INPUT[] inputs = new INPUT[virtualKeys.Length * 2];
+    int index = 0;
+    for (int i = 0; i < virtualKeys.Length; i++) {
+      inputs[index++] = KeyInput(virtualKeys[i], 0);
+    }
+    for (int i = virtualKeys.Length - 1; i >= 0; i--) {
+      inputs[index++] = KeyInput(virtualKeys[i], KEYEVENTF_KEYUP);
+    }
+
+    uint sent = SendInput((uint)inputs.Length, inputs, Marshal.SizeOf(typeof(INPUT)));
+    lastError = sent == inputs.Length ? 0 : Marshal.GetLastWin32Error();
+    return sent;
+  }
 }
 '@
+
+function Send-NativeKeyChord {
+  param([int[]]`$VirtualKeys)
+
+  `$keys = [uint16[]]`$VirtualKeys
+  `$lastError = 0
+  `$sent = [SteamBridgeWindowsProbe]::SendKeyChord(`$keys, [ref]`$lastError)
+  [PSCustomObject]@{
+    sent = `$sent
+    expected = (`$keys.Length * 2)
+    lastError = `$lastError
+  }
+}
 
 function Get-ForegroundProbeSnapshot {
   `$handle = [SteamBridgeWindowsProbe]::GetForegroundWindow()
@@ -1480,16 +1569,26 @@ while ((Get-Date) -lt `$deadline -and -not `$sent) {
         foreground = Get-ForegroundProbeSnapshot
         processes = Get-ProbeProcessSnapshot
       })
-      `$shell = New-Object -ComObject WScript.Shell
+      `$nativeInputSent = `$null
       if ('$input' -eq 'escape') {
+        `$shell = New-Object -ComObject WScript.Shell
         `$shell.SendKeys('{ESC}')
       } elseif ('$input' -eq 'close-tab') {
+        `$shell = New-Object -ComObject WScript.Shell
         `$shell.SendKeys('^w')
+      } elseif ('$input' -eq 'escape-sendinput') {
+        `$nativeInputSent = Send-NativeKeyChord @(0x1B)
+      } elseif ('$input' -eq 'close-tab-sendinput') {
+        `$nativeInputSent = Send-NativeKeyChord @(0x11, 0x57)
+      } elseif ('$input' -eq 'toggle-sendinput') {
+        `$nativeInputSent = Send-NativeKeyChord @(0x10, 0x09)
       } else {
+        `$shell = New-Object -ComObject WScript.Shell
         `$shell.SendKeys('+{TAB}')
       }
       Write-ProbeEvent "probe:sent" ([PSCustomObject]@{
         input = '$input'
+        nativeInputSent = `$nativeInputSent
         foreground = Get-ForegroundProbeSnapshot
         processes = Get-ProbeProcessSnapshot
       })

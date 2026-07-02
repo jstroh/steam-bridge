@@ -100,17 +100,21 @@ write `STEAM_BRIDGE_SMOKE_MANAGED_OVERLAY_RESULT_MODE=complete` and require
 Steam's inactive callback plus the managed close, park, and open-and-wait
 completion events before the smoke result is accepted. Run those cases only when
 the overlay can be closed interactively or by a verified UI close probe.
-The Windows close probe supports `-CloseProbeInput toggle`, `escape`, and
-`close-tab`. Current Windows evidence uses `toggle` for store/web-style overlay
-pages and `escape` for the direct Friends panel. Dialog-equivalent and shortcut
-routes open and emit active callbacks, but their automated close input is still
-being investigated. Current `OfficialGameGroup` dialog artifacts show both
-`close-tab` and `toggle` probes being sent from the interactive desktop session
-after a shortcut reload, while the overlay remains active until the managed close
-wait times out. Keep those routes in focused runs until close/back-to-app proof
-is green. Close-probe artifacts include foreground-window and process snapshots
-around detection and input send time; use those to distinguish a Steam overlay
-close problem from input being delivered to the Electron game window.
+The Windows close probe supports `-CloseProbeInput toggle`, `escape`,
+`close-tab`, plus `toggle-sendinput`, `escape-sendinput`, and
+`close-tab-sendinput` for native `SendInput` keyboard injection. Current Windows
+evidence uses `toggle` for store/web-style overlay pages and `escape` for the
+direct Friends panel. Dialog-equivalent and shortcut routes open and emit active
+callbacks, but their automated close input is still being investigated. Current
+`OfficialGameGroup` dialog artifacts show `close-tab`, `toggle`, and native
+`close-tab-sendinput` probes being sent from the interactive desktop session,
+while the overlay remains active until the managed close wait times out. The
+native Ctrl+W diagnostic delivered all four key events with `lastError=0`, so
+this is not just a WScript `SendKeys` issue. Keep those routes in focused runs
+until close/back-to-app proof is green. Close-probe artifacts include
+foreground-window and process snapshots around detection and input send time;
+use those to distinguish a Steam overlay close problem from input being
+delivered to the Electron game window.
 
 Live Steam-launched Windows overlay proof must run from the same interactive
 desktop session as Steam. SSH runs execute in Session 0 and are rejected by the
