@@ -323,7 +323,9 @@ Before a long Windows run, launch
 preflight reports Smart App Control/App Control policy state, Authenticode
 status for `SteamBridgeSmoke.exe` and the native `.node` addon, Zone.Identifier
 streams, and recent Code Integrity events so native-load blockers are visible
-before Steam overlay testing starts.
+before Steam overlay testing starts. Windows live cases also require clean
+Electron crash diagnostics, so hidden renderer/GPU/native crashes fail the smoke
+helper instead of becoming a manual post-run surprise.
 
 ```ts
 import { app, BrowserWindow } from "electron";
@@ -737,4 +739,6 @@ the private `--checkout-json-file` checkout suite.
   The baseline suite uses the ordinary Windows Electron/Steam overlay path for
   web, store, Friends, and passive achievement notifications. The managed suite
   is available for comparison only; keep the normal path as the Windows default
-  unless evidence from that baseline proves additional machinery is needed.
+  unless evidence from that baseline proves additional machinery is needed. Each
+  matrix case passes `-RequireNoCrashes`, so Windows artifacts must prove both
+  overlay behavior and a clean Electron crash-diagnostic snapshot.

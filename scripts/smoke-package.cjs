@@ -325,6 +325,7 @@ function runWindowsSmokeHelperStaticChecks() {
     "--steam-bridge-smoke-checkout-transaction-id=$CheckoutTransactionId",
     "function Test-OverlayActiveEvent",
     "RequireOverlayActivated",
+    "RequireNoCrashes",
     "function Add-DefaultRequireEvents"
   ]) {
     assert.ok(helper.includes(expected), `Windows smoke helper missing ${expected}`);
@@ -353,6 +354,7 @@ function runWindowsSmokeHelperStaticChecks() {
     "-RequireOverlayActivated",
     "-RequireNoOverlayActivation",
     "-RequireZeroManagedOverlayTiming",
+    "-RequireNoCrashes",
     "steam-launch",
     "ArtifactRoot"
   ]) {

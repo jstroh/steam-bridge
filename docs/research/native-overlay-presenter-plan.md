@@ -310,8 +310,13 @@ Useful public references:
 - Electron overlay regression report:
   https://github.com/electron/electron/issues/47662
 - Steamworks.js overlay reports:
+  https://github.com/ceifa/steamworks.js/issues/97
+  https://github.com/ceifa/steamworks.js/issues/116
   https://github.com/ceifa/steamworks.js/issues/160
   https://github.com/ceifa/steamworks.js/issues/195
+- Greenworks Electron overlay reports:
+  https://github.com/greenheartgames/greenworks/issues/50
+  https://github.com/greenheartgames/greenworks/issues/262
 - Tauri overlay report:
   https://github.com/tauri-apps/tauri/issues/6196
 - Native-presenter style reference implementation:
@@ -1666,6 +1671,14 @@ Alt+Tab, close, and back-to-app checks. Newer wrapper work such as
 `steamworks-ffi-node` uses native OpenGL/Metal overlay host surfaces across
 platforms, which remains useful contingency evidence, but it is not the first
 Windows implementation path unless ordinary Electron proves insufficient.
+
+A July 1, 2026 wrapper scan compared Steam's own overlay requirements,
+`steamworks.js`, Greenworks, and the newer `steamworks-ffi-node` overlay notes
+plus open overlay issues. It did not find a maintained, recent Electron-only
+Windows path beyond the same in-process GPU / DirectComposition switches and
+repaint pressure that this project already treats as baseline or comparison
+inputs. Treat older or lightly maintained wrapper reports as leads only; every
+claim must be re-proved through the local Windows matrix.
 
 Windows gates:
 

@@ -70,6 +70,7 @@ param(
   [switch]$RequireNoOverlayActivation,
   [int]$RequireRestoreFocusDelayMs = -1,
   [switch]$RequireZeroManagedOverlayTiming,
+  [switch]$RequireNoCrashes,
   [string]$RequireActionErrorCode = "",
   [string]$RequireActionErrorReason = "",
   [string]$RequireNativeHostUnavailableReason = "",
@@ -420,6 +421,7 @@ function Assert-SmokeResult {
   $launch = $snapshot.launch
   $processInfo = $snapshot.process
   $overlay = $snapshot.overlay
+  $crashDiagnostics = $snapshot.crashDiagnostics
   $nativePresenter = Read-OkValue $overlay.nativePresenter
   $electronOverlay = if ($nativePresenter) { $nativePresenter.electronOverlay } else { $null }
   $events = @($snapshot.events)
@@ -545,6 +547,26 @@ function Assert-SmokeResult {
       $failures.Add("event $eventType emitted")
     }
   }
+  if ($RequireNoCrashes) {
+    if (-not $crashDiagnostics) {
+      $failures.Add("crash diagnostics available")
+    } else {
+      $crashDumps = if ($crashDiagnostics.crashDumps) { @($crashDiagnostics.crashDumps) } else { @() }
+      $fatalLifecycleEvents = if ($crashDiagnostics.fatalLifecycleEvents) { @($crashDiagnostics.fatalLifecycleEvents) } else { @() }
+      if ($crashDiagnostics.available -ne $true) {
+        $failures.Add("crash diagnostics available")
+      }
+      if ($crashDiagnostics.ok -ne $true) {
+        $failures.Add("no crash diagnostics reported")
+      }
+      if ($crashDumps.Count -ne 0) {
+        $failures.Add("no crash dumps found")
+      }
+      if ($fatalLifecycleEvents.Count -ne 0) {
+        $failures.Add("no fatal lifecycle events recorded")
+      }
+    }
+  }
 
   if ($failures.Count -gt 0) {
     if ($steam.initError -and $steam.initError.message) {
@@ -554,6 +576,10 @@ function Assert-SmokeResult {
     if ($Result.action -and $Result.action.error -and $Result.action.error.message) {
       Write-Host "Autorun action error:"
       Write-Host $Result.action.error.message
+    }
+    if ($RequireNoCrashes -and $crashDiagnostics) {
+      Write-Host "Crash diagnostics:"
+      Write-Host ($crashDiagnostics | ConvertTo-Json -Depth 8)
     }
     foreach ($failure in $failures) {
       Write-Host "Smoke result failed: $failure"

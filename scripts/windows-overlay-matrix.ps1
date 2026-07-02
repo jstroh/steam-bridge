@@ -198,7 +198,8 @@ function Invoke-MatrixCase {
     "-WindowMode", $WindowMode,
     "-WebUrl", $WebUrl,
     "-ResultDelayMs", "$($Case.resultDelayMs)",
-    "-TimeoutSeconds", "$TimeoutSeconds"
+    "-TimeoutSeconds", "$TimeoutSeconds",
+    "-RequireNoCrashes"
   )
 
   if ($LaunchMode -eq "steam-launch") {
