@@ -356,6 +356,21 @@ evidence directly in each row, for example `closeProbeFg=SteamBridgeSmoke`,
 failures show whether the close probe was still focused on the game window
 without opening image files by hand.
 
+The Windows store route can now be selected in the smoke app and matrix through
+`STEAM_BRIDGE_SMOKE_STORE_ROUTE`, `--steam-bridge-smoke-store-route`, and
+`windows-overlay-matrix.ps1 -StoreRoute web|native`. A focused native-route run,
+`C:\Users\admin\steam-bridge-artifacts\windows-native-presenter-store-native-20260702-122846`,
+proved Steam's native `ActivateGameOverlayToStore` path can activate from the
+interactive Session 1 shortcut: App ID `480`, `GameOverlayActivated(true)`,
+foreground `steamwebhelper`, `overlayEnabled=true`, `overlayNeedsPresent=true`,
+and clean crash diagnostics. The same artifact also fixed the close-probe
+coordinate model by launching the long probe as `close-probe.ps1` and clicking
+the visible Back to Game control from recorded presenter bounds
+(`coordinateSource=presenter-bounds`, click `(1445,244)`). Steam still did not
+emit `GameOverlayActivated(false)`, park the presenter, or resolve
+`openAndWait(...)` before the managed 90-second close wait timed out, so native
+store is open/render evidence only, not Windows close/back-to-app proof.
+
 A no-restart child-process comparison attempt at
 `C:\Users\admin\steam-bridge-artifacts\windows-profile-unisolated-codex-20260702-091200b`
 ran the current matrix with `-OverlayScrubChildEnv 0` and

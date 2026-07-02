@@ -35,6 +35,7 @@ const MAC_NATIVE_HOST_BACKEND = normalizeMacNativeHostBackend(
 );
 configureMacNativeHostBackend(MAC_NATIVE_HOST_BACKEND);
 const STORE_URL = `https://store.steampowered.com/app/${APP_ID}/`;
+let STORE_ROUTE = normalizeStoreRoute(CLI_OPTIONS.storeRoute || process.env.STEAM_BRIDGE_SMOKE_STORE_ROUTE, "web");
 let WEB_URL = CLI_OPTIONS.webUrl || process.env.STEAM_BRIDGE_SMOKE_WEB_URL || STORE_URL;
 let WEB_MODAL = readBoolean(CLI_OPTIONS.webModal || process.env.STEAM_BRIDGE_SMOKE_WEB_MODAL, false);
 let CHECKOUT_URL = CLI_OPTIONS.checkoutUrl || process.env.STEAM_BRIDGE_SMOKE_CHECKOUT_URL || "";
@@ -65,6 +66,7 @@ let ACHIEVEMENT_CURRENT = Number(
 );
 let ACHIEVEMENT_MAX = Number(CLI_OPTIONS.achievementMax || process.env.STEAM_BRIDGE_SMOKE_ACHIEVEMENT_MAX || "2");
 const INITIAL_SMOKE_ACTION_OPTIONS = {
+  storeRoute: STORE_ROUTE,
   webUrl: WEB_URL,
   webModal: WEB_MODAL,
   checkoutUrl: CHECKOUT_URL,
@@ -666,6 +668,9 @@ function applySmokeActionOptions(options, { reset = false } = {}) {
   if (Object.prototype.hasOwnProperty.call(options, "webModal")) {
     WEB_MODAL = readBoolean(options.webModal, WEB_MODAL);
   }
+  if (typeof options.storeRoute === "string") {
+    STORE_ROUTE = normalizeStoreRoute(options.storeRoute, STORE_ROUTE);
+  }
   if (typeof options.checkoutUrl === "string") {
     CHECKOUT_URL = options.checkoutUrl;
   }
@@ -699,6 +704,7 @@ function applySmokeActionOptions(options, { reset = false } = {}) {
 }
 
 function resetSmokeActionOptions() {
+  STORE_ROUTE = INITIAL_SMOKE_ACTION_OPTIONS.storeRoute;
   WEB_URL = INITIAL_SMOKE_ACTION_OPTIONS.webUrl;
   WEB_MODAL = INITIAL_SMOKE_ACTION_OPTIONS.webModal;
   CHECKOUT_URL = INITIAL_SMOKE_ACTION_OPTIONS.checkoutUrl;
@@ -724,6 +730,9 @@ function summarizeSmokeActionOptions(options) {
   }
   if (Object.prototype.hasOwnProperty.call(options, "webModal")) {
     summary.webModal = readBoolean(options.webModal, false);
+  }
+  if (typeof options.storeRoute === "string") {
+    summary.storeRoute = normalizeStoreRoute(options.storeRoute, STORE_ROUTE);
   }
   if (typeof options.checkoutUrl === "string" && options.checkoutUrl) {
     summary.hasCheckoutUrl = true;
@@ -1141,12 +1150,12 @@ async function openPresenterStoreOverlay() {
   const activeClient = requireClient();
   const overlay = ensureElectronSteamOverlay(activeClient);
   const url = typeof steamworks.steamStoreAppUrl === "function" ? steamworks.steamStoreAppUrl(APP_ID) : STORE_URL;
-  const target = { type: "store", appId: APP_ID, flag: activeClient.overlay.StoreFlag.None };
+  const target = { type: "store", appId: APP_ID, flag: activeClient.overlay.StoreFlag.None, route: STORE_ROUTE };
   const context = {
     target: "store",
     appId: APP_ID,
     flag: activeClient.overlay.StoreFlag.None,
-    route: "web",
+    route: STORE_ROUTE,
     url,
     api: "openStore"
   };
@@ -1288,12 +1297,12 @@ function openPresenterStoreOpenAndWaitOverlay() {
   const activeClient = requireClient();
   const overlay = ensureElectronSteamOverlay(activeClient);
   const url = typeof steamworks.steamStoreAppUrl === "function" ? steamworks.steamStoreAppUrl(APP_ID) : STORE_URL;
-  const target = { type: "store", appId: APP_ID, flag: activeClient.overlay.StoreFlag.None };
+  const target = { type: "store", appId: APP_ID, flag: activeClient.overlay.StoreFlag.None, route: STORE_ROUTE };
   const context = {
     target: "store",
     appId: APP_ID,
     flag: activeClient.overlay.StoreFlag.None,
-    route: "web",
+    route: STORE_ROUTE,
     url,
     api: "openStoreAndWait"
   };
@@ -1585,7 +1594,7 @@ function openNamedPresenterTargetAndWaitIfAvailable(
 function duplicateOpenGuardTargets() {
   return {
     web: { type: "web", url: WEB_URL, modal: WEB_MODAL },
-    store: { type: "store", appId: APP_ID },
+    store: { type: "store", appId: APP_ID, route: STORE_ROUTE },
     friends: { type: "friends" },
     profile: { type: "profile" },
     players: { type: "players" },
@@ -2241,7 +2250,7 @@ function resolveShortcutOverlayTarget() {
     case "web":
       return { type: "web", url: WEB_URL, modal: WEB_MODAL };
     case "store":
-      return { type: "store", appId: APP_ID };
+      return { type: "store", appId: APP_ID, route: STORE_ROUTE };
     case "profile":
       return { type: "profile" };
     case "players":
@@ -2453,6 +2462,7 @@ function snapshot() {
       crashDumpDir: CRASH_DUMP_DIR,
       crashReporterStarted: crashReporterStarted(),
       storeUrl: STORE_URL,
+      storeRoute: STORE_ROUTE,
       webUrl: WEB_URL,
       webModal: WEB_MODAL,
       overlayDialog: OVERLAY_DIALOG,
@@ -3383,6 +3393,7 @@ function parseSmokeArgs(args) {
     nativeHostBackend: undefined,
     autorunRequireOverlayActive: undefined,
     webModal: undefined,
+    storeRoute: undefined,
     webUrl: undefined,
     checkoutUrl: undefined,
     checkoutTransactionId: undefined,
@@ -3433,6 +3444,9 @@ function parseSmokeArgs(args) {
         break;
       case "--steam-bridge-smoke-web-url":
         options.webUrl = value;
+        break;
+      case "--steam-bridge-smoke-store-route":
+        options.storeRoute = value;
         break;
       case "--steam-bridge-smoke-checkout-url":
         options.checkoutUrl = value;
@@ -3564,6 +3578,17 @@ function loadSmokeEnvFile(filePath) {
 
     process.env[key] = line.slice(separator + 1);
   }
+}
+
+function normalizeStoreRoute(value, fallback = "web") {
+  const route = String(value || "").trim().toLowerCase();
+  if (!route) {
+    return fallback;
+  }
+  if (route === "web" || route === "native") {
+    return route;
+  }
+  throw new Error(`Unsupported Steam store overlay route: ${value}`);
 }
 
 function readOption(args, index) {

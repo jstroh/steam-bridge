@@ -62,6 +62,8 @@ param(
   [string]$WindowMode = "",
   [string]$WebUrl = "",
   [string]$WebModal = "",
+  [ValidateSet("", "web", "native")]
+  [string]$StoreRoute = "",
   [string]$CheckoutUrl = "",
   [string]$CheckoutTransactionId = "",
   [string]$CheckoutReturnUrl = "",
@@ -164,6 +166,9 @@ function Get-SmokeArgs {
   if ($WebModal) {
     $args += "--steam-bridge-smoke-web-modal=$WebModal"
   }
+  if ($StoreRoute) {
+    $args += "--steam-bridge-smoke-store-route=$StoreRoute"
+  }
   if ($CheckoutUrl) {
     $args += "--steam-bridge-smoke-checkout-url=$CheckoutUrl"
   }
@@ -261,6 +266,9 @@ function Get-SmokeEnv {
   }
   if ($WebModal) {
     $envMap.STEAM_BRIDGE_SMOKE_WEB_MODAL = $WebModal
+  }
+  if ($StoreRoute) {
+    $envMap.STEAM_BRIDGE_SMOKE_STORE_ROUTE = $StoreRoute
   }
   if ($CheckoutUrl) {
     $envMap.STEAM_BRIDGE_SMOKE_CHECKOUT_URL = $CheckoutUrl

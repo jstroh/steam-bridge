@@ -1817,6 +1817,26 @@ reliable interactive Windows product route. The next implementation slice should
 focus on Windows native-host input/focus/window-shape comparisons and store
 route alternatives, not more Steam restarts or Electron Chromium flags.
 
+The Windows smoke harness now exposes the store route explicitly:
+`STEAM_BRIDGE_SMOKE_STORE_ROUTE`, `--steam-bridge-smoke-store-route`, and the
+matrix `-StoreRoute web|native` switch all flow into
+`steamOverlay.open({ type: "store", route })` and
+`openAndWait({ type: "store", route })`. A follow-up native-route artifact,
+`C:\Users\admin\steam-bridge-artifacts\windows-native-presenter-store-native-20260702-122846`,
+used `-StoreRoute native` against App ID `480` from interactive Session 1. It
+activated Steam's native `ActivateGameOverlayToStore` path, foregrounded
+`steamwebhelper`, emitted `GameOverlayActivated(true)`, reported
+`overlayEnabled=true` and `overlayNeedsPresent=true`, and wrote clean crash
+diagnostics. The close probe was also hardened during this run: it now writes
+the long probe script to `close-probe.ps1` instead of launching an oversized
+`-EncodedCommand`, and its web-close click target is derived from the native
+presenter's recorded bounds instead of the foreground webhelper's misleading
+`1024x768` rect. The probe sent a real mouse click to `(1445,244)` with
+`coordinateSource="presenter-bounds"`, matching the visible Back to Game close
+button in the screenshots, but Steam remained active until the managed
+90-second close wait timed out. This confirms the native store route opens and
+renders, but it is still not close/back-to-app proof on Windows.
+
 Windows gates:
 
 - packaged helper preflight reports App Control/SAC state, parsed

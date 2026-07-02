@@ -21,6 +21,8 @@ param(
   [string]$OverlayDisableDirectComposition = "",
   [string]$WindowMode = "windowed",
   [string]$WebUrl = "",
+  [ValidateSet("web", "native")]
+  [string]$StoreRoute = "web",
   [string]$Dialog = "Friends",
   [string]$UserDialog = "steamid",
   [string]$ShortcutTarget = "friends",
@@ -1458,6 +1460,7 @@ function New-Case {
     [switch]$CloseProbeOnActivation,
     [string]$ManagedOverlayResultMode = "",
     [string]$WebModal = "",
+    [string]$StoreRouteOverride = "",
     [string]$DialogOverride = "",
     [string]$UserDialogOverride = "",
     [string]$ShortcutTargetOverride = "",
@@ -1476,6 +1479,7 @@ function New-Case {
     closeProbeOnActivation = [bool]$CloseProbeOnActivation
     managedOverlayResultMode = $ManagedOverlayResultMode
     webModal = $WebModal
+    storeRoute = $StoreRouteOverride
     dialog = $DialogOverride
     userDialog = $UserDialogOverride
     shortcutTarget = $ShortcutTargetOverride
@@ -1491,7 +1495,8 @@ function New-ManagedOpenAndWaitCase {
     [string]$DialogOverride = "",
     [string]$ShortcutTargetOverride = "",
     [string]$CheckoutTransactionIdOverride = "",
-    [string]$WebModal = ""
+    [string]$WebModal = "",
+    [string]$StoreRouteOverride = ""
   )
 
   return New-Case `
@@ -1504,7 +1509,8 @@ function New-ManagedOpenAndWaitCase {
     -DialogOverride $DialogOverride `
     -ShortcutTargetOverride $ShortcutTargetOverride `
     -CheckoutTransactionIdOverride $CheckoutTransactionIdOverride `
-    -WebModal $WebModal
+    -WebModal $WebModal `
+    -StoreRouteOverride $StoreRouteOverride
 }
 
 function Get-MatrixCases {
@@ -1520,7 +1526,7 @@ function Get-MatrixCases {
   $managed = @(
     New-Case -Id "10-presenter-ready" -Action "presenter-ready" -RequireEvent @("overlay:presenter-ready") -RequireNoOverlayActivation -AllowOverlayNotReady -ResultDelayMs 1200
     New-ManagedOpenAndWaitCase -Id "11-managed-web-open-and-wait" -Action "presenter-web-open-and-wait" -WebModal "true"
-    New-ManagedOpenAndWaitCase -Id "12-managed-store-open-and-wait" -Action "presenter-store-open-and-wait"
+    New-ManagedOpenAndWaitCase -Id "12-managed-store-open-and-wait" -Action "presenter-store-open-and-wait" -StoreRouteOverride $StoreRoute
     New-ManagedOpenAndWaitCase -Id "13-managed-friends-open-and-wait" -Action "presenter-friends-open-and-wait"
     New-ManagedOpenAndWaitCase -Id "14-managed-dialog-open-and-wait" -Action "presenter-dialog-auto-open-and-wait" -DialogOverride $Dialog
     New-ManagedOpenAndWaitCase -Id "15-managed-shortcut" -Action "presenter-shortcut-open-and-wait" -ShortcutTargetOverride $ShortcutTarget
@@ -1583,6 +1589,7 @@ function Write-MatrixManifest {
           closeProbeOnActivation = [bool]$_.closeProbeOnActivation
           managedOverlayResultMode = $_.managedOverlayResultMode
           webModal = $_.webModal
+          storeRoute = $_.storeRoute
           dialog = $_.dialog
           userDialog = $_.userDialog
           shortcutTarget = $_.shortcutTarget
@@ -1617,6 +1624,7 @@ function Write-MatrixManifest {
     assumeShortcutConfigured = [bool]$AssumeShortcutConfigured
     targetHints = [PSCustomObject]@{
       hasWebUrl = [bool]$WebUrl
+      storeRoute = $StoreRoute
       dialog = $Dialog
       userDialog = $UserDialog
       shortcutTarget = $ShortcutTarget
@@ -1973,6 +1981,33 @@ function Write-ProbeEvent {
   } | ConvertTo-Json -Compress -Depth 6 | Add-Content -LiteralPath '$probeLog'
 }
 
+function Get-LifecyclePresenterBounds {
+  if (-not (Test-Path -LiteralPath '$lifecycleLog')) {
+    return `$null
+  }
+
+  `$lines = @(Get-Content -LiteralPath '$lifecycleLog' -ErrorAction SilentlyContinue)
+  for (`$index = (`$lines.Count - 1); `$index -ge 0; `$index--) {
+    try {
+      `$event = `$lines[`$index] | ConvertFrom-Json -ErrorAction Stop
+    } catch {
+      continue
+    }
+
+    `$presenter = `$event.payload.presenter
+    if (-not `$presenter -or -not `$presenter.bounds) {
+      continue
+    }
+
+    `$bounds = `$presenter.bounds
+    if (`$bounds.width -gt 0 -and `$bounds.height -gt 0) {
+      return `$bounds
+    }
+  }
+
+  return `$null
+}
+
 Write-ProbeEvent "probe:start" ([PSCustomObject]@{
   lifecycleLog = '$lifecycleLog'
   input = '$input'
@@ -2014,17 +2049,26 @@ while ((Get-Date) -lt `$deadline -and -not `$sent) {
       } elseif ('$input' -eq 'toggle-sendinput') {
         `$nativeInputSent = Send-NativeKeyChord @(0x10, 0x09)
       } elseif ('$input' -eq 'web-close-click-sendinput') {
-        `$foreground = Get-ForegroundProbeSnapshot
-        if (`$foreground -and `$foreground.rect -and `$foreground.rect.width -gt 0 -and `$foreground.rect.height -gt 0) {
-          `$x = [int]([Math]::Round(`$foreground.rect.left + (`$foreground.rect.width * 0.86)))
-          `$y = [int]([Math]::Round(`$foreground.rect.top + (`$foreground.rect.height * 0.15)))
+        `$presenterBounds = Get-LifecyclePresenterBounds
+        if (`$presenterBounds) {
+          `$x = [int]([Math]::Round(`$presenterBounds.x + `$presenterBounds.width - 45))
+          `$y = [int]([Math]::Round(`$presenterBounds.y + 48))
           `$nativePointerSent = Send-NativeMouseClick `$x `$y
+          `$nativePointerSent | Add-Member -NotePropertyName coordinateSource -NotePropertyValue "presenter-bounds" -Force
         } else {
-          `$nativePointerSent = [PSCustomObject]@{
-            sent = 0
-            expected = 3
-            lastError = -1
-            error = "foreground-window-rect-unavailable"
+          `$foreground = Get-ForegroundProbeSnapshot
+          if (`$foreground -and `$foreground.rect -and `$foreground.rect.width -gt 0 -and `$foreground.rect.height -gt 0) {
+            `$x = [int]([Math]::Round(`$foreground.rect.left + (`$foreground.rect.width * 0.86)))
+            `$y = [int]([Math]::Round(`$foreground.rect.top + (`$foreground.rect.height * 0.15)))
+            `$nativePointerSent = Send-NativeMouseClick `$x `$y
+            `$nativePointerSent | Add-Member -NotePropertyName coordinateSource -NotePropertyValue "foreground-window" -Force
+          } else {
+            `$nativePointerSent = [PSCustomObject]@{
+              sent = 0
+              expected = 3
+              lastError = -1
+              error = "close-click-coordinate-source-unavailable"
+            }
           }
         }
       } else {
@@ -2058,9 +2102,18 @@ if (-not `$sent) {
 }
 "@
 
-  $encodedProbe = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($probeScript))
-  $probeArgs = "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -EncodedCommand $encodedProbe"
-  Write-Host ("Starting Windows overlay close probe for {0}; log: {1}" -f $Case.id, $probeLog)
+  $probeScriptPath = Join-Path $CaseDir "close-probe.ps1"
+  Set-Content -LiteralPath $probeScriptPath -Value $probeScript -Encoding UTF8
+  $probeArgs = @(
+    "-NoProfile",
+    "-WindowStyle",
+    "Hidden",
+    "-ExecutionPolicy",
+    "Bypass",
+    "-File",
+    $probeScriptPath
+  )
+  Write-Host ("Starting Windows overlay close probe for {0}; script: {1}; log: {2}" -f $Case.id, $probeScriptPath, $probeLog)
   return Start-Process -FilePath "powershell.exe" -ArgumentList $probeArgs -PassThru
 }
 
@@ -2147,6 +2200,9 @@ function Write-CaseLaunchEnv {
   if ($Case.webModal) {
     $args += @("-WebModal", $Case.webModal)
   }
+  if ($Case.storeRoute) {
+    $args += @("-StoreRoute", $Case.storeRoute)
+  }
   if ($Case.dialog) {
     $args += @("-Dialog", $Case.dialog)
   } elseif ($Dialog) {
@@ -2223,6 +2279,9 @@ function Invoke-MatrixCase {
   }
   if ($Case.webModal) {
     $args += @("-WebModal", $Case.webModal)
+  }
+  if ($Case.storeRoute) {
+    $args += @("-StoreRoute", $Case.storeRoute)
   }
   if ($Case.dialog) {
     $args += @("-Dialog", $Case.dialog)
