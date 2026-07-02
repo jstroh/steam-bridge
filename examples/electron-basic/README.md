@@ -80,7 +80,7 @@ The Windows package includes `windows-electron-smoke.ps1`. Use
 steam-launch helper refuses to start Steam by default; pass
 `-AllowStartSteamClient` only when you intentionally want the helper to open
 `steam://rungameid` from a closed client.
-helper accepts the same generic smoke action names as the Deck/macOS helpers,
+The helper accepts the same generic smoke action names as the Deck/macOS helpers,
 including raw Windows baseline actions `web`, `store`, `friends`,
 `achievement-progress`, and `achievement-unlock`, plus managed comparison
 actions such as `presenter-ready`, `presenter-web-open-and-wait`,
@@ -104,8 +104,18 @@ The Windows close probe supports `-CloseProbeInput toggle`, `escape`, and
 `close-tab`. Current Windows evidence uses `toggle` for store/web-style overlay
 pages and `escape` for the direct Friends panel. Dialog-equivalent and shortcut
 routes open and emit active callbacks, but their automated close input is still
-being investigated, so keep them in focused runs until close/back-to-app proof is
-green.
+being investigated. Current `OfficialGameGroup` dialog artifacts show both
+`close-tab` and `toggle` probes being sent from the interactive desktop session
+after a shortcut reload, while the overlay remains active until the managed close
+wait times out. Keep those routes in focused runs until close/back-to-app proof
+is green.
+
+Live Steam-launched Windows overlay proof must run from the same interactive
+desktop session as Steam. SSH runs execute in Session 0 and are rejected by the
+matrix readiness gate because they can produce graphics failures that are not
+Steam Bridge overlay bugs. When driving a remote Windows laptop, launch the
+matrix from the desktop itself or via a temporary `/IT` scheduled task, and
+delete that task after the run.
 
 The Windows package also includes `windows-overlay-matrix.ps1`, which runs
 preflight and then a repeatable baseline, managed, or full suite while writing

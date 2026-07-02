@@ -255,14 +255,19 @@ load blocker because of stale Code Integrity events from earlier runs.
 Do not call the Windows managed suite fully clean yet. Dialog-equivalent and
 shortcut routes open and emit active overlay callbacks, but the current
 automated close probes do not reliably deliver close input to those Steam UI
-surfaces. Negative artifacts include
-`windows-managed-dialog-community-closetab-20260702-001` for
-`openDialogAndWait({ dialog: "OfficialGameGroup" })` and
-`windows-managed-shortcut-escapeprobe-20260702-001` for the managed shortcut
-target. Both reached `GameOverlayActivated(true)` and
-`overlay:presenter-wait-shown`, then timed out before
-`GameOverlayActivated(false)`. Treat this as the remaining Windows automation
-focus problem, not evidence that Electron needs a native host on Windows.
+surfaces. The stronger dialog artifacts are
+`windows-managed-dialog-community-closetab-20260702-006` and
+`windows-managed-dialog-community-toggle-20260702-001`: both ran from the
+interactive Windows Session 1 desktop after a shortcut refresh and Steam
+restart, passed readiness and native-load gates, reached
+`GameOverlayActivated(true)` and `overlay:presenter-wait-shown`, sent the
+requested close probe input, and then timed out before
+`GameOverlayActivated(false)`, `overlay:presenter-wait-closed`,
+`overlay:presenter-parked`, or `overlay:presenter-open-and-wait-complete`.
+`windows-managed-shortcut-escapeprobe-20260702-001` is the equivalent negative
+artifact for the managed shortcut target. Treat this as the remaining Windows
+automation focus problem, not evidence that Electron needs a native host on
+Windows.
 
 The macOS matrix can now pair `--app-id <your-app-id>` with
 `--checkout-json-file <path>` for private configured-product proof. Its manifest
