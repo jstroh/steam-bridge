@@ -26,6 +26,7 @@ contextBridge.exposeInMainWorld("steamSmoke", {
   openPresenterAchievements: () => ipcRenderer.invoke("steam-smoke:presenter-achievements"),
   openPresenterAchievementsOpenAndWait: () => ipcRenderer.invoke("steam-smoke:presenter-achievements-open-and-wait"),
   openPresenterUser: () => ipcRenderer.invoke("steam-smoke:presenter-user"),
+  openPresenterNativeUser: () => ipcRenderer.invoke("steam-smoke:presenter-user-native"),
   openPresenterUserOpenAndWait: () => ipcRenderer.invoke("steam-smoke:presenter-user-open-and-wait"),
   openPresenterCheckout: () => ipcRenderer.invoke("steam-smoke:presenter-checkout"),
   getPresenterShortcutOpenStatus: () => ipcRenderer.invoke("steam-smoke:presenter-shortcut-status"),

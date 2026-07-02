@@ -22,6 +22,7 @@ param(
   [string]$WindowMode = "windowed",
   [string]$WebUrl = "",
   [string]$Dialog = "Friends",
+  [string]$UserDialog = "steamid",
   [string]$ShortcutTarget = "friends",
   [string]$CheckoutTransactionId = "123456789",
   [string]$OnlyCase = "",
@@ -1269,6 +1270,7 @@ function New-Case {
     [string]$ManagedOverlayResultMode = "",
     [string]$WebModal = "",
     [string]$DialogOverride = "",
+    [string]$UserDialogOverride = "",
     [string]$ShortcutTargetOverride = "",
     [string]$CheckoutTransactionIdOverride = "",
     [int]$ResultDelayMs = 8000
@@ -1286,6 +1288,7 @@ function New-Case {
     managedOverlayResultMode = $ManagedOverlayResultMode
     webModal = $WebModal
     dialog = $DialogOverride
+    userDialog = $UserDialogOverride
     shortcutTarget = $ShortcutTargetOverride
     checkoutTransactionId = $CheckoutTransactionIdOverride
     resultDelayMs = $ResultDelayMs
@@ -1340,6 +1343,7 @@ function Get-MatrixCases {
     New-ManagedOpenAndWaitCase -Id "21-managed-achievements-open-and-wait" -Action "presenter-achievements-open-and-wait"
     New-ManagedOpenAndWaitCase -Id "22-managed-user-open-and-wait" -Action "presenter-user-open-and-wait"
     New-Case -Id "23-raw-native-dialog-open-observe" -Action "presenter-dialog" -RequireEvent @("overlay:presenter-open") -RequireOverlayActivated -DialogOverride $Dialog -CloseProbeOnActivation -ResultDelayMs 12000
+    New-Case -Id "24-raw-native-user-open-observe" -Action "presenter-user-native" -RequireEvent @("overlay:presenter-open") -RequireOverlayActivated -UserDialogOverride $UserDialog -CloseProbeOnActivation -ResultDelayMs 12000
   )
 
   switch ($Suite) {
@@ -1391,6 +1395,7 @@ function Write-MatrixManifest {
           managedOverlayResultMode = $_.managedOverlayResultMode
           webModal = $_.webModal
           dialog = $_.dialog
+          userDialog = $_.userDialog
           shortcutTarget = $_.shortcutTarget
           hasCheckoutTransactionId = [bool]$_.checkoutTransactionId
           resultDelayMs = $_.resultDelayMs
@@ -1419,6 +1424,7 @@ function Write-MatrixManifest {
     targetHints = [PSCustomObject]@{
       hasWebUrl = [bool]$WebUrl
       dialog = $Dialog
+      userDialog = $UserDialog
       shortcutTarget = $ShortcutTarget
       hasCheckoutTransactionId = [bool]$CheckoutTransactionId
     }
@@ -1868,6 +1874,11 @@ function Write-CaseLaunchEnv {
   } elseif ($Dialog) {
     $args += @("-Dialog", $Dialog)
   }
+  if ($Case.userDialog) {
+    $args += @("-UserDialog", $Case.userDialog)
+  } elseif ($UserDialog) {
+    $args += @("-UserDialog", $UserDialog)
+  }
   if ($Case.shortcutTarget) {
     $args += @("-ShortcutTarget", $Case.shortcutTarget)
   }
@@ -1930,6 +1941,11 @@ function Invoke-MatrixCase {
     $args += @("-Dialog", $Case.dialog)
   } elseif ($Dialog) {
     $args += @("-Dialog", $Dialog)
+  }
+  if ($Case.userDialog) {
+    $args += @("-UserDialog", $Case.userDialog)
+  } elseif ($UserDialog) {
+    $args += @("-UserDialog", $UserDialog)
   }
   if ($Case.shortcutTarget) {
     $args += @("-ShortcutTarget", $Case.shortcutTarget)
@@ -2010,6 +2026,7 @@ Write-Host ("  appId: {0}" -f $AppId)
 Write-Host ("  overlayProfile: {0}" -f $OverlayProfile)
 Write-Host ("  inProcessGpu: {0}" -f $OverlayInProcessGpu)
 Write-Host ("  disableDirectComposition: {0}" -f $OverlayDisableDirectComposition)
+Write-Host ("  userDialog: {0}" -f $UserDialog)
 Write-Host ("  cleanStaleOverlayHelpers: {0}" -f $CleanStaleOverlayHelpers)
 if ($OnlyCase) {
   Write-Host ("  onlyCase: {0}" -f $OnlyCase)

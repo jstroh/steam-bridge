@@ -1696,6 +1696,15 @@ keeps `disableDirectComposition` opt-in, and requires any native-presenter
 fallback to prove FPS, shutdown, Alt+Tab, close, and back-to-app behavior in
 the local Windows matrix before becoming a default.
 
+A focused July 2, 2026 Windows route split also compared Steam Community URL
+activation with Valve's native `ActivateGameOverlayToUser("steamid", ...)`
+profile route. The native route emitted overlay activation and started
+`gameoverlayui64`, but screenshots still showed only the smoke app and Steam's
+overlay hint, while Steam webhelper logged Community `application_config`
+errors. That rules out "switch profile to the native user API" as a complete
+Windows fix. Keep investigating Steam Community overlay rendering and Steam
+client webhelper health separately from Electron hook readiness.
+
 Windows gates:
 
 - packaged helper preflight reports App Control/SAC state, parsed

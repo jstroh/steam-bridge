@@ -290,6 +290,7 @@ ipcMain.handle("steam-smoke:presenter-stats-open-and-wait", () => openPresenterS
 ipcMain.handle("steam-smoke:presenter-achievements", () => openPresenterAchievementsOverlay());
 ipcMain.handle("steam-smoke:presenter-achievements-open-and-wait", () => openPresenterAchievementsOpenAndWaitOverlay());
 ipcMain.handle("steam-smoke:presenter-user", () => openPresenterUserOverlay());
+ipcMain.handle("steam-smoke:presenter-user-native", () => openPresenterNativeUserOverlay());
 ipcMain.handle("steam-smoke:presenter-user-open-and-wait", () => openPresenterUserOpenAndWaitOverlay());
 ipcMain.handle("steam-smoke:presenter-checkout", () => openPresenterCheckoutOverlay());
 ipcMain.handle("steam-smoke:presenter-shortcut-status", () => getPresenterShortcutOpenStatus());
@@ -976,6 +977,9 @@ async function runAutorunAction(action) {
         return { ok: true, action };
       case "presenter-user":
         await openPresenterUserOverlay();
+        return { ok: true, action };
+      case "presenter-user-native":
+        await openPresenterNativeUserOverlay();
         return { ok: true, action };
       case "presenter-user-open-and-wait":
         openPresenterUserOpenAndWaitOverlay();
@@ -1823,6 +1827,21 @@ async function openPresenterUserOverlay() {
     dialog: USER_DIALOG,
     route: "auto",
     appId: APP_ID,
+    api: "openUser"
+  };
+  return openPresenterTargetOverlay(overlay, target, context);
+}
+
+async function openPresenterNativeUserOverlay() {
+  const activeClient = requireClient();
+  const overlay = ensureElectronSteamOverlay(activeClient);
+  const steamId64 = activeClient.localplayer.getSteamId().steamId64;
+  const target = { type: "user", dialog: USER_DIALOG, route: "native", steamId64 };
+  const context = {
+    target: "user",
+    dialog: USER_DIALOG,
+    route: "native",
+    steamId64,
     api: "openUser"
   };
   return openPresenterTargetOverlay(overlay, target, context);
@@ -3244,6 +3263,7 @@ function isNativeSessionAction(action) {
     action === "presenter-achievements" ||
     action === "presenter-achievements-open-and-wait" ||
     action === "presenter-user" ||
+    action === "presenter-user-native" ||
     action === "presenter-user-open-and-wait" ||
     action === "presenter-checkout" ||
     action === "presenter-shortcut" ||

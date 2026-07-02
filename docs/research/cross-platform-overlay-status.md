@@ -335,7 +335,20 @@ profile URL. It likewise emitted `GameOverlayActivated(true)` and
 `SteamBridgeSmoke`, the detected/before/after screenshots showed no visible
 Steam overlay UI, and the managed wait timed out before inactive, close, park,
 or `open-and-wait` completion. That broadens the Windows issue from the app
-Community hub to Steam Community web pages in general.
+Community hub to Steam Community web pages in general. A raw native user
+diagnostic,
+`windows-native-user-steamid-dcomp-20260702-001`, added
+`presenter-user-native --user-dialog steamid` to exercise Valve's documented
+`ActivateGameOverlayToUser("steamid", ...)` route. It passed the callback-level
+observe case under the same Steam-launched Windows shortcut with
+`GameOverlayActivated(true)`, `overlay:presenter-wait-shown`, and no crashes,
+but the close-probe screenshots again showed only the smoke app plus Steam's
+overlay hint, not a visible profile page. The Steam client logs for the same
+timestamp include `OverlayTab1-'Steam Comm'` JavaScript errors for missing
+Community `application_config`, so treat native user/profile routes as
+callback-only Windows evidence until a visible Steam Community surface is
+proven. This also means the current blocker is not simply choosing the native
+profile API instead of the Steam Community profile URL.
 
 The macOS matrix can now pair `--app-id <your-app-id>` with
 `--checkout-json-file <path>` for private configured-product proof. Its manifest

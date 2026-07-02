@@ -44,6 +44,7 @@ param(
     "presenter-achievements",
     "presenter-achievements-open-and-wait",
     "presenter-user",
+    "presenter-user-native",
     "presenter-user-open-and-wait",
     "presenter-checkout",
     "presenter-shortcut",

@@ -245,6 +245,7 @@
           <button id="presenter-achievements">Presenter Achievements</button>
           <button id="presenter-achievements-wait">Achievements Wait</button>
           <button id="presenter-user">Presenter User</button>
+          <button id="presenter-user-native">Native User</button>
           <button id="presenter-user-wait">User Wait</button>
           <button id="presenter-checkout">Presenter Checkout</button>
           <button id="shortcut-status">Shortcut Status</button>
@@ -511,6 +512,8 @@
         run("Achievements Wait", () => window.steamSmoke.openPresenterAchievementsOpenAndWait());
       document.getElementById("presenter-user").onclick = () =>
         run("Presenter User", () => window.steamSmoke.openPresenterUser());
+      document.getElementById("presenter-user-native").onclick = () =>
+        run("Native User", () => window.steamSmoke.openPresenterNativeUser());
       document.getElementById("presenter-user-wait").onclick = () =>
         run("User Wait", () => window.steamSmoke.openPresenterUserOpenAndWait());
       document.getElementById("presenter-checkout").onclick = () =>

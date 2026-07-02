@@ -89,7 +89,7 @@ actions such as `presenter-ready`, `presenter-web-open-and-wait`,
 `presenter-profile-open-and-wait`, `presenter-players-open-and-wait`,
 `presenter-community-open-and-wait`, `presenter-stats-open-and-wait`,
 `presenter-achievements-open-and-wait`, `presenter-user-open-and-wait`,
-`presenter-checkout`, `presenter-shortcut`, and
+`presenter-user-native`, `presenter-checkout`, `presenter-shortcut`, and
 `presenter-shortcut-open-and-wait`.
 
 The helper defaults `-OverlayInProcessGpu 1` on Windows, matching
@@ -125,7 +125,10 @@ Community target, a generic web overlay pointed at
 `https://steamcommunity.com/app/480`, and the current user's Steam Community
 profile target all fire active callbacks without visible overlay screenshots,
 so keep Steam Community-style Windows routes separate from the known-good
-store/web/Friends lane until that Steam surface is proven.
+store/web/Friends lane until that Steam surface is proven. The
+`presenter-user-native` action is a raw diagnostic for Valve's documented
+`ActivateGameOverlayToUser("steamid", ...)` route; it is callback/screenshot
+evidence only, not a managed `openAndWait(...)` product route.
 
 Live Steam-launched Windows overlay proof must run from the same interactive
 desktop session as Steam. SSH runs execute in Session 0 and are rejected by the
