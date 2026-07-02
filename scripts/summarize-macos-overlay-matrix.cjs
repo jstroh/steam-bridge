@@ -1335,6 +1335,9 @@ function verifyMicroTxnCallbackPresenterSnapshots(caseId, entries, failures, opt
     if (options.required === true && microTxnEventAuthorization(entry) === undefined) {
       failures.push(`${caseId}: ${label} did not include an authorization result`);
     }
+    if (options.required === true && !microTxnEventOrderIdPresent(entry)) {
+      failures.push(`${caseId}: ${label} did not include an order ID presence marker`);
+    }
   });
 
   if (options.required === true && options.actionName === "presenter-checkout" && options.checkoutSource) {
@@ -1435,6 +1438,23 @@ function microTxnEventAuthorization(event) {
     }
   }
   return undefined;
+}
+
+function microTxnEventOrderIdPresent(event) {
+  if (!event) {
+    return false;
+  }
+  const payload = event.payload;
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return false;
+  }
+  const activePayload = payload["0"] && typeof payload["0"] === "object" ? payload["0"] : payload;
+  for (const key of ["orderId", "orderID", "order_id", "orderid", "m_ulOrderID", "m_ulOrderId"]) {
+    if (Object.prototype.hasOwnProperty.call(activePayload, key)) {
+      return sanitizedTargetValuePresent(activePayload[key]);
+    }
+  }
+  return false;
 }
 
 function checkoutTargetSnapshotHasTarget(targetSnapshot) {
@@ -2142,6 +2162,12 @@ function runSelfTest() {
   const missingAuthorizationMicroTxnFixtureRoot = fs.mkdtempSync(
     path.join(os.tmpdir(), "steam-bridge-macos-matrix-summary-missing-authorization-microtxn.")
   );
+  const missingOrderMicroTxnFixtureRoot = fs.mkdtempSync(
+    path.join(os.tmpdir(), "steam-bridge-macos-matrix-summary-missing-order-microtxn.")
+  );
+  const sdkOrderMicroTxnFixtureRoot = fs.mkdtempSync(
+    path.join(os.tmpdir(), "steam-bridge-macos-matrix-summary-sdk-order-microtxn.")
+  );
   const missingCheckoutErrorSnapshotFixtureRoot = fs.mkdtempSync(
     path.join(os.tmpdir(), "steam-bridge-macos-matrix-summary-missing-checkout-error-snapshot.")
   );
@@ -2226,6 +2252,12 @@ function runSelfTest() {
     createSelfTestFixture(missingAuthorizationMicroTxnFixtureRoot);
     removeMicroTxnCallbackAuthorization(missingAuthorizationMicroTxnFixtureRoot, "06-checkout");
     assertMissingAuthorizationMicroTxnCallbackRejected(missingAuthorizationMicroTxnFixtureRoot);
+    createSelfTestFixture(missingOrderMicroTxnFixtureRoot);
+    removeMicroTxnCallbackOrderId(missingOrderMicroTxnFixtureRoot, "06-checkout");
+    assertMissingOrderMicroTxnCallbackRejected(missingOrderMicroTxnFixtureRoot);
+    createSelfTestFixture(sdkOrderMicroTxnFixtureRoot);
+    replaceMicroTxnCallbackOrderIdWithSdkOrderId(sdkOrderMicroTxnFixtureRoot, "06-checkout");
+    summarizeMatrixArtifacts(sdkOrderMicroTxnFixtureRoot);
     createSelfTestFixture(missingCheckoutErrorSnapshotFixtureRoot);
     removeCheckoutActionErrorSnapshot(missingCheckoutErrorSnapshotFixtureRoot, "07c-checkout-unavailable");
     assertMissingCheckoutActionErrorSnapshotRejected(missingCheckoutErrorSnapshotFixtureRoot);
@@ -2275,6 +2307,8 @@ function runSelfTest() {
     fs.rmSync(wrongAppMicroTxnFixtureRoot, { recursive: true, force: true });
     fs.rmSync(missingAppMicroTxnFixtureRoot, { recursive: true, force: true });
     fs.rmSync(missingAuthorizationMicroTxnFixtureRoot, { recursive: true, force: true });
+    fs.rmSync(missingOrderMicroTxnFixtureRoot, { recursive: true, force: true });
+    fs.rmSync(sdkOrderMicroTxnFixtureRoot, { recursive: true, force: true });
     fs.rmSync(missingCheckoutErrorSnapshotFixtureRoot, { recursive: true, force: true });
     fs.rmSync(missingWebVisibilityFixtureRoot, { recursive: true, force: true });
     fs.rmSync(missingNeedsPresentPollingFixtureRoot, { recursive: true, force: true });
@@ -2660,6 +2694,28 @@ function removeMicroTxnCallbackAuthorization(root, caseId) {
   });
 }
 
+function removeMicroTxnCallbackOrderId(root, caseId) {
+  updateMicroTxnCallbackPayload(root, caseId, (payload) => {
+    delete payload.orderId;
+    delete payload.orderID;
+    delete payload.order_id;
+    delete payload.orderid;
+    delete payload.m_ulOrderID;
+    delete payload.m_ulOrderId;
+  });
+}
+
+function replaceMicroTxnCallbackOrderIdWithSdkOrderId(root, caseId) {
+  updateMicroTxnCallbackPayload(root, caseId, (payload) => {
+    delete payload.orderId;
+    delete payload.orderID;
+    delete payload.order_id;
+    delete payload.orderid;
+    delete payload.m_ulOrderId;
+    payload.m_ulOrderID = { redacted: true, present: true, type: "string" };
+  });
+}
+
 function updateMicroTxnCallbackPayload(root, caseId, update) {
   const row = readManifestRows(root).find((entry) => entry.caseId === caseId);
   assert.ok(row, `self-test fixture should include ${caseId}`);
@@ -2710,6 +2766,18 @@ function assertMissingAuthorizationMicroTxnCallbackRejected(root) {
     result.stderr,
     /microtxn callback 1 did not include an authorization result/,
     "summary rejection should identify the missing MicroTxn authorization result"
+  );
+}
+
+function assertMissingOrderMicroTxnCallbackRejected(root) {
+  const result = spawnSync(process.execPath, [__filename, "--artifact-root", root], {
+    encoding: "utf8"
+  });
+  assert.notEqual(result.status, 0, "summary should reject required MicroTxn callbacks without order IDs");
+  assert.match(
+    result.stderr,
+    /microtxn callback 1 did not include an order ID presence marker/,
+    "summary rejection should identify the missing MicroTxn order ID"
   );
 }
 
@@ -3212,7 +3280,15 @@ function createSelfTestFixture(root) {
         { type: "event:callback:overlay-activated", payload: { active: true, appId: 480, overlayPid: 9001 } },
         { type: "event:overlay:presenter-wait-shown", payload: { presenter: activePresenterFixture(31) } },
         { type: "event:overlay:web-visible", payload: { ok: true, attempt: 1, rect: "0,0,1280,720" } },
-        { type: "event:callback:microtxn", payload: { authorized: true, appId: 480, presenter: activePresenterFixture(31) } },
+        {
+          type: "event:callback:microtxn",
+          payload: {
+            authorized: true,
+            appId: 480,
+            orderId: { redacted: true, present: true, type: "bigint" },
+            presenter: activePresenterFixture(31)
+          }
+        },
         { type: "event:callback:overlay-activated", payload: { active: false, appId: 480, overlayPid: 9001 } },
         { type: "event:overlay:presenter-wait-closed", payload: { presenter: parkedPresenterFixture(32) } },
         { type: "event:overlay:presenter-after-close", payload: { presenter: parkedPresenterFixture(32) } },

@@ -570,8 +570,9 @@ return URLs, transaction IDs, and control tokens as `REDACTED`, so command logs
 can be shared for review without exposing private purchase data.
 Add `--require-microtxn-callback` when a real direct checkout proof is expected
 to produce `MicroTxnAuthorizationResponse`; the matrix summary will fail if the
-callback is missing or lacks a presenter snapshot. The Linux and
-Steam Deck helpers expose direct inputs as `--checkout-url`,
+callback is missing, lacks a presenter snapshot, omits the launched app ID,
+omits Steam's authorization result, or omits a redacted order ID presence
+marker. The Linux and Steam Deck helpers expose direct inputs as `--checkout-url`,
 `--checkout-transaction-id`, and `--checkout-return-url`. Without a checkout
 file, URL, or transaction ID the helpers only require
 `overlay:presenter-checkout-ready`;

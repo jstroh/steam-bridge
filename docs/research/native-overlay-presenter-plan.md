@@ -1756,11 +1756,12 @@ Current real-product checkout guardrail:
   parser. Malformed, incomplete, or app-ID-mismatched private captures fail
   early without echoing the file path, app ID, transaction ID, checkout URL, or
   return URL. The macOS summary auditor also scans smoke result JSON and
-  lifecycle logs for raw checkout approval URLs,
-  transaction/order IDs, return URLs, Steam IDs, configured-product item
-  metadata, price/currency details, and private checkout CLI arguments, so
-  private purchase artifacts fail closed if runtime redaction regresses after
-  validation.
+  lifecycle logs for raw checkout approval URLs, transaction/order IDs, return
+  URLs, Steam IDs, configured-product item metadata, price/currency details, and
+  private checkout CLI arguments, so private purchase artifacts fail closed if
+  runtime redaction regresses after validation. Required real-checkout callback
+  proof also verifies a redacted order ID presence marker so authorization
+  evidence cannot be callback-only.
 
 ## Non-Goals
 
