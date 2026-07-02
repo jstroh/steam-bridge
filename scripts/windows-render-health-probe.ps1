@@ -653,8 +653,9 @@ function Invoke-RenderHealthCase {
 function New-RenderHealthSummary {
   param($Cases)
 
-  $defaultCase = @($Cases | Where-Object { $_.name -eq "in-process-gpu-on" } | Select-Object -First 1)
+  $defaultCase = @($Cases | Where-Object { $_.name -eq "default" } | Select-Object -First 1)
   $baselineCase = @($Cases | Where-Object { $_.name -eq "in-process-gpu-off" } | Select-Object -First 1)
+  $inProcessGpuCase = @($Cases | Where-Object { $_.name -eq "in-process-gpu-on" } | Select-Object -First 1)
   $compositionCase = @($Cases | Where-Object { $_.name -eq "in-process-gpu-on-disable-direct-composition" } | Select-Object -First 1)
 
   $defaultFatalCount = if ($defaultCase.Count -gt 0 -and $defaultCase[0].fatalLifecycleEventCount -ne $null) {
@@ -674,6 +675,7 @@ function New-RenderHealthSummary {
     $defaultFatalCount -eq 0
   )
   $baselineVisible = ($baselineCase.Count -gt 0 -and $baselineCase[0].contentVisible -eq $true)
+  $inProcessGpuVisible = ($inProcessGpuCase.Count -gt 0 -and $inProcessGpuCase[0].contentVisible -eq $true)
   $compositionVisible = ($compositionCase.Count -gt 0 -and $compositionCase[0].contentVisible -eq $true)
   $compositionFatal = ($compositionFatalCount -gt 0)
 
@@ -681,7 +683,7 @@ function New-RenderHealthSummary {
   $nextAction = "Inspect screenshots and lifecycle logs."
   if ($defaultHealthy) {
     $status = "default-render-health-ok"
-    $nextAction = "The ordinary Windows in-process GPU path is visually healthy enough for a focused Steam-launched overlay case."
+    $nextAction = "The ordinary Windows render path is visually healthy enough for a focused Steam-launched overlay case."
   } elseif ($defaultCase.Count -gt 0 -and $defaultCase[0].blankLike -eq $true -and $baselineVisible) {
     if ($compositionVisible -and $compositionFatal) {
       $status = "default-blank-composition-visible-but-crashy"
@@ -708,6 +710,7 @@ function New-RenderHealthSummary {
     readyForSteamOverlayMatrix = $defaultHealthy
     defaultCaseHealthy = $defaultHealthy
     inProcessGpuOffVisible = $baselineVisible
+    inProcessGpuOnVisible = $inProcessGpuVisible
     disableDirectCompositionVisible = $compositionVisible
     disableDirectCompositionFatal = $compositionFatal
     nextAction = $nextAction
@@ -719,6 +722,11 @@ Initialize-ScreenshotApis
 New-Item -ItemType Directory -Force -Path $ArtifactRoot | Out-Null
 
 $cases = @(
+  [PSCustomObject]@{
+    name = "default"
+    inProcessGpu = ""
+    disableDirectComposition = ""
+  },
   [PSCustomObject]@{
     name = "in-process-gpu-on"
     inProcessGpu = "1"

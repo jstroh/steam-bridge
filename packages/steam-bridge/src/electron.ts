@@ -113,11 +113,10 @@ export function electronConfigureSteamOverlay(
     };
   }
 
-  const windowsMode = process.platform === "win32";
   const compatibilityMode = profile === "compatibility";
   const repaintMode = profile === "repaint" || compatibilityMode;
   const {
-    enableInProcessGpu = windowsMode || compatibilityMode,
+    enableInProcessGpu = compatibilityMode,
     disableDirectComposition = false,
     forceHighPerformanceGpu = true,
     disableBackgroundThrottling = true,

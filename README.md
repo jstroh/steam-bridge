@@ -315,15 +315,18 @@ keeps Steam's ordinary direct Electron hook as the first measured baseline, but
 that baseline must prove visible overlay UI, close/back-to-app behavior, and
 clean crash diagnostics before it is treated as product-ready. Set
 `scrubSteamOverlayChildProcessEnv: false` only for raw diagnostic comparisons.
-The default Windows Electron configuration enables Chromium's in-process GPU
-path without starting a repaint loop. The Windows smoke helper mirrors that with
-`-OverlayInProcessGpu 1`; pass `-OverlayInProcessGpu 0` only for a renderer
-baseline comparison. If a Windows smoke run shows a blank game window, dim-only
-overlay, stale overlay, or missing close/back-to-app evidence, use
-`electronConfigureSteamOverlay({ disableDirectComposition: true })` or the
-helper's `-OverlayDisableDirectComposition 1` flag only as an explicit diagnostic
-run; keep Alt+Tab/close regression checks in that pass because this Chromium
-switch has known ghost-window risk in upstream Electron Steam wrapper reports.
+The default Windows Electron configuration no longer forces Chromium's
+in-process GPU path. That switch is useful diagnostic evidence because it can
+move Chromium rendering into a Steam-hookable process, but current Electron and
+wrapper reports also tie it to blank or white windows. The Windows smoke helper
+therefore leaves `-OverlayInProcessGpu` unset by default; pass
+`-OverlayInProcessGpu 1` only for a focused compatibility comparison. If a
+Windows smoke run shows a dim-only overlay, stale overlay, or missing
+close/back-to-app evidence, use `electronConfigureSteamOverlay({ profile: "compatibility" })`,
+`electronConfigureSteamOverlay({ enableInProcessGpu: true })`, or the helper's
+`-OverlayDisableDirectComposition 1` flag only as explicit diagnostic runs; keep
+Alt+Tab/close regression checks in those passes because the composition switch
+has known ghost-window risk in upstream Electron Steam wrapper reports.
 Steam Bridge's app-facing API should stay the same if Windows needs a
 bridge-owned native presenter under the hood.
 An experimental Windows native presenter is available for proof runs through the
@@ -801,10 +804,10 @@ the private `--checkout-json-file` checkout suite.
   ```
 
   The baseline suite uses the ordinary Windows Electron/Steam overlay path for
-  web, store, Friends, and passive achievement notifications. It enables
-  Chromium's in-process GPU path by default, matching the public Electron helper
-  default on Windows; pass `-OverlayInProcessGpu 0` only for baseline comparison
-  artifacts. Pass `-OverlayScrubChildEnv 0` and
+  web, store, Friends, and passive achievement notifications. It keeps
+  Chromium's in-process GPU path off by default so the smoke game must first
+  prove it can visibly render. Pass `-OverlayInProcessGpu 1` only for focused
+  compatibility artifacts. Pass `-OverlayScrubChildEnv 0` and
   `-OverlayIsolateChildProcesses 0` only for focused Windows comparisons where
   you intentionally want Steam's overlay preload to reach Chromium child
   processes; a passing product artifact still needs visible overlay pixels,
@@ -862,10 +865,10 @@ the private `--checkout-json-file` checkout suite.
   app directly in a tiny comparison matrix and writes
   `00-preflight/render-health-gate.json` plus
   `00-preflight/render-health/render-health-summary.json`. If the default
-  Windows overlay profile is already blank, white, or crashy, the matrix stops
+  Windows render path is already blank, white, or crashy, the matrix stops
   before launching through Steam; that is a render baseline failure, not useful
   overlay evidence. Explicit non-default comparison runs, such as
-  `-OverlayInProcessGpu 0` or `-OverlayDisableDirectComposition 1`, skip this
+  `-OverlayInProcessGpu 1` or `-OverlayDisableDirectComposition 1`, skip this
   default gate and are treated as diagnostics. Use
   `-AllowUnhealthyDefaultRender` only when intentionally collecting those
   artifacts, and `-SkipRenderHealthGate` only when the render-health helper

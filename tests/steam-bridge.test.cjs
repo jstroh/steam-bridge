@@ -137,6 +137,75 @@ function setProcessEnvForTest(t, values = {}) {
   });
 }
 
+test("electron overlay diagnostic profile does not force Windows in-process GPU", (t) => {
+  setProcessPlatformForTest(t, "win32");
+  const appendedSwitches = [];
+  mockElectronModule(t, {
+    app: {
+      commandLine: {
+        appendSwitch(name, value) {
+          appendedSwitches.push(value === undefined ? name : `${name}=${value}`);
+        }
+      },
+      on() {}
+    },
+    BrowserWindow: {
+      getAllWindows() {
+        return [];
+      }
+    }
+  });
+
+  const electron = require(distFile("electron.js"));
+  t.after(() => {
+    electron.electronDisableSteamOverlayRepaintLoop();
+    clearSteamBridgeCache();
+  });
+
+  const result = electron.electronConfigureSteamOverlay();
+
+  assert.equal(result.profile, "diagnostic");
+  assert.equal(result.repaintIntervalMs, 0);
+  assert.equal(result.switches.includes("in-process-gpu"), false);
+  assert.equal(appendedSwitches.includes("in-process-gpu"), false);
+  assert.equal(result.switches.includes("disable-direct-composition"), false);
+  assert.equal(result.switches.includes("force_high_performance_gpu"), true);
+  assert.equal(result.switches.includes("ignore-gpu-blocklist"), true);
+});
+
+test("electron overlay compatibility profile keeps explicit Windows in-process GPU fallback", (t) => {
+  setProcessPlatformForTest(t, "win32");
+  const appendedSwitches = [];
+  mockElectronModule(t, {
+    app: {
+      commandLine: {
+        appendSwitch(name, value) {
+          appendedSwitches.push(value === undefined ? name : `${name}=${value}`);
+        }
+      },
+      on() {}
+    },
+    BrowserWindow: {
+      getAllWindows() {
+        return [];
+      }
+    }
+  });
+
+  const electron = require(distFile("electron.js"));
+  t.after(() => {
+    electron.electronDisableSteamOverlayRepaintLoop();
+    clearSteamBridgeCache();
+  });
+
+  const result = electron.electronConfigureSteamOverlay({ profile: "compatibility" });
+
+  assert.equal(result.profile, "compatibility");
+  assert.equal(result.repaintIntervalMs, 33);
+  assert.equal(result.switches.includes("in-process-gpu"), true);
+  assert.equal(appendedSwitches.includes("in-process-gpu"), true);
+});
+
 test("electron smoke sanitizer redacts private overlay proof fields", () => {
   const { sanitizeSmokeValue } = require(path.join(repoRoot, "examples", "electron-basic", "smoke-sanitize.cjs"));
   const { serializeSmokeError } = require(path.join(repoRoot, "examples", "electron-basic", "smoke-error.cjs"));

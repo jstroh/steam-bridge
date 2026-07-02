@@ -41,7 +41,7 @@ param(
   [int]$CloseProbeSettleMs = 750,
   [int]$CloseProbeTimeoutSeconds = 110,
   [string]$PresenterMode = "",
-  [string]$OverlayInProcessGpu = "1",
+  [string]$OverlayInProcessGpu = "",
   [string]$OverlayScrubChildEnv = "",
   [string]$OverlayIsolateChildProcesses = ""
 )

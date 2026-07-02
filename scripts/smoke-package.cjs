@@ -494,6 +494,7 @@ function runWindowsSmokeHelperStaticChecks() {
   }
   for (const expected of [
     "steam-bridge-windows-render-health-probe",
+    'name = "default"',
     "in-process-gpu-on",
     "in-process-gpu-off",
     "in-process-gpu-on-disable-direct-composition",
@@ -571,8 +572,7 @@ function runWindowsSmokeHelperStaticChecks() {
     assert.ok(helper.includes(expected), `Windows smoke helper missing ${expected}`);
   }
   for (const expected of [
-    'const windowsMode = process.platform === "win32"',
-    "enableInProcessGpu = windowsMode || compatibilityMode"
+    "enableInProcessGpu = compatibilityMode"
   ]) {
     assert.ok(electronHelper.includes(expected), `Electron overlay helper missing ${expected}`);
   }

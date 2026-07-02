@@ -55,7 +55,7 @@ param(
   [string]$Action = "none",
 
   [string]$OverlayProfile = "diagnostic",
-  [string]$OverlayInProcessGpu = "1",
+  [string]$OverlayInProcessGpu = "",
   [string]$OverlayDisableDirectComposition = "",
   [string]$OverlayScrubChildEnv = "",
   [string]$OverlayIsolateChildProcesses = "",

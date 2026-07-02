@@ -55,15 +55,16 @@ The packaged Windows smoke helper accepts the same generic smoke actions as the
 Deck/macOS helpers for web, store, Friends, dialog-equivalent, checkout,
 shortcut, and passive notification regression checks. Windows Electron overlay
 testing starts with the normal `electronConfigureSteamOverlay()` path. On
-Windows that default enables Chromium's in-process GPU path without starting a
-repaint loop, and the smoke helper mirrors it with `-OverlayInProcessGpu 1`.
-Pass `-OverlayInProcessGpu 0` only for a renderer baseline comparison; that mode
-can prove the app UI paints, but it is not Steam overlay proof. If the app
-window itself is blank or white, run `windows-render-health-probe.ps1` from the
-interactive Windows desktop before more Steam-launched overlay cases. It
-captures desktop and client-area screenshots for the default in-process GPU
-path, the in-process-GPU-off baseline, and the explicit
-`disableDirectComposition` comparison, then writes `render-health-summary.json`.
+Windows that default no longer forces Chromium's in-process GPU path, because
+newer Electron/Chromium builds and Steam wrapper reports tie that switch to
+blank or white windows. Pass `-OverlayInProcessGpu 1` only for a focused
+compatibility comparison; that mode can prove whether Steam hooks Chromium's
+main process, but it is not enough by itself for product overlay proof. If the
+app window itself is blank or white, run `windows-render-health-probe.ps1` from
+the interactive Windows desktop before more Steam-launched overlay cases. It
+captures desktop and client-area screenshots for the default render path, the
+explicit in-process GPU comparison, and the explicit `disableDirectComposition`
+comparison, then writes `render-health-summary.json`.
 If `disableDirectComposition` makes the app visible, keep treating it as an
 opt-in diagnostic until it also passes close, Alt+Tab, and crash checks; upstream
 Electron/Steam wrapper reports tie that switch to ghost-window regressions, and
@@ -912,14 +913,16 @@ Electron windows at about 30 FPS so Steam has fresh frames to composite. Use
 `profile: "compatibility"` as the stronger fallback when you also need
 Chromium's GPU work in-process.
 
-For Windows Electron apps, start with the default configuration. It enables
-Chromium's in-process GPU path on Windows without adding the repaint timer used
-by stronger compatibility profiles. If the Steam overlay still opens as a white
-or stale surface, opt into
-`electronConfigureSteamOverlay({ disableDirectComposition: true })` for that
-build and run the Alt+Tab/close regression checks before shipping. Steam Bridge
-keeps this as an explicit option so normal Windows builds do not inherit the
-known ghost-window risk unless they need the composition workaround.
+For Windows Electron apps, start with the default configuration. It keeps
+Chromium's in-process GPU path off so the app first proves a healthy visible
+render baseline. If the Steam overlay still opens as a dim-only, white, or stale
+surface, collect an explicit compatibility run with
+`electronConfigureSteamOverlay({ profile: "compatibility" })`,
+`electronConfigureSteamOverlay({ enableInProcessGpu: true })`, or
+`electronConfigureSteamOverlay({ disableDirectComposition: true })`, then run
+the Alt+Tab/close regression checks before shipping any fallback. Steam Bridge
+keeps these as explicit options so normal Windows builds do not inherit known
+blank-window or ghost-window risks unless evidence says they are needed.
 
 On Steam Deck Desktop Mode, the Linux X11/GLX reusable presenter path is the
 current generic proof path for product overlay activation, visual open, close,

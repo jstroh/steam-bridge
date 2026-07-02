@@ -726,7 +726,10 @@ function summarizeAssumedShortcut(shortcut) {
 function summarizeRenderHealth(renderHealth, gate) {
   const recommendation = objectOrEmpty(renderHealth && renderHealth.recommendation);
   const cases = Array.isArray(renderHealth && renderHealth.cases) ? renderHealth.cases : [];
-  const defaultCase = cases.find((entry) => entry && entry.name === "in-process-gpu-on") || {};
+  const defaultCase =
+    cases.find((entry) => entry && entry.name === "default") ||
+    cases.find((entry) => entry && entry.name === "in-process-gpu-on") ||
+    {};
   return {
     status: gate && gate.status ? gate.status : recommendation.status || "",
     readyForSteamOverlayMatrix: Boolean(
@@ -1562,6 +1565,12 @@ function writeRenderHealthBlockedFixture(root) {
       nextAction
     },
     cases: [
+      {
+        name: "default",
+        contentVisible: false,
+        blankLike: true,
+        fatalLifecycleEventCount: 0
+      },
       {
         name: "in-process-gpu-on",
         contentVisible: false,
