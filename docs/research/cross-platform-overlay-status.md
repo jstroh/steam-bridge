@@ -79,6 +79,21 @@ achievement unlock, and `none` cases completed with clean diagnostics without
 requiring overlay readiness or activation. The relevant artifacts were captured
 under `C:\Users\admin\steam-bridge-artifacts\windows-baseline-matrix-20260702-013-passive-no-ready`.
 
+A later current-head Windows run against the same shortcut failed before
+overlay UI activation while the Steam client window itself was rendering blank
+or white. The smoke app still loaded the native addon, initialized Steam as App
+ID `480`, and launched through Steam with the correct app/game/overlay IDs, but
+Steam's logs showed CEF/ANGLE GPU context loss and repeated GPU-process restarts
+with `0x887A0022`, and `gameoverlay_renderer.txt` showed the injected overlay
+renderer failing `CreateSwapChainForHWND` with the same code. Microsoft defines
+`0x887A0022` as `DXGI_ERROR_NOT_CURRENTLY_AVAILABLE`, so this is being treated
+as a Steam client / GPU-renderer health blocker before more live Windows
+overlay proof, not as a Steam Bridge native-load failure. The Windows matrix now
+captures Steam process state, recent Steam log inventory, focused CEF/webhelper/
+overlay log tails, matching error lines, and rendering-related config hints
+under each artifact's `steam-client/` directory so future failures preserve this
+evidence without repeatedly restarting Steam.
+
 An experimental one-process Windows control-server run is not accepted as
 product proof. It launched and painted correctly, but the first web action ran
 before Steam overlay readiness and did not activate the overlay. A separate

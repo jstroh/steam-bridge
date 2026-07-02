@@ -177,6 +177,7 @@ const eventLog = [];
 function createWindow() {
   const fullscreen = WINDOW_MODE === "fullscreen" || WINDOW_MODE === "borderless";
   const frame = WINDOW_MODE !== "borderless";
+  const showAfterFirstRender = process.platform !== "win32";
   const window = new BrowserWindow({
     width: 1060,
     height: 760,
@@ -184,7 +185,7 @@ function createWindow() {
     minHeight: 640,
     fullscreen,
     frame,
-    show: false,
+    show: !showAfterFirstRender,
     autoHideMenuBar: true,
     title: "Steam Bridge Electron Smoke",
     backgroundColor: "#f5f7fb",
@@ -203,7 +204,7 @@ function createWindow() {
       }
       loadSettled = true;
       recordLifecycle("window:first-render", { eventName, ...details });
-      if (!window.isDestroyed() && !window.isVisible()) {
+      if (showAfterFirstRender && !window.isDestroyed() && !window.isVisible()) {
         window.show();
         recordLifecycle("window:shown", { eventName });
       }

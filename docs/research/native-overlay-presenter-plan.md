@@ -1658,6 +1658,14 @@ design. If the ordinary Electron overlay path works on Windows, keep it as the
 default there and use the presenter only if a future regression proves it is
 needed.
 
+When Windows overlay activation fails while the Steam client window is itself
+blank or white, stop live launch loops and capture Steam client health first.
+The local Windows evidence has shown Steam CEF/ANGLE GPU context loss,
+Steam webhelper GPU-process restarts, and overlay renderer
+`CreateSwapChainForHWND` failures with `0x887A0022` in that state. That failure
+mode must be separated from Steam Bridge native-load or API initialization
+failures before changing the product overlay architecture.
+
 Wrapper research points to two Windows modes worth testing before adding native
 presenter complexity. The baseline is Electron with Chromium GPU work in-process,
 matching the long-standing `steamworks.js` and Greenworks guidance. The fallback

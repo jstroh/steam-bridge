@@ -319,6 +319,11 @@ comparison. If a Windows smoke run still shows a white or stale overlay, use
 helper's `-OverlayDisableDirectComposition 1` flag for an explicit comparison
 run; keep Alt+Tab/close regression checks in that pass because this Chromium
 switch has known ghost-window risk in upstream Electron Steam wrapper reports.
+If the Steam client window itself is blank or white, treat that as a Steam
+client rendering-health blocker first. The Windows matrix captures CEF,
+webhelper, and overlay log tails plus matching error lines under
+`steam-client/` for each preflight/case artifact so the next step can be chosen
+from Steam's own evidence instead of by repeatedly restarting the client.
 Before a long Windows run, launch
 `windows-electron-smoke.ps1 -Mode preflight` against the packaged app. The
 preflight reports Smart App Control/App Control policy state, Authenticode
@@ -759,6 +764,11 @@ the private `--checkout-json-file` checkout suite.
   additional machinery is needed. Each matrix case passes `-RequireNoCrashes`,
   so Windows artifacts must prove both overlay behavior and a clean Electron
   crash-diagnostic snapshot.
+  Each preflight and case artifact also includes a `steam-client/` directory
+  with Steam process state, recent log inventory, CEF/webhelper/overlay log
+  tails, matching error lines, and rendering-related config hints. Check those
+  files first when Steam's own UI is blank/white or when the overlay renderer
+  attaches but `gameoverlay_ui` never starts.
   The Windows matrix is intentionally process-per-case right now. A
   one-process control-server harness is useful future research, but it is not
   the Windows proof path until it can wait on overlay readiness and run without

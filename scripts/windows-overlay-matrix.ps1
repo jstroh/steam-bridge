@@ -73,6 +73,174 @@ function Resolve-NativeAddon {
   return Join-Path $AppDir "resources\app\node_modules\steam-bridge\steam_bridge_native.win32-x64-msvc.node"
 }
 
+function Resolve-SteamInstallPath {
+  $steamRegistry = Get-ItemProperty -Path "HKCU:\Software\Valve\Steam" -ErrorAction SilentlyContinue
+  if ($steamRegistry -and $steamRegistry.SteamPath) {
+    return $steamRegistry.SteamPath
+  }
+  return Join-Path ${env:ProgramFiles(x86)} "Steam"
+}
+
+function Write-MatrixJsonFile {
+  param([string]$Path, $Value, [int]$Depth = 8)
+
+  if (-not $Path) {
+    return
+  }
+  $parent = Split-Path -Parent $Path
+  if ($parent) {
+    New-Item -ItemType Directory -Force -Path $parent | Out-Null
+  }
+  $utf8NoBom = New-Object System.Text.UTF8Encoding $false
+  [System.IO.File]::WriteAllText(
+    $Path,
+    (($Value | ConvertTo-Json -Depth $Depth) + [System.Environment]::NewLine),
+    $utf8NoBom
+  )
+}
+
+function Write-MatrixTextFile {
+  param([string]$Path, [string[]]$Lines)
+
+  if (-not $Path) {
+    return
+  }
+  $parent = Split-Path -Parent $Path
+  if ($parent) {
+    New-Item -ItemType Directory -Force -Path $parent | Out-Null
+  }
+  $utf8NoBom = New-Object System.Text.UTF8Encoding $false
+  [System.IO.File]::WriteAllText(
+    $Path,
+    ((@($Lines) -join [System.Environment]::NewLine) + [System.Environment]::NewLine),
+    $utf8NoBom
+  )
+}
+
+function Copy-LogTail {
+  param([string]$Source, [string]$Destination, [int]$Tail = 300)
+
+  if (-not (Test-Path -LiteralPath $Source)) {
+    return
+  }
+
+  $lines = @(Get-Content -LiteralPath $Source -Tail $Tail -ErrorAction SilentlyContinue)
+  Write-MatrixTextFile -Path $Destination -Lines $lines
+}
+
+function Collect-SteamClientDiagnostics {
+  param([string]$DestinationDir, [string]$Phase)
+
+  try {
+    New-Item -ItemType Directory -Force -Path $DestinationDir | Out-Null
+    $steamPath = Resolve-SteamInstallPath
+    $logs = Join-Path $steamPath "logs"
+    $generatedAt = (Get-Date).ToUniversalTime().ToString("o")
+    $processes = @(Get-Process steam,steamwebhelper,gameoverlayui,SteamBridgeSmoke -ErrorAction SilentlyContinue |
+      Select-Object ProcessName,Id,StartTime,Responding,MainWindowTitle,Path)
+    $logFiles = @()
+    if (Test-Path -LiteralPath $logs) {
+      $logFiles = @(Get-ChildItem -LiteralPath $logs -File -ErrorAction SilentlyContinue |
+        Sort-Object LastWriteTime -Descending |
+        Select-Object Name,FullName,LastWriteTime,Length)
+    }
+
+    Write-MatrixJsonFile -Path (Join-Path $DestinationDir "steam-client-state.json") -Value ([PSCustomObject]@{
+      kind = "steam-bridge-windows-steam-client-diagnostics"
+      phase = $Phase
+      generatedAt = $generatedAt
+      steamPath = $steamPath
+      logDirectory = $logs
+      processes = @($processes)
+      logFiles = @($logFiles | Select-Object -First 40)
+    }) -Depth 8
+
+    $knownLogs = @(
+      "cef_log.txt",
+      "webhelper.txt",
+      "steamwebhelper.log",
+      "webhelper_js.txt",
+      "console_log.txt",
+      "gameoverlay_renderer.txt",
+      "gameoverlay_ui.txt",
+      "steamui_system.txt"
+    )
+    foreach ($name in $knownLogs) {
+      $source = Join-Path $logs $name
+      $safeName = $name -replace '[^A-Za-z0-9_.-]', '_'
+      Copy-LogTail -Source $source -Destination (Join-Path $DestinationDir "$safeName.tail.txt")
+    }
+
+    $errorPatterns = @(
+      "0x887A0022",
+      "DXGI",
+      "SwapChain",
+      "context lost",
+      "GPU process",
+      "gameoverlay",
+      "CEF",
+      "crash",
+      "error",
+      "failed"
+    )
+    $errorPatternRegex = (($errorPatterns | ForEach-Object { [regex]::Escape($_) }) -join "|")
+    $matchingLines = @()
+    $scanFiles = @()
+    foreach ($name in $knownLogs) {
+      $source = Join-Path $logs $name
+      if (Test-Path -LiteralPath $source) {
+        $scanFiles += Get-Item -LiteralPath $source
+      }
+    }
+    foreach ($file in $scanFiles) {
+      try {
+        $tailLines = @(Get-Content -LiteralPath $file.FullName -Tail 1000 -ErrorAction SilentlyContinue)
+        $matchedForFile = @()
+        for ($index = 0; $index -lt $tailLines.Count; $index += 1) {
+          $line = [string]$tailLines[$index]
+          if ($line -match $errorPatternRegex) {
+            $matchedForFile += ("{0}:tail+{1}: {2}" -f $file.Name, ($index + 1), $line)
+          }
+        }
+        foreach ($match in @($matchedForFile | Select-Object -Last 80)) {
+          $matchingLines += $match
+        }
+      } catch {
+        $matchingLines += ("{0}: failed to scan: {1}" -f $file.Name, $_.Exception.Message)
+      }
+    }
+    Write-MatrixTextFile -Path (Join-Path $DestinationDir "steam-client-error-lines.txt") -Lines $matchingLines
+
+    $configHints = @()
+    $configCandidates = @(
+      (Join-Path $steamPath "config\config.vdf")
+    )
+    $userdata = Join-Path $steamPath "userdata"
+    if (Test-Path -LiteralPath $userdata) {
+      $configCandidates += @(Get-ChildItem -LiteralPath $userdata -Directory -ErrorAction SilentlyContinue |
+        ForEach-Object { Join-Path (Join-Path $_.FullName "config") "localconfig.vdf" })
+    }
+    foreach ($configPath in $configCandidates) {
+      if (-not (Test-Path -LiteralPath $configPath)) {
+        continue
+      }
+      try {
+        $matches = @(Select-String -LiteralPath $configPath -Pattern @("GPU", "Hardware", "accelerat", "webview", "cef") -SimpleMatch -ErrorAction SilentlyContinue)
+        foreach ($match in $matches) {
+          $configHints += ("{0}:{1}: {2}" -f $configPath, $match.LineNumber, $match.Line.Trim())
+        }
+      } catch {
+        $configHints += ("{0}: failed to scan: {1}" -f $configPath, $_.Exception.Message)
+      }
+    }
+    Write-MatrixTextFile -Path (Join-Path $DestinationDir "steam-client-config-rendering-hints.txt") -Lines $configHints
+
+    Write-Host ("Collected Steam client diagnostics for {0}: {1}" -f $Phase, $DestinationDir)
+  } catch {
+    Write-Host ("Steam client diagnostic capture failed for {0}: {1}" -f $Phase, $_.Exception.Message)
+  }
+}
+
 function Resolve-UpsertShortcutPath {
   $scriptPath = Join-Path $AppDir "upsert-steam-shortcut.cjs"
   if (-not (Test-Path -LiteralPath $scriptPath)) {
@@ -136,15 +304,7 @@ function Resolve-ShortcutsPath {
     return $ShortcutsPath
   }
 
-  $steamPath = ""
-  $steamRegistry = Get-ItemProperty -Path "HKCU:\Software\Valve\Steam" -ErrorAction SilentlyContinue
-  if ($steamRegistry -and $steamRegistry.SteamPath) {
-    $steamPath = $steamRegistry.SteamPath
-  }
-  if (-not $steamPath) {
-    $steamPath = Join-Path ${env:ProgramFiles(x86)} "Steam"
-  }
-
+  $steamPath = Resolve-SteamInstallPath
   $userdata = Join-Path $steamPath "userdata"
   if ($SteamUserId) {
     return Join-Path (Join-Path (Join-Path $userdata $SteamUserId) "config") "shortcuts.vdf"
@@ -383,8 +543,16 @@ function Invoke-Helper {
   New-Item -ItemType Directory -Force -Path (Split-Path -Parent $LogFile) | Out-Null
 
   try {
-    $output = & powershell -NoProfile -ExecutionPolicy Bypass -File $helper @Arguments *>&1
-    $exitCode = $LASTEXITCODE
+    $output = @()
+    $exitCode = 1
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+      $ErrorActionPreference = "Continue"
+      $output = & powershell -NoProfile -ExecutionPolicy Bypass -File $helper @Arguments *>&1
+      $exitCode = $LASTEXITCODE
+    } finally {
+      $ErrorActionPreference = $previousErrorActionPreference
+    }
     $output | Tee-Object -FilePath $LogFile
     if ($exitCode -ne 0) {
       $completed = @($output | Where-Object {
@@ -407,12 +575,16 @@ function Invoke-Preflight {
   $preflightLog = Join-Path $preflightDir "preflight.log"
   $preflightJson = Join-Path $preflightDir "preflight.json"
 
-  Invoke-Helper -Arguments @(
-    "-Mode", "preflight",
-    "-AppDir", $AppDir,
-    "-AppId", "$AppId",
-    "-PreflightJsonFile", $preflightJson
-  ) -LogFile $preflightLog
+  try {
+    Invoke-Helper -Arguments @(
+      "-Mode", "preflight",
+      "-AppDir", $AppDir,
+      "-AppId", "$AppId",
+      "-PreflightJsonFile", $preflightJson
+    ) -LogFile $preflightLog
+  } finally {
+    Collect-SteamClientDiagnostics -DestinationDir (Join-Path $preflightDir "steam-client") -Phase "preflight"
+  }
 
   Test-NativeLoadGate -PreflightDir $preflightDir
 }
@@ -528,7 +700,11 @@ function Invoke-MatrixCase {
   }
 
   Write-Host ("Running Windows overlay case {0}: {1}" -f $Case.id, $Case.action)
-  Invoke-Helper -Arguments $args -LogFile $helperLog
+  try {
+    Invoke-Helper -Arguments $args -LogFile $helperLog
+  } finally {
+    Collect-SteamClientDiagnostics -DestinationDir (Join-Path $caseDir "steam-client") -Phase ("case-{0}" -f $Case.id)
+  }
 }
 
 Resolve-SmokeExe | Out-Null
