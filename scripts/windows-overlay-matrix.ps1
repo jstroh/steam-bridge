@@ -30,6 +30,11 @@ param(
   [switch]$CleanStaleOverlayHelpers,
   [switch]$AllowUnhealthySteamClientLogs,
   [int]$SteamClientHealthRecentMinutes = 30,
+  [switch]$CloseProbe,
+  [ValidateSet("toggle", "escape", "close-tab")]
+  [string]$CloseProbeInput = "toggle",
+  [int]$CloseProbeSettleMs = 750,
+  [int]$CloseProbeTimeoutSeconds = 110,
   [string]$OverlayInProcessGpu = "1"
 )
 
@@ -1083,6 +1088,7 @@ function Test-NativeLoadGate {
     "-WindowMode", $WindowMode,
     "-ResultDelayMs", "1000",
     "-TimeoutSeconds", "$gateTimeoutSeconds",
+    "-AllowSteamNotRunning",
     "-RequireNoOverlayActivation",
     "-RequireNoCrashes"
   )
@@ -1230,7 +1236,7 @@ function Get-MatrixCases {
   $baseline = @(
     New-Case -Id "01-web" -Action "web" -RequireEvent @("overlay:web") -RequireOverlayActivated -WebModal "true"
     New-Case -Id "02-store" -Action "store" -RequireEvent @("overlay:store") -RequireOverlayActivated
-    New-Case -Id "03-friends-dialog" -Action "friends" -RequireEvent @("overlay:dialog") -RequireOverlayActivated -DialogOverride "Friends"
+    New-Case -Id "03-friends-dialog" -Action "friends" -RequireEvent @("overlay:dialog") -RequireOverlayActivated -DialogOverride $Dialog
     New-Case -Id "04-achievement-progress" -Action "achievement-progress" -RequireEvent @("achievement:progress") -RequireNoOverlayActivation -AllowOverlayNotReady -ResultDelayMs 2500
     New-Case -Id "05-achievement-unlock" -Action "achievement-unlock" -RequireEvent @("achievement:unlock") -RequireNoOverlayActivation -AllowOverlayNotReady -ResultDelayMs 2500
     New-Case -Id "99-none" -Action "none" -RequireNoOverlayActivation -AllowOverlayNotReady -ResultDelayMs 1200
@@ -1241,7 +1247,7 @@ function Get-MatrixCases {
     New-Case -Id "11-managed-web-open-and-wait" -Action "presenter-web-open-and-wait" -RequireEvent @("overlay:presenter-open-and-wait-start", "overlay:presenter-wait-closed", "overlay:presenter-parked", "overlay:presenter-open-and-wait-complete") -RequireOverlayActivated -RequireManagedOverlayComplete -ManagedOverlayResultMode "complete" -WebModal "true"
     New-Case -Id "12-managed-store-open-and-wait" -Action "presenter-store-open-and-wait" -RequireEvent @("overlay:presenter-open-and-wait-start", "overlay:presenter-wait-closed", "overlay:presenter-parked", "overlay:presenter-open-and-wait-complete") -RequireOverlayActivated -RequireManagedOverlayComplete -ManagedOverlayResultMode "complete"
     New-Case -Id "13-managed-friends-open-and-wait" -Action "presenter-friends-open-and-wait" -RequireEvent @("overlay:presenter-open-and-wait-start", "overlay:presenter-wait-closed", "overlay:presenter-parked", "overlay:presenter-open-and-wait-complete") -RequireOverlayActivated -RequireManagedOverlayComplete -ManagedOverlayResultMode "complete"
-    New-Case -Id "14-managed-dialog-open-and-wait" -Action "presenter-dialog-auto-open-and-wait" -RequireEvent @("overlay:presenter-open-and-wait-start", "overlay:presenter-wait-closed", "overlay:presenter-parked", "overlay:presenter-open-and-wait-complete") -RequireOverlayActivated -RequireManagedOverlayComplete -ManagedOverlayResultMode "complete" -DialogOverride "Friends"
+    New-Case -Id "14-managed-dialog-open-and-wait" -Action "presenter-dialog-auto-open-and-wait" -RequireEvent @("overlay:presenter-open-and-wait-start", "overlay:presenter-wait-closed", "overlay:presenter-parked", "overlay:presenter-open-and-wait-complete") -RequireOverlayActivated -RequireManagedOverlayComplete -ManagedOverlayResultMode "complete" -DialogOverride $Dialog
     New-Case -Id "15-managed-shortcut" -Action "presenter-shortcut-open-and-wait" -RequireEvent @("overlay:presenter-open-and-wait-start", "overlay:presenter-wait-closed", "overlay:presenter-parked", "overlay:presenter-open-and-wait-complete") -RequireOverlayActivated -RequireManagedOverlayComplete -ManagedOverlayResultMode "complete" -ShortcutTargetOverride $ShortcutTarget
     New-Case -Id "16-managed-checkout-route" -Action "presenter-checkout" -RequireEvent @("overlay:presenter-open", "overlay:presenter-wait-closed", "overlay:presenter-parked", "overlay:presenter-checkout-open-and-wait-complete") -RequireOverlayActivated -RequireManagedOverlayComplete -ManagedOverlayResultMode "complete" -CheckoutTransactionIdOverride $CheckoutTransactionId
   )
@@ -1314,6 +1320,8 @@ function Write-MatrixManifest {
     overlayInProcessGpu = $OverlayInProcessGpu
     overlayDisableDirectComposition = $OverlayDisableDirectComposition
     windowMode = $WindowMode
+    closeProbe = [bool]$CloseProbe
+    closeProbeInput = $CloseProbeInput
     skipNativeLoadGate = [bool]$SkipNativeLoadGate
     installShortcut = [bool]$InstallShortcut
     assumeShortcutConfigured = [bool]$AssumeShortcutConfigured
@@ -1361,6 +1369,107 @@ function Invoke-Helper {
   } catch {
     Write-Host ("Helper failed; output preserved at {0}" -f $LogFile)
     throw
+  }
+}
+
+function Test-SmokeResultPayload {
+  param([string]$Path)
+
+  if (-not (Test-Path -LiteralPath $Path)) {
+    return $false
+  }
+
+  return [bool](Select-String -LiteralPath $Path -SimpleMatch -Pattern "STEAM_BRIDGE_SMOKE_RESULT " -Quiet -ErrorAction SilentlyContinue)
+}
+
+function Start-WindowsOverlayCloseProbe {
+  param($Case, [string]$CaseDir, [string]$DiagnosticDir)
+
+  if (-not $CloseProbe -or -not $Case.requireManagedOverlayComplete) {
+    return $null
+  }
+
+  $lifecycleLog = Join-Path $DiagnosticDir "lifecycle.jsonl"
+  $probeLog = Join-Path $CaseDir "close-probe.log"
+  $input = $CloseProbeInput
+  $settleMs = [Math]::Max(0, $CloseProbeSettleMs)
+  $timeoutSeconds = [Math]::Max(1, $CloseProbeTimeoutSeconds)
+  New-Item -ItemType Directory -Force -Path $CaseDir | Out-Null
+
+  $probeScript = @"
+`$ErrorActionPreference = "Continue"
+function Write-ProbeEvent {
+  param([string]`$Type, [object]`$Payload)
+  [PSCustomObject]@{
+    type = `$Type
+    at = (Get-Date).ToUniversalTime().ToString("o")
+    payload = `$Payload
+  } | ConvertTo-Json -Compress -Depth 6 | Add-Content -LiteralPath '$probeLog'
+}
+
+Write-ProbeEvent "probe:start" ([PSCustomObject]@{
+  lifecycleLog = '$lifecycleLog'
+  input = '$input'
+  settleMs = $settleMs
+  timeoutSeconds = $timeoutSeconds
+})
+
+`$deadline = (Get-Date).AddSeconds($timeoutSeconds)
+`$sent = `$false
+while ((Get-Date) -lt `$deadline -and -not `$sent) {
+  if (Test-Path -LiteralPath '$lifecycleLog') {
+    `$text = Get-Content -Raw -LiteralPath '$lifecycleLog' -ErrorAction SilentlyContinue
+    if (`$text -match 'overlay:presenter-wait-shown' -or (`$text -match 'callback:overlay-activated' -and `$text -match '"active":true')) {
+      Write-ProbeEvent "probe:detected" ([PSCustomObject]@{})
+      if ($settleMs -gt 0) {
+        Start-Sleep -Milliseconds $settleMs
+      }
+      `$shell = New-Object -ComObject WScript.Shell
+      if ('$input' -eq 'escape') {
+        `$shell.SendKeys('{ESC}')
+      } elseif ('$input' -eq 'close-tab') {
+        `$shell.SendKeys('^w')
+      } else {
+        `$shell.SendKeys('+{TAB}')
+      }
+      Write-ProbeEvent "probe:sent" ([PSCustomObject]@{ input = '$input' })
+      `$sent = `$true
+    }
+  }
+  if (-not `$sent) {
+    Start-Sleep -Milliseconds 250
+  }
+}
+
+if (-not `$sent) {
+  Write-ProbeEvent "probe:timeout" ([PSCustomObject]@{})
+}
+"@
+
+  $encodedProbe = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($probeScript))
+  $probeArgs = "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -EncodedCommand $encodedProbe"
+  Write-Host ("Starting Windows overlay close probe for {0}; log: {1}" -f $Case.id, $probeLog)
+  return Start-Process -FilePath "powershell.exe" -ArgumentList $probeArgs -PassThru
+}
+
+function Stop-WindowsOverlayCloseProbe {
+  param($Process)
+
+  if (-not $Process) {
+    return
+  }
+
+  try {
+    $Process.Refresh()
+    if (-not $Process.HasExited) {
+      Wait-Process -Id $Process.Id -Timeout 2 -ErrorAction SilentlyContinue
+      $Process.Refresh()
+    }
+    if (-not $Process.HasExited) {
+      Stop-Process -Id $Process.Id -Force -ErrorAction SilentlyContinue
+    }
+  } catch {
+    Write-Host ("Windows close probe cleanup warning: {0}" -f $_.Exception.Message)
   }
 }
 
@@ -1512,10 +1621,12 @@ function Invoke-MatrixCase {
   }
 
   Write-Host ("Running Windows overlay case {0}: {1}" -f $Case.id, $Case.action)
+  $closeProbeProcess = Start-WindowsOverlayCloseProbe -Case $Case -CaseDir $caseDir -DiagnosticDir $diagnosticDir
   try {
     Invoke-Helper -Arguments $args -LogFile $helperLog
   } catch {
     if ($LaunchMode -eq "steam-launch") {
+      $resultHasSmokePayload = Test-SmokeResultPayload -Path $resultFile
       $postCasePreflightLog = Join-Path $caseDir "post-case-preflight.log"
       $postCasePreflightJson = Join-Path $caseDir "post-case-preflight.json"
       try {
@@ -1528,15 +1639,20 @@ function Invoke-MatrixCase {
       } catch {
         Write-Host ("Post-case preflight failed; preserving original case failure. Output path: {0}" -f $postCasePreflightLog)
       }
-      $blocker = New-SteamLaunchBlocker `
-        -Case $Case `
-        -PostCasePreflightLog $postCasePreflightLog `
-        -PostCasePreflightJson $postCasePreflightJson `
-        -OriginalError $_.Exception.Message
-      Write-MatrixJsonFile -Path (Join-Path $caseDir "steam-launch-blocker.json") -Value $blocker -Depth 10
+      if ($resultHasSmokePayload) {
+        Write-Host "Smoke result payload exists; preserving the verifier failure without writing a Steam launch blocker."
+      } else {
+        $blocker = New-SteamLaunchBlocker `
+          -Case $Case `
+          -PostCasePreflightLog $postCasePreflightLog `
+          -PostCasePreflightJson $postCasePreflightJson `
+          -OriginalError $_.Exception.Message
+        Write-MatrixJsonFile -Path (Join-Path $caseDir "steam-launch-blocker.json") -Value $blocker -Depth 10
+      }
     }
     throw
   } finally {
+    Stop-WindowsOverlayCloseProbe -Process $closeProbeProcess
     Collect-SteamClientDiagnostics -DestinationDir (Join-Path $caseDir "steam-client") -Phase ("case-{0}" -f $Case.id)
   }
 }

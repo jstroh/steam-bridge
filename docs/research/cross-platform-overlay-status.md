@@ -227,34 +227,42 @@ Steam overlay hook instead of creating a native host. The focused
 `C:\Users\admin\steam-bridge-artifacts\windows-direct-managed-20260702-001-managed-ready-pass-002`
 passed from the interactive Session 1 Steam shortcut with `backend=none`,
 `nativeHostOpen=false`, `currentFps=0`, `steamLaunch=true`, App ID `480`, clean
-crash diagnostics, and no overlay activation requirement. The matrix also now
-passes all required lifecycle events to the smoke verifier through one
-`-RequireEvent` array argument, fixing the PowerShell binding error that blocked
-managed active cases with multiple required events. A follow-up
-`11-managed-web-open-and-wait` artifact at
-`C:\Users\admin\steam-bridge-artifacts\windows-direct-managed-20260702-001-managed-web-complete-002`
-proved the direct managed Windows path can show a modal web overlay:
-`GameOverlayActivated(true)` arrived with App ID `480`,
-`overlay:presenter-wait-shown` recorded `overlayEnabled=true`, and the presenter
-snapshot stayed `backend=none` with zero FPS and no native host. That artifact
-is not accepted as close/back-to-app proof because the automated Shift+Tab close
-probe did not produce `GameOverlayActivated(false)` before the helper timeout.
-A focused follow-up artifact at
-`C:\Users\admin\steam-bridge-artifacts\windows-managed-web-close-20260702-002`
-completed that missing close/back-to-app proof from the interactive Session 1
-Steam shortcut. The case recorded `GameOverlayActivated(true)`,
-`overlay:presenter-wait-shown`, `GameOverlayActivated(false)`,
-`overlay:presenter-wait-closed`, `overlay:presenter-parked`, and
-`overlay:presenter-open-and-wait-complete`; the presenter remained
-`backend=none`, `nativeHostOpen=false`, and `currentFps=0`, and crash
-diagnostics were clean. The Windows summary auditor now accepts the Windows
-Steam launch shape by requiring Steam launch plus `SteamOverlayGameId` /
-`SteamClientLaunch` / `SteamEnv` markers instead of requiring a Unix-style
-`gameoverlayrenderer` injection marker. Keep the Windows client-health caveat
-visible: the post-case Steam diagnostics for this run still reported fresh
-Steam CEF GPU-process restart signals while the laptop had low free virtual
-memory, so repeat active Windows cases on a healthier client before calling the
-whole Windows suite clean.
+crash diagnostics, and no overlay activation requirement. Follow-up artifacts
+prove direct managed Windows web, store, and Friends paths can open, receive
+Steam overlay callbacks, close, park, and complete without a native presenter:
+`windows-managed-web-close-20260702-002`, `windows-managed-store-closeprobe-20260702-003`
+using the overlay toggle close probe, and
+`windows-managed-friends-escapeprobe-20260702-001` using the Escape close probe.
+Those cases recorded `GameOverlayActivated(true)`, `overlay:presenter-wait-shown`,
+`GameOverlayActivated(false)`, `overlay:presenter-wait-closed`,
+`overlay:presenter-parked`, and `overlay:presenter-open-and-wait-complete`, while
+the presenter stayed `backend=none`, `nativeHostOpen=false`, and `currentFps=0`.
+The Windows summary auditor now accepts the Windows Steam launch shape by
+requiring Steam launch plus `SteamOverlayGameId` / `SteamClientLaunch` /
+`SteamEnv` markers instead of requiring a Unix-style `gameoverlayrenderer`
+injection marker. It also rejects misleading `steam-launch-blocker.json`
+artifacts when a smoke result payload exists beside them, accepts managed close
+proof from either the inactive callback or `wait.overlayClosed`, and records
+which close probe input was sent.
+
+The Windows native-load gate is now scoped to native addon load/crash proof. It
+passes `-AllowSteamNotRunning` because a direct packaged launch can initialize
+the App ID and load `steam_bridge_native.win32-x64-msvc.node` while
+`isSteamRunning()` reports false. That avoids misclassifying a successful
+`STEAM_BRIDGE_SMOKE_RESULT ok:true` direct gate as a Smart App Control native
+load blocker because of stale Code Integrity events from earlier runs.
+
+Do not call the Windows managed suite fully clean yet. Dialog-equivalent and
+shortcut routes open and emit active overlay callbacks, but the current
+automated close probes do not reliably deliver close input to those Steam UI
+surfaces. Negative artifacts include
+`windows-managed-dialog-community-closetab-20260702-001` for
+`openDialogAndWait({ dialog: "OfficialGameGroup" })` and
+`windows-managed-shortcut-escapeprobe-20260702-001` for the managed shortcut
+target. Both reached `GameOverlayActivated(true)` and
+`overlay:presenter-wait-shown`, then timed out before
+`GameOverlayActivated(false)`. Treat this as the remaining Windows automation
+focus problem, not evidence that Electron needs a native host on Windows.
 
 The macOS matrix can now pair `--app-id <your-app-id>` with
 `--checkout-json-file <path>` for private configured-product proof. Its manifest

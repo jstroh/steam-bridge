@@ -100,6 +100,12 @@ write `STEAM_BRIDGE_SMOKE_MANAGED_OVERLAY_RESULT_MODE=complete` and require
 Steam's inactive callback plus the managed close, park, and open-and-wait
 completion events before the smoke result is accepted. Run those cases only when
 the overlay can be closed interactively or by a verified UI close probe.
+The Windows close probe supports `-CloseProbeInput toggle`, `escape`, and
+`close-tab`. Current Windows evidence uses `toggle` for store/web-style overlay
+pages and `escape` for the direct Friends panel. Dialog-equivalent and shortcut
+routes open and emit active callbacks, but their automated close input is still
+being investigated, so keep them in focused runs until close/back-to-app proof is
+green.
 
 The Windows package also includes `windows-overlay-matrix.ps1`, which runs
 preflight and then a repeatable baseline, managed, or full suite while writing
@@ -110,6 +116,18 @@ case artifacts under `%TEMP%` by default:
   -Suite baseline `
   -LaunchMode steam-launch `
   -InstallShortcut
+```
+
+Focused managed runs can choose a single case, close probe, and dialog target:
+
+```powershell
+.\windows-overlay-matrix.ps1 `
+  -Suite managed `
+  -LaunchMode steam-launch `
+  -OnlyCase 14-managed-dialog-open-and-wait `
+  -Dialog OfficialGameGroup `
+  -CloseProbe `
+  -CloseProbeInput close-tab
 ```
 
 The matrix also captures Steam client diagnostics without mutating Steam state:
@@ -538,13 +556,16 @@ logging raw overlay target values. Use
 `openAndWait(...)` path; the smoke app records
 `overlay:presenter-open-and-wait-start` before writing its result, then records
 `overlay:presenter-open-and-wait-complete` only after Steam closes and the
-presenter parks. The macOS helper's `--close-probe` and Deck runner's visual
-close probes verify that close/park lifecycle from outside the app. Use
+presenter parks. The macOS helper's `--close-probe`, the Windows matrix
+`-CloseProbe`, and the Deck runner's visual close probes verify that close/park
+lifecycle from outside the app. Use
 `presenter-store-open-and-wait` and
 `presenter-friends-open-and-wait` for the same named-helper open/close/park
 proof against the Steam store and Friends List surfaces. Use
 `presenter-dialog-auto-open-and-wait --dialog OfficialGameGroup` for proof
-through the verified high-level dialog-equivalent helper. The profile,
+through the high-level dialog-equivalent helper; on Windows, this currently
+proves open/active callbacks but still needs a reliable automated close probe
+before it is accepted as close/back-to-app proof. The profile,
 players, community, stats, achievements, and user routes also have
 `*-open-and-wait` actions for the same managed wait-helper proof. Managed
 `*-open-and-wait` actions wait for Steam's overlay diagnostics to report the app

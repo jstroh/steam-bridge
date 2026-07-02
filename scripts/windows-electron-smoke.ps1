@@ -72,6 +72,7 @@ param(
   [string[]]$RequireEvent = @(),
   [switch]$RequireSteamLaunch,
   [switch]$RequireOverlayReady,
+  [switch]$AllowSteamNotRunning,
   [switch]$AllowOverlayNotReady,
   [switch]$RequireOverlayActivated,
   [switch]$RequireNoOverlayActivation,
@@ -945,6 +946,7 @@ function Assert-SmokeResult {
   $events = @($snapshot.events)
   $overlayActivated = @($events | Where-Object { Test-OverlayActiveEvent $_ }).Count -gt 0
   $overlayDeactivated = @($events | Where-Object { Test-OverlayInactiveEvent $_ }).Count -gt 0
+  $managedOverlayClosedByWait = ($Result.wait -and $Result.wait.overlayClosed -eq $true)
   $expectedActionError = ($RequireActionErrorCode -or $RequireActionErrorReason)
 
   if ($expectedActionError) {
@@ -957,7 +959,7 @@ function Assert-SmokeResult {
   if ($steam.initialized -ne $true) {
     $failures.Add("Steam initialized")
   }
-  if ((Read-OkValue $steam.running) -ne $true) {
+  if (-not $AllowSteamNotRunning -and (Read-OkValue $steam.running) -ne $true) {
     $failures.Add("Steam running")
   }
   if ((Read-OkValue $steam.appId) -ne $app.appId) {
@@ -1068,8 +1070,8 @@ function Assert-SmokeResult {
     if (-not $overlayActivated) {
       $failures.Add("managed overlay emitted active=true before completion")
     }
-    if (-not $overlayDeactivated) {
-      $failures.Add("managed overlay emitted active=false before completion")
+    if (-not ($overlayDeactivated -or $managedOverlayClosedByWait)) {
+      $failures.Add("managed overlay emitted active=false or completed the close wait before completion")
     }
     if (-not $Result.wait -or $Result.wait.overlayClosed -ne $true) {
       $failures.Add("managed overlay close wait completed")

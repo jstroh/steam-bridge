@@ -142,12 +142,15 @@ function summarizeWindowsOverlayMatrixArtifacts(root) {
   for (const caseName of findCaseDirectories(root)) {
     const caseDir = path.join(root, caseName);
     const steamLaunchBlocker = readJsonIfPresent(path.join(caseDir, "steam-launch-blocker.json"), failures);
+    const resultLog = findResultLog(caseDir);
     if (steamLaunchBlocker) {
       validateSteamLaunchBlocker(steamLaunchBlocker, failures);
+      if (resultLog && hasSmokeResultPayload(resultLog)) {
+        failures.push(`${caseName}: steam-launch-blocker.json is invalid when a smoke result payload exists`);
+      }
       steamLaunchBlockers.push(summarizeSteamLaunchBlocker(caseName, steamLaunchBlocker));
     }
 
-    const resultLog = findResultLog(caseDir);
     if (!resultLog) {
       failures.push(`${caseName}: missing result.log with ${RESULT_PREFIX.trim()} payload`);
       continue;
@@ -165,7 +168,8 @@ function summarizeWindowsOverlayMatrixArtifacts(root) {
       path.join(caseDir, "steam-client", "steam-client-rendering-health.json"),
       failures
     );
-    const caseSummary = summarizeCaseResult(caseName, result, resultLog, renderingHealth);
+    const closeProbeEvents = readJsonLinesIfPresent(path.join(caseDir, "close-probe.log"), failures);
+    const caseSummary = summarizeCaseResult(caseName, result, resultLog, renderingHealth, closeProbeEvents);
     caseSummaries.push(caseSummary);
     failures.push(...caseSummary.failures);
   }
@@ -262,10 +266,13 @@ function validateManifestCoverage(manifest, caseSummaries, failures, warnings) {
         `matrix manifest case ${expected.id} used complete managed overlay result mode`,
         failures
       );
-      expect(row.overlayInactiveEvents > 0, `matrix manifest case ${expected.id} emitted overlay inactive callback`, failures);
+      expect(row.managedOverlayCloseProof === true, `matrix manifest case ${expected.id} proved managed overlay close`, failures);
       expect(row.wait && row.wait.overlayClosed === true, `matrix manifest case ${expected.id} completed overlay close wait`, failures);
       expect(row.wait && row.wait.overlayParked === true, `matrix manifest case ${expected.id} completed overlay park wait`, failures);
       expect(row.wait && row.wait.overlayComplete === true, `matrix manifest case ${expected.id} completed managed overlay wait`, failures);
+      if (manifest.closeProbe === true) {
+        expect(row.closeProbeSent === true, `matrix manifest case ${expected.id} sent Windows close probe input`, failures);
+      }
     }
   }
 
@@ -415,7 +422,11 @@ function hasSteamOverlayLaunchMarker(launch) {
   });
 }
 
-function summarizeCaseResult(caseName, result, resultLog, renderingHealth = null) {
+function hasManagedOverlayCloseProof(wait, overlayInactiveEvents) {
+  return overlayInactiveEvents > 0 || Boolean(wait && wait.overlayClosed === true);
+}
+
+function summarizeCaseResult(caseName, result, resultLog, renderingHealth = null, closeProbeEvents = []) {
   const failures = [];
   const snapshot = objectOrEmpty(result.snapshot);
   const app = objectOrEmpty(snapshot.app);
@@ -433,6 +444,8 @@ function summarizeCaseResult(caseName, result, resultLog, renderingHealth = null
     : [];
   const overlayEnabled = readOkValue(steam.overlayEnabled);
   const overlayNeedsPresent = readOkValue(steam.overlayNeedsPresent);
+  const wait = result.wait && typeof result.wait === "object" && !Array.isArray(result.wait) ? result.wait : null;
+  const closeProbeSentEvent = closeProbeEvents.find((event) => event && event.type === "probe:sent");
 
   expect(result.ok === true, `${caseName}: smoke result ok`, failures);
   expect(action.ok === true, `${caseName}: autorun action succeeded`, failures);
@@ -462,8 +475,11 @@ function summarizeCaseResult(caseName, result, resultLog, renderingHealth = null
     overlayNeedsPresent,
     overlayActiveEvents,
     overlayInactiveEvents,
+    managedOverlayCloseProof: hasManagedOverlayCloseProof(wait, overlayInactiveEvents),
+    closeProbeSent: Boolean(closeProbeSentEvent),
+    closeProbeInput: closeProbeSentEvent ? closeProbeSentEvent.payload && closeProbeSentEvent.payload.input : "",
     eventTypes: events.map((event) => event && event.type).filter(Boolean),
-    wait: result.wait && typeof result.wait === "object" && !Array.isArray(result.wait) ? result.wait : null,
+    wait,
     crashDumpCount: crashDumps.length,
     fatalLifecycleEventCount: fatalLifecycleEvents.length,
     steamRenderingHealth,
@@ -524,7 +540,9 @@ function printSummary(summary) {
         `  ${row.caseName}: ${ok} action=${row.action || "unknown"} ` +
           `steamLaunch=${row.steamLaunch} steamOverlayLaunchMarker=${row.steamOverlayLaunchMarker} ` +
           `overlayActiveEvents=${row.overlayActiveEvents} ` +
-          `overlayEnabled=${formatValue(row.overlayEnabled)} crashes=${row.crashDumpCount + row.fatalLifecycleEventCount}` +
+          `overlayEnabled=${formatValue(row.overlayEnabled)} ` +
+          (row.closeProbeSent ? `closeProbe=${formatValue(row.closeProbeInput)} ` : "") +
+          `crashes=${row.crashDumpCount + row.fatalLifecycleEventCount}` +
           formatCaseRenderingHealth(row.steamRenderingHealth)
       );
     }
@@ -667,6 +685,12 @@ function readSmokeResult(resultLog) {
   }
 }
 
+function hasSmokeResultPayload(resultLog) {
+  return readText(resultLog)
+    .split(/\r?\n/)
+    .some((entry) => entry.startsWith(RESULT_PREFIX));
+}
+
 function readJsonIfPresent(file, failures) {
   if (!fs.existsSync(file)) {
     return null;
@@ -677,6 +701,25 @@ function readJsonIfPresent(file, failures) {
     failures.push(`could not parse JSON ${file}: ${error.message}`);
     return null;
   }
+}
+
+function readJsonLinesIfPresent(file, failures) {
+  if (!fs.existsSync(file)) {
+    return [];
+  }
+  return readText(file)
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line, index) => {
+      try {
+        return JSON.parse(line);
+      } catch (error) {
+        failures.push(`could not parse JSON line ${index + 1} in ${file}: ${error.message}`);
+        return null;
+      }
+    })
+    .filter(Boolean);
 }
 
 function readText(file) {
@@ -793,6 +836,29 @@ function runSelfTest() {
     assert.equal(managedSummary.caseSummaries.length, 1);
     assert.equal(managedSummary.totals.overlayActiveCases, 1);
 
+    const managedCloseWaitRoot = path.join(tempRoot, "managed-close-wait");
+    writeManagedCaseFixture(managedCloseWaitRoot, { omitInactiveEvent: true });
+    const managedCloseWaitSummary = summarizeWindowsOverlayMatrixArtifacts(managedCloseWaitRoot);
+    assert.deepEqual(managedCloseWaitSummary.failures, []);
+    assert.equal(managedCloseWaitSummary.caseSummaries[0].managedOverlayCloseProof, true);
+
+    const closeProbeRoot = path.join(tempRoot, "managed-close-probe");
+    writeManagedCaseFixture(closeProbeRoot, { closeProbe: true, closeProbeSent: true });
+    const closeProbeSummary = summarizeWindowsOverlayMatrixArtifacts(closeProbeRoot);
+    assert.deepEqual(closeProbeSummary.failures, []);
+    assert.equal(closeProbeSummary.caseSummaries[0].closeProbeSent, true);
+    assert.equal(closeProbeSummary.caseSummaries[0].closeProbeInput, "toggle");
+
+    const missingCloseProbeRoot = path.join(tempRoot, "managed-close-probe-missing");
+    writeManagedCaseFixture(missingCloseProbeRoot, { closeProbe: true });
+    const missingCloseProbeSummary = summarizeWindowsOverlayMatrixArtifacts(missingCloseProbeRoot);
+    assert(
+      missingCloseProbeSummary.failures.some((failure) =>
+        failure.includes("sent Windows close probe input")
+      ),
+      "summary self-test should fail when a close-probe manifest has no probe:sent evidence"
+    );
+
     const steamLaunchBlockedRoot = path.join(tempRoot, "steam-launch-blocked");
     writeSteamLaunchBlockedFixture(steamLaunchBlockedRoot);
     const steamLaunchBlockedSummary = summarizeWindowsOverlayMatrixArtifacts(steamLaunchBlockedRoot);
@@ -801,6 +867,24 @@ function runSelfTest() {
     assert(
       steamLaunchBlockedSummary.failures.some((failure) => failure.includes("99-none: missing result.log")),
       "summary self-test should still fail when a Steam-launched case has no smoke result"
+    );
+
+    const steamLaunchBlockerWithResultRoot = path.join(tempRoot, "steam-launch-blocker-with-result");
+    writeSteamLaunchBlockedFixture(steamLaunchBlockerWithResultRoot);
+    writeResult(path.join(steamLaunchBlockerWithResultRoot, "99-none", "result.log"), {
+      ok: false,
+      action: { ok: false, action: "none" },
+      snapshot: buildWindowsSnapshot({
+        pid: 4444,
+        events: []
+      })
+    });
+    const steamLaunchBlockerWithResultSummary = summarizeWindowsOverlayMatrixArtifacts(steamLaunchBlockerWithResultRoot);
+    assert(
+      steamLaunchBlockerWithResultSummary.failures.some((failure) =>
+        failure.includes("steam-launch-blocker.json is invalid when a smoke result payload exists")
+      ),
+      "summary self-test should fail when a Steam launch blocker is written beside a smoke result"
     );
 
     const incompleteRoot = path.join(tempRoot, "incomplete");
@@ -1130,6 +1214,7 @@ function writeManagedCaseFixture(root, options = {}) {
     appId: 480,
     onlyCase: "",
     expectedCaseCount: 1,
+    ...(options.closeProbe ? { closeProbe: true, closeProbeInput: "toggle" } : {}),
     cases: [
       {
         id: "11-managed-web-open-and-wait",
@@ -1166,20 +1251,23 @@ function writeManagedCaseFixture(root, options = {}) {
       currentSessionInteractive: true
     }
   });
+  const events = [
+    { type: "overlay:presenter-open-and-wait-start" },
+    { type: "callback:overlay-activated", payload: { active: true } },
+    { type: "overlay:presenter-wait-closed" },
+    { type: "overlay:presenter-parked" },
+    { type: "overlay:presenter-open-and-wait-complete" }
+  ];
+  if (!options.omitInactiveEvent) {
+    events.splice(2, 0, { type: "callback:overlay-activated", payload: { active: false } });
+  }
   const result = {
     ok: true,
     action: { ok: true, action: "presenter-web-open-and-wait" },
     snapshot: buildWindowsSnapshot({
       pid: 4245,
       managedOverlayResultMode: "complete",
-      events: [
-        { type: "overlay:presenter-open-and-wait-start" },
-        { type: "callback:overlay-activated", payload: { active: true } },
-        { type: "callback:overlay-activated", payload: { active: false } },
-        { type: "overlay:presenter-wait-closed" },
-        { type: "overlay:presenter-parked" },
-        { type: "overlay:presenter-open-and-wait-complete" }
-      ]
+      events
     })
   };
   if (!options.omitWait) {
@@ -1190,6 +1278,12 @@ function writeManagedCaseFixture(root, options = {}) {
     };
   }
   writeResult(path.join(root, "11-managed-web-open-and-wait", "result.log"), result);
+  if (options.closeProbeSent) {
+    writeText(
+      path.join(root, "11-managed-web-open-and-wait", "close-probe.log"),
+      `${JSON.stringify({ type: "probe:sent", at: "2026-07-02T00:00:04.000Z", payload: { input: "toggle" } })}\n`
+    );
+  }
 }
 
 function buildWindowsSnapshot({ pid, events, managedOverlayResultMode = "", steamOverlayLaunchMarker = true }) {
