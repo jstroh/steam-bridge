@@ -21,6 +21,10 @@ const OVERLAY_ISOLATE_CHILD_PROCESSES = readOptionalBoolean(
   CLI_OPTIONS.overlayIsolateChildProcesses ||
     process.env.STEAM_BRIDGE_ELECTRON_OVERLAY_ISOLATE_CHILD_PROCESSES
 );
+const OVERLAY_DISABLE_DIRECT_COMPOSITION = readOptionalBoolean(
+  CLI_OPTIONS.overlayDisableDirectComposition ||
+    process.env.STEAM_BRIDGE_ELECTRON_OVERLAY_DISABLE_DIRECT_COMPOSITION
+);
 const WINDOW_MODE = CLI_OPTIONS.windowMode || process.env.STEAM_BRIDGE_SMOKE_WINDOW_MODE || "windowed";
 const MAC_NATIVE_HOST_BACKEND = normalizeMacNativeHostBackend(
   CLI_OPTIONS.nativeHostBackend || process.env.STEAM_BRIDGE_SMOKE_NATIVE_HOST_BACKEND || ""
@@ -137,6 +141,9 @@ if (OVERLAY_SCRUB_CHILD_ENV !== undefined) {
 }
 if (OVERLAY_ISOLATE_CHILD_PROCESSES !== undefined) {
   OVERLAY_CONFIG_OPTIONS.isolateSteamOverlayChildProcesses = OVERLAY_ISOLATE_CHILD_PROCESSES;
+}
+if (OVERLAY_DISABLE_DIRECT_COMPOSITION !== undefined) {
+  OVERLAY_CONFIG_OPTIONS.disableDirectComposition = OVERLAY_DISABLE_DIRECT_COMPOSITION;
 }
 const OVERLAY_CONFIG = steamworks.electronConfigureSteamOverlay(OVERLAY_CONFIG_OPTIONS);
 
@@ -2266,6 +2273,7 @@ function snapshot() {
       overlayProfile: OVERLAY_PROFILE,
       overlayScrubChildEnv: OVERLAY_CONFIG.scrubSteamOverlayChildProcessEnv,
       overlayIsolateChildProcesses: OVERLAY_CONFIG.isolateSteamOverlayChildProcesses,
+      overlayDisableDirectComposition: OVERLAY_CONFIG.disableDirectComposition,
       overlayConfig: OVERLAY_CONFIG,
       nativeHostBackend: MAC_NATIVE_HOST_BACKEND || null,
       windowMode: WINDOW_MODE,
@@ -3193,6 +3201,7 @@ function parseSmokeArgs(args) {
     presenterMode: undefined,
     overlayScrubChildEnv: undefined,
     overlayIsolateChildProcesses: undefined,
+    overlayDisableDirectComposition: undefined,
     windowMode: undefined,
     nativeHostBackend: undefined,
     autorunRequireOverlayActive: undefined,
@@ -3293,6 +3302,9 @@ function parseSmokeArgs(args) {
         break;
       case "--steam-bridge-electron-overlay-isolate-child-processes":
         options.overlayIsolateChildProcesses = value == null || value === "" ? "1" : value;
+        break;
+      case "--steam-bridge-electron-overlay-disable-direct-composition":
+        options.overlayDisableDirectComposition = value == null || value === "" ? "1" : value;
         break;
       case "--steam-bridge-smoke-window-mode":
         options.windowMode = value;

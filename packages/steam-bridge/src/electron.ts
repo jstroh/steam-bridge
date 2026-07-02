@@ -2,6 +2,7 @@ export type ElectronSteamOverlayProfile = "off" | "diagnostic" | "repaint" | "co
 
 export interface ElectronOverlayOptions {
   enableInProcessGpu?: boolean;
+  disableDirectComposition?: boolean;
   repaintIntervalMs?: number;
 }
 
@@ -17,6 +18,7 @@ export interface ElectronSteamOverlayProfileOptions extends ElectronOverlayOptio
 export interface ElectronSteamOverlayConfigResult {
   profile: ElectronSteamOverlayProfile;
   switches: string[];
+  disableDirectComposition: boolean;
   repaintIntervalMs: number;
   scrubSteamOverlayChildProcessEnv: boolean;
   isolateSteamOverlayChildProcesses: boolean;
@@ -103,6 +105,7 @@ export function electronConfigureSteamOverlay(
     return {
       profile,
       switches: [],
+      disableDirectComposition: false,
       repaintIntervalMs: 0,
       scrubSteamOverlayChildProcessEnv: false,
       isolateSteamOverlayChildProcesses: false,
@@ -114,6 +117,7 @@ export function electronConfigureSteamOverlay(
   const repaintMode = profile === "repaint" || compatibilityMode;
   const {
     enableInProcessGpu = compatibilityMode,
+    disableDirectComposition = false,
     forceHighPerformanceGpu = true,
     disableBackgroundThrottling = true,
     ignoreGpuBlocklist = true,
@@ -132,6 +136,10 @@ export function electronConfigureSteamOverlay(
 
   if (enableInProcessGpu) {
     appendSwitchOnce(electron.app, switches, "in-process-gpu");
+  }
+
+  if (disableDirectComposition) {
+    appendSwitchOnce(electron.app, switches, "disable-direct-composition");
   }
 
   if (forceHighPerformanceGpu) {
@@ -171,6 +179,7 @@ export function electronConfigureSteamOverlay(
   return {
     profile,
     switches,
+    disableDirectComposition,
     repaintIntervalMs,
     scrubSteamOverlayChildProcessEnv,
     isolateSteamOverlayChildProcesses,

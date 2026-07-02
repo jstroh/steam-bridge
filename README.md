@@ -311,6 +311,13 @@ renderer entries from future Electron child-process preload environment
 variables by default, keeping the bridge-owned native presenter as the overlay
 target. Set `scrubSteamOverlayChildProcessEnv: false` only for raw diagnostic
 comparisons.
+On Windows, start with this default Electron configuration. If a Windows smoke
+run shows a white or stale overlay, use
+`electronConfigureSteamOverlay({ disableDirectComposition: true })` or the
+Windows smoke helper's `-OverlayDisableDirectComposition 1` flag for an explicit
+comparison run; keep Alt+Tab/close regression checks in that pass because this
+Chromium switch has known ghost-window risk in upstream Electron Steam wrapper
+reports.
 
 ```ts
 import { app, BrowserWindow } from "electron";

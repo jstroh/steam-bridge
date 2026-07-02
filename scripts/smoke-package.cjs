@@ -336,6 +336,8 @@ function runElectronSmokeActionStaticChecks() {
     ["Electron smoke main", main, "directPresenterOpenReadinessStatus"],
     ["Electron smoke main", main, "waitForDirectPresenterOpenReadiness"],
     ["Electron smoke main", main, "waitForCheckoutOperationReadiness"],
+    ["Electron smoke main", main, "overlayDisableDirectComposition"],
+    ["Electron smoke main", main, "--steam-bridge-electron-overlay-disable-direct-composition"],
     ["Electron smoke main", main, "checkoutTargetFromResult(checkoutOperation.transaction, { expectedAppId: APP_ID })"],
     ["Electron smoke main", main, "throwIfNativeHostUnavailable(initialSnapshot, target)"],
     ["Electron smoke main", main, "throwIfNativeHostUnavailable(initialSnapshot, checkoutTargetFromOperation(transaction))"],
@@ -483,6 +485,10 @@ assert.equal(typeof electron.electronNativeOverlaySessionOptions, "function");
 assert.equal(typeof electron.electronOverlayPresenterOptions, "function");
 assert.equal(typeof electron.electronScrubSteamOverlayChildProcessEnv, "function");
 assert.equal(electron.electronConfigureSteamOverlay({ profile: "off" }).profile, "off");
+assert.equal(
+  electron.electronConfigureSteamOverlay({ profile: "off", disableDirectComposition: true }).disableDirectComposition,
+  false
+);
 assert.equal(typeof electronBuilder.prepareMacosSteamAppAfterPack, "function");
 assert.equal(typeof electronBuilder.verifyMacosSteamAppAfterSign, "function");
 const skipped = electronBuilder.prepareMacosSteamAppAfterPack({
@@ -555,6 +561,10 @@ assert.equal(typeof electron.electronNativeOverlaySessionOptions, "function");
 assert.equal(typeof electron.electronOverlayPresenterOptions, "function");
 assert.equal(typeof electron.electronScrubSteamOverlayChildProcessEnv, "function");
 assert.equal(electron.electronConfigureSteamOverlay({ profile: "off" }).profile, "off");
+assert.equal(
+  electron.electronConfigureSteamOverlay({ profile: "off", disableDirectComposition: true }).disableDirectComposition,
+  false
+);
 assert.equal(typeof electronBuilder.prepareMacosSteamAppAfterPack, "function");
 assert.equal(typeof electronBuilder.verifyMacosSteamAppAfterSign, "function");
 `
@@ -632,7 +642,8 @@ const profileOverlayTarget: SteamOverlayTarget = { type: "profile", steamId64: 7
 const inputPassthroughFn: (passThrough: boolean) => void = overlay.setNativeOverlayHostInputPassthrough;
 const opacityFn: (opaque: boolean) => void = overlay.setNativeOverlayHostOpacity;
 const friendsOverlayUrl: string = STEAM_FRIENDS_OVERLAY_URL;
-const config = electronConfigureSteamOverlay({ profile: "off" });
+const config = electronConfigureSteamOverlay({ profile: "off", disableDirectComposition: true });
+const configDisableDirectComposition: boolean = config.disableDirectComposition;
 const scrubbedKeys: string[] = electronScrubSteamOverlayChildProcessEnv({});
 const afterPackContext: ElectronBuilderAfterPackContext = {
   appOutDir: "/tmp/steam-bridge-package-smoke",
@@ -765,6 +776,7 @@ void inputPassthroughFn;
 void opacityFn;
 void friendsOverlayUrl;
 void config;
+void configDisableDirectComposition;
 void afterPackContext;
 void afterPackResult;
 void afterSignResult;

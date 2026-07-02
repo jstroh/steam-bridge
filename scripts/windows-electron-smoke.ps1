@@ -44,6 +44,7 @@ param(
   [string]$Action = "none",
 
   [string]$OverlayProfile = "diagnostic",
+  [string]$OverlayDisableDirectComposition = "",
   [string]$WindowMode = "",
   [string]$WebUrl = "",
   [string]$WebModal = "",
@@ -116,6 +117,9 @@ function Get-SmokeArgs {
 
   if ($KeepOpenAfterResult) {
     $args += "--steam-bridge-smoke-keep-open-after-result"
+  }
+  if ($OverlayDisableDirectComposition) {
+    $args += "--steam-bridge-electron-overlay-disable-direct-composition=$OverlayDisableDirectComposition"
   }
   if ($WindowMode) {
     $args += "--steam-bridge-smoke-window-mode=$WindowMode"

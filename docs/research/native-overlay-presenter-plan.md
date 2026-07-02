@@ -1653,9 +1653,25 @@ design. If the ordinary Electron overlay path works on Windows, keep it as the
 default there and use the presenter only if a future regression proves it is
 needed.
 
+Wrapper research points to two Windows modes worth testing before adding native
+presenter complexity. The baseline is Electron with Chromium GPU work in-process,
+matching the long-standing `steamworks.js` and Greenworks guidance. The fallback
+is Electron plus Chromium's `disable-direct-composition` switch: reports show it
+can address white/stale overlay rendering, but `steamworks.js` issue #95 also
+ties that switch to Alt+Tab ghost-window regressions. Steam Bridge therefore
+exposes `disableDirectComposition` as an explicit opt-in and the packaged
+Windows helper exposes `-OverlayDisableDirectComposition 1`; a passing Windows
+proof must compare that mode only when the baseline fails and must include
+Alt+Tab, close, and back-to-app checks. Newer wrapper work such as
+`steamworks-ffi-node` uses native OpenGL/Metal overlay host surfaces across
+platforms, which remains useful contingency evidence, but it is not the first
+Windows implementation path unless ordinary Electron proves insufficient.
+
 Windows gates:
 
 - existing Electron overlay path still passes;
+- `disableDirectComposition` remains opt-in and is covered by smoke helper
+  launch-option diagnostics when used;
 - native package still loads;
 - checkout/web/store/Friends/dialog-equivalent overlay smoke checks do not
   regress;

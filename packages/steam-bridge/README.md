@@ -52,7 +52,13 @@ target.
 
 The packaged Windows smoke helper accepts the same generic smoke actions as the
 Deck/macOS helpers for web, store, Friends, dialog-equivalent, checkout,
-shortcut, and passive notification regression checks.
+shortcut, and passive notification regression checks. Windows Electron overlay
+testing starts with the normal `electronConfigureSteamOverlay()` path. If a
+Windows run shows a white or stale overlay, pass
+`disableDirectComposition: true` or launch the smoke helper with
+`-OverlayDisableDirectComposition 1` for an explicit comparison run. This switch
+is not enabled by default because upstream Electron/Steam wrapper reports tie it
+to Alt+Tab ghost-window regressions on some Windows systems.
 
 ## Quick Start
 
@@ -786,6 +792,13 @@ activates but needs additional presents. The repaint profile invalidates
 Electron windows at about 30 FPS so Steam has fresh frames to composite. Use
 `profile: "compatibility"` as the stronger fallback when you also need
 Chromium's GPU work in-process.
+
+For Windows Electron apps, start with the default configuration. If the Steam
+overlay opens as a white or stale surface, opt into
+`electronConfigureSteamOverlay({ disableDirectComposition: true })` for that
+build and run the Alt+Tab/close regression checks before shipping. Steam Bridge
+keeps this as an explicit option so normal Windows builds do not inherit the
+known ghost-window risk unless they need the composition workaround.
 
 On Steam Deck Desktop Mode, the Linux X11/GLX reusable presenter path is the
 current generic proof path for product overlay activation, visual open, close,
