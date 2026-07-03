@@ -8704,6 +8704,7 @@ test("native overlay presenter snapshots identify the macOS host backend", (t) =
 });
 
 test("electron steam overlay manager opens the presenter route from the default Shift+Tab shortcut", (t) => {
+  setProcessPlatformForTest(t, "linux");
   const hostHandle = Buffer.from([4, 8, 15, 16]);
   let hostOpen = false;
   let beforeInputHandler;
@@ -8860,6 +8861,7 @@ test("electron steam overlay manager opens the presenter route from the default 
 });
 
 test("electron steam overlay manager opens the configured shortcut target programmatically", (t) => {
+  setProcessPlatformForTest(t, "linux");
   const hostHandle = Buffer.from([4, 8, 15, 17]);
   let hostOpen = false;
   const fake = createFakeNative({
@@ -8996,6 +8998,7 @@ test("electron steam overlay manager opens the configured shortcut target progra
 });
 
 test("electron steam overlay manager opens the configured shortcut target with managed wait", async (t) => {
+  setProcessPlatformForTest(t, "linux");
   const hostHandle = Buffer.from([4, 8, 15, 18]);
   let hostOpen = false;
   const fake = createFakeNative({
@@ -10504,6 +10507,7 @@ test("electron steam overlay manager tolerates destroyed macOS shortcut window d
 });
 
 test("electron steam overlay shortcut snapshots static targets without leaking private values", async (t) => {
+  setProcessPlatformForTest(t, "linux");
   const hostHandle = Buffer.from([7, 7, 1, 4]);
   let hostOpen = false;
   let beforeInputHandler;
