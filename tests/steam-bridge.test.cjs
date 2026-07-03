@@ -818,13 +818,23 @@ test("electron smoke native-host-unavailable action errors keep sanitized target
 
   assert.equal(
     [...exampleMain.matchAll(/throwIfNativeHostUnavailable\(initialSnapshot,\s*target\)/g)].length,
-    2,
-    "generic open-and-wait smoke paths should attach the managed target snapshot"
+    3,
+    "managed smoke paths should attach the resolved target snapshot"
   );
   assert.match(
     exampleMain,
-    /throwIfNativeHostUnavailable\(initialSnapshot,\s*checkoutTargetFromOperation\(transaction\)\)/,
-    "checkout smoke fail-fast errors should attach a sanitized checkout snapshot"
+    /const target = checkoutTargetFromOperation\(transaction\);/,
+    "checkout smoke should resolve the sanitized checkout target once"
+  );
+  assert.match(
+    exampleMain,
+    /const targetSnapshot = steamworks\.overlay\.snapshotSteamOverlayTarget\(target\);/,
+    "checkout smoke diagnostics should use sanitized checkout target snapshots"
+  );
+  assert.match(
+    exampleMain,
+    /checkout:client-session-prompt-missing/,
+    "checkout smoke failures should classify missing client-session Steam prompts"
   );
   assert.match(
     exampleMain,

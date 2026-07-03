@@ -824,6 +824,13 @@ metadata, price/currency details, and private checkout CLI arguments, so
 private purchase artifacts fail closed if redaction regresses. SDK-style order
 and transaction fields from Steam callbacks are treated as private checkout
 identifiers too.
+For Windows `usersession=client` diagnostics, the summary also prints
+`clientSessionCaptured` and `clientPromptMissing`. A case with
+`clientSessionCaptured=true` and `clientPromptMissing=true` means the in-app
+`InitTxn` call returned a transaction id, Steam Bridge preserved it as a
+client-session checkout target without synthesizing a web approval URL, the
+managed presenter was active, and Steam still did not emit the automatic
+checkout overlay activation before the wait guard expired.
 The matrix's dry-run and live command logs also redact checkout file paths,
 checkout URLs, return URLs, transaction IDs, and control tokens. Those logs show
 the option name plus `REDACTED`, which keeps command-shape review useful without

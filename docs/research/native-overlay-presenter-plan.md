@@ -204,6 +204,20 @@ Reviewed on 2026-07-02 while investigating Windows Electron overlay failures:
   `MicroTxnAuthorizationResponse` for that client-session checkout attempt, so
   client-session auto-prompt authorization remains an open purchase-flow proof,
   not a Windows presenter or configured-app launch failure.
+- A refreshed current-package client-session checkout diagnostic at
+  `C:\Users\admin\steam-bridge-artifacts\windows-client-session-diagnostics-20260703-170411-appid`
+  kept the same `steam-app` configured-app lane, private env handoff, live
+  readiness, native-load, and render-health gates. The smoke app captured the
+  private `usersession=client` `InitTxn` result as a sanitized checkout target
+  with `hasTransactionId=true` and `clientSession=true`, activated the D3D11
+  presenter, and then recorded `checkout:client-session-prompt-missing` after
+  Steam did not emit overlay activation or `MicroTxnAuthorizationResponse`.
+  The Windows summary now exposes this as `clientSessionCaptured=true` and
+  `clientPromptMissing=true`, with clean crash diagnostics and the close probe
+  still foregrounded on the smoke app. That narrows the remaining Windows
+  purchase gap to Steam's automatic client-session prompt behavior for the
+  configured product/account, not native presenter readiness, Steam app launch,
+  checkout target parsing, or crash/focus health.
 - A follow-up private configured-product Windows checkout run switched the same
   in-app `InitTxn` capture to `usersession=web`, where Steam returns a
   `steamurl` and Steam Bridge opens the checkout in the managed overlay browser.

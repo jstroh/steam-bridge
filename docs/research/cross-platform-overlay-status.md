@@ -308,6 +308,23 @@ still did not emit `GameOverlayActivated(true)` or
 not accepted as proved yet. Treat this as a remaining Steam purchase-flow
 question, not a Windows presenter or configured-app launch failure.
 
+A refreshed focused client-session rerun at
+`C:\Users\admin\steam-bridge-artifacts\windows-client-session-diagnostics-20260703-170411-appid`
+used the signed current Windows package, the interactive `/IT` task wrapper,
+`-LaunchMode steam-app`, private env handoff, render-health gating, and a fresh
+private `usersession=client` `InitTxn` request. The smoke app captured a
+sanitized client-session checkout target (`hasTransactionId=true`,
+`clientSession=true`), activated the D3D11 presenter, and then recorded the new
+`checkout:client-session-prompt-missing` lifecycle event after Steam did not
+emit overlay activation or `MicroTxnAuthorizationResponse` during the checkout
+wait. The Windows summary reports this case as `clientSessionCaptured=true` and
+`clientPromptMissing=true`; the close probe saw the smoke app foreground rather
+than a checkout panel, and crash diagnostics stayed clean. This makes the
+remaining gap sharper: Steam Bridge is correctly priming the presenter and
+preserving the client-session target, but this Steam client/product/account
+combination is not showing Steam's automatic client-session authorization
+prompt.
+
 A follow-up private configured-product checkout run switched the same in-app
 `InitTxn` capture to `usersession=web`, letting Steam return a `steamurl` for
 Steam Bridge to open through the managed overlay browser. The focused Windows

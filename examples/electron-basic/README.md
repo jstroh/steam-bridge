@@ -844,6 +844,11 @@ shortcut/open-and-wait without rerunning unrelated overlay surfaces.
 On Windows, use
 `-LaunchMode steam-app -Suite checkout -InitTxnRequestFile <private-init-txn-request.json> -RequireMicroTxnCallback -CloseProbe -CloseProbeInput auto`
 for the focused configured-product checkout path.
+For `usersession=client` runs, the Windows summary prints
+`clientSessionCaptured` and `clientPromptMissing`. If both are `true`, the smoke
+app captured a valid client-session transaction target and kept the managed
+presenter active, but Steam did not present the automatic authorization overlay
+before the checkout wait guard expired.
 When driving Windows from SSH, run the same checkout suite through the packaged
 interactive task wrapper so the overlay launches in the logged-in desktop
 session instead of Session 0. For private checkout runs, prefer a local JSON

@@ -918,7 +918,7 @@ async function waitForManagedOverlayShownResult(action) {
   }
 
   const result = await shownWait;
-  if (MANAGED_OVERLAY_RESULT_MODE !== "complete" || result.ok !== true) {
+  if (MANAGED_OVERLAY_RESULT_MODE !== "complete") {
     return {
       ok: result.ok === true,
       action,
@@ -926,6 +926,21 @@ async function waitForManagedOverlayShownResult(action) {
       durationMs: Date.now() - startedAt,
       ...(result.error ? { error: result.error } : {}),
       ...(result.presenter ? { presenter: result.presenter } : {})
+    };
+  }
+
+  if (result.ok !== true) {
+    const completionResult = completionWait ? await completionWait : { ok: false };
+    return {
+      ok: false,
+      action,
+      overlayShown: false,
+      overlayComplete: false,
+      durationMs: Date.now() - startedAt,
+      ...(result.error || completionResult.error ? { error: result.error || completionResult.error } : {}),
+      ...(completionResult.result || completionResult.presenter || result.presenter
+        ? { presenter: completionResult.result?.parked || completionResult.presenter || result.presenter }
+        : {})
     };
   }
 
@@ -1963,14 +1978,25 @@ async function openPresenterCheckoutOverlay() {
   const checkoutOperation = await readCheckoutOperationInput(activeClient);
   if (checkoutOperation) {
     const { transaction, source } = checkoutOperation;
+    const target = checkoutTargetFromOperation(transaction);
+    const targetSnapshot = steamworks.overlay.snapshotSteamOverlayTarget(target);
+    const clientSessionCheckout = targetSnapshot.type === "checkout" && targetSnapshot.clientSession === true;
     const context = {
       target: "checkout",
       route: "web",
       modal: true,
       api: "openCheckoutAndWait",
       checkoutSource: source,
-      checkout: checkoutDiagnostic(transaction)
+      checkout: checkoutDiagnostic(transaction),
+      targetSnapshot
     };
+    if (clientSessionCheckout) {
+      recordEvent("checkout:client-session-wait-start", {
+        ...context,
+        expectedSteamPrompt: true,
+        presenter: safeOverlaySnapshot(overlay)
+      });
+    }
     recordCheckoutOperationReadiness(overlay, context);
     const openAndWait = overlay.openCheckoutAndWait(() => transaction, {
       showTimeoutMs: MANAGED_OVERLAY_WAIT_TIMEOUT_MS,
@@ -1999,6 +2025,14 @@ async function openPresenterCheckoutOverlay() {
       .catch((error) => {
         const serialized = serializeError(error);
         if (!shutdownComplete) {
+          if (clientSessionCheckout && isSteamOverlayWaitTimeout(serialized)) {
+            recordEvent("checkout:client-session-prompt-missing", {
+              ...context,
+              expectedSteamPrompt: true,
+              error: serialized,
+              presenter: safeOverlaySnapshot(overlay)
+            });
+          }
           recordEvent("overlay:presenter-checkout-open-and-wait:error", {
             ...context,
             error: serialized,
@@ -2007,7 +2041,7 @@ async function openPresenterCheckoutOverlay() {
         }
         return { ok: false, error: serialized };
       });
-    throwIfNativeHostUnavailable(initialSnapshot, checkoutTargetFromOperation(transaction));
+    throwIfNativeHostUnavailable(initialSnapshot, target);
   } else {
     await overlay.withCheckoutPrepared(() => {
       recordEvent("overlay:presenter-checkout-ready", {
@@ -2018,6 +2052,14 @@ async function openPresenterCheckoutOverlay() {
     });
   }
   return snapshot();
+}
+
+function isSteamOverlayWaitTimeout(error) {
+  return Boolean(
+    error &&
+      typeof error === "object" &&
+      (error.code === "STEAM_OVERLAY_WAIT_TIMEOUT" || error.name === "SteamOverlayWaitTimeoutError")
+  );
 }
 
 async function readCheckoutOperationInput(activeClient) {

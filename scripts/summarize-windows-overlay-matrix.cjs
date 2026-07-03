@@ -695,6 +695,33 @@ function isMicroTxnCallbackEvent(event) {
   return Boolean(event && event.type === "callback:microtxn");
 }
 
+function hasClientSessionCheckoutCaptured(events) {
+  return events.some((event) => {
+    if (!event || event.type !== "checkout:init-txn-captured") {
+      return false;
+    }
+    const payload = objectOrEmpty(event.payload);
+    const targetSnapshot = objectOrEmpty(payload.targetSnapshot);
+    return payload.session === "client" && targetSnapshot.type === "checkout" && targetSnapshot.clientSession === true;
+  });
+}
+
+function hasClientSessionPromptMissing(events) {
+  return events.some((event) => {
+    if (!event || event.type !== "checkout:client-session-prompt-missing") {
+      return false;
+    }
+    const payload = objectOrEmpty(event.payload);
+    const targetSnapshot = objectOrEmpty(payload.targetSnapshot);
+    const error = objectOrEmpty(payload.error);
+    return (
+      targetSnapshot.type === "checkout" &&
+      targetSnapshot.clientSession === true &&
+      (error.code === "STEAM_OVERLAY_WAIT_TIMEOUT" || error.name === "SteamOverlayWaitTimeoutError")
+    );
+  });
+}
+
 function hasMicroTxnCallbackProof(actionName, events, expectedAppId) {
   const failures = [];
   verifyMicroTxnCallbackProof(actionName, events, expectedAppId, failures);
@@ -891,6 +918,8 @@ function summarizeCaseResult(caseName, result, resultLog, renderingHealth = null
     passiveNotificationProof: hasPassiveNotificationProof(String(action.action || ""), events, nativePresenter),
     microTxnCallbackCount: events.filter(isMicroTxnCallbackEvent).length,
     microTxnCallbackProof: hasMicroTxnCallbackProof(String(action.action || ""), events, app.appId).ok,
+    clientSessionCheckoutCaptured: hasClientSessionCheckoutCaptured(events),
+    clientSessionPromptMissing: hasClientSessionPromptMissing(events),
     managedOverlayCloseProof: hasManagedOverlayCloseProof(wait, overlayInactiveEvents),
     closeProbeSent: closeProbe.sent,
     closeProbeInput: closeProbe.input,
@@ -999,6 +1028,8 @@ function printSummary(summary) {
           `overlayActiveEvents=${row.overlayActiveEvents} ` +
           `overlayEnabled=${formatValue(row.overlayEnabled)} ` +
           `microTxnCallbacks=${row.microTxnCallbackCount} microTxnProof=${row.microTxnCallbackProof} ` +
+          `clientSessionCaptured=${row.clientSessionCheckoutCaptured} ` +
+          `clientPromptMissing=${row.clientSessionPromptMissing} ` +
           formatCloseProbeSummary(row.closeProbe) +
           `crashes=${row.crashDumpCount + row.fatalLifecycleEventCount}` +
           formatCaseRenderingHealth(row.steamRenderingHealth)
@@ -1687,6 +1718,12 @@ function runSelfTest() {
       ),
       "summary self-test should fail when real checkout proof omits the MicroTxn callback"
     );
+
+    const clientPromptMissingRoot = path.join(tempRoot, "managed-checkout-client-prompt-missing");
+    writeManagedCheckoutMicroTxnFixture(clientPromptMissingRoot, { clientPromptMissing: true });
+    const clientPromptMissingSummary = summarizeWindowsOverlayMatrixArtifacts(clientPromptMissingRoot);
+    assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionCheckoutCaptured, true);
+    assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionPromptMissing, true);
 
     const lateMicroTxnRoot = path.join(tempRoot, "managed-checkout-late-microtxn");
     writeManagedCheckoutMicroTxnFixture(lateMicroTxnRoot, { lateMicroTxn: true });
@@ -2534,6 +2571,53 @@ function writeManagedCheckoutMicroTxnFixture(root, options = {}) {
       }
     }
   };
+  if (options.clientPromptMissing) {
+    const targetSnapshot = { type: "checkout", hasTransactionId: true, clientSession: true };
+    const error = {
+      name: "SteamOverlayWaitTimeoutError",
+      code: "STEAM_OVERLAY_WAIT_TIMEOUT",
+      message: "Timed out waiting for Steam overlay to become active."
+    };
+    writeResult(path.join(root, checkoutCaseId, "result.log"), {
+      ok: false,
+      action: { ok: true, action: "presenter-checkout" },
+      wait: {
+        ok: false,
+        overlayShown: false,
+        overlayComplete: false,
+        error
+      },
+      snapshot: buildWindowsSnapshot({
+        pid: 4248,
+        managedOverlayResultMode: "complete",
+        events: [
+          {
+            type: "checkout:init-txn-captured",
+            payload: { session: "client", targetSnapshot }
+          },
+          {
+            type: "checkout:client-session-wait-start",
+            payload: { target: "checkout", targetSnapshot, expectedSteamPrompt: true }
+          },
+          {
+            type: "overlay:presenter-open",
+            payload: { target: "checkout", api: "openCheckoutAndWait", checkoutSource: "init-txn-request-file", targetSnapshot }
+          },
+          { type: "overlay:presenter-wait-start", payload: { target: "checkout" } },
+          { type: "overlay:presenter-wait-shown:error", payload: { target: "checkout", error } },
+          {
+            type: "checkout:client-session-prompt-missing",
+            payload: { target: "checkout", targetSnapshot, expectedSteamPrompt: true, error }
+          },
+          {
+            type: "overlay:presenter-checkout-open-and-wait:error",
+            payload: { target: "checkout", targetSnapshot, error }
+          }
+        ]
+      })
+    });
+    return;
+  }
   const events = [
     {
       type: "overlay:presenter-open",
