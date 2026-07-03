@@ -116,6 +116,10 @@ recent severe CEF/GPU/overlay-renderer log signals such as `0x887A0022`,
 context loss, GPU-process restarts, overlay swap-chain failures, and Win32
 resource failures, blocking live launch only when those signals are fresh while
 Steam is running and preserving stale signals as diagnostic warnings. The
+isolated Steam log line `Failed creating CEF paint event` is preserved as a
+readiness warning rather than a hard block because it can appear without the
+swap-chain, GPU-process, or resource-exhaustion failures that previously
+correlated with blank Steam UI. The
 managed Windows matrix cases now use complete-result mode for active overlays:
 the smoke app keeps the result pending until Steam emits `active=false` and the
 managed close wait, park wait, and open-and-wait completion have all resolved.
@@ -257,6 +261,16 @@ The interactive task wrapper now defaults to `-TaskRunLevel Limited`, matching
 the logged-in desktop token used by Steam; `-TaskRunLevel Highest` remains
 available only for focused diagnostics on machines whose scheduled-task policy
 requires elevation.
+
+A configured-app checkout task run at
+`C:\Users\admin\steam-bridge-artifacts\windows-real-app-checkout-unique-20260703074447`
+proved the `steam-app` launch wrapper, readiness gate, native-load gate,
+render-health gate, and prepare-only checkout path. Its approval case stopped
+before `InitTxn` because the scheduled task did not receive the private
+publisher Web API key environment variable. Use
+`windows-overlay-task.ps1 -PrivateEnvFile <local NAME=VALUE file>` for
+callback-required real purchase proof; `-MatrixArgsFile` only carries argument
+names and paths, not secret values.
 
 A later private configured-product checkout run against the refreshed Windows
 package proved the bridge-side `InitTxn` client-session classification without

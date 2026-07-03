@@ -378,6 +378,7 @@ function runWindowsSmokeHelperStaticChecks() {
   const matrixSummary = fs.readFileSync(path.join(repoRoot, "scripts", "summarize-windows-overlay-matrix.cjs"), "utf8");
   const electronHelper = fs.readFileSync(path.join(repoRoot, "packages", "steam-bridge", "src", "electron.ts"), "utf8");
   const exampleReadme = fs.readFileSync(path.join(repoRoot, "examples", "electron-basic", "README.md"), "utf8");
+  const electronSmokeMain = fs.readFileSync(path.join(repoRoot, "examples", "electron-basic", "main.js"), "utf8");
   for (const expected of [
     '[ValidateSet("Limited", "Highest")]',
     '[string]$TaskRunLevel = "Limited"',
@@ -385,6 +386,9 @@ function runWindowsSmokeHelperStaticChecks() {
     '$TaskRunLevel.ToUpperInvariant()'
   ]) {
     assert.ok(taskWrapper.includes(expected), `Windows overlay task wrapper missing ${expected}`);
+  }
+  for (const expected of ["function readJsonFile", 'replace(/^\\uFEFF/, "")']) {
+    assert.ok(electronSmokeMain.includes(expected), `Electron smoke app missing ${expected}`);
   }
   assert.ok(
     exampleReadme.includes("The helper leaves `-OverlayInProcessGpu` unset on Windows by default"),
@@ -639,6 +643,7 @@ function runWindowsSmokeHelperStaticChecks() {
     "Get-SteamClientRenderingHealth",
     "steam-client-rendering-health.json",
     "steam-cef-dxgi-not-currently-available",
+    "steam-cef-paint-event-warning",
     "AllowUnhealthySteamClientLogs",
     "Test-WindowsLiveRunReadiness",
     "ready = ($errors.Count -eq 0)",

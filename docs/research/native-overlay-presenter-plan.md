@@ -163,6 +163,18 @@ Reviewed on 2026-07-02 while investigating Windows Electron overlay failures:
   runs with the same logged-in desktop token as Steam; `-TaskRunLevel Highest`
   remains available only for focused diagnostics on machines whose scheduled
   task policy requires elevation.
+  The Windows readiness gate keeps hard blocks for fresh DXGI, context-loss,
+  GPU-process, overlay swap-chain, and resource-exhaustion failures, while a
+  lone `Failed creating CEF paint event` line is now reported as a warning
+  unless stronger Steam client rendering failures are also present.
+- A configured-app checkout task run at
+  `C:\Users\admin\steam-bridge-artifacts\windows-real-app-checkout-unique-20260703074447`
+  proved the `steam-app` launch wrapper, readiness, native-load, render-health,
+  and prepare-only checkout path. Its approval case failed before `InitTxn`
+  because the task environment lacked the private publisher Web API key. Keep
+  real purchase proof on the same path, but pass secrets through the documented
+  `-PrivateEnvFile` handoff rather than assuming SSH or scheduled tasks inherit
+  ad hoc environment variables.
 - A later private configured-product Windows checkout attempt with in-app
   `InitTxn` capture proved the new client-session target model: sanitized
   diagnostics recorded `hasTransactionId=true` and `clientSession=true`, and the

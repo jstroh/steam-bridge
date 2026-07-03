@@ -2034,7 +2034,7 @@ async function readCheckoutOperationInput(activeClient) {
 
 function readStaticCheckoutOperationInput() {
   if (CHECKOUT_JSON_FILE) {
-    const transaction = JSON.parse(fs.readFileSync(CHECKOUT_JSON_FILE, "utf8"));
+    const transaction = readJsonFile(CHECKOUT_JSON_FILE);
     return {
       source: "json-file",
       transaction
@@ -2071,7 +2071,7 @@ async function captureInitTxnCheckout(activeClient) {
     throw new Error("Missing Steam publisher Web API key environment variable for private InitTxn checkout.");
   }
 
-  const request = JSON.parse(fs.readFileSync(INIT_TXN_REQUEST_FILE, "utf8"));
+  const request = readJsonFile(INIT_TXN_REQUEST_FILE);
   const steamId64 = readActiveSteamId64(activeClient);
   const initTxnRequest = {
     ...request,
@@ -2142,6 +2142,11 @@ function normalizeInitTxnEndpoint(value) {
     return "production";
   }
   throw new Error("Unsupported InitTxn endpoint; expected sandbox or production.");
+}
+
+function readJsonFile(filePath) {
+  const text = fs.readFileSync(filePath, "utf8");
+  return JSON.parse(text.replace(/^\uFEFF/, ""));
 }
 
 function checkoutDiagnostic(target) {

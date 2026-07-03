@@ -379,12 +379,15 @@ function Get-SteamClientRenderingHealth {
   $signals = @()
   $warnings = @()
 
-  $patterns = @(
+  $severePatterns = @(
     @{ code = "steam-cef-dxgi-not-currently-available"; pattern = "(?i)(0x887A0022|887a0022|DXGI_ERROR_NOT_CURRENTLY_AVAILABLE)" },
     @{ code = "steam-cef-angle-context-lost"; pattern = "(?i)(context lost|EGL_CONTEXT_LOST|display had a context loss|Could not create additional swap chains|Device lost in SwapChain11)" },
     @{ code = "steam-cef-gpu-process-crash"; pattern = "(?i)(Exiting GPU process because|GPU process exited unexpectedly|GPU process has crashed)" },
     @{ code = "steam-overlay-swapchain-failure"; pattern = "(?i)(CreateSwapChainForHWND failed|g_IDXGIFactory2_CreateSwapChainForHWND failed)" },
-    @{ code = "steam-overlay-resource-failure"; pattern = "(?i)(CreateProcess failed\. Error: 1455|Failed creating file mapping|Failed creating CEF paint event)" }
+    @{ code = "steam-overlay-resource-failure"; pattern = "(?i)(CreateProcess failed\. Error: 1455|Failed creating file mapping)" }
+  )
+  $warningPatterns = @(
+    @{ code = "steam-cef-paint-event-warning"; pattern = "(?i)Failed creating CEF paint event" }
   )
 
   if (-not (Test-Path -LiteralPath $logs)) {
@@ -414,7 +417,8 @@ function Get-SteamClientRenderingHealth {
       $tailLines = @(Get-Content -LiteralPath $source -Tail 1000 -ErrorAction SilentlyContinue)
       for ($index = 0; $index -lt $tailLines.Count; $index += 1) {
         $line = [string]$tailLines[$index]
-        foreach ($pattern in $patterns) {
+        $matchedSevere = $false
+        foreach ($pattern in $severePatterns) {
           if ($line -notmatch $pattern.pattern) {
             continue
           }
@@ -432,6 +436,24 @@ function Get-SteamClientRenderingHealth {
             timestampUtc = if ($timestampUtc) { $timestampUtc.ToString("o") } else { $null }
             recent = [bool]$isRecent
             line = Limit-DiagnosticLine -Line $line
+          }
+          $matchedSevere = $true
+          break
+        }
+        if ($matchedSevere) {
+          continue
+        }
+
+        foreach ($pattern in $warningPatterns) {
+          if ($line -notmatch $pattern.pattern) {
+            continue
+          }
+          if ($warnings.Count -lt 10) {
+            $warnings += ("{0}: {1} tail line {2}: {3}" -f `
+              $pattern.code,
+              $name,
+              ($index + 1),
+              (Limit-DiagnosticLine -Line $line))
           }
           break
         }
