@@ -41,6 +41,9 @@ function Format-RedactedMatrixArgs {
     "-InitTxnApiKeyEnv" = $true
     "-InitTxnEndpoint" = $true
     "-InitTxnRequestFile" = $true
+    "-InitTxnResponseFile" = $true
+    "-SteamUserId" = $true
+    "-WebUrl" = $true
   }
 
   $redacted = @()

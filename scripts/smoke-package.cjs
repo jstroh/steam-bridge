@@ -636,6 +636,9 @@ function runWindowsSmokeHelperStaticChecks() {
     "Private environment file contains an invalid environment variable name.",
     "Convert-MatrixArgsToSplat",
     "Format-RedactedMatrixArgs",
+    '"-InitTxnResponseFile"',
+    '"-SteamUserId"',
+    '"-WebUrl"',
     "matrixArgs",
     "matrixSplat",
     "REDACTED"
