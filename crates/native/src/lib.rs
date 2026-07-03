@@ -444,6 +444,14 @@ pub fn attach_native_overlay_host_view(native_window_handle: Buffer) -> Result<(
     native_surface::attach_to_parent(native_handle_from_buffer(&native_window_handle)?)
 }
 
+#[napi(js_name = "attachNativeOverlayHostViewForOverlay")]
+pub fn attach_native_overlay_host_view_for_overlay(
+    native_window_handle: Buffer,
+) -> Result<(), Error> {
+    state::ensure_initialized()?;
+    native_surface::attach_to_parent_for_overlay(native_handle_from_buffer(&native_window_handle)?)
+}
+
 #[napi(js_name = "pumpNativeOverlayProbeWindow")]
 pub fn pump_native_overlay_probe_window() -> Result<(), Error> {
     native_surface::pump()

@@ -224,6 +224,10 @@ mod macos {
         Ok(())
     }
 
+    pub fn attach_to_parent_for_overlay(parent_handle: usize) -> Result<(), Error> {
+        attach_to_parent(parent_handle)
+    }
+
     pub fn show() -> Result<(), Error> {
         ensure_main_thread()?;
 
@@ -1114,6 +1118,10 @@ mod fallback {
         ))
     }
 
+    pub fn attach_to_parent_for_overlay(parent_handle: usize) -> Result<(), Error> {
+        attach_to_parent(parent_handle)
+    }
+
     pub fn pump() -> Result<(), Error> {
         Ok(())
     }
@@ -1536,7 +1544,7 @@ mod windows {
     pub fn open(title: Option<String>) -> Result<(), Error> {
         close();
         let title = title.unwrap_or_else(|| "Steam Bridge Native Overlay Probe".to_owned());
-        let surface = unsafe { create_surface(&title, None)? };
+        let surface = unsafe { create_surface(&title, None, false)? };
         *SURFACE
             .lock()
             .expect("Steam overlay native surface lock poisoned") = Some(surface);
@@ -1557,6 +1565,30 @@ mod windows {
             create_surface(
                 "Steam Bridge Native Overlay Host",
                 Some(parent_handle as HWND),
+                true,
+            )?
+        };
+        *SURFACE
+            .lock()
+            .expect("Steam overlay native surface lock poisoned") = Some(surface);
+        pump()?;
+        Ok(())
+    }
+
+    pub fn attach_to_parent_for_overlay(parent_handle: usize) -> Result<(), Error> {
+        close();
+
+        if parent_handle == 0 {
+            return Err(Error::from_reason(
+                "Electron native window handle was empty",
+            ));
+        }
+
+        let surface = unsafe {
+            create_surface(
+                "Steam Bridge Native Overlay Host",
+                Some(parent_handle as HWND),
+                false,
             )?
         };
         *SURFACE
@@ -1756,6 +1788,7 @@ mod windows {
     unsafe fn create_surface(
         title: &str,
         parent_hwnd: Option<HWND>,
+        initial_input_passthrough: bool,
     ) -> Result<NativeSurface, Error> {
         ensure_window_class()?;
         reset_window_message_diagnostics();
@@ -1774,7 +1807,10 @@ mod windows {
             .unwrap_or((100, 100, 960, 540));
         let backend = WindowsNativeBackend::from_env();
         let host_style = WindowsHostStyle::from_env(parent_hwnd.is_some());
-        let ex_style = base_ex_style(parent_hwnd.is_some(), true, host_style);
+        let input_passthrough = parent_hwnd.is_some()
+            && host_style != WindowsHostStyle::Control
+            && initial_input_passthrough;
+        let ex_style = base_ex_style(parent_hwnd.is_some(), input_passthrough, host_style);
         let style = if parent_hwnd.is_some() && host_style == WindowsHostStyle::PopupLayered {
             WS_POPUP | WS_CLIPSIBLINGS | WS_CLIPCHILDREN
         } else {
@@ -1820,14 +1856,16 @@ mod windows {
             host_style,
             renderer,
             frame: 0,
-            input_passthrough: parent_hwnd.is_some() && host_style != WindowsHostStyle::Control,
-            opaque: parent_hwnd.is_none() || host_style == WindowsHostStyle::Control,
+            input_passthrough,
+            opaque: parent_hwnd.is_none()
+                || !input_passthrough
+                || host_style == WindowsHostStyle::Control,
             visible: true,
         };
         sync_window_style(&mut surface);
         show_surface(&surface);
         update_window_frame(&surface);
-        if surface.host_style == WindowsHostStyle::Control {
+        if !surface.input_passthrough {
             activate_window(&surface);
         }
         Ok(surface)
@@ -2400,6 +2438,10 @@ mod windows {
             return 0;
         }
 
+        if attached && !pass_through {
+            return WS_EX_TOPMOST;
+        }
+
         let mut style = WS_EX_LAYERED | WS_EX_TOOLWINDOW;
         if attached {
             style |= WS_EX_TOPMOST | WS_EX_NOACTIVATE;
@@ -2614,6 +2656,10 @@ mod linux {
 
         pump()?;
         Ok(())
+    }
+
+    pub fn attach_to_parent_for_overlay(parent_handle: usize) -> Result<(), Error> {
+        attach_to_parent(parent_handle)
     }
 
     pub fn pump() -> Result<(), Error> {

@@ -1064,6 +1064,7 @@ function Assert-SmokeResult {
   $overlay = $snapshot.overlay
   $crashDiagnostics = $snapshot.crashDiagnostics
   $nativePresenter = Read-OkValue $overlay.nativePresenter
+  $nativeHostAvailability = Read-OkValue $overlay.nativeHostAvailability
   $electronOverlay = if ($nativePresenter) { $nativePresenter.electronOverlay } else { $null }
   $events = @($snapshot.events)
   $overlayActivated = @($events | Where-Object { Test-OverlayActiveEvent $_ }).Count -gt 0
@@ -1192,11 +1193,19 @@ function Assert-SmokeResult {
       if ($nativePresenter.backend -ne $RequireNativeHostBackend) {
         $failures.Add("native presenter backend is $RequireNativeHostBackend")
       }
-      if ($nativePresenter.nativeHostOpen -ne $true) {
-        $failures.Add("native presenter host is open")
-      }
-      if ($nativePresenter.attached -ne $true) {
-        $failures.Add("native presenter is attached")
+      $lazyPresenterReady = (
+        $processInfo.platform -eq "win32" -and
+        $Result.action.action -eq "presenter-ready" -and
+        $nativeHostAvailability -and
+        $nativeHostAvailability.available -eq $true
+      )
+      if (-not $lazyPresenterReady) {
+        if ($nativePresenter.nativeHostOpen -ne $true) {
+          $failures.Add("native presenter host is open")
+        }
+        if ($nativePresenter.attached -ne $true) {
+          $failures.Add("native presenter is attached")
+        }
       }
     }
   }

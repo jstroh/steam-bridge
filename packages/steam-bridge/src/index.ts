@@ -7683,6 +7683,10 @@ export function attachNativeOverlayHostView(nativeWindowHandle: Buffer): void {
   native().attachNativeOverlayHostView(nativeWindowHandle);
 }
 
+export function attachNativeOverlayHostViewForOverlay(nativeWindowHandle: Buffer): void {
+  native().attachNativeOverlayHostViewForOverlay(nativeWindowHandle);
+}
+
 export function pumpNativeOverlayProbeWindow(): void {
   native().pumpNativeOverlayProbeWindow();
 }
@@ -8048,6 +8052,11 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
     }
 
     try {
+      if (shouldDeferWindowsNativeHostAttach()) {
+        currentFps = 0;
+        emitStateChange();
+        return;
+      }
       if (!ensureNativeOverlaySurfaceReady()) {
         currentFps = 0;
         emitStateChange();
@@ -8141,7 +8150,7 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
 
     activationHoldCount += 1;
     focusSourceWindowForActivation(activationMode);
-    ensureNativeOverlaySurfaceReady();
+    ensureNativeOverlaySurfaceReadyForActivation(activationMode);
     if (!visible) {
       show();
     }
@@ -8182,7 +8191,7 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
     }
 
     focusSourceWindowForActivation(activationMode);
-    ensureNativeOverlaySurfaceReady();
+    ensureNativeOverlaySurfaceReadyForActivation(activationMode);
     if (!visible) {
       show();
     }
@@ -8383,7 +8392,9 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
       return;
     }
 
-    ensureNativeOverlaySurfaceReady();
+    if (!shouldDeferWindowsNativeHostAttach()) {
+      ensureNativeOverlaySurfaceReady();
+    }
     poll();
     currentFps = selectCurrentFps();
     syncHostInputMode();
@@ -8544,6 +8555,46 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
     nativeHostUnavailableReason = availability.nativeHostUnavailableReason;
     macOverlayEnvironment = availability.macOverlayEnvironment;
     return nativeHostUnavailableReason === undefined;
+  }
+
+  function shouldDeferWindowsNativeHostAttach(): boolean {
+    return (
+      process.platform === "win32" &&
+      usesNativeHostView &&
+      hostActivationMode === "passive" &&
+      activationHoldCount === 0 &&
+      !overlayActive &&
+      !overlayNeedsPresent &&
+      !safeBoolean(() => native().isNativeOverlayHostViewOpen())
+    );
+  }
+
+  function ensureNativeOverlaySurfaceReadyForActivation(activationMode: NativeOverlayPresenterActivationMode): boolean {
+    if (
+      process.platform === "win32" &&
+      activationMode === "interactive" &&
+      options.nativeWindowHandle
+    ) {
+      if (!updateNativeOverlayHostAvailability()) {
+        return false;
+      }
+
+      const hostAlreadyActive =
+        safeBoolean(() => native().isNativeOverlayHostViewOpen()) &&
+        hostInputPassthrough === false &&
+        hostOpaque === true;
+      if (!hostAlreadyActive) {
+        native().attachNativeOverlayHostViewForOverlay(options.nativeWindowHandle);
+      }
+      if (visible) {
+        native().showNativeOverlayHostView();
+      }
+      hostInputPassthrough = false;
+      hostOpaque = true;
+      return true;
+    }
+
+    return ensureNativeOverlaySurfaceReady();
   }
 
   function ensureNativeOverlaySurfaceReady(): boolean {
@@ -16298,6 +16349,7 @@ export const overlay = {
   activateToStoreWithNativeSession,
   openNativeOverlayProbeWindow,
   attachNativeOverlayHostView,
+  attachNativeOverlayHostViewForOverlay,
   pumpNativeOverlayProbeWindow,
   pumpNativeOverlayHostView,
   showNativeOverlayHostView,
@@ -24123,6 +24175,7 @@ const defaultExport = {
   isSteamOverlayWaitClosedError,
   openNativeOverlayProbeWindow,
   attachNativeOverlayHostView,
+  attachNativeOverlayHostViewForOverlay,
   pumpNativeOverlayProbeWindow,
   pumpNativeOverlayHostView,
   showNativeOverlayHostView,

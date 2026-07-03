@@ -1710,6 +1710,7 @@ export interface NativeBinding {
 
   openNativeOverlayProbeWindow(title?: string): void;
   attachNativeOverlayHostView(nativeWindowHandle: Buffer): void;
+  attachNativeOverlayHostViewForOverlay(nativeWindowHandle: Buffer): void;
   pumpNativeOverlayProbeWindow(): void;
   pumpNativeOverlayHostView(): void;
   showNativeOverlayHostView(): void;
