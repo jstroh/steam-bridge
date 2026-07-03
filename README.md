@@ -958,11 +958,12 @@ the private `--checkout-json-file` checkout suite.
   files, the summary requires a sanitized client-session checkout target,
   transaction-presence marker, prompt-wait start event, and active presenter
   state before accepting a missing-prompt diagnostic. Callback-required cases
-  also require a value-free `callback:microtxn-listener-registered` event before
-  checkout proof, so a no-callback artifact cannot be mistaken for a missing
-  listener. That keeps a failed callback-required artifact pinned to Steam's
-  automatic client checkout prompt boundary instead of collapsing it into a
-  generic timeout.
+  also require value-free `callback:microtxn-listener-registered` events for
+  both the current Steamworks callback and the legacy normalized callback path
+  before checkout proof, so a no-callback artifact cannot be mistaken for a
+  missing listener. That keeps a failed callback-required artifact pinned to
+  Steam's automatic client checkout prompt boundary instead of collapsing it
+  into a generic timeout.
   Pass `-PresenterMode session` only when intentionally comparing the direct
   Steam/Electron hook fallback.
   Each matrix case passes `-RequireNoCrashes`,

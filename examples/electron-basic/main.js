@@ -403,16 +403,26 @@ function shutdownSteam() {
 }
 
 function registerSteamCallbacks() {
-  const microTxnCallbackHandle = steamworks.onMicroTxnAuthorizationResponse(recordMicroTxnAuthorizationResponse);
+  const microTxnCallbackHandle = steamworks.onMicroTxnAuthorizationResponse((event) =>
+    recordMicroTxnAuthorizationResponse(event, "steamworks")
+  );
+  const legacyMicroTxnCallbackHandle = steamworks.onLegacyMicroTxnAuthorizationResponse((event) =>
+    recordMicroTxnAuthorizationResponse(event, "legacy")
+  );
   callbackHandles.push(
     steamworks.onGameOverlayActivated((event) => recordEvent("callback:overlay-activated", event)),
     steamworks.onSteamServersConnected((event) => recordEvent("callback:servers-connected", event)),
     steamworks.onSteamServerConnectFailure((event) => recordEvent("callback:server-connect-failure", event)),
     steamworks.onSteamServersDisconnected((event) => recordEvent("callback:servers-disconnected", event)),
-    microTxnCallbackHandle
+    microTxnCallbackHandle,
+    legacyMicroTxnCallbackHandle
   );
   recordEvent("callback:microtxn-listener-registered", {
     callback: "MicroTxnAuthorizationResponse",
+    registered: true
+  });
+  recordEvent("callback:microtxn-listener-registered", {
+    callback: "LegacyMicroTxnAuthorizationResponse",
     registered: true
   });
 
@@ -439,8 +449,9 @@ function registerSteamCallbacks() {
   }
 }
 
-function recordMicroTxnAuthorizationResponse(event) {
+function recordMicroTxnAuthorizationResponse(event, callbackSource) {
   const payload = event && typeof event === "object" && !Array.isArray(event) ? { ...event } : { event };
+  payload.callbackSource = callbackSource;
   payload.presenter = electronSteamOverlay && electronSteamOverlay.isOpen() ? electronSteamOverlay.snapshot() : null;
   recordEvent("callback:microtxn", payload);
 }

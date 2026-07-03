@@ -1272,7 +1272,7 @@ function Test-MicroTxnPresenterSnapshot {
 }
 
 function Test-MicroTxnListenerRegistered {
-  param($Events)
+  param($Events, [string]$CallbackName)
 
   foreach ($event in $Events) {
     if ($event.type -ne "callback:microtxn-listener-registered") {
@@ -1281,7 +1281,7 @@ function Test-MicroTxnListenerRegistered {
     $payload = Get-SmokeObjectProperty -Value $event -Name "payload"
     $callback = Get-SmokeObjectProperty -Value $payload -Name "callback"
     $registered = Get-SmokeObjectProperty -Value $payload -Name "registered"
-    if ($callback -eq "MicroTxnAuthorizationResponse" -and $registered -eq $true) {
+    if ($callback -eq $CallbackName -and $registered -eq $true) {
       return $true
     }
   }
@@ -1291,8 +1291,11 @@ function Test-MicroTxnListenerRegistered {
 function Assert-MicroTxnCallbackProof {
   param($Events, [string]$ActionName, [int]$ExpectedAppId, [System.Collections.Generic.List[string]]$Failures)
 
-  if (-not (Test-MicroTxnListenerRegistered -Events $Events)) {
+  if (-not (Test-MicroTxnListenerRegistered -Events $Events -CallbackName "MicroTxnAuthorizationResponse")) {
     $Failures.Add("MicroTxnAuthorizationResponse listener was registered before checkout proof")
+  }
+  if (-not (Test-MicroTxnListenerRegistered -Events $Events -CallbackName "LegacyMicroTxnAuthorizationResponse")) {
+    $Failures.Add("LegacyMicroTxnAuthorizationResponse listener was registered before checkout proof")
   }
 
   $callbacks = @($Events | Where-Object { $_.type -eq "callback:microtxn" })
