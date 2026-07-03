@@ -240,7 +240,21 @@ function validateManifest(manifest, failures) {
     failures
   );
   expect(Boolean(manifest.generatedAt), "matrix manifest generatedAt is present", failures);
-  expect(["baseline", "managed", "managed-routes", "checkout", "full", "preflight", "readiness", "shortcut"].includes(manifest.suite), `matrix manifest suite is known: ${manifest.suite}`, failures);
+  expect(
+    [
+      "baseline",
+      "managed",
+      "managed-routes",
+      "shortcut-routes",
+      "checkout",
+      "full",
+      "preflight",
+      "readiness",
+      "shortcut"
+    ].includes(manifest.suite),
+    `matrix manifest suite is known: ${manifest.suite}`,
+    failures
+  );
   expect(["steam-launch", "direct"].includes(manifest.launchMode), `matrix manifest launchMode is known: ${manifest.launchMode}`, failures);
   expect(Number.isInteger(manifest.appId), "matrix manifest appId is an integer", failures);
   if (manifest.nativePathOverride !== undefined) {
@@ -1620,6 +1634,12 @@ function runSelfTest() {
     assert.equal(casesSummary.liveRunReadiness.ready, true);
     assert.equal(casesSummary.manifest.expectedCaseCount, 2);
 
+    const shortcutRoutesRoot = path.join(tempRoot, "shortcut-routes");
+    writeCaseFixture(shortcutRoutesRoot, { suite: "shortcut-routes" });
+    const shortcutRoutesSummary = summarizeWindowsOverlayMatrixArtifacts(shortcutRoutesRoot);
+    assert.deepEqual(shortcutRoutesSummary.failures, []);
+    assert.equal(shortcutRoutesSummary.manifest.suite, "shortcut-routes");
+
     const managedRoot = path.join(tempRoot, "managed");
     writeManagedCaseFixture(managedRoot);
     const managedSummary = summarizeWindowsOverlayMatrixArtifacts(managedRoot);
@@ -1875,11 +1895,11 @@ function writeBlockedFixture(root) {
   });
 }
 
-function writeCaseFixture(root) {
+function writeCaseFixture(root, options = {}) {
   writeJson(path.join(root, "matrix-manifest.json"), {
     kind: "steam-bridge-windows-overlay-matrix-manifest",
     generatedAt: "2026-07-02T00:00:00.000Z",
-    suite: "baseline",
+    suite: options.suite || "baseline",
     launchMode: "steam-launch",
     appId: 480,
     onlyCase: "",

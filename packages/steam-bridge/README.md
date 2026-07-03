@@ -769,8 +769,10 @@ checkout proof to
 `-Suite checkout -CheckoutJsonFile <private-init-txn-response.json> -RequireMicroTxnCallback -CloseProbe -CloseProbeInput auto`
 with the matching configured app ID when a purchase authorization callback is
 expected. The callback flags require private checkout JSON, so a real-callback
-proof cannot accidentally fall back to the public synthetic App ID `480`
-transaction route. The summary will fail if that callback is missing, lacks a
+proof cannot accidentally fall back to the public synthetic App ID `480`.
+The Windows matrix also rejects `-RequireMicroTxnCallback` with App ID `480`
+before live launch because that public app can only prove checkout routing.
+The summary will fail if that callback is missing, lacks a
 presenter snapshot, or does not report the
 launched Steam app ID, Steam authorization result, or a redacted order ID
 presence marker. Steam Bridge normalizes the callback's Steam app ID, order ID,

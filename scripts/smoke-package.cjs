@@ -468,6 +468,7 @@ function runWindowsSmokeHelperStaticChecks() {
     "CheckoutJsonFile",
     "RequireMicroTxnCallback",
     "requireMicroTxnCallback",
+    "-RequireMicroTxnCallback requires a configured Steam app/product; public App ID 480 only proves checkout routing.",
     "Resolve-CheckoutValidatorPath",
     "validate-checkout-target.cjs",
     "Validated Windows checkout JSON target",
@@ -585,6 +586,10 @@ function runWindowsSmokeHelperStaticChecks() {
   ]) {
     assert.ok(matrixHelper.includes(expected), `Windows overlay matrix missing ${expected}`);
   }
+  assert.ok(
+    matrixSummary.includes('"shortcut-routes"'),
+    "Windows overlay matrix summary must accept the shortcut-routes suite"
+  );
   for (const expected of [
     "steam-bridge-windows-render-health-probe",
     'name = "default"',

@@ -1106,6 +1106,10 @@ function Test-CheckoutJsonFile {
     throw "-RequireMicroTxnCallback requires a selected checkout case."
   }
 
+  if ($RequireMicroTxnCallback -and $AppId -eq 480) {
+    throw "-RequireMicroTxnCallback requires a configured Steam app/product; public App ID 480 only proves checkout routing."
+  }
+
   if (-not $CheckoutJsonFile) {
     return
   }

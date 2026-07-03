@@ -842,6 +842,8 @@ Windows when a real direct checkout proof is expected to produce
 `MicroTxnAuthorizationResponse`; the matrix summary will fail if the callback
 is missing, lacks a presenter snapshot, omits the launched app ID, omits
 Steam's authorization result, or omits a redacted order ID presence marker. The
+Windows matrix rejects that real-callback flag with public App ID `480`, which
+is only valid for generic checkout-routing proof.
 Linux and Steam Deck helpers expose direct inputs as `--checkout-url`,
 `--checkout-transaction-id`, and `--checkout-return-url`. Without a checkout
 file, URL, or transaction ID the helpers only require

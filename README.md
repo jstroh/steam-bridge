@@ -550,6 +550,9 @@ Windows is used for real checkout proof, the summary requires a
 complete. Required real-checkout proof also verifies the callback app ID matches
 the launched Steam app and that the callback includes Steam's authorization
 result plus a redacted order ID presence marker.
+On Windows, `-RequireMicroTxnCallback` is rejected with public App ID `480`;
+use a configured Steam app ID when the artifact is meant to prove real purchase
+authorization rather than generic checkout routing.
 For split-step checkout targets outside the managed wait helper, call
 `steamworks.overlay.checkoutTargetFromResult(initTxnResponse, { expectedAppId })`
 to get the same wrong-app guard before handing the target to a shortcut or other
