@@ -438,7 +438,7 @@ function runWindowsSmokeHelperStaticChecks() {
     assert.ok(appControlDevModeHelper.includes(expected), `Windows App Control dev-mode helper missing ${expected}`);
   }
   for (const expected of [
-    "ValidateSet(\"baseline\", \"managed\", \"full\", \"preflight\", \"readiness\", \"shortcut\")",
+    "ValidateSet(\"baseline\", \"managed\", \"managed-routes\", \"full\", \"preflight\", \"readiness\", \"shortcut\")",
     "Test-NativeLoadGate",
     "Get-PreflightAppControlSummary",
     "New-NativeLoadGateBlocker",
@@ -474,6 +474,7 @@ function runWindowsSmokeHelperStaticChecks() {
     "presenter-web-open-and-wait",
     "presenter-shortcut-open-and-wait",
     "presenter-checkout",
+    "$publicManagedRouteExclusions",
     "25-managed-achievement-progress",
     "26-managed-achievement-unlock",
     "InstallShortcut",
@@ -488,6 +489,7 @@ function runWindowsSmokeHelperStaticChecks() {
     "Windows render-health gate",
     "Windows default render health is not ready",
     "-not $NativeHostStyle",
+    "managed-routes",
     "shortcut",
     "readiness",
     "Resolve-JavaScriptRunner",

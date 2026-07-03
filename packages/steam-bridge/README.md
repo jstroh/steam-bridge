@@ -203,7 +203,13 @@ helper logs by hand. The packaged bundle also includes
 The managed suite's active cases opt into complete-result mode and require Steam's
 inactive callback plus managed close, park, and open-and-wait completion events,
 so they should be run only when the overlay can be closed interactively or by a
-verified UI close probe.
+verified UI close probe. Use `-Suite managed-routes` for the public App ID `480`
+product-facing managed route set without generic web-browser close proof, real
+transaction checkout, or the raw native diagnostic observe cases. Keep generic
+web focused on `-Suite managed -OnlyCase 11-managed-web-open-and-wait` until
+Windows web-overlay close automation is proven reliable. Keep real checkout
+proof focused on `-Suite managed -OnlyCase 16-managed-checkout-route` with your
+own configured app, product, and transaction ID.
 
 ## Quick Start
 

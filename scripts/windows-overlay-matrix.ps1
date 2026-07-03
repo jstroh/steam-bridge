@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-  [ValidateSet("baseline", "managed", "full", "preflight", "readiness", "shortcut")]
+  [ValidateSet("baseline", "managed", "managed-routes", "full", "preflight", "readiness", "shortcut")]
   [string]$Suite = "baseline",
 
   [ValidateSet("steam-launch", "direct")]
@@ -1765,6 +1765,17 @@ function Get-MatrixCases {
   switch ($Suite) {
     "baseline" { return $baseline }
     "managed" { return $managed }
+    "managed-routes" {
+      $publicManagedRouteExclusions = @(
+        "11-managed-web-open-and-wait",
+        "16-managed-checkout-route",
+        "23-raw-native-dialog-open-observe",
+        "24-raw-native-user-open-observe"
+      )
+      return @($managed | Where-Object {
+        $_.id -notin $publicManagedRouteExclusions
+      })
+    }
     "full" { return @($baseline + $managed) }
     "preflight" { return @() }
     "readiness" { return @() }

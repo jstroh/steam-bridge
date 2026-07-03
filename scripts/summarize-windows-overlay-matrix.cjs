@@ -240,7 +240,7 @@ function validateManifest(manifest, failures) {
     failures
   );
   expect(Boolean(manifest.generatedAt), "matrix manifest generatedAt is present", failures);
-  expect(["baseline", "managed", "full", "preflight", "readiness", "shortcut"].includes(manifest.suite), `matrix manifest suite is known: ${manifest.suite}`, failures);
+  expect(["baseline", "managed", "managed-routes", "full", "preflight", "readiness", "shortcut"].includes(manifest.suite), `matrix manifest suite is known: ${manifest.suite}`, failures);
   expect(["steam-launch", "direct"].includes(manifest.launchMode), `matrix manifest launchMode is known: ${manifest.launchMode}`, failures);
   expect(Number.isInteger(manifest.appId), "matrix manifest appId is an integer", failures);
   if (manifest.nativePathOverride !== undefined) {

@@ -857,9 +857,17 @@ the private `--checkout-json-file` checkout suite.
   overlay presenter rather than a native host. Its readiness case is a cheap
   no-activation preflight, while active managed cases use complete-result mode,
   so they do not accept a result until Steam emits the inactive callback and the
-  managed close, park, and open-and-wait completion events are recorded. Keep
-  the normal direct Steam hook as the Windows default unless evidence from that
-  baseline proves additional machinery is needed.
+  managed close, park, and open-and-wait completion events are recorded. Use
+  `-Suite managed-routes` when you want the repeatable public App ID `480`
+  product-facing managed route set without generic web-browser close proof,
+  real transaction checkout, or the raw native diagnostic observe cases. Keep
+  generic web focused on `-Suite managed -OnlyCase 11-managed-web-open-and-wait`
+  until Windows web-overlay close automation is proven reliable. Keep real
+  checkout proof focused on
+  `-Suite managed -OnlyCase 16-managed-checkout-route` with your own configured
+  app, product, and transaction ID. Keep the normal direct Steam hook as the
+  Windows default unless evidence from that baseline proves additional
+  machinery is needed.
   Each matrix case passes `-RequireNoCrashes`,
   so Windows artifacts must prove both overlay behavior and a clean Electron
   crash-diagnostic snapshot.

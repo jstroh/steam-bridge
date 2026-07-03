@@ -123,6 +123,20 @@ That turns managed cases into real close/back-to-app proof when an operator or
 verified UI probe closes the overlay, rather than accepting show-only callback
 evidence.
 
+After a Steam restart restored the Windows client's overlay close behavior, a
+2026-07-03 UTC filtered public D3D11 route matrix passed all 14 managed-route
+cases at
+`C:\Users\admin\steam-bridge-artifacts\windows-d3d11-managed-public-routes-no-web-after-restart-20260702-205500`.
+The run used the signed Electron `43.0.0` package, the stable Steam shortcut,
+App ID `480`, `-Suite managed-routes`, `-NativeHostBackend d3d11`, and
+complete-result mode. It covered store, Friends, dialog, shortcut open/close,
+profile, players, community, stats, achievements, user, passive achievement
+progress, and passive achievement unlock. Eleven cases emitted Steam overlay
+activation, all active cases reached close/back-to-app completion, and every
+case had clean crash diagnostics. The suite intentionally excludes generic web
+close proof, real transaction checkout, and raw native observe controls; keep
+those as focused runs until they pass the same complete-result gates.
+
 Latest Windows D3D11 keyboard proof: the refreshed Electron `43.0.0` smoke
 bundle was rebuilt on macOS, deployed to the Windows laptop, and Authenticode
 signed with the local test certificate. The focused interactive Session 1
@@ -701,6 +715,15 @@ Steam web-panel close click all timed out while the presenter remained active.
 The hidden run removed the visible PowerShell harness as a focus variable, so
 treat current Windows D3D11 web close/input as blocked again until a fresh pass
 restores the closed/parked lifecycle.
+After restarting the Steam client to clear that stuck overlay-close state, the
+filtered public D3D11 route matrix
+`C:\Users\admin\steam-bridge-artifacts\windows-d3d11-managed-public-routes-no-web-after-restart-20260702-205500`
+passed with `-Suite managed-routes`: 14 total cases, 11 overlay-active cases,
+all complete-result close/back-to-app requirements met, clean crash diagnostics,
+and no generic web or real checkout cases in the suite. This proves the product
+routes that do not depend on generic web-close automation on the current Windows
+laptop, while preserving generic web and private real checkout as separate
+focused blockers instead of letting them poison the public route suite.
 A focused real-keyboard D3D11 shortcut probe,
 `C:\Users\admin\steam-bridge-artifacts\windows-d3d11-shortcut-keyboard-20260702-145900`,
 did not pass, but it identified a concrete host-window bug instead of another

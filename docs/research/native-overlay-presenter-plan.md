@@ -2065,10 +2065,15 @@ Windows gates:
   callback, `escape-sendinput` close, `overlayClosed=true`,
   `overlayParked=true`, `overlayComplete=true`, passive transparent/click-through
   parked presenter at `currentFps=0`, no lifecycle errors, no crash dumps, and
-  only Steam left running after cleanup. Keep D3D11 opt-in until passive
-  notifications, Community/profile-style routes, real configured-product
-  checkout, and any remaining web-close edge cases pass the same complete-result
-  gates.
+  only Steam left running after cleanup. After a Steam restart restored the
+  client's overlay close behavior, the filtered public route matrix at
+  `C:\Users\admin\steam-bridge-artifacts\windows-d3d11-managed-public-routes-no-web-after-restart-20260702-205500`
+  passed all 14 App ID `480` managed-route cases: store, Friends, dialog,
+  shortcut open/close, profile, players, community, stats, achievements, user,
+  passive achievement progress, and passive achievement unlock. Eleven cases
+  emitted overlay activation; every case exited with clean crash diagnostics.
+  Keep D3D11 opt-in until the generic web close automation and real
+  configured-product checkout path pass the same complete-result gates.
 
 ## Presenter Diagnostics
 
