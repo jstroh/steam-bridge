@@ -733,16 +733,21 @@ function summarizeClientSessionPromptMissing(events) {
       present: false,
       session: "",
       endpoint: "",
-      httpStatus: ""
+      httpStatus: "",
+      usersessionField: "",
+      hasIpAddress: ""
     };
   }
   const payload = objectOrEmpty(event.payload);
   const initTxn = objectOrEmpty(payload.initTxn);
+  const requestShape = summarizeInitTxnRequestShape(initTxn.requestShape || payload.requestShape);
   return {
     present: true,
     session: String(initTxn.session || payload.session || ""),
     endpoint: String(initTxn.endpoint || payload.endpoint || ""),
-    httpStatus: String(initTxn.httpStatus || payload.httpStatus || "")
+    httpStatus: String(initTxn.httpStatus || payload.httpStatus || ""),
+    usersessionField: requestShape.usersessionField,
+    hasIpAddress: requestShape.hasIpAddress
   };
 }
 
@@ -754,17 +759,33 @@ function summarizeInitTxnTargetMissing(events) {
       session: "",
       result: "",
       errorCode: "",
-      hasErrorDescription: false
+      hasErrorDescription: false,
+      usersessionField: "",
+      hasIpAddress: ""
     };
   }
   const payload = objectOrEmpty(event.payload);
   const failure = objectOrEmpty(payload.failure);
+  const requestShape = summarizeInitTxnRequestShape(payload.requestShape);
   return {
     present: true,
     session: String(payload.session || ""),
     result: String(failure.result || ""),
     errorCode: String(failure.errorCode || ""),
-    hasErrorDescription: failure.hasErrorDescription === true
+    hasErrorDescription: failure.hasErrorDescription === true,
+    usersessionField: requestShape.usersessionField,
+    hasIpAddress: requestShape.hasIpAddress
+  };
+}
+
+function summarizeInitTxnRequestShape(value) {
+  const requestShape = objectOrEmpty(value);
+  return {
+    usersessionField: String(requestShape.usersession || ""),
+    hasIpAddress:
+      typeof requestShape.hasIpAddress === "boolean"
+        ? String(requestShape.hasIpAddress)
+        : ""
   };
 }
 
@@ -971,11 +992,15 @@ function summarizeCaseResult(caseName, result, resultLog, renderingHealth = null
     clientSessionPromptMissingSession: clientSessionPromptMissing.session,
     clientSessionPromptMissingEndpoint: clientSessionPromptMissing.endpoint,
     clientSessionPromptMissingHttpStatus: clientSessionPromptMissing.httpStatus,
+    clientSessionPromptMissingUsersessionField: clientSessionPromptMissing.usersessionField,
+    clientSessionPromptMissingHasIpAddress: clientSessionPromptMissing.hasIpAddress,
     initTxnTargetMissing: initTxnTargetMissing.present,
     initTxnTargetMissingSession: initTxnTargetMissing.session,
     initTxnTargetMissingResult: initTxnTargetMissing.result,
     initTxnTargetMissingErrorCode: initTxnTargetMissing.errorCode,
     initTxnTargetMissingHasErrorDescription: initTxnTargetMissing.hasErrorDescription,
+    initTxnTargetMissingUsersessionField: initTxnTargetMissing.usersessionField,
+    initTxnTargetMissingHasIpAddress: initTxnTargetMissing.hasIpAddress,
     managedOverlayCloseProof: hasManagedOverlayCloseProof(wait, overlayInactiveEvents),
     closeProbeSent: closeProbe.sent,
     closeProbeInput: closeProbe.input,
@@ -1089,10 +1114,14 @@ function printSummary(summary) {
           `clientPromptSession=${formatValue(row.clientSessionPromptMissingSession)} ` +
           `clientPromptEndpoint=${formatValue(row.clientSessionPromptMissingEndpoint)} ` +
           `clientPromptHttp=${formatValue(row.clientSessionPromptMissingHttpStatus)} ` +
+          `clientPromptUsersession=${formatValue(row.clientSessionPromptMissingUsersessionField)} ` +
+          `clientPromptIpAddress=${formatValue(row.clientSessionPromptMissingHasIpAddress)} ` +
           `initTxnTargetMissing=${row.initTxnTargetMissing} ` +
           `initTxnSession=${formatValue(row.initTxnTargetMissingSession)} ` +
           `initTxnResult=${formatValue(row.initTxnTargetMissingResult)} ` +
           `initTxnErrorCode=${formatValue(row.initTxnTargetMissingErrorCode)} ` +
+          `initTxnUsersession=${formatValue(row.initTxnTargetMissingUsersessionField)} ` +
+          `initTxnIpAddress=${formatValue(row.initTxnTargetMissingHasIpAddress)} ` +
           formatCloseProbeSummary(row.closeProbe) +
           `crashes=${row.crashDumpCount + row.fatalLifecycleEventCount}` +
           formatCaseRenderingHealth(row.steamRenderingHealth)
@@ -1790,6 +1819,8 @@ function runSelfTest() {
     assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionPromptMissingSession, "client");
     assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionPromptMissingEndpoint, "sandbox");
     assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionPromptMissingHttpStatus, "200");
+    assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionPromptMissingUsersessionField, "client");
+    assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionPromptMissingHasIpAddress, "false");
 
     const defaultClientPromptMissingRoot = path.join(tempRoot, "managed-checkout-default-client-prompt-missing");
     writeManagedCheckoutMicroTxnFixture(defaultClientPromptMissingRoot, {
@@ -1800,6 +1831,10 @@ function runSelfTest() {
     assert.equal(defaultClientPromptMissingSummary.caseSummaries[0].clientSessionCheckoutCaptured, true);
     assert.equal(defaultClientPromptMissingSummary.caseSummaries[0].clientSessionPromptMissing, true);
     assert.equal(defaultClientPromptMissingSummary.caseSummaries[0].clientSessionPromptMissingSession, "client-default");
+    assert.equal(
+      defaultClientPromptMissingSummary.caseSummaries[0].clientSessionPromptMissingUsersessionField,
+      "omitted"
+    );
 
     const initTxnTargetMissingRoot = path.join(tempRoot, "managed-checkout-init-txn-target-missing");
     writeManagedCheckoutMicroTxnFixture(initTxnTargetMissingRoot, {
@@ -1814,6 +1849,8 @@ function runSelfTest() {
     assert.equal(initTxnTargetMissingRow.initTxnTargetMissingSession, "client-default");
     assert.equal(initTxnTargetMissingRow.initTxnTargetMissingResult, "Failure");
     assert.equal(initTxnTargetMissingRow.initTxnTargetMissingErrorCode, "3");
+    assert.equal(initTxnTargetMissingRow.initTxnTargetMissingUsersessionField, "omitted");
+    assert.equal(initTxnTargetMissingRow.initTxnTargetMissingHasIpAddress, "false");
 
     const lateMicroTxnRoot = path.join(tempRoot, "managed-checkout-late-microtxn");
     writeManagedCheckoutMicroTxnFixture(lateMicroTxnRoot, { lateMicroTxn: true });
@@ -2662,6 +2699,16 @@ function writeManagedCheckoutMicroTxnFixture(root, options = {}) {
     }
   };
   if (options.initTxnTargetMissing) {
+    const requestShape = {
+      usersession:
+        options.initTxnTargetMissingSession === "client-default"
+          ? "omitted"
+          : options.initTxnTargetMissingSession || "client",
+      hasUserSessionField: options.initTxnTargetMissingSession !== "client-default",
+      hasIpAddress: false,
+      itemCount: 1,
+      bundleCount: 0
+    };
     writeResult(path.join(root, checkoutCaseId, "result.log"), {
       ok: false,
       action: {
@@ -2687,6 +2734,7 @@ function writeManagedCheckoutMicroTxnFixture(root, options = {}) {
               session: options.initTxnTargetMissingSession || "client",
               httpStatus: 200,
               usedCurrentSteamId: true,
+              requestShape,
               failure: {
                 result: options.initTxnTargetMissingResult || "Failure",
                 errorCode: options.initTxnTargetMissingErrorCode || "3",
@@ -2705,7 +2753,17 @@ function writeManagedCheckoutMicroTxnFixture(root, options = {}) {
       endpoint: "sandbox",
       session: options.clientPromptMissingSession || "client",
       httpStatus: 200,
-      usedCurrentSteamId: true
+      usedCurrentSteamId: true,
+      requestShape: {
+        usersession:
+          options.clientPromptMissingSession === "client-default"
+            ? "omitted"
+            : options.clientPromptMissingSession || "client",
+        hasUserSessionField: options.clientPromptMissingSession !== "client-default",
+        hasIpAddress: false,
+        itemCount: 1,
+        bundleCount: 0
+      }
     };
     const error = {
       name: "SteamOverlayWaitTimeoutError",

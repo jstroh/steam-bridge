@@ -846,11 +846,13 @@ On Windows, use
 for the focused configured-product checkout path.
 For `usersession=client` runs, the Windows summary prints
 `clientSessionCaptured`, `clientPromptMissing`, `clientPromptSession`,
-`clientPromptEndpoint`, and `clientPromptHttp`. If the first two are `true`, the
+`clientPromptEndpoint`, `clientPromptHttp`, `clientPromptUsersession`, and
+`clientPromptIpAddress`. If the first two are `true`, the
 smoke app captured a valid client-session transaction target and kept the
 managed presenter active, but Steam did not present the automatic authorization
 overlay before the checkout wait guard expired. The prompt session, endpoint,
-and HTTP status come from sanitized in-app `InitTxn` metadata. For focused
+HTTP status, and request-shape fields come from sanitized in-app `InitTxn`
+metadata. For focused
 diagnostics, a private request file may use `"session": "client-default"` to
 omit the `usersession` field entirely and exercise Steam's documented default
 logged-in-client authorization path. Use `"session": "web"` when proving the
@@ -860,7 +862,8 @@ returning any checkout target, while the web-session Steam URL flow is the
 proved managed-overlay checkout path on the current Windows evidence. When
 Steam returns no checkout target, the Windows summary prints
 `initTxnTargetMissing`, `initTxnSession`, `initTxnResult`, and
-`initTxnErrorCode` without exposing private purchase data.
+`initTxnErrorCode`, plus `initTxnUsersession` and `initTxnIpAddress`, without
+exposing private purchase data.
 When driving Windows from SSH, run the same checkout suite through the packaged
 interactive task wrapper so the overlay launches in the logged-in desktop
 session instead of Session 0. For private checkout runs, prefer a local JSON

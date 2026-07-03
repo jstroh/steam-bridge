@@ -866,8 +866,18 @@ test("electron smoke native-host-unavailable action errors keep sanitized target
   );
   assert.match(
     exampleMain,
+    /checkout:init-txn-request-shape/,
+    "checkout smoke should record sanitized InitTxn request-shape diagnostics"
+  );
+  assert.match(
+    exampleMain,
     /initTxnFailureDiagnostic/,
     "checkout smoke should use structured InitTxn failure diagnostics"
+  );
+  assert.match(
+    exampleMain,
+    /initTxnRequestShape/,
+    "checkout smoke should summarize InitTxn request shape without private values"
   );
   assert.match(
     exampleMain,

@@ -323,7 +323,10 @@ than a checkout panel, and crash diagnostics stayed clean. This makes the
 remaining gap sharper: Steam Bridge is correctly priming the presenter and
 preserving the client-session target, but this Steam client/product/account
 combination is not showing Steam's automatic client-session authorization
-prompt.
+prompt. The current harness also records sanitized request-shape fields for
+future reruns, including whether `usersession` was explicit or omitted and
+whether an IP address field was submitted, without logging private purchase,
+account, or item values.
 
 A focused default-client diagnostic at
 `C:\Users\admin\steam-bridge-artifacts\windows-default-client-inittxn-checkout-20260703-172218`

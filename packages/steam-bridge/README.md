@@ -834,14 +834,17 @@ and transaction fields from Steam callbacks are treated as private checkout
 identifiers too.
 For Windows `usersession=client` diagnostics, the summary also prints
 `clientSessionCaptured`, `clientPromptMissing`, `clientPromptSession`,
-`clientPromptEndpoint`, and `clientPromptHttp`. A case with
+`clientPromptEndpoint`, `clientPromptHttp`, `clientPromptUsersession`, and
+`clientPromptIpAddress`. A case with
 `clientSessionCaptured=true` and `clientPromptMissing=true` means the in-app
 `InitTxn` call returned a transaction id, Steam Bridge preserved it as a
 client-session checkout target without synthesizing a web approval URL, the
 managed presenter was active, and Steam still did not emit the automatic
 checkout overlay activation before the wait guard expired. The prompt session,
 endpoint, and HTTP status are copied from sanitized in-app `InitTxn` metadata so
-the artifact can be read without correlating private request files. For focused
+the artifact can be read without correlating private request files. The request
+shape fields record only whether the submitted request used an explicit
+`usersession` value and whether an IP address field was present. For focused
 Windows diagnostics, a private InitTxn request file can set `"session": "client-default"`
 to omit `usersession` and test Steam's documented default logged-in-client
 authorization path; `"session": "web"` keeps testing the returned Steam URL
@@ -850,8 +853,8 @@ treats `client-default` as a request-shape diagnostic only: Steam can reject it
 before returning any checkout target, while the web-session Steam URL flow is
 the proved managed-overlay checkout path. Target-missing InitTxn diagnostics
 print `initTxnTargetMissing`, `initTxnSession`, `initTxnResult`, and
-`initTxnErrorCode` in the Windows summary without logging private item,
-transaction, or account values.
+`initTxnErrorCode`, plus `initTxnUsersession` and `initTxnIpAddress`, in the
+Windows summary without logging private item, transaction, or account values.
 The matrix's dry-run and live command logs also redact checkout file paths,
 checkout URLs, return URLs, transaction IDs, and control tokens. Those logs show
 the option name plus `REDACTED`, which keeps command-shape review useful without

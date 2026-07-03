@@ -2131,8 +2131,14 @@ async function captureInitTxnCheckout(activeClient) {
     steamId64
   };
   const endpoint = normalizeInitTxnEndpoint(INIT_TXN_ENDPOINT || (request.sandbox === false ? "production" : "sandbox"));
+  const requestShape = initTxnRequestShape(initTxnRequest, session);
   const webClient = steamworks.createSteamWebApiClient({ apiKey });
   const facade = endpoint === "production" ? webClient.microTxn : webClient.microTxnSandbox;
+  recordEvent("checkout:init-txn-request-shape", {
+    endpoint,
+    session,
+    requestShape
+  });
   const response =
     session === "web"
       ? await facade.initWebTxn(initTxnRequest)
@@ -2161,6 +2167,7 @@ async function captureInitTxnCheckout(activeClient) {
       session,
       httpStatus: response.status,
       usedCurrentSteamId: Boolean(steamId64),
+      requestShape,
       failure: initTxnFailureDiagnostic(response.data)
     });
     throw new Error(`Steam InitTxn response did not include a checkout target (${summarizeInitTxnFailure(response.data)}).`);
@@ -2173,6 +2180,7 @@ async function captureInitTxnCheckout(activeClient) {
     httpStatus: response.status,
     appId: APP_ID,
     usedCurrentSteamId: Boolean(steamId64),
+    requestShape,
     targetSnapshot
   });
   return {
@@ -2181,7 +2189,8 @@ async function captureInitTxnCheckout(activeClient) {
       endpoint,
       session,
       httpStatus: response.status,
-      usedCurrentSteamId: Boolean(steamId64)
+      usedCurrentSteamId: Boolean(steamId64),
+      requestShape
     }
   };
 }
@@ -2204,6 +2213,16 @@ function readActiveSteamId64(activeClient) {
     throw new Error("Unable to read the active Steam ID for private InitTxn checkout.");
   }
   return String(steamId64);
+}
+
+function initTxnRequestShape(request, session) {
+  return {
+    usersession: session === "client-default" ? "omitted" : session,
+    hasUserSessionField: session !== "client-default",
+    hasIpAddress: Boolean(request.ipAddress),
+    itemCount: Array.isArray(request.items) ? request.items.length : 0,
+    bundleCount: Array.isArray(request.bundles) ? request.bundles.length : 0
+  };
 }
 
 function summarizeInitTxnFailure(data) {
