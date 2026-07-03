@@ -767,7 +767,7 @@ pair it with `--app-id <your-app-id>`,
 `--require-microtxn-callback` when the private direct checkout case is expected
 to produce a `MicroTxnAuthorizationResponse`. On Windows, keep focused private
 checkout proof to
-`-Suite checkout -CheckoutJsonFile <private-init-txn-response.json> -RequireMicroTxnCallback -CloseProbe`
+`-Suite checkout -CheckoutJsonFile <private-init-txn-response.json> -RequireMicroTxnCallback -CloseProbe -CloseProbeInput escape-sendinput`
 with the matching configured app ID when a purchase authorization callback is
 expected. The callback flags require private checkout JSON, so a real-callback
 proof cannot accidentally fall back to the public synthetic App ID `480`

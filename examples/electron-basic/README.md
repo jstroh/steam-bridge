@@ -830,7 +830,7 @@ arrays, without printing the value. Use
 prepare-only, direct checkout, Shift+Tab checkout, and programmatic checkout
 shortcut/open-and-wait without rerunning unrelated overlay surfaces.
 On Windows, use
-`-Suite checkout -CheckoutJsonFile <private-init-txn-response.json> -RequireMicroTxnCallback -CloseProbe`
+`-Suite checkout -CheckoutJsonFile <private-init-txn-response.json> -RequireMicroTxnCallback -CloseProbe -CloseProbeInput escape-sendinput`
 for the focused configured-product checkout path.
 Matrix dry-run and live command logs redact checkout file paths, checkout URLs,
 return URLs, transaction IDs, and control tokens as `REDACTED`, so command logs

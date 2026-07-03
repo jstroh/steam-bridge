@@ -1436,9 +1436,14 @@ async function waitForDirectPresenterOpenReadiness(overlay, target, context) {
   await waitForPresenterReadinessStatus(overlay, status, context);
 }
 
-async function waitForCheckoutOperationReadiness(overlay, context) {
+function recordCheckoutOperationReadiness(overlay, context) {
   const status = overlay.getCheckoutOperationStatus();
-  await waitForPresenterReadinessStatus(overlay, status, context);
+  const readiness = directPresenterOpenReadinessStatus(status);
+  recordEvent("overlay:presenter-direct-open-status", {
+    ...context,
+    status: readiness,
+    presenter: safeOverlaySnapshot(overlay)
+  });
 }
 
 async function waitForPresenterReadinessStatus(overlay, status, context) {
@@ -1930,7 +1935,7 @@ async function openPresenterCheckoutOverlay() {
       checkoutSource: source,
       checkout: checkoutDiagnostic(transaction)
     };
-    await waitForCheckoutOperationReadiness(overlay, context);
+    recordCheckoutOperationReadiness(overlay, context);
     const openAndWait = overlay.openCheckoutAndWait(() => transaction, {
       showTimeoutMs: MANAGED_OVERLAY_WAIT_TIMEOUT_MS,
       closeTimeoutMs: MANAGED_OVERLAY_PARK_TIMEOUT_MS

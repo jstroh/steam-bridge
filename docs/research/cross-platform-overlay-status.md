@@ -134,6 +134,23 @@ Steam overlay activation, all active cases reached close/back-to-app completion,
 and every case had clean crash diagnostics. The public route suite intentionally
 excludes only real transaction checkout plus raw native observe controls.
 
+A 2026-07-03 UTC focused public D3D11 checkout suite passed all four checkout
+cases at
+`C:\Users\admin\steam-bridge-artifacts\windows-d3d11-checkout-suite-focusfix-20260703-001`.
+The run used the signed Electron `43.0.0` package, the stable Steam shortcut,
+App ID `480`, `-Suite checkout`, `-PresenterMode persistent`,
+`-NativeHostBackend d3d11`, `-CloseProbe`, and
+`-CloseProbeInput escape-sendinput`. The matrix summary reported
+`expectedNativeHostBackend=windows-d3d11`, `cases: total=4 steamLaunch=4
+overlayActive=3 clean=4`, clean crash diagnostics, and successful
+prepare-only, direct synthetic approval checkout, managed Shift+Tab checkout,
+and programmatic checkout shortcut `openAndWait(...)` cases. The shortcut
+checkout close probe recorded `probe:shortcut-focus` with the smoke window
+focused before sending Shift+Tab, then sent Escape while the foreground window
+was the Steam Bridge native overlay host. This remains public checkout routing
+proof only; real purchase authorization still requires a configured app/product
+and private checkout JSON with `-RequireMicroTxnCallback`.
+
 Latest Windows D3D11 keyboard proof: the refreshed Electron `43.0.0` smoke
 bundle was rebuilt on macOS, deployed to the Windows laptop, and Authenticode
 signed with the local test certificate. The focused interactive Session 1

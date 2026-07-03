@@ -961,6 +961,51 @@ function Resolve-JavaScriptRunner {
   }
 }
 
+function ConvertTo-WindowsProcessArgument {
+  param([AllowNull()][string]$Argument)
+
+  if ($null -eq $Argument) {
+    return '""'
+  }
+  if ($Argument.Length -gt 0 -and $Argument -notmatch '[\s"]') {
+    return $Argument
+  }
+
+  $result = New-Object System.Text.StringBuilder
+  [void]$result.Append('"')
+  $backslashes = 0
+  foreach ($char in $Argument.ToCharArray()) {
+    if ($char -eq '\') {
+      $backslashes += 1
+      continue
+    }
+    if ($char -eq '"') {
+      if ($backslashes -gt 0) {
+        [void]$result.Append(('\' * ($backslashes * 2)))
+        $backslashes = 0
+      }
+      [void]$result.Append('\"')
+      continue
+    }
+    if ($backslashes -gt 0) {
+      [void]$result.Append(('\' * $backslashes))
+      $backslashes = 0
+    }
+    [void]$result.Append($char)
+  }
+  if ($backslashes -gt 0) {
+    [void]$result.Append(('\' * ($backslashes * 2)))
+  }
+  [void]$result.Append('"')
+  return $result.ToString()
+}
+
+function Join-WindowsProcessArguments {
+  param([string[]]$Arguments)
+
+  return (($Arguments | ForEach-Object { ConvertTo-WindowsProcessArgument $_ }) -join " ")
+}
+
 function Invoke-ElectronJavaScriptRunner {
   param(
     [Parameter(Mandatory = $true)]
@@ -977,7 +1022,7 @@ function Invoke-ElectronJavaScriptRunner {
     try {
       $process = Start-Process `
         -FilePath $Command `
-        -ArgumentList $Arguments `
+        -ArgumentList (Join-WindowsProcessArguments -Arguments $Arguments) `
         -Wait `
         -PassThru `
         -WindowStyle Hidden `
@@ -2197,6 +2242,15 @@ public static class SteamBridgeWindowsProbe {
   [DllImport("user32.dll")]
   public static extern IntPtr GetForegroundWindow();
 
+  [DllImport("user32.dll")]
+  public static extern bool IsIconic(IntPtr hWnd);
+
+  [DllImport("user32.dll")]
+  public static extern bool SetForegroundWindow(IntPtr hWnd);
+
+  [DllImport("user32.dll")]
+  public static extern bool ShowWindowAsync(IntPtr hWnd, int nCmdShow);
+
   [DllImport("user32.dll", CharSet = CharSet.Unicode)]
   public static extern int GetWindowText(IntPtr hWnd, StringBuilder text, int count);
 
@@ -2339,6 +2393,42 @@ function Get-ForegroundProbeSnapshot {
   }
 }
 
+function Focus-SmokeWindowForShortcutProbe {
+  `$candidate = Get-Process SteamBridgeSmoke -ErrorAction SilentlyContinue |
+    Where-Object { `$_.MainWindowHandle -and `$_.MainWindowHandle -ne [IntPtr]::Zero } |
+    Sort-Object StartTime -Descending |
+    Select-Object -First 1
+
+  if (-not `$candidate) {
+    return [PSCustomObject]@{
+      attempted = `$false
+      reason = "steam-bridge-smoke-window-not-found"
+      foreground = Get-ForegroundProbeSnapshot
+    }
+  }
+
+  `$handle = `$candidate.MainWindowHandle
+  `$wasMinimized = [SteamBridgeWindowsProbe]::IsIconic(`$handle)
+  `$restoreResult = `$null
+  if (`$wasMinimized) {
+    `$restoreResult = [SteamBridgeWindowsProbe]::ShowWindowAsync(`$handle, 9)
+  }
+  `$setForegroundResult = [SteamBridgeWindowsProbe]::SetForegroundWindow(`$handle)
+  `$foreground = Get-ForegroundProbeSnapshot
+
+  [PSCustomObject]@{
+    attempted = `$true
+    pid = `$candidate.Id
+    hwnd = ("0x{0:X}" -f `$handle.ToInt64())
+    title = `$candidate.MainWindowTitle
+    wasMinimized = `$wasMinimized
+    restoreResult = `$restoreResult
+    setForegroundResult = `$setForegroundResult
+    foreground = `$foreground
+    focused = (`$foreground -and `$foreground.pid -eq `$candidate.Id)
+  }
+}
+
 function Capture-ProbeScreen {
   param([string]`$Name)
 
@@ -2456,11 +2546,14 @@ while ((Get-Date) -lt `$deadline -and -not `$sent) {
         screenshot = Capture-ProbeScreen "shortcut-ready"
         processes = Get-ProbeProcessSnapshot
       })
+      `$shortcutFocus = Focus-SmokeWindowForShortcutProbe
+      Write-ProbeEvent "probe:shortcut-focus" `$shortcutFocus
       `$nativeOpenInputSent = Send-NativeKeyChord @(0x10, 0x09)
       `$openSent = `$true
       Write-ProbeEvent "probe:shortcut-open-sent" ([PSCustomObject]@{
         input = "toggle-sendinput"
         nativeInputSent = `$nativeOpenInputSent
+        focus = `$shortcutFocus
         foreground = Get-ForegroundProbeSnapshot
         processes = Get-ProbeProcessSnapshot
       })

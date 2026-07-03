@@ -98,6 +98,15 @@ Reviewed on 2026-07-02 while investigating Windows Electron overlay failures:
   diagnostics. These non-modal notification proofs intentionally allow
   `overlayEnabled=false`; the contract is Steam acceptance plus passive
   presenter state, not modal overlay readiness.
+- A 2026-07-03 UTC focused Windows D3D11 checkout suite proved the managed
+  checkout shape through the same native presenter. The artifact
+  `C:\Users\admin\steam-bridge-artifacts\windows-d3d11-checkout-suite-focusfix-20260703-001`
+  passed prepare-only checkout, direct synthetic approval checkout, managed
+  Shift+Tab checkout, and programmatic shortcut checkout `openAndWait(...)`
+  against App ID `480` with `-CloseProbeInput escape-sendinput`. The shortcut
+  probe now logs `probe:shortcut-focus` before sending Shift+Tab so foreground
+  contamination from harness windows is measured and corrected before the
+  managed shortcut open path is exercised.
 - The broader Windows source sweep points past window-style tweaks. Valve's
   browser-game FAQ specifically names a native D3D window with offscreen
   Chromium and input forwarding, while the WebView2/DirectComposition research

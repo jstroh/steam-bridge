@@ -689,7 +689,7 @@ function runElectronSmokeActionStaticChecks() {
     ["Electron smoke main", main, "overlay:presenter-direct-open-status"],
     ["Electron smoke main", main, "directPresenterOpenReadinessStatus"],
     ["Electron smoke main", main, "waitForDirectPresenterOpenReadiness"],
-    ["Electron smoke main", main, "waitForCheckoutOperationReadiness"],
+    ["Electron smoke main", main, "recordCheckoutOperationReadiness"],
     ["Electron smoke main", main, "overlayDisableDirectComposition"],
     ["Electron smoke main", main, "overlayInProcessGpu"],
     ["Electron smoke main", main, "--steam-bridge-electron-overlay-in-process-gpu"],
