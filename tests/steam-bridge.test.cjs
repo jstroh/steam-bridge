@@ -838,6 +838,31 @@ test("electron smoke native-host-unavailable action errors keep sanitized target
   );
   assert.match(
     exampleMain,
+    /checkout:init-txn-target-missing/,
+    "checkout smoke should record sanitized InitTxn target-missing diagnostics"
+  );
+  assert.match(
+    exampleMain,
+    /initTxnFailureDiagnostic/,
+    "checkout smoke should use structured InitTxn failure diagnostics"
+  );
+  assert.match(
+    exampleMain,
+    /normalizeInitTxnRequestSession/,
+    "private InitTxn smoke proof should normalize request-file session selectors"
+  );
+  assert.match(
+    exampleMain,
+    /client-default/,
+    "private InitTxn smoke proof should support Valve's default client session shape"
+  );
+  assert.match(
+    exampleMain,
+    /facade\.initTxn\(initTxnRequest\)/,
+    "private InitTxn smoke proof should be able to omit usersession for default-client diagnostics"
+  );
+  assert.match(
+    exampleMain,
     /captureInitTxnCheckout\(activeClient\)/,
     "private InitTxn smoke proof should create the transaction inside the initialized Electron app"
   );
@@ -23099,7 +23124,7 @@ test("web API microtransaction facades map economy fields and sandbox endpoints"
   assert.equal(typeof steam.webApi.microTxn.cancelAgreement, "function");
 });
 
-test("web API microtransaction InitTxn session helpers set client and web modes", async (t) => {
+test("web API microtransaction InitTxn session helpers set client, web, and default-client modes", async (t) => {
   const steam = loadSteamWithFakeNative(createFakeNative());
   const fetchCalls = [];
   const fetchImpl = async (url, init = {}) => {
@@ -23136,21 +23161,28 @@ test("web API microtransaction InitTxn session helpers set client and web modes"
 
   t.after(clearSteamBridgeCache);
 
-  await client.microTxnSandbox.initClientTxn(initTxnOptions);
-  await client.microTxnSandbox.initWebTxn({ ...initTxnOptions, orderId: 9003n });
+  await client.microTxnSandbox.initTxn(initTxnOptions);
+  await client.microTxnSandbox.initClientTxn({ ...initTxnOptions, orderId: 9003n });
+  await client.microTxnSandbox.initWebTxn({ ...initTxnOptions, orderId: 9004n });
 
   assert.equal(
     fetchCalls[0].url,
     "https://partner.steam-api.com/ISteamMicroTxnSandbox/InitTxn/v0003/?key=publisher-secret&format=json"
   );
   assert.match(fetchCalls[0].init.body, /orderid=9002/);
-  assert.match(fetchCalls[0].init.body, /usersession=client/);
+  assert.equal(/usersession=/.test(fetchCalls[0].init.body), false);
   assert.equal(
     fetchCalls[1].url,
     "https://partner.steam-api.com/ISteamMicroTxnSandbox/InitTxn/v0003/?key=publisher-secret&format=json"
   );
   assert.match(fetchCalls[1].init.body, /orderid=9003/);
-  assert.match(fetchCalls[1].init.body, /usersession=web/);
+  assert.match(fetchCalls[1].init.body, /usersession=client/);
+  assert.equal(
+    fetchCalls[2].url,
+    "https://partner.steam-api.com/ISteamMicroTxnSandbox/InitTxn/v0003/?key=publisher-secret&format=json"
+  );
+  assert.match(fetchCalls[2].init.body, /orderid=9004/);
+  assert.match(fetchCalls[2].init.body, /usersession=web/);
 });
 
 test("web API app and news facades map public and partner endpoints", async (t) => {

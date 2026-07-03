@@ -848,7 +848,14 @@ For `usersession=client` runs, the Windows summary prints
 `clientSessionCaptured` and `clientPromptMissing`. If both are `true`, the smoke
 app captured a valid client-session transaction target and kept the managed
 presenter active, but Steam did not present the automatic authorization overlay
-before the checkout wait guard expired.
+before the checkout wait guard expired. For focused diagnostics, a private
+request file may use `"session": "client-default"` to omit the `usersession`
+field entirely and exercise Steam's documented default logged-in-client
+authorization path. Use `"session": "web"` when proving the returned Steam URL
+checkout path through the managed overlay browser. Treat `client-default` as a
+request-shape diagnostic only: Steam can reject it before returning any checkout
+target, while the web-session Steam URL flow is the proved managed-overlay
+checkout path on the current Windows evidence.
 When driving Windows from SSH, run the same checkout suite through the packaged
 interactive task wrapper so the overlay launches in the logged-in desktop
 session instead of Session 0. For private checkout runs, prefer a local JSON
@@ -1494,9 +1501,12 @@ app-specific proof outside the committed examples:
    the purchase. If `canStartOperation=false`, do not call `InitTxn` yet.
 4. Trigger the backend `InitTxn` call through
    `steamOverlay.openCheckoutAndWait(() => startTxn())`; with the built-in Web
-   API client, use `microTxn.initClientTxn(...)` for `usersession=client` and
-   keep `microTxn.initWebTxn(...)` for your browser fallback. Do not tune local
-   overlay-preparation timers around that call.
+   API client, use the named helpers instead of raw session strings. For Windows
+   Electron checkout proof today, `microTxn.initWebTxn(...)` is the verified
+   managed-overlay path; `microTxn.initClientTxn(...)` remains available when
+   your app specifically needs `MicroTxnAuthorizationResponse` and has proved
+   Steam's automatic client prompt for that configured app/account. Do not tune
+   local overlay-preparation timers around that call.
 5. For smoke proof, save the returned JSON to a private temp file and pass it
    with `STEAM_BRIDGE_SMOKE_CHECKOUT_JSON_FILE`, the macOS helper's
    `--checkout-json-file`, or the Windows helper's `-CheckoutJsonFile`. On

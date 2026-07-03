@@ -218,6 +218,16 @@ Reviewed on 2026-07-02 while investigating Windows Electron overlay failures:
   purchase gap to Steam's automatic client-session prompt behavior for the
   configured product/account, not native presenter readiness, Steam app launch,
   checkout target parsing, or crash/focus health.
+- A focused default-client diagnostic at
+  `C:\Users\admin\steam-bridge-artifacts\windows-default-client-inittxn-checkout-20260703-172218`
+  used the same `steam-app` configured-app lane and a private request that
+  omitted `usersession` entirely. The request shape did not include web-only IP
+  fields, but Steam returned `result=Failure errorCode=3` before returning a
+  transaction or checkout target. The run still passed live readiness,
+  native-load, render-health, and prepare-only checkout gates with clean crash
+  diagnostics. Treat this as evidence that the useful Windows checkout
+  comparison is explicit `usersession=client` versus `usersession=web`, not the
+  omitted-session default shape.
 - A follow-up private configured-product Windows checkout run switched the same
   in-app `InitTxn` capture to `usersession=web`, where Steam returns a
   `steamurl` and Steam Bridge opens the checkout in the managed overlay browser.

@@ -695,6 +695,10 @@ function isMicroTxnCallbackEvent(event) {
   return Boolean(event && event.type === "callback:microtxn");
 }
 
+function isClientSessionInitTxnMode(value) {
+  return value === "client" || value === "client-default";
+}
+
 function hasClientSessionCheckoutCaptured(events) {
   return events.some((event) => {
     if (!event || event.type !== "checkout:init-txn-captured") {
@@ -702,7 +706,11 @@ function hasClientSessionCheckoutCaptured(events) {
     }
     const payload = objectOrEmpty(event.payload);
     const targetSnapshot = objectOrEmpty(payload.targetSnapshot);
-    return payload.session === "client" && targetSnapshot.type === "checkout" && targetSnapshot.clientSession === true;
+    return (
+      isClientSessionInitTxnMode(payload.session) &&
+      targetSnapshot.type === "checkout" &&
+      targetSnapshot.clientSession === true
+    );
   });
 }
 
@@ -1725,6 +1733,15 @@ function runSelfTest() {
     assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionCheckoutCaptured, true);
     assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionPromptMissing, true);
 
+    const defaultClientPromptMissingRoot = path.join(tempRoot, "managed-checkout-default-client-prompt-missing");
+    writeManagedCheckoutMicroTxnFixture(defaultClientPromptMissingRoot, {
+      clientPromptMissing: true,
+      clientPromptMissingSession: "client-default"
+    });
+    const defaultClientPromptMissingSummary = summarizeWindowsOverlayMatrixArtifacts(defaultClientPromptMissingRoot);
+    assert.equal(defaultClientPromptMissingSummary.caseSummaries[0].clientSessionCheckoutCaptured, true);
+    assert.equal(defaultClientPromptMissingSummary.caseSummaries[0].clientSessionPromptMissing, true);
+
     const lateMicroTxnRoot = path.join(tempRoot, "managed-checkout-late-microtxn");
     writeManagedCheckoutMicroTxnFixture(lateMicroTxnRoot, { lateMicroTxn: true });
     const lateMicroTxnSummary = summarizeWindowsOverlayMatrixArtifacts(lateMicroTxnRoot);
@@ -2593,7 +2610,7 @@ function writeManagedCheckoutMicroTxnFixture(root, options = {}) {
         events: [
           {
             type: "checkout:init-txn-captured",
-            payload: { session: "client", targetSnapshot }
+            payload: { session: options.clientPromptMissingSession || "client", targetSnapshot }
           },
           {
             type: "checkout:client-session-wait-start",

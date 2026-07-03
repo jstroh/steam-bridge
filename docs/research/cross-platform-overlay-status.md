@@ -325,6 +325,17 @@ preserving the client-session target, but this Steam client/product/account
 combination is not showing Steam's automatic client-session authorization
 prompt.
 
+A focused default-client diagnostic at
+`C:\Users\admin\steam-bridge-artifacts\windows-default-client-inittxn-checkout-20260703-172218`
+used the same `steam-app` configured-app lane and a private request that omitted
+`usersession` entirely. The request shape did not include web-only IP fields,
+but Steam returned `result=Failure errorCode=3` before returning a transaction
+or checkout target. The run still passed live readiness, native-load,
+render-health, and prepare-only checkout gates with clean crash diagnostics.
+This means the documented default-client `InitTxn` shape is not a viable
+Windows purchase proof for this configured product/account; the useful
+comparison remains explicit `usersession=client` versus `usersession=web`.
+
 A follow-up private configured-product checkout run switched the same in-app
 `InitTxn` capture to `usersession=web`, letting Steam return a `steamurl` for
 Steam Bridge to open through the managed overlay browser. The focused Windows

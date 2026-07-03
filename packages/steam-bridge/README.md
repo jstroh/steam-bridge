@@ -724,10 +724,14 @@ where the app already has a resolved checkout target and intentionally does not
 need to await overlay close. Real purchase flows should normally prefer
 `openCheckoutAndWait(...)` so the presenter stays alive until Steam reports the
 checkout overlay inactive.
-When using the built-in Web API client, prefer
-`microTxn.initClientTxn(...)` for overlay approval (`usersession=client`) and
-`microTxn.initWebTxn(...)` for your browser fallback (`usersession=web`) instead
-of passing raw session strings through app code.
+When using the built-in Web API client, prefer the named helpers over raw
+session strings. `microTxn.initClientTxn(...)` keeps Steam's client-session
+automatic-prompt semantics for apps that need `MicroTxnAuthorizationResponse`
+and have proved that prompt path for their configured app/account. For Windows
+Electron checkout proof today, `microTxn.initWebTxn(...)` is the end-to-end
+verified path: Steam returns a `steamurl`, Steam Bridge opens it through the
+managed overlay browser, and the app can follow Steam's web-session
+`QueryTxn`/finalization flow.
 `steamOverlay.withCheckoutPrepared(...)`,
 `steamOverlay.open({ type: "checkout", ... })`, and
 `steamOverlay.prepareForCheckout()` remain available for lower-level flows that
@@ -830,7 +834,14 @@ For Windows `usersession=client` diagnostics, the summary also prints
 `InitTxn` call returned a transaction id, Steam Bridge preserved it as a
 client-session checkout target without synthesizing a web approval URL, the
 managed presenter was active, and Steam still did not emit the automatic
-checkout overlay activation before the wait guard expired.
+checkout overlay activation before the wait guard expired. For focused Windows
+diagnostics, a private InitTxn request file can set `"session": "client-default"`
+to omit `usersession` and test Steam's documented default logged-in-client
+authorization path; `"session": "web"` keeps testing the returned Steam URL
+checkout path through the managed overlay browser. Current Windows evidence
+treats `client-default` as a request-shape diagnostic only: Steam can reject it
+before returning any checkout target, while the web-session Steam URL flow is
+the proved managed-overlay checkout path.
 The matrix's dry-run and live command logs also redact checkout file paths,
 checkout URLs, return URLs, transaction IDs, and control tokens. Those logs show
 the option name plus `REDACTED`, which keeps command-shape review useful without

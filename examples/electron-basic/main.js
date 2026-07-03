@@ -2114,35 +2114,53 @@ async function captureInitTxnCheckout(activeClient) {
   }
 
   const request = readJsonFile(INIT_TXN_REQUEST_FILE);
+  const session = normalizeInitTxnRequestSession(request.session ?? request.userSession ?? request.usersession);
+  const {
+    sandbox: _sandbox,
+    session: _session,
+    userSession: _userSession,
+    usersession: _usersession,
+    ...requestBody
+  } = request;
   const steamId64 = readActiveSteamId64(activeClient);
   const initTxnRequest = {
-    ...request,
+    ...requestBody,
     appId: APP_ID,
     steamId64
   };
   const endpoint = normalizeInitTxnEndpoint(INIT_TXN_ENDPOINT || (request.sandbox === false ? "production" : "sandbox"));
-  const session = request.session === "web" ? "web" : "client";
   const webClient = steamworks.createSteamWebApiClient({ apiKey });
   const facade = endpoint === "production" ? webClient.microTxn : webClient.microTxnSandbox;
-  const response = session === "web"
-    ? await facade.initWebTxn(initTxnRequest)
-    : await facade.initClientTxn(initTxnRequest);
+  const response =
+    session === "web"
+      ? await facade.initWebTxn(initTxnRequest)
+      : session === "client-default"
+        ? await facade.initTxn(initTxnRequest)
+        : await facade.initClientTxn(initTxnRequest);
 
   if (!response.ok) {
     throw new Error("Steam InitTxn Web API request failed.");
   }
 
-  const transaction = session === "client"
-    ? {
-        clientSession: true,
-        data: response.data
-      }
-    : response.data;
+  const transaction =
+    session === "web"
+      ? response.data
+      : {
+          clientSession: true,
+          data: response.data
+        };
 
   let target;
   try {
     target = steamworks.overlay.checkoutTargetFromResult(transaction, { expectedAppId: APP_ID });
   } catch (error) {
+    recordEvent("checkout:init-txn-target-missing", {
+      endpoint,
+      session,
+      httpStatus: response.status,
+      usedCurrentSteamId: Boolean(steamId64),
+      failure: initTxnFailureDiagnostic(response.data)
+    });
     throw new Error(`Steam InitTxn response did not include a checkout target (${summarizeInitTxnFailure(response.data)}).`);
   }
 
@@ -2158,6 +2176,17 @@ async function captureInitTxnCheckout(activeClient) {
   return transaction;
 }
 
+function normalizeInitTxnRequestSession(value) {
+  const session = String(value || "").trim().toLowerCase();
+  if (session === "web") {
+    return "web";
+  }
+  if (session === "client-default" || session === "default-client" || session === "default") {
+    return "client-default";
+  }
+  return "client";
+}
+
 function readActiveSteamId64(activeClient) {
   const steamId = activeClient.localplayer.getSteamId();
   const steamId64 = steamId && steamId.steamId64;
@@ -2168,11 +2197,21 @@ function readActiveSteamId64(activeClient) {
 }
 
 function summarizeInitTxnFailure(data) {
+  const failure = initTxnFailureDiagnostic(data);
+  return `result=${failure.result} errorCode=${failure.errorCode}`;
+}
+
+function initTxnFailureDiagnostic(data) {
   const response = data && typeof data === "object" ? data.response : undefined;
   const result = response && typeof response === "object" ? response.result : undefined;
   const error = response && typeof response === "object" ? response.error : undefined;
   const errorCode = error && typeof error === "object" ? error.errorcode : undefined;
-  return `result=${String(result || "unknown")} errorCode=${String(errorCode || "unknown")}`;
+  const errorDescription = error && typeof error === "object" ? error.errordesc : undefined;
+  return {
+    result: String(result || "unknown"),
+    errorCode: String(errorCode || "unknown"),
+    hasErrorDescription: typeof errorDescription === "string" && errorDescription.length > 0
+  };
 }
 
 function normalizeInitTxnEndpoint(value) {
