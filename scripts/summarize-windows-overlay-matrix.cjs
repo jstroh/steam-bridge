@@ -809,6 +809,22 @@ function summarizeInitTxnRequestShape(value) {
   };
 }
 
+function expectInitTxnRequestShape(summary, label, failures) {
+  if (!summary.present) {
+    return;
+  }
+  expect(
+    summary.usersessionField !== "",
+    `${label}: records sanitized InitTxn usersession request shape`,
+    failures
+  );
+  expect(
+    summary.hasIpAddress !== "",
+    `${label}: records sanitized InitTxn IP address request-shape flag`,
+    failures
+  );
+}
+
 function hasMicroTxnCallbackProof(actionName, events, expectedAppId) {
   const failures = [];
   verifyMicroTxnCallbackProof(actionName, events, expectedAppId, failures);
@@ -988,6 +1004,9 @@ function summarizeCaseResult(caseName, result, resultLog, renderingHealth = null
   expect(crashDiagnostics.ok === true, `${caseName}: no crash diagnostics reported`, failures);
   expect(crashDumps.length === 0, `${caseName}: no crash dumps found`, failures);
   expect(fatalLifecycleEvents.length === 0, `${caseName}: no fatal lifecycle events found`, failures);
+  expectInitTxnRequestShape(clientSessionCheckoutCapture, `${caseName}: client-session InitTxn capture`, failures);
+  expectInitTxnRequestShape(clientSessionPromptMissing, `${caseName}: client-session prompt-missing diagnostic`, failures);
+  expectInitTxnRequestShape(initTxnTargetMissing, `${caseName}: InitTxn target-missing diagnostic`, failures);
 
   const steamRenderingHealth = summarizeCaseRenderingHealth(renderingHealth);
 
@@ -1877,6 +1896,19 @@ function runSelfTest() {
       "omitted"
     );
 
+    const missingRequestShapeRoot = path.join(tempRoot, "managed-checkout-missing-request-shape");
+    writeManagedCheckoutMicroTxnFixture(missingRequestShapeRoot, {
+      clientPromptMissing: true,
+      omitInitTxnRequestShape: true
+    });
+    const missingRequestShapeSummary = summarizeWindowsOverlayMatrixArtifacts(missingRequestShapeRoot);
+    assert(
+      missingRequestShapeSummary.failures.some((failure) =>
+        failure.includes("client-session InitTxn capture: records sanitized InitTxn usersession request shape")
+      ),
+      "summary self-test should fail when a client-session capture omits request-shape diagnostics"
+    );
+
     const initTxnTargetMissingRoot = path.join(tempRoot, "managed-checkout-init-txn-target-missing");
     writeManagedCheckoutMicroTxnFixture(initTxnTargetMissingRoot, {
       initTxnTargetMissing: true,
@@ -1892,6 +1924,19 @@ function runSelfTest() {
     assert.equal(initTxnTargetMissingRow.initTxnTargetMissingErrorCode, "3");
     assert.equal(initTxnTargetMissingRow.initTxnTargetMissingUsersessionField, "omitted");
     assert.equal(initTxnTargetMissingRow.initTxnTargetMissingHasIpAddress, "false");
+
+    const targetMissingWithoutShapeRoot = path.join(tempRoot, "managed-checkout-target-missing-no-shape");
+    writeManagedCheckoutMicroTxnFixture(targetMissingWithoutShapeRoot, {
+      initTxnTargetMissing: true,
+      omitInitTxnRequestShape: true
+    });
+    const targetMissingWithoutShapeSummary = summarizeWindowsOverlayMatrixArtifacts(targetMissingWithoutShapeRoot);
+    assert(
+      targetMissingWithoutShapeSummary.failures.some((failure) =>
+        failure.includes("InitTxn target-missing diagnostic: records sanitized InitTxn usersession request shape")
+      ),
+      "summary self-test should fail when target-missing InitTxn diagnostics omit request-shape fields"
+    );
 
     const lateMicroTxnRoot = path.join(tempRoot, "managed-checkout-late-microtxn");
     writeManagedCheckoutMicroTxnFixture(lateMicroTxnRoot, { lateMicroTxn: true });
@@ -2740,16 +2785,18 @@ function writeManagedCheckoutMicroTxnFixture(root, options = {}) {
     }
   };
   if (options.initTxnTargetMissing) {
-    const requestShape = {
-      usersession:
-        options.initTxnTargetMissingSession === "client-default"
-          ? "omitted"
-          : options.initTxnTargetMissingSession || "client",
-      hasUserSessionField: options.initTxnTargetMissingSession !== "client-default",
-      hasIpAddress: false,
-      itemCount: 1,
-      bundleCount: 0
-    };
+    const requestShape = options.omitInitTxnRequestShape
+      ? undefined
+      : {
+          usersession:
+            options.initTxnTargetMissingSession === "client-default"
+              ? "omitted"
+              : options.initTxnTargetMissingSession || "client",
+          hasUserSessionField: options.initTxnTargetMissingSession !== "client-default",
+          hasIpAddress: false,
+          itemCount: 1,
+          bundleCount: 0
+        };
     writeResult(path.join(root, checkoutCaseId, "result.log"), {
       ok: false,
       action: {
@@ -2775,7 +2822,7 @@ function writeManagedCheckoutMicroTxnFixture(root, options = {}) {
               session: options.initTxnTargetMissingSession || "client",
               httpStatus: 200,
               usedCurrentSteamId: true,
-              requestShape,
+              ...(requestShape ? { requestShape } : {}),
               failure: {
                 result: options.initTxnTargetMissingResult || "Failure",
                 errorCode: options.initTxnTargetMissingErrorCode || "3",
@@ -2790,21 +2837,24 @@ function writeManagedCheckoutMicroTxnFixture(root, options = {}) {
   }
   if (options.clientPromptMissing) {
     const targetSnapshot = { type: "checkout", hasTransactionId: true, clientSession: true };
+    const requestShape = options.omitInitTxnRequestShape
+      ? undefined
+      : {
+          usersession:
+            options.clientPromptMissingSession === "client-default"
+              ? "omitted"
+              : options.clientPromptMissingSession || "client",
+          hasUserSessionField: options.clientPromptMissingSession !== "client-default",
+          hasIpAddress: false,
+          itemCount: 1,
+          bundleCount: 0
+        };
     const initTxn = {
       endpoint: "sandbox",
       session: options.clientPromptMissingSession || "client",
       httpStatus: 200,
       usedCurrentSteamId: true,
-      requestShape: {
-        usersession:
-          options.clientPromptMissingSession === "client-default"
-            ? "omitted"
-            : options.clientPromptMissingSession || "client",
-        hasUserSessionField: options.clientPromptMissingSession !== "client-default",
-        hasIpAddress: false,
-        itemCount: 1,
-        bundleCount: 0
-      }
+      ...(requestShape ? { requestShape } : {})
     };
     const error = {
       name: "SteamOverlayWaitTimeoutError",
