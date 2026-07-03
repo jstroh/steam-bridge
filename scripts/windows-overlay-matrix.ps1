@@ -1660,6 +1660,7 @@ function New-Case {
     [switch]$RequireOverlayActivated,
     [switch]$RequireNoOverlayActivation,
     [switch]$AllowOverlayNotReady,
+    [switch]$RequirePassiveNotification,
     [switch]$RequireManagedOverlayComplete,
     [switch]$CloseProbeOnActivation,
     [switch]$ShortcutToggleProbe,
@@ -1680,6 +1681,7 @@ function New-Case {
     requireOverlayActivated = [bool]$RequireOverlayActivated
     requireNoOverlayActivation = [bool]$RequireNoOverlayActivation
     allowOverlayNotReady = [bool]$AllowOverlayNotReady
+    requirePassiveNotification = [bool]$RequirePassiveNotification
     requireManagedOverlayComplete = [bool]$RequireManagedOverlayComplete
     closeProbeOnActivation = [bool]$CloseProbeOnActivation
     shortcutToggleProbe = [bool]$ShortcutToggleProbe
@@ -1756,6 +1758,8 @@ function Get-MatrixCases {
     New-ManagedOpenAndWaitCase -Id "22-managed-user-open-and-wait" -Action "presenter-user-open-and-wait"
     New-Case -Id "23-raw-native-dialog-open-observe" -Action "presenter-dialog" -RequireEvent @("overlay:presenter-open") -RequireOverlayActivated -DialogOverride $Dialog -CloseProbeOnActivation -ResultDelayMs 12000
     New-Case -Id "24-raw-native-user-open-observe" -Action "presenter-user-native" -RequireEvent @("overlay:presenter-open") -RequireOverlayActivated -UserDialogOverride $UserDialog -CloseProbeOnActivation -ResultDelayMs 12000
+    New-Case -Id "25-managed-achievement-progress" -Action "presenter-achievement-progress" -RequireEvent @("overlay:presenter-attach", "achievement:progress", "overlay:passive-notification-parked") -RequireNoOverlayActivation -AllowOverlayNotReady -RequirePassiveNotification -ResultDelayMs 10000
+    New-Case -Id "26-managed-achievement-unlock" -Action "presenter-achievement-unlock" -RequireEvent @("overlay:presenter-attach", "achievement:unlock", "overlay:passive-notification-parked") -RequireNoOverlayActivation -AllowOverlayNotReady -RequirePassiveNotification -ResultDelayMs 10000
   )
 
   switch ($Suite) {
@@ -1803,6 +1807,7 @@ function Write-MatrixManifest {
           requireOverlayActivated = [bool]$_.requireOverlayActivated
           requireNoOverlayActivation = [bool]$_.requireNoOverlayActivation
           allowOverlayNotReady = [bool]$_.allowOverlayNotReady
+          requirePassiveNotification = [bool]$_.requirePassiveNotification
           requireManagedOverlayComplete = [bool]$_.requireManagedOverlayComplete
           closeProbeOnActivation = [bool]$_.closeProbeOnActivation
           shortcutToggleProbe = [bool]$_.shortcutToggleProbe
@@ -2585,6 +2590,9 @@ function Invoke-MatrixCase {
   }
   if ($Case.requireNoOverlayActivation) {
     $args += "-RequireNoOverlayActivation"
+  }
+  if ($Case.requirePassiveNotification) {
+    $args += "-RequirePassiveNotification"
   }
   if ($Case.requireManagedOverlayComplete) {
     $args += "-RequireManagedOverlayComplete"

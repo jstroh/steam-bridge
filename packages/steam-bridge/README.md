@@ -345,11 +345,12 @@ for proof runs through the same `createElectronSteamOverlay(...)` API; pass
 that path, and set `STEAM_BRIDGE_WINDOWS_NATIVE_HOST_BACKEND=d3d11` only for
 the focused D3D11 comparison. Current focused Windows evidence covers managed
 web, store-web, Friends/chat, synthetic checkout approval-route plumbing, and
-managed Shift+Tab shortcut open/close/back-to-app proof, but the backend is not
-a default until passive notifications, Community/profile-style routes, real
-configured-product checkout, and remaining web-close edge cases pass the same
-gates. Pass `scrubSteamOverlayChildProcessEnv: false` only when collecting
-raw Electron-child overlay diagnostics.
+managed Shift+Tab shortcut open/close/back-to-app proof, plus passive
+achievement progress/unlock notification state. The backend is not a default
+until Community/profile-style routes, real configured-product checkout, and
+remaining web-close edge cases pass the same gates. Pass
+`scrubSteamOverlayChildProcessEnv: false` only when collecting raw
+Electron-child overlay diagnostics.
 Raw activation helpers such as `activateToWebPage(...)` remain available for
 Node/native smoke checks and diagnostics, but Electron product overlay work
 should go through the managed `createElectronSteamOverlay(...)` path.
@@ -799,7 +800,12 @@ Linux/X11, fully idle mode makes the host transparent and click-through;
 `overlayNeedsPresent` can make it visible while leaving input click-through for
 passive notifications; opening or active overlay mode restores both opacity and
 input so Steam web or checkout UI can receive clicks, then parks the host
-transparent after Steam reports the overlay inactive. The default `idleFps` is
+transparent after Steam reports the overlay inactive. On Windows D3D11 proof
+runs, passive notification verification allows `overlayEnabled=false` because
+there is no modal overlay, but still requires Steam to accept the achievement
+event, no `GameOverlayActivated(true)` callback, an attached D3D11 host, passive
+transparent/click-through state, `overlayNeedsPresent=false`, `currentFps=0`,
+and clean crash diagnostics. The default `idleFps` is
 `0`; opt into nonzero idle pumping only for diagnostics. The managed Electron
 helper also keeps the presenter aligned on BrowserWindow move, resize,
 fullscreen, maximize, restore, and show events with one native pump per event

@@ -92,6 +92,7 @@ param(
   [switch]$AllowOverlayNotReady,
   [switch]$RequireOverlayActivated,
   [switch]$RequireNoOverlayActivation,
+  [switch]$RequirePassiveNotification,
   [string]$RequireNativeHostBackend = "",
   [int]$RequireRestoreFocusDelayMs = -1,
   [switch]$RequireZeroManagedOverlayTiming,
@@ -1052,6 +1053,48 @@ function Test-OverlayInactiveEvent {
   )
 }
 
+function Test-PassivePresenterSnapshot {
+  param($Presenter, [string]$Label, [System.Collections.Generic.List[string]]$Failures)
+
+  if (-not $Presenter) {
+    $Failures.Add("$Label passive presenter snapshot available")
+    return
+  }
+  if ($Presenter.mode -ne "passive") {
+    $Failures.Add("$Label presenter mode is passive")
+  }
+  if ($Presenter.nativeHostOpen -ne $true) {
+    $Failures.Add("$Label native host is open")
+  }
+  if ($Presenter.clickThrough -ne $true) {
+    $Failures.Add("$Label presenter is click-through")
+  }
+  if ($Presenter.focusable -ne $false) {
+    $Failures.Add("$Label presenter is not focusable")
+  }
+  if ($Presenter.overlayActive -ne $false) {
+    $Failures.Add("$Label presenter overlay is inactive")
+  }
+}
+
+function Test-ParkedPassivePresenterSnapshot {
+  param($Presenter, [string]$Label, [System.Collections.Generic.List[string]]$Failures)
+
+  Test-PassivePresenterSnapshot -Presenter $Presenter -Label $Label -Failures $Failures
+  if (-not $Presenter) {
+    return
+  }
+  if ($Presenter.transparent -ne $true) {
+    $Failures.Add("$Label presenter is transparent after passive notification")
+  }
+  if ($Presenter.overlayNeedsPresent -ne $false) {
+    $Failures.Add("$Label presenter no longer needs present after passive notification")
+  }
+  if ($Presenter.currentFps -ne 0) {
+    $Failures.Add("$Label presenter current FPS is zero after passive notification")
+  }
+}
+
 function Assert-SmokeResult {
   param($Result)
 
@@ -1184,7 +1227,36 @@ function Assert-SmokeResult {
     $failures.Add("overlay activation callback active=true emitted")
   }
   if ($RequireNoOverlayActivation -and $overlayActivated) {
-    $failures.Add("overlay activation callback active=true was not emitted")
+    $failures.Add("overlay activation callback active=true was emitted unexpectedly")
+  }
+  if ($RequirePassiveNotification) {
+    $passiveEventType = ""
+    if ($Action -eq "presenter-achievement-progress") {
+      $passiveEventType = "achievement:progress"
+    } elseif ($Action -eq "presenter-achievement-unlock") {
+      $passiveEventType = "achievement:unlock"
+    }
+
+    if (-not $passiveEventType) {
+      $failures.Add("passive notification action is supported")
+    } else {
+      $passiveEvent = @($events | Where-Object { $_.type -eq $passiveEventType } | Select-Object -First 1)
+      if ($passiveEvent.Count -eq 0) {
+        $failures.Add("passive notification event $passiveEventType emitted")
+      } else {
+        $passivePayload = $passiveEvent[0].payload
+        if ($Action -eq "presenter-achievement-progress" -and $passivePayload.indicated -ne $true) {
+          $failures.Add("passive achievement progress was accepted by Steam")
+        }
+        if ($Action -eq "presenter-achievement-unlock" -and $passivePayload.activated -ne $true) {
+          $failures.Add("passive achievement unlock was accepted by Steam")
+        }
+        $eventPresenter = $passivePayload.presenter
+        Test-PassivePresenterSnapshot -Presenter $eventPresenter -Label "passive notification event" -Failures $failures
+      }
+    }
+
+    Test-ParkedPassivePresenterSnapshot -Presenter $nativePresenter -Label "final passive notification" -Failures $failures
   }
   if ($RequireNativeHostBackend) {
     if (-not $nativePresenter) {

@@ -86,6 +86,18 @@ Reviewed on 2026-07-02 while investigating Windows Electron overlay failures:
   live Windows matrix proof shows a native presenter is better across visible
   UI, close/back-to-app, passive notifications, FPS/focus behavior, and crash
   diagnostics.
+- A 2026-07-03 UTC focused Windows D3D11 pass proved passive
+  achievement-progress and achievement-unlock notifications through the same
+  managed Electron presenter shape. The Steam-launched App ID `480` artifacts
+  `windows-d3d11-passive-progress-exact-20260702-193629` and
+  `windows-d3d11-passive-unlock-exact-20260702-193629` both passed the Windows
+  matrix summary auditor, accepted the Steam achievement event
+  (`indicated=true` / `activated=true`), emitted no modal overlay activation,
+  kept the D3D11 native host open in passive transparent/click-through mode, and
+  parked at `overlayNeedsPresent=false` and `currentFps=0` with clean crash
+  diagnostics. These non-modal notification proofs intentionally allow
+  `overlayEnabled=false`; the contract is Steam acceptance plus passive
+  presenter state, not modal overlay readiness.
 - The broader Windows source sweep points past window-style tweaks. Valve's
   browser-game FAQ specifically names a native D3D window with offscreen
   Chromium and input forwarding, while the WebView2/DirectComposition research
@@ -941,7 +953,10 @@ duplicate child overlay targets.
 
 Pass criteria:
 
-- Steam launch, overlay injection, and `overlayEnabled=true`.
+- Steam launch and overlay injection. Active modal overlay proofs also require
+  `overlayEnabled=true` or an equivalent active overlay callback; passive
+  notification proofs require accepted Steam notification events plus passive
+  presenter state without modal activation.
 - One Steam overlay target for product overlay proofs: no competing
   `gameoverlayui` process attached to Electron's GPU/renderer children.
 - Presenter attached and passive without stealing focus.
@@ -1887,9 +1902,9 @@ direct open-status gating, visible Steam checkout approval web UI, active and
 inactive overlay callbacks, presenter parking,
 `overlay:presenter-checkout-open-and-wait-complete`, focus return, and clean
 crash diagnostics. This is approval-route plumbing proof, not real configured
-product purchase proof. Keep D3D11 non-default until passive notifications,
-shortcut behavior, Community/profile-style routes, and real configured-product
-checkout clear the same gates.
+product purchase proof. Keep D3D11 non-default until the broader
+Community/profile-style route set, remaining close/input edge cases, and real
+configured-product checkout clear the same gates.
 
 A focused D3D11 shortcut-keyboard probe then found a passive-host focus bug:
 artifact

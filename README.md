@@ -332,10 +332,12 @@ bridge-owned native presenter under the hood.
 An experimental Windows native presenter is available for proof runs through the
 same managed API: pass `presenterMode: "persistent"` explicitly or set
 `STEAM_BRIDGE_ELECTRON_OVERLAY_PRESENTER=native` in the smoke environment. That
-path creates a Win32/OpenGL host surface behind `createElectronSteamOverlay(...)`
-and reports `backend: "windows-opengl"` in snapshots. It remains opt-in until it
-proves visible overlay UI, close/back-to-app behavior, passive toast behavior,
-FPS/focus stability, and clean crash diagnostics on the Windows matrix.
+path can create either a Win32/OpenGL diagnostic host or the current D3D11/DXGI
+host surface behind `createElectronSteamOverlay(...)`, reporting
+`backend: "windows-opengl"` or `backend: "windows-d3d11"` in snapshots. It
+remains opt-in while the Windows matrix expands route coverage; current D3D11
+proof covers managed keyboard open/close/back-to-app and passive progress/unlock
+notification state without a fixed repaint loop.
 If the Steam client window itself is blank or white, treat that as a Steam
 client rendering-health blocker first. The Windows matrix captures CEF,
 webhelper, and overlay log tails plus matching error lines under

@@ -314,6 +314,9 @@ function validateManifestCoverage(manifest, caseSummaries, caseAppControlBlocker
     for (const eventType of Array.isArray(expected.requireEvent) ? expected.requireEvent : []) {
       expect(row.eventTypes.includes(eventType), `matrix manifest case ${expected.id} emitted required event ${eventType}`, failures);
     }
+    if (expected.requirePassiveNotification === true) {
+      expect(row.passiveNotificationProof === true, `matrix manifest case ${expected.id} proved passive notification presenter state`, failures);
+    }
     if (expected.requireManagedOverlayComplete === true) {
       expect(
         row.managedOverlayResultMode === "complete",
@@ -585,6 +588,49 @@ function hasManagedOverlayCloseProof(wait, overlayInactiveEvents) {
   return overlayInactiveEvents > 0 || Boolean(wait && wait.overlayClosed === true);
 }
 
+function hasPassiveNotificationProof(actionName, events, nativePresenter) {
+  const eventType =
+    actionName === "presenter-achievement-progress"
+      ? "achievement:progress"
+      : actionName === "presenter-achievement-unlock"
+        ? "achievement:unlock"
+        : "";
+  if (!eventType) {
+    return false;
+  }
+
+  const event = events.find((entry) => entry && entry.type === eventType);
+  const payload = event && event.payload && typeof event.payload === "object" ? event.payload : {};
+  const accepted =
+    actionName === "presenter-achievement-progress"
+      ? payload.indicated === true
+      : actionName === "presenter-achievement-unlock"
+        ? payload.activated === true
+        : false;
+  return accepted &&
+    hasPassivePresenterShape(payload.presenter, { parked: false }) &&
+    hasPassivePresenterShape(nativePresenter, { parked: true });
+}
+
+function hasPassivePresenterShape(presenter, { parked }) {
+  if (!presenter || typeof presenter !== "object" || Array.isArray(presenter)) {
+    return false;
+  }
+  if (
+    presenter.mode !== "passive" ||
+    presenter.nativeHostOpen !== true ||
+    presenter.clickThrough !== true ||
+    presenter.focusable !== false ||
+    presenter.overlayActive !== false
+  ) {
+    return false;
+  }
+  if (!parked) {
+    return true;
+  }
+  return presenter.transparent === true && presenter.overlayNeedsPresent === false && presenter.currentFps === 0;
+}
+
 function summarizeCaseResult(caseName, result, resultLog, renderingHealth = null, closeProbeEvents = [], caseDir = "") {
   const failures = [];
   const snapshot = objectOrEmpty(result.snapshot);
@@ -592,6 +638,8 @@ function summarizeCaseResult(caseName, result, resultLog, renderingHealth = null
   const processInfo = objectOrEmpty(snapshot.process);
   const launch = objectOrEmpty(snapshot.launch);
   const steam = objectOrEmpty(snapshot.steam);
+  const overlay = objectOrEmpty(snapshot.overlay);
+  const nativePresenter = readOkValue(overlay.nativePresenter);
   const crashDiagnostics = objectOrEmpty(snapshot.crashDiagnostics);
   const action = objectOrEmpty(result.action);
   const events = Array.isArray(snapshot.events) ? snapshot.events : [];
@@ -634,6 +682,7 @@ function summarizeCaseResult(caseName, result, resultLog, renderingHealth = null
     overlayNeedsPresent,
     overlayActiveEvents,
     overlayInactiveEvents,
+    passiveNotificationProof: hasPassiveNotificationProof(String(action.action || ""), events, nativePresenter),
     managedOverlayCloseProof: hasManagedOverlayCloseProof(wait, overlayInactiveEvents),
     closeProbeSent: closeProbe.sent,
     closeProbeInput: closeProbe.input,

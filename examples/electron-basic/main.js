@@ -788,6 +788,10 @@ async function waitForAutorunResult(action, durationMs, overlayActiveCount, opti
     return { ok: true, action, durationMs: 0 };
   }
 
+  if (isPassiveNotificationAction(action)) {
+    return waitForPassiveNotificationResult(action, durationMs);
+  }
+
   const requireOverlayActive =
     typeof options.requireOverlayActive === "boolean" ? options.requireOverlayActive : AUTORUN_REQUIRE_OVERLAY_ACTIVE;
   if (!isNativeSessionAction(action)) {
@@ -833,6 +837,39 @@ async function waitForAutorunResult(action, durationMs, overlayActiveCount, opti
   const elapsedMs = Date.now() - startedAt;
   recordEvent("overlay:native-session-pump", { action, pumps, durationMs: elapsedMs });
   return { ok: true, action, pumps, durationMs: elapsedMs };
+}
+
+async function waitForPassiveNotificationResult(action, durationMs) {
+  const startedAt = Date.now();
+  const deadline = startedAt + durationMs;
+  const eventType = action === "presenter-achievement-progress" ? "achievement:progress" : "achievement:unlock";
+  let pumps = 0;
+
+  while (Date.now() < deadline) {
+    try {
+      pumpNativeProbe();
+      pumps += 1;
+    } catch (error) {
+      const serialized = serializeError(error);
+      recordEvent("overlay:passive-notification-pump:error", { action, pumps, error: serialized });
+      return { ok: false, action, pumps, durationMs: Date.now() - startedAt, error: serialized };
+    }
+
+    const presenter = safeOverlaySnapshot(electronSteamOverlay);
+    const eventSeen = eventLog.some((entry) => entry.type === eventType);
+    if (eventSeen && isParkedPassivePresenter(presenter)) {
+      const elapsedMs = Date.now() - startedAt;
+      recordEvent("overlay:passive-notification-parked", { action, pumps, durationMs: elapsedMs, presenter });
+      return { ok: true, action, pumps, passiveNotificationParked: true, durationMs: elapsedMs, presenter };
+    }
+
+    await delay(Math.min(100, Math.max(0, deadline - Date.now())));
+  }
+
+  const presenter = safeOverlaySnapshot(electronSteamOverlay);
+  const error = { message: "Timed out waiting for passive notification presenter to park." };
+  recordEvent("overlay:passive-notification-timeout", { action, pumps, durationMs: Date.now() - startedAt, presenter });
+  return { ok: false, action, pumps, passiveNotificationParked: false, durationMs: Date.now() - startedAt, error, presenter };
 }
 
 async function waitForManagedOverlayShownResult(action) {
@@ -3329,6 +3366,24 @@ function isOverlayAction(action) {
 
 function isImmediateSmokeAction(action) {
   return action === "presenter-ready";
+}
+
+function isPassiveNotificationAction(action) {
+  return action === "presenter-achievement-progress" || action === "presenter-achievement-unlock";
+}
+
+function isParkedPassivePresenter(presenter) {
+  return (
+    presenter &&
+    presenter.mode === "passive" &&
+    presenter.nativeHostOpen === true &&
+    presenter.clickThrough === true &&
+    presenter.focusable === false &&
+    presenter.transparent === true &&
+    presenter.overlayActive === false &&
+    presenter.overlayNeedsPresent === false &&
+    presenter.currentFps === 0
+  );
 }
 
 function isNativeSessionAction(action) {

@@ -144,6 +144,31 @@ transparent/click-through, `nativeHostOpen=true`, `overlayActive=false`,
 `overlayNeedsPresent=false`, and `currentFps=0`; no lifecycle `:error` events
 or crash dumps were recorded, and cleanup left only the Steam client running.
 
+Latest Windows D3D11 passive notification proof: the refreshed Electron
+`43.0.0` smoke bundle was rebuilt on macOS, deployed to the Windows laptop, and
+signed with the same local test certificate. Two focused interactive Session 1
+artifacts,
+`C:\Users\admin\steam-bridge-artifacts\windows-d3d11-passive-progress-exact-20260702-193629`
+and
+`C:\Users\admin\steam-bridge-artifacts\windows-d3d11-passive-unlock-exact-20260702-193629`,
+ran `25-managed-achievement-progress` and `26-managed-achievement-unlock`
+through the stable Steam shortcut with public App ID `480`,
+`-PresenterMode persistent`, and `-NativeHostBackend d3d11`. Both matrix roots
+passed `scripts/summarize-windows-overlay-matrix.cjs` locally after artifact
+copy. The result payloads reported `ok=true`, `action.ok=true`, `wait.ok=true`,
+`passiveNotificationParked=true`, `steamLaunch=true`, and no modal overlay
+activation; the progress case recorded `achievement:progress` with
+`indicated=true`, while the unlock case recorded `achievement:unlock` with
+`activated=true`. Final presenter snapshots stayed `backend="windows-d3d11"`,
+`mode="passive"`, `nativeHostOpen=true`, `transparent=true`,
+`clickThrough=true`, `focusable=false`, `overlayActive=false`,
+`overlayNeedsPresent=false`, and `currentFps=0`. `overlayEnabled=false` is
+acceptable for these non-modal notification cases because the verification
+contract is the accepted Steam achievement event plus passive presenter state,
+not modal overlay readiness. Crash diagnostics were clean, crash-dump counts
+were zero, and cleanup left no `SteamBridgeSmoke` or `gameoverlayui64`
+processes.
+
 A follow-up Windows source sweep checked Valve's overlay requirements,
 `ISteamFriends` overlay routes, Electron command-line-switch and offscreen
 rendering behavior, Electron in-process-GPU issue reports, steamworks.js overlay
