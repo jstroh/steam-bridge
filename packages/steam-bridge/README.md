@@ -849,10 +849,15 @@ A case with
 `InitTxn` call returned a transaction id, Steam Bridge preserved it as a
 client-session checkout target without synthesizing a web approval URL, the
 managed presenter was active, and Steam still did not emit the automatic
-checkout overlay activation before the wait guard expired. The prompt session,
-endpoint, and HTTP status are copied from sanitized in-app `InitTxn` metadata so
-the artifact can be read without correlating private request files. The request
-shape fields record only whether the submitted request used an explicit
+checkout overlay activation before the wait guard expired. Summary rows print
+`clientSessionCapturedTransaction`, `clientSessionWaitStarted`,
+`clientSessionWaitPrompt`, and `clientSessionWaitPresenter` so callback-required
+explicit-client artifacts must prove transaction capture, prompt-wait start, and
+active presenter state before a missing-prompt diagnostic is accepted. The
+prompt session, endpoint, and HTTP status are copied from sanitized in-app
+`InitTxn` metadata so the artifact can be read without correlating private
+request files. The request shape fields record only whether the submitted
+request used an explicit
 `usersession` value, whether an IP address field was present, required
 order/user/language/currency field presence, item and bundle counts, and whether
 item or bundle entries had their required field names. For focused Windows

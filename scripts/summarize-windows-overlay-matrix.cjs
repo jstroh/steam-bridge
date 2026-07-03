@@ -451,6 +451,40 @@ function validateManifestCoverage(
           failures
         );
       }
+      if (initTxnRequestShapePreflight && initTxnRequestShapePreflight.session === "client") {
+        expect(
+          row.clientSessionCheckoutCaptured === true,
+          `matrix manifest case ${expected.id} captured client-session InitTxn checkout target`,
+          failures
+        );
+        expect(
+          row.clientSessionCheckoutCapturedHasTransactionId === true,
+          `matrix manifest case ${expected.id} captured client-session InitTxn transaction shape`,
+          failures
+        );
+        expect(
+          row.clientSessionWaitStarted === true,
+          `matrix manifest case ${expected.id} started waiting for the client-session Steam prompt`,
+          failures
+        );
+        expect(
+          row.clientSessionWaitExpectedSteamPrompt === true,
+          `matrix manifest case ${expected.id} recorded the expected client-session Steam prompt`,
+          failures
+        );
+        expect(
+          row.clientSessionWaitPresenterReady === true,
+          `matrix manifest case ${expected.id} had an active presenter while waiting for the client-session Steam prompt`,
+          failures
+        );
+        if (expected.requireMicroTxnCallback === true && row.microTxnCallbackProof !== true) {
+          expect(
+            row.clientSessionPromptMissing === true,
+            `matrix manifest case ${expected.id} classified the missing client-session Steam prompt`,
+            failures
+          );
+        }
+      }
     }
   }
 
@@ -863,21 +897,60 @@ function summarizeClientSessionCheckoutCapture(events) {
       session: "",
       endpoint: "",
       httpStatus: "",
+      hasTransactionId: false,
+      hasReturnUrl: false,
       usersessionField: "",
       hasIpAddress: "",
       requestShapeSummary: ""
     };
   }
   const payload = objectOrEmpty(event.payload);
+  const targetSnapshot = objectOrEmpty(payload.targetSnapshot);
   const requestShape = summarizeInitTxnRequestShape(payload.requestShape);
   return {
     present: true,
     session: String(payload.session || ""),
     endpoint: String(payload.endpoint || ""),
     httpStatus: String(payload.httpStatus || ""),
+    hasTransactionId: targetSnapshot.hasTransactionId === true,
+    hasReturnUrl: targetSnapshot.hasReturnUrl === true,
     usersessionField: requestShape.usersessionField,
     hasIpAddress: requestShape.hasIpAddress,
     requestShapeSummary: requestShape.summary
+  };
+}
+
+function summarizeClientSessionWaitStart(events) {
+  const event = events.find((candidate) => {
+    if (!candidate || candidate.type !== "checkout:client-session-wait-start") {
+      return false;
+    }
+    const payload = objectOrEmpty(candidate.payload);
+    const targetSnapshot = objectOrEmpty(payload.targetSnapshot);
+    return targetSnapshot.type === "checkout" && targetSnapshot.clientSession === true;
+  });
+  if (!event) {
+    return {
+      present: false,
+      expectedSteamPrompt: false,
+      hasTransactionId: false,
+      hasReturnUrl: false,
+      presenterReady: false
+    };
+  }
+  const payload = objectOrEmpty(event.payload);
+  const targetSnapshot = objectOrEmpty(payload.targetSnapshot);
+  const presenter = objectOrEmpty(payload.presenter);
+  return {
+    present: true,
+    expectedSteamPrompt: payload.expectedSteamPrompt === true,
+    hasTransactionId: targetSnapshot.hasTransactionId === true,
+    hasReturnUrl: targetSnapshot.hasReturnUrl === true,
+    presenterReady:
+      presenter.mode === "active" &&
+      presenter.nativeHostOpen === true &&
+      presenter.clickThrough === false &&
+      presenter.transparent === false
   };
 }
 
@@ -1239,6 +1312,7 @@ function summarizeCaseResult(caseName, result, resultLog, renderingHealth = null
   const initTxnTargetMissing = summarizeInitTxnTargetMissing(events);
   const webSessionCheckoutCapture = summarizeWebSessionCheckoutCapture(events);
   const clientSessionCheckoutCapture = summarizeClientSessionCheckoutCapture(events);
+  const clientSessionWaitStart = summarizeClientSessionWaitStart(events);
   const clientSessionPromptMissing = summarizeClientSessionPromptMissing(events);
 
   expect(result.ok === true, `${caseName}: smoke result ok`, failures);
@@ -1297,9 +1371,16 @@ function summarizeCaseResult(caseName, result, resultLog, renderingHealth = null
     clientSessionCheckoutCapturedSession: clientSessionCheckoutCapture.session,
     clientSessionCheckoutCapturedEndpoint: clientSessionCheckoutCapture.endpoint,
     clientSessionCheckoutCapturedHttpStatus: clientSessionCheckoutCapture.httpStatus,
+    clientSessionCheckoutCapturedHasTransactionId: clientSessionCheckoutCapture.hasTransactionId,
+    clientSessionCheckoutCapturedHasReturnUrl: clientSessionCheckoutCapture.hasReturnUrl,
     clientSessionCheckoutCapturedUsersessionField: clientSessionCheckoutCapture.usersessionField,
     clientSessionCheckoutCapturedHasIpAddress: clientSessionCheckoutCapture.hasIpAddress,
     clientSessionCheckoutCapturedRequestShape: clientSessionCheckoutCapture.requestShapeSummary,
+    clientSessionWaitStarted: clientSessionWaitStart.present,
+    clientSessionWaitExpectedSteamPrompt: clientSessionWaitStart.expectedSteamPrompt,
+    clientSessionWaitHasTransactionId: clientSessionWaitStart.hasTransactionId,
+    clientSessionWaitHasReturnUrl: clientSessionWaitStart.hasReturnUrl,
+    clientSessionWaitPresenterReady: clientSessionWaitStart.presenterReady,
     clientSessionPromptMissing: clientSessionPromptMissing.present,
     clientSessionPromptMissingSession: clientSessionPromptMissing.session,
     clientSessionPromptMissingEndpoint: clientSessionPromptMissing.endpoint,
@@ -1357,6 +1438,7 @@ function printSummary(summary) {
         `requestAppIdPresent=${summary.initTxnRequestShapePreflight.requestAppIdPresent} ` +
         `requestAppIdMatches=${summary.initTxnRequestShapePreflight.requestAppIdMatches} ` +
         `matrixAppIdForced=${summary.initTxnRequestShapePreflight.matrixAppIdForced} ` +
+        `session=${formatValue(summary.initTxnRequestShapePreflight.session)} ` +
         `request=${formatValue(summary.initTxnRequestShapePreflight.requestShapeSummary)}`
     );
   }
@@ -1453,9 +1535,16 @@ function printSummary(summary) {
           `clientSessionCapturedSession=${formatValue(row.clientSessionCheckoutCapturedSession)} ` +
           `clientSessionCapturedEndpoint=${formatValue(row.clientSessionCheckoutCapturedEndpoint)} ` +
           `clientSessionCapturedHttp=${formatValue(row.clientSessionCheckoutCapturedHttpStatus)} ` +
+          `clientSessionCapturedTransaction=${formatValue(row.clientSessionCheckoutCapturedHasTransactionId)} ` +
+          `clientSessionCapturedReturnUrl=${formatValue(row.clientSessionCheckoutCapturedHasReturnUrl)} ` +
           `clientSessionCapturedUsersession=${formatValue(row.clientSessionCheckoutCapturedUsersessionField)} ` +
           `clientSessionCapturedIpAddress=${formatValue(row.clientSessionCheckoutCapturedHasIpAddress)} ` +
           `clientSessionCapturedRequest=${formatValue(row.clientSessionCheckoutCapturedRequestShape)} ` +
+          `clientSessionWaitStarted=${row.clientSessionWaitStarted} ` +
+          `clientSessionWaitPrompt=${row.clientSessionWaitExpectedSteamPrompt} ` +
+          `clientSessionWaitTransaction=${row.clientSessionWaitHasTransactionId} ` +
+          `clientSessionWaitReturnUrl=${row.clientSessionWaitHasReturnUrl} ` +
+          `clientSessionWaitPresenter=${row.clientSessionWaitPresenterReady} ` +
           `clientPromptMissing=${row.clientSessionPromptMissing} ` +
           `clientPromptSession=${formatValue(row.clientSessionPromptMissingSession)} ` +
           `clientPromptEndpoint=${formatValue(row.clientSessionPromptMissingEndpoint)} ` +
@@ -1504,6 +1593,7 @@ function summarizeInitTxnRequestShapePreflight(shape) {
     requestAppIdPresent: shape.requestAppIdPresent === true,
     requestAppIdMatches: shape.requestAppIdMatches === true,
     matrixAppIdForced: shape.matrixAppIdForced === true,
+    session: String(shape.session || ""),
     usersessionField: requestShape.usersessionField,
     hasIpAddress: requestShape.hasIpAddress,
     requestShapeSummary: requestShape.summary
@@ -2221,12 +2311,19 @@ function runSelfTest() {
     assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionCheckoutCapturedSession, "client");
     assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionCheckoutCapturedEndpoint, "sandbox");
     assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionCheckoutCapturedHttpStatus, "200");
+    assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionCheckoutCapturedHasTransactionId, true);
+    assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionCheckoutCapturedHasReturnUrl, false);
     assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionCheckoutCapturedUsersessionField, "client");
     assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionCheckoutCapturedHasIpAddress, "false");
     assert.equal(
       clientPromptMissingSummary.caseSummaries[0].clientSessionCheckoutCapturedRequestShape,
       "usersession=client,ip=false,order=true,steam=true,language=true,currency=true,items=1,bundles=0,itemFields=true,bundleFields=true"
     );
+    assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionWaitStarted, true);
+    assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionWaitExpectedSteamPrompt, true);
+    assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionWaitHasTransactionId, true);
+    assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionWaitHasReturnUrl, false);
+    assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionWaitPresenterReady, true);
     assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionPromptMissing, true);
     assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionPromptMissingSession, "client");
     assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionPromptMissingEndpoint, "sandbox");
@@ -2242,9 +2339,23 @@ function runSelfTest() {
     assert.equal(clientPromptMissingSummary.initTxnRequestShapePreflight.requestAppIdPresent, true);
     assert.equal(clientPromptMissingSummary.initTxnRequestShapePreflight.requestAppIdMatches, true);
     assert.equal(clientPromptMissingSummary.initTxnRequestShapePreflight.matrixAppIdForced, true);
+    assert.equal(clientPromptMissingSummary.initTxnRequestShapePreflight.session, "client");
     assert.equal(
       clientPromptMissingSummary.initTxnRequestShapePreflight.requestShapeSummary,
       "usersession=client,ip=false,order=true,steam=true,language=true,currency=true,items=1,bundles=0,itemFields=true,bundleFields=true"
+    );
+
+    const missingClientWaitStartRoot = path.join(tempRoot, "managed-checkout-missing-client-wait-start");
+    writeManagedCheckoutMicroTxnFixture(missingClientWaitStartRoot, {
+      clientPromptMissing: true,
+      omitClientSessionWaitStart: true
+    });
+    const missingClientWaitStartSummary = summarizeWindowsOverlayMatrixArtifacts(missingClientWaitStartRoot);
+    assert(
+      missingClientWaitStartSummary.failures.some((failure) =>
+        failure.includes("started waiting for the client-session Steam prompt")
+      ),
+      "summary self-test should fail when a client-session InitTxn artifact omits the wait-start diagnostic"
     );
 
     const missingPreflightRequestShapeRoot = path.join(tempRoot, "managed-checkout-missing-preflight-shape");
@@ -3383,15 +3494,28 @@ function writeManagedCheckoutMicroTxnFixture(root, options = {}) {
         })
       );
     }
-    events.push(
-      {
-        type: "checkout:init-txn-captured",
-        payload: { ...initTxn, targetSnapshot }
-      },
-      {
+    events.push({
+      type: "checkout:init-txn-captured",
+      payload: { ...initTxn, targetSnapshot }
+    });
+    if (!options.omitClientSessionWaitStart) {
+      events.push({
         type: "checkout:client-session-wait-start",
-        payload: { target: "checkout", targetSnapshot, expectedSteamPrompt: true, initTxn }
-      },
+        payload: {
+          target: "checkout",
+          targetSnapshot,
+          expectedSteamPrompt: true,
+          initTxn,
+          presenter: {
+            mode: "active",
+            nativeHostOpen: true,
+            clickThrough: false,
+            transparent: false
+          }
+        }
+      });
+    }
+    events.push(
       {
         type: "overlay:presenter-open",
         payload: { target: "checkout", api: "openCheckoutAndWait", checkoutSource: "init-txn-request-file", targetSnapshot, initTxn }

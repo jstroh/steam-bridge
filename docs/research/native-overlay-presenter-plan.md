@@ -212,12 +212,16 @@ Reviewed on 2026-07-02 while investigating Windows Electron overlay failures:
   with `hasTransactionId=true` and `clientSession=true`, activated the D3D11
   presenter, and then recorded `checkout:client-session-prompt-missing` after
   Steam did not emit overlay activation or `MicroTxnAuthorizationResponse`.
-  The Windows summary now exposes this as `clientSessionCaptured=true` and
-  `clientPromptMissing=true`, with clean crash diagnostics and the close probe
-  still foregrounded on the smoke app. That narrows the remaining Windows
-  purchase gap to Steam's automatic client-session prompt behavior for the
-  configured product/account, not native presenter readiness, Steam app launch,
-  checkout target parsing, or crash/focus health.
+  The Windows summary now exposes this as `clientSessionCaptured=true`,
+  `clientSessionCapturedTransaction=true`, `clientSessionWaitStarted=true`,
+  `clientSessionWaitPresenter=true`, and `clientPromptMissing=true`, with clean
+  crash diagnostics and the close probe still foregrounded on the smoke app.
+  Callback-required explicit-client artifacts must prove sanitized transaction
+  capture and the prompt-wait boundary before a missing-prompt diagnostic is
+  accepted. That narrows the remaining Windows purchase gap to
+  Steam's automatic client-session prompt behavior for the configured
+  product/account, not native presenter readiness, Steam app launch, checkout
+  target parsing, or crash/focus health.
 - A focused default-client diagnostic at
   `C:\Users\admin\steam-bridge-artifacts\windows-default-client-inittxn-checkout-20260703-172218`
   used the same `steam-app` configured-app lane and a private request that

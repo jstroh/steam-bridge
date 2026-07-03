@@ -954,7 +954,12 @@ the private `--checkout-json-file` checkout suite.
   `-CheckoutJsonFile`; the matrix runs the capture inside the initialized
   Steam-launched smoke app, reads publisher keys only from the configured
   environment, validates the generated target against `-AppId`, and records
-  only sanitized capture metadata.
+  only sanitized capture metadata. For explicit `usersession=client` request
+  files, the summary requires a sanitized client-session checkout target,
+  transaction-presence marker, prompt-wait start event, and active presenter
+  state before accepting a missing-prompt diagnostic. That keeps a failed
+  callback-required artifact pinned to Steam's automatic client checkout prompt
+  boundary instead of collapsing it into a generic timeout.
   Pass `-PresenterMode session` only when intentionally comparing the direct
   Steam/Electron hook fallback.
   Each matrix case passes `-RequireNoCrashes`,
