@@ -161,17 +161,22 @@ the chosen target. A focused players artifact,
 passed with `sent=3`, `method=sendinput`, clean crash diagnostics, and focus
 returning to the smoke app.
 
-Do not treat the new shortcut suite as fully green yet. A broader run reached
-friends, web, store, profile, and players before the community shortcut close
-path failed, and the focused community artifact
-`C:\Users\admin\steam-bridge-artifacts\windows-default-d3d11-shortcut-community-sendinput-allowunhealthy-20260703-001`
-opened the community overlay and sent a `SendInput` close click at `x=1334`,
-`y=324` after screenshot content readiness, but Steam stayed active until the
-case timed out. Crash diagnostics were clean. Those artifacts used
-`-AllowUnhealthyDefaultRender` because fresh severe Steam render-health log
-entries from earlier failed runs were still inside the readiness window after a
-deliberate Steam restart; the route evidence is useful, but it is not pristine
-default-render-health proof.
+The public shortcut `openShortcutTargetAndWait(...)` suite is now green on the
+Windows D3D11 default presenter path. A focused community rerun at
+`C:\Users\admin\steam-bridge-artifacts\windows-default-d3d11-shortcut-community-paneldetector-20260703-093225`
+proved the previously failing community route after the close probe began
+detecting the real inset Steam web panel from screenshot row-density instead of
+clicking relative to the outer native presenter. Its probe waited for painted
+Steam content, detected panel bounds near `left=560 top=287 right=1342
+bottom=825`, sent an absolute `SendInput` click at `x=1326 y=305`, and verified
+close/back-to-app completion with clean crash diagnostics. The full shortcut
+suite then passed at
+`C:\Users\admin\steam-bridge-artifacts\windows-default-d3d11-shortcut-routes-paneldetector-20260703-093418`,
+covering friends, web, store, profile, players, community, stats, achievements,
+user, and dialog shortcut targets. That route proof skipped the render-health
+gate to avoid stale Steam client GPU-log noise from earlier failed experiments,
+but live readiness, native-load gating, Steam launch, overlay activation,
+automated close/back-to-app, and crash diagnostics all passed.
 
 A 2026-07-03 UTC focused public D3D11 checkout suite passed all four checkout
 cases at

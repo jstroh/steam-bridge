@@ -2562,8 +2562,147 @@ function Convert-PresenterBoundsToProbeRect {
   }
 }
 
+function Find-WebClosePanelRectFromScreenshot {
+  param([object]`$Screenshot, [object]`$Foreground)
+
+  if (-not `$Screenshot -or -not `$Screenshot.ok -or -not `$Foreground -or -not `$Foreground.rect) {
+    return `$null
+  }
+
+  `$bitmap = `$null
+  try {
+    `$bitmap = [System.Drawing.Bitmap]::FromFile(`$Screenshot.path)
+    `$bounds = `$Screenshot.bounds
+    `$rect = `$Foreground.rect
+    `$scanLeft = [Math]::Max(`$rect.left, `$bounds.left)
+    `$scanTop = [Math]::Max(
+      [int][Math]::Round(`$rect.top + [Math]::Max(48, `$rect.height * 0.07)),
+      `$bounds.top
+    )
+    `$scanRight = [Math]::Min(`$rect.right, `$bounds.left + `$bounds.width - 1)
+    `$scanBottom = [Math]::Min(
+      [int][Math]::Round(`$rect.top + (`$rect.height * 0.88)),
+      `$bounds.top + `$bounds.height - 1
+    )
+    if (`$scanRight -le `$scanLeft -or `$scanBottom -le `$scanTop) {
+      return `$null
+    }
+
+    `$minRunWidth = [int][Math]::Max(360, `$rect.width * 0.45)
+    `$top = `$null
+    `$bottom = `$null
+    `$leftSum = 0
+    `$rightSum = 0
+    `$runSamples = 0
+    `$bestRunWidth = 0
+    `$bestRun = `$null
+    `$consecutiveMisses = 0
+
+    for (`$y = `$scanTop; `$y -le `$scanBottom; `$y += 2) {
+      `$runStart = `$null
+      `$currentRunWidth = 0
+      `$rowBestWidth = 0
+      `$rowBestLeft = 0
+      `$rowBestRight = 0
+      for (`$x = `$scanLeft; `$x -le `$scanRight; `$x += 2) {
+        `$bitmapX = [int](`$x - `$bounds.left)
+        `$bitmapY = [int](`$y - `$bounds.top)
+        if (`$bitmapX -lt 0 -or `$bitmapY -lt 0 -or `$bitmapX -ge `$bitmap.Width -or `$bitmapY -ge `$bitmap.Height) {
+          continue
+        }
+
+        `$pixel = `$bitmap.GetPixel(`$bitmapX, `$bitmapY)
+        `$pixelMax = [Math]::Max(`$pixel.R, [Math]::Max(`$pixel.G, `$pixel.B))
+        if (`$pixelMax -gt 24) {
+          if (`$null -eq `$runStart) {
+            `$runStart = `$x
+            `$currentRunWidth = 0
+          }
+          `$currentRunWidth += 2
+        } else {
+          if (`$currentRunWidth -gt `$rowBestWidth) {
+            `$rowBestWidth = `$currentRunWidth
+            `$rowBestLeft = `$runStart
+            `$rowBestRight = `$x - 2
+          }
+          `$runStart = `$null
+          `$currentRunWidth = 0
+        }
+      }
+      if (`$currentRunWidth -gt `$rowBestWidth) {
+        `$rowBestWidth = `$currentRunWidth
+        `$rowBestLeft = `$runStart
+        `$rowBestRight = `$scanRight
+      }
+      if (`$rowBestWidth -gt `$bestRunWidth) {
+        `$bestRunWidth = `$rowBestWidth
+        `$bestRun = [PSCustomObject]@{
+          y = `$y
+          left = `$rowBestLeft
+          right = `$rowBestRight
+          width = `$rowBestWidth
+        }
+      }
+      if (`$rowBestWidth -ge `$minRunWidth) {
+        if (`$null -eq `$top) {
+          `$top = `$y
+        }
+        `$bottom = `$y
+        `$leftSum += `$rowBestLeft
+        `$rightSum += `$rowBestRight
+        `$runSamples += 1
+        `$consecutiveMisses = 0
+      } elseif (`$null -ne `$top) {
+        `$consecutiveMisses += 1
+        if (`$consecutiveMisses -ge 8) {
+          break
+        }
+      }
+    }
+
+    if (`$null -eq `$top -or `$null -eq `$bottom -or `$runSamples -lt 4) {
+      return `$null
+    }
+
+    `$left = [Math]::Max(`$rect.left, [int][Math]::Round(`$leftSum / `$runSamples))
+    `$right = [Math]::Min(`$rect.right, [int][Math]::Round(`$rightSum / `$runSamples))
+    `$top = [Math]::Max(`$rect.top, [int]`$top)
+    `$bottom = [Math]::Min(`$rect.bottom, [int]`$bottom)
+    `$width = [Math]::Max(0, `$right - `$left)
+    `$height = [Math]::Max(0, `$bottom - `$top)
+    if (`$width -lt `$minRunWidth -or `$height -lt [Math]::Min(180, `$rect.height * 0.25)) {
+      return `$null
+    }
+
+    return [PSCustomObject]@{
+      source = "screenshot-steam-web-panel"
+      rect = [PSCustomObject]@{
+        left = [int]`$left
+        top = [int]`$top
+        right = [int]`$right
+        bottom = [int]`$bottom
+        width = [int]`$width
+        height = [int]`$height
+      }
+      runSamples = `$runSamples
+      bestRun = `$bestRun
+    }
+  } catch {
+    return `$null
+  } finally {
+    if (`$bitmap) {
+      `$bitmap.Dispose()
+    }
+  }
+}
+
 function Get-WebClosePanelRect {
-  param([object]`$Foreground)
+  param([object]`$Foreground, [object]`$Screenshot = `$null)
+
+  `$screenshotPanel = Find-WebClosePanelRectFromScreenshot -Screenshot `$Screenshot -Foreground `$Foreground
+  if (`$screenshotPanel) {
+    return `$screenshotPanel
+  }
 
   if (Test-WebCloseForegroundCandidate `$Foreground) {
     return [PSCustomObject]@{
@@ -2668,34 +2807,36 @@ function Capture-ProbeScreen {
 }
 
 function Get-WebCloseClickTarget {
-  param([object]`$Foreground)
+  param([object]`$Foreground, [object]`$Screenshot = `$null)
 
-  `$panel = Get-WebClosePanelRect `$Foreground
+  `$panel = Get-WebClosePanelRect -Foreground `$Foreground -Screenshot `$Screenshot
   if (-not `$panel -or -not `$panel.rect) {
     return `$null
   }
 
   `$rect = `$panel.rect
-  if (`$panel.source -eq "foreground-window-steam-web-panel") {
+  if (`$panel.source -eq "screenshot-steam-web-panel") {
     return [PSCustomObject]@{
-      x = [int]([Math]::Round(`$rect.left + (`$rect.width * 0.853)))
-      y = [int]([Math]::Round(`$rect.top + (`$rect.height * 0.168)))
+      x = [int]([Math]::Round(`$rect.right - 16))
+      y = [int]([Math]::Round(`$rect.top + 18))
       source = `$panel.source
+      panel = `$rect
     }
   }
 
   return [PSCustomObject]@{
-    x = [int]([Math]::Round(`$rect.left + (`$rect.width * 0.853)))
-    y = [int]([Math]::Round(`$rect.top + (`$rect.height * 0.168)))
+    x = [int]([Math]::Round(`$rect.left + (`$rect.width * 0.847)))
+    y = [int]([Math]::Round(`$rect.top + (`$rect.height * 0.142)))
     source = `$panel.source
+    panel = `$rect
   }
 }
 
 function Test-WebClosePanelScreenshot {
   param([object]`$Screenshot, [object]`$Foreground)
 
-  `$target = Get-WebCloseClickTarget `$Foreground
-  `$panel = Get-WebClosePanelRect `$Foreground
+  `$target = Get-WebCloseClickTarget -Foreground `$Foreground -Screenshot `$Screenshot
+  `$panel = Get-WebClosePanelRect -Foreground `$Foreground -Screenshot `$Screenshot
   if (-not `$Screenshot -or -not `$Screenshot.ok -or -not `$target -or -not `$panel -or -not `$panel.rect) {
     return [PSCustomObject]@{
       ready = `$false
@@ -2813,11 +2954,11 @@ function Wait-WebClosePanelReady {
   while ((Get-Date) -lt `$readyDeadline) {
     `$attempt += 1
     `$foreground = Get-ForegroundProbeSnapshot
-    `$target = Get-WebCloseClickTarget `$foreground
+    `$screenshot = Capture-ProbeScreen ("web-close-ready-{0:D2}" -f `$attempt)
+    `$target = Get-WebCloseClickTarget -Foreground `$foreground -Screenshot `$screenshot
     if (`$target) {
       `$lastTarget = `$target
     }
-    `$screenshot = Capture-ProbeScreen ("web-close-ready-{0:D2}" -f `$attempt)
     `$analysis = Test-WebClosePanelScreenshot -Screenshot `$screenshot -Foreground `$foreground
     if (`$analysis.ready) {
       Write-ProbeEvent "probe:web-close-ready" ([PSCustomObject]@{
