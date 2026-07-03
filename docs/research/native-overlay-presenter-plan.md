@@ -138,6 +138,18 @@ Reviewed on 2026-07-02 while investigating Windows Electron overlay failures:
   shortcut `openAndWait(...)`. This remains public route/lifecycle proof; real
   purchase authorization needs private configured-product InitTxn data and
   `-RequireMicroTxnCallback`.
+- The packaged `windows-overlay-task.ps1` wrapper then proved the same focused
+  checkout suite through an interactive `/IT` scheduled task at
+  `C:\Users\admin\steam-bridge-artifacts\windows-task-wrapper-checkout-20260703-0420`.
+  The wrapper ran in Session 1 from SSH without restarting Steam, redacted the
+  App ID in its own `matrixArgs` line, passed native-load and render-health
+  gates, and the summary auditor again reported `expectedCases=4`,
+  `steamLaunch=4`, `overlayActive=3`, and `clean=4`. That live run also caught a
+  PowerShell array-splat bug in the wrapper: CLI-style `MatrixArgs` must be
+  converted to a hashtable splat before invoking `windows-overlay-matrix.ps1`,
+  or `-AppDir` can bind as positional `Suite`. This remains public
+  route/lifecycle proof; real purchase authorization still needs private
+  configured-product InitTxn data and `-RequireMicroTxnCallback`.
 - The broader Windows source sweep points past window-style tweaks. Valve's
   browser-game FAQ specifically names a native D3D window with offscreen
   Chromium and input forwarding, while the WebView2/DirectComposition research

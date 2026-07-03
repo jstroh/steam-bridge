@@ -634,8 +634,10 @@ function runWindowsSmokeHelperStaticChecks() {
     "LOG_TAIL_BEGIN",
     "Private environment file was not found.",
     "Private environment file contains an invalid environment variable name.",
+    "Convert-MatrixArgsToSplat",
     "Format-RedactedMatrixArgs",
     "matrixArgs",
+    "matrixSplat",
     "REDACTED"
   ]) {
     assert.ok(taskWrapper.includes(expected), `Windows overlay task wrapper missing ${expected}`);

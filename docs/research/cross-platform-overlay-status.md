@@ -231,6 +231,18 @@ managed Shift+Tab checkout, and programmatic checkout shortcut
 authorization still requires private configured-product InitTxn data and
 `-RequireMicroTxnCallback`.
 
+The packaged `windows-overlay-task.ps1` wrapper then proved that the same
+checkout suite can be driven from SSH through an interactive `/IT` scheduled
+task without restarting Steam:
+`C:\Users\admin\steam-bridge-artifacts\windows-task-wrapper-checkout-20260703-0420`.
+The task ran in Windows Session 1, redacted the App ID in its own `matrixArgs`
+line, passed native-load and render-health gates, and the summary auditor again
+reported `expectedCases=4`, `steamLaunch=4`, `overlayActive=3`, and `clean=4`.
+That live run exposed and fixed a wrapper argument-binding bug: CLI-style
+`MatrixArgs` must be converted to a hashtable splat before invoking
+`windows-overlay-matrix.ps1`, because array splatting can bind `-AppDir` as the
+positional `Suite` argument.
+
 Latest Windows D3D11 keyboard proof: the refreshed Electron `43.0.0` smoke
 bundle was rebuilt on macOS, deployed to the Windows laptop, and Authenticode
 signed with the local test certificate. The focused interactive Session 1

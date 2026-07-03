@@ -146,6 +146,36 @@ function Import-PrivateEnvFile {
   Write-Host ("Imported private environment values: count={0}" -f $count)
 }
 
+function Convert-MatrixArgsToSplat {
+  param([string[]]$Arguments)
+
+  $splat = @{}
+  for ($index = 0; $index -lt $Arguments.Count; $index += 1) {
+    $argument = [string]$Arguments[$index]
+    if (-not $argument.StartsWith("-")) {
+      throw "Matrix arguments must use named PowerShell parameters."
+    }
+
+    $name = $argument.TrimStart("-")
+    if (-not $name) {
+      throw "Matrix arguments contain an empty parameter name."
+    }
+
+    $value = $true
+    if ($index + 1 -lt $Arguments.Count) {
+      $nextArgument = [string]$Arguments[$index + 1]
+      if (-not $nextArgument.StartsWith("-")) {
+        $value = $nextArgument
+        $index += 1
+      }
+    }
+
+    $splat[$name] = $value
+  }
+
+  return $splat
+}
+
 $configPath = Join-Path $PSScriptRoot "config.json"
 $config = Get-Content -Raw -LiteralPath $configPath | ConvertFrom-Json
 $exitCode = 0
@@ -154,7 +184,8 @@ Start-Transcript -LiteralPath ([string]$config.logPath) -Force | Out-Null
 try {
   Import-PrivateEnvFile -Path ([string]$config.privateEnvFile)
   $matrixArguments = @($config.arguments | ForEach-Object { [string]$_ })
-  & ([string]$config.matrixScript) @matrixArguments
+  $matrixSplat = Convert-MatrixArgsToSplat -Arguments $matrixArguments
+  & ([string]$config.matrixScript) @matrixSplat
   if ($LASTEXITCODE -ne $null) {
     $exitCode = [int]$LASTEXITCODE
   }
