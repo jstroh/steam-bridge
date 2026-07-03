@@ -268,6 +268,10 @@ function runMacosPackageSigningStaticChecks() {
     "Windows Electron package must include the Authenticode signing helper"
   );
   assert.ok(
+    packagerScript.includes("windows-app-control-dev-mode.ps1"),
+    "Windows Electron package must include the App Control development-mode helper"
+  );
+  assert.ok(
     packagerScript.includes("windows-overlay-matrix.ps1"),
     "Windows Electron package must include the overlay matrix runner"
   );
@@ -320,6 +324,10 @@ function runMacosPackageSigningStaticChecks() {
 function runWindowsSmokeHelperStaticChecks() {
   const helper = fs.readFileSync(path.join(repoRoot, "scripts", "windows-electron-smoke.ps1"), "utf8");
   const signingHelper = fs.readFileSync(path.join(repoRoot, "scripts", "sign-windows-package.ps1"), "utf8");
+  const appControlDevModeHelper = fs.readFileSync(
+    path.join(repoRoot, "scripts", "windows-app-control-dev-mode.ps1"),
+    "utf8"
+  );
   const matrixHelper = fs.readFileSync(path.join(repoRoot, "scripts", "windows-overlay-matrix.ps1"), "utf8");
   const renderHealthHelper = fs.readFileSync(path.join(repoRoot, "scripts", "windows-render-health-probe.ps1"), "utf8");
   const nativeControlSource = fs.readFileSync(
@@ -413,6 +421,20 @@ function runWindowsSmokeHelperStaticChecks() {
     "AllowUnsigned"
   ]) {
     assert.ok(signingHelper.includes(expected), `Windows signing helper missing ${expected}`);
+  }
+  for (const expected of [
+    "steam-bridge-windows-app-control-dev-mode",
+    "VerifiedAndReputablePolicyState",
+    "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\CI\\Policy",
+    "CiTool.exe",
+    "-lp",
+    "-r",
+    "Smart App Control/App Control",
+    "not a per-app allowlist",
+    "Test-IsAdministrator",
+    "OutputJsonFile"
+  ]) {
+    assert.ok(appControlDevModeHelper.includes(expected), `Windows App Control dev-mode helper missing ${expected}`);
   }
   for (const expected of [
     "ValidateSet(\"baseline\", \"managed\", \"full\", \"preflight\", \"readiness\", \"shortcut\")",

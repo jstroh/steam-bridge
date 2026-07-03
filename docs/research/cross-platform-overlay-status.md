@@ -193,7 +193,18 @@ native-load gate. If that gate fails, the matrix writes
 `00-preflight/native-load-gate-blocker.json` with a stable blocker code,
 post-gate Code Integrity events, related log paths, and next actions for
 trusted/reputable signing or explicitly moving the development machine out of
-policy enforcement. If a Steam-launched case fails before writing a smoke result,
+policy enforcement. A later Windows policy research pass checked Microsoft's App
+Control and Smart App Control docs: Smart App Control has no individual per-app
+bypass, the policy uses `VerifiedAndReputablePolicyState` for
+Off/Enforce/Evaluation, and `CiTool.exe` can list and refresh policies on
+Windows 11 22H2+. The Windows laptop has `CiTool.exe` and an elevated admin SSH
+session but does not expose the ConfigCI policy-authoring cmdlets, so the
+repeatable local proof path is now a development-machine state toggle, not an
+attempted supplemental policy generated on that host.
+`scripts/windows-app-control-dev-mode.ps1` records report JSON, captures
+`CiTool.exe -lp`, sets `VerifiedAndReputablePolicyState` only when run
+explicitly with `-Mode set`, and refreshes CI policy with `CiTool.exe -r`. If a
+Steam-launched case fails before writing a smoke result,
 the matrix also captures post-case preflight evidence and writes
 `steam-launch-blocker.json`, which the summarizer reports separately from
 native-load blockers. `scripts/summarize-windows-overlay-matrix.cjs` now audits
@@ -607,7 +618,7 @@ the managed Friends/chat web surface on the D3D11 host, closed through the same
 foreground-window web close click, returned focus to the Electron smoke window,
 and recorded the full shown/active/closed/inactive/parked/open-and-wait-complete
 lifecycle with clean crash diagnostics and no leftover smoke or overlay helper
-processes. D3D11 now has focused Windows proof for web, store-web, and
+processes. At that point, D3D11 had focused Windows proof for web, store-web, and
 Friends/chat, while real checkout content, passive toasts, shortcut behavior,
 and Community/profile-style surfaces still need the same route-specific
 evidence before the backend can be considered for default use.
@@ -623,6 +634,27 @@ Electron smoke window, and exited with clean crash diagnostics and no leftover
 smoke or overlay helper processes. This is checkout approval-route plumbing
 proof with App ID `480`; real purchase content still requires a real configured
 Steam app/product and an actual `InitTxn` response.
+A fresh current-package rerun later on July 2, 2026, after deploying the smoke
+bundle with `windows-app-control-dev-mode.ps1`, signing it with the local test
+certificate, and switching the disposable Windows laptop to
+`VerifiedAndReputablePolicyState=0`, did not reproduce the earlier D3D11 web
+close pass. The readiness artifact
+`C:\Users\admin\steam-bridge-artifacts\windows-readiness-current-20260703-002`
+passed in interactive Session 1: the exact packaged app was signed, Steam
+initialized under App ID `480`, and App Control's Verified/Reputable policies
+were present but not enforced. The focused D3D11 web artifacts
+`windows-d3d11-web-current-after-appcontrol-off-20260703-001`,
+`windows-d3d11-web-current-sendinput-20260703-001`,
+`windows-d3d11-web-current-clickclose-20260703-001`, and the hidden task action
+`windows-d3d11-web-hidden-clickclose-20260703-001` all passed the native-load
+gate with `backend=windows-d3d11` and clean crash diagnostics, opened Steam's
+web overlay, and emitted `GameOverlayActivated(true)`, but none produced
+`GameOverlayActivated(false)`, presenter parking, or `openAndWait` completion.
+Plain Shift+Tab, native SendInput Shift+Tab, and the maintained foreground
+Steam web-panel close click all timed out while the presenter remained active.
+The hidden run removed the visible PowerShell harness as a focus variable, so
+treat current Windows D3D11 web close/input as blocked again until a fresh pass
+restores the closed/parked lifecycle.
 A focused real-keyboard D3D11 shortcut probe,
 `C:\Users\admin\steam-bridge-artifacts\windows-d3d11-shortcut-keyboard-20260702-145900`,
 did not pass, but it identified a concrete host-window bug instead of another

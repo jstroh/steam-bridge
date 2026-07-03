@@ -102,6 +102,15 @@ installed private-key publisher certificate, or set
 `.\sign-windows-package.ps1 -VerifyOnly -AllowUnsigned` for an audit-only report.
 Self-signed certificates are not enough SAC evidence; the live overlay proof
 needs a trusted and reputable publisher signing path.
+For disposable or dedicated Windows development machines, the package also
+includes `windows-app-control-dev-mode.ps1`. It reports the current
+`VerifiedAndReputablePolicyState`, captures `CiTool.exe -lp` policy inventory,
+and can switch the machine-wide Smart App Control/App Control state with
+`.\windows-app-control-dev-mode.ps1 -Mode set -State Off` before refreshing CI
+policy. Use `-Mode report` for an audit-only JSON report, and use
+`-Mode set -State Enforce` to restore enforcement when the Windows build allows
+that transition. This helper is not a per-app allowlist and is not a substitute
+for trusted/reputable publisher signing.
 The Windows smoke bundle also includes `windows-overlay-matrix.ps1`. Run it
 after signing to collect repeatable Steam-launched baseline evidence for the
 ordinary Windows Electron overlay path; its preflight stops before live cases if

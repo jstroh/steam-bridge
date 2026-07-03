@@ -767,6 +767,31 @@ the private `--checkout-json-file` checkout suite.
   A self-signed or locally trusted certificate can be useful for syntax checks,
   but it is not enough evidence for Smart App Control; use a real trusted and
   reputable publisher signing path for live Windows overlay proof.
+  For disposable or dedicated development machines, the smoke package also
+  includes `windows-app-control-dev-mode.ps1`. It reports the current
+  `VerifiedAndReputablePolicyState`, captures `CiTool.exe -lp` policy inventory,
+  and can switch the machine-wide Smart App Control/App Control state before
+  refreshing CI policy:
+
+  ```powershell
+  # Report only.
+  .\windows-app-control-dev-mode.ps1 `
+    -Mode report `
+    -OutputJsonFile "$env:TEMP\steam-bridge-app-control-report.json"
+
+  # Development-machine only: move VerifiedAndReputable enforcement out of the way.
+  .\windows-app-control-dev-mode.ps1 `
+    -Mode set `
+    -State Off `
+    -OutputJsonFile "$env:TEMP\steam-bridge-app-control-off.json"
+
+  # Restore enforcement after local proof, if the Windows build supports it.
+  .\windows-app-control-dev-mode.ps1 -Mode set -State Enforce
+  ```
+
+  This helper is not a release-signing substitute and not a per-app allowlist;
+  use it only on a Windows test machine where changing Smart App Control/App
+  Control policy is acceptable.
   The smoke package also includes `windows-overlay-matrix.ps1` for repeatable
   Steam-launched Windows proof. It runs the same report-only preflight first,
   then runs a short direct native-load gate from the exact packaged app and

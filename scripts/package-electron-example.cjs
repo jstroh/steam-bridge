@@ -257,6 +257,10 @@ function copyTargetHelpers(appPath) {
       path.join(appPath, "sign-windows-package.ps1")
     );
     fs.copyFileSync(
+      path.join(repoRoot, "scripts", "windows-app-control-dev-mode.ps1"),
+      path.join(appPath, "windows-app-control-dev-mode.ps1")
+    );
+    fs.copyFileSync(
       path.join(repoRoot, "scripts", "windows-overlay-matrix.ps1"),
       path.join(appPath, "windows-overlay-matrix.ps1")
     );

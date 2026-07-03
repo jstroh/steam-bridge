@@ -321,6 +321,13 @@ attempt. The matrix writes `matrix-manifest.json` before preflight; it records
 the sanitized suite, case list, and case requirements so the summarizer can fail
 incomplete or requirement-mismatched artifacts instead of silently accepting a
 partial run.
+For disposable or dedicated Windows development machines, the packaged app also
+includes `windows-app-control-dev-mode.ps1`. Use `-Mode report` to capture the
+current `VerifiedAndReputablePolicyState` and `CiTool.exe -lp` inventory. Use
+`-Mode set -State Off` only when it is acceptable to change that machine-wide
+Smart App Control/App Control state for local proof, and restore with
+`-Mode set -State Enforce` when the Windows build allows it. This is not a
+per-app allowlist or a release-signing substitute.
 From the repo, use the summarizer to audit either a full run or this expected
 blocker shape:
 

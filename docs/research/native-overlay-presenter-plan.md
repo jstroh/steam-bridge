@@ -2030,7 +2030,21 @@ Windows gates:
   Windows package was built on macOS from the correct GitHub x64 prebuild.
   Local self-signed trust is not enough for that SAC policy, so generic Windows
   smoke proof needs either a real signed package or an explicitly SAC-disabled
-  development machine.
+  development machine. The packaged smoke app now includes
+  `windows-app-control-dev-mode.ps1` for disposable test rigs: it reports
+  `VerifiedAndReputablePolicyState`, captures `CiTool.exe -lp`, and can
+  explicitly set the machine-wide state to Off or Enforce before refreshing with
+  `CiTool.exe -r`. It is not a per-app allowlist and does not replace
+  trusted/reputable publisher signing for release proof.
+- After the helper was packaged and the disposable Windows laptop was switched
+  to `VerifiedAndReputablePolicyState=0`, the fresh current package passed
+  interactive Session 1 readiness and the D3D11 native-load gate. Focused web
+  overlay runs still timed out before `GameOverlayActivated(false)` and presenter
+  parking, including a hidden Task Scheduler run that removed the visible
+  PowerShell harness as a focus variable. Continue Windows work from
+  `C:\Users\admin\steam-bridge-artifacts\windows-d3d11-web-hidden-clickclose-20260703-001`:
+  the native D3D11 host opens Steam overlay UI, but current web overlay input
+  and close/back-to-app proof is blocked again.
 
 ## Presenter Diagnostics
 
