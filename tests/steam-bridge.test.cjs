@@ -861,6 +861,11 @@ test("electron smoke native-host-unavailable action errors keep sanitized target
   );
   assert.match(
     exampleMain,
+    /checkout:client-session-query/,
+    "checkout smoke failures should query client-session transaction status without logging private values"
+  );
+  assert.match(
+    exampleMain,
     /checkout:init-txn-target-missing/,
     "checkout smoke should record sanitized InitTxn target-missing diagnostics"
   );

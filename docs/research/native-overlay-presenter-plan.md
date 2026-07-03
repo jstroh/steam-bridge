@@ -218,7 +218,12 @@ Reviewed on 2026-07-02 while investigating Windows Electron overlay failures:
   `legacyMicroTxnListener=true`, and `clientPromptMissing=true`, with clean
   crash diagnostics and the close probe still foregrounded on the smoke app.
   Current summaries also print `microTxnSources`, empty when no authorization
-  callback fires and set to `steamworks`, `legacy`, or both when one does.
+  callback fires and set to `steamworks`, `legacy`, or both when one does. When
+  the automatic prompt is missing, the smoke app now runs a bounded, read-only
+  `QueryTxn` diagnostic and records only sanitized `clientQuery*` fields:
+  endpoint, id type, HTTP/result/status/error strings, and transaction, order,
+  and Steam-ID presence flags. It does not log raw identifiers, product values,
+  prices, URLs, or finalize/capture the transaction.
   Callback-required explicit-client artifacts must prove sanitized transaction
   capture, the prompt-wait boundary, listener registration for both the current
   Steamworks and legacy normalized `MicroTxnAuthorizationResponse` paths, and a

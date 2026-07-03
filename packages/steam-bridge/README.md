@@ -844,7 +844,14 @@ For Windows `usersession=client` diagnostics, the summary also prints
 `clientSessionCapturedRequest`,
 `clientPromptMissing`, `clientPromptSession`, `clientPromptEndpoint`,
 `clientPromptHttp`, `clientPromptUsersession`, `clientPromptIpAddress`, and
-`clientPromptRequest`.
+`clientPromptRequest`. If the automatic client prompt is missing after a
+client-session target is captured, the smoke app can also run a bounded,
+read-only `QueryTxn` probe and the summary prints `clientQuery`,
+`clientQueryAttempted`, `clientQueryEndpoint`, `clientQueryId`,
+`clientQueryOk`, `clientQueryHttp`, `clientQueryResult`, `clientQueryStatus`,
+and `clientQueryError`, plus only transaction/order/Steam-ID presence flags.
+The probe does not expose raw identifiers, product values, prices, URLs, or
+finalize/capture the transaction.
 A case with
 `clientSessionCaptured=true` and `clientPromptMissing=true` means the in-app
 `InitTxn` call returned a transaction id, Steam Bridge preserved it as a

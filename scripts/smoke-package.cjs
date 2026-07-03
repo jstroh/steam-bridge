@@ -905,6 +905,8 @@ function runWindowsSmokeHelperStaticChecks() {
     "clientSessionWaitPresenter=",
     "clientSessionCapturedRequest=",
     "clientPromptRequest=",
+    "clientQuery=",
+    "checkout:client-session-query",
     "captured client-session InitTxn checkout target",
     "started waiting for the client-session Steam prompt",
     "classified the missing client-session Steam prompt",

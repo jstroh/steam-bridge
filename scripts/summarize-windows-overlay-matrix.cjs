@@ -1071,6 +1071,50 @@ function summarizeClientSessionPromptMissing(events) {
   };
 }
 
+function summarizeClientSessionQuery(events) {
+  const event = events.find((candidate) => {
+    if (!candidate || candidate.type !== "checkout:client-session-query") {
+      return false;
+    }
+    const payload = objectOrEmpty(candidate.payload);
+    const targetSnapshot = objectOrEmpty(payload.targetSnapshot);
+    return targetSnapshot.type === "checkout" && targetSnapshot.clientSession === true;
+  });
+  if (!event) {
+    return {
+      present: false,
+      attempted: false,
+      endpoint: "",
+      id: "",
+      ok: false,
+      httpStatus: "",
+      result: "",
+      status: "",
+      errorCode: "",
+      hasTransactionId: false,
+      hasOrderId: false,
+      hasSteamId64: false
+    };
+  }
+  const payload = objectOrEmpty(event.payload);
+  const query = objectOrEmpty(payload.query);
+  const error = objectOrEmpty(query.error);
+  return {
+    present: true,
+    attempted: query.attempted === true,
+    endpoint: String(query.endpoint || ""),
+    id: String(query.id || ""),
+    ok: query.ok === true,
+    httpStatus: String(query.httpStatus || ""),
+    result: String(query.result || ""),
+    status: String(query.status || ""),
+    errorCode: String(query.errorCode || error.code || ""),
+    hasTransactionId: query.hasTransactionId === true,
+    hasOrderId: query.hasOrderId === true,
+    hasSteamId64: query.hasSteamId64 === true
+  };
+}
+
 function summarizeInitTxnTargetMissing(events) {
   const event = events.find((candidate) => candidate && candidate.type === "checkout:init-txn-target-missing");
   if (!event) {
@@ -1372,6 +1416,7 @@ function summarizeCaseResult(caseName, result, resultLog, renderingHealth = null
   const clientSessionCheckoutCapture = summarizeClientSessionCheckoutCapture(events);
   const clientSessionWaitStart = summarizeClientSessionWaitStart(events);
   const clientSessionPromptMissing = summarizeClientSessionPromptMissing(events);
+  const clientSessionQuery = summarizeClientSessionQuery(events);
   const microTxnCallbackProof = hasMicroTxnCallbackProof(String(action.action || ""), events, app.appId);
 
   expect(result.ok === true, `${caseName}: smoke result ok`, failures);
@@ -1451,6 +1496,18 @@ function summarizeCaseResult(caseName, result, resultLog, renderingHealth = null
     clientSessionPromptMissingUsersessionField: clientSessionPromptMissing.usersessionField,
     clientSessionPromptMissingHasIpAddress: clientSessionPromptMissing.hasIpAddress,
     clientSessionPromptMissingRequestShape: clientSessionPromptMissing.requestShapeSummary,
+    clientSessionQueryPresent: clientSessionQuery.present,
+    clientSessionQueryAttempted: clientSessionQuery.attempted,
+    clientSessionQueryEndpoint: clientSessionQuery.endpoint,
+    clientSessionQueryId: clientSessionQuery.id,
+    clientSessionQueryOk: clientSessionQuery.ok,
+    clientSessionQueryHttpStatus: clientSessionQuery.httpStatus,
+    clientSessionQueryResult: clientSessionQuery.result,
+    clientSessionQueryStatus: clientSessionQuery.status,
+    clientSessionQueryErrorCode: clientSessionQuery.errorCode,
+    clientSessionQueryHasTransactionId: clientSessionQuery.hasTransactionId,
+    clientSessionQueryHasOrderId: clientSessionQuery.hasOrderId,
+    clientSessionQueryHasSteamId64: clientSessionQuery.hasSteamId64,
     initTxnTargetMissing: initTxnTargetMissing.present,
     initTxnTargetMissingSession: initTxnTargetMissing.session,
     initTxnTargetMissingResult: initTxnTargetMissing.result,
@@ -1618,6 +1675,18 @@ function printSummary(summary) {
           `clientPromptUsersession=${formatValue(row.clientSessionPromptMissingUsersessionField)} ` +
           `clientPromptIpAddress=${formatValue(row.clientSessionPromptMissingHasIpAddress)} ` +
           `clientPromptRequest=${formatValue(row.clientSessionPromptMissingRequestShape)} ` +
+          `clientQuery=${row.clientSessionQueryPresent} ` +
+          `clientQueryAttempted=${row.clientSessionQueryAttempted} ` +
+          `clientQueryEndpoint=${formatValue(row.clientSessionQueryEndpoint)} ` +
+          `clientQueryId=${formatValue(row.clientSessionQueryId)} ` +
+          `clientQueryOk=${row.clientSessionQueryOk} ` +
+          `clientQueryHttp=${formatValue(row.clientSessionQueryHttpStatus)} ` +
+          `clientQueryResult=${formatValue(row.clientSessionQueryResult)} ` +
+          `clientQueryStatus=${formatValue(row.clientSessionQueryStatus)} ` +
+          `clientQueryError=${formatValue(row.clientSessionQueryErrorCode)} ` +
+          `clientQueryTransaction=${row.clientSessionQueryHasTransactionId} ` +
+          `clientQueryOrder=${row.clientSessionQueryHasOrderId} ` +
+          `clientQuerySteam=${row.clientSessionQueryHasSteamId64} ` +
           `initTxnTargetMissing=${row.initTxnTargetMissing} ` +
           `initTxnSession=${formatValue(row.initTxnTargetMissingSession)} ` +
           `initTxnResult=${formatValue(row.initTxnTargetMissingResult)} ` +
@@ -2444,6 +2513,18 @@ function runSelfTest() {
       clientPromptMissingSummary.caseSummaries[0].clientSessionPromptMissingRequestShape,
       "usersession=client,ip=false,order=true,steam=true,language=true,currency=true,items=1,bundles=0,itemFields=true,bundleFields=true"
     );
+    assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionQueryPresent, true);
+    assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionQueryAttempted, true);
+    assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionQueryEndpoint, "sandbox");
+    assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionQueryId, "transaction");
+    assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionQueryOk, true);
+    assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionQueryHttpStatus, "200");
+    assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionQueryResult, "OK");
+    assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionQueryStatus, "Init");
+    assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionQueryErrorCode, "");
+    assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionQueryHasTransactionId, true);
+    assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionQueryHasOrderId, true);
+    assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionQueryHasSteamId64, true);
     assert.equal(clientPromptMissingSummary.initTxnRequestShapePreflight.hasRequestFile, true);
     assert.equal(clientPromptMissingSummary.initTxnRequestShapePreflight.requestFileExists, true);
     assert.equal(clientPromptMissingSummary.initTxnRequestShapePreflight.requestAppIdPresent, true);
@@ -3669,8 +3750,50 @@ function writeManagedCheckoutMicroTxnFixture(root, options = {}) {
       { type: "overlay:presenter-wait-start", payload: { target: "checkout" } },
       { type: "overlay:presenter-wait-shown:error", payload: { target: "checkout", error } },
       {
+        type: "checkout:client-session-query",
+        payload: {
+          target: "checkout",
+          targetSnapshot,
+          initTxn,
+          query: {
+            attempted: true,
+            endpoint: "sandbox",
+            id: "transaction",
+            ok: true,
+            httpStatus: 200,
+            result: "OK",
+            status: "Init",
+            errorCode: "",
+            hasErrorDescription: false,
+            hasTransactionId: true,
+            hasOrderId: true,
+            hasSteamId64: true
+          }
+        }
+      },
+      {
         type: "checkout:client-session-prompt-missing",
-        payload: { target: "checkout", targetSnapshot, expectedSteamPrompt: true, error, initTxn }
+        payload: {
+          target: "checkout",
+          targetSnapshot,
+          expectedSteamPrompt: true,
+          error,
+          initTxn,
+          query: {
+            attempted: true,
+            endpoint: "sandbox",
+            id: "transaction",
+            ok: true,
+            httpStatus: 200,
+            result: "OK",
+            status: "Init",
+            errorCode: "",
+            hasErrorDescription: false,
+            hasTransactionId: true,
+            hasOrderId: true,
+            hasSteamId64: true
+          }
+        }
       },
       {
         type: "overlay:presenter-checkout-open-and-wait:error",

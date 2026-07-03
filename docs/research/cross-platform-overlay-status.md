@@ -328,7 +328,12 @@ wait. The Windows summary reports this case as `clientSessionCaptured=true`,
 saw the smoke app foreground rather than a checkout panel, and crash diagnostics
 stayed clean. The current summary also prints `microTxnSources`, which remains
 empty when no authorization callback fires and records `steamworks`, `legacy`,
-or both when one does. The summary now requires explicit-client request-file
+or both when one does. After a missing client-session prompt, the smoke app now
+runs a bounded, read-only `QueryTxn` diagnostic and records only sanitized
+`clientQuery*` fields: endpoint, id type, HTTP/result/status/error strings, and
+transaction/order/Steam-ID presence flags. It does not log raw identifiers,
+product values, prices, URLs, or finalize/capture the transaction. The summary
+now requires explicit-client request-file
 artifacts to prove sanitized client-session capture, transaction presence,
 prompt-wait start, active presenter state, value-free listener registration for
 both the current Steamworks and legacy normalized `MicroTxnAuthorizationResponse`

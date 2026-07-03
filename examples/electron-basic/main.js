@@ -131,6 +131,13 @@ const MANAGED_OVERLAY_PARK_TIMEOUT_MS = normalizePositiveInteger(
   Number(CLI_OPTIONS.managedOverlayParkTimeoutMs || process.env.STEAM_BRIDGE_SMOKE_MANAGED_OVERLAY_PARK_TIMEOUT_MS),
   90000
 );
+const CLIENT_SESSION_QUERY_TIMEOUT_MS = normalizeNonNegativeInteger(
+  Number(
+    CLI_OPTIONS.clientSessionQueryTimeoutMs ||
+      process.env.STEAM_BRIDGE_SMOKE_CLIENT_SESSION_QUERY_TIMEOUT_MS
+  ),
+  10000
+);
 const MANAGED_OVERLAY_RESULT_MODE = normalizeManagedOverlayResultMode(
   CLI_OPTIONS.managedOverlayResultMode || process.env.STEAM_BRIDGE_SMOKE_MANAGED_OVERLAY_RESULT_MODE
 );
@@ -1993,7 +2000,7 @@ async function openPresenterCheckoutOverlay() {
   const overlay = ensureElectronSteamOverlay(activeClient);
   const checkoutOperation = await readCheckoutOperationInput(activeClient);
   if (checkoutOperation) {
-    const { transaction, source, initTxn } = checkoutOperation;
+    const { transaction, source, initTxn, queryClientSessionStatus } = checkoutOperation;
     const target = checkoutTargetFromOperation(transaction);
     const targetSnapshot = steamworks.overlay.snapshotSteamOverlayTarget(target);
     const clientSessionCheckout = targetSnapshot.type === "checkout" && targetSnapshot.clientSession === true;
@@ -2039,13 +2046,20 @@ async function openPresenterCheckoutOverlay() {
         });
         return { ok: true, result };
       })
-      .catch((error) => {
+      .catch(async (error) => {
         const serialized = serializeError(error);
         if (!shutdownComplete) {
           if (clientSessionCheckout && isSteamOverlayWaitTimeout(serialized)) {
+            const query = await queryClientSessionPromptMissingStatus(queryClientSessionStatus);
+            recordEvent("checkout:client-session-query", {
+              ...context,
+              query,
+              presenter: safeOverlaySnapshot(overlay)
+            });
             recordEvent("checkout:client-session-prompt-missing", {
               ...context,
               expectedSteamPrompt: true,
+              query,
               error: serialized,
               presenter: safeOverlaySnapshot(overlay)
             });
@@ -2081,11 +2095,12 @@ function isSteamOverlayWaitTimeout(error) {
 
 async function readCheckoutOperationInput(activeClient) {
   if (INIT_TXN_REQUEST_FILE) {
-    const { transaction, initTxn } = await captureInitTxnCheckout(activeClient);
+    const { transaction, initTxn, queryClientSessionStatus } = await captureInitTxnCheckout(activeClient);
     return {
       source: "init-txn-request-file",
       transaction,
-      initTxn
+      initTxn,
+      queryClientSessionStatus
     };
   }
 
@@ -2190,6 +2205,15 @@ async function captureInitTxnCheckout(activeClient) {
   }
 
   const targetSnapshot = steamworks.overlay.snapshotSteamOverlayTarget(target);
+  const queryClientSessionStatus =
+    targetSnapshot.type === "checkout" && targetSnapshot.clientSession === true
+      ? createClientSessionQueryStatusProbe({
+          endpoint,
+          apiKey,
+          transactionId: target.transactionId,
+          orderId: readFirstPresentField(initTxnRequest, ["orderId", "orderid"])
+        })
+      : null;
   recordEvent("checkout:init-txn-captured", {
     endpoint,
     session,
@@ -2207,8 +2231,176 @@ async function captureInitTxnCheckout(activeClient) {
       httpStatus: response.status,
       usedCurrentSteamId: Boolean(steamId64),
       requestShape
-    }
+    },
+    queryClientSessionStatus
   };
+}
+
+function createClientSessionQueryStatusProbe({ endpoint, apiKey, transactionId, orderId }) {
+  const id =
+    transactionId !== undefined && transactionId !== null
+      ? "transaction"
+      : orderId !== undefined && orderId !== null
+        ? "order"
+        : "none";
+  const diagnosticContext = {
+    endpoint,
+    id,
+    queriedTransactionId: id === "transaction",
+    queriedOrderId: id === "order"
+  };
+  const queryClientSessionStatus = async function queryClientSessionStatus(signal) {
+    if (id === "none") {
+      return {
+        attempted: false,
+        endpoint,
+        id,
+        reason: "missing-query-id",
+        hasTransactionId: false,
+        hasOrderId: false,
+        hasSteamId64: false
+      };
+    }
+
+    const webClient = steamworks.createSteamWebApiClient({ apiKey });
+    const facade = endpoint === "production" ? webClient.microTxn : webClient.microTxnSandbox;
+    const response = await facade.queryTxn({
+      appId: APP_ID,
+      ...(id === "transaction" ? { transactionId } : { orderId }),
+      signal
+    });
+    return summarizeClientSessionQueryTxnResponse(response, {
+      ...diagnosticContext
+    });
+  };
+  queryClientSessionStatus.diagnosticContext = diagnosticContext;
+  return queryClientSessionStatus;
+}
+
+async function queryClientSessionPromptMissingStatus(queryClientSessionStatus) {
+  if (typeof queryClientSessionStatus !== "function") {
+    return { attempted: false, reason: "not-configured" };
+  }
+  if (CLIENT_SESSION_QUERY_TIMEOUT_MS <= 0) {
+    return { attempted: false, reason: "disabled" };
+  }
+
+  try {
+    return await withTimeoutSignal(CLIENT_SESSION_QUERY_TIMEOUT_MS, (signal) => queryClientSessionStatus(signal));
+  } catch (error) {
+    const context =
+      queryClientSessionStatus && typeof queryClientSessionStatus.diagnosticContext === "object"
+        ? queryClientSessionStatus.diagnosticContext
+        : {};
+    return {
+      attempted: true,
+      endpoint: String(context.endpoint || ""),
+      id: String(context.id || ""),
+      hasTransactionId: context.queriedTransactionId === true,
+      hasOrderId: context.queriedOrderId === true,
+      hasSteamId64: false,
+      error: clientSessionQueryErrorDiagnostic(error)
+    };
+  }
+}
+
+function clientSessionQueryErrorDiagnostic(error) {
+  const serialized = serializeError(error);
+  return {
+    name: serialized.name || "Error",
+    code: serialized.code || "",
+    reason: serialized.reason || "",
+    timedOut: serialized.name === "AbortError" || serialized.code === "ABORT_ERR"
+  };
+}
+
+async function withTimeoutSignal(timeoutMs, operation) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), Math.max(1, timeoutMs));
+  if (typeof timeout.unref === "function") {
+    timeout.unref();
+  }
+  try {
+    return await operation(controller.signal);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function summarizeClientSessionQueryTxnResponse(response, context) {
+  const data = response && response.data;
+  return {
+    attempted: true,
+    endpoint: context.endpoint,
+    id: context.id,
+    ok: Boolean(response && response.ok),
+    httpStatus: response && response.status ? response.status : "",
+    result: firstDiagnosticValue(data, ["result"]),
+    status: firstDiagnosticValue(data, ["status", "orderstatus"]),
+    errorCode: firstDiagnosticValue(data, ["errorcode", "error_code"]),
+    hasErrorDescription: hasDiagnosticKey(data, ["errordesc", "error_description", "errorDescription"]),
+    hasTransactionId: Boolean(context.queriedTransactionId || hasDiagnosticKey(data, ["transid", "transactionid", "transaction_id"])),
+    hasOrderId: Boolean(context.queriedOrderId || hasDiagnosticKey(data, ["orderid", "order_id"])),
+    hasSteamId64: hasDiagnosticKey(data, ["steamid", "steamid64", "steam_id"])
+  };
+}
+
+function firstDiagnosticValue(value, names) {
+  const values = collectDiagnosticValues(value, new Set(names.map((name) => name.toLowerCase())));
+  return values.length > 0 ? values[0] : "";
+}
+
+function collectDiagnosticValues(value, names, seen = new Set(), depth = 0, values = []) {
+  if (!value || typeof value !== "object" || seen.has(value) || depth > 8) {
+    return values;
+  }
+  seen.add(value);
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      collectDiagnosticValues(entry, names, seen, depth + 1, values);
+    }
+    return uniqueDiagnosticValues(values);
+  }
+
+  for (const [key, entry] of Object.entries(value)) {
+    if (names.has(key.toLowerCase()) && entry !== undefined && entry !== null) {
+      const diagnostic = diagnosticString(entry);
+      if (diagnostic) {
+        values.push(diagnostic);
+      }
+    }
+    collectDiagnosticValues(entry, names, seen, depth + 1, values);
+  }
+  return uniqueDiagnosticValues(values);
+}
+
+function hasDiagnosticKey(value, names, seen = new Set(), depth = 0) {
+  if (!value || typeof value !== "object" || seen.has(value) || depth > 8) {
+    return false;
+  }
+  seen.add(value);
+  if (Array.isArray(value)) {
+    return value.some((entry) => hasDiagnosticKey(entry, names, seen, depth + 1));
+  }
+  const normalized = new Set(names.map((name) => name.toLowerCase()));
+  return Object.entries(value).some(
+    ([key, entry]) => normalized.has(key.toLowerCase()) || hasDiagnosticKey(entry, names, seen, depth + 1)
+  );
+}
+
+function diagnosticString(value) {
+  if (value === undefined || value === null) {
+    return "";
+  }
+  if (typeof value === "object") {
+    return "";
+  }
+  const text = String(value).trim();
+  return text.length > 80 ? `${text.slice(0, 77)}...` : text;
+}
+
+function uniqueDiagnosticValues(values) {
+  return Array.from(new Set(values));
 }
 
 function normalizeInitTxnRequestSession(value) {
@@ -2277,6 +2469,16 @@ function hasAnyPresentField(source, names) {
     const value = source[name];
     return value !== undefined && value !== null && String(value).trim() !== "";
   });
+}
+
+function readFirstPresentField(source, names) {
+  for (const name of names) {
+    const value = source[name];
+    if (value !== undefined && value !== null && String(value).trim() !== "") {
+      return value;
+    }
+  }
+  return undefined;
 }
 
 function summarizeInitTxnFailure(data) {
@@ -2764,6 +2966,10 @@ function isAchievementAchieved(unlocked) {
 
 function normalizePositiveInteger(value, fallback) {
   return Number.isFinite(value) && value > 0 ? Math.floor(value) : fallback;
+}
+
+function normalizeNonNegativeInteger(value, fallback) {
+  return Number.isFinite(value) && value >= 0 ? Math.floor(value) : fallback;
 }
 
 function pumpNativeProbe() {
@@ -3896,6 +4102,7 @@ function parseSmokeArgs(args) {
     initTxnEndpoint: undefined,
     managedOverlayWaitTimeoutMs: undefined,
     managedOverlayParkTimeoutMs: undefined,
+    clientSessionQueryTimeoutMs: undefined,
     managedOverlayResultMode: undefined,
     achievementName: undefined,
     achievementCurrent: undefined,
@@ -3969,6 +4176,9 @@ function parseSmokeArgs(args) {
         break;
       case "--steam-bridge-smoke-managed-overlay-park-timeout-ms":
         options.managedOverlayParkTimeoutMs = value;
+        break;
+      case "--steam-bridge-smoke-client-session-query-timeout-ms":
+        options.clientSessionQueryTimeoutMs = value;
         break;
       case "--steam-bridge-smoke-managed-overlay-result-mode":
         options.managedOverlayResultMode = value;

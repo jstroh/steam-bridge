@@ -852,7 +852,14 @@ For `usersession=client` runs, the Windows summary prints
 `clientSessionCapturedRequest`,
 `clientPromptMissing`, `clientPromptSession`, `clientPromptEndpoint`,
 `clientPromptHttp`, `clientPromptUsersession`, `clientPromptIpAddress`, and
-`clientPromptRequest`.
+`clientPromptRequest`. If the automatic client prompt is missing after a
+client-session transaction is captured, the smoke app also runs a bounded,
+read-only `QueryTxn` probe and the summary prints `clientQuery`,
+`clientQueryAttempted`, `clientQueryEndpoint`, `clientQueryId`,
+`clientQueryOk`, `clientQueryHttp`, `clientQueryResult`, `clientQueryStatus`,
+and `clientQueryError`, plus only transaction/order/Steam-ID presence flags.
+The probe does not log raw identifiers, product values, prices, URLs, or
+finalize/capture the transaction.
 If `clientSessionCaptured` and `clientPromptMissing` are both `true`, the
 smoke app captured a valid client-session transaction target and kept the
 managed presenter active, but Steam did not present the automatic authorization
