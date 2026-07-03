@@ -398,6 +398,54 @@ function runWindowsSmokeHelperStaticChecks() {
     !exampleReadme.includes("The helper defaults `-OverlayInProcessGpu 1` on Windows"),
     "Electron example README must not describe in-process GPU as the Windows default"
   );
+  assert.ok(
+    matrixHelper.includes('$text -notlike "Steam launch options:*"') &&
+      matrixHelper.includes('$text -notlike "Steam shortcut launch options:*"') &&
+      matrixHelper.includes('$text -notlike "Launch URL:*"') &&
+      matrixHelper.includes("Computed Windows shortcut launch options do not include the smoke env file."),
+    "Windows matrix must parse only the actual shortcut launch options line"
+  );
+  assert.ok(
+    matrixHelper.includes("function Get-LatestSteamProcessStartUtc") &&
+      matrixHelper.includes("currentSteamStartUtc") &&
+      matrixHelper.includes("effectiveRecentCutoffUtc") &&
+      matrixHelper.includes("Get-SteamClientRenderingHealth -CurrentSteamStartUtc"),
+    "Windows live readiness must classify Steam client log health relative to the current Steam process"
+  );
+  assert.ok(
+    matrixHelper.includes("function Get-SmokePackageProcesses") &&
+      matrixHelper.includes("function Stop-SmokePackageProcesses") &&
+      matrixHelper.includes("smoke-process-cleanup-before-run.json") &&
+      matrixHelper.includes("smoke-process-cleanup-after-render-health.json") &&
+      matrixHelper.includes("smoke-process-cleanup-after-cases.json"),
+    "Windows matrix must clean up package-owned smoke processes before and after live proof"
+  );
+  assert.ok(
+    matrixHelper.includes("function Clear-BlockingForegroundWindow") &&
+      matrixHelper.includes("application-error-dialog") &&
+      matrixHelper.includes("shell-search-or-start-ui") &&
+      matrixHelper.includes('Write-ProbeEvent "probe:foreground-clear"'),
+    "Windows close probe must clear known blocking OS foreground UI before close targeting"
+  );
+  assert.ok(
+    matrixHelper.includes("function Test-WebCloseForegroundAllowsPresenterBounds") &&
+      matrixHelper.includes("`$Foreground.rect.width -le 0 -or `$Foreground.rect.height -le 0") &&
+      matrixHelper.includes("Explorer can become foreground as the taskbar") &&
+      matrixHelper.includes("Find-WebClosePanelRectFromScreenshot -Screenshot `$Screenshot -Foreground `$presenterForeground"),
+    "Windows close probe must allow presenter-bound close targeting after benign shell foreground recovery"
+  );
+  assert.ok(
+    matrixHelper.includes("`$topRun = `$null") &&
+      matrixHelper.includes("topRun = `$topRun") &&
+      matrixHelper.includes("`$left = [Math]::Max(`$rect.left, [int]`$topRun.left)") &&
+      matrixHelper.includes("`$right = [Math]::Min(`$rect.right, [int]`$topRun.right)"),
+    "Windows close probe must use the top-level Steam web frame edge for close targeting"
+  );
+  assert.ok(
+    matrixHelper.includes("focusClick = `$focusClick") &&
+      matrixHelper.includes("Send-NativeMouseClick `$clickX `$clickY"),
+    "Windows shortcut probe must fall back to a real pointer focus click before sending Shift+Tab"
+  );
   for (const expected of [
     "achievement-progress",
     "achievement-unlock",

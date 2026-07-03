@@ -106,6 +106,19 @@ Reviewed on 2026-07-02 while investigating Windows Electron overlay failures:
   reported `expectedCases=15`, `steamLaunch=15`, `overlayActive=12`, `clean=15`,
   no crash diagnostics, and no leftover smoke, overlay-helper, or Windows error
   reporter processes.
+- A later current-package Windows pass at
+  `C:\Users\admin\steam-bridge-artifacts\windows-current-managed-routes-20260703-020-full-toprun-focusclick`
+  re-proved the public managed-route suite after hardening the live harness. It
+  ran hidden from an interactive `/IT` scheduled task in Session 1 with the
+  stable App ID `480` shortcut, `-Suite managed-routes`, `-CloseProbe`,
+  `-CloseProbeInput auto`, and the default D3D11 presenter. The local summary
+  auditor reported `expectedCases=15`, `steamLaunch=15`, `overlayActive=12`,
+  and `clean=15`, with no crash diagnostics. The hardening classifies Steam
+  client log health relative to the current Steam process, cleans
+  package-owned smoke processes before/after live phases, targets the top-level
+  Steam web frame close button instead of inner page content, and uses a real
+  pointer focus click before sending Shift+Tab when Windows leaves the taskbar
+  as foreground.
 - A 2026-07-03 UTC focused Windows D3D11 pass proved passive
   achievement-progress and achievement-unlock notifications through the same
   managed Electron presenter shape. The Steam-launched App ID `480` artifacts

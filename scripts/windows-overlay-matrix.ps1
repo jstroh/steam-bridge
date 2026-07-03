@@ -314,6 +314,27 @@ function Get-SteamClientDiagnosticLogNames {
   )
 }
 
+function Get-LatestSteamProcessStartUtc {
+  param([object[]]$SteamProcesses)
+
+  $startTimes = @()
+  foreach ($process in @($SteamProcesses)) {
+    if (-not $process -or -not $process.StartTime) {
+      continue
+    }
+    try {
+      $startTimes += ([datetime]$process.StartTime).ToUniversalTime()
+    } catch {
+      # Process start times are diagnostic only; ignore inaccessible entries.
+    }
+  }
+
+  if ($startTimes.Count -eq 0) {
+    return $null
+  }
+  return ($startTimes | Sort-Object -Descending | Select-Object -First 1)
+}
+
 function ConvertTo-SteamLogTimestampUtc {
   param([string]$Line)
 
@@ -372,10 +393,20 @@ function ConvertTo-SteamLogTimestampUtc {
 }
 
 function Get-SteamClientRenderingHealth {
+  param([datetime]$CurrentSteamStartUtc = [datetime]::MinValue)
+
   $steamPath = Resolve-SteamInstallPath
   $logs = Join-Path $steamPath "logs"
   $generatedAt = (Get-Date).ToUniversalTime()
   $cutoff = $generatedAt.AddMinutes(-1 * [math]::Max(1, $SteamClientHealthRecentMinutes))
+  $currentSteamCutoff = $null
+  $effectiveCutoff = $cutoff
+  if ($CurrentSteamStartUtc -gt [datetime]::MinValue) {
+    $currentSteamCutoff = $CurrentSteamStartUtc.ToUniversalTime()
+    if ($currentSteamCutoff -gt $effectiveCutoff) {
+      $effectiveCutoff = $currentSteamCutoff
+    }
+  }
   $signals = @()
   $warnings = @()
 
@@ -397,6 +428,8 @@ function Get-SteamClientRenderingHealth {
       status = "unknown"
       healthy = $false
       recentWindowMinutes = $SteamClientHealthRecentMinutes
+      currentSteamStartUtc = if ($currentSteamCutoff) { $currentSteamCutoff.ToString("o") } else { $null }
+      effectiveRecentCutoffUtc = $effectiveCutoff.ToString("o")
       logDirectory = $logs
       recentSevereSignalCount = 0
       staleSevereSignalCount = 0
@@ -425,9 +458,9 @@ function Get-SteamClientRenderingHealth {
 
           $timestampUtc = ConvertTo-SteamLogTimestampUtc -Line $line
           $isRecent = if ($timestampUtc) {
-            $timestampUtc -ge $cutoff
+            $timestampUtc -ge $effectiveCutoff
           } else {
-            $file.LastWriteTimeUtc -ge $cutoff
+            $file.LastWriteTimeUtc -ge $effectiveCutoff
           }
           $signals += [PSCustomObject]@{
             code = $pattern.code
@@ -478,6 +511,8 @@ function Get-SteamClientRenderingHealth {
     status = $status
     healthy = ($status -ne "unhealthy")
     recentWindowMinutes = $SteamClientHealthRecentMinutes
+    currentSteamStartUtc = if ($currentSteamCutoff) { $currentSteamCutoff.ToString("o") } else { $null }
+    effectiveRecentCutoffUtc = $effectiveCutoff.ToString("o")
     logDirectory = $logs
     recentSevereSignalCount = $recentSignals.Count
     staleSevereSignalCount = $staleSignals.Count
@@ -649,6 +684,85 @@ function Stop-StaleSteamOverlayHelpers {
   Write-Host ("Stale Steam overlay helper cleanup checked {0} helper(s), stopped {1}. Details: {2}" -f $helpers.Count, ($results | Where-Object { $_.status -eq "stopped" }).Count, $DestinationFile)
 }
 
+function Get-SmokePackageProcesses {
+  $trimChars = @([char]92, [char]47)
+  $pathSeparator = [string][char]92
+  $normalizedAppDir = ([System.IO.Path]::GetFullPath($AppDir)).TrimEnd($trimChars).ToLowerInvariant()
+  $processes = @(Get-CimInstance Win32_Process -Filter "Name = 'SteamBridgeSmoke.exe'" -ErrorAction SilentlyContinue)
+  $matched = @()
+
+  foreach ($process in $processes) {
+    $executablePath = [string]$process.ExecutablePath
+    $commandLine = [string]$process.CommandLine
+    $executablePathLower = $executablePath.ToLowerInvariant()
+    $commandLineLower = $commandLine.ToLowerInvariant()
+    $belongsToPackage = (
+      ($executablePathLower -and $executablePathLower.StartsWith($normalizedAppDir + $pathSeparator)) -or
+      ($commandLineLower -and $commandLineLower.Contains($normalizedAppDir))
+    )
+    if (-not $belongsToPackage) {
+      continue
+    }
+
+    $matched += [PSCustomObject]@{
+      processId = [int]$process.ProcessId
+      parentProcessId = [int]$process.ParentProcessId
+      sessionId = [int]$process.SessionId
+      creationDate = $process.CreationDate
+      executablePath = if ($executablePath) { $executablePath } else { $null }
+      commandLine = Limit-DiagnosticLine -Line $commandLine -MaxLength 1000
+    }
+  }
+
+  return @($matched)
+}
+
+function Stop-SmokePackageProcesses {
+  param([string]$DestinationFile, [string]$Phase)
+
+  $before = @(Get-SmokePackageProcesses)
+  $results = @()
+  foreach ($process in $before) {
+    try {
+      Stop-Process -Id $process.processId -Force -ErrorAction Stop
+      $results += [PSCustomObject]@{
+        processId = $process.processId
+        status = "stopped"
+      }
+    } catch {
+      $results += [PSCustomObject]@{
+        processId = $process.processId
+        status = "failed"
+        error = $_.Exception.Message
+      }
+    }
+  }
+
+  if ($before.Count -gt 0) {
+    Start-Sleep -Milliseconds 500
+  }
+
+  $after = @(Get-SmokePackageProcesses)
+  $cleanup = [PSCustomObject]@{
+    kind = "steam-bridge-windows-smoke-process-cleanup"
+    phase = $Phase
+    generatedAt = (Get-Date).ToUniversalTime().ToString("o")
+    ok = ($after.Count -eq 0)
+    packageAppDir = [System.IO.Path]::GetFullPath($AppDir)
+    processesBeforeCleanup = @($before)
+    cleanupResults = @($results)
+    processesAfterCleanup = @($after)
+  }
+  Write-MatrixJsonFile -Path $DestinationFile -Value $cleanup -Depth 8
+
+  if ($before.Count -gt 0) {
+    Write-Host ("Stopped {0} leftover SteamBridgeSmoke package process(es) for {1}. Details: {2}" -f $before.Count, $Phase, $DestinationFile)
+  }
+  if ($after.Count -gt 0) {
+    throw "Found $($after.Count) leftover SteamBridgeSmoke package process(es) after cleanup. See $DestinationFile."
+  }
+}
+
 function Test-NeedsWindowsLiveRunReadiness {
   return ($LaunchMode -in @("steam-launch", "steam-app") -and $Suite -ne "preflight" -and $Suite -ne "shortcut")
 }
@@ -744,7 +858,7 @@ function Test-WindowsLiveRunReadiness {
   $overlayHelpers = @(Get-OverlayHelperDiagnostics)
   $staleOverlayHelpers = @($overlayHelpers | Where-Object { $_.orphaned })
   $resourceSnapshot = Get-WindowsResourceSnapshot
-  $renderingHealth = Get-SteamClientRenderingHealth
+  $renderingHealth = Get-SteamClientRenderingHealth -CurrentSteamStartUtc (Get-LatestSteamProcessStartUtc -SteamProcesses $steamProcesses)
   $warnings = @()
   $errors = @()
 
@@ -848,7 +962,7 @@ function Collect-SteamClientDiagnostics {
       Select-Object ProcessName,Id,SessionId,StartTime,Responding,MainWindowTitle,Path)
     $overlayHelpers = @(Get-OverlayHelperDiagnostics)
     $resourceSnapshot = Get-WindowsResourceSnapshot
-    $renderingHealth = Get-SteamClientRenderingHealth
+    $renderingHealth = Get-SteamClientRenderingHealth -CurrentSteamStartUtc (Get-LatestSteamProcessStartUtc -SteamProcesses @($processes | Where-Object { $_.ProcessName -eq "steam" }))
     $logFiles = @()
     if (Test-Path -LiteralPath $logs) {
       $logFiles = @(Get-ChildItem -LiteralPath $logs -File -ErrorAction SilentlyContinue |
@@ -1906,9 +2020,18 @@ function Get-StableShortcutLaunchOptions {
     -AppDir $AppDir `
     -AppId $AppId `
     -SmokeEnvFile $LaunchEnvFile
-  $line = @($output | Where-Object { $_ -and $_ -notlike "Steam shortcut launch options:*" } | Select-Object -First 1)
+  $line = @($output | Where-Object {
+    $text = [string]$_
+    $text -and
+      $text -notlike "Steam launch options:*" -and
+      $text -notlike "Steam shortcut launch options:*" -and
+      $text -notlike "Launch URL:*"
+  } | Select-Object -First 1)
   if (-not $line) {
     throw "Could not compute stable Windows shortcut launch options."
+  }
+  if ($LaunchEnvFile -and $line -notmatch "--steam-bridge-smoke-env-file=") {
+    throw "Computed Windows shortcut launch options do not include the smoke env file."
   }
   return [string]$line
 }
@@ -2740,6 +2863,86 @@ function Test-WebCloseForegroundCandidate {
   return `$false
 }
 
+function Test-WebCloseForegroundAllowsPresenterBounds {
+  param([object]`$Foreground)
+
+  if (-not `$Foreground -or -not `$Foreground.rect) {
+    return `$true
+  }
+
+  if (`$Foreground.rect.width -le 0 -or `$Foreground.rect.height -le 0) {
+    return `$true
+  }
+
+  if (Test-WebCloseForegroundCandidate `$Foreground) {
+    return `$true
+  }
+
+  `$processName = [string]`$Foreground.processName
+  `$title = [string]`$Foreground.title
+  if (`$title -match '(?i)application error') {
+    return `$false
+  }
+
+  if (`$processName -eq "explorer") {
+    `$height = [int]`$Foreground.rect.height
+    `$top = [int]`$Foreground.rect.top
+    # Explorer can become foreground as the taskbar after Search/Start is cleared.
+    # That should not prevent using the already-known native presenter bounds.
+    return (`$title -eq "" -and `$height -le 96 -and `$top -ge 0)
+  }
+
+  if (`$processName -eq "SteamBridgeSmoke" -and `$title -eq "Steam Bridge Electron Smoke") {
+    return `$true
+  }
+
+  return `$false
+}
+
+function Clear-BlockingForegroundWindow {
+  param([object]`$Foreground)
+
+  if (-not `$Foreground -or (Test-WebCloseForegroundCandidate `$Foreground)) {
+    return [PSCustomObject]@{
+      attempted = `$false
+      reason = "foreground-is-overlay-candidate"
+      foreground = `$Foreground
+    }
+  }
+
+  `$processName = [string]`$Foreground.processName
+  `$title = [string]`$Foreground.title
+  `$key = `$null
+  `$reason = `$null
+
+  if (`$title -match '(?i)application error') {
+    `$key = 0x0D
+    `$reason = "application-error-dialog"
+  } elseif (`$processName -in @("SearchHost", "StartMenuExperienceHost", "ShellExperienceHost") -or `$title -eq "Search") {
+    `$key = 0x1B
+    `$reason = "shell-search-or-start-ui"
+  }
+
+  if (`$null -eq `$key) {
+    return [PSCustomObject]@{
+      attempted = `$false
+      reason = "foreground-not-recognized"
+      foreground = `$Foreground
+    }
+  }
+
+  `$sent = Send-NativeKeyChord @(`$key)
+  Start-Sleep -Milliseconds 350
+  return [PSCustomObject]@{
+    attempted = `$true
+    reason = `$reason
+    key = ("0x{0:X2}" -f `$key)
+    nativeInputSent = `$sent
+    before = `$Foreground
+    after = Get-ForegroundProbeSnapshot
+  }
+}
+
 function Convert-PresenterBoundsToProbeRect {
   param([object]`$PresenterBounds)
 
@@ -2791,6 +2994,7 @@ function Find-WebClosePanelRectFromScreenshot {
     `$runSamples = 0
     `$bestRunWidth = 0
     `$bestRun = `$null
+    `$topRun = `$null
     `$consecutiveMisses = 0
 
     for (`$y = `$scanTop; `$y -le `$scanBottom; `$y += 2) {
@@ -2841,6 +3045,12 @@ function Find-WebClosePanelRectFromScreenshot {
       if (`$rowBestWidth -ge `$minRunWidth) {
         if (`$null -eq `$top) {
           `$top = `$y
+          `$topRun = [PSCustomObject]@{
+            y = `$y
+            left = `$rowBestLeft
+            right = `$rowBestRight
+            width = `$rowBestWidth
+          }
         }
         `$bottom = `$y
         `$leftSum += `$rowBestLeft
@@ -2859,8 +3069,13 @@ function Find-WebClosePanelRectFromScreenshot {
       return `$null
     }
 
-    `$left = [Math]::Max(`$rect.left, [int][Math]::Round(`$leftSum / `$runSamples))
-    `$right = [Math]::Min(`$rect.right, [int][Math]::Round(`$rightSum / `$runSamples))
+    if (`$topRun) {
+      `$left = [Math]::Max(`$rect.left, [int]`$topRun.left)
+      `$right = [Math]::Min(`$rect.right, [int]`$topRun.right)
+    } else {
+      `$left = [Math]::Max(`$rect.left, [int][Math]::Round(`$leftSum / `$runSamples))
+      `$right = [Math]::Min(`$rect.right, [int][Math]::Round(`$rightSum / `$runSamples))
+    }
     `$top = [Math]::Max(`$rect.top, [int]`$top)
     `$bottom = [Math]::Min(`$rect.bottom, [int]`$bottom)
     `$width = [Math]::Max(0, `$right - `$left)
@@ -2880,6 +3095,7 @@ function Find-WebClosePanelRectFromScreenshot {
         height = [int]`$height
       }
       runSamples = `$runSamples
+      topRun = `$topRun
       bestRun = `$bestRun
     }
   } catch {
@@ -2906,13 +3122,23 @@ function Get-WebClosePanelRect {
     }
   }
 
-  if (`$Foreground -and `$Foreground.rect) {
+  if (-not (Test-WebCloseForegroundAllowsPresenterBounds `$Foreground)) {
     return `$null
   }
 
   `$presenterBounds = Get-LifecyclePresenterBounds
   `$presenterRect = Convert-PresenterBoundsToProbeRect `$presenterBounds
   if (`$presenterRect) {
+    `$presenterForeground = [PSCustomObject]@{
+      processName = "SteamBridgeSmoke"
+      title = "Steam Bridge Native Overlay Host"
+      rect = `$presenterRect
+    }
+    `$screenshotPanel = Find-WebClosePanelRectFromScreenshot -Screenshot `$Screenshot -Foreground `$presenterForeground
+    if (`$screenshotPanel) {
+      return `$screenshotPanel
+    }
+
     return [PSCustomObject]@{
       source = "presenter-bounds"
       rect = `$presenterRect
@@ -2944,6 +3170,31 @@ function Focus-SmokeWindowForShortcutProbe {
   }
   `$setForegroundResult = [SteamBridgeWindowsProbe]::SetForegroundWindow(`$handle)
   `$foreground = Get-ForegroundProbeSnapshot
+  `$focusClick = `$null
+
+  if (-not (`$foreground -and `$foreground.pid -eq `$candidate.Id)) {
+    `$rect = New-Object SteamBridgeWindowsProbe+RECT
+    `$hasRect = [SteamBridgeWindowsProbe]::GetWindowRect(`$handle, [ref]`$rect)
+    if (`$hasRect -and `$rect.Right -gt `$rect.Left -and `$rect.Bottom -gt `$rect.Top) {
+      `$clickX = [int][Math]::Round((`$rect.Left + `$rect.Right) / 2)
+      `$clickY = [int][Math]::Round((`$rect.Top + `$rect.Bottom) / 2)
+      `$focusClick = [PSCustomObject]@{
+        x = `$clickX
+        y = `$clickY
+        nativePointerSent = Send-NativeMouseClick `$clickX `$clickY
+        rect = [PSCustomObject]@{
+          left = `$rect.Left
+          top = `$rect.Top
+          right = `$rect.Right
+          bottom = `$rect.Bottom
+          width = `$rect.Right - `$rect.Left
+          height = `$rect.Bottom - `$rect.Top
+        }
+      }
+      Start-Sleep -Milliseconds 150
+      `$foreground = Get-ForegroundProbeSnapshot
+    }
+  }
 
   [PSCustomObject]@{
     attempted = `$true
@@ -2953,6 +3204,7 @@ function Focus-SmokeWindowForShortcutProbe {
     wasMinimized = `$wasMinimized
     restoreResult = `$restoreResult
     setForegroundResult = `$setForegroundResult
+    focusClick = `$focusClick
     foreground = `$foreground
     focused = (`$foreground -and `$foreground.pid -eq `$candidate.Id)
   }
@@ -3293,11 +3545,16 @@ while ((Get-Date) -lt `$deadline -and -not `$sent) {
       })
     }
     if (`$text -match 'overlay:presenter-wait-shown' -or (`$text -match 'callback:overlay-activated' -and `$text -match '"active":true')) {
+      `$detectedForeground = Get-ForegroundProbeSnapshot
       Write-ProbeEvent "probe:detected" ([PSCustomObject]@{
-        foreground = Get-ForegroundProbeSnapshot
+        foreground = `$detectedForeground
         screenshot = Capture-ProbeScreen "detected"
         processes = Get-ProbeProcessSnapshot
       })
+      `$foregroundClear = Clear-BlockingForegroundWindow `$detectedForeground
+      if (`$foregroundClear.attempted) {
+        Write-ProbeEvent "probe:foreground-clear" `$foregroundClear
+      }
       if ($settleMs -gt 0) {
         Start-Sleep -Milliseconds $settleMs
       }
@@ -3459,6 +3716,7 @@ function Invoke-Preflight {
   if ($Suite -ne "preflight" -and $Suite -ne "readiness" -and $Suite -ne "shortcut") {
     Test-NativeLoadGate -PreflightDir $preflightDir -PreflightJson $preflightJson
     Invoke-RenderHealthGate -PreflightDir $preflightDir
+    Stop-SmokePackageProcesses -DestinationFile (Join-Path $preflightDir "smoke-process-cleanup-after-render-health.json") -Phase "after-render-health"
   }
 }
 
@@ -3818,6 +4076,9 @@ Write-MatrixManifest -Cases $selectedMatrixCases
 if ($CleanStaleOverlayHelpers) {
   Stop-StaleSteamOverlayHelpers -DestinationFile (Join-Path $ArtifactRoot "stale-overlay-helper-cleanup.json")
 }
+if (Test-IsLiveSteamLaunchSuite) {
+  Stop-SmokePackageProcesses -DestinationFile (Join-Path $ArtifactRoot "smoke-process-cleanup-before-run.json") -Phase "before-run"
+}
 
 Invoke-Preflight
 
@@ -3839,6 +4100,10 @@ if ($Suite -eq "readiness") {
 
 foreach ($case in $selectedMatrixCases) {
   Invoke-MatrixCase -Case $case
+}
+
+if (Test-IsLiveSteamLaunchSuite) {
+  Stop-SmokePackageProcesses -DestinationFile (Join-Path $ArtifactRoot "smoke-process-cleanup-after-cases.json") -Phase "after-cases"
 }
 
 Write-Host ("Windows overlay matrix passed. Artifacts: {0}" -f $ArtifactRoot)

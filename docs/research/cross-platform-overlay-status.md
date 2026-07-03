@@ -170,6 +170,20 @@ rerun at
 `C:\Users\admin\steam-bridge-artifacts\windows-current-web-clickclose-20260703-034435`
 also passed with the maintained web-panel close click.
 
+A later current-package Windows run at
+`C:\Users\admin\steam-bridge-artifacts\windows-current-managed-routes-20260703-020-full-toprun-focusclick`
+re-proved the same public managed-route suite after live-harness cleanup. It
+ran hidden from an interactive `/IT` scheduled task in Session 1 with the stable
+App ID `480` shortcut, `-Suite managed-routes`, `-CloseProbe`,
+`-CloseProbeInput auto`, and the default D3D11 presenter. The local summary
+auditor reported `expectedCases=15`, `steamLaunch=15`, `overlayActive=12`, and
+`clean=15`, with no crash diagnostics. The refreshed harness now filters stale
+Steam client rendering logs against the current Steam process start, cleans
+package-owned smoke children before/after live phases, uses the top-level Steam
+web frame for close targeting, and focuses the app with a real pointer click
+before keyboard shortcut probes when Windows leaves Explorer's taskbar in the
+foreground.
+
 The Windows matrix now also has a focused `-Suite shortcut-routes` pass for
 public, non-checkout `openShortcutTargetAndWait(...)` targets. The smoke app
 records the requested shortcut target in managed-overlay diagnostics, and profile
