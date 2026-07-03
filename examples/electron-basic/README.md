@@ -845,6 +845,7 @@ On Windows, use
 `-LaunchMode steam-app -Suite checkout -InitTxnRequestFile <private-init-txn-request.json> -RequireMicroTxnCallback -CloseProbe -CloseProbeInput auto`
 for the focused configured-product checkout path.
 For `usersession=client` runs, the Windows summary prints
+`microTxnListener`, `legacyMicroTxnListener`, `microTxnSources`,
 `clientSessionCaptured`, `clientSessionCapturedSession`,
 `clientSessionCapturedEndpoint`, `clientSessionCapturedHttp`,
 `clientSessionCapturedUsersession`, `clientSessionCapturedIpAddress`,
@@ -928,8 +929,9 @@ is missing, lacks a presenter snapshot, omits the launched app ID, omits
 Steam's authorization result, or omits a redacted order ID presence marker. The
 Windows smoke app registers both the current Steamworks callback and the legacy
 normalized callback path before checkout proof, then tags authorization events
-with `callbackSource`. The Windows matrix rejects that real-callback flag with
-public App ID `480`, which is only valid for generic checkout-routing proof.
+with `callbackSource`; required callback proof accepts only `steamworks` or
+`legacy` there. The Windows matrix rejects that real-callback flag with public
+App ID `480`, which is only valid for generic checkout-routing proof.
 Linux and Steam Deck helpers expose direct inputs as `--checkout-url`,
 `--checkout-transaction-id`, and `--checkout-return-url`. Without a checkout
 file, URL, or transaction ID the helpers only require

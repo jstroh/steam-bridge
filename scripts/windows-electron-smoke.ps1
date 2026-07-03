@@ -1235,6 +1235,17 @@ function Get-MicroTxnAuthorization {
   return $null
 }
 
+function Get-MicroTxnCallbackSource {
+  param($Event)
+
+  $payload = Get-MicroTxnPayload -Event $Event
+  $value = Get-SmokeObjectProperty -Value $payload -Name "callbackSource"
+  if ($null -eq $value) {
+    return ""
+  }
+  return ([string]$value).Trim().ToLowerInvariant()
+}
+
 function Test-SanitizedValuePresent {
   param($Value)
 
@@ -1325,6 +1336,13 @@ function Assert-MicroTxnCallbackProof {
 
     if (-not (Test-MicroTxnOrderIdPresent -Event $event)) {
       $Failures.Add("$label included an order ID presence marker")
+    }
+
+    $callbackSource = Get-MicroTxnCallbackSource -Event $event
+    if (-not $callbackSource) {
+      $Failures.Add("$label included a callback source")
+    } elseif ($callbackSource -notin @("steamworks", "legacy")) {
+      $Failures.Add("$label callback source is steamworks or legacy")
     }
   }
 

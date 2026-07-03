@@ -217,10 +217,13 @@ Reviewed on 2026-07-02 while investigating Windows Electron overlay failures:
   `clientSessionWaitPresenter=true`, `microTxnListener=true`,
   `legacyMicroTxnListener=true`, and `clientPromptMissing=true`, with clean
   crash diagnostics and the close probe still foregrounded on the smoke app.
+  Current summaries also print `microTxnSources`, empty when no authorization
+  callback fires and set to `steamworks`, `legacy`, or both when one does.
   Callback-required explicit-client artifacts must prove sanitized transaction
-  capture, the prompt-wait boundary, and listener registration for both the
-  current Steamworks and legacy normalized `MicroTxnAuthorizationResponse`
-  paths before a missing-prompt diagnostic is accepted. That narrows the
+  capture, the prompt-wait boundary, listener registration for both the current
+  Steamworks and legacy normalized `MicroTxnAuthorizationResponse` paths, and a
+  recognized `callbackSource` on any authorization event before a missing-prompt
+  diagnostic is accepted. That narrows the
   remaining Windows
   purchase gap to
   Steam's automatic client-session prompt behavior for the configured

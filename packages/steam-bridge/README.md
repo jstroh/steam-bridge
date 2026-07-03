@@ -837,7 +837,7 @@ private purchase artifacts fail closed if redaction regresses. SDK-style order
 and transaction fields from Steam callbacks are treated as private checkout
 identifiers too.
 For Windows `usersession=client` diagnostics, the summary also prints
-`microTxnListener`, `legacyMicroTxnListener`,
+`microTxnListener`, `legacyMicroTxnListener`, `microTxnSources`,
 `clientSessionCaptured`, `clientSessionCapturedSession`,
 `clientSessionCapturedEndpoint`, `clientSessionCapturedHttp`,
 `clientSessionCapturedUsersession`, `clientSessionCapturedIpAddress`,
@@ -858,7 +858,9 @@ active presenter state before a missing-prompt diagnostic is accepted. Required
 callback artifacts also prove that the smoke app registered both the current
 Steamworks and legacy normalized `MicroTxnAuthorizationResponse` listener paths
 with value-free `callback:microtxn-listener-registered` events before checkout
-proof. The
+proof. Any authorization callback must include `callbackSource` as `steamworks`
+or `legacy`, and `microTxnSources` reports the unique source list for the
+artifact. The
 prompt session, endpoint, and HTTP status are copied from sanitized in-app
 `InitTxn` metadata so the artifact can be read without correlating private
 request files. The request shape fields record only whether the submitted

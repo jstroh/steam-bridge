@@ -960,8 +960,10 @@ the private `--checkout-json-file` checkout suite.
   state before accepting a missing-prompt diagnostic. Callback-required cases
   also require value-free `callback:microtxn-listener-registered` events for
   both the current Steamworks callback and the legacy normalized callback path
-  before checkout proof, so a no-callback artifact cannot be mistaken for a
-  missing listener. That keeps a failed callback-required artifact pinned to
+  before checkout proof. Any authorization callback must also include a
+  `callbackSource` of `steamworks` or `legacy`, so a no-callback artifact cannot
+  be mistaken for a missing listener and a callback artifact shows which Steam
+  callback path fired. That keeps a failed callback-required artifact pinned to
   Steam's automatic client checkout prompt boundary instead of collapsing it
   into a generic timeout.
   Pass `-PresenterMode session` only when intentionally comparing the direct

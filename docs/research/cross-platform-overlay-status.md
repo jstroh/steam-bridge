@@ -326,11 +326,14 @@ wait. The Windows summary reports this case as `clientSessionCaptured=true`,
 `clientSessionWaitPresenter=true`, `microTxnListener=true`,
 `legacyMicroTxnListener=true`, and `clientPromptMissing=true`; the close probe
 saw the smoke app foreground rather than a checkout panel, and crash diagnostics
-stayed clean. The summary now requires explicit-client request-file artifacts to
-prove sanitized client-session capture, transaction presence, prompt-wait start,
-active presenter state, and value-free listener registration for both the
-current Steamworks and legacy normalized `MicroTxnAuthorizationResponse` paths
-before accepting a missing-prompt diagnostic. This makes the
+stayed clean. The current summary also prints `microTxnSources`, which remains
+empty when no authorization callback fires and records `steamworks`, `legacy`,
+or both when one does. The summary now requires explicit-client request-file
+artifacts to prove sanitized client-session capture, transaction presence,
+prompt-wait start, active presenter state, value-free listener registration for
+both the current Steamworks and legacy normalized `MicroTxnAuthorizationResponse`
+paths, and a recognized `callbackSource` on any authorization event before
+accepting a missing-prompt diagnostic. This makes the
 remaining gap sharper: Steam Bridge is correctly priming the presenter and
 preserving the client-session target, but this Steam client/product/account
 combination is not showing Steam's automatic client-session authorization

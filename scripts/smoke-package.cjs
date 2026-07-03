@@ -895,7 +895,10 @@ function runWindowsSmokeHelperStaticChecks() {
     "microTxnListener=",
     "legacyMicroTxnListener=",
     "microTxnCallbacks=",
+    "microTxnSources=",
     "microTxnCallbackProof",
+    "did not include a callback source",
+    "callback source expected steamworks or legacy",
     "clientSessionCapturedTransaction=",
     "clientSessionWaitStarted=",
     "clientSessionWaitPrompt=",
@@ -939,7 +942,8 @@ function runWindowsSmokeHelperStaticChecks() {
     "RequireNativeHostBackend",
     "native presenter backend is $RequireNativeHostBackend",
     "MicroTxnAuthorizationResponse listener was registered before checkout proof",
-    "LegacyMicroTxnAuthorizationResponse listener was registered before checkout proof"
+    "LegacyMicroTxnAuthorizationResponse listener was registered before checkout proof",
+    "callback source is steamworks or legacy"
   ]) {
     assert.ok(helper.includes(expected), `Windows smoke helper missing ${expected}`);
   }

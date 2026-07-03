@@ -435,6 +435,11 @@ function validateManifestCoverage(
         `matrix manifest case ${expected.id} proved MicroTxnAuthorizationResponse callback`,
         failures
       );
+      if (row.microTxnCallbackProof !== true && Array.isArray(row.microTxnCallbackProofFailures)) {
+        for (const failure of row.microTxnCallbackProofFailures) {
+          failures.push(`matrix manifest case ${expected.id}: ${failure}`);
+        }
+      }
     }
     if (expected.hasInitTxnRequestFile === true) {
       expect(
@@ -1204,6 +1209,12 @@ function verifyMicroTxnCallbackProof(actionName, events, expectedAppId, failures
     if (!microTxnEventOrderIdPresent(event)) {
       failures.push(`${label} did not include an order ID presence marker`);
     }
+    const callbackSource = microTxnEventCallbackSource(event);
+    if (!callbackSource) {
+      failures.push(`${label} did not include a callback source`);
+    } else if (!["steamworks", "legacy"].includes(callbackSource)) {
+      failures.push(`${label} callback source expected steamworks or legacy, got ${formatValue(callbackSource)}`);
+    }
   });
 
   const lifecycle = microTxnCheckoutLifecycle(actionName, events, failures);
@@ -1260,6 +1271,25 @@ function microTxnCheckoutLifecycle(actionName, events, failures) {
 function microTxnPayload(event) {
   const payload = objectOrEmpty(event && event.payload);
   return objectOrEmpty(payload["0"] || payload);
+}
+
+function microTxnEventCallbackSource(event) {
+  const source = microTxnPayload(event).callbackSource;
+  return typeof source === "string" && source.trim() ? source.trim().toLowerCase() : "";
+}
+
+function microTxnCallbackSources(events) {
+  const sources = new Set();
+  for (const event of events) {
+    if (!isMicroTxnCallbackEvent(event)) {
+      continue;
+    }
+    const source = microTxnEventCallbackSource(event);
+    if (source) {
+      sources.add(source);
+    }
+  }
+  return [...sources].sort().join(",");
 }
 
 function microTxnPresenterSnapshot(event) {
@@ -1342,6 +1372,7 @@ function summarizeCaseResult(caseName, result, resultLog, renderingHealth = null
   const clientSessionCheckoutCapture = summarizeClientSessionCheckoutCapture(events);
   const clientSessionWaitStart = summarizeClientSessionWaitStart(events);
   const clientSessionPromptMissing = summarizeClientSessionPromptMissing(events);
+  const microTxnCallbackProof = hasMicroTxnCallbackProof(String(action.action || ""), events, app.appId);
 
   expect(result.ok === true, `${caseName}: smoke result ok`, failures);
   expect(action.ok === true, `${caseName}: autorun action succeeded`, failures);
@@ -1380,7 +1411,9 @@ function summarizeCaseResult(caseName, result, resultLog, renderingHealth = null
     microTxnCallbackListenerRegistered: hasMicroTxnCallbackListenerRegistered(events),
     legacyMicroTxnCallbackListenerRegistered: hasLegacyMicroTxnCallbackListenerRegistered(events),
     microTxnCallbackCount: events.filter(isMicroTxnCallbackEvent).length,
-    microTxnCallbackProof: hasMicroTxnCallbackProof(String(action.action || ""), events, app.appId).ok,
+    microTxnCallbackSources: microTxnCallbackSources(events),
+    microTxnCallbackProof: microTxnCallbackProof.ok,
+    microTxnCallbackProofFailures: microTxnCallbackProof.failures,
     initTxnRequestShapePresent: initTxnRequestShape.present,
     initTxnRequestShapeSession: initTxnRequestShape.session,
     initTxnRequestShapeEndpoint: initTxnRequestShape.endpoint,
@@ -1546,7 +1579,8 @@ function printSummary(summary) {
           `overlayEnabled=${formatValue(row.overlayEnabled)} ` +
           `microTxnListener=${row.microTxnCallbackListenerRegistered} ` +
           `legacyMicroTxnListener=${row.legacyMicroTxnCallbackListenerRegistered} ` +
-          `microTxnCallbacks=${row.microTxnCallbackCount} microTxnProof=${row.microTxnCallbackProof} ` +
+          `microTxnCallbacks=${row.microTxnCallbackCount} ` +
+          `microTxnSources=${formatValue(row.microTxnCallbackSources)} microTxnProof=${row.microTxnCallbackProof} ` +
           `initTxnRequestShape=${row.initTxnRequestShapePresent} ` +
           `initTxnRequestSession=${formatValue(row.initTxnRequestShapeSession)} ` +
           `initTxnRequestEndpoint=${formatValue(row.initTxnRequestShapeEndpoint)} ` +
@@ -2285,6 +2319,7 @@ function runSelfTest() {
     assert.equal(managedCheckoutMicroTxnSummary.caseSummaries[0].microTxnCallbackListenerRegistered, true);
     assert.equal(managedCheckoutMicroTxnSummary.caseSummaries[0].legacyMicroTxnCallbackListenerRegistered, true);
     assert.equal(managedCheckoutMicroTxnSummary.caseSummaries[0].microTxnCallbackCount, 1);
+    assert.equal(managedCheckoutMicroTxnSummary.caseSummaries[0].microTxnCallbackSources, "steamworks");
     assert.equal(managedCheckoutMicroTxnSummary.caseSummaries[0].microTxnCallbackProof, true);
 
     const missingMicroTxnListenerRoot = path.join(tempRoot, "managed-checkout-missing-microtxn-listener");
@@ -2316,6 +2351,26 @@ function runSelfTest() {
         failure.includes("proved MicroTxnAuthorizationResponse callback")
       ),
       "summary self-test should fail when real checkout proof omits the MicroTxn callback"
+    );
+
+    const missingMicroTxnSourceRoot = path.join(tempRoot, "managed-checkout-missing-microtxn-source");
+    writeManagedCheckoutMicroTxnFixture(missingMicroTxnSourceRoot, { omitMicroTxnCallbackSource: true });
+    const missingMicroTxnSourceSummary = summarizeWindowsOverlayMatrixArtifacts(missingMicroTxnSourceRoot);
+    assert(
+      missingMicroTxnSourceSummary.failures.some((failure) =>
+        failure.includes("did not include a callback source")
+      ),
+      "summary self-test should fail when real checkout proof omits the MicroTxn callback source"
+    );
+
+    const unknownMicroTxnSourceRoot = path.join(tempRoot, "managed-checkout-unknown-microtxn-source");
+    writeManagedCheckoutMicroTxnFixture(unknownMicroTxnSourceRoot, { callbackSource: "raw" });
+    const unknownMicroTxnSourceSummary = summarizeWindowsOverlayMatrixArtifacts(unknownMicroTxnSourceRoot);
+    assert(
+      unknownMicroTxnSourceSummary.failures.some((failure) =>
+        failure.includes("callback source expected steamworks or legacy")
+      ),
+      "summary self-test should fail when real checkout proof records an unknown MicroTxn callback source"
     );
 
     const webSessionCapturedRoot = path.join(tempRoot, "managed-checkout-web-session-captured");
@@ -3413,7 +3468,7 @@ function microTxnCallbackEventFixture(options = {}) {
       appId: 480,
       orderId: { redacted: true, present: true, type: "bigint" },
       authorized: true,
-      callbackSource: options.callbackSource || "steamworks",
+      ...(!options.omitMicroTxnCallbackSource ? { callbackSource: options.callbackSource || "steamworks" } : {}),
       presenter: {
         mode: "active",
         nativeHostOpen: true,
