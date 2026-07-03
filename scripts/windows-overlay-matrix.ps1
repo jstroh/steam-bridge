@@ -63,7 +63,6 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$script:GeneratedInitTxnResponseFile = ""
 
 if (-not $AppDir) {
   $scriptDir = Split-Path -Parent $PSCommandPath
@@ -1093,24 +1092,6 @@ function Resolve-CheckoutValidatorPath {
   throw "Missing Steam checkout target validator. Expected it in the package or repo checkout."
 }
 
-function Resolve-InitTxnCapturePath {
-  $packageCapture = Join-Path $AppDir "resources\app\node_modules\steam-bridge\bin\init-client-txn.cjs"
-  if (Test-Path -LiteralPath $packageCapture) {
-    return $packageCapture
-  }
-
-  $scriptDir = Split-Path -Parent $PSCommandPath
-  if ($scriptDir) {
-    $repoRoot = Split-Path -Parent $scriptDir
-    $repoCapture = Join-Path $repoRoot "packages\steam-bridge\bin\init-client-txn.cjs"
-    if (Test-Path -LiteralPath $repoCapture) {
-      return $repoCapture
-    }
-  }
-
-  throw "Missing Steam InitTxn capture CLI. Expected it in the package or repo checkout."
-}
-
 function Resolve-JavaScriptRunner {
   if ($JavaScriptRunnerExe) {
     if (-not (Test-Path -LiteralPath $JavaScriptRunnerExe)) {
@@ -1275,12 +1256,6 @@ function Test-MatrixRequiresMicroTxnCallback {
   }).Count -gt 0)
 }
 
-function New-PrivateInitTxnResponsePath {
-  $privateDir = Join-Path $env:TEMP "steam-bridge-private-checkout"
-  New-Item -ItemType Directory -Force -Path $privateDir | Out-Null
-  return (Join-Path $privateDir ("init-txn-response-{0}.json" -f ([guid]::NewGuid().ToString("N"))))
-}
-
 function Invoke-InitTxnCapture {
   param([object[]]$Cases)
 
@@ -1312,8 +1287,6 @@ function Invoke-InitTxnCapture {
     generatedAt = (Get-Date).ToUniversalTime().ToString("o")
     source = "init-txn-request-file"
     hasRequestFile = $true
-    hasResponseFile = $false
-    responseFileGenerated = $false
     captureInApp = $true
     apiKeyEnvProvided = [bool]$InitTxnApiKeyEnv
     endpointOption = $InitTxnEndpoint
@@ -2459,8 +2432,6 @@ function Write-MatrixManifest {
     requireMicroTxnCallback = [bool]$RequireMicroTxnCallback
     initTxnCapture = [PSCustomObject]@{
       hasRequestFile = [bool]$InitTxnRequestFile
-      hasResponseFile = [bool]($InitTxnRequestFile -and $CheckoutJsonFile)
-      responseFileGenerated = [bool]$script:GeneratedInitTxnResponseFile
       captureInApp = [bool]$InitTxnRequestFile
       apiKeyEnvProvided = [bool]$InitTxnApiKeyEnv
       endpointOption = $InitTxnEndpoint
