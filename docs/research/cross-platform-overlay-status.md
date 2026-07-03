@@ -274,7 +274,11 @@ native presenter and return to idle without opening modal Steam UI.
 The interactive task wrapper now defaults to `-TaskRunLevel Limited`, matching
 the logged-in desktop token used by Steam; `-TaskRunLevel Highest` remains
 available only for focused diagnostics on machines whose scheduled-task policy
-requires elevation.
+requires elevation. The wrapper now normalizes split and inline
+`-Name=value`/`-Name:value` matrix arguments into the same hashtable splat and
+redacts sensitive inline argument values case-insensitively before logging, so
+saved Windows proof commands cannot leak private checkout paths or identifiers
+just because they use a different PowerShell argument style.
 
 A configured-app checkout task run at
 `C:\Users\admin\steam-bridge-artifacts\windows-real-app-checkout-unique-20260703074447`

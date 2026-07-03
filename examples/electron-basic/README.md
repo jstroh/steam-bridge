@@ -900,6 +900,11 @@ is not committed, and the wrapper reports only how many values were imported.
 `-MatrixArgs @(...)` is still supported from an interactive PowerShell session,
 but `-MatrixArgsFile` is safer for SSH, `powershell.exe -File`, and saved
 commands.
+When you do pass matrix arguments directly, the wrapper accepts both split
+arguments and inline `-Name=value`/`-Name:value` forms. Sensitive inline values
+are redacted case-insensitively before the wrapper prints `matrixArgs`, but
+the JSON args file remains the least surprising option for private checkout
+proof.
 `-TaskRunLevel Limited` is the default and keeps the temporary task in the same
 logged-in desktop token as Steam. Use `-TaskRunLevel Highest` only as a focused
 diagnostic on machines whose task policy requires elevation.

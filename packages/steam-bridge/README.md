@@ -201,6 +201,10 @@ to drive a remote Windows laptop from SSH while keeping live overlay work inside
 the logged-in desktop session. Pass private publisher values through
 `-PrivateEnvFile <path-to-NAME=VALUE-file>`; the wrapper imports them into the
 task environment and prints only the count, not the values.
+The wrapper accepts both split matrix arguments and inline
+`-Name=value`/`-Name:value` forms, and redacts sensitive inline values
+case-insensitively in its logs. `-MatrixArgsFile` is still the preferred shape
+for private checkout runs because it avoids shell-specific quoting behavior.
 The wrapper defaults to `-TaskRunLevel Limited`, matching Steam's logged-in
 desktop token. Use `-TaskRunLevel Highest` only as a focused diagnostic when the
 test machine's scheduled-task policy requires elevation.
@@ -861,7 +865,9 @@ Windows summary without logging private item, transaction, or account values.
 The matrix's dry-run and live command logs also redact checkout file paths,
 checkout URLs, return URLs, transaction IDs, and control tokens. Those logs show
 the option name plus `REDACTED`, which keeps command-shape review useful without
-printing private purchase data.
+printing private purchase data. The Windows task wrapper applies the same
+redaction to both split arguments and inline `-Name=value`/`-Name:value`
+matrix arguments before it logs the scheduled task launch.
 On macOS, the helper also copies fresh `SteamBridgeSmoke*.ips` reports from
 `~/Library/Logs/DiagnosticReports`, plus `MTLCompilerService*.ips` reports whose
 content attributes the crash to `SteamBridgeSmoke`, into `macos-crash-reports/`,

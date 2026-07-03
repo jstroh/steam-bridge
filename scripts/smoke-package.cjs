@@ -379,6 +379,7 @@ function runWindowsSmokeHelperStaticChecks() {
   );
   const matrixSummary = fs.readFileSync(path.join(repoRoot, "scripts", "summarize-windows-overlay-matrix.cjs"), "utf8");
   const electronHelper = fs.readFileSync(path.join(repoRoot, "packages", "steam-bridge", "src", "electron.ts"), "utf8");
+  const packageReadme = fs.readFileSync(path.join(repoRoot, "packages", "steam-bridge", "README.md"), "utf8");
   const exampleReadme = fs.readFileSync(path.join(repoRoot, "examples", "electron-basic", "README.md"), "utf8");
   const electronSmokeMain = fs.readFileSync(path.join(repoRoot, "examples", "electron-basic", "main.js"), "utf8");
   for (const expected of [
@@ -399,6 +400,18 @@ function runWindowsSmokeHelperStaticChecks() {
   assert.ok(
     !exampleReadme.includes("The helper defaults `-OverlayInProcessGpu 1` on Windows"),
     "Electron example README must not describe in-process GPU as the Windows default"
+  );
+  assert.ok(
+    packageReadme.includes("`-Name=value`/`-Name:value` forms") &&
+      packageReadme.includes("redacts sensitive inline values") &&
+      packageReadme.includes("`-MatrixArgsFile` is still the preferred shape"),
+    "package README must document Windows task wrapper inline argument redaction"
+  );
+  assert.ok(
+    exampleReadme.includes("`-Name=value`/`-Name:value` forms") &&
+      exampleReadme.includes("Sensitive inline values") &&
+      exampleReadme.includes("JSON args file remains the least surprising option"),
+    "Electron example README must document Windows task wrapper inline argument redaction"
   );
   assert.ok(
     matrixHelper.includes('$text -notlike "Steam launch options:*"') &&
