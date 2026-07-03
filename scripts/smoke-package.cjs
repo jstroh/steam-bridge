@@ -418,6 +418,7 @@ function runWindowsSmokeHelperStaticChecks() {
     "function Test-OverlayActiveEvent",
     "function Wait-ForSmokeProcessExit",
     "Windows steam-launch smoke completed.",
+    "Windows steam-app smoke completed.",
     "RequireOverlayActivated",
     "AllowOverlayNotReady",
     "RequirePassiveNotification",
@@ -468,6 +469,7 @@ function runWindowsSmokeHelperStaticChecks() {
   }
   for (const expected of [
     "ValidateSet(\"baseline\", \"managed\", \"managed-routes\", \"shortcut-routes\", \"checkout\", \"full\", \"preflight\", \"readiness\", \"shortcut\")",
+    'ValidateSet("steam-launch", "steam-app", "direct")',
     "Test-NativeLoadGate",
     "Get-PreflightAppControlSummary",
     "New-NativeLoadGateBlocker",
@@ -500,6 +502,9 @@ function runWindowsSmokeHelperStaticChecks() {
     "Use either -CheckoutJsonFile or -InitTxnRequestFile, not both.",
     "-InitTxnRequestFile requires a selected checkout target case.",
     "-InitTxnRequestFile requires a configured Steam app/product; public App ID 480 only proves checkout routing.",
+    "-RequireMicroTxnCallback with -InitTxnRequestFile requires -LaunchMode steam-app so Steam launches the configured app, not a non-Steam shortcut.",
+    "-RequireMicroTxnCallback requires -LaunchMode steam-app so Steam launches the configured app, not a non-Steam shortcut.",
+    "-LaunchMode steam-app requires your configured Steam app ID; use the non-Steam shortcut mode for public App ID 480 smoke proof.",
     "-RequireMicroTxnCallback requires a selected checkout callback case.",
     "Test-MatrixUsesCheckoutTarget",
     "Test-MatrixRequiresMicroTxnCallback",
@@ -570,6 +575,7 @@ function runWindowsSmokeHelperStaticChecks() {
     "upsert-steam-shortcut.cjs",
     "STEAM_SHORTCUT_RESULT",
     "Windows steam-launch smoke completed.",
+    "Windows steam-app smoke completed.",
     "-RequireOverlayActivated",
     "-RequireNoOverlayActivation",
     "-AllowOverlayNotReady",
@@ -613,6 +619,7 @@ function runWindowsSmokeHelperStaticChecks() {
     "Windows overlay matrix readiness passed.",
     "The matrix will not silently start Steam for live overlay proof.",
     "steam-launch",
+    "steam-app",
     "ArtifactRoot",
     "Get-WindowsSessionSummary",
     "currentSessionInteractive",
@@ -629,6 +636,10 @@ function runWindowsSmokeHelperStaticChecks() {
   assert.ok(
     matrixSummary.includes('"shortcut-routes"'),
     "Windows overlay matrix summary must accept the shortcut-routes suite"
+  );
+  assert.ok(
+    matrixSummary.includes('"steam-app"'),
+    "Windows overlay matrix summary must accept real Steam app launch mode"
   );
   for (const expected of [
     "SBOverlayMatrix",
@@ -718,6 +729,7 @@ function runWindowsSmokeHelperStaticChecks() {
     "expectedNativeHostBackend=",
     "nativePathOverride=",
     "requireMicroTxnCallback=",
+    "launchKind",
     "microTxnCallbacks=",
     "microTxnCallbackProof",
     "proved MicroTxnAuthorizationResponse callback",

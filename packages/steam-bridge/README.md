@@ -218,10 +218,15 @@ Steam overlay chord and closes Steam web-backed surfaces only after screenshot
 evidence shows the panel has painted. Use `-Suite shortcut-routes` for focused
 Windows shortcut `openShortcutTargetAndWait(...)` coverage across the public
 non-checkout targets, with the requested target recorded in smoke diagnostics.
-Check the per-case artifact before treating a route as product-proof. Keep real
-checkout proof focused on
-`-Suite checkout -CheckoutJsonFile <private-init-txn-response.json> -RequireMicroTxnCallback -CloseProbe -CloseProbeInput auto`
-with your own configured app and product. The checkout suite covers
+Check the per-case artifact before treating a route as product-proof. Keep public
+checkout routing proof on App ID `480`, and keep real checkout authorization
+proof focused on
+`-LaunchMode steam-app -Suite checkout -InitTxnRequestFile <private-init-txn-request.json> -RequireMicroTxnCallback -CloseProbe -CloseProbeInput auto`
+with your own configured app and product. The real Steam app's launch options
+must include the stable smoke env-file argument printed by the matrix, for
+example `--steam-bridge-smoke-env-file=<launchEnvFile>`, so Steam launches the
+smoke executable through the configured app rather than a non-Steam shortcut.
+The checkout suite covers
 prepare-only, direct checkout, Shift+Tab checkout, and programmatic checkout
 shortcut open-and-wait without rerunning unrelated overlay surfaces. Add
 `-RequireMicroTxnCallback` when the artifact should prove Steam's authorization
@@ -750,22 +755,26 @@ failures instead of logging the raw checkout target.
 The Electron smoke app redacts real checkout URLs, transaction IDs, return URLs,
 Steam IDs, auth-ticket bytes, and private CLI arguments from result and lifecycle
 artifacts while preserving machine-checkable presence flags and presenter
-snapshots. For real product smoke proof, write the backend `InitTxn` or
-checkout response JSON to a private temp file and pass its path with
-`STEAM_BRIDGE_SMOKE_CHECKOUT_JSON_FILE`, the macOS helper/matrix
-`--checkout-json-file` option, or the Windows helper/matrix `-CheckoutJsonFile`
-option; the smoke app feeds that object through `openCheckoutAndWait(...)`
-without committing private data or putting transaction values in launch
-arguments. To create that private file from a generic request JSON, run
+snapshots. For real product smoke proof from a pre-created checkout result,
+write the backend `InitTxn` or checkout response JSON to a private temp file and
+pass its path with `STEAM_BRIDGE_SMOKE_CHECKOUT_JSON_FILE`, the macOS
+helper/matrix `--checkout-json-file` option, or the Windows helper/matrix
+`-CheckoutJsonFile` option; the smoke app feeds that object through
+`openCheckoutAndWait(...)` without committing private data or putting
+transaction values in launch arguments. To create that private file from a
+generic request JSON, run
 `steam-bridge-init-client-txn --file <private-init-txn-request.json> --out <private-init-txn-response.json> --production`
 with the publisher key in `STEAM_WEB_API_KEY` or `STEAM_API_KEY`; the CLI does
 not accept literal keys in command-line arguments and prints only sanitized
-checkout-target presence metadata. On Windows, the matrix can do that capture
-step itself with
-`-InitTxnRequestFile <private-init-txn-request.json>`; it writes the private
-response outside the artifact root by default, validates it against `-AppId`,
-and records only sanitized capture metadata. The macOS and Windows matrices
-preflight that JSON through
+checkout-target presence metadata. On Windows, prefer matrix-owned in-app
+capture with
+`-LaunchMode steam-app -InitTxnRequestFile <private-init-txn-request.json>`.
+The smoke app creates the transaction after Steam has initialized and after it
+has read the active Steam ID, then records only sanitized checkout-target
+presence metadata. Use the non-Steam shortcut lane for public App ID `480`
+route and lifecycle coverage; use `steam-app` for callback-required real
+purchase proof. The macOS and Windows matrices preflight static checkout JSON
+through
 `checkoutTargetFromResult(...)` and pass the matrix app ID into that resolver
 before any live Steam launch. If the capture includes an app ID, the same
 wrong-app guard used by runtime checkout opens rejects mismatches without
@@ -782,10 +791,11 @@ pair it with `--app-id <your-app-id>`,
 `--require-microtxn-callback` when the private direct checkout case is expected
 to produce a `MicroTxnAuthorizationResponse`. On Windows, keep focused private
 checkout proof to
-`-Suite checkout -CheckoutJsonFile <private-init-txn-response.json> -RequireMicroTxnCallback -CloseProbe -CloseProbeInput auto`
+`-LaunchMode steam-app -Suite checkout -InitTxnRequestFile <private-init-txn-request.json> -RequireMicroTxnCallback -CloseProbe -CloseProbeInput auto`
 with the matching configured app ID when a purchase authorization callback is
-expected. The callback flags require private checkout JSON, so a real-callback
-proof cannot accidentally fall back to the public synthetic App ID `480`.
+expected. The callback flags require private checkout input, so a real-callback
+proof cannot accidentally fall back to the public synthetic App ID `480` or the
+non-Steam shortcut harness.
 The Windows matrix also rejects `-RequireMicroTxnCallback` with App ID `480`
 before live launch because that public app can only prove checkout routing.
 The summary will fail if that callback is missing, lacks a

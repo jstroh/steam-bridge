@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-  [ValidateSet("direct", "steam-launch", "verify", "preflight", "print-launch-options", "print-launch-env", "write-launch-env")]
+  [ValidateSet("direct", "steam-launch", "steam-app", "verify", "preflight", "print-launch-options", "print-launch-env", "write-launch-env")]
   [string]$Mode = "direct",
 
   [string]$AppDir = "",
@@ -1710,12 +1710,36 @@ function Invoke-SteamLaunchSmoke {
   Write-Host "Windows steam-launch smoke completed."
 }
 
+function Invoke-SteamAppSmoke {
+  Assert-InteractiveWindowsSessionForSteamLaunch | Out-Null
+  if (-not $AllowStartSteamClient -and -not (Get-Process steam -ErrorAction SilentlyContinue)) {
+    throw (
+      "Steam is not running. Start Steam once in the interactive Windows desktop session, " +
+      "wait for the client UI to render normally, then rerun the helper. " +
+      "Pass -AllowStartSteamClient only when you intentionally want this helper to start Steam via steam://rungameid."
+    )
+  }
+
+  New-Item -ItemType Directory -Force -Path (Split-Path -Parent $ResultFile) | Out-Null
+  Remove-Item -LiteralPath $ResultFile -Force -ErrorAction SilentlyContinue
+  Remove-Item -LiteralPath $DiagnosticDir -Recurse -Force -ErrorAction SilentlyContinue
+
+  Start-Process "steam://rungameid/$AppId"
+  Wait-ForResultFile -LogFile $ResultFile
+  $result = Read-SmokeResult -LogFile $ResultFile
+  Assert-SmokeResult $result
+  Wait-ForSmokeProcessExit -Result $result
+  Write-Host "Windows steam-app smoke completed."
+}
+
 switch ($Mode) {
   "print-launch-options" {
-    Write-Host "Steam shortcut launch options:"
+    Write-Host "Steam launch options:"
     Write-Host (Get-LaunchOptionsLine -LogFile $ResultFile -SmokeAction $Action)
     if ($ShortcutGameId) {
       Write-Host "Launch URL: steam://rungameid/$ShortcutGameId"
+    } else {
+      Write-Host "Launch URL: steam://rungameid/$AppId"
     }
   }
   "print-launch-env" {
@@ -1740,6 +1764,14 @@ switch ($Mode) {
       $RequireOverlayReady = $true
     }
     Invoke-SteamLaunchSmoke
+  }
+  "steam-app" {
+    Add-DefaultRequireEvents
+    $RequireSteamLaunch = $true
+    if (-not $AllowOverlayNotReady) {
+      $RequireOverlayReady = $true
+    }
+    Invoke-SteamAppSmoke
   }
   "verify" {
     Assert-SmokeResult (Read-SmokeResult -LogFile $ResultFile)

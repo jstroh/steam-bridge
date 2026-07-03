@@ -255,7 +255,18 @@ function validateManifest(manifest, failures) {
     `matrix manifest suite is known: ${manifest.suite}`,
     failures
   );
-  expect(["steam-launch", "direct"].includes(manifest.launchMode), `matrix manifest launchMode is known: ${manifest.launchMode}`, failures);
+  expect(
+    ["steam-launch", "steam-app", "direct"].includes(manifest.launchMode),
+    `matrix manifest launchMode is known: ${manifest.launchMode}`,
+    failures
+  );
+  if (manifest.launchKind !== undefined) {
+    expect(
+      ["shortcut", "app", "direct"].includes(manifest.launchKind),
+      `matrix manifest launchKind is known: ${manifest.launchKind}`,
+      failures
+    );
+  }
   expect(Number.isInteger(manifest.appId), "matrix manifest appId is an integer", failures);
   if (manifest.nativePathOverride !== undefined) {
     expect(typeof manifest.nativePathOverride === "boolean", "matrix manifest nativePathOverride is boolean", failures);
@@ -339,7 +350,7 @@ function validateManifestCoverage(manifest, caseSummaries, caseAppControlBlocker
     }
     expect(row.action === expected.action, `matrix manifest case ${expected.id} action matches result`, failures);
     expect(row.appId === manifest.appId, `matrix manifest case ${expected.id} App ID matches manifest`, failures);
-    if (manifest.launchMode === "steam-launch") {
+    if (["steam-launch", "steam-app"].includes(manifest.launchMode)) {
       expect(row.steamLaunch === true, `matrix manifest case ${expected.id} was Steam-launched`, failures);
       expect(
         row.steamOverlayLaunchMarker === true,

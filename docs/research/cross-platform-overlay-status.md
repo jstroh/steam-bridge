@@ -266,6 +266,11 @@ limit: public App ID `480` and non-Steam shortcuts prove routing, lifecycle,
 presenter, close/back-to-app, and callback plumbing, but client-session
 microtransaction authorization still needs a real Steam-launched app/beta with
 a configured product.
+The Windows matrix now exposes that distinction explicitly: `steam-launch`
+means the stable non-Steam shortcut lane for public route proof, while
+`steam-app` launches `steam://rungameid/<AppId>` for a configured app whose
+Steam launch options point at the smoke env file. Callback-required in-app
+checkout proof is gated to `steam-app`.
 
 Latest Windows D3D11 keyboard proof: the refreshed Electron `43.0.0` smoke
 bundle was rebuilt on macOS, deployed to the Windows laptop, and Authenticode

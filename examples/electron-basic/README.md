@@ -817,12 +817,16 @@ request when the network request itself should be canceled too. Closing the
 overlay manager while that operation is pending also releases the hold and
 prevents a late checkout surface from opening.
 The macOS helper/matrix expose the private-file path as `--checkout-json-file`,
-and the Windows helper/matrix expose it as `-CheckoutJsonFile`. The matrices can
-pair it with the matching configured app ID and record only source/presence
-metadata, never the file path. Before live launch, the matrix validates that this
-JSON resolves to a checkout URL, Steam checkout URL, transaction ID, or
-`InitTxn` envelope, and it passes the matrix app ID into the same resolver so
-embedded app IDs use the runtime wrong-app guard without printing either value.
+and the Windows helper/matrix still accept static checkout JSON with
+`-CheckoutJsonFile`. For Windows real-purchase callback proof, prefer in-app
+capture with `-LaunchMode steam-app -InitTxnRequestFile <private-request.json>`;
+the smoke app creates the transaction after Steam init and records only
+source/presence metadata. The `steam-app` launch mode starts
+`steam://rungameid/<AppId>`, so the configured Steam app's launch options must
+point at the stable smoke env file printed by the matrix. The non-Steam shortcut
+lane remains the public App ID `480` route/lifecycle proof lane. Before live
+launch, the matrix validates static JSON against the matrix app ID and uses the
+same runtime wrong-app guard without printing either value.
 The standalone
 `steam-bridge-validate-checkout-target --expected-app-id <your-app-id>` CLI
 performs the same preflight and treats Steam SDK-style app ID fields such as
@@ -832,7 +836,7 @@ arrays, without printing the value. Use
 prepare-only, direct checkout, Shift+Tab checkout, and programmatic checkout
 shortcut/open-and-wait without rerunning unrelated overlay surfaces.
 On Windows, use
-`-Suite checkout -CheckoutJsonFile <private-init-txn-response.json> -RequireMicroTxnCallback -CloseProbe -CloseProbeInput auto`
+`-LaunchMode steam-app -Suite checkout -InitTxnRequestFile <private-init-txn-request.json> -RequireMicroTxnCallback -CloseProbe -CloseProbeInput auto`
 for the focused configured-product checkout path.
 When driving Windows from SSH, run the same checkout suite through the packaged
 interactive task wrapper so the overlay launches in the logged-in desktop
@@ -847,8 +851,7 @@ arguments file so PowerShell invocation style does not affect array binding:
   "-InitTxnApiKeyEnv", "STEAM_WEB_API_KEY",
   "-InitTxnEndpoint", "sandbox",
   "-RequireMicroTxnCallback",
-  "-LaunchMode", "steam-launch",
-  "-AssumeShortcutConfigured",
+  "-LaunchMode", "steam-app",
   "-CloseProbe",
   "-CloseProbeInput", "auto"
 ]
@@ -1481,10 +1484,13 @@ app-specific proof outside the committed examples:
    overlay-preparation timers around that call.
 5. For smoke proof, save the returned JSON to a private temp file and pass it
    with `STEAM_BRIDGE_SMOKE_CHECKOUT_JSON_FILE`, the macOS helper's
-   `--checkout-json-file`, or the Windows helper's `-CheckoutJsonFile`. For
-   focused macOS matrix proof, run `--suite checkout`; for focused Windows proof,
-   run `-Suite checkout -CloseProbe`. The matrix validates
-   any embedded app ID against the configured app ID before live launch.
+   `--checkout-json-file`, or the Windows helper's `-CheckoutJsonFile`. On
+   Windows, prefer letting the matrix create the transaction in-app with
+   `-LaunchMode steam-app -InitTxnRequestFile <private-init-txn-request.json>`.
+   For focused macOS matrix proof, run `--suite checkout`; for focused Windows
+   proof, run `-LaunchMode steam-app -Suite checkout -CloseProbe`. The matrix
+   validates any embedded app ID against the configured app ID before live
+   launch.
    Add `--require-microtxn-callback` on macOS or `-RequireMicroTxnCallback` on
    Windows when the direct checkout case should receive Steam's authorization
    callback.
@@ -1492,8 +1498,8 @@ app-specific proof outside the committed examples:
    `steam-bridge-init-client-txn --file <private-init-txn-request.json> --out <private-init-txn-response.json> --production`
    with `STEAM_WEB_API_KEY` or `STEAM_API_KEY` set; the CLI prints only
    sanitized presence flags and never accepts publisher keys as command-line
-   arguments. On Windows, `windows-overlay-matrix.ps1` can run that capture as
-   part of the focused checkout proof with
+   arguments. On Windows, `windows-overlay-matrix.ps1` can run that capture
+   inside the initialized Steam app as part of the focused checkout proof with
    `-InitTxnRequestFile <private-init-txn-request.json>` and will still keep raw
    checkout values out of logs and manifests.
 6. Let Steam Bridge open the returned checkout URL or transaction approval path.

@@ -3,7 +3,7 @@ param(
   [ValidateSet("baseline", "managed", "managed-routes", "shortcut-routes", "checkout", "full", "preflight", "readiness", "shortcut")]
   [string]$Suite = "baseline",
 
-  [ValidateSet("steam-launch", "direct")]
+  [ValidateSet("steam-launch", "steam-app", "direct")]
   [string]$LaunchMode = "steam-launch",
 
   [string]$AppDir = "",
@@ -87,8 +87,20 @@ if (-not $WebUrl) {
   $WebUrl = "https://store.steampowered.com/app/$AppId/"
 }
 
-if ($Suite -eq "readiness" -and $LaunchMode -ne "steam-launch") {
-  throw "-Suite readiness checks live Steam-launched readiness and requires -LaunchMode steam-launch."
+if ($Suite -eq "readiness" -and $LaunchMode -notin @("steam-launch", "steam-app")) {
+  throw "-Suite readiness checks live Steam-launched readiness and requires -LaunchMode steam-launch or -LaunchMode steam-app."
+}
+
+if ($Suite -eq "shortcut" -and $LaunchMode -ne "steam-launch") {
+  throw "-Suite shortcut configures the stable non-Steam shortcut and requires -LaunchMode steam-launch."
+}
+
+if ($LaunchMode -eq "steam-app" -and ($InstallShortcut -or $AssumeShortcutConfigured -or $ShortcutGameId)) {
+  throw "-LaunchMode steam-app launches the configured Steam app ID directly; do not pass shortcut setup or shortcut game ID options."
+}
+
+if ($LaunchMode -eq "steam-app" -and $AppId -eq 480) {
+  throw "-LaunchMode steam-app requires your configured Steam app ID; use the non-Steam shortcut mode for public App ID 480 smoke proof."
 }
 
 function Resolve-HelperPath {
@@ -616,7 +628,7 @@ function Stop-StaleSteamOverlayHelpers {
 }
 
 function Test-NeedsWindowsLiveRunReadiness {
-  return ($LaunchMode -eq "steam-launch" -and $Suite -ne "preflight" -and $Suite -ne "shortcut")
+  return ($LaunchMode -in @("steam-launch", "steam-app") -and $Suite -ne "preflight" -and $Suite -ne "shortcut")
 }
 
 function Test-IsLiveSteamLaunchSuite {
@@ -1152,6 +1164,9 @@ function Invoke-InitTxnCapture {
   if ($AppId -eq 480) {
     throw "-InitTxnRequestFile requires a configured Steam app/product; public App ID 480 only proves checkout routing."
   }
+  if ($RequireMicroTxnCallback -and $LaunchMode -ne "steam-app") {
+    throw "-RequireMicroTxnCallback with -InitTxnRequestFile requires -LaunchMode steam-app so Steam launches the configured app, not a non-Steam shortcut."
+  }
   if (-not (Test-Path -LiteralPath $InitTxnRequestFile)) {
     throw "Invalid -InitTxnRequestFile (file was not found)."
   }
@@ -1185,6 +1200,9 @@ function Test-CheckoutJsonFile {
 
   if ($RequireMicroTxnCallback -and $AppId -eq 480) {
     throw "-RequireMicroTxnCallback requires a configured Steam app/product; public App ID 480 only proves checkout routing."
+  }
+  if ($RequireMicroTxnCallback -and $LaunchMode -ne "steam-app") {
+    throw "-RequireMicroTxnCallback requires -LaunchMode steam-app so Steam launches the configured app, not a non-Steam shortcut."
   }
 
   if (-not $CheckoutJsonFile) {
@@ -2190,6 +2208,7 @@ function Write-MatrixManifest {
   param([object[]]$Cases)
 
   $expectedNativeHostBackend = Resolve-ExpectedWindowsNativeHostBackend
+  $launchKind = if ($LaunchMode -eq "steam-app") { "app" } elseif ($LaunchMode -eq "steam-launch") { "shortcut" } else { "direct" }
   $manifestCases = @(
     $Cases |
       ForEach-Object {
@@ -2224,6 +2243,7 @@ function Write-MatrixManifest {
     generatedAt = (Get-Date).ToUniversalTime().ToString("o")
     suite = $Suite
     launchMode = $LaunchMode
+    launchKind = $launchKind
     appId = $AppId
     onlyCase = $OnlyCase
     expectedCaseCount = $manifestCases.Count
@@ -2297,7 +2317,10 @@ function Invoke-Helper {
     $output | Tee-Object -FilePath $LogFile
     if ($exitCode -ne 0) {
       $completed = @($output | Where-Object {
-        $_ -and ([string]$_).StartsWith("Windows steam-launch smoke completed.")
+        $_ -and (
+          ([string]$_).StartsWith("Windows steam-launch smoke completed.") -or
+          ([string]$_).StartsWith("Windows steam-app smoke completed.")
+        )
       }).Count -gt 0
       if (-not $completed) {
         throw "windows-electron-smoke.ps1 exited with code $exitCode"
@@ -3489,7 +3512,13 @@ function Invoke-MatrixCase {
   $helperLog = Join-Path $caseDir "helper.log"
   New-Item -ItemType Directory -Force -Path $caseDir | Out-Null
 
-  $mode = if ($LaunchMode -eq "steam-launch") { "steam-launch" } else { "direct" }
+  $mode = if ($LaunchMode -eq "steam-launch") {
+    "steam-launch"
+  } elseif ($LaunchMode -eq "steam-app") {
+    "steam-app"
+  } else {
+    "direct"
+  }
   $args = @(
     "-Mode", $mode,
     "-AppDir", $AppDir,
@@ -3529,13 +3558,16 @@ function Invoke-MatrixCase {
     $args += "-AllowOverlayNotReady"
   }
 
-  if ($LaunchMode -eq "steam-launch") {
-    if (-not $ShortcutGameId) {
-      throw "Missing -ShortcutGameId for steam-launch matrix mode."
-    }
+  if ($LaunchMode -in @("steam-launch", "steam-app")) {
     Write-CaseLaunchEnv -Case $Case -ResultFile $resultFile -DiagnosticDir $diagnosticDir
     Minimize-DesktopWindowsForSteamLaunch -CaseDir $caseDir
-    $args += @("-ShortcutGameId", $ShortcutGameId, "-RequireSteamLaunch")
+    if ($LaunchMode -eq "steam-launch") {
+      if (-not $ShortcutGameId) {
+        throw "Missing -ShortcutGameId for steam-launch matrix mode."
+      }
+      $args += @("-ShortcutGameId", $ShortcutGameId)
+    }
+    $args += "-RequireSteamLaunch"
   }
   if ($OverlayDisableDirectComposition) {
     $args += @("-OverlayDisableDirectComposition", $OverlayDisableDirectComposition)
@@ -3607,7 +3639,7 @@ function Invoke-MatrixCase {
   try {
     Invoke-Helper -Arguments $args -LogFile $helperLog
   } catch {
-    if ($LaunchMode -eq "steam-launch") {
+    if ($LaunchMode -in @("steam-launch", "steam-app")) {
       $resultHasSmokePayload = Test-SmokeResultPayload -Path $resultFile
       $postCasePreflightLog = Join-Path $caseDir "post-case-preflight.log"
       $postCasePreflightJson = Join-Path $caseDir "post-case-preflight.json"
@@ -3694,20 +3726,24 @@ Write-Host ("  requireMicroTxnCallback: {0}" -f $RequireMicroTxnCallback)
 if ($OnlyCase) {
   Write-Host ("  onlyCase: {0}" -f $OnlyCase)
 }
-if ($LaunchMode -eq "steam-launch") {
+if ($LaunchMode -in @("steam-launch", "steam-app")) {
   Write-Host ("  launchEnvFile: {0}" -f $LaunchEnvFile)
-  Write-Host ("  installShortcut: {0}" -f $InstallShortcut)
-  if ($ShortcutExe) {
-    Write-Host ("  shortcutExe: {0}" -f $ShortcutExe)
-  }
-  if ($ShortcutStartDir) {
-    Write-Host ("  shortcutStartDir: {0}" -f $ShortcutStartDir)
-  }
-  if ($ShortcutLaunchPrefix) {
-    Write-Host ("  shortcutLaunchPrefix: {0}" -f $ShortcutLaunchPrefix)
-  }
-  if ($JavaScriptRunnerExe) {
-    Write-Host ("  javaScriptRunnerExe: {0}" -f $JavaScriptRunnerExe)
+  if ($LaunchMode -eq "steam-launch") {
+    Write-Host ("  installShortcut: {0}" -f $InstallShortcut)
+    if ($ShortcutExe) {
+      Write-Host ("  shortcutExe: {0}" -f $ShortcutExe)
+    }
+    if ($ShortcutStartDir) {
+      Write-Host ("  shortcutStartDir: {0}" -f $ShortcutStartDir)
+    }
+    if ($ShortcutLaunchPrefix) {
+      Write-Host ("  shortcutLaunchPrefix: {0}" -f $ShortcutLaunchPrefix)
+    }
+    if ($JavaScriptRunnerExe) {
+      Write-Host ("  javaScriptRunnerExe: {0}" -f $JavaScriptRunnerExe)
+    }
+  } else {
+    Write-Host "  realSteamAppLaunchOptions: --steam-bridge-smoke-env-file=<launchEnvFile>"
   }
 }
 
@@ -3726,7 +3762,7 @@ if ($LaunchMode -eq "steam-launch" -and $Suite -eq "shortcut") {
   exit 0
 }
 
-if (Test-IsLiveSteamLaunchSuite) {
+if ((Test-IsLiveSteamLaunchSuite) -and $LaunchMode -eq "steam-launch") {
   Ensure-SteamShortcut
 }
 
