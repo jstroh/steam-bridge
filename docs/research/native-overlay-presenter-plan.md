@@ -97,6 +97,15 @@ Reviewed on 2026-07-02 while investigating Windows Electron overlay failures:
   packaged Electron `43.0.0` app. The Windows close probe now chooses route-aware
   input: Shift+Tab to open keyboard shortcut cases, then the Steam web-panel
   close control after screenshot evidence shows web content has painted.
+- A fresh current-package Windows pass after rebuilding the x64 Electron smoke
+  app on macOS and redeploying/signing it on the Windows laptop passed the same
+  public managed-route suite at
+  `C:\Users\admin\steam-bridge-artifacts\windows-current-managed-routes-20260703-034704`.
+  It ran from an interactive hidden `/IT` task with the stable App ID `480`
+  shortcut, `-CloseProbeInput auto`, and the D3D11 default. The summary auditor
+  reported `expectedCases=15`, `steamLaunch=15`, `overlayActive=12`, `clean=15`,
+  no crash diagnostics, and no leftover smoke, overlay-helper, or Windows error
+  reporter processes.
 - A 2026-07-03 UTC focused Windows D3D11 pass proved passive
   achievement-progress and achievement-unlock notifications through the same
   managed Electron presenter shape. The Steam-launched App ID `480` artifacts
@@ -2100,8 +2109,13 @@ Windows gates:
   presenter parking, and clean crash diagnostics. The refreshed public matrix at
   `C:\Users\admin\steam-bridge-artifacts\windows-d3d11-managed-public-routes-with-web-20260703-001`
   then passed all 15 managed-route cases, with 12 overlay-active cases and clean
-  crash diagnostics. Keep D3D11 opt-in until the real configured-product
-  checkout path passes the same complete-result gates.
+  crash diagnostics. A later current-package rerun at
+  `C:\Users\admin\steam-bridge-artifacts\windows-current-managed-routes-20260703-034704`
+  repeated the same public managed-route proof after rebuilding and signing the
+  Windows x64 package, with the D3D11 presenter as the default and a hidden
+  interactive task harness. Real configured-product checkout remains separate
+  from App ID `480` public route proof and still needs the same complete-result
+  gates with private InitTxn data.
 
 ## Presenter Diagnostics
 

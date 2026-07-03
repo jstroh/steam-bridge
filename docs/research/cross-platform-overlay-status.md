@@ -147,6 +147,25 @@ progress, and passive achievement unlock. The auto close probe opens keyboard
 shortcut cases with Shift+Tab, then closes Steam web-backed surfaces through a
 screenshot-gated web-panel close control after Steam web content has painted.
 
+A fresh current-package Windows run after rebuilding the Windows x64 Electron
+smoke app on macOS, redeploying it to the stable Steam shortcut path, removing
+archive sidecar files, and Authenticode-signing the package also passed the
+public managed-route suite:
+`C:\Users\admin\steam-bridge-artifacts\windows-current-managed-routes-20260703-034704`.
+It ran hidden from an interactive `/IT` scheduled task in Session 1 with the
+stable App ID `480` shortcut, `-Suite managed-routes`, `-CloseProbe`,
+`-CloseProbeInput auto`, and the D3D11 default. The summary auditor reported
+`expectedCases=15`, `steamLaunch=15`, `overlayActive=12`, and `clean=15`,
+covering web, store, Friends/chat, dialog-equivalent, programmatic shortcut,
+Shift+Tab shortcut, profile, players, community, stats, achievements, user, and
+passive achievement progress/unlock. The run left no `SteamBridgeSmoke`,
+`gameoverlayui64`, or `WerFault` processes behind. Render-health was skipped in
+this broad run because the same signed package had just passed the live
+readiness, native-load, and render-health gates; the current-package focused web
+rerun at
+`C:\Users\admin\steam-bridge-artifacts\windows-current-web-clickclose-20260703-034435`
+also passed with the maintained web-panel close click.
+
 The Windows matrix now also has a focused `-Suite shortcut-routes` pass for
 public, non-checkout `openShortcutTargetAndWait(...)` targets. The smoke app
 records the requested shortcut target in managed-overlay diagnostics, and profile
