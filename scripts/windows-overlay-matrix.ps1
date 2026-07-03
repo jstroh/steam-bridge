@@ -2699,16 +2699,20 @@ function Find-WebClosePanelRectFromScreenshot {
 function Get-WebClosePanelRect {
   param([object]`$Foreground, [object]`$Screenshot = `$null)
 
-  `$screenshotPanel = Find-WebClosePanelRectFromScreenshot -Screenshot `$Screenshot -Foreground `$Foreground
-  if (`$screenshotPanel) {
-    return `$screenshotPanel
-  }
-
   if (Test-WebCloseForegroundCandidate `$Foreground) {
+    `$screenshotPanel = Find-WebClosePanelRectFromScreenshot -Screenshot `$Screenshot -Foreground `$Foreground
+    if (`$screenshotPanel) {
+      return `$screenshotPanel
+    }
+
     return [PSCustomObject]@{
       source = "foreground-window-steam-web-panel"
       rect = `$Foreground.rect
     }
+  }
+
+  if (`$Foreground -and `$Foreground.rect) {
+    return `$null
   }
 
   `$presenterBounds = Get-LifecyclePresenterBounds

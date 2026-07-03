@@ -169,14 +169,17 @@ detecting the real inset Steam web panel from screenshot row-density instead of
 clicking relative to the outer native presenter. Its probe waited for painted
 Steam content, detected panel bounds near `left=560 top=287 right=1342
 bottom=825`, sent an absolute `SendInput` click at `x=1326 y=305`, and verified
-close/back-to-app completion with clean crash diagnostics. The full shortcut
-suite then passed at
-`C:\Users\admin\steam-bridge-artifacts\windows-default-d3d11-shortcut-routes-paneldetector-20260703-093418`,
-covering friends, web, store, profile, players, community, stats, achievements,
-user, and dialog shortcut targets. That route proof skipped the render-health
-gate to avoid stale Steam client GPU-log noise from earlier failed experiments,
-but live readiness, native-load gating, Steam launch, overlay activation,
-automated close/back-to-app, and crash diagnostics all passed.
+close/back-to-app completion with clean crash diagnostics. The screenshot-derived
+web-panel detector now runs only after the foreground window is accepted as the
+Steam overlay or the bridge-owned native overlay host, so foreign Windows
+application-error dialogs cannot be mistaken for Steam web chrome. The full
+shortcut suite then passed with the normal render-health gate enabled at
+`C:\Users\admin\steam-bridge-artifacts\windows-default-d3d11-shortcut-routes-renderhealth-guard-20260703-094757`.
+That artifact reported `skipRenderHealthGate=False`, render-health status
+`default-render-health-ok`, live readiness, native-load gating, Steam launch,
+overlay activation, automated close/back-to-app, clean crash diagnostics, and
+coverage for friends, web, store, profile, players, community, stats,
+achievements, user, and dialog shortcut targets.
 
 A 2026-07-03 UTC focused public D3D11 checkout suite passed all four checkout
 cases at
