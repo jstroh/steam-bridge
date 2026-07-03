@@ -5,6 +5,8 @@ param(
   [string]$MatrixArgsFile = "",
   [string]$PrivateEnvFile = "",
   [string]$TaskNamePrefix = "SBOverlayMatrix",
+  [ValidateSet("Limited", "Highest")]
+  [string]$TaskRunLevel = "Limited",
   [int]$TimeoutSeconds = 1800,
   [int]$LogTailLines = 160,
   [switch]$KeepTask
@@ -265,11 +267,12 @@ Write-Host ("  artifactRoot: {0}" -f $ArtifactRoot)
 Write-Host ("  privateEnvFile: {0}" -f $(if ($PrivateEnvFile) { "present" } else { "" }))
 Write-Host ("  matrixArgsFile: {0}" -f $(if ($MatrixArgsFile) { "present" } else { "" }))
 Write-Host ("  matrixArgs: {0}" -f (Format-RedactedMatrixArgs $resolvedMatrixArgs))
+Write-Host ("  taskRunLevel: {0}" -f $TaskRunLevel)
 Write-Host ("  taskFiles: {0}" -f $runDir)
 
 $exitCode = 0
 try {
-  Invoke-CheckedNative schtasks.exe @("/Create", "/TN", $taskName, "/TR", $taskCommand, "/SC", "ONCE", "/ST", "23:59", "/F", "/RL", "HIGHEST", "/IT")
+  Invoke-CheckedNative schtasks.exe @("/Create", "/TN", $taskName, "/TR", $taskCommand, "/SC", "ONCE", "/ST", "23:59", "/F", "/RL", $TaskRunLevel.ToUpperInvariant(), "/IT")
   Invoke-CheckedNative schtasks.exe @("/Run", "/TN", $taskName)
 
   $deadline = (Get-Date).AddSeconds([Math]::Max(1, $TimeoutSeconds))

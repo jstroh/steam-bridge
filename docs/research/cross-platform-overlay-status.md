@@ -253,6 +253,10 @@ gates, and completed the public App ID `480` checkout suite with
 prepare-only checkout case now explicitly allows overlay-not-ready while still
 requiring no overlay activation, matching its contract: prepare the reusable
 native presenter and return to idle without opening modal Steam UI.
+The interactive task wrapper now defaults to `-TaskRunLevel Limited`, matching
+the logged-in desktop token used by Steam; `-TaskRunLevel Highest` remains
+available only for focused diagnostics on machines whose scheduled-task policy
+requires elevation.
 
 A later private configured-product checkout run against the refreshed Windows
 package proved the bridge-side `InitTxn` client-session classification without

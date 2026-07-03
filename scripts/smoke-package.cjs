@@ -378,6 +378,14 @@ function runWindowsSmokeHelperStaticChecks() {
   const matrixSummary = fs.readFileSync(path.join(repoRoot, "scripts", "summarize-windows-overlay-matrix.cjs"), "utf8");
   const electronHelper = fs.readFileSync(path.join(repoRoot, "packages", "steam-bridge", "src", "electron.ts"), "utf8");
   const exampleReadme = fs.readFileSync(path.join(repoRoot, "examples", "electron-basic", "README.md"), "utf8");
+  for (const expected of [
+    '[ValidateSet("Limited", "Highest")]',
+    '[string]$TaskRunLevel = "Limited"',
+    'taskRunLevel: {0}',
+    '$TaskRunLevel.ToUpperInvariant()'
+  ]) {
+    assert.ok(taskWrapper.includes(expected), `Windows overlay task wrapper missing ${expected}`);
+  }
   assert.ok(
     exampleReadme.includes("The helper leaves `-OverlayInProcessGpu` unset on Windows by default"),
     "Electron example README must document that Windows leaves in-process GPU unset by default"

@@ -159,6 +159,10 @@ Reviewed on 2026-07-02 while investigating Windows Electron overlay failures:
   prepare-only checkout matrix case now opts out of the generic overlay-ready
   requirement while still requiring no overlay activation, because its product
   contract is presenter preparation rather than modal Steam UI.
+  The SSH task wrapper now defaults to `-TaskRunLevel Limited` so live GUI work
+  runs with the same logged-in desktop token as Steam; `-TaskRunLevel Highest`
+  remains available only for focused diagnostics on machines whose scheduled
+  task policy requires elevation.
 - A later private configured-product Windows checkout attempt with in-app
   `InitTxn` capture proved the new client-session target model: sanitized
   diagnostics recorded `hasTransactionId=true` and `clientSession=true`, and the

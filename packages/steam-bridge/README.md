@@ -201,6 +201,9 @@ to drive a remote Windows laptop from SSH while keeping live overlay work inside
 the logged-in desktop session. Pass private publisher values through
 `-PrivateEnvFile <path-to-NAME=VALUE-file>`; the wrapper imports them into the
 task environment and prints only the count, not the values.
+The wrapper defaults to `-TaskRunLevel Limited`, matching Steam's logged-in
+desktop token. Use `-TaskRunLevel Highest` only as a focused diagnostic when the
+test machine's scheduled-task policy requires elevation.
 From the repo, run
 `npm run windows:overlay-matrix:summarize -- --artifact-root <artifact-root>` to
 audit full runs, readiness captures, native-load blocker artifacts, Steam-launch

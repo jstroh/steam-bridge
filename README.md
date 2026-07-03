@@ -844,6 +844,7 @@ the private `--checkout-json-file` checkout suite.
   .\windows-overlay-task.ps1 `
     -AppDir C:\path\to\SteamBridgeSmoke-win32-x64 `
     -ArtifactRoot C:\path\to\artifacts\windows-checkout `
+    -TaskRunLevel Limited `
     -PrivateEnvFile C:\path\to\steam-bridge-private.env `
     -MatrixArgs @(
       "-AppId", "<configured-app-id>",
@@ -857,6 +858,10 @@ the private `--checkout-json-file` checkout suite.
       "-CloseProbeInput", "auto"
     )
   ```
+
+  `-TaskRunLevel Limited` is the default and matches the logged-in desktop
+  token used by Steam. Use `-TaskRunLevel Highest` only as a focused diagnostic
+  when the Windows test machine's interactive task policy requires elevation.
 
   The optional private env file uses `NAME=VALUE` lines, is never committed,
   and is only reported as a count of imported values. Keep real checkout proof

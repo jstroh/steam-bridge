@@ -867,6 +867,7 @@ arguments file so PowerShell invocation style does not affect array binding:
 .\windows-overlay-task.ps1 `
   -AppDir C:\path\to\SteamBridgeSmoke-win32-x64 `
   -ArtifactRoot C:\path\to\artifacts\windows-checkout `
+  -TaskRunLevel Limited `
   -PrivateEnvFile C:\path\to\steam-bridge-private.env `
   -MatrixArgsFile C:\path\to\steam-bridge-checkout-matrix.args.json
 ```
@@ -876,6 +877,9 @@ is not committed, and the wrapper reports only how many values were imported.
 `-MatrixArgs @(...)` is still supported from an interactive PowerShell session,
 but `-MatrixArgsFile` is safer for SSH, `powershell.exe -File`, and saved
 commands.
+`-TaskRunLevel Limited` is the default and keeps the temporary task in the same
+logged-in desktop token as Steam. Use `-TaskRunLevel Highest` only as a focused
+diagnostic on machines whose task policy requires elevation.
 Matrix dry-run and live command logs redact checkout file paths, checkout URLs,
 return URLs, transaction IDs, and control tokens as `REDACTED`, so command logs
 can be shared for review without exposing private purchase data.
