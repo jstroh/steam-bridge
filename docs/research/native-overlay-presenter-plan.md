@@ -174,7 +174,12 @@ Reviewed on 2026-07-02 while investigating Windows Electron overlay failures:
   because the task environment lacked the private publisher Web API key. Keep
   real purchase proof on the same path, but pass secrets through the documented
   `-PrivateEnvFile` handoff rather than assuming SSH or scheduled tasks inherit
-  ad hoc environment variables.
+  ad hoc environment variables. The matrix now preflights that handoff with a
+  sanitized `00-preflight/init-txn-env.json` artifact and stops before live
+  launch if the key is absent; the focused expected-fail artifact
+  `C:\Users\admin\steam-bridge-artifacts\windows-real-app-checkout-env-preflight-20260703145558`
+  proved that missing credentials stop before manifest, normal preflight,
+  native-load, render-health, or Steam app launch work.
 - A later private configured-product Windows checkout attempt with in-app
   `InitTxn` capture proved the new client-session target model: sanitized
   diagnostics recorded `hasTransactionId=true` and `clientSession=true`, and the

@@ -270,7 +270,15 @@ before `InitTxn` because the scheduled task did not receive the private
 publisher Web API key environment variable. Use
 `windows-overlay-task.ps1 -PrivateEnvFile <local NAME=VALUE file>` for
 callback-required real purchase proof; `-MatrixArgsFile` only carries argument
-names and paths, not secret values.
+names and paths, not secret values. The Windows matrix now checks that
+environment handoff before live launch and writes a sanitized
+`00-preflight/init-txn-env.json` artifact, so missing credentials fail before
+native-load, render-health, or Steam app launch work begins. The expected-fail
+proof at
+`C:\Users\admin\steam-bridge-artifacts\windows-real-app-checkout-env-preflight-20260703145558`
+recorded `apiKeyEnvProvided=true`, `apiKeyProcessValuePresent=false`, no
+manifest, no normal preflight, no native-load gate, no render-health gate, and
+no leftover smoke or overlay-helper processes.
 
 A later private configured-product checkout run against the refreshed Windows
 package proved the bridge-side `InitTxn` client-session classification without

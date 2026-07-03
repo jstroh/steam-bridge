@@ -1209,6 +1209,49 @@ function Invoke-InitTxnCapture {
   Write-Host "Configured Windows InitTxn checkout: source=init-txn-request-file capture=in-app expectedAppId=checked"
 }
 
+function Test-InitTxnEnvironmentReadiness {
+  param([object[]]$Cases)
+
+  if (-not $InitTxnRequestFile) {
+    return
+  }
+
+  $preflightDir = Join-Path $ArtifactRoot "00-preflight"
+  New-Item -ItemType Directory -Force -Path $preflightDir | Out-Null
+
+  $apiKeyValue = $null
+  if ($InitTxnApiKeyEnv) {
+    $apiKeyValue = [System.Environment]::GetEnvironmentVariable($InitTxnApiKeyEnv, "Process")
+  }
+
+  $readiness = [PSCustomObject]@{
+    kind = "steam-bridge-windows-init-txn-environment"
+    generatedAt = (Get-Date).ToUniversalTime().ToString("o")
+    hasRequestFile = [bool]$InitTxnRequestFile
+    requestFileExists = [bool]($InitTxnRequestFile -and (Test-Path -LiteralPath $InitTxnRequestFile))
+    launchMode = $LaunchMode
+    requireMicroTxnCallback = [bool]$RequireMicroTxnCallback
+    selectedCallbackCase = [bool](Test-MatrixRequiresMicroTxnCallback -Cases $Cases)
+    apiKeyEnvProvided = [bool]$InitTxnApiKeyEnv
+    apiKeyEnvNameLength = if ($InitTxnApiKeyEnv) { $InitTxnApiKeyEnv.Length } else { 0 }
+    apiKeyProcessValuePresent = [bool]$apiKeyValue
+    apiKeyProcessValueLength = if ($apiKeyValue) { $apiKeyValue.Length } else { 0 }
+  }
+
+  Write-MatrixJsonFile -Path (Join-Path $preflightDir "init-txn-env.json") -Value $readiness -Depth 8
+
+  if (-not $InitTxnApiKeyEnv) {
+    throw "-InitTxnRequestFile requires -InitTxnApiKeyEnv so the smoke app can call Steam's InitTxn Web API."
+  }
+
+  if (-not $apiKeyValue) {
+    throw (
+      "Missing Steam publisher Web API key environment variable for private InitTxn checkout. " +
+      "Pass it with windows-overlay-task.ps1 -PrivateEnvFile <local NAME=VALUE file> or set it in the invoking process before running windows-overlay-matrix.ps1."
+    )
+  }
+}
+
 function Test-CheckoutJsonFile {
   param([object[]]$Cases)
 
@@ -3717,6 +3760,7 @@ Resolve-SmokeExe | Out-Null
 New-Item -ItemType Directory -Force -Path $ArtifactRoot | Out-Null
 $selectedMatrixCases = @(Get-SelectedMatrixCases)
 Invoke-InitTxnCapture -Cases $selectedMatrixCases
+Test-InitTxnEnvironmentReadiness -Cases $selectedMatrixCases
 $selectedMatrixCases = @(Get-SelectedMatrixCases)
 Test-CheckoutJsonFile -Cases $selectedMatrixCases
 Test-MatrixCloseProbeRequirements -Cases $selectedMatrixCases
