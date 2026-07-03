@@ -620,6 +620,11 @@ function runWindowsSmokeHelperStaticChecks() {
   ]) {
     assert.ok(matrixHelper.includes(expected), `Windows overlay matrix missing ${expected}`);
   }
+  assert.match(
+    matrixHelper,
+    /-Id "01-checkout-prepare"[\s\S]*?-RequireNoOverlayActivation `\r?\n\s+-AllowOverlayNotReady `\r?\n\s+-ResultDelayMs 1200/,
+    "Windows checkout prepare case must allow overlay-not-ready while requiring no overlay activation"
+  );
   assert.ok(
     matrixSummary.includes('"shortcut-routes"'),
     "Windows overlay matrix summary must accept the shortcut-routes suite"

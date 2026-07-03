@@ -243,6 +243,17 @@ That live run exposed and fixed a wrapper argument-binding bug: CLI-style
 `windows-overlay-matrix.ps1`, because array splatting can bind `-AppDir` as the
 positional `Suite` argument.
 
+The args-file path for that same wrapper is also proven. A follow-up interactive
+Session 1 run at
+`C:\Users\admin\steam-bridge-artifacts\windows-task-argsfile-checkout-20260703-0520`
+passed `-MatrixArgsFile` to `windows-overlay-task.ps1`, kept the wrapper's
+`matrixArgs` log redacted, passed live readiness, native-load, and render-health
+gates, and completed the public App ID `480` checkout suite with
+`expectedCases=4`, `steamLaunch=4`, `overlayActive=3`, and `clean=4`. The
+prepare-only checkout case now explicitly allows overlay-not-ready while still
+requiring no overlay activation, matching its contract: prepare the reusable
+native presenter and return to idle without opening modal Steam UI.
+
 Latest Windows D3D11 keyboard proof: the refreshed Electron `43.0.0` smoke
 bundle was rebuilt on macOS, deployed to the Windows laptop, and Authenticode
 signed with the local test certificate. The focused interactive Session 1

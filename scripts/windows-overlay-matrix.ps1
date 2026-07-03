@@ -2142,6 +2142,7 @@ function Get-MatrixCases {
       -Action "presenter-checkout" `
       -RequireEvent @("overlay:presenter-checkout-ready") `
       -RequireNoOverlayActivation `
+      -AllowOverlayNotReady `
       -ResultDelayMs 1200
     New-Case `
       -Id "02-checkout-approval" `

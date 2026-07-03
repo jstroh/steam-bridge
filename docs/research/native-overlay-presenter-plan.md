@@ -150,6 +150,15 @@ Reviewed on 2026-07-02 while investigating Windows Electron overlay failures:
   or `-AppDir` can bind as positional `Suite`. This remains public
   route/lifecycle proof; real purchase authorization still needs private
   configured-product InitTxn data and `-RequireMicroTxnCallback`.
+- A follow-up wrapper proof passed the same checkout suite through
+  `-MatrixArgsFile` at
+  `C:\Users\admin\steam-bridge-artifacts\windows-task-argsfile-checkout-20260703-0520`.
+  The interactive Session 1 run kept the wrapper's argument log redacted, passed
+  live readiness, native-load, and render-health gates, and summarized as
+  `expectedCases=4`, `steamLaunch=4`, `overlayActive=3`, and `clean=4`. The
+  prepare-only checkout matrix case now opts out of the generic overlay-ready
+  requirement while still requiring no overlay activation, because its product
+  contract is presenter preparation rather than modal Steam UI.
 - The broader Windows source sweep points past window-style tweaks. Valve's
   browser-game FAQ specifically names a native D3D window with offscreen
   Chromium and input forwarding, while the WebView2/DirectComposition research
