@@ -7586,6 +7586,10 @@ test("electron steam overlay manager can opt into Windows native presenter", asy
       hostOpen = true;
       this.calls.push({ method: "attachNativeOverlayHostView", args: [nativeWindowHandle] });
     },
+    attachNativeOverlayHostViewForOverlay(nativeWindowHandle) {
+      hostOpen = true;
+      this.calls.push({ method: "attachNativeOverlayHostViewForOverlay", args: [nativeWindowHandle] });
+    },
     pumpNativeOverlayProbeWindow() {
       this.calls.push({ method: "pumpNativeOverlayProbeWindow", args: [] });
     },
@@ -7643,8 +7647,8 @@ test("electron steam overlay manager can opt into Windows native presenter", asy
 
   const initialSnapshot = overlay.snapshot();
   assert.equal(initialSnapshot.backend, "windows-opengl");
-  assert.equal(initialSnapshot.attached, true);
-  assert.equal(initialSnapshot.nativeHostOpen, true);
+  assert.equal(initialSnapshot.attached, false);
+  assert.equal(initialSnapshot.nativeHostOpen, false);
   assert.equal(initialSnapshot.mode, "passive");
   assert.equal(initialSnapshot.clickThrough, true);
   assert.equal(initialSnapshot.transparent, true);
@@ -7691,6 +7695,7 @@ test("electron steam overlay manager can opt into Windows native presenter", asy
       .filter((call) =>
         [
           "attachNativeOverlayHostView",
+          "attachNativeOverlayHostViewForOverlay",
           "showNativeOverlayHostView",
           "setNativeOverlayHostInputPassthrough",
           "setNativeOverlayHostOpacity",
@@ -7699,10 +7704,8 @@ test("electron steam overlay manager can opt into Windows native presenter", asy
       )
       .map((call) => call.method),
     [
-      "attachNativeOverlayHostView",
+      "attachNativeOverlayHostViewForOverlay",
       "showNativeOverlayHostView",
-      "setNativeOverlayHostInputPassthrough",
-      "setNativeOverlayHostOpacity",
       "setNativeOverlayHostInputPassthrough",
       "setNativeOverlayHostOpacity",
       "detachNativeOverlayHostView"
