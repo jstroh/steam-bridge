@@ -196,19 +196,35 @@ Reviewed on 2026-07-02 while investigating Windows Electron overlay failures:
 - A later private configured-product Windows checkout attempt with in-app
   `InitTxn` capture proved the new client-session target model: sanitized
   diagnostics recorded `hasTransactionId=true` and `clientSession=true`, and the
-  bridge did not synthesize or open a checkout approval URL. Steam did not emit
-  overlay activation or `MicroTxnAuthorizationResponse` from the non-Steam
-  shortcut harness, matching public reports that `InitTxn` can remain at the
-  initialized transaction state without prompting if Steam does not treat the
-  running process as a real Steam app release/beta. Keep using the non-Steam
-  shortcut for public route, lifecycle, presenter, and close/back-to-app proof;
-  require a true Steam-launched configured app for final client-session purchase
-  authorization proof. The Windows matrix now encodes this boundary with
-  `-LaunchMode steam-app`: that mode launches `steam://rungameid/<AppId>` for a
-  configured Steam app that actually starts the smoke executable, either through
-  a private Steam branch/depot or a backed-up local launch-option wrapper. The
-  existing `steam-launch` mode remains the non-Steam shortcut route.
-  Callback-required checkout proof is gated to `steam-app`.
+  bridge did not synthesize or open a checkout approval URL. A real-app Friends
+  control through the same `steam-app` lane then passed active overlay,
+  close/back-to-app, native presenter, and crash-diagnostic gates, proving the
+  configured-app Windows launch path can show ordinary Steam overlay surfaces.
+  Steam still did not emit overlay activation or
+  `MicroTxnAuthorizationResponse` for that client-session checkout attempt, so
+  client-session auto-prompt authorization remains an open purchase-flow proof,
+  not a Windows presenter or configured-app launch failure.
+- A follow-up private configured-product Windows checkout run switched the same
+  in-app `InitTxn` capture to `usersession=web`, where Steam returns a
+  `steamurl` and Steam Bridge opens the checkout in the managed overlay browser.
+  The artifact
+  `C:\Users\admin\steam-bridge-artifacts\windows-private-web-inittxn-checkout-20260703-164643`
+  passed through the interactive `/IT` task wrapper with `-LaunchMode steam-app`,
+  `-PrivateEnvFile`, `-Suite checkout`, and `-CloseProbeInput auto`. The summary
+  auditor reported `expectedCases=2`, `steamLaunch=2`, `overlayActive=1`, and
+  `clean=2`: prepare-only checkout remained non-modal, the real InitTxn approval
+  surface opened from the returned Steam URL, the close probe closed it, focus
+  returned to the app, and crash diagnostics stayed clean. This proves the
+  Windows configured-product `InitTxn -> steamurl -> overlay browser ->
+  close/back-to-app` path. It intentionally does not claim
+  `MicroTxnAuthorizationResponse`, because that callback belongs to the
+  client-session automatic prompt path. The Windows matrix now encodes the
+  launch boundary with `-LaunchMode steam-app`: that mode launches
+  `steam://rungameid/<AppId>` for a configured Steam app that actually starts
+  the smoke executable, either through a private Steam branch/depot or a
+  backed-up local launch-option wrapper. The existing `steam-launch` mode remains
+  the non-Steam shortcut route. Callback-required checkout proof is gated to
+  `steam-app`.
 - The broader Windows source sweep points past window-style tweaks. Valve's
   browser-game FAQ specifically names a native D3D window with offscreen
   Chromium and input forwarding, while the WebView2/DirectComposition research

@@ -299,13 +299,30 @@ package proved the bridge-side `InitTxn` client-session classification without
 committing private values. The in-app transaction capture produced a sanitized
 checkout target snapshot with `hasTransactionId=true` and `clientSession=true`,
 and Steam Bridge no longer synthesized or opened an `approvetxn` web URL for
-that client-session result. Steam did not emit `GameOverlayActivated(true)` or
-`MicroTxnAuthorizationResponse` in the non-Steam-shortcut harness, so this is
-not accepted as real purchase authorization proof. Treat that as a harness
-limit: public App ID `480` and non-Steam shortcuts prove routing, lifecycle,
-presenter, close/back-to-app, and callback plumbing, but client-session
-microtransaction authorization still needs a real Steam-launched app/beta with
-a configured product.
+that client-session result. A focused real-app Friends control through the same
+`steam-app` launch lane then passed active overlay, close/back-to-app, native
+presenter, and crash-diagnostic gates, proving the configured-app Windows launch
+path can show ordinary Steam overlay surfaces. The client-session checkout run
+still did not emit `GameOverlayActivated(true)` or
+`MicroTxnAuthorizationResponse`, so client-session auto-prompt authorization is
+not accepted as proved yet. Treat this as a remaining Steam purchase-flow
+question, not a Windows presenter or configured-app launch failure.
+
+A follow-up private configured-product checkout run switched the same in-app
+`InitTxn` capture to `usersession=web`, letting Steam return a `steamurl` for
+Steam Bridge to open through the managed overlay browser. The focused Windows
+artifact at
+`C:\Users\admin\steam-bridge-artifacts\windows-private-web-inittxn-checkout-20260703-164643`
+passed through an interactive `/IT` task with `-LaunchMode steam-app`,
+`-PrivateEnvFile`, `-Suite checkout`, and `-CloseProbeInput auto`. The summary
+auditor reported `expectedCases=2`, `steamLaunch=2`, `overlayActive=1`, and
+`clean=2`: prepare-only checkout stayed non-modal, the real InitTxn approval
+surface opened from the returned Steam URL, the close probe closed it, focus
+returned to the app, and crash diagnostics stayed clean. This proves real
+configured-product `InitTxn -> steamurl -> overlay browser -> close/back-to-app`
+on Windows. It intentionally does not claim the client-session
+`MicroTxnAuthorizationResponse` callback because web-session checkout uses the
+Steam URL flow rather than Steam's automatic client prompt.
 The Windows matrix now exposes that distinction explicitly: `steam-launch`
 means the stable non-Steam shortcut lane for public route proof, while
 `steam-app` launches `steam://rungameid/<AppId>` for a configured app whose
