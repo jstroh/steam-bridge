@@ -2,6 +2,7 @@ param(
   [string]$AppDir = "",
   [string]$ArtifactRoot = "",
   [string[]]$MatrixArgs = @(),
+  [string]$MatrixArgsFile = "",
   [string]$PrivateEnvFile = "",
   [string]$TaskNamePrefix = "SBOverlayMatrix",
   [int]$TimeoutSeconds = 1800,
@@ -64,6 +65,47 @@ function Format-RedactedMatrixArgs {
   return ($redacted -join " ")
 }
 
+function Read-MatrixArgsFile {
+  param([string]$Path)
+
+  if (-not $Path) {
+    return @()
+  }
+
+  $resolvedPath = Resolve-FullPath $Path
+  if (-not (Test-Path -LiteralPath $resolvedPath)) {
+    throw "Matrix arguments file was not found."
+  }
+
+  try {
+    $parsed = Get-Content -Raw -LiteralPath $resolvedPath | ConvertFrom-Json
+  } catch {
+    throw "Matrix arguments file must be JSON."
+  }
+
+  $values = if ($parsed -is [array]) {
+    @($parsed)
+  } elseif ($parsed -and $parsed.PSObject.Properties.Name -contains "matrixArgs") {
+    @($parsed.matrixArgs)
+  } else {
+    throw "Matrix arguments file must contain a JSON array or an object with matrixArgs."
+  }
+
+  $arguments = @()
+  foreach ($value in $values) {
+    if ($null -eq $value) {
+      throw "Matrix arguments file contains a null value."
+    }
+    $text = [string]$value
+    if (-not $text) {
+      throw "Matrix arguments file contains an empty value."
+    }
+    $arguments += $text
+  }
+
+  return $arguments
+}
+
 $runId = "{0}-{1}" -f (Get-Date -Format "yyyyMMdd-HHmmss"), ([System.Guid]::NewGuid().ToString("N").Substring(0, 8))
 if (-not $AppDir) {
   $AppDir = Split-Path -Parent $PSCommandPath
@@ -86,6 +128,13 @@ if ($PrivateEnvFile) {
   }
 }
 
+$matrixArgsFromFile = @()
+if ($MatrixArgsFile) {
+  $MatrixArgsFile = Resolve-FullPath $MatrixArgsFile
+  $matrixArgsFromFile = @(Read-MatrixArgsFile -Path $MatrixArgsFile)
+}
+$resolvedMatrixArgs = @($matrixArgsFromFile) + @($MatrixArgs)
+
 $taskPrefix = if ($TaskNamePrefix) { $TaskNamePrefix } else { "SBOverlayMatrix" }
 $taskPrefix = ($taskPrefix -replace "[^A-Za-z0-9_.-]", "-").Trim("-")
 if (-not $taskPrefix) {
@@ -105,7 +154,7 @@ $configPath = Join-Path $runDir "config.json"
 $donePath = Join-Path $runDir "done.json"
 $logPath = Join-Path $runDir "task-output.log"
 
-$arguments = @("-AppDir", $AppDir, "-ArtifactRoot", $ArtifactRoot) + @($MatrixArgs)
+$arguments = @("-AppDir", $AppDir, "-ArtifactRoot", $ArtifactRoot) + @($resolvedMatrixArgs)
 $config = [PSCustomObject]@{
   matrixScript = $matrixScript
   arguments = @($arguments)
@@ -214,7 +263,8 @@ Write-Host ("  taskName: {0}" -f $taskName)
 Write-Host ("  appDir: {0}" -f $AppDir)
 Write-Host ("  artifactRoot: {0}" -f $ArtifactRoot)
 Write-Host ("  privateEnvFile: {0}" -f $(if ($PrivateEnvFile) { "present" } else { "" }))
-Write-Host ("  matrixArgs: {0}" -f (Format-RedactedMatrixArgs $MatrixArgs))
+Write-Host ("  matrixArgsFile: {0}" -f $(if ($MatrixArgsFile) { "present" } else { "" }))
+Write-Host ("  matrixArgs: {0}" -f (Format-RedactedMatrixArgs $resolvedMatrixArgs))
 Write-Host ("  taskFiles: {0}" -f $runDir)
 
 $exitCode = 0

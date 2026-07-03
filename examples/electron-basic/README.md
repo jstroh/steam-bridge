@@ -836,29 +836,37 @@ On Windows, use
 for the focused configured-product checkout path.
 When driving Windows from SSH, run the same checkout suite through the packaged
 interactive task wrapper so the overlay launches in the logged-in desktop
-session instead of Session 0:
+session instead of Session 0. For private checkout runs, prefer a local JSON
+arguments file so PowerShell invocation style does not affect array binding:
+
+```json
+[
+  "-AppId", "<configured-app-id>",
+  "-Suite", "checkout",
+  "-InitTxnRequestFile", "C:\\path\\to\\private-init-txn-request.json",
+  "-InitTxnApiKeyEnv", "STEAM_WEB_API_KEY",
+  "-InitTxnEndpoint", "sandbox",
+  "-RequireMicroTxnCallback",
+  "-LaunchMode", "steam-launch",
+  "-AssumeShortcutConfigured",
+  "-CloseProbe",
+  "-CloseProbeInput", "auto"
+]
+```
 
 ```powershell
 .\windows-overlay-task.ps1 `
   -AppDir C:\path\to\SteamBridgeSmoke-win32-x64 `
   -ArtifactRoot C:\path\to\artifacts\windows-checkout `
   -PrivateEnvFile C:\path\to\steam-bridge-private.env `
-  -MatrixArgs @(
-    "-AppId", "<configured-app-id>",
-    "-Suite", "checkout",
-    "-InitTxnRequestFile", "C:\path\to\private-init-txn-request.json",
-    "-InitTxnApiKeyEnv", "STEAM_WEB_API_KEY",
-    "-InitTxnEndpoint", "sandbox",
-    "-RequireMicroTxnCallback",
-    "-LaunchMode", "steam-launch",
-    "-AssumeShortcutConfigured",
-    "-CloseProbe",
-    "-CloseProbeInput", "auto"
-  )
+  -MatrixArgsFile C:\path\to\steam-bridge-checkout-matrix.args.json
 ```
 
 The private env file is a local `NAME=VALUE` file for publisher credentials; it
 is not committed, and the wrapper reports only how many values were imported.
+`-MatrixArgs @(...)` is still supported from an interactive PowerShell session,
+but `-MatrixArgsFile` is safer for SSH, `powershell.exe -File`, and saved
+commands.
 Matrix dry-run and live command logs redact checkout file paths, checkout URLs,
 return URLs, transaction IDs, and control tokens as `REDACTED`, so command logs
 can be shared for review without exposing private purchase data.
