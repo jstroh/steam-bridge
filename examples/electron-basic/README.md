@@ -127,12 +127,10 @@ around detection and input send time; use those to distinguish a Steam overlay
 close problem from input being delivered to the Electron game window or from a
 callback firing without visible overlay UI.
 The Windows matrix also has explicit managed profile, players, community,
-stats, achievements, and user cases. Current focused artifacts show the
-Community target, a generic web overlay pointed at
-`https://steamcommunity.com/app/480`, and the current user's Steam Community
-profile target all fire active callbacks without visible overlay screenshots,
-so keep Steam Community-style Windows routes separate from the basic
-store/web/Friends activation lane until that Steam surface is proven. The
+stats, achievements, and user cases. Current D3D11 managed-route artifacts prove
+those Steam Community-style routes with close/back-to-app behavior and clean
+crash diagnostics alongside web, store, Friends, dialog-equivalent, shortcut,
+and passive notification cases. The
 `presenter-user-native` action is a raw diagnostic for Valve's documented
 `ActivateGameOverlayToUser("steamid", ...)` route; it is callback/screenshot
 evidence only, not a managed `openAndWait(...)` product route.
@@ -169,12 +167,11 @@ For focused Windows native-presenter comparison runs, pass
 `windows-overlay-matrix.ps1` or set
 `STEAM_BRIDGE_WINDOWS_NATIVE_HOST_BACKEND=d3d11` in the smoke environment. This
 selects the opt-in D3D11/DXGI presenter instead of the older WGL diagnostic
-presenter. Current focused Windows evidence covers managed web, store-web,
-Friends/chat, synthetic checkout approval-route plumbing, and managed Shift+Tab
-shortcut open/close/back-to-app proof with clean crash diagnostics. This path is
-not a default until passive notifications, Community/profile-style routes, real
-configured-product checkout, and remaining web-close edge cases pass the same
-gates.
+presenter. Current Windows evidence covers managed web, store-web, Friends/chat,
+dialog-equivalent routes, shortcut open/close/back-to-app, Community/profile,
+stats, achievements, user routes, and passive achievement progress/unlock
+notifications with clean crash diagnostics. This path is not a default until
+real configured-product checkout passes the same gates.
 If a local Smart App Control/App Control policy blocks a freshly rebuilt native
 addon, pass `-NativePath <path-to-accepted-.node>` only for diagnostic
 comparisons. The matrix records `nativePathOverride=true`; keep those artifacts

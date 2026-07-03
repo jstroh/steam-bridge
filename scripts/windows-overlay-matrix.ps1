@@ -1767,7 +1767,6 @@ function Get-MatrixCases {
     "managed" { return $managed }
     "managed-routes" {
       $publicManagedRouteExclusions = @(
-        "11-managed-web-open-and-wait",
         "16-managed-checkout-route",
         "23-raw-native-dialog-open-observe",
         "24-raw-native-user-open-observe"

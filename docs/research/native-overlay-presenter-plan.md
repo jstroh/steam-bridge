@@ -2071,9 +2071,15 @@ Windows gates:
   passed all 14 App ID `480` managed-route cases: store, Friends, dialog,
   shortcut open/close, profile, players, community, stats, achievements, user,
   passive achievement progress, and passive achievement unlock. Eleven cases
-  emitted overlay activation; every case exited with clean crash diagnostics.
-  Keep D3D11 opt-in until the generic web close automation and real
-  configured-product checkout path pass the same complete-result gates.
+  emitted overlay activation; every case exited with clean crash diagnostics. A
+  same-session focused generic web pass at
+  `C:\Users\admin\steam-bridge-artifacts\windows-d3d11-web-focused-escape-20260703-001`
+  then proved `presenter-web-open-and-wait` with Escape close, app focus return,
+  presenter parking, and clean crash diagnostics. The refreshed public matrix at
+  `C:\Users\admin\steam-bridge-artifacts\windows-d3d11-managed-public-routes-with-web-20260703-001`
+  then passed all 15 managed-route cases, with 12 overlay-active cases and clean
+  crash diagnostics. Keep D3D11 opt-in until the real configured-product
+  checkout path passes the same complete-result gates.
 
 ## Presenter Diagnostics
 

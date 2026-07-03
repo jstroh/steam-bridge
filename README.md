@@ -859,11 +859,8 @@ the private `--checkout-json-file` checkout suite.
   so they do not accept a result until Steam emits the inactive callback and the
   managed close, park, and open-and-wait completion events are recorded. Use
   `-Suite managed-routes` when you want the repeatable public App ID `480`
-  product-facing managed route set without generic web-browser close proof,
-  real transaction checkout, or the raw native diagnostic observe cases. Keep
-  generic web focused on `-Suite managed -OnlyCase 11-managed-web-open-and-wait`
-  until Windows web-overlay close automation is proven reliable. Keep real
-  checkout proof focused on
+  product-facing managed route set without real transaction checkout or the raw
+  native diagnostic observe cases. Keep real checkout proof focused on
   `-Suite managed -OnlyCase 16-managed-checkout-route` with your own configured
   app, product, and transaction ID. Keep the normal direct Steam hook as the
   Windows default unless evidence from that baseline proves additional

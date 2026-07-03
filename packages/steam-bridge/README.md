@@ -204,12 +204,10 @@ The managed suite's active cases opt into complete-result mode and require Steam
 inactive callback plus managed close, park, and open-and-wait completion events,
 so they should be run only when the overlay can be closed interactively or by a
 verified UI close probe. Use `-Suite managed-routes` for the public App ID `480`
-product-facing managed route set without generic web-browser close proof, real
-transaction checkout, or the raw native diagnostic observe cases. Keep generic
-web focused on `-Suite managed -OnlyCase 11-managed-web-open-and-wait` until
-Windows web-overlay close automation is proven reliable. Keep real checkout
-proof focused on `-Suite managed -OnlyCase 16-managed-checkout-route` with your
-own configured app, product, and transaction ID.
+product-facing managed route set without real transaction checkout or the raw
+native diagnostic observe cases. Keep real checkout proof focused on
+`-Suite managed -OnlyCase 16-managed-checkout-route` with your own configured
+app, product, and transaction ID.
 
 ## Quick Start
 
@@ -349,12 +347,12 @@ for proof runs through the same `createElectronSteamOverlay(...)` API; pass
 `presenterMode: "persistent"` explicitly or set
 `STEAM_BRIDGE_ELECTRON_OVERLAY_PRESENTER=native` in smoke environments to test
 that path, and set `STEAM_BRIDGE_WINDOWS_NATIVE_HOST_BACKEND=d3d11` only for
-the focused D3D11 comparison. Current focused Windows evidence covers managed
-web, store-web, Friends/chat, synthetic checkout approval-route plumbing, and
-managed Shift+Tab shortcut open/close/back-to-app proof, plus passive
-achievement progress/unlock notification state. The backend is not a default
-until Community/profile-style routes, real configured-product checkout, and
-remaining web-close edge cases pass the same gates. Pass
+the focused D3D11 comparison. Current Windows evidence covers managed web,
+store-web, Friends/chat, dialog-equivalent routes, shortcut
+open/close/back-to-app, Community/profile, stats, achievements, user routes, and
+passive achievement progress/unlock notifications with clean crash diagnostics.
+The backend is not a default until real configured-product checkout passes the
+same gates. Pass
 `scrubSteamOverlayChildProcessEnv: false` only when collecting raw
 Electron-child overlay diagnostics.
 Raw activation helpers such as `activateToWebPage(...)` remain available for
