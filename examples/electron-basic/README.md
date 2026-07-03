@@ -848,14 +848,19 @@ For `usersession=client` runs, the Windows summary prints
 `clientSessionCaptured`, `clientSessionCapturedSession`,
 `clientSessionCapturedEndpoint`, `clientSessionCapturedHttp`,
 `clientSessionCapturedUsersession`, `clientSessionCapturedIpAddress`,
+`clientSessionCapturedRequest`,
 `clientPromptMissing`, `clientPromptSession`, `clientPromptEndpoint`,
-`clientPromptHttp`, `clientPromptUsersession`, and `clientPromptIpAddress`.
+`clientPromptHttp`, `clientPromptUsersession`, `clientPromptIpAddress`, and
+`clientPromptRequest`.
 If `clientSessionCaptured` and `clientPromptMissing` are both `true`, the
 smoke app captured a valid client-session transaction target and kept the
 managed presenter active, but Steam did not present the automatic authorization
 overlay before the checkout wait guard expired. The prompt session, endpoint,
 HTTP status, and request-shape fields come from sanitized in-app `InitTxn`
-metadata. For focused
+metadata. The request-shape summary records only field presence and counts:
+explicit or omitted `usersession`, IP-address field presence, required
+order/user/language/currency field presence, item and bundle counts, and whether
+item or bundle entries had their required field names. For focused
 diagnostics, a private request file may use `"session": "client-default"` to
 omit the `usersession` field entirely and exercise Steam's documented default
 logged-in-client authorization path. Use `"session": "web"` when proving the
@@ -865,8 +870,8 @@ returning any checkout target, while the web-session Steam URL flow is the
 proved managed-overlay checkout path on the current Windows evidence. When
 Steam returns no checkout target, the Windows summary prints
 `initTxnTargetMissing`, `initTxnSession`, `initTxnResult`, and
-`initTxnErrorCode`, plus `initTxnUsersession` and `initTxnIpAddress`, without
-exposing private purchase data.
+`initTxnErrorCode`, plus `initTxnUsersession`, `initTxnIpAddress`, and
+`initTxnRequest`, without exposing private purchase data.
 When driving Windows from SSH, run the same checkout suite through the packaged
 interactive task wrapper so the overlay launches in the logged-in desktop
 session instead of Session 0. For private checkout runs, prefer a local JSON

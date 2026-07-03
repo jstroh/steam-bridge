@@ -329,8 +329,9 @@ preserving the client-session target, but this Steam client/product/account
 combination is not showing Steam's automatic client-session authorization
 prompt. The current harness also records sanitized request-shape fields for
 future reruns, including whether `usersession` was explicit or omitted and
-whether an IP address field was submitted, without logging private purchase,
-account, or item values.
+whether an IP address field was submitted, required order/user/language/currency
+field presence, item and bundle counts, and required line-item field presence,
+without logging private purchase, account, item, price, or currency values.
 
 A focused default-client diagnostic at
 `C:\Users\admin\steam-bridge-artifacts\windows-default-client-inittxn-checkout-20260703-172218`

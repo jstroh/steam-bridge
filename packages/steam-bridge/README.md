@@ -840,8 +840,10 @@ For Windows `usersession=client` diagnostics, the summary also prints
 `clientSessionCaptured`, `clientSessionCapturedSession`,
 `clientSessionCapturedEndpoint`, `clientSessionCapturedHttp`,
 `clientSessionCapturedUsersession`, `clientSessionCapturedIpAddress`,
+`clientSessionCapturedRequest`,
 `clientPromptMissing`, `clientPromptSession`, `clientPromptEndpoint`,
-`clientPromptHttp`, `clientPromptUsersession`, and `clientPromptIpAddress`.
+`clientPromptHttp`, `clientPromptUsersession`, `clientPromptIpAddress`, and
+`clientPromptRequest`.
 A case with
 `clientSessionCaptured=true` and `clientPromptMissing=true` means the in-app
 `InitTxn` call returned a transaction id, Steam Bridge preserved it as a
@@ -851,8 +853,10 @@ checkout overlay activation before the wait guard expired. The prompt session,
 endpoint, and HTTP status are copied from sanitized in-app `InitTxn` metadata so
 the artifact can be read without correlating private request files. The request
 shape fields record only whether the submitted request used an explicit
-`usersession` value and whether an IP address field was present. For focused
-Windows diagnostics, a private InitTxn request file can set `"session": "client-default"`
+`usersession` value, whether an IP address field was present, required
+order/user/language/currency field presence, item and bundle counts, and whether
+item or bundle entries had their required field names. For focused Windows
+diagnostics, a private InitTxn request file can set `"session": "client-default"`
 to omit `usersession` and test Steam's documented default logged-in-client
 authorization path; `"session": "web"` keeps testing the returned Steam URL
 checkout path through the managed overlay browser. Current Windows evidence
@@ -860,8 +864,9 @@ treats `client-default` as a request-shape diagnostic only: Steam can reject it
 before returning any checkout target, while the web-session Steam URL flow is
 the proved managed-overlay checkout path. Target-missing InitTxn diagnostics
 print `initTxnTargetMissing`, `initTxnSession`, `initTxnResult`, and
-`initTxnErrorCode`, plus `initTxnUsersession` and `initTxnIpAddress`, in the
-Windows summary without logging private item, transaction, or account values.
+`initTxnErrorCode`, plus `initTxnUsersession`, `initTxnIpAddress`, and
+`initTxnRequest`, in the Windows summary without logging private item,
+transaction, or account values.
 The matrix's dry-run and live command logs also redact checkout file paths,
 checkout URLs, return URLs, transaction IDs, and control tokens. Those logs show
 the option name plus `REDACTED`, which keeps command-shape review useful without

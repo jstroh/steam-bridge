@@ -719,7 +719,8 @@ function summarizeClientSessionCheckoutCapture(events) {
       endpoint: "",
       httpStatus: "",
       usersessionField: "",
-      hasIpAddress: ""
+      hasIpAddress: "",
+      requestShapeSummary: ""
     };
   }
   const payload = objectOrEmpty(event.payload);
@@ -730,7 +731,8 @@ function summarizeClientSessionCheckoutCapture(events) {
     endpoint: String(payload.endpoint || ""),
     httpStatus: String(payload.httpStatus || ""),
     usersessionField: requestShape.usersessionField,
-    hasIpAddress: requestShape.hasIpAddress
+    hasIpAddress: requestShape.hasIpAddress,
+    requestShapeSummary: requestShape.summary
   };
 }
 
@@ -755,7 +757,8 @@ function summarizeClientSessionPromptMissing(events) {
       endpoint: "",
       httpStatus: "",
       usersessionField: "",
-      hasIpAddress: ""
+      hasIpAddress: "",
+      requestShapeSummary: ""
     };
   }
   const payload = objectOrEmpty(event.payload);
@@ -767,7 +770,8 @@ function summarizeClientSessionPromptMissing(events) {
     endpoint: String(initTxn.endpoint || payload.endpoint || ""),
     httpStatus: String(initTxn.httpStatus || payload.httpStatus || ""),
     usersessionField: requestShape.usersessionField,
-    hasIpAddress: requestShape.hasIpAddress
+    hasIpAddress: requestShape.hasIpAddress,
+    requestShapeSummary: requestShape.summary
   };
 }
 
@@ -781,7 +785,8 @@ function summarizeInitTxnTargetMissing(events) {
       errorCode: "",
       hasErrorDescription: false,
       usersessionField: "",
-      hasIpAddress: ""
+      hasIpAddress: "",
+      requestShapeSummary: ""
     };
   }
   const payload = objectOrEmpty(event.payload);
@@ -794,19 +799,49 @@ function summarizeInitTxnTargetMissing(events) {
     errorCode: String(failure.errorCode || ""),
     hasErrorDescription: failure.hasErrorDescription === true,
     usersessionField: requestShape.usersessionField,
-    hasIpAddress: requestShape.hasIpAddress
+    hasIpAddress: requestShape.hasIpAddress,
+    requestShapeSummary: requestShape.summary
   };
 }
 
 function summarizeInitTxnRequestShape(value) {
   const requestShape = objectOrEmpty(value);
-  return {
+  const summary = {
     usersessionField: String(requestShape.usersession || ""),
     hasIpAddress:
       typeof requestShape.hasIpAddress === "boolean"
         ? String(requestShape.hasIpAddress)
-        : ""
+        : "",
+    hasOrderId: booleanShapeValue(requestShape.hasOrderId),
+    hasSteamId64: booleanShapeValue(requestShape.hasSteamId64),
+    hasLanguage: booleanShapeValue(requestShape.hasLanguage),
+    hasCurrency: booleanShapeValue(requestShape.hasCurrency),
+    itemCount: integerShapeValue(requestShape.itemCount),
+    bundleCount: integerShapeValue(requestShape.bundleCount),
+    itemsHaveRequiredFields: booleanShapeValue(requestShape.itemsHaveRequiredFields),
+    bundlesHaveRequiredFields: booleanShapeValue(requestShape.bundlesHaveRequiredFields)
   };
+  summary.summary = [
+    `usersession=${summary.usersessionField}`,
+    `ip=${summary.hasIpAddress}`,
+    `order=${summary.hasOrderId}`,
+    `steam=${summary.hasSteamId64}`,
+    `language=${summary.hasLanguage}`,
+    `currency=${summary.hasCurrency}`,
+    `items=${summary.itemCount}`,
+    `bundles=${summary.bundleCount}`,
+    `itemFields=${summary.itemsHaveRequiredFields}`,
+    `bundleFields=${summary.bundlesHaveRequiredFields}`
+  ].join(",");
+  return summary;
+}
+
+function booleanShapeValue(value) {
+  return typeof value === "boolean" ? String(value) : "";
+}
+
+function integerShapeValue(value) {
+  return Number.isInteger(value) && value >= 0 ? String(value) : "";
 }
 
 function expectInitTxnRequestShape(summary, label, failures) {
@@ -821,6 +856,27 @@ function expectInitTxnRequestShape(summary, label, failures) {
   expect(
     summary.hasIpAddress !== "",
     `${label}: records sanitized InitTxn IP address request-shape flag`,
+    failures
+  );
+  for (const [field, description] of [
+    ["hasOrderId", "order ID presence flag"],
+    ["hasSteamId64", "Steam ID presence flag"],
+    ["hasLanguage", "language presence flag"],
+    ["hasCurrency", "currency presence flag"],
+    ["itemCount", "item count"],
+    ["bundleCount", "bundle count"],
+    ["itemsHaveRequiredFields", "line-item required-field flag"],
+    ["bundlesHaveRequiredFields", "bundle required-field flag"]
+  ]) {
+    expect(
+      summary[field] !== "",
+      `${label}: records sanitized InitTxn ${description}`,
+      failures
+    );
+  }
+  expect(
+    summary.requestShapeSummary !== "",
+    `${label}: records sanitized InitTxn request-shape field summary`,
     failures
   );
 }
@@ -1033,12 +1089,14 @@ function summarizeCaseResult(caseName, result, resultLog, renderingHealth = null
     clientSessionCheckoutCapturedHttpStatus: clientSessionCheckoutCapture.httpStatus,
     clientSessionCheckoutCapturedUsersessionField: clientSessionCheckoutCapture.usersessionField,
     clientSessionCheckoutCapturedHasIpAddress: clientSessionCheckoutCapture.hasIpAddress,
+    clientSessionCheckoutCapturedRequestShape: clientSessionCheckoutCapture.requestShapeSummary,
     clientSessionPromptMissing: clientSessionPromptMissing.present,
     clientSessionPromptMissingSession: clientSessionPromptMissing.session,
     clientSessionPromptMissingEndpoint: clientSessionPromptMissing.endpoint,
     clientSessionPromptMissingHttpStatus: clientSessionPromptMissing.httpStatus,
     clientSessionPromptMissingUsersessionField: clientSessionPromptMissing.usersessionField,
     clientSessionPromptMissingHasIpAddress: clientSessionPromptMissing.hasIpAddress,
+    clientSessionPromptMissingRequestShape: clientSessionPromptMissing.requestShapeSummary,
     initTxnTargetMissing: initTxnTargetMissing.present,
     initTxnTargetMissingSession: initTxnTargetMissing.session,
     initTxnTargetMissingResult: initTxnTargetMissing.result,
@@ -1046,6 +1104,7 @@ function summarizeCaseResult(caseName, result, resultLog, renderingHealth = null
     initTxnTargetMissingHasErrorDescription: initTxnTargetMissing.hasErrorDescription,
     initTxnTargetMissingUsersessionField: initTxnTargetMissing.usersessionField,
     initTxnTargetMissingHasIpAddress: initTxnTargetMissing.hasIpAddress,
+    initTxnTargetMissingRequestShape: initTxnTargetMissing.requestShapeSummary,
     managedOverlayCloseProof: hasManagedOverlayCloseProof(wait, overlayInactiveEvents),
     closeProbeSent: closeProbe.sent,
     closeProbeInput: closeProbe.input,
@@ -1160,18 +1219,21 @@ function printSummary(summary) {
           `clientSessionCapturedHttp=${formatValue(row.clientSessionCheckoutCapturedHttpStatus)} ` +
           `clientSessionCapturedUsersession=${formatValue(row.clientSessionCheckoutCapturedUsersessionField)} ` +
           `clientSessionCapturedIpAddress=${formatValue(row.clientSessionCheckoutCapturedHasIpAddress)} ` +
+          `clientSessionCapturedRequest=${formatValue(row.clientSessionCheckoutCapturedRequestShape)} ` +
           `clientPromptMissing=${row.clientSessionPromptMissing} ` +
           `clientPromptSession=${formatValue(row.clientSessionPromptMissingSession)} ` +
           `clientPromptEndpoint=${formatValue(row.clientSessionPromptMissingEndpoint)} ` +
           `clientPromptHttp=${formatValue(row.clientSessionPromptMissingHttpStatus)} ` +
           `clientPromptUsersession=${formatValue(row.clientSessionPromptMissingUsersessionField)} ` +
           `clientPromptIpAddress=${formatValue(row.clientSessionPromptMissingHasIpAddress)} ` +
+          `clientPromptRequest=${formatValue(row.clientSessionPromptMissingRequestShape)} ` +
           `initTxnTargetMissing=${row.initTxnTargetMissing} ` +
           `initTxnSession=${formatValue(row.initTxnTargetMissingSession)} ` +
           `initTxnResult=${formatValue(row.initTxnTargetMissingResult)} ` +
           `initTxnErrorCode=${formatValue(row.initTxnTargetMissingErrorCode)} ` +
           `initTxnUsersession=${formatValue(row.initTxnTargetMissingUsersessionField)} ` +
           `initTxnIpAddress=${formatValue(row.initTxnTargetMissingHasIpAddress)} ` +
+          `initTxnRequest=${formatValue(row.initTxnTargetMissingRequestShape)} ` +
           formatCloseProbeSummary(row.closeProbe) +
           `crashes=${row.crashDumpCount + row.fatalLifecycleEventCount}` +
           formatCaseRenderingHealth(row.steamRenderingHealth)
@@ -1870,12 +1932,20 @@ function runSelfTest() {
     assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionCheckoutCapturedHttpStatus, "200");
     assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionCheckoutCapturedUsersessionField, "client");
     assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionCheckoutCapturedHasIpAddress, "false");
+    assert.equal(
+      clientPromptMissingSummary.caseSummaries[0].clientSessionCheckoutCapturedRequestShape,
+      "usersession=client,ip=false,order=true,steam=true,language=true,currency=true,items=1,bundles=0,itemFields=true,bundleFields=true"
+    );
     assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionPromptMissing, true);
     assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionPromptMissingSession, "client");
     assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionPromptMissingEndpoint, "sandbox");
     assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionPromptMissingHttpStatus, "200");
     assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionPromptMissingUsersessionField, "client");
     assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionPromptMissingHasIpAddress, "false");
+    assert.equal(
+      clientPromptMissingSummary.caseSummaries[0].clientSessionPromptMissingRequestShape,
+      "usersession=client,ip=false,order=true,steam=true,language=true,currency=true,items=1,bundles=0,itemFields=true,bundleFields=true"
+    );
 
     const defaultClientPromptMissingRoot = path.join(tempRoot, "managed-checkout-default-client-prompt-missing");
     writeManagedCheckoutMicroTxnFixture(defaultClientPromptMissingRoot, {
@@ -1889,11 +1959,19 @@ function runSelfTest() {
       defaultClientPromptMissingSummary.caseSummaries[0].clientSessionCheckoutCapturedUsersessionField,
       "omitted"
     );
+    assert.equal(
+      defaultClientPromptMissingSummary.caseSummaries[0].clientSessionCheckoutCapturedRequestShape,
+      "usersession=omitted,ip=false,order=true,steam=true,language=true,currency=true,items=1,bundles=0,itemFields=true,bundleFields=true"
+    );
     assert.equal(defaultClientPromptMissingSummary.caseSummaries[0].clientSessionPromptMissing, true);
     assert.equal(defaultClientPromptMissingSummary.caseSummaries[0].clientSessionPromptMissingSession, "client-default");
     assert.equal(
       defaultClientPromptMissingSummary.caseSummaries[0].clientSessionPromptMissingUsersessionField,
       "omitted"
+    );
+    assert.equal(
+      defaultClientPromptMissingSummary.caseSummaries[0].clientSessionPromptMissingRequestShape,
+      "usersession=omitted,ip=false,order=true,steam=true,language=true,currency=true,items=1,bundles=0,itemFields=true,bundleFields=true"
     );
 
     const missingRequestShapeRoot = path.join(tempRoot, "managed-checkout-missing-request-shape");
@@ -1924,6 +2002,10 @@ function runSelfTest() {
     assert.equal(initTxnTargetMissingRow.initTxnTargetMissingErrorCode, "3");
     assert.equal(initTxnTargetMissingRow.initTxnTargetMissingUsersessionField, "omitted");
     assert.equal(initTxnTargetMissingRow.initTxnTargetMissingHasIpAddress, "false");
+    assert.equal(
+      initTxnTargetMissingRow.initTxnTargetMissingRequestShape,
+      "usersession=omitted,ip=false,order=true,steam=true,language=true,currency=true,items=1,bundles=0,itemFields=true,bundleFields=true"
+    );
 
     const targetMissingWithoutShapeRoot = path.join(tempRoot, "managed-checkout-target-missing-no-shape");
     writeManagedCheckoutMicroTxnFixture(targetMissingWithoutShapeRoot, {
@@ -2720,6 +2802,22 @@ function writeManagedCaseFixture(root, options = {}) {
   }
 }
 
+function initTxnRequestShapeFixture(session = "client") {
+  return {
+    usersession: session === "client-default" ? "omitted" : session,
+    hasUserSessionField: session !== "client-default",
+    hasOrderId: true,
+    hasSteamId64: true,
+    hasLanguage: true,
+    hasCurrency: true,
+    hasIpAddress: false,
+    itemCount: 1,
+    bundleCount: 0,
+    itemsHaveRequiredFields: true,
+    bundlesHaveRequiredFields: true
+  };
+}
+
 function writeManagedCheckoutMicroTxnFixture(root, options = {}) {
   const checkoutCaseId = options.caseId || "02-checkout-approval";
   writeJson(path.join(root, "matrix-manifest.json"), {
@@ -2787,16 +2885,7 @@ function writeManagedCheckoutMicroTxnFixture(root, options = {}) {
   if (options.initTxnTargetMissing) {
     const requestShape = options.omitInitTxnRequestShape
       ? undefined
-      : {
-          usersession:
-            options.initTxnTargetMissingSession === "client-default"
-              ? "omitted"
-              : options.initTxnTargetMissingSession || "client",
-          hasUserSessionField: options.initTxnTargetMissingSession !== "client-default",
-          hasIpAddress: false,
-          itemCount: 1,
-          bundleCount: 0
-        };
+      : initTxnRequestShapeFixture(options.initTxnTargetMissingSession || "client");
     writeResult(path.join(root, checkoutCaseId, "result.log"), {
       ok: false,
       action: {
@@ -2839,16 +2928,7 @@ function writeManagedCheckoutMicroTxnFixture(root, options = {}) {
     const targetSnapshot = { type: "checkout", hasTransactionId: true, clientSession: true };
     const requestShape = options.omitInitTxnRequestShape
       ? undefined
-      : {
-          usersession:
-            options.clientPromptMissingSession === "client-default"
-              ? "omitted"
-              : options.clientPromptMissingSession || "client",
-          hasUserSessionField: options.clientPromptMissingSession !== "client-default",
-          hasIpAddress: false,
-          itemCount: 1,
-          bundleCount: 0
-        };
+      : initTxnRequestShapeFixture(options.clientPromptMissingSession || "client");
     const initTxn = {
       endpoint: "sandbox",
       session: options.clientPromptMissingSession || "client",

@@ -2216,13 +2216,51 @@ function readActiveSteamId64(activeClient) {
 }
 
 function initTxnRequestShape(request, session) {
+  const items = Array.isArray(request.items) ? request.items : [];
+  const bundles = Array.isArray(request.bundles) ? request.bundles : [];
   return {
     usersession: session === "client-default" ? "omitted" : session,
     hasUserSessionField: session !== "client-default",
+    hasOrderId: hasAnyPresentField(request, ["orderId", "orderid"]),
+    hasSteamId64: hasAnyPresentField(request, ["steamId64", "steamid", "steamId"]),
+    hasLanguage: hasAnyPresentField(request, ["language"]),
+    hasCurrency: hasAnyPresentField(request, ["currency"]),
     hasIpAddress: Boolean(request.ipAddress),
-    itemCount: Array.isArray(request.items) ? request.items.length : 0,
-    bundleCount: Array.isArray(request.bundles) ? request.bundles.length : 0
+    itemCount: items.length,
+    bundleCount: bundles.length,
+    itemsHaveRequiredFields: items.length > 0 && items.every(initTxnItemHasRequiredFields),
+    bundlesHaveRequiredFields: bundles.every(initTxnBundleHasRequiredFields)
   };
+}
+
+function initTxnItemHasRequiredFields(item) {
+  return (
+    item &&
+    typeof item === "object" &&
+    !Array.isArray(item) &&
+    hasAnyPresentField(item, ["itemId", "itemid"]) &&
+    hasAnyPresentField(item, ["quantity", "qty"]) &&
+    hasAnyPresentField(item, ["amount"]) &&
+    hasAnyPresentField(item, ["description"])
+  );
+}
+
+function initTxnBundleHasRequiredFields(bundle) {
+  return (
+    bundle &&
+    typeof bundle === "object" &&
+    !Array.isArray(bundle) &&
+    hasAnyPresentField(bundle, ["bundleId", "bundleid"]) &&
+    hasAnyPresentField(bundle, ["quantity", "qty"]) &&
+    hasAnyPresentField(bundle, ["description"])
+  );
+}
+
+function hasAnyPresentField(source, names) {
+  return names.some((name) => {
+    const value = source[name];
+    return value !== undefined && value !== null && String(value).trim() !== "";
+  });
 }
 
 function summarizeInitTxnFailure(data) {
