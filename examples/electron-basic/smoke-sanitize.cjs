@@ -6,6 +6,9 @@ const SENSITIVE_KEY_NAMES = new Set([
   "authticket",
   "checkoutjsonfile",
   "checkouturl",
+  "inittxnapikey",
+  "inittxnapikeyenv",
+  "inittxnrequestfile",
   "cookie",
   "key",
   "orderid",
@@ -33,6 +36,8 @@ const SENSITIVE_KEY_PARTS = [
   "apikey",
   "authticket",
   "checkouturl",
+  "inittxnapikey",
+  "inittxnrequest",
   "orderid",
   "publisherkey",
   "returnurl",
@@ -50,6 +55,8 @@ const SENSITIVE_ARG_PREFIXES = [
   "--steam-bridge-smoke-checkout-return-url",
   "--steam-bridge-smoke-checkout-transaction-id",
   "--steam-bridge-smoke-checkout-json-file",
+  "--steam-bridge-smoke-init-txn-api-key-env",
+  "--steam-bridge-smoke-init-txn-request-file",
   "--steam-bridge-smoke-control-token"
 ];
 

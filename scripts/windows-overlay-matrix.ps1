@@ -1115,7 +1115,7 @@ function Test-MatrixUsesCheckoutTarget {
   param([object[]]$Cases)
 
   return [bool](@($Cases | Where-Object {
-    $_.checkoutTransactionId -or $_.checkoutJsonFile -or $_.shortcutTarget -eq "checkout"
+    $_.checkoutTransactionId -or $_.checkoutJsonFile -or $_.initTxnRequestFile -or $_.shortcutTarget -eq "checkout"
   }).Count -gt 0)
 }
 
@@ -1143,6 +1143,9 @@ function Invoke-InitTxnCapture {
   if ($CheckoutJsonFile) {
     throw "Use either -CheckoutJsonFile or -InitTxnRequestFile, not both."
   }
+  if ($InitTxnResponseFile) {
+    throw "-InitTxnResponseFile is not supported for Windows in-app InitTxn capture; the smoke app creates the transaction after Steam init."
+  }
   if (-not (Test-MatrixUsesCheckoutTarget -Cases $Cases)) {
     throw "-InitTxnRequestFile requires a selected checkout target case."
   }
@@ -1153,81 +1156,27 @@ function Invoke-InitTxnCapture {
     throw "Invalid -InitTxnRequestFile (file was not found)."
   }
 
-  $capture = Resolve-InitTxnCapturePath
-  $runner = Resolve-JavaScriptRunner
-  $responseFile = $InitTxnResponseFile
-  if (-not $responseFile) {
-    $responseFile = New-PrivateInitTxnResponsePath
-    $script:GeneratedInitTxnResponseFile = $responseFile
-  }
-
-  $arguments = @($capture, "--file", $InitTxnRequestFile, "--out", $responseFile)
-  if ($InitTxnEndpoint -eq "sandbox") {
-    $arguments += "--sandbox"
-  } elseif ($InitTxnEndpoint -eq "production") {
-    $arguments += "--production"
-  }
-  if ($InitTxnApiKeyEnv) {
-    $arguments += @("--api-key-env", $InitTxnApiKeyEnv)
-  }
-
-  $output = @()
-  $exitCode = 1
-  $previousErrorActionPreference = $ErrorActionPreference
-  try {
-    $ErrorActionPreference = "Continue"
-    if ($runner.UseElectronRunAsNode) {
-      $result = Invoke-ElectronJavaScriptRunner -Command $runner.Command -Arguments $arguments
-      $output = @($result.Output)
-      $exitCode = $result.ExitCode
-    } else {
-      $output = @(& $runner.Command @arguments 2>&1 | ForEach-Object { [string]$_ })
-      $exitCode = $LASTEXITCODE
-    }
-  } finally {
-    $ErrorActionPreference = $previousErrorActionPreference
-  }
-
-  if ($exitCode -ne 0) {
-    $message = ((@($output) | Where-Object { $_ } | Select-Object -Last 1) -join " ").Trim()
-    if (-not $message) {
-      $message = "capture CLI exited with code $exitCode"
-    }
-    throw "Unable to capture Windows InitTxn checkout JSON ($message)"
-  }
-
-  $summary = $null
-  $summaryText = ((@($output) | Where-Object { $_ } | Select-Object -Last 1) -join "").Trim()
-  if ($summaryText) {
-    try {
-      $summary = $summaryText | ConvertFrom-Json
-    } catch {
-      throw "Unable to capture Windows InitTxn checkout JSON (capture CLI returned invalid summary JSON)"
-    }
-  }
-
   $captureLog = [PSCustomObject]@{
-    kind = "steam-bridge-windows-init-txn-capture"
+    kind = "steam-bridge-windows-init-txn-request"
     generatedAt = (Get-Date).ToUniversalTime().ToString("o")
     source = "init-txn-request-file"
     hasRequestFile = $true
-    hasResponseFile = $true
-    responseFileGenerated = [bool]$script:GeneratedInitTxnResponseFile
+    hasResponseFile = $false
+    responseFileGenerated = $false
+    captureInApp = $true
     apiKeyEnvProvided = [bool]$InitTxnApiKeyEnv
     endpointOption = $InitTxnEndpoint
-    summary = $summary
   }
   Write-MatrixJsonFile -Path (Join-Path (Join-Path $ArtifactRoot "00-preflight") "init-txn-capture.json") -Value $captureLog -Depth 12
 
-  $script:CheckoutJsonFile = $responseFile
-  Write-Host "Captured Windows InitTxn checkout JSON: source=init-txn-request-file output=present expectedAppId=checked"
+  Write-Host "Configured Windows InitTxn checkout: source=init-txn-request-file capture=in-app expectedAppId=checked"
 }
 
 function Test-CheckoutJsonFile {
   param([object[]]$Cases)
 
-  if ($RequireMicroTxnCallback -and -not $CheckoutJsonFile) {
-    throw "-RequireMicroTxnCallback requires -CheckoutJsonFile with a real InitTxn/checkout response."
+  if ($RequireMicroTxnCallback -and -not $CheckoutJsonFile -and -not $InitTxnRequestFile) {
+    throw "-RequireMicroTxnCallback requires -CheckoutJsonFile or -InitTxnRequestFile with a real configured Steam app/product."
   }
 
   if ($RequireMicroTxnCallback -and -not (Test-MatrixRequiresMicroTxnCallback -Cases $Cases)) {
@@ -1975,6 +1924,7 @@ function New-Case {
     [string]$ShortcutTargetOverride = "",
     [string]$CheckoutTransactionIdOverride = "",
     [string]$CheckoutJsonFileOverride = "",
+    [string]$InitTxnRequestFileOverride = "",
     [int]$ResultDelayMs = 8000
   )
 
@@ -1998,6 +1948,7 @@ function New-Case {
     shortcutTarget = $ShortcutTargetOverride
     checkoutTransactionId = $CheckoutTransactionIdOverride
     checkoutJsonFile = $CheckoutJsonFileOverride
+    initTxnRequestFile = $InitTxnRequestFileOverride
     resultDelayMs = $ResultDelayMs
   }
 }
@@ -2010,6 +1961,7 @@ function New-ManagedOpenAndWaitCase {
     [string]$ShortcutTargetOverride = "",
     [string]$CheckoutTransactionIdOverride = "",
     [string]$CheckoutJsonFileOverride = "",
+    [string]$InitTxnRequestFileOverride = "",
     [string]$WebModal = "",
     [string]$StoreRouteOverride = "",
     [switch]$RequireMicroTxnCallback
@@ -2026,6 +1978,7 @@ function New-ManagedOpenAndWaitCase {
     -ShortcutTargetOverride $ShortcutTargetOverride `
     -CheckoutTransactionIdOverride $CheckoutTransactionIdOverride `
     -CheckoutJsonFileOverride $CheckoutJsonFileOverride `
+    -InitTxnRequestFileOverride $InitTxnRequestFileOverride `
     -RequireMicroTxnCallback:$RequireMicroTxnCallback `
     -WebModal $WebModal `
     -StoreRouteOverride $StoreRouteOverride
@@ -2037,6 +1990,7 @@ function New-ShortcutOpenAndWaitCase {
     [string]$ShortcutTargetOverride,
     [string]$CheckoutTransactionIdOverride = "",
     [string]$CheckoutJsonFileOverride = "",
+    [string]$InitTxnRequestFileOverride = "",
     [string]$WebModal = "",
     [string]$StoreRouteOverride = "",
     [switch]$RequireMicroTxnCallback
@@ -2052,6 +2006,7 @@ function New-ShortcutOpenAndWaitCase {
     -ShortcutTargetOverride $ShortcutTargetOverride `
     -CheckoutTransactionIdOverride $CheckoutTransactionIdOverride `
     -CheckoutJsonFileOverride $CheckoutJsonFileOverride `
+    -InitTxnRequestFileOverride $InitTxnRequestFileOverride `
     -RequireMicroTxnCallback:$RequireMicroTxnCallback `
     -WebModal $WebModal `
     -StoreRouteOverride $StoreRouteOverride
@@ -2087,10 +2042,12 @@ function New-PublicShortcutRouteCases {
 }
 
 function Get-MatrixCases {
-  $checkoutTransactionIdForCase = if ($CheckoutJsonFile) { "" } else { $CheckoutTransactionId }
+  $checkoutTransactionIdForCase = if ($CheckoutJsonFile -or $InitTxnRequestFile) { "" } else { $CheckoutTransactionId }
   $checkoutJsonFileForCase = if ($CheckoutJsonFile) { $CheckoutJsonFile } else { "" }
-  $shortcutCheckoutTransactionIdForCase = if ($ShortcutTarget -eq "checkout" -and -not $CheckoutJsonFile) { $CheckoutTransactionId } else { "" }
+  $checkoutInitTxnRequestFileForCase = if ($InitTxnRequestFile) { $InitTxnRequestFile } else { "" }
+  $shortcutCheckoutTransactionIdForCase = if ($ShortcutTarget -eq "checkout" -and -not $CheckoutJsonFile -and -not $InitTxnRequestFile) { $CheckoutTransactionId } else { "" }
   $shortcutCheckoutJsonFileForCase = if ($ShortcutTarget -eq "checkout" -and $CheckoutJsonFile) { $CheckoutJsonFile } else { "" }
+  $shortcutCheckoutInitTxnRequestFileForCase = if ($ShortcutTarget -eq "checkout" -and $InitTxnRequestFile) { $InitTxnRequestFile } else { "" }
   $baseline = @(
     New-Case -Id "01-web" -Action "web" -RequireEvent @("overlay:web") -RequireOverlayActivated -WebModal "true"
     New-Case -Id "02-store" -Action "store" -RequireEvent @("overlay:store") -RequireOverlayActivated
@@ -2106,7 +2063,7 @@ function Get-MatrixCases {
     New-ManagedOpenAndWaitCase -Id "12-managed-store-open-and-wait" -Action "presenter-store-open-and-wait" -StoreRouteOverride $StoreRoute
     New-ManagedOpenAndWaitCase -Id "13-managed-friends-open-and-wait" -Action "presenter-friends-open-and-wait"
     New-ManagedOpenAndWaitCase -Id "14-managed-dialog-open-and-wait" -Action "presenter-dialog-auto-open-and-wait" -DialogOverride $Dialog
-    New-ShortcutOpenAndWaitCase -Id "15-managed-shortcut" -ShortcutTargetOverride $ShortcutTarget -CheckoutTransactionIdOverride $shortcutCheckoutTransactionIdForCase -CheckoutJsonFileOverride $shortcutCheckoutJsonFileForCase -RequireMicroTxnCallback:($RequireMicroTxnCallback -and $ShortcutTarget -eq "checkout")
+    New-ShortcutOpenAndWaitCase -Id "15-managed-shortcut" -ShortcutTargetOverride $ShortcutTarget -CheckoutTransactionIdOverride $shortcutCheckoutTransactionIdForCase -CheckoutJsonFileOverride $shortcutCheckoutJsonFileForCase -InitTxnRequestFileOverride $shortcutCheckoutInitTxnRequestFileForCase -RequireMicroTxnCallback:($RequireMicroTxnCallback -and $ShortcutTarget -eq "checkout")
     New-Case `
       -Id "15-managed-shortcut-keyboard" `
       -Action "presenter-shortcut" `
@@ -2119,9 +2076,10 @@ function Get-MatrixCases {
       -ShortcutTargetOverride $ShortcutTarget `
       -CheckoutTransactionIdOverride $shortcutCheckoutTransactionIdForCase `
       -CheckoutJsonFileOverride $shortcutCheckoutJsonFileForCase `
+      -InitTxnRequestFileOverride $shortcutCheckoutInitTxnRequestFileForCase `
       -RequireMicroTxnCallback:($RequireMicroTxnCallback -and $ShortcutTarget -eq "checkout") `
       -ResultDelayMs 30000
-    New-Case -Id "16-managed-checkout-route" -Action "presenter-checkout" -RequireEvent @("overlay:presenter-open", "overlay:presenter-wait-closed", "overlay:presenter-parked", "overlay:presenter-checkout-open-and-wait-complete") -RequireOverlayActivated -RequireManagedOverlayComplete -ManagedOverlayResultMode "complete" -CheckoutTransactionIdOverride $checkoutTransactionIdForCase -CheckoutJsonFileOverride $checkoutJsonFileForCase -RequireMicroTxnCallback:$RequireMicroTxnCallback
+    New-Case -Id "16-managed-checkout-route" -Action "presenter-checkout" -RequireEvent @("overlay:presenter-open", "overlay:presenter-wait-closed", "overlay:presenter-parked", "overlay:presenter-checkout-open-and-wait-complete") -RequireOverlayActivated -RequireManagedOverlayComplete -ManagedOverlayResultMode "complete" -CheckoutTransactionIdOverride $checkoutTransactionIdForCase -CheckoutJsonFileOverride $checkoutJsonFileForCase -InitTxnRequestFileOverride $checkoutInitTxnRequestFileForCase -RequireMicroTxnCallback:$RequireMicroTxnCallback
     New-ManagedOpenAndWaitCase -Id "17-managed-profile-open-and-wait" -Action "presenter-profile-open-and-wait"
     New-ManagedOpenAndWaitCase -Id "18-managed-players-open-and-wait" -Action "presenter-players-open-and-wait"
     New-ManagedOpenAndWaitCase -Id "19-managed-community-open-and-wait" -Action "presenter-community-open-and-wait"
@@ -2153,6 +2111,7 @@ function Get-MatrixCases {
       -ManagedOverlayResultMode "complete" `
       -CheckoutTransactionIdOverride $checkoutTransactionIdForCase `
       -CheckoutJsonFileOverride $checkoutJsonFileForCase `
+      -InitTxnRequestFileOverride $checkoutInitTxnRequestFileForCase `
       -RequireMicroTxnCallback:$RequireMicroTxnCallback
     New-Case `
       -Id "03-shortcut-checkout" `
@@ -2166,6 +2125,7 @@ function Get-MatrixCases {
       -ShortcutTargetOverride "checkout" `
       -CheckoutTransactionIdOverride $checkoutTransactionIdForCase `
       -CheckoutJsonFileOverride $checkoutJsonFileForCase `
+      -InitTxnRequestFileOverride $checkoutInitTxnRequestFileForCase `
       -ResultDelayMs 30000
     New-Case `
       -Id "04-shortcut-checkout-open-and-wait" `
@@ -2176,8 +2136,12 @@ function Get-MatrixCases {
       -ManagedOverlayResultMode "complete" `
       -ShortcutTargetOverride "checkout" `
       -CheckoutTransactionIdOverride $checkoutTransactionIdForCase `
-      -CheckoutJsonFileOverride $checkoutJsonFileForCase
+      -CheckoutJsonFileOverride $checkoutJsonFileForCase `
+      -InitTxnRequestFileOverride $checkoutInitTxnRequestFileForCase
   )
+  if ($InitTxnRequestFile) {
+    $checkout = @($checkout | Where-Object { @("01-checkout-prepare", "02-checkout-approval") -contains $_.id })
+  }
 
   switch ($Suite) {
     "baseline" { return $baseline }
@@ -2249,6 +2213,7 @@ function Write-MatrixManifest {
           shortcutTarget = $_.shortcutTarget
           hasCheckoutTransactionId = [bool]$_.checkoutTransactionId
           hasCheckoutJsonFile = [bool]$_.checkoutJsonFile
+          hasInitTxnRequestFile = [bool]$_.initTxnRequestFile
           resultDelayMs = $_.resultDelayMs
         }
       }
@@ -2288,6 +2253,7 @@ function Write-MatrixManifest {
       hasRequestFile = [bool]$InitTxnRequestFile
       hasResponseFile = [bool]($InitTxnRequestFile -and $CheckoutJsonFile)
       responseFileGenerated = [bool]$script:GeneratedInitTxnResponseFile
+      captureInApp = [bool]$InitTxnRequestFile
       apiKeyEnvProvided = [bool]$InitTxnApiKeyEnv
       endpointOption = $InitTxnEndpoint
     }
@@ -2299,8 +2265,9 @@ function Write-MatrixManifest {
       dialog = $Dialog
       userDialog = $UserDialog
       shortcutTarget = $ShortcutTarget
-      hasCheckoutTransactionId = [bool]($CheckoutTransactionId -and -not $CheckoutJsonFile)
+      hasCheckoutTransactionId = [bool]($CheckoutTransactionId -and -not $CheckoutJsonFile -and -not $InitTxnRequestFile)
       hasCheckoutJsonFile = [bool]$CheckoutJsonFile
+      hasInitTxnRequestFile = [bool]$InitTxnRequestFile
     }
     cases = @($manifestCases)
   }
@@ -3473,6 +3440,15 @@ function Write-CaseLaunchEnv {
   if ($Case.checkoutJsonFile) {
     $args += @("-CheckoutJsonFile", $Case.checkoutJsonFile)
   }
+  if ($Case.initTxnRequestFile) {
+    $args += @("-InitTxnRequestFile", $Case.initTxnRequestFile)
+    if ($InitTxnApiKeyEnv) {
+      $args += @("-InitTxnApiKeyEnv", $InitTxnApiKeyEnv)
+    }
+    if ($InitTxnEndpoint) {
+      $args += @("-InitTxnEndpoint", $InitTxnEndpoint)
+    }
+  }
   if ($Case.managedOverlayResultMode) {
     $args += @("-ManagedOverlayResultMode", $Case.managedOverlayResultMode)
   }
@@ -3589,6 +3565,15 @@ function Invoke-MatrixCase {
   if ($Case.checkoutJsonFile) {
     $args += @("-CheckoutJsonFile", $Case.checkoutJsonFile)
   }
+  if ($Case.initTxnRequestFile) {
+    $args += @("-InitTxnRequestFile", $Case.initTxnRequestFile)
+    if ($InitTxnApiKeyEnv) {
+      $args += @("-InitTxnApiKeyEnv", $InitTxnApiKeyEnv)
+    }
+    if ($InitTxnEndpoint) {
+      $args += @("-InitTxnEndpoint", $InitTxnEndpoint)
+    }
+  }
   if ($Case.managedOverlayResultMode) {
     $args += @("-ManagedOverlayResultMode", $Case.managedOverlayResultMode)
   }
@@ -3704,6 +3689,7 @@ Write-Host ("  cleanStaleOverlayHelpers: {0}" -f $CleanStaleOverlayHelpers)
 Write-Host ("  checkoutJsonFile: {0}" -f $(if ($CheckoutJsonFile) { "present" } else { "" }))
 Write-Host ("  initTxnRequestFile: {0}" -f $(if ($InitTxnRequestFile) { "present" } else { "" }))
 Write-Host ("  initTxnResponseFile: {0}" -f $(if ($CheckoutJsonFile -and $InitTxnRequestFile) { "present" } else { "" }))
+Write-Host ("  initTxnCapture: {0}" -f $(if ($InitTxnRequestFile) { "in-app" } else { "" }))
 Write-Host ("  requireMicroTxnCallback: {0}" -f $RequireMicroTxnCallback)
 if ($OnlyCase) {
   Write-Host ("  onlyCase: {0}" -f $OnlyCase)

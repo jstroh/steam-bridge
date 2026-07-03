@@ -69,6 +69,10 @@ param(
   [string]$CheckoutTransactionId = "",
   [string]$CheckoutReturnUrl = "",
   [string]$CheckoutJsonFile = "",
+  [string]$InitTxnRequestFile = "",
+  [string]$InitTxnApiKeyEnv = "",
+  [ValidateSet("", "sandbox", "production")]
+  [string]$InitTxnEndpoint = "",
   [string]$Dialog = "",
   [string]$UserDialog = "",
   [string]$ShortcutTarget = "",
@@ -190,6 +194,15 @@ function Get-SmokeArgs {
   if ($CheckoutJsonFile) {
     $args += "--steam-bridge-smoke-checkout-json-file=$CheckoutJsonFile"
   }
+  if ($InitTxnRequestFile) {
+    $args += "--steam-bridge-smoke-init-txn-request-file=$InitTxnRequestFile"
+  }
+  if ($InitTxnApiKeyEnv) {
+    $args += "--steam-bridge-smoke-init-txn-api-key-env=$InitTxnApiKeyEnv"
+  }
+  if ($InitTxnEndpoint) {
+    $args += "--steam-bridge-smoke-init-txn-endpoint=$InitTxnEndpoint"
+  }
   if ($Dialog) {
     $args += "--steam-bridge-smoke-overlay-dialog=$Dialog"
   }
@@ -231,7 +244,9 @@ function Redact-SmokeLaunchArgument {
     "--steam-bridge-smoke-checkout-url=",
     "--steam-bridge-smoke-checkout-transaction-id=",
     "--steam-bridge-smoke-checkout-return-url=",
-    "--steam-bridge-smoke-checkout-json-file="
+    "--steam-bridge-smoke-checkout-json-file=",
+    "--steam-bridge-smoke-init-txn-request-file=",
+    "--steam-bridge-smoke-init-txn-api-key-env="
   )
   foreach ($prefix in $sensitivePrefixes) {
     if ($Argument.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase)) {
@@ -322,6 +337,19 @@ function Get-SmokeEnv {
   if ($CheckoutJsonFile) {
     $envMap.STEAM_BRIDGE_SMOKE_CHECKOUT_JSON_FILE = $CheckoutJsonFile
   }
+  if ($InitTxnRequestFile) {
+    $envMap.STEAM_BRIDGE_SMOKE_INIT_TXN_REQUEST_FILE = $InitTxnRequestFile
+  }
+  if ($InitTxnApiKeyEnv) {
+    $envMap.STEAM_BRIDGE_SMOKE_INIT_TXN_API_KEY_ENV = $InitTxnApiKeyEnv
+    $apiKeyValue = [System.Environment]::GetEnvironmentVariable($InitTxnApiKeyEnv, "Process")
+    if ($apiKeyValue) {
+      $envMap[$InitTxnApiKeyEnv] = $apiKeyValue
+    }
+  }
+  if ($InitTxnEndpoint) {
+    $envMap.STEAM_BRIDGE_SMOKE_INIT_TXN_ENDPOINT = $InitTxnEndpoint
+  }
   if ($Dialog) {
     $envMap.STEAM_BRIDGE_SMOKE_OVERLAY_DIALOG = $Dialog
   }
@@ -365,12 +393,16 @@ function Format-SmokeEnvLines {
   )
   foreach ($key in $EnvMap.Keys) {
     $value = $EnvMap[$key]
-    if ($RedactSensitive -and @(
-      "STEAM_BRIDGE_SMOKE_CHECKOUT_URL",
-      "STEAM_BRIDGE_SMOKE_CHECKOUT_TRANSACTION_ID",
-      "STEAM_BRIDGE_SMOKE_CHECKOUT_RETURN_URL",
-      "STEAM_BRIDGE_SMOKE_CHECKOUT_JSON_FILE"
-    ) -contains $key) {
+    if ($RedactSensitive -and (
+      @(
+        "STEAM_BRIDGE_SMOKE_CHECKOUT_URL",
+        "STEAM_BRIDGE_SMOKE_CHECKOUT_TRANSACTION_ID",
+        "STEAM_BRIDGE_SMOKE_CHECKOUT_RETURN_URL",
+        "STEAM_BRIDGE_SMOKE_CHECKOUT_JSON_FILE",
+        "STEAM_BRIDGE_SMOKE_INIT_TXN_REQUEST_FILE",
+        "STEAM_BRIDGE_SMOKE_INIT_TXN_API_KEY_ENV"
+      ) -contains $key -or $key -match "(?i)(api[_-]?key|publisher[_-]?key|secret|token)"
+    )) {
       $value = "REDACTED"
     }
     $lines += ("{0}={1}" -f $key, $value)

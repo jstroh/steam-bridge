@@ -159,6 +159,17 @@ Reviewed on 2026-07-02 while investigating Windows Electron overlay failures:
   prepare-only checkout matrix case now opts out of the generic overlay-ready
   requirement while still requiring no overlay activation, because its product
   contract is presenter preparation rather than modal Steam UI.
+- A later private configured-product Windows checkout attempt with in-app
+  `InitTxn` capture proved the new client-session target model: sanitized
+  diagnostics recorded `hasTransactionId=true` and `clientSession=true`, and the
+  bridge did not synthesize or open a checkout approval URL. Steam did not emit
+  overlay activation or `MicroTxnAuthorizationResponse` from the non-Steam
+  shortcut harness, matching public reports that `InitTxn` can remain at the
+  initialized transaction state without prompting if Steam does not treat the
+  running process as a real Steam app release/beta. Keep using the non-Steam
+  shortcut for public route, lifecycle, presenter, and close/back-to-app proof;
+  require a true Steam-launched configured app for final client-session purchase
+  authorization proof.
 - The broader Windows source sweep points past window-style tweaks. Valve's
   browser-game FAQ specifically names a native D3D window with offscreen
   Chromium and input forwarding, while the WebView2/DirectComposition research

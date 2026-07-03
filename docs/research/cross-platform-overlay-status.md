@@ -254,6 +254,19 @@ prepare-only checkout case now explicitly allows overlay-not-ready while still
 requiring no overlay activation, matching its contract: prepare the reusable
 native presenter and return to idle without opening modal Steam UI.
 
+A later private configured-product checkout run against the refreshed Windows
+package proved the bridge-side `InitTxn` client-session classification without
+committing private values. The in-app transaction capture produced a sanitized
+checkout target snapshot with `hasTransactionId=true` and `clientSession=true`,
+and Steam Bridge no longer synthesized or opened an `approvetxn` web URL for
+that client-session result. Steam did not emit `GameOverlayActivated(true)` or
+`MicroTxnAuthorizationResponse` in the non-Steam-shortcut harness, so this is
+not accepted as real purchase authorization proof. Treat that as a harness
+limit: public App ID `480` and non-Steam shortcuts prove routing, lifecycle,
+presenter, close/back-to-app, and callback plumbing, but client-session
+microtransaction authorization still needs a real Steam-launched app/beta with
+a configured product.
+
 Latest Windows D3D11 keyboard proof: the refreshed Electron `43.0.0` smoke
 bundle was rebuilt on macOS, deployed to the Windows laptop, and Authenticode
 signed with the local test certificate. The focused interactive Session 1

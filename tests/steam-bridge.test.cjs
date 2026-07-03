@@ -240,6 +240,9 @@ test("electron smoke sanitizer redacts private overlay proof fields", () => {
     steamUrl: "https://checkout.steampowered.com/checkout/approvetxn/123456789/",
     returnUrl: "steam://return/private-token",
     checkoutJsonFile: "/tmp/private-init-txn-response.json",
+    initTxnRequestFile: "/tmp/private-init-txn-request.json",
+    initTxnApiKeyEnv: "STEAM_WEB_API_KEY",
+    STEAM_WEB_API_KEY: "publisher-secret",
     checkout: {
       hasCheckoutUrl: true,
       hasTransactionId: true,
@@ -268,6 +271,8 @@ test("electron smoke sanitizer redacts private overlay proof fields", () => {
         "SteamBridgeSmoke",
         "--steam-bridge-smoke-checkout-transaction-id=123456789",
         "--steam-bridge-smoke-checkout-json-file=/tmp/private-init-txn-response.json",
+        "--steam-bridge-smoke-init-txn-request-file=/tmp/private-init-txn-request.json",
+        "--steam-bridge-smoke-init-txn-api-key-env=STEAM_WEB_API_KEY",
         "--steam-bridge-smoke-control-token=super-secret-control-token",
         "--steam-bridge-smoke-web-url=https://store.steampowered.com/app/480/"
       ]
@@ -308,9 +313,14 @@ test("electron smoke sanitizer redacts private overlay proof fields", () => {
   assert.equal(sanitized.steamUrl.redacted, true);
   assert.equal(sanitized.returnUrl.redacted, true);
   assert.equal(sanitized.checkoutJsonFile.redacted, true);
+  assert.equal(sanitized.initTxnRequestFile.redacted, true);
+  assert.equal(sanitized.initTxnApiKeyEnv.redacted, true);
+  assert.equal(sanitized.STEAM_WEB_API_KEY.redacted, true);
   assert.equal(sanitized.launch.argv[1].redacted, true);
   assert.equal(sanitized.launch.argv[2].redacted, true);
   assert.equal(sanitized.launch.argv[3].redacted, true);
+  assert.equal(sanitized.launch.argv[4].redacted, true);
+  assert.equal(sanitized.launch.argv[5].redacted, true);
   assert.equal(sanitized.message.redacted, true);
 
   const serialized = JSON.stringify(sanitized);
@@ -324,6 +334,8 @@ test("electron smoke sanitizer redacts private overlay proof fields", () => {
   assert.equal(serialized.includes("order-private-001"), false);
   assert.equal(serialized.includes("steam://return/private-token"), false);
   assert.equal(serialized.includes("private-init-txn-response"), false);
+  assert.equal(serialized.includes("private-init-txn-request"), false);
+  assert.equal(serialized.includes("publisher-secret"), false);
   assert.equal(serialized.includes("super-secret-control-token"), false);
 });
 
@@ -604,6 +616,32 @@ test("checkout target helper unwraps InitTxn-style response envelopes", (t) => {
       transactionId: "97531"
     }
   );
+
+  const clientSessionTarget = steam.checkoutTargetFromResult(
+    {
+      clientSession: true,
+      data: {
+        response: {
+          params: {
+            transid: "86420"
+          }
+        }
+      }
+    },
+    { returnUrl: "steam://return-from-client-session" }
+  );
+  assert.deepEqual(clientSessionTarget, {
+    type: "checkout",
+    returnUrl: "steam://return-from-client-session",
+    transactionId: "86420",
+    clientSession: true
+  });
+  assert.deepEqual(steam.snapshotSteamOverlayTarget(clientSessionTarget), {
+    type: "checkout",
+    hasTransactionId: true,
+    clientSession: true,
+    hasReturnUrl: true
+  });
 });
 
 test("checkout target validator reports array-nested SDK app IDs", (t) => {
@@ -787,6 +825,16 @@ test("electron smoke native-host-unavailable action errors keep sanitized target
     exampleMain,
     /throwIfNativeHostUnavailable\(initialSnapshot,\s*checkoutTargetFromOperation\(transaction\)\)/,
     "checkout smoke fail-fast errors should attach a sanitized checkout snapshot"
+  );
+  assert.match(
+    exampleMain,
+    /captureInitTxnCheckout\(activeClient\)/,
+    "private InitTxn smoke proof should create the transaction inside the initialized Electron app"
+  );
+  assert.match(
+    exampleMain,
+    /createSteamWebApiClient\(\{\s*apiKey\s*\}\)/,
+    "private InitTxn smoke proof should use the public Steam Web API client"
   );
   assert.match(
     exampleMain,
@@ -11817,6 +11865,10 @@ test("electron steam overlay manager validates managed targets before presenter 
     () => overlay.open({ type: "checkout" }),
     /requires a url, steamUrl, or transactionId/
   );
+  assert.throws(
+    () => overlay.open({ type: "checkout", transactionId: "123456789", clientSession: true }),
+    /opened by InitTxn/
+  );
   await assert.rejects(
     overlay.openAndWait(
       { type: "dialog", dialog: steam.Dialog.Settings },
@@ -11842,6 +11894,13 @@ test("electron steam overlay manager validates managed targets before presenter 
       { showTimeoutMs: 200, closeTimeoutMs: 200 }
     ),
     /openAndWait\(\) requires a presenter-backed target/
+  );
+  await assert.rejects(
+    overlay.openAndWait(
+      { type: "checkout", transactionId: "123456789", clientSession: true },
+      { showTimeoutMs: 200, closeTimeoutMs: 200 }
+    ),
+    /opened by InitTxn/
   );
 
   assert.deepEqual(
@@ -12080,6 +12139,51 @@ test("electron steam overlay checkout helper prepares, opens, and waits with bac
     hasReturnUrl: true
   });
   assert.equal(webApiEnvelopeResult.transaction.data.response.params.transid, "97531");
+
+  let clientSessionOperationSnapshot;
+  const clientSessionCallsBefore = steamWebOverlayCalls(fake).length;
+  const clientSessionCheckout = overlay.openCheckoutAndWait(
+    () => {
+      clientSessionOperationSnapshot = overlay.snapshot();
+      return {
+        clientSession: true,
+        data: {
+          response: {
+            params: {
+              transid: "86420"
+            }
+          }
+        }
+      };
+    },
+    { returnUrl: "steam://return-from-client-session", showTimeoutMs: 200, closeTimeoutMs: 200 }
+  );
+
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(clientSessionOperationSnapshot.mode, "active");
+  assert.equal(clientSessionOperationSnapshot.clickThrough, false);
+  assert.equal(clientSessionOperationSnapshot.transparent, false);
+  assert.equal(steamWebOverlayCalls(fake).length, clientSessionCallsBefore);
+
+  fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: true });
+  fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: false });
+  const clientSessionResult = await clientSessionCheckout;
+
+  assert.deepEqual(clientSessionResult.target, {
+    type: "checkout",
+    returnUrl: "steam://return-from-client-session",
+    transactionId: "86420",
+    clientSession: true
+  });
+  assert.deepEqual(clientSessionResult.targetSnapshot, {
+    type: "checkout",
+    hasTransactionId: true,
+    clientSession: true,
+    hasReturnUrl: true
+  });
+  assert.equal(clientSessionResult.parked.currentFps, 0);
+  assert.equal(steamWebOverlayCalls(fake).length, clientSessionCallsBefore);
 
   const activationCallsBeforeWrongAppId = fake.calls.filter((call) => call.method === "activateOverlayToWebPage").length;
   await assert.rejects(

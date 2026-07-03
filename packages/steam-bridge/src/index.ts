@@ -1782,6 +1782,7 @@ export type SteamOverlayCheckoutTarget = NativeOverlayWebPagePresenterOptions &
     url?: string;
     steamUrl?: string;
     transactionId?: bigint | number | string;
+    clientSession?: boolean;
   };
 
 export type SteamOverlayDialogRoute = "auto" | "native";
@@ -1863,6 +1864,7 @@ export type SteamOverlayTargetSnapshot = {
   hasUrl?: boolean;
   hasSteamUrl?: boolean;
   hasTransactionId?: boolean;
+  clientSession?: boolean;
   hasReturnUrl?: boolean;
   hasSteamId64?: boolean;
 };
@@ -1902,6 +1904,8 @@ export interface ElectronSteamOverlayCheckoutOperationObject
   transactionID?: bigint | number | string;
   transid?: bigint | number | string;
   returnurl?: string;
+  usersession?: string;
+  userSession?: string;
   data?: unknown;
   response?: unknown;
   params?: unknown;
@@ -2262,6 +2266,7 @@ function sanitizeSteamOverlayTargetSnapshot(snapshot: SteamOverlayTargetSnapshot
   copyBooleanSnapshotField(mutable, source, "hasUrl");
   copyBooleanSnapshotField(mutable, source, "hasSteamUrl");
   copyBooleanSnapshotField(mutable, source, "hasTransactionId");
+  copyBooleanSnapshotField(mutable, source, "clientSession");
   copyBooleanSnapshotField(mutable, source, "hasReturnUrl");
   copyBooleanSnapshotField(mutable, source, "hasSteamId64");
   return sanitized;
@@ -2543,7 +2548,14 @@ interface ElectronSteamOverlayTargetOpenLifecycle {
 
 interface ElectronSteamOverlayTargetWaitLifecycle extends ElectronSteamOverlayTargetOpenLifecycle {
   activationHandle?: CallbackHandle;
+  allowClientSessionCheckout?: boolean;
+  shownObservation?: ElectronSteamOverlayShownObservation;
   onOpened?: () => void;
+}
+
+interface ElectronSteamOverlayShownObservation {
+  promise: Promise<ElectronSteamOverlaySnapshot>;
+  disconnect(): void;
 }
 
 const SKIP_NATIVE_OVERLAY_PRESENTER_PREPARE = Symbol("skipNativeOverlayPresenterPrepare");
@@ -8913,9 +8925,15 @@ export function openCheckoutOverlay(options: Omit<SteamOverlayCheckoutTarget, "t
     url: _url,
     steamUrl: _steamUrl,
     transactionId: _transactionId,
+    clientSession,
     returnUrl: _returnUrl,
     ...presenterOptions
   } = options;
+  if (clientSession === true) {
+    throw new Error(
+      "Steam client-session checkout targets are opened by InitTxn; use openCheckoutAndWait() around the InitTxn operation."
+    );
+  }
   return openWebOverlay(resolveSteamCheckoutOverlayUrl(options), {
     ...presenterOptions,
     modal
@@ -8956,6 +8974,9 @@ export function snapshotSteamOverlayTarget(target: SteamOverlayTarget): SteamOve
   }
   if ("transactionId" in target) {
     snapshot.hasTransactionId = target.transactionId !== undefined && target.transactionId !== null;
+  }
+  if ("clientSession" in target && typeof target.clientSession === "boolean") {
+    snapshot.clientSession = target.clientSession;
   }
   if ("returnUrl" in target) {
     snapshot.hasReturnUrl = typeof target.returnUrl === "string" && target.returnUrl.length > 0;
@@ -9101,7 +9122,16 @@ function overlayActivationModeForTarget(target: SteamOverlayTarget): NativeOverl
   return "interactive";
 }
 
-function assertElectronSteamOverlayTargetCanOpen(target: SteamOverlayTarget): void {
+function isElectronSteamOverlayClientSessionCheckoutTarget(
+  target: SteamOverlayTarget
+): target is SteamOverlayCheckoutTarget & { clientSession: true } {
+  return target.type === "checkout" && target.clientSession === true;
+}
+
+function assertElectronSteamOverlayTargetCanOpen(
+  target: SteamOverlayTarget,
+  options: { allowClientSessionCheckout?: boolean } = {}
+): void {
   switch (target.type) {
     case "dialog":
       if (target.route !== "native") {
@@ -9114,8 +9144,16 @@ function assertElectronSteamOverlayTargetCanOpen(target: SteamOverlayTarget): vo
       }
       return;
     case "checkout": {
-      const { type: _type, ...options } = target;
-      resolveSteamCheckoutOverlayUrl(options);
+      if (isElectronSteamOverlayClientSessionCheckoutTarget(target)) {
+        if (options.allowClientSessionCheckout === true) {
+          return;
+        }
+        throw new Error(
+          "Steam client-session checkout targets are opened by InitTxn; use openCheckoutAndWait() around the InitTxn operation."
+        );
+      }
+      const { type: _type, ...checkoutOptions } = target;
+      resolveSteamCheckoutOverlayUrl(checkoutOptions);
       return;
     }
     default:
@@ -9123,7 +9161,11 @@ function assertElectronSteamOverlayTargetCanOpen(target: SteamOverlayTarget): vo
   }
 }
 
-function assertElectronSteamOverlayTargetCanWait(target: SteamOverlayTarget): void {
+function assertElectronSteamOverlayTargetCanWait(
+  target: SteamOverlayTarget,
+  options: { allowClientSessionCheckout?: boolean } = {}
+): void {
+  assertElectronSteamOverlayTargetCanOpen(target, options);
   if (overlayActivationModeForTarget(target) !== "transparent-input") {
     return;
   }
@@ -9674,6 +9716,7 @@ export function createElectronSteamOverlay(
       const presenterInternal = presenter as NativeOverlayPresenterInternal;
       const activationHandle = presenterInternal.beginOverlayActivation?.("interactive");
       let activationReleased = false;
+      let shownObservation: ElectronSteamOverlayShownObservation | undefined;
       const releaseActivation = (): void => {
         if (activationReleased) {
           return;
@@ -9687,6 +9730,7 @@ export function createElectronSteamOverlay(
           timeoutMs: finiteNumber(waitOptions.showTimeoutMs, 15000),
           signal: waitOptions.signal
         });
+        shownObservation = observeElectronSteamOverlayShown(controller);
         const transaction = await runElectronSteamOverlayAbortableOperation(
           controller,
           "finish checkout operation",
@@ -9696,7 +9740,9 @@ export function createElectronSteamOverlay(
         );
         const target = electronSteamOverlayCheckoutTargetFromResult(transaction, { modal, returnUrl, expectedAppId });
         const opened = await openElectronSteamOverlayTargetAndWait(target, waitOptions, {
-          activationHandle
+          activationHandle,
+          allowClientSessionCheckout: true,
+          shownObservation
         });
         return {
           transaction,
@@ -9706,6 +9752,7 @@ export function createElectronSteamOverlay(
           parked: opened.parked
         };
       } catch (error) {
+        shownObservation?.disconnect();
         releaseActivation();
         throw annotateSteamOverlayTargetSnapshotError(error, pendingCheckoutTargetSnapshot);
       }
@@ -9948,8 +9995,12 @@ export function createElectronSteamOverlay(
       if (!status.canWait && !isExistingActivationOpening) {
         throw electronSteamOverlayOpenStatusError(status);
       }
-      assertElectronSteamOverlayTargetCanOpen(target);
-      assertElectronSteamOverlayTargetCanWait(target);
+      assertElectronSteamOverlayTargetCanOpen(target, {
+        allowClientSessionCheckout: lifecycle.allowClientSessionCheckout
+      });
+      assertElectronSteamOverlayTargetCanWait(target, {
+        allowClientSessionCheckout: lifecycle.allowClientSessionCheckout
+      });
       const snapshot = status.snapshot;
       assertElectronSteamOverlayNativeHostAvailable(snapshot);
       if (activationHandle) {
@@ -9965,16 +10016,23 @@ export function createElectronSteamOverlay(
         timeoutMs: finiteNumber(options.showTimeoutMs, 15000),
         signal: options.signal
       });
-      openSteamOverlay({
-        ...target,
-        presenter,
-        ...(activationHandle ? { [SKIP_NATIVE_OVERLAY_PRESENTER_PREPARE]: true } : {})
-      } as SteamOverlayTarget);
+      const clientSessionCheckout = isElectronSteamOverlayClientSessionCheckoutTarget(target);
+      if (!clientSessionCheckout) {
+        lifecycle.shownObservation?.disconnect();
+        openSteamOverlay({
+          ...target,
+          presenter,
+          ...(activationHandle ? { [SKIP_NATIVE_OVERLAY_PRESENTER_PREPARE]: true } : {})
+        } as SteamOverlayTarget);
+      }
       lifecycle.onOpened?.();
-      const shown = await controller.waitForOverlayShown({
-        timeoutMs: finiteNumber(options.showTimeoutMs, 15000),
-        signal: options.signal
-      });
+      const shown =
+        clientSessionCheckout && lifecycle.shownObservation
+          ? await waitForElectronSteamOverlayShownObservation(controller, lifecycle.shownObservation, options)
+          : await controller.waitForOverlayShown({
+              timeoutMs: finiteNumber(options.showTimeoutMs, 15000),
+              signal: options.signal
+            });
       releaseActivation();
       const parked = await controller.parkWhenSteamOverlayCloses({
         timeoutMs: finiteNumber(options.closeTimeoutMs, 300000),
@@ -9982,6 +10040,7 @@ export function createElectronSteamOverlay(
       });
       return { shown, parked };
     } catch (error) {
+      lifecycle.shownObservation?.disconnect();
       releaseActivation();
       throw annotateSteamOverlayTargetSnapshotError(error, targetSnapshot);
     }
@@ -11098,6 +11157,19 @@ function electronSteamOverlayNativeHostAvailability(
   };
 }
 
+function electronSteamOverlayTargetValidationError(validate: () => void): unknown {
+  try {
+    validate();
+    return undefined;
+  } catch (error) {
+    return error;
+  }
+}
+
+function electronSteamOverlayTargetValidationMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 function electronSteamOverlayOpenStatus(
   controller: ElectronSteamOverlay,
   target: SteamOverlayTarget
@@ -11121,9 +11193,14 @@ function electronSteamOverlayOpenStatus(
     };
   }
 
-  try {
-    assertElectronSteamOverlayTargetCanOpen(target);
-  } catch (error) {
+  const openValidationError = electronSteamOverlayTargetValidationError(() =>
+    assertElectronSteamOverlayTargetCanOpen(target)
+  );
+  const waitValidationError = electronSteamOverlayTargetValidationError(() =>
+    assertElectronSteamOverlayTargetCanWait(target, { allowClientSessionCheckout: true })
+  );
+
+  if (openValidationError && waitValidationError) {
     return {
       canOpen: false,
       canWait: false,
@@ -11133,7 +11210,7 @@ function electronSteamOverlayOpenStatus(
       nativeHostAvailability,
       reason: "unsupported-target",
       waitReason: "unsupported-target",
-      message: error instanceof Error ? error.message : String(error)
+      message: electronSteamOverlayTargetValidationMessage(waitValidationError)
     };
   }
 
@@ -11194,8 +11271,7 @@ function electronSteamOverlayOpenStatus(
   }
 
   if (snapshot.diagnostics?.overlayEnabled === false) {
-    try {
-      assertElectronSteamOverlayTargetCanWait(target);
+    if (!waitValidationError) {
       return {
         canOpen: false,
         canWait: true,
@@ -11206,43 +11282,54 @@ function electronSteamOverlayOpenStatus(
         reason: "overlay-not-ready",
         message: "Steam overlay is not ready yet."
       };
-    } catch (error) {
-      return {
-        canOpen: false,
-        canWait: false,
-        target,
-        targetSnapshot,
-        snapshot,
-        nativeHostAvailability,
-        reason: "overlay-not-ready",
-        waitReason: "not-waitable",
-        message: error instanceof Error ? error.message : String(error)
-      };
     }
-  }
 
-  try {
-    assertElectronSteamOverlayTargetCanWait(target);
     return {
-      canOpen: true,
-      canWait: true,
-      target,
-      targetSnapshot,
-      snapshot,
-      nativeHostAvailability
-    };
-  } catch (error) {
-    return {
-      canOpen: true,
+      canOpen: false,
       canWait: false,
       target,
       targetSnapshot,
       snapshot,
       nativeHostAvailability,
+      reason: "overlay-not-ready",
       waitReason: "not-waitable",
-      message: error instanceof Error ? error.message : String(error)
+      message: electronSteamOverlayTargetValidationMessage(waitValidationError)
     };
   }
+
+  if (!waitValidationError) {
+    return {
+      canOpen: !openValidationError,
+      canWait: true,
+      target,
+      targetSnapshot,
+      snapshot,
+      nativeHostAvailability,
+      ...(openValidationError
+        ? {
+            reason: "unsupported-target" as const,
+            message: electronSteamOverlayTargetValidationMessage(openValidationError)
+          }
+        : {})
+    };
+  }
+
+  return {
+    canOpen: !openValidationError,
+    canWait: false,
+    target,
+    targetSnapshot,
+    snapshot,
+    nativeHostAvailability,
+    ...(openValidationError
+      ? {
+          reason: "unsupported-target" as const,
+          message: electronSteamOverlayTargetValidationMessage(openValidationError)
+        }
+      : {}),
+    waitReason: "not-waitable",
+    message: electronSteamOverlayTargetValidationMessage(waitValidationError)
+  };
 }
 
 function electronSteamOverlayCheckoutOperationStatus(
@@ -11526,6 +11613,65 @@ function releaseElectronSteamOverlayActivationWhenShown(
   void waitForShown.then(release, release);
 }
 
+function observeElectronSteamOverlayShown(controller: ElectronSteamOverlay): ElectronSteamOverlayShownObservation {
+  let stateChangeHandle: CallbackHandle | undefined;
+  let settled = false;
+  let resolveSnapshot: (snapshot: ElectronSteamOverlaySnapshot) => void = () => {};
+  const promise = new Promise<ElectronSteamOverlaySnapshot>((resolve) => {
+    resolveSnapshot = resolve;
+  });
+
+  const disconnect = (): void => {
+    stateChangeHandle?.disconnect();
+    stateChangeHandle = undefined;
+  };
+
+  const checkShown = (): void => {
+    if (settled) {
+      return;
+    }
+
+    let snapshot: ElectronSteamOverlaySnapshot;
+    try {
+      snapshot = controller.snapshot();
+    } catch {
+      return;
+    }
+
+    if (snapshot.overlayActive === true) {
+      settled = true;
+      disconnect();
+      resolveSnapshot(snapshot);
+    }
+  };
+
+  stateChangeHandle = subscribeElectronSteamOverlayStateChanges(controller, checkShown);
+  checkShown();
+
+  return {
+    promise,
+    disconnect
+  };
+}
+
+async function waitForElectronSteamOverlayShownObservation(
+  controller: ElectronSteamOverlay,
+  observation: ElectronSteamOverlayShownObservation,
+  options: ElectronSteamOverlayOpenAndWaitOptions
+): Promise<ElectronSteamOverlaySnapshot> {
+  try {
+    return await Promise.race([
+      observation.promise,
+      controller.waitForOverlayShown({
+        timeoutMs: finiteNumber(options.showTimeoutMs, 15000),
+        signal: options.signal
+      })
+    ]);
+  } finally {
+    observation.disconnect();
+  }
+}
+
 function annotateSteamOverlayTargetSnapshotError<T>(error: T, targetSnapshot: SteamOverlayTargetSnapshot): T {
   if (!error || typeof error !== "object") {
     return error;
@@ -11754,6 +11900,7 @@ function electronSteamOverlayCheckoutTargetFromResult(
   const url = nonEmptyString(source.url);
   const transactionId = source.transactionId ?? source.transactionID ?? source.transid;
   const returnUrl = nonEmptyString(source.returnUrl ?? source.returnurl);
+  const clientSession = isElectronSteamOverlayCheckoutClientSessionSource(source);
 
   if (steamUrl) {
     target.steamUrl = steamUrl;
@@ -11772,6 +11919,13 @@ function electronSteamOverlayCheckoutTargetFromResult(
   }
   if (typeof source.modal === "boolean") {
     target.modal = source.modal;
+  }
+  if (clientSession) {
+    if (target.transactionId == null) {
+      throw new Error("A Steam client-session checkout operation returned an invalid transaction ID.");
+    }
+    target.clientSession = true;
+    return target;
   }
 
   resolveSteamCheckoutOverlayUrl(target);
@@ -11851,7 +12005,30 @@ function normalizeSteamCheckoutAppIdValue(value: unknown): number | undefined {
 function electronSteamOverlayCheckoutSourceFromObject(
   result: ElectronSteamOverlayCheckoutOperationObject
 ): Record<string, unknown> {
-  return findElectronSteamOverlayCheckoutSource(result) ?? (result as Record<string, unknown>);
+  const root = result as Record<string, unknown>;
+  const source = findElectronSteamOverlayCheckoutSource(result) ?? root;
+  return source === root ? source : mergeElectronSteamOverlayCheckoutWrapperOptions(source, root);
+}
+
+function mergeElectronSteamOverlayCheckoutWrapperOptions(
+  source: Record<string, unknown>,
+  wrapper: Record<string, unknown>
+): Record<string, unknown> {
+  const merged: Record<string, unknown> = { ...source };
+  for (const key of ["clientSession", "usersession", "userSession"] as const) {
+    if (Object.prototype.hasOwnProperty.call(wrapper, key)) {
+      merged[key] = wrapper[key];
+    }
+  }
+  return merged;
+}
+
+function isElectronSteamOverlayCheckoutClientSessionSource(source: Record<string, unknown>): boolean {
+  if (source.clientSession === true) {
+    return true;
+  }
+  const userSession = nonEmptyString(source.userSession ?? source.usersession);
+  return userSession?.toLowerCase() === "client";
 }
 
 function findElectronSteamOverlayCheckoutSource(

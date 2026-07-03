@@ -53,6 +53,12 @@ let CHECKOUT_RETURN_URL =
   CLI_OPTIONS.checkoutReturnUrl || process.env.STEAM_BRIDGE_SMOKE_CHECKOUT_RETURN_URL || "";
 let CHECKOUT_JSON_FILE =
   CLI_OPTIONS.checkoutJsonFile || process.env.STEAM_BRIDGE_SMOKE_CHECKOUT_JSON_FILE || "";
+let INIT_TXN_REQUEST_FILE =
+  CLI_OPTIONS.initTxnRequestFile || process.env.STEAM_BRIDGE_SMOKE_INIT_TXN_REQUEST_FILE || "";
+let INIT_TXN_API_KEY_ENV =
+  CLI_OPTIONS.initTxnApiKeyEnv || process.env.STEAM_BRIDGE_SMOKE_INIT_TXN_API_KEY_ENV || "";
+let INIT_TXN_ENDPOINT =
+  CLI_OPTIONS.initTxnEndpoint || process.env.STEAM_BRIDGE_SMOKE_INIT_TXN_ENDPOINT || "";
 let OVERLAY_DIALOG = CLI_OPTIONS.overlayDialog || process.env.STEAM_BRIDGE_SMOKE_OVERLAY_DIALOG || "Friends";
 let USER_DIALOG = CLI_OPTIONS.userDialog || process.env.STEAM_BRIDGE_SMOKE_USER_DIALOG || "steamid";
 let SHORTCUT_TARGET =
@@ -81,6 +87,9 @@ const INITIAL_SMOKE_ACTION_OPTIONS = {
   checkoutTransactionId: CHECKOUT_TRANSACTION_ID,
   checkoutReturnUrl: CHECKOUT_RETURN_URL,
   checkoutJsonFile: CHECKOUT_JSON_FILE,
+  initTxnRequestFile: INIT_TXN_REQUEST_FILE,
+  initTxnApiKeyEnv: INIT_TXN_API_KEY_ENV,
+  initTxnEndpoint: INIT_TXN_ENDPOINT,
   overlayDialog: OVERLAY_DIALOG,
   userDialog: USER_DIALOG,
   shortcutTarget: SHORTCUT_TARGET,
@@ -694,6 +703,15 @@ function applySmokeActionOptions(options, { reset = false } = {}) {
   if (typeof options.checkoutJsonFile === "string") {
     CHECKOUT_JSON_FILE = options.checkoutJsonFile;
   }
+  if (typeof options.initTxnRequestFile === "string") {
+    INIT_TXN_REQUEST_FILE = options.initTxnRequestFile;
+  }
+  if (typeof options.initTxnApiKeyEnv === "string") {
+    INIT_TXN_API_KEY_ENV = options.initTxnApiKeyEnv;
+  }
+  if (typeof options.initTxnEndpoint === "string") {
+    INIT_TXN_ENDPOINT = normalizeInitTxnEndpoint(options.initTxnEndpoint);
+  }
   if (typeof options.overlayDialog === "string" && options.overlayDialog) {
     OVERLAY_DIALOG = options.overlayDialog;
   }
@@ -722,6 +740,9 @@ function resetSmokeActionOptions() {
   CHECKOUT_TRANSACTION_ID = INITIAL_SMOKE_ACTION_OPTIONS.checkoutTransactionId;
   CHECKOUT_RETURN_URL = INITIAL_SMOKE_ACTION_OPTIONS.checkoutReturnUrl;
   CHECKOUT_JSON_FILE = INITIAL_SMOKE_ACTION_OPTIONS.checkoutJsonFile;
+  INIT_TXN_REQUEST_FILE = INITIAL_SMOKE_ACTION_OPTIONS.initTxnRequestFile;
+  INIT_TXN_API_KEY_ENV = INITIAL_SMOKE_ACTION_OPTIONS.initTxnApiKeyEnv;
+  INIT_TXN_ENDPOINT = INITIAL_SMOKE_ACTION_OPTIONS.initTxnEndpoint;
   OVERLAY_DIALOG = INITIAL_SMOKE_ACTION_OPTIONS.overlayDialog;
   USER_DIALOG = INITIAL_SMOKE_ACTION_OPTIONS.userDialog;
   SHORTCUT_TARGET = INITIAL_SMOKE_ACTION_OPTIONS.shortcutTarget;
@@ -756,6 +777,15 @@ function summarizeSmokeActionOptions(options) {
   }
   if (typeof options.checkoutJsonFile === "string" && options.checkoutJsonFile) {
     summary.hasCheckoutJsonFile = true;
+  }
+  if (typeof options.initTxnRequestFile === "string" && options.initTxnRequestFile) {
+    summary.hasInitTxnRequestFile = true;
+  }
+  if (typeof options.initTxnApiKeyEnv === "string" && options.initTxnApiKeyEnv) {
+    summary.hasInitTxnApiKeyEnv = true;
+  }
+  if (typeof options.initTxnEndpoint === "string" && options.initTxnEndpoint) {
+    summary.initTxnEndpoint = normalizeInitTxnEndpoint(options.initTxnEndpoint);
   }
   if (options.overlayDialog) {
     summary.overlayDialog = options.overlayDialog;
@@ -1928,8 +1958,9 @@ function openPresenterUserOpenAndWaitOverlay() {
 }
 
 async function openPresenterCheckoutOverlay() {
-  const overlay = ensureElectronSteamOverlay();
-  const checkoutOperation = readCheckoutOperationInput();
+  const activeClient = requireClient();
+  const overlay = ensureElectronSteamOverlay(activeClient);
+  const checkoutOperation = await readCheckoutOperationInput(activeClient);
   if (checkoutOperation) {
     const { transaction, source } = checkoutOperation;
     const context = {
@@ -1989,7 +2020,19 @@ async function openPresenterCheckoutOverlay() {
   return snapshot();
 }
 
-function readCheckoutOperationInput() {
+async function readCheckoutOperationInput(activeClient) {
+  if (INIT_TXN_REQUEST_FILE) {
+    const transaction = await captureInitTxnCheckout(activeClient);
+    return {
+      source: "init-txn-request-file",
+      transaction
+    };
+  }
+
+  return readStaticCheckoutOperationInput();
+}
+
+function readStaticCheckoutOperationInput() {
   if (CHECKOUT_JSON_FILE) {
     const transaction = JSON.parse(fs.readFileSync(CHECKOUT_JSON_FILE, "utf8"));
     return {
@@ -2018,11 +2061,95 @@ function readCheckoutOperationInput() {
   };
 }
 
+async function captureInitTxnCheckout(activeClient) {
+  if (APP_ID === 480) {
+    throw new Error("Private InitTxn checkout proof requires a configured Steam app/product.");
+  }
+  const apiKeyEnv = INIT_TXN_API_KEY_ENV || "STEAM_WEB_API_KEY";
+  const apiKey = process.env[apiKeyEnv] || (!INIT_TXN_API_KEY_ENV ? process.env.STEAM_API_KEY : "");
+  if (!apiKey) {
+    throw new Error("Missing Steam publisher Web API key environment variable for private InitTxn checkout.");
+  }
+
+  const request = JSON.parse(fs.readFileSync(INIT_TXN_REQUEST_FILE, "utf8"));
+  const steamId64 = readActiveSteamId64(activeClient);
+  const initTxnRequest = {
+    ...request,
+    appId: APP_ID,
+    steamId64
+  };
+  const endpoint = normalizeInitTxnEndpoint(INIT_TXN_ENDPOINT || (request.sandbox === false ? "production" : "sandbox"));
+  const session = request.session === "web" ? "web" : "client";
+  const webClient = steamworks.createSteamWebApiClient({ apiKey });
+  const facade = endpoint === "production" ? webClient.microTxn : webClient.microTxnSandbox;
+  const response = session === "web"
+    ? await facade.initWebTxn(initTxnRequest)
+    : await facade.initClientTxn(initTxnRequest);
+
+  if (!response.ok) {
+    throw new Error("Steam InitTxn Web API request failed.");
+  }
+
+  const transaction = session === "client"
+    ? {
+        clientSession: true,
+        data: response.data
+      }
+    : response.data;
+
+  let target;
+  try {
+    target = steamworks.overlay.checkoutTargetFromResult(transaction, { expectedAppId: APP_ID });
+  } catch (error) {
+    throw new Error(`Steam InitTxn response did not include a checkout target (${summarizeInitTxnFailure(response.data)}).`);
+  }
+
+  const targetSnapshot = steamworks.overlay.snapshotSteamOverlayTarget(target);
+  recordEvent("checkout:init-txn-captured", {
+    endpoint,
+    session,
+    httpStatus: response.status,
+    appId: APP_ID,
+    usedCurrentSteamId: Boolean(steamId64),
+    targetSnapshot
+  });
+  return transaction;
+}
+
+function readActiveSteamId64(activeClient) {
+  const steamId = activeClient.localplayer.getSteamId();
+  const steamId64 = steamId && steamId.steamId64;
+  if (!steamId64) {
+    throw new Error("Unable to read the active Steam ID for private InitTxn checkout.");
+  }
+  return String(steamId64);
+}
+
+function summarizeInitTxnFailure(data) {
+  const response = data && typeof data === "object" ? data.response : undefined;
+  const result = response && typeof response === "object" ? response.result : undefined;
+  const error = response && typeof response === "object" ? response.error : undefined;
+  const errorCode = error && typeof error === "object" ? error.errorcode : undefined;
+  return `result=${String(result || "unknown")} errorCode=${String(errorCode || "unknown")}`;
+}
+
+function normalizeInitTxnEndpoint(value) {
+  const endpoint = String(value || "").trim().toLowerCase();
+  if (!endpoint || endpoint === "sandbox") {
+    return "sandbox";
+  }
+  if (endpoint === "production") {
+    return "production";
+  }
+  throw new Error("Unsupported InitTxn endpoint; expected sandbox or production.");
+}
+
 function checkoutDiagnostic(target) {
   const source = findCheckoutDiagnosticSource(target);
   return {
     hasCheckoutUrl: Boolean(source && (source.steamUrl || source.steamurl || source.url)),
     hasTransactionId: Boolean(source && (source.transactionId || source.transactionID || source.transid)),
+    clientSession: Boolean(target && typeof target === "object" && target.clientSession === true),
     hasReturnUrl: Boolean(source && (source.returnUrl || source.returnurl)),
     modal: source && typeof source.modal === "boolean" ? source.modal : true
   };
@@ -2338,7 +2465,10 @@ function resolveShortcutOverlayTarget() {
       return { type: "dialog", dialog: OVERLAY_DIALOG, appId: APP_ID };
     case "checkout":
       {
-        const checkoutOperation = readCheckoutOperationInput();
+        if (INIT_TXN_REQUEST_FILE) {
+          throw new Error("Shortcut checkout target does not support in-app InitTxn request files.");
+        }
+        const checkoutOperation = readStaticCheckoutOperationInput();
         if (!checkoutOperation) {
           throw new Error("Shortcut checkout target requires a checkout URL, transaction ID, or JSON file.");
         }
@@ -2539,6 +2669,9 @@ function snapshot() {
       overlayDialog: OVERLAY_DIALOG,
       userDialog: USER_DIALOG,
       shortcutTarget: SHORTCUT_TARGET,
+      hasInitTxnRequestFile: Boolean(INIT_TXN_REQUEST_FILE),
+      hasInitTxnApiKeyEnv: Boolean(INIT_TXN_API_KEY_ENV),
+      initTxnEndpoint: INIT_TXN_ENDPOINT || null,
       presenterMode: EFFECTIVE_PRESENTER_MODE,
       configuredPresenterMode: PRESENTER_MODE || null,
       disableElectronOverlayPresenter: DISABLE_ELECTRON_OVERLAY_PRESENTER,
@@ -3589,6 +3722,9 @@ function parseSmokeArgs(args) {
     checkoutTransactionId: undefined,
     checkoutReturnUrl: undefined,
     checkoutJsonFile: undefined,
+    initTxnRequestFile: undefined,
+    initTxnApiKeyEnv: undefined,
+    initTxnEndpoint: undefined,
     managedOverlayWaitTimeoutMs: undefined,
     managedOverlayParkTimeoutMs: undefined,
     managedOverlayResultMode: undefined,
@@ -3649,6 +3785,15 @@ function parseSmokeArgs(args) {
         break;
       case "--steam-bridge-smoke-checkout-json-file":
         options.checkoutJsonFile = value;
+        break;
+      case "--steam-bridge-smoke-init-txn-request-file":
+        options.initTxnRequestFile = value;
+        break;
+      case "--steam-bridge-smoke-init-txn-api-key-env":
+        options.initTxnApiKeyEnv = value;
+        break;
+      case "--steam-bridge-smoke-init-txn-endpoint":
+        options.initTxnEndpoint = value;
         break;
       case "--steam-bridge-smoke-managed-overlay-wait-timeout-ms":
         options.managedOverlayWaitTimeoutMs = value;

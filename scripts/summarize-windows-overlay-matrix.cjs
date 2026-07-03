@@ -302,6 +302,13 @@ function validateManifest(manifest, failures) {
             failures
           );
         }
+        if (Object.prototype.hasOwnProperty.call(entry, "hasInitTxnRequestFile")) {
+          expect(
+            typeof entry.hasInitTxnRequestFile === "boolean",
+            `matrix manifest case ${entry.id} records InitTxn request presence without raw value`,
+            failures
+          );
+        }
         if (Object.prototype.hasOwnProperty.call(entry, "requireMicroTxnCallback")) {
           expect(
             typeof entry.requireMicroTxnCallback === "boolean",
