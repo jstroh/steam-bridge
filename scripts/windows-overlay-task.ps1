@@ -32,6 +32,27 @@ function Invoke-CheckedNative {
   }
 }
 
+function Split-MatrixArgumentNameValue {
+  param([string]$Argument)
+
+  $inline = [regex]::Match($Argument, "^(?<name>-[^:=\s]+)(?<separator>[:=])(?<value>.*)$")
+  if ($inline.Success) {
+    return [PSCustomObject]@{
+      Name = $inline.Groups["name"].Value
+      Separator = $inline.Groups["separator"].Value
+      Value = $inline.Groups["value"].Value
+      HasInlineValue = $true
+    }
+  }
+
+  return [PSCustomObject]@{
+    Name = $Argument
+    Separator = ""
+    Value = ""
+    HasInlineValue = $false
+  }
+}
+
 function Format-RedactedMatrixArgs {
   param([string[]]$Arguments)
 
@@ -63,8 +84,14 @@ function Format-RedactedMatrixArgs {
       continue
     }
 
+    $parts = Split-MatrixArgumentNameValue -Argument $argument
+    if ($parts.HasInlineValue -and $sensitiveValueFlags.Contains($parts.Name)) {
+      $redacted += ("{0}{1}REDACTED" -f $parts.Name, $parts.Separator)
+      continue
+    }
+
     $redacted += $argument
-    if ($sensitiveValueFlags.Contains($argument)) {
+    if ($sensitiveValueFlags.Contains($parts.Name)) {
       $redactNext = $true
     }
   }
@@ -215,13 +242,22 @@ function Convert-MatrixArgsToSplat {
       throw "Matrix arguments must use named PowerShell parameters."
     }
 
-    $name = $argument.TrimStart("-")
+    $inline = [regex]::Match($argument, "^(?<name>-[^:=\s]+)(?<separator>[:=])(?<value>.*)$")
+    $inlineValue = $false
+    if ($inline.Success) {
+      $name = $inline.Groups["name"].Value.TrimStart("-")
+      $value = $inline.Groups["value"].Value
+      $inlineValue = $true
+    } else {
+      $name = $argument.TrimStart("-")
+      $value = $true
+    }
+
     if (-not $name) {
       throw "Matrix arguments contain an empty parameter name."
     }
 
-    $value = $true
-    if ($index + 1 -lt $Arguments.Count) {
+    if (-not $inlineValue -and $index + 1 -lt $Arguments.Count) {
       $nextArgument = [string]$Arguments[$index + 1]
       if (-not $nextArgument.StartsWith("-")) {
         $value = $nextArgument
