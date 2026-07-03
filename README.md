@@ -862,9 +862,12 @@ the private `--checkout-json-file` checkout suite.
   `-Suite managed-routes` when you want the repeatable public App ID `480`
   product-facing managed route set without real transaction checkout or the raw
   native diagnostic observe cases. Keep real checkout proof focused on
-  `-Suite managed -OnlyCase 16-managed-checkout-route -CheckoutJsonFile <private-init-txn-response.json> -RequireMicroTxnCallback`
+  `-Suite checkout -CheckoutJsonFile <private-init-txn-response.json> -RequireMicroTxnCallback -CloseProbe`
   with your own configured app and product when a purchase authorization
-  callback is expected. Keep the normal direct Steam hook as the Windows default
+  callback is expected. The checkout suite covers prepare-only, direct checkout,
+  Shift+Tab checkout, and programmatic checkout shortcut open-and-wait without
+  rerunning unrelated overlay surfaces. Keep the normal direct Steam hook as the
+  Windows default
   unless evidence from that baseline proves additional machinery is needed.
   Each matrix case passes `-RequireNoCrashes`,
   so Windows artifacts must prove both overlay behavior and a clean Electron

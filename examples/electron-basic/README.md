@@ -830,7 +830,7 @@ arrays, without printing the value. Use
 prepare-only, direct checkout, Shift+Tab checkout, and programmatic checkout
 shortcut/open-and-wait without rerunning unrelated overlay surfaces.
 On Windows, use
-`-Suite managed -OnlyCase 16-managed-checkout-route -CheckoutJsonFile <private-init-txn-response.json>`
+`-Suite checkout -CheckoutJsonFile <private-init-txn-response.json> -RequireMicroTxnCallback -CloseProbe`
 for the focused configured-product checkout path.
 Matrix dry-run and live command logs redact checkout file paths, checkout URLs,
 return URLs, transaction IDs, and control tokens as `REDACTED`, so command logs
@@ -1446,7 +1446,7 @@ app-specific proof outside the committed examples:
    with `STEAM_BRIDGE_SMOKE_CHECKOUT_JSON_FILE`, the macOS helper's
    `--checkout-json-file`, or the Windows helper's `-CheckoutJsonFile`. For
    focused macOS matrix proof, run `--suite checkout`; for focused Windows proof,
-   run `-Suite managed -OnlyCase 16-managed-checkout-route`. The matrix validates
+   run `-Suite checkout -CloseProbe`. The matrix validates
    any embedded app ID against the configured app ID before live launch.
    Add `--require-microtxn-callback` on macOS or `-RequireMicroTxnCallback` on
    Windows when the direct checkout case should receive Steam's authorization

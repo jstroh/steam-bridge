@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-  [ValidateSet("baseline", "managed", "managed-routes", "full", "preflight", "readiness", "shortcut")]
+  [ValidateSet("baseline", "managed", "managed-routes", "checkout", "full", "preflight", "readiness", "shortcut")]
   [string]$Suite = "baseline",
 
   [ValidateSet("steam-launch", "direct")]
@@ -1099,6 +1099,16 @@ function Test-CheckoutJsonFile {
   Write-Host "Validated Windows checkout JSON target: source=json-file expectedAppId=checked"
 }
 
+function Test-MatrixCloseProbeRequirements {
+  param([object[]]$Cases)
+
+  $shortcutToggleCases = @($Cases | Where-Object { $_.shortcutToggleProbe })
+  if ($shortcutToggleCases.Count -gt 0 -and -not $CloseProbe) {
+    $caseIds = (($shortcutToggleCases | ForEach-Object { $_.id }) -join ", ")
+    throw "Selected Windows shortcut toggle probe case(s) require -CloseProbe so the matrix can send Shift+Tab and capture close/back-to-app proof: $caseIds"
+  }
+}
+
 function Resolve-ShortcutsPath {
   if ($ShortcutsPath) {
     return $ShortcutsPath
@@ -1889,6 +1899,48 @@ function Get-MatrixCases {
     New-Case -Id "26-managed-achievement-unlock" -Action "presenter-achievement-unlock" -RequireEvent @("overlay:presenter-attach", "achievement:unlock", "overlay:passive-notification-parked") -RequireNoOverlayActivation -AllowOverlayNotReady -RequirePassiveNotification -ResultDelayMs 10000
   )
 
+  $checkout = @(
+    New-Case `
+      -Id "01-checkout-prepare" `
+      -Action "presenter-checkout" `
+      -RequireEvent @("overlay:presenter-checkout-ready") `
+      -RequireNoOverlayActivation `
+      -ResultDelayMs 1200
+    New-Case `
+      -Id "02-checkout-approval" `
+      -Action "presenter-checkout" `
+      -RequireEvent @("overlay:presenter-open", "overlay:presenter-wait-closed", "overlay:presenter-parked", "overlay:presenter-checkout-open-and-wait-complete") `
+      -RequireOverlayActivated `
+      -RequireManagedOverlayComplete `
+      -ManagedOverlayResultMode "complete" `
+      -CheckoutTransactionIdOverride $checkoutTransactionIdForCase `
+      -CheckoutJsonFileOverride $checkoutJsonFileForCase `
+      -RequireMicroTxnCallback:$RequireMicroTxnCallback
+    New-Case `
+      -Id "03-shortcut-checkout" `
+      -Action "presenter-shortcut" `
+      -RequireEvent @("overlay:presenter-shortcut-ready", "overlay:shortcut-open", "overlay:presenter-wait-shown", "overlay:presenter-wait-closed", "overlay:presenter-parked") `
+      -RequireOverlayActivated `
+      -RequireManagedOverlayComplete `
+      -ManagedOverlayResultMode "complete" `
+      -CloseProbeOnActivation `
+      -ShortcutToggleProbe `
+      -ShortcutTargetOverride "checkout" `
+      -CheckoutTransactionIdOverride $checkoutTransactionIdForCase `
+      -CheckoutJsonFileOverride $checkoutJsonFileForCase `
+      -ResultDelayMs 30000
+    New-Case `
+      -Id "04-shortcut-checkout-open-and-wait" `
+      -Action "presenter-shortcut-open-and-wait" `
+      -RequireEvent @("overlay:presenter-open-and-wait-start", "overlay:shortcut-open", "overlay:presenter-wait-closed", "overlay:presenter-parked", "overlay:presenter-open-and-wait-complete") `
+      -RequireOverlayActivated `
+      -RequireManagedOverlayComplete `
+      -ManagedOverlayResultMode "complete" `
+      -ShortcutTargetOverride "checkout" `
+      -CheckoutTransactionIdOverride $checkoutTransactionIdForCase `
+      -CheckoutJsonFileOverride $checkoutJsonFileForCase
+  )
+
   switch ($Suite) {
     "baseline" { return $baseline }
     "managed" { return $managed }
@@ -1902,6 +1954,7 @@ function Get-MatrixCases {
         $_.id -notin $publicManagedRouteExclusions
       })
     }
+    "checkout" { return $checkout }
     "full" { return @($baseline + $managed) }
     "preflight" { return @() }
     "readiness" { return @() }
@@ -2818,6 +2871,7 @@ Resolve-SmokeExe | Out-Null
 New-Item -ItemType Directory -Force -Path $ArtifactRoot | Out-Null
 $selectedMatrixCases = @(Get-SelectedMatrixCases)
 Test-CheckoutJsonFile -Cases $selectedMatrixCases
+Test-MatrixCloseProbeRequirements -Cases $selectedMatrixCases
 
 Write-Host "Windows overlay matrix:"
 Write-Host ("  suite: {0}" -f $Suite)

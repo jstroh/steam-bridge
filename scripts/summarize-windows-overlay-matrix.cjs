@@ -240,7 +240,7 @@ function validateManifest(manifest, failures) {
     failures
   );
   expect(Boolean(manifest.generatedAt), "matrix manifest generatedAt is present", failures);
-  expect(["baseline", "managed", "managed-routes", "full", "preflight", "readiness", "shortcut"].includes(manifest.suite), `matrix manifest suite is known: ${manifest.suite}`, failures);
+  expect(["baseline", "managed", "managed-routes", "checkout", "full", "preflight", "readiness", "shortcut"].includes(manifest.suite), `matrix manifest suite is known: ${manifest.suite}`, failures);
   expect(["steam-launch", "direct"].includes(manifest.launchMode), `matrix manifest launchMode is known: ${manifest.launchMode}`, failures);
   expect(Number.isInteger(manifest.appId), "matrix manifest appId is an integer", failures);
   if (manifest.nativePathOverride !== undefined) {
@@ -2433,18 +2433,19 @@ function writeManagedCaseFixture(root, options = {}) {
 }
 
 function writeManagedCheckoutMicroTxnFixture(root, options = {}) {
+  const checkoutCaseId = options.caseId || "02-checkout-approval";
   writeJson(path.join(root, "matrix-manifest.json"), {
     kind: "steam-bridge-windows-overlay-matrix-manifest",
     generatedAt: "2026-07-03T00:00:00.000Z",
-    suite: "managed",
+    suite: options.suite || "checkout",
     launchMode: "steam-launch",
     appId: 480,
-    onlyCase: "16-managed-checkout-route",
+    onlyCase: checkoutCaseId,
     expectedCaseCount: 1,
     requireMicroTxnCallback: true,
     cases: [
       {
-        id: "16-managed-checkout-route",
+        id: checkoutCaseId,
         action: "presenter-checkout",
         requireEvent: [
           "overlay:presenter-open",
@@ -2515,7 +2516,7 @@ function writeManagedCheckoutMicroTxnFixture(root, options = {}) {
     events.push(microTxnEvent);
   }
 
-  writeResult(path.join(root, "16-managed-checkout-route", "result.log"), {
+  writeResult(path.join(root, checkoutCaseId, "result.log"), {
     ok: true,
     action: { ok: true, action: "presenter-checkout" },
     wait: {

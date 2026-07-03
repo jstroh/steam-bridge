@@ -445,7 +445,7 @@ function runWindowsSmokeHelperStaticChecks() {
     assert.ok(appControlDevModeHelper.includes(expected), `Windows App Control dev-mode helper missing ${expected}`);
   }
   for (const expected of [
-    "ValidateSet(\"baseline\", \"managed\", \"managed-routes\", \"full\", \"preflight\", \"readiness\", \"shortcut\")",
+    "ValidateSet(\"baseline\", \"managed\", \"managed-routes\", \"checkout\", \"full\", \"preflight\", \"readiness\", \"shortcut\")",
     "Test-NativeLoadGate",
     "Get-PreflightAppControlSummary",
     "New-NativeLoadGateBlocker",
@@ -488,6 +488,13 @@ function runWindowsSmokeHelperStaticChecks() {
     "presenter-web-open-and-wait",
     "presenter-shortcut-open-and-wait",
     "presenter-checkout",
+    "01-checkout-prepare",
+    "02-checkout-approval",
+    "03-shortcut-checkout",
+    "04-shortcut-checkout-open-and-wait",
+    "overlay:presenter-checkout-ready",
+    "overlay:shortcut-open",
+    "Selected Windows shortcut toggle probe case(s) require -CloseProbe",
     "$publicManagedRouteExclusions",
     "25-managed-achievement-progress",
     "26-managed-achievement-unlock",
