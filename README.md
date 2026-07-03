@@ -852,8 +852,7 @@ the private `--checkout-json-file` checkout suite.
       "-InitTxnApiKeyEnv", "STEAM_WEB_API_KEY",
       "-InitTxnEndpoint", "sandbox",
       "-RequireMicroTxnCallback",
-      "-LaunchMode", "steam-launch",
-      "-AssumeShortcutConfigured",
+      "-LaunchMode", "steam-app",
       "-CloseProbe",
       "-CloseProbeInput", "auto"
     )
@@ -862,7 +861,32 @@ the private `--checkout-json-file` checkout suite.
   The optional private env file uses `NAME=VALUE` lines, is never committed,
   and is only reported as a count of imported values. Keep real checkout proof
   private and focused on a configured app/product; public App ID `480` still
-  proves only generic overlay routing.
+  proves only generic overlay routing. The configured app must launch the
+  smoke package itself for callback proof. Prefer a private Steam branch/depot
+  whose Windows launch option points at `SteamBridgeSmoke.exe`. For a local
+  Windows test machine, the smoke package also includes
+  `windows-steam-app-launch-options.ps1`, which can set a backed-up per-user
+  Steam launch-option wrapper for the configured app. Fully quit Steam before
+  setting or restoring `localconfig.vdf`; Steam can overwrite that file while
+  it is running:
+
+  ```powershell
+  .\windows-steam-app-launch-options.ps1 `
+    -Mode inspect `
+    -AppId <configured-app-id>
+
+  .\windows-steam-app-launch-options.ps1 `
+    -Mode set `
+    -AppId <configured-app-id> `
+    -SmokeAppDir C:\path\to\SteamBridgeSmoke-win32-x64 `
+    -Backup C:\path\to\steam-localconfig-before-smoke.vdf
+
+  # Restore after the private proof run.
+  .\windows-steam-app-launch-options.ps1 `
+    -Mode restore `
+    -AppId <configured-app-id> `
+    -Backup C:\path\to\steam-localconfig-before-smoke.vdf
+  ```
 
   For development-only App Control diagnostics, the matrix can install the
   Steam shortcut with `-ShortcutExe`, `-ShortcutStartDir`, and

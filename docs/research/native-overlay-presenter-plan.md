@@ -171,8 +171,9 @@ Reviewed on 2026-07-02 while investigating Windows Electron overlay failures:
   require a true Steam-launched configured app for final client-session purchase
   authorization proof. The Windows matrix now encodes this boundary with
   `-LaunchMode steam-app`: that mode launches `steam://rungameid/<AppId>` for a
-  configured Steam app whose launch options point at the stable smoke env file,
-  while the existing `steam-launch` mode remains the non-Steam shortcut route.
+  configured Steam app that actually starts the smoke executable, either through
+  a private Steam branch/depot or a backed-up local launch-option wrapper. The
+  existing `steam-launch` mode remains the non-Steam shortcut route.
   Callback-required checkout proof is gated to `steam-app`.
 - The broader Windows source sweep points past window-style tweaks. Valve's
   browser-game FAQ specifically names a native D3D window with offscreen

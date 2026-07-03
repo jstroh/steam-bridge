@@ -223,9 +223,14 @@ checkout routing proof on App ID `480`, and keep real checkout authorization
 proof focused on
 `-LaunchMode steam-app -Suite checkout -InitTxnRequestFile <private-init-txn-request.json> -RequireMicroTxnCallback -CloseProbe -CloseProbeInput auto`
 with your own configured app and product. The real Steam app's launch options
-must include the stable smoke env-file argument printed by the matrix, for
-example `--steam-bridge-smoke-env-file=<launchEnvFile>`, so Steam launches the
-smoke executable through the configured app rather than a non-Steam shortcut.
+must launch the smoke package through the configured app rather than a
+non-Steam shortcut. Prefer a private Steam branch/depot whose Windows launch
+option points at `SteamBridgeSmoke.exe`. For local proof on a dedicated Windows
+test machine, the smoke package also includes
+`windows-steam-app-launch-options.ps1` to inspect, set, and restore a backed-up
+per-user Steam launch-option wrapper. Fully quit Steam before setting or
+restoring `localconfig.vdf`, because Steam can overwrite that file while it is
+running.
 The checkout suite covers
 prepare-only, direct checkout, Shift+Tab checkout, and programmatic checkout
 shortcut open-and-wait without rerunning unrelated overlay surfaces. Add

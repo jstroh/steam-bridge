@@ -823,10 +823,16 @@ capture with `-LaunchMode steam-app -InitTxnRequestFile <private-request.json>`;
 the smoke app creates the transaction after Steam init and records only
 source/presence metadata. The `steam-app` launch mode starts
 `steam://rungameid/<AppId>`, so the configured Steam app's launch options must
-point at the stable smoke env file printed by the matrix. The non-Steam shortcut
-lane remains the public App ID `480` route/lifecycle proof lane. Before live
-launch, the matrix validates static JSON against the matrix app ID and uses the
-same runtime wrong-app guard without printing either value.
+launch the smoke package through that configured app. Prefer a private Steam
+branch/depot whose Windows launch option points at `SteamBridgeSmoke.exe`. For
+local proof on a dedicated Windows test machine, the smoke package also includes
+`windows-steam-app-launch-options.ps1` to inspect, set, and restore a backed-up
+per-user Steam launch-option wrapper. Fully quit Steam before setting or
+restoring `localconfig.vdf`, because Steam can overwrite that file while it is
+running. The non-Steam shortcut lane remains the public App ID `480`
+route/lifecycle proof lane. Before live launch, the matrix validates static JSON
+against the matrix app ID and uses the same runtime wrong-app guard without
+printing either value.
 The standalone
 `steam-bridge-validate-checkout-target --expected-app-id <your-app-id>` CLI
 performs the same preflight and treats Steam SDK-style app ID fields such as

@@ -35,6 +35,9 @@ try {
   run("node", [path.join(repoRoot, "scripts", "summarize-windows-overlay-matrix.cjs"), "--self-test"], {
     cwd: repoRoot
   });
+  run("node", [path.join(repoRoot, "scripts", "upsert-steam-app-launch-options.cjs"), "--mode", "self-test"], {
+    cwd: repoRoot
+  });
   run("node", [path.join(repoRoot, "scripts", "verify-macos-steam-signing.cjs"), "--self-test"], {
     cwd: repoRoot
   });
@@ -309,6 +312,14 @@ function runMacosPackageSigningStaticChecks() {
     "Windows Electron package must include the Steam shortcut updater"
   );
   assert.ok(
+    packagerScript.includes("upsert-steam-app-launch-options.cjs"),
+    "Windows Electron package must include the real Steam app launch-options updater"
+  );
+  assert.ok(
+    packagerScript.includes("windows-steam-app-launch-options.ps1"),
+    "Windows Electron package must include the real Steam app launch-options PowerShell wrapper"
+  );
+  assert.ok(
     matrixScript.includes("verify-macos-steam-signing.cjs"),
     "macOS overlay matrix must verify package signing before live cases"
   );
@@ -352,6 +363,14 @@ function runWindowsSmokeHelperStaticChecks() {
   const matrixHelper = fs.readFileSync(path.join(repoRoot, "scripts", "windows-overlay-matrix.ps1"), "utf8");
   const taskWrapper = fs.readFileSync(path.join(repoRoot, "scripts", "windows-overlay-task.ps1"), "utf8");
   const renderHealthHelper = fs.readFileSync(path.join(repoRoot, "scripts", "windows-render-health-probe.ps1"), "utf8");
+  const steamAppLaunchOptionsHelper = fs.readFileSync(
+    path.join(repoRoot, "scripts", "upsert-steam-app-launch-options.cjs"),
+    "utf8"
+  );
+  const steamAppLaunchOptionsWrapper = fs.readFileSync(
+    path.join(repoRoot, "scripts", "windows-steam-app-launch-options.ps1"),
+    "utf8"
+  );
   const nativeControlSource = fs.readFileSync(
     path.join(repoRoot, "scripts", "windows-native-overlay-control", "SteamBridgeNativeOverlayControl.cs"),
     "utf8"
@@ -679,6 +698,54 @@ function runWindowsSmokeHelperStaticChecks() {
     "fatalLifecycleEventCount"
   ]) {
     assert.ok(renderHealthHelper.includes(expected), `Windows render health helper missing ${expected}`);
+  }
+  for (const expected of [
+    "steam-bridge-windows-steam-app-launch-options",
+    "print-wrapper",
+    "set",
+    "restore",
+    "inspect",
+    "SteamBridgeSmoke.exe",
+    "--steam-bridge-smoke-env-file=",
+    "%command%",
+    "localconfig.vdf",
+    "Fully quit Steam before editing localconfig.vdf",
+    "Steam can overwrite that file",
+    "while it is running",
+    "assertSteamStoppedUnlessAllowed",
+    "tasklist.exe",
+    "backupPath",
+    "containsSmokeExe",
+    "containsEnvFileArg",
+    "containsCommandToken",
+    "parseTextVdf",
+    "Windows Steam app launch options self-test passed."
+  ]) {
+    assert.ok(
+      steamAppLaunchOptionsHelper.includes(expected),
+      `Windows Steam app launch-options helper missing ${expected}`
+    );
+  }
+  for (const expected of [
+    "upsert-steam-app-launch-options.cjs",
+    "Resolve-NodeLikeRunner",
+    "UseElectronRunAsNode",
+    "ELECTRON_RUN_AS_NODE",
+    "Start-Process",
+    "RedirectStandardOutput",
+    "RedirectStandardError",
+    "--result-file",
+    "resultPath",
+    "Join-WindowsProcessArguments",
+    "AllowSteamRunning",
+    "SteamBridgeSmoke.exe",
+    "--smoke-app-dir",
+    "--allow-steam-running"
+  ]) {
+    assert.ok(
+      steamAppLaunchOptionsWrapper.includes(expected),
+      `Windows Steam app launch-options wrapper missing ${expected}`
+    );
   }
   for (const expected of [
     "AddSteamIdentityEvent",

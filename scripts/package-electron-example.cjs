@@ -289,6 +289,14 @@ function copyTargetHelpers(appPath) {
       path.join(repoRoot, "scripts", "upsert-steam-shortcut.cjs"),
       path.join(appPath, "upsert-steam-shortcut.cjs")
     );
+    fs.copyFileSync(
+      path.join(repoRoot, "scripts", "upsert-steam-app-launch-options.cjs"),
+      path.join(appPath, "upsert-steam-app-launch-options.cjs")
+    );
+    fs.copyFileSync(
+      path.join(repoRoot, "scripts", "windows-steam-app-launch-options.ps1"),
+      path.join(appPath, "windows-steam-app-launch-options.ps1")
+    );
   }
   if (target === "x86_64-unknown-linux-gnu") {
     const helperPath = path.join(appPath, "linux-electron-smoke.sh");
