@@ -68,6 +68,7 @@ param(
   [string]$CheckoutUrl = "",
   [string]$CheckoutTransactionId = "",
   [string]$CheckoutReturnUrl = "",
+  [string]$CheckoutJsonFile = "",
   [string]$Dialog = "",
   [string]$UserDialog = "",
   [string]$ShortcutTarget = "",
@@ -185,6 +186,9 @@ function Get-SmokeArgs {
   if ($CheckoutReturnUrl) {
     $args += "--steam-bridge-smoke-checkout-return-url=$CheckoutReturnUrl"
   }
+  if ($CheckoutJsonFile) {
+    $args += "--steam-bridge-smoke-checkout-json-file=$CheckoutJsonFile"
+  }
   if ($Dialog) {
     $args += "--steam-bridge-smoke-overlay-dialog=$Dialog"
   }
@@ -219,12 +223,31 @@ function Get-SmokeArgs {
   return $args
 }
 
+function Redact-SmokeLaunchArgument {
+  param([string]$Argument)
+
+  $sensitivePrefixes = @(
+    "--steam-bridge-smoke-checkout-url=",
+    "--steam-bridge-smoke-checkout-transaction-id=",
+    "--steam-bridge-smoke-checkout-return-url=",
+    "--steam-bridge-smoke-checkout-json-file="
+  )
+  foreach ($prefix in $sensitivePrefixes) {
+    if ($Argument.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+      return ($prefix + "REDACTED")
+    }
+  }
+  return $Argument
+}
+
 function Get-LaunchOptionsLine {
   param([string]$LogFile, [string]$SmokeAction)
   if ($SmokeEnvFile) {
     return (Join-LaunchOptions @("--steam-bridge-smoke-env-file=$SmokeEnvFile"))
   }
-  return (Join-LaunchOptions (Get-SmokeArgs -LogFile $LogFile -SmokeAction $SmokeAction))
+  return (Join-LaunchOptions (Get-SmokeArgs -LogFile $LogFile -SmokeAction $SmokeAction | ForEach-Object {
+    Redact-SmokeLaunchArgument -Argument $_
+  }))
 }
 
 function Join-LaunchOptions {
@@ -295,6 +318,9 @@ function Get-SmokeEnv {
   if ($CheckoutReturnUrl) {
     $envMap.STEAM_BRIDGE_SMOKE_CHECKOUT_RETURN_URL = $CheckoutReturnUrl
   }
+  if ($CheckoutJsonFile) {
+    $envMap.STEAM_BRIDGE_SMOKE_CHECKOUT_JSON_FILE = $CheckoutJsonFile
+  }
   if ($Dialog) {
     $envMap.STEAM_BRIDGE_SMOKE_OVERLAY_DIALOG = $Dialog
   }
@@ -330,14 +356,23 @@ function Get-SmokeEnv {
 }
 
 function Format-SmokeEnvLines {
-  param($EnvMap)
+  param($EnvMap, [switch]$RedactSensitive)
 
   $lines = @(
     "# Steam Bridge Windows smoke launch state",
     "# Rewritten by windows-electron-smoke.ps1 before Steam launches the shortcut."
   )
   foreach ($key in $EnvMap.Keys) {
-    $lines += ("{0}={1}" -f $key, $EnvMap[$key])
+    $value = $EnvMap[$key]
+    if ($RedactSensitive -and @(
+      "STEAM_BRIDGE_SMOKE_CHECKOUT_URL",
+      "STEAM_BRIDGE_SMOKE_CHECKOUT_TRANSACTION_ID",
+      "STEAM_BRIDGE_SMOKE_CHECKOUT_RETURN_URL",
+      "STEAM_BRIDGE_SMOKE_CHECKOUT_JSON_FILE"
+    ) -contains $key) {
+      $value = "REDACTED"
+    }
+    $lines += ("{0}={1}" -f $key, $value)
   }
   return $lines
 }
@@ -888,7 +923,7 @@ function Add-DefaultRequireEvents {
       break
     }
     "presenter-checkout" {
-      if ($CheckoutUrl -or $CheckoutTransactionId) {
+      if ($CheckoutUrl -or $CheckoutTransactionId -or $CheckoutJsonFile) {
         $script:RequireEvent = @("overlay:presenter-open")
       } else {
         $script:RequireEvent = @("overlay:presenter-checkout-ready")
@@ -1419,7 +1454,7 @@ switch ($Mode) {
     }
   }
   "print-launch-env" {
-    foreach ($line in (Format-SmokeEnvLines (Get-SmokeEnv -LogFile $ResultFile -SmokeAction $Action))) {
+    foreach ($line in (Format-SmokeEnvLines (Get-SmokeEnv -LogFile $ResultFile -SmokeAction $Action) -RedactSensitive)) {
       Write-Host $line
     }
   }

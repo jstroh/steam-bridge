@@ -832,14 +832,16 @@ records Code Integrity events 3033/3077 for
 `SteamBridgeNativeOverlayControl.exe`. Treat that as a local policy/reputation
 blocker for the native control binary, not as overlay behavior.
 
-The macOS matrix can now pair `--app-id <your-app-id>` with
-`--checkout-json-file <path>` for private configured-product proof. Its manifest
-and summary audit the expected app ID and `checkoutSource=json-file`, while
-leaving the JSON path, transaction ID, return URL, and product details outside
-committed artifacts. Before live launch, the matrix validates that the private
-JSON resolves through `checkoutTargetFromResult(...)` to a checkout URL or
-transaction ID, passes `--app-id` into that resolver so embedded app IDs use the
-runtime wrong-app guard, and prints only sanitized presence flags. The same
+The macOS matrix can pair `--app-id <your-app-id>` with
+`--checkout-json-file <path>` for private configured-product proof, and the
+Windows matrix now accepts the same private handoff as `-CheckoutJsonFile` for
+focused `-Suite managed -OnlyCase 16-managed-checkout-route` proof. Their
+manifests and summaries audit source/presence metadata while leaving the JSON
+path, transaction ID, return URL, and product details outside committed
+artifacts. Before live launch, the matrices validate that the private JSON
+resolves through `checkoutTargetFromResult(...)` to a checkout URL or transaction
+ID, pass the configured matrix app ID into that resolver so embedded app IDs use
+the runtime wrong-app guard, and print only sanitized presence flags. The same
 resolver is published as
 `steam-bridge-validate-checkout-target --expected-app-id <app-id>` for
 standalone private fixture checks before a live matrix run. The macOS summary

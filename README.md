@@ -525,12 +525,13 @@ available for other diagnostics; use those sanitized snapshots in logs instead
 of raw checkout targets because they keep only presence flags for checkout URLs,
 transaction IDs, return URLs, and Steam IDs. App ID `480` proves generic
 checkout routing only; real purchase UI and `InitTxn` proof require your own
-Steam app ID with configured products. The macOS checkout matrix preflights a
-private `--checkout-json-file` through the same checkout target resolver before
-launching Steam, passing the matrix `--app-id` into that resolver so embedded
-app IDs use the same wrong-app guard as runtime checkout opens without printing
-either value. Bad `InitTxn` captures fail before any live overlay work and only
-sanitized presence flags are printed. You can run the same check directly with
+Steam app ID with configured products. The macOS and Windows checkout matrices
+preflight private checkout JSON through the same checkout target resolver before
+launching Steam. Use macOS `--checkout-json-file` or Windows `-CheckoutJsonFile`;
+the matrix app ID is passed into that resolver so embedded app IDs use the same
+wrong-app guard as runtime checkout opens without printing either value. Bad
+`InitTxn` captures fail before any live overlay work and only sanitized presence
+flags are printed. You can run the same check directly with
 `npx steam-bridge-validate-checkout-target --file <private-init-txn-response.json> --expected-app-id <your-app-id>`.
 The validator treats Steam SDK-style app ID fields such as `m_unAppID` and
 `m_nAppID` as embedded app IDs too, including when they appear inside line-item
@@ -861,8 +862,8 @@ the private `--checkout-json-file` checkout suite.
   `-Suite managed-routes` when you want the repeatable public App ID `480`
   product-facing managed route set without real transaction checkout or the raw
   native diagnostic observe cases. Keep real checkout proof focused on
-  `-Suite managed -OnlyCase 16-managed-checkout-route` with your own configured
-  app, product, and transaction ID. Keep the normal direct Steam hook as the
+  `-Suite managed -OnlyCase 16-managed-checkout-route -CheckoutJsonFile <private-init-txn-response.json>`
+  with your own configured app and product. Keep the normal direct Steam hook as the
   Windows default unless evidence from that baseline proves additional
   machinery is needed.
   Each matrix case passes `-RequireNoCrashes`,

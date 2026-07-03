@@ -274,6 +274,13 @@ function validateManifest(manifest, failures) {
           `matrix manifest case ${entry.id} records checkout transaction presence without raw value`,
           failures
         );
+        if (Object.prototype.hasOwnProperty.call(entry, "hasCheckoutJsonFile")) {
+          expect(
+            typeof entry.hasCheckoutJsonFile === "boolean",
+            `matrix manifest case ${entry.id} records checkout JSON presence without raw value`,
+            failures
+          );
+        }
       }
     }
   }

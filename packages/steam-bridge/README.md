@@ -206,8 +206,8 @@ so they should be run only when the overlay can be closed interactively or by a
 verified UI close probe. Use `-Suite managed-routes` for the public App ID `480`
 product-facing managed route set without real transaction checkout or the raw
 native diagnostic observe cases. Keep real checkout proof focused on
-`-Suite managed -OnlyCase 16-managed-checkout-route` with your own configured
-app, product, and transaction ID.
+`-Suite managed -OnlyCase 16-managed-checkout-route -CheckoutJsonFile <private-init-txn-response.json>`
+with your own configured app and product.
 
 ## Quick Start
 
@@ -742,13 +742,14 @@ Steam IDs, auth-ticket bytes, and private CLI arguments from result and lifecycl
 artifacts while preserving machine-checkable presence flags and presenter
 snapshots. For real product smoke proof, write the backend `InitTxn` or
 checkout response JSON to a private temp file and pass its path with
-`STEAM_BRIDGE_SMOKE_CHECKOUT_JSON_FILE` or the macOS helper/matrix
-`--checkout-json-file` option; the smoke app feeds that object through
-`openCheckoutAndWait(...)` without committing private data or putting transaction
-values in launch arguments. The macOS matrix preflights that JSON through
-`checkoutTargetFromResult(...)` and passes the matrix `--app-id` into that
-resolver before any live Steam launch. If the capture includes an app ID, the
-same wrong-app guard used by runtime checkout opens rejects mismatches without
+`STEAM_BRIDGE_SMOKE_CHECKOUT_JSON_FILE`, the macOS helper/matrix
+`--checkout-json-file` option, or the Windows helper/matrix `-CheckoutJsonFile`
+option; the smoke app feeds that object through `openCheckoutAndWait(...)`
+without committing private data or putting transaction values in launch
+arguments. The macOS and Windows matrices preflight that JSON through
+`checkoutTargetFromResult(...)` and pass the matrix app ID into that resolver
+before any live Steam launch. If the capture includes an app ID, the same
+wrong-app guard used by runtime checkout opens rejects mismatches without
 printing either value. A malformed, incomplete, or mismatched private `InitTxn`
 capture fails early. Run the same validation without the matrix using
 `npx steam-bridge-validate-checkout-target --file <private-init-txn-response.json> --expected-app-id <your-app-id>`.
@@ -760,7 +761,10 @@ Use the macOS matrix's `--suite checkout` for focused private purchase proof;
 pair it with `--app-id <your-app-id>`,
 `--checkout-json-file <private-init-txn-response.json>`, and
 `--require-microtxn-callback` when the private direct checkout case is expected
-to produce a `MicroTxnAuthorizationResponse`. That callback flag requires
+to produce a `MicroTxnAuthorizationResponse`. On Windows, keep focused private
+checkout proof to
+`-Suite managed -OnlyCase 16-managed-checkout-route -CheckoutJsonFile <private-init-txn-response.json>`
+with the matching configured app ID. The macOS callback flag requires
 `--checkout-json-file`, so a real-callback proof cannot accidentally fall back
 to the public synthetic App ID `480` transaction route. The summary will fail if
 that callback is missing, lacks a presenter snapshot, or does not report the

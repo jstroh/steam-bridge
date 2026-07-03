@@ -814,13 +814,14 @@ hold and parks it back at zero FPS. Pass that same signal to your backend
 request when the network request itself should be canceled too. Closing the
 overlay manager while that operation is pending also releases the hold and
 prevents a late checkout surface from opening.
-The macOS helper and matrix expose the private-file path as
-`--checkout-json-file`; the matrix can pair it with `--app-id <your-app-id>`
-and records only `checkoutSource=json-file` plus the expected app ID in its
-manifest. Before live launch, the matrix validates that this JSON resolves to a
-checkout URL, Steam checkout URL, transaction ID, or `InitTxn` envelope, and it
-passes the matrix `--app-id` into the same resolver so embedded app IDs use the
-runtime wrong-app guard without printing either value. The standalone
+The macOS helper/matrix expose the private-file path as `--checkout-json-file`,
+and the Windows helper/matrix expose it as `-CheckoutJsonFile`. The matrices can
+pair it with the matching configured app ID and record only source/presence
+metadata, never the file path. Before live launch, the matrix validates that this
+JSON resolves to a checkout URL, Steam checkout URL, transaction ID, or
+`InitTxn` envelope, and it passes the matrix app ID into the same resolver so
+embedded app IDs use the runtime wrong-app guard without printing either value.
+The standalone
 `steam-bridge-validate-checkout-target --expected-app-id <your-app-id>` CLI
 performs the same preflight and treats Steam SDK-style app ID fields such as
 `m_unAppID` and `m_nAppID` as embedded app IDs, including inside line-item
@@ -828,6 +829,9 @@ arrays, without printing the value. Use
 `--suite checkout` for the focused macOS purchase path; it covers checkout
 prepare-only, direct checkout, Shift+Tab checkout, and programmatic checkout
 shortcut/open-and-wait without rerunning unrelated overlay surfaces.
+On Windows, use
+`-Suite managed -OnlyCase 16-managed-checkout-route -CheckoutJsonFile <private-init-txn-response.json>`
+for the focused configured-product checkout path.
 Matrix dry-run and live command logs redact checkout file paths, checkout URLs,
 return URLs, transaction IDs, and control tokens as `REDACTED`, so command logs
 can be shared for review without exposing private purchase data.
@@ -1438,9 +1442,11 @@ app-specific proof outside the committed examples:
    keep `microTxn.initWebTxn(...)` for your browser fallback. Do not tune local
    overlay-preparation timers around that call.
 5. For smoke proof, save the returned JSON to a private temp file and pass it
-   with `STEAM_BRIDGE_SMOKE_CHECKOUT_JSON_FILE` or the macOS helper's
-   `--checkout-json-file`. For focused macOS matrix proof, run `--suite
-   checkout`; the matrix validates any embedded app ID against `--app-id`.
+   with `STEAM_BRIDGE_SMOKE_CHECKOUT_JSON_FILE`, the macOS helper's
+   `--checkout-json-file`, or the Windows helper's `-CheckoutJsonFile`. For
+   focused macOS matrix proof, run `--suite checkout`; for focused Windows proof,
+   run `-Suite managed -OnlyCase 16-managed-checkout-route`. The matrix validates
+   any embedded app ID against the configured app ID before live launch.
    Add `--require-microtxn-callback` when the direct checkout case should
    receive Steam's authorization callback.
 6. Let Steam Bridge open the returned checkout URL or transaction approval path.

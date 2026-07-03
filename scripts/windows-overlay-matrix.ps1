@@ -32,6 +32,7 @@ param(
   [string]$UserDialog = "steamid",
   [string]$ShortcutTarget = "friends",
   [string]$CheckoutTransactionId = "123456789",
+  [string]$CheckoutJsonFile = "",
   [string]$OnlyCase = "",
   [int]$TimeoutSeconds = 120,
   [switch]$SkipNativeLoadGate,
@@ -916,6 +917,24 @@ function Resolve-UpsertShortcutPath {
   return $scriptPath
 }
 
+function Resolve-CheckoutValidatorPath {
+  $packageValidator = Join-Path $AppDir "resources\app\node_modules\steam-bridge\bin\validate-checkout-target.cjs"
+  if (Test-Path -LiteralPath $packageValidator) {
+    return $packageValidator
+  }
+
+  $scriptDir = Split-Path -Parent $PSCommandPath
+  if ($scriptDir) {
+    $repoRoot = Split-Path -Parent $scriptDir
+    $repoValidator = Join-Path $repoRoot "packages\steam-bridge\bin\validate-checkout-target.cjs"
+    if (Test-Path -LiteralPath $repoValidator) {
+      return $repoValidator
+    }
+  }
+
+  throw "Missing Steam checkout target validator. Expected it in the package or repo checkout."
+}
+
 function Resolve-JavaScriptRunner {
   if ($JavaScriptRunnerExe) {
     if (-not (Test-Path -LiteralPath $JavaScriptRunnerExe)) {
@@ -941,6 +960,51 @@ function Resolve-JavaScriptRunner {
   }
 }
 
+function Invoke-ElectronJavaScriptRunner {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Command,
+    [Parameter(Mandatory = $true)]
+    [string[]]$Arguments
+  )
+
+  $stdoutPath = [System.IO.Path]::GetTempFileName()
+  $stderrPath = [System.IO.Path]::GetTempFileName()
+  $previousElectronRunAsNode = [System.Environment]::GetEnvironmentVariable("ELECTRON_RUN_AS_NODE", "Process")
+  try {
+    [System.Environment]::SetEnvironmentVariable("ELECTRON_RUN_AS_NODE", "1", "Process")
+    try {
+      $process = Start-Process `
+        -FilePath $Command `
+        -ArgumentList $Arguments `
+        -Wait `
+        -PassThru `
+        -WindowStyle Hidden `
+        -RedirectStandardOutput $stdoutPath `
+        -RedirectStandardError $stderrPath
+    } catch {
+      return [PSCustomObject]@{
+        ExitCode = 1
+        Output = @($_.Exception.Message)
+      }
+    }
+    $output = @()
+    if (Test-Path -LiteralPath $stdoutPath) {
+      $output += @(Get-Content -LiteralPath $stdoutPath -ErrorAction SilentlyContinue | ForEach-Object { [string]$_ })
+    }
+    if (Test-Path -LiteralPath $stderrPath) {
+      $output += @(Get-Content -LiteralPath $stderrPath -ErrorAction SilentlyContinue | ForEach-Object { [string]$_ })
+    }
+    return [PSCustomObject]@{
+      ExitCode = $process.ExitCode
+      Output = @($output)
+    }
+  } finally {
+    [System.Environment]::SetEnvironmentVariable("ELECTRON_RUN_AS_NODE", $previousElectronRunAsNode, "Process")
+    Remove-Item -LiteralPath $stdoutPath,$stderrPath -Force -ErrorAction SilentlyContinue
+  }
+}
+
 function Invoke-JavaScriptRunner {
   param(
     [Parameter(Mandatory = $true)]
@@ -950,16 +1014,14 @@ function Invoke-JavaScriptRunner {
   )
 
   if ($Runner.UseElectronRunAsNode) {
-    $cmdLine =
-      "set ELECTRON_RUN_AS_NODE=1&& " +
-      (ConvertTo-CmdArgument $Runner.Command) +
-      " " +
-      (($Arguments | ForEach-Object { ConvertTo-CmdArgument $_ }) -join " ")
-    $output = @(& cmd.exe /d /s /c $cmdLine 2>&1 | ForEach-Object { [string]$_ })
+    $result = Invoke-ElectronJavaScriptRunner -Command $Runner.Command -Arguments $Arguments
+    $output = @($result.Output)
+    $exitCode = $result.ExitCode
   } else {
     $output = @(& $Runner.Command @Arguments 2>&1 | ForEach-Object { [string]$_ })
+    $exitCode = $LASTEXITCODE
   }
-  if ($LASTEXITCODE -ne 0) {
+  if ($exitCode -ne 0) {
     $outputText = (@($output) -join [System.Environment]::NewLine)
     if (
       $Runner.UseElectronRunAsNode -and
@@ -971,20 +1033,61 @@ function Invoke-JavaScriptRunner {
         "Original runner output: $outputText"
       )
     }
-    throw "JavaScript runner failed with exit code $LASTEXITCODE."
+    throw "JavaScript runner failed with exit code $exitCode."
   }
   return $output
 }
 
-function ConvertTo-CmdArgument {
-  param([string]$Value)
+function Test-MatrixUsesCheckoutCase {
+  param([object[]]$Cases)
 
-  if ($null -eq $Value) {
-    return '""'
+  return [bool](@($Cases | Where-Object {
+    $_.action -eq "presenter-checkout" -or $_.shortcutTarget -eq "checkout"
+  }).Count -gt 0)
+}
+
+function Test-CheckoutJsonFile {
+  param([object[]]$Cases)
+
+  if (-not $CheckoutJsonFile) {
+    return
   }
-  $escaped = $Value -replace '(\\*)"', '$1$1\"'
-  $escaped = $escaped -replace '(\\+)$', '$1$1'
-  return '"' + $escaped + '"'
+  if (-not (Test-MatrixUsesCheckoutCase -Cases $Cases)) {
+    return
+  }
+  if (-not (Test-Path -LiteralPath $CheckoutJsonFile)) {
+    throw "Invalid -CheckoutJsonFile (file was not found)."
+  }
+
+  $validator = Resolve-CheckoutValidatorPath
+  $runner = Resolve-JavaScriptRunner
+  $arguments = @($validator, "--file", $CheckoutJsonFile, "--expected-app-id", "$AppId", "--quiet")
+  $output = @()
+  $exitCode = 1
+  $previousErrorActionPreference = $ErrorActionPreference
+  try {
+    $ErrorActionPreference = "Continue"
+    if ($runner.UseElectronRunAsNode) {
+      $result = Invoke-ElectronJavaScriptRunner -Command $runner.Command -Arguments $arguments
+      $output = @($result.Output)
+      $exitCode = $result.ExitCode
+    } else {
+      $output = @(& $runner.Command @arguments 2>&1 | ForEach-Object { [string]$_ })
+      $exitCode = $LASTEXITCODE
+    }
+  } finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+  }
+
+  if ($exitCode -ne 0) {
+    $message = ((@($output) | Where-Object { $_ } | Select-Object -Last 1) -join " ").Trim()
+    if (-not $message) {
+      $message = "validator exited with code $exitCode"
+    }
+    throw "Invalid -CheckoutJsonFile ($message)"
+  }
+
+  Write-Host "Validated Windows checkout JSON target: source=json-file expectedAppId=checked"
 }
 
 function Resolve-ShortcutsPath {
@@ -1671,6 +1774,7 @@ function New-Case {
     [string]$UserDialogOverride = "",
     [string]$ShortcutTargetOverride = "",
     [string]$CheckoutTransactionIdOverride = "",
+    [string]$CheckoutJsonFileOverride = "",
     [int]$ResultDelayMs = 8000
   )
 
@@ -1692,6 +1796,7 @@ function New-Case {
     userDialog = $UserDialogOverride
     shortcutTarget = $ShortcutTargetOverride
     checkoutTransactionId = $CheckoutTransactionIdOverride
+    checkoutJsonFile = $CheckoutJsonFileOverride
     resultDelayMs = $ResultDelayMs
   }
 }
@@ -1703,6 +1808,7 @@ function New-ManagedOpenAndWaitCase {
     [string]$DialogOverride = "",
     [string]$ShortcutTargetOverride = "",
     [string]$CheckoutTransactionIdOverride = "",
+    [string]$CheckoutJsonFileOverride = "",
     [string]$WebModal = "",
     [string]$StoreRouteOverride = ""
   )
@@ -1717,11 +1823,16 @@ function New-ManagedOpenAndWaitCase {
     -DialogOverride $DialogOverride `
     -ShortcutTargetOverride $ShortcutTargetOverride `
     -CheckoutTransactionIdOverride $CheckoutTransactionIdOverride `
+    -CheckoutJsonFileOverride $CheckoutJsonFileOverride `
     -WebModal $WebModal `
     -StoreRouteOverride $StoreRouteOverride
 }
 
 function Get-MatrixCases {
+  $checkoutTransactionIdForCase = if ($CheckoutJsonFile) { "" } else { $CheckoutTransactionId }
+  $checkoutJsonFileForCase = if ($CheckoutJsonFile) { $CheckoutJsonFile } else { "" }
+  $shortcutCheckoutTransactionIdForCase = if ($ShortcutTarget -eq "checkout" -and -not $CheckoutJsonFile) { $CheckoutTransactionId } else { "" }
+  $shortcutCheckoutJsonFileForCase = if ($ShortcutTarget -eq "checkout" -and $CheckoutJsonFile) { $CheckoutJsonFile } else { "" }
   $baseline = @(
     New-Case -Id "01-web" -Action "web" -RequireEvent @("overlay:web") -RequireOverlayActivated -WebModal "true"
     New-Case -Id "02-store" -Action "store" -RequireEvent @("overlay:store") -RequireOverlayActivated
@@ -1737,7 +1848,7 @@ function Get-MatrixCases {
     New-ManagedOpenAndWaitCase -Id "12-managed-store-open-and-wait" -Action "presenter-store-open-and-wait" -StoreRouteOverride $StoreRoute
     New-ManagedOpenAndWaitCase -Id "13-managed-friends-open-and-wait" -Action "presenter-friends-open-and-wait"
     New-ManagedOpenAndWaitCase -Id "14-managed-dialog-open-and-wait" -Action "presenter-dialog-auto-open-and-wait" -DialogOverride $Dialog
-    New-ManagedOpenAndWaitCase -Id "15-managed-shortcut" -Action "presenter-shortcut-open-and-wait" -ShortcutTargetOverride $ShortcutTarget
+    New-ManagedOpenAndWaitCase -Id "15-managed-shortcut" -Action "presenter-shortcut-open-and-wait" -ShortcutTargetOverride $ShortcutTarget -CheckoutTransactionIdOverride $shortcutCheckoutTransactionIdForCase -CheckoutJsonFileOverride $shortcutCheckoutJsonFileForCase
     New-Case `
       -Id "15-managed-shortcut-keyboard" `
       -Action "presenter-shortcut" `
@@ -1748,8 +1859,10 @@ function Get-MatrixCases {
       -CloseProbeOnActivation `
       -ShortcutToggleProbe `
       -ShortcutTargetOverride $ShortcutTarget `
+      -CheckoutTransactionIdOverride $shortcutCheckoutTransactionIdForCase `
+      -CheckoutJsonFileOverride $shortcutCheckoutJsonFileForCase `
       -ResultDelayMs 30000
-    New-Case -Id "16-managed-checkout-route" -Action "presenter-checkout" -RequireEvent @("overlay:presenter-open", "overlay:presenter-wait-closed", "overlay:presenter-parked", "overlay:presenter-checkout-open-and-wait-complete") -RequireOverlayActivated -RequireManagedOverlayComplete -ManagedOverlayResultMode "complete" -CheckoutTransactionIdOverride $CheckoutTransactionId
+    New-Case -Id "16-managed-checkout-route" -Action "presenter-checkout" -RequireEvent @("overlay:presenter-open", "overlay:presenter-wait-closed", "overlay:presenter-parked", "overlay:presenter-checkout-open-and-wait-complete") -RequireOverlayActivated -RequireManagedOverlayComplete -ManagedOverlayResultMode "complete" -CheckoutTransactionIdOverride $checkoutTransactionIdForCase -CheckoutJsonFileOverride $checkoutJsonFileForCase
     New-ManagedOpenAndWaitCase -Id "17-managed-profile-open-and-wait" -Action "presenter-profile-open-and-wait"
     New-ManagedOpenAndWaitCase -Id "18-managed-players-open-and-wait" -Action "presenter-players-open-and-wait"
     New-ManagedOpenAndWaitCase -Id "19-managed-community-open-and-wait" -Action "presenter-community-open-and-wait"
@@ -1828,6 +1941,7 @@ function Write-MatrixManifest {
           userDialog = $_.userDialog
           shortcutTarget = $_.shortcutTarget
           hasCheckoutTransactionId = [bool]$_.checkoutTransactionId
+          hasCheckoutJsonFile = [bool]$_.checkoutJsonFile
           resultDelayMs = $_.resultDelayMs
         }
       }
@@ -1870,7 +1984,8 @@ function Write-MatrixManifest {
       dialog = $Dialog
       userDialog = $UserDialog
       shortcutTarget = $ShortcutTarget
-      hasCheckoutTransactionId = [bool]$CheckoutTransactionId
+      hasCheckoutTransactionId = [bool]($CheckoutTransactionId -and -not $CheckoutJsonFile)
+      hasCheckoutJsonFile = [bool]$CheckoutJsonFile
     }
     cases = @($manifestCases)
   }
@@ -2503,6 +2618,9 @@ function Write-CaseLaunchEnv {
   if ($Case.checkoutTransactionId) {
     $args += @("-CheckoutTransactionId", $Case.checkoutTransactionId)
   }
+  if ($Case.checkoutJsonFile) {
+    $args += @("-CheckoutJsonFile", $Case.checkoutJsonFile)
+  }
   if ($Case.managedOverlayResultMode) {
     $args += @("-ManagedOverlayResultMode", $Case.managedOverlayResultMode)
   }
@@ -2592,6 +2710,9 @@ function Invoke-MatrixCase {
   if ($Case.checkoutTransactionId) {
     $args += @("-CheckoutTransactionId", $Case.checkoutTransactionId)
   }
+  if ($Case.checkoutJsonFile) {
+    $args += @("-CheckoutJsonFile", $Case.checkoutJsonFile)
+  }
   if ($Case.managedOverlayResultMode) {
     $args += @("-ManagedOverlayResultMode", $Case.managedOverlayResultMode)
   }
@@ -2677,6 +2798,7 @@ function Invoke-MatrixCase {
 Resolve-SmokeExe | Out-Null
 New-Item -ItemType Directory -Force -Path $ArtifactRoot | Out-Null
 $selectedMatrixCases = @(Get-SelectedMatrixCases)
+Test-CheckoutJsonFile -Cases $selectedMatrixCases
 
 Write-Host "Windows overlay matrix:"
 Write-Host ("  suite: {0}" -f $Suite)
@@ -2697,6 +2819,7 @@ Write-Host ("  skipRenderHealthGate: {0}" -f $SkipRenderHealthGate)
 Write-Host ("  allowUnhealthyDefaultRender: {0}" -f $AllowUnhealthyDefaultRender)
 Write-Host ("  userDialog: {0}" -f $UserDialog)
 Write-Host ("  cleanStaleOverlayHelpers: {0}" -f $CleanStaleOverlayHelpers)
+Write-Host ("  checkoutJsonFile: {0}" -f $(if ($CheckoutJsonFile) { "present" } else { "" }))
 if ($OnlyCase) {
   Write-Host ("  onlyCase: {0}" -f $OnlyCase)
 }

@@ -701,8 +701,8 @@ Current evidence:
   persistent presenter mode these waits resolve from Steam Bridge's overlay
   callback and presenter state changes, with timeouts kept as guardrails and
   managed Electron activation/grace durations defaulting to zero.
-  The smoke app's `presenter-checkout` action now exercises that exact
-  checkout helper when a checkout URL or transaction ID is provided, and records
+  The smoke app's `presenter-checkout` action now exercises that exact checkout
+  helper when checkout JSON, a checkout URL, or a transaction ID is provided, and records
   `overlay:presenter-checkout-open-and-wait-complete` after
   `GameOverlayActivated(false)` and presenter parking.
   `prepareForCheckout()` remains as the lower-level split-step escape hatch.
@@ -1681,10 +1681,11 @@ Next work:
    app's private checkout JSON file input for artifact capture so transaction
    responses stay outside the repository and launch arguments. The focused
    macOS `--suite checkout` run can pair `--app-id <your-app-id>`,
-   `--checkout-json-file <path>`, and `--require-microtxn-callback`, then audits
-   checkout prepare-only, direct checkout, managed Shift+Tab checkout, and
-   programmatic checkout shortcut/open-and-wait with the expected app ID plus
-   `checkoutSource=json-file` without recording the JSON path.
+   `--checkout-json-file <path>`, and `--require-microtxn-callback`; the focused
+   Windows path is
+   `-Suite managed -OnlyCase 16-managed-checkout-route -CheckoutJsonFile <path>`.
+   These runs audit the configured app ID plus redacted checkout-source presence
+   without recording the JSON path.
 2. Keep code signing requirements explicit in docs and examples. The package now
    publishes `templates/macos-steam-env-launcher.c` plus
    `templates/entitlements.steam.macos.plist`, plus the
@@ -2162,11 +2163,12 @@ Deck/Linux/macOS artifacts can verify presenter alignment without scraping logs.
 
 Current real-product checkout guardrail:
 
-- The macOS matrix validates any private `--checkout-json-file` before package
-  signing, shortcut work, Steam startup, or overlay launch. Validation resolves
-  the file through `checkoutTargetFromResult(...)`, requires a checkout URL,
-  Steam checkout URL, transaction ID, or `InitTxn` envelope, passes the matrix
-  `--app-id` into that resolver so embedded app IDs use the runtime wrong-app
+- The macOS matrix validates any private `--checkout-json-file`, and the Windows
+  matrix validates any private `-CheckoutJsonFile`, before package signing,
+  shortcut work, Steam startup, or overlay launch. Validation resolves the file
+  through `checkoutTargetFromResult(...)`, requires a checkout URL, Steam
+  checkout URL, transaction ID, or `InitTxn` envelope, passes the configured
+  matrix app ID into that resolver so embedded app IDs use the runtime wrong-app
   guard, and prints only sanitized presence flags. The same resolver is exposed as
   `steam-bridge-validate-checkout-target --expected-app-id <app-id>` for
   standalone fixture checks. The standalone validator reports SDK-style
