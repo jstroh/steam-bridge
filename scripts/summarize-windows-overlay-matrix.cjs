@@ -699,12 +699,12 @@ function isClientSessionInitTxnMode(value) {
   return value === "client" || value === "client-default";
 }
 
-function hasClientSessionCheckoutCaptured(events) {
-  return events.some((event) => {
-    if (!event || event.type !== "checkout:init-txn-captured") {
+function summarizeClientSessionCheckoutCapture(events) {
+  const event = events.find((candidate) => {
+    if (!candidate || candidate.type !== "checkout:init-txn-captured") {
       return false;
     }
-    const payload = objectOrEmpty(event.payload);
+    const payload = objectOrEmpty(candidate.payload);
     const targetSnapshot = objectOrEmpty(payload.targetSnapshot);
     return (
       isClientSessionInitTxnMode(payload.session) &&
@@ -712,6 +712,26 @@ function hasClientSessionCheckoutCaptured(events) {
       targetSnapshot.clientSession === true
     );
   });
+  if (!event) {
+    return {
+      present: false,
+      session: "",
+      endpoint: "",
+      httpStatus: "",
+      usersessionField: "",
+      hasIpAddress: ""
+    };
+  }
+  const payload = objectOrEmpty(event.payload);
+  const requestShape = summarizeInitTxnRequestShape(payload.requestShape);
+  return {
+    present: true,
+    session: String(payload.session || ""),
+    endpoint: String(payload.endpoint || ""),
+    httpStatus: String(payload.httpStatus || ""),
+    usersessionField: requestShape.usersessionField,
+    hasIpAddress: requestShape.hasIpAddress
+  };
 }
 
 function summarizeClientSessionPromptMissing(events) {
@@ -954,6 +974,7 @@ function summarizeCaseResult(caseName, result, resultLog, renderingHealth = null
   const wait = result.wait && typeof result.wait === "object" && !Array.isArray(result.wait) ? result.wait : null;
   const closeProbe = summarizeCloseProbe(closeProbeEvents, caseDir || path.dirname(resultLog));
   const initTxnTargetMissing = summarizeInitTxnTargetMissing(events);
+  const clientSessionCheckoutCapture = summarizeClientSessionCheckoutCapture(events);
   const clientSessionPromptMissing = summarizeClientSessionPromptMissing(events);
 
   expect(result.ok === true, `${caseName}: smoke result ok`, failures);
@@ -987,7 +1008,12 @@ function summarizeCaseResult(caseName, result, resultLog, renderingHealth = null
     passiveNotificationProof: hasPassiveNotificationProof(String(action.action || ""), events, nativePresenter),
     microTxnCallbackCount: events.filter(isMicroTxnCallbackEvent).length,
     microTxnCallbackProof: hasMicroTxnCallbackProof(String(action.action || ""), events, app.appId).ok,
-    clientSessionCheckoutCaptured: hasClientSessionCheckoutCaptured(events),
+    clientSessionCheckoutCaptured: clientSessionCheckoutCapture.present,
+    clientSessionCheckoutCapturedSession: clientSessionCheckoutCapture.session,
+    clientSessionCheckoutCapturedEndpoint: clientSessionCheckoutCapture.endpoint,
+    clientSessionCheckoutCapturedHttpStatus: clientSessionCheckoutCapture.httpStatus,
+    clientSessionCheckoutCapturedUsersessionField: clientSessionCheckoutCapture.usersessionField,
+    clientSessionCheckoutCapturedHasIpAddress: clientSessionCheckoutCapture.hasIpAddress,
     clientSessionPromptMissing: clientSessionPromptMissing.present,
     clientSessionPromptMissingSession: clientSessionPromptMissing.session,
     clientSessionPromptMissingEndpoint: clientSessionPromptMissing.endpoint,
@@ -1110,6 +1136,11 @@ function printSummary(summary) {
           `overlayEnabled=${formatValue(row.overlayEnabled)} ` +
           `microTxnCallbacks=${row.microTxnCallbackCount} microTxnProof=${row.microTxnCallbackProof} ` +
           `clientSessionCaptured=${row.clientSessionCheckoutCaptured} ` +
+          `clientSessionCapturedSession=${formatValue(row.clientSessionCheckoutCapturedSession)} ` +
+          `clientSessionCapturedEndpoint=${formatValue(row.clientSessionCheckoutCapturedEndpoint)} ` +
+          `clientSessionCapturedHttp=${formatValue(row.clientSessionCheckoutCapturedHttpStatus)} ` +
+          `clientSessionCapturedUsersession=${formatValue(row.clientSessionCheckoutCapturedUsersessionField)} ` +
+          `clientSessionCapturedIpAddress=${formatValue(row.clientSessionCheckoutCapturedHasIpAddress)} ` +
           `clientPromptMissing=${row.clientSessionPromptMissing} ` +
           `clientPromptSession=${formatValue(row.clientSessionPromptMissingSession)} ` +
           `clientPromptEndpoint=${formatValue(row.clientSessionPromptMissingEndpoint)} ` +
@@ -1815,6 +1846,11 @@ function runSelfTest() {
     writeManagedCheckoutMicroTxnFixture(clientPromptMissingRoot, { clientPromptMissing: true });
     const clientPromptMissingSummary = summarizeWindowsOverlayMatrixArtifacts(clientPromptMissingRoot);
     assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionCheckoutCaptured, true);
+    assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionCheckoutCapturedSession, "client");
+    assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionCheckoutCapturedEndpoint, "sandbox");
+    assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionCheckoutCapturedHttpStatus, "200");
+    assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionCheckoutCapturedUsersessionField, "client");
+    assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionCheckoutCapturedHasIpAddress, "false");
     assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionPromptMissing, true);
     assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionPromptMissingSession, "client");
     assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionPromptMissingEndpoint, "sandbox");
@@ -1829,6 +1865,11 @@ function runSelfTest() {
     });
     const defaultClientPromptMissingSummary = summarizeWindowsOverlayMatrixArtifacts(defaultClientPromptMissingRoot);
     assert.equal(defaultClientPromptMissingSummary.caseSummaries[0].clientSessionCheckoutCaptured, true);
+    assert.equal(defaultClientPromptMissingSummary.caseSummaries[0].clientSessionCheckoutCapturedSession, "client-default");
+    assert.equal(
+      defaultClientPromptMissingSummary.caseSummaries[0].clientSessionCheckoutCapturedUsersessionField,
+      "omitted"
+    );
     assert.equal(defaultClientPromptMissingSummary.caseSummaries[0].clientSessionPromptMissing, true);
     assert.equal(defaultClientPromptMissingSummary.caseSummaries[0].clientSessionPromptMissingSession, "client-default");
     assert.equal(

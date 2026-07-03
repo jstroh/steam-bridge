@@ -845,9 +845,12 @@ On Windows, use
 `-LaunchMode steam-app -Suite checkout -InitTxnRequestFile <private-init-txn-request.json> -RequireMicroTxnCallback -CloseProbe -CloseProbeInput auto`
 for the focused configured-product checkout path.
 For `usersession=client` runs, the Windows summary prints
-`clientSessionCaptured`, `clientPromptMissing`, `clientPromptSession`,
-`clientPromptEndpoint`, `clientPromptHttp`, `clientPromptUsersession`, and
-`clientPromptIpAddress`. If the first two are `true`, the
+`clientSessionCaptured`, `clientSessionCapturedSession`,
+`clientSessionCapturedEndpoint`, `clientSessionCapturedHttp`,
+`clientSessionCapturedUsersession`, `clientSessionCapturedIpAddress`,
+`clientPromptMissing`, `clientPromptSession`, `clientPromptEndpoint`,
+`clientPromptHttp`, `clientPromptUsersession`, and `clientPromptIpAddress`.
+If `clientSessionCaptured` and `clientPromptMissing` are both `true`, the
 smoke app captured a valid client-session transaction target and kept the
 managed presenter active, but Steam did not present the automatic authorization
 overlay before the checkout wait guard expired. The prompt session, endpoint,

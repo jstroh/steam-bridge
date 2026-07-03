@@ -833,9 +833,12 @@ private purchase artifacts fail closed if redaction regresses. SDK-style order
 and transaction fields from Steam callbacks are treated as private checkout
 identifiers too.
 For Windows `usersession=client` diagnostics, the summary also prints
-`clientSessionCaptured`, `clientPromptMissing`, `clientPromptSession`,
-`clientPromptEndpoint`, `clientPromptHttp`, `clientPromptUsersession`, and
-`clientPromptIpAddress`. A case with
+`clientSessionCaptured`, `clientSessionCapturedSession`,
+`clientSessionCapturedEndpoint`, `clientSessionCapturedHttp`,
+`clientSessionCapturedUsersession`, `clientSessionCapturedIpAddress`,
+`clientPromptMissing`, `clientPromptSession`, `clientPromptEndpoint`,
+`clientPromptHttp`, `clientPromptUsersession`, and `clientPromptIpAddress`.
+A case with
 `clientSessionCaptured=true` and `clientPromptMissing=true` means the in-app
 `InitTxn` call returned a transaction id, Steam Bridge preserved it as a
 client-session checkout target without synthesizing a web approval URL, the
