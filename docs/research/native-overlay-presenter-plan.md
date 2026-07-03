@@ -127,6 +127,17 @@ Reviewed on 2026-07-02 while investigating Windows Electron overlay failures:
   probe now logs `probe:shortcut-focus` before sending Shift+Tab so foreground
   contamination from harness windows is measured and corrected before the
   managed shortcut open path is exercised.
+- The fresh rebuilt/signed current package also passed the public checkout suite
+  at
+  `C:\Users\admin\steam-bridge-artifacts\windows-current-checkout-20260703-035727`
+  after an interactive readiness pass at
+  `C:\Users\admin\steam-bridge-artifacts\windows-current-readiness-after-start-20260703-035701`.
+  The summary auditor reported `expectedCases=4`, `steamLaunch=4`,
+  `overlayActive=3`, and `clean=4` for prepare-only checkout, direct synthetic
+  approval checkout, managed Shift+Tab checkout, and programmatic checkout
+  shortcut `openAndWait(...)`. This remains public route/lifecycle proof; real
+  purchase authorization needs private configured-product InitTxn data and
+  `-RequireMicroTxnCallback`.
 - The broader Windows source sweep points past window-style tweaks. Valve's
   browser-game FAQ specifically names a native D3D window with offscreen
   Chromium and input forwarding, while the WebView2/DirectComposition research
@@ -2115,7 +2126,13 @@ Windows gates:
   Windows x64 package, with the D3D11 presenter as the default and a hidden
   interactive task harness. Real configured-product checkout remains separate
   from App ID `480` public route proof and still needs the same complete-result
-  gates with private InitTxn data.
+  gates with private InitTxn data. The current package also passed the public
+  checkout routing suite at
+  `C:\Users\admin\steam-bridge-artifacts\windows-current-checkout-20260703-035727`:
+  prepare-only checkout, synthetic approval checkout, managed Shift+Tab checkout,
+  and programmatic checkout shortcut `openAndWait(...)` all completed cleanly
+  through the D3D11 presenter, while real authorization remains intentionally
+  unclaimed until a private InitTxn response is supplied.
 
 ## Presenter Diagnostics
 

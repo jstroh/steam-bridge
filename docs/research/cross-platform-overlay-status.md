@@ -217,6 +217,20 @@ was the Steam Bridge native overlay host. This remains public checkout routing
 proof only; real purchase authorization still requires a configured app/product
 and private checkout JSON with `-RequireMicroTxnCallback`.
 
+The fresh rebuilt/signed current package also passed the public checkout suite at
+`C:\Users\admin\steam-bridge-artifacts\windows-current-checkout-20260703-035727`
+after Steam was started once in the interactive Windows session and readiness
+passed at
+`C:\Users\admin\steam-bridge-artifacts\windows-current-readiness-after-start-20260703-035701`.
+The checkout run used the stable App ID `480` shortcut, `-Suite checkout`,
+`-CloseProbe`, `-CloseProbeInput auto`, and the D3D11 default. The summary
+auditor reported `expectedCases=4`, `steamLaunch=4`, `overlayActive=3`, and
+`clean=4`, covering prepare-only checkout, direct synthetic approval checkout,
+managed Shift+Tab checkout, and programmatic checkout shortcut
+`openAndWait(...)`. This remains public route/lifecycle proof; real purchase
+authorization still requires private configured-product InitTxn data and
+`-RequireMicroTxnCallback`.
+
 Latest Windows D3D11 keyboard proof: the refreshed Electron `43.0.0` smoke
 bundle was rebuilt on macOS, deployed to the Windows laptop, and Authenticode
 signed with the local test certificate. The focused interactive Session 1
