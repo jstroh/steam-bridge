@@ -33,6 +33,11 @@ param(
   [string]$ShortcutTarget = "friends",
   [string]$CheckoutTransactionId = "123456789",
   [string]$CheckoutJsonFile = "",
+  [string]$InitTxnRequestFile = "",
+  [string]$InitTxnResponseFile = "",
+  [string]$InitTxnApiKeyEnv = "",
+  [ValidateSet("", "sandbox", "production")]
+  [string]$InitTxnEndpoint = "",
   [switch]$RequireMicroTxnCallback,
   [string]$OnlyCase = "",
   [int]$TimeoutSeconds = 120,
@@ -58,6 +63,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$script:GeneratedInitTxnResponseFile = ""
 
 if (-not $AppDir) {
   $scriptDir = Split-Path -Parent $PSCommandPath
@@ -939,6 +945,24 @@ function Resolve-CheckoutValidatorPath {
   throw "Missing Steam checkout target validator. Expected it in the package or repo checkout."
 }
 
+function Resolve-InitTxnCapturePath {
+  $packageCapture = Join-Path $AppDir "resources\app\node_modules\steam-bridge\bin\init-client-txn.cjs"
+  if (Test-Path -LiteralPath $packageCapture) {
+    return $packageCapture
+  }
+
+  $scriptDir = Split-Path -Parent $PSCommandPath
+  if ($scriptDir) {
+    $repoRoot = Split-Path -Parent $scriptDir
+    $repoCapture = Join-Path $repoRoot "packages\steam-bridge\bin\init-client-txn.cjs"
+    if (Test-Path -LiteralPath $repoCapture) {
+      return $repoCapture
+    }
+  }
+
+  throw "Missing Steam InitTxn capture CLI. Expected it in the package or repo checkout."
+}
+
 function Resolve-JavaScriptRunner {
   if ($JavaScriptRunnerExe) {
     if (-not (Test-Path -LiteralPath $JavaScriptRunnerExe)) {
@@ -1087,12 +1111,116 @@ function Invoke-JavaScriptRunner {
   return $output
 }
 
-function Test-MatrixUsesCheckoutCase {
+function Test-MatrixUsesCheckoutTarget {
   param([object[]]$Cases)
 
   return [bool](@($Cases | Where-Object {
-    $_.action -eq "presenter-checkout" -or $_.shortcutTarget -eq "checkout"
+    $_.checkoutTransactionId -or $_.checkoutJsonFile -or $_.shortcutTarget -eq "checkout"
   }).Count -gt 0)
+}
+
+function Test-MatrixRequiresMicroTxnCallback {
+  param([object[]]$Cases)
+
+  return [bool](@($Cases | Where-Object {
+    $_.requireMicroTxnCallback
+  }).Count -gt 0)
+}
+
+function New-PrivateInitTxnResponsePath {
+  $privateDir = Join-Path $env:TEMP "steam-bridge-private-checkout"
+  New-Item -ItemType Directory -Force -Path $privateDir | Out-Null
+  return (Join-Path $privateDir ("init-txn-response-{0}.json" -f ([guid]::NewGuid().ToString("N"))))
+}
+
+function Invoke-InitTxnCapture {
+  param([object[]]$Cases)
+
+  if (-not $InitTxnRequestFile) {
+    return
+  }
+
+  if ($CheckoutJsonFile) {
+    throw "Use either -CheckoutJsonFile or -InitTxnRequestFile, not both."
+  }
+  if (-not (Test-MatrixUsesCheckoutTarget -Cases $Cases)) {
+    throw "-InitTxnRequestFile requires a selected checkout target case."
+  }
+  if ($AppId -eq 480) {
+    throw "-InitTxnRequestFile requires a configured Steam app/product; public App ID 480 only proves checkout routing."
+  }
+  if (-not (Test-Path -LiteralPath $InitTxnRequestFile)) {
+    throw "Invalid -InitTxnRequestFile (file was not found)."
+  }
+
+  $capture = Resolve-InitTxnCapturePath
+  $runner = Resolve-JavaScriptRunner
+  $responseFile = $InitTxnResponseFile
+  if (-not $responseFile) {
+    $responseFile = New-PrivateInitTxnResponsePath
+    $script:GeneratedInitTxnResponseFile = $responseFile
+  }
+
+  $arguments = @($capture, "--file", $InitTxnRequestFile, "--out", $responseFile)
+  if ($InitTxnEndpoint -eq "sandbox") {
+    $arguments += "--sandbox"
+  } elseif ($InitTxnEndpoint -eq "production") {
+    $arguments += "--production"
+  }
+  if ($InitTxnApiKeyEnv) {
+    $arguments += @("--api-key-env", $InitTxnApiKeyEnv)
+  }
+
+  $output = @()
+  $exitCode = 1
+  $previousErrorActionPreference = $ErrorActionPreference
+  try {
+    $ErrorActionPreference = "Continue"
+    if ($runner.UseElectronRunAsNode) {
+      $result = Invoke-ElectronJavaScriptRunner -Command $runner.Command -Arguments $arguments
+      $output = @($result.Output)
+      $exitCode = $result.ExitCode
+    } else {
+      $output = @(& $runner.Command @arguments 2>&1 | ForEach-Object { [string]$_ })
+      $exitCode = $LASTEXITCODE
+    }
+  } finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+  }
+
+  if ($exitCode -ne 0) {
+    $message = ((@($output) | Where-Object { $_ } | Select-Object -Last 1) -join " ").Trim()
+    if (-not $message) {
+      $message = "capture CLI exited with code $exitCode"
+    }
+    throw "Unable to capture Windows InitTxn checkout JSON ($message)"
+  }
+
+  $summary = $null
+  $summaryText = ((@($output) | Where-Object { $_ } | Select-Object -Last 1) -join "").Trim()
+  if ($summaryText) {
+    try {
+      $summary = $summaryText | ConvertFrom-Json
+    } catch {
+      throw "Unable to capture Windows InitTxn checkout JSON (capture CLI returned invalid summary JSON)"
+    }
+  }
+
+  $captureLog = [PSCustomObject]@{
+    kind = "steam-bridge-windows-init-txn-capture"
+    generatedAt = (Get-Date).ToUniversalTime().ToString("o")
+    source = "init-txn-request-file"
+    hasRequestFile = $true
+    hasResponseFile = $true
+    responseFileGenerated = [bool]$script:GeneratedInitTxnResponseFile
+    apiKeyEnvProvided = [bool]$InitTxnApiKeyEnv
+    endpointOption = $InitTxnEndpoint
+    summary = $summary
+  }
+  Write-MatrixJsonFile -Path (Join-Path (Join-Path $ArtifactRoot "00-preflight") "init-txn-capture.json") -Value $captureLog -Depth 12
+
+  $script:CheckoutJsonFile = $responseFile
+  Write-Host "Captured Windows InitTxn checkout JSON: source=init-txn-request-file output=present expectedAppId=checked"
 }
 
 function Test-CheckoutJsonFile {
@@ -1102,8 +1230,8 @@ function Test-CheckoutJsonFile {
     throw "-RequireMicroTxnCallback requires -CheckoutJsonFile with a real InitTxn/checkout response."
   }
 
-  if ($RequireMicroTxnCallback -and -not (Test-MatrixUsesCheckoutCase -Cases $Cases)) {
-    throw "-RequireMicroTxnCallback requires a selected checkout case."
+  if ($RequireMicroTxnCallback -and -not (Test-MatrixRequiresMicroTxnCallback -Cases $Cases)) {
+    throw "-RequireMicroTxnCallback requires a selected checkout callback case."
   }
 
   if ($RequireMicroTxnCallback -and $AppId -eq 480) {
@@ -1113,7 +1241,7 @@ function Test-CheckoutJsonFile {
   if (-not $CheckoutJsonFile) {
     return
   }
-  if (-not (Test-MatrixUsesCheckoutCase -Cases $Cases)) {
+  if (-not (Test-MatrixUsesCheckoutTarget -Cases $Cases)) {
     return
   }
   if (-not (Test-Path -LiteralPath $CheckoutJsonFile)) {
@@ -2155,6 +2283,13 @@ function Write-MatrixManifest {
     skipRenderHealthGate = [bool]$SkipRenderHealthGate
     allowUnhealthyDefaultRender = [bool]$AllowUnhealthyDefaultRender
     requireMicroTxnCallback = [bool]$RequireMicroTxnCallback
+    initTxnCapture = [PSCustomObject]@{
+      hasRequestFile = [bool]$InitTxnRequestFile
+      hasResponseFile = [bool]($InitTxnRequestFile -and $CheckoutJsonFile)
+      responseFileGenerated = [bool]$script:GeneratedInitTxnResponseFile
+      apiKeyEnvProvided = [bool]$InitTxnApiKeyEnv
+      endpointOption = $InitTxnEndpoint
+    }
     installShortcut = [bool]$InstallShortcut
     assumeShortcutConfigured = [bool]$AssumeShortcutConfigured
     targetHints = [PSCustomObject]@{
@@ -3541,6 +3676,8 @@ function Invoke-MatrixCase {
 Resolve-SmokeExe | Out-Null
 New-Item -ItemType Directory -Force -Path $ArtifactRoot | Out-Null
 $selectedMatrixCases = @(Get-SelectedMatrixCases)
+Invoke-InitTxnCapture -Cases $selectedMatrixCases
+$selectedMatrixCases = @(Get-SelectedMatrixCases)
 Test-CheckoutJsonFile -Cases $selectedMatrixCases
 Test-MatrixCloseProbeRequirements -Cases $selectedMatrixCases
 
@@ -3564,6 +3701,8 @@ Write-Host ("  allowUnhealthyDefaultRender: {0}" -f $AllowUnhealthyDefaultRender
 Write-Host ("  userDialog: {0}" -f $UserDialog)
 Write-Host ("  cleanStaleOverlayHelpers: {0}" -f $CleanStaleOverlayHelpers)
 Write-Host ("  checkoutJsonFile: {0}" -f $(if ($CheckoutJsonFile) { "present" } else { "" }))
+Write-Host ("  initTxnRequestFile: {0}" -f $(if ($InitTxnRequestFile) { "present" } else { "" }))
+Write-Host ("  initTxnResponseFile: {0}" -f $(if ($CheckoutJsonFile -and $InitTxnRequestFile) { "present" } else { "" }))
 Write-Host ("  requireMicroTxnCallback: {0}" -f $RequireMicroTxnCallback)
 if ($OnlyCase) {
   Write-Host ("  onlyCase: {0}" -f $OnlyCase)

@@ -886,6 +886,12 @@ the private `--checkout-json-file` checkout suite.
   rerunning unrelated overlay surfaces. For automated shortcut checkout proof on
   Windows, the close probe focuses the smoke app before sending the managed
   Shift+Tab open chord and records `probe:shortcut-focus` before the close input.
+  To let the Windows matrix create the private checkout JSON immediately before
+  the focused proof, pass
+  `-InitTxnRequestFile <private-init-txn-request.json>` instead of
+  `-CheckoutJsonFile`; the matrix invokes `steam-bridge-init-client-txn`, reads
+  publisher keys only from the configured environment, validates the generated
+  target against `-AppId`, and records only sanitized capture metadata.
   Pass `-PresenterMode session` only when intentionally comparing the direct
   Steam/Electron hook fallback.
   Each matrix case passes `-RequireNoCrashes`,

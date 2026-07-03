@@ -753,7 +753,12 @@ arguments. To create that private file from a generic request JSON, run
 `steam-bridge-init-client-txn --file <private-init-txn-request.json> --out <private-init-txn-response.json> --production`
 with the publisher key in `STEAM_WEB_API_KEY` or `STEAM_API_KEY`; the CLI does
 not accept literal keys in command-line arguments and prints only sanitized
-checkout-target presence metadata. The macOS and Windows matrices preflight that JSON through
+checkout-target presence metadata. On Windows, the matrix can do that capture
+step itself with
+`-InitTxnRequestFile <private-init-txn-request.json>`; it writes the private
+response outside the artifact root by default, validates it against `-AppId`,
+and records only sanitized capture metadata. The macOS and Windows matrices
+preflight that JSON through
 `checkoutTargetFromResult(...)` and pass the matrix app ID into that resolver
 before any live Steam launch. If the capture includes an app ID, the same
 wrong-app guard used by runtime checkout opens rejects mismatches without
