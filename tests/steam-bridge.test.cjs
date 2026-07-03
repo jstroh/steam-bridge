@@ -675,6 +675,106 @@ test("checkout target validator reports array-nested SDK app IDs", (t) => {
   assert.equal(errorOutput.join("\n").includes(wrongFixtureFile), false);
 });
 
+test("InitTxn capture CLI writes private checkout JSON with redacted output", async (t) => {
+  const initTxnCli = require(path.join(repoRoot, "packages", "steam-bridge", "bin", "init-client-txn.cjs"));
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-init-txn-cli-"));
+  t.after(() => {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  const inputFile = path.join(tempDir, "private-request.json");
+  const outputFile = path.join(tempDir, "private-response.json");
+  const rawTransactionId = "123456789";
+  fs.writeFileSync(
+    inputFile,
+    JSON.stringify({
+      appId: 480,
+      orderId: "9001",
+      steamId64: "76561198000000000",
+      language: "en",
+      currency: "USD",
+      sandbox: true,
+      items: [{ itemId: 100, quantity: 1, amount: 199, description: "Credits" }]
+    })
+  );
+  fs.writeFileSync(outputFile, "old response\n");
+  if (process.platform !== "win32") {
+    fs.chmodSync(outputFile, 0o666);
+  }
+
+  const fetchCalls = [];
+  const fetch = async (url, init = {}) => {
+    fetchCalls.push({ url, init });
+    return {
+      ok: true,
+      status: 200,
+      headers: {
+        forEach(callback) {
+          callback("application/json", "content-type");
+        }
+      },
+      async text() {
+        return JSON.stringify({
+          response: {
+            result: "OK",
+            params: {
+              appid: 480,
+              transid: rawTransactionId,
+              steamurl: `https://checkout.steampowered.com/checkout/approvetxn/${rawTransactionId}/`
+            }
+          }
+        });
+      }
+    };
+  };
+
+  const output = [];
+  const errorOutput = [];
+  const status = await initTxnCli.runCli(
+    ["--file", inputFile, "--out", outputFile, "--allow-test-app-id"],
+    {
+      log(message) {
+        output.push(String(message));
+      },
+      error(message) {
+        errorOutput.push(String(message));
+      }
+    },
+    { env: { STEAM_WEB_API_KEY: "publisher-secret" }, fetch }
+  );
+
+  assert.equal(status, 0);
+  assert.deepEqual(errorOutput, []);
+  const stdout = output.join("\n");
+  assert.equal(stdout.includes("publisher-secret"), false);
+  assert.equal(stdout.includes(inputFile), false);
+  assert.equal(stdout.includes(outputFile), false);
+  assert.equal(stdout.includes(rawTransactionId), false);
+  assert.equal(JSON.parse(stdout).targetSnapshot.hasSteamUrl, true);
+  if (process.platform !== "win32") {
+    assert.equal(fs.statSync(outputFile).mode & 0o777, 0o600);
+  }
+  assert.equal(JSON.parse(fs.readFileSync(outputFile, "utf8")).response.params.transid, rawTransactionId);
+  assert.match(fetchCalls[0].url, /ISteamMicroTxnSandbox\/InitTxn/);
+  assert.match(String(fetchCalls[0].init.body), /usersession=client/);
+
+  const blockedOutput = [];
+  const blockedStatus = await initTxnCli.runCli(
+    ["--file", inputFile, "--out", outputFile],
+    {
+      log(message) {
+        blockedOutput.push(String(message));
+      },
+      error(message) {
+        blockedOutput.push(String(message));
+      }
+    },
+    { env: { STEAM_WEB_API_KEY: "publisher-secret" }, fetch }
+  );
+  assert.equal(blockedStatus, 2);
+  assert.match(blockedOutput.join("\n"), /App ID 480 only proves generic checkout routing/);
+});
+
 test("electron smoke native-host-unavailable action errors keep sanitized target context", () => {
   const exampleMain = fs.readFileSync(path.join(repoRoot, "examples", "electron-basic", "main.js"), "utf8");
 
@@ -2115,6 +2215,10 @@ test("project support policy covers Steam desktop targets except Intel macOS", (
     path.join(repoRoot, "packages", "steam-bridge", "bin", "validate-checkout-target.cjs"),
     "utf8"
   );
+  const initClientTxnScript = fs.readFileSync(
+    path.join(repoRoot, "packages", "steam-bridge", "bin", "init-client-txn.cjs"),
+    "utf8"
+  );
   const launcherTemplate = fs.readFileSync(
     path.join(repoRoot, "packages", "steam-bridge", "templates", "macos-steam-env-launcher.c"),
     "utf8"
@@ -2136,6 +2240,7 @@ test("project support policy covers Steam desktop targets except Intel macOS", (
   assert.deepEqual(packageJson.napi.targets, supportedTargets);
   assert.ok(packageJson.files.includes("libsteam_api.*"));
   assert.ok(packageJson.files.includes("steam_api*.dll"));
+  assert.equal(packageJson.bin?.["steam-bridge-init-client-txn"], "bin/init-client-txn.cjs");
   assert.match(rootPackageJson.scripts["native:build"], /scripts\/build-native\.cjs/);
   assert.match(rootPackageJson.scripts["native:check"], /scripts\/check-native\.cjs/);
   assert.match(rootPackageJson.scripts["check:platform"], /assert-supported-targets\.cjs/);
@@ -2183,6 +2288,10 @@ test("project support policy covers Steam desktop targets except Intel macOS", (
     /"appid",\s*"app_id",\s*"appId",\s*"m_unAppID",\s*"m_nAppID"/,
     "checkout target validator must report SDK-style checkout app IDs as present"
   );
+  assert.match(initClientTxnScript, /initClientTxn/);
+  assert.match(initClientTxnScript, /checkoutTargetFromResult/);
+  assert.match(initClientTxnScript, /publisher Web API key/);
+  assert.match(initClientTxnScript, /App ID 480 only proves generic checkout routing/);
   assert.match(launcherTemplate, /STEAM_BRIDGE_MACOS_ENV_LAUNCHER_V1/);
   assert.doesNotMatch(launcherTemplate, /SteamBridgeSmoke/);
 });

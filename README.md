@@ -534,6 +534,13 @@ wrong-app guard as runtime checkout opens without printing either value. Bad
 `InitTxn` captures fail before any live overlay work and only sanitized presence
 flags are printed. You can run the same check directly with
 `npx steam-bridge-validate-checkout-target --file <private-init-txn-response.json> --expected-app-id <your-app-id>`.
+When you want Steam Bridge to create that private response file from a generic
+request JSON, use
+`npx steam-bridge-init-client-txn --file <private-init-txn-request.json> --out <private-init-txn-response.json> --production`
+with `STEAM_WEB_API_KEY` or `STEAM_API_KEY` set in the environment. The command
+does not accept publisher keys as command-line arguments, writes only the
+parsed `InitTxn` response JSON to disk, and prints sanitized checkout-target
+presence flags.
 The validator treats Steam SDK-style app ID fields such as `m_unAppID` and
 `m_nAppID` as embedded app IDs too, including when they appear inside line-item
 arrays, so private captures report

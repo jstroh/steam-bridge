@@ -749,7 +749,11 @@ checkout response JSON to a private temp file and pass its path with
 `--checkout-json-file` option, or the Windows helper/matrix `-CheckoutJsonFile`
 option; the smoke app feeds that object through `openCheckoutAndWait(...)`
 without committing private data or putting transaction values in launch
-arguments. The macOS and Windows matrices preflight that JSON through
+arguments. To create that private file from a generic request JSON, run
+`steam-bridge-init-client-txn --file <private-init-txn-request.json> --out <private-init-txn-response.json> --production`
+with the publisher key in `STEAM_WEB_API_KEY` or `STEAM_API_KEY`; the CLI does
+not accept literal keys in command-line arguments and prints only sanitized
+checkout-target presence metadata. The macOS and Windows matrices preflight that JSON through
 `checkoutTargetFromResult(...)` and pass the matrix app ID into that resolver
 before any live Steam launch. If the capture includes an app ID, the same
 wrong-app guard used by runtime checkout opens rejects mismatches without

@@ -27,6 +27,7 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
+    "steam-bridge-init-client-txn": "bin/init-client-txn.cjs",
     "steam-bridge-prepare-macos-app": "bin/prepare-macos-app.cjs",
     "steam-bridge-validate-checkout-target": "bin/validate-checkout-target.cjs",
     "steam-bridge-verify-macos-signing": "bin/verify-macos-signing.cjs"

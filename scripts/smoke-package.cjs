@@ -92,10 +92,16 @@ function runMacosPackageSigningStaticChecks() {
   const releaseWorkflow = fs.readFileSync(path.join(repoRoot, ".github", "workflows", "release.yml"), "utf8");
   const readme = fs.readFileSync(path.join(repoRoot, "README.md"), "utf8");
   const packageReadme = fs.readFileSync(path.join(packageRoot, "README.md"), "utf8");
+  const initTxnScript = fs.readFileSync(path.join(packageRoot, "bin", "init-client-txn.cjs"), "utf8");
   const prepareScript = fs.readFileSync(path.join(packageRoot, "bin", "prepare-macos-app.cjs"), "utf8");
   const checkoutValidatorScript = fs.readFileSync(path.join(packageRoot, "bin", "validate-checkout-target.cjs"), "utf8");
   const verifierScript = fs.readFileSync(path.join(packageRoot, "bin", "verify-macos-signing.cjs"), "utf8");
   const launcherTemplate = fs.readFileSync(path.join(packageRoot, "templates", "macos-steam-env-launcher.c"), "utf8");
+  assert.equal(
+    packageJson.bin?.["steam-bridge-init-client-txn"],
+    "bin/init-client-txn.cjs",
+    "steam-bridge package must expose the InitTxn capture CLI"
+  );
   assert.equal(
     packageJson.bin?.["steam-bridge-prepare-macos-app"],
     "bin/prepare-macos-app.cjs",
@@ -111,6 +117,7 @@ function runMacosPackageSigningStaticChecks() {
     "bin/verify-macos-signing.cjs",
     "steam-bridge package must expose the macOS signing verifier CLI"
   );
+  assertExecutableFile(path.join(packageRoot, "bin", "init-client-txn.cjs"));
   assert.equal(
     packageJson.exports?.["./electron-builder"]?.default,
     "./dist/electron-builder.js",
@@ -127,6 +134,16 @@ function runMacosPackageSigningStaticChecks() {
     checkoutValidatorScript.includes("checkout JSON app ID does not match --expected-app-id"),
     "checkout target validator must preserve a redacted app ID mismatch error"
   );
+  for (const expected of [
+    "steam-bridge-init-client-txn",
+    "publisher Web API key",
+    "initClientTxn",
+    "checkoutTargetFromResult",
+    "App ID 480 only proves generic checkout routing",
+    "fchmodSync"
+  ]) {
+    assert.ok(initTxnScript.includes(expected), `InitTxn capture CLI missing ${expected}`);
+  }
   assert.ok(packageJson.files.includes("bin"), "steam-bridge package must publish verifier CLI files");
   assert.ok(packageJson.files.includes("templates"), "steam-bridge package must publish macOS launcher templates");
   assert.equal(
@@ -801,19 +818,23 @@ function installConsumer(tarball) {
 
 function runConsumerChecks() {
   const installedPackageRoot = path.join(consumerDir, "node_modules", "steam-bridge");
+  const initTxnCapture = path.join(installedPackageRoot, "bin", "init-client-txn.cjs");
   const macosPrepareApp = path.join(installedPackageRoot, "bin", "prepare-macos-app.cjs");
   const macosSigningVerifier = path.join(installedPackageRoot, "bin", "verify-macos-signing.cjs");
   const checkoutTargetValidator = path.join(installedPackageRoot, "bin", "validate-checkout-target.cjs");
   const macosLauncherTemplate = path.join(installedPackageRoot, "templates", "macos-steam-env-launcher.c");
   const macosEntitlementsTemplate = path.join(installedPackageRoot, "templates", "entitlements.steam.macos.plist");
+  assertNonEmptyFile(initTxnCapture);
   assertNonEmptyFile(macosPrepareApp);
   assertNonEmptyFile(macosSigningVerifier);
   assertNonEmptyFile(checkoutTargetValidator);
   assertNonEmptyFile(macosLauncherTemplate);
   assertNonEmptyFile(macosEntitlementsTemplate);
+  assertExecutableFile(initTxnCapture);
   assertExecutableFile(macosPrepareApp);
   assertExecutableFile(macosSigningVerifier);
   assertExecutableFile(checkoutTargetValidator);
+  run("node", [initTxnCapture, "--self-test"], { cwd: consumerDir });
   run("node", [macosPrepareApp, "--self-test"], { cwd: consumerDir });
   run("node", [macosSigningVerifier, "--self-test"], { cwd: consumerDir });
   run("node", [checkoutTargetValidator, "--self-test"], { cwd: consumerDir });
