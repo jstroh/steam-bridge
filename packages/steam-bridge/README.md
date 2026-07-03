@@ -205,8 +205,11 @@ inactive callback plus managed close, park, and open-and-wait completion events,
 so they should be run only when the overlay can be closed interactively or by a
 verified UI close probe. Use `-Suite managed-routes` for the public App ID `480`
 product-facing managed route set without real transaction checkout or the raw
-native diagnostic observe cases. Keep real checkout proof focused on
-`-Suite checkout -CheckoutJsonFile <private-init-txn-response.json> -RequireMicroTxnCallback -CloseProbe`
+native diagnostic observe cases. For automated Windows managed-route proof,
+`-CloseProbeInput auto` is the default: it opens shortcut cases with the
+Steam overlay chord and closes Steam web-backed surfaces only after screenshot
+evidence shows the panel has painted. Keep real checkout proof focused on
+`-Suite checkout -CheckoutJsonFile <private-init-txn-response.json> -RequireMicroTxnCallback -CloseProbe -CloseProbeInput auto`
 with your own configured app and product. The checkout suite covers
 prepare-only, direct checkout, Shift+Tab checkout, and programmatic checkout
 shortcut open-and-wait without rerunning unrelated overlay surfaces. Add
@@ -331,32 +334,24 @@ compatibility session helpers such as
 `electronNativeOverlaySessionOptions()`; `electronScrubSteamOverlayChildProcessEnv()`
 is also available for explicit diagnostics. `electronConfigureSteamOverlay()`
 scrubs Steam's overlay renderer from Electron child-process preload environment
-variables and adds Electron's Linux `no-zygote` switch by default. On Linux and
-macOS, that keeps the bridge-owned native presenter as the single Steam overlay
-target. On Windows, Steam Bridge currently keeps the ordinary direct Steam
-overlay hook as the first diagnostic baseline, but that path is not considered
-product-ready until the Windows matrix proves visible overlay UI,
-close/back-to-app behavior, and clean crash diagnostics. Core Steam API success
-should not be treated as proof that the Steam overlay has hooked the right
-surface.
+variables and adds Electron's Linux `no-zygote` switch by default. On Linux,
+macOS, and Windows, that keeps the bridge-owned native presenter as the single
+Steam overlay target. Core Steam API success should not be treated as proof that
+the Steam overlay has hooked the right surface.
 `client.overlay.createElectronSteamOverlay()` applies the same child-process
 preload scrub by default for future Electron children, so the managed overlay
 path still protects apps that create the overlay manager before later windows or
-workers are spawned. Linux and macOS use the native presenter where Electron
-needs a more reliable Steam overlay target. Windows may move to the same
-bridge-owned presenter shape under the hood if the direct Electron hook cannot
-pass the visible-overlay and close/back-to-app matrix. An opt-in Windows
-`windows-opengl` presenter and a D3D11/DXGI `windows-d3d11` presenter now exist
-for proof runs through the same `createElectronSteamOverlay(...)` API; pass
-`presenterMode: "persistent"` explicitly or set
-`STEAM_BRIDGE_ELECTRON_OVERLAY_PRESENTER=native` in smoke environments to test
-that path, and set `STEAM_BRIDGE_WINDOWS_NATIVE_HOST_BACKEND=d3d11` only for
-the focused D3D11 comparison. Current Windows evidence covers managed web,
-store-web, Friends/chat, dialog-equivalent routes, shortcut
+workers are spawned. Windows managed overlays now use the bridge-owned
+D3D11/DXGI presenter by default and report `backend: "windows-d3d11"` in
+snapshots. Pass `presenterMode: "session"` or set
+`STEAM_BRIDGE_ELECTRON_OVERLAY_PRESENTER=session` only when intentionally
+comparing the direct Steam/Electron hook fallback. Set
+`STEAM_BRIDGE_WINDOWS_NATIVE_HOST_BACKEND=opengl` only for the older Win32/WGL
+diagnostic host. Current Windows evidence covers managed web, store-web,
+Friends/chat, dialog-equivalent routes, checkout routing, shortcut
 open/close/back-to-app, Community/profile, stats, achievements, user routes, and
 passive achievement progress/unlock notifications with clean crash diagnostics.
-The backend is not a default until real configured-product checkout passes the
-same gates. Pass
+Real purchase authorization still requires a configured Steam app/product. Pass
 `scrubSteamOverlayChildProcessEnv: false` only when collecting raw
 Electron-child overlay diagnostics.
 Raw activation helpers such as `activateToWebPage(...)` remain available for
@@ -767,7 +762,7 @@ pair it with `--app-id <your-app-id>`,
 `--require-microtxn-callback` when the private direct checkout case is expected
 to produce a `MicroTxnAuthorizationResponse`. On Windows, keep focused private
 checkout proof to
-`-Suite checkout -CheckoutJsonFile <private-init-txn-response.json> -RequireMicroTxnCallback -CloseProbe -CloseProbeInput escape-sendinput`
+`-Suite checkout -CheckoutJsonFile <private-init-txn-response.json> -RequireMicroTxnCallback -CloseProbe -CloseProbeInput auto`
 with the matching configured app ID when a purchase authorization callback is
 expected. The callback flags require private checkout JSON, so a real-callback
 proof cannot accidentally fall back to the public synthetic App ID `480`
@@ -814,11 +809,15 @@ Linux/X11, fully idle mode makes the host transparent and click-through;
 passive notifications; opening or active overlay mode restores both opacity and
 input so Steam web or checkout UI can receive clicks, then parks the host
 transparent after Steam reports the overlay inactive. On Windows D3D11 proof
-runs, passive notification verification allows `overlayEnabled=false` because
-there is no modal overlay, but still requires Steam to accept the achievement
-event, no `GameOverlayActivated(true)` callback, an attached D3D11 host, passive
-transparent/click-through state, `overlayNeedsPresent=false`, `currentFps=0`,
-and clean crash diagnostics. The default `idleFps` is
+runs, the default Windows matrix now proves managed web/store, Friends/chat,
+dialog-equivalent, Community/profile, stats, achievements, user routes,
+checkout routing, keyboard open/close/back-to-app, and passive notifications
+without passing a presenter/backend override. Passive notification verification
+allows `overlayEnabled=false` because there is no modal overlay, but still
+requires Steam to accept the achievement event, no `GameOverlayActivated(true)`
+callback, an attached D3D11 host, passive transparent/click-through state,
+`overlayNeedsPresent=false`, `currentFps=0`, and clean crash diagnostics. The
+default `idleFps` is
 `0`; opt into nonzero idle pumping only for diagnostics. The managed Electron
 helper also keeps the presenter aligned on BrowserWindow move, resize,
 fullscreen, maximize, restore, and show events with one native pump per event

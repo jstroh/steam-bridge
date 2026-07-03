@@ -43,12 +43,12 @@ param(
   [switch]$AllowUnhealthySteamClientLogs,
   [int]$SteamClientHealthRecentMinutes = 30,
   [switch]$CloseProbe,
-  [ValidateSet("toggle", "escape", "close-tab", "toggle-sendinput", "escape-sendinput", "close-tab-sendinput", "web-close-click-sendinput")]
-  [string]$CloseProbeInput = "toggle",
+  [ValidateSet("auto", "toggle", "escape", "close-tab", "toggle-sendinput", "escape-sendinput", "close-tab-sendinput", "web-close-click-sendinput")]
+  [string]$CloseProbeInput = "auto",
   [int]$CloseProbeSettleMs = 750,
   [int]$CloseProbeTimeoutSeconds = 110,
   [string]$PresenterMode = "",
-  [ValidateSet("", "default", "opengl", "gl", "wgl", "windows-opengl", "d3d", "d3d11", "direct3d", "direct3d11", "dxgi")]
+  [ValidateSet("", "default", "opengl", "gl", "wgl", "windows-opengl", "d3d", "d3d11", "direct3d", "direct3d11", "dxgi", "windows-d3d11")]
   [string]$NativeHostBackend = "",
   [ValidateSet("", "default", "popup", "popup-layered", "control", "overlapped", "plain")]
   [string]$NativeHostStyle = "",
@@ -639,11 +639,11 @@ function Test-UsesDefaultWindowsRenderPath {
 
 function Test-UsesNativeWindowsPresenter {
   if (-not $PresenterMode) {
-    return $false
+    return $true
   }
 
   $normalized = $PresenterMode.Trim().ToLowerInvariant()
-  return @("persistent", "presenter", "native", "auto", "on", "true", "1") -contains $normalized
+  return -not (@("session", "fallback", "compatibility", "off", "false", "0", "disabled") -contains $normalized)
 }
 
 function Resolve-ExpectedWindowsNativeHostBackend {
@@ -652,11 +652,14 @@ function Resolve-ExpectedWindowsNativeHostBackend {
   }
 
   $requested = $NativeHostBackend.Trim().ToLowerInvariant()
+  if (@("opengl", "gl", "wgl", "windows-opengl") -contains $requested) {
+    return "windows-opengl"
+  }
   if (@("d3d", "d3d11", "direct3d", "direct3d11", "dxgi", "windows-d3d11") -contains $requested) {
     return "windows-d3d11"
   }
 
-  return "windows-opengl"
+  return "windows-d3d11"
 }
 
 function Get-CurrentWindowsSessionId {
@@ -2152,6 +2155,44 @@ function Test-SmokeResultPayload {
   return [bool](Select-String -LiteralPath $Path -SimpleMatch -Pattern "STEAM_BRIDGE_SMOKE_RESULT " -Quiet -ErrorAction SilentlyContinue)
 }
 
+function Resolve-CloseProbeInputForCase {
+  param($Case)
+
+  if ($CloseProbeInput -ne "auto") {
+    return $CloseProbeInput
+  }
+
+  $action = ([string]$Case.action).ToLowerInvariant()
+  $id = ([string]$Case.id).ToLowerInvariant()
+  $shortcutTarget = ([string]$Case.shortcutTarget).ToLowerInvariant()
+  $webPanelTokens = @(
+    "checkout",
+    "web",
+    "store",
+    "friends",
+    "dialog",
+    "chat",
+    "profile",
+    "players",
+    "community",
+    "stats",
+    "achievements",
+    "user"
+  )
+
+  foreach ($token in $webPanelTokens) {
+    if ($action.Contains($token) -or $id.Contains($token) -or $shortcutTarget.Contains($token)) {
+      return "web-close-click-sendinput"
+    }
+  }
+
+  if ([bool]$Case.shortcutToggleProbe) {
+    return "toggle-sendinput"
+  }
+
+  return "escape-sendinput"
+}
+
 function Start-WindowsOverlayCloseProbe {
   param($Case, [string]$CaseDir, [string]$DiagnosticDir)
 
@@ -2162,7 +2203,7 @@ function Start-WindowsOverlayCloseProbe {
 
   $lifecycleLog = Join-Path $DiagnosticDir "lifecycle.jsonl"
   $probeLog = Join-Path $CaseDir "close-probe.log"
-  $input = $CloseProbeInput
+  $input = Resolve-CloseProbeInputForCase -Case $Case
   $settleMs = [Math]::Max(0, $CloseProbeSettleMs)
   $timeoutSeconds = [Math]::Max(1, $CloseProbeTimeoutSeconds)
   New-Item -ItemType Directory -Force -Path $CaseDir | Out-Null
@@ -2266,6 +2307,12 @@ public static class SteamBridgeWindowsProbe {
   [DllImport("user32.dll", SetLastError = true)]
   public static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
 
+  [DllImport("user32.dll", SetLastError = true)]
+  public static extern bool SetCursorPos(int X, int Y);
+
+  [DllImport("user32.dll", SetLastError = true)]
+  public static extern void mouse_event(uint dwFlags, uint dx, uint dy, uint dwData, IntPtr dwExtraInfo);
+
   static INPUT KeyInput(ushort virtualKey, uint flags) {
     INPUT input = new INPUT();
     input.type = INPUT_KEYBOARD;
@@ -2312,15 +2359,15 @@ public static class SteamBridgeWindowsProbe {
   }
 
   public static uint SendMouseClick(int x, int y, out int lastError) {
-    INPUT[] inputs = new INPUT[] {
-      MouseInput(x, y, MOUSEEVENTF_MOVE),
-      MouseInput(x, y, MOUSEEVENTF_LEFTDOWN),
-      MouseInput(x, y, MOUSEEVENTF_LEFTUP)
-    };
+    if (!SetCursorPos(x, y)) {
+      lastError = Marshal.GetLastWin32Error();
+      return 0;
+    }
 
-    uint sent = SendInput((uint)inputs.Length, inputs, Marshal.SizeOf(typeof(INPUT)));
-    lastError = sent == inputs.Length ? 0 : Marshal.GetLastWin32Error();
-    return sent;
+    mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, IntPtr.Zero);
+    mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, IntPtr.Zero);
+    lastError = 0;
+    return 3;
   }
 }
 '@
@@ -2476,6 +2523,173 @@ function Capture-ProbeScreen {
   }
 }
 
+function Get-WebCloseClickTarget {
+  param([object]`$Foreground)
+
+  if (`$foreground -and `$foreground.rect -and `$foreground.rect.width -gt 0 -and `$foreground.rect.height -gt 0) {
+    return [PSCustomObject]@{
+      x = [int]([Math]::Round(`$foreground.rect.left + (`$foreground.rect.width * 0.847)))
+      y = [int]([Math]::Round(`$foreground.rect.top + (`$foreground.rect.height * 0.142)))
+      source = "foreground-window-steam-web-panel"
+    }
+  }
+
+  `$presenterBounds = Get-LifecyclePresenterBounds
+  if (`$presenterBounds) {
+    return [PSCustomObject]@{
+      x = [int]([Math]::Round(`$presenterBounds.x + `$presenterBounds.width - 45))
+      y = [int]([Math]::Round(`$presenterBounds.y + 48))
+      source = "presenter-bounds"
+    }
+  }
+
+  return `$null
+}
+
+function Test-WebClosePanelScreenshot {
+  param([object]`$Screenshot, [object]`$Foreground)
+
+  `$target = Get-WebCloseClickTarget `$Foreground
+  if (-not `$Screenshot -or -not `$Screenshot.ok -or -not `$target -or -not `$Foreground -or -not `$Foreground.rect) {
+    return [PSCustomObject]@{
+      ready = `$false
+      reason = "missing-screenshot-or-target"
+      target = `$target
+    }
+  }
+
+  `$bitmap = `$null
+  try {
+    `$bitmap = [System.Drawing.Bitmap]::FromFile(`$Screenshot.path)
+    `$bounds = `$Screenshot.bounds
+    `$rect = `$Foreground.rect
+    `$sampleLeft = [int]([Math]::Round(`$rect.left + (`$rect.width * 0.12)))
+    `$sampleRight = [int]([Math]::Round(`$rect.left + (`$rect.width * 0.86)))
+    `$sampleTop = [int]([Math]::Round(`$rect.top + (`$rect.height * 0.11)))
+    `$sampleBottom = [int]([Math]::Round(`$rect.top + (`$rect.height * 0.20)))
+    `$contentLeft = [int]([Math]::Round(`$rect.left + (`$rect.width * 0.14)))
+    `$contentRight = [int]([Math]::Round(`$rect.left + (`$rect.width * 0.85)))
+    `$contentTop = [int]([Math]::Round(`$rect.top + (`$rect.height * 0.28)))
+    `$contentBottom = [int]([Math]::Round(`$rect.top + (`$rect.height * 0.72)))
+    `$total = 0
+    `$nonBlack = 0
+    `$maxSum = 0
+    `$maxSeen = 0
+    `$contentTotal = 0
+    `$contentBright = 0
+    `$contentMaxSeen = 0
+
+    for (`$y = `$sampleTop; `$y -le `$sampleBottom; `$y += 8) {
+      for (`$x = `$sampleLeft; `$x -le `$sampleRight; `$x += 8) {
+        `$bitmapX = [int](`$x - `$bounds.left)
+        `$bitmapY = [int](`$y - `$bounds.top)
+        if (`$bitmapX -lt 0 -or `$bitmapY -lt 0 -or `$bitmapX -ge `$bitmap.Width -or `$bitmapY -ge `$bitmap.Height) {
+          continue
+        }
+        `$pixel = `$bitmap.GetPixel(`$bitmapX, `$bitmapY)
+        `$pixelMax = [Math]::Max(`$pixel.R, [Math]::Max(`$pixel.G, `$pixel.B))
+        `$total += 1
+        `$maxSum += `$pixelMax
+        `$maxSeen = [Math]::Max(`$maxSeen, `$pixelMax)
+        if (`$pixelMax -gt 24) {
+          `$nonBlack += 1
+        }
+      }
+    }
+
+    for (`$y = `$contentTop; `$y -le `$contentBottom; `$y += 8) {
+      for (`$x = `$contentLeft; `$x -le `$contentRight; `$x += 8) {
+        `$bitmapX = [int](`$x - `$bounds.left)
+        `$bitmapY = [int](`$y - `$bounds.top)
+        if (`$bitmapX -lt 0 -or `$bitmapY -lt 0 -or `$bitmapX -ge `$bitmap.Width -or `$bitmapY -ge `$bitmap.Height) {
+          continue
+        }
+        `$pixel = `$bitmap.GetPixel(`$bitmapX, `$bitmapY)
+        `$pixelMax = [Math]::Max(`$pixel.R, [Math]::Max(`$pixel.G, `$pixel.B))
+        `$contentTotal += 1
+        `$contentMaxSeen = [Math]::Max(`$contentMaxSeen, `$pixelMax)
+        if (`$pixelMax -gt 80) {
+          `$contentBright += 1
+        }
+      }
+    }
+
+    `$averageMax = if (`$total -gt 0) { `$maxSum / `$total } else { 0 }
+    `$chromeReady = (`$total -gt 0 -and `$averageMax -gt 16 -and `$nonBlack -gt ([Math]::Max(6, `$total * 0.12)))
+    `$contentReady = (`$contentTotal -gt 0 -and (`$contentBright -gt 3 -or `$contentMaxSeen -gt 120))
+    [PSCustomObject]@{
+      ready = (`$chromeReady -and `$contentReady)
+      target = `$target
+      sample = [PSCustomObject]@{
+        left = `$sampleLeft
+        top = `$sampleTop
+        right = `$sampleRight
+        bottom = `$sampleBottom
+      }
+      contentSample = [PSCustomObject]@{
+        left = `$contentLeft
+        top = `$contentTop
+        right = `$contentRight
+        bottom = `$contentBottom
+      }
+      total = `$total
+      nonBlack = `$nonBlack
+      averageMax = `$averageMax
+      maxSeen = `$maxSeen
+      chromeReady = `$chromeReady
+      contentTotal = `$contentTotal
+      contentBright = `$contentBright
+      contentMaxSeen = `$contentMaxSeen
+      contentReady = `$contentReady
+    }
+  } catch {
+    [PSCustomObject]@{
+      ready = `$false
+      reason = `$_.Exception.Message
+      target = `$target
+    }
+  } finally {
+    if (`$bitmap) {
+      `$bitmap.Dispose()
+    }
+  }
+}
+
+function Wait-WebClosePanelReady {
+  param([datetime]`$Deadline)
+
+  `$readyDeadline = (Get-Date).AddSeconds([Math]::Min(8, [Math]::Max(1, (`$Deadline - (Get-Date)).TotalSeconds)))
+  `$attempt = 0
+  while ((Get-Date) -lt `$readyDeadline) {
+    `$attempt += 1
+    `$foreground = Get-ForegroundProbeSnapshot
+    `$screenshot = Capture-ProbeScreen ("web-close-ready-{0:D2}" -f `$attempt)
+    `$analysis = Test-WebClosePanelScreenshot -Screenshot `$screenshot -Foreground `$foreground
+    if (`$analysis.ready) {
+      Write-ProbeEvent "probe:web-close-ready" ([PSCustomObject]@{
+        attempt = `$attempt
+        foreground = `$foreground
+        screenshot = `$screenshot
+        analysis = `$analysis
+      })
+      return `$analysis
+    }
+
+    Start-Sleep -Milliseconds 250
+  }
+
+  `$foreground = Get-ForegroundProbeSnapshot
+  `$screenshot = Capture-ProbeScreen "web-close-ready-timeout"
+  `$analysis = Test-WebClosePanelScreenshot -Screenshot `$screenshot -Foreground `$foreground
+  Write-ProbeEvent "probe:web-close-ready-timeout" ([PSCustomObject]@{
+    attempts = `$attempt
+    foreground = `$foreground
+    screenshot = `$screenshot
+    analysis = `$analysis
+  })
+  return `$analysis
+}
+
 function Get-ProbeProcessSnapshot {
   @(Get-Process steam,SteamBridgeSmoke,gameoverlayui64 -ErrorAction SilentlyContinue |
     Sort-Object ProcessName,Id |
@@ -2574,9 +2788,14 @@ while ((Get-Date) -lt `$deadline -and -not `$sent) {
       if ($settleMs -gt 0) {
         Start-Sleep -Milliseconds $settleMs
       }
+      `$webCloseReadiness = `$null
+      if ('$input' -eq 'web-close-click-sendinput') {
+        `$webCloseReadiness = Wait-WebClosePanelReady -Deadline `$deadline
+      }
       Write-ProbeEvent "probe:before-send" ([PSCustomObject]@{
         foreground = Get-ForegroundProbeSnapshot
         screenshot = Capture-ProbeScreen "before-send"
+        webCloseReadiness = `$webCloseReadiness
         processes = Get-ProbeProcessSnapshot
       })
       `$nativeInputSent = `$null
@@ -2595,25 +2814,16 @@ while ((Get-Date) -lt `$deadline -and -not `$sent) {
         `$nativeInputSent = Send-NativeKeyChord @(0x10, 0x09)
       } elseif ('$input' -eq 'web-close-click-sendinput') {
         `$foreground = Get-ForegroundProbeSnapshot
-        if (`$foreground -and `$foreground.rect -and `$foreground.rect.width -gt 0 -and `$foreground.rect.height -gt 0) {
-          `$x = [int]([Math]::Round(`$foreground.rect.left + (`$foreground.rect.width * 0.86)))
-          `$y = [int]([Math]::Round(`$foreground.rect.top + (`$foreground.rect.height * 0.15)))
-          `$nativePointerSent = Send-NativeMouseClick `$x `$y
-          `$nativePointerSent | Add-Member -NotePropertyName coordinateSource -NotePropertyValue "foreground-window-steam-web-panel" -Force
+        `$target = Get-WebCloseClickTarget `$foreground
+        if (`$target) {
+          `$nativePointerSent = Send-NativeMouseClick `$target.x `$target.y
+          `$nativePointerSent | Add-Member -NotePropertyName coordinateSource -NotePropertyValue `$target.source -Force
         } else {
-          `$presenterBounds = Get-LifecyclePresenterBounds
-          if (`$presenterBounds) {
-            `$x = [int]([Math]::Round(`$presenterBounds.x + `$presenterBounds.width - 45))
-            `$y = [int]([Math]::Round(`$presenterBounds.y + 48))
-            `$nativePointerSent = Send-NativeMouseClick `$x `$y
-            `$nativePointerSent | Add-Member -NotePropertyName coordinateSource -NotePropertyValue "presenter-bounds" -Force
-          } else {
-            `$nativePointerSent = [PSCustomObject]@{
-              sent = 0
-              expected = 3
-              lastError = -1
-              error = "close-click-coordinate-source-unavailable"
-            }
+          `$nativePointerSent = [PSCustomObject]@{
+            sent = 0
+            expected = 3
+            lastError = -1
+            error = "close-click-coordinate-source-unavailable"
           }
         }
       } else {
@@ -2791,6 +3001,29 @@ function Write-CaseLaunchEnv {
   Invoke-Helper -Arguments $args -LogFile $launchEnvLog
 }
 
+function Minimize-DesktopWindowsForSteamLaunch {
+  param([string]$CaseDir)
+
+  $evidencePath = Join-Path $CaseDir "desktop-minimize.json"
+  $evidence = [ordered]@{
+    attempted = $false
+    ok = $false
+    error = ""
+  }
+
+  try {
+    $evidence.attempted = $true
+    $shell = New-Object -ComObject Shell.Application
+    $shell.MinimizeAll()
+    $evidence.ok = $true
+  } catch {
+    $evidence.error = $_.Exception.Message
+    Write-Host ("Windows desktop minimize warning before Steam launch: {0}" -f $_.Exception.Message)
+  }
+
+  Write-MatrixJsonFile -Path $evidencePath -Value $evidence -Depth 4
+}
+
 function Invoke-MatrixCase {
   param($Case)
 
@@ -2845,6 +3078,7 @@ function Invoke-MatrixCase {
       throw "Missing -ShortcutGameId for steam-launch matrix mode."
     }
     Write-CaseLaunchEnv -Case $Case -ResultFile $resultFile -DiagnosticDir $diagnosticDir
+    Minimize-DesktopWindowsForSteamLaunch -CaseDir $caseDir
     $args += @("-ShortcutGameId", $ShortcutGameId, "-RequireSteamLaunch")
   }
   if ($OverlayDisableDirectComposition) {

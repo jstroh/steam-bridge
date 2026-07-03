@@ -94,7 +94,7 @@ function expectedNativeOverlayBackend(nativeWindowHandle = false) {
     return nativeWindowHandle ? "macos-metal" : "macos-opengl";
   }
   if (process.platform === "win32") {
-    return "windows-opengl";
+    return "windows-d3d11";
   }
   return "none";
 }
@@ -7448,7 +7448,7 @@ test("electron steam overlay manager syncs the presenter on window geometry even
   }
 });
 
-test("electron steam overlay manager uses direct Steam activation on Windows", async (t) => {
+test("electron steam overlay manager can use direct Steam activation on Windows in session mode", async (t) => {
   setProcessPlatformForTest(t, "win32");
 
   const hostHandle = Buffer.from([9, 7, 5, 3]);
@@ -7523,6 +7523,7 @@ test("electron steam overlay manager uses direct Steam activation on Windows", a
 
   const overlay = steam.overlay.createElectronSteamOverlay(window, {
     title: "Windows Direct Overlay",
+    presenterMode: "session",
     pollIntervalMs: 10000
   });
   t.after(() => overlay.close());
@@ -7537,7 +7538,7 @@ test("electron steam overlay manager uses direct Steam activation on Windows", a
   assert.equal(initialSnapshot.clickThrough, true);
   assert.equal(initialSnapshot.transparent, true);
   assert.deepEqual(initialSnapshot.bounds, { x: 4, y: 8, width: 1280, height: 720 });
-  assert.equal(initialSnapshot.electronOverlay.presenterMode, "persistent");
+  assert.equal(initialSnapshot.electronOverlay.presenterMode, "session");
   assert.equal(overlay.getNativeHostAvailability().available, true);
   assert.deepEqual(nativeHostCalls, []);
 
@@ -7555,7 +7556,6 @@ test("electron steam overlay manager uses direct Steam activation on Windows", a
   assert.equal(openingSnapshot.mode, "active");
   assert.equal(openingSnapshot.overlayActive, false);
   assert.equal(openingSnapshot.currentFps, 0);
-  assert.equal(overlay.getOpenStatus({ type: "web", url: "https://store.steampowered.com/app/480/" }).reason, "opening");
 
   fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: true });
   await Promise.resolve();
@@ -7575,7 +7575,7 @@ test("electron steam overlay manager uses direct Steam activation on Windows", a
   assert.deepEqual(nativeHostCalls, []);
 });
 
-test("electron steam overlay manager can opt into Windows native presenter", async (t) => {
+test("electron steam overlay manager uses Windows D3D11 native presenter by default", async (t) => {
   setProcessPlatformForTest(t, "win32");
 
   const hostHandle = Buffer.from([6, 4, 2, 0]);
@@ -7640,13 +7640,12 @@ test("electron steam overlay manager can opt into Windows native presenter", asy
 
   const overlay = steam.overlay.createElectronSteamOverlay(window, {
     title: "Windows Native Presenter Overlay",
-    presenterMode: "persistent",
     pollIntervalMs: 10000
   });
   t.after(() => overlay.close());
 
   const initialSnapshot = overlay.snapshot();
-  assert.equal(initialSnapshot.backend, "windows-opengl");
+  assert.equal(initialSnapshot.backend, "windows-d3d11");
   assert.equal(initialSnapshot.attached, false);
   assert.equal(initialSnapshot.nativeHostOpen, false);
   assert.equal(initialSnapshot.mode, "passive");
@@ -7676,7 +7675,7 @@ test("electron steam overlay manager can opt into Windows native presenter", asy
   const shownSnapshot = overlay.snapshot();
   assert.equal(shownSnapshot.overlayActive, true);
   assert.equal(shownSnapshot.overlayWasActive, true);
-  assert.equal(shownSnapshot.backend, "windows-opengl");
+  assert.equal(shownSnapshot.backend, "windows-d3d11");
 
   const parkedWait = overlay.parkWhenSteamOverlayCloses({ timeoutMs: 500 });
   fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: false });
@@ -7713,7 +7712,7 @@ test("electron steam overlay manager can opt into Windows native presenter", asy
   );
 });
 
-test("electron steam overlay openAndWait uses the direct readiness path on Windows", async (t) => {
+test("electron steam overlay openAndWait uses the direct readiness path on Windows in session mode", async (t) => {
   setProcessPlatformForTest(t, "win32");
 
   const hostHandle = Buffer.from([2, 0, 2, 6]);
@@ -7779,6 +7778,7 @@ test("electron steam overlay openAndWait uses the direct readiness path on Windo
 
   const overlay = steam.overlay.createElectronSteamOverlay(window, {
     title: "Windows Direct Readiness Overlay",
+    presenterMode: "session",
     pollIntervalMs: 50
   });
   t.after(() => overlay.close());

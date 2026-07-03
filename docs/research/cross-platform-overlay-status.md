@@ -134,6 +134,19 @@ Steam overlay activation, all active cases reached close/back-to-app completion,
 and every case had clean crash diagnostics. The public route suite intentionally
 excludes only real transaction checkout plus raw native observe controls.
 
+A 2026-07-03 UTC default Windows D3D11 route matrix passed the public
+managed-route suite without passing `-PresenterMode` or `-NativeHostBackend`:
+`C:\Users\admin\steam-bridge-artifacts\windows-default-d3d11-managed-routes-auto-20260703-003`.
+The run used the signed Electron `43.0.0` package, the stable Steam shortcut,
+public App ID `480`, `-Suite managed-routes`, and `-CloseProbeInput auto`.
+Preflight reported `expectedNativeHostBackend=windows-d3d11`, the native-load
+gate verified the packaged app, and all route cases passed: web, store,
+Friends/chat, dialog-equivalent, programmatic shortcut, Shift+Tab shortcut,
+profile, players, community, stats, achievements, user, passive achievement
+progress, and passive achievement unlock. The auto close probe opens keyboard
+shortcut cases with Shift+Tab, then closes Steam web-backed surfaces through a
+screenshot-gated web-panel close control after Steam web content has painted.
+
 A 2026-07-03 UTC focused public D3D11 checkout suite passed all four checkout
 cases at
 `C:\Users\admin\steam-bridge-artifacts\windows-d3d11-checkout-suite-focusfix-20260703-001`.
@@ -647,14 +660,16 @@ native OpenGL game surface, but Steam still did not consume input through that
 host. Treat the Windows native presenter as useful rendering/focus evidence, not
 product proof, until it can close and return to the app from the same matrix.
 
-Follow-up Windows implementation work now exposes an opt-in D3D11/DXGI native
-presenter candidate through `STEAM_BRIDGE_WINDOWS_NATIVE_HOST_BACKEND=d3d11`,
+Follow-up Windows implementation work introduced the D3D11/DXGI native presenter
+behind `STEAM_BRIDGE_WINDOWS_NATIVE_HOST_BACKEND=d3d11`,
 `--steam-bridge-windows-native-host-backend=d3d11`, and the Windows helper
-`-NativeHostBackend d3d11` parameter. The D3D11 path is intentionally a focused
-comparison beside `windows-opengl`, not a default. It must still pass the same
-live Windows requirements: Steam-launched interactive Session 1 run, visible
-overlay UI, input/close proof, return to the Electron app, no duplicate stale
-overlay helpers, and clean Electron/GPU/native crash diagnostics.
+`-NativeHostBackend d3d11` parameter. After the later managed-route, checkout
+routing, shortcut, and passive-notification proof runs, this D3D11 path became
+the managed Windows default. The older `windows-opengl` host remains a focused
+diagnostic backend. The live Windows requirements stay the same:
+Steam-launched interactive Session 1 run, visible overlay UI, input/close proof,
+return to the Electron app, no duplicate stale overlay helpers, and clean
+Electron/GPU/native crash diagnostics.
 
 A second focused D3D11 run at
 `C:\Users\admin\steam-bridge-artifacts\windows-d3d11-web-20260702-002` passed

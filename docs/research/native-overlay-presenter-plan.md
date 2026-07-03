@@ -78,14 +78,25 @@ Reviewed on 2026-07-02 while investigating Windows Electron overlay failures:
 | [Steamworks.NET overlay FAQ](https://steamworks.github.io/faq/) | The injection-order rule is not Electron-specific: the overlay must be injected before the renderer initializes, and running through Steam is the reliable development shape. |
 | [steamworks-ffi-node native overlay guide](https://github.com/ArtyProf/steamworks-ffi-node/blob/main/docs/STEAM_OVERLAY_INTEGRATION.md) | Independent wrapper research points at native Metal/OpenGL host surfaces, but Steam Bridge still requires its own FPS, shutdown, focus, close, and crash matrix before making a Windows native presenter default. |
 
-- Steam Bridge now has opt-in Windows native presenter candidates behind the
-  existing native surface API: `backend: "windows-opengl"` creates the Win32/WGL
-  diagnostic surface, and `backend: "windows-d3d11"` creates a D3D11/DXGI
-  swap-chain surface for the next live comparison. Neither is the default
-  Windows path yet; the ordinary direct Electron hook remains the baseline until
-  live Windows matrix proof shows a native presenter is better across visible
-  UI, close/back-to-app, passive notifications, FPS/focus behavior, and crash
-  diagnostics.
+- Steam Bridge now uses the Windows D3D11/DXGI native presenter as the managed
+  Electron default. It reports `backend: "windows-d3d11"` in snapshots and keeps
+  the app-facing `createElectronSteamOverlay(...)` API unchanged. The older
+  Win32/WGL `windows-opengl` presenter remains a diagnostic backend, and
+  `presenterMode: "session"` keeps the ordinary direct Steam/Electron hook
+  available for compatibility comparisons. Current route and notification
+  evidence showed the D3D11 path is the better Windows product default across
+  visible UI, close/back-to-app, passive notifications, focus behavior, and
+  crash diagnostics.
+- A 2026-07-03 UTC default Windows matrix passed
+  `-Suite managed-routes -CloseProbeInput auto` without explicit presenter or
+  backend flags at
+  `C:\Users\admin\steam-bridge-artifacts\windows-default-d3d11-managed-routes-auto-20260703-003`.
+  That artifact covers web, store, Friends/chat, dialog-equivalent,
+  programmatic shortcut, Shift+Tab shortcut, profile, players, community, stats,
+  achievements, user, and passive achievement notification routes through the
+  packaged Electron `43.0.0` app. The Windows close probe now chooses route-aware
+  input: Shift+Tab to open keyboard shortcut cases, then the Steam web-panel
+  close control after screenshot evidence shows web content has painted.
 - A 2026-07-03 UTC focused Windows D3D11 pass proved passive
   achievement-progress and achievement-unlock notifications through the same
   managed Electron presenter shape. The Steam-launched App ID `480` artifacts
@@ -111,9 +122,9 @@ Reviewed on 2026-07-02 while investigating Windows Electron overlay failures:
   browser-game FAQ specifically names a native D3D window with offscreen
   Chromium and input forwarding, while the WebView2/DirectComposition research
   shows why a composited transparent layer can render Steam overlay content but
-  still fail on alpha/input details. The next serious Windows implementation
-  comparison is therefore the opt-in D3D11/DXGI presenter beside the existing
-  WGL diagnostic, not another default Chromium flag profile.
+  still fail on alpha/input details. The serious Windows implementation path is
+  therefore the D3D11/DXGI presenter, with the WGL host and Chromium flag
+  profiles preserved as diagnostics rather than product defaults.
 - Steam Bridge's Deck Desktop testing confirmed a second Electron-specific
   failure mode: if Steam's overlay renderer is inherited by Chromium child
   processes, Steam can create competing `gameoverlayui` targets for both the

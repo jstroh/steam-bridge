@@ -94,9 +94,12 @@ actions such as `presenter-ready`, `presenter-web-open-and-wait`,
 
 The helper leaves `-OverlayInProcessGpu` unset on Windows by default, matching
 the current `electronConfigureSteamOverlay()` diagnostic profile. The current
-Windows proof lane is the process-per-case baseline matrix: web, store, and
-Friends must emit overlay activation, while passive achievement cases prove
-their callbacks without requiring the overlay to open. Pass
+Windows product proof lane is the process-per-case managed matrix, which uses
+the default D3D11 native presenter; web, store, Friends, dialog-equivalent,
+community, checkout-routing, shortcut, and passive achievement cases all need
+clean crash diagnostics and their recorded close/back-to-app or passive-state
+contracts. The baseline suite remains available for direct Steam/Electron hook
+diagnostics. Pass
 `-OverlayInProcessGpu 1` only when collecting a focused legacy compatibility
 comparison.
 For focused Steam Community or social-route investigation, pass
@@ -110,18 +113,12 @@ write `STEAM_BRIDGE_SMOKE_MANAGED_OVERLAY_RESULT_MODE=complete` and require
 Steam's inactive callback plus the managed close, park, and open-and-wait
 completion events before the smoke result is accepted. Run those cases only when
 the overlay can be closed interactively or by a verified UI close probe.
-The Windows close probe supports `-CloseProbeInput toggle`, `escape`,
-`close-tab`, plus `toggle-sendinput`, `escape-sendinput`, and
-`close-tab-sendinput` for native `SendInput` keyboard injection. Current Windows
-evidence uses `toggle` for store/web-style overlay pages and `escape` for the
-direct Friends panel. Dialog-equivalent and shortcut routes open and emit active
-callbacks, but their automated close input is still being investigated. Current
-`OfficialGameGroup` dialog artifacts show `close-tab`, `toggle`, and native
-`close-tab-sendinput` probes being sent from the interactive desktop session,
-while the overlay remains active until the managed close wait times out. The
-native Ctrl+W diagnostic delivered all four key events with `lastError=0`, so
-this is not just a WScript `SendKeys` issue. Keep those routes in focused runs
-until close/back-to-app proof is green. Close-probe artifacts include
+The Windows close probe supports `-CloseProbeInput auto`, `toggle`, `escape`,
+`close-tab`, `toggle-sendinput`, `escape-sendinput`, `close-tab-sendinput`, and
+`web-close-click-sendinput`. `auto` is the default for managed routes: it opens
+shortcut cases with the Steam overlay chord, waits for Steam web-backed panels
+to paint before clicking their close button, and falls back to native Escape for
+simple non-web surfaces. Close-probe artifacts include
 foreground-window snapshots, process snapshots, and full-desktop screenshots
 around detection and input send time; use those to distinguish a Steam overlay
 close problem from input being delivered to the Electron game window or from a
@@ -162,16 +159,18 @@ App ID `480`, captures desktop and client-area screenshots, and writes
 `-OverlayDisableDirectComposition 1`. Treat the explicit flag profiles as
 diagnostics until they survive crash, close/back-to-app, and Alt+Tab checks.
 
-For focused Windows native-presenter comparison runs, pass
-`-PresenterMode persistent -NativeHostBackend d3d11` to
-`windows-overlay-matrix.ps1` or set
-`STEAM_BRIDGE_WINDOWS_NATIVE_HOST_BACKEND=d3d11` in the smoke environment. This
-selects the opt-in D3D11/DXGI presenter instead of the older WGL diagnostic
-presenter. Current Windows evidence covers managed web, store-web, Friends/chat,
-dialog-equivalent routes, shortcut open/close/back-to-app, Community/profile,
-stats, achievements, user routes, and passive achievement progress/unlock
-notifications with clean crash diagnostics. This path is not a default until
-real configured-product checkout passes the same gates.
+Windows managed runs use the D3D11/DXGI native presenter by default; snapshots
+should report `backend="windows-d3d11"` without passing `-PresenterMode` or
+`-NativeHostBackend`. Pass `-PresenterMode session` only when intentionally
+comparing the direct Steam/Electron hook fallback, or
+`-NativeHostBackend opengl` only for the older Win32/WGL diagnostic presenter.
+Current Windows evidence covers managed web, store-web, Friends/chat,
+dialog-equivalent routes, checkout routing, shortcut open/close/back-to-app,
+Community/profile, stats, achievements, user routes, and passive achievement
+progress/unlock notifications with clean crash diagnostics. The repeatable
+public route proof uses `-Suite managed-routes -CloseProbe -CloseProbeInput auto`
+against App ID `480` without explicit presenter/backend flags. Real purchase
+authorization still requires a configured Steam app/product.
 If a local Smart App Control/App Control policy blocks a freshly rebuilt native
 addon, pass `-NativePath <path-to-accepted-.node>` only for diagnostic
 comparisons. The matrix records `nativePathOverride=true`; keep those artifacts
@@ -223,7 +222,7 @@ Focused managed runs can choose a single case, close probe, and dialog target:
   -OnlyCase 14-managed-dialog-open-and-wait `
   -Dialog OfficialGameGroup `
   -CloseProbe `
-  -CloseProbeInput close-tab
+  -CloseProbeInput auto
 ```
 
 The matrix also captures Steam client diagnostics without mutating Steam state:
@@ -830,7 +829,7 @@ arrays, without printing the value. Use
 prepare-only, direct checkout, Shift+Tab checkout, and programmatic checkout
 shortcut/open-and-wait without rerunning unrelated overlay surfaces.
 On Windows, use
-`-Suite checkout -CheckoutJsonFile <private-init-txn-response.json> -RequireMicroTxnCallback -CloseProbe -CloseProbeInput escape-sendinput`
+`-Suite checkout -CheckoutJsonFile <private-init-txn-response.json> -RequireMicroTxnCallback -CloseProbe -CloseProbeInput auto`
 for the focused configured-product checkout path.
 Matrix dry-run and live command logs redact checkout file paths, checkout URLs,
 return URLs, transaction IDs, and control tokens as `REDACTED`, so command logs

@@ -309,11 +309,12 @@ code should not need platform-specific overlay host, capture, focus, or timer
 plumbing.
 When the managed overlay is created, Steam Bridge also scrubs Steam's overlay
 renderer entries from future Electron child-process preload environment
-variables by default. On Linux and macOS, that keeps the bridge-owned native
-presenter as the overlay target. On Windows, the current implementation still
-keeps Steam's ordinary direct Electron hook as the first measured baseline, but
-that baseline must prove visible overlay UI, close/back-to-app behavior, and
-clean crash diagnostics before it is treated as product-ready. Set
+variables by default. On Linux, macOS, and Windows, that keeps the bridge-owned
+native presenter as the overlay target instead of letting Chromium child
+processes compete for Steam's injected renderer. Windows managed overlays use
+the D3D11/DXGI native presenter by default. Set `presenterMode: "session"` or
+`STEAM_BRIDGE_ELECTRON_OVERLAY_PRESENTER=session` only when collecting direct
+Steam/Electron hook compatibility diagnostics, and set
 `scrubSteamOverlayChildProcessEnv: false` only for raw diagnostic comparisons.
 The default Windows Electron configuration no longer forces Chromium's
 in-process GPU path. That switch is useful diagnostic evidence because it can
@@ -327,17 +328,17 @@ close/back-to-app evidence, use `electronConfigureSteamOverlay({ profile: "compa
 `-OverlayDisableDirectComposition 1` flag only as explicit diagnostic runs; keep
 Alt+Tab/close regression checks in those passes because the composition switch
 has known ghost-window risk in upstream Electron Steam wrapper reports.
-Steam Bridge's app-facing API should stay the same if Windows needs a
-bridge-owned native presenter under the hood.
-An experimental Windows native presenter is available for proof runs through the
-same managed API: pass `presenterMode: "persistent"` explicitly or set
-`STEAM_BRIDGE_ELECTRON_OVERLAY_PRESENTER=native` in the smoke environment. That
-path can create either a Win32/OpenGL diagnostic host or the current D3D11/DXGI
-host surface behind `createElectronSteamOverlay(...)`, reporting
-`backend: "windows-opengl"` or `backend: "windows-d3d11"` in snapshots. It
-remains opt-in while the Windows matrix expands route coverage; current D3D11
-proof covers managed keyboard open/close/back-to-app and passive progress/unlock
-notification state without a fixed repaint loop.
+Steam Bridge's app-facing API stays the same across platforms: Windows creates
+the bridge-owned presenter under the hood when apps call
+`createElectronSteamOverlay(...)`. The default Windows backend reports
+`backend: "windows-d3d11"` in snapshots. Set
+`STEAM_BRIDGE_WINDOWS_NATIVE_HOST_BACKEND=opengl` only for the older
+Win32/OpenGL diagnostic host. Current default-D3D11 proof covers managed
+web/store, Friends/chat, dialog-equivalent and community routes, checkout
+routing, keyboard open/close/back-to-app, and passive progress/unlock
+notification state without a fixed repaint loop. The repeatable Windows matrix
+uses route-aware close probes for Steam web panels and keyboard shortcut cases;
+real purchase authorization still requires a configured Steam app/product.
 If the Steam client window itself is blank or white, treat that as a Steam
 client rendering-health blocker first. The Windows matrix captures CEF,
 webhelper, and overlay log tails plus matching error lines under
@@ -846,7 +847,8 @@ the private `--checkout-json-file` checkout suite.
   ```
 
   The baseline suite uses the ordinary Windows Electron/Steam overlay path for
-  web, store, Friends, and passive achievement notifications. It keeps
+  direct-hook diagnostics on web, store, Friends, and passive achievement
+  notifications. It keeps
   Chromium's in-process GPU path off by default so the smoke game must first
   prove it can visibly render. Pass `-OverlayInProcessGpu 1` only for focused
   compatibility artifacts. Pass `-OverlayScrubChildEnv 0` and
@@ -854,24 +856,25 @@ the private `--checkout-json-file` checkout suite.
   you intentionally want Steam's overlay preload to reach Chromium child
   processes; a passing product artifact still needs visible overlay pixels,
   close/back-to-app proof, clean crashes, and no duplicate or stale
-  `gameoverlayui` target. The managed suite uses the direct Windows Steam
-  overlay presenter rather than a native host. Its readiness case is a cheap
+  `gameoverlayui` target. The managed suite uses the Windows D3D11 native
+  presenter by default. Its readiness case is a cheap
   no-activation preflight, while active managed cases use complete-result mode,
   so they do not accept a result until Steam emits the inactive callback and the
   managed close, park, and open-and-wait completion events are recorded. Use
   `-Suite managed-routes` when you want the repeatable public App ID `480`
   product-facing managed route set without real transaction checkout or the raw
-  native diagnostic observe cases. Keep real checkout proof focused on
-  `-Suite checkout -CheckoutJsonFile <private-init-txn-response.json> -RequireMicroTxnCallback -CloseProbe -CloseProbeInput escape-sendinput`
+  native diagnostic observe cases; `-CloseProbeInput auto` is the default for
+  automated close/back-to-app proof.
+  Keep real checkout proof focused on
+  `-Suite checkout -CheckoutJsonFile <private-init-txn-response.json> -RequireMicroTxnCallback -CloseProbe -CloseProbeInput auto`
   with your own configured app and product when a purchase authorization
   callback is expected. The checkout suite covers prepare-only, direct checkout,
   Shift+Tab checkout, and programmatic checkout shortcut open-and-wait without
   rerunning unrelated overlay surfaces. For automated shortcut checkout proof on
   Windows, the close probe focuses the smoke app before sending the managed
   Shift+Tab open chord and records `probe:shortcut-focus` before the close input.
-  Keep the normal direct Steam hook as the
-  Windows default
-  unless evidence from that baseline proves additional machinery is needed.
+  Pass `-PresenterMode session` only when intentionally comparing the direct
+  Steam/Electron hook fallback.
   Each matrix case passes `-RequireNoCrashes`,
   so Windows artifacts must prove both overlay behavior and a clean Electron
   crash-diagnostic snapshot.

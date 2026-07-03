@@ -3520,10 +3520,10 @@ function configureWindowsNativeHostStyle(style) {
 
 function normalizeWindowsNativeHostBackend(value) {
   const normalized = String(value || "").trim().toLowerCase();
-  if (["d3d", "d3d11", "direct3d", "direct3d11", "dxgi"].includes(normalized)) {
+  if (["default", "d3d", "d3d11", "direct3d", "direct3d11", "dxgi", "windows-d3d11"].includes(normalized)) {
     return "d3d11";
   }
-  if (["default", "opengl", "gl", "wgl", "windows-opengl"].includes(normalized)) {
+  if (["opengl", "gl", "wgl", "windows-opengl"].includes(normalized)) {
     return "opengl";
   }
   return "";
