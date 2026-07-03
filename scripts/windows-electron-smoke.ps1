@@ -73,7 +73,7 @@ param(
   [string]$UserDialog = "",
   [string]$ShortcutTarget = "",
   [string]$PresenterMode = "",
-  [ValidateSet("", "default", "opengl", "gl", "wgl", "windows-opengl", "d3d", "d3d11", "direct3d", "direct3d11", "dxgi")]
+  [ValidateSet("", "default", "opengl", "gl", "wgl", "windows-opengl", "d3d", "d3d11", "direct3d", "direct3d11", "dxgi", "windows-d3d11")]
   [string]$NativeHostBackend = "",
   [ValidateSet("", "default", "popup", "popup-layered", "control", "overlapped", "plain")]
   [string]$NativeHostStyle = "",
@@ -1541,6 +1541,33 @@ function Assert-SmokeResult {
   }
   if ($RequireMicroTxnCallback) {
     Assert-MicroTxnCallbackProof -Events $events -ActionName $Action -ExpectedAppId $AppId -Failures $failures
+  }
+  if (($Action -eq "presenter-shortcut" -or $Action -eq "presenter-shortcut-open-and-wait") -and $ShortcutTarget) {
+    $configuredShortcutTarget = Get-SmokeObjectProperty -Value $app -Name "shortcutTarget"
+    if ($configuredShortcutTarget -ne $ShortcutTarget) {
+      $failures.Add("app shortcut target is $ShortcutTarget")
+    }
+    if (-not $electronOverlay) {
+      $failures.Add("managed Electron overlay diagnostics available for shortcut target")
+    } else {
+      $overlayShortcut = Get-SmokeObjectProperty -Value $electronOverlay -Name "overlayShortcut"
+      $targetType = Get-SmokeObjectProperty -Value $overlayShortcut -Name "targetType"
+      $targetSnapshot = Get-SmokeObjectProperty -Value $overlayShortcut -Name "target"
+      $targetSnapshotType = Get-SmokeObjectProperty -Value $targetSnapshot -Name "type"
+      if ((Get-SmokeObjectProperty -Value $overlayShortcut -Name "enabled") -ne $true) {
+        $failures.Add("managed Electron overlay shortcut is enabled")
+      }
+      if ($targetSnapshotType -and $targetType -ne $targetSnapshotType) {
+        $failures.Add("managed Electron overlay shortcut target diagnostics are consistent")
+      }
+      if (-not (
+        $targetType -eq $ShortcutTarget -or
+        $targetSnapshotType -eq $ShortcutTarget -or
+        ($targetType -eq "function" -and $configuredShortcutTarget -eq $ShortcutTarget)
+      )) {
+        $failures.Add("managed Electron overlay shortcut target is $ShortcutTarget")
+      }
+    }
   }
   foreach ($eventType in $RequireEvent) {
     if (-not ($events | Where-Object { $_.type -eq $eventType } | Select-Object -First 1)) {

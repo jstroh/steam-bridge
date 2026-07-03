@@ -208,7 +208,11 @@ product-facing managed route set without real transaction checkout or the raw
 native diagnostic observe cases. For automated Windows managed-route proof,
 `-CloseProbeInput auto` is the default: it opens shortcut cases with the
 Steam overlay chord and closes Steam web-backed surfaces only after screenshot
-evidence shows the panel has painted. Keep real checkout proof focused on
+evidence shows the panel has painted. Use `-Suite shortcut-routes` for focused
+Windows shortcut `openShortcutTargetAndWait(...)` coverage across the public
+non-checkout targets, with the requested target recorded in smoke diagnostics.
+Check the per-case artifact before treating a route as product-proof. Keep real
+checkout proof focused on
 `-Suite checkout -CheckoutJsonFile <private-init-txn-response.json> -RequireMicroTxnCallback -CloseProbe -CloseProbeInput auto`
 with your own configured app and product. The checkout suite covers
 prepare-only, direct checkout, Shift+Tab checkout, and programmatic checkout

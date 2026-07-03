@@ -169,7 +169,10 @@ dialog-equivalent routes, checkout routing, shortcut open/close/back-to-app,
 Community/profile, stats, achievements, user routes, and passive achievement
 progress/unlock notifications with clean crash diagnostics. The repeatable
 public route proof uses `-Suite managed-routes -CloseProbe -CloseProbeInput auto`
-against App ID `480` without explicit presenter/backend flags. Real purchase
+against App ID `480` without explicit presenter/backend flags. Use
+`-Suite shortcut-routes` for focused public non-checkout shortcut
+`openShortcutTargetAndWait(...)` coverage and per-target diagnostics; check the
+per-case artifact before treating a route as product-proof. Real purchase
 authorization still requires a configured Steam app/product.
 If a local Smart App Control/App Control policy blocks a freshly rebuilt native
 addon, pass `-NativePath <path-to-accepted-.node>` only for diagnostic

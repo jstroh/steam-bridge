@@ -864,7 +864,10 @@ the private `--checkout-json-file` checkout suite.
   `-Suite managed-routes` when you want the repeatable public App ID `480`
   product-facing managed route set without real transaction checkout or the raw
   native diagnostic observe cases; `-CloseProbeInput auto` is the default for
-  automated close/back-to-app proof.
+  automated close/back-to-app proof. Use `-Suite shortcut-routes` when you want
+  focused shortcut `openShortcutTargetAndWait(...)` coverage for the public
+  non-checkout targets with the requested target recorded in smoke diagnostics;
+  check the per-case artifact before treating a route as product-proof.
   Keep real checkout proof focused on
   `-Suite checkout -CheckoutJsonFile <private-init-txn-response.json> -RequireMicroTxnCallback -CloseProbe -CloseProbeInput auto`
   with your own configured app and product when a purchase authorization

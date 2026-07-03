@@ -1645,12 +1645,13 @@ function openNamedPresenterTargetAndWaitIfAvailable(
 }
 
 function duplicateOpenGuardTargets() {
+  const steamId64 = activeSteamId64ForOverlayTarget();
   return {
     web: { type: "web", url: WEB_URL, modal: WEB_MODAL },
     store: { type: "store", appId: APP_ID, route: STORE_ROUTE },
     friends: { type: "friends" },
-    profile: { type: "profile" },
-    players: { type: "players" },
+    profile: { type: "profile", steamId64 },
+    players: { type: "players", steamId64 },
     community: { type: "community", appId: APP_ID },
     stats: { type: "stats", appId: APP_ID },
     achievements: { type: "achievements", appId: APP_ID },
@@ -1658,6 +1659,10 @@ function duplicateOpenGuardTargets() {
     dialog: { type: "dialog", dialog: OVERLAY_DIALOG, appId: APP_ID },
     checkout: { type: "checkout", transactionId: "123456789" }
   };
+}
+
+function activeSteamId64ForOverlayTarget() {
+  return requireClient().localplayer.getSteamId().steamId64;
 }
 
 function overlayTargetOptions(target, ...extraOmittedFields) {
@@ -2318,9 +2323,9 @@ function resolveShortcutOverlayTarget() {
     case "store":
       return { type: "store", appId: APP_ID, route: STORE_ROUTE };
     case "profile":
-      return { type: "profile" };
+      return { type: "profile", steamId64: activeSteamId64ForOverlayTarget() };
     case "players":
-      return { type: "players" };
+      return { type: "players", steamId64: activeSteamId64ForOverlayTarget() };
     case "community":
       return { type: "community", appId: APP_ID };
     case "stats":

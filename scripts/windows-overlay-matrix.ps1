@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-  [ValidateSet("baseline", "managed", "managed-routes", "checkout", "full", "preflight", "readiness", "shortcut")]
+  [ValidateSet("baseline", "managed", "managed-routes", "shortcut-routes", "checkout", "full", "preflight", "readiness", "shortcut")]
   [string]$Suite = "baseline",
 
   [ValidateSet("steam-launch", "direct")]
@@ -1899,6 +1899,61 @@ function New-ManagedOpenAndWaitCase {
     -StoreRouteOverride $StoreRouteOverride
 }
 
+function New-ShortcutOpenAndWaitCase {
+  param(
+    [string]$Id,
+    [string]$ShortcutTargetOverride,
+    [string]$CheckoutTransactionIdOverride = "",
+    [string]$CheckoutJsonFileOverride = "",
+    [string]$WebModal = "",
+    [string]$StoreRouteOverride = "",
+    [switch]$RequireMicroTxnCallback
+  )
+
+  return New-Case `
+    -Id $Id `
+    -Action "presenter-shortcut-open-and-wait" `
+    -RequireEvent @("overlay:presenter-open-and-wait-start", "overlay:shortcut-open", "overlay:presenter-wait-closed", "overlay:presenter-parked", "overlay:presenter-open-and-wait-complete") `
+    -RequireOverlayActivated `
+    -RequireManagedOverlayComplete `
+    -ManagedOverlayResultMode "complete" `
+    -ShortcutTargetOverride $ShortcutTargetOverride `
+    -CheckoutTransactionIdOverride $CheckoutTransactionIdOverride `
+    -CheckoutJsonFileOverride $CheckoutJsonFileOverride `
+    -RequireMicroTxnCallback:$RequireMicroTxnCallback `
+    -WebModal $WebModal `
+    -StoreRouteOverride $StoreRouteOverride
+}
+
+function New-PublicShortcutRouteCases {
+  $targets = @(
+    "friends",
+    "web",
+    "store",
+    "profile",
+    "players",
+    "community",
+    "stats",
+    "achievements",
+    "user",
+    "dialog"
+  )
+
+  $cases = @()
+  foreach ($target in $targets) {
+    $caseId = "30-shortcut-{0}-open-and-wait" -f $target
+    $webModal = if ($target -eq "web") { "true" } else { "" }
+    $storeRouteOverride = if ($target -eq "store") { $StoreRoute } else { "" }
+    $cases += New-ShortcutOpenAndWaitCase `
+      -Id $caseId `
+      -ShortcutTargetOverride $target `
+      -WebModal $webModal `
+      -StoreRouteOverride $storeRouteOverride
+  }
+
+  return $cases
+}
+
 function Get-MatrixCases {
   $checkoutTransactionIdForCase = if ($CheckoutJsonFile) { "" } else { $CheckoutTransactionId }
   $checkoutJsonFileForCase = if ($CheckoutJsonFile) { $CheckoutJsonFile } else { "" }
@@ -1919,7 +1974,7 @@ function Get-MatrixCases {
     New-ManagedOpenAndWaitCase -Id "12-managed-store-open-and-wait" -Action "presenter-store-open-and-wait" -StoreRouteOverride $StoreRoute
     New-ManagedOpenAndWaitCase -Id "13-managed-friends-open-and-wait" -Action "presenter-friends-open-and-wait"
     New-ManagedOpenAndWaitCase -Id "14-managed-dialog-open-and-wait" -Action "presenter-dialog-auto-open-and-wait" -DialogOverride $Dialog
-    New-ManagedOpenAndWaitCase -Id "15-managed-shortcut" -Action "presenter-shortcut-open-and-wait" -ShortcutTargetOverride $ShortcutTarget -CheckoutTransactionIdOverride $shortcutCheckoutTransactionIdForCase -CheckoutJsonFileOverride $shortcutCheckoutJsonFileForCase -RequireMicroTxnCallback:($RequireMicroTxnCallback -and $ShortcutTarget -eq "checkout")
+    New-ShortcutOpenAndWaitCase -Id "15-managed-shortcut" -ShortcutTargetOverride $ShortcutTarget -CheckoutTransactionIdOverride $shortcutCheckoutTransactionIdForCase -CheckoutJsonFileOverride $shortcutCheckoutJsonFileForCase -RequireMicroTxnCallback:($RequireMicroTxnCallback -and $ShortcutTarget -eq "checkout")
     New-Case `
       -Id "15-managed-shortcut-keyboard" `
       -Action "presenter-shortcut" `
@@ -1946,6 +2001,8 @@ function Get-MatrixCases {
     New-Case -Id "25-managed-achievement-progress" -Action "presenter-achievement-progress" -RequireEvent @("overlay:presenter-attach", "achievement:progress", "overlay:passive-notification-parked") -RequireNoOverlayActivation -AllowOverlayNotReady -RequirePassiveNotification -ResultDelayMs 10000
     New-Case -Id "26-managed-achievement-unlock" -Action "presenter-achievement-unlock" -RequireEvent @("overlay:presenter-attach", "achievement:unlock", "overlay:passive-notification-parked") -RequireNoOverlayActivation -AllowOverlayNotReady -RequirePassiveNotification -ResultDelayMs 10000
   )
+
+  $shortcutRoutes = @(New-PublicShortcutRouteCases)
 
   $checkout = @(
     New-Case `
@@ -2002,8 +2059,9 @@ function Get-MatrixCases {
         $_.id -notin $publicManagedRouteExclusions
       })
     }
+    "shortcut-routes" { return $shortcutRoutes }
     "checkout" { return $checkout }
-    "full" { return @($baseline + $managed) }
+    "full" { return @($baseline + $managed + $shortcutRoutes) }
     "preflight" { return @() }
     "readiness" { return @() }
     "shortcut" { return @() }
@@ -2369,6 +2427,17 @@ public static class SteamBridgeWindowsProbe {
     lastError = 0;
     return 3;
   }
+
+  public static uint SendMouseClickInput(int x, int y, out int lastError) {
+    INPUT[] inputs = new INPUT[3];
+    inputs[0] = MouseInput(x, y, MOUSEEVENTF_MOVE);
+    inputs[1] = MouseInput(x, y, MOUSEEVENTF_LEFTDOWN);
+    inputs[2] = MouseInput(x, y, MOUSEEVENTF_LEFTUP);
+
+    uint sent = SendInput((uint)inputs.Length, inputs, Marshal.SizeOf(typeof(INPUT)));
+    lastError = sent == inputs.Length ? 0 : Marshal.GetLastWin32Error();
+    return sent;
+  }
 }
 '@
 
@@ -2397,11 +2466,21 @@ function Send-NativeMouseClick {
   param([int]`$X, [int]`$Y)
 
   `$lastError = 0
-  `$sent = [SteamBridgeWindowsProbe]::SendMouseClick(`$X, `$Y, [ref]`$lastError)
-  [PSCustomObject]@{
+  `$sent = [SteamBridgeWindowsProbe]::SendMouseClickInput(`$X, `$Y, [ref]`$lastError)
+  `$method = "sendinput"
+  if (`$sent -ne 3) {
+    `$fallbackLastError = 0
+    `$fallbackSent = [SteamBridgeWindowsProbe]::SendMouseClick(`$X, `$Y, [ref]`$fallbackLastError)
+    `$sent = `$fallbackSent
+    `$lastError = `$fallbackLastError
+    `$method = "cursor-mouse-event-fallback"
+  }
+
+  return [PSCustomObject]@{
     sent = `$sent
     expected = 3
     lastError = `$lastError
+    method = `$method
     x = `$X
     y = `$Y
   }
@@ -2438,6 +2517,71 @@ function Get-ForegroundProbeSnapshot {
       `$null
     }
   }
+}
+
+function Test-WebCloseForegroundCandidate {
+  param([object]`$Foreground)
+
+  if (-not `$Foreground -or -not `$Foreground.rect) {
+    return `$false
+  }
+
+  `$processName = [string]`$Foreground.processName
+  `$title = [string]`$Foreground.title
+  if (`$title -match '(?i)application error') {
+    return `$false
+  }
+
+  if (`$processName -eq "SteamBridgeSmoke" -and `$title -eq "Steam Bridge Native Overlay Host") {
+    return `$true
+  }
+  if (`$processName -eq "gameoverlayui64") {
+    return `$true
+  }
+  if (`$processName -eq "steamwebhelper" -and `$title -notmatch '(?i)^Launching') {
+    return `$true
+  }
+
+  return `$false
+}
+
+function Convert-PresenterBoundsToProbeRect {
+  param([object]`$PresenterBounds)
+
+  if (-not `$PresenterBounds -or `$PresenterBounds.width -le 0 -or `$PresenterBounds.height -le 0) {
+    return `$null
+  }
+
+  [PSCustomObject]@{
+    left = `$PresenterBounds.x
+    top = `$PresenterBounds.y
+    right = `$PresenterBounds.x + `$PresenterBounds.width
+    bottom = `$PresenterBounds.y + `$PresenterBounds.height
+    width = `$PresenterBounds.width
+    height = `$PresenterBounds.height
+  }
+}
+
+function Get-WebClosePanelRect {
+  param([object]`$Foreground)
+
+  if (Test-WebCloseForegroundCandidate `$Foreground) {
+    return [PSCustomObject]@{
+      source = "foreground-window-steam-web-panel"
+      rect = `$Foreground.rect
+    }
+  }
+
+  `$presenterBounds = Get-LifecyclePresenterBounds
+  `$presenterRect = Convert-PresenterBoundsToProbeRect `$presenterBounds
+  if (`$presenterRect) {
+    return [PSCustomObject]@{
+      source = "presenter-bounds"
+      rect = `$presenterRect
+    }
+  }
+
+  return `$null
 }
 
 function Focus-SmokeWindowForShortcutProbe {
@@ -2526,35 +2670,38 @@ function Capture-ProbeScreen {
 function Get-WebCloseClickTarget {
   param([object]`$Foreground)
 
-  if (`$foreground -and `$foreground.rect -and `$foreground.rect.width -gt 0 -and `$foreground.rect.height -gt 0) {
+  `$panel = Get-WebClosePanelRect `$Foreground
+  if (-not `$panel -or -not `$panel.rect) {
+    return `$null
+  }
+
+  `$rect = `$panel.rect
+  if (`$panel.source -eq "foreground-window-steam-web-panel") {
     return [PSCustomObject]@{
-      x = [int]([Math]::Round(`$foreground.rect.left + (`$foreground.rect.width * 0.847)))
-      y = [int]([Math]::Round(`$foreground.rect.top + (`$foreground.rect.height * 0.142)))
-      source = "foreground-window-steam-web-panel"
+      x = [int]([Math]::Round(`$rect.left + (`$rect.width * 0.853)))
+      y = [int]([Math]::Round(`$rect.top + (`$rect.height * 0.168)))
+      source = `$panel.source
     }
   }
 
-  `$presenterBounds = Get-LifecyclePresenterBounds
-  if (`$presenterBounds) {
-    return [PSCustomObject]@{
-      x = [int]([Math]::Round(`$presenterBounds.x + `$presenterBounds.width - 45))
-      y = [int]([Math]::Round(`$presenterBounds.y + 48))
-      source = "presenter-bounds"
-    }
+  return [PSCustomObject]@{
+    x = [int]([Math]::Round(`$rect.left + (`$rect.width * 0.853)))
+    y = [int]([Math]::Round(`$rect.top + (`$rect.height * 0.168)))
+    source = `$panel.source
   }
-
-  return `$null
 }
 
 function Test-WebClosePanelScreenshot {
   param([object]`$Screenshot, [object]`$Foreground)
 
   `$target = Get-WebCloseClickTarget `$Foreground
-  if (-not `$Screenshot -or -not `$Screenshot.ok -or -not `$target -or -not `$Foreground -or -not `$Foreground.rect) {
+  `$panel = Get-WebClosePanelRect `$Foreground
+  if (-not `$Screenshot -or -not `$Screenshot.ok -or -not `$target -or -not `$panel -or -not `$panel.rect) {
     return [PSCustomObject]@{
       ready = `$false
       reason = "missing-screenshot-or-target"
       target = `$target
+      foregroundCandidate = Test-WebCloseForegroundCandidate `$Foreground
     }
   }
 
@@ -2562,7 +2709,7 @@ function Test-WebClosePanelScreenshot {
   try {
     `$bitmap = [System.Drawing.Bitmap]::FromFile(`$Screenshot.path)
     `$bounds = `$Screenshot.bounds
-    `$rect = `$Foreground.rect
+    `$rect = `$panel.rect
     `$sampleLeft = [int]([Math]::Round(`$rect.left + (`$rect.width * 0.12)))
     `$sampleRight = [int]([Math]::Round(`$rect.left + (`$rect.width * 0.86)))
     `$sampleTop = [int]([Math]::Round(`$rect.top + (`$rect.height * 0.11)))
@@ -2620,6 +2767,8 @@ function Test-WebClosePanelScreenshot {
     [PSCustomObject]@{
       ready = (`$chromeReady -and `$contentReady)
       target = `$target
+      rectSource = `$panel.source
+      foregroundCandidate = Test-WebCloseForegroundCandidate `$Foreground
       sample = [PSCustomObject]@{
         left = `$sampleLeft
         top = `$sampleTop
@@ -2660,9 +2809,14 @@ function Wait-WebClosePanelReady {
 
   `$readyDeadline = (Get-Date).AddSeconds([Math]::Min(8, [Math]::Max(1, (`$Deadline - (Get-Date)).TotalSeconds)))
   `$attempt = 0
+  `$lastTarget = `$null
   while ((Get-Date) -lt `$readyDeadline) {
     `$attempt += 1
     `$foreground = Get-ForegroundProbeSnapshot
+    `$target = Get-WebCloseClickTarget `$foreground
+    if (`$target) {
+      `$lastTarget = `$target
+    }
     `$screenshot = Capture-ProbeScreen ("web-close-ready-{0:D2}" -f `$attempt)
     `$analysis = Test-WebClosePanelScreenshot -Screenshot `$screenshot -Foreground `$foreground
     if (`$analysis.ready) {
@@ -2674,6 +2828,22 @@ function Wait-WebClosePanelReady {
       })
       return `$analysis
     }
+    if (`$target -and (-not `$screenshot -or -not `$screenshot.ok -or `$attempt -ge 8)) {
+      `$fallback = [PSCustomObject]@{
+        ready = `$true
+        reason = if (-not `$screenshot -or -not `$screenshot.ok) { "target-ready-screenshot-unavailable" } else { "target-ready-before-content-gate" }
+        target = `$target
+        foregroundCandidate = Test-WebCloseForegroundCandidate `$foreground
+        screenshot = `$screenshot
+      }
+      Write-ProbeEvent "probe:web-close-target-ready" ([PSCustomObject]@{
+        attempt = `$attempt
+        foreground = `$foreground
+        screenshot = `$screenshot
+        analysis = `$fallback
+      })
+      return `$fallback
+    }
 
     Start-Sleep -Milliseconds 250
   }
@@ -2681,6 +2851,9 @@ function Wait-WebClosePanelReady {
   `$foreground = Get-ForegroundProbeSnapshot
   `$screenshot = Capture-ProbeScreen "web-close-ready-timeout"
   `$analysis = Test-WebClosePanelScreenshot -Screenshot `$screenshot -Foreground `$foreground
+  if (-not `$analysis.target -and `$lastTarget) {
+    `$analysis | Add-Member -NotePropertyName target -NotePropertyValue `$lastTarget -Force
+  }
   Write-ProbeEvent "probe:web-close-ready-timeout" ([PSCustomObject]@{
     attempts = `$attempt
     foreground = `$foreground
@@ -2814,10 +2987,32 @@ while ((Get-Date) -lt `$deadline -and -not `$sent) {
         `$nativeInputSent = Send-NativeKeyChord @(0x10, 0x09)
       } elseif ('$input' -eq 'web-close-click-sendinput') {
         `$foreground = Get-ForegroundProbeSnapshot
-        `$target = Get-WebCloseClickTarget `$foreground
+        `$target = `$null
+        if (`$webCloseReadiness -and `$webCloseReadiness.target) {
+          `$target = `$webCloseReadiness.target
+        }
+        if (-not `$target) {
+          `$target = Get-WebCloseClickTarget `$foreground
+        }
+        Write-ProbeEvent "probe:web-close-click-target" ([PSCustomObject]@{
+          target = `$target
+          foreground = `$foreground
+        })
         if (`$target) {
-          `$nativePointerSent = Send-NativeMouseClick `$target.x `$target.y
-          `$nativePointerSent | Add-Member -NotePropertyName coordinateSource -NotePropertyValue `$target.source -Force
+          `$nativePointerSent = Send-NativeMouseClick ([int]`$target.x) ([int]`$target.y)
+          if (`$nativePointerSent) {
+            `$nativePointerSent | Add-Member -NotePropertyName coordinateSource -NotePropertyValue `$target.source -Force
+          } else {
+            `$nativePointerSent = [PSCustomObject]@{
+              sent = 0
+              expected = 3
+              lastError = -1
+              error = "native-mouse-click-returned-no-result"
+              x = [int]`$target.x
+              y = [int]`$target.y
+              coordinateSource = `$target.source
+            }
+          }
         } else {
           `$nativePointerSent = [PSCustomObject]@{
             sent = 0

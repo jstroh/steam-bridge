@@ -147,6 +147,32 @@ progress, and passive achievement unlock. The auto close probe opens keyboard
 shortcut cases with Shift+Tab, then closes Steam web-backed surfaces through a
 screenshot-gated web-panel close control after Steam web content has painted.
 
+The Windows matrix now also has a focused `-Suite shortcut-routes` pass for
+public, non-checkout `openShortcutTargetAndWait(...)` targets. The smoke app
+records the requested shortcut target in managed-overlay diagnostics, and profile
+plus players shortcut targets now resolve the active Steam user ID explicitly
+instead of relying on implicit Steam API defaults. The close probe rejects
+foreign foreground windows such as Windows application-error dialogs, records the
+web-panel click target before sending input, emits
+`probe:web-close-target-ready` and `probe:web-close-click-target`, sends the
+close click through absolute `SendInput`, and falls back only after preserving
+the chosen target. A focused players artifact,
+`C:\Users\admin\steam-bridge-artifacts\windows-default-d3d11-shortcut-players-sendinput-allowunhealthy-20260703-001`,
+passed with `sent=3`, `method=sendinput`, clean crash diagnostics, and focus
+returning to the smoke app.
+
+Do not treat the new shortcut suite as fully green yet. A broader run reached
+friends, web, store, profile, and players before the community shortcut close
+path failed, and the focused community artifact
+`C:\Users\admin\steam-bridge-artifacts\windows-default-d3d11-shortcut-community-sendinput-allowunhealthy-20260703-001`
+opened the community overlay and sent a `SendInput` close click at `x=1334`,
+`y=324` after screenshot content readiness, but Steam stayed active until the
+case timed out. Crash diagnostics were clean. Those artifacts used
+`-AllowUnhealthyDefaultRender` because fresh severe Steam render-health log
+entries from earlier failed runs were still inside the readiness window after a
+deliberate Steam restart; the route evidence is useful, but it is not pristine
+default-render-health proof.
+
 A 2026-07-03 UTC focused public D3D11 checkout suite passed all four checkout
 cases at
 `C:\Users\admin\steam-bridge-artifacts\windows-d3d11-checkout-suite-focusfix-20260703-001`.
