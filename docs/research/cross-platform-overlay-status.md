@@ -835,10 +835,12 @@ blocker for the native control binary, not as overlay behavior.
 The macOS matrix can pair `--app-id <your-app-id>` with
 `--checkout-json-file <path>` for private configured-product proof, and the
 Windows matrix now accepts the same private handoff as `-CheckoutJsonFile` for
-focused `-Suite managed -OnlyCase 16-managed-checkout-route` proof. Their
-manifests and summaries audit source/presence metadata while leaving the JSON
-path, transaction ID, return URL, and product details outside committed
-artifacts. Before live launch, the matrices validate that the private JSON
+focused `-Suite managed -OnlyCase 16-managed-checkout-route` proof. Pair it
+with `-RequireMicroTxnCallback` when the focused Windows artifact should prove
+Steam's purchase authorization callback. Their manifests and summaries audit
+source/presence metadata while leaving the JSON path, transaction ID, return
+URL, and product details outside committed artifacts. Before live launch, the
+matrices validate that the private JSON
 resolves through `checkoutTargetFromResult(...)` to a checkout URL or transaction
 ID, pass the configured matrix app ID into that resolver so embedded app IDs use
 the runtime wrong-app guard, and print only sanitized presence flags. The same

@@ -835,11 +835,12 @@ for the focused configured-product checkout path.
 Matrix dry-run and live command logs redact checkout file paths, checkout URLs,
 return URLs, transaction IDs, and control tokens as `REDACTED`, so command logs
 can be shared for review without exposing private purchase data.
-Add `--require-microtxn-callback` when a real direct checkout proof is expected
-to produce `MicroTxnAuthorizationResponse`; the matrix summary will fail if the
-callback is missing, lacks a presenter snapshot, omits the launched app ID,
-omits Steam's authorization result, or omits a redacted order ID presence
-marker. The Linux and Steam Deck helpers expose direct inputs as `--checkout-url`,
+Add `--require-microtxn-callback` on macOS or `-RequireMicroTxnCallback` on
+Windows when a real direct checkout proof is expected to produce
+`MicroTxnAuthorizationResponse`; the matrix summary will fail if the callback
+is missing, lacks a presenter snapshot, omits the launched app ID, omits
+Steam's authorization result, or omits a redacted order ID presence marker. The
+Linux and Steam Deck helpers expose direct inputs as `--checkout-url`,
 `--checkout-transaction-id`, and `--checkout-return-url`. Without a checkout
 file, URL, or transaction ID the helpers only require
 `overlay:presenter-checkout-ready`;
@@ -1447,8 +1448,9 @@ app-specific proof outside the committed examples:
    focused macOS matrix proof, run `--suite checkout`; for focused Windows proof,
    run `-Suite managed -OnlyCase 16-managed-checkout-route`. The matrix validates
    any embedded app ID against the configured app ID before live launch.
-   Add `--require-microtxn-callback` when the direct checkout case should
-   receive Steam's authorization callback.
+   Add `--require-microtxn-callback` on macOS or `-RequireMicroTxnCallback` on
+   Windows when the direct checkout case should receive Steam's authorization
+   callback.
 6. Let Steam Bridge open the returned checkout URL or transaction approval path.
 7. Verify the Steam modal appears in both Deck Game Mode and Desktop Mode.
 8. Confirm backing out or closing the Steam surface returns focus to the app.

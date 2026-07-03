@@ -33,6 +33,7 @@ param(
   [string]$ShortcutTarget = "friends",
   [string]$CheckoutTransactionId = "123456789",
   [string]$CheckoutJsonFile = "",
+  [switch]$RequireMicroTxnCallback,
   [string]$OnlyCase = "",
   [int]$TimeoutSeconds = 120,
   [switch]$SkipNativeLoadGate,
@@ -1049,6 +1050,14 @@ function Test-MatrixUsesCheckoutCase {
 function Test-CheckoutJsonFile {
   param([object[]]$Cases)
 
+  if ($RequireMicroTxnCallback -and -not $CheckoutJsonFile) {
+    throw "-RequireMicroTxnCallback requires -CheckoutJsonFile with a real InitTxn/checkout response."
+  }
+
+  if ($RequireMicroTxnCallback -and -not (Test-MatrixUsesCheckoutCase -Cases $Cases)) {
+    throw "-RequireMicroTxnCallback requires a selected checkout case."
+  }
+
   if (-not $CheckoutJsonFile) {
     return
   }
@@ -1765,6 +1774,7 @@ function New-Case {
     [switch]$AllowOverlayNotReady,
     [switch]$RequirePassiveNotification,
     [switch]$RequireManagedOverlayComplete,
+    [switch]$RequireMicroTxnCallback,
     [switch]$CloseProbeOnActivation,
     [switch]$ShortcutToggleProbe,
     [string]$ManagedOverlayResultMode = "",
@@ -1787,6 +1797,7 @@ function New-Case {
     allowOverlayNotReady = [bool]$AllowOverlayNotReady
     requirePassiveNotification = [bool]$RequirePassiveNotification
     requireManagedOverlayComplete = [bool]$RequireManagedOverlayComplete
+    requireMicroTxnCallback = [bool]$RequireMicroTxnCallback
     closeProbeOnActivation = [bool]$CloseProbeOnActivation
     shortcutToggleProbe = [bool]$ShortcutToggleProbe
     managedOverlayResultMode = $ManagedOverlayResultMode
@@ -1810,7 +1821,8 @@ function New-ManagedOpenAndWaitCase {
     [string]$CheckoutTransactionIdOverride = "",
     [string]$CheckoutJsonFileOverride = "",
     [string]$WebModal = "",
-    [string]$StoreRouteOverride = ""
+    [string]$StoreRouteOverride = "",
+    [switch]$RequireMicroTxnCallback
   )
 
   return New-Case `
@@ -1824,6 +1836,7 @@ function New-ManagedOpenAndWaitCase {
     -ShortcutTargetOverride $ShortcutTargetOverride `
     -CheckoutTransactionIdOverride $CheckoutTransactionIdOverride `
     -CheckoutJsonFileOverride $CheckoutJsonFileOverride `
+    -RequireMicroTxnCallback:$RequireMicroTxnCallback `
     -WebModal $WebModal `
     -StoreRouteOverride $StoreRouteOverride
 }
@@ -1848,7 +1861,7 @@ function Get-MatrixCases {
     New-ManagedOpenAndWaitCase -Id "12-managed-store-open-and-wait" -Action "presenter-store-open-and-wait" -StoreRouteOverride $StoreRoute
     New-ManagedOpenAndWaitCase -Id "13-managed-friends-open-and-wait" -Action "presenter-friends-open-and-wait"
     New-ManagedOpenAndWaitCase -Id "14-managed-dialog-open-and-wait" -Action "presenter-dialog-auto-open-and-wait" -DialogOverride $Dialog
-    New-ManagedOpenAndWaitCase -Id "15-managed-shortcut" -Action "presenter-shortcut-open-and-wait" -ShortcutTargetOverride $ShortcutTarget -CheckoutTransactionIdOverride $shortcutCheckoutTransactionIdForCase -CheckoutJsonFileOverride $shortcutCheckoutJsonFileForCase
+    New-ManagedOpenAndWaitCase -Id "15-managed-shortcut" -Action "presenter-shortcut-open-and-wait" -ShortcutTargetOverride $ShortcutTarget -CheckoutTransactionIdOverride $shortcutCheckoutTransactionIdForCase -CheckoutJsonFileOverride $shortcutCheckoutJsonFileForCase -RequireMicroTxnCallback:($RequireMicroTxnCallback -and $ShortcutTarget -eq "checkout")
     New-Case `
       -Id "15-managed-shortcut-keyboard" `
       -Action "presenter-shortcut" `
@@ -1861,8 +1874,9 @@ function Get-MatrixCases {
       -ShortcutTargetOverride $ShortcutTarget `
       -CheckoutTransactionIdOverride $shortcutCheckoutTransactionIdForCase `
       -CheckoutJsonFileOverride $shortcutCheckoutJsonFileForCase `
+      -RequireMicroTxnCallback:($RequireMicroTxnCallback -and $ShortcutTarget -eq "checkout") `
       -ResultDelayMs 30000
-    New-Case -Id "16-managed-checkout-route" -Action "presenter-checkout" -RequireEvent @("overlay:presenter-open", "overlay:presenter-wait-closed", "overlay:presenter-parked", "overlay:presenter-checkout-open-and-wait-complete") -RequireOverlayActivated -RequireManagedOverlayComplete -ManagedOverlayResultMode "complete" -CheckoutTransactionIdOverride $checkoutTransactionIdForCase -CheckoutJsonFileOverride $checkoutJsonFileForCase
+    New-Case -Id "16-managed-checkout-route" -Action "presenter-checkout" -RequireEvent @("overlay:presenter-open", "overlay:presenter-wait-closed", "overlay:presenter-parked", "overlay:presenter-checkout-open-and-wait-complete") -RequireOverlayActivated -RequireManagedOverlayComplete -ManagedOverlayResultMode "complete" -CheckoutTransactionIdOverride $checkoutTransactionIdForCase -CheckoutJsonFileOverride $checkoutJsonFileForCase -RequireMicroTxnCallback:$RequireMicroTxnCallback
     New-ManagedOpenAndWaitCase -Id "17-managed-profile-open-and-wait" -Action "presenter-profile-open-and-wait"
     New-ManagedOpenAndWaitCase -Id "18-managed-players-open-and-wait" -Action "presenter-players-open-and-wait"
     New-ManagedOpenAndWaitCase -Id "19-managed-community-open-and-wait" -Action "presenter-community-open-and-wait"
@@ -1932,6 +1946,7 @@ function Write-MatrixManifest {
           allowOverlayNotReady = [bool]$_.allowOverlayNotReady
           requirePassiveNotification = [bool]$_.requirePassiveNotification
           requireManagedOverlayComplete = [bool]$_.requireManagedOverlayComplete
+          requireMicroTxnCallback = [bool]$_.requireMicroTxnCallback
           closeProbeOnActivation = [bool]$_.closeProbeOnActivation
           shortcutToggleProbe = [bool]$_.shortcutToggleProbe
           managedOverlayResultMode = $_.managedOverlayResultMode
@@ -1976,6 +1991,7 @@ function Write-MatrixManifest {
     skipNativeLoadGate = [bool]$SkipNativeLoadGate
     skipRenderHealthGate = [bool]$SkipRenderHealthGate
     allowUnhealthyDefaultRender = [bool]$AllowUnhealthyDefaultRender
+    requireMicroTxnCallback = [bool]$RequireMicroTxnCallback
     installShortcut = [bool]$InstallShortcut
     assumeShortcutConfigured = [bool]$AssumeShortcutConfigured
     targetHints = [PSCustomObject]@{
@@ -2728,6 +2744,9 @@ function Invoke-MatrixCase {
   if ($Case.requireManagedOverlayComplete) {
     $args += "-RequireManagedOverlayComplete"
   }
+  if ($Case.requireMicroTxnCallback) {
+    $args += "-RequireMicroTxnCallback"
+  }
   $requiredEvents = @($Case.requireEvent)
   if ($requiredEvents.Count -gt 0) {
     $args += "-RequireEvent"
@@ -2820,6 +2839,7 @@ Write-Host ("  allowUnhealthyDefaultRender: {0}" -f $AllowUnhealthyDefaultRender
 Write-Host ("  userDialog: {0}" -f $UserDialog)
 Write-Host ("  cleanStaleOverlayHelpers: {0}" -f $CleanStaleOverlayHelpers)
 Write-Host ("  checkoutJsonFile: {0}" -f $(if ($CheckoutJsonFile) { "present" } else { "" }))
+Write-Host ("  requireMicroTxnCallback: {0}" -f $RequireMicroTxnCallback)
 if ($OnlyCase) {
   Write-Host ("  onlyCase: {0}" -f $OnlyCase)
 }

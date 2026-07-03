@@ -1683,9 +1683,10 @@ Next work:
    macOS `--suite checkout` run can pair `--app-id <your-app-id>`,
    `--checkout-json-file <path>`, and `--require-microtxn-callback`; the focused
    Windows path is
-   `-Suite managed -OnlyCase 16-managed-checkout-route -CheckoutJsonFile <path>`.
-   These runs audit the configured app ID plus redacted checkout-source presence
-   without recording the JSON path.
+   `-Suite managed -OnlyCase 16-managed-checkout-route -CheckoutJsonFile <path> -RequireMicroTxnCallback`.
+   These runs audit the configured app ID, redacted checkout-source presence,
+   and required `MicroTxnAuthorizationResponse` callback shape without recording
+   the JSON path.
 2. Keep code signing requirements explicit in docs and examples. The package now
    publishes `templates/macos-steam-env-launcher.c` plus
    `templates/entitlements.steam.macos.plist`, plus the

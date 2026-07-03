@@ -98,6 +98,7 @@ param(
   [int]$RequireRestoreFocusDelayMs = -1,
   [switch]$RequireZeroManagedOverlayTiming,
   [switch]$RequireManagedOverlayComplete,
+  [switch]$RequireMicroTxnCallback,
   [switch]$RequireNoCrashes,
   [string]$RequireActionErrorCode = "",
   [string]$RequireActionErrorReason = "",
@@ -1130,6 +1131,208 @@ function Test-ParkedPassivePresenterSnapshot {
   }
 }
 
+function Get-SmokeObjectProperty {
+  param($Value, [string]$Name)
+
+  if (-not $Value) {
+    return $null
+  }
+  if ($Value -is [System.Collections.IDictionary]) {
+    if ($Value.Contains($Name)) {
+      return $Value[$Name]
+    }
+    return $null
+  }
+
+  $property = $Value.PSObject.Properties[$Name]
+  if ($property) {
+    return $property.Value
+  }
+  return $null
+}
+
+function Test-SmokeObjectHasProperty {
+  param($Value, [string]$Name)
+
+  if (-not $Value) {
+    return $false
+  }
+  if ($Value -is [System.Collections.IDictionary]) {
+    return $Value.Contains($Name)
+  }
+  return $null -ne $Value.PSObject.Properties[$Name]
+}
+
+function Get-MicroTxnPayload {
+  param($Event)
+
+  $payload = Get-SmokeObjectProperty -Value $Event -Name "payload"
+  $indexedPayload = Get-SmokeObjectProperty -Value $payload -Name "0"
+  if ($indexedPayload) {
+    return $indexedPayload
+  }
+  return $payload
+}
+
+function Get-MicroTxnAppId {
+  param($Event)
+
+  $payload = Get-MicroTxnPayload -Event $Event
+  foreach ($key in @("appId", "app_id", "m_unAppID", "m_nAppID")) {
+    $value = Get-SmokeObjectProperty -Value $payload -Name $key
+    if ($null -ne $value -and "$value" -ne "") {
+      return [int]$value
+    }
+  }
+  return $null
+}
+
+function Get-MicroTxnAuthorization {
+  param($Event)
+
+  $payload = Get-MicroTxnPayload -Event $Event
+  foreach ($key in @("authorized", "m_bAuthorized")) {
+    $value = Get-SmokeObjectProperty -Value $payload -Name $key
+    if ($value -eq $true -or $value -eq 1 -or "$value" -eq "1" -or "$value" -eq "true") {
+      return $true
+    }
+    if ($value -eq $false -or $value -eq 0 -or "$value" -eq "0" -or "$value" -eq "false") {
+      return $false
+    }
+  }
+  return $null
+}
+
+function Test-SanitizedValuePresent {
+  param($Value)
+
+  if ($null -eq $Value) {
+    return $false
+  }
+  $present = Get-SmokeObjectProperty -Value $Value -Name "present"
+  if ($null -ne $present) {
+    return $present -eq $true
+  }
+  if ($Value -is [string]) {
+    return $Value.Length -gt 0
+  }
+  return $true
+}
+
+function Test-MicroTxnOrderIdPresent {
+  param($Event)
+
+  $payload = Get-MicroTxnPayload -Event $Event
+  foreach ($key in @("orderId", "orderID", "order_id", "orderid", "m_ulOrderID", "m_ulOrderId")) {
+    if ((Test-SmokeObjectHasProperty -Value $payload -Name $key) -and (Test-SanitizedValuePresent -Value (Get-SmokeObjectProperty -Value $payload -Name $key))) {
+      return $true
+    }
+  }
+  return $false
+}
+
+function Test-MicroTxnPresenterSnapshot {
+  param($Event)
+
+  $payload = Get-MicroTxnPayload -Event $Event
+  $presenter = Get-SmokeObjectProperty -Value $payload -Name "presenter"
+  return ($presenter -and $presenter -isnot [string])
+}
+
+function Assert-MicroTxnCallbackProof {
+  param($Events, [string]$ActionName, [int]$ExpectedAppId, [System.Collections.Generic.List[string]]$Failures)
+
+  $callbacks = @($Events | Where-Object { $_.type -eq "callback:microtxn" })
+  if ($callbacks.Count -eq 0) {
+    $Failures.Add("required MicroTxnAuthorizationResponse callback was recorded")
+    return
+  }
+
+  $validCallbackIndexes = New-Object System.Collections.Generic.List[int]
+  for ($index = 0; $index -lt $callbacks.Count; $index += 1) {
+    $event = $callbacks[$index]
+    $label = "microtxn callback {0}" -f ($index + 1)
+    if (-not (Test-MicroTxnPresenterSnapshot -Event $event)) {
+      $Failures.Add("$label included a presenter snapshot")
+    }
+
+    $appId = Get-MicroTxnAppId -Event $event
+    if ($null -eq $appId) {
+      $Failures.Add("$label included an app ID")
+    } elseif ($appId -ne $ExpectedAppId) {
+      $Failures.Add("$label app ID is $ExpectedAppId")
+    }
+
+    if ($null -eq (Get-MicroTxnAuthorization -Event $event)) {
+      $Failures.Add("$label included an authorization result")
+    }
+
+    if (-not (Test-MicroTxnOrderIdPresent -Event $event)) {
+      $Failures.Add("$label included an order ID presence marker")
+    }
+  }
+
+  for ($eventIndex = 0; $eventIndex -lt $Events.Count; $eventIndex += 1) {
+    if ($Events[$eventIndex].type -eq "callback:microtxn") {
+      $validCallbackIndexes.Add($eventIndex)
+    }
+  }
+
+  $openIndex = -1
+  $closeIndex = -1
+  if ($ActionName -eq "presenter-checkout") {
+    for ($eventIndex = 0; $eventIndex -lt $Events.Count; $eventIndex += 1) {
+      $event = $Events[$eventIndex]
+      $payload = Get-SmokeObjectProperty -Value $event -Name "payload"
+      if ($event.type -eq "overlay:presenter-open" -and (Get-SmokeObjectProperty -Value $payload -Name "target") -eq "checkout") {
+        $openIndex = $eventIndex
+        break
+      }
+    }
+    for ($eventIndex = $openIndex + 1; $eventIndex -lt $Events.Count; $eventIndex += 1) {
+      if ($Events[$eventIndex].type -eq "overlay:presenter-checkout-open-and-wait-complete") {
+        $closeIndex = $eventIndex
+        break
+      }
+    }
+  } elseif ($ActionName -eq "presenter-shortcut" -or $ActionName -eq "presenter-shortcut-open-and-wait") {
+    for ($eventIndex = 0; $eventIndex -lt $Events.Count; $eventIndex += 1) {
+      $event = $Events[$eventIndex]
+      $payload = Get-SmokeObjectProperty -Value $event -Name "payload"
+      if ($event.type -eq "overlay:shortcut-open" -and (Get-SmokeObjectProperty -Value $payload -Name "target") -eq "checkout") {
+        $openIndex = $eventIndex
+        break
+      }
+    }
+    for ($eventIndex = $openIndex + 1; $eventIndex -lt $Events.Count; $eventIndex += 1) {
+      if ($Events[$eventIndex].type -eq "overlay:presenter-open-and-wait-complete" -or $Events[$eventIndex].type -eq "overlay:presenter-parked") {
+        $closeIndex = $eventIndex
+        break
+      }
+    }
+  }
+
+  if ($openIndex -lt 0) {
+    $Failures.Add("required MicroTxn callback proof has a matching checkout open event")
+    return
+  }
+  if ($closeIndex -lt 0) {
+    $Failures.Add("required MicroTxn callback proof has a checkout wait completion event")
+    return
+  }
+
+  $duringCheckout = $false
+  foreach ($callbackIndex in $validCallbackIndexes) {
+    if ($callbackIndex -gt $openIndex -and $callbackIndex -lt $closeIndex) {
+      $duringCheckout = $true
+      break
+    }
+  }
+  if (-not $duringCheckout) {
+    $Failures.Add("required MicroTxnAuthorizationResponse callback was recorded during the checkout wait lifecycle")
+  }
+}
+
 function Assert-SmokeResult {
   param($Result)
 
@@ -1335,6 +1538,9 @@ function Assert-SmokeResult {
     if (-not $Result.wait -or $Result.wait.overlayComplete -ne $true) {
       $failures.Add("managed overlay open-and-wait completion resolved")
     }
+  }
+  if ($RequireMicroTxnCallback) {
+    Assert-MicroTxnCallbackProof -Events $events -ActionName $Action -ExpectedAppId $AppId -Failures $failures
   }
   foreach ($eventType in $RequireEvent) {
     if (-not ($events | Where-Object { $_.type -eq $eventType } | Select-Object -First 1)) {

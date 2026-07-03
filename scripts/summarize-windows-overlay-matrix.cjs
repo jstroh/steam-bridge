@@ -253,6 +253,13 @@ function validateManifest(manifest, failures) {
       failures
     );
   }
+  if (manifest.requireMicroTxnCallback !== undefined) {
+    expect(
+      typeof manifest.requireMicroTxnCallback === "boolean",
+      "matrix manifest requireMicroTxnCallback is boolean",
+      failures
+    );
+  }
   expect(Array.isArray(manifest.cases), "matrix manifest cases is an array", failures);
   if (Array.isArray(manifest.cases)) {
     expect(
@@ -278,6 +285,13 @@ function validateManifest(manifest, failures) {
           expect(
             typeof entry.hasCheckoutJsonFile === "boolean",
             `matrix manifest case ${entry.id} records checkout JSON presence without raw value`,
+            failures
+          );
+        }
+        if (Object.prototype.hasOwnProperty.call(entry, "requireMicroTxnCallback")) {
+          expect(
+            typeof entry.requireMicroTxnCallback === "boolean",
+            `matrix manifest case ${entry.id} records MicroTxn callback requirement`,
             failures
           );
         }
@@ -337,6 +351,13 @@ function validateManifestCoverage(manifest, caseSummaries, caseAppControlBlocker
       if (manifest.closeProbe === true) {
         expect(row.closeProbeSent === true, `matrix manifest case ${expected.id} sent Windows close probe input`, failures);
       }
+    }
+    if (expected.requireMicroTxnCallback === true) {
+      expect(
+        row.microTxnCallbackProof === true,
+        `matrix manifest case ${expected.id} proved MicroTxnAuthorizationResponse callback`,
+        failures
+      );
     }
   }
 
@@ -638,6 +659,152 @@ function hasPassivePresenterShape(presenter, { parked }) {
   return presenter.transparent === true && presenter.overlayNeedsPresent === false && presenter.currentFps === 0;
 }
 
+function isMicroTxnCallbackEvent(event) {
+  return Boolean(event && event.type === "callback:microtxn");
+}
+
+function hasMicroTxnCallbackProof(actionName, events, expectedAppId) {
+  const failures = [];
+  verifyMicroTxnCallbackProof(actionName, events, expectedAppId, failures);
+  return { ok: failures.length === 0, failures };
+}
+
+function verifyMicroTxnCallbackProof(actionName, events, expectedAppId, failures) {
+  const callbacks = events
+    .map((event, index) => ({ event, index }))
+    .filter(({ event }) => isMicroTxnCallbackEvent(event));
+  if (callbacks.length === 0) {
+    failures.push("required MicroTxnAuthorizationResponse callback was not recorded");
+    return;
+  }
+
+  callbacks.forEach(({ event }, index) => {
+    const label = `microtxn callback ${index + 1}`;
+    if (!microTxnPresenterSnapshot(event)) {
+      failures.push(`${label} did not include a presenter snapshot`);
+    }
+    const appId = microTxnEventAppId(event);
+    if (appId === undefined) {
+      failures.push(`${label} did not include an app ID`);
+    } else if (appId !== expectedAppId) {
+      failures.push(`${label} app ID expected ${formatValue(expectedAppId)}, got ${formatValue(appId)}`);
+    }
+    if (microTxnEventAuthorization(event) === undefined) {
+      failures.push(`${label} did not include an authorization result`);
+    }
+    if (!microTxnEventOrderIdPresent(event)) {
+      failures.push(`${label} did not include an order ID presence marker`);
+    }
+  });
+
+  const lifecycle = microTxnCheckoutLifecycle(actionName, events, failures);
+  if (!lifecycle.ok) {
+    return;
+  }
+  const callbackDuringCheckout = callbacks.some(
+    ({ index }) => index > lifecycle.openIndex && index < lifecycle.closeIndex
+  );
+  if (!callbackDuringCheckout) {
+    failures.push("required MicroTxnAuthorizationResponse callback was not recorded during the checkout wait lifecycle");
+  }
+}
+
+function microTxnCheckoutLifecycle(actionName, events, failures) {
+  let openIndex = -1;
+  let closeIndex = -1;
+
+  if (actionName === "presenter-checkout") {
+    openIndex = events.findIndex((event) => {
+      const payload = objectOrEmpty(event && event.payload);
+      return event && event.type === "overlay:presenter-open" && payload.target === "checkout";
+    });
+    closeIndex = events.findIndex(
+      (event, index) => index > openIndex && event && event.type === "overlay:presenter-checkout-open-and-wait-complete"
+    );
+  } else if (actionName === "presenter-shortcut" || actionName === "presenter-shortcut-open-and-wait") {
+    openIndex = events.findIndex((event) => {
+      const payload = objectOrEmpty(event && event.payload);
+      return event && event.type === "overlay:shortcut-open" && payload.target === "checkout";
+    });
+    closeIndex = events.findIndex(
+      (event, index) =>
+        index > openIndex &&
+        event &&
+        (event.type === "overlay:presenter-open-and-wait-complete" || event.type === "overlay:presenter-parked")
+    );
+  } else {
+    failures.push("required MicroTxn callback proof has no supported checkout lifecycle");
+    return { ok: false };
+  }
+
+  if (openIndex === -1) {
+    failures.push("required MicroTxn callback proof has no matching checkout open event");
+    return { ok: false };
+  }
+  if (closeIndex === -1) {
+    failures.push("required MicroTxn callback proof has no checkout wait completion event");
+    return { ok: false };
+  }
+  return { ok: true, openIndex, closeIndex };
+}
+
+function microTxnPayload(event) {
+  const payload = objectOrEmpty(event && event.payload);
+  return objectOrEmpty(payload["0"] || payload);
+}
+
+function microTxnPresenterSnapshot(event) {
+  const presenter = microTxnPayload(event).presenter;
+  return presenter && typeof presenter === "object" && !Array.isArray(presenter) ? presenter : null;
+}
+
+function microTxnEventAppId(event) {
+  const payload = microTxnPayload(event);
+  for (const key of ["appId", "app_id", "m_unAppID", "m_nAppID"]) {
+    if (payload[key] != null && payload[key] !== "") {
+      return Number(payload[key]);
+    }
+  }
+  return undefined;
+}
+
+function microTxnEventAuthorization(event) {
+  const payload = microTxnPayload(event);
+  for (const key of ["authorized", "m_bAuthorized"]) {
+    const value = payload[key];
+    if (value === true || value === 1 || value === "1" || value === "true") {
+      return true;
+    }
+    if (value === false || value === 0 || value === "0" || value === "false") {
+      return false;
+    }
+  }
+  return undefined;
+}
+
+function microTxnEventOrderIdPresent(event) {
+  const payload = microTxnPayload(event);
+  for (const key of ["orderId", "orderID", "order_id", "orderid", "m_ulOrderID", "m_ulOrderId"]) {
+    if (Object.prototype.hasOwnProperty.call(payload, key) && sanitizedValuePresent(payload[key])) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function sanitizedValuePresent(value) {
+  if (value == null) {
+    return false;
+  }
+  if (value && typeof value === "object" && !Array.isArray(value) && Object.prototype.hasOwnProperty.call(value, "present")) {
+    return value.present === true;
+  }
+  if (typeof value === "string") {
+    return value.length > 0;
+  }
+  return true;
+}
+
 function summarizeCaseResult(caseName, result, resultLog, renderingHealth = null, closeProbeEvents = [], caseDir = "") {
   const failures = [];
   const snapshot = objectOrEmpty(result.snapshot);
@@ -690,6 +857,8 @@ function summarizeCaseResult(caseName, result, resultLog, renderingHealth = null
     overlayActiveEvents,
     overlayInactiveEvents,
     passiveNotificationProof: hasPassiveNotificationProof(String(action.action || ""), events, nativePresenter),
+    microTxnCallbackCount: events.filter(isMicroTxnCallbackEvent).length,
+    microTxnCallbackProof: hasMicroTxnCallbackProof(String(action.action || ""), events, app.appId).ok,
     managedOverlayCloseProof: hasManagedOverlayCloseProof(wait, overlayInactiveEvents),
     closeProbeSent: closeProbe.sent,
     closeProbeInput: closeProbe.input,
@@ -714,7 +883,8 @@ function printSummary(summary) {
         `scrubChildEnv=${formatValue(summary.manifest.overlayScrubChildEnv)} ` +
         `isolateChildProcesses=${formatValue(summary.manifest.overlayIsolateChildProcesses)} ` +
         `expectedNativeHostBackend=${formatValue(summary.manifest.expectedNativeHostBackend)} ` +
-        `nativePathOverride=${formatValue(summary.manifest.nativePathOverride)}`
+        `nativePathOverride=${formatValue(summary.manifest.nativePathOverride)} ` +
+        `requireMicroTxnCallback=${formatValue(summary.manifest.requireMicroTxnCallback)}`
     );
   }
   if (summary.preflight) {
@@ -796,6 +966,7 @@ function printSummary(summary) {
           `steamLaunch=${row.steamLaunch} steamOverlayLaunchMarker=${row.steamOverlayLaunchMarker} ` +
           `overlayActiveEvents=${row.overlayActiveEvents} ` +
           `overlayEnabled=${formatValue(row.overlayEnabled)} ` +
+          `microTxnCallbacks=${row.microTxnCallbackCount} microTxnProof=${row.microTxnCallbackProof} ` +
           formatCloseProbeSummary(row.closeProbe) +
           `crashes=${row.crashDumpCount + row.fatalLifecycleEventCount}` +
           formatCaseRenderingHealth(row.steamRenderingHealth)
@@ -834,6 +1005,7 @@ function summarizeManifest(manifest) {
     overlayIsolateChildProcesses: manifest.overlayIsolateChildProcesses || "",
     expectedNativeHostBackend: manifest.expectedNativeHostBackend || "",
     nativePathOverride: Boolean(manifest.nativePathOverride),
+    requireMicroTxnCallback: manifest.requireMicroTxnCallback === true,
     expectedCaseCount: Array.isArray(manifest.cases) ? manifest.cases.length : 0
   };
 }
@@ -1460,6 +1632,33 @@ function runSelfTest() {
     const managedCloseWaitSummary = summarizeWindowsOverlayMatrixArtifacts(managedCloseWaitRoot);
     assert.deepEqual(managedCloseWaitSummary.failures, []);
     assert.equal(managedCloseWaitSummary.caseSummaries[0].managedOverlayCloseProof, true);
+
+    const managedCheckoutMicroTxnRoot = path.join(tempRoot, "managed-checkout-microtxn");
+    writeManagedCheckoutMicroTxnFixture(managedCheckoutMicroTxnRoot);
+    const managedCheckoutMicroTxnSummary = summarizeWindowsOverlayMatrixArtifacts(managedCheckoutMicroTxnRoot);
+    assert.deepEqual(managedCheckoutMicroTxnSummary.failures, []);
+    assert.equal(managedCheckoutMicroTxnSummary.caseSummaries[0].microTxnCallbackCount, 1);
+    assert.equal(managedCheckoutMicroTxnSummary.caseSummaries[0].microTxnCallbackProof, true);
+
+    const missingMicroTxnRoot = path.join(tempRoot, "managed-checkout-missing-microtxn");
+    writeManagedCheckoutMicroTxnFixture(missingMicroTxnRoot, { omitMicroTxn: true });
+    const missingMicroTxnSummary = summarizeWindowsOverlayMatrixArtifacts(missingMicroTxnRoot);
+    assert(
+      missingMicroTxnSummary.failures.some((failure) =>
+        failure.includes("proved MicroTxnAuthorizationResponse callback")
+      ),
+      "summary self-test should fail when real checkout proof omits the MicroTxn callback"
+    );
+
+    const lateMicroTxnRoot = path.join(tempRoot, "managed-checkout-late-microtxn");
+    writeManagedCheckoutMicroTxnFixture(lateMicroTxnRoot, { lateMicroTxn: true });
+    const lateMicroTxnSummary = summarizeWindowsOverlayMatrixArtifacts(lateMicroTxnRoot);
+    assert(
+      lateMicroTxnSummary.failures.some((failure) =>
+        failure.includes("proved MicroTxnAuthorizationResponse callback")
+      ),
+      "summary self-test should fail when the MicroTxn callback arrives after checkout completion"
+    );
 
     const closeProbeRoot = path.join(tempRoot, "managed-close-probe");
     writeManagedCaseFixture(closeProbeRoot, { closeProbe: true, closeProbeSent: true });
@@ -2231,6 +2430,105 @@ function writeManagedCaseFixture(root, options = {}) {
       ].map((entry) => JSON.stringify(entry)).join("\n") + "\n"
     );
   }
+}
+
+function writeManagedCheckoutMicroTxnFixture(root, options = {}) {
+  writeJson(path.join(root, "matrix-manifest.json"), {
+    kind: "steam-bridge-windows-overlay-matrix-manifest",
+    generatedAt: "2026-07-03T00:00:00.000Z",
+    suite: "managed",
+    launchMode: "steam-launch",
+    appId: 480,
+    onlyCase: "16-managed-checkout-route",
+    expectedCaseCount: 1,
+    requireMicroTxnCallback: true,
+    cases: [
+      {
+        id: "16-managed-checkout-route",
+        action: "presenter-checkout",
+        requireEvent: [
+          "overlay:presenter-open",
+          "overlay:presenter-wait-closed",
+          "overlay:presenter-parked",
+          "overlay:presenter-checkout-open-and-wait-complete"
+        ],
+        requireOverlayActivated: true,
+        requireNoOverlayActivation: false,
+        allowOverlayNotReady: false,
+        requirePassiveNotification: false,
+        requireManagedOverlayComplete: true,
+        requireMicroTxnCallback: true,
+        managedOverlayResultMode: "complete",
+        hasCheckoutTransactionId: false,
+        hasCheckoutJsonFile: true
+      }
+    ]
+  });
+  writeJson(path.join(root, "00-preflight", "preflight.json"), {
+    kind: "steam-bridge-windows-preflight",
+    generatedAt: "2026-07-03T00:00:00.000Z",
+    app: {
+      exe: { exists: true },
+      nativeAddon: { exists: true }
+    },
+    appControlPolicy: {
+      verifiedAndReputableEnforced: false
+    },
+    recentCodeIntegrityEvents: [],
+    windowsSession: {
+      currentSessionId: 1,
+      interactiveSessionIds: [1],
+      currentSessionInteractive: true
+    }
+  });
+
+  const microTxnEvent = {
+    type: "callback:microtxn",
+    payload: {
+      appId: 480,
+      orderId: { redacted: true, present: true, type: "bigint" },
+      authorized: true,
+      presenter: {
+        mode: "active",
+        nativeHostOpen: true,
+        currentFps: 30
+      }
+    }
+  };
+  const events = [
+    {
+      type: "overlay:presenter-open",
+      payload: { target: "checkout", api: "openCheckoutAndWait", checkoutSource: "json-file" }
+    },
+    { type: "callback:overlay-activated", payload: { active: true } }
+  ];
+  if (!options.omitMicroTxn && !options.lateMicroTxn) {
+    events.push(microTxnEvent);
+  }
+  events.push(
+    { type: "callback:overlay-activated", payload: { active: false } },
+    { type: "overlay:presenter-wait-closed" },
+    { type: "overlay:presenter-parked" },
+    { type: "overlay:presenter-checkout-open-and-wait-complete" }
+  );
+  if (!options.omitMicroTxn && options.lateMicroTxn) {
+    events.push(microTxnEvent);
+  }
+
+  writeResult(path.join(root, "16-managed-checkout-route", "result.log"), {
+    ok: true,
+    action: { ok: true, action: "presenter-checkout" },
+    wait: {
+      overlayClosed: true,
+      overlayParked: true,
+      overlayComplete: true
+    },
+    snapshot: buildWindowsSnapshot({
+      pid: 4248,
+      managedOverlayResultMode: "complete",
+      events
+    })
+  });
 }
 
 function buildWindowsSnapshot({ pid, events, managedOverlayResultMode = "", steamOverlayLaunchMarker = true }) {

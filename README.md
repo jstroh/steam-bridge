@@ -542,13 +542,13 @@ URLs, return URLs, transaction IDs, and control tokens; they prove those inputs
 were wired by showing the option name with `REDACTED`, not the private value.
 SDK-style order and transaction fields from Steam callbacks are treated as
 private checkout identifiers too.
-When `--require-microtxn-callback` is used for real checkout proof, the macOS
-summary requires a `MicroTxnAuthorizationResponse` callback with an attached
-native presenter snapshot during the `openCheckoutAndWait(...)` lifecycle,
-before the checkout wait is allowed to complete. Required real-checkout proof
-also verifies the callback app ID matches the launched Steam app and that the
-callback includes Steam's authorization result plus a redacted order ID
-presence marker.
+When `--require-microtxn-callback` on macOS or `-RequireMicroTxnCallback` on
+Windows is used for real checkout proof, the summary requires a
+`MicroTxnAuthorizationResponse` callback with presenter diagnostics during the
+`openCheckoutAndWait(...)` lifecycle, before the checkout wait is allowed to
+complete. Required real-checkout proof also verifies the callback app ID matches
+the launched Steam app and that the callback includes Steam's authorization
+result plus a redacted order ID presence marker.
 For split-step checkout targets outside the managed wait helper, call
 `steamworks.overlay.checkoutTargetFromResult(initTxnResponse, { expectedAppId })`
 to get the same wrong-app guard before handing the target to a shortcut or other
@@ -862,10 +862,10 @@ the private `--checkout-json-file` checkout suite.
   `-Suite managed-routes` when you want the repeatable public App ID `480`
   product-facing managed route set without real transaction checkout or the raw
   native diagnostic observe cases. Keep real checkout proof focused on
-  `-Suite managed -OnlyCase 16-managed-checkout-route -CheckoutJsonFile <private-init-txn-response.json>`
-  with your own configured app and product. Keep the normal direct Steam hook as the
-  Windows default unless evidence from that baseline proves additional
-  machinery is needed.
+  `-Suite managed -OnlyCase 16-managed-checkout-route -CheckoutJsonFile <private-init-txn-response.json> -RequireMicroTxnCallback`
+  with your own configured app and product when a purchase authorization
+  callback is expected. Keep the normal direct Steam hook as the Windows default
+  unless evidence from that baseline proves additional machinery is needed.
   Each matrix case passes `-RequireNoCrashes`,
   so Windows artifacts must prove both overlay behavior and a clean Electron
   crash-diagnostic snapshot.

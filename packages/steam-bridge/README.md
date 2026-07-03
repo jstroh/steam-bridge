@@ -207,7 +207,8 @@ verified UI close probe. Use `-Suite managed-routes` for the public App ID `480`
 product-facing managed route set without real transaction checkout or the raw
 native diagnostic observe cases. Keep real checkout proof focused on
 `-Suite managed -OnlyCase 16-managed-checkout-route -CheckoutJsonFile <private-init-txn-response.json>`
-with your own configured app and product.
+with your own configured app and product. Add `-RequireMicroTxnCallback` when
+the artifact should prove Steam's authorization callback for that purchase.
 
 ## Quick Start
 
@@ -763,11 +764,12 @@ pair it with `--app-id <your-app-id>`,
 `--require-microtxn-callback` when the private direct checkout case is expected
 to produce a `MicroTxnAuthorizationResponse`. On Windows, keep focused private
 checkout proof to
-`-Suite managed -OnlyCase 16-managed-checkout-route -CheckoutJsonFile <private-init-txn-response.json>`
-with the matching configured app ID. The macOS callback flag requires
-`--checkout-json-file`, so a real-callback proof cannot accidentally fall back
-to the public synthetic App ID `480` transaction route. The summary will fail if
-that callback is missing, lacks a presenter snapshot, or does not report the
+`-Suite managed -OnlyCase 16-managed-checkout-route -CheckoutJsonFile <private-init-txn-response.json> -RequireMicroTxnCallback`
+with the matching configured app ID when a purchase authorization callback is
+expected. The callback flags require private checkout JSON, so a real-callback
+proof cannot accidentally fall back to the public synthetic App ID `480`
+transaction route. The summary will fail if that callback is missing, lacks a
+presenter snapshot, or does not report the
 launched Steam app ID, Steam authorization result, or a redacted order ID
 presence marker. Steam Bridge normalizes the callback's Steam app ID, order ID,
 and authorization flag to `appId`, `orderId`, and `authorized` even when the
