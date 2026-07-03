@@ -730,6 +730,28 @@ function hasClientSessionPromptMissing(events) {
   });
 }
 
+function summarizeInitTxnTargetMissing(events) {
+  const event = events.find((candidate) => candidate && candidate.type === "checkout:init-txn-target-missing");
+  if (!event) {
+    return {
+      present: false,
+      session: "",
+      result: "",
+      errorCode: "",
+      hasErrorDescription: false
+    };
+  }
+  const payload = objectOrEmpty(event.payload);
+  const failure = objectOrEmpty(payload.failure);
+  return {
+    present: true,
+    session: String(payload.session || ""),
+    result: String(failure.result || ""),
+    errorCode: String(failure.errorCode || ""),
+    hasErrorDescription: failure.hasErrorDescription === true
+  };
+}
+
 function hasMicroTxnCallbackProof(actionName, events, expectedAppId) {
   const failures = [];
   verifyMicroTxnCallbackProof(actionName, events, expectedAppId, failures);
@@ -894,6 +916,7 @@ function summarizeCaseResult(caseName, result, resultLog, renderingHealth = null
   const overlayNeedsPresent = readOkValue(steam.overlayNeedsPresent);
   const wait = result.wait && typeof result.wait === "object" && !Array.isArray(result.wait) ? result.wait : null;
   const closeProbe = summarizeCloseProbe(closeProbeEvents, caseDir || path.dirname(resultLog));
+  const initTxnTargetMissing = summarizeInitTxnTargetMissing(events);
 
   expect(result.ok === true, `${caseName}: smoke result ok`, failures);
   expect(action.ok === true, `${caseName}: autorun action succeeded`, failures);
@@ -928,6 +951,11 @@ function summarizeCaseResult(caseName, result, resultLog, renderingHealth = null
     microTxnCallbackProof: hasMicroTxnCallbackProof(String(action.action || ""), events, app.appId).ok,
     clientSessionCheckoutCaptured: hasClientSessionCheckoutCaptured(events),
     clientSessionPromptMissing: hasClientSessionPromptMissing(events),
+    initTxnTargetMissing: initTxnTargetMissing.present,
+    initTxnTargetMissingSession: initTxnTargetMissing.session,
+    initTxnTargetMissingResult: initTxnTargetMissing.result,
+    initTxnTargetMissingErrorCode: initTxnTargetMissing.errorCode,
+    initTxnTargetMissingHasErrorDescription: initTxnTargetMissing.hasErrorDescription,
     managedOverlayCloseProof: hasManagedOverlayCloseProof(wait, overlayInactiveEvents),
     closeProbeSent: closeProbe.sent,
     closeProbeInput: closeProbe.input,
@@ -1038,6 +1066,10 @@ function printSummary(summary) {
           `microTxnCallbacks=${row.microTxnCallbackCount} microTxnProof=${row.microTxnCallbackProof} ` +
           `clientSessionCaptured=${row.clientSessionCheckoutCaptured} ` +
           `clientPromptMissing=${row.clientSessionPromptMissing} ` +
+          `initTxnTargetMissing=${row.initTxnTargetMissing} ` +
+          `initTxnSession=${formatValue(row.initTxnTargetMissingSession)} ` +
+          `initTxnResult=${formatValue(row.initTxnTargetMissingResult)} ` +
+          `initTxnErrorCode=${formatValue(row.initTxnTargetMissingErrorCode)} ` +
           formatCloseProbeSummary(row.closeProbe) +
           `crashes=${row.crashDumpCount + row.fatalLifecycleEventCount}` +
           formatCaseRenderingHealth(row.steamRenderingHealth)
@@ -1741,6 +1773,20 @@ function runSelfTest() {
     const defaultClientPromptMissingSummary = summarizeWindowsOverlayMatrixArtifacts(defaultClientPromptMissingRoot);
     assert.equal(defaultClientPromptMissingSummary.caseSummaries[0].clientSessionCheckoutCaptured, true);
     assert.equal(defaultClientPromptMissingSummary.caseSummaries[0].clientSessionPromptMissing, true);
+
+    const initTxnTargetMissingRoot = path.join(tempRoot, "managed-checkout-init-txn-target-missing");
+    writeManagedCheckoutMicroTxnFixture(initTxnTargetMissingRoot, {
+      initTxnTargetMissing: true,
+      initTxnTargetMissingSession: "client-default",
+      initTxnTargetMissingResult: "Failure",
+      initTxnTargetMissingErrorCode: "3"
+    });
+    const initTxnTargetMissingSummary = summarizeWindowsOverlayMatrixArtifacts(initTxnTargetMissingRoot);
+    const initTxnTargetMissingRow = initTxnTargetMissingSummary.caseSummaries[0];
+    assert.equal(initTxnTargetMissingRow.initTxnTargetMissing, true);
+    assert.equal(initTxnTargetMissingRow.initTxnTargetMissingSession, "client-default");
+    assert.equal(initTxnTargetMissingRow.initTxnTargetMissingResult, "Failure");
+    assert.equal(initTxnTargetMissingRow.initTxnTargetMissingErrorCode, "3");
 
     const lateMicroTxnRoot = path.join(tempRoot, "managed-checkout-late-microtxn");
     writeManagedCheckoutMicroTxnFixture(lateMicroTxnRoot, { lateMicroTxn: true });
@@ -2588,6 +2634,44 @@ function writeManagedCheckoutMicroTxnFixture(root, options = {}) {
       }
     }
   };
+  if (options.initTxnTargetMissing) {
+    writeResult(path.join(root, checkoutCaseId, "result.log"), {
+      ok: false,
+      action: {
+        ok: false,
+        action: "presenter-checkout",
+        error: {
+          name: "Error",
+          message: "Steam InitTxn response did not include a checkout target."
+        }
+      },
+      wait: {
+        ok: true,
+        action: "presenter-checkout"
+      },
+      snapshot: buildWindowsSnapshot({
+        pid: 4248,
+        managedOverlayResultMode: "complete",
+        events: [
+          {
+            type: "checkout:init-txn-target-missing",
+            payload: {
+              endpoint: "sandbox",
+              session: options.initTxnTargetMissingSession || "client",
+              httpStatus: 200,
+              usedCurrentSteamId: true,
+              failure: {
+                result: options.initTxnTargetMissingResult || "Failure",
+                errorCode: options.initTxnTargetMissingErrorCode || "3",
+                hasErrorDescription: false
+              }
+            }
+          }
+        ]
+      })
+    });
+    return;
+  }
   if (options.clientPromptMissing) {
     const targetSnapshot = { type: "checkout", hasTransactionId: true, clientSession: true };
     const error = {

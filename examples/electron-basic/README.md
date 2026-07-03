@@ -855,7 +855,9 @@ authorization path. Use `"session": "web"` when proving the returned Steam URL
 checkout path through the managed overlay browser. Treat `client-default` as a
 request-shape diagnostic only: Steam can reject it before returning any checkout
 target, while the web-session Steam URL flow is the proved managed-overlay
-checkout path on the current Windows evidence.
+checkout path on the current Windows evidence. When Steam returns no checkout
+target, the Windows summary prints `initTxnTargetMissing`, `initTxnSession`,
+`initTxnResult`, and `initTxnErrorCode` without exposing private purchase data.
 When driving Windows from SSH, run the same checkout suite through the packaged
 interactive task wrapper so the overlay launches in the logged-in desktop
 session instead of Session 0. For private checkout runs, prefer a local JSON

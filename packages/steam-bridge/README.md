@@ -841,7 +841,10 @@ authorization path; `"session": "web"` keeps testing the returned Steam URL
 checkout path through the managed overlay browser. Current Windows evidence
 treats `client-default` as a request-shape diagnostic only: Steam can reject it
 before returning any checkout target, while the web-session Steam URL flow is
-the proved managed-overlay checkout path.
+the proved managed-overlay checkout path. Target-missing InitTxn diagnostics
+print `initTxnTargetMissing`, `initTxnSession`, `initTxnResult`, and
+`initTxnErrorCode` in the Windows summary without logging private item,
+transaction, or account values.
 The matrix's dry-run and live command logs also redact checkout file paths,
 checkout URLs, return URLs, transaction IDs, and control tokens. Those logs show
 the option name plus `REDACTED`, which keeps command-shape review useful without
