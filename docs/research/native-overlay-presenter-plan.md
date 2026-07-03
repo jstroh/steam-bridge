@@ -1,6 +1,6 @@
 # Native Overlay Presenter Plan
 
-Last updated: 2026-07-02
+Last updated: 2026-07-03
 
 This is the forward plan for reliable Steam overlay behavior in Electron apps on
 Linux/Steam Deck, macOS, and Windows. Windows direct-hook behavior is still
@@ -2038,13 +2038,22 @@ Windows gates:
   trusted/reputable publisher signing for release proof.
 - After the helper was packaged and the disposable Windows laptop was switched
   to `VerifiedAndReputablePolicyState=0`, the fresh current package passed
-  interactive Session 1 readiness and the D3D11 native-load gate. Focused web
-  overlay runs still timed out before `GameOverlayActivated(false)` and presenter
-  parking, including a hidden Task Scheduler run that removed the visible
-  PowerShell harness as a focus variable. Continue Windows work from
-  `C:\Users\admin\steam-bridge-artifacts\windows-d3d11-web-hidden-clickclose-20260703-001`:
-  the native D3D11 host opens Steam overlay UI, but current web overlay input
-  and close/back-to-app proof is blocked again.
+  interactive Session 1 readiness and the D3D11 native-load gate. A stale
+  focused web sequence under
+  `C:\Users\admin\steam-bridge-artifacts\windows-d3d11-web-hidden-clickclose-20260703-001`
+  timed out before `GameOverlayActivated(false)` and presenter parking, so that
+  artifact remains a web-close miss rather than a product pass. The later
+  refreshed package at
+  `C:\Users\admin\steam-bridge-artifacts\windows-d3d11-shortcut-keyboard-escapeclose-20260702-190424`
+  proved the managed keyboard shortcut route through the same Windows D3D11
+  presenter: Steam-launched App ID `480`, real Shift+Tab to Friends, active
+  callback, `escape-sendinput` close, `overlayClosed=true`,
+  `overlayParked=true`, `overlayComplete=true`, passive transparent/click-through
+  parked presenter at `currentFps=0`, no lifecycle errors, no crash dumps, and
+  only Steam left running after cleanup. Keep D3D11 opt-in until passive
+  notifications, Community/profile-style routes, real configured-product
+  checkout, and any remaining web-close edge cases pass the same complete-result
+  gates.
 
 ## Presenter Diagnostics
 

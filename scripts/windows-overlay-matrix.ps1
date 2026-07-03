@@ -1741,6 +1741,8 @@ function Get-MatrixCases {
       -Action "presenter-shortcut" `
       -RequireEvent @("overlay:presenter-shortcut-ready", "overlay:shortcut-open", "overlay:presenter-wait-shown", "overlay:presenter-wait-closed", "overlay:presenter-parked") `
       -RequireOverlayActivated `
+      -RequireManagedOverlayComplete `
+      -ManagedOverlayResultMode "complete" `
       -CloseProbeOnActivation `
       -ShortcutToggleProbe `
       -ShortcutTargetOverride $ShortcutTarget `

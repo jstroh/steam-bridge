@@ -344,10 +344,11 @@ for proof runs through the same `createElectronSteamOverlay(...)` API; pass
 `STEAM_BRIDGE_ELECTRON_OVERLAY_PRESENTER=native` in smoke environments to test
 that path, and set `STEAM_BRIDGE_WINDOWS_NATIVE_HOST_BACKEND=d3d11` only for
 the focused D3D11 comparison. Current focused Windows evidence covers managed
-web, store-web, Friends/chat, and synthetic checkout approval-route flows, but
-the backend is not a default until passive notifications, shortcut behavior,
-Community/profile-style routes, and real configured-product checkout pass the
-same gates. Pass `scrubSteamOverlayChildProcessEnv: false` only when collecting
+web, store-web, Friends/chat, synthetic checkout approval-route plumbing, and
+managed Shift+Tab shortcut open/close/back-to-app proof, but the backend is not
+a default until passive notifications, Community/profile-style routes, real
+configured-product checkout, and remaining web-close edge cases pass the same
+gates. Pass `scrubSteamOverlayChildProcessEnv: false` only when collecting
 raw Electron-child overlay diagnostics.
 Raw activation helpers such as `activateToWebPage(...)` remain available for
 Node/native smoke checks and diagnostics, but Electron product overlay work

@@ -186,6 +186,7 @@ let managedOverlayWaitSequence = 0;
 let pendingManagedOverlayShownWait;
 let pendingManagedOverlayLifecycle;
 let pendingManagedOverlayCompletionWait;
+let pendingShortcutOpenLifecycleWait;
 let managedShortcutOpenSource = "Shift+Tab";
 const managedOverlayWaitControllers = new Set();
 const callbackHandles = [];
@@ -2094,6 +2095,19 @@ function runAchievementUnlockSmoke(activeClient) {
 
 function openPresenterShortcutBridge() {
   const overlay = ensureElectronSteamOverlay();
+  if (MANAGED_OVERLAY_RESULT_MODE === "complete") {
+    const lifecycle = waitForNextShortcutOpenLifecycle(overlay, {
+      target: "shortcut",
+      shortcut: "Shift+Tab",
+      shortcutTarget: SHORTCUT_TARGET
+    });
+    pendingManagedOverlayShownWait = lifecycle.then((observed) => observed.shown);
+    pendingManagedOverlayLifecycle = {
+      closed: lifecycle.then((observed) => observed.closed),
+      parked: lifecycle.then((observed) => observed.parked)
+    };
+    pendingManagedOverlayCompletionWait = Promise.resolve({ ok: true });
+  }
   recordEvent("overlay:presenter-shortcut-ready", {
     target: SHORTCUT_TARGET,
     shortcut: "Shift+Tab",
@@ -2219,7 +2233,7 @@ function ensureElectronSteamOverlay(activeClient = requireClient()) {
           overlayTarget: target
         });
         if (electronSteamOverlay && electronSteamOverlay.isOpen()) {
-          observeManagedOverlayLifecycle(electronSteamOverlay, {
+          observeShortcutOpenLifecycle(electronSteamOverlay, {
             target: "shortcut",
             shortcut: managedShortcutOpenSource,
             shortcutTarget: SHORTCUT_TARGET,
@@ -3116,6 +3130,67 @@ function isParkedPersistentPresenter(presenter) {
 function clearPostClosePresenterSnapshotObserver() {
   postClosePresenterSnapshotHandle?.disconnect?.();
   postClosePresenterSnapshotHandle = undefined;
+}
+
+function waitForNextShortcutOpenLifecycle(overlay, context) {
+  if (pendingShortcutOpenLifecycleWait) {
+    pendingShortcutOpenLifecycleWait.fail("Superseded by a newer shortcut lifecycle wait.");
+  }
+
+  return new Promise((resolve) => {
+    let settled = false;
+    const timeout = setTimeout(() => {
+      recordEvent("overlay:shortcut-open:timeout", {
+        ...context,
+        timeoutMs: MANAGED_OVERLAY_WAIT_TIMEOUT_MS,
+        presenter: safeOverlaySnapshot(overlay)
+      });
+      settle(createFailedManagedOverlayLifecycle(context, overlay, "Timed out waiting for Steam overlay shortcut open."));
+    }, MANAGED_OVERLAY_WAIT_TIMEOUT_MS);
+
+    const settle = (lifecycle) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timeout);
+      if (pendingShortcutOpenLifecycleWait?.settle === settle) {
+        pendingShortcutOpenLifecycleWait = undefined;
+      }
+      resolve(lifecycle);
+    };
+
+    pendingShortcutOpenLifecycleWait = {
+      settle,
+      fail: (message) => settle(createFailedManagedOverlayLifecycle(context, overlay, message))
+    };
+  });
+}
+
+function observeShortcutOpenLifecycle(overlay, context) {
+  const lifecycle = observeManagedOverlayLifecycle(overlay, context);
+  pendingShortcutOpenLifecycleWait?.settle(lifecycle);
+  return lifecycle;
+}
+
+function createFailedManagedOverlayLifecycle(context, overlay, message) {
+  return {
+    shown: Promise.resolve(createFailedManagedOverlayWaitResult("overlay:presenter-wait-shown", context, overlay, message)),
+    closed: Promise.resolve(
+      createFailedManagedOverlayWaitResult("overlay:presenter-wait-closed", context, overlay, message)
+    ),
+    parked: Promise.resolve(createFailedManagedOverlayWaitResult("overlay:presenter-parked", context, overlay, message))
+  };
+}
+
+function createFailedManagedOverlayWaitResult(type, context, overlay, message) {
+  return {
+    ok: false,
+    type,
+    context,
+    error: { message },
+    presenter: safeOverlaySnapshot(overlay)
+  };
 }
 
 function observeManagedOverlayLifecycle(overlay, context) {

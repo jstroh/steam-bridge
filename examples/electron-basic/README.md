@@ -169,11 +169,12 @@ For focused Windows native-presenter comparison runs, pass
 `windows-overlay-matrix.ps1` or set
 `STEAM_BRIDGE_WINDOWS_NATIVE_HOST_BACKEND=d3d11` in the smoke environment. This
 selects the opt-in D3D11/DXGI presenter instead of the older WGL diagnostic
-presenter. Current focused Windows evidence covers managed web, store-web, and
-Friends/chat open/close/back-to-app proof plus synthetic checkout approval-route
-plumbing with clean crash diagnostics. This path is not a default until passive
-notifications, shortcut behavior, Community/profile-style routes, and real
-configured-product checkout pass the same gates.
+presenter. Current focused Windows evidence covers managed web, store-web,
+Friends/chat, synthetic checkout approval-route plumbing, and managed Shift+Tab
+shortcut open/close/back-to-app proof with clean crash diagnostics. This path is
+not a default until passive notifications, Community/profile-style routes, real
+configured-product checkout, and remaining web-close edge cases pass the same
+gates.
 If a local Smart App Control/App Control policy blocks a freshly rebuilt native
 addon, pass `-NativePath <path-to-accepted-.node>` only for diagnostic
 comparisons. The matrix records `nativePathOverride=true`; keep those artifacts
