@@ -1271,8 +1271,29 @@ function Test-MicroTxnPresenterSnapshot {
   return ($presenter -and $presenter -isnot [string])
 }
 
+function Test-MicroTxnListenerRegistered {
+  param($Events)
+
+  foreach ($event in $Events) {
+    if ($event.type -ne "callback:microtxn-listener-registered") {
+      continue
+    }
+    $payload = Get-SmokeObjectProperty -Value $event -Name "payload"
+    $callback = Get-SmokeObjectProperty -Value $payload -Name "callback"
+    $registered = Get-SmokeObjectProperty -Value $payload -Name "registered"
+    if ($callback -eq "MicroTxnAuthorizationResponse" -and $registered -eq $true) {
+      return $true
+    }
+  }
+  return $false
+}
+
 function Assert-MicroTxnCallbackProof {
   param($Events, [string]$ActionName, [int]$ExpectedAppId, [System.Collections.Generic.List[string]]$Failures)
+
+  if (-not (Test-MicroTxnListenerRegistered -Events $Events)) {
+    $Failures.Add("MicroTxnAuthorizationResponse listener was registered before checkout proof")
+  }
 
   $callbacks = @($Events | Where-Object { $_.type -eq "callback:microtxn" })
   if ($callbacks.Count -eq 0) {

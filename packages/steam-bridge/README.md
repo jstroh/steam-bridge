@@ -837,6 +837,7 @@ private purchase artifacts fail closed if redaction regresses. SDK-style order
 and transaction fields from Steam callbacks are treated as private checkout
 identifiers too.
 For Windows `usersession=client` diagnostics, the summary also prints
+`microTxnListener`,
 `clientSessionCaptured`, `clientSessionCapturedSession`,
 `clientSessionCapturedEndpoint`, `clientSessionCapturedHttp`,
 `clientSessionCapturedUsersession`, `clientSessionCapturedIpAddress`,
@@ -853,7 +854,10 @@ checkout overlay activation before the wait guard expired. Summary rows print
 `clientSessionCapturedTransaction`, `clientSessionWaitStarted`,
 `clientSessionWaitPrompt`, and `clientSessionWaitPresenter` so callback-required
 explicit-client artifacts must prove transaction capture, prompt-wait start, and
-active presenter state before a missing-prompt diagnostic is accepted. The
+active presenter state before a missing-prompt diagnostic is accepted. Required
+callback artifacts also prove that the smoke app registered its
+`MicroTxnAuthorizationResponse` listener with a value-free
+`callback:microtxn-listener-registered` event before checkout proof. The
 prompt session, endpoint, and HTTP status are copied from sanitized in-app
 `InitTxn` metadata so the artifact can be read without correlating private
 request files. The request shape fields record only whether the submitted

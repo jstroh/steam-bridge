@@ -214,11 +214,13 @@ Reviewed on 2026-07-02 while investigating Windows Electron overlay failures:
   Steam did not emit overlay activation or `MicroTxnAuthorizationResponse`.
   The Windows summary now exposes this as `clientSessionCaptured=true`,
   `clientSessionCapturedTransaction=true`, `clientSessionWaitStarted=true`,
-  `clientSessionWaitPresenter=true`, and `clientPromptMissing=true`, with clean
-  crash diagnostics and the close probe still foregrounded on the smoke app.
-  Callback-required explicit-client artifacts must prove sanitized transaction
-  capture and the prompt-wait boundary before a missing-prompt diagnostic is
-  accepted. That narrows the remaining Windows purchase gap to
+  `clientSessionWaitPresenter=true`, `microTxnListener=true`, and
+  `clientPromptMissing=true`, with clean crash diagnostics and the close probe
+  still foregrounded on the smoke app. Callback-required explicit-client
+  artifacts must prove sanitized transaction capture, the prompt-wait boundary,
+  and `MicroTxnAuthorizationResponse` listener registration before a
+  missing-prompt diagnostic is accepted. That narrows the remaining Windows
+  purchase gap to
   Steam's automatic client-session prompt behavior for the configured
   product/account, not native presenter readiness, Steam app launch, checkout
   target parsing, or crash/focus health.

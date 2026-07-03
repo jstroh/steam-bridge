@@ -888,6 +888,9 @@ function runWindowsSmokeHelperStaticChecks() {
     "nativePathOverride=",
     "requireMicroTxnCallback=",
     "launchKind",
+    "callback:microtxn-listener-registered",
+    "registered MicroTxnAuthorizationResponse listener",
+    "microTxnListener=",
     "microTxnCallbacks=",
     "microTxnCallbackProof",
     "clientSessionCapturedTransaction=",
@@ -931,7 +934,8 @@ function runWindowsSmokeHelperStaticChecks() {
     "--steam-bridge-electron-overlay-scrub-child-env",
     "--steam-bridge-electron-overlay-isolate-child-processes",
     "RequireNativeHostBackend",
-    "native presenter backend is $RequireNativeHostBackend"
+    "native presenter backend is $RequireNativeHostBackend",
+    "MicroTxnAuthorizationResponse listener was registered before checkout proof"
   ]) {
     assert.ok(helper.includes(expected), `Windows smoke helper missing ${expected}`);
   }

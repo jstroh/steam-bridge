@@ -403,13 +403,18 @@ function shutdownSteam() {
 }
 
 function registerSteamCallbacks() {
+  const microTxnCallbackHandle = steamworks.onMicroTxnAuthorizationResponse(recordMicroTxnAuthorizationResponse);
   callbackHandles.push(
     steamworks.onGameOverlayActivated((event) => recordEvent("callback:overlay-activated", event)),
     steamworks.onSteamServersConnected((event) => recordEvent("callback:servers-connected", event)),
     steamworks.onSteamServerConnectFailure((event) => recordEvent("callback:server-connect-failure", event)),
     steamworks.onSteamServersDisconnected((event) => recordEvent("callback:servers-disconnected", event)),
-    steamworks.onMicroTxnAuthorizationResponse(recordMicroTxnAuthorizationResponse)
+    microTxnCallbackHandle
   );
+  recordEvent("callback:microtxn-listener-registered", {
+    callback: "MicroTxnAuthorizationResponse",
+    registered: true
+  });
 
   try {
     callbackHandles.push(
