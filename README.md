@@ -540,7 +540,10 @@ request JSON, use
 with `STEAM_WEB_API_KEY` or `STEAM_API_KEY` set in the environment. The command
 does not accept publisher keys as command-line arguments, writes only the
 parsed `InitTxn` response JSON to disk, and prints sanitized checkout-target
-presence flags.
+presence flags. Client-session captures are written with a `clientSession: true`
+wrapper so downstream helpers do not turn them into a browser checkout route.
+Use `--session web` for a returned Steam URL checkout path, or
+`--session client-default` to omit `usersession` for request-shape diagnostics.
 The validator treats Steam SDK-style app ID fields such as `m_unAppID` and
 `m_nAppID` as embedded app IDs too, including when they appear inside line-item
 arrays, so private captures report
@@ -948,9 +951,10 @@ the private `--checkout-json-file` checkout suite.
   To let the Windows matrix create the private checkout JSON immediately before
   the focused proof, pass
   `-InitTxnRequestFile <private-init-txn-request.json>` instead of
-  `-CheckoutJsonFile`; the matrix invokes `steam-bridge-init-client-txn`, reads
-  publisher keys only from the configured environment, validates the generated
-  target against `-AppId`, and records only sanitized capture metadata.
+  `-CheckoutJsonFile`; the matrix runs the capture inside the initialized
+  Steam-launched smoke app, reads publisher keys only from the configured
+  environment, validates the generated target against `-AppId`, and records
+  only sanitized capture metadata.
   Pass `-PresenterMode session` only when intentionally comparing the direct
   Steam/Electron hook fallback.
   Each matrix case passes `-RequireNoCrashes`,

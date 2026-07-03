@@ -778,8 +778,12 @@ generic request JSON, run
 `steam-bridge-init-client-txn --file <private-init-txn-request.json> --out <private-init-txn-response.json> --production`
 with the publisher key in `STEAM_WEB_API_KEY` or `STEAM_API_KEY`; the CLI does
 not accept literal keys in command-line arguments and prints only sanitized
-checkout-target presence metadata. On Windows, prefer matrix-owned in-app
-capture with
+checkout-target presence metadata. Client-session captures are written with a
+`clientSession: true` wrapper so downstream helpers do not synthesize a browser
+checkout URL from Steam's in-game authorization response. Use `--session web`
+for a returned Steam URL checkout path, or `--session client-default` to omit
+`usersession` for request-shape diagnostics. On Windows, prefer matrix-owned
+in-app capture with
 `-LaunchMode steam-app -InitTxnRequestFile <private-init-txn-request.json>`.
 The smoke app creates the transaction after Steam has initialized and after it
 has read the active Steam ID, then records only sanitized checkout-target

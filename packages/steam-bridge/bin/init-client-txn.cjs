@@ -136,8 +136,12 @@ function readValueArg(args, index, name, assign) {
 }
 
 function parseSessionOption(value) {
-  if (value === "client" || value === "web") {
-    return value;
+  const session = String(value || "").trim().toLowerCase();
+  if (session === "client" || session === "web") {
+    return session;
+  }
+  if (session === "client-default" || session === "default-client" || session === "default") {
+    return "client-default";
   }
   throw new Error("invalid --session value");
 }
@@ -163,7 +167,8 @@ Options:
   --file PATH       JSON request with appId, orderId, steamId64, language,
                     currency, and items.
   --out PATH        Private output file for the InitTxn JSON response.
-  --session VALUE   client or web. Defaults to request.session or client.
+  --session VALUE   client, web, or client-default. Defaults to
+                    request.session or client.
   --sandbox         Use ISteamMicroTxnSandbox.
   --production      Use ISteamMicroTxn.
   --api-key-env ENV Read the publisher key from ENV. Defaults to
@@ -217,13 +222,21 @@ async function captureInitTxn(options, deps = {}) {
   const facade = sandbox ? client.microTxnSandbox : client.microTxn;
   const response = session === "web"
     ? await facade.initWebTxn(request)
-    : await facade.initClientTxn(request);
+    : session === "client-default"
+      ? await facade.initTxn(request)
+      : await facade.initClientTxn(request);
 
   if (!response.ok) {
     throw new Error("Steam Web API request failed");
   }
 
-  const target = steamBridge.overlay.checkoutTargetFromResult(response.data, { expectedAppId: request.appId });
+  const outputData = session === "web"
+    ? response.data
+    : {
+        clientSession: true,
+        data: response.data
+      };
+  const target = steamBridge.overlay.checkoutTargetFromResult(outputData, { expectedAppId: request.appId });
   const targetSnapshot = steamBridge.overlay.snapshotSteamOverlayTarget(target);
   if (
     targetSnapshot.type !== "checkout" ||
@@ -236,7 +249,7 @@ async function captureInitTxn(options, deps = {}) {
     throw new Error("InitTxn response did not resolve to a checkout target");
   }
 
-  writePrivateJson(options.out, response.data);
+  writePrivateJson(options.out, outputData);
   return {
     ok: true,
     endpoint: sandbox ? "ISteamMicroTxnSandbox" : "ISteamMicroTxn",
@@ -271,12 +284,17 @@ function normalizeInitTxnRequest(value) {
     language: parseRequiredString(value.language, "language"),
     currency: parseRequiredString(value.currency, "currency"),
     sandbox: typeof value.sandbox === "boolean" ? value.sandbox : undefined,
-    session: value.session === undefined ? undefined : parseSessionOption(String(value.session)),
+    session: resolveRequestSession(value),
     ipAddress: value.ipAddress === undefined ? undefined : parseRequiredString(value.ipAddress, "ipAddress"),
     items: normalizeItems(value.items),
     bundles: value.bundles === undefined ? undefined : normalizeBundles(value.bundles)
   };
   return withoutUndefined(request);
+}
+
+function resolveRequestSession(value) {
+  const session = value.session ?? value.userSession ?? value.usersession;
+  return session === undefined ? undefined : parseSessionOption(String(session));
 }
 
 function normalizeItems(value) {
@@ -484,6 +502,7 @@ async function runSelfTest() {
     assert.equal(output.endpoint, "ISteamMicroTxnSandbox");
     assert.equal(output.session, "client");
     assert.equal(output.targetSnapshot.hasSteamUrl, true);
+    assert.equal(output.targetSnapshot.clientSession, true);
     assert.equal(stdout.includes("publisher-secret"), false);
     assert.equal(stdout.includes(inputFile), false);
     assert.equal(stdout.includes(outputFile), false);
@@ -492,9 +511,23 @@ async function runSelfTest() {
     if (process.platform !== "win32") {
       assert.equal(fs.statSync(outputFile).mode & 0o777, 0o600);
     }
-    assert.equal(JSON.parse(fs.readFileSync(outputFile, "utf8")).response.params.transid, "123456789");
+    assert.equal(JSON.parse(fs.readFileSync(outputFile, "utf8")).clientSession, true);
+    assert.equal(JSON.parse(fs.readFileSync(outputFile, "utf8")).data.response.params.transid, "123456789");
     assert.match(calls[0].url, /ISteamMicroTxnSandbox\/InitTxn/);
     assert.match(String(calls[0].init.body), /usersession=client/);
+
+    const defaultClientOutputFile = path.join(tempDir, "default-client-response.json");
+    const defaultClientCapture = await captureRun(
+      ["--file", inputFile, "--out", defaultClientOutputFile, "--session", "client-default", "--allow-test-app-id"],
+      { env: { STEAM_WEB_API_KEY: "publisher-secret" }, fetch }
+    );
+    assert.equal(defaultClientCapture.status, 0);
+    const defaultClientOutput = JSON.parse(defaultClientCapture.output.join("\n"));
+    assert.equal(defaultClientOutput.session, "client-default");
+    assert.equal(defaultClientOutput.targetSnapshot.clientSession, true);
+    assert.equal(JSON.parse(fs.readFileSync(defaultClientOutputFile, "utf8")).clientSession, true);
+    assert.match(calls[1].url, /ISteamMicroTxnSandbox\/InitTxn/);
+    assert.equal(/usersession=/.test(String(calls[1].init.body)), false);
 
     const blockedTestApp = await captureRun(["--file", inputFile, "--out", outputFile], {
       env: { STEAM_WEB_API_KEY: "publisher-secret" },

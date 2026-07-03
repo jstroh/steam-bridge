@@ -1525,10 +1525,13 @@ app-specific proof outside the committed examples:
    `steam-bridge-init-client-txn --file <private-init-txn-request.json> --out <private-init-txn-response.json> --production`
    with `STEAM_WEB_API_KEY` or `STEAM_API_KEY` set; the CLI prints only
    sanitized presence flags and never accepts publisher keys as command-line
-   arguments. On Windows, `windows-overlay-matrix.ps1` can run that capture
-   inside the initialized Steam app as part of the focused checkout proof with
-   `-InitTxnRequestFile <private-init-txn-request.json>` and will still keep raw
-   checkout values out of logs and manifests.
+   arguments. Client-session captures stay wrapped as `clientSession: true`;
+   use `--session web` for browser checkout captures or `--session
+   client-default` to omit `usersession` for request-shape diagnostics. On
+   Windows, `windows-overlay-matrix.ps1` can run that capture inside the
+   initialized Steam app as part of the focused checkout proof with
+   `-InitTxnRequestFile <private-init-txn-request.json>` and will still keep
+   raw checkout values out of logs and manifests.
 6. Let Steam Bridge open the returned checkout URL or transaction approval path.
 7. Verify the Steam modal appears in both Deck Game Mode and Desktop Mode.
 8. Confirm backing out or closing the Steam surface returns focus to the app.

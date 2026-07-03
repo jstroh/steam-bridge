@@ -141,7 +141,9 @@ function runMacosPackageSigningStaticChecks() {
     "steam-bridge-init-client-txn",
     "publisher Web API key",
     "initClientTxn",
+    "client-default",
     "checkoutTargetFromResult",
+    "clientSession: true",
     "App ID 480 only proves generic checkout routing",
     "fchmodSync"
   ]) {

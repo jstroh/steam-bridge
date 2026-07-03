@@ -789,12 +789,35 @@ test("InitTxn capture CLI writes private checkout JSON with redacted output", as
   assert.equal(stdout.includes(outputFile), false);
   assert.equal(stdout.includes(rawTransactionId), false);
   assert.equal(JSON.parse(stdout).targetSnapshot.hasSteamUrl, true);
+  assert.equal(JSON.parse(stdout).targetSnapshot.clientSession, true);
   if (process.platform !== "win32") {
     assert.equal(fs.statSync(outputFile).mode & 0o777, 0o600);
   }
-  assert.equal(JSON.parse(fs.readFileSync(outputFile, "utf8")).response.params.transid, rawTransactionId);
+  assert.equal(JSON.parse(fs.readFileSync(outputFile, "utf8")).clientSession, true);
+  assert.equal(JSON.parse(fs.readFileSync(outputFile, "utf8")).data.response.params.transid, rawTransactionId);
   assert.match(fetchCalls[0].url, /ISteamMicroTxnSandbox\/InitTxn/);
   assert.match(String(fetchCalls[0].init.body), /usersession=client/);
+
+  const defaultClientOutputFile = path.join(tempDir, "default-client-response.json");
+  const defaultClientOutput = [];
+  const defaultClientStatus = await initTxnCli.runCli(
+    ["--file", inputFile, "--out", defaultClientOutputFile, "--session", "client-default", "--allow-test-app-id"],
+    {
+      log(message) {
+        defaultClientOutput.push(String(message));
+      },
+      error(message) {
+        assert.fail(message);
+      }
+    },
+    { env: { STEAM_WEB_API_KEY: "publisher-secret" }, fetch }
+  );
+  assert.equal(defaultClientStatus, 0);
+  assert.equal(JSON.parse(defaultClientOutput.join("\n")).session, "client-default");
+  assert.equal(JSON.parse(defaultClientOutput.join("\n")).targetSnapshot.clientSession, true);
+  assert.equal(JSON.parse(fs.readFileSync(defaultClientOutputFile, "utf8")).clientSession, true);
+  assert.match(fetchCalls[1].url, /ISteamMicroTxnSandbox\/InitTxn/);
+  assert.equal(/usersession=/.test(String(fetchCalls[1].init.body)), false);
 
   const blockedOutput = [];
   const blockedStatus = await initTxnCli.runCli(
