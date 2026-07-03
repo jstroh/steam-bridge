@@ -875,7 +875,10 @@ before native-load, render-health, or Steam launch work, without printing either
 app ID. The Windows summary auditor requires this preflight artifact whenever
 the matrix manifest records an InitTxn request file, and prints only the
 value-free `initTxnRequestShapePreflight` booleans, counts, and compact shape
-string.
+string. It also requires the smoke app's runtime
+`checkout:init-txn-request-shape` lifecycle event for those cases and rejects
+artifacts where the runtime compact shape does not match the preflight compact
+shape.
 The matrix's dry-run and live command logs also redact checkout file paths,
 checkout URLs, return URLs, transaction IDs, and control tokens. Those logs show
 the option name plus `REDACTED`, which keeps command-shape review useful without

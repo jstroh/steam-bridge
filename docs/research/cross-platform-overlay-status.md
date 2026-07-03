@@ -338,7 +338,10 @@ runs, and fails early if a request-file app ID is present but does not match
 `-AppId`, without printing either app ID. The Windows summary auditor now
 requires and prints that value-free preflight shape whenever the manifest says
 an InitTxn request file was used, so private checkout reruns cannot silently
-skip request-shape validation.
+skip request-shape validation. It also compares the preflight compact shape
+against the smoke app's runtime `checkout:init-txn-request-shape` compact shape,
+so a private rerun fails if the request that was checked before launch differs
+from the request shape observed inside the app.
 
 A focused default-client diagnostic at
 `C:\Users\admin\steam-bridge-artifacts\windows-default-client-inittxn-checkout-20260703-172218`

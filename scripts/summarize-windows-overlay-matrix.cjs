@@ -215,8 +215,20 @@ function summarizeWindowsOverlayMatrixArtifacts(root) {
     failures.push(...caseSummary.failures);
   }
 
+  const initTxnRequestShapePreflightSummary = initTxnRequestShapePreflight
+    ? summarizeInitTxnRequestShapePreflight(initTxnRequestShapePreflight)
+    : null;
+
   if (manifest && !nativeLoadBlocker) {
-    validateManifestCoverage(manifest, caseSummaries, caseAppControlBlockers, steamLaunchBlockers, failures, warnings);
+    validateManifestCoverage(
+      manifest,
+      caseSummaries,
+      caseAppControlBlockers,
+      steamLaunchBlockers,
+      initTxnRequestShapePreflightSummary,
+      failures,
+      warnings
+    );
   }
 
   if (
@@ -235,9 +247,7 @@ function summarizeWindowsOverlayMatrixArtifacts(root) {
     failures,
     warnings,
     preflight: preflight ? summarizePreflight(preflight) : null,
-    initTxnRequestShapePreflight: initTxnRequestShapePreflight
-      ? summarizeInitTxnRequestShapePreflight(initTxnRequestShapePreflight)
-      : null,
+    initTxnRequestShapePreflight: initTxnRequestShapePreflightSummary,
     liveRunReadiness: liveRunReadiness ? summarizeReadiness(liveRunReadiness) : null,
     assumedShortcut: assumedShortcut ? summarizeAssumedShortcut(assumedShortcut) : null,
     renderHealth: renderHealth || renderHealthGate ? summarizeRenderHealth(renderHealth, renderHealthGate) : null,
@@ -349,7 +359,15 @@ function validateManifest(manifest, failures) {
   }
 }
 
-function validateManifestCoverage(manifest, caseSummaries, caseAppControlBlockers, steamLaunchBlockers, failures, warnings) {
+function validateManifestCoverage(
+  manifest,
+  caseSummaries,
+  caseAppControlBlockers,
+  steamLaunchBlockers,
+  initTxnRequestShapePreflight,
+  failures,
+  warnings
+) {
   const expectedCases = Array.isArray(manifest.cases) ? manifest.cases : [];
   const summariesByCase = new Map(caseSummaries.map((row) => [row.caseName, row]));
   const coveredBlockedCases = new Set([
@@ -407,6 +425,20 @@ function validateManifestCoverage(manifest, caseSummaries, caseAppControlBlocker
         `matrix manifest case ${expected.id} proved MicroTxnAuthorizationResponse callback`,
         failures
       );
+    }
+    if (expected.hasInitTxnRequestFile === true) {
+      expect(
+        row.initTxnRequestShapePresent === true,
+        `matrix manifest case ${expected.id} captured InitTxn request-shape event`,
+        failures
+      );
+      if (initTxnRequestShapePreflight && row.initTxnRequestShapeRequestShape) {
+        expect(
+          row.initTxnRequestShapeRequestShape === initTxnRequestShapePreflight.requestShapeSummary,
+          `matrix manifest case ${expected.id} runtime InitTxn request shape matches preflight`,
+          failures
+        );
+      }
     }
   }
 
@@ -776,6 +808,30 @@ function isClientSessionInitTxnMode(value) {
   return value === "client" || value === "client-default";
 }
 
+function summarizeInitTxnRequestShapeEvent(events) {
+  const event = events.find((candidate) => candidate && candidate.type === "checkout:init-txn-request-shape");
+  if (!event) {
+    return {
+      present: false,
+      session: "",
+      endpoint: "",
+      usersessionField: "",
+      hasIpAddress: "",
+      requestShapeSummary: ""
+    };
+  }
+  const payload = objectOrEmpty(event.payload);
+  const requestShape = summarizeInitTxnRequestShape(payload.requestShape);
+  return {
+    present: true,
+    session: String(payload.session || ""),
+    endpoint: String(payload.endpoint || ""),
+    usersessionField: requestShape.usersessionField,
+    hasIpAddress: requestShape.hasIpAddress,
+    requestShapeSummary: requestShape.summary
+  };
+}
+
 function summarizeClientSessionCheckoutCapture(events) {
   const event = events.find((candidate) => {
     if (!candidate || candidate.type !== "checkout:init-txn-captured") {
@@ -1122,6 +1178,7 @@ function summarizeCaseResult(caseName, result, resultLog, renderingHealth = null
   const overlayNeedsPresent = readOkValue(steam.overlayNeedsPresent);
   const wait = result.wait && typeof result.wait === "object" && !Array.isArray(result.wait) ? result.wait : null;
   const closeProbe = summarizeCloseProbe(closeProbeEvents, caseDir || path.dirname(resultLog));
+  const initTxnRequestShape = summarizeInitTxnRequestShapeEvent(events);
   const initTxnTargetMissing = summarizeInitTxnTargetMissing(events);
   const clientSessionCheckoutCapture = summarizeClientSessionCheckoutCapture(events);
   const clientSessionPromptMissing = summarizeClientSessionPromptMissing(events);
@@ -1137,6 +1194,7 @@ function summarizeCaseResult(caseName, result, resultLog, renderingHealth = null
   expect(crashDiagnostics.ok === true, `${caseName}: no crash diagnostics reported`, failures);
   expect(crashDumps.length === 0, `${caseName}: no crash dumps found`, failures);
   expect(fatalLifecycleEvents.length === 0, `${caseName}: no fatal lifecycle events found`, failures);
+  expectInitTxnRequestShape(initTxnRequestShape, `${caseName}: InitTxn request-shape event`, failures);
   expectInitTxnRequestShape(clientSessionCheckoutCapture, `${caseName}: client-session InitTxn capture`, failures);
   expectInitTxnRequestShape(clientSessionPromptMissing, `${caseName}: client-session prompt-missing diagnostic`, failures);
   expectInitTxnRequestShape(initTxnTargetMissing, `${caseName}: InitTxn target-missing diagnostic`, failures);
@@ -1160,6 +1218,12 @@ function summarizeCaseResult(caseName, result, resultLog, renderingHealth = null
     passiveNotificationProof: hasPassiveNotificationProof(String(action.action || ""), events, nativePresenter),
     microTxnCallbackCount: events.filter(isMicroTxnCallbackEvent).length,
     microTxnCallbackProof: hasMicroTxnCallbackProof(String(action.action || ""), events, app.appId).ok,
+    initTxnRequestShapePresent: initTxnRequestShape.present,
+    initTxnRequestShapeSession: initTxnRequestShape.session,
+    initTxnRequestShapeEndpoint: initTxnRequestShape.endpoint,
+    initTxnRequestShapeUsersessionField: initTxnRequestShape.usersessionField,
+    initTxnRequestShapeHasIpAddress: initTxnRequestShape.hasIpAddress,
+    initTxnRequestShapeRequestShape: initTxnRequestShape.requestShapeSummary,
     clientSessionCheckoutCaptured: clientSessionCheckoutCapture.present,
     clientSessionCheckoutCapturedSession: clientSessionCheckoutCapture.session,
     clientSessionCheckoutCapturedEndpoint: clientSessionCheckoutCapture.endpoint,
@@ -1300,6 +1364,12 @@ function printSummary(summary) {
           `overlayActiveEvents=${row.overlayActiveEvents} ` +
           `overlayEnabled=${formatValue(row.overlayEnabled)} ` +
           `microTxnCallbacks=${row.microTxnCallbackCount} microTxnProof=${row.microTxnCallbackProof} ` +
+          `initTxnRequestShape=${row.initTxnRequestShapePresent} ` +
+          `initTxnRequestSession=${formatValue(row.initTxnRequestShapeSession)} ` +
+          `initTxnRequestEndpoint=${formatValue(row.initTxnRequestShapeEndpoint)} ` +
+          `initTxnRequestUsersession=${formatValue(row.initTxnRequestShapeUsersessionField)} ` +
+          `initTxnRequestIpAddress=${formatValue(row.initTxnRequestShapeHasIpAddress)} ` +
+          `initTxnRequestShapeSummary=${formatValue(row.initTxnRequestShapeRequestShape)} ` +
           `clientSessionCaptured=${row.clientSessionCheckoutCaptured} ` +
           `clientSessionCapturedSession=${formatValue(row.clientSessionCheckoutCapturedSession)} ` +
           `clientSessionCapturedEndpoint=${formatValue(row.clientSessionCheckoutCapturedEndpoint)} ` +
@@ -2027,6 +2097,15 @@ function runSelfTest() {
     const clientPromptMissingRoot = path.join(tempRoot, "managed-checkout-client-prompt-missing");
     writeManagedCheckoutMicroTxnFixture(clientPromptMissingRoot, { clientPromptMissing: true });
     const clientPromptMissingSummary = summarizeWindowsOverlayMatrixArtifacts(clientPromptMissingRoot);
+    assert.equal(clientPromptMissingSummary.caseSummaries[0].initTxnRequestShapePresent, true);
+    assert.equal(clientPromptMissingSummary.caseSummaries[0].initTxnRequestShapeSession, "client");
+    assert.equal(clientPromptMissingSummary.caseSummaries[0].initTxnRequestShapeEndpoint, "sandbox");
+    assert.equal(clientPromptMissingSummary.caseSummaries[0].initTxnRequestShapeUsersessionField, "client");
+    assert.equal(clientPromptMissingSummary.caseSummaries[0].initTxnRequestShapeHasIpAddress, "false");
+    assert.equal(
+      clientPromptMissingSummary.caseSummaries[0].initTxnRequestShapeRequestShape,
+      "usersession=client,ip=false,order=true,steam=true,language=true,currency=true,items=1,bundles=0,itemFields=true,bundleFields=true"
+    );
     assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionCheckoutCaptured, true);
     assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionCheckoutCapturedSession, "client");
     assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionCheckoutCapturedEndpoint, "sandbox");
@@ -2084,6 +2163,33 @@ function runSelfTest() {
         failure.includes("InitTxn request-shape preflight app ID matches matrix App ID")
       ),
       "summary self-test should fail when an InitTxn request-file preflight records an app ID mismatch"
+    );
+
+    const missingRuntimeRequestShapeRoot = path.join(tempRoot, "managed-checkout-missing-runtime-request-shape");
+    writeManagedCheckoutMicroTxnFixture(missingRuntimeRequestShapeRoot, {
+      clientPromptMissing: true,
+      omitInitTxnRequestShapeEvent: true
+    });
+    const missingRuntimeRequestShapeSummary = summarizeWindowsOverlayMatrixArtifacts(missingRuntimeRequestShapeRoot);
+    assert(
+      missingRuntimeRequestShapeSummary.failures.some((failure) =>
+        failure.includes("captured InitTxn request-shape event")
+      ),
+      "summary self-test should fail when an InitTxn request-file case omits the runtime request-shape event"
+    );
+
+    const driftedRuntimeRequestShapeRoot = path.join(tempRoot, "managed-checkout-drifted-runtime-request-shape");
+    writeManagedCheckoutMicroTxnFixture(driftedRuntimeRequestShapeRoot, { clientPromptMissing: true });
+    writeInitTxnRequestShapePreflightFixture(driftedRuntimeRequestShapeRoot, {
+      session: "client",
+      overrides: { hasIpAddress: true }
+    });
+    const driftedRuntimeRequestShapeSummary = summarizeWindowsOverlayMatrixArtifacts(driftedRuntimeRequestShapeRoot);
+    assert(
+      driftedRuntimeRequestShapeSummary.failures.some((failure) =>
+        failure.includes("runtime InitTxn request shape matches preflight")
+      ),
+      "summary self-test should fail when runtime and preflight InitTxn request shapes drift"
     );
 
     const defaultClientPromptMissingRoot = path.join(tempRoot, "managed-checkout-default-client-prompt-missing");
@@ -2980,6 +3086,20 @@ function writeInitTxnRequestShapePreflightFixture(root, options = {}) {
   );
 }
 
+function initTxnRequestShapeEventFixture(session = "client", options = {}) {
+  const payload = {
+    endpoint: "sandbox",
+    session
+  };
+  if (!options.omitShape) {
+    payload.requestShape = initTxnRequestShapeFixture(session);
+  }
+  return {
+    type: "checkout:init-txn-request-shape",
+    payload
+  };
+}
+
 function writeManagedCheckoutMicroTxnFixture(root, options = {}) {
   const checkoutCaseId = options.caseId || "02-checkout-approval";
   const usesInitTxnRequestFile = Boolean(
@@ -3068,6 +3188,31 @@ function writeManagedCheckoutMicroTxnFixture(root, options = {}) {
     const requestShape = options.omitInitTxnRequestShape
       ? undefined
       : initTxnRequestShapeFixture(options.initTxnTargetMissingSession || "client");
+    const events = [];
+    if (!options.omitInitTxnRequestShapeEvent) {
+      events.push(
+        initTxnRequestShapeEventFixture(options.initTxnTargetMissingSession || "client", {
+          omitShape: options.omitInitTxnRequestShape
+        })
+      );
+    }
+    events.push(
+      {
+        type: "checkout:init-txn-target-missing",
+        payload: {
+          endpoint: "sandbox",
+          session: options.initTxnTargetMissingSession || "client",
+          httpStatus: 200,
+          usedCurrentSteamId: true,
+          ...(requestShape ? { requestShape } : {}),
+          failure: {
+            result: options.initTxnTargetMissingResult || "Failure",
+            errorCode: options.initTxnTargetMissingErrorCode || "3",
+            hasErrorDescription: false
+          }
+        }
+      }
+    );
     writeResult(path.join(root, checkoutCaseId, "result.log"), {
       ok: false,
       action: {
@@ -3085,23 +3230,7 @@ function writeManagedCheckoutMicroTxnFixture(root, options = {}) {
       snapshot: buildWindowsSnapshot({
         pid: 4248,
         managedOverlayResultMode: "complete",
-        events: [
-          {
-            type: "checkout:init-txn-target-missing",
-            payload: {
-              endpoint: "sandbox",
-              session: options.initTxnTargetMissingSession || "client",
-              httpStatus: 200,
-              usedCurrentSteamId: true,
-              ...(requestShape ? { requestShape } : {}),
-              failure: {
-                result: options.initTxnTargetMissingResult || "Failure",
-                errorCode: options.initTxnTargetMissingErrorCode || "3",
-                hasErrorDescription: false
-              }
-            }
-          }
-        ]
+        events
       })
     });
     return;
@@ -3123,6 +3252,38 @@ function writeManagedCheckoutMicroTxnFixture(root, options = {}) {
       code: "STEAM_OVERLAY_WAIT_TIMEOUT",
       message: "Timed out waiting for Steam overlay to become active."
     };
+    const events = [];
+    if (!options.omitInitTxnRequestShapeEvent) {
+      events.push(
+        initTxnRequestShapeEventFixture(options.clientPromptMissingSession || "client", {
+          omitShape: options.omitInitTxnRequestShape
+        })
+      );
+    }
+    events.push(
+      {
+        type: "checkout:init-txn-captured",
+        payload: { ...initTxn, targetSnapshot }
+      },
+      {
+        type: "checkout:client-session-wait-start",
+        payload: { target: "checkout", targetSnapshot, expectedSteamPrompt: true, initTxn }
+      },
+      {
+        type: "overlay:presenter-open",
+        payload: { target: "checkout", api: "openCheckoutAndWait", checkoutSource: "init-txn-request-file", targetSnapshot, initTxn }
+      },
+      { type: "overlay:presenter-wait-start", payload: { target: "checkout" } },
+      { type: "overlay:presenter-wait-shown:error", payload: { target: "checkout", error } },
+      {
+        type: "checkout:client-session-prompt-missing",
+        payload: { target: "checkout", targetSnapshot, expectedSteamPrompt: true, error, initTxn }
+      },
+      {
+        type: "overlay:presenter-checkout-open-and-wait:error",
+        payload: { target: "checkout", targetSnapshot, error, initTxn }
+      }
+    );
     writeResult(path.join(root, checkoutCaseId, "result.log"), {
       ok: false,
       action: { ok: true, action: "presenter-checkout" },
@@ -3135,30 +3296,7 @@ function writeManagedCheckoutMicroTxnFixture(root, options = {}) {
       snapshot: buildWindowsSnapshot({
         pid: 4248,
         managedOverlayResultMode: "complete",
-        events: [
-          {
-            type: "checkout:init-txn-captured",
-            payload: { ...initTxn, targetSnapshot }
-          },
-          {
-            type: "checkout:client-session-wait-start",
-            payload: { target: "checkout", targetSnapshot, expectedSteamPrompt: true, initTxn }
-          },
-          {
-            type: "overlay:presenter-open",
-            payload: { target: "checkout", api: "openCheckoutAndWait", checkoutSource: "init-txn-request-file", targetSnapshot, initTxn }
-          },
-          { type: "overlay:presenter-wait-start", payload: { target: "checkout" } },
-          { type: "overlay:presenter-wait-shown:error", payload: { target: "checkout", error } },
-          {
-            type: "checkout:client-session-prompt-missing",
-            payload: { target: "checkout", targetSnapshot, expectedSteamPrompt: true, error, initTxn }
-          },
-          {
-            type: "overlay:presenter-checkout-open-and-wait:error",
-            payload: { target: "checkout", targetSnapshot, error, initTxn }
-          }
-        ]
+        events
       })
     });
     return;

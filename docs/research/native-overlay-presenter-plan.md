@@ -2341,7 +2341,10 @@ Current real-product checkout guardrail:
   value-free `00-preflight/init-txn-request-shape.json` before live launch and
   the summary auditor requires it whenever the manifest records an InitTxn
   request file. That preflight shape records only field presence, counts,
-  normalized session, and request-file app-ID match status. Malformed,
+  normalized session, and request-file app-ID match status. The Windows summary
+  also requires the runtime `checkout:init-txn-request-shape` lifecycle event
+  for those cases and compares its compact shape with the preflight compact
+  shape. Malformed,
   incomplete, or app-ID-mismatched private captures fail early without echoing
   the file path, app ID, transaction ID, checkout URL, or return URL. The macOS
   summary auditor also scans smoke result JSON and
