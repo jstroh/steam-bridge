@@ -2344,7 +2344,9 @@ Current real-product checkout guardrail:
   normalized session, and request-file app-ID match status. The Windows summary
   also requires the runtime `checkout:init-txn-request-shape` lifecycle event
   for those cases and compares its compact shape with the preflight compact
-  shape. Malformed,
+  shape. For `usersession=web` request-file artifacts, the Windows summary also
+  requires a runtime InitTxn capture with the value-free Steam approval URL
+  shape (`hasSteamUrl=true`). Malformed,
   incomplete, or app-ID-mismatched private captures fail early without echoing
   the file path, app ID, transaction ID, checkout URL, or return URL. The macOS
   summary auditor also scans smoke result JSON and

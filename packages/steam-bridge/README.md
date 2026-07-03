@@ -878,7 +878,10 @@ value-free `initTxnRequestShapePreflight` booleans, counts, and compact shape
 string. It also requires the smoke app's runtime
 `checkout:init-txn-request-shape` lifecycle event for those cases and rejects
 artifacts where the runtime compact shape does not match the preflight compact
-shape.
+shape. For `usersession=web` request-file runs, the summary also requires the
+runtime InitTxn capture to show a value-free Steam approval URL target shape
+(`hasSteamUrl=true`), keeping web-session checkout proof distinct from generic
+overlay success.
 The matrix's dry-run and live command logs also redact checkout file paths,
 checkout URLs, return URLs, transaction IDs, and control tokens. Those logs show
 the option name plus `REDACTED`, which keeps command-shape review useful without

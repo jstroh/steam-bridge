@@ -342,6 +342,10 @@ skip request-shape validation. It also compares the preflight compact shape
 against the smoke app's runtime `checkout:init-txn-request-shape` compact shape,
 so a private rerun fails if the request that was checked before launch differs
 from the request shape observed inside the app.
+For `usersession=web` request-file runs, the summary now also requires the
+runtime InitTxn capture to contain a value-free Steam approval URL shape
+(`hasSteamUrl=true`) before accepting the artifact as web-session checkout
+evidence.
 
 A focused default-client diagnostic at
 `C:\Users\admin\steam-bridge-artifacts\windows-default-client-inittxn-checkout-20260703-172218`

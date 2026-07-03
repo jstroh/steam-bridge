@@ -439,6 +439,18 @@ function validateManifestCoverage(
           failures
         );
       }
+      if (initTxnRequestShapePreflight && initTxnRequestShapePreflight.usersessionField === "web") {
+        expect(
+          row.webSessionCheckoutCaptured === true,
+          `matrix manifest case ${expected.id} captured web-session InitTxn checkout target`,
+          failures
+        );
+        expect(
+          row.webSessionCheckoutCapturedHasSteamUrl === true,
+          `matrix manifest case ${expected.id} captured web-session InitTxn Steam approval URL shape`,
+          failures
+        );
+      }
     }
   }
 
@@ -869,6 +881,51 @@ function summarizeClientSessionCheckoutCapture(events) {
   };
 }
 
+function summarizeWebSessionCheckoutCapture(events) {
+  const event = events.find((candidate) => {
+    if (!candidate || candidate.type !== "checkout:init-txn-captured") {
+      return false;
+    }
+    const payload = objectOrEmpty(candidate.payload);
+    const targetSnapshot = objectOrEmpty(payload.targetSnapshot);
+    return (
+      payload.session === "web" &&
+      targetSnapshot.type === "checkout" &&
+      targetSnapshot.hasSteamUrl === true &&
+      targetSnapshot.clientSession !== true
+    );
+  });
+  if (!event) {
+    return {
+      present: false,
+      session: "",
+      endpoint: "",
+      httpStatus: "",
+      hasSteamUrl: false,
+      hasTransactionId: false,
+      hasReturnUrl: false,
+      usersessionField: "",
+      hasIpAddress: "",
+      requestShapeSummary: ""
+    };
+  }
+  const payload = objectOrEmpty(event.payload);
+  const targetSnapshot = objectOrEmpty(payload.targetSnapshot);
+  const requestShape = summarizeInitTxnRequestShape(payload.requestShape);
+  return {
+    present: true,
+    session: String(payload.session || ""),
+    endpoint: String(payload.endpoint || ""),
+    httpStatus: String(payload.httpStatus || ""),
+    hasSteamUrl: targetSnapshot.hasSteamUrl === true,
+    hasTransactionId: targetSnapshot.hasTransactionId === true,
+    hasReturnUrl: targetSnapshot.hasReturnUrl === true,
+    usersessionField: requestShape.usersessionField,
+    hasIpAddress: requestShape.hasIpAddress,
+    requestShapeSummary: requestShape.summary
+  };
+}
+
 function summarizeClientSessionPromptMissing(events) {
   const event = events.find((candidate) => {
     if (!candidate || candidate.type !== "checkout:client-session-prompt-missing") {
@@ -1180,6 +1237,7 @@ function summarizeCaseResult(caseName, result, resultLog, renderingHealth = null
   const closeProbe = summarizeCloseProbe(closeProbeEvents, caseDir || path.dirname(resultLog));
   const initTxnRequestShape = summarizeInitTxnRequestShapeEvent(events);
   const initTxnTargetMissing = summarizeInitTxnTargetMissing(events);
+  const webSessionCheckoutCapture = summarizeWebSessionCheckoutCapture(events);
   const clientSessionCheckoutCapture = summarizeClientSessionCheckoutCapture(events);
   const clientSessionPromptMissing = summarizeClientSessionPromptMissing(events);
 
@@ -1195,6 +1253,7 @@ function summarizeCaseResult(caseName, result, resultLog, renderingHealth = null
   expect(crashDumps.length === 0, `${caseName}: no crash dumps found`, failures);
   expect(fatalLifecycleEvents.length === 0, `${caseName}: no fatal lifecycle events found`, failures);
   expectInitTxnRequestShape(initTxnRequestShape, `${caseName}: InitTxn request-shape event`, failures);
+  expectInitTxnRequestShape(webSessionCheckoutCapture, `${caseName}: web-session InitTxn capture`, failures);
   expectInitTxnRequestShape(clientSessionCheckoutCapture, `${caseName}: client-session InitTxn capture`, failures);
   expectInitTxnRequestShape(clientSessionPromptMissing, `${caseName}: client-session prompt-missing diagnostic`, failures);
   expectInitTxnRequestShape(initTxnTargetMissing, `${caseName}: InitTxn target-missing diagnostic`, failures);
@@ -1224,6 +1283,16 @@ function summarizeCaseResult(caseName, result, resultLog, renderingHealth = null
     initTxnRequestShapeUsersessionField: initTxnRequestShape.usersessionField,
     initTxnRequestShapeHasIpAddress: initTxnRequestShape.hasIpAddress,
     initTxnRequestShapeRequestShape: initTxnRequestShape.requestShapeSummary,
+    webSessionCheckoutCaptured: webSessionCheckoutCapture.present,
+    webSessionCheckoutCapturedSession: webSessionCheckoutCapture.session,
+    webSessionCheckoutCapturedEndpoint: webSessionCheckoutCapture.endpoint,
+    webSessionCheckoutCapturedHttpStatus: webSessionCheckoutCapture.httpStatus,
+    webSessionCheckoutCapturedHasSteamUrl: webSessionCheckoutCapture.hasSteamUrl,
+    webSessionCheckoutCapturedHasTransactionId: webSessionCheckoutCapture.hasTransactionId,
+    webSessionCheckoutCapturedHasReturnUrl: webSessionCheckoutCapture.hasReturnUrl,
+    webSessionCheckoutCapturedUsersessionField: webSessionCheckoutCapture.usersessionField,
+    webSessionCheckoutCapturedHasIpAddress: webSessionCheckoutCapture.hasIpAddress,
+    webSessionCheckoutCapturedRequestShape: webSessionCheckoutCapture.requestShapeSummary,
     clientSessionCheckoutCaptured: clientSessionCheckoutCapture.present,
     clientSessionCheckoutCapturedSession: clientSessionCheckoutCapture.session,
     clientSessionCheckoutCapturedEndpoint: clientSessionCheckoutCapture.endpoint,
@@ -1370,6 +1439,16 @@ function printSummary(summary) {
           `initTxnRequestUsersession=${formatValue(row.initTxnRequestShapeUsersessionField)} ` +
           `initTxnRequestIpAddress=${formatValue(row.initTxnRequestShapeHasIpAddress)} ` +
           `initTxnRequestShapeSummary=${formatValue(row.initTxnRequestShapeRequestShape)} ` +
+          `webSessionCaptured=${row.webSessionCheckoutCaptured} ` +
+          `webSessionCapturedSession=${formatValue(row.webSessionCheckoutCapturedSession)} ` +
+          `webSessionCapturedEndpoint=${formatValue(row.webSessionCheckoutCapturedEndpoint)} ` +
+          `webSessionCapturedHttp=${formatValue(row.webSessionCheckoutCapturedHttpStatus)} ` +
+          `webSessionCapturedSteamUrl=${formatValue(row.webSessionCheckoutCapturedHasSteamUrl)} ` +
+          `webSessionCapturedTransaction=${formatValue(row.webSessionCheckoutCapturedHasTransactionId)} ` +
+          `webSessionCapturedReturnUrl=${formatValue(row.webSessionCheckoutCapturedHasReturnUrl)} ` +
+          `webSessionCapturedUsersession=${formatValue(row.webSessionCheckoutCapturedUsersessionField)} ` +
+          `webSessionCapturedIpAddress=${formatValue(row.webSessionCheckoutCapturedHasIpAddress)} ` +
+          `webSessionCapturedRequest=${formatValue(row.webSessionCheckoutCapturedRequestShape)} ` +
           `clientSessionCaptured=${row.clientSessionCheckoutCaptured} ` +
           `clientSessionCapturedSession=${formatValue(row.clientSessionCheckoutCapturedSession)} ` +
           `clientSessionCapturedEndpoint=${formatValue(row.clientSessionCheckoutCapturedEndpoint)} ` +
@@ -2092,6 +2171,38 @@ function runSelfTest() {
         failure.includes("proved MicroTxnAuthorizationResponse callback")
       ),
       "summary self-test should fail when real checkout proof omits the MicroTxn callback"
+    );
+
+    const webSessionCapturedRoot = path.join(tempRoot, "managed-checkout-web-session-captured");
+    writeManagedCheckoutMicroTxnFixture(webSessionCapturedRoot, { webSessionCaptured: true });
+    const webSessionCapturedSummary = summarizeWindowsOverlayMatrixArtifacts(webSessionCapturedRoot);
+    assert.deepEqual(webSessionCapturedSummary.failures, []);
+    assert.equal(webSessionCapturedSummary.caseSummaries[0].webSessionCheckoutCaptured, true);
+    assert.equal(webSessionCapturedSummary.caseSummaries[0].webSessionCheckoutCapturedSession, "web");
+    assert.equal(webSessionCapturedSummary.caseSummaries[0].webSessionCheckoutCapturedEndpoint, "sandbox");
+    assert.equal(webSessionCapturedSummary.caseSummaries[0].webSessionCheckoutCapturedHttpStatus, "200");
+    assert.equal(webSessionCapturedSummary.caseSummaries[0].webSessionCheckoutCapturedHasSteamUrl, true);
+    assert.equal(webSessionCapturedSummary.caseSummaries[0].webSessionCheckoutCapturedHasTransactionId, true);
+    assert.equal(webSessionCapturedSummary.caseSummaries[0].webSessionCheckoutCapturedHasReturnUrl, true);
+    assert.equal(webSessionCapturedSummary.caseSummaries[0].webSessionCheckoutCapturedUsersessionField, "web");
+    assert.equal(webSessionCapturedSummary.caseSummaries[0].webSessionCheckoutCapturedHasIpAddress, "false");
+    assert.equal(
+      webSessionCapturedSummary.caseSummaries[0].webSessionCheckoutCapturedRequestShape,
+      "usersession=web,ip=false,order=true,steam=true,language=true,currency=true,items=1,bundles=0,itemFields=true,bundleFields=true"
+    );
+    assert.equal(webSessionCapturedSummary.manifest.requireMicroTxnCallback, false);
+
+    const webSessionMissingSteamUrlRoot = path.join(tempRoot, "managed-checkout-web-session-missing-steam-url");
+    writeManagedCheckoutMicroTxnFixture(webSessionMissingSteamUrlRoot, {
+      webSessionCaptured: true,
+      webSessionHasSteamUrl: false
+    });
+    const webSessionMissingSteamUrlSummary = summarizeWindowsOverlayMatrixArtifacts(webSessionMissingSteamUrlRoot);
+    assert(
+      webSessionMissingSteamUrlSummary.failures.some((failure) =>
+        failure.includes("captured web-session InitTxn Steam approval URL shape")
+      ),
+      "summary self-test should fail when a web-session InitTxn artifact omits the Steam approval URL shape"
     );
 
     const clientPromptMissingRoot = path.join(tempRoot, "managed-checkout-client-prompt-missing");
@@ -3103,10 +3214,22 @@ function initTxnRequestShapeEventFixture(session = "client", options = {}) {
 function writeManagedCheckoutMicroTxnFixture(root, options = {}) {
   const checkoutCaseId = options.caseId || "02-checkout-approval";
   const usesInitTxnRequestFile = Boolean(
-    options.useInitTxnRequestFile || options.clientPromptMissing || options.initTxnTargetMissing
+    options.useInitTxnRequestFile ||
+      options.webSessionCaptured ||
+      options.clientPromptMissing ||
+      options.initTxnTargetMissing
   );
   const initTxnRequestSession =
-    options.clientPromptMissingSession || options.initTxnTargetMissingSession || "client";
+    options.webSessionCapturedSession ||
+    options.clientPromptMissingSession ||
+    options.initTxnTargetMissingSession ||
+    (options.webSessionCaptured ? "web" : "client");
+  const requireMicroTxnCallback =
+    options.requireMicroTxnCallback !== undefined
+      ? options.requireMicroTxnCallback === true
+      : options.webSessionCaptured
+        ? false
+        : true;
   writeJson(path.join(root, "matrix-manifest.json"), {
     kind: "steam-bridge-windows-overlay-matrix-manifest",
     generatedAt: "2026-07-03T00:00:00.000Z",
@@ -3115,7 +3238,7 @@ function writeManagedCheckoutMicroTxnFixture(root, options = {}) {
     appId: 480,
     onlyCase: checkoutCaseId,
     expectedCaseCount: 1,
-    requireMicroTxnCallback: true,
+    requireMicroTxnCallback,
     initTxnCapture: {
       hasRequestFile: usesInitTxnRequestFile,
       captureInApp: usesInitTxnRequestFile,
@@ -3142,7 +3265,7 @@ function writeManagedCheckoutMicroTxnFixture(root, options = {}) {
         allowOverlayNotReady: false,
         requirePassiveNotification: false,
         requireManagedOverlayComplete: true,
-        requireMicroTxnCallback: true,
+        requireMicroTxnCallback,
         managedOverlayResultMode: "complete",
         hasCheckoutTransactionId: false,
         hasCheckoutJsonFile: !usesInitTxnRequestFile,
@@ -3292,6 +3415,62 @@ function writeManagedCheckoutMicroTxnFixture(root, options = {}) {
         overlayShown: false,
         overlayComplete: false,
         error
+      },
+      snapshot: buildWindowsSnapshot({
+        pid: 4248,
+        managedOverlayResultMode: "complete",
+        events
+      })
+    });
+    return;
+  }
+  if (options.webSessionCaptured) {
+    const targetSnapshot = {
+      type: "checkout",
+      hasSteamUrl: options.webSessionHasSteamUrl !== false,
+      hasTransactionId: true,
+      hasReturnUrl: options.webSessionHasReturnUrl !== false
+    };
+    const requestShape = options.omitInitTxnRequestShape
+      ? undefined
+      : initTxnRequestShapeFixture(options.webSessionCapturedSession || "web");
+    const initTxn = {
+      endpoint: "sandbox",
+      session: options.webSessionCapturedSession || "web",
+      httpStatus: 200,
+      usedCurrentSteamId: true,
+      ...(requestShape ? { requestShape } : {})
+    };
+    const events = [];
+    if (!options.omitInitTxnRequestShapeEvent) {
+      events.push(
+        initTxnRequestShapeEventFixture(options.webSessionCapturedSession || "web", {
+          omitShape: options.omitInitTxnRequestShape
+        })
+      );
+    }
+    events.push(
+      {
+        type: "checkout:init-txn-captured",
+        payload: { ...initTxn, targetSnapshot }
+      },
+      {
+        type: "overlay:presenter-open",
+        payload: { target: "checkout", api: "openCheckoutAndWait", checkoutSource: "init-txn-request-file", targetSnapshot, initTxn }
+      },
+      { type: "callback:overlay-activated", payload: { active: true } },
+      { type: "callback:overlay-activated", payload: { active: false } },
+      { type: "overlay:presenter-wait-closed" },
+      { type: "overlay:presenter-parked" },
+      { type: "overlay:presenter-checkout-open-and-wait-complete" }
+    );
+    writeResult(path.join(root, checkoutCaseId, "result.log"), {
+      ok: true,
+      action: { ok: true, action: "presenter-checkout" },
+      wait: {
+        overlayClosed: true,
+        overlayParked: true,
+        overlayComplete: true
       },
       snapshot: buildWindowsSnapshot({
         pid: 4248,
