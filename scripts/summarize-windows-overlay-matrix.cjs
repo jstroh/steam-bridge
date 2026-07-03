@@ -714,12 +714,12 @@ function hasClientSessionCheckoutCaptured(events) {
   });
 }
 
-function hasClientSessionPromptMissing(events) {
-  return events.some((event) => {
-    if (!event || event.type !== "checkout:client-session-prompt-missing") {
+function summarizeClientSessionPromptMissing(events) {
+  const event = events.find((candidate) => {
+    if (!candidate || candidate.type !== "checkout:client-session-prompt-missing") {
       return false;
     }
-    const payload = objectOrEmpty(event.payload);
+    const payload = objectOrEmpty(candidate.payload);
     const targetSnapshot = objectOrEmpty(payload.targetSnapshot);
     const error = objectOrEmpty(payload.error);
     return (
@@ -728,6 +728,22 @@ function hasClientSessionPromptMissing(events) {
       (error.code === "STEAM_OVERLAY_WAIT_TIMEOUT" || error.name === "SteamOverlayWaitTimeoutError")
     );
   });
+  if (!event) {
+    return {
+      present: false,
+      session: "",
+      endpoint: "",
+      httpStatus: ""
+    };
+  }
+  const payload = objectOrEmpty(event.payload);
+  const initTxn = objectOrEmpty(payload.initTxn);
+  return {
+    present: true,
+    session: String(initTxn.session || payload.session || ""),
+    endpoint: String(initTxn.endpoint || payload.endpoint || ""),
+    httpStatus: String(initTxn.httpStatus || payload.httpStatus || "")
+  };
 }
 
 function summarizeInitTxnTargetMissing(events) {
@@ -917,6 +933,7 @@ function summarizeCaseResult(caseName, result, resultLog, renderingHealth = null
   const wait = result.wait && typeof result.wait === "object" && !Array.isArray(result.wait) ? result.wait : null;
   const closeProbe = summarizeCloseProbe(closeProbeEvents, caseDir || path.dirname(resultLog));
   const initTxnTargetMissing = summarizeInitTxnTargetMissing(events);
+  const clientSessionPromptMissing = summarizeClientSessionPromptMissing(events);
 
   expect(result.ok === true, `${caseName}: smoke result ok`, failures);
   expect(action.ok === true, `${caseName}: autorun action succeeded`, failures);
@@ -950,7 +967,10 @@ function summarizeCaseResult(caseName, result, resultLog, renderingHealth = null
     microTxnCallbackCount: events.filter(isMicroTxnCallbackEvent).length,
     microTxnCallbackProof: hasMicroTxnCallbackProof(String(action.action || ""), events, app.appId).ok,
     clientSessionCheckoutCaptured: hasClientSessionCheckoutCaptured(events),
-    clientSessionPromptMissing: hasClientSessionPromptMissing(events),
+    clientSessionPromptMissing: clientSessionPromptMissing.present,
+    clientSessionPromptMissingSession: clientSessionPromptMissing.session,
+    clientSessionPromptMissingEndpoint: clientSessionPromptMissing.endpoint,
+    clientSessionPromptMissingHttpStatus: clientSessionPromptMissing.httpStatus,
     initTxnTargetMissing: initTxnTargetMissing.present,
     initTxnTargetMissingSession: initTxnTargetMissing.session,
     initTxnTargetMissingResult: initTxnTargetMissing.result,
@@ -1066,6 +1086,9 @@ function printSummary(summary) {
           `microTxnCallbacks=${row.microTxnCallbackCount} microTxnProof=${row.microTxnCallbackProof} ` +
           `clientSessionCaptured=${row.clientSessionCheckoutCaptured} ` +
           `clientPromptMissing=${row.clientSessionPromptMissing} ` +
+          `clientPromptSession=${formatValue(row.clientSessionPromptMissingSession)} ` +
+          `clientPromptEndpoint=${formatValue(row.clientSessionPromptMissingEndpoint)} ` +
+          `clientPromptHttp=${formatValue(row.clientSessionPromptMissingHttpStatus)} ` +
           `initTxnTargetMissing=${row.initTxnTargetMissing} ` +
           `initTxnSession=${formatValue(row.initTxnTargetMissingSession)} ` +
           `initTxnResult=${formatValue(row.initTxnTargetMissingResult)} ` +
@@ -1764,6 +1787,9 @@ function runSelfTest() {
     const clientPromptMissingSummary = summarizeWindowsOverlayMatrixArtifacts(clientPromptMissingRoot);
     assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionCheckoutCaptured, true);
     assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionPromptMissing, true);
+    assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionPromptMissingSession, "client");
+    assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionPromptMissingEndpoint, "sandbox");
+    assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionPromptMissingHttpStatus, "200");
 
     const defaultClientPromptMissingRoot = path.join(tempRoot, "managed-checkout-default-client-prompt-missing");
     writeManagedCheckoutMicroTxnFixture(defaultClientPromptMissingRoot, {
@@ -1773,6 +1799,7 @@ function runSelfTest() {
     const defaultClientPromptMissingSummary = summarizeWindowsOverlayMatrixArtifacts(defaultClientPromptMissingRoot);
     assert.equal(defaultClientPromptMissingSummary.caseSummaries[0].clientSessionCheckoutCaptured, true);
     assert.equal(defaultClientPromptMissingSummary.caseSummaries[0].clientSessionPromptMissing, true);
+    assert.equal(defaultClientPromptMissingSummary.caseSummaries[0].clientSessionPromptMissingSession, "client-default");
 
     const initTxnTargetMissingRoot = path.join(tempRoot, "managed-checkout-init-txn-target-missing");
     writeManagedCheckoutMicroTxnFixture(initTxnTargetMissingRoot, {
@@ -2674,6 +2701,12 @@ function writeManagedCheckoutMicroTxnFixture(root, options = {}) {
   }
   if (options.clientPromptMissing) {
     const targetSnapshot = { type: "checkout", hasTransactionId: true, clientSession: true };
+    const initTxn = {
+      endpoint: "sandbox",
+      session: options.clientPromptMissingSession || "client",
+      httpStatus: 200,
+      usedCurrentSteamId: true
+    };
     const error = {
       name: "SteamOverlayWaitTimeoutError",
       code: "STEAM_OVERLAY_WAIT_TIMEOUT",
@@ -2694,25 +2727,25 @@ function writeManagedCheckoutMicroTxnFixture(root, options = {}) {
         events: [
           {
             type: "checkout:init-txn-captured",
-            payload: { session: options.clientPromptMissingSession || "client", targetSnapshot }
+            payload: { ...initTxn, targetSnapshot }
           },
           {
             type: "checkout:client-session-wait-start",
-            payload: { target: "checkout", targetSnapshot, expectedSteamPrompt: true }
+            payload: { target: "checkout", targetSnapshot, expectedSteamPrompt: true, initTxn }
           },
           {
             type: "overlay:presenter-open",
-            payload: { target: "checkout", api: "openCheckoutAndWait", checkoutSource: "init-txn-request-file", targetSnapshot }
+            payload: { target: "checkout", api: "openCheckoutAndWait", checkoutSource: "init-txn-request-file", targetSnapshot, initTxn }
           },
           { type: "overlay:presenter-wait-start", payload: { target: "checkout" } },
           { type: "overlay:presenter-wait-shown:error", payload: { target: "checkout", error } },
           {
             type: "checkout:client-session-prompt-missing",
-            payload: { target: "checkout", targetSnapshot, expectedSteamPrompt: true, error }
+            payload: { target: "checkout", targetSnapshot, expectedSteamPrompt: true, error, initTxn }
           },
           {
             type: "overlay:presenter-checkout-open-and-wait:error",
-            payload: { target: "checkout", targetSnapshot, error }
+            payload: { target: "checkout", targetSnapshot, error, initTxn }
           }
         ]
       })

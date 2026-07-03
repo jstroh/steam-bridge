@@ -1977,7 +1977,7 @@ async function openPresenterCheckoutOverlay() {
   const overlay = ensureElectronSteamOverlay(activeClient);
   const checkoutOperation = await readCheckoutOperationInput(activeClient);
   if (checkoutOperation) {
-    const { transaction, source } = checkoutOperation;
+    const { transaction, source, initTxn } = checkoutOperation;
     const target = checkoutTargetFromOperation(transaction);
     const targetSnapshot = steamworks.overlay.snapshotSteamOverlayTarget(target);
     const clientSessionCheckout = targetSnapshot.type === "checkout" && targetSnapshot.clientSession === true;
@@ -1988,7 +1988,8 @@ async function openPresenterCheckoutOverlay() {
       api: "openCheckoutAndWait",
       checkoutSource: source,
       checkout: checkoutDiagnostic(transaction),
-      targetSnapshot
+      targetSnapshot,
+      initTxn
     };
     if (clientSessionCheckout) {
       recordEvent("checkout:client-session-wait-start", {
@@ -2064,10 +2065,11 @@ function isSteamOverlayWaitTimeout(error) {
 
 async function readCheckoutOperationInput(activeClient) {
   if (INIT_TXN_REQUEST_FILE) {
-    const transaction = await captureInitTxnCheckout(activeClient);
+    const { transaction, initTxn } = await captureInitTxnCheckout(activeClient);
     return {
       source: "init-txn-request-file",
-      transaction
+      transaction,
+      initTxn
     };
   }
 
@@ -2173,7 +2175,15 @@ async function captureInitTxnCheckout(activeClient) {
     usedCurrentSteamId: Boolean(steamId64),
     targetSnapshot
   });
-  return transaction;
+  return {
+    transaction,
+    initTxn: {
+      endpoint,
+      session,
+      httpStatus: response.status,
+      usedCurrentSteamId: Boolean(steamId64)
+    }
+  };
 }
 
 function normalizeInitTxnRequestSession(value) {

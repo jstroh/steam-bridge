@@ -833,13 +833,16 @@ private purchase artifacts fail closed if redaction regresses. SDK-style order
 and transaction fields from Steam callbacks are treated as private checkout
 identifiers too.
 For Windows `usersession=client` diagnostics, the summary also prints
-`clientSessionCaptured` and `clientPromptMissing`. A case with
+`clientSessionCaptured`, `clientPromptMissing`, `clientPromptSession`,
+`clientPromptEndpoint`, and `clientPromptHttp`. A case with
 `clientSessionCaptured=true` and `clientPromptMissing=true` means the in-app
 `InitTxn` call returned a transaction id, Steam Bridge preserved it as a
 client-session checkout target without synthesizing a web approval URL, the
 managed presenter was active, and Steam still did not emit the automatic
-checkout overlay activation before the wait guard expired. For focused Windows
-diagnostics, a private InitTxn request file can set `"session": "client-default"`
+checkout overlay activation before the wait guard expired. The prompt session,
+endpoint, and HTTP status are copied from sanitized in-app `InitTxn` metadata so
+the artifact can be read without correlating private request files. For focused
+Windows diagnostics, a private InitTxn request file can set `"session": "client-default"`
 to omit `usersession` and test Steam's documented default logged-in-client
 authorization path; `"session": "web"` keeps testing the returned Steam URL
 checkout path through the managed overlay browser. Current Windows evidence
