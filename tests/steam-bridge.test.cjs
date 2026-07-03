@@ -12831,7 +12831,9 @@ test("native overlay session owns the probe pump lifecycle", async (t) => {
   );
 });
 
-test("native overlay presenter reuses a passive host for overlay activation", async (t) => {
+test("native overlay presenter reuses a passive non-Windows host for overlay activation", async (t) => {
+  setProcessPlatformForTest(t, "linux");
+
   let hostOpen = false;
   let restoreFocusCount = 0;
   const hostHandle = Buffer.from([1, 3, 3, 7, 0, 0, 0, 0]);
@@ -13378,7 +13380,9 @@ test("electron steam overlay checkout helper stops if macOS host becomes unavail
   overlay.close();
 });
 
-test("native overlay presenter does not pump frames while idle by default", async (t) => {
+test("native overlay presenter does not pump non-Windows frames while idle by default", async (t) => {
+  setProcessPlatformForTest(t, "linux");
+
   let hostOpen = false;
   const hostHandle = Buffer.from([9, 0, 0, 0, 0, 0, 0, 0]);
   const fake = createFakeNative({
@@ -13704,7 +13708,9 @@ test("native overlay presenter parks modal overlays after inactive callbacks", a
   );
 });
 
-test("native overlay presenter keeps dialog overlays transparent while accepting input", async (t) => {
+test("native overlay presenter keeps non-Windows dialog overlays transparent while accepting input", async (t) => {
+  setProcessPlatformForTest(t, "linux");
+
   let hostOpen = false;
   const hostHandle = Buffer.from([4, 8, 0, 1, 0, 0, 0, 0]);
   const fake = createFakeNative({
