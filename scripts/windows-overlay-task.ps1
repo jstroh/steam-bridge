@@ -35,18 +35,23 @@ function Invoke-CheckedNative {
 function Format-RedactedMatrixArgs {
   param([string[]]$Arguments)
 
-  $sensitiveValueFlags = @{
-    "-AppId" = $true
-    "-CheckoutJsonFile" = $true
-    "-CheckoutReturnUrl" = $true
-    "-CheckoutTransactionId" = $true
-    "-CheckoutUrl" = $true
-    "-InitTxnApiKeyEnv" = $true
-    "-InitTxnEndpoint" = $true
-    "-InitTxnRequestFile" = $true
-    "-InitTxnResponseFile" = $true
-    "-SteamUserId" = $true
-    "-WebUrl" = $true
+  $sensitiveValueFlags = [System.Collections.Generic.HashSet[string]]::new(
+    [System.StringComparer]::OrdinalIgnoreCase
+  )
+  foreach ($flag in @(
+    "-AppId",
+    "-CheckoutJsonFile",
+    "-CheckoutReturnUrl",
+    "-CheckoutTransactionId",
+    "-CheckoutUrl",
+    "-InitTxnApiKeyEnv",
+    "-InitTxnEndpoint",
+    "-InitTxnRequestFile",
+    "-InitTxnResponseFile",
+    "-SteamUserId",
+    "-WebUrl"
+  )) {
+    [void]$sensitiveValueFlags.Add($flag)
   }
 
   $redacted = @()
@@ -59,7 +64,7 @@ function Format-RedactedMatrixArgs {
     }
 
     $redacted += $argument
-    if ($sensitiveValueFlags.ContainsKey($argument)) {
+    if ($sensitiveValueFlags.Contains($argument)) {
       $redactNext = $true
     }
   }

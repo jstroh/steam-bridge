@@ -741,6 +741,8 @@ function runWindowsSmokeHelperStaticChecks() {
     "Read-MatrixArgsFile",
     "Convert-MatrixArgsToSplat",
     "Format-RedactedMatrixArgs",
+    "HashSet[string]",
+    "StringComparer]::OrdinalIgnoreCase",
     '"-InitTxnResponseFile"',
     '"-SteamUserId"',
     '"-WebUrl"',
