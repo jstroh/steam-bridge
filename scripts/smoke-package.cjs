@@ -293,6 +293,10 @@ function runMacosPackageSigningStaticChecks() {
     "Windows Electron package must include the overlay matrix runner"
   );
   assert.ok(
+    packagerScript.includes("windows-overlay-task.ps1"),
+    "Windows Electron package must include the interactive overlay task wrapper"
+  );
+  assert.ok(
     packagerScript.includes("windows-render-health-probe.ps1"),
     "Windows Electron package must include the render health probe"
   );
@@ -346,6 +350,7 @@ function runWindowsSmokeHelperStaticChecks() {
     "utf8"
   );
   const matrixHelper = fs.readFileSync(path.join(repoRoot, "scripts", "windows-overlay-matrix.ps1"), "utf8");
+  const taskWrapper = fs.readFileSync(path.join(repoRoot, "scripts", "windows-overlay-task.ps1"), "utf8");
   const renderHealthHelper = fs.readFileSync(path.join(repoRoot, "scripts", "windows-render-health-probe.ps1"), "utf8");
   const nativeControlSource = fs.readFileSync(
     path.join(repoRoot, "scripts", "windows-native-overlay-control", "SteamBridgeNativeOverlayControl.cs"),
@@ -619,6 +624,22 @@ function runWindowsSmokeHelperStaticChecks() {
     matrixSummary.includes('"shortcut-routes"'),
     "Windows overlay matrix summary must accept the shortcut-routes suite"
   );
+  for (const expected of [
+    "SBOverlayMatrix",
+    "PrivateEnvFile",
+    '"/IT"',
+    "windows-overlay-matrix.ps1",
+    "Imported private environment values: count=",
+    "DONE_JSON_BEGIN",
+    "LOG_TAIL_BEGIN",
+    "Private environment file was not found.",
+    "Private environment file contains an invalid environment variable name.",
+    "Format-RedactedMatrixArgs",
+    "matrixArgs",
+    "REDACTED"
+  ]) {
+    assert.ok(taskWrapper.includes(expected), `Windows overlay task wrapper missing ${expected}`);
+  }
   for (const expected of [
     "steam-bridge-windows-render-health-probe",
     'name = "default"',

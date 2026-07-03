@@ -265,6 +265,10 @@ function copyTargetHelpers(appPath) {
       path.join(appPath, "windows-overlay-matrix.ps1")
     );
     fs.copyFileSync(
+      path.join(repoRoot, "scripts", "windows-overlay-task.ps1"),
+      path.join(appPath, "windows-overlay-task.ps1")
+    );
+    fs.copyFileSync(
       path.join(repoRoot, "scripts", "windows-render-health-probe.ps1"),
       path.join(appPath, "windows-render-health-probe.ps1")
     );

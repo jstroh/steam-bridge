@@ -194,6 +194,13 @@ proof. Session 0 can produce `DXGI_ERROR_NOT_CURRENTLY_AVAILABLE` / `0x887A0022`
 swap-chain failures that are not Steam Bridge overlay regressions. Stale
 rendering signals are preserved in `steam-client-rendering-health.json` as
 warnings.
+The packaged smoke app also includes `windows-overlay-task.ps1`, a thin wrapper
+around `windows-overlay-matrix.ps1` that creates a temporary interactive `/IT`
+scheduled task and waits for the matrix artifact to finish. Use it when you need
+to drive a remote Windows laptop from SSH while keeping live overlay work inside
+the logged-in desktop session. Pass private publisher values through
+`-PrivateEnvFile <path-to-NAME=VALUE-file>`; the wrapper imports them into the
+task environment and prints only the count, not the values.
 From the repo, run
 `npm run windows:overlay-matrix:summarize -- --artifact-root <artifact-root>` to
 audit full runs, readiness captures, native-load blocker artifacts, Steam-launch

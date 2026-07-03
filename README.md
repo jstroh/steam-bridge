@@ -834,6 +834,36 @@ the private `--checkout-json-file` checkout suite.
     -InstallShortcut
   ```
 
+  When driving a remote Windows machine over SSH, use the packaged
+  `windows-overlay-task.ps1` wrapper to run the same matrix inside the
+  interactive desktop session through a temporary `/IT` scheduled task. This
+  avoids Session 0 overlay/DXGI failures while still leaving a normal matrix
+  artifact:
+
+  ```powershell
+  .\windows-overlay-task.ps1 `
+    -AppDir C:\path\to\SteamBridgeSmoke-win32-x64 `
+    -ArtifactRoot C:\path\to\artifacts\windows-checkout `
+    -PrivateEnvFile C:\path\to\steam-bridge-private.env `
+    -MatrixArgs @(
+      "-AppId", "<configured-app-id>",
+      "-Suite", "checkout",
+      "-InitTxnRequestFile", "C:\path\to\private-init-txn-request.json",
+      "-InitTxnApiKeyEnv", "STEAM_WEB_API_KEY",
+      "-InitTxnEndpoint", "sandbox",
+      "-RequireMicroTxnCallback",
+      "-LaunchMode", "steam-launch",
+      "-AssumeShortcutConfigured",
+      "-CloseProbe",
+      "-CloseProbeInput", "auto"
+    )
+  ```
+
+  The optional private env file uses `NAME=VALUE` lines, is never committed,
+  and is only reported as a count of imported values. Keep real checkout proof
+  private and focused on a configured app/product; public App ID `480` still
+  proves only generic overlay routing.
+
   For development-only App Control diagnostics, the matrix can install the
   Steam shortcut with `-ShortcutExe`, `-ShortcutStartDir`, and
   `-ShortcutLaunchPrefix` while still using the packaged `resources/app`
