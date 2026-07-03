@@ -332,6 +332,10 @@ future reruns, including whether `usersession` was explicit or omitted and
 whether an IP address field was submitted, required order/user/language/currency
 field presence, item and bundle counts, and required line-item field presence,
 without logging private purchase, account, item, price, or currency values.
+The Windows matrix now writes the same value-free shape before live launch in
+`00-preflight/init-txn-request-shape.json` for private `-InitTxnRequestFile`
+runs, and fails early if a request-file app ID is present but does not match
+`-AppId`, without printing either app ID.
 
 A focused default-client diagnostic at
 `C:\Users\admin\steam-bridge-artifacts\windows-default-client-inittxn-checkout-20260703-172218`

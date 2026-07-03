@@ -1256,6 +1256,134 @@ function Test-MatrixRequiresMicroTxnCallback {
   }).Count -gt 0)
 }
 
+function Get-JsonPropertyValue {
+  param($Object, [string[]]$Names)
+
+  if ($null -eq $Object) {
+    return $null
+  }
+  foreach ($name in $Names) {
+    $property = $Object.PSObject.Properties[$name]
+    if ($property) {
+      return $property.Value
+    }
+  }
+  return $null
+}
+
+function Test-JsonPresentField {
+  param($Object, [string[]]$Names)
+
+  $value = Get-JsonPropertyValue -Object $Object -Names $Names
+  if ($null -eq $value) {
+    return $false
+  }
+  return ([string]$value).Trim().Length -gt 0
+}
+
+function Get-JsonArrayValue {
+  param($Object, [string[]]$Names)
+
+  $value = Get-JsonPropertyValue -Object $Object -Names $Names
+  if ($null -eq $value -or -not ($value -is [System.Array])) {
+    return @()
+  }
+  return @($value)
+}
+
+function Normalize-InitTxnRequestSession {
+  param($Value)
+
+  $session = ([string]$Value).Trim().ToLowerInvariant()
+  if ($session -eq "web") {
+    return "web"
+  }
+  if ($session -in @("client-default", "default-client", "default")) {
+    return "client-default"
+  }
+  return "client"
+}
+
+function Test-InitTxnItemHasRequiredFields {
+  param($Item)
+
+  return (
+    (Test-JsonPresentField -Object $Item -Names @("itemId", "itemid")) -and
+    (Test-JsonPresentField -Object $Item -Names @("quantity", "qty")) -and
+    (Test-JsonPresentField -Object $Item -Names @("amount")) -and
+    (Test-JsonPresentField -Object $Item -Names @("description"))
+  )
+}
+
+function Test-InitTxnBundleHasRequiredFields {
+  param($Bundle)
+
+  return (
+    (Test-JsonPresentField -Object $Bundle -Names @("bundleId", "bundleid")) -and
+    (Test-JsonPresentField -Object $Bundle -Names @("quantity", "qty")) -and
+    (Test-JsonPresentField -Object $Bundle -Names @("description"))
+  )
+}
+
+function Write-InitTxnRequestShapePreflight {
+  if (-not $InitTxnRequestFile) {
+    return
+  }
+
+  $preflightDir = Join-Path $ArtifactRoot "00-preflight"
+  New-Item -ItemType Directory -Force -Path $preflightDir | Out-Null
+
+  $request = Read-MatrixJsonFile -Path $InitTxnRequestFile
+  if ($null -eq $request -or $request -is [System.Array]) {
+    throw "Invalid -InitTxnRequestFile (request JSON must be an object)."
+  }
+
+  $requestAppId = Get-JsonPropertyValue -Object $request -Names @("appId", "appid")
+  $requestAppIdPresent = Test-JsonPresentField -Object $request -Names @("appId", "appid")
+  $requestAppIdMatches = $false
+  if ($requestAppIdPresent) {
+    try {
+      $requestAppIdMatches = ([int64]$requestAppId -eq [int64]$AppId)
+    } catch {
+      throw "Invalid -InitTxnRequestFile (app ID must be numeric when present)."
+    }
+    if (-not $requestAppIdMatches) {
+      throw "Invalid -InitTxnRequestFile (app ID does not match -AppId)."
+    }
+  }
+
+  $session = Normalize-InitTxnRequestSession (Get-JsonPropertyValue -Object $request -Names @("session", "userSession", "usersession"))
+  $items = @(Get-JsonArrayValue -Object $request -Names @("items"))
+  $bundles = @(Get-JsonArrayValue -Object $request -Names @("bundles"))
+  $itemsWithMissingFields = @($items | Where-Object { -not (Test-InitTxnItemHasRequiredFields -Item $_) }).Count
+  $bundlesWithMissingFields = @($bundles | Where-Object { -not (Test-InitTxnBundleHasRequiredFields -Bundle $_) }).Count
+
+  $shape = [PSCustomObject]@{
+    kind = "steam-bridge-windows-init-txn-request-shape"
+    generatedAt = (Get-Date).ToUniversalTime().ToString("o")
+    source = "init-txn-request-file"
+    hasRequestFile = $true
+    requestFileExists = $true
+    requestAppIdPresent = [bool]$requestAppIdPresent
+    requestAppIdMatches = [bool]$requestAppIdMatches
+    matrixAppIdForced = $true
+    session = $session
+    usersession = if ($session -eq "client-default") { "omitted" } else { $session }
+    hasUserSessionField = [bool]($session -ne "client-default")
+    hasOrderId = [bool](Test-JsonPresentField -Object $request -Names @("orderId", "orderid"))
+    hasSteamId64 = [bool](Test-JsonPresentField -Object $request -Names @("steamId64", "steamid", "steamId"))
+    hasLanguage = [bool](Test-JsonPresentField -Object $request -Names @("language"))
+    hasCurrency = [bool](Test-JsonPresentField -Object $request -Names @("currency"))
+    hasIpAddress = [bool](Test-JsonPresentField -Object $request -Names @("ipAddress", "ipaddress"))
+    itemCount = $items.Count
+    bundleCount = $bundles.Count
+    itemsHaveRequiredFields = [bool]($items.Count -gt 0 -and $itemsWithMissingFields -eq 0)
+    bundlesHaveRequiredFields = [bool]($bundlesWithMissingFields -eq 0)
+  }
+
+  Write-MatrixJsonFile -Path (Join-Path $preflightDir "init-txn-request-shape.json") -Value $shape -Depth 8
+}
+
 function Invoke-InitTxnCapture {
   param([object[]]$Cases)
 
@@ -1281,6 +1409,8 @@ function Invoke-InitTxnCapture {
   if (-not (Test-Path -LiteralPath $InitTxnRequestFile)) {
     throw "Invalid -InitTxnRequestFile (file was not found)."
   }
+
+  Write-InitTxnRequestShapePreflight
 
   $captureLog = [PSCustomObject]@{
     kind = "steam-bridge-windows-init-txn-request"

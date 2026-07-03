@@ -872,6 +872,11 @@ Steam returns no checkout target, the Windows summary prints
 `initTxnTargetMissing`, `initTxnSession`, `initTxnResult`, and
 `initTxnErrorCode`, plus `initTxnUsersession`, `initTxnIpAddress`, and
 `initTxnRequest`, without exposing private purchase data.
+Before live Windows launch, the matrix writes
+`00-preflight/init-txn-request-shape.json` for private `-InitTxnRequestFile`
+runs. It records only the same field-presence/count shape and whether a
+provided request-file app ID matched `-AppId`; mismatches fail before
+native-load, render-health, or Steam launch work without printing either app ID.
 When driving Windows from SSH, run the same checkout suite through the packaged
 interactive task wrapper so the overlay launches in the logged-in desktop
 session instead of Session 0. For private checkout runs, prefer a local JSON
