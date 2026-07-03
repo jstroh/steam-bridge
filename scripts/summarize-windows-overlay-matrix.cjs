@@ -106,6 +106,7 @@ function summarizeWindowsOverlayMatrixArtifacts(root) {
       failures,
       warnings,
       preflight: null,
+      initTxnRequestShapePreflight: null,
       liveRunReadiness: null,
       assumedShortcut: null,
       renderHealth: null,
@@ -130,6 +131,19 @@ function summarizeWindowsOverlayMatrixArtifacts(root) {
     failures.push(`missing preflight JSON: ${path.join(preflightDir, "preflight.json")}`);
   } else {
     validatePreflight(preflight, failures);
+  }
+
+  const initTxnRequestShapePreflight = readJsonIfPresent(
+    path.join(preflightDir, "init-txn-request-shape.json"),
+    failures
+  );
+  if (manifestRequiresInitTxnRequestPreflight(manifest) && !initTxnRequestShapePreflight) {
+    failures.push(
+      `missing InitTxn request-shape preflight JSON: ${path.join(preflightDir, "init-txn-request-shape.json")}`
+    );
+  }
+  if (initTxnRequestShapePreflight) {
+    validateInitTxnRequestShapePreflight(initTxnRequestShapePreflight, manifest, failures);
   }
 
   const liveRunReadiness = readJsonIfPresent(path.join(preflightDir, "live-run-readiness.json"), failures);
@@ -221,6 +235,9 @@ function summarizeWindowsOverlayMatrixArtifacts(root) {
     failures,
     warnings,
     preflight: preflight ? summarizePreflight(preflight) : null,
+    initTxnRequestShapePreflight: initTxnRequestShapePreflight
+      ? summarizeInitTxnRequestShapePreflight(initTxnRequestShapePreflight)
+      : null,
     liveRunReadiness: liveRunReadiness ? summarizeReadiness(liveRunReadiness) : null,
     assumedShortcut: assumedShortcut ? summarizeAssumedShortcut(assumedShortcut) : null,
     renderHealth: renderHealth || renderHealthGate ? summarizeRenderHealth(renderHealth, renderHealthGate) : null,
@@ -402,6 +419,66 @@ function validateManifestCoverage(manifest, caseSummaries, caseAppControlBlocker
     if (!expectedCases.some((expected) => expected.id === row.caseName)) {
       warnings.push(`case App Control blocker was not listed in matrix manifest: ${row.caseName}`);
     }
+  }
+}
+
+function manifestRequiresInitTxnRequestPreflight(manifest) {
+  const initTxnCapture = objectOrEmpty(manifest && manifest.initTxnCapture);
+  const targetHints = objectOrEmpty(manifest && manifest.targetHints);
+  const cases = Array.isArray(manifest && manifest.cases) ? manifest.cases : [];
+  return (
+    initTxnCapture.hasRequestFile === true ||
+    targetHints.hasInitTxnRequestFile === true ||
+    cases.some((entry) => entry && entry.hasInitTxnRequestFile === true)
+  );
+}
+
+function validateInitTxnRequestShapePreflight(shape, manifest, failures) {
+  const requestShape = summarizeInitTxnRequestShape(shape);
+  expect(
+    shape.kind === "steam-bridge-windows-init-txn-request-shape",
+    "InitTxn request-shape preflight kind is steam-bridge-windows-init-txn-request-shape",
+    failures
+  );
+  expect(Boolean(shape.generatedAt), "InitTxn request-shape preflight generatedAt is present", failures);
+  expect(shape.source === "init-txn-request-file", "InitTxn request-shape preflight source is init-txn-request-file", failures);
+  expect(shape.hasRequestFile === true, "InitTxn request-shape preflight records request file presence", failures);
+  expect(shape.requestFileExists === true, "InitTxn request-shape preflight records existing request file", failures);
+  expect(
+    typeof shape.requestAppIdPresent === "boolean",
+    "InitTxn request-shape preflight records app ID presence as a boolean",
+    failures
+  );
+  expect(
+    typeof shape.requestAppIdMatches === "boolean",
+    "InitTxn request-shape preflight records app ID match as a boolean",
+    failures
+  );
+  if (shape.requestAppIdPresent === true) {
+    expect(
+      shape.requestAppIdMatches === true,
+      "InitTxn request-shape preflight app ID matches matrix App ID",
+      failures
+    );
+  }
+  expect(shape.matrixAppIdForced === true, "InitTxn request-shape preflight records forced matrix App ID", failures);
+  expect(typeof shape.hasUserSessionField === "boolean", "InitTxn request-shape preflight records usersession field presence", failures);
+  expect(Boolean(shape.session), "InitTxn request-shape preflight records normalized session", failures);
+  expectInitTxnRequestShape(
+    {
+      present: true,
+      ...requestShape,
+      requestShapeSummary: requestShape.summary
+    },
+    "InitTxn request-shape preflight",
+    failures
+  );
+  if (manifestRequiresInitTxnRequestPreflight(manifest)) {
+    expect(
+      shape.hasRequestFile === true && shape.requestFileExists === true,
+      "matrix InitTxn request-file manifest has matching preflight shape",
+      failures
+    );
   }
 }
 
@@ -1140,6 +1217,16 @@ function printSummary(summary) {
         `session=${formatValue(summary.preflight.currentSessionId)}`
     );
   }
+  if (summary.initTxnRequestShapePreflight) {
+    console.log(
+      `initTxnRequestShapePreflight: hasRequestFile=${summary.initTxnRequestShapePreflight.hasRequestFile} ` +
+        `requestFileExists=${summary.initTxnRequestShapePreflight.requestFileExists} ` +
+        `requestAppIdPresent=${summary.initTxnRequestShapePreflight.requestAppIdPresent} ` +
+        `requestAppIdMatches=${summary.initTxnRequestShapePreflight.requestAppIdMatches} ` +
+        `matrixAppIdForced=${summary.initTxnRequestShapePreflight.matrixAppIdForced} ` +
+        `request=${formatValue(summary.initTxnRequestShapePreflight.requestShapeSummary)}`
+    );
+  }
   if (summary.liveRunReadiness) {
     console.log(
       `readiness: ready=${summary.liveRunReadiness.ready} ` +
@@ -1257,6 +1344,20 @@ function summarizePreflight(preflight) {
     recentCodeIntegrityEventCount: Array.isArray(preflight.recentCodeIntegrityEvents)
       ? preflight.recentCodeIntegrityEvents.length
       : 0
+  };
+}
+
+function summarizeInitTxnRequestShapePreflight(shape) {
+  const requestShape = summarizeInitTxnRequestShape(shape);
+  return {
+    hasRequestFile: shape.hasRequestFile === true,
+    requestFileExists: shape.requestFileExists === true,
+    requestAppIdPresent: shape.requestAppIdPresent === true,
+    requestAppIdMatches: shape.requestAppIdMatches === true,
+    matrixAppIdForced: shape.matrixAppIdForced === true,
+    usersessionField: requestShape.usersessionField,
+    hasIpAddress: requestShape.hasIpAddress,
+    requestShapeSummary: requestShape.summary
   };
 }
 
@@ -1945,6 +2046,44 @@ function runSelfTest() {
     assert.equal(
       clientPromptMissingSummary.caseSummaries[0].clientSessionPromptMissingRequestShape,
       "usersession=client,ip=false,order=true,steam=true,language=true,currency=true,items=1,bundles=0,itemFields=true,bundleFields=true"
+    );
+    assert.equal(clientPromptMissingSummary.initTxnRequestShapePreflight.hasRequestFile, true);
+    assert.equal(clientPromptMissingSummary.initTxnRequestShapePreflight.requestFileExists, true);
+    assert.equal(clientPromptMissingSummary.initTxnRequestShapePreflight.requestAppIdPresent, true);
+    assert.equal(clientPromptMissingSummary.initTxnRequestShapePreflight.requestAppIdMatches, true);
+    assert.equal(clientPromptMissingSummary.initTxnRequestShapePreflight.matrixAppIdForced, true);
+    assert.equal(
+      clientPromptMissingSummary.initTxnRequestShapePreflight.requestShapeSummary,
+      "usersession=client,ip=false,order=true,steam=true,language=true,currency=true,items=1,bundles=0,itemFields=true,bundleFields=true"
+    );
+
+    const missingPreflightRequestShapeRoot = path.join(tempRoot, "managed-checkout-missing-preflight-shape");
+    writeManagedCheckoutMicroTxnFixture(missingPreflightRequestShapeRoot, {
+      clientPromptMissing: true,
+      omitInitTxnRequestShapePreflight: true
+    });
+    const missingPreflightRequestShapeSummary = summarizeWindowsOverlayMatrixArtifacts(missingPreflightRequestShapeRoot);
+    assert(
+      missingPreflightRequestShapeSummary.failures.some((failure) =>
+        failure.includes("missing InitTxn request-shape preflight JSON")
+      ),
+      "summary self-test should fail when an InitTxn request-file matrix omits the preflight request shape"
+    );
+
+    const mismatchedPreflightRequestShapeRoot = path.join(tempRoot, "managed-checkout-mismatched-preflight-shape");
+    writeManagedCheckoutMicroTxnFixture(mismatchedPreflightRequestShapeRoot, { clientPromptMissing: true });
+    writeInitTxnRequestShapePreflightFixture(mismatchedPreflightRequestShapeRoot, {
+      session: "client",
+      overrides: { requestAppIdMatches: false }
+    });
+    const mismatchedPreflightRequestShapeSummary = summarizeWindowsOverlayMatrixArtifacts(
+      mismatchedPreflightRequestShapeRoot
+    );
+    assert(
+      mismatchedPreflightRequestShapeSummary.failures.some((failure) =>
+        failure.includes("InitTxn request-shape preflight app ID matches matrix App ID")
+      ),
+      "summary self-test should fail when an InitTxn request-file preflight records an app ID mismatch"
     );
 
     const defaultClientPromptMissingRoot = path.join(tempRoot, "managed-checkout-default-client-prompt-missing");
@@ -2818,17 +2957,56 @@ function initTxnRequestShapeFixture(session = "client") {
   };
 }
 
+function initTxnRequestShapePreflightFixture({ session = "client", overrides = {} } = {}) {
+  return {
+    kind: "steam-bridge-windows-init-txn-request-shape",
+    generatedAt: "2026-07-03T00:00:00.000Z",
+    source: "init-txn-request-file",
+    hasRequestFile: true,
+    requestFileExists: true,
+    requestAppIdPresent: true,
+    requestAppIdMatches: true,
+    matrixAppIdForced: true,
+    session,
+    ...initTxnRequestShapeFixture(session),
+    ...overrides
+  };
+}
+
+function writeInitTxnRequestShapePreflightFixture(root, options = {}) {
+  writeJson(
+    path.join(root, "00-preflight", "init-txn-request-shape.json"),
+    initTxnRequestShapePreflightFixture(options)
+  );
+}
+
 function writeManagedCheckoutMicroTxnFixture(root, options = {}) {
   const checkoutCaseId = options.caseId || "02-checkout-approval";
+  const usesInitTxnRequestFile = Boolean(
+    options.useInitTxnRequestFile || options.clientPromptMissing || options.initTxnTargetMissing
+  );
+  const initTxnRequestSession =
+    options.clientPromptMissingSession || options.initTxnTargetMissingSession || "client";
   writeJson(path.join(root, "matrix-manifest.json"), {
     kind: "steam-bridge-windows-overlay-matrix-manifest",
     generatedAt: "2026-07-03T00:00:00.000Z",
     suite: options.suite || "checkout",
-    launchMode: "steam-launch",
+    launchMode: options.launchMode || (usesInitTxnRequestFile ? "steam-app" : "steam-launch"),
     appId: 480,
     onlyCase: checkoutCaseId,
     expectedCaseCount: 1,
     requireMicroTxnCallback: true,
+    initTxnCapture: {
+      hasRequestFile: usesInitTxnRequestFile,
+      captureInApp: usesInitTxnRequestFile,
+      apiKeyEnvProvided: usesInitTxnRequestFile,
+      endpointOption: usesInitTxnRequestFile ? "sandbox" : ""
+    },
+    targetHints: {
+      hasCheckoutTransactionId: false,
+      hasCheckoutJsonFile: !usesInitTxnRequestFile,
+      hasInitTxnRequestFile: usesInitTxnRequestFile
+    },
     cases: [
       {
         id: checkoutCaseId,
@@ -2847,7 +3025,8 @@ function writeManagedCheckoutMicroTxnFixture(root, options = {}) {
         requireMicroTxnCallback: true,
         managedOverlayResultMode: "complete",
         hasCheckoutTransactionId: false,
-        hasCheckoutJsonFile: true
+        hasCheckoutJsonFile: !usesInitTxnRequestFile,
+        hasInitTxnRequestFile: usesInitTxnRequestFile
       }
     ]
   });
@@ -2868,6 +3047,9 @@ function writeManagedCheckoutMicroTxnFixture(root, options = {}) {
       currentSessionInteractive: true
     }
   });
+  if (usesInitTxnRequestFile && !options.omitInitTxnRequestShapePreflight) {
+    writeInitTxnRequestShapePreflightFixture(root, { session: initTxnRequestSession });
+  }
 
   const microTxnEvent = {
     type: "callback:microtxn",

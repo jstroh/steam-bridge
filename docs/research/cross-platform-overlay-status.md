@@ -335,7 +335,10 @@ without logging private purchase, account, item, price, or currency values.
 The Windows matrix now writes the same value-free shape before live launch in
 `00-preflight/init-txn-request-shape.json` for private `-InitTxnRequestFile`
 runs, and fails early if a request-file app ID is present but does not match
-`-AppId`, without printing either app ID.
+`-AppId`, without printing either app ID. The Windows summary auditor now
+requires and prints that value-free preflight shape whenever the manifest says
+an InitTxn request file was used, so private checkout reruns cannot silently
+skip request-shape validation.
 
 A focused default-client diagnostic at
 `C:\Users\admin\steam-bridge-artifacts\windows-default-client-inittxn-checkout-20260703-172218`

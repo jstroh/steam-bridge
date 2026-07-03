@@ -2337,9 +2337,14 @@ Current real-product checkout guardrail:
   standalone fixture checks. The standalone validator reports SDK-style
   `m_unAppID`/`m_nAppID` fields as present app IDs, including inside line-item
   arrays, without printing their values, matching the runtime checkout target
-  parser. Malformed, incomplete, or app-ID-mismatched private captures fail
-  early without echoing the file path, app ID, transaction ID, checkout URL, or
-  return URL. The macOS summary auditor also scans smoke result JSON and
+  parser. For Windows `-InitTxnRequestFile` runs, the matrix writes a
+  value-free `00-preflight/init-txn-request-shape.json` before live launch and
+  the summary auditor requires it whenever the manifest records an InitTxn
+  request file. That preflight shape records only field presence, counts,
+  normalized session, and request-file app-ID match status. Malformed,
+  incomplete, or app-ID-mismatched private captures fail early without echoing
+  the file path, app ID, transaction ID, checkout URL, or return URL. The macOS
+  summary auditor also scans smoke result JSON and
   lifecycle logs for raw checkout approval URLs, transaction/order IDs, return
   URLs, Steam IDs, configured-product item metadata, price/currency details, and
   private checkout CLI arguments, so private purchase artifacts fail closed if

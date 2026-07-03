@@ -872,7 +872,10 @@ Before live Windows launch, the matrix also writes
 runs. That preflight artifact records only the same field-presence/count shape,
 plus whether a provided request-file app ID matched `-AppId`; mismatches fail
 before native-load, render-health, or Steam launch work, without printing either
-app ID.
+app ID. The Windows summary auditor requires this preflight artifact whenever
+the matrix manifest records an InitTxn request file, and prints only the
+value-free `initTxnRequestShapePreflight` booleans, counts, and compact shape
+string.
 The matrix's dry-run and live command logs also redact checkout file paths,
 checkout URLs, return URLs, transaction IDs, and control tokens. Those logs show
 the option name plus `REDACTED`, which keeps command-shape review useful without
