@@ -849,15 +849,16 @@ client-session target is captured, the smoke app can also run a bounded,
 read-only `QueryTxn` probe and the summary prints `clientQuery`,
 `clientQueryAttempted`, `clientQueryEndpoint`, `clientQueryId`,
 `clientQueryOk`, `clientQueryHttp`, `clientQueryResult`, `clientQueryStatus`,
-and `clientQueryError`, plus only transaction/order/Steam-ID presence flags.
-The probe does not expose raw identifiers, product values, prices, URLs, or
-finalize/capture the transaction.
+and `clientQueryError`, plus transaction/order/Steam-ID presence flags. The
+probe never finalizes or captures the transaction. Result/status/error scalars
+are not yet allowlist-normalized, so keep the artifact private and inspect it
+before sharing or committing it.
 A case with
 `clientSessionCaptured=true` and `clientPromptMissing=true` means the in-app
 `InitTxn` call returned a transaction id, Steam Bridge preserved it as a
-client-session checkout target without synthesizing a web approval URL, the
-managed presenter was active, and Steam still did not emit the automatic
-checkout overlay activation before the wait guard expired. Summary rows print
+client-session checkout target without synthesizing a web approval URL. The
+historical result remains inconclusive until the operation-ordering issue in
+the current-work checkpoint is corrected. Summary rows print
 `clientSessionCapturedTransaction`, `clientSessionWaitStarted`,
 `clientSessionWaitPrompt`, and `clientSessionWaitPresenter` so callback-required
 explicit-client artifacts must prove transaction capture, prompt-wait start, and

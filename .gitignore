@@ -13,3 +13,9 @@ sdkencryptedappticket*.lib
 steam_appid.txt
 sdk/
 packages/steam-bridge/index.d.ts
+.env
+.env.*
+!.env.example
+.private/
+*.private.env
+*.private.json

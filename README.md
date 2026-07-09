@@ -578,6 +578,10 @@ The full Electron overlay API and platform notes are in
 [`packages/steam-bridge/README.md`](packages/steam-bridge/README.md). Current
 Deck, Linux, macOS, Windows-helper, and real-purchase evidence is tracked in
 [`docs/research/cross-platform-overlay-status.md`](docs/research/cross-platform-overlay-status.md).
+Maintainer recovery starts with
+[`docs/research/current-work.md`](docs/research/current-work.md), and expensive
+or negative experiments plus their rerun conditions are indexed in
+[`docs/research/test-findings-ledger.md`](docs/research/test-findings-ledger.md).
 
 ## Diagnostics
 
@@ -967,11 +971,12 @@ the private `--checkout-json-file` checkout suite.
   app can run a bounded, read-only `QueryTxn` diagnostic and the summary prints
   `clientQuery`, `clientQueryAttempted`, `clientQueryId`, `clientQueryOk`,
   `clientQueryHttp`, `clientQueryResult`, `clientQueryStatus`, and
-  `clientQueryError`, plus only transaction/order/Steam-ID presence flags. It
-  does not log identifiers, product values, prices, URLs, or finalize/capture
-  the transaction. That keeps a failed callback-required artifact pinned to
-  Steam's automatic client checkout prompt boundary instead of collapsing it
-  into a generic timeout.
+  `clientQueryError`, plus transaction/order/Steam-ID presence flags. It never
+  finalizes or captures the transaction. Result/status/error scalars are not yet
+  allowlist-normalized, so keep the artifact private and inspect it before
+  sharing or committing it. Historical client-prompt artifacts also remain
+  inconclusive until the operation-ordering issue in the
+  [current-work checkpoint](docs/research/current-work.md) is corrected.
   Pass `-PresenterMode session` only when intentionally comparing the direct
   Steam/Electron hook fallback.
   Each matrix case passes `-RequireNoCrashes`,

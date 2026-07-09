@@ -1,6 +1,6 @@
 # Cross-Platform Overlay Status
 
-Last updated: 2026-07-03
+Last updated: 2026-07-09
 
 This tracks the current runtime evidence for the Electron smoke app on Linux x64,
 Steam Deck, and macOS Apple Silicon. The public smoke target is Valve's SpaceWar
@@ -309,8 +309,12 @@ presenter, and crash-diagnostic gates, proving the configured-app Windows launch
 path can show ordinary Steam overlay surfaces. The client-session checkout run
 still did not emit `GameOverlayActivated(true)` or
 `MicroTxnAuthorizationResponse`, so client-session auto-prompt authorization is
-not accepted as proved yet. Treat this as a remaining Steam purchase-flow
-question, not a Windows presenter or configured-app launch failure.
+not accepted as proved yet. A later 2026-07-09 code audit found that this smoke
+path completed `InitTxn` before calling `openCheckoutAndWait(...)`; the managed
+activation hold and shown observer were therefore installed after the operation
+that can trigger Steam's automatic client prompt. Treat this historical result
+as inconclusive until the operation ordering is corrected and rerun, not as
+evidence that only Steam product/account/client behavior remains.
 
 A refreshed focused client-session rerun at
 `C:\Users\admin\steam-bridge-artifacts\windows-client-session-diagnostics-20260703-170411-appid`
@@ -318,10 +322,11 @@ used the signed current Windows package, the interactive `/IT` task wrapper,
 `-LaunchMode steam-app`, private env handoff, render-health gating, and a fresh
 private `usersession=client` `InitTxn` request. The smoke app captured a
 sanitized client-session checkout target (`hasTransactionId=true`,
-`clientSession=true`), activated the D3D11 presenter, and then recorded the new
-`checkout:client-session-prompt-missing` lifecycle event after Steam did not
-emit overlay activation or `MicroTxnAuthorizationResponse` during the checkout
-wait. The Windows summary reports this case as `clientSessionCaptured=true`,
+`clientSession=true`), activated the D3D11 presenter after that capture, and
+then recorded the new `checkout:client-session-prompt-missing` lifecycle event
+after Steam did not emit overlay activation or
+`MicroTxnAuthorizationResponse` during the checkout wait. The Windows summary
+reports this case as `clientSessionCaptured=true`,
 `clientSessionCapturedTransaction=true`, `clientSessionWaitStarted=true`,
 `clientSessionWaitPresenter=true`, `microTxnListener=true`,
 `legacyMicroTxnListener=true`, and `clientPromptMissing=true`; the close probe
@@ -329,20 +334,22 @@ saw the smoke app foreground rather than a checkout panel, and crash diagnostics
 stayed clean. The current summary also prints `microTxnSources`, which remains
 empty when no authorization callback fires and records `steamworks`, `legacy`,
 or both when one does. After a missing client-session prompt, the smoke app now
-runs a bounded, read-only `QueryTxn` diagnostic and records only sanitized
+runs a bounded, read-only `QueryTxn` diagnostic and records value-minimized
 `clientQuery*` fields: endpoint, id type, HTTP/result/status/error strings, and
-transaction/order/Steam-ID presence flags. It does not log raw identifiers,
-product values, prices, URLs, or finalize/capture the transaction. The summary
+transaction/order/Steam-ID presence flags and never finalizes/captures the
+transaction. Result/status/error scalars are not yet allowlist-normalized, so
+the artifact must remain private and be inspected before sharing. The summary
 now requires explicit-client request-file
 artifacts to prove sanitized client-session capture, transaction presence,
 prompt-wait start, active presenter state, value-free listener registration for
 both the current Steamworks and legacy normalized `MicroTxnAuthorizationResponse`
 paths, and a recognized `callbackSource` on any authorization event before
-accepting a missing-prompt diagnostic. This makes the
-remaining gap sharper: Steam Bridge is correctly priming the presenter and
-preserving the client-session target, but this Steam client/product/account
-combination is not showing Steam's automatic client-session authorization
-prompt. The current harness also records sanitized request-shape fields for
+accepting a missing-prompt diagnostic. Those fields prove the post-capture wait
+shape, but they do not prove the presenter was active when `InitTxn` triggered
+the client-session flow. The next valid comparison must move the in-app
+`InitTxn` capture inside the operation passed to `openCheckoutAndWait(...)`, add
+a regression assertion for that ordering, and then rerun once. The current
+harness also records sanitized request-shape fields for
 future reruns, including whether `usersession` was explicit or omitted and
 whether an IP address field was submitted, required order/user/language/currency
 field presence, item and bundle counts, and required line-item field presence,

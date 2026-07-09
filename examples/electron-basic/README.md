@@ -857,14 +857,16 @@ client-session transaction is captured, the smoke app also runs a bounded,
 read-only `QueryTxn` probe and the summary prints `clientQuery`,
 `clientQueryAttempted`, `clientQueryEndpoint`, `clientQueryId`,
 `clientQueryOk`, `clientQueryHttp`, `clientQueryResult`, `clientQueryStatus`,
-and `clientQueryError`, plus only transaction/order/Steam-ID presence flags.
-The probe does not log raw identifiers, product values, prices, URLs, or
-finalize/capture the transaction.
+and `clientQueryError`, plus transaction/order/Steam-ID presence flags. The
+probe never finalizes or captures the transaction. Result/status/error scalars
+are not yet allowlist-normalized, so keep the artifact private and inspect it
+before sharing or committing it.
 If `clientSessionCaptured` and `clientPromptMissing` are both `true`, the
-smoke app captured a valid client-session transaction target and kept the
-managed presenter active, but Steam did not present the automatic authorization
-overlay before the checkout wait guard expired. The prompt session, endpoint,
-HTTP status, and request-shape fields come from sanitized in-app `InitTxn`
+smoke app captured a client-session transaction target, but the historical
+result remains inconclusive until the operation-ordering issue in
+[`current-work.md`](../../docs/research/current-work.md) is corrected. The
+prompt session, endpoint, HTTP status, and request-shape fields come from
+sanitized in-app `InitTxn`
 metadata. The request-shape summary records only field presence and counts:
 explicit or omitted `usersession`, IP-address field presence, required
 order/user/language/currency field presence, item and bundle counts, and whether

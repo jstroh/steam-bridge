@@ -1,13 +1,13 @@
 # Native Overlay Presenter Plan
 
-Last updated: 2026-07-03
+Last updated: 2026-07-09
 
 This is the forward plan for reliable Steam overlay behavior in Electron apps on
-Linux/Steam Deck, macOS, and Windows. Windows direct-hook behavior is still
-useful as a regression baseline, but current Electron 43 testing on the Windows
-laptop shows it is not safe to treat that baseline as product-ready until it can
-prove visible overlay UI, close/back-to-app behavior, and clean crash
-diagnostics.
+Linux/Steam Deck, macOS, and Windows. Windows uses the D3D11/DXGI presenter as
+the managed default. Direct Electron/Chromium hooking remains a regression and
+compatibility baseline because current Electron 43 testing does not make it a
+reliable product path for visible UI, close/back-to-app behavior, and clean
+crash diagnostics.
 
 The goal is to make Steam Bridge own the hard platform work. Electron app
 builders should initialize Steam, attach one presenter to their main window, and
@@ -202,15 +202,19 @@ Reviewed on 2026-07-02 while investigating Windows Electron overlay failures:
   configured-app Windows launch path can show ordinary Steam overlay surfaces.
   Steam still did not emit overlay activation or
   `MicroTxnAuthorizationResponse` for that client-session checkout attempt, so
-  client-session auto-prompt authorization remains an open purchase-flow proof,
-  not a Windows presenter or configured-app launch failure.
+  client-session auto-prompt authorization remains an open purchase-flow proof.
+  A later ordering audit makes the negative result inconclusive: the smoke app
+  completed `InitTxn` before entering `openCheckoutAndWait(...)`, so it did not
+  prove the presenter activation hold and shown observer existed when the
+  operation triggered Steam's client prompt.
 - A refreshed current-package client-session checkout diagnostic at
   `C:\Users\admin\steam-bridge-artifacts\windows-client-session-diagnostics-20260703-170411-appid`
   kept the same `steam-app` configured-app lane, private env handoff, live
   readiness, native-load, and render-health gates. The smoke app captured the
   private `usersession=client` `InitTxn` result as a sanitized checkout target
   with `hasTransactionId=true` and `clientSession=true`, activated the D3D11
-  presenter, and then recorded `checkout:client-session-prompt-missing` after
+  presenter after that capture, and then recorded
+  `checkout:client-session-prompt-missing` after
   Steam did not emit overlay activation or `MicroTxnAuthorizationResponse`.
   The Windows summary now exposes this as `clientSessionCaptured=true`,
   `clientSessionCapturedTransaction=true`, `clientSessionWaitStarted=true`,
@@ -220,20 +224,21 @@ Reviewed on 2026-07-02 while investigating Windows Electron overlay failures:
   Current summaries also print `microTxnSources`, empty when no authorization
   callback fires and set to `steamworks`, `legacy`, or both when one does. When
   the automatic prompt is missing, the smoke app now runs a bounded, read-only
-  `QueryTxn` diagnostic and records only sanitized `clientQuery*` fields:
+  `QueryTxn` diagnostic and records value-minimized `clientQuery*` fields:
   endpoint, id type, HTTP/result/status/error strings, and transaction, order,
-  and Steam-ID presence flags. It does not log raw identifiers, product values,
-  prices, URLs, or finalize/capture the transaction.
+  and Steam-ID presence flags and never finalizes/captures the transaction.
+  Result/status/error scalars are not yet allowlist-normalized, so the artifact
+  must remain private and be inspected before sharing.
   Callback-required explicit-client artifacts must prove sanitized transaction
   capture, the prompt-wait boundary, listener registration for both the current
   Steamworks and legacy normalized `MicroTxnAuthorizationResponse` paths, and a
   recognized `callbackSource` on any authorization event before a missing-prompt
-  diagnostic is accepted. That narrows the
-  remaining Windows
-  purchase gap to
-  Steam's automatic client-session prompt behavior for the configured
-  product/account, not native presenter readiness, Steam app launch, checkout
-  target parsing, or crash/focus health.
+  diagnostic is accepted. These diagnostics validate the post-capture wait but
+  do not isolate Steam's automatic prompt behavior yet. The smoke harness must
+  run `InitTxn` inside the operation supplied to `openCheckoutAndWait(...)`,
+  matching the library's presenter-first ordering, before a new artifact can
+  distinguish a bridge issue from configured product/account or Steam client
+  behavior.
 - A focused default-client diagnostic at
   `C:\Users\admin\steam-bridge-artifacts\windows-default-client-inittxn-checkout-20260703-172218`
   used the same `steam-app` configured-app lane and a private request that
@@ -1901,10 +1906,18 @@ Unsupported for now:
 
 ## Windows Position
 
-Windows should stay in the verification matrix, but it should not drive this
-design. If the ordinary Electron overlay path works on Windows, keep it as the
-default there and use the presenter only if a future regression proves it is
-needed.
+Windows remains in the verification matrix with the D3D11/DXGI presenter as the
+managed product default. The ordinary Electron overlay path, WGL host, and
+Chromium flag profiles remain diagnostic comparisons behind the same app-facing
+API; they must not replace D3D11 without broader route, input,
+close/back-to-app, render-health, and crash evidence.
+
+The remainder of this section preserves the investigation chronologically.
+Statements in early July 2 evidence that call the ordinary Electron hook the
+default or say D3D11 must remain opt-in are historical and superseded by the
+later passing D3D11 matrices. Use the [current-work checkpoint](current-work.md)
+and [`WIN-D3D11-001`](test-findings-ledger.md#windows-x64) for the current
+decision.
 
 When Windows overlay activation fails while the Steam client window is itself
 blank or white, stop live launch loops and capture Steam client health first.
@@ -1927,9 +1940,9 @@ Windows diagnostic profile on the plain render path by default, exposes
 diagnostics only, and requires any passing mode to include Alt+Tab, close,
 back-to-app, and crash checks before it can become product guidance. Newer
 wrapper work such as `steamworks-ffi-node` uses native OpenGL/Metal overlay host
-surfaces across platforms, which remains useful contingency evidence, but it is
-not the first Windows implementation path unless ordinary Electron proves
-insufficient.
+surfaces across platforms. At this research stage that was contingency evidence
+rather than the first Windows implementation path; later D3D11 matrix evidence
+superseded that position.
 
 A July 2, 2026 wrapper scan compared Steam's own overlay requirements,
 `steamworks.js`, Greenworks, `steamworks-ffi-node`, and Steamworks.NET guidance
@@ -1942,10 +1955,10 @@ overlay issue history is old enough to treat as background only. The newer
 `steamworks-ffi-node` native-surface approach is active and useful fallback
 evidence, but its 2026 open issues report frame-rate drops and lingering
 Steam-running state after enabling its Electron overlay helper. Steam Bridge
-therefore keeps Windows on the ordinary Steam-launched Electron path first,
-keeps `disableDirectComposition` opt-in, and requires any native-presenter
-fallback to prove FPS, shutdown, Alt+Tab, close, and back-to-app behavior in
-the local Windows matrix before becoming a default.
+therefore initially kept Windows on the ordinary Steam-launched Electron path
+and required a native presenter to prove FPS, shutdown, Alt+Tab, close, and
+back-to-app behavior before becoming a default. Later D3D11 evidence met the
+relevant product gates; `disableDirectComposition` remains opt-in.
 
 A broader July 2, 2026 Windows source refresh checked Valve's overlay docs,
 Valve's browser-game overlay FAQ, the Steam microtransaction implementation
@@ -1984,9 +1997,9 @@ content visible on the desktop with a Back to Game overlay shell. That narrows
 the Windows profile/community problem: the Steam client can render the profile
 surface during a native OpenGL control run, while the Electron smoke route can
 remain active/callback-only with no visible Community surface. This is still
-only diagnostic evidence. Do not turn Windows into the macOS-style native
-presenter path unless a later matrix proves that the ordinary Electron path
-cannot be made reliable for the required routes. The env-file version of this
+only diagnostic evidence. At that point it did not justify a Windows native
+presenter; later D3D11 route matrices supplied the broader product proof and
+superseded that caution. The env-file version of this
 native control also exposed a local Smart App Control/App Control reputation
 block for the freshly rebuilt generated executable, so repeat native-control
 proof needs either the previously accepted binary, a reputable publisher-signed
@@ -2047,8 +2060,9 @@ the managed modal web `openAndWait` route from the interactive Session 1 Steam
 shortcut with App ID `480`: visible overlay UI, `GameOverlayActivated(true)`,
 SendInput click on the Steam web close control, `GameOverlayActivated(false)`,
 presenter parking, app focus return, `openAndWait` completion, clean crash
-diagnostics, and no leftover smoke or `gameoverlayui64` processes. Keep D3D11
-opt-in until route expansion proves it at least as broadly as the WGL presenter.
+diagnostics, and no leftover smoke or `gameoverlayui64` processes. D3D11
+remained opt-in at this stage until the later route expansion proved it broadly
+enough to become the managed default.
 
 The first D3D11 route expansion, artifact
 `C:\Users\admin\steam-bridge-artifacts\windows-d3d11-store-20260702-141901`,
@@ -2071,9 +2085,10 @@ direct open-status gating, visible Steam checkout approval web UI, active and
 inactive overlay callbacks, presenter parking,
 `overlay:presenter-checkout-open-and-wait-complete`, focus return, and clean
 crash diagnostics. This is approval-route plumbing proof, not real configured
-product purchase proof. Keep D3D11 non-default until the broader
-Community/profile-style route set, remaining close/input edge cases, and real
-configured-product checkout clear the same gates.
+product purchase proof. At this stage D3D11 remained non-default pending the
+broader Community/profile-style route set and close/input edge cases; later
+public matrices cleared those presenter gates. Real configured-product checkout
+remains a separate evidence track.
 
 A focused D3D11 shortcut-keyboard probe then found a passive-host focus bug:
 artifact
