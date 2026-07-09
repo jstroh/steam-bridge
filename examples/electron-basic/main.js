@@ -8,6 +8,17 @@ const { app, BrowserWindow, crashReporter, ipcMain } = require("electron");
 const steamworks = require("steam-bridge");
 const { sanitizeSmokeValue } = require("./smoke-sanitize.cjs");
 const { serializeSmokeError } = require("./smoke-error.cjs");
+const {
+  clientSessionQueryErrorDiagnostic,
+  clientSessionQuerySkippedDiagnostic,
+  checkoutCallbackCorrelationFromResult,
+  createMicroTxnCheckoutCorrelationTracker,
+  microTxnAuthorizationDiagnostic,
+  normalizeMicroTxnErrorCode,
+  normalizeMicroTxnResult,
+  startManagedCheckoutOperation,
+  summarizeClientSessionQueryTxnResponse
+} = require("./checkout-proof.cjs");
 
 const CLI_OPTIONS = parseSmokeArgs(process.argv.slice(1));
 loadSmokeEnvFile(CLI_OPTIONS.smokeEnvFile || process.env.STEAM_BRIDGE_SMOKE_ENV_FILE || "");
@@ -207,6 +218,7 @@ let managedShortcutOpenSource = "Shift+Tab";
 const managedOverlayWaitControllers = new Set();
 const callbackHandles = [];
 const eventLog = [];
+const microTxnCheckoutCorrelation = createMicroTxnCheckoutCorrelationTracker();
 
 function createWindow() {
   const fullscreen = WINDOW_MODE === "fullscreen" || WINDOW_MODE === "borderless";
@@ -389,6 +401,7 @@ function shutdownSteam() {
   closeSmokeControlServer();
   clearPostClosePresenterSnapshotObserver();
   abortManagedOverlayWaits();
+  microTxnCheckoutCorrelation.clear();
   closeNativeOverlayPresenter();
   closeNativeOverlaySession();
 
@@ -457,8 +470,9 @@ function registerSteamCallbacks() {
 }
 
 function recordMicroTxnAuthorizationResponse(event, callbackSource) {
-  const payload = event && typeof event === "object" && !Array.isArray(event) ? { ...event } : { event };
+  const payload = microTxnAuthorizationDiagnostic(event);
   payload.callbackSource = callbackSource;
+  payload.matchesCurrentCheckoutOperation = microTxnCheckoutCorrelation.matches(event);
   payload.presenter = electronSteamOverlay && electronSteamOverlay.isOpen() ? electronSteamOverlay.snapshot() : null;
   recordEvent("callback:microtxn", payload);
 }
@@ -1998,42 +2012,101 @@ function openPresenterUserOpenAndWaitOverlay() {
 async function openPresenterCheckoutOverlay() {
   const activeClient = requireClient();
   const overlay = ensureElectronSteamOverlay(activeClient);
-  const checkoutOperation = await readCheckoutOperationInput(activeClient);
+  const checkoutOperation = readCheckoutOperationInput(activeClient);
   if (checkoutOperation) {
-    const { transaction, source, initTxn, queryClientSessionStatus } = checkoutOperation;
-    const target = checkoutTargetFromOperation(transaction);
-    const targetSnapshot = steamworks.overlay.snapshotSteamOverlayTarget(target);
-    const clientSessionCheckout = targetSnapshot.type === "checkout" && targetSnapshot.clientSession === true;
+    const pendingTarget = { type: "checkout" };
+    const checkoutState = {
+      queryClientSessionStatus: undefined,
+      clientSessionCheckout: false
+    };
     const context = {
       target: "checkout",
       route: "web",
       modal: true,
       api: "openCheckoutAndWait",
-      checkoutSource: source,
-      checkout: checkoutDiagnostic(transaction),
-      targetSnapshot,
-      initTxn
+      checkoutSource: checkoutOperation.source
     };
-    if (clientSessionCheckout) {
-      recordEvent("checkout:client-session-wait-start", {
-        ...context,
-        expectedSteamPrompt: true,
-        presenter: safeOverlaySnapshot(overlay)
-      });
-    }
     recordCheckoutOperationReadiness(overlay, context);
-    const openAndWait = overlay.openCheckoutAndWait(() => transaction, {
-      showTimeoutMs: MANAGED_OVERLAY_WAIT_TIMEOUT_MS,
-      closeTimeoutMs: MANAGED_OVERLAY_PARK_TIMEOUT_MS
+    const readinessSnapshot = overlay.snapshot();
+    throwIfNativeHostUnavailable(readinessSnapshot, pendingTarget);
+    const lifecycle = observeManagedOverlayLifecycle(overlay, context);
+    pendingManagedOverlayShownWait = lifecycle.shown;
+    pendingManagedOverlayLifecycle = lifecycle;
+
+    let correlationHandle;
+    let operationGateSettled = false;
+    let resolveOperationGate;
+    let rejectOperationGate;
+    const operationGate = new Promise((resolve, reject) => {
+      resolveOperationGate = resolve;
+      rejectOperationGate = reject;
+    });
+    const settleOperationGate = (error) => {
+      if (operationGateSettled) {
+        return;
+      }
+      operationGateSettled = true;
+      if (error) {
+        rejectOperationGate(error);
+      } else {
+        resolveOperationGate();
+      }
+    };
+
+    const openAndWait = startManagedCheckoutOperation(
+      overlay,
+      checkoutOperation.run,
+      {
+        showTimeoutMs: MANAGED_OVERLAY_WAIT_TIMEOUT_MS,
+        closeTimeoutMs: MANAGED_OVERLAY_PARK_TIMEOUT_MS
+      },
+      {
+        onOperationStart() {
+          correlationHandle = microTxnCheckoutCorrelation.begin(checkoutOperation.callbackCorrelation);
+          recordEvent("checkout:managed-operation-start", {
+            ...context,
+            deferredInitTxn: checkoutOperation.deferredInitTxn === true,
+            shownObserverArmed: Boolean(lifecycle),
+            callbackCorrelationPrepared: correlationHandle.prepared,
+            presenter: safeOverlaySnapshot(overlay)
+          });
+        },
+        onOperationComplete(completed) {
+          const { transaction, initTxn, queryClientSessionStatus } = completed;
+          const target = checkoutTargetFromOperation(transaction);
+          const targetSnapshot = steamworks.overlay.snapshotSteamOverlayTarget(target);
+          checkoutState.queryClientSessionStatus = queryClientSessionStatus;
+          checkoutState.clientSessionCheckout =
+            targetSnapshot.type === "checkout" && targetSnapshot.clientSession === true;
+          Object.assign(context, {
+            checkout: checkoutDiagnostic(transaction),
+            targetSnapshot,
+            initTxn
+          });
+          if (checkoutState.clientSessionCheckout) {
+            recordEvent("checkout:client-session-wait-start", {
+              ...context,
+              expectedSteamPrompt: true,
+              presenter: safeOverlaySnapshot(overlay)
+            });
+          }
+          settleOperationGate();
+        },
+        onOperationError(error) {
+          lifecycle.abort();
+          settleOperationGate(error);
+        }
+      }
+    );
+    void openAndWait.catch((error) => {
+      lifecycle.abort();
+      settleOperationGate(error);
     });
     const initialSnapshot = overlay.snapshot();
     recordEvent("overlay:presenter-open", {
       ...context,
       presenter: initialSnapshot
     });
-    const lifecycle = observeManagedOverlayLifecycle(overlay, context);
-    pendingManagedOverlayShownWait = lifecycle.shown;
-    pendingManagedOverlayLifecycle = lifecycle;
     pendingManagedOverlayCompletionWait = openAndWait
       .then((result) => {
         recordEvent("overlay:presenter-checkout-open-and-wait-complete", {
@@ -2049,8 +2122,13 @@ async function openPresenterCheckoutOverlay() {
       .catch(async (error) => {
         const serialized = serializeError(error);
         if (!shutdownComplete) {
-          if (clientSessionCheckout && isSteamOverlayWaitTimeout(serialized)) {
-            const query = await queryClientSessionPromptMissingStatus(queryClientSessionStatus);
+          if (checkoutState.clientSessionCheckout && isSteamOverlayWaitTimeout(serialized)) {
+            recordEvent("checkout:client-session-wait-timeout", {
+              ...context,
+              error: serialized,
+              presenter: safeOverlaySnapshot(overlay)
+            });
+            const query = await queryClientSessionPromptMissingStatus(checkoutState.queryClientSessionStatus);
             recordEvent("checkout:client-session-query", {
               ...context,
               query,
@@ -2059,7 +2137,6 @@ async function openPresenterCheckoutOverlay() {
             recordEvent("checkout:client-session-prompt-missing", {
               ...context,
               expectedSteamPrompt: true,
-              query,
               error: serialized,
               presenter: safeOverlaySnapshot(overlay)
             });
@@ -2071,8 +2148,9 @@ async function openPresenterCheckoutOverlay() {
           });
         }
         return { ok: false, error: serialized };
-      });
-    throwIfNativeHostUnavailable(initialSnapshot, target);
+      })
+      .finally(() => correlationHandle?.release());
+    await operationGate;
   } else {
     await overlay.withCheckoutPrepared(() => {
       recordEvent("overlay:presenter-checkout-ready", {
@@ -2093,18 +2171,30 @@ function isSteamOverlayWaitTimeout(error) {
   );
 }
 
-async function readCheckoutOperationInput(activeClient) {
+function readCheckoutOperationInput(activeClient) {
   if (INIT_TXN_REQUEST_FILE) {
-    const { transaction, initTxn, queryClientSessionStatus } = await captureInitTxnCheckout(activeClient);
+    const prepared = prepareInitTxnCheckout(activeClient);
     return {
       source: "init-txn-request-file",
-      transaction,
-      initTxn,
-      queryClientSessionStatus
+      deferredInitTxn: true,
+      callbackCorrelation: {
+        appId: APP_ID,
+        orderId: prepared.orderId
+      },
+      run: () => captureInitTxnCheckout(prepared)
     };
   }
 
-  return readStaticCheckoutOperationInput();
+  const staticInput = readStaticCheckoutOperationInput();
+  if (!staticInput) {
+    return null;
+  }
+  return {
+    source: staticInput.source,
+    deferredInitTxn: false,
+    callbackCorrelation: checkoutCallbackCorrelation(staticInput.transaction),
+    run: () => ({ transaction: staticInput.transaction })
+  };
 }
 
 function readStaticCheckoutOperationInput() {
@@ -2136,7 +2226,11 @@ function readStaticCheckoutOperationInput() {
   };
 }
 
-async function captureInitTxnCheckout(activeClient) {
+function checkoutCallbackCorrelation(transaction) {
+  return checkoutCallbackCorrelationFromResult(transaction, APP_ID);
+}
+
+function prepareInitTxnCheckout(activeClient) {
   if (APP_ID === 480) {
     throw new Error("Private InitTxn checkout proof requires a configured Steam app/product.");
   }
@@ -2165,6 +2259,20 @@ async function captureInitTxnCheckout(activeClient) {
   const requestShape = initTxnRequestShape(initTxnRequest, session);
   const webClient = steamworks.createSteamWebApiClient({ apiKey });
   const facade = endpoint === "production" ? webClient.microTxn : webClient.microTxnSandbox;
+  return {
+    apiKey,
+    endpoint,
+    facade,
+    initTxnRequest,
+    orderId: readFirstPresentField(initTxnRequest, ["orderId", "orderid"]),
+    requestShape,
+    session,
+    steamId64
+  };
+}
+
+async function captureInitTxnCheckout(prepared) {
+  const { apiKey, endpoint, facade, initTxnRequest, orderId, requestShape, session, steamId64 } = prepared;
   recordEvent("checkout:init-txn-request-shape", {
     endpoint,
     session,
@@ -2211,7 +2319,7 @@ async function captureInitTxnCheckout(activeClient) {
           endpoint,
           apiKey,
           transactionId: target.transactionId,
-          orderId: readFirstPresentField(initTxnRequest, ["orderId", "orderid"])
+          orderId
         })
       : null;
   recordEvent("checkout:init-txn-captured", {
@@ -2251,15 +2359,7 @@ function createClientSessionQueryStatusProbe({ endpoint, apiKey, transactionId, 
   };
   const queryClientSessionStatus = async function queryClientSessionStatus(signal) {
     if (id === "none") {
-      return {
-        attempted: false,
-        endpoint,
-        id,
-        reason: "missing-query-id",
-        hasTransactionId: false,
-        hasOrderId: false,
-        hasSteamId64: false
-      };
+      return clientSessionQuerySkippedDiagnostic("missing-query-id", diagnosticContext);
     }
 
     const webClient = steamworks.createSteamWebApiClient({ apiKey });
@@ -2279,39 +2379,21 @@ function createClientSessionQueryStatusProbe({ endpoint, apiKey, transactionId, 
 
 async function queryClientSessionPromptMissingStatus(queryClientSessionStatus) {
   if (typeof queryClientSessionStatus !== "function") {
-    return { attempted: false, reason: "not-configured" };
+    return clientSessionQuerySkippedDiagnostic("not-configured");
   }
+  const context =
+    queryClientSessionStatus && typeof queryClientSessionStatus.diagnosticContext === "object"
+      ? queryClientSessionStatus.diagnosticContext
+      : {};
   if (CLIENT_SESSION_QUERY_TIMEOUT_MS <= 0) {
-    return { attempted: false, reason: "disabled" };
+    return clientSessionQuerySkippedDiagnostic("disabled", context);
   }
 
   try {
     return await withTimeoutSignal(CLIENT_SESSION_QUERY_TIMEOUT_MS, (signal) => queryClientSessionStatus(signal));
   } catch (error) {
-    const context =
-      queryClientSessionStatus && typeof queryClientSessionStatus.diagnosticContext === "object"
-        ? queryClientSessionStatus.diagnosticContext
-        : {};
-    return {
-      attempted: true,
-      endpoint: String(context.endpoint || ""),
-      id: String(context.id || ""),
-      hasTransactionId: context.queriedTransactionId === true,
-      hasOrderId: context.queriedOrderId === true,
-      hasSteamId64: false,
-      error: clientSessionQueryErrorDiagnostic(error)
-    };
+    return clientSessionQueryErrorDiagnostic(error, context);
   }
-}
-
-function clientSessionQueryErrorDiagnostic(error) {
-  const serialized = serializeError(error);
-  return {
-    name: serialized.name || "Error",
-    code: serialized.code || "",
-    reason: serialized.reason || "",
-    timedOut: serialized.name === "AbortError" || serialized.code === "ABORT_ERR"
-  };
 }
 
 async function withTimeoutSignal(timeoutMs, operation) {
@@ -2327,81 +2409,6 @@ async function withTimeoutSignal(timeoutMs, operation) {
   }
 }
 
-function summarizeClientSessionQueryTxnResponse(response, context) {
-  const data = response && response.data;
-  return {
-    attempted: true,
-    endpoint: context.endpoint,
-    id: context.id,
-    ok: Boolean(response && response.ok),
-    httpStatus: response && response.status ? response.status : "",
-    result: firstDiagnosticValue(data, ["result"]),
-    status: firstDiagnosticValue(data, ["status", "orderstatus"]),
-    errorCode: firstDiagnosticValue(data, ["errorcode", "error_code"]),
-    hasErrorDescription: hasDiagnosticKey(data, ["errordesc", "error_description", "errorDescription"]),
-    hasTransactionId: Boolean(context.queriedTransactionId || hasDiagnosticKey(data, ["transid", "transactionid", "transaction_id"])),
-    hasOrderId: Boolean(context.queriedOrderId || hasDiagnosticKey(data, ["orderid", "order_id"])),
-    hasSteamId64: hasDiagnosticKey(data, ["steamid", "steamid64", "steam_id"])
-  };
-}
-
-function firstDiagnosticValue(value, names) {
-  const values = collectDiagnosticValues(value, new Set(names.map((name) => name.toLowerCase())));
-  return values.length > 0 ? values[0] : "";
-}
-
-function collectDiagnosticValues(value, names, seen = new Set(), depth = 0, values = []) {
-  if (!value || typeof value !== "object" || seen.has(value) || depth > 8) {
-    return values;
-  }
-  seen.add(value);
-  if (Array.isArray(value)) {
-    for (const entry of value) {
-      collectDiagnosticValues(entry, names, seen, depth + 1, values);
-    }
-    return uniqueDiagnosticValues(values);
-  }
-
-  for (const [key, entry] of Object.entries(value)) {
-    if (names.has(key.toLowerCase()) && entry !== undefined && entry !== null) {
-      const diagnostic = diagnosticString(entry);
-      if (diagnostic) {
-        values.push(diagnostic);
-      }
-    }
-    collectDiagnosticValues(entry, names, seen, depth + 1, values);
-  }
-  return uniqueDiagnosticValues(values);
-}
-
-function hasDiagnosticKey(value, names, seen = new Set(), depth = 0) {
-  if (!value || typeof value !== "object" || seen.has(value) || depth > 8) {
-    return false;
-  }
-  seen.add(value);
-  if (Array.isArray(value)) {
-    return value.some((entry) => hasDiagnosticKey(entry, names, seen, depth + 1));
-  }
-  const normalized = new Set(names.map((name) => name.toLowerCase()));
-  return Object.entries(value).some(
-    ([key, entry]) => normalized.has(key.toLowerCase()) || hasDiagnosticKey(entry, names, seen, depth + 1)
-  );
-}
-
-function diagnosticString(value) {
-  if (value === undefined || value === null) {
-    return "";
-  }
-  if (typeof value === "object") {
-    return "";
-  }
-  const text = String(value).trim();
-  return text.length > 80 ? `${text.slice(0, 77)}...` : text;
-}
-
-function uniqueDiagnosticValues(values) {
-  return Array.from(new Set(values));
-}
 
 function normalizeInitTxnRequestSession(value) {
   const session = String(value || "").trim().toLowerCase();
@@ -2490,11 +2497,11 @@ function initTxnFailureDiagnostic(data) {
   const response = data && typeof data === "object" ? data.response : undefined;
   const result = response && typeof response === "object" ? response.result : undefined;
   const error = response && typeof response === "object" ? response.error : undefined;
-  const errorCode = error && typeof error === "object" ? error.errorcode : undefined;
-  const errorDescription = error && typeof error === "object" ? error.errordesc : undefined;
+  const errorCode = error && typeof error === "object" ? error.errorcode ?? error.errorCode : undefined;
+  const errorDescription = error && typeof error === "object" ? error.errordesc ?? error.errorDescription : undefined;
   return {
-    result: String(result || "unknown"),
-    errorCode: String(errorCode || "unknown"),
+    result: normalizeMicroTxnResult(result),
+    errorCode: normalizeMicroTxnErrorCode(errorCode),
     hasErrorDescription: typeof errorDescription === "string" && errorDescription.length > 0
   };
 }
@@ -3807,7 +3814,14 @@ function observeManagedOverlayLifecycle(overlay, context) {
     managedOverlayWaitControllers.delete(controller);
   });
 
-  return { shown, closed, parked };
+  return {
+    shown,
+    closed,
+    parked,
+    abort() {
+      controller.abort();
+    }
+  };
 }
 
 function recordManagedOverlayWait(type, promise, context, overlay, onDone = () => {}) {

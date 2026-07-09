@@ -563,6 +563,11 @@ result plus a redacted order ID presence marker.
 On Windows, `-RequireMicroTxnCallback` is rejected with public App ID `480`;
 use a configured Steam app ID when the artifact is meant to prove real purchase
 authorization rather than generic checkout routing.
+The callback requirement belongs only to the direct managed
+`presenter-checkout` operation, where Steam Bridge can correlate the callback
+to the app/order pair associated with `openCheckoutAndWait(...)`. Shortcut
+checkout cases remain parser, route, and lifecycle proof and are never
+assigned the callback requirement by the Windows matrix.
 For split-step checkout targets outside the managed wait helper, call
 `steamworks.overlay.checkoutTargetFromResult(initTxnResponse, { expectedAppId })`
 to get the same wrong-app guard before handing the target to a shortcut or other
@@ -949,7 +954,9 @@ the private `--checkout-json-file` checkout suite.
   with your own configured app and product when a purchase authorization
   callback is expected. The checkout suite covers prepare-only, direct checkout,
   Shift+Tab checkout, and programmatic checkout shortcut open-and-wait without
-  rerunning unrelated overlay surfaces. For automated shortcut checkout proof on
+  rerunning unrelated overlay surfaces. Shortcut checkout cases prove parser,
+  route, and lifecycle behavior; the direct checkout case owns correlated
+  authorization-callback proof. For automated shortcut checkout proof on
   Windows, the close probe focuses the smoke app before sending the managed
   Shift+Tab open chord and records `probe:shortcut-focus` before the close input.
   To let the Windows matrix create the private checkout JSON immediately before
@@ -960,23 +967,27 @@ the private `--checkout-json-file` checkout suite.
   environment, validates the generated target against `-AppId`, and records
   only sanitized capture metadata. For explicit `usersession=client` request
   files, the summary requires a sanitized client-session checkout target,
-  transaction-presence marker, prompt-wait start event, and active presenter
-  state before accepting a missing-prompt diagnostic. Callback-required cases
+  transaction-presence marker, a managed-operation start before capture, an
+  armed shown observer, prompt-wait start event, and active presenter state
+  before accepting a missing-prompt diagnostic. Callback-required cases
   also require value-free `callback:microtxn-listener-registered` events for
   both the current Steamworks callback and the legacy normalized callback path
-  before checkout proof. Any authorization callback must also include a
-  `callbackSource` of `steamworks` or `legacy`, so a no-callback artifact cannot
-  be mistaken for a missing listener and a callback artifact shows which Steam
-  callback path fired. When Steam does not show the automatic prompt, the smoke
-  app can run a bounded, read-only `QueryTxn` diagnostic and the summary prints
-  `clientQuery`, `clientQueryAttempted`, `clientQueryId`, `clientQueryOk`,
-  `clientQueryHttp`, `clientQueryResult`, `clientQueryStatus`, and
-  `clientQueryError`, plus transaction/order/Steam-ID presence flags. It never
-  finalizes or captures the transaction. Result/status/error scalars are not yet
-  allowlist-normalized, so keep the artifact private and inspect it before
-  sharing or committing it. Historical client-prompt artifacts also remain
-  inconclusive until the operation-ordering issue in the
-  [current-work checkpoint](docs/research/current-work.md) is corrected.
+  before checkout proof. Any authorization callback must include a
+  `callbackSource` of `steamworks` or `legacy` and a true
+  `matchesCurrentCheckoutOperation` marker computed in memory from the current
+  app/order pair. Use a fresh order ID represented as a decimal string or safe
+  integer for each live attempt. When Steam does not show the automatic prompt,
+  the smoke app can run a bounded, read-only `QueryTxn` diagnostic and the
+  summary prints
+  `clientQuery`, `clientQuerySchema`, `clientQueryClosed`,
+  `clientQueryAttempted`, `clientQueryReason`, `clientQueryId`,
+  `clientQueryOk`, `clientQueryHttp`, `clientQueryResult`,
+  `clientQueryStatus`, `clientQueryError`, and `clientQueryRequestError`, plus
+  transaction/order/Steam-ID presence flags. It never finalizes or captures the
+  transaction. All scalar fields use a closed schema and the Windows summarizer
+  normalizes them again before printing. Historical client-prompt artifacts
+  remain inconclusive; the ordering fix now needs one current-head live run as
+  described in the [current-work checkpoint](docs/research/current-work.md).
   Pass `-PresenterMode session` only when intentionally comparing the direct
   Steam/Electron hook fallback.
   Each matrix case passes `-RequireNoCrashes`,

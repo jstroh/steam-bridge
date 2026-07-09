@@ -242,7 +242,9 @@ The checkout suite covers
 prepare-only, direct checkout, Shift+Tab checkout, and programmatic checkout
 shortcut open-and-wait without rerunning unrelated overlay surfaces. Add
 `-RequireMicroTxnCallback` when the artifact should prove Steam's authorization
-callback for that purchase.
+callback for the direct managed checkout operation. Shortcut checkout remains
+parser, route, and lifecycle proof because it has no in-app transaction
+operation boundary to correlate against.
 
 ## Quick Start
 
@@ -823,9 +825,10 @@ presenter snapshot, or does not report the
 launched Steam app ID, Steam authorization result, or a redacted order ID
 presence marker. Steam Bridge normalizes the callback's Steam app ID, order ID,
 and authorization flag to `appId`, `orderId`, and `authorized` even when the
-native payload uses SDK-style field names. Shortcut checkout cases
-feed that same parsed object through `checkoutTargetFromResult(...)`, so direct
-and shortcut checkout proofs share one accepted envelope parser. The macOS
+native payload uses SDK-style field names. Shortcut checkout cases feed that
+same parsed object through `checkoutTargetFromResult(...)`, so direct and
+shortcut checkout routes share one accepted envelope parser; only the direct
+managed checkout case claims operation-scoped callback proof. The macOS
 matrix also accepts `--app-id <your-app-id>` and summarizes the expected app ID
 plus `checkoutSource=json-file` without persisting the JSON path; the matrix
 summarizer rejects new manifests that include unredacted checkout file paths,
@@ -847,28 +850,31 @@ For Windows `usersession=client` diagnostics, the summary also prints
 `clientPromptRequest`. If the automatic client prompt is missing after a
 client-session target is captured, the smoke app can also run a bounded,
 read-only `QueryTxn` probe and the summary prints `clientQuery`,
-`clientQueryAttempted`, `clientQueryEndpoint`, `clientQueryId`,
-`clientQueryOk`, `clientQueryHttp`, `clientQueryResult`, `clientQueryStatus`,
-and `clientQueryError`, plus transaction/order/Steam-ID presence flags. The
-probe never finalizes or captures the transaction. Result/status/error scalars
-are not yet allowlist-normalized, so keep the artifact private and inspect it
-before sharing or committing it.
+`clientQuerySchema`, `clientQueryClosed`, `clientQueryAttempted`,
+`clientQueryReason`, `clientQueryEndpoint`, `clientQueryId`, `clientQueryOk`,
+`clientQueryHttp`, `clientQueryResult`, `clientQueryStatus`, `clientQueryError`,
+and `clientQueryRequestError`, plus transaction/order/Steam-ID presence flags.
+The probe never finalizes or captures the transaction. Its scalars use a closed
+schema and the Windows summarizer normalizes them again before printing.
 A case with
 `clientSessionCaptured=true` and `clientPromptMissing=true` means the in-app
 `InitTxn` call returned a transaction id, Steam Bridge preserved it as a
 client-session checkout target without synthesizing a web approval URL. The
-historical result remains inconclusive until the operation-ordering issue in
-the current-work checkpoint is corrected. Summary rows print
+historical result remains inconclusive; the corrected operation ordering still
+needs one current-head live run. Summary rows print
 `clientSessionCapturedTransaction`, `clientSessionWaitStarted`,
-`clientSessionWaitPrompt`, and `clientSessionWaitPresenter` so callback-required
-explicit-client artifacts must prove transaction capture, prompt-wait start, and
-active presenter state before a missing-prompt diagnostic is accepted. Required
+`checkoutOperationDeferredInitTxn`, `checkoutOperationObserver`,
+`checkoutOperationPresenter`, `clientSessionWaitPrompt`, and
+`clientSessionWaitPresenter` so callback-required explicit-client artifacts
+must prove the observer and active presenter existed before `InitTxn`. Required
 callback artifacts also prove that the smoke app registered both the current
 Steamworks and legacy normalized `MicroTxnAuthorizationResponse` listener paths
 with value-free `callback:microtxn-listener-registered` events before checkout
 proof. Any authorization callback must include `callbackSource` as `steamworks`
-or `legacy`, and `microTxnSources` reports the unique source list for the
-artifact. The
+or `legacy` and `matchesCurrentCheckoutOperation=true`, computed from the
+current app/order pair without logging either identifier. Use a fresh order ID
+represented as a decimal string or safe integer for every live attempt.
+`microTxnSources` reports the unique source list for the artifact. The
 prompt session, endpoint, and HTTP status are copied from sanitized in-app
 `InitTxn` metadata so the artifact can be read without correlating private
 request files. The request shape fields record only whether the submitted

@@ -113,6 +113,10 @@ param(
 $ErrorActionPreference = "Stop"
 $ResultPrefix = "STEAM_BRIDGE_SMOKE_RESULT "
 
+if ($RequireMicroTxnCallback -and $Action -ne "presenter-checkout") {
+  throw "-RequireMicroTxnCallback requires presenter-checkout so callback proof can be correlated to the current operation."
+}
+
 if (-not $AppDir) {
   $scriptDir = Split-Path -Parent $PSCommandPath
   if ($scriptDir -and (Test-Path -LiteralPath (Join-Path $scriptDir "SteamBridgeSmoke.exe"))) {
@@ -1266,12 +1270,22 @@ function Test-MicroTxnOrderIdPresent {
   param($Event)
 
   $payload = Get-MicroTxnPayload -Event $Event
+  if ((Get-SmokeObjectProperty -Value $payload -Name "hasOrderId") -eq $true) {
+    return $true
+  }
   foreach ($key in @("orderId", "orderID", "order_id", "orderid", "m_ulOrderID", "m_ulOrderId")) {
     if ((Test-SmokeObjectHasProperty -Value $payload -Name $key) -and (Test-SanitizedValuePresent -Value (Get-SmokeObjectProperty -Value $payload -Name $key))) {
       return $true
     }
   }
   return $false
+}
+
+function Test-MicroTxnMatchesCurrentCheckoutOperation {
+  param($Event)
+
+  $payload = Get-MicroTxnPayload -Event $Event
+  return (Get-SmokeObjectProperty -Value $payload -Name "matchesCurrentCheckoutOperation") -eq $true
 }
 
 function Test-MicroTxnPresenterSnapshot {
@@ -1309,9 +1323,14 @@ function Assert-MicroTxnCallbackProof {
     $Failures.Add("LegacyMicroTxnAuthorizationResponse listener was registered before checkout proof")
   }
 
-  $callbacks = @($Events | Where-Object { $_.type -eq "callback:microtxn" })
-  if ($callbacks.Count -eq 0) {
+  $allCallbacks = @($Events | Where-Object { $_.type -eq "callback:microtxn" })
+  if ($allCallbacks.Count -eq 0) {
     $Failures.Add("required MicroTxnAuthorizationResponse callback was recorded")
+    return
+  }
+  $callbacks = @($allCallbacks | Where-Object { Test-MicroTxnMatchesCurrentCheckoutOperation -Event $_ })
+  if ($callbacks.Count -eq 0) {
+    $Failures.Add("required MicroTxnAuthorizationResponse callback matched the current checkout operation")
     return
   }
 
@@ -1347,7 +1366,7 @@ function Assert-MicroTxnCallbackProof {
   }
 
   for ($eventIndex = 0; $eventIndex -lt $Events.Count; $eventIndex += 1) {
-    if ($Events[$eventIndex].type -eq "callback:microtxn") {
+    if ($Events[$eventIndex].type -eq "callback:microtxn" -and (Test-MicroTxnMatchesCurrentCheckoutOperation -Event $Events[$eventIndex])) {
       $validCallbackIndexes.Add($eventIndex)
     }
   }
@@ -1404,6 +1423,269 @@ function Assert-MicroTxnCallbackProof {
   }
   if (-not $duringCheckout) {
     $Failures.Add("required MicroTxnAuthorizationResponse callback was recorded during the checkout wait lifecycle")
+  }
+}
+
+function Get-SmokeObjectPropertyNames {
+  param($Value)
+
+  if (-not $Value) {
+    return @()
+  }
+  if ($Value -is [System.Collections.IDictionary]) {
+    return @($Value.Keys | ForEach-Object { [string]$_ })
+  }
+  return @($Value.PSObject.Properties.Name)
+}
+
+function Test-SmokeIntegerValue {
+  param($Value)
+
+  return (
+    $Value -is [sbyte] -or $Value -is [byte] -or
+    $Value -is [int16] -or $Value -is [uint16] -or
+    $Value -is [int32] -or $Value -is [uint32] -or
+    $Value -is [int64] -or $Value -is [uint64]
+  )
+}
+
+function Test-ClientSessionCheckoutTargetPayload {
+  param($Payload)
+
+  $targetSnapshot = Get-SmokeObjectProperty -Value $Payload -Name "targetSnapshot"
+  return (
+    (Get-SmokeObjectProperty -Value $targetSnapshot -Name "type") -eq "checkout" -and
+    (Get-SmokeObjectProperty -Value $targetSnapshot -Name "clientSession") -eq $true
+  )
+}
+
+function Test-SteamOverlayWaitTimeoutPayload {
+  param($Payload)
+
+  $error = Get-SmokeObjectProperty -Value $Payload -Name "error"
+  return (
+    (Get-SmokeObjectProperty -Value $error -Name "code") -eq "STEAM_OVERLAY_WAIT_TIMEOUT" -or
+    (Get-SmokeObjectProperty -Value $error -Name "name") -eq "SteamOverlayWaitTimeoutError"
+  )
+}
+
+function Test-ClientSessionPromptMissingEvent {
+  param($Event)
+
+  if ($Event.type -ne "checkout:client-session-prompt-missing") {
+    return $false
+  }
+  $payload = Get-SmokeObjectProperty -Value $Event -Name "payload"
+  return (
+    (Test-ClientSessionCheckoutTargetPayload -Payload $payload) -and
+    (Test-SteamOverlayWaitTimeoutPayload -Payload $payload)
+  )
+}
+
+function Test-ClientSessionQueryEvent {
+  param($Event)
+
+  if ($Event.type -ne "checkout:client-session-query") {
+    return $false
+  }
+  return (Test-ClientSessionCheckoutTargetPayload -Payload (Get-SmokeObjectProperty -Value $Event -Name "payload"))
+}
+
+function Test-ClientSessionWaitTimeoutEvent {
+  param($Event)
+
+  if ($Event.type -ne "checkout:client-session-wait-timeout") {
+    return $false
+  }
+  $payload = Get-SmokeObjectProperty -Value $Event -Name "payload"
+  return (
+    (Test-ClientSessionCheckoutTargetPayload -Payload $payload) -and
+    (Test-SteamOverlayWaitTimeoutPayload -Payload $payload)
+  )
+}
+
+function Test-ClientSessionQueryClosedSchema {
+  param($Query)
+
+  $expectedFields = @(
+    "schema", "attempted", "reason", "endpoint", "id", "ok", "httpStatus", "result", "status",
+    "errorCode", "requestError", "hasErrorDescription", "hasTransactionId", "hasOrderId", "hasSteamId64"
+  )
+  $actualFields = @(Get-SmokeObjectPropertyNames -Value $Query)
+  if ($actualFields.Count -ne $expectedFields.Count) {
+    return $false
+  }
+  foreach ($field in $expectedFields) {
+    if ($actualFields -cnotcontains $field) {
+      return $false
+    }
+  }
+
+  $schema = Get-SmokeObjectProperty -Value $Query -Name "schema"
+  $attempted = Get-SmokeObjectProperty -Value $Query -Name "attempted"
+  $reason = Get-SmokeObjectProperty -Value $Query -Name "reason"
+  $endpoint = Get-SmokeObjectProperty -Value $Query -Name "endpoint"
+  $id = Get-SmokeObjectProperty -Value $Query -Name "id"
+  $ok = Get-SmokeObjectProperty -Value $Query -Name "ok"
+  $httpStatus = Get-SmokeObjectProperty -Value $Query -Name "httpStatus"
+  $result = Get-SmokeObjectProperty -Value $Query -Name "result"
+  $status = Get-SmokeObjectProperty -Value $Query -Name "status"
+  $errorCode = Get-SmokeObjectProperty -Value $Query -Name "errorCode"
+  $requestError = Get-SmokeObjectProperty -Value $Query -Name "requestError"
+  $hasErrorDescription = Get-SmokeObjectProperty -Value $Query -Name "hasErrorDescription"
+  $hasTransactionId = Get-SmokeObjectProperty -Value $Query -Name "hasTransactionId"
+  $hasOrderId = Get-SmokeObjectProperty -Value $Query -Name "hasOrderId"
+  $hasSteamId64 = Get-SmokeObjectProperty -Value $Query -Name "hasSteamId64"
+
+  if (-not (Test-SmokeIntegerValue -Value $schema) -or $schema -ne 1) {
+    return $false
+  }
+  foreach ($booleanValue in @($attempted, $ok, $hasErrorDescription, $hasTransactionId, $hasOrderId, $hasSteamId64)) {
+    if ($booleanValue -isnot [bool]) {
+      return $false
+    }
+  }
+  if ($reason -isnot [string] -or @("none", "not-configured", "disabled", "missing-query-id") -cnotcontains $reason) {
+    return $false
+  }
+  if ($endpoint -isnot [string] -or @("sandbox", "production", "unknown") -cnotcontains $endpoint) {
+    return $false
+  }
+  if ($id -isnot [string] -or @("transaction", "order", "none") -cnotcontains $id) {
+    return $false
+  }
+  if ($null -ne $httpStatus -and (
+    -not (Test-SmokeIntegerValue -Value $httpStatus) -or $httpStatus -lt 100 -or $httpStatus -gt 599
+  )) {
+    return $false
+  }
+  if ($result -isnot [string] -or @("OK", "Failure", "missing", "unknown") -cnotcontains $result) {
+    return $false
+  }
+  if ($status -isnot [string] -or @(
+    "Init", "Approved", "Succeeded", "Failed", "Refunded", "PartialRefund", "Chargedback",
+    "RefundedSuspectedFraud", "RefundedFriendlyFraud", "missing", "unknown"
+  ) -cnotcontains $status) {
+    return $false
+  }
+  $allowedErrorCodes = @("missing", "unknown") + @(1..16 | ForEach-Object { "$_" }) + @(100..107 | ForEach-Object { "$_" })
+  if ($errorCode -isnot [string] -or $allowedErrorCodes -cnotcontains $errorCode) {
+    return $false
+  }
+  if ($requestError -isnot [string] -or @("none", "timeout", "request-failed") -cnotcontains $requestError) {
+    return $false
+  }
+  if ($attempted -ne ($reason -eq "none")) {
+    return $false
+  }
+  if (-not $attempted) {
+    return (
+      $ok -eq $false -and $null -eq $httpStatus -and $result -eq "missing" -and $status -eq "missing" -and
+      $errorCode -eq "missing" -and $requestError -eq "none" -and $hasErrorDescription -eq $false
+    )
+  }
+  if ($requestError -ne "none") {
+    return (
+      $ok -eq $false -and $null -eq $httpStatus -and $result -eq "missing" -and $status -eq "missing" -and
+      $errorCode -eq "missing" -and $hasErrorDescription -eq $false
+    )
+  }
+  return $true
+}
+
+function Assert-ClientSessionPromptMissingQueryProof {
+  param($Events, [System.Collections.Generic.List[string]]$Failures)
+
+  $rawPromptIndexes = @()
+  $rawQueryIndexes = @()
+  $rawTimeoutIndexes = @()
+  $promptIndexes = @()
+  $queryIndexes = @()
+  $timeoutIndexes = @()
+  for ($index = 0; $index -lt $Events.Count; $index += 1) {
+    $event = $Events[$index]
+    if ($event.type -eq "checkout:client-session-prompt-missing") {
+      $rawPromptIndexes += $index
+      if (Test-ClientSessionPromptMissingEvent -Event $event) {
+        $promptIndexes += $index
+      }
+    } elseif ($event.type -eq "checkout:client-session-query") {
+      $rawQueryIndexes += $index
+      if (Test-ClientSessionQueryEvent -Event $event) {
+        $queryIndexes += $index
+      }
+    } elseif ($event.type -eq "checkout:client-session-wait-timeout") {
+      $rawTimeoutIndexes += $index
+      if (Test-ClientSessionWaitTimeoutEvent -Event $event) {
+        $timeoutIndexes += $index
+      }
+    }
+  }
+  if ($promptIndexes.Count -eq 0) {
+    return
+  }
+  if ($rawPromptIndexes.Count -ne 1 -or $promptIndexes.Count -ne 1) {
+    $Failures.Add("client-session prompt-missing proof recorded exactly one validated classification")
+  }
+  if ($rawQueryIndexes.Count -ne 1 -or $queryIndexes.Count -ne 1) {
+    $Failures.Add("client-session prompt-missing proof recorded exactly one validated QueryTxn diagnostic")
+    return
+  }
+  if ($rawTimeoutIndexes.Count -ne 1 -or $timeoutIndexes.Count -ne 1) {
+    $Failures.Add("client-session prompt-missing proof recorded exactly one validated wait-timeout diagnostic")
+    return
+  }
+
+  $queryIndex = $queryIndexes[0]
+  $promptIndex = $promptIndexes[0]
+  $timeoutIndex = $timeoutIndexes[0]
+  $queryPayload = Get-SmokeObjectProperty -Value $Events[$queryIndex] -Name "payload"
+  $query = Get-SmokeObjectProperty -Value $queryPayload -Name "query"
+  $promptPayload = Get-SmokeObjectProperty -Value $Events[$promptIndex] -Name "payload"
+  $timeoutPayload = Get-SmokeObjectProperty -Value $Events[$timeoutIndex] -Name "payload"
+  $promptInitTxn = Get-SmokeObjectProperty -Value $promptPayload -Name "initTxn"
+  $queryInitTxn = Get-SmokeObjectProperty -Value $queryPayload -Name "initTxn"
+  $timeoutInitTxn = Get-SmokeObjectProperty -Value $timeoutPayload -Name "initTxn"
+  $queryEndpoint = Get-SmokeObjectProperty -Value $query -Name "endpoint"
+  $promptEndpoint = Get-SmokeObjectProperty -Value $promptInitTxn -Name "endpoint"
+  $promptSession = Get-SmokeObjectProperty -Value $promptInitTxn -Name "session"
+  $queryId = Get-SmokeObjectProperty -Value $query -Name "id"
+
+  if (-not (Test-ClientSessionQueryClosedSchema -Query $query)) {
+    $Failures.Add("client-session QueryTxn diagnostic contains exactly the closed schema")
+  }
+  if ((Get-SmokeObjectProperty -Value $query -Name "attempted") -ne $true) {
+    $Failures.Add("client-session prompt-missing proof attempted QueryTxn")
+  }
+  if ((Get-SmokeObjectProperty -Value $query -Name "reason") -ne "none") {
+    $Failures.Add("client-session attempted QueryTxn diagnostic has no skip reason")
+  }
+  if ($queryEndpoint -notin @("sandbox", "production") -or $queryEndpoint -ne $promptEndpoint) {
+    $Failures.Add("client-session QueryTxn endpoint matches the InitTxn endpoint")
+  }
+  if ($queryId -notin @("transaction", "order")) {
+    $Failures.Add("client-session QueryTxn diagnostic uses a transaction or order identifier")
+  } elseif ($queryId -eq "transaction" -and (Get-SmokeObjectProperty -Value $query -Name "hasTransactionId") -ne $true) {
+    $Failures.Add("client-session QueryTxn transaction presence marker is true")
+  } elseif ($queryId -eq "order" -and (Get-SmokeObjectProperty -Value $query -Name "hasOrderId") -ne $true) {
+    $Failures.Add("client-session QueryTxn order presence marker is true")
+  }
+
+  $queryContextMatches = (
+    $promptSession -in @("client", "client-default") -and
+    (Get-SmokeObjectProperty -Value $queryInitTxn -Name "session") -eq $promptSession -and
+    (Get-SmokeObjectProperty -Value $timeoutInitTxn -Name "session") -eq $promptSession -and
+    (Get-SmokeObjectProperty -Value $queryInitTxn -Name "endpoint") -eq $promptEndpoint -and
+    (Get-SmokeObjectProperty -Value $timeoutInitTxn -Name "endpoint") -eq $promptEndpoint
+  )
+  if (-not $queryContextMatches) {
+    $Failures.Add("client-session QueryTxn chain matches one InitTxn context")
+  }
+  if ($timeoutIndex -ge $queryIndex) {
+    $Failures.Add("client-session QueryTxn runs after the managed wait timeout")
+  }
+  if ($queryIndex -ge $promptIndex) {
+    $Failures.Add("client-session QueryTxn runs before prompt-missing classification")
   }
 }
 
@@ -1613,6 +1895,7 @@ function Assert-SmokeResult {
       $failures.Add("managed overlay open-and-wait completion resolved")
     }
   }
+  Assert-ClientSessionPromptMissingQueryProof -Events $events -Failures $failures
   if ($RequireMicroTxnCallback) {
     Assert-MicroTxnCallbackProof -Events $events -ActionName $Action -ExpectedAppId $AppId -Failures $failures
   }

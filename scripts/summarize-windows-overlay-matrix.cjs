@@ -5,6 +5,21 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const zlib = require("node:zlib");
+const checkoutProofPath = fs.existsSync(path.join(__dirname, "checkout-proof.cjs"))
+  ? path.join(__dirname, "checkout-proof.cjs")
+  : path.join(__dirname, "..", "examples", "electron-basic", "checkout-proof.cjs");
+const {
+  CLIENT_SESSION_QUERY_SCHEMA,
+  isClientSessionQueryClosedDiagnostic,
+  normalizeHttpStatus,
+  normalizeMicroTxnErrorCode,
+  normalizeMicroTxnResult,
+  normalizeMicroTxnStatus,
+  normalizeQueryEndpoint,
+  normalizeQueryId,
+  normalizeQueryReason,
+  normalizeRequestError
+} = require(checkoutProofPath);
 
 const RESULT_PREFIX = "STEAM_BRIDGE_SMOKE_RESULT ";
 const KNOWN_NATIVE_LOAD_BLOCKERS = new Set([
@@ -435,6 +450,11 @@ function validateManifestCoverage(
         `matrix manifest case ${expected.id} proved MicroTxnAuthorizationResponse callback`,
         failures
       );
+      expect(
+        row.microTxnCurrentOperationMatch === true,
+        `matrix manifest case ${expected.id} correlated the callback to the current checkout operation`,
+        failures
+      );
       if (row.microTxnCallbackProof !== true && Array.isArray(row.microTxnCallbackProofFailures)) {
         for (const failure of row.microTxnCallbackProofFailures) {
           failures.push(`matrix manifest case ${expected.id}: ${failure}`);
@@ -467,6 +487,31 @@ function validateManifestCoverage(
         );
       }
       if (initTxnRequestShapePreflight && initTxnRequestShapePreflight.session === "client") {
+        expect(
+          row.managedCheckoutOperationStarted === true,
+          `matrix manifest case ${expected.id} started InitTxn inside the managed checkout operation`,
+          failures
+        );
+        expect(
+          row.managedCheckoutOperationDeferredInitTxn === true,
+          `matrix manifest case ${expected.id} deferred InitTxn until the managed checkout operation`,
+          failures
+        );
+        expect(
+          row.managedCheckoutOperationShownObserverArmed === true,
+          `matrix manifest case ${expected.id} armed the shown observer before InitTxn`,
+          failures
+        );
+        expect(
+          row.managedCheckoutOperationPresenterReady === true,
+          `matrix manifest case ${expected.id} activated the presenter before InitTxn`,
+          failures
+        );
+        expect(
+          row.managedCheckoutOperationBeforeInitTxnCapture === true,
+          `matrix manifest case ${expected.id} recorded managed-operation start before InitTxn capture`,
+          failures
+        );
         expect(
           row.clientSessionCheckoutCaptured === true,
           `matrix manifest case ${expected.id} captured client-session InitTxn checkout target`,
@@ -865,6 +910,10 @@ function isMicroTxnCallbackEvent(event) {
   return Boolean(event && event.type === "callback:microtxn");
 }
 
+function microTxnEventMatchesCurrentCheckoutOperation(event) {
+  return microTxnPayload(event).matchesCurrentCheckoutOperation === true;
+}
+
 function hasMicroTxnCallbackListenerRegistered(events) {
   return hasNamedMicroTxnCallbackListenerRegistered(events, "MicroTxnAuthorizationResponse");
 }
@@ -953,6 +1002,43 @@ function summarizeClientSessionCheckoutCapture(events) {
   };
 }
 
+function summarizeManagedCheckoutOperationStart(events) {
+  const startIndex = events.findIndex((candidate) => {
+    if (!candidate || candidate.type !== "checkout:managed-operation-start") {
+      return false;
+    }
+    const payload = objectOrEmpty(candidate.payload);
+    return payload.target === "checkout" && payload.checkoutSource === "init-txn-request-file";
+  });
+  if (startIndex === -1) {
+    return {
+      present: false,
+      deferredInitTxn: false,
+      shownObserverArmed: false,
+      callbackCorrelationPrepared: false,
+      presenterReady: false,
+      beforeInitTxnCapture: false
+    };
+  }
+  const payload = objectOrEmpty(events[startIndex].payload);
+  const presenter = objectOrEmpty(payload.presenter);
+  const captureIndex = events.findIndex(
+    (candidate, index) => index > startIndex && candidate && candidate.type === "checkout:init-txn-captured"
+  );
+  return {
+    present: true,
+    deferredInitTxn: payload.deferredInitTxn === true,
+    shownObserverArmed: payload.shownObserverArmed === true,
+    callbackCorrelationPrepared: payload.callbackCorrelationPrepared === true,
+    presenterReady:
+      presenter.mode === "active" &&
+      presenter.nativeHostOpen === true &&
+      presenter.clickThrough === false &&
+      presenter.transparent === false,
+    beforeInitTxnCapture: captureIndex > startIndex
+  };
+}
+
 function summarizeClientSessionWaitStart(events) {
   const event = events.find((candidate) => {
     if (!candidate || candidate.type !== "checkout:client-session-wait-start") {
@@ -1033,22 +1119,18 @@ function summarizeWebSessionCheckoutCapture(events) {
 }
 
 function summarizeClientSessionPromptMissing(events) {
-  const event = events.find((candidate) => {
-    if (!candidate || candidate.type !== "checkout:client-session-prompt-missing") {
-      return false;
-    }
-    const payload = objectOrEmpty(candidate.payload);
-    const targetSnapshot = objectOrEmpty(payload.targetSnapshot);
-    const error = objectOrEmpty(payload.error);
-    return (
-      targetSnapshot.type === "checkout" &&
-      targetSnapshot.clientSession === true &&
-      (error.code === "STEAM_OVERLAY_WAIT_TIMEOUT" || error.name === "SteamOverlayWaitTimeoutError")
-    );
-  });
-  if (!event) {
+  const eventCount = events.filter(
+    (event) => event && event.type === "checkout:client-session-prompt-missing"
+  ).length;
+  const matches = events
+    .map((event, index) => ({ event, index }))
+    .filter(({ event }) => isClientSessionPromptMissingEvent(event));
+  if (matches.length === 0) {
     return {
       present: false,
+      count: eventCount,
+      validCount: 0,
+      index: -1,
       session: "",
       endpoint: "",
       httpStatus: "",
@@ -1057,13 +1139,17 @@ function summarizeClientSessionPromptMissing(events) {
       requestShapeSummary: ""
     };
   }
+  const { event, index } = matches[0];
   const payload = objectOrEmpty(event.payload);
   const initTxn = objectOrEmpty(payload.initTxn);
   const requestShape = summarizeInitTxnRequestShape(initTxn.requestShape || payload.requestShape);
   return {
     present: true,
+    count: eventCount,
+    validCount: matches.length,
+    index,
     session: String(initTxn.session || payload.session || ""),
-    endpoint: String(initTxn.endpoint || payload.endpoint || ""),
+    endpoint: normalizeQueryEndpoint(initTxn.endpoint || payload.endpoint),
     httpStatus: String(initTxn.httpStatus || payload.httpStatus || ""),
     usersessionField: requestShape.usersessionField,
     hasIpAddress: requestShape.hasIpAddress,
@@ -1071,48 +1157,137 @@ function summarizeClientSessionPromptMissing(events) {
   };
 }
 
-function summarizeClientSessionQuery(events) {
-  const event = events.find((candidate) => {
-    if (!candidate || candidate.type !== "checkout:client-session-query") {
-      return false;
-    }
-    const payload = objectOrEmpty(candidate.payload);
-    const targetSnapshot = objectOrEmpty(payload.targetSnapshot);
-    return targetSnapshot.type === "checkout" && targetSnapshot.clientSession === true;
-  });
-  if (!event) {
+function summarizeClientSessionQuery(events, promptMissing) {
+  const queryEvents = events
+    .map((event, index) => ({ event, index }))
+    .filter(({ event }) => isClientSessionQueryEvent(event));
+  const queryEventCount = events.filter(
+    (candidate) => candidate && candidate.type === "checkout:client-session-query"
+  ).length;
+  const timeoutEvents = events
+    .map((event, index) => ({ event, index }))
+    .filter(({ event }) => isClientSessionWaitTimeoutEvent(event));
+  const timeoutEventCount = events.filter(
+    (candidate) => candidate && candidate.type === "checkout:client-session-wait-timeout"
+  ).length;
+  if (queryEvents.length === 0) {
     return {
       present: false,
+      count: queryEventCount,
+      validCount: 0,
+      timeoutCount: timeoutEventCount,
+      validTimeoutCount: timeoutEvents.length,
+      schema: 0,
+      schemaValid: false,
       attempted: false,
-      endpoint: "",
-      id: "",
+      reason: "none",
+      endpoint: "unknown",
+      id: "none",
       ok: false,
-      httpStatus: "",
-      result: "",
-      status: "",
-      errorCode: "",
+      httpStatus: null,
+      result: "missing",
+      status: "missing",
+      errorCode: "missing",
+      requestError: "none",
       hasTransactionId: false,
       hasOrderId: false,
-      hasSteamId64: false
+      hasSteamId64: false,
+      closedSchema: false,
+      afterWaitTimeout: false,
+      beforePromptMissing: false,
+      chainContextMatches: false
     };
   }
+  const { event, index: eventIndex } = queryEvents[0];
   const payload = objectOrEmpty(event.payload);
   const query = objectOrEmpty(payload.query);
-  const error = objectOrEmpty(query.error);
+  const timeoutMatch = timeoutEvents.length === 1 ? timeoutEvents[0] : undefined;
+  const timeoutPayload = objectOrEmpty(timeoutMatch?.event?.payload);
+  const queryInitTxn = objectOrEmpty(payload.initTxn);
+  const timeoutInitTxn = objectOrEmpty(timeoutPayload.initTxn);
+  const endpoint = normalizeQueryEndpoint(query.endpoint);
+  const id = normalizeQueryId(query.id);
+  const reason = normalizeQueryReason(query.reason);
+  const httpStatus = normalizeHttpStatus(query.httpStatus);
+  const result = normalizeMicroTxnResult(query.result);
+  const status = normalizeMicroTxnStatus(query.status);
+  const errorCode = normalizeMicroTxnErrorCode(query.errorCode);
+  const requestError = normalizeRequestError(query.requestError);
+  const closedSchema = isClientSessionQueryClosedDiagnostic(query);
+  const promptSession = normalizeClientSessionValue(promptMissing.session);
+  const promptEndpoint = normalizeQueryEndpoint(promptMissing.endpoint);
+  const chainContextMatches =
+    promptMissing.present === true &&
+    promptSession !== "unknown" &&
+    promptEndpoint !== "unknown" &&
+    normalizeClientSessionValue(queryInitTxn.session) === promptSession &&
+    normalizeClientSessionValue(timeoutInitTxn.session) === promptSession &&
+    normalizeQueryEndpoint(queryInitTxn.endpoint) === promptEndpoint &&
+    normalizeQueryEndpoint(timeoutInitTxn.endpoint) === promptEndpoint &&
+    endpoint === promptEndpoint;
   return {
     present: true,
+    count: queryEventCount,
+    validCount: queryEvents.length,
+    timeoutCount: timeoutEventCount,
+    validTimeoutCount: timeoutEvents.length,
+    schema: query.schema === CLIENT_SESSION_QUERY_SCHEMA ? CLIENT_SESSION_QUERY_SCHEMA : 0,
+    schemaValid: query.schema === CLIENT_SESSION_QUERY_SCHEMA,
     attempted: query.attempted === true,
-    endpoint: String(query.endpoint || ""),
-    id: String(query.id || ""),
+    reason,
+    endpoint,
+    id,
     ok: query.ok === true,
-    httpStatus: String(query.httpStatus || ""),
-    result: String(query.result || ""),
-    status: String(query.status || ""),
-    errorCode: String(query.errorCode || error.code || ""),
+    httpStatus,
+    result,
+    status,
+    errorCode,
+    requestError,
     hasTransactionId: query.hasTransactionId === true,
     hasOrderId: query.hasOrderId === true,
-    hasSteamId64: query.hasSteamId64 === true
+    hasSteamId64: query.hasSteamId64 === true,
+    closedSchema,
+    afterWaitTimeout: Boolean(timeoutMatch && timeoutMatch.index < eventIndex),
+    beforePromptMissing: promptMissing.index > eventIndex,
+    chainContextMatches
   };
+}
+
+function isClientSessionPromptMissingEvent(event) {
+  if (!event || event.type !== "checkout:client-session-prompt-missing") {
+    return false;
+  }
+  const payload = objectOrEmpty(event.payload);
+  return hasClientSessionCheckoutTarget(payload) && hasSteamOverlayWaitTimeout(payload);
+}
+
+function isClientSessionQueryEvent(event) {
+  if (!event || event.type !== "checkout:client-session-query") {
+    return false;
+  }
+  return hasClientSessionCheckoutTarget(objectOrEmpty(event.payload));
+}
+
+function isClientSessionWaitTimeoutEvent(event) {
+  if (!event || event.type !== "checkout:client-session-wait-timeout") {
+    return false;
+  }
+  const payload = objectOrEmpty(event.payload);
+  return hasClientSessionCheckoutTarget(payload) && hasSteamOverlayWaitTimeout(payload);
+}
+
+function hasClientSessionCheckoutTarget(payload) {
+  const targetSnapshot = objectOrEmpty(payload.targetSnapshot);
+  return targetSnapshot.type === "checkout" && targetSnapshot.clientSession === true;
+}
+
+function hasSteamOverlayWaitTimeout(payload) {
+  const error = objectOrEmpty(payload.error);
+  return error.code === "STEAM_OVERLAY_WAIT_TIMEOUT" || error.name === "SteamOverlayWaitTimeoutError";
+}
+
+function normalizeClientSessionValue(value) {
+  return value === "client" || value === "client-default" ? value : "unknown";
 }
 
 function summarizeInitTxnTargetMissing(events) {
@@ -1221,6 +1396,46 @@ function expectInitTxnRequestShape(summary, label, failures) {
   );
 }
 
+function validateClientSessionPromptMissingQueryProof(promptMissing, query, failures) {
+  if (!promptMissing.present) {
+    return;
+  }
+  expect(promptMissing.count === 1, "client-session prompt-missing proof recorded exactly one classification", failures);
+  expect(
+    promptMissing.validCount === 1,
+    "client-session prompt-missing proof recorded one validated classification",
+    failures
+  );
+  expect(query.present === true, "client-session prompt-missing proof recorded a QueryTxn diagnostic", failures);
+  expect(query.count === 1, "client-session prompt-missing proof recorded exactly one QueryTxn diagnostic", failures);
+  expect(query.validCount === 1, "client-session prompt-missing proof recorded one client-session QueryTxn diagnostic", failures);
+  expect(query.timeoutCount === 1, "client-session prompt-missing proof recorded exactly one wait-timeout diagnostic", failures);
+  expect(query.validTimeoutCount === 1, "client-session prompt-missing proof recorded one client-session wait timeout", failures);
+  expect(query.schemaValid === true, "client-session QueryTxn diagnostic uses schema 1", failures);
+  expect(query.closedSchema === true, "client-session QueryTxn diagnostic contains only allowlisted scalar values", failures);
+  expect(query.attempted === true, "client-session prompt-missing proof attempted QueryTxn", failures);
+  expect(query.reason === "none", "client-session attempted QueryTxn diagnostic has no skip reason", failures);
+  expect(
+    query.endpoint === promptMissing.endpoint,
+    "client-session QueryTxn endpoint matches the InitTxn endpoint",
+    failures
+  );
+  expect(
+    query.id === "transaction" || query.id === "order",
+    "client-session QueryTxn diagnostic uses a transaction or order identifier",
+    failures
+  );
+  if (query.id === "transaction") {
+    expect(query.hasTransactionId === true, "client-session QueryTxn transaction presence marker is true", failures);
+  }
+  if (query.id === "order") {
+    expect(query.hasOrderId === true, "client-session QueryTxn order presence marker is true", failures);
+  }
+  expect(query.afterWaitTimeout === true, "client-session QueryTxn runs after the managed wait timeout", failures);
+  expect(query.beforePromptMissing === true, "client-session QueryTxn runs before prompt-missing classification", failures);
+  expect(query.chainContextMatches === true, "client-session QueryTxn chain matches one InitTxn context", failures);
+}
+
 function hasMicroTxnCallbackProof(actionName, events, expectedAppId) {
   const failures = [];
   verifyMicroTxnCallbackProof(actionName, events, expectedAppId, failures);
@@ -1228,11 +1443,16 @@ function hasMicroTxnCallbackProof(actionName, events, expectedAppId) {
 }
 
 function verifyMicroTxnCallbackProof(actionName, events, expectedAppId, failures) {
-  const callbacks = events
+  const allCallbacks = events
     .map((event, index) => ({ event, index }))
     .filter(({ event }) => isMicroTxnCallbackEvent(event));
-  if (callbacks.length === 0) {
+  if (allCallbacks.length === 0) {
     failures.push("required MicroTxnAuthorizationResponse callback was not recorded");
+    return;
+  }
+  const callbacks = allCallbacks.filter(({ event }) => microTxnEventMatchesCurrentCheckoutOperation(event));
+  if (callbacks.length === 0) {
+    failures.push("required MicroTxnAuthorizationResponse callback did not match the current checkout operation");
     return;
   }
 
@@ -1319,7 +1539,8 @@ function microTxnPayload(event) {
 
 function microTxnEventCallbackSource(event) {
   const source = microTxnPayload(event).callbackSource;
-  return typeof source === "string" && source.trim() ? source.trim().toLowerCase() : "";
+  const normalized = typeof source === "string" && source.trim() ? source.trim().toLowerCase() : "";
+  return ["steamworks", "legacy"].includes(normalized) ? normalized : normalized ? "unknown" : "";
 }
 
 function microTxnCallbackSources(events) {
@@ -1367,6 +1588,9 @@ function microTxnEventAuthorization(event) {
 
 function microTxnEventOrderIdPresent(event) {
   const payload = microTxnPayload(event);
+  if (payload.hasOrderId === true) {
+    return true;
+  }
   for (const key of ["orderId", "orderID", "order_id", "orderid", "m_ulOrderID", "m_ulOrderId"]) {
     if (Object.prototype.hasOwnProperty.call(payload, key) && sanitizedValuePresent(payload[key])) {
       return true;
@@ -1414,9 +1638,10 @@ function summarizeCaseResult(caseName, result, resultLog, renderingHealth = null
   const initTxnTargetMissing = summarizeInitTxnTargetMissing(events);
   const webSessionCheckoutCapture = summarizeWebSessionCheckoutCapture(events);
   const clientSessionCheckoutCapture = summarizeClientSessionCheckoutCapture(events);
+  const managedCheckoutOperationStart = summarizeManagedCheckoutOperationStart(events);
   const clientSessionWaitStart = summarizeClientSessionWaitStart(events);
   const clientSessionPromptMissing = summarizeClientSessionPromptMissing(events);
-  const clientSessionQuery = summarizeClientSessionQuery(events);
+  const clientSessionQuery = summarizeClientSessionQuery(events, clientSessionPromptMissing);
   const microTxnCallbackProof = hasMicroTxnCallbackProof(String(action.action || ""), events, app.appId);
 
   expect(result.ok === true, `${caseName}: smoke result ok`, failures);
@@ -1435,6 +1660,7 @@ function summarizeCaseResult(caseName, result, resultLog, renderingHealth = null
   expectInitTxnRequestShape(clientSessionCheckoutCapture, `${caseName}: client-session InitTxn capture`, failures);
   expectInitTxnRequestShape(clientSessionPromptMissing, `${caseName}: client-session prompt-missing diagnostic`, failures);
   expectInitTxnRequestShape(initTxnTargetMissing, `${caseName}: InitTxn target-missing diagnostic`, failures);
+  validateClientSessionPromptMissingQueryProof(clientSessionPromptMissing, clientSessionQuery, failures);
 
   const steamRenderingHealth = summarizeCaseRenderingHealth(renderingHealth);
 
@@ -1457,6 +1683,9 @@ function summarizeCaseResult(caseName, result, resultLog, renderingHealth = null
     legacyMicroTxnCallbackListenerRegistered: hasLegacyMicroTxnCallbackListenerRegistered(events),
     microTxnCallbackCount: events.filter(isMicroTxnCallbackEvent).length,
     microTxnCallbackSources: microTxnCallbackSources(events),
+    microTxnCurrentOperationMatch: events.some(
+      (event) => isMicroTxnCallbackEvent(event) && microTxnEventMatchesCurrentCheckoutOperation(event)
+    ),
     microTxnCallbackProof: microTxnCallbackProof.ok,
     microTxnCallbackProofFailures: microTxnCallbackProof.failures,
     initTxnRequestShapePresent: initTxnRequestShape.present,
@@ -1484,6 +1713,12 @@ function summarizeCaseResult(caseName, result, resultLog, renderingHealth = null
     clientSessionCheckoutCapturedUsersessionField: clientSessionCheckoutCapture.usersessionField,
     clientSessionCheckoutCapturedHasIpAddress: clientSessionCheckoutCapture.hasIpAddress,
     clientSessionCheckoutCapturedRequestShape: clientSessionCheckoutCapture.requestShapeSummary,
+    managedCheckoutOperationStarted: managedCheckoutOperationStart.present,
+    managedCheckoutOperationDeferredInitTxn: managedCheckoutOperationStart.deferredInitTxn,
+    managedCheckoutOperationShownObserverArmed: managedCheckoutOperationStart.shownObserverArmed,
+    managedCheckoutOperationCallbackCorrelationPrepared: managedCheckoutOperationStart.callbackCorrelationPrepared,
+    managedCheckoutOperationPresenterReady: managedCheckoutOperationStart.presenterReady,
+    managedCheckoutOperationBeforeInitTxnCapture: managedCheckoutOperationStart.beforeInitTxnCapture,
     clientSessionWaitStarted: clientSessionWaitStart.present,
     clientSessionWaitExpectedSteamPrompt: clientSessionWaitStart.expectedSteamPrompt,
     clientSessionWaitHasTransactionId: clientSessionWaitStart.hasTransactionId,
@@ -1497,7 +1732,10 @@ function summarizeCaseResult(caseName, result, resultLog, renderingHealth = null
     clientSessionPromptMissingHasIpAddress: clientSessionPromptMissing.hasIpAddress,
     clientSessionPromptMissingRequestShape: clientSessionPromptMissing.requestShapeSummary,
     clientSessionQueryPresent: clientSessionQuery.present,
+    clientSessionQuerySchema: clientSessionQuery.schema,
+    clientSessionQueryClosedSchema: clientSessionQuery.closedSchema,
     clientSessionQueryAttempted: clientSessionQuery.attempted,
+    clientSessionQueryReason: clientSessionQuery.reason,
     clientSessionQueryEndpoint: clientSessionQuery.endpoint,
     clientSessionQueryId: clientSessionQuery.id,
     clientSessionQueryOk: clientSessionQuery.ok,
@@ -1505,6 +1743,7 @@ function summarizeCaseResult(caseName, result, resultLog, renderingHealth = null
     clientSessionQueryResult: clientSessionQuery.result,
     clientSessionQueryStatus: clientSessionQuery.status,
     clientSessionQueryErrorCode: clientSessionQuery.errorCode,
+    clientSessionQueryRequestError: clientSessionQuery.requestError,
     clientSessionQueryHasTransactionId: clientSessionQuery.hasTransactionId,
     clientSessionQueryHasOrderId: clientSessionQuery.hasOrderId,
     clientSessionQueryHasSteamId64: clientSessionQuery.hasSteamId64,
@@ -1637,7 +1876,8 @@ function printSummary(summary) {
           `microTxnListener=${row.microTxnCallbackListenerRegistered} ` +
           `legacyMicroTxnListener=${row.legacyMicroTxnCallbackListenerRegistered} ` +
           `microTxnCallbacks=${row.microTxnCallbackCount} ` +
-          `microTxnSources=${formatValue(row.microTxnCallbackSources)} microTxnProof=${row.microTxnCallbackProof} ` +
+          `microTxnSources=${formatValue(row.microTxnCallbackSources)} ` +
+          `microTxnCurrentOperation=${row.microTxnCurrentOperationMatch} microTxnProof=${row.microTxnCallbackProof} ` +
           `initTxnRequestShape=${row.initTxnRequestShapePresent} ` +
           `initTxnRequestSession=${formatValue(row.initTxnRequestShapeSession)} ` +
           `initTxnRequestEndpoint=${formatValue(row.initTxnRequestShapeEndpoint)} ` +
@@ -1663,6 +1903,12 @@ function printSummary(summary) {
           `clientSessionCapturedUsersession=${formatValue(row.clientSessionCheckoutCapturedUsersessionField)} ` +
           `clientSessionCapturedIpAddress=${formatValue(row.clientSessionCheckoutCapturedHasIpAddress)} ` +
           `clientSessionCapturedRequest=${formatValue(row.clientSessionCheckoutCapturedRequestShape)} ` +
+          `checkoutOperationStarted=${row.managedCheckoutOperationStarted} ` +
+          `checkoutOperationDeferredInitTxn=${row.managedCheckoutOperationDeferredInitTxn} ` +
+          `checkoutOperationObserver=${row.managedCheckoutOperationShownObserverArmed} ` +
+          `checkoutOperationCorrelation=${row.managedCheckoutOperationCallbackCorrelationPrepared} ` +
+          `checkoutOperationPresenter=${row.managedCheckoutOperationPresenterReady} ` +
+          `checkoutOperationBeforeCapture=${row.managedCheckoutOperationBeforeInitTxnCapture} ` +
           `clientSessionWaitStarted=${row.clientSessionWaitStarted} ` +
           `clientSessionWaitPrompt=${row.clientSessionWaitExpectedSteamPrompt} ` +
           `clientSessionWaitTransaction=${row.clientSessionWaitHasTransactionId} ` +
@@ -1676,7 +1922,10 @@ function printSummary(summary) {
           `clientPromptIpAddress=${formatValue(row.clientSessionPromptMissingHasIpAddress)} ` +
           `clientPromptRequest=${formatValue(row.clientSessionPromptMissingRequestShape)} ` +
           `clientQuery=${row.clientSessionQueryPresent} ` +
+          `clientQuerySchema=${formatValue(row.clientSessionQuerySchema)} ` +
+          `clientQueryClosed=${row.clientSessionQueryClosedSchema} ` +
           `clientQueryAttempted=${row.clientSessionQueryAttempted} ` +
+          `clientQueryReason=${formatValue(row.clientSessionQueryReason)} ` +
           `clientQueryEndpoint=${formatValue(row.clientSessionQueryEndpoint)} ` +
           `clientQueryId=${formatValue(row.clientSessionQueryId)} ` +
           `clientQueryOk=${row.clientSessionQueryOk} ` +
@@ -1684,6 +1933,7 @@ function printSummary(summary) {
           `clientQueryResult=${formatValue(row.clientSessionQueryResult)} ` +
           `clientQueryStatus=${formatValue(row.clientSessionQueryStatus)} ` +
           `clientQueryError=${formatValue(row.clientSessionQueryErrorCode)} ` +
+          `clientQueryRequestError=${formatValue(row.clientSessionQueryRequestError)} ` +
           `clientQueryTransaction=${row.clientSessionQueryHasTransactionId} ` +
           `clientQueryOrder=${row.clientSessionQueryHasOrderId} ` +
           `clientQuerySteam=${row.clientSessionQueryHasSteamId64} ` +
@@ -2389,7 +2639,39 @@ function runSelfTest() {
     assert.equal(managedCheckoutMicroTxnSummary.caseSummaries[0].legacyMicroTxnCallbackListenerRegistered, true);
     assert.equal(managedCheckoutMicroTxnSummary.caseSummaries[0].microTxnCallbackCount, 1);
     assert.equal(managedCheckoutMicroTxnSummary.caseSummaries[0].microTxnCallbackSources, "steamworks");
+    assert.equal(managedCheckoutMicroTxnSummary.caseSummaries[0].microTxnCurrentOperationMatch, true);
     assert.equal(managedCheckoutMicroTxnSummary.caseSummaries[0].microTxnCallbackProof, true);
+
+    const missingMicroTxnMatchRoot = path.join(tempRoot, "managed-checkout-missing-microtxn-match");
+    writeManagedCheckoutMicroTxnFixture(missingMicroTxnMatchRoot, { omitMicroTxnCurrentOperationMatch: true });
+    const missingMicroTxnMatchSummary = summarizeWindowsOverlayMatrixArtifacts(missingMicroTxnMatchRoot);
+    assert(
+      missingMicroTxnMatchSummary.failures.some((failure) =>
+        failure.includes("did not match the current checkout operation")
+      ),
+      "summary self-test should fail when callback proof omits current-operation correlation"
+    );
+
+    const falseMicroTxnMatchRoot = path.join(tempRoot, "managed-checkout-false-microtxn-match");
+    writeManagedCheckoutMicroTxnFixture(falseMicroTxnMatchRoot, { microTxnCurrentOperationMatch: false });
+    const falseMicroTxnMatchSummary = summarizeWindowsOverlayMatrixArtifacts(falseMicroTxnMatchRoot);
+    assert(
+      falseMicroTxnMatchSummary.failures.some((failure) =>
+        failure.includes("did not match the current checkout operation")
+      ),
+      "summary self-test should fail when callback proof belongs to another operation"
+    );
+
+    const staleThenCurrentMicroTxnRoot = path.join(tempRoot, "managed-checkout-stale-then-current-microtxn");
+    writeManagedCheckoutMicroTxnFixture(staleThenCurrentMicroTxnRoot, {
+      includeStaleMicroTxn: true,
+      includeLegacyMicroTxnDuplicate: true
+    });
+    const staleThenCurrentMicroTxnSummary = summarizeWindowsOverlayMatrixArtifacts(staleThenCurrentMicroTxnRoot);
+    assert.deepEqual(staleThenCurrentMicroTxnSummary.failures, []);
+    assert.equal(staleThenCurrentMicroTxnSummary.caseSummaries[0].microTxnCallbackCount, 3);
+    assert.equal(staleThenCurrentMicroTxnSummary.caseSummaries[0].microTxnCurrentOperationMatch, true);
+    assert.equal(staleThenCurrentMicroTxnSummary.caseSummaries[0].microTxnCallbackSources, "legacy,steamworks");
 
     const missingMicroTxnListenerRoot = path.join(tempRoot, "managed-checkout-missing-microtxn-listener");
     writeManagedCheckoutMicroTxnFixture(missingMicroTxnListenerRoot, { omitMicroTxnListener: true });
@@ -2498,6 +2780,12 @@ function runSelfTest() {
       clientPromptMissingSummary.caseSummaries[0].clientSessionCheckoutCapturedRequestShape,
       "usersession=client,ip=false,order=true,steam=true,language=true,currency=true,items=1,bundles=0,itemFields=true,bundleFields=true"
     );
+    assert.equal(clientPromptMissingSummary.caseSummaries[0].managedCheckoutOperationStarted, true);
+    assert.equal(clientPromptMissingSummary.caseSummaries[0].managedCheckoutOperationDeferredInitTxn, true);
+    assert.equal(clientPromptMissingSummary.caseSummaries[0].managedCheckoutOperationShownObserverArmed, true);
+    assert.equal(clientPromptMissingSummary.caseSummaries[0].managedCheckoutOperationCallbackCorrelationPrepared, true);
+    assert.equal(clientPromptMissingSummary.caseSummaries[0].managedCheckoutOperationPresenterReady, true);
+    assert.equal(clientPromptMissingSummary.caseSummaries[0].managedCheckoutOperationBeforeInitTxnCapture, true);
     assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionWaitStarted, true);
     assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionWaitExpectedSteamPrompt, true);
     assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionWaitHasTransactionId, true);
@@ -2514,14 +2802,18 @@ function runSelfTest() {
       "usersession=client,ip=false,order=true,steam=true,language=true,currency=true,items=1,bundles=0,itemFields=true,bundleFields=true"
     );
     assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionQueryPresent, true);
+    assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionQuerySchema, 1);
+    assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionQueryClosedSchema, true);
     assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionQueryAttempted, true);
+    assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionQueryReason, "none");
     assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionQueryEndpoint, "sandbox");
     assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionQueryId, "transaction");
     assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionQueryOk, true);
-    assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionQueryHttpStatus, "200");
+    assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionQueryHttpStatus, 200);
     assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionQueryResult, "OK");
     assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionQueryStatus, "Init");
-    assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionQueryErrorCode, "");
+    assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionQueryErrorCode, "missing");
+    assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionQueryRequestError, "none");
     assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionQueryHasTransactionId, true);
     assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionQueryHasOrderId, true);
     assert.equal(clientPromptMissingSummary.caseSummaries[0].clientSessionQueryHasSteamId64, true);
@@ -2547,6 +2839,132 @@ function runSelfTest() {
         failure.includes("started waiting for the client-session Steam prompt")
       ),
       "summary self-test should fail when a client-session InitTxn artifact omits the wait-start diagnostic"
+    );
+
+    const missingManagedOperationRoot = path.join(tempRoot, "managed-checkout-missing-operation-start");
+    writeManagedCheckoutMicroTxnFixture(missingManagedOperationRoot, {
+      clientPromptMissing: true,
+      omitManagedCheckoutOperationStart: true
+    });
+    const missingManagedOperationSummary = summarizeWindowsOverlayMatrixArtifacts(missingManagedOperationRoot);
+    assert(
+      missingManagedOperationSummary.failures.some((failure) =>
+        failure.includes("started InitTxn inside the managed checkout operation")
+      ),
+      "summary self-test should fail when InitTxn has no managed-operation start proof"
+    );
+
+    const missingClientQueryRoot = path.join(tempRoot, "managed-checkout-missing-client-query");
+    writeManagedCheckoutMicroTxnFixture(missingClientQueryRoot, {
+      clientPromptMissing: true,
+      omitClientSessionQuery: true
+    });
+    const missingClientQuerySummary = summarizeWindowsOverlayMatrixArtifacts(missingClientQueryRoot);
+    assert(
+      missingClientQuerySummary.failures.some((failure) =>
+        failure.includes("prompt-missing proof recorded a QueryTxn diagnostic")
+      ),
+      "summary self-test should fail when prompt-missing proof omits QueryTxn"
+    );
+
+    const skippedClientQueryRoot = path.join(tempRoot, "managed-checkout-skipped-client-query");
+    writeManagedCheckoutMicroTxnFixture(skippedClientQueryRoot, {
+      clientPromptMissing: true,
+      clientQueryAttempted: false,
+      clientQueryReason: "disabled"
+    });
+    const skippedClientQuerySummary = summarizeWindowsOverlayMatrixArtifacts(skippedClientQueryRoot);
+    assert(
+      skippedClientQuerySummary.failures.some((failure) => failure.includes("prompt-missing proof attempted QueryTxn")),
+      "summary self-test should fail when prompt-missing QueryTxn is disabled"
+    );
+
+    const lateClientQueryRoot = path.join(tempRoot, "managed-checkout-late-client-query");
+    writeManagedCheckoutMicroTxnFixture(lateClientQueryRoot, {
+      clientPromptMissing: true,
+      clientQueryAfterPromptMissing: true
+    });
+    const lateClientQuerySummary = summarizeWindowsOverlayMatrixArtifacts(lateClientQueryRoot);
+    assert(
+      lateClientQuerySummary.failures.some((failure) =>
+        failure.includes("QueryTxn runs before prompt-missing classification")
+      ),
+      "summary self-test should fail when QueryTxn runs after prompt-missing classification"
+    );
+
+    const privateQuerySentinel = "do-not-print-private-query-value";
+    const unsafeClientQueryRoot = path.join(tempRoot, "managed-checkout-unsafe-client-query");
+    writeManagedCheckoutMicroTxnFixture(unsafeClientQueryRoot, {
+      clientPromptMissing: true,
+      clientQueryEndpoint: privateQuerySentinel,
+      clientQueryId: privateQuerySentinel,
+      clientQueryHttpStatus: privateQuerySentinel,
+      clientQueryResult: privateQuerySentinel,
+      clientQueryStatus: privateQuerySentinel,
+      clientQueryErrorCode: privateQuerySentinel,
+      clientQueryRequestError: privateQuerySentinel
+    });
+    const unsafeClientQuerySummary = summarizeWindowsOverlayMatrixArtifacts(unsafeClientQueryRoot);
+    const unsafeClientQueryRow = unsafeClientQuerySummary.caseSummaries[0];
+    assert.equal(unsafeClientQueryRow.clientSessionQueryEndpoint, "unknown");
+    assert.equal(unsafeClientQueryRow.clientSessionQueryId, "none");
+    assert.equal(unsafeClientQueryRow.clientSessionQueryHttpStatus, null);
+    assert.equal(unsafeClientQueryRow.clientSessionQueryResult, "unknown");
+    assert.equal(unsafeClientQueryRow.clientSessionQueryStatus, "unknown");
+    assert.equal(unsafeClientQueryRow.clientSessionQueryErrorCode, "unknown");
+    assert.equal(unsafeClientQueryRow.clientSessionQueryRequestError, "request-failed");
+    assert.equal(unsafeClientQueryRow.clientSessionQueryClosedSchema, false);
+    const printed = [];
+    const originalConsoleLog = console.log;
+    console.log = (value) => printed.push(String(value));
+    try {
+      printSummary(unsafeClientQuerySummary);
+    } finally {
+      console.log = originalConsoleLog;
+    }
+    assert.equal(printed.join("\n").includes(privateQuerySentinel), false);
+
+    const extraClientQueryRoot = path.join(tempRoot, "managed-checkout-extra-client-query-field");
+    writeManagedCheckoutMicroTxnFixture(extraClientQueryRoot, {
+      clientPromptMissing: true,
+      clientQueryExtra: { privateMessage: privateQuerySentinel }
+    });
+    const extraClientQuerySummary = summarizeWindowsOverlayMatrixArtifacts(extraClientQueryRoot);
+    assert.equal(extraClientQuerySummary.caseSummaries[0].clientSessionQueryClosedSchema, false);
+    assert(
+      extraClientQuerySummary.failures.some((failure) => failure.includes("only allowlisted scalar values")),
+      "summary self-test should reject extra QueryTxn diagnostic fields"
+    );
+
+    const stringHttpClientQueryRoot = path.join(tempRoot, "managed-checkout-string-query-http");
+    writeManagedCheckoutMicroTxnFixture(stringHttpClientQueryRoot, {
+      clientPromptMissing: true,
+      clientQueryHttpStatus: "200"
+    });
+    const stringHttpClientQuerySummary = summarizeWindowsOverlayMatrixArtifacts(stringHttpClientQueryRoot);
+    assert.equal(stringHttpClientQuerySummary.caseSummaries[0].clientSessionQueryHttpStatus, 200);
+    assert.equal(stringHttpClientQuerySummary.caseSummaries[0].clientSessionQueryClosedSchema, false);
+
+    const mismatchedQueryChainRoot = path.join(tempRoot, "managed-checkout-mismatched-query-chain");
+    writeManagedCheckoutMicroTxnFixture(mismatchedQueryChainRoot, {
+      clientPromptMissing: true,
+      clientQueryInitTxnEndpoint: "production"
+    });
+    const mismatchedQueryChainSummary = summarizeWindowsOverlayMatrixArtifacts(mismatchedQueryChainRoot);
+    assert(
+      mismatchedQueryChainSummary.failures.some((failure) => failure.includes("chain matches one InitTxn context")),
+      "summary self-test should reject QueryTxn evidence from a different InitTxn context"
+    );
+
+    const extraPromptEventRoot = path.join(tempRoot, "managed-checkout-extra-prompt-event");
+    writeManagedCheckoutMicroTxnFixture(extraPromptEventRoot, {
+      clientPromptMissing: true,
+      appendInvalidPromptMissingEvent: true
+    });
+    const extraPromptEventSummary = summarizeWindowsOverlayMatrixArtifacts(extraPromptEventRoot);
+    assert(
+      extraPromptEventSummary.failures.some((failure) => failure.includes("exactly one classification")),
+      "summary self-test should reject an extra unvalidated prompt-missing event"
     );
 
     const missingPreflightRequestShapeRoot = path.join(tempRoot, "managed-checkout-missing-preflight-shape");
@@ -3550,6 +3968,9 @@ function microTxnCallbackEventFixture(options = {}) {
       orderId: { redacted: true, present: true, type: "bigint" },
       authorized: true,
       ...(!options.omitMicroTxnCallbackSource ? { callbackSource: options.callbackSource || "steamworks" } : {}),
+      ...(!options.omitMicroTxnCurrentOperationMatch
+        ? { matchesCurrentCheckoutOperation: options.microTxnCurrentOperationMatch !== false }
+        : {}),
       presenter: {
         mode: "active",
         nativeHostOpen: true,
@@ -3712,8 +4133,59 @@ function writeManagedCheckoutMicroTxnFixture(root, options = {}) {
       code: "STEAM_OVERLAY_WAIT_TIMEOUT",
       message: "Timed out waiting for Steam overlay to become active."
     };
+    const query = {
+      schema: options.clientQuerySchema ?? CLIENT_SESSION_QUERY_SCHEMA,
+      attempted: options.clientQueryAttempted !== false,
+      reason: options.clientQueryReason || "none",
+      endpoint: options.clientQueryEndpoint || "sandbox",
+      id: options.clientQueryId || "transaction",
+      ok: true,
+      httpStatus: options.clientQueryHttpStatus ?? 200,
+      result: options.clientQueryResult || "OK",
+      status: options.clientQueryStatus || "Init",
+      errorCode: options.clientQueryErrorCode || "missing",
+      requestError: options.clientQueryRequestError || "none",
+      hasErrorDescription: false,
+      hasTransactionId: options.clientQueryHasTransactionId !== false,
+      hasOrderId: true,
+      hasSteamId64: true,
+      ...(options.clientQueryExtra || {})
+    };
+    const queryInitTxn = options.clientQueryInitTxnEndpoint
+      ? { ...initTxn, endpoint: options.clientQueryInitTxnEndpoint }
+      : initTxn;
     const events = [];
     pushMicroTxnListenerRegisteredEvents(events, options);
+    events.push(
+      { type: "overlay:presenter-wait-start", payload: { target: "checkout" } },
+      {
+        type: "overlay:presenter-open",
+        payload: {
+          target: "checkout",
+          api: "openCheckoutAndWait",
+          checkoutSource: "init-txn-request-file"
+        }
+      }
+    );
+    if (!options.omitManagedCheckoutOperationStart) {
+      events.push({
+        type: "checkout:managed-operation-start",
+        payload: {
+          target: "checkout",
+          api: "openCheckoutAndWait",
+          checkoutSource: "init-txn-request-file",
+          deferredInitTxn: true,
+          shownObserverArmed: true,
+          callbackCorrelationPrepared: true,
+          presenter: {
+            mode: "active",
+            nativeHostOpen: true,
+            clickThrough: false,
+            transparent: false
+          }
+        }
+      });
+    }
     if (!options.omitInitTxnRequestShapeEvent) {
       events.push(
         initTxnRequestShapeEventFixture(options.clientPromptMissingSession || "client", {
@@ -3743,34 +4215,24 @@ function writeManagedCheckoutMicroTxnFixture(root, options = {}) {
       });
     }
     events.push(
-      {
-        type: "overlay:presenter-open",
-        payload: { target: "checkout", api: "openCheckoutAndWait", checkoutSource: "init-txn-request-file", targetSnapshot, initTxn }
-      },
-      { type: "overlay:presenter-wait-start", payload: { target: "checkout" } },
       { type: "overlay:presenter-wait-shown:error", payload: { target: "checkout", error } },
       {
+        type: "checkout:client-session-wait-timeout",
+        payload: { target: "checkout", targetSnapshot, initTxn, error }
+      }
+    );
+    if (!options.omitClientSessionQuery && !options.clientQueryAfterPromptMissing) {
+      events.push({
         type: "checkout:client-session-query",
         payload: {
           target: "checkout",
           targetSnapshot,
-          initTxn,
-          query: {
-            attempted: true,
-            endpoint: "sandbox",
-            id: "transaction",
-            ok: true,
-            httpStatus: 200,
-            result: "OK",
-            status: "Init",
-            errorCode: "",
-            hasErrorDescription: false,
-            hasTransactionId: true,
-            hasOrderId: true,
-            hasSteamId64: true
-          }
+          initTxn: queryInitTxn,
+          query
         }
-      },
+      });
+    }
+    events.push(
       {
         type: "checkout:client-session-prompt-missing",
         payload: {
@@ -3778,21 +4240,7 @@ function writeManagedCheckoutMicroTxnFixture(root, options = {}) {
           targetSnapshot,
           expectedSteamPrompt: true,
           error,
-          initTxn,
-          query: {
-            attempted: true,
-            endpoint: "sandbox",
-            id: "transaction",
-            ok: true,
-            httpStatus: 200,
-            result: "OK",
-            status: "Init",
-            errorCode: "",
-            hasErrorDescription: false,
-            hasTransactionId: true,
-            hasOrderId: true,
-            hasSteamId64: true
-          }
+          initTxn
         }
       },
       {
@@ -3800,6 +4248,23 @@ function writeManagedCheckoutMicroTxnFixture(root, options = {}) {
         payload: { target: "checkout", targetSnapshot, error, initTxn }
       }
     );
+    if (!options.omitClientSessionQuery && options.clientQueryAfterPromptMissing) {
+      events.push({
+        type: "checkout:client-session-query",
+        payload: { target: "checkout", targetSnapshot, initTxn: queryInitTxn, query }
+      });
+    }
+    if (options.appendInvalidPromptMissingEvent) {
+      events.push({
+        type: "checkout:client-session-prompt-missing",
+        payload: {
+          target: "checkout",
+          targetSnapshot: { type: "store", clientSession: false },
+          error,
+          initTxn
+        }
+      });
+    }
     writeResult(path.join(root, checkoutCaseId, "result.log"), {
       ok: false,
       action: { ok: true, action: "presenter-checkout" },
@@ -3883,8 +4348,14 @@ function writeManagedCheckoutMicroTxnFixture(root, options = {}) {
     },
     { type: "callback:overlay-activated", payload: { active: true } }
   );
+  if (options.includeStaleMicroTxn) {
+    events.push(microTxnCallbackEventFixture({ ...options, microTxnCurrentOperationMatch: false }));
+  }
   if (!options.omitMicroTxn && !options.lateMicroTxn) {
     events.push(microTxnEvent);
+    if (options.includeLegacyMicroTxnDuplicate) {
+      events.push(microTxnCallbackEventFixture({ ...options, callbackSource: "legacy" }));
+    }
   }
   events.push(
     { type: "callback:overlay-activated", payload: { active: false } },

@@ -35,6 +35,7 @@ try {
   run("node", [path.join(repoRoot, "scripts", "summarize-windows-overlay-matrix.cjs"), "--self-test"], {
     cwd: repoRoot
   });
+  runPackagedWindowsOverlaySummarySelfTest();
   run("node", [path.join(repoRoot, "scripts", "upsert-steam-app-launch-options.cjs"), "--mode", "self-test"], {
     cwd: repoRoot
   });
@@ -167,6 +168,7 @@ function runMacosPackageSigningStaticChecks() {
     "Steam Bridge does not build, run, or verify Intel or multi-arch macOS test apps",
     "prepare-macos-app.cjs",
     "validateStagePackageArtifacts(stageDir, config.requiredFiles)",
+    "checkout-proof.cjs",
     "isOverlayNeedsPresentPollingEnabled",
     "loadNativeBinding"
   ]) {
@@ -308,6 +310,11 @@ function runMacosPackageSigningStaticChecks() {
   assert.ok(
     packagerScript.includes("summarize-windows-overlay-matrix.cjs"),
     "Windows Electron package must include the overlay matrix summarizer"
+  );
+  assert.ok(
+    packagerScript.includes('path.join(appPath, "checkout-proof.cjs")') &&
+      packagerScript.includes('[matrixSummaryPath, "--self-test"]'),
+    "Windows Electron package must include and exercise the summarizer checkout-proof dependency"
   );
   assert.ok(
     packagerScript.includes("upsert-steam-shortcut.cjs"),
@@ -535,6 +542,11 @@ function runWindowsSmokeHelperStaticChecks() {
   ]) {
     assert.ok(helper.includes(expected), `Windows smoke helper missing ${expected}`);
   }
+  assert.match(
+    helper,
+    /if \(\$RequireMicroTxnCallback -and \$Action -ne "presenter-checkout"\)/,
+    "Windows callback proof must reject every action except direct managed checkout"
+  );
   for (const expected of [
     "Get-AuthenticodeSignature",
     "Set-AuthenticodeSignature",
@@ -733,6 +745,20 @@ function runWindowsSmokeHelperStaticChecks() {
   ]) {
     assert.ok(matrixHelper.includes(expected), `Windows overlay matrix missing ${expected}`);
   }
+  assert.doesNotMatch(
+    matrixHelper,
+    /New-ShortcutOpenAndWaitCase -Id "15-managed-shortcut"[^\r\n]*RequireMicroTxnCallback/,
+    "Windows shortcut checkout must not claim operation-scoped MicroTxn callback proof"
+  );
+  const keyboardShortcutCase = matrixHelper.match(
+    /-Id "15-managed-shortcut-keyboard"[\s\S]*?-ResultDelayMs 30000/
+  )?.[0];
+  assert.ok(keyboardShortcutCase, "Windows managed keyboard shortcut case is missing");
+  assert.doesNotMatch(
+    keyboardShortcutCase,
+    /RequireMicroTxnCallback/,
+    "Windows keyboard shortcut checkout must not claim operation-scoped MicroTxn callback proof"
+  );
   assert.match(
     matrixHelper,
     /-Id "01-checkout-prepare"[\s\S]*?-RequireNoOverlayActivation `\r?\n\s+-AllowOverlayNotReady `\r?\n\s+-ResultDelayMs 1200/,
@@ -896,7 +922,9 @@ function runWindowsSmokeHelperStaticChecks() {
     "legacyMicroTxnListener=",
     "microTxnCallbacks=",
     "microTxnSources=",
+    "microTxnCurrentOperation=",
     "microTxnCallbackProof",
+    "did not match the current checkout operation",
     "did not include a callback source",
     "callback source expected steamworks or legacy",
     "clientSessionCapturedTransaction=",
@@ -906,6 +934,12 @@ function runWindowsSmokeHelperStaticChecks() {
     "clientSessionCapturedRequest=",
     "clientPromptRequest=",
     "clientQuery=",
+    "clientQuerySchema=",
+    "clientQueryClosed=",
+    "validateClientSessionPromptMissingQueryProof",
+    "isClientSessionQueryClosedDiagnostic",
+    "chain matches one InitTxn context",
+    "checkoutOperationDeferredInitTxn=",
     "checkout:client-session-query",
     "captured client-session InitTxn checkout target",
     "started waiting for the client-session Steam prompt",
@@ -945,7 +979,11 @@ function runWindowsSmokeHelperStaticChecks() {
     "native presenter backend is $RequireNativeHostBackend",
     "MicroTxnAuthorizationResponse listener was registered before checkout proof",
     "LegacyMicroTxnAuthorizationResponse listener was registered before checkout proof",
-    "callback source is steamworks or legacy"
+    "callback source is steamworks or legacy",
+    "required MicroTxnAuthorizationResponse callback matched the current checkout operation",
+    "Assert-ClientSessionPromptMissingQueryProof",
+    "Test-ClientSessionQueryClosedSchema",
+    "-RequireMicroTxnCallback requires presenter-checkout"
   ]) {
     assert.ok(helper.includes(expected), `Windows smoke helper missing ${expected}`);
   }
@@ -956,8 +994,24 @@ function runWindowsSmokeHelperStaticChecks() {
   }
 }
 
+function runPackagedWindowsOverlaySummarySelfTest() {
+  const helperDir = path.join(tempRoot, "packaged-windows-overlay-summary");
+  fs.mkdirSync(helperDir, { recursive: true });
+  const summaryPath = path.join(helperDir, "summarize-windows-overlay-matrix.cjs");
+  fs.copyFileSync(path.join(repoRoot, "scripts", "summarize-windows-overlay-matrix.cjs"), summaryPath);
+  fs.copyFileSync(
+    path.join(repoRoot, "examples", "electron-basic", "checkout-proof.cjs"),
+    path.join(helperDir, "checkout-proof.cjs")
+  );
+  run("node", [summaryPath, "--self-test"], { cwd: helperDir });
+}
+
 function runElectronSmokeActionStaticChecks() {
   const main = fs.readFileSync(path.join(repoRoot, "examples", "electron-basic", "main.js"), "utf8");
+  const checkoutProof = fs.readFileSync(
+    path.join(repoRoot, "examples", "electron-basic", "checkout-proof.cjs"),
+    "utf8"
+  );
   const preload = fs.readFileSync(path.join(repoRoot, "examples", "electron-basic", "preload.js"), "utf8");
   const html = fs.readFileSync(path.join(repoRoot, "examples", "electron-basic", "index.html"), "utf8");
   const linuxHelper = fs.readFileSync(path.join(repoRoot, "scripts", "linux-electron-smoke.sh"), "utf8");
@@ -992,7 +1046,12 @@ function runElectronSmokeActionStaticChecks() {
     ["Electron smoke main", main, "client-default"],
     ["Electron smoke main", main, "facade.initTxn(initTxnRequest)"],
     ["Electron smoke main", main, "isSteamOverlayWaitTimeout"],
-    ["Electron smoke main", main, "throwIfNativeHostUnavailable(initialSnapshot, target)"],
+    ["Electron smoke main", main, "throwIfNativeHostUnavailable(readinessSnapshot, pendingTarget)"],
+    ["Electron smoke main", main, "checkout:managed-operation-start"],
+    ["Electron smoke main", main, "matchesCurrentCheckoutOperation"],
+    ["Electron checkout proof", checkoutProof, "startManagedCheckoutOperation"],
+    ["Electron checkout proof", checkoutProof, "createMicroTxnCheckoutCorrelationTracker"],
+    ["Electron checkout proof", checkoutProof, "CLIENT_SESSION_QUERY_SCHEMA"],
     ["Electron smoke main", main, "throwIfNativeHostUnavailable(initialSnapshot, overlay.getShortcutOpenStatus())"],
     ["Electron smoke main", main, "activeSteamId64ForOverlayTarget()"],
     ["Electron smoke main", main, "return { type: \"profile\", steamId64: activeSteamId64ForOverlayTarget() }"],

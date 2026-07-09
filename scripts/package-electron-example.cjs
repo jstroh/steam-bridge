@@ -122,7 +122,14 @@ function packSteamBridge(packDir) {
 }
 
 function stageExample(stageDir, tarball) {
-  for (const fileName of ["main.js", "preload.js", "index.html", "smoke-sanitize.cjs", "smoke-error.cjs"]) {
+  for (const fileName of [
+    "main.js",
+    "preload.js",
+    "index.html",
+    "smoke-sanitize.cjs",
+    "smoke-error.cjs",
+    "checkout-proof.cjs"
+  ]) {
     fs.copyFileSync(path.join(exampleRoot, fileName), path.join(stageDir, fileName));
   }
 
@@ -248,6 +255,8 @@ function copyTargetHelpers(appPath) {
     );
   }
   if (target === "x86_64-pc-windows-msvc") {
+    const checkoutProofHelperPath = path.join(appPath, "checkout-proof.cjs");
+    fs.copyFileSync(path.join(exampleRoot, "checkout-proof.cjs"), checkoutProofHelperPath);
     fs.copyFileSync(
       path.join(repoRoot, "scripts", "windows-electron-smoke.ps1"),
       path.join(appPath, "windows-electron-smoke.ps1")
@@ -281,10 +290,12 @@ function copyTargetHelpers(appPath) {
       path.join(appPath, "windows-native-overlay-control"),
       { recursive: true }
     );
+    const matrixSummaryPath = path.join(appPath, "summarize-windows-overlay-matrix.cjs");
     fs.copyFileSync(
       path.join(repoRoot, "scripts", "summarize-windows-overlay-matrix.cjs"),
-      path.join(appPath, "summarize-windows-overlay-matrix.cjs")
+      matrixSummaryPath
     );
+    run(process.execPath, [matrixSummaryPath, "--self-test"], appPath);
     fs.copyFileSync(
       path.join(repoRoot, "scripts", "upsert-steam-shortcut.cjs"),
       path.join(appPath, "upsert-steam-shortcut.cjs")

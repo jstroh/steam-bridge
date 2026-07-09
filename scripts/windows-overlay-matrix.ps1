@@ -2301,8 +2301,7 @@ function New-ShortcutOpenAndWaitCase {
     [string]$CheckoutJsonFileOverride = "",
     [string]$InitTxnRequestFileOverride = "",
     [string]$WebModal = "",
-    [string]$StoreRouteOverride = "",
-    [switch]$RequireMicroTxnCallback
+    [string]$StoreRouteOverride = ""
   )
 
   return New-Case `
@@ -2316,7 +2315,6 @@ function New-ShortcutOpenAndWaitCase {
     -CheckoutTransactionIdOverride $CheckoutTransactionIdOverride `
     -CheckoutJsonFileOverride $CheckoutJsonFileOverride `
     -InitTxnRequestFileOverride $InitTxnRequestFileOverride `
-    -RequireMicroTxnCallback:$RequireMicroTxnCallback `
     -WebModal $WebModal `
     -StoreRouteOverride $StoreRouteOverride
 }
@@ -2372,7 +2370,7 @@ function Get-MatrixCases {
     New-ManagedOpenAndWaitCase -Id "12-managed-store-open-and-wait" -Action "presenter-store-open-and-wait" -StoreRouteOverride $StoreRoute
     New-ManagedOpenAndWaitCase -Id "13-managed-friends-open-and-wait" -Action "presenter-friends-open-and-wait"
     New-ManagedOpenAndWaitCase -Id "14-managed-dialog-open-and-wait" -Action "presenter-dialog-auto-open-and-wait" -DialogOverride $Dialog
-    New-ShortcutOpenAndWaitCase -Id "15-managed-shortcut" -ShortcutTargetOverride $ShortcutTarget -CheckoutTransactionIdOverride $shortcutCheckoutTransactionIdForCase -CheckoutJsonFileOverride $shortcutCheckoutJsonFileForCase -InitTxnRequestFileOverride $shortcutCheckoutInitTxnRequestFileForCase -RequireMicroTxnCallback:($RequireMicroTxnCallback -and $ShortcutTarget -eq "checkout")
+    New-ShortcutOpenAndWaitCase -Id "15-managed-shortcut" -ShortcutTargetOverride $ShortcutTarget -CheckoutTransactionIdOverride $shortcutCheckoutTransactionIdForCase -CheckoutJsonFileOverride $shortcutCheckoutJsonFileForCase -InitTxnRequestFileOverride $shortcutCheckoutInitTxnRequestFileForCase
     New-Case `
       -Id "15-managed-shortcut-keyboard" `
       -Action "presenter-shortcut" `
@@ -2386,7 +2384,6 @@ function Get-MatrixCases {
       -CheckoutTransactionIdOverride $shortcutCheckoutTransactionIdForCase `
       -CheckoutJsonFileOverride $shortcutCheckoutJsonFileForCase `
       -InitTxnRequestFileOverride $shortcutCheckoutInitTxnRequestFileForCase `
-      -RequireMicroTxnCallback:($RequireMicroTxnCallback -and $ShortcutTarget -eq "checkout") `
       -ResultDelayMs 30000
     New-Case -Id "16-managed-checkout-route" -Action "presenter-checkout" -RequireEvent @("overlay:presenter-open", "overlay:presenter-wait-closed", "overlay:presenter-parked", "overlay:presenter-checkout-open-and-wait-complete") -RequireOverlayActivated -RequireManagedOverlayComplete -ManagedOverlayResultMode "complete" -CheckoutTransactionIdOverride $checkoutTransactionIdForCase -CheckoutJsonFileOverride $checkoutJsonFileForCase -InitTxnRequestFileOverride $checkoutInitTxnRequestFileForCase -RequireMicroTxnCallback:$RequireMicroTxnCallback
     New-ManagedOpenAndWaitCase -Id "17-managed-profile-open-and-wait" -Action "presenter-profile-open-and-wait"

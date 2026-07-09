@@ -513,8 +513,10 @@ shortcut checkout/open-and-wait cases. Pair it with `--app-id <your-app-id>`,
 `--checkout-json-file <private-init-txn-response.json>`, and
 `--require-microtxn-callback` when the direct checkout case should receive
 Steam's authorization callback; that callback requirement is rejected unless the
-private checkout JSON handoff is configured. Before live launch, the matrix
-also validates that the JSON resolves to a usable checkout URL or transaction ID
+private checkout JSON handoff is configured. The matrix keeps shortcut checkout
+cases as parser, route, and lifecycle proof rather than claiming an
+operation-correlated callback. Before live launch, it also validates that the
+JSON resolves to a usable checkout URL or transaction ID
 through Steam Bridge's checkout target helper. If the JSON contains an app ID,
 the matrix checks it against `--app-id`; validation output still prints only
 sanitized presence-flag diagnostics. To check the same file before running the
@@ -844,6 +846,10 @@ shortcut/open-and-wait without rerunning unrelated overlay surfaces.
 On Windows, use
 `-LaunchMode steam-app -Suite checkout -InitTxnRequestFile <private-init-txn-request.json> -RequireMicroTxnCallback -CloseProbe -CloseProbeInput auto`
 for the focused configured-product checkout path.
+On Windows, `-RequireMicroTxnCallback` is supported only by the direct
+`presenter-checkout` action. The helper rejects it for `presenter-shortcut` and
+`presenter-shortcut-open-and-wait`, whose checkout coverage is deliberately
+limited to parser, route, and lifecycle proof.
 For `usersession=client` runs, the Windows summary prints
 `microTxnListener`, `legacyMicroTxnListener`, `microTxnSources`,
 `clientSessionCaptured`, `clientSessionCapturedSession`,
@@ -855,16 +861,22 @@ For `usersession=client` runs, the Windows summary prints
 `clientPromptRequest`. If the automatic client prompt is missing after a
 client-session transaction is captured, the smoke app also runs a bounded,
 read-only `QueryTxn` probe and the summary prints `clientQuery`,
-`clientQueryAttempted`, `clientQueryEndpoint`, `clientQueryId`,
-`clientQueryOk`, `clientQueryHttp`, `clientQueryResult`, `clientQueryStatus`,
-and `clientQueryError`, plus transaction/order/Steam-ID presence flags. The
-probe never finalizes or captures the transaction. Result/status/error scalars
-are not yet allowlist-normalized, so keep the artifact private and inspect it
-before sharing or committing it.
+`clientQuerySchema`, `clientQueryClosed`, `clientQueryAttempted`,
+`clientQueryReason`, `clientQueryEndpoint`, `clientQueryId`, `clientQueryOk`,
+`clientQueryHttp`, `clientQueryResult`, `clientQueryStatus`, `clientQueryError`,
+and `clientQueryRequestError`, plus transaction/order/Steam-ID presence flags.
+The probe never finalizes or captures the transaction. Its scalars use a closed
+schema and the Windows summarizer normalizes them again before printing.
 If `clientSessionCaptured` and `clientPromptMissing` are both `true`, the
 smoke app captured a client-session transaction target, but the historical
-result remains inconclusive until the operation-ordering issue in
-[`current-work.md`](../../docs/research/current-work.md) is corrected. The
+result remains inconclusive; the corrected operation ordering still needs one
+current-head live run. Summary rows require
+`checkoutOperationDeferredInitTxn=true`, `checkoutOperationObserver=true`, and
+`checkoutOperationPresenter=true`, proving the observer and active presenter
+were established before the in-app `InitTxn` request. Callback proof also
+requires `matchesCurrentCheckoutOperation=true`, computed in memory from the
+current app/order pair without logging either identifier. Use a fresh order ID
+represented as a decimal string or safe integer for each live attempt. The
 prompt session, endpoint, HTTP status, and request-shape fields come from
 sanitized in-app `InitTxn`
 metadata. The request-shape summary records only field presence and counts:

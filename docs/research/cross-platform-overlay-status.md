@@ -312,9 +312,11 @@ still did not emit `GameOverlayActivated(true)` or
 not accepted as proved yet. A later 2026-07-09 code audit found that this smoke
 path completed `InitTxn` before calling `openCheckoutAndWait(...)`; the managed
 activation hold and shown observer were therefore installed after the operation
-that can trigger Steam's automatic client prompt. Treat this historical result
-as inconclusive until the operation ordering is corrected and rerun, not as
-evidence that only Steam product/account/client behavior remains.
+that can trigger Steam's automatic client prompt. The local harness now defers
+the HTTP operation until the managed activation hold and shown observers are
+installed, but this historical result remains inconclusive until one
+current-head Windows rerun. It is not evidence that only Steam
+product/account/client behavior remains.
 
 A refreshed focused client-session rerun at
 `C:\Users\admin\steam-bridge-artifacts\windows-client-session-diagnostics-20260703-170411-appid`
@@ -333,23 +335,30 @@ reports this case as `clientSessionCaptured=true`,
 saw the smoke app foreground rather than a checkout panel, and crash diagnostics
 stayed clean. The current summary also prints `microTxnSources`, which remains
 empty when no authorization callback fires and records `steamworks`, `legacy`,
-or both when one does. After a missing client-session prompt, the smoke app now
-runs a bounded, read-only `QueryTxn` diagnostic and records value-minimized
-`clientQuery*` fields: endpoint, id type, HTTP/result/status/error strings, and
-transaction/order/Steam-ID presence flags and never finalizes/captures the
-transaction. Result/status/error scalars are not yet allowlist-normalized, so
-the artifact must remain private and be inspected before sharing. The summary
-now requires explicit-client request-file
-artifacts to prove sanitized client-session capture, transaction presence,
-prompt-wait start, active presenter state, value-free listener registration for
-both the current Steamworks and legacy normalized `MicroTxnAuthorizationResponse`
-paths, and a recognized `callbackSource` on any authorization event before
-accepting a missing-prompt diagnostic. Those fields prove the post-capture wait
-shape, but they do not prove the presenter was active when `InitTxn` triggered
-the client-session flow. The next valid comparison must move the in-app
-`InitTxn` capture inside the operation passed to `openCheckoutAndWait(...)`, add
-a regression assertion for that ordering, and then rerun once. The current
-harness also records sanitized request-shape fields for
+or both when one does. The current local harness records
+`checkout:managed-operation-start` before invoking deferred `InitTxn`; the
+Windows auditor requires its armed-observer and active-presenter markers before
+accepting client-session evidence. The bridge also preserves a prompt that
+opens before `InitTxn` returns, including a prompt that opens and closes during
+the HTTP operation, instead of rejecting it as an unrelated active overlay.
+The exception is client-session-only; an early activation for a web-session
+target remains rejected, and managed checkout rejections abort the smoke
+lifecycle observer rather than waiting for its timeout.
+
+After a missing client-session prompt, the smoke app runs one bounded,
+read-only `QueryTxn` diagnostic and never finalizes/captures the transaction.
+Its schema contains only allowlisted endpoint, identifier type, HTTP,
+result/status/error, request-error, and identifier-presence values; the Windows
+summarizer normalizes them again and requires the query to occur after the wait
+timeout and before prompt-missing classification. Callback proof now ignores
+stale callbacks and requires `matchesCurrentCheckoutOperation=true`, computed
+in memory from the current app/order pair without writing either identifier.
+Overlapping actions cannot clear the active matcher, static response matching
+uses the order from the selected target-bearing envelope, and shortcut checkout
+is parser/route/lifecycle proof rather than operation-correlated callback proof.
+These ordering, early-prompt, query-schema, and correlation changes have local
+unit and matrix-self-test coverage but no post-change Windows live artifact yet.
+The current harness also records sanitized request-shape fields for
 future reruns, including whether `usersession` was explicit or omitted and
 whether an IP address field was submitted, required order/user/language/currency
 field presence, item and bundle counts, and required line-item field presence,

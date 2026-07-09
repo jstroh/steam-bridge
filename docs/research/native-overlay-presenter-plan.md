@@ -206,7 +206,9 @@ Reviewed on 2026-07-02 while investigating Windows Electron overlay failures:
   A later ordering audit makes the negative result inconclusive: the smoke app
   completed `InitTxn` before entering `openCheckoutAndWait(...)`, so it did not
   prove the presenter activation hold and shown observer existed when the
-  operation triggered Steam's client prompt.
+  operation triggered Steam's client prompt. The local harness now defers that
+  operation until both are installed, but still needs one current-head Windows
+  live artifact.
 - A refreshed current-package client-session checkout diagnostic at
   `C:\Users\admin\steam-bridge-artifacts\windows-client-session-diagnostics-20260703-170411-appid`
   kept the same `steam-app` configured-app lane, private env handoff, live
@@ -222,23 +224,28 @@ Reviewed on 2026-07-02 while investigating Windows Electron overlay failures:
   `legacyMicroTxnListener=true`, and `clientPromptMissing=true`, with clean
   crash diagnostics and the close probe still foregrounded on the smoke app.
   Current summaries also print `microTxnSources`, empty when no authorization
-  callback fires and set to `steamworks`, `legacy`, or both when one does. When
-  the automatic prompt is missing, the smoke app now runs a bounded, read-only
-  `QueryTxn` diagnostic and records value-minimized `clientQuery*` fields:
-  endpoint, id type, HTTP/result/status/error strings, and transaction, order,
-  and Steam-ID presence flags and never finalizes/captures the transaction.
-  Result/status/error scalars are not yet allowlist-normalized, so the artifact
-  must remain private and be inspected before sharing.
-  Callback-required explicit-client artifacts must prove sanitized transaction
-  capture, the prompt-wait boundary, listener registration for both the current
-  Steamworks and legacy normalized `MicroTxnAuthorizationResponse` paths, and a
-  recognized `callbackSource` on any authorization event before a missing-prompt
-  diagnostic is accepted. These diagnostics validate the post-capture wait but
-  do not isolate Steam's automatic prompt behavior yet. The smoke harness must
-  run `InitTxn` inside the operation supplied to `openCheckoutAndWait(...)`,
-  matching the library's presenter-first ordering, before a new artifact can
-  distinguish a bridge issue from configured product/account or Steam client
-  behavior.
+  callback fires and set to `steamworks`, `legacy`, or both when one does. The
+  smoke harness now records a managed-operation start before deferred `InitTxn`,
+  with armed-observer and active-presenter proof. The helper also accepts a
+  client prompt that opens before the HTTP operation resolves, including a full
+  open/close cycle observed during that operation. That exception is scoped to
+  client-session targets; web-session targets still reject an unrelated early
+  activation, and managed checkout rejections abort the external smoke
+  observer.
+  When the automatic prompt is missing, the smoke app runs one bounded,
+  read-only `QueryTxn` diagnostic and never finalizes/captures the transaction.
+  Query fields use a closed allowlist schema and are normalized again by the
+  Windows summarizer, which requires the query after the managed wait timeout
+  and before prompt-missing classification. Callback-required artifacts ignore
+  stale callbacks and require a privacy-safe
+  `matchesCurrentCheckoutOperation=true` marker derived in memory from the
+  current app/order pair. Overlapping actions cannot replace that matcher, and
+  static response matching uses the order from the target-bearing envelope.
+  Shortcut checkout remains parser/route/lifecycle proof; only direct managed
+  checkout can require operation-scoped callback proof. These changes are
+  locally covered but still need one current-head Windows live artifact before
+  the remaining gap can be assigned to bridge behavior, configured
+  product/account state, or the Steam client.
 - A focused default-client diagnostic at
   `C:\Users\admin\steam-bridge-artifacts\windows-default-client-inittxn-checkout-20260703-172218`
   used the same `steam-app` configured-app lane and a private request that

@@ -1493,6 +1493,9 @@ function microTxnEventOrderIdPresent(event) {
     return false;
   }
   const activePayload = payload["0"] && typeof payload["0"] === "object" ? payload["0"] : payload;
+  if (activePayload.hasOrderId === true) {
+    return true;
+  }
   for (const key of ["orderId", "orderID", "order_id", "orderid", "m_ulOrderID", "m_ulOrderId"]) {
     if (Object.prototype.hasOwnProperty.call(activePayload, key)) {
       return sanitizedTargetValuePresent(activePayload[key]);
@@ -2765,7 +2768,7 @@ function microTxnCallbackFixture(pumpCount) {
     payload: {
       authorized: true,
       appId: 480,
-      orderId: { redacted: true, present: true, type: "bigint" },
+      hasOrderId: true,
       presenter: activePresenterFixture(pumpCount)
     }
   };
@@ -2813,6 +2816,7 @@ function removeMicroTxnCallbackOrderId(root, caseId) {
     delete payload.orderid;
     delete payload.m_ulOrderID;
     delete payload.m_ulOrderId;
+    delete payload.hasOrderId;
   });
 }
 
@@ -2823,6 +2827,7 @@ function replaceMicroTxnCallbackOrderIdWithSdkOrderId(root, caseId) {
     delete payload.order_id;
     delete payload.orderid;
     delete payload.m_ulOrderId;
+    delete payload.hasOrderId;
     payload.m_ulOrderID = { redacted: true, present: true, type: "string" };
   });
 }
@@ -3396,7 +3401,7 @@ function createSelfTestFixture(root) {
           payload: {
             authorized: true,
             appId: 480,
-            orderId: { redacted: true, present: true, type: "bigint" },
+            hasOrderId: true,
             presenter: activePresenterFixture(31)
           }
         },

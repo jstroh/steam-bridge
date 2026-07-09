@@ -9989,10 +9989,17 @@ export function createElectronSteamOverlay(
       assertOpen();
       const status = controller.getOpenStatus(target);
       const isUsingExistingActivation = Boolean(activationHandle);
+      const clientSessionCheckout = isElectronSteamOverlayClientSessionCheckoutTarget(target);
       const isExistingActivationOpening =
         isUsingExistingActivation && status.reason === "opening" && status.waitReason === "opening";
+      const isExistingClientSessionActivation =
+        isUsingExistingActivation &&
+        clientSessionCheckout &&
+        Boolean(lifecycle.shownObservation) &&
+        status.reason === "overlay-active" &&
+        status.waitReason === "overlay-active";
       targetSnapshot = status.targetSnapshot;
-      if (!status.canWait && !isExistingActivationOpening) {
+      if (!status.canWait && !isExistingActivationOpening && !isExistingClientSessionActivation) {
         throw electronSteamOverlayOpenStatusError(status);
       }
       assertElectronSteamOverlayTargetCanOpen(target, {
@@ -10003,10 +10010,12 @@ export function createElectronSteamOverlay(
       });
       const snapshot = status.snapshot;
       assertElectronSteamOverlayNativeHostAvailable(snapshot);
-      if (activationHandle) {
-        assertElectronSteamOverlayNotActive(snapshot);
-      } else {
-        assertElectronSteamOverlayNotBusy(snapshot);
+      if (!isExistingClientSessionActivation) {
+        if (activationHandle) {
+          assertElectronSteamOverlayNotActive(snapshot);
+        } else {
+          assertElectronSteamOverlayNotBusy(snapshot);
+        }
       }
       if (!activationHandle) {
         const presenterInternal = presenter as NativeOverlayPresenterInternal;
@@ -10016,7 +10025,6 @@ export function createElectronSteamOverlay(
         timeoutMs: finiteNumber(options.showTimeoutMs, 15000),
         signal: options.signal
       });
-      const clientSessionCheckout = isElectronSteamOverlayClientSessionCheckoutTarget(target);
       if (!clientSessionCheckout) {
         lifecycle.shownObservation?.disconnect();
         openSteamOverlay({

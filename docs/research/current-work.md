@@ -2,10 +2,10 @@
 
 Last reviewed: 2026-07-09
 
-Code and evidence anchor: `620e471` (`Add Windows client checkout query
-diagnostics`). The recovery documentation that introduced this checkpoint is
-newer than that anchor. Always inspect Git history and the worktree before
-trusting this file.
+Implementation baseline before the current checkout-hardening slice: `298eebe`
+(`Add compaction recovery and test ledger`). This checkpoint is committed with
+the newer implementation; always inspect Git history and the worktree before
+trusting it.
 
 This is the short, replace-in-place operational checkpoint for fast recovery.
 It is not an append-only history and does not replace code, tests, the detailed
@@ -16,10 +16,11 @@ platform evidence log, or the presenter design plan.
 Finish the Windows x64 real-purchase overlay proof without exposing private
 configured app, product, account, or transaction data.
 
-The immediate task is not another unchanged live run. First correct the smoke
-harness so the private `InitTxn` operation executes inside
-`openCheckoutAndWait(...)`, after the presenter activation hold and overlay
-shown observer are installed. Then rerun one focused client-session proof.
+The local implementation and regression-test preparation is complete. Do not
+run another unchanged artifact. The next evidence step is exactly one focused
+client-session proof after a current Windows package is built and deployed.
+The Windows laptop and Steam Deck are currently unavailable, so live work is
+deferred without treating device availability as a product finding.
 
 ## Proven Baseline
 
@@ -38,36 +39,50 @@ shown observer are installed. Then rerun one focused client-session proof.
 
 ## Current Findings and Open Questions
 
-### Client-session checkout result is inconclusive
+### Historical client-session result remains inconclusive
 
 The historical explicit-client run captured a sanitized client-session target
 but showed no automatic prompt or authorization callback. The previous docs
 attributed the remaining gap to Steam client/product/account behavior.
 
-A 2026-07-09 code audit found that the smoke app currently awaits
-`captureInitTxnCheckout()` before calling `openCheckoutAndWait(() =>
-transaction)`. For `usersession=client`, `InitTxn` is the action that can trigger
-Steam's automatic prompt. The presenter activation hold and shown observer are
-therefore installed after the trigger. The library helper itself has the correct
-order and unit coverage verifies that the presenter is active inside its
-operation callback.
+A 2026-07-09 code audit found that the smoke app awaited the `InitTxn` HTTP call
+before entering `openCheckoutAndWait(...)`. The harness now prepares only local
+request state first, arms the smoke lifecycle observer, enters the managed
+checkout operation, and invokes deferred `InitTxn` while the presenter is active
+and the library shown observer is installed. The client-session wait-start event
+is recorded from inside that operation after target capture.
 
-Do not attribute the missing prompt to Steam configuration or client behavior
-until this ordering is fixed and the same focused proof is rerun.
+The same audit found a second bridge race: if Steam opened the prompt before
+the HTTP response returned, the resolved client target could be rejected as an
+already-active overlay. The helper now accepts only the activation belonging to
+the current client-session operation and uses its preinstalled shown observer.
+Tests cover both a prompt that stays open and one that opens and closes entirely
+during the operation. A web-session target cannot adopt that early activation,
+and any managed checkout rejection aborts the armed smoke observer immediately.
 
-### Diagnostic/proof gaps
+Do not attribute the historical missing prompt to Steam configuration or client
+behavior until the corrected current package is rerun once.
 
-- Commit `620e471` added bounded, read-only, value-minimized `clientQuery*`
-  diagnostics, but no post-change live QueryTxn result is documented and the
-  remaining scalar fields are not yet allowlist-normalized.
-- The Windows summarizer prints those fields but does not yet require the query
-  attempt after a missing client prompt.
-- Required callback proof validates app ID, authorization, source, presenter,
-  and lifecycle, but does not correlate the callback to the transaction/order
-  created by the current operation. Correlation should be computed privately
-  and emitted only as a boolean match marker.
-- Query result/status/error scalars should be normalized defensively rather than
-  relying entirely on Valve's current response schema for privacy.
+### Diagnostics are locally hardened; live evidence is pending
+
+- QueryTxn diagnostics now use schema `1` with closed result, status, error,
+  request-error, endpoint, identifier-type, HTTP, and presence values. Caught
+  error strings and arbitrary nested upstream fields are never copied.
+- The Windows summarizer normalizes those fields again and requires exactly one
+  attempted query after the managed wait timeout and before prompt-missing
+  classification. Query failure/timeout remains valid diagnostic evidence; the
+  gate does not require a successful result.
+- Microtransaction callbacks now carry only a
+  `matchesCurrentCheckoutOperation` boolean derived privately from the current
+  app/order pair. Required proof ignores stale or mismatched callbacks and
+  accepts current plus legacy duplicates. An overlapping checkout cannot clear
+  the active matcher, and static response correlation reads the order only from
+  the same target-bearing envelope selected for checkout.
+- Operation-scoped callback proof belongs only to the direct managed checkout
+  case. Shortcut checkout remains parser, route, and lifecycle proof and the
+  Windows matrix no longer assigns it a callback requirement.
+- No post-change live QueryTxn result or correlated authorization callback is
+  documented yet.
 
 ### Freshness
 
@@ -80,19 +95,18 @@ until this ordering is fixed and the same focused proof is rerun.
 
 ## Next Actions
 
-1. Refactor the smoke checkout path so in-app private `InitTxn` capture is the
-   operation passed to `openCheckoutAndWait(...)` rather than a completed value.
-2. Add a regression test that proves the presenter is active and the shown
-   observer is established when the smoke harness invokes client `InitTxn`.
-3. Allowlist-normalize and require QueryTxn evidence after a classified missing
-   prompt, and add a private in-process callback-correlation boolean.
-4. Rebuild/redeploy one current Windows x64 package and run one focused
+1. Wait until the Windows laptop is available; no Steam Deck work is required
+   for this Windows-only goal.
+2. Rebuild/redeploy one current Windows x64 package and run one focused
    `usersession=client` checkout proof in the interactive desktop session with
-   callback, close/back-to-app, QueryTxn, and crash gates.
-5. If correct ordering still yields a healthy pending transaction but no prompt,
+   managed-operation ordering, callback correlation, close/back-to-app,
+   QueryTxn, and crash gates.
+3. Use a fresh unique order ID represented as a decimal string or safe integer
+   so callback correlation is exact without exposing the value.
+4. If correct ordering still yields a healthy pending transaction but no prompt,
    classify the remaining gap using that evidence and retain `usersession=web`
    as the recommended Windows Electron path.
-6. Update this checkpoint, the matching ledger entries, and the detailed
+5. Update this checkpoint, the matching ledger entries, and the detailed
    Windows evidence immediately after the result.
 
 Keep Electron `43.0.0` for the first ordering A/B rerun so the diagnosis changes
@@ -100,16 +114,19 @@ one premise. Handle the `43.1.0` update and its minimum re-baseline separately.
 
 ## Last Reported Verification
 
-Against the worktree based on `620e471` on 2026-07-09, including the recovery
-documentation change:
+Against the checkout-hardening worktree based on `298eebe` on 2026-07-09:
 
 - `npm run package:smoke` passed.
-- `npm test` passed all 171 tests.
+- `npm test` passed all 174 tests.
 - `npm run api:check`, `npm run check:platform`, `npm run native:fmt`, and
   `npm run native:check` passed. `native:check` reported only the existing
   future-incompatibility warning for transitive `block 0.1.6`.
+- `pwsh` is not installed on this macOS host, so the expanded PowerShell schema
+  gate received package-smoke source coverage but not a local PowerShell parse;
+  the Windows package/live lane must exercise it next.
 - `git diff --check` passed and the worktree began clean.
-- The latest CI for `620e471` passed all three target jobs plus package smoke.
+- CI for the preceding recovery commit `298eebe` passed all three target jobs
+  plus package smoke. Check the current implementation commit live after push.
 - `npm run check:electron:latest` failed only on the intentional/latest-version
   comparison described above; it is not part of normal `npm test`.
 
@@ -122,6 +139,10 @@ Real checkout proof may use a private configured app/product, publisher Web API
 credential, and request fixture only through the existing runtime handoff. This
 file and the test ledger may record presence and sanitized shape only. Never add
 the values, names, IDs, URLs, or paths.
+
+The Windows laptop and Steam Deck are currently unavailable. This is a transient
+external prerequisite, not evidence about Steam Bridge or Steam behavior. Only
+the Windows laptop is needed for the active goal.
 
 ## Detailed Sources
 

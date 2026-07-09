@@ -254,6 +254,7 @@ test("electron smoke sanitizer redacts private overlay proof fields", () => {
     },
     callback: {
       authorized: true,
+      matchesCurrentCheckoutOperation: true,
       m_ulOrderID: "order-private-sdk-001",
       m_ulTransID: "135792468",
       owner: 76561198000000001n
@@ -286,6 +287,7 @@ test("electron smoke sanitizer redacts private overlay proof fields", () => {
   assert.equal(sanitized.checkout.hasReturnUrl, true);
   assert.equal(sanitized.presenter.currentFps, 0);
   assert.equal(sanitized.callback.authorized, true);
+  assert.equal(sanitized.callback.matchesCurrentCheckoutOperation, true);
   assert.equal(sanitized.callback.m_ulOrderID.redacted, true);
   assert.equal(sanitized.callback.m_ulTransID.redacted, true);
   assert.equal(sanitized.callback.owner, "[redacted-steam-id]");
@@ -337,6 +339,251 @@ test("electron smoke sanitizer redacts private overlay proof fields", () => {
   assert.equal(serialized.includes("private-init-txn-request"), false);
   assert.equal(serialized.includes("publisher-secret"), false);
   assert.equal(serialized.includes("super-secret-control-token"), false);
+});
+
+test("electron checkout proof runs the operation inside the managed wait", async () => {
+  const { startManagedCheckoutOperation } = require(path.join(
+    repoRoot,
+    "examples",
+    "electron-basic",
+    "checkout-proof.cjs"
+  ));
+  let presenterActive = false;
+  let shownObserverInstalled = false;
+  let operationStarted = false;
+  const hookOrder = [];
+  const overlay = {
+    async openCheckoutAndWait(operation) {
+      presenterActive = true;
+      shownObserverInstalled = true;
+      const transaction = await operation();
+      return { transaction };
+    }
+  };
+
+  const result = await startManagedCheckoutOperation(
+    overlay,
+    async () => {
+      hookOrder.push("operation");
+      operationStarted = true;
+      assert.equal(presenterActive, true);
+      assert.equal(shownObserverInstalled, true);
+      return { transaction: { clientSession: true } };
+    },
+    {},
+    {
+      onOperationStart() {
+        hookOrder.push("start");
+        assert.equal(presenterActive, true);
+        assert.equal(shownObserverInstalled, true);
+      },
+      onOperationComplete(completed) {
+        hookOrder.push("complete");
+        assert.deepEqual(completed.transaction, { clientSession: true });
+      }
+    }
+  );
+
+  assert.equal(operationStarted, true);
+  assert.deepEqual(result.transaction, { clientSession: true });
+  assert.deepEqual(hookOrder, ["start", "operation", "complete"]);
+
+  const errorOrder = [];
+  await assert.rejects(
+    startManagedCheckoutOperation(
+      overlay,
+      async () => {
+        errorOrder.push("operation");
+        throw new Error("deferred operation failed");
+      },
+      {},
+      {
+        onOperationStart() {
+          errorOrder.push("start");
+        },
+        onOperationComplete() {
+          errorOrder.push("complete");
+        },
+        onOperationError(error) {
+          errorOrder.push("error");
+          assert.match(error.message, /deferred operation failed/);
+        }
+      }
+    ),
+    /deferred operation failed/
+  );
+  assert.deepEqual(errorOrder, ["start", "operation", "error"]);
+});
+
+test("electron checkout proof correlates callbacks without exposing identifiers", async () => {
+  const {
+    checkoutCallbackCorrelationFromResult,
+    createMicroTxnCheckoutCorrelationTracker,
+    microTxnAuthorizationDiagnostic,
+    startManagedCheckoutOperation
+  } = require(path.join(repoRoot, "examples", "electron-basic", "checkout-proof.cjs"));
+  const tracker = createMicroTxnCheckoutCorrelationTracker();
+
+  assert.equal(tracker.matches({ appId: 480, orderId: "42" }), false);
+  const first = tracker.begin({ appId: "480", orderId: "00042" });
+  assert.equal(first.prepared, true);
+  assert.equal(tracker.matches({ appId: 480, orderId: 42n, authorized: false }), true);
+  assert.equal(tracker.matches({ app_id: 480, order_id: "42" }), true);
+  assert.equal(tracker.matches({ appId: 481, orderId: "42" }), false);
+  assert.equal(tracker.matches({ appId: 480, orderId: "43" }), false);
+  assert.equal(tracker.matches({ appId: 480, orderId: Number.MAX_SAFE_INTEGER + 1 }), false);
+
+  assert.throws(() => tracker.begin({ appId: 480, orderId: "84" }), /already active/);
+  assert.equal(tracker.matches({ appId: 480, orderId: "42" }), true);
+  first.release();
+  const second = tracker.begin({ appId: 480, orderId: "84" });
+  first.release();
+  assert.equal(tracker.matches({ 0: { m_unAppID: 480, m_ulOrderID: 84n } }), true);
+
+  let duplicateOperationStarted = false;
+  const busyOverlay = {
+    openCheckoutAndWait() {
+      return Promise.reject(new Error("checkout busy"));
+    }
+  };
+  await assert.rejects(
+    startManagedCheckoutOperation(busyOverlay, () => {
+      duplicateOperationStarted = true;
+      return { transaction: { clientSession: true } };
+    }),
+    /checkout busy/
+  );
+  assert.equal(duplicateOperationStarted, false);
+  assert.equal(tracker.matches({ appId: 480, orderId: "84" }), true);
+
+  second.release();
+  assert.equal(tracker.matches({ appId: 480, orderId: "84" }), false);
+
+  const invalid = tracker.begin({ appId: 480, orderId: "not-an-id" });
+  assert.equal(invalid.prepared, false);
+  assert.equal(tracker.matches({ appId: 480, orderId: "84" }), false);
+
+  const bounded = microTxnAuthorizationDiagnostic({
+    m_unAppID: 480,
+    m_ulOrderID: 84n,
+    m_bAuthorized: 0,
+    message: "do-not-copy-callback-payload"
+  });
+  assert.deepEqual(bounded, { appId: 480, authorized: false, hasOrderId: true });
+  assert.equal(JSON.stringify(bounded).includes("do-not-copy-callback-payload"), false);
+
+  const selectedCorrelation = checkoutCallbackCorrelationFromResult(
+    {
+      orderId: "42",
+      data: {
+        response: {
+          params: { transid: "7", orderid: "84" }
+        }
+      }
+    },
+    480
+  );
+  assert.deepEqual(selectedCorrelation, { appId: 480, orderId: "84" });
+  assert.deepEqual(
+    checkoutCallbackCorrelationFromResult(
+      { response: { params: { transid: "7", orderId: "42", orderid: "84" } } },
+      480
+    ),
+    { appId: 480, orderId: undefined }
+  );
+  const selectedTracker = createMicroTxnCheckoutCorrelationTracker();
+  selectedTracker.begin(selectedCorrelation);
+  assert.equal(selectedTracker.matches({ appId: 480, orderId: "42" }), false);
+  assert.equal(selectedTracker.matches({ appId: 480, orderId: "84" }), true);
+});
+
+test("electron checkout QueryTxn diagnostics use a closed privacy-safe schema", () => {
+  const {
+    clientSessionQueryErrorDiagnostic,
+    clientSessionQuerySkippedDiagnostic,
+    isClientSessionQueryClosedDiagnostic,
+    normalizeMicroTxnErrorCode,
+    normalizeMicroTxnResult,
+    normalizeMicroTxnStatus,
+    summarizeClientSessionQueryTxnResponse
+  } = require(path.join(repoRoot, "examples", "electron-basic", "checkout-proof.cjs"));
+  const privateSentinel = "do-not-copy-this-upstream-value";
+  const context = { endpoint: "sandbox", id: "transaction", queriedTransactionId: true };
+  const summary = summarizeClientSessionQueryTxnResponse(
+    {
+      ok: false,
+      status: 200,
+      data: {
+        response: {
+          result: privateSentinel,
+          params: {
+            status: privateSentinel,
+            transid: "123",
+            orderid: "456",
+            steamid: "789"
+          },
+          error: { errorcode: privateSentinel, errordesc: privateSentinel }
+        }
+      }
+    },
+    context
+  );
+
+  assert.deepEqual(summary, {
+    schema: 1,
+    attempted: true,
+    reason: "none",
+    endpoint: "sandbox",
+    id: "transaction",
+    ok: false,
+    httpStatus: 200,
+    result: "unknown",
+    status: "unknown",
+    errorCode: "unknown",
+    requestError: "none",
+    hasErrorDescription: true,
+    hasTransactionId: true,
+    hasOrderId: true,
+    hasSteamId64: true
+  });
+  assert.equal(JSON.stringify(summary).includes(privateSentinel), false);
+  assert.equal(isClientSessionQueryClosedDiagnostic(summary), true);
+  assert.equal(isClientSessionQueryClosedDiagnostic({ ...summary, privateMessage: privateSentinel }), false);
+  assert.equal(isClientSessionQueryClosedDiagnostic({ ...summary, httpStatus: "200" }), false);
+  assert.equal(isClientSessionQueryClosedDiagnostic({ ...summary, ok: "false" }), false);
+  assert.equal(normalizeMicroTxnResult("OK"), "OK");
+  assert.equal(normalizeMicroTxnResult("failure"), "Failure");
+  for (const status of [
+    "Init",
+    "Approved",
+    "Succeeded",
+    "Failed",
+    "Refunded",
+    "PartialRefund",
+    "Chargedback",
+    "RefundedSuspectedFraud",
+    "RefundedFriendlyFraud"
+  ]) {
+    assert.equal(normalizeMicroTxnStatus(status.toLowerCase()), status);
+  }
+  assert.equal(normalizeMicroTxnErrorCode("1"), "1");
+  assert.equal(normalizeMicroTxnErrorCode(107), "107");
+  assert.equal(normalizeMicroTxnErrorCode(privateSentinel), "unknown");
+
+  const abortError = new Error(privateSentinel);
+  abortError.name = "AbortError";
+  abortError.code = privateSentinel;
+  abortError.reason = privateSentinel;
+  const timeout = clientSessionQueryErrorDiagnostic(abortError, context);
+  assert.equal(timeout.requestError, "timeout");
+  assert.equal(isClientSessionQueryClosedDiagnostic(timeout), true);
+  assert.equal(JSON.stringify(timeout).includes(privateSentinel), false);
+  const failed = clientSessionQueryErrorDiagnostic(new Error(privateSentinel), context);
+  assert.equal(failed.requestError, "request-failed");
+  assert.equal(JSON.stringify(failed).includes(privateSentinel), false);
+  const skipped = clientSessionQuerySkippedDiagnostic("disabled", context);
+  assert.equal(skipped.reason, "disabled");
+  assert.equal(isClientSessionQueryClosedDiagnostic(skipped), true);
 });
 
 test("native host unavailable guard accepts class and error-like shapes", (t) => {
@@ -841,8 +1088,13 @@ test("electron smoke native-host-unavailable action errors keep sanitized target
 
   assert.equal(
     [...exampleMain.matchAll(/throwIfNativeHostUnavailable\(initialSnapshot,\s*target\)/g)].length,
-    3,
-    "managed smoke paths should attach the resolved target snapshot"
+    2,
+    "managed target smoke paths should attach the resolved target snapshot"
+  );
+  assert.match(
+    exampleMain,
+    /throwIfNativeHostUnavailable\(readinessSnapshot,\s*pendingTarget\)/,
+    "deferred checkout smoke should fail fast with a sanitized pending target"
   );
   assert.match(
     exampleMain,
@@ -901,8 +1153,41 @@ test("electron smoke native-host-unavailable action errors keep sanitized target
   );
   assert.match(
     exampleMain,
-    /captureInitTxnCheckout\(activeClient\)/,
-    "private InitTxn smoke proof should create the transaction inside the initialized Electron app"
+    /run:\s*\(\)\s*=>\s*captureInitTxnCheckout\(prepared\)/,
+    "private InitTxn smoke proof should expose a lazy in-app transaction operation"
+  );
+  assert.doesNotMatch(
+    exampleMain,
+    /await\s+readCheckoutOperationInput\(/,
+    "private InitTxn smoke proof must not complete before the managed checkout wait starts"
+  );
+  const checkoutStart = exampleMain.indexOf("async function openPresenterCheckoutOverlay");
+  const checkoutEnd = exampleMain.indexOf("function isSteamOverlayWaitTimeout", checkoutStart);
+  const checkoutSource = exampleMain.slice(checkoutStart, checkoutEnd);
+  assert(
+    checkoutSource.indexOf("observeManagedOverlayLifecycle(overlay, context)") <
+      checkoutSource.indexOf("startManagedCheckoutOperation("),
+    "checkout smoke should arm its lifecycle observer before starting the managed operation"
+  );
+  assert(
+    checkoutSource.indexOf('recordEvent("checkout:managed-operation-start"') <
+      checkoutSource.indexOf('recordEvent("checkout:client-session-wait-start"'),
+    "client-session wait evidence should be recorded after the managed operation starts"
+  );
+  assert.doesNotMatch(
+    checkoutSource,
+    /microTxnCheckoutCorrelation\.clear\(\)/,
+    "a rejected duplicate checkout must not clear the active callback correlation"
+  );
+  assert.match(
+    checkoutSource,
+    /onOperationError\(error\)\s*\{\s*lifecycle\.abort\(\);\s*settleOperationGate\(error\);/,
+    "a deferred checkout failure should abort its armed lifecycle observer immediately"
+  );
+  assert.match(
+    checkoutSource,
+    /openAndWait\.catch\(\(error\)\s*=>\s*\{\s*lifecycle\.abort\(\);\s*settleOperationGate\(error\);/,
+    "every managed checkout rejection should abort its armed lifecycle observer immediately"
   );
   assert.match(
     exampleMain,
@@ -12257,6 +12542,75 @@ test("electron steam overlay checkout helper prepares, opens, and waits with bac
   });
   assert.equal(clientSessionResult.parked.currentFps, 0);
   assert.equal(steamWebOverlayCalls(fake).length, clientSessionCallsBefore);
+
+  let earlyClientSessionOperationSnapshot;
+  const earlyClientSessionCallsBefore = steamWebOverlayCalls(fake).length;
+  const earlyClientSessionCheckout = overlay.openCheckoutAndWait(
+    () => {
+      earlyClientSessionOperationSnapshot = overlay.snapshot();
+      fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: true });
+      return {
+        clientSession: true,
+        data: { response: { params: { transid: "86421" } } }
+      };
+    },
+    { showTimeoutMs: 200, closeTimeoutMs: 200 }
+  );
+
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(earlyClientSessionOperationSnapshot.mode, "active");
+  assert.equal(earlyClientSessionOperationSnapshot.clickThrough, false);
+  assert.equal(overlay.snapshot().overlayActive, true);
+  fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: false });
+  const earlyClientSessionResult = await earlyClientSessionCheckout;
+  assert.equal(earlyClientSessionResult.shown.overlayActive, true);
+  assert.equal(earlyClientSessionResult.parked.currentFps, 0);
+  assert.equal(steamWebOverlayCalls(fake).length, earlyClientSessionCallsBefore);
+
+  let rapidClientSessionOperationSnapshot;
+  const rapidClientSessionCallsBefore = steamWebOverlayCalls(fake).length;
+  const rapidClientSessionCheckout = overlay.openCheckoutAndWait(
+    () => {
+      rapidClientSessionOperationSnapshot = overlay.snapshot();
+      fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: true });
+      fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: false });
+      return {
+        clientSession: true,
+        data: { response: { params: { transid: "86422" } } }
+      };
+    },
+    { showTimeoutMs: 200, closeTimeoutMs: 200 }
+  );
+  const rapidClientSessionResult = await rapidClientSessionCheckout;
+  assert.equal(rapidClientSessionOperationSnapshot.mode, "active");
+  assert.equal(rapidClientSessionOperationSnapshot.clickThrough, false);
+  assert.equal(rapidClientSessionResult.shown.overlayActive, true);
+  assert.equal(rapidClientSessionResult.parked.currentFps, 0);
+  assert.equal(steamWebOverlayCalls(fake).length, rapidClientSessionCallsBefore);
+
+  let earlyWebSessionOperationSnapshot;
+  const earlyWebSessionCallsBefore = steamWebOverlayCalls(fake).length;
+  const earlyWebSessionCheckout = overlay.openCheckoutAndWait(
+    () => {
+      earlyWebSessionOperationSnapshot = overlay.snapshot();
+      fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: true });
+      return {
+        response: {
+          params: {
+            steamurl: "https://checkout.steampowered.com/checkout/approvetxn/86423/"
+          }
+        }
+      };
+    },
+    { showTimeoutMs: 200, closeTimeoutMs: 200 }
+  );
+  await assert.rejects(earlyWebSessionCheckout, /Steam overlay is already active/);
+  assert.equal(earlyWebSessionOperationSnapshot.mode, "active");
+  assert.equal(steamWebOverlayCalls(fake).length, earlyWebSessionCallsBefore);
+  fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: false });
+  await Promise.resolve();
+  assert.equal(overlay.snapshot().overlayActive, false);
 
   const activationCallsBeforeWrongAppId = fake.calls.filter((call) => call.method === "activateOverlayToWebPage").length;
   await assert.rejects(
