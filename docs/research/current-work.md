@@ -2,10 +2,9 @@
 
 Last reviewed: 2026-07-09
 
-Implementation baseline before the current checkout-hardening slice: `298eebe`
-(`Add compaction recovery and test ledger`). This checkpoint is committed with
-the newer implementation; always inspect Git history and the worktree before
-trusting it.
+Implementation anchor: `646a01c` (`Harden Windows client checkout proof`).
+This checkpoint may be committed immediately after that implementation; always
+inspect Git history and the worktree before trusting it.
 
 This is the short, replace-in-place operational checkpoint for fast recovery.
 It is not an append-only history and does not replace code, tests, the detailed
@@ -114,7 +113,7 @@ one premise. Handle the `43.1.0` update and its minimum re-baseline separately.
 
 ## Last Reported Verification
 
-Against the checkout-hardening worktree based on `298eebe` on 2026-07-09:
+Against implementation commit `646a01c` on 2026-07-09:
 
 - `npm run package:smoke` passed.
 - `npm test` passed all 174 tests.
@@ -124,9 +123,9 @@ Against the checkout-hardening worktree based on `298eebe` on 2026-07-09:
 - `pwsh` is not installed on this macOS host, so the expanded PowerShell schema
   gate received package-smoke source coverage but not a local PowerShell parse;
   the Windows package/live lane must exercise it next.
-- `git diff --check` passed and the worktree began clean.
-- CI for the preceding recovery commit `298eebe` passed all three target jobs
-  plus package smoke. Check the current implementation commit live after push.
+- `git diff --check` passed; the branch was pushed and the worktree was clean.
+- GitHub CI run `29057268559` passed package smoke plus the Apple Silicon,
+  Windows x64, and Linux x64 target jobs.
 - `npm run check:electron:latest` failed only on the intentional/latest-version
   comparison described above; it is not part of normal `npm test`.
 
