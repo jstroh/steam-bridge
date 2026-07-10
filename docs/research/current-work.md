@@ -2,7 +2,7 @@
 
 Last reviewed: 2026-07-10
 
-Implementation anchor: `53b4ab3` (`Add Windows owner-process focus handoff`).
+Implementation anchor: `a75ad43` (`Align Windows overlay polling and release guidance`).
 Always inspect Git history and the worktree before trusting this checkpoint.
 
 This is the canonical, short, replace-in-place operational checkpoint for fast
@@ -19,10 +19,15 @@ commit is documentation-only.
 
 ## Active Goal
 
-Finish current-package Windows x64 proof for every non-purchase path using only
-public App ID `480`: managed routes, raw-native observe controls, shortcuts,
-passive notifications, synthetic checkout routing, close/back-to-app, native
-renderer identity, high-DPI input, render health, and crash cleanup.
+Make the supported Windows x64 managed-overlay path production-ready using only
+public App ID `480` for generic live proof. Preserve D3D11 as the default and
+finish current-package evidence for foreground/user activation, managed routes,
+raw-native observe controls, shortcuts, passive notifications, synthetic
+checkout routing, close/back-to-app, native renderer identity, high-DPI input,
+render health, signing/rollback, and crash cleanup. Then close the remaining
+Windows release-claim, persistent-reuse, packaging, and support-boundary gaps
+identified by the final production-readiness audit before calling the path
+ready.
 
 Do not run another private `InitTxn` suite. Real purchase proof remains paused
 until its separate prerequisites exist; it is not part of the active Windows
@@ -32,9 +37,19 @@ The authorized owner-process handoff goal is complete at its stop condition.
 One focused public run exercised the materially changed mechanism and
 established that the existing native-show call still does not reacquire OS
 foreground in this automated environment; commit `943dfad` records the result
-and its CI is green. Live work stays stopped until the updated `WIN-FOCUS-001`
-repeat condition is satisfied. Duplicate-open and the broad public suites remain
-gated behind a complete focused close pass.
+and its CI is green. Official Valve, Microsoft, and Electron research now
+provides the permitted next experiment: a genuine click in the existing visible
+Smoke window makes the same Electron main process eligible to activate its
+owned presenter. A separate foreground broker is only a fallback if that
+same-process path is disproved.
+
+The unchanged signed package and stable Steam shortcut have been verified and
+launched in the interactive Windows session with public App ID `480`, autorun
+disabled, a fixed diagnostic directory, and the prior launch env preserved by
+rename. Steam initialization and first render completed; no overlay action or
+synthetic input has run. The app is waiting for one genuine **Presenter Web
+Wait** click and a manual overlay close. Duplicate-open and the broad public
+suites remain gated behind that complete focused close pass.
 
 ## Proven Baseline
 
@@ -118,6 +133,28 @@ meaningful experiment.
 Do not use the legacy raw `full` baseline as the product gate; use `managed`,
 `shortcut-routes`, and public synthetic `checkout`.
 
+### Windows needs-present polling is aligned in `a75ad43`; live proof is pending
+
+The committed presenter slice changes the persistent Windows default from a
+250 ms full-diagnostics loop to a 30 ms lightweight
+`BOverlayNeedsPresent()` signal poll while rate-limiting the full diagnostics
+snapshot to at least 250 ms. Windows polling disabled by policy stays on the
+slow safe path, non-Windows defaults are unchanged, lightweight cache updates
+replace the diagnostics object only on signal transitions between normal full
+refreshes, and closing the presenter cancels further polls. Unchanged
+lightweight ticks stay silent, managed readiness uses the cheap
+`IsOverlayEnabled()` signal rather than forcing full diagnostics, and the smoke
+app no longer overrides the library default. All 179 unit tests, package smoke,
+API/platform checks, native formatting/checks, syntax checks, and diff checks
+pass; one public passive-notification exact-package proof remains pending.
+
+The same committed documentation slice corrects the stale claim that Windows
+uses only Electron's direct hook, limits the supported topology to one presenter
+per process/main game window, distinguishes historical artifacts from
+exact-package release proof, and records the current D3D11 device-loss,
+Electron-range, and unpacked-ASAR evidence boundaries. These corrections do not
+depend on the pending manual foreground result.
+
 ### Duplicate-open coverage is packaged; live proof is open
 
 The public `presenter-duplicate-open-guard` smoke action exists and has live
@@ -139,32 +176,38 @@ required after the web close/focus gate passes. It was not run in this slice.
 
 ## Exact Next Step
 
-Stop live work. The next product change must materially alter native-host
-activation/foreground semantics, introduce a different bounded mechanism with
-evidence that it transfers OS foreground eligibility to the exact lifecycle
-host in the same interactive session, or begin from independently confirmed
-exact-host foreground. Only then run one focused managed-web case under the
-existing schema-2 fail-closed contract.
+Do not synthesize the missing gesture. In the already-running interactive Smoke
+window, click **Presenter Web Wait** once, manually close the public Steam web
+overlay, and leave Smoke open while its lifecycle evidence is collected. Then
+close Smoke and atomically restore the preserved launch env. If the natural
+flow passes, classify the current blocker as unattended-harness focus and add
+the smallest state-driven same-process click/exact-host gate needed for one
+repeatable schema-2 proof. If it fails after the real click, do not build a
+broker; investigate native-host ownership/activation and input forwarding.
 
 ## Subsequent Actions
 
-1. Only after native-host activation/foreground semantics materially change, a
-   different bounded mechanism has evidence that it transfers OS foreground
-   eligibility to the exact lifecycle host in the same interactive session, or
-   that host is independently confirmed foreground, rerun one focused managed
-   web case. Require one sanitized successful exact-host handoff/focus event
-   plus a successful pre-dispatch recheck before the single close input, all
-   three D3D11 fields, strict physical-DPI evidence, inactive callback,
-   close/back-to-app, parking, focus return, and clean crashes. Stop without
-   sending input if either focus check fails.
+1. Complete the current natural user-click diagnostic. On a pass, implement and
+   test the smallest same-process exact-host gate, then run one focused managed
+   web proof requiring one successful pre-dispatch foreground recheck before
+   the single close input, all three D3D11 fields, strict physical-DPI evidence,
+   inactive callback, close/back-to-app, parking, focus return, and clean
+   crashes. Stop without input if any binding or focus check fails.
 2. Run the new duplicate-open case and require the named suppression evidence,
    no checkout operation invocation, close/back-to-app, parking, and clean
    crashes.
 3. If both focused gates pass, run the broad public `managed`,
    `shortcut-routes`, and synthetic `checkout` suites. Do not use the unchanged
    raw `full` baseline as the product gate.
-4. Record results in the existing ledger/detailed evidence, run final checks,
-   commit, push, and verify CI.
+4. Run one public passive exact-package case for the committed Windows
+   `BOverlayNeedsPresent()` cadence and require a false-to-true wake, D3D11
+   renderer agreement, close/park completion, and no hot full-diagnostics loop.
+5. Add the designed state-driven three-cycle persistent-presenter reuse/soak
+   proof, then verify the documented one-window, recovery/compatibility, and
+   production-like Windows native-addon packaging boundaries.
+6. Record results in the existing ledger/detailed evidence, run final checks,
+   scan for private data, commit, push, verify CI, and complete the final
+   production-readiness audit.
 
 ## Last Reported Verification
 
@@ -214,6 +257,21 @@ Against the focus-gate slice now committed as `a58280c` on 2026-07-10:
   and the managed close wait timed out. No duplicate-open or broad suite ran.
 - `npm run check:electron:latest` failed only on the intentional/latest-version
   comparison described above; it is not part of normal `npm test`.
+
+Against polling and release-guidance commit `a75ad43` on 2026-07-10:
+
+- `npm test` passed all 179 tests, including Windows default-cadence,
+  false-to-true transition, disabled-policy, dynamic native-guard, cache,
+  readiness, and timer-cleanup coverage.
+- `npm run package:smoke`, `npm run api:check`, `npm run check:platform`,
+  `npm run native:fmt`, and `npm run native:check` passed; `native:check`
+  retained only the known transitive `block 0.1.6` warning.
+- Syntax checks, the added-line private-data scan, `git diff --check`, and an
+  independent final implementation/documentation review passed.
+- `a75ad43` was pushed to `origin/main`; package smoke, Linux x64, Windows x64,
+  and macOS arm64 CI jobs all passed.
+- No live suite was run. One public passive exact-package proof and the genuine
+  foreground user-click diagnostic remain pending.
 
 Live Windows review on 2026-07-10 UTC is summarized under Current Findings;
 detailed sanitized chronology lives in the platform evidence log and ledger.
