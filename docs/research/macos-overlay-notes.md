@@ -975,7 +975,8 @@ Steam, log out or reboot macOS to clear the user-session IPC state.
   2026-06-30 core Apple Silicon matrix at
   `/tmp/steam-bridge-macos-overlay-matrix-20260630-215349` passed all 26
   Steam-launched App ID `480` cases. The run recreated the missing stable
-  shortcut under userdata `1686541554`, reused the signed arm64 smoke package,
+  shortcut under the active user's Steam userdata directory, reused the signed
+  arm64 smoke package,
   and re-verified readiness, modal web/store/Friends/dialog routes, passive
   progress/unlock toasts, checkout approval and prepare-only routes, every
   managed Shift+Tab shortcut target, and direct profile/players/community/stats/

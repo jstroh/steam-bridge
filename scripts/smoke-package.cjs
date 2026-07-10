@@ -453,6 +453,123 @@ function runWindowsSmokeHelperStaticChecks() {
       matrixHelper.includes('Write-ProbeEvent "probe:foreground-clear"'),
     "Windows close probe must clear known blocking OS foreground UI before close targeting"
   );
+  const presenterFocusStart = matrixHelper.indexOf(
+    "function Focus-LifecycleNativePresenterForCloseInput"
+  );
+  const presenterFocusEnd = matrixHelper.indexOf(
+    "\nfunction Confirm-LifecycleNativePresenterForegroundForCloseInput",
+    presenterFocusStart
+  );
+  assert.ok(
+    presenterFocusStart >= 0 && presenterFocusEnd > presenterFocusStart,
+    "Windows close probe must define a bounded lifecycle native-presenter focus step"
+  );
+  const presenterFocusBlock = matrixHelper.slice(presenterFocusStart, presenterFocusEnd);
+  assert.ok(
+    presenterFocusBlock.includes("`$geometry = Get-LifecyclePresenterGeometry") &&
+      presenterFocusBlock.includes("[SteamBridgeWindowsProbe]::IsWindow(`$handle)") &&
+      presenterFocusBlock.includes("[SteamBridgeWindowsProbe]::SetForegroundWindow(`$handle)") &&
+      presenterFocusBlock.includes("[SteamBridgeWindowsProbe]::GetForegroundWindow() -eq `$handle") &&
+      presenterFocusBlock.includes('source = "lifecycle-native-host"') &&
+      presenterFocusBlock.includes("handlePresent =") &&
+      presenterFocusBlock.includes("handleFormatValid =") &&
+      presenterFocusBlock.includes("windowValid =") &&
+      presenterFocusBlock.includes("focused ="),
+    "Windows close probe must focus and verify the valid lifecycle native-host window"
+  );
+  assert.doesNotMatch(
+    presenterFocusBlock,
+    /Start-Sleep|Send-NativeMouseClick|Send-NativeKeyChord/,
+    "Windows native-presenter focus step must not add a timer or second input"
+  );
+  assert.doesNotMatch(
+    presenterFocusBlock,
+    /^\s*(?:hwnd|handle|windowHandle|nativeHandle)\s*=/im,
+    "Windows native-presenter focus evidence must not log a raw HWND"
+  );
+  const presenterPreDispatchStart = matrixHelper.indexOf(
+    "function Confirm-LifecycleNativePresenterForegroundForCloseInput"
+  );
+  const presenterPreDispatchEnd = matrixHelper.indexOf(
+    "\nfunction Get-LifecyclePresenterBounds",
+    presenterPreDispatchStart
+  );
+  assert.ok(
+    presenterPreDispatchStart >= 0 && presenterPreDispatchEnd > presenterPreDispatchStart,
+    "Windows close probe must define a bounded pre-dispatch native-presenter focus confirmation"
+  );
+  const presenterPreDispatchBlock = matrixHelper.slice(
+    presenterPreDispatchStart,
+    presenterPreDispatchEnd
+  );
+  assert.ok(
+    presenterPreDispatchBlock.includes("`$script:LifecycleNativePresenterCloseHandle") &&
+      presenterPreDispatchBlock.includes("[SteamBridgeWindowsProbe]::IsWindow(`$handle)") &&
+      presenterPreDispatchBlock.includes("[SteamBridgeWindowsProbe]::GetForegroundWindow() -eq `$handle") &&
+      presenterPreDispatchBlock.includes('reason = "missing-lifecycle-native-host"') &&
+      presenterPreDispatchBlock.includes('"foreground-confirmed"') &&
+      presenterPreDispatchBlock.includes('"foreground-lost-before-dispatch"'),
+    "Windows close probe must revalidate exact presenter foreground ownership before dispatch"
+  );
+  assert.doesNotMatch(
+    presenterPreDispatchBlock,
+    /Start-Sleep|SetForegroundWindow|Send-NativeMouseClick|Send-NativeKeyChord|SendKeys/,
+    "Windows pre-dispatch focus confirmation must not refocus, wait, or send input"
+  );
+  const presenterFocusEventIndex = matrixHelper.indexOf(
+    'Write-ProbeEvent "probe:native-presenter-focus"'
+  );
+  const closeInputDispatchIndex = matrixHelper.indexOf("`$nativeInputSent = `$null", presenterFocusEventIndex);
+  assert.ok(
+    presenterFocusEventIndex >= 0 && closeInputDispatchIndex > presenterFocusEventIndex,
+    "Windows close probe must record native-presenter focus before dispatching close input"
+  );
+  const closeInputFocusGate = matrixHelper.slice(presenterFocusEventIndex, closeInputDispatchIndex);
+  assert.ok(
+    closeInputFocusGate.includes("if (-not `$nativePresenterFocus.focused)") &&
+      closeInputFocusGate.includes('Write-ProbeEvent "probe:close-input-skipped"') &&
+      closeInputFocusGate.includes('reason = "native-presenter-focus-not-confirmed"') &&
+      closeInputFocusGate.includes("`$sent = `$true") &&
+      closeInputFocusGate.includes("continue"),
+    "Windows close probe must skip close input when native-presenter focus is not confirmed"
+  );
+  assert.doesNotMatch(
+    closeInputFocusGate,
+    /Send-NativeMouseClick|Send-NativeKeyChord|\.SendKeys\(/,
+    "Windows failed initial focus branch must not dispatch close input"
+  );
+  const presenterPreDispatchCallIndex = matrixHelper.indexOf(
+    "`$nativePresenterPreDispatch = Confirm-LifecycleNativePresenterForegroundForCloseInput",
+    closeInputDispatchIndex
+  );
+  const presenterPreDispatchFailureEnd = matrixHelper.indexOf(
+    "      if ('$input' -eq 'escape')",
+    presenterPreDispatchCallIndex
+  );
+  assert.ok(
+    presenterPreDispatchCallIndex >= 0 && presenterPreDispatchFailureEnd > presenterPreDispatchCallIndex,
+    "Windows close probe must reconfirm presenter focus after target preparation and before dispatch"
+  );
+  const presenterPreDispatchGate = matrixHelper.slice(
+    presenterPreDispatchCallIndex,
+    presenterPreDispatchFailureEnd
+  );
+  assert.ok(
+    presenterPreDispatchGate.includes("if (-not `$nativePresenterPreDispatch.focused)") &&
+      presenterPreDispatchGate.includes('reason = "native-presenter-focus-lost-before-dispatch"') &&
+      presenterPreDispatchGate.includes("`$sent = `$true") &&
+      presenterPreDispatchGate.includes("continue"),
+    "Windows close probe must fail closed when presenter focus is lost immediately before input"
+  );
+  assert.doesNotMatch(
+    presenterPreDispatchGate,
+    /Start-Sleep|Capture-ProbeScreen|Get-WebCloseClickTarget|Send-NativeMouseClick|Send-NativeKeyChord|\.SendKeys\(/,
+    "Windows pre-dispatch focus gate must not wait, retarget, or dispatch on failure"
+  );
+  assert.ok(
+    matrixHelper.includes("nativePresenterPreDispatch = `$nativePresenterPreDispatch"),
+    "Windows close probe must record sanitized pre-dispatch focus confirmation with sent input"
+  );
   assert.ok(
     matrixHelper.includes("SetProcessDpiAwarenessContext") &&
       matrixHelper.includes("SetThreadDpiAwarenessContext") &&
@@ -855,6 +972,11 @@ function runWindowsSmokeHelperStaticChecks() {
     /-Id "11b-managed-duplicate-open-guard"[\s\S]*?-WebModal "true"/
   )?.[0];
   assert.ok(duplicateOpenGuardCase, "Windows managed duplicate-open guard case is missing");
+  assert.match(
+    matrixHelper,
+    /if \(\$action -eq "presenter-duplicate-open-guard"\) \{\s*return "web-close-click-sendinput"\s*\}/,
+    "Windows duplicate-open guard must resolve auto close input to the visible web-panel close path"
+  );
   for (const expected of [
     '-Action "presenter-duplicate-open-guard"',
     '"overlay:presenter-open-and-wait-start"',
@@ -896,6 +1018,15 @@ function runWindowsSmokeHelperStaticChecks() {
     "lifecycle includes an attached presenter backend snapshot",
     "closeProbeEvidenceSchema",
     "close probe input matches resolved ${expectedCloseProbeInput}",
+    "recorded one native-presenter focus step",
+    "close probe focus used the lifecycle native-host window",
+    "close probe focus evidence omits raw native HWND",
+    "close probe validated the lifecycle native-host window before focus",
+    "native presenter focus succeeded before close input",
+    "nativePresenterFocusSanitized",
+    "reconfirmed native presenter focus immediately before input",
+    "pre-dispatch focus evidence omits raw native HWND",
+    "nativePresenterPreDispatchSanitized",
     "close probe scale agrees with independent presenter geometry",
     "close probe includes a native host rect",
     "close probe includes a successful screenshot with declared bounds",

@@ -472,19 +472,42 @@ panel. `SendInput` still sent the expected three events with error zero, which
 proves input delivery but not a correct target. Steam remained active until the
 managed wait timed out, so this artifact does not prove close, focus return, or
 parking. Crash dumps remained zero and cleanup left no smoke process or matrix
-task. The current local diff derives the target from native-window DPI with
+task. Commit `c880d51` derives the target from native-window DPI with
 physical/logical presenter geometry as a checked fallback, and the schema-1
 auditor rejects missing, unscaled, mismatched, or nonphysical screenshot
 evidence. Repeat the focused route only after that change; do not reuse the
 literal target or compensate with a longer wait.
 
+The packaged `c880d51` follow-up settled that high-DPI evidence contract without
+settling close. A focused public managed-web run at the same 225% scaling
+reported process and thread per-monitor-v2 awareness, four readable physical
+`3456x2170` screenshots whose actual dimensions matched their declared bounds,
+a native-window scale of `2.25` agreeing with independent presenter geometry,
+a scale-aware target inside the detected Steam panel, and all three expected
+pointer inputs with error zero. The top-level presenter, native-host, and
+renderer fields all remained `windows-d3d11`; render health, crash diagnostics,
+and cleanup were clean.
+
+That run still timed out active because an unrelated zero-area window owned
+foreground in every close-probe sample and the lifecycle native host reported it
+was not foreground. One separate focused Escape comparison reproduced the same
+foreground condition and the same no-close result with clean health and crash
+evidence. The two different inputs therefore do not justify another input or a
+longer wait; neither was proven to have reached the presenter as foreground.
+The next focused rerun resolves the exact lifecycle native-host window, validates
+it, calls `SetForegroundWindow` once, verifies foreground ownership, rechecks the
+same handle immediately before dispatch, records only sanitized focus evidence,
+and sends no close input if either verification fails. Close/back-to-app remains
+open until that focus-gated run emits the inactive callback, parks the presenter,
+restores app focus, and keeps
+crash and cleanup evidence clean.
+
 The same coverage audit found a separate omission: Windows exposes the public
 `presenter-duplicate-open-guard` smoke action, but the managed matrix shipped in
 `da632f8` did not schedule or audit it. Existing Windows route summaries
 therefore cannot claim duplicate direct/wait, shortcut/controller, or checkout
-suppression while an overlay is opening. The current local diff adds the
-managed case and semantic summary audit; focused Windows live evidence is still
-required after it is packaged.
+suppression while an overlay is opening. Commit `c880d51` adds the managed case
+and semantic summary audit; focused Windows live evidence is still required.
 
 Latest Windows D3D11 keyboard proof: the refreshed Electron `43.0.0` smoke
 bundle was rebuilt on macOS, deployed to the Windows laptop, and Authenticode
@@ -2593,8 +2616,9 @@ and reject post-close overlay reactivation.
 ## Latest macOS Recovery Evidence
 
 The local macOS Steam client recovered after a Steam update and shortcut reset.
-The stable generic App ID `480` shortcut had to be recreated under userdata
-`1686541554`, after which a fresh core Apple Silicon matrix at
+The stable generic App ID `480` shortcut had to be recreated under the active
+user's Steam userdata directory, after which a fresh core Apple
+Silicon matrix at
 `/tmp/steam-bridge-macos-overlay-matrix-20260630-215349` passed all 26
 Steam-launched cases. That run reused the signed arm64 Electron package,
 verified the native launcher/signing shape, and covered readiness, web, store,

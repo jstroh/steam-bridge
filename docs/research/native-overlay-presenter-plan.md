@@ -263,8 +263,15 @@ Reviewed on 2026-07-02 while investigating Windows Electron overlay failures:
   The same audit established that Windows input/capture automation must use one
   physical coordinate space: the close probe enters process/thread
   per-monitor-v2 awareness before screen APIs and prefers the native Win32 rect
-  over Electron logical bounds. A Windows-built addon and focused high-DPI
-  attached route remain the acceptance gate for these fixes.
+  over Electron logical bounds. A focused `c880d51` attached route subsequently
+  passed the strict physical screenshot, scale agreement, target geometry, and
+  pointer-delivery contract at 225% scaling. Its close lifecycle remained open
+  because an unrelated zero-area foreground owner left the lifecycle native host
+  unfocused; an independent Escape comparison had the same precondition. The
+  automation invariant is now to validate and focus that exact lifecycle native
+  host once, verify foreground ownership, recheck the same handle immediately
+  before dispatch, and skip input entirely if either verification fails. Do not
+  add a second input or timing delay unless a focus-verified attempt fails.
 - A focused default-client diagnostic at
   `C:\Users\admin\steam-bridge-artifacts\windows-default-client-inittxn-checkout-20260703-172218`
   used the same `steam-app` configured-app lane and a private request that

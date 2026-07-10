@@ -948,7 +948,10 @@ the private `--checkout-json-file` checkout suite.
   automated close/back-to-app proof. Use `-Suite shortcut-routes` when you want
   focused shortcut `openShortcutTargetAndWait(...)` coverage for the public
   non-checkout targets with the requested target recorded in smoke diagnostics;
-  check the per-case artifact before treating a route as product-proof.
+  check the per-case artifact before treating a route as product-proof. The
+  close probe validates and focuses the exact lifecycle native-presenter window,
+  rechecks the same window immediately before dispatch, and skips the input if
+  either focus check fails.
   Keep real checkout proof focused on
   `-Suite checkout -CheckoutJsonFile <private-init-txn-response.json> -RequireMicroTxnCallback -CloseProbe -CloseProbeInput auto`
   with your own configured app and product when a purchase authorization

@@ -2664,6 +2664,10 @@ function Resolve-CloseProbeInputForCase {
     "user"
   )
 
+  if ($action -eq "presenter-duplicate-open-guard") {
+    return "web-close-click-sendinput"
+  }
+
   foreach ($token in $webPanelTokens) {
     if ($action.Contains($token) -or $id.Contains($token) -or $shortcutTarget.Contains($token)) {
       return "web-close-click-sendinput"
@@ -3694,6 +3698,82 @@ function Get-LifecyclePresenterGeometry {
   return `$fallback
 }
 
+function Focus-LifecycleNativePresenterForCloseInput {
+  `$script:LifecycleNativePresenterCloseHandle = [IntPtr]::Zero
+  `$geometry = Get-LifecyclePresenterGeometry
+  `$handleText = if (`$geometry) { [string]`$geometry.hwnd } else { "" }
+  `$evidence = [ordered]@{
+    source = "lifecycle-native-host"
+    attempted = `$false
+    handlePresent = -not [string]::IsNullOrWhiteSpace(`$handleText)
+    handleFormatValid = `$false
+    windowValid = `$false
+    wasForeground = `$false
+    setForegroundResult = `$false
+    focused = `$false
+    reason = "missing-lifecycle-native-host"
+  }
+
+  if (-not `$evidence.handlePresent) {
+    return [PSCustomObject]`$evidence
+  }
+  if (`$handleText -notmatch '^0x[0-9A-Fa-f]+$') {
+    `$evidence.reason = "invalid-lifecycle-native-host"
+    return [PSCustomObject]`$evidence
+  }
+
+  try {
+    `$handleValue = [Convert]::ToInt64(`$handleText.Substring(2), 16)
+    `$handle = [IntPtr]::new(`$handleValue)
+    `$evidence.handleFormatValid = `$true
+  } catch {
+    `$evidence.reason = "invalid-lifecycle-native-host"
+    return [PSCustomObject]`$evidence
+  }
+
+  `$evidence.windowValid = [SteamBridgeWindowsProbe]::IsWindow(`$handle)
+  if (-not `$evidence.windowValid) {
+    `$evidence.reason = "lifecycle-native-host-not-a-window"
+    return [PSCustomObject]`$evidence
+  }
+  `$script:LifecycleNativePresenterCloseHandle = `$handle
+
+  `$evidence.wasForeground = ([SteamBridgeWindowsProbe]::GetForegroundWindow() -eq `$handle)
+  `$evidence.attempted = `$true
+  `$evidence.setForegroundResult = [SteamBridgeWindowsProbe]::SetForegroundWindow(`$handle)
+  `$evidence.focused = ([SteamBridgeWindowsProbe]::GetForegroundWindow() -eq `$handle)
+  if (`$evidence.focused) {
+    `$evidence.reason = if (`$evidence.wasForeground) { "already-foreground" } else { "focused" }
+  } else {
+    `$evidence.reason = "set-foreground-not-observed"
+  }
+
+  return [PSCustomObject]`$evidence
+}
+
+function Confirm-LifecycleNativePresenterForegroundForCloseInput {
+  `$handle = `$script:LifecycleNativePresenterCloseHandle
+  `$evidence = [ordered]@{
+    source = "lifecycle-native-host"
+    handlePresent = (`$handle -and `$handle -ne [IntPtr]::Zero)
+    windowValid = `$false
+    focused = `$false
+    reason = "missing-lifecycle-native-host"
+  }
+
+  if (-not `$evidence.handlePresent) {
+    return [PSCustomObject]`$evidence
+  }
+  `$evidence.windowValid = [SteamBridgeWindowsProbe]::IsWindow(`$handle)
+  if (-not `$evidence.windowValid) {
+    `$evidence.reason = "lifecycle-native-host-not-a-window"
+    return [PSCustomObject]`$evidence
+  }
+  `$evidence.focused = ([SteamBridgeWindowsProbe]::GetForegroundWindow() -eq `$handle)
+  `$evidence.reason = if (`$evidence.focused) { "foreground-confirmed" } else { "foreground-lost-before-dispatch" }
+  return [PSCustomObject]`$evidence
+}
+
 function Get-LifecyclePresenterBounds {
   `$geometry = Get-LifecyclePresenterGeometry
   if (-not `$geometry) {
@@ -3845,23 +3925,24 @@ while ((Get-Date) -lt `$deadline -and -not `$sent) {
         webCloseReadiness = `$webCloseReadiness
         processes = Get-ProbeProcessSnapshot
       })
+      `$nativePresenterFocus = Focus-LifecycleNativePresenterForCloseInput
+      Write-ProbeEvent "probe:native-presenter-focus" `$nativePresenterFocus
+      if (-not `$nativePresenterFocus.focused) {
+        Write-ProbeEvent "probe:close-input-skipped" ([PSCustomObject]@{
+          reason = "native-presenter-focus-not-confirmed"
+          focus = `$nativePresenterFocus
+        })
+        `$sent = `$true
+        continue
+      }
       `$nativeInputSent = `$null
       `$nativePointerSent = `$null
-      if ('$input' -eq 'escape') {
+      `$shell = `$null
+      `$target = `$null
+      if ('$input' -eq 'escape' -or '$input' -eq 'close-tab' -or '$input' -eq 'toggle') {
         `$shell = New-Object -ComObject WScript.Shell
-        `$shell.SendKeys('{ESC}')
-      } elseif ('$input' -eq 'close-tab') {
-        `$shell = New-Object -ComObject WScript.Shell
-        `$shell.SendKeys('^w')
-      } elseif ('$input' -eq 'escape-sendinput') {
-        `$nativeInputSent = Send-NativeKeyChord @(0x1B)
-      } elseif ('$input' -eq 'close-tab-sendinput') {
-        `$nativeInputSent = Send-NativeKeyChord @(0x11, 0x57)
-      } elseif ('$input' -eq 'toggle-sendinput') {
-        `$nativeInputSent = Send-NativeKeyChord @(0x10, 0x09)
       } elseif ('$input' -eq 'web-close-click-sendinput') {
         `$foreground = Get-ForegroundProbeSnapshot
-        `$target = `$null
         if (`$webCloseReadiness -and `$webCloseReadiness.target) {
           `$target = `$webCloseReadiness.target
         }
@@ -3872,6 +3953,28 @@ while ((Get-Date) -lt `$deadline -and -not `$sent) {
           target = `$target
           foreground = `$foreground
         })
+      }
+      `$nativePresenterPreDispatch = Confirm-LifecycleNativePresenterForegroundForCloseInput
+      if (-not `$nativePresenterPreDispatch.focused) {
+        Write-ProbeEvent "probe:close-input-skipped" ([PSCustomObject]@{
+          reason = "native-presenter-focus-lost-before-dispatch"
+          focus = `$nativePresenterFocus
+          preDispatch = `$nativePresenterPreDispatch
+        })
+        `$sent = `$true
+        continue
+      }
+      if ('$input' -eq 'escape') {
+        `$shell.SendKeys('{ESC}')
+      } elseif ('$input' -eq 'close-tab') {
+        `$shell.SendKeys('^w')
+      } elseif ('$input' -eq 'escape-sendinput') {
+        `$nativeInputSent = Send-NativeKeyChord @(0x1B)
+      } elseif ('$input' -eq 'close-tab-sendinput') {
+        `$nativeInputSent = Send-NativeKeyChord @(0x11, 0x57)
+      } elseif ('$input' -eq 'toggle-sendinput') {
+        `$nativeInputSent = Send-NativeKeyChord @(0x10, 0x09)
+      } elseif ('$input' -eq 'web-close-click-sendinput') {
         if (`$target) {
           `$nativePointerSent = Send-NativeMouseClick ([int]`$target.x) ([int]`$target.y)
           if (`$nativePointerSent) {
@@ -3896,11 +3999,11 @@ while ((Get-Date) -lt `$deadline -and -not `$sent) {
           }
         }
       } else {
-        `$shell = New-Object -ComObject WScript.Shell
         `$shell.SendKeys('+{TAB}')
       }
       Write-ProbeEvent "probe:sent" ([PSCustomObject]@{
         input = '$input'
+        nativePresenterPreDispatch = `$nativePresenterPreDispatch
         nativeInputSent = `$nativeInputSent
         nativePointerSent = `$nativePointerSent
         foreground = Get-ForegroundProbeSnapshot
