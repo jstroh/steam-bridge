@@ -28,12 +28,13 @@ Do not run another private `InitTxn` suite. Real purchase proof remains paused
 until its separate prerequisites exist; it is not part of the active Windows
 matrix work.
 
-The authorized owner-process handoff goal has reached its stop condition. One
-focused public run exercised the materially changed mechanism and established
-that the existing native-show call still does not reacquire OS foreground in
-this automated environment. Record and publish that result, then stop live work
-until the updated `WIN-FOCUS-001` repeat condition is satisfied. Duplicate-open
-and the broad public suites remain gated behind a complete focused close pass.
+The authorized owner-process handoff goal is complete at its stop condition.
+One focused public run exercised the materially changed mechanism and
+established that the existing native-show call still does not reacquire OS
+foreground in this automated environment; commit `943dfad` records the result
+and its CI is green. Live work stays stopped until the updated `WIN-FOCUS-001`
+repeat condition is satisfied. Duplicate-open and the broad public suites remain
+gated behind a complete focused close pass.
 
 ## Proven Baseline
 
@@ -138,11 +139,12 @@ required after the web close/focus gate passes. It was not run in this slice.
 
 ## Exact Next Step
 
-Commit and push the sanitized focused result without the unrelated continuity
-files, then verify GitHub CI. Do not run another live case until the revised
-`WIN-FOCUS-001` repeat condition exists. The package, Steam session, rollback,
-and single failed artifact are already preserved; no rebuild or restart is
-needed for result recording.
+Stop live work. The next product change must materially alter native-host
+activation/foreground semantics, introduce a different bounded mechanism with
+evidence that it transfers OS foreground eligibility to the exact lifecycle
+host in the same interactive session, or begin from independently confirmed
+exact-host foreground. Only then run one focused managed-web case under the
+existing schema-2 fail-closed contract.
 
 ## Subsequent Actions
 
@@ -178,6 +180,8 @@ Against owner-process handoff commit `53b4ab3` and its single focused run:
   self-test passed directly, and `git diff --check` passed.
 - `53b4ab3` was pushed to `origin/main`; its package-smoke, macOS arm64,
   Windows x64, and Linux x64 CI jobs all passed.
+- Result-recording commit `943dfad` was pushed to `origin/main`; its same four
+  CI jobs all passed.
 - The Windows package reused the verified addon without a native rebuild,
   matched the current app/matrix/task/summary sources before signing, deployed
   with all 12 signable files `Valid`, preserved rollback, and did not restart
