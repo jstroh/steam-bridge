@@ -281,18 +281,22 @@ Reviewed on 2026-07-02 while investigating Windows Electron overlay failures:
   acquisition as an environment blocker. Do not rerun the unchanged call;
   require a materially different bounded activation handoff or independently
   confirmed exact-host foreground before another single-input close proof.
-- The next package uses that rerun condition without changing the verified
-  addon. The close probe resolves its target first, binds the lifecycle HWND to
-  the Smoke process and interactive session, then makes one authenticated
-  loopback request for the HWND-owning process to call the existing native-host
-  show/activation path. It independently checks the same HWND after the response
-  and immediately before dispatch. Schema 2 requires a single coherent app/probe
-  handoff record, sanitized relationship booleans and counts, one terminal
-  sent-or-skipped branch, app focus return, and a single `SendInput` pointer call
-  with no fallback. There is no `AttachThreadInput`, injected Alt, external focus
-  retry, added wait, or addon rebuild in this slice. If the owner call runs once
-  but exact foreground still is not observed, record that mechanism as disproved
-  for the environment instead of repackaging the same attempt.
+- Commit `53b4ab3` exercised that rerun condition without changing the verified
+  addon. Its schema-2 probe resolved the target first, bound the lifecycle HWND
+  to the Smoke process and interactive session, and made one authenticated
+  handoff-only request for the HWND-owning process to call the existing
+  native-host show/activation path. The exact window and all ownership/session
+  relationships matched, the response was valid, and one native-show call
+  completed. Windows still left the host non-foreground and produced no new
+  native focus/activation messages, so the probe emitted its single skip branch
+  and sent zero input. This disproves transport or process ownership alone—and
+  this existing show call in particular—as the unattended foreground transfer
+  for the tested environment. Preserve the schema-2 binding and fail-closed
+  evidence, but do not wrap, repeat, or repackage the same activation sequence.
+  A future attempt must materially change native-host activation/foreground
+  semantics, use a different bounded mechanism with evidence that it transfers
+  OS foreground eligibility, or begin with independently confirmed exact-host
+  foreground.
 - A focused default-client diagnostic at
   `C:\Users\admin\steam-bridge-artifacts\windows-default-client-inittxn-checkout-20260703-172218`
   used the same `steam-app` configured-app lane and a private request that

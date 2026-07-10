@@ -2,8 +2,8 @@
 
 Last reviewed: 2026-07-10
 
-Implementation anchor: `a58280c` (`Harden Windows close focus proof`). Always
-inspect Git history and the worktree before trusting this checkpoint.
+Implementation anchor: `53b4ab3` (`Add Windows owner-process focus handoff`).
+Always inspect Git history and the worktree before trusting this checkpoint.
 
 This is the canonical, short, replace-in-place operational checkpoint for fast
 recovery. It is not an append-only history and does not replace code, tests,
@@ -13,9 +13,9 @@ the detailed platform evidence log, or the presenter design plan.
 
 During workspace setup, another process added continuity changes in `AGENTS.md`
 and `.codex/`; preserve those uncommitted changes. This checkpoint integrates
-the subsequent Windows focus-gate live result without taking ownership of the
-other continuity files. The implementation anchor remains `a58280c`; the
-result-recording commit for this slice is documentation-only and may follow it.
+the focused `53b4ab3` owner-process result without taking ownership of the other
+continuity files. The implementation anchor is `53b4ab3`; this result-recording
+commit is documentation-only.
 
 ## Active Goal
 
@@ -28,11 +28,12 @@ Do not run another private `InitTxn` suite. Real purchase proof remains paused
 until its separate prerequisites exist; it is not part of the active Windows
 matrix work.
 
-The user has now authorized the next product goal: replace the blocked
-foreground precondition with one bounded, state-driven handoff, bundle compatible
-activation diagnostics and auditor coverage into the same package, and avoid
-another build/deploy/live cycle until that package can distinguish the remaining
-focus hypotheses in one focused public run.
+The authorized owner-process handoff goal has reached its stop condition. One
+focused public run exercised the materially changed mechanism and established
+that the existing native-show call still does not reacquire OS foreground in
+this automated environment. Record and publish that result, then stop live work
+until the updated `WIN-FOCUS-001` repeat condition is satisfied. Duplicate-open
+and the broad public suites remain gated behind a complete focused close pass.
 
 ## Proven Baseline
 
@@ -50,7 +51,7 @@ focus hypotheses in one focused public run.
 
 ## Current Findings and Open Questions
 
-### D3D11 and high-DPI targeting are proved; close focus remains open
+### D3D11 and high-DPI targeting are proved; owner-process focus remains blocked
 
 The signed `c880d51` package passed interactive Session 1 readiness, native
 load, shortcut validation, default render health, and current Steam-client
@@ -86,21 +87,32 @@ close/back-to-app. Reconnecting the remote desktop alone is not a meaningful
 rerun condition. Do not repeat the unchanged `SetForegroundWindow` attempt, add
 a second close input, or lengthen the wait.
 
-The current product slice materially changes that precondition without changing
-the verified addon. It resolves the close target before handoff, binds the exact
-lifecycle HWND to the Smoke process/session, sends that HWND only inside one
-authenticated handoff-only loopback request, and has the owning process call its
-existing native show/activation path at most once. Both sides retain only
-sanitized match/state booleans and counts. The probe then revalidates the same
-owner, enabled/non-iconic state, and exact foreground immediately before one
-`SendInput` close call. Missing, ambiguous, mismatched, or lost focus emits one
-skip branch and no input; partial pointer dispatch has no fallback mechanism.
-Schema 2 also requires the corresponding app event, target-before-handoff
-ordering, app focus return, and a single sent-or-skipped terminal branch. Local
-fixtures cover owner/control/session mismatch, raw-ID leakage, HWND drift,
-duplicate or reordered events, transport ambiguity, multiple native show calls,
-pre-dispatch loss, pointer fallback, focus-return failure, and independently
-already-foreground success through the same exact-HWND binding.
+Commit `53b4ab3` materially changed that precondition without changing the
+verified addon. It resolves the close target first, binds the exact lifecycle
+HWND to the Smoke process/session, sends that HWND only inside one authenticated
+handoff-only loopback request, and has the owning process call its existing
+native show/activation path at most once. Both sides retain only sanitized
+match/state booleans and counts. The probe revalidates the same owner,
+enabled/non-iconic state, and exact foreground immediately before one
+`SendInput` close call; any failure produces one skip branch and no input.
+
+The signed package then ran exactly one focused public managed-web case. Target,
+owner, control-process, and interactive-session relationships matched; one
+authenticated request received one valid response; the requested window stayed
+the same; and one native-show call completed. Windows still left the exact host
+non-foreground, the owning process reported no focus, and native focus/activation
+message deltas remained zero. The schema-2 guard emitted one skip event, sent
+zero close input, and the active wait timed out without close, park, completion,
+or app-focus return. Visible rendering, physical-DPI target and screenshot
+evidence, all three D3D11 fields, readiness, render health, zero-crash evidence,
+process/task cleanup, rollback, and the existing Steam session remained clean.
+
+This disproves the existing owner-process native-show call as an unattended
+foreground-reacquisition mechanism in this environment. It does not prove that
+a focus-delivered click or Escape fails, and it does not prove
+close/back-to-app. Repackaging either existing focus call, reconnecting remote
+desktop, retrying focus, adding another input, or lengthening the wait is not a
+meaningful experiment.
 
 Do not use the legacy raw `full` baseline as the product gate; use `managed`,
 `shortcut-routes`, and public synthetic `checkout`.
@@ -126,19 +138,21 @@ required after the web close/focus gate passes. It was not run in this slice.
 
 ## Exact Next Step
 
-Commit and push the reviewed product slice without the unrelated continuity
-files, verify GitHub CI, then reuse the verified Windows addon while packaging,
-deploying, and signing once. Run only `11-managed-web-open-and-wait` with public
-App ID `480`. Stop and update `WIN-FOCUS-001` on the first meaningful failure;
-advance to duplicate-open only if the focused close gate passes completely.
+Commit and push the sanitized focused result without the unrelated continuity
+files, then verify GitHub CI. Do not run another live case until the revised
+`WIN-FOCUS-001` repeat condition exists. The package, Steam session, rollback,
+and single failed artifact are already preserved; no rebuild or restart is
+needed for result recording.
 
 ## Subsequent Actions
 
-1. After the foreground-acquisition condition materially changes, rerun one
-   focused managed web case at the current scaling. Require one
-   sanitized successful exact-host focus event plus a successful pre-dispatch
-   recheck before the single close input, all three D3D11 fields, the strict
-   physical-DPI evidence, inactive callback,
+1. Only after native-host activation/foreground semantics materially change, a
+   different bounded mechanism has evidence that it transfers OS foreground
+   eligibility to the exact lifecycle host in the same interactive session, or
+   that host is independently confirmed foreground, rerun one focused managed
+   web case. Require one sanitized successful exact-host handoff/focus event
+   plus a successful pre-dispatch recheck before the single close input, all
+   three D3D11 fields, strict physical-DPI evidence, inactive callback,
    close/back-to-app, parking, focus return, and clean crashes. Stop without
    sending input if either focus check fails.
 2. Run the new duplicate-open case and require the named suppression evidence,
@@ -152,7 +166,7 @@ advance to duplicate-open only if the focused close gate passes completely.
 
 ## Last Reported Verification
 
-Against the current owner-process handoff worktree:
+Against owner-process handoff commit `53b4ab3` and its single focused run:
 
 - `npm run package:smoke` passed after both independent reviews and includes
   schema-1 compatibility plus schema-2 positive, already-foreground, ordering,
@@ -162,7 +176,19 @@ Against the current owner-process handoff worktree:
   `native:check` retained only the known transitive `block 0.1.6` warning.
 - `node --check` passed for the changed JavaScript files, the Windows summary
   self-test passed directly, and `git diff --check` passed.
-- No live Steam case has run from this worktree yet.
+- `53b4ab3` was pushed to `origin/main`; its package-smoke, macOS arm64,
+  Windows x64, and Linux x64 CI jobs all passed.
+- The Windows package reused the verified addon without a native rebuild,
+  matched the current app/matrix/task/summary sources before signing, deployed
+  with all 12 signable files `Valid`, preserved rollback, and did not restart
+  Steam.
+- The one public `11-managed-web-open-and-wait` case passed interactive
+  readiness, native load, shortcut verification, default render health,
+  visible Steam web rendering, all three D3D11 fields, and clean crash/process/
+  task evidence. Its exact-bound owner-process handoff completed once but did
+  not acquire foreground or produce new focus/activation messages. The guard
+  sent zero input and the managed wait timed out active. No duplicate-open or
+  broad suite ran.
 
 Against the focus-gate slice now committed as `a58280c` on 2026-07-10:
 

@@ -508,17 +508,30 @@ key input by design. The managed wait then timed out active; crash dumps stayed
 zero, package-owned processes and the interactive task cleaned up, rollback was
 preserved, and Steam remained running.
 
-This settles the focus gate's fail-closed behavior but not close/back-to-app.
-The blocker is now foreground acquisition for the automated Session 1 probe,
-not renderer identity, visible presentation, target geometry, or a demonstrated
-failure of either close input when focused. Do not repeat the same
-`SetForegroundWindow` attempt after another remote-desktop reconnect, add a
-second input, or lengthen the wait. Another focused run is justified only after
-the activation mechanism materially changes or the exact native host is
-independently confirmed foreground; it must still recheck that same handle
-immediately before one close input.
+The packaged `53b4ab3` follow-up exercised one materially different
+owner-process handoff without rebuilding the verified addon. It resolved the
+close target before focus work, matched the exact lifecycle host to both the
+owning/control process and interactive session, received one valid authenticated
+handoff-only response, and recorded one completed native-show call against the
+same window. Windows nevertheless left that host non-foreground, the owning
+process reported no focus, and the native focus/activation message deltas were
+zero. The schema-2 probe emitted its single skip branch and sent no close input.
+The managed wait then timed out active while visible rendering, all three D3D11
+backend fields, readiness, render health, zero-crash evidence, process/task
+cleanup, rollback, and the existing Steam session remained clean.
 
-No duplicate-open or broad public suite followed this focused blocker.
+This settles that neither the external probe call nor the existing in-owner
+native-show call establishes unattended foreground eligibility in this
+environment. It still does not prove a focus-delivered close failure or
+close/back-to-app. Do not repackage either call, reconnect remote desktop,
+retry focus, add another input, or lengthen the wait. Another focused run is
+justified only after native-host activation/foreground semantics materially
+change, a different bounded mechanism has evidence that it can transfer OS
+foreground eligibility to the exact lifecycle host in the same interactive
+session, or that host is independently confirmed foreground. The probe must
+still recheck that same host immediately before one close input.
+
+No duplicate-open or broad public suite followed the `53b4ab3` focused blocker.
 
 The same coverage audit found a separate omission: Windows exposes the public
 `presenter-duplicate-open-guard` smoke action, but the managed matrix shipped in
