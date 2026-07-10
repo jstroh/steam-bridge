@@ -208,7 +208,8 @@ Reviewed on 2026-07-02 while investigating Windows Electron overlay failures:
   prove the presenter activation hold and shown observer existed when the
   operation triggered Steam's client prompt. The local harness now defers that
   operation until both are installed, but still needs one current-head Windows
-  live artifact.
+  live artifact after a configured app, `InitTxn`-capable
+  application/backend path, and private runtime handoff are available.
 - A refreshed current-package client-session checkout diagnostic at
   `C:\Users\admin\steam-bridge-artifacts\windows-client-session-diagnostics-20260703-170411-appid`
   kept the same `steam-app` configured-app lane, private env handoff, live
@@ -245,7 +246,25 @@ Reviewed on 2026-07-02 while investigating Windows Electron overlay failures:
   checkout can require operation-scoped callback proof. These changes are
   locally covered but still need one current-head Windows live artifact before
   the remaining gap can be assigned to bridge behavior, configured
-  product/account state, or the Steam client.
+  product/account state, or the Steam client. That proof is now explicitly
+  gated on a configured app launch, an `InitTxn`-capable application/backend
+  path, and its private runtime handoff.
+- A 2026-07-10 UTC current-package attempt stopped on the prepare-only
+  no-result guardrail before direct `InitTxn`, despite green deployment and
+  live gates. It adds no presenter or purchase evidence. Keep the lane
+  environment-blocked and do not rerun or tune its timeout until the
+  prerequisites in [`WIN-CHECKOUT-CLIENT-001`](test-findings-ledger.md#windows-x64)
+  exist.
+- A 2026-07-10 UTC public Windows audit invalidated the claimed unset-backend
+  implementation, not the explicit D3D11 architecture: TypeScript defaulted to
+  `windows-d3d11`, while Rust defaulted the actual native renderer to WGL. The
+  source of truth now defaults both layers to D3D11 and attached-case
+  verification requires matching top-level, native-host, and renderer fields.
+  The same audit established that Windows input/capture automation must use one
+  physical coordinate space: the close probe enters process/thread
+  per-monitor-v2 awareness before screen APIs and prefers the native Win32 rect
+  over Electron logical bounds. A Windows-built addon and focused high-DPI
+  attached route remain the acceptance gate for these fixes.
 - A focused default-client diagnostic at
   `C:\Users\admin\steam-bridge-artifacts\windows-default-client-inittxn-checkout-20260703-172218`
   used the same `steam-app` configured-app lane and a private request that

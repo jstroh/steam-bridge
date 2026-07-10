@@ -2779,6 +2779,15 @@ public static class SteamBridgeWindowsProbe {
   public static extern int GetSystemMetrics(int nIndex);
 
   [DllImport("user32.dll", SetLastError = true)]
+  static extern bool SetProcessDpiAwarenessContext(IntPtr dpiContext);
+
+  [DllImport("user32.dll", SetLastError = true)]
+  static extern IntPtr SetThreadDpiAwarenessContext(IntPtr dpiContext);
+
+  [DllImport("user32.dll", SetLastError = true)]
+  static extern bool SetProcessDPIAware();
+
+  [DllImport("user32.dll", SetLastError = true)]
   public static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
 
   [DllImport("user32.dll", SetLastError = true)]
@@ -2786,6 +2795,37 @@ public static class SteamBridgeWindowsProbe {
 
   [DllImport("user32.dll", SetLastError = true)]
   public static extern void mouse_event(uint dwFlags, uint dx, uint dy, uint dwData, IntPtr dwExtraInfo);
+
+  public static string ConfigureDpiAwareness() {
+    int contextError = 0;
+    string processStatus;
+    try {
+      if (SetProcessDpiAwarenessContext(new IntPtr(-4))) {
+        processStatus = "process-per-monitor-v2";
+      } else {
+        contextError = Marshal.GetLastWin32Error();
+        processStatus = "process-unchanged:" + contextError;
+      }
+    } catch (EntryPointNotFoundException) {
+      contextError = -1;
+      processStatus = "process-api-unavailable";
+    }
+
+    if (!processStatus.StartsWith("process-per-monitor-v2") && SetProcessDPIAware()) {
+      processStatus = "process-system-aware-fallback";
+    }
+
+    try {
+      IntPtr previous = SetThreadDpiAwarenessContext(new IntPtr(-4));
+      if (previous != IntPtr.Zero) {
+        return processStatus + ";thread-per-monitor-v2";
+      }
+      int threadError = Marshal.GetLastWin32Error();
+      return processStatus + ";thread-unchanged:" + threadError;
+    } catch (EntryPointNotFoundException) {
+      return processStatus + ";thread-api-unavailable";
+    }
+  }
 
   static INPUT KeyInput(ushort virtualKey, uint flags) {
     INPUT input = new INPUT();
@@ -2856,6 +2896,8 @@ public static class SteamBridgeWindowsProbe {
   }
 }
 '@
+
+`$script:ProbeDpiAwareness = [SteamBridgeWindowsProbe]::ConfigureDpiAwareness()
 
 `$script:ProbeScreenshotAssemblyError = `$null
 try {
@@ -3589,10 +3631,24 @@ function Get-LifecyclePresenterBounds {
     }
 
     `$presenter = `$event.payload.presenter
-    if (-not `$presenter -or -not `$presenter.bounds) {
+    if (-not `$presenter) {
       continue
     }
 
+    `$nativeRect = `$presenter.nativeHostDiagnostics.rect
+    if (`$nativeRect -and `$nativeRect.width -gt 0 -and `$nativeRect.height -gt 0) {
+      return [PSCustomObject]@{
+        x = `$nativeRect.left
+        y = `$nativeRect.top
+        width = `$nativeRect.width
+        height = `$nativeRect.height
+        coordinateSpace = "physical-native-host"
+      }
+    }
+
+    if (-not `$presenter.bounds) {
+      continue
+    }
     `$bounds = `$presenter.bounds
     if (`$bounds.width -gt 0 -and `$bounds.height -gt 0) {
       return `$bounds
@@ -3605,6 +3661,7 @@ function Get-LifecyclePresenterBounds {
 Write-ProbeEvent "probe:start" ([PSCustomObject]@{
   lifecycleLog = '$lifecycleLog'
   input = '$input'
+  dpiAwareness = `$script:ProbeDpiAwareness
   shortcutToggleProbe = [bool]::Parse('$shortcutToggleProbe')
   settleMs = $settleMs
   timeoutSeconds = $timeoutSeconds
@@ -4051,6 +4108,10 @@ function Invoke-MatrixCase {
     $args += $requiredEvents
   }
   if ($Case.action -like "presenter-*") {
+    $expectedNativeHostBackend = Resolve-ExpectedWindowsNativeHostBackend
+    if ($expectedNativeHostBackend) {
+      $args += @("-RequireNativeHostBackend", $expectedNativeHostBackend)
+    }
     $args += "-RequireZeroManagedOverlayTiming"
   }
 

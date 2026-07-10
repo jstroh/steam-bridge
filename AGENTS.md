@@ -49,6 +49,16 @@ places. Link to detailed evidence rather than pasting raw logs.
   Silicon. Intel macOS, Rosetta, and universal macOS builds are unsupported.
 - Windows managed overlays use the D3D11 presenter by default. Direct Chromium
   hooking, WGL, in-process GPU, and DirectComposition-off paths are diagnostics.
+- A Windows backend claim requires an attached case whose top-level presenter,
+  native-host diagnostics, and renderer diagnostics all agree. The lazy
+  presenter-ready label alone does not prove which native renderer was created.
+- On scaled Windows desktops, screenshot analysis, window rectangles, and
+  `SendInput` must share physical per-monitor-DPI coordinates. Do not replace a
+  coordinate mismatch with fixed click positions or longer waits.
+- Do not start real-purchase live proof merely because a device and package are
+  healthy. First confirm the configured app launch can reach an
+  `InitTxn`-capable application/backend test path and that its private runtime
+  handoff is available with a complete, non-empty product request shape.
 - Avoid timing hacks. Timeouts are failure guardrails; presenter lifecycle must
   remain callback/state driven.
 - Avoid unnecessary Steam restarts. Use readiness and health evidence first.

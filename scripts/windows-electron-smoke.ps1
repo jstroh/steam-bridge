@@ -1859,6 +1859,19 @@ function Assert-SmokeResult {
       if ($nativePresenter.backend -ne $RequireNativeHostBackend) {
         $failures.Add("native presenter backend is $RequireNativeHostBackend")
       }
+      if ($nativePresenter.nativeHostOpen -eq $true) {
+        $hostDiagnostics = $nativePresenter.nativeHostDiagnostics
+        if (-not $hostDiagnostics) {
+          $failures.Add("native presenter host diagnostics are available")
+        } else {
+          if ($hostDiagnostics.backend -ne $RequireNativeHostBackend) {
+            $failures.Add("native presenter host backend is $RequireNativeHostBackend")
+          }
+          if (-not $hostDiagnostics.renderer -or $hostDiagnostics.renderer.backend -ne $RequireNativeHostBackend) {
+            $failures.Add("native presenter renderer backend is $RequireNativeHostBackend")
+          }
+        }
+      }
       $lazyPresenterReady = (
         $processInfo.platform -eq "win32" -and
         $Result.action.action -eq "presenter-ready" -and

@@ -315,8 +315,10 @@ activation hold and shown observer were therefore installed after the operation
 that can trigger Steam's automatic client prompt. The local harness now defers
 the HTTP operation until the managed activation hold and shown observers are
 installed, but this historical result remains inconclusive until one
-current-head Windows rerun. It is not evidence that only Steam
-product/account/client behavior remains.
+current-head Windows rerun after a configured app, `InitTxn`-capable
+application/backend path, and complete private request/runtime handoff are
+available. It is not evidence that only Steam product/account/client behavior
+remains.
 
 A refreshed focused client-session rerun at
 `C:\Users\admin\steam-bridge-artifacts\windows-client-session-diagnostics-20260703-170411-appid`
@@ -378,6 +380,24 @@ runtime InitTxn capture to contain a value-free Steam approval URL shape
 (`hasSteamUrl=true`) before accepting the artifact as web-session checkout
 evidence.
 
+A 2026-07-10 UTC current-package Windows attempt did not exercise those live
+client-session diagnostics. The Windows x64 package was rebuilt, deployed to
+the stable configured-app path, checked against the local source package before
+signing, and verified with all 12 signable files Authenticode `Valid`. The
+interactive Session 1 task passed live readiness, native load, and default
+render health. Sanitized request-shape preflight was recorded, but it showed the
+private handoff was not a complete, non-empty product-proof request. The
+prepare-only checkout launch then crossed the existing no-result guardrail; a
+clean prepare result arrived roughly seven seconds after the blocker was
+written, so the matrix stopped and never launched the direct approval case.
+There was no runtime `InitTxn` capture, transaction, `QueryTxn`, authorization
+callback, or new conclusion about Steam's client prompt. The configured app
+plus `InitTxn`-capable application/backend path and valid private runtime
+handoff are not currently available. Keep this lane environment blocked and do
+not rerun or lengthen the guardrail until those prerequisites exist; if the
+prepare launch delay then recurs, diagnose it separately before starting a
+transaction. The private runtime artifact remains local and is not named here.
+
 A focused default-client diagnostic at
 `C:\Users\admin\steam-bridge-artifacts\windows-default-client-inittxn-checkout-20260703-172218`
 used the same `steam-app` configured-app lane and a private request that omitted
@@ -410,6 +430,32 @@ means the stable non-Steam shortcut lane for public route proof, while
 Steam launch path starts the smoke executable, either through a private Steam
 branch/depot or a backed-up local launch-option wrapper. Callback-required
 in-app checkout proof is gated to `steam-app`.
+
+A 2026-07-10 UTC current-package public App ID `480` audit passed interactive
+Session 1 readiness, shortcut identity, native load, default render health, and
+clean Steam-client health without restarting Steam. The aggregate `full` suite
+then stopped on its first legacy raw web action: Steam injected
+`GameOverlayRenderer` into the correct process with game/overlay ID `480`, but
+the action owned no managed presentation surface, so `IsOverlayEnabled` stayed
+false. This is diagnostic raw-baseline evidence, not a failure of the supported
+D3D11 managed route. Current product proof should use the `managed`,
+`shortcut-routes`, and public synthetic `checkout` suites rather than letting
+the unchanged raw case gate all later routes.
+
+The first attached managed web case then exposed two real gaps. Steam activated
+and rendered its web surface, but authoritative native diagnostics reported
+`windows-opengl` even though the TypeScript presenter snapshot reported
+`windows-d3d11`; the Rust default still selected OpenGL whenever the backend
+environment variable was unset. At the laptop's 225% display scaling, the
+PowerShell close probe also captured DPI-virtualized screen/window bounds while
+the native host used physical pixels, so its otherwise successful `SendInput`
+click missed the visible panel and the wait timed out before close/park. Crash
+diagnostics and cleanup stayed clean. The local fix defaults the actual Rust
+renderer to D3D11, verifies top-level/host/renderer identity on attached cases,
+sets process and thread per-monitor-v2 awareness before probe screen APIs, and
+prefers the physical native-host rectangle. These changes need a freshly built
+Windows addon plus one focused 225%-DPI managed web close before the broad
+public matrices resume; the cached prebuild is not evidence for the fix.
 
 Latest Windows D3D11 keyboard proof: the refreshed Electron `43.0.0` smoke
 bundle was rebuilt on macOS, deployed to the Windows laptop, and Authenticode

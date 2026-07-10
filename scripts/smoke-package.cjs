@@ -385,6 +385,10 @@ function runWindowsSmokeHelperStaticChecks() {
     "utf8"
   );
   const matrixSummary = fs.readFileSync(path.join(repoRoot, "scripts", "summarize-windows-overlay-matrix.cjs"), "utf8");
+  const nativeSurfaceSource = fs.readFileSync(
+    path.join(repoRoot, "crates", "native", "src", "native_surface.rs"),
+    "utf8"
+  );
   const electronHelper = fs.readFileSync(path.join(repoRoot, "packages", "steam-bridge", "src", "electron.ts"), "utf8");
   const packageReadme = fs.readFileSync(path.join(repoRoot, "packages", "steam-bridge", "README.md"), "utf8");
   const exampleReadme = fs.readFileSync(path.join(repoRoot, "examples", "electron-basic", "README.md"), "utf8");
@@ -448,6 +452,34 @@ function runWindowsSmokeHelperStaticChecks() {
       matrixHelper.includes("shell-search-or-start-ui") &&
       matrixHelper.includes('Write-ProbeEvent "probe:foreground-clear"'),
     "Windows close probe must clear known blocking OS foreground UI before close targeting"
+  );
+  assert.ok(
+    matrixHelper.includes("SetProcessDpiAwarenessContext") &&
+      matrixHelper.includes("SetThreadDpiAwarenessContext") &&
+      matrixHelper.includes("new IntPtr(-4)") &&
+      matrixHelper.includes("`$script:ProbeDpiAwareness = [SteamBridgeWindowsProbe]::ConfigureDpiAwareness()") &&
+      matrixHelper.indexOf("`$script:ProbeDpiAwareness = [SteamBridgeWindowsProbe]::ConfigureDpiAwareness()") <
+        matrixHelper.indexOf("Add-Type -AssemblyName System.Drawing") &&
+      matrixHelper.includes("dpiAwareness = `$script:ProbeDpiAwareness") &&
+      matrixHelper.includes("`$nativeRect = `$presenter.nativeHostDiagnostics.rect") &&
+      matrixHelper.includes('coordinateSpace = "physical-native-host"'),
+    "Windows close probe must enter physical per-monitor DPI coordinates before screenshot and SendInput work"
+  );
+  assert.ok(
+    /"opengl"\s*\|\s*"gl"\s*\|\s*"wgl"\s*\|\s*"windows-opengl"\s*=>\s*Self::OpenGl/.test(
+      nativeSurfaceSource
+    ) &&
+      nativeSurfaceSource.includes("_ => Self::D3d11") &&
+      nativeSurfaceSource.includes("Err(_) => Self::D3d11") &&
+      !nativeSurfaceSource.includes("_ => Self::OpenGl") &&
+      !nativeSurfaceSource.includes("Err(_) => Self::OpenGl"),
+    "Windows native presenter must default the actual native renderer to D3D11"
+  );
+  assert.ok(
+    helper.includes("native presenter host backend is $RequireNativeHostBackend") &&
+      helper.includes("native presenter renderer backend is $RequireNativeHostBackend") &&
+      matrixHelper.includes('$args += @("-RequireNativeHostBackend", $expectedNativeHostBackend)'),
+    "Windows attached presenter cases must verify the authoritative native host and renderer backends"
   );
   assert.ok(
     matrixHelper.includes("function Test-WebCloseForegroundAllowsPresenterBounds") &&

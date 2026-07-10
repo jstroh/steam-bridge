@@ -846,6 +846,13 @@ shortcut/open-and-wait without rerunning unrelated overlay surfaces.
 On Windows, use
 `-LaunchMode steam-app -Suite checkout -InitTxnRequestFile <private-init-txn-request.json> -RequireMicroTxnCallback -CloseProbe -CloseProbeInput auto`
 for the focused configured-product checkout path.
+Do not start that private suite merely because the Windows device and package
+are healthy. The configured app launch must reach an application/backend test
+path capable of issuing a real `InitTxn` for the product being proved, and its
+private runtime handoff must be available. If those prerequisites are absent,
+record an environment blocker and stop: do not create another order, run
+QueryTxn separately, or tune the matrix timeout. Public App ID `480` remains
+generic route/lifecycle proof and cannot satisfy this prerequisite.
 On Windows, `-RequireMicroTxnCallback` is supported only by the direct
 `presenter-checkout` action. The helper rejects it for `presenter-shortcut` and
 `presenter-shortcut-open-and-wait`, whose checkout coverage is deliberately
@@ -870,7 +877,9 @@ schema and the Windows summarizer normalizes them again before printing.
 If `clientSessionCaptured` and `clientPromptMissing` are both `true`, the
 smoke app captured a client-session transaction target, but the historical
 result remains inconclusive; the corrected operation ordering still needs one
-current-head live run. Summary rows require
+current-head live run after the configured app, `InitTxn`-capable
+application/backend path, and private runtime handoff are available.
+Summary rows require
 `checkoutOperationDeferredInitTxn=true`, `checkoutOperationObserver=true`, and
 `checkoutOperationPresenter=true`, proving the observer and active presenter
 were established before the in-app `InitTxn` request. Callback proof also

@@ -1456,10 +1456,10 @@ mod windows {
         fn from_env() -> Self {
             match env::var("STEAM_BRIDGE_WINDOWS_NATIVE_HOST_BACKEND") {
                 Ok(value) => match value.trim().to_ascii_lowercase().as_str() {
-                    "d3d" | "d3d11" | "direct3d" | "direct3d11" | "dxgi" => Self::D3d11,
-                    _ => Self::OpenGl,
+                    "opengl" | "gl" | "wgl" | "windows-opengl" => Self::OpenGl,
+                    _ => Self::D3d11,
                 },
-                Err(_) => Self::OpenGl,
+                Err(_) => Self::D3d11,
             }
         }
 
