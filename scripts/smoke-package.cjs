@@ -462,6 +462,9 @@ function runWindowsSmokeHelperStaticChecks() {
     "createDeterministicBundleArchive",
     "runtimeDllPreservation",
     "verifyLiveSmokeCapability",
+    "asarEntryPath",
+    "path.win32",
+    "preserveFailureExitCode",
     "file:.package-input/steam-bridge.tgz",
     "npm JavaScript CLI from npm_execpath"
   ]) {

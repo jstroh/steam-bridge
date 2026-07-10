@@ -2,7 +2,7 @@
 
 Last reviewed: 2026-07-10
 
-Implementation anchor: `57c458f` (`Harden Windows overlay ownership and reuse`).
+Implementation anchor: `e156967` (`Fix Windows npm CLI invocation`).
 Always inspect Git history and the worktree before trusting this checkpoint.
 
 This is the canonical, short, replace-in-place operational checkpoint for fast
@@ -11,11 +11,11 @@ the detailed platform evidence log, or the presenter design plan.
 
 ## Current Workspace State
 
-During workspace setup, another process added continuity changes in `AGENTS.md`
-and `.codex/`; preserve those uncommitted changes. This checkpoint integrates
-the focused `53b4ab3` owner-process result without taking ownership of the other
-continuity files. The implementation anchor is `53b4ab3`; this result-recording
-commit is documentation-only.
+At review, `main` and `origin/main` are at `e156967` and all four CI jobs pass.
+The product delta above that anchor is the Windows-native ASAR verification and
+fatal-exit slice described below; its fresh Release integration run is pending.
+Separate workspace-continuity changes remain uncommitted; preserve them and do
+not mix them into this product slice.
 
 ## Active Goal
 
@@ -155,6 +155,31 @@ exact-package release proof, and records the current D3D11 device-loss,
 Electron-range, and unpacked-ASAR evidence boundaries. These corrections do not
 depend on the pending manual foreground result.
 
+### Windows Release packaging reaches the final ASAR; verification remains open
+
+Release run `29089107932` for `e952a3c` passed all three fresh native prebuilds
+and release assembly, then stopped before `npm pack` because Windows cannot
+spawn `npm.cmd` directly with `shell: false`. Commit `e156967` changed both
+production npm callers to launch npm's JavaScript CLI through the current Node
+executable; its ordinary CI run passed all four jobs. Release run `29089780757`
+then passed all three prebuilds, exact tarball assembly and install, PE/import
+and static-CRT verification, electron-builder `26.15.3`, and final Windows ASAR
+construction. It stopped at the first nested ASAR lookup because the verifier
+passed POSIX-literal entry names to `@electron/asar` on Windows, whose lookup
+splits by the host path separator. The archive was not proved bad. A separate
+exit-code clobber in electron-builder also made that gate step appear green;
+the following canonical-candidate step failed because no completed tarball or
+audit existed.
+
+This product slice uses host-native ASAR entry paths, checks the archived
+Steam Bridge manifest and runtime JavaScript closure without weakening the
+exact three-file unpack contract, and preserves a fatal nonzero exit even if
+electron-builder resets `process.exitCode`. One fresh unsigned Release run is
+required. Until it passes through the executable probe, retained bundle archive,
+audit, and canonical-candidate rehash, no final Windows packaging/load claim is
+made. Configured-publisher signing and exact-tag publishability remain separate
+open production gates.
+
 ### Native surface ownership and terminal failure handling are hardened in `57c458f`
 
 An independent production audit found process-global lifecycle hazards that do
@@ -241,11 +266,12 @@ broker; investigate native-host ownership/activation and input forwarding.
 5. Add the designed state-driven three-cycle persistent-presenter reuse/soak
    proof, then verify the documented one-window, recovery/compatibility, and
    production-like Windows native-addon packaging boundaries.
-6. Build the audited `electron-builder` ASAR fixture and exact publish-tarball
-   gate: require colocated Windows x64 addon/runtime DLLs, PE/ABI checks,
-   ASAR-aware native-load/signing discovery, source/integrity hashes, and a
-   Windows CI executable load from the final staged bundle without a native
-   override or post-install artifact repair.
+6. Run one fresh unsigned Release after the Windows-native ASAR lookup and fatal
+   exit fixes. Require the exact tarball, archived package entrypoints, colocated
+   unpacked runtime trio, PE/ABI/static-CRT evidence, executable native load,
+   live-smoke/tool closure, DLL-byte preservation, retained bundle, audit, and
+   canonical-candidate rehash. Do not repeat a green diagnostic unchanged; the
+   next distinct packaging proof is one configured-publisher signed exact tag.
 7. Record results in the existing ledger/detailed evidence, run final checks,
    scan for private data, commit, push, verify CI, and complete the final
    production-readiness audit.

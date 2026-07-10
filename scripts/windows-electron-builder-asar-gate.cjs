@@ -68,7 +68,7 @@ if (require.main === module) {
   } else {
     main().catch((error) => {
       console.error(error);
-      process.exitCode = 1;
+      preserveFailureExitCode();
     });
   }
 }
@@ -177,7 +177,7 @@ async function main() {
       allowAuthenticodeChanges: true
     });
     const runtimeDllPreservation = assertRuntimeDllBytesPreserved(sourceRuntime, finalRuntime);
-    verifyAsarLayout(appDir, provenance);
+    verifyAsarLayout(appDir, provenance, packageJson);
     const checkoutValidatorProbe = verifyCheckoutValidatorToolTree(appDir);
     const liveSmokeCapability = verifyLiveSmokeCapability(appDir);
 
@@ -355,36 +355,64 @@ function assertNoPostInstallRepair(stageDir, sourceRuntime, installedRuntime) {
   }
 }
 
-function verifyAsarLayout(appDir, expectedProvenance) {
+function verifyAsarLayout(appDir, expectedProvenance, expectedPackageJson) {
   const resourcesDir = path.join(appDir, "resources");
   const asarPath = path.join(resourcesDir, "app.asar");
   assertNonEmptyFile(asarPath, "app.asar");
   assert.ok(!fs.existsSync(path.join(resourcesDir, "app")), "ASAR gate must not contain a loose resources/app tree");
+  const publicExportEntries = Object.entries(expectedPackageJson.exports || {}).map(([exportName, exportTarget]) => {
+    const defaultTarget = typeof exportTarget === "string" ? exportTarget : exportTarget?.default;
+    assert.equal(typeof defaultTarget, "string", `Steam Bridge export ${exportName} must have a default target`);
+    assert.match(defaultTarget, /^\.\//, `Steam Bridge export ${exportName} must have a package-relative default target`);
+    return ["node_modules", "steam-bridge", ...defaultTarget.slice(2).split("/")];
+  });
 
-  for (const relativePath of [
-    "main.cjs",
-    ...liveSmokeFiles.map((fileName) => `smoke/${fileName}`),
-    "steam-bridge-package-provenance.json",
-    "node_modules/steam-bridge/package.json",
-    "node_modules/steam-bridge/dist/native.js"
+  for (const entryParts of [
+    ["main.cjs"],
+    ...liveSmokeFiles.map((fileName) => ["smoke", fileName]),
+    ["steam-bridge-package-provenance.json"],
+    ["node_modules", "steam-bridge", "package.json"],
+    ...publicExportEntries,
+    ["node_modules", "steam-bridge", "dist", "generated-steamworks-enums.js"],
+    ["node_modules", "steam-bridge", "dist", "native.js"]
   ]) {
+    const relativePath = asarEntryPath(entryParts);
     const stat = asar.statFile(asarPath, relativePath);
-    assert.equal(Boolean(stat.unpacked), false, `${relativePath} must remain archived in app.asar`);
+    assert.equal(Boolean(stat.unpacked), false, `${entryParts.join("/")} must remain archived in app.asar`);
   }
   assert.ok(
     !asar.listPackage(asarPath).some((entry) => entry.includes(".package-input")),
     "The stable tarball install input must not be packaged into app.asar"
   );
-  const archivedFixturePackage = JSON.parse(asar.extractFile(asarPath, "package.json").toString("utf8"));
+  const archivedFixturePackage = JSON.parse(
+    asar.extractFile(asarPath, asarEntryPath(["package.json"])).toString("utf8")
+  );
   assert.equal(
     archivedFixturePackage.dependencies?.["steam-bridge"],
     "file:.package-input/steam-bridge.tgz",
     "Archived fixture metadata must use a stable relative tarball reference"
   );
+  const archivedSteamBridgePackage = JSON.parse(
+    asar
+      .extractFile(asarPath, asarEntryPath(["node_modules", "steam-bridge", "package.json"]))
+      .toString("utf8")
+  );
+  assert.equal(archivedSteamBridgePackage.name, expectedPackageJson.name);
+  assert.equal(archivedSteamBridgePackage.version, expectedPackageJson.version);
+  assert.equal(archivedSteamBridgePackage.main, expectedPackageJson.main);
+  assert.deepEqual(
+    archivedSteamBridgePackage.exports,
+    expectedPackageJson.exports,
+    "Archived Steam Bridge entrypoints must match the exact tarball"
+  );
   for (const fileName of WINDOWS_RUNTIME_FILES) {
-    const relativePath = `node_modules/steam-bridge/${fileName}`;
+    const relativePath = asarEntryPath(["node_modules", "steam-bridge", fileName]);
     const stat = asar.statFile(asarPath, relativePath);
-    assert.equal(Boolean(stat.unpacked), true, `${relativePath} must be marked ASAR-unpacked`);
+    assert.equal(
+      Boolean(stat.unpacked),
+      true,
+      `node_modules/steam-bridge/${fileName} must be marked ASAR-unpacked`
+    );
   }
 
   const physicalPackageDir = path.join(resourcesDir, "app.asar.unpacked", "node_modules", "steam-bridge");
@@ -392,7 +420,7 @@ function verifyAsarLayout(appDir, expectedProvenance) {
   assert.deepEqual(physicalFiles.sort(), [...WINDOWS_RUNTIME_FILES].sort(), "Only the exact Windows runtime trio may be unpacked");
 
   const archivedProvenance = JSON.parse(
-    asar.extractFile(asarPath, "steam-bridge-package-provenance.json").toString("utf8")
+    asar.extractFile(asarPath, asarEntryPath(["steam-bridge-package-provenance.json"])).toString("utf8")
   );
   assert.deepEqual(archivedProvenance, expectedProvenance, "Archived provenance must match the exact tarball stage");
 }
@@ -464,7 +492,7 @@ function verifyLiveSmokeCapability(appDir) {
   const asarPath = path.join(appDir, "resources", "app.asar");
   const sourceHashes = {};
   for (const fileName of liveSmokeFiles) {
-    const archived = asar.extractFile(asarPath, `smoke/${fileName}`);
+    const archived = asar.extractFile(asarPath, asarEntryPath(["smoke", fileName]));
     const source = fs.readFileSync(path.join(exampleRoot, fileName));
     const archivedSha256 = crypto.createHash("sha256").update(archived).digest("hex");
     const sourceSha256 = crypto.createHash("sha256").update(source).digest("hex");
@@ -472,7 +500,7 @@ function verifyLiveSmokeCapability(appDir) {
     sourceHashes[fileName] = archivedSha256;
   }
 
-  const smokeMain = asar.extractFile(asarPath, "smoke/main.js").toString("utf8");
+  const smokeMain = asar.extractFile(asarPath, asarEntryPath(["smoke", "main.js"])).toString("utf8");
   for (const marker of [
     "--steam-bridge-smoke-autorun-action",
     "STEAM_BRIDGE_SMOKE_RESULT_FILE",
@@ -652,6 +680,27 @@ function selfTest() {
   assert.ok(fixtureConfig.extraResources.some((entry) => entry.to === "steam-bridge-tools/dist"));
   assert.ok(fixtureConfig.files.includes("smoke/**/*"));
   assert.ok(fixtureConfig.extraFiles.some((entry) => entry.from === "windows-tools" && entry.to === "."));
+  assert.equal(
+    asarEntryPath(["node_modules", "steam-bridge", "package.json"], path.win32),
+    "node_modules\\steam-bridge\\package.json"
+  );
+  assert.equal(
+    asarEntryPath(["node_modules", "steam-bridge", "package.json"], path.posix),
+    "node_modules/steam-bridge/package.json"
+  );
+  const fatalExitProbe = spawnSync(
+    process.execPath,
+    [
+      "-e",
+      `const { preserveFailureExitCode } = require(${JSON.stringify(__filename)}); ` +
+        'if (typeof preserveFailureExitCode !== "function") process.exit(2); ' +
+        'process.stdout.write("guard-invoked"); preserveFailureExitCode(); process.exitCode = 0;'
+    ],
+    { encoding: "utf8" }
+  );
+  assert.equal(fatalExitProbe.stdout, "guard-invoked", "Fatal exit probe must invoke the exported guard");
+  assert.equal(fatalExitProbe.stderr, "", "Fatal exit probe must not fail for an unrelated exception");
+  assert.equal(fatalExitProbe.status, 1, "Fatal gate errors must remain nonzero if electron-builder resets exitCode");
   const bytes = Buffer.from("exact tarball bytes");
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-windows-asar-gate-self-test-"));
   try {
@@ -804,6 +853,10 @@ function normalizeRelativePath(value) {
   return value.split(path.sep).join("/");
 }
 
+function asarEntryPath(segments, pathImplementation = path) {
+  return pathImplementation.join(...segments);
+}
+
 function isPathInside(parent, candidate) {
   const relative = path.relative(path.resolve(parent), path.resolve(candidate));
   return relative === "" || (!relative.startsWith(`..${path.sep}`) && relative !== "..");
@@ -840,6 +893,13 @@ function run(command, args, cwd, options = {}) {
     );
   }
   return result;
+}
+
+function preserveFailureExitCode() {
+  process.exitCode = 1;
+  process.on("exit", () => {
+    process.exitCode = 1;
+  });
 }
 
 function resolveInvocation(command, args, options = {}) {
@@ -936,6 +996,7 @@ function readGitValue(args) {
 module.exports = {
   createDeterministicBundleArchive,
   installExactTarball,
+  preserveFailureExitCode,
   stageFixture,
   verifyAsarLayout,
   verifyLiveSmokeCapability
