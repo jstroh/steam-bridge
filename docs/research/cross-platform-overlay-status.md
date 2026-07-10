@@ -85,6 +85,17 @@ owner-process native-show handoff works, independently measure the exact host as
 foreground, attribute the run to the latest repository commit, prove a
 schema-2/`SendInput` close, or independently prove exact app-focus return.
 
+A later single close-button click through the interactive Parsec desktop shut
+down the old Smoke app. Its reused lifecycle log contained two distinct app
+sessions, and each session recorded exactly one `window-all-closed`,
+`before-quit`, `will-quit`, `process:exit`, and `app:quit` event in the observed
+order, with both exit-code events equal to zero and no malformed, error, fatal,
+or crash records. No Smoke process remained. The preserved launch environment
+was restored byte-for-byte through atomic replacement; the hold file and the
+temporary replaced-file rollback were both removed after hash verification.
+This closes the old-run shutdown and environment-cleanup prerequisite only; it
+does not add automated foreground, close, or focus-return proof.
+
 The follow-up harness implementation keeps the old owner-process evidence as a
 backward-compatible schema-2 branch and adds a per-case
 `same-process-user-gesture-v1` branch only for the managed web wait. The
@@ -102,7 +113,61 @@ completion, stable idle, and exact source-window focus return. Static package
 checks, adversarial summary fixtures, native PowerShell parsing, embedded C#
 compilation, all 196 unit tests, and the normal repository checks pass; packaged
 live proof remains open. The prior manual app shutdown and launch-environment
-rollback must finish before that package is launched.
+rollback are complete, so the exact package can proceed to staged signing and
+the single focused live case.
+
+That exact `afc19eb` package was subsequently assembled around the unchanged
+verified native addon, transferred with all 128 source hashes matching, and
+signed with 12/12 valid signables, app/addon publisher agreement, byte-preserved
+Valve DLLs, unchanged non-signable sources, and no Zone.Identifier streams. A
+read-only audit first rejected the historical runtime/renamed/command shortcuts
+as product proof. Steam was therefore closed once, the packaged shortcut suite
+refreshed one stable direct-app entry with a retained backup, an immediate
+assumed-shortcut check returned unchanged, and Steam was restarted once in
+interactive Session 1.
+
+The single focused public case passed package preflight, interactive readiness,
+default render health, the assumed shortcut check, and one authenticated
+same-process gate arm/ready event. The initial target had exact source/control/
+session/foreground binding, agreeing renderer DPR and window DPI at 2.25, and
+matching physical client geometry. Ninety-six milliseconds later, before any
+input, the still-valid same-process foreground source failed the immediate point
+check: the stored absolute point was outside its current client and
+`WindowFromPoint` no longer belonged/rooted to that source. The guard emitted
+one activation skip, one close skip, and one incomplete result; it sent zero
+activation and zero close input. This is a settled negative result for the
+absolute-point implementation, not evidence against same-process user
+activation or D3D11. Repeat only after the same authenticated renderer geometry
+is rebound to the exact original HWND at both pre-dispatch and final-dispatch.
+
+The matrix restored the originally absent launch environment and completed both
+package-process cleanup records. The interactive task wrapper then exposed a
+separate harness bug: successful task deletion was followed by an expected
+failing `schtasks /Query`, but its stderr became terminating under
+`ErrorActionPreference=Stop` before `task-cleanup.json` was written. Sanitized
+recovery verified no task, runner, or Smoke process, matching launch-env state,
+and removed task files. The local summary correctly rejects the artifact for
+the missing Smoke result and missing original task-cleanup evidence.
+
+The bounded follow-up fixes both harness defects together. The probe retains
+the authenticated renderer geometry and original source HWND, recomputes the
+physical target from current window DPI and sanitized client origin/size at
+pre-dispatch and final-dispatch, and repeats exact main-window, owner/control/
+session, enabled/non-iconic, point owner/root, and foreground checks. The final
+successful confirmation calls `SendInput` immediately with its own rebound
+point. The auditor independently recomputes midpoint-to-even coordinate math
+and expected client size; positive fixtures move the source between ready,
+pre-dispatch, and final-dispatch, while adversarial fixtures reject stale HWND,
+geometry or DPI drift, wrong coordinate math, embedded-target drift, and use of
+the earlier point. The task wrapper now distinguishes captured native exit
+codes from invocation failure, requires a captured zero delete plus captured
+missing-task query result, and isolates cleanup phases so one exception cannot
+suppress later process, environment, file, or evidence guards. Native Windows
+PowerShell 5.1 behavior, PowerShell parsing, embedded C# compilation, package
+smoke, all 196 tests, API/platform/native checks, syntax, diff checks, and an
+independent final review pass. This is implementation evidence only; one exact
+task-wrapped focused live run must still prove activation, close/park/focus
+return, three-way D3D11 agreement, and the original green cleanup artifact.
 
 A 2026-07-02 interactive Windows laptop process-per-case baseline slice proved
 the current Windows lane without a native presenter or repaint loop. The stable

@@ -635,9 +635,24 @@ function validateCleanupArtifacts(
       "interactive task completed without a runner or matrix failure",
       failures
     );
+    expect(
+      taskCleanup.cleanupPhaseErrorCount === 0,
+      "interactive task cleanup phases completed without a suppressed exception",
+      failures
+    );
     if (taskCleanup.keepTask !== true) {
       expect(taskCleanup.deleteAttempted === true, "interactive task deletion was attempted", failures);
+      expect(
+        taskCleanup.deleteExitCodeCaptured === true,
+        "interactive task deletion exit code was captured",
+        failures
+      );
       expect(taskCleanup.deleteExitCode === 0, "interactive task deletion command succeeded", failures);
+      expect(
+        taskCleanup.queryExitCodeCaptured === true && taskCleanup.queryExitCode === 1,
+        "interactive task absence query completed with the expected missing-task exit code",
+        failures
+      );
       expect(taskCleanup.deletionVerified === true, "interactive task deletion was independently verified", failures);
     }
     if (taskCleanup.timedOut === true) {
@@ -826,6 +841,10 @@ function summarizeCleanupArtifacts(processCleanupBefore, processCleanupAfter, la
     launchEnvRollbackAttempted: launchEnvRollback ? launchEnvRollback.attempted === true : null,
     taskCleanupOk: taskCleanup ? taskCleanup.ok === true : null,
     taskDeletionVerified: taskCleanup ? taskCleanup.deletionVerified === true : null,
+    taskDeleteExitCodeCaptured: taskCleanup ? taskCleanup.deleteExitCodeCaptured === true : null,
+    taskAbsenceQueryExitCodeCaptured: taskCleanup ? taskCleanup.queryExitCodeCaptured === true : null,
+    taskAbsenceQueryExitCode: taskCleanup ? taskCleanup.queryExitCode ?? null : null,
+    taskCleanupPhaseErrorCount: taskCleanup ? taskCleanup.cleanupPhaseErrorCount ?? null : null,
     taskTimedOut: taskCleanup ? taskCleanup.timedOut === true : null,
     taskRunnerTerminatedWithoutDone: taskCleanup ? taskCleanup.runnerTerminatedWithoutDone === true : null,
     taskFailureStage: taskCleanup ? taskCleanup.failureStage || null : null,
@@ -3823,10 +3842,13 @@ function summarizeSameProcessUserGestureHandoff({
   const preDispatchEvent = preDispatchEvents[0];
   const preDispatchPayload = objectOrEmpty(preDispatchEvent && preDispatchEvent.payload);
   const preDispatchBinding = objectOrEmpty(preDispatchPayload.binding);
+  const preDispatchTarget = objectOrEmpty(preDispatchPayload.target);
   const activationPreDispatch = objectOrEmpty(activationPayload.preDispatch);
   const activationPreDispatchBinding = objectOrEmpty(activationPreDispatch.binding);
+  const activationPreDispatchTarget = objectOrEmpty(activationPreDispatch.target);
   const activationFinalDispatch = objectOrEmpty(activationPayload.finalDispatch);
   const activationFinalDispatchBinding = objectOrEmpty(activationFinalDispatch.binding);
+  const activationFinalDispatchTarget = objectOrEmpty(activationFinalDispatch.target);
   const activationDispatchStartEvents = normalizedEvents.filter(
     (event) => event.type === "probe:user-gesture-gate-activation-dispatch-start"
   );
@@ -3840,6 +3862,9 @@ function summarizeSameProcessUserGestureHandoff({
   );
   const activationDispatchStartPreDispatchBinding = objectOrEmpty(
     activationDispatchStartPreDispatch.binding
+  );
+  const activationDispatchStartPreDispatchTarget = objectOrEmpty(
+    activationDispatchStartPreDispatch.target
   );
   const activationSkippedEvents = normalizedEvents.filter(
     (event) => event.type === "probe:user-gesture-gate-activation-skipped"
@@ -3939,13 +3964,63 @@ function summarizeSameProcessUserGestureHandoff({
       Math.abs(readyProbeDpi.rendererScale - readyProbeDpi.windowScale) <=
         WINDOWS_CLOSE_SCALE_TOLERANCE
   );
-  const preDispatchShapeValid = (payload, binding) =>
-    Boolean(
+  const preDispatchShapeValid = (payload, binding) => {
+    const reboundTarget = objectOrEmpty(payload.target);
+    const rendererGeometry = objectOrEmpty(payload.rendererGeometry);
+    const rendererTarget = objectOrEmpty(rendererGeometry.target);
+    const rendererViewport = objectOrEmpty(rendererGeometry.viewport);
+    const dpi = objectOrEmpty(payload.dpi);
+    const clientGeometry = objectOrEmpty(payload.clientGeometry);
+    const rendererGeometryMatchesReady = Boolean(
+      rendererTarget.left === readyTarget.left &&
+        rendererTarget.top === readyTarget.top &&
+        rendererTarget.width === readyTarget.width &&
+        rendererTarget.height === readyTarget.height &&
+        rendererViewport.width === readyViewport.width &&
+        rendererViewport.height === readyViewport.height &&
+        rendererViewport.devicePixelRatio === readyViewport.devicePixelRatio
+    );
+    const clientGeometryValid = Boolean(
+      Number.isInteger(clientGeometry.originX) &&
+        Number.isInteger(clientGeometry.originY) &&
+        Number.isInteger(clientGeometry.width) &&
+        Number.isInteger(clientGeometry.height) &&
+        clientGeometry.width > 0 &&
+        clientGeometry.height > 0
+    );
+    const expectedX = roundMidpointToEven(
+      clientGeometry.originX + (readyTarget.left + readyTarget.width / 2) * dpi.windowScale
+    );
+    const expectedY = roundMidpointToEven(
+      clientGeometry.originY + (readyTarget.top + readyTarget.height / 2) * dpi.windowScale
+    );
+    const expectedClientWidth = readyViewport.width * dpi.windowScale;
+    const expectedClientHeight = readyViewport.height * dpi.windowScale;
+    const clientGeometryMatchesReady = Boolean(
+      clientGeometryValid &&
+        Number.isFinite(expectedClientWidth) &&
+        Number.isFinite(expectedClientHeight) &&
+        Math.abs(clientGeometry.width - expectedClientWidth) <= 2 &&
+        Math.abs(clientGeometry.height - expectedClientHeight) <= 2
+    );
+    const reboundMathValid = Boolean(
+      clientGeometryValid &&
+        Number.isFinite(expectedX) &&
+        Number.isFinite(expectedY) &&
+        reboundTarget.x === expectedX &&
+        reboundTarget.y === expectedY &&
+        reboundTarget.x >= clientGeometry.originX &&
+        reboundTarget.x < clientGeometry.originX + clientGeometry.width &&
+        reboundTarget.y >= clientGeometry.originY &&
+        reboundTarget.y < clientGeometry.originY + clientGeometry.height
+    );
+    return Boolean(
       payload.eligible === true &&
         payload.reason === "gate-source-window-confirmed-before-dispatch" &&
         binding.sourceWindowValid === true &&
         binding.sourceOwnerPresent === true &&
         binding.sourceMatchesBoundProcess === true &&
+        binding.sourceMatchesBoundWindow === true &&
         binding.sourceMatchesControlProcess === true &&
         binding.sameInteractiveSession === true &&
         binding.sourceWindowEnabled === true &&
@@ -3954,12 +4029,35 @@ function summarizeSameProcessUserGestureHandoff({
         binding.pointWindowPresent === true &&
         binding.pointOwnerMatchesBoundProcess === true &&
         binding.pointRootMatchesSourceWindow === true &&
-        binding.sourceWindowForeground === true
+        binding.sourceWindowForeground === true &&
+        Number.isInteger(reboundTarget.x) &&
+        Number.isInteger(reboundTarget.y) &&
+        reboundTarget.source === "renderer-button-physical-dpi-rebound" &&
+        reboundTarget.insideSourceClient === true &&
+        reboundTarget.reboundFromReadyGeometry === true &&
+        rendererGeometryMatchesReady &&
+        clientGeometryMatchesReady &&
+        reboundMathValid &&
+        dpi.rendererScalePresent === true &&
+        dpi.windowDpiPresent === true &&
+        dpi.scaleAgrees === true &&
+        dpi.clientGeometryAgrees === true &&
+        Number.isFinite(dpi.rendererScale) &&
+        Number.isFinite(dpi.windowScale) &&
+        dpi.rendererScale >= 0.5 &&
+        dpi.rendererScale <= 8 &&
+        dpi.windowScale >= 0.5 &&
+        dpi.windowScale <= 8 &&
+        dpi.rendererScale === readyViewport.devicePixelRatio &&
+        Math.abs(dpi.rendererScale - dpi.windowScale) <= WINDOWS_CLOSE_SCALE_TOLERANCE
     );
+  };
   const preDispatchValid = Boolean(
     preDispatchEvents.length === 1 &&
       preDispatchShapeValid(preDispatchPayload, preDispatchBinding) &&
-      preDispatchShapeValid(activationPreDispatch, activationPreDispatchBinding)
+      preDispatchShapeValid(activationPreDispatch, activationPreDispatchBinding) &&
+      preDispatchTarget.x === activationPreDispatchTarget.x &&
+      preDispatchTarget.y === activationPreDispatchTarget.y
   );
   const activationDispatchStartValid = Boolean(
     activationDispatchStartEvents.length === 1 &&
@@ -3969,10 +4067,15 @@ function summarizeSameProcessUserGestureHandoff({
       activationDispatchStartPayload.rejectedEventCount === 0 &&
       Number.isInteger(activationDispatchStartTarget.x) &&
       Number.isInteger(activationDispatchStartTarget.y) &&
-      activationDispatchStartTarget.x === readyProbeTarget.x &&
-      activationDispatchStartTarget.y === readyProbeTarget.y &&
-      activationDispatchStartTarget.source === "renderer-button-physical-dpi" &&
+      activationDispatchStartTarget.x === preDispatchTarget.x &&
+      activationDispatchStartTarget.y === preDispatchTarget.y &&
+      activationDispatchStartTarget.x === activationPreDispatchTarget.x &&
+      activationDispatchStartTarget.y === activationPreDispatchTarget.y &&
+      activationDispatchStartTarget.x === activationDispatchStartPreDispatchTarget.x &&
+      activationDispatchStartTarget.y === activationDispatchStartPreDispatchTarget.y &&
+      activationDispatchStartTarget.source === "renderer-button-physical-dpi-rebound" &&
       activationDispatchStartTarget.insideSourceClient === true &&
+      activationDispatchStartTarget.reboundFromReadyGeometry === true &&
       preDispatchShapeValid(
         activationDispatchStartPreDispatch,
         activationDispatchStartPreDispatchBinding
@@ -3991,12 +4094,11 @@ function summarizeSameProcessUserGestureHandoff({
       Number.isInteger(activationTarget.y) &&
       activationPointer.x === activationTarget.x &&
       activationPointer.y === activationTarget.y &&
-      activationTarget.source === "renderer-button-physical-dpi" &&
+      activationTarget.source === "renderer-button-physical-dpi-rebound" &&
       activationTarget.insideSourceClient === true &&
-      activationTarget.x === readyProbeTarget.x &&
-      activationTarget.y === readyProbeTarget.y &&
-      activationTarget.x === activationDispatchStartTarget.x &&
-      activationTarget.y === activationDispatchStartTarget.y
+      activationTarget.reboundFromReadyGeometry === true &&
+      activationTarget.x === activationFinalDispatchTarget.x &&
+      activationTarget.y === activationFinalDispatchTarget.y
   );
   const finalDispatchValid = preDispatchShapeValid(
     activationFinalDispatch,
@@ -5102,6 +5204,10 @@ function runSelfTest() {
       ["rollback-failed", { rollbackFailed: true }, "launch-env rollback completed successfully"],
       ["rollback-byte-mismatch", { rollbackByteMismatch: true }, "restored launch env bytes match exactly"],
       ["task-delete-unverified", { taskDeletionUnverified: true }, "interactive task cleanup completed successfully"],
+      ["task-delete-exit-uncaptured", { taskDeleteExitUncaptured: true }, "task deletion exit code was captured"],
+      ["task-query-exit-uncaptured", { taskQueryExitUncaptured: true }, "task absence query completed with the expected missing-task exit code"],
+      ["task-query-wrong-exit", { taskQueryWrongExit: true }, "task absence query completed with the expected missing-task exit code"],
+      ["task-cleanup-phase-error", { taskCleanupPhaseError: true }, "cleanup phases completed without a suppressed exception"],
       ["task-runner-leftover", { taskRunnerLeftover: true }, "task wrapper runner-tree guard completed successfully"],
       ["task-runner-done-missing", { taskRunnerDoneMissing: true }, "completed without a runner or matrix failure"],
       ["task-live-deadline", { taskDeadlineTimeout: true }, "completed without a runner or matrix failure"],
@@ -5189,6 +5295,29 @@ function runSelfTest() {
       userGestureGateSummary.caseSummaries[0].closeProbe.nativePresenterHandoffNativeShowCallCount,
       0
     );
+    const userGestureMovementFixtureFailures = [];
+    const userGestureMovementEvents = readJsonLinesIfPresent(
+      path.join(userGestureGateRoot, "11-managed-web-open-and-wait", "close-probe.log"),
+      userGestureMovementFixtureFailures
+    );
+    const userGestureReadyPoint = objectOrEmpty(
+      objectOrEmpty(
+        userGestureMovementEvents.find((event) => event.type === "probe:user-gesture-gate-ready")
+      ).payload
+    ).target;
+    const userGesturePreDispatchPoint = objectOrEmpty(
+      objectOrEmpty(
+        userGestureMovementEvents.find((event) => event.type === "probe:user-gesture-gate-pre-dispatch")
+      ).payload
+    ).target;
+    const userGestureFinalPoint = objectOrEmpty(
+      objectOrEmpty(
+        userGestureMovementEvents.find((event) => event.type === "probe:user-gesture-gate-activation-sent")
+      ).payload
+    ).target;
+    assert.deepEqual(userGestureMovementFixtureFailures, []);
+    assert.notEqual(userGestureReadyPoint.x, userGesturePreDispatchPoint.x);
+    assert.notEqual(userGesturePreDispatchPoint.x, userGestureFinalPoint.x);
 
     const alreadyForegroundRoot = path.join(tempRoot, "managed-web-already-foreground");
     writeManagedWebCloseEvidenceFixture(alreadyForegroundRoot, {
@@ -5403,10 +5532,20 @@ function runSelfTest() {
       ["client-geometry-mismatch", { gestureClientGeometryMismatch: true }],
       ["pre-dispatch-missing", { gesturePreDispatchMissing: true }],
       ["pre-dispatch-source-mismatch", { gesturePreDispatchSourceMismatch: true }],
+      ["pre-dispatch-bound-window-mismatch", { gesturePreDispatchBoundWindowMismatch: true }],
       ["pre-dispatch-control-mismatch", { gesturePreDispatchControlMismatch: true }],
       ["pre-dispatch-point-mismatch", { gesturePreDispatchPointMismatch: true }],
       ["pre-dispatch-foreground-lost", { gesturePreDispatchForegroundLost: true }],
+      ["pre-dispatch-wrong-rebound-math", { gesturePreDispatchWrongReboundMath: true }],
+      ["pre-dispatch-client-size-mismatch", { gesturePreDispatchClientSizeMismatch: true }],
+      ["pre-dispatch-dpi-drift", { gesturePreDispatchDpiDrift: true }],
+      ["pre-dispatch-renderer-geometry-mismatch", { gesturePreDispatchRendererGeometryMismatch: true }],
+      ["dispatch-start-target-mismatch", { gestureDispatchStartTargetMismatch: true }],
+      ["dispatch-embedded-target-mismatch", { gestureDispatchEmbeddedTargetMismatch: true }],
       ["final-dispatch-mismatch", { gestureFinalDispatchMismatch: true }],
+      ["final-wrong-rebound-math", { gestureFinalWrongReboundMath: true }],
+      ["activation-final-target-mismatch", { gestureActivationFinalTargetMismatch: true }],
+      ["pointer-uses-pre-dispatch-target", { gesturePointerUsesPreTarget: true }],
       ["foreground-clear", { gestureForegroundClear: true }],
       ["dispatch-start-missing", { gestureDispatchStartMissing: true }],
       ["dispatch-start-state-wrong", { gestureDispatchStartStateWrong: true }],
@@ -6871,6 +7010,21 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
       ? "process-per-monitor-v2;thread-unchanged:5"
       : "process-per-monitor-v2;thread-per-monitor-v2";
   const userGestureGate = Boolean(closeProbeEvidenceSchema === 2 && options.userGestureGate);
+  const gestureReadyRendererTarget = {
+    left: 700,
+    top: 20,
+    width: options.gestureReadyGeometryInvalid ? 0 : 120,
+    height: 36
+  };
+  const gestureReadyRendererViewport = {
+    width: 1060,
+    height: 760,
+    devicePixelRatio: options.gestureReadyViewportInvalid
+      ? 9
+      : options.gestureReadyDprMismatch
+        ? 1.5
+        : 2.25
+  };
   const alreadyForeground = Boolean(closeProbeEvidenceSchema === 2 && (options.alreadyForeground || userGestureGate));
   const focusSucceeded = !options.presenterFocusFailed;
   const nativeShowCallCount = alreadyForeground ? 0 : options.secondNativeShowCall ? 2 : 1;
@@ -7075,21 +7229,8 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
       targetId: "presenter-web-wait",
       ready: true,
       binding: gateBinding,
-      target: {
-        left: 700,
-        top: 20,
-        width: options.gestureReadyGeometryInvalid ? 0 : 120,
-        height: 36
-      },
-      viewport: {
-        width: 1060,
-        height: 760,
-        devicePixelRatio: options.gestureReadyViewportInvalid
-          ? 9
-          : options.gestureReadyDprMismatch
-            ? 1.5
-            : 2.25
-      }
+      target: gestureReadyRendererTarget,
+      viewport: gestureReadyRendererViewport
     };
     const consumedPayload = {
       schema: 1,
@@ -7223,19 +7364,11 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
     }
   ];
   if (userGestureGate) {
-    const activationTarget = {
+    const activationReadyTarget = {
       x: options.gestureNullCoordinates ? null : 150,
       y: options.gestureNullCoordinates ? null : 80,
       source: "renderer-button-physical-dpi",
       insideSourceClient: true
-    };
-    const activationPointer = {
-      sent: options.gestureActivationPointerFailed ? 2 : 3,
-      expected: 3,
-      lastError: options.gestureActivationPointerFailed ? 5 : 0,
-      method: "sendinput",
-      x: activationTarget.x,
-      y: activationTarget.y
     };
     const activationBinding = {
       sourceProcessPresent: true,
@@ -7261,6 +7394,24 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
             ? 2
             : 2.25
     };
+    const activationConfirmationDpi = {
+      ...activationDpi,
+      ...(options.gesturePreDispatchDpiDrift
+        ? { scaleAgrees: true, clientGeometryAgrees: true, rendererScale: 2.25, windowScale: 2 }
+        : {})
+    };
+    const activationPreDispatchClient = {
+      originX: -1530,
+      originY: 14,
+      width: options.gesturePreDispatchClientSizeMismatch ? 2300 : 2385,
+      height: 1710
+    };
+    const activationFinalDispatchClient = {
+      originX: -1528,
+      originY: 14,
+      width: 2385,
+      height: 1710
+    };
     const activationPreDispatch = {
       eligible: !(
         options.gesturePreDispatchSourceMismatch ||
@@ -7279,6 +7430,7 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
         sourceWindowValid: true,
         sourceOwnerPresent: true,
         sourceMatchesBoundProcess: !options.gesturePreDispatchSourceMismatch,
+        sourceMatchesBoundWindow: !options.gesturePreDispatchBoundWindowMismatch,
         sourceMatchesControlProcess: !options.gesturePreDispatchControlMismatch,
         sameInteractiveSession: true,
         sourceWindowEnabled: true,
@@ -7288,7 +7440,30 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
         pointOwnerMatchesBoundProcess: !options.gesturePreDispatchPointMismatch,
         pointRootMatchesSourceWindow: !options.gesturePreDispatchPointMismatch,
         sourceWindowForeground: !options.gesturePreDispatchForegroundLost
-      }
+      },
+      target: {
+        x: options.gesturePreDispatchWrongReboundMath ? 181 : 180,
+        y: 100,
+        source: "renderer-button-physical-dpi-rebound",
+        insideSourceClient: true,
+        reboundFromReadyGeometry: true
+      },
+      clientGeometry: activationPreDispatchClient,
+      rendererGeometry: {
+        target: {
+          ...gestureReadyRendererTarget,
+          ...(options.gesturePreDispatchRendererGeometryMismatch ? { left: 701 } : {})
+        },
+        viewport: gestureReadyRendererViewport
+      },
+      dpi: activationConfirmationDpi
+    };
+    const activationFinalTarget = {
+      x: options.gestureFinalWrongReboundMath ? 183 : 182,
+      y: 100,
+      source: "renderer-button-physical-dpi-rebound",
+      insideSourceClient: true,
+      reboundFromReadyGeometry: true
     };
     const activationFinalDispatch = options.gestureFinalDispatchMismatch
       ? {
@@ -7298,9 +7473,27 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
           binding: {
             ...activationPreDispatch.binding,
             sourceWindowForeground: false
-          }
+          },
+          target: activationFinalTarget,
+          clientGeometry: activationFinalDispatchClient
         }
-      : activationPreDispatch;
+      : {
+          ...activationPreDispatch,
+          target: activationFinalTarget,
+          clientGeometry: activationFinalDispatchClient
+        };
+    const activationTarget = {
+      ...activationFinalTarget,
+      ...(options.gestureActivationFinalTargetMismatch ? { x: 353 } : {})
+    };
+    const activationPointer = {
+      sent: options.gestureActivationPointerFailed ? 2 : 3,
+      expected: 3,
+      lastError: options.gestureActivationPointerFailed ? 5 : 0,
+      method: "sendinput",
+      x: options.gesturePointerUsesPreTarget ? activationPreDispatch.target.x : activationTarget.x,
+      y: options.gesturePointerUsesPreTarget ? activationPreDispatch.target.y : activationTarget.y
+    };
     closeProbeEvents.splice(
       1,
       0,
@@ -7311,7 +7504,7 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
           ready: true,
           reason: "gate-target-ready",
           binding: activationBinding,
-          target: activationTarget,
+          target: activationReadyTarget,
           dpi: activationDpi
         }
       },
@@ -7331,8 +7524,16 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
               at: "2026-07-02T00:00:01.185Z",
               payload: {
                 input: "renderer-button-click-sendinput",
-                target: activationTarget,
-                preDispatch: activationPreDispatch,
+                target: {
+                  ...activationPreDispatch.target,
+                  ...(options.gestureDispatchStartTargetMismatch ? { x: 351 } : {})
+                },
+                preDispatch: options.gestureDispatchEmbeddedTargetMismatch
+                  ? {
+                      ...activationPreDispatch,
+                      target: { ...activationPreDispatch.target, x: activationPreDispatch.target.x + 1 }
+                    }
+                  : activationPreDispatch,
                 readyEventCount: 1,
                 consumedEventCount: options.gestureDispatchStartStateWrong ? 1 : 0,
                 rejectedEventCount: 0,
@@ -7871,6 +8072,10 @@ function writeCleanupFixture(root, options = {}) {
   const runnerDoneMissing = options.taskRunnerDoneMissing === true;
   const taskCleanupOk =
     !options.taskDeletionUnverified &&
+    !options.taskDeleteExitUncaptured &&
+    !options.taskQueryExitUncaptured &&
+    !options.taskQueryWrongExit &&
+    !options.taskCleanupPhaseError &&
     taskRunnerOk &&
     !options.taskTimedOutNoTreeKill &&
     taskLaunchEnvOk &&
@@ -7885,11 +8090,16 @@ function writeCleanupFixture(root, options = {}) {
     errorKind: runnerDoneMissing ? "done-missing" : taskDeadline ? "deadline-exceeded" : "none",
     errorPresent: runnerDoneMissing || taskDeadline,
     endAttempted: runnerDoneMissing || taskDeadline,
+    endExitCodeCaptured: runnerDoneMissing || taskDeadline,
     endExitCode: runnerDoneMissing ? 1 : taskDeadline ? 0 : null,
     keepTask: false,
     deleteAttempted: true,
+    deleteExitCodeCaptured: !options.taskDeleteExitUncaptured,
     deleteExitCode: 0,
+    queryExitCodeCaptured: !options.taskQueryExitUncaptured,
+    queryExitCode: options.taskQueryWrongExit ? -1 : 1,
     deletionVerified: options.taskDeletionUnverified ? false : true,
+    cleanupPhaseErrorCount: options.taskCleanupPhaseError ? 1 : 0,
     runnerProcessGuard: {
       required: true,
       attempted: true,

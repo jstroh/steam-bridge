@@ -527,20 +527,47 @@ function runWindowsSmokeHelperStaticChecks() {
   ]) {
     assert.ok(taskWrapper.includes(expected), `Windows overlay task wrapper missing ${expected}`);
   }
+  const nativeExitCapture = taskWrapper.slice(
+    taskWrapper.indexOf("function Invoke-NativeExitCode"),
+    taskWrapper.indexOf("function Split-MatrixArgumentNameValue")
+  );
+  for (const expected of [
+    '$result = [ordered]@{',
+    'exitCodeCaptured = $false',
+    'exitCode = $null',
+    '$previousErrorActionPreference = $ErrorActionPreference',
+    '$ErrorActionPreference = "Continue"',
+    '$global:LASTEXITCODE = $null',
+    '& $FilePath @Arguments 1> $null 2> $null',
+    '$result.exitCodeCaptured = $true',
+    '$result.exitCode = [int]$global:LASTEXITCODE',
+    '} catch {',
+    '$result.exitCodeCaptured = $false',
+    '$result.exitCode = $null',
+    '} finally {',
+    '$ErrorActionPreference = $previousErrorActionPreference',
+    'return [PSCustomObject]$result'
+  ]) {
+    assert.ok(nativeExitCapture.includes(expected), `Windows native exit capture missing ${expected}`);
+  }
   const taskCleanupFinally = taskWrapper.slice(taskWrapper.lastIndexOf("} finally {"));
   assert.ok(
     taskCleanupFinally.indexOf("$runnerProcessGuard = Start-TaskRunnerTreeGuard") <
-      taskCleanupFinally.indexOf("schtasks.exe /End /TN $taskName") &&
-      taskCleanupFinally.indexOf("schtasks.exe /End /TN $taskName") <
+      taskCleanupFinally.indexOf("$endResult = Invoke-NativeExitCode") &&
+      taskCleanupFinally.indexOf("$endResult = Invoke-NativeExitCode") <
         taskCleanupFinally.indexOf("$runnerProcessGuard = Complete-TaskRunnerTreeGuard") &&
       taskCleanupFinally.indexOf("$runnerProcessGuard = Complete-TaskRunnerTreeGuard") <
-        taskCleanupFinally.indexOf("schtasks.exe /Delete /TN $taskName /F") &&
-      taskCleanupFinally.indexOf("schtasks.exe /Delete /TN $taskName /F") <
+        taskCleanupFinally.indexOf("$deleteResult = Invoke-NativeExitCode") &&
+      taskCleanupFinally.indexOf("$deleteResult = Invoke-NativeExitCode") <
+        taskCleanupFinally.indexOf("$queryResult = Invoke-NativeExitCode") &&
+      taskCleanupFinally.indexOf("$queryResult = Invoke-NativeExitCode") <
         taskCleanupFinally.indexOf("$packageProcessGuard = Stop-AndVerifyTaskSmokePackageProcesses") &&
       taskCleanupFinally.indexOf("$packageProcessGuard = Stop-AndVerifyTaskSmokePackageProcesses") <
         taskCleanupFinally.indexOf("$launchEnvGuardEvidence = Complete-TaskLaunchEnvGuard") &&
       taskCleanupFinally.indexOf("$launchEnvGuardEvidence = Complete-TaskLaunchEnvGuard") <
-        taskCleanupFinally.indexOf("$taskFileGuard = Remove-AndVerifyTaskFiles"),
+        taskCleanupFinally.indexOf("$taskFileGuard = Remove-AndVerifyTaskFiles") &&
+      taskCleanupFinally.indexOf("$taskFileGuard = Remove-AndVerifyTaskFiles") <
+        taskCleanupFinally.indexOf("[System.IO.File]::WriteAllText("),
     "Windows task cleanup must terminate the captured tree, end/delete the task, clean package processes, restore launch env, then remove handoff files"
   );
   assert.doesNotMatch(
@@ -879,6 +906,7 @@ function runWindowsSmokeHelperStaticChecks() {
     "clientGeometryAgrees",
     "GetClientRect(`$sourceHandle",
     "ClientToScreen(`$sourceHandle",
+    "UserGestureRendererGeometry",
     'source = "renderer-button-physical-dpi"',
     "insideSourceClient = `$true"
   ]) {
@@ -907,8 +935,19 @@ function runWindowsSmokeHelperStaticChecks() {
   );
   for (const expected of [
     "sourceMatchesBoundProcess",
+    "sourceMatchesBoundWindow",
     "sourceMatchesControlProcess",
     "sameInteractiveSession",
+    "GetDpiForWindow(`$handle)",
+    "ClientToScreen(`$handle",
+    "rendererGeometry",
+    "clientGeometry",
+    "originX = [int]`$clientOrigin.X",
+    "originY = [int]`$clientOrigin.Y",
+    "width = [int]`$clientWidth",
+    "height = [int]`$clientHeight",
+    'source = "renderer-button-physical-dpi-rebound"',
+    "reboundFromReadyGeometry",
     "targetInsideSourceClient",
     "WindowFromPoint(`$point)",
     "pointOwnerMatchesBoundProcess",
@@ -927,6 +966,20 @@ function runWindowsSmokeHelperStaticChecks() {
     /SetForegroundWindow|ShowWindowAsync|Invoke-RestMethod|\/foreground-handoff|showNativeOverlayHostView|Send-NativeMouseClick|Start-Sleep/,
     "Windows user-gesture pre-dispatch recheck must inspect only the exact bound source and target point"
   );
+  for (const expected of [
+    "const clientGeometry = objectOrEmpty(payload.clientGeometry)",
+    "const expectedX = roundMidpointToEven(",
+    "const expectedY = roundMidpointToEven(",
+    "const expectedClientWidth = readyViewport.width * dpi.windowScale",
+    "const expectedClientHeight = readyViewport.height * dpi.windowScale",
+    "binding.sourceMatchesBoundWindow === true",
+    "reboundTarget.x === expectedX",
+    "reboundTarget.y === expectedY",
+    "clientGeometryMatchesReady",
+    "reboundMathValid"
+  ]) {
+    assert.ok(matrixSummary.includes(expected), `Windows user-gesture summary rebound audit missing ${expected}`);
+  }
   const closeProbeLoopStart = matrixHelper.indexOf("while ((Get-Date) -lt `$deadline -and -not `$sent");
   const userGestureActivationStart = matrixHelper.indexOf(
     "    if (`$script:UseUserGestureGate) {",
@@ -953,6 +1006,8 @@ function runWindowsSmokeHelperStaticChecks() {
       userGestureActivationBlock.includes("if (-not `$gateControl.valid)") &&
       userGestureActivationBlock.includes("Resolve-AutorunUserGestureGateTarget") &&
       userGestureActivationBlock.includes("Confirm-AutorunUserGestureActivationTarget") &&
+      userGestureActivationBlock.includes("target = `$activationPreDispatch.target") &&
+      userGestureActivationBlock.includes("target = `$activationFinalDispatch.target") &&
       userGestureActivationBlock.includes("`$preDispatchGateState.consumedEvents.Count -ne 0") &&
       userGestureActivationBlock.includes(
         'Write-ProbeEvent "probe:user-gesture-gate-activation-dispatch-start"'
@@ -978,6 +1033,38 @@ function runWindowsSmokeHelperStaticChecks() {
     userGestureActivationBlock.lastIndexOf("Confirm-AutorunUserGestureActivationTarget") <
       userGestureActivationBlock.indexOf("`$activationPointer = Send-NativeMouseClick"),
     "Windows user-gesture branch must perform its final exact-source check before SendInput"
+  );
+  const finalUserGestureBindingStart = userGestureActivationBlock.lastIndexOf(
+    "`$activationFinalDispatch = Confirm-AutorunUserGestureActivationTarget"
+  );
+  const finalUserGestureSendStart = userGestureActivationBlock.indexOf(
+    "`$activationPointer = Send-NativeMouseClick",
+    finalUserGestureBindingStart
+  );
+  const finalUserGestureSendEnd = userGestureActivationBlock.indexOf(
+    "          } else {",
+    finalUserGestureSendStart
+  );
+  assert.ok(
+    finalUserGestureBindingStart >= 0 &&
+      finalUserGestureSendStart > finalUserGestureBindingStart &&
+      finalUserGestureSendEnd > finalUserGestureSendStart,
+    "Windows user-gesture branch must send immediately from the successful final rebound"
+  );
+  const finalUserGestureValidPath = userGestureActivationBlock.slice(
+    finalUserGestureBindingStart,
+    finalUserGestureSendEnd
+  );
+  assert.ok(
+    finalUserGestureValidPath.includes("if (`$activationFinalDispatch.eligible)") &&
+      finalUserGestureValidPath.includes("([int]`$activationFinalDispatch.target.x)") &&
+      finalUserGestureValidPath.includes("([int]`$activationFinalDispatch.target.y)"),
+    "Windows user-gesture SendInput must use the final rebound point"
+  );
+  assert.doesNotMatch(
+    finalUserGestureValidPath,
+    /Write-ProbeEvent|Read-SmokeControlDescriptor|Get-Content|Start-Sleep/,
+    "Windows user-gesture final rebound must have no file or logging I/O before SendInput"
   );
   assert.doesNotMatch(
     userGestureActivationBlock,
@@ -1680,8 +1767,20 @@ function runWindowsSmokeHelperStaticChecks() {
     "matrixSplat",
     "REDACTED",
     '"-TaskCleanupExpected"',
-    'schtasks.exe /End /TN $taskName',
-    'schtasks.exe /Query /TN $taskName',
+    '$endResult = Invoke-NativeExitCode',
+    '$deleteResult = Invoke-NativeExitCode',
+    '$queryResult = Invoke-NativeExitCode',
+    '-Arguments @("/End", "/TN", $taskName)',
+    '-Arguments @("/Delete", "/TN", $taskName, "/F")',
+    '-Arguments @("/Query", "/TN", $taskName)',
+    '$cleanup.endExitCodeCaptured = ($endResult.exitCodeCaptured -eq $true)',
+    '$cleanup.deleteExitCodeCaptured = ($deleteResult.exitCodeCaptured -eq $true)',
+    '$cleanup.queryExitCodeCaptured = ($queryResult.exitCodeCaptured -eq $true)',
+    '$cleanup.deleteExitCodeCaptured -and',
+    '$cleanup.queryExitCodeCaptured -and',
+    '$cleanup.queryExitCode -eq 1',
+    '$cleanup.cleanupPhaseErrorCount += 1',
+    '$cleanup.cleanupPhaseErrorCount -eq 0',
     "Resolve-MatrixArgumentValue",
     "New-TaskLaunchEnvGuard",
     "Start-TaskLaunchEnvGuard",
@@ -1704,6 +1803,11 @@ function runWindowsSmokeHelperStaticChecks() {
   ]) {
     assert.ok(taskWrapper.includes(expected), `Windows overlay task wrapper missing ${expected}`);
   }
+  assert.doesNotMatch(
+    taskCleanupFinally,
+    /&\s+schtasks\.exe\s+\/(?:End|Delete|Query)\b/,
+    "Windows task cleanup must capture expected native failures without direct Stop-preference invocations"
+  );
   for (const expected of [
     "steam-bridge-windows-render-health-probe",
     'name = "default"',

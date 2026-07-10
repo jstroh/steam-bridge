@@ -32,6 +32,31 @@ function Invoke-CheckedNative {
   }
 }
 
+function Invoke-NativeExitCode {
+  param([string]$FilePath, [string[]]$Arguments)
+
+  $result = [ordered]@{
+    exitCodeCaptured = $false
+    exitCode = $null
+  }
+  $previousErrorActionPreference = $ErrorActionPreference
+  try {
+    $ErrorActionPreference = "Continue"
+    $global:LASTEXITCODE = $null
+    & $FilePath @Arguments 1> $null 2> $null
+    if ($null -ne $global:LASTEXITCODE) {
+      $result.exitCodeCaptured = $true
+      $result.exitCode = [int]$global:LASTEXITCODE
+    }
+  } catch {
+    $result.exitCodeCaptured = $false
+    $result.exitCode = $null
+  } finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+  }
+  return [PSCustomObject]$result
+}
+
 function Split-MatrixArgumentNameValue {
   param([string]$Argument)
 
@@ -1026,11 +1051,16 @@ try {
     errorKind = $taskErrorKind
     errorPresent = $taskErrorPresent
     endAttempted = $false
+    endExitCodeCaptured = $false
     endExitCode = $null
     keepTask = [bool]$KeepTask
     deleteAttempted = $false
+    deleteExitCodeCaptured = $false
     deleteExitCode = $null
+    queryExitCodeCaptured = $false
+    queryExitCode = $null
     deletionVerified = $false
+    cleanupPhaseErrorCount = 0
     runnerProcessGuard = $null
     launchEnvGuard = $null
     packageProcessGuard = $null
@@ -1038,22 +1068,41 @@ try {
     ok = $false
   }
 
-  $runnerProcessGuard = Start-TaskRunnerTreeGuard `
-    -State $runnerTreeState `
-    -Required $taskRunRequested `
-    -TerminateTree $taskNeedsEnd `
-    -Completed $completedMarkerObserved
+  $runnerProcessGuard = $null
+  $packageProcessGuard = $null
+  $launchEnvGuardEvidence = $null
+  $taskFileGuard = $null
+  try {
+    $runnerProcessGuard = Start-TaskRunnerTreeGuard `
+      -State $runnerTreeState `
+      -Required $taskRunRequested `
+      -TerminateTree $taskNeedsEnd `
+      -Completed $completedMarkerObserved
+  } catch {
+    $cleanup.cleanupPhaseErrorCount += 1
+  }
 
   if ($taskNeedsEnd -and $taskCreated) {
     $cleanup.endAttempted = $true
-    & schtasks.exe /End /TN $taskName *> $null
-    $cleanup.endExitCode = $LASTEXITCODE
+    try {
+      $endResult = Invoke-NativeExitCode `
+        -FilePath "schtasks.exe" `
+        -Arguments @("/End", "/TN", $taskName)
+      $cleanup.endExitCodeCaptured = ($endResult.exitCodeCaptured -eq $true)
+      $cleanup.endExitCode = $endResult.exitCode
+    } catch {
+      $cleanup.cleanupPhaseErrorCount += 1
+    }
   }
 
-  $runnerProcessGuard = Complete-TaskRunnerTreeGuard `
-    -State $runnerTreeState `
-    -Evidence $runnerProcessGuard `
-    -Completed $completedMarkerObserved
+  try {
+    $runnerProcessGuard = Complete-TaskRunnerTreeGuard `
+      -State $runnerTreeState `
+      -Evidence $runnerProcessGuard `
+      -Completed $completedMarkerObserved
+  } catch {
+    $cleanup.cleanupPhaseErrorCount += 1
+  }
 
   if ($KeepTask) {
     $cleanup.deletionVerified = $true
@@ -1061,28 +1110,54 @@ try {
     $cleanup.deletionVerified = $true
   } else {
     $cleanup.deleteAttempted = $true
-    & schtasks.exe /Delete /TN $taskName /F *> $null
-    $cleanup.deleteExitCode = $LASTEXITCODE
-    & schtasks.exe /Query /TN $taskName *> $null
-    $cleanup.deletionVerified = (
-      $cleanup.deleteExitCode -eq 0 -and
-      $LASTEXITCODE -ne 0
-    )
+    try {
+      $deleteResult = Invoke-NativeExitCode `
+        -FilePath "schtasks.exe" `
+        -Arguments @("/Delete", "/TN", $taskName, "/F")
+      $cleanup.deleteExitCodeCaptured = ($deleteResult.exitCodeCaptured -eq $true)
+      $cleanup.deleteExitCode = $deleteResult.exitCode
+      $queryResult = Invoke-NativeExitCode `
+        -FilePath "schtasks.exe" `
+        -Arguments @("/Query", "/TN", $taskName)
+      $cleanup.queryExitCodeCaptured = ($queryResult.exitCodeCaptured -eq $true)
+      $cleanup.queryExitCode = $queryResult.exitCode
+      $cleanup.deletionVerified = (
+        $cleanup.deleteExitCodeCaptured -and
+        $cleanup.deleteExitCode -eq 0 -and
+        $cleanup.queryExitCodeCaptured -and
+        $cleanup.queryExitCode -eq 1
+      )
+    } catch {
+      $cleanup.cleanupPhaseErrorCount += 1
+    }
   }
 
-  $packageProcessGuard = Stop-AndVerifyTaskSmokePackageProcesses `
-    -Required:([bool](-not $KeepTask -or $taskNeedsEnd)) `
-    -PackageAppDir $AppDir
-  $launchEnvGuardEvidence = Complete-TaskLaunchEnvGuard -Guard $launchEnvGuard
-  $taskFileGuard = Remove-AndVerifyTaskFiles `
-    -Required:([bool](-not $KeepTask)) `
-    -RunDirectory $runDir
+  try {
+    $packageProcessGuard = Stop-AndVerifyTaskSmokePackageProcesses `
+      -Required:([bool](-not $KeepTask -or $taskNeedsEnd)) `
+      -PackageAppDir $AppDir
+  } catch {
+    $cleanup.cleanupPhaseErrorCount += 1
+  }
+  try {
+    $launchEnvGuardEvidence = Complete-TaskLaunchEnvGuard -Guard $launchEnvGuard
+  } catch {
+    $cleanup.cleanupPhaseErrorCount += 1
+  }
+  try {
+    $taskFileGuard = Remove-AndVerifyTaskFiles `
+      -Required:([bool](-not $KeepTask)) `
+      -RunDirectory $runDir
+  } catch {
+    $cleanup.cleanupPhaseErrorCount += 1
+  }
   $cleanup.runnerProcessGuard = $runnerProcessGuard
   $cleanup.packageProcessGuard = $packageProcessGuard
   $cleanup.launchEnvGuard = $launchEnvGuardEvidence
   $cleanup.taskFileGuard = $taskFileGuard
 
   $cleanup.ok = (
+    $cleanup.cleanupPhaseErrorCount -eq 0 -and
     $cleanup.deletionVerified -and
     (-not $taskNeedsEnd -or -not $taskCreated -or $cleanup.endAttempted) -and
     $cleanup.runnerProcessGuard.ok -eq $true -and

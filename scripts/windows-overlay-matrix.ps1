@@ -3244,6 +3244,7 @@ public static class SteamBridgeWindowsProbe {
 `$script:UserGestureGateConsumed = `$false
 `$script:UserGestureSourceWindowHandle = [IntPtr]::Zero
 `$script:UserGestureSourceWindowOwnerPid = [uint32]0
+`$script:UserGestureRendererGeometry = `$null
 
 `$script:ProbeScreenshotAssemblyError = `$null
 try {
@@ -3507,6 +3508,19 @@ function Resolve-AutorunUserGestureGateTarget {
 
   `$script:UserGestureSourceWindowHandle = `$sourceHandle
   `$script:UserGestureSourceWindowOwnerPid = [uint32]`$sourcePid
+  `$script:UserGestureRendererGeometry = [PSCustomObject]@{
+    target = [PSCustomObject]@{
+      left = `$left
+      top = `$top
+      width = `$width
+      height = `$height
+    }
+    viewport = [PSCustomObject]@{
+      width = `$viewportWidth
+      height = `$viewportHeight
+      devicePixelRatio = `$rendererScale
+    }
+  }
   `$evidence.target = [PSCustomObject]@{
     x = `$x
     y = `$y
@@ -3519,8 +3533,6 @@ function Resolve-AutorunUserGestureGateTarget {
 }
 
 function Confirm-AutorunUserGestureActivationTarget {
-  param([int]`$X, [int]`$Y)
-
   `$evidence = [ordered]@{
     eligible = `$false
     reason = "gate-source-window-unbound"
@@ -3528,6 +3540,7 @@ function Confirm-AutorunUserGestureActivationTarget {
       sourceWindowValid = `$false
       sourceOwnerPresent = `$false
       sourceMatchesBoundProcess = `$false
+      sourceMatchesBoundWindow = `$false
       sourceMatchesControlProcess = `$false
       sameInteractiveSession = `$false
       sourceWindowEnabled = `$false
@@ -3538,9 +3551,28 @@ function Confirm-AutorunUserGestureActivationTarget {
       pointRootMatchesSourceWindow = `$false
       sourceWindowForeground = `$false
     }
+    target = `$null
+    clientGeometry = `$null
+    rendererGeometry = `$null
+    dpi = [ordered]@{
+      rendererScalePresent = `$false
+      windowDpiPresent = `$false
+      scaleAgrees = `$false
+      clientGeometryAgrees = `$false
+    }
   }
 
   `$handle = `$script:UserGestureSourceWindowHandle
+  `$rendererGeometry = `$script:UserGestureRendererGeometry
+  if (-not `$rendererGeometry) {
+    return [PSCustomObject]`$evidence
+  }
+  `$rendererTarget = `$rendererGeometry.target
+  `$rendererViewport = `$rendererGeometry.viewport
+  `$rendererScale = [double]`$rendererViewport.devicePixelRatio
+  `$evidence.rendererGeometry = `$rendererGeometry
+  `$evidence.dpi.rendererScalePresent = `$true
+  `$evidence.dpi.rendererScale = `$rendererScale
   `$evidence.binding.sourceWindowValid = (
     `$handle -and
     `$handle -ne [IntPtr]::Zero -and
@@ -3571,6 +3603,7 @@ function Confirm-AutorunUserGestureActivationTarget {
   )
   try {
     `$sourceProcess = Get-Process -Id ([int]`$sourceOwnerPid) -ErrorAction Stop
+    `$evidence.binding.sourceMatchesBoundWindow = (`$sourceProcess.MainWindowHandle -eq `$handle)
     `$evidence.binding.sameInteractiveSession = (
       `$sourceProcess.SessionId -eq [Diagnostics.Process]::GetCurrentProcess().SessionId
     )
@@ -3580,44 +3613,84 @@ function Confirm-AutorunUserGestureActivationTarget {
   `$evidence.binding.sourceWindowEnabled = [SteamBridgeWindowsProbe]::IsWindowEnabled(`$handle)
   `$evidence.binding.sourceWindowNotIconic = -not [SteamBridgeWindowsProbe]::IsIconic(`$handle)
 
+  `$windowDpi = [SteamBridgeWindowsProbe]::GetDpiForWindow(`$handle)
+  if (`$windowDpi -ge 48 -and `$windowDpi -le 768) {
+    `$windowScale = [double]`$windowDpi / 96.0
+    `$evidence.dpi.windowDpiPresent = `$true
+    `$evidence.dpi.windowScale = `$windowScale
+    `$evidence.dpi.scaleAgrees = [Math]::Abs(`$windowScale - `$rendererScale) -le 0.02
+  }
+
   `$clientRect = New-Object SteamBridgeWindowsProbe+RECT
   `$clientOrigin = New-Object SteamBridgeWindowsProbe+POINT
   if (
+    `$evidence.dpi.scaleAgrees -and
     [SteamBridgeWindowsProbe]::GetClientRect(`$handle, [ref]`$clientRect) -and
     [SteamBridgeWindowsProbe]::ClientToScreen(`$handle, [ref]`$clientOrigin)
   ) {
+    `$clientWidth = [double](`$clientRect.Right - `$clientRect.Left)
+    `$clientHeight = [double](`$clientRect.Bottom - `$clientRect.Top)
+    `$evidence.clientGeometry = [PSCustomObject]@{
+      originX = [int]`$clientOrigin.X
+      originY = [int]`$clientOrigin.Y
+      width = [int]`$clientWidth
+      height = [int]`$clientHeight
+    }
+    `$expectedClientWidth = [double]`$rendererViewport.width * `$windowScale
+    `$expectedClientHeight = [double]`$rendererViewport.height * `$windowScale
+    `$geometryTolerance = 2.0
+    `$evidence.dpi.clientGeometryAgrees = (
+      [Math]::Abs(`$clientWidth - `$expectedClientWidth) -le `$geometryTolerance -and
+      [Math]::Abs(`$clientHeight - `$expectedClientHeight) -le `$geometryTolerance
+    )
+    `$x = [int][Math]::Round(
+      `$clientOrigin.X + (([double]`$rendererTarget.left + ([double]`$rendererTarget.width / 2.0)) * `$windowScale)
+    )
+    `$y = [int][Math]::Round(
+      `$clientOrigin.Y + (([double]`$rendererTarget.top + ([double]`$rendererTarget.height / 2.0)) * `$windowScale)
+    )
     `$clientRight = `$clientOrigin.X + (`$clientRect.Right - `$clientRect.Left)
     `$clientBottom = `$clientOrigin.Y + (`$clientRect.Bottom - `$clientRect.Top)
     `$evidence.binding.targetInsideSourceClient = (
-      `$X -ge `$clientOrigin.X -and
-      `$X -lt `$clientRight -and
-      `$Y -ge `$clientOrigin.Y -and
-      `$Y -lt `$clientBottom
+      `$evidence.dpi.clientGeometryAgrees -and
+      `$x -ge `$clientOrigin.X -and
+      `$x -lt `$clientRight -and
+      `$y -ge `$clientOrigin.Y -and
+      `$y -lt `$clientBottom
     )
+    `$evidence.target = [PSCustomObject]@{
+      x = `$x
+      y = `$y
+      source = "renderer-button-physical-dpi-rebound"
+      insideSourceClient = `$evidence.binding.targetInsideSourceClient
+      reboundFromReadyGeometry = `$true
+    }
   }
 
-  `$point = New-Object SteamBridgeWindowsProbe+POINT
-  `$point.X = `$X
-  `$point.Y = `$Y
-  `$pointHandle = [SteamBridgeWindowsProbe]::WindowFromPoint(`$point)
-  `$evidence.binding.pointWindowPresent = (
-    `$pointHandle -and
-    `$pointHandle -ne [IntPtr]::Zero -and
-    [SteamBridgeWindowsProbe]::IsWindow(`$pointHandle)
-  )
-  if (`$evidence.binding.pointWindowPresent) {
-    `$pointOwnerPid = [uint32]0
-    `$pointOwnerThread = [SteamBridgeWindowsProbe]::GetWindowThreadProcessId(
-      `$pointHandle,
-      [ref]`$pointOwnerPid
+  if (`$evidence.binding.targetInsideSourceClient) {
+    `$point = New-Object SteamBridgeWindowsProbe+POINT
+    `$point.X = [int]`$evidence.target.x
+    `$point.Y = [int]`$evidence.target.y
+    `$pointHandle = [SteamBridgeWindowsProbe]::WindowFromPoint(`$point)
+    `$evidence.binding.pointWindowPresent = (
+      `$pointHandle -and
+      `$pointHandle -ne [IntPtr]::Zero -and
+      [SteamBridgeWindowsProbe]::IsWindow(`$pointHandle)
     )
-    `$evidence.binding.pointOwnerMatchesBoundProcess = (
-      `$pointOwnerThread -gt 0 -and
-      `$pointOwnerPid -eq `$script:UserGestureSourceWindowOwnerPid
-    )
-    `$evidence.binding.pointRootMatchesSourceWindow = (
-      [SteamBridgeWindowsProbe]::GetAncestor(`$pointHandle, 2) -eq `$handle
-    )
+    if (`$evidence.binding.pointWindowPresent) {
+      `$pointOwnerPid = [uint32]0
+      `$pointOwnerThread = [SteamBridgeWindowsProbe]::GetWindowThreadProcessId(
+        `$pointHandle,
+        [ref]`$pointOwnerPid
+      )
+      `$evidence.binding.pointOwnerMatchesBoundProcess = (
+        `$pointOwnerThread -gt 0 -and
+        `$pointOwnerPid -eq `$script:UserGestureSourceWindowOwnerPid
+      )
+      `$evidence.binding.pointRootMatchesSourceWindow = (
+        [SteamBridgeWindowsProbe]::GetAncestor(`$pointHandle, 2) -eq `$handle
+      )
+    }
   }
   `$evidence.binding.sourceWindowForeground = (
     [SteamBridgeWindowsProbe]::GetForegroundWindow() -eq `$handle
@@ -3626,6 +3699,7 @@ function Confirm-AutorunUserGestureActivationTarget {
   `$evidence.eligible = (
     `$evidence.binding.sourceOwnerPresent -and
     `$evidence.binding.sourceMatchesBoundProcess -and
+    `$evidence.binding.sourceMatchesBoundWindow -and
     `$evidence.binding.sourceMatchesControlProcess -and
     `$evidence.binding.sameInteractiveSession -and
     `$evidence.binding.sourceWindowEnabled -and
@@ -4991,9 +5065,7 @@ while ((Get-Date) -lt `$deadline -and -not `$sent -and -not `$terminalFailure) {
             continue
           }
 
-          `$activationPreDispatch = Confirm-AutorunUserGestureActivationTarget `
-            ([int]`$activationTarget.target.x) `
-            ([int]`$activationTarget.target.y)
+          `$activationPreDispatch = Confirm-AutorunUserGestureActivationTarget
           Write-ProbeEvent "probe:user-gesture-gate-pre-dispatch" `$activationPreDispatch
           if (-not `$activationPreDispatch.eligible) {
             Write-ProbeEvent "probe:user-gesture-gate-activation-skipped" ([PSCustomObject]@{
@@ -5030,16 +5102,18 @@ while ((Get-Date) -lt `$deadline -and -not `$sent -and -not `$terminalFailure) {
 
           Write-ProbeEvent "probe:user-gesture-gate-activation-dispatch-start" ([PSCustomObject]@{
             input = "renderer-button-click-sendinput"
-            target = `$activationTarget.target
+            target = `$activationPreDispatch.target
             preDispatch = `$activationPreDispatch
             readyEventCount = `$preDispatchGateState.readyEvents.Count
             consumedEventCount = `$preDispatchGateState.consumedEvents.Count
             rejectedEventCount = `$preDispatchGateState.rejectedEvents.Count
           })
-          `$activationFinalDispatch = Confirm-AutorunUserGestureActivationTarget `
-            ([int]`$activationTarget.target.x) `
-            ([int]`$activationTarget.target.y)
-          if (-not `$activationFinalDispatch.eligible) {
+          `$activationFinalDispatch = Confirm-AutorunUserGestureActivationTarget
+          if (`$activationFinalDispatch.eligible) {
+            `$activationPointer = Send-NativeMouseClick `
+              ([int]`$activationFinalDispatch.target.x) `
+              ([int]`$activationFinalDispatch.target.y)
+          } else {
             Write-ProbeEvent "probe:user-gesture-gate-activation-skipped" ([PSCustomObject]@{
               reason = `$activationFinalDispatch.reason
               binding = `$activationFinalDispatch.binding
@@ -5051,12 +5125,9 @@ while ((Get-Date) -lt `$deadline -and -not `$sent -and -not `$terminalFailure) {
             `$terminalFailure = `$true
             continue
           }
-          `$activationPointer = Send-NativeMouseClick `
-            ([int]`$activationTarget.target.x) `
-            ([int]`$activationTarget.target.y)
           Write-ProbeEvent "probe:user-gesture-gate-activation-sent" ([PSCustomObject]@{
             input = "renderer-button-click-sendinput"
-            target = `$activationTarget.target
+            target = `$activationFinalDispatch.target
             binding = `$activationTarget.binding
             dpi = `$activationTarget.dpi
             preDispatch = `$activationPreDispatch
