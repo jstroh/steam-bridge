@@ -494,13 +494,31 @@ was not foreground. One separate focused Escape comparison reproduced the same
 foreground condition and the same no-close result with clean health and crash
 evidence. The two different inputs therefore do not justify another input or a
 longer wait; neither was proven to have reached the presenter as foreground.
-The next focused rerun resolves the exact lifecycle native-host window, validates
-it, calls `SetForegroundWindow` once, verifies foreground ownership, rechecks the
-same handle immediately before dispatch, records only sanitized focus evidence,
-and sends no close input if either verification fails. Close/back-to-app remains
-open until that focus-gated run emits the inactive callback, parks the presenter,
-restores app focus, and keeps
-crash and cleanup evidence clean.
+
+The packaged `a58280c` follow-up added that exact fail-closed gate and ran once
+after the interactive remote desktop was reconnected. Interactive readiness,
+native load, shortcut verification, default render health, and current
+Steam-client health passed without a Steam restart. The managed D3D11 host
+rendered a clearly visible Steam web panel, activated normally, and retained
+matching top-level, native-host, and renderer backends. Its sanitized focus
+event proved the lifecycle HWND was present, well formed, and a valid window,
+but `SetForegroundWindow` returned false and the same host was still not
+foreground. The probe emitted `probe:close-input-skipped` and sent no pointer or
+key input by design. The managed wait then timed out active; crash dumps stayed
+zero, package-owned processes and the interactive task cleaned up, rollback was
+preserved, and Steam remained running.
+
+This settles the focus gate's fail-closed behavior but not close/back-to-app.
+The blocker is now foreground acquisition for the automated Session 1 probe,
+not renderer identity, visible presentation, target geometry, or a demonstrated
+failure of either close input when focused. Do not repeat the same
+`SetForegroundWindow` attempt after another remote-desktop reconnect, add a
+second input, or lengthen the wait. Another focused run is justified only after
+the activation mechanism materially changes or the exact native host is
+independently confirmed foreground; it must still recheck that same handle
+immediately before one close input.
+
+No duplicate-open or broad public suite followed this focused blocker.
 
 The same coverage audit found a separate omission: Windows exposes the public
 `presenter-duplicate-open-guard` smoke action, but the managed matrix shipped in
@@ -600,7 +618,7 @@ file did not meet Enterprise signing level requirements. This confirms the
 remaining local Windows proof blocker is Windows App Control reputation/policy,
 not package freshness or Authenticode syntax. A follow-up diagnostic launch
 resolved the existing stable non-Steam shortcut to
-`steam://rungameid/13159504457509109760`, then ran one `99-none` case with the
+`steam://rungameid/<generated-shortcut-game-id>`, then ran one `99-none` case with the
 native-load gate intentionally skipped. That artifact,
 `C:\Users\admin\steam-bridge-artifacts\windows-steam-launch-appcontrol-blocker-20260702-001`,
 timed out without a smoke result and wrote `99-none/steam-launch-blocker.json`

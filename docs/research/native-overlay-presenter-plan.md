@@ -272,6 +272,15 @@ Reviewed on 2026-07-02 while investigating Windows Electron overlay failures:
   host once, verify foreground ownership, recheck the same handle immediately
   before dispatch, and skip input entirely if either verification fails. Do not
   add a second input or timing delay unless a focus-verified attempt fails.
+- The packaged `a58280c` public managed-web follow-up proved that invariant
+  fails closed: the exact lifecycle handle was present, well formed, and valid,
+  but `SetForegroundWindow` was not accepted after the interactive remote
+  desktop was reconnected. The probe sent no input; visible D3D11 presentation,
+  readiness, render health, crash diagnostics, process/task cleanup, rollback,
+  and the existing Steam session remained clean. Treat automated foreground
+  acquisition as an environment blocker. Do not rerun the unchanged call;
+  require a materially different bounded activation handoff or independently
+  confirmed exact-host foreground before another single-input close proof.
 - A focused default-client diagnostic at
   `C:\Users\admin\steam-bridge-artifacts\windows-default-client-inittxn-checkout-20260703-172218`
   used the same `steam-app` configured-app lane and a private request that
@@ -1965,17 +1974,20 @@ Process and thread per-monitor-v2 awareness plus physical native-host/panel
 bounds produced a physical-resolution screenshot, but the remaining literal
 close-control offset was still expressed as if physical and logical pixels were
 interchangeable. A successful three-event `SendInput` call therefore missed the
-225%-scaled control and produced no inactive callback or parking. The current
-local diff derives close targets from native-window DPI with physical/logical
-presenter geometry as a checked fallback, and requires the schema-1 auditor to
-reject missing, unscaled, mismatched, or nonphysical evidence. Fixed coordinates
-or longer waits are not acceptable substitutes.
+225%-scaled control and produced no inactive callback or parking. Commit
+`c880d51` derives close targets from native-window DPI with physical/logical
+presenter geometry as a checked fallback and requires the schema-1 auditor to
+reject missing, unscaled, mismatched, or nonphysical evidence. Its focused
+follow-up settled the coordinate, screenshot, scale, target, and pointer
+contract; close remains blocked by the foreground condition recorded under
+`WIN-FOCUS-001`. Fixed coordinates or longer waits are not acceptable
+substitutes.
 
 The Windows product matrix also needs an explicit
 `presenter-duplicate-open-guard` case. The smoke action exists, but the Windows
 managed suite and summary auditor shipped in `da632f8` did not cover it, so
-other-platform proof cannot be projected onto Windows. The current local diff
-adds the managed case and semantic auditor; the milestone remains open until one
+other-platform proof cannot be projected onto Windows. Commit `c880d51` adds the
+managed case and semantic auditor; the milestone remains open until one
 public focused case proves the intended direct, wait-style,
 shortcut/controller, and checkout suppression without invoking a checkout
 operation, then closes and parks cleanly.

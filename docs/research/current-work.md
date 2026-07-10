@@ -2,13 +2,20 @@
 
 Last reviewed: 2026-07-10
 
-Implementation anchor: `c880d51` (`Harden Windows public overlay proof`).
-This checkpoint may be committed immediately after that implementation; always
-inspect Git history and the worktree before trusting it.
+Implementation anchor: `a58280c` (`Harden Windows close focus proof`). Always
+inspect Git history and the worktree before trusting this checkpoint.
 
-This is the short, replace-in-place operational checkpoint for fast recovery.
-It is not an append-only history and does not replace code, tests, the detailed
-platform evidence log, or the presenter design plan.
+This is the canonical, short, replace-in-place operational checkpoint for fast
+recovery. It is not an append-only history and does not replace code, tests,
+the detailed platform evidence log, or the presenter design plan.
+
+## Current Workspace State
+
+During workspace setup, another process added continuity changes in `AGENTS.md`
+and `.codex/`; preserve those uncommitted changes. This checkpoint integrates
+the subsequent Windows focus-gate live result without taking ownership of the
+other continuity files. The implementation anchor remains `a58280c`; the
+result-recording commit for this slice is documentation-only and may follow it.
 
 ## Active Goal
 
@@ -20,6 +27,10 @@ renderer identity, high-DPI input, render health, and crash cleanup.
 Do not run another private `InitTxn` suite. Real purchase proof remains paused
 until its separate prerequisites exist; it is not part of the active Windows
 matrix work.
+
+The requested focus-gated managed-web slice is complete. Stop after recording
+and publishing this result; duplicate-open and broad-suite work belongs to a
+later explicitly authorized task.
 
 ## Proven Baseline
 
@@ -52,14 +63,26 @@ Both that click run and one independent Escape comparison left the overlay
 active until the managed wait timed out. In every close-probe sample, an
 unrelated zero-area window owned foreground and lifecycle diagnostics reported
 the native presenter was not foreground. Both runs kept render health, crash
-diagnostics, and cleanup clean. The current local diff focuses the exact valid
+diagnostics, and cleanup clean. Commit `a58280c` focuses the exact valid
 lifecycle native-host window once, verifies it is foreground, rechecks the same
 handle immediately before dispatch, logs only sanitized focus evidence, and
-refuses to send close input when either verification fails. The interactive
-remote desktop has since been reconnected, so one focused current-package rerun
-is justified after this guard is committed and
-deployed. Do not add a second close input, lengthen the wait, or repeat the
-unchanged unfocused experiment.
+refuses to send close input when either verification fails.
+
+That exact commit was packaged around the verified Windows addon, deployed and
+signed with all 12 signable files valid, and exercised after the interactive
+remote desktop was reconnected. The public managed-web surface rendered visibly
+and all three backend fields remained `windows-d3d11`. The sanitized focus event
+proved that the lifecycle handle was present, well formed, and a valid window,
+but `SetForegroundWindow` was not accepted and the exact host still was not
+foreground. The new guard correctly emitted a skip event and sent no close
+input. The overlay then timed out active as expected, while readiness, default
+render health, crash diagnostics, process/task cleanup, and the preserved Steam
+session stayed clean without a Steam restart.
+
+This proves the focus guard fails closed; it still does not prove
+close/back-to-app. Reconnecting the remote desktop alone is not a meaningful
+rerun condition. Do not repeat the unchanged `SetForegroundWindow` attempt, add
+a second close input, or lengthen the wait.
 
 Do not use the legacy raw `full` baseline as the product gate; use `managed`,
 `shortcut-routes`, and public synthetic `checkout`.
@@ -72,54 +95,65 @@ coverage on other supported platforms, but the Windows managed suite before
 managed case and audits every named direct/wait helper, generic helper,
 shortcut helper, and checkout-operation suppression. Historical Windows route
 matrices still do not prove that behavior; one focused public live pass is
-required after the web close/focus gate passes.
+required after the web close/focus gate passes. It was not run in this slice.
 
 ### Freshness
 
 - The smoke app is pinned to Electron `43.0.0`; on 2026-07-09,
   `npm run check:electron:latest` reported `43.1.0`.
 - A fresh CI-built Windows addon from `da632f8` was loaded successfully by the
-  `c880d51` package. The current diff changes scripts, tests, and docs only, so
-  repackage that verified addon rather than triggering another native Release
-  build.
+  `a58280c` package. Its pre-sign hash matched the verified Release artifact;
+  another native Release build is not justified for the current blocker.
 - There are no Git tags or GitHub releases yet; package version is `0.1.0`.
 
-## Next Actions
+## Exact Next Step
 
-1. Finish review and full local checks for the exact native-presenter focus
-   gate, then commit, push, and verify CI.
-2. Repackage the verified `da632f8` Windows addon with the current scripts,
-   deploy and sign that exact package, and do not restart Steam unless current
-   health evidence independently requires it.
-3. Rerun one focused managed web case at the current scaling. Require one
+Stop after this result is recorded, committed, pushed, and CI is verified. In a
+future authorized slice, do not rerun the same focus attempt. First change the
+foreground-acquisition precondition: either introduce a bounded, state-driven
+host-process or user-equivalent activation mechanism whose exact HWND ownership
+can be verified immediately before input, or independently establish that the
+exact native host is already foreground. A remote-desktop reconnect by itself
+does not satisfy this condition.
+
+## Subsequent Actions
+
+1. After the foreground-acquisition condition materially changes, rerun one
+   focused managed web case at the current scaling. Require one
    sanitized successful exact-host focus event plus a successful pre-dispatch
    recheck before the single close input, all three D3D11 fields, the strict
    physical-DPI evidence, inactive callback,
    close/back-to-app, parking, focus return, and clean crashes. Stop without
    sending input if either focus check fails.
-4. Run the new duplicate-open case and require the named suppression evidence,
+2. Run the new duplicate-open case and require the named suppression evidence,
    no checkout operation invocation, close/back-to-app, parking, and clean
    crashes.
-5. If both focused gates pass, run the broad public `managed`,
+3. If both focused gates pass, run the broad public `managed`,
    `shortcut-routes`, and synthetic `checkout` suites. Do not use the unchanged
    raw `full` baseline as the product gate.
-6. Record results in the existing ledger/detailed evidence, run final checks,
+4. Record results in the existing ledger/detailed evidence, run final checks,
    commit, push, and verify CI.
 
 ## Last Reported Verification
 
-Against the current local diff on 2026-07-10:
+Against the focus-gate slice now committed as `a58280c` on 2026-07-10:
 
 - `npm run package:smoke` passed.
 - `npm test` passed all 175 tests.
 - `npm run api:check`, `npm run check:platform`, `npm run native:fmt`, and
   `npm run native:check` passed. `native:check` reported only the existing
   future-incompatibility warning for transitive `block 0.1.6`.
-- `git diff --check` passed; `c880d51` was pushed to `origin/main` and its normal
-  CI run passed every job.
-- The manual Release workflow for `da632f8` passed and produced the Windows
-  addon used by both `c880d51` focused live runs. The current exact-focus diff
-  is not committed or live-proved yet.
+- `git diff --check` passed; `a58280c` was pushed to `origin/main`, and its CI
+  run passed every job.
+- The manual Release workflow for `da632f8` produced the Windows addon used by
+  the `a58280c` package. Its pre-sign hash matched, the deployed bundle retained
+  the exact current matrix/task/summary scripts, all 12 signable files verified
+  `Valid`, rollback was preserved, and Steam was not restarted.
+- The single `a58280c` focused managed-web run passed interactive readiness,
+  native load, shortcut verification, default render health, visible Steam web
+  rendering, all three D3D11 backend fields, zero crash dumps, and cleanup. Its
+  exact valid native host could not become foreground; the guard sent no input
+  and the managed close wait timed out. No duplicate-open or broad suite ran.
 - `npm run check:electron:latest` failed only on the intentional/latest-version
   comparison described above; it is not part of normal `npm test`.
 
