@@ -42,7 +42,7 @@ fn main() {
         .file("src/steam_game_coordinator_bridge.cpp")
         .file("src/steam_header_only_bridge.cpp");
     if target_os == "windows" {
-        cpp_shims.flag_if_supported("/std:c++17");
+        cpp_shims.flag_if_supported("/std:c++17").static_crt(true);
     } else {
         cpp_shims.flag("-std=c++17");
     }

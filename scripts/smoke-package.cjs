@@ -35,6 +35,15 @@ try {
   run("node", [path.join(repoRoot, "scripts", "summarize-windows-overlay-matrix.cjs"), "--self-test"], {
     cwd: repoRoot
   });
+  run("node", [path.join(repoRoot, "scripts", "verify-windows-packaged-artifacts.cjs"), "--self-test"], {
+    cwd: repoRoot
+  });
+  run("node", [path.join(repoRoot, "scripts", "windows-electron-builder-asar-gate.cjs"), "--self-test"], {
+    cwd: repoRoot
+  });
+  run("node", [path.join(repoRoot, "scripts", "publish-release-candidate.cjs"), "--self-test"], {
+    cwd: repoRoot
+  });
   runPackagedWindowsOverlaySummarySelfTest();
   run("node", [path.join(repoRoot, "scripts", "upsert-steam-app-launch-options.cjs"), "--mode", "self-test"], {
     cwd: repoRoot
@@ -384,6 +393,29 @@ function runWindowsSmokeHelperStaticChecks() {
     path.join(repoRoot, "scripts", "windows-native-overlay-control", "SteamBridgeNativeOverlayControl.cs"),
     "utf8"
   );
+  const nativeControlHelper = fs.readFileSync(
+    path.join(repoRoot, "scripts", "windows-native-overlay-control.ps1"),
+    "utf8"
+  );
+  const windowsAsarConfig = fs.readFileSync(
+    path.join(repoRoot, "fixtures", "windows-electron-builder-asar", "electron-builder.config.cjs"),
+    "utf8"
+  );
+  const windowsAsarGate = fs.readFileSync(
+    path.join(repoRoot, "scripts", "windows-electron-builder-asar-gate.cjs"),
+    "utf8"
+  );
+  const windowsArtifactVerifier = fs.readFileSync(
+    path.join(repoRoot, "scripts", "verify-windows-packaged-artifacts.cjs"),
+    "utf8"
+  );
+  const releaseCandidatePublisher = fs.readFileSync(
+    path.join(repoRoot, "scripts", "publish-release-candidate.cjs"),
+    "utf8"
+  );
+  const releaseWorkflow = fs.readFileSync(path.join(repoRoot, ".github", "workflows", "release.yml"), "utf8");
+  const cargoConfig = fs.readFileSync(path.join(repoRoot, ".cargo", "config.toml"), "utf8");
+  const nativeBuildScript = fs.readFileSync(path.join(repoRoot, "crates", "native", "build.rs"), "utf8");
   const matrixSummary = fs.readFileSync(path.join(repoRoot, "scripts", "summarize-windows-overlay-matrix.cjs"), "utf8");
   const nativeSurfaceSource = fs.readFileSync(
     path.join(repoRoot, "crates", "native", "src", "native_surface.rs"),
@@ -393,6 +425,93 @@ function runWindowsSmokeHelperStaticChecks() {
   const packageReadme = fs.readFileSync(path.join(repoRoot, "packages", "steam-bridge", "README.md"), "utf8");
   const exampleReadme = fs.readFileSync(path.join(repoRoot, "examples", "electron-basic", "README.md"), "utf8");
   const electronSmokeMain = fs.readFileSync(path.join(repoRoot, "examples", "electron-basic", "main.js"), "utf8");
+  for (const [label, source] of [
+    ["Windows smoke helper", helper],
+    ["Windows matrix", matrixHelper],
+    ["Windows native control", nativeControlHelper],
+    ["Windows signing helper", signingHelper]
+  ]) {
+    assert.ok(source.includes("resources\\app.asar.unpacked\\node_modules\\steam-bridge"), `${label} must resolve ASAR-unpacked runtime files`);
+    for (const fileName of [
+      "steam_bridge_native.win32-x64-msvc.node",
+      "steam_api64.dll",
+      "sdkencryptedappticket64.dll"
+    ]) {
+      assert.ok(source.includes(fileName), `${label} must require ${fileName}`);
+    }
+  }
+  for (const expected of [
+    'productName: "SteamBridgeSmoke"',
+    "smartUnpack: false",
+    "npmRebuild: false",
+    'signExts: [".node"]',
+    '"smoke/**/*"',
+    "extraFiles"
+  ]) {
+    assert.ok(windowsAsarConfig.includes(expected), `Windows ASAR fixture config missing ${expected}`);
+  }
+  for (const expected of [
+    "exact-npm-pack-tarball",
+    "assertNoPostInstallRepair",
+    "assertMatchingRuntimeFiles",
+    "verifyAsarLayout",
+    "runPackagedExecutable",
+    "getAuthenticodeEvidence",
+    "sanitizedChildEnvironment",
+    "isolatedCandidateEnvironment",
+    "createDeterministicBundleArchive",
+    "runtimeDllPreservation",
+    "verifyLiveSmokeCapability",
+    "file:.package-input/steam-bridge.tgz"
+  ]) {
+    assert.ok(windowsAsarGate.includes(expected), `Windows ASAR gate missing ${expected}`);
+  }
+  for (const expected of [
+    "IMAGE_FILE_MACHINE_AMD64",
+    "PE32_PLUS_MAGIC",
+    "napi_register_module_v1",
+    "readPeImports",
+    "readPeDelayImports",
+    "api-ms-win-crt-",
+    "authenticodeContentSha256"
+  ]) {
+    assert.ok(windowsArtifactVerifier.includes(expected), `Windows artifact verifier missing ${expected}`);
+  }
+  assert.ok(
+    cargoConfig.includes("target.x86_64-pc-windows-msvc") &&
+      cargoConfig.includes("target-feature=+crt-static") &&
+      nativeBuildScript.includes("static_crt(true)"),
+    "Windows Rust and C++ native builds must link the MSVC/UCRT runtime statically"
+  );
+  for (const expected of [
+    "--publish",
+    "npm",
+    "publish",
+    "audit.package?.tarball",
+    "executableProbe?.ok",
+    "--bundle-archive",
+    "validatePublishTag",
+    "shell: false"
+  ]) {
+    assert.ok(releaseCandidatePublisher.includes(expected), `Release-candidate publisher missing ${expected}`);
+  }
+  assert.ok(
+    releaseWorkflow.includes("windows-package-gate:") &&
+      releaseWorkflow.includes("npm run release:assemble") &&
+      releaseWorkflow.includes("npm run windows:package-gate") &&
+      releaseWorkflow.includes("--require-signed") &&
+      releaseWorkflow.includes("npm run release:publish-candidate") &&
+      releaseWorkflow.includes("*-win-unpacked.tar") &&
+      releaseWorkflow.includes("--bundle-archive"),
+    "Release workflow must gate the fully assembled publish tarball in a Windows electron-builder ASAR package"
+  );
+  assert.ok(
+    matrixHelper.includes("resources\\steam-bridge-tools") &&
+      matrixHelper.includes("bin\\validate-checkout-target.cjs") &&
+      matrixHelper.includes("dist\\index.js") &&
+      matrixHelper.includes("must stay package-relative"),
+    "Windows ASAR checkout validation must preserve the validator CLI and dist runtime as one package-relative tool tree"
+  );
   for (const expected of [
     '[ValidateSet("Limited", "Highest")]',
     '[string]$TaskRunLevel = "Limited"',
@@ -877,7 +996,10 @@ function runWindowsSmokeHelperStaticChecks() {
     ".exe\", \".dll\", \".node",
     "TimestampServer",
     "VerifyOnly",
-    "AllowUnsigned"
+    "AllowUnsigned",
+    "ExpectedPublisherThumbprint",
+    "ExpectedPublisherSubject",
+    "publisherFilePaths"
   ]) {
     assert.ok(signingHelper.includes(expected), `Windows signing helper missing ${expected}`);
   }

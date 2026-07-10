@@ -33,13 +33,72 @@ Windows 11 x64 and Electron `43.0.0`. Those metadata ranges are not a live
 overlay certification matrix: other Electron versions and Windows releases
 have not all been exercised by the current Windows overlay suite.
 
-The supplied Windows smoke app uses `asar: false`, so current Windows live
-evidence covers an unpacked Electron application layout. A default
-`electron-builder` ASAR layout is not yet verified. Until a production-like
-builder fixture proves native-addon and Steam DLL discovery from the final
-signed bundle, ship the same unpacked layout or validate your own unpack
-configuration with the exact final app's native-load and `presenter-ready`
-gates. Do not infer ASAR support from the package smoke test.
+The supplied Windows live-smoke app still uses `asar: false` so historical live
+results remain comparable. The Release workflow is configured to build the
+fully assembled `npm pack` tarball through an `electron-builder` ASAR fixture.
+A successful Windows gate keeps package JavaScript in `app.asar`, requires the
+Windows addon and both Steam runtime DLLs together in `app.asar.unpacked`,
+verifies PE32+/AMD64/N-API identity and integrity from tarball to bundle,
+launches the final executable without a native override or post-install repair,
+packages the current public smoke action/matrix protocol, and retains a
+stable-metadata, hash-audited archive of the exact `win-unpacked` bundle for
+live proof and rollback. Use the same shape in Windows apps:
+
+```json
+{
+  "build": {
+    "asar": { "smartUnpack": false },
+    "asarUnpack": [
+      "node_modules/steam-bridge/steam_bridge_native.win32-x64-msvc.node",
+      "node_modules/steam-bridge/steam_api64.dll",
+      "node_modules/steam-bridge/sdkencryptedappticket64.dll"
+    ],
+    "win": {
+      "signExts": [".node"],
+      "forceCodeSigning": true
+    }
+  }
+}
+```
+
+When no explicit diagnostic override is configured, Steam Bridge resolves
+native binaries only from the physical `app.asar.unpacked` mirror when its
+JavaScript lives in ASAR; the release gate refuses an override. A packaged
+native-load pass is not overlay proof: run `presenter-ready` and the applicable
+live overlay matrix against the retained exact signed candidate.
+The Windows build is configured to link the addon and its C++ shims statically
+to the MSVC/UCRT runtime. The release verifier rejects dynamic CRT and
+unexpected non-system imports; a fresh green Windows gate is the artifact-level
+proof that a developer image is not masking a clean-machine dependency.
+Add `.node` to `win.signExts` so electron-builder signs the app-owned addon while
+it signs the application executable normally. The signed/tag gate requires the
+two Steam runtime DLLs to remain byte-for-byte identical to the tarball and
+Authenticode-valid, preserving the tarball's existing signature instead of
+replacing it.
+The repository's Windows matrix validator is an external build/test tool. If an
+ASAR package carries that matrix, copy both
+`bin/validate-checkout-target.cjs` and the package's complete `dist` directory
+under `resources/steam-bridge-tools`; the CLI's package-relative import must not
+be split across ASAR and the physical filesystem. The configured release
+fixture stages that exact tool tree and invokes the validator self-test from the
+final bundle.
+
+The Release artifact's audited `.tgz` is the canonical npm candidate. Run
+`npm run release:publish-candidate -- --tarball <file.tgz> --bundle-archive
+<win-unpacked.tar> --audit-manifest <audit.json>` to rehash the npm bytes and
+retained Windows bundle and check that the audit records a successful final
+executable probe, live-smoke protocol, signing state, and expected filenames.
+Add `--publish` only when you intend to publish those exact npm bytes from an
+audit emitted by the signed gate, together with `--release-tag
+v<package-version>`. The JSON is not independently signed, so retain and trust
+its workflow-artifact provenance. Prerelease versions require an explicit
+non-`latest` npm `--tag`.
+Publishing from the assembled workspace would repack it and is not the
+verified path. Tag-triggered Release runs set `forceCodeSigning`, require
+`WINDOWS_CSC_LINK`/`WINDOWS_CSC_KEY_PASSWORD` secrets, and match the app
+executable and native addon against `WINDOWS_PUBLISHER_SUBJECT` or
+`WINDOWS_PUBLISHER_THUMBPRINT` repository variables. The Valve runtime DLLs
+must be Authenticode-valid and retain their exact upstream bytes.
 
 ### macOS Apple Silicon Only
 

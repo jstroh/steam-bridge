@@ -2831,6 +2831,11 @@ export function loadNativeBinding(): NativeBinding {
     [
       "Unable to load Steam Bridge native module.",
       "Run `npm run native:build`, publish/install a prebuild, or set STEAM_BRIDGE_NATIVE_PATH to a .node file.",
+      ...(asarUnpackedMirror(path.resolve(__dirname, ".."))
+        ? [
+            "Electron ASAR apps must explicitly unpack the native addon and its runtime libraries together under app.asar.unpacked."
+          ]
+        : []),
       ...errors
     ].join("\n")
   );
@@ -2843,14 +2848,38 @@ function nativeTargetForCurrentPlatform(): { target: string; prebuilds: string[]
 function nativeCandidates(supportedTarget: { target: string; prebuilds: string[] }): string[] {
   const packageRoot = path.resolve(__dirname, "..");
   const repoRoot = path.resolve(packageRoot, "..", "..");
+  const unpackedPackageRoot = asarUnpackedMirror(packageRoot);
+  const workspaceCandidates = unpackedPackageRoot
+    ? []
+    : [
+        path.join(repoRoot, "target", supportedTarget.target, "release", "steam_bridge_native.node"),
+        path.join(repoRoot, "target", "release", "steam_bridge_native.node")
+      ];
 
   return [
     process.env.STEAM_BRIDGE_NATIVE_PATH || "",
+    ...packageRootNativeCandidates(unpackedPackageRoot || packageRoot, supportedTarget.prebuilds),
+    ...workspaceCandidates
+  ];
+}
+
+function packageRootNativeCandidates(packageRoot: string, prebuilds: string[]): string[] {
+  return [
     path.join(packageRoot, "steam_bridge_native.local.node"),
     path.join(packageRoot, "steam_bridge_native.node"),
-    ...supportedTarget.prebuilds.map((taggedName) => path.join(packageRoot, taggedName)),
-    ...supportedTarget.prebuilds.map((taggedName) => path.join(packageRoot, "native", taggedName)),
-    path.join(repoRoot, "target", supportedTarget.target, "release", "steam_bridge_native.node"),
-    path.join(repoRoot, "target", "release", "steam_bridge_native.node")
+    ...prebuilds.map((taggedName) => path.join(packageRoot, taggedName)),
+    ...prebuilds.map((taggedName) => path.join(packageRoot, "native", taggedName))
   ];
+}
+
+function asarUnpackedMirror(packageRoot: string): string | undefined {
+  const root = path.parse(packageRoot).root;
+  const parts = packageRoot.slice(root.length).split(path.sep);
+  const asarIndex = parts.findIndex((part) => part.endsWith(".asar"));
+  if (asarIndex < 0) {
+    return undefined;
+  }
+
+  parts[asarIndex] = `${parts[asarIndex]}.unpacked`;
+  return path.join(root, ...parts);
 }

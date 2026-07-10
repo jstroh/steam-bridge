@@ -2,6 +2,10 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const { spawnSync } = require("node:child_process");
+const {
+  WINDOWS_NATIVE_ADDON,
+  inspectWindowsRuntimeDirectory
+} = require("./verify-windows-packaged-artifacts.cjs");
 
 const repoRoot = path.resolve(__dirname, "..");
 const target = readArg("--target") || currentTarget();
@@ -39,7 +43,9 @@ for (const filePath of expectedFiles) {
 }
 
 const nativePath = path.join(packageDir, config.native);
-if (process.platform === config.platform && process.arch === config.arch) {
+if (target === "x86_64-pc-windows-msvc") {
+  verifyWindowsArtifact(nativePath);
+} else if (process.platform === config.platform && process.arch === config.arch) {
   verifyCurrentPlatformArtifact(nativePath);
 } else {
   console.log(
@@ -60,9 +66,6 @@ function verifyCurrentPlatformArtifact(nativePath) {
     return;
   }
 
-  if (target === "x86_64-pc-windows-msvc") {
-    verifyWindowsArtifact(nativePath);
-  }
 }
 
 function verifyLinuxArtifact(nativePath) {
@@ -126,13 +129,13 @@ function verifyMacosArtifact(nativePath) {
 }
 
 function verifyWindowsArtifact(nativePath) {
-  const where = run("where", ["dumpbin"], { encoding: "utf8", check: false });
-  if (where.status !== 0) {
-    console.warn("dumpbin was not found; Windows release verification is limited to expected non-empty files.");
-    return;
+  assert.equal(path.basename(nativePath), WINDOWS_NATIVE_ADDON);
+  const inspected = inspectWindowsRuntimeDirectory(packageDir);
+  for (const [fileName, file] of Object.entries(inspected.files)) {
+    console.log(
+      `Verified ${fileName}: ${file.pe.machine} ${file.pe.format} size=${file.size} sha256=${file.sha256}`
+    );
   }
-
-  run("dumpbin", ["/DEPENDENTS", nativePath], { encoding: "utf8" });
 }
 
 function assertNonEmptyFile(filePath) {

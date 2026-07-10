@@ -2297,6 +2297,57 @@ from the app.
 
 Windows gates:
 
+- the Release workflow is configured to assemble all three platform prebuild
+  artifacts into one exact publish tarball before its Windows package check;
+  the Windows gate never repairs that tarball after installation, records npm
+  integrity plus source, installed, pre-sign, post-sign, and final-bundle
+  hashes, and rejects any missing publish artifact;
+- the dedicated `electron-builder` fixture disables smart unpacking, leaves
+  Steam Bridge JavaScript and package metadata in `app.asar`, and explicitly
+  unpacks only `steam_bridge_native.win32-x64-msvc.node`, `steam_api64.dll`, and
+  `sdkencryptedappticket64.dll` into one physical package directory. Without an
+  explicit diagnostic override, the native loader uses only that
+  `app.asar.unpacked` mirror for archived apps; the release gate refuses an
+  override so the addon is never temp-extracted away from its dependent Steam
+  DLLs;
+- cross-platform PE inspection requires MZ/PE signatures, AMD64 machine type,
+  PE32+, the DLL characteristic, N-API registration, both Steam DLL dependency
+  names, and stable Authenticode-content hashes. Windows Rust and C++ builds are
+  configured to link the MSVC/UCRT runtime statically, and the verifier rejects
+  dynamic CRT or other unbundled non-system imports so a fresh green Windows
+  gate proves a developer image did not mask a clean-machine dependency. The
+  final Windows runner also
+  inspects signature status and launches the packaged Electron executable
+  without `STEAM_BRIDGE_NATIVE_PATH` or Steam initialization; that no-Steam
+  native-load proof is a packaging gate, not an overlay lifecycle claim;
+- the gate retains a stable-metadata, hash-audited archive of the exact
+  `win-unpacked` bundle with the current public smoke action/matrix protocol for
+  subsequent `presenter-ready`, live proof, rollback, and independent re-audit
+  instead of discarding the signed candidate;
+- the audited `.tgz` produced by that gate is the canonical npm candidate. The
+  release-candidate command rehashes the tarball and retained bundle, checks the
+  audit-recorded executable probe, live protocol, signing state, and publisher
+  evidence, and publishes that tarball only after an explicit `--publish` and
+  exact `v<package-version>` release tag; prerelease versions also require an
+  explicit non-`latest` npm dist-tag. The audit JSON itself is not signed, so
+  trusted workflow-artifact provenance is part of the release boundary.
+  Rebuilding from the workspace is outside the verified path. Tag-triggered
+  Release jobs require code signing and configured publisher identity, while
+  manual unsigned dispatches remain diagnostic;
+- packaged Windows helpers resolve a complete ASAR-unpacked runtime first and
+  the legacy loose `resources/app` layout second, fail on partial or ambiguous
+  triples, and the signing helper requires all three runtime files to appear in
+  its recursive `.exe`/`.dll`/`.node` audit set. Production builder configs must
+  add `.node` to `win.signExts`, require code signing, and still run
+  `presenter-ready` plus live overlay proof against the exact signed candidate.
+  The gate requires the two Valve runtime DLLs to retain their exact tarball
+  bytes and, for signed/tag runs, remain Authenticode-valid instead of being
+  re-signed;
+- the external Windows matrix's checkout validator remains a complete
+  package-relative tool tree: ASAR fixtures copy its `bin` entry and full
+  `dist` runtime together under `resources/steam-bridge-tools` and invoke its
+  self-test from the final bundle. A lone copied CLI or bin-only ASAR unpack is
+  rejected;
 - packaged helper preflight reports App Control/SAC state, parsed
   `CiTool.exe -lp` policy inventory, enforced policy names,
   `VerifiedAndReputableDesktop*` enforcement, executable and native addon

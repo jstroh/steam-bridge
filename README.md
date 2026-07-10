@@ -805,13 +805,30 @@ the private `--checkout-json-file` checkout suite.
   `verifyMacosSteamAppAfterSign(context)` from `afterSign`. The helper skips
   non-mac targets and rejects Intel or universal macOS targets.
 - Steam Bridge does not vendor the Steamworks SDK or Valve redistributables.
-- The supplied Windows smoke app uses `asar: false`, so current Windows live
-  evidence covers an unpacked Electron application layout. A default
-  `electron-builder` ASAR layout is not yet verified. Until a production-like
-  builder fixture proves native-addon and Steam DLL discovery from the final
-  signed bundle, ship the same unpacked layout or validate your own unpack
-  configuration with the exact final app's native-load and `presenter-ready`
-  gates. Do not infer ASAR support from `npm run package:smoke`.
+- The supplied Windows live-smoke app still uses `asar: false` so its historical
+  evidence remains comparable. The Release workflow is configured with a
+  separate `electron-builder` ASAR gate over the fully assembled `npm pack`
+  tarball. A successful Windows gate leaves package JavaScript in `app.asar`,
+  explicitly places the Windows x64 addon plus `steam_api64.dll` and
+  `sdkencryptedappticket64.dll` together under `resources/app.asar.unpacked`,
+  checks PE32+/AMD64/N-API/dependency identity and source-to-bundle hashes, and
+  starts the final executable without `STEAM_BRIDGE_NATIVE_PATH` or post-install
+  repair. It also packages the current public smoke action/matrix protocol and
+  retains a hash-audited archive of the exact `win-unpacked` bundle for live
+  proof and rollback. The signed candidate must still pass
+  `presenter-ready` and the live Windows overlay gates before it carries an
+  overlay release claim.
+- The ASAR gate's audited `.tgz` is the canonical npm release candidate. Verify
+  it with `npm run release:publish-candidate -- --tarball <file.tgz>
+  --bundle-archive <win-unpacked.tar> --audit-manifest <audit.json>`, then add
+  `--publish` to publish those exact bytes from an audit emitted by the signed
+  gate together with `--release-tag v<package-version>`. The audit JSON is not
+  independently signed, so retain and trust its workflow-artifact provenance.
+  Prerelease versions also require an explicit non-`latest` npm `--tag`.
+  Do not run `npm publish` from the assembled workspace and silently
+  create a different tarball. Tag-triggered Release runs require Windows
+  signing credentials plus the configured publisher subject or thumbprint;
+  manual Release dispatches may remain unsigned for packaging diagnostics.
 - Windows release and smoke packages must Authenticode-sign the Electron
   executable and native `.node` addon with a trusted publisher certificate
   before testing on machines with Windows Smart App Control or App Control for

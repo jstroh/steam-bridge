@@ -2,6 +2,11 @@ name: Release
 
 on:
   workflow_dispatch:
+    inputs:
+      require_windows_signing:
+        description: Require the Windows ASAR candidate to be signed by the configured publisher
+        type: boolean
+        default: false
   push:
     tags:
       - "v*"
@@ -49,3 +54,64 @@ jobs:
             packages/steam-bridge/libsdkencryptedappticket.*
             packages/steam-bridge/steam_api*.dll
             packages/steam-bridge/sdkencryptedappticket*.dll
+
+  windows-package-gate:
+    name: Windows publish-tarball ASAR gate
+    needs: prebuild
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: steam-bridge-*
+          path: release-artifacts
+      - run: npm ci
+      - run: npm run release:assemble -- --artifacts-dir release-artifacts
+      - name: Run exact Windows package gate (unsigned diagnostic)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.require_windows_signing != true }}
+        run: npm run windows:package-gate
+      - name: Run exact Windows package gate (signed candidate)
+        if: ${{ github.event_name == 'push' || inputs.require_windows_signing == true }}
+        shell: pwsh
+        env:
+          WIN_CSC_LINK: ${{ secrets.WINDOWS_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CSC_KEY_PASSWORD }}
+          STEAM_BRIDGE_WINDOWS_EXPECTED_PUBLISHER_SUBJECT: ${{ vars.WINDOWS_PUBLISHER_SUBJECT }}
+          STEAM_BRIDGE_WINDOWS_EXPECTED_PUBLISHER_THUMBPRINT: ${{ vars.WINDOWS_PUBLISHER_THUMBPRINT }}
+        run: npm run windows:package-gate -- --require-signed
+      - name: Verify canonical npm release candidate
+        shell: pwsh
+        run: |
+          $tarballs = @(Get-ChildItem -LiteralPath "dist\windows-electron-builder-asar" -Filter "*.tgz" -File)
+          if ($tarballs.Count -ne 1) {
+            throw "Expected exactly one audited npm tarball, found $($tarballs.Count)."
+          }
+          $bundleArchives = @(Get-ChildItem -LiteralPath "dist\windows-electron-builder-asar" -Filter "*-win-unpacked.tar" -File)
+          if ($bundleArchives.Count -ne 1) {
+            throw "Expected exactly one retained Windows bundle archive, found $($bundleArchives.Count)."
+          }
+          if ("${{ github.event_name }}" -eq "push") {
+            npm run release:publish-candidate -- `
+              --tarball $tarballs[0].FullName `
+              --bundle-archive $bundleArchives[0].FullName `
+              --audit-manifest "dist\windows-electron-builder-asar\steam-bridge-windows-package-audit.json" `
+              --require-publishable `
+              --release-tag "${{ github.ref_name }}"
+          } else {
+            npm run release:publish-candidate -- `
+              --tarball $tarballs[0].FullName `
+              --bundle-archive $bundleArchives[0].FullName `
+              --audit-manifest "dist\windows-electron-builder-asar\steam-bridge-windows-package-audit.json"
+          }
+      - uses: actions/upload-artifact@v7
+        with:
+          name: steam-bridge-windows-publish-package-gate
+          path: |
+            dist/windows-electron-builder-asar/*.tgz
+            dist/windows-electron-builder-asar/*-win-unpacked.tar
+            dist/windows-electron-builder-asar/steam-bridge-windows-package-audit.json
+            dist/windows-electron-builder-asar/electron-native-load-result.json

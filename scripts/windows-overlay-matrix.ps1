@@ -163,8 +163,43 @@ function Resolve-ShortcutStartDir {
   return $AppDir
 }
 
+function Resolve-SteamBridgeRuntimeDirectory {
+  $requiredFiles = @(
+    "steam_bridge_native.win32-x64-msvc.node",
+    "steam_api64.dll",
+    "sdkencryptedappticket64.dll"
+  )
+  $candidates = @(
+    (Join-Path $AppDir "resources\app.asar.unpacked\node_modules\steam-bridge"),
+    (Join-Path $AppDir "resources\app\node_modules\steam-bridge")
+  )
+  $complete = @()
+
+  foreach ($candidate in $candidates) {
+    $present = @($requiredFiles | Where-Object { Test-Path -LiteralPath (Join-Path $candidate $_) })
+    if ($present.Count -gt 0 -and $present.Count -ne $requiredFiles.Count) {
+      throw "Incomplete Steam Bridge Windows runtime at $candidate. Found: $($present -join ', ')."
+    }
+    if ($present.Count -eq $requiredFiles.Count) {
+      $complete += $candidate
+    }
+  }
+
+  if ($complete.Count -eq 0) {
+    throw "No complete Steam Bridge Windows runtime found under $AppDir."
+  }
+  if ($complete.Count -gt 1) {
+    throw "Ambiguous Steam Bridge Windows runtime layout: $($complete -join ', ')."
+  }
+  if ((Test-Path -LiteralPath (Join-Path $AppDir "resources\app.asar")) -and $complete[0] -ne $candidates[0]) {
+    throw "An ASAR app must keep the Steam Bridge addon and both runtime DLLs under resources\app.asar.unpacked."
+  }
+
+  return $complete[0]
+}
+
 function Resolve-NativeAddon {
-  return Join-Path $AppDir "resources\app\node_modules\steam-bridge\steam_bridge_native.win32-x64-msvc.node"
+  return Join-Path (Resolve-SteamBridgeRuntimeDirectory) "steam_bridge_native.win32-x64-msvc.node"
 }
 
 function Resolve-SteamInstallPath {
@@ -1077,9 +1112,28 @@ function Resolve-UpsertShortcutPath {
 }
 
 function Resolve-CheckoutValidatorPath {
-  $packageValidator = Join-Path $AppDir "resources\app\node_modules\steam-bridge\bin\validate-checkout-target.cjs"
-  if (Test-Path -LiteralPath $packageValidator) {
-    return $packageValidator
+  $packageRoots = @(
+    (Join-Path $AppDir "resources\steam-bridge-tools"),
+    (Join-Path $AppDir "resources\app\node_modules\steam-bridge")
+  )
+  $complete = @()
+  foreach ($packageRoot in $packageRoots) {
+    $validator = Join-Path $packageRoot "bin\validate-checkout-target.cjs"
+    $runtimeEntry = Join-Path $packageRoot "dist\index.js"
+    $validatorPresent = Test-Path -LiteralPath $validator
+    $runtimePresent = Test-Path -LiteralPath $runtimeEntry
+    if ($validatorPresent -xor $runtimePresent) {
+      throw "Incomplete checkout validator tool tree at $packageRoot; bin\validate-checkout-target.cjs and dist\index.js must stay package-relative."
+    }
+    if ($validatorPresent -and $runtimePresent) {
+      $complete += $validator
+    }
+  }
+  if ($complete.Count -eq 1) {
+    return $complete[0]
+  }
+  if ($complete.Count -gt 1) {
+    throw "Ambiguous checkout-target validator layout: $($complete -join ', ')."
   }
 
   $scriptDir = Split-Path -Parent $PSCommandPath
@@ -1091,7 +1145,7 @@ function Resolve-CheckoutValidatorPath {
     }
   }
 
-  throw "Missing Steam checkout target validator. Expected it in the package or repo checkout."
+  throw "Missing Steam checkout target validator. ASAR packages must provide a complete resources\steam-bridge-tools package tree or run the matrix from a repo checkout."
 }
 
 function Resolve-JavaScriptRunner {

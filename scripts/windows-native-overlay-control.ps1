@@ -89,8 +89,36 @@ function Resolve-ControlSource {
 }
 
 function Resolve-SteamApiDll {
+  $requiredFiles = @(
+    "steam_bridge_native.win32-x64-msvc.node",
+    "steam_api64.dll",
+    "sdkencryptedappticket64.dll"
+  )
+  $runtimeCandidates = @(
+    (Join-Path $AppDir "resources\app.asar.unpacked\node_modules\steam-bridge"),
+    (Join-Path $AppDir "resources\app\node_modules\steam-bridge")
+  )
+  $complete = @()
+  foreach ($candidate in $runtimeCandidates) {
+    $present = @($requiredFiles | Where-Object { Test-Path -LiteralPath (Join-Path $candidate $_) })
+    if ($present.Count -gt 0 -and $present.Count -ne $requiredFiles.Count) {
+      throw "Incomplete Steam Bridge Windows runtime at $candidate. Found: $($present -join ', ')."
+    }
+    if ($present.Count -eq $requiredFiles.Count) {
+      $complete += $candidate
+    }
+  }
+  if ($complete.Count -gt 1) {
+    throw "Ambiguous Steam Bridge Windows runtime layout: $($complete -join ', ')."
+  }
+  if ($complete.Count -eq 1) {
+    if ((Test-Path -LiteralPath (Join-Path $AppDir "resources\app.asar")) -and $complete[0] -ne $runtimeCandidates[0]) {
+      throw "An ASAR app must keep the Steam Bridge addon and both runtime DLLs under resources\app.asar.unpacked."
+    }
+    return (Join-Path $complete[0] "steam_api64.dll")
+  }
+
   $candidates = @(
-    (Join-Path $AppDir "resources\app\node_modules\steam-bridge\steam_api64.dll"),
     (Join-Path $AppDir "steam_api64.dll"),
     (Join-Path (Get-Location) "packages\steam-bridge\steam_api64.dll")
   )

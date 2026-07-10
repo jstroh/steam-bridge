@@ -22,9 +22,12 @@
     "macos:overlay-matrix:summarize": "bash scripts/macos-overlay-matrix.sh --mode summarize",
     "macos:overlay-matrix": "bash scripts/macos-overlay-matrix.sh",
     "windows:overlay-matrix:summarize": "node scripts/summarize-windows-overlay-matrix.cjs",
+    "windows:package-gate": "node scripts/windows-electron-builder-asar-gate.cjs",
+    "windows:package-gate:check": "node scripts/verify-windows-packaged-artifacts.cjs --self-test && node scripts/windows-electron-builder-asar-gate.cjs --self-test && node scripts/publish-release-candidate.cjs --self-test",
     "macos:steam-client-health": "bash scripts/macos-overlay-matrix.sh --mode steam-health",
     "macos:verify-signing": "node scripts/verify-macos-steam-signing.cjs",
     "release:assemble": "node scripts/assemble-release-artifacts.cjs",
+    "release:publish-candidate": "node scripts/publish-release-candidate.cjs",
     "release:verify": "node scripts/verify-release-artifacts.cjs",
     "check:electron": "node scripts/assert-electron-smoke-version.cjs",
     "check:electron:latest": "node scripts/assert-electron-smoke-version.cjs --latest",
@@ -40,13 +43,16 @@
     "native:check": "node scripts/check-native.cjs",
     "native:fmt": "cargo fmt --all --check",
     "native:link": "npm run native:link -w steam-bridge",
-    "test": "npm run check:electron && npm run typecheck && npm run steam-shortcut:check && npm run test:unit",
+    "test": "npm run check:electron && npm run typecheck && npm run steam-shortcut:check && npm run windows:package-gate:check && npm run test:unit",
     "test:unit": "npm run build && node --test tests/steam-bridge.test.cjs"
   },
   "devDependencies": {
+    "@electron/asar": "4.2.0",
     "@electron/packager": "^20.0.1",
     "@emnapi/runtime": "1.11.1",
     "@napi-rs/cli": "3.7.2",
+    "electron-builder": "26.15.3",
+    "tar": "7.5.19",
     "typescript": "6.0.3"
   },
   "engines": {

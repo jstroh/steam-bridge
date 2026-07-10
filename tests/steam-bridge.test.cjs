@@ -2722,6 +2722,75 @@ test("project support policy covers Steam desktop targets except Intel macOS", (
   assert.doesNotMatch(launcherTemplate, /SteamBridgeSmoke/);
 });
 
+test("native loader prefers the physical ASAR-unpacked addon mirror", (t) => {
+  setProcessPlatformForTest(t, "win32");
+  setProcessArchForTest(t, "x64");
+  const previousNativePath = process.env.STEAM_BRIDGE_NATIVE_PATH;
+  delete process.env.STEAM_BRIDGE_NATIVE_PATH;
+  t.after(() => {
+    if (previousNativePath === undefined) {
+      delete process.env.STEAM_BRIDGE_NATIVE_PATH;
+    } else {
+      process.env.STEAM_BRIDGE_NATIVE_PATH = previousNativePath;
+    }
+  });
+
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-asar-loader-"));
+  t.after(() => fs.rmSync(tempRoot, { recursive: true, force: true }));
+  const virtualPackageRoot = path.join(tempRoot, "resources", "app.asar", "node_modules", "steam-bridge");
+  const physicalPackageRoot = path.join(
+    tempRoot,
+    "resources",
+    "app.asar.unpacked",
+    "node_modules",
+    "steam-bridge"
+  );
+  fs.mkdirSync(path.join(virtualPackageRoot, "dist"), { recursive: true });
+  fs.mkdirSync(physicalPackageRoot, { recursive: true });
+  fs.copyFileSync(distFile("native.js"), path.join(virtualPackageRoot, "dist", "native.js"));
+
+  const fileName = "steam_bridge_native.win32-x64-msvc.node";
+  const virtualAddon = path.join(virtualPackageRoot, fileName);
+  const physicalAddon = path.join(physicalPackageRoot, fileName);
+  fs.writeFileSync(virtualAddon, "virtual addon");
+  fs.writeFileSync(physicalAddon, "physical addon");
+
+  const previousNodeLoader = Module._extensions[".node"];
+  Module._extensions[".node"] = (module, filename) => {
+    module.exports = { loadedFrom: filename };
+  };
+  t.after(() => {
+    Module._extensions[".node"] = previousNodeLoader;
+  });
+
+  const copiedNativeModulePath = path.join(virtualPackageRoot, "dist", "native.js");
+  t.after(() => delete require.cache[copiedNativeModulePath]);
+  const nativeModule = require(copiedNativeModulePath);
+  assert.equal(fs.realpathSync(nativeModule.loadNativeBinding().loadedFrom), fs.realpathSync(physicalAddon));
+
+  const virtualOnlyRoot = path.join(tempRoot, "virtual-only", "app.asar", "node_modules", "steam-bridge");
+  fs.mkdirSync(path.join(virtualOnlyRoot, "dist"), { recursive: true });
+  fs.copyFileSync(distFile("native.js"), path.join(virtualOnlyRoot, "dist", "native.js"));
+  fs.writeFileSync(path.join(virtualOnlyRoot, fileName), "unsafe virtual addon");
+  const virtualWorkspaceAddon = path.join(
+    tempRoot,
+    "virtual-only",
+    "app.asar",
+    "target",
+    "x86_64-pc-windows-msvc",
+    "release",
+    "steam_bridge_native.node"
+  );
+  fs.mkdirSync(path.dirname(virtualWorkspaceAddon), { recursive: true });
+  fs.writeFileSync(virtualWorkspaceAddon, "unsafe virtual workspace addon");
+  const virtualOnlyModulePath = path.join(virtualOnlyRoot, "dist", "native.js");
+  t.after(() => delete require.cache[virtualOnlyModulePath]);
+  assert.throws(
+    () => require(virtualOnlyModulePath).loadNativeBinding(),
+    /must explicitly unpack the native addon and its runtime libraries together/
+  );
+});
+
 test("macOS signing verifier checks launcher identity marker", (t) => {
   const verifier = require(path.join(repoRoot, "packages", "steam-bridge", "bin", "verify-macos-signing.cjs"));
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-signing-identity-"));

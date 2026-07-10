@@ -145,8 +145,43 @@ function Resolve-SmokeExe {
   return $exe
 }
 
+function Resolve-SteamBridgeRuntimeDirectory {
+  $requiredFiles = @(
+    "steam_bridge_native.win32-x64-msvc.node",
+    "steam_api64.dll",
+    "sdkencryptedappticket64.dll"
+  )
+  $candidates = @(
+    (Join-Path $AppDir "resources\app.asar.unpacked\node_modules\steam-bridge"),
+    (Join-Path $AppDir "resources\app\node_modules\steam-bridge")
+  )
+  $complete = @()
+
+  foreach ($candidate in $candidates) {
+    $present = @($requiredFiles | Where-Object { Test-Path -LiteralPath (Join-Path $candidate $_) })
+    if ($present.Count -gt 0 -and $present.Count -ne $requiredFiles.Count) {
+      throw "Incomplete Steam Bridge Windows runtime at $candidate. Found: $($present -join ', ')."
+    }
+    if ($present.Count -eq $requiredFiles.Count) {
+      $complete += $candidate
+    }
+  }
+
+  if ($complete.Count -eq 0) {
+    throw "No complete Steam Bridge Windows runtime found under $AppDir."
+  }
+  if ($complete.Count -gt 1) {
+    throw "Ambiguous Steam Bridge Windows runtime layout: $($complete -join ', ')."
+  }
+  if ((Test-Path -LiteralPath (Join-Path $AppDir "resources\app.asar")) -and $complete[0] -ne $candidates[0]) {
+    throw "An ASAR app must keep the Steam Bridge addon and both runtime DLLs under resources\app.asar.unpacked."
+  }
+
+  return $complete[0]
+}
+
 function Resolve-NativeAddon {
-  return (Join-Path $AppDir "resources\app\node_modules\steam-bridge\steam_bridge_native.win32-x64-msvc.node")
+  return (Join-Path (Resolve-SteamBridgeRuntimeDirectory) "steam_bridge_native.win32-x64-msvc.node")
 }
 
 function Get-SmokeArgs {
@@ -855,8 +890,22 @@ function Get-RecentCodeIntegrityEvents {
 
 function Invoke-Preflight {
   $exe = Resolve-SmokeExe
-  $nativeAddon = Resolve-NativeAddon
   $nativeOverride = if ($NativePath) { $NativePath } else { "" }
+  $packagedRuntimeResolutionError = $null
+  try {
+    $nativeAddon = Resolve-NativeAddon
+  } catch {
+    if (-not $nativeOverride) {
+      throw
+    }
+    $packagedRuntimeResolutionError = $_.Exception.Message
+    $expectedRuntimeRoot = if (Test-Path -LiteralPath (Join-Path $AppDir "resources\app.asar")) {
+      Join-Path $AppDir "resources\app.asar.unpacked\node_modules\steam-bridge"
+    } else {
+      Join-Path $AppDir "resources\app\node_modules\steam-bridge"
+    }
+    $nativeAddon = Join-Path $expectedRuntimeRoot "steam_bridge_native.win32-x64-msvc.node"
+  }
   $sessionSummary = Get-WindowsSessionSummary
   $steamProcess = @($sessionSummary.steamProcesses | Select-Object -First 1)
   $steamProcessId = $null
@@ -920,6 +969,9 @@ function Invoke-Preflight {
   if ($nativeOverrideSummary) {
     $warnings += "STEAM_BRIDGE_NATIVE_PATH override is set for this diagnostic run; do not treat it as packaged native-addon proof."
   }
+  if ($packagedRuntimeResolutionError) {
+    $warnings += "Packaged Steam Bridge runtime is incomplete or ambiguous; the explicit native override remains diagnostic-only."
+  }
 
   foreach ($warning in $warnings) {
     Write-Host ("  warning: {0}" -f $warning)
@@ -953,6 +1005,7 @@ function Invoke-Preflight {
       nativeOverride = $nativeOverrideSummary
     }
     nativePathOverride = [bool]$nativeOverride
+    packagedRuntimeResolutionError = $packagedRuntimeResolutionError
     warnings = @($warnings)
     recentCodeIntegrityEvents = @($events)
   })
