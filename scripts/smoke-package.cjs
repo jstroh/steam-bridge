@@ -462,7 +462,8 @@ function runWindowsSmokeHelperStaticChecks() {
     "createDeterministicBundleArchive",
     "runtimeDllPreservation",
     "verifyLiveSmokeCapability",
-    "file:.package-input/steam-bridge.tgz"
+    "file:.package-input/steam-bridge.tgz",
+    "npm JavaScript CLI from npm_execpath"
   ]) {
     assert.ok(windowsAsarGate.includes(expected), `Windows ASAR gate missing ${expected}`);
   }
@@ -491,7 +492,8 @@ function runWindowsSmokeHelperStaticChecks() {
     "executableProbe?.ok",
     "--bundle-archive",
     "validatePublishTag",
-    "shell: false"
+    "shell: false",
+    "npm JavaScript CLI from npm_execpath"
   ]) {
     assert.ok(releaseCandidatePublisher.includes(expected), `Release-candidate publisher missing ${expected}`);
   }

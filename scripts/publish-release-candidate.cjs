@@ -47,7 +47,8 @@ function main() {
   if (npmTag) {
     args.push("--tag", npmTag);
   }
-  const result = spawnSync(process.platform === "win32" ? "npm.cmd" : "npm", args, {
+  const invocation = resolveNpmInvocation(args);
+  const result = spawnSync(invocation.command, invocation.args, {
     cwd: path.dirname(tarball),
     stdio: "inherit",
     shell: false,
@@ -59,6 +60,19 @@ function main() {
   if (result.status !== 0) {
     throw new Error(`npm publish of the verified tarball failed with status ${result.status ?? "unknown"}.`);
   }
+}
+
+function resolveNpmInvocation(args, options = {}) {
+  const platform = options.platform || process.platform;
+  if (platform !== "win32") {
+    return { command: "npm", args };
+  }
+  const npmExecPath = options.npmExecPath || process.env.npm_execpath;
+  assertNonEmptyFile(npmExecPath, "npm JavaScript CLI from npm_execpath");
+  return {
+    command: options.nodeExecPath || process.execPath,
+    args: [npmExecPath, ...args]
+  };
 }
 
 function verifyReleaseCandidate(tarball, auditManifest, options = {}) {
@@ -182,6 +196,16 @@ function selfTest() {
     fs.writeFileSync(tarball, bytes);
     const bundleBytes = Buffer.from("retained signed Windows bundle bytes");
     fs.writeFileSync(bundleArchive, bundleBytes);
+    const fakeNpmCli = path.join(tempRoot, "npm-cli.js");
+    fs.writeFileSync(fakeNpmCli, "// test npm CLI\n");
+    assert.deepEqual(
+      resolveNpmInvocation(["publish", tarball], {
+        platform: "win32",
+        npmExecPath: fakeNpmCli,
+        nodeExecPath: "node.exe"
+      }),
+      { command: "node.exe", args: [fakeNpmCli, "publish", tarball] }
+    );
     const expected = {
       fileName: path.basename(tarball),
       size: bytes.length,

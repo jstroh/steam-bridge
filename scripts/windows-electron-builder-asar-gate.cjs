@@ -657,6 +657,16 @@ function selfTest() {
   try {
     const filePath = path.join(tempRoot, "package.tgz");
     fs.writeFileSync(filePath, bytes);
+    const fakeNpmCli = path.join(tempRoot, "npm-cli.js");
+    fs.writeFileSync(fakeNpmCli, "// test npm CLI\n");
+    assert.deepEqual(
+      resolveInvocation("npm", ["pack"], {
+        platform: "win32",
+        npmExecPath: fakeNpmCli,
+        nodeExecPath: "node.exe"
+      }),
+      { command: "node.exe", args: [fakeNpmCli, "pack"] }
+    );
     const hashes = hashFile(filePath);
     assert.equal(hashes.size, bytes.length);
     assert.equal(hashes.integrity, `sha512-${crypto.createHash("sha512").update(bytes).digest("base64")}`);
@@ -811,8 +821,8 @@ function readArg(name) {
 }
 
 function run(command, args, cwd, options = {}) {
-  const executable = process.platform === "win32" && command === "npm" ? "npm.cmd" : command;
-  const result = spawnSync(executable, args, {
+  const invocation = resolveInvocation(command, args);
+  const result = spawnSync(invocation.command, invocation.args, {
     cwd,
     encoding: options.encoding,
     stdio: options.encoding ? ["ignore", "pipe", "pipe"] : "inherit",
@@ -830,6 +840,19 @@ function run(command, args, cwd, options = {}) {
     );
   }
   return result;
+}
+
+function resolveInvocation(command, args, options = {}) {
+  const platform = options.platform || process.platform;
+  if (platform !== "win32" || command !== "npm") {
+    return { command, args };
+  }
+  const npmExecPath = options.npmExecPath || process.env.npm_execpath;
+  assertNonEmptyFile(npmExecPath, "npm JavaScript CLI from npm_execpath");
+  return {
+    command: options.nodeExecPath || process.execPath,
+    args: [npmExecPath, ...args]
+  };
 }
 
 function sanitizedChildEnvironment(source = process.env, additions = {}) {
