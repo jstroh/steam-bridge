@@ -309,9 +309,14 @@ next to the executable or in the working directory used by your app.
 
 Electron apps should create one managed Steam overlay for the process's main
 game window and reuse it. Steam Bridge currently supports one native presenter
-per process; concurrent managed presenters for multiple `BrowserWindow`
-instances are not supported, and attaching another presenter replaces the
-process-global native surface. The managed overlay owns platform-specific
+per process on the Node.js main thread; `worker_threads` overlay control throws
+`SteamOverlayMainThreadRequiredError`. Concurrent managed presenters for
+multiple `BrowserWindow` instances are not supported. Creating a second managed
+controller throws
+`SteamOverlayElectronControllerOwnershipError`; starting a presenter, native
+session, or raw surface while another surface owner is open throws
+`SteamOverlayNativeSurfaceOwnershipError`. Close the current owner before
+creating another. The managed overlay owns platform-specific
 overlay preparation, routes supported Steam surfaces through verified paths,
 waits for Steam overlay callbacks, and parks the native presenter after Steam
 reports that the overlay has closed. App code should not need platform-specific
@@ -362,8 +367,15 @@ purchase authorization still requires a configured Steam app and product.
 
 The Windows D3D11 presenter resizes its swap-chain render target with the
 attached window. If `Present` or `ResizeBuffers` fails, Steam Bridge records the
-error in `snapshot().lastError` and closes that presenter; it does not recreate
-the D3D11 device or swap chain. Treat device removal/reset and suspend/resume
+error in `snapshot().lastError`, sets `closeReason: "error"`, destroys the
+failed native surface, closes that presenter, and removes its managed Electron
+listeners. Snapshots expose `nativeSurfaceLeaseGeneration` and
+`nativeSurfaceOwner` so stale presenters cannot be mistaken for a newer
+process-global owner. The lease generation is ownership evidence, while Windows
+native-host diagnostics expose `surfaceInstanceGeneration` and `hwnd` as actual
+surface-reuse evidence. Parked Windows presenters reactivate that same host
+instead of recreating its HWND/D3D11 renderer. Steam Bridge does not recreate a
+failed D3D11 device or swap chain. Treat device removal/reset and suspend/resume
 recovery as unverified and terminal for that managed-overlay instance.
 If the Steam client window itself is blank or white, treat that as a Steam
 client rendering-health blocker first. The Windows matrix captures CEF,

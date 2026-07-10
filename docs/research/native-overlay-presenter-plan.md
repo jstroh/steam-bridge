@@ -661,6 +661,29 @@ The presenter should:
   Steam SDK call is safe, or when a Steam overlay is active;
 - reuse the same surface for checkout, store, web, and passive Steam
   notifications;
+- enforce one managed Electron controller and one native surface owner per
+  process, and require all overlay ownership/mutation on the Node.js main
+  thread. `worker_threads` fail before native or environment mutation because
+  their JavaScript isolates cannot share an authoritative lease with the
+  process-global native surface. Concurrent presenter, session, or raw
+  ownership fails before native mutation; sequential owners receive
+  monotonically increasing controller and
+  native-surface lease generations so stale snapshots and handles cannot claim
+  or detach a newer owner. The shared process registry survives duplicate
+  package evaluation, and raw opens are fail-fast because that handle-less API
+  cannot safely distinguish callers;
+- reactivate an existing parked Windows host by restoring its input/opacity
+  state, without reattaching or rebuilding its HWND/D3D11 renderer. Windows
+  diagnostics expose a native `surfaceInstanceGeneration` plus `hwnd`; unlike
+  the ownership-lease generation, those are valid persistent-surface reuse
+  evidence. A reuse proof must capture one managed controller once, reject
+  absent/nonpositive identities, compare controller/lease/instance/HWND in
+  every shown and parked snapshot, and stop without replacement or retry;
+- treat native attach, `Present`, render-target recreation, and `ResizeBuffers`
+  failures as terminal for that instance. Preserve the primary error, destroy
+  the failed Windows surface, stop every scheduler, disconnect callbacks,
+  remove managed Electron listeners, wake lifecycle waiters, and require an
+  explicit new owner rather than silently recreating D3D11 state;
 - route overlay targets by behavior: interactive native host for web, store, and
   checkout; Friends List through a Steam web overlay surface; passive host
   pumping for notifications; raw social/dialog panels remain a separate
@@ -670,7 +693,8 @@ The presenter should:
   callbacks; the managed Electron overlay snapshot also reports the selected
   presenter mode, automatic notification-priming policy, restore-focus delay,
   activation timing, shortcut policy, and window-close ownership. The managed
-  app-facing helper defaults restore-focus delay, activation boost, and active
+  app-facing helper also reports its controller/surface-lease generations and
+  terminal close reason. It defaults restore-focus delay, activation boost, and active
   grace timing to `0`; the smoke verifiers can require those managed Electron
   fields, and the Deck/macOS matrix runners require zero managed overlay timing
   by default so runs fail if the wrong presenter mode, notification policy,

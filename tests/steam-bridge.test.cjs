@@ -7299,15 +7299,15 @@ test("overlay helpers map constants and forward modal/store options", (t) => {
     presenter: mockPresenter
   });
   steam.openNativeOverlayProbeWindow("Steam Overlay Probe");
-  steam.overlay.attachNativeOverlayHostView(nativeWindowHandle);
   steam.overlay.pumpNativeOverlayProbeWindow();
+  steam.closeNativeOverlayProbeWindow();
+  steam.overlay.attachNativeOverlayHostView(nativeWindowHandle);
   steam.pumpNativeOverlayHostView();
   steam.overlay.showNativeOverlayHostView();
   steam.hideNativeOverlayHostView();
   steam.overlay.setNativeOverlayHostInputPassthrough(true);
   steam.overlay.setNativeOverlayHostOpacity(false);
   steam.overlay.updateNativeOverlayHostFrame(frame, 2, 2);
-  steam.closeNativeOverlayProbeWindow();
   steam.overlay.detachNativeOverlayHostView();
   assert.equal(steam.isNativeOverlayProbeWindowOpen(), true);
   assert.equal(steam.overlay.isNativeOverlayHostViewOpen(), false);
@@ -7433,15 +7433,15 @@ test("overlay helpers map constants and forward modal/store options", (t) => {
     ),
     [
       { method: "openNativeOverlayProbeWindow", args: ["Steam Overlay Probe"] },
-      { method: "attachNativeOverlayHostView", args: [nativeWindowHandle] },
       { method: "pumpNativeOverlayProbeWindow", args: [] },
+      { method: "closeNativeOverlayProbeWindow", args: [] },
+      { method: "attachNativeOverlayHostView", args: [nativeWindowHandle] },
       { method: "pumpNativeOverlayHostView", args: [] },
       { method: "showNativeOverlayHostView", args: [] },
       { method: "hideNativeOverlayHostView", args: [] },
       { method: "setNativeOverlayHostInputPassthrough", args: [true] },
       { method: "setNativeOverlayHostOpacity", args: [false] },
       { method: "updateNativeOverlayHostFrame", args: [frame, 2, 2] },
-      { method: "closeNativeOverlayProbeWindow", args: [] },
       { method: "detachNativeOverlayHostView", args: [] },
       { method: "isNativeOverlayProbeWindowOpen", args: [] },
       { method: "isNativeOverlayHostViewOpen", args: [] },
@@ -7785,7 +7785,9 @@ test("electron steam overlay manager owns one presenter and routes opens", async
   assert.equal(unsupportedDialogStatus.waitReason, "unsupported-target");
   assert.match(unsupportedDialogStatus.message, /does not have a verified presenter-backed route/);
   assert.equal(overlay.openIfAvailable(unsupportedDialogTarget), null);
+  assert.equal(typeof initialSnapshot.electronOverlay.controllerGeneration, "number");
   assert.deepEqual(initialSnapshot.electronOverlay, {
+    controllerGeneration: initialSnapshot.electronOverlay.controllerGeneration,
     presenterMode: "persistent",
     closeWithWindow: true,
     autoPrepareForNotifications: true,
@@ -7988,7 +7990,21 @@ test("electron steam overlay manager can use direct Steam activation on Windows 
 
   const hostHandle = Buffer.from([9, 7, 5, 3]);
   const nativeHostCalls = [];
+  const disconnectError = new Error("direct callback disconnect failed");
+  let directOverlayCallback;
+  let disconnectCount = 0;
   const fake = createFakeNative({
+    registerGameOverlayActivated(handler) {
+      directOverlayCallback = handler;
+      this.callbacks.set(331, handler);
+      this.calls.push({ method: "registerGameOverlayActivated", args: [] });
+      return {
+        disconnect() {
+          disconnectCount += 1;
+          throw disconnectError;
+        }
+      };
+    },
     attachNativeOverlayHostView() {
       nativeHostCalls.push("attachNativeOverlayHostView");
       throw new Error("Windows direct overlay must not attach a native host.");
@@ -8108,6 +8124,27 @@ test("electron steam overlay manager can use direct Steam activation on Windows 
   assert.equal(parkedSnapshot.overlayActive, false);
   assert.equal(parkedSnapshot.currentFps, 0);
   assert.deepEqual(nativeHostCalls, []);
+
+  const staleActivation = overlay.presenter.beginOverlayActivation();
+  const staleOverlayCallback = directOverlayCallback;
+  const focusCountBeforeClose = focusCount;
+  overlay.close();
+  const closedPollCount = overlay.snapshot().pollCount;
+  assert.equal(overlay.snapshot().lastError, disconnectError);
+  assert.equal(disconnectCount, 1);
+  assert.doesNotThrow(() => staleActivation.disconnect());
+  staleOverlayCallback({ active: false });
+  assert.equal(overlay.snapshot().pollCount, closedPollCount);
+  assert.equal(focusCount, focusCountBeforeClose);
+
+  const replacement = steam.overlay.createElectronSteamOverlay(window, {
+    presenterMode: "session",
+    pollIntervalMs: 10000
+  });
+  assert.equal(replacement.isOpen(), true);
+  staleOverlayCallback({ active: false });
+  assert.equal(focusCount, focusCountBeforeClose);
+  replacement.close();
 });
 
 test("electron steam overlay manager uses Windows D3D11 native presenter by default", async (t) => {
@@ -8958,7 +8995,9 @@ test("electron steam overlay manager can fall back to native overlay sessions", 
   assert.equal(overlay.snapshot().attached, false);
   assert.equal(overlay.snapshot().backend, "none");
   assert.equal(overlay.snapshot().bounds, undefined);
+  assert.equal(typeof overlay.snapshot().electronOverlay.controllerGeneration, "number");
   assert.deepEqual(overlay.snapshot().electronOverlay, {
+    controllerGeneration: overlay.snapshot().electronOverlay.controllerGeneration,
     presenterMode: "session",
     closeWithWindow: true,
     autoPrepareForNotifications: true,
@@ -13166,50 +13205,6 @@ test("electron steam overlay checkout IfAvailable waits through readiness and sk
   assert.equal(await overlay.openShortcutTargetAndWaitIfAvailable({ showTimeoutMs: 5, closeTimeoutMs: 5 }), null);
   assert.equal(steamWebOverlayCalls(fake).length, checkoutCallsAfterReadiness);
 
-  let dynamicShortcutResolveCount = 0;
-  const dynamicShortcutErrors = [];
-  const dynamicShortcutOverlay = steam.overlay.createElectronSteamOverlay(window, {
-    title: "Electron Dynamic Shortcut Steam Stopped Overlay",
-    pollIntervalMs: 10000,
-    overlayShortcut: {
-      target() {
-        dynamicShortcutResolveCount += 1;
-        return {
-          type: "web",
-          url: "https://store.steampowered.com/app/480/",
-          modal: true
-        };
-      },
-      onError(error) {
-        dynamicShortcutErrors.push(error);
-      }
-    }
-  });
-  const dynamicSteamStoppedShortcutStatus = dynamicShortcutOverlay.getShortcutOpenStatus();
-  assert.equal(dynamicSteamStoppedShortcutStatus.canOpen, false);
-  assert.equal(dynamicSteamStoppedShortcutStatus.canWait, false);
-  assert.equal(dynamicSteamStoppedShortcutStatus.reason, "steam-unavailable");
-  assert.equal(dynamicSteamStoppedShortcutStatus.waitReason, "steam-unavailable");
-  assert.equal(dynamicSteamStoppedShortcutStatus.target, undefined);
-  assert.equal(dynamicSteamStoppedShortcutStatus.targetStatus, undefined);
-  assert.equal(dynamicShortcutResolveCount, 0);
-  assert.equal(dynamicShortcutOverlay.openShortcutTargetIfAvailable(), null);
-  assert.equal(await dynamicShortcutOverlay.openShortcutTargetAndWaitIfAvailable({ showTimeoutMs: 5, closeTimeoutMs: 5 }), null);
-  assert.equal(dynamicShortcutResolveCount, 0);
-  assert.throws(() => dynamicShortcutOverlay.openShortcutTarget(), /Steam is not running/);
-  assert.equal(dynamicShortcutResolveCount, 0);
-  assert.equal(dynamicShortcutErrors.length, 1);
-  assert.match(dynamicShortcutErrors[0].message, /Steam is not running/);
-  await assert.rejects(
-    dynamicShortcutOverlay.openShortcutTargetAndWait({ showTimeoutMs: 5, closeTimeoutMs: 5 }),
-    /Steam is not running/
-  );
-  assert.equal(dynamicShortcutResolveCount, 0);
-  assert.equal(dynamicShortcutErrors.length, 2);
-  assert.match(dynamicShortcutErrors[1].message, /Steam is not running/);
-  dynamicShortcutOverlay.close();
-  assert.equal(steamWebOverlayCalls(fake).length, checkoutCallsAfterReadiness);
-
   let steamStoppedOperationRan = false;
   assert.equal(
     await overlay.openCheckoutAndWaitIfAvailable(
@@ -13255,6 +13250,54 @@ test("electron steam overlay checkout IfAvailable waits through readiness and sk
   assert.equal(steamWebOverlayCalls(fake).length, checkoutCallsAfterReadiness);
 
   overlay.close();
+
+  let dynamicShortcutResolveCount = 0;
+  const dynamicShortcutErrors = [];
+  const dynamicShortcutOverlay = steam.overlay.createElectronSteamOverlay(window, {
+    title: "Electron Dynamic Shortcut Steam Stopped Overlay",
+    pollIntervalMs: 10000,
+    presenterMode: "session",
+    overlayShortcut: {
+      target() {
+        dynamicShortcutResolveCount += 1;
+        return {
+          type: "web",
+          url: "https://store.steampowered.com/app/480/",
+          modal: true
+        };
+      },
+      onError(error) {
+        dynamicShortcutErrors.push(error);
+      }
+    }
+  });
+  const dynamicSteamStoppedShortcutStatus = dynamicShortcutOverlay.getShortcutOpenStatus();
+  assert.equal(dynamicSteamStoppedShortcutStatus.canOpen, false);
+  assert.equal(dynamicSteamStoppedShortcutStatus.canWait, false);
+  assert.equal(dynamicSteamStoppedShortcutStatus.reason, "steam-unavailable");
+  assert.equal(dynamicSteamStoppedShortcutStatus.waitReason, "steam-unavailable");
+  assert.equal(dynamicSteamStoppedShortcutStatus.target, undefined);
+  assert.equal(dynamicSteamStoppedShortcutStatus.targetStatus, undefined);
+  assert.equal(dynamicShortcutResolveCount, 0);
+  assert.equal(dynamicShortcutOverlay.openShortcutTargetIfAvailable(), null);
+  assert.equal(
+    await dynamicShortcutOverlay.openShortcutTargetAndWaitIfAvailable({ showTimeoutMs: 5, closeTimeoutMs: 5 }),
+    null
+  );
+  assert.equal(dynamicShortcutResolveCount, 0);
+  assert.throws(() => dynamicShortcutOverlay.openShortcutTarget(), /Steam is not running/);
+  assert.equal(dynamicShortcutResolveCount, 0);
+  assert.equal(dynamicShortcutErrors.length, 1);
+  assert.match(dynamicShortcutErrors[0].message, /Steam is not running/);
+  await assert.rejects(
+    dynamicShortcutOverlay.openShortcutTargetAndWait({ showTimeoutMs: 5, closeTimeoutMs: 5 }),
+    /Steam is not running/
+  );
+  assert.equal(dynamicShortcutResolveCount, 0);
+  assert.equal(dynamicShortcutErrors.length, 2);
+  assert.match(dynamicShortcutErrors[1].message, /Steam is not running/);
+  dynamicShortcutOverlay.close();
+  assert.equal(steamWebOverlayCalls(fake).length, checkoutCallsAfterReadiness);
 });
 
 test("electron steam overlay manager tolerates destroyed webContents during window close", (t) => {
@@ -13517,6 +13560,1270 @@ test("native overlay session owns the probe pump lifecycle", async (t) => {
       { method: "detachNativeOverlayHostView", args: [] }
     ]
   );
+});
+
+test("native overlay presenter ownership fails fast without disturbing the current owner", async (t) => {
+  setProcessPlatformForTest(t, "win32");
+
+  let hostOpen = false;
+  let attachedHandle;
+  const firstHandle = Buffer.from([1, 1, 1, 1]);
+  const secondHandle = Buffer.from([2, 2, 2, 2]);
+  const fake = createFakeNative({
+    attachNativeOverlayHostViewForOverlay(nativeWindowHandle) {
+      hostOpen = true;
+      attachedHandle = nativeWindowHandle;
+      this.calls.push({ method: "attachNativeOverlayHostViewForOverlay", args: [nativeWindowHandle] });
+    },
+    pumpNativeOverlayProbeWindow() {
+      this.calls.push({ method: "pumpNativeOverlayProbeWindow", args: [attachedHandle] });
+    },
+    showNativeOverlayHostView() {
+      this.calls.push({ method: "showNativeOverlayHostView", args: [] });
+    },
+    setNativeOverlayHostInputPassthrough(passThrough) {
+      this.calls.push({ method: "setNativeOverlayHostInputPassthrough", args: [passThrough] });
+    },
+    setNativeOverlayHostOpacity(opaque) {
+      this.calls.push({ method: "setNativeOverlayHostOpacity", args: [opaque] });
+    },
+    detachNativeOverlayHostView() {
+      hostOpen = false;
+      attachedHandle = undefined;
+      this.calls.push({ method: "detachNativeOverlayHostView", args: [] });
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return false;
+    },
+    isNativeOverlayHostViewOpen() {
+      return hostOpen;
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  const first = steam.overlay.attachPresenter({
+    nativeWindowHandle: firstHandle,
+    activationBoostMs: 0,
+    activeGraceMs: 0,
+    pollIntervalMs: 30
+  });
+  first.prepareForOverlay(0);
+  const staleActivation = first.beginOverlayActivation();
+  const staleOverlayCallback = fake.callbacks.get(steam.SteamCallback.GameOverlayActivated);
+  const firstActive = first.snapshot();
+  assert.equal(firstActive.nativeSurfaceOwner, true);
+  assert.equal(firstActive.nativeHostOpen, true);
+
+  const callsBeforeRejectedOwner = fake.calls.length;
+  assert.throws(
+    () =>
+      steam.overlay.attachPresenter({
+        nativeWindowHandle: secondHandle,
+        activationBoostMs: 0,
+        activeGraceMs: 0,
+        pollIntervalMs: 30
+      }),
+    (error) => {
+      assert.equal(error instanceof steam.SteamOverlayNativeSurfaceOwnershipError, true);
+      assert.equal(error.code, "STEAM_OVERLAY_NATIVE_SURFACE_OWNED");
+      assert.equal(error.currentOwner, "presenter");
+      assert.equal(error.requestedOwner, "presenter");
+      return true;
+    }
+  );
+  assert.equal(fake.calls.length, callsBeforeRejectedOwner);
+  assert.equal(first.isOpen(), true);
+  assert.equal(first.snapshot().nativeSurfaceOwner, true);
+  assert.equal(first.snapshot().nativeHostOpen, true);
+  assert.deepEqual(fake.calls.filter((call) => call.method === "detachNativeOverlayHostView"), []);
+
+  const callsAfterRejection = fake.calls.length;
+  await new Promise((resolve) => setTimeout(resolve, 80));
+  assert.equal(
+    fake.calls.slice(callsAfterRejection).some((call) => call.method === "detachNativeOverlayHostView"),
+    false
+  );
+
+  first.close();
+  assert.equal(first.snapshot().closeReason, "closed");
+  assert.equal(first.snapshot().nativeSurfaceOwner, false);
+  assert.equal(fake.calls.filter((call) => call.method === "detachNativeOverlayHostView").length, 1);
+
+  const second = steam.overlay.attachPresenter({
+    nativeWindowHandle: secondHandle,
+    activationBoostMs: 0,
+    activeGraceMs: 0,
+    pollIntervalMs: 30
+  });
+  assert.ok(
+    second.snapshot().nativeSurfaceLeaseGeneration > firstActive.nativeSurfaceLeaseGeneration
+  );
+  assert.equal(second.snapshot().nativeSurfaceOwner, true);
+  second.prepareForOverlay(0);
+  assert.equal(second.snapshot().nativeHostOpen, true);
+  assert.equal(attachedHandle.equals(secondHandle), true);
+  const callsBeforeStaleOwnerActions = fake.calls.length;
+  staleActivation.disconnect();
+  first.pump();
+  first.show();
+  first.hide();
+  first.close();
+  staleOverlayCallback({ active: false, app_id: 480 });
+  assert.equal(fake.calls.length, callsBeforeStaleOwnerActions);
+  assert.equal(second.snapshot().nativeHostOpen, true);
+  assert.equal(fake.calls.filter((call) => call.method === "detachNativeOverlayHostView").length, 1);
+
+  second.close();
+  assert.equal(second.snapshot().closeReason, "closed");
+  assert.equal(second.snapshot().nativeSurfaceOwner, false);
+  assert.equal(
+    fake.calls.filter((call) => call.method === "detachNativeOverlayHostView").length,
+    2
+  );
+});
+
+test("overlay ownership registry spans module reloads and rejects stale owners", (t) => {
+  setProcessPlatformForTest(t, "win32");
+
+  let hostOpen = false;
+  let attachedHandle;
+  const firstHandle = Buffer.from([3, 3, 3, 3]);
+  const secondHandle = Buffer.from([4, 4, 4, 4]);
+  const fake = createFakeNative({
+    attachNativeOverlayHostViewForOverlay(nativeWindowHandle) {
+      hostOpen = true;
+      attachedHandle = nativeWindowHandle;
+      this.calls.push({ method: "attachNativeOverlayHostViewForOverlay", args: [nativeWindowHandle] });
+    },
+    pumpNativeOverlayProbeWindow() {},
+    showNativeOverlayHostView() {},
+    setNativeOverlayHostInputPassthrough() {},
+    setNativeOverlayHostOpacity() {},
+    detachNativeOverlayHostView() {
+      hostOpen = false;
+      attachedHandle = undefined;
+      this.calls.push({ method: "detachNativeOverlayHostView", args: [] });
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return false;
+    },
+    isNativeOverlayHostViewOpen() {
+      return hostOpen;
+    }
+  });
+  const firstSteam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  const firstPresenter = firstSteam.overlay.attachPresenter({
+    nativeWindowHandle: firstHandle,
+    pollIntervalMs: 10000
+  });
+  firstPresenter.prepareForOverlay(0);
+  const staleCallback = fake.callbacks.get(firstSteam.SteamCallback.GameOverlayActivated);
+
+  const secondSteam = loadSteamWithFakeNative(fake);
+  assert.throws(
+    () =>
+      secondSteam.overlay.attachPresenter({
+        nativeWindowHandle: secondHandle,
+        pollIntervalMs: 10000
+      }),
+    (error) => error.code === "STEAM_OVERLAY_NATIVE_SURFACE_OWNED"
+  );
+  assert.equal(attachedHandle.equals(firstHandle), true);
+
+  firstPresenter.close();
+  const secondPresenter = secondSteam.overlay.attachPresenter({
+    nativeWindowHandle: secondHandle,
+    pollIntervalMs: 10000
+  });
+  secondPresenter.prepareForOverlay(0);
+  const callsBeforeStaleOwner = fake.calls.length;
+  firstPresenter.close();
+  firstPresenter.pump();
+  staleCallback({ active: false, app_id: 480 });
+  assert.equal(fake.calls.length, callsBeforeStaleOwner);
+  assert.equal(attachedHandle.equals(secondHandle), true);
+  secondPresenter.close();
+
+  const createWindow = (nativeWindowHandle) => ({
+    isDestroyed() {
+      return false;
+    },
+    getNativeWindowHandle() {
+      return nativeWindowHandle;
+    },
+    once() {},
+    on() {},
+    off() {},
+    webContents: {
+      once() {},
+      on() {},
+      off() {},
+      invalidate() {},
+      send() {}
+    }
+  });
+  const firstController = firstSteam.overlay.createElectronSteamOverlay(createWindow(firstHandle), {
+    pollIntervalMs: 10000
+  });
+  assert.throws(
+    () => secondSteam.overlay.createElectronSteamOverlay(createWindow(secondHandle)),
+    (error) => error.code === "STEAM_OVERLAY_ELECTRON_CONTROLLER_OWNED"
+  );
+  firstController.close();
+  const secondController = secondSteam.overlay.createElectronSteamOverlay(createWindow(secondHandle), {
+    pollIntervalMs: 10000
+  });
+  assert.equal(secondController.isOpen(), true);
+  secondController.close();
+});
+
+test("overlay ownership rejects worker-thread isolates before side effects", (t) => {
+  setProcessPlatformForTest(t, "linux");
+  setProcessEnvForTest(t, {
+    DISPLAY: undefined,
+    LD_PRELOAD: "/tmp/keep.so:/tmp/gameoverlayrenderer.so"
+  });
+
+  const previousLoad = Module._load;
+  Module._load = function mockWorkerThreadLoad(request, parent, isMain) {
+    if (request === "node:worker_threads") {
+      return { isMainThread: false };
+    }
+    return previousLoad.call(this, request, parent, isMain);
+  };
+  t.after(() => {
+    Module._load = previousLoad;
+    clearSteamBridgeCache();
+  });
+
+  const fake = createFakeNative();
+  const steam = loadSteamWithFakeNative(fake, { linuxDisplay: false });
+  const window = {
+    isDestroyed() {
+      return false;
+    },
+    getNativeWindowHandle() {
+      return Buffer.from([12, 12, 12, 12]);
+    },
+    once() {
+      throw new Error("worker rejection must precede listener setup");
+    },
+    on() {
+      throw new Error("worker rejection must precede listener setup");
+    },
+    webContents: {
+      once() {},
+      on() {
+        throw new Error("worker rejection must precede listener setup");
+      },
+      invalidate() {},
+      send() {}
+    }
+  };
+  const hostHandle = Buffer.from([12, 12, 12, 12]);
+  const operations = [
+    () => steam.overlay.openNativeOverlayProbeWindow(),
+    () => steam.overlay.attachNativeOverlayHostView(hostHandle),
+    () => steam.overlay.pumpNativeOverlayProbeWindow(),
+    () => steam.overlay.showNativeOverlayHostView(),
+    () => steam.overlay.setNativeOverlayHostInputPassthrough(false),
+    () => steam.overlay.closeNativeOverlayProbeWindow(),
+    () => steam.overlay.startNativeOverlaySession(),
+    () => steam.overlay.attachPresenter({ nativeWindowHandle: hostHandle }),
+    () => steam.overlay.createElectronSteamOverlay(window)
+  ];
+
+  for (const operation of operations) {
+    assert.throws(operation, (error) => {
+      assert.equal(error instanceof steam.SteamOverlayMainThreadRequiredError, true);
+      assert.equal(error.code, "STEAM_OVERLAY_MAIN_THREAD_REQUIRED");
+      return true;
+    });
+  }
+  assert.deepEqual(fake.calls, []);
+  assert.equal(process.env.LD_PRELOAD, "/tmp/keep.so:/tmp/gameoverlayrenderer.so");
+});
+
+test("native overlay sessions and presenters reject process-global ownership collisions", (t) => {
+  setProcessPlatformForTest(t, "linux");
+
+  let surface = "none";
+  const firstHandle = Buffer.from([3, 3, 3, 3]);
+  const secondHandle = Buffer.from([4, 4, 4, 4]);
+  const fake = createFakeNative({
+    openNativeOverlayProbeWindow(title) {
+      surface = "probe";
+      this.calls.push({ method: "openNativeOverlayProbeWindow", args: [title] });
+    },
+    attachNativeOverlayHostView(nativeWindowHandle) {
+      surface = nativeWindowHandle.equals(firstHandle) ? "first-host" : "second-host";
+      this.calls.push({ method: "attachNativeOverlayHostView", args: [nativeWindowHandle] });
+    },
+    pumpNativeOverlayProbeWindow() {
+      if (surface === "none") {
+        throw new Error("native overlay surface is closed");
+      }
+      this.calls.push({ method: "pumpNativeOverlayProbeWindow", args: [surface] });
+    },
+    showNativeOverlayHostView() {},
+    setNativeOverlayHostInputPassthrough() {},
+    setNativeOverlayHostOpacity() {},
+    updateNativeOverlayHostFrame() {},
+    closeNativeOverlayProbeWindow() {
+      if (surface === "probe") {
+        surface = "none";
+      }
+      this.calls.push({ method: "closeNativeOverlayProbeWindow", args: [] });
+    },
+    detachNativeOverlayHostView() {
+      if (surface.endsWith("host")) {
+        surface = "none";
+      }
+      this.calls.push({ method: "detachNativeOverlayHostView", args: [] });
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return surface === "probe";
+    },
+    isNativeOverlayHostViewOpen() {
+      return surface.endsWith("host");
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  const first = steam.overlay.attachPresenter({
+    nativeWindowHandle: firstHandle,
+    pollIntervalMs: 10000
+  });
+  assert.equal(surface, "first-host");
+
+  assert.throws(
+    () =>
+      steam.overlay.startNativeOverlaySession({
+        title: "Rejected Session",
+        pumpIntervalMs: 10000
+      }),
+    /session cannot start while presenter is open/
+  );
+  assert.equal(first.snapshot().nativeSurfaceOwner, true);
+  assert.equal(surface, "first-host");
+  first.close();
+
+  const session = steam.overlay.startNativeOverlaySession({
+    title: "Accepted Session",
+    pumpIntervalMs: 10000
+  });
+  assert.equal(session.snapshot().nativeSurfaceOwner, true);
+  assert.equal(surface, "probe");
+
+  assert.throws(
+    () =>
+      steam.overlay.attachPresenter({
+        nativeWindowHandle: secondHandle,
+        pollIntervalMs: 10000
+      }),
+    /presenter cannot start while session is open/
+  );
+  assert.equal(session.snapshot().nativeSurfaceOwner, true);
+  assert.equal(surface, "probe");
+  session.close();
+
+  const second = steam.overlay.attachPresenter({
+    nativeWindowHandle: secondHandle,
+    pollIntervalMs: 10000
+  });
+  assert.equal(second.snapshot().nativeSurfaceOwner, true);
+  assert.equal(surface, "second-host");
+  first.close();
+  session.close();
+  assert.equal(surface, "second-host");
+
+  second.close();
+  assert.equal(surface, "none");
+});
+
+test("native overlay presenter terminally closes after an activation attach failure", async (t) => {
+  setProcessPlatformForTest(t, "win32");
+
+  const hostHandle = Buffer.from([5, 5, 5, 5]);
+  let hostOpen = false;
+  const attachError = new Error("D3D11 device creation failed");
+  const cleanupError = new Error("native detach cleanup failed");
+  const fake = createFakeNative({
+    attachNativeOverlayHostViewForOverlay(nativeWindowHandle) {
+      hostOpen = true;
+      this.calls.push({ method: "attachNativeOverlayHostViewForOverlay", args: [nativeWindowHandle] });
+      throw attachError;
+    },
+    pumpNativeOverlayProbeWindow() {
+      this.calls.push({ method: "pumpNativeOverlayProbeWindow", args: [] });
+    },
+    showNativeOverlayHostView() {},
+    setNativeOverlayHostInputPassthrough() {},
+    setNativeOverlayHostOpacity() {},
+    detachNativeOverlayHostView() {
+      hostOpen = false;
+      this.calls.push({ method: "detachNativeOverlayHostView", args: [] });
+      throw cleanupError;
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return false;
+    },
+    isNativeOverlayHostViewOpen() {
+      return hostOpen;
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  const presenter = steam.overlay.attachPresenter({
+    nativeWindowHandle: hostHandle,
+    pollIntervalMs: 30
+  });
+  assert.throws(() => presenter.prepareForOverlay(), /D3D11 device creation failed/);
+  const failed = presenter.snapshot();
+  assert.equal(presenter.isOpen(), false);
+  assert.equal(failed.closed, true);
+  assert.equal(failed.mode, "closed");
+  assert.equal(failed.currentFps, 0);
+  assert.equal(failed.closeReason, "error");
+  assert.equal(failed.lastError, attachError);
+  assert.equal(failed.nativeSurfaceOwner, false);
+  assert.equal(failed.nativeHostOpen, false);
+  assert.equal(fake.calls.filter((call) => call.method === "detachNativeOverlayHostView").length, 1);
+
+  const callCount = fake.calls.length;
+  await new Promise((resolve) => setTimeout(resolve, 80));
+  assert.equal(fake.calls.length, callCount);
+  presenter.close();
+  assert.equal(fake.calls.filter((call) => call.method === "detachNativeOverlayHostView").length, 1);
+});
+
+test("Windows idle scheduler contains a needs-present attach failure", async (t) => {
+  setProcessPlatformForTest(t, "win32");
+
+  const hostHandle = Buffer.from([5, 6, 5, 6]);
+  let hostOpen = false;
+  let diagnosticsReads = 0;
+  const attachError = new Error("D3D11 scheduled attach Present failed");
+  const fake = createFakeNative({
+    getOverlayDiagnostics() {
+      diagnosticsReads += 1;
+      return {
+        steamRunning: true,
+        steamInstallPath: "/tmp/steam",
+        appId: 480,
+        overlayEnabled: true,
+        overlayNeedsPresent: true,
+        overlayNeedsPresentPollingEnabled: true,
+        steamDeck: false,
+        bigPicture: false
+      };
+    },
+    attachNativeOverlayHostView() {
+      hostOpen = true;
+      this.calls.push({ method: "attachNativeOverlayHostView", args: [] });
+      throw attachError;
+    },
+    pumpNativeOverlayProbeWindow() {},
+    showNativeOverlayHostView() {},
+    setNativeOverlayHostInputPassthrough() {},
+    setNativeOverlayHostOpacity() {},
+    detachNativeOverlayHostView() {
+      hostOpen = false;
+      this.calls.push({ method: "detachNativeOverlayHostView", args: [] });
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return false;
+    },
+    isNativeOverlayHostViewOpen() {
+      return hostOpen;
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  const presenter = steam.overlay.attachPresenter({
+    nativeWindowHandle: hostHandle,
+    needsPresentFps: 0,
+    pollIntervalMs: 30
+  });
+  assert.equal(await waitForCondition(() => presenter.snapshot().closed, 500, 5), true);
+  const failed = presenter.snapshot();
+  assert.ok(diagnosticsReads >= 1);
+  assert.equal(failed.closeReason, "error");
+  assert.equal(failed.lastError, attachError);
+  assert.equal(failed.nativeSurfaceOwner, false);
+  assert.equal(fake.calls.filter((call) => call.method === "attachNativeOverlayHostView").length, 1);
+  assert.equal(fake.calls.filter((call) => call.method === "detachNativeOverlayHostView").length, 1);
+
+  const callCount = fake.calls.length;
+  await new Promise((resolve) => setTimeout(resolve, 80));
+  assert.equal(fake.calls.length, callCount);
+});
+
+test("native overlay presenter contains a scheduled D3D11 resize or present failure", async (t) => {
+  setProcessPlatformForTest(t, "linux");
+
+  const hostHandle = Buffer.from([6, 6, 6, 6]);
+  let hostOpen = false;
+  let pumpAttempts = 0;
+  const presentError = new Error("D3D11 ResizeBuffers failed");
+  const fake = createFakeNative({
+    attachNativeOverlayHostView(nativeWindowHandle) {
+      hostOpen = true;
+      this.calls.push({ method: "attachNativeOverlayHostView", args: [nativeWindowHandle] });
+    },
+    pumpNativeOverlayProbeWindow() {
+      pumpAttempts += 1;
+      this.calls.push({ method: "pumpNativeOverlayProbeWindow", args: [pumpAttempts] });
+      if (pumpAttempts === 2) {
+        throw presentError;
+      }
+    },
+    showNativeOverlayHostView() {},
+    setNativeOverlayHostInputPassthrough() {},
+    setNativeOverlayHostOpacity() {},
+    detachNativeOverlayHostView() {
+      hostOpen = false;
+      this.calls.push({ method: "detachNativeOverlayHostView", args: [] });
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return false;
+    },
+    isNativeOverlayHostViewOpen() {
+      return hostOpen;
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  const presenter = steam.overlay.attachPresenter({
+    nativeWindowHandle: hostHandle,
+    idleFps: 60,
+    pollIntervalMs: 50
+  });
+  assert.equal(presenter.snapshot().pumpCount, 1);
+  assert.equal(await waitForCondition(() => presenter.snapshot().closed, 500, 5), true);
+
+  const failed = presenter.snapshot();
+  assert.equal(failed.closeReason, "error");
+  assert.equal(failed.lastError, presentError);
+  assert.equal(failed.pumpCount, 1);
+  assert.equal(failed.currentFps, 0);
+  assert.equal(failed.nativeSurfaceOwner, false);
+  assert.equal(failed.nativeHostOpen, false);
+  assert.equal(fake.calls.filter((call) => call.method === "detachNativeOverlayHostView").length, 1);
+
+  const callCount = fake.calls.length;
+  await new Promise((resolve) => setTimeout(resolve, 80));
+  assert.equal(fake.calls.length, callCount);
+});
+
+test("managed Electron overlay ownership rejects a second controller before installing side effects", (t) => {
+  setProcessPlatformForTest(t, "linux");
+
+  let hostOpen = false;
+  const firstHandle = Buffer.from([7, 7, 7, 7]);
+  const secondHandle = Buffer.from([8, 8, 8, 8]);
+  const fake = createFakeNative({
+    attachNativeOverlayHostView(nativeWindowHandle) {
+      hostOpen = true;
+      this.calls.push({ method: "attachNativeOverlayHostView", args: [nativeWindowHandle] });
+    },
+    pumpNativeOverlayProbeWindow() {
+      this.calls.push({ method: "pumpNativeOverlayProbeWindow", args: [] });
+    },
+    showNativeOverlayHostView() {},
+    setNativeOverlayHostInputPassthrough() {},
+    setNativeOverlayHostOpacity() {},
+    detachNativeOverlayHostView() {
+      hostOpen = false;
+      this.calls.push({ method: "detachNativeOverlayHostView", args: [] });
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return false;
+    },
+    isNativeOverlayHostViewOpen() {
+      return hostOpen;
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+  const firstListeners = [];
+  const secondListeners = [];
+  const createWindow = (handle, listeners) => ({
+    isDestroyed() {
+      return false;
+    },
+    getNativeWindowHandle() {
+      return handle;
+    },
+    once(event) {
+      listeners.push(`window:once:${event}`);
+    },
+    on(event) {
+      listeners.push(`window:on:${event}`);
+    },
+    off(event) {
+      listeners.push(`window:off:${event}`);
+    },
+    webContents: {
+      once(event) {
+        listeners.push(`web:once:${event}`);
+      },
+      on(event) {
+        listeners.push(`web:on:${event}`);
+      },
+      off(event) {
+        listeners.push(`web:off:${event}`);
+      },
+      invalidate() {},
+      send() {}
+    }
+  });
+
+  t.after(clearSteamBridgeCache);
+
+  const first = steam.overlay.createElectronSteamOverlay(createWindow(firstHandle, firstListeners), {
+    pollIntervalMs: 10000
+  });
+  const firstGeneration = first.snapshot().electronOverlay.controllerGeneration;
+  const callsBeforeSecond = fake.calls.length;
+  assert.throws(
+    () => steam.overlay.createElectronSteamOverlay(createWindow(secondHandle, secondListeners)),
+    (error) => {
+      assert.equal(error instanceof steam.SteamOverlayElectronControllerOwnershipError, true);
+      assert.equal(error.code, "STEAM_OVERLAY_ELECTRON_CONTROLLER_OWNED");
+      return true;
+    }
+  );
+  assert.deepEqual(secondListeners, []);
+  assert.equal(fake.calls.length, callsBeforeSecond);
+  assert.equal(first.isOpen(), true);
+  assert.equal(first.snapshot().nativeSurfaceOwner, true);
+
+  first.close();
+  const second = steam.overlay.createElectronSteamOverlay(createWindow(secondHandle, secondListeners), {
+    pollIntervalMs: 10000
+  });
+  assert.ok(second.snapshot().electronOverlay.controllerGeneration > firstGeneration);
+  assert.equal(second.isOpen(), true);
+  second.close();
+});
+
+test("managed controller rejects a native-surface collision before env or listener side effects", (t) => {
+  setProcessPlatformForTest(t, "linux");
+  setProcessEnvForTest(t, {
+    LD_PRELOAD: "/tmp/keep.so:/tmp/gameoverlayrenderer.so"
+  });
+
+  let probeOpen = false;
+  const listenerCalls = [];
+  const fake = createFakeNative({
+    openNativeOverlayProbeWindow() {
+      probeOpen = true;
+    },
+    closeNativeOverlayProbeWindow() {
+      probeOpen = false;
+    },
+    attachNativeOverlayHostView() {},
+    pumpNativeOverlayProbeWindow() {},
+    showNativeOverlayHostView() {},
+    setNativeOverlayHostInputPassthrough() {},
+    setNativeOverlayHostOpacity() {},
+    detachNativeOverlayHostView() {},
+    isNativeOverlayProbeWindowOpen() {
+      return probeOpen;
+    },
+    isNativeOverlayHostViewOpen() {
+      return false;
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+  const window = {
+    isDestroyed() {
+      return false;
+    },
+    getNativeWindowHandle() {
+      return Buffer.from([5, 5, 5, 5]);
+    },
+    once(event) {
+      listenerCalls.push(`window:once:${event}`);
+    },
+    on(event) {
+      listenerCalls.push(`window:on:${event}`);
+    },
+    off(event) {
+      listenerCalls.push(`window:off:${event}`);
+    },
+    webContents: {
+      once() {},
+      on(event) {
+        listenerCalls.push(`web:on:${event}`);
+      },
+      off(event) {
+        listenerCalls.push(`web:off:${event}`);
+      },
+      invalidate() {},
+      send() {}
+    }
+  };
+
+  t.after(clearSteamBridgeCache);
+
+  steam.overlay.openNativeOverlayProbeWindow();
+  assert.throws(
+    () => steam.overlay.createElectronSteamOverlay(window),
+    (error) => error.code === "STEAM_OVERLAY_NATIVE_SURFACE_OWNED"
+  );
+  assert.equal(process.env.LD_PRELOAD, "/tmp/keep.so:/tmp/gameoverlayrenderer.so");
+  assert.deepEqual(listenerCalls, []);
+
+  steam.overlay.closeNativeOverlayProbeWindow();
+  const replacement = steam.overlay.createElectronSteamOverlay(window, {
+    pollIntervalMs: 10000,
+    scrubSteamOverlayChildProcessEnv: false
+  });
+  assert.equal(replacement.isOpen(), true);
+  replacement.close();
+});
+
+test("managed controller construction rolls back every partially installed resource", (t) => {
+  setProcessPlatformForTest(t, "win32");
+
+  let hostOpen = false;
+  const fake = createFakeNative({
+    pumpNativeOverlayProbeWindow() {},
+    detachNativeOverlayHostView() {
+      hostOpen = false;
+      this.calls.push({ method: "detachNativeOverlayHostView", args: [] });
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return false;
+    },
+    isNativeOverlayHostViewOpen() {
+      return hostOpen;
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  const createWindow = (failureStage, calls) => ({
+    isDestroyed() {
+      return false;
+    },
+    getNativeWindowHandle() {
+      return Buffer.from([6, 6, 6, 6]);
+    },
+    once(event) {
+      calls.push(`window:once:${event}`);
+      if (failureStage === "closed") {
+        throw new Error("closed listener registration failed");
+      }
+    },
+    on(event) {
+      calls.push(`window:on:${event}`);
+      if (failureStage === "geometry" && event === "resize") {
+        throw new Error("geometry listener registration failed");
+      }
+    },
+    off(event) {
+      calls.push(`window:off:${event}`);
+    },
+    webContents: {
+      once() {},
+      on(event) {
+        calls.push(`web:on:${event}`);
+        if (failureStage === "shortcut") {
+          throw new Error("shortcut listener registration failed");
+        }
+      },
+      off(event) {
+        calls.push(`web:off:${event}`);
+      },
+      invalidate() {},
+      send() {}
+    }
+  });
+
+  for (const failureStage of ["geometry", "shortcut", "closed"]) {
+    const calls = [];
+    assert.throws(
+      () =>
+        steam.overlay.createElectronSteamOverlay(createWindow(failureStage, calls), {
+          pollIntervalMs: 10000
+        }),
+      new RegExp(`${failureStage} listener registration failed`)
+    );
+    assert.equal(calls.some((call) => call.startsWith("window:off:")), true);
+    if (failureStage === "shortcut") {
+      assert.equal(calls.includes("web:off:before-input-event"), true);
+    }
+    if (failureStage === "closed") {
+      assert.equal(calls.includes("window:off:closed"), true);
+    }
+
+    const replacement = steam.overlay.createElectronSteamOverlay(createWindow(undefined, []), {
+      pollIntervalMs: 10000
+    });
+    assert.equal(replacement.isOpen(), true);
+    replacement.close();
+  }
+});
+
+test("managed presenter terminal failure closes controller registrations and wakes lifecycle waits", async (t) => {
+  setProcessPlatformForTest(t, "win32");
+
+  const hostHandle = Buffer.from([9, 9, 9, 9]);
+  const attachError = new Error("D3D11 initial Present failed");
+  let hostOpen = false;
+  let overlayEnabled = false;
+  const removed = [];
+  const fake = createFakeNative({
+    isOverlayEnabled() {
+      return overlayEnabled;
+    },
+    getOverlayDiagnostics() {
+      return {
+        steamRunning: true,
+        steamInstallPath: "C:\\Steam",
+        appId: 480,
+        overlayEnabled,
+        overlayNeedsPresent: false,
+        overlayNeedsPresentPollingEnabled: true,
+        steamDeck: false,
+        bigPicture: false
+      };
+    },
+    attachNativeOverlayHostViewForOverlay() {
+      hostOpen = true;
+      throw attachError;
+    },
+    pumpNativeOverlayProbeWindow() {},
+    showNativeOverlayHostView() {},
+    setNativeOverlayHostInputPassthrough() {},
+    setNativeOverlayHostOpacity() {},
+    detachNativeOverlayHostView() {
+      hostOpen = false;
+      this.calls.push({ method: "detachNativeOverlayHostView", args: [] });
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return false;
+    },
+    isNativeOverlayHostViewOpen() {
+      return hostOpen;
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+  const window = {
+    isDestroyed() {
+      return false;
+    },
+    getNativeWindowHandle() {
+      return hostHandle;
+    },
+    once() {},
+    on() {},
+    off(event) {
+      removed.push(`window:${event}`);
+    },
+    webContents: {
+      once() {},
+      on() {},
+      off(event) {
+        removed.push(`web:${event}`);
+      },
+      invalidate() {},
+      send() {}
+    }
+  };
+
+  t.after(clearSteamBridgeCache);
+
+  const overlay = steam.overlay.createElectronSteamOverlay(window, {
+    pollIntervalMs: 30
+  });
+  const shownWait = overlay.waitForOverlayShown({ timeoutMs: 500 });
+  const readyWait = overlay.waitForOverlayReady({ timeoutMs: 500 });
+  overlayEnabled = true;
+  assert.throws(() => overlay.presenter.prepareForOverlay(), (error) => error === attachError);
+  await assert.rejects(shownWait, (error) => {
+    assert.equal(error instanceof steam.SteamOverlayWaitClosedError, true);
+    assert.equal(error.code, "STEAM_OVERLAY_WAIT_CLOSED");
+    return true;
+  });
+  await assert.rejects(readyWait, (error) => {
+    assert.equal(error instanceof steam.SteamOverlayWaitClosedError, true);
+    assert.equal(error.code, "STEAM_OVERLAY_WAIT_CLOSED");
+    assert.equal(error.snapshot.diagnostics.overlayEnabled, true);
+    return true;
+  });
+  assert.equal(overlay.isOpen(), false);
+  assert.equal(overlay.snapshot().closeReason, "error");
+  assert.equal(overlay.snapshot().lastError, attachError);
+  assert.equal(removed.includes("web:before-input-event"), true);
+  assert.equal(removed.includes("window:closed"), true);
+  assert.equal(fake.calls.filter((call) => call.method === "disconnectGameOverlayActivated").length, 1);
+  assert.equal(fake.calls.filter((call) => call.method === "detachNativeOverlayHostView").length, 1);
+
+  const replacement = steam.overlay.createElectronSteamOverlay(window, {
+    presenterMode: "session"
+  });
+  assert.equal(replacement.isOpen(), true);
+  replacement.close();
+});
+
+test("managed session-mode pump failure terminally closes the wrapper and controller", async (t) => {
+  setProcessPlatformForTest(t, "linux");
+
+  const hostHandle = Buffer.from([8, 8, 8, 8]);
+  const presentError = new Error("session-mode scheduled Present failed");
+  let hostOpen = false;
+  let pumpCount = 0;
+  const removed = [];
+  const fake = createFakeNative({
+    attachNativeOverlayHostView() {
+      hostOpen = true;
+    },
+    pumpNativeOverlayProbeWindow() {
+      pumpCount += 1;
+      if (pumpCount >= 3) {
+        throw presentError;
+      }
+    },
+    showNativeOverlayHostView() {},
+    setNativeOverlayHostInputPassthrough() {},
+    setNativeOverlayHostOpacity() {},
+    detachNativeOverlayHostView() {
+      hostOpen = false;
+      this.calls.push({ method: "detachNativeOverlayHostView", args: [] });
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return false;
+    },
+    isNativeOverlayHostViewOpen() {
+      return hostOpen;
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+  const window = {
+    isDestroyed() {
+      return false;
+    },
+    getNativeWindowHandle() {
+      return hostHandle;
+    },
+    once() {},
+    on() {},
+    off(event) {
+      removed.push(`window:${event}`);
+    },
+    webContents: {
+      once() {},
+      on() {},
+      off(event) {
+        removed.push(`web:${event}`);
+      },
+      invalidate() {},
+      send() {}
+    }
+  };
+
+  t.after(clearSteamBridgeCache);
+
+  const overlay = steam.overlay.createElectronSteamOverlay(window, {
+    presenterMode: "session"
+  });
+  overlay.prepareForNotification();
+  const shownWait = assert.rejects(
+    overlay.waitForOverlayShown({ timeoutMs: 500 }),
+    (error) => {
+      assert.equal(error instanceof steam.SteamOverlayWaitClosedError, true);
+      return true;
+    }
+  );
+  assert.equal(await waitForCondition(() => !overlay.isOpen(), 500, 5), true);
+  await shownWait;
+  const failed = overlay.snapshot();
+  assert.equal(failed.closed, true);
+  assert.equal(failed.closeReason, "error");
+  assert.equal(failed.lastError, presentError);
+  assert.equal(failed.nativeSurfaceOwner, false);
+  assert.equal(removed.includes("web:before-input-event"), true);
+  assert.equal(removed.includes("window:closed"), true);
+  assert.equal(fake.calls.filter((call) => call.method === "detachNativeOverlayHostView").length, 1);
+
+  pumpCount = 0;
+  const replacement = steam.overlay.createElectronSteamOverlay(window, {
+    presenterMode: "session"
+  });
+  assert.equal(replacement.isOpen(), true);
+  replacement.close();
+});
+
+test("native overlay session constructor failure cleans and releases its surface lease", (t) => {
+  setProcessPlatformForTest(t, "linux");
+
+  let probeOpen = false;
+  let failNextPump = true;
+  const fake = createFakeNative({
+    openNativeOverlayProbeWindow() {
+      probeOpen = true;
+      this.calls.push({ method: "openNativeOverlayProbeWindow", args: [] });
+    },
+    pumpNativeOverlayProbeWindow() {
+      this.calls.push({ method: "pumpNativeOverlayProbeWindow", args: [] });
+      if (failNextPump) {
+        failNextPump = false;
+        throw new Error("initial native session Present failed");
+      }
+    },
+    closeNativeOverlayProbeWindow() {
+      probeOpen = false;
+      this.calls.push({ method: "closeNativeOverlayProbeWindow", args: [] });
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return probeOpen;
+    },
+    isNativeOverlayHostViewOpen() {
+      return false;
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  assert.throws(
+    () => steam.overlay.startNativeOverlaySession({ pumpIntervalMs: 10000 }),
+    /initial native session Present failed/
+  );
+  assert.equal(probeOpen, false);
+  assert.equal(fake.calls.filter((call) => call.method === "closeNativeOverlayProbeWindow").length, 1);
+
+  const session = steam.overlay.startNativeOverlaySession({ pumpIntervalMs: 10000 });
+  assert.equal(session.isOpen(), true);
+  assert.equal(session.snapshot().nativeSurfaceOwner, true);
+  session.close();
+});
+
+test("raw native surface diagnostics cannot mutate a managed owner", (t) => {
+  setProcessPlatformForTest(t, "linux");
+
+  let surface = "none";
+  let failRawPump = false;
+  const hostHandle = Buffer.from([10, 10, 10, 10]);
+  const fake = createFakeNative({
+    openNativeOverlayProbeWindow() {
+      surface = "probe";
+      this.calls.push({ method: "openNativeOverlayProbeWindow", args: [] });
+    },
+    attachNativeOverlayHostView() {
+      surface = "host";
+      this.calls.push({ method: "attachNativeOverlayHostView", args: [] });
+    },
+    pumpNativeOverlayProbeWindow() {
+      if (failRawPump) {
+        failRawPump = false;
+        throw new Error("raw native surface pump failed");
+      }
+    },
+    pumpNativeOverlayHostView() {},
+    showNativeOverlayHostView() {},
+    hideNativeOverlayHostView() {},
+    setNativeOverlayHostInputPassthrough() {},
+    setNativeOverlayHostOpacity() {},
+    updateNativeOverlayHostFrame() {},
+    closeNativeOverlayProbeWindow() {
+      if (surface === "probe") {
+        surface = "none";
+      }
+      this.calls.push({ method: "closeNativeOverlayProbeWindow", args: [] });
+    },
+    detachNativeOverlayHostView() {
+      if (surface === "host") {
+        surface = "none";
+      }
+      this.calls.push({ method: "detachNativeOverlayHostView", args: [] });
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return surface === "probe";
+    },
+    isNativeOverlayHostViewOpen() {
+      return surface === "host";
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  for (const operation of [
+    () => steam.overlay.pumpNativeOverlayProbeWindow(),
+    () => steam.overlay.pumpNativeOverlayHostView(),
+    () => steam.overlay.showNativeOverlayHostView(),
+    () => steam.overlay.hideNativeOverlayHostView(),
+    () => steam.overlay.setNativeOverlayHostInputPassthrough(true),
+    () => steam.overlay.setNativeOverlayHostOpacity(false),
+    () => steam.overlay.updateNativeOverlayHostFrame(Buffer.alloc(4), 1, 1),
+    () => steam.overlay.closeNativeOverlayProbeWindow(),
+    () => steam.overlay.detachNativeOverlayHostView()
+  ]) {
+    assert.doesNotThrow(operation);
+  }
+  assert.equal(surface, "none");
+
+  const presenter = steam.overlay.attachPresenter({
+    nativeWindowHandle: hostHandle,
+    pollIntervalMs: 10000
+  });
+  assert.equal(surface, "host");
+  for (const operation of [
+    () => steam.overlay.openNativeOverlayProbeWindow(),
+    () => steam.overlay.attachNativeOverlayHostView(hostHandle),
+    () => steam.overlay.pumpNativeOverlayProbeWindow(),
+    () => steam.overlay.showNativeOverlayHostView(),
+    () => steam.overlay.hideNativeOverlayHostView(),
+    () => steam.overlay.setNativeOverlayHostInputPassthrough(true),
+    () => steam.overlay.setNativeOverlayHostOpacity(false),
+    () => steam.overlay.updateNativeOverlayHostFrame(Buffer.alloc(4), 1, 1),
+    () => steam.overlay.closeNativeOverlayProbeWindow(),
+    () => steam.overlay.detachNativeOverlayHostView()
+  ]) {
+    assert.throws(operation, /raw cannot start while presenter is open/);
+  }
+  assert.equal(surface, "host");
+  presenter.close();
+
+  steam.overlay.openNativeOverlayProbeWindow();
+  assert.equal(surface, "probe");
+  assert.throws(
+    () => steam.overlay.openNativeOverlayProbeWindow(),
+    /raw cannot start while raw is open/
+  );
+  assert.throws(
+    () => steam.overlay.attachNativeOverlayHostView(hostHandle),
+    /raw cannot start while raw is open/
+  );
+  steam.overlay.detachNativeOverlayHostView();
+  assert.equal(surface, "probe");
+  assert.throws(
+    () => steam.overlay.startNativeOverlaySession({ pumpIntervalMs: 10000 }),
+    /session cannot start while raw is open/
+  );
+  steam.overlay.closeNativeOverlayProbeWindow();
+  assert.equal(surface, "none");
+
+  steam.overlay.attachNativeOverlayHostView(hostHandle);
+  steam.overlay.closeNativeOverlayProbeWindow();
+  assert.equal(surface, "host");
+  assert.throws(
+    () => steam.overlay.startNativeOverlaySession({ pumpIntervalMs: 10000 }),
+    /session cannot start while raw is open/
+  );
+  steam.overlay.detachNativeOverlayHostView();
+  assert.equal(surface, "none");
+
+  steam.overlay.openNativeOverlayProbeWindow();
+  failRawPump = true;
+  assert.throws(() => steam.overlay.pumpNativeOverlayProbeWindow(), /raw native surface pump failed/);
+
+  const session = steam.overlay.startNativeOverlaySession({ pumpIntervalMs: 10000 });
+  assert.equal(session.isOpen(), true);
+  session.close();
+});
+
+test("Windows presenter reactivates one HWND and D3D11 surface across three cycles", (t) => {
+  setProcessPlatformForTest(t, "win32");
+
+  const hostHandle = Buffer.from([11, 11, 11, 11]);
+  let hostOpen = false;
+  let inputPassthrough = true;
+  let opaque = false;
+  let surfaceInstanceGeneration = 0;
+  let hwnd;
+  const fake = createFakeNative({
+    attachNativeOverlayHostViewForOverlay() {
+      hostOpen = true;
+      inputPassthrough = false;
+      opaque = true;
+      surfaceInstanceGeneration += 1;
+      hwnd = `0x${surfaceInstanceGeneration.toString(16).padStart(16, "0")}`;
+      this.calls.push({ method: "attachNativeOverlayHostViewForOverlay", args: [] });
+    },
+    pumpNativeOverlayProbeWindow() {},
+    showNativeOverlayHostView() {},
+    setNativeOverlayHostInputPassthrough(passThrough) {
+      inputPassthrough = passThrough;
+      this.calls.push({ method: "setNativeOverlayHostInputPassthrough", args: [passThrough] });
+    },
+    setNativeOverlayHostOpacity(nextOpaque) {
+      opaque = nextOpaque;
+      this.calls.push({ method: "setNativeOverlayHostOpacity", args: [nextOpaque] });
+    },
+    detachNativeOverlayHostView() {
+      hostOpen = false;
+      this.calls.push({ method: "detachNativeOverlayHostView", args: [] });
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return false;
+    },
+    isNativeOverlayHostViewOpen() {
+      return hostOpen;
+    },
+    getNativeOverlayHostDiagnosticsJson() {
+      return JSON.stringify({
+        platform: "win32",
+        backend: "windows-d3d11",
+        surfaceInstanceGeneration,
+        hwnd,
+        inputPassthrough,
+        opaque
+      });
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  const presenter = steam.overlay.attachPresenter({
+    nativeWindowHandle: hostHandle,
+    activationBoostMs: 0,
+    activeGraceMs: 0,
+    pollIntervalMs: 10000
+  });
+  let firstLeaseGeneration;
+  let firstInstanceGeneration;
+  let firstHwnd;
+  for (let cycle = 1; cycle <= 3; cycle += 1) {
+    presenter.prepareForOverlay(0);
+    const active = presenter.snapshot();
+    firstLeaseGeneration ??= active.nativeSurfaceLeaseGeneration;
+    firstInstanceGeneration ??= active.nativeHostDiagnostics.surfaceInstanceGeneration;
+    firstHwnd ??= active.nativeHostDiagnostics.hwnd;
+    assert.equal(active.nativeSurfaceLeaseGeneration, firstLeaseGeneration);
+    assert.equal(active.nativeHostDiagnostics.surfaceInstanceGeneration, firstInstanceGeneration);
+    assert.equal(active.nativeHostDiagnostics.hwnd, firstHwnd);
+    fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: true, app_id: 480 });
+    fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: false, app_id: 480 });
+    assert.equal(presenter.snapshot().mode, "passive");
+  }
+
+  assert.equal(
+    fake.calls.filter((call) => call.method === "attachNativeOverlayHostViewForOverlay").length,
+    1
+  );
+  assert.equal(fake.calls.filter((call) => call.method === "detachNativeOverlayHostView").length, 0);
+  presenter.close();
+  assert.equal(fake.calls.filter((call) => call.method === "detachNativeOverlayHostView").length, 1);
 });
 
 test("native overlay presenter reuses a passive non-Windows host for overlay activation", async (t) => {

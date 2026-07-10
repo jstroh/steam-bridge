@@ -1191,6 +1191,7 @@ mod windows {
     use std::env;
     use std::mem;
     use std::ptr;
+    use std::sync::atomic::{AtomicU64, Ordering};
     use std::sync::{Mutex, OnceLock};
     use std::time::{SystemTime, UNIX_EPOCH};
     use windows_sys::core::{GUID, HRESULT};
@@ -1418,6 +1419,7 @@ mod windows {
     }
 
     struct NativeSurface {
+        instance_generation: u64,
         hwnd: HWND,
         parent_hwnd: Option<HWND>,
         backend: WindowsNativeBackend,
@@ -1503,6 +1505,7 @@ mod windows {
     unsafe impl Send for NativeSurface {}
 
     static SURFACE: Lazy<Mutex<Option<NativeSurface>>> = Lazy::new(|| Mutex::new(None));
+    static NEXT_SURFACE_INSTANCE_GENERATION: AtomicU64 = AtomicU64::new(0);
     static WINDOW_CLASS_RESULT: OnceLock<Result<(), String>> = OnceLock::new();
     static WINDOW_MESSAGE_DIAGNOSTICS: Lazy<Mutex<WindowMessageDiagnostics>> =
         Lazy::new(|| Mutex::new(WindowMessageDiagnostics::default()));
@@ -1648,12 +1651,25 @@ mod windows {
             return Ok(());
         };
 
-        unsafe {
+        let result = unsafe {
             pump_messages();
             update_window_frame(surface);
             if surface.visible {
-                render_surface(surface)?;
+                render_surface(surface)
+            } else {
+                Ok(())
             }
+        };
+
+        if let Err(error) = result {
+            let failed_surface = guard.take();
+            drop(guard);
+            if let Some(surface) = failed_surface {
+                unsafe {
+                    destroy_surface(surface);
+                }
+            }
+            return Err(error);
         }
 
         Ok(())
@@ -1735,6 +1751,7 @@ mod windows {
                 json!({
                     "platform": "win32",
                     "backend": surface.backend.as_str(),
+                    "surfaceInstanceGeneration": surface.instance_generation,
                     "hostStyle": surface.host_style.as_str(),
                     "renderer": renderer,
                     "hwnd": hwnd_hex(surface.hwnd),
@@ -1850,6 +1867,9 @@ mod windows {
         };
 
         let mut surface = NativeSurface {
+            instance_generation: NEXT_SURFACE_INSTANCE_GENERATION
+                .fetch_add(1, Ordering::Relaxed)
+                .wrapping_add(1),
             hwnd,
             parent_hwnd,
             backend,

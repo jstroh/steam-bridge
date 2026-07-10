@@ -1591,6 +1591,12 @@ assert.equal(steam.STEAM_FRIENDS_OVERLAY_URL, "https://steamcommunity.com/chat/"
 assert.equal(typeof steam.electronNativeOverlaySessionOptions, "function");
 assert.equal(typeof steam.electronOverlayPresenterOptions, "function");
 assert.equal(typeof steam.electronScrubSteamOverlayChildProcessEnv, "function");
+assert.equal(typeof steam.SteamOverlayMainThreadRequiredError, "function");
+assert.equal(typeof steam.SteamOverlayNativeSurfaceOwnershipError, "function");
+assert.equal(typeof steam.SteamOverlayElectronControllerOwnershipError, "function");
+assert.equal(typeof steam.default.SteamOverlayNativeSurfaceOwnershipError, "function");
+assert.equal(typeof steam.default.SteamOverlayElectronControllerOwnershipError, "function");
+assert.equal(typeof steam.default.SteamOverlayMainThreadRequiredError, "function");
 assert.equal(steam.SteamworksEnums.EResult.k_EResultOK, 1);
 assert.equal(typeof electron.electronConfigureSteamOverlay, "function");
 assert.equal(typeof electron.electronNativeOverlaySessionOptions, "function");
@@ -1633,6 +1639,9 @@ import steam, {
   isOverlayNeedsPresentPollingEnabled,
   openDialogEquivalentOverlay,
   overlay,
+  SteamOverlayElectronControllerOwnershipError,
+  SteamOverlayMainThreadRequiredError,
+  SteamOverlayNativeSurfaceOwnershipError,
   SteamworksEnums
 } from "steam-bridge";
 import * as electron from "steam-bridge/electron";
@@ -1667,6 +1676,8 @@ assert.equal(typeof steam.utils.isOverlayNeedsPresentPollingEnabled, "function")
 assert.equal(typeof steam.electronNativeOverlaySessionOptions, "function");
 assert.equal(typeof steam.electronOverlayPresenterOptions, "function");
 assert.equal(typeof steam.electronScrubSteamOverlayChildProcessEnv, "function");
+assert.equal(typeof SteamOverlayNativeSurfaceOwnershipError, "function");
+assert.equal(typeof SteamOverlayElectronControllerOwnershipError, "function");
 assert.equal(SteamworksEnums.EResult.k_EResultOK, 1);
 assert.equal(typeof electron.electronConfigureSteamOverlay, "function");
 assert.equal(typeof electron.electronNativeOverlaySessionOptions, "function");
@@ -1711,9 +1722,13 @@ import steam, {
   isOverlayNeedsPresentPollingEnabled,
   overlay,
   STEAM_FRIENDS_OVERLAY_URL,
+  SteamOverlayElectronControllerOwnershipError,
+  SteamOverlayMainThreadRequiredError,
+  SteamOverlayNativeSurfaceOwnershipError,
   SteamworksEnums,
   type ElectronSteamOverlay,
   type ElectronSteamOverlayNativeHostAvailability,
+  type ElectronSteamOverlaySnapshot,
   type MacOverlayEnvironment,
   type NativeOverlayHostUnavailableReason,
   type OverlayDiagnostics,
@@ -1754,6 +1769,25 @@ const profileOverlayTarget: SteamOverlayTarget = { type: "profile", steamId64: 7
 const inputPassthroughFn: (passThrough: boolean) => void = overlay.setNativeOverlayHostInputPassthrough;
 const opacityFn: (opaque: boolean) => void = overlay.setNativeOverlayHostOpacity;
 const friendsOverlayUrl: string = STEAM_FRIENDS_OVERLAY_URL;
+const nativeOwnerErrorCode: string = new SteamOverlayNativeSurfaceOwnershipError("presenter", "session").code;
+const controllerOwnerErrorCode: string = new SteamOverlayElectronControllerOwnershipError().code;
+const mainThreadErrorCode: string = new SteamOverlayMainThreadRequiredError().code;
+const legacyElectronOverlayMetadata: ElectronSteamOverlaySnapshot["electronOverlay"] = {
+  presenterMode: "persistent",
+  closeWithWindow: true,
+  autoPrepareForNotifications: true,
+  scrubSteamOverlayChildProcessEnv: true,
+  scrubbedEnvKeys: [],
+  restoreFocusDelayMs: 0,
+  activationBoostMs: 0,
+  activeGraceMs: 0,
+  overlayShortcut: {
+    enabled: false,
+    preventDefault: true,
+    targetType: "friends",
+    target: null
+  }
+};
 const config = electronConfigureSteamOverlay({ profile: "off", disableDirectComposition: true });
 const configDisableDirectComposition: boolean = config.disableDirectComposition;
 const scrubbedKeys: string[] = electronScrubSteamOverlayChildProcessEnv({});

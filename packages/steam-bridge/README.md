@@ -415,8 +415,13 @@ should go through the managed `createElectronSteamOverlay(...)` path.
 
 For Electron apps, create one managed overlay for the process's main game
 window and reuse it for all overlay work. Steam Bridge currently supports one
-native presenter per process; do not create concurrent managed presenters for
-multiple `BrowserWindow` instances:
+native presenter per process on the Node.js main thread; overlay control from
+`worker_threads` fails with `SteamOverlayMainThreadRequiredError`. Do not create
+concurrent managed presenters for multiple `BrowserWindow` instances. A second
+managed controller fails with
+`SteamOverlayElectronControllerOwnershipError`; presenter, native-session, and
+raw-surface ownership collisions fail with
+`SteamOverlayNativeSurfaceOwnershipError`. Close the current owner first:
 
 ```ts
 const steamOverlay = client.overlay.createElectronSteamOverlay(mainWindow, {
@@ -986,9 +991,16 @@ fullscreen, maximize, restore, and show events with one native pump per event
 instead of a steady render loop. The Windows D3D11 presenter resizes its
 swap-chain render target when the attached window changes size. If `Present` or
 `ResizeBuffers` fails, Steam Bridge records the error in
-`snapshot().lastError` and closes that presenter; it does not recreate the
-D3D11 device or swap chain. Treat device removal/reset and suspend/resume
-recovery as unverified and terminal for that managed-overlay instance. Use
+`snapshot().lastError`, sets `closeReason: "error"`, destroys the failed native
+surface, closes that presenter, and removes its managed Electron listeners.
+Snapshots expose `nativeSurfaceLeaseGeneration` and `nativeSurfaceOwner` so
+stale presenters cannot report a newer process-global owner. The lease
+generation is ownership evidence, while Windows native-host diagnostics expose
+`surfaceInstanceGeneration` and `hwnd` as actual surface-reuse evidence. Parked
+Windows presenters reactivate that same host instead of recreating its
+HWND/D3D11 renderer. Steam Bridge does not recreate a failed D3D11 device or
+swap chain. Treat device removal/reset and suspend/resume recovery as unverified
+and terminal for that managed-overlay instance. Use
 `steamOverlay.snapshot()` for diagnostics; it returns the native presenter state
 including the selected `backend` (`x11-glx`, `macos-metal`, `macos-opengl`,
 `windows-d3d11`, `windows-opengl`, or `none`) and, when available from the
