@@ -2,7 +2,7 @@
 
 Last reviewed: 2026-07-10
 
-Implementation anchor: `e156967` (`Fix Windows npm CLI invocation`).
+Implementation anchor: `f863242` (`Fix Windows ASAR package verification`).
 Always inspect Git history and the worktree before trusting this checkpoint.
 
 This is the canonical, short, replace-in-place operational checkpoint for fast
@@ -11,11 +11,9 @@ the detailed platform evidence log, or the presenter design plan.
 
 ## Current Workspace State
 
-At review, `main` and `origin/main` are at `e156967` and all four CI jobs pass.
-The product delta above that anchor is the Windows-native ASAR verification and
-fatal-exit slice described below; its fresh Release integration run is pending.
-Separate workspace-continuity changes remain uncommitted; preserve them and do
-not mix them into this product slice.
+At review, `main` and `origin/main` are at `f863242`; all four CI jobs and the
+fresh unsigned Release package gate pass. Separate workspace-continuity changes
+remain uncommitted; preserve them and do not mix them into the product result.
 
 ## Active Goal
 
@@ -155,30 +153,35 @@ exact-package release proof, and records the current D3D11 device-loss,
 Electron-range, and unpacked-ASAR evidence boundaries. These corrections do not
 depend on the pending manual foreground result.
 
-### Windows Release packaging reaches the final ASAR; verification remains open
+### Windows unsigned Release package gate is green; signed-tag proof is open
 
-Release run `29089107932` for `e952a3c` passed all three fresh native prebuilds
-and release assembly, then stopped before `npm pack` because Windows cannot
-spawn `npm.cmd` directly with `shell: false`. Commit `e156967` changed both
-production npm callers to launch npm's JavaScript CLI through the current Node
-executable; its ordinary CI run passed all four jobs. Release run `29089780757`
-then passed all three prebuilds, exact tarball assembly and install, PE/import
-and static-CRT verification, electron-builder `26.15.3`, and final Windows ASAR
-construction. It stopped at the first nested ASAR lookup because the verifier
-passed POSIX-literal entry names to `@electron/asar` on Windows, whose lookup
-splits by the host path separator. The archive was not proved bad. A separate
-exit-code clobber in electron-builder also made that gate step appear green;
-the following canonical-candidate step failed because no completed tarball or
-audit existed.
+The first two fresh runs exposed and bounded the Windows npm invocation and
+host-separator ASAR-verifier failures recorded in `WIN-PACKAGE-001`. Commit
+`f863242` fixes the latter without weakening the package contract and preserves
+a fatal nonzero exit even if electron-builder resets `process.exitCode`. Its CI
+run `29091117114` passed package smoke plus all three platform jobs. Release run
+`29091123792` passed all three fresh prebuilds, exact release assembly, the
+unsigned Windows package gate, canonical-candidate verification, and artifact
+upload.
 
-This product slice uses host-native ASAR entry paths, checks the archived
-Steam Bridge manifest and runtime JavaScript closure without weakening the
-exact three-file unpack contract, and preserves a fatal nonzero exit even if
-electron-builder resets `process.exitCode`. One fresh unsigned Release run is
-required. Until it passes through the executable probe, retained bundle archive,
-audit, and canonical-candidate rehash, no final Windows packaging/load claim is
-made. Configured-publisher signing and exact-tag publishability remain separate
-open production gates.
+The downloaded output contains exactly the npm tarball, retained `win-unpacked`
+archive, audit, and executable-probe result. Independent checks matched every
+recorded tarball/archive hash and all 112 retained files; found all public
+JavaScript entrypoints archived with no package-input leak; found exactly the
+addon and two Steam DLLs in the physical ASAR-unpacked package mirror; verified
+AMD64 PE32+, N-API and static-CRT import evidence; preserved both valid Valve
+DLL signatures and bytes; and matched a no-override packaged Electron native
+load, checkout-validator tree, and public App ID `480` live-smoke protocol. The
+privacy scan found no private runtime data.
+
+This settles the unsigned production-like packaging, layout, native-load,
+integrity, and retained-bundle diagnostic. It does not prove configured-publisher
+signing, exact-tag publishability, reputation/App Control behavior, or live
+overlay behavior. The app executable and addon are intentionally `NotSigned`;
+the Valve DLL signatures remain `Valid`. The repository currently has no
+Actions signing secrets, publisher-identity variables, tags, or releases, so a
+signed tag run is a prerequisite-bound next experiment rather than a justified
+retry of the green unsigned diagnostic.
 
 ### Native surface ownership and terminal failure handling are hardened in `57c458f`
 
@@ -266,12 +269,11 @@ broker; investigate native-host ownership/activation and input forwarding.
 5. Add the designed state-driven three-cycle persistent-presenter reuse/soak
    proof, then verify the documented one-window, recovery/compatibility, and
    production-like Windows native-addon packaging boundaries.
-6. Run one fresh unsigned Release after the Windows-native ASAR lookup and fatal
-   exit fixes. Require the exact tarball, archived package entrypoints, colocated
-   unpacked runtime trio, PE/ABI/static-CRT evidence, executable native load,
-   live-smoke/tool closure, DLL-byte preservation, retained bundle, audit, and
-   canonical-candidate rehash. Do not repeat a green diagnostic unchanged; the
-   next distinct packaging proof is one configured-publisher signed exact tag.
+6. Do not repeat the green unsigned package diagnostic unchanged. When signing
+   credentials, expected publisher identity, and the exact version tag exist,
+   run one signed tag gate and require app/addon publisher agreement, both Valve
+   DLLs `Valid` with preserved bytes, retained archive/audit provenance, and
+   canonical publish-candidate verification before any exact-candidate live run.
 7. Record results in the existing ledger/detailed evidence, run final checks,
    scan for private data, commit, push, verify CI, and complete the final
    production-readiness audit.
