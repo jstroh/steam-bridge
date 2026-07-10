@@ -2,7 +2,7 @@
 
 Last reviewed: 2026-07-10
 
-Implementation anchor: `a75ad43` (`Align Windows overlay polling and release guidance`).
+Implementation anchor: `57c458f` (`Harden Windows overlay ownership and reuse`).
 Always inspect Git history and the worktree before trusting this checkpoint.
 
 This is the canonical, short, replace-in-place operational checkpoint for fast
@@ -155,6 +155,42 @@ exact-package release proof, and records the current D3D11 device-loss,
 Electron-range, and unpacked-ASAR evidence boundaries. These corrections do not
 depend on the pending manual foreground result.
 
+### Native surface ownership and terminal failure handling are hardened in `57c458f`
+
+An independent production audit found process-global lifecycle hazards that do
+not require another Steam launch to fix: concurrent or duplicate-module
+presenters could detach one another's native surface, partial controller setup
+could leak listeners/leases, raw mismatched closes could orphan a host, and an
+attach or scheduled D3D11 present failure could escape without completing
+managed cleanup. The committed slice now permits one managed Electron controller
+and one presenter/session/raw surface owner per process, shares that registry
+across package evaluations, rejects `worker_threads` overlay control at the
+main-thread boundary, and rejects collisions before environment or listener
+side effects, rolls back partial setup, assigns monotonically increasing
+controller/surface-lease generations, and prevents stale handles or callbacks
+from mutating or reporting a later owner.
+
+Windows native `Present`, render-target recreation, and `ResizeBuffers`
+failures now remove and destroy the Rust surface before returning the original
+error. The JavaScript presenter records that error with `closeReason: "error"`,
+stops timers, disconnects callbacks, best-effort detaches without replacing the
+primary error, closes the managed controller, removes Electron listeners,
+wakes pending lifecycle waits with a closed error, and releases ownership for a
+clean new instance. All 194 unit tests, native formatting/checks, and package
+smoke pass locally. No live suite was run; the genuine foreground click remains
+the next Windows runtime experiment.
+
+The Windows activation path also now reactivates a parked host in place instead
+of calling the native attach path again. Native diagnostics expose
+`surfaceInstanceGeneration` and `hwnd` as actual HWND/D3D11 reuse evidence;
+`nativeSurfaceLeaseGeneration` remains ownership evidence only. The focused
+three-cycle live harness must require stable native instance/HWND plus one
+attach and no detach before final shutdown, not merely a stable lease.
+It must capture one managed controller before the loop, reject missing or
+nonpositive controller/lease/instance generations and a missing HWND, compare
+them in every shown and parked snapshot, require owned/open/attached/nonterminal
+state throughout, and stop without re-ensuring or retrying after any failure.
+
 ### Duplicate-open coverage is packaged; live proof is open
 
 The public `presenter-duplicate-open-guard` smoke action exists and has live
@@ -205,7 +241,12 @@ broker; investigate native-host ownership/activation and input forwarding.
 5. Add the designed state-driven three-cycle persistent-presenter reuse/soak
    proof, then verify the documented one-window, recovery/compatibility, and
    production-like Windows native-addon packaging boundaries.
-6. Record results in the existing ledger/detailed evidence, run final checks,
+6. Build the audited `electron-builder` ASAR fixture and exact publish-tarball
+   gate: require colocated Windows x64 addon/runtime DLLs, PE/ABI checks,
+   ASAR-aware native-load/signing discovery, source/integrity hashes, and a
+   Windows CI executable load from the final staged bundle without a native
+   override or post-install artifact repair.
+7. Record results in the existing ledger/detailed evidence, run final checks,
    scan for private data, commit, push, verify CI, and complete the final
    production-readiness audit.
 
@@ -272,6 +313,23 @@ Against polling and release-guidance commit `a75ad43` on 2026-07-10:
   and macOS arm64 CI jobs all passed.
 - No live suite was run. One public passive exact-package proof and the genuine
   foreground user-click diagnostic remain pending.
+
+Against ownership/reuse implementation commit `57c458f` on 2026-07-10:
+
+- `npm test` passed all 194 tests, including module-reload and worker-thread
+  ownership boundaries, raw-subtype and no-surface behavior, transactional
+  controller rollback, stale callback containment, session/presenter terminal
+  failure, closed-wait ordering, and three-cycle Windows native-instance reuse.
+- `npm run package:smoke`, `npm run api:check`, `npm run check:platform`,
+  `npm run native:fmt`, and `npm run native:check` passed; `native:check`
+  retained only the known transitive `block 0.1.6` warning.
+- Syntax checks, the added-line private-data scan, `git diff --check`, and three
+  independent implementation reviews passed. A local cross-target Rust attempt
+  reached the Windows C++ bridge but could not compile it without MSVC C++
+  headers; the native Windows CI job then compiled the exact commit successfully.
+- `57c458f` was pushed to `origin/main`; package smoke, Linux x64, Windows x64,
+  and macOS arm64 CI jobs all passed. No live Steam suite was run; the existing
+  genuine-click experiment remains untouched and pending.
 
 Live Windows review on 2026-07-10 UTC is summarized under Current Findings;
 detailed sanitized chronology lives in the platform evidence log and ledger.
