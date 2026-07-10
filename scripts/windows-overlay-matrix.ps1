@@ -66,6 +66,7 @@ param(
 $ErrorActionPreference = "Stop"
 $CloseProbeEvidenceSchema = 2
 $CloseProbeForegroundHandoff = "owner-process-native-show-v1"
+$SameProcessUserGestureForegroundHandoff = "same-process-user-gesture-v1"
 
 if (-not $AppDir) {
   $scriptDir = Split-Path -Parent $PSCommandPath
@@ -1723,6 +1724,20 @@ function Test-MatrixCloseProbeRequirements {
     $caseIds = (($persistentReuseCases | ForEach-Object { $_.id }) -join ", ")
     throw "Selected Windows persistent-reuse case(s) require -CloseProbe so each shown cycle can close through the exact-host gate: $caseIds"
   }
+
+  $userGestureCases = @($Cases | Where-Object { $_.autorunUserGestureGate })
+  if ($userGestureCases.Count -gt 0 -and -not $CloseProbe) {
+    $caseIds = (($userGestureCases | ForEach-Object { $_.id }) -join ", ")
+    throw "Selected Windows user-gesture gate case(s) require -CloseProbe so the matrix can deliver and audit the one-shot renderer click: $caseIds"
+  }
+  $unsupportedUserGestureCases = @(
+    $userGestureCases |
+      Where-Object { $_.action -ne "presenter-web-open-and-wait" }
+  )
+  if ($unsupportedUserGestureCases.Count -gt 0) {
+    $caseIds = (($unsupportedUserGestureCases | ForEach-Object { $_.id }) -join ", ")
+    throw "The bounded Windows user-gesture gate currently supports only presenter-web-open-and-wait: $caseIds"
+  }
 }
 
 function Resolve-ShortcutsPath {
@@ -2460,6 +2475,7 @@ function New-Case {
     [switch]$RequireMicroTxnCallback,
     [switch]$CloseProbeOnActivation,
     [switch]$ShortcutToggleProbe,
+    [switch]$AutorunUserGestureGate,
     [string]$ManagedOverlayResultMode = "",
     [string]$WebModal = "",
     [string]$StoreRouteOverride = "",
@@ -2485,6 +2501,7 @@ function New-Case {
     requireMicroTxnCallback = [bool]$RequireMicroTxnCallback
     closeProbeOnActivation = [bool]$CloseProbeOnActivation
     shortcutToggleProbe = [bool]$ShortcutToggleProbe
+    autorunUserGestureGate = [bool]$AutorunUserGestureGate
     managedOverlayResultMode = $ManagedOverlayResultMode
     webModal = $WebModal
     storeRoute = $StoreRouteOverride
@@ -2510,6 +2527,7 @@ function New-ManagedOpenAndWaitCase {
     [string]$InitTxnRequestFileOverride = "",
     [string]$WebModal = "",
     [string]$StoreRouteOverride = "",
+    [switch]$AutorunUserGestureGate,
     [switch]$RequireMicroTxnCallback
   )
 
@@ -2525,6 +2543,7 @@ function New-ManagedOpenAndWaitCase {
     -CheckoutTransactionIdOverride $CheckoutTransactionIdOverride `
     -CheckoutJsonFileOverride $CheckoutJsonFileOverride `
     -InitTxnRequestFileOverride $InitTxnRequestFileOverride `
+    -AutorunUserGestureGate:$AutorunUserGestureGate `
     -RequireMicroTxnCallback:$RequireMicroTxnCallback `
     -WebModal $WebModal `
     -StoreRouteOverride $StoreRouteOverride
@@ -2603,7 +2622,7 @@ function Get-MatrixCases {
 
   $managed = @(
     New-Case -Id "10-presenter-ready" -Action "presenter-ready" -RequireEvent @("overlay:presenter-ready") -RequireNoOverlayActivation -AllowOverlayNotReady -ResultDelayMs 1200
-    New-ManagedOpenAndWaitCase -Id "11-managed-web-open-and-wait" -Action "presenter-web-open-and-wait" -WebModal "true"
+    New-ManagedOpenAndWaitCase -Id "11-managed-web-open-and-wait" -Action "presenter-web-open-and-wait" -WebModal "true" -AutorunUserGestureGate
     New-Case `
       -Id "11b-managed-duplicate-open-guard" `
       -Action "presenter-duplicate-open-guard" `
@@ -2769,6 +2788,12 @@ function Write-MatrixManifest {
           requireMicroTxnCallback = [bool]$_.requireMicroTxnCallback
           closeProbeOnActivation = [bool]$_.closeProbeOnActivation
           shortcutToggleProbe = [bool]$_.shortcutToggleProbe
+          autorunUserGestureGate = [bool]$_.autorunUserGestureGate
+          closeProbeForegroundHandoff = if ($_.autorunUserGestureGate) {
+            $SameProcessUserGestureForegroundHandoff
+          } else {
+            $CloseProbeForegroundHandoff
+          }
           expectedCloseProbeInput = Resolve-CloseProbeInputForCase -Case $_
           managedOverlayResultMode = $_.managedOverlayResultMode
           webModal = $_.webModal
@@ -2814,6 +2839,10 @@ function Write-MatrixManifest {
     closeProbeInput = $CloseProbeInput
     closeProbeEvidenceSchema = $CloseProbeEvidenceSchema
     closeProbeForegroundHandoff = $CloseProbeForegroundHandoff
+    supportedCloseProbeForegroundHandoffs = @(
+      $CloseProbeForegroundHandoff,
+      $SameProcessUserGestureForegroundHandoff
+    )
     skipNativeLoadGate = [bool]$SkipNativeLoadGate
     skipRenderHealthGate = [bool]$SkipRenderHealthGate
     allowUnhealthyDefaultRender = [bool]$AllowUnhealthyDefaultRender
@@ -2946,7 +2975,13 @@ function Test-CaseUsesCloseProbe {
 
   return [bool](
     $CloseProbe -and
-    ($Case.requireManagedOverlayComplete -or $Case.closeProbeOnActivation -or $Case.shortcutToggleProbe -or $Case.persistentReuseCycles -gt 0)
+    (
+      $Case.requireManagedOverlayComplete -or
+      $Case.closeProbeOnActivation -or
+      $Case.shortcutToggleProbe -or
+      $Case.autorunUserGestureGate -or
+      $Case.persistentReuseCycles -gt 0
+    )
   )
 }
 
@@ -2954,6 +2989,7 @@ function Start-WindowsOverlayCloseProbe {
   param($Case, [string]$CaseDir, [string]$DiagnosticDir, [string]$ControlFile)
 
   $shortcutToggleProbe = [bool]$Case.shortcutToggleProbe
+  $useUserGestureGate = [bool]$Case.autorunUserGestureGate
   if (-not (Test-CaseUsesCloseProbe -Case $Case)) {
     return $null
   }
@@ -2965,9 +3001,15 @@ function Start-WindowsOverlayCloseProbe {
   $expectedCloseCount = [Math]::Max(1, [int]$Case.persistentReuseCycles)
   $timeoutSeconds = [Math]::Max(1, ($CloseProbeTimeoutSeconds * $expectedCloseCount))
   $controlHandoffOnlyExpected = ($expectedCloseCount -eq 1)
+  $foregroundHandoff = if ($useUserGestureGate) {
+    $SameProcessUserGestureForegroundHandoff
+  } else {
+    $CloseProbeForegroundHandoff
+  }
   $preserveControlFile = ($expectedCloseCount -gt 1)
   $controlFileBase64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($ControlFile))
   New-Item -ItemType Directory -Force -Path $CaseDir | Out-Null
+  Remove-Item -LiteralPath $probeLog -Force -ErrorAction SilentlyContinue
 
   $probeScript = @"
 `$ErrorActionPreference = "Continue"
@@ -3041,6 +3083,11 @@ public static class SteamBridgeWindowsProbe {
     public int Bottom;
   }
 
+  public struct POINT {
+    public int X;
+    public int Y;
+  }
+
   [DllImport("user32.dll")]
   public static extern IntPtr GetForegroundWindow();
 
@@ -3064,6 +3111,18 @@ public static class SteamBridgeWindowsProbe {
 
   [DllImport("user32.dll")]
   public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
+
+  [DllImport("user32.dll")]
+  public static extern bool GetClientRect(IntPtr hWnd, out RECT rect);
+
+  [DllImport("user32.dll")]
+  public static extern bool ClientToScreen(IntPtr hWnd, ref POINT point);
+
+  [DllImport("user32.dll")]
+  public static extern IntPtr WindowFromPoint(POINT point);
+
+  [DllImport("user32.dll")]
+  public static extern IntPtr GetAncestor(IntPtr hWnd, uint flags);
 
   [DllImport("user32.dll")]
   public static extern bool IsWindow(IntPtr hWnd);
@@ -3179,7 +3238,12 @@ public static class SteamBridgeWindowsProbe {
 `$script:SmokeControlFile = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('$controlFileBase64'))
 `$script:ControlHandoffOnlyExpected = [bool]::Parse('$controlHandoffOnlyExpected')
 `$script:PreserveSmokeControlFile = [bool]::Parse('$preserveControlFile')
+`$script:UseUserGestureGate = [bool]::Parse('$useUserGestureGate')
 `$script:CloseCycleOrdinal = 1
+`$script:UserGestureActivationSent = `$false
+`$script:UserGestureGateConsumed = `$false
+`$script:UserGestureSourceWindowHandle = [IntPtr]::Zero
+`$script:UserGestureSourceWindowOwnerPid = [uint32]0
 
 `$script:ProbeScreenshotAssemblyError = `$null
 try {
@@ -3216,6 +3280,432 @@ function Send-NativeMouseClick {
     x = `$X
     y = `$Y
   }
+}
+
+function Get-AutorunUserGestureGateLifecycleState {
+  `$state = [ordered]@{
+    readyEvents = @()
+    consumedEvents = @()
+    rejectedEvents = @()
+  }
+  if (-not (Test-Path -LiteralPath '$lifecycleLog')) {
+    return [PSCustomObject]`$state
+  }
+
+  foreach (`$line in @(Get-Content -LiteralPath '$lifecycleLog' -ErrorAction SilentlyContinue)) {
+    try {
+      `$event = `$line | ConvertFrom-Json -ErrorAction Stop
+    } catch {
+      continue
+    }
+    if (`$event.type -eq "event:autorun:user-gesture-gate-ready") {
+      `$state.readyEvents += `$event
+    } elseif (`$event.type -eq "event:autorun:user-gesture-gate-consumed") {
+      `$state.consumedEvents += `$event
+    } elseif (`$event.type -eq "event:autorun:user-gesture-gate-rejected") {
+      `$state.rejectedEvents += `$event
+    }
+  }
+  return [PSCustomObject]`$state
+}
+
+function Resolve-AutorunUserGestureGateTarget {
+  param([object]`$ReadyEvent)
+
+  `$evidence = [ordered]@{
+    ready = `$false
+    reason = "gate-ready-event-missing"
+    binding = [ordered]@{
+      sourceProcessPresent = `$false
+      sourceWindowPresent = `$false
+      ownerMatchesLifecycleProcess = `$false
+      sourceMatchesControlProcess = `$false
+      sameInteractiveSession = `$false
+      sourceWindowEnabled = `$false
+      sourceWindowNotIconic = `$false
+      sourceWindowForeground = `$false
+    }
+    target = `$null
+    dpi = [ordered]@{
+      rendererScalePresent = `$false
+      windowDpiPresent = `$false
+      scaleAgrees = `$false
+      clientGeometryAgrees = `$false
+    }
+  }
+  if (-not `$ReadyEvent) {
+    return [PSCustomObject]`$evidence
+  }
+
+  `$payload = `$ReadyEvent.payload
+  `$target = `$payload.target
+  `$viewport = `$payload.viewport
+  `$readyBinding = `$payload.binding
+  if (
+    `$payload.schema -ne 1 -or
+    `$payload.mechanism -ne "same-process-user-gesture" -or
+    `$payload.action -ne "presenter-web-open-and-wait" -or
+    `$payload.targetId -ne "presenter-web-wait" -or
+    `$payload.ready -ne `$true -or
+    -not `$target -or
+    -not `$viewport -or
+    -not `$readyBinding -or
+    `$readyBinding.senderMatches -ne `$true -or
+    `$readyBinding.mainFrameMatches -ne `$true -or
+    `$readyBinding.nonceMatches -ne `$true
+  ) {
+    `$evidence.reason = "gate-ready-event-invalid"
+    return [PSCustomObject]`$evidence
+  }
+
+  `$rawNumericValues = @(
+    `$target.left,
+    `$target.top,
+    `$target.width,
+    `$target.height,
+    `$viewport.devicePixelRatio,
+    `$viewport.width,
+    `$viewport.height,
+    `$ReadyEvent.pid
+  )
+  `$invalidRawNumericValues = @(
+    `$rawNumericValues |
+      Where-Object { `$null -eq `$_ -or `$_ -isnot [ValueType] -or `$_ -is [bool] }
+  )
+  if (`$invalidRawNumericValues.Count -gt 0) {
+    `$evidence.reason = "gate-target-geometry-invalid"
+    return [PSCustomObject]`$evidence
+  }
+
+  `$left = [double]`$target.left
+  `$top = [double]`$target.top
+  `$width = [double]`$target.width
+  `$height = [double]`$target.height
+  `$rendererScale = [double]`$viewport.devicePixelRatio
+  `$viewportWidth = [double]`$viewport.width
+  `$viewportHeight = [double]`$viewport.height
+  `$sourcePidValue = [double]`$ReadyEvent.pid
+  `$finiteValues = @(`$left, `$top, `$width, `$height, `$rendererScale, `$viewportWidth, `$viewportHeight) |
+    Where-Object { [double]::IsNaN(`$_) -or [double]::IsInfinity(`$_) }
+  if (
+    `$finiteValues.Count -gt 0 -or
+    `$left -lt 0 -or `$top -lt 0 -or `$width -le 0 -or `$height -le 0 -or
+    `$left + `$width -gt `$viewportWidth -or `$top + `$height -gt `$viewportHeight -or
+    `$rendererScale -lt 0.5 -or `$rendererScale -gt 8.0 -or
+    [double]::IsNaN(`$sourcePidValue) -or [double]::IsInfinity(`$sourcePidValue) -or
+    `$sourcePidValue -lt 1 -or `$sourcePidValue -gt [int]::MaxValue -or
+    [Math]::Floor(`$sourcePidValue) -ne `$sourcePidValue
+  ) {
+    `$evidence.reason = "gate-target-geometry-invalid"
+    return [PSCustomObject]`$evidence
+  }
+  `$evidence.dpi.rendererScalePresent = `$true
+
+  `$sourcePid = [int]`$ReadyEvent.pid
+  if (`$sourcePid -le 0) {
+    `$evidence.reason = "gate-source-process-missing"
+    return [PSCustomObject]`$evidence
+  }
+  `$sourceProcess = Get-Process -Id `$sourcePid -ErrorAction SilentlyContinue
+  `$evidence.binding.sourceProcessPresent = `$null -ne `$sourceProcess
+  if (-not `$sourceProcess) {
+    `$evidence.reason = "gate-source-process-missing"
+    return [PSCustomObject]`$evidence
+  }
+  `$control = Read-SmokeControlDescriptor
+  `$evidence.binding.sourceMatchesControlProcess = (
+    `$control.valid -and
+    `$control.handoffOnly -eq `$script:ControlHandoffOnlyExpected -and
+    `$sourcePid -eq `$control.pid
+  )
+  if (-not `$evidence.binding.sourceMatchesControlProcess) {
+    `$evidence.reason = "gate-source-control-process-mismatch"
+    return [PSCustomObject]`$evidence
+  }
+  `$sourceHandle = `$sourceProcess.MainWindowHandle
+  `$evidence.binding.sourceWindowPresent = (
+    `$sourceHandle -and
+    `$sourceHandle -ne [IntPtr]::Zero -and
+    [SteamBridgeWindowsProbe]::IsWindow(`$sourceHandle)
+  )
+  if (-not `$evidence.binding.sourceWindowPresent) {
+    `$evidence.reason = "gate-source-window-missing"
+    return [PSCustomObject]`$evidence
+  }
+
+  `$ownerPid = [uint32]0
+  `$ownerThread = [SteamBridgeWindowsProbe]::GetWindowThreadProcessId(`$sourceHandle, [ref]`$ownerPid)
+  `$evidence.binding.ownerMatchesLifecycleProcess = (`$ownerThread -gt 0 -and `$ownerPid -eq [uint32]`$sourcePid)
+  `$evidence.binding.sameInteractiveSession = (
+    `$sourceProcess.SessionId -eq [Diagnostics.Process]::GetCurrentProcess().SessionId
+  )
+  `$evidence.binding.sourceWindowEnabled = [SteamBridgeWindowsProbe]::IsWindowEnabled(`$sourceHandle)
+  `$evidence.binding.sourceWindowNotIconic = -not [SteamBridgeWindowsProbe]::IsIconic(`$sourceHandle)
+  `$evidence.binding.sourceWindowForeground = (
+    [SteamBridgeWindowsProbe]::GetForegroundWindow() -eq `$sourceHandle
+  )
+  if (
+    -not `$evidence.binding.ownerMatchesLifecycleProcess -or
+    -not `$evidence.binding.sourceMatchesControlProcess -or
+    -not `$evidence.binding.sameInteractiveSession -or
+    -not `$evidence.binding.sourceWindowEnabled -or
+    -not `$evidence.binding.sourceWindowNotIconic -or
+    -not `$evidence.binding.sourceWindowForeground
+  ) {
+    `$evidence.reason = "gate-source-window-not-eligible"
+    return [PSCustomObject]`$evidence
+  }
+
+  `$windowDpi = [SteamBridgeWindowsProbe]::GetDpiForWindow(`$sourceHandle)
+  if (`$windowDpi -lt 48 -or `$windowDpi -gt 768) {
+    `$evidence.reason = "gate-source-window-dpi-invalid"
+    return [PSCustomObject]`$evidence
+  }
+  `$windowScale = [double]`$windowDpi / 96.0
+  `$evidence.dpi.windowDpiPresent = `$true
+  `$evidence.dpi.scaleAgrees = [Math]::Abs(`$windowScale - `$rendererScale) -le 0.02
+  `$evidence.dpi.rendererScale = `$rendererScale
+  `$evidence.dpi.windowScale = `$windowScale
+  if (-not `$evidence.dpi.scaleAgrees) {
+    `$evidence.reason = "gate-source-window-dpi-mismatch"
+    return [PSCustomObject]`$evidence
+  }
+
+  `$clientRect = New-Object SteamBridgeWindowsProbe+RECT
+  `$clientOrigin = New-Object SteamBridgeWindowsProbe+POINT
+  if (
+    -not [SteamBridgeWindowsProbe]::GetClientRect(`$sourceHandle, [ref]`$clientRect) -or
+    -not [SteamBridgeWindowsProbe]::ClientToScreen(`$sourceHandle, [ref]`$clientOrigin)
+  ) {
+    `$evidence.reason = "gate-source-client-geometry-unavailable"
+    return [PSCustomObject]`$evidence
+  }
+  `$clientWidth = [double](`$clientRect.Right - `$clientRect.Left)
+  `$clientHeight = [double](`$clientRect.Bottom - `$clientRect.Top)
+  `$expectedClientWidth = `$viewportWidth * `$windowScale
+  `$expectedClientHeight = `$viewportHeight * `$windowScale
+  `$geometryTolerance = 2.0
+  `$evidence.dpi.clientGeometryAgrees = (
+    [Math]::Abs(`$clientWidth - `$expectedClientWidth) -le `$geometryTolerance -and
+    [Math]::Abs(`$clientHeight - `$expectedClientHeight) -le `$geometryTolerance
+  )
+  if (-not `$evidence.dpi.clientGeometryAgrees) {
+    `$evidence.reason = "gate-source-client-geometry-mismatch"
+    return [PSCustomObject]`$evidence
+  }
+  `$x = [int][Math]::Round(`$clientOrigin.X + ((`$left + (`$width / 2.0)) * `$windowScale))
+  `$y = [int][Math]::Round(`$clientOrigin.Y + ((`$top + (`$height / 2.0)) * `$windowScale))
+  `$clientRight = `$clientOrigin.X + (`$clientRect.Right - `$clientRect.Left)
+  `$clientBottom = `$clientOrigin.Y + (`$clientRect.Bottom - `$clientRect.Top)
+  if (
+    `$x -lt `$clientOrigin.X -or `$x -ge `$clientRight -or
+    `$y -lt `$clientOrigin.Y -or `$y -ge `$clientBottom
+  ) {
+    `$evidence.reason = "gate-target-outside-source-client"
+    return [PSCustomObject]`$evidence
+  }
+
+  `$script:UserGestureSourceWindowHandle = `$sourceHandle
+  `$script:UserGestureSourceWindowOwnerPid = [uint32]`$sourcePid
+  `$evidence.target = [PSCustomObject]@{
+    x = `$x
+    y = `$y
+    source = "renderer-button-physical-dpi"
+    insideSourceClient = `$true
+  }
+  `$evidence.ready = `$true
+  `$evidence.reason = "gate-target-ready"
+  return [PSCustomObject]`$evidence
+}
+
+function Confirm-AutorunUserGestureActivationTarget {
+  param([int]`$X, [int]`$Y)
+
+  `$evidence = [ordered]@{
+    eligible = `$false
+    reason = "gate-source-window-unbound"
+    binding = [ordered]@{
+      sourceWindowValid = `$false
+      sourceOwnerPresent = `$false
+      sourceMatchesBoundProcess = `$false
+      sourceMatchesControlProcess = `$false
+      sameInteractiveSession = `$false
+      sourceWindowEnabled = `$false
+      sourceWindowNotIconic = `$false
+      targetInsideSourceClient = `$false
+      pointWindowPresent = `$false
+      pointOwnerMatchesBoundProcess = `$false
+      pointRootMatchesSourceWindow = `$false
+      sourceWindowForeground = `$false
+    }
+  }
+
+  `$handle = `$script:UserGestureSourceWindowHandle
+  `$evidence.binding.sourceWindowValid = (
+    `$handle -and
+    `$handle -ne [IntPtr]::Zero -and
+    [SteamBridgeWindowsProbe]::IsWindow(`$handle)
+  )
+  if (-not `$evidence.binding.sourceWindowValid) {
+    return [PSCustomObject]`$evidence
+  }
+
+  `$sourceOwnerPid = [uint32]0
+  `$sourceOwnerThread = [SteamBridgeWindowsProbe]::GetWindowThreadProcessId(
+    `$handle,
+    [ref]`$sourceOwnerPid
+  )
+  `$evidence.binding.sourceOwnerPresent = (
+    `$sourceOwnerThread -gt 0 -and
+    `$sourceOwnerPid -gt 0
+  )
+  `$evidence.binding.sourceMatchesBoundProcess = (
+    `$evidence.binding.sourceOwnerPresent -and
+    `$sourceOwnerPid -eq `$script:UserGestureSourceWindowOwnerPid
+  )
+  `$control = Read-SmokeControlDescriptor
+  `$evidence.binding.sourceMatchesControlProcess = (
+    `$control.valid -and
+    `$control.handoffOnly -eq `$script:ControlHandoffOnlyExpected -and
+    `$sourceOwnerPid -eq `$control.pid
+  )
+  try {
+    `$sourceProcess = Get-Process -Id ([int]`$sourceOwnerPid) -ErrorAction Stop
+    `$evidence.binding.sameInteractiveSession = (
+      `$sourceProcess.SessionId -eq [Diagnostics.Process]::GetCurrentProcess().SessionId
+    )
+  } catch {
+    `$evidence.binding.sameInteractiveSession = `$false
+  }
+  `$evidence.binding.sourceWindowEnabled = [SteamBridgeWindowsProbe]::IsWindowEnabled(`$handle)
+  `$evidence.binding.sourceWindowNotIconic = -not [SteamBridgeWindowsProbe]::IsIconic(`$handle)
+
+  `$clientRect = New-Object SteamBridgeWindowsProbe+RECT
+  `$clientOrigin = New-Object SteamBridgeWindowsProbe+POINT
+  if (
+    [SteamBridgeWindowsProbe]::GetClientRect(`$handle, [ref]`$clientRect) -and
+    [SteamBridgeWindowsProbe]::ClientToScreen(`$handle, [ref]`$clientOrigin)
+  ) {
+    `$clientRight = `$clientOrigin.X + (`$clientRect.Right - `$clientRect.Left)
+    `$clientBottom = `$clientOrigin.Y + (`$clientRect.Bottom - `$clientRect.Top)
+    `$evidence.binding.targetInsideSourceClient = (
+      `$X -ge `$clientOrigin.X -and
+      `$X -lt `$clientRight -and
+      `$Y -ge `$clientOrigin.Y -and
+      `$Y -lt `$clientBottom
+    )
+  }
+
+  `$point = New-Object SteamBridgeWindowsProbe+POINT
+  `$point.X = `$X
+  `$point.Y = `$Y
+  `$pointHandle = [SteamBridgeWindowsProbe]::WindowFromPoint(`$point)
+  `$evidence.binding.pointWindowPresent = (
+    `$pointHandle -and
+    `$pointHandle -ne [IntPtr]::Zero -and
+    [SteamBridgeWindowsProbe]::IsWindow(`$pointHandle)
+  )
+  if (`$evidence.binding.pointWindowPresent) {
+    `$pointOwnerPid = [uint32]0
+    `$pointOwnerThread = [SteamBridgeWindowsProbe]::GetWindowThreadProcessId(
+      `$pointHandle,
+      [ref]`$pointOwnerPid
+    )
+    `$evidence.binding.pointOwnerMatchesBoundProcess = (
+      `$pointOwnerThread -gt 0 -and
+      `$pointOwnerPid -eq `$script:UserGestureSourceWindowOwnerPid
+    )
+    `$evidence.binding.pointRootMatchesSourceWindow = (
+      [SteamBridgeWindowsProbe]::GetAncestor(`$pointHandle, 2) -eq `$handle
+    )
+  }
+  `$evidence.binding.sourceWindowForeground = (
+    [SteamBridgeWindowsProbe]::GetForegroundWindow() -eq `$handle
+  )
+
+  `$evidence.eligible = (
+    `$evidence.binding.sourceOwnerPresent -and
+    `$evidence.binding.sourceMatchesBoundProcess -and
+    `$evidence.binding.sourceMatchesControlProcess -and
+    `$evidence.binding.sameInteractiveSession -and
+    `$evidence.binding.sourceWindowEnabled -and
+    `$evidence.binding.sourceWindowNotIconic -and
+    `$evidence.binding.targetInsideSourceClient -and
+    `$evidence.binding.pointWindowPresent -and
+    `$evidence.binding.pointOwnerMatchesBoundProcess -and
+    `$evidence.binding.pointRootMatchesSourceWindow -and
+    `$evidence.binding.sourceWindowForeground
+  )
+  `$evidence.reason = if (`$evidence.eligible) {
+    "gate-source-window-confirmed-before-dispatch"
+  } else {
+    "gate-source-window-changed-before-dispatch"
+  }
+  return [PSCustomObject]`$evidence
+}
+
+function Wait-AutorunUserGestureSourceFocusReturn {
+  param([datetime]`$Deadline)
+
+  `$evidence = [ordered]@{
+    observed = `$false
+    lifecycleComplete = `$false
+    sourceWindowValid = `$false
+    ownerMatches = `$false
+    sameInteractiveSession = `$false
+    focused = `$false
+    reason = "focus-return-timeout"
+  }
+  while ((Get-Date) -lt `$Deadline) {
+    `$text = if (Test-Path -LiteralPath '$lifecycleLog') {
+      Get-Content -Raw -LiteralPath '$lifecycleLog' -ErrorAction SilentlyContinue
+    } else {
+      ""
+    }
+    `$evidence.lifecycleComplete = (
+      `$text -match 'callback:overlay-activated' -and
+      `$text -match '"active":false' -and
+      `$text -match 'overlay:presenter-open-and-wait-complete' -and
+      `$text -match 'overlay:presenter-after-close-stable'
+    )
+    if (-not `$evidence.lifecycleComplete) {
+      Start-Sleep -Milliseconds 100
+      continue
+    }
+
+    `$handle = `$script:UserGestureSourceWindowHandle
+    `$evidence.sourceWindowValid = (
+      `$handle -and
+      `$handle -ne [IntPtr]::Zero -and
+      [SteamBridgeWindowsProbe]::IsWindow(`$handle)
+    )
+    if (-not `$evidence.sourceWindowValid) {
+      `$evidence.reason = "source-window-invalid-after-close"
+      return [PSCustomObject]`$evidence
+    }
+    `$ownerPid = [uint32]0
+    `$ownerThread = [SteamBridgeWindowsProbe]::GetWindowThreadProcessId(`$handle, [ref]`$ownerPid)
+    `$evidence.ownerMatches = (
+      `$ownerThread -gt 0 -and
+      `$ownerPid -eq `$script:UserGestureSourceWindowOwnerPid
+    )
+    try {
+      `$ownerProcess = Get-Process -Id ([int]`$ownerPid) -ErrorAction Stop
+      `$evidence.sameInteractiveSession = (
+        `$ownerProcess.SessionId -eq [Diagnostics.Process]::GetCurrentProcess().SessionId
+      )
+    } catch {
+      `$evidence.sameInteractiveSession = `$false
+    }
+    `$evidence.focused = [SteamBridgeWindowsProbe]::GetForegroundWindow() -eq `$handle
+    if (`$evidence.ownerMatches -and `$evidence.sameInteractiveSession -and `$evidence.focused) {
+      `$evidence.observed = `$true
+      `$evidence.reason = "exact-source-window-foreground"
+      return [PSCustomObject]`$evidence
+    }
+    Start-Sleep -Milliseconds 100
+  }
+  return [PSCustomObject]`$evidence
 }
 
 function Get-ForegroundProbeSnapshot {
@@ -4028,7 +4518,7 @@ function Focus-LifecycleNativePresenterForCloseInput {
   `$evidence = [ordered]@{
     schema = 2
     source = "lifecycle-native-host"
-    mechanism = "owner-process-native-show"
+    mechanism = if (`$script:UseUserGestureGate) { "same-process-user-gesture" } else { "owner-process-native-show" }
     attempted = `$false
     handlePresent = -not [string]::IsNullOrWhiteSpace(`$handleText)
     handleFormatValid = `$false
@@ -4060,6 +4550,14 @@ function Focus-LifecycleNativePresenterForCloseInput {
       setFocus = 0
       activate = 0
       activateApp = 0
+    }
+    userGestureGate = [ordered]@{
+      required = `$script:UseUserGestureGate
+      readyEventCount = 0
+      consumedEventCount = 0
+      rejectedEventCount = 0
+      activationInputCount = if (`$script:UserGestureActivationSent) { 1 } else { 0 }
+      sourceWindowBound = `$false
     }
     focused = `$false
     appReason = "not-requested"
@@ -4129,6 +4627,54 @@ function Focus-LifecycleNativePresenterForCloseInput {
   `$evidence.binding.ownerMatchesControlProcess = (`$ownerPid -eq `$control.pid)
   if (-not `$evidence.binding.ownerMatchesControlProcess) {
     `$evidence.reason = "control-process-owner-mismatch"
+    return [PSCustomObject]`$evidence
+  }
+
+  if (`$script:UseUserGestureGate) {
+    `$gateState = Get-AutorunUserGestureGateLifecycleState
+    `$evidence.userGestureGate.readyEventCount = `$gateState.readyEvents.Count
+    `$evidence.userGestureGate.consumedEventCount = `$gateState.consumedEvents.Count
+    `$evidence.userGestureGate.rejectedEventCount = `$gateState.rejectedEvents.Count
+    `$sourceHandle = `$script:UserGestureSourceWindowHandle
+    `$sourceOwnerPid = [uint32]0
+    `$sourceOwnerThread = if (
+      `$sourceHandle -and
+      `$sourceHandle -ne [IntPtr]::Zero -and
+      [SteamBridgeWindowsProbe]::IsWindow(`$sourceHandle)
+    ) {
+      [SteamBridgeWindowsProbe]::GetWindowThreadProcessId(`$sourceHandle, [ref]`$sourceOwnerPid)
+    } else {
+      0
+    }
+    `$evidence.userGestureGate.sourceWindowBound = (
+      `$sourceOwnerThread -gt 0 -and
+      `$sourceOwnerPid -eq `$control.pid -and
+      `$sourceOwnerPid -eq `$script:UserGestureSourceWindowOwnerPid
+    )
+    `$evidence.sameWindowBeforeAfter = [SteamBridgeWindowsProbe]::IsWindow(`$handle)
+    `$evidence.ownerReportsForeground = (
+      `$evidence.sameWindowBeforeAfter -and
+      [SteamBridgeWindowsProbe]::GetForegroundWindow() -eq `$handle
+    )
+    `$evidence.focused = (
+      `$evidence.userGestureGate.readyEventCount -eq 1 -and
+      `$evidence.userGestureGate.consumedEventCount -eq 1 -and
+      `$evidence.userGestureGate.rejectedEventCount -eq 0 -and
+      `$evidence.userGestureGate.activationInputCount -eq 1 -and
+      `$evidence.userGestureGate.sourceWindowBound -and
+      `$evidence.sameWindowBeforeAfter -and
+      `$evidence.ownerReportsForeground
+    )
+    `$evidence.appReason = if (`$evidence.focused) {
+      "foreground-confirmed-from-user-gesture"
+    } else {
+      "user-gesture-foreground-not-observed"
+    }
+    `$evidence.reason = if (`$evidence.focused) {
+      "foreground-confirmed"
+    } else {
+      "user-gesture-foreground-not-observed"
+    }
     return [PSCustomObject]`$evidence
   }
 
@@ -4334,7 +4880,8 @@ Write-ProbeEvent "probe:start" ([PSCustomObject]@{
   lifecycleLog = '$lifecycleLog'
   input = '$input'
   evidenceSchema = $CloseProbeEvidenceSchema
-  foregroundHandoff = '$CloseProbeForegroundHandoff'
+  foregroundHandoff = '$foregroundHandoff'
+  userGestureGate = `$script:UseUserGestureGate
   controlExpected = `$true
   controlHandoffOnlyExpected = `$script:ControlHandoffOnlyExpected
   expectedCloseCount = $expectedCloseCount
@@ -4378,6 +4925,184 @@ while ((Get-Date) -lt `$deadline -and -not `$sent -and -not `$terminalFailure) {
         processes = Get-ProbeProcessSnapshot
       })
     }
+    if (`$script:UseUserGestureGate) {
+      `$gateState = Get-AutorunUserGestureGateLifecycleState
+      if (`$gateState.rejectedEvents.Count -gt 0) {
+        Write-ProbeEvent "probe:user-gesture-gate-activation-skipped" ([PSCustomObject]@{
+          reason = "gate-rejected-before-consumption"
+          readyEventCount = `$gateState.readyEvents.Count
+          consumedEventCount = `$gateState.consumedEvents.Count
+          rejectedEventCount = `$gateState.rejectedEvents.Count
+        })
+        Write-ProbeEvent "probe:close-input-skipped" ([PSCustomObject]@{
+          cycle = 1
+          reason = "user-gesture-gate-rejected"
+        })
+        `$terminalFailure = `$true
+        continue
+      }
+      if (-not `$script:UserGestureActivationSent -and `$gateState.consumedEvents.Count -gt 0) {
+        Write-ProbeEvent "probe:user-gesture-gate-activation-skipped" ([PSCustomObject]@{
+          reason = "gate-consumed-before-probe-activation"
+          readyEventCount = `$gateState.readyEvents.Count
+          consumedEventCount = `$gateState.consumedEvents.Count
+          rejectedEventCount = `$gateState.rejectedEvents.Count
+        })
+        Write-ProbeEvent "probe:close-input-skipped" ([PSCustomObject]@{
+          cycle = 1
+          reason = "user-gesture-gate-already-consumed"
+        })
+        `$terminalFailure = `$true
+        continue
+      }
+
+      if (-not `$script:UserGestureActivationSent) {
+        if (`$gateState.readyEvents.Count -gt 1) {
+          Write-ProbeEvent "probe:user-gesture-gate-activation-skipped" ([PSCustomObject]@{
+            reason = "duplicate-gate-ready-events"
+            readyEventCount = `$gateState.readyEvents.Count
+          })
+          Write-ProbeEvent "probe:close-input-skipped" ([PSCustomObject]@{
+            cycle = 1
+            reason = "user-gesture-gate-ready-ambiguous"
+          })
+          `$terminalFailure = `$true
+          continue
+        }
+        if (`$gateState.readyEvents.Count -eq 1) {
+          `$gateControl = Read-SmokeControlDescriptor
+          if (-not `$gateControl.valid) {
+            Start-Sleep -Milliseconds 50
+            continue
+          }
+          `$activationTarget = Resolve-AutorunUserGestureGateTarget `$gateState.readyEvents[0]
+          Write-ProbeEvent "probe:user-gesture-gate-ready" `$activationTarget
+          if (-not `$activationTarget.ready) {
+            Write-ProbeEvent "probe:user-gesture-gate-activation-skipped" ([PSCustomObject]@{
+              reason = `$activationTarget.reason
+              binding = `$activationTarget.binding
+              dpi = `$activationTarget.dpi
+            })
+            Write-ProbeEvent "probe:close-input-skipped" ([PSCustomObject]@{
+              cycle = 1
+              reason = "user-gesture-source-not-eligible"
+            })
+            `$terminalFailure = `$true
+            continue
+          }
+
+          `$activationPreDispatch = Confirm-AutorunUserGestureActivationTarget `
+            ([int]`$activationTarget.target.x) `
+            ([int]`$activationTarget.target.y)
+          Write-ProbeEvent "probe:user-gesture-gate-pre-dispatch" `$activationPreDispatch
+          if (-not `$activationPreDispatch.eligible) {
+            Write-ProbeEvent "probe:user-gesture-gate-activation-skipped" ([PSCustomObject]@{
+              reason = `$activationPreDispatch.reason
+              binding = `$activationPreDispatch.binding
+            })
+            Write-ProbeEvent "probe:close-input-skipped" ([PSCustomObject]@{
+              cycle = 1
+              reason = "user-gesture-source-changed-before-dispatch"
+            })
+            `$terminalFailure = `$true
+            continue
+          }
+
+          `$preDispatchGateState = Get-AutorunUserGestureGateLifecycleState
+          if (
+            `$preDispatchGateState.readyEvents.Count -ne 1 -or
+            `$preDispatchGateState.consumedEvents.Count -ne 0 -or
+            `$preDispatchGateState.rejectedEvents.Count -ne 0
+          ) {
+            Write-ProbeEvent "probe:user-gesture-gate-activation-skipped" ([PSCustomObject]@{
+              reason = "user-gesture-gate-state-changed-before-dispatch"
+              readyEventCount = `$preDispatchGateState.readyEvents.Count
+              consumedEventCount = `$preDispatchGateState.consumedEvents.Count
+              rejectedEventCount = `$preDispatchGateState.rejectedEvents.Count
+            })
+            Write-ProbeEvent "probe:close-input-skipped" ([PSCustomObject]@{
+              cycle = 1
+              reason = "user-gesture-gate-state-changed-before-dispatch"
+            })
+            `$terminalFailure = `$true
+            continue
+          }
+
+          Write-ProbeEvent "probe:user-gesture-gate-activation-dispatch-start" ([PSCustomObject]@{
+            input = "renderer-button-click-sendinput"
+            target = `$activationTarget.target
+            preDispatch = `$activationPreDispatch
+            readyEventCount = `$preDispatchGateState.readyEvents.Count
+            consumedEventCount = `$preDispatchGateState.consumedEvents.Count
+            rejectedEventCount = `$preDispatchGateState.rejectedEvents.Count
+          })
+          `$activationFinalDispatch = Confirm-AutorunUserGestureActivationTarget `
+            ([int]`$activationTarget.target.x) `
+            ([int]`$activationTarget.target.y)
+          if (-not `$activationFinalDispatch.eligible) {
+            Write-ProbeEvent "probe:user-gesture-gate-activation-skipped" ([PSCustomObject]@{
+              reason = `$activationFinalDispatch.reason
+              binding = `$activationFinalDispatch.binding
+            })
+            Write-ProbeEvent "probe:close-input-skipped" ([PSCustomObject]@{
+              cycle = 1
+              reason = "user-gesture-source-changed-at-dispatch"
+            })
+            `$terminalFailure = `$true
+            continue
+          }
+          `$activationPointer = Send-NativeMouseClick `
+            ([int]`$activationTarget.target.x) `
+            ([int]`$activationTarget.target.y)
+          Write-ProbeEvent "probe:user-gesture-gate-activation-sent" ([PSCustomObject]@{
+            input = "renderer-button-click-sendinput"
+            target = `$activationTarget.target
+            binding = `$activationTarget.binding
+            dpi = `$activationTarget.dpi
+            preDispatch = `$activationPreDispatch
+            finalDispatch = `$activationFinalDispatch
+            nativePointerSent = `$activationPointer
+          })
+          `$activationSucceeded = (
+            `$activationPointer.sent -eq `$activationPointer.expected -and
+            `$activationPointer.lastError -eq 0
+          )
+          if (-not `$activationSucceeded) {
+            Write-ProbeEvent "probe:close-input-skipped" ([PSCustomObject]@{
+              cycle = 1
+              reason = "user-gesture-activation-dispatch-failed"
+            })
+            `$terminalFailure = `$true
+            continue
+          }
+          `$script:UserGestureActivationSent = `$true
+        }
+      }
+
+      if (`$script:UserGestureActivationSent -and -not `$script:UserGestureGateConsumed) {
+        if (`$gateState.consumedEvents.Count -gt 1) {
+          Write-ProbeEvent "probe:close-input-skipped" ([PSCustomObject]@{
+            cycle = 1
+            reason = "user-gesture-gate-consumption-ambiguous"
+          })
+          `$terminalFailure = `$true
+          continue
+        }
+        if (`$gateState.consumedEvents.Count -eq 1) {
+          `$script:UserGestureGateConsumed = `$true
+          Write-ProbeEvent "probe:user-gesture-gate-consumed" ([PSCustomObject]@{
+            readyEventCount = `$gateState.readyEvents.Count
+            consumedEventCount = `$gateState.consumedEvents.Count
+            rejectedEventCount = `$gateState.rejectedEvents.Count
+          })
+        }
+      }
+
+      if (-not `$script:UserGestureGateConsumed) {
+        Start-Sleep -Milliseconds 50
+        continue
+      }
+    }
     `$shownEventCount = ([regex]::Matches(`$text, 'overlay:presenter-wait-shown')).Count
     `$cycleReady = if ($expectedCloseCount -gt 1) {
       `$shownCycles = @(Get-PersistentReuseShownCycles)
@@ -4409,9 +5134,11 @@ while ((Get-Date) -lt `$deadline -and -not `$sent -and -not `$terminalFailure) {
         screenshot = Capture-ProbeScreen "detected"
         processes = Get-ProbeProcessSnapshot
       })
-      `$foregroundClear = Clear-BlockingForegroundWindow `$detectedForeground
-      if (`$foregroundClear.attempted) {
-        Write-ProbeEvent "probe:foreground-clear" `$foregroundClear
+      if (-not `$script:UseUserGestureGate) {
+        `$foregroundClear = Clear-BlockingForegroundWindow `$detectedForeground
+        if (`$foregroundClear.attempted) {
+          Write-ProbeEvent "probe:foreground-clear" `$foregroundClear
+        }
       }
       if ($settleMs -gt 0) {
         Start-Sleep -Milliseconds $settleMs
@@ -4560,11 +5287,28 @@ while ((Get-Date) -lt `$deadline -and -not `$sent -and -not `$terminalFailure) {
   }
 }
 
+if (`$script:UseUserGestureGate -and `$sentCount -eq $expectedCloseCount) {
+  `$focusReturn = Wait-AutorunUserGestureSourceFocusReturn -Deadline `$deadline
+  Write-ProbeEvent "probe:user-gesture-app-focus-return" `$focusReturn
+  if (-not `$focusReturn.observed) {
+    `$sent = `$false
+    `$terminalFailure = `$true
+  }
+}
+
 if (`$sentCount -eq $expectedCloseCount) {
-  Write-ProbeEvent "probe:complete" ([PSCustomObject]@{
-    sentCount = `$sentCount
-    expectedCloseCount = $expectedCloseCount
-  })
+  if (-not `$terminalFailure) {
+    Write-ProbeEvent "probe:complete" ([PSCustomObject]@{
+      sentCount = `$sentCount
+      expectedCloseCount = $expectedCloseCount
+    })
+  } else {
+    Write-ProbeEvent "probe:incomplete" ([PSCustomObject]@{
+      reason = "source-focus-return-not-observed"
+      sentCount = `$sentCount
+      expectedCloseCount = $expectedCloseCount
+    })
+  }
 } elseif (`$terminalFailure) {
   Write-ProbeEvent "probe:incomplete" ([PSCustomObject]@{
     reason = "terminal-cycle-failure"
@@ -4705,6 +5449,9 @@ function Write-CaseLaunchEnv {
   }
   if ($KeepOpenAfterResult) {
     $args += "-KeepOpenAfterResult"
+  }
+  if ($Case.autorunUserGestureGate) {
+    $args += "-AutorunUserGestureGate"
   }
   if ($Case.webModal) {
     $args += @("-WebModal", $Case.webModal)
@@ -5088,6 +5835,9 @@ function Invoke-MatrixCase {
   }
   if ($controlFile) {
     $args += @("-ControlServer", "-ControlHandoffOnly", "-ControlFile", $controlFile)
+  }
+  if ($Case.autorunUserGestureGate) {
+    $args += "-AutorunUserGestureGate"
   }
   if ($Case.allowOverlayNotReady) {
     $args += "-AllowOverlayNotReady"

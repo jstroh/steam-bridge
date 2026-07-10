@@ -1,5 +1,134 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
+const AUTORUN_USER_GESTURE_GATE_ACTION = "presenter-web-open-and-wait";
+const AUTORUN_USER_GESTURE_GATE_TARGET_ID = "presenter-web-wait";
+let autorunUserGestureGate;
+let autorunUserGestureGateHandler;
+let autorunUserGestureGateActivated = false;
+
+ipcRenderer.on("steam-smoke:autorun-user-gesture-gate-arm", (_event, value) => {
+  if (
+    autorunUserGestureGate ||
+    !value ||
+    value.action !== AUTORUN_USER_GESTURE_GATE_ACTION ||
+    typeof value.nonce !== "string" ||
+    !/^[0-9a-f]{64}$/.test(value.nonce)
+  ) {
+    return;
+  }
+  autorunUserGestureGate = {
+    action: value.action,
+    nonce: value.nonce,
+    attempted: false,
+    button: undefined
+  };
+  activateAutorunUserGestureGate();
+});
+
+function activateAutorunUserGestureGate() {
+  if (!autorunUserGestureGate || !autorunUserGestureGateHandler || autorunUserGestureGateActivated) {
+    return;
+  }
+
+  const button = document.getElementById(AUTORUN_USER_GESTURE_GATE_TARGET_ID);
+  if (!button) {
+    return;
+  }
+
+  autorunUserGestureGateActivated = true;
+  autorunUserGestureGate.button = button;
+  button.addEventListener("click", consumeAutorunUserGestureGate, { capture: true, once: true });
+  autorunUserGestureGateHandler({ action: autorunUserGestureGate.action });
+
+  const evidence = getAutorunUserGestureGateReadyEvidence(button);
+  ipcRenderer
+    .invoke("steam-smoke:autorun-user-gesture-gate-ready", {
+      action: autorunUserGestureGate.action,
+      nonce: autorunUserGestureGate.nonce,
+      evidence
+    })
+    .catch(() => undefined);
+}
+
+function consumeAutorunUserGestureGate(event) {
+  const gate = autorunUserGestureGate;
+  if (!gate || gate.attempted || event.currentTarget !== gate.button) {
+    return;
+  }
+
+  gate.attempted = true;
+  const nonce = gate.nonce;
+  gate.nonce = undefined;
+  const click = {
+    isTrusted: event.isTrusted === true,
+    button: event.button,
+    detail: event.detail,
+    clientX: event.clientX,
+    clientY: event.clientY,
+    userActivationActive: navigator.userActivation && navigator.userActivation.isActive === true
+  };
+  ipcRenderer
+    .invoke("steam-smoke:autorun-user-gesture-gate-consume", {
+      action: gate.action,
+      nonce,
+      click
+    })
+    .catch(() => undefined);
+}
+
+function getAutorunUserGestureGateReadyEvidence(button) {
+  const rect = button.getBoundingClientRect();
+  const style = window.getComputedStyle(button);
+  const rectValues = [rect.left, rect.top, rect.right, rect.bottom, rect.width, rect.height];
+  const viewportValues = [window.innerWidth, window.innerHeight, window.devicePixelRatio];
+  const finite = rectValues.every(Number.isFinite) && viewportValues.every(Number.isFinite);
+  const fullyInsideViewport =
+    finite &&
+    rect.left >= 0 &&
+    rect.top >= 0 &&
+    rect.right <= window.innerWidth &&
+    rect.bottom <= window.innerHeight;
+  const centerElement = fullyInsideViewport
+    ? document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2)
+    : null;
+  const unobscured = centerElement === button || button.contains(centerElement);
+  const opacity = Number.parseFloat(style.opacity);
+  const visible =
+    button.isConnected &&
+    !button.disabled &&
+    rect.width > 0 &&
+    rect.height > 0 &&
+    fullyInsideViewport &&
+    unobscured &&
+    style.display !== "none" &&
+    style.visibility !== "hidden" &&
+    style.visibility !== "collapse" &&
+    Number.isFinite(opacity) &&
+    opacity > 0;
+
+  return {
+    button: {
+      id: button.id,
+      connected: button.isConnected,
+      enabled: !button.disabled,
+      visible,
+      rect: {
+        left: rect.left,
+        top: rect.top,
+        right: rect.right,
+        bottom: rect.bottom,
+        width: rect.width,
+        height: rect.height
+      }
+    },
+    viewport: {
+      width: window.innerWidth,
+      height: window.innerHeight,
+      devicePixelRatio: window.devicePixelRatio
+    }
+  };
+}
+
 contextBridge.exposeInMainWorld("steamSmoke", {
   snapshot: () => ipcRenderer.invoke("steam-smoke:snapshot"),
   requestAuthTicket: () => ipcRenderer.invoke("steam-smoke:auth-ticket"),
@@ -9,6 +138,18 @@ contextBridge.exposeInMainWorld("steamSmoke", {
   checkPresenterReady: () => ipcRenderer.invoke("steam-smoke:presenter-ready"),
   openPresenterWeb: () => ipcRenderer.invoke("steam-smoke:presenter-web"),
   openPresenterWebOpenAndWait: () => ipcRenderer.invoke("steam-smoke:presenter-web-open-and-wait"),
+  onAutorunUserGestureGateArm: (handler) => {
+    if (typeof handler !== "function") {
+      return () => undefined;
+    }
+    autorunUserGestureGateHandler = handler;
+    activateAutorunUserGestureGate();
+    return () => {
+      if (autorunUserGestureGateHandler === handler) {
+        autorunUserGestureGateHandler = undefined;
+      }
+    };
+  },
   openPresenterDuplicateOpenGuard: () => ipcRenderer.invoke("steam-smoke:presenter-duplicate-open-guard"),
   openPresenterStoreOpenAndWait: () => ipcRenderer.invoke("steam-smoke:presenter-store-open-and-wait"),
   openPresenterDialogAutoOpenAndWait: () =>

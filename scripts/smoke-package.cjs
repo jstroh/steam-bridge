@@ -2,6 +2,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
+const vm = require("node:vm");
 const { spawnSync } = require("node:child_process");
 
 const repoRoot = path.resolve(__dirname, "..");
@@ -54,6 +55,7 @@ try {
   runMacosEntitlementsStaticChecks();
   runMacosPackageSigningStaticChecks();
   runElectronSmokeActionStaticChecks();
+  runElectronPreloadUserGestureGateSelfTest();
   runWindowsSmokeHelperStaticChecks();
 
   console.log("Packed steam-bridge package smoke test passed.");
@@ -728,7 +730,9 @@ function runWindowsSmokeHelperStaticChecks() {
       presenterFocusBlock.includes("ownerReportsForeground") &&
       presenterFocusBlock.includes("[SteamBridgeWindowsProbe]::GetForegroundWindow() -eq `$handle") &&
       presenterFocusBlock.includes('source = "lifecycle-native-host"') &&
-      presenterFocusBlock.includes('mechanism = "owner-process-native-show"') &&
+      presenterFocusBlock.includes(
+        'mechanism = if (`$script:UseUserGestureGate) { "same-process-user-gesture" } else { "owner-process-native-show" }'
+      ) &&
       presenterFocusBlock.includes("handlePresent =") &&
       presenterFocusBlock.includes("handleFormatValid =") &&
       presenterFocusBlock.includes("windowValid =") &&
@@ -830,6 +834,217 @@ function runWindowsSmokeHelperStaticChecks() {
       helper.includes(expected) || matrixHelper.includes(expected),
       `Windows owner-process handoff packaging missing ${expected}`
     );
+  }
+  assert.match(
+    helper,
+    /if \(\$AutorunUserGestureGate\) \{\s*\$args \+= "--steam-bridge-smoke-autorun-user-gesture-gate"\s*\}/,
+    "Windows smoke helper must add the user-gesture CLI flag only when explicitly enabled"
+  );
+  assert.match(
+    helper,
+    /if \(\$AutorunUserGestureGate\) \{\s*\$envMap\.STEAM_BRIDGE_SMOKE_AUTORUN_USER_GESTURE_GATE = "1"\s*\}/,
+    "Windows smoke helper must add the user-gesture launch-env flag only when explicitly enabled"
+  );
+  assert.ok(
+    helper.includes('[switch]$AutorunUserGestureGate') &&
+      helper.includes('if ($AutorunUserGestureGate -and $Action -ne "presenter-web-open-and-wait")') &&
+      helper.includes('throw "-AutorunUserGestureGate requires presenter-web-open-and-wait."'),
+    "Windows smoke helper must restrict the opt-in user-gesture gate to presenter-web-open-and-wait"
+  );
+  const userGestureTargetStart = matrixHelper.indexOf("function Resolve-AutorunUserGestureGateTarget");
+  const userGestureTargetEnd = matrixHelper.indexOf(
+    "\nfunction Confirm-AutorunUserGestureActivationTarget",
+    userGestureTargetStart
+  );
+  assert.ok(
+    userGestureTargetStart >= 0 && userGestureTargetEnd > userGestureTargetStart,
+    "Windows close probe must define a bounded user-gesture source-window target resolver"
+  );
+  const userGestureTargetBlock = matrixHelper.slice(userGestureTargetStart, userGestureTargetEnd);
+  for (const expected of [
+    'mechanism -ne "same-process-user-gesture"',
+    'action -ne "presenter-web-open-and-wait"',
+    'targetId -ne "presenter-web-wait"',
+    "GetWindowThreadProcessId(`$sourceHandle",
+    "ownerMatchesLifecycleProcess",
+    "sourceMatchesControlProcess",
+    "sameInteractiveSession",
+    "IsWindowEnabled(`$sourceHandle)",
+    "IsIconic(`$sourceHandle)",
+    "GetForegroundWindow() -eq `$sourceHandle",
+    "GetDpiForWindow(`$sourceHandle)",
+    "rendererScale",
+    "windowScale",
+    "scaleAgrees",
+    "clientGeometryAgrees",
+    "GetClientRect(`$sourceHandle",
+    "ClientToScreen(`$sourceHandle",
+    'source = "renderer-button-physical-dpi"',
+    "insideSourceClient = `$true"
+  ]) {
+    assert.ok(userGestureTargetBlock.includes(expected), `Windows user-gesture target resolver missing ${expected}`);
+  }
+  assert.doesNotMatch(
+    userGestureTargetBlock,
+    /SetForegroundWindow|ShowWindowAsync|Invoke-RestMethod|\/foreground-handoff|showNativeOverlayHostView|Send-NativeMouseClick|Start-Sleep/,
+    "Windows user-gesture target resolution must only inspect exact source-window and DPI state"
+  );
+  const userGesturePreDispatchStart = matrixHelper.indexOf(
+    "function Confirm-AutorunUserGestureActivationTarget"
+  );
+  const userGesturePreDispatchEnd = matrixHelper.indexOf(
+    "\nfunction Wait-AutorunUserGestureSourceFocusReturn",
+    userGesturePreDispatchStart
+  );
+  assert.ok(
+    userGesturePreDispatchStart >= 0 &&
+      userGesturePreDispatchEnd > userGesturePreDispatchStart,
+    "Windows close probe must define an immediate exact-source activation recheck"
+  );
+  const userGesturePreDispatchBlock = matrixHelper.slice(
+    userGesturePreDispatchStart,
+    userGesturePreDispatchEnd
+  );
+  for (const expected of [
+    "sourceMatchesBoundProcess",
+    "sourceMatchesControlProcess",
+    "sameInteractiveSession",
+    "targetInsideSourceClient",
+    "WindowFromPoint(`$point)",
+    "pointOwnerMatchesBoundProcess",
+    "GetAncestor(`$pointHandle, 2) -eq `$handle",
+    "pointRootMatchesSourceWindow",
+    "GetForegroundWindow() -eq `$handle",
+    '"gate-source-window-confirmed-before-dispatch"'
+  ]) {
+    assert.ok(
+      userGesturePreDispatchBlock.includes(expected),
+      `Windows user-gesture pre-dispatch recheck missing ${expected}`
+    );
+  }
+  assert.doesNotMatch(
+    userGesturePreDispatchBlock,
+    /SetForegroundWindow|ShowWindowAsync|Invoke-RestMethod|\/foreground-handoff|showNativeOverlayHostView|Send-NativeMouseClick|Start-Sleep/,
+    "Windows user-gesture pre-dispatch recheck must inspect only the exact bound source and target point"
+  );
+  const closeProbeLoopStart = matrixHelper.indexOf("while ((Get-Date) -lt `$deadline -and -not `$sent");
+  const userGestureActivationStart = matrixHelper.indexOf(
+    "    if (`$script:UseUserGestureGate) {",
+    closeProbeLoopStart
+  );
+  const userGestureActivationEnd = matrixHelper.indexOf(
+    "    `$shownEventCount =",
+    userGestureActivationStart
+  );
+  assert.ok(
+    closeProbeLoopStart >= 0 &&
+      userGestureActivationStart > closeProbeLoopStart &&
+      userGestureActivationEnd > userGestureActivationStart,
+    "Windows close probe must define a bounded one-shot user-gesture activation branch"
+  );
+  const userGestureActivationBlock = matrixHelper.slice(
+    userGestureActivationStart,
+    userGestureActivationEnd
+  );
+  assert.ok(
+      userGestureActivationBlock.includes("if (-not `$script:UserGestureActivationSent)") &&
+      userGestureActivationBlock.includes("gate-consumed-before-probe-activation") &&
+      userGestureActivationBlock.includes("`$gateControl = Read-SmokeControlDescriptor") &&
+      userGestureActivationBlock.includes("if (-not `$gateControl.valid)") &&
+      userGestureActivationBlock.includes("Resolve-AutorunUserGestureGateTarget") &&
+      userGestureActivationBlock.includes("Confirm-AutorunUserGestureActivationTarget") &&
+      userGestureActivationBlock.includes("`$preDispatchGateState.consumedEvents.Count -ne 0") &&
+      userGestureActivationBlock.includes(
+        'Write-ProbeEvent "probe:user-gesture-gate-activation-dispatch-start"'
+      ) &&
+      userGestureActivationBlock.includes('Write-ProbeEvent "probe:user-gesture-gate-activation-sent"') &&
+      userGestureActivationBlock.includes('input = "renderer-button-click-sendinput"') &&
+      userGestureActivationBlock.includes("finalDispatch = `$activationFinalDispatch") &&
+      userGestureActivationBlock.includes("`$script:UserGestureActivationSent = `$true") &&
+      userGestureActivationBlock.includes("`$script:UserGestureGateConsumed = `$true"),
+    "Windows close probe must consume one ready gate through one renderer-button SendInput activation"
+  );
+  assert.equal(
+    (userGestureActivationBlock.match(/Send-NativeMouseClick/g) || []).length,
+    1,
+    "Windows user-gesture branch must dispatch exactly one activation click"
+  );
+  assert.equal(
+    (userGestureActivationBlock.match(/Confirm-AutorunUserGestureActivationTarget/g) || []).length,
+    2,
+    "Windows user-gesture branch must recheck the exact source once more immediately before activation"
+  );
+  assert.ok(
+    userGestureActivationBlock.lastIndexOf("Confirm-AutorunUserGestureActivationTarget") <
+      userGestureActivationBlock.indexOf("`$activationPointer = Send-NativeMouseClick"),
+    "Windows user-gesture branch must perform its final exact-source check before SendInput"
+  );
+  assert.doesNotMatch(
+    userGestureActivationBlock,
+    /SetForegroundWindow|ShowWindowAsync|Invoke-RestMethod|\/foreground-handoff|showNativeOverlayHostView|Focus-SmokeWindowForShortcutProbe/,
+    "Windows user-gesture activation must not refocus, retry through native show, or invoke the legacy HTTP handoff"
+  );
+  assert.ok(
+    matrixHelper.includes(
+      "if (-not `$script:UseUserGestureGate) {\n        `$foregroundClear = Clear-BlockingForegroundWindow"
+    ),
+    "Windows same-process user-gesture branch must preserve foreground instead of invoking the legacy blocker-clear input"
+  );
+  const userGestureFocusStart = presenterFocusBlock.indexOf("  if (`$script:UseUserGestureGate) {");
+  const legacyOwnerFocusStart = presenterFocusBlock.indexOf(
+    "  `$evidence.requestCount = 1",
+    userGestureFocusStart
+  );
+  assert.ok(
+    userGestureFocusStart >= 0 && legacyOwnerFocusStart > userGestureFocusStart,
+    "Windows presenter focus gate must isolate the same-process user-gesture branch from the legacy owner handoff"
+  );
+  const userGestureFocusBlock = presenterFocusBlock.slice(userGestureFocusStart, legacyOwnerFocusStart);
+  for (const expected of [
+    "readyEventCount -eq 1",
+    "consumedEventCount -eq 1",
+    "rejectedEventCount -eq 0",
+    "activationInputCount -eq 1",
+    "sourceWindowBound",
+    "sameWindowBeforeAfter",
+    "ownerReportsForeground",
+    '"foreground-confirmed-from-user-gesture"',
+    "return [PSCustomObject]`$evidence"
+  ]) {
+    assert.ok(userGestureFocusBlock.includes(expected), `Windows user-gesture presenter gate missing ${expected}`);
+  }
+  assert.doesNotMatch(
+    userGestureFocusBlock,
+    /SetForegroundWindow|ShowWindowAsync|Invoke-RestMethod|\/foreground-handoff|showNativeOverlayHostView|nativeShowCallCount\s*=\s*1/,
+    "Windows same-process presenter gate must verify existing foreground without a focus or native-show retry"
+  );
+  for (const expected of [
+    '$SameProcessUserGestureForegroundHandoff = "same-process-user-gesture-v1"',
+    "supportedCloseProbeForegroundHandoffs = @(",
+    "$CloseProbeForegroundHandoff,",
+    "$SameProcessUserGestureForegroundHandoff",
+    'mechanism = if (`$script:UseUserGestureGate) { "same-process-user-gesture" } else { "owner-process-native-show" }'
+  ]) {
+    assert.ok(matrixHelper.includes(expected), `Windows schema-2 foreground mechanism union missing ${expected}`);
+  }
+  for (const expected of [
+    'const OWNER_PROCESS_FOREGROUND_HANDOFF = "owner-process-native-show-v1"',
+    'const SAME_PROCESS_USER_GESTURE_HANDOFF = "same-process-user-gesture-v1"',
+    "manifest.supportedCloseProbeForegroundHandoffs.includes(OWNER_PROCESS_FOREGROUND_HANDOFF)",
+    "manifest.supportedCloseProbeForegroundHandoffs.includes(SAME_PROCESS_USER_GESTURE_HANDOFF)",
+    'focus.mechanism === "same-process-user-gesture"',
+    "Number.isInteger(focus.requestCount)",
+    "Number.isInteger(focus.nativeShowCallCount)",
+    "focusTransport.authenticated === false",
+    'focus.appReason === "foreground-confirmed-from-user-gesture"',
+    "armedAppEvents.length === 1",
+    "activationDispatchStartEvents.length === 1",
+    "userGestureActivationEvents.length === 1",
+    "foregroundClearEvents.length === 0",
+    "Number.isInteger(activationTarget.x)",
+    "activationDpi.rendererScale === readyViewport.devicePixelRatio"
+  ]) {
+    assert.ok(matrixSummary.includes(expected), `Windows summary user-gesture schema contract missing ${expected}`);
   }
   assert.ok(
     matrixHelper.includes("$controlFileBase64 = [Convert]::ToBase64String") &&
@@ -1790,6 +2005,368 @@ function runElectronSmokeActionStaticChecks() {
   ]) {
     assert.ok(source.includes(expected), `${label} missing ${expected}`);
   }
+
+  for (const expected of [
+    "STEAM_BRIDGE_SMOKE_AUTORUN_USER_GESTURE_GATE",
+    "--steam-bridge-smoke-autorun-user-gesture-gate",
+    'const AUTORUN_USER_GESTURE_GATE_ACTION = "presenter-web-open-and-wait"',
+    'ipcMain.handle("steam-smoke:autorun-user-gesture-gate-ready"',
+    'ipcMain.handle("steam-smoke:autorun-user-gesture-gate-consume"',
+    'recordEvent("autorun:user-gesture-gate-armed"',
+    'recordEvent("autorun:user-gesture-gate-ready"',
+    'recordEvent("autorun:user-gesture-gate-consumed"',
+    'recordEvent("autorun:user-gesture-gate-rejected"'
+  ]) {
+    assert.ok(main.includes(expected), `Electron smoke user-gesture gate missing ${expected}`);
+  }
+
+  const gateArmStart = main.indexOf("function armAutorunUserGestureGate");
+  const gateArmEnd = main.indexOf("\nfunction handleAutorunUserGestureGateReady", gateArmStart);
+  assert.ok(gateArmStart >= 0 && gateArmEnd > gateArmStart, "Electron smoke app must define a bounded gate arm step");
+  const gateArmBlock = main.slice(gateArmStart, gateArmEnd);
+  assert.ok(
+    gateArmBlock.includes("crypto.randomBytes(32).toString(\"hex\")") &&
+      gateArmBlock.includes('state: "armed"') &&
+      gateArmBlock.includes('window.webContents.send("steam-smoke:autorun-user-gesture-gate-arm"') &&
+      gateArmBlock.includes("nonce: gate.nonce"),
+    "Electron smoke gate must arm one private nonce before notifying its renderer"
+  );
+  assert.doesNotMatch(
+    gateArmBlock,
+    /setTimeout|setInterval|setImmediate|\bdelay\s*\(/,
+    "Electron smoke user-gesture gate must arm from state without a timing delay"
+  );
+
+  const gateConsumeStart = main.indexOf("function handleAutorunUserGestureGateConsume");
+  const gateConsumeEnd = main.indexOf("\nfunction getAutorunUserGestureGateAvailabilityReason", gateConsumeStart);
+  assert.ok(
+    gateConsumeStart >= 0 && gateConsumeEnd > gateConsumeStart,
+    "Electron smoke app must define a bounded same-turn user-gesture consume step"
+  );
+  const gateConsumeBlock = main.slice(gateConsumeStart, gateConsumeEnd);
+  for (const expected of [
+    'gate.state === "consumed"',
+    'gate.state !== "ready"',
+    '"wrong-nonce"',
+    "click.isTrusted !== true",
+    "click.userActivationActive !== true",
+    "click.button !== 0",
+    "click.detail !== 1",
+    "Number.isFinite(click.clientX)",
+    "Number.isFinite(click.clientY)",
+    "isPointInsideAutorunUserGestureGateButton",
+    'gate.state = "consumed"',
+    "gate.nonce = undefined",
+    "runSmokeActionAndWait(gate.action"
+  ]) {
+    assert.ok(gateConsumeBlock.includes(expected), `Electron smoke gate consume step missing ${expected}`);
+  }
+  assert.ok(
+    gateConsumeBlock.indexOf('gate.state = "consumed"') <
+      gateConsumeBlock.indexOf("runSmokeActionAndWait(gate.action"),
+    "Electron smoke gate must consume its one-shot latch before invoking the autorun action"
+  );
+  assert.equal(
+    (gateConsumeBlock.match(/runSmokeActionAndWait\(/g) || []).length,
+    1,
+    "Electron smoke gate must invoke the existing autorun action exactly once"
+  );
+  assert.doesNotMatch(
+    gateConsumeBlock,
+    /\bawait\b|setTimeout|setInterval|setImmediate|\bdelay\s*\(|showNativeOverlayHostView|foreground-handoff|SetForegroundWindow/,
+    "Electron smoke gate must consume the trusted click and invoke the action in the same event turn"
+  );
+
+  const gateSenderStart = main.indexOf("function getAutorunUserGestureGateSenderRejectionReason");
+  const gateSenderEnd = main.indexOf("\nfunction getAutorunUserGestureGateWindowRejectionReason", gateSenderStart);
+  const gateSenderBlock = main.slice(gateSenderStart, gateSenderEnd);
+  assert.ok(
+    gateSenderStart >= 0 &&
+      gateSenderEnd > gateSenderStart &&
+      gateSenderBlock.includes("event.sender !== window.webContents") &&
+      gateSenderBlock.includes("event.senderFrame !== window.webContents.mainFrame"),
+    "Electron smoke gate must bind ready and consume IPC to the main window and main frame"
+  );
+  const gateNonceStart = main.indexOf("function matchesAutorunUserGestureGateNonce");
+  const gateNonceEnd = main.indexOf("\nfunction normalizeAutorunUserGestureGateReadyEvidence", gateNonceStart);
+  const gateNonceBlock = main.slice(gateNonceStart, gateNonceEnd);
+  assert.ok(
+    gateNonceStart >= 0 &&
+      gateNonceEnd > gateNonceStart &&
+      gateNonceBlock.includes("receivedBytes.length === expectedBytes.length") &&
+      gateNonceBlock.includes("crypto.timingSafeEqual(receivedBytes, expectedBytes)"),
+    "Electron smoke gate must compare its private nonce exactly and timing-safely"
+  );
+  const gateRejectStart = main.indexOf("function rejectAutorunUserGestureGate");
+  const gateRejectEnd = main.indexOf("\nfunction recordAutorunUserGestureGateRejection", gateRejectStart);
+  const gateRejectBlock = main.slice(gateRejectStart, gateRejectEnd);
+  assert.ok(
+    gateRejectStart >= 0 &&
+      gateRejectEnd > gateRejectStart &&
+      gateRejectBlock.includes('gate.state = "rejected"') &&
+      gateRejectBlock.includes("gate.nonce = undefined"),
+    "Electron smoke gate must destroy its nonce on a terminal rejection"
+  );
+  const readyEventStart = main.indexOf('recordEvent("autorun:user-gesture-gate-ready"');
+  const readyEventEnd = main.indexOf("return sanitize({ accepted: true", readyEventStart);
+  const consumedEventStart = main.indexOf('recordEvent("autorun:user-gesture-gate-consumed"');
+  const consumedEventEnd = main.indexOf("const actionPromise =", consumedEventStart);
+  assert.ok(
+    readyEventStart >= 0 && readyEventEnd > readyEventStart && consumedEventStart >= 0 && consumedEventEnd > consumedEventStart,
+    "Electron smoke gate must emit bounded ready and consumed evidence"
+  );
+  assert.doesNotMatch(
+    main.slice(readyEventStart, readyEventEnd),
+    /\bnonce\s*:/,
+    "Electron smoke ready evidence must not expose its private nonce"
+  );
+  assert.doesNotMatch(
+    main.slice(consumedEventStart, consumedEventEnd),
+    /\bnonce\s*:/,
+    "Electron smoke consumed evidence must not expose its private nonce"
+  );
+  assert.ok(
+    main.includes("actionDelayMs: AUTORUN_USER_GESTURE_GATE ? 0 : AUTORUN_ACTION_DELAY_MS") &&
+      main.includes("result = await armAutorunUserGestureGate(AUTORUN_ACTION)"),
+    "Electron smoke autorun must bypass its ordinary action delay only for the opt-in gate"
+  );
+
+  for (const expected of [
+    'ipcRenderer.on("steam-smoke:autorun-user-gesture-gate-arm"',
+    'value.action !== AUTORUN_USER_GESTURE_GATE_ACTION',
+    "typeof value.nonce !== \"string\"",
+    "!/^[0-9a-f]{64}$/.test(value.nonce)",
+    "document.getElementById(AUTORUN_USER_GESTURE_GATE_TARGET_ID)",
+    'button.addEventListener("click", consumeAutorunUserGestureGate, { capture: true, once: true })',
+    "autorunUserGestureGateHandler({ action: autorunUserGestureGate.action })",
+    'ipcRenderer\n    .invoke("steam-smoke:autorun-user-gesture-gate-ready"',
+    "button.getBoundingClientRect()",
+    "window.getComputedStyle(button)",
+    "rectValues.every(Number.isFinite)",
+    "viewportValues.every(Number.isFinite)",
+    "document.elementFromPoint",
+    "button.isConnected",
+    "!button.disabled",
+    "window.devicePixelRatio"
+  ]) {
+    const normalizedExpected = expected.replace(/\\n/g, "\n");
+    assert.ok(
+      preload.includes(normalizedExpected),
+      `Electron smoke preload user-gesture contract missing ${normalizedExpected}`
+    );
+  }
+  assert.doesNotMatch(
+    preload,
+    /autorunUserGestureGateHandler\(\{[^}]*nonce/s,
+    "Electron smoke preload must keep the private nonce out of the renderer-facing arm event"
+  );
+  const preloadConsumeStart = preload.indexOf("function consumeAutorunUserGestureGate(event)");
+  const preloadConsumeEnd = preload.indexOf(
+    "\nfunction getAutorunUserGestureGateReadyEvidence",
+    preloadConsumeStart
+  );
+  assert.ok(
+    preloadConsumeStart >= 0 && preloadConsumeEnd > preloadConsumeStart,
+    "Electron smoke preload must own a bounded isolated-world click consumer"
+  );
+  const preloadConsumeBlock = preload.slice(preloadConsumeStart, preloadConsumeEnd);
+  for (const expected of [
+    "gate.attempted",
+    "event.currentTarget !== gate.button",
+    "gate.attempted = true",
+    "const nonce = gate.nonce",
+    "gate.nonce = undefined",
+    "event.isTrusted === true",
+    "navigator.userActivation && navigator.userActivation.isActive === true",
+    "button: event.button",
+    "detail: event.detail",
+    "clientX: event.clientX",
+    "clientY: event.clientY",
+    '.invoke("steam-smoke:autorun-user-gesture-gate-consume"',
+    "nonce,"
+  ]) {
+    assert.ok(
+      preloadConsumeBlock.includes(expected),
+      `Electron smoke isolated click consumer missing ${expected}`
+    );
+  }
+  assert.ok(
+    preloadConsumeBlock.indexOf("gate.attempted = true") <
+      preloadConsumeBlock.indexOf('.invoke("steam-smoke:autorun-user-gesture-gate-consume"'),
+    "Electron smoke preload must latch the one-shot click before invoking consume IPC"
+  );
+  assert.doesNotMatch(
+    preloadConsumeBlock,
+    /\bawait\b|setTimeout|setInterval|setImmediate|requestAnimationFrame|\bdelay\s*\(/,
+    "Electron smoke isolated click consumer must not defer gesture evidence through a later turn"
+  );
+  const exposedBridgeStart = preload.indexOf('contextBridge.exposeInMainWorld("steamSmoke"');
+  const exposedBridge = preload.slice(exposedBridgeStart);
+  assert.ok(
+    exposedBridgeStart >= 0 &&
+      exposedBridge.includes("onAutorunUserGestureGateArm") &&
+      !exposedBridge.includes("reportAutorunUserGestureGateReady:") &&
+      !exposedBridge.includes("consumeAutorunUserGestureGate:"),
+    "Electron smoke main world must receive only the armed notification, not nonce-injecting gate methods"
+  );
+
+  const rendererClickStart = html.indexOf("presenterWebWaitButton.onclick = (event) => {");
+  const rendererClickEnd = html.indexOf(
+    '\n      document.getElementById("presenter-duplicate-guard")',
+    rendererClickStart
+  );
+  assert.ok(
+    rendererClickStart >= 0 && rendererClickEnd > rendererClickStart,
+    "Electron smoke renderer must define a bounded presenter click handler"
+  );
+  const rendererClickBlock = html.slice(rendererClickStart, rendererClickEnd);
+  assert.ok(
+    rendererClickBlock.includes("if (!autorunUserGestureGate)") &&
+      rendererClickBlock.includes(
+        'return run("Presenter Web Wait", () => window.steamSmoke.openPresenterWebOpenAndWait())'
+      ) &&
+      rendererClickBlock.includes("event.preventDefault()") &&
+      !rendererClickBlock.includes("consumeAutorunUserGestureGate") &&
+      !rendererClickBlock.includes("event.isTrusted") &&
+      !rendererClickBlock.includes("navigator.userActivation"),
+    "Electron smoke renderer must preserve the manual path and suppress it while isolated preload owns the gate"
+  );
+  assert.ok(
+    html.includes("window.steamSmoke.onAutorunUserGestureGateArm((gate) => {") &&
+      html.includes("autorunUserGestureGate = { action: gate.action };"),
+    "Electron smoke renderer must receive only the sanitized armed action"
+  );
+}
+
+function runElectronPreloadUserGestureGateSelfTest() {
+  const preloadPath = path.join(repoRoot, "examples", "electron-basic", "preload.js");
+  const source = fs.readFileSync(preloadPath, "utf8");
+  const ipcListeners = new Map();
+  const ipcInvocations = [];
+  let exposedApi;
+  let clickListener;
+  let clickListenerOptions;
+  const rect = {
+    left: 100,
+    top: 40,
+    right: 220,
+    bottom: 76,
+    width: 120,
+    height: 36
+  };
+  const button = {
+    id: "presenter-web-wait",
+    isConnected: true,
+    disabled: false,
+    getBoundingClientRect: () => ({ ...rect }),
+    contains: () => false,
+    addEventListener(type, listener, options) {
+      assert.equal(type, "click");
+      clickListener = listener;
+      clickListenerOptions = options;
+    }
+  };
+  const electron = {
+    contextBridge: {
+      exposeInMainWorld(name, api) {
+        assert.equal(name, "steamSmoke");
+        exposedApi = api;
+      }
+    },
+    ipcRenderer: {
+      on(channel, listener) {
+        ipcListeners.set(channel, listener);
+      },
+      invoke(channel, payload) {
+        ipcInvocations.push({ channel, payload });
+        return Promise.resolve({ accepted: true });
+      }
+    }
+  };
+  const sandbox = {
+    require(specifier) {
+      assert.equal(specifier, "electron");
+      return electron;
+    },
+    document: {
+      getElementById: (id) => (id === "presenter-web-wait" ? button : null),
+      elementFromPoint: () => button
+    },
+    navigator: {
+      userActivation: { isActive: true }
+    },
+    window: {
+      innerWidth: 1060,
+      innerHeight: 760,
+      devicePixelRatio: 2.25,
+      getComputedStyle: () => ({
+        display: "block",
+        visibility: "visible",
+        opacity: "1"
+      })
+    },
+    console
+  };
+  vm.runInNewContext(source, sandbox, { filename: preloadPath });
+
+  assert.ok(exposedApi, "Electron smoke preload did not expose its bridge API");
+  assert.equal(
+    Object.prototype.hasOwnProperty.call(exposedApi, "reportAutorunUserGestureGateReady"),
+    false,
+    "Electron smoke preload must not expose generic ready evidence injection"
+  );
+  assert.equal(
+    Object.prototype.hasOwnProperty.call(exposedApi, "consumeAutorunUserGestureGate"),
+    false,
+    "Electron smoke preload must not expose generic user-gesture consumption"
+  );
+
+  const armListener = ipcListeners.get("steam-smoke:autorun-user-gesture-gate-arm");
+  assert.equal(typeof armListener, "function", "Electron smoke preload did not register its private arm listener");
+  const nonce = "a".repeat(64);
+  armListener({}, { action: "presenter-web-open-and-wait", nonce });
+  assert.equal(ipcInvocations.length, 0, "Electron smoke preload must buffer arm until the page registers");
+
+  let armNotice;
+  exposedApi.onAutorunUserGestureGateArm((value) => {
+    armNotice = value;
+  });
+  assert.deepEqual(Object.keys(armNotice), ["action"]);
+  assert.equal(armNotice.action, "presenter-web-open-and-wait");
+  assert.equal(clickListenerOptions.capture, true);
+  assert.equal(clickListenerOptions.once, true);
+  assert.equal(typeof clickListener, "function");
+
+  const readyCalls = ipcInvocations.filter(
+    (entry) => entry.channel === "steam-smoke:autorun-user-gesture-gate-ready"
+  );
+  assert.equal(readyCalls.length, 1);
+  assert.equal(readyCalls[0].payload.nonce, nonce);
+  assert.equal(readyCalls[0].payload.evidence.button.id, "presenter-web-wait");
+  assert.equal(readyCalls[0].payload.evidence.button.visible, true);
+  assert.equal(readyCalls[0].payload.evidence.viewport.devicePixelRatio, 2.25);
+
+  const click = {
+    currentTarget: button,
+    isTrusted: true,
+    button: 0,
+    detail: 1,
+    clientX: 160,
+    clientY: 58
+  };
+  clickListener(click);
+  clickListener(click);
+  const consumeCalls = ipcInvocations.filter(
+    (entry) => entry.channel === "steam-smoke:autorun-user-gesture-gate-consume"
+  );
+  assert.equal(consumeCalls.length, 1, "Electron smoke preload must consume at most once");
+  assert.equal(consumeCalls[0].payload.nonce, nonce);
+  assert.equal(consumeCalls[0].payload.click.isTrusted, true);
+  assert.equal(consumeCalls[0].payload.click.userActivationActive, true);
+  assert.equal(consumeCalls[0].payload.click.button, 0);
+  assert.equal(consumeCalls[0].payload.click.detail, 1);
+  assert.equal(consumeCalls[0].payload.click.clientX, 160);
+  assert.equal(consumeCalls[0].payload.click.clientY, 58);
 }
 
 function packPackage() {

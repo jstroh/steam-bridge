@@ -121,6 +121,36 @@ const AUTORUN_KEEP_OPEN_AFTER_RESULT = readBoolean(
   CLI_OPTIONS.keepOpenAfterResult || process.env.STEAM_BRIDGE_SMOKE_KEEP_OPEN_AFTER_RESULT,
   false
 );
+const AUTORUN_USER_GESTURE_GATE = readBoolean(
+  CLI_OPTIONS.autorunUserGestureGate || process.env.STEAM_BRIDGE_SMOKE_AUTORUN_USER_GESTURE_GATE,
+  false
+);
+const AUTORUN_USER_GESTURE_GATE_ACTION = "presenter-web-open-and-wait";
+const AUTORUN_USER_GESTURE_GATE_REJECTION_REASONS = new Set([
+  "gate-disabled",
+  "unsupported-action",
+  "unarmed",
+  "wrong-sender",
+  "wrong-frame",
+  "wrong-action",
+  "wrong-target",
+  "wrong-nonce",
+  "invalid-geometry",
+  "duplicate",
+  "not-ready",
+  "untrusted-click",
+  "inactive-user-activation",
+  "not-left-click",
+  "not-single-click",
+  "invalid-click-position",
+  "click-outside-button",
+  "window-unavailable",
+  "window-not-visible",
+  "window-not-focused",
+  "window-minimized",
+  "dispatch-failed",
+  "replay"
+]);
 const CONTROL_SERVER_ENABLED = readBoolean(
   CLI_OPTIONS.controlServer || process.env.STEAM_BRIDGE_SMOKE_CONTROL_SERVER,
   false
@@ -218,6 +248,7 @@ let nativePresenterForegroundHandoffReuseCycle;
 let postClosePresenterSnapshotHandle;
 let passiveNotificationNeedsPresentObserverHandle;
 let passiveNotificationNeedsPresentState;
+let autorunUserGestureGate;
 let managedOverlayWaitSequence = 0;
 let pendingManagedOverlayShownWait;
 let pendingManagedOverlayLifecycle;
@@ -322,6 +353,8 @@ ipcMain.handle("steam-smoke:overlay-dialog", () => openDialogOverlay());
 ipcMain.handle("steam-smoke:presenter-ready", () => checkPresenterReady());
 ipcMain.handle("steam-smoke:presenter-web", () => openPresenterWebOverlay());
 ipcMain.handle("steam-smoke:presenter-web-open-and-wait", () => openPresenterWebOpenAndWaitOverlay());
+ipcMain.handle("steam-smoke:autorun-user-gesture-gate-ready", handleAutorunUserGestureGateReady);
+ipcMain.handle("steam-smoke:autorun-user-gesture-gate-consume", handleAutorunUserGestureGateConsume);
 ipcMain.handle("steam-smoke:presenter-persistent-reuse-three-cycle", () =>
   openPresenterPersistentReuseThreeCycleOverlay()
 );
@@ -493,16 +526,22 @@ function recordMicroTxnAuthorizationResponse(event, callbackSource) {
 async function runAutorunSmoke() {
   recordEvent("autorun:start", {
     action: AUTORUN_ACTION,
-    actionDelayMs: AUTORUN_ACTION_DELAY_MS,
-    resultDelayMs: AUTORUN_RESULT_DELAY_MS
+    actionDelayMs: AUTORUN_USER_GESTURE_GATE ? 0 : AUTORUN_ACTION_DELAY_MS,
+    resultDelayMs: AUTORUN_RESULT_DELAY_MS,
+    ...(AUTORUN_USER_GESTURE_GATE ? { userGestureGate: true } : {})
   });
 
-  await delay(AUTORUN_ACTION_DELAY_MS);
-  const result = await runSmokeActionAndWait(AUTORUN_ACTION, {
-    source: "autorun",
-    resultDelayMs: AUTORUN_RESULT_DELAY_MS,
-    requireOverlayActive: AUTORUN_REQUIRE_OVERLAY_ACTIVE
-  });
+  let result;
+  if (AUTORUN_USER_GESTURE_GATE) {
+    result = await armAutorunUserGestureGate(AUTORUN_ACTION);
+  } else {
+    await delay(AUTORUN_ACTION_DELAY_MS);
+    result = await runSmokeActionAndWait(AUTORUN_ACTION, {
+      source: "autorun",
+      resultDelayMs: AUTORUN_RESULT_DELAY_MS,
+      requireOverlayActive: AUTORUN_REQUIRE_OVERLAY_ACTIVE
+    });
+  }
   recordEvent("autorun:result-ready", { action: AUTORUN_ACTION, resultFile: AUTORUN_RESULT_FILE || null });
   const line = `STEAM_BRIDGE_SMOKE_RESULT ${JSON.stringify(result)}\n`;
   writeSmokeResultLine(line);
@@ -514,6 +553,359 @@ async function runAutorunSmoke() {
   }
 
   process.stdout.write(line, () => process.exit(0));
+}
+
+function armAutorunUserGestureGate(action) {
+  if (action !== AUTORUN_USER_GESTURE_GATE_ACTION) {
+    recordAutorunUserGestureGateRejection("arm", "unsupported-action", "unarmed", action);
+    return Promise.resolve(createAutorunUserGestureGateFailureResult(action, "unsupported-action"));
+  }
+
+  const window = mainWindow;
+  if (!window || window.isDestroyed()) {
+    recordAutorunUserGestureGateRejection("arm", "window-unavailable", "unarmed", action);
+    return Promise.resolve(createAutorunUserGestureGateFailureResult(action, "window-unavailable"));
+  }
+
+  let resolveCompletion;
+  const completion = new Promise((resolve) => {
+    resolveCompletion = resolve;
+  });
+  const gate = {
+    action,
+    nonce: crypto.randomBytes(32).toString("hex"),
+    state: "armed",
+    readyEvidence: undefined,
+    resolveCompletion
+  };
+  autorunUserGestureGate = gate;
+  recordEvent("autorun:user-gesture-gate-armed", { action });
+
+  try {
+    window.webContents.send("steam-smoke:autorun-user-gesture-gate-arm", {
+      action,
+      nonce: gate.nonce
+    });
+  } catch {
+    rejectAutorunUserGestureGate("arm", "dispatch-failed");
+  }
+
+  return completion;
+}
+
+function handleAutorunUserGestureGateReady(event, payload) {
+  const gate = autorunUserGestureGate;
+  const availabilityReason = getAutorunUserGestureGateAvailabilityReason(gate);
+  if (availabilityReason) {
+    return rejectAutorunUserGestureGate("ready", availabilityReason);
+  }
+
+  const senderReason = getAutorunUserGestureGateSenderRejectionReason(event);
+  if (senderReason) {
+    return rejectAutorunUserGestureGate("ready", senderReason);
+  }
+
+  if (gate.state === "consumed") {
+    return rejectAutorunUserGestureGate("ready", "replay");
+  }
+  if (gate.state === "rejected" || gate.state === "ready") {
+    return rejectAutorunUserGestureGate("ready", "duplicate");
+  }
+  if (gate.state !== "armed") {
+    return rejectAutorunUserGestureGate("ready", "unarmed");
+  }
+  if (!payload || payload.action !== gate.action) {
+    return rejectAutorunUserGestureGate("ready", "wrong-action");
+  }
+  if (!matchesAutorunUserGestureGateNonce(payload.nonce, gate.nonce)) {
+    return rejectAutorunUserGestureGate("ready", "wrong-nonce");
+  }
+  if (!payload.evidence || !payload.evidence.button || payload.evidence.button.id !== "presenter-web-wait") {
+    return rejectAutorunUserGestureGate("ready", "wrong-target");
+  }
+
+  const readyEvidence = normalizeAutorunUserGestureGateReadyEvidence(payload.evidence);
+  if (!readyEvidence) {
+    return rejectAutorunUserGestureGate("ready", "invalid-geometry");
+  }
+
+  gate.state = "ready";
+  gate.readyEvidence = readyEvidence;
+  recordEvent("autorun:user-gesture-gate-ready", {
+    schema: 1,
+    mechanism: "same-process-user-gesture",
+    action: gate.action,
+    targetId: readyEvidence.button.id,
+    ready: true,
+    binding: {
+      senderMatches: true,
+      mainFrameMatches: true,
+      nonceMatches: true
+    },
+    target: {
+      left: readyEvidence.button.rect.left,
+      top: readyEvidence.button.rect.top,
+      width: readyEvidence.button.rect.width,
+      height: readyEvidence.button.rect.height
+    },
+    viewport: readyEvidence.viewport
+  });
+  return sanitize({ accepted: true, action: gate.action });
+}
+
+function handleAutorunUserGestureGateConsume(event, payload) {
+  const gate = autorunUserGestureGate;
+  const availabilityReason = getAutorunUserGestureGateAvailabilityReason(gate);
+  if (availabilityReason) {
+    return rejectAutorunUserGestureGate("consume", availabilityReason);
+  }
+
+  const senderReason = getAutorunUserGestureGateSenderRejectionReason(event);
+  if (senderReason) {
+    return rejectAutorunUserGestureGate("consume", senderReason);
+  }
+
+  if (gate.state === "consumed") {
+    return rejectAutorunUserGestureGate("consume", "replay");
+  }
+  if (gate.state === "rejected") {
+    return rejectAutorunUserGestureGate("consume", "duplicate");
+  }
+  if (gate.state !== "ready") {
+    return rejectAutorunUserGestureGate("consume", "not-ready");
+  }
+  if (!payload || payload.action !== gate.action) {
+    return rejectAutorunUserGestureGate("consume", "wrong-action");
+  }
+  if (!matchesAutorunUserGestureGateNonce(payload.nonce, gate.nonce)) {
+    return rejectAutorunUserGestureGate("consume", "wrong-nonce");
+  }
+
+  const click = payload.click;
+  if (!click || click.isTrusted !== true) {
+    return rejectAutorunUserGestureGate("consume", "untrusted-click");
+  }
+  if (click.userActivationActive !== true) {
+    return rejectAutorunUserGestureGate("consume", "inactive-user-activation");
+  }
+  if (click.button !== 0) {
+    return rejectAutorunUserGestureGate("consume", "not-left-click");
+  }
+  if (click.detail !== 1) {
+    return rejectAutorunUserGestureGate("consume", "not-single-click");
+  }
+  if (!Number.isFinite(click.clientX) || !Number.isFinite(click.clientY)) {
+    return rejectAutorunUserGestureGate("consume", "invalid-click-position");
+  }
+  if (!isPointInsideAutorunUserGestureGateButton(click.clientX, click.clientY, gate.readyEvidence.button.rect)) {
+    return rejectAutorunUserGestureGate("consume", "click-outside-button");
+  }
+
+  const windowReason = getAutorunUserGestureGateWindowRejectionReason();
+  if (windowReason) {
+    return rejectAutorunUserGestureGate("consume", windowReason);
+  }
+
+  gate.state = "consumed";
+  gate.nonce = undefined;
+  recordEvent("autorun:user-gesture-gate-consumed", {
+    schema: 1,
+    mechanism: "same-process-user-gesture",
+    action: gate.action,
+    targetId: gate.readyEvidence.button.id,
+    consumed: true,
+    consumeCount: 1,
+    binding: {
+      senderMatches: true,
+      mainFrameMatches: true,
+      nonceMatches: true
+    },
+    gesture: {
+      trusted: true,
+      userActivationActive: true,
+      leftButton: true,
+      singleClick: true
+    }
+  });
+
+  const actionPromise = runSmokeActionAndWait(gate.action, {
+    source: "autorun",
+    resultDelayMs: AUTORUN_RESULT_DELAY_MS,
+    requireOverlayActive: AUTORUN_REQUIRE_OVERLAY_ACTIVE
+  }).catch(() => createAutorunUserGestureGateActionFailureResult(gate.action));
+  actionPromise.then(gate.resolveCompletion);
+  return actionPromise;
+}
+
+function getAutorunUserGestureGateAvailabilityReason(gate) {
+  if (!AUTORUN || !AUTORUN_USER_GESTURE_GATE) {
+    return "gate-disabled";
+  }
+  if (!gate) {
+    return "unarmed";
+  }
+  return undefined;
+}
+
+function getAutorunUserGestureGateSenderRejectionReason(event) {
+  const window = mainWindow;
+  if (!window || window.isDestroyed() || event.sender !== window.webContents) {
+    return "wrong-sender";
+  }
+  if (!event.senderFrame || event.senderFrame !== window.webContents.mainFrame) {
+    return "wrong-frame";
+  }
+  return undefined;
+}
+
+function getAutorunUserGestureGateWindowRejectionReason() {
+  const window = mainWindow;
+  if (!window || window.isDestroyed()) {
+    return "window-unavailable";
+  }
+  if (window.isMinimized()) {
+    return "window-minimized";
+  }
+  if (!window.isVisible()) {
+    return "window-not-visible";
+  }
+  if (!window.isFocused()) {
+    return "window-not-focused";
+  }
+  return undefined;
+}
+
+function matchesAutorunUserGestureGateNonce(received, expected) {
+  if (typeof received !== "string" || typeof expected !== "string") {
+    return false;
+  }
+  const receivedBytes = Buffer.from(received, "utf8");
+  const expectedBytes = Buffer.from(expected, "utf8");
+  return receivedBytes.length === expectedBytes.length && crypto.timingSafeEqual(receivedBytes, expectedBytes);
+}
+
+function normalizeAutorunUserGestureGateReadyEvidence(evidence) {
+  if (!evidence || !evidence.button || !evidence.viewport) {
+    return undefined;
+  }
+  if (evidence.button.connected !== true || evidence.button.enabled !== true || evidence.button.visible !== true) {
+    return undefined;
+  }
+  const rect = evidence.button.rect;
+  const viewport = evidence.viewport;
+  if (!rect || !viewport) {
+    return undefined;
+  }
+  const rectValues = [rect.left, rect.top, rect.right, rect.bottom, rect.width, rect.height];
+  const viewportValues = [viewport.width, viewport.height, viewport.devicePixelRatio];
+  if (!rectValues.every(Number.isFinite) || !viewportValues.every(Number.isFinite)) {
+    return undefined;
+  }
+  if (
+    viewport.width <= 0 ||
+    viewport.height <= 0 ||
+    viewport.devicePixelRatio < 0.5 ||
+    viewport.devicePixelRatio > 8 ||
+    rect.width <= 0 ||
+    rect.height <= 0
+  ) {
+    return undefined;
+  }
+
+  const tolerance = 1;
+  if (
+    rect.left < 0 ||
+    rect.top < 0 ||
+    rect.right > viewport.width ||
+    rect.bottom > viewport.height ||
+    rect.right <= rect.left ||
+    rect.bottom <= rect.top ||
+    Math.abs(rect.right - rect.left - rect.width) > tolerance ||
+    Math.abs(rect.bottom - rect.top - rect.height) > tolerance
+  ) {
+    return undefined;
+  }
+
+  return {
+    button: {
+      id: "presenter-web-wait",
+      connected: true,
+      enabled: true,
+      visible: true,
+      rect: {
+        left: rect.left,
+        top: rect.top,
+        right: rect.right,
+        bottom: rect.bottom,
+        width: rect.width,
+        height: rect.height
+      }
+    },
+    viewport: {
+      width: viewport.width,
+      height: viewport.height,
+      devicePixelRatio: viewport.devicePixelRatio
+    }
+  };
+}
+
+function isPointInsideAutorunUserGestureGateButton(clientX, clientY, rect) {
+  return clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom;
+}
+
+function rejectAutorunUserGestureGate(phase, reason) {
+  const gate = autorunUserGestureGate;
+  const normalizedReason = AUTORUN_USER_GESTURE_GATE_REJECTION_REASONS.has(reason) ? reason : "duplicate";
+  const gateState = gate ? gate.state : "unarmed";
+  const terminal = gate && (gate.state === "armed" || gate.state === "ready");
+  if (terminal) {
+    gate.state = "rejected";
+    gate.nonce = undefined;
+  }
+  recordAutorunUserGestureGateRejection(phase, normalizedReason, gateState, gate && gate.action);
+  if (terminal) {
+    gate.resolveCompletion(createAutorunUserGestureGateFailureResult(gate.action, normalizedReason));
+  }
+  return sanitize({ accepted: false, reason: normalizedReason });
+}
+
+function recordAutorunUserGestureGateRejection(phase, reason, gateState, action = AUTORUN_ACTION) {
+  recordEvent("autorun:user-gesture-gate-rejected", {
+    action,
+    phase,
+    reason,
+    gateState
+  });
+}
+
+function createAutorunUserGestureGateFailureResult(action, reason) {
+  const error = {
+    name: "Error",
+    code: "AUTORUN_USER_GESTURE_GATE_REJECTED",
+    reason,
+    message: "The autorun user-gesture gate rejected the action."
+  };
+  return sanitize({
+    ok: false,
+    action: { ok: false, action, error },
+    wait: { ok: false, action, durationMs: 0, error },
+    snapshot: snapshot()
+  });
+}
+
+function createAutorunUserGestureGateActionFailureResult(action) {
+  const error = {
+    name: "Error",
+    code: "AUTORUN_USER_GESTURE_GATE_ACTION_FAILED",
+    message: "The autorun action failed after the user-gesture gate was consumed."
+  };
+  recordEvent("autorun:user-gesture-gate-action-error", { action, failed: true });
+  return sanitize({
+    ok: false,
+    action: { ok: false, action, error },
+    wait: { ok: false, action, durationMs: 0, error },
+    snapshot: snapshot()
+  });
 }
 
 async function runSmokeActionAndWait(action, options = {}) {
@@ -4849,6 +5241,7 @@ function parseSmokeArgs(args) {
     autorunAction: undefined,
     autorunActionDelayMs: undefined,
     autorunResultDelayMs: undefined,
+    autorunUserGestureGate: undefined,
     overlayProfile: undefined,
     overlayDialog: undefined,
     userDialog: undefined,
@@ -4911,6 +5304,9 @@ function parseSmokeArgs(args) {
         break;
       case "--steam-bridge-smoke-autorun-result-delay-ms":
         options.autorunResultDelayMs = value;
+        break;
+      case "--steam-bridge-smoke-autorun-user-gesture-gate":
+        options.autorunUserGestureGate = value == null || value === "" ? "1" : value;
         break;
       case "--steam-bridge-smoke-require-overlay-active":
         options.autorunRequireOverlayActive = value == null || value === "" ? "1" : value;

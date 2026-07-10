@@ -68,6 +68,42 @@ Reviewed on 2026-07-02 for the Windows overlay plan:
 
 ## Latest Windows Evidence
 
+A 2026-07-10 UTC interactive public App ID `480` diagnostic changed the
+foreground interpretation without changing the supported D3D11 architecture.
+In the already-running signed Smoke app, one genuine **Presenter Web Wait**
+click opened the managed Steam web surface and a natural manual close completed
+the wait. Sanitized lifecycle evidence recorded open-and-wait start,
+`active=true`, wait-shown, wait-closed, `active=false`, after-close, parked,
+open-and-wait completion, and a stable parked snapshot. The top-level presenter,
+native host, and renderer all stayed `windows-d3d11`; the process remained
+alive and the collected lifecycle had no errors, crash events, malformed lines,
+or crash dumps. The observed wait-closed event preceded the inactive callback,
+which is valid for this callback-driven lifecycle and was followed by parking
+and completion. This proves that a natural same-process user gesture can make
+the managed presenter and close path work. It does not prove that the earlier
+owner-process native-show handoff works, independently measure the exact host as
+foreground, attribute the run to the latest repository commit, prove a
+schema-2/`SendInput` close, or independently prove exact app-focus return.
+
+The follow-up harness implementation keeps the old owner-process evidence as a
+backward-compatible schema-2 branch and adds a per-case
+`same-process-user-gesture-v1` branch only for the managed web wait. The
+isolated preload owns a private one-shot nonce, exact visible button geometry,
+and the actual trusted/user-activation click evidence; main world receives no
+nonce or generic consume API. Before its one activation input, the probe binds
+the lifecycle process to the authenticated control process and exact foreground
+source window, reconciles renderer DPR with window DPI and physical client
+geometry, and checks the physical point's owner and root window. It rereads the
+unconsumed gate and performs a second exact point/window/foreground check
+immediately before `SendInput`. The native-host phase makes no foreground or
+native-show request: it requires that the exact lifecycle host already owns
+foreground, sends one close input, and then requires inactive, close, park,
+completion, stable idle, and exact source-window focus return. Static package
+checks, adversarial summary fixtures, native PowerShell parsing, embedded C#
+compilation, all 196 unit tests, and the normal repository checks pass; packaged
+live proof remains open. The prior manual app shutdown and launch-environment
+rollback must finish before that package is launched.
+
 A 2026-07-02 interactive Windows laptop process-per-case baseline slice proved
 the current Windows lane without a native presenter or repaint loop. The stable
 Steam shortcut launch environment now sets `SteamAppId`, `SteamGameId`, and

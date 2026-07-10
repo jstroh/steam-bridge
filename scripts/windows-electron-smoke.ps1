@@ -89,6 +89,7 @@ param(
   [int]$ResultDelayMs = 8000,
   [int]$TimeoutSeconds = 90,
   [string]$ShortcutGameId = "",
+  [switch]$AutorunUserGestureGate,
   [switch]$AllowStartSteamClient,
   [string[]]$RequireEvent = @(),
   [switch]$RequireSteamLaunch,
@@ -118,6 +119,10 @@ $ResultPrefix = "STEAM_BRIDGE_SMOKE_RESULT "
 
 if ($RequireMicroTxnCallback -and $Action -ne "presenter-checkout") {
   throw "-RequireMicroTxnCallback requires presenter-checkout so callback proof can be correlated to the current operation."
+}
+
+if ($AutorunUserGestureGate -and $Action -ne "presenter-web-open-and-wait") {
+  throw "-AutorunUserGestureGate requires presenter-web-open-and-wait."
 }
 
 if (-not $AppDir) {
@@ -199,6 +204,9 @@ function Get-SmokeArgs {
 
   if ($KeepOpenAfterResult) {
     $args += "--steam-bridge-smoke-keep-open-after-result"
+  }
+  if ($AutorunUserGestureGate) {
+    $args += "--steam-bridge-smoke-autorun-user-gesture-gate"
   }
   if ($ControlServer) {
     $args += "--steam-bridge-smoke-control-server"
@@ -348,6 +356,9 @@ function Get-SmokeEnv {
 
   if ($KeepOpenAfterResult) {
     $envMap.STEAM_BRIDGE_SMOKE_KEEP_OPEN_AFTER_RESULT = "1"
+  }
+  if ($AutorunUserGestureGate) {
+    $envMap.STEAM_BRIDGE_SMOKE_AUTORUN_USER_GESTURE_GATE = "1"
   }
   if ($ControlServer) {
     $envMap.STEAM_BRIDGE_SMOKE_CONTROL_SERVER = "1"

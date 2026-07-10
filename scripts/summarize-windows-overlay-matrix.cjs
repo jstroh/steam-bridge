@@ -51,6 +51,7 @@ const SUPPORTED_CLOSE_PROBE_INPUTS = new Set([
 ]);
 const SUPPORTED_CLOSE_PROBE_EVIDENCE_SCHEMAS = new Set([1, 2]);
 const OWNER_PROCESS_FOREGROUND_HANDOFF = "owner-process-native-show-v1";
+const SAME_PROCESS_USER_GESTURE_HANDOFF = "same-process-user-gesture-v1";
 const WINDOWS_CLOSE_SCALE_TOLERANCE = 0.02;
 const PERSISTENT_REUSE_ACTION = "presenter-persistent-reuse-three-cycle";
 const WINDOWS_PERSISTENT_REUSE_CYCLES = 3;
@@ -423,6 +424,16 @@ function validateManifest(manifest, failures) {
         `matrix manifest closeProbeForegroundHandoff is ${OWNER_PROCESS_FOREGROUND_HANDOFF}`,
         failures
       );
+      if (manifest.supportedCloseProbeForegroundHandoffs !== undefined) {
+        expect(
+          Array.isArray(manifest.supportedCloseProbeForegroundHandoffs) &&
+            manifest.supportedCloseProbeForegroundHandoffs.length === 2 &&
+            manifest.supportedCloseProbeForegroundHandoffs.includes(OWNER_PROCESS_FOREGROUND_HANDOFF) &&
+            manifest.supportedCloseProbeForegroundHandoffs.includes(SAME_PROCESS_USER_GESTURE_HANDOFF),
+          "matrix manifest records both bounded foreground handoff mechanisms",
+          failures
+        );
+      }
     }
   }
   expect(Array.isArray(manifest.cases), "matrix manifest cases is an array", failures);
@@ -484,6 +495,40 @@ function validateManifest(manifest, failures) {
             expect(
               entry.persistentReuseCycles === WINDOWS_PERSISTENT_REUSE_CYCLES,
               `matrix manifest case ${entry.id} records exactly ${WINDOWS_PERSISTENT_REUSE_CYCLES} persistent reuse cycles`,
+              failures
+            );
+          }
+        }
+        if (Object.prototype.hasOwnProperty.call(entry, "autorunUserGestureGate")) {
+          expect(
+            typeof entry.autorunUserGestureGate === "boolean",
+            `matrix manifest case ${entry.id} records whether the autorun user-gesture gate is required`,
+            failures
+          );
+          const expectedHandoff = entry.autorunUserGestureGate
+            ? SAME_PROCESS_USER_GESTURE_HANDOFF
+            : OWNER_PROCESS_FOREGROUND_HANDOFF;
+          expect(
+            entry.closeProbeForegroundHandoff === expectedHandoff,
+            `matrix manifest case ${entry.id} records foreground handoff ${expectedHandoff}`,
+            failures
+          );
+          if (entry.autorunUserGestureGate) {
+            expect(
+              entry.action === "presenter-web-open-and-wait",
+              `matrix manifest case ${entry.id} limits the user-gesture gate to presenter-web-open-and-wait`,
+              failures
+            );
+            expect(
+              Array.isArray(manifest.supportedCloseProbeForegroundHandoffs) &&
+                manifest.supportedCloseProbeForegroundHandoffs.length === 2 &&
+                manifest.supportedCloseProbeForegroundHandoffs.includes(
+                  OWNER_PROCESS_FOREGROUND_HANDOFF
+                ) &&
+                manifest.supportedCloseProbeForegroundHandoffs.includes(
+                  SAME_PROCESS_USER_GESTURE_HANDOFF
+                ),
+              `matrix manifest case ${entry.id} records the bounded foreground-handoff union`,
               failures
             );
           }
@@ -963,23 +1008,70 @@ function validateManifestCoverage(
         failures
       );
       if (manifest.closeProbeEvidenceSchema === 2) {
+        const usesUserGestureGate = expected.autorunUserGestureGate === true;
+        const expectedHandoff = usesUserGestureGate
+          ? SAME_PROCESS_USER_GESTURE_HANDOFF
+          : OWNER_PROCESS_FOREGROUND_HANDOFF;
+        const expectedFocusMechanism = usesUserGestureGate
+          ? "same-process-user-gesture"
+          : "owner-process-native-show";
         expect(
           row.closeProbe.evidenceSchema === 2 &&
-            row.closeProbe.foregroundHandoff === OWNER_PROCESS_FOREGROUND_HANDOFF,
-          `matrix manifest case ${expected.id} close probe uses schema-2 owner-process handoff`,
+            row.closeProbe.foregroundHandoff === expectedHandoff,
+          usesUserGestureGate
+            ? `matrix manifest case ${expected.id} close probe uses schema-2 ${expectedHandoff}`
+            : `matrix manifest case ${expected.id} close probe uses schema-2 owner-process handoff`,
           failures
         );
         expect(
           row.closeProbe.nativePresenterFocusSchema === 2 &&
-            row.closeProbe.nativePresenterFocusMechanism === "owner-process-native-show",
-          `matrix manifest case ${expected.id} focus evidence identifies the owner-process native-show mechanism`,
+            row.closeProbe.nativePresenterFocusMechanism === expectedFocusMechanism,
+          `matrix manifest case ${expected.id} focus evidence identifies ${expectedFocusMechanism}`,
           failures
         );
-        expect(
-          row.closeProbe.nativePresenterHandoffEvidenceValid === true,
-          `matrix manifest case ${expected.id} recorded one coherent owner-process foreground handoff`,
-          failures
-        );
+        if (usesUserGestureGate) {
+          expect(
+            row.closeProbe.userGestureGate === true,
+            `matrix manifest case ${expected.id} explicitly armed the one-shot user-gesture probe`,
+            failures
+          );
+          expect(
+            row.closeProbe.sameProcessUserGestureEvidenceValid === true,
+            `matrix manifest case ${expected.id} recorded one coherent same-process user-gesture handoff`,
+            failures
+          );
+          expect(
+            row.closeProbe.nativePresenterFocusWasForeground === true,
+            `matrix manifest case ${expected.id} found the exact native host already foreground`,
+            failures
+          );
+          expect(
+            row.closeProbe.nativePresenterHandoffRequestCount === 0 &&
+              row.closeProbe.nativePresenterHandoffNativeShowCallCount === 0,
+            `matrix manifest case ${expected.id} made no foreground request or native-show retry`,
+            failures
+          );
+          expect(
+            row.closeProbe.userGestureActivationPointerSucceeded === true &&
+              row.closeProbe.userGestureForegroundClearEventCount === 0 &&
+              row.closeProbe.userGesturePreDispatchEventCount === 1 &&
+              row.closeProbe.userGestureActivationDispatchStartEventCount === 1 &&
+              row.closeProbe.userGestureActivationSentEventCount === 1,
+            `matrix manifest case ${expected.id} rechecked the exact source and sent exactly one successful renderer activation click`,
+            failures
+          );
+          expect(
+            row.closeProbe.userGestureAppFocusReturnObserved === true,
+            `matrix manifest case ${expected.id} returned exact foreground to the source Electron window`,
+            failures
+          );
+        } else {
+          expect(
+            row.closeProbe.nativePresenterHandoffEvidenceValid === true,
+            `matrix manifest case ${expected.id} recorded one coherent owner-process foreground handoff`,
+            failures
+          );
+        }
         expect(
           row.closeProbe.closeProbeSentEventCount === 1 &&
             row.closeProbe.closeProbeSkippedEventCount === 0 &&
@@ -3444,6 +3536,18 @@ function summarizeCloseProbe(events, caseDir = "", nativePresenter = null, lifec
     (event) => event.type === "probe:native-presenter-focus"
   );
   const nativePresenterFocusEvent = nativePresenterFocusEvents[0];
+  const userGestureReadyEvents = normalizedEvents.filter(
+    (event) => event.type === "probe:user-gesture-gate-ready"
+  );
+  const userGestureActivationEvents = normalizedEvents.filter(
+    (event) => event.type === "probe:user-gesture-gate-activation-sent"
+  );
+  const userGestureConsumedProbeEvents = normalizedEvents.filter(
+    (event) => event.type === "probe:user-gesture-gate-consumed"
+  );
+  const userGestureFocusReturnEvents = normalizedEvents.filter(
+    (event) => event.type === "probe:user-gesture-app-focus-return"
+  );
   const ownerHandoffEvents = (Array.isArray(lifecycleEvents) ? lifecycleEvents : []).filter((event) =>
     ["overlay:presenter-foreground-handoff", "event:overlay:presenter-foreground-handoff"].includes(
       String((event && event.type) || "")
@@ -3465,6 +3569,16 @@ function summarizeCloseProbe(events, caseDir = "", nativePresenter = null, lifec
     ownerHandoffEvents,
     nativePresenterFocusEvent
   );
+  const sameProcessUserGesture = summarizeSameProcessUserGestureHandoff({
+    normalizedEvents,
+    lifecycleEvents,
+    nativePresenterFocusEvent,
+    nativePresenterFocusPayload,
+    userGestureReadyEvents,
+    userGestureActivationEvents,
+    userGestureConsumedProbeEvents,
+    userGestureFocusReturnEvents
+  });
   const nativePresenterPreDispatchPayload = objectOrEmpty(sentPayload.nativePresenterPreDispatch);
   const nativePointerSent = objectOrEmpty(sentPayload.nativePointerSent);
   const webCloseTarget = objectOrEmpty(targetPayload.target);
@@ -3555,6 +3669,7 @@ function summarizeCloseProbe(events, caseDir = "", nativePresenter = null, lifec
     nativePresenterFocusEventCount: nativePresenterFocusEvents.length,
     evidenceSchema: Number(startPayload.evidenceSchema || 0),
     foregroundHandoff: String(startPayload.foregroundHandoff || ""),
+    userGestureGate: startPayload.userGestureGate === true,
     nativePresenterFocusSource: String(nativePresenterFocusPayload.source || ""),
     nativePresenterFocusSchema: Number(nativePresenterFocusPayload.schema || 0),
     nativePresenterFocusMechanism: String(nativePresenterFocusPayload.mechanism || ""),
@@ -3578,6 +3693,23 @@ function summarizeCloseProbe(events, caseDir = "", nativePresenter = null, lifec
     nativePresenterHandoffSameWindow: ownerHandoff.sameWindowBeforeAfter,
     nativePresenterHandoffAppReason: ownerHandoff.appReason,
     nativePresenterHandoffChecks: ownerHandoff.checks,
+    sameProcessUserGestureEvidenceValid: sameProcessUserGesture.valid,
+    sameProcessUserGestureChecks: sameProcessUserGesture.checks,
+    userGestureReadyEventCount: userGestureReadyEvents.length,
+    userGesturePreDispatchEventCount: normalizedEvents.filter(
+      (event) => event.type === "probe:user-gesture-gate-pre-dispatch"
+    ).length,
+    userGestureActivationDispatchStartEventCount: normalizedEvents.filter(
+      (event) => event.type === "probe:user-gesture-gate-activation-dispatch-start"
+    ).length,
+    userGestureActivationSentEventCount: userGestureActivationEvents.length,
+    userGestureForegroundClearEventCount: normalizedEvents.filter(
+      (event) => event.type === "probe:foreground-clear"
+    ).length,
+    userGestureConsumedProbeEventCount: userGestureConsumedProbeEvents.length,
+    userGestureAppFocusReturnEventCount: userGestureFocusReturnEvents.length,
+    userGestureActivationPointerSucceeded: sameProcessUserGesture.activationPointerSucceeded,
+    userGestureAppFocusReturnObserved: sameProcessUserGesture.focusReturnObserved,
     nativePresenterFocusBeforeInput:
       nativePresenterFocusIndex >= 0 && sentEventIndex > nativePresenterFocusIndex,
     nativePresenterFocusSanitized:
@@ -3622,6 +3754,433 @@ function summarizeCloseProbe(events, caseDir = "", nativePresenter = null, lifec
     physicalScreenshotDimensionsMatchCount: physicalScreenshots.dimensionsMatchCount,
     physicalScreenshotProofCount: physicalScreenshots.proofCount,
     screenshotContainsNativeHostRect: physicalScreenshots.containsNativeHostRect
+  };
+}
+
+function summarizeSameProcessUserGestureHandoff({
+  normalizedEvents,
+  lifecycleEvents,
+  nativePresenterFocusEvent,
+  nativePresenterFocusPayload,
+  userGestureReadyEvents,
+  userGestureActivationEvents,
+  userGestureConsumedProbeEvents,
+  userGestureFocusReturnEvents
+}) {
+  const lifecycle = Array.isArray(lifecycleEvents) ? lifecycleEvents.filter(Boolean) : [];
+  const armedAppEvents = lifecycle.filter((event) =>
+    ["autorun:user-gesture-gate-armed", "event:autorun:user-gesture-gate-armed"].includes(
+      String((event && event.type) || "")
+    )
+  );
+  const readyAppEvents = lifecycle.filter((event) =>
+    ["autorun:user-gesture-gate-ready", "event:autorun:user-gesture-gate-ready"].includes(
+      String((event && event.type) || "")
+    )
+  );
+  const consumedAppEvents = lifecycle.filter((event) =>
+    ["autorun:user-gesture-gate-consumed", "event:autorun:user-gesture-gate-consumed"].includes(
+      String((event && event.type) || "")
+    )
+  );
+  const rejectedAppEvents = lifecycle.filter((event) =>
+    ["autorun:user-gesture-gate-rejected", "event:autorun:user-gesture-gate-rejected"].includes(
+      String((event && event.type) || "")
+    )
+  );
+  const armedAppEvent = armedAppEvents[0];
+  const readyAppEvent = readyAppEvents[0];
+  const consumedAppEvent = consumedAppEvents[0];
+  const armedPayload = objectOrEmpty(armedAppEvent && armedAppEvent.payload);
+  const readyPayload = objectOrEmpty(readyAppEvent && readyAppEvent.payload);
+  const consumedPayload = objectOrEmpty(consumedAppEvent && consumedAppEvent.payload);
+  const readyBinding = objectOrEmpty(readyPayload.binding);
+  const readyTarget = objectOrEmpty(readyPayload.target);
+  const readyViewport = objectOrEmpty(readyPayload.viewport);
+  const consumedBinding = objectOrEmpty(consumedPayload.binding);
+  const gesture = objectOrEmpty(consumedPayload.gesture);
+  const readyProbeEvent = userGestureReadyEvents[0];
+  const readyProbePayload = objectOrEmpty(readyProbeEvent && readyProbeEvent.payload);
+  const readyProbeBinding = objectOrEmpty(readyProbePayload.binding);
+  const readyProbeTarget = objectOrEmpty(readyProbePayload.target);
+  const readyProbeDpi = objectOrEmpty(readyProbePayload.dpi);
+  const activationEvent = userGestureActivationEvents[0];
+  const activationPayload = objectOrEmpty(activationEvent && activationEvent.payload);
+  const activationPointer = objectOrEmpty(activationPayload.nativePointerSent);
+  const activationBinding = objectOrEmpty(activationPayload.binding);
+  const activationDpi = objectOrEmpty(activationPayload.dpi);
+  const activationTarget = objectOrEmpty(activationPayload.target);
+  const focus = objectOrEmpty(nativePresenterFocusPayload);
+  const focusBinding = objectOrEmpty(focus.binding);
+  const focusGate = objectOrEmpty(focus.userGestureGate);
+  const focusReturnEvent = userGestureFocusReturnEvents[0];
+  const focusReturn = objectOrEmpty(focusReturnEvent && focusReturnEvent.payload);
+  const consumedProbeEvent = userGestureConsumedProbeEvents[0];
+  const consumedProbePayload = objectOrEmpty(consumedProbeEvent && consumedProbeEvent.payload);
+  const preDispatchEvents = normalizedEvents.filter(
+    (event) => event.type === "probe:user-gesture-gate-pre-dispatch"
+  );
+  const preDispatchEvent = preDispatchEvents[0];
+  const preDispatchPayload = objectOrEmpty(preDispatchEvent && preDispatchEvent.payload);
+  const preDispatchBinding = objectOrEmpty(preDispatchPayload.binding);
+  const activationPreDispatch = objectOrEmpty(activationPayload.preDispatch);
+  const activationPreDispatchBinding = objectOrEmpty(activationPreDispatch.binding);
+  const activationFinalDispatch = objectOrEmpty(activationPayload.finalDispatch);
+  const activationFinalDispatchBinding = objectOrEmpty(activationFinalDispatch.binding);
+  const activationDispatchStartEvents = normalizedEvents.filter(
+    (event) => event.type === "probe:user-gesture-gate-activation-dispatch-start"
+  );
+  const activationDispatchStartEvent = activationDispatchStartEvents[0];
+  const activationDispatchStartPayload = objectOrEmpty(
+    activationDispatchStartEvent && activationDispatchStartEvent.payload
+  );
+  const activationDispatchStartTarget = objectOrEmpty(activationDispatchStartPayload.target);
+  const activationDispatchStartPreDispatch = objectOrEmpty(
+    activationDispatchStartPayload.preDispatch
+  );
+  const activationDispatchStartPreDispatchBinding = objectOrEmpty(
+    activationDispatchStartPreDispatch.binding
+  );
+  const activationSkippedEvents = normalizedEvents.filter(
+    (event) => event.type === "probe:user-gesture-gate-activation-skipped"
+  );
+  const foregroundClearEvents = normalizedEvents.filter(
+    (event) => event.type === "probe:foreground-clear"
+  );
+
+  const readyGeometry = [
+    readyTarget.left,
+    readyTarget.top,
+    readyTarget.width,
+    readyTarget.height,
+    readyViewport.width,
+    readyViewport.height,
+    readyViewport.devicePixelRatio
+  ];
+  const readyGeometryValid = Boolean(
+    readyGeometry.every(Number.isFinite) &&
+      readyTarget.left >= 0 &&
+      readyTarget.top >= 0 &&
+      readyTarget.width > 0 &&
+      readyTarget.height > 0 &&
+      readyViewport.width > 0 &&
+      readyViewport.height > 0 &&
+      readyTarget.left + readyTarget.width <= readyViewport.width &&
+      readyTarget.top + readyTarget.height <= readyViewport.height &&
+      readyViewport.devicePixelRatio >= 0.5 &&
+      readyViewport.devicePixelRatio <= 8
+  );
+
+  const armedShapeValid = Boolean(
+    armedPayload.action === "presenter-web-open-and-wait" &&
+      !containsRawForegroundHandoffIdentifier(armedPayload)
+  );
+  const readyShapeValid = Boolean(
+    readyPayload.schema === 1 &&
+      readyPayload.mechanism === "same-process-user-gesture" &&
+      readyPayload.action === "presenter-web-open-and-wait" &&
+      readyPayload.targetId === "presenter-web-wait" &&
+      readyPayload.ready === true &&
+      readyBinding.senderMatches === true &&
+      readyBinding.mainFrameMatches === true &&
+      readyBinding.nonceMatches === true &&
+      readyGeometryValid
+  );
+  const consumedShapeValid = Boolean(
+    consumedPayload.schema === 1 &&
+      consumedPayload.mechanism === "same-process-user-gesture" &&
+      consumedPayload.action === "presenter-web-open-and-wait" &&
+      consumedPayload.targetId === "presenter-web-wait" &&
+      consumedPayload.consumed === true &&
+      consumedPayload.consumeCount === 1 &&
+      consumedBinding.senderMatches === true &&
+      consumedBinding.mainFrameMatches === true &&
+      consumedBinding.nonceMatches === true &&
+      gesture.trusted === true &&
+      gesture.userActivationActive === true &&
+      gesture.leftButton === true &&
+      gesture.singleClick === true
+  );
+  const appPayloadsSanitized = Boolean(
+    armedAppEvent &&
+      readyAppEvent &&
+      consumedAppEvent &&
+      !containsRawForegroundHandoffIdentifier(armedPayload) &&
+      !containsRawForegroundHandoffIdentifier(readyPayload) &&
+      !containsRawForegroundHandoffIdentifier(consumedPayload)
+  );
+  const readyProbeValid = Boolean(
+    userGestureReadyEvents.length === 1 &&
+      readyProbePayload.ready === true &&
+      readyProbePayload.reason === "gate-target-ready" &&
+      readyProbeBinding.sourceProcessPresent === true &&
+      readyProbeBinding.sourceWindowPresent === true &&
+      readyProbeBinding.ownerMatchesLifecycleProcess === true &&
+      readyProbeBinding.sourceMatchesControlProcess === true &&
+      readyProbeBinding.sameInteractiveSession === true &&
+      readyProbeBinding.sourceWindowEnabled === true &&
+      readyProbeBinding.sourceWindowNotIconic === true &&
+      readyProbeBinding.sourceWindowForeground === true &&
+      readyProbeTarget.source === "renderer-button-physical-dpi" &&
+      readyProbeTarget.insideSourceClient === true &&
+      readyProbeDpi.rendererScalePresent === true &&
+      readyProbeDpi.windowDpiPresent === true &&
+      readyProbeDpi.scaleAgrees === true &&
+      readyProbeDpi.clientGeometryAgrees === true &&
+      Number.isInteger(readyProbeTarget.x) &&
+      Number.isInteger(readyProbeTarget.y) &&
+      Number.isFinite(readyProbeDpi.rendererScale) &&
+      Number.isFinite(readyProbeDpi.windowScale) &&
+      readyProbeDpi.rendererScale >= 0.5 &&
+      readyProbeDpi.rendererScale <= 8 &&
+      readyProbeDpi.windowScale >= 0.5 &&
+      readyProbeDpi.windowScale <= 8 &&
+      readyProbeDpi.rendererScale === readyViewport.devicePixelRatio &&
+      Math.abs(readyProbeDpi.rendererScale - readyProbeDpi.windowScale) <=
+        WINDOWS_CLOSE_SCALE_TOLERANCE
+  );
+  const preDispatchShapeValid = (payload, binding) =>
+    Boolean(
+      payload.eligible === true &&
+        payload.reason === "gate-source-window-confirmed-before-dispatch" &&
+        binding.sourceWindowValid === true &&
+        binding.sourceOwnerPresent === true &&
+        binding.sourceMatchesBoundProcess === true &&
+        binding.sourceMatchesControlProcess === true &&
+        binding.sameInteractiveSession === true &&
+        binding.sourceWindowEnabled === true &&
+        binding.sourceWindowNotIconic === true &&
+        binding.targetInsideSourceClient === true &&
+        binding.pointWindowPresent === true &&
+        binding.pointOwnerMatchesBoundProcess === true &&
+        binding.pointRootMatchesSourceWindow === true &&
+        binding.sourceWindowForeground === true
+    );
+  const preDispatchValid = Boolean(
+    preDispatchEvents.length === 1 &&
+      preDispatchShapeValid(preDispatchPayload, preDispatchBinding) &&
+      preDispatchShapeValid(activationPreDispatch, activationPreDispatchBinding)
+  );
+  const activationDispatchStartValid = Boolean(
+    activationDispatchStartEvents.length === 1 &&
+      activationDispatchStartPayload.input === "renderer-button-click-sendinput" &&
+      activationDispatchStartPayload.readyEventCount === 1 &&
+      activationDispatchStartPayload.consumedEventCount === 0 &&
+      activationDispatchStartPayload.rejectedEventCount === 0 &&
+      Number.isInteger(activationDispatchStartTarget.x) &&
+      Number.isInteger(activationDispatchStartTarget.y) &&
+      activationDispatchStartTarget.x === readyProbeTarget.x &&
+      activationDispatchStartTarget.y === readyProbeTarget.y &&
+      activationDispatchStartTarget.source === "renderer-button-physical-dpi" &&
+      activationDispatchStartTarget.insideSourceClient === true &&
+      preDispatchShapeValid(
+        activationDispatchStartPreDispatch,
+        activationDispatchStartPreDispatchBinding
+      )
+  );
+  const activationPointerSucceeded = Boolean(
+    userGestureActivationEvents.length === 1 &&
+      activationPayload.input === "renderer-button-click-sendinput" &&
+      activationPointer.sent === 3 &&
+      activationPointer.expected === 3 &&
+      activationPointer.lastError === 0 &&
+      activationPointer.method === "sendinput" &&
+      Number.isInteger(activationPointer.x) &&
+      Number.isInteger(activationPointer.y) &&
+      Number.isInteger(activationTarget.x) &&
+      Number.isInteger(activationTarget.y) &&
+      activationPointer.x === activationTarget.x &&
+      activationPointer.y === activationTarget.y &&
+      activationTarget.source === "renderer-button-physical-dpi" &&
+      activationTarget.insideSourceClient === true &&
+      activationTarget.x === readyProbeTarget.x &&
+      activationTarget.y === readyProbeTarget.y &&
+      activationTarget.x === activationDispatchStartTarget.x &&
+      activationTarget.y === activationDispatchStartTarget.y
+  );
+  const finalDispatchValid = preDispatchShapeValid(
+    activationFinalDispatch,
+    activationFinalDispatchBinding
+  );
+  const activationBindingValid = Boolean(
+    activationBinding.sourceProcessPresent === true &&
+      activationBinding.sourceWindowPresent === true &&
+      activationBinding.ownerMatchesLifecycleProcess === true &&
+      activationBinding.sourceMatchesControlProcess === true &&
+      activationBinding.sameInteractiveSession === true &&
+      activationBinding.sourceWindowEnabled === true &&
+      activationBinding.sourceWindowNotIconic === true &&
+      activationBinding.sourceWindowForeground === true
+  );
+  const activationDpiValid = Boolean(
+      activationDpi.rendererScalePresent === true &&
+      activationDpi.windowDpiPresent === true &&
+      activationDpi.scaleAgrees === true &&
+      activationDpi.clientGeometryAgrees === true &&
+      Number.isFinite(activationDpi.rendererScale) &&
+      Number.isFinite(activationDpi.windowScale) &&
+      activationDpi.rendererScale >= 0.5 &&
+      activationDpi.rendererScale <= 8 &&
+      activationDpi.windowScale >= 0.5 &&
+      activationDpi.windowScale <= 8 &&
+      activationDpi.rendererScale === readyViewport.devicePixelRatio &&
+      activationDpi.rendererScale === readyProbeDpi.rendererScale &&
+      activationDpi.windowScale === readyProbeDpi.windowScale &&
+      Math.abs(activationDpi.rendererScale - activationDpi.windowScale) <=
+        WINDOWS_CLOSE_SCALE_TOLERANCE
+  );
+  const consumedProbeValid = Boolean(
+    userGestureConsumedProbeEvents.length === 1 &&
+      consumedProbePayload.readyEventCount === 1 &&
+      consumedProbePayload.consumedEventCount === 1 &&
+      consumedProbePayload.rejectedEventCount === 0
+  );
+  const probePayloadsSanitized = Boolean(
+    readyProbeEvent &&
+      activationEvent &&
+      consumedProbeEvent &&
+      preDispatchEvent &&
+      activationDispatchStartEvent &&
+      !containsRawForegroundHandoffIdentifier(readyProbePayload) &&
+      !containsRawForegroundHandoffIdentifier(activationPayload) &&
+      !containsRawForegroundHandoffIdentifier(consumedProbePayload) &&
+      !containsRawForegroundHandoffIdentifier(preDispatchPayload) &&
+      !containsRawForegroundHandoffIdentifier(activationDispatchStartPayload)
+  );
+  const focusTransport = objectOrEmpty(focus.transport);
+  const focusMessageDelta = objectOrEmpty(focus.messageDelta);
+  const focusShapeValid = Boolean(
+    focus.schema === 2 &&
+      focus.source === "lifecycle-native-host" &&
+      focus.mechanism === "same-process-user-gesture" &&
+      focus.attempted === true &&
+      focus.handlePresent === true &&
+      focus.handleFormatValid === true &&
+      focus.windowValid === true &&
+      focus.wasForeground === true &&
+      focusBinding.ownerThreadPresent === true &&
+      focusBinding.lifecycleProcessPresent === true &&
+      focusBinding.ownerMatchesLifecycleProcess === true &&
+      focusBinding.ownerMatchesControlProcess === true &&
+      focusBinding.sameInteractiveSession === true &&
+      focus.setForegroundResult === false &&
+      focusTransport.ready === true &&
+      focusTransport.handoffOnly === true &&
+      focusTransport.authenticated === false &&
+      focusTransport.responseReceived === false &&
+      focusTransport.responseSchemaValid === false &&
+      Number.isInteger(focus.requestCount) &&
+      focus.requestCount === 0 &&
+      Number.isInteger(focus.requestOrdinal) &&
+      focus.requestOrdinal === 0 &&
+      Number.isInteger(focus.nativeShowCallCount) &&
+      focus.nativeShowCallCount === 0 &&
+      focus.nativeShowCompleted === false &&
+      focus.requestedWindowMatches === false &&
+      focus.sameWindowBeforeAfter === true &&
+      focus.ownerReportsForeground === true &&
+      focusMessageDelta.setFocus === 0 &&
+      focusMessageDelta.activate === 0 &&
+      focusMessageDelta.activateApp === 0 &&
+      focus.focused === true &&
+      focus.appReason === "foreground-confirmed-from-user-gesture" &&
+      focus.reason === "foreground-confirmed" &&
+      focusGate.required === true &&
+      focusGate.readyEventCount === 1 &&
+      focusGate.consumedEventCount === 1 &&
+      focusGate.rejectedEventCount === 0 &&
+      focusGate.activationInputCount === 1 &&
+      focusGate.sourceWindowBound === true &&
+      !containsRawForegroundHandoffIdentifier(focus)
+  );
+  const focusReturnObserved = Boolean(
+    userGestureFocusReturnEvents.length === 1 &&
+      focusReturn.observed === true &&
+      focusReturn.lifecycleComplete === true &&
+      focusReturn.sourceWindowValid === true &&
+      focusReturn.ownerMatches === true &&
+      focusReturn.sameInteractiveSession === true &&
+      focusReturn.focused === true &&
+      focusReturn.reason === "exact-source-window-foreground" &&
+      !containsRawForegroundHandoffIdentifier(focusReturn)
+  );
+
+  const armedAt = Date.parse((armedAppEvent && armedAppEvent.at) || "");
+  const readyAt = Date.parse((readyAppEvent && readyAppEvent.at) || "");
+  const readyProbeAt = Date.parse((readyProbeEvent && readyProbeEvent.at) || "");
+  const preDispatchAt = Date.parse((preDispatchEvent && preDispatchEvent.at) || "");
+  const activationDispatchStartAt = Date.parse(
+    (activationDispatchStartEvent && activationDispatchStartEvent.at) || ""
+  );
+  const activationAt = Date.parse((activationEvent && activationEvent.at) || "");
+  const consumedAt = Date.parse((consumedAppEvent && consumedAppEvent.at) || "");
+  const consumedProbeAt = Date.parse((consumedProbeEvent && consumedProbeEvent.at) || "");
+  const focusAt = Date.parse((nativePresenterFocusEvent && nativePresenterFocusEvent.at) || "");
+  const sentEvent = normalizedEvents.find((event) => event.type === "probe:sent");
+  const sentAt = Date.parse((sentEvent && sentEvent.at) || "");
+  const focusReturnAt = Date.parse((focusReturnEvent && focusReturnEvent.at) || "");
+  const orderValid = Boolean(
+    [
+      armedAt,
+      readyAt,
+      readyProbeAt,
+      preDispatchAt,
+      activationDispatchStartAt,
+      activationAt,
+      consumedAt,
+      consumedProbeAt,
+      focusAt,
+      sentAt,
+      focusReturnAt
+    ].every(Number.isFinite) &&
+      armedAt <= readyAt &&
+      readyAt <= readyProbeAt &&
+      readyProbeAt <= preDispatchAt &&
+      preDispatchAt <= activationDispatchStartAt &&
+      activationDispatchStartAt <= activationAt &&
+      activationDispatchStartAt <= consumedAt &&
+      activationAt <= consumedProbeAt &&
+      consumedAt <= consumedProbeAt &&
+      consumedProbeAt <= focusAt &&
+      focusAt <= sentAt &&
+      sentAt <= focusReturnAt
+  );
+
+  const checks = {
+    armedAppEventCount: armedAppEvents.length === 1,
+    readyAppEventCount: readyAppEvents.length === 1,
+    consumedAppEventCount: consumedAppEvents.length === 1,
+    rejectedAppEventCount: rejectedAppEvents.length === 0,
+    readyProbeEventCount: userGestureReadyEvents.length === 1,
+    preDispatchEventCount: preDispatchEvents.length === 1,
+    activationDispatchStartEventCount: activationDispatchStartEvents.length === 1,
+    activationProbeEventCount: userGestureActivationEvents.length === 1,
+    activationSkippedEventCount: activationSkippedEvents.length === 0,
+    foregroundClearEventCount: foregroundClearEvents.length === 0,
+    consumedProbeEventCount: userGestureConsumedProbeEvents.length === 1,
+    focusReturnEventCount: userGestureFocusReturnEvents.length === 1,
+    armedShapeValid,
+    readyShapeValid,
+    consumedShapeValid,
+    appPayloadsSanitized,
+    readyProbeValid,
+    preDispatchValid,
+    activationDispatchStartValid,
+    activationPointerSucceeded,
+    finalDispatchValid,
+    activationBindingValid,
+    activationDpiValid,
+    consumedProbeValid,
+    probePayloadsSanitized,
+    focusShapeValid,
+    focusReturnObserved,
+    orderValid
+  };
+  return {
+    valid: Object.values(checks).every(Boolean),
+    activationPointerSucceeded,
+    focusReturnObserved,
+    checks
   };
 }
 
@@ -3785,7 +4344,7 @@ function containsRawForegroundHandoffIdentifier(value) {
     const normalizedKey = String(key).replace(/[^a-z0-9]/gi, "").toLowerCase();
     const identifierKey =
       /(?:hwnd|handle|windowid|processid|threadid|sessionid|controlfile|filepath)$/.test(normalizedKey) ||
-      ["pid", "port", "token", "targetwindow", "requestedwindow", "path"].includes(normalizedKey);
+      ["pid", "port", "token", "nonce", "targetwindow", "requestedwindow", "path"].includes(normalizedKey);
     if (identifierKey && entry !== null && typeof entry !== "boolean") {
       return true;
     }
@@ -4593,6 +5152,44 @@ function runSelfTest() {
     assert.equal(ownerHandoffSummary.caseSummaries[0].closeProbe.nativePresenterHandoffEvidenceValid, true);
     assert.equal(ownerHandoffSummary.caseSummaries[0].closeProbe.nativePointerMethod, "sendinput");
 
+    const userGestureGateRoot = path.join(tempRoot, "managed-web-user-gesture-gate");
+    writeManagedWebCloseEvidenceFixture(userGestureGateRoot, {
+      closeProbeEvidenceSchema: 2,
+      userGestureGate: true
+    });
+    const userGestureGateSummary = summarizeWindowsOverlayMatrixArtifacts(userGestureGateRoot);
+    assert.deepEqual(
+      userGestureGateSummary.failures,
+      [],
+      JSON.stringify(userGestureGateSummary.caseSummaries[0].closeProbe, null, 2)
+    );
+    assert.equal(userGestureGateSummary.caseSummaries[0].closeProbe.evidenceSchema, 2);
+    assert.equal(userGestureGateSummary.caseSummaries[0].closeProbe.userGestureGate, true);
+    assert.equal(
+      userGestureGateSummary.caseSummaries[0].closeProbe.foregroundHandoff,
+      SAME_PROCESS_USER_GESTURE_HANDOFF
+    );
+    assert.equal(
+      userGestureGateSummary.caseSummaries[0].closeProbe.sameProcessUserGestureEvidenceValid,
+      true
+    );
+    assert.equal(
+      userGestureGateSummary.caseSummaries[0].closeProbe.userGestureActivationSentEventCount,
+      1
+    );
+    assert.equal(
+      userGestureGateSummary.caseSummaries[0].closeProbe.userGestureAppFocusReturnObserved,
+      true
+    );
+    assert.equal(
+      userGestureGateSummary.caseSummaries[0].closeProbe.nativePresenterHandoffRequestCount,
+      0
+    );
+    assert.equal(
+      userGestureGateSummary.caseSummaries[0].closeProbe.nativePresenterHandoffNativeShowCallCount,
+      0
+    );
+
     const alreadyForegroundRoot = path.join(tempRoot, "managed-web-already-foreground");
     writeManagedWebCloseEvidenceFixture(alreadyForegroundRoot, {
       closeProbeEvidenceSchema: 2,
@@ -4779,6 +5376,70 @@ function runSelfTest() {
         failure
       );
     }
+
+    for (const [name, options] of [
+      ["missing-armed", { missingGestureArmed: true }],
+      ["missing-ready", { missingGestureReady: true }],
+      ["missing-consumed", { missingGestureConsumed: true }],
+      ["consumed-before-activation", { gestureConsumedBeforeActivation: true }],
+      ["rejected", { gestureRejected: true }],
+      ["duplicate-activation", { duplicateGestureActivation: true }],
+      ["sender-mismatch", { gestureSenderMismatch: true }],
+      ["frame-mismatch", { gestureFrameMismatch: true }],
+      ["nonce-mismatch", { gestureNonceMismatch: true }],
+      ["untrusted", { gestureUntrusted: true }],
+      ["inactive", { gestureInactive: true }],
+      ["ready-geometry-invalid", { gestureReadyGeometryInvalid: true }],
+      ["ready-viewport-invalid", { gestureReadyViewportInvalid: true }],
+      ["ready-dpr-mismatch", { gestureReadyDprMismatch: true }],
+      ["null-coordinates", { gestureNullCoordinates: true }],
+      ["null-scales", { gestureNullScales: true }],
+      ["source-owner-mismatch", { gestureSourceOwnerMismatch: true }],
+      ["source-control-mismatch", { gestureSourceControlMismatch: true }],
+      ["source-session-mismatch", { gestureSourceSessionMismatch: true }],
+      ["source-not-foreground", { gestureSourceNotForeground: true }],
+      ["dpi-mismatch", { gestureDpiMismatch: true }],
+      ["window-scale-claim-mismatch", { gestureWindowScaleClaimMismatch: true }],
+      ["client-geometry-mismatch", { gestureClientGeometryMismatch: true }],
+      ["pre-dispatch-missing", { gesturePreDispatchMissing: true }],
+      ["pre-dispatch-source-mismatch", { gesturePreDispatchSourceMismatch: true }],
+      ["pre-dispatch-control-mismatch", { gesturePreDispatchControlMismatch: true }],
+      ["pre-dispatch-point-mismatch", { gesturePreDispatchPointMismatch: true }],
+      ["pre-dispatch-foreground-lost", { gesturePreDispatchForegroundLost: true }],
+      ["final-dispatch-mismatch", { gestureFinalDispatchMismatch: true }],
+      ["foreground-clear", { gestureForegroundClear: true }],
+      ["dispatch-start-missing", { gestureDispatchStartMissing: true }],
+      ["dispatch-start-state-wrong", { gestureDispatchStartStateWrong: true }],
+      ["dispatch-start-leaks-pid", { gestureDispatchStartLeaksPid: true }],
+      ["activation-dispatch-failed", { gestureActivationPointerFailed: true }],
+      ["source-unbound", { gestureSourceUnbound: true }],
+      ["presenter-not-foreground", { presenterFocusFailed: true }],
+      ["focus-return-missing", { gestureFocusReturnMissing: true }],
+      ["armed-leaks-pid", { gestureArmedLeaksPid: true }],
+      ["ready-leaks-nonce", { gestureReadyLeaksNonce: true }],
+      ["consumed-leaks-pid", { gestureConsumedLeaksPid: true }],
+      ["focus-transport-wrong", { gestureFocusTransportWrong: true }],
+      ["focus-request-ordinal-wrong", { gestureFocusRequestOrdinalWrong: true }],
+      ["focus-null-counts", { gestureFocusNullCounts: true }],
+      ["focus-native-flags-wrong", { gestureFocusNativeFlagsWrong: true }],
+      ["focus-message-delta-wrong", { gestureFocusMessageDeltaWrong: true }],
+      ["focus-app-reason-wrong", { gestureFocusAppReasonWrong: true }]
+    ]) {
+      assertFixtureSummaryFailure(
+        tempRoot,
+        `managed-web-user-gesture-${name}`,
+        writeManagedWebCloseEvidenceFixture,
+        { closeProbeEvidenceSchema: 2, userGestureGate: true, ...options },
+        "recorded one coherent same-process user-gesture handoff"
+      );
+    }
+    assertFixtureSummaryFailure(
+      tempRoot,
+      "managed-web-user-gesture-wrong-start-handoff",
+      writeManagedWebCloseEvidenceFixture,
+      { closeProbeEvidenceSchema: 2, userGestureGate: true, wrongStartHandoff: true },
+      `close probe uses schema-2 ${SAME_PROCESS_USER_GESTURE_HANDOFF}`
+    );
 
     const duplicateOpenGuardRoot = path.join(tempRoot, "duplicate-open-guard");
     writeDuplicateOpenGuardCaseFixture(duplicateOpenGuardRoot);
@@ -6126,8 +6787,18 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
     manifest.closeProbeForegroundHandoff = options.wrongManifestHandoff
       ? "wrong-owner-handoff"
       : OWNER_PROCESS_FOREGROUND_HANDOFF;
+    if (options.userGestureGate) {
+      manifest.supportedCloseProbeForegroundHandoffs = [
+        OWNER_PROCESS_FOREGROUND_HANDOFF,
+        SAME_PROCESS_USER_GESTURE_HANDOFF
+      ];
+    }
   }
   manifest.cases[0].expectedCloseProbeInput = expectedCloseProbeInput;
+  if (options.userGestureGate) {
+    manifest.cases[0].autorunUserGestureGate = true;
+    manifest.cases[0].closeProbeForegroundHandoff = SAME_PROCESS_USER_GESTURE_HANDOFF;
+  }
   writeJson(manifestPath, manifest);
 
   const caseDir = path.join(root, "11-managed-web-open-and-wait");
@@ -6199,7 +6870,8 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
     : options.missingThreadPerMonitorV2
       ? "process-per-monitor-v2;thread-unchanged:5"
       : "process-per-monitor-v2;thread-per-monitor-v2";
-  const alreadyForeground = Boolean(closeProbeEvidenceSchema === 2 && options.alreadyForeground);
+  const userGestureGate = Boolean(closeProbeEvidenceSchema === 2 && options.userGestureGate);
+  const alreadyForeground = Boolean(closeProbeEvidenceSchema === 2 && (options.alreadyForeground || userGestureGate));
   const focusSucceeded = !options.presenterFocusFailed;
   const nativeShowCallCount = alreadyForeground ? 0 : options.secondNativeShowCall ? 2 : 1;
   const appReason = alreadyForeground
@@ -6212,8 +6884,55 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
     activate: focusSucceeded && !alreadyForeground ? 1 : 0,
     activateApp: 0
   };
-  const nativePresenterFocus = closeProbeEvidenceSchema === 2
+  const nativePresenterFocus = userGestureGate
     ? {
+        schema: 2,
+        source: "lifecycle-native-host",
+        mechanism: "same-process-user-gesture",
+        attempted: true,
+        handlePresent: true,
+        handleFormatValid: true,
+        windowValid: true,
+        wasForeground: true,
+        setForegroundResult: false,
+        binding: {
+          ownerThreadPresent: true,
+          lifecycleProcessPresent: true,
+          ownerMatchesLifecycleProcess: !options.lifecycleOwnerMismatch,
+          ownerMatchesControlProcess: !options.controlOwnerMismatch,
+          sameInteractiveSession: !options.sessionMismatch
+        },
+        transport: {
+          ready: true,
+          handoffOnly: true,
+          authenticated: false,
+          responseReceived: false,
+          responseSchemaValid: false
+        },
+        requestCount: 0,
+        requestOrdinal: 0,
+        nativeShowCallCount: 0,
+        nativeShowCompleted: false,
+        requestedWindowMatches: false,
+        sameWindowBeforeAfter: !options.sameWindowMismatch,
+        ownerReportsForeground: focusSucceeded,
+        messageDelta: { setFocus: 0, activate: 0, activateApp: 0 },
+        userGestureGate: {
+          required: true,
+          readyEventCount: options.missingGestureReady ? 0 : 1,
+          consumedEventCount: options.missingGestureConsumed ? 0 : 1,
+          rejectedEventCount: options.gestureRejected ? 1 : 0,
+          activationInputCount: options.duplicateGestureActivation ? 2 : 1,
+          sourceWindowBound: !options.gestureSourceUnbound
+        },
+        focused: focusSucceeded,
+        appReason: focusSucceeded
+          ? "foreground-confirmed-from-user-gesture"
+          : "user-gesture-foreground-not-observed",
+        reason: focusSucceeded ? "foreground-confirmed" : "user-gesture-foreground-not-observed"
+      }
+    : closeProbeEvidenceSchema === 2
+      ? {
         schema: 2,
         source: "lifecycle-native-host",
         mechanism: "owner-process-native-show",
@@ -6248,8 +6967,8 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
         focused: focusSucceeded,
         appReason: options.appReasonMismatch ? "foreground-not-confirmed" : appReason,
         reason: focusSucceeded ? "foreground-confirmed" : "owner-handoff-not-observed"
-      }
-    : {
+        }
+      : {
         source: "lifecycle-native-host",
         attempted: true,
         handlePresent: true,
@@ -6260,10 +6979,37 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
         focused: !options.presenterFocusFailed,
         reason: options.presenterFocusFailed ? "set-foreground-not-observed" : "focused"
       };
+  if (userGestureGate && options.gestureFocusTransportWrong) {
+    nativePresenterFocus.transport = {
+      ready: false,
+      handoffOnly: false,
+      authenticated: true,
+      responseReceived: true,
+      responseSchemaValid: true
+    };
+  }
+  if (userGestureGate && options.gestureFocusRequestOrdinalWrong) {
+    nativePresenterFocus.requestOrdinal = 77;
+  }
+  if (userGestureGate && options.gestureFocusNullCounts) {
+    nativePresenterFocus.requestCount = null;
+    nativePresenterFocus.nativeShowCallCount = null;
+  }
+  if (userGestureGate && options.gestureFocusNativeFlagsWrong) {
+    nativePresenterFocus.setForegroundResult = true;
+    nativePresenterFocus.nativeShowCompleted = true;
+    nativePresenterFocus.requestedWindowMatches = true;
+  }
+  if (userGestureGate && options.gestureFocusMessageDeltaWrong) {
+    nativePresenterFocus.messageDelta = { setFocus: 1, activate: 1, activateApp: 1 };
+  }
+  if (userGestureGate && options.gestureFocusAppReasonWrong) {
+    nativePresenterFocus.appReason = "wrong-branch";
+  }
   if (options.presenterFocusLeaksRawHwnd) {
     nativePresenterFocus.hwnd = "0x1234";
   }
-  if (closeProbeEvidenceSchema === 2) {
+  if (closeProbeEvidenceSchema === 2 && !userGestureGate) {
     const resultPath = path.join(root, "11-managed-web-open-and-wait", "result.log");
     const result = readSmokeResult(resultPath);
     if (!options.missingAppHandoff) {
@@ -6314,6 +7060,112 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
     }
     writeResult(resultPath, result);
   }
+  if (userGestureGate) {
+    const resultPath = path.join(root, "11-managed-web-open-and-wait", "result.log");
+    const result = readSmokeResult(resultPath);
+    const gateBinding = {
+      senderMatches: !options.gestureSenderMismatch,
+      mainFrameMatches: !options.gestureFrameMismatch,
+      nonceMatches: !options.gestureNonceMismatch
+    };
+    const readyPayload = {
+      schema: 1,
+      mechanism: "same-process-user-gesture",
+      action: "presenter-web-open-and-wait",
+      targetId: "presenter-web-wait",
+      ready: true,
+      binding: gateBinding,
+      target: {
+        left: 700,
+        top: 20,
+        width: options.gestureReadyGeometryInvalid ? 0 : 120,
+        height: 36
+      },
+      viewport: {
+        width: 1060,
+        height: 760,
+        devicePixelRatio: options.gestureReadyViewportInvalid
+          ? 9
+          : options.gestureReadyDprMismatch
+            ? 1.5
+            : 2.25
+      }
+    };
+    const consumedPayload = {
+      schema: 1,
+      mechanism: "same-process-user-gesture",
+      action: "presenter-web-open-and-wait",
+      targetId: "presenter-web-wait",
+      consumed: true,
+      consumeCount: 1,
+      binding: gateBinding,
+      gesture: {
+        trusted: !options.gestureUntrusted,
+        userActivationActive: !options.gestureInactive,
+        leftButton: true,
+        singleClick: true
+      }
+    };
+    if (options.gestureReadyLeaksNonce) {
+      readyPayload.nonce = "private-capability";
+    }
+    if (options.gestureConsumedLeaksPid) {
+      consumedPayload.pid = 4245;
+    }
+    const gateOpeningEvents = [];
+    if (!options.missingGestureArmed) {
+      const armedPayload = { action: "presenter-web-open-and-wait" };
+      if (options.gestureArmedLeaksPid) {
+        armedPayload.pid = 4245;
+      }
+      gateOpeningEvents.push({
+        type: "autorun:user-gesture-gate-armed",
+        at: "2026-07-02T00:00:01.050Z",
+        payload: armedPayload
+      });
+    }
+    if (!options.missingGestureReady) {
+      gateOpeningEvents.push({
+        type: "autorun:user-gesture-gate-ready",
+        at: "2026-07-02T00:00:01.100Z",
+        payload: readyPayload
+      });
+    }
+    result.snapshot.events.unshift(...gateOpeningEvents);
+    if (!options.missingGestureConsumed) {
+      const openIndex = result.snapshot.events.findIndex(
+        (event) => event.type === "overlay:presenter-open-and-wait-start"
+      );
+      result.snapshot.events.splice(Math.max(0, openIndex), 0, {
+        type: "autorun:user-gesture-gate-consumed",
+        at: options.gestureConsumedBeforeActivation
+          ? "2026-07-02T00:00:01.160Z"
+          : "2026-07-02T00:00:01.300Z",
+        payload: consumedPayload
+      });
+    }
+    if (options.gestureRejected) {
+      result.snapshot.events.push({
+        type: "autorun:user-gesture-gate-rejected",
+        at: "2026-07-02T00:00:01.250Z",
+        payload: { schema: 1, reason: "gesture-invalid" }
+      });
+    }
+    const inactiveIndex = result.snapshot.events.findIndex(
+      (event) => event.type === "callback:overlay-activated" && event.payload && event.payload.active === false
+    );
+    const waitClosedIndex = result.snapshot.events.findIndex(
+      (event) => event.type === "overlay:presenter-wait-closed"
+    );
+    if (inactiveIndex >= 0 && waitClosedIndex > inactiveIndex) {
+      const [inactive] = result.snapshot.events.splice(inactiveIndex, 1);
+      const currentWaitClosedIndex = result.snapshot.events.findIndex(
+        (event) => event.type === "overlay:presenter-wait-closed"
+      );
+      result.snapshot.events.splice(currentWaitClosedIndex + 1, 0, inactive);
+    }
+    writeResult(resultPath, result);
+  }
   const nativePresenterPreDispatch = {
     source: "lifecycle-native-host",
     handlePresent: true,
@@ -6348,8 +7200,11 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
               evidenceSchema: options.wrongStartSchema ? 1 : 2,
               foregroundHandoff: options.wrongStartHandoff
                 ? "wrong-owner-handoff"
-                : OWNER_PROCESS_FOREGROUND_HANDOFF,
-              controlExpected: true
+                : userGestureGate
+                  ? SAME_PROCESS_USER_GESTURE_HANDOFF
+                  : OWNER_PROCESS_FOREGROUND_HANDOFF,
+              controlExpected: true,
+              userGestureGate
             }
           : {})
       }
@@ -6367,6 +7222,166 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
       }
     }
   ];
+  if (userGestureGate) {
+    const activationTarget = {
+      x: options.gestureNullCoordinates ? null : 150,
+      y: options.gestureNullCoordinates ? null : 80,
+      source: "renderer-button-physical-dpi",
+      insideSourceClient: true
+    };
+    const activationPointer = {
+      sent: options.gestureActivationPointerFailed ? 2 : 3,
+      expected: 3,
+      lastError: options.gestureActivationPointerFailed ? 5 : 0,
+      method: "sendinput",
+      x: activationTarget.x,
+      y: activationTarget.y
+    };
+    const activationBinding = {
+      sourceProcessPresent: true,
+      sourceWindowPresent: true,
+      ownerMatchesLifecycleProcess: !options.gestureSourceOwnerMismatch,
+      sourceMatchesControlProcess: !options.gestureSourceControlMismatch,
+      sameInteractiveSession: !options.gestureSourceSessionMismatch,
+      sourceWindowEnabled: true,
+      sourceWindowNotIconic: true,
+      sourceWindowForeground: !options.gestureSourceNotForeground
+    };
+    const activationDpi = {
+      rendererScalePresent: true,
+      windowDpiPresent: true,
+      scaleAgrees: !options.gestureDpiMismatch,
+      clientGeometryAgrees: !options.gestureClientGeometryMismatch,
+      rendererScale: options.gestureNullScales ? null : 2.25,
+      windowScale: options.gestureNullScales
+        ? null
+        : options.gestureWindowScaleClaimMismatch
+          ? 3
+          : options.gestureDpiMismatch
+            ? 2
+            : 2.25
+    };
+    const activationPreDispatch = {
+      eligible: !(
+        options.gesturePreDispatchSourceMismatch ||
+        options.gesturePreDispatchControlMismatch ||
+        options.gesturePreDispatchPointMismatch ||
+        options.gesturePreDispatchForegroundLost
+      ),
+      reason:
+        options.gesturePreDispatchSourceMismatch ||
+        options.gesturePreDispatchControlMismatch ||
+        options.gesturePreDispatchPointMismatch ||
+        options.gesturePreDispatchForegroundLost
+          ? "gate-source-window-changed-before-dispatch"
+          : "gate-source-window-confirmed-before-dispatch",
+      binding: {
+        sourceWindowValid: true,
+        sourceOwnerPresent: true,
+        sourceMatchesBoundProcess: !options.gesturePreDispatchSourceMismatch,
+        sourceMatchesControlProcess: !options.gesturePreDispatchControlMismatch,
+        sameInteractiveSession: true,
+        sourceWindowEnabled: true,
+        sourceWindowNotIconic: true,
+        targetInsideSourceClient: true,
+        pointWindowPresent: true,
+        pointOwnerMatchesBoundProcess: !options.gesturePreDispatchPointMismatch,
+        pointRootMatchesSourceWindow: !options.gesturePreDispatchPointMismatch,
+        sourceWindowForeground: !options.gesturePreDispatchForegroundLost
+      }
+    };
+    const activationFinalDispatch = options.gestureFinalDispatchMismatch
+      ? {
+          ...activationPreDispatch,
+          eligible: false,
+          reason: "gate-source-window-changed-before-dispatch",
+          binding: {
+            ...activationPreDispatch.binding,
+            sourceWindowForeground: false
+          }
+        }
+      : activationPreDispatch;
+    closeProbeEvents.splice(
+      1,
+      0,
+      {
+        type: "probe:user-gesture-gate-ready",
+        at: "2026-07-02T00:00:01.150Z",
+        payload: {
+          ready: true,
+          reason: "gate-target-ready",
+          binding: activationBinding,
+          target: activationTarget,
+          dpi: activationDpi
+        }
+      },
+      ...(!options.gesturePreDispatchMissing
+        ? [
+            {
+              type: "probe:user-gesture-gate-pre-dispatch",
+              at: "2026-07-02T00:00:01.175Z",
+              payload: activationPreDispatch
+            }
+          ]
+        : []),
+      ...(!options.gestureDispatchStartMissing
+        ? [
+            {
+              type: "probe:user-gesture-gate-activation-dispatch-start",
+              at: "2026-07-02T00:00:01.185Z",
+              payload: {
+                input: "renderer-button-click-sendinput",
+                target: activationTarget,
+                preDispatch: activationPreDispatch,
+                readyEventCount: 1,
+                consumedEventCount: options.gestureDispatchStartStateWrong ? 1 : 0,
+                rejectedEventCount: 0,
+                ...(options.gestureDispatchStartLeaksPid ? { pid: 4245 } : {})
+              }
+            }
+          ]
+        : []),
+      {
+        type: "probe:user-gesture-gate-activation-sent",
+        at: "2026-07-02T00:00:01.200Z",
+        payload: {
+          input: "renderer-button-click-sendinput",
+          target: activationTarget,
+          binding: activationBinding,
+          dpi: activationDpi,
+          preDispatch: activationPreDispatch,
+          finalDispatch: activationFinalDispatch,
+          nativePointerSent: activationPointer
+        }
+      },
+      {
+        type: "probe:user-gesture-gate-consumed",
+        at: "2026-07-02T00:00:01.350Z",
+        payload: {
+          readyEventCount: options.missingGestureReady ? 0 : 1,
+          consumedEventCount: options.missingGestureConsumed ? 0 : 1,
+          rejectedEventCount: options.gestureRejected ? 1 : 0
+        }
+      }
+    );
+    if (options.duplicateGestureActivation) {
+      const activationIndex = closeProbeEvents.findIndex(
+        (event) => event.type === "probe:user-gesture-gate-activation-sent"
+      );
+      closeProbeEvents.splice(activationIndex + 1, 0, {
+        type: "probe:user-gesture-gate-activation-sent",
+        at: "2026-07-02T00:00:01.210Z",
+        payload: closeProbeEvents[activationIndex].payload
+      });
+    }
+    if (options.gestureForegroundClear) {
+      closeProbeEvents.push({
+        type: "probe:foreground-clear",
+        at: "2026-07-02T00:00:02.100Z",
+        payload: { attempted: true, reason: "application-error-dialog" }
+      });
+    }
+  }
   const targetProbeEvent = {
     type: "probe:web-close-click-target",
     at: "2026-07-02T00:00:02.400Z",
@@ -6399,6 +7414,23 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
       }
     }
   );
+  if (userGestureGate) {
+    closeProbeEvents.push({
+      type: "probe:user-gesture-app-focus-return",
+      at: "2026-07-02T00:00:05.000Z",
+      payload: {
+        observed: !options.gestureFocusReturnMissing,
+        lifecycleComplete: true,
+        sourceWindowValid: true,
+        ownerMatches: true,
+        sameInteractiveSession: true,
+        focused: !options.gestureFocusReturnMissing,
+        reason: options.gestureFocusReturnMissing
+          ? "focus-return-timeout"
+          : "exact-source-window-foreground"
+      }
+    });
+  }
   if (!options.missingPresenterFocus && options.presenterFocusAfterInput) {
     closeProbeEvents.push({
       type: "probe:native-presenter-focus",

@@ -345,6 +345,7 @@
 
       let latest;
       let busy = false;
+      let autorunUserGestureGate;
 
       const unwrap = (entry) => entry && entry.ok ? entry.value : entry;
       const failed = (entry) => entry && entry.ok === false;
@@ -478,8 +479,14 @@
         run("Presenter Ready", () => window.steamSmoke.checkPresenterReady());
       document.getElementById("presenter-web").onclick = () =>
         run("Presenter Web Overlay", () => window.steamSmoke.openPresenterWeb());
-      document.getElementById("presenter-web-wait").onclick = () =>
-        run("Presenter Web Wait", () => window.steamSmoke.openPresenterWebOpenAndWait());
+      const presenterWebWaitButton = document.getElementById("presenter-web-wait");
+      presenterWebWaitButton.onclick = (event) => {
+        if (!autorunUserGestureGate) {
+          return run("Presenter Web Wait", () => window.steamSmoke.openPresenterWebOpenAndWait());
+        }
+        event.preventDefault();
+        return undefined;
+      };
       document.getElementById("presenter-duplicate-guard").onclick = () =>
         run("Duplicate Guard", () => window.steamSmoke.openPresenterDuplicateOpenGuard());
       document.getElementById("presenter-store-wait").onclick = () =>
@@ -532,6 +539,10 @@
       document.getElementById("probe-open").onclick = () => run("Open Native Probe", () => window.steamSmoke.openNativeProbe());
       document.getElementById("probe-pump").onclick = () => run("Pump Native Probe", () => window.steamSmoke.pumpNativeProbe());
       document.getElementById("probe-close").onclick = () => run("Close Native Probe", () => window.steamSmoke.closeNativeProbe());
+
+      window.steamSmoke.onAutorunUserGestureGateArm((gate) => {
+        autorunUserGestureGate = { action: gate.action };
+      });
 
       window.steamSmoke.onEvent((event) => {
         const events = latest && latest.events ? latest.events.slice() : [];

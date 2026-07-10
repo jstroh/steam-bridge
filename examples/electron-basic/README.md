@@ -132,19 +132,38 @@ simple non-web surfaces. Close-probe artifacts include
 foreground-window snapshots, process snapshots, and full-desktop screenshots
 around detection and input send time; use those to distinguish a Steam overlay
 close problem from input being delivered to the Electron game window or from a
-callback firing without visible overlay UI. Schema-2 close evidence resolves the
+callback firing without visible overlay UI. Schema-2 close evidence is a
+per-case union. The legacy `owner-process-native-show-v1` branch resolves the
 close target first, binds the exact lifecycle native-host window to the Smoke
 process and interactive session, then makes one authenticated loopback request
-for that owning process to run its existing native-host activation path. The
-probe independently verifies the exact window after the response and rechecks
-the same stored window immediately before dispatch. The handoff payload records
-only sanitized relationship booleans and counts—never handles,
-process/session IDs, ports, or tokens—while the broader diagnostic artifact
-still retains its established process and foreground snapshots. The probe sends
-no close input after a missing, ambiguous, or failed handoff.
-There is no external focus retry, synthetic activation input, or input-queue
-attachment. Web close uses one three-event `SendInput` call; a partial result
-fails evidence instead of falling back to a second pointer mechanism.
+for that owning process to run its existing native-host activation path.
+
+The managed web-wait case instead uses
+`same-process-user-gesture-v1`. Its context-isolated preload privately arms
+the exact **Presenter Web Wait** button and records one actual DOM click; main
+world receives neither the nonce nor a generic consume API. Before one renderer
+activation `SendInput`, the probe binds the source window to the lifecycle and
+authenticated control process, reconciles renderer DPR with window DPI and
+physical client geometry, verifies the physical point's owner/root and exact
+foreground, confirms the gate is still unconsumed, and repeats the point/window
+check immediately before dispatch. It then requires the exact lifecycle native
+host to already own foreground without a focus/native-show request, sends one
+close input, and requires exact source-window focus return after inactive,
+close, park, completion, and stable-idle evidence. The new branch never runs
+the legacy blocker-clear key input. The standalone helper exposes
+`-AutorunUserGestureGate` only for
+`presenter-web-open-and-wait`; the matrix opts in automatically for case
+`11-managed-web-open-and-wait`.
+
+Both branches record only sanitized relationship booleans and counts—never
+handles, process/session IDs, ports, tokens, or the private nonce—while the
+broader diagnostic artifact retains its established process and foreground
+snapshots. A missing, duplicated, pre-consumed, mismatched, occluded, or
+focus-lost gate sends no close input. Web close uses one three-event
+`SendInput` call; a partial result fails evidence instead of falling back to a
+second pointer mechanism. A separate foreground broker is not part of this
+path; consider one only if the same-process mechanism is disproved by a focused
+current-package run.
 The Windows matrix also has explicit managed profile, players, community,
 stats, achievements, and user cases. Current D3D11 managed-route artifacts prove
 those Steam Community-style routes with close/back-to-app behavior and clean

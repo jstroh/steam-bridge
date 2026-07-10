@@ -2009,6 +2009,30 @@ readiness, native load, default render health, and Steam-client health without a
 Steam restart. This renderer-identity milestone is independent from whether the
 test harness successfully closes the visible Steam surface.
 
+A later genuine **Presenter Web Wait** click and natural close completed the
+same managed public web lifecycle on D3D11. That result narrows the automation
+problem to Windows foreground eligibility: the existing Electron process can
+create an eligible owned presenter while handling a real foreground click, even
+though bare external `SetForegroundWindow` and the existing owner-process
+native-show request could not reacquire foreground. The next bounded mechanism
+is therefore a same-process, one-shot user-gesture gate in the controlled Smoke
+harness, not a new broker or a presenter architecture change.
+
+The gate is deliberately evidence infrastructure rather than a public security
+boundary. Its nonce and DOM listener stay in the context-isolated preload; main
+world receives only the armed action, while main process still validates the
+exact sender/frame, finite visible target geometry, focused window, and
+one-time state transition. The external probe is limited to exact source-window
+verification and one physical-DPI renderer click. It must bind source and
+native-host windows to the same authenticated control process and interactive
+session, reject pre-consumed or duplicated state, recheck the exact point owner,
+root window, and foreground immediately before input, make no focus/native-show
+request in the new branch, and require exact app-focus return after managed
+close/park completion. Preserve the owner-process handoff as negative
+compatibility evidence. Add a separate `AllowSetForegroundWindow` broker only
+if a focused current-package run disproves this materially different
+same-process path.
+
 The same run established the Windows input coordinate invariant more precisely.
 Process and thread per-monitor-v2 awareness plus physical native-host/panel
 bounds produced a physical-resolution screenshot, but the remaining literal
@@ -2019,9 +2043,9 @@ interchangeable. A successful three-event `SendInput` call therefore missed the
 presenter geometry as a checked fallback and requires the schema-1 auditor to
 reject missing, unscaled, mismatched, or nonphysical evidence. Its focused
 follow-up settled the coordinate, screenshot, scale, target, and pointer
-contract; close remains blocked by the foreground condition recorded under
-`WIN-FOCUS-001`. Fixed coordinates or longer waits are not acceptable
-substitutes.
+contract. The later natural click settled the product lifecycle but not the
+repeatable exact-host automation tracked under `WIN-FOCUS-001`. Fixed
+coordinates or longer waits are not acceptable substitutes.
 
 The Windows product matrix also needs an explicit
 `presenter-duplicate-open-guard` case. The smoke action exists, but the Windows
