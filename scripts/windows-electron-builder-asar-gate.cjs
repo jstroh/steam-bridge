@@ -795,7 +795,8 @@ function selfTest() {
       "sign-windows-package.ps1",
       "windows-electron-smoke.ps1",
       "windows-native-overlay-control.ps1",
-      "windows-overlay-matrix.ps1"
+      "windows-overlay-matrix.ps1",
+      "windows-overlay-task.ps1"
     ]) {
       assertPowerShellParses(path.join(repoRoot, "scripts", fileName));
     }

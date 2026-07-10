@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-  [ValidateSet("baseline", "managed", "managed-routes", "shortcut-routes", "checkout", "full", "preflight", "readiness", "shortcut")]
+  [ValidateSet("baseline", "managed", "managed-routes", "shortcut-routes", "checkout", "persistent-reuse", "full", "preflight", "readiness", "shortcut")]
   [string]$Suite = "baseline",
 
   [ValidateSet("steam-launch", "steam-app", "direct")]
@@ -59,7 +59,8 @@ param(
   [string]$NativeHostStyle = "",
   [string]$OverlayInProcessGpu = "",
   [string]$OverlayScrubChildEnv = "",
-  [string]$OverlayIsolateChildProcesses = ""
+  [string]$OverlayIsolateChildProcesses = "",
+  [switch]$TaskCleanupExpected
 )
 
 $ErrorActionPreference = "Stop"
@@ -94,6 +95,10 @@ if ($Suite -eq "readiness" -and $LaunchMode -notin @("steam-launch", "steam-app"
 
 if ($Suite -eq "shortcut" -and $LaunchMode -ne "steam-launch") {
   throw "-Suite shortcut configures the stable non-Steam shortcut and requires -LaunchMode steam-launch."
+}
+
+if ($Suite -eq "persistent-reuse" -and $LaunchMode -ne "steam-launch") {
+  throw "-Suite persistent-reuse is public App ID 480 same-process proof and requires -LaunchMode steam-launch."
 }
 
 if ($LaunchMode -eq "steam-app" -and ($InstallShortcut -or $AssumeShortcutConfigured -or $ShortcutGameId)) {
@@ -724,7 +729,7 @@ function Get-SmokePackageProcesses {
   $trimChars = @([char]92, [char]47)
   $pathSeparator = [string][char]92
   $normalizedAppDir = ([System.IO.Path]::GetFullPath($AppDir)).TrimEnd($trimChars).ToLowerInvariant()
-  $processes = @(Get-CimInstance Win32_Process -Filter "Name = 'SteamBridgeSmoke.exe'" -ErrorAction SilentlyContinue)
+  $processes = @(Get-CimInstance Win32_Process -Filter "Name = 'SteamBridgeSmoke.exe'" -ErrorAction Stop)
   $matched = @()
 
   foreach ($process in $processes) {
@@ -734,7 +739,7 @@ function Get-SmokePackageProcesses {
     $commandLineLower = $commandLine.ToLowerInvariant()
     $belongsToPackage = (
       ($executablePathLower -and $executablePathLower.StartsWith($normalizedAppDir + $pathSeparator)) -or
-      ($commandLineLower -and $commandLineLower.Contains($normalizedAppDir))
+      ($commandLineLower -and $commandLineLower.Contains($normalizedAppDir + $pathSeparator))
     )
     if (-not $belongsToPackage) {
       continue
@@ -769,7 +774,7 @@ function Stop-SmokePackageProcesses {
       $results += [PSCustomObject]@{
         processId = $process.processId
         status = "failed"
-        error = $_.Exception.Message
+        error = "stop-process-failed"
       }
     }
   }
@@ -784,10 +789,28 @@ function Stop-SmokePackageProcesses {
     phase = $Phase
     generatedAt = (Get-Date).ToUniversalTime().ToString("o")
     ok = ($after.Count -eq 0)
-    packageAppDir = [System.IO.Path]::GetFullPath($AppDir)
-    processesBeforeCleanup = @($before)
+    packageAppDirPresent = -not [string]::IsNullOrWhiteSpace($AppDir)
+    processesBeforeCleanup = @($before | ForEach-Object {
+      [PSCustomObject]@{
+        processId = $_.processId
+        parentProcessId = $_.parentProcessId
+        sessionId = $_.sessionId
+        executablePathPresent = -not [string]::IsNullOrWhiteSpace([string]$_.executablePath)
+        commandLinePresent = -not [string]::IsNullOrWhiteSpace([string]$_.commandLine)
+        packagePathMatched = $true
+      }
+    })
     cleanupResults = @($results)
-    processesAfterCleanup = @($after)
+    processesAfterCleanup = @($after | ForEach-Object {
+      [PSCustomObject]@{
+        processId = $_.processId
+        parentProcessId = $_.parentProcessId
+        sessionId = $_.sessionId
+        executablePathPresent = -not [string]::IsNullOrWhiteSpace([string]$_.executablePath)
+        commandLinePresent = -not [string]::IsNullOrWhiteSpace([string]$_.commandLine)
+        packagePathMatched = $true
+      }
+    })
   }
   Write-MatrixJsonFile -Path $DestinationFile -Value $cleanup -Depth 8
 
@@ -797,6 +820,108 @@ function Stop-SmokePackageProcesses {
   if ($after.Count -gt 0) {
     throw "Found $($after.Count) leftover SteamBridgeSmoke package process(es) after cleanup. See $DestinationFile."
   }
+}
+
+function Start-LaunchEnvRollbackTransaction {
+  param([string]$Path)
+
+  $transaction = [ordered]@{
+    attempted = $true
+    originalPresent = (Test-Path -LiteralPath $Path)
+    backupCreated = $false
+    backupPath = ""
+    originalBytes = $null
+  }
+  if ($transaction.originalPresent) {
+    $transaction.originalBytes = [System.IO.File]::ReadAllBytes($Path)
+    $transaction.backupPath = "{0}.steam-bridge-backup-{1}" -f $Path, ([System.Guid]::NewGuid().ToString("N"))
+    Move-Item -LiteralPath $Path -Destination $transaction.backupPath -ErrorAction Stop
+    $transaction.backupCreated = $true
+  }
+  return [PSCustomObject]$transaction
+}
+
+function Test-LaunchEnvBytesMatch {
+  param([byte[]]$ExpectedBytes, [string]$Path)
+
+  if ($null -eq $ExpectedBytes -or -not (Test-Path -LiteralPath $Path)) {
+    return $false
+  }
+  $actualBytes = [System.IO.File]::ReadAllBytes($Path)
+  if ($actualBytes.Length -ne $ExpectedBytes.Length) {
+    return $false
+  }
+  for ($index = 0; $index -lt $ExpectedBytes.Length; $index += 1) {
+    if ($actualBytes[$index] -ne $ExpectedBytes[$index]) {
+      return $false
+    }
+  }
+  return $true
+}
+
+function Complete-LaunchEnvRollbackTransaction {
+  param($Transaction, [string]$Path, [string]$DestinationFile)
+
+  $evidence = [ordered]@{
+    kind = "steam-bridge-windows-launch-env-rollback"
+    generatedAt = (Get-Date).ToUniversalTime().ToString("o")
+    attempted = ($null -ne $Transaction -and $Transaction.attempted -eq $true)
+    originalPresent = ($null -ne $Transaction -and $Transaction.originalPresent -eq $true)
+    backupCreated = ($null -ne $Transaction -and $Transaction.backupCreated -eq $true)
+    generatedRemoved = $false
+    originalRestored = $false
+    restoredBytesMatch = $false
+    backupRemoved = $false
+    ok = $false
+    error = ""
+  }
+
+  try {
+    if (-not $evidence.attempted) {
+      $evidence.generatedRemoved = $null
+      $evidence.originalRestored = $null
+      $evidence.restoredBytesMatch = $null
+      $evidence.backupRemoved = $null
+      $evidence.ok = $true
+      return [PSCustomObject]$evidence
+    }
+
+    if (Test-Path -LiteralPath $Path) {
+      Remove-Item -LiteralPath $Path -Force -ErrorAction Stop
+    }
+    $evidence.generatedRemoved = -not (Test-Path -LiteralPath $Path)
+
+    if ($evidence.originalPresent) {
+      if (-not $Transaction.backupPath -or -not (Test-Path -LiteralPath $Transaction.backupPath)) {
+        throw "Launch-env rollback backup is missing."
+      }
+      Move-Item -LiteralPath $Transaction.backupPath -Destination $Path -ErrorAction Stop
+      $evidence.originalRestored = (Test-Path -LiteralPath $Path)
+      $evidence.restoredBytesMatch = (
+        $evidence.originalRestored -and
+        (Test-LaunchEnvBytesMatch -ExpectedBytes $Transaction.originalBytes -Path $Path)
+      )
+      $evidence.backupRemoved = -not (Test-Path -LiteralPath $Transaction.backupPath)
+    } else {
+      $evidence.originalRestored = -not (Test-Path -LiteralPath $Path)
+      $evidence.restoredBytesMatch = $evidence.originalRestored
+      $evidence.backupRemoved = $true
+    }
+    $evidence.ok = (
+      $evidence.generatedRemoved -and
+      $evidence.originalRestored -and
+      $evidence.restoredBytesMatch -and
+      $evidence.backupRemoved
+    )
+  } catch {
+    $evidence.error = "launch-env-rollback-failed"
+  } finally {
+    if ($null -ne $Transaction -and $Transaction.PSObject.Properties.Name -contains "originalBytes") {
+      $Transaction.originalBytes = $null
+    }
+    Write-MatrixJsonFile -Path $DestinationFile -Value ([PSCustomObject]$evidence) -Depth 5
+  }
+  return [PSCustomObject]$evidence
 }
 
 function Test-NeedsWindowsLiveRunReadiness {
@@ -1592,6 +1717,12 @@ function Test-MatrixCloseProbeRequirements {
     $caseIds = (($shortcutToggleCases | ForEach-Object { $_.id }) -join ", ")
     throw "Selected Windows shortcut toggle probe case(s) require -CloseProbe so the matrix can send Shift+Tab and capture close/back-to-app proof: $caseIds"
   }
+
+  $persistentReuseCases = @($Cases | Where-Object { $_.persistentReuseCycles -gt 0 })
+  if ($persistentReuseCases.Count -gt 0 -and -not $CloseProbe) {
+    $caseIds = (($persistentReuseCases | ForEach-Object { $_.id }) -join ", ")
+    throw "Selected Windows persistent-reuse case(s) require -CloseProbe so each shown cycle can close through the exact-host gate: $caseIds"
+  }
 }
 
 function Resolve-ShortcutsPath {
@@ -2167,6 +2298,48 @@ function Read-PrefixedJson {
   return ($line.Substring($Prefix.Length) | ConvertFrom-Json)
 }
 
+function ConvertTo-SanitizedShortcutEntry {
+  param($Entry)
+
+  if ($null -eq $Entry) {
+    return $null
+  }
+  return [PSCustomObject]@{
+    appId = [uint32]$Entry.appid
+    gameId = [string]$Entry.gameId
+    appNamePresent = -not [string]::IsNullOrWhiteSpace([string]$Entry.appName)
+    exePresent = -not [string]::IsNullOrWhiteSpace([string]$Entry.exe)
+    exePathPresent = -not [string]::IsNullOrWhiteSpace([string]$Entry.exePath)
+    exeExists = [bool]$Entry.exeExists
+    startDirPresent = -not [string]::IsNullOrWhiteSpace([string]$Entry.startDir)
+    startDirPathPresent = -not [string]::IsNullOrWhiteSpace([string]$Entry.startDirPath)
+    startDirExists = [bool]$Entry.startDirExists
+    launchOptionsPresent = -not [string]::IsNullOrWhiteSpace([string]$Entry.launchOptions)
+    allowOverlay = [uint32]$Entry.allowOverlay
+  }
+}
+
+function ConvertTo-SanitizedShortcutResult {
+  param($Result, [bool]$BackupCreated)
+
+  return [PSCustomObject]@{
+    appNamePresent = -not [string]::IsNullOrWhiteSpace([string]$Result.appName)
+    key = [string]$Result.key
+    action = [string]$Result.action
+    changed = [bool]$Result.changed
+    dryRun = [bool]$Result.dryRun
+    shortcutsPathPresent = -not [string]::IsNullOrWhiteSpace([string]$Result.shortcutsPath)
+    outputPathPresent = -not [string]::IsNullOrWhiteSpace([string]$Result.outputPath)
+    appId = [uint32]$Result.appid
+    gameId = [string]$Result.gameId
+    launchUrl = [string]$Result.launchUrl
+    expected = ConvertTo-SanitizedShortcutEntry -Entry $Result.expected
+    existing = ConvertTo-SanitizedShortcutEntry -Entry $Result.existing
+    existingMatches = [bool]$Result.existingMatches
+    backupCreated = $BackupCreated
+  }
+}
+
 function Get-StableShortcutLaunchOptions {
   if ($ShortcutLaunchPrefix) {
     $envOption = Join-MatrixLaunchOptions @("--steam-bridge-smoke-env-file=$LaunchEnvFile")
@@ -2202,7 +2375,9 @@ function Ensure-SteamShortcut {
   $exe = Resolve-ShortcutExe
   $startDir = Resolve-ShortcutStartDir
   $launchOptions = Get-StableShortcutLaunchOptions
-  $backup = Join-Path $ArtifactRoot "windows-shortcuts.vdf.bak"
+  $backupRoot = Join-Path (Join-Path $env:LOCALAPPDATA "SteamBridgeSmoke") "shortcut-backups"
+  New-Item -ItemType Directory -Force -Path $backupRoot | Out-Null
+  $backup = Join-Path $backupRoot ("windows-shortcuts-{0}.vdf.bak" -f ([System.Guid]::NewGuid().ToString("N")))
   $baseArgs = @(
     $upsert,
     "--shortcuts", $shortcuts,
@@ -2216,6 +2391,7 @@ function Ensure-SteamShortcut {
 
   $dryOutput = Invoke-JavaScriptRunner -Runner $runner -Arguments @($baseArgs + "--dry-run")
   $dryResult = Read-PrefixedJson -Text ($dryOutput -join "`n") -Prefix "STEAM_SHORTCUT_RESULT "
+  $sanitizedDryResult = ConvertTo-SanitizedShortcutResult -Result $dryResult -BackupCreated $false
 
   if (-not $InstallShortcut) {
     if ($AssumeShortcutConfigured) {
@@ -2223,13 +2399,13 @@ function Ensure-SteamShortcut {
       $assumedShortcut = [PSCustomObject]@{
         ok = -not [bool]$dryResult.changed
         generatedAt = (Get-Date).ToUniversalTime().ToString("o")
-        shortcutName = $ShortcutName
+        shortcutNamePresent = -not [string]::IsNullOrWhiteSpace($ShortcutName)
         requestedShortcutGameId = $ShortcutGameId
         expectedShortcutGameId = [string]$dryResult.gameId
         changed = [bool]$dryResult.changed
         action = $dryResult.action
         existingMatches = [bool]$dryResult.existingMatches
-        result = $dryResult
+        result = $sanitizedDryResult
       }
       Write-MatrixJsonFile -Path $assumedShortcutPath -Value $assumedShortcut -Depth 12
 
@@ -2261,8 +2437,11 @@ function Ensure-SteamShortcut {
   }
 
   $output = Invoke-JavaScriptRunner -Runner $runner -Arguments $baseArgs
-  $output | Write-Host
   $result = Read-PrefixedJson -Text ($output -join "`n") -Prefix "STEAM_SHORTCUT_RESULT "
+  $sanitizedResult = ConvertTo-SanitizedShortcutResult `
+    -Result $result `
+    -BackupCreated:(Test-Path -LiteralPath $backup)
+  Write-Host ("STEAM_SHORTCUT_RESULT_SANITIZED {0}" -f ($sanitizedResult | ConvertTo-Json -Compress -Depth 5))
   if (-not $ShortcutGameId) {
     $script:ShortcutGameId = [string]$result.gameId
   }
@@ -2290,6 +2469,7 @@ function New-Case {
     [string]$CheckoutTransactionIdOverride = "",
     [string]$CheckoutJsonFileOverride = "",
     [string]$InitTxnRequestFileOverride = "",
+    [int]$PersistentReuseCycles = 0,
     [int]$ResultDelayMs = 8000
   )
 
@@ -2314,6 +2494,7 @@ function New-Case {
     checkoutTransactionId = $CheckoutTransactionIdOverride
     checkoutJsonFile = $CheckoutJsonFileOverride
     initTxnRequestFile = $InitTxnRequestFileOverride
+    persistentReuseCycles = [Math]::Max(0, $PersistentReuseCycles)
     resultDelayMs = $ResultDelayMs
   }
 }
@@ -2458,11 +2639,22 @@ function Get-MatrixCases {
     New-ManagedOpenAndWaitCase -Id "22-managed-user-open-and-wait" -Action "presenter-user-open-and-wait"
     New-Case -Id "23-raw-native-dialog-open-observe" -Action "presenter-dialog" -RequireEvent @("overlay:presenter-open") -RequireOverlayActivated -DialogOverride $Dialog -CloseProbeOnActivation -ResultDelayMs 12000
     New-Case -Id "24-raw-native-user-open-observe" -Action "presenter-user-native" -RequireEvent @("overlay:presenter-open") -RequireOverlayActivated -UserDialogOverride $UserDialog -CloseProbeOnActivation -ResultDelayMs 12000
-    New-Case -Id "25-managed-achievement-progress" -Action "presenter-achievement-progress" -RequireEvent @("overlay:presenter-attach", "achievement:progress", "overlay:passive-notification-parked") -RequireNoOverlayActivation -AllowOverlayNotReady -RequirePassiveNotification -ResultDelayMs 10000
-    New-Case -Id "26-managed-achievement-unlock" -Action "presenter-achievement-unlock" -RequireEvent @("overlay:presenter-attach", "achievement:unlock", "overlay:passive-notification-parked") -RequireNoOverlayActivation -AllowOverlayNotReady -RequirePassiveNotification -ResultDelayMs 10000
+    New-Case -Id "25-managed-achievement-progress" -Action "presenter-achievement-progress" -RequireEvent @("overlay:presenter-attach", "achievement:progress", "overlay:passive-notification-needs-present", "overlay:passive-notification-parked") -RequireNoOverlayActivation -AllowOverlayNotReady -RequirePassiveNotification -ResultDelayMs 10000
+    New-Case -Id "26-managed-achievement-unlock" -Action "presenter-achievement-unlock" -RequireEvent @("overlay:presenter-attach", "achievement:unlock", "overlay:passive-notification-needs-present", "overlay:passive-notification-parked") -RequireNoOverlayActivation -AllowOverlayNotReady -RequirePassiveNotification -ResultDelayMs 10000
   )
 
   $shortcutRoutes = @(New-PublicShortcutRouteCases)
+
+  $persistentReuse = @(
+    New-Case `
+      -Id "40-persistent-reuse-three-cycle" `
+      -Action "presenter-persistent-reuse-three-cycle" `
+      -RequireEvent @("overlay:presenter-persistent-reuse-start", "overlay:presenter-persistent-reuse-cycle", "overlay:presenter-persistent-reuse-complete") `
+      -RequireOverlayActivated `
+      -WebModal "true" `
+      -PersistentReuseCycles 3 `
+      -ResultDelayMs 180000
+  )
 
   $checkout = @(
     New-Case `
@@ -2528,6 +2720,7 @@ function Get-MatrixCases {
     }
     "shortcut-routes" { return $shortcutRoutes }
     "checkout" { return $checkout }
+    "persistent-reuse" { return $persistentReuse }
     "full" { return @($baseline + $managed + $shortcutRoutes) }
     "preflight" { return @() }
     "readiness" { return @() }
@@ -2586,6 +2779,7 @@ function Write-MatrixManifest {
           hasCheckoutTransactionId = [bool]$_.checkoutTransactionId
           hasCheckoutJsonFile = [bool]$_.checkoutJsonFile
           hasInitTxnRequestFile = [bool]$_.initTxnRequestFile
+          persistentReuseCycles = [int]$_.persistentReuseCycles
           resultDelayMs = $_.resultDelayMs
         }
       }
@@ -2600,11 +2794,11 @@ function Write-MatrixManifest {
     appId = $AppId
     onlyCase = $OnlyCase
     expectedCaseCount = $manifestCases.Count
-    shortcutName = $ShortcutName
-    shortcutExe = $ShortcutExe
-    shortcutStartDir = $ShortcutStartDir
-    shortcutLaunchPrefix = $ShortcutLaunchPrefix
-    javaScriptRunnerExe = $JavaScriptRunnerExe
+    shortcutNamePresent = -not [string]::IsNullOrWhiteSpace($ShortcutName)
+    shortcutExeConfigured = [bool]$ShortcutExe
+    shortcutStartDirConfigured = [bool]$ShortcutStartDir
+    shortcutLaunchPrefixConfigured = [bool]$ShortcutLaunchPrefix
+    javaScriptRunnerExeConfigured = [bool]$JavaScriptRunnerExe
     overlayProfile = $OverlayProfile
     presenterMode = $PresenterMode
     nativeHostBackend = $NativeHostBackend
@@ -2624,6 +2818,11 @@ function Write-MatrixManifest {
     skipRenderHealthGate = [bool]$SkipRenderHealthGate
     allowUnhealthyDefaultRender = [bool]$AllowUnhealthyDefaultRender
     requireMicroTxnCallback = [bool]$RequireMicroTxnCallback
+    cleanupContract = [PSCustomObject]@{
+      processCleanupRequired = [bool](Test-IsLiveSteamLaunchSuite)
+      launchEnvRollbackRequired = [bool](Test-IsLiveSteamLaunchSuite)
+      taskCleanupExpected = [bool]$TaskCleanupExpected
+    }
     initTxnCapture = [PSCustomObject]@{
       hasRequestFile = [bool]$InitTxnRequestFile
       captureInApp = [bool]$InitTxnRequestFile
@@ -2725,6 +2924,10 @@ function Resolve-CloseProbeInputForCase {
     return "web-close-click-sendinput"
   }
 
+  if ($action -eq "presenter-persistent-reuse-three-cycle") {
+    return "web-close-click-sendinput"
+  }
+
   foreach ($token in $webPanelTokens) {
     if ($action.Contains($token) -or $id.Contains($token) -or $shortcutTarget.Contains($token)) {
       return "web-close-click-sendinput"
@@ -2743,7 +2946,7 @@ function Test-CaseUsesCloseProbe {
 
   return [bool](
     $CloseProbe -and
-    ($Case.requireManagedOverlayComplete -or $Case.closeProbeOnActivation -or $Case.shortcutToggleProbe)
+    ($Case.requireManagedOverlayComplete -or $Case.closeProbeOnActivation -or $Case.shortcutToggleProbe -or $Case.persistentReuseCycles -gt 0)
   )
 }
 
@@ -2759,7 +2962,10 @@ function Start-WindowsOverlayCloseProbe {
   $probeLog = Join-Path $CaseDir "close-probe.log"
   $input = Resolve-CloseProbeInputForCase -Case $Case
   $settleMs = [Math]::Max(0, $CloseProbeSettleMs)
-  $timeoutSeconds = [Math]::Max(1, $CloseProbeTimeoutSeconds)
+  $expectedCloseCount = [Math]::Max(1, [int]$Case.persistentReuseCycles)
+  $timeoutSeconds = [Math]::Max(1, ($CloseProbeTimeoutSeconds * $expectedCloseCount))
+  $controlHandoffOnlyExpected = ($expectedCloseCount -eq 1)
+  $preserveControlFile = ($expectedCloseCount -gt 1)
   $controlFileBase64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($ControlFile))
   New-Item -ItemType Directory -Force -Path $CaseDir | Out-Null
 
@@ -2971,6 +3177,9 @@ public static class SteamBridgeWindowsProbe {
 
 `$script:ProbeDpiAwareness = [SteamBridgeWindowsProbe]::ConfigureDpiAwareness()
 `$script:SmokeControlFile = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('$controlFileBase64'))
+`$script:ControlHandoffOnlyExpected = [bool]::Parse('$controlHandoffOnlyExpected')
+`$script:PreserveSmokeControlFile = [bool]::Parse('$preserveControlFile')
+`$script:CloseCycleOrdinal = 1
 
 `$script:ProbeScreenshotAssemblyError = `$null
 try {
@@ -3744,6 +3953,28 @@ function Get-LifecyclePresenterGeometry {
   return `$fallback
 }
 
+function Get-PersistentReuseShownCycles {
+  if (-not (Test-Path -LiteralPath '$lifecycleLog')) {
+    return @()
+  }
+  `$cycles = @()
+  foreach (`$line in @(Get-Content -LiteralPath '$lifecycleLog' -ErrorAction SilentlyContinue)) {
+    try {
+      `$event = `$line | ConvertFrom-Json -ErrorAction Stop
+    } catch {
+      continue
+    }
+    if (
+      `$event.type -eq "event:overlay:presenter-wait-shown" -and
+      `$event.payload.api -eq "persistentReuseThreeCycle" -and
+      [int]`$event.payload.cycle -ge 1
+    ) {
+      `$cycles += [int]`$event.payload.cycle
+    }
+  }
+  return @(`$cycles)
+}
+
 function Read-SmokeControlDescriptor {
   `$descriptor = [ordered]@{
     valid = `$false
@@ -3780,7 +4011,7 @@ function Read-SmokeControlDescriptor {
       `$descriptor.portValid -and
       `$descriptor.tokenPresent -and
       `$descriptor.processPresent -and
-      `$descriptor.handoffOnly
+      `$descriptor.handoffOnly -eq `$script:ControlHandoffOnlyExpected
     )
     `$descriptor.reason = if (`$descriptor.valid) { "control-ready" } else { "control-file-invalid" }
   } catch {
@@ -3905,7 +4136,10 @@ function Focus-LifecycleNativePresenterForCloseInput {
   try {
     `$uri = "http://127.0.0.1:{0}/foreground-handoff" -f `$control.port
     `$headers = @{ "X-Steam-Bridge-Smoke-Token" = `$control.token }
-    `$requestBody = @{ targetWindow = `$handleText } | ConvertTo-Json -Compress
+    `$requestBody = @{
+      targetWindow = `$handleText
+      requestOrdinal = `$script:CloseCycleOrdinal
+    } | ConvertTo-Json -Compress
     `$requestParameters = @{
       Method = "Post"
       Uri = `$uri
@@ -3924,7 +4158,7 @@ function Focus-LifecycleNativePresenterForCloseInput {
       `$handoff.schema -eq 1 -and
       `$handoff.target -eq "lifecycle-native-host" -and
       `$handoff.mechanism -eq "owner-process-native-show" -and
-      `$handoff.requestOrdinal -eq 1 -and
+      `$handoff.requestOrdinal -eq `$script:CloseCycleOrdinal -and
       `$handoff.requestedWindowMatches -eq `$true -and
       `$handoff.nativeShowCallCount -in @(0, 1)
     )
@@ -3946,7 +4180,7 @@ function Focus-LifecycleNativePresenterForCloseInput {
     `$evidence.reason = "owner-handoff-request-failed"
     return [PSCustomObject]`$evidence
   } finally {
-    if (`$script:SmokeControlFile) {
+    if (`$script:SmokeControlFile -and -not `$script:PreserveSmokeControlFile) {
       Remove-Item -LiteralPath `$script:SmokeControlFile -Force -ErrorAction SilentlyContinue
     }
   }
@@ -4102,6 +4336,8 @@ Write-ProbeEvent "probe:start" ([PSCustomObject]@{
   evidenceSchema = $CloseProbeEvidenceSchema
   foregroundHandoff = '$CloseProbeForegroundHandoff'
   controlExpected = `$true
+  controlHandoffOnlyExpected = `$script:ControlHandoffOnlyExpected
+  expectedCloseCount = $expectedCloseCount
   dpiAwareness = `$script:ProbeDpiAwareness
   shortcutToggleProbe = [bool]::Parse('$shortcutToggleProbe')
   settleMs = $settleMs
@@ -4112,7 +4348,9 @@ Write-ProbeEvent "probe:start" ([PSCustomObject]@{
 `$deadline = (Get-Date).AddSeconds($timeoutSeconds)
 `$openSent = `$false
 `$sent = `$false
-while ((Get-Date) -lt `$deadline -and -not `$sent) {
+`$sentCount = 0
+`$terminalFailure = `$false
+while ((Get-Date) -lt `$deadline -and -not `$sent -and -not `$terminalFailure) {
   if (Test-Path -LiteralPath '$lifecycleLog') {
     `$text = Get-Content -Raw -LiteralPath '$lifecycleLog' -ErrorAction SilentlyContinue
     if (`$shortcutToggleProbe -and -not `$openSent -and `$text -match 'overlay:presenter-shortcut-ready') {
@@ -4140,9 +4378,33 @@ while ((Get-Date) -lt `$deadline -and -not `$sent) {
         processes = Get-ProbeProcessSnapshot
       })
     }
-    if (`$text -match 'overlay:presenter-wait-shown' -or (`$text -match 'callback:overlay-activated' -and `$text -match '"active":true')) {
+    `$shownEventCount = ([regex]::Matches(`$text, 'overlay:presenter-wait-shown')).Count
+    `$cycleReady = if ($expectedCloseCount -gt 1) {
+      `$shownCycles = @(Get-PersistentReuseShownCycles)
+      `$expectedCycle = `$sentCount + 1
+      `$expectedCycleCount = @(`$shownCycles | Where-Object { `$_ -eq `$expectedCycle }).Count
+      `$outOfOrderCycleCount = @(`$shownCycles | Where-Object { `$_ -gt `$expectedCycle }).Count
+      if (`$expectedCycleCount -gt 1 -or `$outOfOrderCycleCount -gt 0) {
+        Write-ProbeEvent "probe:incomplete" ([PSCustomObject]@{
+          cycle = `$expectedCycle
+          reason = "persistent-cycle-readiness-order-invalid"
+          expectedCycleCount = `$expectedCycleCount
+          outOfOrderCycleCount = `$outOfOrderCycleCount
+        })
+        `$terminalFailure = `$true
+        `$false
+      } else {
+        `$expectedCycleCount -eq 1
+      }
+    } else {
+      `$shownEventCount -gt `$sentCount -or (`$text -match 'callback:overlay-activated' -and `$text -match '"active":true')
+    }
+    if (`$cycleReady) {
+      `$cycle = `$sentCount + 1
+      `$script:CloseCycleOrdinal = `$cycle
       `$detectedForeground = Get-ForegroundProbeSnapshot
       Write-ProbeEvent "probe:detected" ([PSCustomObject]@{
+        cycle = `$cycle
         foreground = `$detectedForeground
         screenshot = Capture-ProbeScreen "detected"
         processes = Get-ProbeProcessSnapshot
@@ -4159,6 +4421,7 @@ while ((Get-Date) -lt `$deadline -and -not `$sent) {
         `$webCloseReadiness = Wait-WebClosePanelReady -Deadline `$deadline
       }
       Write-ProbeEvent "probe:before-send" ([PSCustomObject]@{
+        cycle = `$cycle
         foreground = Get-ForegroundProbeSnapshot
         screenshot = Capture-ProbeScreen "before-send"
         webCloseReadiness = `$webCloseReadiness
@@ -4174,25 +4437,29 @@ while ((Get-Date) -lt `$deadline -and -not `$sent) {
           `$target = Get-WebCloseClickTarget `$foreground
         }
         Write-ProbeEvent "probe:web-close-click-target" ([PSCustomObject]@{
+          cycle = `$cycle
           target = `$target
           foreground = `$foreground
         })
         if (-not `$target) {
           Write-ProbeEvent "probe:close-input-skipped" ([PSCustomObject]@{
+            cycle = `$cycle
             reason = "close-click-coordinate-source-unavailable"
           })
-          `$sent = `$true
+          `$terminalFailure = `$true
           continue
         }
       }
       `$nativePresenterFocus = Focus-LifecycleNativePresenterForCloseInput
+      `$nativePresenterFocus | Add-Member -NotePropertyName cycle -NotePropertyValue `$cycle -Force
       Write-ProbeEvent "probe:native-presenter-focus" `$nativePresenterFocus
       if (-not `$nativePresenterFocus.focused) {
         Write-ProbeEvent "probe:close-input-skipped" ([PSCustomObject]@{
+          cycle = `$cycle
           reason = "native-presenter-focus-not-confirmed"
           focus = `$nativePresenterFocus
         })
-        `$sent = `$true
+        `$terminalFailure = `$true
         continue
       }
       `$nativeInputSent = `$null
@@ -4202,13 +4469,15 @@ while ((Get-Date) -lt `$deadline -and -not `$sent) {
         `$shell = New-Object -ComObject WScript.Shell
       }
       `$nativePresenterPreDispatch = Confirm-LifecycleNativePresenterForegroundForCloseInput
+      `$nativePresenterPreDispatch | Add-Member -NotePropertyName cycle -NotePropertyValue `$cycle -Force
       if (-not `$nativePresenterPreDispatch.focused) {
         Write-ProbeEvent "probe:close-input-skipped" ([PSCustomObject]@{
+          cycle = `$cycle
           reason = "native-presenter-focus-lost-before-dispatch"
           focus = `$nativePresenterFocus
           preDispatch = `$nativePresenterPreDispatch
         })
-        `$sent = `$true
+        `$terminalFailure = `$true
         continue
       }
       if ('$input' -eq 'escape') {
@@ -4249,6 +4518,7 @@ while ((Get-Date) -lt `$deadline -and -not `$sent) {
         `$shell.SendKeys('+{TAB}')
       }
       Write-ProbeEvent "probe:sent" ([PSCustomObject]@{
+        cycle = `$cycle
         input = '$input'
         nativePresenterPreDispatch = `$nativePresenterPreDispatch
         nativeInputSent = `$nativeInputSent
@@ -4258,23 +4528,55 @@ while ((Get-Date) -lt `$deadline -and -not `$sent) {
       })
       Start-Sleep -Milliseconds 250
       Write-ProbeEvent "probe:after-send" ([PSCustomObject]@{
+        cycle = `$cycle
         input = '$input'
         foreground = Get-ForegroundProbeSnapshot
         screenshot = Capture-ProbeScreen "after-send"
         processes = Get-ProbeProcessSnapshot
       })
-      `$sent = `$true
+      `$inputSucceeded = if (`$nativePointerSent) {
+        `$nativePointerSent.sent -eq `$nativePointerSent.expected -and `$nativePointerSent.lastError -eq 0
+      } elseif (`$nativeInputSent) {
+        `$nativeInputSent.sent -eq `$nativeInputSent.expected -and `$nativeInputSent.lastError -eq 0
+      } else {
+        `$true
+      }
+      if (-not `$inputSucceeded) {
+        Write-ProbeEvent "probe:incomplete" ([PSCustomObject]@{
+          cycle = `$cycle
+          reason = "close-input-dispatch-failed"
+          sentCount = `$sentCount
+          expectedCloseCount = $expectedCloseCount
+        })
+        `$terminalFailure = `$true
+        continue
+      }
+      `$sentCount += 1
+      `$sent = (`$sentCount -eq $expectedCloseCount)
     }
   }
-  if (-not `$sent) {
+  if (-not `$sent -and -not `$terminalFailure) {
     Start-Sleep -Milliseconds 250
   }
 }
 
-if (-not `$sent) {
+if (`$sentCount -eq $expectedCloseCount) {
+  Write-ProbeEvent "probe:complete" ([PSCustomObject]@{
+    sentCount = `$sentCount
+    expectedCloseCount = $expectedCloseCount
+  })
+} elseif (`$terminalFailure) {
+  Write-ProbeEvent "probe:incomplete" ([PSCustomObject]@{
+    reason = "terminal-cycle-failure"
+    sentCount = `$sentCount
+    expectedCloseCount = $expectedCloseCount
+  })
+} else {
   Write-ProbeEvent "probe:timeout" ([PSCustomObject]@{
     shortcutToggleProbe = `$shortcutToggleProbe
     openSent = `$openSent
+    sentCount = `$sentCount
+    expectedCloseCount = $expectedCloseCount
   })
 }
 "@
@@ -4348,7 +4650,14 @@ function Invoke-Preflight {
 }
 
 function Write-CaseLaunchEnv {
-  param($Case, [string]$ResultFile, [string]$DiagnosticDir, [string]$ControlFile)
+  param(
+    $Case,
+    [string]$ResultFile,
+    [string]$DiagnosticDir,
+    [string]$ControlFile,
+    [switch]$ControlHandoffOnly,
+    [switch]$KeepOpenAfterResult
+  )
 
   $args = @(
     "-Mode", "write-launch-env",
@@ -4389,7 +4698,13 @@ function Write-CaseLaunchEnv {
     $args += @("-NativePath", $NativePath)
   }
   if ($ControlFile) {
-    $args += @("-ControlServer", "-ControlHandoffOnly", "-ControlFile", $ControlFile)
+    $args += @("-ControlServer", "-ControlFile", $ControlFile)
+    if ($ControlHandoffOnly) {
+      $args += "-ControlHandoffOnly"
+    }
+  }
+  if ($KeepOpenAfterResult) {
+    $args += "-KeepOpenAfterResult"
   }
   if ($Case.webModal) {
     $args += @("-WebModal", $Case.webModal)
@@ -4456,6 +4771,265 @@ function Minimize-DesktopWindowsForSteamLaunch {
   Write-MatrixJsonFile -Path $evidencePath -Value $evidence -Depth 4
 }
 
+function Read-MatrixSmokeResult {
+  param([string]$Path)
+
+  if (-not (Test-Path -LiteralPath $Path)) {
+    throw "Missing persistent-reuse smoke result."
+  }
+  $line = Get-Content -LiteralPath $Path -ErrorAction Stop |
+    Where-Object { $_.StartsWith("STEAM_BRIDGE_SMOKE_RESULT ") } |
+    Select-Object -Last 1
+  if (-not $line) {
+    throw "Persistent-reuse smoke result does not contain STEAM_BRIDGE_SMOKE_RESULT."
+  }
+  return ($line.Substring("STEAM_BRIDGE_SMOKE_RESULT ".Length) | ConvertFrom-Json)
+}
+
+function Read-MatrixSmokeControlDescriptor {
+  param([string]$Path)
+
+  if (-not (Test-Path -LiteralPath $Path)) {
+    return $null
+  }
+  $control = Read-MatrixJsonFile -Path $Path
+  if (
+    -not $control -or
+    [string]$control.host -ne "127.0.0.1" -or
+    [int]$control.port -lt 1 -or
+    [int]$control.port -gt 65535 -or
+    [string]::IsNullOrWhiteSpace([string]$control.token) -or
+    [int]$control.pid -le 0 -or
+    $control.handoffOnly -eq $true
+  ) {
+    throw "Persistent-reuse control descriptor is invalid or not full-control scoped."
+  }
+  return $control
+}
+
+function Wait-MatrixSmokeControlDescriptor {
+  param([string]$Path, [int]$WaitSeconds)
+
+  $deadline = (Get-Date).AddSeconds([Math]::Max(1, $WaitSeconds))
+  while ((Get-Date) -lt $deadline) {
+    try {
+      $control = Read-MatrixSmokeControlDescriptor -Path $Path
+      if ($control) {
+        return $control
+      }
+    } catch {}
+    Start-Sleep -Milliseconds 100
+  }
+  throw "Timed out waiting for the readiness-gated persistent-reuse control descriptor."
+}
+
+function Invoke-MatrixSmokeControlRequest {
+  param(
+    $Control,
+    [ValidateSet("GET", "POST")][string]$Method,
+    [string]$Path,
+    $Body = $null,
+    [int]$RequestTimeoutSeconds = 30
+  )
+
+  $request = @{
+    Method = $Method
+    Uri = ("http://127.0.0.1:{0}{1}" -f [int]$Control.port, $Path)
+    Headers = @{ "X-Steam-Bridge-Smoke-Token" = [string]$Control.token }
+    TimeoutSec = [Math]::Max(1, $RequestTimeoutSeconds)
+    ErrorAction = "Stop"
+  }
+  if ($null -ne $Body) {
+    $request.ContentType = "application/json"
+    $request.Body = ($Body | ConvertTo-Json -Compress -Depth 8)
+  }
+  return Invoke-RestMethod @request
+}
+
+function Invoke-PersistentReuseCase {
+  param($Case)
+
+  $caseDir = Join-Path $ArtifactRoot $Case.id
+  $resultFile = Join-Path $caseDir "result.log"
+  $launchResultFile = Join-Path $caseDir "launch-result.log"
+  $diagnosticDir = Join-Path $caseDir "diagnostics"
+  $helperLog = Join-Path $caseDir "helper.log"
+  $controlFile = Join-Path $caseDir "smoke-control.json"
+  $readinessFile = Join-Path $caseDir "persistent-control-readiness.json"
+  New-Item -ItemType Directory -Force -Path $caseDir | Out-Null
+  Remove-Item -LiteralPath $resultFile,$launchResultFile,$controlFile -Force -ErrorAction SilentlyContinue
+
+  $launchCase = New-Case `
+    -Id $Case.id `
+    -Action "presenter-ready" `
+    -RequireEvent @("overlay:presenter-ready") `
+    -RequireNoOverlayActivation `
+    -AllowOverlayNotReady `
+    -ResultDelayMs 1200
+  Write-CaseLaunchEnv `
+    -Case $launchCase `
+    -ResultFile $launchResultFile `
+    -DiagnosticDir $diagnosticDir `
+    -ControlFile $controlFile `
+    -KeepOpenAfterResult
+  Minimize-DesktopWindowsForSteamLaunch -CaseDir $caseDir
+
+  $args = @(
+    "-Mode", "steam-launch",
+    "-AppDir", $AppDir,
+    "-AppId", "$AppId",
+    "-Action", "presenter-ready",
+    "-ResultFile", $launchResultFile,
+    "-DiagnosticDir", $diagnosticDir,
+    "-OverlayProfile", $OverlayProfile,
+    "-WindowMode", $WindowMode,
+    "-WebUrl", $WebUrl,
+    "-WebModal", "true",
+    "-ResultDelayMs", "1200",
+    "-TimeoutSeconds", "$TimeoutSeconds",
+    "-ShortcutGameId", $ShortcutGameId,
+    "-RequireSteamLaunch",
+    "-RequireNoOverlayActivation",
+    "-AllowOverlayNotReady",
+    "-RequireEvent", "overlay:presenter-ready",
+    "-RequireNoCrashes",
+    "-RequireZeroManagedOverlayTiming",
+    "-KeepOpenAfterResult",
+    "-ControlServer",
+    "-ControlFile", $controlFile
+  )
+  if ($OverlayInProcessGpu) {
+    $args += @("-OverlayInProcessGpu", $OverlayInProcessGpu)
+  }
+  if ($OverlayDisableDirectComposition) {
+    $args += @("-OverlayDisableDirectComposition", $OverlayDisableDirectComposition)
+  }
+  if ($PresenterMode) {
+    $args += @("-PresenterMode", $PresenterMode)
+  }
+  if ($NativeHostBackend) {
+    $args += @("-NativeHostBackend", $NativeHostBackend)
+  }
+  if ($NativeHostStyle) {
+    $args += @("-NativeHostStyle", $NativeHostStyle)
+  }
+  if ($OverlayScrubChildEnv) {
+    $args += @("-OverlayScrubChildEnv", $OverlayScrubChildEnv)
+  }
+  if ($OverlayIsolateChildProcesses) {
+    $args += @("-OverlayIsolateChildProcesses", $OverlayIsolateChildProcesses)
+  }
+  if ($NativePath) {
+    $args += @("-NativePath", $NativePath)
+  }
+  $expectedNativeHostBackend = Resolve-ExpectedWindowsNativeHostBackend
+  if ($expectedNativeHostBackend) {
+    $args += @("-RequireNativeHostBackend", $expectedNativeHostBackend)
+  }
+
+  $closeProbeProcess = $null
+  $control = $null
+  try {
+    Write-Host ("Launching one readiness-gated Windows persistent presenter for {0}." -f $Case.id)
+    Invoke-Helper -Arguments $args -LogFile $helperLog
+    $launchResult = Read-MatrixSmokeResult -Path $launchResultFile
+    $control = Wait-MatrixSmokeControlDescriptor -Path $controlFile -WaitSeconds $TimeoutSeconds
+    $snapshotResponse = Invoke-MatrixSmokeControlRequest `
+      -Control $control `
+      -Method "GET" `
+      -Path "/snapshot" `
+      -RequestTimeoutSeconds 10
+    $snapshot = $snapshotResponse.snapshot
+    $presenter = if ($snapshot.overlay.nativePresenter.ok -eq $true) {
+      $snapshot.overlay.nativePresenter.value
+    } else {
+      $null
+    }
+    $readiness = [PSCustomObject]@{
+      kind = "steam-bridge-windows-persistent-control-readiness"
+      generatedAt = (Get-Date).ToUniversalTime().ToString("o")
+      ok = (
+        $snapshotResponse.ok -eq $true -and
+        $snapshot.process.pid -eq $control.pid -and
+        $snapshot.process.platform -eq "win32" -and
+        $snapshot.process.arch -eq "x64" -and
+        $snapshot.steam.initialized -eq $true -and
+        $presenter -and
+        $presenter.closed -eq $false -and
+        $presenter.nativeSurfaceOwner -eq $true -and
+        $presenter.electronOverlay.presenterMode -eq "persistent" -and
+        [int]$presenter.electronOverlay.controllerGeneration -gt 0 -and
+        [int]$presenter.nativeSurfaceLeaseGeneration -gt 0
+      )
+      controlProcessMatches = ($snapshot.process.pid -eq $control.pid)
+      windowsX64 = ($snapshot.process.platform -eq "win32" -and $snapshot.process.arch -eq "x64")
+      steamInitialized = ($snapshot.steam.initialized -eq $true)
+      presenterOpen = ($presenter -and $presenter.closed -eq $false)
+      presenterOwned = ($presenter -and $presenter.nativeSurfaceOwner -eq $true)
+      persistentMode = ($presenter -and $presenter.electronOverlay.presenterMode -eq "persistent")
+      controllerGenerationPositive = ($presenter -and [int]$presenter.electronOverlay.controllerGeneration -gt 0)
+      nativeSurfaceLeaseGenerationPositive = ($presenter -and [int]$presenter.nativeSurfaceLeaseGeneration -gt 0)
+      cycles = [int]$Case.persistentReuseCycles
+    }
+    Write-MatrixJsonFile -Path $readinessFile -Value $readiness -Depth 5
+    if (-not $readiness.ok) {
+      throw "Persistent-reuse control server did not reach the required one-controller readiness state."
+    }
+
+    $closeProbeProcess = Start-WindowsOverlayCloseProbe `
+      -Case $Case `
+      -CaseDir $caseDir `
+      -DiagnosticDir $diagnosticDir `
+      -ControlFile $controlFile
+    $requestTimeout = [Math]::Max(
+      $TimeoutSeconds,
+      ($CloseProbeTimeoutSeconds * [int]$Case.persistentReuseCycles) + 30
+    )
+    $actionResponse = Invoke-MatrixSmokeControlRequest `
+      -Control $control `
+      -Method "POST" `
+      -Path "/action" `
+      -Body ([PSCustomObject]@{
+        action = [string]$Case.action
+        resultDelayMs = [int]$Case.resultDelayMs
+        resultFile = $resultFile
+        requireOverlayActive = $false
+      }) `
+      -RequestTimeoutSeconds $requestTimeout
+    if ($actionResponse.ok -ne $true) {
+      throw "Persistent-reuse control action failed."
+    }
+    $result = Read-MatrixSmokeResult -Path $resultFile
+    if (
+      $result.ok -ne $true -or
+      $result.action.ok -ne $true -or
+      [string]$result.action.action -ne [string]$Case.action
+    ) {
+      throw "Persistent-reuse control result failed before semantic audit."
+    }
+  } finally {
+    if ($control) {
+      try {
+        [void](Invoke-MatrixSmokeControlRequest `
+          -Control $control `
+          -Method "POST" `
+          -Path "/quit" `
+          -Body ([PSCustomObject]@{}) `
+          -RequestTimeoutSeconds 5)
+      } catch {
+        Write-Host "Persistent-reuse control quit was unavailable; process cleanup remains authoritative."
+      }
+      $quitDeadline = (Get-Date).AddSeconds(10)
+      while ((Get-Date) -lt $quitDeadline -and (Get-Process -Id ([int]$control.pid) -ErrorAction SilentlyContinue)) {
+        Start-Sleep -Milliseconds 100
+      }
+    }
+    Stop-WindowsOverlayCloseProbe -Process $closeProbeProcess
+    Remove-Item -LiteralPath $controlFile -Force -ErrorAction SilentlyContinue
+    Collect-SteamClientDiagnostics -DestinationDir (Join-Path $caseDir "steam-client") -Phase ("case-{0}" -f $Case.id)
+  }
+}
+
 function Invoke-MatrixCase {
   param($Case)
 
@@ -4520,7 +5094,12 @@ function Invoke-MatrixCase {
   }
 
   if ($LaunchMode -in @("steam-launch", "steam-app")) {
-    Write-CaseLaunchEnv -Case $Case -ResultFile $resultFile -DiagnosticDir $diagnosticDir -ControlFile $controlFile
+    Write-CaseLaunchEnv `
+      -Case $Case `
+      -ResultFile $resultFile `
+      -DiagnosticDir $diagnosticDir `
+      -ControlFile $controlFile `
+      -ControlHandoffOnly:([bool]$controlFile)
     Minimize-DesktopWindowsForSteamLaunch -CaseDir $caseDir
     if ($LaunchMode -eq "steam-launch") {
       if (-not $ShortcutGameId) {
@@ -4700,20 +5279,20 @@ if ($OnlyCase) {
   Write-Host ("  onlyCase: {0}" -f $OnlyCase)
 }
 if ($LaunchMode -in @("steam-launch", "steam-app")) {
-  Write-Host ("  launchEnvFile: {0}" -f $LaunchEnvFile)
+  Write-Host ("  launchEnvFile: {0}" -f $(if ($LaunchEnvFile) { "configured" } else { "" }))
   if ($LaunchMode -eq "steam-launch") {
     Write-Host ("  installShortcut: {0}" -f $InstallShortcut)
     if ($ShortcutExe) {
-      Write-Host ("  shortcutExe: {0}" -f $ShortcutExe)
+      Write-Host "  shortcutExe: configured"
     }
     if ($ShortcutStartDir) {
-      Write-Host ("  shortcutStartDir: {0}" -f $ShortcutStartDir)
+      Write-Host "  shortcutStartDir: configured"
     }
     if ($ShortcutLaunchPrefix) {
-      Write-Host ("  shortcutLaunchPrefix: {0}" -f $ShortcutLaunchPrefix)
+      Write-Host "  shortcutLaunchPrefix: configured"
     }
     if ($JavaScriptRunnerExe) {
-      Write-Host ("  javaScriptRunnerExe: {0}" -f $JavaScriptRunnerExe)
+      Write-Host "  javaScriptRunnerExe: configured"
     }
   } else {
     Write-Host "  realSteamAppLaunchOptions: --steam-bridge-smoke-env-file=<launchEnvFile>"
@@ -4721,38 +5300,81 @@ if ($LaunchMode -in @("steam-launch", "steam-app")) {
 }
 
 Write-MatrixManifest -Cases $selectedMatrixCases
+$isLiveSteamLaunchSuite = Test-IsLiveSteamLaunchSuite
+$launchEnvTransaction = $null
+$runFailure = $null
+$cleanupFailures = New-Object System.Collections.Generic.List[string]
+$completionLabel = "Windows overlay matrix passed."
 
-if ($CleanStaleOverlayHelpers) {
-  Stop-StaleSteamOverlayHelpers -DestinationFile (Join-Path $ArtifactRoot "stale-overlay-helper-cleanup.json")
+try {
+  if ($CleanStaleOverlayHelpers) {
+    Stop-StaleSteamOverlayHelpers -DestinationFile (Join-Path $ArtifactRoot "stale-overlay-helper-cleanup.json")
+  }
+  if ($isLiveSteamLaunchSuite) {
+    Stop-SmokePackageProcesses -DestinationFile (Join-Path $ArtifactRoot "smoke-process-cleanup-before-run.json") -Phase "before-run"
+  }
+
+  Invoke-Preflight
+
+  if ($LaunchMode -eq "steam-launch" -and $Suite -eq "shortcut") {
+    Ensure-SteamShortcut
+    $completionLabel = "Windows overlay matrix shortcut setup passed. Launch URL: steam://rungameid/$ShortcutGameId"
+  } elseif ($Suite -eq "readiness") {
+    $completionLabel = "Windows overlay matrix readiness passed."
+  } else {
+    if ($isLiveSteamLaunchSuite -and $LaunchMode -eq "steam-launch") {
+      Ensure-SteamShortcut
+    }
+    if ($isLiveSteamLaunchSuite) {
+      $launchEnvTransaction = Start-LaunchEnvRollbackTransaction -Path $LaunchEnvFile
+    }
+
+    foreach ($case in $selectedMatrixCases) {
+      if ([int]$case.persistentReuseCycles -gt 0) {
+        Invoke-PersistentReuseCase -Case $case
+      } else {
+        Invoke-MatrixCase -Case $case
+      }
+    }
+  }
+} catch {
+  $runFailure = $_
+} finally {
+  if ($isLiveSteamLaunchSuite) {
+    try {
+      Stop-SmokePackageProcesses `
+        -DestinationFile (Join-Path $ArtifactRoot "smoke-process-cleanup-after-cases.json") `
+        -Phase "after-cases"
+    } catch {
+      $cleanupFailures.Add("package-process-cleanup-failed")
+    }
+
+    $rollback = Complete-LaunchEnvRollbackTransaction `
+      -Transaction $launchEnvTransaction `
+      -Path $LaunchEnvFile `
+      -DestinationFile (Join-Path $ArtifactRoot "launch-env-rollback.json")
+    if (-not $rollback.ok) {
+      $cleanupFailures.Add("launch-env-rollback-failed")
+    }
+
+    if ($CleanStaleOverlayHelpers) {
+      try {
+        Stop-StaleSteamOverlayHelpers -DestinationFile (Join-Path $ArtifactRoot "stale-overlay-helper-cleanup-after-run.json")
+      } catch {
+        $cleanupFailures.Add("stale-overlay-helper-cleanup-failed")
+      }
+    }
+  }
 }
-if (Test-IsLiveSteamLaunchSuite) {
-  Stop-SmokePackageProcesses -DestinationFile (Join-Path $ArtifactRoot "smoke-process-cleanup-before-run.json") -Phase "before-run"
+
+if ($runFailure) {
+  if ($cleanupFailures.Count -gt 0) {
+    Write-Host ("Windows overlay cleanup also failed: {0}" -f ($cleanupFailures -join ", "))
+  }
+  throw $runFailure
+}
+if ($cleanupFailures.Count -gt 0) {
+  throw ("Windows overlay cleanup failed: {0}" -f ($cleanupFailures -join ", "))
 }
 
-Invoke-Preflight
-
-if ($LaunchMode -eq "steam-launch" -and $Suite -eq "shortcut") {
-  Ensure-SteamShortcut
-  Write-Host ("Windows overlay matrix shortcut setup passed. Launch URL: steam://rungameid/{0}" -f $ShortcutGameId)
-  Write-Host ("Artifacts: {0}" -f $ArtifactRoot)
-  exit 0
-}
-
-if ((Test-IsLiveSteamLaunchSuite) -and $LaunchMode -eq "steam-launch") {
-  Ensure-SteamShortcut
-}
-
-if ($Suite -eq "readiness") {
-  Write-Host ("Windows overlay matrix readiness passed. Artifacts: {0}" -f $ArtifactRoot)
-  exit 0
-}
-
-foreach ($case in $selectedMatrixCases) {
-  Invoke-MatrixCase -Case $case
-}
-
-if (Test-IsLiveSteamLaunchSuite) {
-  Stop-SmokePackageProcesses -DestinationFile (Join-Path $ArtifactRoot "smoke-process-cleanup-after-cases.json") -Phase "after-cases"
-}
-
-Write-Host ("Windows overlay matrix passed. Artifacts: {0}" -f $ArtifactRoot)
+Write-Host ("{0} Artifacts: {1}" -f $completionLabel, $ArtifactRoot)

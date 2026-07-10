@@ -42,7 +42,9 @@ verifies PE32+/AMD64/N-API identity and integrity from tarball to bundle,
 launches the final executable without a native override or post-install repair,
 packages the current public smoke action/matrix protocol, and retains a
 stable-metadata, hash-audited archive of the exact `win-unpacked` bundle for
-live proof and rollback. Use the same shape in Windows apps:
+live proof and candidate recovery. That archive is currently a 90-day GitHub
+Actions artifact, not durable rollback storage. Use the same shape in Windows
+apps:
 
 ```json
 {
@@ -99,6 +101,19 @@ verified path. Tag-triggered Release runs set `forceCodeSigning`, require
 executable and native addon against `WINDOWS_PUBLISHER_SUBJECT` or
 `WINDOWS_PUBLISHER_THUMBPRINT` repository variables. The Valve runtime DLLs
 must be Authenticode-valid and retain their exact upstream bytes.
+The Release workflow validates this candidate but intentionally neither runs
+`--publish` nor creates a GitHub Release. Before production publication, retain
+the exact tarball, Windows bundle, audit, and probe in durable immutable release
+storage under the protected version tag. npm authority is needed only for
+publication: because trusted publishing cannot be configured until the package
+exists, use an explicitly approved provenance-emitting CI bootstrap for the
+first publish, then configure trusted publishing for later versions. For
+rollback, keep the known-good version available; build, sign, package, and
+live-validate a higher corrective candidate through the same gates; then
+publish it, deprecate the bad version with an upgrade message, and move
+dist-tags as applicable. Do not expect an unpublished name/version to be
+reusable. The maintainer runbook is in
+[Contributing](../../CONTRIBUTING.md#release-candidates-publication-and-rollback).
 
 ### macOS Apple Silicon Only
 
@@ -646,8 +661,11 @@ every 30 ms by default. Between full diagnostics refreshes it uses the
 lightweight `overlayNeedsPresent()` call; the cached full diagnostics object is
 refreshed no more often than every 250 ms. This keeps full diagnostics
 collection off the 30 ms wake-check path. Managed readiness waits likewise use
-the single `IsOverlayEnabled` signal between full snapshots. On macOS, Steam
-Bridge disables the
+the single `IsOverlayEnabled` signal between full snapshots. Presenter
+snapshots expose optional `lightweightPollCount`/`lastLightweightPollAt` and
+`fullDiagnosticsPollCount`/`lastFullDiagnosticsPollAt` capability fields when
+that presenter can track them; the counters and timestamps record successful
+reads only. On macOS, Steam Bridge disables the
 `BOverlayNeedsPresent()` poll by default because Steam's injected renderer can
 crash inside that call even on the Metal presenter path; macOS presentation is
 driven by explicit overlay opens and Steam overlay activation callbacks instead.
@@ -1057,8 +1075,12 @@ stale presenters cannot report a newer process-global owner. The lease
 generation is ownership evidence, while Windows native-host diagnostics expose
 `surfaceInstanceGeneration` and `hwnd` as actual surface-reuse evidence. Parked
 Windows presenters reactivate that same host instead of recreating its
-HWND/D3D11 renderer. Steam Bridge does not recreate a failed D3D11 device or
-swap chain. Treat device removal/reset and suspend/resume recovery as unverified
+HWND/D3D11 renderer. When tracked by the presenter, optional
+`nativeSurfaceAttachCount` and `nativeSurfaceDetachCount` fields count
+successful native surface operations without making those diagnostics required
+of compatibility/session presenters. Steam Bridge does not recreate a failed
+D3D11 device or swap chain. Treat device removal/reset and suspend/resume
+recovery as unverified
 and terminal for that managed-overlay instance. Use
 `steamOverlay.snapshot()` for diagnostics; it returns the native presenter state
 including the selected `backend` (`x11-glx`, `macos-metal`, `macos-opengl`,

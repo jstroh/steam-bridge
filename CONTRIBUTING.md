@@ -49,3 +49,41 @@ achievements, stats, inventory, UGC, and economy behavior.
   output.
 - Prefer small changes that preserve the existing TypeScript and Rust API
   shapes.
+
+## Release Candidates, Publication, and Rollback
+
+The Release workflow assembles and validates an exact cross-platform npm
+tarball plus a Windows candidate. Tag-triggered runs require signing; a manual
+diagnostic run may remain unsigned. The workflow does not publish npm bytes or
+create a GitHub Release, and a signed tag run is still a candidate until its
+exact retained bundle passes the required live Windows gates.
+
+GitHub Actions artifacts in this public repository are retained for 90 days;
+GitHub permits at most 90 days for public repositories. Before the first
+production publish, copy the exact `.tgz`, retained Windows bundle, audit JSON,
+and executable-probe result to durable immutable release storage, bind them to
+the protected `v<package-version>` tag, and keep the four files together. The
+audit JSON is not independently signed, so its trusted workflow/release
+provenance is part of the evidence boundary. See
+[GitHub's repository Actions settings](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/enabling-features-for-your-repository/managing-github-actions-settings-for-a-repository).
+
+Publication authority is an explicit maintainer decision and is not required
+to build, sign, retain, or live-test a candidate. npm trusted publishing can be
+configured only after a package already exists, so the first publication must
+use an explicitly approved CI bootstrap authentication path that emits npm
+provenance. After that version exists, configure a trusted GitHub Actions
+publisher for later versions. Do not add a registry token, `id-token: write`,
+`--provenance`, or an automatic `--publish` step without approving that release
+design and its live-proof ordering. npm documents
+[the trusted-publisher bootstrap constraint](https://docs.npmjs.com/cli/v11/commands/npm-trust/),
+[trusted publishing](https://docs.npmjs.com/trusted-publishers/), and
+[provenance requirements](https://docs.npmjs.com/generating-provenance-statements/).
+
+Rollback never replaces or reuses an already published version's bytes. Keep
+the last known-good version installable; build, sign, package, and live-validate
+a higher corrective candidate through the same gates; then publish it,
+deprecate the bad version with a message naming the corrected upgrade, and move
+npm dist-tags as applicable. Prefer deprecation to unpublishing; npm does not
+allow an unpublished name/version to be reused. See npm's
+[deprecation guidance](https://docs.npmjs.com/deprecating-and-undeprecating-packages-or-package-versions/)
+and [unpublish policy](https://docs.npmjs.com/unpublishing-packages-from-the-registry/).

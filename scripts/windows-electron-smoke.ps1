@@ -2176,7 +2176,7 @@ switch ($Mode) {
   }
   "write-launch-env" {
     Write-SmokeEnvFile -LogFile $ResultFile -SmokeAction $Action
-    Write-Host "Wrote Steam Bridge smoke env file: $SmokeEnvFile"
+    Write-Host "Wrote Steam Bridge smoke env file: configured"
   }
   "preflight" {
     Invoke-Preflight

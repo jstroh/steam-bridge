@@ -525,6 +525,71 @@ function runWindowsSmokeHelperStaticChecks() {
   ]) {
     assert.ok(taskWrapper.includes(expected), `Windows overlay task wrapper missing ${expected}`);
   }
+  const taskCleanupFinally = taskWrapper.slice(taskWrapper.lastIndexOf("} finally {"));
+  assert.ok(
+    taskCleanupFinally.indexOf("$runnerProcessGuard = Start-TaskRunnerTreeGuard") <
+      taskCleanupFinally.indexOf("schtasks.exe /End /TN $taskName") &&
+      taskCleanupFinally.indexOf("schtasks.exe /End /TN $taskName") <
+        taskCleanupFinally.indexOf("$runnerProcessGuard = Complete-TaskRunnerTreeGuard") &&
+      taskCleanupFinally.indexOf("$runnerProcessGuard = Complete-TaskRunnerTreeGuard") <
+        taskCleanupFinally.indexOf("schtasks.exe /Delete /TN $taskName /F") &&
+      taskCleanupFinally.indexOf("schtasks.exe /Delete /TN $taskName /F") <
+        taskCleanupFinally.indexOf("$packageProcessGuard = Stop-AndVerifyTaskSmokePackageProcesses") &&
+      taskCleanupFinally.indexOf("$packageProcessGuard = Stop-AndVerifyTaskSmokePackageProcesses") <
+        taskCleanupFinally.indexOf("$launchEnvGuardEvidence = Complete-TaskLaunchEnvGuard") &&
+      taskCleanupFinally.indexOf("$launchEnvGuardEvidence = Complete-TaskLaunchEnvGuard") <
+        taskCleanupFinally.indexOf("$taskFileGuard = Remove-AndVerifyTaskFiles"),
+    "Windows task cleanup must terminate the captured tree, end/delete the task, clean package processes, restore launch env, then remove handoff files"
+  );
+  assert.doesNotMatch(
+    taskWrapper,
+    /Get-Content\s+-LiteralPath\s+\$logPath\s+-Tail/,
+    "Windows task wrapper must not stream its private handoff transcript"
+  );
+  assert.match(
+    taskWrapper,
+    /if \(\$KeepTask\) \{\s*Write-Host \("  taskFiles: \{0\}" -f \$runDir\)\s*\} else \{\s*Write-Host "  taskFiles: configured"\s*\}/,
+    "Windows task wrapper must print the handoff directory only for explicit KeepTask runs"
+  );
+  assert.doesNotMatch(
+    taskWrapper,
+    /TASK_ERROR|\$_\.Exception\.Message|artifactRoot\s*=\s*if \(\$config\.arguments/,
+    "Windows task runner must neither print nor retain raw invocation errors or artifact paths"
+  );
+  for (const expected of [
+    'failureStage = "success"',
+    'failureStage = "private-env-import"',
+    'failureStage = "matrix-argument-binding"',
+    'failureStage = "matrix-invocation"',
+    'failureStage = "matrix-exit"',
+    'errorKind = "none"',
+    'errorKind = "private-env-error"',
+    'errorKind = "matrix-argument-error"',
+    'errorKind = "matrix-invocation-error"',
+    'errorKind = "matrix-nonzero-exit"',
+    "errorPresent = $errorPresent",
+    "artifactRootPresent = ($config.arguments.Count",
+    "$doneFailureStage = [string]$done.failureStage",
+    "$doneErrorKind = [string]$done.errorKind",
+    "$doneErrorPresent = ($done.errorPresent -eq $true)",
+    "$doneFailureContracts.ContainsKey($doneFailureStage)",
+    "Scheduled task done status did not match the sanitized failure contract.",
+    "$activeRunnerTree = @(Update-TaskRunnerTreeState",
+    "$confirmedRunnerTree = @(Update-TaskRunnerTreeState",
+    "$runnerTerminatedWithoutDone = $true",
+    '$taskFailureStage = "runner-termination"',
+    '$taskErrorKind = "done-missing"',
+    '$taskFailureStage = "runner-timeout"',
+    '$taskErrorKind = "deadline-exceeded"',
+    "runnerTerminatedWithoutDone = $runnerTerminatedWithoutDone"
+  ]) {
+    assert.ok(taskWrapper.includes(expected), `Windows task sanitized done contract missing ${expected}`);
+  }
+  assert.doesNotMatch(
+    taskWrapper,
+    /DONE_JSON_MISSING/,
+    "Windows task wrapper must classify missing done status by tracked-tree exit or live-tree deadline"
+  );
   for (const expected of ["function readJsonFile", 'replace(/^\\uFEFF/, "")']) {
     assert.ok(electronSmokeMain.includes(expected), `Electron smoke app missing ${expected}`);
   }
@@ -556,6 +621,15 @@ function runWindowsSmokeHelperStaticChecks() {
       exampleReadme.includes("JSON args file remains the least surprising option"),
     "Electron example README must document Windows task wrapper inline argument redaction"
   );
+  for (const expected of [
+    'schtasks.exe /End /TN "<taskName>"',
+    'schtasks.exe /Delete /TN "<taskName>" /F',
+    "Remove-Item C:\\sb\\<runId> -Recurse -Force",
+    "These commands are destructive.",
+    "never remove `C:\\sb` as a whole"
+  ]) {
+    assert.ok(exampleReadme.includes(expected), `Electron example README missing KeepTask cleanup warning: ${expected}`);
+  }
   assert.ok(
     matrixHelper.includes('$text -notlike "Steam launch options:*"') &&
       matrixHelper.includes('$text -notlike "Steam shortcut launch options:*"') &&
@@ -577,6 +651,44 @@ function runWindowsSmokeHelperStaticChecks() {
       matrixHelper.includes("smoke-process-cleanup-after-render-health.json") &&
       matrixHelper.includes("smoke-process-cleanup-after-cases.json"),
     "Windows matrix must clean up package-owned smoke processes before and after live proof"
+  );
+  const processCleanupStart = matrixHelper.indexOf("function Stop-SmokePackageProcesses");
+  const processCleanupEnd = matrixHelper.indexOf("\nfunction Start-LaunchEnvRollbackTransaction", processCleanupStart);
+  const processCleanupBlock = matrixHelper.slice(processCleanupStart, processCleanupEnd);
+  assert.ok(
+    processCleanupStart >= 0 &&
+      processCleanupEnd > processCleanupStart &&
+      processCleanupBlock.includes("packageAppDirPresent") &&
+      processCleanupBlock.includes("executablePathPresent") &&
+      processCleanupBlock.includes("commandLinePresent") &&
+      processCleanupBlock.includes('error = "stop-process-failed"'),
+    "Windows process cleanup artifacts must record sanitized presence/status evidence"
+  );
+  assert.doesNotMatch(
+    processCleanupBlock,
+    /packageAppDir\s*=|processesBeforeCleanup\s*=\s*@\(\$before\)|processesAfterCleanup\s*=\s*@\(\$after\)|error\s*=\s*\$_\.Exception\.Message/,
+    "Windows process cleanup artifacts must not write package paths, command lines, or raw errors"
+  );
+  assert.doesNotMatch(
+    matrixHelper,
+    /launchEnvFile:\s*\{0\}"\s*-f\s*\$LaunchEnvFile/,
+    "Windows matrix transcript must not print the launch-env path"
+  );
+  assert.doesNotMatch(
+    helper,
+    /Wrote Steam Bridge smoke env file:\s*\$SmokeEnvFile/,
+    "Windows smoke helper logs must not print the launch-env path"
+  );
+  assert.ok(
+    matrixHelper.includes("function ConvertTo-SanitizedShortcutResult") &&
+      matrixHelper.includes("STEAM_SHORTCUT_RESULT_SANITIZED") &&
+      matrixHelper.includes('"shortcut-backups"'),
+    "Windows shortcut setup must project sanitized output and keep rollback backups outside artifacts"
+  );
+  assert.doesNotMatch(
+    matrixHelper,
+    /Join-Path\s+\$ArtifactRoot\s+"windows-shortcuts\.vdf\.bak"|result\s*=\s*\$dryResult|\$output\s*\|\s*Write-Host|shortcutExe\s*=\s*\$ShortcutExe|shortcutStartDir\s*=\s*\$ShortcutStartDir|shortcutLaunchPrefix\s*=\s*\$ShortcutLaunchPrefix|javaScriptRunnerExe\s*=\s*\$JavaScriptRunnerExe/,
+    "Windows shortcut setup must not retain or print raw paths, launch options, or shortcut backups"
   );
   assert.ok(
     matrixHelper.includes("function Clear-BlockingForegroundWindow") &&
@@ -689,12 +801,14 @@ function runWindowsSmokeHelperStaticChecks() {
     ownerHandoffRouteStart
   );
   const ownerHandoffRoute = electronSmokeMain.slice(ownerHandoffRouteStart, ownerHandoffRouteEnd);
+  const ownerHandoffInvocation =
+    "requestWindowsNativePresenterForegroundHandoff(body.targetWindow, requestOrdinal)";
   assert.ok(
     ownerHandoffRouteStart >= 0 &&
       ownerHandoffRouteEnd > ownerHandoffRouteStart &&
       ownerHandoffRoute.indexOf("nativePresenterForegroundHandoffConsumed = true") <
-        ownerHandoffRoute.indexOf("requestWindowsNativePresenterForegroundHandoff(body.targetWindow)"),
-    "Electron handoff route must consume its one-shot latch before invoking native focus"
+        ownerHandoffRoute.indexOf(ownerHandoffInvocation),
+    "Electron handoff route must consume its scoped latch before invoking native focus"
   );
   assert.equal(
     (ownerHandoffRoute.match(/requestWindowsNativePresenterForegroundHandoff\(/g) || []).length,
@@ -771,7 +885,7 @@ function runWindowsSmokeHelperStaticChecks() {
     closeInputFocusGate.includes("if (-not `$nativePresenterFocus.focused)") &&
       closeInputFocusGate.includes('Write-ProbeEvent "probe:close-input-skipped"') &&
       closeInputFocusGate.includes('reason = "native-presenter-focus-not-confirmed"') &&
-      closeInputFocusGate.includes("`$sent = `$true") &&
+      closeInputFocusGate.includes("`$terminalFailure = `$true") &&
       closeInputFocusGate.includes("continue"),
     "Windows close probe must skip close input when native-presenter focus is not confirmed"
   );
@@ -799,7 +913,7 @@ function runWindowsSmokeHelperStaticChecks() {
   assert.ok(
     presenterPreDispatchGate.includes("if (-not `$nativePresenterPreDispatch.focused)") &&
       presenterPreDispatchGate.includes('reason = "native-presenter-focus-lost-before-dispatch"') &&
-      presenterPreDispatchGate.includes("`$sent = `$true") &&
+      presenterPreDispatchGate.includes("`$terminalFailure = `$true") &&
       presenterPreDispatchGate.includes("continue"),
     "Windows close probe must fail closed when presenter focus is lost immediately before input"
   );
@@ -1023,7 +1137,7 @@ function runWindowsSmokeHelperStaticChecks() {
     assert.ok(appControlDevModeHelper.includes(expected), `Windows App Control dev-mode helper missing ${expected}`);
   }
   for (const expected of [
-    "ValidateSet(\"baseline\", \"managed\", \"managed-routes\", \"shortcut-routes\", \"checkout\", \"full\", \"preflight\", \"readiness\", \"shortcut\")",
+    "ValidateSet(\"baseline\", \"managed\", \"managed-routes\", \"shortcut-routes\", \"checkout\", \"persistent-reuse\", \"full\", \"preflight\", \"readiness\", \"shortcut\")",
     'ValidateSet("steam-launch", "steam-app", "direct")',
     "Test-NativeLoadGate",
     "Get-PreflightAppControlSummary",
@@ -1094,6 +1208,11 @@ function runWindowsSmokeHelperStaticChecks() {
     "presenter-web-open-and-wait",
     "11b-managed-duplicate-open-guard",
     "presenter-duplicate-open-guard",
+    "presenter-persistent-reuse-three-cycle",
+    "overlay:presenter-persistent-reuse-start",
+    "overlay:presenter-persistent-reuse-cycle",
+    "overlay:presenter-persistent-reuse-complete",
+    "overlay:passive-notification-needs-present",
     "overlay:presenter-duplicate-open-guard",
     "presenter-shortcut-open-and-wait",
     "New-ShortcutOpenAndWaitCase",
@@ -1171,6 +1290,16 @@ function runWindowsSmokeHelperStaticChecks() {
     "-OverlayInProcessGpu",
     "OnlyCase",
     "Get-SelectedMatrixCases",
+    "Invoke-PersistentReuseCase",
+    "persistent-control-readiness.json",
+    "requestOrdinal = `$script:CloseCycleOrdinal",
+    "expectedCloseCount",
+    "Start-LaunchEnvRollbackTransaction",
+    "Complete-LaunchEnvRollbackTransaction",
+    "Test-LaunchEnvBytesMatch",
+    "restoredBytesMatch",
+    "launch-env-rollback.json",
+    "TaskCleanupExpected",
     "Get-RedactedSteamConfigLabel",
     "LocalizedTagNames",
     " ...[truncated]",
@@ -1253,6 +1382,24 @@ function runWindowsSmokeHelperStaticChecks() {
   );
   for (const expected of [
     "verifyDuplicateOpenGuard",
+    "verifyPersistentReuseProof",
+    "verifyPersistentCloseProbe",
+    "verifyPassiveNotificationProof",
+    "false-to-true needs-present",
+    "no hot full-diagnostics loop",
+    "reuses one native surface instance",
+    "reuses one native HWND",
+    "persistent focus cycle ${ordinal} response matched its ordinal",
+    "validateCleanupArtifacts",
+    "launch-env rollback completed successfully",
+    "restored launch env bytes match exactly",
+    "interactive task deletion was independently verified",
+    "task wrapper runner-tree guard completed successfully",
+    "task wrapper launch-env guard completed successfully",
+    "task wrapper package-process guard completed successfully",
+    "task wrapper handoff-file cleanup completed successfully",
+    "final shutdown released surface ownership",
+    "final shutdown records exactly one detach",
     "DUPLICATE_OPEN_NAMED_STATUS_NAMES",
     "duplicateOpenGuardProof",
     "proved duplicate-open suppression payload",
@@ -1298,7 +1445,7 @@ function runWindowsSmokeHelperStaticChecks() {
     "windows-overlay-matrix.ps1",
     "Imported private environment values: count=",
     "DONE_JSON_BEGIN",
-    "LOG_TAIL_BEGIN",
+    "TASK_LOG_PRESENT=",
     "Private environment file was not found.",
     "Matrix arguments file must contain a JSON array or an object with matrixArgs.",
     "Private environment file contains an invalid environment variable name.",
@@ -1311,11 +1458,34 @@ function runWindowsSmokeHelperStaticChecks() {
     "HasInlineValue",
     "inlineValue",
     '"-InitTxnResponseFile"',
+    '"-LaunchEnvFile"',
     '"-SteamUserId"',
     '"-WebUrl"',
     "matrixArgs",
     "matrixSplat",
-    "REDACTED"
+    "REDACTED",
+    '"-TaskCleanupExpected"',
+    'schtasks.exe /End /TN $taskName',
+    'schtasks.exe /Query /TN $taskName',
+    "Resolve-MatrixArgumentValue",
+    "New-TaskLaunchEnvGuard",
+    "Start-TaskLaunchEnvGuard",
+    "Complete-TaskLaunchEnvGuard",
+    "Wait-TaskRunnerTreeCapture",
+    "Start-TaskRunnerTreeGuard",
+    "Complete-TaskRunnerTreeGuard",
+    "taskkill.exe",
+    "Get-ExactTaskRunnerProcesses",
+    "Stop-AndVerifyTaskSmokePackageProcesses",
+    "Remove-AndVerifyTaskFiles",
+    "runnerProcessGuard",
+    "launchEnvGuard",
+    "packageProcessGuard",
+    "taskFileGuard",
+    "restoredBytesMatch",
+    "emptyVerificationScanCount",
+    '"task-cleanup.json"',
+    "deletionVerified"
   ]) {
     assert.ok(taskWrapper.includes(expected), `Windows overlay task wrapper missing ${expected}`);
   }

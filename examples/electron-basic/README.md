@@ -162,8 +162,8 @@ matrix from the desktop itself or via a temporary `/IT` scheduled task, and
 delete that task after the run.
 
 The Windows package also includes `windows-overlay-matrix.ps1`, which runs
-preflight and then a repeatable baseline, managed, or full suite while writing
-case artifacts under `%TEMP%` by default:
+preflight and then a repeatable baseline, managed, persistent-reuse, or full
+suite while writing case artifacts under `%TEMP%` by default:
 
 ```powershell
 .\windows-overlay-matrix.ps1 `
@@ -213,6 +213,31 @@ the busy result without invoking the checkout operation. Treat the case as
 implemented but not yet live-proved on Windows until a packaged run also shows
 one overlay target, close/back-to-app, parking, D3D11 identity in all three
 diagnostic fields, and clean crash/cleanup evidence.
+
+After the focused foreground/close gate passes, use the dedicated persistent
+reuse suite to prove that one Steam-launched process keeps one managed
+controller, native surface lease, D3D11 surface instance, and HWND across three
+complete web open/close/park cycles:
+
+```powershell
+.\windows-overlay-matrix.ps1 `
+  -Suite persistent-reuse `
+  -LaunchMode steam-launch `
+  -AssumeShortcutConfigured `
+  -ShortcutGameId <shortcut-game-id> `
+  -CloseProbe `
+  -CloseProbeInput auto
+```
+
+The case readiness-checks the already-running process before starting cycle
+one, binds the three foreground handoffs to exact ordinals, and stops on the
+first stale handoff, identity change, detach, renderer disagreement, or
+lifecycle failure. Its summary requires positive and stable controller, lease,
+native-instance, and opaque HWND-identity values in every shown and parked
+snapshot, exactly one attach and no detach before final shutdown, and three
+single close inputs with exact-host foreground rechecks. This is implemented
+coverage awaiting current-package live proof; do not run it ahead of the
+focused genuine-user-gesture close gate.
 
 If a local Smart App Control/App Control policy blocks a freshly rebuilt native
 addon, pass `-NativePath <path-to-accepted-.node>` only for diagnostic
@@ -998,6 +1023,31 @@ proof.
 `-TaskRunLevel Limited` is the default and keeps the temporary task in the same
 logged-in desktop token as Steam. Use `-TaskRunLevel Highest` only as a focused
 diagnostic on machines whose task policy requires elevation.
+On timeout, the wrapper explicitly ends the task before deleting it, verifies
+that deletion, and writes `task-cleanup.json`. Live matrix suites also write
+before/after package-process cleanup evidence and restore the prior launch-env
+file through a byte-preserving transaction in `launch-env-rollback.json`, even
+when a preflight or case fails. The summary rejects missing or unsuccessful
+cleanup evidence when the manifest says the corresponding wrapper was used.
+By default the wrapper also removes its temporary task config, runner, done
+marker, and transcript after the exact runner tree is gone. `-KeepTask` is an
+explicit local-debug escape hatch that retains the task and those raw handoff
+files; they can contain private paths or arguments, so do not share or archive
+them as test evidence.
+For a retained `-KeepTask` run, copy the printed `taskName` and `taskFiles`
+values, replace the placeholders below, and clean up that one task and run
+directory explicitly:
+
+```powershell
+schtasks.exe /End /TN "<taskName>"
+schtasks.exe /Delete /TN "<taskName>" /F
+Remove-Item C:\sb\<runId> -Recurse -Force
+```
+
+These commands are destructive. Verify the printed task name and run ID first,
+never remove `C:\sb` as a whole, and do not delete the run directory until the
+scheduled task has ended; retained config and transcript files can contain
+private paths or arguments.
 Matrix dry-run and live command logs redact checkout file paths, checkout URLs,
 return URLs, transaction IDs, and control tokens as `REDACTED`, so command logs
 can be shared for review without exposing private purchase data.

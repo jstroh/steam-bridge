@@ -814,8 +814,9 @@ the private `--checkout-json-file` checkout suite.
   checks PE32+/AMD64/N-API/dependency identity and source-to-bundle hashes, and
   starts the final executable without `STEAM_BRIDGE_NATIVE_PATH` or post-install
   repair. It also packages the current public smoke action/matrix protocol and
-  retains a hash-audited archive of the exact `win-unpacked` bundle for live
-  proof and rollback. The signed candidate must still pass
+  retains a hash-audited archive of the exact `win-unpacked` bundle as a
+  time-bounded workflow artifact for live proof and candidate recovery. The
+  signed candidate must still pass
   `presenter-ready` and the live Windows overlay gates before it carries an
   overlay release claim.
 - The ASAR gate's audited `.tgz` is the canonical npm release candidate. Verify
@@ -829,6 +830,22 @@ the private `--checkout-json-file` checkout suite.
   create a different tarball. Tag-triggered Release runs require Windows
   signing credentials plus the configured publisher subject or thumbprint;
   manual Release dispatches may remain unsigned for packaging diagnostics.
+  The workflow validates candidates only: it does not run `--publish` or create
+  a GitHub Release. This public repository currently retains Actions artifacts
+  for 90 days, which is also GitHub's public-repository maximum, so an Actions
+  artifact alone is not durable rollback storage. Before a production publish,
+  copy the exact tarball, Windows bundle, audit, and probe to durable immutable
+  release storage and keep them bound to the protected version tag. See
+  [Contributing](CONTRIBUTING.md#release-candidates-publication-and-rollback) and
+  [GitHub's repository Actions settings](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/enabling-features-for-your-repository/managing-github-actions-settings-for-a-repository).
+  npm authority is not required to sign or live-test the candidate. Because
+  trusted publishing can be configured only after a package exists, the first
+  publish requires an explicitly approved provenance-emitting CI bootstrap;
+  configure trusted publishing for later versions. If a published version
+  regresses, build, sign, package, and live-validate a corrected higher
+  candidate through the same gates; then publish it, deprecate the bad version
+  with an upgrade message, and move dist-tags as applicable. Unpublishing is
+  not rollback and the same name/version cannot be reused.
 - Windows release and smoke packages must Authenticode-sign the Electron
   executable and native `.node` addon with a trusted publisher certificate
   before testing on machines with Windows Smart App Control or App Control for

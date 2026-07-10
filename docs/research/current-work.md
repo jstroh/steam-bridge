@@ -146,6 +146,15 @@ app no longer overrides the library default. All 179 unit tests, package smoke,
 API/platform checks, native formatting/checks, syntax checks, and diff checks
 pass; one public passive-notification exact-package proof remains pending.
 
+The current evidence-harness slice adds optional successful lightweight/full
+poll counters and timestamps without changing unsupported adapter shapes. A
+failed full read advances only a private attempt timestamp, so the public count
+invariant remains exact and failures cannot create a hot retry loop. The
+passive-notification proof now requires an audited false-to-true-to-false
+transition, 30 ms lightweight cadence, rate-limited full diagnostics, D3D11
+agreement, clean close/park completion, and a final zero-FPS state. Unit and
+summary fixtures are green; the exact-package live proof remains pending.
+
 The same committed documentation slice corrects the stale claim that Windows
 uses only Electron's direct hook, limits the supported topology to one presenter
 per process/main game window, distinguishes historical artifacts from
@@ -183,6 +192,21 @@ Actions signing secrets, publisher-identity variables, tags, or releases, so a
 signed tag run is a prerequisite-bound next experiment rather than a justified
 retry of the green unsigned diagnostic.
 
+The final release-operations audit also confirmed that the workflow is
+candidate-only: it neither publishes npm nor creates a GitHub Release. This is
+a public repository with Actions retention set to the public maximum of 90
+days, so the retained candidate is not durable rollback material by itself.
+Public and contributor guidance now requires a protected exact-version tag for
+the signed candidate, the exact four candidate files in durable immutable
+release storage before publication, and an approved provenance-emitting npm
+publication path only after the exact candidate passes live gates. Because the
+package does not yet exist on npm, its first publish needs an approved CI
+bootstrap before later versions can use trusted publishing. Rollback means
+building, signing, packaging, and live-validating a higher corrected candidate,
+then publishing it, deprecating the bad immutable version, and moving dist-tags
+as applicable. Enabling publication remains an explicit release-authority
+decision; it was not inferred from the package-readiness goal.
+
 ### Native surface ownership and terminal failure handling are hardened in `57c458f`
 
 An independent production audit found process-global lifecycle hazards that do
@@ -212,12 +236,35 @@ The Windows activation path also now reactivates a parked host in place instead
 of calling the native attach path again. Native diagnostics expose
 `surfaceInstanceGeneration` and `hwnd` as actual HWND/D3D11 reuse evidence;
 `nativeSurfaceLeaseGeneration` remains ownership evidence only. The focused
-three-cycle live harness must require stable native instance/HWND plus one
-attach and no detach before final shutdown, not merely a stable lease.
-It must capture one managed controller before the loop, reject missing or
-nonpositive controller/lease/instance generations and a missing HWND, compare
-them in every shown and parked snapshot, require owned/open/attached/nonterminal
-state throughout, and stop without re-ensuring or retrying after any failure.
+three-cycle harness is now implemented as one readiness-gated process and one
+controller. It requires exact ordered handoff ordinals, stable controller,
+lease, native instance, and salted HWND identities, D3D11 agreement, one attach
+and no detach before completion, owned/open/attached/nonterminal state in every
+shown and parked snapshot, and fail-first/no-retry behavior. Its final shutdown
+must record one detach and a fully closed, unowned, unattached, backend-free
+snapshot. Unit, package, and summary fixtures are green; the live reuse proof
+is still gated behind the genuine-click close pass.
+
+### Windows harness cleanup and rollback are fail-closed locally
+
+The live matrix now wraps shortcut installation and launch-environment changes
+in nested transactions, restores the original launch-environment bytes exactly,
+and records only sanitized boolean/count/status evidence. The scheduled-task
+wrapper resolves one explicit redacted launch-env input, tracks the exact runner
+identity and descendant process tree, terminates that tree on timeout or
+missing completion, requires two empty scans for both runner and package-owned
+Smoke processes, verifies task deletion, and removes raw runner/config/done/
+transcript files unless `-KeepTask` was explicitly requested. Closed-set failure
+classes preserve diagnostic meaning without retaining raw exception text,
+commands, private paths, or launch-env contents.
+
+The matrix also guarantees ordinary-failure cleanup and rollback, stores raw
+shortcut backup material outside the artifact root, sanitizes shortcut/install
+evidence, and audits the final post-close presenter snapshot. Package smoke
+statically checks these contracts, and the Windows package gate now parses
+`windows-overlay-task.ps1` with native PowerShell. All local checks and
+independent reviews are green; Windows CI and live evidence remain the next
+distinct proofs.
 
 ### Duplicate-open coverage is packaged; live proof is open
 
@@ -264,16 +311,23 @@ broker; investigate native-host ownership/activation and input forwarding.
    `shortcut-routes`, and synthetic `checkout` suites. Do not use the unchanged
    raw `full` baseline as the product gate.
 4. Run one public passive exact-package case for the committed Windows
-   `BOverlayNeedsPresent()` cadence and require a false-to-true wake, D3D11
-   renderer agreement, close/park completion, and no hot full-diagnostics loop.
-5. Add the designed state-driven three-cycle persistent-presenter reuse/soak
-   proof, then verify the documented one-window, recovery/compatibility, and
-   production-like Windows native-addon packaging boundaries.
+   `BOverlayNeedsPresent()` cadence and require the audited false-to-true-to-false
+   transition, D3D11 renderer agreement, close/park completion, 30 ms
+   lightweight polling, and no hot full-diagnostics loop.
+5. Run the implemented persistent-reuse suite and require three exact ordered
+   close ordinals, stable controller/lease/native-instance/HWND identities, one
+   attach with no pre-completion detach, the final detach/closed snapshot, and
+   complete process/task/file/launch-env cleanup. Then verify the documented
+   one-window, recovery/compatibility, and production-like Windows native-addon
+   packaging boundaries.
 6. Do not repeat the green unsigned package diagnostic unchanged. When signing
-   credentials, expected publisher identity, and the exact version tag exist,
-   run one signed tag gate and require app/addon publisher agreement, both Valve
-   DLLs `Valid` with preserved bytes, retained archive/audit provenance, and
-   canonical publish-candidate verification before any exact-candidate live run.
+   credentials, expected publisher identity, and a protected exact-version tag
+   exist, run one signed tag gate. Require app/addon publisher agreement, both
+   Valve DLLs `Valid` with preserved bytes, retained archive/audit provenance,
+   and canonical publish-candidate verification before exact-candidate live
+   proof. Retain those exact four files durably before publication; require an
+   approved provenance-emitting npm bootstrap/publishing authority only after
+   the exact candidate passes the live gates.
 7. Record results in the existing ledger/detailed evidence, run final checks,
    scan for private data, commit, push, verify CI, and complete the final
    production-readiness audit.
@@ -358,6 +412,22 @@ Against ownership/reuse implementation commit `57c458f` on 2026-07-10:
 - `57c458f` was pushed to `origin/main`; package smoke, Linux x64, Windows x64,
   and macOS arm64 CI jobs all passed. No live Steam suite was run; the existing
   genuine-click experiment remains untouched and pending.
+
+Against the current Windows evidence-harness and release-operations slice on
+2026-07-10:
+
+- `npm test` passed all 196 tests, including successful/failed split-poll
+  accounting, optional adapter capability shape, strict focus/show/activation
+  ordering, three-cycle reuse, and terminal detach evidence.
+- `npm run package:smoke`, `npm run api:check`, `npm run check:platform`,
+  `npm run native:fmt`, and `npm run native:check` passed; `native:check`
+  retained only the known transitive `block 0.1.6` warning.
+- Syntax checks passed for every changed JavaScript file, the summary fixture
+  suite passed through package smoke, and `git diff --check` passed.
+- Independent runtime, harness, release, privacy, cleanup, and packaging reviews
+  closed their findings; the final packaging review found no remaining blocker.
+- No live Steam suite was run. Windows CI validation and the existing genuine
+  foreground click remain the next distinct proofs.
 
 Live Windows review on 2026-07-10 UTC is summarized under Current Findings;
 detailed sanitized chronology lives in the platform evidence log and ledger.

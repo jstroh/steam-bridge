@@ -132,6 +132,7 @@ const CONTROL_HANDOFF_ONLY = readBoolean(
 const CONTROL_FILE = CLI_OPTIONS.controlFile || process.env.STEAM_BRIDGE_SMOKE_CONTROL_FILE || "";
 const CONTROL_TOKEN =
   CLI_OPTIONS.controlToken || process.env.STEAM_BRIDGE_SMOKE_CONTROL_TOKEN || crypto.randomBytes(24).toString("hex");
+const NATIVE_HOST_IDENTITY_SALT = crypto.randomBytes(32);
 const DIAGNOSTIC_DIR =
   CLI_OPTIONS.diagnosticDir ||
   process.env.STEAM_BRIDGE_SMOKE_DIAGNOSTIC_DIR ||
@@ -213,7 +214,10 @@ let electronSteamOverlay;
 let smokeControlServer;
 let smokeControlActionInFlight = false;
 let nativePresenterForegroundHandoffConsumed = false;
+let nativePresenterForegroundHandoffReuseCycle;
 let postClosePresenterSnapshotHandle;
+let passiveNotificationNeedsPresentObserverHandle;
+let passiveNotificationNeedsPresentState;
 let managedOverlayWaitSequence = 0;
 let pendingManagedOverlayShownWait;
 let pendingManagedOverlayLifecycle;
@@ -318,6 +322,9 @@ ipcMain.handle("steam-smoke:overlay-dialog", () => openDialogOverlay());
 ipcMain.handle("steam-smoke:presenter-ready", () => checkPresenterReady());
 ipcMain.handle("steam-smoke:presenter-web", () => openPresenterWebOverlay());
 ipcMain.handle("steam-smoke:presenter-web-open-and-wait", () => openPresenterWebOpenAndWaitOverlay());
+ipcMain.handle("steam-smoke:presenter-persistent-reuse-three-cycle", () =>
+  openPresenterPersistentReuseThreeCycleOverlay()
+);
 ipcMain.handle("steam-smoke:presenter-duplicate-open-guard", () => openPresenterDuplicateOpenGuardOverlay());
 ipcMain.handle("steam-smoke:presenter-store-open-and-wait", () => openPresenterStoreOpenAndWaitOverlay());
 ipcMain.handle("steam-smoke:presenter-dialog-auto-open-and-wait", () =>
@@ -405,6 +412,7 @@ function shutdownSteam() {
   shutdownComplete = true;
   closeSmokeControlServer();
   clearPostClosePresenterSnapshotObserver();
+  clearPassiveNotificationNeedsPresentObserver();
   abortManagedOverlayWaits();
   microTxnCheckoutCorrelation.clear();
   closeNativeOverlayPresenter();
@@ -516,6 +524,8 @@ async function runSmokeActionAndWait(action, options = {}) {
   const overlayActiveCount = countOverlayActiveEvents();
   applySmokeActionOptions(options.actionOptions, { reset: source === "control" });
   recordEvent(`${source}:action-begin`, { action });
+  clearPassiveNotificationNeedsPresentObserver();
+  passiveNotificationNeedsPresentState = undefined;
   pendingManagedOverlayShownWait = undefined;
   pendingManagedOverlayLifecycle = undefined;
   pendingManagedOverlayCompletionWait = undefined;
@@ -634,21 +644,83 @@ async function handleSmokeControlRequest(request, response) {
   }
 
   if (request.method === "POST" && requestUrl.pathname === "/foreground-handoff") {
-    if (nativePresenterForegroundHandoffConsumed) {
-      sendJsonResponse(response, 409, {
-        ok: false,
-        error: { code: "FOREGROUND_HANDOFF_ALREADY_CONSUMED" }
-      });
-      return;
+    let body;
+    let requestOrdinal = 1;
+    const reuseCycle = nativePresenterForegroundHandoffReuseCycle;
+    const isReuseRequest = reuseCycle?.active === true;
+    if (isReuseRequest) {
+      body = await readSmokeControlJson(request);
+      const requestedOrdinal = Number(body.requestOrdinal);
+      if (
+        !Number.isInteger(requestedOrdinal) ||
+        requestedOrdinal < 1 ||
+        requestedOrdinal > 3 ||
+        requestedOrdinal !== reuseCycle.expectedOrdinal
+      ) {
+        recordEvent("overlay:presenter-foreground-handoff-rejected", {
+          reason: "ordinal-mismatch",
+          expectedOrdinal: reuseCycle.expectedOrdinal,
+          requestedOrdinal: Number.isInteger(requestedOrdinal) ? requestedOrdinal : null
+        });
+        rejectNativePresenterForegroundHandoffReuseCycle(reuseCycle, "ordinal-mismatch");
+        sendJsonResponse(response, 409, {
+          ok: false,
+          error: {
+            code: "FOREGROUND_HANDOFF_ORDINAL_MISMATCH",
+            expectedOrdinal: reuseCycle.expectedOrdinal
+          }
+        });
+        return;
+      }
+      if (reuseCycle.consumed) {
+        recordEvent("overlay:presenter-foreground-handoff-rejected", {
+          reason: "ordinal-replay",
+          expectedOrdinal: reuseCycle.expectedOrdinal,
+          requestedOrdinal
+        });
+        rejectNativePresenterForegroundHandoffReuseCycle(reuseCycle, "ordinal-replay");
+        sendJsonResponse(response, 409, {
+          ok: false,
+          error: {
+            code: "FOREGROUND_HANDOFF_ORDINAL_REPLAY",
+            expectedOrdinal: reuseCycle.expectedOrdinal
+          }
+        });
+        return;
+      }
+      reuseCycle.consumed = true;
+      nativePresenterForegroundHandoffConsumed = true;
+      requestOrdinal = requestedOrdinal;
+    } else {
+      if (nativePresenterForegroundHandoffConsumed) {
+        sendJsonResponse(response, 409, {
+          ok: false,
+          error: { code: "FOREGROUND_HANDOFF_ALREADY_CONSUMED" }
+        });
+        return;
+      }
+
+      nativePresenterForegroundHandoffConsumed = true;
+      body = await readSmokeControlJson(request);
+      removeSmokeControlFile();
     }
 
-    nativePresenterForegroundHandoffConsumed = true;
-    const body = await readSmokeControlJson(request);
-    removeSmokeControlFile();
-    const handoff = requestWindowsNativePresenterForegroundHandoff(body.targetWindow);
+    const handoff = requestWindowsNativePresenterForegroundHandoff(body.targetWindow, requestOrdinal);
+    const handoffOk = handoff.reason === "already-foreground" || handoff.reason === "foreground-confirmed";
+    if (isReuseRequest) {
+      reuseCycle.handoffSucceeded = handoffOk;
+      if (handoffOk) {
+        reuseCycle.resolveOutcome({ ok: true, reason: handoff.reason });
+        if (requestOrdinal === 3) {
+          removeSmokeControlFile();
+        }
+      } else {
+        rejectNativePresenterForegroundHandoffReuseCycle(reuseCycle, handoff.reason);
+      }
+    }
     recordEvent("overlay:presenter-foreground-handoff", handoff);
     sendJsonResponse(response, 200, {
-      ok: handoff.reason === "already-foreground" || handoff.reason === "foreground-confirmed",
+      ok: handoffOk,
       handoff
     });
     return;
@@ -701,7 +773,7 @@ async function handleSmokeControlRequest(request, response) {
   sendJsonResponse(response, 404, { ok: false, error: { message: `Unknown smoke control route: ${requestUrl.pathname}` } });
 }
 
-function requestWindowsNativePresenterForegroundHandoff(requestedWindow) {
+function requestWindowsNativePresenterForegroundHandoff(requestedWindow, requestOrdinal = 1) {
   const before = readWindowsNativePresenterForegroundHandoffState();
   const requestedWindowPresent =
     typeof requestedWindow === "string" && /^0x[0-9a-f]+$/i.test(requestedWindow);
@@ -712,7 +784,7 @@ function requestWindowsNativePresenterForegroundHandoff(requestedWindow) {
     schema: 1,
     target: "lifecycle-native-host",
     mechanism: "owner-process-native-show",
-    requestOrdinal: 1,
+    requestOrdinal,
     precondition: {
       windows: process.platform === "win32",
       presenterActive: before.presenterActive,
@@ -784,6 +856,87 @@ function requestWindowsNativePresenterForegroundHandoff(requestedWindow) {
     handoff.reason = "foreground-not-confirmed";
   }
   return handoff;
+}
+
+function beginNativePresenterForegroundHandoffReuseCycle(cycle) {
+  if (!Number.isInteger(cycle) || cycle < 1 || cycle > 3) {
+    throw new Error("Persistent presenter reuse handoff cycle must be an integer from 1 through 3.");
+  }
+  if (nativePresenterForegroundHandoffReuseCycle?.active) {
+    throw new Error("A persistent presenter reuse handoff cycle is already active.");
+  }
+
+  nativePresenterForegroundHandoffConsumed = false;
+  let resolveOutcome;
+  const outcome = new Promise((resolve) => {
+    resolveOutcome = resolve;
+  });
+  nativePresenterForegroundHandoffReuseCycle = {
+    active: true,
+    expectedOrdinal: cycle,
+    consumed: false,
+    failed: false,
+    handoffSucceeded: false,
+    outcome,
+    resolveOutcome
+  };
+}
+
+function finishNativePresenterForegroundHandoffReuseCycle(cycle) {
+  const reuseCycle = nativePresenterForegroundHandoffReuseCycle;
+  if (
+    !reuseCycle?.active ||
+    reuseCycle.expectedOrdinal !== cycle ||
+    reuseCycle.consumed !== true ||
+    reuseCycle.failed === true ||
+    reuseCycle.handoffSucceeded !== true
+  ) {
+    throw new Error(`Persistent presenter reuse cycle ${cycle} did not consume its exact foreground handoff.`);
+  }
+
+  reuseCycle.active = false;
+  nativePresenterForegroundHandoffConsumed = true;
+}
+
+async function waitForNativePresenterForegroundHandoffReuseCycle(cycle) {
+  const reuseCycle = nativePresenterForegroundHandoffReuseCycle;
+  if (!reuseCycle?.active || reuseCycle.expectedOrdinal !== cycle) {
+    throw new Error(`Persistent presenter reuse cycle ${cycle} has no active foreground handoff gate.`);
+  }
+
+  let timeout;
+  const timeoutResult = new Promise((resolve) => {
+    timeout = setTimeout(
+      () => resolve({ ok: false, reason: "foreground-handoff-timeout" }),
+      MANAGED_OVERLAY_WAIT_TIMEOUT_MS
+    );
+    timeout.unref?.();
+  });
+  const result = await Promise.race([reuseCycle.outcome, timeoutResult]);
+  clearTimeout(timeout);
+  if (result.ok !== true) {
+    throw new Error(`Persistent presenter reuse cycle ${cycle} foreground handoff failed: ${result.reason}.`);
+  }
+}
+
+function rejectNativePresenterForegroundHandoffReuseCycle(reuseCycle, reason) {
+  reuseCycle.failed = true;
+  reuseCycle.active = false;
+  nativePresenterForegroundHandoffConsumed = true;
+  removeSmokeControlFile();
+  reuseCycle.resolveOutcome({ ok: false, reason });
+}
+
+function failNativePresenterForegroundHandoffReuse() {
+  if (nativePresenterForegroundHandoffReuseCycle) {
+    nativePresenterForegroundHandoffReuseCycle.active = false;
+    nativePresenterForegroundHandoffReuseCycle.resolveOutcome({
+      ok: false,
+      reason: "persistent-reuse-failed"
+    });
+  }
+  nativePresenterForegroundHandoffConsumed = true;
+  removeSmokeControlFile();
 }
 
 function removeSmokeControlFile() {
@@ -1086,15 +1239,32 @@ async function waitForPassiveNotificationResult(action, durationMs) {
     } catch (error) {
       const serialized = serializeError(error);
       recordEvent("overlay:passive-notification-pump:error", { action, pumps, error: serialized });
-      return { ok: false, action, pumps, durationMs: Date.now() - startedAt, error: serialized };
+      return finishPassiveNotificationNeedsPresentWait({
+        ok: false,
+        action,
+        pumps,
+        durationMs: Date.now() - startedAt,
+        error: serialized
+      });
     }
 
     const presenter = safeOverlaySnapshot(electronSteamOverlay);
     const eventSeen = eventLog.some((entry) => entry.type === eventType);
-    if (eventSeen && isParkedPassivePresenter(presenter)) {
+    const transitionObserved =
+      passiveNotificationNeedsPresentState?.action === action &&
+      passiveNotificationNeedsPresentState.observed === true;
+    if (eventSeen && transitionObserved && isParkedPassivePresenter(presenter)) {
       const elapsedMs = Date.now() - startedAt;
       recordEvent("overlay:passive-notification-parked", { action, pumps, durationMs: elapsedMs, presenter });
-      return { ok: true, action, pumps, passiveNotificationParked: true, durationMs: elapsedMs, presenter };
+      return finishPassiveNotificationNeedsPresentWait({
+        ok: true,
+        action,
+        pumps,
+        passiveNotificationNeedsPresentTransition: true,
+        passiveNotificationParked: true,
+        durationMs: elapsedMs,
+        presenter
+      });
     }
 
     await delay(Math.min(100, Math.max(0, deadline - Date.now())));
@@ -1103,7 +1273,72 @@ async function waitForPassiveNotificationResult(action, durationMs) {
   const presenter = safeOverlaySnapshot(electronSteamOverlay);
   const error = { message: "Timed out waiting for passive notification presenter to park." };
   recordEvent("overlay:passive-notification-timeout", { action, pumps, durationMs: Date.now() - startedAt, presenter });
-  return { ok: false, action, pumps, passiveNotificationParked: false, durationMs: Date.now() - startedAt, error, presenter };
+  return finishPassiveNotificationNeedsPresentWait({
+    ok: false,
+    action,
+    pumps,
+    passiveNotificationNeedsPresentTransition:
+      passiveNotificationNeedsPresentState?.action === action &&
+      passiveNotificationNeedsPresentState.observed === true,
+    passiveNotificationParked: false,
+    durationMs: Date.now() - startedAt,
+    error,
+    presenter
+  });
+}
+
+function observePassiveNotificationNeedsPresent(overlay, action) {
+  clearPassiveNotificationNeedsPresentObserver();
+  const initialPresenter = safeOverlaySnapshot(overlay);
+  const state = {
+    action,
+    observed: false,
+    previousOverlayNeedsPresent:
+      typeof initialPresenter?.overlayNeedsPresent === "boolean"
+        ? initialPresenter.overlayNeedsPresent
+        : undefined
+  };
+  passiveNotificationNeedsPresentState = state;
+
+  const observe = () => {
+    if (passiveNotificationNeedsPresentState !== state || state.observed) {
+      return;
+    }
+    const presenter = safeOverlaySnapshot(overlay);
+    const current = presenter?.overlayNeedsPresent;
+    if (state.previousOverlayNeedsPresent === false && current === true) {
+      state.observed = true;
+      recordEvent("overlay:passive-notification-needs-present", {
+        action,
+        previousOverlayNeedsPresent: false,
+        overlayNeedsPresent: true,
+        observedAt: Date.now(),
+        pollIntervalMs: presenter.pollIntervalMs,
+        lightweightPollCount: presenter.lightweightPollCount,
+        lastLightweightPollAt: presenter.lastLightweightPollAt || null,
+        fullDiagnosticsPollCount: presenter.fullDiagnosticsPollCount,
+        lastFullDiagnosticsPollAt: presenter.lastFullDiagnosticsPollAt || null,
+        presenter
+      });
+    }
+    if (typeof current === "boolean") {
+      state.previousOverlayNeedsPresent = current;
+    }
+  };
+
+  passiveNotificationNeedsPresentObserverHandle = overlay.presenter?.onStateChange?.(observe);
+  observe();
+}
+
+function clearPassiveNotificationNeedsPresentObserver() {
+  passiveNotificationNeedsPresentObserverHandle?.disconnect?.();
+  passiveNotificationNeedsPresentObserverHandle = undefined;
+}
+
+function finishPassiveNotificationNeedsPresentWait(result) {
+  clearPassiveNotificationNeedsPresentObserver();
+  passiveNotificationNeedsPresentState = undefined;
+  return result;
 }
 
 async function waitForManagedOverlayShownResult(action) {
@@ -1122,7 +1357,9 @@ async function waitForManagedOverlayShownResult(action) {
   }
 
   const result = await shownWait;
-  if (MANAGED_OVERLAY_RESULT_MODE !== "complete") {
+  const requireComplete =
+    MANAGED_OVERLAY_RESULT_MODE === "complete" || action === "presenter-persistent-reuse-three-cycle";
+  if (!requireComplete) {
     return {
       ok: result.ok === true,
       action,
@@ -1238,6 +1475,9 @@ async function runAutorunAction(action) {
         return { ok: true, action };
       case "presenter-web-open-and-wait":
         openPresenterWebOpenAndWaitOverlay();
+        return { ok: true, action };
+      case "presenter-persistent-reuse-three-cycle":
+        openPresenterPersistentReuseThreeCycleOverlay();
         return { ok: true, action };
       case "presenter-duplicate-open-guard":
         await openPresenterDuplicateOpenGuardOverlay();
@@ -1481,6 +1721,336 @@ function openPresenterWebOpenAndWaitOverlay() {
     api: "openWebAndWait"
   };
   return openPresenterTargetAndWaitOverlay(overlay, target, context);
+}
+
+function openPresenterPersistentReuseThreeCycleOverlay() {
+  const overlay = ensureElectronSteamOverlay();
+  let firstShownSettled = false;
+  let resolveFirstShown;
+  const firstShown = new Promise((resolve) => {
+    resolveFirstShown = (result) => {
+      if (firstShownSettled) {
+        return;
+      }
+      firstShownSettled = true;
+      resolve(result);
+    };
+  });
+
+  const completion = runPresenterPersistentReuseThreeCycle(overlay, resolveFirstShown)
+    .then((result) => {
+      const complete = {
+        cyclesCompleted: result.cycles.length,
+        controllerGeneration: result.stable.controllerGeneration,
+        nativeSurfaceLeaseGeneration: result.stable.nativeSurfaceLeaseGeneration,
+        surfaceInstanceGeneration: result.stable.surfaceInstanceGeneration,
+        nativeHostIdentityToken: result.stable.nativeHostIdentityToken,
+        nativeHostIdentityPresent: result.stable.nativeHostIdentityPresent,
+        attachCount: result.stable.attachCount,
+        detachCount: result.stable.detachCount,
+        backend: result.stable.backend,
+        hostBackend: result.stable.hostBackend,
+        rendererBackend: result.stable.rendererBackend
+      };
+      recordEvent("overlay:presenter-persistent-reuse-complete", complete);
+      return { ok: true, ...result, complete };
+    })
+    .catch((error) => {
+      failNativePresenterForegroundHandoffReuse();
+      const serialized = serializeError(error);
+      let presenter = safeOverlaySnapshot(overlay);
+      try {
+        overlay.close();
+        presenter = overlay.snapshot();
+      } catch (closeError) {
+        presenter = {
+          ...(presenter && typeof presenter === "object" ? presenter : {}),
+          closeError: serializeError(closeError)
+        };
+      }
+      recordEvent("overlay:presenter-persistent-reuse-error", {
+        error: serialized,
+        presenter
+      });
+      resolveFirstShown({
+        ok: false,
+        type: "overlay:presenter-persistent-reuse-error",
+        error: serialized,
+        presenter
+      });
+      return { ok: false, error: serialized, presenter };
+    });
+
+  const lifecycleResult = (key) =>
+    completion.then((result) => {
+      if (result.ok === true) {
+        return result[key];
+      }
+      return {
+        ok: false,
+        type: "overlay:presenter-persistent-reuse-error",
+        error: result.error,
+        presenter: result.presenter
+      };
+    });
+
+  pendingManagedOverlayShownWait = firstShown;
+  pendingManagedOverlayLifecycle = {
+    closed: lifecycleResult("finalClosed"),
+    parked: lifecycleResult("finalParked")
+  };
+  pendingManagedOverlayCompletionWait = completion.then((result) => {
+    if (result.ok !== true) {
+      return result;
+    }
+    return {
+      ok: true,
+      result: {
+        shown: result.firstShown.presenter,
+        parked: result.finalParked.presenter
+      }
+    };
+  });
+
+  return snapshot();
+}
+
+async function runPresenterPersistentReuseThreeCycle(overlay, resolveFirstShown) {
+  const initialSnapshot = overlay.snapshot();
+  const readinessStatus = overlay.getWebOpenStatus(WEB_URL, { modal: WEB_MODAL });
+  const controllerGeneration = Number(initialSnapshot.electronOverlay?.controllerGeneration) || 0;
+  const nativeSurfaceLeaseGeneration = Number(initialSnapshot.nativeSurfaceLeaseGeneration) || 0;
+  recordEvent("overlay:presenter-persistent-reuse-start", {
+    cycles: 3,
+    controllerGeneration,
+    nativeSurfaceLeaseGeneration,
+    presenterMode: initialSnapshot.electronOverlay?.presenterMode || null,
+    readiness: {
+      canWait: readinessStatus.canWait === true,
+      reason: readinessStatus.reason || null,
+      waitReason: readinessStatus.waitReason || null
+    },
+    foregroundHandoffOrdinals: [1, 2, 3]
+  });
+
+  if (process.platform !== "win32") {
+    throw new Error("Persistent presenter reuse smoke requires Windows.");
+  }
+  if (initialSnapshot.electronOverlay?.presenterMode !== "persistent") {
+    throw new Error("Persistent presenter reuse smoke requires persistent presenter mode.");
+  }
+  if (readinessStatus.canWait !== true) {
+    throw new Error(`Persistent presenter reuse smoke is not readiness-waitable: ${readinessStatus.reason}.`);
+  }
+  assertPositivePersistentReuseGeneration("controllerGeneration", controllerGeneration);
+  assertPositivePersistentReuseGeneration("nativeSurfaceLeaseGeneration", nativeSurfaceLeaseGeneration);
+
+  const cycles = [];
+  let stable;
+  let firstShownResult;
+  let finalClosed;
+  let finalParked;
+  for (let cycle = 1; cycle <= 3; cycle += 1) {
+    beginNativePresenterForegroundHandoffReuseCycle(cycle);
+    const context = {
+      target: "web",
+      url: WEB_URL,
+      modal: WEB_MODAL,
+      api: "persistentReuseThreeCycle",
+      cycle
+    };
+    const openAndWait = overlay
+      .openWebAndWait(
+        WEB_URL,
+        { modal: WEB_MODAL },
+        {
+          showTimeoutMs: MANAGED_OVERLAY_WAIT_TIMEOUT_MS,
+          closeTimeoutMs: MANAGED_OVERLAY_PARK_TIMEOUT_MS
+        }
+      )
+      .then(
+        (result) => ({ ok: true, result }),
+        (error) => ({ ok: false, error })
+      );
+    const lifecycle = observeManagedOverlayLifecycle(overlay, context);
+    if (!lifecycle) {
+      throw new Error(`Persistent presenter reuse cycle ${cycle} could not observe managed lifecycle.`);
+    }
+
+    const shownResult = await lifecycle.shown;
+    firstShownResult ??= shownResult;
+    if (cycle === 1) {
+      resolveFirstShown(shownResult);
+    }
+    if (shownResult.ok !== true) {
+      throw new Error(`Persistent presenter reuse cycle ${cycle} did not reach shown state.`);
+    }
+
+    await waitForNativePresenterForegroundHandoffReuseCycle(cycle);
+    const [closedResult, parkedResult, openResult] = await Promise.all([
+      lifecycle.closed,
+      lifecycle.parked,
+      openAndWait
+    ]);
+    if (closedResult.ok !== true || parkedResult.ok !== true) {
+      throw new Error(`Persistent presenter reuse cycle ${cycle} did not close and park cleanly.`);
+    }
+    if (openResult.ok !== true) {
+      throw openResult.error;
+    }
+    finishNativePresenterForegroundHandoffReuseCycle(cycle);
+
+    const shown = persistentReusePresenterEvidence(openResult.result.shown);
+    const parked = persistentReusePresenterEvidence(openResult.result.parked);
+    stable = validatePersistentReuseCycleEvidence(
+      cycle,
+      shown,
+      parked,
+      stable,
+      controllerGeneration,
+      nativeSurfaceLeaseGeneration
+    );
+    const cycleEvidence = { cycle, shown, parked };
+    cycles.push(cycleEvidence);
+    recordEvent("overlay:presenter-persistent-reuse-cycle", cycleEvidence);
+    finalClosed = closedResult;
+    finalParked = parkedResult;
+  }
+
+  return {
+    cycles,
+    stable,
+    firstShown: firstShownResult,
+    finalClosed,
+    finalParked
+  };
+}
+
+function persistentReusePresenterEvidence(presenter) {
+  const nativeHost = presenter?.nativeHostDiagnostics;
+  const rawNativeHostIdentity =
+    nativeHost && typeof nativeHost.hwnd === "string" && nativeHost.hwnd ? nativeHost.hwnd : "";
+  return {
+    controllerGeneration: Number(presenter?.electronOverlay?.controllerGeneration) || 0,
+    nativeSurfaceLeaseGeneration: Number(presenter?.nativeSurfaceLeaseGeneration) || 0,
+    surfaceInstanceGeneration: Number(nativeHost?.surfaceInstanceGeneration) || 0,
+    nativeHostIdentityToken: rawNativeHostIdentity
+      ? crypto
+          .createHash("sha256")
+          .update(NATIVE_HOST_IDENTITY_SALT)
+          .update("\0")
+          .update(rawNativeHostIdentity)
+          .digest("hex")
+      : null,
+    nativeHostIdentityPresent: Boolean(rawNativeHostIdentity),
+    nativeHostOpen: presenter?.nativeHostOpen === true,
+    attached: presenter?.attached === true,
+    nativeSurfaceOwner: presenter?.nativeSurfaceOwner === true,
+    closed: presenter?.closed === true,
+    closeReason: presenter?.closeReason || null,
+    backend: typeof presenter?.backend === "string" ? presenter.backend : null,
+    hostBackend: typeof nativeHost?.backend === "string" ? nativeHost.backend : null,
+    rendererBackend: typeof nativeHost?.renderer?.backend === "string" ? nativeHost.renderer.backend : null,
+    attachCount: Number(presenter?.nativeSurfaceAttachCount) || 0,
+    detachCount: Number(presenter?.nativeSurfaceDetachCount) || 0,
+    mode: presenter?.mode || null,
+    overlayActive: presenter?.overlayActive === true,
+    overlayNeedsPresent: presenter?.overlayNeedsPresent === true,
+    clickThrough: presenter?.clickThrough === true,
+    transparent: presenter?.transparent === true,
+    currentFps: Number(presenter?.currentFps) || 0,
+    pollIntervalMs: Number(presenter?.pollIntervalMs) || 0,
+    lightweightPollCount: Number(presenter?.lightweightPollCount) || 0,
+    lastLightweightPollAt: Number(presenter?.lastLightweightPollAt) || null,
+    fullDiagnosticsPollCount: Number(presenter?.fullDiagnosticsPollCount) || 0,
+    lastFullDiagnosticsPollAt: Number(presenter?.lastFullDiagnosticsPollAt) || null
+  };
+}
+
+function validatePersistentReuseCycleEvidence(
+  cycle,
+  shown,
+  parked,
+  stable,
+  controllerGeneration,
+  nativeSurfaceLeaseGeneration
+) {
+  for (const [phase, evidence] of [
+    ["shown", shown],
+    ["parked", parked]
+  ]) {
+    assertPositivePersistentReuseGeneration(`${phase}.controllerGeneration`, evidence.controllerGeneration);
+    assertPositivePersistentReuseGeneration(
+      `${phase}.nativeSurfaceLeaseGeneration`,
+      evidence.nativeSurfaceLeaseGeneration
+    );
+    assertPositivePersistentReuseGeneration(
+      `${phase}.surfaceInstanceGeneration`,
+      evidence.surfaceInstanceGeneration
+    );
+    if (!evidence.nativeHostIdentityPresent || !/^[0-9a-f]{64}$/.test(evidence.nativeHostIdentityToken || "")) {
+      throw new Error(`Persistent presenter reuse cycle ${cycle} ${phase} is missing native host identity.`);
+    }
+    if (
+      evidence.closed ||
+      evidence.closeReason !== null ||
+      !evidence.nativeHostOpen ||
+      !evidence.attached ||
+      !evidence.nativeSurfaceOwner
+    ) {
+      throw new Error(`Persistent presenter reuse cycle ${cycle} ${phase} has terminal or detached presenter state.`);
+    }
+    if (
+      evidence.backend !== "windows-d3d11" ||
+      evidence.hostBackend !== evidence.backend ||
+      evidence.rendererBackend !== evidence.backend
+    ) {
+      throw new Error(`Persistent presenter reuse cycle ${cycle} ${phase} has inconsistent Windows renderer identity.`);
+    }
+    if (evidence.attachCount !== 1 || evidence.detachCount !== 0) {
+      throw new Error(`Persistent presenter reuse cycle ${cycle} ${phase} recreated or detached its native surface.`);
+    }
+  }
+
+  if (!shown.overlayActive || shown.mode !== "active") {
+    throw new Error(`Persistent presenter reuse cycle ${cycle} shown state is not active.`);
+  }
+  if (
+    parked.overlayActive ||
+    parked.overlayNeedsPresent ||
+    parked.mode !== "passive" ||
+    !parked.clickThrough ||
+    !parked.transparent ||
+    parked.currentFps !== 0
+  ) {
+    throw new Error(`Persistent presenter reuse cycle ${cycle} did not reach a parked passive state.`);
+  }
+
+  const expected =
+    stable || {
+      controllerGeneration,
+      nativeSurfaceLeaseGeneration,
+      surfaceInstanceGeneration: shown.surfaceInstanceGeneration,
+      nativeHostIdentityToken: shown.nativeHostIdentityToken,
+      nativeHostIdentityPresent: true,
+      attachCount: 1,
+      detachCount: 0,
+      backend: shown.backend,
+      hostBackend: shown.hostBackend,
+      rendererBackend: shown.rendererBackend
+    };
+  for (const [field, expectedValue] of Object.entries(expected)) {
+    if (shown[field] !== expectedValue || parked[field] !== expectedValue) {
+      throw new Error(`Persistent presenter reuse cycle ${cycle} changed stable field ${field}.`);
+    }
+  }
+  return expected;
+}
+
+function assertPositivePersistentReuseGeneration(field, value) {
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new Error(`Persistent presenter reuse requires a positive ${field}.`);
+  }
 }
 
 async function openPresenterDuplicateOpenGuardOverlay() {
@@ -2738,6 +3308,7 @@ function openPresenterAchievementProgress() {
   const activeClient = requireClient();
   const overlay = ensureElectronSteamOverlay(activeClient);
   const presenter = overlay.presenter;
+  observePassiveNotificationNeedsPresent(overlay, "presenter-achievement-progress");
 
   recordEvent("achievement:progress", {
     ...runAchievementProgressSmoke(activeClient),
@@ -2750,6 +3321,7 @@ function openPresenterAchievementUnlock() {
   const activeClient = requireClient();
   const overlay = ensureElectronSteamOverlay(activeClient);
   const presenter = overlay.presenter;
+  observePassiveNotificationNeedsPresent(overlay, "presenter-achievement-unlock");
 
   recordEvent("achievement:unlock", {
     ...runAchievementUnlockSmoke(activeClient),
@@ -3164,15 +3736,28 @@ function closeNativeProbe() {
 }
 
 function closeNativeOverlayPresenter() {
-  if (electronSteamOverlay) {
-    try {
-      electronSteamOverlay.close();
-      recordEvent("overlay:presenter-close", {});
-    } catch (error) {
-      recordEvent("overlay:presenter-close:error", serializeError(error));
-    }
+  const overlay = electronSteamOverlay;
+  if (!overlay) {
+    return;
   }
-  electronSteamOverlay = undefined;
+
+  try {
+    overlay.close();
+    recordEvent("overlay:presenter-close", {
+      presenter: overlay.snapshot()
+    });
+  } catch (error) {
+    let presenter = null;
+    try {
+      presenter = overlay.snapshot();
+    } catch {}
+    recordEvent("overlay:presenter-close:error", {
+      error: serializeError(error),
+      presenter
+    });
+  } finally {
+    electronSteamOverlay = undefined;
+  }
 }
 
 function closeNativeOverlaySession() {
@@ -4103,6 +4688,7 @@ function isNativeSessionAction(action) {
     action === "presenter-store-open-and-wait" ||
     action === "presenter-web" ||
     action === "presenter-web-open-and-wait" ||
+    action === "presenter-persistent-reuse-three-cycle" ||
     action === "presenter-duplicate-open-guard" ||
     action === "presenter-friends" ||
     action === "presenter-friends-open-and-wait" ||
@@ -4132,6 +4718,7 @@ function isManagedOverlayShownWaitAction(action) {
     action === "presenter-dialog-auto-open-and-wait" ||
     action === "presenter-store-open-and-wait" ||
     action === "presenter-web-open-and-wait" ||
+    action === "presenter-persistent-reuse-three-cycle" ||
     action === "presenter-duplicate-open-guard" ||
     action === "presenter-friends-open-and-wait" ||
     action === "presenter-profile-open-and-wait" ||

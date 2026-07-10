@@ -52,6 +52,10 @@ const SUPPORTED_CLOSE_PROBE_INPUTS = new Set([
 const SUPPORTED_CLOSE_PROBE_EVIDENCE_SCHEMAS = new Set([1, 2]);
 const OWNER_PROCESS_FOREGROUND_HANDOFF = "owner-process-native-show-v1";
 const WINDOWS_CLOSE_SCALE_TOLERANCE = 0.02;
+const PERSISTENT_REUSE_ACTION = "presenter-persistent-reuse-three-cycle";
+const WINDOWS_PERSISTENT_REUSE_CYCLES = 3;
+const WINDOWS_LIGHTWEIGHT_POLL_INTERVAL_MS = 30;
+const WINDOWS_FULL_DIAGNOSTICS_MIN_INTERVAL_MS = 250;
 
 main();
 
@@ -165,6 +169,25 @@ function summarizeWindowsOverlayMatrixArtifacts(root) {
   } else {
     warnings.push(`missing matrix manifest: ${path.join(root, "matrix-manifest.json")}`);
   }
+
+  const processCleanupBefore = readJsonIfPresent(
+    path.join(root, "smoke-process-cleanup-before-run.json"),
+    failures
+  );
+  const processCleanupAfter = readJsonIfPresent(
+    path.join(root, "smoke-process-cleanup-after-cases.json"),
+    failures
+  );
+  const launchEnvRollback = readJsonIfPresent(path.join(root, "launch-env-rollback.json"), failures);
+  const taskCleanup = readJsonIfPresent(path.join(root, "task-cleanup.json"), failures);
+  validateCleanupArtifacts(
+    manifest,
+    processCleanupBefore,
+    processCleanupAfter,
+    launchEnvRollback,
+    taskCleanup,
+    failures
+  );
 
   const preflightDir = path.join(root, "00-preflight");
   const preflight = readJsonIfPresent(path.join(preflightDir, "preflight.json"), failures);
@@ -293,6 +316,12 @@ function summarizeWindowsOverlayMatrixArtifacts(root) {
     assumedShortcut: assumedShortcut ? summarizeAssumedShortcut(assumedShortcut) : null,
     renderHealth: renderHealth || renderHealthGate ? summarizeRenderHealth(renderHealth, renderHealthGate) : null,
     nativeLoadBlocker: nativeLoadBlocker ? summarizeNativeLoadBlocker(nativeLoadBlocker) : null,
+    cleanup: summarizeCleanupArtifacts(
+      processCleanupBefore,
+      processCleanupAfter,
+      launchEnvRollback,
+      taskCleanup
+    ),
     manifest: manifest ? summarizeManifest(manifest) : null,
     caseSummaries,
     caseAppControlBlockers,
@@ -308,6 +337,20 @@ function validateManifest(manifest, failures) {
     failures
   );
   expect(Boolean(manifest.generatedAt), "matrix manifest generatedAt is present", failures);
+  for (const field of ["shortcutName", "shortcutExe", "shortcutStartDir", "shortcutLaunchPrefix", "javaScriptRunnerExe"]) {
+    expect(manifest[field] === undefined, `matrix manifest omits raw ${field}`, failures);
+  }
+  for (const field of [
+    "shortcutNamePresent",
+    "shortcutExeConfigured",
+    "shortcutStartDirConfigured",
+    "shortcutLaunchPrefixConfigured",
+    "javaScriptRunnerExeConfigured"
+  ]) {
+    if (Object.prototype.hasOwnProperty.call(manifest, field)) {
+      expect(typeof manifest[field] === "boolean", `matrix manifest ${field} is boolean`, failures);
+    }
+  }
   expect(
     [
       "baseline",
@@ -315,6 +358,7 @@ function validateManifest(manifest, failures) {
       "managed-routes",
       "shortcut-routes",
       "checkout",
+      "persistent-reuse",
       "full",
       "preflight",
       "readiness",
@@ -352,6 +396,20 @@ function validateManifest(manifest, failures) {
       "matrix manifest requireMicroTxnCallback is boolean",
       failures
     );
+  }
+  if (manifest.cleanupContract !== undefined) {
+    const cleanupContract = objectOrEmpty(manifest.cleanupContract);
+    for (const field of [
+      "processCleanupRequired",
+      "launchEnvRollbackRequired",
+      "taskCleanupExpected"
+    ]) {
+      expect(
+        typeof cleanupContract[field] === "boolean",
+        `matrix manifest cleanupContract.${field} is boolean`,
+        failures
+      );
+    }
   }
   if (manifest.closeProbeEvidenceSchema !== undefined) {
     expect(
@@ -416,9 +474,322 @@ function validateManifest(manifest, failures) {
             failures
           );
         }
+        if (Object.prototype.hasOwnProperty.call(entry, "persistentReuseCycles")) {
+          expect(
+            Number.isInteger(entry.persistentReuseCycles) && entry.persistentReuseCycles >= 0,
+            `matrix manifest case ${entry.id} records a nonnegative persistent reuse cycle count`,
+            failures
+          );
+          if (entry.action === PERSISTENT_REUSE_ACTION) {
+            expect(
+              entry.persistentReuseCycles === WINDOWS_PERSISTENT_REUSE_CYCLES,
+              `matrix manifest case ${entry.id} records exactly ${WINDOWS_PERSISTENT_REUSE_CYCLES} persistent reuse cycles`,
+              failures
+            );
+          }
+        }
       }
     }
   }
+}
+
+function validateCleanupArtifacts(
+  manifest,
+  processCleanupBefore,
+  processCleanupAfter,
+  launchEnvRollback,
+  taskCleanup,
+  failures
+) {
+  const cleanupContract = objectOrEmpty(manifest && manifest.cleanupContract);
+  const processRequired = cleanupContract.processCleanupRequired === true;
+  const rollbackRequired = cleanupContract.launchEnvRollbackRequired === true;
+  const taskRequired = cleanupContract.taskCleanupExpected === true;
+
+  if (processRequired) {
+    expect(Boolean(processCleanupBefore), "live matrix includes before-run package-process cleanup evidence", failures);
+    expect(Boolean(processCleanupAfter), "live matrix includes after-cases package-process cleanup evidence", failures);
+  }
+  if (rollbackRequired) {
+    expect(Boolean(launchEnvRollback), "live matrix includes launch-env rollback evidence", failures);
+  }
+  if (taskRequired) {
+    expect(Boolean(taskCleanup), "task-wrapped matrix includes task cleanup evidence", failures);
+  }
+
+  validateProcessCleanupArtifact(processCleanupBefore, "before-run", failures);
+  validateProcessCleanupArtifact(processCleanupAfter, "after-cases", failures);
+  if (launchEnvRollback) {
+    expect(
+      launchEnvRollback.kind === "steam-bridge-windows-launch-env-rollback",
+      "launch-env rollback artifact kind is valid",
+      failures
+    );
+    expect(launchEnvRollback.ok === true, "launch-env rollback completed successfully", failures);
+    if (rollbackRequired) {
+      expect(launchEnvRollback.attempted === true, "required launch-env rollback transaction was attempted", failures);
+    }
+    if (launchEnvRollback.attempted === true) {
+      expect(launchEnvRollback.generatedRemoved === true, "generated launch env was removed", failures);
+      expect(launchEnvRollback.originalRestored === true, "prior launch env state was restored", failures);
+      expect(launchEnvRollback.restoredBytesMatch === true, "restored launch env bytes match exactly", failures);
+      expect(launchEnvRollback.backupRemoved === true, "launch-env rollback backup was removed", failures);
+      if (launchEnvRollback.originalPresent === true) {
+        expect(launchEnvRollback.backupCreated === true, "existing launch env was moved to a rollback backup", failures);
+      }
+    }
+  }
+  if (taskCleanup) {
+    expect(
+      taskCleanup.kind === "steam-bridge-windows-overlay-task-cleanup",
+      "task cleanup artifact kind is valid",
+      failures
+    );
+    expect(taskCleanup.ok === true, "interactive task cleanup completed successfully", failures);
+    const taskFailureContracts = new Map([
+      ["success", "none"],
+      ["private-env-import", "private-env-error"],
+      ["matrix-argument-binding", "matrix-argument-error"],
+      ["matrix-invocation", "matrix-invocation-error"],
+      ["matrix-exit", "matrix-nonzero-exit"],
+      ["runner-termination", "done-missing"],
+      ["runner-timeout", "deadline-exceeded"],
+      ["wrapper-setup", "wrapper-error"]
+    ]);
+    expect(
+      taskFailureContracts.has(taskCleanup.failureStage),
+      "interactive task records a closed-set failure stage",
+      failures
+    );
+    expect(
+      taskFailureContracts.get(taskCleanup.failureStage) === taskCleanup.errorKind,
+      "interactive task failure stage and error kind agree",
+      failures
+    );
+    expect(
+      taskCleanup.errorPresent === (taskCleanup.failureStage !== "success"),
+      "interactive task error presence matches its failure stage",
+      failures
+    );
+    expect(
+      typeof taskCleanup.runnerTerminatedWithoutDone === "boolean",
+      "interactive task records whether the runner ended without done status",
+      failures
+    );
+    if (taskCleanup.runnerTerminatedWithoutDone === true) {
+      expect(
+        taskCleanup.timedOut === false &&
+          taskCleanup.failureStage === "runner-termination" &&
+          taskCleanup.errorKind === "done-missing",
+        "runner termination without done status is distinct from deadline timeout",
+        failures
+      );
+    }
+    expect(
+      taskCleanup.failureStage === "success" && taskCleanup.errorPresent === false,
+      "interactive task completed without a runner or matrix failure",
+      failures
+    );
+    if (taskCleanup.keepTask !== true) {
+      expect(taskCleanup.deleteAttempted === true, "interactive task deletion was attempted", failures);
+      expect(taskCleanup.deleteExitCode === 0, "interactive task deletion command succeeded", failures);
+      expect(taskCleanup.deletionVerified === true, "interactive task deletion was independently verified", failures);
+    }
+    if (taskCleanup.timedOut === true) {
+      expect(
+        taskCleanup.runnerTerminatedWithoutDone === false &&
+          taskCleanup.failureStage === "runner-timeout" &&
+          taskCleanup.errorKind === "deadline-exceeded",
+        "live runner deadline timeout has its distinct sanitized status",
+        failures
+      );
+      expect(taskCleanup.endAttempted === true, "timed-out interactive task was explicitly ended", failures);
+      expect(
+        taskCleanup.endExitCode === 0 || objectOrEmpty(taskCleanup.runnerProcessGuard).verifiedEmpty === true,
+        "timed-out interactive task was terminated by /End or captured-tree fallback",
+        failures
+      );
+      expect(
+        objectOrEmpty(taskCleanup.runnerProcessGuard).treeTerminationRequired === true &&
+          objectOrEmpty(taskCleanup.runnerProcessGuard).taskkillAttemptCount >= 1,
+        "timed-out interactive task invoked full-tree taskkill before rollback",
+        failures
+      );
+    }
+    validateTaskRunnerProcessGuard(taskCleanup.runnerProcessGuard, taskRequired, failures);
+    validateTaskLaunchEnvGuard(
+      taskCleanup.launchEnvGuard,
+      taskRequired && rollbackRequired,
+      failures
+    );
+    validateTaskPackageProcessGuard(taskCleanup.packageProcessGuard, taskRequired, failures);
+    validateTaskFileGuard(taskCleanup.taskFileGuard, taskRequired, failures);
+  }
+}
+
+function validateTaskRunnerProcessGuard(value, required, failures) {
+  const guard = objectOrEmpty(value);
+  if (required) {
+    expect(guard.required === true, "task wrapper runner-tree guard is required", failures);
+  }
+  if (!value) {
+    expect(!required, "task cleanup includes runner-tree guard evidence", failures);
+    return;
+  }
+  expect(guard.ok === true, "task wrapper runner-tree guard completed successfully", failures);
+  if (guard.required === true) {
+    expect(guard.attempted === true, "task wrapper checked the captured scheduled runner tree", failures);
+    expect(guard.captureAttempted === true, "task wrapper attempted immediate runner capture", failures);
+    expect(guard.captureSucceeded === true, "task wrapper captured the exact scheduled runner", failures);
+    expect(guard.capturedRootCount >= 1, "task wrapper captured at least one exact runner root", failures);
+    expect(guard.capturedTreeProcessCount >= 1, "task wrapper tracked at least one runner-tree process", failures);
+    expect(guard.enumerationSucceeded === true, "task wrapper enumerated the captured runner tree", failures);
+    for (const field of [
+      "captureWaitMilliseconds",
+      "capturedRootCount",
+      "capturedTreeProcessCount",
+      "trackingAttemptCount",
+      "trackingFailureCount",
+      "processesBeforeCount",
+      "taskkillAttemptCount",
+      "taskkillFailureCount",
+      "fallbackStopAttemptCount",
+      "fallbackStopFailureCount",
+      "processesAfterCount",
+      "emptyVerificationScanCount"
+    ]) {
+      expect(
+        Number.isInteger(guard[field]) && guard[field] >= 0,
+        `task wrapper runner-tree guard records nonnegative ${field}`,
+        failures
+      );
+    }
+    expect(typeof guard.treeTerminationRequired === "boolean", "task wrapper records whether tree termination was required", failures);
+    expect(guard.processesAfterCount === 0, "task wrapper left no captured runner-tree process", failures);
+    expect(
+      guard.emptyVerificationScanCount >= 2,
+      "task wrapper observed two empty runner-tree scans",
+      failures
+    );
+    expect(guard.verifiedEmpty === true, "task wrapper independently verified the captured runner tree is gone", failures);
+  }
+}
+
+function validateTaskFileGuard(value, required, failures) {
+  const guard = objectOrEmpty(value);
+  if (required) {
+    expect(guard.required === true, "task wrapper handoff-file cleanup is required", failures);
+  }
+  if (!value) {
+    expect(!required, "task cleanup includes handoff-file cleanup evidence", failures);
+    return;
+  }
+  expect(guard.ok === true, "task wrapper handoff-file cleanup completed successfully", failures);
+  if (guard.required === true) {
+    expect(guard.attempted === true, "task wrapper removed its private handoff directory", failures);
+    expect(
+      Number.isInteger(guard.entryCountBefore) && guard.entryCountBefore >= 0,
+      "task wrapper records a nonnegative handoff entry count",
+      failures
+    );
+    expect(guard.directoryRemoved === true, "task wrapper removed the handoff directory", failures);
+    expect(guard.verifiedAbsent === true, "task wrapper independently verified handoff files are absent", failures);
+  }
+}
+
+function validateTaskLaunchEnvGuard(value, required, failures) {
+  const guard = objectOrEmpty(value);
+  if (required) {
+    expect(guard.required === true, "task wrapper launch-env guard is required", failures);
+  }
+  if (!value) {
+    expect(!required, "task cleanup includes wrapper launch-env guard evidence", failures);
+    return;
+  }
+  expect(guard.ok === true, "task wrapper launch-env guard completed successfully", failures);
+  if (guard.required === true) {
+    expect(guard.attempted === true, "task wrapper launch-env guard was established before launch", failures);
+    expect(guard.generatedRemoved === true, "task wrapper removed generated launch-env bytes", failures);
+    expect(guard.originalRestored === true, "task wrapper restored the prior launch-env state", failures);
+    expect(guard.restoredBytesMatch === true, "task wrapper restored launch-env bytes exactly", failures);
+    expect(guard.backupRemoved === true, "task wrapper removed its launch-env backup", failures);
+    if (guard.originalPresent === true) {
+      expect(guard.backupCreated === true, "task wrapper moved the original launch env to its guard backup", failures);
+    }
+  }
+}
+
+function validateTaskPackageProcessGuard(value, required, failures) {
+  const guard = objectOrEmpty(value);
+  if (required) {
+    expect(guard.required === true, "task wrapper package-process guard is required", failures);
+  }
+  if (!value) {
+    expect(!required, "task cleanup includes package-process guard evidence", failures);
+    return;
+  }
+  expect(guard.ok === true, "task wrapper package-process guard completed successfully", failures);
+  if (guard.required === true) {
+    expect(guard.attempted === true, "task wrapper package-process guard ran after task completion", failures);
+    expect(guard.enumerationSucceeded === true, "task wrapper enumerated package-owned smoke processes", failures);
+    for (const field of [
+      "processesBeforeCount",
+      "stopAttemptCount",
+      "stopFailureCount",
+      "processesAfterCount",
+      "emptyVerificationScanCount"
+    ]) {
+      expect(
+        Number.isInteger(guard[field]) && guard[field] >= 0,
+        `task wrapper package-process guard records nonnegative ${field}`,
+        failures
+      );
+    }
+    expect(guard.processesAfterCount === 0, "task wrapper left no package-owned smoke processes", failures);
+    expect(
+      guard.emptyVerificationScanCount >= 2,
+      "task wrapper observed two empty package-process scans",
+      failures
+    );
+    expect(guard.verifiedEmpty === true, "task wrapper independently verified the package process set is empty", failures);
+  }
+}
+
+function validateProcessCleanupArtifact(value, phase, failures) {
+  if (!value) {
+    return;
+  }
+  expect(
+    value.kind === "steam-bridge-windows-smoke-process-cleanup",
+    `${phase} package-process cleanup artifact kind is valid`,
+    failures
+  );
+  expect(value.phase === phase, `${phase} package-process cleanup phase matches`, failures);
+  expect(value.ok === true, `${phase} package-process cleanup completed successfully`, failures);
+  expect(
+    Array.isArray(value.processesAfterCleanup) && value.processesAfterCleanup.length === 0,
+    `${phase} package-process cleanup left no package processes`,
+    failures
+  );
+}
+
+function summarizeCleanupArtifacts(processCleanupBefore, processCleanupAfter, launchEnvRollback, taskCleanup) {
+  return {
+    processBeforeOk: processCleanupBefore ? processCleanupBefore.ok === true : null,
+    processAfterOk: processCleanupAfter ? processCleanupAfter.ok === true : null,
+    launchEnvRollbackOk: launchEnvRollback ? launchEnvRollback.ok === true : null,
+    launchEnvRollbackAttempted: launchEnvRollback ? launchEnvRollback.attempted === true : null,
+    taskCleanupOk: taskCleanup ? taskCleanup.ok === true : null,
+    taskDeletionVerified: taskCleanup ? taskCleanup.deletionVerified === true : null,
+    taskTimedOut: taskCleanup ? taskCleanup.timedOut === true : null,
+    taskRunnerTerminatedWithoutDone: taskCleanup ? taskCleanup.runnerTerminatedWithoutDone === true : null,
+    taskFailureStage: taskCleanup ? taskCleanup.failureStage || null : null,
+    taskErrorKind: taskCleanup ? taskCleanup.errorKind || null : null,
+    taskRunnerGuardOk: taskCleanup ? objectOrEmpty(taskCleanup.runnerProcessGuard).ok === true : null,
+    taskLaunchEnvGuardOk: taskCleanup ? objectOrEmpty(taskCleanup.launchEnvGuard).ok === true : null,
+    taskPackageProcessGuardOk: taskCleanup ? objectOrEmpty(taskCleanup.packageProcessGuard).ok === true : null,
+    taskFileGuardOk: taskCleanup ? objectOrEmpty(taskCleanup.taskFileGuard).ok === true : null
+  };
 }
 
 function validateManifestCoverage(
@@ -468,6 +839,13 @@ function validateManifestCoverage(
       expect(
         row.duplicateOpenGuardProof === true,
         `matrix manifest case ${expected.id} proved duplicate-open suppression payload`,
+        failures
+      );
+    }
+    if (expected.action === PERSISTENT_REUSE_ACTION) {
+      expect(
+        row.persistentReuseProof === true,
+        `matrix manifest case ${expected.id} proved three-cycle persistent native-surface reuse`,
         failures
       );
     }
@@ -962,12 +1340,41 @@ function validateLiveRunReadiness(readiness, failures) {
 function validateAssumedShortcut(shortcut, failures) {
   expect(typeof shortcut.ok === "boolean", "assumed shortcut ok is boolean", failures);
   expect(Boolean(shortcut.generatedAt), "assumed shortcut generatedAt is present", failures);
-  expect(Boolean(shortcut.shortcutName), "assumed shortcut name is present", failures);
+  expect(shortcut.shortcutNamePresent === true, "assumed shortcut name presence is recorded", failures);
+  expect(shortcut.shortcutName === undefined, "assumed shortcut artifact omits the configured shortcut name", failures);
   expect(typeof shortcut.changed === "boolean", "assumed shortcut changed is boolean", failures);
   expect(typeof shortcut.existingMatches === "boolean", "assumed shortcut existingMatches is boolean", failures);
+  const result = objectOrEmpty(shortcut.result);
+  expect(result.shortcutsPathPresent === true, "assumed shortcut records shortcuts path presence", failures);
+  expect(result.outputPathPresent === true, "assumed shortcut records output path presence", failures);
+  for (const field of ["appName", "shortcutsPath", "outputPath"]) {
+    expect(result[field] === undefined, `assumed shortcut result omits raw ${field}`, failures);
+  }
+  for (const [entry, label] of [
+    [objectOrEmpty(result.expected), "expected"],
+    [objectOrEmpty(result.existing), "existing"]
+  ]) {
+    for (const field of ["appName", "exe", "exePath", "startDir", "startDirPath", "launchOptions"]) {
+      expect(entry[field] === undefined, `assumed shortcut ${label} entry omits raw ${field}`, failures);
+    }
+    if (Object.keys(entry).length > 0) {
+      for (const field of [
+        "appNamePresent",
+        "exePresent",
+        "exePathPresent",
+        "exeExists",
+        "startDirPresent",
+        "startDirPathPresent",
+        "startDirExists",
+        "launchOptionsPresent"
+      ]) {
+        expect(typeof entry[field] === "boolean", `assumed shortcut ${label} records boolean ${field}`, failures);
+      }
+    }
+  }
   if (shortcut.ok !== true) {
     failures.push(
-      `assumed Steam shortcut invalid for ${shortcut.shortcutName || "unknown"}: ` +
+      `assumed Steam shortcut invalid for configured shortcut: ` +
         `action=${shortcut.action || "unknown"} changed=${formatValue(shortcut.changed)}`
     );
   }
@@ -1146,7 +1553,7 @@ function hasManagedOverlayCloseProof(wait, overlayInactiveEvents) {
   return overlayInactiveEvents > 0 || Boolean(wait && wait.overlayClosed === true);
 }
 
-function hasPassiveNotificationProof(actionName, events, nativePresenter) {
+function verifyPassiveNotificationProof(caseName, actionName, events, nativePresenter, failures) {
   const eventType =
     actionName === "presenter-achievement-progress"
       ? "achievement:progress"
@@ -1154,20 +1561,137 @@ function hasPassiveNotificationProof(actionName, events, nativePresenter) {
         ? "achievement:unlock"
         : "";
   if (!eventType) {
-    return false;
+    return { required: false, ok: true };
   }
 
-  const event = events.find((entry) => entry && entry.type === eventType);
-  const payload = event && event.payload && typeof event.payload === "object" ? event.payload : {};
+  const failuresBefore = failures.length;
+  const eventIndex = events.findIndex((entry) => entry && entry.type === eventType);
+  const transitionIndex = events.findIndex(
+    (entry) => entry && entry.type === "overlay:passive-notification-needs-present"
+  );
+  const parkedIndex = events.findIndex((entry) => entry && entry.type === "overlay:passive-notification-parked");
+  const event = eventIndex >= 0 ? events[eventIndex] : null;
+  const transitionEvent = transitionIndex >= 0 ? events[transitionIndex] : null;
+  const parkedEvent = parkedIndex >= 0 ? events[parkedIndex] : null;
+  const payload = objectOrEmpty(event && event.payload);
+  const transition = objectOrEmpty(transitionEvent && transitionEvent.payload);
+  const parked = objectOrEmpty(parkedEvent && parkedEvent.payload);
+  const initialPresenter = objectOrEmpty(payload.presenter);
+  const transitionPresenter = objectOrEmpty(transition.presenter);
+  const parkedPresenter = objectOrEmpty(parked.presenter);
   const accepted =
     actionName === "presenter-achievement-progress"
       ? payload.indicated === true
       : actionName === "presenter-achievement-unlock"
         ? payload.activated === true
         : false;
-  return accepted &&
-    hasPassivePresenterShape(payload.presenter, { parked: false }) &&
-    hasPassivePresenterShape(nativePresenter, { parked: true });
+  expect(accepted, `${caseName}: passive notification was accepted by Steam`, failures);
+  expect(eventIndex >= 0, `${caseName}: passive notification action event is present`, failures);
+  expect(transitionIndex > eventIndex, `${caseName}: passive notification observed false-to-true needs-present`, failures);
+  expect(parkedIndex > transitionIndex, `${caseName}: passive notification parked after needs-present wake`, failures);
+  expect(
+    hasPassivePresenterShape(initialPresenter, { parked: true }),
+    `${caseName}: passive notification starts parked with needs-present false`,
+    failures
+  );
+  expect(
+    transition.previousOverlayNeedsPresent === false && transition.overlayNeedsPresent === true,
+    `${caseName}: passive notification transition records false-to-true`,
+    failures
+  );
+  expect(
+    transition.pollIntervalMs === WINDOWS_LIGHTWEIGHT_POLL_INTERVAL_MS,
+    `${caseName}: passive notification transition uses the 30ms lightweight cadence`,
+    failures
+  );
+  expect(
+    transitionPresenter.overlayNeedsPresent === true,
+    `${caseName}: passive notification transition snapshot needs presentation`,
+    failures
+  );
+  expect(
+    hasPassivePresenterShape(parkedPresenter, { parked: true }) &&
+      hasPassivePresenterShape(nativePresenter, { parked: true }),
+    `${caseName}: passive notification returns to false/zero-FPS parked state`,
+    failures
+  );
+  for (const [presenter, label] of [
+    [initialPresenter, "initial"],
+    [transitionPresenter, "transition"],
+    [parkedPresenter, "parked"],
+    [nativePresenter, "result"]
+  ]) {
+    const backend = summarizePresenterBackendSnapshot(presenter, label);
+    expect(
+      backend.complete && backend.agrees && backend.backend === "windows-d3d11",
+      `${caseName}: passive ${label} presenter agrees on windows-d3d11`,
+      failures
+    );
+  }
+
+  const initialLightweight = nonnegativeInteger(initialPresenter.lightweightPollCount);
+  const transitionLightweight = nonnegativeInteger(transition.lightweightPollCount);
+  const finalLightweight = nonnegativeInteger(parkedPresenter.lightweightPollCount);
+  const initialFull = nonnegativeInteger(initialPresenter.fullDiagnosticsPollCount);
+  const transitionFull = nonnegativeInteger(transition.fullDiagnosticsPollCount);
+  const finalFull = nonnegativeInteger(parkedPresenter.fullDiagnosticsPollCount);
+  expect(
+    [initialLightweight, transitionLightweight, finalLightweight, initialFull, transitionFull, finalFull].every(
+      (value) => value >= 0
+    ),
+    `${caseName}: passive proof records every split polling counter`,
+    failures
+  );
+  expect(
+    transitionLightweight === nonnegativeInteger(transitionPresenter.lightweightPollCount) &&
+      transitionFull === nonnegativeInteger(transitionPresenter.fullDiagnosticsPollCount),
+    `${caseName}: transition counters match the transition presenter snapshot`,
+    failures
+  );
+  expect(
+    transitionLightweight > initialLightweight,
+    `${caseName}: false-to-true wake came from a new lightweight poll`,
+    failures
+  );
+  expect(finalLightweight >= transitionLightweight, `${caseName}: lightweight poll count is monotonic`, failures);
+  expect(transitionFull >= initialFull && finalFull >= transitionFull, `${caseName}: full diagnostic count is monotonic`, failures);
+  expect(
+    Number.isFinite(transition.lastLightweightPollAt) &&
+      transition.lastLightweightPollAt === transitionPresenter.lastLightweightPollAt,
+    `${caseName}: transition records the lightweight poll timestamp`,
+    failures
+  );
+  expect(
+    transition.lastFullDiagnosticsPollAt === transitionPresenter.lastFullDiagnosticsPollAt,
+    `${caseName}: transition full-diagnostics timestamp matches the presenter snapshot`,
+    failures
+  );
+  const durationMs = Number(parked.durationMs);
+  const fullDelta = finalFull - initialFull;
+  const lightweightDelta = finalLightweight - initialLightweight;
+  const maximumFullRefreshes = Number.isFinite(durationMs)
+    ? Math.ceil(Math.max(0, durationMs) / WINDOWS_FULL_DIAGNOSTICS_MIN_INTERVAL_MS) + 1
+    : 0;
+  expect(Number.isFinite(durationMs) && durationMs > 0, `${caseName}: passive proof records its duration`, failures);
+  expect(
+    fullDelta <= maximumFullRefreshes,
+    `${caseName}: passive proof has no hot full-diagnostics loop`,
+    failures
+  );
+  expect(
+    lightweightDelta > fullDelta,
+    `${caseName}: lightweight polls outnumber full diagnostics refreshes`,
+    failures
+  );
+
+  return {
+    required: true,
+    ok: failures.length === failuresBefore,
+    falseToTrue: transition.previousOverlayNeedsPresent === false && transition.overlayNeedsPresent === true,
+    lightweightPollDelta: lightweightDelta,
+    fullDiagnosticsPollDelta: fullDelta,
+    maximumFullDiagnosticsPollDelta: maximumFullRefreshes
+  };
 }
 
 function hasPassivePresenterShape(presenter, { parked }) {
@@ -1187,6 +1711,10 @@ function hasPassivePresenterShape(presenter, { parked }) {
     return true;
   }
   return presenter.transparent === true && presenter.overlayNeedsPresent === false && presenter.currentFps === 0;
+}
+
+function nonnegativeInteger(value) {
+  return Number.isInteger(value) && value >= 0 ? value : -1;
 }
 
 function isMicroTxnCallbackEvent(event) {
@@ -1895,6 +2423,296 @@ function sanitizedValuePresent(value) {
   return true;
 }
 
+function verifyPersistentReuseProof(
+  caseName,
+  actionName,
+  events,
+  caseDir,
+  closeProbeEvents,
+  failures
+) {
+  if (actionName !== PERSISTENT_REUSE_ACTION) {
+    return { required: false, ok: true, cycles: 0 };
+  }
+
+  const failuresBefore = failures.length;
+  const startEvents = events.filter((event) => event && event.type === "overlay:presenter-persistent-reuse-start");
+  const cycleEvents = events.filter((event) => event && event.type === "overlay:presenter-persistent-reuse-cycle");
+  const completeEvents = events.filter(
+    (event) => event && event.type === "overlay:presenter-persistent-reuse-complete"
+  );
+  const errorEvents = events.filter((event) => event && event.type === "overlay:presenter-persistent-reuse-error");
+  expect(startEvents.length === 1, `${caseName}: persistent reuse recorded exactly one start`, failures);
+  expect(
+    cycleEvents.length === WINDOWS_PERSISTENT_REUSE_CYCLES,
+    `${caseName}: persistent reuse recorded exactly ${WINDOWS_PERSISTENT_REUSE_CYCLES} cycles`,
+    failures
+  );
+  expect(completeEvents.length === 1, `${caseName}: persistent reuse recorded exactly one completion`, failures);
+  expect(errorEvents.length === 0, `${caseName}: persistent reuse recorded no terminal error`, failures);
+  const startIndex = events.indexOf(startEvents[0]);
+  const completeIndex = events.indexOf(completeEvents[0]);
+  const cycleIndexes = cycleEvents.map((event) => events.indexOf(event));
+  expect(
+    startIndex >= 0 && cycleIndexes.every((index) => index > startIndex),
+    `${caseName}: persistent cycles occur after the start event`,
+    failures
+  );
+  expect(
+    completeIndex >= 0 && cycleIndexes.every((index) => index < completeIndex),
+    `${caseName}: persistent completion occurs after every cycle`,
+    failures
+  );
+
+  const readiness = readJsonIfPresent(path.join(caseDir, "persistent-control-readiness.json"), failures);
+  expect(Boolean(readiness), `${caseName}: persistent reuse includes control readiness evidence`, failures);
+  if (readiness) {
+    expect(
+      readiness.kind === "steam-bridge-windows-persistent-control-readiness",
+      `${caseName}: persistent control readiness artifact kind is valid`,
+      failures
+    );
+    expect(readiness.ok === true, `${caseName}: persistent control reached one-controller readiness`, failures);
+    for (const field of [
+      "controlProcessMatches",
+      "windowsX64",
+      "steamInitialized",
+      "presenterOpen",
+      "presenterOwned",
+      "persistentMode",
+      "controllerGenerationPositive",
+      "nativeSurfaceLeaseGenerationPositive"
+    ]) {
+      expect(readiness[field] === true, `${caseName}: persistent readiness ${field} is true`, failures);
+    }
+    expect(
+      readiness.cycles === WINDOWS_PERSISTENT_REUSE_CYCLES,
+      `${caseName}: persistent readiness records ${WINDOWS_PERSISTENT_REUSE_CYCLES} cycles`,
+      failures
+    );
+  }
+
+  const start = objectOrEmpty(startEvents[0] && startEvents[0].payload);
+  const startController = positiveInteger(start.controllerGeneration);
+  const startLease = positiveInteger(start.nativeSurfaceLeaseGeneration);
+  expect(start.cycles === WINDOWS_PERSISTENT_REUSE_CYCLES, `${caseName}: persistent start records three cycles`, failures);
+  expect(startController > 0, `${caseName}: persistent start controller generation is positive`, failures);
+  expect(startLease > 0, `${caseName}: persistent start surface lease generation is positive`, failures);
+  expect(start.presenterMode === "persistent", `${caseName}: persistent start uses persistent presenter mode`, failures);
+  const startReadiness = objectOrEmpty(start.readiness);
+  expect(startReadiness.canWait === true, `${caseName}: persistent start can wait`, failures);
+  expect(
+    Object.prototype.hasOwnProperty.call(startReadiness, "reason") &&
+      Object.prototype.hasOwnProperty.call(startReadiness, "waitReason"),
+    `${caseName}: persistent start records readiness and wait reasons`,
+    failures
+  );
+  expect(
+    Array.isArray(start.foregroundHandoffOrdinals) &&
+      start.foregroundHandoffOrdinals.length === WINDOWS_PERSISTENT_REUSE_CYCLES &&
+      start.foregroundHandoffOrdinals.every((ordinal, index) => ordinal === index + 1),
+    `${caseName}: persistent start binds foreground handoff ordinals 1..3`,
+    failures
+  );
+
+  let baselineInstance = 0;
+  let baselineHostToken = "";
+  const orderedCycles = cycleEvents.map((event) => objectOrEmpty(event.payload));
+  orderedCycles.forEach((cycle, index) => {
+    const ordinal = index + 1;
+    expect(cycle.cycle === ordinal, `${caseName}: persistent cycle ${ordinal} is ordered`, failures);
+    for (const phase of ["shown", "parked"]) {
+      const evidence = objectOrEmpty(cycle[phase]);
+      const label = `${caseName}: persistent cycle ${ordinal} ${phase}`;
+      const controller = positiveInteger(evidence.controllerGeneration);
+      const lease = positiveInteger(evidence.nativeSurfaceLeaseGeneration);
+      const instance = positiveInteger(evidence.surfaceInstanceGeneration);
+      const hostToken = typeof evidence.nativeHostIdentityToken === "string" ? evidence.nativeHostIdentityToken : "";
+      expect(controller === startController, `${label} keeps the captured controller generation`, failures);
+      expect(lease === startLease, `${label} keeps the captured surface lease generation`, failures);
+      expect(instance > 0, `${label} native surface instance generation is positive`, failures);
+      expect(
+        evidence.nativeHostIdentityPresent === true && /^[a-f0-9]{64}$/i.test(hostToken),
+        `${label} records an opaque native HWND identity token`,
+        failures
+      );
+      baselineInstance ||= instance;
+      baselineHostToken ||= hostToken;
+      expect(instance === baselineInstance, `${label} reuses one native surface instance`, failures);
+      expect(hostToken === baselineHostToken, `${label} reuses one native HWND`, failures);
+      expect(evidence.nativeHostOpen === true, `${label} native host stays open`, failures);
+      expect(evidence.attached === true, `${label} presenter stays attached`, failures);
+      expect(evidence.nativeSurfaceOwner === true, `${label} presenter keeps surface ownership`, failures);
+      expect(evidence.closed === false, `${label} presenter stays open`, failures);
+      expect(
+        evidence.closeReason === undefined || evidence.closeReason === null || evidence.closeReason === "",
+        `${label} presenter has no terminal close reason`,
+        failures
+      );
+      expect(evidence.attachCount === 1, `${label} has exactly one controller attach`, failures);
+      expect(evidence.detachCount === 0, `${label} has no detach before final shutdown`, failures);
+      expectWindowsD3d11Evidence(evidence, label, failures);
+      expect(
+        evidence.pollIntervalMs === WINDOWS_LIGHTWEIGHT_POLL_INTERVAL_MS,
+        `${label} keeps the Windows lightweight poll interval`,
+        failures
+      );
+      if (phase === "shown") {
+        expect(evidence.mode === "active", `${label} is active`, failures);
+        expect(evidence.overlayActive === true, `${label} observed overlay activation`, failures);
+      } else {
+        expect(evidence.mode === "passive", `${label} returns to passive mode`, failures);
+        expect(evidence.overlayActive === false, `${label} observed overlay close`, failures);
+        expect(evidence.overlayNeedsPresent === false, `${label} has no pending presentation`, failures);
+        expect(evidence.clickThrough === true, `${label} is click-through`, failures);
+        expect(evidence.transparent === true, `${label} is transparent`, failures);
+        expect(evidence.currentFps === 0, `${label} is parked at zero FPS`, failures);
+      }
+    }
+  });
+
+  const complete = objectOrEmpty(completeEvents[0] && completeEvents[0].payload);
+  expect(
+    complete.cyclesCompleted === WINDOWS_PERSISTENT_REUSE_CYCLES,
+    `${caseName}: persistent completion records three cycles`,
+    failures
+  );
+  expect(
+    positiveInteger(complete.controllerGeneration) === startController,
+    `${caseName}: persistent completion keeps the captured controller`,
+    failures
+  );
+  expect(
+    positiveInteger(complete.nativeSurfaceLeaseGeneration) === startLease,
+    `${caseName}: persistent completion keeps the captured surface lease`,
+    failures
+  );
+  expect(
+    positiveInteger(complete.surfaceInstanceGeneration) === baselineInstance,
+    `${caseName}: persistent completion keeps the native surface instance`,
+    failures
+  );
+  expect(
+    complete.nativeHostIdentityPresent === true && complete.nativeHostIdentityToken === baselineHostToken,
+    `${caseName}: persistent completion keeps the native HWND identity`,
+    failures
+  );
+  expect(complete.attachCount === 1, `${caseName}: persistent completion reports one attach`, failures);
+  expect(complete.detachCount === 0, `${caseName}: persistent completion reports no detach`, failures);
+  expectWindowsD3d11Evidence(complete, `${caseName}: persistent completion`, failures);
+
+  const attachEvents = events.filter((event) => event && event.type === "overlay:presenter-attach");
+  const closeEvents = events.filter((event) => event && event.type === "overlay:presenter-close");
+  expect(attachEvents.length === 1, `${caseName}: persistent action used one managed controller`, failures);
+  expect(closeEvents.length === 0, `${caseName}: persistent action did not close before final shutdown`, failures);
+  const lifecycle = readJsonLinesIfPresent(path.join(caseDir, "diagnostics", "lifecycle.jsonl"), failures);
+  const lifecycleCompleteIndex = lifecycle.findIndex(
+    (event) => event && event.type === "event:overlay:presenter-persistent-reuse-complete"
+  );
+  const lifecycleCloseIndexes = lifecycle
+    .map((event, index) => (event && event.type === "event:overlay:presenter-close" ? index : -1))
+    .filter((index) => index >= 0);
+  const lifecycleCloseErrorEvents = lifecycle.filter(
+    (event) => event && event.type === "event:overlay:presenter-close:error"
+  );
+  expect(lifecycleCompleteIndex >= 0, `${caseName}: persistent lifecycle records completion`, failures);
+  expect(lifecycleCloseIndexes.length === 1, `${caseName}: persistent lifecycle closes once at final shutdown`, failures);
+  expect(
+    lifecycleCloseIndexes.length === 1 && lifecycleCloseIndexes[0] > lifecycleCompleteIndex,
+    `${caseName}: persistent lifecycle closes only after three-cycle completion`,
+    failures
+  );
+  expect(lifecycleCloseErrorEvents.length === 0, `${caseName}: persistent final shutdown recorded no close error`, failures);
+  if (lifecycleCloseIndexes.length === 1) {
+    const closeEvent = lifecycle[lifecycleCloseIndexes[0]];
+    const closePresenter = objectOrEmpty(objectOrEmpty(closeEvent.payload).presenter);
+    expect(closePresenter.closed === true, `${caseName}: final shutdown snapshot is closed`, failures);
+    expect(closePresenter.closeReason === "closed", `${caseName}: final shutdown reason is closed`, failures);
+    expect(closePresenter.nativeSurfaceOwner === false, `${caseName}: final shutdown released surface ownership`, failures);
+    expect(closePresenter.nativeHostOpen === false, `${caseName}: final shutdown closed the native host`, failures);
+    expect(closePresenter.attached === false, `${caseName}: final shutdown detached the presenter`, failures);
+    expect(closePresenter.backend === "none", `${caseName}: final shutdown has no live backend`, failures);
+    expect(
+      closePresenter.nativeSurfaceAttachCount === 1,
+      `${caseName}: final shutdown preserves the single attach count`,
+      failures
+    );
+    expect(
+      closePresenter.nativeSurfaceDetachCount === 1,
+      `${caseName}: final shutdown records exactly one detach`,
+      failures
+    );
+    expect(
+      closePresenter.lastError === undefined || closePresenter.lastError === null || closePresenter.lastError === "",
+      `${caseName}: final shutdown snapshot has no close error`,
+      failures
+    );
+  }
+  verifyPersistentCloseProbe(caseName, closeProbeEvents, failures);
+
+  return {
+    required: true,
+    ok: failures.length === failuresBefore,
+    cycles: orderedCycles.length,
+    controllerGeneration: startController,
+    nativeSurfaceLeaseGeneration: startLease,
+    surfaceInstanceGeneration: baselineInstance,
+    nativeHostIdentityTokenPresent: Boolean(baselineHostToken)
+  };
+}
+
+function verifyPersistentCloseProbe(caseName, events, failures) {
+  const focus = events.filter((event) => event && event.type === "probe:native-presenter-focus");
+  const sent = events.filter((event) => event && event.type === "probe:sent");
+  const complete = events.filter((event) => event && event.type === "probe:complete");
+  const terminalFailures = events.filter(
+    (event) => event && ["probe:close-input-skipped", "probe:incomplete", "probe:timeout"].includes(event.type)
+  );
+  expect(
+    focus.length === WINDOWS_PERSISTENT_REUSE_CYCLES,
+    `${caseName}: persistent close probe recorded three focus handoffs`,
+    failures
+  );
+  expect(sent.length === WINDOWS_PERSISTENT_REUSE_CYCLES, `${caseName}: persistent close probe sent three inputs`, failures);
+  expect(complete.length === 1, `${caseName}: persistent close probe completed once`, failures);
+  expect(terminalFailures.length === 0, `${caseName}: persistent close probe had no terminal failure`, failures);
+  focus.forEach((event, index) => {
+    const payload = objectOrEmpty(event.payload);
+    const ordinal = index + 1;
+    expect(payload.cycle === ordinal, `${caseName}: persistent focus cycle ${ordinal} is ordered`, failures);
+    expect(payload.requestCount === 1, `${caseName}: persistent focus cycle ${ordinal} made one request`, failures);
+    expect(payload.requestOrdinal === ordinal, `${caseName}: persistent focus cycle ${ordinal} response matched its ordinal`, failures);
+    expect(payload.focused === true, `${caseName}: persistent focus cycle ${ordinal} acquired exact-host foreground`, failures);
+  });
+  sent.forEach((event, index) => {
+    const payload = objectOrEmpty(event.payload);
+    const ordinal = index + 1;
+    const preDispatch = objectOrEmpty(payload.nativePresenterPreDispatch);
+    expect(payload.cycle === ordinal, `${caseName}: persistent input cycle ${ordinal} is ordered`, failures);
+    expect(preDispatch.cycle === ordinal, `${caseName}: persistent input cycle ${ordinal} rechecked the same ordinal`, failures);
+    expect(preDispatch.focused === true, `${caseName}: persistent input cycle ${ordinal} passed pre-dispatch focus`, failures);
+  });
+  if (complete.length === 1) {
+    const payload = objectOrEmpty(complete[0].payload);
+    expect(
+      payload.sentCount === WINDOWS_PERSISTENT_REUSE_CYCLES &&
+        payload.expectedCloseCount === WINDOWS_PERSISTENT_REUSE_CYCLES,
+      `${caseName}: persistent close probe completed all three cycles`,
+      failures
+    );
+  }
+}
+
+function expectWindowsD3d11Evidence(evidence, label, failures) {
+  expect(evidence.backend === "windows-d3d11", `${label} presenter backend is windows-d3d11`, failures);
+  expect(evidence.hostBackend === "windows-d3d11", `${label} host backend is windows-d3d11`, failures);
+  expect(evidence.rendererBackend === "windows-d3d11", `${label} renderer backend is windows-d3d11`, failures);
+}
+
+function positiveInteger(value) {
+  return Number.isInteger(value) && value > 0 ? value : 0;
+}
+
 function verifyDuplicateOpenGuard(caseName, actionName, events, failures) {
   if (actionName !== "presenter-duplicate-open-guard") {
     return { required: false, ok: true };
@@ -2095,6 +2913,21 @@ function summarizeCaseResult(caseName, result, resultLog, renderingHealth = null
   const clientSessionQuery = summarizeClientSessionQuery(events, clientSessionPromptMissing);
   const microTxnCallbackProof = hasMicroTxnCallbackProof(String(action.action || ""), events, app.appId);
   const duplicateOpenGuard = verifyDuplicateOpenGuard(String(caseName), String(action.action || ""), events, failures);
+  const passiveNotification = verifyPassiveNotificationProof(
+    String(caseName),
+    String(action.action || ""),
+    events,
+    nativePresenter,
+    failures
+  );
+  const persistentReuse = verifyPersistentReuseProof(
+    String(caseName),
+    String(action.action || ""),
+    events,
+    caseDir || path.dirname(resultLog),
+    closeProbeEvents,
+    failures
+  );
 
   expect(result.ok === true, `${caseName}: smoke result ok`, failures);
   expect(action.ok === true, `${caseName}: autorun action succeeded`, failures);
@@ -2136,7 +2969,10 @@ function summarizeCaseResult(caseName, result, resultLog, renderingHealth = null
     overlayInactiveEvents,
     presenterBackendEvidence,
     duplicateOpenGuardProof: duplicateOpenGuard.required ? duplicateOpenGuard.ok : "n/a",
-    passiveNotificationProof: hasPassiveNotificationProof(String(action.action || ""), events, nativePresenter),
+    passiveNotificationProof: passiveNotification.required ? passiveNotification.ok : "n/a",
+    passiveNotificationEvidence: passiveNotification,
+    persistentReuseProof: persistentReuse.required ? persistentReuse.ok : "n/a",
+    persistentReuseEvidence: persistentReuse,
     microTxnCallbackListenerRegistered: hasMicroTxnCallbackListenerRegistered(events),
     legacyMicroTxnCallbackListenerRegistered: hasLegacyMicroTxnCallbackListenerRegistered(events),
     microTxnCallbackCount: events.filter(isMicroTxnCallbackEvent).length,
@@ -2298,6 +3134,15 @@ function printSummary(summary) {
         `events=${summary.nativeLoadBlocker.postGateCodeIntegrityEventCount}`
     );
   }
+  if (summary.cleanup) {
+    console.log(
+      `cleanup: processBefore=${formatValue(summary.cleanup.processBeforeOk)} ` +
+        `processAfter=${formatValue(summary.cleanup.processAfterOk)} ` +
+        `launchEnvRollback=${formatValue(summary.cleanup.launchEnvRollbackOk)} ` +
+        `task=${formatValue(summary.cleanup.taskCleanupOk)} ` +
+        `taskDeletionVerified=${formatValue(summary.cleanup.taskDeletionVerified)}`
+    );
+  }
   if (summary.steamLaunchBlockers.length > 0) {
     console.log(`steam-launch blockers: total=${summary.steamLaunchBlockers.length}`);
     for (const blocker of summary.steamLaunchBlockers) {
@@ -2334,6 +3179,8 @@ function printSummary(summary) {
           `overlayActiveEvents=${row.overlayActiveEvents} ` +
           `overlayEnabled=${formatValue(row.overlayEnabled)} ` +
           `duplicateOpenGuard=${formatValue(row.duplicateOpenGuardProof)} ` +
+          `persistentReuse=${formatValue(row.persistentReuseProof)} ` +
+          `passivePolling=${formatValue(row.passiveNotificationProof)} ` +
           `presenterBackend=${formatValue(row.presenterBackendEvidence.result.backend)} ` +
           `hostBackend=${formatValue(row.presenterBackendEvidence.result.hostBackend)} ` +
           `rendererBackend=${formatValue(row.presenterBackendEvidence.result.rendererBackend)} ` +
@@ -2487,7 +3334,7 @@ function summarizeAssumedShortcut(shortcut) {
   const existing = objectOrEmpty(result.existing);
   return {
     ok: shortcut.ok === true,
-    shortcutName: shortcut.shortcutName || "",
+    shortcutName: shortcut.shortcutNamePresent === true ? "configured" : "",
     requestedShortcutGameId: shortcut.requestedShortcutGameId || "",
     expectedShortcutGameId: shortcut.expectedShortcutGameId || "",
     changed: shortcut.changed === true,
@@ -3634,6 +4481,77 @@ function runSelfTest() {
       ]
     ]) {
       assertFixtureSummaryFailure(tempRoot, `managed-backend-${name}`, writeManagedBackendFixture, options, failure);
+    }
+
+    const passivePollingRoot = path.join(tempRoot, "passive-polling");
+    writePassivePollingFixture(passivePollingRoot);
+    const passivePollingSummary = summarizeWindowsOverlayMatrixArtifacts(passivePollingRoot);
+    assert.deepEqual(passivePollingSummary.failures, []);
+    assert.equal(passivePollingSummary.caseSummaries[0].passiveNotificationProof, true);
+    assert.equal(passivePollingSummary.caseSummaries[0].passiveNotificationEvidence.falseToTrue, true);
+    assertFixtureSummaryFailure(
+      tempRoot,
+      "passive-polling-missing-transition",
+      writePassivePollingFixture,
+      { omitTransition: true },
+      "observed false-to-true needs-present"
+    );
+    assertFixtureSummaryFailure(
+      tempRoot,
+      "passive-polling-hot-full-diagnostics",
+      writePassivePollingFixture,
+      { hotFullDiagnostics: true },
+      "no hot full-diagnostics loop"
+    );
+    assertFixtureSummaryFailure(
+      tempRoot,
+      "passive-polling-missing-counter",
+      writePassivePollingFixture,
+      { missingTransitionCounter: true },
+      "records every split polling counter"
+    );
+    assertFixtureSummaryFailure(
+      tempRoot,
+      "passive-polling-wrong-renderer",
+      writePassivePollingFixture,
+      { wrongRenderer: true },
+      "passive transition presenter agrees on windows-d3d11"
+    );
+
+    const persistentReuseRoot = path.join(tempRoot, "persistent-reuse");
+    writePersistentReuseFixture(persistentReuseRoot);
+    const persistentReuseSummary = summarizeWindowsOverlayMatrixArtifacts(persistentReuseRoot);
+    assert.deepEqual(persistentReuseSummary.failures, []);
+    assert.equal(persistentReuseSummary.caseSummaries[0].persistentReuseProof, true);
+    assert.equal(persistentReuseSummary.caseSummaries[0].persistentReuseEvidence.cycles, 3);
+    assert.equal(persistentReuseSummary.cleanup.processAfterOk, true);
+    assert.equal(persistentReuseSummary.cleanup.launchEnvRollbackOk, true);
+    assert.equal(persistentReuseSummary.cleanup.taskDeletionVerified, true);
+    assert.equal(persistentReuseSummary.cleanup.taskRunnerGuardOk, true);
+    assert.equal(persistentReuseSummary.cleanup.taskLaunchEnvGuardOk, true);
+    assert.equal(persistentReuseSummary.cleanup.taskPackageProcessGuardOk, true);
+    assert.equal(persistentReuseSummary.cleanup.taskFileGuardOk, true);
+    assert.equal(persistentReuseSummary.cleanup.taskFailureStage, "success");
+    assert.equal(persistentReuseSummary.cleanup.taskRunnerTerminatedWithoutDone, false);
+    for (const [name, options, failure] of [
+      ["changed-hwnd", { changedHostToken: true }, "reuses one native HWND"],
+      ["second-attach", { secondAttach: true }, "has exactly one controller attach"],
+      ["out-of-order-cycle", { outOfOrderCycle: true }, "persistent cycle 1 is ordered"],
+      ["wrong-close-ordinal", { wrongCloseOrdinal: true }, "response matched its ordinal"],
+      ["terminal-close-live", { terminalCloseStillAttached: true }, "final shutdown detached the presenter"],
+      ["missing-after-cleanup", { omitAfterCleanup: true }, "after-cases package-process cleanup evidence"],
+      ["rollback-failed", { rollbackFailed: true }, "launch-env rollback completed successfully"],
+      ["rollback-byte-mismatch", { rollbackByteMismatch: true }, "restored launch env bytes match exactly"],
+      ["task-delete-unverified", { taskDeletionUnverified: true }, "interactive task cleanup completed successfully"],
+      ["task-runner-leftover", { taskRunnerLeftover: true }, "task wrapper runner-tree guard completed successfully"],
+      ["task-runner-done-missing", { taskRunnerDoneMissing: true }, "completed without a runner or matrix failure"],
+      ["task-live-deadline", { taskDeadlineTimeout: true }, "completed without a runner or matrix failure"],
+      ["task-timeout-no-tree-kill", { taskTimedOutNoTreeKill: true }, "invoked full-tree taskkill before rollback"],
+      ["task-guard-byte-mismatch", { taskGuardByteMismatch: true }, "task wrapper launch-env guard completed successfully"],
+      ["task-process-leftover", { taskProcessLeftover: true }, "task wrapper package-process guard completed successfully"],
+      ["task-files-left", { taskFilesLeft: true }, "task wrapper handoff-file cleanup completed successfully"]
+    ]) {
+      assertFixtureSummaryFailure(tempRoot, `persistent-reuse-${name}`, writePersistentReuseFixture, options, failure);
     }
 
     const webCloseEvidenceRoot = path.join(tempRoot, "managed-web-close-evidence");
@@ -4923,24 +5841,40 @@ function writeAssumedShortcutDriftFixture(root) {
   writeJson(path.join(root, "00-preflight", "assumed-shortcut.json"), {
     ok: false,
     generatedAt: "2026-07-02T00:00:01.000Z",
-    shortcutName: "Steam Bridge Smoke",
+    shortcutNamePresent: true,
     requestedShortcutGameId: "111",
     expectedShortcutGameId: "222",
     changed: true,
     action: "updated",
     existingMatches: false,
     result: {
-      appName: "Steam Bridge Smoke",
+      appNamePresent: true,
       changed: true,
       action: "updated",
       gameId: "222",
+      shortcutsPathPresent: true,
+      outputPathPresent: true,
       expected: {
         gameId: "222",
-        exeExists: true
+        appNamePresent: true,
+        exePresent: true,
+        exePathPresent: true,
+        exeExists: true,
+        startDirPresent: true,
+        startDirPathPresent: true,
+        startDirExists: true,
+        launchOptionsPresent: true
       },
       existing: {
         gameId: "111",
-        exeExists: false
+        appNamePresent: true,
+        exePresent: true,
+        exePathPresent: true,
+        exeExists: false,
+        startDirPresent: true,
+        startDirPathPresent: true,
+        startDirExists: false,
+        launchOptionsPresent: true
       },
       existingMatches: false
     }
@@ -5518,6 +6452,484 @@ function attachedWindowsPresenterFixture(options = {}) {
       }
     }
   };
+}
+
+function writePassivePollingFixture(root, options = {}) {
+  const caseId = "25-managed-achievement-progress";
+  const initial = passiveWindowsPresenterFixture({ lightweightPollCount: 2, fullDiagnosticsPollCount: 1 });
+  const transition = passiveWindowsPresenterFixture({
+    overlayNeedsPresent: true,
+    transparent: false,
+    currentFps: 30,
+    lightweightPollCount: 3,
+    fullDiagnosticsPollCount: 1,
+    lastLightweightPollAt: 130,
+    lastFullDiagnosticsPollAt: 100,
+    rendererBackend: options.wrongRenderer ? "windows-opengl" : "windows-d3d11"
+  });
+  const parked = passiveWindowsPresenterFixture({
+    lightweightPollCount: 32,
+    fullDiagnosticsPollCount: options.hotFullDiagnostics ? 20 : 4,
+    lastLightweightPollAt: 1100,
+    lastFullDiagnosticsPollAt: 1000
+  });
+  if (options.missingTransitionCounter) {
+    delete transition.lightweightPollCount;
+  }
+  const events = [
+    { type: "overlay:presenter-attach", payload: { presenter: initial } },
+    { type: "achievement:progress", payload: { indicated: true, presenter: initial } }
+  ];
+  if (!options.omitTransition) {
+    events.push({
+      type: "overlay:passive-notification-needs-present",
+      payload: {
+        action: "presenter-achievement-progress",
+        previousOverlayNeedsPresent: false,
+        overlayNeedsPresent: true,
+        observedAt: 130,
+        pollIntervalMs: WINDOWS_LIGHTWEIGHT_POLL_INTERVAL_MS,
+        lightweightPollCount: transition.lightweightPollCount,
+        lastLightweightPollAt: transition.lastLightweightPollAt,
+        fullDiagnosticsPollCount: transition.fullDiagnosticsPollCount,
+        lastFullDiagnosticsPollAt: transition.lastFullDiagnosticsPollAt,
+        presenter: transition
+      }
+    });
+  }
+  events.push({
+    type: "overlay:passive-notification-parked",
+    payload: {
+      action: "presenter-achievement-progress",
+      pumps: 10,
+      durationMs: 1000,
+      presenter: parked
+    }
+  });
+
+  writeJson(path.join(root, "matrix-manifest.json"), {
+    kind: "steam-bridge-windows-overlay-matrix-manifest",
+    generatedAt: "2026-07-10T00:00:00.000Z",
+    suite: "managed",
+    launchMode: "steam-launch",
+    appId: 480,
+    onlyCase: caseId,
+    expectedCaseCount: 1,
+    expectedNativeHostBackend: "windows-d3d11",
+    cases: [
+      {
+        id: caseId,
+        action: "presenter-achievement-progress",
+        requireEvent: [
+          "overlay:presenter-attach",
+          "achievement:progress",
+          "overlay:passive-notification-needs-present",
+          "overlay:passive-notification-parked"
+        ],
+        requireOverlayActivated: false,
+        requireNoOverlayActivation: true,
+        allowOverlayNotReady: true,
+        requirePassiveNotification: true,
+        requireManagedOverlayComplete: false,
+        managedOverlayResultMode: "",
+        hasCheckoutTransactionId: false,
+        persistentReuseCycles: 0
+      }
+    ]
+  });
+  writeStandardPreflight(root);
+  writeResult(path.join(root, caseId, "result.log"), {
+    ok: true,
+    action: { ok: true, action: "presenter-achievement-progress" },
+    snapshot: {
+      ...buildWindowsSnapshot({ pid: 4249, events }),
+      overlay: { nativePresenter: { ok: true, value: parked } }
+    }
+  });
+}
+
+function passiveWindowsPresenterFixture(options = {}) {
+  return {
+    mode: "passive",
+    attached: true,
+    nativeHostOpen: true,
+    nativeSurfaceOwner: true,
+    closed: false,
+    backend: "windows-d3d11",
+    clickThrough: true,
+    focusable: false,
+    transparent: options.transparent ?? true,
+    overlayActive: false,
+    overlayNeedsPresent: options.overlayNeedsPresent ?? false,
+    currentFps: options.currentFps ?? 0,
+    pollIntervalMs: WINDOWS_LIGHTWEIGHT_POLL_INTERVAL_MS,
+    lightweightPollCount: options.lightweightPollCount ?? 0,
+    lastLightweightPollAt: options.lastLightweightPollAt,
+    fullDiagnosticsPollCount: options.fullDiagnosticsPollCount ?? 0,
+    lastFullDiagnosticsPollAt: options.lastFullDiagnosticsPollAt,
+    nativeHostDiagnostics: {
+      backend: "windows-d3d11",
+      hwnd: "0x1234",
+      renderer: { backend: options.rendererBackend || "windows-d3d11" }
+    }
+  };
+}
+
+function writePersistentReuseFixture(root, options = {}) {
+  const caseId = "40-persistent-reuse-three-cycle";
+  const controllerGeneration = 7;
+  const leaseGeneration = 11;
+  const instanceGeneration = 13;
+  const hostToken = "a".repeat(64);
+  const events = [
+    { type: "overlay:presenter-attach", payload: { presenter: attachedWindowsPresenterFixture() } },
+    {
+      type: "overlay:presenter-persistent-reuse-start",
+      payload: {
+        cycles: WINDOWS_PERSISTENT_REUSE_CYCLES,
+        controllerGeneration,
+        nativeSurfaceLeaseGeneration: leaseGeneration,
+        presenterMode: "persistent",
+        readiness: { canWait: true, reason: "ready", waitReason: "ready" },
+        foregroundHandoffOrdinals: [1, 2, 3]
+      }
+    }
+  ];
+  for (let cycle = 1; cycle <= WINDOWS_PERSISTENT_REUSE_CYCLES; cycle += 1) {
+    const shown = persistentReuseEvidenceFixture({
+      cycle,
+      controllerGeneration,
+      leaseGeneration,
+      instanceGeneration,
+      hostToken: options.changedHostToken && cycle === 2 ? "b".repeat(64) : hostToken,
+      phase: "shown",
+      attachCount: options.secondAttach && cycle === 2 ? 2 : 1
+    });
+    const parked = persistentReuseEvidenceFixture({
+      cycle,
+      controllerGeneration,
+      leaseGeneration,
+      instanceGeneration,
+      hostToken,
+      phase: "parked",
+      attachCount: 1
+    });
+    events.push(
+      { type: "overlay:presenter-wait-shown", payload: { api: "persistentReuseThreeCycle", cycle, presenter: attachedWindowsPresenterFixture() } },
+      { type: "callback:overlay-activated", payload: { active: true } },
+      { type: "callback:overlay-activated", payload: { active: false } },
+      { type: "overlay:presenter-persistent-reuse-cycle", payload: { cycle, shown, parked } }
+    );
+  }
+  if (options.outOfOrderCycle) {
+    const cycleEventIndexes = events
+      .map((event, index) => (event.type === "overlay:presenter-persistent-reuse-cycle" ? index : -1))
+      .filter((index) => index >= 0);
+    const firstCycle = events[cycleEventIndexes[0]];
+    events[cycleEventIndexes[0]] = events[cycleEventIndexes[1]];
+    events[cycleEventIndexes[1]] = firstCycle;
+  }
+  events.push({
+    type: "overlay:presenter-persistent-reuse-complete",
+    payload: {
+      cyclesCompleted: WINDOWS_PERSISTENT_REUSE_CYCLES,
+      controllerGeneration,
+      nativeSurfaceLeaseGeneration: leaseGeneration,
+      surfaceInstanceGeneration: instanceGeneration,
+      nativeHostIdentityToken: hostToken,
+      nativeHostIdentityPresent: true,
+      attachCount: 1,
+      detachCount: 0,
+      backend: "windows-d3d11",
+      hostBackend: "windows-d3d11",
+      rendererBackend: "windows-d3d11"
+    }
+  });
+
+  writeJson(path.join(root, "matrix-manifest.json"), {
+    kind: "steam-bridge-windows-overlay-matrix-manifest",
+    generatedAt: "2026-07-10T00:00:00.000Z",
+    suite: "persistent-reuse",
+    launchMode: "steam-launch",
+    appId: 480,
+    onlyCase: caseId,
+    expectedCaseCount: 1,
+    expectedNativeHostBackend: "windows-d3d11",
+    closeProbe: true,
+    closeProbeEvidenceSchema: 2,
+    closeProbeForegroundHandoff: OWNER_PROCESS_FOREGROUND_HANDOFF,
+    cleanupContract: {
+      processCleanupRequired: true,
+      launchEnvRollbackRequired: true,
+      taskCleanupExpected: true
+    },
+    cases: [
+      {
+        id: caseId,
+        action: PERSISTENT_REUSE_ACTION,
+        requireEvent: [
+          "overlay:presenter-persistent-reuse-start",
+          "overlay:presenter-persistent-reuse-cycle",
+          "overlay:presenter-persistent-reuse-complete"
+        ],
+        requireOverlayActivated: true,
+        requireNoOverlayActivation: false,
+        allowOverlayNotReady: false,
+        requireManagedOverlayComplete: false,
+        managedOverlayResultMode: "",
+        expectedCloseProbeInput: "web-close-click-sendinput",
+        hasCheckoutTransactionId: false,
+        persistentReuseCycles: WINDOWS_PERSISTENT_REUSE_CYCLES
+      }
+    ]
+  });
+  writeStandardPreflight(root);
+  writeJson(path.join(root, caseId, "persistent-control-readiness.json"), {
+    kind: "steam-bridge-windows-persistent-control-readiness",
+    generatedAt: "2026-07-10T00:00:00.000Z",
+    ok: true,
+    controlProcessMatches: true,
+    windowsX64: true,
+    steamInitialized: true,
+    presenterOpen: true,
+    presenterOwned: true,
+    persistentMode: true,
+    controllerGenerationPositive: true,
+    nativeSurfaceLeaseGenerationPositive: true,
+    cycles: WINDOWS_PERSISTENT_REUSE_CYCLES
+  });
+  const resultPresenter = {
+    ...passiveWindowsPresenterFixture({ lightweightPollCount: 20, fullDiagnosticsPollCount: 3 }),
+    nativeSurfaceLeaseGeneration: leaseGeneration,
+    nativeHostDiagnostics: {
+      backend: "windows-d3d11",
+      surfaceInstanceGeneration: instanceGeneration,
+      hwnd: "0x1234",
+      renderer: { backend: "windows-d3d11" }
+    },
+    electronOverlay: { presenterMode: "persistent", controllerGeneration }
+  };
+  writeResult(path.join(root, caseId, "result.log"), {
+    ok: true,
+    action: { ok: true, action: PERSISTENT_REUSE_ACTION },
+    snapshot: {
+      ...buildWindowsSnapshot({ pid: 4250, managedOverlayResultMode: "complete", events }),
+      overlay: { nativePresenter: { ok: true, value: resultPresenter } }
+    }
+  });
+  const lifecycle = events.map((event) => ({
+    type: `event:${event.type}`,
+    at: "2026-07-10T00:00:01.000Z",
+    pid: 4250,
+    payload: event.payload || {}
+  }));
+  lifecycle.push({
+    type: "event:overlay:presenter-close",
+    at: "2026-07-10T00:00:10.000Z",
+    pid: 4250,
+    payload: {
+      presenter: {
+        closed: true,
+        closeReason: "closed",
+        nativeSurfaceOwner: false,
+        nativeHostOpen: false,
+        attached: options.terminalCloseStillAttached ? true : false,
+        backend: "none",
+        nativeSurfaceAttachCount: 1,
+        nativeSurfaceDetachCount: 1,
+        lastError: null
+      }
+    }
+  });
+  writeText(
+    path.join(root, caseId, "diagnostics", "lifecycle.jsonl"),
+    `${lifecycle.map((entry) => JSON.stringify(entry)).join("\n")}\n`
+  );
+  const closeProbeEvents = [];
+  for (let cycle = 1; cycle <= WINDOWS_PERSISTENT_REUSE_CYCLES; cycle += 1) {
+    closeProbeEvents.push(
+      {
+        type: "probe:native-presenter-focus",
+        payload: { cycle, requestCount: 1, requestOrdinal: cycle, focused: true }
+      },
+      {
+        type: "probe:sent",
+        payload: { cycle, nativePresenterPreDispatch: { cycle, focused: true } }
+      }
+    );
+  }
+  if (options.wrongCloseOrdinal) {
+    closeProbeEvents[2].payload.requestOrdinal = 1;
+  }
+  closeProbeEvents.push({
+    type: "probe:complete",
+    payload: { sentCount: WINDOWS_PERSISTENT_REUSE_CYCLES, expectedCloseCount: WINDOWS_PERSISTENT_REUSE_CYCLES }
+  });
+  writeText(
+    path.join(root, caseId, "close-probe.log"),
+    `${closeProbeEvents.map((entry) => JSON.stringify(entry)).join("\n")}\n`
+  );
+  writeCleanupFixture(root, options);
+}
+
+function persistentReuseEvidenceFixture(options) {
+  const shown = options.phase === "shown";
+  return {
+    controllerGeneration: options.controllerGeneration,
+    nativeSurfaceLeaseGeneration: options.leaseGeneration,
+    surfaceInstanceGeneration: options.instanceGeneration,
+    nativeHostIdentityToken: options.hostToken,
+    nativeHostIdentityPresent: true,
+    nativeHostOpen: true,
+    attached: true,
+    nativeSurfaceOwner: true,
+    closed: false,
+    closeReason: null,
+    backend: "windows-d3d11",
+    hostBackend: "windows-d3d11",
+    rendererBackend: "windows-d3d11",
+    attachCount: options.attachCount,
+    detachCount: 0,
+    mode: shown ? "active" : "passive",
+    overlayActive: shown,
+    overlayNeedsPresent: false,
+    clickThrough: !shown,
+    transparent: !shown,
+    currentFps: shown ? 30 : 0,
+    pollIntervalMs: WINDOWS_LIGHTWEIGHT_POLL_INTERVAL_MS,
+    lightweightPollCount: options.cycle * 10,
+    lastLightweightPollAt: options.cycle * 100,
+    fullDiagnosticsPollCount: options.cycle,
+    lastFullDiagnosticsPollAt: options.cycle * 100
+  };
+}
+
+function writeCleanupFixture(root, options = {}) {
+  const cleanup = (phase) => ({
+    kind: "steam-bridge-windows-smoke-process-cleanup",
+    phase,
+    generatedAt: "2026-07-10T00:00:00.000Z",
+    ok: true,
+    processesBeforeCleanup: [],
+    cleanupResults: [],
+    processesAfterCleanup: []
+  });
+  writeJson(path.join(root, "smoke-process-cleanup-before-run.json"), cleanup("before-run"));
+  if (!options.omitAfterCleanup) {
+    writeJson(path.join(root, "smoke-process-cleanup-after-cases.json"), cleanup("after-cases"));
+  }
+  writeJson(path.join(root, "launch-env-rollback.json"), {
+    kind: "steam-bridge-windows-launch-env-rollback",
+    generatedAt: "2026-07-10T00:00:00.000Z",
+    attempted: true,
+    originalPresent: true,
+    backupCreated: true,
+    generatedRemoved: true,
+    originalRestored: true,
+    restoredBytesMatch: options.rollbackByteMismatch ? false : true,
+    backupRemoved: true,
+    ok: options.rollbackFailed || options.rollbackByteMismatch ? false : true,
+    error: options.rollbackFailed ? "launch-env-rollback-failed" : ""
+  });
+  const taskLaunchEnvOk = !options.taskGuardByteMismatch;
+  const taskProcessOk = !options.taskProcessLeftover;
+  const taskRunnerOk = !options.taskRunnerLeftover;
+  const taskFileOk = !options.taskFilesLeft;
+  const taskDeadline = options.taskDeadlineTimeout === true || options.taskTimedOutNoTreeKill === true;
+  const runnerDoneMissing = options.taskRunnerDoneMissing === true;
+  const taskCleanupOk =
+    !options.taskDeletionUnverified &&
+    taskRunnerOk &&
+    !options.taskTimedOutNoTreeKill &&
+    taskLaunchEnvOk &&
+    taskProcessOk &&
+    taskFileOk;
+  writeJson(path.join(root, "task-cleanup.json"), {
+    kind: "steam-bridge-windows-overlay-task-cleanup",
+    generatedAt: "2026-07-10T00:00:00.000Z",
+    timedOut: taskDeadline,
+    runnerTerminatedWithoutDone: runnerDoneMissing,
+    failureStage: runnerDoneMissing ? "runner-termination" : taskDeadline ? "runner-timeout" : "success",
+    errorKind: runnerDoneMissing ? "done-missing" : taskDeadline ? "deadline-exceeded" : "none",
+    errorPresent: runnerDoneMissing || taskDeadline,
+    endAttempted: runnerDoneMissing || taskDeadline,
+    endExitCode: runnerDoneMissing ? 1 : taskDeadline ? 0 : null,
+    keepTask: false,
+    deleteAttempted: true,
+    deleteExitCode: 0,
+    deletionVerified: options.taskDeletionUnverified ? false : true,
+    runnerProcessGuard: {
+      required: true,
+      attempted: true,
+      completedMarkerObserved: !runnerDoneMissing && !taskDeadline,
+      captureAttempted: true,
+      captureSucceeded: true,
+      captureWaitMilliseconds: 100,
+      capturedRootCount: 1,
+      capturedTreeProcessCount: 4,
+      trackingAttemptCount: 4,
+      trackingFailureCount: 0,
+      treeTerminationRequired: runnerDoneMissing || taskDeadline,
+      enumerationSucceeded: true,
+      processesBeforeCount: options.taskRunnerLeftover || taskDeadline ? 1 : 0,
+      taskkillAttemptCount: taskDeadline && !options.taskTimedOutNoTreeKill ? 1 : 0,
+      taskkillFailureCount: 0,
+      fallbackStopAttemptCount: options.taskRunnerLeftover ? 1 : 0,
+      fallbackStopFailureCount: options.taskRunnerLeftover ? 1 : 0,
+      processesAfterCount: options.taskRunnerLeftover ? 1 : 0,
+      emptyVerificationScanCount: options.taskRunnerLeftover ? 0 : 2,
+      verifiedEmpty: taskRunnerOk,
+      ok: taskRunnerOk
+    },
+    launchEnvGuard: {
+      required: true,
+      attempted: true,
+      originalPresent: true,
+      backupCreated: true,
+      generatedRemoved: true,
+      originalRestored: true,
+      restoredBytesMatch: taskLaunchEnvOk,
+      backupRemoved: true,
+      ok: taskLaunchEnvOk
+    },
+    packageProcessGuard: {
+      required: true,
+      attempted: true,
+      enumerationSucceeded: true,
+      processesBeforeCount: options.taskProcessLeftover ? 1 : 0,
+      stopAttemptCount: options.taskProcessLeftover ? 1 : 0,
+      stopFailureCount: options.taskProcessLeftover ? 1 : 0,
+      processesAfterCount: options.taskProcessLeftover ? 1 : 0,
+      emptyVerificationScanCount: options.taskProcessLeftover ? 0 : 2,
+      verifiedEmpty: taskProcessOk,
+      ok: taskProcessOk
+    },
+    taskFileGuard: {
+      required: true,
+      attempted: true,
+      directoryPresentBefore: true,
+      entryCountBefore: 4,
+      directoryRemoved: taskFileOk,
+      verifiedAbsent: taskFileOk,
+      ok: taskFileOk
+    },
+    ok: taskCleanupOk
+  });
+}
+
+function writeStandardPreflight(root) {
+  writeJson(path.join(root, "00-preflight", "preflight.json"), {
+    kind: "steam-bridge-windows-preflight",
+    generatedAt: "2026-07-10T00:00:00.000Z",
+    app: { exe: { exists: true }, nativeAddon: { exists: true } },
+    appControlPolicy: { verifiedAndReputableEnforced: false },
+    recentCodeIntegrityEvents: [],
+    windowsSession: {
+      currentSessionId: 1,
+      interactiveSessionIds: [1],
+      currentSessionInteractive: true
+    }
+  });
 }
 
 function writeDuplicateOpenGuardCaseFixture(root, options = {}) {

@@ -8222,12 +8222,15 @@ test("electron steam overlay manager uses Windows D3D11 native presenter by defa
   const hostHandle = Buffer.from([6, 4, 2, 0]);
   const windowBounds = { x: 12, y: 18, width: 1366, height: 768 };
   let hostOpen = false;
+  const activationOrder = [];
   const fake = createFakeNative({
     attachNativeOverlayHostView(nativeWindowHandle) {
+      activationOrder.push("native-attach-passive");
       hostOpen = true;
       this.calls.push({ method: "attachNativeOverlayHostView", args: [nativeWindowHandle] });
     },
     attachNativeOverlayHostViewForOverlay(nativeWindowHandle) {
+      activationOrder.push("native-attach-overlay");
       hostOpen = true;
       this.calls.push({ method: "attachNativeOverlayHostViewForOverlay", args: [nativeWindowHandle] });
     },
@@ -8235,6 +8238,7 @@ test("electron steam overlay manager uses Windows D3D11 native presenter by defa
       this.calls.push({ method: "pumpNativeOverlayProbeWindow", args: [] });
     },
     showNativeOverlayHostView() {
+      activationOrder.push("native-show");
       this.calls.push({ method: "showNativeOverlayHostView", args: [] });
     },
     setNativeOverlayHostInputPassthrough(passThrough) {
@@ -8252,6 +8256,10 @@ test("electron steam overlay manager uses Windows D3D11 native presenter by defa
     },
     isNativeOverlayHostViewOpen() {
       return hostOpen;
+    },
+    activateOverlayToWebPage(url, modal) {
+      activationOrder.push("steam-activate-web");
+      this.calls.push({ method: "activateOverlayToWebPage", args: [url, modal] });
     }
   });
   const steam = loadSteamWithFakeNative(fake);
@@ -8270,6 +8278,7 @@ test("electron steam overlay manager uses Windows D3D11 native presenter by defa
     },
     focus() {
       focusCount += 1;
+      activationOrder.push("focus-source-window");
     },
     once() {},
     webContents: {
@@ -8293,8 +8302,11 @@ test("electron steam overlay manager uses Windows D3D11 native presenter by defa
   assert.equal(initialSnapshot.clickThrough, true);
   assert.equal(initialSnapshot.transparent, true);
   assert.equal(initialSnapshot.currentFps, 0);
+  assert.equal(initialSnapshot.nativeSurfaceAttachCount, 0);
+  assert.equal(initialSnapshot.nativeSurfaceDetachCount, 0);
   assert.deepEqual(initialSnapshot.bounds, windowBounds);
   assert.equal(initialSnapshot.electronOverlay.presenterMode, "persistent");
+  assert.equal(initialSnapshot.electronOverlay.controllerGeneration > 0, true);
 
   const opened = overlay.open({ type: "web", url: "https://store.steampowered.com/app/480/", modal: true });
   assert.equal(opened, overlay.presenter);
@@ -8303,12 +8315,24 @@ test("electron steam overlay manager uses Windows D3D11 native presenter by defa
     method: "activateOverlayToWebPage",
     args: ["https://store.steampowered.com/app/480/", true]
   });
+  assert.deepEqual(activationOrder, [
+    "focus-source-window",
+    "native-attach-overlay",
+    "native-show",
+    "steam-activate-web"
+  ]);
 
   const openingSnapshot = overlay.snapshot();
   assert.equal(openingSnapshot.mode, "active");
   assert.equal(openingSnapshot.clickThrough, false);
   assert.equal(openingSnapshot.transparent, false);
   assert.equal(openingSnapshot.currentFps, 30);
+  assert.equal(openingSnapshot.nativeSurfaceAttachCount, 1);
+  assert.equal(openingSnapshot.nativeSurfaceDetachCount, 0);
+  assert.equal(
+    openingSnapshot.electronOverlay.controllerGeneration,
+    initialSnapshot.electronOverlay.controllerGeneration
+  );
 
   fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: true });
   await Promise.resolve();
@@ -8325,10 +8349,20 @@ test("electron steam overlay manager uses Windows D3D11 native presenter by defa
   assert.equal(parkedSnapshot.clickThrough, true);
   assert.equal(parkedSnapshot.transparent, true);
   assert.equal(parkedSnapshot.currentFps, 0);
+  assert.equal(parkedSnapshot.nativeSurfaceAttachCount, 1);
+  assert.equal(parkedSnapshot.nativeSurfaceDetachCount, 0);
 
   overlay.close();
-  assert.equal(overlay.snapshot().backend, "none");
-  assert.equal(overlay.snapshot().nativeHostOpen, false);
+  const closedSnapshot = overlay.snapshot();
+  assert.equal(closedSnapshot.closed, true);
+  assert.equal(closedSnapshot.closeReason, "closed");
+  assert.equal(closedSnapshot.nativeSurfaceOwner, false);
+  assert.equal(closedSnapshot.nativeHostOpen, false);
+  assert.equal(closedSnapshot.attached, false);
+  assert.equal(closedSnapshot.backend, "none");
+  assert.equal(closedSnapshot.nativeSurfaceAttachCount, 1);
+  assert.equal(closedSnapshot.nativeSurfaceDetachCount, 1);
+  assert.equal(closedSnapshot.lastError, undefined);
 
   assert.deepEqual(
     fake.calls
@@ -9065,6 +9099,17 @@ test("electron steam overlay manager can fall back to native overlay sessions", 
   assert.equal(overlay.snapshot().backend, "none");
   assert.equal(overlay.snapshot().bounds, undefined);
   assert.equal(typeof overlay.snapshot().electronOverlay.controllerGeneration, "number");
+  const capabilitySnapshot = overlay.snapshot();
+  for (const field of [
+    "lightweightPollCount",
+    "fullDiagnosticsPollCount",
+    "lastLightweightPollAt",
+    "lastFullDiagnosticsPollAt",
+    "nativeSurfaceAttachCount",
+    "nativeSurfaceDetachCount"
+  ]) {
+    assert.equal(Object.prototype.hasOwnProperty.call(capabilitySnapshot, field), false);
+  }
   assert.deepEqual(overlay.snapshot().electronOverlay, {
     controllerGeneration: overlay.snapshot().electronOverlay.controllerGeneration,
     presenterMode: "session",
@@ -14881,9 +14926,14 @@ test("Windows presenter reactivates one HWND and D3D11 surface across three cycl
     assert.equal(active.nativeSurfaceLeaseGeneration, firstLeaseGeneration);
     assert.equal(active.nativeHostDiagnostics.surfaceInstanceGeneration, firstInstanceGeneration);
     assert.equal(active.nativeHostDiagnostics.hwnd, firstHwnd);
+    assert.equal(active.nativeSurfaceAttachCount, 1);
+    assert.equal(active.nativeSurfaceDetachCount, 0);
     fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: true, app_id: 480 });
     fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: false, app_id: 480 });
-    assert.equal(presenter.snapshot().mode, "passive");
+    const parked = presenter.snapshot();
+    assert.equal(parked.mode, "passive");
+    assert.equal(parked.nativeSurfaceAttachCount, 1);
+    assert.equal(parked.nativeSurfaceDetachCount, 0);
   }
 
   assert.equal(
@@ -14892,6 +14942,8 @@ test("Windows presenter reactivates one HWND and D3D11 surface across three cycl
   );
   assert.equal(fake.calls.filter((call) => call.method === "detachNativeOverlayHostView").length, 0);
   presenter.close();
+  assert.equal(presenter.snapshot().nativeSurfaceAttachCount, 1);
+  assert.equal(presenter.snapshot().nativeSurfaceDetachCount, 1);
   assert.equal(fake.calls.filter((call) => call.method === "detachNativeOverlayHostView").length, 1);
 });
 
@@ -15597,11 +15649,27 @@ test("Windows native overlay presenter polls needs-present at Valve cadence with
   assert.equal(needsPresentCallCount >= 2, true);
   assert.equal(needsPresentCallCount > diagnosticsCallCount, true);
   assert.equal(idle.pollCount, needsPresentCallCount + diagnosticsCallCount);
+  assert.equal(idle.lightweightPollCount, needsPresentCallCount);
+  assert.equal(idle.fullDiagnosticsPollCount, diagnosticsCallCount);
+  assert.equal(idle.pollCount, idle.lightweightPollCount + idle.fullDiagnosticsPollCount);
+  assert.equal(Number.isFinite(idle.lastLightweightPollAt), true);
+  assert.equal(Number.isFinite(idle.lastFullDiagnosticsPollAt), true);
   assert.equal(idle.diagnostics.overlayNeedsPresent, false);
   assert.equal(
     fake.calls.filter((call) => call.method === "pumpNativeOverlayProbeWindow").length,
     0
   );
+
+  const firstFullDiagnosticsPollAt = idle.lastFullDiagnosticsPollAt;
+  assert.equal(
+    await waitForCondition(() => presenter.snapshot().fullDiagnosticsPollCount >= 2, 1000, 5),
+    true
+  );
+  const refreshed = presenter.snapshot();
+  assert.equal(refreshed.fullDiagnosticsPollCount, diagnosticsCallCount);
+  assert.equal(refreshed.lightweightPollCount, needsPresentCallCount);
+  assert.equal(refreshed.lastFullDiagnosticsPollAt - firstFullDiagnosticsPollAt >= 250, true);
+  assert.equal(refreshed.lastLightweightPollAt >= firstFullDiagnosticsPollAt, true);
 
   needsPresent = true;
   assert.equal(
@@ -15621,6 +15689,21 @@ test("Windows native overlay presenter polls needs-present at Valve cadence with
   assert.equal(needsPresentCallCount > diagnosticsCallCount, true);
   assert.equal(idle.diagnostics.overlayNeedsPresent, false);
   assert.equal(presenting.pollCount, needsPresentCallCount + diagnosticsCallCount);
+  assert.equal(presenting.lightweightPollCount, needsPresentCallCount);
+  assert.equal(presenting.fullDiagnosticsPollCount, diagnosticsCallCount);
+
+  needsPresent = false;
+  assert.equal(
+    await waitForCondition(() => presenter.snapshot().overlayNeedsPresent === false, 500, 5),
+    true
+  );
+  const parked = presenter.snapshot();
+  assert.equal(parked.overlayNeedsPresent, false);
+  assert.equal(parked.diagnostics.overlayNeedsPresent, false);
+  assert.equal(parked.currentFps, 0);
+  assert.equal(parked.clickThrough, true);
+  assert.equal(parked.transparent, true);
+  assert.equal(parked.lightweightPollCount > presenting.lightweightPollCount, true);
 
   presenter.close();
   const callsAfterClose = needsPresentCallCount + diagnosticsCallCount;
@@ -15735,6 +15818,51 @@ test("Windows managed readiness waits do not full-refresh on unchanged lightweig
     fake.calls.filter((call) => call.method === "pumpNativeOverlayProbeWindow").length,
     0
   );
+});
+
+test("Windows split poll evidence excludes failed full diagnostics reads", async (t) => {
+  setProcessPlatformForTest(t, "win32");
+
+  let lightweightPollCalls = 0;
+  let fullDiagnosticsAttempts = 0;
+  const fake = createFakeNative({
+    detachNativeOverlayHostView() {},
+    overlayNeedsPresent() {
+      lightweightPollCalls += 1;
+      return false;
+    },
+    getOverlayDiagnostics() {
+      fullDiagnosticsAttempts += 1;
+      throw new Error("full diagnostics unavailable");
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  const presenter = steam.overlay.attachPresenter({
+    title: "Windows Failed Full Diagnostics Presenter",
+    nativeWindowHandle: Buffer.from([9, 0, 6, 0, 0, 0, 0, 0])
+  });
+  t.after(() => presenter.close());
+
+  assert.equal(
+    await waitForCondition(
+      () => fullDiagnosticsAttempts >= 1 && lightweightPollCalls >= 2,
+      1000,
+      5
+    ),
+    true
+  );
+
+  const snapshot = presenter.snapshot();
+  assert.equal(snapshot.fullDiagnosticsPollCount, 0);
+  assert.equal(snapshot.lastFullDiagnosticsPollAt, undefined);
+  assert.equal(snapshot.lightweightPollCount, lightweightPollCalls);
+  assert.equal(snapshot.pollCount, snapshot.lightweightPollCount + snapshot.fullDiagnosticsPollCount);
+  assert.equal(snapshot.lastPollAt, snapshot.lastLightweightPollAt);
+  assert.equal(snapshot.diagnostics, undefined);
+  assert.match(snapshot.lastError.message, /full diagnostics unavailable/);
 });
 
 test("Windows lightweight needs-present polling respects the disable flag", async (t) => {

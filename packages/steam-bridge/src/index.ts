@@ -1687,6 +1687,10 @@ export interface NativeOverlayPresenterSnapshot {
   currentFps: number;
   pumpCount: number;
   pollCount: number;
+  /** Successful lightweight needs-present reads, when this presenter tracks split polling. */
+  lightweightPollCount?: number;
+  /** Successful full diagnostics reads, when this presenter tracks split polling. */
+  fullDiagnosticsPollCount?: number;
   overlayActive: boolean;
   overlayWasActive: boolean;
   overlayNeedsPresent: boolean;
@@ -1694,9 +1698,17 @@ export interface NativeOverlayPresenterSnapshot {
   lastOverlayEvent?: GameOverlayActivated;
   lastPumpAt?: number;
   lastPollAt?: number;
+  /** Timestamp of the last successful lightweight needs-present read. */
+  lastLightweightPollAt?: number;
+  /** Timestamp of the last successful full diagnostics read. */
+  lastFullDiagnosticsPollAt?: number;
   lastError?: unknown;
   nativeSurfaceLeaseGeneration?: number;
   nativeSurfaceOwner?: boolean;
+  /** Successful native surface attach/open operations, when tracked by the presenter. */
+  nativeSurfaceAttachCount?: number;
+  /** Successful native surface detach/close operations, when tracked by the presenter. */
+  nativeSurfaceDetachCount?: number;
   closeReason?: NativeOverlaySurfaceCloseReason;
   diagnostics?: OverlayDiagnostics;
   nativeHostDiagnostics?: NativeOverlayHostDiagnostics;
@@ -8343,10 +8355,14 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
   let visible = true;
   let pumpCount = 0;
   let pollCount = 0;
+  let lightweightPollCount = 0;
+  let fullDiagnosticsPollCount = 0;
   let currentFps = idleFps;
   let lastPumpAt: number | undefined;
   let lastPollAt: number | undefined;
-  let lastDiagnosticsPollAt: number | undefined;
+  let lastLightweightPollAt: number | undefined;
+  let lastFullDiagnosticsAttemptAt: number | undefined;
+  let lastFullDiagnosticsPollAt: number | undefined;
   let lastError: unknown;
   let lastDiagnostics: OverlayDiagnostics | undefined;
   let overlayActive = false;
@@ -8365,6 +8381,8 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
   let restoreFocusTimer: NodeJS.Timeout | undefined;
   let overlayHandle: CallbackHandle | undefined;
   let surfaceLease: NativeOverlaySurfaceLease | undefined;
+  let nativeSurfaceAttachCount = 0;
+  let nativeSurfaceDetachCount = 0;
   let closeReason: NativeOverlaySurfaceCloseReason | undefined;
   const stateListeners = new Set<() => void>();
 
@@ -8609,6 +8627,8 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
       currentFps,
       pumpCount,
       pollCount,
+      lightweightPollCount,
+      fullDiagnosticsPollCount,
       overlayActive,
       overlayWasActive,
       overlayNeedsPresent: needsPresent,
@@ -8618,9 +8638,13 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
       lastOverlayEvent,
       lastPumpAt,
       lastPollAt,
+      lastLightweightPollAt,
+      lastFullDiagnosticsPollAt,
       lastError,
       nativeSurfaceLeaseGeneration: surfaceLease?.generation,
       nativeSurfaceOwner,
+      nativeSurfaceAttachCount,
+      nativeSurfaceDetachCount,
       closeReason
     };
 
@@ -8664,6 +8688,7 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
         } else {
           native().closeNativeOverlayProbeWindow();
         }
+        nativeSurfaceDetachCount += 1;
       } catch (error) {
         lastError ??= error;
       }
@@ -8754,9 +8779,9 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
     }
 
     const fullDiagnosticsDue =
-      lastDiagnosticsPollAt === undefined || now - lastDiagnosticsPollAt >= diagnosticsRefreshIntervalMs;
+      lastFullDiagnosticsAttemptAt === undefined ||
+      now - lastFullDiagnosticsAttemptAt >= diagnosticsRefreshIntervalMs;
     if (fullDiagnosticsDue) {
-      lastDiagnosticsPollAt = now;
       return refreshFullDiagnostics(now);
     }
 
@@ -8771,7 +8796,9 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
 
     try {
       const changed = updateNeedsPresentState(overlayNeedsPresent());
+      lightweightPollCount += 1;
       pollCount += 1;
+      lastLightweightPollAt = now;
       lastPollAt = now;
       return changed;
     } catch (error) {
@@ -8781,11 +8808,13 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
   }
 
   function refreshFullDiagnostics(now: number): boolean {
-    lastDiagnosticsPollAt = now;
+    lastFullDiagnosticsAttemptAt = now;
     try {
       lastDiagnostics = getOverlayDiagnostics();
       needsPresent = lastDiagnostics.overlayNeedsPresent;
+      fullDiagnosticsPollCount += 1;
       pollCount += 1;
+      lastFullDiagnosticsPollAt = now;
       lastPollAt = now;
       return true;
     } catch (error) {
@@ -9036,6 +9065,7 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
       const hostOpen = safeBoolean(() => native().isNativeOverlayHostViewOpen());
       if (!hostOpen) {
         native().attachNativeOverlayHostViewForOverlay(options.nativeWindowHandle);
+        nativeSurfaceAttachCount += 1;
       } else {
         if (hostInputPassthrough) {
           native().setNativeOverlayHostInputPassthrough(false);
@@ -9063,6 +9093,7 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
     if (options.nativeWindowHandle) {
       if (!safeBoolean(() => native().isNativeOverlayHostViewOpen())) {
         native().attachNativeOverlayHostView(options.nativeWindowHandle);
+        nativeSurfaceAttachCount += 1;
         if (visible) {
           native().showNativeOverlayHostView();
         }
@@ -9076,6 +9107,7 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
 
     if (!safeBoolean(() => native().isNativeOverlayProbeWindowOpen())) {
       native().openNativeOverlayProbeWindow(title);
+      nativeSurfaceAttachCount += 1;
     }
     return true;
   }
@@ -10651,8 +10683,10 @@ function createDirectSteamOverlayPresenter(options: NativeOverlayPresenterOption
   let visible = true;
   let pumpCount = 0;
   let pollCount = 0;
+  let fullDiagnosticsPollCount = 0;
   let lastPumpAt: number | undefined;
   let lastPollAt: number | undefined;
+  let lastFullDiagnosticsPollAt: number | undefined;
   let lastError: unknown;
   let lastDiagnostics: OverlayDiagnostics | undefined;
   let overlayActive = false;
@@ -10666,7 +10700,9 @@ function createDirectSteamOverlayPresenter(options: NativeOverlayPresenterOption
     try {
       lastDiagnostics = getOverlayDiagnostics();
       pollCount += 1;
+      fullDiagnosticsPollCount += 1;
       lastPollAt = Date.now();
+      lastFullDiagnosticsPollAt = lastPollAt;
     } catch (error) {
       lastError = error;
     }
@@ -10810,6 +10846,8 @@ function createDirectSteamOverlayPresenter(options: NativeOverlayPresenterOption
         currentFps: 0,
         pumpCount,
         pollCount,
+        lightweightPollCount: 0,
+        fullDiagnosticsPollCount,
         overlayActive: closed ? false : overlayActive,
         overlayWasActive,
         overlayNeedsPresent,
@@ -10818,6 +10856,9 @@ function createDirectSteamOverlayPresenter(options: NativeOverlayPresenterOption
         lastOverlayEvent,
         lastPumpAt,
         lastPollAt,
+        lastFullDiagnosticsPollAt,
+        nativeSurfaceAttachCount: 0,
+        nativeSurfaceDetachCount: 0,
         lastError
       };
 
